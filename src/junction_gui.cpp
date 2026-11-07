@@ -384,11 +384,15 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			this->SetWidgetDisabledState(WID_BJ_RETRY, state != JunctionBuildState::Failed);
 			this->SetWidgetDisabledState(WID_BJ_CANCEL, false);
 			this->SetWidgetDirty(WID_BJ_STATUS);
+			this->SetWidgetDirty(WID_BJ_RETRY);
+			this->SetWidgetDirty(WID_BJ_CANCEL);
 			return;
 		}
 
 		this->SetWidgetDisabledState(WID_BJ_RETRY, true);
 		this->SetWidgetDisabledState(WID_BJ_CANCEL, true);
+		this->SetWidgetDirty(WID_BJ_RETRY);
+		this->SetWidgetDirty(WID_BJ_CANCEL);
 
 		Point pt = GetTileBelowCursor();
 		if (pt.x == -1) {
