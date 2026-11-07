@@ -197,14 +197,15 @@ TEST_CASE("CheckConnectivity: ambiguous movement", "[junction][rules]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	/*
-	 * Two ways from (0,0) to (9,0): straight, or a detour through row 1.
-	 *   - - # - - # - - - -
-	 *   . . \ - - / . . . .
+	 * Ways from (0,0) to (14,0): straight, or a detour through row 1 at either of two places, so the paths
+	 * diverge and reconverge twice. (One detour alone is a doubled lane, which is allowed.)
+	 *   - - # - - # - - # - - # - - - -
+	 *   . . \ - - / . . \ - - / . . . .
 	 */
-	const JunctionLayout layout = Build({{{0, 0}, Trackdir::X_SW, "FFFFFFFFF"}, {{1, 0}, Trackdir::X_SW, "LFRFRFL"}});
+	const JunctionLayout layout = Build({{{0, 0}, Trackdir::X_SW, "FFFFFFFFFFFFFF"}, {{1, 0}, Trackdir::X_SW, "LFRFRFL"}, {{7, 0}, Trackdir::X_SW, "LFRFRFL"}});
 	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec,
-			{Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, 9, 0, Trackdir::X_SW)}, {{Role::EIn, Role::EOut}});
-	REQUIRE(ctx.paths.size() == 2);
+			{Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, 14, 0, Trackdir::X_SW)}, {{Role::EIn, Role::EOut}});
+	REQUIRE(ctx.paths.size() == 4);
 	CHECK(Has(CheckConnectivity(ctx), JunctionRule::Connectivity, 0, 0, "ambiguous movement"));
 }
 
@@ -680,7 +681,7 @@ TEST_CASE("CheckWaitingRoom", "[junction][rules]")
 		AddSignal(layout, 8, 1, Trackdir::X_SW);
 		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, WaitingRoomPorts(), WAITING_ROOM_MOVEMENTS);
 		REQUIRE(ctx.paths.size() == 3);
-		CHECK(CheckWaitingRoom(ctx).empty());
+		CHECK_FALSE(Has(CheckWaitingRoom(ctx), JunctionRule::WaitingRoom, 9, 1, "waiting room"));
 	}
 
 	/* A signal at (6,1) leaves 1 + 3 * 2 = 7 units. */
@@ -1133,4 +1134,134 @@ TEST_CASE("CheckPrio: joins for the four traffic and prio side combinations pass
 			CHECK(CheckPrio(ctx).empty());
 		}
 	}
+}
+
+/* Doubled mainline sections (D80, D85), lane merges and whole-train bays (D83). */
+
+/** Lane A runs along row 0 from (15,0) to (0,0); lane B leaves by RFL, carries a bridge on row 1 and returns by LFR. */
+static JunctionLayout DoubledLayout(const char *lane_b = "FFRFLFFB1FFLFRFF")
+{
+	return Build({{{15, 0}, Trackdir::X_NE, "FFFFFFFFFFFFFFF"}, {{15, 0}, Trackdir::X_NE, lane_b}});
+}
+
+static std::vector<JunctionPort> DoubledPorts(int end_x = 0, int start_x = 15)
+{
+	return {Port(Role::WIn, start_x, 0, Trackdir::X_NE), Port(Role::WOut, end_x, 0, Trackdir::X_NE)};
+}
+
+static const std::vector<Movement> DOUBLED_MOVEMENTS = {{Role::WIn, Role::WOut}};
+
+TEST_CASE("CheckConnectivity: a doubled pass", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionLayout layout = DoubledLayout();
+	REQUIRE(layout.bridges.size() == 1);
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, DoubledPorts(), DOUBLED_MOVEMENTS);
+	REQUIRE(ctx.paths.size() == 2);
+	const std::vector<RuleViolation> connectivity = CheckConnectivity(ctx);
+	CHECK_FALSE(Has(connectivity, JunctionRule::Connectivity, 15, 0, "ambiguous movement"));
+	CHECK_FALSE(Has(connectivity, JunctionRule::Connectivity, 15, 0, "doubled lanes differ in length"));
+	CHECK_FALSE(Has(CheckBridges(ctx), JunctionRule::Bridges, layout.bridges[0].start.x, layout.bridges[0].start.y, "ML bridge is not doubled"));
+}
+
+TEST_CASE("CheckConnectivity: doubled lanes of unequal length", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	/* Lane B leaves by RRLL, which is two rows deep and 4 units longer than lane A. */
+	const JunctionLayout layout = DoubledLayout("FFRRLLFFB1FFLLRRFF");
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, DoubledPorts(), DOUBLED_MOVEMENTS);
+	REQUIRE(ctx.paths.size() == 2);
+	const std::vector<RuleViolation> violations = CheckConnectivity(ctx);
+	CHECK(Has(violations, JunctionRule::Connectivity, 15, 0, "doubled lanes differ in length"));
+	CHECK_FALSE(Has(violations, JunctionRule::Connectivity, 15, 0, "ambiguous movement"));
+}
+
+TEST_CASE("CheckConnectivity: two stretches are ambiguous", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	/* Lane B diverges and reconverges twice, with a shared stretch between. */
+	const JunctionLayout layout = Build({{{20, 0}, Trackdir::X_NE, "FFFFFFFFFFFFFFFFFFFF"}, {{20, 0}, Trackdir::X_NE, "FFRFLFFLFRFFRFLFFLFRFFFF"}});
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, DoubledPorts(0, 20), DOUBLED_MOVEMENTS);
+	REQUIRE(ctx.paths.size() == 4);
+	CHECK(Has(CheckConnectivity(ctx), JunctionRule::Connectivity, 20, 0, "ambiguous movement"));
+}
+
+TEST_CASE("CheckBridges: an undoubled ML bridge", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionLayout layout = Build({{{6, 0}, Trackdir::X_NE, "FFB1F"}});
+	REQUIRE(layout.bridges.size() == 1);
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, DoubledPorts(0, 6), DOUBLED_MOVEMENTS);
+	REQUIRE(ctx.paths.size() == 1);
+	CHECK(Has(CheckBridges(ctx), JunctionRule::Bridges, layout.bridges[0].start.x, layout.bridges[0].start.y, "ML bridge is not doubled"));
+}
+
+TEST_CASE("CheckPrio: a lane merge carries no prio", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionLayout layout = DoubledLayout();
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, DoubledPorts(), DOUBLED_MOVEMENTS);
+	REQUIRE(ctx.paths.size() == 2);
+	/* No prio track and no Entry signal anywhere. */
+	CHECK(CheckPrio(ctx).empty());
+}
+
+/** The ML runs along row 1 from (0,1) to (20,1); the joiner starts at (0,0) and merges at (13,1) with its piece 14. */
+static std::vector<RuleViolation> BayViolations(const char *joiner_moves, std::initializer_list<size_t> signals)
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionRoute joiner{{0, 0}, Trackdir::X_SW, joiner_moves};
+	JunctionLayout layout = Build({{{0, 1}, Trackdir::X_SW, "FFFFFFFFFFFFFFFFFFFF"}, joiner});
+	const JunctionRaster raster = RasterizeJunctionRoute(joiner);
+	for (size_t index : signals) AddSignal(layout, raster.pieces.at(index).tile.x, raster.pieces.at(index).tile.y, raster.pieces.at(index).trackdir);
+	const std::vector<JunctionPort> ports = {Port(Role::EIn, 0, 1, Trackdir::X_SW), Port(Role::EOut, 20, 1, Trackdir::X_SW), Port(Role::WIn, 0, 0, Trackdir::X_SW)};
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, {{Role::EIn, Role::EOut}, {Role::WIn, Role::EOut}});
+	REQUIRE(ctx.paths.size() == 2);
+	return CheckWaitingRoom(ctx);
+}
+
+TEST_CASE("CheckWaitingRoom: whole-train bays before a queue merge", "[junction][rules]")
+{
+	/* TL 4 makes a bay 8 units. The merge signal at piece 9 leaves L = 18; bay boundaries are pieces 5 and 1. */
+	const char *plain = "FFFFFFFFFFFFLFR";
+	CHECK(BayViolations(plain, {1, 5, 9}).empty());
+
+	/* Without the signal at 2B. */
+	CHECK(Has(BayViolations(plain, {5, 9}), JunctionRule::WaitingRoom, 1, 0, "no signal at bay boundary 2"));
+	/* Without the signal at B. */
+	CHECK(Has(BayViolations(plain, {1, 9}), JunctionRule::WaitingRoom, 5, 0, "no signal at bay boundary 1"));
+	/* No signal at all. */
+	CHECK(Has(BayViolations(plain, {}), JunctionRule::WaitingRoom, 13, 1, "no signal before the queue merge"));
+	/* A merge signal 6 units after the first piece. */
+	CHECK(Has(BayViolations(plain, {3}), JunctionRule::WaitingRoom, 13, 1, "less than one whole-train bay"));
+	/* The merge signal on a half piece puts every boundary inside a 2-unit piece. */
+	CHECK(Has(BayViolations(plain, {13}), JunctionRule::WaitingRoom, 13, 1, "falls inside a piece"));
+	/* A bridge where 2B lands (piece 1). */
+	const char *bridged = "B1FFFFFFFFFLFR";
+	CHECK(Has(BayViolations(bridged, {5, 9}), JunctionRule::WaitingRoom, 1, 0, "bay boundary 2 on a bridge or switch"));
+}
+
+TEST_CASE("CheckPrio: coverage along both lanes reaches lane B's bridge block", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	/*
+	 * Lane A is the ML on row 1; lane B leaves at x = 2, bridges (5..7,0) and merges back at x = 9, the lane merge.
+	 * The joiner from (10,0) merges at (11,1) 2 units further on, so lane B's last 8 units before the merge reach its bridge head.
+	 */
+	JunctionLayout layout = Build({
+		{{0, 1}, Trackdir::X_SW, "FFFFFFFFFFFFFF"},
+		{{0, 1}, Trackdir::X_SW, "FRFLFB1FLFRFFFF"},
+		{{10, 0}, Trackdir::X_SW, "LFR"},
+	});
+	layout.size.y = 3;
+	for (JunctionTrack &jt : layout.tracks) {
+		if (jt.offset.x == 11 && jt.offset.y == 1) jt.tracks.Set(Track::Lower);
+	}
+	SetTracks(layout, 11, 2, TrackBits{Track::Upper});
+	AddSignal(layout, 4, 0, Trackdir::X_SW);
+	AddSignal(layout, 8, 0, Trackdir::X_SW);
+	const std::vector<JunctionPort> ports = {Port(Role::EIn, 0, 1, Trackdir::X_SW), Port(Role::EOut, 14, 1, Trackdir::X_SW), Port(Role::WIn, 10, 0, Trackdir::X_SW)};
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, {{Role::EIn, Role::EOut}, {Role::WIn, Role::EOut}});
+	REQUIRE(ctx.paths.size() == 3);
+	CHECK(Has(CheckPrio(ctx), JunctionRule::Prio, 7, 0, "ML block within the train length needs exactly one join"));
 }

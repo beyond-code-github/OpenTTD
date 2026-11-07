@@ -363,7 +363,49 @@ std::vector<RuleViolation> CheckConnectivity(const JunctionCheckContext &ctx)
 		const auto count = std::ranges::count_if(ctx.paths, [&](const JunctionPath &path) { return path.from == from && path.to == to; });
 		const std::string movement = fmt::format("{} to {}", RoleName(from), RoleName(to));
 		if (count == 0) AddViolation(out, JunctionRule::Connectivity, PortTile(ctx, from), fmt::format("missing movement {}", movement));
-		if (count > 1) AddViolation(out, JunctionRule::Connectivity, PortTile(ctx, from), fmt::format("ambiguous movement {}", movement));
+		if (count > 1) {
+			std::vector<const JunctionPath *> lanes;
+			for (const JunctionPath &path : ctx.paths) {
+				if (path.from == from && path.to == to) lanes.push_back(&path);
+			}
+			auto length_of = [](const JunctionPath &path) {
+				uint units = 0;
+				for (const JunctionPiece &piece : path.pieces) units += piece.units;
+				return units;
+			};
+			auto same_piece = [](const JunctionPiece &a, const JunctionPiece &b) { return SameTile(a.tile, b.tile) && a.trackdir == b.trackdir; };
+
+			bool doubled = true;
+			bool equal_length = true;
+			for (size_t i = 0; i < lanes.size() && doubled; i++) {
+				for (size_t j = i + 1; j < lanes.size() && doubled; j++) {
+					const std::vector<JunctionPiece> &a = lanes[i]->pieces;
+					const std::vector<JunctionPiece> &b = lanes[j]->pieces;
+					size_t prefix = 0;
+					while (prefix < a.size() && prefix < b.size() && same_piece(a[prefix], b[prefix])) prefix++;
+					size_t suffix = 0;
+					while (suffix < a.size() && suffix < b.size() && same_piece(a[a.size() - 1 - suffix], b[b.size() - 1 - suffix])) suffix++;
+					if (prefix == 0 || suffix == 0 || prefix + suffix > a.size() || prefix + suffix > b.size()) {
+						doubled = false;
+						break;
+					}
+					for (size_t x = prefix; x < a.size() - suffix && doubled; x++) {
+						for (size_t y = prefix; y < b.size() - suffix; y++) {
+							if (same_piece(a[x], b[y])) {
+								doubled = false;
+								break;
+							}
+						}
+					}
+					if (length_of(*lanes[i]) != length_of(*lanes[j])) equal_length = false;
+				}
+			}
+			if (!doubled) {
+				AddViolation(out, JunctionRule::Connectivity, PortTile(ctx, from), fmt::format("ambiguous movement {}", movement));
+			} else if (!equal_length) {
+				AddViolation(out, JunctionRule::Connectivity, PortTile(ctx, from), "doubled lanes differ in length");
+			}
+		}
 	}
 
 	for (const JunctionPath &path : ctx.paths) {
@@ -456,6 +498,24 @@ std::vector<RuleViolation> CheckBridges(const JunctionCheckContext &ctx)
 
 		const uint distance = std::abs(bridge.end.x - bridge.start.x) + std::abs(bridge.end.y - bridge.start.y);
 		if (!ctx.spec.bridge_span_ok(distance - 1)) AddViolation(out, JunctionRule::Bridges, bridge.start, fmt::format("bridge span of {} tiles not accepted", distance - 1));
+	}
+
+	/* Every bridge on a mainline path needs another path of the same movement that avoids it. */
+	for (size_t b = 0; b < layout.bridges.size(); b++) {
+		const JunctionBridge &bridge = layout.bridges[b];
+		auto on_bridge = [&](const JunctionPiece &piece) {
+			return piece.on_bridge && std::ranges::any_of(tile_sets[b], [&](TileIndexDiffC tile) { return SameTile(tile, piece.tile); });
+		};
+		bool doubled = true;
+		for (const JunctionPath &ml : ctx.paths) {
+			const bool is_ml = (ml.from == JunctionPortRole::EIn && ml.to == JunctionPortRole::EOut) || (ml.from == JunctionPortRole::WIn && ml.to == JunctionPortRole::WOut);
+			if (!is_ml || std::ranges::none_of(ml.pieces, on_bridge)) continue;
+			const bool has_other = std::ranges::any_of(ctx.paths, [&](const JunctionPath &other) {
+				return &other != &ml && other.from == ml.from && other.to == ml.to && std::ranges::none_of(other.pieces, on_bridge);
+			});
+			if (!has_other) doubled = false;
+		}
+		if (!doubled) AddViolation(out, JunctionRule::Bridges, bridge.start, "ML bridge is not doubled");
 	}
 
 	for (size_t i = 0; i < tile_sets.size(); i++) {
@@ -602,6 +662,7 @@ static std::vector<std::pair<TileIndexDiffC, Trackdir>> JoinerSignals(const Junc
 					if (other.first) continue;
 					const JunctionPiece &joiner_piece = joiner.pieces[other.second];
 					if (!SameTile(joiner_piece.tile, merge_piece.tile) || joiner_piece.trackdir == merge_piece.trackdir) continue;
+					if (joiner.from == ml.from && joiner.to == ml.to) continue; // A lane merge has no prio.
 					for (size_t i = other.second; i-- > 0;) {
 						if (!IsSignalledPiece(ctx.layout, joiner.pieces[i])) continue;
 						result.emplace_back(joiner.pieces[i].tile, joiner.pieces[i].trackdir);
@@ -746,6 +807,63 @@ std::vector<RuleViolation> CheckWaitingRoom(const JunctionCheckContext &ctx)
 		uint units = 0;
 		for (size_t i = split->second + 1; i <= last_signal; i++) units += path.pieces[i].units;
 		if (units < 2u * ctx.spec.tl) AddViolation(out, JunctionRule::WaitingRoom, merge_tile, fmt::format("waiting room of {} units, needs {}", units, 2u * ctx.spec.tl));
+	}
+
+	/* Whole-train bays (D83) before every queue merge. */
+	const uint bay = 2u * ctx.spec.tl;
+	for (const JunctionPath &path : ctx.paths) {
+		const bool is_ml = (path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::EOut) || (path.from == JunctionPortRole::WIn && path.to == JunctionPortRole::WOut);
+		if (is_ml) continue;
+		const std::vector<SwitchEvent> events = SwitchEventsOf(ctx.layout, used, path);
+		for (const SwitchEvent &event : events) {
+			if (event.first) continue;
+			const size_t m = event.second;
+			const TileIndexDiffC merge_tile = path.pieces[m].tile;
+
+			size_t s = m;
+			for (size_t i = m; i-- > 0;) {
+				if (!IsSignalledPiece(ctx.layout, path.pieces[i])) continue;
+				s = i;
+				break;
+			}
+			if (s == m) {
+				AddViolation(out, JunctionRule::WaitingRoom, merge_tile, "no signal before the queue merge");
+				continue;
+			}
+
+			size_t u = 0;
+			for (const SwitchEvent &other : events) {
+				if (other.first && other.second < s) u = std::max(u, other.second);
+			}
+			uint length = 0;
+			for (size_t i = u + 1; i <= s; i++) length += path.pieces[i].units;
+			if (length < bay) {
+				AddViolation(out, JunctionRule::WaitingRoom, merge_tile, "less than one whole-train bay before the upstream split");
+				continue;
+			}
+
+			for (uint k = 1; k <= length / bay; k++) {
+				/* The piece at exactly k bays back from the merge signal. */
+				std::optional<size_t> found;
+				uint distance = 0;
+				for (size_t i = s; i-- > u;) {
+					distance += path.pieces[i + 1].units;
+					if (distance == k * bay) found = i;
+					if (distance >= k * bay) break;
+				}
+				if (!found.has_value()) {
+					AddViolation(out, JunctionRule::WaitingRoom, merge_tile, fmt::format("bay boundary {} falls inside a piece", k));
+					continue;
+				}
+				const JunctionPiece &piece = path.pieces[*found];
+				const bool on_switch = std::ranges::any_of(events, [&](const SwitchEvent &e) { return e.second == *found; });
+				if (piece.on_bridge || FindBridgeByHead(ctx.layout, piece.tile) != nullptr || on_switch) {
+					AddViolation(out, JunctionRule::WaitingRoom, piece.tile, fmt::format("bay boundary {} on a bridge or switch", k));
+				} else if (!IsSignalledPiece(ctx.layout, piece)) {
+					AddViolation(out, JunctionRule::WaitingRoom, piece.tile, fmt::format("no signal at bay boundary {}", k));
+				}
+			}
+		}
 	}
 	return out;
 }
@@ -933,6 +1051,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 					break;
 				}
 			}
+			if (joiner != nullptr && joiner->from == ml.from && joiner->to == ml.to) continue; // A lane merge has no prio.
 			if (joiner == nullptr) {
 				AddViolation(out, JunctionRule::Prio, tile, "ML merge without joiner");
 			} else {
