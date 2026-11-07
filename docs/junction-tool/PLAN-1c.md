@@ -57,7 +57,7 @@ Decisions: D29, D31–D34, D36, D39.
 
 ## Open items
 
-1. **D39: how traffic level is expressed.** For example Low/Medium/High presets mapped to headways, trains per hour, or a target fraction of line capacity.
+1. **D39, settled by D84:** Low/Medium/High presets, each a throughput bracket. Still open: the bracket values (trains per hour per movement), to be measured with the headway model and rig runs.
 2. **Loaded or empty train mass** for the acceleration run. Loaded is the conservative choice (slower acceleration), which gives longer prios.
 3. **Which mainline speed:** the rail type's max, the picked train's max, or the lower of the two.
 4. **Original acceleration model:** support it (simpler maths, no curve limits) or require realistic acceleration.
