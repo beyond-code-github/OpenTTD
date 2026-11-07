@@ -269,6 +269,10 @@ struct GUISettings {
 	bool auto_euro; ///< automatically switch to euro in 2002
 	uint8_t drag_signals_density; ///< many signals density
 	bool drag_signals_fixed_distance; ///< keep fixed distance between signals when dragging
+	uint8_t junction_signal_type; ///< Signal type the junction tool builds: 0 one-way block, 1 one-way path.
+	std::string junction_ml_notation; ///< Mainline notation last used in the junction window.
+	std::string junction_branch_notation; ///< Branch notation last used in the junction window.
+	uint8_t junction_tl; ///< Train length in tiles last used in the junction window.
 	TimerGameCalendar::Year semaphore_build_before; ///< build semaphore signals automatically before this year
 	uint8_t news_message_timeout; ///< how much longer than the news message "age" should we keep the message in the history
 	bool show_track_reservation; ///< highlight reserved tracks.

@@ -13,6 +13,13 @@
 /** Widgets of the #BuildJunctionWindow class. */
 enum BuildJunctionWidgets : WidgetID {
 	WID_BJ_NAME,   ///< Name of the selected junction.
+	WID_BJ_ML_LABEL, ///< Label of the mainline notation.
+	WID_BJ_ML_TEXT, ///< Editbox of the mainline notation.
+	WID_BJ_BRANCH_LABEL, ///< Label of the branch notation.
+	WID_BJ_BRANCH_TEXT, ///< Editbox of the branch notation.
+	WID_BJ_TL_LABEL, ///< Train length label.
+	WID_BJ_TL_DECREASE, ///< Decrease the train length.
+	WID_BJ_TL_INCREASE, ///< Increase the train length.
 	WID_BJ_COST,   ///< Cost of building the junction at the cursor.
 	WID_BJ_ROTATE, ///< Rotate the junction.
 	WID_BJ_MIRROR, ///< Mirror the junction.

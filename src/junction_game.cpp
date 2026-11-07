@@ -10,6 +10,8 @@
 #include "stdafx.h"
 
 #include "junction_game.h"
+#include "junction_generator.h"
+#include "settings_type.h"
 #include "command_func.h"
 #include "rail_cmd.h"
 #include "landscape_cmd.h"
@@ -30,6 +32,38 @@
 #include "safeguards.h"
 
 /**
+ * Get the top speed of the fastest train engine the local company can build that runs on a rail type.
+ * @param railtype The rail type.
+ * @return The speed, or 0 if there is no such engine.
+ */
+static uint GetMaxBuildableEngineSpeed(RailType railtype)
+{
+	uint target = 0;
+	for (const Engine *e : Engine::IterateType(VehicleType::Train)) {
+		if (!IsEngineBuildable(e->index, VehicleType::Train, _local_company)) continue;
+
+		const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
+		if (rvi.railveh_type == RailVehicleType::Wagon) continue;
+		if (!IsCompatibleRail(rvi.railtypes, railtype)) continue;
+
+		target = std::max<uint>(target, rvi.max_speed);
+	}
+	return target;
+}
+
+/**
+ * Get the speed the junction is designed for: the rail type's limit, or the fastest buildable engine when unlimited (D45, D67).
+ * @param railtype The rail type.
+ * @return The speed in train speed units; 160 if there is neither a limit nor an engine.
+ */
+uint16_t GetJunctionReferenceSpeed(RailType railtype)
+{
+	uint speed = GetRailTypeInfo(railtype)->max_speed;
+	if (speed == 0) speed = GetMaxBuildableEngineSpeed(railtype);
+	return speed == 0 ? 160 : static_cast<uint16_t>(speed);
+}
+
+/**
  * Choose the bridge type for a junction bridge.
  * With a speed-limited rail type, this is the cheapest available bridge at least as fast as the rail type (D35).
  * With an unlimited rail type, the target speed is that of the fastest buildable train engine that runs on the rail type (D45).
@@ -45,16 +79,7 @@ std::optional<BridgeType> ChooseJunctionBridgeType(RailType railtype, uint lengt
 	const uint16_t rail_speed = GetRailTypeInfo(railtype)->max_speed;
 
 	if (rail_speed == 0) {
-		uint target = 0;
-		for (const Engine *e : Engine::IterateType(VehicleType::Train)) {
-			if (!IsEngineBuildable(e->index, VehicleType::Train, _local_company)) continue;
-
-			const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
-			if (rvi.railveh_type == RailVehicleType::Wagon) continue;
-			if (!IsCompatibleRail(rvi.railtypes, railtype)) continue;
-
-			target = std::max<uint>(target, rvi.max_speed);
-		}
+		const uint target = GetMaxBuildableEngineSpeed(railtype);
 
 		std::optional<BridgeType> cheapest; // Cheapest bridge fast enough, or cheapest of all without a target.
 		std::optional<BridgeType> fastest; // Fallback: fastest bridge, if none is fast enough.
@@ -201,4 +226,40 @@ JunctionSequencer &GetJunctionSequencer()
 void CcJunctionStep([[maybe_unused]] Commands cmd, const CommandCost &result, [[maybe_unused]] TileIndex tile)
 {
 	GetJunctionSequencer().OnStepResult(result.Succeeded());
+}
+
+/**
+ * Fill a generator spec from the game: settings, rail type, prices and bridges.
+ * @param railtype Rail type of the junction.
+ * @param ml_gap Gap of the mainline notation.
+ * @param branch_gap Gap of the branch notation.
+ * @param tl Train length in tiles.
+ * @return The spec.
+ */
+JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_gap, uint8_t tl)
+{
+	const uint16_t speed = GetJunctionReferenceSpeed(railtype);
+
+	JunctionSpec spec{};
+	spec.ml_gap = ml_gap;
+	spec.branch_gap = branch_gap;
+	spec.tl = tl;
+	spec.sd = _settings_client.gui.drag_signals_density;
+	spec.reference_speed = speed;
+	spec.curve_speed = GetRailTypeInfo(railtype)->curve_speed;
+	spec.curve_limit = _settings_game.vehicle.train_acceleration_model != AccelerationModel::Original;
+	spec.signal_type = _settings_client.gui.junction_signal_type == 0 ? SignalType::Block : SignalType::PathOneWay;
+	spec.bridge_span_ok = [railtype, speed](uint n) {
+		std::optional<BridgeType> type = ChooseJunctionBridgeType(railtype, n);
+		return type.has_value() && GetBridgeSpec(*type)->speed >= speed;
+	};
+	spec.prices.rail_piece = RailBuildCost(railtype);
+	spec.prices.signal = _price[Price::BuildSignals];
+	spec.prices.bridge = [railtype](uint n) {
+		std::optional<BridgeType> type = ChooseJunctionBridgeType(railtype, n);
+		if (!type.has_value()) return Money(std::numeric_limits<int64_t>::max() / 4);
+		const BridgeSpec *bridge = GetBridgeSpec(*type);
+		return Money(((int64_t)CalcBridgeLenCostFactor(n + 2) * _price[Price::BuildBridge] * bridge->price) >> 8) + (n + 2) * RailBuildCost(railtype);
+	};
+	return spec;
 }

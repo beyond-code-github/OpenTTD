@@ -1,0 +1,10 @@
+# Manual checks for brief 1b step E (engineer, step F)
+
+Run the game with `build/openttd`, start a new game, and open rail toolbar -> Junction.
+
+1. The window shows both notation boxes (`L_R`), TL 4 and a size/cost. Hover shows the generated doubled-bridge T ghost, about 25x15.
+2. Changing TL to 6 regenerates, and the ghost changes. Typing `LR` in Mainline shows the "needs a gap" error, with no ghost.
+3. Typing `LL_RR` shows the multi-lane error. Typing `x` shows the notation error.
+4. Rotate and mirror still work. Click-build builds the junction, including Entry/Combo/Exit prio signals.
+5. With road side set to left in a new game, the built layout is the mirror image.
+6. Close and reopen the window: the notations and TL persist. Save and load: there is no savegame difference (D69).

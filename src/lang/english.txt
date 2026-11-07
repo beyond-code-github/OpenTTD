@@ -2023,6 +2023,11 @@ STR_CONFIG_SETTING_CYCLE_SIGNAL_TYPES_HELPTEXT                  :Select which si
 STR_CONFIG_SETTING_CYCLE_SIGNAL_GROUP                           :Current group only
 STR_CONFIG_SETTING_CYCLE_SIGNAL_ALL                             :All visible
 
+STR_CONFIG_SETTING_JUNCTION_SIGNAL_TYPE                         :Junction tool signal type: {STRING2}
+STR_CONFIG_SETTING_JUNCTION_SIGNAL_TYPE_HELPTEXT                :Select the signals the junction tool builds, apart from the pre-signals it always uses on priority segments
+###length 2
+STR_CONFIG_SETTING_JUNCTION_SIGNAL_TYPE_BLOCK                   :One-way block signals
+STR_CONFIG_SETTING_JUNCTION_SIGNAL_TYPE_PATH                    :One-way path signals
 STR_CONFIG_SETTING_SIGNAL_GUI_MODE                              :Show signal types: {STRING2}
 STR_CONFIG_SETTING_SIGNAL_GUI_MODE_HELPTEXT                     :Choose which signal types are shown in the signal toolbar
 ###length 2
@@ -2861,7 +2866,18 @@ STR_BUILD_DEPOT_TRAIN_ORIENTATION_TOOLTIP                       :{BLACK}Select r
 
 # Rail junction construction window
 STR_JUNCTION_CAPTION                                            :{WHITE}Junction
-STR_JUNCTION_NAME_TEST                                          :{BLACK}Test junction
+STR_JUNCTION_NAME                                               :{BLACK}{RAW_STRING} × {RAW_STRING}, train {NUM}
+STR_JUNCTION_MAINLINE_LABEL                                     :{BLACK}Mainline
+STR_JUNCTION_MAINLINE_TOOLTIP                                   :{BLACK}Lines of the mainline: L is a track going left, R a track going right, each underscore a tile of gap. "L_R" is one track each way with one tile between; more underscores widen the gap
+STR_JUNCTION_BRANCH_LABEL                                       :{BLACK}Branch
+STR_JUNCTION_BRANCH_TOOLTIP                                     :{BLACK}Lines of the branch: L is a track going left, R a track going right, each underscore a tile of gap. "L_R" is one track each way with one tile between; more underscores widen the gap
+STR_JUNCTION_TRAIN_LENGTH                                       :{BLACK}Train length: {NUM} tiles
+STR_JUNCTION_TRAIN_LENGTH_DECREASE_TOOLTIP                      :{BLACK}Decrease the train length the junction is designed for
+STR_JUNCTION_TRAIN_LENGTH_INCREASE_TOOLTIP                      :{BLACK}Increase the train length the junction is designed for
+STR_JUNCTION_ERROR_NOTATION                                     :{RED}Not a valid line notation: use L, R and underscores
+STR_JUNCTION_ERROR_MULTILANE                                    :{RED}Only one track each way is supported so far
+STR_JUNCTION_ERROR_NO_LAYOUT                                    :{RED}No junction fits these settings
+STR_JUNCTION_ERROR_NEEDS_ML_GAP                                 :{RED}The mainline needs a gap between its tracks
 STR_JUNCTION_ROTATE                                             :{BLACK}Rotate
 STR_JUNCTION_ROTATE_TOOLTIP                                     :{BLACK}Rotate the junction a quarter turn (hotkey .)
 STR_JUNCTION_MIRROR                                             :{BLACK}Mirror

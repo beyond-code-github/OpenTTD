@@ -14,8 +14,50 @@
 #include "../junction_game.h"
 #include "../map_func.h"
 #include "../tile_map.h"
+#include "../rail.h"
+#include "../settings_type.h"
 
 #include "../safeguards.h"
+
+extern RailTypeInfo _railtypes[RAILTYPE_END];
+
+TEST_CASE("MakeJunctionSpec: reads settings and the rail type")
+{
+	const uint8_t old_sd = _settings_client.gui.drag_signals_density;
+	const uint8_t old_signal = _settings_client.gui.junction_signal_type;
+	const AccelerationModel old_model = _settings_game.vehicle.train_acceleration_model;
+	const uint8_t old_curve_speed = _railtypes[RAILTYPE_RAIL].curve_speed;
+	const uint16_t old_max_speed = _railtypes[RAILTYPE_RAIL].max_speed;
+
+	_settings_client.gui.drag_signals_density = 7;
+	_railtypes[RAILTYPE_RAIL].curve_speed = 3;
+	_railtypes[RAILTYPE_RAIL].max_speed = 120;
+
+	_settings_client.gui.junction_signal_type = 0;
+	_settings_game.vehicle.train_acceleration_model = AccelerationModel::Realistic;
+	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, 2, 3, 5);
+	CHECK(spec.ml_gap == 2);
+	CHECK(spec.branch_gap == 3);
+	CHECK(spec.tl == 5);
+	CHECK(spec.sd == 7);
+	CHECK(spec.curve_speed == 3);
+	CHECK(spec.curve_limit);
+	CHECK(spec.signal_type == SignalType::Block);
+	CHECK(spec.reference_speed == 120);
+	CHECK(GetJunctionReferenceSpeed(RAILTYPE_RAIL) == 120);
+
+	_settings_client.gui.junction_signal_type = 1;
+	_settings_game.vehicle.train_acceleration_model = AccelerationModel::Original;
+	spec = MakeJunctionSpec(RAILTYPE_RAIL, 1, 1, 4);
+	CHECK(spec.signal_type == SignalType::PathOneWay);
+	CHECK_FALSE(spec.curve_limit);
+
+	_settings_client.gui.drag_signals_density = old_sd;
+	_settings_client.gui.junction_signal_type = old_signal;
+	_settings_game.vehicle.train_acceleration_model = old_model;
+	_railtypes[RAILTYPE_RAIL].curve_speed = old_curve_speed;
+	_railtypes[RAILTYPE_RAIL].max_speed = old_max_speed;
+}
 
 TEST_CASE("GameJunctionPricing: flat tile reports its height")
 {

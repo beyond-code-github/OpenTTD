@@ -13,6 +13,8 @@
 #include "junction_gui.h"
 #include "junction_ghost_draw.h"
 #include "junction_game.h"
+#include "junction_generator.h"
+#include "querystring_gui.h"
 #include "window_gui.h"
 #include "gui.h"
 #include "error.h"
@@ -222,6 +224,8 @@ static StringID GetPlacementError(const JunctionEstimate &estimate)
 	return STR_JUNCTION_ERROR_TILES_BLOCKED;
 }
 
+static constexpr uint MAX_NOTATION_LENGTH = 16; ///< Maximum number of characters of a line notation.
+
 /** Hotkeys of the junction window. */
 enum JunctionHotkeys : int {
 	JHK_ROTATE, ///< Rotate the junction.
@@ -230,15 +234,6 @@ enum JunctionHotkeys : int {
 
 static uint8_t _junction_rotation = 0; ///< Quarter turns applied to the junction being placed.
 static bool _junction_mirrored = false; ///< Whether the junction being placed is mirrored.
-
-/**
- * Get the layout being placed, with the current orientation applied.
- * @return The oriented layout.
- */
-static JunctionLayout GetPlacementLayout()
-{
-	return ApplyJunctionOrientation(MakeTestJunctionLayout(), _junction_rotation, _junction_mirrored);
-}
 
 /** Window for choosing the orientation of the junction and showing its ghost. */
 struct BuildJunctionWindow : public PickerWindowBase {
@@ -253,11 +248,84 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	bool placement_affordable = false; ///< Whether the local company can pay for the junction at the cursor.
 	StringID placement_error = INVALID_STRING_ID; ///< First error if the placement is invalid, else INVALID_STRING_ID.
 	bool has_placement = false; ///< The cursor is over the map and the fields above are set.
+	std::optional<JunctionLayout> generated; ///< Layout generated from the notations, before orientation; std::nullopt if generation failed.
+	StringID generate_error = INVALID_STRING_ID; ///< Why there is no generated layout.
+	QueryString ml_editbox; ///< Editbox of the mainline notation.
+	QueryString branch_editbox; ///< Editbox of the branch notation.
+	uint8_t tl; ///< Train length in tiles.
 
-	BuildJunctionWindow(WindowDesc &desc, Window *parent, RailType railtype) : PickerWindowBase(desc, parent), railtype(railtype)
+	BuildJunctionWindow(WindowDesc &desc, Window *parent, RailType railtype) : PickerWindowBase(desc, parent), railtype(railtype),
+		ml_editbox(MAX_NOTATION_LENGTH * MAX_CHAR_LENGTH, MAX_NOTATION_LENGTH), branch_editbox(MAX_NOTATION_LENGTH * MAX_CHAR_LENGTH, MAX_NOTATION_LENGTH),
+		tl(Clamp<uint8_t>(_settings_client.gui.junction_tl, 2, 12))
 	{
+		this->querystrings[WID_BJ_ML_TEXT] = &this->ml_editbox;
+		this->querystrings[WID_BJ_BRANCH_TEXT] = &this->branch_editbox;
+		this->ml_editbox.text.Assign(_settings_client.gui.junction_ml_notation);
+		this->branch_editbox.text.Assign(_settings_client.gui.junction_branch_notation);
 		this->InitNested(TransportType::Rail);
 		this->last_tile = INVALID_TILE;
+		this->Regenerate();
+	}
+
+	/**
+	 * Get the layout being placed, with the current orientation applied.
+	 * @return The oriented layout; must only be called while there is a generated layout.
+	 */
+	JunctionLayout GetPlacementLayout() const
+	{
+		return ApplyJunctionOrientation(*this->generated, _junction_rotation, _junction_mirrored);
+	}
+
+	/** Set the cursor box to the size of the layout being placed, or one tile if there is none. */
+	void ResetTileSelectSize() const
+	{
+		if (this->generated.has_value()) {
+			JunctionLayout layout = this->GetPlacementLayout();
+			SetTileSelectSize(layout.size.x, layout.size.y);
+		} else {
+			SetTileSelectSize(1, 1);
+		}
+	}
+
+	/** Generate the junction from the notations and the train length, and remember them as settings. */
+	void Regenerate()
+	{
+		this->generated = std::nullopt;
+		this->generate_error = INVALID_STRING_ID;
+
+		const std::string ml_text{this->ml_editbox.text.GetText()};
+		const std::string branch_text{this->branch_editbox.text.GetText()};
+		const JunctionNotation ml = ParseJunctionNotation(ml_text);
+		const JunctionNotation branch = ParseJunctionNotation(branch_text);
+
+		if (ml.error == JunctionNotationError::Invalid || branch.error == JunctionNotationError::Invalid) {
+			this->generate_error = STR_JUNCTION_ERROR_NOTATION;
+		} else if (ml.error == JunctionNotationError::MultiLane || branch.error == JunctionNotationError::MultiLane) {
+			this->generate_error = STR_JUNCTION_ERROR_MULTILANE;
+		} else {
+			JunctionGenerateResult result = GenerateJunction(MakeJunctionSpec(this->railtype, ml.gap, branch.gap, this->tl));
+			if (result.layout.has_value()) {
+				/* Junctions are generated for right-hand driving (D66). */
+				if (_settings_game.vehicle.road_side == RoadVehicleDrivingSide::Left) {
+					this->generated = TransformJunctionLayout(*result.layout, JunctionTransform::Mirror);
+				} else {
+					this->generated = std::move(result.layout);
+				}
+			} else if (result.error == JunctionGenerateError::NeedsMlGap) {
+				this->generate_error = STR_JUNCTION_ERROR_NEEDS_ML_GAP;
+			} else {
+				this->generate_error = STR_JUNCTION_ERROR_NO_LAYOUT;
+			}
+		}
+
+		_settings_client.gui.junction_ml_notation = ml_text;
+		_settings_client.gui.junction_branch_notation = branch_text;
+		_settings_client.gui.junction_tl = this->tl;
+
+		this->last_tile = INVALID_TILE;
+		this->SetWidgetDisabledState(WID_BJ_TL_DECREASE, this->tl <= 2);
+		this->SetWidgetDisabledState(WID_BJ_TL_INCREASE, this->tl >= 12);
+		this->SetDirty();
 	}
 
 	void Close(int data = 0) override
@@ -265,7 +333,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		GetJunctionSequencer().Cancel();
 		JunctionGhost::Clear();
 		JunctionGhost::SetPinned(false);
-		SetTileSelectSize(GetPlacementLayout().size.x, GetPlacementLayout().size.y);
+		this->ResetTileSelectSize();
 		_thd.make_square_red = false;
 		this->PickerWindowBase::Close(data);
 	}
@@ -284,9 +352,23 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				GetJunctionSequencer().Cancel();
 				JunctionGhost::Clear();
 				JunctionGhost::SetPinned(false);
-				SetTileSelectSize(GetPlacementLayout().size.x, GetPlacementLayout().size.y);
+				this->ResetTileSelectSize();
 				this->last_tile = INVALID_TILE;
 				this->SetDirty();
+				break;
+
+			case WID_BJ_TL_DECREASE:
+				if (this->tl > 2) {
+					this->tl--;
+					this->Regenerate();
+				}
+				break;
+
+			case WID_BJ_TL_INCREASE:
+				if (this->tl < 12) {
+					this->tl++;
+					this->Regenerate();
+				}
 				break;
 
 			case WID_BJ_ROTATE:
@@ -301,6 +383,11 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				SndClickBeep();
 				break;
 		}
+	}
+
+	void OnEditboxChanged(WidgetID widget) override
+	{
+		if (widget == WID_BJ_ML_TEXT || widget == WID_BJ_BRANCH_TEXT) this->Regenerate();
 	}
 
 	EventState OnHotkey(int hotkey) override
@@ -321,8 +408,13 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
+		if (widget == WID_BJ_NAME) {
+			return GetString(STR_JUNCTION_NAME, this->ml_editbox.text.GetText(), this->branch_editbox.text.GetText(), this->tl);
+		}
+		if (widget == WID_BJ_TL_LABEL) return GetString(STR_JUNCTION_TRAIN_LENGTH, this->tl);
 		if (widget == WID_BJ_STATUS) {
 			const JunctionSequencer &seq = GetJunctionSequencer();
+			if (!this->generated.has_value() && seq.GetState() == JunctionBuildState::Idle) return GetString(this->generate_error);
 			switch (seq.GetState()) {
 				case JunctionBuildState::Building: return GetString(STR_JUNCTION_STATUS_BUILDING, seq.GetDone(), seq.GetTotal());
 				case JunctionBuildState::Failed: return GetString(STR_JUNCTION_STATUS_FAILED, seq.GetDone(), seq.GetTotal());
@@ -358,7 +450,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	 */
 	void ComputePlacement(TileIndex tile, JunctionLayout &layout, JunctionEstimate &estimate, std::vector<std::optional<BridgeType>> &bridge_types, Money &available) const
 	{
-		layout = GetPlacementLayout();
+		layout = this->GetPlacementLayout();
 
 		GameJunctionPricing pricing(this->railtype);
 		estimate = EstimateJunction(layout, tile, pricing);
@@ -377,6 +469,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	 */
 	void StartBuild(TileIndex tile)
 	{
+		if (!this->generated.has_value()) return;
+
 		JunctionLayout layout;
 		JunctionEstimate estimate;
 		std::vector<std::optional<BridgeType>> bridge_types;
@@ -417,7 +511,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			if (_settings_client.sound.confirm) SndPlayTileFx(SND_20_CONSTRUCTION_RAIL, this->build_origin);
 			seq.Cancel();
 			JunctionGhost::SetPinned(false);
-			SetTileSelectSize(GetPlacementLayout().size.x, GetPlacementLayout().size.y);
+			this->ResetTileSelectSize();
 			this->last_tile = INVALID_TILE;
 			this->SetDirty();
 		}
@@ -456,6 +550,17 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->SetWidgetDisabledState(WID_BJ_CANCEL, true);
 		this->SetWidgetDirty(WID_BJ_RETRY);
 		this->SetWidgetDirty(WID_BJ_CANCEL);
+
+		if (!this->generated.has_value()) {
+			if (this->has_placement) {
+				JunctionGhost::Clear();
+				this->has_placement = false;
+				this->SetWidgetDirty(WID_BJ_COST);
+			}
+			SetTileSelectSize(1, 1);
+			this->SetWidgetDirty(WID_BJ_STATUS);
+			return;
+		}
 
 		Point pt = GetTileBelowCursor();
 		if (pt.x == -1) {
@@ -512,7 +617,20 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widge
 	EndContainer(),
 	NWidget(WWT_PANEL, Colours::DarkGreen),
 		NWidget(NWID_VERTICAL), SetPIP(0, WidgetDimensions::unscaled.vsep_normal, 0), SetPadding(WidgetDimensions::unscaled.picker),
-			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_NAME), SetStringTip(STR_JUNCTION_NAME_TEST), SetFill(1, 0),
+			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_NAME), SetFill(1, 0),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_TEXT, Colours::Invalid, WID_BJ_ML_LABEL), SetStringTip(STR_JUNCTION_MAINLINE_LABEL, STR_JUNCTION_MAINLINE_TOOLTIP),
+				NWidget(WWT_EDITBOX, Colours::Grey, WID_BJ_ML_TEXT), SetToolTip(STR_JUNCTION_MAINLINE_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+			EndContainer(),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_TEXT, Colours::Invalid, WID_BJ_BRANCH_LABEL), SetStringTip(STR_JUNCTION_BRANCH_LABEL, STR_JUNCTION_BRANCH_TOOLTIP),
+				NWidget(WWT_EDITBOX, Colours::Grey, WID_BJ_BRANCH_TEXT), SetToolTip(STR_JUNCTION_BRANCH_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+			EndContainer(),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_BJ_TL_DECREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Decrease, STR_JUNCTION_TRAIN_LENGTH_DECREASE_TOOLTIP),
+				NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_TL_LABEL), SetFill(1, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_BJ_TL_INCREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Increase, STR_JUNCTION_TRAIN_LENGTH_INCREASE_TOOLTIP),
+			EndContainer(),
 			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_COST), SetFill(1, 0),
 			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_ROTATE), SetStringTip(STR_JUNCTION_ROTATE, STR_JUNCTION_ROTATE_TOOLTIP), SetFill(1, 0),

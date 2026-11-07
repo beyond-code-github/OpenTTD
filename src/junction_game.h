@@ -14,6 +14,7 @@
 #include "junction_build.h"
 #include "rail_type.h"
 #include "bridge_type.h"
+#include "junction_generator.h"
 
 /**
  * Choose the bridge type for a bridge with 'length' middle tiles.
@@ -21,6 +22,11 @@
  * An unlimited rail type gets the cheapest available bridge at least as fast as the fastest buildable train engine that runs on it, or the fastest available bridge if none is (D45).
  */
 std::optional<BridgeType> ChooseJunctionBridgeType(RailType railtype, uint length);
+
+/** The speed the junction is designed for: the rail type's limit, or the fastest buildable engine when unlimited (D45, D67). */
+uint16_t GetJunctionReferenceSpeed(RailType railtype);
+/** Fill a generator spec from the game: settings, rail type, prices and bridges. */
+JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_gap, uint8_t tl);
 
 /** Junction pricing against the real map, commands and prices, for the local company. */
 class GameJunctionPricing : public JunctionPricing {
