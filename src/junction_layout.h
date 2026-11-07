@@ -96,6 +96,10 @@ Track TransformTrack(Track track, JunctionTransform transform);
 Trackdir TransformTrackdir(Trackdir trackdir, JunctionTransform transform);
 /** Mirror (if set), then rotate 'rotation % 4' quarter turns. */
 JunctionLayout ApplyJunctionOrientation(const JunctionLayout &layout, uint8_t rotation, bool mirrored);
+/** Where a layout offset lands after ApplyJunctionOrientation(layout of the given size, rotation, mirrored). */
+TileIndexDiffC OrientJunctionOffset(TileIndexDiffC offset, TileIndexDiffC size, uint8_t rotation, bool mirrored);
+/** The map offset of a vector in the canonical frame, under an orientation: mirror (dx,dy)->(-dx,dy) if set, then rotation times (dx,dy)->(dy,-dx). */
+TileIndexDiffC OrientJunctionVector(TileIndexDiffC v, uint8_t rotation, bool mirrored);
 JunctionLayout MakeTestJunctionLayout();
 std::vector<JunctionBuildStep> MakeJunctionBuildSteps(const JunctionLayout &layout, TileIndex origin);
 JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing);

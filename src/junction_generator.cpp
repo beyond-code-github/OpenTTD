@@ -183,7 +183,7 @@ uint RasterUnits(const JunctionRaster &raster)
  * @param terrain_cost Receives the terrain cost when terrain is set.
  * @return The layout, or std::nullopt when this candidate cannot be built.
  */
-std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost)
+std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub)
 {
 	const int g = spec.ml_gap;
 	const int xI = 30;
@@ -420,9 +420,40 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		}
 	}
 
-	NormaliseJunctionLayout(layout);
+	/* The shift NormaliseJunctionLayout applies: the minimum of the track and bridge offsets. */
+	int shift_x = 0;
+	int shift_y = 0;
+	auto normalise = [&]() {
+		int min_x = INT32_MAX;
+		int min_y = INT32_MAX;
+		for (const JunctionTrack &jt : layout.tracks) {
+			min_x = std::min<int>(min_x, jt.offset.x);
+			min_y = std::min<int>(min_y, jt.offset.y);
+		}
+		for (const JunctionBridge &bridge : layout.bridges) {
+			for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
+				min_x = std::min<int>(min_x, head.x);
+				min_y = std::min<int>(min_y, head.y);
+			}
+		}
+		if (min_x != INT32_MAX) {
+			shift_x += min_x;
+			shift_y += min_y;
+		}
+		NormaliseJunctionLayout(layout);
+	};
+	normalise();
 	PlaceJunctionSignals(layout, spec);
-	NormaliseJunctionLayout(layout);
+	normalise();
+
+	if (terrain != nullptr) {
+		/* The prio rows exist only now; every track tile must be usable, in working coordinates. */
+		for (const JunctionTrack &jt : layout.tracks) {
+			if (jt.tracks.None()) continue;
+			if (!terrain->UsableAt(jt.offset.x + shift_x, jt.offset.y + shift_y, params.plane)) return std::nullopt;
+		}
+	}
+	if (hub != nullptr) *hub = {static_cast<int16_t>(30 - shift_x), static_cast<int16_t>(0 - shift_y)};
 	return layout;
 }
 
@@ -511,6 +542,7 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 	std::optional<JunctionLayout> best;
 	std::pair<Money, int> best_score{};
 	int best_area = 0;
+	TileIndexDiffC best_hub{};
 
 	const int first = spec.ml_gap + 5;
 	const int last = spec.ml_gap + 20;
@@ -523,7 +555,8 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 					JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
 					params.plane = plane;
 					Money terrain_cost = 0;
-					std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, terrain, &terrain_cost);
+					TileIndexDiffC hub{};
+					std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, terrain, &terrain_cost, &hub);
 					if (!layout.has_value() || !CheckJunctionRules(*layout, spec).empty()) continue;
 					clean_here = true;
 					std::pair<Money, int> score = ScoreJunctionLayout(*layout, spec);
@@ -531,6 +564,7 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 					const int area = layout->size.x * layout->size.y;
 					if (!best.has_value() || score < best_score || (score == best_score && area < best_area)) {
 						best = std::move(layout);
+						best_hub = hub;
 						best_score = score;
 						best_area = area;
 					}
@@ -540,5 +574,5 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 		}
 	}
 	if (!best.has_value()) return {std::nullopt, JunctionGenerateError::NoLayout};
-	return {std::move(best), JunctionGenerateError::None};
+	return {std::move(best), JunctionGenerateError::None, best_hub};
 }

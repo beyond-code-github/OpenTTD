@@ -48,6 +48,7 @@ enum class JunctionGenerateError : uint8_t { None, InvalidNotation, MultiLane, N
 struct JunctionGenerateResult {
 	std::optional<JunctionLayout> layout;
 	JunctionGenerateError error = JunctionGenerateError::None;
+	TileIndexDiffC hub{}; ///< The offset, in the returned layout, of working coordinate (30, 0).
 };
 
 uint16_t CurveSpeedLimitForSpacing(uint spacing, uint8_t curve_speed);
@@ -72,7 +73,7 @@ struct JunctionCandidateParams {
  * @param terrain_cost When set together with terrain, receives the sum of CostAt over occupied track tiles and bridge heads, once per tile.
  * @return The layout, or std::nullopt when this candidate cannot be built.
  */
-std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain = nullptr, Money *terrain_cost = nullptr);
+std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain = nullptr, Money *terrain_cost = nullptr, TileIndexDiffC *hub = nullptr);
 
 /** Generator score of a layout: cost, then open space (D76). Lower is better. */
 std::pair<Money, int> ScoreJunctionLayout(const JunctionLayout &layout, const JunctionSpec &spec); // second = -open rectangle area

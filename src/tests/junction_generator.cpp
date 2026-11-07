@@ -234,13 +234,13 @@ TEST_CASE("GenerateJunction: an ML gap of 0 has no room for the W prio", "[junct
 	CHECK(result.error == JunctionGenerateError::NeedsMlGap);
 }
 
-/** A flat Buildable terrain at height z covering x 0..63, y 0..40. */
+/** A flat Buildable terrain at height z covering working x 0..63, y -2..40. */
 static JunctionTerrain MakeFlatTerrain(int z = 0)
 {
 	JunctionTerrain t;
-	t.origin = {0, 0};
+	t.origin = {0, -2};
 	t.width = 64;
-	t.height = 41;
+	t.height = 43;
 	JunctionTerrainTile tile;
 	tile.z_min = tile.z_max = static_cast<int8_t>(z);
 	t.tiles.assign(static_cast<size_t>(t.width) * t.height, tile);
@@ -248,10 +248,11 @@ static JunctionTerrain MakeFlatTerrain(int z = 0)
 	return t;
 }
 
+/** Set the class of a rectangle given in working coordinates. */
 static void SetTerrainRect(JunctionTerrain &t, int x0, int x1, int y0, int y1, JunctionTileClass cls)
 {
 	for (int y = y0; y <= y1; y++) {
-		for (int x = x0; x <= x1; x++) t.tiles[static_cast<size_t>(y) * t.width + x].cls = cls;
+		for (int x = x0; x <= x1; x++) t.tiles[static_cast<size_t>(y - t.origin.y) * t.width + (x - t.origin.x)].cls = cls;
 	}
 }
 
@@ -313,4 +314,53 @@ TEST_CASE("GenerateJunction with a pond under the crossing", "[junction][terrain
 	}
 	WARN("pond:\n" << RenderJunctionAscii(*result.layout));
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
+}
+
+/** The track bits of the layout tile at an offset, or none. */
+static TrackBits LayoutTracksAt(const JunctionLayout &layout, int x, int y)
+{
+	for (const JunctionTrack &jt : layout.tracks) {
+		if (jt.offset.x == x && jt.offset.y == y) return jt.tracks;
+	}
+	return {};
+}
+
+static bool UnderBridge(const JunctionLayout &layout, int x, int y)
+{
+	for (const JunctionBridge &b : layout.bridges) {
+		if (x >= std::min(b.start.x, b.end.x) && x <= std::max(b.start.x, b.end.x) && y >= std::min(b.start.y, b.end.y) && y <= std::max(b.start.y, b.end.y)) return true;
+	}
+	return false;
+}
+
+TEST_CASE("GenerateJunction reports the hub offset", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	const JunctionLayout &layout = *result.layout;
+	REQUIRE(result.hub.x >= 0);
+	REQUIRE(result.hub.y >= 0);
+	REQUIRE(result.hub.x < layout.size.x);
+	REQUIRE(result.hub.y < layout.size.y);
+	CHECK(LayoutTracksAt(layout, result.hub.x, result.hub.y).Test(Track::X));
+
+	const int w_y = result.hub.y + spec.ml_gap + 1;
+	CHECK((LayoutTracksAt(layout, result.hub.x, w_y).Test(Track::X) || UnderBridge(layout, result.hub.x, w_y)));
+}
+
+TEST_CASE("GenerateJunction with a blocked prio row line", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionTerrain t = MakeFlatTerrain();
+	SetTerrainRect(t, 0, 63, -1, -1, JunctionTileClass::Blocked);
+	const JunctionGenerateResult result = GenerateJunction(spec, &t);
+	if (!result.layout.has_value()) {
+		CHECK(result.error == JunctionGenerateError::NoLayout);
+		return;
+	}
+	for (const JunctionTrack &jt : result.layout->tracks) {
+		if (jt.tracks.None()) continue;
+		CHECK(jt.offset.y != result.hub.y - 1);
+	}
 }

@@ -415,3 +415,33 @@ TEST_CASE("JunctionLayout outer: estimate reports the ground height")
 	CHECK(estimate.height == 3);
 	CHECK(estimate.affordable);
 }
+
+TEST_CASE("JunctionLayout orientation: OrientJunctionOffset and OrientJunctionVector match ApplyJunctionOrientation", "[junction]")
+{
+	JunctionLayout layout;
+	layout.size = {5, 3};
+	layout.tracks.push_back({{0, 0}, TrackBits{Track::X}});
+	layout.tracks.push_back({{3, 1}, TrackBits{Track::Y}});
+	layout.tracks.push_back({{4, 2}, TrackBits{Track::Upper}});
+
+	for (uint8_t r = 0; r < 4; r++) {
+		for (bool m : {false, true}) {
+			const JunctionLayout oriented = ApplyJunctionOrientation(layout, r, m);
+			REQUIRE(oriented.tracks.size() == layout.tracks.size());
+			for (size_t i = 0; i < layout.tracks.size(); i++) {
+				const TileIndexDiffC o = OrientJunctionOffset(layout.tracks[i].offset, layout.size, r, m);
+				CHECK(o.x == oriented.tracks[i].offset.x);
+				CHECK(o.y == oriented.tracks[i].offset.y);
+			}
+			for (const JunctionTrack &a : layout.tracks) {
+				for (const JunctionTrack &b : layout.tracks) {
+					const TileIndexDiffC oa = OrientJunctionOffset(a.offset, layout.size, r, m);
+					const TileIndexDiffC ob = OrientJunctionOffset(b.offset, layout.size, r, m);
+					const TileIndexDiffC v = OrientJunctionVector({static_cast<int16_t>(a.offset.x - b.offset.x), static_cast<int16_t>(a.offset.y - b.offset.y)}, r, m);
+					CHECK(oa.x - ob.x == v.x);
+					CHECK(oa.y - ob.y == v.y);
+				}
+			}
+		}
+	}
+}

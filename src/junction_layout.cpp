@@ -133,6 +133,38 @@ JunctionLayout ApplyJunctionOrientation(const JunctionLayout &layout, uint8_t ro
 }
 
 /**
+ * Where a layout offset lands after ApplyJunctionOrientation.
+ * @param offset The offset in the layout.
+ * @param size The size of the layout.
+ * @param rotation Number of quarter turns; taken modulo 4.
+ * @param mirrored Whether to mirror before rotating.
+ * @return The oriented offset.
+ */
+TileIndexDiffC OrientJunctionOffset(TileIndexDiffC offset, TileIndexDiffC size, uint8_t rotation, bool mirrored)
+{
+	if (mirrored) offset = TransformOffset(offset, size, JunctionTransform::Mirror);
+	for (uint8_t i = 0; i < rotation % 4; i++) {
+		offset = TransformOffset(offset, size, JunctionTransform::Rotate);
+		size = {size.y, size.x};
+	}
+	return offset;
+}
+
+/**
+ * The map offset of a vector in the canonical frame, under an orientation.
+ * @param v The vector.
+ * @param rotation Number of quarter turns; taken modulo 4.
+ * @param mirrored Whether to mirror before rotating.
+ * @return The oriented vector.
+ */
+TileIndexDiffC OrientJunctionVector(TileIndexDiffC v, uint8_t rotation, bool mirrored)
+{
+	if (mirrored) v = {static_cast<int16_t>(-v.x), v.y};
+	for (uint8_t i = 0; i < rotation % 4; i++) v = {v.y, static_cast<int16_t>(-v.x)};
+	return v;
+}
+
+/**
  * Make the fixed test layout.
  * Fixed layout used until the generator exists (1b); exercises track, a bridge over track, and signals in both directions.
  * @return The test layout.
