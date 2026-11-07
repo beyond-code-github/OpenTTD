@@ -27,6 +27,9 @@
 #include "company_func.h"
 #include "tile_map.h"
 #include "slope_type.h"
+#include "slope_func.h"
+#include "map_func.h"
+#include "tile_type.h"
 #include "table/strings.h"
 
 #include "safeguards.h"
@@ -113,17 +116,16 @@ std::optional<BridgeType> ChooseJunctionBridgeType(RailType railtype, uint lengt
 }
 
 /**
- * Get the height of a flat tile.
+ * Get the slope facts of a tile.
  * @param tile The tile to check.
- * @return The height of the tile, or std::nullopt if it is off-map or not flat.
+ * @return The slope facts, or std::nullopt if the tile is off-map.
  */
-std::optional<int> GameJunctionPricing::GetFlatHeight(TileIndex tile) const
+std::optional<JunctionTileSlope> GameJunctionPricing::GetTileSlope(TileIndex tile) const
 {
 	if (!IsValidTile(tile)) return std::nullopt;
 
 	auto [slope, z] = GetTileSlopeZ(tile);
-	if (slope == SLOPE_FLAT) return z;
-	return std::nullopt;
+	return JunctionTileSlope{z, GetTileMaxZ(tile), IsSteepSlope(slope), _settings_game.construction.build_on_slopes};
 }
 
 /**
@@ -159,13 +161,79 @@ CommandCost GameJunctionPricing::PriceBridge(TileIndex start, TileIndex end) con
 }
 
 /**
+ * Test-only run of clearing a tile, as TestClear does.
+ * @param tile The tile to clear.
+ * @return The cost of the command, or its error.
+ */
+static CommandCost QueryJunctionClear(TileIndex tile)
+{
+	return Command<Commands::LandscapeClear>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::LandscapeClear>()) | DoCommandFlag::QueryCost, tile);
+}
+
+/**
  * Test-only run of clearing a tile.
  * @param tile The tile to clear.
  * @return The cost of the command, or its error.
  */
 CommandCost GameJunctionPricing::TestClear(TileIndex tile) const
 {
-	return Command<Commands::LandscapeClear>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::LandscapeClear>()) | DoCommandFlag::QueryCost, tile);
+	return QueryJunctionClear(tile);
+}
+
+/**
+ * Snapshot the map around an anchor for the generator, in its working frame (D93).
+ * Working cell (x, y) is map tile anchor + OrientJunctionVector({x - 30, y}, rotation, mirrored); the grid covers x 0..63, y -2..40.
+ * @param anchor The anchor tile (working cell (30, 0)).
+ * @param rotation Quarter turns of the orientation.
+ * @param mirrored Whether the orientation is mirrored.
+ * @return The snapshot.
+ */
+JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored)
+{
+	JunctionTerrain terrain;
+	terrain.origin = {0, -2};
+	terrain.width = 64;
+	terrain.height = 43;
+	terrain.tiles.resize(static_cast<size_t>(terrain.width) * terrain.height);
+	terrain.foundation_cost = _price[Price::BuildFoundation];
+	terrain.build_on_slopes = _settings_game.construction.build_on_slopes;
+	terrain.max_bridge_height = _settings_game.construction.max_bridge_height;
+
+	for (int gy = 0; gy < terrain.height; gy++) {
+		for (int gx = 0; gx < terrain.width; gx++) {
+			JunctionTerrainTile &cell = terrain.tiles[static_cast<size_t>(gy) * terrain.width + gx];
+			cell.cls = JunctionTileClass::Blocked;
+
+			const TileIndexDiffC v = OrientJunctionVector({static_cast<int16_t>(gx + terrain.origin.x - 30), static_cast<int16_t>(gy + terrain.origin.y)}, rotation, mirrored);
+			const int x = static_cast<int>(TileX(anchor)) + v.x;
+			const int y = static_cast<int>(TileY(anchor)) + v.y;
+			if (x < 0 || y < 0 || x >= static_cast<int>(Map::SizeX()) || y >= static_cast<int>(Map::SizeY())) continue;
+			const TileIndex tile = TileXY(x, y);
+			if (!IsValidTile(tile)) continue;
+
+			auto [slope, z] = GetTileSlopeZ(tile);
+			cell.z_min = static_cast<int8_t>(z);
+			cell.z_max = static_cast<int8_t>(GetTileMaxZ(tile));
+			cell.steep = IsSteepSlope(slope);
+
+			switch (GetTileType(tile)) {
+				case TileType::Clear:
+				case TileType::Trees: {
+					CommandCost cost = QueryJunctionClear(tile);
+					if (cost.Failed()) break;
+					cell.cls = JunctionTileClass::Buildable;
+					cell.clear_cost = cost.GetCost();
+					break;
+				}
+				case TileType::Water:
+					cell.cls = JunctionTileClass::Water;
+					break;
+				default:
+					break;
+			}
+		}
+	}
+	return terrain;
 }
 
 /**

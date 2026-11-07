@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <map>
 #include <set>
+#include <tuple>
 
 #include "../safeguards.h"
 
@@ -32,11 +33,18 @@ public:
 	bool bridge_fails = false;
 	Money money = 1000000;
 
-	std::optional<int> GetFlatHeight(TileIndex tile) const override
+	std::map<TileIndex, std::pair<int, int>> slope_zs; ///< Tile to (z_min, z_max), overriding the flat height.
+	std::set<TileIndex> steep;
+	bool build_on_slopes = true;
+
+	std::optional<JunctionTileSlope> GetTileSlope(TileIndex tile) const override
 	{
-		if (tile == INVALID_TILE || this->not_flat.contains(tile)) return std::nullopt;
+		if (tile == INVALID_TILE) return std::nullopt;
 		auto it = this->heights.find(tile);
-		return it != this->heights.end() ? it->second : 1;
+		int z_min = it != this->heights.end() ? it->second : 1;
+		int z_max = z_min;
+		if (auto sit = this->slope_zs.find(tile); sit != this->slope_zs.end()) std::tie(z_min, z_max) = sit->second;
+		return JunctionTileSlope{z_min, z_max, this->not_flat.contains(tile) || this->steep.contains(tile), this->build_on_slopes};
 	}
 
 	CommandCost TestRail(TileIndex tile, [[maybe_unused]] Track track) const override
@@ -443,5 +451,52 @@ TEST_CASE("JunctionLayout orientation: OrientJunctionOffset and OrientJunctionVe
 				}
 			}
 		}
+	}
+}
+
+TEST_CASE("JunctionLayout outer: plane rule with slopes")
+{
+	Map::Allocate(64, 64);
+	const TileIndex t = TileXY(12, 12); ///< A track tile of the test layout.
+
+	/* Flat at 0 everywhere. */
+	{
+		StubJunctionPricing pricing;
+		for (int x = 0; x < 64; x++) for (int y = 0; y < 64; y++) pricing.heights[TileXY(x, y)] = 0;
+		JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+		CHECK(estimate.bad_tiles.empty());
+		CHECK(estimate.height == 0);
+	}
+
+	/* One tile z 0..1 among tiles flat at 1: accepted with build_on_slopes, rejected without. */
+	{
+		StubJunctionPricing pricing;
+		pricing.slope_zs[t] = {0, 1};
+		JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+		CHECK(estimate.bad_tiles.empty());
+		CHECK(estimate.height == 1);
+
+		pricing.build_on_slopes = false;
+		estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+		CHECK(estimate.bad_tiles == std::vector<TileIndex>{t});
+		CHECK(estimate.first_error == STR_ERROR_FLAT_LAND_REQUIRED);
+	}
+
+	/* A steep tile. */
+	{
+		StubJunctionPricing pricing;
+		pricing.slope_zs[t] = {0, 1};
+		pricing.steep.insert(t);
+		JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+		CHECK(estimate.bad_tiles == std::vector<TileIndex>{t});
+	}
+
+	/* Mixed planes: a tile flat at 0 while H = 1. */
+	{
+		StubJunctionPricing pricing;
+		pricing.heights[t] = 0;
+		JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+		CHECK(estimate.bad_tiles == std::vector<TileIndex>{t});
+		CHECK(estimate.first_error == STR_ERROR_FLAT_LAND_REQUIRED);
 	}
 }

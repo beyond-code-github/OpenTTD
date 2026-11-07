@@ -15,6 +15,7 @@
 #include "rail_type.h"
 #include "bridge_type.h"
 #include "junction_generator.h"
+#include "junction_terrain.h"
 
 /**
  * Choose the bridge type for a bridge with 'length' middle tiles.
@@ -28,11 +29,14 @@ uint16_t GetJunctionReferenceSpeed(RailType railtype);
 /** Fill a generator spec from the game: settings, rail type, prices and bridges. */
 JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_gap, uint8_t tl);
 
+/** Snapshot the map around an anchor for the generator, in its working frame (D93): cell (cx, cy) is map tile anchor + OrientJunctionVector({cx - 30, cy}, rotation, mirrored). */
+JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored);
+
 /** Junction pricing against the real map, commands and prices, for the local company. */
 class GameJunctionPricing : public JunctionPricing {
 public:
 	explicit GameJunctionPricing(RailType railtype) : railtype(railtype) {}
-	std::optional<int> GetFlatHeight(TileIndex tile) const override;
+	std::optional<JunctionTileSlope> GetTileSlope(TileIndex tile) const override;
 	CommandCost TestRail(TileIndex tile, Track track) const override;
 	CommandCost PriceBridge(TileIndex start, TileIndex end) const override;
 	CommandCost TestClear(TileIndex tile) const override;

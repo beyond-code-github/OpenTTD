@@ -228,8 +228,9 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 {
 	JunctionEstimate estimate;
 
-	/* Collect the occupied tiles: track tiles, then each bridge's heads and span. */
+	/* Collect the occupied tiles: track tiles and bridge heads, and separately each bridge's span. */
 	std::vector<TileIndex> occupied;
+	std::vector<TileIndex> span_tiles;
 	for (const JunctionTrack &jt : layout.tracks) {
 		occupied.push_back(AddTileIndexDiffCWrap(origin, jt.offset));
 	}
@@ -238,33 +239,42 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 		occupied.push_back(AddTileIndexDiffCWrap(origin, bridge.end));
 		if (bridge.start.x == bridge.end.x) {
 			for (int16_t y = std::min(bridge.start.y, bridge.end.y) + 1; y < std::max(bridge.start.y, bridge.end.y); y++) {
-				occupied.push_back(AddTileIndexDiffCWrap(origin, {bridge.start.x, y}));
+				span_tiles.push_back(AddTileIndexDiffCWrap(origin, {bridge.start.x, y}));
 			}
 		} else {
 			for (int16_t x = std::min(bridge.start.x, bridge.end.x) + 1; x < std::max(bridge.start.x, bridge.end.x); x++) {
-				occupied.push_back(AddTileIndexDiffCWrap(origin, {x, bridge.start.y}));
+				span_tiles.push_back(AddTileIndexDiffCWrap(origin, {x, bridge.start.y}));
 			}
 		}
 	}
 
-	/* Off-map tiles are bad; the others must be flat and at the height of the first flat one. */
-	std::optional<int> reference_height;
+	/* Off-map tiles are bad; the others must lie in one plane H, the top of the first occupied tile: non-steep, top at H, and flat or built on a slope. Span tiles are validated by PriceBridge. */
+	std::optional<int> plane;
 	for (TileIndex tile : occupied) {
 		if (tile == INVALID_TILE) continue;
-		reference_height = pricing.GetFlatHeight(tile);
-		if (reference_height.has_value()) break;
+		std::optional<JunctionTileSlope> slope = pricing.GetTileSlope(tile);
+		if (slope.has_value()) {
+			plane = slope->z_max;
+			break;
+		}
 	}
-	if (reference_height.has_value()) estimate.height = *reference_height;
+	if (plane.has_value()) estimate.height = *plane;
 	for (TileIndex tile : occupied) {
 		if (tile == INVALID_TILE) {
 			MarkBad(estimate, tile);
 			if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
 			continue;
 		}
-		std::optional<int> height = pricing.GetFlatHeight(tile);
-		if (!height.has_value() || height != reference_height) {
+		std::optional<JunctionTileSlope> slope = pricing.GetTileSlope(tile);
+		if (!slope.has_value() || slope->steep || slope->z_max != plane || (slope->z_min != slope->z_max && !slope->build_on_slopes)) {
 			MarkBad(estimate, tile);
 			if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_FLAT_LAND_REQUIRED;
+		}
+	}
+	for (TileIndex tile : span_tiles) {
+		if (tile == INVALID_TILE) {
+			MarkBad(estimate, tile);
+			if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
 		}
 	}
 

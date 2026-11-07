@@ -62,12 +62,20 @@ struct JunctionSignalStep { TileIndex tile; Trackdir facing; SignalType type; Si
 /** Any one build step. */
 using JunctionBuildStep = std::variant<JunctionRailStep, JunctionBridgeStep, JunctionSignalStep>;
 
+/** Slope facts of one tile. */
+struct JunctionTileSlope {
+	int z_min; ///< Lowest corner height.
+	int z_max; ///< Highest corner height.
+	bool steep; ///< Whether the slope is steep.
+	bool build_on_slopes; ///< Whether building on slopes is allowed.
+};
+
 /** Everything the estimate needs from the game; tests provide a stub. */
 class JunctionPricing {
 public:
 	virtual ~JunctionPricing() = default;
-	/** Height of a flat tile on the map, or std::nullopt if off-map or not flat. */
-	virtual std::optional<int> GetFlatHeight(TileIndex tile) const = 0;
+	/** Slope facts of a tile, or nullopt off the map. */
+	virtual std::optional<JunctionTileSlope> GetTileSlope(TileIndex tile) const = 0;
 	/** Test-only run of building one rail piece; the cost includes clearing. */
 	virtual CommandCost TestRail(TileIndex tile, Track track) const = 0;
 	/** Full price of the cheapest suitable bridge type between two heads, or an error. */
