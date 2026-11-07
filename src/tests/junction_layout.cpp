@@ -515,3 +515,17 @@ TEST_CASE("JunctionLayoutToJson matches the rig layout format", "[junction]")
 		"\n{\"x\":1,\"y\":2,\"facing\":\"X_SW\",\"type\":\"block\"},"
 		"\n{\"x\":6,\"y\":2,\"facing\":\"X_NE\",\"type\":\"block\"}]}\n");
 }
+
+TEST_CASE("InverseOrientJunctionVector undoes OrientJunctionVector", "[junction]")
+{
+	const TileIndexDiffC samples[] = {{0, 0}, {2, 0}, {-4, 2}, {3, -5}};
+	for (const TileIndexDiffC &v : samples) {
+		for (uint8_t r = 0; r < 4; r++) {
+			for (bool m : {false, true}) {
+				const TileIndexDiffC back = InverseOrientJunctionVector(OrientJunctionVector(v, r, m), r, m);
+				CHECK(back.x == v.x);
+				CHECK(back.y == v.y);
+			}
+		}
+	}
+}

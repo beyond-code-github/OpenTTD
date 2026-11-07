@@ -319,18 +319,19 @@ static bool ConResetTile(std::span<std::string_view> argv)
 static bool ConJunctionExport(std::span<std::string_view> argv)
 {
 	if (argv.empty()) {
-		IConsolePrint(CC_HELP, "Generate a junction at a tile and write it as JSON. Usage: 'junction_export <tile> <rotation 0-3> <mirror 0|1> <path> [ml] [branch] [tl]'.");
-		IConsolePrint(CC_HELP, "The notations default to L_R and the train length to 4.");
+		IConsolePrint(CC_HELP, "Generate a junction at a tile and write it as JSON. Usage: 'junction_export <tile> <rotation 0-3> <mirror 0|1> <path> [ml] [branch] [tl] [near 0|1]'.");
+		IConsolePrint(CC_HELP, "The notations default to L_R, the train length to 4 and near to 0 (1 searches nearby spots too).");
 		return true;
 	}
 
-	if (argv.size() < 5 || argv.size() > 8) return false;
+	if (argv.size() < 5 || argv.size() > 9) return false;
 	auto tile_arg = ParseInteger(argv[1], 0);
 	auto rot_arg = ParseInteger(argv[2], 10);
 	auto mirror_arg = ParseInteger(argv[3], 10);
 	auto tl_arg = argv.size() > 7 ? ParseInteger(argv[7], 10) : std::optional<uint32_t>{4};
-	if (!tile_arg.has_value() || !rot_arg.has_value() || !mirror_arg.has_value() || !tl_arg.has_value()) return false;
-	if (!IsValidTile(*tile_arg) || *rot_arg > 3 || *mirror_arg > 1 || *tl_arg == 0 || *tl_arg > 255) return false;
+	auto near_arg = argv.size() > 8 ? ParseInteger(argv[8], 10) : std::optional<uint32_t>{0};
+	if (!tile_arg.has_value() || !rot_arg.has_value() || !mirror_arg.has_value() || !tl_arg.has_value() || !near_arg.has_value()) return false;
+	if (!IsValidTile(*tile_arg) || *rot_arg > 3 || *mirror_arg > 1 || *tl_arg == 0 || *tl_arg > 255 || *near_arg > 1) return false;
 
 	if (!Company::IsValidID(CompanyID{0})) {
 		IConsolePrint(CC_ERROR, "junction_export needs company 0.");
@@ -349,9 +350,16 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 
 	const TileIndex tile{*tile_arg};
 	const bool mirrored = (*mirror_arg != 0) != (_settings_game.vehicle.road_side == RoadVehicleDrivingSide::Left);
-	JunctionTerrain terrain = MakeJunctionTerrain(tile, static_cast<uint8_t>(*rot_arg), mirrored);
+	JunctionTerrain terrain = MakeJunctionTerrain(tile, static_cast<uint8_t>(*rot_arg), mirrored, *near_arg != 0 ? 4 : 0);
 	cur_company.Restore();
-	const JunctionGenerateResult result = GenerateJunction(spec, &terrain);
+	JunctionNearResult found;
+	if (*near_arg != 0) {
+		const std::atomic<bool> no_cancel{false};
+		found = GenerateJunctionNear(spec, terrain, static_cast<uint8_t>(*rot_arg), mirrored, no_cancel);
+	} else {
+		found.result = GenerateJunction(spec, &terrain);
+	}
+	const JunctionGenerateResult &result = found.result;
 
 	std::ofstream out{std::string{argv[4]}};
 	if (!result.layout.has_value()) {
@@ -364,9 +372,9 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 
 	const JunctionLayout oriented = ApplyJunctionOrientation(*result.layout, static_cast<uint8_t>(*rot_arg), mirrored);
 	const TileIndexDiffC offset = OrientJunctionOffset(result.hub, result.layout->size, static_cast<uint8_t>(*rot_arg), mirrored);
-	const int ox = static_cast<int>(TileX(tile)) - offset.x;
-	const int oy = static_cast<int>(TileY(tile)) - offset.y;
-	out << "{\"origin\":[" << ox << "," << oy << "]," << JunctionLayoutToJson(oriented).substr(1);
+	const int ox = static_cast<int>(TileX(tile)) + found.offset.x - offset.x;
+	const int oy = static_cast<int>(TileY(tile)) + found.offset.y - offset.y;
+	out << "{\"origin\":[" << ox << "," << oy << "],\"offset\":[" << found.offset.x << "," << found.offset.y << "]," << JunctionLayoutToJson(oriented).substr(1);
 	IConsolePrint(CC_DEFAULT, "junction_export ok origin={},{} size={}x{}", ox, oy, oriented.size.x, oriented.size.y);
 	return true;
 }

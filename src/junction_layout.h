@@ -111,6 +111,8 @@ TileIndexDiffC OrientJunctionOffset(TileIndexDiffC offset, TileIndexDiffC size, 
 std::string JunctionLayoutToJson(const JunctionLayout &layout);
 /** The map offset of a vector in the canonical frame, under an orientation: mirror (dx,dy)->(-dx,dy) if set, then rotation times (dx,dy)->(dy,-dx). */
 TileIndexDiffC OrientJunctionVector(TileIndexDiffC v, uint8_t rotation, bool mirrored);
+/** Inverse of OrientJunctionVector: rotate back (dx,dy)->(-dy,dx) 'rotation' times, then mirror (dx,dy)->(-dx,dy) if set. */
+TileIndexDiffC InverseOrientJunctionVector(TileIndexDiffC v, uint8_t rotation, bool mirrored);
 JunctionLayout MakeTestJunctionLayout();
 std::vector<JunctionBuildStep> MakeJunctionBuildSteps(const JunctionLayout &layout, TileIndex origin);
 JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing);

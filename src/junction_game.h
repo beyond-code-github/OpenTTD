@@ -17,6 +17,8 @@
 #include "junction_generator.h"
 #include "junction_terrain.h"
 
+#include <atomic>
+
 /**
  * Choose the bridge type for a bridge with 'length' middle tiles.
  * A speed-limited rail type gets the cheapest available bridge at least as fast as the rail type (D35).
@@ -30,7 +32,19 @@ uint16_t GetJunctionReferenceSpeed(RailType railtype);
 JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_gap, uint8_t tl);
 
 /** Snapshot the map around an anchor for the generator, in its working frame (D93): cell (cx, cy) is map tile anchor + OrientJunctionVector({cx - 30, cy}, rotation, mirrored). */
-JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored);
+JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored, int margin = 0);
+
+/** Result of a search for a fitting spot near the anchor. */
+struct JunctionNearResult {
+	JunctionGenerateResult result;
+	TileIndexDiffC offset{}; ///< Map offset from the requested anchor to the anchor that fits.
+};
+/**
+ * Try the anchor, then nearby anchors, using one snapshot taken with a margin of at least the largest offset.
+ * Trying map offset d uses the same snapshot with origin shifted by -InverseOrientJunctionVector(d, rotation, mirrored).
+ * Stops at the first layout found, or when cancel becomes true.
+ */
+JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const JunctionTerrain &terrain, uint8_t rotation, bool mirrored, const std::atomic<bool> &cancel);
 
 /** Junction pricing against the real map, commands and prices, for the local company. */
 class GameJunctionPricing : public JunctionPricing {

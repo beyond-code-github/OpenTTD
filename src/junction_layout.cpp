@@ -204,6 +204,20 @@ TileIndexDiffC OrientJunctionVector(TileIndexDiffC v, uint8_t rotation, bool mir
 }
 
 /**
+ * Inverse of OrientJunctionVector.
+ * @param v The oriented vector.
+ * @param rotation Number of quarter turns; taken modulo 4.
+ * @param mirrored Whether the orientation mirrors.
+ * @return The vector in the canonical frame.
+ */
+TileIndexDiffC InverseOrientJunctionVector(TileIndexDiffC v, uint8_t rotation, bool mirrored)
+{
+	for (uint8_t i = 0; i < rotation % 4; i++) v = {static_cast<int16_t>(-v.y), v.x};
+	if (mirrored) v = {static_cast<int16_t>(-v.x), v.y};
+	return v;
+}
+
+/**
  * Make the fixed test layout.
  * Fixed layout used until the generator exists (1b); exercises track, a bridge over track, and signals in both directions.
  * @return The test layout.

@@ -177,7 +177,7 @@ def cmd_build_layout(a):
         sys.exit(1)
 
 
-def junction_here(x, y, rot=0, mirror=False, ml="L_R", branch="L_R", tl=4):
+def junction_here(x, y, rot=0, mirror=False, ml="L_R", branch="L_R", tl=4, near=False):
     """Generate at tile x,y via rcon junction_export and build it. Returns (status, text); status ok|error|failed."""
     tile = y * S.map_size() + x
     path = os.path.join(S.RUNDIR, "junction_export.json")
@@ -185,7 +185,7 @@ def junction_here(x, y, rot=0, mirror=False, ml="L_R", branch="L_R", tl=4):
         os.remove(path)
     adm = connect()
     try:
-        out = adm.rcon("junction_export %d %d %d %s %s %s %d" % (tile, rot, 1 if mirror else 0, path, ml, branch, tl))
+        out = adm.rcon("junction_export %d %d %d %s %s %s %d %d" % (tile, rot, 1 if mirror else 0, path, ml, branch, tl, 1 if near else 0), timeout=1200)
         if not os.path.exists(path):
             raise Fail("junction_export wrote nothing: %s" % " | ".join(out))
         with open(path) as f:
@@ -201,13 +201,15 @@ def junction_here(x, y, rot=0, mirror=False, ml="L_R", branch="L_R", tl=4):
     finally:
         adm.close()
     text = "built=%d failed=%d" % (built, len(failed))
+    if near:
+        text += " offset=%d,%d" % tuple(layout.get("offset", [0, 0]))
     for f in failed:
         text += "\n  %s at %d,%d: %s" % (f["what"], f["x"], f["y"], f["error"])
     return ("failed" if failed else "ok"), text
 
 
 def cmd_junction_here(a):
-    st, text = junction_here(a.x, a.y, a.rot, a.mirror, a.ml, a.branch, a.tl)
+    st, text = junction_here(a.x, a.y, a.rot, a.mirror, a.ml, a.branch, a.tl, a.near)
     print(text if st != "error" else "error %s" % text)
     sys.exit({"ok": 0, "error": 3, "failed": 1}[st])
 
@@ -220,7 +222,7 @@ def cmd_junction_scan(a):
     for k in range(a.count):
         x, y, rot = rng.randrange(20, n - 20), rng.randrange(20, n - 20), rng.randrange(4)
         try:
-            st, text = junction_here(x, y, rot)
+            st, text = junction_here(x, y, rot, near=a.near)
         except Exception as e:
             st, text = "exception", "exception %s: %s" % (type(e).__name__, e)
         if st == "exception":
@@ -356,8 +358,8 @@ def main():
     add("company", cmd_company, ("--id", i))
     add("build-layout", cmd_build_layout, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}))
     add("junction-check", cmd_junction_check, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 6}), ("--ticks", {"type": int, "default": 7400}))
-    add("junction-here", cmd_junction_here, ("x", i), ("y", i), ("--rot", {"type": int, "default": 0}), ("--mirror", {"action": "store_true"}), ("--ml", {"default": "L_R"}), ("--branch", {"default": "L_R"}), ("--tl", {"type": int, "default": 4}))
-    add("junction-scan", cmd_junction_scan, ("--count", {"type": int, "required": True}), ("--seed", {"type": int, "default": 1}))
+    add("junction-here", cmd_junction_here, ("x", i), ("y", i), ("--rot", {"type": int, "default": 0}), ("--mirror", {"action": "store_true"}), ("--ml", {"default": "L_R"}), ("--branch", {"default": "L_R"}), ("--tl", {"type": int, "default": 4}), ("--near", {"action": "store_true"}))
+    add("junction-scan", cmd_junction_scan, ("--count", {"type": int, "required": True}), ("--seed", {"type": int, "default": 1}), ("--near", {"action": "store_true"}))
     add("sample", cmd_sample, ("vehicles", {"type": int, "nargs": "+"}), ("--ticks", {"type": int, "required": True}))
     add("build-line", cmd_build_line, ("x1", i), ("y1", i), ("x2", i), ("y2", i))
     add("depot", cmd_depot, ("x", i), ("y", i), ("dir", {"help": "NE|SE|SW|NW: direction the entrance faces (NE x-1, SE y+1, SW x+1, NW y-1)"}))

@@ -21,6 +21,8 @@
 #include "../economy_func.h"
 #include "../timer/timer_game_calendar.h"
 
+#include <chrono>
+
 #include "../safeguards.h"
 
 extern RailTypeInfo _railtypes[RAILTYPE_END];
@@ -221,4 +223,68 @@ TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working fram
 	CHECK(terrain.At(30, 0)->cls == JunctionTileClass::Buildable);
 	REQUIRE(terrain.At(0, 0) != nullptr);
 	CHECK(terrain.At(0, 0)->cls == JunctionTileClass::Blocked);
+}
+
+/** A flat Buildable terrain at z0 with margin 4: origin and size as MakeJunctionTerrain gives. */
+static JunctionTerrain MakeNearTestTerrain(int margin = 4)
+{
+	JunctionTerrain t;
+	t.origin = {static_cast<int16_t>(-margin), static_cast<int16_t>(-2 - margin)};
+	t.width = 64 + 2 * margin;
+	t.height = 43 + 2 * margin;
+	t.tiles.assign(static_cast<size_t>(t.width) * t.height, JunctionTerrainTile{});
+	t.foundation_cost = 250;
+	return t;
+}
+
+/** Set the class of a rectangle given in working coordinates. */
+static void SetNearTestRect(JunctionTerrain &t, int x0, int x1, int y0, int y1, JunctionTileClass cls)
+{
+	for (int y = y0; y <= y1; y++) {
+		for (int x = x0; x <= x1; x++) t.tiles[static_cast<size_t>(y - t.origin.y) * t.width + (x - t.origin.x)].cls = cls;
+	}
+}
+
+TEST_CASE("GenerateJunctionNear: a clear spot gives offset 0 and the plain layout", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTerrain terrain = MakeNearTestTerrain();
+	const std::atomic<bool> cancel{false};
+	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
+	const JunctionTerrain plain = MakeNearTestTerrain(0);
+	const JunctionGenerateResult base = GenerateJunction(spec, &plain);
+	REQUIRE(near.result.layout.has_value());
+	REQUIRE(base.layout.has_value());
+	CHECK(near.offset.x == 0);
+	CHECK(near.offset.y == 0);
+	REQUIRE(near.result.layout->tracks.size() == base.layout->tracks.size());
+	for (size_t i = 0; i < base.layout->tracks.size(); i++) {
+		CHECK(near.result.layout->tracks[i].offset.x == base.layout->tracks[i].offset.x);
+		CHECK(near.result.layout->tracks[i].offset.y == base.layout->tracks[i].offset.y);
+		CHECK(near.result.layout->tracks[i].tracks == base.layout->tracks[i].tracks);
+	}
+}
+
+TEST_CASE("GenerateJunctionNear: a blocked spot gives a nearby fit", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionTerrain terrain = MakeNearTestTerrain();
+	SetNearTestRect(terrain, 27, 32, 2, 7, JunctionTileClass::Blocked);
+	const std::atomic<bool> cancel{false};
+	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
+	REQUIRE(near.result.layout.has_value());
+	CHECK((near.offset.x != 0 || near.offset.y != 0));
+}
+
+TEST_CASE("GenerateJunctionNear: cancel stops the search", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionTerrain terrain = MakeNearTestTerrain();
+	SetNearTestRect(terrain, -4, 67, -6, 44, JunctionTileClass::Blocked);
+	const std::atomic<bool> cancel{true};
+	const auto start = std::chrono::steady_clock::now();
+	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
+	const auto elapsed = std::chrono::steady_clock::now() - start;
+	CHECK_FALSE(near.result.layout.has_value());
+	CHECK(elapsed < std::chrono::seconds(2));
 }

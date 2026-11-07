@@ -188,14 +188,15 @@ CommandCost GameJunctionPricing::TestClear(TileIndex tile) const
  * @param anchor The anchor tile (working cell (30, 0)).
  * @param rotation Quarter turns of the orientation.
  * @param mirrored Whether the orientation is mirrored.
+ * @param margin Extra cells on every side of the grid.
  * @return The snapshot.
  */
-JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored)
+JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored, int margin)
 {
 	JunctionTerrain terrain;
-	terrain.origin = {0, -2};
-	terrain.width = 64;
-	terrain.height = 43;
+	terrain.origin = {static_cast<int16_t>(-margin), static_cast<int16_t>(-2 - margin)};
+	terrain.width = 64 + 2 * margin;
+	terrain.height = 43 + 2 * margin;
 	terrain.tiles.resize(static_cast<size_t>(terrain.width) * terrain.height);
 	terrain.foundation_cost = _price[Price::BuildFoundation];
 	terrain.build_on_slopes = _settings_game.construction.build_on_slopes;
@@ -236,6 +237,44 @@ JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mir
 		}
 	}
 	return terrain;
+}
+
+/**
+ * Try the anchor, then nearby anchors, on one snapshot.
+ * @param spec The junction spec.
+ * @param terrain The snapshot, taken with a margin of at least 4.
+ * @param rotation Quarter turns of the orientation.
+ * @param mirrored Whether the orientation is mirrored.
+ * @param cancel Set to stop the search.
+ * @return The first layout found and its map offset from the anchor; else the result at the anchor.
+ */
+JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const JunctionTerrain &terrain, uint8_t rotation, bool mirrored, const std::atomic<bool> &cancel)
+{
+	static constexpr int16_t DISTANCES[] = {2, 4};
+	std::vector<TileIndexDiffC> offsets{{0, 0}};
+	for (int16_t d : DISTANCES) {
+		for (int16_t dy = -d; dy <= d; dy += d) {
+			for (int16_t dx = -d; dx <= d; dx += d) {
+				if (dx != 0 || dy != 0) offsets.push_back({dx, dy});
+			}
+		}
+	}
+
+	JunctionNearResult first;
+	bool have_first = false;
+	for (const TileIndexDiffC &d : offsets) {
+		if (cancel) break;
+		const TileIndexDiffC c = InverseOrientJunctionVector(d, rotation, mirrored);
+		JunctionTerrain shifted = terrain;
+		shifted.origin = {static_cast<int16_t>(terrain.origin.x - c.x), static_cast<int16_t>(terrain.origin.y - c.y)};
+		JunctionNearResult attempt{GenerateJunction(spec, &shifted), d};
+		if (attempt.result.layout.has_value()) return attempt;
+		if (!have_first) {
+			first = std::move(attempt);
+			have_first = true;
+		}
+	}
+	return first;
 }
 
 /**

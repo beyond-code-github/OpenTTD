@@ -259,7 +259,8 @@ struct JunctionGenerateJob {
 	std::atomic<bool> done{false}; ///< Set by the worker when result is final.
 	JunctionSpec spec; ///< Spec the worker reads.
 	JunctionTerrain terrain; ///< Terrain snapshot the worker reads.
-	JunctionGenerateResult result; ///< Written by the worker.
+	JunctionNearResult result; ///< Written by the worker.
+	std::atomic<bool> cancel{false}; ///< Set when the job is detached; the worker stops searching.
 };
 
 static constexpr size_t MAX_JUNCTION_CACHE = 32; ///< Entries in the window's cache of generated junctions.
@@ -269,7 +270,7 @@ static constexpr std::chrono::milliseconds JUNCTION_HOVER_REST{300}; ///< How lo
 struct BuildJunctionWindow : public PickerWindowBase {
 	TileIndex hover_tile = INVALID_TILE; ///< Tile the cursor rests on.
 	std::chrono::steady_clock::time_point hover_since; ///< When the cursor reached hover_tile.
-	std::vector<std::pair<JunctionGenerateKey, JunctionGenerateResult>> cache; ///< Generated junctions, most recently used first.
+	std::vector<std::pair<JunctionGenerateKey, JunctionNearResult>> cache; ///< Generated junctions, most recently used first.
 	std::optional<JunctionGenerateKey> pending_key; ///< Key of the running job, if any.
 	std::thread pending_thread; ///< Thread of the running job.
 	std::shared_ptr<JunctionGenerateJob> pending_job; ///< State of the running job.
@@ -277,6 +278,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	JunctionLayout shown_layout; ///< Oriented layout shown at the cursor.
 	TileIndex shown_origin = INVALID_TILE; ///< North corner of the shown placement.
 	TileIndex shown_tile = INVALID_TILE; ///< Hovered tile the shown placement belongs to.
+	int shown_distance = 0; ///< Chebyshev distance in tiles from the hovered tile to the shown placement's anchor.
 	StringID hover_status = INVALID_STRING_ID; ///< Status of the hovered spot while there is no placement.
 	uint8_t ml_gap = 0; ///< Gap of the mainline notation.
 	uint8_t branch_gap = 0; ///< Gap of the branch notation.
@@ -329,9 +331,9 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	 * @param key The key.
 	 * @return The result, valid until the cache changes; nullptr if not cached.
 	 */
-	const JunctionGenerateResult *FindCached(const JunctionGenerateKey &key)
+	const JunctionNearResult *FindCached(const JunctionGenerateKey &key)
 	{
-		auto it = std::ranges::find(this->cache, key, &std::pair<JunctionGenerateKey, JunctionGenerateResult>::first);
+		auto it = std::ranges::find(this->cache, key, &std::pair<JunctionGenerateKey, JunctionNearResult>::first);
 		if (it == this->cache.end()) return nullptr;
 		std::rotate(this->cache.begin(), it, it + 1);
 		return &this->cache.front().second;
@@ -342,7 +344,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	 * @param key The key.
 	 * @param result The result.
 	 */
-	void StoreCached(const JunctionGenerateKey &key, JunctionGenerateResult &&result)
+	void StoreCached(const JunctionGenerateKey &key, JunctionNearResult &&result)
 	{
 		std::erase_if(this->cache, [&](const auto &entry) { return entry.first == key; });
 		this->cache.emplace(this->cache.begin(), key, std::move(result));
@@ -352,6 +354,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	/** Let any running job finish on its own; the shared state keeps it alive. */
 	void DetachJob()
 	{
+		if (this->pending_job != nullptr) this->pending_job->cancel = true;
 		if (this->pending_thread.joinable()) this->pending_thread.detach();
 		this->pending_job.reset();
 		this->pending_key = std::nullopt;
@@ -381,7 +384,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	/** Show the placement for the hovered tile: the cached result, or that one is being worked out. */
 	void ShowHover()
 	{
-		const JunctionGenerateResult *result = this->FindCached(this->MakeKey(this->hover_tile));
+		const JunctionNearResult *result = this->FindCached(this->MakeKey(this->hover_tile));
 		if (result == nullptr) {
 			this->ShowNoPlacement(STR_JUNCTION_STATUS_GENERATING);
 		} else {
@@ -391,16 +394,23 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 	/**
 	 * Show a generated result at the hovered tile, with its ghost, cost and tooltip.
-	 * @param result The result generated for the hovered tile and the current settings.
+	 * @param near_result The result generated for the hovered tile and the current settings, with its offset.
 	 */
-	void ShowResult(const JunctionGenerateResult &result)
+	void ShowResult(const JunctionNearResult &near_result)
 	{
+		const JunctionGenerateResult &result = near_result.result;
 		if (!result.layout.has_value()) {
 			this->ShowNoPlacement(result.error == JunctionGenerateError::NeedsMlGap ? STR_JUNCTION_ERROR_NEEDS_ML_GAP : STR_JUNCTION_ERROR_NO_LAYOUT_HERE);
 			return;
 		}
 
-		const TileIndex tile = this->hover_tile;
+		const int tx = static_cast<int>(TileX(this->hover_tile)) + near_result.offset.x;
+		const int ty = static_cast<int>(TileY(this->hover_tile)) + near_result.offset.y;
+		if (tx < 0 || ty < 0 || tx >= static_cast<int>(Map::SizeX()) || ty >= static_cast<int>(Map::SizeY())) {
+			this->ShowNoPlacement(STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP);
+			return;
+		}
+		const TileIndex tile = TileXY(tx, ty);
 		const bool mirrored = EffectiveMirror();
 		JunctionLayout layout = ApplyJunctionOrientation(*result.layout, _junction_rotation, mirrored);
 		const TileIndexDiffC offset = OrientJunctionOffset(result.hub, result.layout->size, _junction_rotation, mirrored);
@@ -416,7 +426,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		std::vector<std::optional<BridgeType>> bridge_types;
 		Money available;
 		this->ComputePlacement(layout, origin, estimate, bridge_types, available);
-		SetTileSelectBigSize(-offset.x, -offset.y, layout.size.x, layout.size.y);
+		SetTileSelectBigSize(near_result.offset.x - offset.x, near_result.offset.y - offset.y, layout.size.x, layout.size.y);
 
 		JunctionGhost::Set(layout, origin, estimate.height, this->railtype, bridge_types, estimate);
 		/* Blocked tiles are outlined individually; the whole outline goes red only when it is just too expensive. */
@@ -425,7 +435,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->has_shown = true;
 		this->shown_layout = std::move(layout);
 		this->shown_origin = origin;
-		this->shown_tile = tile;
+		this->shown_tile = this->hover_tile;
+		this->shown_distance = std::max(std::abs(near_result.offset.x), std::abs(near_result.offset.y));
 		this->hover_status = INVALID_STRING_ID;
 		this->has_placement = true;
 		this->placement_cost = estimate.total;
@@ -455,9 +466,9 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 		auto job = std::make_shared<JunctionGenerateJob>();
 		job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl);
-		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored);
-		if (!StartNewThread(&this->pending_thread, "ottd:junction", [job]() {
-			job->result = GenerateJunction(job->spec, &job->terrain);
+		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, 4);
+		if (!StartNewThread(&this->pending_thread, "ottd:junction", [job, key]() {
+			job->result = GenerateJunctionNear(job->spec, job->terrain, key.rotation, key.mirrored, job->cancel);
 			job->done = true;
 		})) {
 			/* No thread: report no layout rather than waiting forever. */
@@ -599,6 +610,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			if (seq.GetState() == JunctionBuildState::Idle) {
 				if (this->generate_error != INVALID_STRING_ID) return GetString(this->generate_error);
 				if (this->hover_status != INVALID_STRING_ID) return GetString(this->hover_status);
+				if (this->has_shown && this->shown_distance != 0) return GetString(STR_JUNCTION_STATUS_NEARBY, this->shown_distance);
 			}
 			switch (seq.GetState()) {
 				case JunctionBuildState::Building: return GetString(STR_JUNCTION_STATUS_BUILDING, seq.GetDone(), seq.GetTotal());
@@ -771,7 +783,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 		if (now - this->hover_since >= JUNCTION_HOVER_REST) {
 			const JunctionGenerateKey key = this->MakeKey(tile);
-			if (std::ranges::find(this->cache, key, &std::pair<JunctionGenerateKey, JunctionGenerateResult>::first) == this->cache.end()) this->StartJob();
+			if (std::ranges::find(this->cache, key, &std::pair<JunctionGenerateKey, JunctionNearResult>::first) == this->cache.end()) this->StartJob();
 		}
 	}
 
