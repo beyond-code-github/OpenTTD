@@ -457,6 +457,9 @@ std::pair<Money, int> ScoreJunctionLayout(const JunctionLayout &layout, const Ju
  */
 JunctionGenerateResult GenerateJunction(const JunctionSpec &spec)
 {
+	/* With no gap row the W prio has nowhere to go: the row inside the W track is the E track, and the joiner blocks the outside. */
+	if (spec.ml_gap == 0) return {std::nullopt, JunctionGenerateError::NeedsMlGap};
+
 	std::optional<JunctionLayout> best;
 	std::pair<Money, int> best_score{};
 	int best_area = 0;

@@ -43,7 +43,7 @@ struct JunctionSpec {
 	JunctionUnitPrices prices;
 };
 
-enum class JunctionGenerateError : uint8_t { None, InvalidNotation, MultiLane, NoLayout };
+enum class JunctionGenerateError : uint8_t { None, InvalidNotation, MultiLane, NoLayout, NeedsMlGap };
 struct JunctionGenerateResult {
 	std::optional<JunctionLayout> layout;
 	JunctionGenerateError error = JunctionGenerateError::None;

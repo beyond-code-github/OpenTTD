@@ -224,3 +224,12 @@ TEST_CASE("Junction generator spec sweep", "[.gensweep]")
 		}
 	}
 }
+
+TEST_CASE("GenerateJunction: an ML gap of 0 has no room for the W prio", "[junction]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.ml_gap = 0;
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	CHECK_FALSE(result.layout.has_value());
+	CHECK(result.error == JunctionGenerateError::NeedsMlGap);
+}
