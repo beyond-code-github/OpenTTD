@@ -56,3 +56,15 @@
   - Flat terrain gives the same layout as no terrain.
   - A house block is routed around.
   - A pond across the ML rows gives NoLayout (known limit: the ML would need its own water bridge; later).
+- **T3a** ca1cdc373f: orientation helpers, generator hub offset, prio terrain check.
+- **T3b** 9b746201c2: `MakeJunctionTerrain` from the map; the plane rule in `EstimateJunction`.
+- **T4** 0768c9721e: hover-rest worker thread, LRU cache, hub-anchored placement, thread-safe spec.
+- **T5** a6f95e7385 + d95f3b00f7 (D94) + 97fae742d2:
+  - `junction_export` debug console command, plus rig `start --hilly`, `junction-here` and `junction-scan`.
+  - The first scan found no layout anywhere: in 1950 no bridge reached 160 km/h, fixed by D94.
+  - Hilly seed 3, 12 random spots: 3 generated, **all 3 built with 0 failures**; 9 found no layout.
+- **Next levers for the no-layout rate** (on hills the one-plane rule is strict):
+  - (a) search a few tiles around the cursor for a spot that fits (cheap, and helps the user);
+  - (b) sloped track on the legs (inclined foundations);
+  - (c) terraforming the plane (`CmdLevelLand` cost);
+  - (d) a water bridge for the ML.

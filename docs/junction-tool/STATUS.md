@@ -107,7 +107,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
    - generation off the UI thread only if it is too slow;
    - no savegame changes (D69).
 5. **F** (F1 rig check done): the manual checks list for the engineer, and the rig command `junction-check`: trains on all six movements, braking samples, prio hold, queues and deadlock.
-6. **D78, place-time terrain** (plan `PLAN-D78.md`, D93): T1 ff13a32ceb router terrain, T2 e15f0dfe90 generator terrain, T3a ca1cdc373f orientation and hub, T3b 9b746201c2 map snapshot and plane rule, T4 0768c9721e hover worker (manual checks in `CHECKS-1b.md`), T5 hilly rig scan running. Known limit: a pond across the ML rows gives no layout.:
+6. **D78, place-time terrain** (plan `PLAN-D78.md`, D93): T1 ff13a32ceb router terrain, T2 e15f0dfe90 generator terrain, T3a ca1cdc373f orientation and hub, T3b 9b746201c2 map snapshot and plane rule, T4 0768c9721e hover worker (manual checks in `CHECKS-1b.md`), T5 rig scan done: on the hilly seed, 3/12 spots generated and all built with 0 failures, 9 no layout (levers in PLAN-D78 Progress). D94: slow bridges allowed. Known limit: a pond across the ML rows gives no layout. **Joiner plan drafted (`PLAN-joiner.md`), waiting for the engineer's three answers.**:
    - a map-backed seam for the router: buildable, slope, foundation, clearing cost, water, existing track;
    - terrain rules in the checker (bridge heads and slopes);
    - generation at the hovered spot, within the ghost or hover cache (D63).
