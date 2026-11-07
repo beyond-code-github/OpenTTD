@@ -10,6 +10,7 @@
 #include "stdafx.h"
 
 #include "junction_layout.h"
+#include "map_func.h"
 
 #include "safeguards.h"
 
@@ -25,12 +26,22 @@ JunctionLayout TransformJunctionLayout(const JunctionLayout &layout, [[maybe_unu
 }
 
 /**
- * Make the fixed test layout that exercises every kind of piece.
+ * Make the fixed test layout.
+ * Fixed layout used until the generator exists (1b); exercises track, a bridge over track, and signals in both directions.
  * @return The test layout.
  */
 JunctionLayout MakeTestJunctionLayout()
 {
-	return {};
+	JunctionLayout layout;
+	layout.size = {8, 6};
+	for (int16_t x = 0; x < 8; x++) {
+		layout.tracks.push_back({{x, 2}, TrackBits{Track::X}});
+	}
+	layout.tracks.push_back({{4, 5}, TrackBits{Track::Y}});
+	layout.bridges.push_back({{4, 0}, {4, 4}});
+	layout.signals.push_back({{1, 2}, Trackdir::X_SW, SignalType::Block, SignalVariant::Electric});
+	layout.signals.push_back({{6, 2}, Trackdir::X_NE, SignalType::Block, SignalVariant::Electric});
+	return layout;
 }
 
 /**
@@ -39,9 +50,21 @@ JunctionLayout MakeTestJunctionLayout()
  * @param origin The tile for the north corner of the layout.
  * @return The steps in build order.
  */
-std::vector<JunctionBuildStep> MakeJunctionBuildSteps([[maybe_unused]] const JunctionLayout &layout, [[maybe_unused]] TileIndex origin)
+std::vector<JunctionBuildStep> MakeJunctionBuildSteps(const JunctionLayout &layout, TileIndex origin)
 {
-	return {};
+	std::vector<JunctionBuildStep> steps;
+	for (const JunctionTrack &jt : layout.tracks) {
+		for (Track t : jt.tracks) {
+			steps.push_back(JunctionRailStep{AddTileIndexDiffCWrap(origin, jt.offset), t});
+		}
+	}
+	for (const JunctionBridge &bridge : layout.bridges) {
+		steps.push_back(JunctionBridgeStep{AddTileIndexDiffCWrap(origin, bridge.start), AddTileIndexDiffCWrap(origin, bridge.end)});
+	}
+	for (const JunctionSignal &signal : layout.signals) {
+		steps.push_back(JunctionSignalStep{AddTileIndexDiffCWrap(origin, signal.offset), signal.facing, signal.type, signal.variant});
+	}
+	return steps;
 }
 
 /**

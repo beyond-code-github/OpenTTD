@@ -65,3 +65,112 @@ TEST_CASE("JunctionLayout outer: test junction on flat clear land prices exactly
 	CHECK(estimate.bad_tiles.empty());
 	CHECK(estimate.affordable);
 }
+
+TEST_CASE("JunctionLayout: test junction fixture contents")
+{
+	JunctionLayout layout = MakeTestJunctionLayout();
+
+	CHECK(layout.size.x == 8);
+	CHECK(layout.size.y == 6);
+
+	REQUIRE(layout.tracks.size() == 9);
+	for (int x = 0; x < 8; x++) {
+		CHECK(layout.tracks[x].offset.x == x);
+		CHECK(layout.tracks[x].offset.y == 2);
+		CHECK(layout.tracks[x].tracks == TrackBits{Track::X});
+	}
+	CHECK(layout.tracks[8].offset.x == 4);
+	CHECK(layout.tracks[8].offset.y == 5);
+	CHECK(layout.tracks[8].tracks == TrackBits{Track::Y});
+
+	REQUIRE(layout.bridges.size() == 1);
+	CHECK(layout.bridges[0].start.x == 4);
+	CHECK(layout.bridges[0].start.y == 0);
+	CHECK(layout.bridges[0].end.x == 4);
+	CHECK(layout.bridges[0].end.y == 4);
+
+	REQUIRE(layout.signals.size() == 2);
+	CHECK(layout.signals[0].offset.x == 1);
+	CHECK(layout.signals[0].offset.y == 2);
+	CHECK(layout.signals[0].facing == Trackdir::X_SW);
+	CHECK(layout.signals[0].type == SignalType::Block);
+	CHECK(layout.signals[0].variant == SignalVariant::Electric);
+	CHECK(layout.signals[1].offset.x == 6);
+	CHECK(layout.signals[1].offset.y == 2);
+	CHECK(layout.signals[1].facing == Trackdir::X_NE);
+	CHECK(layout.signals[1].type == SignalType::Block);
+	CHECK(layout.signals[1].variant == SignalVariant::Electric);
+}
+
+TEST_CASE("JunctionLayout: build steps are rail, then bridges, then signals")
+{
+	Map::Allocate(64, 64);
+
+	std::vector<JunctionBuildStep> steps = MakeJunctionBuildSteps(MakeTestJunctionLayout(), TileXY(10, 10));
+	REQUIRE(steps.size() == 12);
+
+	for (int i = 0; i < 8; i++) {
+		REQUIRE(std::holds_alternative<JunctionRailStep>(steps[i]));
+		const JunctionRailStep &rail = std::get<JunctionRailStep>(steps[i]);
+		CHECK(rail.tile == TileXY(10 + i, 12));
+		CHECK(rail.track == Track::X);
+	}
+	REQUIRE(std::holds_alternative<JunctionRailStep>(steps[8]));
+	const JunctionRailStep &rail = std::get<JunctionRailStep>(steps[8]);
+	CHECK(rail.tile == TileXY(14, 15));
+	CHECK(rail.track == Track::Y);
+
+	REQUIRE(std::holds_alternative<JunctionBridgeStep>(steps[9]));
+	const JunctionBridgeStep &bridge = std::get<JunctionBridgeStep>(steps[9]);
+	CHECK(bridge.start == TileXY(14, 10));
+	CHECK(bridge.end == TileXY(14, 14));
+
+	REQUIRE(std::holds_alternative<JunctionSignalStep>(steps[10]));
+	const JunctionSignalStep &signal0 = std::get<JunctionSignalStep>(steps[10]);
+	CHECK(signal0.tile == TileXY(11, 12));
+	CHECK(signal0.facing == Trackdir::X_SW);
+	CHECK(signal0.type == SignalType::Block);
+	CHECK(signal0.variant == SignalVariant::Electric);
+
+	REQUIRE(std::holds_alternative<JunctionSignalStep>(steps[11]));
+	const JunctionSignalStep &signal1 = std::get<JunctionSignalStep>(steps[11]);
+	CHECK(signal1.tile == TileXY(16, 12));
+	CHECK(signal1.facing == Trackdir::X_NE);
+	CHECK(signal1.type == SignalType::Block);
+	CHECK(signal1.variant == SignalVariant::Electric);
+}
+
+TEST_CASE("JunctionLayout: one rail step per track bit")
+{
+	Map::Allocate(64, 64);
+
+	JunctionLayout layout;
+	layout.size = {1, 1};
+	layout.tracks.push_back({{0, 0}, TrackBits{Track::Upper, Track::Lower}});
+
+	std::vector<JunctionBuildStep> steps = MakeJunctionBuildSteps(layout, TileXY(5, 5));
+	REQUIRE(steps.size() == 2);
+
+	REQUIRE(std::holds_alternative<JunctionRailStep>(steps[0]));
+	CHECK(std::get<JunctionRailStep>(steps[0]).tile == TileXY(5, 5));
+	CHECK(std::get<JunctionRailStep>(steps[0]).track == Track::Upper);
+
+	REQUIRE(std::holds_alternative<JunctionRailStep>(steps[1]));
+	CHECK(std::get<JunctionRailStep>(steps[1]).tile == TileXY(5, 5));
+	CHECK(std::get<JunctionRailStep>(steps[1]).track == Track::Lower);
+}
+
+TEST_CASE("JunctionLayout: steps off the map get INVALID_TILE")
+{
+	Map::Allocate(64, 64);
+
+	std::vector<JunctionBuildStep> steps = MakeJunctionBuildSteps(MakeTestJunctionLayout(), TileXY(60, 60));
+	REQUIRE(steps.size() == 12);
+
+	REQUIRE(std::holds_alternative<JunctionRailStep>(steps[0]));
+	CHECK(std::get<JunctionRailStep>(steps[0]).tile == TileXY(60, 62));
+	REQUIRE(std::holds_alternative<JunctionRailStep>(steps[4]));
+	CHECK(std::get<JunctionRailStep>(steps[4]).tile == INVALID_TILE);
+	REQUIRE(std::holds_alternative<JunctionBridgeStep>(steps[9]));
+	CHECK(std::get<JunctionBridgeStep>(steps[9]).start == INVALID_TILE);
+}
