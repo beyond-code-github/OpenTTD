@@ -85,7 +85,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 
 **Resume here (2026-11-08):**
 1. Doubled ML bridge design (D80) in the harness (`src/tests/junction_design.cpp`, run with `JUNCTION_DESIGN=<file> build/openttd_test "[.design]"`; `JUNCTION_PIECES=1` lists pieces, `JUNCTION_JSON`/`JUNCTION_MIRROR` export for the rig).
-2. Then the B5 checker update, `TEMPLATES-1b.md` (scoring D76: cost then open space), and step D's brief.
+2. Then the B5 checker update (also D83 whole-train bays; no filler signal right before a required one), `TEMPLATES-1b.md` (scoring D76: cost then open space), and step D's brief.
 3. Rig: the IdleAI company runs out of cash after about two junctions. Give it more money (the loan or start-money settings) in the next rig step. Plan `junction-check` (trains on all six movements).
 4. 1c idea from the engineer: an in-memory block-occupancy simulation to judge headway, queues and deadlock, with the rules kept as a fast filter.
 
