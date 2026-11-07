@@ -1898,7 +1898,7 @@ static bool IsTrainSignalSideRight()
 	}
 }
 
-static void DrawSingleSignal(TileIndex tile, const RailTypeInfo *rti, Track track, SignalState condition, SignalOffsets image, uint pos)
+static void DrawSingleSignal(TileIndex tile, const RailTypeInfo *rti, Track track, SignalState condition, SignalOffsets image, uint pos, SignalType type, SignalVariant variant, TileIndex sprite_tile)
 {
 	static const Point SignalPositions[2][12] = {
 		{ // Signals on the left side
@@ -1918,10 +1918,7 @@ static void DrawSingleSignal(TileIndex tile, const RailTypeInfo *rti, Track trac
 	uint x = TileX(tile) * TILE_SIZE + SignalPositions[signal_on_right][pos].x;
 	uint y = TileY(tile) * TILE_SIZE + SignalPositions[signal_on_right][pos].y;
 
-	SignalType type       = GetSignalType(tile, track);
-	SignalVariant variant = GetSignalVariant(tile, track);
-
-	SpriteID sprite = GetCustomSignalSprite(rti, tile, type, variant, condition);
+	SpriteID sprite = GetCustomSignalSprite(rti, sprite_tile, type, variant, condition);
 	if (sprite != 0) {
 		sprite += image;
 	} else {
@@ -2455,38 +2452,65 @@ void DrawRailTrackGhost(TileInfo *ti, TrackBits track, RailType rt)
 	DrawTrackBits(ti, track, rt, RailGroundType::Grass, {}, INVALID_TILE);
 }
 
-static void DrawSignals(TileIndex tile, TrackBits rails, const RailTypeInfo *rti)
+/**
+ * Call a function for every possible signal position on a tile with the given tracks.
+ * @param rails Tracks on the tile.
+ * @param f Called as f(uint8_t signalbit, SignalOffsets image, uint pos, Track track).
+ */
+template <typename F>
+static void ForEachSignalPosition(TrackBits rails, F &&f)
 {
-	auto MAYBE_DRAW_SIGNAL = [&](uint8_t signalbit, SignalOffsets image, uint pos, Track track) {
-		if (IsSignalPresent(tile, signalbit)) DrawSingleSignal(tile, rti, track, GetSingleSignalState(tile, signalbit), image, pos);
-	};
-
 	if (!rails.Test(Track::Y)) {
 		if (!rails.Test(Track::X)) {
 			if (rails.Test(Track::Left)) {
-				MAYBE_DRAW_SIGNAL(2, SIGNAL_TO_NORTH, 0, Track::Left);
-				MAYBE_DRAW_SIGNAL(3, SIGNAL_TO_SOUTH, 1, Track::Left);
+				f(2, SIGNAL_TO_NORTH, 0, Track::Left);
+				f(3, SIGNAL_TO_SOUTH, 1, Track::Left);
 			}
 			if (rails.Test(Track::Right)) {
-				MAYBE_DRAW_SIGNAL(0, SIGNAL_TO_NORTH, 2, Track::Right);
-				MAYBE_DRAW_SIGNAL(1, SIGNAL_TO_SOUTH, 3, Track::Right);
+				f(0, SIGNAL_TO_NORTH, 2, Track::Right);
+				f(1, SIGNAL_TO_SOUTH, 3, Track::Right);
 			}
 			if (rails.Test(Track::Upper)) {
-				MAYBE_DRAW_SIGNAL(3, SIGNAL_TO_WEST, 4, Track::Upper);
-				MAYBE_DRAW_SIGNAL(2, SIGNAL_TO_EAST, 5, Track::Upper);
+				f(3, SIGNAL_TO_WEST, 4, Track::Upper);
+				f(2, SIGNAL_TO_EAST, 5, Track::Upper);
 			}
 			if (rails.Test(Track::Lower)) {
-				MAYBE_DRAW_SIGNAL(1, SIGNAL_TO_WEST, 6, Track::Lower);
-				MAYBE_DRAW_SIGNAL(0, SIGNAL_TO_EAST, 7, Track::Lower);
+				f(1, SIGNAL_TO_WEST, 6, Track::Lower);
+				f(0, SIGNAL_TO_EAST, 7, Track::Lower);
 			}
 		} else {
-			MAYBE_DRAW_SIGNAL(3, SIGNAL_TO_SOUTHWEST, 8, Track::X);
-			MAYBE_DRAW_SIGNAL(2, SIGNAL_TO_NORTHEAST, 9, Track::X);
+			f(3, SIGNAL_TO_SOUTHWEST, 8, Track::X);
+			f(2, SIGNAL_TO_NORTHEAST, 9, Track::X);
 		}
 	} else {
-		MAYBE_DRAW_SIGNAL(3, SIGNAL_TO_SOUTHEAST, 10, Track::Y);
-		MAYBE_DRAW_SIGNAL(2, SIGNAL_TO_NORTHWEST, 11, Track::Y);
+		f(3, SIGNAL_TO_SOUTHEAST, 10, Track::Y);
+		f(2, SIGNAL_TO_NORTHWEST, 11, Track::Y);
 	}
+}
+
+static void DrawSignals(TileIndex tile, TrackBits rails, const RailTypeInfo *rti)
+{
+	ForEachSignalPosition(rails, [&](uint8_t signalbit, SignalOffsets image, uint pos, Track track) {
+		if (IsSignalPresent(tile, signalbit)) DrawSingleSignal(tile, rti, track, GetSingleSignalState(tile, signalbit), image, pos, GetSignalType(tile, track), GetSignalVariant(tile, track), tile);
+	});
+}
+
+/**
+ * Draw one one-way signal for the junction placement ghost, without reading the tile's map data.
+ * @param tile Tile to draw on.
+ * @param rt Rail type whose signal sprites to use.
+ * @param facing Trains travelling along this trackdir see the signal.
+ * @param type Signal type.
+ * @param variant Signal variant.
+ */
+void DrawRailSignalGhost(TileIndex tile, RailType rt, Trackdir facing, SignalType type, SignalVariant variant)
+{
+	const RailTypeInfo *rti = GetRailTypeInfo(rt);
+	Track ghost_track = TrackdirToTrack(facing);
+	uint8_t mask = SignalAlongTrackdir(facing);
+	ForEachSignalPosition(TrackBits{ghost_track}, [&](uint8_t signalbit, SignalOffsets image, uint pos, Track track) {
+		if (track == ghost_track && HasBit(mask, signalbit)) DrawSingleSignal(tile, rti, track, SignalState::Green, image, pos, type, variant, INVALID_TILE);
+	});
 }
 
 /** @copydoc DrawTileProc */

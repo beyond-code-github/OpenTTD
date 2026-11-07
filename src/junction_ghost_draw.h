@@ -11,10 +11,13 @@
 #define JUNCTION_GHOST_DRAW_H
 
 #include "rail_type.h"
+#include "signal_type.h"
+#include "tile_type.h"
 #include "track_type.h"
 
 struct TileInfo;
 
 void DrawRailTrackGhost(TileInfo *ti, TrackBits track, RailType rt);
+void DrawRailSignalGhost(TileIndex tile, RailType rt, Trackdir facing, SignalType type, SignalVariant variant);
 
 #endif /* JUNCTION_GHOST_DRAW_H */
