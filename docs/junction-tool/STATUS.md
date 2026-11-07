@@ -63,7 +63,11 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 | A foundations | f6187abe83 | Two correct stops: half-piece turn parity ("LR" impossible, "LFR" works) and an arithmetic slip in the brief (301, not 302). Both resolved by ruling. |
 | B rule checker | 44a6d792ca, fa8f2c84b8, ea48ec478b | 177 cases (176 + mayfail). One correct stop: my prio-component definition split rung bits from row bits; ruled that a tile's unused bits form one node. |
 | C templates | fe3e55b29d harness; 5f0d7af4a7 reference | The reference now has a hugging N→W (an S-bend parallel to E→S, a vertical, then a turn) and a W prio covering the bridge block with one join. It has streamlined stub-free prio joins with the first join on the merge tile (D75, D79, D81) and signals at every bridge (D82). Checker steps B2–B4 done (365316bbe2, 182 cases). Reviewed in game by the engineer. **Next: doubled ML bridges (D80)**: the outer row conflicts with W→S, the bridge merge sits where N→W turns in, and the prio must link two bridge blocks. Design in the harness, bring options, then B5 checker (two paths per movement in doubled sections, line sync, no prio on the bridge merge), then TEMPLATES-1b.md and step D. |
-| D generator | — | |
+| B5/B5b checker | 98a66a83f5, d02ced719c | Doubled movements (equal-length lanes), ML bridges must be doubled, lane merges carry no prio, whole-train bays (D83/D88). The doubled reference `reference-LR-TL4-doubled` is clean, with rig exports. 198 cases. |
+| D1 router | 3f0a2dc040 | `FindJunctionRoute` (A*, F/L/R/B, curve grammar, crossable tiles, start/goal sets). Zero turn cost gives wiggly detours on ties, so D3b adds a turn tie-break. |
+| D2 signal pass | de7bcb3f47 | `PlaceJunctionSignals`, phases 0–4. The doubled reference's bare routes come out clean. Two rulings: reserve the lane-merge-block prio join before the required signals; signal a lane-only one-tile block (three signals in a row on lane B; to show the engineer, since more joiner slack would avoid it). 205 cases. |
+| D3a candidate | running | `BuildJunctionCandidate` (brief `1b-stepD3a.md`). |
+| D3b generator | — | |
 | E game side | — | |
 | F manual | — | engineer |
 
@@ -83,23 +87,57 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 
 ## Next steps
 
-**Resume here (2026-11-08):**
-1. Doubled ML bridge design (D80) in the harness (`src/tests/junction_design.cpp`, run with `JUNCTION_DESIGN=<file> build/openttd_test "[.design]"`; `JUNCTION_PIECES=1` lists pieces, `JUNCTION_JSON`/`JUNCTION_MIRROR` export for the rig).
-2. Then the B5 checker update (also D83 whole-train bays; no filler signal right before a required one), `TEMPLATES-1b.md` (scoring D76: cost then open space), and step D's brief.
-3. Rig: the IdleAI company runs out of cash after about two junctions. Give it more money (the loan or start-money settings) in the next rig step. Plan `junction-check` (trains on all six movements).
-4. 1c idea from the engineer: an in-memory block-occupancy simulation to judge headway, queues and deadlock, with the rules kept as a fast filter.
-5. Confirm D83's wording with the engineer (whole-train bays, balanced with SD signalling).
-6. 1c inputs recorded tonight: D84 (Low/Medium/High traffic presets as throughput brackets), PLAN-1c item 7 (bay count from traffic).
+**Autonomous queue (engineer, 2026-11-08: "I don't mind what order, as long as we have everything in the queue for autonomous running"; order D89).** Each item is one agent step through the agent-orchestration skill. Make reversible calls, record them in DECISIONS, and batch questions for the engineer.
 
-**Demo rig:** `tools/ottd/ottd start; ottd company; ottd build-layout tools/ottd/layouts/reference-LR-TL4.json --find-clear` (and `-lefthand.json`). Join with `build/openttd-spike -n 127.0.0.1`. The engineer likes to watch: announce rig runs (memory: rig-watch-feedback).
+1. **D3a** (running): one candidate. If no candidate is clean, fix the weakest piece the histogram shows (router curve grammar vs G3, prio coverage, crop margins) as its own step.
+2. **D3b `GenerateJunction`:**
+   - sweep height, crossing cost and joiner slack;
+   - score by cost, then open space (D76), with a turn tie-break against wiggles;
+   - early stop, a candidate cap and a time budget (D62; measured, so Debug may need a test-only budget);
+   - `NoLayout` naming the most-failed rule group;
+   - the outer test green, with `[!mayfail]` removed;
+   - the sweep test (TL 3–6, SD 2–4, gaps 0–3 on both lines, both road sides): each case either rule-clean or a named error.
+3. **Rig: a generated layout in game.** The design harness, or a small test-binary mode, exports `GenerateJunction` output as rig JSON. Give the IdleAI company more money. Build it, and announce it to the engineer (rig-watch memory).
+4. **E, game side** (PLAN-1b §7): the Junction window calls the generator.
+   - notation and TL in the dialogue, static settings in Settings (D64), the signal-type setting (D68);
+   - the left-hand mirror (D66);
+   - the error message;
+   - generation off the UI thread only if it is too slow;
+   - no savegame changes (D69).
+5. **F:** the manual checks list for the engineer, and the rig command `junction-check`: trains on all six movements, braking samples, prio hold, queues and deadlock.
+6. **D78, place-time terrain:**
+   - a map-backed seam for the router: buildable, slope, foundation, clearing cost, water, existing track;
+   - terrain rules in the checker (bridge heads and slopes);
+   - generation at the hovered spot, within the ghost or hover cache (D63).
+   - Research first: a read-only recon of the terrain and slope APIs and of the build commands' slope rules.
+7. **Endpoint solver/joiner:**
+   - a UI to tag two or more connection points (tile and heading);
+   - the router between them, then the signal pass and the checker (connectivity generalised from fixed T ports to tagged ports).
+   - Research first: what coop calls joins, and the UI pattern.
+8. **1c physics and traffic** (PLAN-1c):
+   - the headway model, prio length from braking, bay counts from traffic (item 7);
+   - the D84 presets;
+   - the in-memory block-occupancy simulation (engineer's idea), with the rules kept as a fast filter;
+   - single versus doubled bridges by traffic (D32/D80).
+9. **Follow-ons:**
+   - multi-lane with balancing (D72);
+   - option C (a widened gap with the branch over the ML; D85);
+   - research the coop prio-over-a-bridge pattern.
+
+**For the engineer when back:**
+- Confirm D87 (route search instead of templates).
+- Rule on lane B's three-in-a-row signals.
+- Confirm D83/D88's wording.
+
+**Demo rig:** `tools/ottd/ottd start; ottd company; ottd build-layout tools/ottd/layouts/reference-LR-TL4-doubled.json --find-clear` (and `-lefthand.json`). Join with `build/openttd-spike -n 127.0.0.1`. The engineer likes to watch: announce rig runs (memory: rig-watch-feedback).
 
 ## Roadmap
 
 1. **1a** placement, ghost, pricing and build (done).
 2. **1b** T generator (in progress).
-3. **1c** train physics and traffic.
-4. **Place-time generation** (D78): terrain and obstacles at the hovered spot.
-5. **Endpoint solver:** routing to tagged connection points.
+3. **Place-time generation** (D78): terrain and obstacles at the hovered spot.
+4. **Endpoint solver:** routing to tagged connection points.
+5. **1c** train physics and traffic. It may run alongside 3–4 (D89).
 
 The multi-lane follow-on (D72) fits after 1b or 1c.
 
