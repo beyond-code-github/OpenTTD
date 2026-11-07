@@ -27,6 +27,8 @@ void DrawRailSignalGhost(TileIndex tile, RailType rt, Trackdir facing, SignalTyp
 void DrawBridgeHeadGhost(TileInfo *ti, BridgeType type, RailType rt, DiagDirection dir);
 void DrawBridgeMiddleGhost(const TileInfo *ti, BridgeType type, RailType rt, Axis axis, int bridge_z, uint piece_north, uint piece_south);
 
+void DrawTileSelectionRect(const TileInfo *ti, PaletteID pal); // Defined in viewport.cpp.
+
 /* Bridge sprite helpers defined in tunnelbridge_cmd.cpp */
 std::span<const PalSpriteID> GetBridgeSpriteTable(BridgeType bridge_type, BridgePieces piece);
 uint8_t GetBridgeRampDirectionBaseOffset(DiagDirection diagdir);

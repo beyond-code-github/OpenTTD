@@ -941,7 +941,7 @@ static void DrawSelectionSprite(SpriteID image, PaletteID pal, const TileInfo *t
  * @param ti TileInfo Tile that is being drawn
  * @param pal Palette to apply.
  */
-static void DrawTileSelectionRect(const TileInfo *ti, PaletteID pal)
+void DrawTileSelectionRect(const TileInfo *ti, PaletteID pal)
 {
 	if (!IsValidTile(ti->tile)) return;
 
