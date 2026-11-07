@@ -88,10 +88,10 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 2. Then the B5 checker update (also D83 whole-train bays; no filler signal right before a required one), `TEMPLATES-1b.md` (scoring D76: cost then open space), and step D's brief.
 3. Rig: the IdleAI company runs out of cash after about two junctions. Give it more money (the loan or start-money settings) in the next rig step. Plan `junction-check` (trains on all six movements).
 4. 1c idea from the engineer: an in-memory block-occupancy simulation to judge headway, queues and deadlock, with the rules kept as a fast filter.
+5. Confirm D83's wording with the engineer (whole-train bays, balanced with SD signalling).
+6. 1c inputs recorded tonight: D84 (Low/Medium/High traffic presets as throughput brackets), PLAN-1c item 7 (bay count from traffic).
 
-
-1. Step C (the orchestrator designs the templates; the engineer reviews the ASCII).
-3. Plan the test-rig CLI alongside 1b.
+**Demo rig:** `tools/ottd/ottd start; ottd company; ottd build-layout tools/ottd/layouts/reference-LR-TL4.json --find-clear` (and `-lefthand.json`). Join with `build/openttd-spike -n 127.0.0.1`. The engineer likes to watch: announce rig runs (memory: rig-watch-feedback).
 
 ## Roadmap
 
