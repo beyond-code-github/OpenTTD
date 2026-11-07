@@ -53,4 +53,13 @@ uint DeriveCurveSpacing(uint16_t speed, uint8_t curve_speed, uint8_t tl);
 JunctionSpec MakeTestJunctionSpec();
 JunctionGenerateResult GenerateJunction(const JunctionSpec &spec);
 
+/** The swept inputs of one candidate. */
+struct JunctionCandidateParams {
+	uint8_t height; ///< H: the branch edge is row H-1; the E track is row 0.
+	Money crossing_cost; ///< crossable_cost when a route crosses the W track.
+	uint8_t joiner_slack; ///< Extra tiles kept between the lane merge and where N->W may join.
+};
+
+std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params);
+
 #endif /* JUNCTION_GENERATOR_H */

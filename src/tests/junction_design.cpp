@@ -155,3 +155,24 @@ TEST_CASE("Junction design harness", "[.design]")
 	std::cout << v.size() << " violations\n";
 	for (const auto &rv : v) std::cout << "  rule " << static_cast<int>(rv.rule) << " @" << rv.tile.x << "," << rv.tile.y << " (orig " << rv.tile.x + min_x << "," << rv.tile.y + min_y << "): " << rv.message << "\n";
 }
+
+TEST_CASE("Junction generator candidate sweep", "[.gen]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	int best = 1 << 20;
+	for (int h = 6; h <= 21; h++) {
+		for (Money cc : {Money(0), spec.prices.bridge(3)}) {
+			for (int s = 0; s <= 3; s++) {
+				auto layout = BuildJunctionCandidate(spec, {static_cast<uint8_t>(h), cc, static_cast<uint8_t>(s)});
+				if (!layout.has_value()) continue;
+				auto v = CheckJunctionRules(*layout, spec);
+				std::cout << "h" << h << " cc" << cc.base() << " s" << s << ": " << v.size() << " violations\n";
+				if (static_cast<int>(v.size()) < best) {
+					best = static_cast<int>(v.size());
+					std::cout << RenderJunctionAscii(*layout);
+					for (const auto &rv : v) std::cout << "  rule " << static_cast<int>(rv.rule) << " @" << rv.tile.x << "," << rv.tile.y << ": " << rv.message << "\n";
+				}
+			}
+		}
+	}
+}
