@@ -97,7 +97,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
    - the outer test green, with `[!mayfail]` removed;
    - the sweep test (TL 3–6, SD 2–4, gaps 0–3 on both lines, both road sides): each case either rule-clean or a named error.
 2a. **D3d robustness** (first round done, e0ecc963e1: lane-B start margin, joiner clearance of TL after the lane merge, straight track off far bridge heads, fill gap count. Every built candidate in the TL3/4/6 × g1/3 probes is now clean; the remaining failures are unbuildable candidates). Still to do: make the failing `[.gensweep]` specs clean or give a named error. First get a per-spec histogram of the failing step and violations (the `[.gen]` style). Likely levers: ml_gap 0 (no gap row; the E→S fence and lane geometry assume one), TL6 (prio coverage and bays need more room, so the height or slack range scales with TL), and wide branch gaps.
-2b. **D3c: early branch swap (D91)** as a sweep option. Compare clean counts, sizes and scores against no swap on the test spec and in the `[.gensweep]` table.
+2b. **D3c: early branch swap (D91), parked.** As I read it (the outbound line crosses under the inbound on the leg), it adds crossings: N→W×S and W→S×N plus the crossover, against E→S×N→E before. The crossing zone also widened to span 11, so no clean candidate. The code is saved as `docs/junction-tool/d3c-branch-swap.patch`. Waiting for the engineer to say what "L & R" means (the branch pair? the ML pair? the lanes at the hub?).
 3. **Rig: a generated layout in game.** The design harness, or a small test-binary mode, exports `GenerateJunction` output as rig JSON. Give the IdleAI company more money. Build it, and announce it to the engineer (rig-watch memory), but do not wait for them to join.
 4. **E, game side** (PLAN-1b §7): the Junction window calls the generator.
    - notation and TL in the dialogue, static settings in Settings (D64), the signal-type setting (D68);
@@ -126,6 +126,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
    - research the coop prio-over-a-bridge pattern.
 
 **For the engineer when back:**
+- **D91 swap:** which pair is "L & R"? Swapping the branch pair as I built it adds two crossings (see 2b).
 - **Signal pitch:** the checker allows SD empty tiles between signals (a 3-tile pitch at SD=2), while in-game drag at density 2 gives a 2-tile pitch. The fill now matches the checker. Keep this, or tighten both to the drag pitch?
 - **ml_gap 0 (LR notation):** the W prio has no room inside (row −1 of the W track is the E track) and the joiner's side is blocked, so LR needs a local ML spread (option C territory). For now: a named error.
 - Confirm D87 (route search instead of templates).

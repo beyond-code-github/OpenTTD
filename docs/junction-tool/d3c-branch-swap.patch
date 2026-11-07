@@ -1,0 +1,239 @@
+diff --git a/src/junction_generator.cpp b/src/junction_generator.cpp
+index 390a7d6b81..ff586b2ec3 100644
+--- a/src/junction_generator.cpp
++++ b/src/junction_generator.cpp
+@@ -185,7 +185,12 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
+ 	const int xI = 30;
+ 	const int xO = xI + spec.branch_gap + 1;
+ 	const int yb = static_cast<int>(params.height) - 1;
+-	if (yb < g + 4) return std::nullopt;
++	const int curve_tiles = static_cast<int>((spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1u) + 1) / 2;
++	const int leg = 2 * (spec.branch_gap + 1) + 2 * curve_tiles + 4;
++	const int yh = params.swap ? yb - leg : yb; ///< The row of the hub's stub ends.
++	if (yh < g + 4) return std::nullopt;
++	const int xS = params.swap ? xI - spec.branch_gap - 1 : xO; ///< The S stub's column.
++	const int xN = xI; ///< The N stub's column.
+ 	const int w_row = g + 1;
+ 	const int b_row = g + 2;
+ 
+@@ -204,24 +209,40 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
+ 
+ 	/* Short straight branch legs: E->S joins the top of the S stub and W->S merges into its side; N->E leaves the top of the N stub and N->W splits from its side. */
+ 	constexpr int STUB = 3;
+-	const int ys = yb - STUB;
+-	const JunctionRouteEnd goal_s{tile(xO, ys), Trackdir::Y_SE};
+-	const JunctionRouteEnd start_n{tile(xI, ys), Trackdir::Y_NW};
++	const int ys = yh - STUB;
++	const JunctionRouteEnd goal_s{tile(xS, ys), Trackdir::Y_SE};
++	const JunctionRouteEnd start_n{tile(xN, ys), Trackdir::Y_NW};
+ 
+-	auto base_layout = [&](JunctionLayout &layout) {
++	auto base_layout = [&](JunctionLayout &layout) -> bool {
+ 		AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(0, 0), Trackdir::X_SW, 63)));
+-		AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xO, ys), Trackdir::Y_SE, STUB)));
+-		AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xI, yb), Trackdir::Y_NW, STUB)));
++		AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xS, ys), Trackdir::Y_SE, STUB)));
++		AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xN, yh), Trackdir::Y_NW, STUB)));
++		if (!params.swap) return true;
++
++		/* D91: the legs below the hub cross the pair over; the N leg bridges over the S leg. */
++		layout.tracks.push_back({tile(xI, yb), TrackBits{Track::Y}});
++		JunctionRouteRequest leg_request = base;
++		leg_request.min = tile(xS - 2, yh);
++		leg_request.max = tile(xO + 2, yb);
++		leg_request.starts = {{tile(xS, yh), Trackdir::Y_SE}};
++		leg_request.goals = {{tile(xO, yb), Trackdir::Y_SE}};
++		if (!RouteAndAdd(layout, leg_request).has_value()) return false;
++		leg_request.starts = {{tile(xI, yb), Trackdir::Y_NW}};
++		leg_request.goals = {{tile(xN, yh), Trackdir::Y_NW}};
++		return RouteAndAdd(layout, leg_request).has_value();
+ 	};
+ 	auto stub_pieces = [&](int x, Trackdir td) {
+ 		std::vector<JunctionRouteEnd> ends;
+-		for (int y = ys + 1; y < yb; y++) ends.push_back({tile(x, y), td});
++		for (int y = ys + 1; y < yh; y++) ends.push_back({tile(x, y), td});
+ 		return ends;
+ 	};
++	const int es_max_x = params.swap ? xS - 2 : xI - 2; ///< E->S leaves the E row at or west of this.
++	const int ne_min_x = params.swap ? xN + 2 : xO; ///< N->E joins the E row at or east of this.
++	const int ws_min_x = params.swap ? xN + 2 : xO + 2; ///< W->S leaves the W row at or east of this.
+ 
+ 	/* Pass 1: find the crossing zone. */
+ 	JunctionLayout layout;
+-	base_layout(layout);
++	if (!base_layout(layout)) return std::nullopt;
+ 	AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(63, w_row), Trackdir::X_NE, 63)));
+ 	std::vector<int> zone; ///< The x of every W row tile that a crossing movement (E->S, N->E) uses.
+ 	auto note_crossings = [&](const JunctionRaster &raster) {
+@@ -238,14 +259,14 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
+ 		std::vector<TileIndexDiffC> w_tiles;
+ 		if (crossable_w) for (int x = 0; x <= 63; x++) w_tiles.push_back(tile(x, w_row));
+ 		std::vector<TileIndexDiffC> column_fence;
+-		for (int y = 0; y <= g + 3; y++) column_fence.push_back(tile(xI, y));
++		for (int y = 0; y <= g + 3; y++) column_fence.push_back(tile(xN, y));
+ 		std::vector<TileIndexDiffC> branch_fence = under_spans;
+ 		for (int y = 1; y < w_row; y++) for (int x = 0; x <= 63; x++) branch_fence.push_back(tile(x, y));
+ 
+ 		JunctionRouteRequest request = base;
+ 		request.crossable = w_tiles;
+ 		request.crossable_cost = params.crossing_cost;
+-		for (int x = 2; x <= xI - 2; x++) {
++		for (int x = 2; x <= es_max_x; x++) {
+ 			if (TracksAt(l, x, 0) == TrackBits{Track::X}) request.starts.push_back({tile(x, 0), Trackdir::X_SW});
+ 		}
+ 		request.goals = {goal_s};
+@@ -254,22 +275,22 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
+ 		if (note) note_crossings(*e_to_s);
+ 
+ 		request = base;
+-		request.starts = PlainRowPieces(l, w_row, Trackdir::X_NE, xO + 2, 61);
+-		for (const JunctionRouteEnd &end : PlainRowPieces(l, b_row, Trackdir::X_NE, xO + 2, lane_b_max_x)) request.starts.push_back(end);
+-		request.goals = stub_pieces(xO, Trackdir::Y_SE);
++		request.starts = PlainRowPieces(l, w_row, Trackdir::X_NE, ws_min_x, 61);
++		for (const JunctionRouteEnd &end : PlainRowPieces(l, b_row, Trackdir::X_NE, ws_min_x, lane_b_max_x)) request.starts.push_back(end);
++		request.goals = stub_pieces(xS, Trackdir::Y_SE);
+ 		if (!RouteFencedAndAdd(l, request, branch_fence).has_value()) return false;
+ 
+ 		request = base;
+ 		request.crossable = w_tiles;
+ 		request.crossable_cost = params.crossing_cost;
+ 		request.starts = {start_n};
+-		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, xO, 61);
++		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, ne_min_x, 61);
+ 		const std::optional<JunctionRaster> n_to_e = RouteAndAdd(l, request);
+ 		if (!n_to_e.has_value()) return false;
+ 		if (note) note_crossings(*n_to_e);
+ 
+ 		request = base;
+-		request.starts = stub_pieces(xI, Trackdir::Y_NW);
++		request.starts = stub_pieces(xN, Trackdir::Y_NW);
+ 		request.goals = PlainRowPieces(l, w_row, Trackdir::X_NE, 2, nw_max_x);
+ 		return RouteFencedAndAdd(l, request, branch_fence).has_value();
+ 	};
+@@ -284,7 +305,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
+ 
+ 		/* Pass 2: fixed doubled lanes. */
+ 		layout = JunctionLayout{};
+-		base_layout(layout);
++		if (!base_layout(layout)) return std::nullopt;
+ 
+ 		const std::string span = fmt::format("B{}", n);
+ 		const JunctionRoute lane_a{tile(63, w_row), Trackdir::X_NE, std::string(62 - h_e, 'F') + span + std::string(h_w, 'F')};
+@@ -462,25 +483,29 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec)
+ 	int best_area = 0;
+ 
+ 	const int first = spec.ml_gap + 5;
+-	const int last = spec.ml_gap + 20;
+-	int stop_after = INT32_MAX;
+-	for (int height = first; height <= last && height <= stop_after; height++) {
+-		bool clean_here = false;
+-		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
+-			for (uint8_t slack = 0; slack <= 3; slack++) {
+-				std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, {static_cast<uint8_t>(height), crossing_cost, slack});
+-				if (!layout.has_value() || !CheckJunctionRules(*layout, spec).empty()) continue;
+-				clean_here = true;
+-				const std::pair<Money, int> score = ScoreJunctionLayout(*layout, spec);
+-				const int area = layout->size.x * layout->size.y;
+-				if (!best.has_value() || score < best_score || (score == best_score && area < best_area)) {
+-					best = std::move(layout);
+-					best_score = score;
+-					best_area = area;
++	const int curve_tiles = static_cast<int>((spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1u) + 1) / 2;
++	const int leg = 2 * (spec.branch_gap + 1) + 2 * curve_tiles + 4;
++	for (bool swap : {false, true}) {
++		const int last = spec.ml_gap + 20 + (swap ? leg : 0);
++		int stop_after = INT32_MAX;
++		for (int height = first; height <= last && height <= stop_after; height++) {
++			bool clean_here = false;
++			for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
++				for (uint8_t slack = 0; slack <= 3; slack++) {
++					std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, {static_cast<uint8_t>(height), crossing_cost, slack, swap});
++					if (!layout.has_value() || !CheckJunctionRules(*layout, spec).empty()) continue;
++					clean_here = true;
++					const std::pair<Money, int> score = ScoreJunctionLayout(*layout, spec);
++					const int area = layout->size.x * layout->size.y;
++					if (!best.has_value() || score < best_score || (score == best_score && area < best_area)) {
++						best = std::move(layout);
++						best_score = score;
++						best_area = area;
++					}
+ 				}
+ 			}
++			if (clean_here && stop_after == INT32_MAX) stop_after = height + 2;
+ 		}
+-		if (clean_here && stop_after == INT32_MAX) stop_after = height + 2;
+ 	}
+ 	if (!best.has_value()) return {std::nullopt, JunctionGenerateError::NoLayout};
+ 	return {std::move(best), JunctionGenerateError::None};
+diff --git a/src/junction_generator.h b/src/junction_generator.h
+index 87f367caf4..746f66289d 100644
+--- a/src/junction_generator.h
++++ b/src/junction_generator.h
+@@ -59,6 +59,7 @@ struct JunctionCandidateParams {
+ 	uint8_t height; ///< H: the branch edge is row H-1; the E track is row 0.
+ 	Money crossing_cost; ///< crossable_cost when a route crosses the W track.
+ 	uint8_t joiner_slack; ///< Extra tiles kept between the lane merge and where N->W may join.
++	bool swap = false; ///< D91: the branch pair crosses over on the leg, so at the hub inbound is east and outbound west.
+ };
+ 
+ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params);
+diff --git a/src/tests/junction_design.cpp b/src/tests/junction_design.cpp
+index cad2965610..ff9673a3fe 100644
+--- a/src/tests/junction_design.cpp
++++ b/src/tests/junction_design.cpp
+@@ -171,10 +171,12 @@ TEST_CASE("Junction generator candidate sweep", "[.gen]")
+ 	std::map<std::string, int> histogram;
+ 	int built = 0;
+ 	int best = 1 << 20;
+-	for (int h = spec.ml_gap + 5; h <= spec.ml_gap + 20; h++) {
++	const bool swap = std::getenv("JUNCTION_GEN_SWAP") != nullptr;
++	const int leg = 2 * (spec.branch_gap + 1) + 2 * static_cast<int>((DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) + 1) / 2) + 4;
++	for (int h = spec.ml_gap + 5; h <= spec.ml_gap + 20 + (swap ? leg : 0); h++) {
+ 		for (Money cc : {Money(0), spec.prices.bridge(3)}) {
+ 			for (int s = 0; s <= 3; s++) {
+-				auto layout = BuildJunctionCandidate(spec, {static_cast<uint8_t>(h), cc, static_cast<uint8_t>(s)});
++				auto layout = BuildJunctionCandidate(spec, {static_cast<uint8_t>(h), cc, static_cast<uint8_t>(s), swap});
+ 				if (!layout.has_value()) continue;
+ 				auto v = CheckJunctionRules(*layout, spec);
+ 				built++;
+diff --git a/src/tests/junction_generator.cpp b/src/tests/junction_generator.cpp
+index 622803b65a..ca6e1b9dcd 100644
+--- a/src/tests/junction_generator.cpp
++++ b/src/tests/junction_generator.cpp
+@@ -114,6 +114,36 @@ TEST_CASE("BuildJunctionCandidate: some candidate is clean", "[junction]")
+ 			<< " joiner_slack " << static_cast<int>(clean->params.joiner_slack) << "\n" << RenderJunctionAscii(clean->layout));
+ }
+ 
++/** Every swap candidate that builds, over the sweep of D3c. */
++static const std::vector<SweepCandidate> &SwapCandidates(const JunctionSpec &spec)
++{
++	static const std::vector<SweepCandidate> out = [&spec]() {
++		std::vector<SweepCandidate> out;
++		const int leg = 2 * (spec.branch_gap + 1) + 2 * static_cast<int>((DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) + 1) / 2) + 4;
++		for (int height = spec.ml_gap + 5; height <= spec.ml_gap + 20 + leg; height++) {
++			for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
++				for (uint8_t slack = 0; slack <= 3; slack++) {
++					const JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack, true};
++					std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params);
++					if (layout.has_value()) out.push_back({params, std::move(*layout)});
++				}
++			}
++		}
++		return out;
++	}();
++	return out;
++}
++
++TEST_CASE("BuildJunctionCandidate: some swap candidate is clean", "[junction]")
++{
++	const JunctionSpec spec = MakeTestJunctionSpec();
++	const std::vector<SweepCandidate> &candidates = SwapCandidates(spec);
++	const SweepCandidate *clean = FirstClean(spec, candidates);
++	REQUIRE(clean != nullptr);
++	WARN("first clean swap: height " << static_cast<int>(clean->params.height) << " crossing_cost " << clean->params.crossing_cost
++			<< " joiner_slack " << static_cast<int>(clean->params.joiner_slack) << "\n" << RenderJunctionAscii(clean->layout));
++}
++
+ TEST_CASE("BuildJunctionCandidate: every candidate is structurally sound", "[junction]")
+ {
+ 	const JunctionSpec spec = MakeTestJunctionSpec();
