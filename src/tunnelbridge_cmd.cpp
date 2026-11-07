@@ -140,7 +140,7 @@ bool HasBridgeFlatRamp(Slope tileh, Axis axis)
  * @param piece Bridge piece.
  * @return True iff a custom sprite table is used for the bridge piece.
  */
-static bool BridgeHasCustomSpriteTable(BridgeType bridge_type, BridgePieces piece)
+bool BridgeHasCustomSpriteTable(BridgeType bridge_type, BridgePieces piece)
 {
 	assert(piece < NUM_BRIDGE_PIECES);
 	const BridgeSpec *bridge = GetBridgeSpec(bridge_type);
@@ -153,7 +153,7 @@ static bool BridgeHasCustomSpriteTable(BridgeType bridge_type, BridgePieces piec
  * @param piece Bridge piece.
  * @return Sprite table for the bridge piece.
  */
-static std::span<const PalSpriteID> GetBridgeSpriteTable(BridgeType bridge_type, BridgePieces piece)
+std::span<const PalSpriteID> GetBridgeSpriteTable(BridgeType bridge_type, BridgePieces piece)
 {
 	assert(piece < NUM_BRIDGE_PIECES);
 
@@ -183,7 +183,7 @@ static uint8_t GetBridgeSpriteTableBaseOffset(TransportType transport_type, Tile
  * @param diagdir Direction of ramp.
  * @return Offset for direction.
  */
-static uint8_t GetBridgeRampDirectionBaseOffset(DiagDirection diagdir)
+uint8_t GetBridgeRampDirectionBaseOffset(DiagDirection diagdir)
 {
 	/* Bridge ramps are ordered SW, SE, NE, NW instead of NE, SE, SW, NW. */
 	static constexpr DiagDirectionIndexArray<uint8_t> ramp_offsets{2, 1, 0, 3};
@@ -195,7 +195,7 @@ static uint8_t GetBridgeRampDirectionBaseOffset(DiagDirection diagdir)
  * @param axis Axis of bridge.
  * @return Offset for axis.
  */
-static uint8_t GetBridgeMiddleAxisBaseOffset(Axis axis)
+uint8_t GetBridgeMiddleAxisBaseOffset(Axis axis)
 {
 	return axis == Axis::X ? 0 : 4;
 }
@@ -1083,7 +1083,7 @@ static int DrawPillarColumn(int z_bottom, int z_top, const PalSpriteID &psid, in
  * @param y Sprite Y position of front pillar.
  * @param z_bridge Absolute height of bridge bottom.
  */
-static void DrawBridgePillars(const PalSpriteID &psid, const TileInfo *ti, Axis axis, bool drawfarpillar, int x, int y, int z_bridge)
+void DrawBridgePillars(const PalSpriteID &psid, const TileInfo *ti, Axis axis, bool drawfarpillar, int x, int y, int z_bridge)
 {
 	static constexpr AxisIndexArray<int> bounding_box_size{16, 2}; ///< bounding box size of pillars along bridge direction
 	static constexpr AxisIndexArray<int> back_pillar_offset{0, 9}; ///< sprite position offset of back facing pillar
@@ -1557,7 +1557,7 @@ static void DrawTile_TunnelBridge(TileInfo *ti)
  * @param south Southernmost tile of bridge
  * @return Index of bridge piece
  */
-static BridgePieces CalcBridgePiece(uint north, uint south)
+BridgePieces CalcBridgePiece(uint north, uint south)
 {
 	if (north == 1) {
 		return BRIDGE_PIECE_NORTH;
