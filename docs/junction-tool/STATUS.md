@@ -69,7 +69,8 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 | D3a candidate | e77b76daaf | `BuildJunctionCandidate`. After four agent stops, I settled the skeleton by experiment (D90) and finished the step myself. 4/128 candidates clean for the test spec; most others have 1–4 violations. Hidden `[.gen]` sweep test in `junction_design.cpp` prints each candidate's count and the best ASCII. 208 cases. |
 | D3b generator | 47938aacb9 | `GenerateJunction`: sweep, early stop, score (cost, open rectangle, area). The outer test is green with no `[!mayfail]`. 210 cases, suite 23 s. About 5 s per call in Debug (D62's 200 ms needs Release measurement plus speedups). `[.gensweep]`: 16/54 specs clean. ml_gap 0 never; TL6 mostly fails; TL4 g1 only with b0/b1. Rig exports: `tools/ottd/layouts/generated-LR-TL4*.json`. |
 | E game side | 3f0c847dbc | The window has notation editboxes, a TL stepper, and generates (synchronously, D92), with the left-hand mirror and four error strings. Client settings `gui.junction_*` (NotInSave). 213 cases. Manual checks are listed in `CHECKS-1b.md` for the engineer. |
-| F manual | — | engineer |
+| F1 rig check | f5f793107a | Test circuit (`[.circuit]`: junction plus router-made turnaround loops plus a depot) and `ottd junction-check`. First run: 302 pieces built, 6 trains wandering all six movements for about 100 days, avg 123–127 km/h, no deadlock: OK. The rig now runs `build/openttd` (the spike snapshot is stale); join with `build/openttd -n 127.0.0.1`. |
+| F manual | — | engineer: `CHECKS-1b.md` (use `build-rel/openttd`) |
 
 ## Test rig (CLI-first, RECON-mcp.md)
 
@@ -105,8 +106,8 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
    - the error message;
    - generation off the UI thread only if it is too slow;
    - no savegame changes (D69).
-5. **F:** the manual checks list for the engineer, and the rig command `junction-check`: trains on all six movements, braking samples, prio hold, queues and deadlock.
-6. **D78, place-time terrain** (plan `PLAN-D78.md`, D93; T1 router+terrain running in worktree `/home/pete/OpenTTD-terrain`):
+5. **F** (F1 rig check done): the manual checks list for the engineer, and the rig command `junction-check`: trains on all six movements, braking samples, prio hold, queues and deadlock.
+6. **D78, place-time terrain** (plan `PLAN-D78.md`, D93; T1 ff13a32ceb and T2 e15f0dfe90 merged; next T3a then T3b, briefs ready, then T4 GUI worker and T5 hilly rig):
    - a map-backed seam for the router: buildable, slope, foundation, clearing cost, water, existing track;
    - terrain rules in the checker (bridge heads and slopes);
    - generation at the hovered spot, within the ghost or hover cache (D63).

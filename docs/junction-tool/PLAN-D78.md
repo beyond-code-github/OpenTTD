@@ -47,3 +47,12 @@
 | T3 | game snapshot builder plus the `EstimateJunction` plane rule (2, 8) | a unit test on a small test map (as `junction_game` tests do); the estimate accepts leveled-foundation tiles |
 | T4 | GUI worker and hover rest (6, 7) | manual: hover over hills and towns shows adapted layouts; no UI freeze |
 | T5 | rig check | a hilly seed: generated layouts build with 0 failures |
+
+## Progress
+
+- **T1** a06206c944 (worktree): `JunctionTerrain`, plus router support. 216 cases.
+- **T2** 0e9d0179eb (worktree):
+  - `GenerateJunction(spec, terrain)` sweeps up to 3 planes, scores terrain cost, and checks usability after the crop.
+  - Flat terrain gives the same layout as no terrain.
+  - A house block is routed around.
+  - A pond across the ML rows gives NoLayout (known limit: the ML would need its own water bridge; later).
