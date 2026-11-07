@@ -19,16 +19,42 @@ $O watch 0 --seconds 20; $O stop
 | `status` | `ottd status` | date, companies, money |
 | `rcon "<cmd>"` | `ottd rcon "getdate"` | prints the console output |
 | `gs '<json>'` | `ottd gs '{"cmd":"ping"}'` | `id` is added for you; prints the compact JSON reply |
-| `company` | `ottd company` | starts `IdleAI` if there is no company, then tells the GS which id to act as |
+| `company [--id N]` | `ottd company --id 0` | tells the GS which company to act as; without `--id`, starts `IdleAI` if there is no company and uses it. `--id` needs the company to exist already (e.g. after `start --save`) |
 | `build-line X1 Y1 X2 Y2` | `ottd build-line 10 20 30 20` | straight rail, first available rail type, inclusive tiles |
 | `depot X Y DIR` | `ottd depot 9 20 SW` | DIR = way the entrance faces: NE x-1, SE y+1, SW x+1, NW y-1 |
 | `train DEPOT_X DEPOT_Y [--engine ID] [--wagons N]` | `ottd train 9 20 --wagons 2` | fastest buildable engine by default; prints the vehicle id |
 | `orders VEHICLE X Y X Y` | `ottd orders 0 9 20 31 20` | two go-to-depot orders |
 | `go VEHICLE` | `ottd go 0` | starts the train if not running |
+| `build-layout FILE X Y` | `ottd build-layout layouts/test-1a.json 20 20` | builds a layout JSON with its north corner at tile X,Y: tracks, then bridges (fastest rail bridge for the length), then signals. Prints `built=N failed=M` and one line per failure (layout-relative x,y); exits 1 on failures |
+| `sample V [V...] --ticks N` | `ottd sample 0 --ticks 600` | per-game-tick speed sampling inside the GS: per vehicle n, min, max, avg (integer km/h), `stops` (transitions to speed 0), then `drops` (speed fell 10 km/h or more within 8 ticks; one entry per event, tile where it began) |
 | `vehicles` | `ottd vehicles` | `id @x,y speed km/h state` per train |
 | `watch VEHICLE --seconds N` | `ottd watch 0 --seconds 20` | samples about every 0.5 s; min/max/avg speed, whether it hit 0 |
 
-GameScript commands (`ottd gs`): `ping`, `company_set {company}`, `build_rail {x1,y1,x2,y2}`, `build_depot {x,y,dir}`, `build_train {depot_x,depot_y,engine?,wagons?}`, `orders_depots {vehicle,x1,y1,x2,y2}`, `start {vehicle}`, `vehicles`. Replies over 1400 bytes arrive as `{"id","chunk","of","data"}` parts; `ottd_core.admin` reassembles them.
+GameScript commands (`ottd gs`): `ping`, `company_set {company}`, `build_rail {x1,y1,x2,y2}`, `build_depot {x,y,dir}`, `build_train {depot_x,depot_y,engine?,wagons?}`, `orders_depots {vehicle,x1,y1,x2,y2}`, `start {vehicle}`, `vehicles`, `build_layout {origin_x,origin_y,layout}` (reply `{built,failed:[{what,x,y,error}]}`), `sample {vehicles:[ids],ticks:N}` (reply `{vehicles:[{id,n,min,max,avg,stops,drops:[{tile_x,tile_y,from,to}]}]}`). The CLI splits a large layout into several `build_layout` requests (about 1200 bytes each, tracks then bridges then signals), since one admin packet cannot carry a big layout. Replies over 1400 bytes arrive as `{"id","chunk","of","data"}` parts; `ottd_core.admin` reassembles them.
+
+## Layout JSON
+
+Mirrors `JunctionLayout` in `src/junction_layout.h`. Coordinates are relative to the layout's north corner. Fixture: `layouts/test-1a.json` (`MakeTestJunctionLayout`).
+
+```json
+{"size":[8,6],
+ "tracks":[{"x":0,"y":2,"bits":["X"]}],
+ "bridges":[{"start":[4,0],"end":[4,4]}],
+ "signals":[{"x":1,"y":2,"facing":"X_SW","type":"block"}]}
+```
+
+- Track names: `X`, `Y`, `Upper`, `Lower`, `Left`, `Right`.
+- `facing`: an OpenTTD trackdir, `X_NE`, `Y_SE`, `Upper_E`, `Lower_E`, `Left_S`, `Right_S`, `X_SW`, `Y_NW`, `Upper_W`, `Lower_W`, `Left_N`, `Right_N`. A train travelling along `facing` sees the signal (`SignalAlongTrackdir`). Every signal is one-way, in that direction.
+- `type`: `block`, `entry`, `exit`, `combo`, `path`, `path_oneway`.
+- Signals are placed via `ScriptRail.BuildSignal(tile, front, type)`, where `front` is the neighbour the train comes from. The GS refuses (and reports) a signal whose track is not the first present track of that front row, and checks after building that the engine reads back the same one-way signal.
+
+## Saves
+
+`ottd rcon "save NAME"` writes `<run dir>/save/NAME.sav`. Resume with `ottd start --save <run dir>/save/NAME.sav`; the GameScript restarts with the game (ping answers), company 0 still exists, so run `ottd company --id 0` (not plain `ottd company`).
+
+## Flat ground
+
+New games are generated flat by the `openttd.cfg` that `start` writes: `difficulty.terrain_type = 5` (Custom) with `game_creation.custom_terrain_type = 1` (peak height 1), `tgen_smoothness = 0` (very smooth), `amount_of_rivers = 0`, `variety = 0`, `difficulty.quantity_sea_lakes = 4` (custom) with `custom_sea_level = 1` (1 percent, the minimum), `water_borders = 0`, `water_border_presets = 0`. All land is then height 1 and sloped tiles occur only on coasts. Seed 3 (the default): the only sloped tiles are the outer map-edge ring and 6 tiles at (61..62, 58..62). Another `OTTD_RIG_SEED` is not guaranteed flat; settings cannot rule out a coast.
 
 ## Layout
 

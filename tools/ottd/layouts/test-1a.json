@@ -1,0 +1,6 @@
+{"size":[8,6],
+ "tracks":[{"x":0,"y":2,"bits":["X"]},{"x":1,"y":2,"bits":["X"]},{"x":2,"y":2,"bits":["X"]},{"x":3,"y":2,"bits":["X"]},
+           {"x":4,"y":2,"bits":["X"]},{"x":5,"y":2,"bits":["X"]},{"x":6,"y":2,"bits":["X"]},{"x":7,"y":2,"bits":["X"]},
+           {"x":4,"y":5,"bits":["Y"]}],
+ "bridges":[{"start":[4,0],"end":[4,4]}],
+ "signals":[{"x":1,"y":2,"facing":"X_SW","type":"block"},{"x":6,"y":2,"facing":"X_NE","type":"block"}]}

@@ -83,7 +83,11 @@ def cmd_company(a):
     adm = connect()
     try:
         cs = companies(adm)
-        if not cs:
+        if a.id is not None:
+            if a.id not in [c[0] for c in cs]:
+                raise Fail("no company %d (have: %s)" % (a.id, ",".join(str(c[0]) for c in cs) or "none"))
+            cs = [c for c in cs if c[0] == a.id]
+        elif not cs:
             adm.rcon("start_ai %s" % S.AI_NAME)
             for _ in range(40):
                 time.sleep(0.25)
@@ -127,6 +131,52 @@ def cmd_go(a):
     print("vehicle %d started" % a.vehicle)
 
 
+def layout_batches(layout, limit=1200):
+    """Split a layout into pieces small enough for one admin packet, keeping build order:
+    all tracks, then all bridges, then all signals."""
+    def size(l):
+        return len(json.dumps(l, separators=(",", ":")))
+    out = []
+    for key in ("tracks", "bridges", "signals"):
+        cur = []
+        for item in layout.get(key, []):
+            if cur and size({key: cur + [item]}) > limit:
+                out.append({"size": layout.get("size"), key: cur})
+                cur = []
+            cur.append(item)
+        if cur:
+            out.append({"size": layout.get("size"), key: cur})
+    return out
+
+
+def cmd_build_layout(a):
+    with open(a.file) as f:
+        layout = json.load(f)
+    adm = connect()
+    built, failed = 0, []
+    try:
+        for part in layout_batches(layout):
+            r = gs(adm, {"cmd": "build_layout", "origin_x": a.x, "origin_y": a.y, "layout": part}, timeout=600)
+            built += r["built"]
+            failed += r["failed"]
+    finally:
+        adm.close()
+    print("built=%d failed=%d" % (built, len(failed)))
+    for f in failed:
+        print("  %s at %d,%d: %s" % (f["what"], f["x"], f["y"], f["error"]))
+    if failed:
+        sys.exit(1)
+
+
+def cmd_sample(a):
+    r = one_shot({"cmd": "sample", "vehicles": a.vehicles, "ticks": a.ticks}, timeout=60 + a.ticks)
+    for v in r["vehicles"]:
+        print("vehicle %d: n=%d speed min=%d max=%d avg=%d km/h stops=%d drops=%d" % (
+            v["id"], v["n"], v["min"], v["max"], v["avg"], v["stops"], len(v["drops"])))
+        for d in v["drops"]:
+            print("  drop at %d,%d: %d -> %d km/h" % (d["tile_x"], d["tile_y"], d["from"], d["to"]))
+
+
 def cmd_vehicles(a):
     for l in F.vehicles(one_shot({"cmd": "vehicles"})):
         print(l)
@@ -168,7 +218,9 @@ def main():
     add("status", cmd_status)
     add("rcon", cmd_rcon, ("command", {}))
     add("gs", cmd_gs, ("json", {}))
-    add("company", cmd_company)
+    add("company", cmd_company, ("--id", i))
+    add("build-layout", cmd_build_layout, ("file", {}), ("x", i), ("y", i))
+    add("sample", cmd_sample, ("vehicles", {"type": int, "nargs": "+"}), ("--ticks", {"type": int, "required": True}))
     add("build-line", cmd_build_line, ("x1", i), ("y1", i), ("x2", i), ("y2", i))
     add("depot", cmd_depot, ("x", i), ("y", i), ("dir", {"help": "NE|SE|SW|NW: direction the entrance faces (NE x-1, SE y+1, SW x+1, NW y-1)"}))
     add("train", cmd_train, ("depot_x", i), ("depot_y", i), ("--engine", i), ("--wagons", {"type": int, "default": 0}))

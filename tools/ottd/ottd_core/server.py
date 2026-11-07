@@ -20,14 +20,21 @@ ini_version = 8
 server_admin_port = %(port)d
 allow_insecure_admin_login = true
 [difficulty]
-terrain_type = 0
+terrain_type = 5
 number_towns = 0
 industry_density = 0
 vehicle_breakdowns = 0
-quantity_sea_lakes = 0
+quantity_sea_lakes = 4
 [game_creation]
 map_x = 6
 map_y = 6
+custom_terrain_type = 1
+custom_sea_level = 1
+water_borders = 0
+water_border_presets = 0
+tgen_smoothness = 0
+amount_of_rivers = 0
+variety = 0
 [ai]
 ai_in_multiplayer = true
 [game_scripts]

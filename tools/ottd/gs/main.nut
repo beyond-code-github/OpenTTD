@@ -158,6 +158,8 @@ class JunctionTestGS extends GSController {
 		else if (cmd == "build_train") this.CmdBuildTrain(id, msg);
 		else if (cmd == "orders_depots") this.CmdOrders(id, msg);
 		else if (cmd == "start") this.CmdStart(id, msg);
+		else if (cmd == "build_layout") this.CmdBuildLayout(id, msg);
+		else if (cmd == "sample") this.CmdSample(id, msg);
 		else this.Err(id, "unknown cmd");
 	}
 
@@ -275,5 +277,175 @@ class JunctionTestGS extends GSController {
 			});
 		}
 		this.Reply(id, { date = GSDate.GetCurrentDate(), vehicles = out });
+	}
+
+	/* ---- layouts ---- */
+	/* Track names -> ScriptRail.RailTrack. */
+	function TrackByName(n)
+	{
+		switch (n) {
+			case "X": return GSRail.RAILTRACK_NE_SW;
+			case "Y": return GSRail.RAILTRACK_NW_SE;
+			case "Upper": return GSRail.RAILTRACK_NW_NE;
+			case "Lower": return GSRail.RAILTRACK_SW_SE;
+			case "Left": return GSRail.RAILTRACK_NW_SW;
+			case "Right": return GSRail.RAILTRACK_NE_SE;
+		}
+		return null;
+	}
+
+	/* Copy of _possible_trackdirs in src/script/api/script_rail.cpp, flattened: facing trackdir ->
+	 * [front dx, front dy, track]. The front tile is the neighbour the train comes from, i.e. the side the signal is seen from. */
+	function FacingMap(f)
+	{
+		switch (f) {
+			case "Upper_E": return [0, -1, GSRail.RAILTRACK_NW_NE];
+			case "Y_SE":    return [0, -1, GSRail.RAILTRACK_NW_SE];
+			case "Left_S":  return [0, -1, GSRail.RAILTRACK_NW_SW];
+			case "Right_S": return [-1, 0, GSRail.RAILTRACK_NE_SE];
+			case "X_SW":    return [-1, 0, GSRail.RAILTRACK_NE_SW];
+			case "Upper_W": return [-1, 0, GSRail.RAILTRACK_NW_NE];
+			case "Lower_E": return [1, 0, GSRail.RAILTRACK_SW_SE];
+			case "X_NE":    return [1, 0, GSRail.RAILTRACK_NE_SW];
+			case "Left_N":  return [1, 0, GSRail.RAILTRACK_NW_SW];
+			case "Right_N": return [0, 1, GSRail.RAILTRACK_NE_SE];
+			case "Y_NW":    return [0, 1, GSRail.RAILTRACK_NW_SE];
+			case "Lower_W": return [0, 1, GSRail.RAILTRACK_SW_SE];
+		}
+		return null;
+	}
+
+	/* Order in which BuildSignal tries tracks for a given front offset (row of _possible_trackdirs). */
+	function FrontRow(dx, dy)
+	{
+		if (dy == -1) return [GSRail.RAILTRACK_NW_NE, GSRail.RAILTRACK_NW_SE, GSRail.RAILTRACK_NW_SW];
+		if (dx == -1) return [GSRail.RAILTRACK_NE_SE, GSRail.RAILTRACK_NE_SW, GSRail.RAILTRACK_NW_NE];
+		if (dx == 1) return [GSRail.RAILTRACK_SW_SE, GSRail.RAILTRACK_NE_SW, GSRail.RAILTRACK_NW_SW];
+		return [GSRail.RAILTRACK_NE_SE, GSRail.RAILTRACK_NW_SE, GSRail.RAILTRACK_SW_SE];
+	}
+
+	function SignalByName(n)
+	{
+		switch (n) {
+			case "block": return GSRail.SIGNALTYPE_NORMAL;
+			case "entry": return GSRail.SIGNALTYPE_ENTRY;
+			case "exit": return GSRail.SIGNALTYPE_EXIT;
+			case "combo": return GSRail.SIGNALTYPE_COMBO;
+			case "path": return GSRail.SIGNALTYPE_PBS;
+			case "path_oneway": return GSRail.SIGNALTYPE_PBS_ONEWAY;
+		}
+		return null;
+	}
+
+	function FastestRailBridge(len)
+	{
+		local best = null, best_speed = -1;
+		foreach (b, _ in GSBridgeList_Length(len)) {
+			local sp = GSBridge.GetMaxSpeed(b);
+			if (sp > best_speed) { best_speed = sp; best = b; }
+		}
+		return best;
+	}
+
+	function CmdBuildLayout(id, msg)
+	{
+		if (!this.Need(msg, ["origin_x", "origin_y", "layout"], id)) return;
+		local ox = msg.origin_x, oy = msg.origin_y, lay = msg.layout;
+		if (this.SetRailType() == null) { this.Err(id, "no rail type available"); return; }
+		local built = 0, failed = [];
+		if ("tracks" in lay) {
+			foreach (t in lay.tracks) {
+				foreach (name in t.bits) {
+					local rt = this.TrackByName(name);
+					if (rt == null) { failed.append({ what = "track " + name, x = t.x, y = t.y, error = "unknown track name" }); continue; }
+					if (GSRail.BuildRailTrack(this.Tile(ox + t.x, oy + t.y), rt)) built++;
+					else failed.append({ what = "track " + name, x = t.x, y = t.y, error = GSError.GetLastErrorString() });
+				}
+			}
+		}
+		if ("bridges" in lay) {
+			foreach (b in lay.bridges) {
+				local sx = b.start[0], sy = b.start[1], ex = b.end[0], ey = b.end[1];
+				local len = abs(ex - sx) + abs(ey - sy) + 1;
+				local bt = this.FastestRailBridge(len);
+				if (bt == null) { failed.append({ what = "bridge", x = sx, y = sy, error = "no rail bridge type for length " + len }); continue; }
+				if (GSBridge.BuildBridge(GSVehicle.VT_RAIL, bt, this.Tile(ox + sx, oy + sy), this.Tile(ox + ex, oy + ey))) built++;
+				else failed.append({ what = "bridge", x = sx, y = sy, error = GSError.GetLastErrorString() });
+			}
+		}
+		if ("signals" in lay) {
+			foreach (s in lay.signals) {
+				local what = "signal " + s.facing + " " + s.type;
+				local fm = this.FacingMap(s.facing);
+				local st = this.SignalByName(s.type);
+				if (fm == null) { failed.append({ what = what, x = s.x, y = s.y, error = "unknown facing" }); continue; }
+				if (st == null) { failed.append({ what = what, x = s.x, y = s.y, error = "unknown signal type" }); continue; }
+				local tile = this.Tile(ox + s.x, oy + s.y);
+				local front = this.Tile(ox + s.x + fm[0], oy + s.y + fm[1]);
+				/* BuildSignal uses the first track of the front row that is on the tile; refuse if that is not ours */
+				local first = null;
+				foreach (rt in this.FrontRow(fm[0], fm[1])) {
+					if (GSRail.IsRailTile(tile) && (GSRail.GetRailTracks(tile) & rt) != 0) { first = rt; break; }
+				}
+				if (first != fm[2]) { failed.append({ what = what, x = s.x, y = s.y, error = "no such track on tile, or front tile ambiguous" }); continue; }
+				if (!GSRail.BuildSignal(tile, front, st)) {
+					failed.append({ what = what, x = s.x, y = s.y, error = GSError.GetLastErrorString() });
+					continue;
+				}
+				/* the engine must now show exactly a one-way signal on that facing */
+				if (GSRail.GetSignalType(tile, front) != st) {
+					failed.append({ what = what, x = s.x, y = s.y, error = "built signal reads back as type " + GSRail.GetSignalType(tile, front) });
+					continue;
+				}
+				built++;
+			}
+		}
+		this.Reply(id, { built = built, failed = failed });
+	}
+
+	/* ---- speed sampling ---- */
+	function CmdSample(id, msg)
+	{
+		if (!this.Need(msg, ["vehicles", "ticks"], id)) return;
+		foreach (v in msg.vehicles) {
+			if (!GSVehicle.IsValidVehicle(v)) { this.Err(id, "bad vehicle " + v); return; }
+		}
+		local n = msg.vehicles.len();
+		local st = [];
+		foreach (v in msg.vehicles) {
+			st.append({ v = v, min = 1 << 30, max = 0, sum = 0, n = 0, stops = 0, prev = -1, hist = [], drops = [], cur = null });
+		}
+		for (local i = 0; i < msg.ticks; i++) {
+			foreach (s in st) {
+				local sp = GSVehicle.GetCurrentSpeed(s.v);
+				local t = GSVehicle.GetLocation(s.v);
+				if (sp < s.min) s.min = sp;
+				if (sp > s.max) s.max = sp;
+				s.sum += sp;
+				s.n++;
+				if (sp == 0 && s.prev > 0) s.stops++;
+				/* drop: speed is 10 or more below the highest speed of the previous 8 ticks; consecutive ticks merge into one event */
+				local hi = 0;
+				foreach (h in s.hist) if (h > hi) hi = h;
+				if (s.hist.len() > 0 && hi - sp >= 10) {
+					if (s.cur == null) {
+						s.cur = { tile_x = GSMap.GetTileX(t), tile_y = GSMap.GetTileY(t), from = hi, to = sp };
+						s.drops.append(s.cur);
+					} else {
+						if (hi > s.cur.from) s.cur.from = hi;
+						if (sp < s.cur.to) s.cur.to = sp;
+					}
+				} else s.cur = null;
+				s.hist.append(sp);
+				if (s.hist.len() > 8) s.hist.remove(0);
+				s.prev = sp;
+			}
+			GSController.Sleep(1);
+		}
+		local out = [];
+		foreach (s in st) {
+			out.append({ id = s.v, n = s.n, min = s.n > 0 ? s.min : 0, max = s.max, avg = s.n > 0 ? s.sum / s.n : 0, stops = s.stops, drops = s.drops });
+		}
+		this.Reply(id, { vehicles = out });
 	}
 }
