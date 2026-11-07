@@ -500,3 +500,18 @@ TEST_CASE("JunctionLayout outer: plane rule with slopes")
 		CHECK(estimate.first_error == STR_ERROR_FLAT_LAND_REQUIRED);
 	}
 }
+
+TEST_CASE("JunctionLayoutToJson matches the rig layout format", "[junction]")
+{
+	CHECK(JunctionLayoutToJson(MakeTestJunctionLayout()) ==
+		"{\"size\":[8,6],\n\"tracks\":["
+		"\n{\"x\":0,\"y\":2,\"bits\":[\"X\"]},\n{\"x\":1,\"y\":2,\"bits\":[\"X\"]},"
+		"\n{\"x\":2,\"y\":2,\"bits\":[\"X\"]},\n{\"x\":3,\"y\":2,\"bits\":[\"X\"]},"
+		"\n{\"x\":4,\"y\":2,\"bits\":[\"X\"]},\n{\"x\":5,\"y\":2,\"bits\":[\"X\"]},"
+		"\n{\"x\":6,\"y\":2,\"bits\":[\"X\"]},\n{\"x\":7,\"y\":2,\"bits\":[\"X\"]},"
+		"\n{\"x\":4,\"y\":5,\"bits\":[\"Y\"]}],\n"
+		"\"bridges\":[{\"start\":[4,0],\"end\":[4,4]}],\n"
+		"\"signals\":["
+		"\n{\"x\":1,\"y\":2,\"facing\":\"X_SW\",\"type\":\"block\"},"
+		"\n{\"x\":6,\"y\":2,\"facing\":\"X_NE\",\"type\":\"block\"}]}\n");
+}

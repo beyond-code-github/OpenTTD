@@ -13,6 +13,7 @@
 #include "map_func.h"
 #include "direction_func.h"
 #include "track_func.h"
+#include "core/format.hpp"
 #include "table/strings.h"
 
 #include <algorithm>
@@ -148,6 +149,44 @@ TileIndexDiffC OrientJunctionOffset(TileIndexDiffC offset, TileIndexDiffC size, 
 		size = {size.y, size.x};
 	}
 	return offset;
+}
+
+/**
+ * The layout as the JSON object the test rig builds from.
+ * @param layout The layout.
+ * @return The JSON text, ending in "}\n".
+ */
+std::string JunctionLayoutToJson(const JunctionLayout &layout)
+{
+	static const char *track_names[] = {"X", "Y", "Upper", "Lower", "Left", "Right"};
+	static const char *td_names[] = {"X_NE", "Y_SE", "Upper_E", "Lower_E", "Left_S", "Right_S", "", "", "X_SW", "Y_NW", "Upper_W", "Lower_W", "Left_N", "Right_N"};
+	static const char *type_names[] = {"block", "entry", "exit", "combo", "path", "path_oneway"};
+	std::string out = fmt::format("{{\"size\":[{},{}],\n\"tracks\":[", layout.size.x, layout.size.y);
+	bool first = true;
+	for (const auto &jt : layout.tracks) {
+		out += fmt::format("{}\n{{\"x\":{},\"y\":{},\"bits\":[", first ? "" : ",", jt.offset.x, jt.offset.y);
+		bool fb = true;
+		for (Track t : jt.tracks) {
+			out += fmt::format("{}\"{}\"", fb ? "" : ",", track_names[to_underlying(t)]);
+			fb = false;
+		}
+		out += "]}";
+		first = false;
+	}
+	out += "],\n\"bridges\":[";
+	first = true;
+	for (const auto &b : layout.bridges) {
+		out += fmt::format("{}{{\"start\":[{},{}],\"end\":[{},{}]}}", first ? "" : ",", b.start.x, b.start.y, b.end.x, b.end.y);
+		first = false;
+	}
+	out += "],\n\"signals\":[";
+	first = true;
+	for (const auto &sg : layout.signals) {
+		out += fmt::format("{}\n{{\"x\":{},\"y\":{},\"facing\":\"{}\",\"type\":\"{}\"}}", first ? "" : ",", sg.offset.x, sg.offset.y, td_names[to_underlying(sg.facing)], type_names[to_underlying(sg.type)]);
+		first = false;
+	}
+	out += "]}\n";
+	return out;
 }
 
 /**

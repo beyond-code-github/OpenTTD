@@ -46,6 +46,9 @@
 #include "3rdparty/fmt/chrono.h"
 #include "company_cmd.h"
 #include "misc_cmd.h"
+#include "junction_game.h"
+#include "company_base.h"
+#include <fstream>
 
 #if defined(WITH_ZLIB)
 #include "network/network_content.h"
@@ -307,6 +310,65 @@ static bool ConResetTile(std::span<std::string_view> argv)
 	}
 
 	return false;
+}
+
+/**
+ * Generate a junction at a tile and write the oriented layout as JSON, for the test rig.
+ * @copydoc IConsoleCmdProc
+ */
+static bool ConJunctionExport(std::span<std::string_view> argv)
+{
+	if (argv.empty()) {
+		IConsolePrint(CC_HELP, "Generate a junction at a tile and write it as JSON. Usage: 'junction_export <tile> <rotation 0-3> <mirror 0|1> <path> [ml] [branch] [tl]'.");
+		IConsolePrint(CC_HELP, "The notations default to L_R and the train length to 4.");
+		return true;
+	}
+
+	if (argv.size() < 5 || argv.size() > 8) return false;
+	auto tile_arg = ParseInteger(argv[1], 0);
+	auto rot_arg = ParseInteger(argv[2], 10);
+	auto mirror_arg = ParseInteger(argv[3], 10);
+	auto tl_arg = argv.size() > 7 ? ParseInteger(argv[7], 10) : std::optional<uint32_t>{4};
+	if (!tile_arg.has_value() || !rot_arg.has_value() || !mirror_arg.has_value() || !tl_arg.has_value()) return false;
+	if (!IsValidTile(*tile_arg) || *rot_arg > 3 || *mirror_arg > 1 || *tl_arg == 0 || *tl_arg > 255) return false;
+
+	if (!Company::IsValidID(CompanyID{0})) {
+		IConsolePrint(CC_ERROR, "junction_export needs company 0.");
+		return true;
+	}
+
+	const JunctionNotation ml = ParseJunctionNotation(argv.size() > 5 ? argv[5] : "L_R");
+	const JunctionNotation branch = ParseJunctionNotation(argv.size() > 6 ? argv[6] : "L_R");
+	if (ml.error != JunctionNotationError::None || branch.error != JunctionNotationError::None) {
+		IConsolePrint(CC_ERROR, "Invalid or multi-lane junction notation.");
+		return true;
+	}
+
+	Backup<CompanyID> cur_company(_current_company, CompanyID{0});
+	const JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, ml.gap, branch.gap, static_cast<uint8_t>(*tl_arg));
+
+	const TileIndex tile{*tile_arg};
+	const bool mirrored = (*mirror_arg != 0) != (_settings_game.vehicle.road_side == RoadVehicleDrivingSide::Left);
+	JunctionTerrain terrain = MakeJunctionTerrain(tile, static_cast<uint8_t>(*rot_arg), mirrored);
+	cur_company.Restore();
+	const JunctionGenerateResult result = GenerateJunction(spec, &terrain);
+
+	std::ofstream out{std::string{argv[4]}};
+	if (!result.layout.has_value()) {
+		static const char *const names[] = {"None", "InvalidNotation", "MultiLane", "NoLayout", "NeedsMlGap"};
+		const char *name = names[to_underlying(result.error)];
+		out << "{\"error\":\"" << name << "\"}\n";
+		IConsolePrint(CC_WARNING, "junction_export error {}", name);
+		return true;
+	}
+
+	const JunctionLayout oriented = ApplyJunctionOrientation(*result.layout, static_cast<uint8_t>(*rot_arg), mirrored);
+	const TileIndexDiffC offset = OrientJunctionOffset(result.hub, result.layout->size, static_cast<uint8_t>(*rot_arg), mirrored);
+	const int ox = static_cast<int>(TileX(tile)) - offset.x;
+	const int oy = static_cast<int>(TileY(tile)) - offset.y;
+	out << "{\"origin\":[" << ox << "," << oy << "]," << JunctionLayoutToJson(oriented).substr(1);
+	IConsolePrint(CC_DEFAULT, "junction_export ok origin={},{} size={}x{}", ox, oy, oriented.size.x, oriented.size.y);
+	return true;
 }
 #endif /* _DEBUG */
 
@@ -2759,6 +2821,7 @@ static bool ConNewGRFProfile(std::span<std::string_view> argv)
 static void IConsoleDebugLibRegister()
 {
 	IConsole::CmdRegister("resettile",        ConResetTile);
+	IConsole::CmdRegister("junction_export",  ConJunctionExport);
 	IConsole::AliasRegister("dbg_echo",       "echo %A; echo %B");
 	IConsole::AliasRegister("dbg_echo2",      "echo %!");
 }

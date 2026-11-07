@@ -21,22 +21,22 @@ server_admin_port = %(port)d
 allow_insecure_admin_login = true
 [difficulty]
 terrain_type = 5
-number_towns = 4
+number_towns = %(towns)d
 industry_density = 0
 vehicle_breakdowns = 0
 max_loan = 2000000000
-quantity_sea_lakes = 4
+quantity_sea_lakes = %(lakes)d
 [game_creation]
 map_x = 7
 map_y = 7
 custom_town_number = 1
-custom_terrain_type = 1
+custom_terrain_type = %(terrain)d
 custom_sea_level = 1
 water_borders = 0
 water_border_presets = 0
-tgen_smoothness = 0
+tgen_smoothness = %(smooth)d
 amount_of_rivers = 0
-variety = 0
+variety = %(variety)d
 [economy]
 larger_towns = 0
 [ai]
@@ -49,6 +49,15 @@ SECRETS = "[network]\nadmin_password = %s\n"
 
 def _p(name):
     return os.path.join(RUNDIR, name)
+
+
+def map_size():
+    """Map width in tiles, from the written config (map_x is a power of two)."""
+    with open(_p("openttd.cfg")) as f:
+        for line in f:
+            if line.strip().startswith("map_x"):
+                return 1 << int(line.split("=")[1])
+    raise RuntimeError("no map_x in %s" % _p("openttd.cfg"))
 
 
 def pid():
@@ -75,14 +84,15 @@ def _install(src, dst):
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__"))
 
 
-def start(save=None, scenario=None, timeout=60):
+def start(save=None, scenario=None, timeout=60, hilly=False):
     if pid():
         raise RuntimeError("server already running (pid %d)" % pid())
     os.makedirs(RUNDIR, exist_ok=True)
     _install(os.path.join(TOOLS, "gs"), os.path.join(USERDATA, "game", GS_NAME))
     _install(os.path.join(TOOLS, "ai", AI_NAME), os.path.join(USERDATA, "ai", AI_NAME))
     with open(_p("openttd.cfg"), "w") as f:
-        f.write(CFG % dict(port=PORT, gs=GS_NAME))
+        terrain = dict(terrain=3, variety=2, smooth=1, lakes=2, towns=4) if hilly else dict(terrain=1, variety=0, smooth=0, lakes=4, towns=4)
+        f.write(CFG % dict(port=PORT, gs=GS_NAME, **terrain))
     with open(_p("secrets.cfg"), "w") as f:
         f.write(SECRETS % PASSWORD)
     args = [BINARY, "-D", "127.0.0.1", "-c", _p("openttd.cfg"), "-g"]

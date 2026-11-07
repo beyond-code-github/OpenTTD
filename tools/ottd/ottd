@@ -42,8 +42,9 @@ def companies(adm):
 
 
 def cmd_start(a):
-    n = S.start(save=a.save, scenario=a.scenario)
+    n = S.start(save=a.save, scenario=a.scenario, hilly=a.hilly)
     print("started pid=%d rundir=%s" % (n, S.RUNDIR))
+    print("join: build/openttd -n 127.0.0.1")
 
 
 def cmd_stop(a):
@@ -176,6 +177,61 @@ def cmd_build_layout(a):
         sys.exit(1)
 
 
+def junction_here(x, y, rot=0, mirror=False, ml="L_R", branch="L_R", tl=4):
+    """Generate at tile x,y via rcon junction_export and build it. Returns (status, text); status ok|error|failed."""
+    tile = y * S.map_size() + x
+    path = os.path.join(S.RUNDIR, "junction_export.json")
+    if os.path.exists(path):
+        os.remove(path)
+    adm = connect()
+    try:
+        out = adm.rcon("junction_export %d %d %d %s %s %s %d" % (tile, rot, 1 if mirror else 0, path, ml, branch, tl))
+        if not os.path.exists(path):
+            raise Fail("junction_export wrote nothing: %s" % " | ".join(out))
+        with open(path) as f:
+            layout = json.load(f)
+        if "error" in layout:
+            return "error", layout["error"]
+        ox, oy = layout["origin"]
+        built, failed = 0, []
+        for part in layout_batches(layout):
+            r = gs(adm, {"cmd": "build_layout", "origin_x": ox, "origin_y": oy, "layout": part}, timeout=600)
+            built += r["built"]
+            failed += r["failed"]
+    finally:
+        adm.close()
+    text = "built=%d failed=%d" % (built, len(failed))
+    for f in failed:
+        text += "\n  %s at %d,%d: %s" % (f["what"], f["x"], f["y"], f["error"])
+    return ("failed" if failed else "ok"), text
+
+
+def cmd_junction_here(a):
+    st, text = junction_here(a.x, a.y, a.rot, a.mirror, a.ml, a.branch, a.tl)
+    print(text if st != "error" else "error %s" % text)
+    sys.exit({"ok": 0, "error": 3, "failed": 1}[st])
+
+
+def cmd_junction_scan(a):
+    import random
+    rng = random.Random(a.seed)
+    n = S.map_size()
+    tot = dict(generated=0, nolayout=0, ok=0, failed=0)
+    for k in range(a.count):
+        x, y, rot = rng.randrange(20, n - 20), rng.randrange(20, n - 20), rng.randrange(4)
+        try:
+            st, text = junction_here(x, y, rot)
+        except Exception as e:
+            st, text = "failed", "exception %s: %s" % (type(e).__name__, e)
+        if st == "error":
+            tot["nolayout"] += 1
+        else:
+            tot["generated"] += 1
+            tot["ok" if st == "ok" else "failed"] += 1
+        print("try %d tile=%d,%d rot=%d: %s" % (k + 1, x, y, rot, text))
+    print("generated=%d no_layout=%d built_ok=%d build_failures=%d" % (tot["generated"], tot["nolayout"], tot["ok"], tot["failed"]))
+
+
 def cmd_sample(a):
     r = one_shot({"cmd": "sample", "vehicles": a.vehicles, "ticks": a.ticks}, timeout=60 + a.ticks)
     for v in r["vehicles"]:
@@ -290,7 +346,7 @@ def main():
         p.set_defaults(fn=fn)
 
     i = {"type": int}
-    add("start", cmd_start, ("--save", {}), ("--scenario", {}))
+    add("start", cmd_start, ("--save", {}), ("--scenario", {}), ("--hilly", {"action": "store_true"}))
     add("stop", cmd_stop)
     add("status", cmd_status)
     add("rcon", cmd_rcon, ("command", {}))
@@ -298,6 +354,8 @@ def main():
     add("company", cmd_company, ("--id", i))
     add("build-layout", cmd_build_layout, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}))
     add("junction-check", cmd_junction_check, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 6}), ("--ticks", {"type": int, "default": 7400}))
+    add("junction-here", cmd_junction_here, ("x", i), ("y", i), ("--rot", {"type": int, "default": 0}), ("--mirror", {"action": "store_true"}), ("--ml", {"default": "L_R"}), ("--branch", {"default": "L_R"}), ("--tl", {"type": int, "default": 4}))
+    add("junction-scan", cmd_junction_scan, ("--count", {"type": int, "required": True}), ("--seed", {"type": int, "default": 1}))
     add("sample", cmd_sample, ("vehicles", {"type": int, "nargs": "+"}), ("--ticks", {"type": int, "required": True}))
     add("build-line", cmd_build_line, ("x1", i), ("y1", i), ("x2", i), ("y2", i))
     add("depot", cmd_depot, ("x", i), ("y", i), ("dir", {"help": "NE|SE|SW|NW: direction the entrance faces (NE x-1, SE y+1, SW x+1, NW y-1)"}))

@@ -65,35 +65,13 @@ struct CircuitDepot { int x; int y; const char *dir; };
 
 static void WriteLayoutJson(const JunctionLayout &layout, const char *path, const std::vector<CircuitDepot> &depots = {})
 {
-	static const char *track_names[] = {"X", "Y", "Upper", "Lower", "Left", "Right"};
-	static const char *td_names[] = {"X_NE", "Y_SE", "Upper_E", "Lower_E", "Left_S", "Right_S", "", "", "X_SW", "Y_NW", "Upper_W", "Lower_W", "Left_N", "Right_N"};
-	static const char *type_names[] = {"block", "entry", "exit", "combo", "path", "path_oneway"};
+	std::string json = JunctionLayoutToJson(layout);
 	std::ofstream out(path);
-	out << "{\"size\":[" << layout.size.x << "," << layout.size.y << "],\n\"tracks\":[";
-	bool first = true;
-	for (const auto &jt : layout.tracks) {
-		out << (first ? "" : ",") << "\n{\"x\":" << jt.offset.x << ",\"y\":" << jt.offset.y << ",\"bits\":[";
-		bool fb = true;
-		for (Track t : jt.tracks) { out << (fb ? "" : ",") << "\"" << track_names[to_underlying(t)] << "\""; fb = false; }
-		out << "]}";
-		first = false;
-	}
-	out << "],\n\"bridges\":[";
-	first = true;
-	for (const auto &b : layout.bridges) {
-		out << (first ? "" : ",") << "{\"start\":[" << b.start.x << "," << b.start.y << "],\"end\":[" << b.end.x << "," << b.end.y << "]}";
-		first = false;
-	}
-	out << "],\n\"signals\":[";
-	first = true;
-	for (const auto &sg : layout.signals) {
-		out << (first ? "" : ",") << "\n{\"x\":" << sg.offset.x << ",\"y\":" << sg.offset.y << ",\"facing\":\"" << td_names[to_underlying(sg.facing)] << "\",\"type\":\"" << type_names[to_underlying(sg.type)] << "\"}";
-		first = false;
-	}
-	out << "]";
+	json.resize(json.size() - 2); /* Drop the closing "}\n" so depots can follow. */
+	out << json;
 	if (!depots.empty()) {
 		out << ",\n\"depots\":[";
-		first = true;
+		bool first = true;
 		for (const auto &d : depots) {
 			out << (first ? "" : ",") << "{\"x\":" << d.x << ",\"y\":" << d.y << ",\"dir\":\"" << d.dir << "\"}";
 			first = false;

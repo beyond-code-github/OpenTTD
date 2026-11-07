@@ -19,6 +19,7 @@
 #include "tile_type.h"
 
 #include <optional>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -106,6 +107,8 @@ Trackdir TransformTrackdir(Trackdir trackdir, JunctionTransform transform);
 JunctionLayout ApplyJunctionOrientation(const JunctionLayout &layout, uint8_t rotation, bool mirrored);
 /** Where a layout offset lands after ApplyJunctionOrientation(layout of the given size, rotation, mirrored). */
 TileIndexDiffC OrientJunctionOffset(TileIndexDiffC offset, TileIndexDiffC size, uint8_t rotation, bool mirrored);
+/** The layout as the JSON object the test rig builds from (size, tracks, bridges, signals), ending in "}\n". */
+std::string JunctionLayoutToJson(const JunctionLayout &layout);
 /** The map offset of a vector in the canonical frame, under an orientation: mirror (dx,dy)->(-dx,dy) if set, then rotation times (dx,dy)->(dy,-dx). */
 TileIndexDiffC OrientJunctionVector(TileIndexDiffC v, uint8_t rotation, bool mirrored);
 JunctionLayout MakeTestJunctionLayout();
