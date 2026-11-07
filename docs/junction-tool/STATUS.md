@@ -67,7 +67,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 | D1 router | 3f0a2dc040 | `FindJunctionRoute` (A*, F/L/R/B, curve grammar, crossable tiles, start/goal sets). Zero turn cost gives wiggly detours on ties, so D3b adds a turn tie-break. |
 | D2 signal pass | de7bcb3f47 | `PlaceJunctionSignals`, phases 0–4. The doubled reference's bare routes come out clean. Two rulings: reserve the lane-merge-block prio join before the required signals; signal a lane-only one-tile block (three signals in a row on lane B; to show the engineer, since more joiner slack would avoid it). 205 cases. |
 | D3a candidate | e77b76daaf | `BuildJunctionCandidate`. After four agent stops, I settled the skeleton by experiment (D90) and finished the step myself. 4/128 candidates clean for the test spec; most others have 1–4 violations. Hidden `[.gen]` sweep test in `junction_design.cpp` prints each candidate's count and the best ASCII. 208 cases. |
-| D3b generator | — | |
+| D3b generator | 47938aacb9 | `GenerateJunction`: sweep, early stop, score (cost, open rectangle, area). The outer test is green with no `[!mayfail]`. 210 cases, suite 23 s. About 5 s per call in Debug (D62's 200 ms needs Release measurement plus speedups). `[.gensweep]`: 16/54 specs clean. ml_gap 0 never; TL6 mostly fails; TL4 g1 only with b0/b1. Rig exports: `tools/ottd/layouts/generated-LR-TL4*.json`. |
 | E game side | — | |
 | F manual | — | engineer |
 
@@ -89,13 +89,15 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 
 **Autonomous queue (engineer, 2026-11-08: "I don't mind what order, as long as we have everything in the queue for autonomous running"; order D89).** Each item is one agent step through the agent-orchestration skill. Make reversible calls, record them in DECISIONS, and batch questions for the engineer.
 
-2. **D3b `GenerateJunction`:**
+2. **D3b `GenerateJunction`** (done):
    - sweep height, crossing cost and joiner slack;
    - score by cost, then open space (D76), with a turn tie-break against wiggles;
    - early stop, a candidate cap and a time budget (D62; measured, so Debug may need a test-only budget);
    - `NoLayout` naming the most-failed rule group;
    - the outer test green, with `[!mayfail]` removed;
    - the sweep test (TL 3–6, SD 2–4, gaps 0–3 on both lines, both road sides): each case either rule-clean or a named error.
+2a. **D3d robustness:** make the failing `[.gensweep]` specs clean or give a named error. First get a per-spec histogram of the failing step and violations (the `[.gen]` style). Likely levers: ml_gap 0 (no gap row; the E→S fence and lane geometry assume one), TL6 (prio coverage and bays need more room, so the height or slack range scales with TL), and wide branch gaps.
+2b. **D3c: early branch swap (D91)** as a sweep option. Compare clean counts, sizes and scores against no swap on the test spec and in the `[.gensweep]` table.
 3. **Rig: a generated layout in game.** The design harness, or a small test-binary mode, exports `GenerateJunction` output as rig JSON. Give the IdleAI company more money. Build it, and announce it to the engineer (rig-watch memory), but do not wait for them to join.
 4. **E, game side** (PLAN-1b §7): the Junction window calls the generator.
    - notation and TL in the dialogue, static settings in Settings (D64), the signal-type setting (D68);
