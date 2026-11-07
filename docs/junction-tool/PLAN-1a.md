@@ -175,7 +175,7 @@ The ghost reuses the game's own sprite code. Upstream files only get small seams
 1. **Ghost palette override** (`viewport.cpp`, `viewport_func.h`).
    - Add `void SetViewportGhostPalette(PaletteID pal)`, where `PAL_NONE` turns it off.
    - While it's set, `DrawGroundSpriteAt`, `AddSortableSpriteToDraw` and `AddChildSpriteScreen` set `PALETTE_MODIFIER_TRANSPARENT` on the image and replace the palette with the override.
-   - A ghost palette is `PALETTE_TO_TRANSPARENT` when valid, or `PALETTE_TO_STRUCT_RED` when invalid, which gives a transparent remap (`gfx.cpp:1007-1010`).
+   - A valid ghost uses no override, so it's drawn opaque in normal colours (D44, revising D13); an invalid ghost uses `PALETTE_TO_STRUCT_RED`, which gives a transparent remap (`gfx.cpp:1007-1010`).
    - This means no drawing function needs a palette parameter.
 2. **Track** (`rail_cmd.cpp`).
    - `DrawTrackBits` (`:2289`) and `DrawTrackBitsOverlay` (`:2101`) stop reading the rail type, ground type and reservation from the map. Instead they take `RailType rt, RailGroundType rgt, TrackBits reserved` as extra parameters, and their one caller passes the map values.
