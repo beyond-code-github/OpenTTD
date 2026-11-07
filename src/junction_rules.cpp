@@ -666,6 +666,22 @@ std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx)
 			if (index > 0) require(nearest(index - 1, -1), is_split ? "no signal before a split" : "no signal before a merge");
 			if (!is_split) require(nearest(index + 1, 1), "no signal after a merge");
 		}
+
+		/* Every bridge is its own block: a signal before the near head and after the far head. */
+		for (size_t i = 0; i < path.pieces.size(); i++) {
+			if (!path.pieces[i].on_bridge || (i > 0 && path.pieces[i - 1].on_bridge)) continue;
+			size_t last = i;
+			while (last + 1 < path.pieces.size() && path.pieces[last + 1].on_bridge) last++;
+			if (i > 0) {
+				const JunctionPiece *before = nearest(i - 1, -1);
+				if (before != nullptr && !IsSignalledPiece(layout, *before)) AddViolation(out, JunctionRule::Signals, path.pieces[i].tile, "no signal before a bridge");
+			}
+			if (last + 1 < path.pieces.size()) {
+				const JunctionPiece *after = nearest(last + 1, 1);
+				if (after != nullptr && !IsSignalledPiece(layout, *after)) AddViolation(out, JunctionRule::Signals, path.pieces[last].tile, "no signal after a bridge");
+			}
+			i = last;
+		}
 	}
 
 	/* 4. Spacing. */
@@ -1019,11 +1035,16 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 						TrackBits join_tracks{axis, h1};
 						if (key == tile_key && joiner != nullptr) join_tracks.Set(TrackdirToTrack(joiner->pieces[joiner_index].trackdir));
 						if (TracksAt(layout, to_tile(key)) != join_tracks || unused[key] != TrackBits{h1}) continue;
-						if (!c_tiles.contains({other.x, other.y}) || TracksAt(layout, other) != TrackBits{axis, h2}) continue;
+						/* On the merge tile nothing continues downstream, so the row tile holds h2 alone; the axis would be a stub. */
+						const bool merge_join = key == tile_key;
+						const TrackBits row_tracks = merge_join ? TrackBits{h2} : TrackBits{axis, h2};
+						const TrackBits other_tracks = TracksAt(layout, other);
+						if (!c_tiles.contains({other.x, other.y}) || !(other_tracks == row_tracks || (merge_join && other_tracks == TrackBits{axis, h2}))) continue;
+						if (merge_join && other_tracks != row_tracks) AddViolation(out, JunctionRule::Prio, other, "stub on the merge-tile join");
 						is_join = true;
 						join_keys.push_back(key);
 						join_info[key] = {h1, exit_edge};
-						join_rows[{other.x, other.y}] = TrackBits{axis, h2};
+						join_rows[{other.x, other.y}] = other_tracks;
 					}
 				}
 				if (is_join) continue;

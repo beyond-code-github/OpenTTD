@@ -519,6 +519,33 @@ TEST_CASE("CheckSignals: passing fixtures", "[junction][rules]")
 	CHECK(CheckSignals(merge_ctx).empty());
 }
 
+TEST_CASE("CheckSignals: signals at bridges", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	/* A line on row 0 with a bridge from x = 3 to x = 5; the end port is at x = 9. */
+	auto make = [](std::initializer_list<int> signals) {
+		JunctionLayout layout = Build({{{0, 0}, Trackdir::X_SW, "FFB1FFFF"}});
+		for (int x : signals) AddSignal(layout, x, 0, Trackdir::X_SW);
+		return layout;
+	};
+	const std::vector<JunctionPort> ports = {Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, 9, 0, Trackdir::X_SW)};
+	auto violations = [&](const JunctionLayout &layout) {
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, {{Role::EIn, Role::EOut}});
+		REQUIRE(ctx.paths.size() == 1);
+		return CheckSignals(ctx);
+	};
+
+	const JunctionLayout both = make({2, 6, 8});
+	REQUIRE(both.bridges.size() == 1);
+	CHECK(violations(both).empty());
+
+	const JunctionLayout none_before = make({6, 8});
+	CHECK(Has(violations(none_before), JunctionRule::Signals, both.bridges[0].start.x, both.bridges[0].start.y, "no signal before a bridge"));
+
+	const JunctionLayout none_after = make({2});
+	CHECK(Has(violations(none_after), JunctionRule::Signals, both.bridges[0].end.x, both.bridges[0].end.y, "no signal after a bridge"));
+}
+
 TEST_CASE("CheckSignals: legality", "[junction][rules]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
@@ -834,7 +861,7 @@ static void RemoveTracks(JunctionLayout &layout, int x, int y)
 /**
  * The ML runs along row 1, the joiner merges at (5,1), and the prio row is on row 2 with joins at x = 2 and 5 (the merge tile).
  * A join is the axis plus Lower on the ML tile and the axis plus Upper on the prio tile (prio on +y of +x traffic).
- * The join on the merge tile also holds the joiner's half piece.
+ * The join on the merge tile also holds the joiner's half piece, and its prio tile holds Upper alone (no axis stub).
  * With 'extra' there is a third join at x = 0 and a second prio signal.
  *   . . . . - / . . . . . .      the joiner: (4,0) (5,0), merging at (5,1)
  *   - >+ - >- # . >- . . . .     ML signals at x = 1, 3, 7; joins at x = 2 and 5 (the merge tile)
@@ -844,6 +871,7 @@ static void RemoveTracks(JunctionLayout &layout, int x, int y)
  */
 static const TrackBits JOIN_ML{Track::X, Track::Lower};
 static const TrackBits JOIN_ROW{Track::X, Track::Upper};
+static const TrackBits JOIN_ROW_MERGE{Track::Upper}; ///< The row tile of the merge-tile join holds h2 alone.
 
 /** Add or remove h1 (Lower) on the merge tile (5,1), which also holds the axis and the joiner's half piece. */
 static void SetMergeJoin(JunctionLayout &layout, bool join)
@@ -864,7 +892,7 @@ static JunctionLayout PrioLayout(bool extra = false)
 	layout.size.y = 3;
 	SetTracks(layout, 2, 1, JOIN_ML);
 	SetMergeJoin(layout, true);
-	for (int x = 2; x <= 5; x++) SetTracks(layout, x, 2, x == 2 || x == 5 ? JOIN_ROW : TrackBits{Track::X});
+	for (int x = 2; x <= 5; x++) SetTracks(layout, x, 2, x == 2 ? JOIN_ROW : x == 5 ? JOIN_ROW_MERGE : TrackBits{Track::X});
 	for (int x : {1, 3, 7}) AddSignal(layout, x, 1, Trackdir::X_SW);
 	AddSignal(layout, 5, 0, Trackdir::Right_S, SignalType::Entry);
 	AddSignal(layout, 4, 2, Trackdir::X_NE, SignalType::Exit);
@@ -938,19 +966,19 @@ TEST_CASE("CheckPrio: clause 1, shape", "[junction][rules]")
 TEST_CASE("CheckPrio: clause 2, touches nothing used", "[junction][rules]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	/* A used line starts at (6,2) and runs away from the prio row's end tile (5,2), but its track touches that tile's edge. */
+	/* A used line runs NE along (1,2) and (0,2), away from the prio row's first tile (2,2), but its track touches that tile's edge. */
 	JunctionLayout layout = PrioLayout();
-	JunctionLayout extra = Build({{{6, 2}, Trackdir::X_SW, "FFFFF"}});
-	for (const JunctionTrack &jt : extra.tracks) layout.tracks.push_back({{static_cast<int16_t>(jt.offset.x + 6), static_cast<int16_t>(jt.offset.y + 2)}, jt.tracks});
+	SetTracks(layout, 1, 2, TrackBits{Track::X});
+	SetTracks(layout, 0, 2, TrackBits{Track::X});
 	std::vector<JunctionPort> ports = MergePorts();
 	ports[1].tile.x = 11;
-	ports.push_back(Port(Role::NIn, 6, 2, Trackdir::X_SW));
-	ports.push_back(Port(Role::SOut, 11, 2, Trackdir::X_SW));
+	ports.push_back(Port(Role::NIn, 1, 2, Trackdir::X_NE));
+	ports.push_back(Port(Role::SOut, 0, 2, Trackdir::X_NE));
 	std::vector<Movement> expected = MERGE_MOVEMENTS;
 	expected.emplace_back(Role::NIn, Role::SOut);
 	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, expected);
 	REQUIRE(ctx.paths.size() == 3);
-	CHECK(Has(CheckPrio(ctx), JunctionRule::Prio, 5, 2, "touches a used track"));
+	CHECK(Has(CheckPrio(ctx), JunctionRule::Prio, 2, 2, "touches a used track"));
 }
 
 TEST_CASE("CheckPrio: clause 3, the first join is on the merge tile", "[junction][rules]")
@@ -987,6 +1015,13 @@ TEST_CASE("CheckPrio: clause 1, the merge tile join holds nothing else", "[junct
 	const std::vector<RuleViolation> violations = PrioViolations(layout);
 	CHECK(Has(violations, JunctionRule::Prio, 5, 1, "not a streamlined join"));
 	CHECK(Has(violations, JunctionRule::Prio, 5, 1, "the first prio join must be on the merge tile"));
+}
+
+TEST_CASE("CheckPrio: clause 1, the merge tile join has no stub", "[junction][rules]")
+{
+	JunctionLayout layout = PrioLayout();
+	SetTracks(layout, 5, 2, JOIN_ROW);
+	CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 5, 2, "stub on the merge-tile join"));
 }
 
 TEST_CASE("CheckPrio: clause 4, coverage", "[junction][rules]")
