@@ -403,7 +403,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->last_state = JunctionBuildState::Building;
 		GetJunctionSequencer().Start(MakeJunctionBuildSteps(layout, tile));
 		JunctionGhost::SetPinned(true);
-		SetTileSelectSize(0, 0);
+		/* Shrink the cursor box to one tile while the pinned footprint shows the build; 0x0 trips an assert in SetSelectionTilesDirty. */
+		SetTileSelectSize(1, 1);
 	}
 
 	void OnRealtimeTick([[maybe_unused]] uint delta_ms) override
