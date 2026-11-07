@@ -234,7 +234,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	 * Fences: E->S may not touch column xI above row g+3, so it crosses the N column low down and N->E bridges straight
 	 * over it. W->S and N->W stay on the branch side: they may not use the ML gap rows or the ground under ML bridges.
 	 */
-	auto route_movements = [&](JunctionLayout &l, bool crossable_w, const std::vector<TileIndexDiffC> &under_spans, int nw_max_x, bool note) -> bool {
+	auto route_movements = [&](JunctionLayout &l, bool crossable_w, const std::vector<TileIndexDiffC> &under_spans, int nw_max_x, int lane_b_max_x, bool note) -> bool {
 		std::vector<TileIndexDiffC> w_tiles;
 		if (crossable_w) for (int x = 0; x <= 63; x++) w_tiles.push_back(tile(x, w_row));
 		std::vector<TileIndexDiffC> column_fence;
@@ -255,7 +255,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 
 		request = base;
 		request.starts = PlainRowPieces(l, w_row, Trackdir::X_NE, xO + 2, 61);
-		for (const JunctionRouteEnd &end : PlainRowPieces(l, b_row, Trackdir::X_NE, xO + 2, 61)) request.starts.push_back(end);
+		for (const JunctionRouteEnd &end : PlainRowPieces(l, b_row, Trackdir::X_NE, xO + 2, lane_b_max_x)) request.starts.push_back(end);
 		request.goals = stub_pieces(xO, Trackdir::Y_SE);
 		if (!RouteFencedAndAdd(l, request, branch_fence).has_value()) return false;
 
@@ -273,7 +273,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		request.goals = PlainRowPieces(l, w_row, Trackdir::X_NE, 2, nw_max_x);
 		return RouteFencedAndAdd(l, request, branch_fence).has_value();
 	};
-	if (!route_movements(layout, true, {}, xI - 2, true)) return std::nullopt;
+	if (!route_movements(layout, true, {}, xI - 2, 61, true)) return std::nullopt;
 
 	if (!zone.empty()) {
 		const int h_w = *std::ranges::min_element(zone) - 3;
@@ -351,7 +351,20 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 			under_spans.push_back(tile(x, w_row));
 			under_spans.push_back(tile(x, b_row));
 		}
-		if (!route_movements(layout, false, under_spans, std::min(xI - 2, *merge_x - 1 - params.joiner_slack), false)) return std::nullopt;
+		/*
+		 * W->S may leave lane B only a train length after lane B's S-bend, so its first turn is clear of the S-bend's turns (G3).
+		 * N->W may join only a train length after the lane merge, so the prio's coverage stays on single track (D85).
+		 */
+		int lane_b_axis_x = -1;
+		for (const JunctionPiece &piece : raster_b.pieces) {
+			if (piece.tile.y == b_row && IsDiagonalTrackdir(piece.trackdir)) {
+				lane_b_axis_x = piece.tile.x;
+				break;
+			}
+		}
+		const int lane_b_max_x = lane_b_axis_x - static_cast<int>(spec.tl);
+		const int nw_max_x = std::min(xI - 2, *merge_x - 1 - static_cast<int>(spec.tl) - params.joiner_slack);
+		if (!route_movements(layout, false, under_spans, nw_max_x, lane_b_max_x, false)) return std::nullopt;
 	}
 
 	/* Crop the E and W rows to the content. */

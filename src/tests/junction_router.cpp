@@ -157,6 +157,33 @@ TEST_CASE("FindJunctionRoute: obstacle", "[junction][router]")
 	CHECK_FALSE(HasBridge(route->moves));
 }
 
+TEST_CASE("FindJunctionRoute: the track beyond a far head runs in line", "[junction][router]")
+{
+	/* The start leaves no room to shift rows before the wall. Goal (8,7) is reachable only by turning off the far head, so it must have no route; goal (12,7) is reachable in line. */
+	const JunctionLayout wall = WallLayout(5, 0, 12);
+	auto check_in_line = [](const JunctionRoute &route) {
+		const JunctionRaster raster = RasterizeJunctionRoute(route);
+		REQUIRE(raster.error.empty());
+		for (size_t i = 0; i + 1 < raster.pieces.size(); i++) {
+			if (raster.pieces[i].on_bridge && !raster.pieces[i + 1].on_bridge) CHECK(raster.pieces[i + 1].trackdir == raster.pieces[i].trackdir);
+		}
+	};
+	JunctionRouteRequest request = MakeRequest({0, 0}, {14, 12});
+	request.starts = {{{3, 6}, Trackdir::X_SW}};
+	request.goals = {{{8, 7}, Trackdir::X_SW}};
+	auto route = FindJunctionRoute(wall, request);
+	if (route.has_value()) {
+		INFO(route->moves);
+		check_in_line(*route);
+	}
+
+	request.goals = {{{12, 7}, Trackdir::X_SW}};
+	route = FindJunctionRoute(wall, request);
+	REQUIRE(route.has_value());
+	INFO(route->moves);
+	check_in_line(*route);
+}
+
 TEST_CASE("FindJunctionRoute: crossable", "[junction][router]")
 {
 	const JunctionLayout wall = WallLayout(5, 0, 12);

@@ -197,6 +197,8 @@ Money Router::Heuristic(const RouterNode &n) const
 void Router::Successors(const RouterNode &from, std::vector<std::pair<RouterNode, std::pair<Money, std::string>>> &out) const
 {
 	for (char move : {'F', 'L', 'R'}) {
+		/* The track beyond a bridge's far head must continue in line with the bridge (G5). */
+		if (from.on_bridge && move != 'F') continue;
 		RouterNode to;
 		bool conflict;
 		if (!MakePiece(from, move, to, conflict)) continue;
@@ -217,7 +219,7 @@ void Router::Successors(const RouterNode &from, std::vector<std::pair<RouterNode
 		}
 	}
 
-	if (!IsDiagonalTrackdir(from.trackdir) || !request.bridge_span_ok) return;
+	if (from.on_bridge || !IsDiagonalTrackdir(from.trackdir) || !request.bridge_span_ok) return;
 	const TileIndexDiffC step = TileIndexDiffCByDiagDir(TrackdirToExitdir(from.trackdir));
 	for (uint n = 1; n <= request.max_bridge_middle; n++) {
 		if (!request.bridge_span_ok(n)) continue;

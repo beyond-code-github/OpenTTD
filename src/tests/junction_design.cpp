@@ -16,10 +16,12 @@
 #include "../junction_route.h"
 #include "../junction_rules.h"
 #include "../track_func.h"
+#include "../core/format.hpp"
 
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <sstream>
 
 #include "../safeguards.h"
@@ -161,14 +163,22 @@ TEST_CASE("Junction design harness", "[.design]")
 
 TEST_CASE("Junction generator candidate sweep", "[.gen]")
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionSpec spec = MakeTestJunctionSpec();
+	if (const char *e = std::getenv("JUNCTION_GEN_TL")) spec.tl = static_cast<uint8_t>(e[0] - '0');
+	if (const char *e = std::getenv("JUNCTION_GEN_SD")) spec.sd = static_cast<uint8_t>(e[0] - '0');
+	if (const char *e = std::getenv("JUNCTION_GEN_G")) spec.ml_gap = static_cast<uint8_t>(e[0] - '0');
+	if (const char *e = std::getenv("JUNCTION_GEN_B")) spec.branch_gap = static_cast<uint8_t>(e[0] - '0');
+	std::map<std::string, int> histogram;
+	int built = 0;
 	int best = 1 << 20;
-	for (int h = 6; h <= 21; h++) {
+	for (int h = spec.ml_gap + 5; h <= spec.ml_gap + 20; h++) {
 		for (Money cc : {Money(0), spec.prices.bridge(3)}) {
 			for (int s = 0; s <= 3; s++) {
 				auto layout = BuildJunctionCandidate(spec, {static_cast<uint8_t>(h), cc, static_cast<uint8_t>(s)});
 				if (!layout.has_value()) continue;
 				auto v = CheckJunctionRules(*layout, spec);
+				built++;
+				for (const auto &rv : v) histogram[fmt::format("{} {}", static_cast<int>(rv.rule), rv.message)]++;
 				std::cout << "h" << h << " cc" << cc.base() << " s" << s << ": " << v.size() << " violations\n";
 				if (static_cast<int>(v.size()) < best) {
 					best = static_cast<int>(v.size());
@@ -178,6 +188,9 @@ TEST_CASE("Junction generator candidate sweep", "[.gen]")
 			}
 		}
 	}
+	std::cout << "built " << built << " candidates; histogram:\n";
+	for (const auto &[msg, n] : histogram) std::cout << "  " << n << "x " << msg << "\n";
+	if (std::getenv("JUNCTION_GEN_SKIP") != nullptr) return;
 
 	JunctionGenerateResult result = GenerateJunction(spec);
 	REQUIRE(result.layout.has_value());

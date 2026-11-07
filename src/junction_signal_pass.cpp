@@ -166,7 +166,9 @@ static void FillSignals(JunctionLayout &layout, const JunctionSpec &spec, const 
 			const size_t b = anchors[ai + 1];
 			uint total = 0;
 			for (size_t k = a + 1; k <= b; k++) total += pieces[k].units;
-			const uint n = (total + max_gap - 1) / max_gap - 1;
+			/* The checker measures the run of unsignalled pieces between signals, so a signalled b's own units don't count. */
+			const uint gap = IsSignalledPiece(layout, pieces[b]) ? total - pieces[b].units : total;
+			const uint n = gap == 0 ? 0 : (gap + max_gap - 1) / max_gap - 1;
 			for (uint i = 1; i <= n; i++) {
 				const uint target = (2 * total * i + (n + 1)) / (2 * (n + 1));
 				std::optional<size_t> best;
