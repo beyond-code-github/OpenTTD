@@ -33,6 +33,8 @@ Decisions: D1–D16, D35 and D37 in `DECISIONS.md`. Research: `RECON-placement.m
 |---|---|
 | `src/junction_layout.h`, `src/junction_layout.cpp` | Pure: the description types, transforms, build steps, the estimate, the `JunctionPricing` interface, and `MakeTestJunctionLayout()` |
 | `src/junction_game.cpp` | `GameJunctionPricing` (real map, commands and prices) and `JunctionBuilder` (the sequencer) |
+| `src/junction_ghost_draw.cpp` | Bridge ghost drawing built on upstream helpers (D42) |
+| `src/junction_game.h` | Declarations for `GameJunctionPricing` and `ChooseJunctionBridgeType` |
 | `src/junction_gui.h`, `src/junction_gui.cpp` | Placement state, the ghost store and its drawing hook, the window, the tooltip, and the toolbar glue |
 | `src/widgets/junction_widget.h` | `BuildJunctionWidgets` enum |
 | `src/tests/junction_layout.cpp` | Catch2 tests with `StubJunctionPricing` |
@@ -166,24 +168,25 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
   - `Post` shows the game's own error message.
 - **Error string names** must be checked against `lang/english.txt`. If one doesn't exist, use the string the existing GUI uses for that command.
 
-### Drawing refactors (Codechange, no visible change to real tiles)
+### Drawing seams (Codechange, no visible change to real tiles; minimal upstream diff per D42)
 
-- **Track** (`rail_cmd.cpp`). Split `DrawTrackBits` (`:2289`) and `DrawTrackBitsOverlay` (`:2101`) so the sprite work is a new function:
-  `void DrawRailTrackSprites(TileInfo *ti, TrackBits track, RailType rt, RailGroundType rgt, PaletteID ghost_pal)`
-  - It takes the rail type and ground type as parameters instead of reading them.
-  - `ghost_pal == PAL_NONE` means normal drawing. Otherwise every sprite gets `PALETTE_MODIFIER_TRANSPARENT` and `ghost_pal`.
-  - It skips reservation overlays when `ghost_pal != PAL_NONE`.
-  - `DrawTrackBits` and `DrawTrackBitsOverlay` become thin wrappers that read the map and call it with `PAL_NONE`. Declare it in `rail.h` beside `DrawTrainDepotSprite`.
-- **Signals** (`rail_cmd.cpp`).
-  - Move the bit-to-position mapping out of `DrawSignals` (`:2436`) into `static std::pair<SignalOffsets, uint> GetSignalImageAndPos(Track track, uint signal_bit)`.
-  - Add `void DrawRailSignalGhost(TileIndex tile, RailType rt, Trackdir facing, SignalType type, SignalVariant variant, PaletteID ghost_pal)`. It works out the sprite as `DrawSingleSignal` does (`:1901`), but from its parameters, in `SignalState::Green`.
-  - `DrawSignals` uses the shared helper.
-- **Bridges** (`tunnelbridge_cmd.cpp`). Add:
-  - `void DrawBridgeHeadGhost(TileInfo *ti, BridgeType type, RailType rt, DiagDirection dir, PaletteID ghost_pal)`
-  - `void DrawBridgeMiddleGhost(const TileInfo *ti, BridgeType type, RailType rt, Axis axis, int bridge_z, uint north_len, uint south_len, PaletteID ghost_pal)`
+The ghost reuses the game's own sprite code. Upstream files only get small seams, and the ghost-specific drawing lives in a new file, `src/junction_ghost_draw.cpp`.
 
-  Both are copies of the sprite logic in `DrawTile_TunnelBridge`'s head branch and in `DrawBridgeMiddle` (`:1604`), taking parameters instead of reading the map. They don't draw reservation, snow or catenary. Where the copied logic can be shared through a helper without changing the real drawing, share it. Declare both in `bridge.h`.
-- **Ghost palettes.** A valid ghost uses `PALETTE_TO_TRANSPARENT`. An invalid one uses `PALETTE_TO_STRUCT_RED` with the transparent bit set, which gives a transparent remap (`gfx.cpp:1007-1010`).
+1. **Ghost palette override** (`viewport.cpp`, `viewport_func.h`).
+   - Add `void SetViewportGhostPalette(PaletteID pal)`, where `PAL_NONE` turns it off.
+   - While it's set, `DrawGroundSpriteAt`, `AddSortableSpriteToDraw` and `AddChildSpriteScreen` set `PALETTE_MODIFIER_TRANSPARENT` on the image and replace the palette with the override.
+   - A ghost palette is `PALETTE_TO_TRANSPARENT` when valid, or `PALETTE_TO_STRUCT_RED` when invalid, which gives a transparent remap (`gfx.cpp:1007-1010`).
+   - This means no drawing function needs a palette parameter.
+2. **Track** (`rail_cmd.cpp`).
+   - `DrawTrackBits` (`:2289`) and `DrawTrackBitsOverlay` (`:2101`) stop reading the rail type, ground type and reservation from the map. Instead they take `RailType rt, RailGroundType rgt, TrackBits reserved` as extra parameters, and their one caller passes the map values.
+   - Add a public wrapper, `void DrawRailTrackGhost(TileInfo *ti, TrackBits track, RailType rt)`. It calls `DrawTrackBits` with `RailGroundType::Grass` and no reservation, and declares it in `rail.h`.
+   - NewGRF sprite lookups use `INVALID_TILE` when drawing a ghost, as GUI drawing does (`DrawTrainDepotSprite`, `rail_cmd.cpp:2619`).
+3. **Signals** (`rail_cmd.cpp`).
+   - `DrawSingleSignal` (`:1901`) takes `SignalType type, SignalVariant variant` instead of reading them.
+   - Add a public `void DrawRailSignalGhost(TileIndex tile, RailType rt, Trackdir facing, SignalType type, SignalVariant variant)`. It reuses `DrawSignals`' position mapping through a small extracted helper and draws in `SignalState::Green`.
+4. **Bridges** (`tunnelbridge_cmd.cpp`, `bridge.h`).
+   - Remove `static` from the existing sprite helpers the ghost needs, and declare them in `bridge.h`: `GetBridgeSpriteTable`, `CalcBridgePiece`, `GetBridgeRampDirectionBaseOffset`, `GetBridgeMiddleAxisBaseOffset` and `DrawBridgePillars`.
+   - `DrawBridgeHeadGhost(TileInfo *ti, BridgeType type, RailType rt, DiagDirection dir)` and `DrawBridgeMiddleGhost(const TileInfo *ti, BridgeType type, RailType rt, Axis axis, int bridge_z, uint north_len, uint south_len)` live in `junction_ghost_draw.cpp`. They're built from those helpers and follow the real drawing code.
 
 ### Ghost store and viewport hook (`junction_gui.cpp`, `viewport.cpp`)
 
