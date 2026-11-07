@@ -250,6 +250,8 @@ add_files(
     ini_load.cpp
     ini_type.h
     intro_gui.cpp
+    junction_build.cpp
+    junction_build.h
     junction_game.cpp
     junction_game.h
     junction_ghost_draw.cpp

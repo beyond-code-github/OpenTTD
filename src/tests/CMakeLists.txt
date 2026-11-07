@@ -4,6 +4,7 @@ add_test_files(
     enum_over_optimisation.cpp
     flatset_type.cpp
     history_func.cpp
+    junction_build.cpp
     junction_game.cpp
     junction_gui.cpp
     junction_layout.cpp
