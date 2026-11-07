@@ -88,53 +88,37 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 
 ## Next steps
 
-**Autonomous queue (engineer, 2026-11-08: "I don't mind what order, as long as we have everything in the queue for autonomous running"; order D89).** Each item is one agent step through the agent-orchestration skill. Make reversible calls, record them in DECISIONS, and batch questions for the engineer.
+**Autonomous queue** (engineer, 2026-11-08: "I don't mind what order, as long as we have everything in the queue for autonomous running"; D89). One agent step at a time through the agent-orchestration skill. Make reversible calls and record them in DECISIONS; batch questions. Engineer: "Don't wait for me if I'm not around to watch". Announce rig runs (`build/openttd -n 127.0.0.1`) and carry on.
 
-2. **D3b `GenerateJunction`** (done):
-   - sweep height, crossing cost and joiner slack;
-   - score by cost, then open space (D76), with a turn tie-break against wiggles;
-   - early stop, a candidate cap and a time budget (D62; measured, so Debug may need a test-only budget);
-   - `NoLayout` naming the most-failed rule group;
-   - the outer test green, with `[!mayfail]` removed;
-   - the sweep test (TL 3–6, SD 2–4, gaps 0–3 on both lines, both road sides): each case either rule-clean or a named error.
-2a. **D3d robustness** (first round done, e0ecc963e1: lane-B start margin, joiner clearance of TL after the lane merge, straight track off far bridge heads, fill gap count. Every built candidate in the TL3/4/6 × g1/3 probes is now clean; the remaining failures are unbuildable candidates). Sweep after the fixes: 32/54 specs clean (was 16). All ml_gap 0 cases now return `NeedsMlGap` (c.f. option C). Remaining NoLayout: ml_gap 1 with branch_gap 0 at TL3 and TL6. Still to do: make the failing `[.gensweep]` specs clean or give a named error. First get a per-spec histogram of the failing step and violations (the `[.gen]` style). Likely levers: ml_gap 0 (no gap row; the E→S fence and lane geometry assume one), TL6 (prio coverage and bays need more room, so the height or slack range scales with TL), and wide branch gaps.
-2b. **D3c: early branch swap (D91), parked.** As I read it (the outbound line crosses under the inbound on the leg), it adds crossings: N→W×S and W→S×N plus the crossover, against E→S×N→E before. The crossing zone also widened to span 11, so no clean candidate. The code is saved as `docs/junction-tool/d3c-branch-swap.patch`. Waiting for the engineer to say what "L & R" means (the branch pair? the ML pair? the lanes at the hub?).
-3. **Rig: a generated layout in game.** The design harness, or a small test-binary mode, exports `GenerateJunction` output as rig JSON. Give the IdleAI company more money. Build it, and announce it to the engineer (rig-watch memory), but do not wait for them to join.
-4. **E, game side** (done, 3f0c847dbc; PLAN-1b §7): the Junction window calls the generator.
-   - notation and TL in the dialogue, static settings in Settings (D64), the signal-type setting (D68);
-   - the left-hand mirror (D66);
-   - the error message;
-   - generation off the UI thread only if it is too slow;
-   - no savegame changes (D69).
-5. **F** (F1 rig check done): the manual checks list for the engineer, and the rig command `junction-check`: trains on all six movements, braking samples, prio hold, queues and deadlock.
-6. **D78, place-time terrain** (plan `PLAN-D78.md`, D93): T1 ff13a32ceb router terrain, T2 e15f0dfe90 generator terrain, T3a ca1cdc373f orientation and hub, T3b 9b746201c2 map snapshot and plane rule, T4 0768c9721e hover worker (manual checks in `CHECKS-1b.md`), T5 rig scan done: on the hilly seed, 3/12 spots generated and all built with 0 failures, 9 no layout (levers in PLAN-D78 Progress). D94: slow bridges allowed. Known limit: a pond across the ML rows gives no layout. **Joiner plan drafted (`PLAN-joiner.md`), waiting for the engineer's three answers.**:
-   - a map-backed seam for the router: buildable, slope, foundation, clearing cost, water, existing track;
-   - terrain rules in the checker (bridge heads and slopes);
-   - generation at the hovered spot, within the ghost or hover cache (D63).
-   - Research first: a read-only recon of the terrain and slope APIs and of the build commands' slope rules.
-7. **Endpoint solver/joiner:**
-   - a UI to tag two or more connection points (tile and heading);
-   - the router between them, then the signal pass and the checker (connectivity generalised from fixed T ports to tagged ports).
-   - Research first: what coop calls joins, and the UI pattern.
-8. **1c physics and traffic** (PLAN-1c):
-   - the headway model, prio length from braking, bay counts from traffic (item 7);
-   - the D84 presets;
-   - the in-memory block-occupancy simulation (engineer's idea), with the rules kept as a fast filter;
-   - single versus doubled bridges by traffic (D32/D80).
-9. **Follow-ons:**
-   - multi-lane with balancing (D72);
-   - option C (a widened gap with the branch over the ML; D85);
-   - research the coop prio-over-a-bridge pattern.
+**Done today (2026-11-08):**
+- B5/B5b doubled bridges and bays in the checker.
+- D1 router, D2 signal pass, D3a candidate (D90 skeleton), D3b `GenerateJunction`.
+- D3d robustness round 1, plus NeedsMlGap.
+- E game side, F1 rig circuit check (OK).
+- D78 T1–T5: terrain router and generator, map snapshot, plane rule, hover worker, hilly rig scan (3/3 generated layouts built cleanly).
+- D94 slow bridges.
+- R1 turn penalty (dbb5277ae5).
+- Suite: 230 cases, all passing.
+
+**Next, in order:**
+1. **D78 lever (a): search near the cursor.** When the hover anchor gives no layout, the worker tries nearby anchors (a ring at distance 2–3) from one larger snapshot, shifting the terrain origin by the inverse-oriented offset, and the ghost snaps to the first fit. Then re-run `junction-scan` to measure the no-layout rate.
+2. **D3d robustness round 2:** ml_gap 1 with branch_gap 0 at TL3/TL6 gives no layout. Diagnose with `[.gen]` (env `JUNCTION_GEN_TL/G/B`, `JUNCTION_GEN_SKIP`; temporary failing-step prints in `BuildJunctionCandidate`).
+3. **D78 levers (b)–(d):** sloped legs, terraforming, ML water bridges. Plan each before starting.
+4. **Joiner** (`PLAN-joiner.md`): blocked on the engineer's three answers.
+5. **1c physics and traffic** (PLAN-1c): headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
+6. **Follow-ons:** multi-lane (D72), option C (widen the gap so the branch bridges over the ML), research the coop prio-over-bridge pattern, the D91 swap (parked until clarified).
 
 **For the engineer when back:**
-- **D91 swap:** which pair is "L & R"? Swapping the branch pair as I built it adds two crossings (see 2b).
-- **Signal pitch:** the checker allows SD empty tiles between signals (a 3-tile pitch at SD=2), while in-game drag at density 2 gives a 2-tile pitch. The fill now matches the checker. Keep this, or tighten both to the drag pitch?
-- **ml_gap 0 (LR notation):** the W prio has no room inside (row −1 of the W track is the E track) and the joiner's side is blocked, so LR needs a local ML spread (option C territory). For now: a named error.
-- Confirm D87 (route search instead of templates).
-- Rule on lane B's three-in-a-row signals.
-- Confirm D83/D88's wording.
+- **Try it in game:** `build-rel/openttd`, rail toolbar → Junction; the checklist is in `CHECKS-1b.md`.
+- **D87:** the route search replaces templates. OK?
+- **Lane B:** three signals in a row (D2 ruling). Is that acceptable?
+- **Signal pitch:** the checker allows a 3-tile pitch at SD=2, while drag gives 2. Tighten?
+- **D83/D88 wording**, as fixed (tails on bridges are fine).
+- **D91:** which pair is "L & R"?
+- **Joiner questions** (PLAN-joiner.md): multi-track A/B/C; endpoint picking; J3 in the first milestone?
+- **ml_gap 0** gives NeedsMlGap for now (needs a spread, option C).
 
-**Demo rig:** `tools/ottd/ottd start; ottd company; ottd build-layout tools/ottd/layouts/reference-LR-TL4-doubled.json --find-clear` (and `-lefthand.json`). Join with `build/openttd-spike -n 127.0.0.1`. The engineer likes to watch: announce rig runs (memory: rig-watch-feedback).
+**Demo rig:** `tools/ottd/ottd start [--hilly]; ottd company; ottd build-layout tools/ottd/layouts/generated-LR-TL4.json --find-clear`, or `ottd junction-check tools/ottd/layouts/circuit-LR-TL4.json --find-clear`, or `ottd junction-scan --count 12 --seed 1` on `--hilly` (and `-lefthand.json`). Join with `build/openttd -n 127.0.0.1`. The engineer likes to watch: announce rig runs (memory: rig-watch-feedback).
 
 ## Roadmap
 
