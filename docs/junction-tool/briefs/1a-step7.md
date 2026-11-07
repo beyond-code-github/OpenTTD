@@ -140,6 +140,13 @@ Use the licence header, `@file`, `stdafx.h` first and `safeguards.h` last. It ho
 
   The hook draws nothing while the store is empty.
 
+### Commit 0, before everything else: move `BRIDGE_Z_START` (D43)
+
+- In `src/tunnelbridge_cmd.cpp`, delete the line `static const int BRIDGE_Z_START = 3;`.
+- In `src/bridge.h`, add `static constexpr int BRIDGE_Z_START = 3; ///< Z offset of the bridge floor sprite relative to the deck.` right after `MAX_BRIDGES`. Keep the original line's doc comment, if it had one, instead of this text.
+- In `src/junction_ghost_draw.cpp`, delete `GHOST_BRIDGE_Z_START` and use `BRIDGE_Z_START` instead. Include `bridge.h` if it isn't already included.
+- Build and run the full suite, then commit with the message `Codechange: Move BRIDGE_Z_START to bridge.h`.
+
 ### CMake
 
 Add `junction_gui.cpp` and `junction_gui.h` to `src/CMakeLists.txt` alphabetically, after `junction_ghost_draw.h`.
@@ -166,7 +173,7 @@ Logs go to `.../s7_*.log`.
 1. Build `openttd_test` and `openttd` with no errors and no warnings.
 2. The red run is recorded, then all four new tests pass.
 3. The full suite is `{BASELINE}` plus 4, all passing.
-4. Two commits, as described under "Upstream edits": commit 1 is `viewport.cpp` and `junction_ghost_draw.h` only; commit 2 is the new files, CMake, tests and the `viewport.cpp` hook. Each ends with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
+4. Three commits: commit 0 as described above, then two commits as described under "Upstream edits": commit 1 is `viewport.cpp` and `junction_ghost_draw.h` only; commit 2 is the new files, CMake, tests and the `viewport.cpp` hook. Each ends with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 5. Report `git diff --stat {HEAD}..HEAD -- src/viewport.cpp`.
 
 ## 8. Report format
