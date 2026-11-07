@@ -15,9 +15,12 @@
 #include "../junction_route.h"
 #include "../junction_rules.h"
 
+#include <chrono>
+#include <iostream>
+
 #include "../safeguards.h"
 
-TEST_CASE("GenerateJunction gives a rule-clean L_R T", "[junction][!mayfail]")
+TEST_CASE("GenerateJunction gives a rule-clean L_R T", "[junction]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	JunctionGenerateResult result = GenerateJunction(spec);
@@ -144,5 +147,80 @@ TEST_CASE("BuildJunctionCandidate: the doubled lanes are equal and doubled", "[j
 
 	for (const RuleViolation &v : CheckBridges(MakeJunctionCheckContext(clean->layout, spec, ports, {}))) {
 		CHECK(v.message.find("not doubled") == std::string::npos);
+	}
+}
+
+static bool SameLayout(const JunctionLayout &a, const JunctionLayout &b)
+{
+	if (a.size.x != b.size.x || a.size.y != b.size.y) return false;
+	if (a.tracks.size() != b.tracks.size() || a.bridges.size() != b.bridges.size() || a.signals.size() != b.signals.size()) return false;
+	for (size_t i = 0; i < a.tracks.size(); i++) {
+		if (a.tracks[i].offset.x != b.tracks[i].offset.x || a.tracks[i].offset.y != b.tracks[i].offset.y || a.tracks[i].tracks != b.tracks[i].tracks) return false;
+	}
+	for (size_t i = 0; i < a.bridges.size(); i++) {
+		if (a.bridges[i].start.x != b.bridges[i].start.x || a.bridges[i].start.y != b.bridges[i].start.y ||
+				a.bridges[i].end.x != b.bridges[i].end.x || a.bridges[i].end.y != b.bridges[i].end.y) return false;
+	}
+	for (size_t i = 0; i < a.signals.size(); i++) {
+		if (a.signals[i].offset.x != b.signals[i].offset.x || a.signals[i].offset.y != b.signals[i].offset.y ||
+				a.signals[i].facing != b.signals[i].facing || a.signals[i].type != b.signals[i].type || a.signals[i].variant != b.signals[i].variant) return false;
+	}
+	return true;
+}
+
+TEST_CASE("GenerateJunction is deterministic", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult a = GenerateJunction(spec);
+	const JunctionGenerateResult b = GenerateJunction(spec);
+	REQUIRE(a.layout.has_value());
+	REQUIRE(b.layout.has_value());
+	CHECK(SameLayout(*a.layout, *b.layout));
+}
+
+TEST_CASE("ScoreJunctionLayout prefers the cheaper of two layouts", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionLayout cheap;
+	cheap.size = {3, 2};
+	cheap.tracks.push_back({{0, 0}, TrackBits{Track::X}});
+	cheap.tracks.push_back({{1, 0}, TrackBits{Track::X}});
+	cheap.tracks.push_back({{2, 0}, TrackBits{Track::X}});
+	JunctionLayout dear = cheap;
+	dear.tracks.push_back({{1, 0}, TrackBits{Track::Y}});
+
+	const std::pair<Money, int> a = ScoreJunctionLayout(cheap, spec);
+	const std::pair<Money, int> b = ScoreJunctionLayout(dear, spec);
+	CHECK(a.first == 300);
+	CHECK(b.first == 400);
+	CHECK(a < b);
+	CHECK(a.second == -3);
+}
+
+TEST_CASE("Junction generator spec sweep", "[.gensweep]")
+{
+	for (uint8_t tl : {3, 4, 6}) {
+		for (uint8_t sd : {2, 4}) {
+			for (uint8_t ml_gap : {0, 1, 3}) {
+				for (uint8_t branch_gap : {0, 1, 3}) {
+					JunctionSpec spec = MakeTestJunctionSpec();
+					spec.tl = tl;
+					spec.sd = sd;
+					spec.ml_gap = ml_gap;
+					spec.branch_gap = branch_gap;
+					const auto start = std::chrono::steady_clock::now();
+					const JunctionGenerateResult result = GenerateJunction(spec);
+					const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+					std::cout << "TL" << static_cast<int>(tl) << " SD" << static_cast<int>(sd) << " ml_gap" << static_cast<int>(ml_gap) << " branch_gap" << static_cast<int>(branch_gap) << ": ";
+					if (result.layout.has_value()) {
+						std::cout << "clean " << result.layout->size.x << "x" << result.layout->size.y;
+						CHECK(CheckJunctionRules(*result.layout, spec).empty());
+					} else {
+						std::cout << "NoLayout";
+					}
+					std::cout << " " << ms << " ms\n";
+				}
+			}
+		}
 	}
 }

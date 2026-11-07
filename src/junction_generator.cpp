@@ -10,6 +10,7 @@
 #include "stdafx.h"
 
 #include "junction_generator.h"
+#include "junction_rules.h"
 #include "core/math_func.hpp"
 #include "junction_route.h"
 #include "junction_router.h"
@@ -97,11 +98,6 @@ JunctionSpec MakeTestJunctionSpec()
 	spec.prices.signal = 50;
 	spec.prices.bridge = [](uint n) { return Money(500 + 200 * n); };
 	return spec;
-}
-
-JunctionGenerateResult GenerateJunction([[maybe_unused]] const JunctionSpec &spec)
-{
-	return {std::nullopt, JunctionGenerateError::NoLayout};
 }
 
 namespace {
@@ -383,4 +379,96 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	PlaceJunctionSignals(layout, spec);
 	NormaliseJunctionLayout(layout);
 	return layout;
+}
+
+/** The number of middle tiles of a bridge. */
+static uint BridgeMiddleTiles(const JunctionBridge &bridge)
+{
+	return static_cast<uint>(std::abs(bridge.end.x - bridge.start.x) + std::abs(bridge.end.y - bridge.start.y)) - 1;
+}
+
+/** The area of the largest axis-aligned rectangle of empty tiles in the layout's bounding box (D76). */
+static int LargestOpenRectangle(const JunctionLayout &layout)
+{
+	const int w = layout.size.x;
+	const int h = layout.size.y;
+	if (w <= 0 || h <= 0) return 0;
+	std::vector<uint8_t> used(static_cast<size_t>(w) * h, 0);
+	auto mark = [&](int x, int y) {
+		if (x >= 0 && x < w && y >= 0 && y < h) used[static_cast<size_t>(y) * w + x] = 1;
+	};
+	for (const JunctionTrack &jt : layout.tracks) {
+		if (!jt.tracks.None()) mark(jt.offset.x, jt.offset.y);
+	}
+	for (const JunctionBridge &bridge : layout.bridges) {
+		const int x0 = std::min<int>(bridge.start.x, bridge.end.x);
+		const int x1 = std::max<int>(bridge.start.x, bridge.end.x);
+		const int y0 = std::min<int>(bridge.start.y, bridge.end.y);
+		const int y1 = std::max<int>(bridge.start.y, bridge.end.y);
+		for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) mark(x, y);
+	}
+
+	int best = 0;
+	std::vector<int> heights(w, 0);
+	for (int y = 0; y < h; y++) {
+		for (int x = 0; x < w; x++) heights[x] = used[static_cast<size_t>(y) * w + x] ? 0 : heights[x] + 1;
+		std::vector<int> stack; ///< Column indices with increasing heights.
+		for (int x = 0; x <= w; x++) {
+			const int cur = x < w ? heights[x] : 0;
+			while (!stack.empty() && heights[stack.back()] >= cur) {
+				const int height = heights[stack.back()];
+				stack.pop_back();
+				const int left = stack.empty() ? -1 : stack.back();
+				best = std::max(best, height * (x - left - 1));
+			}
+			stack.push_back(x);
+		}
+	}
+	return best;
+}
+
+/** Generator score of a layout: cost, then open space (D76). Lower is better. */
+std::pair<Money, int> ScoreJunctionLayout(const JunctionLayout &layout, const JunctionSpec &spec)
+{
+	int track_bits = 0;
+	for (const JunctionTrack &jt : layout.tracks) track_bits += static_cast<int>(jt.tracks.Count());
+	Money cost = spec.prices.rail_piece * track_bits + spec.prices.signal * static_cast<int>(layout.signals.size());
+	for (const JunctionBridge &bridge : layout.bridges) cost += spec.prices.bridge(BridgeMiddleTiles(bridge));
+	return {cost, -LargestOpenRectangle(layout)};
+}
+
+/**
+ * Generate a junction: sweep candidates, keep the rule-clean ones and pick the best by score.
+ * @param spec The junction spec.
+ * @return The best layout, or NoLayout when no candidate is clean.
+ */
+JunctionGenerateResult GenerateJunction(const JunctionSpec &spec)
+{
+	std::optional<JunctionLayout> best;
+	std::pair<Money, int> best_score{};
+	int best_area = 0;
+
+	const int first = spec.ml_gap + 5;
+	const int last = spec.ml_gap + 20;
+	int stop_after = INT32_MAX;
+	for (int height = first; height <= last && height <= stop_after; height++) {
+		bool clean_here = false;
+		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
+			for (uint8_t slack = 0; slack <= 3; slack++) {
+				std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, {static_cast<uint8_t>(height), crossing_cost, slack});
+				if (!layout.has_value() || !CheckJunctionRules(*layout, spec).empty()) continue;
+				clean_here = true;
+				const std::pair<Money, int> score = ScoreJunctionLayout(*layout, spec);
+				const int area = layout->size.x * layout->size.y;
+				if (!best.has_value() || score < best_score || (score == best_score && area < best_area)) {
+					best = std::move(layout);
+					best_score = score;
+					best_area = area;
+				}
+			}
+		}
+		if (clean_here && stop_after == INT32_MAX) stop_after = height + 2;
+	}
+	if (!best.has_value()) return {std::nullopt, JunctionGenerateError::NoLayout};
+	return {std::move(best), JunctionGenerateError::None};
 }

@@ -17,6 +17,7 @@
 #include <functional>
 #include <optional>
 #include <string_view>
+#include <utility>
 
 enum class JunctionNotationError : uint8_t { None, Invalid, MultiLane };
 struct JunctionNotation { uint8_t gap = 0; JunctionNotationError error = JunctionNotationError::None; };
@@ -61,5 +62,8 @@ struct JunctionCandidateParams {
 };
 
 std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params);
+
+/** Generator score of a layout: cost, then open space (D76). Lower is better. */
+std::pair<Money, int> ScoreJunctionLayout(const JunctionLayout &layout, const JunctionSpec &spec); // second = -open rectangle area
 
 #endif /* JUNCTION_GENERATOR_H */
