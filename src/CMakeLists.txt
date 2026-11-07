@@ -254,12 +254,18 @@ add_files(
     junction_build.h
     junction_game.cpp
     junction_game.h
+    junction_generator.cpp
+    junction_generator.h
     junction_ghost_draw.cpp
     junction_ghost_draw.h
     junction_gui.cpp
     junction_gui.h
     junction_layout.cpp
     junction_layout.h
+    junction_route.cpp
+    junction_route.h
+    junction_rules.cpp
+    junction_rules.h
     landscape.cpp
     landscape.h
     landscape_cmd.h

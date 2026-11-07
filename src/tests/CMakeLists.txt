@@ -6,8 +6,10 @@ add_test_files(
     history_func.cpp
     junction_build.cpp
     junction_game.cpp
+    junction_generator.cpp
     junction_gui.cpp
     junction_layout.cpp
+    junction_route.cpp
     landscape_partial_pixel_z.cpp
     math_func.cpp
     mock_environment.h
