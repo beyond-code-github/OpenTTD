@@ -1,6 +1,6 @@
 # Junction tool: status
 
-## Where things stand (2026-11-07, end of session 1)
+## Where things stand (2026-11-07)
 
 - **Branch:** `feature/junction-tool`, from master at 938fd8fbff. Nothing is committed yet. The whole `docs/junction-tool/` folder is untracked and waits for the engineer's OK to commit.
 - **Toolchain:**
@@ -54,20 +54,35 @@
 
 **1a COMPLETE (2026-11-07).** Engineer's in-game checklist passed: ghost, exact cost (matched to the pound), build, failure + Retry/Cancel with pinned outline, Shift-click estimate, blocked-tile message, outline consistency, multiplayer (dedicated server + 2 clients: identical result, no desync). 133 test cases, all passing.
 
+## 1b progress
+
+Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, plus the outer test `[!mayfail]` until D).
+
+| Step | Commit | Notes |
+|---|---|---|
+| A foundations | f6187abe83 | Two correct stops: half-piece turn parity ("LR" impossible, "LFR" works) and an arithmetic slip in the brief (301, not 302). Both resolved by ruling. |
+| B rule checker | — | next |
+| C templates | — | orchestrator |
+| D generator | — | |
+| E game side | — | |
+| F manual | — | engineer |
+
+## Test rig (CLI-first, RECON-mcp.md)
+
+- **Spike done** (108e051a6c, `tools/ottd/`): a stdlib Python admin client, plus GameScript ping/pong, over rcon. Two runs as separate connections, about 40 ms per connect.
+- **Gotchas:**
+  - `-c` makes the cwd the config dir, so `cd` there first.
+  - `openttd.cfg` needs `[version] ini_version = 8`, or `secrets.cfg` is ignored and the admin port never opens.
+  - Register for Gamescript updates before sending.
+  - rcon screenshot replies are empty.
+  - Only `screenshot minimap`/`heightmap` work headless. Real views need a GUI listen server.
+- **Next:** a small CLI plus a GameScript that builds and runs trains, so step F's checks can be automated. To be planned.
+
 ## Next steps
 
-1. **Settle the 1b open items with the engineer** (`PLAN-1b.md`, "Open items"), with the orchestrator's proposals:
-   - leg length: at least 1 × TL after the last switch, signalled at SD
-   - prio extension past the merge: one signal block (SD tiles)
-   - separate line notations for the mainline and the branch: yes
-   - diagonal track under the mainline bridge: allowed
-   - search limits: 64×64 tiles, 200 ms
-   - hover pricing on larger layouts: cache per origin
-2. Write `PLAN-1b.md` in full. Code research first where needed (rule checks, route tracing). Apply D52: agents for substantive work, inline only for tiny fixes with the context already loaded.
-3. Run 1b through agents, with the engineer's in-game checks.
-4. Then 1c (D39, traffic level, is still open).
-
-**Running the game for checks:** copy `build/openttd` to `build/openttd-<step>` and launch that copy, so agents can rebuild safely. The engineer's save is in `~/.local/share/openttd/save/` (Buborough Bay, 2243). Multiplayer test setup: a dedicated server with `-D -g <save>`, and clients with `-c <dir>/openttd.cfg -n localhost`, where each dir holds its own `private.cfg` with `client_name` set.
+1. Step B brief, then the agent.
+2. Step C (the orchestrator designs the templates; the engineer reviews the ASCII).
+3. Plan the test-rig CLI alongside 1b.
 
 ## Ideas parked
 

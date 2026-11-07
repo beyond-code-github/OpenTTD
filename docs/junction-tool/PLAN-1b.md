@@ -97,6 +97,10 @@
 
   Splits and merges aren't written explicitly: they appear wherever routes share and then part.
 
+**Geometry facts the templates must respect** (found in step A and from the engineer):
+- **Half-piece parity:** from a half piece, only F and one of L/R reach the next tile (`_exitdir_reaches_trackdirs`). Turning back onto axis track takes an odd or even number of half pieces depending on the side, so `"LR"` is impossible and `"LFR"` works.
+- **S-bends are free only one per TL.** Two lateral jogs closer than TL are penalised (D67); G3 models this exactly.
+
 ### 4. The rule checker (the oracle)
 
 `CheckJunctionRules(const JunctionLayout &, const JunctionSpec &) -> std::vector<RuleViolation{rule, tile, message}>`.
