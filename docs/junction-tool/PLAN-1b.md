@@ -137,7 +137,7 @@ A bridge block can join a prio: a rung on a plain tile of the bridge's block, ju
    The game side fills these in `junction_game.cpp`.
 2. **Derived CL:** `DeriveCurveSpacing(speed, curve_speed, tl)` returns the smallest `s` in units whose limit ≥ speed, capped at `2×TL`. Templates use it as the minimum half-piece run between same-handed turns. G3 remains the judge.
 3. **Templates:** one route program per movement in the canonical frame. Each has integer variables for the positions along the source line, the diagonal run lengths (≥ derived CL), the bridge spans, and the prio placement.
-   - They are written up in `TEMPLATES-1b.md`, designed by the orchestrator in step 5 together with a hand-checked reference layout.
+   - They are written up in `TEMPLATES-1b.md`, designed by the orchestrator in step C together with a hand-checked reference layout.
    - Variables are computed from closed-form minimums (CL, TL waiting room, bridge minimum span, prio cover). Each macro's displacement is measured by rasterizing it once, never by hand arithmetic.
 4. **Search:**
    - over the design choices X1–X5, for each choice a small slack sweep (0..3) on the variables that `TEMPLATES-1b.md` marks as sweepable
@@ -191,21 +191,18 @@ A hidden Catch2 test (`[.render]`) writes `docs/junction-tool/layouts/*.txt` for
 
 ## Steps
 
-Each step is one agent (Sonnet) unless marked otherwise, briefed in `briefs/1b-step*.md`. Every step runs build + full suite. The test baseline is 133 cases.
+Grouped for token efficiency (D41, D52). Each agent costs about 40–50k tokens before it starts, so steps of the same kind share an agent. There are four Sonnet agents and one orchestrator step, each briefed in `briefs/1b-step*.md`. Every step runs the build and the full suite. The test baseline is 133 cases.
 
-| # | Step | Outcome |
-|---|---|---|
-| 1 | **Outer test and API skeleton.** `junction_generator.h/.cpp`, `junction_rules.h/.cpp` with stubs. The outer test "GenerateJunction gives a rule-clean L_R T for TL4/SD2 at 160 km/h" calls `CheckJunctionRules` (stub returns one "not implemented" violation), tagged `[!mayfail]` until step 7. Plus `JunctionSpec`, the notation parser (gaps, multi-lane refusal) and `DeriveCurveSpacing`, each with inner tests (the D67 table rows as cases). | API fixed; outer test red for the right reason |
-| 2 | **Route programs and renderer.** Direction table, the turn rule, the rasterizer with `F/L/R/B<n>`, union into a layout, and the ASCII renderer. Tests: each move from each trackdir class, bridge heads empty, union ORs bits. | Geometry primitives |
-| 3 | **Tracer and checker part 1:** G1, G2, G4, G5. Fixtures built with step 2's programs, each breaking one rule. | Topology oracle |
-| 4 | **Checker part 2:** G3, G6–G10. Curve fixtures checked against hand-worked game-formula cases. Prio fixtures for each G9 clause. | Full oracle |
-| 5 | **Templates and reference layout** (orchestrator, not an agent). Design the route programs and variables in `TEMPLATES-1b.md`. Hand-build the L_R TL4/SD2 reference with step 2's tools until the step 3–4 checker passes it. Show the engineer its ASCII. It becomes the fixture "reference layout is rule-clean". | Settled geometry; engineer-reviewed |
-| 6 | **Generator geometry and search** from `TEMPLATES-1b.md`: choices X1–X5, slack sweep, scoring, caps and errors. Inner tests: each choice builds; scoring prefers fewer tiles. | Candidates and search |
-| 7 | **Signal and prio pass** (§6). The outer test goes green and `[!mayfail]` is removed. A sweep test over TL 3–6, SD 2–4, gaps 0–3 on both lines and both road sides: every result is rule-clean or fails with a named error (gap 0 may legitimately fail). The render test writes the layouts. | Generator done |
-| 8 | **Game side:** settings, `MakeJunctionSpec`, reference speed, bridge predicate, road-side mirror, window controls and status, estimate cache, strings. Tests where seams exist (the spec builder against a fake pricing/settings interface). | In-game |
-| 9 | **Manual checks** (engineer, in game). Each one listed below. | Accepted |
+| # | Step | Contents | Outcome |
+|---|---|---|---|
+| A | **Foundations** (agent) | `junction_generator.h/.cpp` and `junction_rules.h/.cpp` with stubs. The outer test "GenerateJunction gives a rule-clean L_R T for TL4/SD2 at 160 km/h" is tagged `[!mayfail]` until D; the `CheckJunctionRules` stub returns one "not implemented" violation. `JunctionSpec`, the notation parser (gaps, multi-lane refusal) and `DeriveCurveSpacing` (the D67 table as cases). The direction table, the turn rule, the route rasterizer (`F/L/R/B<n>`), the union into a layout, and the ASCII renderer, each with inner tests. | API and geometry primitives; outer test red for the right reason |
+| B | **Rule checker** (agent) | The route tracer and all of G1–G10. Every group gets fixtures built with A's route programs, each breaking only its rule. Curve fixtures are checked against hand-worked game-formula cases. | Full oracle |
+| C | **Templates and reference layout** (orchestrator) | Design the route programs and variables in `TEMPLATES-1b.md`. Hand-build the L_R TL4/SD2 reference with A's tools until B's checker passes it, and show the engineer its ASCII. It becomes the fixture "reference layout is rule-clean". | Settled geometry, reviewed by the engineer |
+| D | **Generator** (agent) | Built from `TEMPLATES-1b.md`: choices X1–X5, the slack sweep, scoring, caps and errors, then the signal and prio pass (§6). The outer test goes green and loses `[!mayfail]`. The sweep test (TL 3–6, SD 2–4, gaps 0–3 on both lines, both road sides) requires every result to be rule-clean or fail with a named error. The render test writes the layouts. | Generator done |
+| E | **Game side** (agent) | Settings, `MakeJunctionSpec`, the reference speed, the bridge predicate, road-side mirroring, the window controls and status line, the estimate cache and strings. Tests wherever a seam exists. | Working in game |
+| F | **Manual checks** (engineer) | Below. | Accepted |
 
-## Manual checks (step 9)
+## Manual checks (step F)
 
 1. **Driving side** on screen is right-hand in a right-hand game, and left-hand after switching road side. This confirms §1's derivation.
 2. **Generation:**
@@ -222,7 +219,7 @@ Each step is one agent (Sonnet) unless marked otherwise, briefed in `briefs/1b-s
 
 ## Risks
 
-- **Template design (step 5) is the crux.** If closed-form minimums often fail the checker, the slack sweep grows. The fallback is a greedy fix-up driven by violations, which is a decision for step 5, not for an agent.
+- **Template design (step 5) is the crux.** If closed-form minimums often fail the checker, the slack sweep grows. The fallback is a greedy fix-up driven by violations, which is a decision for step C, not for an agent.
 - **Mixed path/pre-signal blocks** are untested in game (D74 fallback).
 - **G3's part-by-part model assumes full-length wagons.** 1c's picked train supplies real lengths.
-- **The `SDTC_SSTR` string setting in `gui_settings.ini`** has no precedent there. Step 8 confirms the template works or falls back to two small enum/int settings.
+- **The `SDTC_SSTR` string setting in `gui_settings.ini`** has no precedent there. Step E confirms the template works or falls back to two small enum/int settings.
