@@ -254,6 +254,7 @@ add_files(
     junction_game.h
     junction_layout.cpp
     junction_layout.h
+    junction_ghost_draw.h
     landscape.cpp
     landscape.h
     landscape_cmd.h

@@ -2098,9 +2098,17 @@ static inline void DrawTrackSprite(SpriteID sprite, PaletteID pal, const TileInf
 	DrawGroundSprite(sprite, pal, nullptr, 0, (ti->tileh & s) ? -8 : 0);
 }
 
-static void DrawTrackBitsOverlay(TileInfo *ti, TrackBits track, const RailTypeInfo *rti)
+/**
+ * Draw ground sprite and track bits for a rail type that uses overlay sprites.
+ * @param ti TileInfo
+ * @param track TrackBits to draw
+ * @param rti Rail type info of the rail type to draw.
+ * @param rgt Ground type to draw.
+ * @param reserved Reserved track bits to draw.
+ * @param sprite_tile Tile used for NewGRF sprite resolution; INVALID_TILE for ghosts.
+ */
+static void DrawTrackBitsOverlay(TileInfo *ti, TrackBits track, const RailTypeInfo *rti, RailGroundType rgt, TrackBits reserved, TileIndex sprite_tile)
 {
-	RailGroundType rgt = GetRailGroundType(ti->tile);
 	Foundation f = GetRailFoundation(ti->tileh, track);
 	Corner halftile_corner = Corner::Invalid;
 
@@ -2139,9 +2147,9 @@ static void DrawTrackBitsOverlay(TileInfo *ti, TrackBits track, const RailTypeIn
 	}
 
 	bool no_combine = ti->tileh == SLOPE_FLAT && rti->flags.Test(RailTypeFlag::NoSpriteCombine);
-	SpriteID overlay = GetCustomRailSprite(rti, ti->tile, RailSpriteType::Overlay);
-	SpriteID ground = GetCustomRailSprite(rti, ti->tile, no_combine ? RailSpriteType::GroundComplete : RailSpriteType::Ground);
-	TrackBits pbs = _settings_client.gui.show_track_reservation ? GetRailReservationTrackBits(ti->tile) : TrackBits{};
+	SpriteID overlay = GetCustomRailSprite(rti, sprite_tile, RailSpriteType::Overlay);
+	SpriteID ground = GetCustomRailSprite(rti, sprite_tile, no_combine ? RailSpriteType::GroundComplete : RailSpriteType::Ground);
+	TrackBits pbs = _settings_client.gui.show_track_reservation ? reserved : TrackBits{};
 
 	if (track.None()) {
 		/* Half-tile foundation, no track here? */
@@ -2226,8 +2234,8 @@ static void DrawTrackBitsOverlay(TileInfo *ti, TrackBits track, const RailTypeIn
 
 	if (IsValidCorner(halftile_corner)) {
 		DrawFoundation(ti, HalftileFoundation(halftile_corner));
-		overlay = GetCustomRailSprite(rti, ti->tile, RailSpriteType::Overlay, TileContext::UpperHalftile);
-		ground = GetCustomRailSprite(rti, ti->tile, RailSpriteType::Ground, TileContext::UpperHalftile);
+		overlay = GetCustomRailSprite(rti, sprite_tile, RailSpriteType::Overlay, TileContext::UpperHalftile);
+		ground = GetCustomRailSprite(rti, sprite_tile, RailSpriteType::Ground, TileContext::UpperHalftile);
 
 		/* Draw higher halftile-overlay: Use the sloped sprites with three corners raised. They probably best fit the lightning. */
 		Slope fake_slope = SlopeWithThreeCornersRaised(OppositeCorner(halftile_corner));
@@ -2256,7 +2264,7 @@ static void DrawTrackBitsOverlay(TileInfo *ti, TrackBits track, const RailTypeIn
 		}
 
 		DrawTrackSprite(ground + offset, PAL_NONE, ti, fake_slope);
-		if (_settings_client.gui.show_track_reservation && HasReservedTracks(ti->tile, track)) {
+		if (_settings_client.gui.show_track_reservation && reserved.Any(track)) {
 			DrawTrackSprite(overlay + offset, PALETTE_CRASH, ti, fake_slope);
 		}
 	}
@@ -2285,17 +2293,20 @@ static int GetJunctionGroundSpriteOffset(TrackBits track)
  * Draw ground sprite and track bits
  * @param ti TileInfo
  * @param track TrackBits to draw
+ * @param rt Rail type to draw.
+ * @param rgt Ground type to draw.
+ * @param reserved Reserved track bits to draw.
+ * @param sprite_tile Tile used for NewGRF sprite resolution; INVALID_TILE for ghosts.
  */
-static void DrawTrackBits(TileInfo *ti, TrackBits track)
+static void DrawTrackBits(TileInfo *ti, TrackBits track, RailType rt, RailGroundType rgt, TrackBits reserved, TileIndex sprite_tile)
 {
-	const RailTypeInfo *rti = GetRailTypeInfo(GetRailType(ti->tile));
+	const RailTypeInfo *rti = GetRailTypeInfo(rt);
 
 	if (rti->UsesOverlay()) {
-		DrawTrackBitsOverlay(ti, track, rti);
+		DrawTrackBitsOverlay(ti, track, rti, rgt, reserved, sprite_tile);
 		return;
 	}
 
-	RailGroundType rgt = GetRailGroundType(ti->tile);
 	Foundation f = GetRailFoundation(ti->tileh, track);
 	Corner halftile_corner = Corner::Invalid;
 
@@ -2390,7 +2401,7 @@ static void DrawTrackBits(TileInfo *ti, TrackBits track)
 	/* PBS debugging, draw reserved tracks darker */
 	if (_game_mode != GameMode::Menu && _settings_client.gui.show_track_reservation) {
 		/* Get reservation, but mask track on halftile slope */
-		TrackBits pbs = GetRailReservationTrackBits(ti->tile) & track;
+		TrackBits pbs = reserved & track;
 		if (pbs.Test(Track::X)) {
 			if (ti->tileh == SLOPE_FLAT || ti->tileh == SLOPE_ELEVATED) {
 				DrawGroundSprite(rti->base_sprites.single_x, PALETTE_CRASH);
@@ -2426,11 +2437,22 @@ static void DrawTrackBits(TileInfo *ti, TrackBits track)
 		}
 		DrawGroundSprite(image, pal, &(_halftile_sub_sprite[halftile_corner]));
 
-		if (_game_mode != GameMode::Menu && _settings_client.gui.show_track_reservation && HasReservedTracks(ti->tile, CornerToTrackBits(halftile_corner))) {
+		if (_game_mode != GameMode::Menu && _settings_client.gui.show_track_reservation && reserved.Any(CornerToTrackBits(halftile_corner))) {
 			static constexpr CornerIndexArray<uint8_t> corner_to_track_sprite = {3, 1, 2, 0};
 			DrawGroundSprite(corner_to_track_sprite[halftile_corner] + rti->base_sprites.single_n, PALETTE_CRASH, nullptr, 0, -static_cast<int>(TILE_HEIGHT));
 		}
 	}
+}
+
+/**
+ * Draw track on a tile for the junction placement ghost, without reading the tile's map data.
+ * @param ti Tile to draw on (must be flat).
+ * @param track Track pieces to draw.
+ * @param rt Rail type to draw.
+ */
+void DrawRailTrackGhost(TileInfo *ti, TrackBits track, RailType rt)
+{
+	DrawTrackBits(ti, track, rt, RailGroundType::Grass, {}, INVALID_TILE);
 }
 
 static void DrawSignals(TileIndex tile, TrackBits rails, const RailTypeInfo *rti)
@@ -2477,7 +2499,8 @@ static void DrawTile_Rail(TileInfo *ti)
 	if (IsPlainRail(ti->tile)) {
 		TrackBits rails = GetTrackBits(ti->tile);
 
-		DrawTrackBits(ti, rails);
+		/* The reservation is read from a plain rail tile. */
+		DrawTrackBits(ti, rails, GetRailType(ti->tile), GetRailGroundType(ti->tile), GetRailReservationTrackBits(ti->tile), ti->tile);
 
 		if (_display_opt.Test(DisplayOption::FullDetail)) DrawTrackDetails(ti, rti, pal);
 
