@@ -18,6 +18,8 @@
 #include "picker_gui.h"
 #include "hotkeys.h"
 #include "sound_func.h"
+#include "sound_type.h"
+#include "settings_type.h"
 #include "strings_func.h"
 #include "tilehighlight_func.h"
 #include "tilehighlight_type.h"
@@ -183,19 +185,15 @@ static JunctionLayout GetPlacementLayout()
 	return ApplyJunctionOrientation(MakeTestJunctionLayout(), _junction_rotation, _junction_mirrored);
 }
 
-/**
- * Handle a click on the map with the junction tool.
- * @param tile The tile that was clicked.
- */
-void JunctionToolClick([[maybe_unused]] TileIndex tile)
-{
-	/* Building is added in step 9 of PLAN-1a. */
-}
-
 /** Window for choosing the orientation of the junction and showing its ghost. */
 struct BuildJunctionWindow : public PickerWindowBase {
 	TileIndex last_tile; ///< Tile the ghost was last placed at.
 	RailType railtype; ///< Rail type of the toolbar that opened this window.
+	JunctionLayout build_layout; ///< Layout being built, as it was when the build started.
+	TileIndex build_origin = INVALID_TILE; ///< North corner of the junction being built.
+	int build_height = 0; ///< Ground height of the junction being built, in height levels.
+	std::vector<std::optional<BridgeType>> build_bridge_types; ///< Bridge types chosen for the junction being built, per layout bridge.
+	JunctionBuildState last_state = JunctionBuildState::Idle; ///< Sequencer state at the previous tick, to detect a failure.
 
 	BuildJunctionWindow(WindowDesc &desc, Window *parent, RailType railtype) : PickerWindowBase(desc, parent), railtype(railtype)
 	{
@@ -205,6 +203,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 	void Close(int data = 0) override
 	{
+		GetJunctionSequencer().Cancel();
 		JunctionGhost::Clear();
 		_thd.make_square_red = false;
 		this->PickerWindowBase::Close(data);
@@ -213,6 +212,20 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
 		switch (widget) {
+			case WID_BJ_RETRY: {
+				/* Pieces already built make their tiles fail an estimate, so only check the money. */
+				GameJunctionPricing pricing(this->railtype);
+				if (pricing.AvailableMoney() > 0) GetJunctionSequencer().Retry();
+				break;
+			}
+
+			case WID_BJ_CANCEL:
+				GetJunctionSequencer().Cancel();
+				JunctionGhost::Clear();
+				this->last_tile = INVALID_TILE;
+				this->SetDirty();
+				break;
+
 			case WID_BJ_ROTATE:
 				_junction_rotation = (_junction_rotation + 1) % 4;
 				this->last_tile = INVALID_TILE;
@@ -243,8 +256,105 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		}
 	}
 
+	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
+	{
+		if (widget == WID_BJ_STATUS) {
+			const JunctionSequencer &seq = GetJunctionSequencer();
+			switch (seq.GetState()) {
+				case JunctionBuildState::Building: return GetString(STR_JUNCTION_STATUS_BUILDING, seq.GetDone(), seq.GetTotal());
+				case JunctionBuildState::Failed: return GetString(STR_JUNCTION_STATUS_FAILED, seq.GetDone(), seq.GetTotal());
+				default: return GetString(STR_JUNCTION_STATUS_READY);
+			}
+		}
+		return this->PickerWindowBase::GetWidgetString(widget, stringid);
+	}
+
+	/**
+	 * Work out the layout, estimate and bridge types for placing the junction at a tile.
+	 * @param tile North corner of the junction.
+	 * @param[out] layout The oriented layout.
+	 * @param[out] estimate The estimate of building it.
+	 * @param[out] bridge_types Bridge type chosen per layout bridge.
+	 * @param[out] available Money the local company can spend.
+	 */
+	void ComputePlacement(TileIndex tile, JunctionLayout &layout, JunctionEstimate &estimate, std::vector<std::optional<BridgeType>> &bridge_types, Money &available) const
+	{
+		layout = GetPlacementLayout();
+
+		GameJunctionPricing pricing(this->railtype);
+		estimate = EstimateJunction(layout, tile, pricing);
+		available = pricing.AvailableMoney();
+
+		bridge_types.clear();
+		for (const JunctionBridge &bridge : layout.bridges) {
+			uint length = abs(bridge.end.x - bridge.start.x) + abs(bridge.end.y - bridge.start.y) - 1;
+			bridge_types.push_back(ChooseJunctionBridgeType(this->railtype, length));
+		}
+	}
+
+	/**
+	 * Start building the junction at a tile, if it can be built and paid for.
+	 * @param tile North corner of the junction.
+	 */
+	void StartBuild(TileIndex tile)
+	{
+		JunctionLayout layout;
+		JunctionEstimate estimate;
+		std::vector<std::optional<BridgeType>> bridge_types;
+		Money available;
+		this->ComputePlacement(tile, layout, estimate, bridge_types, available);
+		if (!estimate.affordable) return;
+
+		this->build_layout = layout;
+		this->build_origin = tile;
+		this->build_height = estimate.height;
+		this->build_bridge_types = bridge_types;
+		this->last_state = JunctionBuildState::Building;
+		GetJunctionSequencer().Start(MakeJunctionBuildSteps(layout, tile));
+	}
+
 	void OnRealtimeTick([[maybe_unused]] uint delta_ms) override
 	{
+		GameJunctionStepPoster poster(this->railtype);
+		JunctionSequencer &seq = GetJunctionSequencer();
+		seq.Tick(poster);
+
+		if (seq.GetState() == JunctionBuildState::Done) {
+			if (_settings_client.sound.confirm) SndPlayTileFx(SND_20_CONSTRUCTION_RAIL, this->build_origin);
+			seq.Cancel();
+			this->last_tile = INVALID_TILE;
+			this->SetDirty();
+		}
+
+		JunctionBuildState state = seq.GetState();
+		bool just_failed = state == JunctionBuildState::Failed && this->last_state != JunctionBuildState::Failed;
+		this->last_state = state;
+
+		if (state == JunctionBuildState::Building || state == JunctionBuildState::Failed) {
+			if (just_failed) {
+				/* Show what is left to build. */
+				JunctionEstimate estimate;
+				for (const JunctionBuildStep &step : seq.GetRemaining()) {
+					if (const auto *rail = std::get_if<JunctionRailStep>(&step)) {
+						estimate.bad_tiles.push_back(rail->tile);
+					} else if (const auto *bridge = std::get_if<JunctionBridgeStep>(&step)) {
+						estimate.bad_tiles.push_back(bridge->start);
+						estimate.bad_tiles.push_back(bridge->end);
+					} else {
+						estimate.bad_tiles.push_back(std::get<JunctionSignalStep>(step).tile);
+					}
+				}
+				JunctionGhost::Set(this->build_layout, this->build_origin, this->build_height, this->railtype, this->build_bridge_types, estimate);
+			}
+			this->SetWidgetDisabledState(WID_BJ_RETRY, state != JunctionBuildState::Failed);
+			this->SetWidgetDisabledState(WID_BJ_CANCEL, false);
+			this->SetWidgetDirty(WID_BJ_STATUS);
+			return;
+		}
+
+		this->SetWidgetDisabledState(WID_BJ_RETRY, true);
+		this->SetWidgetDisabledState(WID_BJ_CANCEL, true);
+
 		Point pt = GetTileBelowCursor();
 		if (pt.x == -1) {
 			JunctionGhost::Clear();
@@ -256,17 +366,12 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (tile == this->last_tile) return;
 		this->last_tile = tile;
 
-		JunctionLayout layout = GetPlacementLayout();
-		SetTileSelectSize(layout.size.x, layout.size.y);
-
-		GameJunctionPricing pricing(this->railtype);
-		JunctionEstimate estimate = EstimateJunction(layout, tile, pricing);
-
+		JunctionLayout layout;
+		JunctionEstimate estimate;
 		std::vector<std::optional<BridgeType>> bridge_types;
-		for (const JunctionBridge &bridge : layout.bridges) {
-			uint length = abs(bridge.end.x - bridge.start.x) + abs(bridge.end.y - bridge.start.y) - 1;
-			bridge_types.push_back(ChooseJunctionBridgeType(this->railtype, length));
-		}
+		Money available;
+		this->ComputePlacement(tile, layout, estimate, bridge_types, available);
+		SetTileSelectSize(layout.size.x, layout.size.y);
 
 		JunctionGhost::Set(layout, tile, estimate.height, this->railtype, bridge_types, estimate);
 		_thd.make_square_red = !estimate.affordable;
@@ -275,7 +380,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (!estimate.bad_tiles.empty()) {
 			text = GetEncodedString(STR_JUNCTION_TOOLTIP_INVALID, estimate.first_error);
 		} else if (!estimate.affordable) {
-			text = GetEncodedString(STR_JUNCTION_TOOLTIP_UNAFFORDABLE, estimate.total, pricing.AvailableMoney());
+			text = GetEncodedString(STR_JUNCTION_TOOLTIP_UNAFFORDABLE, estimate.total, available);
 		} else {
 			text = GetEncodedString(STR_JUNCTION_TOOLTIP_COST, estimate.total);
 		}
@@ -301,6 +406,11 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widge
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_ROTATE), SetStringTip(STR_JUNCTION_ROTATE, STR_JUNCTION_ROTATE_TOOLTIP), SetFill(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_MIRROR), SetStringTip(STR_JUNCTION_MIRROR, STR_JUNCTION_MIRROR_TOOLTIP), SetFill(1, 0),
 			EndContainer(),
+			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_STATUS), SetFill(1, 0),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_RETRY), SetStringTip(STR_JUNCTION_RETRY, STR_JUNCTION_RETRY_TOOLTIP), SetFill(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_CANCEL), SetStringTip(STR_JUNCTION_CANCEL, STR_JUNCTION_CANCEL_TOOLTIP), SetFill(1, 0),
+			EndContainer(),
 		EndContainer(),
 	EndContainer(),
 };
@@ -322,4 +432,16 @@ static WindowDesc _build_junction_desc(
 void ShowBuildJunctionWindow(Window *parent, RailType railtype)
 {
 	new BuildJunctionWindow(_build_junction_desc, parent, railtype);
+}
+
+/**
+ * Handle a click on the map with the junction tool.
+ * @param tile The tile that was clicked.
+ */
+void JunctionToolClick(TileIndex tile)
+{
+	BuildJunctionWindow *w = dynamic_cast<BuildJunctionWindow *>(FindWindowById(WindowClass::BuildJunction, TransportType::Rail));
+	if (w == nullptr || GetJunctionSequencer().GetState() != JunctionBuildState::Idle) return;
+
+	w->StartBuild(tile);
 }

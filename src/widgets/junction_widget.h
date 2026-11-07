@@ -15,6 +15,9 @@ enum BuildJunctionWidgets : WidgetID {
 	WID_BJ_NAME,   ///< Name of the selected junction.
 	WID_BJ_ROTATE, ///< Rotate the junction.
 	WID_BJ_MIRROR, ///< Mirror the junction.
+	WID_BJ_STATUS, ///< Status line.
+	WID_BJ_RETRY,  ///< Retry building after a failure.
+	WID_BJ_CANCEL, ///< Cancel a failed or ongoing build.
 };
 
 #endif /* WIDGETS_JUNCTION_WIDGET_H */

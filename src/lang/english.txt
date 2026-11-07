@@ -2869,6 +2869,13 @@ STR_JUNCTION_MIRROR_TOOLTIP                                     :{BLACK}Mirror t
 STR_JUNCTION_TOOLTIP_COST                                       :{BLACK}Cost: {CURRENCY_LONG}
 STR_JUNCTION_TOOLTIP_UNAFFORDABLE                               :{RED}Cost: {CURRENCY_LONG} (you have {CURRENCY_LONG})
 STR_JUNCTION_TOOLTIP_INVALID                                    :{RED}Can't build here: {STRING}
+STR_JUNCTION_STATUS_READY                                        :{BLACK}Click to build
+STR_JUNCTION_STATUS_BUILDING                                     :{BLACK}Building... {NUM} of {NUM}
+STR_JUNCTION_STATUS_FAILED                                       :{RED}Stopped after {NUM} of {NUM} steps
+STR_JUNCTION_RETRY                                               :{BLACK}Retry
+STR_JUNCTION_RETRY_TOOLTIP                                       :{BLACK}Check the cost again and continue building from the failed step
+STR_JUNCTION_CANCEL                                              :{BLACK}Cancel
+STR_JUNCTION_CANCEL_TOOLTIP                                      :{BLACK}Stop building; pieces already built stay
 
 # Rail waypoint construction window
 STR_WAYPOINT_CAPTION                                            :{WHITE}Waypoint
