@@ -14,6 +14,9 @@
 #include "junction_ghost_draw.h"
 #include "junction_game.h"
 #include "window_gui.h"
+#include "gui.h"
+#include "error.h"
+#include "gfx_func.h"
 #include "window_func.h"
 #include "picker_gui.h"
 #include "hotkeys.h"
@@ -323,6 +326,18 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		std::vector<std::optional<BridgeType>> bridge_types;
 		Money available;
 		this->ComputePlacement(tile, layout, estimate, bridge_types, available);
+
+		/* Shift-click estimates the cost instead of building, as with every other build tool. */
+		if (IsShiftPressed()) {
+			if (estimate.bad_tiles.empty()) {
+				ShowEstimatedCostOrIncome(estimate.total, TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE);
+			} else {
+				CommandCost cc(estimate.first_error);
+				ShowErrorMessage(GetEncodedString(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK), TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE, cc);
+			}
+			return;
+		}
+
 		if (!estimate.affordable) return;
 
 		this->build_layout = layout;
