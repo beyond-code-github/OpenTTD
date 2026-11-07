@@ -84,6 +84,7 @@ struct JunctionEstimate {
 	std::vector<TileIndex> bad_tiles; ///< Tiles that are off-map, not flat, at the wrong height, or whose step failed.
 	StringID first_error = INVALID_STRING_ID;
 	bool affordable = false; ///< bad_tiles is empty and total <= AvailableMoney().
+	int height = 0; ///< Ground height of the junction in height levels (the reference height).
 };
 
 JunctionLayout TransformJunctionLayout(const JunctionLayout &layout, JunctionTransform transform);
@@ -91,6 +92,8 @@ JunctionLayout TransformJunctionLayout(const JunctionLayout &layout, JunctionTra
 Track TransformTrack(Track track, JunctionTransform transform);
 /** Transform a trackdir by a rotation or a mirror. */
 Trackdir TransformTrackdir(Trackdir trackdir, JunctionTransform transform);
+/** Mirror (if set), then rotate 'rotation % 4' quarter turns. */
+JunctionLayout ApplyJunctionOrientation(const JunctionLayout &layout, uint8_t rotation, bool mirrored);
 JunctionLayout MakeTestJunctionLayout();
 std::vector<JunctionBuildStep> MakeJunctionBuildSteps(const JunctionLayout &layout, TileIndex origin);
 JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing);

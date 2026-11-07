@@ -352,3 +352,33 @@ TEST_CASE("JunctionLayout outer: bridge start stays the northern head")
 	CHECK(layout.bridges[0].end.x == 6);
 	CHECK(layout.bridges[0].end.y == 0);
 }
+
+TEST_CASE("JunctionLayout: orientation applies mirror then rotations")
+{
+	JunctionLayout layout = MakeTestJunctionLayout();
+
+	CHECK(SameLayout(ApplyJunctionOrientation(layout, 0, false), layout));
+	CHECK(SameLayout(ApplyJunctionOrientation(layout, 1, false), TransformJunctionLayout(layout, JunctionTransform::Rotate)));
+
+	JunctionLayout expected = TransformJunctionLayout(layout, JunctionTransform::Mirror);
+	for (int i = 0; i < 3; i++) expected = TransformJunctionLayout(expected, JunctionTransform::Rotate);
+	CHECK(SameLayout(ApplyJunctionOrientation(layout, 3, true), expected));
+
+	CHECK(SameLayout(ApplyJunctionOrientation(layout, 4, false), ApplyJunctionOrientation(layout, 0, false)));
+}
+
+TEST_CASE("JunctionLayout outer: estimate reports the ground height")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	CHECK(EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing).height == 1);
+
+	/* Every occupied tile: the track row, the extra track piece, the bridge heads and its span. */
+	for (int x = 0; x < 8; x++) pricing.heights[TileXY(10 + x, 12)] = 3;
+	for (int y : {0, 1, 2, 3, 4, 5}) pricing.heights[TileXY(14, 10 + y)] = 3;
+	JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+
+	CHECK(estimate.height == 3);
+	CHECK(estimate.affordable);
+}

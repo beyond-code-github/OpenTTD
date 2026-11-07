@@ -119,6 +119,20 @@ JunctionLayout TransformJunctionLayout(const JunctionLayout &layout, JunctionTra
 }
 
 /**
+ * Apply an orientation to a junction layout: mirror (if set), then rotate 'rotation % 4' quarter turns.
+ * @param layout The layout to orient.
+ * @param rotation Number of quarter turns; taken modulo 4.
+ * @param mirrored Whether to mirror before rotating.
+ * @return The oriented layout.
+ */
+JunctionLayout ApplyJunctionOrientation(const JunctionLayout &layout, uint8_t rotation, bool mirrored)
+{
+	JunctionLayout result = mirrored ? TransformJunctionLayout(layout, JunctionTransform::Mirror) : layout;
+	for (uint8_t i = 0; i < rotation % 4; i++) result = TransformJunctionLayout(result, JunctionTransform::Rotate);
+	return result;
+}
+
+/**
  * Make the fixed test layout.
  * Fixed layout used until the generator exists (1b); exercises track, a bridge over track, and signals in both directions.
  * @return The test layout.
@@ -207,6 +221,7 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 		reference_height = pricing.GetFlatHeight(tile);
 		if (reference_height.has_value()) break;
 	}
+	if (reference_height.has_value()) estimate.height = *reference_height;
 	for (TileIndex tile : occupied) {
 		if (tile == INVALID_TILE) {
 			MarkBad(estimate, tile);
