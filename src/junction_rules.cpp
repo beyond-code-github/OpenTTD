@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <map>
+#include <optional>
 #include <set>
 
 #include "safeguards.h"
@@ -822,6 +823,291 @@ std::vector<RuleViolation> CheckDeadlock(const JunctionCheckContext &ctx)
 	return out;
 }
 
+/** The block of a path piece; bridge pieces are in the block of their bridge. */
+static std::optional<size_t> BlockOfPiece(const JunctionLayout &layout, const std::map<std::pair<int, int>, size_t> &blocks, const JunctionPiece &piece)
+{
+	if (piece.on_bridge) {
+		for (const JunctionBridge &bridge : layout.bridges) {
+			if (piece.tile.x < std::min(bridge.start.x, bridge.end.x) || piece.tile.x > std::max(bridge.start.x, bridge.end.x)) continue;
+			if (piece.tile.y < std::min(bridge.start.y, bridge.end.y) || piece.tile.y > std::max(bridge.start.y, bridge.end.y)) continue;
+			const auto it = blocks.find({bridge.start.x, bridge.start.y});
+			if (it != blocks.end()) return it->second;
+		}
+		return std::nullopt;
+	}
+	const auto it = blocks.find({piece.tile.x, piece.tile.y});
+	if (it == blocks.end()) return std::nullopt;
+	return it->second;
+}
+
+/**
+ * G9: every ML merge has exactly one prio component, shaped and signalled as the rules say.
+ * A component is a set of unused track bits; all unused bits of a tile are one node, and nodes are joined
+ * across a tile edge when an unused bit on each side touches it.
+ */
+std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
+{
+	using Key = std::pair<int, int>;
+	std::vector<RuleViolation> out;
+	const JunctionLayout &layout = ctx.layout;
+	const auto used = UsedTracks(ctx);
+	const auto blocks = ComputeBlocks(layout);
+	auto to_tile = [](Key key) { return TileIndexDiffC{static_cast<int16_t>(key.first), static_cast<int16_t>(key.second)}; };
+
+	std::map<Key, TrackBits> unused;
+	for (const JunctionTrack &jt : layout.tracks) {
+		const auto it = used.find({jt.offset.x, jt.offset.y});
+		for (Track track : jt.tracks) {
+			if (it != used.end() && it->second.Test(track)) continue;
+			unused[{jt.offset.x, jt.offset.y}].Set(track);
+		}
+	}
+
+	std::vector<Key> keys;
+	std::map<Key, size_t> index_of;
+	for (const auto &[key, bits] : unused) {
+		index_of[key] = keys.size();
+		keys.push_back(key);
+	}
+	std::vector<size_t> parent(keys.size());
+	for (size_t i = 0; i < parent.size(); i++) parent[i] = i;
+	for (size_t i = 0; i < keys.size(); i++) {
+		for (DiagDirection edge = DiagDirection::Begin; edge < DiagDirection::End; edge++) {
+			if (!AnyTrackTouches(unused[keys[i]], edge)) continue;
+			const TileIndexDiffC other = AddTiles(to_tile(keys[i]), TileIndexDiffCByDiagDir(edge));
+			const auto it = index_of.find({other.x, other.y});
+			if (it == index_of.end() || !AnyTrackTouches(unused[{other.x, other.y}], ReverseDiagDir(edge))) continue;
+			parent[FindRoot(parent, i)] = FindRoot(parent, it->second);
+		}
+	}
+	auto root_of = [&](Key key) { return FindRoot(parent, index_of.at(key)); };
+
+	std::set<size_t> matched;
+	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
+		const JunctionPath &ml = ctx.paths[pi];
+		const bool is_ml = (ml.from == JunctionPortRole::EIn && ml.to == JunctionPortRole::EOut) || (ml.from == JunctionPortRole::WIn && ml.to == JunctionPortRole::WOut);
+		if (!is_ml) continue;
+
+		for (const SwitchEvent &event : SwitchEventsOf(layout, ml)) {
+			if (event.first) continue;
+			const size_t j = event.second;
+			const JunctionPiece &merge_piece = ml.pieces[j];
+			const TileIndexDiffC tile = merge_piece.tile;
+			const Key tile_key{tile.x, tile.y};
+
+			/* The joiner: the other path entering the switch tile. */
+			const JunctionPath *joiner = nullptr;
+			size_t joiner_index = 0;
+			for (size_t qi = 0; qi < ctx.paths.size() && joiner == nullptr; qi++) {
+				if (qi == pi) continue;
+				for (const SwitchEvent &other : SwitchEventsOf(layout, ctx.paths[qi])) {
+					const JunctionPiece &piece = ctx.paths[qi].pieces[other.second];
+					if (other.first || !SameTile(piece.tile, tile) || piece.trackdir == merge_piece.trackdir) continue;
+					joiner = &ctx.paths[qi];
+					joiner_index = other.second;
+					break;
+				}
+			}
+			if (joiner == nullptr) {
+				AddViolation(out, JunctionRule::Prio, tile, "ML merge without joiner");
+			} else {
+				/* 6. The joiner's nearest signal before the merge is Entry. */
+				const JunctionPiece *signalled = nullptr;
+				for (size_t i = joiner_index; i-- > 0;) {
+					if (!IsSignalledPiece(layout, joiner->pieces[i])) continue;
+					signalled = &joiner->pieces[i];
+					break;
+				}
+				if (signalled == nullptr) {
+					AddViolation(out, JunctionRule::Prio, tile, "no joiner signal before the ML merge");
+				} else {
+					for (const JunctionSignal &signal : layout.signals) {
+						if (SameTile(signal.offset, signalled->tile) && signal.facing == signalled->trackdir && signal.type != SignalType::Entry) {
+							AddViolation(out, JunctionRule::Prio, signal.offset, "the joiner's signal before an ML merge must be Entry");
+						}
+					}
+				}
+			}
+
+			/* The component sharing a block with the merge's switch tile. */
+			const auto merge_block = blocks.find(tile_key);
+			std::set<size_t> components;
+			if (merge_block != blocks.end()) {
+				for (const Key &key : keys) {
+					const auto b = blocks.find(key);
+					if (b != blocks.end() && b->second == merge_block->second) components.insert(root_of(key));
+				}
+			}
+			matched.insert(components.begin(), components.end());
+			if (components.empty()) {
+				AddViolation(out, JunctionRule::Prio, tile, "missing prio");
+				continue;
+			}
+			if (components.size() > 1) {
+				AddViolation(out, JunctionRule::Prio, tile, "more than one prio component at the ML merge");
+				continue;
+			}
+			if (!IsDiagonalTrackdir(merge_piece.trackdir)) {
+				AddViolation(out, JunctionRule::Prio, tile, "ML merge is not on an axis piece");
+				continue;
+			}
+
+			const size_t component = *components.begin();
+			std::set<Key> c_tiles;
+			for (const Key &key : keys) {
+				if (root_of(key) == component) c_tiles.insert(key);
+			}
+			std::set<Key> p_tiles;
+			for (const JunctionPiece &piece : ml.pieces) {
+				if (!piece.on_bridge) p_tiles.insert({piece.tile.x, piece.tile.y});
+			}
+
+			const Track axis = TrackdirToTrack(merge_piece.trackdir);
+			const Track perp = axis == Track::X ? Track::Y : Track::X;
+			const TrackBits axis_bits{axis};
+			const TrackBits cross_bits{axis, perp};
+			const bool along_x = axis == Track::X;
+			auto along = [&](Key key) { return along_x ? key.first : key.second; };
+			auto across = [&](Key key) { return along_x ? key.second : key.first; };
+			auto perp_step = [&](int sign) { return along_x ? TileIndexDiffC{0, static_cast<int16_t>(sign)} : TileIndexDiffC{static_cast<int16_t>(sign), 0}; };
+
+			/* 1. Shape: rungs on p, and one row of tiles beside p. */
+			std::vector<Key> rungs;
+			std::vector<Key> row;
+			for (const Key &key : c_tiles) {
+				if (!p_tiles.contains(key)) {
+					row.push_back(key);
+					continue;
+				}
+				bool rung = TracksAt(layout, to_tile(key)) == cross_bits && unused[key].Test(perp) && !unused[key].Test(axis);
+				if (rung) {
+					rung = false;
+					for (int sign : {-1, 1}) {
+						const TileIndexDiffC other = AddTiles(to_tile(key), perp_step(sign));
+						if (c_tiles.contains({other.x, other.y}) && TracksAt(layout, other) == cross_bits) rung = true;
+					}
+				}
+				if (rung) {
+					rungs.push_back(key);
+				} else {
+					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio track on the ML is not a rung");
+				}
+			}
+			for (const Key &key : row) {
+				const TrackBits tracks = TracksAt(layout, to_tile(key));
+				if (across(key) != across(row.front()) || std::abs(across(key) - across(tile_key)) != 1) {
+					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio tile is not in the single row beside the ML");
+				} else if (tracks != axis_bits && tracks != cross_bits) {
+					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio tile holds tracks other than the axis and a rung");
+				}
+			}
+
+			/* 2. The component touches nothing used. */
+			for (const Key &key : c_tiles) {
+				for (Track bit : unused[key]) {
+					for (DiagDirection edge = DiagDirection::Begin; edge < DiagDirection::End; edge++) {
+						if (!TrackTouches(bit, edge)) continue;
+						const TileIndexDiffC other = AddTiles(to_tile(key), TileIndexDiffCByDiagDir(edge));
+						for (Track other_track : TracksAt(layout, other)) {
+							if (!TrackTouches(other_track, ReverseDiagDir(edge))) continue;
+							const auto it = unused.find({other.x, other.y});
+							if (c_tiles.contains({other.x, other.y}) && it != unused.end() && it->second.Test(other_track)) continue;
+							AddViolation(out, JunctionRule::Prio, to_tile(key), "prio track touches a used track");
+						}
+					}
+				}
+			}
+
+			/* 3. A rung downstream of the merge in its block, before the ML's next signal. */
+			auto piece_index_of = [&](Key key) {
+				for (size_t i = 0; i < ml.pieces.size(); i++) {
+					if (!ml.pieces[i].on_bridge && ml.pieces[i].tile.x == key.first && ml.pieces[i].tile.y == key.second) return i;
+				}
+				return ml.pieces.size();
+			};
+			size_t first_signal = ml.pieces.size();
+			for (size_t i = j + 1; i < ml.pieces.size(); i++) {
+				if (IsSignalledPiece(layout, ml.pieces[i])) {
+					first_signal = i;
+					break;
+				}
+			}
+			bool downstream = false;
+			bool before_signal = false;
+			for (const Key &rung : rungs) {
+				const size_t i = piece_index_of(rung);
+				const auto b = blocks.find(rung);
+				if (i <= j || b == blocks.end() || b->second != merge_block->second) continue;
+				downstream = true;
+				if (i < first_signal) before_signal = true;
+			}
+			if (!downstream) {
+				AddViolation(out, JunctionRule::Prio, tile, "no rung downstream of the ML merge in its block");
+			} else if (!before_signal) {
+				AddViolation(out, JunctionRule::Prio, ml.pieces[first_signal].tile, "the ML signal after the merge is before the downstream rung");
+			}
+
+			/* 4. Coverage: one rung in every block over TL, and one rung per block of the row. */
+			auto rungs_in = [&](size_t block) {
+				return std::ranges::count_if(rungs, [&](const Key &rung) {
+					const auto b = blocks.find(rung);
+					return b != blocks.end() && b->second == block;
+				});
+			};
+			uint covered = 0;
+			std::set<size_t> met;
+			for (size_t i = j; i-- > 0 && covered < 2u * ctx.spec.tl;) {
+				covered += ml.pieces[i].units;
+				const std::optional<size_t> block = BlockOfPiece(layout, blocks, ml.pieces[i]);
+				if (!block.has_value() || *block == merge_block->second || !met.insert(*block).second) continue;
+				if (rungs_in(*block) != 1) AddViolation(out, JunctionRule::Prio, ml.pieces[i].tile, "ML block within the train length needs exactly one rung");
+			}
+			std::set<size_t> row_blocks;
+			for (const Key &key : row) {
+				const auto b = blocks.find(key);
+				if (b == blocks.end() || !row_blocks.insert(b->second).second) continue;
+				if (rungs_in(b->second) != 1) AddViolation(out, JunctionRule::Prio, to_tile(key), "prio block needs exactly one rung");
+			}
+
+			/* 5. Prio signals face upstream, one between consecutive segments, Exit farthest, Combo elsewhere. */
+			const Trackdir upstream = ReverseTrackdir(merge_piece.trackdir);
+			std::vector<const JunctionSignal *> prio_signals;
+			for (const JunctionSignal &signal : layout.signals) {
+				if (std::ranges::find(row, Key{signal.offset.x, signal.offset.y}) != row.end()) prio_signals.push_back(&signal);
+			}
+			std::vector<int> rung_positions;
+			for (const Key &rung : rungs) rung_positions.push_back(along(rung));
+			std::ranges::sort(rung_positions);
+			int farthest = 0;
+			for (const JunctionSignal *signal : prio_signals) farthest = std::max(farthest, std::abs(along({signal->offset.x, signal->offset.y}) - along(tile_key)));
+			for (const JunctionSignal *signal : prio_signals) {
+				const int pos = along({signal->offset.x, signal->offset.y});
+				if (signal->facing != upstream) AddViolation(out, JunctionRule::Prio, signal->offset, "prio signal does not face upstream");
+				const SignalType wanted = std::abs(pos - along(tile_key)) == farthest ? SignalType::Exit : SignalType::Combo;
+				if (signal->type != wanted) AddViolation(out, JunctionRule::Prio, signal->offset, "the farthest prio signal must be Exit and the others Combo");
+				const bool between = rung_positions.size() > 1 && pos > rung_positions.front() && pos < rung_positions.back() &&
+						std::ranges::find(rung_positions, pos) == rung_positions.end();
+				if (!between) AddViolation(out, JunctionRule::Prio, signal->offset, "prio signal is not between two segments");
+			}
+			for (size_t k = 0; k + 1 < rung_positions.size(); k++) {
+				const auto count = std::ranges::count_if(prio_signals, [&](const JunctionSignal *signal) {
+					const int pos = along({signal->offset.x, signal->offset.y});
+					return pos > rung_positions[k] && pos < rung_positions[k + 1];
+				});
+				if (count != 1) AddViolation(out, JunctionRule::Prio, tile, "there must be exactly one prio signal between consecutive segments");
+			}
+		}
+	}
+
+	for (const Key &key : keys) {
+		if (!matched.contains(root_of(key))) {
+			AddViolation(out, JunctionRule::Prio, to_tile(key), "stray track");
+			matched.insert(root_of(key));
+		}
+	}
+	return out;
+}
+
 /** G10: size is the bounding box and the west, east and bottom edges are free of signals, switches, bridge heads and unused track. */
 std::vector<RuleViolation> CheckFootprint(const JunctionCheckContext &ctx)
 {
@@ -893,6 +1179,7 @@ std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, cons
 	add(CheckSignals(ctx));
 	add(CheckWaitingRoom(ctx));
 	add(CheckDeadlock(ctx));
+	add(CheckPrio(ctx));
 	add(CheckFootprint(ctx));
 	return out;
 }

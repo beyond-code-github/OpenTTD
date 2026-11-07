@@ -59,6 +59,7 @@ std::vector<RuleViolation> CheckBridges(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckWaitingRoom(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckDeadlock(const JunctionCheckContext &ctx);
+std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckFootprint(const JunctionCheckContext &ctx);
 
 std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec);
