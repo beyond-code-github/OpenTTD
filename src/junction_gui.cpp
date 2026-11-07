@@ -12,12 +12,24 @@
 
 #include "junction_gui.h"
 #include "junction_ghost_draw.h"
+#include "junction_game.h"
+#include "window_gui.h"
+#include "window_func.h"
+#include "picker_gui.h"
+#include "hotkeys.h"
+#include "sound_func.h"
+#include "strings_func.h"
+#include "tilehighlight_func.h"
+#include "tilehighlight_type.h"
+#include "bridge.h"
+#include "widgets/junction_widget.h"
 #include "map_func.h"
 #include "slope_func.h"
 #include "tile_cmd.h"
 #include "viewport_func.h"
 
 #include "table/sprites.h"
+#include "table/strings.h"
 
 #include <unordered_map>
 
@@ -151,3 +163,162 @@ void DrawJunctionGhost(const TileInfo *ti)
 }
 
 #include "safeguards.h"
+
+/** Hotkeys of the junction window. */
+enum JunctionHotkeys : int {
+	JHK_ROTATE, ///< Rotate the junction.
+	JHK_MIRROR, ///< Mirror the junction.
+};
+
+static uint8_t _junction_rotation = 0; ///< Quarter turns applied to the junction being placed.
+static bool _junction_mirrored = false; ///< Whether the junction being placed is mirrored.
+
+/**
+ * Get the layout being placed, with the current orientation applied.
+ * @return The oriented layout.
+ */
+static JunctionLayout GetPlacementLayout()
+{
+	return ApplyJunctionOrientation(MakeTestJunctionLayout(), _junction_rotation, _junction_mirrored);
+}
+
+/**
+ * Handle a click on the map with the junction tool.
+ * @param tile The tile that was clicked.
+ */
+void JunctionToolClick([[maybe_unused]] TileIndex tile)
+{
+	/* Building is added in step 9 of PLAN-1a. */
+}
+
+/** Window for choosing the orientation of the junction and showing its ghost. */
+struct BuildJunctionWindow : public PickerWindowBase {
+	TileIndex last_tile; ///< Tile the ghost was last placed at.
+	RailType railtype; ///< Rail type of the toolbar that opened this window.
+
+	BuildJunctionWindow(WindowDesc &desc, Window *parent, RailType railtype) : PickerWindowBase(desc, parent), railtype(railtype)
+	{
+		this->InitNested(TransportType::Rail);
+		this->last_tile = INVALID_TILE;
+	}
+
+	void Close(int data = 0) override
+	{
+		JunctionGhost::Clear();
+		_thd.make_square_red = false;
+		this->PickerWindowBase::Close(data);
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		switch (widget) {
+			case WID_BJ_ROTATE:
+				_junction_rotation = (_junction_rotation + 1) % 4;
+				this->last_tile = INVALID_TILE;
+				SndClickBeep();
+				break;
+
+			case WID_BJ_MIRROR:
+				_junction_mirrored = !_junction_mirrored;
+				this->last_tile = INVALID_TILE;
+				SndClickBeep();
+				break;
+		}
+	}
+
+	EventState OnHotkey(int hotkey) override
+	{
+		switch (hotkey) {
+			case JHK_ROTATE:
+				this->OnClick({}, WID_BJ_ROTATE, 1);
+				return EventState::Handled;
+
+			case JHK_MIRROR:
+				this->OnClick({}, WID_BJ_MIRROR, 1);
+				return EventState::Handled;
+
+			default:
+				return this->PickerWindowBase::OnHotkey(hotkey);
+		}
+	}
+
+	void OnRealtimeTick([[maybe_unused]] uint delta_ms) override
+	{
+		Point pt = GetTileBelowCursor();
+		if (pt.x == -1) {
+			JunctionGhost::Clear();
+			this->last_tile = INVALID_TILE;
+			return;
+		}
+
+		TileIndex tile = TileVirtXY(pt.x, pt.y);
+		if (tile == this->last_tile) return;
+		this->last_tile = tile;
+
+		JunctionLayout layout = GetPlacementLayout();
+		SetTileSelectSize(layout.size.x, layout.size.y);
+
+		GameJunctionPricing pricing(this->railtype);
+		JunctionEstimate estimate = EstimateJunction(layout, tile, pricing);
+
+		std::vector<std::optional<BridgeType>> bridge_types;
+		for (const JunctionBridge &bridge : layout.bridges) {
+			uint length = abs(bridge.end.x - bridge.start.x) + abs(bridge.end.y - bridge.start.y) - 1;
+			bridge_types.push_back(ChooseJunctionBridgeType(this->railtype, length));
+		}
+
+		JunctionGhost::Set(layout, tile, estimate.height, this->railtype, bridge_types, estimate);
+		_thd.make_square_red = !estimate.affordable;
+
+		EncodedString text;
+		if (!estimate.bad_tiles.empty()) {
+			text = GetEncodedString(STR_JUNCTION_TOOLTIP_INVALID, estimate.first_error);
+		} else if (!estimate.affordable) {
+			text = GetEncodedString(STR_JUNCTION_TOOLTIP_UNAFFORDABLE, estimate.total, pricing.AvailableMoney());
+		} else {
+			text = GetEncodedString(STR_JUNCTION_TOOLTIP_COST, estimate.total);
+		}
+		GuiShowTooltips(this, std::move(text), TooltipCloseCondition::ExitViewport);
+	}
+
+	static inline HotkeyList hotkeys{"buildjunction", {
+		Hotkey(WKC_PERIOD, "rotate", JHK_ROTATE),
+		Hotkey(WKC_COMMA, "mirror", JHK_MIRROR),
+	}};
+};
+
+/** Nested widget definition of the build junction window. */
+static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_CLOSEBOX, Colours::DarkGreen),
+		NWidget(WWT_CAPTION, Colours::DarkGreen), SetStringTip(STR_JUNCTION_CAPTION, STR_TOOLTIP_WINDOW_TITLE_DRAG_THIS),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::DarkGreen),
+		NWidget(NWID_VERTICAL), SetPIP(0, WidgetDimensions::unscaled.vsep_normal, 0), SetPadding(WidgetDimensions::unscaled.picker),
+			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_NAME), SetStringTip(STR_JUNCTION_NAME_TEST), SetFill(1, 0),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_ROTATE), SetStringTip(STR_JUNCTION_ROTATE, STR_JUNCTION_ROTATE_TOOLTIP), SetFill(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_MIRROR), SetStringTip(STR_JUNCTION_MIRROR, STR_JUNCTION_MIRROR_TOOLTIP), SetFill(1, 0),
+			EndContainer(),
+		EndContainer(),
+	EndContainer(),
+};
+
+/** Window definition for the build junction window. */
+static WindowDesc _build_junction_desc(
+	WindowPosition::Automatic, {}, 0, 0,
+	WindowClass::BuildJunction, WindowClass::BuildToolbar,
+	WindowDefaultFlag::Construction,
+	_nested_build_junction_widgets,
+	&BuildJunctionWindow::hotkeys
+);
+
+/**
+ * Open the build junction window.
+ * @param parent The rail toolbar that opens the window.
+ * @param railtype Rail type of that toolbar.
+ */
+void ShowBuildJunctionWindow(Window *parent, RailType railtype)
+{
+	new BuildJunctionWindow(_build_junction_desc, parent, railtype);
+}

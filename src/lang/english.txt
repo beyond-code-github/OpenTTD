@@ -2848,6 +2848,7 @@ STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_BRIDGE                  :{BLACK}Build ra
 STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_TUNNEL                  :{BLACK}Build railway tunnel. Also press Shift to show cost estimate only
 STR_RAIL_TOOLBAR_TOOLTIP_TOGGLE_BUILD_REMOVE_FOR                :{BLACK}Toggle build/remove for railway track, signals, waypoints and stations. Ctrl+Click to also remove the rail of waypoints and stations
 STR_RAIL_TOOLBAR_TOOLTIP_CONVERT_RAIL                           :{BLACK}Convert/Upgrade the type of rail. Also press Shift to show cost estimate only
+STR_RAIL_TOOLBAR_TOOLTIP_BUILD_JUNCTION                         :{BLACK}Build a pre-built junction. Press . to rotate and , to mirror
 
 STR_RAIL_NAME_RAILROAD                                          :Railway
 STR_RAIL_NAME_ELRAIL                                            :Electrified railway
@@ -2857,6 +2858,17 @@ STR_RAIL_NAME_MAGLEV                                            :Maglev
 # Rail depot construction window
 STR_BUILD_DEPOT_TRAIN_ORIENTATION_CAPTION                       :{WHITE}Train Depot Orientation
 STR_BUILD_DEPOT_TRAIN_ORIENTATION_TOOLTIP                       :{BLACK}Select railway depot orientation
+
+# Rail junction construction window
+STR_JUNCTION_CAPTION                                            :{WHITE}Junction
+STR_JUNCTION_NAME_TEST                                          :{BLACK}Test junction
+STR_JUNCTION_ROTATE                                             :{BLACK}Rotate
+STR_JUNCTION_ROTATE_TOOLTIP                                     :{BLACK}Rotate the junction a quarter turn (hotkey .)
+STR_JUNCTION_MIRROR                                             :{BLACK}Mirror
+STR_JUNCTION_MIRROR_TOOLTIP                                     :{BLACK}Mirror the junction (hotkey ,)
+STR_JUNCTION_TOOLTIP_COST                                       :{BLACK}Cost: {CURRENCY_LONG}
+STR_JUNCTION_TOOLTIP_UNAFFORDABLE                               :{RED}Cost: {CURRENCY_LONG} (you have {CURRENCY_LONG})
+STR_JUNCTION_TOOLTIP_INVALID                                    :{RED}Can't build here: {STRING}
 
 # Rail waypoint construction window
 STR_WAYPOINT_CAPTION                                            :{WHITE}Waypoint

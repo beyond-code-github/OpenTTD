@@ -34,6 +34,7 @@
 #include "vehicle_func.h"
 #include "zoom_func.h"
 #include "rail_gui.h"
+#include "junction_gui.h"
 #include "toolbar_gui.h"
 #include "station_cmd.h"
 #include "tunnelbridge_cmd.h"
@@ -468,7 +469,7 @@ struct BuildRailToolbarWindow : Window {
 	static inline const std::initializer_list<WidgetID> can_build_widgets = {
 		WID_RAT_BUILD_NS, WID_RAT_BUILD_X, WID_RAT_BUILD_EW, WID_RAT_BUILD_Y, WID_RAT_AUTORAIL,
 		WID_RAT_BUILD_DEPOT, WID_RAT_BUILD_WAYPOINT, WID_RAT_BUILD_STATION, WID_RAT_BUILD_SIGNALS,
-		WID_RAT_BUILD_BRIDGE, WID_RAT_BUILD_TUNNEL, WID_RAT_CONVERT_RAIL,
+		WID_RAT_BUILD_BRIDGE, WID_RAT_BUILD_TUNNEL, WID_RAT_CONVERT_RAIL, WID_RAT_BUILD_JUNCTION,
 	};
 
 	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
@@ -601,6 +602,7 @@ struct BuildRailToolbarWindow : Window {
 			case WID_RAT_BUILD_BRIDGE: return SPR_CURSOR_BRIDGE;
 			case WID_RAT_BUILD_TUNNEL: return GetRailTypeInfo(_cur_railtype)->cursor.tunnel;
 			case WID_RAT_CONVERT_RAIL: return GetRailTypeInfo(_cur_railtype)->cursor.convert;
+			case WID_RAT_BUILD_JUNCTION: return GetRailTypeInfo(_cur_railtype)->cursor.autorail;
 			default: NOT_REACHED();
 		}
 	}
@@ -626,6 +628,7 @@ struct BuildRailToolbarWindow : Window {
 			case WID_RAT_BUILD_BRIDGE: return HT_RECT;
 			case WID_RAT_BUILD_TUNNEL: return HT_SPECIAL;
 			case WID_RAT_CONVERT_RAIL: return HT_RECT | HT_DIAGONAL;
+			case WID_RAT_BUILD_JUNCTION: return HT_RECT;
 			default: NOT_REACHED();
 		}
 	}
@@ -671,6 +674,10 @@ struct BuildRailToolbarWindow : Window {
 				}
 				break;
 			}
+
+			case WID_RAT_BUILD_JUNCTION:
+				if (started) ShowBuildJunctionWindow(this, _cur_railtype);
+				break;
 		}
 
 		this->UpdateRemoveWidgetStatus(widget);
@@ -737,6 +744,10 @@ struct BuildRailToolbarWindow : Window {
 
 			case WID_RAT_CONVERT_RAIL:
 				VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_CONVERT_RAIL);
+				break;
+
+			case WID_RAT_BUILD_JUNCTION:
+				JunctionToolClick(tile);
 				break;
 
 			default: NOT_REACHED();
@@ -830,6 +841,7 @@ struct BuildRailToolbarWindow : Window {
 		CloseWindowById(WindowClass::BuildSignal, TransportType::Rail);
 		CloseWindowById(WindowClass::BuildStation, TransportType::Rail);
 		CloseWindowById(WindowClass::BuildDepot, TransportType::Rail);
+		CloseWindowById(WindowClass::BuildJunction, TransportType::Rail);
 		CloseWindowById(WindowClass::BuildWaypoint, TransportType::Rail);
 		CloseWindowById(WindowClass::JoinStation, 0);
 		CloseWindowByClass(WindowClass::BuildBridge);
@@ -910,6 +922,7 @@ struct BuildRailToolbarWindow : Window {
 		Hotkey(WKC_R_BRACKET, "next_railtype", to_underlying(SpecialListHotkeys::NextItem)),
 		Hotkey(WKC_L_BRACKET | WKC_CTRL, "first_railtype", to_underlying(SpecialListHotkeys::FirstItem)),
 		Hotkey(WKC_R_BRACKET | WKC_CTRL, "last_railtype", to_underlying(SpecialListHotkeys::LastItem)),
+		Hotkey(WKC_NONE, "junction", WID_RAT_BUILD_JUNCTION),
 	}, RailToolbarGlobalHotkeys};
 };
 
@@ -951,6 +964,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_rail_widgets =
 						SetFill(0, 1), SetToolbarMinimalSize(1), SetSpriteTip(SPR_IMG_REMOVE, STR_RAIL_TOOLBAR_TOOLTIP_TOGGLE_BUILD_REMOVE_FOR),
 		NWidget(WWT_IMGBTN, Colours::DarkGreen, WID_RAT_CONVERT_RAIL),
 						SetFill(0, 1), SetToolbarMinimalSize(1), SetSpriteTip(SPR_IMG_CONVERT_RAIL, STR_RAIL_TOOLBAR_TOOLTIP_CONVERT_RAIL),
+		NWidget(WWT_IMGBTN, Colours::DarkGreen, WID_RAT_BUILD_JUNCTION),
+						SetFill(0, 1), SetToolbarMinimalSize(1), SetSpriteTip(SPR_IMG_AUTORAIL, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_JUNCTION),
 	EndContainer(),
 };
 
