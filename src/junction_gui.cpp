@@ -206,6 +206,18 @@ void DrawJunctionGhost(const TileInfo *ti)
 	if (pinned && !red) DrawTileSelectionRect(ti, PAL_NONE);
 }
 
+/**
+ * Reason shown when a junction can't be placed. Errors come per tile, so instead of the first tile's
+ * error a generic message points at the red tiles; only "too close to the edge" applies to the whole junction.
+ * @param estimate Estimate with at least one bad tile.
+ * @return Message for the tooltip, the cost line and the Shift-click estimate.
+ */
+static StringID GetPlacementError(const JunctionEstimate &estimate)
+{
+	if (std::ranges::find(estimate.bad_tiles, INVALID_TILE) != estimate.bad_tiles.end()) return STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
+	return STR_JUNCTION_ERROR_TILES_BLOCKED;
+}
+
 /** Hotkeys of the junction window. */
 enum JunctionHotkeys : int {
 	JHK_ROTATE, ///< Rotate the junction.
@@ -372,7 +384,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			if (estimate.bad_tiles.empty()) {
 				ShowEstimatedCostOrIncome(estimate.total, TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE);
 			} else {
-				CommandCost cc(estimate.first_error);
+				CommandCost cc(GetPlacementError(estimate));
 				ShowErrorMessage(GetEncodedString(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK), TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE, cc);
 			}
 			return;
@@ -466,12 +478,12 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->has_placement = true;
 		this->placement_cost = estimate.total;
 		this->placement_affordable = estimate.affordable;
-		this->placement_error = estimate.bad_tiles.empty() ? INVALID_STRING_ID : estimate.first_error;
+		this->placement_error = estimate.bad_tiles.empty() ? INVALID_STRING_ID : GetPlacementError(estimate);
 		this->SetWidgetDirty(WID_BJ_COST);
 
 		EncodedString text;
 		if (!estimate.bad_tiles.empty()) {
-			text = GetEncodedString(STR_JUNCTION_TOOLTIP_INVALID, estimate.first_error);
+			text = GetEncodedString(STR_JUNCTION_TOOLTIP_INVALID, GetPlacementError(estimate));
 		} else if (!estimate.affordable) {
 			text = GetEncodedString(STR_JUNCTION_TOOLTIP_UNAFFORDABLE, estimate.total, available);
 		} else {

@@ -2872,6 +2872,7 @@ STR_JUNCTION_TOOLTIP_INVALID                                    :{RED}Can't buil
 STR_JUNCTION_COST                                               :{BLACK}Cost: {YELLOW}{CURRENCY_LONG}
 STR_JUNCTION_COST_UNAFFORDABLE                                  :{BLACK}Cost: {RED}{CURRENCY_LONG}
 STR_JUNCTION_COST_INVALID                                       :{BLACK}Cost: {RED}{STRING}
+STR_JUNCTION_ERROR_TILES_BLOCKED                                :tiles shown in red can't be used
 STR_JUNCTION_STATUS_READY                                       :{BLACK}Click to build
 STR_JUNCTION_STATUS_BUILDING                                    :{BLACK}Building... {NUM} of {NUM}
 STR_JUNCTION_STATUS_FAILED                                      :{RED}Stopped after {NUM} of {NUM} steps
