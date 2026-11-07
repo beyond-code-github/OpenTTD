@@ -1342,8 +1342,9 @@ static void ViewportAddLandscape()
 
 				_tile_type_procs[tile_type]->draw_tile_proc(&_cur_ti);
 				if (_cur_ti.tile != INVALID_TILE) {
-					DrawTileSelection(&_cur_ti);
+					/* Junction ghost first, so the selection outline is drawn over its ground sprites. */
 					DrawJunctionGhost(&_cur_ti);
+					DrawTileSelection(&_cur_ti);
 				}
 			}
 		}
