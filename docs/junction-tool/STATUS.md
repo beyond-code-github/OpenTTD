@@ -62,7 +62,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 |---|---|---|
 | A foundations | f6187abe83 | Two correct stops: half-piece turn parity ("LR" impossible, "LFR" works) and an arithmetic slip in the brief (301, not 302). Both resolved by ruling. |
 | B rule checker | 44a6d792ca, fa8f2c84b8, ea48ec478b | 177 cases (176 + mayfail). One correct stop: my prio-component definition split rung bits from row bits; ruled that a tile's unused bits form one node. |
-| C templates | — | orchestrator, next |
+| C templates | fe3e55b29d (harness + reference) | Reference L_R TL4 passes all rules; mutation-tested. Engineer reviewed it in game: wants streamlined prio joins (D75), cost-then-open-space scoring (D76); left-hand mirror shown. Next: checker update for D75 (agent), redo the reference with streamlined prios, then TEMPLATES-1b.md. |
 | D generator | — | |
 | E game side | — | |
 | F manual | — | engineer |
@@ -77,6 +77,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
   - rcon screenshot replies are empty.
   - Only `screenshot minimap`/`heightmap` work headless. Real views need a GUI listen server.
 - **Rig steps 1–2 done** (cherry-picked onto the branch): the `tools/ottd/ottd` CLI (start/stop/status/rcon/gs/company/build-line/depot/train/orders/go/vehicles/watch/build-layout/sample), the `JunctionTestGS` GameScript, IdleAI for a company, layout JSON (`tools/ottd/layouts/`), per-tick speed sampling with drop detection, and save/resume. Flat ground is verified for seed 3 only.
+- **Rig step 3 done:** 128×128 map with 1 town and no industries, `build-layout --find-clear`, `start --scenario` (a hand-made `scenarios/blank.scn` would be the default, with steps in its README).
 - **Next for the rig:** layout JSON export from the test binary (with D), then `junction-check` (all six movements, braking, prio hold, ML blocking, deadlock), alongside E.
 - **The engineer watches rig experiments:** announce them with `build/openttd-spike -n 127.0.0.1`.
 

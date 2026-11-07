@@ -12,6 +12,7 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include "../junction_generator.h"
+#include "../junction_layout.h"
 #include "../junction_route.h"
 #include "../junction_rules.h"
 #include "../track_func.h"
@@ -121,6 +122,35 @@ TEST_CASE("Junction design harness", "[.design]")
 	NormaliseJunctionLayout(layout);
 	std::cout << "shift " << -min_x << "," << -min_y << " size " << layout.size.x << "x" << layout.size.y << "\n";
 	std::cout << RenderJunctionAscii(layout);
+	if (std::getenv("JUNCTION_MIRROR") != nullptr) layout = TransformJunctionLayout(layout, JunctionTransform::Mirror);
+	if (const char *json = std::getenv("JUNCTION_JSON"); json != nullptr) {
+		static const char *track_names[] = {"X", "Y", "Upper", "Lower", "Left", "Right"};
+		static const char *td_names[] = {"X_NE", "Y_SE", "Upper_E", "Lower_E", "Left_S", "Right_S", "", "", "X_SW", "Y_NW", "Upper_W", "Lower_W", "Left_N", "Right_N"};
+		static const char *type_names[] = {"block", "entry", "exit", "combo", "path", "path_oneway"};
+		std::ofstream out(json);
+		out << "{\"size\":[" << layout.size.x << "," << layout.size.y << "],\n\"tracks\":[";
+		bool first = true;
+		for (const auto &jt : layout.tracks) {
+			out << (first ? "" : ",") << "\n{\"x\":" << jt.offset.x << ",\"y\":" << jt.offset.y << ",\"bits\":[";
+			bool fb = true;
+			for (Track t : jt.tracks) { out << (fb ? "" : ",") << "\"" << track_names[to_underlying(t)] << "\""; fb = false; }
+			out << "]}";
+			first = false;
+		}
+		out << "],\n\"bridges\":[";
+		first = true;
+		for (const auto &b : layout.bridges) {
+			out << (first ? "" : ",") << "{\"start\":[" << b.start.x << "," << b.start.y << "],\"end\":[" << b.end.x << "," << b.end.y << "]}";
+			first = false;
+		}
+		out << "],\n\"signals\":[";
+		first = true;
+		for (const auto &sg : layout.signals) {
+			out << (first ? "" : ",") << "\n{\"x\":" << sg.offset.x << ",\"y\":" << sg.offset.y << ",\"facing\":\"" << td_names[to_underlying(sg.facing)] << "\",\"type\":\"" << type_names[to_underlying(sg.type)] << "\"}";
+			first = false;
+		}
+		out << "]}\n";
+	}
 	auto v = CheckJunctionRules(layout, spec);
 	std::cout << v.size() << " violations\n";
 	for (const auto &rv : v) std::cout << "  rule " << static_cast<int>(rv.rule) << " @" << rv.tile.x << "," << rv.tile.y << " (orig " << rv.tile.x + min_x << "," << rv.tile.y + min_y << "): " << rv.message << "\n";
