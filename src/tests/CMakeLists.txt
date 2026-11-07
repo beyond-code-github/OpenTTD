@@ -5,6 +5,7 @@ add_test_files(
     flatset_type.cpp
     history_func.cpp
     junction_game.cpp
+    junction_gui.cpp
     junction_layout.cpp
     landscape_partial_pixel_z.cpp
     math_func.cpp

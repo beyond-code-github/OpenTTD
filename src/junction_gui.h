@@ -1,0 +1,54 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+
+/** @file junction_gui.h Client-side store and drawing of the junction placement ghost. */
+
+#ifndef JUNCTION_GUI_H
+#define JUNCTION_GUI_H
+
+#include "junction_layout.h"
+#include "bridge_type.h"
+#include "rail_type.h"
+#include "direction_type.h"
+
+/** Ghost of a bridge head on one tile. */
+struct JunctionGhostBridgeHead {
+	BridgeType type;
+	DiagDirection dir; ///< Direction from this head towards the other head.
+};
+
+/** Ghost of a bridge span over one tile. */
+struct JunctionGhostBridgeSpan {
+	BridgeType type;
+	Axis axis;
+	int bridge_z; ///< Deck height in pixels.
+	uint piece_north; ///< Tiles from this tile to the northern head.
+	uint piece_south; ///< Tiles from this tile to the southern head.
+};
+
+/** Everything the ghost draws on one tile. */
+struct JunctionGhostTile {
+	TrackBits tracks{};
+	std::vector<JunctionSignalStep> signals;
+	std::optional<JunctionGhostBridgeHead> head;
+	std::optional<JunctionGhostBridgeSpan> span;
+	bool bad = false; ///< Draw in red: the estimate found this tile unbuildable.
+};
+
+/** Client-side store of the junction placement ghost. */
+namespace JunctionGhost {
+	void Set(const JunctionLayout &layout, TileIndex origin, int height, RailType railtype, const std::vector<std::optional<BridgeType>> &bridge_types, const JunctionEstimate &estimate);
+	void Clear();
+	const JunctionGhostTile *Get(TileIndex tile);
+	RailType GetRailType();
+}
+
+struct TileInfo;
+void DrawJunctionGhost(const TileInfo *ti);
+
+#endif /* JUNCTION_GUI_H */

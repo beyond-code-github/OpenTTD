@@ -91,6 +91,7 @@
 #include "network/network_func.h"
 #include "framerate_type.h"
 #include "viewport_cmd.h"
+#include "junction_gui.h"
 
 #include <forward_list>
 #include <stack>
@@ -1340,7 +1341,10 @@ static void ViewportAddLandscape()
 				_vd.last_foundation_child[FoundationPart::Halftile] = LAST_CHILD_NONE;
 
 				_tile_type_procs[tile_type]->draw_tile_proc(&_cur_ti);
-				if (_cur_ti.tile != INVALID_TILE) DrawTileSelection(&_cur_ti);
+				if (_cur_ti.tile != INVALID_TILE) {
+					DrawTileSelection(&_cur_ti);
+					DrawJunctionGhost(&_cur_ti);
+				}
 			}
 		}
 	}
