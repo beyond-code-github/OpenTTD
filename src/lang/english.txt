@@ -2878,6 +2878,7 @@ STR_JUNCTION_ERROR_NOTATION                                     :{RED}Not a vali
 STR_JUNCTION_ERROR_MULTILANE                                    :{RED}Only one track each way is supported so far
 STR_JUNCTION_ERROR_NO_LAYOUT                                    :{RED}No junction fits these settings
 STR_JUNCTION_ERROR_NEEDS_ML_GAP                                 :{RED}The mainline needs a gap between its tracks
+STR_JUNCTION_ERROR_NO_LAYOUT_HERE                               :{RED}No junction fits here
 STR_JUNCTION_ROTATE                                             :{BLACK}Rotate
 STR_JUNCTION_ROTATE_TOOLTIP                                     :{BLACK}Rotate the junction a quarter turn (hotkey .)
 STR_JUNCTION_MIRROR                                             :{BLACK}Mirror
@@ -2889,6 +2890,7 @@ STR_JUNCTION_COST                                               :{BLACK}Cost: {Y
 STR_JUNCTION_COST_UNAFFORDABLE                                  :{BLACK}Cost: {RED}{CURRENCY_LONG}
 STR_JUNCTION_COST_INVALID                                       :{BLACK}Cost: {RED}{STRING}
 STR_JUNCTION_ERROR_TILES_BLOCKED                                :tiles shown in red can't be used
+STR_JUNCTION_STATUS_GENERATING                                :{BLACK}Working out a junction for this spot…
 STR_JUNCTION_STATUS_READY                                       :{BLACK}Click to build
 STR_JUNCTION_STATUS_BUILDING                                    :{BLACK}Building... {NUM} of {NUM}
 STR_JUNCTION_STATUS_FAILED                                      :{RED}Stopped after {NUM} of {NUM} steps

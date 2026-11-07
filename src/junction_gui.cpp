@@ -37,7 +37,12 @@
 
 #include "table/sprites.h"
 #include "table/strings.h"
+#include "thread.h"
 
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <thread>
 #include <unordered_map>
 
 #include "safeguards.h"
@@ -235,9 +240,46 @@ enum JunctionHotkeys : int {
 static uint8_t _junction_rotation = 0; ///< Quarter turns applied to the junction being placed.
 static bool _junction_mirrored = false; ///< Whether the junction being placed is mirrored.
 
+/** What a generated junction depends on: the spot, the orientation and the generator inputs. */
+struct JunctionGenerateKey {
+	TileIndex anchor; ///< The hovered tile, where the hub goes.
+	uint8_t rotation; ///< Quarter turns.
+	bool mirrored; ///< Effective mirror, including the road side.
+	uint8_t ml_gap;
+	uint8_t branch_gap;
+	uint8_t tl;
+	uint8_t signal_type;
+	uint8_t sd;
+
+	bool operator==(const JunctionGenerateKey &) const = default;
+};
+
+/** A generation running on a worker thread; owns everything the worker reads, and outlives the window if needed. */
+struct JunctionGenerateJob {
+	std::atomic<bool> done{false}; ///< Set by the worker when result is final.
+	JunctionSpec spec; ///< Spec the worker reads.
+	JunctionTerrain terrain; ///< Terrain snapshot the worker reads.
+	JunctionGenerateResult result; ///< Written by the worker.
+};
+
+static constexpr size_t MAX_JUNCTION_CACHE = 32; ///< Entries in the window's cache of generated junctions.
+static constexpr std::chrono::milliseconds JUNCTION_HOVER_REST{300}; ///< How long the hover must rest before generating.
+
 /** Window for choosing the orientation of the junction and showing its ghost. */
 struct BuildJunctionWindow : public PickerWindowBase {
-	TileIndex last_tile; ///< Tile the ghost was last placed at.
+	TileIndex hover_tile = INVALID_TILE; ///< Tile the cursor rests on.
+	std::chrono::steady_clock::time_point hover_since; ///< When the cursor reached hover_tile.
+	std::vector<std::pair<JunctionGenerateKey, JunctionGenerateResult>> cache; ///< Generated junctions, most recently used first.
+	std::optional<JunctionGenerateKey> pending_key; ///< Key of the running job, if any.
+	std::thread pending_thread; ///< Thread of the running job.
+	std::shared_ptr<JunctionGenerateJob> pending_job; ///< State of the running job.
+	bool has_shown = false; ///< The ghost shows a placement, in the three fields below.
+	JunctionLayout shown_layout; ///< Oriented layout shown at the cursor.
+	TileIndex shown_origin = INVALID_TILE; ///< North corner of the shown placement.
+	TileIndex shown_tile = INVALID_TILE; ///< Hovered tile the shown placement belongs to.
+	StringID hover_status = INVALID_STRING_ID; ///< Status of the hovered spot while there is no placement.
+	uint8_t ml_gap = 0; ///< Gap of the mainline notation.
+	uint8_t branch_gap = 0; ///< Gap of the branch notation.
 	RailType railtype; ///< Rail type of the toolbar that opened this window.
 	JunctionLayout build_layout; ///< Layout being built, as it was when the build started.
 	TileIndex build_origin = INVALID_TILE; ///< North corner of the junction being built.
@@ -248,8 +290,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	bool placement_affordable = false; ///< Whether the local company can pay for the junction at the cursor.
 	StringID placement_error = INVALID_STRING_ID; ///< First error if the placement is invalid, else INVALID_STRING_ID.
 	bool has_placement = false; ///< The cursor is over the map and the fields above are set.
-	std::optional<JunctionLayout> generated; ///< Layout generated from the notations, before orientation; std::nullopt if generation failed.
-	StringID generate_error = INVALID_STRING_ID; ///< Why there is no generated layout.
+	StringID generate_error = INVALID_STRING_ID; ///< Why the notations can't be generated.
 	QueryString ml_editbox; ///< Editbox of the mainline notation.
 	QueryString branch_editbox; ///< Editbox of the branch notation.
 	uint8_t tl; ///< Train length in tiles.
@@ -263,34 +304,184 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->ml_editbox.text.Assign(_settings_client.gui.junction_ml_notation);
 		this->branch_editbox.text.Assign(_settings_client.gui.junction_branch_notation);
 		this->InitNested(TransportType::Rail);
-		this->last_tile = INVALID_TILE;
 		this->Regenerate();
 	}
 
-	/**
-	 * Get the layout being placed, with the current orientation applied.
-	 * @return The oriented layout; must only be called while there is a generated layout.
-	 */
-	JunctionLayout GetPlacementLayout() const
+	/** @return Whether the generator mirrors for the road side and the window's mirror together. */
+	static bool EffectiveMirror()
 	{
-		return ApplyJunctionOrientation(*this->generated, _junction_rotation, _junction_mirrored);
+		return _junction_mirrored != (_settings_game.vehicle.road_side == RoadVehicleDrivingSide::Left);
 	}
 
-	/** Set the cursor box to the size of the layout being placed, or one tile if there is none. */
-	void ResetTileSelectSize() const
+	/**
+	 * Get the key of a generation at a tile.
+	 * @param tile The hovered tile.
+	 * @return The key.
+	 */
+	JunctionGenerateKey MakeKey(TileIndex tile) const
 	{
-		if (this->generated.has_value()) {
-			JunctionLayout layout = this->GetPlacementLayout();
-			SetTileSelectSize(layout.size.x, layout.size.y);
+		return {tile, _junction_rotation, EffectiveMirror(), this->ml_gap, this->branch_gap, this->tl,
+			static_cast<uint8_t>(_settings_client.gui.junction_signal_type), _settings_client.gui.drag_signals_density};
+	}
+
+	/**
+	 * Find a cached result, and make it the most recently used.
+	 * @param key The key.
+	 * @return The result, valid until the cache changes; nullptr if not cached.
+	 */
+	const JunctionGenerateResult *FindCached(const JunctionGenerateKey &key)
+	{
+		auto it = std::ranges::find(this->cache, key, &std::pair<JunctionGenerateKey, JunctionGenerateResult>::first);
+		if (it == this->cache.end()) return nullptr;
+		std::rotate(this->cache.begin(), it, it + 1);
+		return &this->cache.front().second;
+	}
+
+	/**
+	 * Add a result to the cache as the most recently used, dropping the oldest beyond the limit.
+	 * @param key The key.
+	 * @param result The result.
+	 */
+	void StoreCached(const JunctionGenerateKey &key, JunctionGenerateResult &&result)
+	{
+		std::erase_if(this->cache, [&](const auto &entry) { return entry.first == key; });
+		this->cache.emplace(this->cache.begin(), key, std::move(result));
+		if (this->cache.size() > MAX_JUNCTION_CACHE) this->cache.pop_back();
+	}
+
+	/** Let any running job finish on its own; the shared state keeps it alive. */
+	void DetachJob()
+	{
+		if (this->pending_thread.joinable()) this->pending_thread.detach();
+		this->pending_job.reset();
+		this->pending_key = std::nullopt;
+	}
+
+	/** Forget the placement shown at the cursor, and the hovered spot. */
+	void ResetHover()
+	{
+		this->hover_tile = INVALID_TILE;
+		this->has_shown = false;
+		this->hover_status = INVALID_STRING_ID;
+	}
+
+	/** Show no placement at the cursor, with a status for the spot. */
+	void ShowNoPlacement(StringID status)
+	{
+		JunctionGhost::Clear();
+		this->has_shown = false;
+		this->has_placement = false;
+		this->hover_status = status;
+		_thd.make_square_red = false;
+		SetTileSelectSize(1, 1);
+		this->SetWidgetDirty(WID_BJ_COST);
+		this->SetWidgetDirty(WID_BJ_STATUS);
+	}
+
+	/** Show the placement for the hovered tile: the cached result, or that one is being worked out. */
+	void ShowHover()
+	{
+		const JunctionGenerateResult *result = this->FindCached(this->MakeKey(this->hover_tile));
+		if (result == nullptr) {
+			this->ShowNoPlacement(STR_JUNCTION_STATUS_GENERATING);
 		} else {
-			SetTileSelectSize(1, 1);
+			this->ShowResult(*result);
 		}
 	}
 
-	/** Generate the junction from the notations and the train length, and remember them as settings. */
+	/**
+	 * Show a generated result at the hovered tile, with its ghost, cost and tooltip.
+	 * @param result The result generated for the hovered tile and the current settings.
+	 */
+	void ShowResult(const JunctionGenerateResult &result)
+	{
+		if (!result.layout.has_value()) {
+			this->ShowNoPlacement(result.error == JunctionGenerateError::NeedsMlGap ? STR_JUNCTION_ERROR_NEEDS_ML_GAP : STR_JUNCTION_ERROR_NO_LAYOUT_HERE);
+			return;
+		}
+
+		const TileIndex tile = this->hover_tile;
+		const bool mirrored = EffectiveMirror();
+		JunctionLayout layout = ApplyJunctionOrientation(*result.layout, _junction_rotation, mirrored);
+		const TileIndexDiffC offset = OrientJunctionOffset(result.hub, result.layout->size, _junction_rotation, mirrored);
+		const int ox = static_cast<int>(TileX(tile)) - offset.x;
+		const int oy = static_cast<int>(TileY(tile)) - offset.y;
+		if (ox < 0 || oy < 0 || ox >= static_cast<int>(Map::SizeX()) || oy >= static_cast<int>(Map::SizeY())) {
+			this->ShowNoPlacement(STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP);
+			return;
+		}
+		const TileIndex origin = TileXY(ox, oy);
+
+		JunctionEstimate estimate;
+		std::vector<std::optional<BridgeType>> bridge_types;
+		Money available;
+		this->ComputePlacement(layout, origin, estimate, bridge_types, available);
+		SetTileSelectBigSize(-offset.x, -offset.y, layout.size.x, layout.size.y);
+
+		JunctionGhost::Set(layout, origin, estimate.height, this->railtype, bridge_types, estimate);
+		/* Blocked tiles are outlined individually; the whole outline goes red only when it is just too expensive. */
+		_thd.make_square_red = !estimate.affordable && estimate.bad_tiles.empty();
+
+		this->has_shown = true;
+		this->shown_layout = std::move(layout);
+		this->shown_origin = origin;
+		this->shown_tile = tile;
+		this->hover_status = INVALID_STRING_ID;
+		this->has_placement = true;
+		this->placement_cost = estimate.total;
+		this->placement_affordable = estimate.affordable;
+		this->placement_error = estimate.bad_tiles.empty() ? INVALID_STRING_ID : GetPlacementError(estimate);
+		this->SetWidgetDirty(WID_BJ_COST);
+		this->SetWidgetDirty(WID_BJ_STATUS);
+
+		EncodedString text;
+		if (!estimate.bad_tiles.empty()) {
+			text = GetEncodedString(STR_JUNCTION_TOOLTIP_INVALID, GetPlacementError(estimate));
+		} else if (!estimate.affordable) {
+			text = GetEncodedString(STR_JUNCTION_TOOLTIP_UNAFFORDABLE, estimate.total, available);
+		} else {
+			text = GetEncodedString(STR_JUNCTION_TOOLTIP_COST, estimate.total);
+		}
+		GuiShowTooltips(this, std::move(text), TooltipCloseCondition::ExitViewport);
+	}
+
+	/** Start a job for the hovered tile on the main thread's snapshot, unless one for it is running. */
+	void StartJob()
+	{
+		const JunctionGenerateKey key = this->MakeKey(this->hover_tile);
+		if (this->pending_key.has_value() && *this->pending_key == key) return;
+		/* A job for another spot may still run; it finishes on its own and its result is ignored. */
+		this->DetachJob();
+
+		auto job = std::make_shared<JunctionGenerateJob>();
+		job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl);
+		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored);
+		if (!StartNewThread(&this->pending_thread, "ottd:junction", [job]() {
+			job->result = GenerateJunction(job->spec, &job->terrain);
+			job->done = true;
+		})) {
+			/* No thread: report no layout rather than waiting forever. */
+			job->done = true;
+		}
+		this->pending_job = std::move(job);
+		this->pending_key = key;
+	}
+
+	/** Store the running job's result when it is done, and show it if it is for the hovered spot. */
+	void PollJob()
+	{
+		if (this->pending_job == nullptr || !this->pending_job->done) return;
+		if (this->pending_thread.joinable()) this->pending_thread.join();
+		const JunctionGenerateKey key = *this->pending_key;
+		this->StoreCached(key, std::move(this->pending_job->result));
+		this->pending_job.reset();
+		this->pending_key = std::nullopt;
+		if (this->hover_tile != INVALID_TILE && key == this->MakeKey(this->hover_tile)) this->ShowHover();
+	}
+
+	/** Check and remember the notations and the train length as settings. Generation itself happens per hovered spot. */
 	void Regenerate()
 	{
-		this->generated = std::nullopt;
 		this->generate_error = INVALID_STRING_ID;
 
 		const std::string ml_text{this->ml_editbox.text.GetText()};
@@ -303,26 +494,16 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		} else if (ml.error == JunctionNotationError::MultiLane || branch.error == JunctionNotationError::MultiLane) {
 			this->generate_error = STR_JUNCTION_ERROR_MULTILANE;
 		} else {
-			JunctionGenerateResult result = GenerateJunction(MakeJunctionSpec(this->railtype, ml.gap, branch.gap, this->tl));
-			if (result.layout.has_value()) {
-				/* Junctions are generated for right-hand driving (D66). */
-				if (_settings_game.vehicle.road_side == RoadVehicleDrivingSide::Left) {
-					this->generated = TransformJunctionLayout(*result.layout, JunctionTransform::Mirror);
-				} else {
-					this->generated = std::move(result.layout);
-				}
-			} else if (result.error == JunctionGenerateError::NeedsMlGap) {
-				this->generate_error = STR_JUNCTION_ERROR_NEEDS_ML_GAP;
-			} else {
-				this->generate_error = STR_JUNCTION_ERROR_NO_LAYOUT;
-			}
+			this->ml_gap = ml.gap;
+			this->branch_gap = branch.gap;
 		}
 
 		_settings_client.gui.junction_ml_notation = ml_text;
 		_settings_client.gui.junction_branch_notation = branch_text;
 		_settings_client.gui.junction_tl = this->tl;
 
-		this->last_tile = INVALID_TILE;
+		this->cache.clear();
+		this->ResetHover();
 		this->SetWidgetDisabledState(WID_BJ_TL_DECREASE, this->tl <= 2);
 		this->SetWidgetDisabledState(WID_BJ_TL_INCREASE, this->tl >= 12);
 		this->SetDirty();
@@ -330,10 +511,11 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 	void Close(int data = 0) override
 	{
+		this->DetachJob();
 		GetJunctionSequencer().Cancel();
 		JunctionGhost::Clear();
 		JunctionGhost::SetPinned(false);
-		this->ResetTileSelectSize();
+		SetTileSelectSize(1, 1);
 		_thd.make_square_red = false;
 		this->PickerWindowBase::Close(data);
 	}
@@ -352,8 +534,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				GetJunctionSequencer().Cancel();
 				JunctionGhost::Clear();
 				JunctionGhost::SetPinned(false);
-				this->ResetTileSelectSize();
-				this->last_tile = INVALID_TILE;
+				SetTileSelectSize(1, 1);
+				this->ResetHover();
 				this->SetDirty();
 				break;
 
@@ -373,13 +555,13 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 			case WID_BJ_ROTATE:
 				_junction_rotation = (_junction_rotation + 1) % 4;
-				this->last_tile = INVALID_TILE;
+				this->ResetHover();
 				SndClickBeep();
 				break;
 
 			case WID_BJ_MIRROR:
 				_junction_mirrored = !_junction_mirrored;
-				this->last_tile = INVALID_TILE;
+				this->ResetHover();
 				SndClickBeep();
 				break;
 		}
@@ -414,7 +596,10 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (widget == WID_BJ_TL_LABEL) return GetString(STR_JUNCTION_TRAIN_LENGTH, this->tl);
 		if (widget == WID_BJ_STATUS) {
 			const JunctionSequencer &seq = GetJunctionSequencer();
-			if (!this->generated.has_value() && seq.GetState() == JunctionBuildState::Idle) return GetString(this->generate_error);
+			if (seq.GetState() == JunctionBuildState::Idle) {
+				if (this->generate_error != INVALID_STRING_ID) return GetString(this->generate_error);
+				if (this->hover_status != INVALID_STRING_ID) return GetString(this->hover_status);
+			}
 			switch (seq.GetState()) {
 				case JunctionBuildState::Building: return GetString(STR_JUNCTION_STATUS_BUILDING, seq.GetDone(), seq.GetTotal());
 				case JunctionBuildState::Failed: return GetString(STR_JUNCTION_STATUS_FAILED, seq.GetDone(), seq.GetTotal());
@@ -441,19 +626,17 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	}
 
 	/**
-	 * Work out the layout, estimate and bridge types for placing the junction at a tile.
-	 * @param tile North corner of the junction.
-	 * @param[out] layout The oriented layout.
+	 * Work out the estimate and bridge types for placing an oriented junction.
+	 * @param layout The oriented layout.
+	 * @param origin North corner of the junction.
 	 * @param[out] estimate The estimate of building it.
 	 * @param[out] bridge_types Bridge type chosen per layout bridge.
 	 * @param[out] available Money the local company can spend.
 	 */
-	void ComputePlacement(TileIndex tile, JunctionLayout &layout, JunctionEstimate &estimate, std::vector<std::optional<BridgeType>> &bridge_types, Money &available) const
+	void ComputePlacement(const JunctionLayout &layout, TileIndex origin, JunctionEstimate &estimate, std::vector<std::optional<BridgeType>> &bridge_types, Money &available) const
 	{
-		layout = this->GetPlacementLayout();
-
 		GameJunctionPricing pricing(this->railtype);
-		estimate = EstimateJunction(layout, tile, pricing);
+		estimate = EstimateJunction(layout, origin, pricing);
 		available = pricing.AvailableMoney();
 
 		bridge_types.clear();
@@ -464,18 +647,19 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	}
 
 	/**
-	 * Start building the junction at a tile, if it can be built and paid for.
-	 * @param tile North corner of the junction.
+	 * Start building the junction shown at the cursor, if it can be built and paid for.
+	 * @param tile The clicked tile; it must be the one the shown placement belongs to.
 	 */
 	void StartBuild(TileIndex tile)
 	{
-		if (!this->generated.has_value()) return;
+		if (!this->has_shown || tile != this->shown_tile) return;
 
-		JunctionLayout layout;
+		const TileIndex origin = this->shown_origin;
+		const JunctionLayout layout = this->shown_layout;
 		JunctionEstimate estimate;
 		std::vector<std::optional<BridgeType>> bridge_types;
 		Money available;
-		this->ComputePlacement(tile, layout, estimate, bridge_types, available);
+		this->ComputePlacement(layout, origin, estimate, bridge_types, available);
 
 		/* Shift-click estimates the cost instead of building, as with every other build tool. */
 		if (IsShiftPressed()) {
@@ -491,11 +675,11 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (!estimate.affordable) return;
 
 		this->build_layout = layout;
-		this->build_origin = tile;
+		this->build_origin = origin;
 		this->build_height = estimate.height;
 		this->build_bridge_types = bridge_types;
 		this->last_state = JunctionBuildState::Building;
-		GetJunctionSequencer().Start(MakeJunctionBuildSteps(layout, tile));
+		GetJunctionSequencer().Start(MakeJunctionBuildSteps(layout, origin));
 		JunctionGhost::SetPinned(true);
 		/* Shrink the cursor box to one tile while the pinned footprint shows the build; 0x0 trips an assert in SetSelectionTilesDirty. */
 		SetTileSelectSize(1, 1);
@@ -510,9 +694,12 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (seq.GetState() == JunctionBuildState::Done) {
 			if (_settings_client.sound.confirm) SndPlayTileFx(SND_20_CONSTRUCTION_RAIL, this->build_origin);
 			seq.Cancel();
+			/* The map changed, so earlier results no longer hold. */
+			this->cache.clear();
+			this->DetachJob();
 			JunctionGhost::SetPinned(false);
-			this->ResetTileSelectSize();
-			this->last_tile = INVALID_TILE;
+			SetTileSelectSize(1, 1);
+			this->ResetHover();
 			this->SetDirty();
 		}
 
@@ -551,7 +738,9 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->SetWidgetDirty(WID_BJ_RETRY);
 		this->SetWidgetDirty(WID_BJ_CANCEL);
 
-		if (!this->generated.has_value()) {
+		this->PollJob();
+
+		if (this->generate_error != INVALID_STRING_ID) {
 			if (this->has_placement) {
 				JunctionGhost::Clear();
 				this->has_placement = false;
@@ -565,42 +754,25 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		Point pt = GetTileBelowCursor();
 		if (pt.x == -1) {
 			JunctionGhost::Clear();
-			this->last_tile = INVALID_TILE;
+			this->ResetHover();
 			this->has_placement = false;
 			this->SetWidgetDirty(WID_BJ_COST);
+			this->SetWidgetDirty(WID_BJ_STATUS);
 			return;
 		}
 
+		const auto now = std::chrono::steady_clock::now();
 		TileIndex tile = TileVirtXY(pt.x, pt.y);
-		if (tile == this->last_tile) return;
-		this->last_tile = tile;
-
-		JunctionLayout layout;
-		JunctionEstimate estimate;
-		std::vector<std::optional<BridgeType>> bridge_types;
-		Money available;
-		this->ComputePlacement(tile, layout, estimate, bridge_types, available);
-		SetTileSelectSize(layout.size.x, layout.size.y);
-
-		JunctionGhost::Set(layout, tile, estimate.height, this->railtype, bridge_types, estimate);
-		/* Blocked tiles are outlined individually; the whole outline goes red only when it is just too expensive. */
-		_thd.make_square_red = !estimate.affordable && estimate.bad_tiles.empty();
-
-		this->has_placement = true;
-		this->placement_cost = estimate.total;
-		this->placement_affordable = estimate.affordable;
-		this->placement_error = estimate.bad_tiles.empty() ? INVALID_STRING_ID : GetPlacementError(estimate);
-		this->SetWidgetDirty(WID_BJ_COST);
-
-		EncodedString text;
-		if (!estimate.bad_tiles.empty()) {
-			text = GetEncodedString(STR_JUNCTION_TOOLTIP_INVALID, GetPlacementError(estimate));
-		} else if (!estimate.affordable) {
-			text = GetEncodedString(STR_JUNCTION_TOOLTIP_UNAFFORDABLE, estimate.total, available);
-		} else {
-			text = GetEncodedString(STR_JUNCTION_TOOLTIP_COST, estimate.total);
+		if (tile != this->hover_tile) {
+			this->hover_tile = tile;
+			this->hover_since = now;
+			this->ShowHover();
 		}
-		GuiShowTooltips(this, std::move(text), TooltipCloseCondition::ExitViewport);
+
+		if (now - this->hover_since >= JUNCTION_HOVER_REST) {
+			const JunctionGenerateKey key = this->MakeKey(tile);
+			if (std::ranges::find(this->cache, key, &std::pair<JunctionGenerateKey, JunctionGenerateResult>::first) == this->cache.end()) this->StartJob();
+		}
 	}
 
 	static inline HotkeyList hotkeys{"buildjunction", {

@@ -17,6 +17,9 @@
 #include "../rail.h"
 #include "../settings_type.h"
 #include "../slope_func.h"
+#include "../bridge.h"
+#include "../economy_func.h"
+#include "../timer/timer_game_calendar.h"
 
 #include "../safeguards.h"
 
@@ -58,6 +61,40 @@ TEST_CASE("MakeJunctionSpec: reads settings and the rail type")
 	_settings_game.vehicle.train_acceleration_model = old_model;
 	_railtypes[RAILTYPE_RAIL].curve_speed = old_curve_speed;
 	_railtypes[RAILTYPE_RAIL].max_speed = old_max_speed;
+}
+
+TEST_CASE("MakeJunctionSpec: bridge closures are precomputed for 1..10 middle tiles")
+{
+	const BridgeSpec old_bridge = _bridge[0];
+	const uint16_t old_max_speed = _railtypes[RAILTYPE_RAIL].max_speed;
+	const uint old_max_length = _settings_game.construction.max_bridge_length;
+
+	_bridge[0].avail_year = TimerGameCalendar::Year{0};
+	_bridge[0].min_length = 0;
+	_bridge[0].max_length = 50;
+	_bridge[0].price = 100;
+	_bridge[0].speed = 200;
+	_settings_game.construction.max_bridge_length = 50;
+	_railtypes[RAILTYPE_RAIL].max_speed = 120;
+
+	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, 1, 1, 4);
+	const Money huge = std::numeric_limits<int64_t>::max() / 4;
+	for (uint n = 1; n <= 10; n++) {
+		std::optional<BridgeType> type = ChooseJunctionBridgeType(RAILTYPE_RAIL, n);
+		REQUIRE(type.has_value());
+		CHECK(spec.bridge_span_ok(n) == (GetBridgeSpec(*type)->speed >= spec.reference_speed));
+		const Money expected = Money(((int64_t)CalcBridgeLenCostFactor(n + 2) * _price[Price::BuildBridge] * GetBridgeSpec(*type)->price) >> 8) + (n + 2) * RailBuildCost(RAILTYPE_RAIL);
+		CHECK(spec.prices.bridge(n) == expected);
+	}
+	/* Outside 1..10 there is no precomputed value: not OK, and a very large price. */
+	for (uint n : {0u, 11u, 20u}) {
+		CHECK_FALSE(spec.bridge_span_ok(n));
+		CHECK(spec.prices.bridge(n) == huge);
+	}
+
+	_bridge[0] = old_bridge;
+	_railtypes[RAILTYPE_RAIL].max_speed = old_max_speed;
+	_settings_game.construction.max_bridge_length = old_max_length;
 }
 
 TEST_CASE("GameJunctionPricing: flat tile reports its height")

@@ -9,3 +9,12 @@ Use the Release build, `build-rel/openttd`. Generation takes about 0.5 s there, 
 5. With road side set to left in a new game, the built layout is the mirror image.
 6. Close and reopen the window: the notations and TL persist. Save and load: there is no savegame difference (D69).
 7. The rig's junction-check passed: `tools/ottd/ottd junction-check tools/ottd/layouts/circuit-LR-TL4.json --find-clear` (circuit from `[.circuit]`) exits 0 (verdict OK).
+
+## D78 T4
+
+1. Hovering over flat land shows "Working out a junction for this spot…", then the ghost within about a second, anchored with the hub at the cursor.
+2. Hovering over hills or water shows an adapted layout or "No junction fits here".
+3. Moving the mouse around causes no freeze.
+4. Rotate and mirror re-generate for the new orientation.
+5. The building matches the ghost.
+6. With the left-hand road side, the junction is mirrored correctly.

@@ -32,6 +32,8 @@
 #include "tile_type.h"
 #include "table/strings.h"
 
+#include <array>
+
 #include "safeguards.h"
 
 /**
@@ -317,17 +319,25 @@ JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_
 	spec.curve_speed = GetRailTypeInfo(railtype)->curve_speed;
 	spec.curve_limit = _settings_game.vehicle.train_acceleration_model != AccelerationModel::Original;
 	spec.signal_type = _settings_client.gui.junction_signal_type == 0 ? SignalType::Block : SignalType::PathOneWay;
-	spec.bridge_span_ok = [railtype, speed](uint n) {
+	/* Precompute on this thread: the generator runs on a worker thread, which must not read game state. */
+	std::array<bool, 11> span_ok{};
+	std::array<Money, 11> bridge_price{};
+	bridge_price.fill(Money(std::numeric_limits<int64_t>::max() / 4));
+	for (uint n = 1; n <= 10; n++) {
 		std::optional<BridgeType> type = ChooseJunctionBridgeType(railtype, n);
-		return type.has_value() && GetBridgeSpec(*type)->speed >= speed;
+		if (!type.has_value()) continue;
+		const BridgeSpec *bridge = GetBridgeSpec(*type);
+		span_ok[n] = bridge->speed >= speed;
+		bridge_price[n] = Money(((int64_t)CalcBridgeLenCostFactor(n + 2) * _price[Price::BuildBridge] * bridge->price) >> 8) + (n + 2) * RailBuildCost(railtype);
+	}
+	spec.bridge_span_ok = [span_ok](uint n) {
+		return n >= 1 && n <= 10 && span_ok[n];
 	};
 	spec.prices.rail_piece = RailBuildCost(railtype);
 	spec.prices.signal = _price[Price::BuildSignals];
-	spec.prices.bridge = [railtype](uint n) {
-		std::optional<BridgeType> type = ChooseJunctionBridgeType(railtype, n);
-		if (!type.has_value()) return Money(std::numeric_limits<int64_t>::max() / 4);
-		const BridgeSpec *bridge = GetBridgeSpec(*type);
-		return Money(((int64_t)CalcBridgeLenCostFactor(n + 2) * _price[Price::BuildBridge] * bridge->price) >> 8) + (n + 2) * RailBuildCost(railtype);
+	spec.prices.bridge = [bridge_price](uint n) {
+		if (n < 1 || n > 10) return Money(std::numeric_limits<int64_t>::max() / 4);
+		return bridge_price[n];
 	};
 	return spec;
 }
