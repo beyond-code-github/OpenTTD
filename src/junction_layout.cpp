@@ -190,6 +190,7 @@ static void MarkBad(JunctionEstimate &estimate, TileIndex tile)
  * @param origin The tile for the north corner of the layout.
  * @param pricing Source of tile and price information.
  * @return The estimate.
+ * @note 6. Clearing under a bridge over track is counted once (D50).
  */
 JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing)
 {
@@ -236,6 +237,7 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 	}
 
 	/* Price every build step that is entirely on the map. */
+	std::vector<TileIndex> spans; ///< Span tiles of the bridges that priced successfully.
 	for (const JunctionBuildStep &step : MakeJunctionBuildSteps(layout, origin)) {
 		if (const JunctionRailStep *rail = std::get_if<JunctionRailStep>(&step); rail != nullptr) {
 			if (rail->tile == INVALID_TILE) {
@@ -259,6 +261,8 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 			CommandCost result = pricing.PriceBridge(bridge->start, bridge->end);
 			if (result.Succeeded()) {
 				estimate.total += result.GetCost();
+				const TileIndexDiff delta = TileOffsByDiagDir(DiagdirBetweenTiles(bridge->start, bridge->end));
+				for (TileIndex t = bridge->start + delta; t != bridge->end; t += delta) spans.push_back(t);
 			} else {
 				MarkBad(estimate, bridge->start);
 				MarkBad(estimate, bridge->end);
@@ -272,6 +276,17 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 			}
 			estimate.total += pricing.SignalCost();
 		}
+	}
+
+	/* The bridge clears its span tiles that have no build-above handler, so a span tile that also has track pays its clearing twice; the real build places the rail first and pays once. */
+	std::vector<TileIndex> counted;
+	for (const JunctionTrack &jt : layout.tracks) {
+		const TileIndex tile = AddTileIndexDiffCWrap(origin, jt.offset);
+		if (tile == INVALID_TILE || std::ranges::find(estimate.bad_tiles, tile) != estimate.bad_tiles.end()) continue;
+		if (std::ranges::find(spans, tile) == spans.end() || std::ranges::find(counted, tile) != counted.end()) continue;
+		counted.push_back(tile);
+		CommandCost c = pricing.TestClear(tile);
+		if (c.Succeeded()) estimate.total -= c.GetCost();
 	}
 
 	estimate.affordable = estimate.bad_tiles.empty() && estimate.total <= pricing.AvailableMoney();

@@ -28,6 +28,7 @@ public:
 	std::set<TileIndex> not_flat;
 	std::map<TileIndex, int> heights;
 	std::map<TileIndex, StringID> rail_fails;
+	std::map<TileIndex, Money> clear_costs;
 	bool bridge_fails = false;
 	Money money = 1000000;
 
@@ -51,6 +52,12 @@ public:
 		return CommandCost(ExpensesType::Construction, 1000);
 	}
 
+	CommandCost TestClear(TileIndex tile) const override
+	{
+		auto it = this->clear_costs.find(tile);
+		return CommandCost(ExpensesType::Construction, it != this->clear_costs.end() ? it->second : Money{0});
+	}
+
 	Money SignalCost() const override { return 50; }
 	Money AvailableMoney() const override { return this->money; }
 };
@@ -66,6 +73,32 @@ TEST_CASE("JunctionLayout outer: test junction on flat clear land prices exactly
 	CHECK(estimate.total == 2000);
 	CHECK(estimate.bad_tiles.empty());
 	CHECK(estimate.affordable);
+}
+
+TEST_CASE("JunctionLayout outer: clearing under a bridge over track is counted once")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	pricing.clear_costs[TileXY(14, 12)] = 428;
+	JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+
+	/* The stub's TestRail and PriceBridge don't model clearing, so subtracting 428 shows the overlap rule is applied once. */
+	CHECK(estimate.total == 2000 - 428);
+	CHECK(estimate.affordable);
+	CHECK(estimate.bad_tiles.empty());
+}
+
+TEST_CASE("JunctionLayout: clearing elsewhere is not subtracted")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	pricing.clear_costs[TileXY(10, 12)] = 428; // Track but no bridge over it.
+	pricing.clear_costs[TileXY(14, 11)] = 300; // Bridge span but no track.
+	JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+
+	CHECK(estimate.total == 2000);
 }
 
 TEST_CASE("JunctionLayout: test junction fixture contents")

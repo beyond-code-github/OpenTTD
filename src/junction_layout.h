@@ -72,6 +72,8 @@ public:
 	virtual CommandCost TestRail(TileIndex tile, Track track) const = 0;
 	/** Full price of the cheapest suitable bridge type between two heads, or an error. */
 	virtual CommandCost PriceBridge(TileIndex start, TileIndex end) const = 0;
+	/** Test-only run of clearing a tile; its cost is what building anything on the tile would pay to clear it first. */
+	virtual CommandCost TestClear(TileIndex tile) const = 0;
 	/** Price of one signal. */
 	virtual Money SignalCost() const = 0;
 	/** Money the local company can spend. */

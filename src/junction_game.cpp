@@ -12,6 +12,7 @@
 #include "junction_game.h"
 #include "command_func.h"
 #include "rail_cmd.h"
+#include "landscape_cmd.h"
 #include "tunnelbridge_cmd.h"
 #include "bridge.h"
 #include "tunnelbridge.h"
@@ -130,6 +131,16 @@ CommandCost GameJunctionPricing::PriceBridge(TileIndex start, TileIndex end) con
 	const BridgeSpec *spec = GetBridgeSpec(*type);
 	const Money total = ret.GetCost() + (((int64_t)CalcBridgeLenCostFactor(length + 2) * _price[Price::BuildBridge] * spec->price) >> 8) + (length + 2) * RailBuildCost(this->railtype);
 	return CommandCost(ExpensesType::Construction, total);
+}
+
+/**
+ * Test-only run of clearing a tile.
+ * @param tile The tile to clear.
+ * @return The cost of the command, or its error.
+ */
+CommandCost GameJunctionPricing::TestClear(TileIndex tile) const
+{
+	return Command<Commands::LandscapeClear>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::LandscapeClear>()) | DoCommandFlag::QueryCost, tile);
 }
 
 /**

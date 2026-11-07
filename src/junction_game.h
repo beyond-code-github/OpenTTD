@@ -29,6 +29,7 @@ public:
 	std::optional<int> GetFlatHeight(TileIndex tile) const override;
 	CommandCost TestRail(TileIndex tile, Track track) const override;
 	CommandCost PriceBridge(TileIndex start, TileIndex end) const override;
+	CommandCost TestClear(TileIndex tile) const override;
 	Money SignalCost() const override;
 	Money AvailableMoney() const override;
 
