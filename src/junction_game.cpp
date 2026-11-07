@@ -15,6 +15,8 @@
 #include "tunnelbridge_cmd.h"
 #include "bridge.h"
 #include "tunnelbridge.h"
+#include "signal_func.h"
+#include "track_func.h"
 #include "rail.h"
 #include "engine_base.h"
 #include "engine_func.h"
@@ -146,4 +148,46 @@ Money GameJunctionPricing::SignalCost() const
 Money GameJunctionPricing::AvailableMoney() const
 {
 	return GetAvailableMoney(_local_company);
+}
+
+/**
+ * Post one junction build step as a command.
+ * @param step The step to post.
+ * @return The result of posting; false also if no bridge type qualifies.
+ */
+bool GameJunctionStepPoster::Post(const JunctionBuildStep &step)
+{
+	return std::visit([this]<typename T>(const T &s) -> bool {
+		if constexpr (std::is_same_v<T, JunctionRailStep>) {
+			return Command<Commands::BuildRail>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, CcJunctionStep, s.tile, this->railtype, s.track, false);
+		} else if constexpr (std::is_same_v<T, JunctionBridgeStep>) {
+			uint length = GetTunnelBridgeLength(s.start, s.end);
+			auto type = ChooseJunctionBridgeType(this->railtype, length);
+			if (!type.has_value()) return false;
+			return Command<Commands::BuildBridge>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, CcJunctionStep, s.end, s.start, TransportType::Rail, *type, this->railtype, INVALID_ROADTYPE);
+		} else {
+			return Command<Commands::BuildSignal>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, CcJunctionStep, s.tile, TrackdirToTrack(s.facing), s.type, s.variant, false, false, false, SignalType::Block, SignalType::Block, 0, SignalAlongTrackdir(s.facing));
+		}
+	}, step);
+}
+
+/**
+ * Get the single client-side junction build sequencer.
+ * @return The sequencer.
+ */
+JunctionSequencer &GetJunctionSequencer()
+{
+	static JunctionSequencer sequencer;
+	return sequencer;
+}
+
+/**
+ * Command callback of every junction build step; reports the result to the sequencer.
+ * @param cmd The command that was executed.
+ * @param result The result of the command.
+ * @param tile The tile the command was executed on.
+ */
+void CcJunctionStep([[maybe_unused]] Commands cmd, const CommandCost &result, [[maybe_unused]] TileIndex tile)
+{
+	GetJunctionSequencer().OnStepResult(result.Succeeded());
 }

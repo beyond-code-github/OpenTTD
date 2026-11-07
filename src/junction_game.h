@@ -11,6 +11,7 @@
 #define JUNCTION_GAME_H
 
 #include "junction_layout.h"
+#include "junction_build.h"
 #include "rail_type.h"
 #include "bridge_type.h"
 
@@ -34,5 +35,18 @@ public:
 private:
 	RailType railtype; ///< Rail type the junction is built in.
 };
+
+/** Posts junction build steps as real commands for the local company. */
+class GameJunctionStepPoster : public JunctionStepPoster {
+public:
+	explicit GameJunctionStepPoster(RailType railtype) : railtype(railtype) {}
+	bool Post(const JunctionBuildStep &step) override;
+
+private:
+	RailType railtype; ///< Rail type the junction is built in.
+};
+
+JunctionSequencer &GetJunctionSequencer();
+void CcJunctionStep(Commands cmd, const CommandCost &result, TileIndex tile);
 
 #endif /* JUNCTION_GAME_H */
