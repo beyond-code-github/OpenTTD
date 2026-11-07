@@ -268,6 +268,9 @@ add_files(
     junction_router.h
     junction_rules.cpp
     junction_rules.h
+    junction_rules_internal.h
+    junction_signal_pass.cpp
+    junction_signal_pass.h
     landscape.cpp
     landscape.h
     landscape_cmd.h

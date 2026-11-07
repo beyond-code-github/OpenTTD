@@ -10,6 +10,7 @@
 #include "stdafx.h"
 
 #include "junction_rules.h"
+#include "junction_rules_internal.h"
 #include "core/math_func.hpp"
 #include "direction_func.h"
 #include "map_func.h"
@@ -28,9 +29,6 @@ static constexpr size_t MAX_PATH_PIECES = 4096;
 /** One movement through the junction. */
 using Movement = std::pair<JunctionPortRole, JunctionPortRole>;
 
-/** A switch on a path: whether it is a split, and the index of the switch tile's piece. */
-using SwitchEvent = std::pair<bool, size_t>;
-
 static bool SameTile(TileIndexDiffC a, TileIndexDiffC b)
 {
 	return a.x == b.x && a.y == b.y;
@@ -46,8 +44,7 @@ static bool InBox(const JunctionLayout &layout, TileIndexDiffC tile)
 	return tile.x >= 0 && tile.y >= 0 && tile.x < layout.size.x && tile.y < layout.size.y;
 }
 
-/** The track bits of all layout entries on a tile. */
-static TrackBits TracksAt(const JunctionLayout &layout, TileIndexDiffC tile)
+TrackBits TracksAt(const JunctionLayout &layout, TileIndexDiffC tile)
 {
 	TrackBits tracks{};
 	for (const JunctionTrack &jt : layout.tracks) {
@@ -90,8 +87,7 @@ static uint8_t UnitsOf(Trackdir td)
 	return IsDiagonalTrackdir(td) ? 2 : 1;
 }
 
-/** The bridge that has the tile as one of its heads, or nullptr. */
-static const JunctionBridge *FindBridgeByHead(const JunctionLayout &layout, TileIndexDiffC tile)
+const JunctionBridge *FindBridgeByHead(const JunctionLayout &layout, TileIndexDiffC tile)
 {
 	for (const JunctionBridge &bridge : layout.bridges) {
 		if (SameTile(bridge.start, tile) || SameTile(bridge.end, tile)) return &bridge;
@@ -294,8 +290,7 @@ static std::map<std::pair<int, int>, TrackdirBits> UsedTrackdirs(const JunctionC
 	return used;
 }
 
-/** The tracks used by the paths, per tile. */
-static std::map<std::pair<int, int>, TrackBits> UsedTracks(const JunctionCheckContext &ctx)
+std::map<std::pair<int, int>, TrackBits> UsedTracks(const JunctionCheckContext &ctx)
 {
 	std::map<std::pair<int, int>, TrackBits> used;
 	for (const auto &[tile, trackdirs] : UsedTrackdirs(ctx)) {
@@ -304,15 +299,7 @@ static std::map<std::pair<int, int>, TrackBits> UsedTracks(const JunctionCheckCo
 	return used;
 }
 
-/**
- * The switches along a path, ordered by the index of their switch tile's piece.
- * A split is at the piece where more than one continuation exists; a merge is at the piece
- * where another track on the same tile leaves in the same direction and reaches the next piece.
- * Only tracks used by some path make merges; unused tracks, such as prio joins, never do.
- * Only tracks used by some path make merges; unused tracks, such as prio joins, never do.
- * Bridge pieces are never switches.
- */
-static std::vector<SwitchEvent> SwitchEventsOf(const JunctionLayout &layout, const std::map<std::pair<int, int>, TrackBits> &used, const JunctionPath &path)
+std::vector<SwitchEvent> SwitchEventsOf(const JunctionLayout &layout, const std::map<std::pair<int, int>, TrackBits> &used, const JunctionPath &path)
 {
 	std::vector<SwitchEvent> events;
 	const std::vector<JunctionPiece> &pieces = path.pieces;
@@ -630,21 +617,19 @@ static bool HasSignalOnTrack(const JunctionLayout &layout, TileIndexDiffC tile, 
 	return std::ranges::any_of(layout.signals, [&](const JunctionSignal &s) { return SameTile(s.offset, tile) && TrackdirToTrack(s.facing) == TrackdirToTrack(td); });
 }
 
-static bool IsSignalledPiece(const JunctionLayout &layout, const JunctionPiece &piece)
+bool IsSignalledPiece(const JunctionLayout &layout, const JunctionPiece &piece)
 {
 	return !piece.on_bridge && HasSignalFacing(layout, piece.tile, piece.trackdir);
 }
 
-/** Whether a signal could be placed on the piece. */
-static bool IsLegalSignalPiece(const JunctionLayout &layout, const JunctionPiece &piece)
+bool IsLegalSignalPiece(const JunctionLayout &layout, const JunctionPiece &piece)
 {
 	if (piece.on_bridge || FindBridgeByHead(layout, piece.tile) != nullptr) return false;
 	if (TracksOverlap(TracksAt(layout, piece.tile))) return false;
 	return !HasSignalOnTrack(layout, piece.tile, piece.trackdir);
 }
 
-/** The signals that are the joiner's nearest signal before an ML merge. */
-static std::vector<std::pair<TileIndexDiffC, Trackdir>> JoinerSignals(const JunctionCheckContext &ctx)
+std::vector<std::pair<TileIndexDiffC, Trackdir>> JoinerSignals(const JunctionCheckContext &ctx)
 {
 	const auto used = UsedTracks(ctx);
 	std::vector<std::pair<TileIndexDiffC, Trackdir>> result;
@@ -879,12 +864,7 @@ static size_t FindRoot(std::vector<size_t> &parent, size_t i)
 	return i;
 }
 
-/**
- * Compute the signal blocks. Tiles with a signal belong to no block; all track bits of a tile are one unit;
- * a bridge joins the tile before its near head and the tile after its far head, and its heads belong to that block.
- * @return Map from tile to block id.
- */
-static std::map<std::pair<int, int>, size_t> ComputeBlocks(const JunctionLayout &layout)
+std::map<std::pair<int, int>, size_t> ComputeBlocks(const JunctionLayout &layout)
 {
 	std::map<std::pair<int, int>, size_t> node_of;
 	std::vector<TileIndexDiffC> tiles;
@@ -967,8 +947,7 @@ std::vector<RuleViolation> CheckDeadlock(const JunctionCheckContext &ctx)
 	return out;
 }
 
-/** The block of a path piece; bridge pieces are in the block of their bridge. */
-static std::optional<size_t> BlockOfPiece(const JunctionLayout &layout, const std::map<std::pair<int, int>, size_t> &blocks, const JunctionPiece &piece)
+std::optional<size_t> BlockOfPiece(const JunctionLayout &layout, const std::map<std::pair<int, int>, size_t> &blocks, const JunctionPiece &piece)
 {
 	if (piece.on_bridge) {
 		for (const JunctionBridge &bridge : layout.bridges) {
@@ -1322,12 +1301,18 @@ std::vector<RuleViolation> CheckFootprint(const JunctionCheckContext &ctx)
 	return out;
 }
 
-std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec)
+const std::vector<std::pair<JunctionPortRole, JunctionPortRole>> &JunctionTMovements()
 {
 	using Role = JunctionPortRole;
-	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), {
+	static const std::vector<std::pair<Role, Role>> movements = {
 		{Role::EIn, Role::EOut}, {Role::EIn, Role::SOut}, {Role::WIn, Role::WOut}, {Role::WIn, Role::SOut}, {Role::NIn, Role::WOut}, {Role::NIn, Role::EOut},
-	});
+	};
+	return movements;
+}
+
+std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec)
+{
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
 
 	std::vector<RuleViolation> out;
 	auto add = [&](const std::vector<RuleViolation> &group) { out.insert(out.end(), group.begin(), group.end()); };

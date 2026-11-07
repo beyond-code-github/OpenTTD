@@ -13,6 +13,7 @@ add_test_files(
     junction_route.cpp
     junction_router.cpp
     junction_rules.cpp
+    junction_signal_pass.cpp
     landscape_partial_pixel_z.cpp
     math_func.cpp
     mock_environment.h

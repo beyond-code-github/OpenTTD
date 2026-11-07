@@ -1,0 +1,517 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+/** @file junction_signal_pass.cpp Junction signal and prio pass for the generator. */
+
+#include "stdafx.h"
+
+#include "junction_signal_pass.h"
+
+#include "junction_rules_internal.h"
+#include "direction_func.h"
+#include "map_func.h"
+#include "track_func.h"
+
+#include <algorithm>
+#include <cmath>
+#include <map>
+#include <optional>
+#include <set>
+
+#include "safeguards.h"
+
+static bool SameTile(TileIndexDiffC a, TileIndexDiffC b)
+{
+	return a.x == b.x && a.y == b.y;
+}
+
+static bool IsMainline(const JunctionPath &path)
+{
+	return (path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::EOut) || (path.from == JunctionPortRole::WIn && path.to == JunctionPortRole::WOut);
+}
+
+/** The paths in the order the pass walks them: the mainlines first, then the rest, each in context order. */
+static std::vector<const JunctionPath *> PathOrder(const JunctionCheckContext &ctx)
+{
+	std::vector<const JunctionPath *> order;
+	for (const JunctionPath &path : ctx.paths) {
+		if (IsMainline(path)) order.push_back(&path);
+	}
+	for (const JunctionPath &path : ctx.paths) {
+		if (!IsMainline(path)) order.push_back(&path);
+	}
+	return order;
+}
+
+/** Put a signal on the piece, unless it already has one. */
+static void PlaceSignal(JunctionLayout &layout, const JunctionPiece &piece, SignalType type)
+{
+	if (IsSignalledPiece(layout, piece)) return;
+	layout.signals.push_back({piece.tile, piece.trackdir, type, SignalVariant::Electric});
+}
+
+/** The nearest piece that has or could take a signal, scanning from 'from' in 'step' direction, or nullptr; the scan of CheckSignals. */
+static const JunctionPiece *NearestSignalPiece(const JunctionLayout &layout, const JunctionPath &path, const std::set<size_t> &switches, size_t from, int step)
+{
+	for (int64_t i = static_cast<int64_t>(from); i >= 0 && i < static_cast<int64_t>(path.pieces.size()); i += step) {
+		const JunctionPiece &piece = path.pieces[i];
+		if (piece.on_bridge || switches.contains(static_cast<size_t>(i))) return nullptr;
+		if (IsSignalledPiece(layout, piece) || IsLegalSignalPiece(layout, piece)) return &piece;
+	}
+	return nullptr;
+}
+
+/** Phase 1: the signals the checker requires, and the joiners' Entry signals. */
+static void PlaceRequiredSignals(JunctionLayout &layout, const JunctionSpec &spec, const JunctionCheckContext &ctx)
+{
+	const auto used = UsedTracks(ctx);
+	for (const JunctionPath *path : PathOrder(ctx)) {
+		const std::vector<SwitchEvent> events = SwitchEventsOf(layout, used, *path);
+		std::set<size_t> switches;
+		for (const SwitchEvent &event : events) switches.insert(event.second);
+
+		auto place = [&](const JunctionPiece *piece) {
+			if (piece != nullptr) PlaceSignal(layout, *piece, spec.signal_type);
+		};
+
+		for (const auto &[is_split, index] : events) {
+			if (index > 0) place(NearestSignalPiece(layout, *path, switches, index - 1, -1));
+			if (!is_split) place(NearestSignalPiece(layout, *path, switches, index + 1, 1));
+		}
+
+		for (size_t i = 0; i < path->pieces.size(); i++) {
+			if (!path->pieces[i].on_bridge || (i > 0 && path->pieces[i - 1].on_bridge)) continue;
+			size_t last = i;
+			while (last + 1 < path->pieces.size() && path->pieces[last + 1].on_bridge) last++;
+			if (i > 0) place(NearestSignalPiece(layout, *path, switches, i - 1, -1));
+			if (last + 1 < path->pieces.size()) place(NearestSignalPiece(layout, *path, switches, last + 1, 1));
+			i = last;
+		}
+	}
+
+	for (const auto &[tile, trackdir] : JoinerSignals(ctx)) {
+		for (JunctionSignal &signal : layout.signals) {
+			if (SameTile(signal.offset, tile) && signal.facing == trackdir) signal.type = SignalType::Entry;
+		}
+	}
+}
+
+/** Phase 2: the bay boundaries before every queue merge (D88), walked as CheckWaitingRoom walks them. */
+static void PlaceBaySignals(JunctionLayout &layout, const JunctionSpec &spec, const JunctionCheckContext &ctx)
+{
+	const auto used = UsedTracks(ctx);
+	const uint bay = 2u * spec.tl;
+	for (const JunctionPath *path : PathOrder(ctx)) {
+		if (IsMainline(*path)) continue;
+		const std::vector<SwitchEvent> events = SwitchEventsOf(layout, used, *path);
+		for (const SwitchEvent &event : events) {
+			if (event.first) continue;
+			const size_t m = event.second;
+
+			size_t s = m;
+			for (size_t i = m; i-- > 0;) {
+				if (!IsSignalledPiece(layout, path->pieces[i])) continue;
+				s = i;
+				break;
+			}
+			if (s == m) continue;
+
+			size_t u = 0;
+			for (const SwitchEvent &other : events) {
+				if (other.first && other.second < s) u = std::max(u, other.second);
+			}
+			uint length = 0;
+			for (size_t i = u + 1; i <= s; i++) length += path->pieces[i].units;
+			if (length < bay) continue;
+
+			size_t prev = s;
+			for (;;) {
+				std::optional<size_t> cand;
+				uint distance = 0;
+				for (size_t i = prev; i-- > 0;) {
+					distance += path->pieces[i + 1].units;
+					if (distance < bay) continue;
+					const JunctionPiece &piece = path->pieces[i];
+					if (!IsLegalSignalPiece(layout, piece) && !IsSignalledPiece(layout, piece)) continue;
+					if (piece.on_bridge || FindBridgeByHead(layout, piece.tile) != nullptr) continue;
+					if (std::ranges::any_of(events, [&](const SwitchEvent &e) { return e.second == i; })) continue;
+					cand = i;
+					break;
+				}
+				if (!cand.has_value() || *cand <= u) break;
+				PlaceSignal(layout, path->pieces[*cand], spec.signal_type);
+				prev = *cand;
+			}
+		}
+	}
+}
+
+/** Phase 3: fill the gaps between anchors so that none is more than twice the signal spacing. */
+static void FillSignals(JunctionLayout &layout, const JunctionSpec &spec, const JunctionCheckContext &ctx)
+{
+	const uint max_gap = 2u * spec.sd;
+	for (const JunctionPath *path : PathOrder(ctx)) {
+		const std::vector<JunctionPiece> &pieces = path->pieces;
+		if (pieces.empty()) continue;
+		std::vector<size_t> anchors;
+		for (size_t i = 0; i < pieces.size(); i++) {
+			if (i == 0 || i + 1 == pieces.size() || IsSignalledPiece(layout, pieces[i])) anchors.push_back(i);
+		}
+		for (size_t ai = 0; ai + 1 < anchors.size(); ai++) {
+			const size_t a = anchors[ai];
+			const size_t b = anchors[ai + 1];
+			uint total = 0;
+			for (size_t k = a + 1; k <= b; k++) total += pieces[k].units;
+			const uint n = (total + max_gap - 1) / max_gap - 1;
+			for (uint i = 1; i <= n; i++) {
+				const uint target = (2 * total * i + (n + 1)) / (2 * (n + 1));
+				std::optional<size_t> best;
+				uint best_diff = 0;
+				uint distance = 0; // Units of the pieces after k up to and including b.
+				for (size_t k = b; k-- > a + 1;) {
+					distance += pieces[k + 1].units;
+					if (k == 0 || k + 1 == pieces.size() || !IsLegalSignalPiece(layout, pieces[k])) continue;
+					const uint diff = distance > target ? distance - target : target - distance;
+					if (!best.has_value() || diff < best_diff) {
+						best = k;
+						best_diff = diff;
+					}
+				}
+				if (best.has_value()) PlaceSignal(layout, pieces[*best], spec.signal_type);
+			}
+		}
+	}
+}
+
+/** Whether a track touches the given tile edge. */
+static bool TrackTouches(Track track, DiagDirection edge)
+{
+	const Trackdir td = TrackToTrackdir(track);
+	return TrackdirToExitdir(td) == edge || TrackdirToExitdir(ReverseTrackdir(td)) == edge;
+}
+
+/** The track that touches both edges. */
+static Track Corner(DiagDirection a, DiagDirection b)
+{
+	for (Track track : {Track::Upper, Track::Lower, Track::Left, Track::Right}) {
+		if (TrackTouches(track, a) && TrackTouches(track, b)) return track;
+	}
+	NOT_REACHED();
+}
+
+static void AddTracks(JunctionLayout &layout, TileIndexDiffC tile, TrackBits tracks)
+{
+	for (JunctionTrack &jt : layout.tracks) {
+		if (SameTile(jt.offset, tile)) {
+			jt.tracks = jt.tracks | tracks;
+			return;
+		}
+	}
+	layout.tracks.push_back({tile, tracks});
+}
+
+/** The geometry of the prio of one ML merge. */
+struct PrioGeometry {
+	Track axis;
+	DiagDirection exit_edge;
+	TileIndexDiffC side_diff; ///< The step to the prio side.
+	Track h1; ///< The half piece on the ML tile.
+	Track h2; ///< The half piece on the row tile.
+};
+
+/** The joiner of an ML merge, found as CheckPrio finds it, with the index of its merge piece; nullptr when there is none. */
+static const JunctionPath *FindJoiner(const JunctionCheckContext &ctx, const std::vector<std::vector<SwitchEvent>> &all_events, size_t pi, const SwitchEvent &event, size_t &joiner_index)
+{
+	const JunctionPiece &merge_piece = ctx.paths[pi].pieces[event.second];
+	for (size_t qi = 0; qi < ctx.paths.size(); qi++) {
+		if (qi == pi) continue;
+		for (const SwitchEvent &other : all_events[qi]) {
+			const JunctionPiece &piece = ctx.paths[qi].pieces[other.second];
+			if (other.first || !SameTile(piece.tile, merge_piece.tile) || piece.trackdir == merge_piece.trackdir) continue;
+			joiner_index = other.second;
+			return &ctx.paths[qi];
+		}
+	}
+	return nullptr;
+}
+
+/** Whether the merge has a joiner of the same movement, that is, is a lane merge. */
+static bool IsLaneMerge(const JunctionCheckContext &ctx, const std::vector<std::vector<SwitchEvent>> &all_events, size_t pi, const SwitchEvent &event)
+{
+	size_t joiner_index = 0;
+	const JunctionPath *joiner = FindJoiner(ctx, all_events, pi, event, joiner_index);
+	return joiner != nullptr && joiner->from == ctx.paths[pi].from && joiner->to == ctx.paths[pi].to;
+}
+
+/** The prio geometry of a non-lane ML merge: on the side opposite the joiner's approach (D75 and D87). */
+static std::optional<PrioGeometry> GeometryOfPrio(const JunctionCheckContext &ctx, const std::vector<std::vector<SwitchEvent>> &all_events, size_t pi, const SwitchEvent &event)
+{
+	const JunctionPath &ml = ctx.paths[pi];
+	const JunctionPiece &merge_piece = ml.pieces[event.second];
+	const TileIndexDiffC tile = merge_piece.tile;
+	if (!IsDiagonalTrackdir(merge_piece.trackdir)) return std::nullopt;
+
+	size_t joiner_index = 0;
+	const JunctionPath *joiner = FindJoiner(ctx, all_events, pi, event, joiner_index);
+	if (joiner == nullptr || (joiner->from == ml.from && joiner->to == ml.to) || joiner_index == 0) return std::nullopt;
+
+	const Track axis = TrackdirToTrack(merge_piece.trackdir);
+	const bool along_x = axis == Track::X;
+	const DiagDirection exit_edge = TrackdirToExitdir(merge_piece.trackdir);
+	const TileIndexDiffC from = joiner->pieces[joiner_index - 1].tile;
+	const int offset = along_x ? from.y - tile.y : from.x - tile.x;
+	if (offset == 0) return std::nullopt;
+	std::optional<DiagDirection> side;
+	for (DiagDirection edge = DiagDirection::Begin; edge < DiagDirection::End; edge++) {
+		if (TrackTouches(axis, edge)) continue;
+		const TileIndexDiffC diff = TileIndexDiffCByDiagDir(edge);
+		if ((along_x ? diff.y : diff.x) == (offset < 0 ? 1 : -1)) side = edge;
+	}
+	if (!side.has_value()) return std::nullopt;
+	return PrioGeometry{axis, exit_edge, TileIndexDiffCByDiagDir(*side), Corner(*side, exit_edge), Corner(ReverseDiagDir(*side), ReverseDiagDir(exit_edge))};
+}
+
+/** Phase 4: the prio for one ML merge; nothing is added when it cannot be built. */
+static bool PlacePrio(JunctionLayout &layout, const JunctionCheckContext &ctx, const std::vector<std::vector<SwitchEvent>> &all_events, size_t pi, const SwitchEvent &event)
+{
+	const JunctionPath &ml = ctx.paths[pi];
+	const size_t j = event.second;
+	const JunctionPiece &merge_piece = ml.pieces[j];
+	const TileIndexDiffC tile = merge_piece.tile;
+	const std::optional<PrioGeometry> geometry = GeometryOfPrio(ctx, all_events, pi, event);
+	if (!geometry.has_value()) return true;
+	const Track axis = geometry->axis;
+	const bool along_x = axis == Track::X;
+	const TileIndexDiffC dir = TileIndexDiffCByDiagDir(geometry->exit_edge);
+	const TileIndexDiffC side_diff = geometry->side_diff;
+	const Track h1 = geometry->h1;
+	const Track h2 = geometry->h2;
+
+	/* Another lane's pass has done this merge already. Anything below that returns false abandons the prio. */
+	if (TracksAt(layout, tile).Test(h1)) return true;
+
+	const auto blocks = ComputeBlocks(layout);
+	const auto merge_block = blocks.find({tile.x, tile.y});
+	if (merge_block == blocks.end()) return false;
+
+	/* The blocks the checker wants a join in: from the merge upstream along every path of the movement through the merge piece. */
+	std::vector<size_t> required;
+	std::set<size_t> met;
+	for (const JunctionPath &lane : ctx.paths) {
+		if (lane.from != ml.from || lane.to != ml.to) continue;
+		const auto at = std::ranges::find_if(lane.pieces, [&](const JunctionPiece &piece) { return !piece.on_bridge && SameTile(piece.tile, tile) && piece.trackdir == merge_piece.trackdir; });
+		if (at == lane.pieces.end()) continue;
+		uint covered = 0;
+		for (size_t i = static_cast<size_t>(at - lane.pieces.begin()); i-- > 0 && covered < 2u * ctx.spec.tl;) {
+			covered += lane.pieces[i].units;
+			const std::optional<size_t> block = BlockOfPiece(layout, blocks, lane.pieces[i]);
+			if (!block.has_value() || *block == merge_block->second || !met.insert(*block).second) continue;
+			required.push_back(*block);
+		}
+	}
+
+	auto has_signal = [&](TileIndexDiffC t) {
+		return std::ranges::any_of(layout.signals, [&](const JunctionSignal &s) { return SameTile(s.offset, t); });
+	};
+
+	/* Join tiles: the merge tile, and the first suitable tile of p in each required block. */
+	std::vector<TileIndexDiffC> joins;
+	for (size_t block : required) {
+		bool found = false;
+		for (size_t i = j; i-- > 0 && !found;) {
+			const JunctionPiece &piece = ml.pieces[i];
+			if (piece.on_bridge || BlockOfPiece(layout, blocks, piece) != block) continue;
+			if (has_signal(piece.tile)) continue;
+			const TileIndexDiffC neighbour = {static_cast<int16_t>(piece.tile.x + side_diff.x), static_cast<int16_t>(piece.tile.y + side_diff.y)};
+			const bool reserved = TracksAt(layout, piece.tile) == TrackBits{axis, h1} && TracksAt(layout, neighbour) == TrackBits{axis, h2};
+			if (!reserved && (TracksAt(layout, piece.tile) != TrackBits{axis} || TracksAt(layout, neighbour).Any())) continue;
+			joins.push_back(piece.tile);
+			found = true;
+		}
+		if (!found) return false;
+	}
+
+	/* The joins in order of their distance upstream of the merge, which must all be on the merge's row. */
+	std::vector<int> steps{0};
+	for (const TileIndexDiffC &join : joins) {
+		if ((along_x ? join.y != tile.y : join.x != tile.x)) return false;
+		const int step = (tile.x - join.x) * dir.x + (tile.y - join.y) * dir.y;
+		if (step <= 0) return false;
+		steps.push_back(step);
+	}
+	std::ranges::sort(steps);
+
+	auto row_tile = [&](int step) {
+		return TileIndexDiffC{static_cast<int16_t>(tile.x - step * dir.x + side_diff.x), static_cast<int16_t>(tile.y - step * dir.y + side_diff.y)};
+	};
+	auto main_tile = [&](int step) {
+		return TileIndexDiffC{static_cast<int16_t>(tile.x - step * dir.x), static_cast<int16_t>(tile.y - step * dir.y)};
+	};
+
+	/* The row: h2 alone beside the merge, axis plus h2 beside the other joins, the axis between. */
+	std::vector<std::pair<TileIndexDiffC, TrackBits>> row;
+	for (int step = 0; step <= steps.back(); step++) {
+		const bool is_join = std::ranges::find(steps, step) != steps.end();
+		TrackBits bits{axis};
+		if (step == 0) bits = TrackBits{h2};
+		else if (is_join) bits = TrackBits{axis, h2};
+		const TrackBits present = TracksAt(layout, row_tile(step));
+		if (present.Any() && present != bits) return false;
+		row.emplace_back(row_tile(step), bits);
+	}
+
+	/* One signal beside the downstream join of each pair; adjacent joins cannot have one. */
+	std::vector<TileIndexDiffC> signal_tiles;
+	for (size_t k = 0; k + 1 < steps.size(); k++) {
+		if (steps[k + 1] == steps[k] + 1) return false;
+		signal_tiles.push_back(row_tile(steps[k] + 1));
+	}
+
+	AddTracks(layout, tile, TrackBits{h1});
+	for (int step : steps) {
+		if (step > 0) AddTracks(layout, main_tile(step), TrackBits{h1});
+	}
+	for (const auto &[row_at, bits] : row) AddTracks(layout, row_at, bits);
+	const Trackdir upstream = ReverseTrackdir(merge_piece.trackdir);
+	for (size_t k = 0; k < signal_tiles.size(); k++) {
+		const SignalType type = k + 1 == signal_tiles.size() ? SignalType::Exit : SignalType::Combo;
+		layout.signals.push_back({signal_tiles[k], upstream, type, SignalVariant::Electric});
+	}
+	return true;
+}
+
+/** A prio join reserved in phase 0. */
+struct ReservedJoin {
+	TileIndexDiffC merge; ///< The ML merge tile the join is for.
+	TileIndexDiffC tile; ///< The ML tile holding h1.
+	TileIndexDiffC neighbour; ///< The row tile holding the axis and h2.
+	TrackBits tile_bits;
+	TrackBits neighbour_bits;
+};
+
+static void RemoveTracks(JunctionLayout &layout, TileIndexDiffC tile, TrackBits tracks)
+{
+	for (auto it = layout.tracks.begin(); it != layout.tracks.end(); ++it) {
+		if (!SameTile(it->offset, tile)) continue;
+		for (Track track : tracks) it->tracks.Reset(track);
+		if (it->tracks.None()) layout.tracks.erase(it);
+		return;
+	}
+}
+
+/**
+ * Phase 0: reserve a prio join in each lane-merge block that the coverage of a later ML merge reaches.
+ * The join's half piece makes its tile illegal for signals, so the signals of phase 1 keep clear of it.
+ */
+static std::vector<ReservedJoin> ReservePrioJoins(JunctionLayout &layout, const JunctionCheckContext &ctx)
+{
+	std::vector<ReservedJoin> reserved;
+	const auto used = UsedTracks(ctx);
+	std::vector<std::vector<SwitchEvent>> all_events;
+	for (const JunctionPath &path : ctx.paths) all_events.push_back(SwitchEventsOf(layout, used, path));
+	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
+		if (!IsMainline(ctx.paths[pi])) continue;
+		const JunctionPath &ml = ctx.paths[pi];
+		for (const SwitchEvent &lane : all_events[pi]) {
+			if (lane.first || !IsLaneMerge(ctx, all_events, pi, lane)) continue;
+			for (const SwitchEvent &merge : all_events[pi]) {
+				if (merge.first || merge.second <= lane.second || IsLaneMerge(ctx, all_events, pi, merge)) continue;
+				const std::optional<PrioGeometry> geometry = GeometryOfPrio(ctx, all_events, pi, merge);
+				if (!geometry.has_value()) continue;
+
+				/* Is the lane merge inside the coverage walk back from the merge? */
+				uint covered = 0;
+				bool inside = false;
+				for (size_t i = merge.second; i-- > 0 && covered < 2u * ctx.spec.tl;) {
+					covered += ml.pieces[i].units;
+					if (i == lane.second) inside = true;
+				}
+				if (!inside) continue;
+
+				for (size_t i = lane.second + 1; i < merge.second; i++) {
+					const JunctionPiece &piece = ml.pieces[i];
+					if (piece.on_bridge) continue;
+					const TileIndexDiffC neighbour = {static_cast<int16_t>(piece.tile.x + geometry->side_diff.x), static_cast<int16_t>(piece.tile.y + geometry->side_diff.y)};
+					/* Another lane's path has reserved this one already. */
+					if (TracksAt(layout, piece.tile) == TrackBits{geometry->axis, geometry->h1} && TracksAt(layout, neighbour) == TrackBits{geometry->axis, geometry->h2}) break;
+					if (TracksAt(layout, piece.tile) != TrackBits{geometry->axis} || TracksAt(layout, neighbour).Any()) continue;
+					AddTracks(layout, piece.tile, TrackBits{geometry->h1});
+					AddTracks(layout, neighbour, TrackBits{geometry->axis, geometry->h2});
+					reserved.push_back({ml.pieces[merge.second].tile, piece.tile, neighbour, TrackBits{geometry->h1}, TrackBits{geometry->axis, geometry->h2}});
+					break;
+				}
+			}
+		}
+	}
+	return reserved;
+}
+
+/**
+ * Phase 3b: a piece that would form a block of its own on one lane, between two signals one piece apart inside the coverage walk
+ * of a non-lane ML merge, gets a signal, so that it belongs to no block and the prio need not join it.
+ */
+static void PlaceLaneBlockSignals(JunctionLayout &layout, const JunctionSpec &spec, const JunctionCheckContext &ctx)
+{
+	const auto used = UsedTracks(ctx);
+	std::vector<std::vector<SwitchEvent>> all_events;
+	for (const JunctionPath &path : ctx.paths) all_events.push_back(SwitchEventsOf(layout, used, path));
+	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
+		if (!IsMainline(ctx.paths[pi])) continue;
+		const JunctionPath &ml = ctx.paths[pi];
+		for (const SwitchEvent &merge : all_events[pi]) {
+			if (merge.first || IsLaneMerge(ctx, all_events, pi, merge) || !GeometryOfPrio(ctx, all_events, pi, merge).has_value()) continue;
+			uint covered = 0;
+			for (size_t i = merge.second; i-- > 0 && covered < 2u * ctx.spec.tl;) {
+				covered += ml.pieces[i].units;
+				if (i == 0 || i + 1 >= ml.pieces.size()) continue;
+				const JunctionPiece &piece = ml.pieces[i];
+				if (piece.on_bridge || !IsLegalSignalPiece(layout, piece)) continue;
+				if (!IsSignalledPiece(layout, ml.pieces[i - 1]) || !IsSignalledPiece(layout, ml.pieces[i + 1])) continue;
+				const bool on_every_lane = std::ranges::all_of(ctx.paths, [&](const JunctionPath &lane) {
+					if (lane.from != ml.from || lane.to != ml.to) return true;
+					return std::ranges::any_of(lane.pieces, [&](const JunctionPiece &other) { return !other.on_bridge && SameTile(other.tile, piece.tile); });
+				});
+				if (!on_every_lane) PlaceSignal(layout, piece, spec.signal_type);
+			}
+		}
+	}
+}
+
+/** Phase 4: the prios, one for each ML merge that has a joiner from another movement. */
+static void PlacePrios(JunctionLayout &layout, const JunctionCheckContext &ctx, const std::vector<ReservedJoin> &reserved)
+{
+	const auto used = UsedTracks(ctx);
+	std::vector<std::vector<SwitchEvent>> all_events;
+	for (const JunctionPath &path : ctx.paths) all_events.push_back(SwitchEventsOf(layout, used, path));
+	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
+		if (!IsMainline(ctx.paths[pi])) continue;
+		for (const SwitchEvent &event : all_events[pi]) {
+			if (event.first) continue;
+			if (PlacePrio(layout, ctx, all_events, pi, event)) continue;
+			/* Abandoned: take back what phase 0 reserved for this merge. */
+			const TileIndexDiffC merge_tile = ctx.paths[pi].pieces[event.second].tile;
+			for (const ReservedJoin &join : reserved) {
+				if (!SameTile(join.merge, merge_tile)) continue;
+				RemoveTracks(layout, join.tile, join.tile_bits);
+				RemoveTracks(layout, join.neighbour, join.neighbour_bits);
+			}
+		}
+	}
+}
+
+void PlaceJunctionSignals(JunctionLayout &layout, const JunctionSpec &spec)
+{
+	const std::vector<JunctionPort> ports = FindJunctionPorts(layout);
+	auto trace = [&]() { return MakeJunctionCheckContext(layout, spec, ports, JunctionTMovements()); };
+
+	const std::vector<ReservedJoin> reserved = ReservePrioJoins(layout, trace());
+	PlaceRequiredSignals(layout, spec, trace());
+	PlaceBaySignals(layout, spec, trace());
+	FillSignals(layout, spec, trace());
+	PlaceLaneBlockSignals(layout, spec, trace());
+	PlacePrios(layout, trace(), reserved);
+}
