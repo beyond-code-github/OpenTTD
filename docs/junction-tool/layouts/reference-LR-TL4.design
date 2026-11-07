@@ -1,34 +1,29 @@
 spec 4 2 160
 # E->E, E->S
-route 7 0 X_SW FFFFFFFFFFFFFFFFFFF
-route 7 0 X_SW FFFFFFFFLFFFFLFFFRFFFFFFFLFFF
+route 8 0 X_SW FFFFFFFFFFFFFFFFFF
+route 8 0 X_SW FFFFFFFLFFFFLFFFRFFFFFFFLFFF
 # W->W (bridge 22..16), W->S
-route 26 2 X_NE FFFB5FFFFFFFFF
+route 26 2 X_NE FFFB5FFFFFFFF
 route 26 2 X_NE FRFFFFRFFFFFFFFF
 # N->E (bridge 10..7 on column 20), N->W
 route 20 14 Y_NW FFFB2FFFFLFFFFLFFF
-route 20 14 Y_NW FRFFFFFFFFFFFFFFFFFFFFRFF
+route 20 14 Y_NW FRFFFFFFFFFLFFRFFFFRFFFF
 # E path signals (route 0 = E->E, 1 = E->S)
-rsig 0 2 block
-rsig 0 4 block
-rsig 0 6 block
-rsig 0 8 block
-rsig 0 12 block
-rsig 0 14 block
-rsig 0 17 block
-rsig 1 11 block
-rsig 1 14 block
-rsig 1 16 block
-rsig 1 19 block
-rsig 1 24 block
-rsig 1 26 block
-rsig 1 28 block
+rsig 0 1 block
+rsig 0 3 block
+rsig 0 5 block
+rsig 0 7 block
+rsig 0 11 block
+rsig 0 13 block
+rsig 0 15 block
+rsig 1 10 block
+rsig 1 13 block
+rsig 1 15 block
+rsig 1 18 block
+rsig 1 23 block
+rsig 1 25 block
+rsig 1 27 block
 # W path (2 = W->W, 3 = W->S)
-rsig 2 1 block
-rsig 2 11 block
-rsig 2 13 block
-rsig 2 15 block
-rsig 2 18 block
 rsig 3 6 block
 rsig 3 8 block
 rsig 3 10 block
@@ -39,32 +34,34 @@ rsig 4 8 block
 rsig 4 10 block
 rsig 4 13 block
 rsig 4 15 entry
-rsig 5 6 block
-rsig 5 10 block
-rsig 5 14 block
-rsig 5 18 block
-rsig 5 21 entry
 # W prio (inside, row 1)
-track 9 1 X Lower
-track 10 1 X
-track 11 1 X
-track 12 1 X Lower
-track 13 1 X
-track 14 1 X Lower
-track 9 2 Upper
-track 12 2 Upper
-track 14 2 Upper
-signal 11 1 X_SW combo
-signal 13 1 X_SW exit
 # E prio (outside, row -1)
 track 18 -1 X Right
 track 19 -1 X
 track 20 -1 X Right
 track 21 -1 X
-track 22 -1 X
-track 23 -1 X Right
+track 22 -1 Right
 track 18 0 Left
 track 20 0 Left
-track 23 0 Left
+track 22 0 Left
 signal 21 -1 X_NE combo
 signal 19 -1 X_NE exit
+
+rsig 0 17 block
+rsig 2 1 block
+rsig 2 12 block
+rsig 2 14 block
+rsig 2 16 block
+track 13 1 Lower
+track 14 1 X
+track 15 1 X Lower
+track 13 2 Upper
+track 15 2 Upper
+signal 14 1 X_SW exit
+rsig 5 6 block
+rsig 5 10 block
+rsig 5 12 block
+rsig 5 14 block
+rsig 5 18 entry
+rsig 2 3 block
+rsig 4 3 block
