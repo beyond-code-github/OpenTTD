@@ -1,0 +1,71 @@
+# Doubled-bridge reference (D80, D85): lane B on the outer side, W->S splits from lane B, lane merge upstream of the N->W prio.
+spec 4 2 160
+route 6 0 X_SW FFFFFFFFFFFFFFFFFFFFFFFFFFF
+route 6 0 X_SW FFFFFFFFFLFFFFLFFFFFRFFFFFFFLFFF
+route 33 2 X_NE FFFFFFFFFFB5FFFFFFFFFF
+route 33 2 X_NE FFRFLFFFFFFFB3FFLFRFFFFFFF
+route 33 2 X_NE FFRFLFFFFRFFFFRFFFFFFFFFF
+route 20 16 Y_NW FFFB2FFFFFFLFFFFLFFFFFFFFFF
+route 20 16 Y_NW FRFFFFFFFFFFFFFLFFRFFFFRFFFF
+rsig 1 27 block
+rsig 1 29 block
+rsig 2 2 block
+rsig 2 18 block
+rsig 2 21 block
+rsig 2 23 block
+rsig 2 10 block
+rsig 3 9 block
+rsig 3 20 block
+rsig 3 12 block
+rsig 3 18 block
+rsig 4 20 block
+rsig 5 1 block
+rsig 5 17 entry
+rsig 5 3 block
+rsig 5 8 block
+rsig 6 22 entry
+rsig 1 14 block
+rsig 1 17 block
+rsig 1 20 block
+rsig 1 25 block
+rsig 2 5 block
+rsig 2 8 block
+rsig 2 26 block
+rsig 3 6 block
+rsig 4 14 block
+rsig 4 17 block
+rsig 5 11 block
+rsig 5 14 block
+rsig 6 6 block
+rsig 6 11 block
+rsig 6 16 block
+rsig 6 19 block
+rsig 1 31 block
+rsig 0 1 block
+rsig 0 3 block
+rsig 0 5 block
+rsig 0 7 block
+rsig 0 9 block
+rsig 0 13 block
+rsig 0 15 block
+rsig 0 17 block
+rsig 0 19 block
+rsig 0 21 block
+rsig 0 23 block
+rsig 0 25 block
+track 18 -1 X Right
+track 19 -1 X
+track 20 -1 X Right
+track 21 -1 X
+track 22 -1 Right
+track 18 0 Left
+track 20 0 Left
+track 22 0 Left
+signal 21 -1 X_NE combo
+signal 19 -1 X_NE exit
+track 11 1 Lower
+track 12 1 X
+track 13 1 X Lower
+track 11 2 Upper
+track 13 2 Upper
+signal 12 1 X_SW exit
