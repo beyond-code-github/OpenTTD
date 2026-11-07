@@ -18,6 +18,8 @@
 #include "track_func.h"
 
 #include <algorithm>
+#include <map>
+#include <set>
 
 #include "safeguards.h"
 
@@ -177,9 +179,11 @@ uint RasterUnits(const JunctionRaster &raster)
  * Build one generator candidate: route the branch movements, double the mainline bridges, crop, and place signals.
  * @param spec The junction spec.
  * @param params The swept inputs.
+ * @param terrain Optional terrain snapshot in the generator's working coordinates (see the header).
+ * @param terrain_cost Receives the terrain cost when terrain is set.
  * @return The layout, or std::nullopt when this candidate cannot be built.
  */
-std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params)
+std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost)
 {
 	const int g = spec.ml_gap;
 	const int xI = 30;
@@ -201,6 +205,8 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	base.max_bridge_middle = 10;
 	base.prices = spec.prices;
 	base.crossable_cost = 0;
+	base.terrain = terrain;
+	base.plane = params.plane;
 
 	/* Short straight branch legs: E->S joins the top of the S stub and W->S merges into its side; N->E leaves the top of the N stub and N->W splits from its side. */
 	constexpr int STUB = 3;
@@ -388,6 +394,32 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		return plain_row && (jt.offset.x < min_x - 2 || jt.offset.x > max_x + 2);
 	});
 
+	if (terrain != nullptr) {
+		const int plane = params.plane;
+		std::set<std::pair<int, int>> occupied;
+		for (const JunctionTrack &jt : layout.tracks) {
+			if (jt.tracks.None()) continue;
+			if (!terrain->UsableAt(jt.offset.x, jt.offset.y, plane)) return std::nullopt;
+			occupied.insert({jt.offset.x, jt.offset.y});
+		}
+		for (const JunctionBridge &bridge : layout.bridges) {
+			for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
+				if (!terrain->UsableAt(head.x, head.y, plane)) return std::nullopt;
+				occupied.insert({head.x, head.y});
+			}
+			const int dx = (bridge.end.x > bridge.start.x) - (bridge.end.x < bridge.start.x);
+			const int dy = (bridge.end.y > bridge.start.y) - (bridge.end.y < bridge.start.y);
+			for (int x = bridge.start.x + dx, y = bridge.start.y + dy; x != bridge.end.x || y != bridge.end.y; x += dx, y += dy) {
+				if (!terrain->SpanOk(x, y, plane)) return std::nullopt;
+			}
+		}
+		if (terrain_cost != nullptr) {
+			Money cost = 0;
+			for (const auto &[x, y] : occupied) cost += terrain->CostAt(x, y, plane);
+			*terrain_cost = cost;
+		}
+	}
+
 	NormaliseJunctionLayout(layout);
 	PlaceJunctionSignals(layout, spec);
 	NormaliseJunctionLayout(layout);
@@ -455,10 +487,26 @@ std::pair<Money, int> ScoreJunctionLayout(const JunctionLayout &layout, const Ju
  * @param spec The junction spec.
  * @return The best layout, or NoLayout when no candidate is clean.
  */
-JunctionGenerateResult GenerateJunction(const JunctionSpec &spec)
+JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const JunctionTerrain *terrain)
 {
 	/* With no gap row the W prio has nowhere to go: the row inside the W track is the E track, and the joiner blocks the outside. */
 	if (spec.ml_gap == 0) return {std::nullopt, JunctionGenerateError::NeedsMlGap};
+
+	std::vector<int> planes{0};
+	if (terrain != nullptr) {
+		std::map<int, int> counts;
+		for (int y = -4; y <= 4; y++) {
+			for (int x = 26; x <= 34; x++) {
+				const JunctionTerrainTile *t = terrain->At(x, y);
+				if (t != nullptr && t->cls == JunctionTileClass::Buildable) counts[t->z_max]++;
+			}
+		}
+		planes.clear();
+		for (const auto &[z, n] : counts) planes.push_back(z);
+		std::ranges::stable_sort(planes, [&](int a, int b) { return counts[a] > counts[b]; });
+		if (planes.size() > 3) planes.resize(3);
+		if (planes.empty()) return {std::nullopt, JunctionGenerateError::NoLayout};
+	}
 
 	std::optional<JunctionLayout> best;
 	std::pair<Money, int> best_score{};
@@ -466,24 +514,30 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec)
 
 	const int first = spec.ml_gap + 5;
 	const int last = spec.ml_gap + 20;
-	int stop_after = INT32_MAX;
-	for (int height = first; height <= last && height <= stop_after; height++) {
-		bool clean_here = false;
-		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
-			for (uint8_t slack = 0; slack <= 3; slack++) {
-				std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, {static_cast<uint8_t>(height), crossing_cost, slack});
-				if (!layout.has_value() || !CheckJunctionRules(*layout, spec).empty()) continue;
-				clean_here = true;
-				const std::pair<Money, int> score = ScoreJunctionLayout(*layout, spec);
-				const int area = layout->size.x * layout->size.y;
-				if (!best.has_value() || score < best_score || (score == best_score && area < best_area)) {
-					best = std::move(layout);
-					best_score = score;
-					best_area = area;
+	for (const int plane : planes) {
+		int stop_after = INT32_MAX;
+		for (int height = first; height <= last && height <= stop_after; height++) {
+			bool clean_here = false;
+			for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
+				for (uint8_t slack = 0; slack <= 3; slack++) {
+					JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
+					params.plane = plane;
+					Money terrain_cost = 0;
+					std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, terrain, &terrain_cost);
+					if (!layout.has_value() || !CheckJunctionRules(*layout, spec).empty()) continue;
+					clean_here = true;
+					std::pair<Money, int> score = ScoreJunctionLayout(*layout, spec);
+					score.first += terrain_cost;
+					const int area = layout->size.x * layout->size.y;
+					if (!best.has_value() || score < best_score || (score == best_score && area < best_area)) {
+						best = std::move(layout);
+						best_score = score;
+						best_area = area;
+					}
 				}
 			}
+			if (clean_here && stop_after == INT32_MAX) stop_after = height + 2;
 		}
-		if (clean_here && stop_after == INT32_MAX) stop_after = height + 2;
 	}
 	if (!best.has_value()) return {std::nullopt, JunctionGenerateError::NoLayout};
 	return {std::move(best), JunctionGenerateError::None};

@@ -12,6 +12,7 @@
 
 #include "economy_type.h"
 #include "junction_layout.h"
+#include "junction_terrain.h"
 #include "signal_type.h"
 
 #include <functional>
@@ -52,16 +53,26 @@ struct JunctionGenerateResult {
 uint16_t CurveSpeedLimitForSpacing(uint spacing, uint8_t curve_speed);
 uint DeriveCurveSpacing(uint16_t speed, uint8_t curve_speed, uint8_t tl);
 JunctionSpec MakeTestJunctionSpec();
-JunctionGenerateResult GenerateJunction(const JunctionSpec &spec);
+JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const JunctionTerrain *terrain = nullptr);
 
 /** The swept inputs of one candidate. */
 struct JunctionCandidateParams {
 	uint8_t height; ///< H: the branch edge is row H-1; the E track is row 0.
 	Money crossing_cost; ///< crossable_cost when a route crosses the W track.
 	uint8_t joiner_slack; ///< Extra tiles kept between the lane merge and where N->W may join.
+	int plane = 0; ///< The level the junction is built on; only used with a terrain.
 };
 
-std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params);
+/**
+ * Build one generator candidate.
+ * @param spec The junction spec.
+ * @param params The swept inputs.
+ * @param terrain Optional terrain snapshot, in the generator's working coordinates before cropping and normalising (x 0..63, rows from 0).
+ *                The anchor is the hub point (30, 0): the terrain's cell (30 - origin.x, 0 - origin.y) must be the hovered tile.
+ * @param terrain_cost When set together with terrain, receives the sum of CostAt over occupied track tiles and bridge heads, once per tile.
+ * @return The layout, or std::nullopt when this candidate cannot be built.
+ */
+std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain = nullptr, Money *terrain_cost = nullptr);
 
 /** Generator score of a layout: cost, then open space (D76). Lower is better. */
 std::pair<Money, int> ScoreJunctionLayout(const JunctionLayout &layout, const JunctionSpec &spec); // second = -open rectangle area

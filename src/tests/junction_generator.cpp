@@ -233,3 +233,84 @@ TEST_CASE("GenerateJunction: an ML gap of 0 has no room for the W prio", "[junct
 	CHECK_FALSE(result.layout.has_value());
 	CHECK(result.error == JunctionGenerateError::NeedsMlGap);
 }
+
+/** A flat Buildable terrain at height z covering x 0..63, y 0..40. */
+static JunctionTerrain MakeFlatTerrain(int z = 0)
+{
+	JunctionTerrain t;
+	t.origin = {0, 0};
+	t.width = 64;
+	t.height = 41;
+	JunctionTerrainTile tile;
+	tile.z_min = tile.z_max = static_cast<int8_t>(z);
+	t.tiles.assign(static_cast<size_t>(t.width) * t.height, tile);
+	t.foundation_cost = 250;
+	return t;
+}
+
+static void SetTerrainRect(JunctionTerrain &t, int x0, int x1, int y0, int y1, JunctionTileClass cls)
+{
+	for (int y = y0; y <= y1; y++) {
+		for (int x = x0; x <= x1; x++) t.tiles[static_cast<size_t>(y) * t.width + x].cls = cls;
+	}
+}
+
+TEST_CASE("GenerateJunction on flat terrain equals no terrain", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTerrain flat = MakeFlatTerrain();
+	const JunctionGenerateResult a = GenerateJunction(spec);
+	const JunctionGenerateResult b = GenerateJunction(spec, &flat);
+	REQUIRE(a.layout.has_value());
+	REQUIRE(b.layout.has_value());
+	CHECK(SameLayout(*a.layout, *b.layout));
+}
+
+TEST_CASE("GenerateJunction avoids a block of houses", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTerrain flat = MakeFlatTerrain();
+	const JunctionGenerateResult base = GenerateJunction(spec, &flat);
+	REQUIRE(base.layout.has_value());
+
+	/* A fixed rectangle, as the normalised layout has no terrain frame. */
+	JunctionTerrain blocked = MakeFlatTerrain();
+	SetTerrainRect(blocked, 18, 27, 4, 10, JunctionTileClass::Blocked);
+	const JunctionGenerateResult result = GenerateJunction(spec, &blocked);
+	if (!result.layout.has_value()) {
+		WARN("house block: NoLayout");
+		SUCCEED();
+		return;
+	}
+	WARN("house block:\n" << RenderJunctionAscii(*result.layout));
+	CHECK(CheckJunctionRules(*result.layout, spec).empty());
+	CHECK_FALSE(SameLayout(*result.layout, *base.layout));
+}
+
+TEST_CASE("GenerateJunction on a raised plane equals the flat result", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTerrain flat = MakeFlatTerrain();
+	const JunctionTerrain raised = MakeFlatTerrain(3);
+	const JunctionGenerateResult a = GenerateJunction(spec, &flat);
+	const JunctionGenerateResult b = GenerateJunction(spec, &raised);
+	REQUIRE(a.layout.has_value());
+	REQUIRE(b.layout.has_value());
+	CHECK(SameLayout(*a.layout, *b.layout));
+}
+
+TEST_CASE("GenerateJunction with a pond under the crossing", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const int g = spec.ml_gap;
+	JunctionTerrain pond = MakeFlatTerrain();
+	SetTerrainRect(pond, 26, 34, g + 1, g + 2, JunctionTileClass::Water);
+	const JunctionGenerateResult result = GenerateJunction(spec, &pond);
+	if (!result.layout.has_value()) {
+		WARN("pond: NoLayout");
+		SUCCEED();
+		return;
+	}
+	WARN("pond:\n" << RenderJunctionAscii(*result.layout));
+	CHECK(CheckJunctionRules(*result.layout, spec).empty());
+}
