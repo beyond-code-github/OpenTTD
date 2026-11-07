@@ -541,6 +541,18 @@ static void AddChildSpriteToFoundation(SpriteID image, PaletteID pal, const SubS
 	AddChildSpriteScreen(image, pal, offs.x + extra_offs_x, offs.y + extra_offs_y, false, sub, false, false);
 }
 
+static PaletteID _viewport_ghost_palette = PAL_NONE; ///< Palette forced on every sprite while drawing a ghost; PAL_NONE when off.
+
+/**
+ * Force a palette on every sprite drawn through the viewport drawing functions, and make the sprites transparent.
+ * Used while drawing a ghost, so that the game's own drawing code can be reused.
+ * @param pal Palette to force; PAL_NONE to turn the override off.
+ */
+void SetViewportGhostPalette(PaletteID pal)
+{
+	_viewport_ghost_palette = pal;
+}
+
 /**
  * Draws a ground sprite at a specific world-coordinate relative to the current tile.
  * If the current tile is drawn on top of a foundation the sprite is added as child sprite to the "foundation"-ParentSprite.
@@ -556,6 +568,11 @@ static void AddChildSpriteToFoundation(SpriteID image, PaletteID pal, const SubS
  */
 void DrawGroundSpriteAt(SpriteID image, PaletteID pal, int32_t x, int32_t y, int z, const SubSprite *sub, int extra_offs_x, int extra_offs_y)
 {
+	if (_viewport_ghost_palette != PAL_NONE) {
+		SetBit(image, PALETTE_MODIFIER_TRANSPARENT);
+		pal = _viewport_ghost_palette;
+	}
+
 	/* Switch to first foundation part, if no foundation was drawn */
 	if (_vd.foundation_part == FoundationPart::None) _vd.foundation_part = FoundationPart::Normal;
 
@@ -677,6 +694,11 @@ void AddSortableSpriteToDraw(SpriteID image, PaletteID pal, int x, int y, int z,
 	if (transparent) {
 		SetBit(image, PALETTE_MODIFIER_TRANSPARENT);
 		pal = PALETTE_TO_TRANSPARENT;
+	}
+
+	if (_viewport_ghost_palette != PAL_NONE) {
+		SetBit(image, PALETTE_MODIFIER_TRANSPARENT);
+		pal = _viewport_ghost_palette;
 	}
 
 	if (_vd.combine_sprites == SpriteCombineMode::Active) {
@@ -835,6 +857,11 @@ void AddChildSpriteScreen(SpriteID image, PaletteID pal, int x, int y, bool tran
 	if (transparent) {
 		SetBit(image, PALETTE_MODIFIER_TRANSPARENT);
 		pal = PALETTE_TO_TRANSPARENT;
+	}
+
+	if (_viewport_ghost_palette != PAL_NONE) {
+		SetBit(image, PALETTE_MODIFIER_TRANSPARENT);
+		pal = _viewport_ghost_palette;
 	}
 
 	int32_t child_id = static_cast<int32_t>(_vd.child_screen_sprites_to_draw.size());
