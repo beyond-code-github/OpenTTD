@@ -1,0 +1,1517 @@
+# Image index
+
+Built from the HTML around each image; images not viewed. Size and path shown when downloaded.
+370 image references.
+
+## 02-advanced-building-revue-02-splits
+
+- **ThaHypnotizer.png** (1680x1000, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/ThaHypnotizer.png`)
+  - Alt: The Hypno / Madness!
+  - Before: …because it definitely is one of the most important parts in our every game. This one is about the counterpart. Splitting. In this article I would like to describe most of the types of splits and show the possible usages.
+  - After: Kinds of splitting The first and most elementary way how to split trains is by orders. Go to spot 1, go to spot 2, simple, easy, effective. This we use in “normal” cases. But what happens when we want to split some train…
+- **SPLITS_01_Simple_Split.png** (349x219, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SPLITS_01_Simple_Split.png`)
+  - Alt: Not dumb! / Not dumb!
+  - Before: …the types of splits and show the possible usages. Kinds of splitting The first and most elementary way how to split trains is by orders. Go to spot 1, go to spot 2, simple, easy, effective. This we use in “normal” cases.
+  - After: But what happens when we want to split some trains somehow conditionally? Just some? Split “if there is space” Based on the power of 2way signals – this one we use mostly in SRNW where any train goes into the entrance, j…
+- **SPLITS_02_2way_Split.png** (314x138, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SPLITS_02_2way_Split.png`)
+  - Alt: Shiney! / Shiney!
+  - Before: … there is space” Based on the power of 2way signals – this one we use mostly in SRNW where any train goes into the entrance, just if there is free space for it (don’t forget to make there at least full-TL waiting space).
+  - After: Sometimes trains behave extremely dumb and don’t like the 2ways enough. Then we have to make it forced a bit more. Preferably by closing the other exit. This is the way: NOT-gated waiting bay forces the train to get in i…
+- **SPLITS_03_FAIL01.png** (344x252, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SPLITS_03_FAIL01.png`)
+  - Alt: Awww / Awww
+  - Before: …y by closing the other exit. This is the way: NOT-gated waiting bay forces the train to get in if there is no one. This could result in a deadlock at the moment when train is just passing by and suddenly the path closes.
+  - After: This can be easily solved by making it fail-safe. This still has a critical spot – if two trains come very close to each other or just jam here, it is possible that the fail-saving mechanism will be overridden. As an ins…
+- **SPLITS_03_NO_FAIL.png** (449x292, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SPLITS_03_NO_FAIL.png`)
+  - Alt: No fail! / No fail!
+  - Before: …gated waiting bay forces the train to get in if there is no one. This could result in a deadlock at the moment when train is just passing by and suddenly the path closes. This can be easily solved by making it fail-safe.
+  - After: This still has a critical spot – if two trains come very close to each other or just jam here, it is possible that the fail-saving mechanism will be overridden. As an insurance there could be added a combination of entry…
+- **SPLITS_03_failsafe_insurance.png** (180x102, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SPLITS_03_failsafe_insurance.png`)
+  - Alt: This shall not fail. / This shall not fail.
+  - Before: … to each other or just jam here, it is possible that the fail-saving mechanism will be overridden. As an insurance there could be added a combination of entry and exit signals, making it absolutely immune to any failure.
+  - After: Splitters “am I the one?” When there are multiple types of trains on the network/split line, the splitter has to recognize them and pick the right ones. Probably the most reliable kind of this so far is the Train Length …
+- **SPLITS_04_GapSplit.png** (377x215, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SPLITS_04_GapSplit.png`)
+  - Alt: Selfish bastard. / Selfish bastard.
+  - Before: …ap splitter The probably first, simplest and least effective is a “gap splitter”. It is relying on split, if one of the lines is already occupied, halving the maximum possible number of traffic each one of these can get.
+  - After: As it is just the maximum, it fails when the maximum is not reached – when two trains come in an inverval, resulting in one of the output to be more stressed than the other one. This is a good split for station entrances…
+- **SPLITS_04_FAIL.png** (352x203, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SPLITS_04_FAIL.png`)
+  - Alt: Not split! / Not split!
+  - Before: … not reached – when two trains come in an inverval, resulting in one of the output to be more stressed than the other one. This is a good split for station entrances, as we only care about the maximum throughput, mostly.
+  - After: Probability splitter Probability splitters are based on a period of time in which they are released to a certain output. This means that a timer-style train goes in some cycle through a number of bays. It’s position (rel…
+- **SPLITS_05_Timer.png** (352x164, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SPLITS_05_Timer.png`)
+  - Alt: 50-50 / 50-50
+  - Before: …they are released to a certain output. This means that a timer-style train goes in some cycle through a number of bays. It’s position (related with bays) influences which of the splitter output paths is going to be open.
+  - After: This type of splitter has no problems if trains come in in long intervals but as it is based “just” on probability, in many cases it could be not precise enough. Similarly as the “is there space?” this also tends to dead…
+- **SPLITS_05_Failsafe_Timer.png** (366x218, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SPLITS_05_Failsafe_Timer.png`)
+  - Alt: Sign Spam / Sign Spam
+  - Before: …tion isn’t that serious though, as the blocked train is going to be released in the next cycle when his path is green again. Still, this could result in jams and slowdowns and can be fixed by fail-safe exit signal again.
+  - After: Flip-flop The best splitter mechanism in terms of precision. The flip-flop can be used to split into two streams, mostly used in ratio 1:1, for which it’s best. As you can see, there is a memory (1) which gets red if a t…
+- **SPLITS_06_flipflop.png** (499x272, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SPLITS_06_flipflop.png`)
+  - Alt: Flip-flop / flip-flop
+  - Before: … slowdowns and can be fixed by fail-safe exit signal again. Flip-flop The best splitter mechanism in terms of precision. The flip-flop can be used to split into two streams, mostly used in ratio 1:1, for which it’s best.
+  - After: As you can see, there is a memory (1) which gets red if a train passes by and stays red for an unlimited period of time unless it is erased. Therefore this path if closed because the entry combo signal into the path look…
+- **Psg175_flipflop1.png** (763x354, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Psg175_flipflop1.png`)
+  - Alt: Flip-flop 1:2 / flip-flop
+  - Before: …me or use a different type of splitter. There are also possible modifications of this mechanism, mainly change of the ratio to 1:2 or more. It simply is just making more memories to one path. See this image from PSG 175.
+  - After: The flip-flop can also be easily used for 1:1:1 split into three lines. Image is also from PSG 175. Splitter “1,2,3 am I the one?” This kind “counts” trains and releases every Xth train out to the split output. The rest …
+- **Psg175_flipflop.png** (773x541, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Psg175_flipflop.png`)
+  - Alt: Flip-flop 1:1:1 / flip-flop
+  - Before: …nly change of the ratio to 1:2 or more. It simply is just making more memories to one path. See this image from PSG 175. The flip-flop can also be easily used for 1:1:1 split into three lines. Image is also from PSG 175.
+  - After: Splitter “1,2,3 am I the one?” This kind “counts” trains and releases every Xth train out to the split output. The rest is kept on the line from which we split. The mechanism is based on a NOT gate which detects any inco…
+- **SPLITS_06_every4th.png** (689x363, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SPLITS_06_every4th.png`)
+  - Alt: Split / Split
+  - Before: …election of the bay-cycling train which must pass just to the next bay when one train passes the splitter (with too fast trains it could happen that the cycle train skips bays it should stop in, resulting in inaccuracy).
+  - After: In this picture you can see the “detector NOT gate” (1) which releases the bay-cycle train (2). There are 4 bays in the cycle, meaning that every 4th train splits to A because the bay-detector NOT gate (3) opens that pat…
+
+## 03-advanced-building-revue-03-path-to-insanity
+
+- **WeKnowNoOrders Trans, 2076-12-29.png** (not downloaded)
+  - Alt: Welcome to the site of crash! / Ridiculous Mess.
+  - Before: …and/or how did it look in my case The point is – this is something like wiki in practice, only showing the bad things instead of the good ones but I am sure you will find also some positive inspiration in the savegames .
+  - After: Start … where the hell to start? Oh, in the beginning… ok, right. As the beginning I will consider that our learning subject (friendly, hyperactive, cute newbie) opened OpenTTD for the first time. What now? All of us wen…
+- **Game1_pic1_pbs.png** (285x203, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Game1_pic1_pbs.png`)
+  - Alt: PBS just sucks. / Ridiculous Mess.
+  - Before: …t have older saves… What to eliminate in this game: Do not use CL1 unless your trains are slower than 88kmh (on rail), also using PBS merges is very inefficient. It also shows what happens if you have no ML/SL hierarchy.
+  - After: Funny, wrong, bad Just mess. Phase 2 Savegame2 As time passed, my mind somehow stopped accepting any trainsets, wanting to use only the original one. This lead to faster trains, and of course – to required increase of CL…
+- **Game1_pic2_mess.png** (556x350, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Game1_pic2_mess.png`)
+  - Alt: Mess / Ridiculous Mess.
+  - Before: …… What to eliminate in this game: Do not use CL1 unless your trains are slower than 88kmh (on rail), also using PBS merges is very inefficient. It also shows what happens if you have no ML/SL hierarchy. Funny, wrong, bad
+  - After: Just mess. Phase 2 Savegame2 As time passed, my mind somehow stopped accepting any trainsets, wanting to use only the original one. This lead to faster trains, and of course – to required increase of CL. In this save, ga…
+- **Game2_pic1_pbs.png** (289x176, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Game2_pic1_pbs.png`)
+  - Alt: PBS really sucks. / Ridiculous Mess.
+  - Before: … it by moving the pickup further than the drop so trains didnt choose it. But in weird situations, they could. Also, this *style* already has some kind of ML/SL system. You can see how it improved the result by yourself.
+  - After: Yet another mess. And the waypoint, leading towards pickup. Phase 3 Savegame3 Game3. I wonder if I should comment this one Let’s give it a shot… This game was just massive. Huge station, extreme amount of lines. On the o…
+- **Game2_pic2_gate.png** (234x148, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Game2_pic2_gate.png`)
+  - Alt: Gate to goods / Ridiculous Mess.
+  - Before: …pickup further than the drop so trains didnt choose it. But in weird situations, they could. Also, this *style* already has some kind of ML/SL system. You can see how it improved the result by yourself. Yet another mess.
+  - After: And the waypoint, leading towards pickup. Phase 3 Savegame3 Game3. I wonder if I should comment this one Let’s give it a shot… This game was just massive. Huge station, extreme amount of lines. On the other hand … again …
+- **Game3_pic1_mess.png** (1315x767, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Game3_pic1_mess.png`)
+  - Alt: Whoa / Ridiculous Mess.
+  - Before: … so many were barely used. These mistakes resulted in making the game just needlessly big. See how much trouble brought connecting the primaries directly to the high traffic lines . Once again, merging with PBS is B.A.D.
+  - After: This screenshot perfectly shows the situation. In the centre is the PBS merge, which jammed a whole lot. And if you look elsewhere, the tracks are very empty. Phase 4 Savegame4 Game4 is very interesting for my article si…
+- **Game4_pic1_mess.png** (909x595, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Game4_pic1_mess.png`)
+  - Alt: Just madness / Ridiculous Mess.
+  - Before: …ing quite a bit … As you can see, the style got cleaned of some PBS abuse. This improved the flow on the network quite nicely! (of course there still were some remaining ) Also: AsiaStars do really not like smaller CLs .
+  - After: The screen that shows this game best. A brutal mess, many CLs, but satisfying look . Also note my first use of prios ^^. Phase 5 Savegame5 And the last but not least, fifth game. This was one with Norwegian Trainset. Thi…
+- **Game5_pic1_fail.png** (506x302, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Game5_pic1_fail.png`)
+  - Alt: Laugh now / Ridiculous Mess.
+  - Before: …, with surprisingly nice result. This game contains a very ridiculous and pathetic feature – network plan I did a plan for myself. The second ridiculously bad thing is steel pickup, being awarded as totally bad station .
+  - After: Fail of the year. Laughing allowed. Conclusion These games were followed by many more, and of course better. I will not talk about these simply because there are not that obvious mistakes, making them relatively useless …
+
+## 04-advanced-building-revue-04-overflows
+
+- **Overflows.png** (702x401, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Overflows.png`)
+  - Alt: Spammm! / Overflows
+  - Before: …ng Revue 04: Overflows written by V453000 In general, we don’t use overflows all that often. In this article I would like to note why to use them, why not to, and of course – I will present some overflows I came up with.
+  - After: Use, or not to use, that’s the question. The first point I would like to start from is the sole purpose, why to use overflow depots. There are two basic reasons/situations, when to use these. More common job of the overf…
+- **_Overflow_Forced.png** (363x143, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow_Forced.png`)
+  - Alt: OMGed / Overflows
+  - Before: …nicely with conditional overflows and/or slow forced overflows. Comparing When dividing overflows into groups, specifying their values and/or behavior, it’s vital to set some key categories which to compare. Forced depot
+  - After: this is the most important overflow value which just separates overflows into two groups. Forced and Conditional. The difference between those is huge, because the Forced type directly influences every train that comes i…
+- **_Overflow_Slowed.png** (406x214, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow_Slowed.png`)
+  - Alt: WTFed / Overflows
+  - Before: …use the waypoint when you have multiple depots there) Note: trains are serviced on the day they entered the depot so if there are too many trains waiting, servicing is rendered useless. Blocking/slowing the incoming line
+  - After: pretty key thing. Obviously, Forced overflows automatically block/slow the input line, which we can’t say is good. Also the Conditional overflow can block/slow the incoming trains if not prevented by a prio. Expandable h…
+- **_Overflow_Expandable.png** (392x145, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow_Expandable.png`)
+  - Alt: Expansion / Overflows
+  - Before: … starts to get real interesting. Not really many overflows are as expandable as we would like them to be, making some stations need a rework after they reach a certain throughput requirements of the industry productions.
+  - After: Compact who enjoys building inefficiently huge things? Compactness is always a value to keep an eye on. Friendliness with low/high TLs this could seem like a ridiculous parameter, but it is still pretty important for us …
+- **_Overflow_Compact.png** (60x44, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow_Compact.png`)
+  - Alt: Miniature / Overflows
+  - Before: …to get real interesting. Not really many overflows are as expandable as we would like them to be, making some stations need a rework after they reach a certain throughput requirements of the industry productions. Compact
+  - After: who enjoys building inefficiently huge things? Compactness is always a value to keep an eye on. Friendliness with low/high TLs this could seem like a ridiculous parameter, but it is still pretty important for us to know.…
+- **_Overflow_TL.png** (456x80, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow_TL.png`)
+  - Alt: Pwned / Overflows
+  - Before: …s this could seem like a ridiculous parameter, but it is still pretty important for us to know. Just because trains entering the depot slow down a lot, of course affecting more the long trains than their shorter buddies.
+  - After: Overflow Gallery Forced PBS Overflow Definitely the most common overflow style, used even by many newbie players to either service trains or just store them in the depot. Forced: yes Slowing down the input line: no, if t…
+- **_Overflow01.png** (559x339, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow01.png`)
+  - Alt: 01 / Overflows
+  - Before: … more the long trains than their shorter buddies. Overflow Gallery Forced PBS Overflow Definitely the most common overflow style, used even by many newbie players to either service trains or just store them in the depot.
+  - After: Forced: yes Slowing down the input line: no, if there is enough depots Expandable: quite easy to multiply the depots even up to heavy throughput requirements Compact: medium TLs: friendly with basically all lengths, prov…
+- **_Overflow02.png** (336x252, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow02.png`)
+  - Alt: 02 / Overflows
+  - Before: …ty how to do it. The bad thing is that it has a terrible throughput because there isn’t available the possibility of a PBS-duo-depot and trains going through depot slow everything down, especially bad with longer trains.
+  - After: Forced: yes Slowing down the input line: yes Expandable: hardly Compact: very compact, also almost useless TLs: longer lengths will suffer heavy slowdowns in the depot Notes: this design isn’t recommended to be used but …
+- **_Overflow03.png** (388x222, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow03.png`)
+  - Alt: 03 / Overflows
+  - Before: …breaks: when a train leaves the overflow depot and at the ~same time input train comes, the overflow train remains stuck at the 2way combo signal. This problem will probably be unblocked when the next platform gets free.
+  - After: and a situation of fail: Forced: no Slowing down the input line: yes Expandable: hardly Compact: very compact TLs: longer lengths will suffer heavy slowdowns in the depot Note: it is a good idea to add braking space in f…
+- **_Overflow03fail.png** (190x137, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow03fail.png`)
+  - Alt: 03fail / Overflows
+  - Before: …es the overflow depot and at the ~same time input train comes, the overflow train remains stuck at the 2way combo signal. This problem will probably be unblocked when the next platform gets free. and a situation of fail:
+  - After: Forced: no Slowing down the input line: yes Expandable: hardly Compact: very compact TLs: longer lengths will suffer heavy slowdowns in the depot Note: it is a good idea to add braking space in front of the station to in…
+- **_Overflow04.png** (360x213, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow04.png`)
+  - Alt: 04 / Overflows
+  - Before: …ay if there is any, because the depot isn’t very popular among trains. When both of the 2ways are red, train seeks shelter in the depot. Note that the trains stay in the depot thanks to the entry signal inside the depot.
+  - After: Forced: no Slowing down the input line: yes Expandable: not very well Compact: very compact TLs: longer lengths will suffer heavy slowdowns in the depot Notes: this is a very simple and compact design, not very good thro…
+- **_Overflow05.png** (422x255, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow05.png`)
+  - Alt: 05 / Overflows
+  - Before: … these a kind of fail-prevention, sacrificing some speed. The 2 preventions are: trains don’t exit depot if there is an input train coming (prio) and if a train comes out of the depot, coming input trains give way to it.
+  - After: Forced: no Slowing down the input line: mostly no Expandable: not very well Compact: still decent TLs: this is best with TL2, higher lengths will slow down badly. Notes: probably the simpliest possibility how to make an …
+- **_Overflow06.png** (584x320, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow06.png`)
+  - Alt: 06 / Overflows
+  - Before: … is based on taking the depot a bit away from the station entry, making trains that require the overflow split away from the station, and connect back via the depot later, if needed, so they do not affect the input line.
+  - After: Forced: no Slowing down the input line: no Expandable: not bad Compact: medium TLs: can be scaled even to cope with longer trains, then it is recommended to multiply the depots with a PBS, if trains slow down too much so…
+- **_Overflow07.png** (430x234, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow07.png`)
+  - Alt: 07 / Overflow07
+  - Before: …ork odd, because it relies on track penalties and PBS, therefore expect to need some experimenting and try-fail method while building. Also a big disadvantage is that the overflow trains don’t give way to the input ones.
+  - After: Here goes an interesting version of a combination of both ro-ro and terminus station. Forced: no Slowing down the input line: yes Expandable: not bad Compact: medium, can have many platforms though TLs: longer lengths wi…
+- **_Overflow08.png** (527x274, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/_Overflow08.png`)
+  - Alt: 08 / Overflow08
+  - Before: …xperimenting and try-fail method while building. Also a big disadvantage is that the overflow trains don’t give way to the input ones. Here goes an interesting version of a combination of both ro-ro and terminus station.
+  - After: Forced: no Slowing down the input line: yes Expandable: not bad Compact: medium, can have many platforms though TLs: longer lengths will suffer heavy slowdowns in the depot Notes: no priority for the input line is quite …
+- **ConditionalOverflow01.png** (1048x538, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/ConditionalOverflow01.png`)
+  - Alt: Sign Spam / Sign Spam
+  - Before: … is already red. Passing by 2ways The most massive and also most powerful design is the conditional overflow station I already wrote about in Advanced Revue 01. So here follows just an image and link to the blog article.
+  - After: Conclusion The overflows can be very useful in situations. You just have to use them very carefully and have the network ready for it because they are able to spam your network with spare trains like no tomorrow. From my…
+
+## 05-advanced-building-revue-05-sbahns-and-city-networks
+
+- **sbahns.png** (622x363, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/sbahns.png`)
+  - Alt: Sbahns / Sbahns
+  - Before: … I am going to focus on some basic criteria defining a proper Sbahn, talk about some aspects that affect Sbahn behaviours and last but not least, I would like to show some types in action, searching through our archives.
+  - After: The Purpose Before we actually start building a Sbahn, we should think about things we want it to do. First of all, the goal of a Sbahn is to get as much pax from the city as possible and bring it to the ICE trains, also…
+- **frequent.png** (472x269, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/frequent.png`)
+  - Alt: Station catchment / Station catchment
+  - Before: … the most intuitive and also the hardest thing to achieve is building an intensive Sbahn that covers all of the city itself. The problem is that we often end up with a huge amount of rails, occupied with a few buildings.
+  - After: Every building here will get served. Note that we don’t need to serve the road. Feeders An awesome combination of trains + trams (or even busses in suburbs) can take huge amounts of pax from a city. You just have to buil…
+- **walk.png** (1117x496, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/walk.png`)
+  - Alt: Typical laziness / Typical Walking
+  - Before: … you can make trams full load in their stations, so there is always a train loading, while if you stationwalk from one station, ther don’t have to be trains always loading. A boring and lazy solution I don’t really like.
+  - After: Typical station walking in Japan – by skyscrapers this one is from psg 151. See to the future When you build Sbahns, you usually just build rails, and then let the city fil in there. That way, you have to build something…
+- **asneeded.png** (400x397, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/asneeded.png`)
+  - Alt: Save the city! / JustOk
+  - Before: …that some Sbahn tracks don’t need our proper building conventions so you can save some double tunnels, braking areas, CLs, and whatever else. Be bold and try to expect, what you really need and what is just unneccessary.
+  - After: This worked, nothing was wrong. It just saved a few buildings for the city. (note that there also is very low traffic) Roads are your weapon Since we never allow cities to build their own roads (because they screw it up)…
+- **roads.png** (348x351, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/roads.png`)
+  - Alt: Road usage / Roads
+  - Before: …they screw it up), it is also our task to build roads. Roads are an interesting element in Sbahn-building. A good thing is to get road outside a catchment area, so it provides houses, but the road itself isn’t “catched”.
+  - After: Also an important thing is to space out roads correctly, so we have buildings everywhere but there aren’t too many roads. I personally like 2×2 grid – or just that every tile where is supposed to be a building has to be …
+- **trainsbahn.png** (653x501, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/trainsbahn.png`)
+  - Alt: RAILS / RAILS
+  - Before: …still work well! But the most important thing is: whenever you are looking for other Sbahns for inspiration, be aware of checking what trains go there because if you choose some different ones, it might work differently.
+  - After: Public server game 164 city network by Mark. Trams Trams are super-helpful in Sbahns! Their best usage is in areas where your trains can’t reach by their catchment areas. Thanks to high capacities of most trams, their se…
+- **traim.png** (369x206, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/traim.png`)
+  - Alt: RAILS / Trammies
+  - Before: …he tram drivers are extremely dumb and you have to be super careful while building tram tracks, otherwise the trams could gridlock very easily. You can see a good example how to build trams in PZ 12, station HIM feeders.
+  - After: Here we can see a cute cooperation of trams and trains. Busses Building a bus Sbahn has some advantages, first of them is that it boosts the town growth. The other one is – it is easy, you don’t have to build even rails …
+- **busSuburbs.png** (368x223, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/busSuburbs.png`)
+  - Alt: Bussies / Bussies
+  - Before: …where traffic is lower. The lack of tram rails makes busses go just as they want, which could be an issue too! So be careful when setting up a bus line or just use waypoint-stations to make them move where you want them.
+  - After: Bus service in suburbs. Ships As weird as it sounds, ships are also a very formidable Sbahn vehicle. If you manage to have a canal network in your city, the ships have endless capacity (because they don’t collide with ea…
+- **orders_mark140.png** (384x100, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/orders_mark140.png`)
+  - Alt: orders / orders
+  - Before: …nside: you can’t use unordered trains *sad V453000* because you need at least 1 order to make them transfer the pax. Once it gets to some effective Sbahns, I know of a few types of solutions: Direct orders with Full Load
+  - After: As you can see in the image, trains just have a set location, where they wait for full load of passengers. This is a very effective solution, being good in most cases. It has a downside though – on larger capacity Sbahns…
+- **mark140.png** (495x328, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/mark140.png`)
+  - Alt: orders / orders
+  - Before: …is can become an issue and trains can clog up for a moment. As long as you make sufficient waiting spaces, you are safe You can see this style in many games, the insane network built by Mark in psg 140 (Rumblewell city).
+  - After: Direct orders with Load if available In this case, your trains just come into stations and leave when pax stops flowing or they are full already. This is usually not effective enough, because trains can go almost-empty b…
+- **orders_mks157.png** (384x100, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/orders_mks157.png`)
+  - Alt: orders / orders
+  - Before: … clog up for a moment. As long as you make sufficient waiting spaces, you are safe You can see this style in many games, the insane network built by Mark in psg 140 (Rumblewell city). Direct orders with Load if available
+  - After: In this case, your trains just come into stations and leave when pax stops flowing or they are full already. This is usually not effective enough, because trains can go almost-empty but with trains like transrapids, it w…
+- **Mks157.png** (775x362, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Mks157.png`)
+  - Alt: Station / Sbahn
+  - Before: … because trains can go almost-empty but with trains like transrapids, it works quite nicely. For example the city network by Mks in psg 157 (station SoggyFrogs), being a typically effective style for this type of orders.
+  - After: Multistation direct orders with Load if available First of all, it is absolutely neccessary to make the orders “no unloading” to make trains pick up additional pax, but prevent dumping the already-collected. This is bein…
+- **orders_nickman164.png** (384x100, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/orders_nickman164.png`)
+  - Alt: orders / orders
+  - Before: …s like transrapids, it works quite nicely. For example the city network by Mks in psg 157 (station SoggyFrogs), being a typically effective style for this type of orders. Multistation direct orders with Load if available
+  - After: First of all, it is absolutely neccessary to make the orders “no unloading” to make trains pick up additional pax, but prevent dumping the already-collected. This is being used for multiple-station service. Trains just g…
+- **nickman164.png** (943x384, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/nickman164.png`)
+  - Alt: Sbahn / Sbahn
+  - Before: …But that can be mostly solved just by increasing the Sbahn capacity, making them able to serve all stations. A very nice example of this style can be seen in game 164, Spider Pig Central station feeders built by Nickman.
+  - After: Conditional orders The conditional orders are a very flexible technique of how to deal with Sbahns. You can use them for very different Sbahn styles and often they work very nicely. For example enhancing the Direct order…
+- **orders_conditional.png** (384x150, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/orders_conditional.png`)
+  - Alt: orders / orders
+  - Before: …tly solved just by increasing the Sbahn capacity, making them able to serve all stations. A very nice example of this style can be seen in game 164, Spider Pig Central station feeders built by Nickman. Conditional orders
+  - After: The conditional orders are a very flexible technique of how to deal with Sbahns. You can use them for very different Sbahn styles and often they work very nicely. For example enhancing the Direct orders with Load if avai…
+- **Cairo.png** (1440x846, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Cairo.png`)
+  - Alt: Madness / Madness
+  - Before: … loaded. Experiment with these orders and be creative! They can improve the capacity of the whole greatly. As various examples As an inspiration you can check out the super insane Cairo network in psg 154, built by many.
+  - After: This is how a Sbahn can also look. Self Regulation An order list consisting of mostly just one order: Transfer and leave empty. Making an self-reg Sbahn isn’t an easy task. First issue you will encounter is how to make t…
+- **orders_sr.png** (384x100, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/orders_sr.png`)
+  - Alt: orders / orders
+  - Before: …ve! They can improve the capacity of the whole greatly. As various examples As an inspiration you can check out the super insane Cairo network in psg 154, built by many. This is how a Sbahn can also look. Self Regulation
+  - After: An order list consisting of mostly just one order: Transfer and leave empty. Making an self-reg Sbahn isn’t an easy task. First issue you will encounter is how to make trains load for long enough in order to make them fu…
+- **thijs140.png** (1037x563, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/thijs140.png`)
+  - Alt: Sbahn / Sbahn
+  - Before: … make a 1->5 flipflop-like thingy in the city center. You can also make just-enough stations, to the trains go to all of them, but they don’t wait in either. A brilliant example of this style is Thijs’s Sbahn in PSG 140.
+  - After: Another different usage of self regulation can be seen in psg 164 – Yamaoka network built by ^Spike^. A possible solution of this is to make a timer-controlled entrance. You can see this exampled in PZ12, SHI Sbahn. Then…
+- **spike164.png** (1037x563, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/spike164.png`)
+  - Alt: Sbahn / Sbahn
+  - Before: …rains go to all of them, but they don’t wait in either. A brilliant example of this style is Thijs’s Sbahn in PSG 140. Another different usage of self regulation can be seen in psg 164 – Yamaoka network built by ^Spike^.
+  - After: A possible solution of this is to make a timer-controlled entrance. You can see this exampled in PZ12, SHI Sbahn. Then it is just about how long times you set, how many platforms you have, and so on. Everything demands s…
+
+## 06-advanced-building-revue-06-hubs
+
+- **hubs_intro.png** (861x575, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_intro.png`)
+  - Alt: Hubs / Hubs
+  - Before: … some possibilities how a hub can be made. This article should help one realize what to think about and what to consider when building a hub. Note: This article expects you have proper building style as your blood group.
+  - After: Introduction Hubs are one of the most key thing in any OpenTTD game that isn’t just point-to-point but is actually meant to be fun. Everyone built hubs, everyone had trouble building them, but everyone solved these probl…
+- **hubs_3way.png** (606x409, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_3way.png`)
+  - Alt: Hubs / Hubs
+  - Before: …ferently based on how the builder’s style is, sometimes using roundabouts, whirpools, just mess and rarely the whole hub gets reversed. The point behind this is, that 3way hubs look basically all like “an ultimate 3way”.
+  - After: From there one could say “Well, what changed from that time when you still build the same design?” This is because long time ago, we focused on hub design. Now we focus on details, components, mechanisms, from which the …
+- **hubs_173Mark1.png** (1440x799, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_173Mark1.png`)
+  - Alt: Hubs / Hubs
+  - Before: …ay . A very nice example gives MZG04 and PSG 173 – Pile transport, where we tried to re-play an old game and you can see how large a normal 4way hub becomes there… but of course they work better with proper build style .
+  - After: This is for me the ultimate 4way hub. Built by nobody else than Mark himself, see how the tracks swap in directions. This makes “the sweet-spot” much easier and compact to build. (More about sweet-spot further down in th…
+- **hubs_173bbh02.png** (1098x728, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_173bbh02.png`)
+  - Alt: Hubs / Hubs
+  - Before: …Then you just swap the tracks when in safe position. This technique is very friendly for usage. Demonstrated by Intexon in psg 173, BBH 02. (note that the hill disables sooner swap, otherwise it could have been smaller )
+  - After: Solve Inside Here we can see how Jondisti just makes the line A and then crosses it with B. This saves you space behind the hub, while sacrificing some inside. Clash Together! This is a style where you just go one over a…
+- **hubs_173bbh14.png** (1098x728, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_173bbh14.png`)
+  - Alt: Hubs / Hubs
+  - Before: …disables sooner swap, otherwise it could have been smaller ) Solve Inside Here we can see how Jondisti just makes the line A and then crosses it with B. This saves you space behind the hub, while sacrificing some inside.
+  - After: Clash Together! This is a style where you just go one over another, using bridges and tunnels. Great way especially if you can make it all close together and keep compact, because the 3 levels of track atop of each other…
+- **hubs_186msh03.png** (1440x799, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_186msh03.png`)
+  - Alt: Hubs / Hubs
+  - Before: …% from tunnel and bridge, because they are doubled therefore have half value but that isn’t important, just save space ) A nice example of this can be found in psg 186, MSH 03. Note how the hub is basically mergers-only.
+  - After: Splits Usually the part which is easiest. You just split lines from each direction. In this case, you can play with the actual order – if you split outer line first or outer, or both lines inside. Another decision-time c…
+- **hubs_split.png** (448x260, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_split.png`)
+  - Alt: Hubs / Hubs
+  - Before: … it is probably most significant. As seen in the image below, you can save a lot of space with bridges made like this. Also, it is highly friendly with presignals which are just best unless you want to prio the bridges .
+  - After: The basic rule of splits is “just use anything to get those lines away”. Mergers Something like a mirror-difference from splits. The hardest, most key thing mostly defining how the hub will actually look. (if you plan to…
+- **hubs_1to2.png** (606x258, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_1to2.png`)
+  - Alt: Hubs / Hubs
+  - Before: …others. Typically looks like this. (for any amount of ML lines, just multiply/expand the design – also, when expanding you should toy with the waiting bays so it performs best) Here goes an example… joining only 2 lines.
+  - After: Multi-to-multi-line join style This implies that you want to give all joining lines an access to all of the joined lines. This is practically doable only with 2line join if we are talking about any reasonably simple and …
+- **hubs_msh01merge.png** (508x215, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_msh01merge.png`)
+  - Alt: Hubs / Hubs
+  - Before: …y reasonably simple and compact merger. Again, there are many techniques how to do this, but one note to be highlighted is: care about signals, making sensitive gaps is really needed in order to reach maximum throughput.
+  - After: Fully Prioritized Merge joining some lines This is often used when more lines join more lines. Typical examples in PZ05. The only “not ideal” thing is that again, it doesn’t balance completely, but well … you want to bal…
+- **hubs_PZ05.png** (1440x799, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_PZ05.png`)
+  - Alt: Hubs / Hubs
+  - Before: …ritized Merge joining some lines This is often used when more lines join more lines. Typical examples in PZ05. The only “not ideal” thing is that again, it doesn’t balance completely, but well … you want to balance 4->8?
+  - After: Half Prioritized Merge This merging style would mean for me that I am merging two equally important lines. We have some priorities in order to make them choose lines better, but we do not have full priorities because it …
+- **hubs_173Mark2.png** (860x399, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_173Mark2.png`)
+  - Alt: Hubs / Hubs
+  - Before: …tuck in them for too long. This is typical for All-to-all balancers. Here we can see a very smart solution by Mark. Using a prio that would be normally considered broken, because only one of these tunnels is prioritized.
+  - After: All-to-all Merge There have been quite a few forms of a merger that allows all entering lines all possible exits. These mergers are easy to build because they have quite a systematic look, they are pretty simple and they…
+- **hubs_A2A.png** (1098x728, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_A2A.png`)
+  - Alt: Hubs / Hubs
+  - Before: …ote the PF traps behind the merger. This makes balancing a bit better because it reduces train preferences of one or other line.(I do not want to say the PF traps are needed, they only are a good thing to be considered.)
+  - After: Hub Composition Although we still use similar things to “ultimate 3way”, there still are some techniques and styles, how to save space and keep throughput. Most of these things is smart usage of tunnels and bridges, and …
+- **hubs_slh01.png** (823x539, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_slh01.png`)
+  - Alt: Hubs / Hubs
+  - Before: …arge tunnels … anyways, it is also a possibility to be considered.) Here come some examples of dealing with 3levels… BBH02 is particularly interesting because it does not keep the lines going the same direction together.
+  - After: Directional Tunnels This is quite a classic technique how to keep hub systematic and clean. Because you decide you will bridge the straight line still and still, you save some space in the other direction. This is usuall…
+- **hubs_slh06.png** (1098x728, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_slh06.png`)
+  - Alt: Hubs / Hubs
+  - Before: …arge tunnels … anyways, it is also a possibility to be considered.) Here come some examples of dealing with 3levels… BBH02 is particularly interesting because it does not keep the lines going the same direction together.
+  - After: Directional Tunnels This is quite a classic technique how to keep hub systematic and clean. Because you decide you will bridge the straight line still and still, you save some space in the other direction. This is usuall…
+- **hubs_bbh02.png** (998x692, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_bbh02.png`)
+  - Alt: Hubs / Hubs
+  - Before: …arge tunnels … anyways, it is also a possibility to be considered.) Here come some examples of dealing with 3levels… BBH02 is particularly interesting because it does not keep the lines going the same direction together.
+  - After: Directional Tunnels This is quite a classic technique how to keep hub systematic and clean. Because you decide you will bridge the straight line still and still, you save some space in the other direction. This is usuall…
+- **hubs_slh04.png** (1098x728, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_slh04.png`)
+  - Alt: Hubs / Hubs
+  - Before: …de you will bridge the straight line still and still, you save some space in the other direction. This is usually done by “making parts” of hub and bringing them close together, resulting in each part having it’s tunnel.
+  - After: Joining bridges together The art of this style (also applies for other styles) where casual hub differs from a masterpiece, often is the ability to merge some “parts” together, making them for example both on one tunnel.…
+- **hubs_msh03.png** (1098x728, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_msh03.png`)
+  - Alt: Hubs / Hubs
+  - Before: …you try to use as long tunnels as possible, and stuff there as much things as possible. This can be positively influenced by higher TL, because you can use even longer tunnels. The problem is – curves eat the space back.
+  - After: Hub Operation The most important thing is how the actual hub works. This is usually only influenced by the mergers. Since I have already noted some kinds of mergers and what situation they fit, I will not repeat it again…
+- **hubs_bbh04.png** (1098x728, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_bbh04.png`)
+  - Alt: Hubs / Hubs
+  - Before: … they work. See that while trains coming from the goods drop give priority on the A and B joins to the ML, while they merge equally on merge C. Definitely a good point to consider – think how is the hub actually be used.
+  - After: Shifters and hubs SML hubs are never very popular because they are just huge, so I will ignore these. I rather want to mention an idea I came up with … that is “simplification” of balancing. In MSH 01, I have built a bal…
+- **hubs_msh01shift.png** (1098x728, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/hubs_msh01shift.png`)
+  - Alt: Hubs / Hubs
+  - Before: …side, you could shift and ignore those tracks in further balancing, making the mergers smaller and simplier. (note that I tried to place the shifters inside hubs, therefore adding no more space, but stuffing them there )
+  - After: Conclusion If I try to conclude what I have just said, then it is: Building a hub is considering possibilities, pulling the right strings, sacrificing the space on one side for more space somewhere else. Build hubs not “…
+
+## 07-advanced-building-revue-07-stations
+
+- **ABR07_intro.png** (not downloaded)
+  - Alt: Stations / Stations
+  - Before: …tation, but it should note as many things as possible in terms of what to consider when building a station and also, talking about signalling styles which are sadly almost ignored. Here I present to you, ABR07: Stations.
+  - After: Introduction As building stations is a very complex topic and there isn’t too evolved (or insufficiently for this article) vocabulary, I will define some key elements I see in stations, and attempt to name them appropria…
+- **ABR07_incoming_02.png** (262x231, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_incoming_02.png`)
+  - Alt: Stations / Stations
+  - Before: …made for TL3. Incoming Line This is the very busiest line that is coming into the station. It is a line where could be a high density of trains basically. This rail should not ever slow down if we aim for max throughput.
+  - After: Buffered entrance An entry into a station where trains are supposed to wait for a free platform in waiting spaces (buffing spaces), until a platforms is free. Direct entrance An entry into a station where trains are supp…
+- **ABR07_incoming_01.png** (324x169, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_incoming_01.png`)
+  - Alt: Stations / Stations
+  - Before: …made for TL3. Incoming Line This is the very busiest line that is coming into the station. It is a line where could be a high density of trains basically. This rail should not ever slow down if we aim for max throughput.
+  - After: Buffered entrance An entry into a station where trains are supposed to wait for a free platform in waiting spaces (buffing spaces), until a platforms is free. Direct entrance An entry into a station where trains are supp…
+- **ABR07_buffer_01.png** (356x212, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_buffer_01.png`)
+  - Alt: Stations / Stations
+  - Before: … rail should not ever slow down if we aim for max throughput. Buffered entrance An entry into a station where trains are supposed to wait for a free platform in waiting spaces (buffing spaces), until a platforms is free.
+  - After: Direct entrance An entry into a station where trains are supposed not to stop since split from Incoming Line, until reaching their platform. Platform Distribution The way how to get trains into the platforms. One of the …
+- **ABR07_direct_01.png** (284x173, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_direct_01.png`)
+  - Alt: Stations / Stations
+  - Before: … a free platform in waiting spaces (buffing spaces), until a platforms is free. Direct entrance An entry into a station where trains are supposed not to stop since split from Incoming Line, until reaching their platform.
+  - After: Platform Distribution The way how to get trains into the platforms. One of the largest concerns when constructing a station entrance. Balanced entrance Usually a station entry where trains from every incoming line are ab…
+- **ABR07_balanced_01.png** (431x286, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_balanced_01.png`)
+  - Alt: Stations / Stations
+  - Before: …e way how to get trains into the platforms. One of the largest concerns when constructing a station entrance. Balanced entrance Usually a station entry where trains from every incoming line are able to join any platform.
+  - After: Balanced exit An exit where trains are able to choose any outgoing line they want, or at least – providing enough choices as needed. Full-speed station Also referred to as full-throughput. Simply put, this is a station t…
+- **ABR07_balanced_02.png** (415x239, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_balanced_02.png`)
+  - Alt: Stations / Stations
+  - Before: …ly a station entry where trains from every incoming line are able to join any platform. Balanced exit An exit where trains are able to choose any outgoing line they want, or at least – providing enough choices as needed.
+  - After: Full-speed station Also referred to as full-throughput. Simply put, this is a station that will be able to accept fully loaded lines (reasonably full, packed, or whatever – depends on situation) without slowing them down…
+- **ABR07_sync_01.png** (361x228, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_sync_01.png`)
+  - Alt: Stations / Stations
+  - Before: …thout slowing them down. Synced Station This means that any path through any platform is the same length. In practice it means that trains come out of the station in the same formation as they came in. Just like bridges.
+  - After: Entry Check The entry signal in front of the station that allows trains to get inside only if there is space for them. Especially viable with pickup stations where it is possible that they could get completely full. Brak…
+- **ABR07_check_01.png** (233x156, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_check_01.png`)
+  - Alt: Stations / Stations
+  - Before: …ges. Entry Check The entry signal in front of the station that allows trains to get inside only if there is space for them. Especially viable with pickup stations where it is possible that they could get completely full.
+  - After: Braking Space A space needed for trains to brake in front of a platform. A full TL braking space is an ideal case, but any other braking space can be useful too, and many times a full braking space isn’t required. Blocki…
+- **ABR07_braking_04.png** (328x184, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_braking_04.png`)
+  - Alt: Stations / Stations
+  - Before: … full. Braking Space A space needed for trains to brake in front of a platform. A full TL braking space is an ideal case, but any other braking space can be useful too, and many times a full braking space isn’t required.
+  - After: Blocking For this article, it means an act when a train stops where it shouldn’t. Mostly caused by two trains attempting to get into the same signal block. After a given time (usually short), the blocked train is able to…
+- **ABR07_blocking_01.png** (313x169, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_blocking_01.png`)
+  - Alt: Stations / Stations
+  - Before: …hen a train stops where it shouldn’t. Mostly caused by two trains attempting to get into the same signal block. After a given time (usually short), the blocked train is able to move again without any player interference.
+  - After: The Stations Different stations have different requirements, needs and are expected to perform differently but I will try to describe some things that apply to all standard station types, occasionally explaining when, wh…
+- **ABR07_count.png** (308x211, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_count.png`)
+  - Alt: Stations / Stations
+  - Before: …he main part of this article and it is fairly long, I will sort things into numbered paragraphs. 1. Platform Count What is usually the first question someone asks before building a station? “How many platforms per line?”
+  - After: Please note that this sentence makes no sense until you provide all important information on which the platform count actually depends! Basically every station design requires different platform counts. This is caused by…
+- **ABR07_balanced_03.png** (1175x521, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_balanced_03.png`)
+  - Alt: Stations / Stations
+  - Before: … If there is any jam or problem, trains just re-balance to the free platforms, possibly making unjamming easier. Note: There is one considerable advantage for unbalanced stations: easy expandability by just cloning them.
+  - After: (The most awesome and probably hardest style how to build a balanced station entry, so called XeryusTC style. Do not copy unless you really know what is going on. PSG 190, Oil Drop) 2.2. Balancing the exit Despite all of…
+- **ABR07_balanced_04.png** (1090x597, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_balanced_04.png`)
+  - Alt: Stations / Stations
+  - Before: …es to check if there is space or not. That way it usually ends up like they fill one line first then move onto another. The true balance in terms of equal traffic could be reached when all of the exiting lines are full.¨
+  - After: (The old, yet super effective style of a balanced station exit. So called XeryusTC styled exit, being probably the hardest station exit to build. PZG05, Factory Drop) With balancing, it is some kind of solid stable metho…
+- **ABR07_Xth_01.png** (726x311, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_Xth_01.png`)
+  - Alt: Stations / Stations
+  - Before: …ful and consider how does the station entry/platform split actually work. If some platforms are more likely to be used due to penalizing or any other reason, you have to consider it when making a forced “balancing” exit.
+  - After: 3. Station Shape There is like a million ways how to compose the station, although not all of them are anyhow changing how the station actually works. Using the “right” shape of the station to fit landscape or other need…
+- **ABR07_MAZE.png** (685x345, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_MAZE.png`)
+  - Alt: Stations / Stations
+  - Before: … about half the fun in station building. There is often one problem with station shape – many people look only at it, not at how it actually works. Station shape usually determines how compact is the station going to be.
+  - After: (Transfer 06 aka MAZE from PSG 175, showing that almost anything is possible.) 3.1. Ro-ro station A station where incoming trains don’t block the leaving trains. Roll in – roll out stations are considered standard since …
+- **ABR07_X_01.png** (267x141, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_X_01.png`)
+  - Alt: Stations / Stations
+  - Before: …n be virtually endless, provided you just make them large enough. Note: terminus stations tend to have worse platform usage, but if built properly, they are as effective as a roro in total station throughput 3.2.1. The X
+  - After: The one place of most problems is the “X” in front of the platforms. At the same time, it is quite dependent on circumstances whether terminus is good or not. Of course, what else would it rely on than trains. Here plays…
+- **ABR07_Xless.png** (276x133, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_Xless.png`)
+  - Alt: Stations / Stations
+  - Before: …ow not meeting. This means that platforms can be used as frequently as of a ro-ro station. Another advantage is that you can make a synced terminus this way if you adjust the lengths correctly and make a direct entrance.
+  - After: 3.3. Shaping Your Station With shape there usually come different possibilities in terms of signalling, or how the station is going to work. There is quite no guide to how to do the right station shape because you just h…
+- **ABR07_psb_01.png** (415x257, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_psb_01.png`)
+  - Alt: Stations / Stations
+  - Before: …e sure trains don’t enter the station when they shouldn’t. This has an exception with overflows, where the train has to enter the station at any time – and possibly ending up in the depot, if it fails to join a platform.
+  - After: A signaling technique greatly related to this is the Pre-signal Bypass, often looked at as being something awesome. In fact, it doesn’t do all that much wonders, since if it is long enough to accommodate trains inside, i…
+- **ABR07_failsafe.png** (490x206, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_failsafe.png`)
+  - Alt: Stations / Stations
+  - Before: …er. The purpose is to make trains not stop until they reach the platforms, and if they are forced to stop, then make them stop in safe locations, not blocking or slowing the main line. Works the same as fail-safe joiner.
+  - After: The whole thing works based on the fact that a train comes to a certain signal, which gets green just when the train is in front of it (marked position) because we know how long the train is, that way we can place an unb…
+- **ABR07_fastbay_01.png** (381x224, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_fastbay_01.png`)
+  - Alt: Stations / Stations
+  - Before: …gh one of the choices in their full stream. That way you don’t need to care about distribution among platforms since trains just skip somewhere else when one part is full and they can use that line with great throughput.
+  - After: High-speed split. The highlights mark the signal gaps which are short enough to allow a “normally” full lane. 6.3.3. Logic Split Sometimes we can use a logic splitter (like flipflop) to distribute trains into platforms p…
+- **ABR07_hypno.png** (1063x551, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_hypno.png`)
+  - Alt: Stations / Stations
+  - Before: …it Sometimes we can use a logic splitter (like flipflop) to distribute trains into platforms properly. There are two cases I can remember in the last games. First one was PSG 189 – rubber/wood drop or PSG 179 Hypnotizer.
+  - After: Both stations are of a very special kind. We can see that trains “don’t know” what is in the platforms or behind them – especially on the other half of the station where they are supposed to only “sometimes”. And as we l…
+- **ABR07_logic_01.png** (912x533, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_logic_01.png`)
+  - Alt: Stations / Stations
+  - Before: …times”. And as we later saw, perfect balancing skyrocketed the throughput to a different level. The other one is building crap stations and splitting by logic “just because” just like in the image below (PSG192, Dundale)
+  - After: This is rather a brain disaster than good way to build in terms of building a station if you keep in mind that the only thing that was actually needed was a proper station entrance, for example like the image below. Addi…
+- **ABR07_logic_02.png** (583x393, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_logic_02.png`)
+  - Alt: Stations / Stations
+  - Before: …ike the image below. Additionally, logic should be used when needed, not whenever possible. (signals in circles are one at which trains stop in case station gets full, lines show the 3 tiles where trains stop eventually)
+  - After: 7. Time and platform efficiency Trains use platforms at some rate. This rate differs with each station design. Mostly it is based on how far is the “releaser signal” into the platforms since trains take longer or shorter…
+- **ABR07_buffer_02.png** (430x188, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_buffer_02.png`)
+  - Alt: Stations / Stations
+  - Before: …ossible improvements (not always! – train acceleration is important) is making waiting bays right in front of the platforms. That way trains get into the platforms right after they get free. Just like in the image below.
+  - After: 8. Synced Station Just like syncing bridges, this makes trains come out in the same formation as they came in. This means all platforms take equally long path to go into and out of in total. From the way how it works we …
+- **ABR07_sync_02.png** (592x358, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_sync_02.png`)
+  - Alt: Stations / Stations
+  - Before: …G13 – trains were fast and mainly – they were so packed that any stop in a wrong spot would mean jam. The station worked on the same pattern as the image below, but it was further doubled because of extreme train inflow.
+  - After: 9. Slowing down or jamming Mainly talking about larger Main Stations, they must never slow down the input line. The first thought of an unexperienced player would be probably saying that we need a larger station because …
+- **ABR07_gap_01.png** (206x304, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_gap_01.png`)
+  - Alt: Stations / Stations
+  - Before: …ssing signals, possibly slowing trains down if the gap is too long for the required throughput. The most important gaps that often occur in stations are mainly pre-signal long arrays, reacting slowly, just like this one:
+  - After: The longer this station is, the slower the pre-signals will be, thus making packed line throughput impossible. Theoretically, the only slow parts are the later platforms. That means if trains swap between slower and fast…
+- **ABR07_gap_02.png** (508x264, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_gap_02.png`)
+  - Alt: Stations / Stations
+  - Before: …nce. For example – if you need to split one line into 6 platforms, you can first split in half, then each line goes to 3, just like the example below, making the first split gaps so long that the later ones don’t matter.
+  - After: 9.2. Braking Spaces One of the things that are usually ignored, wrongly understood, or just explained differently. Some people just know that the train is going to stop in the station soon anyway so why would they make b…
+- **ABR07_braking_01.png** (297x271, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_braking_01.png`)
+  - Alt: Stations / Stations
+  - Before: … in terms of that exact line from which trains enter the platforms. For example this station (image below) has trains joining platforms directly from the main line. This means that we require full braking spaces (1x TL).
+  - After: Although if we split the station into two, we can see that the first array has longer braking spaces than the second one. This is because we need a full TL from the first entry signal towards the platform. But the other …
+- **ABR07_braking_03.png** (667x428, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_braking_03.png`)
+  - Alt: Stations / Stations
+  - Before: …his is because we need a full TL from the first entry signal towards the platform. But the other array is expected to have only ~half amount of trains and is far enough from the main split to actually slow down the line.
+  - After: Braking spaces don’t always apply only to slowing down the line though! Some areas on the stations can tend to be under more stress and you might want these places to be as fast as possible. Braking spaces can (and shoul…
+- **ABR07_braking_02.png** (310x158, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR07_braking_02.png`)
+  - Alt: Stations / Stations
+  - Before: …ons can tend to be under more stress and you might want these places to be as fast as possible. Braking spaces can (and should) also help there when needed. For example you want trains to be as fast as they can on the X.
+  - After: 9.3. Blocking trains When multiple trains enter multiple areas which lead to one signal block, only one of them can follow at a time. This means the trains block for a while and have to wait. Such behavior can be seen in…
+
+## 08-advanced-building-revue-08-overflows-ii
+
+- **ABR08_intro.png** (1184x737, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_intro.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: …hing we haven’t used yet . This article is going to be about yet more overflows, this time much more advanced than the original ones. I recommend knowing the original article (ABR04) since this is just an addition to it.
+  - After: Introduction Overflows are a sometimes-handy feature of our networks. When they are used, they can save us a lot of work. On the other hand they have (of course) their disadvantages. Let’s look into overflows in general,…
+- **ABR08_01_free.png** (461x241, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_01_free.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: … particular. I will just skip the abilities I have already mentioned in the ABR04, and focus more on the new parts. There is a savegame available to be downloaded.(r21089) 1. Releasing trains 1.1. Releasing trains freely
+  - After: Trains released from the overflow can be released “just anytime”, mostly with giving way to the incoming line not to slow it down at least. This makes trains inject truly anytime the incoming line is able to accept them,…
+- **ABR08_02_timer.png** (462x246, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_02_timer.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: …he overflow, which could critically increase the traffic on the overflow, possibly making it even jam. Note: it is always a good idea to make trains give way to the incoming line at least 1.2. Releasing trains by a timer
+  - After: Once we release trains by a timer, allowing one train in a set time period, the overflow just can’t empty anyhow quickly, possibly disintegrating waves. The problem is, if a train gets into the overflow and it is immedia…
+- **ABR08_09_2conditionstimer.png** (351x159, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_09_2conditionstimer.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: …n’t flood it with trains and eventually make the ML jam even worse (or at least the process is slower). Some people might dislike the fact that we use some logic train here. There are a few timers to use: Both conditions
+  - After: We can either release trains only when there is the releaser signal green, and at the same time the timer lets it go. I do not recommend this since it doesn’t really do anything good and it only drastically reduces the c…
+- **ABR08_08_separatetimer.png** (312x196, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_08_separatetimer.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: …ins are released every timer period, and then wait until they can join. This makes the timer work, and at the same time makes the release reasonably possible. To this apply the following two possibilities. Separate timer
+  - After: If we just make the timer aside, not looking at the trains, it could easily happen that the train passes the timer, then waits for releaser signal to go into the station, but it waits for a long time, for example almost …
+- **ABR08_07_detectingtimer.png** (435x169, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_07_detectingtimer.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: … but it waits for a long time, for example almost 1 timer period. Then it leaves the overflow, and another train comes, being released by the timer instantly. Therefore the trains can come in groups of 2. Detecting timer
+  - After: The other option is to make the timer wait until the train is released into the station, therefore making every two trains come separate in our desired intervals (timer period). 1.3. Releasing trains on demand By checkin…
+- **ABR08_03_check01.png** (785x365, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_03_check01.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: …nce trains get into the overflow, they can have a very hard time getting out of it since they usually have quite a few other conditions under which they are released. Additional Release Conditions Free platform detection
+  - After: When we check for free platforms, we can easily detect if the released train is going to be anyhow useful or not. Although it is possible that it fails, most likely because there is an another train on the way towards th…
+- **ABR08_11_attempting.png** (321x178, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_11_attempting.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: …cause there is an another train on the way towards that platform already (either in a buffering space or on the incoming line), so it is essential to use also some detection for those. Trains attempting to join detection
+  - After: When our released train also looks whether there aren’t any of its fellows attempting to join a platform already, it is almost sure that he won’t be released without an actual use. Although this condition can slow the in…
+- **ABR08_04_check02.png** (525x347, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_04_check02.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: …’t support the train count coming in. This mainly applies to long arrays from which the trains split into the platforms. If we shorten these by putting the platforms together, we can make it faster. Waiting bay detection
+  - After: When we have a station where one train leaves the platform, it is expected that also one waiting bay gets freed. If the freed waiting bay is able to accept the released train, we don’t need any detection for the waiting …
+- **ABR08_10_conditionaldepot.png** (274x191, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_10_conditionaldepot.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: …ch could make the station exponentially larger, therefore it can’t really be considered as multiline-friendly since a direct connection of just 1 line is much simpler. 3. Other Features 3.1. Conditional-conditional depot
+  - After: Another thing to consider is not forcing all trains to go through the depot even when they could go directly to their respective waiting bay, making things faster. This could possibly be even improved by making trains in…
+- **ABR08_05_unreal.png** (548x291, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_05_unreal.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: … line, we officially don’t have the depot. This could solve one of the issues “why not to have an overflow” since when we press “send trains to depot”, we want to get a red message “Unable to find route to local depot.”.
+  - After: This can be reached quite easily by making a train reverser in front of the depot, so the depot does not exist for the pathfinder. And to make trains go into the train reversers and depots, eventually, we just use a PF t…
+- **ABR08_06_looparound.png** (319x204, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR08_06_looparound.png`)
+  - Alt: OverflowsII / OverflowsII
+  - Before: …hus eliminating some of their disadvantages. Note: I used double depots in the examples to stress them a bit more, although it should be enough to use just one in normal cases. 4. Other Overflows 4.1. Looparound overflow
+  - After: This is an overflow without depot, but making trains swap lines. For example, we have a 3 line station. Our train fails to join at line 1 platforms, then it attempts to join at line2, later line 3 and then returns back t…
+
+## 09-advanced-building-revue-09-self-regulating-stations
+
+- **ABR09_intro.png** (1289x713, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_intro.png`)
+  - Alt: SRNW Stations / SRNW Stations
+  - Before: …e already used in the past, and uncover the reasons why such a construction as a transfer station is so key for progress with self-regulation. And in the end of the article, we will also look how such a station is built.
+  - After: Synchronized stations The older style of stations could be called synchronized. This is because they work like in a cycle where all trains wait to load until released. Then repeat again. With smaller stations it doesn’t …
+- **ABR09_not.png** (519x275, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_not.png`)
+  - Alt: NOT gate station from psg 180 / SRNW Stations
+  - Before: … separate the times when dummy trains are loading, and when real trains are loading, otherwise they would steal the cargo from each other. Synchronized stations have multiple styles of how can they be built. 1. NOT gated
+  - After: The probably fastest and fairly universal way how to build this station. All of these stations have some dummy train(s) that 1. load, 2. move a bit and trigger the NOT, 3. move back the little bit and unload 4. turn arou…
+- **ABR09_3bay.png** (1218x789, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_3bay.png`)
+  - Alt: Classic station from psg 121 / SRNW Stations
+  - Before: …ove just a very short distance, which usually is only a short period of time results in very short time when no train is loading in the station (which makes it probably the most powerful synchronized station). 2. 3-bayed
+  - After: Dummy trains in here are moving in three bays: 1. loading area, 2. waiting area, 3. drop area. First, they load in 1. Then, they wait for the rest of the dummies to load and when all of them leave their loading areas, th…
+- **AsyncSRNW_149.png** (not downloaded)
+  - Alt: Asyncronous station from psg 149 / SRNW Stations
+  - Before: …avel time. Asynchronous stations The newer way how to make a self regulating station is based on eliminating the wave-generating flaw of synchronized stations. This can be done few different ways. Multiple station layout
+  - After: The first idea from Nickman ( article here ) was that each platform should have it’s own station. Therefore we get a lot of stations where we are facing one problem – once we reach a certain amount of stations, the indus…
+- **ABR09_transfer.png** (843x438, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_transfer.png`)
+  - Alt: Transfer station from psg 199 / SRNW Stations
+  - Before: …ion! We could do everything like we normally do, but just make 2 or 3 stations instead of 1, they can be larger, but we still get a half/third of the waves we did before, which is at least some advance. Transfer stations
+  - After: Another possibility is to create a transfer station ( former article here ) which is fed by trains coming from the primaries. Then we need some mechanism that releases the real trains when a dummy arrives. When I tested …
+- **ABR09_sbahn_style.png** (1230x601, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_sbahn_style.png`)
+  - Alt: Feeder ring from psg 170 / SRNW Stations
+  - Before: …robably so many times modified by avdg that it resulted in releasing empty trains that somehow didn’t manage to load. I decided to make an attempt in psg200, detailed description follows below in the article. Sbahn style
+  - After: Yet another idea is to make a loop of stations and just dump there some trains. This has to be enhanced by some self regulating orders so that trains that aren’t full return back to the loop and try again. This design is…
+- **ABR09_200.png** (1132x573, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_200.png`)
+  - Alt: Transfer station from psg 200 / SRNW Stations
+  - Before: …in. This design is usable, but needs some real tweaking and toying with to make it operational. Example of this is psg170 feeder for Mark’s transfer station or the thing Mazur wrote an article about. The Transfer Station
+  - After: When I started thinking about this station, I started pretty much from nothing. I told myself “I don’t care how others did it, I will just do it however I hope it could work.” so I started basically from nothing. Let’s p…
+- **ABR09_red-red.png** (320x178, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_red-red.png`)
+  - Alt: RedToAbsolute Red gate / SRNW Stations
+  - Before: … block. This is required to chain the conditions and require all of them to be fulfilled to do *something*. Note: both of the gates are interchangeable just if you use a not gate to reverse the input. Red -> Absolute Red
+  - After: This is a gate that was developed by Vitus, used in PZG13. Detailed description in the savegame. Green -> Absolute Red This is a gate that is new by me, used in PSG200. Detailed description in the savegame. Transfer Logi…
+- **ABR09_green-red.png** (269x170, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_green-red.png`)
+  - Alt: GreenToAbsolute Red gate / SRNW Stations
+  - Before: …of the gates are interchangeable just if you use a not gate to reverse the input. Red -> Absolute Red This is a gate that was developed by Vitus, used in PZG13. Detailed description in the savegame. Green -> Absolute Red
+  - After: This is a gate that is new by me, used in PSG200. Detailed description in the savegame. Transfer Logics The main point of how should the station work in general was that there should be some process where the cargo is tr…
+- **ABR09_transfer_view.png** (1383x703, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_transfer_view.png`)
+  - Alt: Transfer station scheme / SRNW Stations
+  - Before: …is is a gate that was developed by Vitus, used in PZG13. Detailed description in the savegame. Green -> Absolute Red This is a gate that is new by me, used in PSG200. Detailed description in the savegame. Transfer Logics
+  - After: The main point of how should the station work in general was that there should be some process where the cargo is transfered from a train to another. This process is to be started by the feeder train arriving to drop… 1.…
+- **ABR09_02_delay.png** (596x210, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_02_delay.png`)
+  - Alt: Condition 2. / SRNW Stations
+  - Before: …ly too late so that loading starts before unloading. This makes the loading train leave the station and the cargo is left there in the station. To make sure this never happens, we should make there some delay. 2. Delayer
+  - After: To make as precise delay as possible, we can make the loading train not being released until the feeder is close enough to the drop. This can be done by defining where could it’s tail be. After we are totally sure our fe…
+- **ABR09_03_X.png** (310x174, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_03_X.png`)
+  - Alt: Condition 3. / SRNW Stations
+  - Before: …ur feeder will never come late, we still face some possible flaws. These occur when the feeder comes to the station, it even delays, but the loading train can’t load, for some reason. The reasons could be: 3. Train at X?
+  - After: If there would be a train directly blocking the release, it would just shut down any loading but the feeder would still unload. Therefore we need to make sure that our loading train can go into the station. 4. Is there a…
+- **ABR09_04_bays.png** (432x222, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_04_bays.png`)
+  - Alt: Condition 4. / SRNW Stations
+  - Before: … be a train directly blocking the release, it would just shut down any loading but the feeder would still unload. Therefore we need to make sure that our loading train can go into the station. 4. Is there anyone to load?
+  - After: There could also easily happen a case where we have no trains waiting to load. In that case we can’t let our feeder drop the cargo, so we need to make sure there is at least one train waiting. 5. Is there a free platform…
+- **ABR09_05_platform.png** (335x161, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_05_platform.png`)
+  - Alt: Condition 5. / SRNW Stations
+  - Before: …here could also easily happen a case where we have no trains waiting to load. In that case we can’t let our feeder drop the cargo, so we need to make sure there is at least one train waiting. 5. Is there a free platform?
+  - After: It is also possible that the loading trains filled all platforms. Therefore if another loading train is released, it not only fails to find it’s platform, but gets also stuck in the X. Theoretically, this situation can’t…
+- **ABR09_buffer.png** (352x202, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR09_buffer.png`)
+  - Alt: Additional buffer for some emergency injection. / SRNW Stations
+  - Before: …is possible that there is a jam at the station exit or somewhere in front of it. At such case of jam, it would just again break our loading, so we need to make sure the train has some place where to go. Additional buffer
+  - After: Since under normal circumstances it could easily happen that there would be no loading trains available at the moment due to wave on ML or whatever, I think it is nice to buffer at least 1 train aside for the two bays I …
+
+## 10-advanced-building-revue-10-invisible-hubs
+
+- **ABR10_intro.png** (920x534, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR10_intro.png`)
+  - Alt: InvisibleHubs / InvisibleHubs
+  - Before: …noticed one such hub as SLH03 in psg204 . Due to various reasons, those hubs are rather situational because of dependencies not only on space and composition, but also high dependence on trains. Read further for details…
+  - After: Introduction The defining aspect of this hub is making one part pretty much invisible. To reach this effect, we basically tunnel the whole hub through from one end to another. This creates space atop of the tunnels, allo…
+- **ABR10_tunnelhub_signs.png** (1938x1039, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR10_tunnelhub_signs.png`)
+  - Alt: InvisibleHubs / InvisibleHubs
+  - Before: …ajorly “hidden” on the tunnels. Note: the article mentions bridges and tunnels. It is meant to be the long split part unless stated otherwise. That part can be made by both bridges or tunnels of course. How does it look:
+  - After: Underground part The part with tunnels is very simple, there is just: 1. split Due to having tunnels, we can just space them out and make the split lines there. 2. tunnels Because we expect the tunnels to be long, triple…
+- **ABR10_TL5static.png** (1030x590, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR10_TL5static.png`)
+  - Alt: TL5 SLH / InvisibleHubs
+  - Before: …ust add up the other pieces onto it from the outside. The sequence probably doesn’t matter as you will likely need to move many things around until reaching satisfactory results. Examples Pictures! Here goes one TL5 SLH.
+  - After: And here we have a TL2 version of a SLH. (some bridges might be too long) Conclusion The invisible hubs are certainly helpful when it comes to making short hubs and saving ML space but at the same time they definitely ar…
+- **ABR10_TL2static.png** (836x504, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR10_TL2static.png`)
+  - Alt: TL2 SLH / InvisibleHubs
+  - Before: …y doesn’t matter as you will likely need to move many things around until reaching satisfactory results. Examples Pictures! Here goes one TL5 SLH. And here we have a TL2 version of a SLH. (some bridges might be too long)
+  - After: Conclusion The invisible hubs are certainly helpful when it comes to making short hubs and saving ML space but at the same time they definitely aren’t the ultimate solution. Their main downside is the very specific usabi…
+
+## 11-advanced-building-revue-11-refit-stations
+
+- **ABR11_intro.png** (800x424, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/ABR11_intro.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …ade some development in those and they include a few features to keep in mind. This article will be similar to the overflow articles – it is meant to summarize the progress and show what refit stations are in a nutshell.
+  - After: Introduction Refit stations are an interesting topic that has faced some development every time we used them. Due to that I will chronologically start from the simpliest, and introduce new features and layouts as time pa…
+- **abr11_psg141.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg141.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …rocess how it was. Public Server Game 141: The origins If I remember correctly, the first refit game was psg 141 where we had a very simple station which had only one purpose – just do the job. Drop, refit, pickup, done.
+  - After: Public Server Game 179: The rediscovery A long time after that came the psg 179 when refit games were re-discovered. In psg179 we built two refit stations and one station with depots after the station to refit back to pr…
+- **abr11_psg179_fpp.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg179_fpp.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …ery A long time after that came the psg 179 when refit games were re-discovered. In psg179 we built two refit stations and one station with depots after the station to refit back to primary cargoes. Food Processing Plant
+  - After: This station is pretty much the same as the old design from 141 so not much new there. Printing Works As we discovered, the old design sometimes stacked trains in few depots in case of any problem or jam at the exit. Or …
+- **abr11_psg179_print.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg179_print.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …o refit stations and one station with depots after the station to refit back to primary cargoes. Food Processing Plant This station is pretty much the same as the old design from 141 so not much new there. Printing Works
+  - After: As we discovered, the old design sometimes stacked trains in few depots in case of any problem or jam at the exit. Or even without jams trains just prefered some platforms over the other – as they of course did not see t…
+- **abr11_psg186_oil.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg186_oil.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: … platforms or even a separate station as it was done at the refinery/printing works. While wood drop was more flexible design with space behind it so it was just fine to fit the extra set of platforms behind the station.
+  - After: Public Server Game 197 The way how refit stations was kept in this game as everything was pretty much the same. However we found out that we could abuse the near end/middle/far end orders to make trains visit the station…
+- **abr11_psg186_wood.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg186_wood.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: … platforms or even a separate station as it was done at the refinery/printing works. While wood drop was more flexible design with space behind it so it was just fine to fit the extra set of platforms behind the station.
+  - After: Public Server Game 197 The way how refit stations was kept in this game as everything was pretty much the same. However we found out that we could abuse the near end/middle/far end orders to make trains visit the station…
+- **abr11_psg197_extra.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg197_extra.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: … load. Then they decide whether they loaded enough or not. If not, then they go to the middle or far end and transfer the cargo back. And of course if it loads enough then it just leaves the station as it originally did.
+  - After: Public Server Game 200 This game did not really bring anything new for refit stations but just some attempts to try a different station layout, using all platforms for all purposes. Public Server Game 205 Another giganti…
+- **abr11_psg200_goodsyard.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg200_goodsyard.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …aves the station as it originally did. Public Server Game 200 This game did not really bring anything new for refit stations but just some attempts to try a different station layout, using all platforms for all purposes.
+  - After: Public Server Game 205 Another gigantic refit game after 186. As the game got bigger and bigger, some stations started to have problems with stacking trains in depots when under stress. However this time we did not solve…
+- **abr11_psg205_water.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg205_water.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …ng all platforms for all purposes. Public Server Game 205 Another gigantic refit game after 186. As the game got bigger and bigger, some stations started to have problems with stacking trains in depots when under stress.
+  - After: However this time we did not solve it by adding any flipflop logic to the station entrance but we fixed the depots themselves. The first stack-proof depots were introduced in one of the stations, which made absolutely su…
+- **abr11_psg205_drop3.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg205_drop3.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …s themselves. The first stack-proof depots were introduced in one of the stations, which made absolutely sure that trains cannot stack up in the depots as the depot trains have prio over new trains coming to the station.
+  - After: Public Server Game 213 As stack-proof depots were brought to life, the idea was used again. The layout remained unchanged as it is not too modifiable. There was still one thing which was new though. So far the stack-proo…
+- **abr11_psg213_rorodepot.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg213_rorodepot.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: … came the question what if ro-ro depots get stacking trains. Not using a prio or anything similar, there were used just series of pre-signals. There is just a seemingly useless combo signal added. Let’s see how it works.
+  - After: First, a train is waiting in front of the depot while another train is exiting the depot. Thing is there is an another train waiting in the depot so we want it to be able to leave it as well. What is going to happen is t…
+- **abr11_rorodepot_1.png** (845x388, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_rorodepot_1.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: … depot while another train is exiting the depot. Thing is there is an another train waiting in the depot so we want it to be able to leave it as well. What is going to happen is that when the first train leaves the block
+  - After: Both the second train in the depot, and the waiting train in front of the depot are going to be allowed to go at the same time. But the waiting train is going to get stuck at the combo signal, thus pretty much giving pri…
+- **abr11_rorodepot_2.png** (845x388, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_rorodepot_2.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …e to leave it as well. What is going to happen is that when the first train leaves the block Both the second train in the depot, and the waiting train in front of the depot are going to be allowed to go at the same time.
+  - After: But the waiting train is going to get stuck at the combo signal, thus pretty much giving priority to the depot train. While we also need an exit behind the depot, it makes sure that trains will keep waiting in front of t…
+- **abr11_psg214_1.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg214_1.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …d not really feature standard refit stations as it was completely different from the scratch. However it included some new interesting designs that were made bacause of the new requirements that this special network had.
+  - After: Public Server Game 225 The currently last game did not really bring anything new, it only used the stack-proof depots on the ro-ro and showed the old station designs again, this time only in larger scale. It also had bot…
+- **abr11_psg214_2.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg214_2.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …d not really feature standard refit stations as it was completely different from the scratch. However it included some new interesting designs that were made bacause of the new requirements that this special network had.
+  - After: Public Server Game 225 The currently last game did not really bring anything new, it only used the stack-proof depots on the ro-ro and showed the old station designs again, this time only in larger scale. It also had bot…
+- **abr11_psg214_3.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg214_3.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …d not really feature standard refit stations as it was completely different from the scratch. However it included some new interesting designs that were made bacause of the new requirements that this special network had.
+  - After: Public Server Game 225 The currently last game did not really bring anything new, it only used the stack-proof depots on the ro-ro and showed the old station designs again, this time only in larger scale. It also had bot…
+- **abr11_psg225_north.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg225_north.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …d station designs again, this time only in larger scale. It also had both of the stations have their depots invisible as the station is a terminus, which is a bit more safe from lost trains getting looped in the station.
+  - After: Conclusion Refit stations have quite a history in our games and the possibilities how to build them have changed quite a lot. I am not quite sure whether it is valid to say that new designs were found instead of just say…
+- **abr11_psg225_south.png** (1920x1018, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/abr11_psg225_south.png`)
+  - Alt: Refit Stations / Refit Stations
+  - Before: …d station designs again, this time only in larger scale. It also had both of the stations have their depots invisible as the station is a terminus, which is a bit more safe from lost trains getting looped in the station.
+  - After: Conclusion Refit stations have quite a history in our games and the possibilities how to build them have changed quite a lot. I am not quite sure whether it is valid to say that new designs were found instead of just say…
+
+## 12-advanced-building-revue-12-overflows-iii
+
+- **ABR12_intro.png** (not downloaded)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …before reading this one. I also did not mark the images with colours etc as much as I did previously, simply because recoznizing these should already be piece of cake if you want this article to be anyhow useful for you.
+  - After: Attached savegame As always, I add a savegame along with overflow article. r24349, newbridges from the GRF pack, and NUTS 0.2.1 from online content. Download Savegame Example overflows Figure A: The basic 2-platform over…
+- **Example_A.png** (284x158, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Example_A.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …ched savegame As always, I add a savegame along with overflow article. r24349, newbridges from the GRF pack, and NUTS 0.2.1 from online content. Download Savegame Example overflows Figure A: The basic 2-platform overflow
+  - After: Once upon a time, the norm of overflows has gotten a new addition – that every depot should be hidden for the pathfinder. That basically meant that every overflow requires having a reverser, which basically eliminated ma…
+- **Example_B.png** (532x355, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Example_B.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: … depot. However if we fix those things, we obviously do get a proper overflow, but have to sacficice some space to do that, which can not always be the most convenient thing to do. Figure B: Adding prio for incoming line
+  - After: While this already tries to reduce the stress on the incoming line, the total low throughput remains. The thing that slows the most is the depot, especially with longer trains. So we can just put it in a separate place. …
+- **Example_C.png** (538x298, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Example_C.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …ing that slows the most is the depot, especially with longer trains. So we can just put it in a separate place. Another thing which can be elsewhere than in the main X is the reverser. Figure C: Depot/reverser separation
+  - After: Now we have a solid overflow station with separate depot and reverser. Most key points are: C1: The combo-signalled reverser is a technique by which we do not detect the reverser as a free platform in case it is empty, b…
+- **Example_D.png** (831x413, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Example_D.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …w and just continue the jam. It is often useful to prevent this from happening, so the overflow works under any circumstances, providing even more safety. Figures D and E: Getting rid of X by waiting bays or roro station
+  - After: We improved the throughput again and either of these stations should work even for 2295 primary (I think). The only further improvements we can do is more expandability, and finding designs for a lot more throughput – li…
+- **Example_E.png** (726x353, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Example_E.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …w and just continue the jam. It is often useful to prevent this from happening, so the overflow works under any circumstances, providing even more safety. Figures D and E: Getting rid of X by waiting bays or roro station
+  - After: We improved the throughput again and either of these stations should work even for 2295 primary (I think). The only further improvements we can do is more expandability, and finding designs for a lot more throughput – li…
+- **Example_F.png** (1282x934, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Example_F.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …ork even for 2295 primary (I think). The only further improvements we can do is more expandability, and finding designs for a lot more throughput – like for secondary industries. Figure F: 2-line station, diagonal design
+  - After: The already classic design for a LL station, it appeared it many of our games already. The way how it works is simple, trains pass around waiting bays which they attempt to join as soon as they can. In case they fail the…
+- **Example_G.png** (1348x730, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Example_G.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …fferent less strict, but less precise detection (like presignal bypass-ish). Or there can be made a completely different design of the station which shortens the detected area on the incoming line. Figure G: Release to X
+  - After: This design is fairly different to all of the other overflows. The main deviation is the release – we do not directly give way to incoming trains, there is not even any traditional priority for them. The X has PBS signal…
+- **Example_H.png** (1723x887, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Example_H.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: … This injection does not happen very often, but seems to be sufficient, as tried in psg219 and similarly in psg230. The conditions are weird and not very universal so lets try to change that. Figure H: Different releases
+  - After: This is an attempt to find a different solution which would not provide the strange release conditions of which exact platform should be full and which not. I can think of 2 options how to do this: H10a: no pre-signals T…
+- **Extras_C.png** (1510x706, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Extras_C.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …ct but should not inject in completely inappropriate times and when the station is under a lot of stress, the main flow trains should always be given way to. Figure I: normal station with injection for each incoming line
+  - After: Note: The amount of rails is a bit of a mayhem, so I tried to make it easier to read by making logic lines maglev, overflow lines univ rail, and incoming line is monorail. (from psg233) Another option how to make the ove…
+- **Extras_B.png** (1062x437, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Extras_B.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …ow the loop overflow on drop works. Loop overflow obviously does not include depot, so any release logic is not needed. The overflow should even be given prio just for the length of one TL, to prevent possible deadlocks.
+  - After: Here is a simple station for 2 line drop station with loop overflow. And here comes a bigger option for 4 lines. Of course there are various ways how to do it, but the idea of the loop stays. Combined drop&pickup station…
+- **Extras_D.png** (1698x859, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Extras_D.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …include depot, so any release logic is not needed. The overflow should even be given prio just for the length of one TL, to prevent possible deadlocks. Here is a simple station for 2 line drop station with loop overflow.
+  - After: And here comes a bigger option for 4 lines. Of course there are various ways how to do it, but the idea of the loop stays. Combined drop&pickup stations Stations which combine drop and pickup are usually built with an ov…
+- **Extras_E.png** (2557x777, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Extras_E.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …on logic etc. Because the drop is usually not ended with a stopping signal, it is often vital to add a loop overflow for the drop to not make drop trains go through pickup accidentally in case drop has no free platforms.
+  - After: Typical combined drop and pickup station with overflow. From psg 220. It is also possible to rely only on loop overflow. Not only for the drop, but also for the pickup. Of course does not provide the endless buffer for t…
+- **Extras_F.png** (1802x837, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/abr/images/Extras_F.png`)
+  - Alt: OverflowsIII / OverflowsIII
+  - Before: …gnal, it is often vital to add a loop overflow for the drop to not make drop trains go through pickup accidentally in case drop has no free platforms. Typical combined drop and pickup station with overflow. From psg 220.
+  - After: It is also possible to rely only on loop overflow. Not only for the drop, but also for the pickup. Of course does not provide the endless buffer for trains, but it should suffice as well. From psg220. Conclusion Overflow…
+
+## 13-advanced-building-revue-13-self-regulating-stations-ii
+
+- **ABR13_front3-1024x490.png** (not downloaded)
+  - Alt: ABR13_front3
+  - Before: …alt with different features and the noteworthy exeptionalities. If you are unfamiliar with Self-Regulating Networks (SRNW), then I advise to read Wiki – SRNW & ABR:09 – Self-regulating Stations I , prior to this article.
+  - After: 1. Synchronized SRNW stations Self-Regulating Net-Work (SRNW) Stations are there in many different shapes and designs. One of the most common one is the single dummy loader SRNW station (Figure 1). Although these station…
+- **ABR13_SingleDummy_A-150x150.png** (not downloaded)
+  - Alt: ABR13_SingleDummy_A
+  - Before: …erving design is very simple to build and understand. Also, to my opinion this is one of the strongest methods for SRNW cargo transfer logic – because, its simplicity, relative easy to build & it is very compact as well.
+  - After: Figure 1: Self-regulating stations with a single dummy loader: (A) a good example from PSG 199 with a large dummy loader; (B) standard PBS-reserved SRNW station design in a PAX game. However, when building SRNW stations …
+- **ABR13_PBS_A-150x150.png** (not downloaded)
+  - Alt: ABR13_PBS_A
+  - Before: …erving design is very simple to build and understand. Also, to my opinion this is one of the strongest methods for SRNW cargo transfer logic – because, its simplicity, relative easy to build & it is very compact as well.
+  - After: Figure 1: Self-regulating stations with a single dummy loader: (A) a good example from PSG 199 with a large dummy loader; (B) standard PBS-reserved SRNW station design in a PAX game. However, when building SRNW stations …
+- **ABR13_Multydummy_A-150x150.png** (not downloaded)
+  - Alt: ABR13_Multydummy_A
+  - Before: … To minimize this issue, this can be easily solved by expanding to more than one dummy loader (Figure 2). Notably, splitting the dummy loaders to even lengths as the network trains is a key step toward desynchronization.
+  - After: Figure 2: Two examples of Self-regulating stations with multiple dummy loaders: (A) One of the first multiple dummy SRNW station seen in PSG 121, (B) An excellent example of a large, multiple dummy, SRNW station from PSG…
+- **ABR13_Multydummy_B-150x150.png** (not downloaded)
+  - Alt: ABR13_Multydummy_B
+  - Before: … To minimize this issue, this can be easily solved by expanding to more than one dummy loader (Figure 2). Notably, splitting the dummy loaders to even lengths as the network trains is a key step toward desynchronization.
+  - After: Figure 2: Two examples of Self-regulating stations with multiple dummy loaders: (A) One of the first multiple dummy SRNW station seen in PSG 121, (B) An excellent example of a large, multiple dummy, SRNW station from PSG…
+- **ABR13_PBS_B-300x180.png** (not downloaded)
+  - Alt: ABR13_PBS_B
+  - Before: …ion exit. But another trick is to release the network trains one-by-one, in a cascade fashion as made possible with the Self-regulating station design as shown below (Figure 3), utilizing the PBS / Path reserving method.
+  - After: Figure 3: PBS / Path reserving Self-regulating station, which releases the network trains one-by-one. Still, these methods are not solving the synchronization, and are just some tricks to make sure the station exit is no…
+- **ABR13_Desync_A-300x180.png** (not downloaded)
+  - Alt: ABR13_Desync_A
+  - Before: … to see which platforms were served worse, and as predicted the latter platform started to stack up cargo pretty soon. This meant the amount of network trains was not abundant enough to serve the entire station properly.
+  - After: Figure 4: First attempt on Asynchronous Self-regulating Station, using PBS / Path reserving and separate load & transfer station to prevent cargo stealing. With my second attempt I wanted to fix the stacking of cargo, wh…
+- **ABR13_Desync_B-300x180.png** (not downloaded)
+  - Alt: ABR13_Desync_B
+  - Before: …is was done by adding an overflow to the station to maintain a positive supply of network trains. This also meant that the rate of fully loaded network trains was purely correlated to the production rate of the industry.
+  - After: Figure 5: Second design, with double dummy and an overflow for excess supply of network trains. Although the use of a twin feeder dummy was not really speeding up the availability of fully loaded feeders, it made sure th…
+- **ABR13_Desync_C-300x180.png** (not downloaded)
+  - Alt: ABR13_Desync_C
+  - Before: … check by means of Not-Gate logic (Figure 6). This kind of design is very similar to Self-regulating transfer station as shown below and only real difference is that the station is dedicated to only one primary industry.
+  - After: Figure 6: Third design, with double dummy and Not-gate check for network train availability. Again, twin feeder dummies were used to keep the path occupied in front of the transfer platforms. The Not-Gated check made sur…
+- **ABR13_PZG22_LoPo-300x180.png** (not downloaded)
+  - Alt: ABR13_PZG22_LoPo
+  - Before: … not Logic Self-regulating Transfer – these stations use a dummy to regulate the transfer, but are fed cargo by other trains (feeder -> dummy -> network train) and therefore I call this a Dummy Self-regulating Transfer .
+  - After: Figure 7: False Self-regulating Transfer stations: (A) Transfer station for four different cargoes, build in PZG 22; (B) Transfer station utilizing the PBS -> two-way method. Concluding this section about Asynchronous Se…
+- **ABR13_SPG_LoPo-300x180.png** (not downloaded)
+  - Alt: ABR13_SPG_LoPo
+  - Before: … not Logic Self-regulating Transfer – these stations use a dummy to regulate the transfer, but are fed cargo by other trains (feeder -> dummy -> network train) and therefore I call this a Dummy Self-regulating Transfer .
+  - After: Figure 7: False Self-regulating Transfer stations: (A) Transfer station for four different cargoes, build in PZG 22; (B) Transfer station utilizing the PBS -> two-way method. Concluding this section about Asynchronous Se…
+- **ABR13_SRNWTransfer_A-150x150.png** (not downloaded)
+  - Alt: ABR13_SRNWTransfer_A
+  - Before: …e able to cope with this, and thus inevitable brings along some of the mayor challenges. To refresh your memory, some examples are shown above from previous PSG, like the one from PSG 199, PSG 200 and PSG 223 (Figure 8).
+  - After: Figure 8: Example Self-regulating Transfer Stations: (A) Station in PSG 199 utilizing flip-flop with single memory; (B) Transfer island from PSG 200 (explanation in ABR 09); (C) Iron transfer station from PSG 223. The fo…
+- **ABR13_SRNWTransfer_B-150x150.png** (not downloaded)
+  - Alt: ABR13_SRNWTransfer_B
+  - Before: …e able to cope with this, and thus inevitable brings along some of the mayor challenges. To refresh your memory, some examples are shown above from previous PSG, like the one from PSG 199, PSG 200 and PSG 223 (Figure 8).
+  - After: Figure 8: Example Self-regulating Transfer Stations: (A) Station in PSG 199 utilizing flip-flop with single memory; (B) Transfer island from PSG 200 (explanation in ABR 09); (C) Iron transfer station from PSG 223. The fo…
+- **ABR13_SRNWTransfer_C-150x150.png** (not downloaded)
+  - Alt: ABR13_SRNWTransfer_C
+  - Before: …e able to cope with this, and thus inevitable brings along some of the mayor challenges. To refresh your memory, some examples are shown above from previous PSG, like the one from PSG 199, PSG 200 and PSG 223 (Figure 8).
+  - After: Figure 8: Example Self-regulating Transfer Stations: (A) Station in PSG 199 utilizing flip-flop with single memory; (B) Transfer island from PSG 200 (explanation in ABR 09); (C) Iron transfer station from PSG 223. The fo…
+- **ABR13_MiniCatzor-300x180.png** (not downloaded)
+  - Alt: ABR13_MiniCatzor
+  - Before: …he Feeder train is finished unloading and left the station. In both examples, the logic goes through the station platform, meaning the next transfer cycle can only commence until (all) the platform(s) are fully released.
+  - After: Figure 9: (A) Self-regulating Transfer Station “Mini Catzor”, (B) Self-regulating Transfer Station “Fat Cat”. The next two stations were built in PZG 22 (Figure 10), both use a Not-Gated release mechanism and make excess…
+- **ABR13_FatCat-300x180.png** (not downloaded)
+  - Alt: ABR13_FatCat
+  - Before: …he Feeder train is finished unloading and left the station. In both examples, the logic goes through the station platform, meaning the next transfer cycle can only commence until (all) the platform(s) are fully released.
+  - After: Figure 9: (A) Self-regulating Transfer Station “Mini Catzor”, (B) Self-regulating Transfer Station “Fat Cat”. The next two stations were built in PZG 22 (Figure 10), both use a Not-Gated release mechanism and make excess…
+- **ABR13_PZG22_V453000-300x180.png** (not downloaded)
+  - Alt: ABR13_PZG22_V453000
+  - Before: …10 B) is a nice example using different train lengths, 2xTL4 feeder trains vs. 4xTL2 network trains, making a seamless transfer. However, it should be noted that this Self-regulating Transfer Station is not asynchronous.
+  - After: Figure 10: Pro Zone Game 22: (A) Self-regulating Transfer with slow Not-gate; (B) Asynchronous Self-regulating Transfer. Conclusions It is clear that Self-regulating stations can be simple constructions but also very com…
+- **ABR13_PZG22_mfb-300x180.png** (not downloaded)
+  - Alt: ABR13_PZG22_mfb
+  - Before: …10 B) is a nice example using different train lengths, 2xTL4 feeder trains vs. 4xTL2 network trains, making a seamless transfer. However, it should be noted that this Self-regulating Transfer Station is not asynchronous.
+  - After: Figure 10: Pro Zone Game 22: (A) Self-regulating Transfer with slow Not-gate; (B) Asynchronous Self-regulating Transfer. Conclusions It is clear that Self-regulating stations can be simple constructions but also very com…
+- **loading.gif** (not downloaded)
+  - Alt: loading
+  - Before: …?ring=ttweb;home">Join | Random | List | Next Five comments marked as Spam Send to Email Address Your Name Your Email Address
+  - After: Cancel Post was not sent - check your email addresses! Email check failed, please try again Sorry, your blog cannot share posts by email.…
+
+## Backbone_Hub
+
+- **BBH.png** (1150x588, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/BBH.png`)
+  - Before: …Backbone Hub - #openttdcoop wiki Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Backbone Hub From #openttdcoop wiki Jump to: navigation , search
+  - After: An example Backbone Hub A backbone hub (BBH) is the largest type of Hub that is built in #OpenTTDCoop. It usually consists of at least 3 cardinal directions of mainline Track, and is also usually balanced as well. Recomm…
+- **BBH_building_1.PNG** (1280x977, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/BBH_building_1.PNG`)
+  - Before: …ing. The BBH we're going to build here will be an LL5RR to LL5RR 3-way one. These are quite common and relatively easy to build. Below you can see the mainlines that are already in place, waiting for the BBH to be built.
+  - After: Unconnected mainlines waiting for the BBH we're going to build A typical 3-way can be broken down into pieces; one ML crossing, one crossover, 3 exits and 3 joins. You'll want to start with the ML crossing, this is where…
+- **BBH_building_2.PNG** (1280x977, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/BBH_building_2.PNG`)
+  - Before: …he ML crossing and crossover are built. Also the locations for the joins and exits are signed, giving a general idea about the layout we'll have in the end. The first exit obviously was built together with the crossover.
+  - After: The first parts of our BBH are done Now let's make the other 2 exits, this should be pretty straightforward as exits don't require balancing. The other exits are in place Up next are the joins; these are harder than exit…
+- **BBH_building_3.PNG** (1280x977, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/BBH_building_3.PNG`)
+  - Before: …ve in the end. The first exit obviously was built together with the crossover. The first parts of our BBH are done Now let's make the other 2 exits, this should be pretty straightforward as exits don't require balancing.
+  - After: The other exits are in place Up next are the joins; these are harder than exits because they require balancing. At this point you can already see we won't have to worry about space limitations because we started building…
+- **BBH_building_4.PNG** (1280x977, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/BBH_building_4.PNG`)
+  - Before: …re balancing. At this point you can already see we won't have to worry about space limitations because we started building outwards from the center. Below shows our BBH with full-balanced non-blocking all-to-all joining.
+  - After: Balanced joins are added The only thing left to do is finishing the signaling and adding priorities to our balancers. Note that you can hack in priorities in any place, so you don't have to worry about reserving space fo…
+- **BBH_building_5.PNG** (1280x977, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/BBH_building_5.PNG`)
+  - Before: …d joins are added The only thing left to do is finishing the signaling and adding priorities to our balancers. Note that you can hack in priorities in any place, so you don't have to worry about reserving space for them.
+  - After: Signals and prios are added, completing our BBH Retrieved from " https://wiki.openttdcoop.org/index.php?title=Backbone_Hub&oldid=16430 " Categories : Guides Basic networking Advanced Networking Views Page Discussion View…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 4 December 2013, at 11:34. © 2005 - 2015 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write(…
+
+## Glossary
+
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 31 March 2015, at 01:50. © 2005 - 2016 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write("\…
+
+## Guides:Glossary
+
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 31 March 2015, at 01:50. © 2005 - 2016 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write("\…
+
+## Junctionary
+
+- **JunctionaryAll.png** (not downloaded)
+  - Alt: JunctionaryAll.png
+  - Before: …Junctionary - #openttdcoop wiki Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary From #openttdcoop wiki Jump to: navigation , search The Junctionary
+  - After: View all Objects in the Junctionary Backbone Hubs Sideline Hubs Mergers Stations City Networks Logic and Other How to Use the Junctionary The Junctionary is a collection of important and clever constructions we have deve…
+- **JunctionaryBBH.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryBBH.png`)
+  - Alt: JunctionaryBBH.png
+  - Before: …jection" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary From #openttdcoop wiki Jump to: navigation , search The Junctionary View all Objects in the Junctionary
+  - After: Backbone Hubs Sideline Hubs Mergers Stations City Networks Logic and Other How to Use the Junctionary The Junctionary is a collection of important and clever constructions we have developed during our games. Use the ToC …
+- **JunctionarySLHs.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionarySLHs.png`)
+  - Alt: JunctionarySLHs.png
+  - Before: …="text/css" media="screen" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary From #openttdcoop wiki Jump to: navigation , search The Junctionary View all Objects in the Junctionary Backbone Hubs
+  - After: Sideline Hubs Mergers Stations City Networks Logic and Other How to Use the Junctionary The Junctionary is a collection of important and clever constructions we have developed during our games. Use the ToC at the right s…
+- **JunctionaryMergers.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergers.png`)
+  - Alt: JunctionaryMergers.png
+  - Before: …head> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary From #openttdcoop wiki Jump to: navigation , search The Junctionary View all Objects in the Junctionary Backbone Hubs Sideline Hubs
+  - After: Mergers Stations City Networks Logic and Other How to Use the Junctionary The Junctionary is a collection of important and clever constructions we have developed during our games. Use the ToC at the right side, to naviga…
+- **JunctionaryStations.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryStations.png`)
+  - Alt: JunctionaryStations.png
+  - Before: …"Go" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary From #openttdcoop wiki Jump to: navigation , search The Junctionary View all Objects in the Junctionary Backbone Hubs Sideline Hubs Mergers
+  - After: Stations City Networks Logic and Other How to Use the Junctionary The Junctionary is a collection of important and clever constructions we have developed during our games. Use the ToC at the right side, to navigate throu…
+- **JunctionaryCityNetworks.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryCityNetworks.png`)
+  - Alt: JunctionaryCityNetworks.png
+  - Before: …ome Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary From #openttdcoop wiki Jump to: navigation , search The Junctionary View all Objects in the Junctionary Backbone Hubs Sideline Hubs Mergers Stations
+  - After: City Networks Logic and Other How to Use the Junctionary The Junctionary is a collection of important and clever constructions we have developed during our games. Use the ToC at the right side, to navigate through the di…
+- **JunctionaryLogicAndOther.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryLogicAndOther.png`)
+  - Alt: JunctionaryLogicAndOther.png
+  - Before: …DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary From #openttdcoop wiki Jump to: navigation , search The Junctionary View all Objects in the Junctionary Backbone Hubs Sideline Hubs Mergers Stations City Networks
+  - After: Logic and Other How to Use the Junctionary The Junctionary is a collection of important and clever constructions we have developed during our games. Use the ToC at the right side, to navigate through the different sectio…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 15 April 2007, at 21:47. © 2005 - 2015 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write("\…
+
+## Junctionary_-_All_3-way_BBHs
+
+- **All_Mergerss.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/All_Mergerss.png`)
+  - Alt: All Mergerss.png
+  - Before: …Junctionary - All 3-way BBHs - #openttdcoop wiki Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - All 3-way BBHs From #openttdcoop wiki Jump to: navigation , search 3-way BBHs
+  - After: View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18…
+- **JunctionaryMergerLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLL.png`)
+  - Alt: JunctionaryMergerLL.png
+  - Before: …" type="text/css" media="screen, projection" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - All 3-way BBHs From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs
+  - After: LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 <img alt="Pil…
+- **JunctionaryMergerLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLL.png`)
+  - Alt: JunctionaryMergerLLL.png
+  - Before: …*" type="text/css" media="screen" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - All 3-way BBHs From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs
+  - After: LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or…
+- **JunctionaryMergerLLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLLL.png`)
+  - Alt: JunctionaryMergerLLLL.png
+  - Before: …id="wrapper"> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - All 3-way BBHs From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs
+  - After: LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or simply "Hub"…
+- **JunctionaryMergerMore.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerMore.png`)
+  - Alt: JunctionaryMergerMore.png
+  - Before: …Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - All 3-way BBHs From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs
+  - After: LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or simply "Hub" as we named BB…
+- **Junctionarybackback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionarybackback.png`)
+  - Alt: Junctionarybackback.png
+  - Before: …Zone #osqc Users IRC The #openttdcoop Wiki Junctionary - All 3-way BBHs From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs
+  - After: Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or simply "Hub" as we named BBHs some time ago). Also not…
+- **Junctionaryback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionaryback.png`)
+  - Alt: Junctionaryback.png
+  - Before: … The #openttdcoop Wiki Junctionary - All 3-way BBHs From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary
+  - After: Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or simply "Hub" as we named BBHs some time ago). Also not balanced. Mucht Dow…
+- **Pile_Transport,_30._Nov_2090.png** (not downloaded)
+  - Alt: Pile Transport, 30. Nov 2090.png
+  - Before: …lass="image"> LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07
+  - After: Simple Ancient T-BBH (or simply "Hub" as we named BBHs some time ago). Also not balanced. Mucht Download Savegame 3.03.12 Simple Classic LLRR hub, following the standard coop building rules. It connects the oil refinery …
+- **227_bbh03.png** (not downloaded)
+  - Alt: 227 bbh03.png
+  - Before: …kbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or simply "Hub" as we named BBHs some time ago). Also not balanced. Mucht Download Savegame 3.03.12
+  - After: Simple Classic LLRR hub, following the standard coop building rules. It connects the oil refinery to the network in PSG227. mfb Download Savegame LLL RRR Backbone Hubs ( what is that? ) Date Screenshot Specification Desc…
+- **Psg188_bbh03.png** (not downloaded)
+  - Alt: Psg188 bbh03.png
+  - Before: …the standard coop building rules. It connects the oil refinery to the network in PSG227. mfb Download Savegame LLL RRR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 15.07.10
+  - After: Bridge split The main point of this hub is making it compact by using the bridge splits to balance trains over lines, in this case only 3 directions are bridged this way. Vitus Download PSG #188 15.11.10 Tunnel only A 3-…
+- **Psg197_bbh01.png** (1948x1116, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Psg197_bbh01.png`)
+  - Alt: Psg197 bbh01.png
+  - Before: …itional 15.07.10 Bridge split The main point of this hub is making it compact by using the bridge splits to balance trains over lines, in this case only 3 directions are bridged this way. Vitus Download PSG #188 15.11.10
+  - After: Tunnel only A 3-way hub with two LLLRRR and one LLRR meeting nicely in arctic the japanese landscape using only tunnels. The technique of the merges is based on splits of the tunnels. V453000 Download PSG #197 15.11.12 T…
+- **Psg248_bbhfurball.png** (1669x904, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Psg248_bbhfurball.png`)
+  - Alt: Psg248 bbhfurball.png
+  - Before: …0 Tunnel only A 3-way hub with two LLLRRR and one LLRR meeting nicely in arctic the japanese landscape using only tunnels. The technique of the merges is based on splits of the tunnels. V453000 Download PSG #197 15.11.12
+  - After: Tunnel only A BBH with short CL, long trains and a flood of tunnels providing all-to-all choices. Meet the Furball. V453000 Download PSG #248 LLLL RRRR Backbone Hubs ( what is that? ) Date Screenshot Specification Descri…
+- **Psg186_bbh01.png** (2792x1413, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Psg186_bbh01.png`)
+  - Alt: Psg186 bbh01.png
+  - Before: …, long trains and a flood of tunnels providing all-to-all choices. Meet the Furball. V453000 Download PSG #248 LLLL RRRR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 5.6.10
+  - After: Brainmelter A massive hub sitting in one of the valleys of the awesome psg 186. The name came from the brainmelting center which is an all to all merge from each side, first seen in this hub which melted many brains as a…
+- **219_bbh03.png** (not downloaded)
+  - Alt: 219 bbh03.png
+  - Before: … the valleys of the awesome psg 186. The name came from the brainmelting center which is an all to all merge from each side, first seen in this hub which melted many brains as a result. V453000 Download PSG #186 19.11.11
+  - After: LLLLRRRR LLLLRRRR hub in PSG219, with some sideline constructions in the north. mfb , V453000 and others Download PSG #219 3.3.12 Snake Nest A tricky, but effective way to build a LLLLRRRR hub. V453000 Download PSG #227 …
+- **SnakeNest.png** (1920x1030, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/SnakeNest.png`)
+  - Alt: SnakeNest.png
+  - Before: … seen in this hub which melted many brains as a result. V453000 Download PSG #186 19.11.11 LLLLRRRR LLLLRRRR hub in PSG219, with some sideline constructions in the north. mfb , V453000 and others Download PSG #219 3.3.12
+  - After: Snake Nest A tricky, but effective way to build a LLLLRRRR hub. V453000 Download PSG #227 Massive Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 5.6.10 Little balancing A nic…
+- **Psg115_bbh04.png** (1440x838, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Psg115_bbh04.png`)
+  - Alt: Psg115 bbh04.png
+  - Before: …wnload PSG #219 3.3.12 Snake Nest A tricky, but effective way to build a LLLLRRRR hub. V453000 Download PSG #227 Massive Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 5.6.10
+  - After: Little balancing A nice looking hub which did not need too much of balancing and still worked which is quite ubelievable with 5 lines. Mark , Chris_Booth Download PSG #115 5.6.10 Balanced A massive hub with 4 lines in tw…
+- **219_bbh04.png** (1920x1030, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/219_bbh04.png`)
+  - Alt: 219 bbh04.png
+  - Before: …ion Description Creator additional 5.6.10 Little balancing A nice looking hub which did not need too much of balancing and still worked which is quite ubelievable with 5 lines. Mark , Chris_Booth Download PSG #115 5.6.10
+  - After: Balanced A massive hub with 4 lines in two directions and 5 lines in the third direction. It was upgraded and improved multiple times. Vinnie , V453000 , mfb and others Download PSG #219 Retrieved from " https://wiki.ope…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 14 March 2012, at 23:08. © 2005 - 2016 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write("\…
+
+## Junctionary_-_BBHs_-_3-way
+
+- **All_Mergerss.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/All_Mergerss.png`)
+  - Alt: All Mergerss.png
+  - Before: …Junctionary - BBHs - 3-way - #openttdcoop wiki Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way From #openttdcoop wiki Jump to: navigation , search 3-way BBHs
+  - After: View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs Three-way BackBone Hubs are the most common form of hubs after SLHs in general. The most interesting …
+- **JunctionaryMergerLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLL.png`)
+  - Alt: JunctionaryMergerLL.png
+  - Before: …ction" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs
+  - After: LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs Three-way BackBone Hubs are the most common form of hubs after SLHs in general. The most interesting part of a BBH is usu…
+- **JunctionaryMergerLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLL.png`)
+  - Alt: JunctionaryMergerLLL.png
+  - Before: …p&*" type="text/css" media="screen" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs
+  - After: LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs Three-way BackBone Hubs are the most common form of hubs after SLHs in general. The most interesting part of a BBH is usually the me…
+- **JunctionaryMergerLLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLLL.png`)
+  - Alt: JunctionaryMergerLLLL.png
+  - Before: …p-search" class="search"> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs
+  - After: LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs Three-way BackBone Hubs are the most common form of hubs after SLHs in general. The most interesting part of a BBH is usually the merger, which g…
+- **JunctionaryMergerMore.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerMore.png`)
+  - Alt: JunctionaryMergerMore.png
+  - Before: …Search" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs
+  - After: LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs Three-way BackBone Hubs are the most common form of hubs after SLHs in general. The most interesting part of a BBH is usually the merger, which gets quite inter…
+- **Junctionarybackback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionarybackback.png`)
+  - Alt: Junctionarybackback.png
+  - Before: …evZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs
+  - After: Back to junctionary Back to BBHs Three-way BackBone Hubs are the most common form of hubs after SLHs in general. The most interesting part of a BBH is usually the merger, which gets quite interesting even from the lowest…
+- **Junctionaryback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionaryback.png`)
+  - Alt: Junctionaryback.png
+  - Before: …RC The #openttdcoop Wiki Junctionary - BBHs - 3-way From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary
+  - After: Back to BBHs Three-way BackBone Hubs are the most common form of hubs after SLHs in general. The most interesting part of a BBH is usually the merger, which gets quite interesting even from the lowest line counts of LL_R…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 23 March 2011, at 10:00. © 2005 - 2016 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write("\…
+
+## Junctionary_-_BBHs_-_3-way_-_LLRR
+
+- **All_Mergerss.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/All_Mergerss.png`)
+  - Alt: All Mergerss.png
+  - Before: …PE html> Junctionary - BBHs - 3-way - LLRR - #openttdcoop wiki Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - LLRR From #openttdcoop wiki Jump to: navigation , search 3-way BBHs
+  - After: View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18…
+- **JunctionaryMergerLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLL.png`)
+  - Alt: JunctionaryMergerLL.png
+  - Before: …/> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - LLRR From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs
+  - After: LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 <td sty…
+- **JunctionaryMergerLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLL.png`)
+  - Alt: JunctionaryMergerLLL.png
+  - Before: …pe="text/css" media="screen" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - LLRR From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs
+  - After: LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or…
+- **JunctionaryMergerLLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLLL.png`)
+  - Alt: JunctionaryMergerLLLL.png
+  - Before: …Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - LLRR From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs
+  - After: LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or simply "Hub"…
+- **JunctionaryMergerMore.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerMore.png`)
+  - Alt: JunctionaryMergerMore.png
+  - Before: …Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - LLRR From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs
+  - After: LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or simply "Hub" as we named BB…
+- **Junctionarybackback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionarybackback.png`)
+  - Alt: Junctionarybackback.png
+  - Before: …#osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - LLRR From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs
+  - After: Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or simply "Hub" as we named BBHs some time ago). Also not…
+- **Junctionaryback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionaryback.png`)
+  - Alt: Junctionaryback.png
+  - Before: …#openttdcoop Wiki Junctionary - BBHs - 3-way - LLRR From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary
+  - After: Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or simply "Hub" as we named BBHs some time ago). Also not balanced. Mucht Dow…
+- **Pile_Transport,_30._Nov_2090.png** (not downloaded)
+  - Alt: Pile Transport, 30. Nov 2090.png
+  - Before: …ll 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs LL RR Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07
+  - After: Simple Ancient T-BBH (or simply "Hub" as we named BBHs some time ago). Also not balanced. Mucht Download Savegame 3.03.12 Simple Classic LLRR hub, following the standard coop building rules. It connects the oil refinery …
+- **227_bbh03.png** (not downloaded)
+  - Alt: 227 bbh03.png
+  - Before: …kbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 18.03.07 Simple Ancient T-BBH (or simply "Hub" as we named BBHs some time ago). Also not balanced. Mucht Download Savegame 3.03.12
+  - After: Simple Classic LLRR hub, following the standard coop building rules. It connects the oil refinery to the network in PSG227. mfb Download Savegame Retrieved from " https://wiki.openttdcoop.org/index.php?title=Junctionary_…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 14 March 2012, at 23:21. © 2005 - 2016 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write("\…
+
+## Junctionary_-_BBHs_-_3-way_-_more
+
+- **All_Mergerss.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/All_Mergerss.png`)
+  - Alt: All Mergerss.png
+  - Before: …PE html> Junctionary - BBHs - 3-way - more - #openttdcoop wiki Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - more From #openttdcoop wiki Jump to: navigation , search 3-way BBHs
+  - After: View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs Massive Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional …
+- **JunctionaryMergerLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLL.png`)
+  - Alt: JunctionaryMergerLL.png
+  - Before: …/> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - more From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs
+  - After: LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs Massive Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 5.6.10 Little balanc…
+- **JunctionaryMergerLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLL.png`)
+  - Alt: JunctionaryMergerLLL.png
+  - Before: …pe="text/css" media="screen" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - more From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs
+  - After: LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs Massive Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 5.6.10 Little balancing A nice …
+- **JunctionaryMergerLLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLLL.png`)
+  - Alt: JunctionaryMergerLLLL.png
+  - Before: …h" class="search"> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - more From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs
+  - After: LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs Massive Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 5.6.10 Little balancing A nice looking hub w…
+- **JunctionaryMergerMore.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerMore.png`)
+  - Alt: JunctionaryMergerMore.png
+  - Before: … /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - more From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs
+  - After: LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs Massive Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 5.6.10 Little balancing A nice looking hub which did not ne…
+- **Junctionarybackback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionarybackback.png`)
+  - Alt: Junctionarybackback.png
+  - Before: …#osqc Users IRC The #openttdcoop Wiki Junctionary - BBHs - 3-way - more From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs
+  - After: Back to junctionary Back to BBHs Massive Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 5.6.10 Little balancing A nice looking hub which did not need too much of balancing an…
+- **Junctionaryback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionaryback.png`)
+  - Alt: Junctionaryback.png
+  - Before: …#openttdcoop Wiki Junctionary - BBHs - 3-way - more From #openttdcoop wiki Jump to: navigation , search 3-way BBHs View all 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary
+  - After: Back to BBHs Massive Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 5.6.10 Little balancing A nice looking hub which did not need too much of balancing and still worked which…
+- **Psg115_bbh04.png** (1440x838, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Psg115_bbh04.png`)
+  - Alt: Psg115 bbh04.png
+  - Before: …ll 3-way BBHs LL_RR Hubs LLL_RRR Hubs LLLL_RRRR Hubs LLLL_RRRR+ Hubs 3-way BBHs Back to junctionary Back to BBHs Massive Backbone Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 5.6.10
+  - After: Little balancing A nice looking hub which did not need too much of balancing and still worked which is quite ubelievable with 5 lines. Mark , Chris_Booth Download PSG #115 5.6.10 Balanced A massive hub with 4 lines in tw…
+- **219_bbh04.png** (1920x1030, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/219_bbh04.png`)
+  - Alt: 219 bbh04.png
+  - Before: …ion Description Creator additional 5.6.10 Little balancing A nice looking hub which did not need too much of balancing and still worked which is quite ubelievable with 5 lines. Mark , Chris_Booth Download PSG #115 5.6.10
+  - After: Balanced A massive hub with 4 lines in two directions and 5 lines in the third direction. It was upgraded and improved multiple times. Vinnie , V453000 , mfb and others Download PSG #219 Retrieved from " https://wiki.ope…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 14 March 2012, at 23:17. © 2005 - 2016 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write("\…
+
+## Junctionary_-_Mergers
+
+- **All_Mergerss.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/All_Mergerss.png`)
+  - Alt: All Mergerss.png
+  - Before: …Junctionary - Mergers - #openttdcoop wiki Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers From #openttdcoop wiki Jump to: navigation , search Mergers
+  - After: View all Mergers Mergers with LL output Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Mergers are the most important part of backbone hubs and often decide the way how such…
+- **JunctionaryMergerLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLL.png`)
+  - Alt: JunctionaryMergerLL.png
+  - Before: …projection" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers
+  - After: Mergers with LL output Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Mergers are the most important part of backbone hubs and often decide the way how such a hub works. The…
+- **JunctionaryMergerLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLL.png`)
+  - Alt: JunctionaryMergerLLL.png
+  - Before: …&*" type="text/css" media="screen" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output
+  - After: Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Mergers are the most important part of backbone hubs and often decide the way how such a hub works. There are quite a few ways…
+- **JunctionaryMergerLLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLLL.png`)
+  - Alt: JunctionaryMergerLLLL.png
+  - Before: …lass="search"> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output Mergers wih LLL output
+  - After: Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Mergers are the most important part of backbone hubs and often decide the way how such a hub works. There are quite a few ways how to make a merger. …
+- **JunctionaryMergerMore.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerMore.png`)
+  - Alt: JunctionaryMergerMore.png
+  - Before: …Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output Mergers wih LLL output Mergers with LLLL output
+  - After: Mergers with LLLL+ output Back to Junctionary Mergers are the most important part of backbone hubs and often decide the way how such a hub works. There are quite a few ways how to make a merger. With increasing number of…
+- **Junctionarybackback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionarybackback.png`)
+  - Alt: Junctionarybackback.png
+  - Before: …RC The #openttdcoop Wiki Junctionary - Mergers From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output
+  - After: Back to Junctionary Mergers are the most important part of backbone hubs and often decide the way how such a hub works. There are quite a few ways how to make a merger. With increasing number of output lines the merger b…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 6 September 2013, at 07:12. © 2005 - 2015 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write…
+
+## Junctionary_-_Mergers_-_All
+
+- **All_Mergerss.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/All_Mergerss.png`)
+  - Alt: All Mergerss.png
+  - Before: …Junctionary - Mergers - All - #openttdcoop wiki Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers - All From #openttdcoop wiki Jump to: navigation , search Mergers
+  - After: View all Mergers Mergers with LL output Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification…
+- **JunctionaryMergerLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLL.png`)
+  - Alt: JunctionaryMergerLL.png
+  - Before: …ss?303" type="text/css" media="screen, projection" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers - All From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers
+  - After: Mergers with LL output Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Crea…
+- **JunctionaryMergerLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLL.png`)
+  - Alt: JunctionaryMergerLLL.png
+  - Before: …pe="text/css" media="screen" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers - All From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output
+  - After: Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10 I…
+- **JunctionaryMergerLLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLLL.png`)
+  - Alt: JunctionaryMergerLLLL.png
+  - Before: …header"> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers - All From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output Mergers wih LLL output
+  - After: Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10 Inner mix A merger where…
+- **JunctionaryMergerMore.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerMore.png`)
+  - Alt: JunctionaryMergerMore.png
+  - Before: …evZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers - All From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output Mergers wih LLL output Mergers with LLLL output
+  - After: Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10 Inner mix A merger where the two inner tracks cho…
+- **Junctionarybackback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionarybackback.png`)
+  - Alt: Junctionarybackback.png
+  - Before: … #openttdcoop Wiki Junctionary - Mergers - All From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output
+  - After: Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10 Inner mix A merger where the two inner tracks choose from the outer tracks,…
+- **Junctionaryback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionaryback.png`)
+  - Alt: Junctionaryback.png
+  - Before: …unctionary - Mergers - All From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary
+  - After: Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10 Inner mix A merger where the two inner tracks choose from the outer tracks, having all (two in …
+- **LLmerger.png** (406x281, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/LLmerger.png`)
+  - Alt: LLmerger.png
+  - Before: …t Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10
+  - After: Inner mix A merger where the two inner tracks choose from the outer tracks, having all (two in this case) choices, saving the two lines from any merging or interruption. V453000 Download PSG #186 6.6.10 All to all As the…
+- **206_BBH03merger.png** (1440x838, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/206_BBH03merger.png`)
+  - Alt: 206 BBH03merger.png
+  - Before: …additional 6.6.10 Inner mix A merger where the two inner tracks choose from the outer tracks, having all (two in this case) choices, saving the two lines from any merging or interruption. V453000 Download PSG #186 6.6.10
+  - After: All to all As the name says, all lines get to choose from all destinations. ODM Download PSG #206 Mergers with LLL output ( what is that? ) Date Screenshot Specification Description Creator additional 15.04.08 choice "3+…
+- **Psg74_3on3_joiner_pm.png** (not downloaded)
+  - Alt: Psg74 3on3 joiner pm.png
+  - Before: …186 6.6.10 All to all As the name says, all lines get to choose from all destinations. ODM Download PSG #206 Mergers with LLL output ( what is that? ) Date Screenshot Specification Description Creator additional 15.04.08
+  - After: choice "3+3->3 Mainline merger fit into landscape. For the Northern lines a choice of all the three other tracks is offered. Update: important to note the lack of waiting bays replaced by combo-signals which can lead to …
+- **Pzg10_BBH02merger.png** (not downloaded)
+  - Alt: Pzg10 BBH02merger.png
+  - Before: …rthern lines a choice of all the three other tracks is offered. Update: important to note the lack of waiting bays replaced by combo-signals which can lead to trains waiting in incorrect spots pm Download PSG #74 24.7.10
+  - After: Mix inner A nice merger which leaves two outer lines to their own fate and works with the inside. As the two outer line only make for 2 output lines, one is "rather randomly" added as the inner lines merge to make for th…
+- **Psg190_LLLmerger01.png** (not downloaded)
+  - Alt: Psg190 LLLmerger01.png
+  - Before: … lines to their own fate and works with the inside. As the two outer line only make for 2 output lines, one is "rather randomly" added as the inner lines merge to make for the 3 line output. Mark Download PZG #10 24.7.10
+  - After: Sequential split This merger built by XeryusTC uses the first split to decide whether the train goes to the first line, or somewhere else. If somewhere, then it splits there again to see if the next line is free and then…
+- **Psg142_BBH01merger.png** (not downloaded)
+  - Alt: Psg142 BBH01merger.png
+  - Before: …h traffic but is very universal and can be used for basically any amount of lines. XeryusTC Download PSG #190 Mergers with LLLL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10
+  - After: Limited choice As making a merger for 4 lines gets to be quite large, hard, time consuming and possibly unexpandable, here we have a 4 line merger with not all choices. But despite that, the merger worked nicely showing …
+- **Psg186_LLLLmerger01.png** (1165x659, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Psg186_LLLLmerger01.png`)
+  - Alt: Psg186 LLLLmerger01.png
+  - Before: …espite that, the merger worked nicely showing that it might not be totally required to always balance everything possible. Of course you need some luck to have unbalanced things work though. Mark Download PSG #142 6.6.10
+  - After: All to All The strongest of the Brainmelter's mergers with an output of four lines. Every line is given all choices to all outcoming lines. V453000 Download PSG #186 6.6.10 Downhill A fairly nice merger but the main part…
+- **Psg213_downhill.png** (not downloaded)
+  - Alt: Psg213 downhill.png
+  - Before: …ings work though. Mark Download PSG #142 6.6.10 All to All The strongest of the Brainmelter's mergers with an output of four lines. Every line is given all choices to all outcoming lines. V453000 Download PSG #186 6.6.10
+  - After: Downhill A fairly nice merger but the main part of interest was the very end of it because it was built on a steep downhill to vastly improve train acceleration. V453000 Download PSG #213 Monster Mergers ( what is that? …
+- **Psg210merger.png** (1440x838, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Psg210merger.png`)
+  - Alt: Psg210merger.png
+  - Before: …ery end of it because it was built on a steep downhill to vastly improve train acceleration. V453000 Download PSG #213 Monster Mergers ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10
+  - After: A into B An expandable, simple to build merger allowing full-throughput line towards all choices, therefore working very well. XeryusTC , mfb Download PSG #210 6.6.10 Shift This merger is based on shifting trains to one …
+- **Psg216shiftmerger.png** (2295x1090, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Psg216shiftmerger.png`)
+  - Alt: Psg216shiftmerger.png
+  - Before: …t Specification Description Creator additional 6.6.10 A into B An expandable, simple to build merger allowing full-throughput line towards all choices, therefore working very well. XeryusTC , mfb Download PSG #210 6.6.10
+  - After: Shift This merger is based on shifting trains to one end similarly like SML does. As a difference, this merger lets trains stop in waiting bays unlike SML is designed to do. To prevent trains waiting in waiting bays with…
+- **Psg220bbh02merger.png** (not downloaded)
+  - Alt: Psg220bbh02merger.png
+  - Before: … small chance to join. The merger ended up taking a large amount of space in length while saving some space in width. The instantly accelerating trains were key to make it work as well. V453000 Download PSG #216 30.11.11
+  - After: Inner merge A nice example of a merger which makes use of the merge inner, keep outer lines. mfb , Vinnie Download PSG #210 Retrieved from " https://wiki.openttdcoop.org/index.php?title=Junctionary_-_Mergers_-_All&oldid=…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 29 September 2011, at 10:09. © 2005 - 2015 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.writ…
+
+## Junctionary_-_Mergers_-_LL_output
+
+- **All_Mergerss.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/All_Mergerss.png`)
+  - Alt: All Mergerss.png
+  - Before: …E html> Junctionary - Mergers - LL output - #openttdcoop wiki Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers - LL output From #openttdcoop wiki Jump to: navigation , search Mergers
+  - After: View all Mergers Mergers with LL output Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification…
+- **JunctionaryMergerLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLL.png`)
+  - Alt: JunctionaryMergerLL.png
+  - Before: …/> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers - LL output From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers
+  - After: Mergers with LL output Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Crea…
+- **JunctionaryMergerLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLL.png`)
+  - Alt: JunctionaryMergerLLL.png
+  - Before: …xt/css" media="screen" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers - LL output From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output
+  - After: Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10 I…
+- **JunctionaryMergerLLLL.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerLLLL.png`)
+  - Alt: JunctionaryMergerLLLL.png
+  - Before: …Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers - LL output From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output Mergers wih LLL output
+  - After: Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10 Inner mix A merger where…
+- **JunctionaryMergerMore.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/JunctionaryMergerMore.png`)
+  - Alt: JunctionaryMergerMore.png
+  - Before: … #osqc Users IRC The #openttdcoop Wiki Junctionary - Mergers - LL output From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output Mergers wih LLL output Mergers with LLLL output
+  - After: Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10 Inner mix A merger where the two inner tracks cho…
+- **Junctionarybackback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionarybackback.png`)
+  - Alt: Junctionarybackback.png
+  - Before: …ttdcoop Wiki Junctionary - Mergers - LL output From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output
+  - After: Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10 Inner mix A merger where the two inner tracks choose from the outer tracks,…
+- **Junctionaryback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionaryback.png`)
+  - Alt: Junctionaryback.png
+  - Before: …nary - Mergers - LL output From #openttdcoop wiki Jump to: navigation , search Mergers View all Mergers Mergers with LL output Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary
+  - After: Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10 Inner mix A merger where the two inner tracks choose from the outer tracks, having all (two in …
+- **LLmerger.png** (406x281, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/LLmerger.png`)
+  - Alt: LLmerger.png
+  - Before: …t Mergers wih LLL output Mergers with LLLL output Mergers with LLLL+ output Back to Junctionary Back to Mergers Mergers with LL output ( what is that? ) Date Screenshot Specification Description Creator additional 6.6.10
+  - After: Inner mix A merger where the two inner tracks choose from the outer tracks, having all (two in this case) choices, saving the two lines from any merging or interruption. V453000 Download PSG #186 6.6.10 All to all As the…
+- **206_BBH03merger.png** (1440x838, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/206_BBH03merger.png`)
+  - Alt: 206 BBH03merger.png
+  - Before: …additional 6.6.10 Inner mix A merger where the two inner tracks choose from the outer tracks, having all (two in this case) choices, saving the two lines from any merging or interruption. V453000 Download PSG #186 6.6.10
+  - After: All to all As the name says, all lines get to choose from all destinations. ODM Download PSG #206 Retrieved from " https://wiki.openttdcoop.org/index.php?title=Junctionary_-_Mergers_-_LL_output&oldid=13030 " Category : J…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 19 March 2012, at 16:17. © 2005 - 2015 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write("\…
+
+## Junctionary_-_New_SLHs
+
+- **All_SLHs.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/All_SLHs.png`)
+  - Alt: All SLHs.png
+  - Before: …Junctionary - New SLHs - #openttdcoop wiki Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - New SLHs From #openttdcoop wiki Jump to: navigation , search SLHs
+  - After: View all SLHs Old SLHs New SLHs SLHs Back to junctionary New Sideline Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 11.01.11 Corner SLH This hub is based on directions each connectio…
+- **Junctionary_SLH_old.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionary_SLH_old.png`)
+  - Alt: Junctionary SLH old.png
+  - Before: …03" type="text/css" media="screen, projection" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - New SLHs From #openttdcoop wiki Jump to: navigation , search SLHs View all SLHs
+  - After: Old SLHs New SLHs SLHs Back to junctionary New Sideline Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 11.01.11 Corner SLH This hub is based on directions each connection has. Four co…
+- **Junctionary_SLH_new.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionary_SLH_new.png`)
+  - Alt: Junctionary SLH new.png
+  - Before: …Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - New SLHs From #openttdcoop wiki Jump to: navigation , search SLHs View all SLHs Old SLHs
+  - After: New SLHs SLHs Back to junctionary New Sideline Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 11.01.11 Corner SLH This hub is based on directions each connection has. Four connections…
+- **Junctionarybackback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionarybackback.png`)
+  - Alt: Junctionarybackback.png
+  - Before: …id="wrapper"> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - New SLHs From #openttdcoop wiki Jump to: navigation , search SLHs View all SLHs Old SLHs New SLHs SLHs
+  - After: Back to junctionary New Sideline Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 11.01.11 Corner SLH This hub is based on directions each connection has. Four connections(west split, e…
+- **Psg186_SLH06.png** (not downloaded)
+  - Alt: Psg186 SLH06.png
+  - Before: … From #openttdcoop wiki Jump to: navigation , search SLHs View all SLHs Old SLHs New SLHs SLHs Back to junctionary New Sideline Hubs ( what is that? ) Date Screenshot Specification Description Creator additional 11.01.11
+  - After: Corner SLH This hub is based on directions each connection has. Four connections(west split, eastbound join, east split, westbound join), four directions(NE, SW, NW and splitting to east, SE). V453000 Download PSG #186 1…
+- **Psg191_SLH06.png** (not downloaded)
+  - Alt: Psg191 SLH06.png
+  - Before: …SLH This hub is based on directions each connection has. Four connections(west split, eastbound join, east split, westbound join), four directions(NE, SW, NW and splitting to east, SE). V453000 Download PSG #186 11.01.11
+  - After: Diagonal SLH A SLH on diagonal/mild corner ML showing how ridiculously small SLH it is possible to build. Vitus Download PSG #191 11.01.11 Fast joiner SLH built with emphasis on exactly 1xTL waiting bays which allow to h…
+- **Psg204_SLH03.png** (not downloaded)
+  - Alt: Psg204 SLH03.png
+  - Before: …ections(NE, SW, NW and splitting to east, SE). V453000 Download PSG #186 11.01.11 Diagonal SLH A SLH on diagonal/mild corner ML showing how ridiculously small SLH it is possible to build. Vitus Download PSG #191 11.01.11
+  - After: Fast joiner SLH built with emphasis on exactly 1xTL waiting bays which allow to have full speed choices. (only westbound part) V453000 Download PSG #204 11.01.11 Invisible SLH An extremely compact hub using the technique…
+- **Psg206_SLH03.png** (1440x838, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Psg206_SLH03.png`)
+  - Alt: Psg206 SLH03.png
+  - Before: … it is possible to build. Vitus Download PSG #191 11.01.11 Fast joiner SLH built with emphasis on exactly 1xTL waiting bays which allow to have full speed choices. (only westbound part) V453000 Download PSG #204 11.01.11
+  - After: Invisible SLH An extremely compact hub using the technique called invisible because a big part of the hub is not visible at all - hidden in tunnels. V453000 Download PSG #206 11.01.11 Classic SLH A typical SLH with empha…
+- **Psg206_SLH02.png** (not downloaded)
+  - Alt: Psg206 SLH02.png
+  - Before: …) V453000 Download PSG #204 11.01.11 Invisible SLH An extremely compact hub using the technique called invisible because a big part of the hub is not visible at all - hidden in tunnels. V453000 Download PSG #206 11.01.11
+  - After: Classic SLH A typical SLH with emphasis on system and order. V453000 Download PSG #206 11.01.11 Half-SLH A hub with one missing joiner. Main focus is the PBS -> 2way entry signal joiner which provides good choosing and m…
+- **Psg225_SLH04.png** (not downloaded)
+  - Alt: Psg225 SLH04.png
+  - Before: …called invisible because a big part of the hub is not visible at all - hidden in tunnels. V453000 Download PSG #206 11.01.11 Classic SLH A typical SLH with emphasis on system and order. V453000 Download PSG #206 11.01.11
+  - After: Half-SLH A hub with one missing joiner. Main focus is the PBS -> 2way entry signal joiner which provides good choosing and minimum trains waiting at prios. V453000 Download PSG #225 Retrieved from " https://wiki.openttdc…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 14 March 2012, at 23:54. © 2005 - 2015 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write("\…
+
+## Junctionary_-_SLHs
+
+- **All_SLHs.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/All_SLHs.png`)
+  - Alt: All SLHs.png
+  - Before: …Junctionary - SLHs - #openttdcoop wiki Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - SLHs From #openttdcoop wiki Jump to: navigation , search SLHs
+  - After: View all SLHs Old SLHs New SLHs SLHs Back to junctionary A sideline hub is a place where the main line junctions the side line. This means that we expect the side line giving priority to the main line and the side line h…
+- **Junctionary_SLH_old.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionary_SLH_old.png`)
+  - Alt: Junctionary SLH old.png
+  - Before: …ss?303" type="text/css" media="screen, projection" /> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - SLHs From #openttdcoop wiki Jump to: navigation , search SLHs View all SLHs
+  - After: Old SLHs New SLHs SLHs Back to junctionary A sideline hub is a place where the main line junctions the side line. This means that we expect the side line giving priority to the main line and the side line has to be able …
+- **Junctionary_SLH_new.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionary_SLH_new.png`)
+  - Alt: Junctionary SLH new.png
+  - Before: …Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - SLHs From #openttdcoop wiki Jump to: navigation , search SLHs View all SLHs Old SLHs
+  - After: New SLHs SLHs Back to junctionary A sideline hub is a place where the main line junctions the side line. This means that we expect the side line giving priority to the main line and the side line has to be able to join a…
+- **Junctionarybackback.png** (75x75, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Junctionarybackback.png`)
+  - Alt: Junctionarybackback.png
+  - Before: …r"> Home Blog Wiki DevZone #osqc Users IRC The #openttdcoop Wiki Junctionary - SLHs From #openttdcoop wiki Jump to: navigation , search SLHs View all SLHs Old SLHs New SLHs SLHs
+  - After: Back to junctionary A sideline hub is a place where the main line junctions the side line. This means that we expect the side line giving priority to the main line and the side line has to be able to join any of the ML r…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 29 September 2011, at 12:36. © 2005 - 2015 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.writ…
+
+## Mainline
+
+- **Mainline.png** (not downloaded)
+  - Before: …hey form the 'core' of the network, and allow timely movement of cargo. Mainlines can range in size from two tracks up to five or more, they usually run in both directions, but depending on the plan these may run in one.
+  - After: A LL_RR bi-directional ML A LLLL single direction ML Flow on a mainline is paramount, nothing should interrupt clean flow of traffic. As per the Line Hierarchy MLs have the highest priority of any track, and anything joi…
+- **BigML.png** (not downloaded)
+  - Before: … network, and allow timely movement of cargo. Mainlines can range in size from two tracks up to five or more, they usually run in both directions, but depending on the plan these may run in one. A LL_RR bi-directional ML
+  - After: A LLLL single direction ML Flow on a mainline is paramount, nothing should interrupt clean flow of traffic. As per the Line Hierarchy MLs have the highest priority of any track, and anything joining (say a Sideline ), mu…
+- **Tunnel_Flow.png** (594x278, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Tunnel_Flow.png`)
+  - Before: …his reason, it common to see sections of ML split into two or more tracks briefly and later merge. This type of construct is called doubling and it is important to maintain Line sync in it. A basic example is shown here:
+  - After: A simple line sync The LL_RR terminology denotes the default layout for all MLs on a map. "LL" are two left direction tracks, "RR" are two right direction tracks. The "_" indicates space between the directions. Taken lit…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 6 August 2012, at 13:56. © 2005 - 2015 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write("\…
+
+## Max_Curve_Speed
+
+- **Curve_convention.png** (1342x240, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Curve_convention.png`)
+  - Alt: Curve convention.png
+  - Before: …tooltip... Then we just use those values the game says. An exception is when the used curves are in between - one from each. In that case when, for example between 1 and 2, we say CL1.5 as the picture below demonstrates.
+  - After: Travel speed mechanism Here is how it is decided whether a train will slow down on a curve and by how much. Getting the Curve Speed value is shown below. Curve Speed The easiest way to know how fast a train can go throug…
+- **Curve_mechanism.png** (1475x964, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Curve_mechanism.png`)
+  - Alt: Curve mechanism.png
+  - Before: …e between 1 and 2, we say CL1.5 as the picture below demonstrates. Travel speed mechanism Here is how it is decided whether a train will slow down on a curve and by how much. Getting the Curve Speed value is shown below.
+  - After: Curve Speed The easiest way to know how fast a train can go through a curve is by simply testing, but it can also be counted by taking: Base Curve Speed , multiplied by: • monorail bonus - x1,5 • maglev bonus - x2 • tilt…
+- **Curve_speeds1.png** (910x662, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Curve_speeds1.png`)
+  - Alt: Curve speeds1.png
+  - Before: … - x1,5 • maglev bonus - x2 • tilt - x1,2 • short wagons - about x1,2 for "half-length wagons" The base curve speed can be found on the OpenTTD wiki , but this graph demonstrates it too (plus monorail and maglev as well)
+  - After: Special Curves There are not always just full curves, but also Sbends and such. Counting their maximum speed is quite complicated so it is easier to just try it in game if the train slows down in the specific curve or no…
+- **Slow_corners.png** (640x296, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Slow_corners.png`)
+  - Before: …ecial Curves There are not always just full curves, but also Sbends and such. Counting their maximum speed is quite complicated so it is easier to just try it in game if the train slows down in the specific curve or not.
+  - After: An example showing which corners are affected Side Notes The real calculation OpenTTD does is counting wagons (vehicles) between curves, meaning that shorter wagons can travel through curves faster. However, because the …
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 7 February 2014, at 20:34. © 2005 - 2015 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write(…
+
+## Merging_Tracks
+
+- **Mergers_basic.png** (not downloaded)
+  - Alt: Mergers basic.png
+  - Before: …o priority 9.4 Sequence – small priority 9.5 Tree structure 9.6 Downhill merge 10 Bridges (also tunnels) and evil mode 10.1 Self-unblockable bridges 10.2 Full priority 10.3 Prio to unbridged lines 10.4 No doubled bridges
+  - After: What is a merger? A merger is a place where some amount of lines reduces to a smaller count. Most typically used in all kinds of hubs , they (or their look-alikes) can also be used as station exits, station entrances and…
+- **Mergers_NoChoice.png** (not downloaded)
+  - Alt: Mergers NoChoice.png
+  - Before: … lines reduces to a smaller count. Most typically used in all kinds of hubs , they (or their look-alikes) can also be used as station exits, station entrances and/or just as standalone mergers without a hub (rare cases).
+  - After: The purpose The logic for people who do not know about proper Merging yet is theory that line A will have about 50% traffic going this way while line C will also have about 50%, therefore logically they give 100% in line…
+- **Mergers_42innerOuter.png** (577x392, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_42innerOuter.png`)
+  - Before: …ects that the ML will not be slowed down, prio can be longer. If we have a check if the line is 100% full in a BBH merger, the prio will probably need to be very short. Look out for examples at each of the shown mergers.
+  - After: Typical merger. Joiner, also SLH-styled merger. Choice to one of the outputs. Input tracks. Output tracks. Direction. Line. Priority check. You will often see other words which I will mention here but I strongly recommen…
+- **Mergers_joiner.png** (538x378, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_joiner.png`)
+  - Before: … will not be slowed down, prio can be longer. If we have a check if the line is 100% full in a BBH merger, the prio will probably need to be very short. Look out for examples at each of the shown mergers. Typical merger.
+  - After: Joiner, also SLH-styled merger. Choice to one of the outputs. Input tracks. Output tracks. Direction. Line. Priority check. You will often see other words which I will mention here but I strongly recommend not to use the…
+- **Mergers_choice.png** (not downloaded)
+  - Before: …an be longer. If we have a check if the line is 100% full in a BBH merger, the prio will probably need to be very short. Look out for examples at each of the shown mergers. Typical merger. Joiner, also SLH-styled merger.
+  - After: Choice to one of the outputs. Input tracks. Output tracks. Direction. Line. Priority check. You will often see other words which I will mention here but I strongly recommend not to use them as they are majorly misleading…
+- **Mergers_input.png** (486x319, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_input.png`)
+  - Before: …ck if the line is 100% full in a BBH merger, the prio will probably need to be very short. Look out for examples at each of the shown mergers. Typical merger. Joiner, also SLH-styled merger. Choice to one of the outputs.
+  - After: Input tracks. Output tracks. Direction. Line. Priority check. You will often see other words which I will mention here but I strongly recommend not to use them as they are majorly misleading. Balancing , Balancer or Bala…
+- **Mergers_output.png** (486x319, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_output.png`)
+  - Before: … is 100% full in a BBH merger, the prio will probably need to be very short. Look out for examples at each of the shown mergers. Typical merger. Joiner, also SLH-styled merger. Choice to one of the outputs. Input tracks.
+  - After: Output tracks. Direction. Line. Priority check. You will often see other words which I will mention here but I strongly recommend not to use them as they are majorly misleading. Balancing , Balancer or Balanced traffic i…
+- **Mergers_direction.png** (not downloaded)
+  - Before: …n a BBH merger, the prio will probably need to be very short. Look out for examples at each of the shown mergers. Typical merger. Joiner, also SLH-styled merger. Choice to one of the outputs. Input tracks. Output tracks.
+  - After: Direction. Line. Priority check. You will often see other words which I will mention here but I strongly recommend not to use them as they are majorly misleading. Balancing , Balancer or Balanced traffic is probably the …
+- **Mergers_line.png** (not downloaded)
+  - Before: …ger, the prio will probably need to be very short. Look out for examples at each of the shown mergers. Typical merger. Joiner, also SLH-styled merger. Choice to one of the outputs. Input tracks. Output tracks. Direction.
+  - After: Line. Priority check. You will often see other words which I will mention here but I strongly recommend not to use them as they are majorly misleading. Balancing , Balancer or Balanced traffic is probably the most used, …
+- **Mergers_prio.png** (not downloaded)
+  - Before: …ybox" style="width: 155px"> Typical merger. Joiner, also SLH-styled merger. Choice to one of the outputs. Input tracks. Output tracks. Direction. Line.
+  - After: Priority check. You will often see other words which I will mention here but I strongly recommend not to use them as they are majorly misleading. Balancing , Balancer or Balanced traffic is probably the most used, and th…
+- **Mergers_32AlltoAll.png** (not downloaded)
+  - Before: … their free will, one of them would probably start jamming. Of course when that jamming would occur, trains would automatically move from jamming A to B, but only within the capabilities of C – A would still remain slow.
+  - After: All to all 1->2 for one of the lines 4->2 If we look at something like 4->2 which is only a little bit different from 3->2, we can apply the same logic as before. While all to all gives all possible choices, we cannot do…
+- **Mergers_32InnerOuter.png** (not downloaded)
+  - Before: … will, one of them would probably start jamming. Of course when that jamming would occur, trains would automatically move from jamming A to B, but only within the capabilities of C – A would still remain slow. All to all
+  - After: 1->2 for one of the lines 4->2 If we look at something like 4->2 which is only a little bit different from 3->2, we can apply the same logic as before. While all to all gives all possible choices, we cannot do a 1->2 any…
+- **Mergers_42AlltoAll.png** (525x408, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_42AlltoAll.png`)
+  - Before: … do exactly that, each of the two gets both choices. To make this more space efficient, it is a good idea to make the lines inside get choices – so we have less rail crossings in total. That is what I call the Inner Mix.
+  - After: All to all 2 of the lines choose from the other 2 Expanding more Adding more inputs is simple, all-to-all just gets the same thing done more, where the inner mix suddenly gets 3->2 inside. Note that this 3->2 works diffe…
+- **Mergers_42InnerOuter.png** (577x392, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_42InnerOuter.png`)
+  - Before: … that, each of the two gets both choices. To make this more space efficient, it is a good idea to make the lines inside get choices – so we have less rail crossings in total. That is what I call the Inner Mix. All to all
+  - After: 2 of the lines choose from the other 2 Expanding more Adding more inputs is simple, all-to-all just gets the same thing done more, where the inner mix suddenly gets 3->2 inside. Note that this 3->2 works differently than…
+- **Mergers_43AlltoAll.png** (557x529, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_43AlltoAll.png`)
+  - Before: …ces. This solution can get messy, but is relatively effective. In case of all-to-all we need to add a lot of new choices, usually resulting in a complete rebuild. (unless the design has some free spots for the expansion)
+  - After: Added output, All to all Added output, Inner choice Added output, Inner choice "escapes" for outer Added input, Inner choice When we add even further, like output of 4 lines, we still follow the same logic, but with more…
+- **Mergers_43InnerOuter.png** (not downloaded)
+  - Before: …t messy, but is relatively effective. In case of all-to-all we need to add a lot of new choices, usually resulting in a complete rebuild. (unless the design has some free spots for the expansion) Added output, All to all
+  - After: Added output, Inner choice Added output, Inner choice "escapes" for outer Added input, Inner choice When we add even further, like output of 4 lines, we still follow the same logic, but with more lines. Same for the inpu…
+- **Mergers_43InnerOuterExtra.png** (not downloaded)
+  - Before: …effective. In case of all-to-all we need to add a lot of new choices, usually resulting in a complete rebuild. (unless the design has some free spots for the expansion) Added output, All to all Added output, Inner choice
+  - After: Added output, Inner choice "escapes" for outer Added input, Inner choice When we add even further, like output of 4 lines, we still follow the same logic, but with more lines. Same for the input. Lets just look at a few …
+- **Mergers_52InnerOuter.png** (not downloaded)
+  - Before: … a lot of new choices, usually resulting in a complete rebuild. (unless the design has some free spots for the expansion) Added output, All to all Added output, Inner choice Added output, Inner choice "escapes" for outer
+  - After: Added input, Inner choice When we add even further, like output of 4 lines, we still follow the same logic, but with more lines. Same for the input. Lets just look at a few bigger examples. Speed of the merger While logi…
+- **Mergers_WaitingBays_length.png** (not downloaded)
+  - Alt: Mergers WaitingBays length.png
+  - Before: … signalling. That however does not mean it means signals can be everywhere. You still need to be very careful about where trains can stop, for which it is very useful to mark those spots with entry signals and univ rail.
+  - After: Waiting bay usage Note that waiting bays are necessary everywhere. For every choice of trains going somewhere they need to have the option of having a safe spot where they could eventually wait without blocking other tra…
+- **Mergers_PBSbays.png** (not downloaded)
+  - Before: …sed in some of the old games with combo signals. Both trains waiting for the choice – as soon as it turns green, both trains start at the same time and one of then gets stuck there until the second train is able to move.
+  - After: Dual waiting bays with PBS. Dual waiting bays with Pre-signals. Choice with combo signals. Stuck choice with combo signals. Combo signals to same block, stuck. Hint: Marking where trains stop As entry signal has only one…
+- **Mergers_Prebays.png** (not downloaded)
+  - Before: … with combo signals. Both trains waiting for the choice – as soon as it turns green, both trains start at the same time and one of then gets stuck there until the second train is able to move. Dual waiting bays with PBS.
+  - After: Dual waiting bays with Pre-signals. Choice with combo signals. Stuck choice with combo signals. Combo signals to same block, stuck. Hint: Marking where trains stop As entry signal has only one job – to stop trains when p…
+- **Mergers_Prechoice.png** (not downloaded)
+  - Before: …ting for the choice – as soon as it turns green, both trains start at the same time and one of then gets stuck there until the second train is able to move. Dual waiting bays with PBS. Dual waiting bays with Pre-signals.
+  - After: Choice with combo signals. Stuck choice with combo signals. Combo signals to same block, stuck. Hint: Marking where trains stop As entry signal has only one job – to stop trains when pre-signal input is red – it can also…
+- **Mergers_Prechoice_stuck.png** (454x291, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_Prechoice_stuck.png`)
+  - Before: …on as it turns green, both trains start at the same time and one of then gets stuck there until the second train is able to move. Dual waiting bays with PBS. Dual waiting bays with Pre-signals. Choice with combo signals.
+  - After: Stuck choice with combo signals. Combo signals to same block, stuck. Hint: Marking where trains stop As entry signal has only one job – to stop trains when pre-signal input is red – it can also sign the point where train…
+- **Mergers_Combobays.png** (511x257, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_Combobays.png`)
+  - Before: … start at the same time and one of then gets stuck there until the second train is able to move. Dual waiting bays with PBS. Dual waiting bays with Pre-signals. Choice with combo signals. Stuck choice with combo signals.
+  - After: Combo signals to same block, stuck. Hint: Marking where trains stop As entry signal has only one job – to stop trains when pre-signal input is red – it can also sign the point where trains are meant to stop without the p…
+- **Mergers_Marking.png** (352x254, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_Marking.png`)
+  - Before: …ed – it can also sign the point where trains are meant to stop without the pre-signals. I use that to highlight those important spots as you can see in this image. Probably the best way to mark things is by PURR colours.
+  - After: Clearly visible where trains are supposed to stop can be helpful. Choice reactivity The waiting bay needs to be long enough, but the shorter it is, the better. When only one train is able to wait for one line, it means t…
+- **Mergers_Split_3bays.png** (580x369, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_Split_3bays.png`)
+  - Before: … enough to accomodate a train). It is typical for people to try building this in order not to move with the main line. Under whatever circumstances, the main line are just tracks too – do not be afraid to move with them!
+  - After: Unnecessarily long choice for 3 trains. Do not be afraid to move the ML! Split signalling When splitting traffic into multiple choices, we always need some sort of check if there is any choice green. For that we have fol…
+- **Mergers_Split_moveML.png** (not downloaded)
+  - Before: …pical for people to try building this in order not to move with the main line. Under whatever circumstances, the main line are just tracks too – do not be afraid to move with them! Unnecessarily long choice for 3 trains.
+  - After: Do not be afraid to move the ML! Split signalling When splitting traffic into multiple choices, we always need some sort of check if there is any choice green. For that we have following options: Pre-signals, PBS with 1-…
+- **Mergers_Split_pre1.png** (461x365, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_Split_pre1.png`)
+  - Before: … bays. With this it is possible to make trains try to join the emptier lines even more. A downside of this is that the throughput of each choice gets to be very low so it is only affordable on main station exits or SLHs.
+  - After: 1 way pre-signals are standard PBS into 1-way signals is bad PBS needs 2-way signals to choose well 2 way pre-signals should not be necessary Advanced choosing for less throughput on choices Split layout The most importa…
+- **Mergers_Split_PBS1.png** (411x315, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_Split_PBS1.png`)
+  - Before: … to make trains try to join the emptier lines even more. A downside of this is that the throughput of each choice gets to be very low so it is only affordable on main station exits or SLHs. 1 way pre-signals are standard
+  - After: PBS into 1-way signals is bad PBS needs 2-way signals to choose well 2 way pre-signals should not be necessary Advanced choosing for less throughput on choices Split layout The most important point which defines how quic…
+- **Mergers_Split_PBS2.png** (392x382, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_Split_PBS2.png`)
+  - Before: …e emptier lines even more. A downside of this is that the throughput of each choice gets to be very low so it is only affordable on main station exits or SLHs. 1 way pre-signals are standard PBS into 1-way signals is bad
+  - After: PBS needs 2-way signals to choose well 2 way pre-signals should not be necessary Advanced choosing for less throughput on choices Split layout The most important point which defines how quickly it all works is the first …
+- **Mergers_Split_pre2.png** (406x357, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_Split_pre2.png`)
+  - Before: …f this is that the throughput of each choice gets to be very low so it is only affordable on main station exits or SLHs. 1 way pre-signals are standard PBS into 1-way signals is bad PBS needs 2-way signals to choose well
+  - After: 2 way pre-signals should not be necessary Advanced choosing for less throughput on choices Split layout The most important point which defines how quickly it all works is the first split – the place where the merger tech…
+- **Mergers_Split_PBS2wayentry.png** (365x412, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_Split_PBS2wayentry.png`)
+  - Before: …ce gets to be very low so it is only affordable on main station exits or SLHs. 1 way pre-signals are standard PBS into 1-way signals is bad PBS needs 2-way signals to choose well 2 way pre-signals should not be necessary
+  - After: Advanced choosing for less throughput on choices Split layout The most important point which defines how quickly it all works is the first split – the place where the merger technically starts for that line. Unified spli…
+- **Mergers_Split_Unified.png** (341x195, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_Split_Unified.png`)
+  - Before: …ves more waiting spaces so it takes longer for trains to „realize“ they should try other choices instead. Usually having each bridge lead to a different choice is already a better solution, but this is an option as well.
+  - After: Splitting all from one tile is fastest. Allowing high throughput through the choice to make the next 2 choices well available. Increasing throughput by bridges can be helpful when necessary. Merging point(s) Significant …
+- **Mergers_Split_Signals.png** (not downloaded)
+  - Before: …er for trains to „realize“ they should try other choices instead. Usually having each bridge lead to a different choice is already a better solution, but this is an option as well. Splitting all from one tile is fastest.
+  - After: Allowing high throughput through the choice to make the next 2 choices well available. Increasing throughput by bridges can be helpful when necessary. Merging point(s) Significant improvements can also come from correctl…
+- **Mergers_Split_Bridges.png** (not downloaded)
+  - Before: …ridge lead to a different choice is already a better solution, but this is an option as well. Splitting all from one tile is fastest. Allowing high throughput through the choice to make the next 2 choices well available.
+  - After: Increasing throughput by bridges can be helpful when necessary. Merging point(s) Significant improvements can also come from correctly investigating how do the trains merge together. Let’s give a few examples. One spot T…
+- **Mergers_join_unified.png** (not downloaded)
+  - Before: …ctive to abuse gravity and help trains accelerate in the merging point. This can improve the output of the merger drastically. Especially effective with weak trains, with strong trains you will barely see any difference.
+  - After: Joining the line once is best Sequential join with prio is sub-optimal Sequential join without prio is not the best either Sequential join with small prio works nicely Merging lines together equally works great for BBH m…
+- **Mergers_join_sequence_prio.png** (not downloaded)
+  - Before: …p trains accelerate in the merging point. This can improve the output of the merger drastically. Especially effective with weak trains, with strong trains you will barely see any difference. Joining the line once is best
+  - After: Sequential join with prio is sub-optimal Sequential join without prio is not the best either Sequential join with small prio works nicely Merging lines together equally works great for BBH mergers Using gravity to your a…
+- **Mergers_join_sequence_noprio.png** (not downloaded)
+  - Before: … This can improve the output of the merger drastically. Especially effective with weak trains, with strong trains you will barely see any difference. Joining the line once is best Sequential join with prio is sub-optimal
+  - After: Sequential join without prio is not the best either Sequential join with small prio works nicely Merging lines together equally works great for BBH mergers Using gravity to your advantage can drastically increase output …
+- **Mergers_join_sequence_smallprio.png** (not downloaded)
+  - Before: …ly. Especially effective with weak trains, with strong trains you will barely see any difference. Joining the line once is best Sequential join with prio is sub-optimal Sequential join without prio is not the best either
+  - After: Sequential join with small prio works nicely Merging lines together equally works great for BBH mergers Using gravity to your advantage can drastically increase output capacity. From psg213 Bridges (also tunnels) and evi…
+- **Mergers_join_tree.png** (329x319, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_join_tree.png`)
+  - Before: …th strong trains you will barely see any difference. Joining the line once is best Sequential join with prio is sub-optimal Sequential join without prio is not the best either Sequential join with small prio works nicely
+  - After: Merging lines together equally works great for BBH mergers Using gravity to your advantage can drastically increase output capacity. From psg213 Bridges (also tunnels) and evil mode There exists a so-called evil mode whi…
+- **Mergers_join_downhill.png** (643x357, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_join_downhill.png`)
+  - Before: …g the line once is best Sequential join with prio is sub-optimal Sequential join without prio is not the best either Sequential join with small prio works nicely Merging lines together equally works great for BBH mergers
+  - After: Using gravity to your advantage can drastically increase output capacity. From psg213 Bridges (also tunnels) and evil mode There exists a so-called evil mode which is an action when trains endlessly slow each other down …
+- **Mergers_bridges_pre.png** (not downloaded)
+  - Before: …ally cannot get evil mode on those lines. No doubled bridges If we have a split to two bridges, we can make each of the bridges lead to a different line. With that we reach a point where evil mode does not really happen.
+  - After: Pre-signals on slowed bridges keep evil mode. PBS on slowed bridges keep evil mode. Basic signals on slowed bridges can deal with evil mode. If the bridges can deal with it, we can use shorter priority. When bridges are …
+- **Mergers_bridges_PBS.png** (not downloaded)
+  - Before: …oubled bridges If we have a split to two bridges, we can make each of the bridges lead to a different line. With that we reach a point where evil mode does not really happen. Pre-signals on slowed bridges keep evil mode.
+  - After: PBS on slowed bridges keep evil mode. Basic signals on slowed bridges can deal with evil mode. If the bridges can deal with it, we can use shorter priority. When bridges are fragile, they need long priority. Not bridging…
+- **Mergers_bridges_basic.png** (700x338, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_bridges_basic.png`)
+  - Before: …wo bridges, we can make each of the bridges lead to a different line. With that we reach a point where evil mode does not really happen. Pre-signals on slowed bridges keep evil mode. PBS on slowed bridges keep evil mode.
+  - After: Basic signals on slowed bridges can deal with evil mode. If the bridges can deal with it, we can use shorter priority. When bridges are fragile, they need long priority. Not bridging the prioritized line overcomes this p…
+- **Mergers_bridges_shortprio.png** (not downloaded)
+  - Before: …ferent line. With that we reach a point where evil mode does not really happen. Pre-signals on slowed bridges keep evil mode. PBS on slowed bridges keep evil mode. Basic signals on slowed bridges can deal with evil mode.
+  - After: If the bridges can deal with it, we can use shorter priority. When bridges are fragile, they need long priority. Not bridging the prioritized line overcomes this problem entirely. Making no double bridges requires adapti…
+- **Mergers_bridges_longprio.png** (not downloaded)
+  - Before: …ot really happen. Pre-signals on slowed bridges keep evil mode. PBS on slowed bridges keep evil mode. Basic signals on slowed bridges can deal with evil mode. If the bridges can deal with it, we can use shorter priority.
+  - After: When bridges are fragile, they need long priority. Not bridging the prioritized line overcomes this problem entirely. Making no double bridges requires adapting the hub in general. From psg 255 Retrieved from " https://w…
+- **Mergers_joiner.png** (538x378, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Mergers_joiner.png`)
+  - Before: …p evil mode. PBS on slowed bridges keep evil mode. Basic signals on slowed bridges can deal with evil mode. If the bridges can deal with it, we can use shorter priority. When bridges are fragile, they need long priority.
+  - After: Not bridging the prioritized line overcomes this problem entirely. Making no double bridges requires adapting the hub in general. From psg 255 Retrieved from " https://wiki.openttdcoop.org/index.php?title=Merging_Tracks&…
+- **Mergers_bridges_nodouble.png** (not downloaded)
+  - Before: … slowed bridges can deal with evil mode. If the bridges can deal with it, we can use shorter priority. When bridges are fragile, they need long priority. Not bridging the prioritized line overcomes this problem entirely.
+  - After: Making no double bridges requires adapting the hub in general. From psg 255 Retrieved from " https://wiki.openttdcoop.org/index.php?title=Merging_Tracks&oldid=19238 " Categories : Guides Advanced Networking Views Page Di…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 7 March 2014, at 13:28. © 2005 - 2015 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write("\u…
+
+## Ruleset
+
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 7 November 2013, at 07:05. © 2005 - 2016 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write(…
+
+## Shift_Mainlines
+
+- **PropeSML.png** (530x270, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/PropeSML.png`)
+  - Before: …s heading towards it (prio gets suddenly red), there also has to be an alternative path around it so ML flow is not harmed. This however is still a large issue as the once stopped trains have to accelerate from the stop.
+  - After: Original Shifter PSG 149 Download: Public Server Game 149 Final / Archive entry for this game The old shifter array used in psg149. Fail-Safe Shifters The goal of this type of shifter is to make trains shift the lines at…
+- **PSG149shifters.png** (not downloaded)
+  - Alt: PSG149shifters.png
+  - Before: … it so ML flow is not harmed. This however is still a large issue as the once stopped trains have to accelerate from the stop. Original Shifter PSG 149 Download: Public Server Game 149 Final / Archive entry for this game
+  - After: The old shifter array used in psg149. Fail-Safe Shifters The goal of this type of shifter is to make trains shift the lines at full speed and never stop. This is reached by using the so-called fail-safe system, where onc…
+- **Failsafe.png** (524x301, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/Failsafe.png`)
+  - Before: …d fail-safe system, where once the train reaches the 2way entry signal, it is always green - even if the last bit of the priority suddenly gets red. These shifters were introduced by this blog article: Fail-safe shifters
+  - After: Fail-safe shifter PSG 172 Download: Public Server Game 172 Final / Archive entry for this game Fail-safe shifters instantly replaced the older design by their safe reliability. Shift gaps SML is extremely easy to build b…
+- **PSG172shifters.png** (not downloaded)
+  - Alt: PSG172shifters.png
+  - Before: …en if the last bit of the priority suddenly gets red. These shifters were introduced by this blog article: Fail-safe shifters Fail-safe shifter PSG 172 Download: Public Server Game 172 Final / Archive entry for this game
+  - After: Fail-safe shifters instantly replaced the older design by their safe reliability. Shift gaps SML is extremely easy to build but it has some downsides, it can create gaps because trains just randomly join the ML. Some gap…
+- **Failsafegap.png** (not downloaded)
+  - Before: …y. Shift gaps SML is extremely easy to build but it has some downsides, it can create gaps because trains just randomly join the ML. Some gaps cannot be filled in order to keep proper priorities and not slow the ML down.
+  - After: Unfilled gaps on the ML. Timed SML The ultimate solution to SML is to use fail-safe shifters and then time the train joining, so that no shift gaps are created, as demonstrated in pzg13. PZG 13 Download: Pro Zone Game 13…
+- **PZG13shifters.png** (1096x790, `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/coop/files/PZG13shifters.png`)
+  - Alt: PZG13shifters.png
+  - Before: …he ultimate solution to SML is to use fail-safe shifters and then time the train joining, so that no shift gaps are created, as demonstrated in pzg13. PZG 13 Download: Pro Zone Game 13 Final / Archive entry for this game
+  - After: Trains carefully timed by the complicated joining mechanisms, resulting in precise gaps between trains and set places where trains could join the ML. Retrieved from " https://wiki.openttdcoop.org/index.php?title=Shift_Ma…
+- **poweredby_mediawiki_88x31.png** (not downloaded)
+  - Alt: Powered by MediaWiki
+  - Before: …Junctionary Game Proposals concepts Game concepts Research and Development Coopetition Navigation Categories Random page Recent changes Tools What links here Related changes Special pages Printable version Permanent link
+  - After: This page was last modified on 4 December 2013, at 09:35. © 2005 - 2015 The #openttdcoop Blog & Wiki | based on the the "dark" theme & Bartelme Design << >> Join | Random | List | Next Five if(window.mw){ document.write(…
+
