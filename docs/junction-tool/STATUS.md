@@ -52,20 +52,22 @@
 | 9j/9k outline order | 975e945eaf + next | Inline (D56): ghost sprites → selection → ghost outlines; make_square_red only when unaffordable. viewport.cpp hook now 3 lines. 133 cases all pass. |
 | 9l crash fix | 80a0a4ea0e | Inline. 9g's SetTileSelectSize(0,0) tripped `assert(x_size >= 0)` in SetSelectionTilesDirty (engineer hit it in game). Now 1x1. Lesson for briefs: when relying on an upstream function's behaviour, the agent must also read that function's callees/asserts, not just its body. Refinement parked: fully hide the cursor box during a build (needs a highlight-mode change). |
 
+**1a COMPLETE (2026-11-07).** Engineer's in-game checklist passed: ghost, exact cost (matched to the pound), build, failure + Retry/Cancel with pinned outline, Shift-click estimate, blocked-tile message, outline consistency, multiplayer (dedicated server + 2 clients: identical result, no desync). 133 test cases, all passing.
+
 ## Next steps
 
-1. **Engineer reviews `PLAN-1a.md`.** Worth a closer look:
-   - the test-junction fixture
-   - the cursor at the layout's north corner
-   - `.` and `,` for rotate and mirror (letter keys are taken)
-   - a red outline only on non-flat tiles
-   - the drawing-refactor approach
-2. **Commit the plan folder** to `feature/junction-tool`, once the engineer agrees.
-3. **Run 1a steps 1–9** through Sonnet agents, one per step, checking each handback against the brief. Steps 6–9 end with the engineer's manual check list.
-4. **During 1a,** settle the 1b open items, then write 1b in full.
-5. **Before 1c:**
-   - research the acceleration model
-   - decide D39 (traffic level) and the other 1c open items
+1. **Settle the 1b open items with the engineer** (`PLAN-1b.md`, "Open items"), with the orchestrator's proposals:
+   - leg length: at least 1 × TL after the last switch, signalled at SD
+   - prio extension past the merge: one signal block (SD tiles)
+   - separate line notations for the mainline and the branch: yes
+   - diagonal track under the mainline bridge: allowed
+   - search limits: 64×64 tiles, 200 ms
+   - hover pricing on larger layouts: cache per origin
+2. Write `PLAN-1b.md` in full. Code research first where needed (rule checks, route tracing). Apply D52: agents for substantive work, inline only for tiny fixes with the context already loaded.
+3. Run 1b through agents, with the engineer's in-game checks.
+4. Then 1c (D39, traffic level, is still open).
+
+**Running the game for checks:** copy `build/openttd` to `build/openttd-<step>` and launch that copy, so agents can rebuild safely. The engineer's save is in `~/.local/share/openttd/save/` (Buborough Bay, 2243). Multiplayer test setup: a dedicated server with `-D -g <save>`, and clients with `-c <dir>/openttd.cfg -n localhost`, where each dir holds its own `private.cfg` with `client_name` set.
 
 ## Ideas parked
 
