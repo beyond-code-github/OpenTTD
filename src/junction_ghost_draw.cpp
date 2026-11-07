@@ -20,8 +20,6 @@
 
 #include "safeguards.h"
 
-static constexpr int GHOST_BRIDGE_Z_START = 3; ///< Mirrors BRIDGE_Z_START in tunnelbridge_cmd.cpp; keep in sync when rebasing.
-
 /**
  * Draw a rail bridge head on a flat tile for the junction placement ghost, without reading the tile's map data.
  * This mirrors the bridge head branch of DrawTile_TunnelBridge() in tunnelbridge_cmd.cpp, for a flat tile, and must be kept in sync with it when rebasing.
@@ -95,7 +93,7 @@ void DrawBridgeMiddleGhost(const TileInfo *ti, BridgeType type, RailType rt, Axi
 
 	int x = ti->x;
 	int y = ti->y;
-	int z = bridge_z - GHOST_BRIDGE_Z_START;
+	int z = bridge_z - BRIDGE_Z_START;
 
 	/* Add a bounding box that separates the bridge from things below it. */
 	AddSortableSpriteToDraw(SPR_EMPTY_BOUNDING_BOX, PAL_NONE, x, y, bridge_z - TILE_HEIGHT + BB_Z_SEPARATOR, {{}, {TILE_SIZE, TILE_SIZE, 1}, {}});
@@ -106,9 +104,9 @@ void DrawBridgeMiddleGhost(const TileInfo *ti, BridgeType type, RailType rt, Axi
 	/* Draw floor and far part of bridge*/
 	if (!IsInvisibilitySet(TransparencyOption::Bridges)) {
 		if (axis == Axis::X) {
-			AddSortableSpriteToDraw(psid[0].sprite, psid[0].pal, x, y, z, {{0, 0, GHOST_BRIDGE_Z_START}, {TILE_SIZE, 1, 40}, {0, 0, -GHOST_BRIDGE_Z_START}}, false);
+			AddSortableSpriteToDraw(psid[0].sprite, psid[0].pal, x, y, z, {{0, 0, BRIDGE_Z_START}, {TILE_SIZE, 1, 40}, {0, 0, -BRIDGE_Z_START}}, false);
 		} else {
-			AddSortableSpriteToDraw(psid[0].sprite, psid[0].pal, x, y, z, {{0, 0, GHOST_BRIDGE_Z_START}, {1, TILE_SIZE, 40}, {0, 0, -GHOST_BRIDGE_Z_START}}, false);
+			AddSortableSpriteToDraw(psid[0].sprite, psid[0].pal, x, y, z, {{0, 0, BRIDGE_Z_START}, {1, TILE_SIZE, 40}, {0, 0, -BRIDGE_Z_START}}, false);
 		}
 	}
 
@@ -126,10 +124,10 @@ void DrawBridgeMiddleGhost(const TileInfo *ti, BridgeType type, RailType rt, Axi
 	if (!IsInvisibilitySet(TransparencyOption::Bridges)) {
 		if (axis == Axis::X) {
 			y += 12;
-			if (psid[1].sprite & SPRITE_MASK) AddSortableSpriteToDraw(psid[1].sprite, psid[1].pal, x, y, z, {{0, 3, GHOST_BRIDGE_Z_START}, {TILE_SIZE, 1, 40}, {0, -3, -GHOST_BRIDGE_Z_START}}, false);
+			if (psid[1].sprite & SPRITE_MASK) AddSortableSpriteToDraw(psid[1].sprite, psid[1].pal, x, y, z, {{0, 3, BRIDGE_Z_START}, {TILE_SIZE, 1, 40}, {0, -3, -BRIDGE_Z_START}}, false);
 		} else {
 			x += 12;
-			if (psid[1].sprite & SPRITE_MASK) AddSortableSpriteToDraw(psid[1].sprite, psid[1].pal, x, y, z, {{3, 0, GHOST_BRIDGE_Z_START}, {1, TILE_SIZE, 40}, {-3, 0, -GHOST_BRIDGE_Z_START}}, false);
+			if (psid[1].sprite & SPRITE_MASK) AddSortableSpriteToDraw(psid[1].sprite, psid[1].pal, x, y, z, {{3, 0, BRIDGE_Z_START}, {1, TILE_SIZE, 40}, {-3, 0, -BRIDGE_Z_START}}, false);
 		}
 	}
 

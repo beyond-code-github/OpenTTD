@@ -48,9 +48,6 @@
 BridgeSpec _bridge[MAX_BRIDGES]; ///< The specification of all bridges.
 TileIndex _build_tunnel_endtile; ///< The end of a tunnel; as hidden return from the tunnel build command for GUI purposes.
 
-/** Z position of the bridge sprites relative to bridge height (downwards) */
-static const int BRIDGE_Z_START = 3;
-
 
 /**
  * Mark bridge tiles dirty.

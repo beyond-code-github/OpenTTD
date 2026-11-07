@@ -16,6 +16,9 @@
 #include "bridge_type.h"
 
 static const uint MAX_BRIDGES = 13; ///< Maximal number of available bridge specs.
+/** Z position of the bridge sprites relative to bridge height (downwards) */
+static constexpr int BRIDGE_Z_START = 3;
+
 constexpr uint SPRITES_PER_BRIDGE_PIECE = 32; ///< Number of sprites there are per bridge piece.
 
 /** Container for Bridge pillar flags for each axis of each bridge middle piece. */
