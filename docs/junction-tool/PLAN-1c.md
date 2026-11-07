@@ -37,6 +37,13 @@ Decisions: D29, D31–D34, D36, D39.
    - headway figures for known layouts
    - variant selection switching at the right traffic thresholds
 
+7. **Waiting-bay count** (engineer, 2026-11-07: "The number of waiting bays also has an impact on traffic backing up"):
+   - A queue's capacity is whole TL bays (D83). When it overflows, trains back up past the upstream split:
+     - on SL joiners, that blocks the other SL movement (the shared inbound line) and then the SL upstream
+     - on connections leaving the ML, it reaches the ML split, which is never allowed (D71a)
+   - The traffic model sizes each queue's bay count from the traffic level and how long the merge stays blocked (the prio hold time from the headway model). Score the extra footprint and cost against the risk of backing up.
+   - 1b uses fixed minimums: 1 bay on SL joiners, and enough on ML-leaving connections to satisfy G7.
+
 ## Steps (outline)
 
 1. **Code research:** OpenTTD's acceleration model and its inputs (engine and wagon properties, settings).
