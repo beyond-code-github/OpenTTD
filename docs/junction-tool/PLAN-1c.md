@@ -10,7 +10,7 @@ Decisions: D29, D31–D34, D36, D39.
 
 ## What the player gets
 
-- **A train picker in the Junction window:** an engine and a wagon count (TL follows from the consist length). It's stored as a client setting.
+- **A train picker in the Junction window:** an engine and a wagon count (TL follows from the consist length). It's stored as a client setting. The picked train also sets the bridge type: the cheapest bridge at least as fast as that train (D47), replacing D45's fastest-available-engine default.
 - **A traffic-level control.** How it's expressed is still open (D39).
 - **Prios sized to the picked train,** with a tooltip note when a prio is longer than 2 TL (D34).
 - **High-traffic settings give the higher-capacity bridge arrangement:** a doubled mainline bridge, or the connections bridging over the mainline. Low-traffic settings (e.g. sideline-to-sideline hubs) give the simplest and smallest (D32).
