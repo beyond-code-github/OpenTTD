@@ -1015,7 +1015,10 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 						const Track h1 = corner(side, exit_edge);
 						const Track h2 = corner(ReverseDiagDir(side), ReverseDiagDir(exit_edge));
 						const TileIndexDiffC other = AddTiles(to_tile(key), TileIndexDiffCByDiagDir(side));
-						if (TracksAt(layout, to_tile(key)) != TrackBits{axis, h1} || unused[key] != TrackBits{h1}) continue;
+						/* On the merge tile the join also holds the joiner's half piece. */
+						TrackBits join_tracks{axis, h1};
+						if (key == tile_key && joiner != nullptr) join_tracks.Set(TrackdirToTrack(joiner->pieces[joiner_index].trackdir));
+						if (TracksAt(layout, to_tile(key)) != join_tracks || unused[key] != TrackBits{h1}) continue;
 						if (!c_tiles.contains({other.x, other.y}) || TracksAt(layout, other) != TrackBits{axis, h2}) continue;
 						is_join = true;
 						join_keys.push_back(key);
@@ -1044,7 +1047,8 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 				for (Track bit : unused[key]) {
 					for (DiagDirection edge = DiagDirection::Begin; edge < DiagDirection::End; edge++) {
 						if (!TrackTouches(bit, edge)) continue;
-						/* At a join, h1 meets p's track at the exit edge and inside the tile; that contact is the join. */
+						/* At a join, h1 meets p's track at the exit edge and inside the tile; that contact is the join.
+						 * On the merge tile the joiner's piece is also inside the tile, and that contact is the merge. */
 						if (const auto join = join_info.find(key); join != join_info.end() && join->second.first == bit && join->second.second == edge) continue;
 						const TileIndexDiffC other = AddTiles(to_tile(key), TileIndexDiffCByDiagDir(edge));
 						for (Track other_track : TracksAt(layout, other)) {
@@ -1057,27 +1061,9 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 				}
 			}
 
-			/* 3. A join downstream of the merge in its block, before the ML's next signal. */
-			size_t first_signal = ml.pieces.size();
-			for (size_t i = j + 1; i < ml.pieces.size(); i++) {
-				if (IsSignalledPiece(layout, ml.pieces[i])) {
-					first_signal = i;
-					break;
-				}
-			}
-			bool downstream = false;
-			bool before_signal = false;
-			for (const Key &join_key : join_keys) {
-				const size_t i = piece_index_of(join_key);
-				const auto b = blocks.find(join_key);
-				if (i <= j || b == blocks.end() || b->second != merge_block->second) continue;
-				downstream = true;
-				if (i < first_signal) before_signal = true;
-			}
-			if (!downstream) {
-				AddViolation(out, JunctionRule::Prio, tile, "no join downstream of the ML merge in its block");
-			} else if (!before_signal) {
-				AddViolation(out, JunctionRule::Prio, ml.pieces[first_signal].tile, "the ML signal after the merge is before the downstream join");
+			/* 3. The first (downstream) join is on the merge's switch tile. */
+			if (std::ranges::find(join_keys, tile_key) == join_keys.end()) {
+				AddViolation(out, JunctionRule::Prio, tile, "the first prio join must be on the merge tile");
 			}
 
 			/* 4. Coverage: one join in every block over TL, and one join per block of the row. */
