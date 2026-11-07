@@ -61,8 +61,8 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 | Step | Commit | Notes |
 |---|---|---|
 | A foundations | f6187abe83 | Two correct stops: half-piece turn parity ("LR" impossible, "LFR" works) and an arithmetic slip in the brief (301, not 302). Both resolved by ruling. |
-| B rule checker | — | next |
-| C templates | — | orchestrator |
+| B rule checker | 44a6d792ca, fa8f2c84b8, ea48ec478b | 177 cases (176 + mayfail). One correct stop: my prio-component definition split rung bits from row bits; ruled that a tile's unused bits form one node. |
+| C templates | — | orchestrator, next |
 | D generator | — | |
 | E game side | — | |
 | F manual | — | engineer |
@@ -76,12 +76,13 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
   - Register for Gamescript updates before sending.
   - rcon screenshot replies are empty.
   - Only `screenshot minimap`/`heightmap` work headless. Real views need a GUI listen server.
-- **Next:** a small CLI plus a GameScript that builds and runs trains, so step F's checks can be automated. To be planned.
+- **Rig steps 1–2 done** (cherry-picked onto the branch): the `tools/ottd/ottd` CLI (start/stop/status/rcon/gs/company/build-line/depot/train/orders/go/vehicles/watch/build-layout/sample), the `JunctionTestGS` GameScript, IdleAI for a company, layout JSON (`tools/ottd/layouts/`), per-tick speed sampling with drop detection, and save/resume. Flat ground is verified for seed 3 only.
+- **Next for the rig:** layout JSON export from the test binary (with D), then `junction-check` (all six movements, braking, prio hold, ML blocking, deadlock), alongside E.
+- **The engineer watches rig experiments:** announce them with `build/openttd-spike -n 127.0.0.1`.
 
 ## Next steps
 
-1. Step B brief, then the agent.
-2. Step C (the orchestrator designs the templates; the engineer reviews the ASCII).
+1. Step C (the orchestrator designs the templates; the engineer reviews the ASCII).
 3. Plan the test-rig CLI alongside 1b.
 
 ## Ideas parked
