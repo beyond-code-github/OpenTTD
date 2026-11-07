@@ -135,6 +135,7 @@ RailType JunctionGhost::GetRailType()
 
 /**
  * Draw the junction ghost on one tile, if it has any.
+ * Valid ghosts are drawn opaque in normal colours (D44); invalid ones are remapped to red.
  * @param ti Tile that is being drawn.
  */
 void DrawJunctionGhost(const TileInfo *ti)
@@ -150,7 +151,7 @@ void DrawJunctionGhost(const TileInfo *ti)
 		return;
 	}
 
-	SetViewportGhostPalette(ghost->bad ? PALETTE_TO_STRUCT_RED : PALETTE_TO_TRANSPARENT);
+	SetViewportGhostPalette(ghost->bad ? PALETTE_TO_STRUCT_RED : PAL_NONE);
 	TileInfo copy = *ti;
 	RailType railtype = JunctionGhost::GetRailType();
 	if (ghost->tracks.Any()) DrawRailTrackGhost(&copy, ghost->tracks, railtype);

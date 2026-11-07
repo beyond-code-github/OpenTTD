@@ -14,7 +14,11 @@
 #include "rail_type.h"
 #include "bridge_type.h"
 
-/** Cheapest available bridge type at least as fast as the rail type, for a bridge with 'length' middle tiles. */
+/**
+ * Choose the bridge type for a bridge with 'length' middle tiles.
+ * A speed-limited rail type gets the cheapest available bridge at least as fast as the rail type (D35).
+ * An unlimited rail type gets the cheapest available bridge at least as fast as the fastest buildable train engine that runs on it, or the fastest available bridge if none is (D45).
+ */
 std::optional<BridgeType> ChooseJunctionBridgeType(RailType railtype, uint length);
 
 /** Junction pricing against the real map, commands and prices, for the local company. */

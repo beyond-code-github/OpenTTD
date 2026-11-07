@@ -16,6 +16,8 @@
 #include "bridge.h"
 #include "tunnelbridge.h"
 #include "rail.h"
+#include "engine_base.h"
+#include "engine_func.h"
 #include "economy_func.h"
 #include "company_func.h"
 #include "tile_map.h"
@@ -26,8 +28,11 @@
 
 /**
  * Choose the bridge type for a junction bridge.
- * With a speed-limited rail type, this is the cheapest available bridge at least as fast as the rail type.
- * With an unlimited rail type, it is the fastest available bridge, then the cheapest, then the lowest index.
+ * With a speed-limited rail type, this is the cheapest available bridge at least as fast as the rail type (D35).
+ * With an unlimited rail type, the target speed is that of the fastest buildable train engine that runs on the rail type (D45).
+ * The choice is then the cheapest available bridge at least that fast, then the lowest index.
+ * If no bridge is that fast, it is the fastest available bridge, then the cheapest, then the lowest index.
+ * Without any such engine, it is the cheapest available bridge, then the lowest index.
  * @param railtype The rail type the bridge carries.
  * @param length Number of middle tiles of the bridge.
  * @return The chosen bridge type, or std::nullopt if no available bridge qualifies.
@@ -36,24 +41,45 @@ std::optional<BridgeType> ChooseJunctionBridgeType(RailType railtype, uint lengt
 {
 	const uint16_t rail_speed = GetRailTypeInfo(railtype)->max_speed;
 
+	if (rail_speed == 0) {
+		uint target = 0;
+		for (const Engine *e : Engine::IterateType(VehicleType::Train)) {
+			if (!IsEngineBuildable(e->index, VehicleType::Train, _local_company)) continue;
+
+			const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
+			if (rvi.railveh_type == RailVehicleType::Wagon) continue;
+			if (!IsCompatibleRail(rvi.railtypes, railtype)) continue;
+
+			target = std::max<uint>(target, rvi.max_speed);
+		}
+
+		std::optional<BridgeType> cheapest; // Cheapest bridge fast enough, or cheapest of all without a target.
+		std::optional<BridgeType> fastest; // Fallback: fastest bridge, if none is fast enough.
+		for (BridgeType type = 0; type < MAX_BRIDGES; type++) {
+			if (CheckBridgeAvailability(type, length).Failed()) continue;
+
+			const BridgeSpec *spec = GetBridgeSpec(type);
+			if (target == 0 || spec->speed >= target) {
+				if (!cheapest.has_value() || spec->price < GetBridgeSpec(*cheapest)->price) cheapest = type;
+			}
+			if (!fastest.has_value()) {
+				fastest = type;
+			} else {
+				const BridgeSpec *fastest_spec = GetBridgeSpec(*fastest);
+				if (spec->speed > fastest_spec->speed || (spec->speed == fastest_spec->speed && spec->price < fastest_spec->price)) fastest = type;
+			}
+		}
+		return cheapest.has_value() ? cheapest : fastest;
+	}
+
 	std::optional<BridgeType> best;
 	for (BridgeType type = 0; type < MAX_BRIDGES; type++) {
 		if (CheckBridgeAvailability(type, length).Failed()) continue;
 
 		const BridgeSpec *spec = GetBridgeSpec(type);
-		if (rail_speed != 0 && spec->speed < rail_speed) continue;
+		if (spec->speed < rail_speed) continue;
 
-		if (!best.has_value()) {
-			best = type;
-			continue;
-		}
-
-		const BridgeSpec *best_spec = GetBridgeSpec(*best);
-		if (rail_speed != 0) {
-			if (spec->price < best_spec->price) best = type;
-		} else if (spec->speed > best_spec->speed || (spec->speed == best_spec->speed && spec->price < best_spec->price)) {
-			best = type;
-		}
+		if (!best.has_value() || spec->price < GetBridgeSpec(*best)->price) best = type;
 	}
 	return best;
 }
