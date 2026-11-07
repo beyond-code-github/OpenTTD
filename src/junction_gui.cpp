@@ -194,6 +194,10 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	int build_height = 0; ///< Ground height of the junction being built, in height levels.
 	std::vector<std::optional<BridgeType>> build_bridge_types; ///< Bridge types chosen for the junction being built, per layout bridge.
 	JunctionBuildState last_state = JunctionBuildState::Idle; ///< Sequencer state at the previous tick, to detect a failure.
+	Money placement_cost = 0; ///< Cost of the junction at the cursor.
+	bool placement_affordable = false; ///< Whether the local company can pay for the junction at the cursor.
+	StringID placement_error = INVALID_STRING_ID; ///< First error if the placement is invalid, else INVALID_STRING_ID.
+	bool has_placement = false; ///< The cursor is over the map and the fields above are set.
 
 	BuildJunctionWindow(WindowDesc &desc, Window *parent, RailType railtype) : PickerWindowBase(desc, parent), railtype(railtype)
 	{
@@ -265,6 +269,12 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				case JunctionBuildState::Failed: return GetString(STR_JUNCTION_STATUS_FAILED, seq.GetDone(), seq.GetTotal());
 				default: return GetString(STR_JUNCTION_STATUS_READY);
 			}
+		}
+		if (widget == WID_BJ_COST) {
+			if (!this->has_placement) return GetString(STR_EMPTY);
+			if (this->placement_error != INVALID_STRING_ID) return GetString(STR_JUNCTION_COST_INVALID, this->placement_error);
+			if (!this->placement_affordable) return GetString(STR_JUNCTION_COST_UNAFFORDABLE, this->placement_cost);
+			return GetString(STR_JUNCTION_COST, this->placement_cost);
 		}
 		return this->PickerWindowBase::GetWidgetString(widget, stringid);
 	}
@@ -359,6 +369,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (pt.x == -1) {
 			JunctionGhost::Clear();
 			this->last_tile = INVALID_TILE;
+			this->has_placement = false;
+			this->SetWidgetDirty(WID_BJ_COST);
 			return;
 		}
 
@@ -375,6 +387,12 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 		JunctionGhost::Set(layout, tile, estimate.height, this->railtype, bridge_types, estimate);
 		_thd.make_square_red = !estimate.affordable;
+
+		this->has_placement = true;
+		this->placement_cost = estimate.total;
+		this->placement_affordable = estimate.affordable;
+		this->placement_error = estimate.bad_tiles.empty() ? INVALID_STRING_ID : estimate.first_error;
+		this->SetWidgetDirty(WID_BJ_COST);
 
 		EncodedString text;
 		if (!estimate.bad_tiles.empty()) {
@@ -402,6 +420,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widge
 	NWidget(WWT_PANEL, Colours::DarkGreen),
 		NWidget(NWID_VERTICAL), SetPIP(0, WidgetDimensions::unscaled.vsep_normal, 0), SetPadding(WidgetDimensions::unscaled.picker),
 			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_NAME), SetStringTip(STR_JUNCTION_NAME_TEST), SetFill(1, 0),
+			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_COST), SetFill(1, 0),
 			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_ROTATE), SetStringTip(STR_JUNCTION_ROTATE, STR_JUNCTION_ROTATE_TOOLTIP), SetFill(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_MIRROR), SetStringTip(STR_JUNCTION_MIRROR, STR_JUNCTION_MIRROR_TOOLTIP), SetFill(1, 0),
