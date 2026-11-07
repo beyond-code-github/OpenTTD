@@ -52,6 +52,7 @@ namespace JunctionGhost {
 
 struct TileInfo;
 void DrawJunctionGhost(const TileInfo *ti);
+void DrawJunctionGhostOutline(const TileInfo *ti);
 
 struct Window;
 void ShowBuildJunctionWindow(Window *parent, RailType railtype);

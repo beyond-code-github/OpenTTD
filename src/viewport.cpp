@@ -1342,9 +1342,10 @@ static void ViewportAddLandscape()
 
 				_tile_type_procs[tile_type]->draw_tile_proc(&_cur_ti);
 				if (_cur_ti.tile != INVALID_TILE) {
-					/* Junction ghost first, so the selection outline is drawn over its ground sprites. */
+					/* Junction ghost sprites go under the selection outline, its own outlines over it. */
 					DrawJunctionGhost(&_cur_ti);
 					DrawTileSelection(&_cur_ti);
+					DrawJunctionGhostOutline(&_cur_ti);
 				}
 			}
 		}

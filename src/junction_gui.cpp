@@ -169,41 +169,45 @@ RailType JunctionGhost::GetRailType()
 }
 
 /**
- * Draw the junction ghost on one tile, if it has any.
- * The ghost is always drawn opaque in normal colours (D44, D53); bad tiles get a red outline.
- * While the footprint is pinned, its tiles without a red outline get a white one.
+ * Draw the junction ghost's sprites on one tile, if it has any.
+ * Called before the tile selection, so the selection outline is drawn over the ghost's ground sprites.
+ * The ghost is always drawn opaque in normal colours (D44, D53); sloped tiles get no sprites.
  * @param ti Tile that is being drawn.
  */
 void DrawJunctionGhost(const TileInfo *ti)
 {
 	const JunctionGhostTile *ghost = JunctionGhost::Get(ti->tile);
+	if (ghost == nullptr || ti->tileh != SLOPE_FLAT) return;
+
+	TileInfo copy = *ti;
+	RailType railtype = JunctionGhost::GetRailType();
+	if (ghost->tracks.Any()) DrawRailTrackGhost(&copy, ghost->tracks, railtype);
+	if (ghost->head.has_value()) DrawBridgeHeadGhost(&copy, ghost->head->type, railtype, ghost->head->dir);
+	if (ghost->span.has_value()) DrawBridgeMiddleGhost(ti, ghost->span->type, railtype, ghost->span->axis, ghost->span->bridge_z, ghost->span->piece_north, ghost->span->piece_south);
+	for (const JunctionSignalStep &signal : ghost->signals) {
+		DrawRailSignalGhost(ti->tile, railtype, signal.facing, signal.type, signal.variant);
+	}
+}
+
+/**
+ * Draw the junction ghost's outlines on one tile, after the tile selection so they show over it.
+ * Sloped and bad tiles get a red outline; while a build is pinned, bad tiles are the pieces still
+ * to build and get a blue one (D53, D54), and the rest of the pinned footprint gets a white one.
+ * @param ti Tile that is being drawn.
+ */
+void DrawJunctionGhostOutline(const TileInfo *ti)
+{
+	const JunctionGhostTile *ghost = JunctionGhost::Get(ti->tile);
 	bool pinned = JunctionGhost::IsInPinnedFootprint(ti->tile);
 	if (ghost == nullptr && !pinned) return;
 
-	/* Ghost tiles that are not flat can't be built on; outline them in red. */
 	if (ghost != nullptr && ti->tileh != SLOPE_FLAT) {
 		DrawTileSelectionRect(ti, PALETTE_SEL_TILE_RED);
-		return;
+	} else if (ghost != nullptr && ghost->bad) {
+		DrawTileSelectionRect(ti, _junction_ghost_pinned ? PALETTE_SEL_TILE_BLUE : PALETTE_SEL_TILE_RED);
+	} else if (pinned) {
+		DrawTileSelectionRect(ti, PAL_NONE);
 	}
-
-	bool red = false;
-	if (ghost != nullptr) {
-		TileInfo copy = *ti;
-		RailType railtype = JunctionGhost::GetRailType();
-		if (ghost->tracks.Any()) DrawRailTrackGhost(&copy, ghost->tracks, railtype);
-		if (ghost->head.has_value()) DrawBridgeHeadGhost(&copy, ghost->head->type, railtype, ghost->head->dir);
-		if (ghost->span.has_value()) DrawBridgeMiddleGhost(ti, ghost->span->type, railtype, ghost->span->axis, ghost->span->bridge_z, ghost->span->piece_north, ghost->span->piece_south);
-		for (const JunctionSignalStep &signal : ghost->signals) {
-			DrawRailSignalGhost(ti->tile, railtype, signal.facing, signal.type, signal.variant);
-		}
-		if (ghost->bad) {
-			/* While a build is pinned, bad tiles are the pieces still to build (D53); otherwise they are invalid. */
-			DrawTileSelectionRect(ti, _junction_ghost_pinned ? PALETTE_SEL_TILE_BLUE : PALETTE_SEL_TILE_RED);
-			red = true;
-		}
-	}
-
-	if (pinned && !red) DrawTileSelectionRect(ti, PAL_NONE);
 }
 
 /**
@@ -473,7 +477,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		SetTileSelectSize(layout.size.x, layout.size.y);
 
 		JunctionGhost::Set(layout, tile, estimate.height, this->railtype, bridge_types, estimate);
-		_thd.make_square_red = !estimate.affordable;
+		/* Blocked tiles are outlined individually; the whole outline goes red only when it is just too expensive. */
+		_thd.make_square_red = !estimate.affordable && estimate.bad_tiles.empty();
 
 		this->has_placement = true;
 		this->placement_cost = estimate.total;
