@@ -219,6 +219,11 @@ def cmd_junction_scan(a):
     rng = random.Random(a.seed)
     n = S.map_size()
     tot = dict(generated=0, nolayout=0, ok=0, failed=0, errors=0)
+    adm = connect()
+    try:
+        print("loan max, balance=%d" % gs(adm, {"cmd": "loan_max"})["balance"])
+    finally:
+        adm.close()
     for k in range(a.count):
         x, y, rot = rng.randrange(20, n - 20), rng.randrange(20, n - 20), rng.randrange(4)
         try:

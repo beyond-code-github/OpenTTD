@@ -63,8 +63,12 @@
   - `junction_export` debug console command, plus rig `start --hilly`, `junction-here` and `junction-scan`.
   - The first scan found no layout anywhere: in 1950 no bridge reached 160 km/h, fixed by D94.
   - Hilly seed 3, 12 random spots: 3 generated, **all 3 built with 0 failures**; 9 found no layout.
+- **T6** 543775bde5: nearest fit. `GenerateJunctionNear` tries (0,0), then 8 offsets at distance 2, then 8 at distance 4, from one margin-4 snapshot. The GUI snaps the ghost and says how far it moved; moving the cursor cancels the search.
+  - Hilly seed 1, 12 spots: without it, 3 generated; **with it, 5 generated (offsets 2,0 and −2,2), all 5 built with 0 failures.**
+  - Cost: a spot with no fit costs about 1.5 s per try in Release, so up to about 25 s for all 17 tries. The search is cancellable, but a cheap early reject of hopeless planes would help (follow-on).
+  - `junction-scan` now maxes the loan first (after three builds the first run ran out of cash).
 - **Next levers for the no-layout rate** (on hills the one-plane rule is strict):
-  - (a) search a few tiles around the cursor for a spot that fits (cheap, and helps the user);
+  - (a) done in T6;
   - (b) sloped track on the legs (inclined foundations);
   - (c) terraforming the plane (`CmdLevelLand` cost);
   - (d) a water bridge for the ML.

@@ -98,15 +98,15 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 - D78 T1–T5: terrain router and generator, map snapshot, plane rule, hover worker, hilly rig scan (3/3 generated layouts built cleanly).
 - D94 slow bridges.
 - R1 turn penalty (dbb5277ae5).
-- Suite: 230 cases, all passing.
+- D78 T6 nearest fit (543775bde5): hilly seed 1 goes from 3 to 5 of 12 generated, all built cleanly.
+- Suite: 234 cases, all passing.
 
 **Next, in order:**
-1. **D78 lever (a): search near the cursor.** When the hover anchor gives no layout, the worker tries nearby anchors (a ring at distance 2–3) from one larger snapshot, shifting the terrain origin by the inverse-oriented offset, and the ghost snaps to the first fit. Then re-run `junction-scan` to measure the no-layout rate.
-2. **D3d robustness round 2:** ml_gap 1 with branch_gap 0 at TL3/TL6 gives no layout. Diagnose with `[.gen]` (env `JUNCTION_GEN_TL/G/B`, `JUNCTION_GEN_SKIP`; temporary failing-step prints in `BuildJunctionCandidate`).
-3. **D78 levers (b)–(d):** sloped legs, terraforming, ML water bridges. Plan each before starting.
-4. **Joiner** (`PLAN-joiner.md`): blocked on the engineer's three answers.
-5. **1c physics and traffic** (PLAN-1c): headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
-6. **Follow-ons:** multi-lane (D72), option C (widen the gap so the branch bridges over the ML), research the coop prio-over-bridge pattern, the D91 swap (parked until clarified).
+1. **D3d robustness round 2:** ml_gap 1 with branch_gap 0 at TL3/TL6 gives no layout. Diagnose with `[.gen]` (env `JUNCTION_GEN_TL/G/B`, `JUNCTION_GEN_SKIP`; temporary failing-step prints in `BuildJunctionCandidate`).
+2. **D78 levers (b)–(d):** sloped legs, terraforming, ML water bridges. Plan each before starting.
+3. **Joiner** (`PLAN-joiner.md`): blocked on the engineer's three answers.
+4. **1c physics and traffic** (PLAN-1c): headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
+5. **Follow-ons:** a fast reject for hopeless terrain planes (a no-fit spot costs about 25 s in Release with nearest fit), multi-lane (D72), option C (widen the gap so the branch bridges over the ML), research the coop prio-over-bridge pattern, the D91 swap (parked until clarified).
 
 **For the engineer when back:**
 - **Try it in game:** `build-rel/openttd`, rail toolbar → Junction; the checklist is in `CHECKS-1b.md`.
