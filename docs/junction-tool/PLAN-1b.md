@@ -66,11 +66,6 @@ Decisions this rests on: D16–D30, D33, D35–D38. Rules: `RULES-coop.md`. Rese
 8. **ASCII renderer** and layout review files.
 9. **Manual checks in game:** build the generated T and run trains through every movement. Check speeds through the curves, that the prio holds joining trains, and that nothing deadlocks.
 
-## Open items (settle before the full plan)
+## Open items
 
-1. **Leg length default.** D21 makes it a parameter. I'd propose exits of at least 1 × TL after the last switch (R9), signalled at SD.
-2. **How far the prio extends past the merge (R26).** The sources don't give a number. A proposed starting point is one signal block (SD tiles), to be reviewed against the physics in 1c.
-3. **Separate notations** for the mainline and the branch, or one shared? The proposal is separate, since L_R sidelines often join wider mainlines in coop.
-4. **Is a diagonal connection allowed to pass under the mainline bridge?** (The game allows any plain track under a bridge.) The proposal is yes, since it shortens the junction.
-5. **Search caps:** the maximum footprint and the maximum time per generation. The proposal is 64×64 tiles and 200 ms, giving a clear "no layout found" message beyond that.
-6. **Whether 1a's hover pricing still holds** once a generated layout is larger (hundreds of steps). The test-run cost per hover may need caching per origin.
+All six settled (2026-11-07): D58 margin, D59 prio past merge, D60 separate notations, D61 diagonal under bridge, D62 search limits, D63 hover cache.
