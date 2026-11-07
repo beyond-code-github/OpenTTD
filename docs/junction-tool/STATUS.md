@@ -68,7 +68,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 | D2 signal pass | de7bcb3f47 | `PlaceJunctionSignals`, phases 0–4. The doubled reference's bare routes come out clean. Two rulings: reserve the lane-merge-block prio join before the required signals; signal a lane-only one-tile block (three signals in a row on lane B; to show the engineer, since more joiner slack would avoid it). 205 cases. |
 | D3a candidate | e77b76daaf | `BuildJunctionCandidate`. After four agent stops, I settled the skeleton by experiment (D90) and finished the step myself. 4/128 candidates clean for the test spec; most others have 1–4 violations. Hidden `[.gen]` sweep test in `junction_design.cpp` prints each candidate's count and the best ASCII. 208 cases. |
 | D3b generator | 47938aacb9 | `GenerateJunction`: sweep, early stop, score (cost, open rectangle, area). The outer test is green with no `[!mayfail]`. 210 cases, suite 23 s. About 5 s per call in Debug (D62's 200 ms needs Release measurement plus speedups). `[.gensweep]`: 16/54 specs clean. ml_gap 0 never; TL6 mostly fails; TL4 g1 only with b0/b1. Rig exports: `tools/ottd/layouts/generated-LR-TL4*.json`. |
-| E game side | — | |
+| E game side | 3f0c847dbc | The window has notation editboxes, a TL stepper, and generates (synchronously, D92), with the left-hand mirror and four error strings. Client settings `gui.junction_*` (NotInSave). 213 cases. Manual checks are listed in `CHECKS-1b.md` for the engineer. |
 | F manual | — | engineer |
 
 ## Test rig (CLI-first, RECON-mcp.md)
@@ -99,14 +99,14 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 2a. **D3d robustness** (first round done, e0ecc963e1: lane-B start margin, joiner clearance of TL after the lane merge, straight track off far bridge heads, fill gap count. Every built candidate in the TL3/4/6 × g1/3 probes is now clean; the remaining failures are unbuildable candidates). Sweep after the fixes: 32/54 specs clean (was 16). All ml_gap 0 cases now return `NeedsMlGap` (c.f. option C). Remaining NoLayout: ml_gap 1 with branch_gap 0 at TL3 and TL6. Still to do: make the failing `[.gensweep]` specs clean or give a named error. First get a per-spec histogram of the failing step and violations (the `[.gen]` style). Likely levers: ml_gap 0 (no gap row; the E→S fence and lane geometry assume one), TL6 (prio coverage and bays need more room, so the height or slack range scales with TL), and wide branch gaps.
 2b. **D3c: early branch swap (D91), parked.** As I read it (the outbound line crosses under the inbound on the leg), it adds crossings: N→W×S and W→S×N plus the crossover, against E→S×N→E before. The crossing zone also widened to span 11, so no clean candidate. The code is saved as `docs/junction-tool/d3c-branch-swap.patch`. Waiting for the engineer to say what "L & R" means (the branch pair? the ML pair? the lanes at the hub?).
 3. **Rig: a generated layout in game.** The design harness, or a small test-binary mode, exports `GenerateJunction` output as rig JSON. Give the IdleAI company more money. Build it, and announce it to the engineer (rig-watch memory), but do not wait for them to join.
-4. **E, game side** (PLAN-1b §7): the Junction window calls the generator.
+4. **E, game side** (done, 3f0c847dbc; PLAN-1b §7): the Junction window calls the generator.
    - notation and TL in the dialogue, static settings in Settings (D64), the signal-type setting (D68);
    - the left-hand mirror (D66);
    - the error message;
    - generation off the UI thread only if it is too slow;
    - no savegame changes (D69).
 5. **F:** the manual checks list for the engineer, and the rig command `junction-check`: trains on all six movements, braking samples, prio hold, queues and deadlock.
-6. **D78, place-time terrain:**
+6. **D78, place-time terrain** (plan `PLAN-D78.md`, D93; T1 router+terrain running in worktree `/home/pete/OpenTTD-terrain`):
    - a map-backed seam for the router: buildable, slope, foundation, clearing cost, water, existing track;
    - terrain rules in the checker (bridge heads and slopes);
    - generation at the hovered spot, within the ghost or hover cache (D63).
