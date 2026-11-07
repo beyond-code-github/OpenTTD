@@ -16,6 +16,7 @@
 #include "../junction_route.h"
 #include "../junction_router.h"
 #include "../junction_rules.h"
+#include "../junction_terrain.h"
 #include "../track_func.h"
 
 #include "../safeguards.h"
@@ -288,4 +289,131 @@ TEST_CASE("FindJunctionRoute: S-bend grammar", "[junction][router]")
 		if (i + 1 < turns.size()) CHECK(turns[i + 1].gap >= static_cast<int>(request.s_bend_window));
 	}
 	CHECK(tight == 1);
+}
+
+/** A flat Buildable grid at height z covering the bounds, with foundation_cost 250. */
+static JunctionTerrain FlatTerrain(TileIndexDiffC min, TileIndexDiffC max, int8_t z)
+{
+	JunctionTerrain terrain;
+	terrain.origin = min;
+	terrain.width = max.x - min.x + 1;
+	terrain.height = max.y - min.y + 1;
+	JunctionTerrainTile tile;
+	tile.z_min = tile.z_max = z;
+	terrain.tiles.assign(static_cast<size_t>(terrain.width) * terrain.height, tile);
+	terrain.foundation_cost = 250;
+	return terrain;
+}
+
+static JunctionTerrainTile &TerrainTileAt(JunctionTerrain &terrain, int x, int y)
+{
+	return terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)];
+}
+
+/** Whether any non-bridge piece of the route lies in the given inclusive tile rectangle. */
+static bool RouteTouches(const JunctionRoute &route, int x0, int y0, int x1, int y1)
+{
+	for (const JunctionPiece &piece : RasterizeJunctionRoute(route).pieces) {
+		if (piece.on_bridge) continue;
+		if (piece.tile.x >= x0 && piece.tile.x <= x1 && piece.tile.y >= y0 && piece.tile.y <= y1) return true;
+	}
+	return false;
+}
+
+TEST_CASE("FindJunctionRoute: a hill at the plane's level is detoured", "[junction][router][terrain]")
+{
+	JunctionTerrain terrain = FlatTerrain({0, 0}, {12, 12}, 0);
+	for (int x = 4; x <= 6; x++) {
+		for (int y = 5; y <= 7; y++) TerrainTileAt(terrain, x, y).z_min = TerrainTileAt(terrain, x, y).z_max = 2;
+	}
+	JunctionRouteRequest request = MakeRequest({0, 0}, {12, 12});
+	request.starts = {{{0, 6}, Trackdir::X_SW}};
+	request.goals = {{{10, 6}, Trackdir::X_SW}};
+	request.terrain = &terrain;
+	request.plane = 0;
+	const auto route = FindJunctionRoute({}, request);
+	REQUIRE(route.has_value());
+	INFO(route->moves);
+	CHECK_FALSE(HasBridge(route->moves));
+	CHECK_FALSE(RouteTouches(*route, 4, 5, 6, 7));
+	CHECK(route->moves != "FFFFFFFFFF");
+}
+
+TEST_CASE("FindJunctionRoute: a leveled foundation is paid for", "[junction][router][terrain]")
+{
+	JunctionTerrain terrain = FlatTerrain({0, 0}, {12, 12}, 1);
+	JunctionTerrainTile &slope = TerrainTileAt(terrain, 5, 6);
+	slope.z_min = 0;
+	slope.z_max = 1;
+	JunctionRouteRequest request = MakeRequest({0, 6}, {12, 6});
+	request.starts = {{{0, 6}, Trackdir::X_SW}};
+	request.goals = {{{10, 6}, Trackdir::X_SW}};
+	request.terrain = &terrain;
+	request.plane = 1;
+
+	/* A single row leaves no detour: the leveled tile is usable at the plane. */
+	auto route = FindJunctionRoute({}, request);
+	REQUIRE(route.has_value());
+	INFO(route->moves);
+	CHECK(route->moves == "FFFFFFFFFF");
+	CHECK(RouteTouches(*route, 5, 6, 5, 6));
+
+	/* With room to detour, 2 extra pieces (200) are cheaper than the 250 foundation, so the route avoids the tile: the foundation is charged. */
+	request.min = {0, 0};
+	request.max = {12, 12};
+	route = FindJunctionRoute({}, request);
+	REQUIRE(route.has_value());
+	INFO(route->moves);
+	CHECK_FALSE(RouteTouches(*route, 5, 6, 5, 6));
+
+	terrain.foundation_cost = 1000000000;
+	route = FindJunctionRoute({}, request);
+	REQUIRE(route.has_value());
+	CHECK_FALSE(RouteTouches(*route, 5, 6, 5, 6));
+
+	terrain.build_on_slopes = false;
+	terrain.foundation_cost = 250;
+	route = FindJunctionRoute({}, request);
+	REQUIRE(route.has_value());
+	CHECK_FALSE(RouteTouches(*route, 5, 6, 5, 6));
+}
+
+TEST_CASE("FindJunctionRoute: houses block and are not spanned", "[junction][router][terrain]")
+{
+	JunctionTerrain terrain = FlatTerrain({0, 0}, {12, 12}, 0);
+	for (int y = 0; y <= 12; y++) TerrainTileAt(terrain, 5, y).cls = JunctionTileClass::Blocked;
+	JunctionRouteRequest request = MakeRequest({0, 0}, {12, 12});
+	request.starts = {{{0, 6}, Trackdir::X_SW}};
+	request.goals = {{{10, 6}, Trackdir::X_SW}};
+	request.terrain = &terrain;
+	request.plane = 0;
+	CHECK_FALSE(FindJunctionRoute({}, request).has_value());
+
+	/* A gap in the column gives a detour that avoids every Blocked tile. */
+	TerrainTileAt(terrain, 5, 4).cls = JunctionTileClass::Buildable;
+	const auto route = FindJunctionRoute({}, request);
+	REQUIRE(route.has_value());
+	INFO(route->moves);
+	CHECK_FALSE(HasBridge(route->moves));
+	CHECK_FALSE(RouteTouches(*route, 5, 0, 5, 3));
+	CHECK_FALSE(RouteTouches(*route, 5, 5, 5, 12));
+}
+
+TEST_CASE("FindJunctionRoute: water is crossed only by a span", "[junction][router][terrain]")
+{
+	JunctionTerrain terrain = FlatTerrain({0, 0}, {12, 12}, 0);
+	for (int y = 0; y <= 12; y++) TerrainTileAt(terrain, 5, y).cls = JunctionTileClass::Water;
+	JunctionRouteRequest request = MakeRequest({0, 0}, {12, 12});
+	request.starts = {{{0, 6}, Trackdir::X_SW}};
+	request.goals = {{{10, 6}, Trackdir::X_SW}};
+	request.terrain = &terrain;
+	request.plane = 0;
+	auto route = FindJunctionRoute({}, request);
+	REQUIRE(route.has_value());
+	INFO(route->moves);
+	CHECK(HasBridge(route->moves));
+	CHECK_FALSE(RouteTouches(*route, 5, 0, 5, 12));
+
+	request.bridge_span_ok = [](uint) { return false; };
+	CHECK_FALSE(FindJunctionRoute({}, request).has_value());
 }

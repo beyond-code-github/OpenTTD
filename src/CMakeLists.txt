@@ -266,6 +266,7 @@ add_files(
     junction_route.h
     junction_router.cpp
     junction_router.h
+    junction_terrain.h
     junction_rules.cpp
     junction_rules.h
     junction_rules_internal.h

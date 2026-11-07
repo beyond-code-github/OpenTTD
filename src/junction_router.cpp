@@ -89,6 +89,7 @@ private:
 	bool IsGoal(int x, int y, Trackdir td) const { return goals.contains({x, y, static_cast<int>(td)}); }
 	bool BetweenBridgeHeads(int x, int y) const;
 	bool TileFree(int x, int y) const;
+	Money TerrainCost(int x, int y) const;
 	bool ConflictsAt(int x, int y, Track t) const;
 	bool TurnAllowed(const RouterNode &from, uint8_t hand, bool &set_pair) const;
 	bool MakePiece(const RouterNode &from, char move, RouterNode &to, bool &conflict) const;
@@ -111,6 +112,13 @@ bool Router::TileFree(int x, int y) const
 {
 	const auto it = tracks.find({x, y});
 	return it == tracks.end() || it->second.None();
+}
+
+/** The terrain cost of a piece or bridge head on a tile; nothing when the layout already holds track there. */
+Money Router::TerrainCost(int x, int y) const
+{
+	if (request.terrain == nullptr || !TileFree(x, y)) return 0;
+	return request.terrain->CostAt(x, y, request.plane);
 }
 
 /** Whether a new track t on a tile clashes with the tracks the layout holds there. */
@@ -178,6 +186,7 @@ bool Router::MakePiece(const RouterNode &from, char move, RouterNode &to, bool &
 	to.on_bridge = false;
 
 	if (!InBounds(to.x, to.y) || heads.contains({to.x, to.y})) return false;
+	if (request.terrain != nullptr && !request.terrain->UsableAt(to.x, to.y, request.plane)) return false;
 	if (IsGoal(to.x, to.y, next) || crossable.contains({to.x, to.y})) return true;
 	if (from.first) {
 		const auto it = tracks.find({to.x, to.y});
@@ -203,7 +212,7 @@ void Router::Successors(const RouterNode &from, std::vector<std::pair<RouterNode
 		bool conflict;
 		if (!MakePiece(from, move, to, conflict)) continue;
 		if (!conflict) {
-			Money cost = request.prices.rail_piece;
+			Money cost = request.prices.rail_piece + TerrainCost(to.x, to.y);
 			if (crossable.contains({to.x, to.y})) cost += request.crossable_cost;
 			out.push_back({to, {cost, std::string(1, move)}});
 			continue;
@@ -215,7 +224,7 @@ void Router::Successors(const RouterNode &from, std::vector<std::pair<RouterNode
 			bool conflict2;
 			if (!MakePiece(to, move2, to2, conflict2)) continue;
 			if (!IsGoal(to2.x, to2.y, to2.trackdir)) continue;
-			out.push_back({to2, {request.prices.rail_piece * 2, std::string{move, move2}}});
+			out.push_back({to2, {request.prices.rail_piece * 2 + TerrainCost(to.x, to.y) + TerrainCost(to2.x, to2.y), std::string{move, move2}}});
 		}
 	}
 
@@ -230,9 +239,9 @@ void Router::Successors(const RouterNode &from, std::vector<std::pair<RouterNode
 			if (!InBounds(x, y) || heads.contains({x, y})) {
 				ok = false;
 			} else if (k == 1 || k == n + 2) {
-				ok = TileFree(x, y) && !crossable.contains({x, y});
+				ok = TileFree(x, y) && !crossable.contains({x, y}) && (request.terrain == nullptr || request.terrain->UsableAt(x, y, request.plane));
 			} else {
-				ok = !BetweenBridgeHeads(x, y);
+				ok = !BetweenBridgeHeads(x, y) && (request.terrain == nullptr || request.terrain->SpanOk(x, y, request.plane));
 			}
 		}
 		if (!ok) continue;
@@ -242,7 +251,9 @@ void Router::Successors(const RouterNode &from, std::vector<std::pair<RouterNode
 		to.u = std::min<uint>(from.u + 2 * (n + 2), cap);
 		to.first = false;
 		to.on_bridge = true;
-		out.push_back({to, {request.prices.bridge(n), fmt::format("B{}", n)}});
+		Money bridge_cost = request.prices.bridge(n);
+		bridge_cost += TerrainCost(from.x + step.x, from.y + step.y) + TerrainCost(to.x, to.y);
+		out.push_back({to, {bridge_cost, fmt::format("B{}", n)}});
 	}
 }
 
