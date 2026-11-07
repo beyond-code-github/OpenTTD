@@ -11,6 +11,9 @@
 
 #include "junction_layout.h"
 #include "map_func.h"
+#include "table/strings.h"
+
+#include <algorithm>
 
 #include "safeguards.h"
 
@@ -68,13 +71,104 @@ std::vector<JunctionBuildStep> MakeJunctionBuildSteps(const JunctionLayout &layo
 }
 
 /**
+ * Mark a tile as bad, unless it is already marked.
+ * @param estimate The estimate to add the tile to.
+ * @param tile The tile to mark.
+ */
+static void MarkBad(JunctionEstimate &estimate, TileIndex tile)
+{
+	if (std::ranges::find(estimate.bad_tiles, tile) == estimate.bad_tiles.end()) estimate.bad_tiles.push_back(tile);
+}
+
+/**
  * Estimate the price and validity of placing a layout.
  * @param layout The layout to place.
  * @param origin The tile for the north corner of the layout.
  * @param pricing Source of tile and price information.
  * @return The estimate.
  */
-JunctionEstimate EstimateJunction([[maybe_unused]] const JunctionLayout &layout, [[maybe_unused]] TileIndex origin, [[maybe_unused]] const JunctionPricing &pricing)
+JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing)
 {
-	return {};
+	JunctionEstimate estimate;
+
+	/* Collect the occupied tiles: track tiles, then each bridge's heads and span. */
+	std::vector<TileIndex> occupied;
+	for (const JunctionTrack &jt : layout.tracks) {
+		occupied.push_back(AddTileIndexDiffCWrap(origin, jt.offset));
+	}
+	for (const JunctionBridge &bridge : layout.bridges) {
+		occupied.push_back(AddTileIndexDiffCWrap(origin, bridge.start));
+		occupied.push_back(AddTileIndexDiffCWrap(origin, bridge.end));
+		if (bridge.start.x == bridge.end.x) {
+			for (int16_t y = std::min(bridge.start.y, bridge.end.y) + 1; y < std::max(bridge.start.y, bridge.end.y); y++) {
+				occupied.push_back(AddTileIndexDiffCWrap(origin, {bridge.start.x, y}));
+			}
+		} else {
+			for (int16_t x = std::min(bridge.start.x, bridge.end.x) + 1; x < std::max(bridge.start.x, bridge.end.x); x++) {
+				occupied.push_back(AddTileIndexDiffCWrap(origin, {x, bridge.start.y}));
+			}
+		}
+	}
+
+	/* Off-map tiles are bad; the others must be flat and at the height of the first flat one. */
+	std::optional<int> reference_height;
+	for (TileIndex tile : occupied) {
+		if (tile == INVALID_TILE) continue;
+		reference_height = pricing.GetFlatHeight(tile);
+		if (reference_height.has_value()) break;
+	}
+	for (TileIndex tile : occupied) {
+		if (tile == INVALID_TILE) {
+			MarkBad(estimate, tile);
+			if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
+			continue;
+		}
+		std::optional<int> height = pricing.GetFlatHeight(tile);
+		if (!height.has_value() || height != reference_height) {
+			MarkBad(estimate, tile);
+			if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_FLAT_LAND_REQUIRED;
+		}
+	}
+
+	/* Price every build step that is entirely on the map. */
+	for (const JunctionBuildStep &step : MakeJunctionBuildSteps(layout, origin)) {
+		if (const JunctionRailStep *rail = std::get_if<JunctionRailStep>(&step); rail != nullptr) {
+			if (rail->tile == INVALID_TILE) {
+				MarkBad(estimate, rail->tile);
+				if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
+				continue;
+			}
+			CommandCost result = pricing.TestRail(rail->tile, rail->track);
+			if (result.Succeeded()) {
+				estimate.total += result.GetCost();
+			} else {
+				MarkBad(estimate, rail->tile);
+				if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = result.GetErrorMessage();
+			}
+		} else if (const JunctionBridgeStep *bridge = std::get_if<JunctionBridgeStep>(&step); bridge != nullptr) {
+			if (bridge->start == INVALID_TILE || bridge->end == INVALID_TILE) {
+				MarkBad(estimate, INVALID_TILE);
+				if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
+				continue;
+			}
+			CommandCost result = pricing.PriceBridge(bridge->start, bridge->end);
+			if (result.Succeeded()) {
+				estimate.total += result.GetCost();
+			} else {
+				MarkBad(estimate, bridge->start);
+				MarkBad(estimate, bridge->end);
+				if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = result.GetErrorMessage();
+			}
+		} else if (const JunctionSignalStep *signal = std::get_if<JunctionSignalStep>(&step); signal != nullptr) {
+			if (signal->tile == INVALID_TILE) {
+				MarkBad(estimate, signal->tile);
+				if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
+				continue;
+			}
+			estimate.total += pricing.SignalCost();
+		}
+	}
+
+	estimate.affordable = estimate.bad_tiles.empty() && estimate.total <= pricing.AvailableMoney();
+	return estimate;
 }

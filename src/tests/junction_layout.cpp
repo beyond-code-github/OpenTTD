@@ -15,6 +15,7 @@
 #include "../map_func.h"
 #include "../table/strings.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
 
@@ -173,4 +174,85 @@ TEST_CASE("JunctionLayout: steps off the map get INVALID_TILE")
 	CHECK(std::get<JunctionRailStep>(steps[4]).tile == INVALID_TILE);
 	REQUIRE(std::holds_alternative<JunctionBridgeStep>(steps[9]));
 	CHECK(std::get<JunctionBridgeStep>(steps[9]).start == INVALID_TILE);
+}
+
+TEST_CASE("JunctionLayout outer: one non-flat tile is bad")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	pricing.not_flat.insert(TileXY(12, 12));
+	JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+
+	CHECK(estimate.bad_tiles == std::vector<TileIndex>{TileXY(12, 12)});
+	CHECK(!estimate.affordable);
+	CHECK(estimate.first_error == STR_ERROR_FLAT_LAND_REQUIRED);
+	CHECK(estimate.total == 2000);
+}
+
+TEST_CASE("JunctionLayout outer: tile at another height is bad")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	pricing.heights[TileXY(16, 12)] = 2;
+	JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+
+	CHECK(estimate.bad_tiles == std::vector<TileIndex>{TileXY(16, 12)});
+	CHECK(!estimate.affordable);
+	CHECK(estimate.first_error == STR_ERROR_FLAT_LAND_REQUIRED);
+}
+
+TEST_CASE("JunctionLayout outer: a failed rail step marks its tile and the rest are still priced")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	pricing.rail_fails[TileXY(11, 12)] = STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK;
+	JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+
+	CHECK(estimate.bad_tiles == std::vector<TileIndex>{TileXY(11, 12)});
+	CHECK(estimate.first_error == STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK);
+	CHECK(estimate.total == 1900);
+	CHECK(!estimate.affordable);
+}
+
+TEST_CASE("JunctionLayout outer: a failed bridge marks both heads")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	pricing.bridge_fails = true;
+	JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+
+	CHECK(estimate.bad_tiles == std::vector<TileIndex>{TileXY(14, 10), TileXY(14, 14)});
+	CHECK(estimate.total == 1000);
+	CHECK(!estimate.affordable);
+}
+
+TEST_CASE("JunctionLayout outer: affordability is total against money")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	pricing.money = 1999;
+	JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+	CHECK(!estimate.affordable);
+	CHECK(estimate.bad_tiles.empty());
+
+	pricing.money = 2000;
+	estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(10, 10), pricing);
+	CHECK(estimate.affordable);
+}
+
+TEST_CASE("JunctionLayout outer: layout partly off the map")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	JunctionEstimate estimate = EstimateJunction(MakeTestJunctionLayout(), TileXY(60, 60), pricing);
+
+	CHECK(std::count(estimate.bad_tiles.begin(), estimate.bad_tiles.end(), INVALID_TILE) == 1);
+	CHECK(estimate.first_error == STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP);
+	CHECK(!estimate.affordable);
 }
