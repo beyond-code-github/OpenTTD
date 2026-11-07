@@ -10,6 +10,7 @@ add_test_files(
     junction_gui.cpp
     junction_layout.cpp
     junction_route.cpp
+    junction_rules.cpp
     landscape_partial_pixel_z.cpp
     math_func.cpp
     mock_environment.h
