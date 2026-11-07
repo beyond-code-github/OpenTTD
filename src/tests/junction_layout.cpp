@@ -13,6 +13,7 @@
 
 #include "../junction_layout.h"
 #include "../map_func.h"
+#include "../track_func.h"
 #include "../table/strings.h"
 
 #include <algorithm>
@@ -255,4 +256,99 @@ TEST_CASE("JunctionLayout outer: layout partly off the map")
 	CHECK(std::count(estimate.bad_tiles.begin(), estimate.bad_tiles.end(), INVALID_TILE) == 1);
 	CHECK(estimate.first_error == STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP);
 	CHECK(!estimate.affordable);
+}
+
+/**
+ * Compare two layouts field by field.
+ * @param a The first layout.
+ * @param b The second layout.
+ * @return True if the size and every element are equal.
+ */
+static bool SameLayout(const JunctionLayout &a, const JunctionLayout &b)
+{
+	if (a.size.x != b.size.x || a.size.y != b.size.y) return false;
+	if (a.tracks.size() != b.tracks.size() || a.signals.size() != b.signals.size() || a.bridges.size() != b.bridges.size()) return false;
+	for (size_t i = 0; i < a.tracks.size(); i++) {
+		if (a.tracks[i].offset.x != b.tracks[i].offset.x || a.tracks[i].offset.y != b.tracks[i].offset.y || a.tracks[i].tracks != b.tracks[i].tracks) return false;
+	}
+	for (size_t i = 0; i < a.signals.size(); i++) {
+		const JunctionSignal &sa = a.signals[i];
+		const JunctionSignal &sb = b.signals[i];
+		if (sa.offset.x != sb.offset.x || sa.offset.y != sb.offset.y || sa.facing != sb.facing || sa.type != sb.type || sa.variant != sb.variant) return false;
+	}
+	for (size_t i = 0; i < a.bridges.size(); i++) {
+		const JunctionBridge &ba = a.bridges[i];
+		const JunctionBridge &bb = b.bridges[i];
+		if (ba.start.x != bb.start.x || ba.start.y != bb.start.y || ba.end.x != bb.end.x || ba.end.y != bb.end.y) return false;
+	}
+	return true;
+}
+
+TEST_CASE("JunctionLayout: every track transforms to a valid track")
+{
+	for (Track track : {Track::X, Track::Y, Track::Upper, Track::Lower, Track::Left, Track::Right}) {
+		CHECK(IsValidTrack(TransformTrack(track, JunctionTransform::Rotate)));
+		CHECK(IsValidTrack(TransformTrack(track, JunctionTransform::Mirror)));
+	}
+}
+
+TEST_CASE("JunctionLayout: known track and trackdir cases")
+{
+	CHECK(TransformTrack(Track::X, JunctionTransform::Rotate) == Track::Y);
+	CHECK(TransformTrackdir(Trackdir::X_NE, JunctionTransform::Rotate) == Trackdir::Y_SE);
+	CHECK(TransformTrack(Track::Upper, JunctionTransform::Mirror) == Track::Left);
+	CHECK(TransformTrackdir(Trackdir::X_NE, JunctionTransform::Mirror) == Trackdir::X_SW);
+	CHECK(TransformTrack(Track::Y, JunctionTransform::Mirror) == Track::Y);
+}
+
+TEST_CASE("JunctionLayout outer: rotating four times is the identity")
+{
+	JunctionLayout original = MakeTestJunctionLayout();
+	JunctionLayout layout = original;
+	for (int i = 0; i < 4; i++) layout = TransformJunctionLayout(layout, JunctionTransform::Rotate);
+
+	CHECK(SameLayout(layout, original));
+}
+
+TEST_CASE("JunctionLayout outer: mirroring twice is the identity")
+{
+	JunctionLayout original = MakeTestJunctionLayout();
+	JunctionLayout layout = TransformJunctionLayout(TransformJunctionLayout(original, JunctionTransform::Mirror), JunctionTransform::Mirror);
+
+	CHECK(SameLayout(layout, original));
+}
+
+TEST_CASE("JunctionLayout outer: rotation swaps the size")
+{
+	JunctionLayout layout = TransformJunctionLayout(MakeTestJunctionLayout(), JunctionTransform::Rotate);
+
+	CHECK(layout.size.x == 6);
+	CHECK(layout.size.y == 8);
+}
+
+TEST_CASE("JunctionLayout outer: a rotated junction still prices exactly")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	JunctionEstimate estimate = EstimateJunction(TransformJunctionLayout(MakeTestJunctionLayout(), JunctionTransform::Rotate), TileXY(10, 10), pricing);
+
+	CHECK(estimate.total == 2000);
+	CHECK(estimate.bad_tiles.empty());
+	CHECK(estimate.affordable);
+}
+
+TEST_CASE("JunctionLayout outer: bridge start stays the northern head")
+{
+	JunctionLayout layout;
+	layout.size = {8, 1};
+	layout.bridges.push_back({{1, 0}, {5, 0}});
+
+	layout = TransformJunctionLayout(layout, JunctionTransform::Mirror);
+
+	REQUIRE(layout.bridges.size() == 1);
+	CHECK(layout.bridges[0].start.x == 2);
+	CHECK(layout.bridges[0].start.y == 0);
+	CHECK(layout.bridges[0].end.x == 6);
+	CHECK(layout.bridges[0].end.y == 0);
 }

@@ -11,11 +11,86 @@
 
 #include "junction_layout.h"
 #include "map_func.h"
+#include "direction_func.h"
+#include "track_func.h"
 #include "table/strings.h"
 
 #include <algorithm>
+#include <array>
 
 #include "safeguards.h"
+
+/**
+ * Transform a diagonal direction by a rotation or a mirror.
+ * @param dir The direction to transform.
+ * @param transform The transformation to apply.
+ * @return The transformed direction.
+ */
+static DiagDirection TransformDiagDirection(DiagDirection dir, JunctionTransform transform)
+{
+	switch (transform) {
+		case JunctionTransform::Rotate: return ChangeDiagDir(dir, DiagDirDiff::Right90);
+		case JunctionTransform::Mirror:
+			if (dir == DiagDirection::NE) return DiagDirection::SW;
+			if (dir == DiagDirection::SW) return DiagDirection::NE;
+			return dir;
+		default: NOT_REACHED();
+	}
+}
+
+/**
+ * Transform a track by a rotation or a mirror.
+ * @param track The track to transform.
+ * @param transform The transformation to apply.
+ * @return The transformed track.
+ */
+Track TransformTrack(Track track, JunctionTransform transform)
+{
+	static const std::array<std::array<DiagDirection, 2>, 6> edges = {{
+		{DiagDirection::NE, DiagDirection::SW}, // Track::X
+		{DiagDirection::NW, DiagDirection::SE}, // Track::Y
+		{DiagDirection::NE, DiagDirection::NW}, // Track::Upper
+		{DiagDirection::SE, DiagDirection::SW}, // Track::Lower
+		{DiagDirection::SW, DiagDirection::NW}, // Track::Left
+		{DiagDirection::NE, DiagDirection::SE}, // Track::Right
+	}};
+
+	const auto &old_edges = edges[to_underlying(track)];
+	DiagDirection new_first = TransformDiagDirection(old_edges[0], transform);
+	DiagDirection new_second = TransformDiagDirection(old_edges[1], transform);
+	for (Track t : {Track::X, Track::Y, Track::Upper, Track::Lower, Track::Left, Track::Right}) {
+		const auto &candidate = edges[to_underlying(t)];
+		if ((candidate[0] == new_first && candidate[1] == new_second) || (candidate[0] == new_second && candidate[1] == new_first)) return t;
+	}
+	NOT_REACHED();
+}
+
+/**
+ * Transform a trackdir by a rotation or a mirror.
+ * @param trackdir The trackdir to transform.
+ * @param transform The transformation to apply.
+ * @return The transformed trackdir.
+ */
+Trackdir TransformTrackdir(Trackdir trackdir, JunctionTransform transform)
+{
+	return TrackExitdirToTrackdir(TransformTrack(TrackdirToTrack(trackdir), transform), TransformDiagDirection(TrackdirToExitdir(trackdir), transform));
+}
+
+/**
+ * Transform a tile offset within a layout of the given size.
+ * @param offset The offset to transform.
+ * @param size The size of the layout before the transformation.
+ * @param transform The transformation to apply.
+ * @return The transformed offset.
+ */
+static TileIndexDiffC TransformOffset(TileIndexDiffC offset, TileIndexDiffC size, JunctionTransform transform)
+{
+	switch (transform) {
+		case JunctionTransform::Rotate: return {offset.y, static_cast<int16_t>(size.x - 1 - offset.x)};
+		case JunctionTransform::Mirror: return {static_cast<int16_t>(size.x - 1 - offset.x), offset.y};
+		default: NOT_REACHED();
+	}
+}
 
 /**
  * Transform a junction layout by a rotation or a mirror.
@@ -23,9 +98,24 @@
  * @param transform The transformation to apply.
  * @return The transformed layout.
  */
-JunctionLayout TransformJunctionLayout(const JunctionLayout &layout, [[maybe_unused]] JunctionTransform transform)
+JunctionLayout TransformJunctionLayout(const JunctionLayout &layout, JunctionTransform transform)
 {
-	return layout;
+	JunctionLayout result;
+	result.size = transform == JunctionTransform::Rotate ? TileIndexDiffC{layout.size.y, layout.size.x} : layout.size;
+	for (const JunctionTrack &jt : layout.tracks) {
+		TrackBits bits{};
+		for (Track t : jt.tracks) bits.Set(TransformTrack(t, transform));
+		result.tracks.push_back({TransformOffset(jt.offset, layout.size, transform), bits});
+	}
+	for (const JunctionSignal &signal : layout.signals) {
+		result.signals.push_back({TransformOffset(signal.offset, layout.size, transform), TransformTrackdir(signal.facing, transform), signal.type, signal.variant});
+	}
+	for (const JunctionBridge &bridge : layout.bridges) {
+		JunctionBridge new_bridge{TransformOffset(bridge.start, layout.size, transform), TransformOffset(bridge.end, layout.size, transform)};
+		if (new_bridge.start.x + new_bridge.start.y > new_bridge.end.x + new_bridge.end.y) std::swap(new_bridge.start, new_bridge.end);
+		result.bridges.push_back(new_bridge);
+	}
+	return result;
 }
 
 /**

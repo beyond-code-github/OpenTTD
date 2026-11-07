@@ -87,6 +87,10 @@ struct JunctionEstimate {
 };
 
 JunctionLayout TransformJunctionLayout(const JunctionLayout &layout, JunctionTransform transform);
+/** Transform a track by a rotation or a mirror. */
+Track TransformTrack(Track track, JunctionTransform transform);
+/** Transform a trackdir by a rotation or a mirror. */
+Trackdir TransformTrackdir(Trackdir trackdir, JunctionTransform transform);
 JunctionLayout MakeTestJunctionLayout();
 std::vector<JunctionBuildStep> MakeJunctionBuildSteps(const JunctionLayout &layout, TileIndex origin);
 JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing);
