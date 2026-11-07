@@ -160,6 +160,7 @@ class JunctionTestGS extends GSController {
 		else if (cmd == "start") this.CmdStart(id, msg);
 		else if (cmd == "build_layout") this.CmdBuildLayout(id, msg);
 		else if (cmd == "sample") this.CmdSample(id, msg);
+		else if (cmd == "find_clear") this.CmdFindClear(id, msg);
 		else this.Err(id, "unknown cmd");
 	}
 
@@ -401,6 +402,44 @@ class JunctionTestGS extends GSController {
 			}
 		}
 		this.Reply(id, { built = built, failed = failed });
+	}
+
+	/* ---- clear-space search ---- */
+	/* Full check: buildable rectangle, every tile flat at the same height. */
+	function RectClear(x, y, w, h)
+	{
+		if (!GSTile.IsBuildableRectangle(this.Tile(x, y), w, h)) return false;
+		local hgt = GSTile.GetMinHeight(this.Tile(x, y));
+		for (local j = 0; j < h; j++) {
+			for (local i = 0; i < w; i++) {
+				local t = this.Tile(x + i, y + j);
+				if (GSTile.GetSlope(t) != GSTile.SLOPE_FLAT || GSTile.GetMinHeight(t) != hgt) return false;
+			}
+		}
+		return true;
+	}
+
+	/* First origin (row-major from 2,2) with a clear w*h rectangle. Candidates are screened by their four
+	 * corners being flat, then fully verified; the scan sleeps a tick when the ops budget runs low. */
+	function CmdFindClear(id, msg)
+	{
+		if (!this.Need(msg, ["w", "h"], id)) return;
+		local w = msg.w, h = msg.h;
+		local mx = GSMap.GetMapSizeX(), my = GSMap.GetMapSizeY();
+		for (local y = 2; y + h <= my - 1; y++) {
+			for (local x = 2; x + w <= mx - 1; x++) {
+				local ok = true;
+				foreach (c in [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]]) {
+					if (GSTile.GetSlope(this.Tile(x + c[0], y + c[1])) != GSTile.SLOPE_FLAT) { ok = false; break; }
+				}
+				if (ok && this.RectClear(x, y, w, h)) {
+					this.Reply(id, { x = x, y = y });
+					return;
+				}
+				if (GSController.GetOpsTillSuspend() < 5000) GSController.Sleep(1);
+			}
+		}
+		this.Err(id, "no clear " + w + "x" + h + " area");
 	}
 
 	/* ---- speed sampling ---- */

@@ -42,7 +42,7 @@ def companies(adm):
 
 
 def cmd_start(a):
-    n = S.start(save=a.save)
+    n = S.start(save=a.save, scenario=a.scenario)
     print("started pid=%d rundir=%s" % (n, S.RUNDIR))
 
 
@@ -154,9 +154,17 @@ def cmd_build_layout(a):
         layout = json.load(f)
     adm = connect()
     built, failed = 0, []
+    ox, oy = a.x, a.y
     try:
+        if a.find_clear:
+            w, h = layout["size"]
+            r = gs(adm, {"cmd": "find_clear", "w": w + 4, "h": h + 4}, timeout=600)
+            ox, oy = r["x"] + 2, r["y"] + 2
+            print("origin=%d,%d" % (ox, oy), end=" ")
+        elif ox is None or oy is None:
+            raise Fail("give X Y or --find-clear")
         for part in layout_batches(layout):
-            r = gs(adm, {"cmd": "build_layout", "origin_x": a.x, "origin_y": a.y, "layout": part}, timeout=600)
+            r = gs(adm, {"cmd": "build_layout", "origin_x": ox, "origin_y": oy, "layout": part}, timeout=600)
             built += r["built"]
             failed += r["failed"]
     finally:
@@ -213,13 +221,13 @@ def main():
         p.set_defaults(fn=fn)
 
     i = {"type": int}
-    add("start", cmd_start, ("--save", {}))
+    add("start", cmd_start, ("--save", {}), ("--scenario", {}))
     add("stop", cmd_stop)
     add("status", cmd_status)
     add("rcon", cmd_rcon, ("command", {}))
     add("gs", cmd_gs, ("json", {}))
     add("company", cmd_company, ("--id", i))
-    add("build-layout", cmd_build_layout, ("file", {}), ("x", i), ("y", i))
+    add("build-layout", cmd_build_layout, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}))
     add("sample", cmd_sample, ("vehicles", {"type": int, "nargs": "+"}), ("--ticks", {"type": int, "required": True}))
     add("build-line", cmd_build_line, ("x1", i), ("y1", i), ("x2", i), ("y2", i))
     add("depot", cmd_depot, ("x", i), ("y", i), ("dir", {"help": "NE|SE|SW|NW: direction the entrance faces (NE x-1, SE y+1, SW x+1, NW y-1)"}))

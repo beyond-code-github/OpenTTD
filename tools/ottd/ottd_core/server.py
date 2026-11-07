@@ -21,13 +21,14 @@ server_admin_port = %(port)d
 allow_insecure_admin_login = true
 [difficulty]
 terrain_type = 5
-number_towns = 0
+number_towns = 4
 industry_density = 0
 vehicle_breakdowns = 0
 quantity_sea_lakes = 4
 [game_creation]
-map_x = 6
-map_y = 6
+map_x = 7
+map_y = 7
+custom_town_number = 1
 custom_terrain_type = 1
 custom_sea_level = 1
 water_borders = 0
@@ -35,6 +36,8 @@ water_border_presets = 0
 tgen_smoothness = 0
 amount_of_rivers = 0
 variety = 0
+[economy]
+larger_towns = 0
 [ai]
 ai_in_multiplayer = true
 [game_scripts]
@@ -71,7 +74,7 @@ def _install(src, dst):
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__"))
 
 
-def start(save=None, timeout=60):
+def start(save=None, scenario=None, timeout=60):
     if pid():
         raise RuntimeError("server already running (pid %d)" % pid())
     os.makedirs(RUNDIR, exist_ok=True)
@@ -82,8 +85,13 @@ def start(save=None, timeout=60):
     with open(_p("secrets.cfg"), "w") as f:
         f.write(SECRETS % PASSWORD)
     args = [BINARY, "-D", "127.0.0.1", "-c", _p("openttd.cfg"), "-g"]
+    blank = os.path.join(TOOLS, "scenarios", "blank.scn")
+    if not save and not scenario and os.path.isfile(blank):
+        scenario = blank
     if save:
         args.append(os.path.abspath(save))
+    elif scenario:
+        args.append(os.path.abspath(scenario))
     else:
         args += ["-G", str(SEED)]  # fixed map seed so test maps are reproducible
     log = open(_p("server.log"), "w")
