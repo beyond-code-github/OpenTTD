@@ -250,6 +250,8 @@ add_files(
     ini_load.cpp
     ini_type.h
     intro_gui.cpp
+    junction_layout.cpp
+    junction_layout.h
     landscape.cpp
     landscape.h
     landscape_cmd.h
