@@ -219,7 +219,7 @@ Grouped for token efficiency (D41, D52). Each agent costs about 40–50k tokens 
 
 ## Risks
 
-- **Template design (step 5) is the crux.** If closed-form minimums often fail the checker, the slack sweep grows. The fallback is a greedy fix-up driven by violations, which is a decision for step C, not for an agent.
+- **Template design (step C) is the crux.** If closed-form minimums often fail the checker, the slack sweep grows. The fallback is a greedy fix-up driven by violations, which is a decision for step C, not for an agent.
 - **Mixed path/pre-signal blocks** are untested in game (D74 fallback).
 - **G3's part-by-part model assumes full-length wagons.** 1c's picked train supplies real lengths.
 - **The `SDTC_SSTR` string setting in `gui_settings.ini`** has no precedent there. Step E confirms the template works or falls back to two small enum/int settings.
