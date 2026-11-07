@@ -4,7 +4,7 @@ import os, shutil, signal, socket, subprocess, time
 RUNDIR = os.environ.get(
     "OTTD_RIG_DIR",
     "/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/ottd-rig/")
-BINARY = os.environ.get("OTTD_RIG_BIN", "/home/pete/OpenTTD/build/openttd-spike")
+BINARY = os.environ.get("OTTD_RIG_BIN", "/home/pete/OpenTTD/build/openttd")
 PORT = 3977
 PASSWORD = "rigpw"
 GS_NAME = "JunctionTestGS"

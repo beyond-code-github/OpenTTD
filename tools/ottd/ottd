@@ -216,20 +216,22 @@ def cmd_junction_scan(a):
     import random
     rng = random.Random(a.seed)
     n = S.map_size()
-    tot = dict(generated=0, nolayout=0, ok=0, failed=0)
+    tot = dict(generated=0, nolayout=0, ok=0, failed=0, errors=0)
     for k in range(a.count):
         x, y, rot = rng.randrange(20, n - 20), rng.randrange(20, n - 20), rng.randrange(4)
         try:
             st, text = junction_here(x, y, rot)
         except Exception as e:
-            st, text = "failed", "exception %s: %s" % (type(e).__name__, e)
-        if st == "error":
+            st, text = "exception", "exception %s: %s" % (type(e).__name__, e)
+        if st == "exception":
+            tot["errors"] += 1
+        elif st == "error":
             tot["nolayout"] += 1
         else:
             tot["generated"] += 1
             tot["ok" if st == "ok" else "failed"] += 1
         print("try %d tile=%d,%d rot=%d: %s" % (k + 1, x, y, rot, text))
-    print("generated=%d no_layout=%d built_ok=%d build_failures=%d" % (tot["generated"], tot["nolayout"], tot["ok"], tot["failed"]))
+    print("generated=%d no_layout=%d built_ok=%d build_failures=%d rig_errors=%d" % (tot["generated"], tot["nolayout"], tot["ok"], tot["failed"], tot["errors"]))
 
 
 def cmd_sample(a):

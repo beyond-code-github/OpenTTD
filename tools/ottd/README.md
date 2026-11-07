@@ -14,7 +14,7 @@ $O watch 0 --seconds 20; $O stop
 
 | Command | Example | Notes |
 |---|---|---|
-| `start [--save PATH]` | `ottd start --save /x/junction.sav` | new 64x64 flat game (fixed seed 3, env `OTTD_RIG_SEED`), or load a save; waits for the admin port |
+| `start [--save PATH] [--hilly]` | `ottd start --save /x/junction.sav` | new 64x64 flat game (fixed seed 3, env `OTTD_RIG_SEED`), or load a save; waits for the admin port |
 | `stop` | `ottd stop` | SIGTERM via `server.pid` |
 | `status` | `ottd status` | date, companies, money |
 | `rcon "<cmd>"` | `ottd rcon "getdate"` | prints the console output |
