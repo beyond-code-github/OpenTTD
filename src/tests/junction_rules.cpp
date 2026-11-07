@@ -832,26 +832,30 @@ static void RemoveTracks(JunctionLayout &layout, int x, int y)
 }
 
 /**
- * The ML runs along row 1, the joiner merges at (5,1), and the prio row is on row 2 with rungs at x = 2 and 6.
- * With 'extra' there is a third rung at x = 0 and a second prio signal.
+ * The ML runs along row 1, the joiner merges at (5,1), and the prio row is on row 2 with joins at x = 2 and 6.
+ * A join is the axis plus Lower on the ML tile and the axis plus Upper on the prio tile (prio on +y of +x traffic).
+ * With 'extra' there is a third join at x = 0 and a second prio signal.
  *   . . . . - / . . . . . .      the joiner: (4,0) (5,0), merging at (5,1)
- *   - >+ - >- # + >- . . . .     ML signals at x = 1, 3, 7; rungs at x = 2 and 6
+ *   - >+ - >- # + >- . . . .     ML signals at x = 1, 3, 7; joins at x = 2 and 6
  *   . . + - < - + . . . . .      prio row x = 2..6, Exit signal at (4,2) facing upstream
  *
  * Blocks: {(0,1)}, {(2,1) (2,2) (3,2)}, {(4,1) (5,1) (6,1) (6,2) (5,2)}; the joiner's Entry signal is at (5,0).
  */
+static const TrackBits JOIN_ML{Track::X, Track::Lower};
+static const TrackBits JOIN_ROW{Track::X, Track::Upper};
+
 static JunctionLayout PrioLayout(bool extra = false)
 {
 	JunctionLayout layout = Build({{{0, 1}, Trackdir::X_SW, "FFFFFFFFFFF"}, {{4, 0}, Trackdir::X_SW, "LFR"}});
 	layout.size.y = 3;
-	for (int x : {2, 6}) SetTracks(layout, x, 1, TRACK_BIT_CROSS);
-	for (int x = 2; x <= 6; x++) SetTracks(layout, x, 2, x == 2 || x == 6 ? TRACK_BIT_CROSS : TrackBits{Track::X});
+	for (int x : {2, 6}) SetTracks(layout, x, 1, JOIN_ML);
+	for (int x = 2; x <= 6; x++) SetTracks(layout, x, 2, x == 2 || x == 6 ? JOIN_ROW : TrackBits{Track::X});
 	for (int x : {1, 3, 7}) AddSignal(layout, x, 1, Trackdir::X_SW);
 	AddSignal(layout, 5, 0, Trackdir::Right_S, SignalType::Entry);
 	AddSignal(layout, 4, 2, Trackdir::X_NE, SignalType::Exit);
 	if (extra) {
-		SetTracks(layout, 0, 1, TRACK_BIT_CROSS);
-		SetTracks(layout, 0, 2, TRACK_BIT_CROSS);
+		SetTracks(layout, 0, 1, JOIN_ML);
+		SetTracks(layout, 0, 2, JOIN_ROW);
 		SetTracks(layout, 1, 2, TrackBits{Track::X});
 		AddSignal(layout, 1, 2, Trackdir::X_NE, SignalType::Exit);
 		layout.signals[4].type = SignalType::Combo;
@@ -907,9 +911,12 @@ TEST_CASE("CheckPrio: more than one component at the merge", "[junction][rules]"
 TEST_CASE("CheckPrio: clause 1, shape", "[junction][rules]")
 {
 	JunctionLayout layout = PrioLayout();
-	SetTracks(layout, 6, 3, TrackBits{Track::Y}); // Hangs off the rung tile's Y, outside the row.
+	SetTracks(layout, 4, 2, TRACK_BIT_CROSS); // The row tile's Y leads to a tile outside the row.
+	SetTracks(layout, 4, 3, TrackBits{Track::Y});
 	layout.size.y = 4;
-	CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 6, 3, "single row"));
+	const std::vector<RuleViolation> violations = PrioViolations(layout);
+	CHECK(Has(violations, JunctionRule::Prio, 4, 3, "single row"));
+	CHECK(Has(violations, JunctionRule::Prio, 4, 2, "other than the axis and a join"));
 }
 
 TEST_CASE("CheckPrio: clause 2, touches nothing used", "[junction][rules]")
@@ -930,56 +937,56 @@ TEST_CASE("CheckPrio: clause 2, touches nothing used", "[junction][rules]")
 	CHECK(Has(CheckPrio(ctx), JunctionRule::Prio, 6, 2, "touches a used track"));
 }
 
-TEST_CASE("CheckPrio: clause 3, downstream rung", "[junction][rules]")
+TEST_CASE("CheckPrio: clause 3, downstream join", "[junction][rules]")
 {
-	/* The only rung in the merge block is upstream of the merge, at (4,1). */
+	/* The only join in the merge block is upstream of the merge, at (4,1). */
 	{
 		JunctionLayout layout = PrioLayout();
 		SetTracks(layout, 6, 1, TrackBits{Track::X});
 		RemoveTracks(layout, 5, 2);
 		RemoveTracks(layout, 6, 2);
-		SetTracks(layout, 4, 1, TRACK_BIT_CROSS);
-		SetTracks(layout, 4, 2, TRACK_BIT_CROSS);
+		SetTracks(layout, 4, 1, JOIN_ML);
+		SetTracks(layout, 4, 2, JOIN_ROW);
 		layout.signals.pop_back();
 		AddSignal(layout, 3, 2, Trackdir::X_NE, SignalType::Exit);
-		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 5, 1, "no rung downstream"));
+		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 5, 1, "no join downstream"));
 	}
 
 	/*
-	 * The downstream rung at (8,1) is in the merge block only through the prio row and the rung at (4,1),
+	 * The downstream join at (8,1) is in the merge block only through the prio row and the join at (4,1),
 	 * and the ML signal (7,1) is before it.
 	 */
 	{
 		JunctionLayout layout = PrioLayout();
 		SetTracks(layout, 6, 1, TrackBits{Track::X});
 		SetTracks(layout, 6, 2, TrackBits{Track::X});
-		SetTracks(layout, 4, 1, TRACK_BIT_CROSS);
-		SetTracks(layout, 4, 2, TRACK_BIT_CROSS);
+		SetTracks(layout, 4, 1, JOIN_ML);
+		SetTracks(layout, 4, 2, JOIN_ROW);
 		SetTracks(layout, 7, 2, TrackBits{Track::X});
-		SetTracks(layout, 8, 1, TRACK_BIT_CROSS);
-		SetTracks(layout, 8, 2, TRACK_BIT_CROSS);
+		SetTracks(layout, 8, 1, JOIN_ML);
+		SetTracks(layout, 8, 2, JOIN_ROW);
 		layout.signals.erase(layout.signals.begin() + 4);
 		AddSignal(layout, 3, 2, Trackdir::X_NE, SignalType::Exit);
-		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 7, 1, "before the downstream rung"));
+		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 7, 1, "before the downstream join"));
 	}
 }
 
 TEST_CASE("CheckPrio: clause 4, coverage", "[junction][rules]")
 {
-	/* The block (2,1) over the train length has no rung. */
+	/* The block (2,1) over the train length has no join. */
 	{
 		JunctionLayout layout = PrioLayout();
 		SetTracks(layout, 2, 1, TrackBits{Track::X});
 		SetTracks(layout, 2, 2, TrackBits{Track::X});
-		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 2, 1, "exactly one rung"));
+		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 2, 1, "exactly one join"));
 	}
 
-	/* Two rungs in the merge block: (4,1) as well as (6,1). */
+	/* Two joins in the merge block: (4,1) as well as (6,1). */
 	{
 		JunctionLayout layout = PrioLayout();
-		SetTracks(layout, 4, 1, TRACK_BIT_CROSS);
-		SetTracks(layout, 4, 2, TRACK_BIT_CROSS);
-		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 5, 2, "exactly one rung"));
+		SetTracks(layout, 4, 1, JOIN_ML);
+		SetTracks(layout, 4, 2, JOIN_ROW);
+		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 5, 2, "exactly one join"));
 	}
 }
 
@@ -1024,5 +1031,53 @@ TEST_CASE("CheckPrio: clause 6, the joiner's signal", "[junction][rules]")
 	RemoveSignal(no_signal, 5, 0);
 	CHECK(Has(PrioViolations(no_signal), JunctionRule::Prio, 5, 1, "no joiner signal"));
 
-	CHECK(Has(PrioViolations(PrioLayout(), false), JunctionRule::Prio, 5, 1, "without joiner"));
+	/* Without the joiner path there is no ML merge at all, as an unused track never makes one; the prio is then stray. */
+	const std::vector<RuleViolation> no_joiner = PrioViolations(PrioLayout(), false);
+	CHECK(Has(no_joiner, JunctionRule::Prio, 2, 1, "stray"));
+}
+
+TEST_CASE("CheckPrio: clause 1, a join facing forward or an X+Y rung", "[junction][rules]")
+{
+	/* The ML tile's half piece touches the entry edge, so ML trains could take it. */
+	{
+		JunctionLayout layout = PrioLayout();
+		SetTracks(layout, 6, 1, TrackBits{Track::X, Track::Right});
+		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 6, 1, "not a streamlined join"));
+	}
+
+	/* A 90 degree X+Y rung is not a join. */
+	{
+		JunctionLayout layout = PrioLayout();
+		SetTracks(layout, 6, 1, TRACK_BIT_CROSS);
+		SetTracks(layout, 6, 2, TRACK_BIT_CROSS);
+		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 6, 1, "must be a streamlined join"));
+	}
+}
+
+TEST_CASE("CheckPrio: joins for the four traffic and prio side combinations pass", "[junction][rules]")
+{
+	/* The base layout is +x traffic with the prio on +y; the others are its mirror and 180 degree rotation. */
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const bool mirrored : {false, true}) {
+		for (const uint8_t rotation : {0, 2}) {
+			const JunctionLayout base = PrioLayout();
+			std::vector<JunctionPort> ports = MergePorts();
+			ports[1].tile.x = 11;
+			for (JunctionPort &port : ports) {
+				if (mirrored) {
+					port.tile.x = static_cast<int16_t>(base.size.x - 1 - port.tile.x);
+					port.trackdir = TransformTrackdir(port.trackdir, JunctionTransform::Mirror);
+				}
+				if (rotation == 2) {
+					port.tile = {static_cast<int16_t>(base.size.x - 1 - port.tile.x), static_cast<int16_t>(base.size.y - 1 - port.tile.y)};
+					for (int i = 0; i < 2; i++) port.trackdir = TransformTrackdir(port.trackdir, JunctionTransform::Rotate);
+				}
+			}
+			const JunctionLayout layout = ApplyJunctionOrientation(base, rotation, mirrored);
+			const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, MERGE_MOVEMENTS);
+			INFO("mirrored " << mirrored << " rotation " << static_cast<int>(rotation));
+			CHECK(ctx.paths.size() == 2);
+			CHECK(CheckPrio(ctx).empty());
+		}
+	}
 }

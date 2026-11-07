@@ -45,26 +45,26 @@ rsig 5 14 block
 rsig 5 18 block
 rsig 5 21 entry
 # W prio (inside, row 1)
-track 9 1 X Y
+track 9 1 X Lower
 track 10 1 X
 track 11 1 X
-track 12 1 X Y
+track 12 1 X Lower
 track 13 1 X
-track 14 1 X Y
-track 9 2 Y
-track 12 2 Y
-track 14 2 Y
+track 14 1 X Lower
+track 9 2 Upper
+track 12 2 Upper
+track 14 2 Upper
 signal 11 1 X_SW combo
 signal 13 1 X_SW exit
 # E prio (outside, row -1)
-track 18 -1 X Y
+track 18 -1 X Right
 track 19 -1 X
-track 20 -1 X Y
+track 20 -1 X Right
 track 21 -1 X
 track 22 -1 X
-track 23 -1 X Y
-track 18 0 Y
-track 20 0 Y
-track 23 0 Y
+track 23 -1 X Right
+track 18 0 Left
+track 20 0 Left
+track 23 0 Left
 signal 21 -1 X_NE combo
 signal 19 -1 X_NE exit
