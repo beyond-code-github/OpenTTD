@@ -842,26 +842,27 @@ std::vector<RuleViolation> CheckWaitingRoom(const JunctionCheckContext &ctx)
 				continue;
 			}
 
-			for (uint k = 1; k <= length / bay; k++) {
-				/* The piece at exactly k bays back from the merge signal. */
-				std::optional<size_t> found;
+			/* Walk back from the merge signal: each boundary is the first legal piece a bay back from the previous one (D88). */
+			size_t prev = s;
+			for (uint k = 1;; k++) {
+				std::optional<size_t> cand;
 				uint distance = 0;
-				for (size_t i = s; i-- > u;) {
+				for (size_t i = prev; i-- > 0;) {
 					distance += path.pieces[i + 1].units;
-					if (distance == k * bay) found = i;
-					if (distance >= k * bay) break;
+					if (distance < bay) continue;
+					const JunctionPiece &piece = path.pieces[i];
+					if (!IsLegalSignalPiece(ctx.layout, piece) && !IsSignalledPiece(ctx.layout, piece)) continue;
+					if (piece.on_bridge || FindBridgeByHead(ctx.layout, piece.tile) != nullptr) continue;
+					if (std::ranges::any_of(events, [&](const SwitchEvent &e) { return e.second == i; })) continue;
+					cand = i;
+					break;
 				}
-				if (!found.has_value()) {
-					AddViolation(out, JunctionRule::WaitingRoom, merge_tile, fmt::format("bay boundary {} falls inside a piece", k));
-					continue;
-				}
-				const JunctionPiece &piece = path.pieces[*found];
-				const bool on_switch = std::ranges::any_of(events, [&](const SwitchEvent &e) { return e.second == *found; });
-				if (piece.on_bridge || FindBridgeByHead(ctx.layout, piece.tile) != nullptr || on_switch) {
-					AddViolation(out, JunctionRule::WaitingRoom, piece.tile, fmt::format("bay boundary {} on a bridge or switch", k));
-				} else if (!IsSignalledPiece(ctx.layout, piece)) {
+				if (!cand.has_value() || *cand <= u) break;
+				const JunctionPiece &piece = path.pieces[*cand];
+				if (!IsSignalledPiece(ctx.layout, piece)) {
 					AddViolation(out, JunctionRule::WaitingRoom, piece.tile, fmt::format("no signal at bay boundary {}", k));
 				}
+				prev = *cand;
 			}
 		}
 	}

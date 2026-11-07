@@ -1234,11 +1234,16 @@ TEST_CASE("CheckWaitingRoom: whole-train bays before a queue merge", "[junction]
 	CHECK(Has(BayViolations(plain, {}), JunctionRule::WaitingRoom, 13, 1, "no signal before the queue merge"));
 	/* A merge signal 6 units after the first piece. */
 	CHECK(Has(BayViolations(plain, {3}), JunctionRule::WaitingRoom, 13, 1, "less than one whole-train bay"));
-	/* The merge signal on a half piece puts every boundary inside a 2-unit piece. */
-	CHECK(Has(BayViolations(plain, {13}), JunctionRule::WaitingRoom, 13, 1, "falls inside a piece"));
-	/* A bridge where 2B lands (piece 1). */
-	const char *bridged = "B1FFFFFFFFFLFR";
-	CHECK(Has(BayViolations(bridged, {5, 9}), JunctionRule::WaitingRoom, 1, 0, "bay boundary 2 on a bridge or switch"));
+	/* The merge signal on a half piece (piece 13): boundaries fall on the first pieces 8 units back, 8 and 4 (D88). */
+	CHECK_FALSE(Has(BayViolations(plain, {4, 8, 13}), JunctionRule::WaitingRoom, 8, 0, "bay boundary"));
+	CHECK_FALSE(Has(BayViolations(plain, {4, 8, 13}), JunctionRule::WaitingRoom, 4, 0, "bay boundary"));
+	CHECK_FALSE(Has(BayViolations(plain, {4, 8, 13}), JunctionRule::WaitingRoom, 13, 1, "bay boundary"));
+	/* A bridge where 2B lands (pieces 4..6): the first legal piece past it is piece 3. */
+	const char *bridged = "FFFB1FFFFFFFFFLFR";
+	CHECK_FALSE(Has(BayViolations(bridged, {3, 8, 12}), JunctionRule::WaitingRoom, 3, 0, "bay boundary"));
+	CHECK_FALSE(Has(BayViolations(bridged, {3, 8, 12}), JunctionRule::WaitingRoom, 4, 0, "bay boundary"));
+	/* The same without a signal at that piece. */
+	CHECK(Has(BayViolations(bridged, {8, 12}), JunctionRule::WaitingRoom, 3, 0, "no signal at bay boundary 2"));
 }
 
 TEST_CASE("CheckPrio: coverage along both lanes reaches lane B's bridge block", "[junction][rules]")

@@ -53,6 +53,11 @@ rsig 0 19 block
 rsig 0 21 block
 rsig 0 23 block
 rsig 0 25 block
+rsig 1 19 block
+rsig 1 15 block
+rsig 4 16 block
+rsig 6 9 block
+rsig 3 19 block
 track 18 -1 X Right
 track 19 -1 X
 track 20 -1 X Right
