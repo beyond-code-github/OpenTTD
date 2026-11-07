@@ -86,6 +86,16 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 1. Step C (the orchestrator designs the templates; the engineer reviews the ASCII).
 3. Plan the test-rig CLI alongside 1b.
 
+## Roadmap
+
+1. **1a** placement, ghost, pricing and build (done).
+2. **1b** T generator (in progress).
+3. **1c** train physics and traffic.
+4. **Place-time generation** (D78): terrain and obstacles at the hovered spot.
+5. **Endpoint solver:** routing to tagged connection points.
+
+The multi-lane follow-on (D72) fits after 1b or 1c.
+
 ## Ideas parked
 
 - **Translucent ghost blitter mode** (D57): researched in `RECON-blitter.md`; ~140 additive lines across 11 blitter files, SSE needed to matter. Parked by the engineer.
