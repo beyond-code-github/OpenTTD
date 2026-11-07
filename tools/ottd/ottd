@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""ottd: terse CLI for the OpenTTD test rig. See tools/ottd/README.md."""
+import argparse, json, os, re, sys, time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from ottd_core import admin as A, format as F, server as S
+
+
+class Fail(Exception):
+    pass
+
+
+def connect():
+    if not S.pid():
+        raise Fail("server not running (ottd start)")
+    return A.Admin(port=S.PORT, password=S.PASSWORD)
+
+
+def gs(adm, obj, timeout=60):
+    r = adm.gs_request(obj, timeout=timeout)
+    if "error" in r:
+        raise Fail("%s: %s" % (obj["cmd"], r["error"]))
+    return r
+
+
+def one_shot(obj, timeout=60):
+    adm = connect()
+    try:
+        return gs(adm, obj, timeout)
+    finally:
+        adm.close()
+
+
+def companies(adm):
+    """Return [(gs_company_id, line)] from rcon 'companies' (display ids are 1-based)."""
+    out = []
+    for line in adm.rcon("companies"):
+        m = re.match(r"#:(\d+)\(", line)
+        if m:
+            out.append((int(m.group(1)) - 1, line))
+    return out
+
+
+def cmd_start(a):
+    n = S.start(save=a.save)
+    print("started pid=%d rundir=%s" % (n, S.RUNDIR))
+
+
+def cmd_stop(a):
+    print("stopped" if S.stop() else "not running")
+
+
+def cmd_status(a):
+    adm = connect()
+    try:
+        print(" ".join(adm.rcon("getdate")))
+        cs = companies(adm)
+        print("companies: %d" % len(cs))
+        for cid, line in cs:
+            m = re.search(r"Money: (-?\d+)", line)
+            print("  company %d money=%s%s" % (cid, m.group(1) if m else "?", " AI" if line.rstrip().endswith("AI") else ""))
+    finally:
+        adm.close()
+
+
+def cmd_rcon(a):
+    adm = connect()
+    try:
+        for l in adm.rcon(a.command):
+            print(l)
+    finally:
+        adm.close()
+
+
+def cmd_gs(a):
+    r = one_shot(json.loads(a.json))
+    print(F.compact(r))
+    if "error" in r:
+        sys.exit(1)
+
+
+def cmd_company(a):
+    adm = connect()
+    try:
+        cs = companies(adm)
+        if not cs:
+            adm.rcon("start_ai %s" % S.AI_NAME)
+            for _ in range(40):
+                time.sleep(0.25)
+                cs = companies(adm)
+                if cs:
+                    break
+        if not cs:
+            raise Fail("start_ai %s produced no company (see %s)" % (S.AI_NAME, os.path.join(S.RUNDIR, "server.log")))
+        cid = cs[0][0]
+        gs(adm, {"cmd": "company_set", "company": cid})
+        print("company %d set" % cid)
+    finally:
+        adm.close()
+
+
+def cmd_build_line(a):
+    one_shot({"cmd": "build_rail", "x1": a.x1, "y1": a.y1, "x2": a.x2, "y2": a.y2})
+    print("rail %d,%d-%d,%d ok" % (a.x1, a.y1, a.x2, a.y2))
+
+
+def cmd_depot(a):
+    one_shot({"cmd": "build_depot", "x": a.x, "y": a.y, "dir": a.dir})
+    print("depot %d,%d %s ok" % (a.x, a.y, a.dir.upper()))
+
+
+def cmd_train(a):
+    req = {"cmd": "build_train", "depot_x": a.depot_x, "depot_y": a.depot_y, "wagons": a.wagons}
+    if a.engine is not None:
+        req["engine"] = a.engine
+    r = one_shot(req)
+    print("train %d engine=%d (%s) wagons=%d" % (r["vehicle"], r["engine"], r["engine_name"], r["wagons"]))
+
+
+def cmd_orders(a):
+    r = one_shot({"cmd": "orders_depots", "vehicle": a.vehicle, "x1": a.x1, "y1": a.y1, "x2": a.x2, "y2": a.y2})
+    print("vehicle %d orders=%d" % (a.vehicle, r["orders"]))
+
+
+def cmd_go(a):
+    one_shot({"cmd": "start", "vehicle": a.vehicle})
+    print("vehicle %d started" % a.vehicle)
+
+
+def cmd_vehicles(a):
+    for l in F.vehicles(one_shot({"cmd": "vehicles"})):
+        print(l)
+
+
+def cmd_watch(a):
+    adm = connect()
+    samples, states = [], set()
+    try:
+        end = time.time() + a.seconds
+        while time.time() < end:
+            t0 = time.time()
+            r = gs(adm, {"cmd": "vehicles"})
+            for v in r["vehicles"]:
+                if v["id"] == a.vehicle:
+                    samples.append((v["speed"], v["state"]))
+                    states.add(v["state"])
+            time.sleep(max(0, 0.5 - (time.time() - t0)))
+    finally:
+        adm.close()
+    if not samples:
+        raise Fail("vehicle %d not found" % a.vehicle)
+    print(F.watch_summary(a.vehicle, samples) + " states=" + ",".join(sorted(states)))
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="ottd", description="OpenTTD test rig CLI")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    def add(name, fn, *args, **kw):
+        p = sub.add_parser(name, **kw)
+        for spec, opts in args:
+            p.add_argument(spec, **opts)
+        p.set_defaults(fn=fn)
+
+    i = {"type": int}
+    add("start", cmd_start, ("--save", {}))
+    add("stop", cmd_stop)
+    add("status", cmd_status)
+    add("rcon", cmd_rcon, ("command", {}))
+    add("gs", cmd_gs, ("json", {}))
+    add("company", cmd_company)
+    add("build-line", cmd_build_line, ("x1", i), ("y1", i), ("x2", i), ("y2", i))
+    add("depot", cmd_depot, ("x", i), ("y", i), ("dir", {"help": "NE|SE|SW|NW: direction the entrance faces (NE x-1, SE y+1, SW x+1, NW y-1)"}))
+    add("train", cmd_train, ("depot_x", i), ("depot_y", i), ("--engine", i), ("--wagons", {"type": int, "default": 0}))
+    add("orders", cmd_orders, ("vehicle", i), ("x1", i), ("y1", i), ("x2", i), ("y2", i))
+    add("go", cmd_go, ("vehicle", i))
+    add("vehicles", cmd_vehicles)
+    add("watch", cmd_watch, ("vehicle", i), ("--seconds", {"type": float, "default": 10}))
+    a = ap.parse_args()
+    try:
+        a.fn(a)
+    except Fail as e:
+        print("FAIL: %s" % e, file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print("FAIL: %s: %s" % (type(e).__name__, e), file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
