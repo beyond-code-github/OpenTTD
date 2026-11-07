@@ -28,6 +28,12 @@
   - `index_images.py`: rebuilds `IMAGE-INDEX.md`
   - The downloads live in the session scratchpad, so re-run the tools in a new session.
 
+## 1a progress
+
+| Step | Commit | Result |
+|---|---|---|
+| 1 API skeleton + outer test | cbfc914136 | Accepted. Outer test red by design (0 == 2000). 96 cases: 95 pass. |
+
 ## Next steps
 
 1. **Engineer reviews `PLAN-1a.md`.** Worth a closer look:
