@@ -279,6 +279,16 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		return this->PickerWindowBase::GetWidgetString(widget, stringid);
 	}
 
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
+	{
+		if (widget == WID_BJ_COST) {
+			/* Reserve room for late-game amounts of up to 15 digits. */
+			size.width = std::max(size.width, std::max(
+				GetStringBoundingBox(GetString(STR_JUNCTION_COST, GetParamMaxDigits(15))).width,
+				GetStringBoundingBox(GetString(STR_JUNCTION_COST_UNAFFORDABLE, GetParamMaxDigits(15))).width) + padding.width);
+		}
+	}
+
 	/**
 	 * Work out the layout, estimate and bridge types for placing the junction at a tile.
 	 * @param tile North corner of the junction.
