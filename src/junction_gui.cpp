@@ -38,6 +38,8 @@
 
 #include <unordered_map>
 
+#include "safeguards.h"
+
 /** The ghost tiles, by tile. */
 static std::unordered_map<TileIndex, JunctionGhostTile> _junction_ghost_tiles;
 /** Rail type of the ghost. */
@@ -167,8 +169,6 @@ void DrawJunctionGhost(const TileInfo *ti)
 	}
 	SetViewportGhostPalette(PAL_NONE);
 }
-
-#include "safeguards.h"
 
 /** Hotkeys of the junction window. */
 enum JunctionHotkeys : int {
