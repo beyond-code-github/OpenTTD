@@ -158,6 +158,27 @@ TEST_CASE("FindJunctionRoute: obstacle", "[junction][router]")
 	CHECK_FALSE(HasBridge(route->moves));
 }
 
+TEST_CASE("FindJunctionRoute: a turn penalty straightens the detour", "[junction][router]")
+{
+	const JunctionLayout wall = WallLayout(5, 0, 12);
+	auto turns_of = [&](Money turn_cost) {
+		JunctionRouteRequest request = MakeRequest({0, 0}, {22, 22});
+		request.starts = {{{0, 6}, Trackdir::X_SW}};
+		request.goals = {{{18, 6}, Trackdir::X_SW}};
+		request.prices.bridge = [](uint) { return Money(1000000000); };
+		request.turn_cost = turn_cost;
+		const auto route = FindJunctionRoute(wall, request);
+		REQUIRE(route.has_value());
+		return std::count_if(route->moves.begin(), route->moves.end(), [](char c) { return c == 'L' || c == 'R'; });
+	};
+	const Money turn = MakeRequest({0, 0}, {1, 1}).prices.rail_piece / 2;
+	const auto with = turns_of(turn);
+	const auto without = turns_of(0);
+	INFO("turns with " << with << " without " << without);
+	CHECK(with <= 8);
+	CHECK(without > with);
+}
+
 TEST_CASE("FindJunctionRoute: the track beyond a far head runs in line", "[junction][router]")
 {
 	/* The start leaves no room to shift rows before the wall. Goal (8,7) is reachable only by turning off the far head, so it must have no route; goal (12,7) is reachable in line. */

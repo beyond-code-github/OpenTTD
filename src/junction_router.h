@@ -41,6 +41,7 @@ struct JunctionRouteRequest {
 	JunctionUnitPrices prices;
 	std::vector<TileIndexDiffC> crossable; ///< Tiles whose tracks will be lifted onto a bridge: treated as empty ground.
 	Money crossable_cost; ///< Added for each piece made on a crossable tile.
+	Money turn_cost = 0; ///< Added for each L or R move.
 	uint max_expansions = 200000;
 	const JunctionTerrain *terrain = nullptr; ///< When set, tiles must suit the plane (D78).
 	int plane = 0; ///< The level the junction is built on.

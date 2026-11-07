@@ -205,6 +205,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	base.max_bridge_middle = 10;
 	base.prices = spec.prices;
 	base.crossable_cost = 0;
+	base.turn_cost = spec.prices.rail_piece / 2;
 	base.terrain = terrain;
 	base.plane = params.plane;
 

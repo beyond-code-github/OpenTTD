@@ -214,6 +214,7 @@ void Router::Successors(const RouterNode &from, std::vector<std::pair<RouterNode
 		if (!conflict) {
 			Money cost = request.prices.rail_piece + TerrainCost(to.x, to.y);
 			if (crossable.contains({to.x, to.y})) cost += request.crossable_cost;
+			if (move != 'F') cost += request.turn_cost;
 			out.push_back({to, {cost, std::string(1, move)}});
 			continue;
 		}
@@ -224,7 +225,10 @@ void Router::Successors(const RouterNode &from, std::vector<std::pair<RouterNode
 			bool conflict2;
 			if (!MakePiece(to, move2, to2, conflict2)) continue;
 			if (!IsGoal(to2.x, to2.y, to2.trackdir)) continue;
-			out.push_back({to2, {request.prices.rail_piece * 2 + TerrainCost(to.x, to.y) + TerrainCost(to2.x, to2.y), std::string{move, move2}}});
+			Money cost2 = request.prices.rail_piece * 2 + TerrainCost(to.x, to.y) + TerrainCost(to2.x, to2.y);
+			if (move != 'F') cost2 += request.turn_cost;
+			if (move2 != 'F') cost2 += request.turn_cost;
+			out.push_back({to2, {cost2, std::string{move, move2}}});
 		}
 	}
 
