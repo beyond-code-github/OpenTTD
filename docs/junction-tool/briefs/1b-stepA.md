@@ -64,7 +64,7 @@ New test files go in `src/tests/` and are registered in `src/tests/CMakeLists.tx
    - `"L"` from `X_SW` gives a second piece whose direction is `ChangeDir(SW, Left45)`, on the next tile, 1 unit.
    - `"R"` likewise with `Right45`.
    - A straight run of half pieces: `"LFFF"` alternates the two half tracks of the same direction (e.g. Upper/Lower), each 1 unit, every piece on a new tile.
-   - `"LR"` returns to `X_SW`.
+   - `"LFR"` returns to `X_SW`: Right_S, Left_S, X_SW. `"LR"` is an error, because from a half piece only F and one of L/R can be reached (parity; see `_exitdir_reaches_trackdirs`).
    - From `{0,0}` `X_SW`, `"B3F"`:
      - pieces at x = 1..5 have `on_bridge = true`
      - a bridge from {1,0} to {5,0}
@@ -144,7 +144,7 @@ std::string RenderJunctionAscii(const JunctionLayout &layout);
 - A layout's tile offsets may go negative until normalised.
 
 **`AddRasterToLayout`:**
-- ORs `TrackToTrackBits(TrackdirToTrack(td))` of every piece without `on_bridge` into the `JunctionTrack` for that tile, creating it if needed (linear search is fine).
+- sets `TrackdirToTrack(td)` (`TrackBits` is an `EnumBitSet`: `bits.Set(track)`) for every piece without `on_bridge` into the `JunctionTrack` for that tile, creating it if needed (linear search is fine).
 - Appends the raster's bridges, skipping any equal one already present.
 
 **`NormaliseJunctionLayout`:**
@@ -250,7 +250,7 @@ std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, cons
 ## 6. Stop conditions
 
 - A trackdir/direction table that doesn't match the code.
-- `TrackdirReachesTrackdirs` not giving exactly one match for F, L or R from some trackdir.
+- `TrackdirReachesTrackdirs` giving more than one match for any move, or no F match from some trackdir. (No L or R match from a half piece is normal: that is a rasterizer error, not a stop.)
 - The curve formula in `train_cmd.cpp` differing from §4.
 - Any premise above that's false.
 
