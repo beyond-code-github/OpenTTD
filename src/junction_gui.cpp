@@ -197,7 +197,8 @@ void DrawJunctionGhost(const TileInfo *ti)
 			DrawRailSignalGhost(ti->tile, railtype, signal.facing, signal.type, signal.variant);
 		}
 		if (ghost->bad) {
-			DrawTileSelectionRect(ti, PALETTE_SEL_TILE_RED);
+			/* While a build is pinned, bad tiles are the pieces still to build (D53); otherwise they are invalid. */
+			DrawTileSelectionRect(ti, _junction_ghost_pinned ? PALETTE_SEL_TILE_BLUE : PALETTE_SEL_TILE_RED);
 			red = true;
 		}
 	}
