@@ -46,6 +46,8 @@ namespace JunctionGhost {
 	void Clear();
 	const JunctionGhostTile *Get(TileIndex tile);
 	RailType GetRailType();
+	void SetPinned(bool pinned);
+	bool IsInPinnedFootprint(TileIndex tile);
 }
 
 struct TileInfo;

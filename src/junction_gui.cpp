@@ -45,6 +45,11 @@ static std::unordered_map<TileIndex, JunctionGhostTile> _junction_ghost_tiles;
 /** Rail type of the ghost. */
 static RailType _junction_ghost_railtype = RAILTYPE_RAIL;
 
+/** Bounding box of the stored layout, as set by the last Set(). */
+static TileArea _junction_ghost_footprint;
+/** Whether the footprint is pinned: drawn even where the ghost has no tile. */
+static bool _junction_ghost_pinned = false;
+
 /** Mark every stored tile dirty, so it is redrawn. */
 static void MarkJunctionGhostDirty()
 {
@@ -68,6 +73,7 @@ void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int heig
 {
 	JunctionGhost::Clear();
 	_junction_ghost_railtype = railtype;
+	_junction_ghost_footprint = TileArea(origin, layout.size.x, layout.size.y);
 
 	for (const JunctionTrack &track : layout.tracks) {
 		TileIndex tile = AddTileIndexDiffCWrap(origin, track.offset);
@@ -118,6 +124,28 @@ void JunctionGhost::Clear()
 {
 	MarkJunctionGhostDirty();
 	_junction_ghost_tiles.clear();
+	JunctionGhost::SetPinned(false);
+}
+
+/**
+ * Pin or unpin the footprint of the ghost. While pinned, the footprint is outlined.
+ * @param pinned Whether to pin the footprint.
+ */
+void JunctionGhost::SetPinned(bool pinned)
+{
+	_junction_ghost_pinned = pinned;
+	if (_junction_ghost_footprint.tile == INVALID_TILE) return;
+	for (TileIndex tile : _junction_ghost_footprint) MarkTileDirtyByTile(tile);
+}
+
+/**
+ * Check whether a tile is inside the pinned footprint.
+ * @param tile Tile to check.
+ * @return True if the footprint is pinned and contains the tile.
+ */
+bool JunctionGhost::IsInPinnedFootprint(TileIndex tile)
+{
+	return _junction_ghost_pinned && _junction_ghost_footprint.Contains(tile);
 }
 
 /**
@@ -142,32 +170,39 @@ RailType JunctionGhost::GetRailType()
 
 /**
  * Draw the junction ghost on one tile, if it has any.
- * Valid ghosts are drawn opaque in normal colours (D44); invalid ones are remapped to red.
+ * The ghost is always drawn opaque in normal colours (D44, D53); bad tiles get a red outline.
+ * While the footprint is pinned, its tiles without a red outline get a white one.
  * @param ti Tile that is being drawn.
  */
 void DrawJunctionGhost(const TileInfo *ti)
 {
 	const JunctionGhostTile *ghost = JunctionGhost::Get(ti->tile);
-	if (ghost == nullptr) return;
+	bool pinned = JunctionGhost::IsInPinnedFootprint(ti->tile);
+	if (ghost == nullptr && !pinned) return;
 
 	/* Ghost tiles that are not flat can't be built on; outline them in red. */
-	if (ti->tileh != SLOPE_FLAT) {
-		SetViewportGhostPalette(PALETTE_SEL_TILE_RED);
+	if (ghost != nullptr && ti->tileh != SLOPE_FLAT) {
 		DrawTileSelectionRect(ti, PALETTE_SEL_TILE_RED);
-		SetViewportGhostPalette(PAL_NONE);
 		return;
 	}
 
-	SetViewportGhostPalette(ghost->bad ? PALETTE_TO_STRUCT_RED : PAL_NONE);
-	TileInfo copy = *ti;
-	RailType railtype = JunctionGhost::GetRailType();
-	if (ghost->tracks.Any()) DrawRailTrackGhost(&copy, ghost->tracks, railtype);
-	if (ghost->head.has_value()) DrawBridgeHeadGhost(&copy, ghost->head->type, railtype, ghost->head->dir);
-	if (ghost->span.has_value()) DrawBridgeMiddleGhost(ti, ghost->span->type, railtype, ghost->span->axis, ghost->span->bridge_z, ghost->span->piece_north, ghost->span->piece_south);
-	for (const JunctionSignalStep &signal : ghost->signals) {
-		DrawRailSignalGhost(ti->tile, railtype, signal.facing, signal.type, signal.variant);
+	bool red = false;
+	if (ghost != nullptr) {
+		TileInfo copy = *ti;
+		RailType railtype = JunctionGhost::GetRailType();
+		if (ghost->tracks.Any()) DrawRailTrackGhost(&copy, ghost->tracks, railtype);
+		if (ghost->head.has_value()) DrawBridgeHeadGhost(&copy, ghost->head->type, railtype, ghost->head->dir);
+		if (ghost->span.has_value()) DrawBridgeMiddleGhost(ti, ghost->span->type, railtype, ghost->span->axis, ghost->span->bridge_z, ghost->span->piece_north, ghost->span->piece_south);
+		for (const JunctionSignalStep &signal : ghost->signals) {
+			DrawRailSignalGhost(ti->tile, railtype, signal.facing, signal.type, signal.variant);
+		}
+		if (ghost->bad) {
+			DrawTileSelectionRect(ti, PALETTE_SEL_TILE_RED);
+			red = true;
+		}
 	}
-	SetViewportGhostPalette(PAL_NONE);
+
+	if (pinned && !red) DrawTileSelectionRect(ti, PAL_NONE);
 }
 
 /** Hotkeys of the junction window. */
@@ -212,6 +247,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	{
 		GetJunctionSequencer().Cancel();
 		JunctionGhost::Clear();
+		JunctionGhost::SetPinned(false);
+		SetTileSelectSize(GetPlacementLayout().size.x, GetPlacementLayout().size.y);
 		_thd.make_square_red = false;
 		this->PickerWindowBase::Close(data);
 	}
@@ -229,6 +266,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			case WID_BJ_CANCEL:
 				GetJunctionSequencer().Cancel();
 				JunctionGhost::Clear();
+				JunctionGhost::SetPinned(false);
+				SetTileSelectSize(GetPlacementLayout().size.x, GetPlacementLayout().size.y);
 				this->last_tile = INVALID_TILE;
 				this->SetDirty();
 				break;
@@ -346,6 +385,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->build_bridge_types = bridge_types;
 		this->last_state = JunctionBuildState::Building;
 		GetJunctionSequencer().Start(MakeJunctionBuildSteps(layout, tile));
+		JunctionGhost::SetPinned(true);
+		SetTileSelectSize(0, 0);
 	}
 
 	void OnRealtimeTick([[maybe_unused]] uint delta_ms) override
@@ -357,6 +398,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (seq.GetState() == JunctionBuildState::Done) {
 			if (_settings_client.sound.confirm) SndPlayTileFx(SND_20_CONSTRUCTION_RAIL, this->build_origin);
 			seq.Cancel();
+			JunctionGhost::SetPinned(false);
+			SetTileSelectSize(GetPlacementLayout().size.x, GetPlacementLayout().size.y);
 			this->last_tile = INVALID_TILE;
 			this->SetDirty();
 		}
@@ -380,6 +423,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 					}
 				}
 				JunctionGhost::Set(this->build_layout, this->build_origin, this->build_height, this->railtype, this->build_bridge_types, estimate);
+				/* Set() clears, which unpins; the footprint stays pinned while the build is paused. */
+				JunctionGhost::SetPinned(true);
 			}
 			this->SetWidgetDisabledState(WID_BJ_RETRY, state != JunctionBuildState::Failed);
 			this->SetWidgetDisabledState(WID_BJ_CANCEL, false);

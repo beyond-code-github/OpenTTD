@@ -137,3 +137,30 @@ TEST_CASE("JunctionGhost: clear empties the store")
 
 	CHECK(JunctionGhost::Get(TileXY(10, 12)) == nullptr);
 }
+
+TEST_CASE("JunctionGhost: pinned footprint covers the layout's bounding box")
+{
+	Map::Allocate(64, 64);
+	JunctionGhost::Clear();
+	SetTestGhost({BridgeType{0}}, JunctionEstimate{});
+	JunctionGhost::SetPinned(true);
+
+	CHECK(JunctionGhost::IsInPinnedFootprint(TileXY(10, 10)));
+	CHECK(JunctionGhost::IsInPinnedFootprint(TileXY(17, 15)));
+	CHECK(!JunctionGhost::IsInPinnedFootprint(TileXY(18, 10)));
+	CHECK(!JunctionGhost::IsInPinnedFootprint(TileXY(10, 16)));
+
+	JunctionGhost::SetPinned(false);
+	CHECK(!JunctionGhost::IsInPinnedFootprint(TileXY(10, 10)));
+}
+
+TEST_CASE("JunctionGhost: clear unpins")
+{
+	Map::Allocate(64, 64);
+	JunctionGhost::Clear();
+	SetTestGhost({BridgeType{0}}, JunctionEstimate{});
+	JunctionGhost::SetPinned(true);
+	JunctionGhost::Clear();
+
+	CHECK(!JunctionGhost::IsInPinnedFootprint(TileXY(10, 10)));
+}
