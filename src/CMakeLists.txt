@@ -264,6 +264,8 @@ add_files(
     junction_layout.h
     junction_route.cpp
     junction_route.h
+    junction_router.cpp
+    junction_router.h
     junction_rules.cpp
     junction_rules.h
     landscape.cpp

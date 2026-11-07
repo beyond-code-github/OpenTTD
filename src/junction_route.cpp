@@ -42,14 +42,7 @@ Direction TrackdirToDirection(Trackdir td)
 	}
 }
 
-/**
- * Find the next trackdir for a move.
- * @param current The current trackdir.
- * @param diff The turn: Same, Left45 or Right45.
- * @param[out] next The next trackdir, when found.
- * @return Whether exactly one reachable trackdir has the wanted direction.
- */
-static bool FindNextTrackdir(Trackdir current, DirDiff diff, Trackdir &next)
+bool JunctionNextTrackdir(Trackdir current, DirDiff diff, Trackdir &next)
 {
 	const Direction wanted = ChangeDir(TrackdirToDirection(current), diff);
 	uint matches = 0;
@@ -98,7 +91,7 @@ JunctionRaster RasterizeJunctionRoute(const JunctionRoute &route)
 			case 'L':
 			case 'R': {
 				const DirDiff diff = move == 'F' ? DirDiff::Same : move == 'L' ? DirDiff::Left45 : DirDiff::Right45;
-				if (!FindNextTrackdir(cur, diff, next)) {
+				if (!JunctionNextTrackdir(cur, diff, next)) {
 					raster.error = fmt::format("move '{}' at position {} has no unique continuation", move, i);
 					return raster;
 				}

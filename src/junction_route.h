@@ -41,6 +41,14 @@ struct JunctionRaster {
 };
 
 Direction TrackdirToDirection(Trackdir td);
+/**
+ * Find the next trackdir for a move.
+ * @param current The current trackdir.
+ * @param diff The turn: Same, Left45 or Right45.
+ * @param[out] next The next trackdir, when found.
+ * @return Whether exactly one reachable trackdir has the wanted direction.
+ */
+bool JunctionNextTrackdir(Trackdir current, DirDiff diff, Trackdir &next);
 JunctionRaster RasterizeJunctionRoute(const JunctionRoute &route);
 void AddRasterToLayout(JunctionLayout &layout, const JunctionRaster &raster);
 void NormaliseJunctionLayout(JunctionLayout &layout);
