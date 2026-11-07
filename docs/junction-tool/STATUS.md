@@ -62,7 +62,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 |---|---|---|
 | A foundations | f6187abe83 | Two correct stops: half-piece turn parity ("LR" impossible, "LFR" works) and an arithmetic slip in the brief (301, not 302). Both resolved by ruling. |
 | B rule checker | 44a6d792ca, fa8f2c84b8, ea48ec478b | 177 cases (176 + mayfail). One correct stop: my prio-component definition split rung bits from row bits; ruled that a tile's unused bits form one node. |
-| C templates | fe3e55b29d (harness + reference) | Reference L_R TL4 passes all rules; mutation-tested. Engineer reviewed it in game: wants streamlined prio joins (D75), cost-then-open-space scoring (D76); left-hand mirror shown. Next: checker update for D75 (agent), redo the reference with streamlined prios, then TEMPLATES-1b.md. |
+| C templates | fe3e55b29d harness; 5f0d7af4a7 reference | The reference now has a hugging N→W (an S-bend parallel to E→S, a vertical, then a turn) and a W prio covering the bridge block with one join. It has streamlined stub-free prio joins with the first join on the merge tile (D75, D79, D81) and signals at every bridge (D82). Checker steps B2–B4 done (365316bbe2, 182 cases). Reviewed in game by the engineer. **Next: doubled ML bridges (D80)**: the outer row conflicts with W→S, the bridge merge sits where N→W turns in, and the prio must link two bridge blocks. Design in the harness, bring options, then B5 checker (two paths per movement in doubled sections, line sync, no prio on the bridge merge), then TEMPLATES-1b.md and step D. |
 | D generator | — | |
 | E game side | — | |
 | F manual | — | engineer |
@@ -82,6 +82,13 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 - **The engineer watches rig experiments:** announce them with `build/openttd-spike -n 127.0.0.1`.
 
 ## Next steps
+
+**Resume here (2026-11-08):**
+1. Doubled ML bridge design (D80) in the harness (`src/tests/junction_design.cpp`, run with `JUNCTION_DESIGN=<file> build/openttd_test "[.design]"`; `JUNCTION_PIECES=1` lists pieces, `JUNCTION_JSON`/`JUNCTION_MIRROR` export for the rig).
+2. Then the B5 checker update, `TEMPLATES-1b.md` (scoring D76: cost then open space), and step D's brief.
+3. Rig: the IdleAI company runs out of cash after about two junctions. Give it more money (the loan or start-money settings) in the next rig step. Plan `junction-check` (trains on all six movements).
+4. 1c idea from the engineer: an in-memory block-occupancy simulation to judge headway, queues and deadlock, with the rules kept as a fast filter.
+
 
 1. Step C (the orchestrator designs the templates; the engineer reviews the ASCII).
 3. Plan the test-rig CLI alongside 1b.
