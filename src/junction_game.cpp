@@ -327,7 +327,8 @@ JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_
 		std::optional<BridgeType> type = ChooseJunctionBridgeType(railtype, n);
 		if (!type.has_value()) continue;
 		const BridgeSpec *bridge = GetBridgeSpec(*type);
-		span_ok[n] = bridge->speed >= speed;
+		/* D94: when no bridge reaches the design speed, the chooser's fastest bridge is used and trains slow on it. */
+		span_ok[n] = true;
 		bridge_price[n] = Money(((int64_t)CalcBridgeLenCostFactor(n + 2) * _price[Price::BuildBridge] * bridge->price) >> 8) + (n + 2) * RailBuildCost(railtype);
 	}
 	spec.bridge_span_ok = [span_ok](uint n) {
