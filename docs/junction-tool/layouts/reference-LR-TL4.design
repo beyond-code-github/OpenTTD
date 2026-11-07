@@ -1,0 +1,70 @@
+spec 4 2 160
+# E->E, E->S
+route 7 0 X_SW FFFFFFFFFFFFFFFFFFF
+route 7 0 X_SW FFFFFFFFLFFFFLFFFRFFFFFFFLFFF
+# W->W (bridge 22..16), W->S
+route 26 2 X_NE FFFB5FFFFFFFFF
+route 26 2 X_NE FRFFFFRFFFFFFFFF
+# N->E (bridge 10..7 on column 20), N->W
+route 20 14 Y_NW FFFB2FFFFLFFFFLFFF
+route 20 14 Y_NW FRFFFFFFFFFFFFFFFFFFFFRFF
+# E path signals (route 0 = E->E, 1 = E->S)
+rsig 0 2 block
+rsig 0 4 block
+rsig 0 6 block
+rsig 0 8 block
+rsig 0 12 block
+rsig 0 14 block
+rsig 0 17 block
+rsig 1 11 block
+rsig 1 14 block
+rsig 1 16 block
+rsig 1 19 block
+rsig 1 24 block
+rsig 1 26 block
+rsig 1 28 block
+# W path (2 = W->W, 3 = W->S)
+rsig 2 1 block
+rsig 2 11 block
+rsig 2 13 block
+rsig 2 15 block
+rsig 2 18 block
+rsig 3 6 block
+rsig 3 8 block
+rsig 3 10 block
+rsig 3 11 block
+# N->E (4), N->W (5)
+rsig 4 1 block
+rsig 4 8 block
+rsig 4 10 block
+rsig 4 13 block
+rsig 4 15 entry
+rsig 5 6 block
+rsig 5 10 block
+rsig 5 14 block
+rsig 5 18 block
+rsig 5 21 entry
+# W prio (inside, row 1)
+track 9 1 X Y
+track 10 1 X
+track 11 1 X
+track 12 1 X Y
+track 13 1 X
+track 14 1 X Y
+track 9 2 Y
+track 12 2 Y
+track 14 2 Y
+signal 11 1 X_SW combo
+signal 13 1 X_SW exit
+# E prio (outside, row -1)
+track 18 -1 X Y
+track 19 -1 X
+track 20 -1 X Y
+track 21 -1 X
+track 22 -1 X
+track 23 -1 X Y
+track 18 0 Y
+track 20 0 Y
+track 23 0 Y
+signal 21 -1 X_NE combo
+signal 19 -1 X_NE exit
