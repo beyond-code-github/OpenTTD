@@ -160,6 +160,7 @@ class JunctionTestGS extends GSController {
 		else if (cmd == "start") this.CmdStart(id, msg);
 		else if (cmd == "build_layout") this.CmdBuildLayout(id, msg);
 		else if (cmd == "sample") this.CmdSample(id, msg);
+		else if (cmd == "loan_max") this.CmdLoanMax(id);
 		else if (cmd == "find_clear") this.CmdFindClear(id, msg);
 		else this.Err(id, "unknown cmd");
 	}
@@ -193,6 +194,15 @@ class JunctionTestGS extends GSController {
 			return;
 		}
 		this.Reply(id, { ok = true });
+	}
+
+	function CmdLoanMax(id)
+	{
+		if (!GSCompany.SetLoanAmount(GSCompany.GetMaxLoanAmount())) {
+			this.Err(id, "SetLoanAmount failed: " + GSError.GetLastErrorString());
+			return;
+		}
+		this.Reply(id, { balance = GSCompany.GetBankBalance(this.company) });
 	}
 
 	function CmdBuildTrain(id, msg)

@@ -27,10 +27,11 @@ $O watch 0 --seconds 20; $O stop
 | `go VEHICLE` | `ottd go 0` | starts the train if not running |
 | `build-layout FILE X Y` | `ottd build-layout layouts/test-1a.json 20 20` | builds a layout JSON with its north corner at tile X,Y: tracks, then bridges (fastest rail bridge for the length), then signals. Prints `built=N failed=M` and one line per failure (layout-relative x,y); exits 1 on failures |
 | `sample V [V...] --ticks N` | `ottd sample 0 --ticks 600` | per-game-tick speed sampling inside the GS: per vehicle n, min, max, avg (integer km/h), `stops` (transitions to speed 0), then `drops` (speed fell 10 km/h or more within 8 ticks; one entry per event, tile where it began) |
+| `junction-check FILE [--trains N] [--ticks T] [--find-clear \| X Y]` | `ottd junction-check layouts/circuit-LR-TL4.json --find-clear` | sets the loan to max (`loan_max`), builds FILE, builds its `depots` (layout JSON field `[{x,y,dir}]`, relative to the origin), buys N trains (default 6, 3 wagons) in the first depot, starting one about 300 ticks after the previous, no orders, samples T ticks (default 7400), prints one line per train, then `OK` or `DEADLOCK?` (every train at speed 0 on the same tile in two `vehicles` snapshots 1000 ticks apart). Exit 0 OK, 2 DEADLOCK?, 1 build failure |
 | `vehicles` | `ottd vehicles` | `id @x,y speed km/h state` per train |
 | `watch VEHICLE --seconds N` | `ottd watch 0 --seconds 20` | samples about every 0.5 s; min/max/avg speed, whether it hit 0 |
 
-GameScript commands (`ottd gs`): `ping`, `company_set {company}`, `build_rail {x1,y1,x2,y2}`, `build_depot {x,y,dir}`, `build_train {depot_x,depot_y,engine?,wagons?}`, `orders_depots {vehicle,x1,y1,x2,y2}`, `start {vehicle}`, `vehicles`, `build_layout {origin_x,origin_y,layout}` (reply `{built,failed:[{what,x,y,error}]}`), `sample {vehicles:[ids],ticks:N}` (reply `{vehicles:[{id,n,min,max,avg,stops,drops:[{tile_x,tile_y,from,to}]}]}`). The CLI splits a large layout into several `build_layout` requests (about 1200 bytes each, tracks then bridges then signals), since one admin packet cannot carry a big layout. Replies over 1400 bytes arrive as `{"id","chunk","of","data"}` parts; `ottd_core.admin` reassembles them.
+GameScript commands (`ottd gs`): `ping`, `loan_max` (company mode: sets the loan to the maximum, replies `{balance}`), `company_set {company}`, `build_rail {x1,y1,x2,y2}`, `build_depot {x,y,dir}`, `build_train {depot_x,depot_y,engine?,wagons?}`, `orders_depots {vehicle,x1,y1,x2,y2}`, `start {vehicle}`, `vehicles`, `build_layout {origin_x,origin_y,layout}` (reply `{built,failed:[{what,x,y,error}]}`), `sample {vehicles:[ids],ticks:N}` (reply `{vehicles:[{id,n,min,max,avg,stops,drops:[{tile_x,tile_y,from,to}]}]}`). The CLI splits a large layout into several `build_layout` requests (about 1200 bytes each, tracks then bridges then signals), since one admin packet cannot carry a big layout. Replies over 1400 bytes arrive as `{"id","chunk","of","data"}` parts; `ottd_core.admin` reassembles them.
 
 ## Layout JSON
 
@@ -76,3 +77,7 @@ New games are generated flat by the `openttd.cfg` that `start` writes: `difficul
 - A fixed seed is used, but not every seed has clear land: `build-line 10 20 30 20` works on seed 3 (seeds 2 and 5 hit obstacles). Pick lines accordingly.
 - GS DoCommands each take at least a tick, so large builds are slow and block later requests.
 - Train `watch` starts at speed 0 while accelerating, so `stopped=yes` is normal at the start.
+
+## Test circuit
+
+Hidden test `[.circuit]` in `src/tests/junction_design.cpp`: `JUNCTION_CIRCUIT=tools/ottd/layouts/circuit-LR-TL4.json build/openttd_test "[.circuit]"`. It takes `GenerateJunction(MakeTestJunctionSpec())`, routes a turnaround loop beyond each of the three leg ends (boxes include the edge row or column of the port), puts one-way block signals along the loops, and adds a depot beside the west loop (a half-piece track on its outermost axis piece, depot on the free neighbour). `start` sets `[difficulty] max_loan = 2000000000` so the IdleAI company can pay for it.

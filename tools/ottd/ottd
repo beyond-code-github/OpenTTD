@@ -185,6 +185,75 @@ def cmd_sample(a):
             print("  drop at %d,%d: %d -> %d km/h" % (d["tile_x"], d["tile_y"], d["from"], d["to"]))
 
 
+def cmd_junction_check(a):
+    with open(a.file) as f:
+        layout = json.load(f)
+    adm = connect()
+    try:
+        r = gs(adm, {"cmd": "loan_max"})
+        print("loan max, balance=%d" % r["balance"])
+        ox, oy = a.x, a.y
+        if a.find_clear:
+            w, h = layout["size"]
+            r = gs(adm, {"cmd": "find_clear", "w": w + 4, "h": h + 4}, timeout=600)
+            ox, oy = r["x"] + 2, r["y"] + 2
+        elif ox is None or oy is None:
+            raise Fail("give X Y or --find-clear")
+        print("origin=%d,%d" % (ox, oy))
+        built, failed = 0, []
+        for part in layout_batches(layout):
+            r = gs(adm, {"cmd": "build_layout", "origin_x": ox, "origin_y": oy, "layout": part}, timeout=600)
+            built += r["built"]
+            failed += r["failed"]
+        print("built=%d failed=%d" % (built, len(failed)))
+        for f in failed:
+            print("  %s at %d,%d: %s" % (f["what"], f["x"], f["y"], f["error"]))
+        if failed:
+            sys.exit(1)
+        depots = layout.get("depots", [])
+        if not depots:
+            raise Fail("layout has no depots")
+        for d in depots:
+            gs(adm, {"cmd": "build_depot", "x": ox + d["x"], "y": oy + d["y"], "dir": d["dir"]})
+            print("depot %d,%d %s ok" % (ox + d["x"], oy + d["y"], d["dir"]))
+        d0 = depots[0]
+        dx, dy = ox + d0["x"], oy + d0["y"]
+        vids = []
+        for i in range(a.trains):
+            r = gs(adm, {"cmd": "build_train", "depot_x": dx, "depot_y": dy, "wagons": 3})
+            vids.append(r["vehicle"])
+            gs(adm, {"cmd": "start", "vehicle": r["vehicle"]})
+            if i + 1 < a.trains:
+                d_start = gs(adm, {"cmd": "ping"})["date"]
+                t0 = time.time()
+                while time.time() - t0 < 30:
+                    time.sleep(0.2)
+                    if gs(adm, {"cmd": "ping"})["date"] - d_start >= 4:  # about 300 ticks (74 ticks/day)
+                        break
+        print("trains %s" % ",".join(str(v) for v in vids))
+        r = gs(adm, {"cmd": "sample", "vehicles": vids, "ticks": a.ticks}, timeout=120 + a.ticks)
+    finally:
+        adm.close()
+    ok = False
+    for v in r["vehicles"]:
+        print("vehicle %d: n=%d speed min=%d max=%d avg=%d km/h stops=%d drops=%d" % (
+            v["id"], v["n"], v["min"], v["max"], v["avg"], v["stops"], len(v["drops"])))
+    adm = connect()
+    try:
+        snaps = []
+        for k in range(2):
+            snaps.append({v["id"]: (v["x"], v["y"], v["speed"]) for v in gs(adm, {"cmd": "vehicles"})["vehicles"] if v["id"] in vids})
+            if k == 0:
+                d0_ = gs(adm, {"cmd": "ping"})["date"]
+                while gs(adm, {"cmd": "ping"})["date"] - d0_ < 14:  # about 1000 ticks
+                    time.sleep(0.2)
+    finally:
+        adm.close()
+    dead = all(snaps[0][v][2] == 0 and snaps[1][v][2] == 0 and snaps[0][v][:2] == snaps[1][v][:2] for v in vids)
+    print("DEADLOCK?" if dead else "OK")
+    sys.exit(2 if dead else 0)
+
+
 def cmd_vehicles(a):
     for l in F.vehicles(one_shot({"cmd": "vehicles"})):
         print(l)
@@ -228,6 +297,7 @@ def main():
     add("gs", cmd_gs, ("json", {}))
     add("company", cmd_company, ("--id", i))
     add("build-layout", cmd_build_layout, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}))
+    add("junction-check", cmd_junction_check, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 6}), ("--ticks", {"type": int, "default": 7400}))
     add("sample", cmd_sample, ("vehicles", {"type": int, "nargs": "+"}), ("--ticks", {"type": int, "required": True}))
     add("build-line", cmd_build_line, ("x1", i), ("y1", i), ("x2", i), ("y2", i))
     add("depot", cmd_depot, ("x", i), ("y", i), ("dir", {"help": "NE|SE|SW|NW: direction the entrance faces (NE x-1, SE y+1, SW x+1, NW y-1)"}))

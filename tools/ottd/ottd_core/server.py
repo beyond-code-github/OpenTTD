@@ -24,6 +24,7 @@ terrain_type = 5
 number_towns = 4
 industry_density = 0
 vehicle_breakdowns = 0
+max_loan = 2000000000
 quantity_sea_lakes = 4
 [game_creation]
 map_x = 7
