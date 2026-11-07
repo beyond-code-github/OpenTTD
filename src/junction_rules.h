@@ -54,7 +54,12 @@ JunctionCheckContext MakeJunctionCheckContext(const JunctionLayout &layout, cons
 std::vector<RuleViolation> CheckConnectivity(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckGeometry(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckOrder(const JunctionCheckContext &ctx);
+std::vector<RuleViolation> CheckCurveSpeed(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckBridges(const JunctionCheckContext &ctx);
+std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx);
+std::vector<RuleViolation> CheckWaitingRoom(const JunctionCheckContext &ctx);
+std::vector<RuleViolation> CheckDeadlock(const JunctionCheckContext &ctx);
+std::vector<RuleViolation> CheckFootprint(const JunctionCheckContext &ctx);
 
 std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec);
 

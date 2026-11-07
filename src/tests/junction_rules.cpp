@@ -386,3 +386,431 @@ TEST_CASE("CheckBridges: each clause fails on its own", "[junction][rules]")
 		CHECK(violations.size() == 1);
 	}
 }
+
+/** A line of n X tiles along row 0. */
+static JunctionLayout Line(int n)
+{
+	return Build({{{0, 0}, Trackdir::X_SW, std::string(n - 1, 'F')}});
+}
+
+static std::vector<JunctionPort> LinePorts(int n, Role to = Role::EOut)
+{
+	return {Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(to, n - 1, 0, Trackdir::X_SW)};
+}
+
+/** Check one route from X_SW at the start of a path of its own, with the given reference speed. */
+static std::vector<RuleViolation> CurveViolations(const char *moves, uint16_t reference_speed)
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.reference_speed = reference_speed;
+	const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, moves});
+	REQUIRE(raster.error.empty());
+	JunctionLayout layout;
+	AddRasterToLayout(layout, raster);
+	NormaliseJunctionLayout(layout);
+	const JunctionPiece &last = raster.pieces.back();
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec,
+			{Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, last.tile.x, last.tile.y, last.trackdir)}, {{Role::EIn, Role::EOut}});
+	REQUIRE(ctx.paths.size() == 1);
+	return CheckCurveSpeed(ctx);
+}
+
+TEST_CASE("CheckCurveSpeed: reference cases at TL 4", "[junction][rules]")
+{
+	/* A straight path never fails. */
+	CHECK(CurveViolations("FFFFFFFF", 1000).empty());
+
+	/* "LL": bends one unit apart, limit 88. */
+	CHECK_FALSE(CurveViolations("LL", 89).empty());
+	CHECK(CurveViolations("LL", 88).empty());
+
+	/* "LFFL": bends three units apart, limit 132. */
+	CHECK_FALSE(CurveViolations("LFFL", 140).empty());
+	CHECK(CurveViolations("LFFL", 132).empty());
+
+	/* "LFR": one S-bend alone is exempt. */
+	CHECK(CurveViolations("LFR", 60000).empty());
+
+	/* "LFRLFR": two S-bends, curvecount 2 and 2, numcurve 3, average spacing 2: limit 111. */
+	CHECK_FALSE(CurveViolations("LFRLFR", 200).empty());
+	CHECK_FALSE(CurveViolations("LFRLFR", 112).empty());
+	CHECK(CurveViolations("LFRLFR", 111).empty());
+}
+
+TEST_CASE("CheckCurveSpeed: violation tile and the curve bonus", "[junction][rules]")
+{
+	/* The first failing window has its front on the first piece after the bends: (1,1) for "LL". */
+	const std::vector<RuleViolation> violations = CurveViolations("LL", 89);
+	REQUIRE(violations.size() == 1);
+	CHECK(violations[0].rule == JunctionRule::CurveSpeed);
+
+	/* With curve_speed 1 the limit of "LL" is 88 + 44 = 132. */
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.curve_speed = 1;
+	spec.reference_speed = 132;
+	const JunctionLayout layout = Build({{{0, 0}, Trackdir::X_SW, "LL"}});
+	JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, {Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, 1, 1, Trackdir::Y_SE)}, {{Role::EIn, Role::EOut}});
+	REQUIRE(ctx.paths.size() == 1);
+	CHECK(CheckCurveSpeed(ctx).empty());
+	spec.reference_speed = 133;
+	CHECK_FALSE(CheckCurveSpeed(ctx).empty());
+}
+
+/**
+ * A main line on row 0 with a branch leaving at (4,0).
+ *   - - - - # - - - - -
+ *   . . . . \ - - - - -
+ */
+static JunctionLayout SplitLayout()
+{
+	JunctionLayout layout = Build({{{0, 0}, Trackdir::X_SW, "FFFFFFFFF"}, {{3, 0}, Trackdir::X_SW, "LFRFFFF"}});
+	for (int x : {1, 3, 5, 7}) AddSignal(layout, x, 0, Trackdir::X_SW);
+	for (int x : {5, 7}) AddSignal(layout, x, 1, Trackdir::X_SW);
+	return layout;
+}
+
+static std::vector<JunctionPort> SplitPorts()
+{
+	return {Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, 9, 0, Trackdir::X_SW), Port(Role::SOut, 9, 1, Trackdir::X_SW)};
+}
+
+/**
+ * A main line on row 1 with a joiner merging at (5,1).
+ *   . . . . - / . . . .
+ *   - - - - - # - - - -
+ */
+static JunctionLayout MergeLayout()
+{
+	/* The joiner is the second route: (4,0) (5,0) (5,1) (6,1). */
+	JunctionLayout layout = Build({{{0, 1}, Trackdir::X_SW, "FFFFFFFFF"}, {{4, 0}, Trackdir::X_SW, "LFR"}});
+	for (int x : {2, 4, 6, 8}) AddSignal(layout, x, 1, Trackdir::X_SW);
+	AddSignal(layout, 5, 0, Trackdir::Right_S, SignalType::Entry);
+	return layout;
+}
+
+static std::vector<JunctionPort> MergePorts()
+{
+	return {Port(Role::EIn, 0, 1, Trackdir::X_SW), Port(Role::EOut, 9, 1, Trackdir::X_SW), Port(Role::WIn, 4, 0, Trackdir::X_SW)};
+}
+
+static const std::vector<Movement> MERGE_MOVEMENTS = {{Role::EIn, Role::EOut}, {Role::WIn, Role::EOut}};
+
+static void RemoveSignal(JunctionLayout &layout, int x, int y)
+{
+	std::erase_if(layout.signals, [&](const JunctionSignal &s) { return s.offset.x == x && s.offset.y == y; });
+}
+
+TEST_CASE("CheckSignals: passing fixtures", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+
+	const JunctionLayout line = [] { JunctionLayout l = Line(5); AddSignal(l, 1, 0, Trackdir::X_SW); AddSignal(l, 3, 0, Trackdir::X_SW); return l; }();
+	CHECK(CheckSignals(MakeJunctionCheckContext(line, spec, LinePorts(5), {{Role::EIn, Role::EOut}})).empty());
+
+	const JunctionLayout split = SplitLayout();
+	const JunctionCheckContext split_ctx = MakeJunctionCheckContext(split, spec, SplitPorts(), {{Role::EIn, Role::EOut}, {Role::EIn, Role::SOut}});
+	REQUIRE(split_ctx.paths.size() == 2);
+	CHECK(CheckSignals(split_ctx).empty());
+
+	/* The joiner's Entry signal at an ML merge is not a type violation here. */
+	const JunctionLayout merge = MergeLayout();
+	const JunctionCheckContext merge_ctx = MakeJunctionCheckContext(merge, spec, MergePorts(), MERGE_MOVEMENTS);
+	REQUIRE(merge_ctx.paths.size() == 2);
+	CHECK(CheckSignals(merge_ctx).empty());
+}
+
+TEST_CASE("CheckSignals: legality", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+
+	/* A signal for a track the tile does not have. */
+	{
+		JunctionLayout layout = Line(5);
+		AddSignal(layout, 2, 0, Trackdir::Y_SE);
+		CHECK(Has(CheckSignals(MakeJunctionCheckContext(layout, spec, LinePorts(5), {{Role::EIn, Role::EOut}})), JunctionRule::Signals, 2, 0, "without its track"));
+	}
+
+	/* A signal on a tile with crossing tracks. */
+	{
+		JunctionLayout layout = Line(5);
+		layout.tracks[2].tracks = TRACK_BIT_CROSS;
+		AddSignal(layout, 2, 0, Trackdir::X_SW);
+		CHECK(Has(CheckSignals(MakeJunctionCheckContext(layout, spec, LinePorts(5), {{Role::EIn, Role::EOut}})), JunctionRule::Signals, 2, 0, "overlapping"));
+	}
+
+	/* A signal on a bridge head. */
+	{
+		JunctionLayout layout = BridgeLayout();
+		AddSignal(layout, 1, 0, Trackdir::X_SW);
+		CHECK(Has(CheckSignals(MakeJunctionCheckContext(layout, spec, {}, {})), JunctionRule::Signals, 1, 0, "bridge head"));
+	}
+}
+
+TEST_CASE("CheckSignals: facing", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionLayout layout = Line(5);
+	AddSignal(layout, 1, 0, Trackdir::X_NE);
+	AddSignal(layout, 3, 0, Trackdir::X_SW);
+	CHECK(Has(CheckSignals(MakeJunctionCheckContext(layout, spec, LinePorts(5), {{Role::EIn, Role::EOut}})), JunctionRule::Signals, 1, 0, "against"));
+}
+
+TEST_CASE("CheckSignals: switch isolation", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+
+	/* Before a split. */
+	{
+		JunctionLayout layout = SplitLayout();
+		RemoveSignal(layout, 3, 0);
+		const std::vector<RuleViolation> violations = CheckSignals(MakeJunctionCheckContext(layout, spec, SplitPorts(), {{Role::EIn, Role::EOut}, {Role::EIn, Role::SOut}}));
+		CHECK(Has(violations, JunctionRule::Signals, 3, 0, "before a split"));
+	}
+
+	/* Before a merge, on the ML. */
+	{
+		JunctionLayout layout = MergeLayout();
+		RemoveSignal(layout, 4, 1);
+		const std::vector<RuleViolation> violations = CheckSignals(MakeJunctionCheckContext(layout, spec, MergePorts(), MERGE_MOVEMENTS));
+		CHECK(Has(violations, JunctionRule::Signals, 4, 1, "before a merge"));
+		CHECK(violations.size() == 1);
+	}
+
+	/* Before a merge, on the joiner. */
+	{
+		JunctionLayout layout = MergeLayout();
+		RemoveSignal(layout, 5, 0);
+		const std::vector<RuleViolation> violations = CheckSignals(MakeJunctionCheckContext(layout, spec, MergePorts(), MERGE_MOVEMENTS));
+		CHECK(Has(violations, JunctionRule::Signals, 5, 0, "before a merge"));
+		CHECK(violations.size() == 1);
+	}
+
+	/* After a merge. */
+	{
+		JunctionLayout layout = MergeLayout();
+		RemoveSignal(layout, 6, 1);
+		const std::vector<RuleViolation> violations = CheckSignals(MakeJunctionCheckContext(layout, spec, MergePorts(), MERGE_MOVEMENTS));
+		CHECK(Has(violations, JunctionRule::Signals, 6, 1, "after a merge"));
+	}
+}
+
+TEST_CASE("CheckSignals: spacing", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	/* Five tiles without signals: the third tile is 6 units from the start, more than 2 * SD = 4. */
+	const JunctionLayout layout = Line(5);
+	const std::vector<RuleViolation> violations = CheckSignals(MakeJunctionCheckContext(layout, spec, LinePorts(5), {{Role::EIn, Role::EOut}}));
+	CHECK(Has(violations, JunctionRule::Signals, 2, 0, "too far apart"));
+	CHECK(violations.size() == 1);
+}
+
+TEST_CASE("CheckSignals: types", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+
+	/* A path signal where the setting says block. */
+	{
+		JunctionLayout layout = MergeLayout();
+		layout.signals[0].type = SignalType::PathOneWay;
+		const std::vector<RuleViolation> violations = CheckSignals(MakeJunctionCheckContext(layout, spec, MergePorts(), MERGE_MOVEMENTS));
+		CHECK(Has(violations, JunctionRule::Signals, 2, 1, "type"));
+		CHECK(violations.size() == 1);
+	}
+
+	/* An Entry signal that is not the joiner's. */
+	{
+		JunctionLayout layout = MergeLayout();
+		layout.signals[1].type = SignalType::Entry;
+		CHECK(Has(CheckSignals(MakeJunctionCheckContext(layout, spec, MergePorts(), MERGE_MOVEMENTS)), JunctionRule::Signals, 4, 1, "type"));
+	}
+}
+
+/**
+ * E to S leaves the ML at (3,0) and merges with the joiner at (9,1).
+ *   - - - # - - - - - - - -
+ *   . . . \ - - - - - - # - -
+ *   . . . . . . . . - / . .     (joiner from (8,2))
+ */
+static JunctionLayout WaitingRoomLayout()
+{
+	return Build({{{0, 0}, Trackdir::X_SW, "FFFFFFFFFFF"}, {{2, 0}, Trackdir::X_SW, "LFRFFFFFFF"}, {{8, 2}, Trackdir::X_SW, "RFL"}});
+}
+
+static std::vector<JunctionPort> WaitingRoomPorts()
+{
+	return {Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, 11, 0, Trackdir::X_SW), Port(Role::NIn, 8, 2, Trackdir::X_SW), Port(Role::SOut, 11, 1, Trackdir::X_SW)};
+}
+
+static const std::vector<Movement> WAITING_ROOM_MOVEMENTS = {{Role::EIn, Role::EOut}, {Role::EIn, Role::SOut}, {Role::NIn, Role::SOut}};
+
+TEST_CASE("CheckWaitingRoom", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+
+	/* A signal at (8,1): 1 + 5 * 2 = 11 units after the split switch piece, at least 2 * TL = 8. */
+	{
+		JunctionLayout layout = WaitingRoomLayout();
+		AddSignal(layout, 8, 1, Trackdir::X_SW);
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, WaitingRoomPorts(), WAITING_ROOM_MOVEMENTS);
+		REQUIRE(ctx.paths.size() == 3);
+		CHECK(CheckWaitingRoom(ctx).empty());
+	}
+
+	/* A signal at (6,1) leaves 1 + 3 * 2 = 7 units. */
+	{
+		JunctionLayout layout = WaitingRoomLayout();
+		AddSignal(layout, 6, 1, Trackdir::X_SW);
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, WaitingRoomPorts(), WAITING_ROOM_MOVEMENTS);
+		CHECK(Has(CheckWaitingRoom(ctx), JunctionRule::WaitingRoom, 9, 1, "waiting room"));
+	}
+
+	/* No signal between the split and the merge. */
+	{
+		const JunctionLayout layout = WaitingRoomLayout();
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, WaitingRoomPorts(), WAITING_ROOM_MOVEMENTS);
+		CHECK(Has(CheckWaitingRoom(ctx), JunctionRule::WaitingRoom, 9, 1, "no signal"));
+	}
+
+	/* A split without a merge. */
+	{
+		const JunctionLayout layout = SplitLayout();
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, SplitPorts(), {{Role::EIn, Role::EOut}, {Role::EIn, Role::SOut}});
+		CHECK(Has(CheckWaitingRoom(ctx), JunctionRule::WaitingRoom, 4, 0, "no merge"));
+	}
+
+	/* No split at all. */
+	{
+		const JunctionLayout layout = Line(5);
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, LinePorts(5, Role::SOut), {{Role::EIn, Role::SOut}});
+		CHECK(Has(CheckWaitingRoom(ctx), JunctionRule::WaitingRoom, 0, 0, "no split"));
+	}
+}
+
+TEST_CASE("CheckDeadlock", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+
+	/* Without signals the whole junction is one block, with the split at (3,0) and the merge at (9,1). */
+	{
+		const JunctionLayout layout = WaitingRoomLayout();
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, WaitingRoomPorts(), WAITING_ROOM_MOVEMENTS);
+		const std::vector<RuleViolation> violations = CheckDeadlock(ctx);
+		CHECK(Has(violations, JunctionRule::Deadlock, 9, 1, "split and a merge"));
+		CHECK(violations.size() == 1);
+	}
+
+	/* A signal at (8,1) puts the merge in a block of its own. */
+	{
+		JunctionLayout layout = WaitingRoomLayout();
+		AddSignal(layout, 8, 1, Trackdir::X_SW);
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, WaitingRoomPorts(), WAITING_ROOM_MOVEMENTS);
+		CHECK(CheckDeadlock(ctx).empty());
+	}
+}
+
+/** Shift a layout and ports one tile towards +x, keeping the size. */
+static void ShiftRight(JunctionLayout &layout, std::vector<JunctionPort> &ports)
+{
+	for (JunctionTrack &jt : layout.tracks) jt.offset.x++;
+	for (JunctionSignal &s : layout.signals) s.offset.x++;
+	for (JunctionPort &p : ports) p.tile.x++;
+}
+
+TEST_CASE("CheckFootprint", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+
+	/* The waiting room layout is a tight box with clear west, east and bottom edges. */
+	{
+		JunctionLayout layout = WaitingRoomLayout();
+		AddSignal(layout, 8, 1, Trackdir::X_SW);
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, WaitingRoomPorts(), WAITING_ROOM_MOVEMENTS);
+		CHECK(CheckFootprint(ctx).empty());
+	}
+
+	/* The minimum offset is 1, not 0. */
+	{
+		JunctionLayout layout = WaitingRoomLayout();
+		std::vector<JunctionPort> ports = WaitingRoomPorts();
+		ShiftRight(layout, ports);
+		layout.size.x++;
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, WAITING_ROOM_MOVEMENTS);
+		CHECK(Has(CheckFootprint(ctx), JunctionRule::Footprint, 1, 0, "minimum offsets"));
+	}
+
+	/* The size is bigger than the bounding box. */
+	{
+		JunctionLayout layout = WaitingRoomLayout();
+		layout.size.y++;
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, WaitingRoomPorts(), WAITING_ROOM_MOVEMENTS);
+		CHECK(Has(CheckFootprint(ctx), JunctionRule::Footprint, 0, 0, "bounding box"));
+	}
+
+	/* A signal on the east edge. */
+	{
+		JunctionLayout layout = WaitingRoomLayout();
+		AddSignal(layout, 11, 0, Trackdir::X_SW);
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, WaitingRoomPorts(), WAITING_ROOM_MOVEMENTS);
+		CHECK(Has(CheckFootprint(ctx), JunctionRule::Footprint, 11, 0, "signal"));
+	}
+
+	/*
+	 * A switch on the bottom edge: the branch leaves row 1 at (3,1).
+	 *   . . . \ - - -
+	 *   - - - # . . .   wait: the branch goes up to row 0
+	 */
+	{
+		const JunctionLayout layout = Build({{{0, 1}, Trackdir::X_SW, "FFFFFF"}, {{2, 1}, Trackdir::X_SW, "RFLFF"}});
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec,
+				{Port(Role::EIn, 0, 1, Trackdir::X_SW), Port(Role::EOut, 6, 1, Trackdir::X_SW), Port(Role::SOut, 6, 0, Trackdir::X_SW)}, {{Role::EIn, Role::EOut}, {Role::EIn, Role::SOut}});
+		REQUIRE(ctx.paths.size() == 2);
+		CHECK(Has(CheckFootprint(ctx), JunctionRule::Footprint, 3, 1, "switch"));
+	}
+
+	/* An unused track bit on the west edge. */
+	{
+		JunctionLayout layout = WaitingRoomLayout();
+		layout.tracks.push_back({{0, 2}, TrackBits{Track::Y}});
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, WaitingRoomPorts(), WAITING_ROOM_MOVEMENTS);
+		CHECK(Has(CheckFootprint(ctx), JunctionRule::Footprint, 0, 2, "unused"));
+	}
+
+	/* Bridge heads on the bottom edge: the bridge layout is one row high. */
+	{
+		const JunctionLayout layout = BridgeLayout();
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec,
+				{Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, 4, 0, Trackdir::X_SW)}, {{Role::EIn, Role::EOut}});
+		const std::vector<RuleViolation> violations = CheckFootprint(ctx);
+		CHECK(Has(violations, JunctionRule::Footprint, 1, 0, "bridge head"));
+		CHECK(Has(violations, JunctionRule::Footprint, 3, 0, "bridge head"));
+	}
+}
+
+TEST_CASE("CheckJunctionRules: runs the groups and honours curve_limit", "[junction][rules]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+
+	const std::vector<RuleViolation> empty = CheckJunctionRules(JunctionLayout{}, spec);
+	CHECK(Has(empty, JunctionRule::Connectivity, 0, 0, "missing port"));
+	CHECK(std::ranges::none_of(empty, [](const RuleViolation &v) { return v.rule == JunctionRule::NotImplemented; }));
+
+	/*
+	 * EIn at (0,2) runs up to EOut at (4,0) through a tight S-bend; WIn at (4,3) runs straight to WOut at (0,3).
+	 *   . . . - -
+	 *   . \ . . .
+	 *   - # . . .   (the bend: half pieces and a Y piece in column 1)
+	 *   - - - - -
+	 */
+	JunctionLayout layout = Build({{{0, 2}, Trackdir::X_SW, "RRLLFF"}, {{0, 3}, Trackdir::X_SW, "FFFF"}});
+	REQUIRE(layout.size.x == 5);
+	REQUIRE(layout.size.y == 4);
+	const std::vector<JunctionPort> ports = FindJunctionPorts(layout);
+	REQUIRE(ports.size() == 4);
+
+	auto has_curve = [&](const std::vector<RuleViolation> &violations) {
+		return std::ranges::any_of(violations, [](const RuleViolation &v) { return v.rule == JunctionRule::CurveSpeed; });
+	};
+	CHECK(has_curve(CheckJunctionRules(layout, spec)));
+	spec.curve_limit = false;
+	CHECK_FALSE(has_curve(CheckJunctionRules(layout, spec)));
+}

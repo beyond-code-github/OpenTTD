@@ -10,6 +10,7 @@
 #include "stdafx.h"
 
 #include "junction_rules.h"
+#include "core/math_func.hpp"
 #include "direction_func.h"
 #include "map_func.h"
 #include "track_func.h"
@@ -67,6 +68,15 @@ static bool TrackTouches(Track track, DiagDirection edge)
 {
 	const Trackdir td = TrackToTrackdir(track);
 	return TrackdirToExitdir(td) == edge || TrackdirToExitdir(ReverseTrackdir(td)) == edge;
+}
+
+/** Whether any of the tracks touches the given tile edge. */
+static bool AnyTrackTouches(TrackBits tracks, DiagDirection edge)
+{
+	for (Track track : tracks) {
+		if (TrackTouches(track, edge)) return true;
+	}
+	return false;
 }
 
 static TileIndexDiffC NextTile(TileIndexDiffC tile, Trackdir td)
@@ -454,6 +464,418 @@ std::vector<RuleViolation> CheckBridges(const JunctionCheckContext &ctx)
 	return out;
 }
 
+/**
+ * The curve speed limit of a train whose parts head in the given directions, as Train::GetCurveSpeedLimit.
+ * Every part is 1 long and the parts are walked from the front, which is the last entry.
+ * @param dirs The direction of each part in travel order.
+ * @param curve_speed The rail type's curve speed advantage.
+ * @return The limit; UINT16_MAX when unlimited.
+ */
+static int CurveSpeedLimitOfTrain(const std::vector<Direction> &dirs, uint8_t curve_speed)
+{
+	static constexpr int absolute_max_speed = UINT16_MAX;
+	static constexpr int vehicle_length = 1;
+	int max_speed = absolute_max_speed;
+
+	int curvecount[2] = {0, 0};
+	int numcurve = 0;
+	int sum = 0;
+	int pos = 0;
+	int lastpos = -1;
+	const size_t n = dirs.size();
+	for (size_t i = 0; i + 1 < n; i++, pos += vehicle_length) {
+		const Direction this_dir = dirs[n - 1 - i];
+		const Direction next_dir = dirs[n - 2 - i];
+
+		const DirDiff dirdiff = DirDifference(this_dir, next_dir);
+		if (dirdiff == DirDiff::Same) continue;
+
+		if (dirdiff == DirDiff::Left45) curvecount[0]++;
+		if (dirdiff == DirDiff::Right45) curvecount[1]++;
+		if (dirdiff == DirDiff::Left45 || dirdiff == DirDiff::Right45) {
+			if (lastpos != -1) {
+				numcurve++;
+				sum += pos - lastpos;
+				if (pos - lastpos <= vehicle_length && max_speed > 88) max_speed = 88;
+			}
+			lastpos = pos;
+		}
+
+		if (dirdiff == DirDiff::Left90 || dirdiff == DirDiff::Right90) max_speed = 61;
+	}
+
+	if (numcurve > 0 && max_speed > 88) {
+		if (curvecount[0] == 1 && curvecount[1] == 1) {
+			max_speed = absolute_max_speed;
+		} else {
+			sum = CeilDiv(sum, vehicle_length);
+			sum /= numcurve;
+			max_speed = 232 - (13 - Clamp(sum, 1, 12)) * (13 - Clamp(sum, 1, 12));
+		}
+	}
+
+	if (max_speed != absolute_max_speed) max_speed += (max_speed / 2) * curve_speed;
+	return max_speed;
+}
+
+/** G3: a train of 2*TL parts never has a curve speed limit below the reference speed. */
+std::vector<RuleViolation> CheckCurveSpeed(const JunctionCheckContext &ctx)
+{
+	std::vector<RuleViolation> out;
+	const size_t n = 2 * static_cast<size_t>(ctx.spec.tl);
+	if (n == 0) return out;
+
+	for (const JunctionPath &path : ctx.paths) {
+		std::vector<Direction> dirs(n, TrackdirToDirection(path.pieces.front().trackdir));
+		std::vector<size_t> unit_piece(n, 0);
+		for (size_t i = 0; i < path.pieces.size(); i++) {
+			for (uint8_t u = 0; u < path.pieces[i].units; u++) {
+				dirs.push_back(TrackdirToDirection(path.pieces[i].trackdir));
+				unit_piece.push_back(i);
+			}
+		}
+		const size_t length = dirs.size() - n;
+		dirs.insert(dirs.end(), n, TrackdirToDirection(path.pieces.back().trackdir));
+
+		for (size_t start = 0; start + n <= dirs.size(); start++) {
+			const std::vector<Direction> window(dirs.begin() + start, dirs.begin() + start + n);
+			const int limit = CurveSpeedLimitOfTrain(window, ctx.spec.curve_speed);
+			if (limit >= ctx.spec.reference_speed) continue;
+
+			/* The unit under the front, clamped to the path: the padding stands for straight legs. */
+			const size_t front = start + n - 1;
+			const size_t unit = front < n ? 0 : std::min(front - n, length - 1);
+			AddViolation(out, JunctionRule::CurveSpeed, path.pieces[unit_piece[n + unit]].tile, fmt::format("curve speed limit {} below {}", limit, ctx.spec.reference_speed));
+			break;
+		}
+	}
+	return out;
+}
+
+/** Whether the layout has a signal on the tile for travel along the trackdir. */
+static bool HasSignalFacing(const JunctionLayout &layout, TileIndexDiffC tile, Trackdir td)
+{
+	return std::ranges::any_of(layout.signals, [&](const JunctionSignal &s) { return SameTile(s.offset, tile) && s.facing == td; });
+}
+
+/** Whether the layout has a signal in either direction on the track of the trackdir. */
+static bool HasSignalOnTrack(const JunctionLayout &layout, TileIndexDiffC tile, Trackdir td)
+{
+	return std::ranges::any_of(layout.signals, [&](const JunctionSignal &s) { return SameTile(s.offset, tile) && TrackdirToTrack(s.facing) == TrackdirToTrack(td); });
+}
+
+static bool IsSignalledPiece(const JunctionLayout &layout, const JunctionPiece &piece)
+{
+	return !piece.on_bridge && HasSignalFacing(layout, piece.tile, piece.trackdir);
+}
+
+/** Whether a signal could be placed on the piece. */
+static bool IsLegalSignalPiece(const JunctionLayout &layout, const JunctionPiece &piece)
+{
+	if (piece.on_bridge || FindBridgeByHead(layout, piece.tile) != nullptr) return false;
+	if (TracksOverlap(TracksAt(layout, piece.tile))) return false;
+	return !HasSignalOnTrack(layout, piece.tile, piece.trackdir);
+}
+
+/** The signals that are the joiner's nearest signal before an ML merge. */
+static std::vector<std::pair<TileIndexDiffC, Trackdir>> JoinerSignals(const JunctionCheckContext &ctx)
+{
+	std::vector<std::pair<TileIndexDiffC, Trackdir>> result;
+	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
+		const JunctionPath &ml = ctx.paths[pi];
+		const bool is_ml = (ml.from == JunctionPortRole::EIn && ml.to == JunctionPortRole::EOut) || (ml.from == JunctionPortRole::WIn && ml.to == JunctionPortRole::WOut);
+		if (!is_ml) continue;
+		for (const SwitchEvent &event : SwitchEventsOf(ctx.layout, ml)) {
+			if (event.first) continue;
+			const JunctionPiece &merge_piece = ml.pieces[event.second];
+			for (size_t qi = 0; qi < ctx.paths.size(); qi++) {
+				if (qi == pi) continue;
+				const JunctionPath &joiner = ctx.paths[qi];
+				for (const SwitchEvent &other : SwitchEventsOf(ctx.layout, joiner)) {
+					if (other.first) continue;
+					const JunctionPiece &joiner_piece = joiner.pieces[other.second];
+					if (!SameTile(joiner_piece.tile, merge_piece.tile) || joiner_piece.trackdir == merge_piece.trackdir) continue;
+					for (size_t i = other.second; i-- > 0;) {
+						if (!IsSignalledPiece(ctx.layout, joiner.pieces[i])) continue;
+						result.emplace_back(joiner.pieces[i].tile, joiner.pieces[i].trackdir);
+						break;
+					}
+				}
+			}
+		}
+	}
+	return result;
+}
+
+/** G6: signal legality, facing, isolation of switches, spacing and types. */
+std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx)
+{
+	std::vector<RuleViolation> out;
+	const JunctionLayout &layout = ctx.layout;
+	const std::map<std::pair<int, int>, TrackdirBits> used = UsedTrackdirs(ctx);
+	auto used_at = [&](TileIndexDiffC tile) {
+		const auto it = used.find({tile.x, tile.y});
+		return it == used.end() ? TrackdirBits{} : it->second;
+	};
+
+	/* 1. Legality and 2. facing. */
+	for (const JunctionSignal &signal : layout.signals) {
+		const TrackBits tracks = TracksAt(layout, signal.offset);
+		if (FindBridgeByHead(layout, signal.offset) != nullptr) {
+			AddViolation(out, JunctionRule::Signals, signal.offset, "signal on a bridge head");
+		} else if (!tracks.Test(TrackdirToTrack(signal.facing))) {
+			AddViolation(out, JunctionRule::Signals, signal.offset, "signal without its track");
+		} else if (TracksOverlap(tracks)) {
+			AddViolation(out, JunctionRule::Signals, signal.offset, "signal on overlapping tracks");
+		}
+
+		const TrackdirBits used_here = used_at(signal.offset);
+		if ((used_here & TrackToTrackdirBits(TrackdirToTrack(signal.facing))).Any() && !used_here.Test(signal.facing)) {
+			AddViolation(out, JunctionRule::Signals, signal.offset, "signal faces against the traffic");
+		}
+	}
+
+	/* 3. Switch isolation. */
+	for (const JunctionPath &path : ctx.paths) {
+		const std::vector<SwitchEvent> events = SwitchEventsOf(layout, path);
+		std::set<size_t> switches;
+		for (const SwitchEvent &event : events) switches.insert(event.second);
+
+		/* The nearest piece that has or could take a signal, scanning from 'from' in 'step' direction, or nullptr. */
+		auto nearest = [&](size_t from, int step) -> const JunctionPiece * {
+			for (int64_t i = static_cast<int64_t>(from); i >= 0 && i < static_cast<int64_t>(path.pieces.size()); i += step) {
+				const JunctionPiece &piece = path.pieces[i];
+				if (piece.on_bridge || switches.contains(static_cast<size_t>(i))) return nullptr;
+				if (IsSignalledPiece(layout, piece) || IsLegalSignalPiece(layout, piece)) return &piece;
+			}
+			return nullptr;
+		};
+		auto require = [&](const JunctionPiece *piece, const char *message) {
+			if (piece != nullptr && !IsSignalledPiece(layout, *piece)) AddViolation(out, JunctionRule::Signals, piece->tile, message);
+		};
+
+		for (const auto &[is_split, index] : events) {
+			if (index > 0) require(nearest(index - 1, -1), is_split ? "no signal before a split" : "no signal before a merge");
+			if (!is_split) require(nearest(index + 1, 1), "no signal after a merge");
+		}
+	}
+
+	/* 4. Spacing. */
+	for (const JunctionPath &path : ctx.paths) {
+		uint d = 0;
+		for (const JunctionPiece &piece : path.pieces) {
+			if (IsSignalledPiece(layout, piece)) {
+				d = 0;
+				continue;
+			}
+			d += piece.units;
+			if (d > 2u * ctx.spec.sd && IsLegalSignalPiece(layout, piece)) {
+				AddViolation(out, JunctionRule::Signals, piece.tile, "signals too far apart");
+				d = 0;
+			}
+		}
+	}
+
+	/* 5. Types, except for the joiner's signal at an ML merge (G9 checks that one). */
+	const auto joiner_signals = JoinerSignals(ctx);
+	for (const JunctionSignal &signal : layout.signals) {
+		if (!used_at(signal.offset).Test(signal.facing) || signal.type == ctx.spec.signal_type) continue;
+		const bool joiner = std::ranges::any_of(joiner_signals, [&](const auto &js) { return SameTile(js.first, signal.offset) && js.second == signal.facing; });
+		if (!joiner) AddViolation(out, JunctionRule::Signals, signal.offset, "signal type does not match the setting");
+	}
+	return out;
+}
+
+/** G7: the track from where a connection leaves the ML to its last signal before the merge holds a train. */
+std::vector<RuleViolation> CheckWaitingRoom(const JunctionCheckContext &ctx)
+{
+	std::vector<RuleViolation> out;
+	for (const JunctionPath &path : ctx.paths) {
+		if ((path.from != JunctionPortRole::EIn && path.from != JunctionPortRole::WIn) || path.to != JunctionPortRole::SOut) continue;
+
+		const std::vector<SwitchEvent> events = SwitchEventsOf(ctx.layout, path);
+		const auto split = std::ranges::find_if(events, [](const SwitchEvent &e) { return e.first; });
+		if (split == events.end()) {
+			AddViolation(out, JunctionRule::WaitingRoom, PortTile(ctx, path.from), "no split on the connection");
+			continue;
+		}
+		const TileIndexDiffC split_tile = path.pieces[split->second].tile;
+		const auto merge = std::ranges::find_if(events, [&](const SwitchEvent &e) { return !e.first && e.second > split->second; });
+		if (merge == events.end()) {
+			AddViolation(out, JunctionRule::WaitingRoom, split_tile, "no merge after the split");
+			continue;
+		}
+		const TileIndexDiffC merge_tile = path.pieces[merge->second].tile;
+
+		size_t last_signal = 0;
+		for (size_t i = merge->second; i-- > split->second + 1;) {
+			if (!IsSignalledPiece(ctx.layout, path.pieces[i])) continue;
+			last_signal = i;
+			break;
+		}
+		if (last_signal == 0) {
+			AddViolation(out, JunctionRule::WaitingRoom, merge_tile, "no signal between the split and the merge");
+			continue;
+		}
+
+		uint units = 0;
+		for (size_t i = split->second + 1; i <= last_signal; i++) units += path.pieces[i].units;
+		if (units < 2u * ctx.spec.tl) AddViolation(out, JunctionRule::WaitingRoom, merge_tile, fmt::format("waiting room of {} units, needs {}", units, 2u * ctx.spec.tl));
+	}
+	return out;
+}
+
+/** Union-find root. */
+static size_t FindRoot(std::vector<size_t> &parent, size_t i)
+{
+	while (parent[i] != i) {
+		parent[i] = parent[parent[i]];
+		i = parent[i];
+	}
+	return i;
+}
+
+/**
+ * Compute the signal blocks. Tiles with a signal belong to no block; all track bits of a tile are one unit;
+ * a bridge joins the tile before its near head and the tile after its far head, and its heads belong to that block.
+ * @return Map from tile to block id.
+ */
+static std::map<std::pair<int, int>, size_t> ComputeBlocks(const JunctionLayout &layout)
+{
+	std::map<std::pair<int, int>, size_t> node_of;
+	std::vector<TileIndexDiffC> tiles;
+	for (const JunctionTrack &jt : layout.tracks) {
+		if (node_of.contains({jt.offset.x, jt.offset.y})) continue;
+		if (std::ranges::any_of(layout.signals, [&](const JunctionSignal &s) { return SameTile(s.offset, jt.offset); })) continue;
+		node_of[{jt.offset.x, jt.offset.y}] = tiles.size();
+		tiles.push_back(jt.offset);
+	}
+	const size_t bridge_base = tiles.size();
+	std::vector<size_t> parent(tiles.size() + layout.bridges.size());
+	for (size_t i = 0; i < parent.size(); i++) parent[i] = i;
+
+	auto join = [&](size_t a, size_t b) { parent[FindRoot(parent, a)] = FindRoot(parent, b); };
+
+	for (size_t i = 0; i < tiles.size(); i++) {
+		const TrackBits tracks = TracksAt(layout, tiles[i]);
+		for (DiagDirection edge = DiagDirection::Begin; edge < DiagDirection::End; edge++) {
+			if (!AnyTrackTouches(tracks, edge)) continue;
+			const TileIndexDiffC other = AddTiles(tiles[i], TileIndexDiffCByDiagDir(edge));
+			const auto it = node_of.find({other.x, other.y});
+			if (it == node_of.end()) continue;
+			const DiagDirection opposite = ReverseDiagDir(edge);
+			if (AnyTrackTouches(TracksAt(layout, other), opposite)) join(i, it->second);
+		}
+	}
+
+	for (size_t b = 0; b < layout.bridges.size(); b++) {
+		const JunctionBridge &bridge = layout.bridges[b];
+		const bool aligned = (bridge.start.x == bridge.end.x) != (bridge.start.y == bridge.end.y);
+		if (!aligned) continue;
+		const TileIndexDiffC step = {static_cast<int16_t>(SignOf(bridge.end.x - bridge.start.x)), static_cast<int16_t>(SignOf(bridge.end.y - bridge.start.y))};
+		const TileIndexDiffC before = {static_cast<int16_t>(bridge.start.x - step.x), static_cast<int16_t>(bridge.start.y - step.y)};
+		const TileIndexDiffC after = AddTiles(bridge.end, step);
+		for (TileIndexDiffC side : {before, after}) {
+			const auto it = node_of.find({side.x, side.y});
+			if (it != node_of.end()) join(bridge_base + b, it->second);
+		}
+	}
+
+	std::map<std::pair<int, int>, size_t> blocks;
+	for (size_t i = 0; i < tiles.size(); i++) blocks[{tiles[i].x, tiles[i].y}] = FindRoot(parent, i);
+	for (size_t b = 0; b < layout.bridges.size(); b++) {
+		for (TileIndexDiffC head : {layout.bridges[b].start, layout.bridges[b].end}) blocks[{head.x, head.y}] = FindRoot(parent, bridge_base + b);
+	}
+	return blocks;
+}
+
+/** The tiles of the switches on all paths: splits first, merges second. */
+static std::pair<std::set<std::pair<int, int>>, std::set<std::pair<int, int>>> SwitchTiles(const JunctionCheckContext &ctx)
+{
+	std::pair<std::set<std::pair<int, int>>, std::set<std::pair<int, int>>> result;
+	for (const JunctionPath &path : ctx.paths) {
+		for (const auto &[is_split, index] : SwitchEventsOf(ctx.layout, path)) {
+			const TileIndexDiffC tile = path.pieces[index].tile;
+			(is_split ? result.first : result.second).insert({tile.x, tile.y});
+		}
+	}
+	return result;
+}
+
+/** G8: no signal block holds both a split and a merge. */
+std::vector<RuleViolation> CheckDeadlock(const JunctionCheckContext &ctx)
+{
+	std::vector<RuleViolation> out;
+	const auto blocks = ComputeBlocks(ctx.layout);
+	const auto [splits, merges] = SwitchTiles(ctx);
+
+	std::set<size_t> split_blocks;
+	for (const auto &tile : splits) {
+		if (const auto it = blocks.find(tile); it != blocks.end()) split_blocks.insert(it->second);
+	}
+	std::set<size_t> reported;
+	for (const auto &tile : merges) {
+		const auto it = blocks.find(tile);
+		if (it == blocks.end() || !split_blocks.contains(it->second) || !reported.insert(it->second).second) continue;
+		AddViolation(out, JunctionRule::Deadlock, {static_cast<int16_t>(tile.first), static_cast<int16_t>(tile.second)}, "a signal block holds both a split and a merge");
+	}
+	return out;
+}
+
+/** G10: size is the bounding box and the west, east and bottom edges are free of signals, switches, bridge heads and unused track. */
+std::vector<RuleViolation> CheckFootprint(const JunctionCheckContext &ctx)
+{
+	std::vector<RuleViolation> out;
+	const JunctionLayout &layout = ctx.layout;
+
+	int min_x = INT16_MAX;
+	int min_y = INT16_MAX;
+	int max_x = INT16_MIN;
+	int max_y = INT16_MIN;
+	auto include = [&](TileIndexDiffC tile) {
+		min_x = std::min<int>(min_x, tile.x);
+		min_y = std::min<int>(min_y, tile.y);
+		max_x = std::max<int>(max_x, tile.x);
+		max_y = std::max<int>(max_y, tile.y);
+	};
+	for (const JunctionTrack &jt : layout.tracks) include(jt.offset);
+	for (const JunctionBridge &bridge : layout.bridges) {
+		include(bridge.start);
+		include(bridge.end);
+	}
+	if (max_x < min_x) return out;
+
+	if (min_x != 0 || min_y != 0) {
+		AddViolation(out, JunctionRule::Footprint, {static_cast<int16_t>(min_x), static_cast<int16_t>(min_y)}, "the minimum offsets must be 0");
+	}
+	if (layout.size.x != max_x + 1 || layout.size.y != max_y + 1) {
+		AddViolation(out, JunctionRule::Footprint, {0, 0}, fmt::format("size {}x{} is not the bounding box {}x{}", layout.size.x, layout.size.y, max_x + 1, max_y + 1));
+	}
+
+	auto on_boundary = [&](TileIndexDiffC tile) { return tile.x == 0 || tile.x == layout.size.x - 1 || tile.y == layout.size.y - 1; };
+	const auto used = UsedTracks(ctx);
+	const auto [splits, merges] = SwitchTiles(ctx);
+
+	for (const JunctionSignal &signal : layout.signals) {
+		if (on_boundary(signal.offset)) AddViolation(out, JunctionRule::Footprint, signal.offset, "signal on the boundary");
+	}
+	for (const JunctionBridge &bridge : layout.bridges) {
+		for (TileIndexDiffC head : {bridge.start, bridge.end}) {
+			if (on_boundary(head)) AddViolation(out, JunctionRule::Footprint, head, "bridge head on the boundary");
+		}
+	}
+	for (const JunctionTrack &jt : layout.tracks) {
+		if (!on_boundary(jt.offset)) continue;
+		const std::pair<int, int> key{jt.offset.x, jt.offset.y};
+		if (splits.contains(key) || merges.contains(key)) AddViolation(out, JunctionRule::Footprint, jt.offset, "switch on the boundary");
+		const auto it = used.find(key);
+		for (Track track : jt.tracks) {
+			if (it == used.end() || !it->second.Test(track)) AddViolation(out, JunctionRule::Footprint, jt.offset, "unused track on the boundary");
+		}
+	}
+	return out;
+}
+
 std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec)
 {
 	using Role = JunctionPortRole;
@@ -462,8 +884,15 @@ std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, cons
 	});
 
 	std::vector<RuleViolation> out;
-	for (const auto &group : {CheckConnectivity(ctx), CheckGeometry(ctx), CheckOrder(ctx), CheckBridges(ctx)}) {
-		out.insert(out.end(), group.begin(), group.end());
-	}
+	auto add = [&](const std::vector<RuleViolation> &group) { out.insert(out.end(), group.begin(), group.end()); };
+	add(CheckConnectivity(ctx));
+	add(CheckGeometry(ctx));
+	if (spec.curve_limit) add(CheckCurveSpeed(ctx));
+	add(CheckOrder(ctx));
+	add(CheckBridges(ctx));
+	add(CheckSignals(ctx));
+	add(CheckWaitingRoom(ctx));
+	add(CheckDeadlock(ctx));
+	add(CheckFootprint(ctx));
 	return out;
 }
