@@ -478,11 +478,15 @@ std::vector<RuleViolation> CheckBridges(const JunctionCheckContext &ctx)
 		if (!aligned) continue;
 
 		const TileIndexDiffC step = {static_cast<int16_t>(SignOf(bridge.end.x - bridge.start.x)), static_cast<int16_t>(SignOf(bridge.end.y - bridge.start.y))};
-		const Track axis = same_row ? Track::X : Track::Y;
 		const TileIndexDiffC before = {static_cast<int16_t>(bridge.start.x - step.x), static_cast<int16_t>(bridge.start.y - step.y)};
 		const TileIndexDiffC after = AddTiles(bridge.end, step);
-		if (!TracksAt(layout, before).Test(axis)) AddViolation(out, JunctionRule::Bridges, bridge.start, "no approach track outside the head");
-		if (!TracksAt(layout, after).Test(axis)) AddViolation(out, JunctionRule::Bridges, bridge.end, "no approach track outside the head");
+		/* D110: the approach tile only needs track reaching the edge it shares with the head; a curve may join a head directly. */
+		DiagDirection step_dir = DiagDirection::NE;
+		for (DiagDirection dir : {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW}) {
+			if (TileIndexDiffCByDiagDir(dir).x == step.x && TileIndexDiffCByDiagDir(dir).y == step.y) step_dir = dir;
+		}
+		if (!AnyTrackTouches(TracksAt(layout, before), step_dir)) AddViolation(out, JunctionRule::Bridges, bridge.start, "no approach track outside the head");
+		if (!AnyTrackTouches(TracksAt(layout, after), ReverseDiagDir(step_dir))) AddViolation(out, JunctionRule::Bridges, bridge.end, "no approach track outside the head");
 
 		const uint distance = std::abs(bridge.end.x - bridge.start.x) + std::abs(bridge.end.y - bridge.start.y);
 		if (!ctx.spec.bridge_span_ok(distance - 1)) AddViolation(out, JunctionRule::Bridges, bridge.start, fmt::format("bridge span of {} tiles not accepted", distance - 1));

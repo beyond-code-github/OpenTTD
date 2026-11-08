@@ -356,6 +356,21 @@ TEST_CASE("CheckBridges: each clause fails on its own", "[junction][rules]")
 		CHECK_FALSE(Has(violations, JunctionRule::Bridges, 1, 0, "approach"));
 	}
 
+	/* D110: a corner piece directly after the far head reaches the shared edge and passes; one that does not touch that edge fails. */
+	{
+		JunctionLayout layout = BridgeLayout();
+		for (JunctionTrack &jt : layout.tracks) {
+			if (jt.offset.x == 4) jt.tracks = TrackBits{Track::Upper};
+		}
+		const JunctionCheckContext ctx_touch = MakeJunctionCheckContext(layout, spec, {}, {});
+		CHECK_FALSE(Has(CheckBridges(ctx_touch), JunctionRule::Bridges, 3, 0, "approach"));
+		for (JunctionTrack &jt : layout.tracks) {
+			if (jt.offset.x == 4) jt.tracks = TrackBits{Track::Lower};
+		}
+		const JunctionCheckContext ctx_miss = MakeJunctionCheckContext(layout, spec, {}, {});
+		CHECK(Has(CheckBridges(ctx_miss), JunctionRule::Bridges, 3, 0, "approach"));
+	}
+
 	/* A span length the spec does not accept. */
 	{
 		JunctionSpec strict = spec;

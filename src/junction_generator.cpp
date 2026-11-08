@@ -322,7 +322,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 
 		const std::string span = fmt::format("B{}", n);
 		const int nw_row = params.lane_style == 1 ? b_row : w_row;
-		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - 1 - static_cast<int>(spec.tl * spec.prio_tl) - params.joiner_slack); };
+		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - static_cast<int>(spec.tl * spec.prio_tl) - params.joiner_slack); };
 		JunctionRaster raster_a_style1;
 		JunctionRaster raster_b;
 		std::optional<int> merge_x;
@@ -331,8 +331,10 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		if (params.lane_style == 1) {
 			/* Parallelogram (D105): lane A runs straight on the W row through its bridge, then S-bends onto the B row. */
 			std::optional<JunctionRaster> found_a;
+			/* D110: try no plain tile between the near head and the S-bend first, then one. */
+			for (int gap = 0; gap <= 1 && !found_a.has_value(); gap++)
 			for (int k = 0; k <= frame.width - 1 && !found_a.has_value(); k++) {
-				const JunctionRaster raster = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, std::string(k, 'F') + span + "FRFL"});
+				const JunctionRaster raster = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, std::string(k, 'F') + span + (gap == 0 ? "" : "F") + "RFL"});
 				if (!raster.error.empty()) continue;
 				size_t near_head = raster.pieces.size();
 				size_t far_head = 0;
@@ -356,6 +358,8 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		}
 		/* Lane B: find p, q, r and s by rasterizing and checking the piece positions. */
 		std::optional<JunctionRoute> lane_b;
+		/* D110: try no plain tile between the S-bend and the near head first, then one. */
+		for (uint want_axis = 0; want_axis <= 1 && !lane_b.has_value(); want_axis++)
 		for (int p = 0; p <= frame.width - 1 && !lane_b.has_value(); p++) {
 			for (int q = 1; q <= frame.width - 1 && !lane_b.has_value(); q++) {
 				const JunctionRaster head_raster = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, std::string(p, 'F') + "RFL" + std::string(q, 'F') + span});
@@ -368,7 +372,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 				for (size_t i = p + 4; i < head; i++) {
 					if (IsDiagonalTrackdir(head_raster.pieces[i].trackdir)) plain_axis++;
 				}
-				if (plain_axis != 1) continue;
+				if (plain_axis != want_axis) continue;
 
 				if (params.lane_style == 1) {
 					/* Straight on the B row to the tile at x_sb + 1, then LFR up to the W row and straight on to x = 0. */
