@@ -63,6 +63,10 @@ static bool _junction_ghost_pinned = false;
 /** Mark every stored tile dirty, so it is redrawn. */
 static void MarkJunctionGhostDirty()
 {
+	/* Every footprint tile is outlined, not just the ones with track. */
+	if (!_junction_ghost_tiles.empty()) {
+		for (TileIndex tile : _junction_ghost_footprint) MarkTileDirtyByTile(tile);
+	}
 	for (const auto &[tile, ghost] : _junction_ghost_tiles) {
 		MarkTileDirtyByTile(tile);
 		/* The bridge deck is one level above the ground. */
@@ -208,14 +212,14 @@ void DrawJunctionGhost(const TileInfo *ti)
 void DrawJunctionGhostOutline(const TileInfo *ti)
 {
 	const JunctionGhostTile *ghost = JunctionGhost::Get(ti->tile);
-	bool pinned = JunctionGhost::IsInPinnedFootprint(ti->tile);
-	if (ghost == nullptr && !pinned) return;
+	const bool in_footprint = (!_junction_ghost_tiles.empty() || _junction_ghost_pinned) && _junction_ghost_footprint.Contains(ti->tile);
+	if (ghost == nullptr && !in_footprint) return;
 
-	if (ghost != nullptr && ti->tileh != SLOPE_FLAT) {
-		DrawTileSelectionRect(ti, PALETTE_SEL_TILE_RED);
-	} else if (ghost != nullptr && ghost->bad) {
+	/* Bad tiles are red, or blue for the pieces still to build while a build is pinned (D53); every other footprint tile is white.
+	 * Slopes are not bad by themselves: leveled foundations make them usable (D78). */
+	if (ghost != nullptr && ghost->bad) {
 		DrawTileSelectionRect(ti, _junction_ghost_pinned ? PALETTE_SEL_TILE_BLUE : PALETTE_SEL_TILE_RED);
-	} else if (pinned) {
+	} else {
 		DrawTileSelectionRect(ti, PAL_NONE);
 	}
 }
