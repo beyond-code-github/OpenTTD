@@ -489,9 +489,8 @@ TEST_CASE("GenerateJunction: a long train with a narrow branch still fits", "[ju
 }
 
 /** A flat Buildable terrain at height z covering the default frame. */
-static JunctionTerrain MakeFlatTerrain(int z = 0)
+static JunctionTerrain MakeFlatTerrain(int z = 0, const JunctionFrame &frame = JunctionFrame{})
 {
-	const JunctionFrame frame{};
 	JunctionTerrain t;
 	t.origin = {0, static_cast<int16_t>(frame.terrain_origin_y)};
 	t.width = frame.width;
@@ -561,6 +560,44 @@ TEST_CASE("GenerateJunction avoids a block of houses", "[junction][terrain]")
 	WARN("house block:\n" << RenderJunctionAscii(*result.layout));
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
 	CHECK_FALSE(SameLayout(*result.layout, *base.layout));
+}
+
+TEST_CASE("the frame grows with prio coverage", "[junction][frame]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.prio_tl = 1;
+	for (const uint8_t tl : {uint8_t(2), uint8_t(4)}) {
+		spec.tl = tl;
+		const JunctionFrame f1 = MakeJunctionFrame(spec);
+		const JunctionFrame def{};
+		CHECK(f1.hub_x == def.hub_x);
+		CHECK(f1.width == def.width);
+		CHECK(f1.reach_east == def.reach_east);
+		CHECK(f1.terrain_height == def.terrain_height);
+		CHECK(f1.terrain_origin_y == def.terrain_origin_y);
+	}
+	spec.tl = 4;
+	spec.prio_tl = 3;
+	const JunctionFrame f3 = MakeJunctionFrame(spec);
+	CHECK(f3.hub_x == 38);
+	CHECK(f3.width == 80);
+	CHECK(f3.reach_east == 24);
+	CHECK(f3.terrain_height == 43);
+	CHECK(f3.terrain_origin_y == -2);
+}
+
+TEST_CASE("library fit uses the library's frame", "[junction][frame][library]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.prio_tl = 2;
+	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
+	if (library.empty()) {
+		WARN("library is empty at prio 2");
+		return;
+	}
+	CHECK(library.front().frame.hub_x == MakeJunctionFrame(spec).hub_x);
+	const JunctionTerrain flat = MakeFlatTerrain(0, MakeJunctionFrame(spec));
+	CHECK(FitJunctionLibrary(library, flat).has_value());
 }
 
 TEST_CASE("FitJunctionLibrary on flat terrain is at least as good as GenerateJunction", "[junction][terrain][library]")

@@ -67,7 +67,7 @@ struct JunctionFrame {
 	int terrain_height = 43; ///< Terrain rows, from terrain_origin_y.
 	int terrain_origin_y = -2; ///< Working y of the terrain's first row.
 };
-/** The frame for a spec. In this step it always returns the defaults above. */
+/** The frame for a spec: the defaults at prio 1, growing with the prio coverage. */
 JunctionFrame MakeJunctionFrame(const JunctionSpec &spec);
 
 /** The swept inputs of one candidate. */
@@ -103,6 +103,7 @@ struct JunctionLibraryEntry {
 	TileIndexDiffC hub{}; ///< As JunctionGenerateResult::hub.
 	std::pair<Money, int> score; ///< ScoreJunctionLayout on flat ground.
 	int area = 0; ///< layout.size.x * layout.size.y.
+	JunctionFrame frame; ///< The frame the entry was built with; FitJunctionLibrary places the hub at its hub_x.
 };
 
 /**

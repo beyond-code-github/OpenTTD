@@ -466,9 +466,10 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			/* The instant tier: fit the library around the cursor. The refine tier may still find something better. */
 			const bool mirrored = EffectiveMirror();
 			const auto t0 = std::chrono::steady_clock::now();
-			const JunctionTerrain terrain = MakeJunctionTerrain(this->hover_tile, _junction_rotation, mirrored, JunctionFrame{}, 4);
+			const std::vector<JunctionLibraryEntry> &lib = *this->library_job->library;
+			const JunctionTerrain terrain = MakeJunctionTerrain(this->hover_tile, _junction_rotation, mirrored, lib.empty() ? MakeJunctionFrame(this->library_job->spec) : lib.front().frame, 4);
 			const auto t1 = std::chrono::steady_clock::now();
-			const JunctionNearResult fit = FitJunctionLibraryNear(*this->library_job->library, terrain, _junction_rotation, mirrored);
+			const JunctionNearResult fit = FitJunctionLibraryNear(lib, terrain, _junction_rotation, mirrored);
 			const auto t2 = std::chrono::steady_clock::now();
 			Debug(Facility::Misc, Severity::Debug2, "junction instant tier: snapshot {} us, fit {} us",
 				std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count(),

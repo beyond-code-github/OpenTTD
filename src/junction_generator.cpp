@@ -182,13 +182,18 @@ uint RasterUnits(const JunctionRaster &raster)
 } // namespace
 
 /**
- * The frame for a spec.
+ * The frame for a spec: it grows with the prio coverage beyond a prio of 1.
  * @param spec The junction spec.
- * @return The frame; the defaults for every spec for now.
+ * @return The frame; the defaults at prio 1.
  */
-JunctionFrame MakeJunctionFrame([[maybe_unused]] const JunctionSpec &spec)
+JunctionFrame MakeJunctionFrame(const JunctionSpec &spec)
 {
-	return JunctionFrame{};
+	const int dC = spec.tl * (spec.prio_tl - 1);
+	JunctionFrame frame{};
+	frame.hub_x += dC;
+	frame.width += 2 * dC;
+	frame.reach_east += dC;
+	return frame;
 }
 
 /**
@@ -215,7 +220,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	JunctionRouteRequest base{};
 	base.min = tile(1, 0); // N->W joins as far left as x = 2 (its window shrinks with TL), so the box must reach it.
 	base.max = tile(xO + frame.reach_east, yb);
-	base.max_expansions = 50000;
+	base.max_expansions = 50000 * frame.width / 64;
 	base.curve_spacing = spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1;
 	base.s_bend_window = 2u * spec.tl;
 	base.bridge_span_ok = spec.bridge_span_ok;
@@ -777,6 +782,7 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 		if (!seen.insert(JunctionLayoutToJson(*layout)).second) continue;
 		JunctionLibraryEntry entry;
 		entry.hub = r.hub;
+		entry.frame = MakeJunctionFrame(spec);
 		entry.score = ScoreJunctionLayout(*layout, spec);
 		entry.area = layout->size.x * layout->size.y;
 		entry.layout = std::move(*layout);
@@ -787,13 +793,12 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 
 std::optional<JunctionLibraryFit> FitJunctionLibrary(const std::vector<JunctionLibraryEntry> &library, const JunctionTerrain &terrain)
 {
-	const JunctionFrame frame{};
 	const std::vector<int> planes = JunctionTerrainPlanes(terrain);
 	std::optional<JunctionLibraryFit> best;
 	std::tuple<Money, int, int> best_key{};
 	for (size_t i = 0; i < library.size(); i++) {
 		const JunctionLibraryEntry &e = library[i];
-		const int ox = frame.hub_x - e.hub.x;
+		const int ox = e.frame.hub_x - e.hub.x;
 		const int oy = -e.hub.y;
 		for (const int plane : planes) {
 			bool ok = true;
