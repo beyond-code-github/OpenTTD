@@ -128,6 +128,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
    - (d) ML water bridges.
    Plan each before starting.
 6. **Joiner** (`PLAN-joiner.md`): blocked on the engineer's three answers.
+6b. **Stations (parallel track,** engineer: "I'd LOVE stations to be on our radar"**):** ST1 is research into coop station rules (`RULES-stations.md`) from the local archive; then a plan sketch. Reuses the router, signal pass, checker, terrain, library and rig.
 7. **Follow-ons:** a pathfinder (YAPF cost) model in a later generator version (engineer: "I suspect we will want the pathfinder to feature in a later version of the generator"), for example to check that alternative paths cost the same and to predict train choices; drag fixed-distance mode (D97), multi-lane (D72), option C (widen the gap so the branch bridges over the ML), research the coop prio-over-bridge pattern, the D91 swap (parked until clarified).
 
 **For the engineer when back:**
