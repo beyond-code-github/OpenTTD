@@ -102,6 +102,32 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 - TL6 G1 B0 fix (3f2bfedd09); D96 P1 profile; `[.slow]` tag (0e5796a72b).
 - Suite: 235 cases (1 hidden as `[.slow]`), all passing. Routine gates: Release suite, about 22 s.
 
+**Snapshot, 2026-11-08 evening (for a fresh orchestrator):**
+- **Junction.** Done today:
+  - D107 prio reach (G9b) and thinning;
+  - D108 no split inside a prio (G9c);
+  - the frame grows with prio (FRAME steps 1 and 2);
+  - footprint tune (no hedged margins);
+  - D110 parts 1 and 2 plus J1 (cf26c9ee90): separate e/w slack, lane B q from 0, G9c without its extension, the D113 rule "split in a bridge's block", the G1 tracer allowing a corner into a bridge head, the router forbidding a bridge right off a split start;
+  - D110 parts 3 and 4 plus the D114 compact-first score (c6b5286e96): SL split first plus one signal tile, shift-back loop.
+  The test spec is 24x15, with the W side at 1 plain tile before the near head and the SL merge 6 tiles from the lane merge.
+- **Running:** SPEED pass (brief SPEED-pass.md). Target: full generation under 100 ms (it's 3.3 s+ now; the suite takes 930 s). Fail-fast `JunctionRulesClean`, no duplicate checks, G9b memoisation.
+- **Next junction steps, in order:**
+  1. J1b, D117: one signal may do several jobs. Back-to-back signals at the bridge entry (lane A x20/x21) and exit (x13/x12) in the rig junction; also find why the tight gap-0 entry is rejected.
+  2. D111: prios bend with the ML.
+  3. D115 one-tile stubs, plus the D58 crop of 1.
+  4. The AUDIT-assumptions.md removal plan (68 OURS items).
+  5. Finish D109 (crossing clusters; WIP patch in scratchpad/d109).
+  6. M4: prio length from the picked train (`JunctionPrioLength`), then the rig round.
+- **Stations:** ST2–ST5 merged (rules, generator, rig export and build, Station window). Next: ST6 (rig drop traffic), ST7 (attach to a line end). The Station window is untested in game.
+- **Line painter (D112):** recon (RECON-linepainter.md) and LP2 (multi-track geometry, f36e9cb6ad) merged. Open for the engineer: is L_R 3 diagonal steps apart on diagonals right? Plus the 12 recon questions. Next: LP1 (notation), LP4 (line router on flat ground).
+- **The rig:** the engineer plays co-op in company 0. Use `scratchpad/rig_coop.sh` (launches his client before `ottd company`). Ask him to quit normally before restarting, so his settings survive. Debug console commands (`junction_export`, `station_export`, `junction_train`) need the Debug server binary `build/openttd`. The play build (Release) is in the `.claude/play` worktree, `build-play/openttd`.
+- **Engineer principles:**
+  - margins come from the maths and the checker, never hedging;
+  - verify the actual built layout before claiming a fix;
+  - say "split", not "switch";
+  - the simulator and throughput are the judges (D116).
+
 **Next, in order:**
 1. **D96 near-real-time hover** (engineer priority; `PLAN-D96.md`): P1 profile done (the router is 91–95%, and its `best` map about 52%); P2 router lookups done (236119c3fd: S1 1.11→0.48 s, S3 1.79→0.79 s, golden identical); P5 library and fit done (d37a9b5ebf: 37 entries, build 0.72 s, fit 64 µs); P6 two-tier GUI done (d27d205186: the ghost follows the cursor from the library; instant tier about 2–3 ms on the Debug server; hilly scan with `--instant` gives 5/12, the same as the full near search, all built). P3 router inner loop (a742b4dad9) and P4 parallel sweep (727ec3d763): S1 0.35 → 0.085 s (1.11 s before P2), library 0.56 → 0.094 s, TSAN clean, golden identical. Left: then P3 router inner loop, P4 fewer searches and a thread pool, P7 fast reject.
 2. **D97 drag-style signal distance:** done (6919168d55). The fill is the drag walk (minimise gaps, from the downstream anchor) and the checker uses 192/128 weights. Fixed-distance mode is a follow-on.
