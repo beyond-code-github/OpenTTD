@@ -102,6 +102,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 - Suite: 234 cases, all passing.
 
 **Next, in order:**
+1. **D96 near-real-time hover** (engineer priority): profile, then a flat candidate library with a per-hover fit test (instant tier), with the full generation as the resting refine tier; parallel sweep; fast reject. Plan first (`PLAN-D96.md`).
 1. **D3d robustness round 2:** ml_gap 1 with branch_gap 0 at TL3/TL6 gives no layout. Diagnose with `[.gen]` (env `JUNCTION_GEN_TL/G/B`, `JUNCTION_GEN_SKIP`; temporary failing-step prints in `BuildJunctionCandidate`).
 2. **D78 levers, in D95 order** (fit the landscape first; terraforming is a priced fallback, not the default):
    - first a breakdown of why each hilly no-layout spot fails (height, water or blocked);
