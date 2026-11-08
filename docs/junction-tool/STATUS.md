@@ -99,21 +99,22 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 - D94 slow bridges.
 - R1 turn penalty (dbb5277ae5).
 - D78 T6 nearest fit (543775bde5): hilly seed 1 goes from 3 to 5 of 12 generated, all built cleanly.
-- Suite: 234 cases, all passing.
+- TL6 G1 B0 fix (3f2bfedd09); D96 P1 profile; `[.slow]` tag (0e5796a72b).
+- Suite: 235 cases (1 hidden as `[.slow]`), all passing. Routine gates: Release suite, about 22 s.
 
 **Next, in order:**
-1. **D96 near-real-time hover** (engineer priority): profile, then a flat candidate library with a per-hover fit test (instant tier), with the full generation as the resting refine tier; parallel sweep; fast reject. Plan first (`PLAN-D96.md`).
-1. **D97 drag-style signal distance:** replace the phase 3 even fill with the drag walk (192/128 weights, minimise gaps or fixed distance, dragged from the downstream fixed signal), plus the matching checker rule. The engineer saw wrong-looking pitch on the map.
-1. **D3d robustness round 2:** ml_gap 1 with branch_gap 0 at TL3/TL6 gives no layout. Diagnose with `[.gen]` (env `JUNCTION_GEN_TL/G/B`, `JUNCTION_GEN_SKIP`; temporary failing-step prints in `BuildJunctionCandidate`).
-2. **D78 levers, in D95 order** (fit the landscape first; terraforming is a priced fallback, not the default):
+1. **D96 near-real-time hover** (engineer priority; `PLAN-D96.md`): P1 profile done (the router is 91–95%, and its `best` map about 52%); P2 router lookups done (236119c3fd: S1 1.11→0.48 s, S3 1.79→0.79 s, golden identical); then P3 router inner loop, P5 candidate library and fit test, P6 two-tier GUI, P4 fewer searches and a thread pool, P7 fast reject.
+2. **D97 drag-style signal distance:** replace the phase 3 even fill with the drag walk (192/128 weights, minimise gaps, dragged from the downstream fixed signal), with the checker's spacing rule on the same weights. Fixed-distance mode is a follow-on.
+3. **1c physics and traffic** (PLAN-1c), moved up: the engineer is holding signalling comments until the simulation ("it will all come out in simulation. It may just be down to waiting bay sizing"). Headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
+4. **D3d robustness round 2:** TL6 is fixed (3f2bfedd09, the search box). TL3 is still no layout: in pass 2 N→E is trapped by E→S in the under-span corridor (hypothesis from the D3d diagnosis).
+5. **D78 levers, in D95 order** (fit the landscape first; terraforming is a priced fallback, not the default):
    - first a breakdown of why each hilly no-layout spot fails (height, water or blocked);
    - (b) sloped legs;
    - (c) terraforming as a priced sweep option;
    - (d) ML water bridges.
    Plan each before starting.
-3. **Joiner** (`PLAN-joiner.md`): blocked on the engineer's three answers.
-4. **1c physics and traffic** (PLAN-1c): headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
-5. **Follow-ons:** a fast reject for hopeless terrain planes (a no-fit spot costs about 25 s in Release with nearest fit), multi-lane (D72), option C (widen the gap so the branch bridges over the ML), research the coop prio-over-bridge pattern, the D91 swap (parked until clarified).
+6. **Joiner** (`PLAN-joiner.md`): blocked on the engineer's three answers.
+7. **Follow-ons:** drag fixed-distance mode (D97), multi-lane (D72), option C (widen the gap so the branch bridges over the ML), research the coop prio-over-bridge pattern, the D91 swap (parked until clarified).
 
 **For the engineer when back:**
 - **Try it in game:** `build-rel/openttd`, rail toolbar → Junction; the checklist is in `CHECKS-1b.md`.
