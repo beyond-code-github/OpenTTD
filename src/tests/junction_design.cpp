@@ -286,7 +286,8 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 		uint suitable_dist = 0;
 		uint dist = 0; // Logical length from the last signal to the current piece.
 		bool placed_any = false;
-		for (size_t k = 2; k + 1 < raster.pieces.size(); k++) {
+		/* From the loop's first piece (the junction's exit port tile), so the grid carries on across the seam. */
+		for (size_t k = 0; k < raster.pieces.size(); k++) {
 			const JunctionPiece &p = raster.pieces[k];
 			if (!placed_any) {
 				/* The first legal piece gets a signal, as the drag's first tile does. */
