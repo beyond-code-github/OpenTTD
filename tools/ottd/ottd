@@ -254,7 +254,7 @@ def cmd_sample(a):
             print("  drop at %d,%d: %d -> %d km/h" % (d["tile_x"], d["tile_y"], d["from"], d["to"]))
 
 
-def setup_circuit(adm, layout, a):
+def setup_circuit(adm, layout, a, mix=None):
     """Loan, find origin, build layout and depots, buy and start a.trains trains. Returns (ox, oy, vids)."""
     r = gs(adm, {"cmd": "loan_max"})
     print("loan max, balance=%d" % r["balance"])
@@ -285,13 +285,37 @@ def setup_circuit(adm, layout, a):
     d0 = depots[0]
     dx, dy = ox + d0["x"], oy + d0["y"]
     vids = []
-    for i in range(a.trains):
+    classes = []
+    via = {}
+    if mix:
+        wps = {w["name"]: w for w in layout.get("waypoints", [])}
+        for w in wps.values():
+            gs(adm, {"cmd": "build_waypoint", "x": ox + w["x"], "y": oy + w["y"]})
+            print("waypoint %s %d,%d ok" % (w["name"], ox + w["x"], oy + w["y"]))
+        routes = {"ml": ["west", "east"], "bw": ["south", "west"], "be": ["south", "east"]}
+        left = dict(mix)
+        while sum(left.values()) > 0:
+            for c in ("ml", "bw", "be"):
+                if left.get(c, 0) > 0:
+                    classes.append(c)
+                    left[c] -= 1
+        for c in classes:
+            via.setdefault(c, [[ox + wps[n]["x"], oy + wps[n]["y"]] for n in routes[c]])
+        ntrains = len(classes)
+    else:
+        ntrains = a.trains
+    for i in range(ntrains):
         r = gs(adm, {"cmd": "build_train", "depot_x": dx, "depot_y": dy, "wagons": a.wagons})
         vids.append(r["vehicle"])
+        if mix:
+            gs(adm, {"cmd": "orders_via", "vehicle": r["vehicle"], "tiles": via[classes[i]]})
         gs(adm, {"cmd": "start", "vehicle": r["vehicle"]})
-        if i + 1 < a.trains:
+        if i + 1 < ntrains:
             wait_days(adm, 4, 30)  # about 300 ticks (74 ticks/day)
     print("trains %s" % ",".join(str(v) for v in vids))
+    if mix:
+        print("classes %s" % " ".join("%d:%s" % (v, c) for v, c in zip(vids, classes)))
+        return ox, oy, vids, dict(zip(vids, classes))
     return ox, oy, vids
 
 
@@ -377,11 +401,21 @@ def heatmap(layout, ox, oy, r):
 def cmd_traffic(a):
     with open(a.file) as f:
         layout = json.load(f)
+    mix = None
+    if a.mix:
+        mix = {k: int(v) for k, v in (p.split(":") for p in a.mix.split(","))}
     adm = connect()
     try:
-        ox, oy, vids = setup_circuit(adm, layout, a)
+        if mix:
+            ox, oy, vids, cls = setup_circuit(adm, layout, a, mix)
+        else:
+            ox, oy, vids = setup_circuit(adm, layout, a)
+        occ = {"cmd": "occupancy", "vehicles": vids, "ticks": a.ticks, "every": a.every}
+        if mix:
+            jx, jy, jw, jh = layout["junction"]
+            occ["box"] = [ox + jx, oy + jy, jw, jh]
         wait_days(adm, a.warmup, 60 + 2 * a.warmup)
-        r = gs(adm, {"cmd": "occupancy", "vehicles": vids, "ticks": a.ticks, "every": a.every}, timeout=120 + a.ticks)
+        r = gs(adm, occ, timeout=120 + a.ticks)
     finally:
         adm.close()
     lines, stopped, outside = heatmap(layout, ox, oy, r)
@@ -392,11 +426,23 @@ def cmd_traffic(a):
     print("top stopped tiles:")
     for t, c in sorted(stopped.items(), key=lambda kv: -kv[1])[:10]:
         print("  %d,%d n=%d %.1f%%" % (t[0], t[1], c, 100.0 * c / n))
-    print("stop events per train: %s" % " ".join("%d:%d" % (v, c) for v, c in r["stops"]))
+    print("stop events per train: %s" % " ".join("%d:%d" % (s_[0], s_[1]) for s_ in r["stops"]))
+    ml_box = 0
+    if mix:
+        for c in ("ml", "bw", "be"):
+            ent = [s_ for s_ in r["stops"] if cls[s_[0]] == c]
+            nb = sum(s_[2] for s_ in ent)
+            tot = n * len(ent)
+            print("class %s: trains=%d stop_events=%d stopped_in_junction=%d (%.2f%% of %d samples)" % (
+                c, len(ent), sum(s_[1] for s_ in ent), nb, 100.0 * nb / tot if tot else 0.0, tot))
+            if c == "ml":
+                ml_box = nb
     path = os.path.join(S.RUNDIR, "traffic-%d.json" % int(time.time()))
     with open(path, "w") as f:
         json.dump({"params": {"file": a.file, "trains": a.trains, "wagons": a.wagons, "warmup": a.warmup, "ticks": a.ticks, "every": a.every, "origin": [ox, oy]}, "reply": r}, f)
     print(path)
+    if mix:
+        print("ML STOPPED IN JUNCTION: %d" % ml_box)
     deadlock_verdict(vids)
 
 
@@ -444,7 +490,7 @@ def main():
     add("company", cmd_company, ("--id", i))
     add("build-layout", cmd_build_layout, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}))
     add("junction-check", cmd_junction_check, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 6}), ("--wagons", {"type": int, "default": 3}), ("--ticks", {"type": int, "default": 7400}))
-    add("traffic", cmd_traffic, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 8}), ("--wagons", {"type": int, "default": 3}), ("--warmup", {"type": int, "default": 20}), ("--ticks", {"type": int, "default": 20000}), ("--every", {"type": int, "default": 4}))
+    add("traffic", cmd_traffic, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 8}), ("--wagons", {"type": int, "default": 3}), ("--warmup", {"type": int, "default": 20}), ("--ticks", {"type": int, "default": 20000}), ("--every", {"type": int, "default": 4}), ("--mix", {"default": None}))
     add("junction-here", cmd_junction_here, ("x", i), ("y", i), ("--rot", {"type": int, "default": 0}), ("--mirror", {"action": "store_true"}), ("--ml", {"default": "L_R"}), ("--branch", {"default": "L_R"}), ("--tl", {"type": int, "default": 4}), ("--near", {"action": "store_true"}), ("--instant", {"action": "store_true"}))
     add("junction-scan", cmd_junction_scan, ("--count", {"type": int, "required": True}), ("--seed", {"type": int, "default": 1}), ("--near", {"action": "store_true"}), ("--instant", {"action": "store_true"}))
     add("sample", cmd_sample, ("vehicles", {"type": int, "nargs": "+"}), ("--ticks", {"type": int, "required": True}))

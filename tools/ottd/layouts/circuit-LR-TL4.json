@@ -296,4 +296,6 @@
 {"x":20,"y":20,"facing":"Y_NW","type":"block"},
 {"x":21,"y":19,"facing":"Upper_W","type":"block"},
 {"x":22,"y":17,"facing":"Lower_W","type":"block"}],
-"depots":[{"x":-1,"y":5,"dir":"SW"}]}
+"depots":[{"x":-1,"y":5,"dir":"SW"}],
+"waypoints":[{"name":"west","x":4,"y":8,"axis":"X"},{"name":"east","x":38,"y":0,"axis":"X"},{"name":"south","x":28,"y":21,"axis":"Y"}],
+"junction":[9,2,25,15]}

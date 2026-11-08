@@ -157,6 +157,8 @@ class JunctionTestGS extends GSController {
 		else if (cmd == "build_depot") this.CmdBuildDepot(id, msg);
 		else if (cmd == "build_train") this.CmdBuildTrain(id, msg);
 		else if (cmd == "orders_depots") this.CmdOrders(id, msg);
+		else if (cmd == "build_waypoint") this.CmdBuildWaypoint(id, msg);
+		else if (cmd == "orders_via") this.CmdOrdersVia(id, msg);
 		else if (cmd == "start") this.CmdStart(id, msg);
 		else if (cmd == "build_layout") this.CmdBuildLayout(id, msg);
 		else if (cmd == "sample") this.CmdSample(id, msg);
@@ -256,6 +258,30 @@ class JunctionTestGS extends GSController {
 		if (!ok1 || !ok2) {
 			this.Err(id, "AppendOrder failed: " + GSError.GetLastErrorString());
 			return;
+		}
+		this.Reply(id, { orders = GSOrder.GetOrderCount(msg.vehicle) });
+	}
+
+	function CmdBuildWaypoint(id, msg)
+	{
+		if (!this.Need(msg, ["x", "y"], id)) return;
+		if (this.SetRailType() == null) { this.Err(id, "no rail type available"); return; }
+		if (!GSRail.BuildRailWaypoint(this.Tile(msg.x, msg.y))) {
+			this.Err(id, "BuildRailWaypoint failed: " + GSError.GetLastErrorString());
+			return;
+		}
+		this.Reply(id, { ok = true });
+	}
+
+	function CmdOrdersVia(id, msg)
+	{
+		if (!this.Need(msg, ["vehicle", "tiles"], id)) return;
+		if (!GSVehicle.IsValidVehicle(msg.vehicle)) { this.Err(id, "bad vehicle"); return; }
+		foreach (t in msg.tiles) {
+			if (!GSOrder.AppendOrder(msg.vehicle, this.Tile(t[0], t[1]), GSOrder.OF_NON_STOP_INTERMEDIATE)) {
+				this.Err(id, "AppendOrder failed: " + GSError.GetLastErrorString());
+				return;
+			}
 		}
 		this.Reply(id, { orders = GSOrder.GetOrderCount(msg.vehicle) });
 	}
@@ -512,7 +538,9 @@ class JunctionTestGS extends GSController {
 		local slow = {};
 		local prev = {};
 		local stops = {};
-		foreach (v in msg.vehicles) { prev[v] <- -1; stops[v] <- 0; }
+		local box = ("box" in msg) ? msg.box : null;
+		local in_box = {};
+		foreach (v in msg.vehicles) { prev[v] <- -1; stops[v] <- 0; in_box[v] <- 0; }
 		local samples = 0;
 		for (local i = 0; i < msg.ticks; i += every) {
 			foreach (v in msg.vehicles) {
@@ -521,6 +549,10 @@ class JunctionTestGS extends GSController {
 				if (sp == 0) {
 					stopped[t] <- (t in stopped) ? stopped[t] + 1 : 1;
 					if (prev[v] > 0) stops[v]++;
+					if (box != null) {
+						local tx = GSMap.GetTileX(t), ty = GSMap.GetTileY(t);
+						if (tx >= box[0] && tx < box[0] + box[2] && ty >= box[1] && ty < box[1] + box[3]) in_box[v]++;
+					}
 				} else if (sp < slow_limit) {
 					slow[t] <- (t in slow) ? slow[t] + 1 : 1;
 				}
@@ -535,7 +567,7 @@ class JunctionTestGS extends GSController {
 			return l;
 		};
 		local sl = [];
-		foreach (v in msg.vehicles) sl.append([v, stops[v]]);
+		foreach (v in msg.vehicles) sl.append(box != null ? [v, stops[v], in_box[v]] : [v, stops[v]]);
 		this.Reply(id, { samples = samples, stopped = to_list(stopped), slow = to_list(slow), stops = sl });
 	}
 }

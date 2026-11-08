@@ -63,8 +63,10 @@ static SignalType ParseSignalType(const std::string &s)
 }
 
 struct CircuitDepot { int x; int y; const char *dir; };
+struct CircuitWaypoint { const char *name; int x; int y; const char *axis; };
+struct CircuitExtras { std::vector<CircuitWaypoint> waypoints; int box[4]; };
 
-static void WriteLayoutJson(const JunctionLayout &layout, const char *path, const std::vector<CircuitDepot> &depots = {})
+static void WriteLayoutJson(const JunctionLayout &layout, const char *path, const std::vector<CircuitDepot> &depots = {}, const CircuitExtras *extras = nullptr)
 {
 	std::string json = JunctionLayoutToJson(layout);
 	std::ofstream out(path);
@@ -78,6 +80,15 @@ static void WriteLayoutJson(const JunctionLayout &layout, const char *path, cons
 			first = false;
 		}
 		out << "]";
+	}
+	if (extras != nullptr) {
+		out << ",\n\"waypoints\":[";
+		bool first = true;
+		for (const auto &wp : extras->waypoints) {
+			out << (first ? "" : ",") << "{\"name\":\"" << wp.name << "\",\"x\":" << wp.x << ",\"y\":" << wp.y << ",\"axis\":\"" << wp.axis << "\"}";
+			first = false;
+		}
+		out << "],\n\"junction\":[" << extras->box[0] << "," << extras->box[1] << "," << extras->box[2] << "," << extras->box[3] << "]";
 	}
 	out << "}\n";
 }
@@ -317,6 +328,32 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 		}
 	}
 
+	/* One waypoint per loop: the axis piece nearest the raster's middle, alone on its tile, with axis pieces (signalled or not) on both sides. */
+	auto has_signal = [&](TileIndexDiffC t) {
+		for (const auto &sg : layout.signals) if (sg.offset.x == t.x && sg.offset.y == t.y) return true;
+		return false;
+	};
+	auto axis_piece = [&](const JunctionPiece &p) {
+		const Track axis = TrackdirToTrack(p.trackdir);
+		return !p.on_bridge && (axis == Track::X || axis == Track::Y);
+	};
+	CircuitExtras extras{};
+	for (size_t li = 0; li < rasters.size(); li++) {
+		const auto &pcs = rasters[li].pieces;
+		const size_t mid = pcs.size() / 2;
+		std::optional<size_t> best;
+		for (size_t k = 1; k + 1 < pcs.size(); k++) {
+			if (!axis_piece(pcs[k]) || has_signal(pcs[k].tile) || !axis_piece(pcs[k - 1]) || !axis_piece(pcs[k + 1])) continue;
+			if (track_at(pcs[k].tile).Count() != 1) continue;
+			const size_t dk = k > mid ? k - mid : mid - k;
+			if (!best.has_value() || dk < (*best > mid ? *best - mid : mid - *best)) best = k;
+		}
+		if (!best.has_value()) FAIL("no waypoint site on the " << loops[li].name << " loop");
+		const JunctionPiece &p = pcs[*best];
+		extras.waypoints.push_back({loops[li].name, p.tile.x, p.tile.y, TrackdirToTrack(p.trackdir) == Track::X ? "X" : "Y"});
+	}
+	extras.box[0] = 0; extras.box[1] = 0; extras.box[2] = w; extras.box[3] = h;
+
 	int min_x = 1 << 20, min_y = 1 << 20;
 	for (const auto &jt : layout.tracks) { min_x = std::min<int>(min_x, jt.offset.x); min_y = std::min<int>(min_y, jt.offset.y); }
 	for (const auto &b : layout.bridges) {
@@ -325,7 +362,11 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 	}
 	NormaliseJunctionLayout(layout);
 	for (auto &d : depots) { d.x -= min_x; d.y -= min_y; }
+	for (auto &wp : extras.waypoints) { wp.x -= min_x; wp.y -= min_y; }
+	extras.box[0] -= min_x; extras.box[1] -= min_y;
 	std::cout << RenderJunctionAscii(layout);
 	for (const auto &d : depots) std::cout << "depot " << d.x << "," << d.y << " " << d.dir << "\n";
-	if (const char *json = std::getenv("JUNCTION_CIRCUIT"); json != nullptr) WriteLayoutJson(layout, json, depots);
+	for (const auto &wp : extras.waypoints) std::cout << "waypoint " << wp.name << " " << wp.x << "," << wp.y << " " << wp.axis << "\n";
+	std::cout << "junction " << extras.box[0] << "," << extras.box[1] << "," << extras.box[2] << "," << extras.box[3] << "\n";
+	if (const char *json = std::getenv("JUNCTION_CIRCUIT"); json != nullptr) WriteLayoutJson(layout, json, depots, &extras);
 }
