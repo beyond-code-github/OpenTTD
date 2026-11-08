@@ -16,8 +16,11 @@
 #include "junction_router.h"
 #include "junction_signal_pass.h"
 #include "track_func.h"
+#include "thread.h"
 
 #include <algorithm>
+#include <atomic>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -534,6 +537,25 @@ std::vector<int> JunctionTerrainPlanes(const JunctionTerrain &terrain)
 	return planes;
 }
 
+/** Run fn(i) for i in [0, n) on up to max_threads threads (including the caller); returns when all are done. */
+static void JunctionParallelFor(size_t n, const std::function<void(size_t)> &fn)
+{
+	const size_t max_threads = std::max(1u, std::min(8u, std::thread::hardware_concurrency()));
+	std::atomic<size_t> next{0};
+	auto work = [&]() {
+		for (size_t i = next.fetch_add(1); i < n; i = next.fetch_add(1)) fn(i);
+	};
+
+	std::vector<std::thread> threads;
+	for (size_t t = 1; t < std::min(max_threads, n); t++) {
+		std::thread thr;
+		if (!StartNewThread(&thr, "ottd:junction", [&work]() { work(); })) break;
+		threads.push_back(std::move(thr));
+	}
+	work();
+	for (std::thread &thr : threads) thr.join();
+}
+
 /**
  * Generate a junction: sweep candidates, keep the rule-clean ones and pick the best by score.
  * @param spec The junction spec.
@@ -561,24 +583,39 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 		int stop_after = INT32_MAX;
 		for (int height = first; height <= last && height <= stop_after; height++) {
 			bool clean_here = false;
+			std::vector<JunctionCandidateParams> all_params;
 			for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
 				for (uint8_t slack = 0; slack <= 3; slack++) {
 					JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
 					params.plane = plane;
-					Money terrain_cost = 0;
-					TileIndexDiffC hub{};
-					std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, terrain, &terrain_cost, &hub);
-					if (!layout.has_value() || !CheckJunctionRules(*layout, spec).empty()) continue;
-					clean_here = true;
-					std::pair<Money, int> score = ScoreJunctionLayout(*layout, spec);
-					score.first += terrain_cost;
-					const int area = layout->size.x * layout->size.y;
-					if (!best.has_value() || score < best_score || (score == best_score && area < best_area)) {
-						best = std::move(layout);
-						best_hub = hub;
-						best_score = score;
-						best_area = area;
-					}
+					all_params.push_back(params);
+				}
+			}
+			struct Result {
+				std::optional<JunctionLayout> layout;
+				Money terrain_cost = 0;
+				TileIndexDiffC hub{};
+				bool clean = false;
+			};
+			std::vector<Result> results(all_params.size());
+			JunctionParallelFor(all_params.size(), [&](size_t i) {
+				Result &r = results[i];
+				r.layout = BuildJunctionCandidate(spec, all_params[i], terrain, &r.terrain_cost, &r.hub);
+				r.clean = r.layout.has_value() && CheckJunctionRules(*r.layout, spec).empty();
+			});
+			for (Result &r : results) {
+				if (!r.clean) continue;
+				std::optional<JunctionLayout> &layout = r.layout;
+				const TileIndexDiffC hub = r.hub;
+				clean_here = true;
+				std::pair<Money, int> score = ScoreJunctionLayout(*layout, spec);
+				score.first += r.terrain_cost;
+				const int area = layout->size.x * layout->size.y;
+				if (!best.has_value() || score < best_score || (score == best_score && area < best_area)) {
+					best = std::move(layout);
+					best_hub = hub;
+					best_score = score;
+					best_area = area;
 				}
 			}
 			if (clean_here && stop_after == INT32_MAX) stop_after = height + 2;
@@ -596,22 +633,35 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 	std::set<std::string> seen;
 	const int first = spec.ml_gap + 5;
 	const int last = spec.ml_gap + 20;
+	std::vector<JunctionCandidateParams> all_params;
 	for (int height = first; height <= last; height++) {
 		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
 			for (uint8_t slack = 0; slack <= 3; slack++) {
-				const JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
-				TileIndexDiffC hub{};
-				std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, nullptr, nullptr, &hub);
-				if (!layout.has_value() || !CheckJunctionRules(*layout, spec).empty()) continue;
-				if (!seen.insert(JunctionLayoutToJson(*layout)).second) continue;
-				JunctionLibraryEntry entry;
-				entry.hub = hub;
-				entry.score = ScoreJunctionLayout(*layout, spec);
-				entry.area = layout->size.x * layout->size.y;
-				entry.layout = std::move(*layout);
-				library.push_back(std::move(entry));
+				all_params.push_back(JunctionCandidateParams{static_cast<uint8_t>(height), crossing_cost, slack});
 			}
 		}
+	}
+	struct Result {
+		std::optional<JunctionLayout> layout;
+		TileIndexDiffC hub{};
+		bool clean = false;
+	};
+	std::vector<Result> results(all_params.size());
+	JunctionParallelFor(all_params.size(), [&](size_t i) {
+		Result &r = results[i];
+		r.layout = BuildJunctionCandidate(spec, all_params[i], nullptr, nullptr, &r.hub);
+		r.clean = r.layout.has_value() && CheckJunctionRules(*r.layout, spec).empty();
+	});
+	for (Result &r : results) {
+		if (!r.clean) continue;
+		std::optional<JunctionLayout> &layout = r.layout;
+		if (!seen.insert(JunctionLayoutToJson(*layout)).second) continue;
+		JunctionLibraryEntry entry;
+		entry.hub = r.hub;
+		entry.score = ScoreJunctionLayout(*layout, spec);
+		entry.area = layout->size.x * layout->size.y;
+		entry.layout = std::move(*layout);
+		library.push_back(std::move(entry));
 	}
 	return library;
 }

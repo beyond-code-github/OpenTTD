@@ -361,6 +361,21 @@ TEST_CASE("FitJunctionLibrary on flat terrain is at least as good as GenerateJun
 	CHECK(entry.score.first + fit->terrain_cost <= ScoreJunctionLayout(*gen.layout, spec).first + 0);
 }
 
+TEST_CASE("BuildJunctionLibrary is deterministic", "[junction][library]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<JunctionLibraryEntry> a = BuildJunctionLibrary(spec);
+	const std::vector<JunctionLibraryEntry> b = BuildJunctionLibrary(spec);
+	REQUIRE(a.size() == b.size());
+	for (size_t i = 0; i < a.size(); i++) {
+		CHECK(JunctionLayoutToJson(a[i].layout) == JunctionLayoutToJson(b[i].layout));
+		CHECK(a[i].hub.x == b[i].hub.x);
+		CHECK(a[i].hub.y == b[i].hub.y);
+		CHECK(a[i].score == b[i].score);
+		CHECK(a[i].area == b[i].area);
+	}
+}
+
 /** Whether any track tile or bridge head of the entry lies in the working rectangle. */
 static bool EntryTouchesRect(const JunctionLibraryEntry &e, int x0, int x1, int y0, int y1)
 {
