@@ -18,8 +18,15 @@ Read from in-game screenshots at normal zoom, then measured exactly from the sav
    - Exits leave from the platforms' far ends onto lines that run away at the side.
    - Engineer: "four lanes go in and only three come out". The exit side carries the same trains on fewer lines; see the open question below.
 
+## Measured facts (REF-stations-measured.md, from the save)
+- Platforms: 5 tiles in all four (TL 5); 8, 8, 16 and 12 platforms.
+- Entry: a one-way path signal (PBS) 1 tile before each platform, right after the last split (Fledhattan mixes one-way PBS and exit pre-signals). Trains wait at that signal; the bay before it is the split tree.
+- Exit: a block signal 1 tile past each platform, then plain block-signal merges 2–11 tiles on; no prio at exit merges. Each outgoing line takes a group of 4 platforms.
+- Balance: only Chinningpool is fully balanced (all 4 incoming lines reach all 12 platforms, through pair-crossing splits, staggered doubled bridges and 2 tunnels). Fledhattan is four independent 4-platform stations side by side.
+- Footprint: 167, 209, 208 and 362 tiles.
+
 ## Common pattern (candidate rules for station v2, extends D120)
-- **R-S1 Staircase:** platforms are offset step by step along the line's diagonal, not lined up in a rectangle. Every platform has a straight run-in and run-out of equal length. That keeps the footprint narrow along the diagonal and the route costs balanced.
+- **R-S1 Staircase: WRONG, withdrawn after measurement.** The "staircase" in the screenshots is the isometric view of platform ends that are aligned (map axis Y runs down-right on screen, so aligned ends of side-by-side platforms form a screen diagonal). Measured: the platform ends are aligned in 3 of 4 stations; Buborough has two groups (5 + 3) offset by 2 tiles. See REF-stations-measured.md.
 - **R-S2 Entry bays:** each platform has a straight run-in holding at least one train (1 TL (?)) behind its entry signal. The entry signals form a diagonal line matching the staircase.
 - **R-S3 Early split:** lanes split, and cross by doubled staggered bridges where balancing needs it, well before the platforms. The tracks then run parallel to the bays; no split sits at a platform mouth.
 - **R-S4 Exit bays:** each platform's run-out has a signal before its merge, so a train waiting to join never holds its platform.
@@ -33,3 +40,5 @@ Read from in-game screenshots at normal zoom, then measured exactly from the sav
 - Bay length in tiles relative to TL.
 - Why 4 in / 3 out works at Chinningpool. Main reason (engineer): "there's a ML split just before entering the station drop so the four lines are far from saturated": only part of the four lines' traffic reaches the station (as RULES-stations S25: mixed lines can't all be full). Secondary candidates for the throughput model: empty trains are lighter and clear blocks sooner; dwell spreads departures more evenly than arrivals.
 - Consequence for the generator: size the exit (and platform count) from the station's expected traffic, not from the incoming line count. The station's input is a traffic figure (from the throughput model or the player), and the number of exit lines is an output.
+- Path efficiency (engineer: "some of the paths through my stations may be more efficient than others"). Measured: Chinningpool root-to-platform paths are 10 to 29.5 tiles. YAPF prefers cheaper paths, so platform use is uneven and the effective platform count drops; long paths also hold shared entry blocks longer. Station evaluation needs S1d (YAPF cost per incoming line and platform, predicted platform use) and path-signal support. Generator target: equal (or deliberately weighted) path costs to every platform, as D100 for bridges.
+- Exit bays (engineer: "my stations don't use waiting bays on exit ... But they arguably would support higher throughput if they did"). Test case: Chinningpool as measured against Chinningpool with a whole-train exit bay per platform; the evaluator, then the rig, decides.
