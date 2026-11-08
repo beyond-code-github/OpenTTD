@@ -28,3 +28,15 @@
 - Optimisation steps (P2–P4) must not change any generated layout. Check this with the `[.golden]` test (added in P2).
 - Determinism holds: the same spec and terrain give the same layout, whatever the thread timing.
 - Routine gates use the Release suite (about 22 s). The Debug suite and `[.slow]` run at milestones.
+
+## Progress
+
+| Step | Commit | Result |
+|---|---|---|
+| P1 | (no code) | profile: the router is 91–95%, its `best` map about 52% |
+| P2 | 236119c3fd | S1 1.11 → 0.48 s |
+| P5 | d37a9b5ebf | library of 37 entries; fit 64 µs |
+| P6 | d27d205186 | the ghost follows the cursor; instant tier about 2–3 ms (Debug) |
+| P3 | a742b4dad9 | S1 0.49 → 0.35 s |
+| P4 | 727ec3d763 | S1 0.356 → 0.085 s; library 0.56 → 0.094 s; TSAN clean |
+| P7 | (open) | fast reject for hopeless spots |
