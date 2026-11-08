@@ -297,9 +297,29 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 		uint suitable_dist = 0;
 		uint dist = 0; // Logical length from the last signal to the current piece.
 		bool placed_any = false;
-		/* From the loop's first piece (the junction's exit port tile), so the grid carries on across the seam. */
-		for (size_t k = 0; k < raster.pieces.size(); k++) {
-			const JunctionPiece &p = raster.pieces[k];
+		/* The loop's pieces, then straight on into the junction from its entry port up to the junction's first signal,
+		 * so the grid carries on across both seams. */
+		std::vector<JunctionPiece> seq = raster.pieces;
+		{
+			const JunctionPiece &last = raster.pieces.back();
+			const JunctionRaster ahead = RasterizeJunctionRoute({last.tile, last.trackdir, std::string(8, 'F')});
+			for (size_t a = 1; a < ahead.pieces.size(); a++) {
+				const JunctionPiece &q = ahead.pieces[a];
+				if (!track_at(q.tile).Test(TrackdirToTrack(q.trackdir))) break;
+				seq.push_back(q);
+			}
+		}
+		auto signalled = [&](const JunctionPiece &p) {
+			return std::ranges::any_of(layout.signals, [&](const JunctionSignal &js) { return js.offset.x == p.tile.x && js.offset.y == p.tile.y && js.facing == p.trackdir; });
+		};
+		/* From the loop's first piece (the junction's exit port tile). */
+		for (size_t k = 0; k < seq.size(); k++) {
+			const JunctionPiece &p = seq[k];
+			if (k >= raster.pieces.size() && signalled(p)) {
+				/* The junction's own first signal ends the drag: close the last gap if it is too long. */
+				if (dist + JunctionSignalWeight(seq[k - 1]) > density && suitable.has_value()) place(seq[*suitable]);
+				break;
+			}
 			if (!placed_any) {
 				/* The first legal piece gets a signal, as the drag's first tile does. */
 				if (legal(p)) {
@@ -309,9 +329,9 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 				}
 				continue;
 			}
-			dist += JunctionSignalWeight(raster.pieces[k - 1]);
+			dist += JunctionSignalWeight(seq[k - 1]);
 			if (dist > density && suitable.has_value()) {
-				place(raster.pieces[*suitable]);
+				place(seq[*suitable]);
 				dist -= suitable_dist;
 				suitable.reset();
 			}
