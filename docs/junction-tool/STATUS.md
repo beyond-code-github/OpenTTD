@@ -104,7 +104,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 
 **Next, in order:**
 1. **D96 near-real-time hover** (engineer priority; `PLAN-D96.md`): P1 profile done (the router is 91–95%, and its `best` map about 52%); P2 router lookups done (236119c3fd: S1 1.11→0.48 s, S3 1.79→0.79 s, golden identical); then P3 router inner loop, P5 candidate library and fit test, P6 two-tier GUI, P4 fewer searches and a thread pool, P7 fast reject.
-2. **D97 drag-style signal distance:** replace the phase 3 even fill with the drag walk (192/128 weights, minimise gaps, dragged from the downstream fixed signal), with the checker's spacing rule on the same weights. Fixed-distance mode is a follow-on.
+2. **D97 drag-style signal distance:** done (6919168d55). The fill is the drag walk (minimise gaps, from the downstream anchor) and the checker uses 192/128 weights. Fixed-distance mode is a follow-on.
 3. **1c physics and traffic** (PLAN-1c), moved up: the engineer is holding signalling comments until the simulation ("it will all come out in simulation. It may just be down to waiting bay sizing"). Headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
 4. **D3d robustness round 2:** TL6 is fixed (3f2bfedd09, the search box). TL3 is still no layout: in pass 2 N→E is trapped by E→S in the under-span corridor (hypothesis from the D3d diagnosis).
 5. **D78 levers, in D95 order** (fit the landscape first; terraforming is a priced fallback, not the default):
