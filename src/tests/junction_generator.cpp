@@ -14,6 +14,8 @@
 #include "../junction_generator.h"
 #include "../junction_route.h"
 #include "../junction_rules.h"
+#include "../junction_rules_internal.h"
+#include "../track_func.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -150,6 +152,31 @@ TEST_CASE("BuildJunctionCandidate: the doubled lanes are equal and doubled", "[j
 	for (const RuleViolation &v : CheckBridges(MakeJunctionCheckContext(clean->layout, spec, ports, {}))) {
 		CHECK(v.message.find("not doubled") == std::string::npos);
 	}
+}
+
+TEST_CASE("BuildJunctionCandidate: the doubled ML lanes are mirror images", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<SweepCandidate> &candidates = SweepCandidates(spec);
+	const SweepCandidate *clean = FirstClean(spec, candidates);
+	REQUIRE(clean != nullptr);
+
+	const std::vector<JunctionPort> ports = FindJunctionPorts(clean->layout);
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(clean->layout, spec, ports, JunctionTMovements());
+	std::vector<std::pair<uint, uint>> shapes; ///< (half pieces, turns) per path.
+	for (const JunctionPath &path : ctx.paths) {
+		if (path.from != JunctionPortRole::WIn || path.to != JunctionPortRole::WOut) continue;
+		uint half = 0;
+		uint turns = 0;
+		for (size_t i = 0; i < path.pieces.size(); i++) {
+			if (!IsDiagonalTrackdir(path.pieces[i].trackdir)) half++;
+			if (i > 0 && path.pieces[i].trackdir != path.pieces[i - 1].trackdir) turns++;
+		}
+		shapes.emplace_back(half, turns);
+	}
+	REQUIRE(shapes.size() == 2);
+	CHECK(shapes[0].first == shapes[1].first);
+	CHECK(shapes[0].second == shapes[1].second);
 }
 
 static bool SameLayout(const JunctionLayout &a, const JunctionLayout &b)
@@ -494,7 +521,9 @@ TEST_CASE("GenerateJunction reports the hub offset", "[junction]")
 	CHECK(LayoutTracksAt(layout, result.hub.x, result.hub.y).Test(Track::X));
 
 	const int w_y = result.hub.y + spec.ml_gap + 1;
-	CHECK((LayoutTracksAt(layout, result.hub.x, w_y).Test(Track::X) || UnderBridge(layout, result.hub.x, w_y)));
+	/* D100: at the crossing the W track is split into lanes on rows w_y - 1 and w_y + 1. */
+	const auto lane_ok = [&](int y) { return LayoutTracksAt(layout, result.hub.x, y).Test(Track::X) || UnderBridge(layout, result.hub.x, y); };
+	CHECK((LayoutTracksAt(layout, result.hub.x, w_y).Test(Track::X) || (lane_ok(w_y - 1) && lane_ok(w_y + 1))));
 }
 
 TEST_CASE("GenerateJunction with a blocked prio row line", "[junction][terrain]")

@@ -302,10 +302,6 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		base_layout(layout);
 
 		const std::string span = fmt::format("B{}", n);
-		const JunctionRoute lane_a{tile(63, w_row), Trackdir::X_NE, std::string(62 - h_e, 'F') + span + std::string(h_w, 'F')};
-		const JunctionRaster raster_a = RasterizeJunctionRoute(lane_a);
-		if (!raster_a.error.empty()) return std::nullopt;
-
 		/* Lane B: find p, q, r and s by rasterizing and checking the piece positions. */
 		std::optional<JunctionRoute> lane_b;
 		for (int p = 0; p <= 63 && !lane_b.has_value(); p++) {
@@ -341,6 +337,29 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		}
 		if (!lane_b.has_value()) return std::nullopt;
 		const JunctionRaster raster_b = RasterizeJunctionRoute(*lane_b);
+
+		/* Lane A is lane B's mirror: the same program with every L and R swapped. */
+		JunctionRoute lane_a = *lane_b;
+		for (char &c : lane_a.moves) {
+			if (c == 'L') {
+				c = 'R';
+			} else if (c == 'R') {
+				c = 'L';
+			}
+		}
+		const JunctionRaster raster_a = RasterizeJunctionRoute(lane_a);
+		if (!raster_a.error.empty()) return std::nullopt;
+		size_t near_head_a = raster_a.pieces.size();
+		size_t far_head_a = 0;
+		for (size_t i = 0; i < raster_a.pieces.size(); i++) {
+			if (!raster_a.pieces[i].on_bridge) continue;
+			near_head_a = std::min(near_head_a, i);
+			far_head_a = i;
+		}
+		if (near_head_a >= raster_a.pieces.size()) return std::nullopt;
+		if (raster_a.pieces[near_head_a].tile.x != h_e || raster_a.pieces[near_head_a].tile.y != w_row - 1) return std::nullopt;
+		if (raster_a.pieces[far_head_a].tile.x != h_w || raster_a.pieces[far_head_a].tile.y != w_row - 1) return std::nullopt;
+		if (raster_a.pieces.back().tile.x != 0 || raster_a.pieces.back().tile.y != w_row) return std::nullopt;
 		if (RasterUnits(raster_a) != RasterUnits(raster_b)) return std::nullopt;
 		AddRasterToLayout(layout, raster_a);
 		AddRasterToLayout(layout, raster_b);
@@ -359,11 +378,20 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 			}
 		}
 		if (!merge_x.has_value()) return std::nullopt;
+		std::optional<int> merge_x_a;
+		for (size_t i = far_head_a + 1; i < raster_a.pieces.size(); i++) {
+			const JunctionPiece &piece = raster_a.pieces[i];
+			if (piece.tile.y == w_row && !IsDiagonalTrackdir(piece.trackdir)) {
+				merge_x_a = piece.tile.x;
+				break;
+			}
+		}
+		if (merge_x_a != merge_x) return std::nullopt;
 
 		/* Re-route the four movements with the lanes fixed and no crossable tiles. */
 		std::vector<TileIndexDiffC> under_spans;
 		for (int x = h_w + 1; x < h_e; x++) {
-			under_spans.push_back(tile(x, w_row));
+			under_spans.push_back(tile(x, w_row - 1));
 			under_spans.push_back(tile(x, b_row));
 		}
 		/*
