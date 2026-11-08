@@ -466,7 +466,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			/* The instant tier: fit the library around the cursor. The refine tier may still find something better. */
 			const bool mirrored = EffectiveMirror();
 			const auto t0 = std::chrono::steady_clock::now();
-			const JunctionTerrain terrain = MakeJunctionTerrain(this->hover_tile, _junction_rotation, mirrored, 4);
+			const JunctionTerrain terrain = MakeJunctionTerrain(this->hover_tile, _junction_rotation, mirrored, JunctionFrame{}, 4);
 			const auto t1 = std::chrono::steady_clock::now();
 			const JunctionNearResult fit = FitJunctionLibraryNear(*this->library_job->library, terrain, _junction_rotation, mirrored);
 			const auto t2 = std::chrono::steady_clock::now();
@@ -555,7 +555,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 		auto job = std::make_shared<JunctionGenerateJob>();
 		job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl);
-		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, 4);
+		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, MakeJunctionFrame(job->spec), 4);
 		if (this->LibraryUsable()) job->library = this->library_job->library;
 		if (!StartNewThread(&this->pending_thread, "ottd:junction", [job, key]() {
 			job->result = GenerateJunctionNear(job->spec, job->terrain, key.rotation, key.mirrored, job->cancel);

@@ -212,19 +212,20 @@ CommandCost GameJunctionPricing::TestClear(TileIndex tile) const
 
 /**
  * Snapshot the map around an anchor for the generator, in its working frame (D93).
- * Working cell (x, y) is map tile anchor + OrientJunctionVector({x - 30, y}, rotation, mirrored); the grid covers x 0..63, y -2..40.
- * @param anchor The anchor tile (working cell (30, 0)).
+ * Working cell (x, y) is map tile anchor + OrientJunctionVector({x - frame.hub_x, y}, rotation, mirrored); the grid covers the frame.
+ * @param anchor The anchor tile (working cell (frame.hub_x, 0)).
  * @param rotation Quarter turns of the orientation.
  * @param mirrored Whether the orientation is mirrored.
+ * @param frame The working frame.
  * @param margin Extra cells on every side of the grid.
  * @return The snapshot.
  */
-JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored, int margin)
+JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored, const JunctionFrame &frame, int margin)
 {
 	JunctionTerrain terrain;
-	terrain.origin = {static_cast<int16_t>(-margin), static_cast<int16_t>(-2 - margin)};
-	terrain.width = 64 + 2 * margin;
-	terrain.height = 43 + 2 * margin;
+	terrain.origin = {static_cast<int16_t>(-margin), static_cast<int16_t>(frame.terrain_origin_y - margin)};
+	terrain.width = frame.width + 2 * margin;
+	terrain.height = frame.terrain_height + 2 * margin;
 	terrain.tiles.resize(static_cast<size_t>(terrain.width) * terrain.height);
 	terrain.foundation_cost = _price[Price::BuildFoundation];
 	terrain.build_on_slopes = _settings_game.construction.build_on_slopes;
@@ -235,7 +236,7 @@ JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mir
 			JunctionTerrainTile &cell = terrain.tiles[static_cast<size_t>(gy) * terrain.width + gx];
 			cell.cls = JunctionTileClass::Blocked;
 
-			const TileIndexDiffC v = OrientJunctionVector({static_cast<int16_t>(gx + terrain.origin.x - 30), static_cast<int16_t>(gy + terrain.origin.y)}, rotation, mirrored);
+			const TileIndexDiffC v = OrientJunctionVector({static_cast<int16_t>(gx + terrain.origin.x - frame.hub_x), static_cast<int16_t>(gy + terrain.origin.y)}, rotation, mirrored);
 			const int x = static_cast<int>(TileX(anchor)) + v.x;
 			const int y = static_cast<int>(TileY(anchor)) + v.y;
 			if (x < 0 || y < 0 || x >= static_cast<int>(Map::SizeX()) || y >= static_cast<int>(Map::SizeY())) continue;

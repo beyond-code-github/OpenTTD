@@ -352,7 +352,7 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 	const TileIndex tile{*tile_arg};
 	const bool mirrored = (*mirror_arg != 0) != (_settings_game.vehicle.road_side == RoadVehicleDrivingSide::Left);
 	const auto snapshot_start = std::chrono::steady_clock::now();
-	JunctionTerrain terrain = MakeJunctionTerrain(tile, static_cast<uint8_t>(*rot_arg), mirrored, *near_arg != 0 ? 4 : 0);
+	JunctionTerrain terrain = MakeJunctionTerrain(tile, static_cast<uint8_t>(*rot_arg), mirrored, MakeJunctionFrame(spec), *near_arg != 0 ? 4 : 0);
 	const auto snapshot_end = std::chrono::steady_clock::now();
 	cur_company.Restore();
 	JunctionNearResult found;

@@ -488,13 +488,14 @@ TEST_CASE("GenerateJunction: a long train with a narrow branch still fits", "[ju
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
 }
 
-/** A flat Buildable terrain at height z covering working x 0..63, y -2..40. */
+/** A flat Buildable terrain at height z covering the default frame. */
 static JunctionTerrain MakeFlatTerrain(int z = 0)
 {
+	const JunctionFrame frame{};
 	JunctionTerrain t;
-	t.origin = {0, -2};
-	t.width = 64;
-	t.height = 43;
+	t.origin = {0, static_cast<int16_t>(frame.terrain_origin_y)};
+	t.width = frame.width;
+	t.height = frame.terrain_height;
 	JunctionTerrainTile tile;
 	tile.z_min = tile.z_max = static_cast<int8_t>(z);
 	t.tiles.assign(static_cast<size_t>(t.width) * t.height, tile);
@@ -606,7 +607,7 @@ TEST_CASE("BuildJunctionLibrary is deterministic", "[junction][library]")
 static bool EntryTouchesRect(const JunctionLibraryEntry &e, int x0, int x1, int y0, int y1)
 {
 	auto in = [&](const TileIndexDiffC &t) {
-		const int x = t.x - e.hub.x + 30;
+		const int x = t.x - e.hub.x + JunctionFrame{}.hub_x;
 		const int y = t.y - e.hub.y;
 		return x >= x0 && x <= x1 && y >= y0 && y <= y1;
 	};
@@ -631,7 +632,7 @@ TEST_CASE("FitJunctionLibrary avoids blocked tiles", "[junction][terrain][librar
 	}
 
 	JunctionTerrain all = MakeFlatTerrain();
-	SetTerrainRect(all, 0, 63, -2, 40, JunctionTileClass::Blocked);
+	SetTerrainRect(all, 0, JunctionFrame{}.width - 1, JunctionFrame{}.terrain_origin_y, JunctionFrame{}.terrain_origin_y + JunctionFrame{}.terrain_height - 1, JunctionTileClass::Blocked);
 	CHECK_FALSE(FitJunctionLibrary(library, all).has_value());
 }
 
@@ -719,7 +720,7 @@ TEST_CASE("GenerateJunction with a blocked prio row line", "[junction][terrain]"
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	JunctionTerrain t = MakeFlatTerrain();
-	SetTerrainRect(t, 0, 63, -1, -1, JunctionTileClass::Blocked);
+	SetTerrainRect(t, 0, JunctionFrame{}.width - 1, -1, -1, JunctionTileClass::Blocked);
 	const JunctionGenerateResult result = GenerateJunction(spec, &t);
 	if (!result.layout.has_value()) {
 		CHECK(result.error == JunctionGenerateError::NoLayout);

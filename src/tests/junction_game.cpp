@@ -163,13 +163,14 @@ TEST_CASE("GameJunctionPricing: off-map tile has no height")
 
 TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working frame")
 {
+	const JunctionFrame frame{};
 	const TileIndex anchor = TileXY(64, 64);
 	for (const auto &[rotation, mirrored] : {std::pair<uint8_t, bool>{0, false}, std::pair<uint8_t, bool>{1, true}}) {
 		Map::Allocate(128, 128);
 
 		/* The map tile of a working cell. */
 		auto tile_of = [&](int wx, int wy) {
-			const TileIndexDiffC v = OrientJunctionVector({static_cast<int16_t>(wx - 30), static_cast<int16_t>(wy)}, rotation, mirrored);
+			const TileIndexDiffC v = OrientJunctionVector({static_cast<int16_t>(wx - frame.hub_x), static_cast<int16_t>(wy)}, rotation, mirrored);
 			return TileXY(TileX(anchor) + v.x, TileY(anchor) + v.y);
 		};
 
@@ -183,11 +184,11 @@ TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working fram
 		SetTileHeight(TileXY(TileX(one_corner_tile) + 1, TileY(one_corner_tile)), 1);
 		SetTileHeight(TileXY(TileX(tile_of(41, 5)), TileY(tile_of(41, 5))), 2);
 
-		JunctionTerrain terrain = MakeJunctionTerrain(anchor, rotation, mirrored);
-		CHECK(terrain.width == 64);
-		CHECK(terrain.height == 43);
+		JunctionTerrain terrain = MakeJunctionTerrain(anchor, rotation, mirrored, frame);
+		CHECK(terrain.width == frame.width);
+		CHECK(terrain.height == frame.terrain_height);
 		CHECK(terrain.origin.x == 0);
-		CHECK(terrain.origin.y == -2);
+		CHECK(terrain.origin.y == frame.terrain_origin_y);
 		CHECK(terrain.build_on_slopes == _settings_game.construction.build_on_slopes);
 		CHECK(terrain.max_bridge_height == _settings_game.construction.max_bridge_height);
 
@@ -210,7 +211,7 @@ TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working fram
 		CHECK(steep->steep);
 		CHECK(steep->z_max == 2);
 
-		const JunctionTerrainTile *flat = terrain.At(30, 0);
+		const JunctionTerrainTile *flat = terrain.At(frame.hub_x, 0);
 		REQUIRE(flat != nullptr);
 		CHECK(flat->z_min == 0);
 		CHECK(flat->z_max == 0);
@@ -218,9 +219,9 @@ TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working fram
 	}
 
 	/* The anchor cell is the anchor tile, and cells off the map are Blocked. */
-	JunctionTerrain terrain = MakeJunctionTerrain(TileXY(1, 1), 0, false);
-	REQUIRE(terrain.At(30, 0) != nullptr);
-	CHECK(terrain.At(30, 0)->cls == JunctionTileClass::Buildable);
+	JunctionTerrain terrain = MakeJunctionTerrain(TileXY(1, 1), 0, false, frame);
+	REQUIRE(terrain.At(frame.hub_x, 0) != nullptr);
+	CHECK(terrain.At(frame.hub_x, 0)->cls == JunctionTileClass::Buildable);
 	REQUIRE(terrain.At(0, 0) != nullptr);
 	CHECK(terrain.At(0, 0)->cls == JunctionTileClass::Blocked);
 }
@@ -228,10 +229,11 @@ TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working fram
 /** A flat Buildable terrain at z0 with margin 4: origin and size as MakeJunctionTerrain gives. */
 static JunctionTerrain MakeNearTestTerrain(int margin = 4)
 {
+	const JunctionFrame frame{};
 	JunctionTerrain t;
-	t.origin = {static_cast<int16_t>(-margin), static_cast<int16_t>(-2 - margin)};
-	t.width = 64 + 2 * margin;
-	t.height = 43 + 2 * margin;
+	t.origin = {static_cast<int16_t>(-margin), static_cast<int16_t>(frame.terrain_origin_y - margin)};
+	t.width = frame.width + 2 * margin;
+	t.height = frame.terrain_height + 2 * margin;
 	t.tiles.assign(static_cast<size_t>(t.width) * t.height, JunctionTerrainTile{});
 	t.foundation_cost = 250;
 	return t;
@@ -316,7 +318,7 @@ TEST_CASE("FitJunctionLibraryNear: a blocked block gives a fit whose tiles are b
 	WARN("6x6 block: " << (near.result.layout.has_value() ? "fit" : "no fit") << " at offset " << near.offset.x << "," << near.offset.y);
 	if (near.result.layout.has_value()) {
 		/* At rotation 0 the shifted snapshot reads the unshifted one at the working tile plus the offset. */
-		const int ox = 30 - near.result.hub.x + near.offset.x;
+		const int ox = JunctionFrame{}.hub_x - near.result.hub.x + near.offset.x;
 		const int oy = -near.result.hub.y + near.offset.y;
 		for (const JunctionTrack &jt : near.result.layout->tracks) {
 			if (jt.tracks.None()) continue;

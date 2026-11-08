@@ -50,7 +50,7 @@ enum class JunctionGenerateError : uint8_t { None, InvalidNotation, MultiLane, N
 struct JunctionGenerateResult {
 	std::optional<JunctionLayout> layout;
 	JunctionGenerateError error = JunctionGenerateError::None;
-	TileIndexDiffC hub{}; ///< The offset, in the returned layout, of working coordinate (30, 0).
+	TileIndexDiffC hub{}; ///< The offset, in the returned layout, of the frame's hub point (hub_x, 0).
 	std::pair<Money, int> score{}; ///< The chosen layout's score, terrain cost included.
 };
 
@@ -58,6 +58,17 @@ uint16_t CurveSpeedLimitForSpacing(uint spacing, uint8_t curve_speed);
 uint DeriveCurveSpacing(uint16_t speed, uint8_t curve_speed, uint8_t tl);
 JunctionSpec MakeTestJunctionSpec();
 JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const JunctionTerrain *terrain = nullptr);
+
+/** The canonical working frame the generator, terrain snapshot and library fit share (RECON-frame). */
+struct JunctionFrame {
+	int hub_x = 30; ///< Working x of the hub (N column x E row), xI.
+	int width = 64; ///< Working x runs 0 .. width-1.
+	int reach_east = 16; ///< The router's search box ends this far east of xO.
+	int terrain_height = 43; ///< Terrain rows, from terrain_origin_y.
+	int terrain_origin_y = -2; ///< Working y of the terrain's first row.
+};
+/** The frame for a spec. In this step it always returns the defaults above. */
+JunctionFrame MakeJunctionFrame(const JunctionSpec &spec);
 
 /** The swept inputs of one candidate. */
 struct JunctionCandidateParams {
@@ -73,8 +84,8 @@ struct JunctionCandidateParams {
  * Build one generator candidate.
  * @param spec The junction spec.
  * @param params The swept inputs.
- * @param terrain Optional terrain snapshot, in the generator's working coordinates before cropping and normalising (x 0..63, rows from 0).
- *                The anchor is the hub point (30, 0): the terrain's cell (30 - origin.x, 0 - origin.y) must be the hovered tile.
+ * @param terrain Optional terrain snapshot, in the generator's working coordinates before cropping and normalising (x 0..frame.width-1, rows from 0).
+ *                The anchor is the hub point (frame.hub_x, 0): the terrain's cell (frame.hub_x - origin.x, 0 - origin.y) must be the hovered tile.
  * @param terrain_cost When set together with terrain, receives the sum of CostAt over occupied track tiles and bridge heads, once per tile.
  * @return The layout, or std::nullopt when this candidate cannot be built.
  */

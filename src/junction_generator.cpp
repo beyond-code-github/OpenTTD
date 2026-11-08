@@ -182,6 +182,16 @@ uint RasterUnits(const JunctionRaster &raster)
 } // namespace
 
 /**
+ * The frame for a spec.
+ * @param spec The junction spec.
+ * @return The frame; the defaults for every spec for now.
+ */
+JunctionFrame MakeJunctionFrame([[maybe_unused]] const JunctionSpec &spec)
+{
+	return JunctionFrame{};
+}
+
+/**
  * Build one generator candidate: route the branch movements, double the mainline bridges, crop, and place signals.
  * @param spec The junction spec.
  * @param params The swept inputs.
@@ -191,8 +201,9 @@ uint RasterUnits(const JunctionRaster &raster)
  */
 std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub)
 {
+	const JunctionFrame frame = MakeJunctionFrame(spec);
 	const int g = spec.ml_gap;
-	const int xI = 30;
+	const int xI = frame.hub_x;
 	const int xO = xI + spec.branch_gap + 1;
 	const int yb = static_cast<int>(params.height) - 1;
 	if (yb < g + 4) return std::nullopt;
@@ -203,7 +214,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 
 	JunctionRouteRequest base{};
 	base.min = tile(1, 0); // N->W joins as far left as x = 2 (its window shrinks with TL), so the box must reach it.
-	base.max = tile(xO + 16, yb);
+	base.max = tile(xO + frame.reach_east, yb);
 	base.max_expansions = 50000;
 	base.curve_spacing = spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1;
 	base.s_bend_window = 2u * spec.tl;
@@ -222,7 +233,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	const JunctionRouteEnd start_n{tile(xI, ys), Trackdir::Y_NW};
 
 	auto base_layout = [&](JunctionLayout &layout) {
-		AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(0, 0), Trackdir::X_SW, 63)));
+		AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(0, 0), Trackdir::X_SW, frame.width - 1)));
 		AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xO, ys), Trackdir::Y_SE, STUB)));
 		AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xI, yb), Trackdir::Y_NW, STUB)));
 	};
@@ -235,7 +246,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	/* Pass 1: find the crossing zone. */
 	JunctionLayout layout;
 	base_layout(layout);
-	AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(63, w_row), Trackdir::X_NE, 63)));
+	AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(frame.width - 1, w_row), Trackdir::X_NE, frame.width - 1)));
 	std::vector<int> zone; ///< The x of every W row tile that a crossing movement (E->S, N->E) uses.
 	auto note_crossings = [&](const JunctionRaster &raster) {
 		for (const JunctionPiece &piece : raster.pieces) {
@@ -249,13 +260,13 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	 */
 	auto route_movements = [&](JunctionLayout &l, bool crossable_w, const std::vector<TileIndexDiffC> &under_spans, int nw_max_x, int lane_b_max_x, bool note, int nw_row, int nw_min_x) -> bool {
 		std::vector<TileIndexDiffC> w_tiles;
-		if (crossable_w) for (int x = 0; x <= 63; x++) w_tiles.push_back(tile(x, w_row));
+		if (crossable_w) for (int x = 0; x <= frame.width - 1; x++) w_tiles.push_back(tile(x, w_row));
 		std::vector<TileIndexDiffC> column_fence;
 		for (int y = 0; y <= g + 3; y++) column_fence.push_back(tile(xI, y));
 		/* Keep the tile above the N stub free: N->E needs it for its first piece or its bridge head (D3d). */
 		column_fence.push_back(tile(xI, ys - 1));
 		std::vector<TileIndexDiffC> branch_fence = under_spans;
-		for (int y = 1; y < w_row; y++) for (int x = 0; x <= 63; x++) branch_fence.push_back(tile(x, y));
+		for (int y = 1; y < w_row; y++) for (int x = 0; x <= frame.width - 1; x++) branch_fence.push_back(tile(x, y));
 
 		JunctionRouteRequest request = base;
 		request.crossable = w_tiles;
@@ -269,7 +280,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		if (note) note_crossings(*e_to_s);
 
 		request = base;
-		request.starts = PlainRowPieces(l, w_row, Trackdir::X_NE, xO + 2, 61);
+		request.starts = PlainRowPieces(l, w_row, Trackdir::X_NE, xO + 2, frame.width - 3);
 		for (const JunctionRouteEnd &end : PlainRowPieces(l, b_row, Trackdir::X_NE, xO + 2, lane_b_max_x)) request.starts.push_back(end);
 		request.goals = stub_pieces(xO, Trackdir::Y_SE);
 		if (!RouteFencedAndAdd(l, request, branch_fence).has_value()) return false;
@@ -281,7 +292,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		/* D108: the N->E merge window starts beyond the prio coverage and a segment past the E->S split. */
 		const int x_s = e_to_s->pieces.front().tile.x;
 		const int cover = static_cast<int>(spec.tl * spec.prio_tl);
-		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, std::max(xO, x_s + cover + static_cast<int>(spec.sd) + 2), 61);
+		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, std::max(xO, x_s + cover + static_cast<int>(spec.sd) + 2), frame.width - 3);
 		const std::optional<JunctionRaster> n_to_e = RouteAndAdd(l, request);
 		if (!n_to_e.has_value()) return false;
 		if (note) note_crossings(*n_to_e);
@@ -291,14 +302,14 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		request.goals = PlainRowPieces(l, nw_row, Trackdir::X_NE, nw_min_x, nw_max_x);
 		return RouteFencedAndAdd(l, request, branch_fence).has_value();
 	};
-	if (!route_movements(layout, true, {}, xI - 2, 61, true, w_row, 2)) return std::nullopt;
+	if (!route_movements(layout, true, {}, xI - 2, frame.width - 3, true, w_row, 2)) return std::nullopt;
 
 	if (!zone.empty()) {
 		const int h_w = *std::ranges::min_element(zone) - params.bridge_margin;
 		const int h_e = *std::ranges::max_element(zone) + params.bridge_margin;
 		const int n = h_e - h_w - 1;
 		if (!spec.bridge_span_ok(n)) return std::nullopt;
-		if (h_w < 0 || h_e + 1 > 63) return std::nullopt;
+		if (h_w < 0 || h_e + 1 > frame.width - 1) return std::nullopt;
 
 		/* Pass 2: fixed doubled lanes. */
 		layout = JunctionLayout{};
@@ -315,8 +326,8 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		if (params.lane_style == 1) {
 			/* Parallelogram (D105): lane A runs straight on the W row through its bridge, then S-bends onto the B row. */
 			std::optional<JunctionRaster> found_a;
-			for (int k = 0; k <= 63 && !found_a.has_value(); k++) {
-				const JunctionRaster raster = RasterizeJunctionRoute({tile(63, w_row), Trackdir::X_NE, std::string(k, 'F') + span + "FRFL"});
+			for (int k = 0; k <= frame.width - 1 && !found_a.has_value(); k++) {
+				const JunctionRaster raster = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, std::string(k, 'F') + span + "FRFL"});
 				if (!raster.error.empty()) continue;
 				size_t near_head = raster.pieces.size();
 				size_t far_head = 0;
@@ -340,9 +351,9 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		}
 		/* Lane B: find p, q, r and s by rasterizing and checking the piece positions. */
 		std::optional<JunctionRoute> lane_b;
-		for (int p = 0; p <= 63 && !lane_b.has_value(); p++) {
-			for (int q = 1; q <= 63 && !lane_b.has_value(); q++) {
-				const JunctionRaster head_raster = RasterizeJunctionRoute({tile(63, w_row), Trackdir::X_NE, std::string(p, 'F') + "RFL" + std::string(q, 'F') + span});
+		for (int p = 0; p <= frame.width - 1 && !lane_b.has_value(); p++) {
+			for (int q = 1; q <= frame.width - 1 && !lane_b.has_value(); q++) {
+				const JunctionRaster head_raster = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, std::string(p, 'F') + "RFL" + std::string(q, 'F') + span});
 				if (!head_raster.error.empty()) continue;
 				/* Pieces after the end of RFL (index p + 3) up to the near head. */
 				size_t head = p + 4;
@@ -357,12 +368,12 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 				if (params.lane_style == 1) {
 					/* Straight on the B row to the tile at x_sb + 1, then LFR up to the W row and straight on to x = 0. */
 					const std::string head_moves = std::string(p, 'F') + "RFL" + std::string(q, 'F') + span;
-					for (int t = 0; t <= 63 && !lane_b.has_value(); t++) {
-						const JunctionRaster to_sb = RasterizeJunctionRoute({tile(63, w_row), Trackdir::X_NE, head_moves + std::string(t, 'F')});
+					for (int t = 0; t <= frame.width - 1 && !lane_b.has_value(); t++) {
+						const JunctionRaster to_sb = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, head_moves + std::string(t, 'F')});
 						if (!to_sb.error.empty()) continue;
 						if (to_sb.pieces.back().tile.x != x_sb + 1 || to_sb.pieces.back().tile.y != b_row) continue;
-						for (int s = 0; s <= 63; s++) {
-							const JunctionRoute candidate{tile(63, w_row), Trackdir::X_NE, head_moves + std::string(t, 'F') + "LFR" + std::string(s, 'F')};
+						for (int s = 0; s <= frame.width - 1; s++) {
+							const JunctionRoute candidate{tile(frame.width - 1, w_row), Trackdir::X_NE, head_moves + std::string(t, 'F') + "LFR" + std::string(s, 'F')};
 							const JunctionRaster raster = RasterizeJunctionRoute(candidate);
 							if (!raster.error.empty()) continue;
 							if (raster.pieces.back().tile.x == 0 && raster.pieces.back().tile.y == w_row) {
@@ -375,11 +386,11 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 				}
 				for (int r = 1; r <= 1 && !lane_b.has_value(); r++) {
 					const std::string head_moves = std::string(p, 'F') + "RFL" + std::string(q, 'F') + span;
-					const JunctionRaster far_raster = RasterizeJunctionRoute({tile(63, w_row), Trackdir::X_NE, head_moves + std::string(r, 'F')});
+					const JunctionRaster far_raster = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, head_moves + std::string(r, 'F')});
 					if (!far_raster.error.empty()) continue;
 					/* Plain axis pieces between the far head and the start of LFR: the r pieces after the head. */
-					for (int s = 0; s <= 63; s++) {
-						const JunctionRoute candidate{tile(63, w_row), Trackdir::X_NE, head_moves + std::string(r, 'F') + "LFR" + std::string(s, 'F')};
+					for (int s = 0; s <= frame.width - 1; s++) {
+						const JunctionRoute candidate{tile(frame.width - 1, w_row), Trackdir::X_NE, head_moves + std::string(r, 'F') + "LFR" + std::string(s, 'F')};
 						const JunctionRaster raster = RasterizeJunctionRoute(candidate);
 						if (!raster.error.empty()) continue;
 						if (raster.pieces.back().tile.x == 0) {
@@ -555,7 +566,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 			if (!terrain->UsableAt(jt.offset.x + shift_x, jt.offset.y + shift_y, params.plane)) return std::nullopt;
 		}
 	}
-	if (hub != nullptr) *hub = {static_cast<int16_t>(30 - shift_x), static_cast<int16_t>(0 - shift_y)};
+	if (hub != nullptr) *hub = {static_cast<int16_t>(frame.hub_x - shift_x), static_cast<int16_t>(0 - shift_y)};
 	return layout;
 }
 
@@ -776,12 +787,13 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 
 std::optional<JunctionLibraryFit> FitJunctionLibrary(const std::vector<JunctionLibraryEntry> &library, const JunctionTerrain &terrain)
 {
+	const JunctionFrame frame{};
 	const std::vector<int> planes = JunctionTerrainPlanes(terrain);
 	std::optional<JunctionLibraryFit> best;
 	std::tuple<Money, int, int> best_key{};
 	for (size_t i = 0; i < library.size(); i++) {
 		const JunctionLibraryEntry &e = library[i];
-		const int ox = 30 - e.hub.x;
+		const int ox = frame.hub_x - e.hub.x;
 		const int oy = -e.hub.y;
 		for (const int plane : planes) {
 			bool ok = true;

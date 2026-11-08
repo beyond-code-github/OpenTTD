@@ -47,8 +47,8 @@ std::optional<JunctionPickedTrain> ReadJunctionTrain(const Vehicle *v);
 /** Fill a generator spec from the game: settings, rail type, prices and bridges. */
 JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_gap, uint8_t tl);
 
-/** Snapshot the map around an anchor for the generator, in its working frame (D93): cell (cx, cy) is map tile anchor + OrientJunctionVector({cx - 30, cy}, rotation, mirrored). */
-JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored, int margin = 0);
+/** Snapshot the map around an anchor for the generator, in its working frame (D93): cell (cx, cy) is map tile anchor + OrientJunctionVector({cx - frame.hub_x, cy}, rotation, mirrored). */
+JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored, const JunctionFrame &frame, int margin = 0);
 
 /** Result of a search for a fitting spot near the anchor. */
 struct JunctionNearResult {
