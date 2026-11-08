@@ -105,7 +105,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 **Next, in order:**
 1. **D96 near-real-time hover** (engineer priority; `PLAN-D96.md`): P1 profile done (the router is 91–95%, and its `best` map about 52%); P2 router lookups done (236119c3fd: S1 1.11→0.48 s, S3 1.79→0.79 s, golden identical); P5 library and fit done (d37a9b5ebf: 37 entries, build 0.72 s, fit 64 µs); P6 two-tier GUI done (d27d205186: the ghost follows the cursor from the library; instant tier about 2–3 ms on the Debug server; hilly scan with `--instant` gives 5/12, the same as the full near search, all built). Left as follow-ons (orchestrator's call: the feel goal is met, so 1c goes first): then P3 router inner loop, P4 fewer searches and a thread pool, P7 fast reject.
 2. **D97 drag-style signal distance:** done (6919168d55). The fill is the drag walk (minimise gaps, from the downstream anchor) and the checker uses 192/128 weights. Fixed-distance mode is a follow-on.
-3. **1c physics and traffic** (PLAN-1c), moved up: the engineer is holding signalling comments until the simulation ("it will all come out in simulation. It may just be down to waiting bay sizing"). Headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
+3. **1c physics and traffic** (PLAN-1c, RECON-1c 530616bf5e, D98), moved up. Next: rig traffic runs (per-route spawner, occupancy sampler, backed-up-past-split check), then the pure model checked against them. the engineer is holding signalling comments until the simulation ("it will all come out in simulation. It may just be down to waiting bay sizing"). Headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
 4. **D3d robustness round 2:** TL6 is fixed (3f2bfedd09, the search box). TL3 is still no layout: in pass 2 N→E is trapped by E→S in the under-span corridor (hypothesis from the D3d diagnosis).
 5. **D78 levers, in D95 order** (fit the landscape first; terraforming is a priced fallback, not the default):
    - first a breakdown of why each hilly no-layout spot fails (height, water or blocked);
@@ -124,6 +124,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 - **D91:** which pair is "L & R"?
 - **Joiner questions** (PLAN-joiner.md): multi-track A/B/C; endpoint picking; J3 in the first milestone?
 - **ml_gap 0** gives NeedsMlGap for now (needs a spread, option C).
+- **1c (RECON-1c open questions 1–4):** loaded or empty mass for prio sizing (and the live `freight_trains` value or the default)? Design speed: min(engine, rail type), the rail type's max, or capped by bridge speed? The original acceleration model: support it or refuse it? Train picker: engines available now, or all of them? The rest is settled by D98.
 
 **Demo rig:** `tools/ottd/ottd start [--hilly]; ottd company; ottd build-layout tools/ottd/layouts/generated-LR-TL4.json --find-clear`, or `ottd junction-check tools/ottd/layouts/circuit-LR-TL4.json --find-clear`, or `ottd junction-scan --count 12 --seed 1` on `--hilly` (and `-lefthand.json`). Join with `build/openttd -n 127.0.0.1`. The engineer likes to watch: announce rig runs (memory: rig-watch-feedback).
 
