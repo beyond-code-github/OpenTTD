@@ -14,6 +14,7 @@
 #include "../junction_generator.h"
 #include "../junction_route.h"
 #include "../junction_rules.h"
+#include "../junction_rules_internal.h"
 #include "../track_func.h"
 
 #include "../safeguards.h"
@@ -1269,4 +1270,20 @@ TEST_CASE("CheckPrio: coverage along both lanes reaches lane B's bridge block", 
 	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, {{Role::EIn, Role::EOut}, {Role::WIn, Role::EOut}});
 	REQUIRE(ctx.paths.size() == 3);
 	CHECK(Has(CheckPrio(ctx), JunctionRule::Prio, 7, 0, "ML block within the train length needs exactly one join"));
+}
+
+TEST_CASE("CheckPrioReach: the generated test junction at head (D107)", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	const JunctionLayout &layout = *result.layout;
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
+	const std::vector<RuleViolation> violations = CheckPrioReach(ctx);
+	const char *message = "does not hold the joiner";
+	CHECK(violations.size() == 4);
+	CHECK(Has(violations, JunctionRule::PrioReach, 11, 1, message)); // E prio: the adjacent-signal tile.
+	CHECK(Has(violations, JunctionRule::PrioReach, 10, 1, message)); // E prio: the boundary held tile.
+	CHECK(Has(violations, JunctionRule::PrioReach, 6, 3, message)); // W prio: the adjacent-signal tile.
+	CHECK(Has(violations, JunctionRule::PrioReach, 7, 3, message)); // W prio: the lane-merge held tile.
 }

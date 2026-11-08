@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-enum class JunctionRule : uint8_t { NotImplemented, Connectivity, Geometry, CurveSpeed, Order, Bridges, Signals, WaitingRoom, Deadlock, Prio, Footprint };
+enum class JunctionRule : uint8_t { NotImplemented, Connectivity, Geometry, CurveSpeed, Order, Bridges, Signals, WaitingRoom, Deadlock, Prio, Footprint, PrioReach };
 struct RuleViolation { JunctionRule rule; TileIndexDiffC tile; std::string message; };
 
 /** The six places where the mainlines and the branch meet the edge of the junction (PLAN-1b §1). */
@@ -61,6 +61,7 @@ std::vector<RuleViolation> CheckWaitingRoom(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckDeadlock(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckFootprint(const JunctionCheckContext &ctx);
+std::vector<RuleViolation> CheckPrioReach(const JunctionCheckContext &ctx);
 
 std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec);
 

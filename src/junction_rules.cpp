@@ -17,6 +17,7 @@
 #include "track_func.h"
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <optional>
 #include <set>
@@ -1256,6 +1257,275 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 		}
 	}
 	return out;
+}
+
+/** A position a one-tile train stands on: a tile and a track on it. A bridge head is occupied through any track. */
+using OccupiedPosition = std::pair<std::pair<int, int>, Track>;
+
+/** The trackdir of the track that leaves the tile through the edge. */
+static Trackdir TrackdirExiting(Track track, DiagDirection edge)
+{
+	const Trackdir td = TrackToTrackdir(track);
+	return TrackdirToExitdir(td) == edge ? td : ReverseTrackdir(td);
+}
+
+/** The edge of the track that is not the given one. */
+static DiagDirection OtherEdgeOf(Track track, DiagDirection edge)
+{
+	for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
+		if (dir != edge && TrackTouches(track, dir)) return dir;
+	}
+	NOT_REACHED();
+}
+
+/**
+ * Settle the signals of the layout with trains on the occupied positions.
+ * This mirrors OpenTTD's signal.cpp as docs/junction-tool/tools/sigsim.py ports it: the segment ahead of a signal is explored as
+ * ExploreSegment does (whole-tile propagation, per-track detection on a pair of parallel half pieces, a signal tile belonging to
+ * both segments it bounds, bridges as wormholes), and the signal is set as UpdateSignalsAroundSegment does (red for a train;
+ * an Entry or Combo red when the segment has an Exit and no green Exit). The signals are swept in order until none changes.
+ * @return Per signal of the layout, in order, whether it is green.
+ */
+static std::vector<bool> SettleSignals(const JunctionLayout &layout, const std::set<OccupiedPosition> &occupied)
+{
+	using Key = std::pair<int, int>;
+	using Todo = std::pair<Key, int>; // Tile and the direction entered from; -1 for the wormhole of a bridge.
+	constexpr int WORMHOLE = -1;
+	auto dir_of = [](int dir) { return static_cast<DiagDirection>(dir); };
+	auto reverse = [&](int dir) { return static_cast<int>(ReverseDiagDir(dir_of(dir))); };
+	auto step = [&](Key key, int dir) {
+		const TileIndexDiffC diff = TileIndexDiffCByDiagDir(dir_of(dir));
+		return Key{key.first + diff.x, key.second + diff.y};
+	};
+
+	std::map<Key, TrackBits> tracks;
+	for (const JunctionTrack &jt : layout.tracks) tracks[{jt.offset.x, jt.offset.y}] = tracks[{jt.offset.x, jt.offset.y}] | jt.tracks;
+
+	/* A head of a bridge: the other head, and the direction a train travels into the bridge. */
+	std::map<Key, std::pair<Key, int>> bridges;
+	for (const JunctionBridge &bridge : layout.bridges) {
+		const Key start{bridge.start.x, bridge.start.y};
+		const Key end{bridge.end.x, bridge.end.y};
+		const bool along_x = start.second == end.second;
+		const DiagDirection forward = along_x ? (end.first > start.first ? DiagDirection::SW : DiagDirection::NE) : (end.second > start.second ? DiagDirection::SE : DiagDirection::NW);
+		bridges[start] = {end, static_cast<int>(forward)};
+		bridges[end] = {start, static_cast<int>(ReverseDiagDir(forward))};
+	}
+
+	std::map<std::pair<Key, Trackdir>, size_t> signal_at;
+	std::set<std::pair<Key, Track>> signalled_tracks;
+	std::set<Key> signal_tiles;
+	std::vector<bool> green(layout.signals.size(), true);
+	for (size_t i = 0; i < layout.signals.size(); i++) {
+		const JunctionSignal &signal = layout.signals[i];
+		const Key key{signal.offset.x, signal.offset.y};
+		signal_at[{key, signal.facing}] = i;
+		signalled_tracks.insert({key, TrackdirToTrack(signal.facing)});
+		signal_tiles.insert(key);
+	}
+
+	std::set<Key> occupied_tiles;
+	for (const OccupiedPosition &position : occupied) occupied_tiles.insert(position.first);
+
+	/* ExploreSegment: returns whether the segment has a train, an Exit, and a green Exit. */
+	auto explore = [&](std::vector<Todo> todo) {
+		bool train = false;
+		bool exit = false;
+		bool exit_green = false;
+		std::set<Todo> todo_set(todo.begin(), todo.end());
+		std::set<Todo> done;
+		/* MaybeAddToTodoSet: a pending (remove) entry is dropped instead of adding (add). */
+		auto add = [&](Todo add_entry, Todo remove_entry) {
+			if (todo_set.erase(remove_entry) > 0) return;
+			if (done.contains(add_entry) || todo_set.contains(add_entry)) return;
+			todo.push_back(add_entry);
+			todo_set.insert(add_entry);
+		};
+
+		while (!todo.empty()) {
+			const auto [tile, enter] = todo.back();
+			todo.pop_back();
+			if (todo_set.erase({tile, enter}) == 0) continue;
+			done.insert({tile, enter});
+
+			if (const auto bridge = bridges.find(tile); bridge != bridges.end()) {
+				const auto [other, into] = bridge->second;
+				if (enter == WORMHOLE) {
+					if (occupied_tiles.contains(tile)) train = true;
+					const int exit_dir = reverse(into);
+					add({step(tile, exit_dir), reverse(exit_dir)}, {tile, exit_dir});
+				} else {
+					if (reverse(enter) != into) continue;
+					if (occupied_tiles.contains(tile)) train = true;
+					add({other, WORMHOLE}, {tile, WORMHOLE});
+				}
+				continue;
+			}
+
+			const auto found = tracks.find(tile);
+			if (found == tracks.end()) continue;
+			TrackBits here = found->second;
+			TrackBits masked{};
+			for (Track track : here) {
+				if (TrackTouches(track, dir_of(enter))) masked = masked | TrackBits{track};
+			}
+			if (here == TrackBits{Track::Upper, Track::Lower} || here == TrackBits{Track::Left, Track::Right}) {
+				here = masked;
+				for (Track track : masked) {
+					if (occupied.contains({tile, track})) train = true;
+				}
+			} else {
+				if (masked.None()) continue;
+				if (occupied_tiles.contains(tile)) train = true;
+			}
+
+			if (signal_tiles.contains(tile)) {
+				Track track = Track::X;
+				for (Track t : masked) {
+					track = t;
+					break;
+				}
+				if (signalled_tracks.contains({tile, track})) {
+					const DiagDirection leave = OtherEdgeOf(track, dir_of(enter));
+					const auto ahead = signal_at.find({tile, TrackdirExiting(track, leave)});
+					if (ahead != signal_at.end()) {
+						const SignalType type = layout.signals[ahead->second].type;
+						if (type == SignalType::Exit || type == SignalType::Combo) {
+							exit = true;
+							if (green[ahead->second]) exit_green = true;
+						}
+					}
+					continue;
+				}
+			}
+
+			for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
+				if (static_cast<int>(dir) != enter && AnyTrackTouches(here, dir)) {
+					add({step(tile, static_cast<int>(dir)), reverse(static_cast<int>(dir))}, {tile, static_cast<int>(dir)});
+				}
+			}
+		}
+		return std::array<bool, 3>{train, exit, exit_green};
+	};
+
+	for (int sweep = 0; sweep < 200; sweep++) {
+		bool changed = false;
+		for (size_t i = 0; i < layout.signals.size(); i++) {
+			const JunctionSignal &signal = layout.signals[i];
+			const Key key{signal.offset.x, signal.offset.y};
+			const int leave = static_cast<int>(TrackdirToExitdir(signal.facing));
+			const auto [train, exit, exit_green] = explore({{key, leave}, {step(key, leave), reverse(leave)}});
+			/* UpdateSignalsAroundSegment. */
+			const bool entry = signal.type == SignalType::Entry || signal.type == SignalType::Combo;
+			const bool now_green = !train && !(entry && exit && !exit_green);
+			if (now_green != green[i]) {
+				green[i] = now_green;
+				changed = true;
+			}
+		}
+		if (!changed) break;
+	}
+	return green;
+}
+
+/**
+ * G9b (D107): a one-tile train anywhere in the coverage of a prio, or on the next piece upstream when the coverage ends on a signal,
+ * must settle the joiner's Entry signal red, under OpenTTD's real pre-signal logic.
+ */
+std::vector<RuleViolation> CheckPrioReach(const JunctionCheckContext &ctx)
+{
+	std::vector<RuleViolation> out;
+	const JunctionLayout &layout = ctx.layout;
+	const auto used = UsedTracks(ctx);
+	const uint limit = 2u * ctx.spec.tl * ctx.spec.prio_tl;
+
+	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
+		const JunctionPath &ml = ctx.paths[pi];
+		const bool is_ml = (ml.from == JunctionPortRole::EIn && ml.to == JunctionPortRole::EOut) || (ml.from == JunctionPortRole::WIn && ml.to == JunctionPortRole::WOut);
+		if (!is_ml) continue;
+
+		for (const SwitchEvent &event : SwitchEventsOf(layout, used, ml)) {
+			if (event.first) continue;
+			const JunctionPiece &merge_piece = ml.pieces[event.second];
+			if (!IsDiagonalTrackdir(merge_piece.trackdir)) continue;
+
+			/* The joiner and its Entry signal, found as CheckPrio finds them. */
+			const JunctionPath *joiner = nullptr;
+			size_t joiner_index = 0;
+			for (size_t qi = 0; qi < ctx.paths.size() && joiner == nullptr; qi++) {
+				if (qi == pi) continue;
+				for (const SwitchEvent &other : SwitchEventsOf(layout, used, ctx.paths[qi])) {
+					const JunctionPiece &piece = ctx.paths[qi].pieces[other.second];
+					if (other.first || !SameTile(piece.tile, merge_piece.tile) || piece.trackdir == merge_piece.trackdir) continue;
+					joiner = &ctx.paths[qi];
+					joiner_index = other.second;
+					break;
+				}
+			}
+			if (joiner == nullptr || (joiner->from == ml.from && joiner->to == ml.to)) continue;
+			const JunctionPiece *signalled = nullptr;
+			for (size_t i = joiner_index; i-- > 0;) {
+				if (!IsSignalledPiece(layout, joiner->pieces[i])) continue;
+				signalled = &joiner->pieces[i];
+				break;
+			}
+			if (signalled == nullptr) continue;
+			const auto entry = std::ranges::find_if(layout.signals, [&](const JunctionSignal &s) { return SameTile(s.offset, signalled->tile) && s.facing == signalled->trackdir; });
+			if (entry == layout.signals.end()) continue;
+			const size_t entry_index = static_cast<size_t>(entry - layout.signals.begin());
+
+			/* Only a merge that has a prio: its tile holds an unused track (the first join). */
+			const auto merge_used = used.find({merge_piece.tile.x, merge_piece.tile.y});
+			bool has_prio = false;
+			for (Track track : TracksAt(layout, merge_piece.tile)) {
+				if (merge_used == used.end() || !merge_used->second.Test(track)) has_prio = true;
+			}
+			if (!has_prio) continue;
+
+			/* The covered pieces: the coverage walk along every lane of the movement through the merge piece, and the piece beyond a signalled end. */
+			std::vector<const JunctionPiece *> covered;
+			for (const JunctionPath &lane : ctx.paths) {
+				if (lane.from != ml.from || lane.to != ml.to) continue;
+				const auto at = std::ranges::find_if(lane.pieces, [&](const JunctionPiece &piece) { return !piece.on_bridge && SameTile(piece.tile, merge_piece.tile) && piece.trackdir == merge_piece.trackdir; });
+				if (at == lane.pieces.end()) continue;
+				const size_t merge_at = static_cast<size_t>(at - lane.pieces.begin());
+				uint units = 0;
+				size_t last = merge_at;
+				for (size_t i = merge_at; i-- > 0 && units < limit;) {
+					units += lane.pieces[i].units;
+					covered.push_back(&lane.pieces[i]);
+					last = i;
+				}
+				if (last < merge_at && last > 0 && IsSignalledPiece(layout, lane.pieces[last])) covered.push_back(&lane.pieces[last - 1]);
+			}
+
+			std::set<OccupiedPosition> tested;
+			for (const JunctionPiece *piece : covered) {
+				std::pair<int, int> tile{piece->tile.x, piece->tile.y};
+				if (const JunctionBridge *bridge = FindBridgeByHead(layout, piece->tile); piece->on_bridge && bridge == nullptr) {
+					/* A span tile: any train on the bridge is in the segment of its heads. */
+					for (const JunctionBridge &b : layout.bridges) {
+						if (piece->tile.x < std::min(b.start.x, b.end.x) || piece->tile.x > std::max(b.start.x, b.end.x)) continue;
+						if (piece->tile.y < std::min(b.start.y, b.end.y) || piece->tile.y > std::max(b.start.y, b.end.y)) continue;
+						tile = {b.start.x, b.start.y};
+						break;
+					}
+				}
+				const OccupiedPosition position{tile, TrackdirToTrack(piece->trackdir)};
+				if (!tested.insert(position).second) continue;
+				if (SettleSignals(layout, {position})[entry_index]) {
+					AddViolation(out, JunctionRule::PrioReach, piece->tile, "ML tile in prio coverage does not hold the joiner");
+				}
+			}
+		}
+	}
+
+	/* One violation per tile and message. */
+	std::vector<RuleViolation> unique;
+	for (const RuleViolation &v : out) {
+		if (!std::ranges::any_of(unique, [&](const RuleViolation &u) { return SameTile(u.tile, v.tile); })) unique.push_back(v);
+	}
+	return unique;
 }
 
 /** G10: size is the bounding box and the west, east and bottom edges are free of signals, switches, bridge heads and unused track. */
