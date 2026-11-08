@@ -262,6 +262,8 @@ add_files(
     junction_gui.h
     junction_layout.cpp
     junction_layout.h
+    junction_line.cpp
+    junction_line.h
     junction_route.cpp
     junction_route.h
     junction_router.cpp

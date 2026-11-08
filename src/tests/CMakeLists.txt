@@ -10,6 +10,7 @@ add_test_files(
     junction_generator.cpp
     junction_gui.cpp
     junction_layout.cpp
+    junction_line.cpp
     junction_route.cpp
     junction_router.cpp
     junction_rules.cpp
