@@ -47,6 +47,9 @@
 #include "company_cmd.h"
 #include "misc_cmd.h"
 #include "junction_game.h"
+#include "junction_map_export.h"
+#include "3rdparty/nlohmann/json.hpp"
+#include "station_base.h"
 #include "junction_station_generator.h"
 #include "vehicle_base.h"
 #include "company_base.h"
@@ -427,6 +430,106 @@ static bool ConStationExport(std::span<std::string_view> argv)
 	const int oy = static_cast<int>(TileY(TileIndex{*tile_arg}));
 	out << "{\"origin\":[" << ox << "," << oy << "]," << JunctionLayoutToJson(oriented).substr(1);
 	IConsolePrint(CC_DEFAULT, "station_export ok origin={},{} size={}x{}", ox, oy, oriented.size.x, oriented.size.y);
+	return true;
+}
+
+/**
+ * Write the rail, bridge, station and level crossing tiles of a map box as JSON.
+ * @param box The box, inclusive and already clipped to the map: x0, y0, x1, y1.
+ * @param path File to write.
+ * @param name Command name, for the result line.
+ */
+static void WriteMapExport(const uint (&box)[4], std::string_view path, std::string_view name)
+{
+	const std::string json = JunctionMapExportJson(box[0], box[1], box[2], box[3]);
+	std::ofstream out{std::string{path}};
+	out << json << "\n";
+	IConsolePrint(CC_DEFAULT, "{} ok tiles={}", name, nlohmann::json::parse(json)["tiles"].size());
+}
+
+/**
+ * Export a map box as JSON in the schema of the savegame reader.
+ * @copydoc IConsoleCmdProc
+ */
+static bool ConMapExport(std::span<std::string_view> argv)
+{
+	if (argv.empty()) {
+		IConsolePrint(CC_HELP, "Write the rail, rail bridge, station and level crossing tiles of a map box as JSON. Usage: 'map_export <x0> <y0> <x1> <y1> <path>'.");
+		IConsolePrint(CC_HELP, "The box is inclusive and is clipped to the map.");
+		return true;
+	}
+
+	if (argv.size() != 6) return false;
+	auto x0 = ParseInteger(argv[1], 10);
+	auto y0 = ParseInteger(argv[2], 10);
+	auto x1 = ParseInteger(argv[3], 10);
+	auto y1 = ParseInteger(argv[4], 10);
+	if (!x0.has_value() || !y0.has_value() || !x1.has_value() || !y1.has_value()) return false;
+	if (*x0 > *x1 || *y0 > *y1 || *x0 >= Map::SizeX() || *y0 >= Map::SizeY()) return false;
+
+	const uint box[4] = {*x0, *y0, std::min<uint>(*x1, Map::SizeX() - 1), std::min<uint>(*y1, Map::SizeY() - 1)};
+	WriteMapExport(box, argv[5], "map_export");
+	return true;
+}
+
+/**
+ * Export the map around a rail station as JSON in the schema of the savegame reader.
+ * @copydoc IConsoleCmdProc
+ */
+static bool ConMapExportStation(std::span<std::string_view> argv)
+{
+	if (argv.empty()) {
+		IConsolePrint(CC_HELP, "Write the map around a rail station as JSON. Usage: 'map_export_station <station id> <margin> <path>'.");
+		IConsolePrint(CC_HELP, "The box is the bounding box of the station's rail tiles, expanded by the margin and clipped to the map.");
+		return true;
+	}
+
+	if (argv.size() != 4) return false;
+	auto id = ParseInteger(argv[1], 10);
+	auto margin = ParseInteger(argv[2], 10);
+	if (!id.has_value() || !margin.has_value()) return false;
+
+	if (*id >= Station::GetPoolSize() || !Station::IsValidID(StationID(*id)) || Station::Get(StationID(*id))->train_station.tile == INVALID_TILE) {
+		IConsolePrint(CC_ERROR, "map_export_station: no rail station with id {}.", *id);
+		return true;
+	}
+
+	const TileArea &area = Station::Get(StationID(*id))->train_station;
+	const uint box[4] = {
+		TileX(area.tile) > *margin ? TileX(area.tile) - *margin : 0,
+		TileY(area.tile) > *margin ? TileY(area.tile) - *margin : 0,
+		std::min<uint>(TileX(area.tile) + area.w - 1 + *margin, Map::SizeX() - 1),
+		std::min<uint>(TileY(area.tile) + area.h - 1 + *margin, Map::SizeY() - 1),
+	};
+	WriteMapExport(box, argv[3], "map_export_station");
+	return true;
+}
+
+/**
+ * List the map windows with the most hub and station infrastructure.
+ * @copydoc IConsoleCmdProc
+ */
+static bool ConMapHotspots(std::span<std::string_view> argv)
+{
+	if (argv.empty()) {
+		IConsolePrint(CC_HELP, "List the map windows with the most pre-signals, path signals, rail bridge heads and rail station tiles. Usage: 'map_hotspots <k> [window=48]'.");
+		IConsolePrint(CC_HELP, "Windows overlap by half; the score is 3 * pre-signals + 2 * bridge heads + station tiles / 4 + path signals / 2.");
+		return true;
+	}
+
+	if (argv.size() < 2 || argv.size() > 3) return false;
+	auto k = ParseInteger(argv[1], 10);
+	auto window = argv.size() > 2 ? ParseInteger(argv[2], 10) : std::optional<uint32_t>{48};
+	if (!k.has_value() || !window.has_value() || *window < 2) return false;
+
+	for (const JunctionHotspot &spot : JunctionMapHotspots(*k, *window)) {
+		std::string names;
+		for (StationID sid : spot.stations) {
+			const BaseStation *st = BaseStation::GetIfValid(sid);
+			names += fmt::format(" {}:{}", sid, st != nullptr ? st->GetCachedName() : std::string{"?"});
+		}
+		IConsolePrint(CC_DEFAULT, "box {},{} to {},{} presignals={} pbs={} bridge_heads={} station_tiles={} score={:.2f} stations:{}", spot.x0, spot.y0, spot.x1, spot.y1, spot.presignals, spot.pbs, spot.bridge_heads, spot.station_tiles, spot.score, names);
+	}
 	return true;
 }
 
@@ -2908,6 +3011,9 @@ static void IConsoleDebugLibRegister()
 	IConsole::CmdRegister("junction_export",  ConJunctionExport);
 	IConsole::CmdRegister("junction_train",   ConJunctionTrain);
 	IConsole::CmdRegister("station_export",   ConStationExport);
+	IConsole::CmdRegister("map_export",       ConMapExport);
+	IConsole::CmdRegister("map_export_station", ConMapExportStation);
+	IConsole::CmdRegister("map_hotspots",     ConMapHotspots);
 	IConsole::AliasRegister("dbg_echo",       "echo %A; echo %B");
 	IConsole::AliasRegister("dbg_echo2",      "echo %!");
 }
