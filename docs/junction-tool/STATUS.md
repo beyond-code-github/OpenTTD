@@ -1,5 +1,38 @@
 # Junction tool: status
 
+## Handover snapshot (2026-11-08, second compaction)
+
+**Direction (D119-D131):** simulation-driven design. Rules are proxies; the judge is a blocking-time throughput evaluator (L1) above the hard game rules, with the rig as final judge. Objective: legal, ML never slowed (strictly zero), enough capacity, every tile pays for itself (D130), then compact, then cheap; at network level, profit per elapsed game time including capital (D131). Ultimate goal (D124): fast human building plus LLM-driven building at Buborough scale; every tool needs a GUI and a programmatic interface with structured results. Plan: `PLAN-sim-driven.md` (S1 evaluator, S2 solver, S3 learned constraints, S6 quality-diversity library). Prune and prove-infeasible get folded into S1/S2 (engineer agreed).
+
+**Speed:** S1 generation 12.8 s to about 1.5 s (fail-fast checks 822a3e17ff, route cache d203ea21d4, flat router structures 807b3b03a8). The remaining cost is about 2,700 distinct, mostly failing, router searches per generation; the under-100 ms target comes from S2, not more tuning.
+
+**Evaluator (src/junction_throughput.{h,cpp}):**
+- S1a done (dfc42f13f9): running times at design speed, block occupation, headway matrix, bottleneck load. Test junction: about 10.9 trains per 1000 ticks; default mix ML 3, branches 1.
+- S1b (3c28377ffc) committed with a FAILING test: it held trains at every signal. S1b2 (`briefs/S1b2-holdpoints.md`) is RUNNING in the main worktree: hold points only (path end and merge signals); the branch fixture gets a signal after the split. If the test junction still shows ml_blocked, that's a D71a finding: the waiting room between the ML split and the merge signal is shorter than TL. The 5 conflicts were E->S held at (11,2), (13,3), (13,4) and W->S at (20,4), (19,6).
+- Next: S1c prio ML-delay sim; S1d YAPF lane and platform choice (recon running); path-signal support (recon running; stations need it); S1e rig calibration.
+
+**Running agents at compaction (check their handbacks):**
+- S1b2 hold points: main worktree.
+- MX1 map export (`briefs/MX1-map-export.md`): in the PLAY worktree `.claude/play`, detached; cherry-pick its commit onto feature/junction-tool. It also loads PSG_186/219 and exports hotspots to `scratchpad/mapx/`.
+- Read-only recons writing to `scratchpad/recon/`: RECON-yapf.md, RECON-pbs.md, RECON-solver-vars.md. Copy them into docs when done.
+
+**Stations:**
+- v1 is wrong (unbalanced, no bays). Rulings: D120 (v2: balanced, entry and exit bays, bays 1 TL), D121 (throughput vs footprint), D122 (aesthetics: the player's station class including NewGRF, a dressing pass), D127 (modules), D129 (balance per incoming line; adding a line adds its own balance unit).
+- Engineer's caveat: his stations are "FAR from optimum" (baselines to beat).
+- References: REF-stations-engineer.md (the screenshot "staircase" was WRONG, withdrawn), REF-stations-measured.md (exact, from the save), REF-stations-archive.md (12 archive patterns: stagger, banks, layering with tunnels, unit cells).
+- Exit bays: the engineer thinks they'd raise throughput. Test case: Chinningpool vs Chinningpool with exit bays.
+- 4 in / 3 out works because an ML split before the station leaves the lines unsaturated: size stations from their actual traffic.
+
+**Hubs:** RULES-hubs.md (41 rules): MSH barely documented; BBH needs ML-to-ML turns and a crossover; six merge styles. D123 (MSH a hub type), D125 (upgrading hubs: read the map, find the bottleneck, apply the smallest targeted change), D126 (multi-lane up to LLLL_RRRR with line choice, balancing and shifters).
+
+**Map data (D128):** read maps with the game's own loader via C++ console commands (MX1), not a Python parser. The Python `scratchpad/savread` is kept only for the Buborough measurements. The archive has about 200 PSG finals, 17 ProZone and 11 MemberZone saves on the Wayback Machine (index in `scratchpad/psgsaves/cdx_*.txt`); 12 downloaded to `scratchpad/psgsaves/dl/` (PSG 188 missing; PSG 248 may be truncated at exactly 1 MiB).
+
+**Geometry backlog:** D117 (back-to-back signals) and D118 (staggered doubled bridges across a diagonal) become S2 seed constraints, not sweep variants; then D111, D115.
+
+**Waiting on the engineer:** the line painter's 12 questions (RECON-linepainter.md §Open questions), to be offered as decision cards with recommendations.
+
+**Rig:** the server and the engineer's client run from `.claude/play/build-play/openttd` (Release c6b5286e96). `scratchpad/rig_coop.sh` points there. MX1 relinks that binary, which is safe for running processes.
+
 ## Where things stand (2026-11-07)
 
 - **Branch:** `feature/junction-tool`, from master at 938fd8fbff. Nothing is committed yet. The whole `docs/junction-tool/` folder is untracked and waits for the engineer's OK to commit.
