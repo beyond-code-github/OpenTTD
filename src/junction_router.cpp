@@ -15,10 +15,12 @@
 #include "track_func.h"
 
 #include <algorithm>
+#include <cassert>
 #include <map>
 #include <queue>
-#include <set>
 #include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "safeguards.h"
 
@@ -39,11 +41,28 @@ struct RouterNode {
 	bool on_bridge; ///< The last piece is a bridge head.
 };
 
-using NodeKey = std::tuple<int, int, int, uint, int, bool, bool, bool, bool>;
-
-NodeKey MakeKey(const RouterNode &n)
+/** Pack a search state into one key. */
+uint64_t PackKey(const RouterNode &n)
 {
-	return {n.x, n.y, static_cast<int>(n.trackdir), n.u, n.hand, n.prev_gap_ok, n.pair, n.first, n.on_bridge};
+	assert(n.u < 256);
+	assert(n.x >= -32768 && n.x < 32768);
+	assert(n.y >= -32768 && n.y < 32768);
+	uint64_t key = static_cast<uint64_t>(n.x + 32768);
+	key |= static_cast<uint64_t>(n.y + 32768) << 16;
+	key |= static_cast<uint64_t>(n.trackdir) << 32;
+	key |= static_cast<uint64_t>(n.u) << 36;
+	key |= static_cast<uint64_t>(n.hand) << 44;
+	key |= static_cast<uint64_t>(n.prev_gap_ok) << 46;
+	key |= static_cast<uint64_t>(n.pair) << 47;
+	key |= static_cast<uint64_t>(n.first) << 48;
+	key |= static_cast<uint64_t>(n.on_bridge) << 49;
+	return key;
+}
+
+/** Pack a tile position into one key. */
+static uint32_t PackTile(int x, int y)
+{
+	return static_cast<uint32_t>(x + 32768) | (static_cast<uint32_t>(y + 32768) << 16);
 }
 
 /** A node in the search tree. */
@@ -59,16 +78,16 @@ class Router {
 public:
 	Router(const JunctionLayout &layout, const JunctionRouteRequest &request) : request(request)
 	{
-		for (const JunctionTrack &jt : layout.tracks) tracks[{jt.offset.x, jt.offset.y}] |= jt.tracks;
+		for (const JunctionTrack &jt : layout.tracks) tracks[PackTile(jt.offset.x, jt.offset.y)] |= jt.tracks;
 		for (const JunctionBridge &b : layout.bridges) {
 			bridges.push_back(b);
-			heads.insert({b.start.x, b.start.y});
-			heads.insert({b.end.x, b.end.y});
+			heads.insert(PackTile(b.start.x, b.start.y));
+			heads.insert(PackTile(b.end.x, b.end.y));
 		}
-		for (const TileIndexDiffC &c : request.crossable) crossable.insert({c.x, c.y});
+		for (const TileIndexDiffC &c : request.crossable) crossable.insert(PackTile(c.x, c.y));
 		for (const JunctionRouteEnd &g : request.goals) {
-			goals.insert({g.tile.x, g.tile.y, static_cast<int>(g.trackdir)});
-			goal_tiles.insert({g.tile.x, g.tile.y});
+			goals.insert(PackTile(g.tile.x, g.tile.y) | (uint64_t(g.trackdir) << 32));
+			goal_tiles.insert(PackTile(g.tile.x, g.tile.y));
 		}
 		cap = std::max(request.curve_spacing, request.s_bend_window);
 	}
@@ -77,16 +96,16 @@ public:
 
 private:
 	const JunctionRouteRequest &request;
-	std::map<TileKey, TrackBits> tracks;
+	std::unordered_map<uint32_t, TrackBits> tracks;
 	std::vector<JunctionBridge> bridges;
-	std::set<TileKey> heads;
-	std::set<TileKey> crossable;
-	std::set<std::tuple<int, int, int>> goals;
-	std::set<TileKey> goal_tiles;
+	std::unordered_set<uint32_t> heads;
+	std::unordered_set<uint32_t> crossable;
+	std::unordered_set<uint64_t> goals;
+	std::unordered_set<uint32_t> goal_tiles;
 	uint cap = 0;
 
 	bool InBounds(int x, int y) const { return x >= request.min.x && x <= request.max.x && y >= request.min.y && y <= request.max.y; }
-	bool IsGoal(int x, int y, Trackdir td) const { return goals.contains({x, y, static_cast<int>(td)}); }
+	bool IsGoal(int x, int y, Trackdir td) const { return goals.contains(PackTile(x, y) | (uint64_t(td) << 32)); }
 	bool BetweenBridgeHeads(int x, int y) const;
 	bool TileFree(int x, int y) const;
 	Money TerrainCost(int x, int y) const;
@@ -110,7 +129,7 @@ bool Router::BetweenBridgeHeads(int x, int y) const
 /** Whether a tile holds no track of the layout. */
 bool Router::TileFree(int x, int y) const
 {
-	const auto it = tracks.find({x, y});
+	const auto it = tracks.find(PackTile(x, y));
 	return it == tracks.end() || it->second.None();
 }
 
@@ -124,7 +143,7 @@ Money Router::TerrainCost(int x, int y) const
 /** Whether a new track t on a tile clashes with the tracks the layout holds there. */
 bool Router::ConflictsAt(int x, int y, Track t) const
 {
-	const auto it = tracks.find({x, y});
+	const auto it = tracks.find(PackTile(x, y));
 	if (it == tracks.end()) return false;
 	for (Track e : it->second) {
 		const bool parallel = (e == Track::Upper && t == Track::Lower) || (e == Track::Lower && t == Track::Upper) ||
@@ -185,11 +204,11 @@ bool Router::MakePiece(const RouterNode &from, char move, RouterNode &to, bool &
 	to.first = false;
 	to.on_bridge = false;
 
-	if (!InBounds(to.x, to.y) || heads.contains({to.x, to.y})) return false;
+	if (!InBounds(to.x, to.y) || heads.contains(PackTile(to.x, to.y))) return false;
 	if (request.terrain != nullptr && !request.terrain->UsableAt(to.x, to.y, request.plane)) return false;
-	if (IsGoal(to.x, to.y, next) || crossable.contains({to.x, to.y})) return true;
+	if (IsGoal(to.x, to.y, next) || crossable.contains(PackTile(to.x, to.y))) return true;
 	if (from.first) {
-		const auto it = tracks.find({to.x, to.y});
+		const auto it = tracks.find(PackTile(to.x, to.y));
 		if (it != tracks.end() && it->second.Test(TrackdirToTrack(from.trackdir))) return true;
 	}
 	if (ConflictsAt(to.x, to.y, TrackdirToTrack(next))) conflict = true;
@@ -213,13 +232,13 @@ void Router::Successors(const RouterNode &from, std::vector<std::pair<RouterNode
 		if (!MakePiece(from, move, to, conflict)) continue;
 		if (!conflict) {
 			Money cost = request.prices.rail_piece + TerrainCost(to.x, to.y);
-			if (crossable.contains({to.x, to.y})) cost += request.crossable_cost;
+			if (crossable.contains(PackTile(to.x, to.y))) cost += request.crossable_cost;
 			if (move != 'F') cost += request.turn_cost;
 			out.push_back({to, {cost, std::string(1, move)}});
 			continue;
 		}
 		/* Exception 2: a piece on a merge tile, followed at once by a goal piece. */
-		if (!goal_tiles.contains({to.x, to.y})) continue;
+		if (!goal_tiles.contains(PackTile(to.x, to.y))) continue;
 		for (char move2 : {'F', 'L', 'R'}) {
 			RouterNode to2;
 			bool conflict2;
@@ -240,10 +259,10 @@ void Router::Successors(const RouterNode &from, std::vector<std::pair<RouterNode
 		for (uint k = 1; k <= n + 2 && ok; k++) {
 			const int x = from.x + static_cast<int>(k) * step.x;
 			const int y = from.y + static_cast<int>(k) * step.y;
-			if (!InBounds(x, y) || heads.contains({x, y})) {
+			if (!InBounds(x, y) || heads.contains(PackTile(x, y))) {
 				ok = false;
 			} else if (k == 1 || k == n + 2) {
-				ok = TileFree(x, y) && !crossable.contains({x, y}) && (request.terrain == nullptr || request.terrain->UsableAt(x, y, request.plane));
+				ok = TileFree(x, y) && !crossable.contains(PackTile(x, y)) && (request.terrain == nullptr || request.terrain->UsableAt(x, y, request.plane));
 			} else {
 				ok = !BetweenBridgeHeads(x, y) && (request.terrain == nullptr || request.terrain->SpanOk(x, y, request.plane));
 			}
@@ -284,16 +303,18 @@ bool Router::SelfCrossing(const JunctionRoute &route) const
 std::optional<JunctionRoute> Router::Run()
 {
 	std::vector<TreeNode> tree;
-	std::map<NodeKey, Money> best;
+	std::unordered_map<uint64_t, Money> best;
+	best.reserve(request.max_expansions);
 	using QueueItem = std::tuple<Money, Money, uint64_t, int>; // f, g, counter, tree index
 	std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<QueueItem>> open;
 	uint64_t counter = 0;
 
 	auto push = [&](const RouterNode &state, Money g, int parent, std::string moves) {
-		const NodeKey key = MakeKey(state);
-		const auto it = best.find(key);
-		if (it != best.end() && it->second <= g) return;
-		best[key] = g;
+		const auto [it, inserted] = best.try_emplace(PackKey(state), g);
+		if (!inserted) {
+			if (it->second <= g) return;
+			it->second = g;
+		}
 		tree.push_back({state, g, parent, std::move(moves)});
 		const int index = static_cast<int>(tree.size()) - 1;
 		open.push({g + Heuristic(state), g, counter++, index});
@@ -308,10 +329,12 @@ std::optional<JunctionRoute> Router::Run()
 	while (!open.empty()) {
 		const auto [f, g, order, index] = open.top();
 		open.pop();
-		const TreeNode node = tree[index];
-		if (best[MakeKey(node.state)] < node.g) continue;
+		const RouterNode s = tree[index].state;
+		const Money node_g = tree[index].g;
+		const auto best_it = best.find(PackKey(s));
+		assert(best_it != best.end());
+		if (best_it->second < node_g) continue;
 
-		const RouterNode &s = node.state;
 		if (!s.first && !s.on_bridge && IsGoal(s.x, s.y, s.trackdir)) {
 			std::string moves;
 			int i = index;
@@ -324,7 +347,7 @@ std::optional<JunctionRoute> Router::Run()
 		if (++expansions > request.max_expansions) return std::nullopt;
 		successors.clear();
 		Successors(s, successors);
-		for (auto &[to, cost] : successors) push(to, node.g + cost.first, index, std::move(cost.second));
+		for (auto &[to, cost] : successors) push(to, node_g + cost.first, index, std::move(cost.second));
 	}
 	return std::nullopt;
 }

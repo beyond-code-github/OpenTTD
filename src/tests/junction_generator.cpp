@@ -16,6 +16,8 @@
 #include "../junction_rules.h"
 
 #include <chrono>
+#include <cstdlib>
+#include <fstream>
 #include <iostream>
 
 #include "../safeguards.h"
@@ -265,6 +267,26 @@ static void SetTerrainRect(JunctionTerrain &t, int x0, int x1, int y0, int y1, J
 	for (int y = y0; y <= y1; y++) {
 		for (int x = x0; x <= x1; x++) t.tiles[static_cast<size_t>(y - t.origin.y) * t.width + (x - t.origin.x)].cls = cls;
 	}
+}
+
+TEST_CASE("Junction generator golden JSON", "[.golden]")
+{
+	const char *path = std::getenv("JUNCTION_GOLDEN");
+	if (path == nullptr) return;
+
+	JunctionSpec gap0 = MakeTestJunctionSpec();
+	gap0.branch_gap = 0;
+	gap0.tl = 6;
+	JunctionTerrain blocked = MakeFlatTerrain();
+	SetTerrainRect(blocked, 18, 27, 4, 10, JunctionTileClass::Blocked);
+
+	const JunctionGenerateResult results[] = {
+		GenerateJunction(MakeTestJunctionSpec()),
+		GenerateJunction(gap0),
+		GenerateJunction(MakeTestJunctionSpec(), &blocked),
+	};
+	std::ofstream out(path);
+	for (const JunctionGenerateResult &r : results) out << (r.layout.has_value() ? JunctionLayoutToJson(*r.layout) : std::string("none")) << "\n";
 }
 
 TEST_CASE("GenerateJunction on flat terrain equals no terrain", "[junction][terrain]")
