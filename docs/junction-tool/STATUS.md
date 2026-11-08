@@ -123,6 +123,8 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
    - **After D100 (442402dcd0) and D99a (340dbf99d7): the ML-only run gives 0 ML stops (0 stop events), against 12.6% before.**
    - D103 bridge margin sweep (0c226b3690): spans 8 → 6. S1 85 → 221 ms.
    - Train model (8a4d67eb26, D36 confirmed at ⅔), prio solver (f8c19c3a45, f218f4bd5a): the sample train needs 21 tiles, about 5 TL.
+   - Mixed runs with symmetric bridges, all still with the prio leak (D107): ML stopped 1×: 0.3%, 2×: 1.7%, 3×: 1.2%; joiners wait more as the prio grows. To redo after D107.
+   - **D107 prio leak**, found by the engineer ("flips and gives the SL a green"): adjacent ML signals at the coverage edge leave an undetected tile. The prio reach rule plus the fix are running.
    - D101: use an actual picked train. Next: M3, "pick a train" in the Junction window; then M4, wiring TL and prio length into the generator. the engineer is holding signalling comments until the simulation ("it will all come out in simulation. It may just be down to waiting bay sizing"). Headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
 4. **D3d robustness round 2:** TL6 is fixed (3f2bfedd09, the search box). TL3 is still no layout: in pass 2 N→E is trapped by E→S in the under-span corridor (hypothesis from the D3d diagnosis).
 5. **D78 levers, in D95 order** (fit the landscape first; terraforming is a priced fallback, not the default):
