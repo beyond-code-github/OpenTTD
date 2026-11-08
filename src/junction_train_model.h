@@ -34,6 +34,9 @@ void StepJunctionTrain(const JunctionTrainParams &params, JunctionTrainState &st
 /** Ticks for a train starting at speed 0 to travel the given progress distance on straight track. */
 uint32_t JunctionTicksToCover(const JunctionTrainParams &params, uint64_t distance);
 
+/** The highest speed the train reaches from rest on flat straight track, capped by its max_speed. */
+uint16_t JunctionTerminalSpeed(const JunctionTrainParams &params);
+
 /**
  * Shortest prio coverage, in whole tiles of straight track, so that an ML train arriving at design_speed never comes within one block of a joiner that starts from rest at the merge signal (D102).
  * @param joiner The joining train, loaded (D101).

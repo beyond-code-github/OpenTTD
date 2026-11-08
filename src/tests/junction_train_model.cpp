@@ -122,3 +122,15 @@ TEST_CASE("Junction prio length hand-check", "[junction]")
 	WARN("JunctionPrioLength(ref, 160, tl 4, sd 2) = " << l);
 	CHECK(l >= 6);
 }
+
+TEST_CASE("Junction prio length when the train can't reach the design speed", "[junction]")
+{
+	/* The reference train settles below 160 on flat track; ML trains of the same type can't go faster either (D101). */
+	const JunctionTrainParams ref = RefParams();
+	const uint16_t terminal = JunctionTerminalSpeed(ref);
+	CHECK(terminal < 160);
+	CHECK(terminal > 100);
+	const uint32_t l = JunctionPrioLength(ref, 160, 4, 2);
+	CHECK(l == JunctionPrioLength(ref, terminal, 4, 2));
+	CHECK(l < 200);
+}

@@ -88,10 +88,31 @@ uint32_t JunctionTicksToCover(const JunctionTrainParams &params, uint64_t distan
 	return state.ticks;
 }
 
+uint16_t JunctionTerminalSpeed(const JunctionTrainParams &params)
+{
+	/* Run from rest until the speed reaches max_speed or stops rising for a while; the run is deterministic, so a later run from rest reaches the same top speed. */
+	static constexpr uint32_t SETTLE_TICKS = 5000;
+	JunctionTrainState state;
+	uint16_t best = 0;
+	uint32_t since_rise = 0;
+	while (state.ticks < MAX_MODEL_TICKS_PRIO && since_rise < SETTLE_TICKS && best < params.max_speed) {
+		StepJunctionTrain(params, state);
+		if (state.speed > best) {
+			best = state.speed;
+			since_rise = 0;
+		} else {
+			since_rise++;
+		}
+	}
+	return best;
+}
+
 uint32_t JunctionPrioLength(const JunctionTrainParams &joiner, uint16_t design_speed, uint8_t tl, uint8_t sd)
 {
+	/* ML trains are the same picked train, so they can't run faster than its top speed on flat track either (D101). */
+	design_speed = std::min({design_speed, joiner.max_speed, JunctionTerminalSpeed(joiner)});
 	JunctionTrainParams params = joiner;
-	params.max_speed = std::min(joiner.max_speed, design_speed);
+	params.max_speed = design_speed;
 
 	const uint64_t ml_step = Vehicle::GetAdvanceSpeed(design_speed);
 	JunctionTrainState state;
