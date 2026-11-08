@@ -432,6 +432,7 @@ static bool ConStationExport(std::span<std::string_view> argv)
 	IConsolePrint(CC_DEFAULT, "station_export ok origin={},{} size={}x{}", ox, oy, oriented.size.x, oriented.size.y);
 	return true;
 }
+#endif /* _DEBUG */
 
 /**
  * Write the rail, bridge, station and level crossing tiles of a map box as JSON.
@@ -533,6 +534,7 @@ static bool ConMapHotspots(std::span<std::string_view> argv)
 	return true;
 }
 
+#ifdef _DEBUG
 /**
  * Print what the junction tool reads from a train.
  * @copydoc IConsoleCmdProc
@@ -3011,9 +3013,6 @@ static void IConsoleDebugLibRegister()
 	IConsole::CmdRegister("junction_export",  ConJunctionExport);
 	IConsole::CmdRegister("junction_train",   ConJunctionTrain);
 	IConsole::CmdRegister("station_export",   ConStationExport);
-	IConsole::CmdRegister("map_export",       ConMapExport);
-	IConsole::CmdRegister("map_export_station", ConMapExportStation);
-	IConsole::CmdRegister("map_hotspots",     ConMapHotspots);
 	IConsole::AliasRegister("dbg_echo",       "echo %A; echo %B");
 	IConsole::AliasRegister("dbg_echo2",      "echo %!");
 }
@@ -3355,4 +3354,9 @@ void IConsoleStdLibRegister()
 	IConsole::CmdRegister("newgrf_profile",          ConNewGRFProfile,    ConHookNewGRFDeveloperTool);
 
 	IConsole::CmdRegister("dump_info",               ConDumpInfo);
+
+	/* Junction tool map export */
+	IConsole::CmdRegister("map_export",              ConMapExport);
+	IConsole::CmdRegister("map_export_station",      ConMapExportStation);
+	IConsole::CmdRegister("map_hotspots",            ConMapHotspots);
 }
