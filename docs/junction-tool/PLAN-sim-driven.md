@@ -122,9 +122,9 @@ Each step is one agent, test first, outside in.
 - **S5: proxy audit.** Switch off each COOP seed and record what L1 learns. The results go into `AUDIT-assumptions.md` and DECISIONS.
 - **S6: quality-diversity discovery** to fill the library (§3.4).
 
-## 6. Open questions for the engineer
+## 6. Engineer's answers (D119)
 
-1. **Branch capacity target:** a fixed default (for example, enough for the rig's mix) or a user setting in the Junction window?
-2. **ML delay:** strictly zero, or a small tolerance (for example under 1 s per train) when it buys a much smaller footprint?
-3. **Route choice:** model YAPF only, or also NPF? NPF is non-default and probably out of scope.
-4. **Calibration scenarios:** any known-bad or known-good layouts from #openttdcoop practice to add to the §3.2 set?
+1. Branch capacity target: a fixed default sized to the rig's mix now; a Junction-window setting after calibration.
+2. ML delay: strictly zero.
+3. Route choice: YAPF only.
+4. Calibration scenarios: the session's history is enough (§3.2 list).
