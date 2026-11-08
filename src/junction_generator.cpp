@@ -92,6 +92,7 @@ JunctionSpec MakeTestJunctionSpec()
 	spec.ml_gap = 1;
 	spec.branch_gap = 1;
 	spec.tl = 4;
+	spec.prio_tl = 1;
 	spec.sd = 2;
 	spec.reference_speed = 160;
 	spec.curve_speed = 0;
@@ -372,7 +373,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 			}
 		}
 		const int lane_b_max_x = lane_b_axis_x - static_cast<int>(spec.tl);
-		const int nw_max_x = std::min(xI - 2, *merge_x - 1 - static_cast<int>(spec.tl) - params.joiner_slack);
+		const int nw_max_x = std::min(xI - 2, *merge_x - 1 - static_cast<int>(spec.tl * spec.prio_tl) - params.joiner_slack);
 		if (!route_movements(layout, false, under_spans, nw_max_x, lane_b_max_x, false)) return std::nullopt;
 	}
 

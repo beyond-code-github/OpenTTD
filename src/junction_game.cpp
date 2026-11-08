@@ -388,6 +388,7 @@ JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_
 	spec.ml_gap = ml_gap;
 	spec.branch_gap = branch_gap;
 	spec.tl = tl;
+	spec.prio_tl = 1;
 	spec.sd = _settings_client.gui.drag_signals_density;
 	spec.reference_speed = speed;
 	spec.curve_speed = GetRailTypeInfo(railtype)->curve_speed;

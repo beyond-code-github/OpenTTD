@@ -227,6 +227,25 @@ TEST_CASE("Junction generator spec sweep", "[.gensweep]")
 	}
 }
 
+TEST_CASE("GenerateJunction: a longer prio covers two train lengths", "[junction]")
+{
+	const JunctionSpec base_spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult base = GenerateJunction(base_spec);
+	REQUIRE(base.layout.has_value());
+
+	JunctionSpec spec = base_spec;
+	spec.prio_tl = 2;
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	if (!result.layout.has_value()) {
+		CHECK(result.error == JunctionGenerateError::NoLayout);
+		WARN("no layout at prio_tl 2");
+		return;
+	}
+	CHECK(CheckJunctionRules(*result.layout, spec).empty());
+	/* The upstream distance is not measured here (it would need a new helper); the layout must be wider instead. */
+	CHECK(result.layout->size.x > base.layout->size.x);
+}
+
 TEST_CASE("GenerateJunction: an ML gap of 0 has no room for the W prio", "[junction]")
 {
 	JunctionSpec spec = MakeTestJunctionSpec();

@@ -36,6 +36,7 @@ struct JunctionSpec {
 	uint8_t ml_gap;
 	uint8_t branch_gap;
 	uint8_t tl; ///< Train length in tiles.
+	uint8_t prio_tl = 1; ///< Prio coverage upstream of a merge, in train lengths (stopgap until the 1c model, D31).
 	uint8_t sd; ///< Signal spacing in tiles.
 	uint16_t reference_speed; ///< Same units as Train::GetCurveSpeedLimit.
 	uint8_t curve_speed; ///< RailTypeInfo::curve_speed.

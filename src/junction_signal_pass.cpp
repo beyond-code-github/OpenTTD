@@ -314,7 +314,7 @@ static bool PlacePrio(JunctionLayout &layout, const JunctionCheckContext &ctx, c
 		const auto at = std::ranges::find_if(lane.pieces, [&](const JunctionPiece &piece) { return !piece.on_bridge && SameTile(piece.tile, tile) && piece.trackdir == merge_piece.trackdir; });
 		if (at == lane.pieces.end()) continue;
 		uint covered = 0;
-		for (size_t i = static_cast<size_t>(at - lane.pieces.begin()); i-- > 0 && covered < 2u * ctx.spec.tl;) {
+		for (size_t i = static_cast<size_t>(at - lane.pieces.begin()); i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
 			covered += lane.pieces[i].units;
 			const std::optional<size_t> block = BlockOfPiece(layout, blocks, lane.pieces[i]);
 			if (!block.has_value() || *block == merge_block->second || !met.insert(*block).second) continue;
@@ -434,7 +434,7 @@ static std::vector<ReservedJoin> ReservePrioJoins(JunctionLayout &layout, const 
 				/* Is the lane merge inside the coverage walk back from the merge? */
 				uint covered = 0;
 				bool inside = false;
-				for (size_t i = merge.second; i-- > 0 && covered < 2u * ctx.spec.tl;) {
+				for (size_t i = merge.second; i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
 					covered += ml.pieces[i].units;
 					if (i == lane.second) inside = true;
 				}
@@ -473,7 +473,7 @@ static void PlaceLaneBlockSignals(JunctionLayout &layout, const JunctionSpec &sp
 		for (const SwitchEvent &merge : all_events[pi]) {
 			if (merge.first || IsLaneMerge(ctx, all_events, pi, merge) || !GeometryOfPrio(ctx, all_events, pi, merge).has_value()) continue;
 			uint covered = 0;
-			for (size_t i = merge.second; i-- > 0 && covered < 2u * ctx.spec.tl;) {
+			for (size_t i = merge.second; i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
 				covered += ml.pieces[i].units;
 				if (i == 0 || i + 1 >= ml.pieces.size()) continue;
 				const JunctionPiece &piece = ml.pieces[i];

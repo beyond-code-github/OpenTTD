@@ -1195,7 +1195,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			};
 			uint covered = 0;
 			std::set<size_t> met;
-			for (size_t i = j; i-- > 0 && covered < 2u * ctx.spec.tl;) {
+			for (size_t i = j; i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
 				covered += ml.pieces[i].units;
 				const std::optional<size_t> block = BlockOfPiece(layout, blocks, ml.pieces[i]);
 				if (!block.has_value() || *block == merge_block->second || !met.insert(*block).second) continue;
