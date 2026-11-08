@@ -17,6 +17,12 @@
 #include <utility>
 #include <vector>
 
+/** The logical length drag-signalling gives a piece: 192 for an axis piece or a bridge piece, 128 for a diagonal half piece (D97). */
+inline uint JunctionSignalWeight(const JunctionPiece &piece)
+{
+	return piece.units == 2 ? 192 : 128;
+}
+
 /** A switch on a path: whether it is a split, and the index of the switch tile's piece. */
 using SwitchEvent = std::pair<bool, size_t>;
 

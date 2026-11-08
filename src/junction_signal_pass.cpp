@@ -150,10 +150,10 @@ static void PlaceBaySignals(JunctionLayout &layout, const JunctionSpec &spec, co
 	}
 }
 
-/** Phase 3: fill the gaps between anchors so that none is more than twice the signal spacing. */
+/** Phase 3: fill the gaps between anchors as drag-signalling would (D97), walking upstream from each downstream anchor. */
 static void FillSignals(JunctionLayout &layout, const JunctionSpec &spec, const JunctionCheckContext &ctx)
 {
-	const uint max_gap = 2u * spec.sd;
+	const uint density = spec.sd * 192u;
 	for (const JunctionPath *path : PathOrder(ctx)) {
 		const std::vector<JunctionPiece> &pieces = path->pieces;
 		if (pieces.empty()) continue;
@@ -161,30 +161,36 @@ static void FillSignals(JunctionLayout &layout, const JunctionSpec &spec, const 
 		for (size_t i = 0; i < pieces.size(); i++) {
 			if (i == 0 || i + 1 == pieces.size() || IsSignalledPiece(layout, pieces[i])) anchors.push_back(i);
 		}
+		const auto legal = [&](size_t k) { return k != 0 && k + 1 != pieces.size() && IsLegalSignalPiece(layout, pieces[k]); };
 		for (size_t ai = 0; ai + 1 < anchors.size(); ai++) {
 			const size_t a = anchors[ai];
-			const size_t b = anchors[ai + 1];
-			uint total = 0;
-			for (size_t k = a + 1; k <= b; k++) total += pieces[k].units;
-			/* The checker measures the run of unsignalled pieces between signals, so a signalled b's own units don't count. */
-			const uint gap = IsSignalledPiece(layout, pieces[b]) ? total - pieces[b].units : total;
-			const uint n = gap == 0 ? 0 : (gap + max_gap - 1) / max_gap - 1;
-			for (uint i = 1; i <= n; i++) {
-				const uint target = (2 * total * i + (n + 1)) / (2 * (n + 1));
-				std::optional<size_t> best;
-				uint best_diff = 0;
-				uint distance = 0; // Units of the pieces after k up to and including b.
-				for (size_t k = b; k-- > a + 1;) {
-					distance += pieces[k + 1].units;
-					if (k == 0 || k + 1 == pieces.size() || !IsLegalSignalPiece(layout, pieces[k])) continue;
-					const uint diff = distance > target ? distance - target : target - distance;
-					if (!best.has_value() || diff < best_diff) {
-						best = k;
-						best_diff = diff;
-					}
+			size_t last = anchors[ai + 1];
+			std::optional<size_t> suitable;
+			/* The logical length from piece k (exclusive) up to last (inclusive). */
+			const auto dist_to = [&](size_t k) {
+				uint d = 0;
+				for (size_t m = k + 1; m <= last; m++) d += JunctionSignalWeight(pieces[m]);
+				return d;
+			};
+			for (size_t k = last; k-- > a + 1;) {
+				if (dist_to(k) > density && suitable.has_value()) {
+					/* Overshoot: use the last good spot. */
+					PlaceSignal(layout, pieces[*suitable], spec.signal_type);
+					last = *suitable;
+					suitable.reset();
 				}
-				if (best.has_value()) PlaceSignal(layout, pieces[*best], spec.signal_type);
+				const uint dist = dist_to(k);
+				if (dist == density) {
+					if (legal(k)) {
+						PlaceSignal(layout, pieces[k], spec.signal_type);
+						last = k;
+						suitable.reset();
+					}
+				} else if (legal(k)) {
+					suitable = k;
+				}
 			}
+			if (dist_to(a) > density && suitable.has_value()) PlaceSignal(layout, pieces[*suitable], spec.signal_type);
 		}
 	}
 }

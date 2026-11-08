@@ -20,6 +20,7 @@
 #include "../track_func.h"
 
 #include <algorithm>
+#include <span>
 #include <string>
 
 #include "../safeguards.h"
@@ -164,28 +165,85 @@ TEST_CASE("PlaceJunctionSignals: a queue longer than two bays gets bay signals",
 	for (const RuleViolation &v : CheckWaitingRoom(ctx)) CHECK(v.message.find("bay boundary") == std::string::npos);
 }
 
-TEST_CASE("PlaceJunctionSignals: fill keeps gaps within twice the spacing", "[junction][signals]")
+/** The x of every signalled piece on the path, by walking it. */
+static std::vector<int> SignalledXs(const JunctionLayout &layout, const JunctionPath &path)
+{
+	std::vector<int> xs;
+	for (const JunctionPiece &piece : path.pieces) {
+		if (IsSignalledPiece(layout, piece)) xs.push_back(piece.tile.x);
+	}
+	return xs;
+}
+
+TEST_CASE("PlaceJunctionSignals: fill pitch matches drag-signalling on a straight", "[junction][signals]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	for (const uint sd : {2u, 4u}) {
+		spec.sd = sd;
+		JunctionLayout layout = BuildRoutes(Frame(5, false, false));
+		PlaceJunctionSignals(layout, spec);
+		INFO(RenderJunctionAscii(layout));
+
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
+		const auto path = std::ranges::find_if(ctx.paths, [](const JunctionPath &p) { return p.from == Role::EIn && p.to == Role::EOut; });
+		REQUIRE(path != ctx.paths.end());
+
+		/* Walking upstream from the last piece (x = 23), a signal goes where the count reaches SD axis pieces. */
+		std::vector<int> expected;
+		for (int x = 23 - static_cast<int>(sd); x >= 1; x -= static_cast<int>(sd)) expected.push_back(x);
+		std::ranges::reverse(expected);
+		for (const int x : expected) CHECK(FindSignal(layout, x, 0, Trackdir::X_SW) != nullptr);
+		CHECK(SignalledXs(layout, *path) == expected);
+	}
+}
+
+TEST_CASE("PlaceJunctionSignals: fill on a diagonal uses 128 per half piece", "[junction][signals]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	JunctionLayout layout = BuildRoutes(Frame(5, false, false));
+	/* Row 0 rises into a run of 12 diagonal half pieces, runs back down in another 12, and ends on row 0 at x = 23. */
+	JunctionLayout layout = BuildRoutes(Frame(5, false, false, "FFFR" + Repeat('F', 11) + "LL" + Repeat('F', 11) + "R" + Repeat('F', 6)));
 	PlaceJunctionSignals(layout, spec);
 	INFO(RenderJunctionAscii(layout));
 
 	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
 	const auto path = std::ranges::find_if(ctx.paths, [](const JunctionPath &p) { return p.from == Role::EIn && p.to == Role::EOut; });
 	REQUIRE(path != ctx.paths.end());
-	size_t anchor = 0;
-	uint count = 0;
-	for (size_t i = 1; i < path->pieces.size(); i++) {
-		if (!IsSignalledPiece(layout, path->pieces[i]) && i + 1 != path->pieces.size()) continue;
-		uint gap = 0;
-		for (size_t k = anchor + 1; k <= i; k++) gap += path->pieces[k].units;
-		CHECK(gap <= 2u * spec.sd);
-		CHECK(gap >= spec.sd);
-		anchor = i;
-		count++;
+
+	/* Consecutive signals with only half pieces between them (the apex between the two runs is an axis piece) are 3 pieces apart. */
+	std::vector<size_t> signalled;
+	for (size_t i = 0; i < path->pieces.size(); i++) {
+		if (IsSignalledPiece(layout, path->pieces[i])) signalled.push_back(i);
 	}
-	CHECK(count > 5);
+	uint pairs = 0;
+	for (size_t j = 1; j < signalled.size(); j++) {
+		const auto between = std::span(path->pieces).subspan(signalled[j - 1], signalled[j] - signalled[j - 1] + 1);
+		if (!std::ranges::all_of(between, [](const JunctionPiece &p) { return p.units == 1; })) continue;
+		CHECK(signalled[j] - signalled[j - 1] == 3);
+		pairs++;
+	}
+	CHECK(pairs >= 4);
+}
+
+TEST_CASE("CheckJunctionRules: signals too far apart", "[junction][signals]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.sd = 2;
+	/* Signals on the E row, with a gap of n axis pieces between them (n pieces unsignalled). */
+	const auto too_far = [&](int gap) {
+		JunctionLayout layout = BuildRoutes(Frame(5, false, false));
+		std::vector<int> xs = {1, 3, 5};
+		for (int x = 6 + gap; x <= 21; x += 2) xs.push_back(x);
+		if (xs.back() != 21) xs.push_back(21);
+		for (const int x : xs) {
+			layout.signals.push_back({{static_cast<int16_t>(x), 0}, Trackdir::X_SW, spec.signal_type, SignalVariant::Electric});
+		}
+		for (const RuleViolation &v : CheckJunctionRules(layout, spec)) {
+			if (v.message == "signals too far apart" && v.tile.y == 0) return true;
+		}
+		return false;
+	};
+	CHECK(!too_far(2));
+	CHECK(too_far(3));
 }
 
 /** The track bits of a tile, as the pass left them. */

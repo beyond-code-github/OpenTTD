@@ -738,8 +738,8 @@ std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx)
 				d = 0;
 				continue;
 			}
-			d += piece.units;
-			if (d > 2u * ctx.spec.sd && IsLegalSignalPiece(layout, piece)) {
+			d += JunctionSignalWeight(piece);
+			if (d > ctx.spec.sd * 192u && IsLegalSignalPiece(layout, piece)) {
 				AddViolation(out, JunctionRule::Signals, piece.tile, "signals too far apart");
 				d = 0;
 			}
