@@ -265,7 +265,7 @@ TEST_CASE("GenerateJunctionNear: a clear spot gives offset 0 and the plain layou
 	}
 }
 
-TEST_CASE("GenerateJunctionNear: a blocked spot gives a nearby fit", "[junction][terrain]")
+TEST_CASE("GenerateJunctionNear: a blocked spot gives a nearby fit", "[junction][terrain][.slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	JunctionTerrain terrain = MakeNearTestTerrain();
