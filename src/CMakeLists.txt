@@ -281,6 +281,8 @@ add_files(
     junction_station_gui.cpp
     junction_station_rules.cpp
     junction_station_rules.h
+    junction_throughput.cpp
+    junction_throughput.h
     landscape.cpp
     landscape.h
     landscape_cmd.h
