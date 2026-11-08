@@ -236,11 +236,7 @@ TEST_CASE("GenerateJunction: a longer prio covers two train lengths", "[junction
 	JunctionSpec spec = base_spec;
 	spec.prio_tl = 2;
 	const JunctionGenerateResult result = GenerateJunction(spec);
-	if (!result.layout.has_value()) {
-		CHECK(result.error == JunctionGenerateError::NoLayout);
-		WARN("no layout at prio_tl 2");
-		return;
-	}
+	REQUIRE(result.layout.has_value());
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
 	/* The upstream distance is not measured here (it would need a new helper); the layout must be wider instead. */
 	CHECK(result.layout->size.x > base.layout->size.x);

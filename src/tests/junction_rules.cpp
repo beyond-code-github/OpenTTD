@@ -1027,12 +1027,12 @@ TEST_CASE("CheckPrio: clause 1, the merge tile join has no stub", "[junction][ru
 
 TEST_CASE("CheckPrio: clause 4, coverage", "[junction][rules]")
 {
-	/* The block (2,1) over the train length has no join. */
+	/* The block (2,1) over the train length has no join, but the ML crosses it in one tile (D99). */
 	{
 		JunctionLayout layout = PrioLayout();
 		SetTracks(layout, 2, 1, TrackBits{Track::X});
 		SetTracks(layout, 2, 2, TrackBits{Track::X});
-		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 2, 1, "exactly one join"));
+		CHECK_FALSE(Has(PrioViolations(layout), JunctionRule::Prio, 2, 1, "exactly one join"));
 	}
 
 	/* Two joins in the merge block: (4,1) as well as the merge tile (5,1). */

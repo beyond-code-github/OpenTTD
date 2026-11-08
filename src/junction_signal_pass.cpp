@@ -318,6 +318,7 @@ static bool PlacePrio(JunctionLayout &layout, const JunctionCheckContext &ctx, c
 			covered += lane.pieces[i].units;
 			const std::optional<size_t> block = BlockOfPiece(layout, blocks, lane.pieces[i]);
 			if (!block.has_value() || *block == merge_block->second || !met.insert(*block).second) continue;
+			if (JunctionBlockTilesOnPath(layout, blocks, lane, *block) == 1) continue;
 			required.push_back(*block);
 		}
 	}

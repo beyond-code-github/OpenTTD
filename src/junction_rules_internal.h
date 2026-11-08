@@ -66,4 +66,7 @@ std::map<std::pair<int, int>, size_t> ComputeBlocks(const JunctionLayout &layout
 /** The block of a path piece; bridge pieces are in the block of their bridge. */
 std::optional<size_t> BlockOfPiece(const JunctionLayout &layout, const std::map<std::pair<int, int>, size_t> &blocks, const JunctionPiece &piece);
 
+/** The number of distinct tiles of the path's non-bridge pieces that lie in the given block (D99). */
+uint JunctionBlockTilesOnPath(const JunctionLayout &layout, const std::map<std::pair<int, int>, size_t> &blocks, const JunctionPath &path, size_t block);
+
 #endif /* JUNCTION_RULES_INTERNAL_H */
