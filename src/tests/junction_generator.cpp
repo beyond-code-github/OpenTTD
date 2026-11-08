@@ -100,6 +100,46 @@ static const std::vector<SweepCandidate> &SweepCandidates(const JunctionSpec &sp
 	return out;
 }
 
+/** The largest middle-tile count of the layout's bridges that run along x. */
+static int MaxXBridgeSpan(const JunctionLayout &layout)
+{
+	int span = -1;
+	for (const JunctionBridge &b : layout.bridges) {
+		if (b.start.y != b.end.y) continue;
+		span = std::max(span, std::abs(b.end.x - b.start.x) - 1);
+	}
+	return span;
+}
+
+TEST_CASE("GenerateJunction: doubled bridges are no longer than needed", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+
+	/* The winner of the margin 3 only sweep. */
+	std::optional<JunctionLayout> old_best;
+	std::pair<Money, int> old_score{};
+	int old_area = 0;
+	for (const SweepCandidate &c : SweepCandidates(spec)) {
+		if (!CheckJunctionRules(c.layout, spec).empty()) continue;
+		const std::pair<Money, int> score = ScoreJunctionLayout(c.layout, spec);
+		const int area = c.layout.size.x * c.layout.size.y;
+		if (!old_best.has_value() || score < old_score || (score == old_score && area < old_area)) {
+			old_best = c.layout;
+			old_score = score;
+			old_area = area;
+		}
+	}
+	REQUIRE(old_best.has_value());
+
+	const int new_span = MaxXBridgeSpan(*result.layout);
+	const int old_span = MaxXBridgeSpan(*old_best);
+	WARN("bridge span with the margin sweep " << new_span << ", with margin 3 " << old_span);
+	CHECK(new_span >= 0);
+	CHECK(new_span < old_span);
+}
+
 static const SweepCandidate *FirstClean(const JunctionSpec &spec, const std::vector<SweepCandidate> &candidates)
 {
 	for (const SweepCandidate &c : candidates) {

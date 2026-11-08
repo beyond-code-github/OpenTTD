@@ -291,8 +291,8 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	if (!route_movements(layout, true, {}, xI - 2, 61, true)) return std::nullopt;
 
 	if (!zone.empty()) {
-		const int h_w = *std::ranges::min_element(zone) - 3;
-		const int h_e = *std::ranges::max_element(zone) + 3;
+		const int h_w = *std::ranges::min_element(zone) - params.bridge_margin;
+		const int h_e = *std::ranges::max_element(zone) + params.bridge_margin;
 		const int n = h_e - h_w - 1;
 		if (!spec.bridge_span_ok(n)) return std::nullopt;
 		if (h_w < 0 || h_e + 1 > 63) return std::nullopt;
@@ -616,9 +616,12 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 			std::vector<JunctionCandidateParams> all_params;
 			for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
 				for (uint8_t slack = 0; slack <= 3; slack++) {
-					JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
-					params.plane = plane;
-					all_params.push_back(params);
+					for (uint8_t margin = 1; margin <= 3; margin++) {
+						JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
+						params.plane = plane;
+						params.bridge_margin = margin;
+						all_params.push_back(params);
+					}
 				}
 			}
 			struct Result {
@@ -667,7 +670,11 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 	for (int height = first; height <= last; height++) {
 		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
 			for (uint8_t slack = 0; slack <= 3; slack++) {
-				all_params.push_back(JunctionCandidateParams{static_cast<uint8_t>(height), crossing_cost, slack});
+				for (uint8_t margin = 1; margin <= 3; margin++) {
+					JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
+					params.bridge_margin = margin;
+					all_params.push_back(params);
+				}
 			}
 		}
 	}

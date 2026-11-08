@@ -65,6 +65,7 @@ struct JunctionCandidateParams {
 	Money crossing_cost; ///< crossable_cost when a route crosses the W track.
 	uint8_t joiner_slack; ///< Extra tiles kept between the lane merge and where N->W may join.
 	int plane = 0; ///< The level the junction is built on; only used with a terrain.
+	uint8_t bridge_margin = 3; ///< Bridge heads sit this many tiles beyond the crossing set (D103).
 };
 
 /**
