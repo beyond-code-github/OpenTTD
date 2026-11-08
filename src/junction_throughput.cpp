@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 
 #include "safeguards.h"
 
@@ -38,13 +39,18 @@ uint32_t JunctionTicksAtSpeed(const JunctionTrainParams &train, uint16_t speed, 
 	return state.ticks;
 }
 
+/** Whether a movement is an ML movement, by role. */
+static bool IsMlMovement(const std::pair<JunctionPortRole, JunctionPortRole> &movement)
+{
+	return (movement.first == JunctionPortRole::EIn && movement.second == JunctionPortRole::EOut) || (movement.first == JunctionPortRole::WIn && movement.second == JunctionPortRole::WOut);
+}
+
 /** The default traffic mix: weight 3 for each ML movement, 1 for each branch movement. */
 JunctionTrafficMix MakeDefaultJunctionMix()
 {
 	JunctionTrafficMix mix;
 	for (const auto &movement : JunctionTMovements()) {
-		const bool is_ml = (movement.first == JunctionPortRole::EIn && movement.second == JunctionPortRole::EOut) || (movement.first == JunctionPortRole::WIn && movement.second == JunctionPortRole::WOut);
-		mix.weights.push_back({movement, is_ml ? 3.0 : 1.0});
+		mix.weights.push_back({movement, IsMlMovement(movement) ? 3.0 : 1.0});
 	}
 	return mix;
 }
@@ -69,6 +75,8 @@ std::optional<JunctionThroughput> EvaluateJunctionThroughput(const JunctionLayou
 	JunctionThroughput out{};
 	out.design_speed = JunctionTerminalSpeed(train);
 	std::vector<double> weights;
+	std::vector<JunctionPath> paths;
+	std::vector<bool> is_ml;
 	for (const auto &movement : JunctionTMovements()) {
 		const auto path = std::ranges::find_if(ctx.paths, [&](const JunctionPath &p) { return p.from == movement.first && p.to == movement.second; });
 		if (path == ctx.paths.end()) return std::nullopt;
@@ -80,6 +88,8 @@ std::optional<JunctionThroughput> EvaluateJunctionThroughput(const JunctionLayou
 		timing.ticks = JunctionTicksAtSpeed(train, out.design_speed, timing.length);
 		timing.occupations = JunctionPathOccupations(layout, path->pieces, train, out.design_speed, tl);
 		out.movements.push_back(std::move(timing));
+		paths.push_back(*path);
+		is_ml.push_back(IsMlMovement(movement));
 
 		const auto weight = std::ranges::find_if(mix.weights, [&](const auto &w) { return w.first == movement; });
 		weights.push_back(weight == mix.weights.end() ? 0.0 : weight->second);
@@ -87,6 +97,7 @@ std::optional<JunctionThroughput> EvaluateJunctionThroughput(const JunctionLayou
 
 	out.headway = JunctionHeadways(out.movements);
 	JunctionFindBottleneck(out.movements, weights, out);
+	out.queue_conflicts = JunctionQueueConflicts(layout, paths, is_ml, tl);
 	return out;
 }
 
@@ -208,4 +219,79 @@ void JunctionFindBottleneck(const std::vector<JunctionMovementTiming> &movements
 		}
 	}
 	out.trains_per_1000_ticks = out.bottleneck_load > 0 ? 1000.0 / out.bottleneck_load : 0.0;
+}
+
+/** Path progress of one piece, as in the movement timings. */
+static uint64_t PieceProgress(const JunctionPiece &piece)
+{
+	return (piece.on_bridge || piece.units == 2) ? JunctionProgressPerStraightTile() : JunctionProgressPerCornerPiece();
+}
+
+/**
+ * The queue spillback conflicts: held trains whose bodies lie in a block another movement needs.
+ * A train of movement m is held with its head at each signal piece facing m's travel and at the path end (outside the
+ * layout, at the first signal beyond the exit port). Its body covers the tl tiles of progress behind the head; the
+ * blocks of the non-signal pieces in that range are held. Every other movement using one of them is blocked, except
+ * one that also passes the held signal (it queues behind it anyway), or, for the path end, one with the same exit port.
+ * @param layout The layout.
+ * @param paths The movements' paths.
+ * @param is_ml Whether each movement is an ML movement.
+ * @param tl Train length in tiles.
+ * @return The conflicts in order of queued movement, stop, blocked movement; one per such triple, with the lowest block.
+ */
+std::vector<JunctionQueueConflict> JunctionQueueConflicts(const JunctionLayout &layout, const std::vector<JunctionPath> &paths, const std::vector<bool> &is_ml, uint8_t tl)
+{
+	const auto blocks = ComputeBlocks(layout);
+	const uint64_t tail = static_cast<uint64_t>(tl) * JunctionProgressPerStraightTile();
+
+	/* The block of each piece of each path; signal pieces and pieces without a block get none. */
+	std::vector<std::vector<std::optional<size_t>>> held_block(paths.size());
+	std::vector<std::set<size_t>> used(paths.size());
+	for (size_t i = 0; i < paths.size(); i++) {
+		for (const JunctionPiece &piece : paths[i].pieces) {
+			const std::optional<size_t> block = BlockOfPiece(layout, blocks, piece);
+			held_block[i].push_back(IsSignalledPiece(layout, piece) ? std::nullopt : block);
+			if (block.has_value()) used[i].insert(*block);
+		}
+	}
+
+	std::vector<JunctionQueueConflict> out;
+	for (size_t m = 0; m < paths.size(); m++) {
+		/* The stops: the start of each signal piece, then the path end. */
+		struct Stop {
+			uint64_t progress;
+			std::optional<size_t> piece; ///< The signal piece, or nullopt for the path end.
+		};
+		std::vector<Stop> stops;
+		std::vector<uint64_t> start;
+		uint64_t progress = 0;
+		for (size_t j = 0; j < paths[m].pieces.size(); j++) {
+			start.push_back(progress);
+			if (IsSignalledPiece(layout, paths[m].pieces[j])) stops.push_back({progress, j});
+			progress += PieceProgress(paths[m].pieces[j]);
+		}
+		stops.push_back({progress, std::nullopt});
+
+		for (const Stop &stop : stops) {
+			const uint64_t low = stop.progress > tail ? stop.progress - tail : 0;
+			std::set<size_t> held;
+			for (size_t j = 0; j < paths[m].pieces.size(); j++) {
+				if (start[j] < stop.progress && start[j] + PieceProgress(paths[m].pieces[j]) > low && held_block[m][j].has_value()) held.insert(*held_block[m][j]);
+			}
+
+			for (size_t k = 0; k < paths.size(); k++) {
+				if (k == m) continue;
+				if (stop.piece.has_value()) {
+					const JunctionPiece &signal = paths[m].pieces[*stop.piece];
+					if (std::ranges::any_of(paths[k].pieces, [&](const JunctionPiece &p) { return p.tile.x == signal.tile.x && p.tile.y == signal.tile.y && p.trackdir == signal.trackdir; })) continue;
+				} else if (paths[k].to == paths[m].to) {
+					continue;
+				}
+				const auto shared = std::ranges::find_if(held, [&](size_t block) { return used[k].contains(block); });
+				if (shared == held.end()) continue;
+				out.push_back({m, stop.progress, !stop.piece.has_value(), k, *shared, is_ml[k]});
+			}
+		}
+	}
+	return out;
 }

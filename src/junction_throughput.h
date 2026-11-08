@@ -41,6 +41,16 @@ struct JunctionTrafficMix {
 	std::vector<std::pair<std::pair<JunctionPortRole, JunctionPortRole>, double>> weights;
 };
 
+/** A held train of one movement blocking another movement (PLAN-sim-driven §3.1, queue spillback). */
+struct JunctionQueueConflict {
+	size_t queued; ///< Index of the held train's movement.
+	uint64_t stop; ///< Progress along the queued movement's path where its head is held.
+	bool at_exit; ///< Held beyond the exit port rather than at a signal inside the junction.
+	size_t blocked; ///< Index of the movement that is blocked.
+	size_t block; ///< The block they share.
+	bool ml_blocked; ///< The blocked movement is an ML movement.
+};
+
 /** What the evaluator reports. */
 struct JunctionThroughput {
 	uint16_t design_speed;
@@ -50,6 +60,7 @@ struct JunctionThroughput {
 	double bottleneck_load; ///< Ticks per train of the mix.
 	std::vector<size_t> bottleneck_movements; ///< Indices into movements.
 	double trains_per_1000_ticks;
+	std::vector<JunctionQueueConflict> queue_conflicts; ///< Held trains that block other movements.
 };
 
 uint32_t JunctionTicksAtSpeed(const JunctionTrainParams &train, uint16_t speed, uint64_t distance);
@@ -58,6 +69,7 @@ std::optional<JunctionThroughput> EvaluateJunctionThroughput(const JunctionLayou
 
 std::vector<JunctionBlockOccupation> JunctionPathOccupations(const JunctionLayout &layout, const std::vector<JunctionPiece> &pieces, const JunctionTrainParams &train, uint16_t speed, uint8_t tl);
 std::vector<std::vector<uint32_t>> JunctionHeadways(const std::vector<JunctionMovementTiming> &movements);
+std::vector<JunctionQueueConflict> JunctionQueueConflicts(const JunctionLayout &layout, const std::vector<JunctionPath> &paths, const std::vector<bool> &is_ml, uint8_t tl);
 void JunctionFindBottleneck(const std::vector<JunctionMovementTiming> &movements, const std::vector<double> &weights, JunctionThroughput &out);
 
 #endif /* JUNCTION_THROUGHPUT_H */
