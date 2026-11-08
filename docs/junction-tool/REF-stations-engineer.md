@@ -1,6 +1,8 @@
 # Engineer's reference stations (from screenshots, 2026-11-08)
 
-Read from in-game screenshots at normal zoom. Signal types and exact tile counts are not readable; items marked (?) need the savegame or the engineer to confirm.
+**Caveat (engineer): "my stations are FAR from optimum".** They show shape and practice, not targets: use them as calibration cases and as baselines for the generator to beat (D119/D121).
+
+Read from in-game screenshots at normal zoom, then measured exactly from the save with `scratchpad/savread` (platforms are 5 tiles in all four stations). Signal types and exact tile counts are not readable; items marked (?) need the savegame or the engineer to confirm.
 
 ## Stations shown
 1. **Buborough Bay Woods**, wood drop at a sawmill: a few platforms, staggered in pairs along the line's diagonal; entry signals in front of each platform group; exits rejoin and leave to the right.
@@ -14,6 +16,7 @@ Read from in-game screenshots at normal zoom. Signal types and exact tile counts
    - The incoming lanes come from the upper right and cross each other on many doubled, staggered bridges: a bridge-built balancer, so (?) every lane reaches every platform.
    - They then fan into parallel tracks running down to the platforms, with a long run-in per platform where trains queue (entry bays). The entry signals sit on a diagonal line, one per track, following the staircase.
    - Exits leave from the platforms' far ends onto lines that run away at the side.
+   - Engineer: "four lanes go in and only three come out". The exit side carries the same trains on fewer lines; see the open question below.
 
 ## Common pattern (candidate rules for station v2, extends D120)
 - **R-S1 Staircase:** platforms are offset step by step along the line's diagonal, not lined up in a rectangle. Every platform has a straight run-in and run-out of equal length. That keeps the footprint narrow along the diagonal and the route costs balanced.
@@ -28,3 +31,5 @@ Read from in-game screenshots at normal zoom. Signal types and exact tile counts
 - Platforms per step, and the offset between steps in tiles.
 - Entry and exit signal types (pre-signal, path or block).
 - Bay length in tiles relative to TL.
+- Why 4 in / 3 out works at Chinningpool. Main reason (engineer): "there's a ML split just before entering the station drop so the four lines are far from saturated": only part of the four lines' traffic reaches the station (as RULES-stations S25: mixed lines can't all be full). Secondary candidates for the throughput model: empty trains are lighter and clear blocks sooner; dwell spreads departures more evenly than arrivals.
+- Consequence for the generator: size the exit (and platform count) from the station's expected traffic, not from the incoming line count. The station's input is a traffic figure (from the throughput model or the player), and the number of exit lines is an output.
