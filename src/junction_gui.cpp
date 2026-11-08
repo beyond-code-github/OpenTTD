@@ -60,6 +60,9 @@ static TileArea _junction_ghost_footprint;
 /** Whether the footprint is pinned: drawn even where the ghost has no tile. */
 static bool _junction_ghost_pinned = false;
 
+/** Whether the shown junction is valid but too expensive: its whole footprint is outlined red. */
+static bool _junction_ghost_unaffordable = false;
+
 /** Mark every stored tile dirty, so it is redrawn. */
 static void MarkJunctionGhostDirty()
 {
@@ -88,6 +91,7 @@ void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int heig
 	JunctionGhost::Clear();
 	_junction_ghost_railtype = railtype;
 	_junction_ghost_footprint = TileArea(origin, layout.size.x, layout.size.y);
+	_junction_ghost_unaffordable = !estimate.affordable && estimate.bad_tiles.empty();
 
 	for (const JunctionTrack &track : layout.tracks) {
 		TileIndex tile = AddTileIndexDiffCWrap(origin, track.offset);
@@ -220,7 +224,7 @@ void DrawJunctionGhostOutline(const TileInfo *ti)
 	if (ghost != nullptr && ghost->bad) {
 		DrawTileSelectionRect(ti, _junction_ghost_pinned ? PALETTE_SEL_TILE_BLUE : PALETTE_SEL_TILE_RED);
 	} else {
-		DrawTileSelectionRect(ti, PAL_NONE);
+		DrawTileSelectionRect(ti, _junction_ghost_unaffordable && !_junction_ghost_pinned ? PALETTE_SEL_TILE_RED : PAL_NONE);
 	}
 }
 
@@ -516,11 +520,11 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		std::vector<std::optional<BridgeType>> bridge_types;
 		Money available;
 		this->ComputePlacement(layout, origin, estimate, bridge_types, available);
-		SetTileSelectBigSize(near_result.offset.x - offset.x, near_result.offset.y - offset.y, layout.size.x, layout.size.y);
+		/* The ghost outlines its own footprint; a big tile selection would add a blue outer row. */
+		SetTileSelectSize(1, 1);
 
 		JunctionGhost::Set(layout, origin, estimate.height, this->railtype, bridge_types, estimate);
-		/* Blocked tiles are outlined individually; the whole outline goes red only when it is just too expensive. */
-		_thd.make_square_red = !estimate.affordable && estimate.bad_tiles.empty();
+		_thd.make_square_red = false;
 
 		this->has_shown = true;
 		this->shown_layout = std::move(layout);
@@ -923,6 +927,17 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			}
 			SetTileSelectSize(1, 1);
 			this->SetWidgetDirty(WID_BJ_STATUS);
+			return;
+		}
+
+		/* While picking a train there is no placement: no ghost, no hover generation. */
+		if (_junction_picking_train) {
+			if (this->has_placement || this->has_shown) {
+				JunctionGhost::Clear();
+				this->ResetHover();
+				this->has_placement = false;
+				this->SetWidgetDirty(WID_BJ_COST);
+			}
 			return;
 		}
 
