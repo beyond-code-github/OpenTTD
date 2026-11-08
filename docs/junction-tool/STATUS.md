@@ -118,7 +118,8 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
    - ML stopped in the junction: prio 1×: 603 (2.0% of ML samples); 2×: 948 (3.2%); 3×: 444 (1.5%).
    - In all three the hottest ML tiles are on the W row at its east entry: just downstream of the W→S and lane splits, before the doubled ML bridge, and at the entry tile.
    - Hypothesis, unconfirmed: the bridge block (a bridge can't carry signals) limits ML headway; or W→S queues back up from the S merge, which the closed south loop couples to joiner waiting.
-   - Copies: prio 1× at 49,4, 2× at 78,31, 3× at 4,32. the engineer is holding signalling comments until the simulation ("it will all come out in simulation. It may just be down to waiting bay sizing"). Headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
+   - Copies: prio 1× at 49,4, 2× at 78,31, 3× at 4,32.
+   - **ML-only run (prio 1×, 6 ML trains): 12.6% ML stopped in the junction**, worse than the mix. Every ML train took lane A, so the doubled bridge worked as a single long block. That confirms the imbalance the engineer spotted; D100 (symmetric lanes) follows. the engineer is holding signalling comments until the simulation ("it will all come out in simulation. It may just be down to waiting bay sizing"). Headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
 4. **D3d robustness round 2:** TL6 is fixed (3f2bfedd09, the search box). TL3 is still no layout: in pass 2 N→E is trapped by E→S in the under-span corridor (hypothesis from the D3d diagnosis).
 5. **D78 levers, in D95 order** (fit the landscape first; terraforming is a priced fallback, not the default):
    - first a breakdown of why each hilly no-layout spot fails (height, water or blocked);
@@ -127,7 +128,7 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
    - (d) ML water bridges.
    Plan each before starting.
 6. **Joiner** (`PLAN-joiner.md`): blocked on the engineer's three answers.
-7. **Follow-ons:** drag fixed-distance mode (D97), multi-lane (D72), option C (widen the gap so the branch bridges over the ML), research the coop prio-over-bridge pattern, the D91 swap (parked until clarified).
+7. **Follow-ons:** a pathfinder (YAPF cost) model in a later generator version (engineer: "I suspect we will want the pathfinder to feature in a later version of the generator"), for example to check that alternative paths cost the same and to predict train choices; drag fixed-distance mode (D97), multi-lane (D72), option C (widen the gap so the branch bridges over the ML), research the coop prio-over-bridge pattern, the D91 swap (parked until clarified).
 
 **For the engineer when back:**
 - **Try it in game:** `build-rel/openttd`, rail toolbar → Junction; the checklist is in `CHECKS-1b.md`.
