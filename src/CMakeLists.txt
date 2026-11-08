@@ -270,6 +270,8 @@ add_files(
     junction_rules.cpp
     junction_rules.h
     junction_rules_internal.h
+    junction_train_model.cpp
+    junction_train_model.h
     junction_signal_pass.cpp
     junction_signal_pass.h
     landscape.cpp
