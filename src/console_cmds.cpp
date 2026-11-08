@@ -47,6 +47,7 @@
 #include "company_cmd.h"
 #include "misc_cmd.h"
 #include "junction_game.h"
+#include "junction_station_generator.h"
 #include "vehicle_base.h"
 #include "company_base.h"
 #include <fstream>
@@ -386,6 +387,46 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 	const int oy = static_cast<int>(TileY(tile)) + found.offset.y - offset.y;
 	out << "{\"origin\":[" << ox << "," << oy << "],\"offset\":[" << found.offset.x << "," << found.offset.y << "]," << (*near_arg == 2 ? "\"tier\":\"instant\"," : "") << JunctionLayoutToJson(oriented).substr(1);
 	IConsolePrint(CC_DEFAULT, "junction_export ok origin={},{} size={}x{}{}", ox, oy, oriented.size.x, oriented.size.y, timing);
+	return true;
+}
+
+/**
+ * Generate a station at a tile and write the oriented layout as JSON, for the test rig.
+ * @copydoc IConsoleCmdProc
+ */
+static bool ConStationExport(std::span<std::string_view> argv)
+{
+	if (argv.empty()) {
+		IConsolePrint(CC_HELP, "Generate a station at a tile and write it as JSON. Usage: 'station_export <tile> <rotation 0-3> <mirror 0|1> <path> <platforms 2-8> [tl]'.");
+		IConsolePrint(CC_HELP, "The tile is the north corner of the station layout; the train length defaults to 4.");
+		return true;
+	}
+
+	if (argv.size() < 6 || argv.size() > 7) return false;
+	auto tile_arg = ParseInteger(argv[1], 0);
+	auto rot_arg = ParseInteger(argv[2], 10);
+	auto mirror_arg = ParseInteger(argv[3], 10);
+	auto platforms_arg = ParseInteger(argv[5], 10);
+	auto tl_arg = argv.size() > 6 ? ParseInteger(argv[6], 10) : std::optional<uint32_t>{4};
+	if (!tile_arg.has_value() || !rot_arg.has_value() || !mirror_arg.has_value() || !platforms_arg.has_value() || !tl_arg.has_value()) return false;
+	if (!IsValidTile(*tile_arg) || *rot_arg > 3 || *mirror_arg > 1 || *platforms_arg < 2 || *platforms_arg > 8 || *tl_arg == 0 || *tl_arg > 255) return false;
+
+	const JunctionNotation ml = ParseJunctionNotation("L_R");
+	const JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, ml.gap, ml.gap, static_cast<uint8_t>(*tl_arg));
+	const JunctionStationResult result = GenerateStation(spec, static_cast<uint8_t>(*platforms_arg));
+
+	std::ofstream out{std::string{argv[4]}};
+	if (!result.layout.has_value()) {
+		out << "{\"error\":\"NoLayout\"}\n";
+		IConsolePrint(CC_WARNING, "station_export error NoLayout");
+		return true;
+	}
+
+	const JunctionLayout oriented = ApplyJunctionOrientation(*result.layout, static_cast<uint8_t>(*rot_arg), *mirror_arg != 0);
+	const int ox = static_cast<int>(TileX(TileIndex{*tile_arg}));
+	const int oy = static_cast<int>(TileY(TileIndex{*tile_arg}));
+	out << "{\"origin\":[" << ox << "," << oy << "]," << JunctionLayoutToJson(oriented).substr(1);
+	IConsolePrint(CC_DEFAULT, "station_export ok origin={},{} size={}x{}", ox, oy, oriented.size.x, oriented.size.y);
 	return true;
 }
 
@@ -2866,6 +2907,7 @@ static void IConsoleDebugLibRegister()
 	IConsole::CmdRegister("resettile",        ConResetTile);
 	IConsole::CmdRegister("junction_export",  ConJunctionExport);
 	IConsole::CmdRegister("junction_train",   ConJunctionTrain);
+	IConsole::CmdRegister("station_export",   ConStationExport);
 	IConsole::AliasRegister("dbg_echo",       "echo %A; echo %B");
 	IConsole::AliasRegister("dbg_echo2",      "echo %!");
 }

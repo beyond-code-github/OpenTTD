@@ -116,6 +116,17 @@ JunctionLayout TransformJunctionLayout(const JunctionLayout &layout, JunctionTra
 		if (new_bridge.start.x + new_bridge.start.y > new_bridge.end.x + new_bridge.end.y) std::swap(new_bridge.start, new_bridge.end);
 		result.bridges.push_back(new_bridge);
 	}
+	for (const JunctionStationBlock &block : layout.stations) {
+		const int16_t w = block.axis == Axis::X ? block.length : block.platforms;
+		JunctionStationBlock new_block = block;
+		if (transform == JunctionTransform::Rotate) {
+			new_block.origin = {block.origin.y, static_cast<int16_t>(layout.size.x - block.origin.x - w)};
+			new_block.axis = block.axis == Axis::X ? Axis::Y : Axis::X;
+		} else {
+			new_block.origin = {static_cast<int16_t>(layout.size.x - block.origin.x - w), block.origin.y};
+		}
+		result.stations.push_back(new_block);
+	}
 	return result;
 }
 
@@ -185,7 +196,17 @@ std::string JunctionLayoutToJson(const JunctionLayout &layout)
 		out += fmt::format("{}\n{{\"x\":{},\"y\":{},\"facing\":\"{}\",\"type\":\"{}\"}}", first ? "" : ",", sg.offset.x, sg.offset.y, td_names[to_underlying(sg.facing)], type_names[to_underlying(sg.type)]);
 		first = false;
 	}
-	out += "]}\n";
+	out += "]";
+	if (!layout.stations.empty()) {
+		out += ",\n\"stations\":[";
+		first = true;
+		for (const auto &st : layout.stations) {
+			out += fmt::format("{}{{\"x\":{},\"y\":{},\"axis\":\"{}\",\"platforms\":{},\"length\":{}}}", first ? "" : ",", st.origin.x, st.origin.y, st.axis == Axis::X ? "X" : "Y", st.platforms, st.length);
+			first = false;
+		}
+		out += "]";
+	}
+	out += "}\n";
 	return out;
 }
 

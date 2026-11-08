@@ -391,8 +391,24 @@ class JunctionTestGS extends GSController {
 		local ox = msg.origin_x, oy = msg.origin_y, lay = msg.layout;
 		if (this.SetRailType() == null) { this.Err(id, "no rail type available"); return; }
 		local built = 0, failed = [];
+		if ("stations" in lay) {
+			foreach (st in lay.stations) {
+				local dir = (st.axis == "X") ? GSRail.RAILTRACK_NE_SW : GSRail.RAILTRACK_NW_SE;
+				if (GSRail.BuildRailStation(this.Tile(ox + st.x, oy + st.y), dir, st.platforms, st.length, GSStation.STATION_NEW)) built++;
+				else failed.append({ what = "station", x = st.x, y = st.y, error = GSError.GetLastErrorString() });
+			}
+		}
 		if ("tracks" in lay) {
 			foreach (t in lay.tracks) {
+				local in_station = false;
+				if ("stations" in lay) {
+					foreach (st in lay.stations) {
+						local w = (st.axis == "X") ? st.length : st.platforms;
+						local h = (st.axis == "X") ? st.platforms : st.length;
+						if (t.x >= st.x && t.x < st.x + w && t.y >= st.y && t.y < st.y + h) { in_station = true; break; }
+					}
+				}
+				if (in_station) continue;
 				foreach (name in t.bits) {
 					local rt = this.TrackByName(name);
 					if (rt == null) { failed.append({ what = "track " + name, x = t.x, y = t.y, error = "unknown track name" }); continue; }

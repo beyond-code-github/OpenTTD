@@ -134,10 +134,12 @@ def cmd_go(a):
 
 def layout_batches(layout, limit=1200):
     """Split a layout into pieces small enough for one admin packet, keeping build order:
-    all tracks, then all bridges, then all signals."""
+    stations (all in the first batch), then all tracks, then all bridges, then all signals."""
     def size(l):
         return len(json.dumps(l, separators=(",", ":")))
     out = []
+    if layout.get("stations"):
+        out.append({"size": layout.get("size"), "stations": layout["stations"]})
     for key in ("tracks", "bridges", "signals"):
         cur = []
         for item in layout.get(key, []):
@@ -210,6 +212,37 @@ def junction_here(x, y, rot=0, mirror=False, ml="L_R", branch="L_R", tl=4, near=
     for f in failed:
         text += "\n  %s at %d,%d: %s" % (f["what"], f["x"], f["y"], f["error"])
     return ("failed" if failed else "ok"), text
+
+
+def cmd_station_here(a):
+    """Generate a station at tile x,y via rcon station_export and build it."""
+    tile = a.y * S.map_size() + a.x
+    path = os.path.join(S.RUNDIR, "station_export.json")
+    if os.path.exists(path):
+        os.remove(path)
+    adm = connect()
+    try:
+        out = adm.rcon("station_export %d %d %d %s %d %d" % (tile, a.rot, 1 if a.mirror else 0, path, a.platforms, a.tl), timeout=1200)
+        if not os.path.exists(path):
+            raise Fail("station_export wrote nothing: %s" % " | ".join(out))
+        with open(path) as f:
+            layout = json.load(f)
+        if "error" in layout:
+            print("error %s" % layout["error"])
+            sys.exit(3)
+        ox, oy = layout["origin"]
+        built, failed = 0, []
+        for part in layout_batches(layout):
+            r = gs(adm, {"cmd": "build_layout", "origin_x": ox, "origin_y": oy, "layout": part}, timeout=600)
+            built += r["built"]
+            failed += r["failed"]
+    finally:
+        adm.close()
+    print("built=%d failed=%d" % (built, len(failed)))
+    for f in failed:
+        print("  %s at %d,%d: %s" % (f["what"], f["x"], f["y"], f["error"]))
+    if failed:
+        sys.exit(1)
 
 
 def cmd_junction_here(a):
@@ -492,6 +525,7 @@ def main():
     add("junction-check", cmd_junction_check, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 6}), ("--wagons", {"type": int, "default": 3}), ("--ticks", {"type": int, "default": 7400}))
     add("traffic", cmd_traffic, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 8}), ("--wagons", {"type": int, "default": 3}), ("--warmup", {"type": int, "default": 20}), ("--ticks", {"type": int, "default": 20000}), ("--every", {"type": int, "default": 4}), ("--mix", {"default": None}))
     add("junction-here", cmd_junction_here, ("x", i), ("y", i), ("--rot", {"type": int, "default": 0}), ("--mirror", {"action": "store_true"}), ("--ml", {"default": "L_R"}), ("--branch", {"default": "L_R"}), ("--tl", {"type": int, "default": 4}), ("--near", {"action": "store_true"}), ("--instant", {"action": "store_true"}))
+    add("station-here", cmd_station_here, ("x", i), ("y", i), ("--rot", {"type": int, "default": 0}), ("--mirror", {"action": "store_true"}), ("--platforms", {"type": int, "default": 3}), ("--tl", {"type": int, "default": 4}))
     add("junction-scan", cmd_junction_scan, ("--count", {"type": int, "required": True}), ("--seed", {"type": int, "default": 1}), ("--near", {"action": "store_true"}), ("--instant", {"action": "store_true"}))
     add("sample", cmd_sample, ("vehicles", {"type": int, "nargs": "+"}), ("--ticks", {"type": int, "required": True}))
     add("build-line", cmd_build_line, ("x1", i), ("y1", i), ("x2", i), ("y2", i))

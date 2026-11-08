@@ -516,6 +516,33 @@ TEST_CASE("JunctionLayoutToJson matches the rig layout format", "[junction]")
 		"\n{\"x\":6,\"y\":2,\"facing\":\"X_NE\",\"type\":\"block\"}]}\n");
 }
 
+TEST_CASE("JunctionLayoutToJson writes station blocks", "[junction]")
+{
+	JunctionLayout layout = MakeTestJunctionLayout();
+	layout.stations.push_back({{1, 2}, Axis::Y, 3, 5});
+	const std::string json = JunctionLayoutToJson(layout);
+	CHECK(json.find("\"stations\":[{\"x\":1,\"y\":2,\"axis\":\"Y\",\"platforms\":3,\"length\":5}]") != std::string::npos);
+	CHECK(JunctionLayoutToJson(MakeTestJunctionLayout()).find("stations") == std::string::npos);
+}
+
+TEST_CASE("ApplyJunctionOrientation rotates and mirrors station blocks", "[junction]")
+{
+	JunctionLayout layout = MakeTestJunctionLayout(); // size 8x6
+	layout.stations.push_back({{1, 2}, Axis::X, 3, 4}); // covers x 1..4, y 2..4
+	const JunctionLayout rotated = ApplyJunctionOrientation(layout, 1, false);
+	REQUIRE(rotated.stations.size() == 1);
+	CHECK(rotated.stations[0].axis == Axis::Y);
+	CHECK(rotated.stations[0].platforms == 3);
+	CHECK(rotated.stations[0].length == 4);
+	/* Tracks rotate (x,y) -> (y, 7 - x): the block's corners (1,2) and (4,4) land at (2,6) and (4,3), so it covers x 2..4, y 3..6. */
+	CHECK(rotated.stations[0].origin.x == 2);
+	CHECK(rotated.stations[0].origin.y == 3);
+	const JunctionLayout mirrored = ApplyJunctionOrientation(layout, 0, true);
+	CHECK(mirrored.stations[0].axis == Axis::X);
+	CHECK(mirrored.stations[0].origin.x == 3);
+	CHECK(mirrored.stations[0].origin.y == 2);
+}
+
 TEST_CASE("InverseOrientJunctionVector undoes OrientJunctionVector", "[junction]")
 {
 	const TileIndexDiffC samples[] = {{0, 0}, {2, 0}, {-4, 2}, {3, -5}};
