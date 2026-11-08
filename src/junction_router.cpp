@@ -61,6 +61,79 @@ uint64_t PackKey(const RouterNode &n)
 	return key;
 }
 
+/** The cheapest g found per packed search state: linear probing, power-of-two capacity, grows at half full. */
+class BestCostTable {
+public:
+	explicit BestCostTable(size_t capacity) : keys(capacity, EMPTY), values(capacity), mask(capacity - 1)
+	{
+		assert(capacity != 0 && (capacity & (capacity - 1)) == 0);
+	}
+
+	/**
+	 * Insert key with g, or lower its g.
+	 * @return Whether the state is new or improved (false when the stored g is <= g).
+	 */
+	bool Improve(uint64_t key, Money g)
+	{
+		if (this->count * 2 >= this->keys.size()) this->Grow();
+		size_t slot = this->Slot(key);
+		while (this->keys[slot] != EMPTY) {
+			if (this->keys[slot] == key) {
+				if (this->values[slot] <= g) return false;
+				this->values[slot] = g;
+				return true;
+			}
+			slot = (slot + 1) & this->mask;
+		}
+		this->keys[slot] = key;
+		this->values[slot] = g;
+		this->count++;
+		return true;
+	}
+
+	/** The stored g; the key must be present. */
+	Money Get(uint64_t key) const
+	{
+		size_t slot = this->Slot(key);
+		while (this->keys[slot] != key) {
+			assert(this->keys[slot] != EMPTY);
+			slot = (slot + 1) & this->mask;
+		}
+		return this->values[slot];
+	}
+
+private:
+	static constexpr uint64_t EMPTY = UINT64_MAX; ///< PackKey uses at most 50 bits, so never a real key.
+	std::vector<uint64_t> keys;
+	std::vector<Money> values;
+	size_t count = 0;
+	size_t mask = 0;
+
+	/** The home slot of a key: the high half of a 64-bit multiply mix folded onto the low half, then masked. */
+	size_t Slot(uint64_t key) const
+	{
+		const uint64_t x = key * 0x9E3779B97F4A7C15ull;
+		return static_cast<size_t>(x ^ (x >> 32)) & this->mask;
+	}
+
+	/** Double the capacity and reinsert every key. */
+	void Grow()
+	{
+		std::vector<uint64_t> old_keys(this->keys.size() * 2, EMPTY);
+		std::vector<Money> old_values(this->keys.size() * 2);
+		old_keys.swap(this->keys);
+		old_values.swap(this->values);
+		this->mask = this->keys.size() - 1;
+		for (size_t i = 0; i < old_keys.size(); i++) {
+			if (old_keys[i] == EMPTY) continue;
+			size_t slot = this->Slot(old_keys[i]);
+			while (this->keys[slot] != EMPTY) slot = (slot + 1) & this->mask;
+			this->keys[slot] = old_keys[i];
+			this->values[slot] = old_values[i];
+		}
+	}
+};
+
 /** Pack a tile position into one key. */
 static uint32_t PackTile(int x, int y)
 {
@@ -100,29 +173,44 @@ public:
 		this->flag_grid.assign(static_cast<size_t>(this->grid_w) * this->grid_h, 0);
 
 		for (const JunctionTrack &jt : layout.tracks) {
-			tracks[PackTile(jt.offset.x, jt.offset.y)] |= jt.tracks;
 			const int gi = this->GridIndex(jt.offset.x, jt.offset.y);
-			if (gi >= 0) this->track_grid[gi] |= jt.tracks;
+			if (gi >= 0) {
+				this->track_grid[gi] |= jt.tracks;
+			} else {
+				tracks[PackTile(jt.offset.x, jt.offset.y)] |= jt.tracks;
+			}
 		}
 		for (const JunctionBridge &b : layout.bridges) {
 			bridges.push_back(b);
-			heads.insert(PackTile(b.start.x, b.start.y));
-			heads.insert(PackTile(b.end.x, b.end.y));
 			const int gs = this->GridIndex(b.start.x, b.start.y);
-			if (gs >= 0) this->flag_grid[gs] |= 1;
+			if (gs >= 0) {
+				this->flag_grid[gs] |= 1;
+			} else {
+				heads.insert(PackTile(b.start.x, b.start.y));
+			}
 			const int ge = this->GridIndex(b.end.x, b.end.y);
-			if (ge >= 0) this->flag_grid[ge] |= 1;
+			if (ge >= 0) {
+				this->flag_grid[ge] |= 1;
+			} else {
+				heads.insert(PackTile(b.end.x, b.end.y));
+			}
 		}
 		for (const TileIndexDiffC &c : request.crossable) {
-			crossable.insert(PackTile(c.x, c.y));
 			const int gi = this->GridIndex(c.x, c.y);
-			if (gi >= 0) this->flag_grid[gi] |= 2;
+			if (gi >= 0) {
+				this->flag_grid[gi] |= 2;
+			} else {
+				crossable.insert(PackTile(c.x, c.y));
+			}
 		}
 		for (const JunctionRouteEnd &g : request.goals) {
 			goals.insert(PackTile(g.tile.x, g.tile.y) | (uint64_t(g.trackdir) << 32));
-			goal_tiles.insert(PackTile(g.tile.x, g.tile.y));
 			const int gi = this->GridIndex(g.tile.x, g.tile.y);
-			if (gi >= 0) this->flag_grid[gi] |= 4;
+			if (gi >= 0) {
+				this->flag_grid[gi] |= 4;
+			} else {
+				goal_tiles.insert(PackTile(g.tile.x, g.tile.y));
+			}
 		}
 		cap = std::max(request.curve_spacing, request.s_bend_window);
 	}
@@ -379,18 +467,16 @@ bool Router::SelfCrossing(const JunctionRoute &route) const
 std::optional<JunctionRoute> Router::Run()
 {
 	std::vector<TreeNode> tree;
-	std::unordered_map<uint64_t, Money> best;
-	best.reserve(request.max_expansions);
+	tree.reserve(1024);
+	BestCostTable best(4096);
 	using QueueItem = std::tuple<int64_t, int64_t, uint64_t, int>; // f, g, counter, tree index
-	std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<QueueItem>> open;
+	std::vector<QueueItem> open_storage;
+	open_storage.reserve(1024);
+	std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<QueueItem>> open(std::greater<QueueItem>(), std::move(open_storage));
 	uint64_t counter = 0;
 
 	auto push = [&](const RouterNode &state, Money g, int parent, MoveText moves) {
-		const auto [it, inserted] = best.try_emplace(PackKey(state), g);
-		if (!inserted) {
-			if (it->second <= g) return;
-			it->second = g;
-		}
+		if (!best.Improve(PackKey(state), g)) return;
 		tree.push_back({state, g, parent, moves});
 		const int index = static_cast<int>(tree.size()) - 1;
 		open.push({(g + Heuristic(state)).base(), g.base(), counter++, index});
@@ -407,9 +493,7 @@ std::optional<JunctionRoute> Router::Run()
 		open.pop();
 		const RouterNode s = tree[index].state;
 		const Money node_g = tree[index].g;
-		const auto best_it = best.find(PackKey(s));
-		assert(best_it != best.end());
-		if (best_it->second < node_g) continue;
+		if (best.Get(PackKey(s)) < node_g) continue;
 
 		if (!s.first && !s.on_bridge && IsGoal(s.x, s.y, s.trackdir)) {
 			std::vector<int> chain;
