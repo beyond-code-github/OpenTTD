@@ -401,8 +401,9 @@ class JunctionTestGS extends GSController {
 		if ("tracks" in lay) {
 			foreach (t in lay.tracks) {
 				local in_station = false;
-				if ("stations" in lay) {
-					foreach (st in lay.stations) {
+				local blocks = ("stations" in lay) ? lay.stations : (("stations_skip" in lay) ? lay.stations_skip : []);
+				if (blocks.len() > 0) {
+					foreach (st in blocks) {
 						local w = (st.axis == "X") ? st.length : st.platforms;
 						local h = (st.axis == "X") ? st.platforms : st.length;
 						if (t.x >= st.x && t.x < st.x + w && t.y >= st.y && t.y < st.y + h) { in_station = true; break; }

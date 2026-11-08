@@ -149,6 +149,10 @@ def layout_batches(layout, limit=1200):
             cur.append(item)
         if cur:
             out.append({"size": layout.get("size"), key: cur})
+    # Every batch carries the station blocks, so the game script can skip track on station tiles.
+    if layout.get("stations"):
+        for part in out[1:]:
+            part["stations_skip"] = layout["stations"]
     return out
 
 
