@@ -160,6 +160,7 @@ class JunctionTestGS extends GSController {
 		else if (cmd == "start") this.CmdStart(id, msg);
 		else if (cmd == "build_layout") this.CmdBuildLayout(id, msg);
 		else if (cmd == "sample") this.CmdSample(id, msg);
+		else if (cmd == "occupancy") this.CmdOccupancy(id, msg);
 		else if (cmd == "loan_max") this.CmdLoanMax(id);
 		else if (cmd == "find_clear") this.CmdFindClear(id, msg);
 		else this.Err(id, "unknown cmd");
@@ -496,5 +497,45 @@ class JunctionTestGS extends GSController {
 			out.append({ id = s.v, n = s.n, min = s.n > 0 ? s.min : 0, max = s.max, avg = s.n > 0 ? s.sum / s.n : 0, stops = s.stops, drops = s.drops });
 		}
 		this.Reply(id, { vehicles = out });
+	}
+
+	/* ---- waiting heatmap: stopped and slow samples per tile ---- */
+	function CmdOccupancy(id, msg)
+	{
+		if (!this.Need(msg, ["vehicles", "ticks"], id)) return;
+		foreach (v in msg.vehicles) {
+			if (!GSVehicle.IsValidVehicle(v)) { this.Err(id, "bad vehicle " + v); return; }
+		}
+		local every = ("every" in msg) ? msg.every : 4;
+		local slow_limit = ("slow" in msg) ? msg.slow : 80;
+		local stopped = {};
+		local slow = {};
+		local prev = {};
+		local stops = {};
+		foreach (v in msg.vehicles) { prev[v] <- -1; stops[v] <- 0; }
+		local samples = 0;
+		for (local i = 0; i < msg.ticks; i += every) {
+			foreach (v in msg.vehicles) {
+				local sp = GSVehicle.GetCurrentSpeed(v);
+				local t = GSVehicle.GetLocation(v);
+				if (sp == 0) {
+					stopped[t] <- (t in stopped) ? stopped[t] + 1 : 1;
+					if (prev[v] > 0) stops[v]++;
+				} else if (sp < slow_limit) {
+					slow[t] <- (t in slow) ? slow[t] + 1 : 1;
+				}
+				prev[v] = sp;
+			}
+			samples++;
+			GSController.Sleep(every);
+		}
+		local to_list = function(tbl) {
+			local l = [];
+			foreach (t, n in tbl) l.append([GSMap.GetTileX(t), GSMap.GetTileY(t), n]);
+			return l;
+		};
+		local sl = [];
+		foreach (v in msg.vehicles) sl.append([v, stops[v]]);
+		this.Reply(id, { samples = samples, stopped = to_list(stopped), slow = to_list(slow), stops = sl });
 	}
 }
