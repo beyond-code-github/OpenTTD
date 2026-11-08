@@ -150,9 +150,15 @@ static void PlaceBaySignals(JunctionLayout &layout, const JunctionSpec &spec, co
 	}
 }
 
-/** Phase 3: fill the gaps between anchors as drag-signalling would (D97), walking upstream from each downstream anchor. */
-static void FillSignals(JunctionLayout &layout, const JunctionSpec &spec, const JunctionCheckContext &ctx)
+/** Phase 3: fill the gaps between anchors as drag-signalling would (D97), walking upstream from each downstream anchor. Returns the (tile, trackdir) of the signals it placed. */
+static std::set<std::pair<std::pair<int, int>, Trackdir>> FillSignals(JunctionLayout &layout, const JunctionSpec &spec, const JunctionCheckContext &ctx)
 {
+	std::set<std::pair<std::pair<int, int>, Trackdir>> placed;
+	const auto place = [&](const JunctionPiece &piece) {
+		if (IsSignalledPiece(layout, piece)) return;
+		PlaceSignal(layout, piece, spec.signal_type);
+		placed.insert({{piece.tile.x, piece.tile.y}, piece.trackdir});
+	};
 	const uint density = spec.sd * 192u;
 	for (const JunctionPath *path : PathOrder(ctx)) {
 		const std::vector<JunctionPiece> &pieces = path->pieces;
@@ -175,14 +181,14 @@ static void FillSignals(JunctionLayout &layout, const JunctionSpec &spec, const 
 			for (size_t k = last; k-- > a + 1;) {
 				if (dist_to(k) > density && suitable.has_value()) {
 					/* Overshoot: use the last good spot. */
-					PlaceSignal(layout, pieces[*suitable], spec.signal_type);
+					place(pieces[*suitable]);
 					last = *suitable;
 					suitable.reset();
 				}
 				const uint dist = dist_to(k);
 				if (dist == density) {
 					if (legal(k)) {
-						PlaceSignal(layout, pieces[k], spec.signal_type);
+						place(pieces[k]);
 						last = k;
 						suitable.reset();
 					}
@@ -190,9 +196,10 @@ static void FillSignals(JunctionLayout &layout, const JunctionSpec &spec, const 
 					suitable = k;
 				}
 			}
-			if (dist_to(a) > density && suitable.has_value()) PlaceSignal(layout, pieces[*suitable], spec.signal_type);
+			if (dist_to(a) > density && suitable.has_value()) place(pieces[*suitable]);
 		}
 	}
+	return placed;
 }
 
 /** Whether a track touches the given tile edge. */
@@ -313,13 +320,21 @@ static bool PlacePrio(JunctionLayout &layout, const JunctionCheckContext &ctx, c
 		if (lane.from != ml.from || lane.to != ml.to) continue;
 		const auto at = std::ranges::find_if(lane.pieces, [&](const JunctionPiece &piece) { return !piece.on_bridge && SameTile(piece.tile, tile) && piece.trackdir == merge_piece.trackdir; });
 		if (at == lane.pieces.end()) continue;
-		uint covered = 0;
-		for (size_t i = static_cast<size_t>(at - lane.pieces.begin()); i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
-			covered += lane.pieces[i].units;
+		const size_t merge_at = static_cast<size_t>(at - lane.pieces.begin());
+		auto require = [&](size_t i) {
 			const std::optional<size_t> block = BlockOfPiece(layout, blocks, lane.pieces[i]);
-			if (!block.has_value() || *block == merge_block->second || !met.insert(*block).second) continue;
+			if (!block.has_value() || *block == merge_block->second || !met.insert(*block).second) return;
 			required.push_back(*block);
+		};
+		uint covered = 0;
+		size_t last_walked = merge_at;
+		for (size_t i = merge_at; i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
+			covered += lane.pieces[i].units;
+			last_walked = i;
+			require(i);
 		}
+		/* D107: the segment beyond the coverage is where a held train stands; it needs its join too. */
+		if (last_walked < merge_at && last_walked > 0) require(last_walked - 1);
 	}
 
 	auto has_signal = [&](TileIndexDiffC t) {
@@ -501,6 +516,50 @@ static void PlaceLaneBlockSignals(JunctionLayout &layout, const JunctionSpec &sp
 	}
 }
 
+/**
+ * Phase 3c (D107): inside the coverage walk of a non-lane ML merge, and one piece beyond it, two consecutive ML pieces never both carry signals
+ * when one of them is a fill signal; the fill signal goes, the upstream one if both are fill. Otherwise the plain-less segment between them has no join.
+ */
+static void ThinPrioCoverageSignals(JunctionLayout &layout, const JunctionCheckContext &ctx, const std::set<std::pair<std::pair<int, int>, Trackdir>> &fill)
+{
+	const auto used = UsedTracks(ctx);
+	std::vector<std::vector<SwitchEvent>> all_events;
+	for (const JunctionPath &path : ctx.paths) all_events.push_back(SwitchEventsOf(layout, used, path));
+	auto is_fill = [&](const JunctionPiece &piece) { return fill.contains({{piece.tile.x, piece.tile.y}, piece.trackdir}); };
+	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
+		if (!IsMainline(ctx.paths[pi])) continue;
+		const JunctionPath &ml = ctx.paths[pi];
+		for (const SwitchEvent &merge : all_events[pi]) {
+			if (merge.first || IsLaneMerge(ctx, all_events, pi, merge) || !GeometryOfPrio(ctx, all_events, pi, merge).has_value()) continue;
+			const JunctionPiece &merge_piece = ml.pieces[merge.second];
+			for (const JunctionPath &lane : ctx.paths) {
+				if (lane.from != ml.from || lane.to != ml.to) continue;
+				const auto at = std::ranges::find_if(lane.pieces, [&](const JunctionPiece &piece) { return !piece.on_bridge && SameTile(piece.tile, merge_piece.tile) && piece.trackdir == merge_piece.trackdir; });
+				if (at == lane.pieces.end()) continue;
+				const size_t merge_at = static_cast<size_t>(at - lane.pieces.begin());
+				uint covered = 0;
+				size_t last = merge_at;
+				for (size_t i = merge_at; i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
+					covered += lane.pieces[i].units;
+					last = i;
+				}
+				if (last == merge_at) continue;
+				const size_t lowest = last > 0 ? last - 1 : last;
+				for (size_t i = merge_at - 1; i-- > lowest;) {
+					const JunctionPiece &up = lane.pieces[i];
+					const JunctionPiece &down = lane.pieces[i + 1];
+					if (!IsSignalledPiece(layout, up) || !IsSignalledPiece(layout, down)) continue;
+					const JunctionPiece *drop = nullptr;
+					if (is_fill(up)) drop = &up;
+					else if (is_fill(down)) drop = &down;
+					if (drop == nullptr) continue;
+					std::erase_if(layout.signals, [&](const JunctionSignal &signal) { return SameTile(signal.offset, drop->tile) && signal.facing == drop->trackdir; });
+				}
+			}
+		}
+	}
+}
+
 /** Phase 4: the prios, one for each ML merge that has a joiner from another movement. */
 static void PlacePrios(JunctionLayout &layout, const JunctionCheckContext &ctx, const std::vector<ReservedJoin> &reserved)
 {
@@ -531,7 +590,8 @@ void PlaceJunctionSignals(JunctionLayout &layout, const JunctionSpec &spec)
 	const std::vector<ReservedJoin> reserved = ReservePrioJoins(layout, trace());
 	PlaceRequiredSignals(layout, spec, trace());
 	PlaceBaySignals(layout, spec, trace());
-	FillSignals(layout, spec, trace());
+	const auto fill = FillSignals(layout, spec, trace());
+	ThinPrioCoverageSignals(layout, trace(), fill);
 	PlaceLaneBlockSignals(layout, spec, trace());
 	PlacePrios(layout, trace(), reserved);
 }

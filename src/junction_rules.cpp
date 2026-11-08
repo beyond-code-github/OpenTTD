@@ -1606,6 +1606,7 @@ std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, cons
 	add(CheckWaitingRoom(ctx));
 	add(CheckDeadlock(ctx));
 	add(CheckPrio(ctx));
+	add(CheckPrioReach(ctx));
 	add(CheckFootprint(ctx));
 	return out;
 }

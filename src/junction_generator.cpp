@@ -303,7 +303,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 
 		const std::string span = fmt::format("B{}", n);
 		const int nw_row = params.lane_style == 1 ? b_row : w_row;
-		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - 1 - static_cast<int>(spec.tl * spec.prio_tl) - params.joiner_slack); };
+		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - 1 - static_cast<int>(spec.tl * spec.prio_tl) - params.joiner_slack - static_cast<int>(spec.sd + 1)); };
 		JunctionRaster raster_a_style1;
 		JunctionRaster raster_b;
 		std::optional<int> merge_x;
