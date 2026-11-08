@@ -194,6 +194,7 @@ void NormaliseJunctionLayout(JunctionLayout &layout)
 		shift(bridge.start);
 		shift(bridge.end);
 	}
+	for (JunctionStationBlock &station : layout.stations) shift(station.origin);
 	layout.size = {static_cast<int16_t>(max_x - min_x + 1), static_cast<int16_t>(max_y - min_y + 1)};
 }
 

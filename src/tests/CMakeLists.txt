@@ -14,6 +14,7 @@ add_test_files(
     junction_router.cpp
     junction_rules.cpp
     junction_signal_pass.cpp
+    junction_station_rules.cpp
     junction_train_model.cpp
     landscape_partial_pixel_z.cpp
     math_func.cpp

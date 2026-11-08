@@ -10,6 +10,7 @@
 #ifndef JUNCTION_LAYOUT_H
 #define JUNCTION_LAYOUT_H
 
+#include "direction_type.h"
 #include "map_type.h"
 #include "track_type.h"
 #include "signal_type.h"
@@ -43,12 +44,21 @@ struct JunctionBridge {
 	TileIndexDiffC end;
 };
 
+/** A block of rail station tiles: platforms parallel to the axis (D106). */
+struct JunctionStationBlock {
+	TileIndexDiffC origin; ///< North corner of the block.
+	Axis axis; ///< Platform direction.
+	uint8_t platforms; ///< Number of platforms (the block's width across the axis).
+	uint8_t length; ///< Platform length in tiles.
+};
+
 /** A junction relative to its north corner (0,0); all offsets have x and y >= 0. */
 struct JunctionLayout {
 	TileIndexDiffC size; ///< Bounding box in tiles.
 	std::vector<JunctionTrack> tracks;
 	std::vector<JunctionSignal> signals;
 	std::vector<JunctionBridge> bridges;
+	std::vector<JunctionStationBlock> stations;
 };
 
 /** The ways a junction layout can be transformed. */
