@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <map>
 #include <set>
+#include <string>
+#include <tuple>
 
 #include "safeguards.h"
 
@@ -514,6 +516,23 @@ std::pair<Money, int> ScoreJunctionLayout(const JunctionLayout &layout, const Ju
 	return {cost, -LargestOpenRectangle(layout)};
 }
 
+/** The candidate planes for a terrain: the most common z_max values of Buildable tiles around the hub, at most 3. */
+std::vector<int> JunctionTerrainPlanes(const JunctionTerrain &terrain)
+{
+	std::map<int, int> counts;
+	for (int y = -4; y <= 4; y++) {
+		for (int x = 26; x <= 34; x++) {
+			const JunctionTerrainTile *t = terrain.At(x, y);
+			if (t != nullptr && t->cls == JunctionTileClass::Buildable) counts[t->z_max]++;
+		}
+	}
+	std::vector<int> planes;
+	for (const auto &[z, n] : counts) planes.push_back(z);
+	std::ranges::stable_sort(planes, [&](int a, int b) { return counts[a] > counts[b]; });
+	if (planes.size() > 3) planes.resize(3);
+	return planes;
+}
+
 /**
  * Generate a junction: sweep candidates, keep the rule-clean ones and pick the best by score.
  * @param spec The junction spec.
@@ -526,17 +545,7 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 
 	std::vector<int> planes{0};
 	if (terrain != nullptr) {
-		std::map<int, int> counts;
-		for (int y = -4; y <= 4; y++) {
-			for (int x = 26; x <= 34; x++) {
-				const JunctionTerrainTile *t = terrain->At(x, y);
-				if (t != nullptr && t->cls == JunctionTileClass::Buildable) counts[t->z_max]++;
-			}
-		}
-		planes.clear();
-		for (const auto &[z, n] : counts) planes.push_back(z);
-		std::ranges::stable_sort(planes, [&](int a, int b) { return counts[a] > counts[b]; });
-		if (planes.size() > 3) planes.resize(3);
+		planes = JunctionTerrainPlanes(*terrain);
 		if (planes.empty()) return {std::nullopt, JunctionGenerateError::NoLayout};
 	}
 
@@ -576,4 +585,81 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 	}
 	if (!best.has_value()) return {std::nullopt, JunctionGenerateError::NoLayout};
 	return {std::move(best), JunctionGenerateError::None, best_hub};
+}
+
+std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
+{
+	std::vector<JunctionLibraryEntry> library;
+	if (spec.ml_gap == 0) return library;
+
+	std::set<std::string> seen;
+	const int first = spec.ml_gap + 5;
+	const int last = spec.ml_gap + 20;
+	for (int height = first; height <= last; height++) {
+		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
+			for (uint8_t slack = 0; slack <= 3; slack++) {
+				const JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
+				TileIndexDiffC hub{};
+				std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, nullptr, nullptr, &hub);
+				if (!layout.has_value() || !CheckJunctionRules(*layout, spec).empty()) continue;
+				if (!seen.insert(JunctionLayoutToJson(*layout)).second) continue;
+				JunctionLibraryEntry entry;
+				entry.hub = hub;
+				entry.score = ScoreJunctionLayout(*layout, spec);
+				entry.area = layout->size.x * layout->size.y;
+				entry.layout = std::move(*layout);
+				library.push_back(std::move(entry));
+			}
+		}
+	}
+	return library;
+}
+
+std::optional<JunctionLibraryFit> FitJunctionLibrary(const std::vector<JunctionLibraryEntry> &library, const JunctionTerrain &terrain)
+{
+	const std::vector<int> planes = JunctionTerrainPlanes(terrain);
+	std::optional<JunctionLibraryFit> best;
+	std::tuple<Money, int, int> best_key{};
+	for (size_t i = 0; i < library.size(); i++) {
+		const JunctionLibraryEntry &e = library[i];
+		const int ox = 30 - e.hub.x;
+		const int oy = -e.hub.y;
+		for (const int plane : planes) {
+			bool ok = true;
+			std::vector<std::pair<int, int>> occupied;
+			for (const JunctionTrack &jt : e.layout.tracks) {
+				if (jt.tracks.None()) continue;
+				const int x = jt.offset.x + ox;
+				const int y = jt.offset.y + oy;
+				if (!terrain.UsableAt(x, y, plane)) { ok = false; break; }
+				occupied.emplace_back(x, y);
+			}
+			for (size_t b = 0; ok && b < e.layout.bridges.size(); b++) {
+				const JunctionBridge &bridge = e.layout.bridges[b];
+				for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
+					const int x = head.x + ox;
+					const int y = head.y + oy;
+					if (!terrain.UsableAt(x, y, plane)) { ok = false; break; }
+					occupied.emplace_back(x, y);
+				}
+				if (!ok) break;
+				const int dx = (bridge.end.x > bridge.start.x) - (bridge.end.x < bridge.start.x);
+				const int dy = (bridge.end.y > bridge.start.y) - (bridge.end.y < bridge.start.y);
+				for (int x = bridge.start.x + dx, y = bridge.start.y + dy; x != bridge.end.x || y != bridge.end.y; x += dx, y += dy) {
+					if (!terrain.SpanOk(x + ox, y + oy, plane)) { ok = false; break; }
+				}
+			}
+			if (!ok) continue;
+			std::ranges::sort(occupied);
+			occupied.erase(std::unique(occupied.begin(), occupied.end()), occupied.end());
+			Money cost = 0;
+			for (const auto &[x, y] : occupied) cost += terrain.CostAt(x, y, plane);
+			const std::tuple<Money, int, int> key{e.score.first + cost, e.score.second, e.area};
+			if (!best.has_value() || key < best_key) {
+				best = JunctionLibraryFit{i, plane, cost};
+				best_key = key;
+			}
+		}
+	}
+	return best;
 }

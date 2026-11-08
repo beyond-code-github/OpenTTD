@@ -321,6 +321,80 @@ TEST_CASE("GenerateJunction avoids a block of houses", "[junction][terrain]")
 	CHECK_FALSE(SameLayout(*result.layout, *base.layout));
 }
 
+TEST_CASE("FitJunctionLibrary on flat terrain is at least as good as GenerateJunction", "[junction][terrain][library]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTerrain flat = MakeFlatTerrain();
+
+	const auto t0 = std::chrono::steady_clock::now();
+	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
+	const auto t1 = std::chrono::steady_clock::now();
+	REQUIRE_FALSE(library.empty());
+
+	std::optional<JunctionLibraryFit> fit;
+	for (int i = 0; i < 100; i++) fit = FitJunctionLibrary(library, flat);
+	const auto t2 = std::chrono::steady_clock::now();
+	const double build_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+	const double fit_us = std::chrono::duration<double, std::micro>(t2 - t1).count() / 100;
+	WARN("library size " << library.size() << ", build " << build_ms << " ms, fit " << fit_us << " us per call");
+
+	REQUIRE(fit.has_value());
+	const JunctionGenerateResult gen = GenerateJunction(spec, &flat);
+	REQUIRE(gen.layout.has_value());
+	const JunctionLibraryEntry &entry = library[fit->entry];
+	WARN("fit score " << (entry.score.first + fit->terrain_cost) << " terrain_cost " << fit->terrain_cost << ", gen score " << ScoreJunctionLayout(*gen.layout, spec).first);
+	CHECK(entry.score.first + fit->terrain_cost <= ScoreJunctionLayout(*gen.layout, spec).first + 0);
+}
+
+/** Whether any track tile or bridge head of the entry lies in the working rectangle. */
+static bool EntryTouchesRect(const JunctionLibraryEntry &e, int x0, int x1, int y0, int y1)
+{
+	auto in = [&](const TileIndexDiffC &t) {
+		const int x = t.x - e.hub.x + 30;
+		const int y = t.y - e.hub.y;
+		return x >= x0 && x <= x1 && y >= y0 && y <= y1;
+	};
+	for (const JunctionTrack &jt : e.layout.tracks) if (!jt.tracks.None() && in(jt.offset)) return true;
+	for (const JunctionBridge &b : e.layout.bridges) if (in(b.start) || in(b.end)) return true;
+	return false;
+}
+
+TEST_CASE("FitJunctionLibrary avoids blocked tiles", "[junction][terrain][library]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
+	REQUIRE_FALSE(library.empty());
+
+	JunctionTerrain blocked = MakeFlatTerrain();
+	SetTerrainRect(blocked, 18, 27, 4, 10, JunctionTileClass::Blocked);
+	const std::optional<JunctionLibraryFit> fit = FitJunctionLibrary(library, blocked);
+	if (!fit.has_value()) {
+		WARN("house block: no fit");
+	} else {
+		CHECK_FALSE(EntryTouchesRect(library[fit->entry], 18, 27, 4, 10));
+	}
+
+	JunctionTerrain all = MakeFlatTerrain();
+	SetTerrainRect(all, 0, 63, -2, 40, JunctionTileClass::Blocked);
+	CHECK_FALSE(FitJunctionLibrary(library, all).has_value());
+}
+
+TEST_CASE("FitJunctionLibrary picks a plane", "[junction][terrain][library]")
+{
+	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(MakeTestJunctionSpec());
+	REQUIRE_FALSE(library.empty());
+	const JunctionTerrain raised = MakeFlatTerrain(2);
+	const std::optional<JunctionLibraryFit> fit = FitJunctionLibrary(library, raised);
+	REQUIRE(fit.has_value());
+	CHECK(fit->plane == 2);
+}
+
+TEST_CASE("JunctionTerrainPlanes", "[junction][terrain][library]")
+{
+	const JunctionTerrain t = MakeFlatTerrain(1);
+	CHECK(JunctionTerrainPlanes(t) == std::vector<int>{1});
+}
+
 TEST_CASE("GenerateJunction on a raised plane equals the flat result", "[junction][terrain]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();

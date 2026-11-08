@@ -19,6 +19,7 @@
 #include <optional>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 enum class JunctionNotationError : uint8_t { None, Invalid, MultiLane };
 struct JunctionNotation { uint8_t gap = 0; JunctionNotationError error = JunctionNotationError::None; };
@@ -77,5 +78,38 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 
 /** Generator score of a layout: cost, then open space (D76). Lower is better. */
 std::pair<Money, int> ScoreJunctionLayout(const JunctionLayout &layout, const JunctionSpec &spec); // second = -open rectangle area
+
+/** The candidate planes for a terrain: the most common z_max values of Buildable tiles around the hub, at most 3. */
+std::vector<int> JunctionTerrainPlanes(const JunctionTerrain &terrain);
+
+/** One rule-clean flat candidate (D96 instant tier). */
+struct JunctionLibraryEntry {
+	JunctionLayout layout;
+	TileIndexDiffC hub{}; ///< As JunctionGenerateResult::hub.
+	std::pair<Money, int> score; ///< ScoreJunctionLayout on flat ground.
+	int area = 0; ///< layout.size.x * layout.size.y.
+};
+
+/**
+ * Every rule-clean flat candidate of the sweep, without the early stop: heights ml_gap+5 .. ml_gap+20, both crossing costs, slack 0..3.
+ * Identical layouts (same JunctionLayoutToJson) are kept once, the first one found. Order is sweep order.
+ */
+std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec);
+
+/** The result of fitting the library to a terrain. */
+struct JunctionLibraryFit {
+	size_t entry = 0; ///< Index into the library.
+	int plane = 0;
+	Money terrain_cost = 0;
+};
+
+/**
+ * Fit each library entry to the terrain at each of JunctionTerrainPlanes(terrain), with tile lookups only.
+ * A fit needs every tile holding track and every bridge head UsableAt the plane, and every bridge middle tile SpanOk.
+ * Terrain cost is the sum of CostAt over the tiles holding track or a bridge head (each tile once).
+ * Best = lowest (score.first + terrain_cost, score.second, area), ties to the earlier entry, then the earlier plane.
+ * @return The best fit, or std::nullopt when nothing fits (also when the spec gives NeedsMlGap, i.e. an empty library).
+ */
+std::optional<JunctionLibraryFit> FitJunctionLibrary(const std::vector<JunctionLibraryEntry> &library, const JunctionTerrain &terrain);
 
 #endif /* JUNCTION_GENERATOR_H */
