@@ -247,7 +247,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	 * Fences: E->S may not touch column xI above row g+3, so it crosses the N column low down and N->E bridges straight
 	 * over it. W->S and N->W stay on the branch side: they may not use the ML gap rows or the ground under ML bridges.
 	 */
-	auto route_movements = [&](JunctionLayout &l, bool crossable_w, const std::vector<TileIndexDiffC> &under_spans, int nw_max_x, int lane_b_max_x, bool note) -> bool {
+	auto route_movements = [&](JunctionLayout &l, bool crossable_w, const std::vector<TileIndexDiffC> &under_spans, int nw_max_x, int lane_b_max_x, bool note, int nw_row, int nw_min_x) -> bool {
 		std::vector<TileIndexDiffC> w_tiles;
 		if (crossable_w) for (int x = 0; x <= 63; x++) w_tiles.push_back(tile(x, w_row));
 		std::vector<TileIndexDiffC> column_fence;
@@ -285,10 +285,10 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 
 		request = base;
 		request.starts = stub_pieces(xI, Trackdir::Y_NW);
-		request.goals = PlainRowPieces(l, w_row, Trackdir::X_NE, 2, nw_max_x);
+		request.goals = PlainRowPieces(l, nw_row, Trackdir::X_NE, nw_min_x, nw_max_x);
 		return RouteFencedAndAdd(l, request, branch_fence).has_value();
 	};
-	if (!route_movements(layout, true, {}, xI - 2, 61, true)) return std::nullopt;
+	if (!route_movements(layout, true, {}, xI - 2, 61, true, w_row, 2)) return std::nullopt;
 
 	if (!zone.empty()) {
 		const int h_w = *std::ranges::min_element(zone) - params.bridge_margin;
@@ -302,6 +302,39 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		base_layout(layout);
 
 		const std::string span = fmt::format("B{}", n);
+		const int nw_row = params.lane_style == 1 ? b_row : w_row;
+		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - 1 - static_cast<int>(spec.tl * spec.prio_tl) - params.joiner_slack); };
+		JunctionRaster raster_a_style1;
+		JunctionRaster raster_b;
+		std::optional<int> merge_x;
+		int x_sb = 0;
+		int nw_max_x = 0;
+		if (params.lane_style == 1) {
+			/* Parallelogram (D105): lane A runs straight on the W row through its bridge, then S-bends onto the B row. */
+			std::optional<JunctionRaster> found_a;
+			for (int k = 0; k <= 63 && !found_a.has_value(); k++) {
+				const JunctionRaster raster = RasterizeJunctionRoute({tile(63, w_row), Trackdir::X_NE, std::string(k, 'F') + span + "FRFL"});
+				if (!raster.error.empty()) continue;
+				size_t near_head = raster.pieces.size();
+				size_t far_head = 0;
+				for (size_t i = 0; i < raster.pieces.size(); i++) {
+					if (!raster.pieces[i].on_bridge) continue;
+					near_head = std::min(near_head, i);
+					far_head = i;
+				}
+				if (near_head >= raster.pieces.size()) continue;
+				if (raster.pieces[near_head].tile.x != h_e || raster.pieces[near_head].tile.y != w_row) continue;
+				if (raster.pieces[far_head].tile.x != h_w || raster.pieces[far_head].tile.y != w_row) continue;
+				if (raster.pieces.back().tile.y != b_row) continue;
+				found_a = raster;
+			}
+			if (!found_a.has_value()) return std::nullopt;
+			raster_a_style1 = std::move(*found_a);
+			merge_x = raster_a_style1.pieces.back().tile.x;
+			nw_max_x = nw_max_for(*merge_x);
+			x_sb = nw_max_x - 6;
+			if (x_sb < 2) return std::nullopt;
+		}
 		/* Lane B: find p, q, r and s by rasterizing and checking the piece positions. */
 		std::optional<JunctionRoute> lane_b;
 		for (int p = 0; p <= 63 && !lane_b.has_value(); p++) {
@@ -318,6 +351,25 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 				}
 				if (plain_axis != 1) continue;
 
+				if (params.lane_style == 1) {
+					/* Straight on the B row to the tile at x_sb + 1, then LFR up to the W row and straight on to x = 0. */
+					const std::string head_moves = std::string(p, 'F') + "RFL" + std::string(q, 'F') + span;
+					for (int t = 0; t <= 63 && !lane_b.has_value(); t++) {
+						const JunctionRaster to_sb = RasterizeJunctionRoute({tile(63, w_row), Trackdir::X_NE, head_moves + std::string(t, 'F')});
+						if (!to_sb.error.empty()) continue;
+						if (to_sb.pieces.back().tile.x != x_sb + 1 || to_sb.pieces.back().tile.y != b_row) continue;
+						for (int s = 0; s <= 63; s++) {
+							const JunctionRoute candidate{tile(63, w_row), Trackdir::X_NE, head_moves + std::string(t, 'F') + "LFR" + std::string(s, 'F')};
+							const JunctionRaster raster = RasterizeJunctionRoute(candidate);
+							if (!raster.error.empty()) continue;
+							if (raster.pieces.back().tile.x == 0 && raster.pieces.back().tile.y == w_row) {
+								lane_b = candidate;
+								break;
+							}
+						}
+					}
+					continue;
+				}
 				for (int r = 1; r <= 1 && !lane_b.has_value(); r++) {
 					const std::string head_moves = std::string(p, 'F') + "RFL" + std::string(q, 'F') + span;
 					const JunctionRaster far_raster = RasterizeJunctionRoute({tile(63, w_row), Trackdir::X_NE, head_moves + std::string(r, 'F')});
@@ -336,62 +388,72 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 			}
 		}
 		if (!lane_b.has_value()) return std::nullopt;
-		const JunctionRaster raster_b = RasterizeJunctionRoute(*lane_b);
+		raster_b = RasterizeJunctionRoute(*lane_b);
 
-		/* Lane A is lane B's mirror: the same program with every L and R swapped. */
-		JunctionRoute lane_a = *lane_b;
-		for (char &c : lane_a.moves) {
-			if (c == 'L') {
-				c = 'R';
-			} else if (c == 'R') {
-				c = 'L';
+		if (params.lane_style == 0) {
+			/* Lane A is lane B's mirror: the same program with every L and R swapped. */
+			JunctionRoute lane_a = *lane_b;
+			for (char &c : lane_a.moves) {
+				if (c == 'L') {
+					c = 'R';
+				} else if (c == 'R') {
+					c = 'L';
+				}
 			}
-		}
-		const JunctionRaster raster_a = RasterizeJunctionRoute(lane_a);
-		if (!raster_a.error.empty()) return std::nullopt;
-		size_t near_head_a = raster_a.pieces.size();
-		size_t far_head_a = 0;
-		for (size_t i = 0; i < raster_a.pieces.size(); i++) {
-			if (!raster_a.pieces[i].on_bridge) continue;
-			near_head_a = std::min(near_head_a, i);
-			far_head_a = i;
-		}
-		if (near_head_a >= raster_a.pieces.size()) return std::nullopt;
-		if (raster_a.pieces[near_head_a].tile.x != h_e || raster_a.pieces[near_head_a].tile.y != w_row - 1) return std::nullopt;
-		if (raster_a.pieces[far_head_a].tile.x != h_w || raster_a.pieces[far_head_a].tile.y != w_row - 1) return std::nullopt;
-		if (raster_a.pieces.back().tile.x != 0 || raster_a.pieces.back().tile.y != w_row) return std::nullopt;
-		if (RasterUnits(raster_a) != RasterUnits(raster_b)) return std::nullopt;
-		AddRasterToLayout(layout, raster_a);
-		AddRasterToLayout(layout, raster_b);
+			const JunctionRaster raster_a = RasterizeJunctionRoute(lane_a);
+			if (!raster_a.error.empty()) return std::nullopt;
+			size_t near_head_a = raster_a.pieces.size();
+			size_t far_head_a = 0;
+			for (size_t i = 0; i < raster_a.pieces.size(); i++) {
+				if (!raster_a.pieces[i].on_bridge) continue;
+				near_head_a = std::min(near_head_a, i);
+				far_head_a = i;
+			}
+			if (near_head_a >= raster_a.pieces.size()) return std::nullopt;
+			if (raster_a.pieces[near_head_a].tile.x != h_e || raster_a.pieces[near_head_a].tile.y != w_row - 1) return std::nullopt;
+			if (raster_a.pieces[far_head_a].tile.x != h_w || raster_a.pieces[far_head_a].tile.y != w_row - 1) return std::nullopt;
+			if (raster_a.pieces.back().tile.x != 0 || raster_a.pieces.back().tile.y != w_row) return std::nullopt;
+			if (RasterUnits(raster_a) != RasterUnits(raster_b)) return std::nullopt;
+			AddRasterToLayout(layout, raster_a);
+			AddRasterToLayout(layout, raster_b);
 
-		/* The lane merge tile: the W row tile where lane B's LFR puts a half piece. */
-		std::optional<int> merge_x;
-		size_t far_head = 0;
-		for (size_t i = 0; i < raster_b.pieces.size(); i++) {
-			if (raster_b.pieces[i].on_bridge) far_head = i;
-		}
-		for (size_t i = far_head + 1; i < raster_b.pieces.size(); i++) {
-			const JunctionPiece &piece = raster_b.pieces[i];
-			if (piece.tile.y == w_row && !IsDiagonalTrackdir(piece.trackdir)) {
-				merge_x = piece.tile.x;
-				break;
+			/* The lane merge tile: the W row tile where lane B's LFR puts a half piece. */
+			size_t far_head = 0;
+			for (size_t i = 0; i < raster_b.pieces.size(); i++) {
+				if (raster_b.pieces[i].on_bridge) far_head = i;
 			}
-		}
-		if (!merge_x.has_value()) return std::nullopt;
-		std::optional<int> merge_x_a;
-		for (size_t i = far_head_a + 1; i < raster_a.pieces.size(); i++) {
-			const JunctionPiece &piece = raster_a.pieces[i];
-			if (piece.tile.y == w_row && !IsDiagonalTrackdir(piece.trackdir)) {
-				merge_x_a = piece.tile.x;
-				break;
+			for (size_t i = far_head + 1; i < raster_b.pieces.size(); i++) {
+				const JunctionPiece &piece = raster_b.pieces[i];
+				if (piece.tile.y == w_row && !IsDiagonalTrackdir(piece.trackdir)) {
+					merge_x = piece.tile.x;
+					break;
+				}
 			}
-		}
-		if (merge_x_a != merge_x) return std::nullopt;
+			if (!merge_x.has_value()) return std::nullopt;
+			std::optional<int> merge_x_a;
+			for (size_t i = far_head_a + 1; i < raster_a.pieces.size(); i++) {
+				const JunctionPiece &piece = raster_a.pieces[i];
+				if (piece.tile.y == w_row && !IsDiagonalTrackdir(piece.trackdir)) {
+					merge_x_a = piece.tile.x;
+					break;
+				}
+			}
+			if (merge_x_a != merge_x) return std::nullopt;
 
+		}
+		if (params.lane_style == 1) {
+			/* Lane A's RFL must land on a B row tile where lane B has an axis piece. */
+			const bool merges = std::ranges::any_of(raster_b.pieces, [&](const JunctionPiece &piece) {
+				return !piece.on_bridge && piece.tile.x == *merge_x && piece.tile.y == b_row && IsDiagonalTrackdir(piece.trackdir);
+			});
+			if (!merges) return std::nullopt;
+			AddRasterToLayout(layout, raster_a_style1);
+			AddRasterToLayout(layout, raster_b);
+		}
 		/* Re-route the four movements with the lanes fixed and no crossable tiles. */
 		std::vector<TileIndexDiffC> under_spans;
 		for (int x = h_w + 1; x < h_e; x++) {
-			under_spans.push_back(tile(x, w_row - 1));
+			under_spans.push_back(tile(x, params.lane_style == 1 ? w_row : w_row - 1));
 			under_spans.push_back(tile(x, b_row));
 		}
 		/*
@@ -406,8 +468,8 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 			}
 		}
 		const int lane_b_max_x = lane_b_axis_x - static_cast<int>(spec.tl);
-		const int nw_max_x = std::min(xI - 2, *merge_x - 1 - static_cast<int>(spec.tl * spec.prio_tl) - params.joiner_slack);
-		if (!route_movements(layout, false, under_spans, nw_max_x, lane_b_max_x, false)) return std::nullopt;
+		if (params.lane_style == 0) nw_max_x = nw_max_for(*merge_x);
+		if (!route_movements(layout, false, under_spans, nw_max_x, lane_b_max_x, false, nw_row, params.lane_style == 1 ? x_sb + 3 : 2)) return std::nullopt;
 	}
 
 	/* Crop the E and W rows to the content. */
@@ -617,10 +679,13 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 			for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
 				for (uint8_t slack = 0; slack <= 3; slack++) {
 					for (uint8_t margin = 1; margin <= 3; margin++) {
-						JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
-						params.plane = plane;
-						params.bridge_margin = margin;
-						all_params.push_back(params);
+						for (uint8_t style = 0; style <= 1; style++) {
+							JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
+							params.plane = plane;
+							params.bridge_margin = margin;
+							params.lane_style = style;
+							all_params.push_back(params);
+						}
 					}
 				}
 			}
@@ -671,9 +736,12 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
 			for (uint8_t slack = 0; slack <= 3; slack++) {
 				for (uint8_t margin = 1; margin <= 3; margin++) {
-					JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
-					params.bridge_margin = margin;
-					all_params.push_back(params);
+					for (uint8_t style = 0; style <= 1; style++) {
+						JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
+						params.bridge_margin = margin;
+						params.lane_style = style;
+						all_params.push_back(params);
+					}
 				}
 			}
 		}

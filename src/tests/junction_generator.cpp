@@ -17,6 +17,7 @@
 #include "../junction_rules_internal.h"
 #include "../track_func.h"
 
+#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -81,23 +82,28 @@ struct SweepCandidate {
 };
 
 /** Every candidate that builds, over the sweep of D3a. */
-static const std::vector<SweepCandidate> &SweepCandidates(const JunctionSpec &spec)
+static std::vector<SweepCandidate> SweepCandidatesOf(const JunctionSpec &spec, uint8_t lane_style)
 {
-	static const std::vector<SweepCandidate> out = [&spec]() {
 	std::vector<SweepCandidate> out;
 	const uint8_t g = spec.ml_gap;
 	for (uint8_t height = g + 5; height <= g + 20; height++) {
 		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
 			for (uint8_t slack = 0; slack <= 3; slack++) {
-				const JunctionCandidateParams params{height, crossing_cost, slack};
+				JunctionCandidateParams params{height, crossing_cost, slack};
+				params.lane_style = lane_style;
 				std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params);
 				if (layout.has_value()) out.push_back({params, std::move(*layout)});
 			}
 		}
 	}
 	return out;
-	}();
-	return out;
+}
+
+/** Every candidate that builds in the given lane style (margin 3). */
+static const std::vector<SweepCandidate> &SweepCandidates(const JunctionSpec &spec, uint8_t lane_style = 0)
+{
+	static const std::vector<SweepCandidate> outs[2] = {SweepCandidatesOf(spec, 0), SweepCandidatesOf(spec, 1)};
+	return outs[lane_style];
 }
 
 /** The largest middle-tile count of the layout's bridges that run along x. */
@@ -197,7 +203,7 @@ TEST_CASE("BuildJunctionCandidate: the doubled lanes are equal and doubled", "[j
 TEST_CASE("BuildJunctionCandidate: the doubled ML lanes are mirror images", "[junction]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	const std::vector<SweepCandidate> &candidates = SweepCandidates(spec);
+	const std::vector<SweepCandidate> &candidates = SweepCandidates(spec, 0);
 	const SweepCandidate *clean = FirstClean(spec, candidates);
 	REQUIRE(clean != nullptr);
 
@@ -217,6 +223,103 @@ TEST_CASE("BuildJunctionCandidate: the doubled ML lanes are mirror images", "[ju
 	REQUIRE(shapes.size() == 2);
 	CHECK(shapes[0].first == shapes[1].first);
 	CHECK(shapes[0].second == shapes[1].second);
+}
+
+/** The half-piece count, turn count and units of each WIn->WOut path. */
+static std::vector<std::array<uint, 3>> WPathShapes(const JunctionLayout &layout, const JunctionSpec &spec)
+{
+	const std::vector<JunctionPort> ports = FindJunctionPorts(layout);
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, JunctionTMovements());
+	std::vector<std::array<uint, 3>> shapes;
+	for (const JunctionPath &path : ctx.paths) {
+		if (path.from != JunctionPortRole::WIn || path.to != JunctionPortRole::WOut) continue;
+		uint half = 0;
+		uint turns = 0;
+		uint units = 0;
+		for (size_t i = 0; i < path.pieces.size(); i++) {
+			if (!IsDiagonalTrackdir(path.pieces[i].trackdir)) half++;
+			if (i > 0 && path.pieces[i].trackdir != path.pieces[i - 1].trackdir) turns++;
+			units += path.pieces[i].units;
+		}
+		shapes.push_back({half, turns, units});
+	}
+	return shapes;
+}
+
+/** The first clean candidate of lane style 1 over the full sweep space, including the margin. */
+static std::optional<JunctionLayout> CleanParallelogram(const JunctionSpec &spec, int *clean_count = nullptr, int *built_count = nullptr)
+{
+	std::optional<JunctionLayout> first;
+	const uint8_t g = spec.ml_gap;
+	for (uint8_t height = g + 5; height <= g + 20; height++) {
+		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
+			for (uint8_t slack = 0; slack <= 3; slack++) {
+				for (uint8_t margin = 1; margin <= 3; margin++) {
+					JunctionCandidateParams params{height, crossing_cost, slack};
+					params.bridge_margin = margin;
+					params.lane_style = 1;
+					std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params);
+					if (!layout.has_value()) continue;
+					if (built_count != nullptr) (*built_count)++;
+					if (!CheckJunctionRules(*layout, spec).empty()) continue;
+					if (clean_count != nullptr) (*clean_count)++;
+					if (!first.has_value()) first = std::move(layout);
+				}
+			}
+		}
+	}
+	return first;
+}
+
+TEST_CASE("a parallelogram candidate is clean", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	int clean1 = 0;
+	int built1 = 0;
+	const std::optional<JunctionLayout> layout = CleanParallelogram(spec, &clean1, &built1);
+	REQUIRE(layout.has_value());
+	int clean0 = 0;
+	for (const SweepCandidate &c : SweepCandidates(spec, 0)) {
+		if (CheckJunctionRules(c.layout, spec).empty()) clean0++;
+	}
+	int clean1_m3 = 0;
+	for (const SweepCandidate &c : SweepCandidates(spec, 1)) {
+		if (CheckJunctionRules(c.layout, spec).empty()) clean1_m3++;
+	}
+	WARN("style 1: " << clean1 << " clean of " << built1 << " built over margins 1-3; at margin 3 " << clean1_m3 << " clean of "
+			<< SweepCandidates(spec, 1).size() << " built; style 0 at margin 3: " << clean0 << " clean of " << SweepCandidates(spec, 0).size() << " built");
+	CHECK(CheckJunctionRules(*layout, spec).empty());
+}
+
+TEST_CASE("parallelogram bridges are adjacent", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::optional<JunctionLayout> layout = CleanParallelogram(spec);
+	REQUIRE(layout.has_value());
+	std::vector<int> rows;
+	for (const JunctionBridge &b : layout->bridges) {
+		if (b.start.y == b.end.y && std::abs(b.end.x - b.start.x) > 1) rows.push_back(b.start.y);
+	}
+	/* The ML bridges are the doubled pair; the branch bridges, if any, run across them. */
+	bool adjacent = false;
+	for (size_t i = 0; i < rows.size(); i++) {
+		for (size_t j = i + 1; j < rows.size(); j++) {
+			if (std::abs(rows[i] - rows[j]) == 1) adjacent = true;
+		}
+	}
+	CHECK(adjacent);
+	WARN("\n" << RenderJunctionAscii(*layout));
+}
+
+TEST_CASE("BuildJunctionCandidate: the parallelogram lanes have equal half pieces and units", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::optional<JunctionLayout> layout = CleanParallelogram(spec);
+	REQUIRE(layout.has_value());
+	const std::vector<std::array<uint, 3>> shapes = WPathShapes(*layout, spec);
+	REQUIRE(shapes.size() == 2);
+	CHECK(shapes[0][0] == shapes[1][0]);
+	CHECK(shapes[0][2] == shapes[1][2]);
 }
 
 static bool SameLayout(const JunctionLayout &a, const JunctionLayout &b)
@@ -608,7 +711,8 @@ TEST_CASE("GenerateJunction reports the hub offset", "[junction]")
 	const int w_y = result.hub.y + spec.ml_gap + 1;
 	/* D100: at the crossing the W track is split into lanes on rows w_y - 1 and w_y + 1. */
 	const auto lane_ok = [&](int y) { return LayoutTracksAt(layout, result.hub.x, y).Test(Track::X) || UnderBridge(layout, result.hub.x, y); };
-	CHECK((LayoutTracksAt(layout, result.hub.x, w_y).Test(Track::X) || (lane_ok(w_y - 1) && lane_ok(w_y + 1))));
+	/* D105: or the parallelogram's lanes, on the W row and the row below it. */
+	CHECK((LayoutTracksAt(layout, result.hub.x, w_y).Test(Track::X) || (lane_ok(w_y - 1) && lane_ok(w_y + 1)) || (lane_ok(w_y) && lane_ok(w_y + 1))));
 }
 
 TEST_CASE("GenerateJunction with a blocked prio row line", "[junction][terrain]")
