@@ -159,7 +159,14 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 
 The multi-lane follow-on (D72) fits after 1b or 1c.
 
+**Pattern discovery (engineer: "I'd love for this work to result in *new* patterns that no-one has ever thought of before!"):** a later track, after 1c gives trustworthy throughput.
+- Loosen the generator's fixed choices: lane shapes, the placement of splits and merges, prio geometry, bridge counts.
+- Filter every proposal through the checker plus the prio reach simulator (G9b).
+- Rank the survivors by the train model and rig traffic runs, against coop reference layouts.
+- Anything that beats the references goes to the engineer for review.
+
 ## Ideas parked
+- **Prios with a split inside** (engineer: "There may be a way to support prios with splits inside, but I have never figured it out myself"). D108 forbids it for now. The prio reach simulator (G9b, `tools/sigsim.py`) is the tool for trying candidate shapes.
 
 - **Translucent ghost blitter mode** (D57): researched in `RECON-blitter.md`; ~140 additive lines across 11 blitter files, SSE needed to matter. Parked by the engineer.
 - **OpenTTD MCP server** (engineer, 2026-11-07: "how cool would an OpenTTD MCP server be"): an MCP server bridging the game's admin port (`docs/admin_network.md`; game state, chat, rcon, GameScript JSON) so Claude can read map state and act in game. Big win for this project: automated in-game checks (build a junction, run trains, watch for braking/deadlock) instead of manual ones. Not yet researched.
