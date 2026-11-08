@@ -23,6 +23,9 @@ static constexpr uint STEPS_PER_CORNER_PIECE = 8;
 /** Give-up bound for JunctionTicksToCover. */
 static constexpr uint32_t MAX_MODEL_TICKS = 10'000'000;
 
+/** Tick bound for JunctionPrioLength. */
+static constexpr uint32_t MAX_MODEL_TICKS_PRIO = 1'000'000;
+
 void StepJunctionTrain(const JunctionTrainParams &params, JunctionTrainState &state)
 {
 	/* GroundVehicle::GetAcceleration, AS_ACCEL, flat, non-maglev (ground_vehicle.cpp:105-168). */
@@ -83,6 +86,25 @@ uint32_t JunctionTicksToCover(const JunctionTrainParams &params, uint64_t distan
 	JunctionTrainState state;
 	while (state.distance < distance && state.ticks < MAX_MODEL_TICKS) StepJunctionTrain(params, state);
 	return state.ticks;
+}
+
+uint32_t JunctionPrioLength(const JunctionTrainParams &joiner, uint16_t design_speed, uint8_t tl, uint8_t sd)
+{
+	JunctionTrainParams params = joiner;
+	params.max_speed = std::min(joiner.max_speed, design_speed);
+
+	const uint64_t ml_step = Vehicle::GetAdvanceSpeed(design_speed);
+	JunctionTrainState state;
+	uint64_t ml_progress = 0;
+	int64_t max_deficit = 0;
+	while (state.speed < design_speed && state.ticks < MAX_MODEL_TICKS_PRIO) {
+		StepJunctionTrain(params, state);
+		ml_progress += ml_step;
+		max_deficit = std::max(max_deficit, static_cast<int64_t>(ml_progress) - static_cast<int64_t>(state.distance));
+	}
+
+	const uint32_t per_tile = JunctionProgressPerStraightTile();
+	return static_cast<uint32_t>((max_deficit + per_tile - 1) / per_tile) + tl + sd;
 }
 
 uint32_t JunctionProgressPerStraightTile()

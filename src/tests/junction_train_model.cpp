@@ -26,7 +26,7 @@ static JunctionTrainParams RefParams(uint32_t mass = 200)
 	return p;
 }
 
-TEST_CASE("Junction train model kick-off")
+TEST_CASE("Junction train model kick-off", "[junction]")
 {
 	const JunctionTrainParams p = RefParams();
 	JunctionTrainState s;
@@ -34,7 +34,7 @@ TEST_CASE("Junction train model kick-off")
 	CHECK(s.speed > 0);
 }
 
-TEST_CASE("Junction train model hand-worked tick")
+TEST_CASE("Junction train model hand-worked tick", "[junction]")
 {
 	/* Speed 100, mass 200, 1000 hp, air drag 50:
 	 *  P = 1000 * 746 = 746000.
@@ -53,7 +53,7 @@ TEST_CASE("Junction train model hand-worked tick")
 	CHECK(s.ticks == 1);
 }
 
-TEST_CASE("Junction train model terminal speed")
+TEST_CASE("Junction train model terminal speed", "[junction]")
 {
 	const JunctionTrainParams p = RefParams();
 	JunctionTrainState s;
@@ -71,7 +71,7 @@ TEST_CASE("Junction train model terminal speed")
 	CHECK(s.speed == before);
 }
 
-TEST_CASE("Junction train model mass monotonic")
+TEST_CASE("Junction train model mass monotonic", "[junction]")
 {
 	const uint64_t ten_tiles = 10 * JunctionProgressPerStraightTile();
 	const uint32_t t100 = JunctionTicksToCover(RefParams(100), ten_tiles);
@@ -81,9 +81,44 @@ TEST_CASE("Junction train model mass monotonic")
 	CHECK(t200 > t100);
 }
 
-TEST_CASE("Junction train model piece lengths")
+TEST_CASE("Junction train model piece lengths", "[junction]")
 {
 	CHECK(JunctionProgressPerStraightTile() == 3072);
 	/* 8 steps per corner piece (vehicle.cpp:3366-3371), 256 each. */
 	CHECK(JunctionProgressPerCornerPiece() == 8 * 256);
+}
+
+TEST_CASE("Junction prio length mass monotonic", "[junction]")
+{
+	const uint32_t l100 = JunctionPrioLength(RefParams(100), 160, 4, 2);
+	const uint32_t l200 = JunctionPrioLength(RefParams(200), 160, 4, 2);
+	const uint32_t l400 = JunctionPrioLength(RefParams(400), 160, 4, 2);
+	CHECK(l400 > l200);
+	CHECK(l200 > l100);
+}
+
+TEST_CASE("Junction prio length design speed monotonic", "[junction]")
+{
+	const uint32_t l60 = JunctionPrioLength(RefParams(200), 60, 4, 2);
+	const uint32_t l100 = JunctionPrioLength(RefParams(200), 100, 4, 2);
+	const uint32_t l160 = JunctionPrioLength(RefParams(200), 160, 4, 2);
+	CHECK(l160 > l100);
+	CHECK(l100 > l60);
+}
+
+TEST_CASE("Junction prio length floor", "[junction]")
+{
+	JunctionTrainParams p = RefParams(50);
+	p.power_hp = 100000;
+	p.max_te = 10000000;
+	const uint32_t l = JunctionPrioLength(p, 160, 4, 2);
+	CHECK(l >= 6);
+	CHECK(l <= 7);
+}
+
+TEST_CASE("Junction prio length hand-check", "[junction]")
+{
+	const uint32_t l = JunctionPrioLength(RefParams(), 160, 4, 2);
+	WARN("JunctionPrioLength(ref, 160, tl 4, sd 2) = " << l);
+	CHECK(l >= 6);
 }

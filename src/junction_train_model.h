@@ -34,6 +34,16 @@ void StepJunctionTrain(const JunctionTrainParams &params, JunctionTrainState &st
 /** Ticks for a train starting at speed 0 to travel the given progress distance on straight track. */
 uint32_t JunctionTicksToCover(const JunctionTrainParams &params, uint64_t distance);
 
+/**
+ * Shortest prio coverage, in whole tiles of straight track, so that an ML train arriving at design_speed never comes within one block of a joiner that starts from rest at the merge signal (D102).
+ * @param joiner The joining train, loaded (D101).
+ * @param design_speed ML speed in cur_speed units: min(train max, rail type max) (D101).
+ * @param tl Train length in tiles.
+ * @param sd Signal spacing in tiles (one block).
+ * @return L = ceil(max over t of (ML distance − joiner distance), in tiles) + tl + sd.
+ */
+uint32_t JunctionPrioLength(const JunctionTrainParams &joiner, uint16_t design_speed, uint8_t tl, uint8_t sd);
+
 /** Progress units for one straight (X/Y) tile and for one corner (half) piece, from the game's step data. */
 uint32_t JunctionProgressPerStraightTile();
 uint32_t JunctionProgressPerCornerPiece();
