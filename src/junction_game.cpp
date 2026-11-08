@@ -14,6 +14,8 @@
 #include "settings_type.h"
 #include "command_func.h"
 #include "rail_cmd.h"
+#include "station_cmd.h"
+#include "newgrf_station.h"
 #include "landscape_cmd.h"
 #include "tunnelbridge_cmd.h"
 #include "bridge.h"
@@ -167,6 +169,19 @@ std::optional<JunctionTileSlope> GameJunctionPricing::GetTileSlope(TileIndex til
 CommandCost GameJunctionPricing::TestRail(TileIndex tile, Track track) const
 {
 	return Command<Commands::BuildRail>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildRail>()) | DoCommandFlag::QueryCost, tile, this->railtype, track, false);
+}
+
+/**
+ * Test-only run of building a block of station tiles as a new station, with the default station class and type.
+ * @param tile North corner of the block.
+ * @param axis Platform direction.
+ * @param platforms Number of platforms.
+ * @param length Platform length in tiles.
+ * @return The cost of the command, or its error.
+ */
+CommandCost GameJunctionPricing::TestStation(TileIndex tile, Axis axis, uint8_t platforms, uint8_t length) const
+{
+	return Command<Commands::BuildRailStation>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildRailStation>()) | DoCommandFlag::QueryCost, tile, this->railtype, axis, platforms, length, STAT_CLASS_DFLT, 0, StationID::Invalid(), false);
 }
 
 /**
@@ -375,6 +390,9 @@ bool GameJunctionStepPoster::Post(const JunctionBuildStep &step)
 	return std::visit([this]<typename T>(const T &s) -> bool {
 		if constexpr (std::is_same_v<T, JunctionRailStep>) {
 			return Command<Commands::BuildRail>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, CcJunctionStep, s.tile, this->railtype, s.track, false);
+		} else if constexpr (std::is_same_v<T, JunctionStationStep>) {
+			/* The same parameters as the station window uses for a new station: default class and type, no join, not adjacent. */
+			return Command<Commands::BuildRailStation>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION, CcJunctionStep, s.tile, this->railtype, s.axis, s.platforms, s.length, STAT_CLASS_DFLT, 0, StationID::Invalid(), false);
 		} else if constexpr (std::is_same_v<T, JunctionBridgeStep>) {
 			uint length = GetTunnelBridgeLength(s.start, s.end);
 			auto type = ChooseJunctionBridgeType(this->railtype, length);

@@ -2854,6 +2854,7 @@ STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_TUNNEL                  :{BLACK}Build ra
 STR_RAIL_TOOLBAR_TOOLTIP_TOGGLE_BUILD_REMOVE_FOR                :{BLACK}Toggle build/remove for railway track, signals, waypoints and stations. Ctrl+Click to also remove the rail of waypoints and stations
 STR_RAIL_TOOLBAR_TOOLTIP_CONVERT_RAIL                           :{BLACK}Convert/Upgrade the type of rail. Also press Shift to show cost estimate only
 STR_RAIL_TOOLBAR_TOOLTIP_BUILD_JUNCTION                         :{BLACK}Build a pre-built junction. Press . to rotate and , to mirror
+STR_RAIL_TOOLBAR_TOOLTIP_BUILD_JUNCTION_STATION                 :{BLACK}Generate a station
 
 STR_RAIL_NAME_RAILROAD                                          :Railway
 STR_RAIL_NAME_ELRAIL                                            :Electrified railway
@@ -2905,6 +2906,19 @@ STR_JUNCTION_RETRY                                               :{BLACK}Retry
 STR_JUNCTION_RETRY_TOOLTIP                                       :{BLACK}Check the cost again and continue building from the failed step
 STR_JUNCTION_CANCEL                                              :{BLACK}Cancel
 STR_JUNCTION_CANCEL_TOOLTIP                                      :{BLACK}Stop building; pieces already built stay
+
+# Rail junction station construction window
+STR_JUNCTION_STATION_CAPTION                                     :{WHITE}Station
+STR_JUNCTION_STATION_PLATFORMS                                   :{BLACK}Platforms: {NUM}
+STR_JUNCTION_STATION_PLATFORMS_DECREASE_TOOLTIP                  :{BLACK}Decrease the number of platforms
+STR_JUNCTION_STATION_PLATFORMS_INCREASE_TOOLTIP                  :{BLACK}Increase the number of platforms
+STR_JUNCTION_STATION_TRAIN_LENGTH_DECREASE_TOOLTIP               :{BLACK}Decrease the train length, which is also the platform length
+STR_JUNCTION_STATION_TRAIN_LENGTH_INCREASE_TOOLTIP               :{BLACK}Increase the train length, which is also the platform length
+STR_JUNCTION_STATION_PICK_TRAIN_TOOLTIP                          :{BLACK}Click one of your trains to size the platforms for it
+STR_JUNCTION_STATION_TRAIN                                       :{BLACK}{RAW_STRING}: {NUM} tiles
+STR_JUNCTION_STATION_ROTATE_TOOLTIP                              :{BLACK}Rotate the station a quarter turn (hotkey .)
+STR_JUNCTION_STATION_MIRROR_TOOLTIP                              :{BLACK}Mirror the station (hotkey ,)
+STR_JUNCTION_STATION_ERROR_NO_LAYOUT                             :{RED}No station fits these settings
 
 # Rail waypoint construction window
 STR_WAYPOINT_CAPTION                                            :{WHITE}Waypoint

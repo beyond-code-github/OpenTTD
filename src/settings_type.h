@@ -273,6 +273,7 @@ struct GUISettings {
 	std::string junction_ml_notation; ///< Mainline notation last used in the junction window.
 	std::string junction_branch_notation; ///< Branch notation last used in the junction window.
 	uint8_t junction_tl; ///< Train length in tiles last used in the junction window.
+	uint8_t junction_station_platforms; ///< Number of platforms last used in the junction station window.
 	TimerGameCalendar::Year semaphore_build_before; ///< build semaphore signals automatically before this year
 	uint8_t news_message_timeout; ///< how much longer than the news message "age" should we keep the message in the history
 	bool show_track_reservation; ///< highlight reserved tracks.

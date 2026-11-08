@@ -470,6 +470,7 @@ struct BuildRailToolbarWindow : Window {
 		WID_RAT_BUILD_NS, WID_RAT_BUILD_X, WID_RAT_BUILD_EW, WID_RAT_BUILD_Y, WID_RAT_AUTORAIL,
 		WID_RAT_BUILD_DEPOT, WID_RAT_BUILD_WAYPOINT, WID_RAT_BUILD_STATION, WID_RAT_BUILD_SIGNALS,
 		WID_RAT_BUILD_BRIDGE, WID_RAT_BUILD_TUNNEL, WID_RAT_CONVERT_RAIL, WID_RAT_BUILD_JUNCTION,
+		WID_RAT_BUILD_JUNCTION_STATION,
 	};
 
 	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
@@ -603,6 +604,7 @@ struct BuildRailToolbarWindow : Window {
 			case WID_RAT_BUILD_TUNNEL: return GetRailTypeInfo(_cur_railtype)->cursor.tunnel;
 			case WID_RAT_CONVERT_RAIL: return GetRailTypeInfo(_cur_railtype)->cursor.convert;
 			case WID_RAT_BUILD_JUNCTION: return GetRailTypeInfo(_cur_railtype)->cursor.autorail;
+			case WID_RAT_BUILD_JUNCTION_STATION: return SPR_CURSOR_RAIL_STATION;
 			default: NOT_REACHED();
 		}
 	}
@@ -629,6 +631,7 @@ struct BuildRailToolbarWindow : Window {
 			case WID_RAT_BUILD_TUNNEL: return HT_SPECIAL;
 			case WID_RAT_CONVERT_RAIL: return HT_RECT | HT_DIAGONAL;
 			case WID_RAT_BUILD_JUNCTION: return HT_RECT;
+			case WID_RAT_BUILD_JUNCTION_STATION: return HT_RECT;
 			default: NOT_REACHED();
 		}
 	}
@@ -677,6 +680,10 @@ struct BuildRailToolbarWindow : Window {
 
 			case WID_RAT_BUILD_JUNCTION:
 				if (started) ShowBuildJunctionWindow(this, _cur_railtype);
+				break;
+
+			case WID_RAT_BUILD_JUNCTION_STATION:
+				if (started) ShowBuildJunctionStationWindow(this, _cur_railtype);
 				break;
 		}
 
@@ -748,6 +755,10 @@ struct BuildRailToolbarWindow : Window {
 
 			case WID_RAT_BUILD_JUNCTION:
 				JunctionToolClick(tile);
+				break;
+
+			case WID_RAT_BUILD_JUNCTION_STATION:
+				JunctionStationToolClick(tile);
 				break;
 
 			default: NOT_REACHED();
@@ -831,7 +842,7 @@ struct BuildRailToolbarWindow : Window {
 
 	void OnPlaceObjectAbort() override
 	{
-		if (IsJunctionTrainPickActive()) return;
+		if (IsJunctionTrainPickActive() || IsJunctionStationTrainPickActive()) return;
 		if (this->IsWidgetLowered(WID_RAT_BUILD_STATION)) SetViewportCatchmentStation(nullptr, true);
 		if (this->IsWidgetLowered(WID_RAT_BUILD_WAYPOINT)) SetViewportCatchmentWaypoint(nullptr, true);
 
@@ -843,6 +854,7 @@ struct BuildRailToolbarWindow : Window {
 		CloseWindowById(WindowClass::BuildStation, TransportType::Rail);
 		CloseWindowById(WindowClass::BuildDepot, TransportType::Rail);
 		CloseWindowById(WindowClass::BuildJunction, TransportType::Rail);
+		CloseWindowById(WindowClass::BuildJunctionStation, TransportType::Rail);
 		CloseWindowById(WindowClass::BuildWaypoint, TransportType::Rail);
 		CloseWindowById(WindowClass::JoinStation, 0);
 		CloseWindowByClass(WindowClass::BuildBridge);
@@ -924,6 +936,7 @@ struct BuildRailToolbarWindow : Window {
 		Hotkey(WKC_L_BRACKET | WKC_CTRL, "first_railtype", to_underlying(SpecialListHotkeys::FirstItem)),
 		Hotkey(WKC_R_BRACKET | WKC_CTRL, "last_railtype", to_underlying(SpecialListHotkeys::LastItem)),
 		Hotkey(WKC_NONE, "junction", WID_RAT_BUILD_JUNCTION),
+		Hotkey(WKC_NONE, "junction_station", WID_RAT_BUILD_JUNCTION_STATION),
 	}, RailToolbarGlobalHotkeys};
 };
 
@@ -967,6 +980,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_rail_widgets =
 						SetFill(0, 1), SetToolbarMinimalSize(1), SetSpriteTip(SPR_IMG_CONVERT_RAIL, STR_RAIL_TOOLBAR_TOOLTIP_CONVERT_RAIL),
 		NWidget(WWT_IMGBTN, Colours::DarkGreen, WID_RAT_BUILD_JUNCTION),
 						SetFill(0, 1), SetToolbarMinimalSize(1), SetSpriteTip(SPR_IMG_AUTORAIL, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_JUNCTION),
+		NWidget(WWT_IMGBTN, Colours::DarkGreen, WID_RAT_BUILD_JUNCTION_STATION),
+						SetFill(0, 1), SetToolbarMinimalSize(2), SetSpriteTip(SPR_IMG_RAIL_STATION, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_JUNCTION_STATION),
 	EndContainer(),
 };
 
@@ -2157,10 +2172,14 @@ DropDownList GetRailTypeDropDownList(bool for_replacement, bool all_option)
 	return list;
 }
 
-/** Put the rail toolbar's junction placement mode back, after the junction window borrowed the cursor to pick a train. */
+/** Put the rail toolbar's junction or junction station placement mode back, after that tool's window borrowed the cursor to pick a train. */
 void RestoreJunctionPlacement()
 {
 	BuildRailToolbarWindow *w = dynamic_cast<BuildRailToolbarWindow *>(FindWindowById(WindowClass::BuildToolbar, TransportType::Rail));
-	if (w == nullptr || !w->IsWidgetLowered(WID_RAT_BUILD_JUNCTION)) return;
-	SetObjectToPlaceWnd(w->GetCursorForWidget(WID_RAT_BUILD_JUNCTION), PAL_NONE, w->GetHighLightStyleForWidget(WID_RAT_BUILD_JUNCTION), w);
+	if (w == nullptr) return;
+	for (WidgetID widget : {WID_RAT_BUILD_JUNCTION, WID_RAT_BUILD_JUNCTION_STATION}) {
+		if (!w->IsWidgetLowered(widget)) continue;
+		SetObjectToPlaceWnd(w->GetCursorForWidget(widget), PAL_NONE, w->GetHighLightStyleForWidget(widget), w);
+		return;
+	}
 }

@@ -70,8 +70,10 @@ struct JunctionRailStep { TileIndex tile; Track track; };
 struct JunctionBridgeStep { TileIndex start; TileIndex end; };
 /** Build step: one signal. */
 struct JunctionSignalStep { TileIndex tile; Trackdir facing; SignalType type; SignalVariant variant; };
+/** Build step: one block of station tiles; the station tiles carry their own track. */
+struct JunctionStationStep { TileIndex tile; Axis axis; uint8_t platforms; uint8_t length; };
 /** Any one build step. */
-using JunctionBuildStep = std::variant<JunctionRailStep, JunctionBridgeStep, JunctionSignalStep>;
+using JunctionBuildStep = std::variant<JunctionRailStep, JunctionBridgeStep, JunctionSignalStep, JunctionStationStep>;
 
 /** Slope facts of one tile. */
 struct JunctionTileSlope {
@@ -91,6 +93,8 @@ public:
 	virtual CommandCost TestRail(TileIndex tile, Track track) const = 0;
 	/** Full price of the cheapest suitable bridge type between two heads, or an error. */
 	virtual CommandCost PriceBridge(TileIndex start, TileIndex end) const = 0;
+	/** Test-only run of building a block of station tiles as a new station; the cost includes clearing and the station tiles' own track. */
+	virtual CommandCost TestStation(TileIndex tile, Axis axis, uint8_t platforms, uint8_t length) const = 0;
 	/** Test-only run of clearing a tile; its cost is what building anything on the tile would pay to clear it first. */
 	virtual CommandCost TestClear(TileIndex tile) const = 0;
 	/** Price of one signal. */

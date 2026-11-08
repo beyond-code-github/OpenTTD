@@ -258,6 +258,22 @@ JunctionLayout MakeTestJunctionLayout()
 }
 
 /**
+ * Check whether a layout offset is on a station tile.
+ * @param layout The layout.
+ * @param offset The offset to check.
+ * @return True if a station block of the layout covers the offset.
+ */
+static bool InStationBlock(const JunctionLayout &layout, TileIndexDiffC offset)
+{
+	for (const JunctionStationBlock &block : layout.stations) {
+		const int w = block.axis == Axis::X ? block.length : block.platforms;
+		const int h = block.axis == Axis::X ? block.platforms : block.length;
+		if (offset.x >= block.origin.x && offset.x < block.origin.x + w && offset.y >= block.origin.y && offset.y < block.origin.y + h) return true;
+	}
+	return false;
+}
+
+/**
  * Make the build steps for placing a layout on the map.
  * @param layout The layout to place.
  * @param origin The tile for the north corner of the layout.
@@ -266,7 +282,11 @@ JunctionLayout MakeTestJunctionLayout()
 std::vector<JunctionBuildStep> MakeJunctionBuildSteps(const JunctionLayout &layout, TileIndex origin)
 {
 	std::vector<JunctionBuildStep> steps;
+	for (const JunctionStationBlock &block : layout.stations) {
+		steps.push_back(JunctionStationStep{AddTileIndexDiffCWrap(origin, block.origin), block.axis, block.platforms, block.length});
+	}
 	for (const JunctionTrack &jt : layout.tracks) {
+		if (InStationBlock(layout, jt.offset)) continue; // Station tiles carry their own track.
 		for (Track t : jt.tracks) {
 			steps.push_back(JunctionRailStep{AddTileIndexDiffCWrap(origin, jt.offset), t});
 		}
@@ -382,6 +402,24 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 			} else {
 				MarkBad(estimate, bridge->start);
 				MarkBad(estimate, bridge->end);
+				if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = result.GetErrorMessage();
+			}
+		} else if (const JunctionStationStep *station = std::get_if<JunctionStationStep>(&step); station != nullptr) {
+			if (station->tile == INVALID_TILE) {
+				MarkBad(estimate, station->tile);
+				if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
+				continue;
+			}
+			CommandCost result = pricing.TestStation(station->tile, station->axis, station->platforms, station->length);
+			if (result.Succeeded()) {
+				estimate.total += result.GetCost();
+			} else {
+				/* The command reports one error for the block, so mark every tile of it. */
+				const int w = station->axis == Axis::X ? station->length : station->platforms;
+				const int h = station->axis == Axis::X ? station->platforms : station->length;
+				for (int y = 0; y < h; y++) {
+					for (int x = 0; x < w; x++) MarkBad(estimate, AddTileIndexDiffCWrap(station->tile, {static_cast<int16_t>(x), static_cast<int16_t>(y)}));
+				}
 				if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = result.GetErrorMessage();
 			}
 		} else if (const JunctionSignalStep *signal = std::get_if<JunctionSignalStep>(&step); signal != nullptr) {

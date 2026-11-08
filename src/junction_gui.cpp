@@ -99,6 +99,19 @@ void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int heig
 		_junction_ghost_tiles[tile].tracks.Set(track.tracks);
 	}
 
+	/* Station tiles are drawn as the platform track of the block's axis: a distinct station sprite isn't needed in v1. */
+	for (const JunctionStationBlock &block : layout.stations) {
+		const int w = block.axis == Axis::X ? block.length : block.platforms;
+		const int h = block.axis == Axis::X ? block.platforms : block.length;
+		for (int y = 0; y < h; y++) {
+			for (int x = 0; x < w; x++) {
+				TileIndex tile = AddTileIndexDiffCWrap(origin, {static_cast<int16_t>(block.origin.x + x), static_cast<int16_t>(block.origin.y + y)});
+				if (tile == INVALID_TILE) continue;
+				_junction_ghost_tiles[tile].tracks.Set(block.axis == Axis::X ? Track::X : Track::Y);
+			}
+		}
+	}
+
 	for (const JunctionSignal &signal : layout.signals) {
 		TileIndex tile = AddTileIndexDiffCWrap(origin, signal.offset);
 		if (tile == INVALID_TILE) continue;
@@ -895,6 +908,12 @@ struct BuildJunctionWindow : public PickerWindowBase {
 					} else if (const auto *bridge = std::get_if<JunctionBridgeStep>(&step)) {
 						estimate.bad_tiles.push_back(bridge->start);
 						estimate.bad_tiles.push_back(bridge->end);
+					} else if (const auto *station = std::get_if<JunctionStationStep>(&step)) {
+						const int w = station->axis == Axis::X ? station->length : station->platforms;
+						const int h = station->axis == Axis::X ? station->platforms : station->length;
+						for (int y = 0; y < h; y++) {
+							for (int x = 0; x < w; x++) estimate.bad_tiles.push_back(AddTileIndexDiffCWrap(station->tile, {static_cast<int16_t>(x), static_cast<int16_t>(y)}));
+						}
 					} else {
 						estimate.bad_tiles.push_back(std::get<JunctionSignalStep>(step).tile);
 					}

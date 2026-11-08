@@ -54,6 +54,13 @@ public:
 		return CommandCost(ExpensesType::Construction, 100);
 	}
 
+	CommandCost TestStation(TileIndex tile, [[maybe_unused]] Axis axis, [[maybe_unused]] uint8_t platforms, [[maybe_unused]] uint8_t length) const override
+	{
+		auto it = this->rail_fails.find(tile);
+		if (it != this->rail_fails.end()) return CommandCost(it->second);
+		return CommandCost(ExpensesType::Construction, 500);
+	}
+
 	CommandCost PriceBridge([[maybe_unused]] TileIndex start, [[maybe_unused]] TileIndex end) const override
 	{
 		if (this->bridge_fails) return CommandCost(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE);

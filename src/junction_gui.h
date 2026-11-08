@@ -58,6 +58,9 @@ struct Window;
 void ShowBuildJunctionWindow(Window *parent, RailType railtype);
 void JunctionToolClick(TileIndex tile);
 bool IsJunctionTrainPickActive();
+void ShowBuildJunctionStationWindow(Window *parent, RailType railtype);
+void JunctionStationToolClick(TileIndex tile);
+bool IsJunctionStationTrainPickActive();
 void RestoreJunctionPlacement();
 
 #endif /* JUNCTION_GUI_H */

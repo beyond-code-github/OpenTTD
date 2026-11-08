@@ -14,6 +14,7 @@
 #include "../junction_route.h"
 #include "../junction_station_generator.h"
 #include "../core/format.hpp"
+#include "../map_func.h"
 
 #include "../safeguards.h"
 
@@ -56,4 +57,43 @@ TEST_CASE("GenerateStation: each platform is exactly TL long", "[junction][stati
 		CHECK(result.layout->stations.front().length == spec.tl);
 		CHECK(result.layout->stations.front().platforms == n);
 	}
+}
+
+TEST_CASE("MakeJunctionBuildSteps: a station layout gives one station step first and no rail on station tiles", "[junction][station]")
+{
+	Map::Allocate(64, 64);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionStationResult result = GenerateStation(spec, 3);
+	REQUIRE(result.layout.has_value());
+	const JunctionLayout &layout = *result.layout;
+	REQUIRE(layout.stations.size() == 1);
+	const JunctionStationBlock &block = layout.stations.front();
+	const TileIndex origin = TileXY(10, 10);
+
+	const std::vector<JunctionBuildStep> steps = MakeJunctionBuildSteps(layout, origin);
+	REQUIRE(!steps.empty());
+	size_t station_steps = 0;
+	for (const JunctionBuildStep &step : steps) {
+		if (std::holds_alternative<JunctionStationStep>(step)) station_steps++;
+	}
+	CHECK(station_steps == 1);
+	REQUIRE(std::holds_alternative<JunctionStationStep>(steps.front()));
+	const JunctionStationStep &station = std::get<JunctionStationStep>(steps.front());
+	CHECK(station.tile == TileXY(10 + block.origin.x, 10 + block.origin.y));
+	CHECK(station.axis == block.axis);
+	CHECK(station.platforms == 3);
+	CHECK(station.length == spec.tl);
+
+	size_t rail_on_station = 0;
+	size_t rail_steps = 0;
+	for (const JunctionBuildStep &step : steps) {
+		const JunctionRailStep *rail = std::get_if<JunctionRailStep>(&step);
+		if (rail == nullptr) continue;
+		rail_steps++;
+		const int x = static_cast<int>(TileX(rail->tile)) - 10;
+		const int y = static_cast<int>(TileY(rail->tile)) - 10;
+		if (x >= block.origin.x && x < block.origin.x + block.length && y >= block.origin.y && y < block.origin.y + block.platforms) rail_on_station++;
+	}
+	CHECK(rail_on_station == 0);
+	CHECK(rail_steps > 0);
 }

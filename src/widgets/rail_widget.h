@@ -29,6 +29,7 @@ enum RailToolbarWidgets : WidgetID {
 	WID_RAT_REMOVE,         ///< Bulldozer to remove rail.
 	WID_RAT_CONVERT_RAIL,   ///< Convert other rail to this type.
 	WID_RAT_BUILD_JUNCTION, ///< Build a pre-built junction.
+	WID_RAT_BUILD_JUNCTION_STATION, ///< Build a generated station.
 };
 
 /** Widgets of the #BuildRailStationWindow class. */
