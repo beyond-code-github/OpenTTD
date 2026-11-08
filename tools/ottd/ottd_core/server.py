@@ -39,6 +39,8 @@ amount_of_rivers = 0
 variety = %(variety)d
 [economy]
 larger_towns = 0
+[gui]
+drag_signals_density = 2
 [ai]
 ai_in_multiplayer = true
 [game_scripts]
