@@ -113,7 +113,12 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
    - 1×: ML waiting on lane B inside the junction (about 35% at two tiles);
    - 2×: the junction is clear, and the waiting moves to the west loop;
    - 3×: heavy east-loop waiting, plus W ML trains stopping at the entry (about 40%).
-   The circuit's own congestion muddies this, so R2 (fixed routes, ML-stopped measure) is next. the engineer is holding signalling comments until the simulation ("it will all come out in simulation. It may just be down to waiting bay sizing"). Headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
+   The circuit's own congestion muddies this, so R2 followed.
+   - **R2** (39263ad76a): fixed routes via loop waypoints, `--mix ml:6,bw:3,be:3`, with ML stopped samples inside the junction box.
+   - ML stopped in the junction: prio 1×: 603 (2.0% of ML samples); 2×: 948 (3.2%); 3×: 444 (1.5%).
+   - In all three the hottest ML tiles are on the W row at its east entry: just downstream of the W→S and lane splits, before the doubled ML bridge, and at the entry tile.
+   - Hypothesis, unconfirmed: the bridge block (a bridge can't carry signals) limits ML headway; or W→S queues back up from the S merge, which the closed south loop couples to joiner waiting.
+   - Copies: prio 1× at 49,4, 2× at 78,31, 3× at 4,32. the engineer is holding signalling comments until the simulation ("it will all come out in simulation. It may just be down to waiting bay sizing"). Headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
 4. **D3d robustness round 2:** TL6 is fixed (3f2bfedd09, the search box). TL3 is still no layout: in pass 2 N→E is trapped by E→S in the under-span corridor (hypothesis from the D3d diagnosis).
 5. **D78 levers, in D95 order** (fit the landscape first; terraforming is a priced fallback, not the default):
    - first a breakdown of why each hilly no-layout spot fails (height, water or blocked);
