@@ -51,7 +51,7 @@ struct JunctionGenerateResult {
 	std::optional<JunctionLayout> layout;
 	JunctionGenerateError error = JunctionGenerateError::None;
 	TileIndexDiffC hub{}; ///< The offset, in the returned layout, of the frame's hub point (hub_x, 0).
-	std::pair<Money, int> score{}; ///< The chosen layout's score, terrain cost included.
+	std::pair<int, Money> score{}; ///< The chosen layout's score (tiles, cost), terrain cost included in the cost.
 };
 
 uint16_t CurveSpeedLimitForSpacing(uint spacing, uint8_t curve_speed);
@@ -92,8 +92,8 @@ struct JunctionCandidateParams {
  */
 std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain = nullptr, Money *terrain_cost = nullptr, TileIndexDiffC *hub = nullptr);
 
-/** Generator score of a layout: cost, then open space (D76). Lower is better. */
-std::pair<Money, int> ScoreJunctionLayout(const JunctionLayout &layout, const JunctionSpec &spec); // second = -open rectangle area
+/** Generator score of a layout: the count of tiles it builds on or over, then the build cost (D114). Lower is better. */
+std::pair<int, Money> ScoreJunctionLayout(const JunctionLayout &layout, const JunctionSpec &spec);
 
 /** The candidate planes for a terrain: the most common z_max values of Buildable tiles around the hub, at most 3. */
 std::vector<int> JunctionTerrainPlanes(const JunctionTerrain &terrain);
@@ -102,7 +102,7 @@ std::vector<int> JunctionTerrainPlanes(const JunctionTerrain &terrain);
 struct JunctionLibraryEntry {
 	JunctionLayout layout;
 	TileIndexDiffC hub{}; ///< As JunctionGenerateResult::hub.
-	std::pair<Money, int> score; ///< ScoreJunctionLayout on flat ground.
+	std::pair<int, Money> score; ///< ScoreJunctionLayout on flat ground.
 	int area = 0; ///< layout.size.x * layout.size.y.
 	JunctionFrame frame; ///< The frame the entry was built with; FitJunctionLibrary places the hub at its hub_x.
 };
@@ -124,7 +124,7 @@ struct JunctionLibraryFit {
  * Fit each library entry to the terrain at each of JunctionTerrainPlanes(terrain), with tile lookups only.
  * A fit needs every tile holding track and every bridge head UsableAt the plane, and every bridge middle tile SpanOk.
  * Terrain cost is the sum of CostAt over the tiles holding track or a bridge head (each tile once).
- * Best = lowest (score.first + terrain_cost, score.second, area), ties to the earlier entry, then the earlier plane.
+ * Best = lowest (score.first, score.second + terrain_cost, area), ties to the earlier entry, then the earlier plane.
  * @return The best fit, or std::nullopt when nothing fits (also when the spec gives NeedsMlGap, i.e. an empty library).
  */
 std::optional<JunctionLibraryFit> FitJunctionLibrary(const std::vector<JunctionLibraryEntry> &library, const JunctionTerrain &terrain);

@@ -425,13 +425,24 @@ std::vector<RuleViolation> CheckGeometry(const JunctionCheckContext &ctx)
 	return out;
 }
 
-/** G4: along a path, a merge must not be followed by a split. */
+/** G4: along a path, a merge must not be followed by a split. D110: two splits on adjacent tiles of a mainline path are wrong. */
 std::vector<RuleViolation> CheckOrder(const JunctionCheckContext &ctx)
 {
 	const auto used = UsedTracks(ctx);
 	std::vector<RuleViolation> out;
 	for (const JunctionPath &path : ctx.paths) {
 		const std::vector<SwitchEvent> events = SwitchEventsOf(ctx.layout, used, path);
+		const bool is_ml = (path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::EOut) || (path.from == JunctionPortRole::WIn && path.to == JunctionPortRole::WOut);
+		if (is_ml) {
+			const SwitchEvent *previous = nullptr;
+			for (const SwitchEvent &event : events) {
+				if (!event.first) continue;
+				if (previous != nullptr && event.second == previous->second + 1) {
+					AddViolation(out, JunctionRule::Order, path.pieces[event.second].tile, "adjacent splits: make one three-way split or leave one signal tile");
+				}
+				previous = &event;
+			}
+		}
 		const auto first_merge = std::ranges::find_if(events, [](const SwitchEvent &e) { return !e.first; });
 		if (first_merge == events.end()) continue;
 		for (const SwitchEvent &event : events) {

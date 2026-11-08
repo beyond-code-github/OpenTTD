@@ -587,7 +587,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				} else if (full.result.layout.has_value()) {
 					const auto distance = [](const JunctionNearResult &r) { return std::max(std::abs(r.offset.x), std::abs(r.offset.y)); };
 					const auto rank = [](const JunctionNearResult &r) {
-						return std::tuple<Money, int, int>{r.result.score.first, r.result.score.second, r.result.layout->size.x * r.result.layout->size.y};
+						return std::tuple<int, Money, int>{r.result.score.first, r.result.score.second, r.result.layout->size.x * r.result.layout->size.y};
 					};
 					if (distance(full) != distance(fit)) {
 						take_fit = distance(fit) < distance(full);

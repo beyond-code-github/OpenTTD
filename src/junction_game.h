@@ -65,7 +65,7 @@ JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const Junction
 /**
  * The instant tier (D96): fit the library at the anchor, then at the nearby offsets, using the same shifted snapshots as GenerateJunctionNear.
  * Stops at the first offset with a fit.
- * @return The fitted entry's layout as a result (error None, hub and score from the entry, terrain cost added to score.first), with its offset;
+ * @return The fitted entry's layout as a result (error None, hub and score from the entry, terrain cost added to score.second), with its offset;
  *         or an empty result with error NoLayout and offset (0,0) when nothing fits.
  */
 JunctionNearResult FitJunctionLibraryNear(const std::vector<JunctionLibraryEntry> &library, const JunctionTerrain &terrain, uint8_t rotation, bool mirrored);

@@ -203,9 +203,10 @@ JunctionFrame MakeJunctionFrame(const JunctionSpec &spec)
  * @param terrain Optional terrain snapshot in the generator's working coordinates (see the header).
  * @param terrain_cost Receives the terrain cost when terrain is set.
  * @param gap 0 puts lane A's RFL right after its far head and lane B's near head right after its S-bend; 1 adds one plain tile to each (D110).
+ * @param sb_back For the parallelogram style, the shift-back S-bend starts this many tiles upstream of the N->W window's far end (D110 4).
  * @return The layout, or std::nullopt when this candidate cannot be built.
  */
-static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, int gap)
+static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, int gap, int sb_back)
 {
 	const JunctionFrame frame = MakeJunctionFrame(spec);
 	const int g = spec.ml_gap;
@@ -264,7 +265,7 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 	 * Fences: E->S may not touch column xI above row g+3, so it crosses the N column low down and N->E bridges straight
 	 * over it. W->S and N->W stay on the branch side: they may not use the ML gap rows or the ground under ML bridges.
 	 */
-	auto route_movements = [&](JunctionLayout &l, bool crossable_w, const std::vector<TileIndexDiffC> &under_spans, int nw_max_x, int lane_b_max_x, bool note, int nw_row, int nw_min_x) -> bool {
+	auto route_movements = [&](JunctionLayout &l, bool crossable_w, const std::vector<TileIndexDiffC> &under_spans, int nw_max_x, int lane_b_max_x, bool note, int nw_row, int nw_min_x, int sl_x) -> bool {
 		std::vector<TileIndexDiffC> w_tiles;
 		if (crossable_w) for (int x = 0; x <= frame.width - 1; x++) w_tiles.push_back(tile(x, w_row));
 		std::vector<TileIndexDiffC> column_fence;
@@ -288,8 +289,14 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 		if (note) note_crossings(*e_to_s);
 
 		request = base;
-		request.starts = PlainRowPieces(l, w_row, Trackdir::X_NE, xO + 2, frame.width - 3);
-		for (const JunctionRouteEnd &end : PlainRowPieces(l, b_row, Trackdir::X_NE, xO + 2, lane_b_max_x)) request.starts.push_back(end);
+		if (sl_x < 0) {
+			request.starts = PlainRowPieces(l, w_row, Trackdir::X_NE, xO + 2, frame.width - 3);
+			for (const JunctionRouteEnd &end : PlainRowPieces(l, b_row, Trackdir::X_NE, xO + 2, lane_b_max_x)) request.starts.push_back(end);
+		} else {
+			/* D110: with the lanes fixed, W->S splits off the single W track first, one plain tile (the signal tile) before the lane split. */
+			request.starts = PlainRowPieces(l, w_row, Trackdir::X_NE, sl_x, sl_x);
+			if (sl_x < xO + 2 || request.starts.empty()) return false;
+		}
 		request.goals = stub_pieces(xO, Trackdir::Y_SE);
 		if (!RouteFencedAndAdd(l, request, branch_fence).has_value()) return false;
 
@@ -310,7 +317,7 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 		request.goals = PlainRowPieces(l, nw_row, Trackdir::X_NE, nw_min_x, nw_max_x);
 		return RouteFencedAndAdd(l, request, branch_fence).has_value();
 	};
-	if (!route_movements(layout, true, {}, xI - 2, frame.width - 3, true, w_row, 2)) return std::nullopt;
+	if (!route_movements(layout, true, {}, xI - 2, frame.width - 3, true, w_row, 2, -1)) return std::nullopt;
 
 	if (!zone.empty()) {
 		const int h_w = *std::ranges::min_element(zone) - params.bridge_margin;
@@ -354,7 +361,7 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 			raster_a_style1 = std::move(*found_a);
 			merge_x = raster_a_style1.pieces.back().tile.x;
 			nw_max_x = nw_max_for(*merge_x);
-			x_sb = nw_max_x - 6;
+			x_sb = nw_max_x - sb_back;
 			if (x_sb < 2) return std::nullopt;
 		}
 		/* Lane B: find p, q, r and s by rasterizing and checking the piece positions. */
@@ -474,20 +481,18 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 			under_spans.push_back(tile(x, params.lane_style == 1 ? w_row : w_row - 1));
 			under_spans.push_back(tile(x, b_row));
 		}
-		/*
-		 * W->S may leave lane B only a train length after lane B's S-bend, so its first turn is clear of the S-bend's turns (G3).
-		 * N->W may join only a train length after the lane merge, so the prio's coverage stays on single track (D85).
-		 */
-		int lane_b_axis_x = -1;
+		/* N->W may join only a train length after the lane merge, so the prio's coverage stays on single track (D85). */
+		/* D110: the lane split is where lane B first leaves the W row's axis piece. */
+		int x_ls = -1;
 		for (const JunctionPiece &piece : raster_b.pieces) {
-			if (piece.tile.y == b_row && IsDiagonalTrackdir(piece.trackdir)) {
-				lane_b_axis_x = piece.tile.x;
+			if (!IsDiagonalTrackdir(piece.trackdir)) {
+				x_ls = piece.tile.x;
 				break;
 			}
 		}
-		const int lane_b_max_x = lane_b_axis_x - static_cast<int>(spec.tl);
+		if (x_ls < 0) return std::nullopt;
 		if (params.lane_style == 0) nw_max_x = nw_max_for(*merge_x);
-		if (!route_movements(layout, false, under_spans, nw_max_x, lane_b_max_x, false, nw_row, params.lane_style == 1 ? x_sb + 3 : 2)) return std::nullopt;
+		if (!route_movements(layout, false, under_spans, nw_max_x, frame.width - 3, false, nw_row, params.lane_style == 1 ? x_sb + 1 : 2, x_ls + 3)) return std::nullopt;
 	}
 
 	/* Crop the E and W rows to the content. */
@@ -577,18 +582,34 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 /**
  * Build one generator candidate: the tight variant first (D110, gap 0); when that is not rule-clean, the variant with one more plain tile
  * after lane B's S-bend and before lane A's S-bend (gap 1) is built once and returned instead.
+ * For the parallelogram style the shift-back is tried tightest first (D110 4): the first rule-clean shift-back wins.
  */
 std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub)
 {
-	std::optional<JunctionLayout> tight = BuildJunctionCandidateWithGap(spec, params, terrain, terrain_cost, hub, 0);
-	if (tight.has_value() && CheckJunctionRules(*tight, spec).empty()) return tight;
-	Money loose_cost = 0;
-	TileIndexDiffC loose_hub{};
-	std::optional<JunctionLayout> loose = BuildJunctionCandidateWithGap(spec, params, terrain, &loose_cost, &loose_hub, 1);
-	if (!loose.has_value()) return tight;
-	if (terrain_cost != nullptr) *terrain_cost = loose_cost;
-	if (hub != nullptr) *hub = loose_hub;
-	return loose;
+	bool clean = false;
+	auto attempt = [&](int sb_back) -> std::optional<JunctionLayout> {
+		clean = false;
+		std::optional<JunctionLayout> tight = BuildJunctionCandidateWithGap(spec, params, terrain, terrain_cost, hub, 0, sb_back);
+		if (tight.has_value() && CheckJunctionRules(*tight, spec).empty()) {
+			clean = true;
+			return tight;
+		}
+		Money loose_cost = 0;
+		TileIndexDiffC loose_hub{};
+		std::optional<JunctionLayout> loose = BuildJunctionCandidateWithGap(spec, params, terrain, &loose_cost, &loose_hub, 1, sb_back);
+		if (!loose.has_value()) return tight;
+		if (terrain_cost != nullptr) *terrain_cost = loose_cost;
+		if (hub != nullptr) *hub = loose_hub;
+		clean = CheckJunctionRules(*loose, spec).empty();
+		return loose;
+	};
+	if (params.lane_style != 1) return attempt(6);
+	std::optional<JunctionLayout> result;
+	for (int sb_back = 1; sb_back <= 6; sb_back++) {
+		result = attempt(sb_back);
+		if (clean) break;
+	}
+	return result;
 }
 
 /** The number of middle tiles of a bridge. */
@@ -597,54 +618,26 @@ static uint BridgeMiddleTiles(const JunctionBridge &bridge)
 	return static_cast<uint>(std::abs(bridge.end.x - bridge.start.x) + std::abs(bridge.end.y - bridge.start.y)) - 1;
 }
 
-/** The area of the largest axis-aligned rectangle of empty tiles in the layout's bounding box (D76). */
-static int LargestOpenRectangle(const JunctionLayout &layout)
+/** Generator score of a layout: the count of tiles it builds on or over, then the build cost (D114). Lower is better. */
+std::pair<int, Money> ScoreJunctionLayout(const JunctionLayout &layout, const JunctionSpec &spec)
 {
-	const int w = layout.size.x;
-	const int h = layout.size.y;
-	if (w <= 0 || h <= 0) return 0;
-	std::vector<uint8_t> used(static_cast<size_t>(w) * h, 0);
-	auto mark = [&](int x, int y) {
-		if (x >= 0 && x < w && y >= 0 && y < h) used[static_cast<size_t>(y) * w + x] = 1;
-	};
+	std::set<std::pair<int, int>> tiles;
+	int track_bits = 0;
 	for (const JunctionTrack &jt : layout.tracks) {
-		if (!jt.tracks.None()) mark(jt.offset.x, jt.offset.y);
+		track_bits += static_cast<int>(jt.tracks.Count());
+		if (!jt.tracks.None()) tiles.insert({jt.offset.x, jt.offset.y});
 	}
+	Money cost = spec.prices.rail_piece * track_bits + spec.prices.signal * static_cast<int>(layout.signals.size());
 	for (const JunctionBridge &bridge : layout.bridges) {
-		const int x0 = std::min<int>(bridge.start.x, bridge.end.x);
-		const int x1 = std::max<int>(bridge.start.x, bridge.end.x);
-		const int y0 = std::min<int>(bridge.start.y, bridge.end.y);
-		const int y1 = std::max<int>(bridge.start.y, bridge.end.y);
-		for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) mark(x, y);
-	}
-
-	int best = 0;
-	std::vector<int> heights(w, 0);
-	for (int y = 0; y < h; y++) {
-		for (int x = 0; x < w; x++) heights[x] = used[static_cast<size_t>(y) * w + x] ? 0 : heights[x] + 1;
-		std::vector<int> stack; ///< Column indices with increasing heights.
-		for (int x = 0; x <= w; x++) {
-			const int cur = x < w ? heights[x] : 0;
-			while (!stack.empty() && heights[stack.back()] >= cur) {
-				const int height = heights[stack.back()];
-				stack.pop_back();
-				const int left = stack.empty() ? -1 : stack.back();
-				best = std::max(best, height * (x - left - 1));
-			}
-			stack.push_back(x);
+		cost += spec.prices.bridge(BridgeMiddleTiles(bridge));
+		const int dx = (bridge.end.x > bridge.start.x) - (bridge.end.x < bridge.start.x);
+		const int dy = (bridge.end.y > bridge.start.y) - (bridge.end.y < bridge.start.y);
+		for (int x = bridge.start.x, y = bridge.start.y;; x += dx, y += dy) {
+			tiles.insert({x, y});
+			if (x == bridge.end.x && y == bridge.end.y) break;
 		}
 	}
-	return best;
-}
-
-/** Generator score of a layout: cost, then open space (D76). Lower is better. */
-std::pair<Money, int> ScoreJunctionLayout(const JunctionLayout &layout, const JunctionSpec &spec)
-{
-	int track_bits = 0;
-	for (const JunctionTrack &jt : layout.tracks) track_bits += static_cast<int>(jt.tracks.Count());
-	Money cost = spec.prices.rail_piece * track_bits + spec.prices.signal * static_cast<int>(layout.signals.size());
-	for (const JunctionBridge &bridge : layout.bridges) cost += spec.prices.bridge(BridgeMiddleTiles(bridge));
-	return {cost, -LargestOpenRectangle(layout)};
+	return {static_cast<int>(tiles.size()), cost};
 }
 
 /** The candidate planes for a terrain: the most common z_max values of Buildable tiles around the hub, at most 3. */
@@ -700,7 +693,7 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 	}
 
 	std::optional<JunctionLayout> best;
-	std::pair<Money, int> best_score{};
+	std::pair<int, Money> best_score{};
 	int best_area = 0;
 	TileIndexDiffC best_hub{};
 
@@ -743,8 +736,8 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 				std::optional<JunctionLayout> &layout = r.layout;
 				const TileIndexDiffC hub = r.hub;
 				clean_here = true;
-				std::pair<Money, int> score = ScoreJunctionLayout(*layout, spec);
-				score.first += r.terrain_cost;
+				std::pair<int, Money> score = ScoreJunctionLayout(*layout, spec);
+				score.second += r.terrain_cost;
 				const int area = layout->size.x * layout->size.y;
 				if (!best.has_value() || score < best_score || (score == best_score && area < best_area)) {
 					best = std::move(layout);
@@ -815,7 +808,7 @@ std::optional<JunctionLibraryFit> FitJunctionLibrary(const std::vector<JunctionL
 {
 	const std::vector<int> planes = JunctionTerrainPlanes(terrain);
 	std::optional<JunctionLibraryFit> best;
-	std::tuple<Money, int, int> best_key{};
+	std::tuple<int, Money, int> best_key{};
 	for (size_t i = 0; i < library.size(); i++) {
 		const JunctionLibraryEntry &e = library[i];
 		const int ox = e.frame.hub_x - e.hub.x;
@@ -850,7 +843,7 @@ std::optional<JunctionLibraryFit> FitJunctionLibrary(const std::vector<JunctionL
 			occupied.erase(std::unique(occupied.begin(), occupied.end()), occupied.end());
 			Money cost = 0;
 			for (const auto &[x, y] : occupied) cost += terrain.CostAt(x, y, plane);
-			const std::tuple<Money, int, int> key{e.score.first + cost, e.score.second, e.area};
+			const std::tuple<int, Money, int> key{e.score.first, e.score.second + cost, e.area};
 			if (!best.has_value() || key < best_key) {
 				best = JunctionLibraryFit{i, plane, cost};
 				best_key = key;

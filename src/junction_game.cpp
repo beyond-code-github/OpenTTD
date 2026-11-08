@@ -353,7 +353,7 @@ JunctionNearResult FitJunctionLibraryNear(const std::vector<JunctionLibraryEntry
 		found.result.layout = entry.layout;
 		found.result.error = JunctionGenerateError::None;
 		found.result.hub = entry.hub;
-		found.result.score = {entry.score.first + fit->terrain_cost, entry.score.second};
+		found.result.score = {entry.score.first, entry.score.second + fit->terrain_cost};
 		found.offset = d;
 		return found;
 	}

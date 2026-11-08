@@ -296,6 +296,41 @@ TEST_CASE("CheckOrder: split then merge passes, merge then split fails", "[junct
 	CHECK(Has(CheckOrder(ctx_bad), JunctionRule::Order, 6, 1, "split"));
 }
 
+/**
+ * The main line runs along row 1 from x = 0 to 9. One branch leaves it towards row 2 at first_x, another towards row 0 at second_x.
+ * @param first_x The tile where the row 2 branch leaves.
+ * @param second_x The tile where the row 0 branch leaves.
+ */
+static JunctionLayout TwoSplits(int first_x, int second_x)
+{
+	return Build({
+		{{0, 1}, Trackdir::X_SW, "FFFFFFFFF"},
+		{{static_cast<int16_t>(first_x - 1), 1}, Trackdir::X_SW, std::string("LFR") + std::string(9 - (first_x + 1), 'F')},
+		{{static_cast<int16_t>(second_x - 1), 1}, Trackdir::X_SW, std::string("RFL") + std::string(9 - (second_x + 1), 'F')},
+	});
+}
+
+/* D110: two splits on adjacent tiles of a mainline path are flagged; one plain tile between them is not. */
+TEST_CASE("CheckOrder: adjacent splits on a mainline path", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<Movement> expected = {{Role::EIn, Role::EOut}, {Role::EIn, Role::SOut}, {Role::EIn, Role::WOut}};
+	const std::vector<JunctionPort> ports = {
+		Port(Role::EIn, 0, 1, Trackdir::X_SW), Port(Role::EOut, 9, 1, Trackdir::X_SW),
+		Port(Role::SOut, 9, 2, Trackdir::X_SW), Port(Role::WOut, 9, 0, Trackdir::X_SW),
+	};
+
+	const JunctionLayout adjacent = TwoSplits(3, 4);
+	const JunctionCheckContext ctx_adjacent = MakeJunctionCheckContext(adjacent, spec, ports, expected);
+	REQUIRE(ctx_adjacent.paths.size() == 3);
+	CHECK(Has(CheckOrder(ctx_adjacent), JunctionRule::Order, 4, 1, "adjacent splits"));
+
+	const JunctionLayout gap = TwoSplits(3, 5);
+	const JunctionCheckContext ctx_gap = MakeJunctionCheckContext(gap, spec, ports, expected);
+	REQUIRE(ctx_gap.paths.size() == 3);
+	CHECK(CheckOrder(ctx_gap).empty());
+}
+
 /** X H = H X on row 0 with the tracks either side of the heads. */
 static JunctionLayout BridgeLayout()
 {

@@ -109,6 +109,32 @@ TEST_CASE("GenerateJunction: the W side is tight", "[junction]")
 	CHECK(m.nw_to_lane_merge < 8);
 }
 
+/* D110 3: W->S splits off first; one plain tile, carrying a signal, sits between the SL split and the lane split. */
+TEST_CASE("GenerateJunction: the SL splits first with one signal tile before the lane split", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	CHECK(CheckJunctionRules(*result.layout, spec).empty());
+	const std::vector<JunctionPort> ports = FindJunctionPorts(*result.layout);
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(*result.layout, spec, ports, JunctionTMovements());
+	const auto used = UsedTracks(ctx);
+	int checked = 0;
+	for (const JunctionPath &path : ctx.paths) {
+		if (path.from != JunctionPortRole::WIn || path.to != JunctionPortRole::WOut) continue;
+		std::vector<size_t> splits;
+		for (const SwitchEvent &event : SwitchEventsOf(*result.layout, used, path)) {
+			if (event.first) splits.push_back(event.second);
+		}
+		REQUIRE(splits.size() >= 2);
+		CHECK(splits[1] - splits[0] == 2);
+		CHECK(IsSignalledPiece(*result.layout, path.pieces[splits[0] + 1]));
+		checked++;
+	}
+	CHECK(checked == 2);
+	WARN("size " << result.layout->size.x << "x" << result.layout->size.y << "\n" << RenderJunctionAscii(*result.layout));
+}
+
 /* J1 / D116: G9c checks the coverage itself. This candidate puts the lane merge just beyond the coverage; it used to be flagged by the "one more signalled segment" extension, and G9b judges it now. */
 TEST_CASE("CheckPrio: a lane merge just beyond the coverage is not a split inside it", "[junction]")
 {
@@ -228,11 +254,11 @@ TEST_CASE("GenerateJunction: doubled bridges are no longer than needed", "[junct
 
 	/* The winner of the margin 3 only sweep. */
 	std::optional<JunctionLayout> old_best;
-	std::pair<Money, int> old_score{};
+	std::pair<int, Money> old_score{};
 	int old_area = 0;
 	for (const SweepCandidate &c : SweepCandidates(spec)) {
 		if (!CheckJunctionRules(c.layout, spec).empty()) continue;
-		const std::pair<Money, int> score = ScoreJunctionLayout(c.layout, spec);
+		const std::pair<int, Money> score = ScoreJunctionLayout(c.layout, spec);
 		const int area = c.layout.size.x * c.layout.size.y;
 		if (!old_best.has_value() || score < old_score || (score == old_score && area < old_area)) {
 			old_best = c.layout;
@@ -455,7 +481,7 @@ TEST_CASE("GenerateJunction is deterministic", "[junction]")
 	CHECK(SameLayout(*a.layout, *b.layout));
 }
 
-TEST_CASE("ScoreJunctionLayout prefers the cheaper of two layouts", "[junction]")
+TEST_CASE("ScoreJunctionLayout prefers the cheaper of two layouts with equal tiles", "[junction]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	JunctionLayout cheap;
@@ -466,12 +492,27 @@ TEST_CASE("ScoreJunctionLayout prefers the cheaper of two layouts", "[junction]"
 	JunctionLayout dear = cheap;
 	dear.tracks.push_back({{1, 0}, TrackBits{Track::Y}});
 
-	const std::pair<Money, int> a = ScoreJunctionLayout(cheap, spec);
-	const std::pair<Money, int> b = ScoreJunctionLayout(dear, spec);
-	CHECK(a.first == 300);
-	CHECK(b.first == 400);
+	const std::pair<int, Money> a = ScoreJunctionLayout(cheap, spec);
+	const std::pair<int, Money> b = ScoreJunctionLayout(dear, spec);
+	CHECK(a.second == 300);
+	CHECK(b.second == 400);
 	CHECK(a < b);
-	CHECK(a.second == -3);
+	CHECK(a.first == 3);
+	CHECK(b.first == 3);
+
+	/* D114: fewer tiles beat a lower cost. */
+	JunctionLayout compact = dear;
+	compact.tracks.pop_back();
+	compact.tracks.pop_back();
+	compact.tracks.pop_back();
+	compact.tracks.push_back({{0, 0}, TrackBits{Track::Y}});
+	compact.tracks.push_back({{1, 0}, TrackBits{Track::Y}});
+	compact.tracks.push_back({{0, 0}, TrackBits{Track::Y}});
+	JunctionLayout wide = cheap;
+	wide.tracks.push_back({{3, 0}, TrackBits{Track::X}});
+	wide.tracks.push_back({{4, 0}, TrackBits{Track::X}});
+	CHECK(ScoreJunctionLayout(wide, spec).first == 5);
+	CHECK(ScoreJunctionLayout(compact, spec) < ScoreJunctionLayout(wide, spec));
 }
 
 TEST_CASE("Junction generator spec sweep", "[.gensweep]")
@@ -726,8 +767,9 @@ TEST_CASE("FitJunctionLibrary on flat terrain is at least as good as GenerateJun
 	const JunctionGenerateResult gen = GenerateJunction(spec, &flat);
 	REQUIRE(gen.layout.has_value());
 	const JunctionLibraryEntry &entry = library[fit->entry];
-	WARN("fit score " << (entry.score.first + fit->terrain_cost) << " terrain_cost " << fit->terrain_cost << ", gen score " << ScoreJunctionLayout(*gen.layout, spec).first);
-	CHECK(entry.score.first + fit->terrain_cost <= ScoreJunctionLayout(*gen.layout, spec).first + 0);
+	const std::pair<int, Money> gen_score = ScoreJunctionLayout(*gen.layout, spec);
+	WARN("fit tiles " << entry.score.first << " cost " << (entry.score.second + fit->terrain_cost) << ", gen tiles " << gen_score.first << " cost " << gen_score.second);
+	CHECK(std::make_pair(entry.score.first, entry.score.second + fit->terrain_cost) <= gen_score);
 }
 
 TEST_CASE("BuildJunctionLibrary is deterministic", "[junction][library]")
