@@ -103,7 +103,12 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
 
 **Next, in order:**
 1. **D3d robustness round 2:** ml_gap 1 with branch_gap 0 at TL3/TL6 gives no layout. Diagnose with `[.gen]` (env `JUNCTION_GEN_TL/G/B`, `JUNCTION_GEN_SKIP`; temporary failing-step prints in `BuildJunctionCandidate`).
-2. **D78 levers (b)–(d):** sloped legs, terraforming, ML water bridges. Plan each before starting.
+2. **D78 levers, in D95 order** (fit the landscape first; terraforming is a priced fallback, not the default):
+   - first a breakdown of why each hilly no-layout spot fails (height, water or blocked);
+   - (b) sloped legs;
+   - (c) terraforming as a priced sweep option;
+   - (d) ML water bridges.
+   Plan each before starting.
 3. **Joiner** (`PLAN-joiner.md`): blocked on the engineer's three answers.
 4. **1c physics and traffic** (PLAN-1c): headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
 5. **Follow-ons:** a fast reject for hopeless terrain planes (a no-fit spot costs about 25 s in Release with nearest fit), multi-lane (D72), option C (widen the gap so the branch bridges over the ML), research the coop prio-over-bridge pattern, the D91 swap (parked until clarified).
