@@ -324,9 +324,10 @@ TEST_CASE("Queue spillback: only hold points stop trains", "[junction][throughpu
  * Coverage is JunctionPrioLength rounded up to whole train lengths, plus extra_tl more train lengths.
  * @param entry_back Straight tiles between the Entry signal and the corner piece at (m,0).
  * @param extra_tl Train lengths of coverage added to the rounded-up one.
+ * @param fixed_prio_tl When non-zero, the coverage in train lengths, instead of the rounded-up one plus extra_tl.
  * @return The timings of the one merge.
  */
-static std::vector<JunctionPrioTiming> PrioMergeTimings(int entry_back, uint32_t extra_tl)
+static std::vector<JunctionPrioTiming> PrioMergeTimings(int entry_back, uint32_t extra_tl, uint8_t fixed_prio_tl = 0)
 {
 	JunctionSpec spec = MakeTestJunctionSpec();
 	spec.sd = 4;
@@ -334,6 +335,7 @@ static std::vector<JunctionPrioTiming> PrioMergeTimings(int entry_back, uint32_t
 	const uint16_t speed = JunctionTerminalSpeed(train);
 	const uint32_t length = JunctionPrioLength(train, speed, spec.tl, spec.sd);
 	spec.prio_tl = static_cast<uint8_t>((length + spec.tl - 1) / spec.tl + extra_tl);
+	if (fixed_prio_tl != 0) spec.prio_tl = fixed_prio_tl;
 
 	const int m = spec.prio_tl * spec.tl + 8;
 	const int ml_end = m + 12;
@@ -372,6 +374,18 @@ TEST_CASE("Prio timing: coverage from JunctionPrioLength is enough at the merge"
 	CHECK(timings[0].entry_to_merge == JunctionProgressPerCornerPiece());
 	CHECK_FALSE(timings[0].ml_delayed);
 	CHECK_FALSE(timings[0].timed_out);
+	CHECK(timings[0].margin_ticks > 0);
+	CHECK(timings[0].margin_ticks < UINT32_MAX);
+}
+
+TEST_CASE("Prio timing: a later ML train is delayed when the coverage is short", "[junction][throughput]")
+{
+	const std::vector<JunctionPrioTiming> timings = PrioMergeTimings(0, 0, 1);
+	REQUIRE(timings.size() == 1);
+	CHECK(timings[0].ml_delayed);
+	CHECK(timings[0].margin_ticks == 0);
+	/* The merge tile is tl + 8 tiles along the ML, and the coverage is one train length, so the coverage edge is 8 tiles along. */
+	CHECK(timings[0].worst_start < 8 * static_cast<int64_t>(JunctionProgressPerStraightTile()));
 }
 
 TEST_CASE("Prio timing: a distant Entry signal delays the ML", "[junction][throughput]")

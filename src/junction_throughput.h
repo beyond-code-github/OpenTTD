@@ -51,14 +51,15 @@ struct JunctionQueueConflict {
 	bool ml_blocked; ///< The blocked movement is an ML movement.
 };
 
-/** Worst-case timing of one prio merge on the real layout (PLAN-sim-driven §3.1, ML delay; D119). */
+/** Worst-case timing of one prio merge on the real layout, over every ML train start at or beyond the coverage edge (PLAN-sim-driven §3.1, ML delay; D119). */
 struct JunctionPrioTiming {
 	size_t ml; ///< Index of the ML movement.
 	size_t joiner; ///< Index of the joining movement.
 	TileIndexDiffC merge_tile; ///< Layout offset of the merge piece.
 	uint32_t entry_to_merge; ///< Progress from the joiner's Entry signal piece start to the merge piece start.
 	bool ml_delayed; ///< The ML train reaches a signal whose next block the joiner still holds.
-	uint32_t margin_ticks; ///< When not delayed: the smallest clearance in ticks. 0 when delayed.
+	uint32_t margin_ticks; ///< When not delayed: the ML ticks the coverage edge would have to move towards the merge for a delay; UINT32_MAX if no ML start is ever delayed. 0 when delayed.
+	int64_t worst_start; ///< Progress on the ML's path of the delaying ML start nearest the merge (may be negative) when delayed, else the coverage edge.
 	bool timed_out; ///< The run hit the 20000-tick cap.
 };
 

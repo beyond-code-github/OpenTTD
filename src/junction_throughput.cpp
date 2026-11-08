@@ -369,8 +369,12 @@ static std::set<size_t> BodyBlocks(const JunctionLayout &layout, const std::map<
 	return out;
 }
 
+/** The ticks, as [first, last], in which the joiner body holds a block; one entry per disjoint run. */
+using HeldIntervals = std::vector<std::pair<uint32_t, uint32_t>>;
+
 /**
- * Simulate the worst case of one prio merge: the joiner starts from rest at its Entry signal piece while the ML train is just outside the coverage.
+ * Simulate one prio merge: the joiner runs from rest at its Entry signal piece, and every ML train start at or beyond the coverage edge is checked against the blocks the joiner holds.
+ * The joiner does not depend on the ML train, so it is run once and its held intervals per block recorded; the ML train runs at constant design speed.
  * @param layout The layout.
  * @param blocks The layout's blocks.
  * @param ml The ML path.
@@ -423,56 +427,82 @@ static JunctionPrioTiming SimulatePrioTiming(const JunctionLayout &layout, const
 	JunctionTrainParams params = train;
 	params.max_speed = design_speed;
 	JunctionTrainState joiner_state;
-	JunctionTrainState ml_state;
-	ml_state.speed = design_speed;
-	const int64_t ml_start = std::max<int64_t>(0, ml_starts[merge_at] - coverage);
 	auto held_blocks = [&]() {
 		const int64_t head = joiner_starts[entry_at] + static_cast<int64_t>(joiner_state.distance);
 		return BodyBlocks(layout, blocks, joiner.pieces, joiner_starts, exit, last_block, spacing, std::max(joiner_starts[0], head - tail), head);
 	};
 
-	/* The tick each block was last held by the joiner, and the smallest clearance of a block the ML crossed after it. */
-	std::map<size_t, uint32_t> last_held;
-	for (size_t block : held_blocks()) last_held[block] = 0;
-	std::optional<uint32_t> margin;
-	int64_t previous = ml_start;
+	/* Run the joiner once, recording when it holds each block. */
+	std::map<size_t, HeldIntervals> held;
+	auto record = [&]() {
+		for (size_t block : held_blocks()) {
+			HeldIntervals &intervals = held[block];
+			if (!intervals.empty() && intervals.back().second + 1 == joiner_state.ticks) {
+				intervals.back().second = joiner_state.ticks;
+			} else {
+				intervals.emplace_back(joiner_state.ticks, joiner_state.ticks);
+			}
+		}
+	};
+	record();
 	bool ended = false;
 	while (!ended && joiner_state.ticks < MAX_PRIO_TIMING_TICKS) {
 		StepJunctionTrain(params, joiner_state);
-		StepJunctionTrain(params, ml_state);
-		const uint32_t tick = joiner_state.ticks;
-		const std::set<size_t> held = held_blocks();
-		for (size_t block : held) last_held[block] = tick;
-
-		const int64_t head = ml_start + static_cast<int64_t>(ml_state.distance);
-		std::vector<std::pair<int64_t, size_t>> crossed;
-		for (const auto &signal : signals) {
-			if (signal.first > previous && signal.first <= head) crossed.push_back(signal);
-		}
-		for (int64_t n = std::max<int64_t>(1, (previous - exit) / spacing + 1); head >= exit + n * spacing; n++) {
-			crossed.emplace_back(exit + n * spacing, VIRTUAL_BLOCK_BASE + static_cast<size_t>(n));
-		}
-		previous = head;
-		for (const auto &[position, block] : crossed) {
-			if (held.contains(block)) {
-				out.ml_delayed = true;
-				break;
-			}
-			const auto it = last_held.find(block);
-			if (it != last_held.end()) margin = std::min(margin.value_or(UINT32_MAX), tick - it->second);
-		}
-		if (out.ml_delayed) break;
-
+		record();
 		const int64_t joiner_head = joiner_starts[entry_at] + static_cast<int64_t>(joiner_state.distance);
 		ended = joiner_state.speed >= design_speed && joiner_head - tail >= merge_end;
 	}
-	out.timed_out = !ended && !out.ml_delayed;
-	out.margin_ticks = out.ml_delayed ? 0 : margin.value_or(0);
+	out.timed_out = !ended;
+
+	/* The ML head's distance after n ticks at constant design speed, to the joiner's end tick. */
+	std::vector<int64_t> distance{0};
+	JunctionTrainState ml_state;
+	ml_state.speed = design_speed;
+	while (distance.size() <= joiner_state.ticks) {
+		StepJunctionTrain(params, ml_state);
+		distance.push_back(static_cast<int64_t>(ml_state.distance));
+	}
+
+	/* The virtual signals beyond the exit, for the virtual blocks the joiner held. */
+	for (const auto &[block, intervals] : held) {
+		if (block >= VIRTUAL_BLOCK_BASE) signals.emplace_back(exit + static_cast<int64_t>(block - VIRTUAL_BLOCK_BASE) * spacing, block);
+	}
+
+	/* Per signal and held interval, the ML starts that cross the signal inside it form the range [low, high]; the start x crosses at the first tick n with x + d(n) >= s. */
+	const int64_t edge = ml_starts[merge_at] - coverage;
+	std::optional<int64_t> worst;
+	std::optional<int64_t> gap;
+	for (const auto &[position, block] : signals) {
+		const auto it = held.find(block);
+		if (it == held.end()) continue;
+		for (const auto &[first, last] : it->second) {
+			if (last < 1) continue;
+			const int64_t low = position - distance[last];
+			const int64_t high = position - distance[std::max<uint32_t>(first, 1) - 1] - 1;
+			if (high < low) continue;
+			if (low <= edge) {
+				worst = std::max(worst.value_or(INT64_MIN), std::min(high, edge));
+			} else {
+				gap = std::min(gap.value_or(INT64_MAX), low - edge);
+			}
+		}
+	}
+
+	out.ml_delayed = worst.has_value();
+	out.worst_start = worst.value_or(edge);
+	if (out.ml_delayed) {
+		out.margin_ticks = 0;
+	} else if (gap.has_value()) {
+		out.margin_ticks = JunctionTicksAtSpeed(train, design_speed, static_cast<uint64_t>(*gap));
+	} else {
+		out.margin_ticks = UINT32_MAX;
+	}
 	return out;
 }
 
 /**
  * Worst-case timing of every prio merge on the real layout (PLAN-sim-driven §3.1, ML delay; D119).
+ * Each ML train start at or beyond the coverage edge is checked, not only the edge: see SimulatePrioTiming.
  * The merges, their joiners and the joiners' Entry signal pieces are found as CheckPrioReach finds them.
  * Both paths continue beyond the exit as straight track with a signal every sd tiles, from sd tiles after the exit port.
  * @param layout The layout.
@@ -481,7 +511,6 @@ static JunctionPrioTiming SimulatePrioTiming(const JunctionLayout &layout, const
  * @param train The design train, loaded.
  * @param design_speed The ML speed in cur_speed units.
  * @param tl Train length in tiles.
- * margin_ticks is 0 when no signal the ML crossed had been held by the joiner earlier, so no clearance was measured.
  * @return One timing per prio merge, ordered by ML movement and merge piece.
  */
 std::vector<JunctionPrioTiming> JunctionPrioTimings(const JunctionLayout &layout, const JunctionSpec &spec, const std::vector<JunctionPath> &paths, const JunctionTrainParams &train, uint16_t design_speed, uint8_t tl)
