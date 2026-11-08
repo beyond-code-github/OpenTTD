@@ -278,7 +278,10 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		request.crossable = w_tiles;
 		request.crossable_cost = params.crossing_cost;
 		request.starts = {start_n};
-		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, xO, 61);
+		/* D108: the N->E merge window starts beyond the prio coverage and a segment past the E->S split. */
+		const int x_s = e_to_s->pieces.front().tile.x;
+		const int cover = static_cast<int>(spec.tl * spec.prio_tl);
+		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, std::max(xO, x_s + cover + static_cast<int>(spec.sd) + 2), 61);
 		const std::optional<JunctionRaster> n_to_e = RouteAndAdd(l, request);
 		if (!n_to_e.has_value()) return false;
 		if (note) note_crossings(*n_to_e);

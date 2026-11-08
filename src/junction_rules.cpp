@@ -1220,6 +1220,30 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 				if (joins_in(b->second) != 1) AddViolation(out, JunctionRule::Prio, to_tile(key), "prio block needs exactly one join");
 			}
 
+			/* 4b. G9c (D108): no split of an ML lane inside the coverage, nor in the segment beyond it where a held train stands. */
+			for (const JunctionPath &lane : ctx.paths) {
+				if (lane.from != ml.from || lane.to != ml.to) continue;
+				const auto at = std::ranges::find_if(lane.pieces, [&](const JunctionPiece &piece) { return !piece.on_bridge && SameTile(piece.tile, tile) && piece.trackdir == merge_piece.trackdir; });
+				if (at == lane.pieces.end()) continue;
+				const size_t merge_at = static_cast<size_t>(at - lane.pieces.begin());
+				uint lane_units = 0;
+				size_t first = merge_at;
+				for (size_t i = merge_at; i-- > 0 && lane_units < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
+					lane_units += lane.pieces[i].units;
+					first = i;
+				}
+				/* One more signalled piece: the walk ends on the piece just past the first signalled piece at or beyond the coverage. */
+				while (first > 0) {
+					const bool signalled = IsSignalledPiece(layout, lane.pieces[first]);
+					first--;
+					if (signalled) break;
+				}
+				for (const SwitchEvent &other : SwitchEventsOf(layout, used, lane)) {
+					if (other.second < first || other.second >= merge_at) continue;
+					AddViolation(out, JunctionRule::Prio, lane.pieces[other.second].tile, "split inside prio coverage");
+				}
+			}
+
 			/* 5. Prio signals face upstream, one between consecutive segments, Exit farthest, Combo elsewhere. */
 			const Trackdir upstream = ReverseTrackdir(merge_piece.trackdir);
 			std::vector<const JunctionSignal *> prio_signals;

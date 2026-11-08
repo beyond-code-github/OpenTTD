@@ -1288,3 +1288,30 @@ TEST_CASE("CheckPrioReach: the generated test junction holds the joiner, and fai
 	exit->facing = ReverseTrackdir(exit->facing);
 	CHECK_FALSE(CheckPrioReach(MakeJunctionCheckContext(flipped, spec, FindJunctionPorts(flipped), JunctionTMovements())).empty());
 }
+
+TEST_CASE("CheckPrio: no ML split inside a prio's coverage (G9c, D108)", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	auto has_split_violation = [](const std::vector<RuleViolation> &violations) {
+		return std::ranges::any_of(violations, [](const RuleViolation &v) { return v.rule == JunctionRule::Prio && v.message == "split inside prio coverage"; });
+	};
+
+	/* The generated test junction keeps every switch out of the coverage. */
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	const JunctionLayout &layout = *result.layout;
+	CHECK_FALSE(has_split_violation(CheckPrio(MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements()))));
+
+	/* Layouts built for a one-train prio have their E->S split inside the coverage of a three-train prio. */
+	JunctionSpec short_prio = spec;
+	short_prio.prio_tl = 1;
+	JunctionSpec long_prio = spec;
+	long_prio.prio_tl = 3;
+	bool found = false;
+	for (int height = spec.ml_gap + 5; height <= spec.ml_gap + 20 && !found; height++) {
+		const std::optional<JunctionLayout> built = BuildJunctionCandidate(short_prio, {static_cast<uint8_t>(height), Money(0), 0});
+		if (!built.has_value()) continue;
+		found = has_split_violation(CheckPrio(MakeJunctionCheckContext(*built, long_prio, FindJunctionPorts(*built), JunctionTMovements())));
+	}
+	CHECK(found);
+}
