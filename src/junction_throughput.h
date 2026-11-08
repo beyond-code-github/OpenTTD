@@ -51,6 +51,17 @@ struct JunctionQueueConflict {
 	bool ml_blocked; ///< The blocked movement is an ML movement.
 };
 
+/** Worst-case timing of one prio merge on the real layout (PLAN-sim-driven §3.1, ML delay; D119). */
+struct JunctionPrioTiming {
+	size_t ml; ///< Index of the ML movement.
+	size_t joiner; ///< Index of the joining movement.
+	TileIndexDiffC merge_tile; ///< Layout offset of the merge piece.
+	uint32_t entry_to_merge; ///< Progress from the joiner's Entry signal piece start to the merge piece start.
+	bool ml_delayed; ///< The ML train reaches a signal whose next block the joiner still holds.
+	uint32_t margin_ticks; ///< When not delayed: the smallest clearance in ticks. 0 when delayed.
+	bool timed_out; ///< The run hit the 20000-tick cap.
+};
+
 /** What the evaluator reports. */
 struct JunctionThroughput {
 	uint16_t design_speed;
@@ -61,6 +72,7 @@ struct JunctionThroughput {
 	std::vector<size_t> bottleneck_movements; ///< Indices into movements.
 	double trains_per_1000_ticks;
 	std::vector<JunctionQueueConflict> queue_conflicts; ///< Held trains that block other movements.
+	std::vector<JunctionPrioTiming> prio_timings; ///< One per prio merge, ordered by ML movement and merge piece.
 };
 
 uint32_t JunctionTicksAtSpeed(const JunctionTrainParams &train, uint16_t speed, uint64_t distance);
@@ -70,6 +82,7 @@ std::optional<JunctionThroughput> EvaluateJunctionThroughput(const JunctionLayou
 std::vector<JunctionBlockOccupation> JunctionPathOccupations(const JunctionLayout &layout, const std::vector<JunctionPiece> &pieces, const JunctionTrainParams &train, uint16_t speed, uint8_t tl);
 std::vector<std::vector<uint32_t>> JunctionHeadways(const std::vector<JunctionMovementTiming> &movements);
 std::vector<JunctionQueueConflict> JunctionQueueConflicts(const JunctionLayout &layout, const std::vector<JunctionPath> &paths, const std::vector<bool> &is_ml, uint8_t tl);
+std::vector<JunctionPrioTiming> JunctionPrioTimings(const JunctionLayout &layout, const JunctionSpec &spec, const std::vector<JunctionPath> &paths, const JunctionTrainParams &train, uint16_t design_speed, uint8_t tl);
 void JunctionFindBottleneck(const std::vector<JunctionMovementTiming> &movements, const std::vector<double> &weights, JunctionThroughput &out);
 
 #endif /* JUNCTION_THROUGHPUT_H */

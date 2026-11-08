@@ -88,6 +88,8 @@ TEST_CASE("EvaluateJunctionThroughput on the generated test junction", "[junctio
 	});
 	CHECK(ml_in_bottleneck);
 	CHECK(std::ranges::none_of(out->queue_conflicts, [](const JunctionQueueConflict &c) { return c.ml_blocked; }));
+	CHECK_FALSE(out->prio_timings.empty());
+	CHECK(std::ranges::none_of(out->prio_timings, [](const JunctionPrioTiming &t) { return t.ml_delayed || t.timed_out; }));
 }
 
 TEST_CASE("JunctionTicksAtSpeed matches stepping", "[junction][throughput]")
@@ -312,4 +314,87 @@ TEST_CASE("Queue spillback: only hold points stop trains", "[junction][throughpu
 	AddSignal(layout, 11, 1, Trackdir::X_SW);
 	const std::vector<JunctionPath> paths = {{Role::EIn, Role::EOut, ml.pieces}, MakePath(Role::EIn, Role::EOut, {ml.pieces[0]}, branch)};
 	CHECK(JunctionQueueConflicts(layout, paths, {true, false}, tl).empty());
+}
+
+/**
+ * The timings of a hand-made prio merge.
+ * The ML runs along row 1 from x = 0 and has block signals every sd = 4 tiles, at x = m - 2 and every 4 tiles from there, so the block that holds the merge tile m is x = m - 1 .. m + 1.
+ * The joiner runs along row 0 from x = m - 8, turns down through corner pieces at (m,0) and (m,1), and runs on the ML from (m+1,1).
+ * The merge tile also holds an unused track, so the merge is a prio. The joiner's Entry signal is on the corner piece at (m,0), or entry_back straight tiles before it.
+ * Coverage is JunctionPrioLength rounded up to whole train lengths, plus extra_tl more train lengths.
+ * @param entry_back Straight tiles between the Entry signal and the corner piece at (m,0).
+ * @param extra_tl Train lengths of coverage added to the rounded-up one.
+ * @return The timings of the one merge.
+ */
+static std::vector<JunctionPrioTiming> PrioMergeTimings(int entry_back, uint32_t extra_tl)
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.sd = 4;
+	const JunctionTrainParams train = FixtureTrain(spec);
+	const uint16_t speed = JunctionTerminalSpeed(train);
+	const uint32_t length = JunctionPrioLength(train, speed, spec.tl, spec.sd);
+	spec.prio_tl = static_cast<uint8_t>((length + spec.tl - 1) / spec.tl + extra_tl);
+
+	const int m = spec.prio_tl * spec.tl + 8;
+	const int ml_end = m + 12;
+	const JunctionRaster ml = RasterizeJunctionRoute({{0, 1}, Trackdir::X_SW, std::string(ml_end, 'F')});
+	const JunctionRaster joiner = RasterizeJunctionRoute({{static_cast<int16_t>(m - 8), 0}, Trackdir::X_SW, "FFFFFFFLFR"});
+	REQUIRE(ml.error.empty());
+	REQUIRE(joiner.error.empty());
+	REQUIRE(joiner.pieces.size() == 11);
+	JunctionLayout layout = Build({{{0, 1}, Trackdir::X_SW, std::string(ml_end, 'F')}, {{static_cast<int16_t>(m - 8), 0}, Trackdir::X_SW, "FFFFFFFLFR"}});
+
+	/* The prio's join: a track on the merge tile that no path uses. */
+	for (JunctionTrack &jt : layout.tracks) {
+		if (jt.offset.x != m || jt.offset.y != 1) continue;
+		for (Track track : {Track::Upper, Track::Lower, Track::Left, Track::Right}) {
+			if (jt.tracks.Test(track)) continue;
+			jt.tracks.Set(track);
+			break;
+		}
+	}
+	for (int x = (m - 2) % 4; x <= ml_end; x += 4) AddSignal(layout, x, 1, Trackdir::X_SW);
+	const JunctionPiece &entry = joiner.pieces[8 - entry_back];
+	AddSignal(layout, entry.tile.x, entry.tile.y, entry.trackdir, SignalType::Entry);
+
+	std::vector<JunctionPiece> joiner_pieces = joiner.pieces;
+	joiner_pieces.insert(joiner_pieces.end(), ml.pieces.begin() + m + 2, ml.pieces.end());
+	const std::vector<JunctionPath> paths = {{Role::EIn, Role::EOut, ml.pieces}, {Role::WIn, Role::EOut, joiner_pieces}};
+	return JunctionPrioTimings(layout, spec, paths, train, speed, spec.tl);
+}
+
+TEST_CASE("Prio timing: coverage from JunctionPrioLength is enough at the merge", "[junction][throughput]")
+{
+	const std::vector<JunctionPrioTiming> timings = PrioMergeTimings(0, 0);
+	REQUIRE(timings.size() == 1);
+	CHECK(timings[0].ml == 0);
+	CHECK(timings[0].joiner == 1);
+	CHECK(timings[0].entry_to_merge == JunctionProgressPerCornerPiece());
+	CHECK_FALSE(timings[0].ml_delayed);
+	CHECK_FALSE(timings[0].timed_out);
+}
+
+TEST_CASE("Prio timing: a distant Entry signal delays the ML", "[junction][throughput]")
+{
+	/*
+	 * Coverage is the same as in the case above, so the ML head starts the same distance from the merge and reaches the signal at x = m - 2, the start of the merge block, after the same number of ticks T (about 460).
+	 * The joiner holds that block from just after its Entry signal and frees it when its tail is past the signal at x = m + 2, i.e. when its head is 2 + tl tiles beyond the merge tile's start.
+	 * From rest the loaded train covers about 27800 progress units (9 tiles; StepJunctionTrain at 4000 hp, 500 t, accelerating to the 160 cap) in T ticks.
+	 * With the Entry on the corner piece the head needs about 19500 units (6.3 tiles) from the Entry, so the block is free when the ML arrives.
+	 * With the Entry 6 straight tiles earlier it needs 6 tiles more, about 37900 units (12.3 tiles), which the train has not covered, so the block is still held and the ML is stopped.
+	 */
+	const std::vector<JunctionPrioTiming> timings = PrioMergeTimings(6, 0);
+	REQUIRE(timings.size() == 1);
+	CHECK(timings[0].entry_to_merge == 6 * JunctionProgressPerStraightTile() + JunctionProgressPerCornerPiece());
+	CHECK(timings[0].ml_delayed);
+	CHECK(timings[0].margin_ticks == 0);
+}
+
+TEST_CASE("Prio timing: margin grows with coverage", "[junction][throughput]")
+{
+	const std::vector<JunctionPrioTiming> base = PrioMergeTimings(0, 0);
+	const std::vector<JunctionPrioTiming> longer = PrioMergeTimings(0, 1);
+	REQUIRE(base.size() == 1);
+	REQUIRE(longer.size() == 1);
+	CHECK(longer[0].margin_ticks > base[0].margin_ticks);
 }

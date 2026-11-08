@@ -11,6 +11,7 @@
 
 #include "junction_throughput.h"
 #include "junction_rules_internal.h"
+#include "track_func.h"
 
 #include <algorithm>
 #include <map>
@@ -98,6 +99,7 @@ std::optional<JunctionThroughput> EvaluateJunctionThroughput(const JunctionLayou
 	out.headway = JunctionHeadways(out.movements);
 	JunctionFindBottleneck(out.movements, weights, out);
 	out.queue_conflicts = JunctionQueueConflicts(layout, paths, is_ml, tl);
+	out.prio_timings = JunctionPrioTimings(layout, spec, paths, train, out.design_speed, tl);
 	return out;
 }
 
@@ -307,6 +309,233 @@ std::vector<JunctionQueueConflict> JunctionQueueConflicts(const JunctionLayout &
 				if (shared == held.end()) continue;
 				out.push_back({m, stop.progress, !stop.piece.has_value(), k, *shared, is_ml[k]});
 			}
+		}
+	}
+	return out;
+}
+
+/** Tick cap of one prio timing run. */
+static constexpr uint32_t MAX_PRIO_TIMING_TICKS = 20000;
+
+/** Block ids of the virtual track beyond a path's exit start here, clear of the layout's block ids. */
+static constexpr size_t VIRTUAL_BLOCK_BASE = SIZE_MAX / 2;
+
+/** Whether two layout offsets are the same tile. */
+static bool IsSameTile(TileIndexDiffC a, TileIndexDiffC b)
+{
+	return a.x == b.x && a.y == b.y;
+}
+
+/** The progress at the start of each piece of a path, and the path's total as the last entry. */
+static std::vector<int64_t> PieceStarts(const std::vector<JunctionPiece> &pieces)
+{
+	std::vector<int64_t> out;
+	int64_t progress = 0;
+	for (const JunctionPiece &piece : pieces) {
+		out.push_back(progress);
+		progress += PieceProgress(piece);
+	}
+	out.push_back(progress);
+	return out;
+}
+
+/**
+ * The blocks a train body holds on the joiner's path and the virtual track beyond the exit.
+ * Pieces without a block (signal tiles) hold none. The virtual block 0, from the exit to the first virtual signal, is the last block of the ML's path.
+ * @param layout The layout.
+ * @param blocks The layout's blocks.
+ * @param pieces The joiner's pieces.
+ * @param starts Progress at the start of each joiner piece, in the ML's coordinates, and the end as the last entry.
+ * @param exit The ML's path end in its coordinates.
+ * @param last_block The block of the ML path's last piece that has one.
+ * @param spacing Progress between virtual signals.
+ * @param low Body tail in the ML's coordinates.
+ * @param high Body head in the ML's coordinates.
+ * @return The blocks overlapped by [low, high).
+ */
+static std::set<size_t> BodyBlocks(const JunctionLayout &layout, const std::map<std::pair<int, int>, size_t> &blocks, const std::vector<JunctionPiece> &pieces, const std::vector<int64_t> &starts, int64_t exit, std::optional<size_t> last_block, int64_t spacing, int64_t low, int64_t high)
+{
+	std::set<size_t> out;
+	for (size_t i = 0; i < pieces.size(); i++) {
+		if (starts[i] >= high || starts[i + 1] <= low) continue;
+		const std::optional<size_t> block = BlockOfPiece(layout, blocks, pieces[i]);
+		if (block.has_value()) out.insert(*block);
+	}
+	if (high > exit) {
+		for (int64_t v = (std::max(low, exit) - exit) / spacing; v <= (high - 1 - exit) / spacing; v++) {
+			out.insert(v == 0 && last_block.has_value() ? *last_block : VIRTUAL_BLOCK_BASE + static_cast<size_t>(v));
+		}
+	}
+	return out;
+}
+
+/**
+ * Simulate the worst case of one prio merge: the joiner starts from rest at its Entry signal piece while the ML train is just outside the coverage.
+ * @param layout The layout.
+ * @param blocks The layout's blocks.
+ * @param ml The ML path.
+ * @param merge_at Index of the merge piece on the ML path.
+ * @param joiner The joiner's path.
+ * @param joiner_at Index of the joiner's piece on the merge tile.
+ * @param entry_at Index of the joiner's Entry signal piece.
+ * @param spec The junction spec.
+ * @param train The design train.
+ * @param design_speed The ML speed.
+ * @param tl Train length in tiles.
+ * @return The timing, with the movement indices left for the caller.
+ */
+static JunctionPrioTiming SimulatePrioTiming(const JunctionLayout &layout, const std::map<std::pair<int, int>, size_t> &blocks, const JunctionPath &ml, size_t merge_at, const JunctionPath &joiner, size_t joiner_at, size_t entry_at, const JunctionSpec &spec, const JunctionTrainParams &train, uint16_t design_speed, uint8_t tl)
+{
+	const int64_t tail = static_cast<int64_t>(tl) * JunctionProgressPerStraightTile();
+	const int64_t spacing = static_cast<int64_t>(spec.sd) * JunctionProgressPerStraightTile();
+	const int64_t coverage = static_cast<int64_t>(spec.prio_tl) * tail;
+
+	/* The joiner's progress is mapped to the ML's by the end of the merge piece, where the two paths coincide. */
+	const std::vector<int64_t> ml_starts = PieceStarts(ml.pieces);
+	std::vector<int64_t> joiner_starts = PieceStarts(joiner.pieces);
+	const int64_t merge_end = ml_starts[merge_at + 1];
+	const int64_t offset = merge_end - joiner_starts[joiner_at + 1];
+	for (int64_t &start : joiner_starts) start += offset;
+	const int64_t exit = ml_starts.back();
+
+	std::optional<size_t> last_block;
+	for (const JunctionPiece &piece : ml.pieces) {
+		const std::optional<size_t> block = BlockOfPiece(layout, blocks, piece);
+		if (block.has_value()) last_block = block;
+	}
+
+	/* The signals the ML head crosses, each with the block beyond it: the next piece with a block. */
+	std::vector<std::pair<int64_t, size_t>> signals;
+	for (size_t j = 0; j < ml.pieces.size(); j++) {
+		if (!IsSignalledPiece(layout, ml.pieces[j])) continue;
+		for (size_t i = j + 1; i < ml.pieces.size(); i++) {
+			const std::optional<size_t> block = BlockOfPiece(layout, blocks, ml.pieces[i]);
+			if (!block.has_value()) continue;
+			signals.emplace_back(ml_starts[j], *block);
+			break;
+		}
+	}
+
+	JunctionPrioTiming out{};
+	out.merge_tile = ml.pieces[merge_at].tile;
+	out.entry_to_merge = static_cast<uint32_t>(joiner_starts[joiner_at] - joiner_starts[entry_at]);
+
+	JunctionTrainParams params = train;
+	params.max_speed = design_speed;
+	JunctionTrainState joiner_state;
+	JunctionTrainState ml_state;
+	ml_state.speed = design_speed;
+	const int64_t ml_start = std::max<int64_t>(0, ml_starts[merge_at] - coverage);
+	auto held_blocks = [&]() {
+		const int64_t head = joiner_starts[entry_at] + static_cast<int64_t>(joiner_state.distance);
+		return BodyBlocks(layout, blocks, joiner.pieces, joiner_starts, exit, last_block, spacing, std::max(joiner_starts[0], head - tail), head);
+	};
+
+	/* The tick each block was last held by the joiner, and the smallest clearance of a block the ML crossed after it. */
+	std::map<size_t, uint32_t> last_held;
+	for (size_t block : held_blocks()) last_held[block] = 0;
+	std::optional<uint32_t> margin;
+	int64_t previous = ml_start;
+	bool ended = false;
+	while (!ended && joiner_state.ticks < MAX_PRIO_TIMING_TICKS) {
+		StepJunctionTrain(params, joiner_state);
+		StepJunctionTrain(params, ml_state);
+		const uint32_t tick = joiner_state.ticks;
+		const std::set<size_t> held = held_blocks();
+		for (size_t block : held) last_held[block] = tick;
+
+		const int64_t head = ml_start + static_cast<int64_t>(ml_state.distance);
+		std::vector<std::pair<int64_t, size_t>> crossed;
+		for (const auto &signal : signals) {
+			if (signal.first > previous && signal.first <= head) crossed.push_back(signal);
+		}
+		for (int64_t n = std::max<int64_t>(1, (previous - exit) / spacing + 1); head >= exit + n * spacing; n++) {
+			crossed.emplace_back(exit + n * spacing, VIRTUAL_BLOCK_BASE + static_cast<size_t>(n));
+		}
+		previous = head;
+		for (const auto &[position, block] : crossed) {
+			if (held.contains(block)) {
+				out.ml_delayed = true;
+				break;
+			}
+			const auto it = last_held.find(block);
+			if (it != last_held.end()) margin = std::min(margin.value_or(UINT32_MAX), tick - it->second);
+		}
+		if (out.ml_delayed) break;
+
+		const int64_t joiner_head = joiner_starts[entry_at] + static_cast<int64_t>(joiner_state.distance);
+		ended = joiner_state.speed >= design_speed && joiner_head - tail >= merge_end;
+	}
+	out.timed_out = !ended && !out.ml_delayed;
+	out.margin_ticks = out.ml_delayed ? 0 : margin.value_or(0);
+	return out;
+}
+
+/**
+ * Worst-case timing of every prio merge on the real layout (PLAN-sim-driven §3.1, ML delay; D119).
+ * The merges, their joiners and the joiners' Entry signal pieces are found as CheckPrioReach finds them.
+ * Both paths continue beyond the exit as straight track with a signal every sd tiles, from sd tiles after the exit port.
+ * @param layout The layout.
+ * @param spec The junction spec; sd and prio_tl set the virtual signals and the coverage.
+ * @param paths The movements' paths, in JunctionTMovements() order.
+ * @param train The design train, loaded.
+ * @param design_speed The ML speed in cur_speed units.
+ * @param tl Train length in tiles.
+ * margin_ticks is 0 when no signal the ML crossed had been held by the joiner earlier, so no clearance was measured.
+ * @return One timing per prio merge, ordered by ML movement and merge piece.
+ */
+std::vector<JunctionPrioTiming> JunctionPrioTimings(const JunctionLayout &layout, const JunctionSpec &spec, const std::vector<JunctionPath> &paths, const JunctionTrainParams &train, uint16_t design_speed, uint8_t tl)
+{
+	const JunctionCheckContext ctx{layout, spec, {}, {}, paths, {}};
+	const auto used = UsedTracks(ctx);
+	const auto blocks = ComputeBlocks(layout);
+
+	std::vector<JunctionPrioTiming> out;
+	for (size_t pi = 0; pi < paths.size(); pi++) {
+		const JunctionPath &ml = paths[pi];
+		if (!IsMlMovement({ml.from, ml.to})) continue;
+
+		for (const SwitchEvent &event : SwitchEventsOf(layout, used, ml)) {
+			if (event.first) continue;
+			const JunctionPiece &merge_piece = ml.pieces[event.second];
+			if (!IsDiagonalTrackdir(merge_piece.trackdir)) continue;
+
+			/* The joiner and its Entry signal, found as CheckPrioReach finds them. */
+			const JunctionPath *joiner = nullptr;
+			size_t joiner_index = 0;
+			size_t joiner_path = 0;
+			for (size_t qi = 0; qi < paths.size() && joiner == nullptr; qi++) {
+				if (qi == pi) continue;
+				for (const SwitchEvent &other : SwitchEventsOf(layout, used, paths[qi])) {
+					const JunctionPiece &piece = paths[qi].pieces[other.second];
+					if (other.first || !IsSameTile(piece.tile, merge_piece.tile) || piece.trackdir == merge_piece.trackdir) continue;
+					joiner = &paths[qi];
+					joiner_index = other.second;
+					joiner_path = qi;
+					break;
+				}
+			}
+			if (joiner == nullptr || (joiner->from == ml.from && joiner->to == ml.to)) continue;
+			std::optional<size_t> entry_at;
+			for (size_t i = joiner_index; i-- > 0;) {
+				if (!IsSignalledPiece(layout, joiner->pieces[i])) continue;
+				entry_at = i;
+				break;
+			}
+			if (!entry_at.has_value()) continue;
+
+			/* Only a merge that has a prio: its tile holds an unused track. */
+			const auto merge_used = used.find({merge_piece.tile.x, merge_piece.tile.y});
+			bool has_prio = false;
+			for (Track track : TracksAt(layout, merge_piece.tile)) {
+				if (merge_used == used.end() || !merge_used->second.Test(track)) has_prio = true;
+			}
+			if (!has_prio) continue;
+
+			JunctionPrioTiming timing = SimulatePrioTiming(layout, blocks, ml, event.second, *joiner, joiner_index, *entry_at, spec, train, design_speed, tl);
+			timing.ml = pi;
+			timing.joiner = joiner_path;
+			out.push_back(timing);
 		}
 	}
 	return out;
