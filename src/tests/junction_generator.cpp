@@ -17,11 +17,13 @@
 #include "../junction_rules_internal.h"
 #include "../track_func.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <set>
 
 #include "../safeguards.h"
 
@@ -31,6 +33,95 @@ TEST_CASE("GenerateJunction gives a rule-clean L_R T", "[junction]")
 	JunctionGenerateResult result = GenerateJunction(spec);
 	REQUIRE(result.layout.has_value());
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
+}
+
+/** The two W-side measures of J1, measured from the layout's traced paths. */
+struct WSideMeasures {
+	int plain_before_head = -1; ///< Plain axis tiles between lane B's entry S-bend and its near bridge head.
+	int nw_to_lane_merge = -1; ///< Tiles between the N->W merge and the lane merge, along x.
+};
+
+static WSideMeasures MeasureWSide(const JunctionLayout &layout, const JunctionSpec &spec)
+{
+	WSideMeasures out;
+	const std::vector<JunctionPort> ports = FindJunctionPorts(layout);
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, JunctionTMovements());
+	std::vector<const JunctionPath *> lanes;
+	const JunctionPath *nw = nullptr;
+	for (const JunctionPath &path : ctx.paths) {
+		if (path.from == JunctionPortRole::WIn && path.to == JunctionPortRole::WOut) lanes.push_back(&path);
+		if (path.from == JunctionPortRole::NIn && path.to == JunctionPortRole::WOut) nw = &path;
+	}
+	if (lanes.size() != 2 || nw == nullptr) return out;
+
+	/* Lane B is the lane with an entry S-bend: a non-axis piece before its near head. Count the axis pieces after the bend's last piece. */
+	for (const JunctionPath *lane : lanes) {
+		const auto head = std::ranges::find_if(lane->pieces, [](const JunctionPiece &piece) { return piece.on_bridge; });
+		if (head == lane->pieces.end()) continue;
+		int plain = 0;
+		bool bend = false;
+		for (auto it = head; it != lane->pieces.begin();) {
+			--it;
+			if (!IsDiagonalTrackdir(it->trackdir)) {
+				bend = true;
+				break;
+			}
+			plain++;
+		}
+		if (bend) out.plain_before_head = std::max(out.plain_before_head, plain);
+	}
+
+	/* The lane merge: the first tile of the suffix the two lanes share. The N->W merge: the first tile of N->W on that suffix. */
+	auto tiles_of = [](const JunctionPath &path) {
+		std::set<std::pair<int, int>> tiles;
+		for (const JunctionPiece &piece : path.pieces) {
+			if (!piece.on_bridge) tiles.insert({piece.tile.x, piece.tile.y});
+		}
+		return tiles;
+	};
+	const std::set<std::pair<int, int>> tiles_a = tiles_of(*lanes[0]);
+	size_t first_shared = lanes[1]->pieces.size();
+	while (first_shared > 0 && !lanes[1]->pieces[first_shared - 1].on_bridge && tiles_a.contains({lanes[1]->pieces[first_shared - 1].tile.x, lanes[1]->pieces[first_shared - 1].tile.y})) first_shared--;
+	if (first_shared >= lanes[1]->pieces.size()) return out;
+	const TileIndexDiffC lane_merge = lanes[1]->pieces[first_shared].tile;
+	std::set<std::pair<int, int>> shared;
+	for (size_t i = first_shared; i < lanes[1]->pieces.size(); i++) shared.insert({lanes[1]->pieces[i].tile.x, lanes[1]->pieces[i].tile.y});
+	for (const JunctionPiece &piece : nw->pieces) {
+		if (piece.on_bridge || !shared.contains({piece.tile.x, piece.tile.y})) continue;
+		out.nw_to_lane_merge = std::abs(piece.tile.x - lane_merge.x);
+		break;
+	}
+	return out;
+}
+
+/* J1: the W side builds the tight entry (at most one plain tile after lane B's S-bend) and the prio spacing (N->W merges less than 8 tiles from the lane merge). */
+TEST_CASE("GenerateJunction: the W side is tight", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	CHECK(CheckJunctionRules(*result.layout, spec).empty());
+	const WSideMeasures m = MeasureWSide(*result.layout, spec);
+	WARN("plain tiles between lane B's S-bend and its near head: " << m.plain_before_head << ", N->W merge to lane merge: " << m.nw_to_lane_merge << ", size " << result.layout->size.x << "x" << result.layout->size.y << ", cost " << ScoreJunctionLayout(*result.layout, spec).first << "\n" << RenderJunctionAscii(*result.layout));
+	REQUIRE(m.plain_before_head >= 0);
+	REQUIRE(m.nw_to_lane_merge >= 0);
+	CHECK(m.plain_before_head <= 1);
+	CHECK(m.nw_to_lane_merge < 8);
+}
+
+/* J1 / D116: G9c checks the coverage itself. This candidate puts the lane merge just beyond the coverage; it used to be flagged by the "one more signalled segment" extension, and G9b judges it now. */
+TEST_CASE("CheckPrio: a lane merge just beyond the coverage is not a split inside it", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionCandidateParams params{13, Money(0), 0, 2};
+	params.bridge_margin = 2;
+	params.lane_style = 0;
+	const std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params);
+	REQUIRE(layout.has_value());
+	for (const RuleViolation &v : CheckJunctionRules(*layout, spec)) {
+		INFO(v.message << " at " << v.tile.x << "," << v.tile.y);
+		CHECK(v.message.find("split inside prio coverage") == std::string::npos);
+	}
 }
 
 /* Brief TUNE-footprint: the joiners sit as close as the prio rules allow, so the test junction is no wider than it was with the fixed margins (32). */
@@ -98,11 +189,13 @@ static std::vector<SweepCandidate> SweepCandidatesOf(const JunctionSpec &spec, u
 	const uint8_t g = spec.ml_gap;
 	for (uint8_t height = g + 5; height <= g + 20; height++) {
 		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
-			for (uint8_t slack = 0; slack <= 3; slack++) {
-				JunctionCandidateParams params{height, crossing_cost, slack};
-				params.lane_style = lane_style;
-				std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params);
-				if (layout.has_value()) out.push_back({params, std::move(*layout)});
+			for (uint8_t e_slack = 0; e_slack <= 3; e_slack++) {
+				for (uint8_t w_slack = 0; w_slack <= 3; w_slack++) {
+					JunctionCandidateParams params{height, crossing_cost, e_slack, w_slack};
+					params.lane_style = lane_style;
+					std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params);
+					if (layout.has_value()) out.push_back({params, std::move(*layout)});
+				}
 			}
 		}
 	}
@@ -171,14 +264,14 @@ TEST_CASE("BuildJunctionCandidate: some candidate is clean", "[junction]")
 	const SweepCandidate *clean = FirstClean(spec, candidates);
 	REQUIRE(clean != nullptr);
 	WARN("first clean: height " << static_cast<int>(clean->params.height) << " crossing_cost " << clean->params.crossing_cost
-			<< " joiner_slack " << static_cast<int>(clean->params.joiner_slack) << "\n" << RenderJunctionAscii(clean->layout));
+			<< " e_slack " << static_cast<int>(clean->params.e_slack) << " w_slack " << static_cast<int>(clean->params.w_slack) << "\n" << RenderJunctionAscii(clean->layout));
 }
 
 TEST_CASE("BuildJunctionCandidate: every candidate is structurally sound", "[junction]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	for (const SweepCandidate &c : SweepCandidates(spec)) {
-		INFO("height " << static_cast<int>(c.params.height) << " cost " << c.params.crossing_cost << " slack " << static_cast<int>(c.params.joiner_slack));
+		INFO("height " << static_cast<int>(c.params.height) << " cost " << c.params.crossing_cost << " e_slack " << static_cast<int>(c.params.e_slack) << " w_slack " << static_cast<int>(c.params.w_slack));
 		for (const RuleViolation &v : CheckJunctionRules(c.layout, spec)) {
 			CHECK(v.rule != JunctionRule::Connectivity);
 			CHECK(v.rule != JunctionRule::Geometry);
@@ -263,17 +356,19 @@ static std::optional<JunctionLayout> CleanParallelogram(const JunctionSpec &spec
 	const uint8_t g = spec.ml_gap;
 	for (uint8_t height = g + 5; height <= g + 20; height++) {
 		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
-			for (uint8_t slack = 0; slack <= 3; slack++) {
-				for (uint8_t margin = 1; margin <= 3; margin++) {
-					JunctionCandidateParams params{height, crossing_cost, slack};
-					params.bridge_margin = margin;
-					params.lane_style = 1;
-					std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params);
-					if (!layout.has_value()) continue;
-					if (built_count != nullptr) (*built_count)++;
-					if (!CheckJunctionRules(*layout, spec).empty()) continue;
-					if (clean_count != nullptr) (*clean_count)++;
-					if (!first.has_value()) first = std::move(layout);
+			for (uint8_t e_slack = 0; e_slack <= 3; e_slack++) {
+				for (uint8_t w_slack = 0; w_slack <= 3; w_slack++) {
+					for (uint8_t margin = 1; margin <= 3; margin++) {
+						JunctionCandidateParams params{height, crossing_cost, e_slack, w_slack};
+						params.bridge_margin = margin;
+						params.lane_style = 1;
+						std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params);
+						if (!layout.has_value()) continue;
+						if (built_count != nullptr) (*built_count)++;
+						if (!CheckJunctionRules(*layout, spec).empty()) continue;
+						if (clean_count != nullptr) (*clean_count)++;
+						if (!first.has_value()) first = std::move(layout);
+					}
 				}
 			}
 		}

@@ -216,16 +216,17 @@ static void TraceFrom(JunctionCheckContext &ctx, JunctionPortRole from, std::vec
 		return;
 	}
 
-	/* A bridge entered from outside, along its axis. */
-	if (const JunctionBridge *bridge = FindBridgeByHead(ctx.layout, next); bridge != nullptr && IsDiagonalTrackdir(cur.trackdir)) {
-		const bool axis_x = TrackdirToTrack(cur.trackdir) == Track::X;
-		const bool aligned = axis_x ? bridge->start.y == bridge->end.y : bridge->start.x == bridge->end.x;
+	/* A bridge entered from outside, along its axis; the piece before the head may be a corner (a curve straight onto a ramp). */
+	if (const JunctionBridge *bridge = FindBridgeByHead(ctx.layout, next); bridge != nullptr) {
 		const TileIndexDiffC step = TileIndexDiffCByDiagDir(TrackdirToExitdir(cur.trackdir));
+		const bool axis_x = step.x != 0;
+		const bool aligned = axis_x ? bridge->start.y == bridge->end.y : bridge->start.x == bridge->end.x;
 		const TileIndexDiffC along = {static_cast<int16_t>(SignOf(bridge->end.x - bridge->start.x)), static_cast<int16_t>(SignOf(bridge->end.y - bridge->start.y))};
 		const bool from_start = SameTile(bridge->start, next) && step.x == along.x && step.y == along.y;
 		const bool from_end = SameTile(bridge->end, next) && step.x == -along.x && step.y == -along.y;
 		if (aligned && !SameTile(bridge->start, bridge->end) && (from_start || from_end)) {
-			if (IsOnPath(path, next, cur.trackdir)) {
+			const Trackdir bridge_trackdir = DiagDirToDiagTrackdir(TrackdirToExitdir(cur.trackdir));
+			if (IsOnPath(path, next, bridge_trackdir)) {
 				AddTraceProblem(ctx, next, "cycle");
 				return;
 			}
@@ -233,7 +234,7 @@ static void TraceFrom(JunctionCheckContext &ctx, JunctionPortRole from, std::vec
 			const size_t old_size = path.size();
 			TileIndexDiffC tile = next;
 			for (;;) {
-				path.push_back({tile, cur.trackdir, 2, true});
+				path.push_back({tile, bridge_trackdir, 2, true});
 				if (SameTile(tile, far_head)) break;
 				tile = AddTiles(tile, step);
 			}
@@ -709,6 +710,18 @@ std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx)
 			}
 			return nullptr;
 		};
+		/* Whether the scan from 'from' in 'step' direction ends at a switch of the wanted kind before a signal-legal piece (D113). */
+		auto blocked_by_switch = [&](size_t from, int step, bool want_split) {
+			for (int64_t i = static_cast<int64_t>(from); i >= 0 && i < static_cast<int64_t>(path.pieces.size()); i += step) {
+				const JunctionPiece &piece = path.pieces[i];
+				if (piece.on_bridge) return false;
+				if (switches.contains(static_cast<size_t>(i))) {
+					return std::ranges::any_of(events, [&](const SwitchEvent &event) { return event.second == static_cast<size_t>(i) && event.first == want_split; });
+				}
+				if (IsSignalledPiece(layout, piece) || IsLegalSignalPiece(layout, piece)) return false;
+			}
+			return false;
+		};
 		auto require = [&](const JunctionPiece *piece, const char *message) {
 			if (piece != nullptr && !IsSignalledPiece(layout, *piece)) AddViolation(out, JunctionRule::Signals, piece->tile, message);
 		};
@@ -726,10 +739,12 @@ std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx)
 			if (i > 0) {
 				const JunctionPiece *before = nearest(i - 1, -1);
 				if (before != nullptr && !IsSignalledPiece(layout, *before)) AddViolation(out, JunctionRule::Signals, path.pieces[i].tile, "no signal before a bridge");
+				if (before == nullptr && blocked_by_switch(i - 1, -1, true)) AddViolation(out, JunctionRule::Signals, path.pieces[i].tile, "split in a bridge's block: no signal between the split and the bridge");
 			}
 			if (last + 1 < path.pieces.size()) {
 				const JunctionPiece *after = nearest(last + 1, 1);
 				if (after != nullptr && !IsSignalledPiece(layout, *after)) AddViolation(out, JunctionRule::Signals, path.pieces[last].tile, "no signal after a bridge");
+				if (after == nullptr && blocked_by_switch(last + 1, 1, false)) AddViolation(out, JunctionRule::Signals, path.pieces[last].tile, "split in a bridge's block: no signal between the bridge and the merge");
 			}
 			i = last;
 		}
@@ -1224,7 +1239,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 				if (joins_in(b->second) != 1) AddViolation(out, JunctionRule::Prio, to_tile(key), "prio block needs exactly one join");
 			}
 
-			/* 4b. G9c (D108): no split of an ML lane inside the coverage, nor in the segment beyond it where a held train stands. */
+			/* 4b. G9c (D108, D116): no split of an ML lane inside the coverage itself. Anything beyond it is judged by G9b (the real-semantics prio reach). */
 			for (const JunctionPath &lane : ctx.paths) {
 				if (lane.from != ml.from || lane.to != ml.to) continue;
 				const auto at = std::ranges::find_if(lane.pieces, [&](const JunctionPiece &piece) { return !piece.on_bridge && SameTile(piece.tile, tile) && piece.trackdir == merge_piece.trackdir; });
@@ -1235,12 +1250,6 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 				for (size_t i = merge_at; i-- > 0 && lane_units < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
 					lane_units += lane.pieces[i].units;
 					first = i;
-				}
-				/* One more signalled piece: the walk ends on the piece just past the first signalled piece at or beyond the coverage. */
-				while (first > 0) {
-					const bool signalled = IsSignalledPiece(layout, lane.pieces[first]);
-					first--;
-					if (signalled) break;
 				}
 				for (const SwitchEvent &other : SwitchEventsOf(layout, used, lane)) {
 					if (other.second < first || other.second >= merge_at) continue;

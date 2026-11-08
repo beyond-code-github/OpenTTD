@@ -191,7 +191,7 @@ TEST_CASE("FindJunctionRoute: the track beyond a far head runs in line", "[junct
 		}
 	};
 	JunctionRouteRequest request = MakeRequest({0, 0}, {14, 12});
-	request.starts = {{{3, 6}, Trackdir::X_SW}};
+	request.starts = {{{2, 6}, Trackdir::X_SW}}; // One plain piece first: a route's first move is never a bridge (D113).
 	request.goals = {{{8, 7}, Trackdir::X_SW}};
 	auto route = FindJunctionRoute(wall, request);
 	if (route.has_value()) {

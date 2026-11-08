@@ -178,7 +178,7 @@ TEST_CASE("Junction generator candidate sweep", "[.gen]")
 	for (int h = spec.ml_gap + 5; h <= spec.ml_gap + 20; h++) {
 		for (Money cc : {Money(0), spec.prices.bridge(3)}) {
 			for (int s = 0; s <= 3; s++) {
-				auto layout = BuildJunctionCandidate(spec, {static_cast<uint8_t>(h), cc, static_cast<uint8_t>(s)});
+				auto layout = BuildJunctionCandidate(spec, {static_cast<uint8_t>(h), cc, static_cast<uint8_t>(s), static_cast<uint8_t>(s)});
 				if (!layout.has_value()) continue;
 				auto v = CheckJunctionRules(*layout, spec);
 				built++;

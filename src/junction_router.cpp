@@ -321,7 +321,8 @@ void Router::Successors(const RouterNode &from, std::vector<std::pair<RouterNode
 		}
 	}
 
-	if (from.on_bridge || !IsDiagonalTrackdir(from.trackdir) || !request.bridge_span_ok) return;
+	/* D113: a start piece is where the route splits off its track; a bridge directly after it would put the split in the bridge's block. */
+	if (from.first || from.on_bridge || !IsDiagonalTrackdir(from.trackdir) || !request.bridge_span_ok) return;
 	const TileIndexDiffC step = TileIndexDiffCByDiagDir(TrackdirToExitdir(from.trackdir));
 	for (uint n = 1; n <= request.max_bridge_middle; n++) {
 		if (!request.bridge_span_ok(n)) continue;

@@ -74,7 +74,8 @@ JunctionFrame MakeJunctionFrame(const JunctionSpec &spec);
 struct JunctionCandidateParams {
 	uint8_t height; ///< H: the branch edge is row H-1; the E track is row 0.
 	Money crossing_cost; ///< crossable_cost when a route crosses the W track.
-	uint8_t joiner_slack; ///< Extra tiles kept between the lane merge and where N->W may join.
+	uint8_t e_slack; ///< Extra tiles kept between the E->S split's prio coverage and where N->E may join.
+	uint8_t w_slack; ///< Extra tiles kept between the lane merge and where N->W may join.
 	int plane = 0; ///< The level the junction is built on; only used with a terrain.
 	uint8_t bridge_margin = 3; ///< Bridge heads sit this many tiles beyond the crossing set (D103).
 	uint8_t lane_style = 0; ///< 0 = symmetric Y (D100), 1 = parallelogram (D105).

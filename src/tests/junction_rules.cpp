@@ -15,6 +15,7 @@
 #include "../junction_route.h"
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
+#include "../map_func.h"
 #include "../track_func.h"
 
 #include "../safeguards.h"
@@ -1324,9 +1325,69 @@ TEST_CASE("CheckPrio: no ML split inside a prio's coverage (G9c, D108)", "[junct
 	long_prio.prio_tl = 3;
 	bool found = false;
 	for (int height = spec.ml_gap + 5; height <= spec.ml_gap + 20 && !found; height++) {
-		const std::optional<JunctionLayout> built = BuildJunctionCandidate(short_prio, {static_cast<uint8_t>(height), Money(0), 0});
+		const std::optional<JunctionLayout> built = BuildJunctionCandidate(short_prio, {static_cast<uint8_t>(height), Money(0), 0, 0});
 		if (!built.has_value()) continue;
 		found = has_split_violation(CheckPrio(MakeJunctionCheckContext(*built, long_prio, FindJunctionPorts(*built), JunctionTMovements())));
 	}
 	CHECK(found);
+}
+
+/* D113: a split directly followed by a bridge head shares a block with the bridge; one signal-legal piece with a signal between them fixes it. */
+TEST_CASE("CheckSignals: no split in a bridge's block", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	/* The main line on row 0 has a bridge from x = 3 to x = 5; a branch leaves it at x = branch_x + 1. */
+	auto violations = [&](int branch_x, std::initializer_list<int> signals) {
+		const std::string branch_moves = "LFR" + std::string(7 - branch_x, 'F');
+		JunctionLayout layout = Build({{{0, 0}, Trackdir::X_SW, "FFB1FFFF"}, {{static_cast<int16_t>(branch_x), 0}, Trackdir::X_SW, branch_moves}});
+		REQUIRE(layout.bridges.size() == 1);
+		for (int x : signals) AddSignal(layout, x, 0, Trackdir::X_SW);
+		const JunctionRaster branch = RasterizeJunctionRoute({{static_cast<int16_t>(branch_x), 0}, Trackdir::X_SW, branch_moves});
+		const JunctionPiece &last = branch.pieces.back();
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec,
+				{Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, 9, 0, Trackdir::X_SW), Port(Role::SOut, last.tile.x, last.tile.y, last.trackdir)},
+				{{Role::EIn, Role::EOut}, {Role::EIn, Role::SOut}});
+		REQUIRE(ctx.paths.size() == 2);
+		return CheckSignals(ctx);
+	};
+
+	/* The split is on the tile directly before the head (2,0). */
+	CHECK(Has(violations(1, {0, 6, 8}), JunctionRule::Signals, 3, 0, "split in a bridge's block"));
+	/* One plain tile carrying a signal sits between the split and the head. */
+	CHECK_FALSE(Has(violations(0, {2, 6, 8}), JunctionRule::Signals, 3, 0, "split in a bridge's block"));
+}
+
+/* G1: a curve may run straight onto a bridge ramp. */
+TEST_CASE("CheckConnectivity: a corner piece before a bridge head enters the bridge", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	/* "FL" ends on a corner piece; the bridge head is the next tile along its exit, with the bridge's axis on that exit. */
+	const JunctionRaster first = RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, "FL"});
+	REQUIRE(first.error.empty());
+	const JunctionPiece &corner = first.pieces.back();
+	REQUIRE_FALSE(IsDiagonalTrackdir(corner.trackdir));
+	const TileIndexDiffC step = TileIndexDiffCByDiagDir(TrackdirToExitdir(corner.trackdir));
+	const Trackdir axis = DiagDirToDiagTrackdir(TrackdirToExitdir(corner.trackdir));
+	const TileIndexDiffC near_head = {static_cast<int16_t>(corner.tile.x + step.x), static_cast<int16_t>(corner.tile.y + step.y)};
+	const TileIndexDiffC far_head = {static_cast<int16_t>(near_head.x + 2 * step.x), static_cast<int16_t>(near_head.y + 2 * step.y)};
+	const TileIndexDiffC after = {static_cast<int16_t>(far_head.x + step.x), static_cast<int16_t>(far_head.y + step.y)};
+	const JunctionRaster second = RasterizeJunctionRoute({after, axis, "F"});
+	REQUIRE(second.error.empty());
+
+	JunctionLayout layout;
+	AddRasterToLayout(layout, first);
+	AddRasterToLayout(layout, second);
+	JunctionBridge bridge{near_head, far_head};
+	if (bridge.start.x + bridge.start.y > bridge.end.x + bridge.end.y) std::swap(bridge.start, bridge.end);
+	layout.bridges.push_back(bridge);
+	NormaliseJunctionLayout(layout);
+
+	const TileIndexDiffC origin = {static_cast<int16_t>(std::min<int>({0, near_head.x, far_head.x, after.x, corner.tile.x})), static_cast<int16_t>(std::min<int>({0, near_head.y, far_head.y, after.y, corner.tile.y}))};
+	const auto shifted = [&](TileIndexDiffC t) { return TileIndexDiffC{static_cast<int16_t>(t.x - origin.x), static_cast<int16_t>(t.y - origin.y)}; };
+	const JunctionPiece &end = second.pieces.back();
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec,
+			{Port(Role::EIn, shifted({0, 0}).x, shifted({0, 0}).y, Trackdir::X_SW), Port(Role::EOut, shifted(end.tile).x, shifted(end.tile).y, end.trackdir)}, {{Role::EIn, Role::EOut}});
+	CHECK(ctx.paths.size() == 1);
+	for (const RuleViolation &v : CheckConnectivity(ctx)) CHECK(v.message.find("dead end") == std::string::npos);
+	CHECK(CheckConnectivity(ctx).empty());
 }

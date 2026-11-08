@@ -197,14 +197,15 @@ JunctionFrame MakeJunctionFrame(const JunctionSpec &spec)
 }
 
 /**
- * Build one generator candidate: route the branch movements, double the mainline bridges, crop, and place signals.
+ * Build one generator candidate with a fixed lane gap: route the branch movements, double the mainline bridges, crop, and place signals.
  * @param spec The junction spec.
  * @param params The swept inputs.
  * @param terrain Optional terrain snapshot in the generator's working coordinates (see the header).
  * @param terrain_cost Receives the terrain cost when terrain is set.
+ * @param gap 0 puts lane A's RFL right after its far head and lane B's near head right after its S-bend; 1 adds one plain tile to each (D110).
  * @return The layout, or std::nullopt when this candidate cannot be built.
  */
-std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub)
+static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, int gap)
 {
 	const JunctionFrame frame = MakeJunctionFrame(spec);
 	const int g = spec.ml_gap;
@@ -268,8 +269,10 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		if (crossable_w) for (int x = 0; x <= frame.width - 1; x++) w_tiles.push_back(tile(x, w_row));
 		std::vector<TileIndexDiffC> column_fence;
 		for (int y = 0; y <= g + 3; y++) column_fence.push_back(tile(xI, y));
-		/* Keep the tile above the N stub free: N->E needs it for its first piece or its bridge head (D3d). */
+		/* Keep the tiles above the N stub free: N->E needs them for its first piece and its bridge head (D3d). */
 		column_fence.push_back(tile(xI, ys - 1));
+		/* D113: N->E starts with a plain piece (it carries the signal), then its bridge head: keep the second tile free too. */
+		column_fence.push_back(tile(xI, ys - 2));
 		std::vector<TileIndexDiffC> branch_fence = under_spans;
 		for (int y = 1; y < w_row; y++) for (int x = 0; x <= frame.width - 1; x++) branch_fence.push_back(tile(x, y));
 
@@ -297,7 +300,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		/* D108: the N->E merge window starts beyond the prio coverage past the E->S split; the checker rejects unsafe positions. */
 		const int x_s = e_to_s->pieces.front().tile.x;
 		const int cover = static_cast<int>(spec.tl * spec.prio_tl);
-		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, std::max(xO, x_s + cover + 1 + params.joiner_slack), frame.width - 3);
+		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, std::max(xO, x_s + cover + 1 + params.e_slack), frame.width - 3);
 		const std::optional<JunctionRaster> n_to_e = RouteAndAdd(l, request);
 		if (!n_to_e.has_value()) return false;
 		if (note) note_crossings(*n_to_e);
@@ -322,7 +325,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 
 		const std::string span = fmt::format("B{}", n);
 		const int nw_row = params.lane_style == 1 ? b_row : w_row;
-		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - static_cast<int>(spec.tl * spec.prio_tl) - params.joiner_slack); };
+		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - static_cast<int>(spec.tl * spec.prio_tl) - params.w_slack); };
 		JunctionRaster raster_a_style1;
 		JunctionRaster raster_b;
 		std::optional<int> merge_x;
@@ -331,8 +334,6 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		if (params.lane_style == 1) {
 			/* Parallelogram (D105): lane A runs straight on the W row through its bridge, then S-bends onto the B row. */
 			std::optional<JunctionRaster> found_a;
-			/* D110: try no plain tile between the near head and the S-bend first, then one. */
-			for (int gap = 0; gap <= 1 && !found_a.has_value(); gap++)
 			for (int k = 0; k <= frame.width - 1 && !found_a.has_value(); k++) {
 				const JunctionRaster raster = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, std::string(k, 'F') + span + (gap == 0 ? "" : "F") + "RFL"});
 				if (!raster.error.empty()) continue;
@@ -358,21 +359,15 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		}
 		/* Lane B: find p, q, r and s by rasterizing and checking the piece positions. */
 		std::optional<JunctionRoute> lane_b;
-		/* D110: try no plain tile between the S-bend and the near head first, then one. */
-		for (uint want_axis = 0; want_axis <= 1 && !lane_b.has_value(); want_axis++)
-		for (int p = 0; p <= frame.width - 1 && !lane_b.has_value(); p++) {
-			for (int q = 1; q <= frame.width - 1 && !lane_b.has_value(); q++) {
+		/* D110: q counts the plain tiles after the S-bend; try them in increasing order, so q = 0 (one real plain tile after the S-bend) comes first with gap 0. */
+		for (int q = gap; q <= frame.width - 1 && !lane_b.has_value(); q++) {
+			for (int p = 0; p <= frame.width - 1 && !lane_b.has_value(); p++) {
 				const JunctionRaster head_raster = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, std::string(p, 'F') + "RFL" + std::string(q, 'F') + span});
 				if (!head_raster.error.empty()) continue;
 				/* Pieces after the end of RFL (index p + 3) up to the near head. */
 				size_t head = p + 4;
 				while (head < head_raster.pieces.size() && !head_raster.pieces[head].on_bridge) head++;
 				if (head >= head_raster.pieces.size() || head_raster.pieces[head].tile.x != h_e || head_raster.pieces[head].tile.y != b_row) continue;
-				uint plain_axis = 0;
-				for (size_t i = p + 4; i < head; i++) {
-					if (IsDiagonalTrackdir(head_raster.pieces[i].trackdir)) plain_axis++;
-				}
-				if (plain_axis != want_axis) continue;
 
 				if (params.lane_style == 1) {
 					/* Straight on the B row to the tile at x_sb + 1, then LFR up to the W row and straight on to x = 0. */
@@ -579,6 +574,23 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	return layout;
 }
 
+/**
+ * Build one generator candidate: the tight variant first (D110, gap 0); when that is not rule-clean, the variant with one more plain tile
+ * after lane B's S-bend and before lane A's S-bend (gap 1) is built once and returned instead.
+ */
+std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub)
+{
+	std::optional<JunctionLayout> tight = BuildJunctionCandidateWithGap(spec, params, terrain, terrain_cost, hub, 0);
+	if (tight.has_value() && CheckJunctionRules(*tight, spec).empty()) return tight;
+	Money loose_cost = 0;
+	TileIndexDiffC loose_hub{};
+	std::optional<JunctionLayout> loose = BuildJunctionCandidateWithGap(spec, params, terrain, &loose_cost, &loose_hub, 1);
+	if (!loose.has_value()) return tight;
+	if (terrain_cost != nullptr) *terrain_cost = loose_cost;
+	if (hub != nullptr) *hub = loose_hub;
+	return loose;
+}
+
 /** The number of middle tiles of a bridge. */
 static uint BridgeMiddleTiles(const JunctionBridge &bridge)
 {
@@ -700,14 +712,16 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 			bool clean_here = false;
 			std::vector<JunctionCandidateParams> all_params;
 			for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
-				for (uint8_t slack = 0; slack <= 3; slack++) {
-					for (uint8_t margin = 1; margin <= 3; margin++) {
-						for (uint8_t style = 0; style <= 1; style++) {
-							JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
-							params.plane = plane;
-							params.bridge_margin = margin;
-							params.lane_style = style;
-							all_params.push_back(params);
+				for (uint8_t e_slack = 0; e_slack <= 3; e_slack++) {
+					for (uint8_t w_slack = 0; w_slack <= 3; w_slack++) {
+						for (uint8_t margin = 1; margin <= 3; margin++) {
+							for (uint8_t style = 0; style <= 1; style++) {
+								JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, w_slack};
+								params.plane = plane;
+								params.bridge_margin = margin;
+								params.lane_style = style;
+								all_params.push_back(params);
+							}
 						}
 					}
 				}
@@ -757,13 +771,15 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 	std::vector<JunctionCandidateParams> all_params;
 	for (int height = first; height <= last; height++) {
 		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
-			for (uint8_t slack = 0; slack <= 3; slack++) {
-				for (uint8_t margin = 1; margin <= 3; margin++) {
-					for (uint8_t style = 0; style <= 1; style++) {
-						JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, slack};
-						params.bridge_margin = margin;
-						params.lane_style = style;
-						all_params.push_back(params);
+			for (uint8_t e_slack = 0; e_slack <= 3; e_slack++) {
+				for (uint8_t w_slack = 0; w_slack <= 3; w_slack++) {
+					for (uint8_t margin = 1; margin <= 3; margin++) {
+						for (uint8_t style = 0; style <= 1; style++) {
+							JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, w_slack};
+							params.bridge_margin = margin;
+							params.lane_style = style;
+							all_params.push_back(params);
+						}
 					}
 				}
 			}
