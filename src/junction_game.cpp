@@ -30,11 +30,37 @@
 #include "slope_func.h"
 #include "map_func.h"
 #include "tile_type.h"
+#include "train.h"
+#include "strings_func.h"
 #include "table/strings.h"
 
 #include <array>
 
 #include "safeguards.h"
+
+std::optional<JunctionPickedTrain> ReadJunctionTrain(const Vehicle *v)
+{
+	if (v == nullptr || v->type != VehicleType::Train || v->owner != _local_company) return std::nullopt;
+	const Train *first = Train::From(v)->First();
+
+	JunctionPickedTrain picked;
+	uint32_t mass = 0;
+	for (const Train *part = first; part != nullptr; part = part->Next()) mass += static_cast<const Vehicle *>(part)->GetMaxWeight();
+	picked.loaded.mass_t = std::max<uint32_t>(mass, 1);
+	picked.loaded.power_hp = first->gcache.cached_power;
+	picked.loaded.max_te = first->gcache.cached_max_te;
+	picked.loaded.air_drag = first->gcache.cached_air_drag;
+
+	/* GetDisplayMaxSpeed() is vcache.cached_max_speed, the same unit as cur_speed; so is the rail type's max_speed. */
+	uint32_t speed = first->GetDisplayMaxSpeed();
+	const uint16_t rail_max = GetRailTypeInfo(GetRailType(first->tile))->max_speed;
+	if (rail_max != 0) speed = std::min<uint32_t>(speed, rail_max);
+	picked.loaded.max_speed = static_cast<uint16_t>(speed);
+
+	picked.tl = static_cast<uint8_t>(Clamp<uint32_t>(CeilDiv(first->gcache.cached_total_length, TILE_SIZE), 2, 12));
+	picked.name = GetString(STR_VEHICLE_NAME, first->index);
+	return picked;
+}
 
 /**
  * Get the top speed of the fastest train engine the local company can build that runs on a rail type.

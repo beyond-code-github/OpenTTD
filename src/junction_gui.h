@@ -57,5 +57,7 @@ void DrawJunctionGhostOutline(const TileInfo *ti);
 struct Window;
 void ShowBuildJunctionWindow(Window *parent, RailType railtype);
 void JunctionToolClick(TileIndex tile);
+bool IsJunctionTrainPickActive();
+void RestoreJunctionPlacement();
 
 #endif /* JUNCTION_GUI_H */

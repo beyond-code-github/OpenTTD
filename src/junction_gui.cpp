@@ -29,6 +29,8 @@
 #include "tilehighlight_func.h"
 #include "tilehighlight_type.h"
 #include "bridge.h"
+#include "vehicle_base.h"
+#include "settings_type.h"
 #include "debug.h"
 #include "widgets/junction_widget.h"
 #include "map_func.h"
@@ -238,6 +240,14 @@ enum JunctionHotkeys : int {
 	JHK_MIRROR, ///< Mirror the junction.
 };
 
+static bool _junction_picking_train = false; ///< The junction window has the vehicle cursor, to pick a train.
+
+/** @return Whether the junction window is picking a train, so the rail toolbar must keep the junction tool when it loses the cursor. */
+bool IsJunctionTrainPickActive()
+{
+	return _junction_picking_train;
+}
+
 static uint8_t _junction_rotation = 0; ///< Quarter turns applied to the junction being placed.
 static bool _junction_mirrored = false; ///< Whether the junction being placed is mirrored.
 
@@ -308,6 +318,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	QueryString ml_editbox; ///< Editbox of the mainline notation.
 	QueryString branch_editbox; ///< Editbox of the branch notation.
 	uint8_t tl; ///< Train length in tiles.
+	std::optional<JunctionPickedTrain> picked_train; ///< The picked train, if the train length comes from one.
+	StringID pick_error = INVALID_STRING_ID; ///< Error of the last pick, shown in the status line.
 
 	BuildJunctionWindow(WindowDesc &desc, Window *parent, RailType railtype) : PickerWindowBase(desc, parent), railtype(railtype),
 		ml_editbox(MAX_NOTATION_LENGTH * MAX_CHAR_LENGTH, MAX_NOTATION_LENGTH), branch_editbox(MAX_NOTATION_LENGTH * MAX_CHAR_LENGTH, MAX_NOTATION_LENGTH),
@@ -619,6 +631,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 	void Close(int data = 0) override
 	{
+		_junction_picking_train = false;
 		this->DetachJob();
 		if (this->library_thread.joinable()) this->library_thread.detach();
 		this->library_job.reset();
@@ -649,8 +662,17 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				this->SetDirty();
 				break;
 
+			case WID_BJ_PICK_TRAIN:
+				this->pick_error = INVALID_STRING_ID;
+				_junction_picking_train = true;
+				SetObjectToPlaceWnd(SPR_CURSOR_CLONE_TRAIN, PAL_NONE, HT_VEHICLE, this);
+				this->SetWidgetDirty(WID_BJ_STATUS);
+				SndClickBeep();
+				break;
+
 			case WID_BJ_TL_DECREASE:
 				if (this->tl > 2) {
+					this->picked_train = std::nullopt;
 					this->tl--;
 					this->Regenerate();
 				}
@@ -658,6 +680,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 			case WID_BJ_TL_INCREASE:
 				if (this->tl < 12) {
+					this->picked_train = std::nullopt;
 					this->tl++;
 					this->Regenerate();
 				}
@@ -675,6 +698,32 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				SndClickBeep();
 				break;
 		}
+	}
+
+	bool OnVehicleSelect(const Vehicle *v) override
+	{
+		std::optional<JunctionPickedTrain> picked = ReadJunctionTrain(v);
+		if (!picked.has_value()) {
+			this->pick_error = STR_JUNCTION_ERROR_NOT_OUR_TRAIN;
+			this->SetWidgetDirty(WID_BJ_STATUS);
+			return true;
+		}
+
+		this->pick_error = INVALID_STRING_ID;
+		this->tl = picked->tl;
+		this->picked_train = std::move(picked);
+		this->Regenerate();
+		this->SetWidgetDirty(WID_BJ_TRAIN);
+		_junction_picking_train = false;
+		RestoreJunctionPlacement();
+		return true;
+	}
+
+	void OnPlaceObjectAbort() override
+	{
+		if (!_junction_picking_train) return;
+		_junction_picking_train = false;
+		RestoreJunctionPlacement();
 	}
 
 	void OnEditboxChanged(WidgetID widget) override
@@ -703,10 +752,19 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (widget == WID_BJ_NAME) {
 			return GetString(STR_JUNCTION_NAME, this->ml_editbox.text.GetText(), this->branch_editbox.text.GetText(), this->tl);
 		}
+		if (widget == WID_BJ_TRAIN) {
+			if (!this->picked_train.has_value()) return GetString(STR_JUNCTION_TRAIN_NONE);
+			const JunctionPickedTrain &t = *this->picked_train;
+			const uint32_t prio = JunctionPrioLength(t.loaded, t.loaded.max_speed, t.tl, _settings_client.gui.drag_signals_density);
+			std::string text = GetString(STR_JUNCTION_TRAIN, t.name, t.tl, prio);
+			if (prio > 2u * t.tl) text += GetString(STR_JUNCTION_TRAIN_LONG_PRIO);
+			return text;
+		}
 		if (widget == WID_BJ_TL_LABEL) return GetString(STR_JUNCTION_TRAIN_LENGTH, this->tl);
 		if (widget == WID_BJ_STATUS) {
 			const JunctionSequencer &seq = GetJunctionSequencer();
 			if (seq.GetState() == JunctionBuildState::Idle) {
+				if (this->pick_error != INVALID_STRING_ID && _junction_picking_train) return GetString(this->pick_error);
 				if (this->generate_error != INVALID_STRING_ID) return GetString(this->generate_error);
 				if (this->hover_status != INVALID_STRING_ID) return GetString(this->hover_status);
 				if (this->has_shown && this->shown_distance != 0) return GetString(STR_JUNCTION_STATUS_NEARBY, this->shown_distance);
@@ -915,6 +973,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widge
 				NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_TL_LABEL), SetFill(1, 0),
 				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_BJ_TL_INCREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Increase, STR_JUNCTION_TRAIN_LENGTH_INCREASE_TOOLTIP),
 			EndContainer(),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_PICK_TRAIN), SetStringTip(STR_JUNCTION_PICK_TRAIN, STR_JUNCTION_PICK_TRAIN_TOOLTIP), SetFill(1, 0),
+			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_TRAIN), SetFill(1, 0),
 			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_COST), SetFill(1, 0),
 			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_ROTATE), SetStringTip(STR_JUNCTION_ROTATE, STR_JUNCTION_ROTATE_TOOLTIP), SetFill(1, 0),

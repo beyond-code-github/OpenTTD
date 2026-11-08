@@ -47,6 +47,7 @@
 #include "company_cmd.h"
 #include "misc_cmd.h"
 #include "junction_game.h"
+#include "vehicle_base.h"
 #include "company_base.h"
 #include <fstream>
 
@@ -385,6 +386,31 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 	const int oy = static_cast<int>(TileY(tile)) + found.offset.y - offset.y;
 	out << "{\"origin\":[" << ox << "," << oy << "],\"offset\":[" << found.offset.x << "," << found.offset.y << "]," << (*near_arg == 2 ? "\"tier\":\"instant\"," : "") << JunctionLayoutToJson(oriented).substr(1);
 	IConsolePrint(CC_DEFAULT, "junction_export ok origin={},{} size={}x{}{}", ox, oy, oriented.size.x, oriented.size.y, timing);
+	return true;
+}
+
+/**
+ * Print what the junction tool reads from a train.
+ * @copydoc IConsoleCmdProc
+ */
+static bool ConJunctionTrain(std::span<std::string_view> argv)
+{
+	if (argv.empty()) {
+		IConsolePrint(CC_HELP, "Print what the junction tool reads from a train. Usage: 'junction_train <vehicle id>'.");
+		return true;
+	}
+	if (argv.size() != 2) return false;
+	auto id = ParseInteger(argv[1], 10);
+	if (!id.has_value()) return false;
+
+	const Vehicle *v = *id < Vehicle::GetPoolSize() ? Vehicle::GetIfValid(VehicleID(*id)) : nullptr;
+	std::optional<JunctionPickedTrain> t = ReadJunctionTrain(v);
+	if (!t.has_value()) {
+		IConsolePrint(CC_ERROR, "Vehicle {} is not a train of the local company.", *id);
+		return true;
+	}
+	IConsolePrint(CC_DEFAULT, "junction_train name={} tl={} mass={} power={} te={} drag={} max={} prio={}", t->name, t->tl, t->loaded.mass_t, t->loaded.power_hp,
+		t->loaded.max_te, t->loaded.air_drag, t->loaded.max_speed, JunctionPrioLength(t->loaded, t->loaded.max_speed, t->tl, 2));
 	return true;
 }
 #endif /* _DEBUG */
@@ -2839,6 +2865,7 @@ static void IConsoleDebugLibRegister()
 {
 	IConsole::CmdRegister("resettile",        ConResetTile);
 	IConsole::CmdRegister("junction_export",  ConJunctionExport);
+	IConsole::CmdRegister("junction_train",   ConJunctionTrain);
 	IConsole::AliasRegister("dbg_echo",       "echo %A; echo %B");
 	IConsole::AliasRegister("dbg_echo2",      "echo %!");
 }

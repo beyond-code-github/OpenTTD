@@ -831,6 +831,7 @@ struct BuildRailToolbarWindow : Window {
 
 	void OnPlaceObjectAbort() override
 	{
+		if (IsJunctionTrainPickActive()) return;
 		if (this->IsWidgetLowered(WID_RAT_BUILD_STATION)) SetViewportCatchmentStation(nullptr, true);
 		if (this->IsWidgetLowered(WID_RAT_BUILD_WAYPOINT)) SetViewportCatchmentWaypoint(nullptr, true);
 
@@ -2154,4 +2155,12 @@ DropDownList GetRailTypeDropDownList(bool for_replacement, bool all_option)
 	}
 
 	return list;
+}
+
+/** Put the rail toolbar's junction placement mode back, after the junction window borrowed the cursor to pick a train. */
+void RestoreJunctionPlacement()
+{
+	BuildRailToolbarWindow *w = dynamic_cast<BuildRailToolbarWindow *>(FindWindowById(WindowClass::BuildToolbar, TransportType::Rail));
+	if (w == nullptr || !w->IsWidgetLowered(WID_RAT_BUILD_JUNCTION)) return;
+	SetObjectToPlaceWnd(w->GetCursorForWidget(WID_RAT_BUILD_JUNCTION), PAL_NONE, w->GetHighLightStyleForWidget(WID_RAT_BUILD_JUNCTION), w);
 }

@@ -16,6 +16,12 @@
 #include "bridge_type.h"
 #include "junction_generator.h"
 #include "junction_terrain.h"
+#include "junction_train_model.h"
+
+struct Vehicle;
+
+#include <optional>
+#include <string>
 
 #include <atomic>
 
@@ -28,6 +34,16 @@ std::optional<BridgeType> ChooseJunctionBridgeType(RailType railtype, uint lengt
 
 /** The speed the junction is designed for: the rail type's limit, or the fastest buildable engine when unlimited (D45, D67). */
 uint16_t GetJunctionReferenceSpeed(RailType railtype);
+/** What the junction tool takes from a picked train (D101). */
+struct JunctionPickedTrain {
+	JunctionTrainParams loaded; ///< Loaded mass (sum of GetMaxWeight over parts), effective power, TE and air drag from the caches; max_speed = min(train max, rail type max).
+	uint8_t tl = 0; ///< Train length in whole tiles, rounded up: ceil(cached_total_length / TILE_SIZE).
+	std::string name; ///< The vehicle's name, as GetString(STR_VEHICLE_NAME, id) gives it.
+};
+
+/** Read a train for the junction tool; std::nullopt if v is not a train of the local company. */
+std::optional<JunctionPickedTrain> ReadJunctionTrain(const Vehicle *v);
+
 /** Fill a generator spec from the game: settings, rail type, prices and bridges. */
 JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_gap, uint8_t tl);
 
