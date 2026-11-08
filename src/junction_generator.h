@@ -50,6 +50,7 @@ struct JunctionGenerateResult {
 	std::optional<JunctionLayout> layout;
 	JunctionGenerateError error = JunctionGenerateError::None;
 	TileIndexDiffC hub{}; ///< The offset, in the returned layout, of working coordinate (30, 0).
+	std::pair<Money, int> score{}; ///< The chosen layout's score, terrain cost included.
 };
 
 uint16_t CurveSpeedLimitForSpacing(uint spacing, uint8_t curve_speed);

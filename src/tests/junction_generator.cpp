@@ -471,3 +471,11 @@ TEST_CASE("GenerateJunction with a blocked prio row line", "[junction][terrain]"
 		CHECK(jt.offset.y != result.hub.y - 1);
 	}
 }
+
+TEST_CASE("GenerateJunction sets the score of the chosen layout", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	CHECK(result.score == ScoreJunctionLayout(*result.layout, spec));
+}

@@ -29,6 +29,7 @@
 #include "tilehighlight_func.h"
 #include "tilehighlight_type.h"
 #include "bridge.h"
+#include "debug.h"
 #include "widgets/junction_widget.h"
 #include "map_func.h"
 #include "slope_func.h"
@@ -261,6 +262,14 @@ struct JunctionGenerateJob {
 	JunctionTerrain terrain; ///< Terrain snapshot the worker reads.
 	JunctionNearResult result; ///< Written by the worker.
 	std::atomic<bool> cancel{false}; ///< Set when the job is detached; the worker stops searching.
+	std::shared_ptr<const std::vector<JunctionLibraryEntry>> library; ///< Library for the spec, or null if not built yet.
+};
+
+/** A library build running on a worker thread, or finished; owns everything the worker reads, and outlives the window if needed. */
+struct JunctionLibraryJob {
+	std::atomic<bool> done{false}; ///< Set by the worker when library is final.
+	JunctionSpec spec; ///< Spec the worker reads.
+	std::shared_ptr<const std::vector<JunctionLibraryEntry>> library; ///< Written by the worker.
 };
 
 static constexpr size_t MAX_JUNCTION_CACHE = 32; ///< Entries in the window's cache of generated junctions.
@@ -274,6 +283,9 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	std::optional<JunctionGenerateKey> pending_key; ///< Key of the running job, if any.
 	std::thread pending_thread; ///< Thread of the running job.
 	std::shared_ptr<JunctionGenerateJob> pending_job; ///< State of the running job.
+	std::shared_ptr<JunctionLibraryJob> library_job; ///< Library for the current spec, or being built.
+	std::thread library_thread; ///< Thread of the library build.
+	std::optional<JunctionGenerateKey> library_key; ///< MakeKey of the library, with anchor INVALID_TILE and rotation 0, mirrored false.
 	bool has_shown = false; ///< The ghost shows a placement, in the three fields below.
 	JunctionLayout shown_layout; ///< Oriented layout shown at the cursor.
 	TileIndex shown_origin = INVALID_TILE; ///< North corner of the shown placement.
@@ -324,6 +336,49 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	{
 		return {tile, _junction_rotation, EffectiveMirror(), this->ml_gap, this->branch_gap, this->tl,
 			static_cast<uint8_t>(_settings_client.gui.junction_signal_type), _settings_client.gui.drag_signals_density};
+	}
+
+	/** @return The key of the library: the generator inputs only, as the library is flat and doesn't depend on orientation. */
+	JunctionGenerateKey SpecKey() const
+	{
+		JunctionGenerateKey key = this->MakeKey(INVALID_TILE);
+		key.rotation = 0;
+		key.mirrored = false;
+		return key;
+	}
+
+	/** Start building the library if the spec changed, and join the build when it is done. */
+	void EnsureLibrary()
+	{
+		const JunctionGenerateKey key = this->SpecKey();
+		if (this->library_key != key) {
+			if (this->library_thread.joinable()) this->library_thread.detach();
+			this->library_job.reset();
+			this->library_key = key;
+
+			auto job = std::make_shared<JunctionLibraryJob>();
+			job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl);
+			if (!StartNewThread(&this->library_thread, "ottd:junctionlib", [job]() {
+				job->library = std::make_shared<const std::vector<JunctionLibraryEntry>>(BuildJunctionLibrary(job->spec));
+				job->done = true;
+			})) {
+				/* No thread: an empty library, so the refine tier alone works. */
+				job->library = std::make_shared<const std::vector<JunctionLibraryEntry>>();
+				job->done = true;
+			}
+			this->library_job = std::move(job);
+		}
+
+		if (this->library_job != nullptr && this->library_job->done && this->library_thread.joinable()) {
+			this->library_thread.join();
+			if (this->hover_tile != INVALID_TILE) this->ShowHover();
+		}
+	}
+
+	/** @return Whether the library for the current spec is built. */
+	bool LibraryUsable() const
+	{
+		return this->library_job != nullptr && this->library_job->done && this->library_key == this->SpecKey();
 	}
 
 	/**
@@ -385,10 +440,28 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	void ShowHover()
 	{
 		const JunctionNearResult *result = this->FindCached(this->MakeKey(this->hover_tile));
-		if (result == nullptr) {
-			this->ShowNoPlacement(STR_JUNCTION_STATUS_GENERATING);
-		} else {
+		if (result != nullptr) {
 			this->ShowResult(*result);
+		} else if (!this->LibraryUsable()) {
+			this->ShowNoPlacement(STR_JUNCTION_STATUS_GENERATING);
+		} else if (this->ml_gap == 0) {
+			this->ShowNoPlacement(STR_JUNCTION_ERROR_NEEDS_ML_GAP);
+		} else {
+			/* The instant tier: fit the library around the cursor. The refine tier may still find something better. */
+			const bool mirrored = EffectiveMirror();
+			const auto t0 = std::chrono::steady_clock::now();
+			const JunctionTerrain terrain = MakeJunctionTerrain(this->hover_tile, _junction_rotation, mirrored, 4);
+			const auto t1 = std::chrono::steady_clock::now();
+			const JunctionNearResult fit = FitJunctionLibraryNear(*this->library_job->library, terrain, _junction_rotation, mirrored);
+			const auto t2 = std::chrono::steady_clock::now();
+			Debug(Facility::Misc, Severity::Debug2, "junction instant tier: snapshot {} us, fit {} us",
+				std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count(),
+				std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count());
+			if (fit.result.layout.has_value()) {
+				this->ShowResult(fit);
+			} else {
+				this->ShowNoPlacement(STR_JUNCTION_STATUS_GENERATING);
+			}
 		}
 	}
 
@@ -467,8 +540,31 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		auto job = std::make_shared<JunctionGenerateJob>();
 		job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl);
 		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, 4);
+		if (this->LibraryUsable()) job->library = this->library_job->library;
 		if (!StartNewThread(&this->pending_thread, "ottd:junction", [job, key]() {
 			job->result = GenerateJunctionNear(job->spec, job->terrain, key.rotation, key.mirrored, job->cancel);
+			if (job->library != nullptr && !job->cancel) {
+				JunctionNearResult fit = FitJunctionLibraryNear(*job->library, job->terrain, key.rotation, key.mirrored);
+				/* Prefer a layout, then the nearer one, then the cheaper; on a full tie the fit, so the ghost doesn't flicker. */
+				const JunctionNearResult &full = job->result;
+				bool take_fit = true;
+				if (full.result.layout.has_value() != fit.result.layout.has_value()) {
+					take_fit = fit.result.layout.has_value();
+				} else if (full.result.layout.has_value()) {
+					const auto distance = [](const JunctionNearResult &r) { return std::max(std::abs(r.offset.x), std::abs(r.offset.y)); };
+					const auto rank = [](const JunctionNearResult &r) {
+						return std::tuple<Money, int, int>{r.result.score.first, r.result.score.second, r.result.layout->size.x * r.result.layout->size.y};
+					};
+					if (distance(full) != distance(fit)) {
+						take_fit = distance(fit) < distance(full);
+					} else {
+						take_fit = rank(fit) <= rank(full);
+					}
+				} else {
+					take_fit = false;
+				}
+				if (take_fit) job->result = std::move(fit);
+			}
 			job->done = true;
 		})) {
 			/* No thread: report no layout rather than waiting forever. */
@@ -515,6 +611,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 		this->cache.clear();
 		this->ResetHover();
+		this->EnsureLibrary();
 		this->SetWidgetDisabledState(WID_BJ_TL_DECREASE, this->tl <= 2);
 		this->SetWidgetDisabledState(WID_BJ_TL_INCREASE, this->tl >= 12);
 		this->SetDirty();
@@ -523,6 +620,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	void Close(int data = 0) override
 	{
 		this->DetachJob();
+		if (this->library_thread.joinable()) this->library_thread.detach();
+		this->library_job.reset();
 		GetJunctionSequencer().Cancel();
 		JunctionGhost::Clear();
 		JunctionGhost::SetPinned(false);
@@ -751,6 +850,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->SetWidgetDirty(WID_BJ_CANCEL);
 
 		this->PollJob();
+		this->EnsureLibrary();
 
 		if (this->generate_error != INVALID_STRING_ID) {
 			if (this->has_placement) {

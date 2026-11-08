@@ -584,7 +584,7 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 		}
 	}
 	if (!best.has_value()) return {std::nullopt, JunctionGenerateError::NoLayout};
-	return {std::move(best), JunctionGenerateError::None, best_hub};
+	return {std::move(best), JunctionGenerateError::None, best_hub, best_score};
 }
 
 std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)

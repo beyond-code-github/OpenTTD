@@ -239,6 +239,21 @@ JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mir
 	return terrain;
 }
 
+/** @return The map offsets tried around the anchor, nearest first. */
+static std::vector<TileIndexDiffC> JunctionNearOffsets()
+{
+	static constexpr int16_t DISTANCES[] = {2, 4};
+	std::vector<TileIndexDiffC> offsets{{0, 0}};
+	for (int16_t d : DISTANCES) {
+		for (int16_t dy = -d; dy <= d; dy += d) {
+			for (int16_t dx = -d; dx <= d; dx += d) {
+				if (dx != 0 || dy != 0) offsets.push_back({dx, dy});
+			}
+		}
+	}
+	return offsets;
+}
+
 /**
  * Try the anchor, then nearby anchors, on one snapshot.
  * @param spec The junction spec.
@@ -250,19 +265,9 @@ JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mir
  */
 JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const JunctionTerrain &terrain, uint8_t rotation, bool mirrored, const std::atomic<bool> &cancel)
 {
-	static constexpr int16_t DISTANCES[] = {2, 4};
-	std::vector<TileIndexDiffC> offsets{{0, 0}};
-	for (int16_t d : DISTANCES) {
-		for (int16_t dy = -d; dy <= d; dy += d) {
-			for (int16_t dx = -d; dx <= d; dx += d) {
-				if (dx != 0 || dy != 0) offsets.push_back({dx, dy});
-			}
-		}
-	}
-
 	JunctionNearResult first;
 	bool have_first = false;
-	for (const TileIndexDiffC &d : offsets) {
+	for (const TileIndexDiffC &d : JunctionNearOffsets()) {
 		if (cancel) break;
 		const TileIndexDiffC c = InverseOrientJunctionVector(d, rotation, mirrored);
 		JunctionTerrain shifted = terrain;
@@ -275,6 +280,36 @@ JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const Junction
 		}
 	}
 	return first;
+}
+
+/**
+ * The instant tier (D96): fit the library at the anchor, then at the nearby offsets.
+ * @param library The candidate library of the spec.
+ * @param terrain The snapshot, taken with a margin of at least 4.
+ * @param rotation Quarter turns of the orientation.
+ * @param mirrored Whether the orientation is mirrored.
+ * @return The first fit as a result with its map offset; else an empty NoLayout result at offset (0,0).
+ */
+JunctionNearResult FitJunctionLibraryNear(const std::vector<JunctionLibraryEntry> &library, const JunctionTerrain &terrain, uint8_t rotation, bool mirrored)
+{
+	for (const TileIndexDiffC &d : JunctionNearOffsets()) {
+		const TileIndexDiffC c = InverseOrientJunctionVector(d, rotation, mirrored);
+		JunctionTerrain shifted = terrain;
+		shifted.origin = {static_cast<int16_t>(terrain.origin.x - c.x), static_cast<int16_t>(terrain.origin.y - c.y)};
+		const std::optional<JunctionLibraryFit> fit = FitJunctionLibrary(library, shifted);
+		if (!fit.has_value()) continue;
+		const JunctionLibraryEntry &entry = library[fit->entry];
+		JunctionNearResult found;
+		found.result.layout = entry.layout;
+		found.result.error = JunctionGenerateError::None;
+		found.result.hub = entry.hub;
+		found.result.score = {entry.score.first + fit->terrain_cost, entry.score.second};
+		found.offset = d;
+		return found;
+	}
+	JunctionNearResult none;
+	none.result.error = JunctionGenerateError::NoLayout;
+	return none;
 }
 
 /**

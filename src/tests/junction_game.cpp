@@ -288,3 +288,54 @@ TEST_CASE("GenerateJunctionNear: cancel stops the search", "[junction][terrain]"
 	CHECK_FALSE(near.result.layout.has_value());
 	CHECK(elapsed < std::chrono::seconds(2));
 }
+
+TEST_CASE("FitJunctionLibraryNear: clear terrain gives offset 0 and the library's best entry", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
+	REQUIRE(!library.empty());
+	const JunctionTerrain terrain = MakeNearTestTerrain();
+	const JunctionNearResult near = FitJunctionLibraryNear(library, terrain, 0, false);
+	const JunctionTerrain plain = MakeNearTestTerrain(0);
+	const std::optional<JunctionLibraryFit> fit = FitJunctionLibrary(library, plain);
+	REQUIRE(fit.has_value());
+	REQUIRE(near.result.layout.has_value());
+	CHECK(near.result.error == JunctionGenerateError::None);
+	CHECK(near.offset.x == 0);
+	CHECK(near.offset.y == 0);
+	CHECK(JunctionLayoutToJson(*near.result.layout) == JunctionLayoutToJson(library[fit->entry].layout));
+}
+
+TEST_CASE("FitJunctionLibraryNear: a blocked block gives a fit whose tiles are buildable, or none", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
+	JunctionTerrain terrain = MakeNearTestTerrain();
+	SetNearTestRect(terrain, 27, 32, 2, 7, JunctionTileClass::Blocked);
+	const JunctionNearResult near = FitJunctionLibraryNear(library, terrain, 0, false);
+	WARN("6x6 block: " << (near.result.layout.has_value() ? "fit" : "no fit") << " at offset " << near.offset.x << "," << near.offset.y);
+	if (near.result.layout.has_value()) {
+		/* At rotation 0 the shifted snapshot reads the unshifted one at the working tile plus the offset. */
+		const int ox = 30 - near.result.hub.x + near.offset.x;
+		const int oy = -near.result.hub.y + near.offset.y;
+		for (const JunctionTrack &jt : near.result.layout->tracks) {
+			if (jt.tracks.None()) continue;
+			const JunctionTerrainTile *t = terrain.At(jt.offset.x + ox, jt.offset.y + oy);
+			REQUIRE(t != nullptr);
+			CHECK(t->cls == JunctionTileClass::Buildable);
+		}
+	}
+}
+
+TEST_CASE("FitJunctionLibraryNear: all blocked gives NoLayout at offset 0", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
+	JunctionTerrain terrain = MakeNearTestTerrain();
+	SetNearTestRect(terrain, -4, 67, -6, 44, JunctionTileClass::Blocked);
+	const JunctionNearResult near = FitJunctionLibraryNear(library, terrain, 0, false);
+	CHECK_FALSE(near.result.layout.has_value());
+	CHECK(near.result.error == JunctionGenerateError::NoLayout);
+	CHECK(near.offset.x == 0);
+	CHECK(near.offset.y == 0);
+}
