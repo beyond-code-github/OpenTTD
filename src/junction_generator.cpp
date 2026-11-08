@@ -137,7 +137,7 @@ std::vector<JunctionRouteEnd> PlainRowPieces(const JunctionLayout &layout, int y
 }
 
 /** Route, rasterize and add to the layout. */
-std::optional<JunctionRaster> RouteAndAdd(JunctionLayout &layout, JunctionRouteRequest request)
+std::optional<JunctionRaster> RouteAndAdd(JunctionLayout &layout, JunctionRouteRequest request, JunctionRouteCache *cache)
 {
 	auto clip = [&](std::vector<JunctionRouteEnd> &ends) {
 		std::erase_if(ends, [&](const JunctionRouteEnd &end) {
@@ -146,7 +146,7 @@ std::optional<JunctionRaster> RouteAndAdd(JunctionLayout &layout, JunctionRouteR
 	};
 	clip(request.starts);
 	clip(request.goals);
-	const std::optional<JunctionRoute> route = FindJunctionRoute(layout, request);
+	const std::optional<JunctionRoute> route = FindJunctionRoute(layout, request, cache);
 	if (!route.has_value()) return std::nullopt;
 	JunctionRaster raster = RasterizeJunctionRoute(*route);
 	if (!raster.error.empty()) return std::nullopt;
@@ -155,13 +155,13 @@ std::optional<JunctionRaster> RouteAndAdd(JunctionLayout &layout, JunctionRouteR
 }
 
 /** Route against a copy of the layout with blocker tracks on the given empty tiles, then add the raster to the real layout. */
-std::optional<JunctionRaster> RouteFencedAndAdd(JunctionLayout &layout, JunctionRouteRequest request, const std::vector<TileIndexDiffC> &fence)
+std::optional<JunctionRaster> RouteFencedAndAdd(JunctionLayout &layout, JunctionRouteRequest request, const std::vector<TileIndexDiffC> &fence, JunctionRouteCache *cache)
 {
 	JunctionLayout fenced = layout;
 	for (const TileIndexDiffC &t : fence) {
 		if (TracksAt(layout, t.x, t.y).None()) fenced.tracks.push_back({t, TrackBits{Track::Y}});
 	}
-	std::optional<JunctionRaster> raster = RouteAndAdd(fenced, request);
+	std::optional<JunctionRaster> raster = RouteAndAdd(fenced, request, cache);
 	if (raster.has_value()) AddRasterToLayout(layout, *raster);
 	return raster;
 }
@@ -284,7 +284,7 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 			if (TracksAt(l, x, 0) == TrackBits{Track::X}) request.starts.push_back({tile(x, 0), Trackdir::X_SW});
 		}
 		request.goals = {goal_s};
-		const std::optional<JunctionRaster> e_to_s = RouteFencedAndAdd(l, request, column_fence);
+		const std::optional<JunctionRaster> e_to_s = RouteFencedAndAdd(l, request, column_fence, params.route_cache);
 		if (!e_to_s.has_value()) return false;
 		if (note) note_crossings(*e_to_s);
 
@@ -298,7 +298,7 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 			if (sl_x < xO + 2 || request.starts.empty()) return false;
 		}
 		request.goals = stub_pieces(xO, Trackdir::Y_SE);
-		if (!RouteFencedAndAdd(l, request, branch_fence).has_value()) return false;
+		if (!RouteFencedAndAdd(l, request, branch_fence, params.route_cache).has_value()) return false;
 
 		request = base;
 		request.crossable = w_tiles;
@@ -308,14 +308,14 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 		const int x_s = e_to_s->pieces.front().tile.x;
 		const int cover = static_cast<int>(spec.tl * spec.prio_tl);
 		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, std::max(xO, x_s + cover + 1 + params.e_slack), frame.width - 3);
-		const std::optional<JunctionRaster> n_to_e = RouteAndAdd(l, request);
+		const std::optional<JunctionRaster> n_to_e = RouteAndAdd(l, request, params.route_cache);
 		if (!n_to_e.has_value()) return false;
 		if (note) note_crossings(*n_to_e);
 
 		request = base;
 		request.starts = stub_pieces(xI, Trackdir::Y_NW);
 		request.goals = PlainRowPieces(l, nw_row, Trackdir::X_NE, nw_min_x, nw_max_x);
-		return RouteFencedAndAdd(l, request, branch_fence).has_value();
+		return RouteFencedAndAdd(l, request, branch_fence, params.route_cache).has_value();
 	};
 	if (!route_movements(layout, true, {}, xI - 2, frame.width - 3, true, w_row, 2, -1)) return std::nullopt;
 
@@ -704,6 +704,7 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 
 	const int first = spec.ml_gap + 5;
 	const int last = spec.ml_gap + 20;
+	JunctionRouteCache route_cache;
 	for (const int plane : planes) {
 		int stop_after = INT32_MAX;
 		for (int height = first; height <= last && height <= stop_after; height++) {
@@ -716,6 +717,7 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 							for (uint8_t style = 0; style <= 1; style++) {
 								JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, w_slack};
 								params.plane = plane;
+								params.route_cache = &route_cache;
 								params.bridge_margin = margin;
 								params.lane_style = style;
 								all_params.push_back(params);
@@ -765,6 +767,7 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 	std::set<std::string> seen;
 	const int first = spec.ml_gap + 5;
 	const int last = spec.ml_gap + 20;
+	JunctionRouteCache route_cache;
 	std::vector<JunctionCandidateParams> all_params;
 	for (int height = first; height <= last; height++) {
 		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
@@ -775,6 +778,7 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 							JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, w_slack};
 							params.bridge_margin = margin;
 							params.lane_style = style;
+							params.route_cache = &route_cache;
 							all_params.push_back(params);
 						}
 					}

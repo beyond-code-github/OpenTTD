@@ -432,14 +432,89 @@ std::optional<JunctionRoute> Router::Run()
 
 } // namespace
 
+/** Every input the router reads, flattened; bridge_span_ok, prices and terrain are fixed per cache scope. */
+static std::vector<int32_t> RouteCacheKey(const JunctionLayout &layout, const JunctionRouteRequest &request)
+{
+	std::vector<int32_t> key;
+	auto add_money = [&](Money m) {
+		key.push_back(static_cast<int32_t>(static_cast<uint64_t>(m.base()) >> 32));
+		key.push_back(static_cast<int32_t>(static_cast<uint64_t>(m.base()) & 0xFFFFFFFFu));
+	};
+	auto add_ends = [&](const std::vector<JunctionRouteEnd> &ends) {
+		key.push_back(static_cast<int32_t>(ends.size()));
+		for (const JunctionRouteEnd &end : ends) {
+			key.push_back(end.tile.x);
+			key.push_back(end.tile.y);
+			key.push_back(static_cast<int32_t>(end.trackdir));
+		}
+	};
+	add_ends(request.starts);
+	add_ends(request.goals);
+	for (const int32_t v : {request.min.x, request.min.y, request.max.x, request.max.y}) key.push_back(v);
+	key.push_back(static_cast<int32_t>(request.curve_spacing));
+	key.push_back(static_cast<int32_t>(request.s_bend_window));
+	key.push_back(static_cast<int32_t>(request.max_bridge_middle));
+	key.push_back(static_cast<int32_t>(request.max_expansions));
+	key.push_back(request.plane);
+	key.push_back(static_cast<int32_t>(request.crossable.size()));
+	for (const TileIndexDiffC &t : request.crossable) {
+		key.push_back(t.x);
+		key.push_back(t.y);
+	}
+	add_money(request.crossable_cost);
+	add_money(request.turn_cost);
+	key.push_back(static_cast<int32_t>(layout.tracks.size()));
+	for (const JunctionTrack &jt : layout.tracks) {
+		key.push_back(jt.offset.x);
+		key.push_back(jt.offset.y);
+		key.push_back(static_cast<int32_t>(jt.tracks.base()));
+	}
+	key.push_back(static_cast<int32_t>(layout.bridges.size()));
+	for (const JunctionBridge &b : layout.bridges) {
+		key.push_back(b.start.x);
+		key.push_back(b.start.y);
+		key.push_back(b.end.x);
+		key.push_back(b.end.y);
+	}
+	return key;
+}
+
+bool JunctionRouteCache::Lookup(const std::vector<int32_t> &key, std::optional<JunctionRoute> &result)
+{
+	std::lock_guard<std::mutex> lock(this->mutex);
+	const auto it = this->results.find(key);
+	if (it == this->results.end()) {
+		this->misses++;
+		return false;
+	}
+	result = it->second;
+	this->hits++;
+	return true;
+}
+
+void JunctionRouteCache::Store(std::vector<int32_t> key, const std::optional<JunctionRoute> &result)
+{
+	std::lock_guard<std::mutex> lock(this->mutex);
+	this->results.try_emplace(std::move(key), result);
+}
+
 /**
  * Find the cheapest route from a start piece to a goal piece.
  * @param layout What is already laid.
  * @param request What to route.
+ * @param cache When set, results are looked up and stored here.
  * @return The route, or std::nullopt when none is found.
  */
-std::optional<JunctionRoute> FindJunctionRoute(const JunctionLayout &layout, const JunctionRouteRequest &request)
+std::optional<JunctionRoute> FindJunctionRoute(const JunctionLayout &layout, const JunctionRouteRequest &request, JunctionRouteCache *cache)
 {
+	std::vector<int32_t> key;
+	if (cache != nullptr) {
+		key = RouteCacheKey(layout, request);
+		std::optional<JunctionRoute> cached;
+		if (cache->Lookup(key, cached)) return cached;
+	}
 	Router router(layout, request);
-	return router.Run();
+	std::optional<JunctionRoute> route = router.Run();
+	if (cache != nullptr) cache->Store(std::move(key), route);
+	return route;
 }

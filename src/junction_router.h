@@ -18,7 +18,10 @@
 #include "map_type.h"
 #include "track_type.h"
 
+#include <atomic>
 #include <functional>
+#include <map>
+#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -47,6 +50,24 @@ struct JunctionRouteRequest {
 	int plane = 0; ///< The level the junction is built on.
 };
 
-std::optional<JunctionRoute> FindJunctionRoute(const JunctionLayout &layout, const JunctionRouteRequest &request);
+/**
+ * Remembers router results within one generation, keyed by every input the router reads.
+ * Only valid while bridge_span_ok, prices and the terrain stay the same: scope one cache to one GenerateJunction call or one library build.
+ * Safe to share between threads.
+ */
+class JunctionRouteCache {
+public:
+	bool Lookup(const std::vector<int32_t> &key, std::optional<JunctionRoute> &result);
+	void Store(std::vector<int32_t> key, const std::optional<JunctionRoute> &result);
+	uint64_t Hits() const { return this->hits; }
+	uint64_t Misses() const { return this->misses; }
+private:
+	std::mutex mutex;
+	std::map<std::vector<int32_t>, std::optional<JunctionRoute>> results;
+	std::atomic<uint64_t> hits{0};
+	std::atomic<uint64_t> misses{0};
+};
+
+std::optional<JunctionRoute> FindJunctionRoute(const JunctionLayout &layout, const JunctionRouteRequest &request, JunctionRouteCache *cache = nullptr);
 
 #endif /* JUNCTION_ROUTER_H */

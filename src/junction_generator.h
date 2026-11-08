@@ -70,6 +70,8 @@ struct JunctionFrame {
 /** The frame for a spec: the defaults at prio 1, growing with the prio coverage. */
 JunctionFrame MakeJunctionFrame(const JunctionSpec &spec);
 
+class JunctionRouteCache;
+
 /** The swept inputs of one candidate. */
 struct JunctionCandidateParams {
 	uint8_t height; ///< H: the branch edge is row H-1; the E track is row 0.
@@ -79,6 +81,7 @@ struct JunctionCandidateParams {
 	int plane = 0; ///< The level the junction is built on; only used with a terrain.
 	uint8_t bridge_margin = 3; ///< Bridge heads sit this many tiles beyond the crossing set (D103).
 	uint8_t lane_style = 0; ///< 0 = symmetric Y (D100), 1 = parallelogram (D105).
+	JunctionRouteCache *route_cache = nullptr; ///< When set, router results are shared through it (one cache per generation).
 };
 
 /**

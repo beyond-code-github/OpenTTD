@@ -292,6 +292,55 @@ TEST_CASE("FindJunctionRoute: deterministic", "[junction][router]")
 	CHECK(a->start.y == b->start.y);
 }
 
+/** Whether two optional routes are equal, member by member. */
+static bool SameRoute(const std::optional<JunctionRoute> &a, const std::optional<JunctionRoute> &b)
+{
+	if (a.has_value() != b.has_value()) return false;
+	if (!a.has_value()) return true;
+	return a->start.x == b->start.x && a->start.y == b->start.y && a->start_trackdir == b->start_trackdir && a->moves == b->moves;
+}
+
+TEST_CASE("JunctionRouteCache returns the same route and reuses it", "[junction][router]")
+{
+	JunctionRouteRequest request = MakeRequest({0, 0}, {12, 12});
+	request.starts = {{{0, 0}, Trackdir::X_SW}};
+	request.goals = {{{6, 0}, Trackdir::X_SW}};
+	JunctionLayout layout;
+	JunctionRouteCache cache;
+	const auto a = FindJunctionRoute(layout, request, &cache);
+	const auto b = FindJunctionRoute(layout, request, &cache);
+	REQUIRE(a.has_value());
+	CHECK(SameRoute(a, FindJunctionRoute(layout, request)));
+	CHECK(SameRoute(b, a));
+	CHECK(cache.Hits() == 1);
+	CHECK(cache.Misses() == 1);
+
+	JunctionLayout other = layout;
+	other.tracks.push_back({{10, 10}, TrackBits{Track::X}});
+	FindJunctionRoute(other, request, &cache);
+	CHECK(cache.Misses() == 2);
+}
+
+TEST_CASE("JunctionRouteCache stores failed searches", "[junction][router]")
+{
+	JunctionLayout ring;
+	for (int d = -1; d <= 1; d++) {
+		for (int e = -1; e <= 1; e++) {
+			if (d == 0 && e == 0) continue;
+			ring.tracks.push_back({{static_cast<int16_t>(6 + d), static_cast<int16_t>(6 + e)}, TrackBits{Track::Y}});
+		}
+	}
+	JunctionRouteRequest request = MakeRequest({0, 0}, {12, 12});
+	request.starts = {{{0, 6}, Trackdir::X_SW}};
+	request.goals = {{{6, 6}, Trackdir::X_SW}};
+	request.bridge_span_ok = [](uint) { return false; };
+	JunctionRouteCache cache;
+	CHECK_FALSE(FindJunctionRoute(ring, request, &cache).has_value());
+	CHECK_FALSE(FindJunctionRoute(ring, request, &cache).has_value());
+	CHECK(cache.Hits() == 1);
+	CHECK(cache.Misses() == 1);
+}
+
 TEST_CASE("FindJunctionRoute: S-bend grammar", "[junction][router]")
 {
 	JunctionRouteRequest request = MakeRequest({0, 0}, {12, 12});
