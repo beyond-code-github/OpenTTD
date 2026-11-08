@@ -227,10 +227,26 @@ static uint64_t PieceProgress(const JunctionPiece &piece)
 	return (piece.on_bridge || piece.units == 2) ? JunctionProgressPerStraightTile() : JunctionProgressPerCornerPiece();
 }
 
+/** Whether the signal piece j of path m is a merge signal: the block after it is used by a movement that does not use the block before it. */
+static bool IsMergeSignal(const std::vector<std::vector<std::optional<size_t>>> &held_block, size_t m, size_t j)
+{
+	const auto &blocks = held_block[m];
+	std::optional<size_t> before;
+	for (size_t i = j; i-- > 0 && !before.has_value();) before = blocks[i];
+	std::optional<size_t> next;
+	for (size_t i = j + 1; i < blocks.size() && !next.has_value(); i++) next = blocks[i];
+	if (!before.has_value() || !next.has_value()) return false;
+	for (size_t k = 0; k < held_block.size(); k++) {
+		if (k == m) continue;
+		if (std::ranges::find(held_block[k], next) != held_block[k].end() && std::ranges::find(held_block[k], before) == held_block[k].end()) return true;
+	}
+	return false;
+}
+
 /**
  * The queue spillback conflicts: held trains whose bodies lie in a block another movement needs.
- * A train of movement m is held with its head at each signal piece facing m's travel and at the path end (outside the
- * layout, at the first signal beyond the exit port). Its body covers the tl tiles of progress behind the head; the
+ * A train of movement m is held with its head at the hold points (the path end, outside the layout at the first signal
+ * beyond the exit port, and the merge signals on the path). Its body covers the tl tiles of progress behind the head; the
  * blocks of the non-signal pieces in that range are held. Every other movement using one of them is blocked, except
  * one that also passes the held signal (it queues behind it anyway), or, for the path end, one with the same exit port.
  * @param layout The layout.
@@ -257,7 +273,7 @@ std::vector<JunctionQueueConflict> JunctionQueueConflicts(const JunctionLayout &
 
 	std::vector<JunctionQueueConflict> out;
 	for (size_t m = 0; m < paths.size(); m++) {
-		/* The stops: the start of each signal piece, then the path end. */
+		/* The stops: the start of each merge signal piece, then the path end. */
 		struct Stop {
 			uint64_t progress;
 			std::optional<size_t> piece; ///< The signal piece, or nullopt for the path end.
@@ -267,7 +283,7 @@ std::vector<JunctionQueueConflict> JunctionQueueConflicts(const JunctionLayout &
 		uint64_t progress = 0;
 		for (size_t j = 0; j < paths[m].pieces.size(); j++) {
 			start.push_back(progress);
-			if (IsSignalledPiece(layout, paths[m].pieces[j])) stops.push_back({progress, j});
+			if (IsSignalledPiece(layout, paths[m].pieces[j]) && IsMergeSignal(held_block, m, j)) stops.push_back({progress, j});
 			progress += PieceProgress(paths[m].pieces[j]);
 		}
 		stops.push_back({progress, std::nullopt});

@@ -219,10 +219,12 @@ TEST_CASE("Queue spillback: a split in a bridge's block blocks the ML", "[juncti
 	REQUIRE(ml.error.empty());
 	const std::vector<JunctionPiece> head = {ml.pieces[0]};
 
-	auto conflicts_for = [&](int branch_x, std::initializer_list<int> signals, const std::vector<JunctionPiece> &prefix) {
+	auto conflicts_for = [&](int branch_x, std::initializer_list<int> signals, const std::vector<JunctionPiece> &prefix, bool branch_signal) {
 		const std::string branch_moves = "LFR" + std::string(7 - branch_x, 'F');
 		JunctionLayout layout = Build({{{0, 0}, Trackdir::X_SW, "FFB1FFFF"}, {{static_cast<int16_t>(branch_x), 0}, Trackdir::X_SW, branch_moves}});
 		for (int x : signals) AddSignal(layout, x, 0, Trackdir::X_SW);
+		/* The branch's first signal-legal piece after the split is the corner at (branch_x + 1, 1), which faces south. */
+		if (branch_signal) AddSignal(layout, branch_x + 1, 1, Trackdir::Left_S);
 		const JunctionRaster branch = RasterizeJunctionRoute({{static_cast<int16_t>(branch_x), 0}, Trackdir::X_SW, branch_moves});
 		REQUIRE(branch.error.empty());
 		const std::vector<JunctionPath> paths = {{Role::EIn, Role::EOut, ml.pieces}, MakePath(Role::EIn, Role::SOut, prefix, branch)};
@@ -231,20 +233,24 @@ TEST_CASE("Queue spillback: a split in a bridge's block blocks the ML", "[juncti
 		return std::make_pair(JunctionQueueConflicts(layout, paths, {true, false}, tl), bridge_block);
 	};
 
-	const auto [bad, bad_block] = conflicts_for(1, {0, 6, 8}, head);
+	const auto [bad, bad_block] = conflicts_for(1, {0, 6, 8}, head, false);
 	CHECK(std::ranges::any_of(bad, [&](const JunctionQueueConflict &c) { return c.queued == 1 && c.at_exit && c.blocked == 0 && c.ml_blocked && c.block == bad_block; }));
 
-	/* The passing case of the rules test: a signal on x = 2 splits the bridge block from the split's, so the bridge is held by no branch train. */
-	const auto [good, good_block] = conflicts_for(0, {2, 6, 8}, {});
-	CHECK(std::ranges::none_of(good, [&](const JunctionQueueConflict &c) { return c.block == good_block; }));
+	/*
+	 * The passing case of the rules test: a signal on x = 2 splits the bridge block from the split's, and a real layout has a signal on the branch after the split (D24).
+	 * The branch is then its own block, so a branch train held at its end blocks no ML movement.
+	 */
+	const auto [good, good_block] = conflicts_for(0, {2, 6, 8}, {}, true);
+	CHECK(std::ranges::none_of(good, [](const JunctionQueueConflict &c) { return c.ml_blocked; }));
 }
 
 TEST_CASE("Queue spillback: a whole-train bay holds its train", "[junction][throughput]")
 {
 	/*
-	 * A straight line "FFFFFFFFFFFF" with signals at x = 3 and x = 9; a second path leaves it at x = 2 and runs on row 1.
-	 * A train held at the x = 9 signal (progress 9P) covers [9P - tl P, 9P]. Block x = 4..8 is [4P, 9P] (x = 3 is the signal piece):
-	 * tl = 6 reaches back to 3P and stays inside it; tl = 7 reaches 2P, into the block holding the split.
+	 * A straight line "FFFFFFFFFFFF" with signals at x = 3 and x = 9; a second path leaves it at x = 2 and runs on row 1 with no signal.
+	 * Neither line signal is a merge signal: the branch uses only the split's block (x = 0..2 and row 1), not the blocks x = 4..8 and x = 10..12
+	 * after them. So the line's only hold point is its path end, held inside the blocks after the signals, which the branch does not use,
+	 * and no tl changes that. The branch's only hold point is its path end, with its body in the split's block that the line also starts in.
 	 */
 	const JunctionRaster line = RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, "FFFFFFFFFFFF"});
 	const JunctionRaster branch = RasterizeJunctionRoute({{1, 0}, Trackdir::X_SW, "LFRFFF"});
@@ -254,18 +260,21 @@ TEST_CASE("Queue spillback: a whole-train bay holds its train", "[junction][thro
 	AddSignal(layout, 3, 0, Trackdir::X_SW);
 	AddSignal(layout, 9, 0, Trackdir::X_SW);
 	const std::vector<JunctionPath> paths = {{Role::EIn, Role::EOut, line.pieces}, MakePath(Role::EIn, Role::SOut, {line.pieces[0]}, branch)};
+	const auto blocks = ComputeBlocks(layout);
+	const size_t split_block = *BlockOfPiece(layout, blocks, line.pieces[0]);
+	uint64_t branch_end = 0;
+	for (const JunctionPiece &piece : paths[1].pieces) branch_end += (piece.on_bridge || piece.units == 2) ? JunctionProgressPerStraightTile() : JunctionProgressPerCornerPiece();
 
-	const uint64_t stop = 9 * JunctionProgressPerStraightTile();
-	auto at_stop = [&](uint8_t tl) {
-		auto conflicts = JunctionQueueConflicts(layout, paths, {false, false}, tl);
-		std::erase_if(conflicts, [&](const JunctionQueueConflict &c) { return c.queued != 0 || c.stop != stop; });
-		return conflicts;
-	};
-	CHECK(at_stop(6).empty());
-	const auto longer = at_stop(7);
-	REQUIRE(longer.size() == 1);
-	CHECK_FALSE(longer[0].at_exit);
-	CHECK(longer[0].blocked == 1);
+	for (uint8_t tl : {6, 7}) {
+		const auto conflicts = JunctionQueueConflicts(layout, paths, {false, false}, tl);
+		REQUIRE(conflicts.size() == 1);
+		CHECK(conflicts[0].queued == 1);
+		CHECK(conflicts[0].stop == branch_end);
+		CHECK(conflicts[0].at_exit);
+		CHECK(conflicts[0].blocked == 0);
+		CHECK(conflicts[0].block == split_block);
+		CHECK_FALSE(conflicts[0].ml_blocked);
+	}
 }
 
 TEST_CASE("Queue spillback: same-signal followers are exempt", "[junction][throughput]")
@@ -280,4 +289,27 @@ TEST_CASE("Queue spillback: same-signal followers are exempt", "[junction][throu
 	const std::vector<JunctionPiece> prefix(line.pieces.begin(), line.pieces.begin() + 6);
 	const std::vector<JunctionPath> paths = {{Role::EIn, Role::EOut, line.pieces}, MakePath(Role::EIn, Role::EOut, prefix, branch)};
 	CHECK(JunctionQueueConflicts(layout, paths, {false, false}, 2).empty());
+}
+
+TEST_CASE("Queue spillback: only hold points stop trains", "[junction][throughput]")
+{
+	/*
+	 * The ML is row 0 from x = 0 to x = 14. A branch leaves it at x = 1, runs on row 1 and rejoins it at x = 12, so both end on the ML exit.
+	 * The branch carries block signals at (3,1) and (11,1):
+	 *   - (3,1) has the branch's own block (x = 4..10 on row 1) as its next block, which no other movement uses: not a merge signal.
+	 *   - (11,1) has the ML's block (the rest of the layout) as its next block; the ML does not use the branch block before it: a merge signal.
+	 * A branch train held at (3,1) would have its body in the ML's block (the split's corners), which would block the ML.
+	 * That train stands there only if the one ahead of it is held at (11,1); a train held there has its tl = 2 body inside x = 4..10, so the ML is never blocked.
+	 * The path ends are exempt: both movements exit at the same port.
+	 */
+	const uint8_t tl = 2;
+	const JunctionRaster ml = RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, "FFFFFFFFFFFFFF"});
+	const JunctionRaster branch = RasterizeJunctionRoute({{1, 0}, Trackdir::X_SW, "LFRFFFFFFFFRFLFF"});
+	REQUIRE(ml.error.empty());
+	REQUIRE(branch.error.empty());
+	JunctionLayout layout = Build({{{0, 0}, Trackdir::X_SW, "FFFFFFFFFFFFFF"}, {{1, 0}, Trackdir::X_SW, "LFRFFFFFFFFRFLFF"}});
+	AddSignal(layout, 3, 1, Trackdir::X_SW);
+	AddSignal(layout, 11, 1, Trackdir::X_SW);
+	const std::vector<JunctionPath> paths = {{Role::EIn, Role::EOut, ml.pieces}, MakePath(Role::EIn, Role::EOut, {ml.pieces[0]}, branch)};
+	CHECK(JunctionQueueConflicts(layout, paths, {true, false}, tl).empty());
 }

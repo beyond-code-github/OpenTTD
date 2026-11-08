@@ -41,11 +41,11 @@ struct JunctionTrafficMix {
 	std::vector<std::pair<std::pair<JunctionPortRole, JunctionPortRole>, double>> weights;
 };
 
-/** A held train of one movement blocking another movement (PLAN-sim-driven §3.1, queue spillback). */
+/** A train held at a hold point (path end or merge signal) of one movement blocking another movement (PLAN-sim-driven §3.1, queue spillback). */
 struct JunctionQueueConflict {
 	size_t queued; ///< Index of the held train's movement.
 	uint64_t stop; ///< Progress along the queued movement's path where its head is held.
-	bool at_exit; ///< Held beyond the exit port rather than at a signal inside the junction.
+	bool at_exit; ///< Held beyond the exit port rather than at a merge signal inside the junction.
 	size_t blocked; ///< Index of the movement that is blocked.
 	size_t block; ///< The block they share.
 	bool ml_blocked; ///< The blocked movement is an ML movement.
