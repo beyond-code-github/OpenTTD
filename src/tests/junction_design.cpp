@@ -16,6 +16,7 @@
 #include "../junction_route.h"
 #include "../junction_router.h"
 #include "../junction_rules.h"
+#include "../junction_rules_internal.h"
 #include "../track_func.h"
 #include "../core/format.hpp"
 
@@ -274,22 +275,42 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 	}
 	std::vector<CircuitDepot> depots = {{piece_a->tile.x - 1, piece_a->tile.y, "SW"}};
 
-	/* One-way block signals along each loop. */
-	auto track_count = [&](TileIndexDiffC t) {
-		for (const auto &jt : layout.tracks) if (jt.offset.x == t.x && jt.offset.y == t.y) return static_cast<int>(jt.tracks.Count());
-		return 0;
-	};
+	/* One-way block signals along each loop, spaced as drag-signalling with minimise gaps would (D97). */
+	const uint density = spec.sd * 192u;
 	for (const JunctionRaster &raster : rasters) {
-		uint acc = 0;
-		bool first_signal = true;
+		auto legal = [&](const JunctionPiece &p) { return !p.on_bridge && !TracksOverlap(track_at(p.tile)); };
+		auto place = [&](const JunctionPiece &p) { layout.signals.push_back({p.tile, p.trackdir, SignalType::Block, SignalVariant::Electric}); };
+		std::optional<size_t> suitable;
+		uint suitable_dist = 0;
+		uint dist = 0; // Logical length from the last signal to the current piece.
+		bool placed_any = false;
 		for (size_t k = 2; k + 1 < raster.pieces.size(); k++) {
 			const JunctionPiece &p = raster.pieces[k];
-			acc += p.units;
-			if (!first_signal && acc < 2u * spec.sd) continue;
-			if (p.on_bridge || track_count(p.tile) != 1) continue;
-			layout.signals.push_back({p.tile, p.trackdir, SignalType::Block, SignalVariant::Electric});
-			first_signal = false;
-			acc = 0;
+			if (!placed_any) {
+				/* The first legal piece gets a signal, as the drag's first tile does. */
+				if (legal(p)) {
+					place(p);
+					placed_any = true;
+					dist = 0;
+				}
+				continue;
+			}
+			dist += JunctionSignalWeight(raster.pieces[k - 1]);
+			if (dist > density && suitable.has_value()) {
+				place(raster.pieces[*suitable]);
+				dist -= suitable_dist;
+				suitable.reset();
+			}
+			if (dist == density) {
+				if (legal(p)) {
+					place(p);
+					dist = 0;
+					suitable.reset();
+				}
+			} else if (legal(p)) {
+				suitable = k;
+				suitable_dist = dist;
+			}
 		}
 	}
 
