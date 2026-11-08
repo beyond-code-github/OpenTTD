@@ -1,11 +1,12 @@
 """Server lifecycle: run dir, config files, start/stop of the openttd-spike dedicated server."""
-import os, shutil, signal, socket, subprocess, time
+import hashlib, os, shutil, signal, socket, subprocess, tarfile, time
 
 RUNDIR = os.environ.get(
     "OTTD_RIG_DIR",
     "/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/ottd-rig/")
 BINARY = os.environ.get("OTTD_RIG_BIN", "/home/pete/OpenTTD/build/openttd")
-PORT = 3977
+PORT = int(os.environ.get("OTTD_RIG_PORT", "3977"))  # admin port
+GAME_PORT = int(os.environ.get("OTTD_RIG_GAME_PORT", "3979"))
 PASSWORD = "rigpw"
 GS_NAME = "JunctionTestGS"
 AI_NAME = "IdleAI"
@@ -17,6 +18,7 @@ USERDATA = os.path.expanduser("~/.local/share/openttd")
 CFG = """[version]
 ini_version = 8
 [network]
+server_port = %(game_port)d
 server_admin_port = %(port)d
 allow_insecure_admin_login = true
 [difficulty]
@@ -27,7 +29,7 @@ vehicle_breakdowns = 0
 max_loan = 2000000000
 quantity_sea_lakes = %(lakes)d
 [game_creation]
-map_x = 7
+%(year)smap_x = 7
 map_y = 7
 custom_town_number = 1
 custom_terrain_type = %(terrain)d
@@ -46,6 +48,21 @@ ai_in_multiplayer = true
 [game_scripts]
 %(gs)s =
 """
+NUTS_TAR = os.path.join(USERDATA, "content_download", "newgrf", "48410101-NUTS_Unrealistic_Train_Set-0.8.4.tar")
+NUTS_YEAR = 2057
+
+
+def nuts_newgrf_line():
+    """`grfid|md5|filename =` line for [newgrf], as OpenTTD writes it. The md5 covers the header and
+    the data section of the container-v2 grf (14 bytes plus the data size at offset 10), as CalcGRFMD5Sum does."""
+    grfid = os.path.basename(NUTS_TAR).split("-")[0]
+    with tarfile.open(NUTS_TAR) as t:
+        m = next(x for x in t.getmembers() if x.name.endswith(".grf"))
+        data = t.extractfile(m).read()
+    size = 14 + int.from_bytes(data[10:14], "little")
+    return "%s|%s|%s =\n" % (grfid, hashlib.md5(data[:size]).hexdigest(), m.name)
+
+
 SECRETS = "[network]\nadmin_password = %s\n"
 
 
@@ -86,7 +103,7 @@ def _install(src, dst):
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__"))
 
 
-def start(save=None, scenario=None, timeout=60, hilly=False):
+def start(save=None, scenario=None, timeout=60, hilly=False, nuts=False):
     if pid():
         raise RuntimeError("server already running (pid %d)" % pid())
     os.makedirs(RUNDIR, exist_ok=True)
@@ -94,7 +111,9 @@ def start(save=None, scenario=None, timeout=60, hilly=False):
     _install(os.path.join(TOOLS, "ai", AI_NAME), os.path.join(USERDATA, "ai", AI_NAME))
     with open(_p("openttd.cfg"), "w") as f:
         terrain = dict(terrain=3, variety=2, smooth=1, lakes=2, towns=4) if hilly else dict(terrain=1, variety=0, smooth=0, lakes=4, towns=4)
-        f.write(CFG % dict(port=PORT, gs=GS_NAME, **terrain))
+        f.write(CFG % dict(port=PORT, game_port=GAME_PORT, gs=GS_NAME, year=("starting_year = %d\n" % NUTS_YEAR) if nuts else "", **terrain))
+        if nuts:
+            f.write("[newgrf]\n" + nuts_newgrf_line())
     with open(_p("secrets.cfg"), "w") as f:
         f.write(SECRETS % PASSWORD)
     args = [BINARY, "-D", "127.0.0.1", "-c", _p("openttd.cfg"), "-g"]

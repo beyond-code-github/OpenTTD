@@ -14,7 +14,7 @@ $O watch 0 --seconds 20; $O stop
 
 | Command | Example | Notes |
 |---|---|---|
-| `start [--save PATH] [--hilly]` | `ottd start --save /x/junction.sav` | new 64x64 flat game (fixed seed 3, env `OTTD_RIG_SEED`), or load a save; waits for the admin port |
+| `start [--save PATH] [--hilly] [--nuts]` | `ottd start --save /x/junction.sav` | new 64x64 flat game (fixed seed 3, env `OTTD_RIG_SEED`), or load a save; waits for the admin port. `--nuts` loads the NUTS 0.8.4 newgrf (grfid and md5 computed from the tar in `~/.local/share/openttd/content_download/newgrf/`) and starts in 2057. Env `OTTD_RIG_PORT` (admin, default 3977) and `OTTD_RIG_GAME_PORT` (game, default 3979) pick the ports |
 | `stop` | `ottd stop` | SIGTERM via `server.pid` |
 | `status` | `ottd status` | date, companies, money |
 | `rcon "<cmd>"` | `ottd rcon "getdate"` | prints the console output |
@@ -22,7 +22,7 @@ $O watch 0 --seconds 20; $O stop
 | `company [--id N]` | `ottd company --id 0` | tells the GS which company to act as; without `--id`, starts `IdleAI` if there is no company and uses it. `--id` needs the company to exist already (e.g. after `start --save`) |
 | `build-line X1 Y1 X2 Y2` | `ottd build-line 10 20 30 20` | straight rail, first available rail type, inclusive tiles |
 | `depot X Y DIR` | `ottd depot 9 20 SW` | DIR = way the entrance faces: NE x-1, SE y+1, SW x+1, NW y-1 |
-| `train DEPOT_X DEPOT_Y [--engine ID] [--wagons N]` | `ottd train 9 20 --wagons 2` | fastest buildable engine by default; prints the vehicle id |
+| `train DEPOT_X DEPOT_Y [--engine ID] [--wagons N] [--design]` | `ottd train 9 20 --wagons 2` | fastest buildable engine by default; prints the vehicle id. `--design` builds the design train (needs `start --nuts`): 2x "Mastermind (Electric)" + 6x "3rd gen Universal Wagon (Rail)" |
 | `orders VEHICLE X Y X Y` | `ottd orders 0 9 20 31 20` | two go-to-depot orders |
 | `go VEHICLE` | `ottd go 0` | starts the train if not running |
 | `build-layout FILE X Y` | `ottd build-layout layouts/test-1a.json 20 20` | builds a layout JSON with its north corner at tile X,Y: tracks, then bridges (fastest rail bridge for the length), then signals. Prints `built=N failed=M` and one line per failure (layout-relative x,y); exits 1 on failures |
@@ -34,7 +34,7 @@ $O watch 0 --seconds 20; $O stop
 | `vehicles` | `ottd vehicles` | `id @x,y speed km/h state` per train |
 | `watch VEHICLE --seconds N` | `ottd watch 0 --seconds 20` | samples about every 0.5 s; min/max/avg speed, whether it hit 0 |
 
-GameScript commands (`ottd gs`): `occupancy {vehicles:[ids],ticks:T,every?:4,slow?:80}` (reply `{samples,stopped:[[x,y,n]],slow:[[x,y,n]],stops:[[id,count]]}`), `ping`, `loan_max` (company mode: sets the loan to the maximum, replies `{balance}`), `company_set {company}`, `build_rail {x1,y1,x2,y2}`, `build_depot {x,y,dir}`, `build_train {depot_x,depot_y,engine?,wagons?}`, `orders_depots {vehicle,x1,y1,x2,y2}`, `start {vehicle}`, `vehicles`, `build_layout {origin_x,origin_y,layout}` (reply `{built,failed:[{what,x,y,error}]}`), `sample {vehicles:[ids],ticks:N}` (reply `{vehicles:[{id,n,min,max,avg,stops,drops:[{tile_x,tile_y,from,to}]}]}`). The CLI splits a large layout into several `build_layout` requests (about 1200 bytes each, tracks then bridges then signals), since one admin packet cannot carry a big layout. Replies over 1400 bytes arrive as `{"id","chunk","of","data"}` parts; `ottd_core.admin` reassembles them.
+GameScript commands (`ottd gs`): `occupancy {vehicles:[ids],ticks:T,every?:4,slow?:80}` (reply `{samples,stopped:[[x,y,n]],slow:[[x,y,n]],stops:[[id,count]]}`), `ping`, `loan_max` (company mode: sets the loan to the maximum, replies `{balance}`), `company_set {company}`, `build_rail {x1,y1,x2,y2}`, `build_depot {x,y,dir}`, `build_train {depot_x,depot_y,engine?,wagons?,engine_name?,engines?,wagon_name?}`, `orders_depots {vehicle,x1,y1,x2,y2}`, `start {vehicle}`, `vehicles`, `build_layout {origin_x,origin_y,layout}` (reply `{built,failed:[{what,x,y,error}]}`), `sample {vehicles:[ids],ticks:N}` (reply `{vehicles:[{id,n,min,max,avg,stops,drops:[{tile_x,tile_y,from,to}]}]}`). The CLI splits a large layout into several `build_layout` requests (about 1200 bytes each, tracks then bridges then signals), since one admin packet cannot carry a big layout. Replies over 1400 bytes arrive as `{"id","chunk","of","data"}` parts; `ottd_core.admin` reassembles them.
 
 ## Layout JSON
 

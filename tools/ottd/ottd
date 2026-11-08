@@ -42,7 +42,7 @@ def companies(adm):
 
 
 def cmd_start(a):
-    n = S.start(save=a.save, scenario=a.scenario, hilly=a.hilly)
+    n = S.start(save=a.save, scenario=a.scenario, hilly=a.hilly, nuts=a.nuts)
     print("started pid=%d rundir=%s" % (n, S.RUNDIR))
     print("join: build/openttd -n 127.0.0.1")
 
@@ -118,8 +118,10 @@ def cmd_train(a):
     req = {"cmd": "build_train", "depot_x": a.depot_x, "depot_y": a.depot_y, "wagons": a.wagons}
     if a.engine is not None:
         req["engine"] = a.engine
+    if a.design:
+        req.update(engine_name="Mastermind (Electric)", engines=2, wagon_name="3rd gen Universal Wagon (Rail)", wagons=6)
     r = one_shot(req)
-    print("train %d engine=%d (%s) wagons=%d" % (r["vehicle"], r["engine"], r["engine_name"], r["wagons"]))
+    print("train %d engine=%d (%s) engines=%d wagons=%d" % (r["vehicle"], r["engine"], r["engine_name"], r.get("engines", 1), r["wagons"]))
 
 
 def cmd_orders(a):
@@ -519,7 +521,7 @@ def main():
         p.set_defaults(fn=fn)
 
     i = {"type": int}
-    add("start", cmd_start, ("--save", {}), ("--scenario", {}), ("--hilly", {"action": "store_true"}))
+    add("start", cmd_start, ("--save", {}), ("--scenario", {}), ("--hilly", {"action": "store_true"}), ("--nuts", {"action": "store_true"}))
     add("stop", cmd_stop)
     add("status", cmd_status)
     add("rcon", cmd_rcon, ("command", {}))
@@ -534,7 +536,7 @@ def main():
     add("sample", cmd_sample, ("vehicles", {"type": int, "nargs": "+"}), ("--ticks", {"type": int, "required": True}))
     add("build-line", cmd_build_line, ("x1", i), ("y1", i), ("x2", i), ("y2", i))
     add("depot", cmd_depot, ("x", i), ("y", i), ("dir", {"help": "NE|SE|SW|NW: direction the entrance faces (NE x-1, SE y+1, SW x+1, NW y-1)"}))
-    add("train", cmd_train, ("depot_x", i), ("depot_y", i), ("--engine", i), ("--wagons", {"type": int, "default": 0}))
+    add("train", cmd_train, ("depot_x", i), ("depot_y", i), ("--engine", i), ("--wagons", {"type": int, "default": 0}), ("--design", {"action": "store_true"}))
     add("orders", cmd_orders, ("vehicle", i), ("x1", i), ("y1", i), ("x2", i), ("y2", i))
     add("go", cmd_go, ("vehicle", i))
     add("vehicles", cmd_vehicles)

@@ -79,10 +79,22 @@ class JunctionTestGS extends GSController {
 	/* ---- helpers ---- */
 	function Tile(x, y) { return GSMap.GetTileIndex(x, y); }
 
-	function SetRailType()
+	/* names of the buildable rail engines (wagons if wagons is true), for error messages */
+	function RailNames(wagons)
+	{
+		local out = "";
+		foreach (e, _ in GSEngineList(GSVehicle.VT_RAIL)) {
+			if (GSEngine.IsBuildable(e) && GSEngine.IsWagon(e) == wagons) out += GSEngine.GetName(e) + "; ";
+		}
+		return out;
+	}
+
+	/* with an engine, only a rail type it can run on */
+	function SetRailType(engine = null)
 	{
 		local l = GSRailTypeList();
 		foreach (rt, _ in l) {
+			if (engine != null && !GSEngine.CanRunOnRail(engine, rt)) continue;
 			if (GSRail.IsRailTypeAvailable(rt)) {
 				GSRail.SetCurrentRailType(rt);
 				return rt;
@@ -211,8 +223,22 @@ class JunctionTestGS extends GSController {
 	function CmdBuildTrain(id, msg)
 	{
 		if (!this.Need(msg, ["depot_x", "depot_y"], id)) return;
-		local rt = this.SetRailType();
-		if (rt == null) { this.Err(id, "no rail type available"); return; }
+		local engine_name = ("engine_name" in msg) ? msg.engine_name : null;
+		local wagon_name = ("wagon_name" in msg) ? msg.wagon_name : null;
+		local rt = null;
+		if (engine_name != null) {
+			/* the rail type is one the named, buildable engine can run on */
+			local named = null;
+			foreach (e, _ in GSEngineList(GSVehicle.VT_RAIL)) {
+				if (!GSEngine.IsWagon(e) && GSEngine.IsBuildable(e) && GSEngine.GetName(e) == engine_name) { named = e; break; }
+			}
+			if (named == null) { this.Err(id, "no buildable engine named " + engine_name + ": " + this.RailNames(false)); return; }
+			rt = this.SetRailType(named);
+			if (rt == null) { this.Err(id, "no available rail type for engine " + engine_name); return; }
+		} else {
+			rt = this.SetRailType();
+			if (rt == null) { this.Err(id, "no rail type available"); return; }
+		}
 		local depot = this.Tile(msg.depot_x, msg.depot_y);
 		local engine = ("engine" in msg) ? msg.engine : null;
 		local wagon = null;
@@ -222,11 +248,15 @@ class JunctionTestGS extends GSController {
 		foreach (e, _ in engines) {
 			if (!GSEngine.IsBuildable(e) || !GSEngine.CanRunOnRail(e, rt)) continue;
 			if (GSEngine.IsWagon(e)) {
-				if (wagon == null) {
+				if (wagon_name != null) {
+					if (wagon == null && GSEngine.GetName(e) == wagon_name) wagon = e;
+				} else if (wagon == null) {
 					foreach (c, _ in cargos) {
 						if (GSEngine.CanRefitCargo(e, c)) { wagon = e; break; }
 					}
 				}
+			} else if (engine_name != null) {
+				if (engine == null && GSEngine.GetName(e) == engine_name) engine = e;
 			} else if (engine == null || !("engine" in msg)) {
 				local sp = GSEngine.GetMaxSpeed(e);
 				if (sp > best_speed) { best_speed = sp; engine = e; }
@@ -234,11 +264,18 @@ class JunctionTestGS extends GSController {
 		}
 		if (engine == null) { this.Err(id, "no buildable engine"); return; }
 		local n = ("wagons" in msg) ? msg.wagons : 0;
-		if (n > 0 && wagon == null) { this.Err(id, "no buildable wagon"); return; }
+		if (n > 0 && wagon == null) { this.Err(id, "no buildable wagon" + (wagon_name != null ? " named " + wagon_name + ": " + this.RailNames(true) : "")); return; }
 		local v = GSVehicle.BuildVehicle(depot, engine);
 		if (!GSVehicle.IsValidVehicle(v)) {
 			this.Err(id, "BuildVehicle failed: " + GSError.GetLastErrorString());
 			return;
+		}
+		local nengines = ("engines" in msg) ? msg.engines : 1;
+		local extra = 1;
+		for (local i = 1; i < nengines; i++) {
+			local e2 = GSVehicle.BuildVehicle(depot, engine);
+			if (!GSVehicle.IsValidVehicle(e2)) break;
+			if (GSVehicle.MoveWagon(e2, 0, v, 0)) extra++;
 		}
 		local got = 0;
 		for (local i = 0; i < n; i++) {
@@ -246,7 +283,7 @@ class JunctionTestGS extends GSController {
 			if (!GSVehicle.IsValidVehicle(w)) break;
 			if (GSVehicle.MoveWagon(w, 0, v, GSVehicle.GetNumWagons(v) - 1)) got++;
 		}
-		this.Reply(id, { vehicle = v, engine = engine, engine_name = GSEngine.GetName(engine), wagons = got });
+		this.Reply(id, { vehicle = v, engine = engine, engine_name = GSEngine.GetName(engine), engines = extra, wagons = got });
 	}
 
 	function CmdOrders(id, msg)
