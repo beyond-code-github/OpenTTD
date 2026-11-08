@@ -252,6 +252,8 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		if (crossable_w) for (int x = 0; x <= 63; x++) w_tiles.push_back(tile(x, w_row));
 		std::vector<TileIndexDiffC> column_fence;
 		for (int y = 0; y <= g + 3; y++) column_fence.push_back(tile(xI, y));
+		/* Keep the tile above the N stub free: N->E needs it for its first piece or its bridge head (D3d). */
+		column_fence.push_back(tile(xI, ys - 1));
 		std::vector<TileIndexDiffC> branch_fence = under_spans;
 		for (int y = 1; y < w_row; y++) for (int x = 0; x <= 63; x++) branch_fence.push_back(tile(x, y));
 

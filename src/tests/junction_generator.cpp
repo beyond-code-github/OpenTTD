@@ -251,6 +251,17 @@ TEST_CASE("GenerateJunction: an ML gap of 0 has no room for the W prio", "[junct
 	CHECK(result.error == JunctionGenerateError::NeedsMlGap);
 }
 
+TEST_CASE("GenerateJunction: a short train with a narrow branch fits", "[junction]")
+{
+	/* At TL3 E->S used to end on the tile above the N stub, leaving N->E no way out (D3d). */
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.branch_gap = 0;
+	spec.tl = 3;
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	CHECK(CheckJunctionRules(*result.layout, spec).empty());
+}
+
 TEST_CASE("GenerateJunction: a long train with a narrow branch still fits", "[junction]")
 {
 	/* At TL6 the N->W window ends left of xI - 16, so a search box that stopped there had no goal. */
