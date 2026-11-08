@@ -584,13 +584,13 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
  * after lane B's S-bend and before lane A's S-bend (gap 1) is built once and returned instead.
  * For the parallelogram style the shift-back is tried tightest first (D110 4): the first rule-clean shift-back wins.
  */
-std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub)
+std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, bool *out_clean)
 {
 	bool clean = false;
 	auto attempt = [&](int sb_back) -> std::optional<JunctionLayout> {
 		clean = false;
 		std::optional<JunctionLayout> tight = BuildJunctionCandidateWithGap(spec, params, terrain, terrain_cost, hub, 0, sb_back);
-		if (tight.has_value() && CheckJunctionRules(*tight, spec).empty()) {
+		if (tight.has_value() && JunctionRulesClean(*tight, spec)) {
 			clean = true;
 			return tight;
 		}
@@ -600,15 +600,20 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		if (!loose.has_value()) return tight;
 		if (terrain_cost != nullptr) *terrain_cost = loose_cost;
 		if (hub != nullptr) *hub = loose_hub;
-		clean = CheckJunctionRules(*loose, spec).empty();
+		clean = JunctionRulesClean(*loose, spec);
 		return loose;
 	};
-	if (params.lane_style != 1) return attempt(6);
+	if (params.lane_style != 1) {
+		std::optional<JunctionLayout> single = attempt(6);
+		if (out_clean != nullptr) *out_clean = clean;
+		return single;
+	}
 	std::optional<JunctionLayout> result;
 	for (int sb_back = 1; sb_back <= 6; sb_back++) {
 		result = attempt(sb_back);
 		if (clean) break;
 	}
+	if (out_clean != nullptr) *out_clean = clean;
 	return result;
 }
 
@@ -728,8 +733,7 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 			std::vector<Result> results(all_params.size());
 			JunctionParallelFor(all_params.size(), [&](size_t i) {
 				Result &r = results[i];
-				r.layout = BuildJunctionCandidate(spec, all_params[i], terrain, &r.terrain_cost, &r.hub);
-				r.clean = r.layout.has_value() && CheckJunctionRules(*r.layout, spec).empty();
+				r.layout = BuildJunctionCandidate(spec, all_params[i], terrain, &r.terrain_cost, &r.hub, &r.clean);
 			});
 			for (Result &r : results) {
 				if (!r.clean) continue;
@@ -786,8 +790,7 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 	std::vector<Result> results(all_params.size());
 	JunctionParallelFor(all_params.size(), [&](size_t i) {
 		Result &r = results[i];
-		r.layout = BuildJunctionCandidate(spec, all_params[i], nullptr, nullptr, &r.hub);
-		r.clean = r.layout.has_value() && CheckJunctionRules(*r.layout, spec).empty();
+		r.layout = BuildJunctionCandidate(spec, all_params[i], nullptr, nullptr, &r.hub, &r.clean);
 	});
 	for (Result &r : results) {
 		if (!r.clean) continue;

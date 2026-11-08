@@ -88,9 +88,11 @@ struct JunctionCandidateParams {
  * @param terrain Optional terrain snapshot, in the generator's working coordinates before cropping and normalising (x 0..frame.width-1, rows from 0).
  *                The anchor is the hub point (frame.hub_x, 0): the terrain's cell (frame.hub_x - origin.x, 0 - origin.y) must be the hovered tile.
  * @param terrain_cost When set together with terrain, receives the sum of CostAt over occupied track tiles and bridge heads, once per tile.
+ * @param hub When set, receives the hub offset.
+ * @param clean When set, receives whether the returned layout is rule-clean (already proven while building, so callers need not check again).
  * @return The layout, or std::nullopt when this candidate cannot be built.
  */
-std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain = nullptr, Money *terrain_cost = nullptr, TileIndexDiffC *hub = nullptr);
+std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain = nullptr, Money *terrain_cost = nullptr, TileIndexDiffC *hub = nullptr, bool *clean = nullptr);
 
 /** Generator score of a layout: the count of tiles it builds on or over, then the build cost (D114). Lower is better. */
 std::pair<int, Money> ScoreJunctionLayout(const JunctionLayout &layout, const JunctionSpec &spec);

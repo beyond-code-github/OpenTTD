@@ -35,6 +35,40 @@ TEST_CASE("GenerateJunction gives a rule-clean L_R T", "[junction]")
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
 }
 
+TEST_CASE("JunctionRulesClean agrees with CheckJunctionRules on the sweep", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	int clean_count = 0;
+	int unclean_count = 0;
+	for (int height = spec.ml_gap + 5; height <= spec.ml_gap + 20; height += 3) {
+		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
+			for (uint8_t e_slack = 0; e_slack <= 3; e_slack += 3) {
+				for (uint8_t w_slack = 0; w_slack <= 3; w_slack += 3) {
+					for (uint8_t margin = 1; margin <= 3; margin++) {
+						for (uint8_t style = 0; style <= 1; style++) {
+							JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, w_slack};
+							params.bridge_margin = margin;
+							params.lane_style = style;
+							bool clean = false;
+							const std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, nullptr, nullptr, nullptr, &clean);
+							if (!layout.has_value()) {
+								CHECK_FALSE(clean);
+								continue;
+							}
+							const bool expected = CheckJunctionRules(*layout, spec).empty();
+							CHECK(JunctionRulesClean(*layout, spec) == expected);
+							CHECK(clean == expected);
+							(expected ? clean_count : unclean_count)++;
+						}
+					}
+				}
+			}
+		}
+	}
+	CHECK(clean_count > 0);
+	CHECK(unclean_count > 0);
+}
+
 /** The two W-side measures of J1, measured from the layout's traced paths. */
 struct WSideMeasures {
 	int plain_before_head = -1; ///< Plain axis tiles between lane B's entry S-bend and its near bridge head.

@@ -1658,3 +1658,23 @@ std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, cons
 	add(CheckFootprint(ctx));
 	return out;
 }
+
+/**
+ * Whether CheckJunctionRules(layout, spec) is empty, checking the cheapest groups first, the prio reach simulation last,
+ * and returning at the first violation.
+ */
+bool JunctionRulesClean(const JunctionLayout &layout, const JunctionSpec &spec)
+{
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
+	return CheckConnectivity(ctx).empty() &&
+			CheckGeometry(ctx).empty() &&
+			CheckFootprint(ctx).empty() &&
+			(!spec.curve_limit || CheckCurveSpeed(ctx).empty()) &&
+			CheckOrder(ctx).empty() &&
+			CheckBridges(ctx).empty() &&
+			CheckSignals(ctx).empty() &&
+			CheckWaitingRoom(ctx).empty() &&
+			CheckDeadlock(ctx).empty() &&
+			CheckPrio(ctx).empty() &&
+			CheckPrioReach(ctx).empty();
+}

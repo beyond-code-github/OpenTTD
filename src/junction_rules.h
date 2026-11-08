@@ -64,5 +64,6 @@ std::vector<RuleViolation> CheckFootprint(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckPrioReach(const JunctionCheckContext &ctx);
 
 std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec);
+bool JunctionRulesClean(const JunctionLayout &layout, const JunctionSpec &spec);
 
 #endif /* JUNCTION_RULES_H */
