@@ -634,3 +634,35 @@ TEST_CASE("GenerateJunction sets the score of the chosen layout", "[junction]")
 	REQUIRE(result.layout.has_value());
 	CHECK(result.score == ScoreJunctionLayout(*result.layout, spec));
 }
+
+TEST_CASE("a bridge may span existing track", "[junction][terrain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTerrain flat = MakeFlatTerrain();
+	const JunctionGenerateResult base = GenerateJunction(spec, &flat);
+	REQUIRE(base.layout.has_value());
+
+	/* The doubled bridges run along x on layout rows hub.y + 1 and hub.y + 3, heads at hub.x - 4 and hub.x + 3; the strip is one column under the middle of the span, over both lane rows and the W row between. */
+	const int sx = 29;
+	const int sy0 = base.hub.y + 1 - base.hub.y;
+	const int sy1 = base.hub.y + 3 - base.hub.y;
+
+	JunctionTerrain blocked = flat;
+	SetTerrainRect(blocked, sx, sx, sy0, sy1, JunctionTileClass::Blocked);
+	const JunctionGenerateResult red = GenerateJunction(spec, &blocked);
+	CHECK((!red.layout.has_value() || !SameLayout(*red.layout, *base.layout)));
+
+	JunctionTerrain spannable = flat;
+	SetTerrainRect(spannable, sx, sx, sy0, sy1, JunctionTileClass::Spannable);
+	const JunctionGenerateResult result = GenerateJunction(spec, &spannable);
+	REQUIRE(result.layout.has_value());
+}
+
+TEST_CASE("track may not use a Spannable tile", "[junction][terrain]")
+{
+	JunctionTerrain t = MakeFlatTerrain();
+	SetTerrainRect(t, 20, 20, 5, 5, JunctionTileClass::Spannable);
+	CHECK_FALSE(t.UsableAt(20, 5, 0));
+	CHECK(t.SpanOk(20, 5, 0));
+	CHECK(t.SpanOk(20, 5, 1));
+}

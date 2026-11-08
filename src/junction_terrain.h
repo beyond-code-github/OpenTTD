@@ -19,7 +19,8 @@
 enum class JunctionTileClass : uint8_t {
 	Buildable, ///< Clear land, rough, rocks, trees, fields: buildable at a cost.
 	Water, ///< Sea, canal, river: only under a bridge span.
-	Blocked, ///< Houses, other companies' property, unclearable objects, own rail (1st cut).
+	Spannable, ///< Plain rail or road of any owner: no track on it, but a bridge span may pass over it (D104).
+	Blocked, ///< Houses, other companies' property, unclearable objects.
 };
 
 /** One tile of the snapshot. */

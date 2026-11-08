@@ -26,6 +26,8 @@
 #include "economy_func.h"
 #include "company_func.h"
 #include "tile_map.h"
+#include "rail_map.h"
+#include "road_map.h"
 #include "slope_type.h"
 #include "slope_func.h"
 #include "map_func.h"
@@ -256,6 +258,12 @@ JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mir
 				}
 				case TileType::Water:
 					cell.cls = JunctionTileClass::Water;
+					break;
+				case TileType::Railway:
+					if (IsPlainRail(tile)) cell.cls = JunctionTileClass::Spannable;
+					break;
+				case TileType::Road:
+					if (IsNormalRoad(tile) || IsLevelCrossing(tile)) cell.cls = JunctionTileClass::Spannable;
 					break;
 				default:
 					break;
