@@ -125,6 +125,9 @@ Plan: `PLAN-1b.md` (steps A–F). Test baseline after A: 143 cases (142 pass, pl
    - Train model (8a4d67eb26, D36 confirmed at ⅔), prio solver (f8c19c3a45, f218f4bd5a): the sample train needs 21 tiles, about 5 TL.
    - Mixed runs with symmetric bridges, all still with the prio leak (D107): ML stopped 1×: 0.3%, 2×: 1.7%, 3×: 1.2%; joiners wait more as the prio grows. To redo after D107.
    - **D107 prio leak**, found by the engineer ("flips and gives the SL a green"): adjacent ML signals at the coverage edge leave an undetected tile. The prio reach rule plus the fix are running.
+   - D107 fix (692fe52904, 643f53112d): prio reach rule G9b plus thinning, a one-segment extension and an N→W margin. D108 (b36dfd69a0): G9c "split inside prio coverage"; prio 1 is clean at 32×14.
+   - **D109 stopped:** at prio ≥ 2 the generator's fixed frame (64 wide, hub x 30, search box xO+16) blocks pass-1 routing, and crossings 5–10 apart won't cluster with GAP 14. WIP patch in scratchpad/d109. Next: FRAME recon (running), then a frame refactor so width, hub and bounds scale with the prio length, then finish D109.
+   - Footprint tune (queued): reserve the actual distance to the next signal instead of SD+1 worst-case margins (the engineer saw too large a footprint at SD 4).
    - D101: use an actual picked train. Next: M3, "pick a train" in the Junction window; then M4, wiring TL and prio length into the generator. the engineer is holding signalling comments until the simulation ("it will all come out in simulation. It may just be down to waiting bay sizing"). Headway, prio length, bays from traffic, D84 presets, the block-occupancy simulation.
 4. **D3d robustness round 2:** TL6 is fixed (3f2bfedd09, the search box). TL3 is still no layout: in pass 2 N→E is trapped by E→S in the under-span corridor (hypothesis from the D3d diagnosis).
 5. **D78 levers, in D95 order** (fit the landscape first; terraforming is a priced fallback, not the default):
