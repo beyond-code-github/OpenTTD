@@ -274,6 +274,8 @@ add_files(
     junction_train_model.h
     junction_signal_pass.cpp
     junction_signal_pass.h
+    junction_station_generator.cpp
+    junction_station_generator.h
     junction_station_rules.cpp
     junction_station_rules.h
     landscape.cpp
