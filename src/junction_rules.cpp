@@ -963,16 +963,6 @@ std::optional<size_t> BlockOfPiece(const JunctionLayout &layout, const std::map<
 	return it->second;
 }
 
-uint JunctionBlockTilesOnPath(const JunctionLayout &layout, const std::map<std::pair<int, int>, size_t> &blocks, const JunctionPath &path, size_t block)
-{
-	std::set<std::pair<int, int>> tiles;
-	for (const JunctionPiece &piece : path.pieces) {
-		if (piece.on_bridge) continue;
-		if (BlockOfPiece(layout, blocks, piece) == block) tiles.insert({piece.tile.x, piece.tile.y});
-	}
-	return static_cast<uint>(tiles.size());
-}
-
 /**
  * G9: every ML merge has exactly one prio component, shaped and signalled as the rules say.
  * A component is a set of unused track bits; all unused bits of a tile are one node, and nodes are joined
@@ -1210,7 +1200,16 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 				const std::optional<size_t> block = BlockOfPiece(layout, blocks, ml.pieces[i]);
 				if (!block.has_value() || *block == merge_block->second || !met.insert(*block).second) continue;
 				const auto joins = joins_in(*block);
-				if (joins == 0 && JunctionBlockTilesOnPath(layout, blocks, ml, *block) == 1) continue;
+				if (joins == 0) {
+					bool has_tile = false;
+					bool joinable = false;
+					for (const JunctionPiece &piece : ml.pieces) {
+						if (piece.on_bridge || BlockOfPiece(layout, blocks, piece) != block) continue;
+						has_tile = true;
+						if (TracksAt(layout, piece.tile) == axis_bits) joinable = true;
+					}
+					if (has_tile && !joinable) continue;
+				}
 				if (joins != 1) AddViolation(out, JunctionRule::Prio, ml.pieces[i].tile, "ML block within the train length needs exactly one join");
 			}
 			std::set<size_t> row_blocks;

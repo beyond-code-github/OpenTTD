@@ -269,6 +269,51 @@ TEST_CASE("GenerateJunction: a longer prio covers two train lengths", "[junction
 	CHECK(result.layout->size.x > base.layout->size.x);
 }
 
+TEST_CASE("GenerateJunction: prios keep their joins at SD 2", "[junction]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.sd = 2;
+	spec.prio_tl = 1;
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	const JunctionLayout &layout = *result.layout;
+
+	const std::vector<JunctionPort> ports = FindJunctionPorts(layout);
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, JunctionTMovements());
+	const auto used = UsedTracks(ctx);
+	int prios = 0;
+	for (const JunctionPath &ml : ctx.paths) {
+		const bool is_ml = (ml.from == JunctionPortRole::EIn && ml.to == JunctionPortRole::EOut) || (ml.from == JunctionPortRole::WIn && ml.to == JunctionPortRole::WOut);
+		if (!is_ml) continue;
+		for (const SwitchEvent &event : SwitchEventsOf(layout, used, ml)) {
+			if (event.first) continue;
+			const JunctionPiece &merge = ml.pieces[event.second];
+			if (merge.on_bridge || !IsDiagonalTrackdir(merge.trackdir)) continue;
+
+			/* A prio merge: the merge tile holds a track no path uses, the prio's join. */
+			const auto merge_used = used.find({merge.tile.x, merge.tile.y});
+			const TrackBits merge_bits = TracksAt(layout, merge.tile);
+			if (merge_used == used.end() || merge_bits == merge_used->second) continue;
+			prios++;
+
+			/* The farthest join upstream: an ML tile with the axis plus a half piece, on the merge's row. */
+			const Track axis = TrackdirToTrack(merge.trackdir);
+			int farthest = 0;
+			for (size_t i = 0; i < event.second; i++) {
+				const JunctionPiece &piece = ml.pieces[i];
+				if (piece.on_bridge || !IsDiagonalTrackdir(piece.trackdir) || TrackdirToTrack(piece.trackdir) != axis) continue;
+				const auto piece_used = used.find({piece.tile.x, piece.tile.y});
+				if (piece_used == used.end() || TracksAt(layout, piece.tile) == piece_used->second) continue;
+				const int distance = std::abs(piece.tile.x - merge.tile.x) + std::abs(piece.tile.y - merge.tile.y);
+				if (piece.tile.x != merge.tile.x && piece.tile.y != merge.tile.y) continue;
+				farthest = std::max(farthest, distance);
+			}
+			CHECK(farthest >= static_cast<int>(spec.tl) - 2);
+		}
+	}
+	CHECK(prios > 0);
+}
+
 TEST_CASE("GenerateJunction: an ML gap of 0 has no room for the W prio", "[junction]")
 {
 	JunctionSpec spec = MakeTestJunctionSpec();

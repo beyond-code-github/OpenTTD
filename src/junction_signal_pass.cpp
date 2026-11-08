@@ -318,7 +318,6 @@ static bool PlacePrio(JunctionLayout &layout, const JunctionCheckContext &ctx, c
 			covered += lane.pieces[i].units;
 			const std::optional<size_t> block = BlockOfPiece(layout, blocks, lane.pieces[i]);
 			if (!block.has_value() || *block == merge_block->second || !met.insert(*block).second) continue;
-			if (JunctionBlockTilesOnPath(layout, blocks, lane, *block) == 1) continue;
 			required.push_back(*block);
 		}
 	}
@@ -341,7 +340,19 @@ static bool PlacePrio(JunctionLayout &layout, const JunctionCheckContext &ctx, c
 			joins.push_back(piece.tile);
 			found = true;
 		}
-		if (!found) return false;
+		if (!found) {
+			/* A block whose ML tiles are all switches or crossings has nowhere for a join, and is skipped. */
+			bool has_tile = false;
+			bool joinable = false;
+			for (const JunctionPiece &piece : ml.pieces) {
+				if (piece.on_bridge || BlockOfPiece(layout, blocks, piece) != block) continue;
+				has_tile = true;
+				const TileIndexDiffC neighbour = {static_cast<int16_t>(piece.tile.x + side_diff.x), static_cast<int16_t>(piece.tile.y + side_diff.y)};
+				if (TracksAt(layout, piece.tile) == TrackBits{axis} || (TracksAt(layout, piece.tile) == TrackBits{axis, h1} && TracksAt(layout, neighbour) == TrackBits{axis, h2})) joinable = true;
+			}
+			if (joinable || !has_tile) return false;
+			continue;
+		}
 	}
 
 	/* The joins in order of their distance upstream of the merge, which must all be on the merge's row. */
