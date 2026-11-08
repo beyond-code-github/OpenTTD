@@ -234,6 +234,17 @@ TEST_CASE("GenerateJunction: an ML gap of 0 has no room for the W prio", "[junct
 	CHECK(result.error == JunctionGenerateError::NeedsMlGap);
 }
 
+TEST_CASE("GenerateJunction: a long train with a narrow branch still fits", "[junction]")
+{
+	/* At TL6 the N->W window ends left of xI - 16, so a search box that stopped there had no goal. */
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.branch_gap = 0;
+	spec.tl = 6;
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	CHECK(CheckJunctionRules(*result.layout, spec).empty());
+}
+
 /** A flat Buildable terrain at height z covering working x 0..63, y -2..40. */
 static JunctionTerrain MakeFlatTerrain(int z = 0)
 {

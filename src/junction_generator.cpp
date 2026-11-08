@@ -196,7 +196,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	auto tile = [](int x, int y) { return TileIndexDiffC{static_cast<int16_t>(x), static_cast<int16_t>(y)}; };
 
 	JunctionRouteRequest base{};
-	base.min = tile(xI - 16, 0);
+	base.min = tile(1, 0); // N->W joins as far left as x = 2 (its window shrinks with TL), so the box must reach it.
 	base.max = tile(xO + 16, yb);
 	base.max_expansions = 50000;
 	base.curve_spacing = spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1;
