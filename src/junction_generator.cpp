@@ -294,10 +294,10 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		request.crossable = w_tiles;
 		request.crossable_cost = params.crossing_cost;
 		request.starts = {start_n};
-		/* D108: the N->E merge window starts beyond the prio coverage and a segment past the E->S split. */
+		/* D108: the N->E merge window starts beyond the prio coverage past the E->S split; the checker rejects unsafe positions. */
 		const int x_s = e_to_s->pieces.front().tile.x;
 		const int cover = static_cast<int>(spec.tl * spec.prio_tl);
-		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, std::max(xO, x_s + cover + static_cast<int>(spec.sd) + 2), frame.width - 3);
+		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, std::max(xO, x_s + cover + 1 + params.joiner_slack), frame.width - 3);
 		const std::optional<JunctionRaster> n_to_e = RouteAndAdd(l, request);
 		if (!n_to_e.has_value()) return false;
 		if (note) note_crossings(*n_to_e);
@@ -322,7 +322,7 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 
 		const std::string span = fmt::format("B{}", n);
 		const int nw_row = params.lane_style == 1 ? b_row : w_row;
-		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - 1 - static_cast<int>(spec.tl * spec.prio_tl) - params.joiner_slack - static_cast<int>(spec.sd + 1)); };
+		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - 1 - static_cast<int>(spec.tl * spec.prio_tl) - params.joiner_slack); };
 		JunctionRaster raster_a_style1;
 		JunctionRaster raster_b;
 		std::optional<int> merge_x;

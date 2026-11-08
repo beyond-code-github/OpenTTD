@@ -33,6 +33,16 @@ TEST_CASE("GenerateJunction gives a rule-clean L_R T", "[junction]")
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
 }
 
+/* Brief TUNE-footprint: the joiners sit as close as the prio rules allow, so the test junction is no wider than it was with the fixed margins (32). */
+TEST_CASE("GenerateJunction: the test junction is no wider than before the margins were dropped", "[junction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	CHECK(CheckJunctionRules(*result.layout, spec).empty());
+	CHECK(result.layout->size.x <= 32);
+}
+
 TEST_CASE("ParseJunctionNotation", "[junction]")
 {
 	CHECK(ParseJunctionNotation("L_R").error == JunctionNotationError::None);
