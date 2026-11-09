@@ -373,9 +373,21 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	 */
 	JunctionGenerateKey MakeKey(TileIndex tile) const
 	{
+		JunctionGenerateKey key = this->MakeBaseKey(tile);
+		key.prio_tiles = this->EffectivePrio();
+		return key;
+	}
+
+	/**
+	 * Get the key of a generation at a tile without the slider's coverage. SpecKey uses it, as EffectivePrio itself reads SpecKey.
+	 * @param tile The hovered tile.
+	 * @return The key, with prio_tiles 0.
+	 */
+	JunctionGenerateKey MakeBaseKey(TileIndex tile) const
+	{
 		return {tile, _junction_rotation, EffectiveMirror(), this->ml_gap, this->branch_gap, this->tl,
 			static_cast<uint8_t>(_settings_client.gui.junction_signal_type), _settings_client.gui.drag_signals_density,
-			this->picked_train.has_value() ? this->picked_train->loaded : JunctionTrainParams{}, this->EffectivePrio()};
+			this->picked_train.has_value() ? this->picked_train->loaded : JunctionTrainParams{}, 0};
 	}
 
 	/** @return The strict coverage the sizing found for the current spec; 0 before sizing is done or when it failed. */
@@ -395,10 +407,9 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	/** @return The key of the library: the generator inputs only, as the library is flat and doesn't depend on orientation. */
 	JunctionGenerateKey SpecKey() const
 	{
-		JunctionGenerateKey key = this->MakeKey(INVALID_TILE);
+		JunctionGenerateKey key = this->MakeBaseKey(INVALID_TILE);
 		key.rotation = 0;
 		key.mirrored = false;
-		key.prio_tiles = 0;
 		return key;
 	}
 
