@@ -1,5 +1,11 @@
 # Junction tool: status
 
+## 2026-11-10 afternoon: first organic T (O4b1 merged)
+
+- **O4b1** (e825bf1be9): six movements of a T negotiated on flat ground; splits/merges emerge (switch rule: same from-port entering by the same edge, or same to-port leaving by the same edge); bridge heads/portals exclusive (router level `Head`); no head on a port tile. MakeTestJunctionSpec, 44x16: 4 rounds (conflicts 6,6,1,0), 14 routes, occupied 146 / slivers 25 (old generator 190 / 53), 53-83 ms over p = 14/20/26. Checker: connectivity, geometry, bridges clean except "ML bridge is not doubled" (D80 move is O4b2).
+- Router today (merged): O4h/O4p/O4n heuristic, D161 approximate pruning, D162 multi-track floor, resource_cost + min_units, flat grids. Benchmark single-track: turn 1.2 ms, hills 4 ms, crossing 7.8 ms.
+- **Next: O4b2** (rule feedback, prios, signal pass, D80 doubled-bridge move, checker, throughput, score). Then O4c terrain, O5 timing.
+
 ## PARKED 2026-11-10 (engineer rebooting; no agents running)
 
 **Resume here:**
