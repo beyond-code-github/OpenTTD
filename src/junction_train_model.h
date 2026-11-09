@@ -30,7 +30,7 @@ struct JunctionTrainState {
 	uint32_t ticks = 0;
 };
 
-/** Advance one tick on flat straight track: GetAcceleration (AS_ACCEL), DoUpdateSpeed, then progress, exactly as the game's integer code. */
+/** Advance one game tick on flat straight track: two passes of GetAcceleration (AS_ACCEL), DoUpdateSpeed, then progress, exactly as the game's integer code, because Train::Tick runs TrainLocoHandler twice (train_cmd.cpp:4213-4215). */
 void StepJunctionTrain(const JunctionTrainParams &params, JunctionTrainState &state);
 
 /** Ticks for a train starting at speed 0 to travel the given progress distance on straight track. */

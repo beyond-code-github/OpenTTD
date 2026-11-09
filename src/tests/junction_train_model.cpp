@@ -41,14 +41,15 @@ TEST_CASE("Junction train model hand-worked tick", "[junction]")
 	 *  R = axle 10*200 = 2000 + rolling 200 * (15 * 612 / 512 = 17) = 3400 + air 14 * 50 * 100^2 / 1000 = 7000 = 12400.
 	 *  F = P * 18 / (100 * 5) = 26856 (below max_te 200000).
 	 *  accel = (26856 - 12400) / 800 = 18. subspeed 0 + 18 = 18, no overflow, speed stays 100.
-	 *  Progress: 100 * 3 / 4 = 75, below one step (192), so saved. */
+	 *  Progress: 100 * 3 / 4 = 75, below one step (192), so saved.
+	 * One tick is two loco-handler passes (train_cmd.cpp:4213-4215), so the values below are the pass result applied twice: subspeed 36, progress 150. */
 	const JunctionTrainParams p = RefParams();
 	JunctionTrainState s;
 	s.speed = 100;
 	StepJunctionTrain(p, s);
 	CHECK(s.speed == 100);
-	CHECK(s.subspeed == 18);
-	CHECK(s.progress == 75);
+	CHECK(s.subspeed == 36);
+	CHECK(s.progress == 150);
 	CHECK(s.distance == 0);
 	CHECK(s.ticks == 1);
 }
@@ -133,4 +134,26 @@ TEST_CASE("Junction prio length when the train can't reach the design speed", "[
 	const uint32_t l = JunctionPrioLength(ref, 160, 4, 2);
 	CHECK(l == JunctionPrioLength(ref, terminal, 4, 2));
 	CHECK(l < 200);
+}
+
+TEST_CASE("StepJunctionTrain: one tick is two loco-handler passes", "[junction][train]")
+{
+	/* The D138 design train; the rig took 64 game ticks from 61 to 190 km/h (R2). */
+	JunctionTrainParams p;
+	p.power_hp = 14194;
+	p.max_te = 1090000;
+	p.mass_t = 280;
+	p.air_drag = 25;
+	p.max_speed = 196;
+	JunctionTrainState s;
+	s.speed = 61;
+	s.subspeed = 0;
+	uint32_t calls = 0;
+	while (s.speed < 190 && calls < 1000) {
+		StepJunctionTrain(p, s);
+		calls++;
+	}
+	/* The rig samples once per tick, so the 190 km/h crossing can land on either side of the model's (R2). */
+	CHECK(calls >= 63);
+	CHECK(calls <= 65);
 }

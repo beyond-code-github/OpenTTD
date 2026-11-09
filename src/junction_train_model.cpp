@@ -26,7 +26,8 @@ static constexpr uint32_t MAX_MODEL_TICKS = 10'000'000;
 /** Tick bound for JunctionPrioLength. */
 static constexpr uint32_t MAX_MODEL_TICKS_PRIO = 1'000'000;
 
-void StepJunctionTrain(const JunctionTrainParams &params, JunctionTrainState &state)
+/** One TrainLocoHandler pass (train_cmd.cpp:4119): UpdateSpeed, then advance. */
+static void StepJunctionLocoHandler(const JunctionTrainParams &params, JunctionTrainState &state)
 {
 	/* GroundVehicle::GetAcceleration, AS_ACCEL, flat, non-maglev (ground_vehicle.cpp:105-168). */
 	int64_t speed = state.speed; // ground_vehicle.cpp:110
@@ -78,6 +79,13 @@ void StepJunctionTrain(const JunctionTrainParams &params, JunctionTrainState &st
 	uint steps = scaled_spd / TILE_AXIAL_DISTANCE;
 	state.progress = scaled_spd - steps * TILE_AXIAL_DISTANCE;
 	state.distance += static_cast<uint64_t>(steps) * TILE_AXIAL_DISTANCE;
+}
+
+void StepJunctionTrain(const JunctionTrainParams &params, JunctionTrainState &state)
+{
+	/* Train::Tick runs TrainLocoHandler twice per game tick (train_cmd.cpp:4213-4215). */
+	StepJunctionLocoHandler(params, state);
+	StepJunctionLocoHandler(params, state);
 	state.ticks++;
 }
 
@@ -114,7 +122,8 @@ uint32_t JunctionPrioLength(const JunctionTrainParams &joiner, uint16_t design_s
 	JunctionTrainParams params = joiner;
 	params.max_speed = design_speed;
 
-	const uint64_t ml_step = Vehicle::GetAdvanceSpeed(design_speed);
+	/* Two TrainLocoHandler passes per tick, as StepJunctionTrain (train_cmd.cpp:4213-4215). */
+	const uint64_t ml_step = 2 * static_cast<uint64_t>(Vehicle::GetAdvanceSpeed(design_speed));
 	JunctionTrainState state;
 	uint64_t ml_progress = 0;
 	int64_t max_deficit = 0;
