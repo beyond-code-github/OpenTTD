@@ -1327,3 +1327,134 @@ TEST_CASE("FindJunctionLineRoute: costly routes are as cheap as an uninformed se
 		CHECK(informed.cost <= uninformed.cost);
 	}
 }
+
+/** The summed units of track 0 of a route. */
+static uint Track0Units(const JunctionLineRouteRequest &request, const JunctionLineRouteResult &result)
+{
+	uint units = 0;
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *result.route);
+	for (const JunctionPiece &piece : rasters[0].pieces) units += piece.units;
+	return units;
+}
+
+/** A single track straight request on flat ground from {40, 20} heading X_NE to the given x on row 20, with the piece, turn and terrain costs set. */
+static JunctionLineRouteRequest ResourceRequest(int goal_x)
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	request.line = {1, 1, 1};
+	request.goals = {{{static_cast<int16_t>(goal_x), 20}, Trackdir::X_NE}};
+	request.rail_piece = 1;
+	request.turn_cost = 3;
+	return request;
+}
+
+/** The cost a route of a ResourceRequest must have without any resource cost: a piece cost for every piece but the first, a turn cost per L or R, and the clear cost once per tile. */
+static Money PlainRouteCost(const JunctionLineRouteRequest &request, const JunctionLineRouteResult &result, Money clear_cost)
+{
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *result.route);
+	const std::vector<JunctionPiece> &pieces = rasters[0].pieces;
+	std::set<std::pair<int, int>> tiles;
+	for (const JunctionPiece &piece : pieces) tiles.emplace(piece.tile.x, piece.tile.y);
+	Money cost = Money{request.rail_piece.base() * static_cast<int64_t>(pieces.size() - 1) + clear_cost.base() * static_cast<int64_t>(tiles.size())};
+	for (char move : result.route->moves) {
+		if (move == 'L' || move == 'R') cost += request.turn_cost;
+	}
+	return cost;
+}
+
+TEST_CASE("FindJunctionLineRoute: a resource cost steers the route", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = ResourceRequest(20);
+	const JunctionTerrain terrain = FlatTerrainFor(request, 2);
+	request.terrain = &terrain;
+	auto dear = [](const JunctionPiece &piece) { return piece.tile.y == 20 && piece.tile.x >= 27 && piece.tile.x <= 33; };
+	request.resource_cost = [&](const JunctionPiece &piece, int8_t, JunctionResourceLevel level) { return Money(level == JunctionResourceLevel::Surface && dear(piece) ? 100 : 0); };
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error << " moves " << (result.route.has_value() ? result.route->moves : ""));
+	REQUIRE(result.route.has_value());
+	Money resource = 0;
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *result.route);
+	for (const JunctionPiece &piece : rasters[0].pieces) {
+		CHECK_FALSE(dear(piece));
+		resource += request.resource_cost(piece, 0, JunctionResourceLevel::Surface);
+	}
+	CHECK(result.cost.base() == PlainRouteCost(request, result, 2).base() + resource.base());
+}
+
+TEST_CASE("FindJunctionLineRoute: a resource cost sees the direction", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = ResourceRequest(20);
+	const JunctionTerrain terrain = FlatTerrainFor(request, 2);
+	request.terrain = &terrain;
+	request.resource_cost = [](const JunctionPiece &piece, int8_t, JunctionResourceLevel) {
+		return Money(piece.trackdir == Trackdir::X_NE && piece.tile.y == 20 && piece.tile.x >= 27 && piece.tile.x <= 33 ? 100 : 0);
+	};
+	const JunctionLineRouteResult north_east = FindJunctionLineRoute(request);
+	REQUIRE(north_east.route.has_value());
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *north_east.route);
+	for (const JunctionPiece &piece : rasters[0].pieces) {
+		CHECK(request.resource_cost(piece, 0, JunctionResourceLevel::Surface).base() == 0);
+	}
+	CHECK(north_east.route->moves.find_first_of("LR") != std::string::npos);
+
+	/* The same ground travelled the other way. */
+	request.start = {20, 20};
+	request.start_trackdir = Trackdir::X_SW;
+	request.goals = {{{40, 20}, Trackdir::X_SW}};
+	const JunctionLineRouteResult south_west = FindJunctionLineRoute(request);
+	REQUIRE(south_west.route.has_value());
+	CHECK(south_west.route->moves.find_first_of("LR") == std::string::npos);
+	CHECK(south_west.cost.base() == PlainRouteCost(request, south_west, 2).base());
+}
+
+TEST_CASE("FindJunctionLineRoute: a resource cost on a bridge span", "[junction][linerouter]")
+{
+	LineBridgeCase c;
+	SetUpRiver(c, "L_R", 3, false, false);
+	const JunctionLineRouteResult plain = FindJunctionLineRoute(c.request);
+	REQUIRE(plain.route.has_value());
+	CHECK(plain.route->moves.find('B') != std::string::npos);
+
+	c.request.resource_cost = [](const JunctionPiece &, int8_t, JunctionResourceLevel level) { return Money(level == JunctionResourceLevel::BridgeSpan ? 7 : 0); };
+	const JunctionLineRouteResult dear = FindJunctionLineRoute(c.request);
+	REQUIRE(dear.route.has_value());
+	CHECK(dear.route->moves.find('B') != std::string::npos);
+	int64_t middles = 0;
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(c.request.line, *dear.route);
+	for (const JunctionRaster &raster : rasters) {
+		for (const JunctionBridge &bridge : raster.bridges) middles += std::abs(bridge.end.x - bridge.start.x) + std::abs(bridge.end.y - bridge.start.y) - 1;
+	}
+	CHECK(middles > 0);
+	CHECK(dear.cost.base() == plain.cost.base() + 7 * middles);
+}
+
+TEST_CASE("FindJunctionLineRoute: a minimum length lengthens the route", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = ResourceRequest(31);
+	const JunctionLineRouteResult plain = FindJunctionLineRoute(request);
+	REQUIRE(plain.route.has_value());
+	CHECK(Track0Units(request, plain) < 32);
+
+	request.min_units = 32;
+	const JunctionLineRouteResult longer = FindJunctionLineRoute(request);
+	INFO(longer.error);
+	REQUIRE(longer.route.has_value());
+	CHECK(Track0Units(request, longer) >= 32);
+}
+
+TEST_CASE("FindJunctionLineRoute: minimum length routes are as cheap as an uninformed search", "[junction][linerouter][slow]")
+{
+	for (uint tiles : {12u, 16u, 20u}) {
+		JunctionLineRouteRequest request = ResourceRequest(31);
+		request.min_units = 2 * tiles;
+		request.max_expansions = 3000000; // An uninformed search with a minimum length needs far more than the default.
+		request.use_heuristic = true;
+		const JunctionLineRouteResult informed = FindJunctionLineRoute(request);
+		request.use_heuristic = false;
+		const JunctionLineRouteResult uninformed = FindJunctionLineRoute(request);
+		INFO(tiles << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
+		REQUIRE(uninformed.error != "search limit");
+		REQUIRE(informed.route.has_value() == uninformed.route.has_value());
+		CHECK(informed.cost <= uninformed.cost);
+	}
+}

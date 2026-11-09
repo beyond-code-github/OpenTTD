@@ -21,6 +21,13 @@
 #include <string>
 #include <vector>
 
+/** Where a routed piece sits, for negotiated resource costs (DESIGN-O4 revision 3). */
+enum class JunctionResourceLevel : uint8_t {
+	Surface, ///< Track on the ground: plain, ramp, bridge head or tunnel portal.
+	BridgeSpan, ///< A bridge's middle piece.
+	TunnelBore, ///< A tunnel's middle piece.
+};
+
 /** A request to route a line at one plane (LP4, LP5). */
 struct JunctionLineRouteRequest {
 	JunctionLineSpec line;
@@ -46,6 +53,8 @@ struct JunctionLineRouteRequest {
 	uint max_bridge_middle = 0; ///< Largest n tried for B<n>.
 	std::function<Money(uint)> tunnel_price; ///< Per track and tunnel, by middle-tile count; tunnels are tried only when set (D155). The heuristic's floor covers any price (O4h).
 	uint max_tunnel_length = 64; ///< Largest middle-tile count (the game's max_tunnel_length).
+	std::function<Money(const JunctionPiece &piece, int8_t z, JunctionResourceLevel level)> resource_cost; ///< Extra cost per piece of every track, from the negotiated search (DESIGN-O4 revision 3); must be >= 0; unset means 0. z is the track's height (bridge spans: the track's height at the heads; tunnel bores: the tunnel's floor).
+	uint min_units = 0; ///< Track 0 needs at least this many units (JunctionPiece::units, as CheckWaitingRoom counts them) from its first piece, prefix included, before a goal counts (waiting room, bays, prio coverage).
 	uint max_expansions = 200000;
 	bool use_heuristic = true; ///< Test seam: false makes the search uninformed (h = 0).
 };
