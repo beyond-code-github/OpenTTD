@@ -44,4 +44,4 @@ Line router (O1, O1b, O2), checker, signal pass and prio placement, prio timing/
 1. The movement bridges over the main line (line router bridges, LP6, D135 d).
 2. The movement tunnels under it (O2).
 3. The main line goes over the movement on a doubled bridge (D80), as today: while a movement is routed, main-line tiles are crossable at ground level for the main line's share of a bridge (today's crossable_cost); after all movements are placed, each crossed main-line stretch is lifted onto a doubled bridge spanning those tiles, then the checker judges it (bridge length, D80 doubling, prio coverage across the bridge). If it breaks a rule, that crossing is retried as 1 or 2.
-Open for the engineer: penalise lifting the main line beyond money (one long block, a slope at line speed), or money alone.
+D156: money and compactness decide, no extra penalty; try option 3 (main line lifted) first at each crossing: it is usually best (movements stay at grade and turn tight), so branch and bound gets a good layout early.
