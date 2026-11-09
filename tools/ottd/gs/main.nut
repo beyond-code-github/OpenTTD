@@ -459,6 +459,11 @@ class JunctionTestGS extends GSController {
 		if ("bridges" in lay) {
 			foreach (b in lay.bridges) {
 				local sx = b.start[0], sy = b.start[1], ex = b.end[0], ey = b.end[1];
+				if ("tunnel" in b && b.tunnel) {
+					if (GSTunnel.BuildTunnel(GSVehicle.VT_RAIL, this.Tile(ox + sx, oy + sy))) built++;
+					else failed.append({ what = "tunnel", x = sx, y = sy, error = GSError.GetLastErrorString() });
+					continue;
+				}
 				local len = abs(ex - sx) + abs(ey - sy) + 1;
 				local bt = this.FastestRailBridge(len);
 				if (bt == null) { failed.append({ what = "bridge", x = sx, y = sy, error = "no rail bridge type for length " + len }); continue; }

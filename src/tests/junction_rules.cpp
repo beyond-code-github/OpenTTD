@@ -262,6 +262,33 @@ TEST_CASE("CheckGeometry: level crossing", "[junction][rules]")
 	CHECK(Has(CheckGeometry(ctx_cross), JunctionRule::Geometry, 2, 1, "crossing"));
 }
 
+TEST_CASE("CheckJunctionRules: a surface line crosses over a tunnel without conflict", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<JunctionPort> ports = {
+		Port(Role::EIn, 0, 1, Trackdir::X_SW), Port(Role::EOut, 6, 1, Trackdir::X_SW),
+		Port(Role::NIn, 2, 0, Trackdir::Y_SE), Port(Role::SOut, 2, 2, Trackdir::Y_SE),
+	};
+	const std::vector<Movement> expected = {{Role::EIn, Role::EOut}, {Role::NIn, Role::SOut}};
+
+	/* The Y line runs on the surface over the tile between the portals of an X tunnel. */
+	JunctionLayout layout = Build({{{0, 1}, Trackdir::X_SW, "B1FFF"}, {{2, 0}, Trackdir::Y_SE, "FF"}});
+	REQUIRE(layout.bridges.size() == 1);
+	layout.bridges[0].tunnel = true;
+
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, expected);
+	REQUIRE(ctx.paths.size() == 2);
+	CHECK(CheckGeometry(ctx).empty());
+	/* CheckBridges only reports the D80 'ML bridge is not doubled' here, as it does for the same layout with a bridge; nothing about the crossing. */
+	for (const RuleViolation &v : CheckBridges(ctx)) CHECK(v.message == "ML bridge is not doubled");
+	for (const RuleViolation &v : CheckJunctionRules(layout, spec)) {
+		CHECK_FALSE((v.tile.x == 2 && v.tile.y == 1));
+	}
+
+	const auto blocks = ComputeBlocks(layout);
+	CHECK(blocks.at({1, 1}) == blocks.at({3, 1}));
+}
+
 /**
  * The main line runs along row 1 from x = 0 to 9. A branch leaves it and a joiner joins it.
  * @param split_x The tile where the branch leaves.

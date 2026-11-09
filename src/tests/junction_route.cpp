@@ -208,3 +208,15 @@ TEST_CASE("RenderJunctionAscii", "[junction]")
 		"->|^/v\\n#*\n"
 		".s/e\\w. . \n");
 }
+
+TEST_CASE("RenderJunctionAscii draws tunnel portals as O", "[junction]")
+{
+	JunctionLayout layout;
+	layout.size = {5, 2};
+	layout.bridges.push_back({{0, 0}, {3, 0}, true});
+	layout.bridges.push_back({{0, 1}, {3, 1}});
+	layout.tracks.push_back({{1, 0}, TrackBits{Track::Y}});
+	CHECK(RenderJunctionAscii(layout) ==
+		"O | . O . \n"
+		"H = = H . \n");
+}

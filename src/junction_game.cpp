@@ -209,6 +209,20 @@ CommandCost GameJunctionPricing::PriceBridge(TileIndex start, TileIndex end) con
 }
 
 /**
+ * Test-only run of building a rail tunnel, as the tunnel build command would do it.
+ * @param start The portal the tunnel is built from.
+ * @param end The portal the tunnel must end at.
+ * @return The cost of the command, or its error; an error too when the tunnel would end elsewhere.
+ */
+CommandCost GameJunctionPricing::PriceTunnel(TileIndex start, TileIndex end) const
+{
+	CommandCost ret = Command<Commands::BuildTunnel>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildTunnel>()) | DoCommandFlag::QueryCost, start, TransportType::Rail, this->railtype, INVALID_ROADTYPE);
+	if (ret.Failed()) return ret;
+	if (_build_tunnel_endtile != end) return CommandCost(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE);
+	return ret;
+}
+
+/**
  * Test-only run of clearing a tile, as TestClear does.
  * @param tile The tile to clear.
  * @return The cost of the command, or its error.
@@ -418,6 +432,7 @@ bool GameJunctionStepPoster::Post(const JunctionBuildStep &step)
 			/* The same parameters as the station window uses for a new station: default class and type, no join, not adjacent. */
 			return Command<Commands::BuildRailStation>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION, CcJunctionStep, s.tile, this->railtype, s.axis, s.platforms, s.length, STAT_CLASS_DFLT, 0, StationID::Invalid(), false);
 		} else if constexpr (std::is_same_v<T, JunctionBridgeStep>) {
+			if (s.tunnel) return Command<Commands::BuildTunnel>::Post(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE, CcJunctionStep, s.start, TransportType::Rail, this->railtype, INVALID_ROADTYPE);
 			uint length = GetTunnelBridgeLength(s.start, s.end);
 			auto type = ChooseJunctionBridgeType(this->railtype, length);
 			if (!type.has_value()) return false;

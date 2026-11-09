@@ -31,6 +31,7 @@ public:
 	std::map<TileIndex, StringID> rail_fails;
 	std::map<TileIndex, Money> clear_costs;
 	bool bridge_fails = false;
+	bool tunnel_fails = false;
 	Money money = 1000000;
 
 	std::map<TileIndex, std::pair<int, int>> slope_zs; ///< Tile to (z_min, z_max), overriding the flat height.
@@ -65,6 +66,12 @@ public:
 	{
 		if (this->bridge_fails) return CommandCost(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE);
 		return CommandCost(ExpensesType::Construction, 1000);
+	}
+
+	CommandCost PriceTunnel([[maybe_unused]] TileIndex start, [[maybe_unused]] TileIndex end) const override
+	{
+		if (this->tunnel_fails) return CommandCost(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE);
+		return CommandCost(ExpensesType::Construction, 700);
 	}
 
 	CommandCost TestClear(TileIndex tile) const override
@@ -562,4 +569,70 @@ TEST_CASE("InverseOrientJunctionVector undoes OrientJunctionVector", "[junction]
 			}
 		}
 	}
+}
+
+/** A layout of one X line with a tunnel from (1,0) to (5,0). */
+static JunctionLayout MakeTunnelLayout()
+{
+	JunctionLayout layout;
+	layout.size = {7, 1};
+	layout.tracks.push_back({{0, 0}, TrackBits{Track::X}});
+	layout.tracks.push_back({{6, 0}, TrackBits{Track::X}});
+	layout.bridges.push_back({{1, 0}, {5, 0}, true});
+	return layout;
+}
+
+TEST_CASE("JunctionLayout: a tunnel gives a tunnel build step", "[junction]")
+{
+	Map::Allocate(64, 64);
+
+	const std::vector<JunctionBuildStep> steps = MakeJunctionBuildSteps(MakeTunnelLayout(), TileXY(10, 10));
+	REQUIRE(steps.size() == 3);
+	REQUIRE(std::holds_alternative<JunctionBridgeStep>(steps[2]));
+	const JunctionBridgeStep &step = std::get<JunctionBridgeStep>(steps[2]);
+	CHECK(step.start == TileXY(11, 10));
+	CHECK(step.end == TileXY(15, 10));
+	CHECK(step.tunnel);
+
+	const std::vector<JunctionBuildStep> bridge_steps = MakeJunctionBuildSteps(MakeTestJunctionLayout(), TileXY(10, 10));
+	CHECK_FALSE(std::get<JunctionBridgeStep>(bridge_steps[9]).tunnel);
+}
+
+TEST_CASE("JunctionLayout: orientation keeps the tunnel flag", "[junction]")
+{
+	for (int rotations = 0; rotations < 4; rotations++) {
+		for (bool mirror : {false, true}) {
+			const JunctionLayout result = ApplyJunctionOrientation(MakeTunnelLayout(), rotations, mirror);
+			REQUIRE(result.bridges.size() == 1);
+			CHECK(result.bridges[0].tunnel);
+		}
+	}
+}
+
+TEST_CASE("JunctionLayoutToJson marks tunnels", "[junction]")
+{
+	const std::string json = JunctionLayoutToJson(MakeTunnelLayout());
+	CHECK(json.find("\"bridges\":[{\"start\":[1,0],\"end\":[5,0],\"tunnel\":true}]") != std::string::npos);
+	CHECK(JunctionLayoutToJson(MakeTestJunctionLayout()).find("tunnel") == std::string::npos);
+}
+
+TEST_CASE("JunctionLayout: a tunnel is priced as a tunnel, a bridge as a bridge", "[junction]")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	JunctionEstimate estimate = EstimateJunction(MakeTunnelLayout(), TileXY(10, 10), pricing);
+	CHECK(estimate.total == 2 * 100 + 700);
+	CHECK(estimate.bad_tiles.empty());
+
+	pricing.tunnel_fails = true;
+	estimate = EstimateJunction(MakeTunnelLayout(), TileXY(10, 10), pricing);
+	CHECK(estimate.bad_tiles == std::vector<TileIndex>{TileXY(11, 10), TileXY(15, 10)});
+	CHECK(estimate.first_error == STR_ERROR_CAN_T_BUILD_TUNNEL_HERE);
+
+	JunctionLayout both = MakeTunnelLayout();
+	both.size = {7, 3};
+	both.bridges.push_back({{1, 2}, {5, 2}});
+	pricing.tunnel_fails = false;
+	CHECK(EstimateJunction(both, TileXY(10, 10), pricing).total == 2 * 100 + 700 + 1000);
 }

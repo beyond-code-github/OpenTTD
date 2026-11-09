@@ -219,10 +219,15 @@ std::string RenderJunctionAscii(const JunctionLayout &layout)
 		for (int x = 0; x < layout.size.x; x++) {
 			char glyph = '.';
 			bool bridge_head = false;
+			bool tunnel_portal = false;
 			bool bridge_span = false;
 			for (const JunctionBridge &bridge : layout.bridges) {
 				const bool is_start = bridge.start.x == x && bridge.start.y == y;
 				const bool is_end = bridge.end.x == x && bridge.end.y == y;
+				if (bridge.tunnel) {
+					if (is_start || is_end) tunnel_portal = true;
+					continue;
+				}
 				if (is_start || is_end) bridge_head = true;
 				if (x >= std::min(bridge.start.x, bridge.end.x) && x <= std::max(bridge.start.x, bridge.end.x) &&
 						y >= std::min(bridge.start.y, bridge.end.y) && y <= std::max(bridge.start.y, bridge.end.y)) {
@@ -235,7 +240,9 @@ std::string RenderJunctionAscii(const JunctionLayout &layout)
 				if (jt.offset.x == x && jt.offset.y == y) tracks = tracks | jt.tracks;
 			}
 
-			if (bridge_head) {
+			if (tunnel_portal) {
+				glyph = 'O';
+			} else if (bridge_head) {
 				glyph = 'H';
 			} else if (bridge_span) {
 				glyph = '=';

@@ -38,10 +38,11 @@ struct JunctionSignal {
 	SignalVariant variant;
 };
 
-/** A rail bridge between two heads on the same row or column; the bridge type is chosen at placement. */
+/** A rail bridge or tunnel between two heads on the same row or column; the bridge type is chosen at placement. */
 struct JunctionBridge {
 	TileIndexDiffC start;
 	TileIndexDiffC end;
+	bool tunnel = false; ///< A tunnel between the two portals instead of a bridge (D154).
 };
 
 /** A block of rail station tiles: platforms parallel to the axis (D106). */
@@ -66,8 +67,8 @@ enum class JunctionTransform : uint8_t { Rotate, Mirror };
 
 /** Build step: one rail piece. */
 struct JunctionRailStep { TileIndex tile; Track track; };
-/** Build step: one bridge. */
-struct JunctionBridgeStep { TileIndex start; TileIndex end; };
+/** Build step: one bridge or tunnel. */
+struct JunctionBridgeStep { TileIndex start; TileIndex end; bool tunnel = false; };
 /** Build step: one signal. */
 struct JunctionSignalStep { TileIndex tile; Trackdir facing; SignalType type; SignalVariant variant; };
 /** Build step: one block of station tiles; the station tiles carry their own track. */
@@ -93,6 +94,8 @@ public:
 	virtual CommandCost TestRail(TileIndex tile, Track track) const = 0;
 	/** Full price of the cheapest suitable bridge type between two heads, or an error. */
 	virtual CommandCost PriceBridge(TileIndex start, TileIndex end) const = 0;
+	/** Test-only run of building a rail tunnel from start; an error when its far end isn't end. */
+	virtual CommandCost PriceTunnel(TileIndex start, TileIndex end) const = 0;
 	/** Test-only run of building a block of station tiles as a new station; the cost includes clearing and the station tiles' own track. */
 	virtual CommandCost TestStation(TileIndex tile, Axis axis, uint8_t platforms, uint8_t length) const = 0;
 	/** Test-only run of clearing a tile; its cost is what building anything on the tile would pay to clear it first. */

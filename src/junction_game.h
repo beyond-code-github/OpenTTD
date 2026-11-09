@@ -83,6 +83,7 @@ public:
 	std::optional<JunctionTileSlope> GetTileSlope(TileIndex tile) const override;
 	CommandCost TestRail(TileIndex tile, Track track) const override;
 	CommandCost PriceBridge(TileIndex start, TileIndex end) const override;
+	CommandCost PriceTunnel(TileIndex start, TileIndex end) const override;
 	CommandCost TestStation(TileIndex tile, Axis axis, uint8_t platforms, uint8_t length) const override;
 	CommandCost TestClear(TileIndex tile) const override;
 	Money SignalCost() const override;

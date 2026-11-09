@@ -112,7 +112,7 @@ JunctionLayout TransformJunctionLayout(const JunctionLayout &layout, JunctionTra
 		result.signals.push_back({TransformOffset(signal.offset, layout.size, transform), TransformTrackdir(signal.facing, transform), signal.type, signal.variant});
 	}
 	for (const JunctionBridge &bridge : layout.bridges) {
-		JunctionBridge new_bridge{TransformOffset(bridge.start, layout.size, transform), TransformOffset(bridge.end, layout.size, transform)};
+		JunctionBridge new_bridge{TransformOffset(bridge.start, layout.size, transform), TransformOffset(bridge.end, layout.size, transform), bridge.tunnel};
 		if (new_bridge.start.x + new_bridge.start.y > new_bridge.end.x + new_bridge.end.y) std::swap(new_bridge.start, new_bridge.end);
 		result.bridges.push_back(new_bridge);
 	}
@@ -187,7 +187,7 @@ std::string JunctionLayoutToJson(const JunctionLayout &layout)
 	out += "],\n\"bridges\":[";
 	first = true;
 	for (const auto &b : layout.bridges) {
-		out += fmt::format("{}{{\"start\":[{},{}],\"end\":[{},{}]}}", first ? "" : ",", b.start.x, b.start.y, b.end.x, b.end.y);
+		out += fmt::format("{}{{\"start\":[{},{}],\"end\":[{},{}]{}}}", first ? "" : ",", b.start.x, b.start.y, b.end.x, b.end.y, b.tunnel ? ",\"tunnel\":true" : "");
 		first = false;
 	}
 	out += "],\n\"signals\":[";
@@ -292,7 +292,7 @@ std::vector<JunctionBuildStep> MakeJunctionBuildSteps(const JunctionLayout &layo
 		}
 	}
 	for (const JunctionBridge &bridge : layout.bridges) {
-		steps.push_back(JunctionBridgeStep{AddTileIndexDiffCWrap(origin, bridge.start), AddTileIndexDiffCWrap(origin, bridge.end)});
+		steps.push_back(JunctionBridgeStep{AddTileIndexDiffCWrap(origin, bridge.start), AddTileIndexDiffCWrap(origin, bridge.end), bridge.tunnel});
 	}
 	for (const JunctionSignal &signal : layout.signals) {
 		steps.push_back(JunctionSignalStep{AddTileIndexDiffCWrap(origin, signal.offset), signal.facing, signal.type, signal.variant});
@@ -331,6 +331,7 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 	for (const JunctionBridge &bridge : layout.bridges) {
 		occupied.push_back(AddTileIndexDiffCWrap(origin, bridge.start));
 		occupied.push_back(AddTileIndexDiffCWrap(origin, bridge.end));
+		if (bridge.tunnel) continue; // A tunnel has no span tiles to clear.
 		if (bridge.start.x == bridge.end.x) {
 			for (int16_t y = std::min(bridge.start.y, bridge.end.y) + 1; y < std::max(bridge.start.y, bridge.end.y); y++) {
 				span_tiles.push_back(AddTileIndexDiffCWrap(origin, {bridge.start.x, y}));
@@ -394,11 +395,13 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 				if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
 				continue;
 			}
-			CommandCost result = pricing.PriceBridge(bridge->start, bridge->end);
+			CommandCost result = bridge->tunnel ? pricing.PriceTunnel(bridge->start, bridge->end) : pricing.PriceBridge(bridge->start, bridge->end);
 			if (result.Succeeded()) {
 				estimate.total += result.GetCost();
-				const TileIndexDiff delta = TileOffsByDiagDir(DiagdirBetweenTiles(bridge->start, bridge->end));
-				for (TileIndex t = bridge->start + delta; t != bridge->end; t += delta) spans.push_back(t);
+				if (!bridge->tunnel) {
+					const TileIndexDiff delta = TileOffsByDiagDir(DiagdirBetweenTiles(bridge->start, bridge->end));
+					for (TileIndex t = bridge->start + delta; t != bridge->end; t += delta) spans.push_back(t);
+				}
 			} else {
 				MarkBad(estimate, bridge->start);
 				MarkBad(estimate, bridge->end);
