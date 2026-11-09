@@ -1,5 +1,14 @@
 # Junction tool: status
 
+## PARKED 2026-11-10 (engineer rebooting; no agents running)
+
+**Resume here:**
+1. Design: DESIGN-O4 revision 3 (D160): all six movements routed by the line router under negotiated congestion, splits/merges emerge from shared track, prios added after, waiting bays/room as router minimum lengths + per-round feedback.
+2. Route cost (the 100 ms gate's base). Benchmark `FindJunctionLineRoute: route cost benchmark` ([.bench], run alone: `build-rel/openttd_test "FindJunctionLineRoute: route cost benchmark"`). Medians (ms): O4r before: straight 150, turn 105, obstacle 107, hills 108, no-route 151. After O4h (merged 5ae79dcddd): straight 0.14, straight_2 0.22, turn 31, turn_2 23, obstacle 39, hills 35, hills_obst_2 17, no-route 146.
+3. **WIP branch `wip-o4h2` (095dcd9d7b, pushed, not merged):** Manhattan distance (track passes between tiles only through edges) + terrain once per tile for the whole line (O4h's per-track terrain could overcount shared diagonal tiles). Single track: turn 3.0, obstacle 18, hills 9 ms; two-track got slower (straight_2 27, turn_2 31) because terrain-once is loose for axis lines. **Fails** `[slow] the route is as cheap as an uninformed search`: informed finds CHEAPER routes than h=0 (251 vs 259, L_R/LL_RR), so key-based pruning in the line router is not exact (path-dependent state in the key/legality). Next: a brief to find why h=0 returns a costlier route (key vs path_used / D110 closing), then the per-expansion hot spots (string Key via fmt per push and pop, path_used rebuilt per expansion, `used = path_used` copied per successor, node copied per pop) and a fast fail for no-route.
+4. Then O4n1 (negotiation hook), O4n2 (minimum lengths), O4s (prio joins off one row), O4b.
+**Merged today:** O2 tunnels (49a46ffb1c), O4r benchmark, O4h heuristic. Audit (Fable, ~$1-3) findings folded into revision 3 (D160 notes 1-3 superseded).
+
 ## 2026-11-10: O4 redesigned (tokens + negotiation), work started
 
 **Design:** DESIGN-O4.md revision 2 (D157 tokens and negotiated routing, D158 prio bundles routed, D159 prio-or-not by throughput). Revision 1's backtracking is replaced.
