@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file junction_line_router.cpp Router for a multi-track line on flat ground (LP4). */
+/** @file junction_line_router.cpp Router for a multi-track line at one plane (LP4, LP5). */
 
 #include "stdafx.h"
 
@@ -57,6 +57,13 @@ public:
 	explicit LineRouter(const JunctionLineRouteRequest &request) : request(request), cap(std::max(request.curve_spacing, request.s_bend_window))
 	{
 		for (const TileIndexDiffC &tile : request.blocked) blocked.insert(PackTile(tile.x, tile.y));
+		if (request.existing != nullptr) {
+			for (const JunctionTrack &track : request.existing->tracks) existing_bits[PackTile(track.offset.x, track.offset.y)] = track.tracks;
+			for (const JunctionBridge &bridge : request.existing->bridges) {
+				blocked.insert(PackTile(bridge.start.x, bridge.start.y));
+				blocked.insert(PackTile(bridge.end.x, bridge.end.y));
+			}
+		}
 	}
 
 	JunctionLineRouteResult Run();
@@ -65,11 +72,32 @@ private:
 	const JunctionLineRouteRequest &request;
 	const uint cap;
 	std::set<uint64_t> blocked;
+	std::unordered_map<uint64_t, TrackBits> existing_bits; ///< The existing layout's tracks per tile (D147).
 	std::vector<LineTreeEntry> tree;
 
 	bool InBounds(const JunctionPiece &piece) const
 	{
 		return piece.tile.x >= request.min.x && piece.tile.x <= request.max.x && piece.tile.y >= request.min.y && piece.tile.y <= request.max.y;
+	}
+
+	/** Whether a piece may be built: inside the bounds, not blocked, usable terrain at the plane, and an exact parallel pair at most with the existing tracks (D147). */
+	bool PieceUsable(const JunctionPiece &piece) const
+	{
+		if (!InBounds(piece) || blocked.contains(PackTile(piece.tile.x, piece.tile.y))) return false;
+		if (request.terrain != nullptr && !request.terrain->UsableAt(piece.tile.x, piece.tile.y, request.plane)) return false;
+		const auto it = existing_bits.find(PackTile(piece.tile.x, piece.tile.y));
+		if (it == existing_bits.end()) return true;
+		TrackBits bits = it->second;
+		const Track track = TrackdirToTrack(piece.trackdir);
+		if (bits.Test(track)) return false;
+		bits.Set(track);
+		return !TracksOverlap(bits);
+	}
+
+	/** The terrain cost of building on a piece's tile at the plane, zero without a terrain. */
+	Money TerrainCost(const JunctionPiece &piece) const
+	{
+		return request.terrain != nullptr ? request.terrain->CostAt(piece.tile.x, piece.tile.y, request.plane) : Money{0};
 	}
 
 	/**
@@ -131,7 +159,7 @@ private:
 		for (const JunctionRouteEnd &goal : request.goals) {
 			best = std::min(best, std::max(std::abs(goal.tile.x - node.last[0].tile.x), std::abs(goal.tile.y - node.last[0].tile.y)));
 		}
-		return request.rail_piece * (best * request.line.tracks);
+		return request.use_heuristic ? request.rail_piece * (best * request.line.tracks) : Money{0};
 	}
 
 	bool IsGoal(const LineNode &node) const
@@ -165,11 +193,14 @@ JunctionLineRouteResult LineRouter::Run()
 		root.last.push_back(raster.pieces.back());
 		root.states.push_back({cap, 0, true, false});
 	}
+	Money root_cost = 0;
 	/* The start pieces must be usable too. */
 	{
 		std::unordered_map<uint64_t, TrackBits> used;
 		for (const JunctionPiece &piece : root.last) {
-			if (!InBounds(piece) || blocked.contains(PackTile(piece.tile.x, piece.tile.y)) || !Occupy(used, piece)) return {std::nullopt, "no route"};
+			if (!PieceUsable(piece)) return {std::nullopt, "no route"};
+			if (!used.contains(PackTile(piece.tile.x, piece.tile.y))) root_cost += TerrainCost(piece);
+			if (!Occupy(used, piece)) return {std::nullopt, "no route"};
 		}
 	}
 
@@ -189,7 +220,7 @@ JunctionLineRouteResult LineRouter::Run()
 		tree.push_back(std::move(entry));
 		open.push({f, g, counter++, static_cast<int>(tree.size()) - 1});
 	};
-	push({std::move(root), 0, -1, ' ', {}});
+	push({std::move(root), root_cost, -1, ' ', {}});
 
 	uint expansions = 0;
 	while (!open.empty()) {
@@ -203,7 +234,7 @@ JunctionLineRouteResult LineRouter::Run()
 		if (IsGoal(node)) {
 			JunctionLineRoute route{request.start, request.start_trackdir, ""};
 			for (int i = index; tree[i].parent >= 0; i = tree[i].parent) route.moves.insert(route.moves.begin(), tree[i].move);
-			return {route, ""};
+			return {route, "", tree[index].g};
 		}
 		if (++expansions > request.max_expansions) return {std::nullopt, "search limit"};
 
@@ -228,7 +259,12 @@ JunctionLineRouteResult LineRouter::Run()
 			for (size_t i = 0; i < added.size() && legal; i++) {
 				const JunctionPiece *previous = &node.last[i];
 				for (const JunctionPiece &piece : added[i]) {
-					if (!InBounds(piece) || blocked.contains(PackTile(piece.tile.x, piece.tile.y)) || !Occupy(used, piece) || !AdvanceState(next.states[i], *previous, piece)) {
+					if (!PieceUsable(piece)) {
+						legal = false;
+						break;
+					}
+					if (!used.contains(PackTile(piece.tile.x, piece.tile.y))) cost += TerrainCost(piece);
+					if (!Occupy(used, piece) || !AdvanceState(next.states[i], *previous, piece)) {
 						legal = false;
 						break;
 					}

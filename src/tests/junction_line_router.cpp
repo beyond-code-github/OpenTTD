@@ -11,6 +11,7 @@
 
 #include "../3rdparty/catch2/catch.hpp"
 
+#include "../junction_layout.h"
 #include "../junction_line_router.h"
 #include "../direction_func.h"
 #include "../track_func.h"
@@ -226,4 +227,185 @@ TEST_CASE("FindJunctionLineRoute: no route", "[junction][linerouter]")
 	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
 	CHECK_FALSE(result.route.has_value());
 	CHECK(result.error == "no route");
+}
+
+/** A flat Buildable terrain at plane 0 covering the request's bounds, with the given clearing cost per tile. */
+static JunctionTerrain FlatTerrainFor(const JunctionLineRouteRequest &request, Money clear_cost)
+{
+	JunctionTerrain terrain;
+	terrain.origin = request.min;
+	terrain.width = request.max.x - request.min.x + 1;
+	terrain.height = request.max.y - request.min.y + 1;
+	JunctionTerrainTile tile;
+	tile.clear_cost = clear_cost;
+	terrain.tiles.assign(static_cast<size_t>(terrain.width) * terrain.height, tile);
+	return terrain;
+}
+
+static JunctionTerrainTile &TerrainTileOf(JunctionTerrain &terrain, int x, int y)
+{
+	return terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)];
+}
+
+/** Whether any piece of any track of the route lies on the tile. */
+static bool RouteUsesTile(const JunctionLineRouteRequest &request, const JunctionLineRouteResult &result, int x, int y)
+{
+	for (const JunctionRaster &raster : RasterizeJunctionLine(request.line, *result.route)) {
+		for (const JunctionPiece &piece : raster.pieces) {
+			if (piece.tile.x == x && piece.tile.y == y) return true;
+		}
+	}
+	return false;
+}
+
+TEST_CASE("FindJunctionLineRoute: detours around a house", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	const JunctionLineRouteResult straight = FindJunctionLineRoute(request);
+	REQUIRE(straight.route.has_value());
+	REQUIRE(straight.route->moves == std::string(20, 'F'));
+
+	/* A tile on track 1's straight path that track 0 does not use. */
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *straight.route);
+	const JunctionPiece &middle = rasters[1].pieces[rasters[1].pieces.size() / 2];
+	REQUIRE(middle.tile.y != 20);
+
+	JunctionTerrain terrain = FlatTerrainFor(request, 0);
+	TerrainTileOf(terrain, middle.tile.x, middle.tile.y).cls = JunctionTileClass::Blocked;
+	request.terrain = &terrain;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	CheckRoute(request, result);
+	REQUIRE(result.route.has_value());
+	CHECK_FALSE(RouteUsesTile(request, result, middle.tile.x, middle.tile.y));
+	CHECK(result.cost > straight.cost);
+}
+
+TEST_CASE("FindJunctionLineRoute: refused over water", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	const JunctionLineRouteResult straight = FindJunctionLineRoute(request);
+	REQUIRE(straight.route.has_value());
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *straight.route);
+	const JunctionPiece &middle = rasters[1].pieces[rasters[1].pieces.size() / 2];
+
+	/* The bounds hug the line: exactly the rows of its two tracks, so no sideways shift fits. */
+	int min_y = INT32_MAX;
+	int max_y = INT32_MIN;
+	for (const JunctionRaster &raster : rasters) {
+		for (const JunctionPiece &piece : raster.pieces) {
+			min_y = std::min<int>(min_y, piece.tile.y);
+			max_y = std::max<int>(max_y, piece.tile.y);
+		}
+	}
+	request.min.y = static_cast<int16_t>(min_y);
+	request.max.y = static_cast<int16_t>(max_y);
+
+	JunctionTerrain terrain = FlatTerrainFor(request, 0);
+	TerrainTileOf(terrain, middle.tile.x, middle.tile.y).cls = JunctionTileClass::Water;
+	request.terrain = &terrain;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	CHECK_FALSE(result.route.has_value());
+	CHECK(result.error == "no route");
+}
+
+TEST_CASE("FindJunctionLineRoute: pays terrain cost once per tile", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	request.rail_piece = 1;
+	request.turn_cost = 0;
+	JunctionTerrain terrain = FlatTerrainFor(request, 10);
+	request.terrain = &terrain;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	CheckRoute(request, result);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->moves == std::string(20, 'F'));
+
+	/* The start pieces are the line's first tiles: their terrain is paid, their rail is not. */
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *result.route);
+	std::set<std::pair<int, int>> tiles;
+	int added_pieces = 0;
+	for (const JunctionRaster &raster : rasters) {
+		added_pieces += static_cast<int>(raster.pieces.size()) - 1;
+		for (const JunctionPiece &piece : raster.pieces) tiles.emplace(piece.tile.x, piece.tile.y);
+	}
+	CHECK(result.cost == added_pieces * 1 + static_cast<int>(tiles.size()) * 10);
+}
+
+TEST_CASE("FindJunctionLineRoute: existing track is an obstacle", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	const JunctionLineRouteResult straight = FindJunctionLineRoute(request);
+	REQUIRE(straight.route.has_value());
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *straight.route);
+	const JunctionPiece &middle = rasters[0].pieces[rasters[0].pieces.size() / 2];
+
+	/* A crossing track on track 0's path. */
+	JunctionLayout crossing;
+	crossing.tracks.push_back({{middle.tile.x, middle.tile.y}, TrackBits{Track::Y}});
+	request.existing = &crossing;
+	const JunctionLineRouteResult around = FindJunctionLineRoute(request);
+	CheckRoute(request, around);
+	REQUIRE(around.route.has_value());
+	CHECK_FALSE(RouteUsesTile(request, around, middle.tile.x, middle.tile.y));
+	CHECK(around.cost > straight.cost);
+}
+
+TEST_CASE("FindJunctionLineRoute: existing track allows an exact parallel pair", "[junction][linerouter]")
+{
+	/* A line with no gap has tiles in its turns where two of its tracks run as an exact parallel pair. */
+	JunctionLineRouteRequest request = BaseRequest();
+	request.line = {2, 0, 1};
+	request.goals = {{{24, 30}, Trackdir::X_NE}};
+	const JunctionLineRouteResult free_route = FindJunctionLineRoute(request);
+	REQUIRE(free_route.route.has_value());
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *free_route.route);
+	std::map<std::pair<int, int>, TrackBits> bits;
+	for (const JunctionRaster &raster : rasters) {
+		for (const JunctionPiece &piece : raster.pieces) bits[{piece.tile.x, piece.tile.y}].Set(TrackdirToTrack(piece.trackdir));
+	}
+	/* A piece of track 0 on an Upper, Lower, Left or Right track whose tile holds no other track of the line: its parallel partner is free there. */
+	const JunctionPiece *half = nullptr;
+	for (const JunctionPiece &piece : rasters[0].pieces) {
+		if (!IsDiagonalTrackdir(piece.trackdir) && bits[{piece.tile.x, piece.tile.y}].Count() == 1) {
+			half = &piece;
+			break;
+		}
+	}
+	REQUIRE(half != nullptr);
+	const Track track = TrackdirToTrack(half->trackdir);
+	const Track partner = track == Track::Upper ? Track::Lower : track == Track::Lower ? Track::Upper : track == Track::Left ? Track::Right : Track::Left;
+
+	/* The partner is already built there: the same route still stands. */
+	JunctionLayout layout;
+	layout.tracks.push_back({{half->tile.x, half->tile.y}, TrackBits{partner}});
+	request.existing = &layout;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	CheckRoute(request, result);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->moves == free_route.route->moves);
+	CHECK(result.cost == free_route.cost);
+}
+
+TEST_CASE("FindJunctionLineRoute: the route is as cheap as an uninformed search", "[junction][linerouter][slow]")
+{
+	const char *lines[] = {"L_R", "LL_RR"};
+	for (const char *notation : lines) {
+		JunctionLineRouteRequest request = BaseRequest();
+		request.line = ParseLineNotation(notation).spec;
+		request.turn_cost = 3;
+		for (int dx = 6; dx <= 14; dx++) {
+			for (int dy = -4; dy <= 4; dy++) {
+				for (Trackdir trackdir : {Trackdir::X_NE, Trackdir::Y_NW, Trackdir::Left_N, Trackdir::Right_N, Trackdir::Upper_E, Trackdir::Lower_E}) {
+					request.goals = {{{static_cast<int16_t>(request.start.x - dx), static_cast<int16_t>(request.start.y + dy)}, trackdir}};
+					request.use_heuristic = true;
+					const JunctionLineRouteResult informed = FindJunctionLineRoute(request);
+					request.use_heuristic = false;
+					const JunctionLineRouteResult uninformed = FindJunctionLineRoute(request);
+					INFO(notation << " goal " << request.goals[0].tile.x << "," << request.goals[0].tile.y << " trackdir " << static_cast<int>(trackdir) << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
+					REQUIRE(uninformed.error != "search limit");
+					if (informed.route.has_value() && uninformed.route.has_value()) CHECK(informed.cost == uninformed.cost);
+				}
+			}
+		}
+	}
 }
