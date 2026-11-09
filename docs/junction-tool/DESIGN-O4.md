@@ -1,69 +1,53 @@
-# O4: a junction from the constraints (design, revision 2: tokens and negotiation)
+# O4: a junction from the constraints (design, revision 3: every movement routed, splits and merges emerge)
 
 Principle (D152-D153): the code holds rules, costs and a search; no shapes. Layout = whatever answer meets the rules and the throughput targets and scores best (D119: compactness, then cost).
-Revision 2 (D157-D159, engineer 2026-11-10) replaces revision 1's backtracking over movements with a token layer and negotiated routing; the inputs, the given main lines, the crossing options and the score are unchanged.
+Revision 3 (D160, engineer 2026-11-10) replaces revision 2's anchor layer: the main line is not assumed straight (a D80 doubled bridge shifts a lane; terrain may need ramps, a tunnel or a detour), so every movement, the main-line through movements included, is routed the same way, and splits and merges emerge where movements share track. Kept from revision 2 and the audit (D157, D158, D159): tokens, negotiated routing, throughput as judge and source of the prio decision, per-track-bit resources, route memo, minimum lengths.
 
 ## Inputs
 `JunctionSpec` (notation, ml_gap, branch_gap, tl, design train -> prio_tiles, prices), terrain snapshot, anchor and orientation, a search box (grown a step when nothing fits), a traffic mix (`JunctionTrafficMix`; `MakeDefaultJunctionMix()` until the GUI has a setting, D119).
 
 ## Given (not searched)
-Still a place tool: the cursor and rotation fix these, nothing needs to exist yet (attach to an existing line is a later mode that only changes where they come from).
-- The two main-line tracks: straight through the box at the cursor (rows 0 and ml_gap + 1), routed straight across the box by the line router on terrain (ramps, bridges, tunnels allowed).
-- The branch: its two tracks leave the box through the S edge, branch_gap apart; its position p along the edge is a search variable (a few values around the anchor).
-- Which merges carry a prio (D159): main-line merges always; a branch merge when the throughput estimate says the side with priority would otherwise miss its target.
+Still a place tool: the cursor and rotation fix where each track crosses the box edge (the main-line tracks on the E and W edges, rows 0 and ml_gap + 1; the branch tracks on the S edge, branch_gap apart, at a position p searched over a few values). Attach to an existing line is a later mode that only changes where these come from.
+Which merges carry a prio (D159): main-line merges always; a branch merge when a layout-free estimate (block times at design speed from the mix, design train and TL) says the side with priority misses its target without one. Decided once, before the search.
 
-## Tokens (layout units, D157)
-A token is a rule unit with a set of legal placements. No token stores a shape.
-- **Anchors** (on the given main-line tracks; a placement is a position x):
-  - split: a movement leaves the track;
-  - merge: a movement joins the track;
-  - lift: a doubled main-line bridge (D80) over a span: split before, two bridges, plain merge after.
-- **Routed tokens** (a placement is a route by the one line router):
-  - movement: EIn->SOut, WIn->SOut, NIn->EOut, NIn->WOut (lane bundles per notation later), from its split to its merge;
-  - prio bundle (D158): two tracks side by side ending at a prio merge, at least the coverage long along its path (the design train's prio_tiles, D137); may bend and may cross by bridge or tunnel;
-  - branch trunk: the branch tracks from the S edge to their first split or merge, where that isn't already part of a movement.
+## Movements (a T: six)
+E->W and W->E (main line through), E->S, W->S, S->E, S->W. Each is routed by the one line router (O1, O1b, O2, O4a) from its edge track to its edge track (lane bundles per notation later).
 
-## Layer 1: anchors (exact, one-dimensional)
-On a straight main line every placement rule between anchors is a relation between positions x, so the legal anchor sets are enumerated exactly, before any routing:
-- a merge into track T lies at least prio_tiles + 2 past any split on T (D148), at the phase PrioReach needs (D148a);
-- no split, lane split or lane merge inside a prio's coverage plus one segment (D108, G9c);
-- signal spacing between consecutive anchors; a signal-legal piece between a split and a bridge head (D113);
-- a lift's split, bridges and merge stay clear of every coverage except as D80 allows (the coverage sees each bridge block through a join on a plain piece at its end, `junction_signal_pass.cpp`).
-Anchor sets are ordered by an estimate of the occupied tiles they imply (the span between the outermost anchors on each track), smallest first. Expected size: a few positions per anchor on a ~40-tile line.
+## Sharing: where splits and merges come from
+Resource = track bit at a level (surface, bridge level, tunnel depth); a tile holds several bits that don't cross (audit 6; RECON-organic §6).
+- Two movements may share a track bit only at the same level, in the same direction, and when they share an edge track: E->W and E->S share the E entry track until one leaves it (a split); E->S and W->S share from where they meet to the S exit (a merge). Sharing is free (it saves tiles).
+- Opposite directions never share; nothing crosses at grade; two movements that part don't rejoin (except as lanes of one movement).
+- A split is where a shared stretch ends, a merge where one begins. Nothing places them.
 
-## Layer 2: routed tokens, negotiated (PathFinder, McMurchie & Ebeling)
-For one anchor set, every routed token is routed between its fixed ends by the line router (O1, O1b, O2, O4a) with an extra cost per (tile, level) resource:
-- resources: surface tile, bridge level, tunnel depth (RECON-organic §6: per tile, surface track + one tunnel per depth + at most one bridge span; bridges never cross bridges);
-- present cost: how many other tokens use the resource now; history cost: how often it was contested in earlier rounds;
-- each round reroutes every token that touches a contested resource; present and history costs rise each round;
-- converged when no resource is shared; give up after K rounds (K measured) and take the next anchor set.
-Rules measured along a routed track (a coverage on the branch trunk, signal spacing on a movement) are enforced in the router as state, the way D148a moved a rule into the windows.
-Crossing a main line, three ways, cost decides (D156: no extra penalty; the lift is tried first because it is usually best):
-1. the token bridges over the main line (LP6);
-2. it tunnels under (O2);
-3. the main line is lifted: main-line tiles are crossable at grade at the lift's share of a doubled bridge (today's crossable_cost); a crossing at grade makes a lift anchor over that span part of the anchor set; if no legal lift fits there, the price pushes the token to 1 or 2.
+## Crossings and the main line on bridges
+A movement crossing another goes over (bridge, LP6), under (tunnel, O2), or the other goes over it. The main-line doubled bridge (D80: split, two bridges side by side with equal path lengths, plain merge) is one router move for a main-line movement: a rule unit like a prio, not a stored shape. D156: money and compactness decide.
 
-## Layer 3: judge and score (complete layouts only)
-1. Signal pass and the full checker (the safety net for rules not yet in layers 1-2).
-2. `EvaluateJunctionThroughput` with the traffic mix: main-line delay zero, branch capacity at least its target (D119). A branch merge built without a prio that misses its target is marked as needing one and the search reruns (D159).
-3. Score compactness (occupied + slivers, D153), then cost. Branch and bound on occupied tiles (the only part that only grows).
-Per rule and per layer, count rejections; a rule that rejects often in layer 3 moves into layer 1 or 2 so it prunes earlier.
+## The search
+1. **Simultaneous routing, no prios.** Negotiated congestion (PathFinder, McMurchie & Ebeling): every round every movement is rerouted against present cost (other movements on a bit, unless they may share it) and history cost (how often a bit was contested); costs rise each round; converged when nothing conflicts; give up after K rounds (measured). Routes are memoised by (movement, ends, obstacle hash).
+2. **Rule feedback on emergent points.** After each round, the rules about where splits and merges may be are checked along the shared paths (cheap, one-dimensional along each path): D108 no split inside a coverage, D148/D148a merge windows and phase, G7 waiting room, D83 bays, signal spacing, D113 a signal-legal piece between a split and a bridge head. A violation becomes a penalty on the tiles where the offending split or merge happened, which moves it next round. Minimum lengths (waiting room, bays) are also router conditions on a movement (O4n).
+3. **Prios added.** For each merge that carries one, a prio token (two tracks side by side, at least the coverage long, following the line it protects, D158) is placed beside the merge where it came out; negotiation reroutes whatever is in its way. Needs the signal pass to accept joins off a single row (today `junction_signal_pass.cpp:377-380` requires the merge's row).
+4. **Judge and score** (complete layouts only): signal pass and full checker (safety net); `EvaluateJunctionThroughput` (main-line delay zero, branch capacity at least its target, D119); compactness (occupied + slivers, D153), then cost. Branch and bound over p and restarts on occupied tiles with an admissible bound (sum of per-movement minimum lengths), not the box span (audit 5).
+Per rule, count rejections in step 4; a rule that rejects often moves into step 2 or the router.
 
-Expected work: anchor sets in tens, each 4-6 routed tokens x a few rounds x a few ms per route; the first converged sets bound the rest. O5 measures it against 100 ms.
+Expected work: 6 movements x a few rounds x a route each (memoised) x a few p. O5 measures it against 100 ms; the first thing measured is one route's cost (O4r).
 
 ## Steps
 | Step | What |
 |---|---|
 | O4a | Merged: the line router takes a set of start pieces. |
-| O4m | Measure layer 1 alone: enumerate legal anchor sets on MakeTestJunctionSpec, PinnedTestSpec and the Pinned TL6 branch_gap 0 case; count them and confirm the TL6 case has at least one. No routing. |
-| O4n | Line router: an extra cost per (tile, level) resource, read from the request (the negotiation hook); a minimum path length for a routed token (prio bundles). |
-| O4b | `GenerateJunctionOrganic` for the T on flat ground: layers 1-3. Outer tests: rule-clean on MakeTestJunctionSpec and PinnedTestSpec; the Pinned TL6 branch_gap 0 case builds; throughput targets met; compactness reported beside today's generator (190 occupied / 53 slivers). |
-| O4c | On terrain (after O2/O3): rule-clean on a hill, across a river, under a ridge. |
+| O2 | Merged: tunnels in the router. |
+| O4r | Measure one route's cost: single-track and two-track routes across a junction-sized box, flat and hilly, with and without bridges and tunnels and obstacles. Decides whether 6 movements x rounds fit 100 ms. |
+| O4n1 | Line router: present/history cost per (track bit, level) from the request; sharing allowed for bits of the same direction and group (the negotiation hook). |
+| O4n2 | Line router: minimum path length for a routed token (prios, waiting room, bays). |
+| O4s | Signal pass: prio joins off a single row (prios that bend with the line). |
+| O4b | `GenerateJunctionOrganic` for the T on flat ground: steps 1-4. Outer tests: rule-clean on MakeTestJunctionSpec and PinnedTestSpec; the Pinned TL6 branch_gap 0 case builds; throughput targets met; compactness reported beside today's generator (190 occupied / 53 slivers). |
+| O4c | On terrain (after O3): rule-clean on a hill, across a river, under a ridge. |
 | O4d | Behind `GenerateJunction`/`GenerateJunctionNear` (GUI, library, rig) in place of the template; old path deleted. |
 
 ## Reused
-Line router (O1, O1b, O2, O4a), checker, signal pass and prio placement, throughput evaluator and prio timing (S1, D137), pricing, build sequencer, compactness measure (C1), ghost.
+Line router, checker, signal pass and prio placement, throughput evaluator and prio timing (S1, D137), pricing, build sequencer, compactness measure (C1), ghost.
 
 ## Later (not in O4)
-- Throughput confirming or loosening the layer-1 proxies (D108, D148): a tighter layout the rules forbid but the evaluator shows is fine. The route to hubs better than coop.
-- Shared or optional prios beyond D159; attach mode; 4-way hubs (more anchors per line, more movements, same layers).
+- Throughput confirming or loosening the step-2 proxies (D108, D148): the route to hubs better than coop.
+- Shared or optional prios beyond D159; attach mode; 4-way hubs (more movements, same search).
+- Open from the audit: the doubled-bridge move's interaction with a coverage (D80 note), D148a's phase with bridge blocks.
