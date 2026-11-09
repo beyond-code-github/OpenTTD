@@ -42,9 +42,9 @@ struct JunctionLineRouteRequest {
 	Money turn_cost = 0; ///< Once per line turn (D135 c).
 	Money slope_piece = 0; ///< Added for each ramp piece, per track (D95, D152).
 	std::function<bool(uint)> bridge_span_ok; ///< By middle-tile count; bridges are tried only when this and bridge_price are set and max_bridge_middle > 0 (D149).
-	std::function<Money(uint)> bridge_price; ///< Per track and bridge, by middle-tile count. The heuristic stays admissible while bridge_price(n) >= (n + 2) * rail_piece.
+	std::function<Money(uint)> bridge_price; ///< Per track and bridge, by middle-tile count. The heuristic's floor covers any price (O4h).
 	uint max_bridge_middle = 0; ///< Largest n tried for B<n>.
-	std::function<Money(uint)> tunnel_price; ///< Per track and tunnel, by middle-tile count; tunnels are tried only when set (D155). Admissible while tunnel_price(n) >= (n + 2) * rail_piece.
+	std::function<Money(uint)> tunnel_price; ///< Per track and tunnel, by middle-tile count; tunnels are tried only when set (D155). The heuristic's floor covers any price (O4h).
 	uint max_tunnel_length = 64; ///< Largest middle-tile count (the game's max_tunnel_length).
 	uint max_expansions = 200000;
 	bool use_heuristic = true; ///< Test seam: false makes the search uninformed (h = 0).

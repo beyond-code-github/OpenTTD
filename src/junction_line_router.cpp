@@ -108,12 +108,16 @@ public:
 			}
 		}
 		step_floor = request.rail_piece.base() + terrain_floor;
+		track_floor = request.rail_piece.base();
+		int64_t span_floor = INT64_MAX;
 		if (request.bridge_span_ok && request.bridge_price && request.max_bridge_middle > 0) {
-			for (uint n = 0; n <= request.max_bridge_middle; n++) step_floor = std::min<int64_t>(step_floor, request.bridge_price(n).base() / (n + 2));
+			for (uint n = 0; n <= request.max_bridge_middle; n++) span_floor = std::min<int64_t>(span_floor, request.bridge_price(n).base() / (n + 2));
 		}
 		if (request.tunnel_price && request.terrain != nullptr) {
-			for (uint n = 0; n <= request.max_tunnel_length; n++) step_floor = std::min<int64_t>(step_floor, request.tunnel_price(n).base() / (n + 2));
+			for (uint n = 0; n <= request.max_tunnel_length; n++) span_floor = std::min<int64_t>(span_floor, request.tunnel_price(n).base() / (n + 2));
 		}
+		step_floor = std::min(step_floor, span_floor);
+		track_floor = std::min(track_floor, span_floor);
 	}
 
 	JunctionLineRouteResult Run();
@@ -121,7 +125,8 @@ public:
 private:
 	const JunctionLineRouteRequest &request;
 	const uint cap;
-	int64_t step_floor = 0; ///< The least cost one track pays per tile of distance (O4h).
+	int64_t step_floor = 0; ///< The least cost a one-track line pays per tile of distance (O4h): its rail piece plus the cheapest tile's terrain, or its cheapest bridge or tunnel per tile spanned.
+	int64_t track_floor = 0; ///< The same for a line of more than one track, without terrain and for one track only (D162): an inner track on a curve travels fewer tiles than track 0, and terrain a track ahead of track 0 already paid is not paid again.
 	std::set<uint64_t> blocked;
 	std::unordered_map<uint64_t, TrackBits> existing_bits; ///< The existing layout's tracks per tile (D147).
 	std::vector<LineTreeEntry> tree;
@@ -248,22 +253,37 @@ private:
 		return true;
 	}
 
+	/** Append the bytes of a trivially copyable value to a key. */
+	template <typename T>
+	static void AppendBytes(std::string &key, const T &value)
+	{
+		key.append(reinterpret_cast<const char *>(&value), sizeof(T));
+	}
+
 	static std::string Key(const LineNode &node)
 	{
 		std::string key;
+		key.reserve(16 + node.states.size() * 8 + node.z.size() + 2);
 		const JunctionPiece &first = node.last[0];
-		key += fmt::format("{},{},{}", first.tile.x, first.tile.y, static_cast<int>(first.trackdir));
-		for (const LineTrackState &state : node.states) key += fmt::format(";{},{},{},{}", state.u, state.hand, state.prev_gap_ok, state.pair);
-		for (int8_t z : node.z) key += fmt::format(";{}", z);
-		key += node.after_bridge ? ";b" : ";";
-		key += fmt::format("{}", node.passed);
+		AppendBytes(key, static_cast<int32_t>(first.tile.x));
+		AppendBytes(key, static_cast<int32_t>(first.tile.y));
+		AppendBytes(key, static_cast<int32_t>(first.trackdir));
+		for (const LineTrackState &state : node.states) {
+			AppendBytes(key, static_cast<uint32_t>(state.u));
+			AppendBytes(key, state.hand);
+			AppendBytes(key, static_cast<uint8_t>(state.prev_gap_ok));
+			AppendBytes(key, static_cast<uint8_t>(state.pair));
+		}
+		for (int8_t z : node.z) AppendBytes(key, z);
+		AppendBytes(key, static_cast<uint8_t>(node.after_bridge));
+		AppendBytes(key, node.passed);
 		return key;
 	}
 
-	/** The Chebyshev distance between two tiles. */
-	static int Chebyshev(const TileIndexDiffC &a, const TileIndexDiffC &b)
+	/** The Manhattan distance between two tiles: track only passes between tiles through their edges, so a track enters at least this many tiles. */
+	static int Manhattan(const TileIndexDiffC &a, const TileIndexDiffC &b)
 	{
-		return std::max(std::abs(a.x - b.x), std::abs(a.y - b.y));
+		return std::abs(a.x - b.x) + std::abs(a.y - b.y);
 	}
 
 	/** The fewest L or R moves that turn a heading into another: each turns the line by 45 degrees. */
@@ -274,26 +294,26 @@ private:
 	}
 
 	/**
-	 * The cheapest possible cost to finish (O4h): every track pays at least step_floor per tile of Chebyshev distance of track 0 through the remaining waypoints in order, then to a goal, and the line pays turn_cost for each 45 degree turn from its heading to that goal's (D150 4).
+	 * The cheapest possible cost to finish (O4h, D162): the line pays at least step_floor (one track) or track_floor (more than one track, so the bound stays admissible) per tile of Manhattan distance of track 0 through the remaining waypoints in order, then to a goal, and the line pays turn_cost for each 45 degree turn from its heading to that goal's (D150 4).
 	 * The bound is taken per goal and the least is returned; without goals only the waypoints count.
 	 */
 	Money Heuristic(const LineNode &node) const
 	{
 		if (!request.use_heuristic) return Money{0};
+		const int64_t floor = request.line.tracks == 1 ? step_floor : track_floor;
 		const std::vector<TileIndexDiffC> &waypoints = request.waypoints;
 		int distance = 0;
 		TileIndexDiffC from = node.last[0].tile;
 		for (size_t k = node.passed; k < waypoints.size(); k++) {
-			distance += Chebyshev(from, waypoints[k]);
+			distance += Manhattan(from, waypoints[k]);
 			from = waypoints[k];
 		}
-		const int64_t tracks = request.line.tracks;
-		if (request.goals.empty()) return Money{step_floor * distance * tracks};
+		if (request.goals.empty()) return Money{floor * distance};
 
 		const Direction heading = TrackdirToDirection(node.last[0].trackdir);
 		int64_t best = INT64_MAX;
 		for (const JunctionRouteEnd &goal : request.goals) {
-			const int64_t bound = step_floor * (distance + Chebyshev(from, goal.tile)) * tracks + request.turn_cost.base() * TurnsBetween(heading, TrackdirToDirection(goal.trackdir));
+			const int64_t bound = floor * (distance + Manhattan(from, goal.tile)) + request.turn_cost.base() * TurnsBetween(heading, TrackdirToDirection(goal.trackdir));
 			best = std::min(best, bound);
 		}
 		return Money{best};
@@ -323,13 +343,43 @@ private:
 		}
 	}
 
-	/** Record a piece on its tile; false when it clashes with the line's own pieces (anything but an exact parallel pair). */
-	static bool Occupy(std::unordered_map<uint64_t, TrackBits> &used, const JunctionPiece &piece)
+	using UsedMap = std::unordered_map<uint64_t, TrackBits>;
+	using Overlay = std::vector<std::pair<uint64_t, TrackBits>>; ///< The tracks the pieces of one successor add on top of the path's used map.
+
+	/** Record a piece in the path's used map; false when it clashes with the line's own pieces (anything but an exact parallel pair). */
+	static bool OccupyBase(UsedMap &used, const JunctionPiece &piece)
 	{
 		TrackBits &bits = used[PackTile(piece.tile.x, piece.tile.y)];
 		const Track track = TrackdirToTrack(piece.trackdir);
 		if (bits.Test(track)) return false;
 		bits.Set(track);
+		return !TracksOverlap(bits);
+	}
+
+	/** Whether the base map or the overlay has the tile. */
+	static bool IsUsed(const UsedMap &base, const Overlay &overlay, uint64_t packed)
+	{
+		if (base.contains(packed)) return true;
+		return std::ranges::any_of(overlay, [&](const std::pair<uint64_t, TrackBits> &entry) { return entry.first == packed; });
+	}
+
+	/** Record a piece on its tile in the overlay; false when it clashes with the base map or the overlay (anything but an exact parallel pair). */
+	static bool Occupy(const UsedMap &base, Overlay &overlay, const JunctionPiece &piece)
+	{
+		const uint64_t packed = PackTile(piece.tile.x, piece.tile.y);
+		TrackBits bits;
+		const auto it = base.find(packed);
+		if (it != base.end()) bits = it->second;
+		auto entry = std::ranges::find_if(overlay, [&](const std::pair<uint64_t, TrackBits> &e) { return e.first == packed; });
+		if (entry != overlay.end()) bits = bits | entry->second;
+		const Track track = TrackdirToTrack(piece.trackdir);
+		if (bits.Test(track)) return false;
+		bits.Set(track);
+		if (entry == overlay.end()) {
+			overlay.emplace_back(packed, TrackBits{track});
+		} else {
+			entry->second.Set(track);
+		}
 		return !TracksOverlap(bits);
 	}
 };
@@ -388,7 +438,7 @@ JunctionLineRouteResult LineRouter::Run()
 		/* The start pieces must be usable too. */
 		bool usable = true;
 		{
-			std::unordered_map<uint64_t, TrackBits> used;
+			UsedMap used;
 			for (const JunctionRaster &raster : first) {
 				const JunctionPiece &piece = raster.pieces[0];
 				int8_t new_z;
@@ -398,7 +448,7 @@ JunctionLineRouteResult LineRouter::Run()
 					break;
 				}
 				if (!used.contains(PackTile(piece.tile.x, piece.tile.y))) root_cost += TerrainCost(piece, static_cast<int8_t>(request.plane), false);
-				if (!Occupy(used, piece)) {
+				if (!OccupyBase(used, piece)) {
 					usable = false;
 					break;
 				}
@@ -459,11 +509,11 @@ JunctionLineRouteResult LineRouter::Run()
 		if (++expansions > request.max_expansions) return {std::nullopt, "search limit", Money{0}, expansions};
 
 		/* Everything the line has built so far. */
-		std::unordered_map<uint64_t, TrackBits> path_used;
+		UsedMap path_used;
 		std::vector<JunctionBridge> path_bridges;
 		int path_root = index;
 		while (tree[path_root].parent >= 0) path_root = tree[path_root].parent;
-		for (const JunctionRaster &raster : roots[root_of.at(path_root)].first) Occupy(path_used, raster.pieces[0]);
+		for (const JunctionRaster &raster : roots[root_of.at(path_root)].first) OccupyBase(path_used, raster.pieces[0]);
 		for (int i = index; i >= 0; i = tree[i].parent) {
 			path_bridges.insert(path_bridges.end(), tree[i].bridges.begin(), tree[i].bridges.end());
 			for (const std::vector<JunctionPiece> &track : tree[i].added) {
@@ -472,7 +522,7 @@ JunctionLineRouteResult LineRouter::Run()
 					if (!piece.on_bridge || std::ranges::any_of(tree[i].bridges, [&](const JunctionBridge &bridge) {
 						return (piece.tile.x == bridge.start.x && piece.tile.y == bridge.start.y) || (piece.tile.x == bridge.end.x && piece.tile.y == bridge.end.y);
 					})) {
-						Occupy(path_used, piece);
+						OccupyBase(path_used, piece);
 					}
 				}
 			}
@@ -485,7 +535,7 @@ JunctionLineRouteResult LineRouter::Run()
 
 			LineNode next = node;
 			next.after_bridge = false;
-			std::unordered_map<uint64_t, TrackBits> used = path_used;
+			Overlay overlay;
 			bool legal = true;
 			Money cost = move == 'F' ? Money{0} : request.turn_cost;
 			for (size_t i = 0; i < added.size() && legal; i++) {
@@ -498,10 +548,10 @@ JunctionLineRouteResult LineRouter::Run()
 						legal = false;
 						break;
 					}
-					if (!used.contains(PackTile(piece.tile.x, piece.tile.y))) cost += TerrainCost(piece, z, ramp);
+					if (!IsUsed(path_used, overlay, PackTile(piece.tile.x, piece.tile.y))) cost += TerrainCost(piece, z, ramp);
 					if (ramp) cost += request.slope_piece;
 					z = new_z;
-					if (!Occupy(used, piece) || !AdvanceState(next.states[i], *previous, piece)) {
+					if (!Occupy(path_used, overlay, piece) || !AdvanceState(next.states[i], *previous, piece)) {
 						legal = false;
 						break;
 					}
@@ -543,7 +593,7 @@ JunctionLineRouteResult LineRouter::Run()
 			if (!added.empty()) {
 				LineNode next = node;
 				next.after_bridge = true;
-				std::unordered_map<uint64_t, TrackBits> used = path_used;
+				Overlay overlay;
 				bool legal = true;
 				Money cost = 0;
 				for (size_t i = 0; i < added.size() && legal; i++) {
@@ -553,12 +603,12 @@ JunctionLineRouteResult LineRouter::Run()
 						const JunctionPiece &piece = added[i][k];
 						if (k == 0 || k + 1 == added[i].size()) {
 							const uint64_t packed = PackTile(piece.tile.x, piece.tile.y);
-							if (!PortalUsable(piece, k == 0 ? heading : ReverseDiagDir(heading), z) || existing_bits.contains(packed) || used.contains(packed)) {
+							if (!PortalUsable(piece, k == 0 ? heading : ReverseDiagDir(heading), z) || existing_bits.contains(packed) || IsUsed(path_used, overlay, packed)) {
 								legal = false;
 								break;
 							}
 							cost += request.terrain->At(piece.tile.x, piece.tile.y)->clear_cost;
-							Occupy(used, piece);
+							Occupy(path_used, overlay, piece);
 						} else {
 							const JunctionTerrainTile *tile = InBounds(piece) ? request.terrain->At(piece.tile.x, piece.tile.y) : nullptr;
 							if (tile == nullptr || tile->z_min == z ||
@@ -605,7 +655,7 @@ JunctionLineRouteResult LineRouter::Run()
 
 			LineNode next = node;
 			next.after_bridge = true;
-			std::unordered_map<uint64_t, TrackBits> used = path_used;
+			Overlay overlay;
 			bool legal = true;
 			Money cost = 0;
 			for (size_t i = 0; i < added.size() && legal; i++) {
@@ -616,12 +666,12 @@ JunctionLineRouteResult LineRouter::Run()
 						const uint64_t packed = PackTile(piece.tile.x, piece.tile.y);
 						int8_t new_z;
 						bool ramp;
-						if (!PieceUsable(piece, node.z[i], false, new_z, ramp) || existing_bits.contains(packed) || used.contains(packed)) {
+						if (!PieceUsable(piece, node.z[i], false, new_z, ramp) || existing_bits.contains(packed) || IsUsed(path_used, overlay, packed)) {
 							legal = false;
 							break;
 						}
 						cost += TerrainCost(piece, node.z[i], false);
-						Occupy(used, piece);
+						Occupy(path_used, overlay, piece);
 					} else if (!InBounds(piece) || blocked.contains(PackTile(piece.tile.x, piece.tile.y)) || is_head(piece) ||
 							(request.existing != nullptr && BetweenBridgeHeads(piece.tile.x, piece.tile.y, request.existing->bridges)) ||
 							BetweenBridgeHeads(piece.tile.x, piece.tile.y, path_bridges) ||

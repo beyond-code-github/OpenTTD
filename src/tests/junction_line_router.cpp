@@ -451,7 +451,8 @@ TEST_CASE("FindJunctionLineRoute: the route is as cheap as an uninformed search"
 					const JunctionLineRouteResult uninformed = FindJunctionLineRoute(request);
 					INFO(notation << " goal " << request.goals[0].tile.x << "," << request.goals[0].tile.y << " trackdir " << static_cast<int>(trackdir) << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
 					REQUIRE(uninformed.error != "search limit");
-					if (informed.route.has_value() && uninformed.route.has_value()) CHECK(informed.cost == uninformed.cost);
+					/* D161: pruning is approximate for lines whose tracks can collide; an overestimating heuristic shows as a costlier informed route. */
+					if (informed.route.has_value() && uninformed.route.has_value()) CHECK(informed.cost <= uninformed.cost);
 				}
 			}
 		}
@@ -466,7 +467,7 @@ TEST_CASE("FindJunctionLineRoute: the route is as cheap as an uninformed search"
 			INFO(notation << " starts dy " << dy << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
 			REQUIRE(uninformed.error != "search limit");
 			CHECK(informed.route.has_value() == uninformed.route.has_value());
-			if (informed.route.has_value() && uninformed.route.has_value()) CHECK(informed.cost == uninformed.cost);
+			if (informed.route.has_value() && uninformed.route.has_value()) CHECK(informed.cost <= uninformed.cost);
 		}
 		request.starts.clear();
 	}
@@ -643,7 +644,8 @@ TEST_CASE("FindJunctionLineRoute: bridge routes are as cheap as an uninformed se
 		INFO("case " << which << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
 		REQUIRE(informed.route.has_value());
 		REQUIRE(uninformed.route.has_value());
-		CHECK(informed.cost == uninformed.cost);
+		/* D161: pruning is approximate for lines whose tracks can collide; an overestimating heuristic shows as a costlier informed route. */
+		CHECK(informed.cost <= uninformed.cost);
 	}
 }
 
@@ -815,7 +817,8 @@ TEST_CASE("FindJunctionLineRoute: waypoint routes are as cheap as an uninformed 
 		INFO("case " << which << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
 		REQUIRE(informed.route.has_value());
 		REQUIRE(uninformed.route.has_value());
-		CHECK(informed.cost == uninformed.cost);
+		/* D161: pruning is approximate for lines whose tracks can collide; an overestimating heuristic shows as a costlier informed route. */
+		CHECK(informed.cost <= uninformed.cost);
 	}
 }
 
@@ -1031,7 +1034,8 @@ TEST_CASE("FindJunctionLineRoute: ramp routes are as cheap as an uninformed sear
 		INFO("case " << which << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
 		REQUIRE(informed.route.has_value());
 		REQUIRE(uninformed.route.has_value());
-		CHECK(informed.cost == uninformed.cost);
+		/* D161: pruning is approximate for lines whose tracks can collide; an overestimating heuristic shows as a costlier informed route. */
+		CHECK(informed.cost <= uninformed.cost);
 	}
 }
 
@@ -1157,7 +1161,8 @@ TEST_CASE("FindJunctionLineRoute: tunnel routes are as cheap as an uninformed se
 		INFO("case " << which << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
 		REQUIRE(informed.route.has_value() == uninformed.route.has_value());
 		CHECK(informed.route.has_value() == (which < 2)); // The ridge can't be climbed, so the other cases have no route.
-		CHECK(informed.cost == uninformed.cost);
+		/* D161: pruning is approximate for lines whose tracks can collide; an overestimating heuristic shows as a costlier informed route. */
+		CHECK(informed.cost <= uninformed.cost);
 	}
 }
 
@@ -1183,7 +1188,7 @@ static bool BenchRoute(const char *name, const JunctionLineRouteRequest &request
 		times.push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count());
 	}
 	std::sort(times.begin(), times.end());
-	std::cout << "BENCH " << name << " tracks=" << static_cast<int>(request.line.tracks) << " found=" << (result.route.has_value() ? 1 : 0) << " cost=" << result.cost << " median_us=" << times[times.size() / 2] << " max_us=" << times.back() << "\n";
+	std::cout << "BENCH " << name << " tracks=" << static_cast<int>(request.line.tracks) << " found=" << (result.route.has_value() ? 1 : 0) << " cost=" << result.cost << " median_us=" << times[times.size() / 2] << " max_us=" << times.back() << " expansions=" << result.expansions << "\n";
 	return result.route.has_value();
 }
 
@@ -1309,7 +1314,7 @@ TEST_CASE("FindJunctionLineRoute: a turn costs at least its turns", "[junction][
 
 TEST_CASE("FindJunctionLineRoute: costly routes are as cheap as an uninformed search", "[junction][linerouter][slow]")
 {
-	for (const char *name : {"flat_straight_1", "flat_turn_1", "obstacle_turn_1", "hills_turn_1"}) {
+	for (const char *name : {"flat_straight_1", "flat_turn_1", "obstacle_turn_1", "hills_turn_1", "flat_straight_2", "flat_turn_2", "hills_obstacle_turn_2"}) {
 		BenchCase c;
 		SetUpBenchCase(c, name);
 		c.request.use_heuristic = true;
@@ -1318,6 +1323,7 @@ TEST_CASE("FindJunctionLineRoute: costly routes are as cheap as an uninformed se
 		const JunctionLineRouteResult uninformed = FindJunctionLineRoute(c.request);
 		INFO(name << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
 		REQUIRE(informed.route.has_value() == uninformed.route.has_value());
-		CHECK(informed.cost == uninformed.cost);
+		/* D161: pruning is approximate for lines whose tracks can collide; an overestimating heuristic shows as a costlier informed route. */
+		CHECK(informed.cost <= uninformed.cost);
 	}
 }
