@@ -1,5 +1,16 @@
 # Junction tool: status
 
+## Parking snapshot (2026-11-09 evening, engineer rebooting for a BIOS update)
+
+**Resume here.** Agents that were running when parked are gone; relaunch each from its brief in a clean worktree (`git -C .claude/<wt> checkout -- . && git -C .claude/<wt> clean -fd src`, then reset to the feature head).
+- **Junction:** S2f merged (ddb5db8789): style 1 built once per (height, crossing cost, e_slack); Make spec GenerateJunction 1.82 s -> ~1.15 s, library 10.0 -> ~7.7 s, results identical. S2f-m measured the E-side rule -> **D148** (window = x_s + prio + 2, G9c/G9b; constant JUNCTION_E_PRIO_AFTER_SPLIT = 2). **S2f2 was running** (brief `briefs/S2f2-east-window.md`, worktree `.claude/s2f`, branch wt-s2f, base ddb5db8789 + later doc commits; uncommitted partial edits there: discard and relaunch). Then S2g (hover timing on the NUTS rig; check whether the TL5/prio-15 probe needs more than D148).
+- **Painter:** **LP5 was running** (brief `briefs/LP5-terrain-obstacles.md`, D147; worktree `.claude/lp5`, branch wt-lp5, base bf09d84efb; uncommitted partial edits: discard and relaunch, rebase the worktree onto the feature head first). LP5b (D143 narrowing) needs a geometry design by the orchestrator before a brief.
+- **Stations:** waiting on the engineer's Station window check (6 points), then ST6, ST7.
+- **Crash under load: hardware.** i7-14700KF, microcode 0x11D, Gigabyte Z790 AORUS ELITE AX BIOS FG (2023-09-12): Raptor Lake instability. Evidence: kernel log RIP mid-instruction (`0f 85 4a fa <ff> ff`) at the same hot router branch in several dumps; faults on valid stack/heap addresses; sanitizer builds clean; no shared state on the worker path (recon). The engineer is updating the BIOS now. **After the reboot:** confirm microcode (`powershell.exe` registry `HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor\0` "Update Revision", expect >= 0x12B) and re-run the load loop in `.claude/crash` (`ptest.sh build-rel/openttd_test "[junction]~[slow]" 24`, 6+ rounds; dumps land in `C:\Users\micro\AppData\Local\Temp\wsl-crashes`, lldb-18 reads them). Still crashing after the update = degraded chip -> Intel warranty.
+- **Tools:** clangd/LSP works in the main worktree (`.clangd` -> build-rel, untracked).
+- **NUTS rig:** Pete's client was on the old play build; rebuild `.claude/play` only with the engineer's OK.
+
+
 ## Handover snapshot (2026-11-09, before compaction)
 
 **Direction (D119-D131):** simulation-driven design; evaluator judges, rig is final judge. Ultimate goal D124 (human + LLM building at Buborough scale). Plan: `PLAN-sim-driven.md`.
