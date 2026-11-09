@@ -10,16 +10,35 @@
 #ifndef JUNCTION_LINE_H
 #define JUNCTION_LINE_H
 
+#include "junction_generator.h"
 #include "junction_route.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
-/** A multi-track line: N parallel tracks, `gap` tiles apart between neighbours (0 means adjacent). */
+/**
+ * A multi-track line: N parallel tracks in a left and a right direction group (D142).
+ * Tracks of one group are adjacent; `gap` tiles lie only between the two groups (0 means adjacent).
+ */
 struct JunctionLineSpec {
 	uint8_t tracks = 2;
 	uint8_t gap = 1;
+	uint8_t left_tracks = 1; ///< Tracks in the left group (D142); the gap is only between track left_tracks - 1 and left_tracks, other neighbours are adjacent.
 };
+
+/** The result of parsing a line notation. */
+struct JunctionLineNotation {
+	JunctionLineSpec spec;
+	JunctionNotationError error = JunctionNotationError::None;
+};
+
+/**
+ * Parse a line notation with direction groups (D142), such as "LL_RR": one or more L, zero to three underscores, one or more R.
+ * @param text The notation.
+ * @return The line (tracks = L + R, left_tracks = L, gap = underscores), or Invalid.
+ */
+JunctionLineNotation ParseLineNotation(std::string_view text);
 
 /**
  * A line program: a start (the first piece of the leftmost track, track 0) and moves, as JunctionRoute, applied to the whole line.

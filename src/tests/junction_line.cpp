@@ -55,7 +55,7 @@ static std::string Ascii(const std::vector<JunctionRaster> &rasters)
 static void CheckLine(const JunctionLineSpec &spec, Trackdir start, const char *moves, bool show)
 {
 	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(spec, {{20, 20}, start, moves});
-	INFO("tracks " << int{spec.tracks} << " gap " << int{spec.gap} << " start " << static_cast<int>(start) << " moves " << moves);
+	INFO("tracks " << int{spec.tracks} << " left " << int{spec.left_tracks} << " gap " << int{spec.gap} << " start " << static_cast<int>(start) << " moves " << moves);
 	REQUIRE(rasters.size() == spec.tracks);
 	for (const JunctionRaster &raster : rasters) {
 		INFO(raster.error);
@@ -84,6 +84,8 @@ static void CheckLine(const JunctionLineSpec &spec, Trackdir start, const char *
 		const JunctionPiece &end = rasters[i].pieces.back();
 		const JunctionPiece &prev = rasters[i - 1].pieces.back();
 		CHECK(TrackdirToDirection(end.trackdir) == heading);
+		/* Neighbours are adjacent within a group; the gap is only between the groups (D142). */
+		const uint8_t gap = (i == spec.left_tracks) ? spec.gap : 0;
 		const auto [px, py] = ExitPoint(prev);
 		const auto [ex, ey] = ExitPoint(end);
 		const int dx = ex - px;
@@ -92,13 +94,13 @@ static void CheckLine(const JunctionLineSpec &spec, Trackdir start, const char *
 		if (!diagonal) {
 			const bool along_x = heading == Direction::NE || heading == Direction::SW;
 			CHECK((along_x ? dx : dy) == 0);
-			CHECK(std::abs(along_x ? dy : dx) == 2 * (spec.gap + 1));
+			CHECK(std::abs(along_x ? dy : dx) == 2 * (gap + 1));
 		} else {
 			const bool sum_is_along = heading == Direction::N || heading == Direction::S; // Along (-1,-1) or (1,1) the progress is x + y.
 			const int sum = dx + dy;
 			const int diff = dx - dy;
 			CHECK((sum_is_along ? sum : diff) == 0);
-			CHECK(std::abs(sum_is_along ? diff : sum) == 2 * DIAGONAL_SPACING[spec.gap]);
+			CHECK(std::abs(sum_is_along ? diff : sum) == 2 * DIAGONAL_SPACING[gap]);
 		}
 	}
 }
@@ -128,7 +130,7 @@ TEST_CASE("JunctionLine: straight", "[junction][line]")
 	for (size_t i = 0; i < 3; i++) {
 		REQUIRE(rasters[i].error.empty());
 		CHECK(rasters[i].pieces.back().trackdir == Trackdir::Y_SE);
-		CHECK(rasters[i].pieces[0].tile.x == 20 + static_cast<int>(i) * 2);
+		CHECK(rasters[i].pieces[0].tile.x == 20 + (i == 0 ? 0 : static_cast<int>(i) + 1)); // L_RR: gap between track 0 and 1 only.
 	}
 }
 
@@ -183,6 +185,54 @@ TEST_CASE("JunctionLine: every start and turn combination", "[junction][line]")
 		}
 		for (const char *program : programs) CheckLine({3, 1}, start, program, false);
 		for (const char *program : programs) CheckLine({3, 0}, start, program, false);
+	}
+}
+
+TEST_CASE("ParseLineNotation reads direction groups", "[junction][line]")
+{
+	struct Case { const char *text; uint8_t tracks; uint8_t gap; uint8_t left; };
+	const Case good[] = {{"L_R", 2, 1, 1}, {"LR", 2, 0, 1}, {"LL_RR", 4, 1, 2}, {"LLL__RR", 5, 2, 3}, {"L___R", 2, 3, 1}};
+	for (const Case &c : good) {
+		INFO(c.text);
+		const JunctionLineNotation n = ParseLineNotation(c.text);
+		CHECK(n.error == JunctionNotationError::None);
+		CHECK(n.spec.tracks == c.tracks);
+		CHECK(n.spec.gap == c.gap);
+		CHECK(n.spec.left_tracks == c.left);
+	}
+	for (const char *bad : {"L____R", "R_L", "L_", "_R", "", "L_L_R", "LxR"}) {
+		INFO(bad);
+		CHECK(ParseLineNotation(bad).error == JunctionNotationError::Invalid);
+	}
+}
+
+TEST_CASE("JunctionLine: LL_RR groups are adjacent", "[junction][line]")
+{
+	const JunctionLineSpec spec{4, 1, 2};
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(spec, {{20, 20}, Trackdir::X_NE, "FFFF"});
+	REQUIRE(rasters.size() == 4);
+	const int expected[] = {0, 1, 3, 4};
+	for (size_t p = 0; p < rasters[0].pieces.size(); p++) {
+		for (size_t i = 0; i < 4; i++) {
+			REQUIRE(rasters[i].pieces.size() == rasters[0].pieces.size());
+			CHECK(rasters[i].pieces[p].tile.x == rasters[0].pieces[p].tile.x);
+			CHECK(rasters[i].pieces[p].tile.y - rasters[0].pieces[p].tile.y == expected[i]);
+		}
+	}
+
+	/* Diagonal start: S = 1 within a group, 3 between, cumulative 1, 4, 5. */
+	const std::vector<JunctionRaster> diag = RasterizeJunctionLine(spec, {{20, 20}, Trackdir::Left_N, "FFFF"});
+	REQUIRE(diag.size() == 4);
+	const int cumulative[] = {0, 1, 4, 5};
+	const Direction heading = TrackdirToDirection(diag[0].pieces.back().trackdir);
+	const bool sum_is_along = heading == Direction::N || heading == Direction::S;
+	for (size_t i = 1; i < 4; i++) {
+		const auto [px, py] = ExitPoint(diag[0].pieces.back());
+		const auto [ex, ey] = ExitPoint(diag[i].pieces.back());
+		const int dx = ex - px;
+		const int dy = ey - py;
+		CHECK((sum_is_along ? dx + dy : dx - dy) == 0);
+		CHECK(std::abs(sum_is_along ? dx - dy : dx + dy) == 2 * cumulative[i]);
 	}
 }
 
