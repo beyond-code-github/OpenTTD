@@ -174,6 +174,7 @@ class JunctionTestGS extends GSController {
 		else if (cmd == "start") this.CmdStart(id, msg);
 		else if (cmd == "build_layout") this.CmdBuildLayout(id, msg);
 		else if (cmd == "sample") this.CmdSample(id, msg);
+		else if (cmd == "speed_trace") this.CmdSpeedTrace(id, msg);
 		else if (cmd == "occupancy") this.CmdOccupancy(id, msg);
 		else if (cmd == "loan_max") this.CmdLoanMax(id);
 		else if (cmd == "find_clear") this.CmdFindClear(id, msg);
@@ -577,6 +578,19 @@ class JunctionTestGS extends GSController {
 			out.append({ id = s.v, n = s.n, min = s.n > 0 ? s.min : 0, max = s.max, avg = s.n > 0 ? s.sum / s.n : 0, stops = s.stops, drops = s.drops });
 		}
 		this.Reply(id, { vehicles = out });
+	}
+
+	/* speed_trace {vehicle,ticks}: GetCurrentSpeed (km/h) at every game tick, starting the tick the command arrives */
+	function CmdSpeedTrace(id, msg)
+	{
+		if (!this.Need(msg, ["vehicle", "ticks"], id)) return;
+		if (!GSVehicle.IsValidVehicle(msg.vehicle)) { this.Err(id, "bad vehicle " + msg.vehicle); return; }
+		local speeds = [];
+		for (local i = 0; i < msg.ticks; i++) {
+			speeds.append(GSVehicle.GetCurrentSpeed(msg.vehicle));
+			GSController.Sleep(1);
+		}
+		this.Reply(id, { speeds = speeds });
 	}
 
 	/* ---- waiting heatmap: stopped and slow samples per tile ---- */

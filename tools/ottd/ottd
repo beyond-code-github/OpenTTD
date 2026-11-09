@@ -293,6 +293,12 @@ def cmd_sample(a):
             print("  drop at %d,%d: %d -> %d km/h" % (d["tile_x"], d["tile_y"], d["from"], d["to"]))
 
 
+def cmd_speed_trace(a):
+    r = one_shot({"cmd": "speed_trace", "vehicle": a.vehicle, "ticks": a.ticks}, timeout=60 + a.ticks)
+    for t, sp in enumerate(r["speeds"]):
+        print("%d %d" % (t, sp))
+
+
 def setup_circuit(adm, layout, a, mix=None):
     """Loan, find origin, build layout and depots, buy and start a.trains trains. Returns (ox, oy, vids)."""
     r = gs(adm, {"cmd": "loan_max"})
@@ -534,6 +540,7 @@ def main():
     add("station-here", cmd_station_here, ("x", i), ("y", i), ("--rot", {"type": int, "default": 0}), ("--mirror", {"action": "store_true"}), ("--platforms", {"type": int, "default": 3}), ("--tl", {"type": int, "default": 4}))
     add("junction-scan", cmd_junction_scan, ("--count", {"type": int, "required": True}), ("--seed", {"type": int, "default": 1}), ("--near", {"action": "store_true"}), ("--instant", {"action": "store_true"}))
     add("sample", cmd_sample, ("vehicles", {"type": int, "nargs": "+"}), ("--ticks", {"type": int, "required": True}))
+    add("speed-trace", cmd_speed_trace, ("vehicle", i), ("--ticks", {"type": int, "required": True}))
     add("build-line", cmd_build_line, ("x1", i), ("y1", i), ("x2", i), ("y2", i))
     add("depot", cmd_depot, ("x", i), ("y", i), ("dir", {"help": "NE|SE|SW|NW: direction the entrance faces (NE x-1, SE y+1, SW x+1, NW y-1)"}))
     add("train", cmd_train, ("depot_x", i), ("depot_y", i), ("--engine", i), ("--wagons", {"type": int, "default": 0}), ("--design", {"action": "store_true"}))
