@@ -81,3 +81,10 @@ A first run built everything (uncommitted in the worktree: `src/junction_organic
 4. **Later rounds reroute only movements in conflict.** Round 1 as written; from round 2, only movements with at least one conflicting piece are rerouted (in the expected order); the others keep their routes. Report the per-round conflict counts and the number of routes run in total.
 5. Add `std::vector<int> conflicts_per_round; ///< Conflicting piece pairs after each round.` and `int routes_run = 0; ///< Router calls made.` to `JunctionNegotiation`.
 The stop conditions stand; if violations other than "ML bridge is not doubled" remain after 1-2, stop and report them with the moves and ASCII.
+
+## Amendment 6 (orchestrator, after the second run)
+The second run stopped correctly: rule (b) made every split and merge a conflict, because two movements that part put two different, overlapping bits on the tile where they part (the switch). Ruling, replacing the "Pieces are compatible" sentence's scope for different bits:
+- Two Surface pieces (neither a Head) of two different movements on the same tile, level and z, with **different** track bits, do **not** conflict when they form a switch: the movements have the same `from` port and both trackdirs enter the tile through the same edge (a split), or the movements have the same `to` port and both trackdirs leave the tile through the same edge (a merge). Use `TrackdirToExitdir` and the entry edge (`ReverseDiagDir(TrackdirToExitdir(ReverseTrackdir(trackdir)))` or the existing helper the codebase uses for a trackdir's entry side).
+- Any other pair of different bits that overlap or cross on a tile at the same level and z still conflicts, including between compatible movements (a diamond crossing at grade is never allowed).
+- Same bits: compatible as before (same trackdir, same from or to port); opposite trackdirs always conflict.
+Also report, for test 1: routes run, total router expansions (sum of `result.expansions`) and total wall time spent in router calls vs in `resource_cost` (two `steady_clock` accumulators, debug only, not committed), because the second run took 8.4 s for 96 routes.
