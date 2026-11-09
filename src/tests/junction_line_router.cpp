@@ -137,6 +137,50 @@ TEST_CASE("FindJunctionLineRoute: straight when clear", "[junction][linerouter]"
 	CHECK(result.route->moves == std::string(20, 'F'));
 }
 
+TEST_CASE("FindJunctionLineRoute: picks the better of several starts", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	request.starts = {{{40, 20}, Trackdir::X_NE}, {{30, 20}, Trackdir::X_NE}};
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	CheckRoute(request, result);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->start.x == 30);
+	CHECK(result.route->start.y == 20);
+
+	JunctionLineRouteRequest single = BaseRequest();
+	single.start = {30, 20};
+	const JunctionLineRouteResult from_near = FindJunctionLineRoute(single);
+	REQUIRE(from_near.route.has_value());
+	CHECK(result.cost == from_near.cost);
+	CHECK(result.route->moves == from_near.route->moves);
+}
+
+TEST_CASE("FindJunctionLineRoute: one start in the set equals the single start", "[junction][linerouter]")
+{
+	const JunctionLineRouteRequest plain = BaseRequest();
+	const JunctionLineRouteResult expected = FindJunctionLineRoute(plain);
+	JunctionLineRouteRequest request = BaseRequest();
+	request.starts = {{request.start, request.start_trackdir}};
+	request.start = {0, 0};
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	REQUIRE(result.route.has_value());
+	REQUIRE(expected.route.has_value());
+	CHECK(result.route->moves == expected.route->moves);
+	CHECK(result.route->start.x == expected.route->start.x);
+	CHECK(result.route->start.y == expected.route->start.y);
+	CHECK(result.cost == expected.cost);
+}
+
+TEST_CASE("FindJunctionLineRoute: starts with a prefix is an error", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	request.starts = {{{40, 20}, Trackdir::X_NE}, {{30, 20}, Trackdir::X_NE}};
+	request.prefix = "F";
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	CHECK(!result.route.has_value());
+	CHECK(result.error == "a prefix needs a single start");
+}
+
 TEST_CASE("FindJunctionLineRoute: curve spacing binds", "[junction][linerouter]")
 {
 	/* A 90 degree turn is two same-hand turns close together; with room for only 3 tiles of diagonal run, spaced turns need a longer way round. */
@@ -409,6 +453,20 @@ TEST_CASE("FindJunctionLineRoute: the route is as cheap as an uninformed search"
 				}
 			}
 		}
+		/* Several starts (DESIGN-O4). */
+		for (int dy = -4; dy <= 4; dy++) {
+			request.starts = {{request.start, Trackdir::X_NE}, {{static_cast<int16_t>(request.start.x - 6), static_cast<int16_t>(request.start.y + dy)}, Trackdir::X_NE}};
+			request.goals = {{{20, 20}, Trackdir::X_NE}};
+			request.use_heuristic = true;
+			const JunctionLineRouteResult informed = FindJunctionLineRoute(request);
+			request.use_heuristic = false;
+			const JunctionLineRouteResult uninformed = FindJunctionLineRoute(request);
+			INFO(notation << " starts dy " << dy << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
+			REQUIRE(uninformed.error != "search limit");
+			CHECK(informed.route.has_value() == uninformed.route.has_value());
+			if (informed.route.has_value() && uninformed.route.has_value()) CHECK(informed.cost == uninformed.cost);
+		}
+		request.starts.clear();
 	}
 }
 

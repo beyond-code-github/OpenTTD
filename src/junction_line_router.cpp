@@ -281,41 +281,80 @@ JunctionLineRouteResult LineRouter::Run()
 
 	if (request.goals.empty() && request.waypoints.empty()) return {std::nullopt, "a route needs a goal or a waypoint"};
 
-	const std::vector<JunctionRaster> first = RasterizeJunctionLine(request.line, {request.start, request.start_trackdir, request.prefix});
-	if (!first[0].error.empty()) return {std::nullopt, first[0].error};
+	std::vector<JunctionRouteEnd> starts = request.starts;
+	if (starts.empty()) starts.push_back({request.start, request.start_trackdir});
+	if (starts.size() > 1 && !request.prefix.empty()) return {std::nullopt, "a prefix needs a single start"};
 
-	LineNode root;
-	LineTreeEntry root_entry;
-	for (const JunctionRaster &raster : first) {
-		LineTrackState state{cap, 0, true, false};
-		for (size_t k = 1; k < raster.pieces.size(); k++) {
-			if (!AdvanceState(state, raster.pieces[k - 1], raster.pieces[k])) return {std::nullopt, "prefix breaks the curve rules"};
+	/* One root per usable start; its first pieces are occupied for its own subtree only. */
+	struct Root {
+		JunctionRouteEnd start;
+		std::vector<JunctionRaster> first;
+		LineTreeEntry entry;
+	};
+	std::vector<Root> roots;
+	std::string start_error;
+	for (const JunctionRouteEnd &start : starts) {
+		std::vector<JunctionRaster> first = RasterizeJunctionLine(request.line, {start.tile, start.trackdir, request.prefix});
+		if (!first[0].error.empty()) {
+			start_error = first[0].error;
+			continue;
 		}
-		root.last.push_back(raster.pieces.back());
-		root.states.push_back(state);
-		root.z.push_back(static_cast<int8_t>(request.plane));
-		root_entry.added.emplace_back(raster.pieces.begin() + 1, raster.pieces.end());
-		root_entry.bridges.insert(root_entry.bridges.end(), raster.bridges.begin(), raster.bridges.end());
-	}
-	/* The prefix ends in a bridge when its last move is a B<n>. */
-	{
-		size_t end = request.prefix.size();
-		while (end > 0 && request.prefix[end - 1] >= '0' && request.prefix[end - 1] <= '9') end--;
-		root.after_bridge = end > 0 && end < request.prefix.size() && request.prefix[end - 1] == 'B';
-	}
-	Money root_cost = 0;
-	/* The start pieces must be usable too. */
-	{
-		std::unordered_map<uint64_t, TrackBits> used;
+
+		LineNode root;
+		LineTreeEntry root_entry;
+		bool prefix_ok = true;
 		for (const JunctionRaster &raster : first) {
-			const JunctionPiece &piece = raster.pieces[0];
-			int8_t new_z;
-			bool ramp;
-			if (!PieceUsable(piece, static_cast<int8_t>(request.plane), false, new_z, ramp)) return {std::nullopt, "no route"};
-			if (!used.contains(PackTile(piece.tile.x, piece.tile.y))) root_cost += TerrainCost(piece, static_cast<int8_t>(request.plane), false);
-			if (!Occupy(used, piece)) return {std::nullopt, "no route"};
+			LineTrackState state{cap, 0, true, false};
+			for (size_t k = 1; k < raster.pieces.size() && prefix_ok; k++) {
+				if (!AdvanceState(state, raster.pieces[k - 1], raster.pieces[k])) prefix_ok = false;
+			}
+			if (!prefix_ok) break;
+			root.last.push_back(raster.pieces.back());
+			root.states.push_back(state);
+			root.z.push_back(static_cast<int8_t>(request.plane));
+			root_entry.added.emplace_back(raster.pieces.begin() + 1, raster.pieces.end());
+			root_entry.bridges.insert(root_entry.bridges.end(), raster.bridges.begin(), raster.bridges.end());
 		}
+		if (!prefix_ok) {
+			start_error = "prefix breaks the curve rules";
+			continue;
+		}
+		/* The prefix ends in a bridge when its last move is a B<n>. */
+		{
+			size_t end = request.prefix.size();
+			while (end > 0 && request.prefix[end - 1] >= '0' && request.prefix[end - 1] <= '9') end--;
+			root.after_bridge = end > 0 && end < request.prefix.size() && request.prefix[end - 1] == 'B';
+		}
+		Money root_cost = 0;
+		/* The start pieces must be usable too. */
+		bool usable = true;
+		{
+			std::unordered_map<uint64_t, TrackBits> used;
+			for (const JunctionRaster &raster : first) {
+				const JunctionPiece &piece = raster.pieces[0];
+				int8_t new_z;
+				bool ramp;
+				if (!PieceUsable(piece, static_cast<int8_t>(request.plane), false, new_z, ramp)) {
+					usable = false;
+					break;
+				}
+				if (!used.contains(PackTile(piece.tile.x, piece.tile.y))) root_cost += TerrainCost(piece, static_cast<int8_t>(request.plane), false);
+				if (!Occupy(used, piece)) {
+					usable = false;
+					break;
+				}
+			}
+		}
+		if (!usable) {
+			start_error.clear();
+			continue;
+		}
+		root_entry.node = std::move(root);
+		root_entry.g = root_cost;
+		root_entry.parent = -1;
+		roots.push_back({start, std::move(first), std::move(root_entry)});
 	}
+	if (roots.empty()) return {std::nullopt, start_error.empty() ? "no route" : start_error};
 
 	using OpenItem = std::tuple<int64_t, int64_t, uint, int>; // f, g, counter, tree index.
 	auto later = [](const OpenItem &a, const OpenItem &b) { return std::get<0>(a) != std::get<0>(b) ? std::get<0>(a) > std::get<0>(b) : std::get<2>(a) > std::get<2>(b); };
@@ -333,10 +372,12 @@ JunctionLineRouteResult LineRouter::Run()
 		tree.push_back(std::move(entry));
 		open.push({f, g, counter++, static_cast<int>(tree.size()) - 1});
 	};
-	root_entry.node = std::move(root);
-	root_entry.g = root_cost;
-	root_entry.parent = -1;
-	push(std::move(root_entry));
+	std::map<int, size_t> root_of; ///< Tree index of each root to its index in roots.
+	for (size_t i = 0; i < roots.size(); i++) {
+		const size_t before = tree.size();
+		push(std::move(roots[i].entry));
+		if (tree.size() != before) root_of[static_cast<int>(before)] = i;
+	}
 
 	uint expansions = 0;
 	while (!open.empty()) {
@@ -348,7 +389,10 @@ JunctionLineRouteResult LineRouter::Run()
 		if (best[Key(node)] < g) continue; // A cheaper way to this node was found since.
 
 		if (IsGoal(node)) {
-			JunctionLineRoute route{request.start, request.start_trackdir, ""};
+			int root_index = index;
+			while (tree[root_index].parent >= 0) root_index = tree[root_index].parent;
+			const JunctionRouteEnd &used_start = roots[root_of.at(root_index)].start;
+			JunctionLineRoute route{used_start.tile, used_start.trackdir, ""};
 			for (int i = index; tree[i].parent >= 0; i = tree[i].parent) route.moves.insert(0, tree[i].move);
 			route.moves.insert(0, request.prefix);
 			return {route, "", tree[index].g};
@@ -358,7 +402,9 @@ JunctionLineRouteResult LineRouter::Run()
 		/* Everything the line has built so far. */
 		std::unordered_map<uint64_t, TrackBits> path_used;
 		std::vector<JunctionBridge> path_bridges;
-		for (const JunctionRaster &raster : first) Occupy(path_used, raster.pieces[0]);
+		int path_root = index;
+		while (tree[path_root].parent >= 0) path_root = tree[path_root].parent;
+		for (const JunctionRaster &raster : roots[root_of.at(path_root)].first) Occupy(path_used, raster.pieces[0]);
 		for (int i = index; i >= 0; i = tree[i].parent) {
 			path_bridges.insert(path_bridges.end(), tree[i].bridges.begin(), tree[i].bridges.end());
 			for (const std::vector<JunctionPiece> &track : tree[i].added) {

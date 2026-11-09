@@ -26,6 +26,7 @@ struct JunctionLineRouteRequest {
 	JunctionLineSpec line;
 	TileIndexDiffC start; ///< Track 0's first piece.
 	Trackdir start_trackdir;
+	std::vector<JunctionRouteEnd> starts; ///< When not empty, the route may start at any of these (track 0's first piece and trackdir) and `start`/`start_trackdir` are ignored (DESIGN-O4).
 	std::vector<JunctionRouteEnd> goals; ///< Exact end pieces for track 0; may be empty when there are waypoints (D150).
 	std::vector<TileIndexDiffC> waypoints; ///< Tiles track 0 passes through, in order, on a piece that is not a bridge middle tile (D134 a, D150). With no goals the route ends with the move that passes the last one.
 	std::string prefix; ///< Frozen moves from the start (D134 b, D150): replayed before the search, their pieces are the line's own track and set the curve state; not re-checked against terrain or obstacles.
