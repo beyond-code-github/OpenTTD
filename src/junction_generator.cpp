@@ -241,8 +241,11 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 	base.terrain = terrain;
 	base.plane = params.plane;
 
-	/* Short straight branch legs: E->S joins the top of the S stub and W->S merges into its side; N->E leaves the top of the N stub and N->W splits from its side. */
-	constexpr int STUB = 3;
+	/*
+	 * Short straight branch legs: E->S joins the top of the S stub and W->S merges into its side; N->E leaves the top of the N stub and N->W splits from its side.
+	 * D115/D115a: a stub is the entry row, then, below the edge-most merge or split, the signal tile and the boundary tile.
+	 */
+	constexpr int STUB = 2;
 	const int ys = yb - STUB;
 	const JunctionRouteEnd goal_s{tile(xO, ys), Trackdir::Y_SE};
 	const JunctionRouteEnd start_n{tile(xI, ys), Trackdir::Y_NW};
@@ -252,9 +255,9 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 		AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xO, ys), Trackdir::Y_SE, STUB)));
 		AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xI, yb), Trackdir::Y_NW, STUB)));
 	};
-	auto stub_pieces = [&](int x, Trackdir td) {
+	auto stub_pieces = [&](int x, Trackdir td, int first_y) {
 		std::vector<JunctionRouteEnd> ends;
-		for (int y = ys + 1; y < yb; y++) ends.push_back({tile(x, y), td});
+		for (int y = first_y; y < yb; y++) ends.push_back({tile(x, y), td});
 		return ends;
 	};
 
@@ -305,7 +308,8 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 			request.starts = PlainRowPieces(l, w_row, Trackdir::X_NE, sl_x, sl_x);
 			if (sl_x < xO + 2 || request.starts.empty()) return false;
 		}
-		request.goals = stub_pieces(xO, Trackdir::Y_SE);
+		/* The W->S merge needs its goal piece on the next row (router exception 2), so its goals include the entry row ys; the N->W starts below keep ys + 1. */
+		request.goals = stub_pieces(xO, Trackdir::Y_SE, ys);
 		if (!RouteFencedAndAdd(l, request, branch_fence, params.route_cache).has_value()) return false;
 
 		request = base;
@@ -321,7 +325,7 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 		if (note) note_crossings(*n_to_e);
 
 		request = base;
-		request.starts = stub_pieces(xI, Trackdir::Y_NW);
+		request.starts = stub_pieces(xI, Trackdir::Y_NW, ys + 1);
 		request.goals = PlainRowPieces(l, nw_row, Trackdir::X_NE, nw_min_x, nw_max_x);
 		return RouteFencedAndAdd(l, request, branch_fence, params.route_cache).has_value();
 	};

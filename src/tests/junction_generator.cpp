@@ -240,6 +240,40 @@ TEST_CASE("GenerateJunction: the W side is tight", "[junction]")
 	CHECK(m.nw_to_lane_merge < 8);
 }
 
+/* D115, D58: below a branch's edge-most split or merge sit two tiles, the signal tile then the boundary tile. */
+TEST_CASE("GenerateJunction: branch stubs end one tile beyond the signal (D115, D58)", "[junction][generator]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	const JunctionLayout &layout = *result.layout;
+	const int bottom = layout.size.y - 1;
+	auto tracks_at = [&](int x, int y) -> TrackBits {
+		for (const JunctionTrack &t : layout.tracks) {
+			if (t.offset.x == x && t.offset.y == y) return t.tracks;
+		}
+		return TrackBits{};
+	};
+	auto has_signal = [&](int x, int y) {
+		for (const JunctionSignal &s : layout.signals) {
+			if (s.offset.x == x && s.offset.y == y) return true;
+		}
+		return false;
+	};
+	std::vector<int> columns;
+	for (const JunctionTrack &t : layout.tracks) {
+		if (t.offset.y == bottom) columns.push_back(t.offset.x);
+	}
+	REQUIRE(columns.size() == 2);
+	for (const int x : columns) {
+		int count = 0;
+		for (int y = bottom; y >= 0 && tracks_at(x, y) == TrackBits{Track::Y}; y--) count++;
+		INFO("column " << x);
+		CHECK(count == 2);
+		CHECK(has_signal(x, bottom - 1));
+	}
+}
+
 /* D110 3: W->S splits off first; one plain tile, carrying a signal, sits between the SL split and the lane split. */
 TEST_CASE("GenerateJunction: the SL splits first with one signal tile before the lane split", "[junction]")
 {
