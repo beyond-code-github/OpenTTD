@@ -11,6 +11,7 @@
 
 #include "junction_line_router.h"
 #include "direction_func.h"
+#include "map_func.h"
 #include "track_func.h"
 
 #include <algorithm>
@@ -62,6 +63,19 @@ static bool BetweenBridgeHeads(int x, int y, const std::vector<JunctionBridge> &
 	for (const JunctionBridge &b : bridges) {
 		if (b.start.y == b.end.y && y == b.start.y && x > std::min(b.start.x, b.end.x) && x < std::max(b.start.x, b.end.x)) return true;
 		if (b.start.x == b.end.x && x == b.start.x && y > std::min(b.start.y, b.end.y) && y < std::max(b.start.y, b.end.y)) return true;
+	}
+	return false;
+}
+
+/** Whether a tile lies under a tunnel of the list that runs across the given axis at floor height z (D155): the game lets tunnels cross only at different depths. */
+static bool UnderCrossingTunnel(int x, int y, int8_t z, bool along_x, const std::vector<JunctionBridge> &bridges)
+{
+	for (const JunctionBridge &b : bridges) {
+		if (!b.tunnel || b.z != z) continue;
+		const bool b_along_x = b.start.y == b.end.y;
+		if (b_along_x == along_x) continue;
+		if (b_along_x && y == b.start.y && x > std::min(b.start.x, b.end.x) && x < std::max(b.start.x, b.end.x)) return true;
+		if (!b_along_x && x == b.start.x && y > std::min(b.start.y, b.end.y) && y < std::max(b.start.y, b.end.y)) return true;
 	}
 	return false;
 }
@@ -118,6 +132,14 @@ private:
 			}
 		}
 		return request.terrain->UsableAt(piece.tile.x, piece.tile.y, z);
+	}
+
+	/** Whether a tile may be a tunnel portal at floor height z, inclined in the given direction (D155): in bounds, not blocked, Buildable, not steep, its low edge at z. */
+	bool PortalUsable(const JunctionPiece &piece, DiagDirection incline, int8_t z) const
+	{
+		if (!InBounds(piece) || blocked.contains(PackTile(piece.tile.x, piece.tile.y))) return false;
+		const JunctionTerrainTile *tile = request.terrain->At(piece.tile.x, piece.tile.y);
+		return tile != nullptr && tile->cls == JunctionTileClass::Buildable && !tile->steep && tile->incline == incline && tile->z_min == z;
 	}
 
 	/** Whether an axis piece on a Buildable, non-steep tile inclined along it is a ramp from height z (up or down); new_z is the height after. */
@@ -457,6 +479,75 @@ JunctionLineRouteResult LineRouter::Run()
 			if (!legal) continue;
 			PassWaypoints(next.passed, added[0], false);
 			push({std::move(next), tree[index].g + cost, index, std::string(1, move), std::move(added), {}});
+		}
+
+		/* D155: a tunnel straight on from axis pieces, as the game's CmdBuildTunnel finds its far end. */
+		if (request.tunnel_price && request.terrain != nullptr && !node.after_bridge && IsDiagonalTrackdir(node.last[0].trackdir)) {
+			const JunctionPiece &front = node.last[0];
+			const DiagDirection heading = TrackdirToExitdir(front.trackdir);
+			const TileIndexDiffC step = TileIndexDiffCByDiagDir(heading);
+			const bool along_x = heading == DiagDirection::NE || heading == DiagDirection::SW;
+
+			/* The exit portal is the first tile past the entry portal whose lowest corner is at the track's height. */
+			int middle = -1;
+			for (uint offset = 2; offset <= request.max_tunnel_length + 2; offset++) {
+				const JunctionTerrainTile *tile = request.terrain->At(front.tile.x + step.x * static_cast<int>(offset), front.tile.y + step.y * static_cast<int>(offset));
+				if (tile == nullptr) break;
+				if (tile->z_min == node.z[0]) {
+					middle = static_cast<int>(offset) - 2;
+					break;
+				}
+			}
+
+			std::string error;
+			std::vector<JunctionBridge> bridges;
+			std::vector<std::vector<JunctionPiece>> added;
+			if (middle >= 0) added = ExtendJunctionLineBridge(request.line, node.last, static_cast<uint>(middle), bridges, error, true);
+			if (!added.empty()) {
+				LineNode next = node;
+				next.after_bridge = true;
+				std::unordered_map<uint64_t, TrackBits> used = path_used;
+				bool legal = true;
+				Money cost = 0;
+				for (size_t i = 0; i < added.size() && legal; i++) {
+					const int8_t z = node.z[i];
+					const JunctionPiece *previous = &node.last[i];
+					for (size_t k = 0; k < added[i].size() && legal; k++) {
+						const JunctionPiece &piece = added[i][k];
+						if (k == 0 || k + 1 == added[i].size()) {
+							const uint64_t packed = PackTile(piece.tile.x, piece.tile.y);
+							if (!PortalUsable(piece, k == 0 ? heading : ReverseDiagDir(heading), z) || existing_bits.contains(packed) || used.contains(packed)) {
+								legal = false;
+								break;
+							}
+							cost += request.terrain->At(piece.tile.x, piece.tile.y)->clear_cost;
+							Occupy(used, piece);
+						} else {
+							const JunctionTerrainTile *tile = InBounds(piece) ? request.terrain->At(piece.tile.x, piece.tile.y) : nullptr;
+							if (tile == nullptr || tile->z_min == z ||
+									(request.existing != nullptr && UnderCrossingTunnel(piece.tile.x, piece.tile.y, z, along_x, request.existing->bridges)) ||
+									UnderCrossingTunnel(piece.tile.x, piece.tile.y, z, along_x, path_bridges)) {
+								legal = false;
+								break;
+							}
+						}
+						if (!AdvanceState(next.states[i], *previous, piece)) {
+							legal = false;
+							break;
+						}
+						previous = &piece;
+					}
+					if (legal) {
+						cost += request.tunnel_price(static_cast<uint>(middle));
+						next.last[i] = added[i].back();
+						bridges[i].z = z;
+					}
+				}
+				if (legal) {
+					PassWaypoints(next.passed, added[0], true);
+					push({std::move(next), tree[index].g + cost, index, fmt::format("T{}", middle), std::move(added), std::move(bridges)});
+				}
+			}
 		}
 
 		if (!request.bridge_span_ok || !request.bridge_price || request.max_bridge_middle == 0 || node.after_bridge) continue;

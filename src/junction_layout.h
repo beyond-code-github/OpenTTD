@@ -43,6 +43,7 @@ struct JunctionBridge {
 	TileIndexDiffC start;
 	TileIndexDiffC end;
 	bool tunnel = false; ///< A tunnel between the two portals instead of a bridge (D154).
+	int8_t z = 0; ///< A tunnel's floor height (D155); unused for bridges.
 };
 
 /** A block of rail station tiles: platforms parallel to the axis (D106). */

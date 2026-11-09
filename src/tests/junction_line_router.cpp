@@ -1032,3 +1032,129 @@ TEST_CASE("FindJunctionLineRoute: ramp routes are as cheap as an uninformed sear
 		CHECK(informed.cost == uninformed.cost);
 	}
 }
+
+/** A ridge across the field for tunnels, on ground at `base`: the entry portal at x = 33 rises towards the line's travel, the exit portal at x = 26 falls away, and the six tiles between them are level three higher, so that the only way over is a tunnel at the starting height. */
+static void SetUpTunnelRidge(LineRampCase &c, int base)
+{
+	SetUpRamps(c, base, true);
+	c.request.slope_piece = 1000;
+	c.request.tunnel_price = [](uint n) { return Money(10 * (n + 2)); };
+	SetRampColumn(c.terrain, 33, base, base + 1, DiagDirection::NE);
+	for (int x = 27; x <= 32; x++) SetRampColumn(c.terrain, x, base + 3, base + 3, DiagDirection::Invalid);
+	SetRampColumn(c.terrain, 26, base, base + 1, DiagDirection::SW);
+}
+
+/** Add a perpendicular tunnel under x = 29 at the given floor height, its portals just outside the line's rows. */
+static void AddCrossingTunnel(LineRampCase &c, JunctionLayout &layout, int z)
+{
+	JunctionBridge tunnel{{29, static_cast<int16_t>(c.request.min.y - 1)}, {29, static_cast<int16_t>(c.request.max.y + 1)}, true, static_cast<int8_t>(z)};
+	layout.bridges.push_back(tunnel);
+	c.request.existing = &layout;
+}
+
+/** The number of T moves in a route's program. */
+static size_t TunnelMoves(const JunctionLineRouteResult &result)
+{
+	return result.route.has_value() ? static_cast<size_t>(std::count(result.route->moves.begin(), result.route->moves.end(), 'T')) : 0;
+}
+
+TEST_CASE("FindJunctionLineRoute: tunnels through a ridge", "[junction][linerouter]")
+{
+	LineRampCase c;
+	SetUpTunnelRidge(c, 0);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	CHECK(TunnelMoves(result) == 1);
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(c.request.line, *result.route);
+	REQUIRE(rasters.size() == 2);
+	for (const JunctionRaster &raster : rasters) {
+		INFO(raster.error);
+		REQUIRE(raster.error.empty());
+		REQUIRE(raster.bridges.size() == 1);
+		CHECK(raster.bridges[0].tunnel);
+		CHECK(raster.bridges[0].z == 0);
+		CHECK(raster.bridges[0].start.x == rasters[0].bridges[0].start.x);
+		CHECK(raster.bridges[0].end.x == rasters[0].bridges[0].end.x);
+	}
+}
+
+TEST_CASE("FindJunctionLineRoute: tunnels cross at different depths", "[junction][linerouter]")
+{
+	LineRampCase c;
+	JunctionLayout layout;
+	SetUpTunnelRidge(c, 1);
+	AddCrossingTunnel(c, layout, 0);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	CHECK(TunnelMoves(result) == 1);
+}
+
+TEST_CASE("FindJunctionLineRoute: tunnels at the same depth don't cross", "[junction][linerouter]")
+{
+	LineRampCase c;
+	JunctionLayout layout;
+	SetUpTunnelRidge(c, 0);
+	AddCrossingTunnel(c, layout, 0);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	INFO(result.error);
+	CHECK(TunnelMoves(result) == 0);
+	CHECK_FALSE(result.route.has_value()); // The ridge can't be climbed.
+}
+
+TEST_CASE("FindJunctionLineRoute: a tunnel longer than the limit is refused", "[junction][linerouter]")
+{
+	LineRampCase c;
+	SetUpTunnelRidge(c, 0);
+	c.request.max_tunnel_length = 5;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	CHECK(TunnelMoves(result) == 0);
+}
+
+TEST_CASE("RasterizeJunctionLine: a tunnel move", "[junction][linerouter]")
+{
+	const JunctionLineSpec line = ParseLineNotation("L_R").spec;
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(line, {{40, 20}, Trackdir::X_NE, "FT3F"});
+	REQUIRE(rasters.size() == 2);
+	for (const JunctionRaster &raster : rasters) {
+		INFO(raster.error);
+		REQUIRE(raster.error.empty());
+		REQUIRE(raster.bridges.size() == 1);
+		CHECK(raster.bridges[0].tunnel);
+		CHECK(std::abs(raster.bridges[0].start.x - raster.bridges[0].end.x) == 4);
+	}
+
+	CHECK_FALSE(RasterizeJunctionLine(line, {{40, 20}, Trackdir::X_NE, "FLT2"})[0].error.empty());
+}
+
+TEST_CASE("FindJunctionLineRoute: tunnel routes are as cheap as an uninformed search", "[junction][linerouter][slow]")
+{
+	for (int which = 0; which < 4; which++) {
+		LineRampCase c;
+		JunctionLayout layout;
+		switch (which) {
+			case 0: SetUpTunnelRidge(c, 0); break;
+			case 1:
+				SetUpTunnelRidge(c, 1);
+				AddCrossingTunnel(c, layout, 0);
+				break;
+			case 2:
+				SetUpTunnelRidge(c, 0);
+				AddCrossingTunnel(c, layout, 0);
+				break;
+			default:
+				SetUpTunnelRidge(c, 0);
+				c.request.max_tunnel_length = 5;
+				break;
+		}
+		c.request.use_heuristic = true;
+		const JunctionLineRouteResult informed = FindJunctionLineRoute(c.request);
+		c.request.use_heuristic = false;
+		const JunctionLineRouteResult uninformed = FindJunctionLineRoute(c.request);
+		INFO("case " << which << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
+		REQUIRE(informed.route.has_value() == uninformed.route.has_value());
+		CHECK(informed.route.has_value() == (which < 2)); // The ridge can't be climbed, so the other cases have no route.
+		CHECK(informed.cost == uninformed.cost);
+	}
+}

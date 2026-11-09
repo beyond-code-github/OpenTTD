@@ -99,16 +99,23 @@ JunctionRaster RasterizeJunctionRoute(const JunctionRoute &route)
 				break;
 			}
 
-			case 'B': {
-				/* D110: from a half piece the bridge completes the S-bend; its near head is where the closing axis piece would be. */
+			case 'B':
+			case 'T': {
+				/* D155: a tunnel starts from an axis piece only. D110: from a half piece the bridge completes the S-bend; its near head is where the closing axis piece would be. */
+				const bool tunnel = move == 'T';
+				const char *what = tunnel ? "tunnel" : "bridge";
 				Trackdir head = cur;
+				if (tunnel && !IsDiagonalTrackdir(cur)) {
+					raster.error = fmt::format("tunnel at position {} must start from an axis piece", i);
+					return raster;
+				}
 				if (!IsDiagonalTrackdir(cur)) {
 					char last_turn = 0;
 					for (size_t j = i; j-- > 0 && last_turn == 0;) {
 						if (route.moves[j] == 'L' || route.moves[j] == 'R') last_turn = route.moves[j];
 					}
 					if (last_turn == 0 || !JunctionNextTrackdir(cur, last_turn == 'R' ? DirDiff::Left45 : DirDiff::Right45, head) || !IsDiagonalTrackdir(head)) {
-						raster.error = fmt::format("bridge at position {} must start from an axis piece", i);
+						raster.error = fmt::format("{} at position {} must start from an axis piece", what, i);
 						return raster;
 					}
 				}
@@ -117,21 +124,21 @@ JunctionRaster RasterizeJunctionRoute(const JunctionRoute &route)
 				while (i + 1 < route.moves.size() && route.moves[i + 1] >= '0' && route.moves[i + 1] <= '9') {
 					middle = middle * 10 + (route.moves[i + 1] - '0');
 					if (middle > 1000) {
-						raster.error = fmt::format("bridge length at position {} is too long", i);
+						raster.error = fmt::format("{} length at position {} is too long", what, i);
 						return raster;
 					}
 					digits++;
 					i++;
 				}
 				if (digits == 0) {
-					raster.error = fmt::format("bridge at position {} has no length", i);
+					raster.error = fmt::format("{} at position {} has no length", what, i);
 					return raster;
 				}
 				AppendPiece(raster, head, true);
 				const TileIndexDiffC near_head = raster.pieces.back().tile;
 				for (uint k = 0; k < middle + 1; k++) AppendPiece(raster, head, true);
 				const TileIndexDiffC far_head = raster.pieces.back().tile;
-				JunctionBridge bridge{near_head, far_head};
+				JunctionBridge bridge{near_head, far_head, tunnel};
 				if (bridge.start.x + bridge.start.y > bridge.end.x + bridge.end.y) std::swap(bridge.start, bridge.end);
 				raster.bridges.push_back(bridge);
 				break;

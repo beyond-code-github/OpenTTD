@@ -112,7 +112,7 @@ JunctionLayout TransformJunctionLayout(const JunctionLayout &layout, JunctionTra
 		result.signals.push_back({TransformOffset(signal.offset, layout.size, transform), TransformTrackdir(signal.facing, transform), signal.type, signal.variant});
 	}
 	for (const JunctionBridge &bridge : layout.bridges) {
-		JunctionBridge new_bridge{TransformOffset(bridge.start, layout.size, transform), TransformOffset(bridge.end, layout.size, transform), bridge.tunnel};
+		JunctionBridge new_bridge{TransformOffset(bridge.start, layout.size, transform), TransformOffset(bridge.end, layout.size, transform), bridge.tunnel, bridge.z};
 		if (new_bridge.start.x + new_bridge.start.y > new_bridge.end.x + new_bridge.end.y) std::swap(new_bridge.start, new_bridge.end);
 		result.bridges.push_back(new_bridge);
 	}
@@ -187,7 +187,7 @@ std::string JunctionLayoutToJson(const JunctionLayout &layout)
 	out += "],\n\"bridges\":[";
 	first = true;
 	for (const auto &b : layout.bridges) {
-		out += fmt::format("{}{{\"start\":[{},{}],\"end\":[{},{}]{}}}", first ? "" : ",", b.start.x, b.start.y, b.end.x, b.end.y, b.tunnel ? ",\"tunnel\":true" : "");
+		out += fmt::format("{}{{\"start\":[{},{}],\"end\":[{},{}]{}{}}}", first ? "" : ",", b.start.x, b.start.y, b.end.x, b.end.y, b.tunnel ? ",\"tunnel\":true" : "", b.tunnel && b.z != 0 ? fmt::format(",\"z\":{}", b.z) : std::string());
 		first = false;
 	}
 	out += "],\n\"signals\":[";

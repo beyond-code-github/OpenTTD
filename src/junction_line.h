@@ -47,7 +47,7 @@ JunctionLineNotation ParseLineNotation(std::string_view text);
 struct JunctionLineRoute {
 	TileIndexDiffC start;
 	Trackdir start_trackdir;
-	std::string moves; ///< F, L, R, and B<n> (a bridge with n middle tiles, D149).
+	std::string moves; ///< F, L, R, and B<n> (a bridge with n middle tiles, D149), T<n> (a tunnel, D155).
 };
 
 /** Rasterize a line program into one raster per track, outermost-left first; error text in the first raster when the line can't make a move. */
@@ -66,8 +66,9 @@ std::vector<std::vector<JunctionPiece>> ExtendJunctionLine(const JunctionLineSpe
  * @param middle The bridge's middle-tile count.
  * @param[out] bridges One bridge per track, in track order.
  * @param[out] error The reason, when the move can't be made.
+ * @param tunnel Whether the move is a tunnel T<middle> (D155): the same pieces, with tunnel bridges (z left 0).
  * @return The added pieces per track (on_bridge, near head to far head), or an empty vector when the move can't be made.
  */
-std::vector<std::vector<JunctionPiece>> ExtendJunctionLineBridge(const JunctionLineSpec &line, const std::vector<JunctionPiece> &last, uint middle, std::vector<JunctionBridge> &bridges, std::string &error);
+std::vector<std::vector<JunctionPiece>> ExtendJunctionLineBridge(const JunctionLineSpec &line, const std::vector<JunctionPiece> &last, uint middle, std::vector<JunctionBridge> &bridges, std::string &error, bool tunnel = false);
 
 #endif /* JUNCTION_LINE_H */
