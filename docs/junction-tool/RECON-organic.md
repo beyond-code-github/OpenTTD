@@ -145,3 +145,15 @@ hubs_173bbh14, hubs_slh04, hubs_3way (orchestrator, not re-viewed), hubs_173Mark
 - Tunnels cross at different depths: `CmdBuildTunnel` refuses only a perpendicular tunnel at exactly the same z (`IsTunnelInWayDir`, `tunnel_map.cpp` 48-60; skipped with the crossing_tunnels cheat). So per tile: surface track, plus one tunnel per depth, plus at most one bridge span above.
 - Land can't be lowered onto a tunnel (`terraform_cmd.cpp` ~250): a cutting dug over a tunnel must stay above it.
 - Tunnel price grows with length (`cost += cost >> tiles_coef`, coefficient steps every 25, 50, ... tiles).
+
+## 7. Compactness measure checked on real hubs (orchestrator, 2026-11-09)
+Script: `scratchpad/compact/metric.py` (flood fill from outside over tiles without surface track; tunnels and bridge spans don't block). Per area, as a share of surface-occupied tiles:
+
+| Area | used | enclosed | sliver2 (free, in no 2x2 free square) | sliver3 |
+|---|---|---|---|---|
+| psg186_1/2/3 (48x48 coop hotspots) | 1270 / 1112 / 947 | 22% / 22% / 29% | 2.4% / 2.4% / 3.1% | 6% / 5% / 8% |
+| psg219_1/2/3 | 1348 / 1387 / 1220 | 33% / 33% / 27% | 2.2% / 3.6% / 4.7% | 4% / 8% / 13% |
+| fledhattan | 845 | 39% | 0.4% | 2% |
+| ours: GenerateJunction(MakeTestJunctionSpec) at b04736187e | 190 | 18% | **28%** | **34%** |
+
+Reading: enclosed pockets are normal in coop hubs (22-39%), so "enclosed" does not separate good from bad. Slivers do: coop builds leave almost no free tile outside a 2x2 free square (2-5%), ours leaves 28% (the 1-tile strips between parallel runs and around the prio rows). Caveats: one generated layout vs six crops of dense areas (crops include stations and passing lines); the golden's other two cases returned no layout. Candidate compactness term: surface tiles + sliver2 tiles; enclosed pockets weighed lightly or not at all, pending the engineer.
