@@ -264,6 +264,8 @@ add_files(
     junction_layout.h
     junction_line.cpp
     junction_line.h
+    junction_line_router.cpp
+    junction_line_router.h
     junction_map_export.cpp
     junction_map_export.h
     junction_route.cpp

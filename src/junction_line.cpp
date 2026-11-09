@@ -203,6 +203,46 @@ static bool ShiftPiece(const JunctionPiece &piece, LineVec shift, JunctionPiece 
 	return false;
 }
 
+std::vector<std::vector<JunctionPiece>> ExtendJunctionLine(const JunctionLineSpec &line, const std::vector<JunctionPiece> &last, char move, std::string &error)
+{
+	if (move != 'F' && move != 'L' && move != 'R') {
+		error = " is not supported in a line";
+		return {};
+	}
+
+	/* Try the shortest straight run first; a track may need one more piece to be on a piece that can turn. */
+	const Direction heading = TrackdirToDirection(last[0].trackdir);
+	std::vector<std::vector<JunctionPiece>> extension;
+	std::string last_error;
+	for (int base = 0; base < 3; base++) {
+		std::vector<std::string> strings;
+		if (move == 'F') {
+			strings.assign(line.tracks, "F");
+		} else if (!TurnStrings(line, heading, move == 'L', base, strings)) {
+			error = " has no equal-spacing turn";
+			return {};
+		}
+
+		extension.clear();
+		last_error.clear();
+		for (int i = 0; i < line.tracks && last_error.empty(); i++) {
+			JunctionRaster sub = RasterizeJunctionRoute({last[i].tile, last[i].trackdir, strings[i]});
+			if (!sub.error.empty()) {
+				last_error = fmt::format("track {}: {}", i, sub.error);
+			} else {
+				extension.emplace_back(sub.pieces.begin() + 1, sub.pieces.end());
+			}
+		}
+		if (last_error.empty()) break;
+		if (move == 'F') break;
+	}
+	if (!last_error.empty()) {
+		error = ": " + last_error;
+		return {};
+	}
+	return extension;
+}
+
 std::vector<JunctionRaster> RasterizeJunctionLine(const JunctionLineSpec &line, const JunctionLineRoute &route)
 {
 	if (line.tracks == 0) return std::vector<JunctionRaster>(1, JunctionRaster{{}, {}, "a line needs at least one track"});
@@ -222,36 +262,11 @@ std::vector<JunctionRaster> RasterizeJunctionLine(const JunctionLineSpec &line, 
 	}
 
 	for (size_t pos = 0; pos < route.moves.size(); pos++) {
-		const char move = route.moves[pos];
-		if (move != 'F' && move != 'L' && move != 'R') return fail(fmt::format("move '{}' at position {} is not supported in a line", move, pos));
-
-		/* Try the shortest straight run first; a track may need one more piece to be on a piece that can turn. */
-		const Direction heading = TrackdirToDirection(rasters[0].pieces.back().trackdir);
-		std::vector<std::vector<JunctionPiece>> extension;
-		std::string last_error;
-		for (int base = 0; base < 3; base++) {
-			std::vector<std::string> strings;
-			if (move == 'F') {
-				strings.assign(line.tracks, "F");
-			} else if (!TurnStrings(line, heading, move == 'L', base, strings)) {
-				return fail(fmt::format("move '{}' at position {} has no equal-spacing turn", move, pos));
-			}
-
-			extension.clear();
-			last_error.clear();
-			for (int i = 0; i < line.tracks && last_error.empty(); i++) {
-				const JunctionPiece &last = rasters[i].pieces.back();
-				JunctionRaster sub = RasterizeJunctionRoute({last.tile, last.trackdir, strings[i]});
-				if (!sub.error.empty()) {
-					last_error = fmt::format("track {}: {}", i, sub.error);
-				} else {
-					extension.emplace_back(sub.pieces.begin() + 1, sub.pieces.end());
-				}
-			}
-			if (last_error.empty()) break;
-			if (move == 'F') break;
-		}
-		if (!last_error.empty()) return fail(fmt::format("move '{}' at position {}: {}", move, pos, last_error));
+		std::vector<JunctionPiece> last;
+		for (const JunctionRaster &raster : rasters) last.push_back(raster.pieces.back());
+		std::string error;
+		const std::vector<std::vector<JunctionPiece>> extension = ExtendJunctionLine(line, last, route.moves[pos], error);
+		if (extension.empty()) return fail(fmt::format("move '{}' at position {}{}", route.moves[pos], pos, error));
 		for (int i = 0; i < line.tracks; i++) rasters[i].pieces.insert(rasters[i].pieces.end(), extension[i].begin(), extension[i].end());
 	}
 	return rasters;

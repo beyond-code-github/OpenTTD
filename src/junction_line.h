@@ -53,4 +53,10 @@ struct JunctionLineRoute {
 /** Rasterize a line program into one raster per track, outermost-left first; error text in the first raster when the line can't make a move. */
 std::vector<JunctionRaster> RasterizeJunctionLine(const JunctionLineSpec &line, const JunctionLineRoute &route);
 
+/**
+ * Extend a line by one move: from each track's last piece, the pieces each track adds (D112, LP2 geometry).
+ * @return The added pieces per track (without the last pieces), or an error text (empty vector) when the move can't be made.
+ */
+std::vector<std::vector<JunctionPiece>> ExtendJunctionLine(const JunctionLineSpec &line, const std::vector<JunctionPiece> &last, char move, std::string &error);
+
 #endif /* JUNCTION_LINE_H */
