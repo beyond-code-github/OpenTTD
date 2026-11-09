@@ -37,6 +37,7 @@ struct LineNode {
 	std::vector<JunctionPiece> last;
 	std::vector<LineTrackState> states;
 	bool after_bridge = false; ///< The last move was a bridge (D149 5).
+	uint8_t passed = 0; ///< Waypoints passed so far (D150).
 };
 
 /** One entry of the search tree. */
@@ -163,24 +164,57 @@ private:
 		key += fmt::format("{},{},{}", first.tile.x, first.tile.y, static_cast<int>(first.trackdir));
 		for (const LineTrackState &state : node.states) key += fmt::format(";{},{},{},{}", state.u, state.hand, state.prev_gap_ok, state.pair);
 		key += node.after_bridge ? ";b" : ";";
+		key += fmt::format("{}", node.passed);
 		return key;
 	}
 
+	/** The Chebyshev distance between two tiles. */
+	static int Chebyshev(const TileIndexDiffC &a, const TileIndexDiffC &b)
+	{
+		return std::max(std::abs(a.x - b.x), std::abs(a.y - b.y));
+	}
+
+	/** The cheapest possible cost to finish: every track covers at least the Chebyshev distance of track 0 through the remaining waypoints in order, then to the nearest goal when there are goals (D150 4). */
 	Money Heuristic(const LineNode &node) const
 	{
-		int best = INT32_MAX;
-		for (const JunctionRouteEnd &goal : request.goals) {
-			best = std::min(best, std::max(std::abs(goal.tile.x - node.last[0].tile.x), std::abs(goal.tile.y - node.last[0].tile.y)));
+		if (!request.use_heuristic) return Money{0};
+		const std::vector<TileIndexDiffC> &waypoints = request.waypoints;
+		int distance = 0;
+		TileIndexDiffC from = node.last[0].tile;
+		for (size_t k = node.passed; k < waypoints.size(); k++) {
+			distance += Chebyshev(from, waypoints[k]);
+			from = waypoints[k];
 		}
-		return request.use_heuristic ? request.rail_piece * (best * request.line.tracks) : Money{0};
+		if (!request.goals.empty()) {
+			int best = INT32_MAX;
+			for (const JunctionRouteEnd &goal : request.goals) best = std::min(best, Chebyshev(from, goal.tile));
+			distance += best;
+		}
+		return request.rail_piece * (distance * request.line.tracks);
 	}
 
 	bool IsGoal(const LineNode &node) const
 	{
+		if (node.passed != request.waypoints.size()) return false;
+		if (request.goals.empty()) return !request.waypoints.empty();
 		const JunctionPiece &piece = node.last[0];
 		return std::ranges::any_of(request.goals, [&](const JunctionRouteEnd &goal) {
 			return goal.tile.x == piece.tile.x && goal.tile.y == piece.tile.y && goal.trackdir == piece.trackdir;
 		});
+	}
+
+	/**
+	 * Count the waypoints that track 0's pieces added by a move pass, in order (D150 1).
+	 * @param passed The waypoints passed so far, updated.
+	 * @param pieces Track 0's added pieces.
+	 * @param bridge Whether the move is a bridge, whose middle tiles do not pass a waypoint.
+	 */
+	void PassWaypoints(uint8_t &passed, const std::vector<JunctionPiece> &pieces, bool bridge) const
+	{
+		for (size_t k = 0; k < pieces.size(); k++) {
+			if (bridge && k != 0 && k + 1 != pieces.size()) continue;
+			while (passed < request.waypoints.size() && pieces[k].tile.x == request.waypoints[passed].x && pieces[k].tile.y == request.waypoints[passed].y) passed++;
+		}
 	}
 
 	/** Record a piece on its tile; false when it clashes with the line's own pieces (anything but an exact parallel pair). */
@@ -198,19 +232,35 @@ JunctionLineRouteResult LineRouter::Run()
 {
 	if (request.line.tracks == 0) return {std::nullopt, "a line needs at least one track"};
 
-	const std::vector<JunctionRaster> first = RasterizeJunctionLine(request.line, {request.start, request.start_trackdir, ""});
+	if (request.goals.empty() && request.waypoints.empty()) return {std::nullopt, "a route needs a goal or a waypoint"};
+
+	const std::vector<JunctionRaster> first = RasterizeJunctionLine(request.line, {request.start, request.start_trackdir, request.prefix});
 	if (!first[0].error.empty()) return {std::nullopt, first[0].error};
 
 	LineNode root;
+	LineTreeEntry root_entry;
 	for (const JunctionRaster &raster : first) {
+		LineTrackState state{cap, 0, true, false};
+		for (size_t k = 1; k < raster.pieces.size(); k++) {
+			if (!AdvanceState(state, raster.pieces[k - 1], raster.pieces[k])) return {std::nullopt, "prefix breaks the curve rules"};
+		}
 		root.last.push_back(raster.pieces.back());
-		root.states.push_back({cap, 0, true, false});
+		root.states.push_back(state);
+		root_entry.added.emplace_back(raster.pieces.begin() + 1, raster.pieces.end());
+		root_entry.bridges.insert(root_entry.bridges.end(), raster.bridges.begin(), raster.bridges.end());
+	}
+	/* The prefix ends in a bridge when its last move is a B<n>. */
+	{
+		size_t end = request.prefix.size();
+		while (end > 0 && request.prefix[end - 1] >= '0' && request.prefix[end - 1] <= '9') end--;
+		root.after_bridge = end > 0 && end < request.prefix.size() && request.prefix[end - 1] == 'B';
 	}
 	Money root_cost = 0;
 	/* The start pieces must be usable too. */
 	{
 		std::unordered_map<uint64_t, TrackBits> used;
-		for (const JunctionPiece &piece : root.last) {
+		for (const JunctionRaster &raster : first) {
+			const JunctionPiece &piece = raster.pieces[0];
 			if (!PieceUsable(piece)) return {std::nullopt, "no route"};
 			if (!used.contains(PackTile(piece.tile.x, piece.tile.y))) root_cost += TerrainCost(piece);
 			if (!Occupy(used, piece)) return {std::nullopt, "no route"};
@@ -233,7 +283,10 @@ JunctionLineRouteResult LineRouter::Run()
 		tree.push_back(std::move(entry));
 		open.push({f, g, counter++, static_cast<int>(tree.size()) - 1});
 	};
-	push({std::move(root), root_cost, -1, "", {}, {}});
+	root_entry.node = std::move(root);
+	root_entry.g = root_cost;
+	root_entry.parent = -1;
+	push(std::move(root_entry));
 
 	uint expansions = 0;
 	while (!open.empty()) {
@@ -247,6 +300,7 @@ JunctionLineRouteResult LineRouter::Run()
 		if (IsGoal(node)) {
 			JunctionLineRoute route{request.start, request.start_trackdir, ""};
 			for (int i = index; tree[i].parent >= 0; i = tree[i].parent) route.moves.insert(0, tree[i].move);
+			route.moves.insert(0, request.prefix);
 			return {route, "", tree[index].g};
 		}
 		if (++expansions > request.max_expansions) return {std::nullopt, "search limit"};
@@ -255,7 +309,7 @@ JunctionLineRouteResult LineRouter::Run()
 		std::unordered_map<uint64_t, TrackBits> path_used;
 		std::vector<JunctionBridge> path_bridges;
 		for (const JunctionRaster &raster : first) Occupy(path_used, raster.pieces[0]);
-		for (int i = index; tree[i].parent >= 0; i = tree[i].parent) {
+		for (int i = index; i >= 0; i = tree[i].parent) {
 			path_bridges.insert(path_bridges.end(), tree[i].bridges.begin(), tree[i].bridges.end());
 			for (const std::vector<JunctionPiece> &track : tree[i].added) {
 				for (const JunctionPiece &piece : track) {
@@ -297,6 +351,7 @@ JunctionLineRouteResult LineRouter::Run()
 				if (legal) next.last[i] = added[i].back();
 			}
 			if (!legal) continue;
+			PassWaypoints(next.passed, added[0], false);
 			push({std::move(next), tree[index].g + cost, index, std::string(1, move), std::move(added), {}});
 		}
 
@@ -352,6 +407,7 @@ JunctionLineRouteResult LineRouter::Run()
 				}
 			}
 			if (!legal) continue;
+			PassWaypoints(next.passed, added[0], true);
 			push({std::move(next), tree[index].g + cost, index, fmt::format("B{}", n), std::move(added), std::move(bridges)});
 		}
 	}

@@ -584,3 +584,175 @@ TEST_CASE("FindJunctionLineRoute: bridge routes are as cheap as an uninformed se
 		CHECK(informed.cost == uninformed.cost);
 	}
 }
+
+/** Whether track 0 of the line program has a piece that is not a bridge piece on the tile. */
+static bool Track0Passes(const JunctionLineRouteRequest &request, const std::string &moves, const TileIndexDiffC &tile)
+{
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, {request.start, request.start_trackdir, moves});
+	return std::ranges::any_of(rasters[0].pieces, [&](const JunctionPiece &piece) {
+		return !piece.on_bridge && piece.tile.x == tile.x && piece.tile.y == tile.y;
+	});
+}
+
+/** The index of track 0's first piece on a tile, or SIZE_MAX. */
+static size_t FirstPieceOn(const std::vector<JunctionRaster> &rasters, const TileIndexDiffC &tile)
+{
+	for (size_t i = 0; i < rasters[0].pieces.size(); i++) {
+		if (rasters[0].pieces[i].tile.x == tile.x && rasters[0].pieces[i].tile.y == tile.y) return i;
+	}
+	return SIZE_MAX;
+}
+
+/** The waypoint test requests: 0 one waypoint, 1 two waypoints out of order of distance, 2 a waypoint then a goal, 3 a frozen prefix ending in a turn (an S-bend after a short run, so no turn is allowed for 12 units; the waypoint is on the diagonal from its end), 4 a frozen straight prefix and a waypoint behind the start. */
+static JunctionLineRouteRequest WaypointRequest(int which)
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	request.goals.clear();
+	switch (which) {
+		case 0:
+			request.waypoints = {{30, 16}};
+			break;
+		case 1:
+			request.waypoints = {{28, 20}, {34, 16}};
+			break;
+		case 2:
+			request.waypoints = {{30, 16}};
+			request.goals = {{{20, 16}, Trackdir::X_NE}};
+			break;
+		case 3: {
+			request.curve_spacing = 8;
+			request.s_bend_window = 12;
+			request.prefix = "RFFFL";
+			const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, {request.start, request.start_trackdir, request.prefix});
+			const TileIndexDiffC end = rasters[0].pieces.back().tile;
+			request.waypoints = {{static_cast<int16_t>(end.x - 6), static_cast<int16_t>(end.y - 6)}};
+			break;
+		}
+		default:
+			request.prefix = "FFFFFF";
+			request.waypoints = {{44, 20}};
+			break;
+	}
+	return request;
+}
+
+TEST_CASE("FindJunctionLineRoute: passes a waypoint", "[junction][linerouter]")
+{
+	const JunctionLineRouteRequest request = WaypointRequest(0);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	const std::string &moves = result.route->moves;
+	for (const JunctionRaster &raster : RasterizeJunctionLine(request.line, *result.route)) CHECK(raster.error.empty());
+	CHECK(Track0Passes(request, moves, request.waypoints[0]));
+	REQUIRE_FALSE(moves.empty());
+	CHECK_FALSE(Track0Passes(request, moves.substr(0, moves.size() - 1), request.waypoints[0]));
+}
+
+TEST_CASE("FindJunctionLineRoute: passes waypoints in order", "[junction][linerouter]")
+{
+	const JunctionLineRouteRequest request = WaypointRequest(1);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *result.route);
+	const size_t first = FirstPieceOn(rasters, request.waypoints[0]);
+	const size_t second = FirstPieceOn(rasters, request.waypoints[1]);
+	REQUIRE(first != SIZE_MAX);
+	REQUIRE(second != SIZE_MAX);
+	CHECK(first < second);
+}
+
+TEST_CASE("FindJunctionLineRoute: a waypoint then a goal", "[junction][linerouter]")
+{
+	const JunctionLineRouteRequest request = WaypointRequest(2);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	CheckRoute(request, result);
+	REQUIRE(result.route.has_value());
+	CHECK(Track0Passes(request, result.route->moves, request.waypoints[0]));
+}
+
+TEST_CASE("FindJunctionLineRoute: a frozen prefix carries its curve state", "[junction][linerouter]")
+{
+	const JunctionLineRouteRequest request = WaypointRequest(3);
+	const std::vector<JunctionRaster> prefix_rasters = RasterizeJunctionLine(request.line, {request.start, request.start_trackdir, request.prefix});
+	for (const JunctionRaster &raster : prefix_rasters) REQUIRE(raster.error.empty());
+
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	const std::string &moves = result.route->moves;
+	REQUIRE(moves.size() > request.prefix.size());
+	CHECK(moves.substr(0, request.prefix.size()) == request.prefix);
+	INFO("moves " << moves);
+	const char after = moves[request.prefix.size()];
+	CHECK((after != 'L' && after != 'R'));
+
+	/* From the prefix's last pieces with no history, the same waypoint is reached by turning at once. */
+	JunctionLineRouteRequest fresh = request;
+	fresh.prefix.clear();
+	fresh.start = prefix_rasters[0].pieces.back().tile;
+	fresh.start_trackdir = prefix_rasters[0].pieces.back().trackdir;
+	const JunctionLineRouteResult turned = FindJunctionLineRoute(fresh);
+	INFO(turned.error);
+	REQUIRE(turned.route.has_value());
+	INFO("fresh moves " << turned.route->moves);
+	REQUIRE_FALSE(turned.route->moves.empty());
+	CHECK((turned.route->moves[0] == 'L' || turned.route->moves[0] == 'R'));
+}
+
+TEST_CASE("FindJunctionLineRoute: prefix pieces are the line's own track", "[junction][linerouter]")
+{
+	const JunctionLineRouteRequest request = WaypointRequest(4);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	const std::string &moves = result.route->moves;
+	REQUIRE(moves.size() > request.prefix.size());
+	CHECK(moves.substr(0, request.prefix.size()) == request.prefix);
+
+	const std::vector<JunctionRaster> prefix_rasters = RasterizeJunctionLine(request.line, {request.start, request.start_trackdir, request.prefix});
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *result.route);
+	std::map<std::pair<int, int>, TrackBits> tiles;
+	for (const JunctionRaster &raster : prefix_rasters) {
+		for (const JunctionPiece &piece : raster.pieces) tiles[{piece.tile.x, piece.tile.y}].Set(TrackdirToTrack(piece.trackdir));
+	}
+	for (size_t t = 0; t < rasters.size(); t++) {
+		for (size_t i = prefix_rasters[t].pieces.size(); i < rasters[t].pieces.size(); i++) {
+			const JunctionPiece &piece = rasters[t].pieces[i];
+			TrackBits &bits = tiles[{piece.tile.x, piece.tile.y}];
+			const Track track = TrackdirToTrack(piece.trackdir);
+			CHECK_FALSE(bits.Test(track));
+			bits.Set(track);
+			CHECK_FALSE(TracksOverlap(bits));
+		}
+	}
+}
+
+TEST_CASE("FindJunctionLineRoute: a waypoint on water is refused", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = WaypointRequest(0);
+	request.min = {22, 10};
+	request.max = {45, 30};
+	JunctionTerrain terrain = FlatTerrainFor(request, 0);
+	TerrainTileOf(terrain, request.waypoints[0].x, request.waypoints[0].y).cls = JunctionTileClass::Water;
+	request.terrain = &terrain;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	CHECK_FALSE(result.route.has_value());
+	CHECK(result.error == "no route");
+}
+
+TEST_CASE("FindJunctionLineRoute: waypoint routes are as cheap as an uninformed search", "[junction][linerouter][slow]")
+{
+	for (int which = 0; which < 5; which++) {
+		JunctionLineRouteRequest request = WaypointRequest(which);
+		request.use_heuristic = true;
+		const JunctionLineRouteResult informed = FindJunctionLineRoute(request);
+		request.use_heuristic = false;
+		const JunctionLineRouteResult uninformed = FindJunctionLineRoute(request);
+		INFO("case " << which << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
+		REQUIRE(informed.route.has_value());
+		REQUIRE(uninformed.route.has_value());
+		CHECK(informed.cost == uninformed.cost);
+	}
+}
