@@ -95,7 +95,7 @@ private:
 	}
 
 	/**
-	 * The height step of a piece (D152): level when the tile is usable at z, else a ramp along an incline.
+	 * The height step of a piece (D152, D152b): an axis piece on a tile inclined along it is a ramp only, as the game builds it; every other piece is level, usable at z.
 	 * @param piece The piece.
 	 * @param z The track's height before the piece.
 	 * @param allow_ramp Whether the piece may be a ramp.
@@ -107,8 +107,23 @@ private:
 	{
 		new_z = z;
 		ramp = false;
-		if (request.terrain == nullptr || request.terrain->UsableAt(piece.tile.x, piece.tile.y, z)) return true;
-		if (!allow_ramp || !IsDiagonalTrackdir(piece.trackdir)) return false;
+		if (request.terrain == nullptr) return true;
+		const JunctionTerrainTile *tile = request.terrain->At(piece.tile.x, piece.tile.y);
+		if (tile != nullptr && IsDiagonalTrackdir(piece.trackdir) && tile->incline != DiagDirection::Invalid) {
+			const DiagDirection exit = TrackdirToExitdir(piece.trackdir);
+			if (tile->incline == exit || tile->incline == ReverseDiagDir(exit)) {
+				if (!allow_ramp || !RampStep(piece, z, new_z)) return false;
+				ramp = true;
+				return true;
+			}
+		}
+		return request.terrain->UsableAt(piece.tile.x, piece.tile.y, z);
+	}
+
+	/** Whether an axis piece on a Buildable, non-steep tile inclined along it is a ramp from height z (up or down); new_z is the height after. */
+	bool RampStep(const JunctionPiece &piece, int8_t z, int8_t &new_z) const
+	{
+		if (!IsDiagonalTrackdir(piece.trackdir)) return false;
 		const JunctionTerrainTile *tile = request.terrain->At(piece.tile.x, piece.tile.y);
 		if (tile == nullptr || tile->cls != JunctionTileClass::Buildable || tile->steep || tile->incline == DiagDirection::Invalid) return false;
 		const DiagDirection exit = TrackdirToExitdir(piece.trackdir);
@@ -119,7 +134,6 @@ private:
 		} else {
 			return false;
 		}
-		ramp = true;
 		return true;
 	}
 

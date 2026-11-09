@@ -847,6 +847,44 @@ TEST_CASE("FindJunctionLineRoute: descends into a valley", "[junction][lineroute
 	CHECK(result.cost == RampRouteCost(c));
 }
 
+/** The valley of "descends into a valley", on a game that allows building on slopes (D152a). */
+static void SetUpDescentOnSlopes(LineRampCase &c)
+{
+	SetUpRamps(c, 1, true);
+	c.terrain.build_on_slopes = true;
+	SetRampColumn(c.terrain, 33, 0, 1, DiagDirection::SW);
+	SetRampColumn(c.terrain, 32, 0, 0, DiagDirection::Invalid);
+	SetRampColumn(c.terrain, 31, 0, 0, DiagDirection::Invalid);
+	SetRampColumn(c.terrain, 30, 0, 1, DiagDirection::NE);
+}
+
+TEST_CASE("FindJunctionLineRoute: descends with build_on_slopes", "[junction][linerouter]")
+{
+	LineRampCase c;
+	SetUpDescentOnSlopes(c);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	CheckRoute(c.request, result);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->moves == std::string(20, 'F'));
+	CHECK(result.cost == RampRouteCost(c));
+}
+
+/** Two slope tiles, down along the track then up again, with the ground at 1 on both sides: the game puts no level foundation under track along an incline, so the track ramps down and up however cheap a foundation is (D152b). */
+TEST_CASE("FindJunctionLineRoute: track along an incline is always a ramp", "[junction][linerouter]")
+{
+	LineRampCase c;
+	SetUpRamps(c, 1, true);
+	c.terrain.build_on_slopes = true;
+	SetRampColumn(c.terrain, 33, 0, 1, DiagDirection::SW);
+	SetRampColumn(c.terrain, 32, 0, 1, DiagDirection::NE);
+	c.terrain.foundation_cost = 1;
+	c.request.slope_piece = 100;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	CheckRoute(c.request, result);
+	REQUIRE(result.route.has_value());
+	CHECK(result.cost == Money(int64_t{c.request.line.tracks} * (21 * 5 + 20 + 2 * 100)));
+}
+
 TEST_CASE("FindJunctionLineRoute: no turn on a ramp", "[junction][linerouter]")
 {
 	LineRampCase c;
@@ -905,7 +943,7 @@ TEST_CASE("JunctionCanonicalIncline: rotations", "[junction][linerouter]")
 
 TEST_CASE("FindJunctionLineRoute: ramp routes are as cheap as an uninformed search", "[junction][linerouter][slow]")
 {
-	for (int which = 0; which < 4; which++) {
+	for (int which = 0; which < 5; which++) {
 		LineRampCase c;
 		switch (which) {
 			case 0: SetUpRidge(c); break;
@@ -917,10 +955,13 @@ TEST_CASE("FindJunctionLineRoute: ramp routes are as cheap as an uninformed sear
 				SetRampColumn(c.terrain, 29, 1, 1, DiagDirection::Invalid);
 				SetRampColumn(c.terrain, 28, 0, 1, DiagDirection::SW);
 				break;
-			default:
+			case 3:
 				SetUpValley(c);
 				EnableBridges(c.request);
 				c.request.slope_piece = 1000;
+				break;
+			default:
+				SetUpDescentOnSlopes(c);
 				break;
 		}
 		c.request.use_heuristic = true;
