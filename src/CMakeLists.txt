@@ -268,6 +268,8 @@ add_files(
     junction_line.h
     junction_line_router.cpp
     junction_line_router.h
+    junction_organic.cpp
+    junction_organic.h
     junction_map_export.cpp
     junction_map_export.h
     junction_route.cpp

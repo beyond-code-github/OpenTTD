@@ -23,7 +23,8 @@
 
 /** Where a routed piece sits, for negotiated resource costs (DESIGN-O4 revision 3). */
 enum class JunctionResourceLevel : uint8_t {
-	Surface, ///< Track on the ground: plain, ramp, bridge head or tunnel portal.
+	Surface, ///< Track on the ground: plain or ramp.
+	Head, ///< A bridge head or tunnel portal.
 	BridgeSpan, ///< A bridge's middle piece.
 	TunnelBore, ///< A tunnel's middle piece.
 };

@@ -663,7 +663,7 @@ JunctionLineRouteResult LineRouter::Run()
 								break;
 							}
 							cost += request.terrain->At(piece.tile.x, piece.tile.y)->clear_cost;
-							cost += ResourceCost(piece, z, JunctionResourceLevel::Surface);
+							cost += ResourceCost(piece, z, JunctionResourceLevel::Head);
 							Occupy(overlay, piece);
 						} else {
 							const JunctionTerrainTile *tile = InBounds(piece) ? request.terrain->At(piece.tile.x, piece.tile.y) : nullptr;
@@ -729,7 +729,7 @@ JunctionLineRouteResult LineRouter::Run()
 							break;
 						}
 						cost += TerrainCost(piece, node.z[i], false);
-						cost += ResourceCost(piece, node.z[i], JunctionResourceLevel::Surface);
+						cost += ResourceCost(piece, node.z[i], JunctionResourceLevel::Head);
 						Occupy(overlay, piece);
 					} else if (!InBounds(piece) || IsBlocked(piece.tile.x, piece.tile.y) || is_head(piece) ||
 							(request.existing != nullptr && BetweenBridgeHeads(piece.tile.x, piece.tile.y, request.existing->bridges)) ||

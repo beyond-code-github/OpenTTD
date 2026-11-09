@@ -14,6 +14,7 @@ add_test_files(
     junction_line.cpp
     junction_line_router.cpp
     junction_map_export.cpp
+    junction_organic.cpp
     junction_route.cpp
     junction_router.cpp
     junction_rules.cpp
