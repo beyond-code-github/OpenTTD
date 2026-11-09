@@ -16,4 +16,7 @@
 /** Add signals and prios to a layout of tracks and bridges, in the canonical frame. */
 void PlaceJunctionSignals(JunctionLayout &layout, const JunctionSpec &spec);
 
+/** Of two signals on adjacent pieces of a path, drop one when every rule still holds without it (D117 b, D117b: run once per chosen layout, not per candidate). */
+void RemoveRedundantJunctionSignals(JunctionLayout &layout, const JunctionSpec &spec);
+
 #endif /* JUNCTION_SIGNAL_PASS_H */

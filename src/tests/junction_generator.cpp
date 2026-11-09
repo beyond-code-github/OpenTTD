@@ -325,6 +325,27 @@ TEST_CASE("GenerateJunction: the test junction is no wider than before the margi
 	CHECK(result.layout->size.x <= 32);
 }
 
+/* D117 b: no two consecutive pieces of a mainline path both carry a signal. */
+TEST_CASE("GenerateJunction: no adjacent signals on the main lines (D117)", "[junction][generator]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(*result.layout, spec, FindJunctionPorts(*result.layout), JunctionTMovements());
+	int checked = 0;
+	for (const JunctionPath &path : ctx.paths) {
+		const bool main_line = (path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::EOut) || (path.from == JunctionPortRole::WIn && path.to == JunctionPortRole::WOut);
+		if (!main_line) continue;
+		checked++;
+		for (size_t i = 1; i < path.pieces.size(); i++) {
+			const bool adjacent = IsSignalledPiece(*result.layout, path.pieces[i - 1]) && IsSignalledPiece(*result.layout, path.pieces[i]);
+			INFO("pieces " << i - 1 << " and " << i << " at " << path.pieces[i].tile.x << "," << path.pieces[i].tile.y);
+			CHECK(!adjacent);
+		}
+	}
+	CHECK(checked > 0);
+}
+
 TEST_CASE("ParseJunctionNotation", "[junction]")
 {
 	CHECK(ParseJunctionNotation("L_R").error == JunctionNotationError::None);

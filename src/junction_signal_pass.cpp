@@ -21,6 +21,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <utility>
 
 #include "safeguards.h"
 
@@ -74,21 +75,24 @@ static void PlaceRequiredSignals(JunctionLayout &layout, const JunctionSpec &spe
 		std::set<size_t> switches;
 		for (const SwitchEvent &event : events) switches.insert(event.second);
 
-		auto place = [&](const JunctionPiece *piece) {
+		/* D117 a: a requirement already met by a signal in its stretch places none. */
+		auto place = [&](size_t from, int step) {
+			if (JunctionStretchHasSignal(layout, *path, switches, from, step)) return;
+			const JunctionPiece *piece = NearestSignalPiece(layout, *path, switches, from, step);
 			if (piece != nullptr) PlaceSignal(layout, *piece, spec.signal_type);
 		};
 
 		for (const auto &[is_split, index] : events) {
-			if (index > 0) place(NearestSignalPiece(layout, *path, switches, index - 1, -1));
-			if (!is_split) place(NearestSignalPiece(layout, *path, switches, index + 1, 1));
+			if (index > 0) place(index - 1, -1);
+			if (!is_split) place(index + 1, 1);
 		}
 
 		for (size_t i = 0; i < path->pieces.size(); i++) {
 			if (!path->pieces[i].on_bridge || (i > 0 && path->pieces[i - 1].on_bridge)) continue;
 			size_t last = i;
 			while (last + 1 < path->pieces.size() && path->pieces[last + 1].on_bridge) last++;
-			if (i > 0) place(NearestSignalPiece(layout, *path, switches, i - 1, -1));
-			if (last + 1 < path->pieces.size()) place(NearestSignalPiece(layout, *path, switches, last + 1, 1));
+			if (i > 0) place(i - 1, -1);
+			if (last + 1 < path->pieces.size()) place(last + 1, 1);
 			i = last;
 		}
 	}
@@ -578,6 +582,49 @@ static void PlacePrios(JunctionLayout &layout, const JunctionCheckContext &ctx, 
 				RemoveTracks(layout, join.tile, join.tile_bits);
 				RemoveTracks(layout, join.neighbour, join.neighbour_bits);
 			}
+		}
+	}
+}
+
+/** Remove the signal on a piece; returns it with its index so it can be put back. */
+static std::optional<std::pair<size_t, JunctionSignal>> TakeSignal(JunctionLayout &layout, const JunctionPiece &piece)
+{
+	const auto it = std::ranges::find_if(layout.signals, [&](const JunctionSignal &s) { return SameTile(s.offset, piece.tile) && s.facing == piece.trackdir; });
+	if (it == layout.signals.end()) return std::nullopt;
+	const std::pair<size_t, JunctionSignal> taken{static_cast<size_t>(it - layout.signals.begin()), *it};
+	layout.signals.erase(it);
+	return taken;
+}
+
+/** Whether every violation of the layout is in 'before' (same rule, tile and message). */
+static bool NoNewViolations(const JunctionLayout &layout, const JunctionSpec &spec, const std::vector<RuleViolation> &before)
+{
+	return std::ranges::all_of(CheckJunctionRules(layout, spec), [&](const RuleViolation &v) {
+		return std::ranges::any_of(before, [&](const RuleViolation &b) { return b.rule == v.rule && SameTile(b.tile, v.tile) && b.message == v.message; });
+	});
+}
+
+void RemoveRedundantJunctionSignals(JunctionLayout &layout, const JunctionSpec &spec)
+{
+	const std::vector<JunctionPort> ports = FindJunctionPorts(layout);
+	for (bool changed = true; changed;) {
+		changed = false;
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, JunctionTMovements());
+		const std::vector<RuleViolation> before = CheckJunctionRules(layout, spec);
+		for (const JunctionPath *path : PathOrder(ctx)) {
+			for (size_t i = 0; !changed && i + 1 < path->pieces.size(); i++) {
+				if (!IsSignalledPiece(layout, path->pieces[i]) || !IsSignalledPiece(layout, path->pieces[i + 1])) continue;
+				for (size_t k = i; k <= i + 1 && !changed; k++) {
+					const auto taken = TakeSignal(layout, path->pieces[k]);
+					if (!taken.has_value()) continue;
+					if (NoNewViolations(layout, spec, before)) {
+						changed = true;
+					} else {
+						layout.signals.insert(layout.signals.begin() + taken->first, taken->second);
+					}
+				}
+			}
+			if (changed) break;
 		}
 	}
 }

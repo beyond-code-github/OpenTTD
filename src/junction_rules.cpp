@@ -678,6 +678,16 @@ std::vector<std::pair<TileIndexDiffC, Trackdir>> JoinerSignals(const JunctionChe
 }
 
 /** G6: signal legality, facing, isolation of switches, spacing and types. */
+bool JunctionStretchHasSignal(const JunctionLayout &layout, const JunctionPath &path, const std::set<size_t> &switches, size_t from, int step)
+{
+	for (int64_t i = static_cast<int64_t>(from); i >= 0 && i < static_cast<int64_t>(path.pieces.size()); i += step) {
+		const JunctionPiece &piece = path.pieces[i];
+		if (piece.on_bridge || switches.contains(static_cast<size_t>(i))) return false;
+		if (IsSignalledPiece(layout, piece)) return true;
+	}
+	return false;
+}
+
 std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx)
 {
 	std::vector<RuleViolation> out;
@@ -706,7 +716,7 @@ std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx)
 		}
 	}
 
-	/* 3. Switch isolation. */
+	/* 3. Switch isolation (D117 a: any signal in a rule's stretch meets it). */
 	for (const JunctionPath &path : ctx.paths) {
 		const std::vector<SwitchEvent> events = SwitchEventsOf(layout, used_tracks, path);
 		std::set<size_t> switches;
@@ -733,13 +743,15 @@ std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx)
 			}
 			return false;
 		};
-		auto require = [&](const JunctionPiece *piece, const char *message) {
-			if (piece != nullptr && !IsSignalledPiece(layout, *piece)) AddViolation(out, JunctionRule::Signals, piece->tile, message);
+		/* D117 a: a rule is met by any signal in its stretch; it is violated when the stretch has a legal piece but no signal. */
+		auto require = [&](size_t from, int step, const char *message) {
+			const JunctionPiece *piece = nearest(from, step);
+			if (piece != nullptr && !JunctionStretchHasSignal(layout, path, switches, from, step)) AddViolation(out, JunctionRule::Signals, piece->tile, message);
 		};
 
 		for (const auto &[is_split, index] : events) {
-			if (index > 0) require(nearest(index - 1, -1), is_split ? "no signal before a split" : "no signal before a merge");
-			if (!is_split) require(nearest(index + 1, 1), "no signal after a merge");
+			if (index > 0) require(index - 1, -1, is_split ? "no signal before a split" : "no signal before a merge");
+			if (!is_split) require(index + 1, 1, "no signal after a merge");
 		}
 
 		/* Every bridge is its own block: a signal before the near head and after the far head. */
@@ -749,12 +761,12 @@ std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx)
 			while (last + 1 < path.pieces.size() && path.pieces[last + 1].on_bridge) last++;
 			if (i > 0) {
 				const JunctionPiece *before = nearest(i - 1, -1);
-				if (before != nullptr && !IsSignalledPiece(layout, *before)) AddViolation(out, JunctionRule::Signals, path.pieces[i].tile, "no signal before a bridge");
+				if (before != nullptr && !JunctionStretchHasSignal(layout, path, switches, i - 1, -1)) AddViolation(out, JunctionRule::Signals, path.pieces[i].tile, "no signal before a bridge");
 				if (before == nullptr && blocked_by_switch(i - 1, -1, true)) AddViolation(out, JunctionRule::Signals, path.pieces[i].tile, "split in a bridge's block: no signal between the split and the bridge");
 			}
 			if (last + 1 < path.pieces.size()) {
 				const JunctionPiece *after = nearest(last + 1, 1);
-				if (after != nullptr && !IsSignalledPiece(layout, *after)) AddViolation(out, JunctionRule::Signals, path.pieces[last].tile, "no signal after a bridge");
+				if (after != nullptr && !JunctionStretchHasSignal(layout, path, switches, last + 1, 1)) AddViolation(out, JunctionRule::Signals, path.pieces[last].tile, "no signal after a bridge");
 				if (after == nullptr && blocked_by_switch(last + 1, 1, false)) AddViolation(out, JunctionRule::Signals, path.pieces[last].tile, "split in a bridge's block: no signal between the bridge and the merge");
 			}
 			i = last;

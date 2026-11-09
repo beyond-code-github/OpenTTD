@@ -791,6 +791,8 @@ static JunctionGenerateResult GenerateJunctionUnchecked(const JunctionSpec &spec
 		}
 	}
 	if (!best.has_value()) return {std::nullopt, JunctionGenerateError::NoLayout};
+	RemoveRedundantJunctionSignals(*best, spec);
+	best_score = ScoreJunctionLayout(*best, spec);
 	return {std::move(best), JunctionGenerateError::None, best_hub, best_score};
 }
 
@@ -888,6 +890,7 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 		JunctionLibraryEntry entry;
 		entry.hub = r.hub;
 		entry.frame = MakeJunctionFrame(spec);
+		RemoveRedundantJunctionSignals(*layout, spec);
 		entry.score = ScoreJunctionLayout(*layout, spec);
 		entry.area = layout->size.x * layout->size.y;
 		entry.prio_tiles = spec.prio_tiles;

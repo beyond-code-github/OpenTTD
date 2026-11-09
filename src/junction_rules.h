@@ -15,6 +15,7 @@
 #include "junction_route.h"
 #include "track_type.h"
 
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -62,6 +63,9 @@ std::vector<RuleViolation> CheckDeadlock(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckFootprint(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckPrioReach(const JunctionCheckContext &ctx);
+
+/** Whether the stretch scanned from 'from' in 'step' direction (up to a bridge piece or a switch) has a signal (D117 a). */
+bool JunctionStretchHasSignal(const JunctionLayout &layout, const JunctionPath &path, const std::set<size_t> &switches, size_t from, int step);
 
 std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec);
 bool JunctionRulesClean(const JunctionLayout &layout, const JunctionSpec &spec);
