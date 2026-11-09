@@ -252,6 +252,8 @@ add_files(
     intro_gui.cpp
     junction_build.cpp
     junction_build.h
+    junction_compact.cpp
+    junction_compact.h
     junction_game.cpp
     junction_game.h
     junction_generator.cpp
