@@ -6,7 +6,8 @@ Principle (D152-D153): the code holds rules, costs and a search; no shapes. Layo
 `JunctionSpec` (notation, ml_gap, branch_gap, tl, design train -> prio_tiles, prices), terrain snapshot, anchor and orientation, a search box (grown a step when nothing fits).
 
 ## Given (not searched)
-- The two main-line tracks: straight through the box (rows 0 and ml_gap + 1, as the lines being joined).
+Still a place tool: the cursor and rotation fix these, nothing needs to exist yet (attach to an existing line is a later mode that only changes where they come from).
+- The two main-line tracks: straight through the box at the cursor (rows 0 and ml_gap + 1), built by the tool as today; on terrain they are routed straight across the box by the same router (ramps, bridges, tunnels allowed).
 - The branch: its two tracks leave the box through the S edge, branch_gap apart. Variable: the branch's position p along the edge (a few values around the anchor).
 
 ## Movements (a T)
