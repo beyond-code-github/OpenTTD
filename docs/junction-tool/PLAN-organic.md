@@ -24,13 +24,16 @@ Place a junction on any terrain; it slopes, bridges, tunnels and (when cheaper) 
 - **Then:** the signal pass and the checker on the whole layout. On failure, the next movement order or the next window position. Keep the cheapest that passes (cost: track, slopes, foundations, clearing, bridges, tunnels, terraform; then footprint).
 - **Terraform:** first as one priced move, a mound in front of a portal (raise the 2-3 tiles a portal needs); levelling plateaus later if needed (D95: a priced fallback, never forced).
 
+## Principle
+Nothing canned. The engineer: "we want something to emerge from the maths". The code holds rules, costs and a search; no junction shapes, styles or templates. A layout that looks like a coop design must come out because it is the cheapest rule-clean answer.
+
 ## Steps (each test-first, one agent each)
 | Step | What | Gate |
 |---|---|---|
 | O1 | Heights in the line router: state gains z; slope up/down on inclined slopes; usable-at-z per tile; per-level occupancy (surface, bridge). Synthetic terrain tests: a hill crossed by slopes, a valley by a bridge. (Was LP8.) | Painter and junction both use it |
 | O2 | Tunnels in the router: portal on a matching slope, straight on to the exit at the same z, depth-aware occupancy (tunnels cross at different depths only), game price formula. Tests: a ridge tunnelled, two tunnels crossing at different depths, a same-depth crossing refused. | |
 | O3 | Portal mound as a priced terraform move. Test: flat land, a crossing goes under via a mound when cheaper than a bridge. | |
-| O4 | Junction generator on the router: main lines given, each branch movement routed between its windows, movement orders tried, signal pass + checker, cheapest wins. Outer test: the T on the test specs is rule-clean on flat ground, on a hill and across a river; the TL6 narrow-branch case builds. | Replaces the template and both styles |
+| O4 | Junction from the constraints: the input is only the requirements (which lines join, notation, design train, terrain); split and merge positions are search variables bounded by the coop rules, each movement is routed by the one router, signal pass + checker, cheapest wins. No shape is designed or stored: whatever layout comes out emerges from the rules and the costs. The RECON-organic pieces are used only as checks (does the search find a portal row on a hill when it is cheapest), never as templates. Outer test: the T on the test specs is rule-clean on flat ground, on a hill and across a river; the TL6 narrow-branch case builds. | Replaces the template and both styles |
 | O5 | Timing gate and hover: one generation under 100 ms on the test specs and the NUTS rig; the GUI's refine tier uses it; library kept only if still needed. | 100 ms |
 | O6 | Rig check on a hilly map, announced with the join command. | Engineer's eye |
 
