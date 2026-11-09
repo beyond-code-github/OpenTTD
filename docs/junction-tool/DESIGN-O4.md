@@ -40,6 +40,8 @@ Expected work: 6 movements x a few rounds x a route each (memoised) x a few p. O
 | O4n1 | Line router: present/history cost per (track bit, level) from the request; sharing allowed for bits of the same direction and group (the negotiation hook). |
 | O4n2 | Line router: minimum path length for a routed token (prios, waiting room, bays). |
 | O4s | Signal pass: prio joins off a single row (prios that bend with the line). |
+| O4b1 | Search step 1 alone: the six movements of a T on flat ground negotiated (ports, resources, costs, rounds), layout out; converges, connectivity/geometry/bridges clean, timing. Brief: briefs/O4b1-negotiated-movements.md. |
+| O4b2 | Steps 2-4: rule feedback, prios, signal pass, checker, throughput, score; the D80 doubled-bridge move. |
 | O4b | `GenerateJunctionOrganic` for the T on flat ground: steps 1-4. Outer tests: rule-clean on MakeTestJunctionSpec and PinnedTestSpec; the Pinned TL6 branch_gap 0 case builds; throughput targets met; compactness reported beside today's generator (190 occupied / 53 slivers). |
 | O4c | On terrain (after O3): rule-clean on a hill, across a river, under a ridge. |
 | O4d | Behind `GenerateJunction`/`GenerateJunctionNear` (GUI, library, rig) in place of the template; old path deleted. |
