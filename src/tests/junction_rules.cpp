@@ -130,6 +130,15 @@ TEST_CASE("FindJunctionPorts: mismatches give no ports for the edge", "[junction
 	CHECK(FindJunctionPorts(one).size() == 4);
 }
 
+/** The test spec at its old coverage of one train length and without the ML delay check, for tests with hand-made layouts at that coverage (D137). */
+static JunctionSpec PinnedTestSpec()
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.prio_tiles = spec.tl;
+	spec.prio_strict = false;
+	return spec;
+}
+
 TEST_CASE("MakeJunctionCheckContext: tracing a line and a bridge", "[junction][rules]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
@@ -961,7 +970,7 @@ static JunctionLayout PrioLayout(bool extra = false)
 
 static std::vector<RuleViolation> PrioViolations(const JunctionLayout &layout, bool joiner_port = true)
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionSpec spec = PinnedTestSpec();
 	std::vector<JunctionPort> ports = MergePorts();
 	ports[1].tile.x = 11;
 	if (!joiner_port) ports.pop_back();
@@ -1163,7 +1172,7 @@ TEST_CASE("CheckPrio: clause 1, a join facing forward or an X+Y rung", "[junctio
 TEST_CASE("CheckPrio: joins for the four traffic and prio side combinations pass", "[junction][rules]")
 {
 	/* The base layout is +x traffic with the prio on +y; the others are its mirror and 180 degree rotation. */
-	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionSpec spec = PinnedTestSpec();
 	for (const bool mirrored : {false, true}) {
 		for (const uint8_t rotation : {0, 2}) {
 			const JunctionLayout base = PrioLayout();
@@ -1355,9 +1364,9 @@ TEST_CASE("CheckPrio: no ML split inside a prio's coverage (G9c, D108)", "[junct
 
 	/* Layouts built for a one-train prio have their E->S split inside the coverage of a three-train prio. */
 	JunctionSpec short_prio = spec;
-	short_prio.prio_tl = 1;
+	short_prio.prio_tiles = spec.tl;
 	JunctionSpec long_prio = spec;
-	long_prio.prio_tl = 3;
+	long_prio.prio_tiles = 3 * spec.tl;
 	bool found = false;
 	for (int height = spec.ml_gap + 5; height <= spec.ml_gap + 20 && !found; height++) {
 		const std::optional<JunctionLayout> built = BuildJunctionCandidate(short_prio, {static_cast<uint8_t>(height), Money(0), 0, 0});

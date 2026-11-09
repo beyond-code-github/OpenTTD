@@ -60,6 +60,7 @@ struct JunctionPrioTiming {
 	bool ml_delayed; ///< The ML train reaches a signal whose next block the joiner still holds.
 	uint32_t margin_ticks; ///< When not delayed: the ML ticks the coverage edge would have to move towards the merge for a delay; UINT32_MAX if no ML start is ever delayed. 0 when delayed.
 	int64_t worst_start; ///< Progress on the ML's path of the delaying ML start nearest the merge (may be negative) when delayed, else the coverage edge.
+	uint32_t required_distance; ///< Progress from the farthest delaying ML start (the smallest x over all delaying ranges, ignoring the coverage) to the merge piece start; 0 when no delaying range exists.
 	bool timed_out; ///< The run hit the 20000-tick cap.
 };
 

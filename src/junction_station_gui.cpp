@@ -188,7 +188,8 @@ struct BuildJunctionStationWindow : public PickerWindowBase {
 		_settings_client.gui.junction_tl = this->tl;
 		_settings_client.gui.junction_station_platforms = this->platforms;
 
-		this->station = GenerateStation(MakeJunctionSpec(this->railtype, 1, 1, this->tl), this->platforms);
+		/* Stations do not size a prio (D137): the picked train is passed on when there is one. */
+		this->station = GenerateStation(MakeJunctionSpec(this->railtype, 1, 1, this->tl, this->picked_train.has_value() ? this->picked_train->loaded : JunctionTrainParams{}), this->platforms);
 		this->generate_error = this->station.layout.has_value() ? INVALID_STRING_ID : STR_JUNCTION_STATION_ERROR_NO_LAYOUT;
 
 		this->ResetHover();

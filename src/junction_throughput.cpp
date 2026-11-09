@@ -78,6 +78,7 @@ std::optional<JunctionThroughput> EvaluateJunctionThroughput(const JunctionLayou
 	std::vector<double> weights;
 	std::vector<JunctionPath> paths;
 	std::vector<bool> is_ml;
+	/* The paths-in-movement-order loop is repeated in PrioTimingsOf (junction_generator.cpp). */
 	for (const auto &movement : JunctionTMovements()) {
 		const auto path = std::ranges::find_if(ctx.paths, [&](const JunctionPath &p) { return p.from == movement.first && p.to == movement.second; });
 		if (path == ctx.paths.end()) return std::nullopt;
@@ -392,7 +393,7 @@ static JunctionPrioTiming SimulatePrioTiming(const JunctionLayout &layout, const
 {
 	const int64_t tail = static_cast<int64_t>(tl) * JunctionProgressPerStraightTile();
 	const int64_t spacing = static_cast<int64_t>(spec.sd) * JunctionProgressPerStraightTile();
-	const int64_t coverage = static_cast<int64_t>(spec.prio_tl) * tail;
+	const int64_t coverage = static_cast<int64_t>(spec.prio_tiles) * JunctionProgressPerStraightTile();
 
 	/* The joiner's progress is mapped to the ML's by the end of the merge piece, where the two paths coincide. */
 	const std::vector<int64_t> ml_starts = PieceStarts(ml.pieces);
@@ -472,6 +473,7 @@ static JunctionPrioTiming SimulatePrioTiming(const JunctionLayout &layout, const
 	const int64_t edge = ml_starts[merge_at] - coverage;
 	std::optional<int64_t> worst;
 	std::optional<int64_t> gap;
+	std::optional<int64_t> farthest;
 	for (const auto &[position, block] : signals) {
 		const auto it = held.find(block);
 		if (it == held.end()) continue;
@@ -480,6 +482,7 @@ static JunctionPrioTiming SimulatePrioTiming(const JunctionLayout &layout, const
 			const int64_t low = position - distance[last];
 			const int64_t high = position - distance[std::max<uint32_t>(first, 1) - 1] - 1;
 			if (high < low) continue;
+			farthest = std::min(farthest.value_or(INT64_MAX), low);
 			if (low <= edge) {
 				worst = std::max(worst.value_or(INT64_MIN), std::min(high, edge));
 			} else {
@@ -490,6 +493,7 @@ static JunctionPrioTiming SimulatePrioTiming(const JunctionLayout &layout, const
 
 	out.ml_delayed = worst.has_value();
 	out.worst_start = worst.value_or(edge);
+	out.required_distance = farthest.has_value() ? static_cast<uint32_t>(std::max<int64_t>(0, ml_starts[merge_at] - *farthest)) : 0;
 	if (out.ml_delayed) {
 		out.margin_ticks = 0;
 	} else if (gap.has_value()) {
@@ -506,7 +510,7 @@ static JunctionPrioTiming SimulatePrioTiming(const JunctionLayout &layout, const
  * The merges, their joiners and the joiners' Entry signal pieces are found as CheckPrioReach finds them.
  * Both paths continue beyond the exit as straight track with a signal every sd tiles, from sd tiles after the exit port.
  * @param layout The layout.
- * @param spec The junction spec; sd and prio_tl set the virtual signals and the coverage.
+ * @param spec The junction spec; sd and prio_tiles set the virtual signals and the coverage.
  * @param paths The movements' paths, in JunctionTMovements() order.
  * @param train The design train, loaded.
  * @param design_speed The ML speed in cur_speed units.

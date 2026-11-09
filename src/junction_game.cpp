@@ -354,6 +354,7 @@ JunctionNearResult FitJunctionLibraryNear(const std::vector<JunctionLibraryEntry
 		found.result.error = JunctionGenerateError::None;
 		found.result.hub = entry.hub;
 		found.result.score = {entry.score.first, entry.score.second + fit->terrain_cost};
+		found.result.prio_tiles = entry.prio_tiles;
 		found.offset = d;
 		return found;
 	}
@@ -431,9 +432,10 @@ void CcJunctionStep([[maybe_unused]] Commands cmd, const CommandCost &result, [[
  * @param ml_gap Gap of the mainline notation.
  * @param branch_gap Gap of the branch notation.
  * @param tl Train length in tiles.
- * @return The spec.
+ * @param train The loaded design train (D137); the generator sizes the prio coverage from it.
+ * @return The spec; prio_tiles is 0.
  */
-JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_gap, uint8_t tl)
+JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_gap, uint8_t tl, const JunctionTrainParams &train)
 {
 	const uint16_t speed = GetJunctionReferenceSpeed(railtype);
 
@@ -441,7 +443,7 @@ JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_
 	spec.ml_gap = ml_gap;
 	spec.branch_gap = branch_gap;
 	spec.tl = tl;
-	spec.prio_tl = 1;
+	spec.train = train;
 	spec.sd = _settings_client.gui.drag_signals_density;
 	spec.reference_speed = speed;
 	spec.curve_speed = GetRailTypeInfo(railtype)->curve_speed;

@@ -282,6 +282,7 @@ struct JunctionGenerateKey {
 	uint8_t tl;
 	uint8_t signal_type;
 	uint8_t sd;
+	JunctionTrainParams train; ///< The picked train, loaded (D137); default when none is picked.
 
 	bool operator==(const JunctionGenerateKey &) const = default;
 };
@@ -298,8 +299,9 @@ struct JunctionGenerateJob {
 
 /** A library build running on a worker thread, or finished; owns everything the worker reads, and outlives the window if needed. */
 struct JunctionLibraryJob {
+	std::atomic<bool> sizing_done{false}; ///< Set by the worker when spec.prio_tiles is final: the sized prio, or 0 when the sizing failed.
 	std::atomic<bool> done{false}; ///< Set by the worker when library is final.
-	JunctionSpec spec; ///< Spec the worker reads.
+	JunctionSpec spec; ///< Spec the worker reads; the worker sets prio_tiles first (D137).
 	std::shared_ptr<const std::vector<JunctionLibraryEntry>> library; ///< Written by the worker.
 };
 
@@ -319,6 +321,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	std::optional<JunctionGenerateKey> library_key; ///< MakeKey of the library, with anchor INVALID_TILE and rotation 0, mirrored false.
 	bool has_shown = false; ///< The ghost shows a placement, in the three fields below.
 	JunctionLayout shown_layout; ///< Oriented layout shown at the cursor.
+	uint8_t shown_prio_tiles = 0; ///< Prio coverage of the shown placement, in tiles.
 	TileIndex shown_origin = INVALID_TILE; ///< North corner of the shown placement.
 	TileIndex shown_tile = INVALID_TILE; ///< Hovered tile the shown placement belongs to.
 	int shown_distance = 0; ///< Chebyshev distance in tiles from the hovered tile to the shown placement's anchor.
@@ -368,7 +371,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	JunctionGenerateKey MakeKey(TileIndex tile) const
 	{
 		return {tile, _junction_rotation, EffectiveMirror(), this->ml_gap, this->branch_gap, this->tl,
-			static_cast<uint8_t>(_settings_client.gui.junction_signal_type), _settings_client.gui.drag_signals_density};
+			static_cast<uint8_t>(_settings_client.gui.junction_signal_type), _settings_client.gui.drag_signals_density,
+			this->picked_train.has_value() ? this->picked_train->loaded : JunctionTrainParams{}};
 	}
 
 	/** @return The key of the library: the generator inputs only, as the library is flat and doesn't depend on orientation. */
@@ -383,6 +387,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	/** Start building the library if the spec changed, and join the build when it is done. */
 	void EnsureLibrary()
 	{
+		if (!this->picked_train.has_value()) return;
 		const JunctionGenerateKey key = this->SpecKey();
 		if (this->library_key != key) {
 			if (this->library_thread.joinable()) this->library_thread.detach();
@@ -390,13 +395,16 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			this->library_key = key;
 
 			auto job = std::make_shared<JunctionLibraryJob>();
-			job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl);
+			job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl, this->picked_train->loaded);
 			if (!StartNewThread(&this->library_thread, "ottd:junctionlib", [job]() {
-				job->library = std::make_shared<const std::vector<JunctionLibraryEntry>>(BuildJunctionLibrary(job->spec));
+				job->spec.prio_tiles = SizeJunctionPrio(job->spec);
+				job->sizing_done = true;
+				job->library = std::make_shared<const std::vector<JunctionLibraryEntry>>(job->spec.prio_tiles == 0 ? std::vector<JunctionLibraryEntry>{} : BuildJunctionLibrary(job->spec));
 				job->done = true;
 			})) {
 				/* No thread: an empty library, so the refine tier alone works. */
 				job->library = std::make_shared<const std::vector<JunctionLibraryEntry>>();
+				job->sizing_done = true;
 				job->done = true;
 			}
 			this->library_job = std::move(job);
@@ -406,6 +414,14 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			this->library_thread.join();
 			if (this->hover_tile != INVALID_TILE) this->ShowHover();
 		}
+	}
+
+	/** @return The sizing status of the current spec: sizing while it runs, too long if it failed, else INVALID_STRING_ID (also with no train picked). */
+	StringID SizingStatus() const
+	{
+		if (!this->picked_train.has_value()) return INVALID_STRING_ID;
+		if (this->library_job == nullptr || this->library_key != this->SpecKey() || !this->library_job->sizing_done) return STR_JUNCTION_STATUS_SIZING_PRIO;
+		return this->library_job->spec.prio_tiles == 0 ? STR_JUNCTION_ERROR_PRIO_TOO_LONG : INVALID_STRING_ID;
 	}
 
 	/** @return Whether the library for the current spec is built. */
@@ -475,6 +491,10 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		const JunctionNearResult *result = this->FindCached(this->MakeKey(this->hover_tile));
 		if (result != nullptr) {
 			this->ShowResult(*result);
+		} else if (!this->picked_train.has_value()) {
+			this->ShowNoPlacement(STR_JUNCTION_STATUS_PICK_TRAIN);
+		} else if (this->SizingStatus() != INVALID_STRING_ID) {
+			this->ShowNoPlacement(this->SizingStatus());
 		} else if (!this->LibraryUsable()) {
 			this->ShowNoPlacement(STR_JUNCTION_STATUS_GENERATING);
 		} else if (this->ml_gap == 0) {
@@ -507,7 +527,11 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	{
 		const JunctionGenerateResult &result = near_result.result;
 		if (!result.layout.has_value()) {
-			this->ShowNoPlacement(result.error == JunctionGenerateError::NeedsMlGap ? STR_JUNCTION_ERROR_NEEDS_ML_GAP : STR_JUNCTION_ERROR_NO_LAYOUT_HERE);
+			StringID status = STR_JUNCTION_ERROR_NO_LAYOUT_HERE;
+			if (result.error == JunctionGenerateError::NeedsMlGap) status = STR_JUNCTION_ERROR_NEEDS_ML_GAP;
+			if (result.error == JunctionGenerateError::PrioTooLong) status = STR_JUNCTION_ERROR_PRIO_TOO_LONG;
+			if (result.error == JunctionGenerateError::PrioDelaysMainline) status = STR_JUNCTION_ERROR_PRIO_DELAYS_MAINLINE;
+			this->ShowNoPlacement(status);
 			return;
 		}
 
@@ -541,6 +565,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 		this->has_shown = true;
 		this->shown_layout = std::move(layout);
+		this->shown_prio_tiles = result.prio_tiles;
+		this->SetWidgetDirty(WID_BJ_TRAIN);
 		this->shown_origin = origin;
 		this->shown_tile = this->hover_tile;
 		this->shown_distance = std::max(std::abs(near_result.offset.x), std::abs(near_result.offset.y));
@@ -566,13 +592,16 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	/** Start a job for the hovered tile on the main thread's snapshot, unless one for it is running. */
 	void StartJob()
 	{
+		if (!this->picked_train.has_value() || this->SizingStatus() != INVALID_STRING_ID) return;
 		const JunctionGenerateKey key = this->MakeKey(this->hover_tile);
 		if (this->pending_key.has_value() && *this->pending_key == key) return;
 		/* A job for another spot may still run; it finishes on its own and its result is ignored. */
 		this->DetachJob();
 
 		auto job = std::make_shared<JunctionGenerateJob>();
-		job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl);
+		job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl, this->picked_train->loaded);
+		/* The sized prio sets the frame, so it goes in before the snapshot (D137). */
+		job->spec.prio_tiles = this->library_job->spec.prio_tiles;
 		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, MakeJunctionFrame(job->spec), 4);
 		if (this->LibraryUsable()) job->library = this->library_job->library;
 		if (!StartNewThread(&this->pending_thread, "ottd:junction", [job, key]() {
@@ -694,7 +723,6 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 			case WID_BJ_TL_DECREASE:
 				if (this->tl > 2) {
-					this->picked_train = std::nullopt;
 					this->tl--;
 					this->Regenerate();
 				}
@@ -702,7 +730,6 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 			case WID_BJ_TL_INCREASE:
 				if (this->tl < 12) {
-					this->picked_train = std::nullopt;
 					this->tl++;
 					this->Regenerate();
 				}
@@ -777,7 +804,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (widget == WID_BJ_TRAIN) {
 			if (!this->picked_train.has_value()) return GetString(STR_JUNCTION_TRAIN_NONE);
 			const JunctionPickedTrain &t = *this->picked_train;
-			const uint32_t prio = JunctionPrioLength(t.loaded, t.loaded.max_speed, t.tl, _settings_client.gui.drag_signals_density);
+			const uint32_t prio = this->has_shown ? this->shown_prio_tiles : JunctionPrioLength(t.loaded, t.loaded.max_speed, t.tl, _settings_client.gui.drag_signals_density);
 			std::string text = GetString(STR_JUNCTION_TRAIN, t.name, t.tl, prio);
 			if (prio > 2u * t.tl) text += GetString(STR_JUNCTION_TRAIN_LONG_PRIO);
 			return text;
@@ -788,6 +815,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			if (seq.GetState() == JunctionBuildState::Idle) {
 				if (this->pick_error != INVALID_STRING_ID && _junction_picking_train) return GetString(this->pick_error);
 				if (this->generate_error != INVALID_STRING_ID) return GetString(this->generate_error);
+				if (!this->picked_train.has_value()) return GetString(STR_JUNCTION_STATUS_PICK_TRAIN);
+				if (this->SizingStatus() != INVALID_STRING_ID) return GetString(this->SizingStatus());
 				if (this->hover_status != INVALID_STRING_ID) return GetString(this->hover_status);
 				if (this->has_shown && this->shown_distance != 0) return GetString(STR_JUNCTION_STATUS_NEARBY, this->shown_distance);
 			}

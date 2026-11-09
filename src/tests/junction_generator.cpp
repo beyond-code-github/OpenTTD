@@ -15,6 +15,8 @@
 #include "../junction_route.h"
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
+#include "../junction_throughput.h"
+#include "../junction_train_model.h"
 #include "../track_func.h"
 
 #include <algorithm>
@@ -26,6 +28,91 @@
 #include <set>
 
 #include "../safeguards.h"
+
+/** The test spec at its old coverage of one train length and without the ML delay check, for tests that pin geometry at a fixed coverage (D137). */
+static JunctionSpec PinnedTestSpec()
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.prio_tiles = spec.tl;
+	spec.prio_strict = false;
+	return spec;
+}
+
+/** The train fixture: a strong loaded train, capped at the spec's reference speed (a copy of the one in junction_throughput.cpp). */
+static JunctionTrainParams FixtureTrain(const JunctionSpec &spec)
+{
+	JunctionTrainParams p;
+	p.power_hp = 4000;
+	p.max_te = 300000;
+	p.mass_t = 500;
+	p.air_drag = 0;
+	p.max_speed = spec.reference_speed;
+	return p;
+}
+
+/** The prio timings of a layout for a spec, with the paths and design speed taken as EvaluateJunctionThroughput takes them. */
+static std::vector<JunctionPrioTiming> TimingsOf(const JunctionLayout &layout, const JunctionSpec &spec)
+{
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
+	std::vector<JunctionPath> paths;
+	/* The same paths-in-movement-order loop as in EvaluateJunctionThroughput. */
+	for (const auto &movement : JunctionTMovements()) {
+		const auto path = std::ranges::find_if(ctx.paths, [&](const JunctionPath &p) { return p.from == movement.first && p.to == movement.second; });
+		REQUIRE(path != ctx.paths.end());
+		paths.push_back(*path);
+	}
+	return JunctionPrioTimings(layout, spec, paths, spec.train, JunctionTerminalSpeed(spec.train), spec.tl);
+}
+
+TEST_CASE("SizeJunctionPrio sizes the test spec", "[junction][generator]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionSpec unsized = spec;
+	unsized.prio_tiles = 0;
+	CHECK(SizeJunctionPrio(unsized) == spec.prio_tiles);
+
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	CHECK(result.prio_tiles == spec.prio_tiles);
+	const std::vector<JunctionPrioTiming> timings = TimingsOf(*result.layout, spec);
+	CHECK_FALSE(timings.empty());
+	CHECK(std::ranges::none_of(timings, [](const JunctionPrioTiming &t) { return t.ml_delayed || t.timed_out; }));
+}
+
+TEST_CASE("SizeJunctionPrio: a slower train needs more coverage", "[junction][generator]")
+{
+	JunctionSpec d138_spec = MakeTestJunctionSpec();
+	d138_spec.prio_tiles = 0;
+	JunctionSpec fixture_spec = d138_spec;
+	fixture_spec.train = FixtureTrain(fixture_spec);
+
+	const uint8_t d138 = SizeJunctionPrio(d138_spec);
+	const uint8_t fixture = SizeJunctionPrio(fixture_spec);
+	REQUIRE(d138 > 0);
+	REQUIRE(fixture > 0);
+	CHECK(fixture > d138);
+	d138_spec.prio_tiles = d138;
+	fixture_spec.prio_tiles = fixture;
+	for (const JunctionSpec &spec : {d138_spec, fixture_spec}) {
+		const JunctionGenerateResult result = GenerateJunction(spec);
+		REQUIRE(result.layout.has_value());
+		CHECK(std::ranges::none_of(TimingsOf(*result.layout, spec), [](const JunctionPrioTiming &t) { return t.ml_delayed || t.timed_out; }));
+	}
+}
+
+TEST_CASE("Library entries carry a prio that does not delay the ML", "[junction][generator][library]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
+	REQUIRE_FALSE(library.empty());
+	for (const JunctionLibraryEntry &entry : library) {
+		CHECK(entry.prio_tiles > 0);
+		JunctionSpec sized = spec;
+		sized.prio_tiles = entry.prio_tiles;
+		const std::vector<JunctionPrioTiming> timings = TimingsOf(entry.layout, sized);
+		CHECK(std::ranges::none_of(timings, [](const JunctionPrioTiming &t) { return t.ml_delayed || t.timed_out; }));
+	}
+}
 
 TEST_CASE("GenerateJunction gives a rule-clean L_R T", "[junction]")
 {
@@ -131,7 +218,7 @@ static WSideMeasures MeasureWSide(const JunctionLayout &layout, const JunctionSp
 /* J1: the W side builds the tight entry (at most one plain tile after lane B's S-bend) and the prio spacing (N->W merges less than 8 tiles from the lane merge). */
 TEST_CASE("GenerateJunction: the W side is tight", "[junction]")
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionSpec spec = PinnedTestSpec();
 	const JunctionGenerateResult result = GenerateJunction(spec);
 	REQUIRE(result.layout.has_value());
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
@@ -172,7 +259,7 @@ TEST_CASE("GenerateJunction: the SL splits first with one signal tile before the
 /* J1 / D116: G9c checks the coverage itself. This candidate puts the lane merge just beyond the coverage; it used to be flagged by the "one more signalled segment" extension, and G9b judges it now. */
 TEST_CASE("CheckPrio: a lane merge just beyond the coverage is not a split inside it", "[junction]")
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionSpec spec = PinnedTestSpec();
 	JunctionCandidateParams params{13, Money(0), 0, 2};
 	params.bridge_margin = 2;
 	params.lane_style = 0;
@@ -187,7 +274,7 @@ TEST_CASE("CheckPrio: a lane merge just beyond the coverage is not a split insid
 /* Brief TUNE-footprint: the joiners sit as close as the prio rules allow, so the test junction is no wider than it was with the fixed margins (32). */
 TEST_CASE("GenerateJunction: the test junction is no wider than before the margins were dropped", "[junction]")
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionSpec spec = PinnedTestSpec();
 	JunctionGenerateResult result = GenerateJunction(spec);
 	REQUIRE(result.layout.has_value());
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
@@ -282,7 +369,7 @@ static int MaxXBridgeSpan(const JunctionLayout &layout)
 
 TEST_CASE("GenerateJunction: doubled bridges are no longer than needed", "[junction]")
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionSpec spec = PinnedTestSpec();
 	const JunctionGenerateResult result = GenerateJunction(spec);
 	REQUIRE(result.layout.has_value());
 
@@ -319,7 +406,7 @@ static const SweepCandidate *FirstClean(const JunctionSpec &spec, const std::vec
 
 TEST_CASE("BuildJunctionCandidate: some candidate is clean", "[junction]")
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionSpec spec = PinnedTestSpec();
 	const std::vector<SweepCandidate> &candidates = SweepCandidates(spec);
 	const SweepCandidate *clean = FirstClean(spec, candidates);
 	REQUIRE(clean != nullptr);
@@ -341,7 +428,7 @@ TEST_CASE("BuildJunctionCandidate: every candidate is structurally sound", "[jun
 
 TEST_CASE("BuildJunctionCandidate: the doubled lanes are equal and doubled", "[junction]")
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionSpec spec = PinnedTestSpec();
 	const std::vector<SweepCandidate> &candidates = SweepCandidates(spec);
 	const SweepCandidate *clean = FirstClean(spec, candidates);
 	REQUIRE(clean != nullptr);
@@ -365,7 +452,7 @@ TEST_CASE("BuildJunctionCandidate: the doubled lanes are equal and doubled", "[j
 
 TEST_CASE("BuildJunctionCandidate: the doubled ML lanes are mirror images", "[junction]")
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionSpec spec = PinnedTestSpec();
 	const std::vector<SweepCandidate> &candidates = SweepCandidates(spec, 0);
 	const SweepCandidate *clean = FirstClean(spec, candidates);
 	REQUIRE(clean != nullptr);
@@ -579,12 +666,12 @@ TEST_CASE("Junction generator spec sweep", "[.gensweep]")
 
 TEST_CASE("GenerateJunction: a longer prio covers two train lengths", "[junction]")
 {
-	const JunctionSpec base_spec = MakeTestJunctionSpec();
+	const JunctionSpec base_spec = PinnedTestSpec();
 	const JunctionGenerateResult base = GenerateJunction(base_spec);
 	REQUIRE(base.layout.has_value());
 
 	JunctionSpec spec = base_spec;
-	spec.prio_tl = 2;
+	spec.prio_tiles = 2 * spec.tl;
 	const JunctionGenerateResult result = GenerateJunction(spec);
 	REQUIRE(result.layout.has_value());
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
@@ -594,9 +681,9 @@ TEST_CASE("GenerateJunction: a longer prio covers two train lengths", "[junction
 
 TEST_CASE("GenerateJunction: prios keep their joins at SD 2", "[junction]")
 {
-	JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionSpec spec = PinnedTestSpec();
 	spec.sd = 2;
-	spec.prio_tl = 1;
+	spec.prio_tiles = spec.tl;
 	const JunctionGenerateResult result = GenerateJunction(spec);
 	REQUIRE(result.layout.has_value());
 	const JunctionLayout &layout = *result.layout;
@@ -660,7 +747,7 @@ TEST_CASE("GenerateJunction: a short train with a narrow branch fits", "[junctio
 TEST_CASE("GenerateJunction: a long train with a narrow branch still fits", "[junction]")
 {
 	/* At TL6 the N->W window ends left of xI - 16, so a search box that stopped there had no goal. */
-	JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionSpec spec = PinnedTestSpec();
 	spec.branch_gap = 0;
 	spec.tl = 6;
 	const JunctionGenerateResult result = GenerateJunction(spec);
@@ -745,9 +832,9 @@ TEST_CASE("GenerateJunction avoids a block of houses", "[junction][terrain]")
 TEST_CASE("the frame grows with prio coverage", "[junction][frame]")
 {
 	JunctionSpec spec = MakeTestJunctionSpec();
-	spec.prio_tl = 1;
 	for (const uint8_t tl : {uint8_t(2), uint8_t(4)}) {
 		spec.tl = tl;
+		spec.prio_tiles = tl;
 		const JunctionFrame f1 = MakeJunctionFrame(spec);
 		const JunctionFrame def{};
 		CHECK(f1.hub_x == def.hub_x);
@@ -757,7 +844,7 @@ TEST_CASE("the frame grows with prio coverage", "[junction][frame]")
 		CHECK(f1.terrain_origin_y == def.terrain_origin_y);
 	}
 	spec.tl = 4;
-	spec.prio_tl = 3;
+	spec.prio_tiles = 3 * spec.tl;
 	const JunctionFrame f3 = MakeJunctionFrame(spec);
 	CHECK(f3.hub_x == 38);
 	CHECK(f3.width == 80);
@@ -769,7 +856,7 @@ TEST_CASE("the frame grows with prio coverage", "[junction][frame]")
 TEST_CASE("library fit uses the library's frame", "[junction][frame][library]")
 {
 	JunctionSpec spec = MakeTestJunctionSpec();
-	spec.prio_tl = 2;
+	spec.prio_tiles = 2 * spec.tl;
 	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
 	if (library.empty()) {
 		WARN("library is empty at prio 2");
@@ -960,7 +1047,7 @@ TEST_CASE("GenerateJunction sets the score of the chosen layout", "[junction]")
 
 TEST_CASE("a bridge may span existing track", "[junction][terrain]")
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionSpec spec = PinnedTestSpec();
 	const JunctionTerrain flat = MakeFlatTerrain();
 	const JunctionGenerateResult base = GenerateJunction(spec, &flat);
 	REQUIRE(base.layout.has_value());

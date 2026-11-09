@@ -17,6 +17,8 @@ struct JunctionTrainParams {
 	uint32_t mass_t = 1; ///< gcache.cached_weight (t), at least 1.
 	uint32_t air_drag = 0; ///< gcache.cached_air_drag.
 	uint16_t max_speed = 0; ///< Speed cap in cur_speed units (the lowest of engine, rail type and curve limits).
+
+	bool operator==(const JunctionTrainParams &) const = default;
 };
 
 /** The state the game advances each tick. */

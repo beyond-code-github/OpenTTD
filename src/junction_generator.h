@@ -13,6 +13,7 @@
 #include "economy_type.h"
 #include "junction_layout.h"
 #include "junction_terrain.h"
+#include "junction_train_model.h"
 #include "signal_type.h"
 
 #include <functional>
@@ -36,7 +37,7 @@ struct JunctionSpec {
 	uint8_t ml_gap;
 	uint8_t branch_gap;
 	uint8_t tl; ///< Train length in tiles.
-	uint8_t prio_tl = 1; ///< Prio coverage upstream of a merge, in train lengths (stopgap until the 1c model, D31).
+	uint8_t prio_tiles = 0; ///< Prio coverage upstream of a merge, in straight tiles; set by GenerateJunction's sizing (D137), where a non-zero value is the least coverage tried.
 	uint8_t sd; ///< Signal spacing in tiles.
 	uint16_t reference_speed; ///< Same units as Train::GetCurveSpeedLimit.
 	uint8_t curve_speed; ///< RailTypeInfo::curve_speed.
@@ -44,19 +45,25 @@ struct JunctionSpec {
 	SignalType signal_type; ///< Block or PathOneWay.
 	std::function<bool(uint)> bridge_span_ok; ///< By middle-tile count.
 	JunctionUnitPrices prices;
+	JunctionTrainParams train{}; ///< The loaded design train (D101, D137); required.
+	bool prio_strict = true; ///< Reject layouts whose prio timing delays the ML (D119); false only for tests that pin geometry at a fixed coverage, and for rig comparisons (D137).
 };
 
-enum class JunctionGenerateError : uint8_t { None, InvalidNotation, MultiLane, NoLayout, NeedsMlGap };
+/** Why generation failed; PrioTooLong: the prio sizing found no coverage within its search bound; PrioDelaysMainline: the generated layout's prio delays the ML at the spec's coverage (D137). */
+enum class JunctionGenerateError : uint8_t { None, InvalidNotation, MultiLane, NoLayout, NeedsMlGap, PrioTooLong, PrioDelaysMainline };
 struct JunctionGenerateResult {
 	std::optional<JunctionLayout> layout;
 	JunctionGenerateError error = JunctionGenerateError::None;
 	TileIndexDiffC hub{}; ///< The offset, in the returned layout, of the frame's hub point (hub_x, 0).
 	std::pair<int, Money> score{}; ///< The chosen layout's score (tiles, cost), terrain cost included in the cost.
+	uint8_t prio_tiles = 0; ///< The prio coverage the sizing chose, in tiles.
 };
 
 uint16_t CurveSpeedLimitForSpacing(uint spacing, uint8_t curve_speed);
 uint DeriveCurveSpacing(uint16_t speed, uint8_t curve_speed, uint8_t tl);
 JunctionSpec MakeTestJunctionSpec();
+/** The least prio coverage in tiles that does not delay the ML on flat ground for the spec's train, starting at max(1, spec.prio_tiles); 0 when none is found within the search bound (D137). */
+uint8_t SizeJunctionPrio(const JunctionSpec &spec);
 JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const JunctionTerrain *terrain = nullptr);
 
 /** The canonical working frame the generator, terrain snapshot and library fit share (RECON-frame). */
@@ -67,7 +74,7 @@ struct JunctionFrame {
 	int terrain_height = 43; ///< Terrain rows, from terrain_origin_y.
 	int terrain_origin_y = -2; ///< Working y of the terrain's first row.
 };
-/** The frame for a spec: the defaults at prio 1, growing with the prio coverage. */
+/** The frame for a spec: the defaults up to a prio coverage of one train length, growing with the coverage beyond it. */
 JunctionFrame MakeJunctionFrame(const JunctionSpec &spec);
 
 class JunctionRouteCache;
@@ -110,11 +117,13 @@ struct JunctionLibraryEntry {
 	std::pair<int, Money> score; ///< ScoreJunctionLayout on flat ground.
 	int area = 0; ///< layout.size.x * layout.size.y.
 	JunctionFrame frame; ///< The frame the entry was built with; FitJunctionLibrary places the hub at its hub_x.
+	uint8_t prio_tiles = 0; ///< The prio coverage the entry was built at, in tiles.
 };
 
 /**
  * Every rule-clean flat candidate of the sweep, without the early stop: heights ml_gap+5 .. ml_gap+20, both crossing costs, slack 0..3.
  * Identical layouts (same JunctionLayoutToJson) are kept once, the first one found. Order is sweep order.
+ * The spec must be sized (prio_tiles > 0, see SizeJunctionPrio); candidates whose prio delays the ML are dropped (unless spec.prio_strict is false), and every entry records spec.prio_tiles.
  */
 std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec);
 

@@ -1226,7 +1226,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			};
 			uint covered = 0;
 			std::set<size_t> met;
-			for (size_t i = j; i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
+			for (size_t i = j; i-- > 0 && covered < 2u * ctx.spec.prio_tiles;) {
 				covered += ml.pieces[i].units;
 				const std::optional<size_t> block = BlockOfPiece(layout, blocks, ml.pieces[i]);
 				if (!block.has_value() || *block == merge_block->second || !met.insert(*block).second) continue;
@@ -1258,7 +1258,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 				const size_t merge_at = static_cast<size_t>(at - lane.pieces.begin());
 				uint lane_units = 0;
 				size_t first = merge_at;
-				for (size_t i = merge_at; i-- > 0 && lane_units < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
+				for (size_t i = merge_at; i-- > 0 && lane_units < 2u * ctx.spec.prio_tiles;) {
 					lane_units += lane.pieces[i].units;
 					first = i;
 				}
@@ -1485,7 +1485,7 @@ std::vector<RuleViolation> CheckPrioReach(const JunctionCheckContext &ctx)
 	std::vector<RuleViolation> out;
 	const JunctionLayout &layout = ctx.layout;
 	const auto used = UsedTracks(ctx);
-	const uint limit = 2u * ctx.spec.tl * ctx.spec.prio_tl;
+	const uint limit = 2u * ctx.spec.prio_tiles;
 
 	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
 		const JunctionPath &ml = ctx.paths[pi];

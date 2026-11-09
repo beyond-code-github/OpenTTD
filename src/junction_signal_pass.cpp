@@ -328,7 +328,7 @@ static bool PlacePrio(JunctionLayout &layout, const JunctionCheckContext &ctx, c
 		};
 		uint covered = 0;
 		size_t last_walked = merge_at;
-		for (size_t i = merge_at; i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
+		for (size_t i = merge_at; i-- > 0 && covered < 2u * ctx.spec.prio_tiles;) {
 			covered += lane.pieces[i].units;
 			last_walked = i;
 			require(i);
@@ -461,7 +461,7 @@ static std::vector<ReservedJoin> ReservePrioJoins(JunctionLayout &layout, const 
 				/* Is the lane merge inside the coverage walk back from the merge? */
 				uint covered = 0;
 				bool inside = false;
-				for (size_t i = merge.second; i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
+				for (size_t i = merge.second; i-- > 0 && covered < 2u * ctx.spec.prio_tiles;) {
 					covered += ml.pieces[i].units;
 					if (i == lane.second) inside = true;
 				}
@@ -500,7 +500,7 @@ static void PlaceLaneBlockSignals(JunctionLayout &layout, const JunctionSpec &sp
 		for (const SwitchEvent &merge : all_events[pi]) {
 			if (merge.first || IsLaneMerge(ctx, all_events, pi, merge) || !GeometryOfPrio(ctx, all_events, pi, merge).has_value()) continue;
 			uint covered = 0;
-			for (size_t i = merge.second; i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
+			for (size_t i = merge.second; i-- > 0 && covered < 2u * ctx.spec.prio_tiles;) {
 				covered += ml.pieces[i].units;
 				if (i == 0 || i + 1 >= ml.pieces.size()) continue;
 				const JunctionPiece &piece = ml.pieces[i];
@@ -539,7 +539,7 @@ static void ThinPrioCoverageSignals(JunctionLayout &layout, const JunctionCheckC
 				const size_t merge_at = static_cast<size_t>(at - lane.pieces.begin());
 				uint covered = 0;
 				size_t last = merge_at;
-				for (size_t i = merge_at; i-- > 0 && covered < 2u * ctx.spec.tl * ctx.spec.prio_tl;) {
+				for (size_t i = merge_at; i-- > 0 && covered < 2u * ctx.spec.prio_tiles;) {
 					covered += lane.pieces[i].units;
 					last = i;
 				}

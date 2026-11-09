@@ -11,10 +11,12 @@
 
 #include "junction_generator.h"
 #include "junction_rules.h"
+#include "junction_rules_internal.h"
 #include "core/math_func.hpp"
 #include "junction_route.h"
 #include "junction_router.h"
 #include "junction_signal_pass.h"
+#include "junction_throughput.h"
 #include "track_func.h"
 #include "thread.h"
 
@@ -95,7 +97,13 @@ JunctionSpec MakeTestJunctionSpec()
 	spec.ml_gap = 1;
 	spec.branch_gap = 1;
 	spec.tl = 4;
-	spec.prio_tl = 1;
+	spec.prio_tiles = 14; /* Measured: SizeJunctionPrio of this spec with prio_tiles 0 (see the test "SizeJunctionPrio sizes the test spec"). */
+	/* The D138 design train: Buborough's main-line consist, loaded. */
+	spec.train.power_hp = 14194;
+	spec.train.max_te = 1090000;
+	spec.train.mass_t = 561;
+	spec.train.air_drag = 25;
+	spec.train.max_speed = 196;
 	spec.sd = 2;
 	spec.reference_speed = 160;
 	spec.curve_speed = 0;
@@ -182,13 +190,13 @@ uint RasterUnits(const JunctionRaster &raster)
 } // namespace
 
 /**
- * The frame for a spec: it grows with the prio coverage beyond a prio of 1.
+ * The frame for a spec: it grows with the prio coverage beyond one train length.
  * @param spec The junction spec.
- * @return The frame; the defaults at prio 1.
+ * @return The frame; the defaults when the coverage is at most one train length.
  */
 JunctionFrame MakeJunctionFrame(const JunctionSpec &spec)
 {
-	const int dC = spec.tl * (spec.prio_tl - 1);
+	const int dC = std::max(0, spec.prio_tiles - spec.tl);
 	JunctionFrame frame{};
 	frame.hub_x += dC;
 	frame.width += 2 * dC;
@@ -306,7 +314,7 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 		request.starts = {start_n};
 		/* D108: the N->E merge window starts beyond the prio coverage past the E->S split; the checker rejects unsafe positions. */
 		const int x_s = e_to_s->pieces.front().tile.x;
-		const int cover = static_cast<int>(spec.tl * spec.prio_tl);
+		const int cover = static_cast<int>(spec.prio_tiles);
 		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, std::max(xO, x_s + cover + 1 + params.e_slack), frame.width - 3);
 		const std::optional<JunctionRaster> n_to_e = RouteAndAdd(l, request, params.route_cache);
 		if (!n_to_e.has_value()) return false;
@@ -332,7 +340,7 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 
 		const std::string span = fmt::format("B{}", n);
 		const int nw_row = params.lane_style == 1 ? b_row : w_row;
-		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - static_cast<int>(spec.tl * spec.prio_tl) - params.w_slack); };
+		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - static_cast<int>(spec.prio_tiles) - params.w_slack); };
 		JunctionRaster raster_a_style1;
 		JunctionRaster raster_b;
 		std::optional<int> merge_x;
@@ -681,12 +689,35 @@ static void JunctionParallelFor(size_t n, const std::function<void(size_t)> &fn)
 	for (std::thread &thr : threads) thr.join();
 }
 
+/** The search bound of the prio sizing, in tiles (D137). */
+static constexpr uint8_t MAX_PRIO_TILES = 32;
+
 /**
- * Generate a junction: sweep candidates, keep the rule-clean ones and pick the best by score.
- * @param spec The junction spec.
+ * The prio timings of a layout for a spec's design train, with the paths and the design speed obtained as EvaluateJunctionThroughput obtains them.
+ * @param layout The layout.
+ * @param spec The junction spec; train and prio_tiles are used.
+ * @return One timing per prio merge; none when a movement has no path.
+ */
+static std::vector<JunctionPrioTiming> PrioTimingsOf(const JunctionLayout &layout, const JunctionSpec &spec)
+{
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
+	std::vector<JunctionPath> paths;
+	/* The same paths-in-movement-order loop as in EvaluateJunctionThroughput. */
+	for (const auto &movement : JunctionTMovements()) {
+		const auto path = std::ranges::find_if(ctx.paths, [&](const JunctionPath &p) { return p.from == movement.first && p.to == movement.second; });
+		if (path == ctx.paths.end()) return {};
+		paths.push_back(*path);
+	}
+	return JunctionPrioTimings(layout, spec, paths, spec.train, JunctionTerminalSpeed(spec.train), spec.tl);
+}
+
+/**
+ * Sweep candidates, keep the rule-clean ones and pick the best by score, without checking the prio timing.
+ * @param spec The junction spec; prio_tiles is used as given.
+ * @param terrain Optional terrain snapshot.
  * @return The best layout, or NoLayout when no candidate is clean.
  */
-JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const JunctionTerrain *terrain)
+static JunctionGenerateResult GenerateJunctionUnchecked(const JunctionSpec &spec, const JunctionTerrain *terrain)
 {
 	/* With no gap row the W prio has nowhere to go: the row inside the W track is the E track, and the joiner blocks the outside. */
 	if (spec.ml_gap == 0) return {std::nullopt, JunctionGenerateError::NeedsMlGap};
@@ -759,6 +790,55 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 	return {std::move(best), JunctionGenerateError::None, best_hub, best_score};
 }
 
+/**
+ * Generate a junction: sweep candidates, keep the rule-clean ones and pick the best by score.
+ * @param spec The junction spec; prio_tiles must be set, see SizeJunctionPrio.
+ * @param terrain Optional terrain snapshot.
+ * @return The best layout and spec.prio_tiles; NoLayout when no candidate is clean; PrioDelaysMainline when the best layout's prio delays the ML (unless spec.prio_strict is false).
+ */
+JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const JunctionTerrain *terrain)
+{
+	assert(spec.prio_tiles > 0);
+	JunctionGenerateResult result = GenerateJunctionUnchecked(spec, terrain);
+	if (!result.layout.has_value()) return result;
+
+	if (spec.prio_strict && std::ranges::any_of(PrioTimingsOf(*result.layout, spec), [](const JunctionPrioTiming &t) { return t.ml_delayed || t.timed_out; })) {
+		return {std::nullopt, JunctionGenerateError::PrioDelaysMainline};
+	}
+	result.prio_tiles = spec.prio_tiles;
+	return result;
+}
+
+/**
+ * The least prio coverage, in tiles, that does not delay the ML on the flat generated junction for the spec's design train (D137).
+ * The coverage starts at max(1, spec.prio_tiles); each step jumps to the farthest delaying ML start of the exact timing (S1c2).
+ * @param spec The junction spec; train is required, prio_tiles is the least coverage tried.
+ * @return The coverage, or 0 when it would exceed the search bound or no flat layout exists.
+ */
+uint8_t SizeJunctionPrio(const JunctionSpec &spec)
+{
+	JunctionSpec copy = spec;
+	copy.prio_tiles = std::max<uint8_t>(1, spec.prio_tiles);
+	for (;;) {
+		const JunctionGenerateResult result = GenerateJunctionUnchecked(copy, nullptr);
+		if (!result.layout.has_value()) return 0;
+
+		bool delayed = false;
+		uint next = 0;
+		/* A timed out timing steps the coverage by one: its required_distance is 0 or small. */
+		for (const JunctionPrioTiming &timing : PrioTimingsOf(*result.layout, copy)) {
+			if (!timing.ml_delayed && !timing.timed_out) continue;
+			delayed = true;
+			next = std::max(next, timing.required_distance / JunctionProgressPerStraightTile() + 1);
+		}
+		if (!delayed) return copy.prio_tiles;
+
+		const uint wanted = std::max<uint>(copy.prio_tiles + 1u, next);
+		if (wanted > MAX_PRIO_TILES) return 0;
+		copy.prio_tiles = static_cast<uint8_t>(wanted);
+	}
+}
+
 std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 {
 	std::vector<JunctionLibraryEntry> library;
@@ -800,11 +880,13 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 		if (!r.clean) continue;
 		std::optional<JunctionLayout> &layout = r.layout;
 		if (!seen.insert(JunctionLayoutToJson(*layout)).second) continue;
+		if (spec.prio_strict && std::ranges::any_of(PrioTimingsOf(*layout, spec), [](const JunctionPrioTiming &t) { return t.ml_delayed || t.timed_out; })) continue;
 		JunctionLibraryEntry entry;
 		entry.hub = r.hub;
 		entry.frame = MakeJunctionFrame(spec);
 		entry.score = ScoreJunctionLayout(*layout, spec);
 		entry.area = layout->size.x * layout->size.y;
+		entry.prio_tiles = spec.prio_tiles;
 		entry.layout = std::move(*layout);
 		library.push_back(std::move(entry));
 	}

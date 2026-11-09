@@ -41,10 +41,12 @@ TEST_CASE("MakeJunctionSpec: reads settings and the rail type")
 
 	_settings_client.gui.junction_signal_type = 0;
 	_settings_game.vehicle.train_acceleration_model = AccelerationModel::Realistic;
-	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, 2, 3, 5);
+	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, 2, 3, 5, MakeTestJunctionSpec().train);
 	CHECK(spec.ml_gap == 2);
 	CHECK(spec.branch_gap == 3);
 	CHECK(spec.tl == 5);
+	CHECK(spec.train == MakeTestJunctionSpec().train);
+	CHECK(spec.prio_tiles == 0);
 	CHECK(spec.sd == 7);
 	CHECK(spec.curve_speed == 3);
 	CHECK(spec.curve_limit);
@@ -54,7 +56,7 @@ TEST_CASE("MakeJunctionSpec: reads settings and the rail type")
 
 	_settings_client.gui.junction_signal_type = 1;
 	_settings_game.vehicle.train_acceleration_model = AccelerationModel::Original;
-	spec = MakeJunctionSpec(RAILTYPE_RAIL, 1, 1, 4);
+	spec = MakeJunctionSpec(RAILTYPE_RAIL, 1, 1, 4, MakeTestJunctionSpec().train);
 	CHECK(spec.signal_type == SignalType::PathOneWay);
 	CHECK_FALSE(spec.curve_limit);
 
@@ -79,7 +81,7 @@ TEST_CASE("MakeJunctionSpec: bridge closures are precomputed for 1..10 middle ti
 	_settings_game.construction.max_bridge_length = 50;
 	_railtypes[RAILTYPE_RAIL].max_speed = 120;
 
-	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, 1, 1, 4);
+	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, 1, 1, 4, MakeTestJunctionSpec().train);
 	const Money huge = std::numeric_limits<int64_t>::max() / 4;
 	for (uint n = 1; n <= 10; n++) {
 		std::optional<BridgeType> type = ChooseJunctionBridgeType(RAILTYPE_RAIL, n);
@@ -114,7 +116,7 @@ TEST_CASE("MakeJunctionSpec: a bridge slower than the design speed is still usab
 	_settings_game.construction.max_bridge_length = 50;
 	_railtypes[RAILTYPE_RAIL].max_speed = 0;
 
-	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, 1, 1, 4);
+	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, 1, 1, 4, MakeTestJunctionSpec().train);
 	REQUIRE(spec.reference_speed > 40);
 	for (uint n = 1; n <= 10; n++) {
 		if (!ChooseJunctionBridgeType(RAILTYPE_RAIL, n).has_value()) continue;
@@ -226,10 +228,10 @@ TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working fram
 	CHECK(terrain.At(0, 0)->cls == JunctionTileClass::Blocked);
 }
 
-/** A flat Buildable terrain at z0 with margin 4: origin and size as MakeJunctionTerrain gives. */
+/** A flat Buildable terrain at z0 with margin 4, in the frame of the sized test spec: origin and size as MakeJunctionTerrain gives. */
 static JunctionTerrain MakeNearTestTerrain(int margin = 4)
 {
-	const JunctionFrame frame{};
+	const JunctionFrame frame = MakeJunctionFrame(MakeTestJunctionSpec());
 	JunctionTerrain t;
 	t.origin = {static_cast<int16_t>(-margin), static_cast<int16_t>(frame.terrain_origin_y - margin)};
 	t.width = frame.width + 2 * margin;
@@ -271,7 +273,8 @@ TEST_CASE("GenerateJunctionNear: a blocked spot gives a nearby fit", "[junction]
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	JunctionTerrain terrain = MakeNearTestTerrain();
-	SetNearTestRect(terrain, 27, 32, 2, 7, JunctionTileClass::Blocked);
+	const int hub_shift = MakeJunctionFrame(spec).hub_x - JunctionFrame{}.hub_x;
+	SetNearTestRect(terrain, 27 + hub_shift, 32 + hub_shift, 2, 7, JunctionTileClass::Blocked);
 	const std::atomic<bool> cancel{false};
 	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
 	REQUIRE(near.result.layout.has_value());
@@ -282,7 +285,7 @@ TEST_CASE("GenerateJunctionNear: cancel stops the search", "[junction][terrain]"
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	JunctionTerrain terrain = MakeNearTestTerrain();
-	SetNearTestRect(terrain, -4, 67, -6, 44, JunctionTileClass::Blocked);
+	SetNearTestRect(terrain, -4, MakeJunctionFrame(spec).width + 3, -6, 44, JunctionTileClass::Blocked);
 	const std::atomic<bool> cancel{true};
 	const auto start = std::chrono::steady_clock::now();
 	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
@@ -313,12 +316,13 @@ TEST_CASE("FitJunctionLibraryNear: a blocked block gives a fit whose tiles are b
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
 	JunctionTerrain terrain = MakeNearTestTerrain();
-	SetNearTestRect(terrain, 27, 32, 2, 7, JunctionTileClass::Blocked);
+	const int hub_shift = MakeJunctionFrame(spec).hub_x - JunctionFrame{}.hub_x;
+	SetNearTestRect(terrain, 27 + hub_shift, 32 + hub_shift, 2, 7, JunctionTileClass::Blocked);
 	const JunctionNearResult near = FitJunctionLibraryNear(library, terrain, 0, false);
 	WARN("6x6 block: " << (near.result.layout.has_value() ? "fit" : "no fit") << " at offset " << near.offset.x << "," << near.offset.y);
 	if (near.result.layout.has_value()) {
 		/* At rotation 0 the shifted snapshot reads the unshifted one at the working tile plus the offset. */
-		const int ox = JunctionFrame{}.hub_x - near.result.hub.x + near.offset.x;
+		const int ox = MakeJunctionFrame(spec).hub_x - near.result.hub.x + near.offset.x;
 		const int oy = -near.result.hub.y + near.offset.y;
 		for (const JunctionTrack &jt : near.result.layout->tracks) {
 			if (jt.tracks.None()) continue;
@@ -334,7 +338,7 @@ TEST_CASE("FitJunctionLibraryNear: all blocked gives NoLayout at offset 0", "[ju
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
 	JunctionTerrain terrain = MakeNearTestTerrain();
-	SetNearTestRect(terrain, -4, 67, -6, 44, JunctionTileClass::Blocked);
+	SetNearTestRect(terrain, -4, MakeJunctionFrame(spec).width + 3, -6, 44, JunctionTileClass::Blocked);
 	const JunctionNearResult near = FitJunctionLibraryNear(library, terrain, 0, false);
 	CHECK_FALSE(near.result.layout.has_value());
 	CHECK(near.result.error == JunctionGenerateError::NoLayout);

@@ -324,8 +324,35 @@ static bool ConResetTile(std::span<std::string_view> argv)
 static bool ConJunctionExport(std::span<std::string_view> argv)
 {
 	if (argv.empty()) {
-		IConsolePrint(CC_HELP, "Generate a junction at a tile and write it as JSON. Usage: 'junction_export <tile> <rotation 0-3> <mirror 0|1> <path> [ml] [branch] [tl] [near 0|1|2]'.");
+		IConsolePrint(CC_HELP, "Generate a junction at a tile and write it as JSON. Usage: 'junction_export <tile> <rotation 0-3> <mirror 0|1> <path> [ml] [branch] [tl] [near 0|1|2] train=<hp>,<N>,<t>,<drag>,<speed> [prio=<tiles>]'.");
 		IConsolePrint(CC_HELP, "The notations default to L_R, the train length to 4 and near to 0 (1 searches nearby spots too, 2 fits the candidate library at nearby spots, the instant tier).");
+		IConsolePrint(CC_HELP, "The loaded design train is required (D137), as a trailing argument: power in hp, max tractive effort in N, mass in tonnes, air drag and max speed in cur_speed units.");
+		IConsolePrint(CC_HELP, "prio=<tiles> skips the prio sizing and uses that coverage without the ML delay check, for comparisons.");
+		return true;
+	}
+
+	/* The trailing arguments train= and prio= come in either order; without a train the command stops. */
+	std::optional<JunctionTrainParams> train;
+	std::optional<uint32_t> prio_arg;
+	while (argv.size() > 1 && (argv.back().starts_with("train=") || argv.back().starts_with("prio="))) {
+		if (argv.back().starts_with("prio=")) {
+			prio_arg = ParseInteger(argv.back().substr(5), 10);
+			if (!prio_arg.has_value() || *prio_arg == 0 || *prio_arg > UINT8_MAX) return false;
+		} else {
+			std::vector<std::optional<uint32_t>> values;
+			std::string_view list = argv.back().substr(6);
+			for (size_t pos = 0; pos <= list.size();) {
+				const size_t comma = std::min(list.find(',', pos), list.size());
+				values.push_back(ParseInteger(list.substr(pos, comma - pos), 10));
+				pos = comma + 1;
+			}
+			if (values.size() != 5 || !std::ranges::all_of(values, [](const std::optional<uint32_t> &v) { return v.has_value(); }) || *values[2] == 0 || *values[4] > UINT16_MAX) return false;
+			train = JunctionTrainParams{*values[0], *values[1], *values[2], *values[3], static_cast<uint16_t>(*values[4])};
+		}
+		argv = argv.first(argv.size() - 1);
+	}
+	if (!train.has_value()) {
+		IConsolePrint(CC_ERROR, "junction_export needs a design train: train=hp,N,t,drag,speed");
 		return true;
 	}
 
@@ -351,7 +378,19 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 	}
 
 	Backup<CompanyID> cur_company(_current_company, CompanyID{0});
-	const JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, ml.gap, branch.gap, static_cast<uint8_t>(*tl_arg));
+	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, ml.gap, branch.gap, static_cast<uint8_t>(*tl_arg), *train);
+	if (prio_arg.has_value()) {
+		spec.prio_tiles = static_cast<uint8_t>(*prio_arg);
+		spec.prio_strict = false;
+	} else {
+		spec.prio_tiles = SizeJunctionPrio(spec);
+	}
+	if (spec.prio_tiles == 0) {
+		std::ofstream failed{std::string{argv[4]}};
+		failed << "{\"error\":\"PrioTooLong\"}\n";
+		IConsolePrint(CC_WARNING, "junction_export error PrioTooLong");
+		return true;
+	}
 
 	const TileIndex tile{*tile_arg};
 	const bool mirrored = (*mirror_arg != 0) != (_settings_game.vehicle.road_side == RoadVehicleDrivingSide::Left);
@@ -377,7 +416,7 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 
 	std::ofstream out{std::string{argv[4]}};
 	if (!result.layout.has_value()) {
-		static const char *const names[] = {"None", "InvalidNotation", "MultiLane", "NoLayout", "NeedsMlGap"};
+		static const char *const names[] = {"None", "InvalidNotation", "MultiLane", "NoLayout", "NeedsMlGap", "PrioTooLong", "PrioDelaysMainline"};
 		const char *name = names[to_underlying(result.error)];
 		out << "{\"error\":\"" << name << "\"}\n";
 		IConsolePrint(CC_WARNING, "junction_export error {}", name);
@@ -388,7 +427,7 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 	const TileIndexDiffC offset = OrientJunctionOffset(result.hub, result.layout->size, static_cast<uint8_t>(*rot_arg), mirrored);
 	const int ox = static_cast<int>(TileX(tile)) + found.offset.x - offset.x;
 	const int oy = static_cast<int>(TileY(tile)) + found.offset.y - offset.y;
-	out << "{\"origin\":[" << ox << "," << oy << "],\"offset\":[" << found.offset.x << "," << found.offset.y << "]," << (*near_arg == 2 ? "\"tier\":\"instant\"," : "") << JunctionLayoutToJson(oriented).substr(1);
+	out << "{\"origin\":[" << ox << "," << oy << "],\"offset\":[" << found.offset.x << "," << found.offset.y << "],\"prio_tiles\":" << static_cast<int>(result.prio_tiles) << "," << (*near_arg == 2 ? "\"tier\":\"instant\"," : "") << JunctionLayoutToJson(oriented).substr(1);
 	IConsolePrint(CC_DEFAULT, "junction_export ok origin={},{} size={}x{}{}", ox, oy, oriented.size.x, oriented.size.y, timing);
 	return true;
 }
@@ -415,7 +454,8 @@ static bool ConStationExport(std::span<std::string_view> argv)
 	if (!IsValidTile(*tile_arg) || *rot_arg > 3 || *mirror_arg > 1 || *platforms_arg < 2 || *platforms_arg > 8 || *tl_arg == 0 || *tl_arg > 255) return false;
 
 	const JunctionNotation ml = ParseJunctionNotation("L_R");
-	const JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, ml.gap, ml.gap, static_cast<uint8_t>(*tl_arg));
+	/* Stations do not size a prio (D137). */
+	const JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, ml.gap, ml.gap, static_cast<uint8_t>(*tl_arg), JunctionTrainParams{});
 	const JunctionStationResult result = GenerateStation(spec, static_cast<uint8_t>(*platforms_arg));
 
 	std::ofstream out{std::string{argv[4]}};

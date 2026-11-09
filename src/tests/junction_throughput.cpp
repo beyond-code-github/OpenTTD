@@ -65,8 +65,8 @@ TEST_CASE("EvaluateJunctionThroughput on the generated test junction", "[junctio
 	const JunctionGenerateResult result = GenerateJunction(spec);
 	REQUIRE(result.layout.has_value());
 
-	const JunctionTrainParams train = FixtureTrain(spec);
-	const std::optional<JunctionThroughput> out = EvaluateJunctionThroughput(*result.layout, spec, train, spec.tl, MakeDefaultJunctionMix());
+	CHECK(result.prio_tiles > 0);
+	const std::optional<JunctionThroughput> out = EvaluateJunctionThroughput(*result.layout, spec, spec.train, spec.tl, MakeDefaultJunctionMix());
 	REQUIRE(out.has_value());
 	REQUIRE(out->movements.size() == JunctionTMovements().size());
 	for (size_t i = 0; i < out->movements.size(); i++) {
@@ -334,10 +334,11 @@ static std::vector<JunctionPrioTiming> PrioMergeTimings(int entry_back, uint32_t
 	const JunctionTrainParams train = FixtureTrain(spec);
 	const uint16_t speed = JunctionTerminalSpeed(train);
 	const uint32_t length = JunctionPrioLength(train, speed, spec.tl, spec.sd);
-	spec.prio_tl = static_cast<uint8_t>((length + spec.tl - 1) / spec.tl + extra_tl);
-	if (fixed_prio_tl != 0) spec.prio_tl = fixed_prio_tl;
+	uint8_t prio_tl = static_cast<uint8_t>((length + spec.tl - 1) / spec.tl + extra_tl);
+	if (fixed_prio_tl != 0) prio_tl = fixed_prio_tl;
+	spec.prio_tiles = static_cast<uint8_t>(prio_tl * spec.tl);
 
-	const int m = spec.prio_tl * spec.tl + 8;
+	const int m = spec.prio_tiles + 8;
 	const int ml_end = m + 12;
 	const JunctionRaster ml = RasterizeJunctionRoute({{0, 1}, Trackdir::X_SW, std::string(ml_end, 'F')});
 	const JunctionRaster joiner = RasterizeJunctionRoute({{static_cast<int16_t>(m - 8), 0}, Trackdir::X_SW, "FFFFFFFLFR"});

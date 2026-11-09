@@ -171,7 +171,7 @@ TEST_CASE("Junction generator candidate sweep", "[.gen]")
 	if (const char *e = std::getenv("JUNCTION_GEN_SD")) spec.sd = static_cast<uint8_t>(e[0] - '0');
 	if (const char *e = std::getenv("JUNCTION_GEN_G")) spec.ml_gap = static_cast<uint8_t>(e[0] - '0');
 	if (const char *e = std::getenv("JUNCTION_GEN_B")) spec.branch_gap = static_cast<uint8_t>(e[0] - '0');
-	if (const char *e = std::getenv("JUNCTION_GEN_PRIO")) spec.prio_tl = static_cast<uint8_t>(e[0] - '0');
+	if (const char *e = std::getenv("JUNCTION_GEN_PRIO")) spec.prio_tiles = static_cast<uint8_t>((e[0] - '0') * spec.tl);
 	std::map<std::string, int> histogram;
 	int built = 0;
 	int best = 1 << 20;
@@ -207,7 +207,7 @@ TEST_CASE("Junction generator candidate sweep", "[.gen]")
 TEST_CASE("Junction test circuit", "[.circuit]")
 {
 	JunctionSpec spec = MakeTestJunctionSpec();
-	if (const char *e = std::getenv("JUNCTION_GEN_PRIO")) spec.prio_tl = static_cast<uint8_t>(e[0] - '0');
+	if (const char *e = std::getenv("JUNCTION_GEN_PRIO")) spec.prio_tiles = static_cast<uint8_t>((e[0] - '0') * spec.tl);
 	JunctionGenerateResult result = GenerateJunction(spec);
 	REQUIRE(result.layout.has_value());
 	JunctionLayout layout = *result.layout;
