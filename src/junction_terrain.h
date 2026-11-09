@@ -10,8 +10,10 @@
 #ifndef JUNCTION_TERRAIN_H
 #define JUNCTION_TERRAIN_H
 
+#include "direction_type.h"
 #include "economy_type.h"
 #include "map_type.h"
+#include "slope_type.h"
 
 #include <vector>
 
@@ -28,9 +30,13 @@ struct JunctionTerrainTile {
 	int8_t z_min = 0; ///< Lowest corner height.
 	int8_t z_max = 0; ///< Highest corner height.
 	bool steep = false;
+	DiagDirection incline = DiagDirection::Invalid; ///< The canonical direction an inclined slope rises in, Invalid otherwise (D152).
 	JunctionTileClass cls = JunctionTileClass::Buildable;
 	Money clear_cost = 0;
 };
+
+/** The canonical uphill direction of an inclined slope under a junction orientation, or DiagDirection::Invalid when the slope isn't inclined (D152). */
+DiagDirection JunctionCanonicalIncline(Slope slope, uint8_t rotation, bool mirrored);
 
 /** A terrain snapshot in the generator's canonical frame. Tiles outside the grid are Blocked. */
 struct JunctionTerrain {

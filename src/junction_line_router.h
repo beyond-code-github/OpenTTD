@@ -33,12 +33,13 @@ struct JunctionLineRouteRequest {
 	TileIndexDiffC max;
 	std::vector<TileIndexDiffC> blocked; ///< Tiles no track or bridge may use.
 	const JunctionTerrain *terrain = nullptr; ///< When set, every piece's tile must be usable at plane, and its CostAt is paid once per tile (D147).
-	int plane = 0; ///< The level the line is built on; only used with a terrain.
+	int plane = 0; ///< Track 0's start height; every track starts at it (D152).
 	const JunctionLayout *existing = nullptr; ///< When set, its tracks and bridge heads are obstacles (D147).
 	uint curve_spacing = 0; ///< As JunctionRouteRequest: half-units of straight run needed before a turn.
 	uint s_bend_window = 0; ///< As JunctionRouteRequest.
 	Money rail_piece = 1; ///< Per piece, summed over all tracks.
 	Money turn_cost = 0; ///< Once per line turn (D135 c).
+	Money slope_piece = 0; ///< Added for each ramp piece, per track (D95, D152).
 	std::function<bool(uint)> bridge_span_ok; ///< By middle-tile count; bridges are tried only when this and bridge_price are set and max_bridge_middle > 0 (D149).
 	std::function<Money(uint)> bridge_price; ///< Per track and bridge, by middle-tile count. The heuristic stays admissible while bridge_price(n) >= (n + 2) * rail_piece.
 	uint max_bridge_middle = 0; ///< Largest n tried for B<n>.

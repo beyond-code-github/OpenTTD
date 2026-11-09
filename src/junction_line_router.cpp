@@ -36,6 +36,7 @@ struct LineTrackState {
 struct LineNode {
 	std::vector<JunctionPiece> last;
 	std::vector<LineTrackState> states;
+	std::vector<int8_t> z; ///< Each track's height after its last piece (D152).
 	bool after_bridge = false; ///< The last move was a bridge (D149 5).
 	uint8_t passed = 0; ///< Waypoints passed so far (D150).
 };
@@ -93,11 +94,40 @@ private:
 		return piece.tile.x >= request.min.x && piece.tile.x <= request.max.x && piece.tile.y >= request.min.y && piece.tile.y <= request.max.y;
 	}
 
-	/** Whether a piece may be built: inside the bounds, not blocked, usable terrain at the plane, and an exact parallel pair at most with the existing tracks (D147). */
-	bool PieceUsable(const JunctionPiece &piece) const
+	/**
+	 * The height step of a piece (D152): level when the tile is usable at z, else a ramp along an incline.
+	 * @param piece The piece.
+	 * @param z The track's height before the piece.
+	 * @param allow_ramp Whether the piece may be a ramp.
+	 * @param[out] new_z The track's height after the piece.
+	 * @param[out] ramp Whether the piece is a ramp.
+	 * @return Whether the piece is usable.
+	 */
+	bool HeightStep(const JunctionPiece &piece, int8_t z, bool allow_ramp, int8_t &new_z, bool &ramp) const
 	{
-		if (!InBounds(piece) || blocked.contains(PackTile(piece.tile.x, piece.tile.y))) return false;
-		if (request.terrain != nullptr && !request.terrain->UsableAt(piece.tile.x, piece.tile.y, request.plane)) return false;
+		new_z = z;
+		ramp = false;
+		if (request.terrain == nullptr || request.terrain->UsableAt(piece.tile.x, piece.tile.y, z)) return true;
+		if (!allow_ramp || !IsDiagonalTrackdir(piece.trackdir)) return false;
+		const JunctionTerrainTile *tile = request.terrain->At(piece.tile.x, piece.tile.y);
+		if (tile == nullptr || tile->cls != JunctionTileClass::Buildable || tile->steep || tile->incline == DiagDirection::Invalid) return false;
+		const DiagDirection exit = TrackdirToExitdir(piece.trackdir);
+		if (tile->incline == exit && tile->z_min == z) {
+			new_z = static_cast<int8_t>(z + 1);
+		} else if (tile->incline == ReverseDiagDir(exit) && tile->z_max == z) {
+			new_z = static_cast<int8_t>(z - 1);
+		} else {
+			return false;
+		}
+		ramp = true;
+		return true;
+	}
+
+	/** Whether a piece may be built: inside the bounds, not blocked, its height step usable, and an exact parallel pair at most with the existing tracks (D147). */
+	bool PieceUsable(const JunctionPiece &piece, int8_t z, bool allow_ramp, int8_t &new_z, bool &ramp) const
+	{
+	if (!InBounds(piece) || blocked.contains(PackTile(piece.tile.x, piece.tile.y))) return false;
+	if (!HeightStep(piece, z, allow_ramp, new_z, ramp)) return false;
 		const auto it = existing_bits.find(PackTile(piece.tile.x, piece.tile.y));
 		if (it == existing_bits.end()) return true;
 		TrackBits bits = it->second;
@@ -107,10 +137,12 @@ private:
 		return !TracksOverlap(bits);
 	}
 
-	/** The terrain cost of building on a piece's tile at the plane, zero without a terrain. */
-	Money TerrainCost(const JunctionPiece &piece) const
+	/** The terrain cost of building on a piece's tile at height z, zero without a terrain; a ramp pays the tile's clear cost only. */
+	Money TerrainCost(const JunctionPiece &piece, int8_t z, bool ramp) const
 	{
-		return request.terrain != nullptr ? request.terrain->CostAt(piece.tile.x, piece.tile.y, request.plane) : Money{0};
+	if (request.terrain == nullptr) return Money{0};
+	if (ramp) return request.terrain->At(piece.tile.x, piece.tile.y)->clear_cost;
+	return request.terrain->CostAt(piece.tile.x, piece.tile.y, z);
 	}
 
 	/**
@@ -163,6 +195,7 @@ private:
 		const JunctionPiece &first = node.last[0];
 		key += fmt::format("{},{},{}", first.tile.x, first.tile.y, static_cast<int>(first.trackdir));
 		for (const LineTrackState &state : node.states) key += fmt::format(";{},{},{},{}", state.u, state.hand, state.prev_gap_ok, state.pair);
+		for (int8_t z : node.z) key += fmt::format(";{}", z);
 		key += node.after_bridge ? ";b" : ";";
 		key += fmt::format("{}", node.passed);
 		return key;
@@ -246,6 +279,7 @@ JunctionLineRouteResult LineRouter::Run()
 		}
 		root.last.push_back(raster.pieces.back());
 		root.states.push_back(state);
+		root.z.push_back(static_cast<int8_t>(request.plane));
 		root_entry.added.emplace_back(raster.pieces.begin() + 1, raster.pieces.end());
 		root_entry.bridges.insert(root_entry.bridges.end(), raster.bridges.begin(), raster.bridges.end());
 	}
@@ -261,8 +295,10 @@ JunctionLineRouteResult LineRouter::Run()
 		std::unordered_map<uint64_t, TrackBits> used;
 		for (const JunctionRaster &raster : first) {
 			const JunctionPiece &piece = raster.pieces[0];
-			if (!PieceUsable(piece)) return {std::nullopt, "no route"};
-			if (!used.contains(PackTile(piece.tile.x, piece.tile.y))) root_cost += TerrainCost(piece);
+			int8_t new_z;
+			bool ramp;
+			if (!PieceUsable(piece, static_cast<int8_t>(request.plane), false, new_z, ramp)) return {std::nullopt, "no route"};
+			if (!used.contains(PackTile(piece.tile.x, piece.tile.y))) root_cost += TerrainCost(piece, static_cast<int8_t>(request.plane), false);
 			if (!Occupy(used, piece)) return {std::nullopt, "no route"};
 		}
 	}
@@ -335,12 +371,17 @@ JunctionLineRouteResult LineRouter::Run()
 			Money cost = move == 'F' ? Money{0} : request.turn_cost;
 			for (size_t i = 0; i < added.size() && legal; i++) {
 				const JunctionPiece *previous = &node.last[i];
+				int8_t z = node.z[i];
 				for (const JunctionPiece &piece : added[i]) {
-					if (!PieceUsable(piece)) {
+					int8_t new_z;
+					bool ramp;
+					if (!PieceUsable(piece, z, move == 'F', new_z, ramp)) {
 						legal = false;
 						break;
 					}
-					if (!used.contains(PackTile(piece.tile.x, piece.tile.y))) cost += TerrainCost(piece);
+					if (!used.contains(PackTile(piece.tile.x, piece.tile.y))) cost += TerrainCost(piece, z, ramp);
+					if (ramp) cost += request.slope_piece;
+					z = new_z;
 					if (!Occupy(used, piece) || !AdvanceState(next.states[i], *previous, piece)) {
 						legal = false;
 						break;
@@ -348,7 +389,10 @@ JunctionLineRouteResult LineRouter::Run()
 					cost += request.rail_piece;
 					previous = &piece;
 				}
-				if (legal) next.last[i] = added[i].back();
+				if (legal) {
+					next.last[i] = added[i].back();
+					next.z[i] = z;
+				}
 			}
 			if (!legal) continue;
 			PassWaypoints(next.passed, added[0], false);
@@ -382,16 +426,18 @@ JunctionLineRouteResult LineRouter::Run()
 					const JunctionPiece &piece = added[i][k];
 					if (k == 0 || k + 1 == added[i].size()) {
 						const uint64_t packed = PackTile(piece.tile.x, piece.tile.y);
-						if (!PieceUsable(piece) || existing_bits.contains(packed) || used.contains(packed)) {
+						int8_t new_z;
+						bool ramp;
+						if (!PieceUsable(piece, node.z[i], false, new_z, ramp) || existing_bits.contains(packed) || used.contains(packed)) {
 							legal = false;
 							break;
 						}
-						cost += TerrainCost(piece);
+						cost += TerrainCost(piece, node.z[i], false);
 						Occupy(used, piece);
 					} else if (!InBounds(piece) || blocked.contains(PackTile(piece.tile.x, piece.tile.y)) || is_head(piece) ||
 							(request.existing != nullptr && BetweenBridgeHeads(piece.tile.x, piece.tile.y, request.existing->bridges)) ||
 							BetweenBridgeHeads(piece.tile.x, piece.tile.y, path_bridges) ||
-							(request.terrain != nullptr && !request.terrain->SpanOk(piece.tile.x, piece.tile.y, request.plane))) {
+							(request.terrain != nullptr && !request.terrain->SpanOk(piece.tile.x, piece.tile.y, node.z[i]))) {
 						legal = false;
 						break;
 					}

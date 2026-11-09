@@ -229,6 +229,25 @@ CommandCost GameJunctionPricing::TestClear(TileIndex tile) const
 }
 
 /**
+ * The canonical uphill direction of an inclined slope under a junction orientation (D152).
+ * @param slope The tile's slope.
+ * @param rotation Quarter turns of the orientation.
+ * @param mirrored Whether the orientation is mirrored.
+ * @return The direction in the canonical frame the slope rises in, or DiagDirection::Invalid when the slope isn't inclined.
+ */
+DiagDirection JunctionCanonicalIncline(Slope slope, uint8_t rotation, bool mirrored)
+{
+	const DiagDirection uphill = GetInclinedSlopeDirection(slope);
+	if (uphill == DiagDirection::Invalid) return DiagDirection::Invalid;
+	const TileIndexDiffC canonical = InverseOrientJunctionVector(TileIndexDiffCByDiagDir(uphill), rotation, mirrored);
+	for (DiagDirection dir = DiagDirection::Begin; dir != DiagDirection::End; dir++) {
+		const TileIndexDiffC step = TileIndexDiffCByDiagDir(dir);
+		if (step.x == canonical.x && step.y == canonical.y) return dir;
+	}
+	NOT_REACHED();
+}
+
+/**
  * Snapshot the map around an anchor for the generator, in its working frame (D93).
  * Working cell (x, y) is map tile anchor + OrientJunctionVector({x - frame.hub_x, y}, rotation, mirrored); the grid covers the frame.
  * @param anchor The anchor tile (working cell (frame.hub_x, 0)).
@@ -265,6 +284,7 @@ JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mir
 			cell.z_min = static_cast<int8_t>(z);
 			cell.z_max = static_cast<int8_t>(GetTileMaxZ(tile));
 			cell.steep = IsSteepSlope(slope);
+			cell.incline = JunctionCanonicalIncline(slope, rotation, mirrored);
 
 			switch (GetTileType(tile)) {
 				case TileType::Clear:

@@ -14,6 +14,8 @@
 #include "../junction_layout.h"
 #include "../junction_line_router.h"
 #include "../direction_func.h"
+#include "../map_func.h"
+#include "../slope_func.h"
 #include "../track_func.h"
 
 #include <algorithm>
@@ -750,6 +752,181 @@ TEST_CASE("FindJunctionLineRoute: waypoint routes are as cheap as an uninformed 
 		const JunctionLineRouteResult informed = FindJunctionLineRoute(request);
 		request.use_heuristic = false;
 		const JunctionLineRouteResult uninformed = FindJunctionLineRoute(request);
+		INFO("case " << which << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
+		REQUIRE(informed.route.has_value());
+		REQUIRE(uninformed.route.has_value());
+		CHECK(informed.cost == uninformed.cost);
+	}
+}
+
+/** A line request with ramps: the terrain has a hand-set height profile along x, and the request's heights follow it (D152). */
+struct LineRampCase {
+	JunctionLineRouteRequest request;
+	JunctionTerrain terrain;
+};
+
+/** Set every tile of a column of the terrain: heights and incline. */
+static void SetRampColumn(JunctionTerrain &terrain, int x, int z_min, int z_max, DiagDirection incline)
+{
+	for (int y = terrain.origin.y; y < terrain.origin.y + terrain.height; y++) {
+		JunctionTerrainTile &tile = TerrainTileOf(terrain, x, y);
+		tile.z_min = static_cast<int8_t>(z_min);
+		tile.z_max = static_cast<int8_t>(z_max);
+		tile.incline = incline;
+	}
+}
+
+/** The common ramp setup: bounds hugging the line's rows (when asked), terrain at one height outside the columns set by the caller, prices that tell the parts apart. */
+static void SetUpRamps(LineRampCase &c, int plane, bool hug)
+{
+	c.request = BaseRequest();
+	c.request.rail_piece = 1;
+	c.request.turn_cost = 0;
+	c.request.slope_piece = 11;
+	c.request.plane = plane;
+	if (hug) {
+		const std::vector<int> rows = TrackRows(c.request);
+		c.request.min.y = static_cast<int16_t>(*std::min_element(rows.begin(), rows.end()));
+		c.request.max.y = static_cast<int16_t>(*std::max_element(rows.begin(), rows.end()));
+	}
+	c.terrain = FlatTerrainFor(c.request, 5);
+	c.terrain.build_on_slopes = false;
+	c.terrain.foundation_cost = 7;
+	for (JunctionTerrainTile &tile : c.terrain.tiles) tile.z_min = tile.z_max = static_cast<int8_t>(plane);
+	c.request.terrain = &c.terrain;
+}
+
+/** A ridge across the field: from x = 40 the ground is at 0, rises over x = 33, is level at 1 over x = 32 and 31, and falls over x = 30. */
+static void SetUpRidge(LineRampCase &c)
+{
+	SetUpRamps(c, 0, true);
+	SetRampColumn(c.terrain, 33, 0, 1, DiagDirection::NE);
+	SetRampColumn(c.terrain, 32, 1, 1, DiagDirection::Invalid);
+	SetRampColumn(c.terrain, 31, 1, 1, DiagDirection::Invalid);
+	SetRampColumn(c.terrain, 30, 0, 1, DiagDirection::SW);
+}
+
+/** A valley across the field: the ground is at 1, falls over x = 33, is at 0 over x = 32 to 30, and rises over x = 29. */
+static void SetUpValley(LineRampCase &c)
+{
+	SetUpRamps(c, 1, true);
+	SetRampColumn(c.terrain, 33, 0, 1, DiagDirection::SW);
+	for (int x = 30; x <= 32; x++) SetRampColumn(c.terrain, x, 0, 0, DiagDirection::Invalid);
+	SetRampColumn(c.terrain, 29, 0, 1, DiagDirection::NE);
+}
+
+/** The cost of the straight route over a profile of two ramp tiles: 21 tiles and 20 rail pieces per track, the ramps paying clear cost and slope_piece. */
+static Money RampRouteCost(const LineRampCase &c)
+{
+	return Money(c.request.line.tracks) * (21 * 5 + 20 + 2 * 11);
+}
+
+TEST_CASE("FindJunctionLineRoute: climbs over a ridge", "[junction][linerouter]")
+{
+	LineRampCase c;
+	SetUpRidge(c);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	CheckRoute(c.request, result);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->moves == std::string(20, 'F'));
+	CHECK(result.cost == RampRouteCost(c));
+}
+
+TEST_CASE("FindJunctionLineRoute: descends into a valley", "[junction][linerouter]")
+{
+	LineRampCase c;
+	SetUpRamps(c, 1, true);
+	SetRampColumn(c.terrain, 33, 0, 1, DiagDirection::SW);
+	SetRampColumn(c.terrain, 32, 0, 0, DiagDirection::Invalid);
+	SetRampColumn(c.terrain, 31, 0, 0, DiagDirection::Invalid);
+	SetRampColumn(c.terrain, 30, 0, 1, DiagDirection::NE);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	CheckRoute(c.request, result);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->moves == std::string(20, 'F'));
+	CHECK(result.cost == RampRouteCost(c));
+}
+
+TEST_CASE("FindJunctionLineRoute: no turn on a ramp", "[junction][linerouter]")
+{
+	LineRampCase c;
+	SetUpRamps(c, 0, false);
+	c.request.goals = {{{20, 16}, Trackdir::X_NE}};
+	SetRampColumn(c.terrain, 30, 0, 1, DiagDirection::NE);
+	SetRampColumn(c.terrain, 29, 1, 1, DiagDirection::Invalid);
+	SetRampColumn(c.terrain, 28, 0, 1, DiagDirection::SW);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	CheckRoute(c.request, result);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->moves.find_first_of("LR") != std::string::npos);
+	for (const JunctionRaster &raster : RasterizeJunctionLine(c.request.line, *result.route)) {
+		for (size_t i = 1; i < raster.pieces.size(); i++) {
+			const JunctionPiece &piece = raster.pieces[i];
+			if (c.terrain.At(piece.tile.x, piece.tile.y)->incline == DiagDirection::Invalid) continue;
+			CHECK(IsDiagonalTrackdir(piece.trackdir));
+			CHECK(TrackdirToDirection(piece.trackdir) == TrackdirToDirection(raster.pieces[i - 1].trackdir));
+		}
+	}
+}
+
+TEST_CASE("FindJunctionLineRoute: a bridge or slopes by price", "[junction][linerouter]")
+{
+	for (Money slope_piece : {Money(0), Money(1000)}) {
+		LineRampCase c;
+		SetUpValley(c);
+		EnableBridges(c.request);
+		c.request.slope_piece = slope_piece;
+		const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+		INFO("slope_piece " << slope_piece);
+		CheckRoute(c.request, result);
+		REQUIRE(result.route.has_value());
+		CHECK((result.route->moves.find('B') != std::string::npos) == (slope_piece == 1000));
+	}
+}
+
+TEST_CASE("JunctionCanonicalIncline: rotations", "[junction][linerouter]")
+{
+	for (Slope slope : {SLOPE_NE, SLOPE_SE, SLOPE_SW, SLOPE_NW}) {
+		for (uint8_t rotation = 0; rotation < 4; rotation++) {
+			for (bool mirrored : {false, true}) {
+				const TileIndexDiffC canonical = InverseOrientJunctionVector(TileIndexDiffCByDiagDir(GetInclinedSlopeDirection(slope)), rotation, mirrored);
+				const DiagDirection result = JunctionCanonicalIncline(slope, rotation, mirrored);
+				INFO("slope " << static_cast<int>(slope) << " rotation " << static_cast<int>(rotation) << " mirrored " << mirrored);
+				REQUIRE(result != DiagDirection::Invalid);
+				CHECK(TileIndexDiffCByDiagDir(result).x == canonical.x);
+				CHECK(TileIndexDiffCByDiagDir(result).y == canonical.y);
+			}
+		}
+	}
+	for (Slope slope : {SLOPE_FLAT, SLOPE_N, SLOPE_EW, SLOPE_STEEP_N, SLOPE_NWS}) {
+		CHECK(JunctionCanonicalIncline(slope, 1, true) == DiagDirection::Invalid);
+	}
+}
+
+TEST_CASE("FindJunctionLineRoute: ramp routes are as cheap as an uninformed search", "[junction][linerouter][slow]")
+{
+	for (int which = 0; which < 4; which++) {
+		LineRampCase c;
+		switch (which) {
+			case 0: SetUpRidge(c); break;
+			case 1: SetUpValley(c); break;
+			case 2:
+				SetUpRamps(c, 0, false);
+				c.request.goals = {{{20, 16}, Trackdir::X_NE}};
+				SetRampColumn(c.terrain, 30, 0, 1, DiagDirection::NE);
+				SetRampColumn(c.terrain, 29, 1, 1, DiagDirection::Invalid);
+				SetRampColumn(c.terrain, 28, 0, 1, DiagDirection::SW);
+				break;
+			default:
+				SetUpValley(c);
+				EnableBridges(c.request);
+				c.request.slope_piece = 1000;
+				break;
+		}
+		c.request.use_heuristic = true;
+		const JunctionLineRouteResult informed = FindJunctionLineRoute(c.request);
+		c.request.use_heuristic = false;
+		const JunctionLineRouteResult uninformed = FindJunctionLineRoute(c.request);
 		INFO("case " << which << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
 		REQUIRE(informed.route.has_value());
 		REQUIRE(uninformed.route.has_value());
