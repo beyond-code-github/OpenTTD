@@ -3,8 +3,8 @@
 ## PARKED 2026-11-09 late night (engineer to bed; no agents running)
 
 **Resume here, in order:**
-1. **O4a** (briefs/O4a-router-starts.md): the agent was stopped mid-step. `.claude/o4a` (branch wt-o4a at 8307acb5bb) holds uncommitted, unverified edits to `junction_line_router.{h,cpp}` and its tests (copy: OneDrive `OpenTTD-junction-tool/o4a-partial.patch`). Simplest: `git -C .claude/o4a checkout .` and relaunch the brief fresh with head = feature head.
-2. **O2** tunnels in the router (briefs/O2-router-tunnels.md, ready; needs O4a merged; T1 is merged).
+1. **O4a merged** (see git log: "Feature: Junction line router may start from any of several pieces"; 385/385 suite).
+2. **O2** tunnels in the router (briefs/O2-router-tunnels.md, ready; O4a and T1 merged: start here).
 3. **O4b** search brief to write from DESIGN-O4.md (runs beside O2); **T1b** checker/ghost tunnel fixes (listed below).
 4. Morning deliverable for the engineer: per-generation timings vs 100 ms, compactness vs today's T (190/53 slivers) and coop numbers, ASCII renders of the first organic layouts.
 **Scratchpad** backed up to OneDrive `scratchpad-2026-11-09/` (ptest.sh, compact/metric.py, s2fm2). After a reboot: copy ptest.sh back into the new scratchpad and fix the briefs' ptest path.
