@@ -35,6 +35,7 @@
 #include "widgets/junction_widget.h"
 #include "map_func.h"
 #include "slope_func.h"
+#include "slider_func.h"
 #include "tile_cmd.h"
 #include "viewport_func.h"
 
@@ -283,6 +284,7 @@ struct JunctionGenerateKey {
 	uint8_t signal_type;
 	uint8_t sd;
 	JunctionTrainParams train; ///< The picked train, loaded (D137); default when none is picked.
+	uint8_t prio_tiles; ///< Effective prio coverage of the slider (D139); 0 in the library key and before sizing.
 
 	bool operator==(const JunctionGenerateKey &) const = default;
 };
@@ -344,6 +346,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	uint8_t tl; ///< Train length in tiles.
 	std::optional<JunctionPickedTrain> picked_train; ///< The picked train, if the train length comes from one.
 	StringID pick_error = INVALID_STRING_ID; ///< Error of the last pick, shown in the status line.
+	uint8_t prio_choice = 0; ///< Slider choice; 0 = the strict maximum (D139).
 
 	BuildJunctionWindow(WindowDesc &desc, Window *parent, RailType railtype) : PickerWindowBase(desc, parent), railtype(railtype),
 		ml_editbox(MAX_NOTATION_LENGTH * MAX_CHAR_LENGTH, MAX_NOTATION_LENGTH), branch_editbox(MAX_NOTATION_LENGTH * MAX_CHAR_LENGTH, MAX_NOTATION_LENGTH),
@@ -372,7 +375,21 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	{
 		return {tile, _junction_rotation, EffectiveMirror(), this->ml_gap, this->branch_gap, this->tl,
 			static_cast<uint8_t>(_settings_client.gui.junction_signal_type), _settings_client.gui.drag_signals_density,
-			this->picked_train.has_value() ? this->picked_train->loaded : JunctionTrainParams{}};
+			this->picked_train.has_value() ? this->picked_train->loaded : JunctionTrainParams{}, this->EffectivePrio()};
+	}
+
+	/** @return The strict coverage the sizing found for the current spec; 0 before sizing is done or when it failed. */
+	uint8_t SizedPrio() const
+	{
+		if (!this->picked_train.has_value() || this->library_job == nullptr || this->library_key != this->SpecKey() || !this->library_job->sizing_done) return 0;
+		return this->library_job->spec.prio_tiles;
+	}
+
+	/** @return The coverage the slider selects (D139); 0 before sizing is done or when it failed. */
+	uint8_t EffectivePrio() const
+	{
+		const uint8_t sized = this->SizedPrio();
+		return sized == 0 ? 0 : JunctionPrioChoice(this->prio_choice, this->tl, sized).first;
 	}
 
 	/** @return The key of the library: the generator inputs only, as the library is flat and doesn't depend on orientation. */
@@ -381,6 +398,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		JunctionGenerateKey key = this->MakeKey(INVALID_TILE);
 		key.rotation = 0;
 		key.mirrored = false;
+		key.prio_tiles = 0;
 		return key;
 	}
 
@@ -427,7 +445,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	/** @return Whether the library for the current spec is built. */
 	bool LibraryUsable() const
 	{
-		return this->library_job != nullptr && this->library_job->done && this->library_key == this->SpecKey();
+		return this->library_job != nullptr && this->library_job->done && this->library_key == this->SpecKey() && this->EffectivePrio() == this->SizedPrio();
 	}
 
 	/**
@@ -601,7 +619,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		auto job = std::make_shared<JunctionGenerateJob>();
 		job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl, this->picked_train->loaded);
 		/* The sized prio sets the frame, so it goes in before the snapshot (D137). */
-		job->spec.prio_tiles = this->library_job->spec.prio_tiles;
+		std::tie(job->spec.prio_tiles, job->spec.prio_strict) = JunctionPrioChoice(this->prio_choice, key.tl, this->library_job->spec.prio_tiles);
 		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, MakeJunctionFrame(job->spec), 4);
 		if (this->LibraryUsable()) job->library = this->library_job->library;
 		if (!StartNewThread(&this->pending_thread, "ottd:junction", [job, key]() {
@@ -724,6 +742,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			case WID_BJ_TL_DECREASE:
 				if (this->tl > 2) {
 					this->tl--;
+					this->prio_choice = 0;
 					this->Regenerate();
 				}
 				break;
@@ -731,9 +750,25 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			case WID_BJ_TL_INCREASE:
 				if (this->tl < 12) {
 					this->tl++;
+					this->prio_choice = 0;
 					this->Regenerate();
 				}
 				break;
+
+			case WID_BJ_PRIO_SLIDER: {
+				const uint8_t sized = this->SizedPrio();
+				if (sized == 0) break;
+				uint8_t value = this->EffectivePrio();
+				if (ClickSliderWidget(this->GetWidget<NWidgetBase>(widget)->GetCurrentRect(), pt, std::min(this->tl, sized), sized, 0, value)) {
+					const uint8_t choice = value >= sized ? 0 : value;
+					if (choice != this->prio_choice) {
+						this->prio_choice = choice;
+						this->Regenerate();
+					}
+				}
+				if (click_count > 0) this->mouse_capture_widget = widget;
+				break;
+			}
 
 			case WID_BJ_ROTATE:
 				_junction_rotation = (_junction_rotation + 1) % 4;
@@ -761,6 +796,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->pick_error = INVALID_STRING_ID;
 		this->tl = picked->tl;
 		this->picked_train = std::move(picked);
+		this->prio_choice = 0;
 		this->Regenerate();
 		this->SetWidgetDirty(WID_BJ_TRAIN);
 		_junction_picking_train = false;
@@ -809,6 +845,11 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			if (prio > 2u * t.tl) text += GetString(STR_JUNCTION_TRAIN_LONG_PRIO);
 			return text;
 		}
+		if (widget == WID_BJ_PRIO_LABEL) {
+			if (this->picked_train.has_value() && this->SizingStatus() != INVALID_STRING_ID) return GetString(this->SizingStatus());
+			if (!this->picked_train.has_value()) return GetString(STR_EMPTY);
+			return GetString(STR_JUNCTION_PRIO_LENGTH, this->EffectivePrio(), this->SizedPrio());
+		}
 		if (widget == WID_BJ_TL_LABEL) return GetString(STR_JUNCTION_TRAIN_LENGTH, this->tl);
 		if (widget == WID_BJ_STATUS) {
 			const JunctionSequencer &seq = GetJunctionSequencer();
@@ -833,6 +874,18 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			return GetString(STR_JUNCTION_COST, this->placement_cost);
 		}
 		return this->PickerWindowBase::GetWidgetString(widget, stringid);
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (widget != WID_BJ_PRIO_SLIDER) return;
+		const uint8_t sized = this->SizedPrio();
+		if (sized == 0) {
+			/* No value to show: a disabled slider. */
+			DrawSliderWidget(r, Colours::Mauve, Colours::Yellow, TextColour::Black, 0, 1, 0, 0, nullptr, 0, 0);
+			return;
+		}
+		DrawSliderWidget(r, Colours::Mauve, Colours::Yellow, TextColour::Black, std::min(this->tl, sized), sized, 0, this->EffectivePrio(), nullptr);
 	}
 
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
@@ -1043,6 +1096,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widge
 			EndContainer(),
 			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_PICK_TRAIN), SetStringTip(STR_JUNCTION_PICK_TRAIN, STR_JUNCTION_PICK_TRAIN_TOOLTIP), SetFill(1, 0),
 			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_TRAIN), SetFill(1, 0),
+			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_PRIO_LABEL), SetFill(1, 0),
+			NWidget(WWT_EMPTY, Colours::Invalid, WID_BJ_PRIO_SLIDER), SetMinimalTextLines(1, 12 + WidgetDimensions::unscaled.vsep_normal, FontSize::Small), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_JUNCTION_PRIO_SLIDER_TOOLTIP),
 			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_COST), SetFill(1, 0),
 			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_ROTATE), SetStringTip(STR_JUNCTION_ROTATE, STR_JUNCTION_ROTATE_TOOLTIP), SetFill(1, 0),

@@ -47,6 +47,9 @@ std::optional<JunctionPickedTrain> ReadJunctionTrain(const Vehicle *v);
 /** Fill a generator spec from the game: settings, rail type, prices and bridges, and the design train (D137); prio_tiles is left for the generator's sizing. */
 JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_gap, uint8_t tl, const JunctionTrainParams &train);
 
+/** The coverage and strictness for a slider choice (D139). @param choice 0 = the maximum. @param tl Train length. @param sized The strict coverage from SizeJunctionPrio (> 0). @return {prio_tiles, prio_strict}. */
+std::pair<uint8_t, bool> JunctionPrioChoice(uint8_t choice, uint8_t tl, uint8_t sized);
+
 /** Snapshot the map around an anchor for the generator, in its working frame (D93): cell (cx, cy) is map tile anchor + OrientJunctionVector({cx - frame.hub_x, cy}, rotation, mirrored). */
 JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored, const JunctionFrame &frame, int margin = 0);
 

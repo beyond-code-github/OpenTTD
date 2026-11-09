@@ -472,3 +472,18 @@ JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_
 	};
 	return spec;
 }
+
+/**
+ * The coverage and strictness for a slider choice (D139).
+ * @param choice The slider choice; 0 is the maximum.
+ * @param tl Train length in tiles.
+ * @param sized The strict coverage from SizeJunctionPrio (> 0).
+ * @return {prio_tiles, prio_strict}.
+ */
+std::pair<uint8_t, bool> JunctionPrioChoice(uint8_t choice, uint8_t tl, uint8_t sized)
+{
+	const uint8_t minimum = std::min(tl, sized);
+	if (choice == 0 || choice >= sized) return {sized, true};
+	const uint8_t tiles = std::max(choice, minimum);
+	return {tiles, tiles == sized};
+}

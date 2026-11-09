@@ -2905,6 +2905,8 @@ STR_JUNCTION_PICK_TRAIN_TOOLTIP                                 :{BLACK}Click on
 STR_JUNCTION_TRAIN                                              :{BLACK}{RAW_STRING}: {NUM} tiles, prio {NUM} tiles
 STR_JUNCTION_TRAIN_LONG_PRIO                                    :{BLACK} (long)
 STR_JUNCTION_TRAIN_NONE                                         :{BLACK}No train picked
+STR_JUNCTION_PRIO_LENGTH                                        :{BLACK}Prio length: {NUM} of {NUM} tiles
+STR_JUNCTION_PRIO_SLIDER_TOOLTIP                                :{BLACK}Shorter than the maximum accepts occasional main-line holds behind joining trains
 STR_JUNCTION_ERROR_NOT_OUR_TRAIN                                :{RED}Pick one of your own trains
 STR_JUNCTION_RETRY                                               :{BLACK}Retry
 STR_JUNCTION_RETRY_TOOLTIP                                       :{BLACK}Check the cost again and continue building from the failed step

@@ -345,3 +345,15 @@ TEST_CASE("FitJunctionLibraryNear: all blocked gives NoLayout at offset 0", "[ju
 	CHECK(near.offset.x == 0);
 	CHECK(near.offset.y == 0);
 }
+
+TEST_CASE("JunctionPrioChoice follows the slider rules", "[junction][game]")
+{
+	using R = std::pair<uint8_t, bool>;
+	CHECK(JunctionPrioChoice(0, 5, 14) == R{14, true});
+	CHECK(JunctionPrioChoice(20, 5, 14) == R{14, true});
+	CHECK(JunctionPrioChoice(14, 5, 14) == R{14, true});
+	CHECK(JunctionPrioChoice(7, 5, 14) == R{7, false});
+	CHECK(JunctionPrioChoice(3, 5, 14) == R{5, false});
+	CHECK(JunctionPrioChoice(0, 5, 3) == R{3, true});
+	CHECK(JunctionPrioChoice(2, 5, 3) == R{3, true});
+}
