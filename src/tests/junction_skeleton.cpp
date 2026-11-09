@@ -30,9 +30,18 @@ static JunctionSkeletonInputs StaggerInputs(int zmin0, int zmin1, int zmax0, int
 	in.nmax = 10;
 	in.cover = 15;
 	in.x_cap = 28;
+	in.stagger = 1;
+	
 	return in;
 }
 
+/*
+ * By hand, stagger 1, zmin 40/41, zmax 42/43, nmax 10, cover 15, k_w 1, k_sb 1, D145 offsets:
+ * x_heA >= 42 + 1 = 43 and x_heB >= 43 + 1 = 44, x_heB = x_heA + 1, so Down gives 43 and 44.
+ * x_hwA <= 40 - 1 = 39 and x_hwB <= 41 - 1 = 40, x_hwB = x_hwA + 1, so Up gives 39 and 40 (spans 3, within 11).
+ * x_ls >= x_heA + 2 = 45 and >= x_heB + 1 = 45, so 45; x_sl >= x_ls + 2 = 47.
+ * x_lm <= x_hwA - 2 = 37 and <= x_hwB - 3 = 37, so 37; x_nw <= 37 - (15 + 1) = 21 (cap 28); x_sb <= 21 - 1 = 20.
+ */
 TEST_CASE("SolveJunctionSkeletonW: staggered crossing gives staggered heads", "[junction][skeleton]")
 {
 	const JunctionSkeletonW w = SolveJunctionSkeletonW(StaggerInputs(40, 41, 42, 43));
@@ -41,11 +50,11 @@ TEST_CASE("SolveJunctionSkeletonW: staggered crossing gives staggered heads", "[
 	CHECK(w.x_he[1] == 44);
 	CHECK(w.x_hw[0] == 39);
 	CHECK(w.x_hw[1] == 40);
-	CHECK(w.x_ls == 48);
-	CHECK(w.x_sl == 50);
-	CHECK(w.x_lm == 35);
-	CHECK(w.x_nw == 19);
-	CHECK(w.x_sb == 18);
+	CHECK(w.x_ls == 45);
+	CHECK(w.x_sl == 47);
+	CHECK(w.x_lm == 37);
+	CHECK(w.x_nw == 21);
+	CHECK(w.x_sb == 20);
 }
 
 TEST_CASE("SolveJunctionSkeletonW: a span over the limit names the span", "[junction][skeleton]")

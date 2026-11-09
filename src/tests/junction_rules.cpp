@@ -611,10 +611,14 @@ TEST_CASE("CheckSignals: signals at bridges", "[junction][rules]")
 	CHECK(Has(violations(none_after), JunctionRule::Signals, both.bridges[0].end.x, both.bridges[0].end.y, "no signal after a bridge"));
 }
 
-/** A clean generated layout, a mainline path and the first bridge on it whose far head is followed by at least two signal-legal pieces before the next switch or bridge; fills the indices of the far head and of the signal after it. */
+/**
+ * A mainline with a bridge whose far head is followed by four signal-legal pieces before the end, signalled on all of them.
+ * (The generated junction no longer has such a stretch: D118 leaves one legal piece per leg, so the case is built by hand.)
+ */
 struct StretchCase {
 	JunctionLayout layout;
 	JunctionSpec spec;
+	std::vector<JunctionPort> ports;
 	TileIndexDiffC far_head{};
 	std::vector<TileIndexDiffC> stretch; ///< The legal pieces after the far head, in order.
 };
@@ -623,29 +627,17 @@ static std::optional<StretchCase> FindStretchCase()
 {
 	StretchCase c;
 	c.spec = MakeTestJunctionSpec();
-	JunctionGenerateResult result = GenerateJunction(c.spec);
-	if (!result.layout.has_value() || !CheckJunctionRules(*result.layout, c.spec).empty()) return std::nullopt;
-	c.layout = *result.layout;
-	const JunctionCheckContext ctx = MakeJunctionCheckContext(c.layout, c.spec, FindJunctionPorts(c.layout), JunctionTMovements());
-	const auto used = UsedTracks(ctx);
-	for (const JunctionPath &path : ctx.paths) {
-		const bool main_line = (path.from == Role::EIn && path.to == Role::EOut) || (path.from == Role::WIn && path.to == Role::WOut);
-		if (!main_line) continue;
-		std::set<size_t> switches;
-		for (const SwitchEvent &event : SwitchEventsOf(c.layout, used, path)) switches.insert(event.second);
-		for (size_t i = 1; i < path.pieces.size(); i++) {
-			if (!path.pieces[i - 1].on_bridge || path.pieces[i].on_bridge) continue;
-			std::vector<TileIndexDiffC> stretch;
-			for (size_t j = i; j < path.pieces.size() && !path.pieces[j].on_bridge && !switches.contains(j); j++) {
-				if (IsLegalSignalPiece(c.layout, path.pieces[j]) || IsSignalledPiece(c.layout, path.pieces[j])) stretch.push_back(path.pieces[j].tile);
-			}
-			if (stretch.size() < 2) continue;
-			c.far_head = path.pieces[i - 1].tile;
-			c.stretch = stretch;
-			return c;
-		}
+	c.layout = Build({{{0, 0}, Trackdir::X_SW, "FFB1FFFFFF"}});
+	c.ports = {Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, 11, 0, Trackdir::X_SW)};
+	AddSignal(c.layout, 2, 0, Trackdir::X_SW);
+	c.far_head = {5, 0};
+	for (int x = 6; x <= 9; x++) {
+		AddSignal(c.layout, x, 0, Trackdir::X_SW);
+		c.stretch.push_back({static_cast<int16_t>(x), 0});
 	}
-	return std::nullopt;
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(c.layout, c.spec, c.ports, {{Role::EIn, Role::EOut}});
+	if (ctx.paths.size() != 1 || !CheckSignals(ctx).empty()) return std::nullopt;
+	return c;
 }
 
 /* D117 a: some signal in the stretch after a bridge is enough. */
@@ -656,7 +648,7 @@ TEST_CASE("CheckSignals: any signal in the stretch satisfies the rule (D117 a)",
 	JunctionLayout layout = found->layout;
 	/* Take every signal off the stretch, then put one on its second legal piece. */
 	for (const TileIndexDiffC &tile : found->stretch) RemoveSignal(layout, tile.x, tile.y);
-	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, found->spec, FindJunctionPorts(layout), JunctionTMovements());
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, found->spec, found->ports, {{Role::EIn, Role::EOut}});
 	bool placed = false;
 	for (const JunctionPath &path : ctx.paths) {
 		for (const JunctionPiece &piece : path.pieces) {
@@ -667,7 +659,7 @@ TEST_CASE("CheckSignals: any signal in the stretch satisfies the rule (D117 a)",
 		}
 	}
 	REQUIRE(placed);
-	const JunctionCheckContext ctx2 = MakeJunctionCheckContext(layout, found->spec, FindJunctionPorts(layout), JunctionTMovements());
+	const JunctionCheckContext ctx2 = MakeJunctionCheckContext(layout, found->spec, found->ports, {{Role::EIn, Role::EOut}});
 	for (const RuleViolation &v : CheckSignals(ctx2)) {
 		INFO(v.message << " at " << v.tile.x << "," << v.tile.y);
 		CHECK(v.message.find("no signal after a bridge") == std::string::npos);
@@ -680,7 +672,7 @@ TEST_CASE("CheckSignals: an empty stretch is still a violation", "[junction][rul
 	REQUIRE(found.has_value());
 	JunctionLayout layout = found->layout;
 	for (const TileIndexDiffC &tile : found->stretch) RemoveSignal(layout, tile.x, tile.y);
-	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, found->spec, FindJunctionPorts(layout), JunctionTMovements());
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, found->spec, found->ports, {{Role::EIn, Role::EOut}});
 	CHECK(Has(CheckSignals(ctx), JunctionRule::Signals, found->far_head.x, found->far_head.y, "no signal after a bridge"));
 }
 

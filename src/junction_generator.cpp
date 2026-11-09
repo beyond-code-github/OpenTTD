@@ -16,6 +16,7 @@
 #include "junction_route.h"
 #include "junction_router.h"
 #include "junction_signal_pass.h"
+#include "junction_skeleton.h"
 #include "junction_throughput.h"
 #include "track_func.h"
 #include "thread.h"
@@ -24,6 +25,7 @@
 #include <atomic>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -205,16 +207,118 @@ JunctionFrame MakeJunctionFrame(const JunctionSpec &spec)
 }
 
 /**
+ * Tiles between the lane merge and the N->W join beyond the prio coverage, in the parallelogram style (D145).
+ * Pinned by the test "Parallelogram solver constants are minimal (D145)": one less leaves no clean candidate (G9c).
+ */
+static constexpr int JUNCTION_PRIO_AFTER_MERGE = 1;
+
+/**
+ * Tiles between the N->W join and the shift-back S-bend, in the parallelogram style (D145).
+ * Pinned by the test "Parallelogram solver constants are minimal (D145)".
+ */
+static constexpr int JUNCTION_SHIFT_BACK_TILES = 4;
+
+/**
+ * Build the two lanes of the parallelogram style from the solver positions (D118, D145).
+ * Lane A runs straight on the W row, through its bridge, then S-bends onto the b row; lane B S-bends onto the b row at the
+ * lane split, bridges on the b row, and shifts back to the W row at the shift-back. Each count is found by rasterizing in increasing order.
+ * @param pos The solved positions.
+ * @param width The frame width; the lanes start at x = width - 1.
+ * @param w_row The W row.
+ * @param b_row The row below it.
+ * @param error Receives the first unmet target when nothing is returned.
+ * @return The rasters of lanes A and B, or std::nullopt.
+ */
+static std::optional<std::pair<JunctionRaster, JunctionRaster>> BuildParallelogramLanes(const JunctionSkeletonW &pos, int width, int w_row, int b_row, std::string *error)
+{
+	auto start = [&](const std::string &moves) {
+		return JunctionRoute{{static_cast<int16_t>(width - 1), static_cast<int16_t>(w_row)}, Trackdir::X_NE, moves};
+	};
+	auto fail = [&](const std::string &what) -> std::optional<std::pair<JunctionRaster, JunctionRaster>> {
+		if (error != nullptr) *error = what;
+		return std::nullopt;
+	};
+	/* The first and last bridge piece of a raster; size() and 0 when it has none. */
+	auto bridge_ends = [](const JunctionRaster &raster) {
+		size_t near_head = raster.pieces.size();
+		size_t far_head = 0;
+		for (size_t i = 0; i < raster.pieces.size(); i++) {
+			if (!raster.pieces[i].on_bridge) continue;
+			near_head = std::min(near_head, i);
+			far_head = i;
+		}
+		return std::pair{near_head, far_head};
+	};
+	auto at = [](const JunctionPiece &piece, int x, int y) { return piece.tile.x == x && piece.tile.y == y; };
+
+	/* Lane A: F^k B<n> F^g RFL. */
+	const std::string span_a = fmt::format("B{}", pos.x_he[0] - pos.x_hw[0] - 1);
+	std::optional<int> k_a;
+	for (int k = 0; k <= width - 1 && !k_a.has_value(); k++) {
+		const JunctionRaster raster = RasterizeJunctionRoute(start(std::string(k, 'F') + span_a));
+		if (!raster.error.empty()) continue;
+		const auto [near_head, far_head] = bridge_ends(raster);
+		if (near_head >= raster.pieces.size()) continue;
+		if (at(raster.pieces[near_head], pos.x_he[0], w_row) && at(raster.pieces[far_head], pos.x_hw[0], w_row)) k_a = k;
+	}
+	if (!k_a.has_value()) return fail(fmt::format("lane A heads at x {} and {} on row {}", pos.x_he[0], pos.x_hw[0], w_row));
+	std::optional<JunctionRaster> lane_a;
+	for (int g = 0; g <= width - 1 && !lane_a.has_value(); g++) {
+		const JunctionRaster raster = RasterizeJunctionRoute(start(std::string(*k_a, 'F') + span_a + std::string(g, 'F') + "RFL"));
+		if (raster.error.empty() && at(raster.pieces.back(), pos.x_lm, b_row)) lane_a = raster;
+	}
+	if (!lane_a.has_value()) return fail(fmt::format("lane A last piece at x {} on row {}", pos.x_lm, b_row));
+
+	/* Lane B: F^p RFL F^q B<n> F^t LFR F^s; q = -1 is RF then the bridge, whose near head closes the S-bend (D110). */
+	const std::string span_b = fmt::format("B{}", pos.x_he[1] - pos.x_hw[1] - 1);
+	std::optional<int> p_b;
+	for (int p = 0; p <= width - 1 && !p_b.has_value(); p++) {
+		const JunctionRaster raster = RasterizeJunctionRoute(start(std::string(p, 'F') + "RF"));
+		if (raster.error.empty() && raster.pieces.size() > static_cast<size_t>(p) + 1 && raster.pieces[p + 1].tile.x == pos.x_ls) p_b = p;
+	}
+	if (!p_b.has_value()) return fail(fmt::format("lane B split at x {}", pos.x_ls));
+	std::optional<std::string> head_moves;
+	for (int q = -1; q <= width - 1 && !head_moves.has_value(); q++) {
+		const std::string moves = std::string(*p_b, 'F') + (q < 0 ? "RF" : "RFL" + std::string(q, 'F')) + span_b;
+		const JunctionRaster raster = RasterizeJunctionRoute(start(moves));
+		if (!raster.error.empty()) continue;
+		const auto [near_head, far_head] = bridge_ends(raster);
+		if (near_head >= raster.pieces.size()) continue;
+		if (at(raster.pieces[near_head], pos.x_he[1], b_row) && at(raster.pieces[far_head], pos.x_hw[1], b_row)) head_moves = moves;
+	}
+	if (!head_moves.has_value()) return fail(fmt::format("lane B heads at x {} and {} on row {}", pos.x_he[1], pos.x_hw[1], b_row));
+	std::optional<std::string> to_sb;
+	for (int t = 0; t <= width - 1 && !to_sb.has_value(); t++) {
+		const JunctionRaster raster = RasterizeJunctionRoute(start(*head_moves + std::string(t, 'F')));
+		if (raster.error.empty() && at(raster.pieces.back(), pos.x_sb + 1, b_row)) to_sb = *head_moves + std::string(t, 'F');
+	}
+	if (!to_sb.has_value()) return fail(fmt::format("lane B last piece before the shift-back at x {} on row {}", pos.x_sb + 1, b_row));
+	std::optional<JunctionRaster> lane_b;
+	for (int s = 0; s <= width - 1 && !lane_b.has_value(); s++) {
+		const JunctionRaster raster = RasterizeJunctionRoute(start(*to_sb + "LFR" + std::string(s, 'F')));
+		if (raster.error.empty() && at(raster.pieces.back(), 0, w_row)) lane_b = raster;
+	}
+	if (!lane_b.has_value()) return fail(fmt::format("lane B end at x 0 on row {}", w_row));
+
+	/* Lane A's RFL must land on a b row tile where lane B has an axis piece. */
+	const bool merges = std::ranges::any_of(lane_b->pieces, [&](const JunctionPiece &piece) {
+		return !piece.on_bridge && at(piece, pos.x_lm, b_row) && IsDiagonalTrackdir(piece.trackdir);
+	});
+	if (!merges) return fail(fmt::format("lane B axis piece at the lane merge x {}", pos.x_lm));
+	return std::pair{std::move(*lane_a), std::move(*lane_b)};
+}
+
+/**
  * Build one generator candidate with a fixed lane gap: route the branch movements, double the mainline bridges, crop, and place signals.
  * @param spec The junction spec.
  * @param params The swept inputs.
  * @param terrain Optional terrain snapshot in the generator's working coordinates (see the header).
  * @param terrain_cost Receives the terrain cost when terrain is set.
  * @param gap 0 puts lane A's RFL right after its far head and lane B's near head right after its S-bend; 1 adds one plain tile to each (D110).
- * @param sb_back For the parallelogram style, the shift-back S-bend starts this many tiles upstream of the N->W window's far end (D110 4).
+ * @param sb_back Unused: the parallelogram style takes its positions from the skeleton solver (D145), and its parameters bridge_margin, w_slack, gap and sb_back are ignored.
  * @return The layout, or std::nullopt when this candidate cannot be built.
  */
-static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, int gap, int sb_back)
+static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, int gap, [[maybe_unused]] int sb_back)
 {
 	const JunctionFrame frame = MakeJunctionFrame(spec);
 	const int g = spec.ml_gap;
@@ -266,9 +370,11 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 	base_layout(layout);
 	AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(frame.width - 1, w_row), Trackdir::X_NE, frame.width - 1)));
 	std::vector<int> zone; ///< The x of every W row tile that a crossing movement (E->S, N->E) uses.
+	std::vector<int> zone_b; ///< The same for the b row (lane B's row in the parallelogram style).
 	auto note_crossings = [&](const JunctionRaster &raster) {
 		for (const JunctionPiece &piece : raster.pieces) {
 			if (piece.tile.y == w_row) zone.push_back(piece.tile.x);
+			if (piece.tile.y == b_row) zone_b.push_back(piece.tile.x);
 		}
 	};
 	/*
@@ -331,6 +437,158 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 	};
 	if (!route_movements(layout, true, {}, xI - 2, frame.width - 3, true, w_row, 2, -1)) return std::nullopt;
 
+	/* Crop, check the terrain, normalise and place signals; the common end of every candidate. */
+	auto finish = [&](JunctionLayout fl, Money *cost_out, TileIndexDiffC *hub_out) -> std::optional<JunctionLayout> {
+		/* Crop the E and W rows to the content. */
+		int min_x = INT32_MAX;
+		int max_x = INT32_MIN;
+		for (const JunctionTrack &jt : fl.tracks) {
+			const bool plain_row = (jt.offset.y == 0 || jt.offset.y == w_row) && jt.tracks == TrackBits{Track::X};
+			if (plain_row) continue;
+			min_x = std::min<int>(min_x, jt.offset.x);
+			max_x = std::max<int>(max_x, jt.offset.x);
+		}
+		for (const JunctionBridge &bridge : fl.bridges) {
+			for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
+				min_x = std::min<int>(min_x, head.x);
+				max_x = std::max<int>(max_x, head.x);
+			}
+		}
+		if (max_x < min_x) return std::nullopt;
+		std::erase_if(fl.tracks, [&](const JunctionTrack &jt) {
+			const bool plain_row = (jt.offset.y == 0 || jt.offset.y == w_row) && jt.tracks == TrackBits{Track::X};
+			return plain_row && (jt.offset.x < min_x - 2 || jt.offset.x > max_x + 2);
+		});
+
+		if (terrain != nullptr) {
+			const int plane = params.plane;
+			std::set<std::pair<int, int>> occupied;
+			for (const JunctionTrack &jt : fl.tracks) {
+				if (jt.tracks.None()) continue;
+				if (!terrain->UsableAt(jt.offset.x, jt.offset.y, plane)) return std::nullopt;
+				occupied.insert({jt.offset.x, jt.offset.y});
+			}
+			for (const JunctionBridge &bridge : fl.bridges) {
+				for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
+					if (!terrain->UsableAt(head.x, head.y, plane)) return std::nullopt;
+					occupied.insert({head.x, head.y});
+				}
+				const int dx = (bridge.end.x > bridge.start.x) - (bridge.end.x < bridge.start.x);
+				const int dy = (bridge.end.y > bridge.start.y) - (bridge.end.y < bridge.start.y);
+				for (int x = bridge.start.x + dx, y = bridge.start.y + dy; x != bridge.end.x || y != bridge.end.y; x += dx, y += dy) {
+					if (!terrain->SpanOk(x, y, plane)) return std::nullopt;
+				}
+			}
+			if (cost_out != nullptr) {
+				Money cost = 0;
+				for (const auto &[x, y] : occupied) cost += terrain->CostAt(x, y, plane);
+				*cost_out = cost;
+			}
+		}
+
+		/* The shift NormaliseJunctionLayout applies: the minimum of the track and bridge offsets. */
+		int shift_x = 0;
+		int shift_y = 0;
+		auto normalise = [&]() {
+			int min_x = INT32_MAX;
+			int min_y = INT32_MAX;
+			for (const JunctionTrack &jt : fl.tracks) {
+				min_x = std::min<int>(min_x, jt.offset.x);
+				min_y = std::min<int>(min_y, jt.offset.y);
+			}
+			for (const JunctionBridge &bridge : fl.bridges) {
+				for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
+					min_x = std::min<int>(min_x, head.x);
+					min_y = std::min<int>(min_y, head.y);
+				}
+			}
+			if (min_x != INT32_MAX) {
+				shift_x += min_x;
+				shift_y += min_y;
+			}
+			NormaliseJunctionLayout(fl);
+		};
+		normalise();
+		PlaceJunctionSignals(fl, spec);
+		normalise();
+
+		if (terrain != nullptr) {
+			/* The prio rows exist only now; every track tile must be usable, in working coordinates. */
+			for (const JunctionTrack &jt : fl.tracks) {
+				if (jt.tracks.None()) continue;
+				if (!terrain->UsableAt(jt.offset.x + shift_x, jt.offset.y + shift_y, params.plane)) return std::nullopt;
+			}
+		}
+		if (hub_out != nullptr) *hub_out = {static_cast<int16_t>(frame.hub_x - shift_x), static_cast<int16_t>(0 - shift_y)};
+		return fl;
+	};
+
+	if (!zone.empty() && params.lane_style == 1) {
+		/* D145: the parallelogram style takes its positions from the skeleton solver, for both staggers (D118). */
+		JunctionSkeletonInputs in{};
+		in.zmin[0] = *std::ranges::min_element(zone);
+		in.zmax[0] = *std::ranges::max_element(zone);
+		in.zmin[1] = zone_b.empty() ? in.zmin[0] : *std::ranges::min_element(zone_b);
+		in.zmax[1] = zone_b.empty() ? in.zmax[0] : *std::ranges::max_element(zone_b);
+		in.nmax = 0;
+		for (int n = 10; n >= 1 && in.nmax == 0; n--) {
+			if (spec.bridge_span_ok(n)) in.nmax = n;
+		}
+		if (in.nmax == 0) return std::nullopt;
+		in.cover = spec.prio_tiles;
+		in.x_cap = xI - 2;
+		in.shift_back = true;
+		in.k_w = JUNCTION_PRIO_AFTER_MERGE + params.k_w_delta;
+		in.k_sb = JUNCTION_SHIFT_BACK_TILES + params.k_sb_delta;
+		in.x_sb_min = 2;
+
+		std::optional<JunctionLayout> best;
+		bool best_clean = false;
+		std::pair<int, Money> best_score{};
+		Money best_cost = 0;
+		TileIndexDiffC best_hub{};
+		for (int stagger = 0; stagger <= 1; stagger++) {
+			in.stagger = stagger;
+			const JunctionSkeletonW pos = SolveJunctionSkeletonW(in);
+			if (!pos.conflict.empty() || pos.x_ls <= 0) continue;
+			if (std::min(pos.x_hw[0], pos.x_hw[1]) < 0 || std::max(pos.x_he[0], pos.x_he[1]) + 1 > frame.width - 1) continue;
+			if (!spec.bridge_span_ok(pos.x_he[0] - pos.x_hw[0] - 1) || !spec.bridge_span_ok(pos.x_he[1] - pos.x_hw[1] - 1)) continue;
+			std::string error;
+			const auto lanes = BuildParallelogramLanes(pos, frame.width, w_row, b_row, &error);
+			if (!lanes.has_value()) continue;
+
+			/* Pass 2: fixed doubled lanes. */
+			JunctionLayout fixed;
+			base_layout(fixed);
+			AddRasterToLayout(fixed, lanes->first);
+			AddRasterToLayout(fixed, lanes->second);
+			std::vector<TileIndexDiffC> under_spans;
+			for (int l = 0; l < 2; l++) {
+				for (int x = pos.x_hw[l] + 1; x < pos.x_he[l]; x++) under_spans.push_back(tile(x, l == 0 ? w_row : b_row));
+			}
+			if (!route_movements(fixed, false, under_spans, pos.x_nw, frame.width - 3, false, b_row, pos.x_sb + 1, pos.x_sl + 1)) continue;
+
+			Money cost = 0;
+			TileIndexDiffC cand_hub{};
+			std::optional<JunctionLayout> built = finish(std::move(fixed), &cost, &cand_hub);
+			if (!built.has_value()) continue;
+			const bool clean = JunctionRulesClean(*built, spec);
+			const std::pair<int, Money> score = ScoreJunctionLayout(*built, spec);
+			/* Clean beats unclean, then the lower score; stagger 1 wins a tie. */
+			if (!best.has_value() || (clean && !best_clean) || (clean == best_clean && score <= best_score)) {
+				best = std::move(built);
+				best_clean = clean;
+				best_score = score;
+				best_cost = cost;
+				best_hub = cand_hub;
+			}
+		}
+		if (!best.has_value()) return std::nullopt;
+		if (terrain_cost != nullptr) *terrain_cost = best_cost;
+		if (hub != nullptr) *hub = best_hub;
+		return best;
+	}
+
 	if (!zone.empty()) {
 		const int h_w = *std::ranges::min_element(zone) - params.bridge_margin;
 		const int h_e = *std::ranges::max_element(zone) + params.bridge_margin;
@@ -343,39 +601,10 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 		base_layout(layout);
 
 		const std::string span = fmt::format("B{}", n);
-		const int nw_row = params.lane_style == 1 ? b_row : w_row;
 		auto nw_max_for = [&](int merge) { return std::min(xI - 2, merge - static_cast<int>(spec.prio_tiles) - params.w_slack); };
-		JunctionRaster raster_a_style1;
 		JunctionRaster raster_b;
 		std::optional<int> merge_x;
-		int x_sb = 0;
 		int nw_max_x = 0;
-		if (params.lane_style == 1) {
-			/* Parallelogram (D105): lane A runs straight on the W row through its bridge, then S-bends onto the B row. */
-			std::optional<JunctionRaster> found_a;
-			for (int k = 0; k <= frame.width - 1 && !found_a.has_value(); k++) {
-				const JunctionRaster raster = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, std::string(k, 'F') + span + (gap == 0 ? "" : "F") + "RFL"});
-				if (!raster.error.empty()) continue;
-				size_t near_head = raster.pieces.size();
-				size_t far_head = 0;
-				for (size_t i = 0; i < raster.pieces.size(); i++) {
-					if (!raster.pieces[i].on_bridge) continue;
-					near_head = std::min(near_head, i);
-					far_head = i;
-				}
-				if (near_head >= raster.pieces.size()) continue;
-				if (raster.pieces[near_head].tile.x != h_e || raster.pieces[near_head].tile.y != w_row) continue;
-				if (raster.pieces[far_head].tile.x != h_w || raster.pieces[far_head].tile.y != w_row) continue;
-				if (raster.pieces.back().tile.y != b_row) continue;
-				found_a = raster;
-			}
-			if (!found_a.has_value()) return std::nullopt;
-			raster_a_style1 = std::move(*found_a);
-			merge_x = raster_a_style1.pieces.back().tile.x;
-			nw_max_x = nw_max_for(*merge_x);
-			x_sb = nw_max_x - sb_back;
-			if (x_sb < 2) return std::nullopt;
-		}
 		/* Lane B: find p, q, r and s by rasterizing and checking the piece positions. */
 		std::optional<JunctionRoute> lane_b;
 		/* D110: q counts the plain tiles after the S-bend; try them in increasing order, so q = 0 (one real plain tile after the S-bend) comes first with gap 0. */
@@ -388,25 +617,6 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 				while (head < head_raster.pieces.size() && !head_raster.pieces[head].on_bridge) head++;
 				if (head >= head_raster.pieces.size() || head_raster.pieces[head].tile.x != h_e || head_raster.pieces[head].tile.y != b_row) continue;
 
-				if (params.lane_style == 1) {
-					/* Straight on the B row to the tile at x_sb + 1, then LFR up to the W row and straight on to x = 0. */
-					const std::string head_moves = std::string(p, 'F') + "RFL" + std::string(q, 'F') + span;
-					for (int t = 0; t <= frame.width - 1 && !lane_b.has_value(); t++) {
-						const JunctionRaster to_sb = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, head_moves + std::string(t, 'F')});
-						if (!to_sb.error.empty()) continue;
-						if (to_sb.pieces.back().tile.x != x_sb + 1 || to_sb.pieces.back().tile.y != b_row) continue;
-						for (int s = 0; s <= frame.width - 1; s++) {
-							const JunctionRoute candidate{tile(frame.width - 1, w_row), Trackdir::X_NE, head_moves + std::string(t, 'F') + "LFR" + std::string(s, 'F')};
-							const JunctionRaster raster = RasterizeJunctionRoute(candidate);
-							if (!raster.error.empty()) continue;
-							if (raster.pieces.back().tile.x == 0 && raster.pieces.back().tile.y == w_row) {
-								lane_b = candidate;
-								break;
-							}
-						}
-					}
-					continue;
-				}
 				for (int r = 1; r <= 1 && !lane_b.has_value(); r++) {
 					const std::string head_moves = std::string(p, 'F') + "RFL" + std::string(q, 'F') + span;
 					const JunctionRaster far_raster = RasterizeJunctionRoute({tile(frame.width - 1, w_row), Trackdir::X_NE, head_moves + std::string(r, 'F')});
@@ -427,7 +637,7 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 		if (!lane_b.has_value()) return std::nullopt;
 		raster_b = RasterizeJunctionRoute(*lane_b);
 
-		if (params.lane_style == 0) {
+		{
 			/* Lane A is lane B's mirror: the same program with every L and R swapped. */
 			JunctionRoute lane_a = *lane_b;
 			for (char &c : lane_a.moves) {
@@ -478,19 +688,10 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 			if (merge_x_a != merge_x) return std::nullopt;
 
 		}
-		if (params.lane_style == 1) {
-			/* Lane A's RFL must land on a B row tile where lane B has an axis piece. */
-			const bool merges = std::ranges::any_of(raster_b.pieces, [&](const JunctionPiece &piece) {
-				return !piece.on_bridge && piece.tile.x == *merge_x && piece.tile.y == b_row && IsDiagonalTrackdir(piece.trackdir);
-			});
-			if (!merges) return std::nullopt;
-			AddRasterToLayout(layout, raster_a_style1);
-			AddRasterToLayout(layout, raster_b);
-		}
 		/* Re-route the four movements with the lanes fixed and no crossable tiles. */
 		std::vector<TileIndexDiffC> under_spans;
 		for (int x = h_w + 1; x < h_e; x++) {
-			under_spans.push_back(tile(x, params.lane_style == 1 ? w_row : w_row - 1));
+			under_spans.push_back(tile(x, w_row - 1));
 			under_spans.push_back(tile(x, b_row));
 		}
 		/* N->W may join only a train length after the lane merge, so the prio's coverage stays on single track (D85). */
@@ -503,98 +704,17 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 			}
 		}
 		if (x_ls < 0) return std::nullopt;
-		if (params.lane_style == 0) nw_max_x = nw_max_for(*merge_x);
-		if (!route_movements(layout, false, under_spans, nw_max_x, frame.width - 3, false, nw_row, params.lane_style == 1 ? x_sb + 1 : 2, x_ls + 3)) return std::nullopt;
+		nw_max_x = nw_max_for(*merge_x);
+		if (!route_movements(layout, false, under_spans, nw_max_x, frame.width - 3, false, w_row, 2, x_ls + 3)) return std::nullopt;
 	}
 
-	/* Crop the E and W rows to the content. */
-	int min_x = INT32_MAX;
-	int max_x = INT32_MIN;
-	for (const JunctionTrack &jt : layout.tracks) {
-		const bool plain_row = (jt.offset.y == 0 || jt.offset.y == w_row) && jt.tracks == TrackBits{Track::X};
-		if (plain_row) continue;
-		min_x = std::min<int>(min_x, jt.offset.x);
-		max_x = std::max<int>(max_x, jt.offset.x);
-	}
-	for (const JunctionBridge &bridge : layout.bridges) {
-		for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
-			min_x = std::min<int>(min_x, head.x);
-			max_x = std::max<int>(max_x, head.x);
-		}
-	}
-	if (max_x < min_x) return std::nullopt;
-	std::erase_if(layout.tracks, [&](const JunctionTrack &jt) {
-		const bool plain_row = (jt.offset.y == 0 || jt.offset.y == w_row) && jt.tracks == TrackBits{Track::X};
-		return plain_row && (jt.offset.x < min_x - 2 || jt.offset.x > max_x + 2);
-	});
-
-	if (terrain != nullptr) {
-		const int plane = params.plane;
-		std::set<std::pair<int, int>> occupied;
-		for (const JunctionTrack &jt : layout.tracks) {
-			if (jt.tracks.None()) continue;
-			if (!terrain->UsableAt(jt.offset.x, jt.offset.y, plane)) return std::nullopt;
-			occupied.insert({jt.offset.x, jt.offset.y});
-		}
-		for (const JunctionBridge &bridge : layout.bridges) {
-			for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
-				if (!terrain->UsableAt(head.x, head.y, plane)) return std::nullopt;
-				occupied.insert({head.x, head.y});
-			}
-			const int dx = (bridge.end.x > bridge.start.x) - (bridge.end.x < bridge.start.x);
-			const int dy = (bridge.end.y > bridge.start.y) - (bridge.end.y < bridge.start.y);
-			for (int x = bridge.start.x + dx, y = bridge.start.y + dy; x != bridge.end.x || y != bridge.end.y; x += dx, y += dy) {
-				if (!terrain->SpanOk(x, y, plane)) return std::nullopt;
-			}
-		}
-		if (terrain_cost != nullptr) {
-			Money cost = 0;
-			for (const auto &[x, y] : occupied) cost += terrain->CostAt(x, y, plane);
-			*terrain_cost = cost;
-		}
-	}
-
-	/* The shift NormaliseJunctionLayout applies: the minimum of the track and bridge offsets. */
-	int shift_x = 0;
-	int shift_y = 0;
-	auto normalise = [&]() {
-		int min_x = INT32_MAX;
-		int min_y = INT32_MAX;
-		for (const JunctionTrack &jt : layout.tracks) {
-			min_x = std::min<int>(min_x, jt.offset.x);
-			min_y = std::min<int>(min_y, jt.offset.y);
-		}
-		for (const JunctionBridge &bridge : layout.bridges) {
-			for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
-				min_x = std::min<int>(min_x, head.x);
-				min_y = std::min<int>(min_y, head.y);
-			}
-		}
-		if (min_x != INT32_MAX) {
-			shift_x += min_x;
-			shift_y += min_y;
-		}
-		NormaliseJunctionLayout(layout);
-	};
-	normalise();
-	PlaceJunctionSignals(layout, spec);
-	normalise();
-
-	if (terrain != nullptr) {
-		/* The prio rows exist only now; every track tile must be usable, in working coordinates. */
-		for (const JunctionTrack &jt : layout.tracks) {
-			if (jt.tracks.None()) continue;
-			if (!terrain->UsableAt(jt.offset.x + shift_x, jt.offset.y + shift_y, params.plane)) return std::nullopt;
-		}
-	}
-	if (hub != nullptr) *hub = {static_cast<int16_t>(frame.hub_x - shift_x), static_cast<int16_t>(0 - shift_y)};
-	return layout;
+	return finish(std::move(layout), terrain_cost, hub);
 }
 
 /**
  * Build one generator candidate: the tight variant first (D110, gap 0); when that is not rule-clean, the variant with one more plain tile
  * after lane B's S-bend and before lane A's S-bend (gap 1) is built once and returned instead.
- * For the parallelogram style the shift-back is tried tightest first (D110 4): the first rule-clean shift-back wins.
+ * The parallelogram style is built once, from the skeleton solver (D145).
  */
 std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, bool *out_clean)
 {
@@ -615,18 +735,15 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 		clean = JunctionRulesClean(*loose, spec);
 		return loose;
 	};
-	if (params.lane_style != 1) {
-		std::optional<JunctionLayout> single = attempt(6);
-		if (out_clean != nullptr) *out_clean = clean;
-		return single;
+	if (params.lane_style == 1) {
+		/* D145: one build, from the solver; the gap, w_slack, margin and shift-back parameters play no part. */
+		std::optional<JunctionLayout> result = BuildJunctionCandidateWithGap(spec, params, terrain, terrain_cost, hub, 0, 0);
+		if (out_clean != nullptr) *out_clean = result.has_value() && JunctionRulesClean(*result, spec);
+		return result;
 	}
-	std::optional<JunctionLayout> result;
-	for (int sb_back = 1; sb_back <= 6; sb_back++) {
-		result = attempt(sb_back);
-		if (clean) break;
-	}
+	std::optional<JunctionLayout> single = attempt(6);
 	if (out_clean != nullptr) *out_clean = clean;
-	return result;
+	return single;
 }
 
 /** The number of middle tiles of a bridge. */

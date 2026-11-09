@@ -129,13 +129,7 @@ enum SkeletonVar : uint8_t {
 	SV_COUNT,
 };
 
-/**
- * Build and solve the W-side constraints (PLAN-S2 §3).
- *
- * Equal lane lengths follow D118: a diagonal crossing set reaches adjacent rows one tile apart, so when the two rows'
- * crossing sets are offset by the same amount at both ends (zmin and zmax differ by s), both heads of a lane shift
- * together by s, which keeps the spans of the two lanes equal. Otherwise there is no stagger and the heads are aligned.
- */
+/** Build and solve the W-side constraints (PLAN-S2 §3). Lane B's heads sit 'stagger' tiles beyond lane A's at both ends (D118), so both bridges have equal length. */
 JunctionSkeletonW SolveJunctionSkeletonW(const JunctionSkeletonInputs &in)
 {
 	using Rule = JunctionSkeletonRule;
@@ -153,11 +147,10 @@ JunctionSkeletonW SolveJunctionSkeletonW(const JunctionSkeletonInputs &in)
 		cs.push_back({hw[l], SV_LM, in.k_exit[l], Rule::BridgeExit});
 	}
 
-	const int s = (in.zmax[0] - in.zmax[1] == in.zmin[0] - in.zmin[1]) ? in.zmax[0] - in.zmax[1] : 0;
-	cs.push_back({SV_HE_A, SV_HE_B, s, Rule::EqualLength});
-	cs.push_back({SV_HE_B, SV_HE_A, -s, Rule::EqualLength});
-	cs.push_back({SV_HW_A, SV_HW_B, s, Rule::EqualLength});
-	cs.push_back({SV_HW_B, SV_HW_A, -s, Rule::EqualLength});
+	cs.push_back({SV_HE_B, SV_HE_A, in.stagger, Rule::EqualLength});
+	cs.push_back({SV_HE_A, SV_HE_B, -in.stagger, Rule::EqualLength});
+	cs.push_back({SV_HW_B, SV_HW_A, in.stagger, Rule::EqualLength});
+	cs.push_back({SV_HW_A, SV_HW_B, -in.stagger, Rule::EqualLength});
 
 	cs.push_back({SV_LM, SV_NW, in.cover + in.k_w, Rule::PrioCoverage});
 	cs.push_back({SV_ORIGIN, SV_NW, -in.x_cap, Rule::NorthWestCap});

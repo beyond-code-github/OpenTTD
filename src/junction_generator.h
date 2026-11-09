@@ -94,6 +94,8 @@ struct JunctionCandidateParams {
 	uint8_t bridge_margin = 3; ///< Bridge heads sit this many tiles beyond the crossing set (D103).
 	uint8_t lane_style = 0; ///< 0 = symmetric Y (D100), 1 = parallelogram (D105).
 	JunctionRouteCache *route_cache = nullptr; ///< When set, router results are shared through it (one cache per generation).
+	int k_w_delta = 0; ///< Test seam: added to the parallelogram style's prio coverage after the lane merge (D145).
+	int k_sb_delta = 0; ///< Test seam: added to the parallelogram style's shift-back distance (D145).
 };
 
 /**

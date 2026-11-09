@@ -1141,3 +1141,100 @@ TEST_CASE("track may not use a Spannable tile", "[junction][terrain]")
 	CHECK(t.SpanOk(20, 5, 0));
 	CHECK(t.SpanOk(20, 5, 1));
 }
+
+/* D118, D145: the shifted lane B sits one tile +x of lane A at both ends, so each leg has exactly one signal-legal piece. */
+TEST_CASE("GenerateJunction: staggered parallelogram, one signal tile per leg (D118)", "[junction][generator]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult result = GenerateJunction(spec);
+	REQUIRE(result.layout.has_value());
+	const JunctionLayout &layout = *result.layout;
+	CHECK(CheckJunctionRules(layout, spec).empty());
+
+	std::vector<JunctionBridge> bridges;
+	for (const JunctionBridge &b : layout.bridges) {
+		if (b.start.y == b.end.y) bridges.push_back(b);
+	}
+	REQUIRE(bridges.size() == 2);
+	std::ranges::sort(bridges, [](const JunctionBridge &a, const JunctionBridge &b) { return a.start.y < b.start.y; });
+	CHECK(bridges[1].start.x == bridges[0].start.x + 1);
+	CHECK(bridges[1].end.x == bridges[0].end.x + 1);
+
+	const std::vector<JunctionPort> ports = FindJunctionPorts(layout);
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, JunctionTMovements());
+	const auto used = UsedTracks(ctx);
+	int checked = 0;
+	for (const JunctionPath &path : ctx.paths) {
+		if (path.from != JunctionPortRole::WIn || path.to != JunctionPortRole::WOut) continue;
+		const auto bridge_piece = [](const JunctionPiece &p) { return p.on_bridge; };
+		const auto near_it = std::ranges::find_if(path.pieces, bridge_piece);
+		REQUIRE(near_it != path.pieces.end());
+		const size_t near_head = near_it - path.pieces.begin();
+		size_t far_head = near_head;
+		for (size_t i = near_head; i < path.pieces.size(); i++) {
+			if (path.pieces[i].on_bridge) far_head = i;
+		}
+		std::vector<size_t> splits;
+		size_t merge = 0;
+		for (const SwitchEvent &event : SwitchEventsOf(layout, used, path)) {
+			if (event.first) {
+				splits.push_back(event.second);
+			} else if (merge == 0 && event.second > far_head) {
+				merge = event.second;
+			}
+		}
+		REQUIRE(splits.size() >= 2);
+		REQUIRE(merge > far_head);
+		for (const auto &[from, to] : {std::pair{splits[1], near_head}, std::pair{far_head, merge}}) {
+			std::vector<size_t> legal;
+			for (size_t i = from + 1; i < to; i++) {
+				/* IsLegalSignalPiece is false on a piece that already carries its signal. */
+				if (IsLegalSignalPiece(layout, path.pieces[i]) || IsSignalledPiece(layout, path.pieces[i])) legal.push_back(i);
+			}
+			INFO("between pieces " << from << " and " << to);
+			REQUIRE(legal.size() == 1);
+			CHECK(IsSignalledPiece(layout, path.pieces[legal[0]]));
+		}
+		checked++;
+	}
+	CHECK(checked == 2);
+
+	/* Measured at the head of S2e (2a20ba95b3), before this change: 211 tiles (42x16). The staggered form removes the shared gap's extra tiles. */
+	const int tiles = ScoreJunctionLayout(layout, spec).first;
+	WARN("tiles " << tiles << " size " << layout.size.x << "x" << layout.size.y << "\n" << RenderJunctionAscii(layout));
+	CHECK(tiles <= 211);
+}
+
+/* D145: k_w and k_sb are the least values that give a clean style-1 candidate; one less is rejected by a named rule. */
+TEST_CASE("Parallelogram solver constants are minimal (D145)", "[junction][generator][slow]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const char *which : {"k_w", "k_sb"}) {
+		std::set<JunctionRule> rules;
+		int clean_count = 0;
+		for (int height = spec.ml_gap + 5; height <= spec.ml_gap + 20; height++) {
+			for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
+				for (uint8_t e_slack = 0; e_slack <= 3; e_slack++) {
+					JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, 0};
+					params.lane_style = 1;
+					(std::string_view(which) == "k_w" ? params.k_w_delta : params.k_sb_delta) = -1;
+					bool clean = false;
+					const std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, nullptr, nullptr, nullptr, &clean);
+					if (clean) clean_count++;
+					if (layout.has_value() && !clean) {
+						for (const RuleViolation &v : CheckJunctionRules(*layout, spec)) rules.insert(v.rule);
+					}
+				}
+			}
+		}
+		INFO(which << " - 1");
+		CHECK(clean_count == 0);
+		/* Measured: k_w - 1 is rejected by G9c (Prio) and G9b (PrioReach); k_sb - 1 by the curve speed rule (the N->W join too close to the shift-back S-bend) and the same two prio rules. */
+		if (std::string_view(which) == "k_w") {
+			CHECK(rules.contains(JunctionRule::Prio));
+			CHECK(rules.contains(JunctionRule::PrioReach));
+		} else {
+			CHECK(rules.contains(JunctionRule::CurveSpeed));
+		}
+	}
+}

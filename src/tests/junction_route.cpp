@@ -116,6 +116,28 @@ TEST_CASE("RasterizeJunctionRoute: bridges and errors", "[junction]")
 	CHECK_FALSE(Raster(Trackdir::X_SW, "B").error.empty());
 }
 
+TEST_CASE("RasterizeJunctionRoute: a bridge may close an S-bend (D110)", "[junction]")
+{
+	const JunctionRaster closed = Raster(Trackdir::X_NE, "RFL");
+	const JunctionRaster b = Raster(Trackdir::X_NE, "RFB2");
+	REQUIRE(closed.error.empty());
+	REQUIRE(b.error.empty());
+	REQUIRE(b.pieces.size() == 7);
+	CHECK(b.pieces[3].tile.x == closed.pieces[3].tile.x);
+	CHECK(b.pieces[3].tile.y == closed.pieces[3].tile.y);
+	CHECK(b.pieces[3].trackdir == closed.pieces[3].trackdir);
+	CHECK(b.pieces[3].on_bridge);
+	CHECK(b.pieces[6].tile.x == closed.pieces[3].tile.x - 3);
+	CHECK(b.pieces[6].tile.y == closed.pieces[3].tile.y);
+	REQUIRE(b.bridges.size() == 1);
+
+	/* Unchanged: a bridge after the closing piece, and after a straight start. */
+	const JunctionRaster after = Raster(Trackdir::X_NE, "RFLB2");
+	REQUIRE(after.error.empty());
+	CHECK(after.pieces[4].tile.x == closed.pieces[3].tile.x - 1);
+	CHECK(Raster(Trackdir::X_NE, "FB2").error.empty());
+}
+
 TEST_CASE("AddRasterToLayout and NormaliseJunctionLayout", "[junction]")
 {
 	JunctionLayout layout;

@@ -46,10 +46,11 @@ struct JunctionSkeletonInputs {
 	int cover = 0; ///< Prio coverage in tiles (spec.prio_tiles).
 	int x_cap = 0; ///< Largest N->W join x (xI - 2).
 	bool shift_back = true; ///< Parallelogram style: has a shift-back x_sb.
-	/* Rule offsets; placeholders until S2c pins them. */
+	int stagger = 0; ///< Lane B's heads minus lane A's, at both ends (D118: 0 or 1).
+	/* Rule offsets: k_split, k_entry, k_exit and k_head are the measured constants of D145; k_w and k_sb are pinned by the caller. */
 	int k_split = 2;
-	int k_entry[2] = {4, 4};
-	int k_exit[2] = {4, 4};
+	int k_entry[2] = {2, 1};
+	int k_exit[2] = {2, 3};
 	int k_head = 1;
 	int k_w = 1;
 	int k_sb = 1;

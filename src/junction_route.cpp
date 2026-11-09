@@ -100,9 +100,17 @@ JunctionRaster RasterizeJunctionRoute(const JunctionRoute &route)
 			}
 
 			case 'B': {
+				/* D110: from a half piece the bridge completes the S-bend; its near head is where the closing axis piece would be. */
+				Trackdir head = cur;
 				if (!IsDiagonalTrackdir(cur)) {
-					raster.error = fmt::format("bridge at position {} must start from an axis piece", i);
-					return raster;
+					char last_turn = 0;
+					for (size_t j = i; j-- > 0 && last_turn == 0;) {
+						if (route.moves[j] == 'L' || route.moves[j] == 'R') last_turn = route.moves[j];
+					}
+					if (last_turn == 0 || !JunctionNextTrackdir(cur, last_turn == 'R' ? DirDiff::Left45 : DirDiff::Right45, head) || !IsDiagonalTrackdir(head)) {
+						raster.error = fmt::format("bridge at position {} must start from an axis piece", i);
+						return raster;
+					}
 				}
 				size_t digits = 0;
 				uint middle = 0;
@@ -119,9 +127,9 @@ JunctionRaster RasterizeJunctionRoute(const JunctionRoute &route)
 					raster.error = fmt::format("bridge at position {} has no length", i);
 					return raster;
 				}
-				AppendPiece(raster, cur, true);
+				AppendPiece(raster, head, true);
 				const TileIndexDiffC near_head = raster.pieces.back().tile;
-				for (uint k = 0; k < middle + 1; k++) AppendPiece(raster, cur, true);
+				for (uint k = 0; k < middle + 1; k++) AppendPiece(raster, head, true);
 				const TileIndexDiffC far_head = raster.pieces.back().tile;
 				JunctionBridge bridge{near_head, far_head};
 				if (bridge.start.x + bridge.start.y > bridge.end.x + bridge.end.y) std::swap(bridge.start, bridge.end);
