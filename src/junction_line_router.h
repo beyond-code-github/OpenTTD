@@ -54,6 +54,7 @@ struct JunctionLineRouteResult {
 	std::optional<JunctionLineRoute> route; ///< Its moves are the request's prefix followed by the searched moves (D150).
 	std::string error;
 	Money cost = 0; ///< The route's total cost (pieces, turns, terrain).
+	uint expansions = 0; ///< Nodes expanded by the search (O4r, O4h).
 };
 
 JunctionLineRouteResult FindJunctionLineRoute(const JunctionLineRouteRequest &request);

@@ -92,6 +92,28 @@ public:
 				blocked.insert(PackTile(bridge.end.x, bridge.end.y));
 			}
 		}
+
+		/* The least cost one track pays per tile of distance (O4h): a plain piece on the cheapest buildable tile, or the cheapest bridge or tunnel per tile it spans. */
+		int64_t terrain_floor = 0;
+		if (request.terrain != nullptr) {
+			/* CostAt is the tile's clear cost plus a foundation when the track stands above the tile's lowest corner, and a ramp pays the clear cost only, so the clear cost is the least a tile can charge. */
+			bool any = false;
+			for (int y = request.min.y; y <= request.max.y; y++) {
+				for (int x = request.min.x; x <= request.max.x; x++) {
+					const JunctionTerrainTile *tile = request.terrain->At(x, y);
+					if (tile == nullptr || tile->cls != JunctionTileClass::Buildable || tile->steep) continue;
+					terrain_floor = any ? std::min(terrain_floor, tile->clear_cost.base()) : tile->clear_cost.base();
+					any = true;
+				}
+			}
+		}
+		step_floor = request.rail_piece.base() + terrain_floor;
+		if (request.bridge_span_ok && request.bridge_price && request.max_bridge_middle > 0) {
+			for (uint n = 0; n <= request.max_bridge_middle; n++) step_floor = std::min<int64_t>(step_floor, request.bridge_price(n).base() / (n + 2));
+		}
+		if (request.tunnel_price && request.terrain != nullptr) {
+			for (uint n = 0; n <= request.max_tunnel_length; n++) step_floor = std::min<int64_t>(step_floor, request.tunnel_price(n).base() / (n + 2));
+		}
 	}
 
 	JunctionLineRouteResult Run();
@@ -99,6 +121,7 @@ public:
 private:
 	const JunctionLineRouteRequest &request;
 	const uint cap;
+	int64_t step_floor = 0; ///< The least cost one track pays per tile of distance (O4h).
 	std::set<uint64_t> blocked;
 	std::unordered_map<uint64_t, TrackBits> existing_bits; ///< The existing layout's tracks per tile (D147).
 	std::vector<LineTreeEntry> tree;
@@ -243,7 +266,17 @@ private:
 		return std::max(std::abs(a.x - b.x), std::abs(a.y - b.y));
 	}
 
-	/** The cheapest possible cost to finish: every track covers at least the Chebyshev distance of track 0 through the remaining waypoints in order, then to the nearest goal when there are goals (D150 4). */
+	/** The fewest L or R moves that turn a heading into another: each turns the line by 45 degrees. */
+	static int TurnsBetween(Direction from, Direction to)
+	{
+		const int difference = std::abs(static_cast<int>(from) - static_cast<int>(to));
+		return std::min(difference, 8 - difference);
+	}
+
+	/**
+	 * The cheapest possible cost to finish (O4h): every track pays at least step_floor per tile of Chebyshev distance of track 0 through the remaining waypoints in order, then to a goal, and the line pays turn_cost for each 45 degree turn from its heading to that goal's (D150 4).
+	 * The bound is taken per goal and the least is returned; without goals only the waypoints count.
+	 */
 	Money Heuristic(const LineNode &node) const
 	{
 		if (!request.use_heuristic) return Money{0};
@@ -254,12 +287,16 @@ private:
 			distance += Chebyshev(from, waypoints[k]);
 			from = waypoints[k];
 		}
-		if (!request.goals.empty()) {
-			int best = INT32_MAX;
-			for (const JunctionRouteEnd &goal : request.goals) best = std::min(best, Chebyshev(from, goal.tile));
-			distance += best;
+		const int64_t tracks = request.line.tracks;
+		if (request.goals.empty()) return Money{step_floor * distance * tracks};
+
+		const Direction heading = TrackdirToDirection(node.last[0].trackdir);
+		int64_t best = INT64_MAX;
+		for (const JunctionRouteEnd &goal : request.goals) {
+			const int64_t bound = step_floor * (distance + Chebyshev(from, goal.tile)) * tracks + request.turn_cost.base() * TurnsBetween(heading, TrackdirToDirection(goal.trackdir));
+			best = std::min(best, bound);
 		}
-		return request.rail_piece * (distance * request.line.tracks);
+		return Money{best};
 	}
 
 	bool IsGoal(const LineNode &node) const
@@ -417,9 +454,9 @@ JunctionLineRouteResult LineRouter::Run()
 			JunctionLineRoute route{used_start.tile, used_start.trackdir, ""};
 			for (int i = index; tree[i].parent >= 0; i = tree[i].parent) route.moves.insert(0, tree[i].move);
 			route.moves.insert(0, request.prefix);
-			return {route, "", tree[index].g};
+			return {route, "", tree[index].g, expansions};
 		}
-		if (++expansions > request.max_expansions) return {std::nullopt, "search limit"};
+		if (++expansions > request.max_expansions) return {std::nullopt, "search limit", Money{0}, expansions};
 
 		/* Everything the line has built so far. */
 		std::unordered_map<uint64_t, TrackBits> path_used;
@@ -608,7 +645,7 @@ JunctionLineRouteResult LineRouter::Run()
 			push({std::move(next), tree[index].g + cost, index, fmt::format("B{}", n), std::move(added), std::move(bridges)});
 		}
 	}
-	return {std::nullopt, "no route"};
+	return {std::nullopt, "no route", Money{0}, expansions};
 }
 
 } // namespace
