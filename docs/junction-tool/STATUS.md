@@ -1,5 +1,15 @@
 # Junction tool: status
 
+## PARKED 2026-11-09 late night (engineer to bed; no agents running)
+
+**Resume here, in order:**
+1. **O4a** (briefs/O4a-router-starts.md): the agent was stopped mid-step. `.claude/o4a` (branch wt-o4a at 8307acb5bb) holds uncommitted, unverified edits to `junction_line_router.{h,cpp}` and its tests (copy: OneDrive `OpenTTD-junction-tool/o4a-partial.patch`). Simplest: `git -C .claude/o4a checkout .` and relaunch the brief fresh with head = feature head.
+2. **O2** tunnels in the router (briefs/O2-router-tunnels.md, ready; needs O4a merged; T1 is merged).
+3. **O4b** search brief to write from DESIGN-O4.md (runs beside O2); **T1b** checker/ghost tunnel fixes (listed below).
+4. Morning deliverable for the engineer: per-generation timings vs 100 ms, compactness vs today's T (190/53 slivers) and coop numbers, ASCII renders of the first organic layouts.
+**Scratchpad** backed up to OneDrive `scratchpad-2026-11-09/` (ptest.sh, compact/metric.py, s2fm2). After a reboot: copy ptest.sh back into the new scratchpad and fix the briefs' ptest path.
+**Engineer decisions tonight:** D151 (100 ms; style 0 removal on hold), D152-D156 (organic plan, ramps, tunnels, compactness = occupied + slivers with coop as benchmark not ceiling, main line lift by money and tried first). Stations: Station window check still pending.
+
 ## Snapshot (2026-11-09 night): DIRECTION CHANGE to organic junctions
 
 **Resume here.** Plan: `PLAN-organic.md` (D152-D154). The engineer: place a junction on ANY terrain, slope/bridge/tunnel/terraform as needed, cheapest and most organic; nothing canned, the layout must emerge from rules + costs + search ("emerge from the maths"); keep it plain (small search space); hover target < 100 ms per generation (D151; I had mis-recorded it as < 1 s). Compactness (D153): surface tiles + sliver tiles (free tiles in no 2x2 free square); coop hubs leave 2-5% slivers, our current T 28%; enclosed pockets are normal in coop hubs (22-39%) and weigh little; coop is a benchmark, never a ceiling. Evidence: `RECON-organic.md` (13 pieces from 27 images; §6 game rules: bridges never cross, tunnels cross at different depths; §7 compactness numbers; script `scratchpad/compact/metric.py`).
