@@ -3,7 +3,8 @@
 ## 2026-11-10: O4 redesigned (tokens + negotiation), work started
 
 **Design:** DESIGN-O4.md revision 2 (D157 tokens and negotiated routing, D158 prio bundles routed, D159 prio-or-not by throughput). Revision 1's backtracking is replaced.
-**Running:** O2 tunnels in the router (`.claude/o2`, briefs/O2-router-tunnels.md, Sonnet); design audit (Fable, read-only, budget ~$50 cap set by the engineer).
+**Merged:** O2 tunnels in the router (49a46ffb1c; 391/391). Follow-ups: a prefix ending in `T<n>` isn't treated as after-bridge, and prefix tunnels keep z 0 (only matters if prefixes carry tunnels); JSON writes `"z"` only for tunnels with z != 0 (absent = 0, keeps the golden test).
+**Audit (Fable, ~$1-3):** 13 findings; accepted: lift spans and gaps enumerated in layer 1, route memo + admissible bound, measure one route first, per-track-bit resources + hug reward, minimum lengths for waiting room/bays, D113 in router, D148a phase with bridge blocks, D159 decided before search, O4n in two steps. **Waiting on the engineer:** A straight branch trunk (p, L searched) as first cut; B main-line prios as fixed strips, bent prios deferred until the signal pass supports them; C crossing assignment enumerated up front, negotiation kept inside each case for packing.
 **Next:** after the audit, O4m (anchor layer measurement, no routing) and O4n (router: per-resource extra cost + minimum length) briefs; then O4b. T1b still listed below.
 
 ## PARKED 2026-11-09 late night (engineer to bed; no agents running)
