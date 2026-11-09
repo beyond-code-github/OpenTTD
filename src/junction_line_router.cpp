@@ -36,6 +36,7 @@ struct LineTrackState {
 struct LineNode {
 	std::vector<JunctionPiece> last;
 	std::vector<LineTrackState> states;
+	bool after_bridge = false; ///< The last move was a bridge (D149 5).
 };
 
 /** One entry of the search tree. */
@@ -43,13 +44,24 @@ struct LineTreeEntry {
 	LineNode node;
 	Money g;
 	int parent;
-	char move;
+	std::string move;
 	std::vector<std::vector<JunctionPiece>> added; ///< The pieces each track added with this move.
+	std::vector<JunctionBridge> bridges; ///< The bridges this move added, one per track (D149).
 };
 
 static uint64_t PackTile(int x, int y)
 {
 	return (static_cast<uint64_t>(x + 32768) << 16) | static_cast<uint64_t>(y + 32768);
+}
+
+/** Whether a tile lies strictly between the heads of any of the bridges; as Router::BetweenBridgeHeads (junction_router.cpp). */
+static bool BetweenBridgeHeads(int x, int y, const std::vector<JunctionBridge> &bridges)
+{
+	for (const JunctionBridge &b : bridges) {
+		if (b.start.y == b.end.y && y == b.start.y && x > std::min(b.start.x, b.end.x) && x < std::max(b.start.x, b.end.x)) return true;
+		if (b.start.x == b.end.x && x == b.start.x && y > std::min(b.start.y, b.end.y) && y < std::max(b.start.y, b.end.y)) return true;
+	}
+	return false;
 }
 
 class LineRouter {
@@ -150,6 +162,7 @@ private:
 		const JunctionPiece &first = node.last[0];
 		key += fmt::format("{},{},{}", first.tile.x, first.tile.y, static_cast<int>(first.trackdir));
 		for (const LineTrackState &state : node.states) key += fmt::format(";{},{},{},{}", state.u, state.hand, state.prev_gap_ok, state.pair);
+		key += node.after_bridge ? ";b" : ";";
 		return key;
 	}
 
@@ -220,7 +233,7 @@ JunctionLineRouteResult LineRouter::Run()
 		tree.push_back(std::move(entry));
 		open.push({f, g, counter++, static_cast<int>(tree.size()) - 1});
 	};
-	push({std::move(root), root_cost, -1, ' ', {}});
+	push({std::move(root), root_cost, -1, "", {}, {}});
 
 	uint expansions = 0;
 	while (!open.empty()) {
@@ -233,17 +246,26 @@ JunctionLineRouteResult LineRouter::Run()
 
 		if (IsGoal(node)) {
 			JunctionLineRoute route{request.start, request.start_trackdir, ""};
-			for (int i = index; tree[i].parent >= 0; i = tree[i].parent) route.moves.insert(route.moves.begin(), tree[i].move);
+			for (int i = index; tree[i].parent >= 0; i = tree[i].parent) route.moves.insert(0, tree[i].move);
 			return {route, "", tree[index].g};
 		}
 		if (++expansions > request.max_expansions) return {std::nullopt, "search limit"};
 
 		/* Everything the line has built so far. */
 		std::unordered_map<uint64_t, TrackBits> path_used;
+		std::vector<JunctionBridge> path_bridges;
 		for (const JunctionRaster &raster : first) Occupy(path_used, raster.pieces[0]);
 		for (int i = index; tree[i].parent >= 0; i = tree[i].parent) {
+			path_bridges.insert(path_bridges.end(), tree[i].bridges.begin(), tree[i].bridges.end());
 			for (const std::vector<JunctionPiece> &track : tree[i].added) {
-				for (const JunctionPiece &piece : track) Occupy(path_used, piece);
+				for (const JunctionPiece &piece : track) {
+					/* D149 6: a bridge's middle tiles stay free. */
+					if (!piece.on_bridge || std::ranges::any_of(tree[i].bridges, [&](const JunctionBridge &bridge) {
+						return (piece.tile.x == bridge.start.x && piece.tile.y == bridge.start.y) || (piece.tile.x == bridge.end.x && piece.tile.y == bridge.end.y);
+					})) {
+						Occupy(path_used, piece);
+					}
+				}
 			}
 		}
 
@@ -253,6 +275,7 @@ JunctionLineRouteResult LineRouter::Run()
 			if (added.empty()) continue;
 
 			LineNode next = node;
+			next.after_bridge = false;
 			std::unordered_map<uint64_t, TrackBits> used = path_used;
 			bool legal = true;
 			Money cost = move == 'F' ? Money{0} : request.turn_cost;
@@ -274,7 +297,62 @@ JunctionLineRouteResult LineRouter::Run()
 				if (legal) next.last[i] = added[i].back();
 			}
 			if (!legal) continue;
-			push({std::move(next), tree[index].g + cost, index, move, std::move(added)});
+			push({std::move(next), tree[index].g + cost, index, std::string(1, move), std::move(added), {}});
+		}
+
+		if (!request.bridge_span_ok || !request.bridge_price || request.max_bridge_middle == 0 || node.after_bridge) continue;
+		for (uint n = 1; n <= request.max_bridge_middle; n++) {
+			if (!request.bridge_span_ok(n)) continue;
+			std::string error;
+			std::vector<JunctionBridge> bridges;
+			std::vector<std::vector<JunctionPiece>> added = ExtendJunctionLineBridge(request.line, node.last, n, bridges, error);
+			if (added.empty()) continue;
+
+			std::vector<JunctionBridge> all_bridges = path_bridges;
+			all_bridges.insert(all_bridges.end(), bridges.begin(), bridges.end());
+			auto is_head = [&](const JunctionPiece &piece) {
+				return std::ranges::any_of(all_bridges, [&](const JunctionBridge &bridge) {
+					return (piece.tile.x == bridge.start.x && piece.tile.y == bridge.start.y) || (piece.tile.x == bridge.end.x && piece.tile.y == bridge.end.y);
+				});
+			};
+
+			LineNode next = node;
+			next.after_bridge = true;
+			std::unordered_map<uint64_t, TrackBits> used = path_used;
+			bool legal = true;
+			Money cost = 0;
+			for (size_t i = 0; i < added.size() && legal; i++) {
+				const JunctionPiece *previous = &node.last[i];
+				for (size_t k = 0; k < added[i].size() && legal; k++) {
+					const JunctionPiece &piece = added[i][k];
+					if (k == 0 || k + 1 == added[i].size()) {
+						const uint64_t packed = PackTile(piece.tile.x, piece.tile.y);
+						if (!PieceUsable(piece) || existing_bits.contains(packed) || used.contains(packed)) {
+							legal = false;
+							break;
+						}
+						cost += TerrainCost(piece);
+						Occupy(used, piece);
+					} else if (!InBounds(piece) || blocked.contains(PackTile(piece.tile.x, piece.tile.y)) || is_head(piece) ||
+							(request.existing != nullptr && BetweenBridgeHeads(piece.tile.x, piece.tile.y, request.existing->bridges)) ||
+							BetweenBridgeHeads(piece.tile.x, piece.tile.y, path_bridges) ||
+							(request.terrain != nullptr && !request.terrain->SpanOk(piece.tile.x, piece.tile.y, request.plane))) {
+						legal = false;
+						break;
+					}
+					if (!AdvanceState(next.states[i], *previous, piece)) {
+						legal = false;
+						break;
+					}
+					previous = &piece;
+				}
+				if (legal) {
+					cost += request.bridge_price(n);
+					next.last[i] = added[i].back();
+				}
+			}
+			if (!legal) continue;
+			push({std::move(next), tree[index].g + cost, index, fmt::format("B{}", n), std::move(added), std::move(bridges)});
 		}
 	}
 	return {std::nullopt, "no route"};

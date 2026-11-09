@@ -243,6 +243,29 @@ std::vector<std::vector<JunctionPiece>> ExtendJunctionLine(const JunctionLineSpe
 	return extension;
 }
 
+std::vector<std::vector<JunctionPiece>> ExtendJunctionLineBridge(const JunctionLineSpec &line, const std::vector<JunctionPiece> &last, uint middle, std::vector<JunctionBridge> &bridges, std::string &error)
+{
+	for (const JunctionPiece &piece : last) {
+		if (!IsDiagonalTrackdir(piece.trackdir)) {
+			error = " must start from axis pieces";
+			return {};
+		}
+	}
+
+	std::vector<std::vector<JunctionPiece>> extension;
+	bridges.clear();
+	for (int i = 0; i < line.tracks; i++) {
+		JunctionRaster sub = RasterizeJunctionRoute({last[i].tile, last[i].trackdir, fmt::format("B{}", middle)});
+		if (!sub.error.empty()) {
+			error = fmt::format(": track {}: {}", i, sub.error);
+			return {};
+		}
+		extension.emplace_back(sub.pieces.begin() + 1, sub.pieces.end());
+		bridges.push_back(sub.bridges[0]);
+	}
+	return extension;
+}
+
 std::vector<JunctionRaster> RasterizeJunctionLine(const JunctionLineSpec &line, const JunctionLineRoute &route)
 {
 	if (line.tracks == 0) return std::vector<JunctionRaster>(1, JunctionRaster{{}, {}, "a line needs at least one track"});
@@ -265,6 +288,26 @@ std::vector<JunctionRaster> RasterizeJunctionLine(const JunctionLineSpec &line, 
 		std::vector<JunctionPiece> last;
 		for (const JunctionRaster &raster : rasters) last.push_back(raster.pieces.back());
 		std::string error;
+		if (route.moves[pos] == 'B') {
+			const size_t move_pos = pos;
+			size_t digits = 0;
+			uint middle = 0;
+			while (pos + 1 < route.moves.size() && route.moves[pos + 1] >= '0' && route.moves[pos + 1] <= '9') {
+				middle = middle * 10 + (route.moves[pos + 1] - '0');
+				if (middle > 1000) return fail(fmt::format("bridge length at position {} is too long", move_pos));
+				digits++;
+				pos++;
+			}
+			if (digits == 0) return fail(fmt::format("bridge at position {} has no length", move_pos));
+			std::vector<JunctionBridge> bridges;
+			const std::vector<std::vector<JunctionPiece>> extension = ExtendJunctionLineBridge(line, last, middle, bridges, error);
+			if (extension.empty()) return fail(fmt::format("move 'B' at position {}{}", move_pos, error));
+			for (int i = 0; i < line.tracks; i++) {
+				rasters[i].pieces.insert(rasters[i].pieces.end(), extension[i].begin(), extension[i].end());
+				rasters[i].bridges.push_back(bridges[i]);
+			}
+			continue;
+		}
 		const std::vector<std::vector<JunctionPiece>> extension = ExtendJunctionLine(line, last, route.moves[pos], error);
 		if (extension.empty()) return fail(fmt::format("move '{}' at position {}{}", route.moves[pos], pos, error));
 		for (int i = 0; i < line.tracks; i++) rasters[i].pieces.insert(rasters[i].pieces.end(), extension[i].begin(), extension[i].end());

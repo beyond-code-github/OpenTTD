@@ -47,7 +47,7 @@ JunctionLineNotation ParseLineNotation(std::string_view text);
 struct JunctionLineRoute {
 	TileIndexDiffC start;
 	Trackdir start_trackdir;
-	std::string moves; ///< F, L, R only (no bridges in this step).
+	std::string moves; ///< F, L, R, and B<n> (a bridge with n middle tiles, D149).
 };
 
 /** Rasterize a line program into one raster per track, outermost-left first; error text in the first raster when the line can't make a move. */
@@ -58,5 +58,16 @@ std::vector<JunctionRaster> RasterizeJunctionLine(const JunctionLineSpec &line, 
  * @return The added pieces per track (without the last pieces), or an error text (empty vector) when the move can't be made.
  */
 std::vector<std::vector<JunctionPiece>> ExtendJunctionLine(const JunctionLineSpec &line, const std::vector<JunctionPiece> &last, char move, std::string &error);
+
+/**
+ * Extend a line by a bridge move B<middle> (D149): every track bridges `middle` tiles straight on from its last piece, which must be an axis piece.
+ * @param line The line.
+ * @param last Each track's last piece.
+ * @param middle The bridge's middle-tile count.
+ * @param[out] bridges One bridge per track, in track order.
+ * @param[out] error The reason, when the move can't be made.
+ * @return The added pieces per track (on_bridge, near head to far head), or an empty vector when the move can't be made.
+ */
+std::vector<std::vector<JunctionPiece>> ExtendJunctionLineBridge(const JunctionLineSpec &line, const std::vector<JunctionPiece> &last, uint middle, std::vector<JunctionBridge> &bridges, std::string &error);
 
 #endif /* JUNCTION_LINE_H */

@@ -409,3 +409,178 @@ TEST_CASE("FindJunctionLineRoute: the route is as cheap as an uninformed search"
 		}
 	}
 }
+
+/** A line request with bridges on, its terrain and its existing layout, set up in place (the request points into the struct). */
+struct LineBridgeCase {
+	JunctionLineRouteRequest request;
+	JunctionTerrain terrain;
+	JunctionLayout layout;
+};
+
+static void EnableBridges(JunctionLineRouteRequest &request)
+{
+	request.rail_piece = 1;
+	request.bridge_price = [](uint n) { return Money(10 * (n + 2)); };
+	request.bridge_span_ok = [](uint n) { return n <= 6; };
+	request.max_bridge_middle = 8;
+}
+
+/** The rows of the tracks of the line when it runs straight. */
+static std::vector<int> TrackRows(const JunctionLineRouteRequest &request)
+{
+	std::vector<int> rows;
+	for (const JunctionRaster &raster : RasterizeJunctionLine(request.line, {request.start, request.start_trackdir, ""})) rows.push_back(raster.pieces[0].tile.y);
+	return rows;
+}
+
+/** A river of the given width across the whole field from x = 30 towards larger x, with the bounds hugging the line's rows when asked; track 1's row has one more water tile at x = 29 when uneven. */
+static void SetUpRiver(LineBridgeCase &c, const char *notation, int width, bool uneven, bool hug)
+{
+	c.request = BaseRequest();
+	c.request.line = ParseLineNotation(notation).spec;
+	EnableBridges(c.request);
+	const std::vector<int> rows = TrackRows(c.request);
+	if (hug) {
+		c.request.min.y = static_cast<int16_t>(*std::min_element(rows.begin(), rows.end()));
+		c.request.max.y = static_cast<int16_t>(*std::max_element(rows.begin(), rows.end()));
+	}
+	c.terrain = FlatTerrainFor(c.request, 0);
+	for (int y = c.request.min.y; y <= c.request.max.y; y++) {
+		for (int x = 30; x < 30 + width; x++) TerrainTileOf(c.terrain, x, y).cls = JunctionTileClass::Water;
+	}
+	if (uneven) TerrainTileOf(c.terrain, 29, rows[1]).cls = JunctionTileClass::Water;
+	c.request.terrain = &c.terrain;
+}
+
+/** A straight track along y crossing the line's path at x = 30, over the whole field. */
+static void SetUpCrossing(LineBridgeCase &c, const char *notation)
+{
+	c.request = BaseRequest();
+	c.request.line = ParseLineNotation(notation).spec;
+	EnableBridges(c.request);
+	const std::vector<int> rows = TrackRows(c.request);
+	c.request.min.y = static_cast<int16_t>(*std::min_element(rows.begin(), rows.end()));
+	c.request.max.y = static_cast<int16_t>(*std::max_element(rows.begin(), rows.end()));
+	for (int y = c.request.min.y; y <= c.request.max.y; y++) c.layout.tracks.push_back({{30, static_cast<int16_t>(y)}, TrackBits{Track::Y}});
+	c.request.existing = &c.layout;
+}
+
+static void CheckRiverBridges(const LineBridgeCase &c, const JunctionLineRouteResult &result, size_t tracks)
+{
+	REQUIRE(result.route.has_value());
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(c.request.line, *result.route);
+	REQUIRE(rasters.size() == tracks);
+	for (const JunctionRaster &raster : rasters) {
+		INFO(raster.error);
+		REQUIRE(raster.error.empty());
+		REQUIRE(raster.bridges.size() == 1);
+		for (const JunctionPiece &piece : raster.pieces) {
+			if (piece.on_bridge) continue;
+			CHECK(c.terrain.At(piece.tile.x, piece.tile.y)->cls != JunctionTileClass::Water);
+		}
+		/* The heads lie side by side with the first track's. */
+		CHECK(raster.bridges[0].start.y == raster.bridges[0].end.y);
+		CHECK(raster.bridges[0].start.x == rasters[0].bridges[0].start.x);
+		CHECK(raster.bridges[0].end.x == rasters[0].bridges[0].end.x);
+	}
+}
+
+TEST_CASE("FindJunctionLineRoute: L_R bridges a river", "[junction][linerouter]")
+{
+	LineBridgeCase c;
+	SetUpRiver(c, "L_R", 3, false, false);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->moves.find("B3") != std::string::npos);
+	CheckRiverBridges(c, result, 2);
+}
+
+TEST_CASE("FindJunctionLineRoute: LL_RR bridges a river", "[junction][linerouter]")
+{
+	LineBridgeCase c;
+	SetUpRiver(c, "LL_RR", 3, false, false);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->moves.find("B3") != std::string::npos);
+	CheckRiverBridges(c, result, 4);
+}
+
+TEST_CASE("FindJunctionLineRoute: bridges over existing track", "[junction][linerouter]")
+{
+	LineBridgeCase c;
+	SetUpCrossing(c, "L_R");
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(c.request.line, *result.route);
+	for (const JunctionRaster &raster : rasters) {
+		REQUIRE(raster.error.empty());
+		REQUIRE(raster.bridges.size() == 1);
+		CHECK(std::min(raster.bridges[0].start.x, raster.bridges[0].end.x) < 30);
+		CHECK(std::max(raster.bridges[0].start.x, raster.bridges[0].end.x) > 30);
+		for (const JunctionPiece &piece : raster.pieces) {
+			if (piece.tile.x == 30) CHECK(piece.on_bridge);
+		}
+		for (const TileIndexDiffC &head : {raster.bridges[0].start, raster.bridges[0].end}) CHECK(head.x != 30);
+	}
+}
+
+TEST_CASE("FindJunctionLineRoute: all tracks share the bridge length", "[junction][linerouter]")
+{
+	LineBridgeCase c;
+	SetUpRiver(c, "L_R", 3, true, true);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->moves.find("B4") != std::string::npos);
+	CHECK(result.route->moves.find("B3") == std::string::npos);
+	CheckRiverBridges(c, result, 2);
+}
+
+TEST_CASE("FindJunctionLineRoute: a bridge longer than the span limit is refused", "[junction][linerouter]")
+{
+	LineBridgeCase c;
+	SetUpRiver(c, "L_R", 7, false, false);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	CHECK_FALSE(result.route.has_value());
+	CHECK(result.error == "no route");
+}
+
+TEST_CASE("RasterizeJunctionLine: a bridge move", "[junction][linerouter]")
+{
+	const JunctionLineSpec line = ParseLineNotation("L_R").spec;
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(line, {{40, 20}, Trackdir::X_NE, "FFB2F"});
+	REQUIRE(rasters.size() == 2);
+	for (const JunctionRaster &raster : rasters) {
+		INFO(raster.error);
+		REQUIRE(raster.error.empty());
+		CHECK(std::count_if(raster.pieces.begin(), raster.pieces.end(), [](const JunctionPiece &piece) { return piece.on_bridge; }) == 4);
+		CHECK(raster.bridges.size() == 1);
+	}
+
+	CHECK_FALSE(RasterizeJunctionLine(line, {{40, 20}, Trackdir::X_NE, "FLB2"})[0].error.empty());
+	CHECK_FALSE(RasterizeJunctionLine(line, {{40, 20}, Trackdir::X_NE, "FB"})[0].error.empty());
+}
+
+TEST_CASE("FindJunctionLineRoute: bridge routes are as cheap as an uninformed search", "[junction][linerouter][slow]")
+{
+	for (int which = 0; which < 4; which++) {
+		LineBridgeCase c;
+		switch (which) {
+			case 0: SetUpRiver(c, "L_R", 3, false, false); break;
+			case 1: SetUpRiver(c, "LL_RR", 3, false, false); break;
+			case 2: SetUpCrossing(c, "L_R"); break;
+			default: SetUpRiver(c, "L_R", 3, true, true); break;
+		}
+		c.request.use_heuristic = true;
+		const JunctionLineRouteResult informed = FindJunctionLineRoute(c.request);
+		c.request.use_heuristic = false;
+		const JunctionLineRouteResult uninformed = FindJunctionLineRoute(c.request);
+		INFO("case " << which << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
+		REQUIRE(informed.route.has_value());
+		REQUIRE(uninformed.route.has_value());
+		CHECK(informed.cost == uninformed.cost);
+	}
+}

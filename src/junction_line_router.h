@@ -16,6 +16,7 @@
 #include "junction_router.h"
 #include "junction_terrain.h"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,7 +29,7 @@ struct JunctionLineRouteRequest {
 	std::vector<JunctionRouteEnd> goals; ///< Exact end pieces for track 0.
 	TileIndexDiffC min; ///< Every piece of every track lies inside, inclusive.
 	TileIndexDiffC max;
-	std::vector<TileIndexDiffC> blocked; ///< Tiles no track may use.
+	std::vector<TileIndexDiffC> blocked; ///< Tiles no track or bridge may use.
 	const JunctionTerrain *terrain = nullptr; ///< When set, every piece's tile must be usable at plane, and its CostAt is paid once per tile (D147).
 	int plane = 0; ///< The level the line is built on; only used with a terrain.
 	const JunctionLayout *existing = nullptr; ///< When set, its tracks and bridge heads are obstacles (D147).
@@ -36,6 +37,9 @@ struct JunctionLineRouteRequest {
 	uint s_bend_window = 0; ///< As JunctionRouteRequest.
 	Money rail_piece = 1; ///< Per piece, summed over all tracks.
 	Money turn_cost = 0; ///< Once per line turn (D135 c).
+	std::function<bool(uint)> bridge_span_ok; ///< By middle-tile count; bridges are tried only when this and bridge_price are set and max_bridge_middle > 0 (D149).
+	std::function<Money(uint)> bridge_price; ///< Per track and bridge, by middle-tile count. The heuristic stays admissible while bridge_price(n) >= (n + 2) * rail_piece.
+	uint max_bridge_middle = 0; ///< Largest n tried for B<n>.
 	uint max_expansions = 200000;
 	bool use_heuristic = true; ///< Test seam: false makes the search uninformed (h = 0).
 };

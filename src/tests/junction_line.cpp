@@ -238,7 +238,7 @@ TEST_CASE("JunctionLine: LL_RR groups are adjacent", "[junction][line]")
 
 TEST_CASE("JunctionLine: errors", "[junction][line]")
 {
-	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine({2, 1}, {{20, 20}, Trackdir::X_NE, "FB3"});
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine({2, 1}, {{20, 20}, Trackdir::X_NE, "FLB3"});
 	REQUIRE(rasters.size() == 2);
 	CHECK_FALSE(rasters[0].error.empty());
 }
