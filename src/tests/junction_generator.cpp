@@ -64,7 +64,7 @@ static std::vector<JunctionPrioTiming> TimingsOf(const JunctionLayout &layout, c
 	return JunctionPrioTimings(layout, spec, paths, spec.train, JunctionTerminalSpeed(spec.train), spec.tl);
 }
 
-TEST_CASE("SizeJunctionPrio sizes the test spec", "[junction][generator]")
+TEST_CASE("SizeJunctionPrio sizes the test spec", "[junction][generator][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	JunctionSpec unsized = spec;
@@ -79,7 +79,7 @@ TEST_CASE("SizeJunctionPrio sizes the test spec", "[junction][generator]")
 	CHECK(std::ranges::none_of(timings, [](const JunctionPrioTiming &t) { return t.ml_delayed || t.timed_out; }));
 }
 
-TEST_CASE("SizeJunctionPrio: a slower train needs more coverage", "[junction][generator]")
+TEST_CASE("SizeJunctionPrio: a slower train needs more coverage", "[junction][generator][slow]")
 {
 	JunctionSpec d138_spec = MakeTestJunctionSpec();
 	d138_spec.prio_tiles = 0;
@@ -100,7 +100,7 @@ TEST_CASE("SizeJunctionPrio: a slower train needs more coverage", "[junction][ge
 	}
 }
 
-TEST_CASE("Library entries carry a prio that does not delay the ML", "[junction][generator][library]")
+TEST_CASE("Library entries carry a prio that does not delay the ML", "[junction][generator][library][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
@@ -122,7 +122,7 @@ TEST_CASE("GenerateJunction gives a rule-clean L_R T", "[junction]")
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
 }
 
-TEST_CASE("JunctionRulesClean agrees with CheckJunctionRules on the sweep", "[junction]")
+TEST_CASE("JunctionRulesClean agrees with CheckJunctionRules on the sweep", "[junction][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	int clean_count = 0;
@@ -367,7 +367,7 @@ static int MaxXBridgeSpan(const JunctionLayout &layout)
 	return span;
 }
 
-TEST_CASE("GenerateJunction: doubled bridges are no longer than needed", "[junction]")
+TEST_CASE("GenerateJunction: doubled bridges are no longer than needed", "[junction][slow]")
 {
 	const JunctionSpec spec = PinnedTestSpec();
 	const JunctionGenerateResult result = GenerateJunction(spec);
@@ -404,7 +404,7 @@ static const SweepCandidate *FirstClean(const JunctionSpec &spec, const std::vec
 	return nullptr;
 }
 
-TEST_CASE("BuildJunctionCandidate: some candidate is clean", "[junction]")
+TEST_CASE("BuildJunctionCandidate: some candidate is clean", "[junction][slow]")
 {
 	const JunctionSpec spec = PinnedTestSpec();
 	const std::vector<SweepCandidate> &candidates = SweepCandidates(spec);
@@ -414,7 +414,7 @@ TEST_CASE("BuildJunctionCandidate: some candidate is clean", "[junction]")
 			<< " e_slack " << static_cast<int>(clean->params.e_slack) << " w_slack " << static_cast<int>(clean->params.w_slack) << "\n" << RenderJunctionAscii(clean->layout));
 }
 
-TEST_CASE("BuildJunctionCandidate: every candidate is structurally sound", "[junction]")
+TEST_CASE("BuildJunctionCandidate: every candidate is structurally sound", "[junction][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	for (const SweepCandidate &c : SweepCandidates(spec)) {
@@ -426,7 +426,7 @@ TEST_CASE("BuildJunctionCandidate: every candidate is structurally sound", "[jun
 	}
 }
 
-TEST_CASE("BuildJunctionCandidate: the doubled lanes are equal and doubled", "[junction]")
+TEST_CASE("BuildJunctionCandidate: the doubled lanes are equal and doubled", "[junction][slow]")
 {
 	const JunctionSpec spec = PinnedTestSpec();
 	const std::vector<SweepCandidate> &candidates = SweepCandidates(spec);
@@ -450,7 +450,7 @@ TEST_CASE("BuildJunctionCandidate: the doubled lanes are equal and doubled", "[j
 	}
 }
 
-TEST_CASE("BuildJunctionCandidate: the doubled ML lanes are mirror images", "[junction]")
+TEST_CASE("BuildJunctionCandidate: the doubled ML lanes are mirror images", "[junction][slow]")
 {
 	const JunctionSpec spec = PinnedTestSpec();
 	const std::vector<SweepCandidate> &candidates = SweepCandidates(spec, 0);
@@ -523,7 +523,7 @@ static std::optional<JunctionLayout> CleanParallelogram(const JunctionSpec &spec
 	return first;
 }
 
-TEST_CASE("a parallelogram candidate is clean", "[junction]")
+TEST_CASE("a parallelogram candidate is clean", "[junction][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	int clean1 = 0;
@@ -543,7 +543,7 @@ TEST_CASE("a parallelogram candidate is clean", "[junction]")
 	CHECK(CheckJunctionRules(*layout, spec).empty());
 }
 
-TEST_CASE("parallelogram bridges are adjacent", "[junction]")
+TEST_CASE("parallelogram bridges are adjacent", "[junction][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::optional<JunctionLayout> layout = CleanParallelogram(spec);
@@ -563,7 +563,7 @@ TEST_CASE("parallelogram bridges are adjacent", "[junction]")
 	WARN("\n" << RenderJunctionAscii(*layout));
 }
 
-TEST_CASE("BuildJunctionCandidate: the parallelogram lanes have equal half pieces and units", "[junction]")
+TEST_CASE("BuildJunctionCandidate: the parallelogram lanes have equal half pieces and units", "[junction][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::optional<JunctionLayout> layout = CleanParallelogram(spec);
@@ -592,7 +592,7 @@ static bool SameLayout(const JunctionLayout &a, const JunctionLayout &b)
 	return true;
 }
 
-TEST_CASE("GenerateJunction is deterministic", "[junction]")
+TEST_CASE("GenerateJunction is deterministic", "[junction][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionGenerateResult a = GenerateJunction(spec);
@@ -664,7 +664,7 @@ TEST_CASE("Junction generator spec sweep", "[.gensweep]")
 	}
 }
 
-TEST_CASE("GenerateJunction: a longer prio covers two train lengths", "[junction]")
+TEST_CASE("GenerateJunction: a longer prio covers two train lengths", "[junction][slow]")
 {
 	const JunctionSpec base_spec = PinnedTestSpec();
 	const JunctionGenerateResult base = GenerateJunction(base_spec);
@@ -733,7 +733,7 @@ TEST_CASE("GenerateJunction: an ML gap of 0 has no room for the W prio", "[junct
 	CHECK(result.error == JunctionGenerateError::NeedsMlGap);
 }
 
-TEST_CASE("GenerateJunction: a short train with a narrow branch fits", "[junction]")
+TEST_CASE("GenerateJunction: a short train with a narrow branch fits", "[junction][slow]")
 {
 	/* At TL3 E->S used to end on the tile above the N stub, leaving N->E no way out (D3d). */
 	JunctionSpec spec = MakeTestJunctionSpec();
@@ -797,7 +797,7 @@ TEST_CASE("Junction generator golden JSON", "[.golden]")
 	for (const JunctionGenerateResult &r : results) out << (r.layout.has_value() ? JunctionLayoutToJson(*r.layout) : std::string("none")) << "\n";
 }
 
-TEST_CASE("GenerateJunction on flat terrain equals no terrain", "[junction][terrain]")
+TEST_CASE("GenerateJunction on flat terrain equals no terrain", "[junction][terrain][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTerrain flat = MakeFlatTerrain();
@@ -808,7 +808,7 @@ TEST_CASE("GenerateJunction on flat terrain equals no terrain", "[junction][terr
 	CHECK(SameLayout(*a.layout, *b.layout));
 }
 
-TEST_CASE("GenerateJunction avoids a block of houses", "[junction][terrain]")
+TEST_CASE("GenerateJunction avoids a block of houses", "[junction][terrain][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTerrain flat = MakeFlatTerrain();
@@ -853,7 +853,7 @@ TEST_CASE("the frame grows with prio coverage", "[junction][frame]")
 	CHECK(f3.terrain_origin_y == -2);
 }
 
-TEST_CASE("library fit uses the library's frame", "[junction][frame][library]")
+TEST_CASE("library fit uses the library's frame", "[junction][frame][library][slow]")
 {
 	JunctionSpec spec = MakeTestJunctionSpec();
 	spec.prio_tiles = 2 * spec.tl;
@@ -867,7 +867,7 @@ TEST_CASE("library fit uses the library's frame", "[junction][frame][library]")
 	CHECK(FitJunctionLibrary(library, flat).has_value());
 }
 
-TEST_CASE("FitJunctionLibrary on flat terrain is at least as good as GenerateJunction", "[junction][terrain][library]")
+TEST_CASE("FitJunctionLibrary on flat terrain is at least as good as GenerateJunction", "[junction][terrain][library][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTerrain flat = MakeFlatTerrain();
@@ -893,7 +893,7 @@ TEST_CASE("FitJunctionLibrary on flat terrain is at least as good as GenerateJun
 	CHECK(std::make_pair(entry.score.first, entry.score.second + fit->terrain_cost) <= gen_score);
 }
 
-TEST_CASE("BuildJunctionLibrary is deterministic", "[junction][library]")
+TEST_CASE("BuildJunctionLibrary is deterministic", "[junction][library][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::vector<JunctionLibraryEntry> a = BuildJunctionLibrary(spec);
@@ -921,7 +921,7 @@ static bool EntryTouchesRect(const JunctionLibraryEntry &e, int x0, int x1, int 
 	return false;
 }
 
-TEST_CASE("FitJunctionLibrary avoids blocked tiles", "[junction][terrain][library]")
+TEST_CASE("FitJunctionLibrary avoids blocked tiles", "[junction][terrain][library][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
@@ -941,7 +941,7 @@ TEST_CASE("FitJunctionLibrary avoids blocked tiles", "[junction][terrain][librar
 	CHECK_FALSE(FitJunctionLibrary(library, all).has_value());
 }
 
-TEST_CASE("FitJunctionLibrary picks a plane", "[junction][terrain][library]")
+TEST_CASE("FitJunctionLibrary picks a plane", "[junction][terrain][library][slow]")
 {
 	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(MakeTestJunctionSpec());
 	REQUIRE_FALSE(library.empty());
@@ -957,7 +957,7 @@ TEST_CASE("JunctionTerrainPlanes", "[junction][terrain][library]")
 	CHECK(JunctionTerrainPlanes(t) == std::vector<int>{1});
 }
 
-TEST_CASE("GenerateJunction on a raised plane equals the flat result", "[junction][terrain]")
+TEST_CASE("GenerateJunction on a raised plane equals the flat result", "[junction][terrain][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTerrain flat = MakeFlatTerrain();
@@ -969,7 +969,7 @@ TEST_CASE("GenerateJunction on a raised plane equals the flat result", "[junctio
 	CHECK(SameLayout(*a.layout, *b.layout));
 }
 
-TEST_CASE("GenerateJunction with a pond under the crossing", "[junction][terrain]")
+TEST_CASE("GenerateJunction with a pond under the crossing", "[junction][terrain][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const int g = spec.ml_gap;
@@ -1021,7 +1021,7 @@ TEST_CASE("GenerateJunction reports the hub offset", "[junction]")
 	CHECK((LayoutTracksAt(layout, result.hub.x, w_y).Test(Track::X) || (lane_ok(w_y - 1) && lane_ok(w_y + 1)) || (lane_ok(w_y) && lane_ok(w_y + 1))));
 }
 
-TEST_CASE("GenerateJunction with a blocked prio row line", "[junction][terrain]")
+TEST_CASE("GenerateJunction with a blocked prio row line", "[junction][terrain][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	JunctionTerrain t = MakeFlatTerrain();

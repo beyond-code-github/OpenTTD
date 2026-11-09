@@ -249,7 +249,7 @@ static void SetNearTestRect(JunctionTerrain &t, int x0, int x1, int y0, int y1, 
 	}
 }
 
-TEST_CASE("GenerateJunctionNear: a clear spot gives offset 0 and the plain layout", "[junction][terrain]")
+TEST_CASE("GenerateJunctionNear: a clear spot gives offset 0 and the plain layout", "[junction][terrain][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTerrain terrain = MakeNearTestTerrain();
@@ -294,7 +294,7 @@ TEST_CASE("GenerateJunctionNear: cancel stops the search", "[junction][terrain]"
 	CHECK(elapsed < std::chrono::seconds(2));
 }
 
-TEST_CASE("FitJunctionLibraryNear: clear terrain gives offset 0 and the library's best entry", "[junction][terrain]")
+TEST_CASE("FitJunctionLibraryNear: clear terrain gives offset 0 and the library's best entry", "[junction][terrain][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
@@ -311,7 +311,7 @@ TEST_CASE("FitJunctionLibraryNear: clear terrain gives offset 0 and the library'
 	CHECK(JunctionLayoutToJson(*near.result.layout) == JunctionLayoutToJson(library[fit->entry].layout));
 }
 
-TEST_CASE("FitJunctionLibraryNear: a blocked block gives a fit whose tiles are buildable, or none", "[junction][terrain]")
+TEST_CASE("FitJunctionLibraryNear: a blocked block gives a fit whose tiles are buildable, or none", "[junction][terrain][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
@@ -333,7 +333,7 @@ TEST_CASE("FitJunctionLibraryNear: a blocked block gives a fit whose tiles are b
 	}
 }
 
-TEST_CASE("FitJunctionLibraryNear: all blocked gives NoLayout at offset 0", "[junction][terrain]")
+TEST_CASE("FitJunctionLibraryNear: all blocked gives NoLayout at offset 0", "[junction][terrain][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
