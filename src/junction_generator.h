@@ -88,7 +88,7 @@ class JunctionRouteCache;
 struct JunctionCandidateParams {
 	uint8_t height; ///< H: the branch edge is row H-1; the E track is row 0.
 	Money crossing_cost; ///< crossable_cost when a route crosses the W track.
-	uint8_t e_slack; ///< Extra tiles kept between the E->S split's prio coverage and where N->E may join.
+	uint8_t e_slack; ///< Extra tiles kept between the E->S split's prio coverage and where N->E may join (symmetric style 0); for the parallelogram style the E-side phase, 0 or 1 (D148a).
 	uint8_t w_slack; ///< Extra tiles kept between the lane merge and where N->W may join; symmetric style (0) only, the parallelogram style ignores it (D145, D146).
 	int plane = 0; ///< The level the junction is built on; only used with a terrain.
 	uint8_t bridge_margin = 3; ///< Bridge heads sit this many tiles beyond the crossing set (D103); symmetric style (0) only, the parallelogram style ignores it (D145, D146).
@@ -96,6 +96,7 @@ struct JunctionCandidateParams {
 	JunctionRouteCache *route_cache = nullptr; ///< When set, router results are shared through it (one cache per generation).
 	int k_w_delta = 0; ///< Test seam: added to the parallelogram style's prio coverage after the lane merge (D145).
 	int k_sb_delta = 0; ///< Test seam: added to the parallelogram style's shift-back distance (D145).
+	int k_e_delta = 0; ///< Test seam: added to the parallelogram style's E-side window start (D148).
 };
 
 /**

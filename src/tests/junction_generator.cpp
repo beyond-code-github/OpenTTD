@@ -132,6 +132,34 @@ TEST_CASE("GenerateJunction gives a rule-clean L_R T", "[junction]")
 	CHECK(CheckJunctionRules(*result.layout, spec).empty());
 }
 
+TEST_CASE("Parallelogram E-side window phase (D148a)", "[junction][generator]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.prio_tiles = 9;
+	int clean_at[2] = {0, 0};
+	bool prio_reach_seen = false;
+	for (int height = spec.ml_gap + 5; height <= spec.ml_gap + 20; height++) {
+		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
+			for (uint8_t e_slack = 0; e_slack <= 1; e_slack++) {
+				JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, 0};
+				params.lane_style = 1;
+				bool clean = false;
+				const std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, nullptr, nullptr, nullptr, &clean);
+				if (!layout.has_value()) continue;
+				const std::vector<RuleViolation> rules = CheckJunctionRules(*layout, spec);
+				if (rules.empty()) {
+					clean_at[e_slack]++;
+				} else if (e_slack == 0 && std::ranges::any_of(rules, [](const RuleViolation &v) { return v.rule == JunctionRule::PrioReach; })) {
+					prio_reach_seen = true;
+				}
+			}
+		}
+	}
+	CHECK(clean_at[0] == 0);
+	CHECK(prio_reach_seen);
+	CHECK(clean_at[1] > 0);
+}
+
 TEST_CASE("JunctionRulesClean agrees with CheckJunctionRules on the sweep", "[junction][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
@@ -143,19 +171,23 @@ TEST_CASE("JunctionRulesClean agrees with CheckJunctionRules on the sweep", "[ju
 				for (uint8_t w_slack = 0; w_slack <= 3; w_slack += 3) {
 					for (uint8_t margin = 1; margin <= 3; margin++) {
 						for (uint8_t style = 0; style <= 1; style++) {
-							JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, w_slack};
-							params.bridge_margin = margin;
-							params.lane_style = style;
-							bool clean = false;
-							const std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, nullptr, nullptr, nullptr, &clean);
-							if (!layout.has_value()) {
-								CHECK_FALSE(clean);
-								continue;
+							/* D148: the parallelogram style's E-side start one tile early is rejected at this spec's prio. */
+							for (int k_e = 0; k_e >= (style == 1 ? -1 : 0); k_e--) {
+								JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, w_slack};
+								params.bridge_margin = margin;
+								params.lane_style = style;
+								params.k_e_delta = k_e;
+								bool clean = false;
+								const std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, nullptr, nullptr, nullptr, &clean);
+								if (!layout.has_value()) {
+									CHECK_FALSE(clean);
+									continue;
+								}
+								const bool expected = CheckJunctionRules(*layout, spec).empty();
+								CHECK(JunctionRulesClean(*layout, spec) == expected);
+								CHECK(clean == expected);
+								(expected ? clean_count : unclean_count)++;
 							}
-							const bool expected = CheckJunctionRules(*layout, spec).empty();
-							CHECK(JunctionRulesClean(*layout, spec) == expected);
-							CHECK(clean == expected);
-							(expected ? clean_count : unclean_count)++;
 						}
 					}
 				}
@@ -1205,36 +1237,35 @@ TEST_CASE("GenerateJunction: staggered parallelogram, one signal tile per leg (D
 	CHECK(tiles <= 211);
 }
 
-/* D145: k_w and k_sb are the least values that give a clean style-1 candidate; one less is rejected by a named rule. */
-TEST_CASE("Parallelogram solver constants are minimal (D145)", "[junction][generator][slow]")
+/* D145, D148: k_w, k_sb and k_e are the least values that give a clean style-1 candidate; one less is rejected by a named rule. */
+TEST_CASE("Parallelogram solver constants are minimal (D145, D148)", "[junction][generator][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	for (const char *which : {"k_w", "k_sb"}) {
+	for (const char *which : {"k_w", "k_sb", "k_e"}) {
 		std::set<JunctionRule> rules;
 		int clean_count = 0;
 		for (int height = spec.ml_gap + 5; height <= spec.ml_gap + 20; height++) {
 			for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
-				for (uint8_t e_slack = 0; e_slack <= 3; e_slack++) {
-					JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, 0};
-					params.lane_style = 1;
-					(std::string_view(which) == "k_w" ? params.k_w_delta : params.k_sb_delta) = -1;
-					bool clean = false;
-					const std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, nullptr, nullptr, nullptr, &clean);
-					if (clean) clean_count++;
-					if (layout.has_value() && !clean) {
-						for (const RuleViolation &v : CheckJunctionRules(*layout, spec)) rules.insert(v.rule);
-					}
+				JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, 0, 0};
+				params.lane_style = 1;
+				const std::string_view name = which;
+				(name == "k_w" ? params.k_w_delta : name == "k_sb" ? params.k_sb_delta : params.k_e_delta) = -1;
+				bool clean = false;
+				const std::optional<JunctionLayout> layout = BuildJunctionCandidate(spec, params, nullptr, nullptr, nullptr, &clean);
+				if (clean) clean_count++;
+				if (layout.has_value() && !clean) {
+					for (const RuleViolation &v : CheckJunctionRules(*layout, spec)) rules.insert(v.rule);
 				}
 			}
 		}
 		INFO(which << " - 1");
 		CHECK(clean_count == 0);
-		/* Measured: k_w - 1 is rejected by G9c (Prio) and G9b (PrioReach); k_sb - 1 by the curve speed rule (the N->W join too close to the shift-back S-bend) and the same two prio rules. */
-		if (std::string_view(which) == "k_w") {
-			CHECK(rules.contains(JunctionRule::Prio));
-			CHECK(rules.contains(JunctionRule::PrioReach));
-		} else {
+		/* Measured with e_slack 0 (style 1 no longer sweeps it): k_w - 1 is rejected by G9b (PrioReach); k_sb - 1 by the curve speed rule (the N->W join too close to the shift-back S-bend); k_e - 1 by G9c (Prio) and G9b (PrioReach), 18 of 18 (D148). */
+		if (std::string_view(which) == "k_sb") {
 			CHECK(rules.contains(JunctionRule::CurveSpeed));
+		} else {
+			CHECK(rules.contains(JunctionRule::PrioReach));
+			if (std::string_view(which) == "k_e") CHECK(rules.contains(JunctionRule::Prio));
 		}
 	}
 }

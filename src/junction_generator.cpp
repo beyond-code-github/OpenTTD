@@ -218,6 +218,9 @@ static constexpr int JUNCTION_PRIO_AFTER_MERGE = 1;
  */
 static constexpr int JUNCTION_SHIFT_BACK_TILES = 4;
 
+/** D148: the N->E goal window starts this far past the E->S split, beyond the prio coverage: one tile so the split lies outside the join's coverage (G9c, G9b), one because the goal piece is the plain tile after the merge tile. One more tile (e_slack 1) when the prio pass can't place non-adjacent joins over the coverage (G9b, D148a). */
+static constexpr int JUNCTION_E_PRIO_AFTER_SPLIT = 2;
+
 /**
  * Build the two lanes of the parallelogram style from the solver positions (D118, D145).
  * Lane A runs straight on the W row, through its bridge, then S-bends onto the b row; lane B S-bends onto the b row at the
@@ -425,7 +428,8 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 		/* D108: the N->E merge window starts beyond the prio coverage past the E->S split; the checker rejects unsafe positions. */
 		const int x_s = e_to_s->pieces.front().tile.x;
 		const int cover = static_cast<int>(spec.prio_tiles);
-		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, std::max(xO, x_s + cover + 1 + params.e_slack), frame.width - 3);
+		const int e_after = params.lane_style == 1 ? JUNCTION_E_PRIO_AFTER_SPLIT + params.e_slack + params.k_e_delta : 1 + params.e_slack;
+		request.goals = PlainRowPieces(l, 0, Trackdir::X_SW, std::max(xO, x_s + cover + e_after), frame.width - 3);
 		const std::optional<JunctionRaster> n_to_e = RouteAndAdd(l, request, params.route_cache);
 		if (!n_to_e.has_value()) return false;
 		if (note) note_crossings(*n_to_e);
@@ -832,7 +836,7 @@ static std::vector<JunctionPrioTiming> PrioTimingsOf(const JunctionLayout &layou
 	return JunctionPrioTimings(layout, spec, paths, spec.train, JunctionTerminalSpeed(spec.train), spec.tl);
 }
 
-/** The candidates of one height (D146): the symmetric style over the full sweep, the parallelogram style once per crossing cost and e_slack. */
+/** The candidates of one height (D146): the symmetric style over the full sweep, the parallelogram style once per crossing cost and E-side phase (D146, D148, D148a). */
 static void AddJunctionSweepParams(std::vector<JunctionCandidateParams> &out, const JunctionSpec &spec, int height, int plane, JunctionRouteCache *cache)
 {
 	for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
@@ -847,6 +851,8 @@ static void AddJunctionSweepParams(std::vector<JunctionCandidateParams> &out, co
 					out.push_back(params);
 				}
 			}
+		}
+		for (uint8_t e_slack = 0; e_slack <= 1; e_slack++) {
 			JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, 0};
 			params.plane = plane;
 			params.lane_style = 1;
