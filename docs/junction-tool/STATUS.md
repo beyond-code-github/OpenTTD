@@ -1,5 +1,11 @@
 # Junction tool: status
 
+## 2026-11-10: O4 redesigned (tokens + negotiation), work started
+
+**Design:** DESIGN-O4.md revision 2 (D157 tokens and negotiated routing, D158 prio bundles routed, D159 prio-or-not by throughput). Revision 1's backtracking is replaced.
+**Running:** O2 tunnels in the router (`.claude/o2`, briefs/O2-router-tunnels.md, Sonnet); design audit (Fable, read-only, budget ~$50 cap set by the engineer).
+**Next:** after the audit, O4m (anchor layer measurement, no routing) and O4n (router: per-resource extra cost + minimum length) briefs; then O4b. T1b still listed below.
+
 ## PARKED 2026-11-09 late night (engineer to bed; no agents running)
 
 **Resume here, in order:**
