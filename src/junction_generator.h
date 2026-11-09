@@ -62,8 +62,13 @@ struct JunctionGenerateResult {
 uint16_t CurveSpeedLimitForSpacing(uint spacing, uint8_t curve_speed);
 uint DeriveCurveSpacing(uint16_t speed, uint8_t curve_speed, uint8_t tl);
 JunctionSpec MakeTestJunctionSpec();
-/** The least prio coverage in tiles that does not delay the ML on flat ground for the spec's train, starting at max(1, spec.prio_tiles); 0 when none is found within the search bound (D137). */
-uint8_t SizeJunctionPrio(const JunctionSpec &spec);
+/** The result of SizeJunctionPrio. */
+struct JunctionPrioSizing {
+	uint8_t prio_tiles = 0; ///< The sized coverage in tiles; 0 when sizing failed.
+	JunctionGenerateError error = JunctionGenerateError::None; ///< Why sizing failed: the generation's error, or PrioTooLong when the coverage would exceed the bound; None on success.
+};
+/** The least prio coverage in tiles that does not delay the ML on flat ground for the spec's train, starting at max(1, spec.prio_tiles); {0, error} when none is found (D137). */
+JunctionPrioSizing SizeJunctionPrio(const JunctionSpec &spec);
 JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const JunctionTerrain *terrain = nullptr);
 
 /** The canonical working frame the generator, terrain snapshot and library fit share (RECON-frame). */

@@ -101,20 +101,23 @@ uint16_t GetJunctionReferenceSpeed(RailType railtype)
 /**
  * Choose the bridge type for a junction bridge.
  * With a speed-limited rail type, this is the cheapest available bridge at least as fast as the rail type (D35).
- * With an unlimited rail type, the target speed is that of the fastest buildable train engine that runs on the rail type (D45).
+ * With an unlimited rail type, the target speed is the given one (D141), or without one that of the fastest buildable train engine that runs on the rail type (D45).
+ * A given target speed below the rail type's limit replaces the limit (D141).
  * The choice is then the cheapest available bridge at least that fast, then the lowest index.
  * If no bridge is that fast, it is the fastest available bridge, then the cheapest, then the lowest index.
  * Without any such engine, it is the cheapest available bridge, then the lowest index.
  * @param railtype The rail type the bridge carries.
  * @param length Number of middle tiles of the bridge.
+ * @param target_speed The speed the bridge must reach (D141); 0 for the rail type's limit, or the fastest buildable engine when unlimited.
  * @return The chosen bridge type, or std::nullopt if no available bridge qualifies.
  */
-std::optional<BridgeType> ChooseJunctionBridgeType(RailType railtype, uint length)
+std::optional<BridgeType> ChooseJunctionBridgeType(RailType railtype, uint length, uint16_t target_speed)
 {
-	const uint16_t rail_speed = GetRailTypeInfo(railtype)->max_speed;
+	uint16_t rail_speed = GetRailTypeInfo(railtype)->max_speed;
+	if (target_speed != 0 && rail_speed != 0) rail_speed = std::min(rail_speed, target_speed);
 
 	if (rail_speed == 0) {
-		const uint target = GetMaxBuildableEngineSpeed(railtype);
+		const uint target = target_speed != 0 ? target_speed : GetMaxBuildableEngineSpeed(railtype);
 
 		std::optional<BridgeType> cheapest; // Cheapest bridge fast enough, or cheapest of all without a target.
 		std::optional<BridgeType> fastest; // Fallback: fastest bridge, if none is fast enough.
@@ -432,12 +435,14 @@ void CcJunctionStep([[maybe_unused]] Commands cmd, const CommandCost &result, [[
  * @param ml_gap Gap of the mainline notation.
  * @param branch_gap Gap of the branch notation.
  * @param tl Train length in tiles.
- * @param train The loaded design train (D137); the generator sizes the prio coverage from it.
+ * @param train The loaded design train (D137); the generator sizes the prio coverage from it, and its speed caps the reference speed (D141).
  * @return The spec; prio_tiles is 0.
  */
 JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_gap, uint8_t tl, const JunctionTrainParams &train)
 {
-	const uint16_t speed = GetJunctionReferenceSpeed(railtype);
+	/* D141: the picked train's speed caps the rail type's limit; an unlimited rail type uses the train's speed. */
+	uint16_t speed = GetJunctionReferenceSpeed(railtype);
+	if (train.max_speed > 0) speed = GetRailTypeInfo(railtype)->max_speed == 0 ? train.max_speed : std::min(speed, train.max_speed);
 
 	JunctionSpec spec{};
 	spec.ml_gap = ml_gap;
@@ -454,7 +459,7 @@ JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_
 	std::array<Money, 11> bridge_price{};
 	bridge_price.fill(Money(std::numeric_limits<int64_t>::max() / 4));
 	for (uint n = 1; n <= 10; n++) {
-		std::optional<BridgeType> type = ChooseJunctionBridgeType(railtype, n);
+		std::optional<BridgeType> type = ChooseJunctionBridgeType(railtype, n, spec.reference_speed);
 		if (!type.has_value()) continue;
 		const BridgeSpec *bridge = GetBridgeSpec(*type);
 		/* D94: when no bridge reaches the design speed, the chooser's fastest bridge is used and trains slow on it. */

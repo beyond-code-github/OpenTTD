@@ -28,11 +28,14 @@ struct Vehicle;
 /**
  * Choose the bridge type for a bridge with 'length' middle tiles.
  * A speed-limited rail type gets the cheapest available bridge at least as fast as the rail type (D35).
- * An unlimited rail type gets the cheapest available bridge at least as fast as the fastest buildable train engine that runs on it, or the fastest available bridge if none is (D45).
+ * An unlimited rail type gets the cheapest available bridge at least as fast as the target speed, or the fastest available bridge if none is (D45, D141).
+ * @param railtype The rail type the bridge carries.
+ * @param length Number of middle tiles of the bridge.
+ * @param target_speed The speed the bridge must reach (D141): the junction's reference speed, which is the picked train's when it is slower than the rail type. 0 keeps the earlier behaviour: the rail type's limit, or the fastest buildable train engine that runs on an unlimited rail type.
  */
-std::optional<BridgeType> ChooseJunctionBridgeType(RailType railtype, uint length);
+std::optional<BridgeType> ChooseJunctionBridgeType(RailType railtype, uint length, uint16_t target_speed = 0);
 
-/** The speed the junction is designed for: the rail type's limit, or the fastest buildable engine when unlimited (D45, D67). */
+/** The speed the junction is designed for without a train: the rail type's limit, or the fastest buildable engine when unlimited (D45, D67). MakeJunctionSpec lowers it to the picked train's speed (D141). */
 uint16_t GetJunctionReferenceSpeed(RailType railtype);
 /** What the junction tool takes from a picked train (D101). */
 struct JunctionPickedTrain {

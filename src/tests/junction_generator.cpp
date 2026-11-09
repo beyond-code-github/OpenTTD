@@ -69,7 +69,7 @@ TEST_CASE("SizeJunctionPrio sizes the test spec", "[junction][generator][slow]")
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	JunctionSpec unsized = spec;
 	unsized.prio_tiles = 0;
-	CHECK(SizeJunctionPrio(unsized) == spec.prio_tiles);
+	CHECK(SizeJunctionPrio(unsized).prio_tiles == spec.prio_tiles);
 
 	const JunctionGenerateResult result = GenerateJunction(spec);
 	REQUIRE(result.layout.has_value());
@@ -79,6 +79,16 @@ TEST_CASE("SizeJunctionPrio sizes the test spec", "[junction][generator][slow]")
 	CHECK(std::ranges::none_of(timings, [](const JunctionPrioTiming &t) { return t.ml_delayed || t.timed_out; }));
 }
 
+TEST_CASE("SizeJunctionPrio reports the generation error", "[junction][generator]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.reference_speed = 300;
+	spec.prio_tiles = 0;
+	const JunctionPrioSizing sizing = SizeJunctionPrio(spec);
+	CHECK(sizing.prio_tiles == 0);
+	CHECK(sizing.error == JunctionGenerateError::NoLayout);
+}
+
 TEST_CASE("SizeJunctionPrio: a slower train needs more coverage", "[junction][generator][slow]")
 {
 	JunctionSpec d138_spec = MakeTestJunctionSpec();
@@ -86,8 +96,8 @@ TEST_CASE("SizeJunctionPrio: a slower train needs more coverage", "[junction][ge
 	JunctionSpec fixture_spec = d138_spec;
 	fixture_spec.train = FixtureTrain(fixture_spec);
 
-	const uint8_t d138 = SizeJunctionPrio(d138_spec);
-	const uint8_t fixture = SizeJunctionPrio(fixture_spec);
+	const uint8_t d138 = SizeJunctionPrio(d138_spec).prio_tiles;
+	const uint8_t fixture = SizeJunctionPrio(fixture_spec).prio_tiles;
 	REQUIRE(d138 > 0);
 	REQUIRE(fixture > 0);
 	CHECK(fixture > d138);

@@ -379,16 +379,21 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 
 	Backup<CompanyID> cur_company(_current_company, CompanyID{0});
 	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, ml.gap, branch.gap, static_cast<uint8_t>(*tl_arg), *train);
+	static const char *const names[] = {"None", "InvalidNotation", "MultiLane", "NoLayout", "NeedsMlGap", "PrioTooLong", "PrioDelaysMainline"};
+	JunctionGenerateError sizing_error = JunctionGenerateError::PrioTooLong;
 	if (prio_arg.has_value()) {
 		spec.prio_tiles = static_cast<uint8_t>(*prio_arg);
 		spec.prio_strict = false;
 	} else {
-		spec.prio_tiles = SizeJunctionPrio(spec);
+		const JunctionPrioSizing sizing = SizeJunctionPrio(spec);
+		spec.prio_tiles = sizing.prio_tiles;
+		sizing_error = sizing.error;
 	}
 	if (spec.prio_tiles == 0) {
+		const char *name = names[to_underlying(sizing_error)];
 		std::ofstream failed{std::string{argv[4]}};
-		failed << "{\"error\":\"PrioTooLong\"}\n";
-		IConsolePrint(CC_WARNING, "junction_export error PrioTooLong");
+		failed << "{\"error\":\"" << name << "\"}\n";
+		IConsolePrint(CC_WARNING, "junction_export error {}", name);
 		return true;
 	}
 
@@ -416,7 +421,6 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 
 	std::ofstream out{std::string{argv[4]}};
 	if (!result.layout.has_value()) {
-		static const char *const names[] = {"None", "InvalidNotation", "MultiLane", "NoLayout", "NeedsMlGap", "PrioTooLong", "PrioDelaysMainline"};
 		const char *name = names[to_underlying(result.error)];
 		out << "{\"error\":\"" << name << "\"}\n";
 		IConsolePrint(CC_WARNING, "junction_export error {}", name);

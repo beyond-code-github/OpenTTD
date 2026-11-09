@@ -2903,7 +2903,7 @@ STR_JUNCTION_STATUS_FAILED                                      :{RED}Stopped af
 STR_JUNCTION_PICK_TRAIN                                         :{BLACK}Pick train
 STR_JUNCTION_PICK_TRAIN_TOOLTIP                                 :{BLACK}Click one of your trains to size the junction for it
 STR_JUNCTION_TRAIN                                              :{BLACK}{RAW_STRING}: {NUM} tiles, prio {NUM} tiles
-STR_JUNCTION_TRAIN_LONG_PRIO                                    :{BLACK} (long)
+STR_JUNCTION_TRAIN_NO_PRIO                                      :{BLACK}{RAW_STRING}: {NUM} tile{P "" s}
 STR_JUNCTION_TRAIN_NONE                                         :{BLACK}No train picked
 STR_JUNCTION_PRIO_LENGTH                                        :{BLACK}Prio length: {NUM} of {NUM} tiles
 STR_JUNCTION_PRIO_SLIDER_TOOLTIP                                :{BLACK}Shorter than the maximum accepts occasional main-line holds behind joining trains

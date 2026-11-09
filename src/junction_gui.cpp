@@ -303,6 +303,7 @@ struct JunctionGenerateJob {
 struct JunctionLibraryJob {
 	std::atomic<bool> sizing_done{false}; ///< Set by the worker when spec.prio_tiles is final: the sized prio, or 0 when the sizing failed.
 	std::atomic<bool> done{false}; ///< Set by the worker when library is final.
+	JunctionGenerateError sizing_error = JunctionGenerateError::None; ///< Why the sizing failed; written by the worker before sizing_done is set.
 	JunctionSpec spec; ///< Spec the worker reads; the worker sets prio_tiles first (D137).
 	std::shared_ptr<const std::vector<JunctionLibraryEntry>> library; ///< Written by the worker.
 };
@@ -426,7 +427,9 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			auto job = std::make_shared<JunctionLibraryJob>();
 			job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl, this->picked_train->loaded);
 			if (!StartNewThread(&this->library_thread, "ottd:junctionlib", [job]() {
-				job->spec.prio_tiles = SizeJunctionPrio(job->spec);
+				const JunctionPrioSizing sizing = SizeJunctionPrio(job->spec);
+				job->spec.prio_tiles = sizing.prio_tiles;
+				job->sizing_error = sizing.error;
 				job->sizing_done = true;
 				job->library = std::make_shared<const std::vector<JunctionLibraryEntry>>(job->spec.prio_tiles == 0 ? std::vector<JunctionLibraryEntry>{} : BuildJunctionLibrary(job->spec));
 				job->done = true;
@@ -439,8 +442,16 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			this->library_job = std::move(job);
 		}
 
+		/* The sizing result changes the prio label and slider as soon as it is final. */
+		if (this->library_job != nullptr && !this->library_job->done) {
+			this->SetWidgetDirty(WID_BJ_PRIO_LABEL);
+			this->SetWidgetDirty(WID_BJ_PRIO_SLIDER);
+		}
+
 		if (this->library_job != nullptr && this->library_job->done && this->library_thread.joinable()) {
 			this->library_thread.join();
+			this->SetWidgetDirty(WID_BJ_PRIO_LABEL);
+			this->SetWidgetDirty(WID_BJ_PRIO_SLIDER);
 			if (this->hover_tile != INVALID_TILE) this->ShowHover();
 		}
 	}
@@ -450,7 +461,12 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	{
 		if (!this->picked_train.has_value()) return INVALID_STRING_ID;
 		if (this->library_job == nullptr || this->library_key != this->SpecKey() || !this->library_job->sizing_done) return STR_JUNCTION_STATUS_SIZING_PRIO;
-		return this->library_job->spec.prio_tiles == 0 ? STR_JUNCTION_ERROR_PRIO_TOO_LONG : INVALID_STRING_ID;
+		if (this->library_job->spec.prio_tiles != 0) return INVALID_STRING_ID;
+		switch (this->library_job->sizing_error) {
+			case JunctionGenerateError::NoLayout: return STR_JUNCTION_ERROR_NO_LAYOUT;
+			case JunctionGenerateError::NeedsMlGap: return STR_JUNCTION_ERROR_NEEDS_ML_GAP;
+			default: return STR_JUNCTION_ERROR_PRIO_TOO_LONG;
+		}
 	}
 
 	/** @return Whether the library for the current spec is built. */
@@ -512,6 +528,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		SetTileSelectSize(1, 1);
 		this->SetWidgetDirty(WID_BJ_COST);
 		this->SetWidgetDirty(WID_BJ_STATUS);
+		this->SetWidgetDirty(WID_BJ_PRIO_LABEL);
+		this->SetWidgetDirty(WID_BJ_PRIO_SLIDER);
 	}
 
 	/** Show the placement for the hovered tile: the cached result, or that one is being worked out. */
@@ -606,6 +624,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->placement_error = estimate.bad_tiles.empty() ? INVALID_STRING_ID : GetPlacementError(estimate);
 		this->SetWidgetDirty(WID_BJ_COST);
 		this->SetWidgetDirty(WID_BJ_STATUS);
+		this->SetWidgetDirty(WID_BJ_PRIO_LABEL);
+		this->SetWidgetDirty(WID_BJ_PRIO_SLIDER);
 
 		EncodedString text;
 		if (!estimate.bad_tiles.empty()) {
@@ -851,14 +871,12 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (widget == WID_BJ_TRAIN) {
 			if (!this->picked_train.has_value()) return GetString(STR_JUNCTION_TRAIN_NONE);
 			const JunctionPickedTrain &t = *this->picked_train;
-			const uint32_t prio = this->has_shown ? this->shown_prio_tiles : JunctionPrioLength(t.loaded, t.loaded.max_speed, t.tl, _settings_client.gui.drag_signals_density);
-			std::string text = GetString(STR_JUNCTION_TRAIN, t.name, t.tl, prio);
-			if (prio > 2u * t.tl) text += GetString(STR_JUNCTION_TRAIN_LONG_PRIO);
-			return text;
+			const uint32_t prio = this->has_shown ? this->shown_prio_tiles : this->SizedPrio();
+			if (prio == 0) return GetString(STR_JUNCTION_TRAIN_NO_PRIO, t.name, t.tl);
+			return GetString(STR_JUNCTION_TRAIN, t.name, t.tl, prio);
 		}
 		if (widget == WID_BJ_PRIO_LABEL) {
-			if (this->picked_train.has_value() && this->SizingStatus() != INVALID_STRING_ID) return GetString(this->SizingStatus());
-			if (!this->picked_train.has_value()) return GetString(STR_EMPTY);
+			if (this->SizedPrio() == 0) return GetString(STR_EMPTY);
 			return GetString(STR_JUNCTION_PRIO_LENGTH, this->EffectivePrio(), this->SizedPrio());
 		}
 		if (widget == WID_BJ_TL_LABEL) return GetString(STR_JUNCTION_TRAIN_LENGTH, this->tl);
@@ -891,16 +909,16 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	{
 		if (widget != WID_BJ_PRIO_SLIDER) return;
 		const uint8_t sized = this->SizedPrio();
-		if (sized == 0) {
-			/* No value to show: a disabled slider. */
-			DrawSliderWidget(r, Colours::Mauve, Colours::Yellow, TextColour::Black, 0, 1, 0, 0, nullptr, 0, 0);
-			return;
-		}
+		if (sized == 0) return; // No value to show: the row stays blank.
 		DrawSliderWidget(r, Colours::Mauve, Colours::Yellow, TextColour::Black, std::min(this->tl, sized), sized, 0, this->EffectivePrio(), nullptr);
 	}
 
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
 	{
+		if (widget == WID_BJ_TRAIN) {
+			/* Room for a 20 character name and 2 digit numbers. */
+			size.width = std::max(size.width, GetStringBoundingBox(GetString(STR_JUNCTION_TRAIN, std::string(20, 'W'), GetParamMaxDigits(2), GetParamMaxDigits(2))).width + padding.width);
+		}
 		if (widget == WID_BJ_COST) {
 			/* Reserve room for late-game amounts of up to 15 digits. */
 			size.width = std::max(size.width, std::max(

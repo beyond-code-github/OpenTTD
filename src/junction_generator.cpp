@@ -813,15 +813,15 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
  * The least prio coverage, in tiles, that does not delay the ML on the flat generated junction for the spec's design train (D137).
  * The coverage starts at max(1, spec.prio_tiles); each step jumps to the farthest delaying ML start of the exact timing (S1c2).
  * @param spec The junction spec; train is required, prio_tiles is the least coverage tried.
- * @return The coverage, or 0 when it would exceed the search bound or no flat layout exists.
+ * @return The coverage; or {0, the generation's error} when no flat layout exists, or {0, PrioTooLong} when it would exceed the search bound.
  */
-uint8_t SizeJunctionPrio(const JunctionSpec &spec)
+JunctionPrioSizing SizeJunctionPrio(const JunctionSpec &spec)
 {
 	JunctionSpec copy = spec;
 	copy.prio_tiles = std::max<uint8_t>(1, spec.prio_tiles);
 	for (;;) {
 		const JunctionGenerateResult result = GenerateJunctionUnchecked(copy, nullptr);
-		if (!result.layout.has_value()) return 0;
+		if (!result.layout.has_value()) return {0, result.error};
 
 		bool delayed = false;
 		uint next = 0;
@@ -831,10 +831,10 @@ uint8_t SizeJunctionPrio(const JunctionSpec &spec)
 			delayed = true;
 			next = std::max(next, timing.required_distance / JunctionProgressPerStraightTile() + 1);
 		}
-		if (!delayed) return copy.prio_tiles;
+		if (!delayed) return {copy.prio_tiles, JunctionGenerateError::None};
 
 		const uint wanted = std::max<uint>(copy.prio_tiles + 1u, next);
-		if (wanted > MAX_PRIO_TILES) return 0;
+		if (wanted > MAX_PRIO_TILES) return {0, JunctionGenerateError::PrioTooLong};
 		copy.prio_tiles = static_cast<uint8_t>(wanted);
 	}
 }

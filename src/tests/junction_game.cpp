@@ -67,6 +67,19 @@ TEST_CASE("MakeJunctionSpec: reads settings and the rail type")
 	_railtypes[RAILTYPE_RAIL].max_speed = old_max_speed;
 }
 
+TEST_CASE("MakeJunctionSpec caps the reference speed at the picked train", "[junction][game]")
+{
+	const uint16_t old_max_speed = _railtypes[RAILTYPE_RAIL].max_speed;
+	_railtypes[RAILTYPE_RAIL].max_speed = 120;
+
+	JunctionTrainParams train = MakeTestJunctionSpec().train;
+	train.max_speed = 100;
+	CHECK(MakeJunctionSpec(RAILTYPE_RAIL, 2, 3, 5, train).reference_speed == 100);
+	CHECK(MakeJunctionSpec(RAILTYPE_RAIL, 2, 3, 5, JunctionTrainParams{}).reference_speed == GetJunctionReferenceSpeed(RAILTYPE_RAIL));
+
+	_railtypes[RAILTYPE_RAIL].max_speed = old_max_speed;
+}
+
 TEST_CASE("MakeJunctionSpec: bridge closures are precomputed for 1..10 middle tiles")
 {
 	const BridgeSpec old_bridge = _bridge[0];
