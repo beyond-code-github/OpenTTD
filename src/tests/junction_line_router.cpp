@@ -19,6 +19,8 @@
 #include "../track_func.h"
 
 #include <algorithm>
+#include <chrono>
+#include <iostream>
 #include <map>
 #include <set>
 #include <string>
@@ -1156,5 +1158,109 @@ TEST_CASE("FindJunctionLineRoute: tunnel routes are as cheap as an uninformed se
 		REQUIRE(informed.route.has_value() == uninformed.route.has_value());
 		CHECK(informed.route.has_value() == (which < 2)); // The ridge can't be climbed, so the other cases have no route.
 		CHECK(informed.cost == uninformed.cost);
+	}
+}
+
+/** The tracks of the main line of the benchmark: straight X track on rows 8 and 10 across the whole 44 x 20 box. */
+static JunctionLayout BenchMainLine()
+{
+	JunctionLayout layout;
+	for (int y : {8, 10}) {
+		for (int x = 0; x <= 43; x++) layout.tracks.push_back({{static_cast<int16_t>(x), static_cast<int16_t>(y)}, TrackBits{Track::X}});
+	}
+	return layout;
+}
+
+/** Time FindJunctionLineRoute on a request (1 warm-up, 31 timed runs) and print one BENCH line; returns whether a route was found. */
+static bool BenchRoute(const char *name, const JunctionLineRouteRequest &request)
+{
+	std::vector<long long> times;
+	JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	for (int i = 0; i < 31; i++) {
+		const auto begin = std::chrono::steady_clock::now();
+		result = FindJunctionLineRoute(request);
+		const auto end = std::chrono::steady_clock::now();
+		times.push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count());
+	}
+	std::sort(times.begin(), times.end());
+	std::cout << "BENCH " << name << " tracks=" << static_cast<int>(request.line.tracks) << " found=" << (result.route.has_value() ? 1 : 0) << " cost=" << result.cost << " median_us=" << times[times.size() / 2] << " max_us=" << times.back() << "\n";
+	return result.route.has_value();
+}
+
+/** A benchmark request in the 44 x 20 box: from {43, 5} heading X_NE to {0, 5} X_NE, or with `turn` to {20, 19} heading Y_SE. */
+static JunctionLineRouteRequest BenchRequest(uint8_t tracks, bool turn)
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	request.line = {tracks, 1, 1};
+	request.start = {43, 5};
+	request.start_trackdir = Trackdir::X_NE;
+	request.goals = {turn ? JunctionRouteEnd{{20, 19}, Trackdir::Y_SE} : JunctionRouteEnd{{0, 5}, Trackdir::X_NE}};
+	request.min = {0, 0};
+	request.max = {43, 19};
+	request.curve_spacing = 4;
+	request.turn_cost = 3;
+	request.rail_piece = 1;
+	return request;
+}
+
+TEST_CASE("FindJunctionLineRoute: route cost benchmark", "[.bench][junction][linerouter]")
+{
+	for (uint8_t tracks : {1, 2}) {
+		for (bool turn : {false, true}) {
+			JunctionLineRouteRequest request = BenchRequest(tracks, turn);
+			const JunctionTerrain terrain = FlatTerrainFor(request, 5);
+			request.terrain = &terrain;
+			const std::string name = std::string(turn ? "flat_turn_" : "flat_straight_") + static_cast<char>('0' + tracks);
+			CHECK(BenchRoute(name.c_str(), request));
+		}
+	}
+
+	const JunctionLayout main_line = BenchMainLine();
+	LineRampCase tunnel_setup;
+	SetUpTunnelRidge(tunnel_setup, 0); // Only for the tunnel price.
+
+	{
+		JunctionLineRouteRequest request = BenchRequest(1, true);
+		const JunctionTerrain terrain = FlatTerrainFor(request, 5);
+		request.terrain = &terrain;
+		request.existing = &main_line;
+		EnableBridges(request);
+		request.tunnel_price = tunnel_setup.request.tunnel_price;
+		CHECK(BenchRoute("obstacle_turn_1", request));
+	}
+
+	/* The hills: the ridge as SetUpRidge sets it, the valley as SetUpValley sets it over four columns (fall, two level, rise). */
+	for (uint8_t tracks : {1, 2}) {
+		JunctionLineRouteRequest request = BenchRequest(tracks, true);
+		JunctionTerrain terrain = FlatTerrainFor(request, 5);
+		terrain.build_on_slopes = false;
+		terrain.foundation_cost = 7;
+		for (JunctionTerrainTile &tile : terrain.tiles) tile.z_min = tile.z_max = 0;
+		SetRampColumn(terrain, 33, 0, 1, DiagDirection::NE);
+		SetRampColumn(terrain, 32, 1, 1, DiagDirection::Invalid);
+		SetRampColumn(terrain, 31, 1, 1, DiagDirection::Invalid);
+		SetRampColumn(terrain, 30, 0, 1, DiagDirection::SW);
+		SetRampColumn(terrain, 13, 0, 1, DiagDirection::SW);
+		SetRampColumn(terrain, 12, 0, 0, DiagDirection::Invalid);
+		SetRampColumn(terrain, 11, 0, 0, DiagDirection::Invalid);
+		SetRampColumn(terrain, 10, 0, 1, DiagDirection::NE);
+		request.terrain = &terrain;
+		request.slope_piece = 11;
+		EnableBridges(request);
+		request.tunnel_price = tunnel_setup.request.tunnel_price;
+		if (tracks == 1) {
+			CHECK(BenchRoute("hills_turn_1", request));
+		} else {
+			request.existing = &main_line;
+			BenchRoute("hills_obstacle_turn_2", request);
+		}
+	}
+
+	{
+		JunctionLineRouteRequest request = BenchRequest(1, true);
+		const JunctionTerrain terrain = FlatTerrainFor(request, 5);
+		request.terrain = &terrain;
+		for (int x = 0; x <= 43; x++) request.blocked.push_back({static_cast<int16_t>(x), 12});
+		BenchRoute("no_route_1", request);
 	}
 }
