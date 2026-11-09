@@ -1238,3 +1238,26 @@ TEST_CASE("Parallelogram solver constants are minimal (D145)", "[junction][gener
 		}
 	}
 }
+
+TEST_CASE("GenerateJunction: the solver sweep is no larger than the old sweep (S2f)", "[junction][generator][slow]")
+{
+	/* Bounds measured at bf09d84efb before S2f. */
+	struct Bound {
+		JunctionSpec spec;
+		int tiles;
+		int area;
+	};
+	for (const Bound &bound : {Bound{MakeTestJunctionSpec(), 193, 574}, Bound{PinnedTestSpec(), 120, 350}}) {
+		const JunctionGenerateResult result = GenerateJunction(bound.spec);
+		REQUIRE(result.layout.has_value());
+		CHECK(JunctionRulesClean(*result.layout, bound.spec));
+		CHECK(ScoreJunctionLayout(*result.layout, bound.spec).first <= bound.tiles);
+		CHECK(result.layout->size.x * result.layout->size.y <= bound.area);
+	}
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<JunctionLibraryEntry> library = BuildJunctionLibrary(spec);
+	REQUIRE_FALSE(library.empty());
+	int best = INT32_MAX;
+	for (const JunctionLibraryEntry &entry : library) best = std::min(best, entry.score.first);
+	CHECK(best <= 193);
+}

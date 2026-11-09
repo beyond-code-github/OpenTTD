@@ -832,6 +832,30 @@ static std::vector<JunctionPrioTiming> PrioTimingsOf(const JunctionLayout &layou
 	return JunctionPrioTimings(layout, spec, paths, spec.train, JunctionTerminalSpeed(spec.train), spec.tl);
 }
 
+/** The candidates of one height (D146): the symmetric style over the full sweep, the parallelogram style once per crossing cost and e_slack. */
+static void AddJunctionSweepParams(std::vector<JunctionCandidateParams> &out, const JunctionSpec &spec, int height, int plane, JunctionRouteCache *cache)
+{
+	for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
+		for (uint8_t e_slack = 0; e_slack <= 3; e_slack++) {
+			for (uint8_t w_slack = 0; w_slack <= 3; w_slack++) {
+				for (uint8_t margin = 1; margin <= 3; margin++) {
+					JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, w_slack};
+					params.plane = plane;
+					params.bridge_margin = margin;
+					params.lane_style = 0;
+					params.route_cache = cache;
+					out.push_back(params);
+				}
+			}
+			JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, 0};
+			params.plane = plane;
+			params.lane_style = 1;
+			params.route_cache = cache;
+			out.push_back(params);
+		}
+	}
+}
+
 /**
  * Sweep candidates, keep the rule-clean ones and pick the best by score, without checking the prio timing.
  * @param spec The junction spec; prio_tiles is used as given.
@@ -862,22 +886,7 @@ static JunctionGenerateResult GenerateJunctionUnchecked(const JunctionSpec &spec
 		for (int height = first; height <= last && height <= stop_after; height++) {
 			bool clean_here = false;
 			std::vector<JunctionCandidateParams> all_params;
-			for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
-				for (uint8_t e_slack = 0; e_slack <= 3; e_slack++) {
-					for (uint8_t w_slack = 0; w_slack <= 3; w_slack++) {
-						for (uint8_t margin = 1; margin <= 3; margin++) {
-							for (uint8_t style = 0; style <= 1; style++) {
-								JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, w_slack};
-								params.plane = plane;
-								params.route_cache = &route_cache;
-								params.bridge_margin = margin;
-								params.lane_style = style;
-								all_params.push_back(params);
-							}
-						}
-					}
-				}
-			}
+			AddJunctionSweepParams(all_params, spec, height, plane, &route_cache);
 			struct Result {
 				std::optional<JunctionLayout> layout;
 				Money terrain_cost = 0;
@@ -973,21 +982,7 @@ std::vector<JunctionLibraryEntry> BuildJunctionLibrary(const JunctionSpec &spec)
 	JunctionRouteCache route_cache;
 	std::vector<JunctionCandidateParams> all_params;
 	for (int height = first; height <= last; height++) {
-		for (Money crossing_cost : {Money(0), spec.prices.bridge(3)}) {
-			for (uint8_t e_slack = 0; e_slack <= 3; e_slack++) {
-				for (uint8_t w_slack = 0; w_slack <= 3; w_slack++) {
-					for (uint8_t margin = 1; margin <= 3; margin++) {
-						for (uint8_t style = 0; style <= 1; style++) {
-							JunctionCandidateParams params{static_cast<uint8_t>(height), crossing_cost, e_slack, w_slack};
-							params.bridge_margin = margin;
-							params.lane_style = style;
-							params.route_cache = &route_cache;
-							all_params.push_back(params);
-						}
-					}
-				}
-			}
-		}
+		AddJunctionSweepParams(all_params, spec, height, 0, &route_cache);
 	}
 	struct Result {
 		std::optional<JunctionLayout> layout;
