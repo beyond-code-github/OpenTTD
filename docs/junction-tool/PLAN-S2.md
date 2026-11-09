@@ -28,7 +28,7 @@ The sweep also hides the rules. e_slack, w_slack and bridge_margin are hedges (m
    - Each becomes a constraint whose constant is derived from a named rule and pinned by a test.
 3. **STUB = 1 (D115).**
 4. **Prio coverage is an input bound,** not a swept value. Moving the slider just re-solves.
-5. **Hover well under 1 s** at the test specs and on the NUTS rig.
+5. **Hover under 100 ms** (one refine-tier generation, Release) at the test specs and on the NUTS rig (D151; earlier written here wrongly as "well under 1 s").
 6. **Footprint (D114) the same as or smaller than today's generator** on every test spec, and checker-clean.
 
 ## 3. Model
@@ -123,7 +123,7 @@ If the checker rejects the layout, the ladder that exists today (one extra tile 
 - Reversible: yes.
 
 **Q3. Library below the slider's maximum.**
-- Context: once hover is under 1 s, live generation is fast enough to use directly.
+- Context: once hover is under 100 ms, live generation is fast enough to use directly.
 - Recommendation: S2g keeps the library for the strict maximum and generates live below it.
 - Reversible: yes.
 
