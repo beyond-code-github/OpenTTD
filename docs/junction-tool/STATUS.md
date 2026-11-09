@@ -4,11 +4,10 @@
 
 **Resume here.** Plan: `PLAN-organic.md` (D152-D154). The engineer: place a junction on ANY terrain, slope/bridge/tunnel/terraform as needed, cheapest and most organic; nothing canned, the layout must emerge from rules + costs + search ("emerge from the maths"); keep it plain (small search space); hover target < 100 ms per generation (D151; I had mis-recorded it as < 1 s). Compactness (D153): surface tiles + sliver tiles (free tiles in no 2x2 free square); coop hubs leave 2-5% slivers, our current T 28%; enclosed pockets are normal in coop hubs (22-39%) and weigh little; coop is a benchmark, never a ceiling. Evidence: `RECON-organic.md` (13 pieces from 27 images; §6 game rules: bridges never cross, tunnels cross at different depths; §7 compactness numbers; script `scratchpad/compact/metric.py`).
 
-**Agents running (one worktree each):**
-- O1 `.claude/o1` (briefs/O1-router-heights.md): heights in the line router (per-track z, ramps on inclined slopes, canonical incline in the terrain snapshot).
-- T1 `.claude/t1` (briefs/T1-tunnels-in-layouts.md): tunnels in layouts = JunctionBridge{tunnel=true}; build step, PriceTunnel, JSON, ASCII `O`, rig GS script; checker wormhole handling unchanged.
-- C1 `.claude/c1` (briefs/C1-compactness-score.md): MeasureJunctionCompactness in new files.
-**Next:** O2 tunnels in the router (after O1, same files); O4 search design (orchestrator, writing now): requirements in, split/merge positions as search variables bounded by the coop windows, each movement routed by the one router, signal pass + checker, score = compactness then cost; O3 portal mounds; O5 100 ms gate; O6 rig.
+**Merged tonight:** O1 heights in the line router (5634729668), C1 compactness measure (a51a783e13; Make T: 190 occupied, 34 enclosed, 53 slivers).
+**Agents running:** T1 `.claude/t1` (tunnels in layouts, D154), O1b `.claude/o1b` (ramp or foundation as router choices, D152a).
+**Router chain (same files, in order):** O1b -> O4a (line router takes a set of starts; brief to write from DESIGN-O4.md) -> O2 (tunnels, brief ready: briefs/O2-router-tunnels.md, needs T1 merged; JunctionBridge gains tunnel z).
+**Then:** O4b `GenerateJunctionOrganic` (DESIGN-O4.md: main lines given, branch position p searched, the four movements routed one at a time between rule windows, prio rows reserved, signal pass + checker, retry window +1, score compactness then cost) can run in parallel with O2 once O4a lands; O3 portal mounds; O4c terrain; O4d behind GenerateJunction; O5 100 ms gate; O6 rig.
 **Junction (old path, frozen):** S2f2/S2f2b merged (D148/D148a). Timings at b04736187e: clear-spot test 2.25 s (0.58 s without style 0). Style 0 removal on hold (only style 0 builds Pinned TL6 branch_gap 0). No more work on the template generator.
 **Painter:** LP6 bridges (b04736187e, D149) and LP7 waypoints + frozen prefix (40c379395a, D150) merged. O1/O2 are the painter's heights/tunnels too. LP10 (line to build steps/signals/cost) and LP9 (corridor snapshot, after O1) next.
 **Stations:** waiting on the engineer's Station window check (play build has it: `.claude/play/build-play/openttd -n 127.0.0.1:3989`), then ST6 (separate rig), ST7.
