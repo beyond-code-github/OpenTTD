@@ -1,6 +1,35 @@
 # O4: a junction from the constraints
 
-## Revision 4 (2026-11-10, D168; supersedes revision 3's search steps 2-3)
+## Revision 5: the theory (2026-11-10, D170; supersedes revision 4's core search)
+Engineer: "I thought we were solving the layout in a vector map first and then projecting it on to the terrain later"; agreed: negotiation is the technique that projects the map. Every step is checked against this page, not against the last failure.
+
+**Pipeline.** 1 map layer picks a structure -> 2 projection lays it on the terrain by negotiation -> 3 checker and throughput judge confirm -> on failure, back to 1 for the next structure, cheapest first.
+
+**1. The vector map (topology, no tiles).** A small graph per junction:
+- Nodes: ports; splits; merges; forced crossings with who goes over (D167, main line over first, D156); later the D80 lift (doubled bridge) as a node kind.
+- Edges: stretches of track between nodes, each with a track count (lanes later) and a minimum length.
+- Per line: the order of its splits, merges and crossings. Per merge with a prio (D159): its prio side and its window (coverage, D108).
+- Coarse placement: where each window and crossing sits along its line (an interval along the box axis), and the branch position p.
+- Nothing assumes a straight main line (D160); every line, main line included, is edges like any other.
+
+Rules are constraints on the map, mostly lengths along edges and orders along lines: waiting room (G7) and bays (D83) as edge minimum lengths; a signal-legal piece between a split and a bridge head (D113); no split inside a coverage (D108); a split and a merge not in one block; merge windows straight for the coverage with the prio row on its side.
+Solved by enumeration best first: candidate structures (crossing choices x orders x coarse placements) ranked by an admissible bound (edge minimum lengths + required bridges), cheapest tried first. Small discrete search, target a few ms.
+
+**2. Projection (negotiation).** Given one structure:
+- Fixed first, reserved not priced: merge windows and their prio rows, crossing over/under.
+- Then every edge is routed by the line router (heights, bridges, tunnels, rule state from O4c1), all edges equal, PathFinder prices (D168), a small round limit (measured). Shared track is one edge routed once, so splits and merges are where the map put them, not emergent.
+- Negotiation only packs. An edge with no route, or no convergence in K rounds, returns to step 1 with that failure recorded (the structure, or the part of it that failed, is ruled out). Never fixed by tuning prices or adding feedback.
+
+**3. Finish and judge.** Existing pipeline: crop, normalise, signal pass, full checker (safety net), prio timing gate and throughput (D119), score: compactness then cost (D153).
+
+**Time.** One generation < 100 ms: map search a few ms; projection about 12 edges x a few rounds x 1-8 ms; best-first stops at the first structure that projects cleanly, or after a few to compare scores.
+
+**Carried over:** line router and rule state (O4c1), forced-pair computation and over/under enumeration (D167, now in the map layer), PathFinder prices, hug and clean-up (D166 a-b), main-line turn cost (D165), finishing pipeline, checker, throughput evaluator. **Dropped:** emergent splits and merges (switch rule at tile level), per-round masks derived from main-line routes, routing main lines first, the feedback loop.
+
+**Steps.** T1 map layer for the flat T: types, enumeration, bound, rules as constraints; tests: the old template's structure is among the candidates, a structure breaking each rule is rejected, order follows the bound. T2 projection of one structure, then GenerateJunctionOrganic over T1's candidates: rule-clean on the test spec, the pinned spec and TL6 branch_gap 0, generation time reported against 100 ms, compactness against 243. Then: the D80 lift node, LL_RR (lanes as edges, crossings per group), terrain.
+
+## Revision 4 (kept for reference)
+Dated 2026-11-10, D168; superseded revision 3's search steps 2-3.
 From the run digest, RECONCILE-O4.md and the second Fable steer. Kept from revision 3: every movement routed by the line router, splits and merges emerge from sharing, negotiation packs, forced crossings decided by branch and bound (D167), hug and clean-up (D166 a-b), main-line turn cost (D165), main line may bridge (D164).
 Changed:
 1. **Rules are part of the routing, not feedback.** The line router gains a small rule state machine per movement (shared with a sibling / private / merged; private units since the split; signal-legal pieces since a split or a far head). Waiting room (G7), split before a bridge (D113) and split-and-merge in one block become router constraints. Prio and coverage depend on another movement's route, so they are per-round masks from the main lines' current routes: no split inside a coverage window (D108), merges only where the main line runs straight for the coverage with its prio row free; a chosen merge reserves its prio row. The feedback loop is deleted; the checker confirms.
