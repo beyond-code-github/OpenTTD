@@ -54,6 +54,7 @@
 #include "junction_line.h"
 #include "junction_signal_pass.h"
 #include "direction_func.h"
+#include "map_func.h"
 #include "track_func.h"
 
 #include <algorithm>
@@ -246,22 +247,54 @@ std::vector<std::vector<JunctionPiece>> ExtendJunctionLine(const JunctionLineSpe
 
 std::vector<std::vector<JunctionPiece>> ExtendJunctionLineBridge(const JunctionLineSpec &line, const std::vector<JunctionPiece> &last, uint middle, std::vector<JunctionBridge> &bridges, std::string &error, bool tunnel)
 {
-	for (const JunctionPiece &piece : last) {
-		if (!IsDiagonalTrackdir(piece.trackdir)) {
-			error = " must start from axis pieces";
-			return {};
+	if (line.tracks != 1) {
+		for (const JunctionPiece &piece : last) {
+			if (!IsDiagonalTrackdir(piece.trackdir)) {
+				error = " must start from axis pieces";
+				return {};
+			}
 		}
 	}
 
 	std::vector<std::vector<JunctionPiece>> extension;
 	bridges.clear();
 	for (int i = 0; i < line.tracks; i++) {
-		JunctionRaster sub = RasterizeJunctionRoute({last[i].tile, last[i].trackdir, fmt::format("{}{}", tunnel ? 'T' : 'B', middle)});
+		JunctionRoute route{last[i].tile, last[i].trackdir, fmt::format("{}{}", tunnel ? 'T' : 'B', middle)};
+		size_t skip = 1;
+		if (!IsDiagonalTrackdir(last[i].trackdir)) {
+			/* D110: the rasterizer needs the S-bend's moves to place the near head (it reads the turn that made the half piece from the moves before the bridge). Start at an axis piece and replay that turn, with the one F that tells the two half pieces of a direction apart. */
+			bool found = false;
+			for (Trackdir axis : {Trackdir::X_NE, Trackdir::Y_SE, Trackdir::X_SW, Trackdir::Y_NW}) {
+				for (char turn : {'L', 'R'}) {
+					for (size_t straight = 0; straight < 2 && !found; straight++) {
+						Trackdir first;
+						Trackdir end;
+						if (!JunctionNextTrackdir(axis, turn == 'L' ? DirDiff::Left45 : DirDiff::Right45, first)) continue;
+						if (straight == 0) {
+							end = first;
+						} else if (!JunctionNextTrackdir(first, DirDiff::Same, end)) {
+							continue;
+						}
+						if (end != last[i].trackdir) continue;
+						TileIndexDiffC start = last[i].tile;
+						for (Trackdir td : {axis, first}) {
+							if (td == first && straight == 0) continue;
+							const TileIndexDiffC step = TileIndexDiffCByDiagDir(TrackdirToExitdir(td));
+							start = {static_cast<int16_t>(start.x - step.x), static_cast<int16_t>(start.y - step.y)};
+						}
+						route = {start, axis, fmt::format("{}{}{}{}", turn, std::string(straight, 'F'), tunnel ? 'T' : 'B', middle)};
+						skip = 2 + straight;
+						found = true;
+					}
+				}
+			}
+		}
+		JunctionRaster sub = RasterizeJunctionRoute(route);
 		if (!sub.error.empty()) {
 			error = fmt::format(": track {}: {}", i, sub.error);
 			return {};
 		}
-		extension.emplace_back(sub.pieces.begin() + 1, sub.pieces.end());
+		extension.emplace_back(sub.pieces.begin() + skip, sub.pieces.end());
 		bridges.push_back(sub.bridges[0]);
 	}
 	return extension;

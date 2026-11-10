@@ -590,6 +590,71 @@ TEST_CASE("FindJunctionLineRoute: bridges over existing track", "[junction][line
 	}
 }
 
+/** A one-track request heading along -x from (40, 20) whose goal lies one row to the right after a bridge built straight from an S-bend (D110): the template RF + B3 puts its heads at x = 38 and 34 over existing track at x = 35..37; closing the S-bend with an axis piece (RFL + B<n>) would put the near head on that track. */
+static void SetUpSBendBridge(LineBridgeCase &c, std::string &moves)
+{
+	c.request = BaseRequest();
+	c.request.line = JunctionLineSpec{1, 0, 1};
+	EnableBridges(c.request);
+	c.request.bridge_span_ok = [](uint n) { return n <= 3; };
+	moves = "RFB3F";
+	const JunctionRaster expected = RasterizeJunctionRoute({{40, 20}, Trackdir::X_NE, moves});
+	REQUIRE(expected.error.empty());
+	c.request.goals = {{expected.pieces.back().tile, expected.pieces.back().trackdir}};
+	for (int y = c.request.min.y; y <= c.request.max.y; y++) {
+		for (int x = 35; x <= 37; x++) c.layout.tracks.push_back({{static_cast<int16_t>(x), static_cast<int16_t>(y)}, TrackBits{Track::Y}});
+	}
+	c.request.existing = &c.layout;
+}
+
+TEST_CASE("FindJunctionLineRoute: closes an S-bend with a bridge head (D110)", "[junction][d110bridge]")
+{
+	LineBridgeCase c;
+	std::string moves;
+	SetUpSBendBridge(c, moves);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+
+	const JunctionRaster expected = RasterizeJunctionRoute({{40, 20}, Trackdir::X_NE, moves});
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(c.request.line, *result.route);
+	REQUIRE(rasters.size() == 1);
+	INFO(rasters[0].error);
+	REQUIRE(rasters[0].error.empty());
+	REQUIRE(rasters[0].pieces.size() == expected.pieces.size());
+	for (size_t i = 0; i < expected.pieces.size(); i++) {
+		CHECK(rasters[0].pieces[i].tile.x == expected.pieces[i].tile.x);
+		CHECK(rasters[0].pieces[i].tile.y == expected.pieces[i].tile.y);
+		CHECK(rasters[0].pieces[i].trackdir == expected.pieces[i].trackdir);
+		CHECK(rasters[0].pieces[i].on_bridge == expected.pieces[i].on_bridge);
+	}
+	REQUIRE(rasters[0].bridges.size() == 1);
+	REQUIRE(expected.bridges.size() == 1);
+	CHECK(rasters[0].bridges[0].start.x == expected.bridges[0].start.x);
+	CHECK(rasters[0].bridges[0].start.y == expected.bridges[0].start.y);
+	CHECK(rasters[0].bridges[0].end.x == expected.bridges[0].end.x);
+	CHECK(rasters[0].bridges[0].end.y == expected.bridges[0].end.y);
+}
+
+TEST_CASE("ExtendJunctionLineBridge: a multi-track line bridges from axis pieces only (D149)", "[junction][d110bridge]")
+{
+	const JunctionRaster half = RasterizeJunctionRoute({{40, 20}, Trackdir::X_NE, "RF"});
+	REQUIRE(half.error.empty());
+	std::vector<JunctionPiece> last;
+	last.push_back(half.pieces.back());
+	last.push_back(half.pieces.back());
+	std::string error;
+	std::vector<JunctionBridge> bridges;
+	CHECK(ExtendJunctionLineBridge(ParseLineNotation("L_R").spec, last, 3, bridges, error).empty());
+	CHECK_FALSE(error.empty());
+
+	/* One track takes the same piece. */
+	last.resize(1);
+	error.clear();
+	CHECK_FALSE(ExtendJunctionLineBridge(JunctionLineSpec{1, 0, 1}, last, 3, bridges, error).empty());
+	CHECK(error.empty());
+}
+
 TEST_CASE("FindJunctionLineRoute: all tracks share the bridge length", "[junction][linerouter]")
 {
 	LineBridgeCase c;
@@ -748,7 +813,6 @@ TEST_CASE("FindJunctionLineRoute: a frozen prefix carries its curve state", "[ju
 	const std::string &moves = result.route->moves;
 	REQUIRE(moves.size() > request.prefix.size());
 	CHECK(moves.substr(0, request.prefix.size()) == request.prefix);
-	INFO("moves " << moves);
 	const char after = moves[request.prefix.size()];
 	CHECK((after != 'L' && after != 'R'));
 
@@ -1642,14 +1706,14 @@ TEST_CASE("FindJunctionLineRoute: rules need one track", "[junction][linerouter]
 
 TEST_CASE("FindJunctionLineRoute: no rules is unchanged", "[junction][linerouter]")
 {
-	/* The cost and expansions of the single-track benchmark cases before the rules existed. */
+	/* The cost and expansions of the single-track benchmark cases before the rules existed. E3a: the D110 bridge move adds successors; route and cost unchanged (obstacle_turn_1 was 3787 before). */
 	struct Expected {
 		const char *name;
 		bool found;
 		int64_t cost;
 		uint expansions;
 	};
-	for (const Expected &expected : {Expected{"flat_straight_1", true, 263, 43}, Expected{"flat_turn_1", true, 233, 904}, Expected{"obstacle_turn_1", true, 293, 3787}, Expected{"hills_turn_1", true, 255, 2125}, Expected{"no_route_1", false, 0, 32645}}) {
+	for (const Expected &expected : {Expected{"flat_straight_1", true, 263, 43}, Expected{"flat_turn_1", true, 233, 904}, Expected{"obstacle_turn_1", true, 293, 3801}, Expected{"hills_turn_1", true, 255, 2125}, Expected{"no_route_1", false, 0, 32645}}) {
 		BenchCase c;
 		SetUpBenchCase(c, expected.name);
 		REQUIRE_FALSE(c.request.rules.has_value());
