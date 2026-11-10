@@ -178,6 +178,7 @@ class JunctionTestGS extends GSController {
 		else if (cmd == "occupancy") this.CmdOccupancy(id, msg);
 		else if (cmd == "loan_max") this.CmdLoanMax(id);
 		else if (cmd == "find_clear") this.CmdFindClear(id, msg);
+		else if (cmd == "raise_rect") this.CmdRaiseRect(id, msg);
 		else this.Err(id, "unknown cmd");
 	}
 
@@ -526,6 +527,16 @@ class JunctionTestGS extends GSController {
 
 	/* First origin (row-major from 2,2) with a clear w*h rectangle. Candidates are screened by their four
 	 * corners being flat, then fully verified; the scan sleeps a tick when the ops budget runs low. */
+	/* raise the tiles x0..x1, y0..y1 one level: the first tile's corners up, then the rectangle levelled to it; the tiles around become slopes */
+	function CmdRaiseRect(id, msg)
+	{
+		if (!this.Need(msg, ["x0", "y0", "x1", "y1"], id)) return;
+		local t0 = this.Tile(msg.x0, msg.y0);
+		if (!GSTile.RaiseTile(t0, GSTile.SLOPE_ELEVATED)) { this.Err(id, "raise: " + GSError.GetLastErrorString()); return; }
+		if (!GSTile.LevelTiles(t0, this.Tile(msg.x1, msg.y1))) { this.Err(id, "level: " + GSError.GetLastErrorString()); return; }
+		this.Reply(id, { ok = true });
+	}
+
 	function CmdFindClear(id, msg)
 	{
 		if (!this.Need(msg, ["w", "h"], id)) return;

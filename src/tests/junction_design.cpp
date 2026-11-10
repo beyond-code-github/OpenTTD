@@ -402,3 +402,51 @@ TEST_CASE("Junction T map export", "[.tmapjson]")
 	if (std::getenv("JUNCTION_MIRROR") != nullptr) layout = TransformJunctionLayout(layout, JunctionTransform::Mirror);
 	if (const char *json = std::getenv("JUNCTION_JSON"); json != nullptr) WriteLayoutJson(layout, json);
 }
+
+TEST_CASE("Junction T map over a ridge export", "[.ridgejson]")
+{
+	/* The terrain of the ridge test in junction_map.cpp (G3c): flat at 0, rising over row R = b + 6, level at 1 over R + 1 and R + 2, falling over R + 3. */
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionFrame frame = MakeJunctionFrame(spec);
+	constexpr int MARGIN = 4;
+	JunctionTerrain terrain;
+	terrain.origin = {static_cast<int16_t>(-MARGIN), static_cast<int16_t>(frame.terrain_origin_y - MARGIN)};
+	terrain.width = frame.width + 2 * MARGIN;
+	terrain.height = frame.terrain_height + 2 * MARGIN;
+	terrain.tiles.assign(static_cast<size_t>(terrain.width) * terrain.height, JunctionTerrainTile{});
+	terrain.foundation_cost = 250;
+	terrain.build_on_slopes = true;
+	const int ridge = spec.ml_gap + 2 + 6;
+	auto set_row = [&](int y, int z_min, int z_max, DiagDirection incline) {
+		for (int i = 0; i < terrain.width; i++) {
+			JunctionTerrainTile &t = terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + i];
+			t.z_min = static_cast<int8_t>(z_min);
+			t.z_max = static_cast<int8_t>(z_max);
+			t.incline = incline;
+		}
+	};
+	set_row(ridge, 0, 1, DiagDirection::SE);
+	set_row(ridge + 1, 1, 1, DiagDirection::Invalid);
+	set_row(ridge + 2, 1, 1, DiagDirection::Invalid);
+	set_row(ridge + 3, 0, 1, DiagDirection::NW);
+
+	const JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, true);
+	REQUIRE(flat.layout.has_value());
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO(result.log);
+	REQUIRE(result.layout.has_value());
+	CHECK(result.clean);
+	JunctionLayout layout = *result.layout;
+
+	/* Frame to layout shift, from the S stub's last tile: frame (xO, height - 1) is the bottom row's Y track with the larger x. */
+	const int x_o = frame.hub_x + spec.branch_gap + 1;
+	int bottom = -1, s_x = -1;
+	for (const auto &jt : layout.tracks) bottom = std::max<int>(bottom, jt.offset.y);
+	for (const auto &jt : layout.tracks) if (jt.offset.y == bottom && jt.tracks.Test(Track::Y)) s_x = std::max<int>(s_x, jt.offset.x);
+	const int dx = s_x - x_o;
+	const int dy = bottom - (result.height - 1);
+	std::cout << RenderJunctionAscii(layout);
+	std::cout << "height " << result.height << " shift " << dx << "," << dy << " size " << layout.size.x << "x" << layout.size.y << "\n";
+	std::cout << "raise_rows " << ridge + 1 + dy << " " << ridge + 2 + dy << "\n";
+	if (const char *json = std::getenv("JUNCTION_JSON"); json != nullptr) WriteLayoutJson(layout, json);
+}
