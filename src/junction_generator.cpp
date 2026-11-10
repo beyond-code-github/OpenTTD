@@ -904,6 +904,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		JunctionLineRouteRequest line_request;
 		line_request.line = JunctionLineSpec{1, 0, 1};
 		line_request.prefix = prefix;
+		line_request.check_prefix = !prefix.empty(); // E3b (briefs/E3b-checked-prefix.md): a span edge's bridge is checked against the terrain like a searched one.
 		auto clip = [&](const std::vector<JunctionRouteEnd> &ends) {
 			std::vector<JunctionRouteEnd> clipped;
 			for (const JunctionRouteEnd &end : ends) {

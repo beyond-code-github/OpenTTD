@@ -1839,3 +1839,64 @@ TEST_CASE("FindJunctionLineRoute: a route may merge onto existing track with a c
 		for (const JunctionPiece &piece : raster.pieces) CHECK_FALSE((piece.tile.y == 20 && piece.tile.x >= 10 && piece.tile.x <= 24));
 	}
 }
+
+/** A one-track request that replays the prefix B3 from an axis start and ends on the far head, over a flat terrain. */
+struct CheckedPrefixCase {
+	JunctionLineRouteRequest request;
+	JunctionTerrain terrain;
+	std::vector<JunctionPiece> pieces; ///< The prefix's pieces: the start, the near head, three middle tiles, the far head.
+};
+
+static void SetUpCheckedPrefix(CheckedPrefixCase &c)
+{
+	c.request = SingleTrackRequest();
+	c.request.prefix = "B3";
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(c.request.line, {c.request.start, c.request.start_trackdir, c.request.prefix});
+	REQUIRE(rasters[0].error.empty());
+	c.pieces = rasters[0].pieces;
+	REQUIRE(c.pieces.size() == 6);
+	c.request.goals = {{c.pieces.back().tile, c.pieces.back().trackdir}};
+	c.terrain = FlatTerrainFor(c.request, 0);
+	c.request.terrain = &c.terrain;
+}
+
+TEST_CASE("a checked prefix bridge over a house is refused", "[junction][checkedprefix]")
+{
+	CheckedPrefixCase c;
+	SetUpCheckedPrefix(c);
+	TerrainTileOf(c.terrain, c.pieces[3].tile.x, c.pieces[3].tile.y).cls = JunctionTileClass::Blocked;
+
+	c.request.check_prefix = true;
+	CHECK_FALSE(FindJunctionLineRoute(c.request).route.has_value());
+	c.request.check_prefix = false;
+	const JunctionLineRouteResult frozen = FindJunctionLineRoute(c.request);
+	INFO(frozen.error);
+	REQUIRE(frozen.route.has_value());
+	CHECK(frozen.route->moves == "B3");
+}
+
+TEST_CASE("a checked prefix bridge head on a house is refused", "[junction][checkedprefix]")
+{
+	CheckedPrefixCase c;
+	SetUpCheckedPrefix(c);
+	TerrainTileOf(c.terrain, c.pieces[5].tile.x, c.pieces[5].tile.y).cls = JunctionTileClass::Blocked;
+
+	c.request.check_prefix = true;
+	CHECK_FALSE(FindJunctionLineRoute(c.request).route.has_value());
+}
+
+TEST_CASE("a checked prefix that is legal routes as before", "[junction][checkedprefix]")
+{
+	CheckedPrefixCase c;
+	SetUpCheckedPrefix(c);
+
+	c.request.check_prefix = false;
+	const JunctionLineRouteResult before = FindJunctionLineRoute(c.request);
+	REQUIRE(before.route.has_value());
+	c.request.check_prefix = true;
+	const JunctionLineRouteResult checked = FindJunctionLineRoute(c.request);
+	INFO(checked.error);
+	REQUIRE(checked.route.has_value());
+	CHECK(checked.route->moves == before.route->moves);
+	CHECK(checked.cost == before.cost);
+}

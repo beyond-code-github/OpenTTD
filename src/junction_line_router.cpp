@@ -483,6 +483,75 @@ private:
 		node.after_head = true;
 	}
 
+	/**
+	 * Whether a replayed prefix is legal on the terrain (E3b): each piece, bridge head, bridge middle, tunnel portal and tunnel middle passes the check the search applies to the same move.
+	 * Its pieces are recorded in the path's used grid, which the caller clears.
+	 * @param raster The prefix's raster of one track, its first piece being the start.
+	 * @return Whether every part of the prefix is usable.
+	 */
+	bool PrefixUsable(const JunctionRaster &raster)
+	{
+		int8_t z = static_cast<int8_t>(request.plane);
+		std::vector<JunctionBridge> done; ///< The prefix's bridges before the current one.
+		size_t current = 0; ///< The bridge the walk is in.
+		bool inside = false; ///< Between a bridge's near head and far head.
+		for (size_t k = 1; k < raster.pieces.size(); k++) {
+			const JunctionPiece &piece = raster.pieces[k];
+			const JunctionPiece &previous = raster.pieces[k - 1];
+			const JunctionBridge *bridge = current < raster.bridges.size() ? &raster.bridges[current] : nullptr;
+			/* A raster's bridge lists its heads ordered by coordinate, not by direction of travel: the first head met is the near one. */
+			const bool at_head = bridge != nullptr && ((piece.tile.x == bridge->start.x && piece.tile.y == bridge->start.y) || (piece.tile.x == bridge->end.x && piece.tile.y == bridge->end.y));
+			const bool near = !inside && at_head;
+			const bool far = inside && at_head;
+			if (near || far) {
+				const bool tunnel = bridge->tunnel;
+				if (IsUsed({}, piece) || existing_bits.contains(PackTile(piece.tile.x, piece.tile.y))) return false;
+				if (tunnel) {
+					const DiagDirection heading = TrackdirToExitdir(near ? previous.trackdir : piece.trackdir);
+					if (!PortalUsable(piece, near ? heading : ReverseDiagDir(heading), z)) return false;
+				} else {
+					int8_t new_z;
+					bool ramp;
+					if (!PieceUsable(piece, z, false, new_z, ramp)) return false;
+				}
+				if (!OccupyBase(piece)) return false;
+				if (near) {
+					inside = true;
+				} else {
+					inside = false;
+					done.push_back(*bridge);
+					current++;
+				}
+			} else if (inside) {
+				if (bridge->tunnel) {
+					const DiagDirection heading = TrackdirToExitdir(previous.trackdir);
+					const bool along_x = heading == DiagDirection::NE || heading == DiagDirection::SW;
+					const JunctionTerrainTile *tile = request.terrain != nullptr && InBounds(piece) ? request.terrain->At(piece.tile.x, piece.tile.y) : nullptr;
+					if (tile == nullptr || tile->z_min == z ||
+							(request.existing != nullptr && UnderCrossingTunnel(piece.tile.x, piece.tile.y, z, along_x, request.existing->bridges)) ||
+							UnderCrossingTunnel(piece.tile.x, piece.tile.y, z, along_x, done)) return false;
+				} else {
+					std::vector<JunctionBridge> all = done;
+					all.push_back(*bridge);
+					const bool is_head = std::ranges::any_of(all, [&](const JunctionBridge &b) {
+						return (piece.tile.x == b.start.x && piece.tile.y == b.start.y) || (piece.tile.x == b.end.x && piece.tile.y == b.end.y);
+					});
+					if (!InBounds(piece) || IsBlocked(piece.tile.x, piece.tile.y) || is_head ||
+							(request.existing != nullptr && BetweenBridgeHeads(piece.tile.x, piece.tile.y, request.existing->bridges)) ||
+							BetweenBridgeHeads(piece.tile.x, piece.tile.y, done) ||
+							(request.terrain != nullptr && !request.terrain->SpanOk(piece.tile.x, piece.tile.y, z))) return false;
+				}
+			} else {
+				int8_t new_z;
+				bool ramp;
+				if (!PieceUsable(piece, z, piece.trackdir == previous.trackdir, new_z, ramp)) return false;
+				z = new_z;
+				if (!OccupyBase(piece)) return false;
+			}
+		}
+		return true;
+	}
+
 	using Overlay = std::vector<std::pair<uint64_t, TrackBits>>; ///< The tracks the pieces of one successor add on top of the path's used grid.
 
 	/** Record a piece in the path's used grid; false when it clashes with the line's own pieces (anything but an exact parallel pair). A piece outside the bounds is not recorded. */
@@ -602,6 +671,14 @@ JunctionLineRouteResult LineRouter::Run()
 				if (!OccupyBase(piece)) {
 					usable = false;
 					break;
+				}
+			}
+			if (usable && request.check_prefix) {
+				for (const JunctionRaster &raster : first) {
+					if (!PrefixUsable(raster)) {
+						usable = false;
+						break;
+					}
 				}
 			}
 			ClearPathUsed();

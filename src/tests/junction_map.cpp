@@ -453,6 +453,39 @@ TEST_CASE("a house on B's lane inside the junction is reported by B", "[junction
 	CHECK(failed_heights > 0);
 }
 
+TEST_CASE("a house under B's doubled bridge is reported", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const int b_row = spec.ml_gap + 2;
+	/* Lane B's bridge: the flat T's bridge on the b row; the second tile after its west head is a middle tile. */
+	int west_head_x = INT16_MAX;
+	for (const JunctionBridge &bridge : flat.layout->bridges) {
+		if (bridge.start.y - flat.hub.y == b_row) west_head_x = std::min<int>(west_head_x, std::min(bridge.start.x, bridge.end.x) + FlatWestPortX(flat));
+	}
+	REQUIRE(west_head_x != INT16_MAX);
+	const TileIndexDiffC blocked{static_cast<int16_t>(west_head_x + 2), static_cast<int16_t>(b_row)};
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, blocked.x, blocked.y);
+	LimitMapTestRows(terrain, flat.height + 3);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO("blocked " << blocked.x << "," << blocked.y << "\n" << result.log);
+	std::cout << "BRIDGEHOUSE blocked=" << blocked.x << "," << blocked.y << " built=" << (result.layout.has_value() ? 1 : 0) << " heights=" << result.heights_tried << "\n" << result.log;
+	CHECK(result.log.find("B lane edge failed at") != std::string::npos);
+	if (result.layout.has_value()) {
+		CHECK(result.clean);
+		const int x_w = MakeJunctionFrame(spec).hub_x - result.hub.x;
+		for (const JunctionBridge &bridge : result.layout->bridges) {
+			const int y = bridge.start.y - result.hub.y;
+			if (bridge.start.y != bridge.end.y || y != blocked.y) continue;
+			const int lo = std::min(bridge.start.x, bridge.end.x) + x_w;
+			const int hi = std::max(bridge.start.x, bridge.end.x) + x_w;
+			CHECK_FALSE((lo <= blocked.x && blocked.x <= hi));
+		}
+	}
+}
+
 TEST_CASE("a slope under B's straight stretch is ramped or reported", "[junction][projection]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
