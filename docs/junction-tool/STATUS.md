@@ -1,6 +1,8 @@
 # Junction tool: status
 
 ## UPDATE 2026-11-10 night (after RESUME HERE below)
+- G3b merged (obstacles, fixed-part check). G3c0 merged (box grows within the terrain snapshot; D172 X_B window on the line-router T; last row blocked for routed edges, footprint rule). Times Release: one obstacle 90 ms (2 heights); field of obstacles 435 ms (3 heights, failed heights again: over 100 ms). G3c (ridge by ramps) running.
+- Rulings tonight: D174 (ML bridges always doubled; SL single at basic throughput; SL bridge in a bay is part of the bay), D175 (around or under towns/industries), D176 (L_R bays as D83/D88, bay count by throughput; multi-line: whole-train legs after a line-choice split). Open: do tunnels follow D174?
 - G3a merged (D173): the line-router T builds at the flat map's height, one height, identical layout: Release 39 ms (test) / 14 ms (pinned). [junctionmap] back to 4.9 s Debug.
 - Test runs: tools/junction/jt + docs/junction-tool/TESTS.md enforce tag budgets (no slow or hidden tests, over budget = stop; wide gate Release only, 17 s). Every brief uses them.
 - Rig: T map circuit with 8 trains (mix ml4 bw2 be2) at origin 47,4 on the hubs rig, no deadlock.
