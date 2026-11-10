@@ -167,6 +167,7 @@ struct JunctionTMapResult {
 	int layouts_built = 0; ///< Must equal the number of heights at which every edge routed (at most 1 with the current rule).
 	uint8_t stagger = 0; ///< D118, chosen by the smaller bridge span.
 	uint8_t e_phase = 0; ///< D148a.
+	TileIndexDiffC hub{}; ///< The offset, in the layout, of the frame's hub point (hub_x, 0), as JunctionGenerateResult::hub.
 	int64_t micros = 0;
 	int64_t micros_flat = 0; ///< D173: the flat map that gives the line router its first height.
 	int64_t micros_route = 0; ///< All router calls, every height tried.

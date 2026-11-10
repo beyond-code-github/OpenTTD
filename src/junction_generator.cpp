@@ -908,6 +908,21 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		while (box_fits(height_limit + 1)) height_limit++;
 	}
 
+	/*
+	 * D177: "the T map's plane is the ground height (z_max) of the hub tile, working (hub_x, 0), when that tile is Buildable and not steep; otherwise no layout."
+	 * Without a terrain everything stays at plane 0.
+	 */
+	int plane = 0;
+	if (terrain != nullptr) {
+		const JunctionTerrainTile *hub_tile = terrain->At(xI, 0);
+		if (hub_tile == nullptr || hub_tile->cls != JunctionTileClass::Buildable || hub_tile->steep) {
+			result.log += "hub tile not buildable\n";
+			result.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
+			return result;
+		}
+		plane = hub_tile->z_max;
+	}
+
 	for (int height = first; height <= height_limit; height++) {
 		if (result.heights_tried > 0) result.micros_per_height.push_back(since(height_start));
 		height_start = Clock::now();
@@ -931,7 +946,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		base.crossable_cost = 0;
 		base.turn_cost = spec.prices.rail_piece / 2;
 		base.terrain = terrain;
-		base.plane = 0;
+		base.plane = plane;
 
 		const int ys = yb - STUB;
 		const JunctionRouteEnd goal_s{tile(xO, ys), Trackdir::Y_SE};
@@ -962,7 +977,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			base_layout(fixed_parts);
 			AddRasterToLayout(fixed_parts, RasterizeJunctionRoute(StraightRoute(tile(frame.width - 1, w_row), Trackdir::X_NE, frame.width - 1)));
 			for (const JunctionTrack &jt : fixed_parts.tracks) {
-				if (jt.tracks.None() || terrain->UsableAt(jt.offset.x, jt.offset.y, 0)) continue;
+				if (jt.tracks.None() || terrain->UsableAt(jt.offset.x, jt.offset.y, plane)) continue;
 				if (jt.offset.y != 0 && jt.offset.y != w_row) {
 					say(fmt::format("stub on unusable tile {},{}", jt.offset.x, jt.offset.y));
 					stub_blocked = true;
@@ -1159,9 +1174,9 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		const auto finish_start = Clock::now();
 		/*
 		 * No terrain here: the line router has already checked every routed piece against the terrain (heights, ramps, foundations), and the fixed parts
-		 * are checked at plane 0 before routing (G3b). FinishJunctionCandidate's plane-0 test would reject every ramp.
+		 * are checked at the hub's plane (D177) before routing (G3b). FinishJunctionCandidate's flat-plane test would reject every ramp.
 		 */
-		std::optional<JunctionLayout> built = FinishJunctionCandidate(std::move(fixed), spec, nullptr, 0, w_row, frame.hub_x, nullptr, nullptr);
+		std::optional<JunctionLayout> built = FinishJunctionCandidate(std::move(fixed), spec, nullptr, 0, w_row, frame.hub_x, nullptr, &result.hub);
 		result.micros_finish += since(finish_start);
 		if (!built.has_value()) {
 			say("finish failed");

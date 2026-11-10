@@ -11,8 +11,11 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[linerouter]` | 10.4 s | 12 s (over the 5 s norm: split or move tests to `[slow]` when next touched) | 1.5 s |
 | `[linebuild]` | 0.01 s | 5 s | 0.01 s |
 | `[terrainrect]` | 0.02 s | 5 s | 0.01 s |
-| `[projection]` | 5.1 s (information only; Debug is about 8x slower) | measured in Release, 5 s | 0.7 s; 4.2 s from G5 (the tunnel test's unset-price check exhausts 30 heights, 3.5 s; near budget) |
+| `[projection]` | 13 s (information only) | measured in Release, 5 s | TO MEASURE after the G4+G5 merge |
 | `[tunnelprice]` | 0.01 s | 5 s | 0.01 s |
+| `[tmapnear]` | 0.8 s | 5 s | 0.09 s |
 | wide gate | (Release only) | | 17 s (budget 120 s) |
 
 Measured 2026-11-10 at the G3a merge.
+
+G4 (2026-11-11): `[projection]` gained three tests and `[tmapnear]` was added; measured on a loaded machine.

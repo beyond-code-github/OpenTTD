@@ -11,6 +11,7 @@
 
 #include "junction_game.h"
 #include "junction_generator.h"
+#include "junction_rules.h"
 #include "settings_type.h"
 #include "command_func.h"
 #include "rail_cmd.h"
@@ -28,6 +29,7 @@
 #include "economy_func.h"
 #include "company_func.h"
 #include "tile_map.h"
+#include "debug.h"
 #include "rail_map.h"
 #include "road_map.h"
 #include "slope_type.h"
@@ -402,7 +404,7 @@ static std::vector<TileIndexDiffC> JunctionNearOffsets()
 }
 
 /**
- * Try the anchor, then nearby anchors, on one snapshot.
+ * Try the anchor, then nearby anchors, on one snapshot, building the projected T map at each (D173, D177).
  * @param spec The junction spec.
  * @param terrain The snapshot, taken with a margin of at least 4.
  * @param rotation Quarter turns of the orientation.
@@ -419,7 +421,19 @@ JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const Junction
 		const TileIndexDiffC c = InverseOrientJunctionVector(d, rotation, mirrored);
 		JunctionTerrain shifted = terrain;
 		shifted.origin = {static_cast<int16_t>(terrain.origin.x - c.x), static_cast<int16_t>(terrain.origin.y - c.y)};
-		JunctionNearResult attempt{GenerateJunction(spec, &shifted), d};
+		const JunctionTMapResult tmap = ConstructJunctionTMap(spec, &shifted, std::nullopt, true);
+		Debug(Facility::Misc, Severity::Debug2, "junction T map at offset {},{}: {} us, {}", d.x, d.y, tmap.micros, tmap.log);
+		JunctionNearResult attempt{{}, d};
+		if (tmap.layout.has_value() && tmap.clean) {
+			attempt.result.layout = tmap.layout;
+			attempt.result.error = JunctionGenerateError::None;
+			/* No terrain cost yet: a known gap. */
+			attempt.result.score = ScoreJunctionLayout(*tmap.layout, spec);
+		} else {
+			attempt.result.error = JunctionGenerateError::NoLayout;
+		}
+		attempt.result.hub = tmap.hub;
+		attempt.result.prio_tiles = spec.prio_tiles;
 		if (attempt.result.layout.has_value()) return attempt;
 		if (!have_first) {
 			first = std::move(attempt);
