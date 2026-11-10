@@ -416,12 +416,24 @@ JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const Junction
 {
 	JunctionNearResult first;
 	bool have_first = false;
-	for (const TileIndexDiffC &d : JunctionNearOffsets()) {
+	const std::vector<TileIndexDiffC> offsets = JunctionNearOffsets();
+	/* P3: the flat map depends on the spec only, so it is computed once for every offset. */
+	const JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
+	if (!flat.layout.has_value()) {
+		if (cancel) return first;
+		Debug(Facility::Misc, Severity::Debug2, "junction T map at offset {},{}: flat map: {}", offsets.front().x, offsets.front().y, flat.log);
+		first.offset = offsets.front();
+		first.result.error = JunctionGenerateError::NoLayout;
+		first.result.hub = flat.hub;
+		first.result.prio_tiles = spec.prio_tiles;
+		return first;
+	}
+	for (const TileIndexDiffC &d : offsets) {
 		if (cancel) break;
 		const TileIndexDiffC c = InverseOrientJunctionVector(d, rotation, mirrored);
 		JunctionTerrain shifted = terrain;
 		shifted.origin = {static_cast<int16_t>(terrain.origin.x - c.x), static_cast<int16_t>(terrain.origin.y - c.y)};
-		const JunctionTMapResult tmap = ConstructJunctionTMap(spec, &shifted, std::nullopt, true);
+		const JunctionTMapResult tmap = ConstructJunctionTMap(spec, &shifted, std::nullopt, true, &flat);
 		Debug(Facility::Misc, Severity::Debug2, "junction T map at offset {},{}: {} us, {}", d.x, d.y, tmap.micros, tmap.log);
 		JunctionNearResult attempt{{}, d};
 		if (tmap.layout.has_value() && tmap.clean) {

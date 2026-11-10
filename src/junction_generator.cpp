@@ -861,7 +861,7 @@ static Money JunctionTMapTerrainCost(const JunctionLayout &layout, const Junctio
 	return cost;
 }
 
-JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain, std::optional<int> first_height, bool line_router)
+JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain, std::optional<int> first_height, bool line_router, const JunctionTMapResult *flat_given)
 {
 	const auto time_start = std::chrono::steady_clock::now();
 	JunctionTMapResult result;
@@ -875,10 +875,16 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 	int x_w = 0; ///< A's west port, frame column on row 0 (line router only).
 	int x_e = 0; ///< A's east port.
 	if (line_router) {
-		const auto flat_start = std::chrono::steady_clock::now();
-		JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
-		result.micros_flat = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - flat_start).count();
+		JunctionTMapResult flat_computed;
+		if (flat_given == nullptr) {
+			const auto flat_start = std::chrono::steady_clock::now();
+			flat_computed = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
+			result.micros_flat = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - flat_start).count();
+			result.flat_runs = 1;
+		}
+		const JunctionTMapResult &flat = flat_given != nullptr ? *flat_given : flat_computed;
 		if (!flat.layout.has_value()) {
+			JunctionTMapResult failed = flat;
 			std::string prefixed;
 			for (size_t from = 0; from < flat.log.size();) {
 				const size_t end = flat.log.find('\n', from);
@@ -886,10 +892,11 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 				prefixed += "flat map: " + flat.log.substr(from, stop - from);
 				from = stop;
 			}
-			flat.log = std::move(prefixed);
-			flat.micros_flat = result.micros_flat;
-			flat.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
-			return flat;
+			failed.log = std::move(prefixed);
+			failed.micros_flat = result.micros_flat;
+			failed.flat_runs = result.flat_runs;
+			failed.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
+			return failed;
 		}
 		if (!first_height.has_value()) first_height = flat.height;
 		/* D179: the ports come from the flat T, whose crop leaves the main line content +-2 (FinishJunctionCandidate). */

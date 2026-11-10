@@ -172,6 +172,7 @@ struct JunctionTMapResult {
 	Money terrain_cost = 0; ///< SC1: clearing plus foundations of every tile with track or a bridge head; a straight track along an inclined tile is a ramp and has no foundation.
 	int64_t micros = 0;
 	int64_t micros_flat = 0; ///< D173: the flat map that gives the line router its first height.
+	int flat_runs = 0; ///< P3: how many times this call ran D173's flat map (0 when the caller passed it).
 	int64_t micros_route = 0; ///< All router calls, every height tried.
 	int64_t micros_skeleton = 0; ///< Crossing set, both skeleton solves, lanes.
 	int64_t micros_finish = 0; ///< FinishJunctionCandidate (crop, normalise, signal pass).
@@ -196,8 +197,9 @@ int JunctionTMapFirstHeight(const JunctionSpec &spec);
 /**
  * Construct the T's map from the rules and build it once (DESIGN-O4 "G1").
  * @param first_height Test seam: when set, the heights start here instead of JunctionTMapFirstHeight.
+ * @param flat D173's flat map for this spec, computed once by the caller; when null and line_router is set, it is computed here (P3).
  */
-JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain = nullptr, std::optional<int> first_height = std::nullopt, bool line_router = false);
+JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain = nullptr, std::optional<int> first_height = std::nullopt, bool line_router = false, const JunctionTMapResult *flat = nullptr);
 
 /** D148a: the E-side window phase. 1 when prio_tiles is odd and at least 5, else 0. */
 uint8_t JunctionEWindowPhase(int prio_tiles);
