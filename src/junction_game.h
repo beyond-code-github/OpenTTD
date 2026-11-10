@@ -84,8 +84,9 @@ struct JunctionNearResult {
  * Try the anchor, then nearby anchors, using one snapshot taken with a margin of at least the largest offset.
  * Trying map offset d uses the same snapshot with origin shifted by -InverseOrientJunctionVector(d, rotation, mirrored).
  * Stops at the first layout found, or when cancel becomes true.
+ * @param flat D173's flat map for this spec, kept by the caller; when null it is computed here (P3).
  */
-JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const JunctionTerrain &terrain, uint8_t rotation, bool mirrored, const std::atomic<bool> &cancel);
+JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const JunctionTerrain &terrain, uint8_t rotation, bool mirrored, const std::atomic<bool> &cancel, const JunctionTMapResult *flat = nullptr);
 
 /**
  * The instant tier (D96): fit the library at the anchor, then at the nearby offsets, using the same shifted snapshots as GenerateJunctionNear.

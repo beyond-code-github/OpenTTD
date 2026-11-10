@@ -410,21 +410,26 @@ static std::vector<TileIndexDiffC> JunctionNearOffsets()
  * @param rotation Quarter turns of the orientation.
  * @param mirrored Whether the orientation is mirrored.
  * @param cancel Set to stop the search.
+ * @param flat D173's flat map for this spec, kept by the caller; when null it is computed here (P3).
  * @return The first layout found and its map offset from the anchor; else the result at the anchor.
  */
-JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const JunctionTerrain &terrain, uint8_t rotation, bool mirrored, const std::atomic<bool> &cancel)
+JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const JunctionTerrain &terrain, uint8_t rotation, bool mirrored, const std::atomic<bool> &cancel, const JunctionTMapResult *flat)
 {
 	JunctionNearResult first;
 	bool have_first = false;
 	const std::vector<TileIndexDiffC> offsets = JunctionNearOffsets();
 	/* P3: the flat map depends on the spec only, so it is computed once for every offset. */
-	const JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
-	if (!flat.layout.has_value()) {
+	JunctionTMapResult computed;
+	if (flat == nullptr) {
+		computed = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
+		flat = &computed;
+	}
+	if (!flat->layout.has_value()) {
 		if (cancel) return first;
-		Debug(Facility::Misc, Severity::Debug2, "junction T map at offset {},{}: flat map: {}", offsets.front().x, offsets.front().y, flat.log);
+		Debug(Facility::Misc, Severity::Debug2, "junction T map at offset {},{}: flat map: {}", offsets.front().x, offsets.front().y, flat->log);
 		first.offset = offsets.front();
 		first.result.error = JunctionGenerateError::NoLayout;
-		first.result.hub = flat.hub;
+		first.result.hub = flat->hub;
 		first.result.prio_tiles = spec.prio_tiles;
 		return first;
 	}
@@ -433,7 +438,7 @@ JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const Junction
 		const TileIndexDiffC c = InverseOrientJunctionVector(d, rotation, mirrored);
 		JunctionTerrain shifted = terrain;
 		shifted.origin = {static_cast<int16_t>(terrain.origin.x - c.x), static_cast<int16_t>(terrain.origin.y - c.y)};
-		const JunctionTMapResult tmap = ConstructJunctionTMap(spec, &shifted, std::nullopt, true, &flat);
+		const JunctionTMapResult tmap = ConstructJunctionTMap(spec, &shifted, std::nullopt, true, flat);
 		Debug(Facility::Misc, Severity::Debug2, "junction T map at offset {},{}: {} us, {}", d.x, d.y, tmap.micros, tmap.log);
 		JunctionNearResult attempt{{}, d};
 		if (tmap.layout.has_value() && tmap.clean) {
