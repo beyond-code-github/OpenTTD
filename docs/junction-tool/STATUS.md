@@ -1,6 +1,8 @@
 # Junction tool: status
 
 ## UPDATE 2026-11-10 night (after RESUME HERE below)
+- ENGINEER VERDICT on the G1 T map in game (rig 3989, fresh map, origin 4,4): "I genuinely think that hub is actually perfect". It is the reference layout for projection (D173).
+- P2 merged (f3ca52f393): line router -8-13% per expansion, identical results; T map line-router path behind line_router=false. G3a (D173: line router starts at the flat map's height) running.
 - D172 recorded (crossings are map nodes; envelope = window on every crossing edge relative to placed crossers). G2c applied it to SoverN: parked, not merged (WIP: scratchpad/g2b/g2c_wip.patch, OneDrive g2/). Evidence the window is right: SoverN went from no layout to building on the test spec (height 14) with both crossings under one doubled bridge (test 4 green there). Not done: pinned builds no SoverN (N->A fails 7-12, B->S 13-14; lo/hi not logged); test spec SoverN unclean (Footprint "signal on the boundary" x3); SoverN has no derived first height and the line router's per-request cost makes failing heights expensive ([junctionmap] 33 s Debug with SoverN). Resume after P1: derive SoverN's first height, log lo/hi/window, then judge.
 - P1 (line router per-request profile) running in .claude/p1 with the rebased T-map patch (scratchpad/p1/part2_tmap_rebased.patch).
 - LP9 merged (9e94a32ef2): MakeJunctionTerrainRect, 64x64 in 1.7 ms.
