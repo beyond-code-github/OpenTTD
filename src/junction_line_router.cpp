@@ -41,6 +41,10 @@ struct LineNode {
 	bool after_bridge = false; ///< The last move was a bridge (D149 5).
 	uint8_t passed = 0; ///< Waypoints passed so far (D150).
 	uint16_t units = 0; ///< Track 0's units so far, capped at min_units.
+	uint8_t phase = 0; ///< With movement rules: 0 on shared track from the In port, 1 private, 2 merged (DESIGN-O4 revision 4).
+	uint16_t private_units = 0; ///< With movement rules: units since the split, capped at wait_units.
+	uint8_t plain = 0; ///< With movement rules: signal-legal private pieces since the split or the last far head, capped at plain_before_head.
+	bool after_head = false; ///< With movement rules: a bridge or tunnel ended since the split.
 };
 
 /** One entry of the search tree. */
@@ -319,6 +323,10 @@ private:
 		AppendBytes(key, static_cast<uint8_t>(node.after_bridge));
 		AppendBytes(key, node.passed);
 		AppendBytes(key, node.units);
+		AppendBytes(key, node.phase);
+		AppendBytes(key, node.private_units);
+		AppendBytes(key, node.plain);
+		AppendBytes(key, static_cast<uint8_t>(node.after_head));
 		return key;
 	}
 
@@ -366,6 +374,8 @@ private:
 		if (node.passed != request.waypoints.size() || node.units < request.min_units) return false;
 		if (request.goals.empty()) return !request.waypoints.empty();
 		const JunctionPiece &piece = node.last[0];
+		/* A goal on a sibling's route towards the Out port is reached by merging into it. */
+		if (request.rules.has_value() && request.rules->shares_to && request.rules->shares_to(piece) && node.phase != 2) return false;
 		return std::ranges::any_of(request.goals, [&](const JunctionRouteEnd &goal) {
 			return goal.tile.x == piece.tile.x && goal.tile.y == piece.tile.y && goal.trackdir == piece.trackdir;
 		});
@@ -383,6 +393,80 @@ private:
 			if (bridge && k != 0 && k + 1 != pieces.size()) continue;
 			while (passed < request.waypoints.size() && pieces[k].tile.x == request.waypoints[passed].x && pieces[k].tile.y == request.waypoints[passed].y) passed++;
 		}
+	}
+
+	/** Whether the movement rules say the piece lies on a sibling's route from the same In port. */
+	bool SharesFrom(const JunctionPiece &piece) const
+	{
+		return request.rules->shares_from && request.rules->shares_from(piece);
+	}
+
+	/** Whether the movement rules say the piece lies on a sibling's route to the same Out port. */
+	bool SharesTo(const JunctionPiece &piece) const
+	{
+		return request.rules->shares_to && request.rules->shares_to(piece);
+	}
+
+	/** Set the rule state of a start piece (DESIGN-O4 revision 4). */
+	void RulesStart(LineNode &node, const JunctionPiece &piece) const
+	{
+		node.phase = SharesFrom(piece) ? 0 : 1;
+		node.private_units = 0;
+		node.plain = 0;
+		node.after_head = false;
+	}
+
+	/**
+	 * Advance the rule state over one piece of track 0 that is not a bridge or tunnel middle (DESIGN-O4 revision 4, D168).
+	 * @param node The node, updated.
+	 * @param piece The piece added.
+	 * @return Whether the rules allow the piece.
+	 */
+	bool RulesStep(LineNode &node, const JunctionPiece &piece) const
+	{
+		const JunctionMovementRules &rules = *request.rules;
+		const bool signal_legal = !piece.on_bridge; // A private piece that is not a bridge head, tunnel portal or middle.
+		switch (node.phase) {
+			case 0:
+				if (SharesFrom(piece)) return true;
+				if (rules.may_split && !rules.may_split(piece)) return false;
+				node.phase = 1;
+				node.private_units = static_cast<uint16_t>(std::min<uint>(piece.units, rules.wait_units));
+				node.plain = signal_legal ? static_cast<uint8_t>(std::min<uint>(1, rules.plain_before_head)) : 0;
+				node.after_head = false;
+				return true;
+
+			case 1:
+				if (SharesFrom(piece)) return false;
+				if (SharesTo(piece)) {
+					if (node.private_units < rules.wait_units) return false;
+					if (node.after_head && node.plain < rules.plain_before_head) return false;
+					if (rules.may_merge && !rules.may_merge(piece)) return false;
+					node.phase = 2;
+					return true;
+				}
+				node.private_units = static_cast<uint16_t>(std::min<uint>(node.private_units + piece.units, rules.wait_units));
+				if (signal_legal) node.plain = static_cast<uint8_t>(std::min<uint>(node.plain + 1u, rules.plain_before_head));
+				return true;
+
+			default:
+				return SharesTo(piece);
+		}
+	}
+
+	/** Whether a bridge or tunnel may start at this near head: after a split, the private stretch before it needs plain_before_head signal-legal pieces (D113). */
+	bool RulesHeadAllowed(const LineNode &node, const JunctionPiece &head) const
+	{
+		if (node.phase == 2 || (node.phase == 0 && SharesFrom(head))) return true;
+		return (node.phase == 1 ? node.plain : 0) >= request.rules->plain_before_head; // A head that is itself the split has no piece before it.
+	}
+
+	/** After a bridge or tunnel move that ended on private track: the stretch to the next head or the merge starts afresh. */
+	static void RulesAfterHead(LineNode &node)
+	{
+		if (node.phase != 1) return;
+		node.plain = 0;
+		node.after_head = true;
 	}
 
 	using Overlay = std::vector<std::pair<uint64_t, TrackBits>>; ///< The tracks the pieces of one successor add on top of the path's used grid.
@@ -435,6 +519,8 @@ JunctionLineRouteResult LineRouter::Run()
 	if (request.line.tracks == 0) return {std::nullopt, "a line needs at least one track"};
 
 	if (request.goals.empty() && request.waypoints.empty()) return {std::nullopt, "a route needs a goal or a waypoint"};
+
+	if (request.rules.has_value() && (request.line.tracks != 1 || !request.prefix.empty())) return {std::nullopt, "movement rules need one track and no prefix"};
 
 	std::vector<JunctionRouteEnd> starts = request.starts;
 	if (starts.empty()) starts.push_back({request.start, request.start_trackdir});
@@ -510,6 +596,7 @@ JunctionLineRouteResult LineRouter::Run()
 			start_error.clear();
 			continue;
 		}
+		if (request.rules.has_value()) RulesStart(root, first[0].pieces[0]);
 		root_entry.node = std::move(root);
 		root_entry.g = root_cost;
 		root_entry.parent = -1;
@@ -611,6 +698,10 @@ JunctionLineRouteResult LineRouter::Run()
 					}
 					cost += request.rail_piece;
 					if (i == 0) next.units = static_cast<uint16_t>(std::min<uint>(next.units + piece.units, request.min_units));
+					if (i == 0 && request.rules.has_value() && !RulesStep(next, piece)) {
+						legal = false;
+						break;
+					}
 					previous = &piece;
 				}
 				if (legal) {
@@ -680,6 +771,10 @@ JunctionLineRouteResult LineRouter::Run()
 							break;
 						}
 						if (i == 0) next.units = static_cast<uint16_t>(std::min<uint>(next.units + piece.units, request.min_units));
+						if (i == 0 && request.rules.has_value() && (k == 0 || k + 1 == added[i].size()) && ((k == 0 && !RulesHeadAllowed(next, piece)) || !RulesStep(next, piece))) {
+							legal = false;
+							break;
+						}
 						previous = &piece;
 					}
 					if (legal) {
@@ -689,6 +784,7 @@ JunctionLineRouteResult LineRouter::Run()
 					}
 				}
 				if (legal) {
+					if (request.rules.has_value()) RulesAfterHead(next);
 					PassWaypoints(next.passed, added[0], true);
 					push({std::move(next), tree[index].g + cost, index, fmt::format("T{}", middle), std::move(added), std::move(bridges)});
 				}
@@ -745,6 +841,10 @@ JunctionLineRouteResult LineRouter::Run()
 						break;
 					}
 					if (i == 0) next.units = static_cast<uint16_t>(std::min<uint>(next.units + piece.units, request.min_units));
+					if (i == 0 && request.rules.has_value() && (k == 0 || k + 1 == added[i].size()) && ((k == 0 && !RulesHeadAllowed(next, piece)) || !RulesStep(next, piece))) {
+						legal = false;
+						break;
+					}
 					previous = &piece;
 				}
 				if (legal) {
@@ -753,6 +853,7 @@ JunctionLineRouteResult LineRouter::Run()
 				}
 			}
 			if (!legal) continue;
+			if (request.rules.has_value()) RulesAfterHead(next);
 			PassWaypoints(next.passed, added[0], true);
 			push({std::move(next), tree[index].g + cost, index, fmt::format("B{}", n), std::move(added), std::move(bridges)});
 		}

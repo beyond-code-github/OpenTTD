@@ -1458,3 +1458,224 @@ TEST_CASE("FindJunctionLineRoute: minimum length routes are as cheap as an uninf
 		CHECK(informed.cost <= uninformed.cost);
 	}
 }
+
+/** A request with movement rules: its terrain, when it has one, is the member's. */
+struct RuleCase {
+	JunctionLineRouteRequest request;
+	JunctionTerrain terrain;
+};
+
+/** Track 0's pieces of a route, rasterized. */
+static std::vector<JunctionPiece> RoutePieces(const JunctionLineRouteRequest &request, const JunctionLineRouteResult &result)
+{
+	REQUIRE(result.route.has_value());
+	return RasterizeJunctionLine(request.line, *result.route)[0].pieces;
+}
+
+/** A single track request on flat ground from {40, 20} heading X_NE, to be given a goal and rules. */
+static JunctionLineRouteRequest RuleRequest()
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	request.line = {1, 1, 1};
+	request.rail_piece = 1;
+	request.turn_cost = 3;
+	return request;
+}
+
+/** The straight row the movement starts on (the siblings' route), tiles x from 40 down to 28. */
+static bool OnStartRow(const JunctionPiece &piece)
+{
+	return piece.tile.y == 20 && piece.tile.x >= 28 && piece.tile.x <= 40 && piece.trackdir == Trackdir::X_NE;
+}
+
+/** The target row the goal lies on, tiles x from 32 down to 20 at y = 26. */
+static bool OnTargetRow(const JunctionPiece &piece)
+{
+	return piece.tile.y == 26 && piece.tile.x >= 20 && piece.tile.x <= 32 && piece.trackdir == Trackdir::X_NE;
+}
+
+static void SetUpSplitCase(RuleCase &c)
+{
+	c.request = RuleRequest();
+	c.request.goals = {{{30, 26}, Trackdir::Y_SE}};
+	/* Ground on the start row costs more, so a route that is free to split does so at once. */
+	c.terrain = FlatTerrainFor(c.request, 0);
+	for (int x = c.request.min.x; x <= c.request.max.x; x++) TerrainTileOf(c.terrain, x, 20).clear_cost = 5;
+	c.request.terrain = &c.terrain;
+	c.request.rules.emplace();
+	c.request.rules->shares_from = OnStartRow;
+	c.request.rules->may_split = [](const JunctionPiece &piece) { return std::abs(piece.tile.x - 40) + std::abs(piece.tile.y - 20) >= 6; };
+}
+
+static void SetUpWaitCase(RuleCase &c)
+{
+	c.request = RuleRequest();
+	c.request.goals = {{{20, 26}, Trackdir::X_NE}};
+	c.request.rules.emplace();
+	c.request.rules->shares_from = OnStartRow;
+	c.request.rules->shares_to = OnTargetRow;
+	c.request.rules->wait_units = 30;
+}
+
+static void SetUpBridgeCase(RuleCase &c)
+{
+	c.request = RuleRequest();
+	EnableBridges(c.request);
+	c.terrain = FlatTerrainFor(c.request, 0);
+	for (int y = c.request.min.y; y <= c.request.max.y; y++) {
+		for (int x = 30; x < 33; x++) TerrainTileOf(c.terrain, x, y).cls = JunctionTileClass::Water;
+	}
+	c.request.terrain = &c.terrain;
+	c.request.rules.emplace();
+	c.request.rules->shares_from = [](const JunctionPiece &piece) { return !piece.on_bridge && piece.tile.y == 20 && piece.tile.x >= 34 && piece.tile.x <= 40 && piece.trackdir == Trackdir::X_NE; };
+	c.request.rules->plain_before_head = 1;
+}
+
+TEST_CASE("FindJunctionLineRoute: a movement splits only where allowed", "[junction][linerouter]")
+{
+	RuleCase c;
+	SetUpSplitCase(c);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	INFO(result.error);
+	const std::vector<JunctionPiece> pieces = RoutePieces(c.request, result);
+	const auto split = std::ranges::find_if(pieces, [](const JunctionPiece &piece) { return !OnStartRow(piece); });
+	REQUIRE(split != pieces.end());
+	CHECK(std::abs(split->tile.x - 40) + std::abs(split->tile.y - 20) >= 6);
+}
+
+TEST_CASE("FindJunctionLineRoute: waiting room before the merge", "[junction][linerouter]")
+{
+	RuleCase c;
+	SetUpWaitCase(c);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	INFO(result.error);
+	const std::vector<JunctionPiece> pieces = RoutePieces(c.request, result);
+	uint private_units = 0;
+	int phase = 0;
+	for (const JunctionPiece &piece : pieces) {
+		if (phase == 0 && !OnStartRow(piece)) {
+			phase = 1;
+			private_units += piece.units;
+		} else if (phase == 1) {
+			if (OnTargetRow(piece)) {
+				phase = 2;
+			} else {
+				private_units += piece.units;
+			}
+		}
+	}
+	CHECK(phase == 2);
+	CHECK(private_units >= c.request.rules->wait_units);
+}
+
+TEST_CASE("FindJunctionLineRoute: no rejoining and no parting", "[junction][linerouter]")
+{
+	/* The cheapest path runs straight along row 20; the shared track has a gap there, so it would split and come back. */
+	{
+		auto shared = [](const JunctionPiece &piece) { return piece.tile.y == 20 && ((piece.tile.x >= 36 && piece.tile.x <= 40) || (piece.tile.x >= 22 && piece.tile.x <= 28)) && piece.trackdir == Trackdir::X_NE; };
+		RuleCase c;
+		c.request = RuleRequest();
+		c.request.goals = {{{20, 20}, Trackdir::X_NE}};
+		c.request.rules.emplace();
+		c.request.rules->shares_from = shared;
+		const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+		INFO(result.error);
+		const std::vector<JunctionPiece> pieces = RoutePieces(c.request, result);
+		bool split = false;
+		for (const JunctionPiece &piece : pieces) {
+			if (!shared(piece)) split = true;
+			if (split) CHECK_FALSE(shared(piece));
+		}
+	}
+
+	/* The sibling's route to the Out port runs through the straight row, but the goal lies beyond it: a merge could not be left. */
+	{
+		auto merged = [](const JunctionPiece &piece) { return piece.tile.y == 20 && piece.tile.x >= 26 && piece.tile.x <= 30 && piece.trackdir == Trackdir::X_NE; };
+		RuleCase c;
+		c.request = RuleRequest();
+		c.request.goals = {{{20, 20}, Trackdir::X_NE}};
+		c.request.rules.emplace();
+		c.request.rules->shares_from = [](const JunctionPiece &piece) { return piece.tile.y == 20 && piece.tile.x >= 36 && piece.tile.x <= 40 && piece.trackdir == Trackdir::X_NE; };
+		c.request.rules->shares_to = merged;
+		const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+		INFO(result.error);
+		const std::vector<JunctionPiece> pieces = RoutePieces(c.request, result);
+		bool merge = false;
+		for (const JunctionPiece &piece : pieces) {
+			if (merged(piece)) merge = true;
+			if (merge) CHECK(merged(piece));
+		}
+	}
+}
+
+TEST_CASE("FindJunctionLineRoute: a signal-legal piece before a bridge after a split", "[junction][linerouter]")
+{
+	RuleCase c;
+	SetUpBridgeCase(c);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	INFO(result.error);
+	const std::vector<JunctionPiece> pieces = RoutePieces(c.request, result);
+	const auto shared = c.request.rules->shares_from;
+	const auto split = std::ranges::find_if(pieces, [&](const JunctionPiece &piece) { return !shared(piece); });
+	REQUIRE(split != pieces.end());
+	const auto head = std::ranges::find_if(split, pieces.end(), [](const JunctionPiece &piece) { return piece.on_bridge; });
+	REQUIRE(head != pieces.end());
+	CHECK(std::ranges::any_of(split, head, [](const JunctionPiece &piece) { return !piece.on_bridge; }));
+}
+
+TEST_CASE("FindJunctionLineRoute: rules need one track", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	request.rules.emplace();
+	JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	CHECK_FALSE(result.route.has_value());
+	CHECK(result.error == "movement rules need one track and no prefix");
+
+	request = RuleRequest();
+	request.goals = {{{20, 20}, Trackdir::X_NE}};
+	request.prefix = "F";
+	request.rules.emplace();
+	result = FindJunctionLineRoute(request);
+	CHECK_FALSE(result.route.has_value());
+	CHECK(result.error == "movement rules need one track and no prefix");
+}
+
+TEST_CASE("FindJunctionLineRoute: no rules is unchanged", "[junction][linerouter]")
+{
+	/* The cost and expansions of the single-track benchmark cases before the rules existed. */
+	struct Expected {
+		const char *name;
+		bool found;
+		int64_t cost;
+		uint expansions;
+	};
+	for (const Expected &expected : {Expected{"flat_straight_1", true, 263, 43}, Expected{"flat_turn_1", true, 233, 904}, Expected{"obstacle_turn_1", true, 293, 3787}, Expected{"hills_turn_1", true, 255, 2125}, Expected{"no_route_1", false, 0, 32645}}) {
+		BenchCase c;
+		SetUpBenchCase(c, expected.name);
+		REQUIRE_FALSE(c.request.rules.has_value());
+		const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+		INFO(expected.name);
+		CHECK(result.route.has_value() == expected.found);
+		CHECK(result.cost.base() == expected.cost);
+		CHECK(result.expansions == expected.expansions);
+	}
+}
+
+TEST_CASE("FindJunctionLineRoute: rule routes are as cheap as an uninformed search", "[junction][linerouter][slow]")
+{
+	for (int which = 0; which < 3; which++) {
+		RuleCase c;
+		if (which == 0) SetUpSplitCase(c);
+		if (which == 1) SetUpWaitCase(c);
+		if (which == 2) SetUpBridgeCase(c);
+		c.request.max_expansions = 3000000;
+		c.request.use_heuristic = true;
+		const JunctionLineRouteResult informed = FindJunctionLineRoute(c.request);
+		c.request.use_heuristic = false;
+		const JunctionLineRouteResult uninformed = FindJunctionLineRoute(c.request);
+		INFO(which << " informed " << informed.route.has_value() << " cost " << informed.cost << " uninformed " << uninformed.route.has_value() << " cost " << uninformed.cost);
+		REQUIRE(uninformed.error != "search limit");
+		REQUIRE(informed.route.has_value() == uninformed.route.has_value());
+		CHECK(informed.cost <= uninformed.cost);
+	}
+}

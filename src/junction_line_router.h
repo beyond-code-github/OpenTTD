@@ -29,6 +29,16 @@ enum class JunctionResourceLevel : uint8_t {
 	TunnelBore, ///< A tunnel's middle piece.
 };
 
+/** Where a movement may split from and merge into its siblings' current routes (DESIGN-O4 revision 4, D168). Only for single-track requests. */
+struct JunctionMovementRules {
+	std::function<bool(const JunctionPiece &piece)> shares_from; ///< The piece (same tile and trackdir) lies on the current route of a movement with the same In port.
+	std::function<bool(const JunctionPiece &piece)> shares_to; ///< The piece lies on the current route of a movement with the same Out port.
+	std::function<bool(const JunctionPiece &piece)> may_split; ///< The first private piece after shared track may be this one (coverage mask, D108); unset means always.
+	std::function<bool(const JunctionPiece &piece)> may_merge; ///< The first piece on a sibling's route after private track may be this one (prio mask); unset means always.
+	uint wait_units = 0; ///< Private units (JunctionPiece::units) needed between the split and the merge (G7).
+	uint plain_before_head = 0; ///< Signal-legal private pieces needed between the split and a bridge or tunnel head, and between a far head and the merge (D113).
+};
+
 /** A request to route a line at one plane (LP4, LP5). */
 struct JunctionLineRouteRequest {
 	JunctionLineSpec line;
@@ -56,6 +66,7 @@ struct JunctionLineRouteRequest {
 	uint max_tunnel_length = 64; ///< Largest middle-tile count (the game's max_tunnel_length).
 	std::function<Money(const JunctionPiece &piece, int8_t z, JunctionResourceLevel level)> resource_cost; ///< Extra cost per piece of every track, from the negotiated search (DESIGN-O4 revision 3); must be >= 0; unset means 0. z is the track's height (bridge spans: the track's height at the heads; tunnel bores: the tunnel's floor).
 	uint min_units = 0; ///< Track 0 needs at least this many units (JunctionPiece::units, as CheckWaitingRoom counts them) from its first piece, prefix included, before a goal counts (waiting room, bays, prio coverage).
+	std::optional<JunctionMovementRules> rules; ///< When set, the route obeys them (DESIGN-O4 revision 4).
 	uint max_expansions = 200000;
 	bool use_heuristic = true; ///< Test seam: false makes the search uninformed (h = 0).
 };
