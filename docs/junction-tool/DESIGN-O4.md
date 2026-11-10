@@ -8,17 +8,18 @@ Engineer: "I thought we were solving the layout in a vector map first and then p
 **1. The vector map (topology, no tiles).** A small graph per junction:
 - Nodes: ports; splits; merges; forced crossings with who goes over (D167, main line over first, D156); later the D80 lift (doubled bridge) as a node kind.
 - Edges: stretches of track between nodes, each with a track count (lanes later) and a minimum length.
-- Per line: the order of its splits, merges and crossings. Per merge with a prio (D159): its prio side and its window (coverage, D108).
+- Per line: the order of its splits, merges and crossings.
+- Prio (D158, D159; engineer: "Prio is reserved in the vector map yes, but not on the terrain"): for a merge that carries one, the stretch of the protected line before the merge is a two-track edge (the line plus its prio track, side fixed by the map), at least the coverage long, ending at the merge. Projection routes it like any edge, as one two-track token, so it may bend ("prios can bend, it's just two tracks side by side") and nothing else can take the prio track. Needs the signal pass to accept a prio that bends (O4s).
 - Placement in tile units (engineer: "topology must be defined in tile units"): each node has a tile interval along its line, each edge a minimum length in tiles, plus the branch position p. Projection picks the exact tile inside the interval.
 - Straightness is a concretion matter, not topology (engineer): the map never assumes a straight main line (D160); every line, main line included, is edges like any other, and projection decides its shape.
 
-Rules are constraints on the map, mostly lengths along edges and orders along lines: waiting room (G7) and bays (D83) as edge minimum lengths; a signal-legal piece between a split and a bridge head (D113); no split inside a coverage (D108); a split and a merge not in one block; merge windows straight for the coverage with the prio row on its side.
+Rules are constraints on the map, mostly lengths along edges and orders along lines: waiting room (G7) and bays (D83) as edge minimum lengths; a signal-legal piece between a split and a bridge head (D113); no split inside a coverage (D108); a split and a merge not in one block; a merge with a prio has its prio as an edge of the map (below).
 Solved by enumeration best first: candidate structures (crossing choices x orders x coarse placements) ranked by an admissible bound (edge minimum lengths + required bridges), cheapest tried first. Small discrete search, target a few ms.
 
 **2. Projection (negotiation).** Given one structure:
-- Fixed first, reserved not priced: merge windows and their prio rows, crossing over/under.
+- Fixed by the map, not on the terrain: crossing over/under and the prio edges. Nothing is reserved on tiles before routing.
 - Then every edge is routed by the line router (heights, bridges, tunnels, rule state from O4c1), all edges equal, PathFinder prices (D168), a small round limit (measured). Shared track is one edge routed once, so splits and merges are where the map put them, not emergent.
-- Split and merge spots are chosen by the router, not fixed by the map: an edge leaving a split starts from a set of pieces (O4a), every piece of the trunk that the map's constraints allow (inside the node's interval, outside coverages, room for the D113 piece and the waiting room); an edge joining a merge ends on the legal pieces of the trunk downstream. The router takes the cheapest. Merges with a prio are the exception: their window and prio row are reserved before routing, so their spot is fixed for the round (moved by the map layer between attempts).
+- Split and merge spots are chosen by the router, not fixed by the map: an edge leaving a split starts from a set of pieces (O4a), every piece of the trunk that the map's constraints allow (inside the node's interval, outside coverages, room for the D113 piece and the waiting room); an edge joining a merge ends on the legal pieces of the trunk downstream. The router takes the cheapest.
 - Negotiation only packs. An edge with no route, or no convergence in K rounds, returns to step 1 with that failure recorded (the structure, or the part of it that failed, is ruled out). Never fixed by tuning prices or adding feedback.
 
 **3. Finish and judge.** Existing pipeline: crop, normalise, signal pass, full checker (safety net), prio timing gate and throughput (D119), score: compactness then cost (D153).
