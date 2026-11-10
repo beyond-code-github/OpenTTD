@@ -45,6 +45,7 @@ struct JunctionPrioWindow {
 	int8_t side = 0; ///< +1 or -1: the companion tile is at tile + side along the axis perpendicular to travel.
 	int end_lo = 0; ///< The window's last piece lies at an along-travel coordinate (x for X-axis travel, y for Y) in [end_lo, end_hi].
 	int end_hi = 0;
+	uint plain_after = 1; ///< Surface pieces needed after the merge piece before a bridge or tunnel head may follow the window (D113).
 };
 
 /** A request to route a line at one plane (LP4, LP5). */

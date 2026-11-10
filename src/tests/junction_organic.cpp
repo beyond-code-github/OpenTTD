@@ -364,6 +364,63 @@ TEST_CASE("BuildOrganicT: the prio row travels with the main line", "[junction][
 	}
 }
 
+/** The violations of the checker's signal and waiting-room groups for a built T, from its layout when clean, else from the last case's violations. */
+static std::vector<RuleViolation> SignalAndWaitingViolations(const JunctionSpec &spec, const JunctionOrganicResult &result)
+{
+	std::vector<RuleViolation> violations;
+	if (result.layout.has_value()) {
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(*result.layout, spec, FindJunctionPorts(*result.layout), JunctionTMovements());
+		for (const auto &group : {CheckSignals(ctx), CheckWaitingRoom(ctx)}) violations.insert(violations.end(), group.begin(), group.end());
+	} else {
+		violations = result.violations;
+	}
+	return violations;
+}
+
+TEST_CASE("BuildOrganicT: router waiting room agrees with the checker", "[junction][organic]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, 16, MlTurnCostOf(spec));
+	INFO("cases:\n" << result.cases);
+	REQUIRE(result.layout.has_value());
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(*result.layout, spec, FindJunctionPorts(*result.layout), JunctionTMovements());
+	const std::vector<RuleViolation> waiting = CheckWaitingRoom(ctx);
+	INFO(ViolationText(waiting));
+	CHECK(waiting.empty());
+}
+
+TEST_CASE("BuildOrganicT: the waiting room needs exactly the checker's minimum", "[junction][organic]")
+{
+	/* The checker's minimum is 2 x tl units; one train length less, the same and more all pass without padding. */
+	for (const uint tl : {3u, 4u, 5u}) {
+		JunctionSpec spec = MakeTestJunctionSpec();
+		spec.tl = tl;
+		const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, 16, MlTurnCostOf(spec));
+		INFO("tl " << tl << " cases:\n" << result.cases);
+		REQUIRE(result.layout.has_value());
+		const JunctionCheckContext ctx = MakeJunctionCheckContext(*result.layout, spec, FindJunctionPorts(*result.layout), JunctionTMovements());
+		const std::vector<RuleViolation> waiting = CheckWaitingRoom(ctx);
+		INFO(ViolationText(waiting));
+		CHECK(waiting.empty());
+	}
+}
+
+TEST_CASE("BuildOrganicT: bridges keep a signal-legal piece from every split and merge", "[junction][organic]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const int p : {20, 22, 24}) {
+		const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, p, MlTurnCostOf(spec));
+		INFO("p " << p << " cases:\n" << result.cases);
+		const std::vector<RuleViolation> violations = SignalAndWaitingViolations(spec, result);
+		INFO(ViolationText(violations));
+		for (const RuleViolation &violation : violations) {
+			CHECK(violation.message.find("split in a bridge's block") == std::string::npos);
+			CHECK(violation.message.find("signals too far apart") == std::string::npos);
+		}
+		CHECK(result.layout.has_value());
+	}
+}
+
 TEST_CASE("JunctionTMaps: maps are ordered by bound", "[junction][organic]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
@@ -423,7 +480,7 @@ static void BenchSpec(const char *name, const JunctionSpec &spec)
 	for (int p = 14; p <= 28; p += 2) {
 		const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, p, MlTurnCostOf(spec));
 		const size_t candidates = static_cast<size_t>(std::ranges::count(result.cases, '\n')) - (result.cases.find("stopped after") != std::string::npos ? 1 : 0);
-		std::cout << "BENCH spec=" << name << " p=" << p << " candidates=" << candidates << " rounds=" << result.rounds << " micros=" << result.micros << " occupied=" << result.compactness.occupied << " slivers=" << result.compactness.slivers << " clean=" << (result.layout.has_value() ? 1 : 0) << "\n";
+		std::cout << "BENCH spec=" << name << " p=" << p << " candidates=" << candidates << " rounds=" << result.rounds << " micros=" << result.micros << " max_expansions_seen=" << result.max_expansions << " occupied=" << result.compactness.occupied << " slivers=" << result.compactness.slivers << " clean=" << (result.layout.has_value() ? 1 : 0) << "\n";
 		std::cout << result.cases;
 	}
 }

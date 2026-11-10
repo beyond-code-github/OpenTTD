@@ -47,6 +47,7 @@ struct LineNode {
 	bool after_head = false; ///< With movement rules: a bridge or tunnel ended since the split.
 	uint8_t window_phase = 0; ///< With a prio window: 0 before it, 1 in it, 2 after it (DESIGN-O4 revision 5).
 	uint16_t window_units = 0; ///< With a prio window: the units of the window so far, capped at the window's units.
+	uint8_t after_window = 0; ///< With a prio window, after it: surface pieces since the window's last piece (the merge piece first), capped at 1 + plain_after.
 };
 
 /** One entry of the search tree. */
@@ -353,6 +354,7 @@ private:
 		AppendBytes(key, static_cast<uint8_t>(node.after_head));
 		AppendBytes(key, node.window_phase);
 		AppendBytes(key, node.window_units);
+		AppendBytes(key, node.after_window);
 		return key;
 	}
 
@@ -459,7 +461,7 @@ private:
 				if (rules.may_split && !rules.may_split(piece)) return false;
 				node.phase = 1;
 				node.private_units = static_cast<uint16_t>(std::min<uint>(piece.units, rules.wait_units));
-				node.plain = signal_legal ? static_cast<uint8_t>(std::min<uint>(1, rules.plain_before_head)) : 0;
+				node.plain = 0; // The split piece shares its tile with the sibling's other track: no signal can sit on it.
 				node.after_head = false;
 				return true;
 
@@ -519,6 +521,7 @@ private:
 		uint8_t phase;
 		uint16_t units;
 		bool companion;
+		uint8_t after;
 	};
 
 	/**
@@ -526,28 +529,32 @@ private:
 	 * @param node The node before the move.
 	 * @param piece The first piece the move adds.
 	 * @param single Whether the move adds only that piece.
+ * @param pieces How many surface pieces the move adds; 0 when it starts with a bridge or tunnel head.
 	 * @return The choices; none when the move cannot be made in this phase.
 	 */
-	std::vector<WindowChoice> WindowChoices(const LineNode &node, const JunctionPiece &piece, bool single) const
+	std::vector<WindowChoice> WindowChoices(const LineNode &node, const JunctionPiece &piece, bool single, uint pieces) const
 	{
 		const JunctionPrioWindow &window = *request.prio_window;
+		const uint8_t needed = static_cast<uint8_t>(1 + window.plain_after);
 		const bool in_window = single && !piece.on_bridge && IsDiagonalTrackdir(piece.trackdir) && (node.window_phase == 0 || piece.trackdir == node.last[0].trackdir);
 		std::vector<WindowChoice> choices;
 		switch (node.window_phase) {
 			case 0:
-				choices.push_back({0, 0, false});
-				if (in_window) choices.push_back({1, static_cast<uint16_t>(std::min<uint>(piece.units, window.units)), true});
+				choices.push_back({0, 0, false, 0});
+				if (in_window) choices.push_back({1, static_cast<uint16_t>(std::min<uint>(piece.units, window.units)), true, 0});
 				break;
 
 			case 1: {
-				if (in_window) choices.push_back({1, static_cast<uint16_t>(std::min<uint>(node.window_units + piece.units, window.units)), true});
+				if (in_window) choices.push_back({1, static_cast<uint16_t>(std::min<uint>(node.window_units + piece.units, window.units)), true, 0});
 				const int along = AlongTravel(node.last[0]);
-				if (node.window_units >= window.units && along >= window.end_lo && along <= window.end_hi) choices.push_back({2, 0, false});
+				/* The merge piece and plain_after more pieces follow the window before any head. */
+				if (node.window_units >= window.units && along >= window.end_lo && along <= window.end_hi && pieces > 0) choices.push_back({2, 0, false, static_cast<uint8_t>(std::min<uint>(pieces, needed))});
 				break;
 			}
 
 			default:
-				choices.push_back({2, 0, false});
+				if (pieces == 0 && node.after_window < needed) break;
+				choices.push_back({2, 0, false, static_cast<uint8_t>(std::min<uint>(node.after_window + pieces, needed))});
 				break;
 		}
 		return choices;
@@ -813,7 +820,7 @@ JunctionLineRouteResult LineRouter::Run()
 				continue;
 			}
 			/* The prio window (DESIGN-O4 revision 5): each way the piece may stand to it is a successor; a window piece also lays its companion. */
-			for (const WindowChoice &choice : WindowChoices(node, added[0][0], added[0].size() == 1)) {
+			for (const WindowChoice &choice : WindowChoices(node, added[0][0], added[0].size() == 1, static_cast<uint>(added[0].size()))) {
 				LineNode window_next = next;
 				Money window_cost = cost;
 				std::vector<JunctionPiece> companion;
@@ -827,6 +834,7 @@ JunctionLineRouteResult LineRouter::Run()
 				}
 				window_next.window_phase = choice.phase;
 				window_next.window_units = choice.units;
+				window_next.after_window = choice.after;
 				push({std::move(window_next), tree[index].g + window_cost, index, std::string(1, move), added, {}, std::move(companion)});
 			}
 		}
@@ -906,10 +914,11 @@ JunctionLineRouteResult LineRouter::Run()
 					if (!request.prio_window.has_value()) {
 						push({std::move(next), tree[index].g + cost, index, fmt::format("T{}", middle), std::move(added), std::move(bridges)});
 					} else {
-						for (const WindowChoice &choice : WindowChoices(node, added[0][0], false)) {
+						for (const WindowChoice &choice : WindowChoices(node, added[0][0], false, 0)) {
 							LineNode window_next = next;
 							window_next.window_phase = choice.phase;
 							window_next.window_units = choice.units;
+							window_next.after_window = choice.after;
 							push({std::move(window_next), tree[index].g + cost, index, fmt::format("T{}", middle), added, bridges});
 						}
 					}
@@ -985,10 +994,11 @@ JunctionLineRouteResult LineRouter::Run()
 				push({std::move(next), tree[index].g + cost, index, fmt::format("B{}", n), std::move(added), std::move(bridges)});
 				continue;
 			}
-			for (const WindowChoice &choice : WindowChoices(node, added[0][0], false)) {
+			for (const WindowChoice &choice : WindowChoices(node, added[0][0], false, 0)) {
 				LineNode window_next = next;
 				window_next.window_phase = choice.phase;
 				window_next.window_units = choice.units;
+				window_next.after_window = choice.after;
 				push({std::move(window_next), tree[index].g + cost, index, fmt::format("B{}", n), added, bridges});
 			}
 		}

@@ -43,6 +43,7 @@ struct JunctionNegotiation {
 	std::vector<int> conflicts_per_round; ///< Conflicting piece pairs after each round.
 	int conflicts = 0; ///< Conflicting piece pairs after the last round (0 when converged).
 	std::string error; ///< Why it failed, when it did.
+	uint max_expansions = 0; ///< The most nodes any router call expanded.
 };
 
 /** The extra prices and minimum lengths a negotiation takes (DESIGN-O4 revision 4); the defaults add nothing. */
@@ -75,6 +76,7 @@ struct JunctionOrganicResult {
 	std::string error;
 	int64_t micros = 0; ///< Wall time of the generation.
 	int rounds = 0; ///< Rounds of the winning case's negotiation.
+	uint max_expansions = 0; ///< The most nodes any router call expanded, over all attempts.
 };
 
 JunctionOrganicResult BuildOrganicT(const JunctionSpec &spec, int width, int height, int p, Money ml_turn_cost = 0);
