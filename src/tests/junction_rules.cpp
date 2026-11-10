@@ -529,6 +529,32 @@ TEST_CASE("CheckCurveSpeed: reference cases at TL 4", "[junction][rules]")
 	CHECK(CurveViolations("LFRLFR", 111).empty());
 }
 
+TEST_CASE("JunctionMinCurveSpeed matches rule 3 on a path", "[junction][curvespeed]")
+{
+	/* The value is the checker's own: the path passes at the value and fails one above it (a limited path), or passes at any speed (an unlimited one). */
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const char *moves : {"LFR", "FFLFRFFF", "LFRFL", "LL", "LFRLFR"}) {
+		const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, moves});
+		REQUIRE(raster.error.empty());
+		const int least = JunctionMinCurveSpeed(raster.pieces, spec.tl, spec.curve_speed);
+		INFO(moves << " least " << least);
+		CHECK(CurveViolations(moves, least).empty());
+		if (least < UINT16_MAX) {
+			CHECK_FALSE(CurveViolations(moves, least + 1).empty());
+		} else {
+			CHECK(CurveViolations(moves, 60000).empty());
+		}
+	}
+
+	/* One left and one right curve inside a window are exempt; a third curve in the window limits it. */
+	const JunctionRaster exempt = RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, "FFLFRFFF"});
+	const JunctionRaster limited = RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, "LFRFL"});
+	REQUIRE(exempt.error.empty());
+	REQUIRE(limited.error.empty());
+	CHECK(JunctionMinCurveSpeed(exempt.pieces, spec.tl, spec.curve_speed) == UINT16_MAX);
+	CHECK(JunctionMinCurveSpeed(limited.pieces, spec.tl, spec.curve_speed) < spec.reference_speed);
+}
+
 TEST_CASE("CheckCurveSpeed: violation tile and the curve bonus", "[junction][rules]")
 {
 	/* The first failing window has its front on the first piece after the bends: (1,1) for "LL". */

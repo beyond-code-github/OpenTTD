@@ -12,7 +12,9 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include "../junction_layout.h"
+#include "../junction_generator.h"
 #include "../junction_line_router.h"
+#include "../junction_rules.h"
 #include "../direction_func.h"
 #include "../map_func.h"
 #include "../slope_func.h"
@@ -54,6 +56,13 @@ static JunctionLineRouteRequest BaseRequest()
 	request.curve_spacing = 4;
 	request.turn_cost = 3;
 	return request;
+}
+
+/** CS3: the rule-3 judgement the generator sets, at the test spec's TL, curve speed and reference speed. */
+static bool Rule3Ok(const std::vector<JunctionPiece> &pieces)
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	return JunctionMinCurveSpeed(pieces, spec.tl, spec.curve_speed) >= spec.reference_speed;
 }
 
 static std::vector<JunctionRaster> CheckRoute(const JunctionLineRouteRequest &request, const JunctionLineRouteResult &result)
@@ -829,34 +838,68 @@ TEST_CASE("FindJunctionLineRoute: a frozen prefix carries its curve state", "[ju
 	CHECK((turned.route->moves[0] == 'L' || turned.route->moves[0] == 'R'));
 }
 
-TEST_CASE("FindJunctionLineRoute: an approach's S-bend counts against the next one", "[junction][approach]")
+/** Track 0's pieces of a single-track route, from its start piece. */
+static std::vector<JunctionPiece> Track0Pieces(const JunctionLineRouteRequest &request, const JunctionLineRouteResult &result)
 {
-	/* The prefix request: an S-bend, a straight run, then the waypoint (CS1). */
-	const JunctionLineRouteRequest request = WaypointRequest(3);
-	const std::vector<JunctionRaster> prefix_rasters = RasterizeJunctionLine(request.line, {request.start, request.start_trackdir, request.prefix});
-	REQUIRE(prefix_rasters[0].error.empty());
-	const std::vector<JunctionPiece> &pieces = prefix_rasters[0].pieces;
-	const JunctionLineRouteResult with_prefix = FindJunctionLineRoute(request);
-	INFO(with_prefix.error);
-	REQUIRE(with_prefix.route.has_value());
-	const std::string searched = with_prefix.route->moves.substr(request.prefix.size());
+	REQUIRE(result.route.has_value());
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *result.route);
+	REQUIRE(rasters[0].error.empty());
+	return rasters[0].pieces;
+}
 
-	/* The same request from the prefix's last piece, the prefix being the approach instead. */
-	JunctionLineRouteRequest continued = request;
-	continued.prefix.clear();
-	continued.start = pieces.back().tile;
-	continued.start_trackdir = pieces.back().trackdir;
-	const JunctionLineRouteResult fresh = FindJunctionLineRoute(continued);
-	REQUIRE(fresh.route.has_value());
-	REQUIRE_FALSE(fresh.route->moves.empty());
-	CHECK((fresh.route->moves[0] == 'L' || fresh.route->moves[0] == 'R'));
+/** The pieces of a track that begins at the end with the moves, after its first piece. */
+static std::vector<JunctionPiece> TrackAfter(const JunctionLineRouteRequest &request, const JunctionRouteEnd &end, const std::string &moves)
+{
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, {end.tile, end.trackdir, moves});
+	REQUIRE(rasters[0].error.empty());
+	return std::vector<JunctionPiece>(rasters[0].pieces.begin() + 1, rasters[0].pieces.end());
+}
 
-	continued.approach = [&](const JunctionRouteEnd &) { return std::vector<JunctionPiece>(pieces.begin(), pieces.end() - 1); };
-	const JunctionLineRouteResult inherited = FindJunctionLineRoute(continued);
-	INFO(inherited.error);
-	REQUIRE(inherited.route.has_value());
-	CHECK(inherited.route->moves == searched);
-	CHECK((inherited.route->moves[0] != 'L' && inherited.route->moves[0] != 'R'));
+TEST_CASE("FindJunctionLineRoute: an approach's curves count against the route's first ones", "[junction][approach]")
+{
+	/*
+	 * One track along -x. Start A is the end of a frozen "FFLR" (its approach, an S-bend); the goal is 3 tiles on, one row over, so from A the jog must come at once.
+	 * Start B is 6 tiles behind A with no approach, so its jog can wait. The cheapest route is from A.
+	 */
+	JunctionLineRouteRequest request = BaseRequest();
+	request.line = {1, 1, 1};
+	request.curve_spacing = 8;
+	request.s_bend_window = 12;
+	const std::vector<JunctionRaster> lead = RasterizeJunctionLine(request.line, {request.start, request.start_trackdir, "FFLR"});
+	REQUIRE(lead[0].error.empty());
+	const std::vector<JunctionPiece> approach(lead[0].pieces.begin(), lead[0].pieces.end() - 1);
+	const JunctionPiece &a = lead[0].pieces.back();
+	const JunctionRouteEnd start_a{a.tile, a.trackdir};
+	const JunctionRouteEnd start_b{{static_cast<int16_t>(a.tile.x + 6), a.tile.y}, a.trackdir};
+	request.starts = {start_a, start_b};
+	request.goals = {{{static_cast<int16_t>(a.tile.x - 3), static_cast<int16_t>(a.tile.y - 1)}, a.trackdir}};
+
+	auto joined = [&](const JunctionLineRouteResult &result) {
+		REQUIRE(result.route.has_value());
+		JunctionLineRouteRequest one = request;
+		one.start = result.route->start;
+		one.start_trackdir = result.route->start_trackdir;
+		std::vector<JunctionPiece> pieces = result.route->start.x == start_a.tile.x ? approach : std::vector<JunctionPiece>{};
+		const std::vector<JunctionPiece> route = Track0Pieces(one, result);
+		pieces.insert(pieces.end(), route.begin(), route.end());
+		return pieces;
+	};
+	const JunctionSpec spec = MakeTestJunctionSpec();
+
+	/* Without the check the route from A puts its curves inside the S-bend's window: rule 3 limits the joined track. */
+	const JunctionLineRouteResult plain = FindJunctionLineRoute(request);
+	INFO(plain.error);
+	REQUIRE(plain.route.has_value());
+	CHECK(plain.route->start.x == start_a.tile.x);
+	CHECK(JunctionMinCurveSpeed(joined(plain), spec.tl, spec.curve_speed) < spec.reference_speed);
+
+	request.approach = [&](const JunctionRouteEnd &start) { return start.tile.x == start_a.tile.x ? approach : std::vector<JunctionPiece>{}; };
+	request.boundary_ok = Rule3Ok;
+	const JunctionLineRouteResult checked = FindJunctionLineRoute(request);
+	INFO(checked.error);
+	REQUIRE(checked.route.has_value());
+	CHECK(checked.route->start.x == start_b.tile.x);
+	CHECK(JunctionMinCurveSpeed(joined(checked), spec.tl, spec.curve_speed) >= spec.reference_speed);
 }
 
 TEST_CASE("FindJunctionLineRoute: an empty approach changes nothing", "[junction][approach]")
@@ -871,6 +914,7 @@ TEST_CASE("FindJunctionLineRoute: an empty approach changes nothing", "[junction
 		const JunctionLineRouteResult plain = FindJunctionLineRoute(request);
 		JunctionLineRouteRequest with = request;
 		with.approach = [](const JunctionRouteEnd &) { return std::vector<JunctionPiece>{}; };
+		with.boundary_ok = Rule3Ok;
 		const JunctionLineRouteResult empty = FindJunctionLineRoute(with);
 		REQUIRE(plain.route.has_value());
 		REQUIRE(empty.route.has_value());
@@ -880,39 +924,70 @@ TEST_CASE("FindJunctionLineRoute: an empty approach changes nothing", "[junction
 	}
 }
 
-TEST_CASE("FindJunctionLineRoute: a goal's continuation S-bend counts against the route's last one", "[junction][continuation]")
+TEST_CASE("FindJunctionLineRoute: a goal's continuation curves count against the route's last ones", "[junction][continuation]")
 {
-	/* One track along -x to a goal one row over; the track already leaves the goal with an S-bend (CS2). */
+	/* One track along -x to a goal one row over; the track already leaves the goal with an S-bend (CS2, CS3). */
 	JunctionLineRouteRequest request = BaseRequest();
 	request.line = {1, 1, 1};
 	request.goals = {{{30, 19}, Trackdir::X_NE}};
 	request.curve_spacing = 8;
 	request.s_bend_window = 12;
-	const std::vector<JunctionRaster> goal_rasters = RasterizeJunctionLine(request.line, {request.goals[0].tile, request.goals[0].trackdir, "LR"});
-	REQUIRE(goal_rasters[0].error.empty());
-	const std::vector<JunctionPiece> after(goal_rasters[0].pieces.begin() + 1, goal_rasters[0].pieces.end());
+	const std::vector<JunctionPiece> after = TrackAfter(request, request.goals[0], "LR");
+	const JunctionSpec spec = MakeTestJunctionSpec();
 
-	/* A route followed by the continuation's moves, as a frozen prefix, is accepted by the curve rules only if no turn is refused. */
-	auto continues = [&](const std::string &moves) {
-		JunctionLineRouteRequest check = request;
-		check.prefix = moves + "LR";
-		check.goals = {{{10, 19}, Trackdir::X_NE}};
-		const JunctionLineRouteResult result = FindJunctionLineRoute(check);
-		return result.error.find("prefix breaks the curve rules") == std::string::npos;
+	auto joined = [&](const JunctionLineRouteResult &result) {
+		std::vector<JunctionPiece> pieces = Track0Pieces(request, result);
+		pieces.insert(pieces.end(), after.begin(), after.end());
+		return pieces;
 	};
 
+	/* Without the check the cheapest route ends with its own jog right before the continuation's: rule 3 limits the joined track. */
 	const JunctionLineRouteResult plain = FindJunctionLineRoute(request);
 	INFO(plain.error);
 	REQUIRE(plain.route.has_value());
 	INFO("plain moves " << plain.route->moves);
-	CHECK_FALSE(continues(plain.route->moves));
+	CHECK(JunctionMinCurveSpeed(joined(plain), spec.tl, spec.curve_speed) < spec.reference_speed);
 
 	request.continuation = [&](const JunctionRouteEnd &) { return after; };
+	request.boundary_ok = Rule3Ok;
 	const JunctionLineRouteResult kept = FindJunctionLineRoute(request);
 	INFO(kept.error);
 	REQUIRE(kept.route.has_value());
 	INFO("kept moves " << kept.route->moves);
-	CHECK(continues(kept.route->moves));
+	CHECK(JunctionMinCurveSpeed(joined(kept), spec.tl, spec.curve_speed) >= spec.reference_speed);
+}
+
+TEST_CASE("FindJunctionLineRoute: a continuation the checker accepts is not refused", "[junction][continuation]")
+{
+	/*
+	 * The route must end with a jog (goal one row over, close by); the track continues from the goal with 3 straight moves and then a shift back of the other hand.
+	 * Every 2*tl window holds one left and one right curve at most: rule 3 accepts it, the router's own pair rule did not.
+	 */
+	JunctionLineRouteRequest request = BaseRequest();
+	request.line = {1, 1, 1};
+	request.goals = {{{36, 19}, Trackdir::X_NE}};
+	request.curve_spacing = 8;
+	request.s_bend_window = 12;
+	const std::vector<JunctionPiece> after = TrackAfter(request, request.goals[0], "FFFLR");
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	request.continuation = [&](const JunctionRouteEnd &) { return after; };
+	request.boundary_ok = Rule3Ok;
+
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	INFO("moves " << result.route->moves);
+	std::vector<JunctionPiece> pieces = Track0Pieces(request, result);
+	pieces.insert(pieces.end(), after.begin(), after.end());
+	CHECK(JunctionMinCurveSpeed(pieces, spec.tl, spec.curve_speed) >= spec.reference_speed);
+
+	/* The router's own pair rule, applied to the route followed by the continuation's moves as a frozen prefix, refuses the same track. */
+	JunctionLineRouteRequest pair = request;
+	pair.continuation = nullptr;
+	pair.boundary_ok = nullptr;
+	pair.prefix = result.route->moves + "FFFLR";
+	pair.goals = {{{10, 19}, Trackdir::X_NE}};
+	CHECK(FindJunctionLineRoute(pair).error.find("prefix breaks the curve rules") != std::string::npos);
 }
 
 TEST_CASE("FindJunctionLineRoute: an empty continuation changes nothing", "[junction][continuation]")
@@ -927,6 +1002,7 @@ TEST_CASE("FindJunctionLineRoute: an empty continuation changes nothing", "[junc
 		const JunctionLineRouteResult plain = FindJunctionLineRoute(request);
 		JunctionLineRouteRequest with = request;
 		with.continuation = [](const JunctionRouteEnd &) { return std::vector<JunctionPiece>{}; };
+		with.boundary_ok = Rule3Ok;
 		const JunctionLineRouteResult empty = FindJunctionLineRoute(with);
 		REQUIRE(plain.route.has_value());
 		REQUIRE(empty.route.has_value());

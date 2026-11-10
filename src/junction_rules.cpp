@@ -588,6 +588,30 @@ static int CurveSpeedLimitOfTrain(const std::vector<Direction> &dirs, uint8_t cu
 	return max_speed;
 }
 
+/**
+ * The directions of a path's units with n straight units of its first heading before and n of its last heading after, as a train of n parts enters and leaves the path.
+ * @param pieces The path's pieces, not empty.
+ * @param n The train's part count.
+ * @param[out] unit_piece For each entry of the result, the index of the piece it belongs to (the padding counts as the first or last piece's).
+ * @param[out] length The number of units of the pieces.
+ * @return The padded directions.
+ */
+static std::vector<Direction> PaddedPathDirections(const std::vector<JunctionPiece> &pieces, size_t n, std::vector<size_t> &unit_piece, size_t &length)
+{
+	std::vector<Direction> dirs(n, TrackdirToDirection(pieces.front().trackdir));
+	unit_piece.assign(n, 0);
+	for (size_t i = 0; i < pieces.size(); i++) {
+		for (uint8_t u = 0; u < pieces[i].units; u++) {
+			dirs.push_back(TrackdirToDirection(pieces[i].trackdir));
+			unit_piece.push_back(i);
+		}
+	}
+	length = dirs.size() - n;
+	dirs.insert(dirs.end(), n, TrackdirToDirection(pieces.back().trackdir));
+	unit_piece.insert(unit_piece.end(), n, pieces.size() - 1);
+	return dirs;
+}
+
 /** G3: a train of 2*TL parts never has a curve speed limit below the reference speed. */
 std::vector<RuleViolation> CheckCurveSpeed(const JunctionCheckContext &ctx)
 {
@@ -596,16 +620,9 @@ std::vector<RuleViolation> CheckCurveSpeed(const JunctionCheckContext &ctx)
 	if (n == 0) return out;
 
 	for (const JunctionPath &path : ctx.paths) {
-		std::vector<Direction> dirs(n, TrackdirToDirection(path.pieces.front().trackdir));
-		std::vector<size_t> unit_piece(n, 0);
-		for (size_t i = 0; i < path.pieces.size(); i++) {
-			for (uint8_t u = 0; u < path.pieces[i].units; u++) {
-				dirs.push_back(TrackdirToDirection(path.pieces[i].trackdir));
-				unit_piece.push_back(i);
-			}
-		}
-		const size_t length = dirs.size() - n;
-		dirs.insert(dirs.end(), n, TrackdirToDirection(path.pieces.back().trackdir));
+		std::vector<size_t> unit_piece;
+		size_t length;
+		const std::vector<Direction> dirs = PaddedPathDirections(path.pieces, n, unit_piece, length);
 
 		for (size_t start = 0; start + n <= dirs.size(); start++) {
 			const std::vector<Direction> window(dirs.begin() + start, dirs.begin() + start + n);
@@ -620,6 +637,22 @@ std::vector<RuleViolation> CheckCurveSpeed(const JunctionCheckContext &ctx)
 		}
 	}
 	return out;
+}
+
+int JunctionMinCurveSpeed(const std::vector<JunctionPiece> &pieces, uint8_t tl, uint8_t curve_speed)
+{
+	int least = UINT16_MAX;
+	const size_t n = 2 * static_cast<size_t>(tl);
+	if (n == 0 || pieces.empty()) return least;
+
+	std::vector<size_t> unit_piece;
+	size_t length;
+	const std::vector<Direction> dirs = PaddedPathDirections(pieces, n, unit_piece, length);
+	for (size_t start = 0; start + n <= dirs.size(); start++) {
+		const std::vector<Direction> window(dirs.begin() + start, dirs.begin() + start + n);
+		least = std::min(least, CurveSpeedLimitOfTrain(window, curve_speed));
+	}
+	return least;
 }
 
 /** Whether the layout has a signal on the tile for travel along the trackdir. */

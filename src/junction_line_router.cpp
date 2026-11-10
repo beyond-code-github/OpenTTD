@@ -383,25 +383,44 @@ private:
 		return Money{best};
 	}
 
-	bool IsGoal(const LineNode &node) const
+	/**
+	 * CS3: whether the route to a node, joined with the track that leads into its start and the track that continues from its goal, is accepted by rule 3.
+	 * @param index The node's tree index.
+	 * @param start The start its root began from.
+	 * @param root_pieces Track 0's pieces of that root, from its start piece.
+	 * @param goal The goal the route ends at, or nullptr for a route that ends at its last waypoint (no goals: it has no continuation, but its approach is still judged; the check covers every way a route ends).
+	 */
+	bool BoundaryOk(int index, const JunctionRouteEnd &start, const std::vector<JunctionPiece> &root_pieces, const JunctionRouteEnd *goal) const
 	{
+		if (!request.boundary_ok) return true;
+		std::vector<JunctionPiece> joined = request.approach ? request.approach(start) : std::vector<JunctionPiece>{};
+		const std::vector<JunctionPiece> after = request.continuation && goal != nullptr ? request.continuation(*goal) : std::vector<JunctionPiece>{};
+		if (joined.empty() && after.empty()) return true;
+		joined.insert(joined.end(), root_pieces.begin(), root_pieces.end());
+		std::vector<const LineTreeEntry *> chain;
+		for (int i = index; tree[i].parent >= 0; i = tree[i].parent) chain.push_back(&tree[i]);
+		for (auto entry = chain.rbegin(); entry != chain.rend(); ++entry) joined.insert(joined.end(), (*entry)->added[0].begin(), (*entry)->added[0].end());
+		joined.insert(joined.end(), after.begin(), after.end());
+		return request.boundary_ok(joined);
+	}
+
+	/**
+	 * Whether a search node ends the route.
+	 * @param index The node's tree index.
+	 * @param start The start its root began from.
+	 * @param root_pieces Track 0's pieces of that root, from its start piece.
+	 */
+	bool IsGoal(int index, const JunctionRouteEnd &start, const std::vector<JunctionPiece> &root_pieces) const
+	{
+		const LineNode &node = tree[index].node;
 		if (node.passed != request.waypoints.size() || node.units < request.min_units) return false;
-		if (request.goals.empty()) return !request.waypoints.empty();
+		if (request.goals.empty()) return !request.waypoints.empty() && BoundaryOk(index, start, root_pieces, nullptr);
 		const JunctionPiece &piece = node.last[0];
 		/* A goal on a sibling's route towards the Out port is reached by merging into it. */
 		if (request.rules.has_value() && request.rules->shares_to && request.rules->shares_to(piece) && node.phase != 2) return false;
 		return std::ranges::any_of(request.goals, [&](const JunctionRouteEnd &goal) {
 			if (goal.tile.x != piece.tile.x || goal.tile.y != piece.tile.y || goal.trackdir != piece.trackdir) return false;
-			if (!request.continuation) return true;
-			/* CS2: the track that already continues from the goal must take the curve state the route ends with. */
-			LineTrackState state = node.states[0];
-			const JunctionPiece *previous = &piece;
-			const std::vector<JunctionPiece> after = request.continuation(goal);
-			for (const JunctionPiece &next : after) {
-				if (!AdvanceState(state, *previous, next)) return false;
-				previous = &next;
-			}
-			return true;
+			return BoundaryOk(index, start, root_pieces, &goal);
 		});
 	}
 
@@ -647,14 +666,6 @@ JunctionLineRouteResult LineRouter::Run()
 				root.units = static_cast<uint16_t>(std::min<uint>(units, request.min_units));
 			}
 			LineTrackState state{cap, 0, true, false};
-			if (&raster == &first[0] && request.approach) {
-				/* CS1: the track leading into the start sets the curve state as a prefix would; the pieces are not laid. */
-				std::vector<JunctionPiece> lead = request.approach(start);
-				lead.push_back(raster.pieces[0]);
-				for (size_t k = 1; k < lead.size() && prefix_ok; k++) {
-					if (!AdvanceState(state, lead[k - 1], lead[k])) prefix_ok = false;
-				}
-			}
 			for (size_t k = 1; k < raster.pieces.size() && prefix_ok; k++) {
 				if (!AdvanceState(state, raster.pieces[k - 1], raster.pieces[k])) prefix_ok = false;
 			}
@@ -773,9 +784,9 @@ JunctionLineRouteResult LineRouter::Run()
 		const LineNode &node = tree[index].node;
 		if (best.find(tree[index].key)->second < g) continue; // A cheaper way to this node was found since.
 
-		if (IsGoal(node)) {
-			const int root_index = tree[index].root;
-			const JunctionRouteEnd &used_start = roots[root_of.at(root_index)].start;
+		const Root &node_root = roots[root_of.at(tree[index].root)];
+		if (IsGoal(index, node_root.start, node_root.first[0].pieces)) {
+			const JunctionRouteEnd &used_start = node_root.start;
 			JunctionLineRoute route{used_start.tile, used_start.trackdir, ""};
 			for (int i = index; tree[i].parent >= 0; i = tree[i].parent) route.moves.insert(0, tree[i].move);
 			route.moves.insert(0, request.prefix);

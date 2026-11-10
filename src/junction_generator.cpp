@@ -995,6 +995,16 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			}
 			return std::vector<JunctionPiece>{};
 		};
+		/*
+		 * CS3 (briefs/CS3-boundary-by-rule3.md): the route joined with its approach and continuation is judged by the checker's rule 3, not by the router's own curve rule.
+		 */
+		if (spec.curve_limit) {
+			line_request.boundary_ok = [&spec](const std::vector<JunctionPiece> &pieces) {
+				return JunctionMinCurveSpeed(pieces, spec.tl, spec.curve_speed) >= spec.reference_speed;
+			};
+		} else {
+			line_request.boundary_ok = [](const std::vector<JunctionPiece> &) { return true; };
+		}
 		line_request.rail_piece = spec.prices.rail_piece;
 		line_request.turn_cost = base.turn_cost;
 		line_request.bridge_span_ok = spec.bridge_span_ok;

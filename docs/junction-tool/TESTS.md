@@ -17,6 +17,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[projectionedges]` | not measured | measured in Release, 5 s | 2.6 s (G4's unbuildable-hub test, E1, E2, E3, E3b, PH1; the PH1 W-end limit test is `[slow]`, 13 s) |
 | `[tunnelprice]` | 0.01 s | 5 s | 0.01 s |
 | `[tmapnear]` | 0.8 s | 5 s | 0.09 s |
+| `[curvespeed]` | 0.01 s (CS3) | 5 s | 0.01 s |
 | wide gate | (Release only) | | 17 s (budget 120 s) |
 
 Measured 2026-11-10 at the G3a merge.
