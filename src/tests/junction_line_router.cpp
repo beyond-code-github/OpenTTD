@@ -1679,3 +1679,47 @@ TEST_CASE("FindJunctionLineRoute: rule routes are as cheap as an uninformed sear
 		CHECK(informed.cost <= uninformed.cost);
 	}
 }
+
+/** A request for one track heading along -x from (35, 20) to (20, 20) in a flat box. */
+static JunctionLineRouteRequest SingleTrackRequest()
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	request.line = {1, 0, 1};
+	request.start = {35, 20};
+	return request;
+}
+
+TEST_CASE("FindJunctionLineRoute: a route may start on an identical existing piece", "[junction][linerouter]")
+{
+	JunctionLayout existing;
+	existing.tracks.push_back({{35, 20}, TrackBits{Track::X}});
+	JunctionLineRouteRequest request = SingleTrackRequest();
+	request.existing = &existing;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->start.x == 35);
+	CHECK(result.route->moves == std::string(15, 'F'));
+
+	JunctionLayout different;
+	different.tracks.push_back({{35, 20}, TrackBits{Track::Y}});
+	request.existing = &different;
+	CHECK_FALSE(FindJunctionLineRoute(request).route.has_value());
+}
+
+TEST_CASE("FindJunctionLineRoute: a route may end on an identical existing piece", "[junction][linerouter]")
+{
+	JunctionLayout existing;
+	existing.tracks.push_back({{20, 20}, TrackBits{Track::X}});
+	JunctionLineRouteRequest request = SingleTrackRequest();
+	request.existing = &existing;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->moves == std::string(15, 'F'));
+
+	JunctionLayout different;
+	different.tracks.push_back({{20, 20}, TrackBits{Track::Y}});
+	request.existing = &different;
+	CHECK_FALSE(FindJunctionLineRoute(request).route.has_value());
+}

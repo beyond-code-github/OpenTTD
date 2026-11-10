@@ -232,8 +232,11 @@ private:
 		return true;
 	}
 
-	/** Whether a piece may be built: inside the bounds, not blocked, its height step usable, and an exact parallel pair at most with the existing tracks (D147). */
-	bool PieceUsable(const JunctionPiece &piece, int8_t z, bool allow_ramp, int8_t &new_z, bool &ramp) const
+	/**
+	 * Whether a piece may be built: inside the bounds, not blocked, its height step usable, and an exact parallel pair at most with the existing tracks (D147).
+	 * @param identical_ok For a single-track line's start or goal piece: the piece may lie on exactly that track in the existing layout (a split or merge on it).
+	 */
+	bool PieceUsable(const JunctionPiece &piece, int8_t z, bool allow_ramp, int8_t &new_z, bool &ramp, bool identical_ok = false) const
 	{
 	if (!InBounds(piece) || IsBlocked(piece.tile.x, piece.tile.y)) return false;
 	if (!HeightStep(piece, z, allow_ramp, new_z, ramp)) return false;
@@ -241,7 +244,7 @@ private:
 		if (it == existing_bits.end()) return true;
 		TrackBits bits = it->second;
 		const Track track = TrackdirToTrack(piece.trackdir);
-		if (bits.Test(track)) return false;
+		if (bits.Test(track)) return identical_ok && request.line.tracks == 1;
 		bits.Set(track);
 		return !TracksOverlap(bits);
 	}
@@ -579,7 +582,7 @@ JunctionLineRouteResult LineRouter::Run()
 				const JunctionPiece &piece = raster.pieces[0];
 				int8_t new_z;
 				bool ramp;
-				if (!PieceUsable(piece, static_cast<int8_t>(request.plane), false, new_z, ramp)) {
+				if (!PieceUsable(piece, static_cast<int8_t>(request.plane), false, new_z, ramp, true)) {
 					usable = false;
 					break;
 				}
@@ -684,7 +687,10 @@ JunctionLineRouteResult LineRouter::Run()
 				for (const JunctionPiece &piece : added[i]) {
 					int8_t new_z;
 					bool ramp;
-					if (!PieceUsable(piece, z, move == 'F', new_z, ramp)) {
+					const bool is_goal = existing_bits.contains(PackTile(piece.tile.x, piece.tile.y)) && std::ranges::any_of(request.goals, [&](const JunctionRouteEnd &goal) {
+						return goal.tile.x == piece.tile.x && goal.tile.y == piece.tile.y && goal.trackdir == piece.trackdir;
+					});
+					if (!PieceUsable(piece, z, move == 'F', new_z, ramp, is_goal)) {
 						legal = false;
 						break;
 					}
