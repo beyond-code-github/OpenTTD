@@ -391,7 +391,17 @@ private:
 		/* A goal on a sibling's route towards the Out port is reached by merging into it. */
 		if (request.rules.has_value() && request.rules->shares_to && request.rules->shares_to(piece) && node.phase != 2) return false;
 		return std::ranges::any_of(request.goals, [&](const JunctionRouteEnd &goal) {
-			return goal.tile.x == piece.tile.x && goal.tile.y == piece.tile.y && goal.trackdir == piece.trackdir;
+			if (goal.tile.x != piece.tile.x || goal.tile.y != piece.tile.y || goal.trackdir != piece.trackdir) return false;
+			if (!request.continuation) return true;
+			/* CS2: the track that already continues from the goal must take the curve state the route ends with. */
+			LineTrackState state = node.states[0];
+			const JunctionPiece *previous = &piece;
+			const std::vector<JunctionPiece> after = request.continuation(goal);
+			for (const JunctionPiece &next : after) {
+				if (!AdvanceState(state, *previous, next)) return false;
+				previous = &next;
+			}
+			return true;
 		});
 	}
 
