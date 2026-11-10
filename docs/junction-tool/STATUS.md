@@ -1,5 +1,13 @@
 # Junction tool: status
 
+## O4c2 STOPPED (2026-11-10, after compaction)
+WIP saved as 03fffdac7e on wt-o4c2 (pushed to fork; worktree .claude/o4c2 kept). Feedback loop deleted, PathFinder prices, rules and masks in routing; builds clean.
+- Pinned and narrow-branch specs: rule-clean, but 45 s and 59 s.
+- Test spec (W = 17 on a 44-wide box): unclean at every p; mostly "no route for movement 4/5". 10-17 s per p.
+- O4b1 negotiation tests now fail (default prices, masks applied).
+- Cause: main lines are routed first and know nothing about merge windows. The W main line jogs a row, or a crossing takes the side tiles, so may_merge is empty and the merge movement has no route; a no-route aborts the case.
+- Conclusion: merge/split positions must be chosen before routing (the topology layer), not discovered by it.
+
 ## RESUME HERE (2026-11-10 evening, before compaction)
 
 **Running:** O4c2 (`.claude/o4c2`, branch wt-o4c2, brief `briefs/O4c2-organic-rules-in-routing.md`, Sonnet): organic T with rules in the routing (O4c1 router state machine), feedback loop deleted, PathFinder prices (U+h)(1+pf k)-U pf 0.5 x1.5, main lines routed first, per-round may_split/may_merge masks + prio row reservation, crop margin covers prio windows, micros/rounds recorded. On handback: check, merge (one squashed commit expected), report timings vs 100 ms.
