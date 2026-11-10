@@ -16,6 +16,8 @@
 #include "../junction_route.h"
 #include "../junction_rules.h"
 #include "../junction_terrain.h"
+#include "../junction_build.h"
+#include "../map_func.h"
 #include "../track_func.h"
 
 #include <algorithm>
@@ -383,6 +385,86 @@ TEST_CASE("the crossing window keeps both crossings under one bridge", "[junctio
 	}
 	REQUIRE(lo <= hi);
 	CHECK(hi - lo <= window);
+}
+
+/** Set every tile of row y of the terrain: heights and incline (like SetRampColumn in the line router tests). */
+static void SetRampRow(JunctionTerrain &terrain, int y, int z_min, int z_max, DiagDirection incline)
+{
+	for (int x = terrain.origin.x; x < terrain.origin.x + terrain.width; x++) {
+		JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)];
+		tile.z_min = static_cast<int8_t>(z_min);
+		tile.z_max = static_cast<int8_t>(z_max);
+		tile.incline = incline;
+	}
+}
+
+/** The terrain of the ridge tests: flat at 0, with a ridge across the branch area that rises over row R = b + 6, is level at 1 over rows R + 1 and R + 2, and falls over row R + 3 (SE rises towards +y, NW towards -y). */
+static JunctionTerrain MakeRidgeTerrain(const JunctionSpec &spec)
+{
+	const int ridge = spec.ml_gap + 2 + 6;
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	terrain.build_on_slopes = true;
+	SetRampRow(terrain, ridge, 0, 1, DiagDirection::SE);
+	SetRampRow(terrain, ridge + 1, 1, 1, DiagDirection::Invalid);
+	SetRampRow(terrain, ridge + 2, 1, 1, DiagDirection::Invalid);
+	SetRampRow(terrain, ridge + 3, 0, 1, DiagDirection::NW);
+	return terrain;
+}
+
+TEST_CASE("a ridge across the branches is climbed", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const JunctionTerrain terrain = MakeRidgeTerrain(spec);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO(result.log);
+	std::cout << "RIDGE flat_height=" << flat.height << " built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << " height=" << result.height << " heights=" << result.heights_tried << "\n" << result.log;
+	REQUIRE(result.layout.has_value());
+	CHECK(result.clean);
+}
+
+TEST_CASE("the ridge layout builds through the fake poster", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const JunctionTerrain terrain = MakeRidgeTerrain(spec);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	REQUIRE(result.layout.has_value());
+	Map::Allocate(256, 256);
+	std::vector<JunctionBuildStep> steps = MakeJunctionBuildSteps(*result.layout, TileXY(8, 8));
+	const size_t expected = steps.size();
+	REQUIRE(expected > 0);
+	JunctionSequencer seq;
+	/** Poster that counts every posted step. */
+	class CountingPoster : public JunctionStepPoster {
+	public:
+		JunctionSequencer &seq;
+		size_t posted = 0;
+		explicit CountingPoster(JunctionSequencer &seq) : seq(seq) {}
+		bool Post([[maybe_unused]] const JunctionBuildStep &step) override
+		{
+			this->posted++;
+			this->seq.OnStepResult(true);
+			return true;
+		}
+	} poster(seq);
+	seq.Start(std::move(steps));
+	for (size_t i = 0; i < expected + 5 && seq.GetState() == JunctionBuildState::Building; i++) seq.Tick(poster);
+	CHECK(seq.GetState() == JunctionBuildState::Done);
+	CHECK(poster.posted == expected);
+}
+
+TEST_CASE("BENCH the ridge map", "[projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const JunctionTerrain terrain = MakeRidgeTerrain(spec);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	REQUIRE(result.layout.has_value());
+	std::cout << "BENCH tmap ridge height=" << result.height << " heights=" << result.heights_tried << " micros=" << result.micros << " flat=" << result.micros_flat << " route=" << result.micros_route << "\n";
 }
 
 TEST_CASE("BENCH the constructed T", "[junctionmap]")
