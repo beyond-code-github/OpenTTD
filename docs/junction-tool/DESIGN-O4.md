@@ -9,8 +9,8 @@ Engineer: "I thought we were solving the layout in a vector map first and then p
 - Nodes: ports; splits; merges; forced crossings with who goes over (D167, main line over first, D156); later the D80 lift (doubled bridge) as a node kind.
 - Edges: stretches of track between nodes, each with a track count (lanes later) and a minimum length.
 - Per line: the order of its splits, merges and crossings. Per merge with a prio (D159): its prio side and its window (coverage, D108).
-- Coarse placement: where each window and crossing sits along its line (an interval along the box axis), and the branch position p.
-- Nothing assumes a straight main line (D160); every line, main line included, is edges like any other.
+- Placement in tile units (engineer: "topology must be defined in tile units"): each node has a tile interval along its line, each edge a minimum length in tiles, plus the branch position p. Projection picks the exact tile inside the interval.
+- Straightness is a concretion matter, not topology (engineer): the map never assumes a straight main line (D160); every line, main line included, is edges like any other, and projection decides its shape.
 
 Rules are constraints on the map, mostly lengths along edges and orders along lines: waiting room (G7) and bays (D83) as edge minimum lengths; a signal-legal piece between a split and a bridge head (D113); no split inside a coverage (D108); a split and a merge not in one block; merge windows straight for the coverage with the prio row on its side.
 Solved by enumeration best first: candidate structures (crossing choices x orders x coarse placements) ranked by an admissible bound (edge minimum lengths + required bridges), cheapest tried first. Small discrete search, target a few ms.
