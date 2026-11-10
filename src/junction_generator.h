@@ -172,6 +172,7 @@ struct JunctionTMapResult {
 	int64_t micros_check = 0; ///< JunctionRulesClean (and CheckJunctionRules when unclean).
 	std::vector<int64_t> micros_per_height; ///< Wall time of each height tried, in order.
 	std::string log; ///< One line per height tried: which edge failed, or "built".
+	std::string line_router_trace; ///< Test aid: one line per line-router request: moves, cost, expansions.
 };
 
 /**
@@ -188,7 +189,7 @@ int JunctionTMapFirstHeight(const JunctionSpec &spec);
  * Construct the T's map from the rules and build it once (DESIGN-O4 "G1").
  * @param first_height Test seam: when set, the heights start here instead of JunctionTMapFirstHeight.
  */
-JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain = nullptr, std::optional<int> first_height = std::nullopt);
+JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain = nullptr, std::optional<int> first_height = std::nullopt, bool line_router = false);
 
 /** D148a: the E-side window phase. 1 when prio_tiles is odd and at least 5, else 0. */
 uint8_t JunctionEWindowPhase(int prio_tiles);
