@@ -61,6 +61,7 @@ std::vector<std::vector<JunctionPiece>> ExtendJunctionLine(const JunctionLineSpe
 
 /**
  * Extend a line by a bridge move B<middle> (D149): every track bridges `middle` tiles straight on from its last piece, which must be an axis piece.
+ * D110: a single-track line may also bridge from a half piece, closing its S-bend with the near head; the rasterizer decides whether that is legal. Tracks of a multi-track line bridge together from axis pieces (D149).
  * @param line The line.
  * @param last Each track's last piece.
  * @param middle The bridge's middle-tile count.
