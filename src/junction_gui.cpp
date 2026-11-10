@@ -14,6 +14,7 @@
 #include "junction_ghost_draw.h"
 #include "junction_game.h"
 #include "junction_generator.h"
+#include "junction_rules.h"
 #include "querystring_gui.h"
 #include "window_gui.h"
 #include "gui.h"
@@ -297,6 +298,7 @@ struct JunctionGenerateJob {
 	JunctionNearResult result; ///< Written by the worker.
 	std::atomic<bool> cancel{false}; ///< Set when the job is detached; the worker stops searching.
 	std::shared_ptr<const std::vector<JunctionLibraryEntry>> library; ///< Library for the spec, or null if not built yet.
+	std::shared_ptr<const JunctionTMapResult> flat; ///< P3b: the window's flat map for this spec, or null; the worker computes and sets it when null.
 };
 
 /** A library build running on a worker thread, or finished; owns everything the worker reads, and outlives the window if needed. */
@@ -321,6 +323,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	std::shared_ptr<JunctionGenerateJob> pending_job; ///< State of the running job.
 	std::shared_ptr<JunctionLibraryJob> library_job; ///< Library for the current spec, or being built.
 	std::thread library_thread; ///< Thread of the library build.
+	std::optional<JunctionGenerateKey> flat_key; ///< P3b: the key (anchor INVALID_TILE, rotation 0, not mirrored) of flat_map.
+	std::shared_ptr<const JunctionTMapResult> flat_map; ///< P3b: the flat map for flat_key's spec.
 	std::optional<JunctionGenerateKey> library_key; ///< MakeKey of the library, with anchor INVALID_TILE and rotation 0, mirrored false.
 	bool has_shown = false; ///< The ghost shows a placement, in the three fields below.
 	JunctionLayout shown_layout; ///< Oriented layout shown at the cursor.
@@ -409,6 +413,19 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	JunctionGenerateKey SpecKey() const
 	{
 		JunctionGenerateKey key = this->MakeBaseKey(INVALID_TILE);
+		key.rotation = 0;
+		key.mirrored = false;
+		return key;
+	}
+
+	/**
+	 * Get the key of the flat map of a generation: the spec without the spot or orientation, but with the slider's coverage.
+	 * @param key The key of a generation.
+	 * @return The key with anchor INVALID_TILE, rotation 0 and not mirrored.
+	 */
+	static JunctionGenerateKey FlatKey(JunctionGenerateKey key)
+	{
+		key.anchor = INVALID_TILE;
 		key.rotation = 0;
 		key.mirrored = false;
 		return key;
@@ -654,8 +671,10 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		std::tie(job->spec.prio_tiles, job->spec.prio_strict) = JunctionPrioChoice(this->prio_choice, key.tl, this->library_job->spec.prio_tiles);
 		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, MakeJunctionFrame(job->spec), 4);
 		if (this->LibraryUsable()) job->library = this->library_job->library;
+		if (this->flat_key == this->FlatKey(key)) job->flat = this->flat_map;
 		if (!StartNewThread(&this->pending_thread, "ottd:junction", [job, key]() {
-			job->result = GenerateJunctionNear(job->spec, job->terrain, key.rotation, key.mirrored, job->cancel);
+			if (job->flat == nullptr) job->flat = std::make_shared<const JunctionTMapResult>(ConstructJunctionTMap(job->spec, nullptr, std::nullopt, false));
+			job->result = GenerateJunctionNear(job->spec, job->terrain, key.rotation, key.mirrored, job->cancel, job->flat.get());
 			if (job->library != nullptr && !job->cancel) {
 				JunctionNearResult fit = FitJunctionLibraryNear(*job->library, job->terrain, key.rotation, key.mirrored);
 				/* Prefer a layout, then the nearer one, then the cheaper; on a full tie the fit, so the ghost doesn't flicker. */
@@ -694,6 +713,10 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (this->pending_thread.joinable()) this->pending_thread.join();
 		const JunctionGenerateKey key = *this->pending_key;
 		this->StoreCached(key, std::move(this->pending_job->result));
+		if (this->pending_job->flat != nullptr) {
+			this->flat_key = this->FlatKey(key);
+			this->flat_map = this->pending_job->flat;
+		}
 		this->pending_job.reset();
 		this->pending_key = std::nullopt;
 		if (this->hover_tile != INVALID_TILE && key == this->MakeKey(this->hover_tile)) this->ShowHover();

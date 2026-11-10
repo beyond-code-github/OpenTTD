@@ -565,6 +565,50 @@ TEST_CASE("GenerateJunctionNear builds the projected T map over a ridge", "[junc
 	}
 }
 
+TEST_CASE("GenerateJunctionNear with a supplied flat map gives the same result", "[junction][tmapnear]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionTerrain terrain = MakeNearTestTerrain();
+	terrain.build_on_slopes = true;
+	const int ridge = spec.ml_gap + 2 + 6;
+	SetNearRampRow(terrain, ridge, 0, 1, DiagDirection::SE);
+	SetNearRampRow(terrain, ridge + 1, 1, 1, DiagDirection::Invalid);
+	SetNearRampRow(terrain, ridge + 2, 1, 1, DiagDirection::Invalid);
+	SetNearRampRow(terrain, ridge + 3, 0, 1, DiagDirection::NW);
+	const JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
+	REQUIRE(flat.layout.has_value());
+	const std::atomic<bool> cancel{false};
+	const auto since = [](std::chrono::steady_clock::time_point start) {
+		return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+	};
+	auto start = std::chrono::steady_clock::now();
+	const JunctionNearResult computed = GenerateJunctionNear(spec, terrain, 0, false, cancel);
+	const int64_t computed_micros = since(start);
+	start = std::chrono::steady_clock::now();
+	const JunctionNearResult supplied = GenerateJunctionNear(spec, terrain, 0, false, cancel, &flat);
+	const int64_t supplied_micros = since(start);
+	REQUIRE(computed.result.layout.has_value());
+	REQUIRE(supplied.result.layout.has_value());
+	CHECK(supplied.offset.x == computed.offset.x);
+	CHECK(supplied.offset.y == computed.offset.y);
+	CHECK(supplied.result.hub.x == computed.result.hub.x);
+	CHECK(supplied.result.hub.y == computed.result.hub.y);
+	CHECK(supplied.result.score == computed.result.score);
+	const JunctionLayout &a = *supplied.result.layout;
+	const JunctionLayout &b = *computed.result.layout;
+	REQUIRE(a.tracks.size() == b.tracks.size());
+	for (size_t i = 0; i < a.tracks.size(); i++) {
+		CHECK(a.tracks[i].offset.x == b.tracks[i].offset.x);
+		CHECK(a.tracks[i].offset.y == b.tracks[i].offset.y);
+		CHECK(a.tracks[i].tracks == b.tracks[i].tracks);
+	}
+	CHECK(a.bridges.size() == b.bridges.size());
+	CHECK(a.signals.size() == b.signals.size());
+	/* The supplied call skips the flat map, so it is faster by about that much. */
+	INFO("flat map supplied " << supplied_micros << " us, computed " << computed_micros << " us");
+	CHECK(supplied_micros < computed_micros);
+}
+
 TEST_CASE("GenerateJunctionNear's score includes the terrain cost", "[junction][tmapnear]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
