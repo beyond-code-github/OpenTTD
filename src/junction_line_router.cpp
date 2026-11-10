@@ -497,11 +497,12 @@ private:
 	 * Whether a replayed prefix is legal on the terrain (E3b): each piece, bridge head, bridge middle, tunnel portal and tunnel middle passes the check the search applies to the same move.
 	 * Its pieces are recorded in the path's used grid, which the caller clears.
 	 * @param raster The prefix's raster of one track, its first piece being the start.
+	 * @param start_z The track's height after its start piece.
 	 * @return Whether every part of the prefix is usable.
 	 */
-	bool PrefixUsable(const JunctionRaster &raster)
+	bool PrefixUsable(const JunctionRaster &raster, int8_t start_z)
 	{
-		int8_t z = static_cast<int8_t>(request.plane);
+		int8_t z = start_z;
 		std::vector<JunctionBridge> done; ///< The prefix's bridges before the current one.
 		size_t current = 0; ///< The bridge the walk is in.
 		bool inside = false; ///< Between a bridge's near head and far head.
@@ -637,6 +638,8 @@ JunctionLineRouteResult LineRouter::Run()
 		LineNode root;
 		LineTreeEntry root_entry;
 		bool prefix_ok = true;
+		std::vector<int8_t> before_z; ///< Per track: the height before its start piece (PH1).
+		std::vector<int8_t> after_z; ///< Per track: the height after its start piece, or INT8_MIN when the start piece is unusable.
 		for (const JunctionRaster &raster : first) {
 			if (&raster == &first[0]) {
 				uint units = 0;
@@ -658,7 +661,28 @@ JunctionLineRouteResult LineRouter::Run()
 			if (!prefix_ok) break;
 			root.last.push_back(raster.pieces.back());
 			root.states.push_back(state);
-			root.z.push_back(static_cast<int8_t>(request.plane));
+			/* PH1: with a terrain the start piece's height is derived from its tile, z_min then z_max, whichever makes the piece usable (a ramp is entered at its low or high end). */
+			int8_t start_z = static_cast<int8_t>(request.plane);
+			int8_t start_after = start_z;
+			if (request.terrain != nullptr) {
+				const JunctionPiece &piece = raster.pieces[0];
+				const JunctionTerrainTile *tile = InBounds(piece) ? request.terrain->At(piece.tile.x, piece.tile.y) : nullptr;
+				start_after = INT8_MIN;
+				if (tile != nullptr) {
+					for (const int8_t candidate : {tile->z_min, tile->z_max}) {
+						int8_t new_z;
+						bool ramp;
+						if (PieceUsable(piece, candidate, true, new_z, ramp, ExistingHolds(piece.tile, TrackdirToTrack(piece.trackdir)))) {
+							start_z = candidate;
+							start_after = new_z;
+							break;
+						}
+					}
+				}
+			}
+			before_z.push_back(start_z);
+			after_z.push_back(start_after);
+			root.z.push_back(start_after);
 			root_entry.added.emplace_back(raster.pieces.begin() + 1, raster.pieces.end());
 			root_entry.bridges.insert(root_entry.bridges.end(), raster.bridges.begin(), raster.bridges.end());
 		}
@@ -676,24 +700,24 @@ JunctionLineRouteResult LineRouter::Run()
 		/* The start pieces must be usable too. */
 		bool usable = true;
 		{
-			for (const JunctionRaster &raster : first) {
-				const JunctionPiece &piece = raster.pieces[0];
+			for (size_t r = 0; r < first.size(); r++) {
+				const JunctionPiece &piece = first[r].pieces[0];
 				int8_t new_z;
 				bool ramp;
-				if (!PieceUsable(piece, static_cast<int8_t>(request.plane), false, new_z, ramp, ExistingHolds(piece.tile, TrackdirToTrack(piece.trackdir)))) {
+				if (after_z[r] == INT8_MIN || !PieceUsable(piece, before_z[r], request.terrain != nullptr, new_z, ramp, ExistingHolds(piece.tile, TrackdirToTrack(piece.trackdir)))) {
 					usable = false;
 					break;
 				}
-				if (path_used[GridIndex(piece.tile.x, piece.tile.y)].None()) root_cost += TerrainCost(piece, static_cast<int8_t>(request.plane), false);
-				root_cost += ResourceCost(piece, static_cast<int8_t>(request.plane), JunctionResourceLevel::Surface);
+				if (path_used[GridIndex(piece.tile.x, piece.tile.y)].None()) root_cost += TerrainCost(piece, before_z[r], ramp);
+				root_cost += ResourceCost(piece, before_z[r], JunctionResourceLevel::Surface);
 				if (!OccupyBase(piece)) {
 					usable = false;
 					break;
 				}
 			}
 			if (usable && request.check_prefix) {
-				for (const JunctionRaster &raster : first) {
-					if (!PrefixUsable(raster)) {
+				for (size_t r = 0; r < first.size(); r++) {
+					if (!PrefixUsable(first[r], after_z[r])) {
 						usable = false;
 						break;
 					}

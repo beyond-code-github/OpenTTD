@@ -2007,3 +2007,34 @@ TEST_CASE("a checked prefix that is legal routes as before", "[junction][checked
 	CHECK(checked.route->moves == before.route->moves);
 	CHECK(checked.cost == before.cost);
 }
+
+/* Without a terrain `plane` is still the start height: "FindJunctionLineRoute: straight when clear" covers it (plane 0, no terrain). */
+TEST_CASE("FindJunctionLineRoute starts at the start tile's height", "[junction][startheight]")
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	request.line = {1, 1, 1};
+	request.plane = 0;
+	JunctionTerrain terrain = FlatTerrainFor(request, 0);
+	for (JunctionTerrainTile &tile : terrain.tiles) tile.z_min = tile.z_max = 3;
+	request.terrain = &terrain;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	CheckRoute(request, result);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->moves == std::string(20, 'F'));
+}
+
+TEST_CASE("FindJunctionLineRoute starts a ramp at its low end", "[junction][startheight]")
+{
+	LineRampCase c;
+	SetUpRamps(c, 1, true);
+	c.request.line = {1, 1, 1};
+	c.request.plane = 7;
+	SetRampColumn(c.terrain, 40, 0, 1, DiagDirection::NE);
+	const JunctionLineRouteResult result = FindJunctionLineRoute(c.request);
+	CheckRoute(c.request, result);
+	REQUIRE(result.route.has_value());
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(c.request.line, *result.route);
+	REQUIRE(!rasters.empty());
+	CHECK(rasters[0].pieces[0].tile.x == 40);
+	CHECK(TerrainTileOf(c.terrain, 40, rasters[0].pieces[0].tile.y).incline == DiagDirection::NE);
+}
