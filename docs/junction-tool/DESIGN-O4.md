@@ -32,6 +32,17 @@ Solved by enumeration best first: candidate structures (crossing choices x order
 
 **Steps.** T1 map layer for the flat T: types, enumeration, bound, rules as constraints; tests: the old template's structure is among the candidates, a structure breaking each rule is rejected, order follows the bound. T2 projection of one structure, then GenerateJunctionOrganic over T1's candidates: rule-clean on the test spec, the pinned spec and TL6 branch_gap 0, generation time reported against 100 ms, compactness against 243. Then: the D80 lift node, LL_RR (lanes as edges, crossings per group), terrain.
 
+## G1: constructing the T's map (2026-11-10; engineer: "maps don't have candidates", "stick to it this time")
+The map is constructed, not searched: decisions come from rules, positions from difference constraints, one layout is built, the checker runs once to confirm. A failure is a missing constraint in the construction (D170a), never a reason to build another.
+Decisions for the flat single-track T (L_R), each with its rule:
+- The main line B goes over both branch crossings (D156; with ml_gap rows between the main lines a branch bridge over B has no room): a D80 doubled bridge, parallelogram style (D105, D145), positions from the skeleton solver.
+- N->A goes over A->S (D3d). The opposite choice is a later step (open one choice at a time).
+- Skeleton stagger 0 or 1 (D118): the one with the smaller bridge span from the solver, by arithmetic.
+- E-side window phase (D148a): 1 when prio_tiles is odd and >= 5, else 0.
+- Crossing B's row costs nothing (B goes over), so there is no crossing-cost choice; style 0's bridge margin and w_slack do not apply.
+Construction order (dependencies, each edge routed once, the earlier edges as obstacles): A line and stubs fixed; A->S (split window row 0, x 2..xI-2) and N->A (merge window from x_sA + prio_tiles + 2 + phase, D148) route first; where they cross B's rows gives the skeleton's crossing set; the skeleton places B's lanes, the B->S split and the N->B window; B->S and N->B route last. Height: the smallest that routes (the box grows until the map fits, D170a); branch position and width from the frame (MakeJunctionFrame).
+Replaces the old sweep (about 100 candidates per height) and pass 1's reroute. Later: the other third-crossing choice, symmetric lanes, mandatory signals and throughput on the map (G3), the line router and terrain.
+
 ## Revision 4 (kept for reference)
 Dated 2026-11-10, D168; superseded revision 3's search steps 2-3.
 From the run digest, RECONCILE-O4.md and the second Fable steer. Kept from revision 3: every movement routed by the line router, splits and merges emerge from sharing, negotiation packs, forced crossings decided by branch and bound (D167), hug and clean-up (D166 a-b), main-line turn cost (D165), main line may bridge (D164).
