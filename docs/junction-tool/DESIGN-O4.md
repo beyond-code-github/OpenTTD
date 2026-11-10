@@ -1,5 +1,12 @@
 # O4: a junction from the constraints
 
+## Glossary (engineer and orchestrator, 2026-11-11; use these words in briefs and comments)
+- Movement: a train's journey through the hub from entry port to exit port (A->S, N->A, main line through). A path in the graph, not a routed object.
+- Node: a port, a split, a merge, or a crossing head (bridge head or tunnel portal).
+- Edge: a stretch of track between two nodes carrying a fixed set of movements at one level. Surface edge: on the ground (it may ramp with the terrain). Span edge: a bridge or tunnel between its two head nodes.
+- Crossing: where two edges meet on the vector map; its realisation splits one of them into surface - span - surface. A movement over flat ground, a crossing, then flat ground is three edges (engineer: "that would be three edges?").
+- Routing order: all surface edges, then span edges between the head nodes. Older code and docs call the private parts of movements (A->S, N->A, B->S, N->B) "edges"; rename when the E-steps touch them.
+
 ## Revision 5: the theory (2026-11-10, D170; supersedes revision 4's core search)
 Engineer: "I thought we were solving the layout in a vector map first and then projecting it on to the terrain later"; agreed: negotiation is the technique that projects the map. Every step is checked against this page, not against the last failure.
 
