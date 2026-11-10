@@ -998,15 +998,24 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		const int ys = yb - STUB;
 		const JunctionRouteEnd goal_s{tile(xO, ys), Trackdir::Y_SE};
 		const JunctionRouteEnd start_n{tile(xI, ys), Trackdir::Y_NW};
-		/* The line router routes A (E1), so only the old router's layouts hold row 0 as fixed track. */
+		/* The line router routes A (E1) and the port edges (E2, D178), so only the old router's layouts hold row 0 and the stubs as fixed track. */
 		auto base_layout = [&](JunctionLayout &layout) {
-			if (!line_router) AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(0, 0), Trackdir::X_SW, frame.width - 1)));
+			if (line_router) return;
+			AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(0, 0), Trackdir::X_SW, frame.width - 1)));
 			AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xO, ys), Trackdir::Y_SE, STUB)));
 			AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xI, yb), Trackdir::Y_NW, STUB)));
 		};
-		auto stub_pieces = [&](int x, Trackdir td, int first_y) {
+		/* The old router's stub pieces; the line router takes them from the port edges' rasters (D178). */
+		auto stub_pieces = [&](const JunctionLayout &layout, const std::optional<JunctionRaster> &port_edge, int x, Trackdir td, int first_y) {
 			std::vector<JunctionRouteEnd> ends;
-			for (int y = first_y; y < yb; y++) ends.push_back({tile(x, y), td});
+			if (!port_edge.has_value()) {
+				for (int y = first_y; y < yb; y++) ends.push_back({tile(x, y), td});
+				return ends;
+			}
+			for (const JunctionPiece &piece : port_edge->pieces) {
+				if (piece.tile.y < first_y || piece.tile.y >= yb) continue;
+				if (TracksAt(layout, piece.tile.x, piece.tile.y) == TrackBits{Track::Y}) ends.push_back({piece.tile, td});
+			}
 			return ends;
 		};
 		if (yb < g + 4) {
@@ -1015,11 +1024,10 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		}
 
 		/*
-		 * The fixed parts (B's lanes on the W row, the N and S stubs; with the old router also A's main line on row 0) are not routed yet, so an obstacle on them cannot be worked around.
-		 * A taller box does not move row 0 or the W row: report it and stop (routing B is a later step). The stubs move with the height
-		 * (ys = height - 3), so an obstacle on a stub is passed by growing the box (D170a).
+		 * The fixed parts (B's lanes on the W row; with the old router also A's main line on row 0 and the stubs) are not routed yet, so an obstacle on them cannot be worked around.
+		 * A taller box does not move row 0 or the W row: report it and stop (routing B is a later step). D178: the stubs are routed port edges,
+		 * so an obstacle on one is passed by growing the box (D170a) and is not checked here.
 		 */
-		bool stub_blocked = false;
 		if (terrain != nullptr) {
 			JunctionLayout fixed_parts;
 			base_layout(fixed_parts);
@@ -1028,22 +1036,44 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 				/* E1: A is routed, so row 0 is not checked here; B's W row is checked only between the same ports until E3 routes B. */
 				if (line_router && jt.offset.y == w_row && (jt.offset.x < x_w || jt.offset.x > x_e)) continue;
 				if (jt.tracks.None() || terrain->UsableAt(jt.offset.x, jt.offset.y, plane)) continue;
-				if (jt.offset.y != 0 && jt.offset.y != w_row) {
-					say(fmt::format("stub on unusable tile {},{}", jt.offset.x, jt.offset.y));
-					stub_blocked = true;
-					break;
-				}
 				say(fmt::format("fixed track on unusable tile {},{}", jt.offset.x, jt.offset.y));
 				result.micros_per_height.push_back(since(height_start));
 				result.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
 				return result;
 			}
 		}
-		if (stub_blocked) continue;
 
 		/* A->S and N->A: final routes; B's row is crossable at cost 0 because B goes over (D156). */
 		JunctionLayout pass1;
 		base_layout(pass1);
+		/*
+		 * E2, D178: the S and N stubs are port edges, routed like every other edge, before A. The S port edge carries A->S and B->S, the N port edge N->A and N->B.
+		 * Their ends are the same straight piece sequences the old router's stubs were; the boundary row is not blocked at the port tiles.
+		 */
+		std::optional<JunctionRaster> s_port_raster;
+		std::optional<JunctionRaster> n_port_raster;
+		if (line_router) {
+			JunctionRouteRequest s_request = base;
+			s_request.min = tile(xO, ys);
+			s_request.max = tile(xO, yb);
+			s_request.starts = {{tile(xO, ys), Trackdir::Y_SE}};
+			s_request.goals = {{tile(xO, yb), Trackdir::Y_SE}};
+			s_port_raster = timed_route([&] { return route_line(pass1, s_request, {}, false); });
+			if (!s_port_raster.has_value()) {
+				say("S port edge failed");
+				continue;
+			}
+			JunctionRouteRequest n_request = base;
+			n_request.min = tile(xI, ys);
+			n_request.max = tile(xI, yb);
+			n_request.starts = {{tile(xI, yb), Trackdir::Y_NW}};
+			n_request.goals = {{tile(xI, ys), Trackdir::Y_NW}};
+			n_port_raster = timed_route([&] { return route_line(pass1, n_request, {}, false); });
+			if (!n_port_raster.has_value()) {
+				say("N port edge failed");
+				continue;
+			}
+		}
 		/*
 		 * E1, D178: A is an edge of the map, routed between its two ports like the branch edges. Its band runs from row 0 to the row above B's W row and may not cross B;
 		 * leaving the band (a detour around B's rows) is a later step.
@@ -1208,7 +1238,11 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 
 		/* The doubled lanes, then B->S and N->B. */
 		JunctionLayout fixed;
-		if (line_router) AddRasterToLayout(fixed, *a_raster);
+		if (line_router) {
+			AddRasterToLayout(fixed, *a_raster);
+			AddRasterToLayout(fixed, *s_port_raster);
+			AddRasterToLayout(fixed, *n_port_raster);
+		}
 		base_layout(fixed);
 		AddRasterToLayout(fixed, *a_to_s);
 		AddRasterToLayout(fixed, *n_to_a);
@@ -1227,7 +1261,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			say("B->S has no start");
 			continue;
 		}
-		request.goals = stub_pieces(xO, Trackdir::Y_SE, ys);
+		request.goals = stub_pieces(fixed, s_port_raster, xO, Trackdir::Y_SE, ys);
 		if (!timed_route([&] {
 			return line_router ? route_line(fixed, request, branch_fence, false) : RouteFencedAndAdd(fixed, request, branch_fence, &route_cache);
 		}).has_value()) {
@@ -1235,7 +1269,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			continue;
 		}
 		request = base;
-		request.starts = stub_pieces(xI, Trackdir::Y_NW, ys + 1);
+		request.starts = stub_pieces(fixed, n_port_raster, xI, Trackdir::Y_NW, ys + 1);
 		request.goals = PlainRowPieces(fixed, b_row, Trackdir::X_NE, pos.x_sb + 1, pos.x_nw);
 		if (!timed_route([&] {
 			return line_router ? route_line(fixed, request, branch_fence, false) : RouteFencedAndAdd(fixed, request, branch_fence, &route_cache);
