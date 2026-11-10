@@ -880,6 +880,62 @@ TEST_CASE("FindJunctionLineRoute: an empty approach changes nothing", "[junction
 	}
 }
 
+TEST_CASE("FindJunctionLineRoute: a goal's continuation S-bend counts against the route's last one", "[junction][continuation]")
+{
+	/* One track along -x to a goal one row over; the track already leaves the goal with an S-bend (CS2). */
+	JunctionLineRouteRequest request = BaseRequest();
+	request.line = {1, 1, 1};
+	request.goals = {{{30, 19}, Trackdir::X_NE}};
+	request.curve_spacing = 8;
+	request.s_bend_window = 12;
+	const std::vector<JunctionRaster> goal_rasters = RasterizeJunctionLine(request.line, {request.goals[0].tile, request.goals[0].trackdir, "LR"});
+	REQUIRE(goal_rasters[0].error.empty());
+	const std::vector<JunctionPiece> after(goal_rasters[0].pieces.begin() + 1, goal_rasters[0].pieces.end());
+
+	/* A route followed by the continuation's moves, as a frozen prefix, is accepted by the curve rules only if no turn is refused. */
+	auto continues = [&](const std::string &moves) {
+		JunctionLineRouteRequest check = request;
+		check.prefix = moves + "LR";
+		check.goals = {{{10, 19}, Trackdir::X_NE}};
+		const JunctionLineRouteResult result = FindJunctionLineRoute(check);
+		return result.error.find("prefix breaks the curve rules") == std::string::npos;
+	};
+
+	const JunctionLineRouteResult plain = FindJunctionLineRoute(request);
+	INFO(plain.error);
+	REQUIRE(plain.route.has_value());
+	INFO("plain moves " << plain.route->moves);
+	CHECK_FALSE(continues(plain.route->moves));
+
+	request.continuation = [&](const JunctionRouteEnd &) { return after; };
+	const JunctionLineRouteResult kept = FindJunctionLineRoute(request);
+	INFO(kept.error);
+	REQUIRE(kept.route.has_value());
+	INFO("kept moves " << kept.route->moves);
+	CHECK(continues(kept.route->moves));
+}
+
+TEST_CASE("FindJunctionLineRoute: an empty continuation changes nothing", "[junction][continuation]")
+{
+	std::vector<JunctionLineRouteRequest> requests = {BaseRequest(), WaypointRequest(0), WaypointRequest(1), WaypointRequest(2)};
+	JunctionLineRouteRequest blocked = BaseRequest();
+	for (int x = 29; x <= 31; x++) {
+		for (int y = 20; y <= 22; y++) blocked.blocked.push_back({static_cast<int16_t>(x), static_cast<int16_t>(y)});
+	}
+	requests.push_back(blocked);
+	for (const JunctionLineRouteRequest &request : requests) {
+		const JunctionLineRouteResult plain = FindJunctionLineRoute(request);
+		JunctionLineRouteRequest with = request;
+		with.continuation = [](const JunctionRouteEnd &) { return std::vector<JunctionPiece>{}; };
+		const JunctionLineRouteResult empty = FindJunctionLineRoute(with);
+		REQUIRE(plain.route.has_value());
+		REQUIRE(empty.route.has_value());
+		CHECK(empty.route->moves == plain.route->moves);
+		CHECK(empty.cost == plain.cost);
+		CHECK(empty.expansions == plain.expansions);
+	}
+}
+
 TEST_CASE("FindJunctionLineRoute: prefix pieces are the line's own track", "[junction][linerouter]")
 {
 	const JunctionLineRouteRequest request = WaypointRequest(4);

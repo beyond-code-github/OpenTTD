@@ -50,6 +50,7 @@ struct JunctionLineRouteRequest {
 	std::string prefix; ///< Frozen moves from the start (D134 b, D150): replayed before the search, their pieces are the line's own track and set the curve state; not re-checked against terrain or obstacles.
 	bool check_prefix = false; ///< When set, the prefix's pieces, bridges and tunnels are checked against the terrain, blocked and existing like searched ones (E3b: span edges fixed by their nodes); unset, the prefix is the painter's frozen track (D150).
 	std::function<std::vector<JunctionPiece>(const JunctionRouteEnd &start)> approach; ///< For a start on routed track: the pieces of that track leading into the start piece, oldest first (at most what the curve state looks back over). They set the start's curve and S-bend state as a prefix would, and are not laid, occupied, priced or checked (CS1). Unset: a fresh state.
+	std::function<std::vector<JunctionPiece>(const JunctionRouteEnd &goal)> continuation; ///< For a goal on routed track: the pieces of that track continuing from the goal piece, in travel order (at most what the curve state looks ahead over). A route may end at the goal only if its curve state, carried through these pieces with the same update as the route's own pieces, refuses no turn; they are not laid, occupied, priced or checked otherwise (CS2). Unset: no check.
 	TileIndexDiffC min; ///< Every piece of every track lies inside, inclusive.
 	TileIndexDiffC max;
 	std::vector<TileIndexDiffC> blocked; ///< Tiles no track or bridge may use.

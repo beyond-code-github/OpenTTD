@@ -941,6 +941,21 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			}
 			return std::vector<JunctionPiece>{};
 		};
+		/*
+		 * CS2 (briefs/CS2-curve-state-after-goal.md, diagnosis DIAG-ph1-test4): a route that ends on routed track (a merge goal) must keep the curve rule over the pieces that already continue from its goal.
+		 * The most recent routed raster holding the goal piece gives the pieces after it, at most the same window as the approach.
+		 */
+		line_request.continuation = [&routed_rasters, approach_window](const JunctionRouteEnd &goal) {
+			for (auto raster = routed_rasters.rbegin(); raster != routed_rasters.rend(); ++raster) {
+				for (size_t k = 0; k < raster->pieces.size(); k++) {
+					const JunctionPiece &piece = raster->pieces[k];
+					if (piece.tile.x != goal.tile.x || piece.tile.y != goal.tile.y || piece.trackdir != goal.trackdir) continue;
+					const size_t last = std::min(raster->pieces.size(), k + 1 + approach_window);
+					return std::vector<JunctionPiece>(raster->pieces.begin() + k + 1, raster->pieces.begin() + last);
+				}
+			}
+			return std::vector<JunctionPiece>{};
+		};
 		line_request.rail_piece = spec.prices.rail_piece;
 		line_request.turn_cost = base.turn_cost;
 		line_request.bridge_span_ok = spec.bridge_span_ok;
