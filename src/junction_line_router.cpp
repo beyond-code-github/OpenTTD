@@ -634,6 +634,14 @@ JunctionLineRouteResult LineRouter::Run()
 				root.units = static_cast<uint16_t>(std::min<uint>(units, request.min_units));
 			}
 			LineTrackState state{cap, 0, true, false};
+			if (&raster == &first[0] && request.approach) {
+				/* CS1: the track leading into the start sets the curve state as a prefix would; the pieces are not laid. */
+				std::vector<JunctionPiece> lead = request.approach(start);
+				lead.push_back(raster.pieces[0]);
+				for (size_t k = 1; k < lead.size() && prefix_ok; k++) {
+					if (!AdvanceState(state, lead[k - 1], lead[k])) prefix_ok = false;
+				}
+			}
 			for (size_t k = 1; k < raster.pieces.size() && prefix_ok; k++) {
 				if (!AdvanceState(state, raster.pieces[k - 1], raster.pieces[k])) prefix_ok = false;
 			}

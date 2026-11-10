@@ -890,6 +890,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 	 * so the boundary ring belongs to the ports. Every line-router edge request blocks it except the two stub tiles.
 	 */
 	std::vector<TileIndexDiffC> last_row;
+	std::vector<JunctionRaster> routed_rasters; ///< Every raster route_line routed at the current height, in order (CS1).
 
 	/**
 	 * One edge on the line router: one track, from the request's windows, against the layout so far, then added to it.
@@ -923,6 +924,23 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		line_request.existing = &layout;
 		line_request.curve_spacing = base.curve_spacing;
 		line_request.s_bend_window = base.s_bend_window;
+		/*
+		 * CS1 (briefs/CS1-curve-state-across-edges.md): an edge that starts on routed track inherits the curve state of the track leading into its start piece.
+		 * The most recent routed raster holding the start piece gives the pieces before it, as many as the router's curve state looks back over:
+		 * the longer of the curve spacing and the S-bend window, in units, so at most that many pieces (a piece is at least one unit).
+		 */
+		const size_t approach_window = std::max(base.curve_spacing, base.s_bend_window);
+		line_request.approach = [&routed_rasters, approach_window](const JunctionRouteEnd &start) {
+			for (auto raster = routed_rasters.rbegin(); raster != routed_rasters.rend(); ++raster) {
+				for (size_t k = 0; k < raster->pieces.size(); k++) {
+					const JunctionPiece &piece = raster->pieces[k];
+					if (piece.tile.x != start.tile.x || piece.tile.y != start.tile.y || piece.trackdir != start.trackdir) continue;
+					const size_t first = k > approach_window ? k - approach_window : 0;
+					return std::vector<JunctionPiece>(raster->pieces.begin() + first, raster->pieces.begin() + k);
+				}
+			}
+			return std::vector<JunctionPiece>{};
+		};
 		line_request.rail_piece = spec.prices.rail_piece;
 		line_request.turn_cost = base.turn_cost;
 		line_request.bridge_span_ok = spec.bridge_span_ok;
@@ -946,6 +964,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		std::vector<JunctionRaster> rasters = RasterizeJunctionLine(line_request.line, *routed.route);
 		if (rasters.empty() || !rasters[0].error.empty()) return std::nullopt;
 		AddRasterToLayout(layout, rasters[0]);
+		routed_rasters.push_back(rasters[0]);
 		return std::move(rasters[0]);
 	};
 
@@ -1011,6 +1030,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		}
 		const int yb = height - 1;
 		last_row.clear();
+		routed_rasters.clear();
 		for (int x = 0; x <= frame.width - 1; x++) {
 			if (x != xI && x != xO) last_row.push_back(tile(x, yb));
 		}
