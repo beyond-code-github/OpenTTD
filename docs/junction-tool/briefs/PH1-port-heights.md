@@ -6,7 +6,7 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 The engineer: "each port having its own height is pretty important". Today `ConstructJunctionTMap` takes one plane, the hub tile's ground height (D177), and every line-router request starts there. A main-line end on higher or lower ground than the hub therefore fails, and once A ramps, an edge that starts on A's piece (A->S's split) starts at the wrong height. A piece's height on its tile follows from the tile and the piece's direction (flat at its height; a foundation at z_max; along an incline a ramp entered at z_min going up or z_max going down, D152), which the line router already models with `PieceUsable`. So with a terrain each start's height is derived, not given. Goals already work: a route ends at whatever height its goal piece is usable at.
 
 ## State
-- Worktree `/home/pete/OpenTTD/.claude/ph1`, branch `wt-ph1`, head given at launch (feature/junction-tool with E1 and E2 merged). Create `build` (Debug) and `build-rel` (Release) like the main ones; build `openttd_test` only. If a build fails because a precompiled header is older than a system header, delete that .pch and rebuild.
+- Worktree `/home/pete/OpenTTD/.claude/ph1`, branch `wt-ph1`, head given at launch (feature/junction-tool with E1, E2, E3, E3b merged: every part of the hub is routed; the fixed-part check is gone on the line-router path). A first attempt's work is in `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/ph1_wip.patch` (made before E3): reuse its router change and tests where they still apply; its stand-in W-row check is obsolete (that check no longer exists) and must not come back. Create `build` (Debug) and `build-rel` (Release) like the main ones; build `openttd_test` only. If a build fails because a precompiled header is older than a system header, delete that .pch and rebuild.
 - Tests only through `tools/junction/jt` (read `docs/junction-tool/TESTS.md`): `tools/junction/jt fast build [startheight] 5` (new tag), `tools/junction/jt fast build-rel [projection] 5`, `tools/junction/jt fast build-rel [tmapnear] 5`, `tools/junction/jt fast build [junctionmap] 5`, final `tools/junction/jt gate build-rel`. OVER BUDGET is a stop. Never type tag filters by hand.
 
 ## Read first (once each)
@@ -34,6 +34,11 @@ In `src/tests/junction_map.cpp`, `[projection]`:
 
 ## Do not
 No change to which routes are found when the start height was already right (golden trace unchanged), to the old router, the old-router path, `GenerateJunction`, `FitJunctionLibrary*`, the skeleton, signal pass, checker, the GUI, `junction_organic.*`, savegame, network or command code. No `std::to_string`/`std::printf` in tests; no `pkill`, broad `kill`, bare `git stash`.
+
+## Known from the first attempt
+- With the first attempt, test 4 built at the flat height but was unclean: checker rule 3 "curve speed limit 111 below 160" at layout tile 2,4, near A's ramp and the routed merge on the west side. Find the cause before changing anything: print the layout around that tile and the pieces of the edges there, and report which edge's curve it is and why the line router accepted it (does the router count curve spacing across a ramp the way the checker does?). If the fix is in the router or the checker, stop and report it; do not change either.
+- E2's test "a slope under the S port edge is ramped" built at 16, not at the flat height, because its port edge started at the single plane; after this change report at which height it builds.
+- E3's test 3 (slope under B's E stretch) failed because starts used the hub plane; after this change report its outcome.
 
 ## Stop conditions
 - The golden trace, the flat identity or any existing test other than the one named in 2d changes outcome.
