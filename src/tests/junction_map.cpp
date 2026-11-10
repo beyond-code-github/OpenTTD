@@ -24,7 +24,9 @@
 #include <chrono>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -705,6 +707,68 @@ static JunctionTerrain MakeRidgeTerrain(const JunctionSpec &spec)
 	SetRampRow(terrain, ridge + 2, 1, 1, DiagDirection::Invalid);
 	SetRampRow(terrain, ridge + 3, 0, 1, DiagDirection::NW);
 	return terrain;
+}
+
+/** The terrain cost of a layout by the SC1 rule, written out plainly: each tile with track or a bridge head once, its clearing, and a foundation when it is sloped and not a ramp. */
+static Money ExpectedTerrainCost(const JunctionLayout &layout, const JunctionTerrain &terrain, int ox, int oy)
+{
+	std::map<std::pair<int, int>, TrackBits> tiles;
+	for (const JunctionTrack &jt : layout.tracks) {
+		if (jt.tracks.None()) continue;
+		TrackBits &bits = tiles[{jt.offset.x + ox, jt.offset.y + oy}];
+		for (const Track track : jt.tracks) bits.Set(track);
+	}
+	for (const JunctionBridge &bridge : layout.bridges) {
+		tiles[{bridge.start.x + ox, bridge.start.y + oy}];
+		tiles[{bridge.end.x + ox, bridge.end.y + oy}];
+	}
+	Money expected = 0;
+	for (const auto &[pos, bits] : tiles) {
+		const JunctionTerrainTile *tile = terrain.At(pos.first, pos.second);
+		REQUIRE(tile != nullptr);
+		expected += tile->clear_cost;
+		if (tile->z_min == tile->z_max) continue;
+		bool ramp = false;
+		if (tile->incline == DiagDirection::NE || tile->incline == DiagDirection::SW) ramp = bits == TrackBits{Track::X};
+		if (tile->incline == DiagDirection::SE || tile->incline == DiagDirection::NW) ramp = bits == TrackBits{Track::Y};
+		if (!ramp) expected += terrain.foundation_cost;
+	}
+	return expected;
+}
+
+TEST_CASE("the T map reports its terrain cost", "[junction][projectionedges]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	for (JunctionTerrainTile &tile : terrain.tiles) tile.clear_cost = 30;
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	REQUIRE(result.layout.has_value());
+	std::set<std::pair<int, int>> tiles;
+	for (const JunctionTrack &jt : result.layout->tracks) {
+		if (!jt.tracks.None()) tiles.insert({jt.offset.x, jt.offset.y});
+	}
+	for (const JunctionBridge &bridge : result.layout->bridges) {
+		tiles.insert({bridge.start.x, bridge.start.y});
+		tiles.insert({bridge.end.x, bridge.end.y});
+	}
+	CHECK(result.terrain_cost == Money(30) * static_cast<int64_t>(tiles.size()));
+}
+
+TEST_CASE("a foundation is charged, a ramp is not", "[junction][projectionedges]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	JunctionTerrain terrain = MakeRidgeTerrain(spec);
+	terrain.foundation_cost = 250;
+	for (JunctionTerrainTile &tile : terrain.tiles) tile.clear_cost = 30;
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	REQUIRE(result.layout.has_value());
+	const JunctionFrame frame = MakeJunctionFrame(spec);
+	const Money expected = ExpectedTerrainCost(*result.layout, terrain, frame.hub_x - result.hub.x, -result.hub.y);
+	CHECK(result.terrain_cost == expected);
 }
 
 TEST_CASE("a ridge across the branches is climbed", "[junction][projection]")

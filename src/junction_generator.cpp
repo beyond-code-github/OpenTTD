@@ -829,6 +829,38 @@ int JunctionTMapFirstHeight(const JunctionSpec &spec)
 	return spec.ml_gap + 10;
 }
 
+/**
+ * SC1: the terrain cost of a finished layout: the clearing of every tile with track or a bridge head, each tile once, plus a foundation for each
+ * sloped tile, except a tile whose only track is one straight track along the tile's incline: that is a ramp and needs no foundation.
+ * @param layout The finished layout.
+ * @param terrain The snapshot, in frame coordinates.
+ * @param ox The x offset from layout coordinates to frame coordinates.
+ * @param oy The y offset from layout coordinates to frame coordinates.
+ * @return The cost.
+ */
+static Money JunctionTMapTerrainCost(const JunctionLayout &layout, const JunctionTerrain &terrain, int ox, int oy)
+{
+	std::map<std::pair<int, int>, TrackBits> occupied;
+	for (const JunctionTrack &jt : layout.tracks) {
+		if (jt.tracks.None()) continue;
+		TrackBits &bits = occupied[{jt.offset.x + ox, jt.offset.y + oy}];
+		for (const Track track : jt.tracks) bits.Set(track);
+	}
+	for (const JunctionBridge &bridge : layout.bridges) {
+		for (const TileIndexDiffC &head : {bridge.start, bridge.end}) occupied[{head.x + ox, head.y + oy}];
+	}
+	Money cost = 0;
+	for (const auto &[pos, bits] : occupied) {
+		const JunctionTerrainTile *t = terrain.At(pos.first, pos.second);
+		if (t == nullptr) continue;
+		cost += t->clear_cost;
+		if (t->z_min == t->z_max) continue;
+		const bool ramp = t->incline != DiagDirection::Invalid && bits == TrackBits{DiagDirToAxis(t->incline) == Axis::X ? Track::X : Track::Y};
+		if (!ramp) cost += terrain.foundation_cost;
+	}
+	return cost;
+}
+
 JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain, std::optional<int> first_height, bool line_router)
 {
 	const auto time_start = std::chrono::steady_clock::now();
@@ -1594,6 +1626,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		result.clean = JunctionRulesClean(*built, spec);
 		if (!result.clean) result.violations = CheckJunctionRules(*built, spec);
 		result.micros_check += since(check_start);
+		if (terrain != nullptr) result.terrain_cost = JunctionTMapTerrainCost(*built, *terrain, frame.hub_x - result.hub.x, -result.hub.y);
 		result.layout = std::move(built);
 		break;
 	}

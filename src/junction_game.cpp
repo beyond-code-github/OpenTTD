@@ -427,8 +427,9 @@ JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const Junction
 		if (tmap.layout.has_value() && tmap.clean) {
 			attempt.result.layout = tmap.layout;
 			attempt.result.error = JunctionGenerateError::None;
-			/* No terrain cost yet: a known gap. */
+			/* SC1: the score carries the terrain cost, like the library fit's, so the two compare. */
 			attempt.result.score = ScoreJunctionLayout(*tmap.layout, spec);
+			attempt.result.score.second += tmap.terrain_cost;
 		} else {
 			attempt.result.error = tmap.port_blocked ? JunctionGenerateError::PortBlocked : JunctionGenerateError::NoLayout;
 		}

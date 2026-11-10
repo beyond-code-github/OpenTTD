@@ -565,6 +565,29 @@ TEST_CASE("GenerateJunctionNear builds the projected T map over a ridge", "[junc
 	}
 }
 
+TEST_CASE("GenerateJunctionNear's score includes the terrain cost", "[junction][tmapnear]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionTerrain terrain = MakeNearTestTerrain();
+	terrain.build_on_slopes = true;
+	terrain.foundation_cost = 250;
+	for (JunctionTerrainTile &tile : terrain.tiles) tile.clear_cost = 30;
+	const int ridge = spec.ml_gap + 2 + 6;
+	SetNearRampRow(terrain, ridge, 0, 1, DiagDirection::SE);
+	SetNearRampRow(terrain, ridge + 1, 1, 1, DiagDirection::Invalid);
+	SetNearRampRow(terrain, ridge + 2, 1, 1, DiagDirection::Invalid);
+	SetNearRampRow(terrain, ridge + 3, 0, 1, DiagDirection::NW);
+	const JunctionTMapResult tmap = ConstructJunctionTMap(spec, &terrain, std::nullopt, true);
+	REQUIRE(tmap.layout.has_value());
+	const std::atomic<bool> cancel{false};
+	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
+	REQUIRE(near.result.layout.has_value());
+	CHECK(near.offset.x == 0);
+	CHECK(near.offset.y == 0);
+	CHECK(tmap.terrain_cost > 0);
+	CHECK(near.result.score.second == ScoreJunctionLayout(*near.result.layout, spec).second + tmap.terrain_cost);
+}
+
 TEST_CASE("GenerateJunctionNear reports a blocked port", "[junction][tmapnear]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
