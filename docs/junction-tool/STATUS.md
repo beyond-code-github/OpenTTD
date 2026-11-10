@@ -13,7 +13,8 @@
 - Play binary rebuilt at the PH1 merge (0b8a5cd40a).
 - NW1 RUNNING (briefs/NW1-shift-back-window.md): diagnosis docs/junction-tool/DIAG-ph1-limit.md: N->B's 3-tile merge window meets the incline and CS2 (shift-back S-bend right after the only free goal); widening = shift-back west via k_sb + d, d <= tl. SC1 MERGED (terrain cost in the score; ridge 6180 at clear 30, foundation 250). TC1 MERGED.
 - PERF2 (docs/junction-tool/PERF2.md, Release GenerateJunctionNear medians): flat 63 ms, ridge 84, town hill+tunnel 473, town hill no tunnel 332 (offset -4,-4), house beside hub 39.8 s (33 heights x offsets), field 490. Causes: (1) D173 flat run (21-33 ms) repeated per offset: run once per spec (P3); (2) check 8-20 ms per build; (3) route time on hard terrain; (4) rule-caused failures grow to the snapshot edge.
-- QUEUED: XB1 (briefs/XB1-cross-once.md, A->S crosses B's rows once; after CS3 and NW1, same router file).
+- XB1 MERGED: cross_once band (A->S crosses B's rows once); field test no longer hits the D172 width rejection but is not faster (549 ms: height 13 now fails by exhausting A->S's search; same family as card 6).
+- Idle re-measure after XB1 (Release): [projection] 2.5 s, [projectionedges] 2.6 s, [tmapnear] 0.56 s, gate 22.0 s.
 - NW1 MERGED (8cff3ac642): shift-back window + chained approach/continuation; W-end height change builds clean at the flat height (d=1, 0.96 s Release, [slow]). Re-measure tag times on an idle machine (measured +20-50% while XB1 built).
 - (old) NW1 WIP on wt-nw1 (358d0f46b8, not merged): shift-back retry + chained approach/continuation; chaining exposed that the router's pair rule is stricter than rule 3 (1L+1R windows unlimited), so the flat T changed. CS3 MERGED: boundary checks by rule 3 (JunctionMinCurveSpeed), CS1/CS2 AdvanceState seeding removed. Then finish NW1 on top.
 - P3b MERGED: window keeps the flat map between hovers (GUI path compiles, untested: check in game).
