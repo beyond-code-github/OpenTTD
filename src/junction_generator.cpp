@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <map>
 #include <optional>
@@ -312,6 +313,103 @@ static std::optional<std::pair<JunctionRaster, JunctionRaster>> BuildParallelogr
 }
 
 /**
+ * Crop, check the terrain, normalise and place signals: the common end of every candidate.
+ * @param fl The routed layout.
+ * @param spec The junction spec.
+ * @param terrain Optional terrain snapshot in the generator's working coordinates.
+ * @param plane The level the junction is built on; only used with a terrain.
+ * @param w_row The W row.
+ * @param hub_x The x of the hub in working coordinates (the frame's hub_x).
+ * @param cost_out When set together with terrain, receives the terrain cost.
+ * @param hub_out When set, receives the hub offset after normalising.
+ * @return The finished layout, or std::nullopt when it cannot be finished.
+ */
+static std::optional<JunctionLayout> FinishJunctionCandidate(JunctionLayout fl, const JunctionSpec &spec, const JunctionTerrain *terrain, int plane, int w_row, int hub_x, Money *cost_out, TileIndexDiffC *hub_out)
+{
+	/* Crop the E and W rows to the content. */
+	int min_x = INT32_MAX;
+	int max_x = INT32_MIN;
+	for (const JunctionTrack &jt : fl.tracks) {
+		const bool plain_row = (jt.offset.y == 0 || jt.offset.y == w_row) && jt.tracks == TrackBits{Track::X};
+		if (plain_row) continue;
+		min_x = std::min<int>(min_x, jt.offset.x);
+		max_x = std::max<int>(max_x, jt.offset.x);
+	}
+	for (const JunctionBridge &bridge : fl.bridges) {
+		for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
+			min_x = std::min<int>(min_x, head.x);
+			max_x = std::max<int>(max_x, head.x);
+		}
+	}
+	if (max_x < min_x) return std::nullopt;
+	std::erase_if(fl.tracks, [&](const JunctionTrack &jt) {
+		const bool plain_row = (jt.offset.y == 0 || jt.offset.y == w_row) && jt.tracks == TrackBits{Track::X};
+		return plain_row && (jt.offset.x < min_x - 2 || jt.offset.x > max_x + 2);
+	});
+
+	if (terrain != nullptr) {
+		std::set<std::pair<int, int>> occupied;
+		for (const JunctionTrack &jt : fl.tracks) {
+			if (jt.tracks.None()) continue;
+			if (!terrain->UsableAt(jt.offset.x, jt.offset.y, plane)) return std::nullopt;
+			occupied.insert({jt.offset.x, jt.offset.y});
+		}
+		for (const JunctionBridge &bridge : fl.bridges) {
+			for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
+				if (!terrain->UsableAt(head.x, head.y, plane)) return std::nullopt;
+				occupied.insert({head.x, head.y});
+			}
+			const int dx = (bridge.end.x > bridge.start.x) - (bridge.end.x < bridge.start.x);
+			const int dy = (bridge.end.y > bridge.start.y) - (bridge.end.y < bridge.start.y);
+			for (int x = bridge.start.x + dx, y = bridge.start.y + dy; x != bridge.end.x || y != bridge.end.y; x += dx, y += dy) {
+				if (!terrain->SpanOk(x, y, plane)) return std::nullopt;
+			}
+		}
+		if (cost_out != nullptr) {
+			Money cost = 0;
+			for (const auto &[x, y] : occupied) cost += terrain->CostAt(x, y, plane);
+			*cost_out = cost;
+		}
+	}
+
+	/* The shift NormaliseJunctionLayout applies: the minimum of the track and bridge offsets. */
+	int shift_x = 0;
+	int shift_y = 0;
+	auto normalise = [&]() {
+		int min_x = INT32_MAX;
+		int min_y = INT32_MAX;
+		for (const JunctionTrack &jt : fl.tracks) {
+			min_x = std::min<int>(min_x, jt.offset.x);
+			min_y = std::min<int>(min_y, jt.offset.y);
+		}
+		for (const JunctionBridge &bridge : fl.bridges) {
+			for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
+				min_x = std::min<int>(min_x, head.x);
+				min_y = std::min<int>(min_y, head.y);
+			}
+		}
+		if (min_x != INT32_MAX) {
+			shift_x += min_x;
+			shift_y += min_y;
+		}
+		NormaliseJunctionLayout(fl);
+	};
+	normalise();
+	PlaceJunctionSignals(fl, spec);
+	normalise();
+
+	if (terrain != nullptr) {
+		/* The prio rows exist only now; every track tile must be usable, in working coordinates. */
+		for (const JunctionTrack &jt : fl.tracks) {
+			if (jt.tracks.None()) continue;
+			if (!terrain->UsableAt(jt.offset.x + shift_x, jt.offset.y + shift_y, plane)) return std::nullopt;
+		}
+	}
+	if (hub_out != nullptr) *hub_out = {static_cast<int16_t>(hub_x - shift_x), static_cast<int16_t>(0 - shift_y)};
+	return fl;
+}
+
+/**
  * Build one generator candidate with a fixed lane gap: route the branch movements, double the mainline bridges, crop, and place signals.
  * @param spec The junction spec.
  * @param params The swept inputs.
@@ -441,90 +539,8 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
 	};
 	if (!route_movements(layout, true, {}, xI - 2, frame.width - 3, true, w_row, 2, -1)) return std::nullopt;
 
-	/* Crop, check the terrain, normalise and place signals; the common end of every candidate. */
-	auto finish = [&](JunctionLayout fl, Money *cost_out, TileIndexDiffC *hub_out) -> std::optional<JunctionLayout> {
-		/* Crop the E and W rows to the content. */
-		int min_x = INT32_MAX;
-		int max_x = INT32_MIN;
-		for (const JunctionTrack &jt : fl.tracks) {
-			const bool plain_row = (jt.offset.y == 0 || jt.offset.y == w_row) && jt.tracks == TrackBits{Track::X};
-			if (plain_row) continue;
-			min_x = std::min<int>(min_x, jt.offset.x);
-			max_x = std::max<int>(max_x, jt.offset.x);
-		}
-		for (const JunctionBridge &bridge : fl.bridges) {
-			for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
-				min_x = std::min<int>(min_x, head.x);
-				max_x = std::max<int>(max_x, head.x);
-			}
-		}
-		if (max_x < min_x) return std::nullopt;
-		std::erase_if(fl.tracks, [&](const JunctionTrack &jt) {
-			const bool plain_row = (jt.offset.y == 0 || jt.offset.y == w_row) && jt.tracks == TrackBits{Track::X};
-			return plain_row && (jt.offset.x < min_x - 2 || jt.offset.x > max_x + 2);
-		});
-
-		if (terrain != nullptr) {
-			const int plane = params.plane;
-			std::set<std::pair<int, int>> occupied;
-			for (const JunctionTrack &jt : fl.tracks) {
-				if (jt.tracks.None()) continue;
-				if (!terrain->UsableAt(jt.offset.x, jt.offset.y, plane)) return std::nullopt;
-				occupied.insert({jt.offset.x, jt.offset.y});
-			}
-			for (const JunctionBridge &bridge : fl.bridges) {
-				for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
-					if (!terrain->UsableAt(head.x, head.y, plane)) return std::nullopt;
-					occupied.insert({head.x, head.y});
-				}
-				const int dx = (bridge.end.x > bridge.start.x) - (bridge.end.x < bridge.start.x);
-				const int dy = (bridge.end.y > bridge.start.y) - (bridge.end.y < bridge.start.y);
-				for (int x = bridge.start.x + dx, y = bridge.start.y + dy; x != bridge.end.x || y != bridge.end.y; x += dx, y += dy) {
-					if (!terrain->SpanOk(x, y, plane)) return std::nullopt;
-				}
-			}
-			if (cost_out != nullptr) {
-				Money cost = 0;
-				for (const auto &[x, y] : occupied) cost += terrain->CostAt(x, y, plane);
-				*cost_out = cost;
-			}
-		}
-
-		/* The shift NormaliseJunctionLayout applies: the minimum of the track and bridge offsets. */
-		int shift_x = 0;
-		int shift_y = 0;
-		auto normalise = [&]() {
-			int min_x = INT32_MAX;
-			int min_y = INT32_MAX;
-			for (const JunctionTrack &jt : fl.tracks) {
-				min_x = std::min<int>(min_x, jt.offset.x);
-				min_y = std::min<int>(min_y, jt.offset.y);
-			}
-			for (const JunctionBridge &bridge : fl.bridges) {
-				for (const TileIndexDiffC &head : {bridge.start, bridge.end}) {
-					min_x = std::min<int>(min_x, head.x);
-					min_y = std::min<int>(min_y, head.y);
-				}
-			}
-			if (min_x != INT32_MAX) {
-				shift_x += min_x;
-				shift_y += min_y;
-			}
-			NormaliseJunctionLayout(fl);
-		};
-		normalise();
-		PlaceJunctionSignals(fl, spec);
-		normalise();
-
-		if (terrain != nullptr) {
-			/* The prio rows exist only now; every track tile must be usable, in working coordinates. */
-			for (const JunctionTrack &jt : fl.tracks) {
-				if (jt.tracks.None()) continue;
-				if (!terrain->UsableAt(jt.offset.x + shift_x, jt.offset.y + shift_y, params.plane)) return std::nullopt;
-			}
-		}
-		if (hub_out != nullptr) *hub_out = {static_cast<int16_t>(frame.hub_x - shift_x), static_cast<int16_t>(0 - shift_y)};
-		return fl;
+	auto finish = [&](JunctionLayout fl, Money *cost_out, TileIndexDiffC *hub_out) {
+		return FinishJunctionCandidate(std::move(fl), spec, terrain, params.plane, w_row, frame.hub_x, cost_out, hub_out);
 	};
 
 	if (!zone.empty() && params.lane_style == 1) {
@@ -748,6 +764,209 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	std::optional<JunctionLayout> single = attempt(6);
 	if (out_clean != nullptr) *out_clean = clean;
 	return single;
+}
+
+uint8_t JunctionEWindowPhase(int prio_tiles)
+{
+	return (prio_tiles >= 5 && prio_tiles % 2 == 1) ? 1 : 0;
+}
+
+JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain)
+{
+	const auto time_start = std::chrono::steady_clock::now();
+	JunctionTMapResult result;
+	result.e_phase = JunctionEWindowPhase(spec.prio_tiles);
+
+	const JunctionFrame frame = MakeJunctionFrame(spec);
+	const int g = spec.ml_gap;
+	const int xI = frame.hub_x;
+	const int xO = xI + spec.branch_gap + 1;
+	const int w_row = g + 1;
+	const int b_row = g + 2;
+	const int first = g + 5;
+	constexpr int STUB = 2;
+	auto tile = [](int x, int y) { return TileIndexDiffC{static_cast<int16_t>(x), static_cast<int16_t>(y)}; };
+	JunctionRouteCache route_cache;
+
+	for (int height = first; height <= first + 8; height++) {
+		result.heights_tried++;
+		const int yb = height - 1;
+		auto say = [&](const std::string &text) { result.log += fmt::format("height {}: {}\n", height, text); };
+
+		JunctionRouteRequest base{};
+		base.min = tile(1, 0);
+		base.max = tile(xO + frame.reach_east, yb);
+		base.max_expansions = 50000 * frame.width / 64;
+		base.curve_spacing = spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1;
+		base.s_bend_window = 2u * spec.tl;
+		base.bridge_span_ok = spec.bridge_span_ok;
+		base.max_bridge_middle = 10;
+		base.prices = spec.prices;
+		base.crossable_cost = 0;
+		base.turn_cost = spec.prices.rail_piece / 2;
+		base.terrain = terrain;
+		base.plane = 0;
+
+		const int ys = yb - STUB;
+		const JunctionRouteEnd goal_s{tile(xO, ys), Trackdir::Y_SE};
+		const JunctionRouteEnd start_n{tile(xI, ys), Trackdir::Y_NW};
+		auto base_layout = [&](JunctionLayout &layout) {
+			AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(0, 0), Trackdir::X_SW, frame.width - 1)));
+			AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xO, ys), Trackdir::Y_SE, STUB)));
+			AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xI, yb), Trackdir::Y_NW, STUB)));
+		};
+		auto stub_pieces = [&](int x, Trackdir td, int first_y) {
+			std::vector<JunctionRouteEnd> ends;
+			for (int y = first_y; y < yb; y++) ends.push_back({tile(x, y), td});
+			return ends;
+		};
+		if (yb < g + 4) {
+			say("frame too short");
+			continue;
+		}
+
+		/* A->S and N->A: final routes; B's row is crossable at cost 0 because B goes over (D156). */
+		JunctionLayout pass1;
+		base_layout(pass1);
+		AddRasterToLayout(pass1, RasterizeJunctionRoute(StraightRoute(tile(frame.width - 1, w_row), Trackdir::X_NE, frame.width - 1)));
+		std::vector<TileIndexDiffC> w_tiles;
+		for (int x = 0; x <= frame.width - 1; x++) w_tiles.push_back(tile(x, w_row));
+		std::vector<TileIndexDiffC> column_fence;
+		for (int y = 0; y <= g + 3; y++) column_fence.push_back(tile(xI, y));
+		column_fence.push_back(tile(xI, ys - 1));
+		column_fence.push_back(tile(xI, ys - 2));
+
+		JunctionRouteRequest request = base;
+		request.crossable = w_tiles;
+		for (int x = 2; x <= xI - 2; x++) {
+			if (TracksAt(pass1, x, 0) == TrackBits{Track::X}) request.starts.push_back({tile(x, 0), Trackdir::X_SW});
+		}
+		request.goals = {goal_s};
+		const std::optional<JunctionRaster> a_to_s = RouteFencedAndAdd(pass1, request, column_fence, &route_cache);
+		if (!a_to_s.has_value()) {
+			say("A->S failed");
+			continue;
+		}
+
+		request = base;
+		request.crossable = w_tiles;
+		request.starts = {start_n};
+		const int x_s = a_to_s->pieces.front().tile.x;
+		request.goals = PlainRowPieces(pass1, 0, Trackdir::X_SW, std::max(xO, x_s + static_cast<int>(spec.prio_tiles) + JUNCTION_E_PRIO_AFTER_SPLIT + result.e_phase), frame.width - 3);
+		const std::optional<JunctionRaster> n_to_a = RouteAndAdd(pass1, request, &route_cache);
+		if (!n_to_a.has_value()) {
+			say("N->A failed");
+			continue;
+		}
+
+		/* The crossing set, and the skeleton from it. */
+		std::vector<int> zone;
+		std::vector<int> zone_b;
+		for (const JunctionRaster *raster : {&*a_to_s, &*n_to_a}) {
+			for (const JunctionPiece &piece : raster->pieces) {
+				if (piece.tile.y == w_row) zone.push_back(piece.tile.x);
+				if (piece.tile.y == b_row) zone_b.push_back(piece.tile.x);
+			}
+		}
+		if (zone.empty()) {
+			say("no crossing of the W row");
+			continue;
+		}
+		JunctionSkeletonInputs in{};
+		in.zmin[0] = *std::ranges::min_element(zone);
+		in.zmax[0] = *std::ranges::max_element(zone);
+		in.zmin[1] = zone_b.empty() ? in.zmin[0] : *std::ranges::min_element(zone_b);
+		in.zmax[1] = zone_b.empty() ? in.zmax[0] : *std::ranges::max_element(zone_b);
+		in.nmax = 0;
+		for (int n = 10; n >= 1 && in.nmax == 0; n--) {
+			if (spec.bridge_span_ok(n)) in.nmax = n;
+		}
+		if (in.nmax == 0) {
+			say("no bridge span is ok");
+			continue;
+		}
+		in.cover = spec.prio_tiles;
+		in.x_cap = xI - 2;
+		in.shift_back = true;
+		in.k_w = JUNCTION_PRIO_AFTER_MERGE;
+		in.k_sb = JUNCTION_SHIFT_BACK_TILES;
+		in.x_sb_min = 2;
+
+		std::optional<JunctionSkeletonW> chosen;
+		int chosen_stagger = 0;
+		for (int stagger = 0; stagger <= 1; stagger++) {
+			in.stagger = stagger;
+			const JunctionSkeletonW pos = SolveJunctionSkeletonW(in);
+			if (!pos.conflict.empty() || pos.x_ls <= 0) continue;
+			if (std::min(pos.x_hw[0], pos.x_hw[1]) < 0 || std::max(pos.x_he[0], pos.x_he[1]) + 1 > frame.width - 1) continue;
+			if (!spec.bridge_span_ok(pos.x_he[0] - pos.x_hw[0] - 1) || !spec.bridge_span_ok(pos.x_he[1] - pos.x_hw[1] - 1)) continue;
+			/* The smaller bridge span wins; stagger 1 wins a tie. */
+			if (!chosen.has_value() || pos.x_he[0] - pos.x_hw[0] <= chosen->x_he[0] - chosen->x_hw[0]) {
+				chosen = pos;
+				chosen_stagger = stagger;
+			}
+		}
+		if (!chosen.has_value()) {
+			say("no valid skeleton for either stagger");
+			continue;
+		}
+		const JunctionSkeletonW pos = *chosen;
+		std::string error;
+		const auto lanes = BuildParallelogramLanes(pos, frame.width, w_row, b_row, &error);
+		if (!lanes.has_value()) {
+			say(fmt::format("lanes: {}", error));
+			continue;
+		}
+
+		/* The doubled lanes, then B->S and N->B. */
+		JunctionLayout fixed;
+		base_layout(fixed);
+		AddRasterToLayout(fixed, *a_to_s);
+		AddRasterToLayout(fixed, *n_to_a);
+		AddRasterToLayout(fixed, lanes->first);
+		AddRasterToLayout(fixed, lanes->second);
+		std::vector<TileIndexDiffC> branch_fence;
+		for (int l = 0; l < 2; l++) {
+			for (int x = pos.x_hw[l] + 1; x < pos.x_he[l]; x++) branch_fence.push_back(tile(x, l == 0 ? w_row : b_row));
+		}
+		for (int y = 1; y < w_row; y++) for (int x = 0; x <= frame.width - 1; x++) branch_fence.push_back(tile(x, y));
+
+		const int sl_x = pos.x_sl + 1;
+		request = base;
+		request.starts = PlainRowPieces(fixed, w_row, Trackdir::X_NE, sl_x, sl_x);
+		if (sl_x < xO + 2 || request.starts.empty()) {
+			say("B->S has no start");
+			continue;
+		}
+		request.goals = stub_pieces(xO, Trackdir::Y_SE, ys);
+		if (!RouteFencedAndAdd(fixed, request, branch_fence, &route_cache).has_value()) {
+			say("B->S failed");
+			continue;
+		}
+		request = base;
+		request.starts = stub_pieces(xI, Trackdir::Y_NW, ys + 1);
+		request.goals = PlainRowPieces(fixed, b_row, Trackdir::X_NE, pos.x_sb + 1, pos.x_nw);
+		if (!RouteFencedAndAdd(fixed, request, branch_fence, &route_cache).has_value()) {
+			say("N->B failed");
+			continue;
+		}
+
+		std::optional<JunctionLayout> built = FinishJunctionCandidate(std::move(fixed), spec, terrain, 0, w_row, frame.hub_x, nullptr, nullptr);
+		if (!built.has_value()) {
+			say("finish failed");
+			continue;
+		}
+		say("built");
+		result.height = height;
+		result.stagger = static_cast<uint8_t>(chosen_stagger);
+		result.layouts_built++;
+		result.clean = JunctionRulesClean(*built, spec);
+		if (!result.clean) result.violations = CheckJunctionRules(*built, spec);
+		result.layout = std::move(built);
+		break;
+	}
+	result.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
+	return result;
 }
 
 /** The number of middle tiles of a bridge. */

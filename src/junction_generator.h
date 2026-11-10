@@ -16,8 +16,10 @@
 #include "junction_train_model.h"
 #include "signal_type.h"
 
+#include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -150,5 +152,27 @@ struct JunctionLibraryFit {
  * @return The best fit, or std::nullopt when nothing fits (also when the spec gives NeedsMlGap, i.e. an empty library).
  */
 std::optional<JunctionLibraryFit> FitJunctionLibrary(const std::vector<JunctionLibraryEntry> &library, const JunctionTerrain &terrain);
+
+struct RuleViolation;
+
+/** The constructed map of a T (DESIGN-O4 "G1"): the decisions taken and what they fixed. */
+struct JunctionTMapResult {
+	std::optional<JunctionLayout> layout; ///< Finished (cropped, signalled) when built; set even when not rule-clean.
+	bool clean = false; ///< JunctionRulesClean on the layout, run once.
+	std::vector<RuleViolation> violations; ///< CheckJunctionRules when not clean.
+	int height = 0; ///< The height that routed.
+	int heights_tried = 0;
+	int layouts_built = 0; ///< Must equal the number of heights at which every edge routed (at most 1 with the current rule).
+	uint8_t stagger = 0; ///< D118, chosen by the smaller bridge span.
+	uint8_t e_phase = 0; ///< D148a.
+	int64_t micros = 0;
+	std::string log; ///< One line per height tried: which edge failed, or "built".
+};
+
+/** Construct the T's map from the rules and build it once (DESIGN-O4 "G1"). */
+JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain = nullptr);
+
+/** D148a: the E-side window phase. 1 when prio_tiles is odd and at least 5, else 0. */
+uint8_t JunctionEWindowPhase(int prio_tiles);
 
 #endif /* JUNCTION_GENERATOR_H */
