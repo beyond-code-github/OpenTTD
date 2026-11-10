@@ -1,3 +1,11 @@
+## RESUME HERE (2026-11-11 day): queue running
+- G4 (T map in the in-game tool; D177 plane = hub tile's ground height) running in .claude/g4 (brief briefs/G4-tmap-in-game.md). On merge: rebuild the play binary (.claude/play/build-play) for the engineer.
+- G5 (tunnels: JunctionUnitPrices::tunnel, JunctionTunnelPrice, spec.max_tunnel_length, route_line passes tunnel_price) running in .claude/g5 (brief briefs/G5-tmap-tunnels.md).
+- Step 3 (failed heights) being designed. Probe (Release, field of obstacles): the failed heights 13 and 14 are NOT failed searches: A->S routes there (44759 and 55719 expansions, cost 6000/6100, a staircase round the field) and the D172 width check then rejects it; at 15 A->S takes 120 expansions (cost 2100). So option (a) (edge minimums) would not help this case; the cost is A->S searching unbounded at heights where its crossing cannot fit.
+- Probe detail: at 13/14 A->S goes (34,0) down to row 9, east to x 48, back UP to row 1 at x 44-50, then down column 42 to (42,10): it crosses B's rows (W 2, b 3) three times, lo 36 hi 50 > D 7. The map says A->S crosses X_B once; the line router sees no W row, so it may re-cross. Options (not decided): (i) A->S may not re-cross X_B (needs router state or a goal-row window, option b); (ii) S port row as a goal window for A->S (option b; the column fence rows relative to ys are the open part). The field is synthetic; real ridges built at the first height (15 ms). Deferred behind G4b.
+- G4b (next, after G4 merges): the main-line row and W row checked only where the cropped layout has track (today all 64 frame columns are checked, so a hill far west of the junction blocks it). Brief briefs/G4b-fixed-check-after-crop.md.
+- build-rel PCH was stale (system header mtime changed); rebuilt.
+
 ## RESUME HERE (2026-11-11): parked by the engineer after the ridge demo ("Great work!")
 State: feature/junction-tool pushed to fork; no agents running; worktrees left: crash, o4b2, o4c2, play, prof (old, unused).
 Done tonight: G3a (line-router T from the flat height, 39/14 ms Release, identical to the T the engineer called "perfect"), G3b (obstacles), G3c0 (box grows within the snapshot, D172 window on the line router, last row blocked), G3c (ridge by ramps, 15 ms), LP9, P1/P2, tools/junction/jt + TESTS.md (tag budgets).
