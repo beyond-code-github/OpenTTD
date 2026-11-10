@@ -1002,11 +1002,11 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 	}
 
 	/*
-	 * D177: "the T map's plane is the ground height (z_max) of the hub tile, working (hub_x, 0), when that tile is Buildable and not steep; otherwise no layout."
-	 * Without a terrain everything stays at plane 0.
+	 * On the old-router path the T map's plane is the ground height (z_max) of the hub tile, working (hub_x, 0), when that tile is Buildable and not steep; otherwise no layout (D177).
+	 * The line-router path has no plane: every start's height is derived from its tile (PH1), the hub tile being a tile of A like any other.
 	 */
 	int plane = 0;
-	if (terrain != nullptr) {
+	if (terrain != nullptr && !line_router) {
 		const JunctionTerrainTile *hub_tile = terrain->At(xI, 0);
 		if (hub_tile == nullptr || hub_tile->cls != JunctionTileClass::Buildable || hub_tile->steep) {
 			result.log += "hub tile not buildable\n";
@@ -1018,13 +1018,19 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 
 	/*
 	 * D179: "Before any routing, every port's approach (the port tile plus the straight pieces the rules require before it, D115a) must be usable at the ground height there;
-	 * a failure returns at once with the blocked port and tile; the tool says to move the cursor." Every port is checked at D177's hub plane here;
-	 * a port at its own ground height is a later step.
+	 * a failure returns at once with the blocked port and tile; the tool says to move the cursor." PH1: each approach tile is checked at the height its straight piece along row 0
+	 * starts at, mirroring the line router's derivation: z_max for a flat or foundation tile, and an incline along the row (a ramp) is usable.
 	 */
+	auto approach_usable = [&](int x) {
+		const JunctionTerrainTile *t = terrain->At(x, 0);
+		if (t == nullptr) return false;
+		if (t->incline == DiagDirection::NE || t->incline == DiagDirection::SW) return t->cls == JunctionTileClass::Buildable && !t->steep;
+		return terrain->UsableAt(x, 0, t->z_max);
+	};
 	auto ports_blocked = [&] {
 		if (!line_router || terrain == nullptr) return false;
 		for (const int x : {x_w, x_w + 1, x_w + STUB, x_e - STUB, x_e - 1, x_e}) {
-			if (terrain->UsableAt(x, 0, plane)) continue;
+			if (approach_usable(x)) continue;
 			result.log += fmt::format("port approach blocked at {},0\n", x);
 			result.port_blocked = true;
 			result.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
@@ -1063,7 +1069,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		base.crossable_cost = 0;
 		base.turn_cost = spec.prices.rail_piece / 2;
 		base.terrain = terrain;
-		base.plane = plane;
+		base.plane = line_router ? 0 : plane; // Without a terrain only; with one the line router derives every start's height (PH1).
 
 		const int ys = yb - STUB;
 		const JunctionRouteEnd goal_s{tile(xO, ys), Trackdir::Y_SE};
@@ -1477,7 +1483,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		const auto finish_start = Clock::now();
 		/*
 		 * No terrain here: the line router has already checked every routed piece against the terrain (heights, ramps, foundations), and the fixed parts
-		 * are checked at the hub's plane (D177) before routing (G3b). FinishJunctionCandidate's flat-plane test would reject every ramp.
+		 * are checked before routing (G3b). FinishJunctionCandidate's flat-plane test would reject every ramp.
 		 */
 		std::optional<JunctionLayout> built = FinishJunctionCandidate(std::move(fixed), spec, nullptr, 0, w_row, frame.hub_x, nullptr, &result.hub);
 		result.micros_finish += since(finish_start);

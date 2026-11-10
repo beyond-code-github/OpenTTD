@@ -55,7 +55,7 @@ struct JunctionLineRouteRequest {
 	TileIndexDiffC max;
 	std::vector<TileIndexDiffC> blocked; ///< Tiles no track or bridge may use.
 	const JunctionTerrain *terrain = nullptr; ///< When set, every piece's tile must be usable at plane, and its CostAt is paid once per tile (D147).
-	int plane = 0; ///< Track 0's start height; every track starts at it (D152).
+	int plane = 0; ///< Track 0's start height without a terrain; with a terrain each start's height is derived from its tile (PH1).
 	const JunctionLayout *existing = nullptr; ///< When set, its tracks and bridge heads are obstacles (D147).
 	uint curve_spacing = 0; ///< As JunctionRouteRequest: half-units of straight run needed before a turn.
 	uint s_bend_window = 0; ///< As JunctionRouteRequest.

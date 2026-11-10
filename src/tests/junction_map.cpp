@@ -365,7 +365,7 @@ static int FlatWestPortX(const JunctionTMapResult &flat)
 	return MakeJunctionFrame(MakeTestJunctionSpec()).hub_x - flat.hub.x;
 }
 
-TEST_CASE("an obstacle on the main line outside the junction is ignored", "[junction][projection]")
+TEST_CASE("an obstacle on the main line outside the junction is ignored", "[junction][projectionedges]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTMapResult &flat = SharedFlatT();
@@ -394,7 +394,7 @@ static void LimitMapTestRows(JunctionTerrain &terrain, int rows)
 	terrain.tiles.resize(static_cast<size_t>(terrain.width) * terrain.height);
 }
 
-TEST_CASE("a house on B's main line outside the junction is ignored", "[junction][projection]")
+TEST_CASE("a house on B's main line outside the junction is ignored", "[junction][projectionedges]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTMapResult &flat = SharedFlatT();
@@ -409,7 +409,7 @@ TEST_CASE("a house on B's main line outside the junction is ignored", "[junction
 	CheckSameLayout(*result.layout, *flat.layout);
 }
 
-TEST_CASE("a house on B's lane inside the junction is reported by B", "[junction][projection]")
+TEST_CASE("a house on B's lane inside the junction is reported by B", "[junction][projectionedges]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTMapResult &flat = SharedFlatT();
@@ -453,7 +453,7 @@ TEST_CASE("a house on B's lane inside the junction is reported by B", "[junction
 	CHECK(failed_heights > 0);
 }
 
-TEST_CASE("a house under B's doubled bridge is reported", "[junction][projection]")
+TEST_CASE("a house under B's doubled bridge is reported", "[junction][projectionedges]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTMapResult &flat = SharedFlatT();
@@ -486,7 +486,7 @@ TEST_CASE("a house under B's doubled bridge is reported", "[junction][projection
 	}
 }
 
-TEST_CASE("a slope under B's straight stretch is ramped or reported", "[junction][projection]")
+TEST_CASE("a slope under B's straight stretch is ramped or reported", "[junction][projectionedges]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTMapResult &flat = SharedFlatT();
@@ -511,7 +511,7 @@ TEST_CASE("a slope under B's straight stretch is ramped or reported", "[junction
 	}
 }
 
-TEST_CASE("a blocked port approach is reported at once", "[junction][projection]")
+TEST_CASE("a blocked port approach is reported at once", "[junction][projectionedges]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTMapResult &flat = SharedFlatT();
@@ -531,7 +531,7 @@ TEST_CASE("a blocked port approach is reported at once", "[junction][projection]
 }
 
 /* [slow] until the growth stop: today it tries every height to the snapshot's end (33 heights, about 8 s Release); the growth stop (grow only when the box, not the terrain, stopped the search, DESIGN-O4) must make it fail at the first height and drop [slow]. */
-TEST_CASE("an obstacle on the main line beside the hub gives no layout", "[junction][projection][slow]")
+TEST_CASE("an obstacle on the main line beside the hub gives no layout", "[junction][projectionedges][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTMapResult &flat = SharedFlatT();
@@ -606,7 +606,7 @@ static int SPortEdgeX(const JunctionSpec &spec)
 	return MakeJunctionFrame(spec).hub_x + spec.branch_gap + 1;
 }
 
-TEST_CASE("a house on the S port edge grows the box", "[junction][projection]")
+TEST_CASE("a house on the S port edge grows the box", "[junction][projectionedges]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTMapResult &flat = SharedFlatT();
@@ -634,7 +634,7 @@ TEST_CASE("a house on the S port edge grows the box", "[junction][projection]")
 	CHECK(found);
 }
 
-TEST_CASE("a slope under the S port edge is ramped", "[junction][projection]")
+TEST_CASE("a slope under the S port edge is ramped", "[junction][projectionedges]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTMapResult &flat = SharedFlatT();
@@ -913,14 +913,16 @@ TEST_CASE("the T map builds at the hub's ground height", "[junction][projection]
 	}
 }
 
-TEST_CASE("an unbuildable hub tile gives no layout", "[junction][projection]")
+TEST_CASE("an unbuildable hub tile gives no layout", "[junction][projectionedges]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	JunctionTerrain terrain = MakeMapTestTerrain(spec);
 	BlockMapTestTile(terrain, MakeJunctionFrame(spec).hub_x, 0);
-	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, std::nullopt, true);
+	/* PH1: the hub tile is a tile of A like any other, so A's routing fails on it (no "hub tile not buildable" return any more); the rows are limited to keep the failing search short. */
+	LimitMapTestRows(terrain, SharedFlatT().height + 3);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, SharedFlatT().height, true);
+	INFO(result.log);
 	CHECK(!result.layout.has_value());
-	CHECK(result.log.find("hub tile not buildable") != std::string::npos);
 }
 
 TEST_CASE("the T map reports the hub offset", "[junction][projection]")
@@ -930,4 +932,47 @@ TEST_CASE("the T map reports the hub offset", "[junction][projection]")
 	const JunctionTMapResult &flat = SharedFlatT();
 	CHECK(flat.hub.x == generated.hub.x);
 	CHECK(flat.hub.y == generated.hub.y);
+}
+
+// Known limit (PH1c): the lanes' and merges' positions come from the flat T's skeleton, so a ramp inside the junction's footprint has nowhere to go; needs node windows instead of fixed positions. [slow]: tries every height (no growth stop for rule-caused failures).
+TEST_CASE("a height change inside the junction's W end is not built yet", "[junction][projectionedges][slow]")
+{
+	constexpr int STUB = 2;
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const int x_w = FlatWestPortX(flat);
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	terrain.build_on_slopes = true;
+	for (int y = terrain.origin.y; y < terrain.origin.y + terrain.height; y++) {
+		for (int x = terrain.origin.x; x <= x_w + STUB + 3; x++) {
+			JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)];
+			if (x <= x_w + STUB + 2) {
+				tile.z_min = tile.z_max = 1;
+			} else {
+				tile.z_min = 0;
+				tile.z_max = 1;
+				tile.incline = DiagDirection::NE;
+			}
+		}
+	}
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO(result.log);
+	CHECK(!result.layout.has_value());
+	CHECK(result.log.find("N->B failed") != std::string::npos);
+	CHECK(result.log.find("port approach") == std::string::npos);
+}
+
+TEST_CASE("the hub on a slope", "[junction][projectionedges]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	terrain.build_on_slopes = true;
+	for (JunctionTerrainTile &tile : terrain.tiles) tile.z_min = tile.z_max = 1;
+	const int xI = MakeJunctionFrame(spec).hub_x;
+	terrain.tiles[static_cast<size_t>(0 - terrain.origin.y) * terrain.width + (xI - terrain.origin.x)].z_min = 0;
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, std::nullopt, true);
+	INFO(result.log);
+	REQUIRE(result.layout.has_value());
+	CHECK(result.clean);
 }
