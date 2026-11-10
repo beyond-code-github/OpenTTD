@@ -12,6 +12,7 @@ type=$(grep -m1 '^CMAKE_BUILD_TYPE' "$build/CMakeCache.txt" 2>/dev/null | cut -d
 case "$mode" in
 	fast)
 		tag=${3:?tag}; budget=${4:-5}
+		case "$tag" in \[*\]) ;; *) echo "jt: tag must be in brackets, e.g. '[projection]' (got '$tag')" >&2; exit 2;; esac
 		filter="${tag}~[slow]~[.]"
 		name=$(echo "$tag" | tr -c 'a-zA-Z0-9' '_')
 		;;
@@ -30,5 +31,6 @@ grep -E '^[0-9]+\.[0-9]+ s: ' "$log" | awk -F' s: ' '$1 >= 1.0' | sort -rn | hea
 grep -E '(^|: )FAILED|error:' "$log" | head -20
 tail -3 "$log" | grep -E 'test cases|All tests passed'
 printf 'jt %s %s (%s): %d.%03d s, budget %s s\n' "$mode" "$filter" "${type:-?}" $((ms / 1000)) $((ms % 1000)) "$budget"
+if grep -q 'No tests ran' "$log"; then echo "jt: NO TESTS RAN for $filter (a tag typo is not a pass)"; exit 4; fi
 if [ "$rc" = 124 ] || [ "$rc" = 130 ] || [ "$ms" -gt $((budget * 1000)) ]; then echo "jt: OVER BUDGET (stop condition)"; exit 3; fi
 exit $rc
