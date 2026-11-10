@@ -184,10 +184,55 @@ TEST_CASE("line router results are unchanged by the speed work", "[linerouter]")
 		"RFFFFFRFFFLFR 1600 55\n"
 		"RFFFFFFFRFFLFFFFFR 2100 236\n"},
 	};
+	/* D173: the line router starts at the flat map's height, so its trace is the tail of the old one: the lines of the built height. */
+	constexpr size_t BUILT_HEIGHT_LINES = 4; ///< A->S, N->A, B->S, N->B.
 	for (const auto &[name, trace] : expected) {
+		size_t cut = trace.size();
+		for (size_t i = 0; i < BUILT_HEIGHT_LINES; i++) cut = trace.rfind('\n', cut - 2) + 1;
 		for (const auto &[spec_name, spec] : MapSpecs()) {
 			if (spec_name != name) continue;
-			CHECK(ConstructJunctionTMap(spec, nullptr, std::nullopt, true).line_router_trace == trace);
+			CHECK(ConstructJunctionTMap(spec, nullptr, std::nullopt, true).line_router_trace == trace.substr(cut));
+		}
+	}
+}
+
+TEST_CASE("the line-router T starts at the flat height", "[junctionmap]")
+{
+	for (const auto &[name, spec] : MapSpecs()) {
+		const JunctionTMapResult old = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
+		const JunctionTMapResult line = ConstructJunctionTMap(spec, nullptr, std::nullopt, true);
+		REQUIRE(old.layout.has_value());
+		REQUIRE(line.layout.has_value());
+		INFO("spec " << name);
+		CHECK(line.heights_tried == 1);
+		CHECK(line.height == old.height);
+		CHECK(line.clean);
+		CHECK(line.micros_flat > 0);
+		CHECK(line.micros_flat <= line.micros);
+		CHECK(old.micros_flat == 0);
+		const JunctionLayout &a = *line.layout;
+		const JunctionLayout &b = *old.layout;
+		REQUIRE(a.tracks.size() == b.tracks.size());
+		for (size_t i = 0; i < a.tracks.size(); i++) {
+			CHECK(a.tracks[i].offset.x == b.tracks[i].offset.x);
+			CHECK(a.tracks[i].offset.y == b.tracks[i].offset.y);
+			CHECK(a.tracks[i].tracks == b.tracks[i].tracks);
+		}
+		REQUIRE(a.bridges.size() == b.bridges.size());
+		for (size_t i = 0; i < a.bridges.size(); i++) {
+			CHECK(a.bridges[i].start.x == b.bridges[i].start.x);
+			CHECK(a.bridges[i].start.y == b.bridges[i].start.y);
+			CHECK(a.bridges[i].end.x == b.bridges[i].end.x);
+			CHECK(a.bridges[i].end.y == b.bridges[i].end.y);
+			CHECK(a.bridges[i].tunnel == b.bridges[i].tunnel);
+		}
+		REQUIRE(a.signals.size() == b.signals.size());
+		for (size_t i = 0; i < a.signals.size(); i++) {
+			CHECK(a.signals[i].offset.x == b.signals[i].offset.x);
+			CHECK(a.signals[i].offset.y == b.signals[i].offset.y);
+			CHECK(a.signals[i].facing == b.signals[i].facing);
+			CHECK(a.signals[i].type == b.signals[i].type);
+			CHECK(a.signals[i].variant == b.signals[i].variant);
 		}
 	}
 }
@@ -199,7 +244,7 @@ TEST_CASE("BENCH the constructed T", "[junctionmap]")
 			const JunctionTMapResult result = ConstructJunctionTMap(spec, nullptr, std::nullopt, line_router);
 			REQUIRE(result.layout.has_value());
 			const JunctionCompactness compact = MeasureJunctionCompactness(*result.layout);
-			std::cout << "BENCH tmap router=" << (line_router ? "line" : "old") << " spec=" << name << " height=" << result.height << " micros=" << result.micros << " occupied=" << compact.occupied << " slivers=" << compact.slivers << " clean=" << (result.clean ? 1 : 0) << " route=" << result.micros_route << " skeleton=" << result.micros_skeleton << " finish=" << result.micros_finish << " check=" << result.micros_check << " heights=" << result.heights_tried << "\n";
+			std::cout << "BENCH tmap router=" << (line_router ? "line" : "old") << " spec=" << name << " height=" << result.height << " micros=" << result.micros << " occupied=" << compact.occupied << " slivers=" << compact.slivers << " clean=" << (result.clean ? 1 : 0) << " flat=" << result.micros_flat << " route=" << result.micros_route << " skeleton=" << result.micros_skeleton << " finish=" << result.micros_finish << " check=" << result.micros_check << " heights=" << result.heights_tried << "\n";
 		}
 	}
 }

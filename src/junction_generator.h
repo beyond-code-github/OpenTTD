@@ -166,6 +166,7 @@ struct JunctionTMapResult {
 	uint8_t stagger = 0; ///< D118, chosen by the smaller bridge span.
 	uint8_t e_phase = 0; ///< D148a.
 	int64_t micros = 0;
+	int64_t micros_flat = 0; ///< D173: the flat map that gives the line router its first height.
 	int64_t micros_route = 0; ///< All router calls, every height tried.
 	int64_t micros_skeleton = 0; ///< Crossing set, both skeleton solves, lanes.
 	int64_t micros_finish = 0; ///< FinishJunctionCandidate (crop, normalise, signal pass).
