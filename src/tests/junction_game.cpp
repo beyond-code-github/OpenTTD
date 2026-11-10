@@ -22,6 +22,7 @@
 #include "../timer/timer_game_calendar.h"
 
 #include <chrono>
+#include <iostream>
 
 #include "../safeguards.h"
 
@@ -239,6 +240,107 @@ TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working fram
 	CHECK(terrain.At(frame.hub_x, 0)->cls == JunctionTileClass::Buildable);
 	REQUIRE(terrain.At(0, 0) != nullptr);
 	CHECK(terrain.At(0, 0)->cls == JunctionTileClass::Blocked);
+}
+
+TEST_CASE("MakeJunctionTerrainRect: cells are map tiles", "[terrainrect]")
+{
+	Map::Allocate(128, 128);
+	const TileIndex raised_tile = TileXY(32, 46);
+	for (TileIndexDiffC d : {TileIndexDiffC{0, 0}, {1, 0}, {0, 1}, {1, 1}}) SetTileHeight(TileXY(TileX(raised_tile) + d.x, TileY(raised_tile) + d.y), 2);
+	const TileIndex one_corner_tile = TileXY(35, 48);
+	SetTileHeight(TileXY(36, 48), 1);
+	SetTileHeight(TileXY(38, 49), 2);
+
+	const auto start = std::chrono::steady_clock::now();
+	const JunctionTerrain terrain = MakeJunctionTerrainRect(TileXY(40, 50), TileXY(30, 45), 2);
+	const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+	CHECK(terrain.origin.x == 28);
+	CHECK(terrain.origin.y == 43);
+	CHECK(terrain.width == 15);
+	CHECK(terrain.height == 10);
+	CHECK(terrain.build_on_slopes == _settings_game.construction.build_on_slopes);
+	CHECK(terrain.max_bridge_height == _settings_game.construction.max_bridge_height);
+
+	const JunctionTerrainTile *raised = terrain.At(TileX(raised_tile), TileY(raised_tile));
+	REQUIRE(raised != nullptr);
+	CHECK(raised->z_min == 2);
+	CHECK(raised->z_max == 2);
+	CHECK(!raised->steep);
+
+	const JunctionTerrainTile *corner = terrain.At(TileX(one_corner_tile), TileY(one_corner_tile));
+	REQUIRE(corner != nullptr);
+	CHECK(corner->z_min == 0);
+	CHECK(corner->z_max == 1);
+	CHECK(!corner->steep);
+
+	const JunctionTerrainTile *steep = terrain.At(38, 49);
+	REQUIRE(steep != nullptr);
+	CHECK(steep->steep);
+	CHECK(steep->z_max == 2);
+
+	const JunctionTerrainTile *flat = terrain.At(30, 45);
+	REQUIRE(flat != nullptr);
+	CHECK(flat->z_min == 0);
+	CHECK(flat->z_max == 0);
+	CHECK(flat->cls == JunctionTileClass::Buildable);
+
+	/* Timing of a 64x64 snapshot. */
+	const auto bench_start = std::chrono::steady_clock::now();
+	const JunctionTerrain big = MakeJunctionTerrainRect(TileXY(10, 10), TileXY(73, 73), 0);
+	const auto bench_micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - bench_start).count();
+	CHECK(big.width == 64);
+	CHECK(big.height == 64);
+	std::cout << "BENCH terrainrect 64x64 micros=" << bench_micros << " (small rect micros=" << micros << ")\n";
+}
+
+TEST_CASE("MakeJunctionTerrainRect: agrees with MakeJunctionTerrain at rotation 0", "[terrainrect]")
+{
+	Map::Allocate(128, 128);
+	const JunctionFrame frame{};
+	/* Relies on OrientJunctionVector(v, 0, false) == v: no mirror, no quarter turns. Working cell (x, y) is then map tile (64 + x - hub_x, 64 + y). */
+	REQUIRE(OrientJunctionVector({7, -3}, 0, false).x == 7);
+	REQUIRE(OrientJunctionVector({7, -3}, 0, false).y == -3);
+	SetTileHeight(TileXY(60, 66), 2);
+	SetTileHeight(TileXY(70, 70), 1);
+
+	const JunctionTerrain snapshot = MakeJunctionTerrain(TileXY(64, 64), 0, false, frame);
+	const int x0 = 64 - frame.hub_x;
+	const JunctionTerrain rect = MakeJunctionTerrainRect(TileXY(x0, 64 + frame.terrain_origin_y), TileXY(x0 + frame.width - 1, 64 + frame.terrain_origin_y + frame.terrain_height - 1), 0);
+	CHECK(rect.foundation_cost == snapshot.foundation_cost);
+	CHECK(rect.build_on_slopes == snapshot.build_on_slopes);
+	CHECK(rect.max_bridge_height == snapshot.max_bridge_height);
+	int compared = 0;
+	for (int wy = snapshot.origin.y; wy < snapshot.origin.y + snapshot.height; wy++) {
+		for (int wx = snapshot.origin.x; wx < snapshot.origin.x + snapshot.width; wx++) {
+			const JunctionTerrainTile *a = snapshot.At(wx, wy);
+			const JunctionTerrainTile *b = rect.At(64 + wx - frame.hub_x, 64 + wy);
+			if (b == nullptr) continue;
+			REQUIRE(a != nullptr);
+			compared++;
+			CHECK(a->z_min == b->z_min);
+			CHECK(a->z_max == b->z_max);
+			CHECK(a->steep == b->steep);
+			CHECK(a->incline == b->incline);
+			CHECK(a->cls == b->cls);
+			CHECK(a->clear_cost == b->clear_cost);
+		}
+	}
+	CHECK(compared == frame.width * frame.terrain_height);
+}
+
+TEST_CASE("MakeJunctionTerrainRect: off-map cells are Blocked", "[terrainrect]")
+{
+	Map::Allocate(128, 128);
+	const JunctionTerrain terrain = MakeJunctionTerrainRect(TileXY(0, 0), TileXY(3, 3), 2);
+	CHECK(terrain.origin.x == -2);
+	CHECK(terrain.origin.y == -2);
+	REQUIRE(terrain.At(-1, -1) != nullptr);
+	CHECK(terrain.At(-1, -1)->cls == JunctionTileClass::Blocked);
+	REQUIRE(terrain.At(-2, 3) != nullptr);
+	CHECK(terrain.At(-2, 3)->cls == JunctionTileClass::Blocked);
+	REQUIRE(terrain.At(0, 0) != nullptr);
+	CHECK(terrain.At(0, 0)->cls == MakeJunctionTerrain(TileXY(1, 1), 0, false, JunctionFrame{}).At(JunctionFrame{}.hub_x, 0)->cls);
+	CHECK(terrain.At(0, 0)->cls == JunctionTileClass::Buildable);
 }
 
 /** A flat Buildable terrain at z0 with margin 4, in the frame of the sized test spec: origin and size as MakeJunctionTerrain gives. */

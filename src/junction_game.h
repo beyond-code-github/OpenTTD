@@ -56,6 +56,16 @@ std::pair<uint8_t, bool> JunctionPrioChoice(uint8_t choice, uint8_t tl, uint8_t 
 /** Snapshot the map around an anchor for the generator, in its working frame (D93): cell (cx, cy) is map tile anchor + OrientJunctionVector({cx - frame.hub_x, cy}, rotation, mirrored). */
 JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mirrored, const JunctionFrame &frame, int margin = 0);
 
+/**
+ * Snapshot a map-axis rectangle for the line painter (LP9): cell (x, y) is map tile TileXY(x, y), orientation rotation 0, not mirrored.
+ * The rectangle spans both corners (in any order) plus margin cells on every side; cells off the map are Blocked.
+ * @param a One corner tile.
+ * @param b The other corner tile.
+ * @param margin Extra cells on every side.
+ * @return The snapshot, origin at the rectangle's smallest map x and y (which may be negative).
+ */
+JunctionTerrain MakeJunctionTerrainRect(TileIndex a, TileIndex b, int margin);
+
 /** Result of a search for a fitting spot near the anchor. */
 struct JunctionNearResult {
 	JunctionGenerateResult result;
