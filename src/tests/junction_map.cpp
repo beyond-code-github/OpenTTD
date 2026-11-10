@@ -456,6 +456,56 @@ TEST_CASE("the ridge layout builds through the fake poster", "[junction][project
 	CHECK(poster.posted == expected);
 }
 
+TEST_CASE("a hill covered by a town is tunnelled", "[junction][projection]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const int ridge = spec.ml_gap + 2 + 6;
+	JunctionTerrain terrain = MakeRidgeTerrain(spec);
+	/* Houses on the hill: the two flat top rows are Blocked across the terrain's width. */
+	for (const int y : {ridge + 1, ridge + 2}) {
+		for (int x = terrain.origin.x; x < terrain.origin.x + terrain.width; x++) BlockMapTestTile(terrain, x, y);
+	}
+
+	/* Without a tunnel price the hill cannot be crossed: neither ramps nor bridges pass the town. */
+	const JunctionTMapResult untunnelled = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	std::cout << "TUNNEL unset built=" << (untunnelled.layout.has_value() ? 1 : 0) << "\n" << untunnelled.log;
+	CHECK_FALSE(untunnelled.layout.has_value());
+
+	spec.prices.tunnel = [](uint n) { return Money(600 + 300 * n); };
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO(result.log);
+	std::cout << "TUNNEL height=" << result.height << " heights=" << result.heights_tried << " built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << "\n" << result.log;
+	REQUIRE(result.layout.has_value());
+	CHECK(result.clean);
+	/* The layout is normalised: its rows are the frame's plus dy, which the doubled main-line bridges (on frame rows W = ml_gap + 1 and b = ml_gap + 2, the layout's horizontal bridges) give. */
+	int dy = std::numeric_limits<int>::max();
+	for (const JunctionBridge &bridge : result.layout->bridges) {
+		if (bridge.start.y == bridge.end.y) dy = std::min<int>(dy, bridge.start.y);
+	}
+	REQUIRE(dy != std::numeric_limits<int>::max());
+	dy -= spec.ml_gap + 1;
+	size_t tunnels = 0;
+	for (const JunctionBridge &bridge : result.layout->bridges) {
+		std::cout << "TUNNEL piece " << (bridge.tunnel ? "tunnel" : "bridge") << " " << bridge.start.x << "," << bridge.start.y << " -> " << bridge.end.x << "," << bridge.end.y << " z=" << static_cast<int>(bridge.z) << "\n";
+		const int lo = std::min(bridge.start.y, bridge.end.y) - dy;
+		const int hi = std::max(bridge.start.y, bridge.end.y) - dy;
+		if (bridge.tunnel) {
+			tunnels++;
+			CHECK(lo == ridge);
+			CHECK(hi == ridge + 3);
+		} else {
+			/* A bridge's middle tiles are those strictly between its heads (all on one row when it runs along x). */
+			const int first = lo == hi ? lo : lo + 1;
+			const int last = lo == hi ? lo : hi - 1;
+			const bool over_town = first <= ridge + 2 && last >= ridge + 1;
+			CHECK_FALSE(over_town);
+		}
+	}
+	CHECK(tunnels >= 1);
+}
+
 TEST_CASE("BENCH the ridge map", "[projection]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
@@ -465,6 +515,22 @@ TEST_CASE("BENCH the ridge map", "[projection]")
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
 	REQUIRE(result.layout.has_value());
 	std::cout << "BENCH tmap ridge height=" << result.height << " heights=" << result.heights_tried << " micros=" << result.micros << " flat=" << result.micros_flat << " route=" << result.micros_route << "\n";
+}
+
+TEST_CASE("BENCH the tunnelled hill map", "[projection]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.prices.tunnel = [](uint n) { return Money(600 + 300 * n); };
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const int ridge = spec.ml_gap + 2 + 6;
+	JunctionTerrain terrain = MakeRidgeTerrain(spec);
+	for (const int y : {ridge + 1, ridge + 2}) {
+		for (int x = terrain.origin.x; x < terrain.origin.x + terrain.width; x++) BlockMapTestTile(terrain, x, y);
+	}
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	REQUIRE(result.layout.has_value());
+	std::cout << "BENCH tmap tunnel height=" << result.height << " heights=" << result.heights_tried << " micros=" << result.micros << " flat=" << result.micros_flat << " route=" << result.micros_route << "\n";
 }
 
 TEST_CASE("BENCH the constructed T", "[junctionmap]")

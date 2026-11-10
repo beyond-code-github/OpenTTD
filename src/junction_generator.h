@@ -32,6 +32,7 @@ struct JunctionUnitPrices {
 	Money rail_piece;
 	Money signal;
 	std::function<Money(uint)> bridge; ///< By middle-tile count.
+	std::function<Money(uint)> tunnel; ///< One tunnel by middle-tile count, as CmdBuildTunnel charges it without clearing the portals; unset: no tunnels (D155).
 };
 
 /** Everything the generator needs; the game fills it (PLAN-1b §5.1). */
@@ -47,6 +48,7 @@ struct JunctionSpec {
 	SignalType signal_type; ///< Block or PathOneWay.
 	std::function<bool(uint)> bridge_span_ok; ///< By middle-tile count.
 	JunctionUnitPrices prices;
+	uint16_t max_tunnel_length = 64; ///< The game's max_tunnel_length, in middle tiles.
 	JunctionTrainParams train{}; ///< The loaded design train (D101, D137); required.
 	bool prio_strict = true; ///< Reject layouts whose prio timing delays the ML (D119); false only for tests that pin geometry at a fixed coverage, and for rig comparisons (D137).
 };

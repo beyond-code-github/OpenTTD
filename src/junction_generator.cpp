@@ -869,6 +869,11 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		line_request.bridge_span_ok = spec.bridge_span_ok;
 		line_request.bridge_price = spec.prices.bridge;
 		line_request.max_bridge_middle = base.max_bridge_middle;
+		if (spec.prices.tunnel) {
+			/* D175: towns and industries are passed around or under, so a priced tunnel lets the T map's edges go under hills; D174: these are branch (SL) lines, whose tunnels are single at basic throughput. */
+			line_request.tunnel_price = spec.prices.tunnel;
+			line_request.max_tunnel_length = spec.max_tunnel_length;
+		}
 		line_request.max_expansions = base.max_expansions;
 		if (w_row_heads_barred) {
 			/* A bridge head may not sit on the W row, which is the old router's crossable row (D156). */
