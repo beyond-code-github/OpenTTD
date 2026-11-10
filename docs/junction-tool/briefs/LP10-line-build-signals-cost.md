@@ -60,3 +60,7 @@ JunctionLineBuild BuildJunctionLine(const JunctionLineSpec &line, const Junction
 References read; commit; red evidence; types and members added; suite results with times; stops; `git status --porcelain`, `git log -1`.
 
 When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop on travel direction)
+- Travel direction is the caller's: add `const std::vector<bool> &along_route` as a parameter of `BuildJunctionLine` after `route` (one entry per track, true = the track travels in the route's heading). A size mismatch is an `error`. The default convention (which group goes which way, and whether it follows the driving side, D66) is an open question for the engineer, decided in LP11 where the UI calls this; LP10 does not choose it. Tests pass explicit values (L_R: {false, true} and {true, false} both tested in test 1).
+- `PlaceDragSignals` keeps `FillSignals`' exact rule, including no signal on the first or last piece of the walked pieces. Test 1's "first signal on the first piece" becomes "first signal on the first suitable piece after the first piece".
