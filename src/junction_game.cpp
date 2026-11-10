@@ -570,7 +570,34 @@ JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_
 		if (n < 1 || n > 10) return Money(std::numeric_limits<int64_t>::max() / 4);
 		return bridge_price[n];
 	};
+	spec.max_tunnel_length = _settings_game.construction.max_tunnel_length;
+	std::vector<Money> tunnel_price;
+	for (uint n = 0; n <= spec.max_tunnel_length; n++) tunnel_price.push_back(JunctionTunnelPrice(n, _price[Price::BuildTunnel], RailBuildCost(railtype)));
+	spec.prices.tunnel = [tunnel_price](uint n) {
+		if (n >= tunnel_price.size()) return Money(std::numeric_limits<int64_t>::max() / 4);
+		return tunnel_price[n];
+	};
 	return spec;
+}
+
+Money JunctionTunnelPrice(uint middle, Money build_tunnel, Money rail_piece)
+{
+	/* Mirrors CmdBuildTunnel (tunnelbridge_cmd.cpp), without the clearing of the portals. */
+	int tiles_coef = 3;
+	uint tiles_bump = 25;
+	Money cost = 0;
+	for (uint tiles = 1; tiles <= middle; tiles++) {
+		if (tiles == tiles_bump) {
+			tiles_coef++;
+			tiles_bump *= 2;
+		}
+		cost += build_tunnel;
+		cost += cost.base() >> tiles_coef;
+	}
+	/* The entrance, the exit, and the rail in the portals and the middle tiles. */
+	cost += build_tunnel;
+	cost += build_tunnel;
+	return cost + (middle + 2) * rail_piece;
 }
 
 /**

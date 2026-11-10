@@ -50,6 +50,15 @@ std::optional<JunctionPickedTrain> ReadJunctionTrain(const Vehicle *v);
 /** Fill a generator spec from the game: settings, rail type, prices and bridges, and the design train (D137); prio_tiles is left for the generator's sizing. */
 JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_gap, uint8_t tl, const JunctionTrainParams &train);
 
+/**
+ * CmdBuildTunnel's cost for a rail tunnel of middle middle tiles, without clearing the portals: the per-middle-tile loop (the tunnel price plus the shifted multiplier, with tiles_coef and tiles_bump as there), the entrance price, the exit price, and (middle + 2) rail pieces.
+ * @param middle Middle-tile count.
+ * @param build_tunnel _price[Price::BuildTunnel].
+ * @param rail_piece RailBuildCost of the rail type.
+ * @return The tunnel's cost.
+ */
+Money JunctionTunnelPrice(uint middle, Money build_tunnel, Money rail_piece);
+
 /** The coverage and strictness for a slider choice (D139). @param choice 0 = the maximum. @param tl Train length. @param sized The strict coverage from SizeJunctionPrio (> 0). @return {prio_tiles, prio_strict}. */
 std::pair<uint8_t, bool> JunctionPrioChoice(uint8_t choice, uint8_t tl, uint8_t sized);
 

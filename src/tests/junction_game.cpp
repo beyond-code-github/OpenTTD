@@ -115,6 +115,37 @@ TEST_CASE("MakeJunctionSpec: bridge closures are precomputed for 1..10 middle ti
 	_settings_game.construction.max_bridge_length = old_max_length;
 }
 
+TEST_CASE("JunctionTunnelPrice follows the tunnel command's cost", "[junction][tunnelprice]")
+{
+	/*
+	 * CmdBuildTunnel with build_tunnel = 1000 and rail = 100, tiles_coef 3 (4 from the 25th middle tile on), tiles_bump 25:
+	 * middle 0: no loop; the entrance 1000 and the exit 1000, and (0 + 2) * 100 rail = 200: 2200.
+	 * middle 1: the loop adds 1000, then 1000 >> 3 = 125: 1125; plus 2000 and (1 + 2) * 100 = 300: 3425.
+	 * Middle 25 is the first tile with tiles == tiles_bump, so its multiplier is >> 4.
+	 */
+	CHECK(JunctionTunnelPrice(0, Money(1000), Money(100)) == Money(2200));
+	CHECK(JunctionTunnelPrice(1, Money(1000), Money(100)) == Money(3425));
+	CHECK(JunctionTunnelPrice(2, Money(1000), Money(100)) == Money(4790));
+	CHECK(JunctionTunnelPrice(24, Money(1000), Money(100)) == Money(147557));
+	CHECK(JunctionTunnelPrice(25, Money(1000), Money(100)) == Money(157654));
+	CHECK(JunctionTunnelPrice(26, Money(1000), Money(100)) == Money(168376));
+}
+
+TEST_CASE("MakeJunctionSpec: the tunnel price and length come from the game", "[junction][tunnelprice]")
+{
+	const uint16_t old_max_tunnel = _settings_game.construction.max_tunnel_length;
+	_settings_game.construction.max_tunnel_length = 40;
+
+	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, 1, 1, 4, MakeTestJunctionSpec().train);
+	REQUIRE(static_cast<bool>(spec.prices.tunnel));
+	for (const uint n : {0u, 3u}) {
+		CHECK(spec.prices.tunnel(n) == JunctionTunnelPrice(n, _price[Price::BuildTunnel], RailBuildCost(RAILTYPE_RAIL)));
+	}
+	CHECK(spec.max_tunnel_length == _settings_game.construction.max_tunnel_length);
+
+	_settings_game.construction.max_tunnel_length = old_max_tunnel;
+}
+
 TEST_CASE("MakeJunctionSpec: a bridge slower than the design speed is still usable (D94)")
 {
 	const BridgeSpec old_bridge = _bridge[0];
