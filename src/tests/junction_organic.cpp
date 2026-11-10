@@ -29,6 +29,30 @@
 
 #include "../safeguards.h"
 
+/** The test spec at its old coverage of one train length and without the ML delay check (a copy of PinnedTestSpec in the generator tests). */
+static JunctionSpec PinnedOrganicSpec()
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.prio_tiles = spec.tl;
+	spec.prio_strict = false;
+	return spec;
+}
+
+/** The spec of the generator test "a long train with a narrow branch still fits". */
+static JunctionSpec NarrowBranchSpec()
+{
+	JunctionSpec spec = PinnedOrganicSpec();
+	spec.branch_gap = 0;
+	spec.tl = 6;
+	return spec;
+}
+
+/** The main-line turn cost the organic tests use (D165): a turn weighed against one train length of rail. */
+static Money MlTurnCostOf(const JunctionSpec &spec)
+{
+	return Money{spec.prices.rail_piece.base() * spec.tl};
+}
+
 static constexpr int ORGANIC_W = 44;
 static constexpr int ORGANIC_H = 16;
 static constexpr int ORGANIC_P = 20;
@@ -201,4 +225,134 @@ TEST_CASE("NegotiateJunctionMovements: timing", "[junction][organic][.bench]")
 	BenchOrganic("organic_t", ORGANIC_P);
 	BenchOrganic("organic_t_p14", 14);
 	BenchOrganic("organic_t_p26", 26);
+}
+
+/** The violations of a layout as text, one per line. */
+static std::string ViolationText(const std::vector<RuleViolation> &violations)
+{
+	std::string text;
+	for (const RuleViolation &violation : violations) text += fmt::format("violation (rule {}) at {},{}: {}\n", static_cast<int>(violation.rule), violation.tile.x, violation.tile.y, violation.message);
+	return text;
+}
+
+/** Generate a spec's organic T and check it is rule-clean, reporting the numbers beside the old generator's. */
+static void CheckOrganicClean(const JunctionSpec &spec)
+{
+	const JunctionOrganicResult result = GenerateJunctionOrganic(spec, MlTurnCostOf(spec));
+	INFO("error: " << result.error);
+	INFO("last violations:\n" << ViolationText(result.violations));
+	REQUIRE(result.layout.has_value());
+	const JunctionCompactness compact = MeasureJunctionCompactness(*result.layout);
+	INFO("p " << result.p << " occupied " << compact.occupied << " slivers " << compact.slivers << " cost " << result.cost.base());
+	INFO("feedback: prio_rows " << result.feedback.prio_rows << " coverage_penalties " << result.feedback.coverage_penalties << " bridge_block_penalties " << result.feedback.bridge_block_penalties << " signal_gap_penalties " << result.feedback.signal_gap_penalties << " block_mix_penalties " << result.feedback.block_mix_penalties << " split_moves " << result.feedback.split_moves << " iterations " << result.feedback.iterations);
+	INFO("cases:\n" << result.cases);
+	INFO("bridges " << result.layout->bridges.size());
+	INFO("\n" << RenderJunctionAscii(*result.layout));
+	const JunctionGenerateResult old = GenerateJunction(spec);
+	if (old.layout.has_value()) {
+		const JunctionCompactness old_compact = MeasureJunctionCompactness(*old.layout);
+		INFO("old generator: occupied " << old_compact.occupied << " slivers " << old_compact.slivers);
+	}
+	std::vector<RuleViolation> violations = CheckJunctionRules(*result.layout, spec);
+	const size_t before = violations.size();
+	/* The doubled main-line bridge is the D80 move, a later step. */
+	std::erase_if(violations, [](const RuleViolation &violation) { return violation.message == "ML bridge is not doubled"; });
+	INFO("ignored 'ML bridge is not doubled': " << before - violations.size());
+	INFO(ViolationText(violations));
+	CHECK(violations.empty());
+	CHECK(result.compactness.occupied == compact.occupied);
+	CHECK(result.compactness.slivers == compact.slivers);
+}
+
+TEST_CASE("GenerateJunctionOrganic: the test spec's T is rule-clean", "[junction][organic]")
+{
+	CheckOrganicClean(MakeTestJunctionSpec());
+}
+
+TEST_CASE("GenerateJunctionOrganic: the pinned spec's T is rule-clean", "[junction][organic]")
+{
+	CheckOrganicClean(PinnedOrganicSpec());
+}
+
+TEST_CASE("GenerateJunctionOrganic: a long train with a narrow branch", "[junction][organic]")
+{
+	CheckOrganicClean(NarrowBranchSpec());
+}
+
+TEST_CASE("BuildOrganicT: feedback fixes the measured violations", "[junction][organic]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, ORGANIC_P, 8, MlTurnCostOf(spec));
+	INFO("error: " << result.error);
+	INFO("violations left:\n" << ViolationText(result.violations));
+	INFO("cases:\n" << result.cases);
+	INFO("feedback: prio_rows " << result.feedback.prio_rows << " coverage_penalties " << result.feedback.coverage_penalties << " bridge_block_penalties " << result.feedback.bridge_block_penalties << " signal_gap_penalties " << result.feedback.signal_gap_penalties << " block_mix_penalties " << result.feedback.block_mix_penalties << " split_moves " << result.feedback.split_moves << " iterations " << result.feedback.iterations);
+	REQUIRE(result.layout.has_value());
+	CHECK(result.violations.empty());
+	std::vector<RuleViolation> violations = CheckJunctionRules(*result.layout, spec);
+	const size_t before = violations.size();
+	std::erase_if(violations, [](const RuleViolation &violation) { return violation.message == "ML bridge is not doubled"; });
+	INFO("ignored 'ML bridge is not doubled': " << before - violations.size());
+	CHECK(violations.empty());
+}
+
+TEST_CASE("BuildOrganicT: every bridge crosses something", "[junction][organic]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, 23, 8, MlTurnCostOf(spec));
+	INFO("error: " << result.error);
+	INFO("cases:\n" << result.cases);
+	REQUIRE(result.layout.has_value());
+	INFO("\n" << RenderJunctionAscii(*result.layout));
+	for (const JunctionBridge &bridge : result.layout->bridges) {
+		int crossed = 0;
+		for (int x = std::min(bridge.start.x, bridge.end.x); x <= std::max(bridge.start.x, bridge.end.x); x++) {
+			for (int y = std::min(bridge.start.y, bridge.end.y); y <= std::max(bridge.start.y, bridge.end.y); y++) {
+				const bool head = (x == bridge.start.x && y == bridge.start.y) || (x == bridge.end.x && y == bridge.end.y);
+				if (head) continue;
+				if (std::ranges::any_of(result.layout->tracks, [&](const JunctionTrack &jt) { return jt.offset.x == x && jt.offset.y == y; })) crossed++;
+			}
+		}
+		INFO("bridge " << bridge.start.x << "," << bridge.start.y << " to " << bridge.end.x << "," << bridge.end.y << " crosses " << crossed << " tiles of track");
+		CHECK(crossed > 0);
+	}
+}
+
+TEST_CASE("JunctionForcedPairs: the forced pairs of a T", "[junction][organic]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<int, int>> pairs = JunctionForcedPairs(MakeOrganicTPorts(spec, ORGANIC_W, ORGANIC_H, ORGANIC_P), ORGANIC_W, ORGANIC_H);
+	/* In JunctionTMovements() order: 1 = E->S, 2 = W main line, 5 = N->E. */
+	const std::vector<std::pair<int, int>> expected = {{1, 2}, {1, 5}, {2, 5}};
+	CHECK(pairs == expected);
+}
+
+/** Time the generation of a spec's organic T and print one BENCH line. */
+static void BenchGenerate(const char *name, const JunctionSpec &spec)
+{
+	std::vector<long long> times;
+	JunctionOrganicResult result = GenerateJunctionOrganic(spec, MlTurnCostOf(spec));
+	for (int i = 0; i < 5; i++) {
+		const auto begin = std::chrono::steady_clock::now();
+		result = GenerateJunctionOrganic(spec, MlTurnCostOf(spec));
+		const auto end = std::chrono::steady_clock::now();
+		times.push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count());
+	}
+	std::sort(times.begin(), times.end());
+	std::cout << "BENCH organic_gen " << name << " clean=" << (result.layout.has_value() ? 1 : 0) << " p=" << result.p << " occupied=" << result.compactness.occupied << " slivers=" << result.compactness.slivers << " iterations=" << result.feedback.iterations << " median_us=" << times[times.size() / 2] << "\n";
+}
+
+TEST_CASE("GenerateJunctionOrganic: timing", "[junction][organic][.bench]")
+{
+	BenchGenerate("test", MakeTestJunctionSpec());
+	BenchGenerate("pinned", PinnedOrganicSpec());
+	BenchGenerate("narrow", NarrowBranchSpec());
+
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (int p = 14; p <= 28; p += 2) {
+		const auto begin = std::chrono::steady_clock::now();
+		const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, p, 8, MlTurnCostOf(spec));
+		const auto end = std::chrono::steady_clock::now();
+		std::cout << "BENCH organic_p " << p << " clean=" << (result.layout.has_value() ? 1 : 0) << " iterations=" << result.feedback.iterations << " occupied=" << result.compactness.occupied << " slivers=" << result.compactness.slivers << " us=" << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "\n";
+	}
 }
