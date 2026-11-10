@@ -1,4 +1,15 @@
-# O4: a junction from the constraints (design, revision 3: every movement routed, splits and merges emerge)
+# O4: a junction from the constraints
+
+## Revision 4 (2026-11-10, D168; supersedes revision 3's search steps 2-3)
+From the run digest, RECONCILE-O4.md and the second Fable steer. Kept from revision 3: every movement routed by the line router, splits and merges emerge from sharing, negotiation packs, forced crossings decided by branch and bound (D167), hug and clean-up (D166 a-b), main-line turn cost (D165), main line may bridge (D164).
+Changed:
+1. **Rules are part of the routing, not feedback.** The line router gains a small rule state machine per movement (shared with a sibling / private / merged; private units since the split; signal-legal pieces since a split or a far head). Waiting room (G7), split before a bridge (D113) and split-and-merge in one block become router constraints. Prio and coverage depend on another movement's route, so they are per-round masks from the main lines' current routes: no split inside a coverage window (D108), merges only where the main line runs straight for the coverage with its prio row free; a chosen merge reserves its prio row. The feedback loop is deleted; the checker confirms.
+2. **PathFinder prices**: extra = (U + h) x (1 + pf x k) - U for a piece clashing with k others; pf from 0.5, x1.5 per round; h += U per round in clash. Main lines are routed first each round.
+3. **Frame**: room for prio rows (main-line rows not on the box edge; no crop inside a prio window).
+4. **Time on every generation**, against 100 ms. Branch position searched by bound later; forced crossings branched lazily later; multi-lane crossings decided per group (Fable steer 4).
+Steps: O4c1 router rule state machine (brief O4c1); O4c2 organic search on it (feedback loop deleted). X1 (CP-SAT) serves as an offline lower bound on occupied tiles.
+
+## Revision 3 (kept for reference)
 
 Principle (D152-D153): the code holds rules, costs and a search; no shapes. Layout = whatever answer meets the rules and the throughput targets and scores best (D119: compactness, then cost).
 Revision 3 (D160, engineer 2026-11-10) replaces revision 2's anchor layer: the main line is not assumed straight (a D80 doubled bridge shifts a lane; terrain may need ramps, a tunnel or a detour), so every movement, the main-line through movements included, is routed the same way, and splits and merges emerge where movements share track. Kept from revision 2 and the audit (D157, D158, D159): tokens, negotiated routing, throughput as judge and source of the prio decision, per-track-bit resources, route memo, minimum lengths.
