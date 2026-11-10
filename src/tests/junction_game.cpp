@@ -12,6 +12,7 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include "../junction_game.h"
+#include "../junction_rules.h"
 #include "../map_func.h"
 #include "../tile_map.h"
 #include "../rail.h"
@@ -471,4 +472,64 @@ TEST_CASE("JunctionPrioChoice follows the slider rules", "[junction][game]")
 	CHECK(JunctionPrioChoice(3, 5, 14) == R{5, false});
 	CHECK(JunctionPrioChoice(0, 5, 3) == R{3, true});
 	CHECK(JunctionPrioChoice(2, 5, 3) == R{3, true});
+}
+
+/** Set every tile of row y of the terrain: heights and incline (a copy of SetRampRow in junction_map.cpp). */
+static void SetNearRampRow(JunctionTerrain &terrain, int y, int z_min, int z_max, DiagDirection incline)
+{
+	for (int x = terrain.origin.x; x < terrain.origin.x + terrain.width; x++) {
+		JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)];
+		tile.z_min = static_cast<int8_t>(z_min);
+		tile.z_max = static_cast<int8_t>(z_max);
+		tile.incline = incline;
+	}
+}
+
+TEST_CASE("GenerateJunctionNear builds the projected T map over a ridge", "[junction][tmapnear]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionTerrain terrain = MakeNearTestTerrain();
+	terrain.build_on_slopes = true;
+	const int ridge = spec.ml_gap + 2 + 6;
+	SetNearRampRow(terrain, ridge, 0, 1, DiagDirection::SE);
+	SetNearRampRow(terrain, ridge + 1, 1, 1, DiagDirection::Invalid);
+	SetNearRampRow(terrain, ridge + 2, 1, 1, DiagDirection::Invalid);
+	SetNearRampRow(terrain, ridge + 3, 0, 1, DiagDirection::NW);
+	const JunctionTMapResult direct = ConstructJunctionTMap(spec, &terrain, std::nullopt, true);
+	REQUIRE(direct.layout.has_value());
+	const std::atomic<bool> cancel{false};
+	const auto start = std::chrono::steady_clock::now();
+	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
+	const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+	std::cout << "BENCH tmapnear GenerateJunctionNear micros=" << micros << "\n";
+	CHECK(near.offset.x == 0);
+	CHECK(near.offset.y == 0);
+	CHECK(near.result.error == JunctionGenerateError::None);
+	CHECK(near.result.hub.x == direct.hub.x);
+	CHECK(near.result.hub.y == direct.hub.y);
+	REQUIRE(near.result.layout.has_value());
+	const JunctionLayout &a = *near.result.layout;
+	const JunctionLayout &b = *direct.layout;
+	REQUIRE(a.tracks.size() == b.tracks.size());
+	for (size_t i = 0; i < a.tracks.size(); i++) {
+		CHECK(a.tracks[i].offset.x == b.tracks[i].offset.x);
+		CHECK(a.tracks[i].offset.y == b.tracks[i].offset.y);
+		CHECK(a.tracks[i].tracks == b.tracks[i].tracks);
+	}
+	REQUIRE(a.bridges.size() == b.bridges.size());
+	for (size_t i = 0; i < a.bridges.size(); i++) {
+		CHECK(a.bridges[i].start.x == b.bridges[i].start.x);
+		CHECK(a.bridges[i].start.y == b.bridges[i].start.y);
+		CHECK(a.bridges[i].end.x == b.bridges[i].end.x);
+		CHECK(a.bridges[i].end.y == b.bridges[i].end.y);
+		CHECK(a.bridges[i].tunnel == b.bridges[i].tunnel);
+	}
+	REQUIRE(a.signals.size() == b.signals.size());
+	for (size_t i = 0; i < a.signals.size(); i++) {
+		CHECK(a.signals[i].offset.x == b.signals[i].offset.x);
+		CHECK(a.signals[i].offset.y == b.signals[i].offset.y);
+		CHECK(a.signals[i].facing == b.signals[i].facing);
+		CHECK(a.signals[i].type == b.signals[i].type);
+		CHECK(a.signals[i].variant == b.signals[i].variant);
+	}
 }

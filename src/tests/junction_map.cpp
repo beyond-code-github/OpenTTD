@@ -490,3 +490,63 @@ TEST_CASE("BENCH the old generator, for comparison", "[.bench]")
 		std::cout << "BENCH old spec=" << name << " micros=" << micros << " occupied=" << compact.occupied << " slivers=" << compact.slivers << "\n";
 	}
 }
+
+TEST_CASE("the T map builds at the hub's ground height", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	terrain.build_on_slopes = true;
+	for (JunctionTerrainTile &tile : terrain.tiles) {
+		tile.z_min = 2;
+		tile.z_max = 2;
+	}
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, std::nullopt, true);
+	const JunctionTMapResult &flat = SharedFlatT();
+	INFO(result.log);
+	REQUIRE(result.layout.has_value());
+	REQUIRE(flat.layout.has_value());
+	CHECK(result.clean);
+	const JunctionLayout &a = *result.layout;
+	const JunctionLayout &b = *flat.layout;
+	REQUIRE(a.tracks.size() == b.tracks.size());
+	for (size_t i = 0; i < a.tracks.size(); i++) {
+		CHECK(a.tracks[i].offset.x == b.tracks[i].offset.x);
+		CHECK(a.tracks[i].offset.y == b.tracks[i].offset.y);
+		CHECK(a.tracks[i].tracks == b.tracks[i].tracks);
+	}
+	REQUIRE(a.bridges.size() == b.bridges.size());
+	for (size_t i = 0; i < a.bridges.size(); i++) {
+		CHECK(a.bridges[i].start.x == b.bridges[i].start.x);
+		CHECK(a.bridges[i].start.y == b.bridges[i].start.y);
+		CHECK(a.bridges[i].end.x == b.bridges[i].end.x);
+		CHECK(a.bridges[i].end.y == b.bridges[i].end.y);
+		CHECK(a.bridges[i].tunnel == b.bridges[i].tunnel);
+	}
+	REQUIRE(a.signals.size() == b.signals.size());
+	for (size_t i = 0; i < a.signals.size(); i++) {
+		CHECK(a.signals[i].offset.x == b.signals[i].offset.x);
+		CHECK(a.signals[i].offset.y == b.signals[i].offset.y);
+		CHECK(a.signals[i].facing == b.signals[i].facing);
+		CHECK(a.signals[i].type == b.signals[i].type);
+		CHECK(a.signals[i].variant == b.signals[i].variant);
+	}
+}
+
+TEST_CASE("an unbuildable hub tile gives no layout", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, MakeJunctionFrame(spec).hub_x, 0);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, std::nullopt, true);
+	CHECK(!result.layout.has_value());
+	CHECK(result.log.find("hub tile not buildable") != std::string::npos);
+}
+
+TEST_CASE("the T map reports the hub offset", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionGenerateResult generated = GenerateJunction(spec, nullptr);
+	const JunctionTMapResult &flat = SharedFlatT();
+	CHECK(flat.hub.x == generated.hub.x);
+	CHECK(flat.hub.y == generated.hub.y);
+}
