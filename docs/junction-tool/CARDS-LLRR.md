@@ -39,3 +39,10 @@ Options: (a) no shifters in the first LL_RR step; (b) a shifter inside the hub.
 Recommendation: (a); revisit with throughput (traffic model).
 Prior art checked: H9, H19, H32, H38.
 Reversible: yes.
+
+## Card 6 (not LL_RR; from PERF2): searches that cannot succeed because of a rule, not a tile
+Context: a house right beside the hub on the main line makes A detour so N->A can never merge; no tile blocks it, so the reachability test (GS1b) cannot see it, and the box grows to the snapshot's edge at every nearby spot: 39.8 s in Release before the tool gives up (PERF2 row e). The worker thread is busy that long; the ghost shows "working out".
+Options: (a) a time budget per hover search (for example 300 ms): when it runs out, the tool says "no junction fits here: move the cursor"; honest, but a slow valid placement could be missed; (b) an exact rule-level stop: detect that an edge fails the same way at consecutive heights for reasons above the moving rows (needs a design and measurement; days); (c) both: the budget now, the exact stop later, the budget only as a backstop.
+Recommendation: (c).
+Prior art checked: D170a, GS1b (tile-level stop), PERF2.
+Reversible: yes.
