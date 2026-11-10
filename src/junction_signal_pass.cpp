@@ -154,53 +154,61 @@ static void PlaceBaySignals(JunctionLayout &layout, const JunctionSpec &spec, co
 	}
 }
 
+void PlaceDragSignals(JunctionLayout &layout, const std::vector<JunctionPiece> &pieces, uint8_t sd, SignalType type)
+{
+	if (pieces.empty()) return;
+	const auto place = [&](const JunctionPiece &piece) {
+		if (IsSignalledPiece(layout, piece)) return;
+		PlaceSignal(layout, piece, type);
+	};
+	const uint density = sd * 192u;
+	std::vector<size_t> anchors;
+	for (size_t i = 0; i < pieces.size(); i++) {
+		if (i == 0 || i + 1 == pieces.size() || IsSignalledPiece(layout, pieces[i])) anchors.push_back(i);
+	}
+	const auto legal = [&](size_t k) { return k != 0 && k + 1 != pieces.size() && IsLegalSignalPiece(layout, pieces[k]); };
+	for (size_t ai = 0; ai + 1 < anchors.size(); ai++) {
+		const size_t a = anchors[ai];
+		size_t last = anchors[ai + 1];
+		std::optional<size_t> suitable;
+		/* The logical length from piece k (exclusive) up to last (inclusive). */
+		const auto dist_to = [&](size_t k) {
+			uint d = 0;
+			for (size_t m = k + 1; m <= last; m++) d += JunctionSignalWeight(pieces[m]);
+			return d;
+		};
+		for (size_t k = last; k-- > a + 1;) {
+			if (dist_to(k) > density && suitable.has_value()) {
+				/* Overshoot: use the last good spot. */
+				place(pieces[*suitable]);
+				last = *suitable;
+				suitable.reset();
+			}
+			const uint dist = dist_to(k);
+			if (dist == density) {
+				if (legal(k)) {
+					place(pieces[k]);
+					last = k;
+					suitable.reset();
+				}
+			} else if (legal(k)) {
+				suitable = k;
+			}
+		}
+		if (dist_to(a) > density && suitable.has_value()) place(pieces[*suitable]);
+	}
+}
+
 /** Phase 3: fill the gaps between anchors as drag-signalling would (D97), walking upstream from each downstream anchor. Returns the (tile, trackdir) of the signals it placed. */
 static std::set<std::pair<std::pair<int, int>, Trackdir>> FillSignals(JunctionLayout &layout, const JunctionSpec &spec, const JunctionCheckContext &ctx)
 {
 	std::set<std::pair<std::pair<int, int>, Trackdir>> placed;
-	const auto place = [&](const JunctionPiece &piece) {
-		if (IsSignalledPiece(layout, piece)) return;
-		PlaceSignal(layout, piece, spec.signal_type);
-		placed.insert({{piece.tile.x, piece.tile.y}, piece.trackdir});
-	};
-	const uint density = spec.sd * 192u;
 	for (const JunctionPath *path : PathOrder(ctx)) {
-		const std::vector<JunctionPiece> &pieces = path->pieces;
-		if (pieces.empty()) continue;
-		std::vector<size_t> anchors;
-		for (size_t i = 0; i < pieces.size(); i++) {
-			if (i == 0 || i + 1 == pieces.size() || IsSignalledPiece(layout, pieces[i])) anchors.push_back(i);
-		}
-		const auto legal = [&](size_t k) { return k != 0 && k + 1 != pieces.size() && IsLegalSignalPiece(layout, pieces[k]); };
-		for (size_t ai = 0; ai + 1 < anchors.size(); ai++) {
-			const size_t a = anchors[ai];
-			size_t last = anchors[ai + 1];
-			std::optional<size_t> suitable;
-			/* The logical length from piece k (exclusive) up to last (inclusive). */
-			const auto dist_to = [&](size_t k) {
-				uint d = 0;
-				for (size_t m = k + 1; m <= last; m++) d += JunctionSignalWeight(pieces[m]);
-				return d;
-			};
-			for (size_t k = last; k-- > a + 1;) {
-				if (dist_to(k) > density && suitable.has_value()) {
-					/* Overshoot: use the last good spot. */
-					place(pieces[*suitable]);
-					last = *suitable;
-					suitable.reset();
-				}
-				const uint dist = dist_to(k);
-				if (dist == density) {
-					if (legal(k)) {
-						place(pieces[k]);
-						last = k;
-						suitable.reset();
-					}
-				} else if (legal(k)) {
-					suitable = k;
-				}
-			}
-			if (dist_to(a) > density && suitable.has_value()) place(pieces[*suitable]);
+		const size_t before = layout.signals.size();
+		PlaceDragSignals(layout, path->pieces, spec.sd, spec.signal_type);
+		for (size_t i = before; i < layout.signals.size(); i++) {
+			const JunctionSignal &signal = layout.signals[i];
+			placed.insert({{signal.offset.x, signal.offset.y}, signal.facing});
 		}
 	}
 	return placed;

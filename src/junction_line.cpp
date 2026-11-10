@@ -52,6 +52,7 @@
 #include "stdafx.h"
 
 #include "junction_line.h"
+#include "junction_signal_pass.h"
 #include "direction_func.h"
 #include "track_func.h"
 
@@ -333,5 +334,30 @@ JunctionLineNotation ParseLineNotation(std::string_view text)
 	result.spec.tracks = static_cast<uint8_t>(lefts + rights);
 	result.spec.gap = static_cast<uint8_t>(gap);
 	result.spec.left_tracks = static_cast<uint8_t>(lefts);
+	return result;
+}
+
+JunctionLineBuild BuildJunctionLine(const JunctionLineSpec &line, const JunctionLineRoute &route, const std::vector<bool> &along_route, uint8_t sd, SignalType signal_type, const JunctionPricing &pricing, TileIndex origin)
+{
+	JunctionLineBuild result;
+	if (along_route.size() != line.tracks) {
+		result.error = "the travel directions do not match the number of tracks";
+		return result;
+	}
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(line, route);
+	if (!rasters.empty() && !rasters[0].error.empty()) {
+		result.error = rasters[0].error;
+		return result;
+	}
+	for (const JunctionRaster &raster : rasters) AddRasterToLayout(result.layout, raster);
+	for (size_t i = 0; i < rasters.size(); i++) {
+		std::vector<JunctionPiece> pieces = rasters[i].pieces;
+		if (!along_route[i]) {
+			std::reverse(pieces.begin(), pieces.end());
+			for (JunctionPiece &piece : pieces) piece.trackdir = ReverseTrackdir(piece.trackdir);
+		}
+		PlaceDragSignals(result.layout, pieces, sd, signal_type);
+	}
+	result.estimate = EstimateJunction(result.layout, origin, pricing);
 	return result;
 }

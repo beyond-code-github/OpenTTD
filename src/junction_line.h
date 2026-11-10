@@ -71,4 +71,24 @@ std::vector<std::vector<JunctionPiece>> ExtendJunctionLine(const JunctionLineSpe
  */
 std::vector<std::vector<JunctionPiece>> ExtendJunctionLineBridge(const JunctionLineSpec &line, const std::vector<JunctionPiece> &last, uint middle, std::vector<JunctionBridge> &bridges, std::string &error, bool tunnel = false);
 
+/** A painted line ready to build (LP10): its layout with signals, and its cost. */
+struct JunctionLineBuild {
+	JunctionLayout layout;
+	JunctionEstimate estimate;
+	std::string error;
+};
+
+/**
+ * Lay a line program as a layout, signal each track as drag signalling would (D97) in its direction of travel, and price it.
+ * @param line The line.
+ * @param route The line program.
+ * @param along_route One entry per track: whether the track travels in the route's heading (the caller's choice).
+ * @param sd Signal distance (drag density, tiles).
+ * @param signal_type The signal type.
+ * @param pricing The game's prices.
+ * @param origin The map tile of the layout's north corner.
+ * @return The layout, its estimate, or an error (empty layout) when the line can't be laid or along_route has the wrong size.
+ */
+JunctionLineBuild BuildJunctionLine(const JunctionLineSpec &line, const JunctionLineRoute &route, const std::vector<bool> &along_route, uint8_t sd, SignalType signal_type, const JunctionPricing &pricing, TileIndex origin);
+
 #endif /* JUNCTION_LINE_H */
