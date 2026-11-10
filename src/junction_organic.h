@@ -44,6 +44,7 @@ struct JunctionNegotiationPrices {
 	std::map<std::pair<int, int>, int> reserved; ///< Reserved tiles (a prio row): any piece of any movement but the one whose index is given costs 1000 x U.
 	std::map<std::pair<int, int>, Money> switch_penalties; ///< Added to a piece on the tile that forms a split or merge with another movement's piece there.
 	std::vector<uint> min_units; ///< Per movement (in JunctionTMovements() order), the least track units of its route; empty or 0 for none.
+	Money ml_turn_cost = 0; ///< Turn cost of the two main-line through movements (D165); 0 means the branch movements' turn cost.
 };
 
 /** Route every movement of a T together by negotiated congestion (DESIGN-O4 revision 3, search step 1; no prios, signals or rule feedback of its own). */
@@ -54,6 +55,7 @@ struct JunctionFeedbackCounts {
 	int prio_rows = 0; ///< Prio rows reserved.
 	int coverage_penalties = 0; ///< Coverage windows penalised for switches.
 	int bridge_block_penalties = 0; ///< Splits in a bridge's block penalised (D113).
+	int signal_gap_penalties = 0; ///< Stretches without room for a signal penalised for switches.
 	int split_moves = 0; ///< Splits of waiting-room merges pushed upstream by a penalty.
 	int iterations = 0; ///< Feedback iterations run.
 };
@@ -69,8 +71,8 @@ struct JunctionOrganicResult {
 	std::string error;
 };
 
-JunctionOrganicResult BuildOrganicT(const JunctionSpec &spec, int width, int height, int p, int max_feedback = 8);
+JunctionOrganicResult BuildOrganicT(const JunctionSpec &spec, int width, int height, int p, int max_feedback = 8, Money ml_turn_cost = 0);
 /** The best rule-clean organic T over the branch positions tried (step 4). */
-JunctionOrganicResult GenerateJunctionOrganic(const JunctionSpec &spec);
+JunctionOrganicResult GenerateJunctionOrganic(const JunctionSpec &spec, Money ml_turn_cost = 0);
 
 #endif /* JUNCTION_ORGANIC_H */

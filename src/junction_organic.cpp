@@ -232,7 +232,8 @@ JunctionNegotiation NegotiateJunctionMovements(const JunctionSpec &spec, const s
 			request.curve_spacing = spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1;
 			request.s_bend_window = 2u * spec.tl;
 			request.rail_piece = spec.prices.rail_piece;
-			request.turn_cost = spec.prices.rail_piece / 2;
+			const bool main_line = (movements[m].from == JunctionPortRole::EIn && movements[m].to == JunctionPortRole::EOut) || (movements[m].from == JunctionPortRole::WIn && movements[m].to == JunctionPortRole::WOut);
+			request.turn_cost = main_line && prices.ml_turn_cost != 0 ? prices.ml_turn_cost : spec.prices.rail_piece / 2;
 			request.min_units = m < prices.min_units.size() ? prices.min_units[m] : 0;
 			request.bridge_span_ok = spec.bridge_span_ok;
 			request.bridge_price = spec.prices.bridge;
@@ -485,6 +486,8 @@ static bool ApplyOrganicFeedback(const JunctionSpec &spec, const std::vector<Rul
 	const Money unit = spec.prices.rail_piece;
 	std::set<size_t> penalised;
 	std::set<std::pair<int, int>> bridge_penalised;
+	std::set<std::pair<int, int>> merge_penalised;
+	std::set<std::pair<int, int>> gap_penalised;
 	bool all = true;
 
 	/* The main-line movements with a piece on a tile of the negotiation box (a bridge's pieces included: a head or a span tile is a main-line tile too). */
@@ -505,8 +508,15 @@ static bool ApplyOrganicFeedback(const JunctionSpec &spec, const std::vector<Rul
 				const std::optional<OrganicMerge> merge = MainLineMerge(pieces, m);
 				if (!merge.has_value()) continue;
 				applied = true;
-				/* A merge on a curve piece or an axis approach has no prio geometry (GeometryOfPrio decides none), so no row to reserve. */
-				if (merge->side_y == 0) continue;
+				/* A merge on a curve piece or an axis approach has no prio geometry (GeometryOfPrio decides none): a switch penalty on the merge tile moves the merge. */
+				if (merge->side_y == 0) {
+					const TileIndexDiffC merge_tile = pieces[m][merge->at].tile;
+					if (merge_penalised.insert({merge_tile.x, merge_tile.y}).second) {
+						state.prices.switch_penalties[{merge_tile.x, merge_tile.y}] += Money{unit.base() << iteration};
+						counts.coverage_penalties++;
+					}
+					continue;
+				}
 				bool added = false;
 				for (const TileIndexDiffC &t : UpstreamTiles(pieces[m], merge->at, window)) {
 					added |= state.prices.reserved.emplace(std::pair<int, int>{t.x, t.y + merge->side_y}, static_cast<int>(m)).second;
@@ -529,6 +539,20 @@ static bool ApplyOrganicFeedback(const JunctionSpec &spec, const std::vector<Rul
 				state.prices.switch_penalties[{tile.x, tile.y}] += Money{unit.base() << iteration};
 				counts.bridge_block_penalties++;
 			}
+		} else if (violation.rule == JunctionRule::Signals && violation.message == "signals too far apart") {
+			/* The violation tile and the spec.sd tiles before and after it along each movement through it: a switch there leaves the stretch where the signal pass can't place signals. */
+			applied = true;
+			if (!gap_penalised.insert({tile.x, tile.y}).second) continue;
+			std::set<std::pair<int, int>> stretch;
+			for (size_t m = 0; m < movements.size(); m++) {
+				const auto here = std::ranges::find_if(pieces[m], [&](const JunctionPiece &piece) { return OnTile(piece, tile); });
+				if (here == pieces[m].end()) continue;
+				const size_t at = here - pieces[m].begin();
+				for (const TileIndexDiffC &t : UpstreamTiles(pieces[m], at, spec.sd + 1)) stretch.insert({t.x, t.y});
+				for (const TileIndexDiffC &t : DownstreamTiles(pieces[m], at, spec.sd + 1)) stretch.insert({t.x, t.y});
+			}
+			for (const auto &[x, y] : stretch) state.prices.switch_penalties[{x, y}] += Money{unit.base() << iteration};
+			counts.signal_gap_penalties++;
 		} else if (violation.rule == JunctionRule::WaitingRoom) {
 			for (size_t m = 0; m < movements.size(); m++) {
 				const auto here = std::ranges::find_if(pieces[m], [&](const JunctionPiece &piece) { return OnTile(piece, tile); });
@@ -565,13 +589,14 @@ static bool ApplyOrganicFeedback(const JunctionSpec &spec, const std::vector<Rul
 
 }
 
-JunctionOrganicResult BuildOrganicT(const JunctionSpec &spec, int width, int height, int p, int max_feedback)
+JunctionOrganicResult BuildOrganicT(const JunctionSpec &spec, int width, int height, int p, int max_feedback, Money ml_turn_cost)
 {
 	JunctionOrganicResult result;
 	result.p = p;
 	const std::vector<JunctionPort> ports = MakeOrganicTPorts(spec, width, height, p);
 	OrganicFeedbackState state;
 	state.prices.history = &state.history;
+	state.prices.ml_turn_cost = ml_turn_cost;
 
 	for (int iteration = 0; iteration < max_feedback; iteration++) {
 		result.feedback.iterations = iteration + 1;
@@ -606,7 +631,7 @@ JunctionOrganicResult BuildOrganicT(const JunctionSpec &spec, int width, int hei
 	return result;
 }
 
-JunctionOrganicResult GenerateJunctionOrganic(const JunctionSpec &spec)
+JunctionOrganicResult GenerateJunctionOrganic(const JunctionSpec &spec, Money ml_turn_cost)
 {
 	constexpr int WIDTH = 44;
 	constexpr int HEIGHT = 16;
@@ -614,7 +639,7 @@ JunctionOrganicResult GenerateJunctionOrganic(const JunctionSpec &spec)
 	std::pair<int, Money> best_score{};
 	std::optional<JunctionOrganicResult> least_bad;
 	for (int p = 14; p <= 28; p += 2) {
-		JunctionOrganicResult attempt = BuildOrganicT(spec, WIDTH, HEIGHT, p);
+		JunctionOrganicResult attempt = BuildOrganicT(spec, WIDTH, HEIGHT, p, 8, ml_turn_cost);
 		if (!attempt.layout.has_value()) {
 			if (!least_bad.has_value() || attempt.violations.size() < least_bad->violations.size()) least_bad = std::move(attempt);
 			continue;
