@@ -1,8 +1,8 @@
 # Junction tool: status
 
 ## QUEUE (2026-11-10 evening, engineer away: "fill the queue and make as much progress through everything including projection")
-- G2a (wt-g2, .claude/g2): commit 1 76208e97ff phase timing. Debug: test 478 ms = route 353 + check 116 + finish 6, heights tried 8 (first..13); pinned 232 ms, route 213. Part 2 (line router) resumed with ruling: no W row laid for A->S/N->A, Head on W-row tiles prohibitive (old crossable = empty ground, no heads, junction_router.cpp:356/425).
-- LP10 (wt-lp10, .claude/lp10): stopped on track travel direction (no convention in code/decisions); amendment 1 (9c04ff7bc8): direction from the caller (along_route per track), convention is an OPEN QUESTION for the engineer at LP11 (which group travels with the heading; driving side D66?). Resumed.
+- G2a (wt-g2, .claude/g2): commits 76208e97ff (phase timing), d6a483e08e (line router starts/ends on identical existing track). Debug: test 478 ms = route 353 + check 116, 8 heights tried (first = ml_gap+5 = 6 .. 13). Part 2 resumed with rulings: no W row for A->S/N->A (Head on W row prohibitive); split fix (first move may share tile with start's track, as old from.first); merge-tile Exception 2 (as junction_router.cpp ~395-410). WIP patch scratchpad/g2/part2_wip.patch.
+- LP10 MERGED 4624a965fa (BuildJunctionLine, PlaceDragSignals shared with FillSignals). OPEN QUESTION for the engineer before LP11: which group of a painted line travels with the route heading; driving side (D66)?
 - G2b brief ready (a19dda0e4b): third crossing decided in projection, NoverS vs SoverN, best score. Launch after G2a merges.
 - G2c (to write): start height from the map instead of growing from `first` (8 heights tried = most of route time); then terrain projection (obstacles, a hill) with the line router.
 - Then G3: mandatory signals and throughput on the map. Rig: put a G1/G2 hub beside the old ones for the engineer.
