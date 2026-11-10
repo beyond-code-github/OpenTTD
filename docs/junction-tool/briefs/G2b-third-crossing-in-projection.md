@@ -1,0 +1,48 @@
+# G2b: the third crossing decided in projection (D171), best of two projections
+
+You execute this brief and nothing else. Make exactly the changes listed. Do not add any type, member, file, abstraction or mechanism that the brief does not name, and do not widen or narrow its scope. If something is not covered, or you would have to choose between approaches, stop at a clean state and report the question. A workaround that avoids a stop condition is a breach, not a stop. Keep your context small: send command output to files and report only what failed.
+
+## Principle
+The map says only that A->S and N->A cross (D171). Projection realises the crossing both ways on the same map and keeps the better score (engineer: "if maps are cheap to produce then we can absolutely try a few different ones to see what projects best"). Each projection is built once and checked once. No other alternatives, no parameter sweep.
+
+## State
+- Worktree `/home/pete/OpenTTD/.claude/g2b`, branch `wt-g2b`, head given at launch (feature with G2a merged: the T map's four routed edges use `FindJunctionLineRoute`, phase timings in `JunctionTMapResult`).
+- Design: main checkout `docs/junction-tool/DESIGN-O4.md` revision 5 and section "G1"; D171 in `DECISIONS.md`.
+
+## Test speed
+`[junctionmap]` under 5 s (Debug). Develop against it only; the wider gate once at the end.
+
+## Read first (once each)
+`CODINGSTYLE.md`; `ConstructJunctionTMap` (whole) and its tests in `src/tests/junction_map.cpp`; `src/junction_line_router.h` (`resource_cost`, `JunctionResourceLevel`, `existing`, `blocked`).
+
+## The two realisations
+- **NoverS** (today's): N->A goes over A->S. A->S keeps today's column fence (it may not use column xI above row g+3, nor ys-1, ys-2); N->A bridges over A->S where A->S crosses column xI.
+- **SoverN** (new): A->S goes over N->A. A->S routes first as today but crosses column xI only on a bridge span: drop the column fence for A->S and give its request a `resource_cost` that returns `100 * spec.prices.rail_piece * 100` (prohibitive) for any `Surface` or `Head` piece on column xI at rows g+2 .. ys-1, and 0 otherwise (BridgeSpan pieces over those tiles are free). N->A then routes from `start_n` straight up the column under A->S's span to its merge window (unchanged window rule). If the line router does not allow surface track under an existing bridge span of the layout, stop and report.
+- Everything after (crossing set, skeleton, lanes, B->S, N->B, finish, check) is unchanged and runs per realisation.
+
+## Changes
+- `JunctionTMapResult` gains `std::string crossing; ///< "NoverS" or "SoverN": the realisation kept.` and `std::string projections; ///< One line per realisation: name, clean, occupied, slivers, micros.`
+- `ConstructJunctionTMap`: per height, project NoverS then SoverN (each: route, skeleton, lanes, finish, check once); keep the clean one with the lower `ScoreJunctionLayout`; ties keep NoverS. If neither is clean at a height where both routed, that is the result (unclean) for the stop condition below; if neither routed, try the next height as today.
+- `layouts_built` counts both; test 2's assertion becomes `layouts_built <= 2` per routed height.
+
+## Tests (red first)
+1. Test 1 (rule-clean, both specs) stays green.
+2. "both crossing realisations are projected": for the test spec, `projections` has two lines, NoverS and SoverN, and `crossing` is the one with the lower score among the clean ones.
+3. "SoverN puts A->S's bridge over the N column": project with a test seam that keeps only SoverN (add `std::optional<std::string> only_crossing` as the last parameter of `ConstructJunctionTMap`, default unset): the layout has a bridge whose span covers a column-xI tile, carried by A->S (its heads are off column xI), and no bridge of N->A over A->S. Report whether SoverN is clean for each spec; if it is not, report its violations (rule, tile, message) — that is information, not a stop, as long as test 1 stays clean via NoverS.
+4. BENCH lines per realisation with the phase split.
+
+## Do not
+No other realisations (main line over/under stays as today), no sweep, no changes to skeleton, finish, signal pass, checker, `GenerateJunction`, `junction_organic.*`, savegame, network or command code. No `std::to_string`/`std::printf` in tests; no `pkill`, broad `kill`, bare `git stash`.
+
+## Stop conditions
+- Test 1 stops being clean.
+- The line router cannot lay N->A under A->S's span.
+- `[junctionmap]` over 5 s.
+
+## Gates
+0 warnings; `[junctionmap]` green under 5 s; once at the end `"[junction]~[slow]~[mapexport]"` green (time). One commit: `Change: Junction T map's third crossing decided in projection`, with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
+
+## Report (short)
+References read; commit; red evidence; members added; suite results with times; BENCH lines; SoverN clean or its violations; stops; `git status --porcelain`, `git log -1`.
+
+When you have reported, stop.
