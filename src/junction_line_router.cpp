@@ -232,11 +232,19 @@ private:
 		return true;
 	}
 
+	/** Whether a single-track line may share the tile with the existing layout's track on it: that tile holds exactly `track` (a split from or a merge into it, as the old router's from.first and IsGoal). */
+	bool ExistingHolds(const TileIndexDiffC &tile, Track track) const
+	{
+		if (request.line.tracks != 1) return false;
+		const auto it = existing_bits.find(PackTile(tile.x, tile.y));
+		return it != existing_bits.end() && it->second.Test(track);
+	}
+
 	/**
 	 * Whether a piece may be built: inside the bounds, not blocked, its height step usable, and an exact parallel pair at most with the existing tracks (D147).
-	 * @param identical_ok For a single-track line's start or goal piece: the piece may lie on exactly that track in the existing layout (a split or merge on it).
+	 * @param shares_existing The piece may share its tile with the existing tracks (see ExistingHolds).
 	 */
-	bool PieceUsable(const JunctionPiece &piece, int8_t z, bool allow_ramp, int8_t &new_z, bool &ramp, bool identical_ok = false) const
+	bool PieceUsable(const JunctionPiece &piece, int8_t z, bool allow_ramp, int8_t &new_z, bool &ramp, bool shares_existing = false) const
 	{
 	if (!InBounds(piece) || IsBlocked(piece.tile.x, piece.tile.y)) return false;
 	if (!HeightStep(piece, z, allow_ramp, new_z, ramp)) return false;
@@ -244,7 +252,8 @@ private:
 		if (it == existing_bits.end()) return true;
 		TrackBits bits = it->second;
 		const Track track = TrackdirToTrack(piece.trackdir);
-		if (bits.Test(track)) return identical_ok && request.line.tracks == 1;
+		if (shares_existing) return true;
+		if (bits.Test(track)) return false;
 		bits.Set(track);
 		return !TracksOverlap(bits);
 	}
@@ -582,7 +591,7 @@ JunctionLineRouteResult LineRouter::Run()
 				const JunctionPiece &piece = raster.pieces[0];
 				int8_t new_z;
 				bool ramp;
-				if (!PieceUsable(piece, static_cast<int8_t>(request.plane), false, new_z, ramp, true)) {
+				if (!PieceUsable(piece, static_cast<int8_t>(request.plane), false, new_z, ramp, ExistingHolds(piece.tile, TrackdirToTrack(piece.trackdir)))) {
 					usable = false;
 					break;
 				}
@@ -671,53 +680,98 @@ JunctionLineRouteResult LineRouter::Run()
 			}
 		}
 
+		const bool first_node = tree[index].parent < 0;
+		auto is_goal_piece = [&](const JunctionPiece &piece) {
+			return std::ranges::any_of(request.goals, [&](const JunctionRouteEnd &goal) {
+				return goal.tile.x == piece.tile.x && goal.tile.y == piece.tile.y && goal.trackdir == piece.trackdir;
+			});
+		};
+		auto is_goal_tile = [&](const JunctionPiece &piece) {
+			return std::ranges::any_of(request.goals, [&](const JunctionRouteEnd &goal) { return goal.tile.x == piece.tile.x && goal.tile.y == piece.tile.y; });
+		};
+
+		/**
+		 * Apply one move's pieces to a copy of a node.
+		 * @param from The node the move starts from.
+		 * @param move The move, for the ramp rule.
+		 * @param added The move's pieces per track.
+		 * @param split Whether the move is the first off a root start (it may share the next tile with the start's identical existing track, as the old router's from.first).
+		 * @param may_clash_last Whether the last piece may clash with the existing track on a goal tile when a goal piece follows at once.
+		 * @param[in,out] overlay The pieces added so far by this successor.
+		 * @param[out] next The node after the move.
+		 * @param[out] cost The move's cost.
+		 * @param[out] pending Whether the last piece relies on that exception, so a goal piece must follow.
+		 * @return Whether the move is legal.
+		 */
+		auto apply_move = [&](const LineNode &from, char move, const std::vector<std::vector<JunctionPiece>> &added, bool split, bool may_clash_last, Overlay &overlay, LineNode &next, Money &cost, bool &pending) -> bool {
+			next = from;
+			next.after_bridge = false;
+			pending = false;
+			cost = move == 'F' ? Money{0} : request.turn_cost;
+			for (size_t i = 0; i < added.size(); i++) {
+				const JunctionPiece *previous = &from.last[i];
+				int8_t z = from.z[i];
+				for (size_t k = 0; k < added[i].size(); k++) {
+					const JunctionPiece &piece = added[i][k];
+					int8_t new_z;
+					bool ramp;
+					const bool shares = (ExistingHolds(piece.tile, TrackdirToTrack(piece.trackdir)) && is_goal_piece(piece)) ||
+							(split && ExistingHolds(piece.tile, TrackdirToTrack(from.last[0].trackdir)));
+					bool usable = PieceUsable(piece, z, move == 'F', new_z, ramp, shares);
+					if (!usable && request.line.tracks == 1 && existing_bits.contains(PackTile(piece.tile.x, piece.tile.y)) && is_goal_tile(piece)) {
+						/* Exception 2 of the old router (junction_router.cpp, Router::Successors): a piece on a goal tile that clashes with the existing track, followed at once by a goal piece. */
+						const bool last = k + 1 == added[i].size();
+						if (last ? may_clash_last : is_goal_piece(added[i][k + 1])) {
+							usable = PieceUsable(piece, z, move == 'F', new_z, ramp, true);
+							pending = usable && last;
+						}
+					}
+					if (!usable) return false;
+					if (!IsUsed(overlay, piece)) cost += TerrainCost(piece, z, ramp);
+					if (ramp) cost += request.slope_piece;
+					cost += ResourceCost(piece, z, JunctionResourceLevel::Surface);
+					z = new_z;
+					if (!Occupy(overlay, piece) || !AdvanceState(next.states[i], *previous, piece)) return false;
+					cost += request.rail_piece;
+					if (i == 0) next.units = static_cast<uint16_t>(std::min<uint>(next.units + piece.units, request.min_units));
+					if (i == 0 && request.rules.has_value() && !RulesStep(next, piece)) return false;
+					previous = &piece;
+				}
+				next.last[i] = added[i].back();
+				next.z[i] = z;
+			}
+			return true;
+		};
+
 		for (char move : {'F', 'L', 'R'}) {
 			std::string error;
 			std::vector<std::vector<JunctionPiece>> added = ExtendJunctionLine(request.line, node.last, move, error);
 			if (added.empty()) continue;
 
-			LineNode next = node;
-			next.after_bridge = false;
+			LineNode next;
 			Overlay overlay;
-			bool legal = true;
-			Money cost = move == 'F' ? Money{0} : request.turn_cost;
-			for (size_t i = 0; i < added.size() && legal; i++) {
-				const JunctionPiece *previous = &node.last[i];
-				int8_t z = node.z[i];
-				for (const JunctionPiece &piece : added[i]) {
-					int8_t new_z;
-					bool ramp;
-					const bool is_goal = existing_bits.contains(PackTile(piece.tile.x, piece.tile.y)) && std::ranges::any_of(request.goals, [&](const JunctionRouteEnd &goal) {
-						return goal.tile.x == piece.tile.x && goal.tile.y == piece.tile.y && goal.trackdir == piece.trackdir;
-					});
-					if (!PieceUsable(piece, z, move == 'F', new_z, ramp, is_goal)) {
-						legal = false;
-						break;
-					}
-					if (!IsUsed(overlay, piece)) cost += TerrainCost(piece, z, ramp);
-					if (ramp) cost += request.slope_piece;
-					cost += ResourceCost(piece, z, JunctionResourceLevel::Surface);
-					z = new_z;
-					if (!Occupy(overlay, piece) || !AdvanceState(next.states[i], *previous, piece)) {
-						legal = false;
-						break;
-					}
-					cost += request.rail_piece;
-					if (i == 0) next.units = static_cast<uint16_t>(std::min<uint>(next.units + piece.units, request.min_units));
-					if (i == 0 && request.rules.has_value() && !RulesStep(next, piece)) {
-						legal = false;
-						break;
-					}
-					previous = &piece;
-				}
-				if (legal) {
-					next.last[i] = added[i].back();
-					next.z[i] = z;
-				}
+			Money cost;
+			bool pending;
+			const bool two_step_ok = request.line.tracks == 1;
+			if (!apply_move(node, move, added, first_node, two_step_ok, overlay, next, cost, pending)) continue;
+			if (!pending) {
+				PassWaypoints(next.passed, added[0], false);
+				push({std::move(next), tree[index].g + cost, index, std::string(1, move), std::move(added), {}});
+				continue;
 			}
-			if (!legal) continue;
-			PassWaypoints(next.passed, added[0], false);
-			push({std::move(next), tree[index].g + cost, index, std::string(1, move), std::move(added), {}});
+			for (char move2 : {'F', 'L', 'R'}) {
+				std::vector<std::vector<JunctionPiece>> added2 = ExtendJunctionLine(request.line, next.last, move2, error);
+				if (added2.empty()) continue;
+				Overlay overlay2 = overlay;
+				LineNode next2;
+				Money cost2;
+				bool pending2;
+				if (!apply_move(next, move2, added2, false, false, overlay2, next2, cost2, pending2) || pending2 || !is_goal_piece(next2.last[0])) continue;
+				std::vector<std::vector<JunctionPiece>> both = added;
+				both[0].insert(both[0].end(), added2[0].begin(), added2[0].end());
+				PassWaypoints(next2.passed, both[0], false);
+				push({std::move(next2), tree[index].g + cost + cost2, index, std::string{move, move2}, std::move(both), {}});
+			}
 		}
 
 		/* D155: a tunnel straight on from axis pieces, as the game's CmdBuildTunnel finds its far end. */
