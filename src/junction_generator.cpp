@@ -787,8 +787,20 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 	constexpr int STUB = 2;
 	auto tile = [](int x, int y) { return TileIndexDiffC{static_cast<int16_t>(x), static_cast<int16_t>(y)}; };
 	JunctionRouteCache route_cache;
+	using Clock = std::chrono::steady_clock;
+	auto since = [](Clock::time_point from) { return std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - from).count(); };
+	/* Adds the wall time of one router call to micros_route. */
+	auto timed_route = [&](auto &&route) {
+		const auto from = Clock::now();
+		auto routed = route();
+		result.micros_route += since(from);
+		return routed;
+	};
+	Clock::time_point height_start;
 
 	for (int height = first; height <= first + 8; height++) {
+		if (result.heights_tried > 0) result.micros_per_height.push_back(since(height_start));
+		height_start = Clock::now();
 		result.heights_tried++;
 		const int yb = height - 1;
 		auto say = [&](const std::string &text) { result.log += fmt::format("height {}: {}\n", height, text); };
@@ -842,7 +854,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			if (TracksAt(pass1, x, 0) == TrackBits{Track::X}) request.starts.push_back({tile(x, 0), Trackdir::X_SW});
 		}
 		request.goals = {goal_s};
-		const std::optional<JunctionRaster> a_to_s = RouteFencedAndAdd(pass1, request, column_fence, &route_cache);
+		const std::optional<JunctionRaster> a_to_s = timed_route([&] { return RouteFencedAndAdd(pass1, request, column_fence, &route_cache); });
 		if (!a_to_s.has_value()) {
 			say("A->S failed");
 			continue;
@@ -853,13 +865,15 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		request.starts = {start_n};
 		const int x_s = a_to_s->pieces.front().tile.x;
 		request.goals = PlainRowPieces(pass1, 0, Trackdir::X_SW, std::max(xO, x_s + static_cast<int>(spec.prio_tiles) + JUNCTION_E_PRIO_AFTER_SPLIT + result.e_phase), frame.width - 3);
-		const std::optional<JunctionRaster> n_to_a = RouteAndAdd(pass1, request, &route_cache);
+		const std::optional<JunctionRaster> n_to_a = timed_route([&] { return RouteAndAdd(pass1, request, &route_cache); });
 		if (!n_to_a.has_value()) {
 			say("N->A failed");
 			continue;
 		}
 
 		/* The crossing set, and the skeleton from it. */
+		const auto skeleton_start = Clock::now();
+		auto skeleton_done = [&] { result.micros_skeleton += since(skeleton_start); };
 		std::vector<int> zone;
 		std::vector<int> zone_b;
 		for (const JunctionRaster *raster : {&*a_to_s, &*n_to_a}) {
@@ -869,6 +883,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			}
 		}
 		if (zone.empty()) {
+			skeleton_done();
 			say("no crossing of the W row");
 			continue;
 		}
@@ -882,6 +897,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			if (spec.bridge_span_ok(n)) in.nmax = n;
 		}
 		if (in.nmax == 0) {
+			skeleton_done();
 			say("no bridge span is ok");
 			continue;
 		}
@@ -907,6 +923,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			}
 		}
 		if (!chosen.has_value()) {
+			skeleton_done();
 			say("no valid skeleton for either stagger");
 			continue;
 		}
@@ -914,9 +931,12 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		std::string error;
 		const auto lanes = BuildParallelogramLanes(pos, frame.width, w_row, b_row, &error);
 		if (!lanes.has_value()) {
+			skeleton_done();
 			say(fmt::format("lanes: {}", error));
 			continue;
 		}
+
+		skeleton_done();
 
 		/* The doubled lanes, then B->S and N->B. */
 		JunctionLayout fixed;
@@ -939,19 +959,21 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			continue;
 		}
 		request.goals = stub_pieces(xO, Trackdir::Y_SE, ys);
-		if (!RouteFencedAndAdd(fixed, request, branch_fence, &route_cache).has_value()) {
+		if (!timed_route([&] { return RouteFencedAndAdd(fixed, request, branch_fence, &route_cache); }).has_value()) {
 			say("B->S failed");
 			continue;
 		}
 		request = base;
 		request.starts = stub_pieces(xI, Trackdir::Y_NW, ys + 1);
 		request.goals = PlainRowPieces(fixed, b_row, Trackdir::X_NE, pos.x_sb + 1, pos.x_nw);
-		if (!RouteFencedAndAdd(fixed, request, branch_fence, &route_cache).has_value()) {
+		if (!timed_route([&] { return RouteFencedAndAdd(fixed, request, branch_fence, &route_cache); }).has_value()) {
 			say("N->B failed");
 			continue;
 		}
 
+		const auto finish_start = Clock::now();
 		std::optional<JunctionLayout> built = FinishJunctionCandidate(std::move(fixed), spec, terrain, 0, w_row, frame.hub_x, nullptr, nullptr);
+		result.micros_finish += since(finish_start);
 		if (!built.has_value()) {
 			say("finish failed");
 			continue;
@@ -960,11 +982,14 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		result.height = height;
 		result.stagger = static_cast<uint8_t>(chosen_stagger);
 		result.layouts_built++;
+		const auto check_start = Clock::now();
 		result.clean = JunctionRulesClean(*built, spec);
 		if (!result.clean) result.violations = CheckJunctionRules(*built, spec);
+		result.micros_check += since(check_start);
 		result.layout = std::move(built);
 		break;
 	}
+	if (result.heights_tried > 0) result.micros_per_height.push_back(since(height_start));
 	result.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
 	return result;
 }

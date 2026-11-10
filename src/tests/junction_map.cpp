@@ -109,13 +109,24 @@ TEST_CASE("the doubled bridge spans the branch crossings", "[junctionmap]")
 	CHECK(crossings > 0);
 }
 
+TEST_CASE("the T map reports its time by phase", "[junctionmap]")
+{
+	const JunctionTMapResult result = ConstructJunctionTMap(MakeTestJunctionSpec());
+	CHECK(result.micros_route >= 0);
+	CHECK(result.micros_skeleton >= 0);
+	CHECK(result.micros_finish >= 0);
+	CHECK(result.micros_check >= 0);
+	CHECK(result.micros_route + result.micros_skeleton + result.micros_finish + result.micros_check <= result.micros);
+	CHECK(static_cast<int>(result.micros_per_height.size()) == result.heights_tried);
+}
+
 TEST_CASE("BENCH the constructed T", "[junctionmap]")
 {
 	for (const auto &[name, spec] : MapSpecs()) {
 		const JunctionTMapResult result = ConstructJunctionTMap(spec);
 		REQUIRE(result.layout.has_value());
 		const JunctionCompactness compact = MeasureJunctionCompactness(*result.layout);
-		std::cout << "BENCH tmap spec=" << name << " height=" << result.height << " micros=" << result.micros << " occupied=" << compact.occupied << " slivers=" << compact.slivers << " clean=" << (result.clean ? 1 : 0) << "\n";
+		std::cout << "BENCH tmap spec=" << name << " height=" << result.height << " micros=" << result.micros << " occupied=" << compact.occupied << " slivers=" << compact.slivers << " clean=" << (result.clean ? 1 : 0) << " route=" << result.micros_route << " skeleton=" << result.micros_skeleton << " finish=" << result.micros_finish << " check=" << result.micros_check << " heights=" << result.heights_tried << "\n";
 	}
 }
 
