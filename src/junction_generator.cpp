@@ -23,6 +23,7 @@
 #include "thread.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -331,6 +332,37 @@ static std::optional<std::pair<JunctionRaster, JunctionRaster>> BuildParallelogr
 	});
 	if (!merges) return fail(fmt::format("lane B axis piece at the lane merge x {}", pos.x_lm));
 	return std::pair{std::move(*lane_a), std::move(*lane_b)};
+}
+
+/**
+ * The nodes of one lane (DESIGN-O4 "Every part is an edge", D178), as piece indices in increasing order: its first and last piece, for every bridge the piece
+ * just before its near head, its far head and the piece after it, and the axis piece at every change between an axis piece and a curve or diagonal piece (the start and end of each S-bend).
+ * Consecutive nodes bound the lane's edges: a span edge when the piece after the first node is a bridge head, nothing from a far head to the piece after it, else a surface edge.
+ * @param raster The lane's flat raster.
+ * @return The node indices; empty for an empty raster.
+ */
+static std::vector<size_t> JunctionLaneNodes(const JunctionRaster &raster)
+{
+	const std::vector<JunctionPiece> &pieces = raster.pieces;
+	std::vector<size_t> nodes;
+	if (pieces.empty()) return nodes;
+	std::vector<bool> is_node(pieces.size(), false);
+	is_node.front() = true;
+	is_node.back() = true;
+	for (size_t i = 1; i < pieces.size(); i++) {
+		const JunctionPiece &before = pieces[i - 1];
+		const JunctionPiece &piece = pieces[i];
+		if (before.on_bridge != piece.on_bridge) {
+			is_node[i - 1] = true; // The piece before the near head, or the far head.
+			if (before.on_bridge) is_node[i] = true; // The piece after the far head starts the next surface edge.
+		} else if (!piece.on_bridge && IsDiagonalTrackdir(before.trackdir) != IsDiagonalTrackdir(piece.trackdir)) {
+			is_node[IsDiagonalTrackdir(before.trackdir) ? i - 1 : i] = true;
+		}
+	}
+	for (size_t i = 0; i < pieces.size(); i++) {
+		if (is_node[i]) nodes.push_back(i);
+	}
+	return nodes;
 }
 
 /**
@@ -865,11 +897,13 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 	 * @param base The request's bounds, spacing and prices.
 	 * @param blocked Tiles no track or bridge may use.
 	 * @param w_row_heads_barred Whether a bridge head on the W row is prohibited (the old router's crossable rule).
+	 * @param prefix Frozen moves from the start (D150), replayed instead of searched: E3 ruling, a span edge between two head nodes is fixed by its nodes (the template's bridge, D80, D149).
 	 * @return The route's raster, or none when it does not route.
 	 */
-	auto route_line = [&](JunctionLayout &layout, const JunctionRouteRequest &base, const std::vector<TileIndexDiffC> &blocked, bool w_row_heads_barred) -> std::optional<JunctionRaster> {
+	auto route_line = [&](JunctionLayout &layout, const JunctionRouteRequest &base, const std::vector<TileIndexDiffC> &blocked, bool w_row_heads_barred, const std::string &prefix = {}) -> std::optional<JunctionRaster> {
 		JunctionLineRouteRequest line_request;
 		line_request.line = JunctionLineSpec{1, 0, 1};
+		line_request.prefix = prefix;
 		auto clip = [&](const std::vector<JunctionRouteEnd> &ends) {
 			std::vector<JunctionRouteEnd> clipped;
 			for (const JunctionRouteEnd &end : ends) {
@@ -1024,17 +1058,14 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		}
 
 		/*
-		 * The fixed parts (B's lanes on the W row; with the old router also A's main line on row 0 and the stubs) are not routed yet, so an obstacle on them cannot be worked around.
-		 * A taller box does not move row 0 or the W row: report it and stop (routing B is a later step). D178: the stubs are routed port edges,
-		 * so an obstacle on one is passed by growing the box (D170a) and is not checked here.
+		 * The old router's fixed parts (A's main line, B's lanes on the W row and the stubs) are not routed, so an obstacle on them cannot be worked around.
+		 * A taller box does not move row 0 or the W row: report it and stop. The line router routes every part (D178), so it has no such check.
 		 */
-		if (terrain != nullptr) {
+		if (terrain != nullptr && !line_router) {
 			JunctionLayout fixed_parts;
 			base_layout(fixed_parts);
 			AddRasterToLayout(fixed_parts, RasterizeJunctionRoute(StraightRoute(tile(frame.width - 1, w_row), Trackdir::X_NE, frame.width - 1)));
 			for (const JunctionTrack &jt : fixed_parts.tracks) {
-				/* E1: A is routed, so row 0 is not checked here; B's W row is checked only between the same ports until E3 routes B. */
-				if (line_router && jt.offset.y == w_row && (jt.offset.x < x_w || jt.offset.x > x_e)) continue;
 				if (jt.tracks.None() || terrain->UsableAt(jt.offset.x, jt.offset.y, plane)) continue;
 				say(fmt::format("fixed track on unusable tile {},{}", jt.offset.x, jt.offset.y));
 				result.micros_per_height.push_back(since(height_start));
@@ -1246,13 +1277,142 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		base_layout(fixed);
 		AddRasterToLayout(fixed, *a_to_s);
 		AddRasterToLayout(fixed, *n_to_a);
-		AddRasterToLayout(fixed, lanes->first);
-		AddRasterToLayout(fixed, lanes->second);
+		std::vector<TileIndexDiffC> rows_between;
+		for (int y = 1; y < w_row; y++) for (int x = 0; x <= frame.width - 1; x++) rows_between.push_back(tile(x, y));
 		std::vector<TileIndexDiffC> branch_fence;
-		for (int l = 0; l < 2; l++) {
-			for (int x = pos.x_hw[l] + 1; x < pos.x_he[l]; x++) branch_fence.push_back(tile(x, l == 0 ? w_row : b_row));
+		if (!line_router) {
+			AddRasterToLayout(fixed, lanes->first);
+			AddRasterToLayout(fixed, lanes->second);
+			for (int l = 0; l < 2; l++) {
+				for (int x = pos.x_hw[l] + 1; x < pos.x_he[l]; x++) branch_fence.push_back(tile(x, l == 0 ? w_row : b_row));
+			}
+		} else {
+			/*
+			 * E3, D178: each lane is a chain of edges between its nodes (the flat rasters' nodes), routed like every other edge: lane A's surface edges (A's stretch before
+			 * the lane split is lane B's, so lane B starts at the last piece the two share), lane B's, then both lanes' span edges.
+			 */
+			const std::array<const JunctionRaster *, 2> flat_lane = {&lanes->first, &lanes->second};
+			std::array<std::vector<size_t>, 2> nodes = {JunctionLaneNodes(lanes->first), JunctionLaneNodes(lanes->second)};
+			/*
+			 * The lanes' ends beyond the ports (x_w .. x_e, the flat T's crop, D179) are cropped away, so they are not routed: the first and last node lie on the ports' columns.
+			 * The template's straight pieces beyond them stay in the layout unrouted, as before: the crop and the ports check (D179) read the layout's extent from them.
+			 */
+			std::array<size_t, 2> first_in_port = {0, 0};
+			std::array<size_t, 2> last_in_port = {0, 0};
+			for (size_t l = 0; l < 2; l++) {
+				const std::vector<JunctionPiece> &pieces = flat_lane[l]->pieces;
+				size_t first_in = pieces.size();
+				size_t last_in = 0;
+				for (size_t i = 0; i < pieces.size(); i++) {
+					if (pieces[i].tile.x < x_w || pieces[i].tile.x > x_e) continue;
+					first_in = std::min(first_in, i);
+					last_in = i;
+				}
+				if (first_in >= pieces.size()) continue;
+				first_in_port[l] = first_in;
+				last_in_port[l] = last_in;
+				std::erase_if(nodes[l], [&](size_t i) { return i < first_in || i > last_in; });
+				if (nodes[l].empty() || nodes[l].front() != first_in) nodes[l].insert(nodes[l].begin(), first_in);
+				if (nodes[l].back() != last_in) nodes[l].push_back(last_in);
+			}
+			size_t shared = 0;
+			while (shared + 1 < std::min(flat_lane[0]->pieces.size(), flat_lane[1]->pieces.size()) &&
+					flat_lane[0]->pieces[shared + 1].tile.x == flat_lane[1]->pieces[shared + 1].tile.x &&
+					flat_lane[0]->pieces[shared + 1].tile.y == flat_lane[1]->pieces[shared + 1].tile.y &&
+					flat_lane[0]->pieces[shared + 1].trackdir == flat_lane[1]->pieces[shared + 1].trackdir) shared++;
+			std::erase_if(nodes[1], [&](size_t i) { return i < shared; });
+			if (nodes[1].empty() || nodes[1].front() != shared) nodes[1].insert(nodes[1].begin(), shared);
+
+			const JunctionLayout before_lanes = fixed;
+			std::array<std::vector<JunctionRaster>, 2> edge_rasters; ///< Each lane's routed edge from node k, in node order; an edge that is not routed is empty.
+			for (size_t l = 0; l < 2; l++) edge_rasters[l].resize(nodes[l].size());
+			std::vector<JunctionRaster> routed_b; ///< Lane B's surface edges: the through track lane A merges into.
+			bool lanes_routed = true;
+			/* Routes one edge between two nodes of a lane; with merge_goals, lane A's last edge instead ends on those pieces of lane B (the merge rule). */
+			auto route_edge = [&](size_t l, size_t k, const std::vector<JunctionRouteEnd> *merge_goals) {
+				const size_t from = nodes[l][k];
+				const size_t to = nodes[l][k + 1];
+				const JunctionPiece &first_piece = flat_lane[l]->pieces[from];
+				const JunctionPiece &last_piece = flat_lane[l]->pieces[to];
+				JunctionRouteRequest edge = base;
+				edge.starts = {{first_piece.tile, first_piece.trackdir}};
+				edge.goals = merge_goals != nullptr ? *merge_goals : std::vector<JunctionRouteEnd>{{last_piece.tile, last_piece.trackdir}};
+				int min_x = first_piece.tile.x;
+				int max_x = first_piece.tile.x;
+				for (const JunctionRouteEnd &goal : edge.goals) {
+					min_x = std::min<int>(min_x, goal.tile.x);
+					max_x = std::max<int>(max_x, goal.tile.x);
+				}
+				edge.min = tile(min_x, w_row);
+				edge.max = tile(max_x, b_row);
+				/* A span edge is not searched: its nodes fix it. Its prefix is the template bridge's B<n> (n middle tiles), the heads being the pieces after its first node and at its last. */
+				std::string span;
+				if (flat_lane[l]->pieces[from + 1].on_bridge) {
+					const JunctionPiece &near_head = flat_lane[l]->pieces[from + 1];
+					span = fmt::format("B{}", std::abs(last_piece.tile.x - near_head.tile.x) + std::abs(last_piece.tile.y - near_head.tile.y) - 1);
+				}
+				std::optional<JunctionRaster> raster = timed_route([&] { return route_line(fixed, edge, rows_between, false, span); });
+				if (!raster.has_value()) {
+					say(fmt::format("B lane edge failed at {},{}", first_piece.tile.x, first_piece.tile.y));
+					lanes_routed = false;
+					return;
+				}
+				if (l == 1 && merge_goals == nullptr && !flat_lane[1]->pieces[from + 1].on_bridge) routed_b.push_back(*raster);
+				edge_rasters[l][k] = std::move(*raster);
+			};
+			/* The kind of the edge from node k of lane l: 0 none (a far head ends a span edge; the next surface edge starts after it), 1 surface, 2 span. */
+			auto edge_kind = [&](size_t l, size_t k) { return flat_lane[l]->pieces[nodes[l][k]].on_bridge ? 0 : flat_lane[l]->pieces[nodes[l][k] + 1].on_bridge ? 2 : 1; };
+			size_t last_a = 0; ///< Lane A's last surface edge, the one that merges into lane B.
+			for (size_t k = 0; k + 1 < nodes[0].size(); k++) {
+				if (edge_kind(0, k) == 1) last_a = k;
+			}
+			/*
+			 * D178, the hub's general rule, in order: surface edges before span edges; at a split the continuing track is routed first and the leaving track starts on the last shared piece
+			 * (lane A continues at the lane split, lane B leaves it); at a merge the through track is routed first and the joining track ends on goals on the through track's plain pieces
+			 * (lane B is the through track at the lane merge, lane A joins it).
+			 */
+			for (size_t k = 0; k + 1 < nodes[0].size() && lanes_routed; k++) {
+				if (edge_kind(0, k) == 1 && k != last_a) route_edge(0, k, nullptr);
+			}
+			for (size_t k = 0; k + 1 < nodes[1].size() && lanes_routed; k++) {
+				if (edge_kind(1, k) == 1) route_edge(1, k, nullptr);
+			}
+			if (lanes_routed && edge_kind(0, last_a) == 1) {
+				const JunctionPiece &landing = flat_lane[0]->pieces.back();
+				std::vector<JunctionRouteEnd> merge_goals;
+				for (const JunctionRaster &raster : routed_b) {
+					for (const JunctionRouteEnd &end : PlainRasterPieces(fixed, raster, Trackdir::X_NE, landing.tile.x, landing.tile.x + 1)) {
+						if (end.tile.y == b_row) merge_goals.push_back(end);
+					}
+				}
+				route_edge(0, last_a, &merge_goals);
+			}
+			for (size_t l = 0; l < 2; l++) {
+				for (size_t k = 0; k + 1 < nodes[l].size() && lanes_routed; k++) {
+					if (edge_kind(l, k) == 2) route_edge(l, k, nullptr);
+				}
+			}
+			if (!lanes_routed) continue;
+			/* The routed edges, added in the template's order (lane A, then lane B, each along its nodes), so the layout's track order is the flat T's. */
+			fixed = before_lanes;
+			for (size_t l = 0; l < 2; l++) {
+				const std::vector<JunctionPiece> &pieces = flat_lane[l]->pieces;
+				JunctionRaster outside;
+				outside.pieces.assign(pieces.begin(), pieces.begin() + first_in_port[l]);
+				AddRasterToLayout(fixed, outside);
+				for (const JunctionRaster &raster : edge_rasters[l]) AddRasterToLayout(fixed, raster);
+				outside.pieces.assign(pieces.begin() + last_in_port[l] + 1, pieces.end());
+				AddRasterToLayout(fixed, outside);
+			}
+			for (const std::vector<JunctionRaster> &lane_edges : edge_rasters) for (const JunctionRaster &raster : lane_edges) {
+				for (const JunctionBridge &bridge : raster.bridges) {
+					const int dx = (bridge.end.x > bridge.start.x) - (bridge.end.x < bridge.start.x);
+					const int dy = (bridge.end.y > bridge.start.y) - (bridge.end.y < bridge.start.y);
+					for (int x = bridge.start.x + dx, y = bridge.start.y + dy; x != bridge.end.x || y != bridge.end.y; x += dx, y += dy) branch_fence.push_back(tile(x, y));
+				}
+			}
 		}
-		for (int y = 1; y < w_row; y++) for (int x = 0; x <= frame.width - 1; x++) branch_fence.push_back(tile(x, y));
+		branch_fence.insert(branch_fence.end(), rows_between.begin(), rows_between.end());
 
 		const int sl_x = pos.x_sl + 1;
 		request = base;
