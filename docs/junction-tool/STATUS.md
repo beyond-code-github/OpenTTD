@@ -3,7 +3,7 @@
 - Play binary REBUILT at bdf8b9cbe9 (G4+G5): engineer can run `.claude/play/build-play/openttd` and sculpt ridges.
 - E1 MERGED (8caebc3abf): A routed between ports (D179, D179a widening), PortBlocked status line, test 3 [slow] as the growth stop's red test. Gate 18.9 s; flat T test spec 37 ms (flat 24, route 3.3). Play binary rebuilt at the merge.
 - GS1 RUNNING in .claude/gs1 (brief briefs/GS1-growth-stop.md): router reports refused tiles + expansion_limit_hit; growth_can_help per failure site; red = E1 test 3 and the untunnelled town hill.
-- QUEUED: E2 (briefs/E2-port-edges.md, launch after GS1 merges): N and S stubs routed as port edges, stub check deleted. Then E3 design (B as an edge; doubled section as a two-track line; surface edges first, span edges after).
+- QUEUED: E2 (briefs/E2-port-edges.md, launch after GS1 merges): N and S stubs routed as port edges, stub check deleted. Then E3 (briefs/E3-b-lanes-as-edges.md: lane nodes from the flat template, every stretch routed, surface edges then span edges; fixed-part check deleted).
 - Glossary in DESIGN-O4 (movement, node, edge, surface/span edge, crossing). Routing order: surface edges first, then span edges (engineer); footprint reservation only as a fallback.
 - QUEUE after E1: growth stop (grow only when the box, not the terrain, cut the search; router reports pruning at the box bound); E2 port approaches as a request property (stubs deleted); E3 B as an edge (doubled section = two-track line, D149); then A->S re-crossing X_B (field case), port planes at their own ground, A leaving its band.
 - Worktrees g4, g5 removed.
