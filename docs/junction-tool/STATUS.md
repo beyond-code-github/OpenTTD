@@ -1,5 +1,12 @@
 # Junction tool: status
 
+## G1 MERGED (2026-11-10 evening) — the T constructed from its map
+e7a918c44d: ConstructJunctionTMap builds one map from the rules (main line doubled bridge over the branch, N->A over A->S, stagger by span, D148a phase), routes each edge once in dependency order, checks once. Rule-clean on the test spec (190 occupied / 53 slivers) and the pinned spec (118 / 41), identical to the old generator; Debug 481 ms and 235 ms against the old sweep's 8.3 s and 1.8 s. `[junctionmap]` runs in 2.6 s.
+Design now: revision 5 + D170a (projection makes the map fit), D171 (crossing is just "crosses"), projection = materialise edges one at a time with the line router, negotiate where necessary; several maps may be projected and the best kept.
+Pre-existing failure: `map_export JSON of a hand-built area` asserts in SetRoadTypeRoad (also on the older main build); not caused by G1.
+Superseded WIP branches (kept on fork): wt-o4c2 (O4c2/T1 tile-level negotiation), wt-m1 (template translation).
+Next: G2 (open map choices one at a time; line router for projection; timing in Release against 100 ms), G3 (signals and throughput on the map).
+
 ## O4c2 STOPPED (2026-11-10, after compaction)
 WIP saved as 03fffdac7e on wt-o4c2 (pushed to fork; worktree .claude/o4c2 kept). Feedback loop deleted, PathFinder prices, rules and masks in routing; builds clean.
 - Pinned and narrow-branch specs: rule-clean, but 45 s and 59 s.
