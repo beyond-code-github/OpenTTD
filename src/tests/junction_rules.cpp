@@ -1385,6 +1385,7 @@ TEST_CASE("CheckWaitingRoom: whole-train bays before a queue merge", "[junction]
 	/* TL 4 makes a bay 8 units. The merge signal at piece 9 leaves L = 18; bay boundaries are pieces 5 and 1. */
 	const char *plain = "FFFFFFFFFFFFLFR";
 	CHECK(BayViolations(plain, {1, 5, 9}).empty());
+	/* D176: exactly full (a train in each of bays 1-5 and 5-9) leaves the split clear; the stretch before piece 1 is where the next train waits, not a bay. */
 
 	/* Without the signal at 2B. */
 	CHECK(Has(BayViolations(plain, {5, 9}), JunctionRule::WaitingRoom, 1, 0, "no signal at bay boundary 2"));
