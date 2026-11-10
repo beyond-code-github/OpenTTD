@@ -11,6 +11,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[linerouter]` | 10.4 s | 12 s (over the 5 s norm: split or move tests to `[slow]` when next touched) | 1.5 s |
 | `[linebuild]` | 0.01 s | 5 s | 0.01 s |
 | `[terrainrect]` | 0.02 s | 5 s | 0.01 s |
+| `[projection]` | 3.8 s | 5 s | 0.6 s |
 | wide gate | (Release only) | | 17 s (budget 120 s) |
 
 Measured 2026-11-10 at the G3a merge.

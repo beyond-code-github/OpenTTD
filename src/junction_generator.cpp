@@ -917,6 +917,23 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			continue;
 		}
 
+		/*
+		 * The fixed parts (A's main line on row 0, B's lanes on the W row, the N and S stubs) are not routed yet, so an obstacle on them cannot be worked around,
+		 * and a taller box does not move them: report it and stop (routing the main lines is a later step).
+		 */
+		if (terrain != nullptr) {
+			JunctionLayout fixed_parts;
+			base_layout(fixed_parts);
+			AddRasterToLayout(fixed_parts, RasterizeJunctionRoute(StraightRoute(tile(frame.width - 1, w_row), Trackdir::X_NE, frame.width - 1)));
+			for (const JunctionTrack &jt : fixed_parts.tracks) {
+				if (jt.tracks.None() || terrain->UsableAt(jt.offset.x, jt.offset.y, 0)) continue;
+				say(fmt::format("fixed track on unusable tile {},{}", jt.offset.x, jt.offset.y));
+				result.micros_per_height.push_back(since(height_start));
+				result.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
+				return result;
+			}
+		}
+
 		/* A->S and N->A: final routes; B's row is crossable at cost 0 because B goes over (D156). */
 		JunctionLayout pass1;
 		base_layout(pass1);
@@ -942,6 +959,8 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			say("A->S failed");
 			continue;
 		}
+		result.a_to_s_tiles.clear();
+		for (const JunctionPiece &piece : a_to_s->pieces) result.a_to_s_tiles.push_back(piece.tile);
 
 		request = base;
 		request.crossable = w_tiles;

@@ -173,6 +173,7 @@ struct JunctionTMapResult {
 	int64_t micros_check = 0; ///< JunctionRulesClean (and CheckJunctionRules when unclean).
 	std::vector<int64_t> micros_per_height; ///< Wall time of each height tried, in order.
 	std::string log; ///< One line per height tried: which edge failed, or "built".
+	std::vector<TileIndexDiffC> a_to_s_tiles; ///< Test aid: the tiles of A->S's route, frame coordinates, before cropping.
 	std::string line_router_trace; ///< Test aid: one line per line-router request: moves, cost, expansions.
 };
 
