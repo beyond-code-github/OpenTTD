@@ -179,6 +179,14 @@ TEST_CASE("line router results are unchanged by the speed work", "[linerouter]")
 		"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF 4000 40\n"
 		"LFFFLFFRFFFFLF 1800 58\n"
 		"FB2FLFFFLFFFFFFFFRFL 3000 120\n"
+		"FFFFFFFFFF 1000 10\n"
+		"RF 250 3\n"
+		"FFFFFFFFFFFFFFFFFFFF 2000 20\n"
+		"LR 400 8\n"
+		"F 100 1\n"
+		"FL 250 1\n"
+		"B5 0 0\n"
+		"B5 0 0\n"
 		"RFFFRFFLFFFFFR 1700 83\n"
 		"RFFFFFFFFFFFRFFFFFFFFFFFFLFR 3100 817\n"},
 		{"pinned",
@@ -191,11 +199,19 @@ TEST_CASE("line router results are unchanged by the speed work", "[linerouter]")
 		"FFFFFFFFFFFFFFFFFFFFFFFF 2400 24\n"
 		"LFFFLFFRFFFFLF 1800 58\n"
 		"FB2FFLFFFFL 1900 72\n"
+		"FFFFF 500 5\n"
+		"RF 250 3\n"
+		"FFFFFFFFFF 1000 10\n"
+		"LR 400 8\n"
+		"F 100 1\n"
+		"FL 250 1\n"
+		"B4 0 0\n"
+		"B4 0 0\n"
 		"RFFFFFRFFFLFR 1600 55\n"
 		"RFFFFFFFRFFLFFFFFR 2100 236\n"},
 	};
 	/* D173: the line router starts at the flat map's height, so its trace is the tail of the old one: the lines of the built height. */
-	constexpr size_t BUILT_HEIGHT_LINES = 7; ///< The S and N port edges, A, A->S, N->A, B->S, N->B (E2 routes the port edges, D178).
+	constexpr size_t BUILT_HEIGHT_LINES = 15; ///< The S and N port edges, A, A->S, N->A, the eight lane edges of A and B, B->S, N->B (E2 routes the port edges, E3 the lane edges, D178).
 	for (const auto &[name, trace] : expected) {
 		size_t cut = trace.size();
 		for (size_t i = 0; i < BUILT_HEIGHT_LINES; i++) cut = trace.rfind('\n', cut - 2) + 1;
@@ -362,6 +378,104 @@ TEST_CASE("an obstacle on the main line outside the junction is ignored", "[junc
 	REQUIRE(result.layout.has_value());
 	CHECK(result.clean);
 	CheckSameLayout(*result.layout, *flat.layout);
+}
+
+/** The flat T's tile in the frame's working coordinates (E3): the layout is cropped and shifted by the hub offset. */
+static TileIndexDiffC FlatFrameTile(const JunctionTMapResult &flat, const JunctionTrack &track)
+{
+	const int x_w = FlatWestPortX(flat);
+	return {static_cast<int16_t>(track.offset.x + x_w), static_cast<int16_t>(track.offset.y - flat.hub.y)};
+}
+
+/** Cuts the terrain after `rows` frame rows (from row 0), so a failing map tries only a few heights. */
+static void LimitMapTestRows(JunctionTerrain &terrain, int rows)
+{
+	terrain.height = rows - terrain.origin.y;
+	terrain.tiles.resize(static_cast<size_t>(terrain.width) * terrain.height);
+}
+
+TEST_CASE("a house on B's main line outside the junction is ignored", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const int x_east = FlatWestPortX(flat) + flat.layout->size.x; // One column east of the flat T's last column.
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, x_east, spec.ml_gap + 1);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO(result.log);
+	REQUIRE(result.layout.has_value());
+	CHECK(result.clean);
+	CheckSameLayout(*result.layout, *flat.layout);
+}
+
+TEST_CASE("a house on B's lane inside the junction is reported by B", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const int b_row = spec.ml_gap + 2;
+	/* The b row's bridge heads, then the plain X tiles west of the far head that no branch route uses. */
+	int far_head_x = INT16_MAX;
+	for (const JunctionBridge &bridge : flat.layout->bridges) {
+		if (bridge.start.y - flat.hub.y == b_row) far_head_x = std::min<int>(far_head_x, std::min(bridge.start.x, bridge.end.x) + FlatWestPortX(flat));
+	}
+	REQUIRE(far_head_x != INT16_MAX);
+	std::vector<TileIndexDiffC> candidates;
+	for (const JunctionTrack &track : flat.layout->tracks) {
+		const TileIndexDiffC frame_tile = FlatFrameTile(flat, track);
+		if (frame_tile.y != b_row || frame_tile.x >= far_head_x - 2 || track.tracks != TrackBits{Track::X}) continue;
+		if (MapUsesTile(flat.a_to_s_tiles, frame_tile) || MapUsesTile(flat.n_to_a_tiles, frame_tile)) continue;
+		candidates.push_back(frame_tile);
+	}
+	REQUIRE(!candidates.empty());
+	std::ranges::sort(candidates, [](const TileIndexDiffC &a, const TileIndexDiffC &b) { return a.x < b.x; });
+	const TileIndexDiffC blocked = candidates.back(); // The nearest to the far head: a stretch too short to detour around.
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, blocked.x, blocked.y);
+	LimitMapTestRows(terrain, flat.height + 3);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO("blocked " << blocked.x << "," << blocked.y << "\n" << result.log);
+	std::cout << "LANEHOUSE blocked=" << blocked.x << "," << blocked.y << " built=" << (result.layout.has_value() ? 1 : 0) << " heights=" << result.heights_tried << "\n" << result.log;
+	if (result.layout.has_value()) {
+		CHECK(result.clean);
+		for (const JunctionTrack &track : result.layout->tracks) {
+			if (FlatFrameTile(flat, track).x == blocked.x && FlatFrameTile(flat, track).y == blocked.y) CHECK(track.tracks.None());
+		}
+	}
+	std::istringstream lines(result.log);
+	int failed_heights = 0;
+	for (std::string line; std::getline(lines, line);) {
+		if (line.ends_with(": built")) continue;
+		CHECK(line.find("B lane edge failed at") != std::string::npos);
+		failed_heights++;
+	}
+	CHECK(failed_heights > 0);
+}
+
+TEST_CASE("a slope under B's straight stretch is ramped or reported", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const int x_east = FlatWestPortX(flat) + flat.layout->size.x - 1;
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	terrain.build_on_slopes = true;
+	for (const int x : {x_east - 4, x_east - 3}) {
+		JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(spec.ml_gap + 1 - terrain.origin.y) * terrain.width + (x - terrain.origin.x)];
+		tile.z_min = 0;
+		tile.z_max = 1;
+		tile.incline = DiagDirection::NE;
+	}
+	LimitMapTestRows(terrain, flat.height + 3);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO(result.log);
+	std::cout << "LANESLOPE built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << " height=" << result.height << " heights=" << result.heights_tried << "\n" << result.log;
+	if (result.layout.has_value()) {
+		CHECK(result.clean);
+	} else {
+		CHECK(result.log.find("B lane edge failed at") != std::string::npos);
+	}
 }
 
 TEST_CASE("a blocked port approach is reported at once", "[junction][projection]")
