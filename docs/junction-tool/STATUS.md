@@ -1,3 +1,14 @@
+## RESUME HERE (2026-11-11): parked by the engineer after the ridge demo ("Great work!")
+State: feature/junction-tool pushed to fork; no agents running; worktrees left: crash, o4b2, o4c2, play, prof (old, unused).
+Done tonight: G3a (line-router T from the flat height, 39/14 ms Release, identical to the T the engineer called "perfect"), G3b (obstacles), G3c0 (box grows within the snapshot, D172 window on the line router, last row blocked), G3c (ridge by ramps, 15 ms), LP9, P1/P2, tools/junction/jt + TESTS.md (tag budgets).
+Rigs running: hubs rig port 3989 (T at 4,4; T circuit with 8 trains at 47,4); ridge rig port 3999 (T over a ridge at 8,8; `ottd ridge-demo FILE r0 r1`).
+Next, in order:
+1. G4: wire ConstructJunctionTMap (line router, live terrain snapshot, plane = the hub's ground height, not 0) into the in-game junction tool, and rebuild the play binary, so the engineer can sculpt ridges and try it (he asked: "Will I be able to construct a variety of ridges and try it out using the tool?").
+2. Tunnels: tunnel price in JunctionUnitPrices (game fills it), enable in the T map's line requests (D175; D174: ML tunnels doubled, SL single at basic throughput).
+3. Failed heights on terrain (field of obstacles 435 ms Release): tile-unit edge minimums on the map ("Height from the edges" option a), also needed for the traffic model and D176's whole-bay legs.
+4. Then: main lines routed as edges (obstacles under the main line), LL_RR on the map (D176 multi-line rule), SoverN retry (scratchpad/g2b/g2c_wip.patch), G3 traffic model (prios D159, SL doubling D174, bay counts D176).
+Painter: LP11 waits on the travel-direction question. Stations: wait on the engineer's Station window check.
+
 # Junction tool: status
 
 ## UPDATE 2026-11-10 night (after RESUME HERE below)
