@@ -1723,3 +1723,55 @@ TEST_CASE("FindJunctionLineRoute: a route may end on an identical existing piece
 	request.existing = &different;
 	CHECK_FALSE(FindJunctionLineRoute(request).route.has_value());
 }
+
+/** An existing straight X row at y = 20 over the given x range. */
+static JunctionLayout ExistingRow(int min_x, int max_x)
+{
+	JunctionLayout row;
+	for (int x = min_x; x <= max_x; x++) row.tracks.push_back({{static_cast<int16_t>(x), 20}, TrackBits{Track::X}});
+	return row;
+}
+
+TEST_CASE("FindJunctionLineRoute: a route may split off identical existing track with a curve", "[junction][linerouter]")
+{
+	const JunctionLayout existing = ExistingRow(30, 40);
+	JunctionLineRouteRequest request = SingleTrackRequest();
+	request.goals = {{{34, 15}, Trackdir::Y_NW}};
+	request.existing = &existing;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	CHECK(result.route->start.x == 35);
+	REQUIRE_FALSE(result.route->moves.empty());
+	CHECK(result.route->moves[0] != 'F');
+}
+
+TEST_CASE("FindJunctionLineRoute: a route may merge onto existing track with a curve", "[junction][linerouter]")
+{
+	const JunctionLayout existing = ExistingRow(10, 24);
+	JunctionLineRouteRequest request = SingleTrackRequest();
+	request.start = {22, 28};
+	request.start_trackdir = Trackdir::Y_NW;
+	/* A window of the row's pieces, as the T map's goals are: the merge tile (22, 20) is a goal tile. */
+	request.goals = {{{22, 20}, Trackdir::X_NE}, {{21, 20}, Trackdir::X_NE}, {{20, 20}, Trackdir::X_NE}};
+	request.existing = &existing;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	size_t curves_on_row = 0;
+	for (const JunctionRaster &raster : RasterizeJunctionLine(request.line, *result.route)) {
+		for (const JunctionPiece &piece : raster.pieces) {
+			if (piece.tile.y == 20 && piece.tile.x >= 10 && piece.tile.x <= 24 && TrackdirToTrack(piece.trackdir) != Track::X) curves_on_row++;
+		}
+	}
+	CHECK(curves_on_row > 0);
+
+	/* A clashing piece that no goal piece follows is still rejected: crossing the row is not a merge, so the route goes round its end. */
+	request.goals = {{{22, 12}, Trackdir::Y_NW}};
+	const JunctionLineRouteResult round = FindJunctionLineRoute(request);
+	INFO(round.error);
+	REQUIRE(round.route.has_value());
+	for (const JunctionRaster &raster : RasterizeJunctionLine(request.line, *round.route)) {
+		for (const JunctionPiece &piece : raster.pieces) CHECK_FALSE((piece.tile.y == 20 && piece.tile.x >= 10 && piece.tile.x <= 24));
+	}
+}
