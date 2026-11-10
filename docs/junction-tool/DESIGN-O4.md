@@ -18,6 +18,7 @@ Solved by enumeration best first: candidate structures (crossing choices x order
 **2. Projection (negotiation).** Given one structure:
 - Fixed first, reserved not priced: merge windows and their prio rows, crossing over/under.
 - Then every edge is routed by the line router (heights, bridges, tunnels, rule state from O4c1), all edges equal, PathFinder prices (D168), a small round limit (measured). Shared track is one edge routed once, so splits and merges are where the map put them, not emergent.
+- Split and merge spots are chosen by the router, not fixed by the map: an edge leaving a split starts from a set of pieces (O4a), every piece of the trunk that the map's constraints allow (inside the node's interval, outside coverages, room for the D113 piece and the waiting room); an edge joining a merge ends on the legal pieces of the trunk downstream. The router takes the cheapest. Merges with a prio are the exception: their window and prio row are reserved before routing, so their spot is fixed for the round (moved by the map layer between attempts).
 - Negotiation only packs. An edge with no route, or no convergence in K rounds, returns to step 1 with that failure recorded (the structure, or the part of it that failed, is ruled out). Never fixed by tuning prices or adding feedback.
 
 **3. Finish and judge.** Existing pipeline: crop, normalise, signal pass, full checker (safety net), prio timing gate and throughput (D119), score: compactness then cost (D153).
