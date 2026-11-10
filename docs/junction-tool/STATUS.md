@@ -1,12 +1,12 @@
 # Junction tool: status
 
-## QUEUE (2026-11-10 night, engineer away: "fill the queue and make as much progress through everything including projection")
-- MERGED: G2a pieces c4c2a2c214 (T map time by phase), 8f341d8475 (line router start/goal on identical existing track), 5a54a047ac (line router split/merge with a curve, Exception 2). LP10 4624a965fa.
-- G2a findings: T map on the line router is rule-clean and identical but 7-8x slower per success in Debug (test 33.5 ms vs 4.1 ms route at height 13; expansions only 58-817, so per-request overhead, not search size) -> switch deferred; patch kept at scratchpad/g2/part2_tmap.patch (also OneDrive g2/). Old router logs: heights 6-11 fail on A->S, 12 skeleton/B->S, 13 built; failed heights are most of the route time; check is 116 ms of 478 ms Debug on the test spec.
-- RUNNING: G2b (wt-g2b, .claude/g2b, head a5ca791d61): third crossing decided in projection (NoverS old router; SoverN A->S/N->A on the line router with column-xI bridge-only resource_cost), best score; amendment 1 first height = ml_gap + 10 for NoverS (derivation in the brief).
-- NEXT: line router per-request overhead (profile: 58 expansions cost ~8 ms Debug); then T map onto terrain (obstacles, a hill) with the line router; G3 mandatory signals + throughput on the map; check time (prio reach sim). Rig: show a G2 hub beside the old ones.
+## RESUME HERE (2026-11-10 late night, engineer away: "fill the queue and make as much progress through everything including projection")
+- T map now (feature 6b6f3a4a48): ConstructJunctionTMap = one map, edges routed once (old router), checked once, first height ml_gap+10 from the rules. RELEASE: test spec 23 ms (route 13.8, check 8.6), pinned 11 ms; 190/53 and 118/41, rule-clean, identical to the old generator (old sweep 8.3 s Debug). `[junctionmap]` 2.8 s Debug.
+- Merged tonight: G1 e7a918c44d, phase timing c4c2a2c214, line router start/goal on identical track 8f341d8475, split/merge with a curve 5a54a047ac, first height 6b6f3a4a48, LP10 4624a965fa.
+- Line router on the T map: identical layout but 7-8x slower per request in Debug (58-817 expansions cost ~8 ms: per-request setup overhead). Deferred; patch at scratchpad/g2/part2_tmap.patch (OneDrive g2/).
+- SoverN (A->S over N->A, D171 crossing in projection) NOT merged: crossings with B drift apart (21-tile set vs 10-tile bridge) unless every edge is held near the crossing; adding per-edge envelopes one at a time is whack-a-mole. LESSON / NEXT DESIGN: crossings must be explicit map nodes with tile windows (the D171 envelope) applied to every edge that passes them, derived from the bridge span, not per-edge cost patches. Patches g2b_wip.patch, g2b_commit2_wip.patch (OneDrive g2/).
+- NEXT: (1) design crossing nodes with windows on the map (orchestrator), then retry SoverN; (2) line router per-request overhead profile; (3) T map onto terrain; (4) G3 mandatory signals + throughput on the map; (5) rig: show a G2 hub to the engineer.
 - OPEN QUESTION for the engineer (LP11): which group of a painted line travels with the route heading; driving side (D66)?
-- Release timing after each merge: `cmake --build build-rel --target openttd_test`, run `[junctionmap]` in build-rel, output to scratchpad.
 
 ## G1 MERGED (2026-11-10 evening) — the T constructed from its map
 e7a918c44d: ConstructJunctionTMap builds one map from the rules (main line doubled bridge over the branch, N->A over A->S, stagger by span, D148a phase), routes each edge once in dependency order, checks once. Rule-clean on the test spec (190 occupied / 53 slivers) and the pinned spec (118 / 41), identical to the old generator; Debug 481 ms and 235 ms against the old sweep's 8.3 s and 1.8 s. `[junctionmap]` runs in 2.6 s.
