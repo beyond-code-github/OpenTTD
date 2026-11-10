@@ -2038,3 +2038,84 @@ TEST_CASE("FindJunctionLineRoute starts a ramp at its low end", "[junction][star
 	CHECK(rasters[0].pieces[0].tile.x == 40);
 	CHECK(TerrainTileOf(c.terrain, 40, rasters[0].pieces[0].tile.y).incline == DiagDirection::NE);
 }
+
+TEST_CASE("JunctionRelaxedReachable: a wall of houses cuts the box", "[junction][relaxed]")
+{
+	JunctionLineRouteRequest request = BaseRequest();
+	JunctionTerrain terrain = FlatTerrainFor(request, 0);
+	for (int y = request.min.y; y <= request.max.y; y++) TerrainTileOf(terrain, 30, y).cls = JunctionTileClass::Blocked;
+	request.terrain = &terrain;
+	CHECK_FALSE(JunctionRelaxedReachable(request));
+
+	TerrainTileOf(terrain, 30, 12).cls = JunctionTileClass::Buildable;
+	CHECK(JunctionRelaxedReachable(request));
+
+	TerrainTileOf(terrain, 30, 12).cls = JunctionTileClass::Blocked;
+	request.tunnel_price = [](uint n) { return Money(10 * (n + 2)); };
+	CHECK(JunctionRelaxedReachable(request));
+}
+
+TEST_CASE("JunctionRelaxedReachable agrees with the router when it routes", "[junction][relaxed]")
+{
+	auto agrees = [](const JunctionLineRouteRequest &request) {
+		const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+		INFO(result.error);
+		REQUIRE(result.route.has_value());
+		CHECK(JunctionRelaxedReachable(request));
+	};
+	agrees(BaseRequest());
+	{
+		LineBridgeCase c;
+		SetUpRiver(c, "L_R", 3, false, false);
+		agrees(c.request);
+	}
+	{
+		LineRampCase c;
+		SetUpRidge(c);
+		agrees(c.request);
+	}
+	{
+		LineRampCase c;
+		SetUpValley(c);
+		agrees(c.request);
+	}
+	{
+		LineRampCase c;
+		SetUpTunnelRidge(c, 0);
+		agrees(c.request);
+	}
+	{
+		const JunctionLayout existing = ExistingRow(30, 40);
+		JunctionLineRouteRequest request = SingleTrackRequest();
+		request.goals = {{{34, 15}, Trackdir::Y_NW}};
+		request.existing = &existing;
+		agrees(request);
+	}
+	{
+		JunctionLineRouteRequest request = BaseRequest();
+		const JunctionLineRouteResult straight = FindJunctionLineRoute(request);
+		REQUIRE(straight.route.has_value());
+		const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *straight.route);
+		const JunctionPiece &middle = rasters[1].pieces[rasters[1].pieces.size() / 2];
+		JunctionTerrain terrain = FlatTerrainFor(request, 0);
+		TerrainTileOf(terrain, middle.tile.x, middle.tile.y).cls = JunctionTileClass::Blocked;
+		request.terrain = &terrain;
+		agrees(request);
+	}
+}
+
+TEST_CASE("JunctionRelaxedReachable: the first step off a start may enter existing track", "[junction][relaxed]")
+{
+	const JunctionLayout existing = ExistingRow(30, 40);
+	JunctionLineRouteRequest request = SingleTrackRequest();
+	request.goals = {{{36, 15}, Trackdir::Y_NW}};
+	request.existing = &existing;
+	/* Only the next tile along the existing row is open. */
+	request.blocked = {{35, 19}, {35, 21}, {34, 20}, {36, 21}, {37, 20}};
+	for (int x = 30; x <= 40; x++) request.blocked.push_back({static_cast<int16_t>(x), 19});
+	request.blocked.erase(std::remove_if(request.blocked.begin(), request.blocked.end(), [](const TileIndexDiffC &t) { return t.x == 36 && t.y == 19; }), request.blocked.end());
+	CHECK(JunctionRelaxedReachable(request));
+	/* Two tiles along the row is not a first step. */
+	request.blocked.push_back({36, 19});
+	CHECK_FALSE(JunctionRelaxedReachable(request));
+}

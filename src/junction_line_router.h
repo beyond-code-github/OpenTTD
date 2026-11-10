@@ -83,4 +83,13 @@ struct JunctionLineRouteResult {
 
 JunctionLineRouteResult FindJunctionLineRoute(const JunctionLineRouteRequest &request);
 
+/**
+ * A tile-level relaxation of FindJunctionLineRoute: it over-approximates it, so it is true whenever a route exists (and may be true when none does).
+ * Heights, curves, spacing, prices, costs and rules are ignored; only the tiles a route can stand on and the bridges and tunnels that can jump between them count.
+ * A false answer therefore proves the search would fail, and it is far cheaper than the search. A request with no goals (waypoints only) is judged true.
+ * @param request The request, as for FindJunctionLineRoute.
+ * @return Whether some goal tile can be reached from some start tile.
+ */
+bool JunctionRelaxedReachable(const JunctionLineRouteRequest &request);
+
 #endif /* JUNCTION_LINE_ROUTER_H */
