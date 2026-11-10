@@ -140,13 +140,36 @@ TEST_CASE("the first height is a lower bound", "[junctionmap]")
 	}
 }
 
+TEST_CASE("the line-router T matches or beats the old-router T", "[junctionmap]")
+{
+	for (const auto &[name, spec] : MapSpecs()) {
+		const JunctionTMapResult line = ConstructJunctionTMap(spec, nullptr, std::nullopt, true);
+		const JunctionTMapResult old = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
+		if (!line.clean || !old.clean) {
+			PrintMapFailure(name + " line router", line);
+			PrintMapFailure(name + " old router", old);
+		}
+		REQUIRE(line.layout.has_value());
+		REQUIRE(old.layout.has_value());
+		CHECK(line.clean);
+		CHECK(old.clean);
+		const JunctionCompactness line_compact = MeasureJunctionCompactness(*line.layout);
+		const JunctionCompactness old_compact = MeasureJunctionCompactness(*old.layout);
+		INFO("spec " << name << " line router " << line_compact.occupied << "+" << line_compact.slivers << " old router " << old_compact.occupied << "+" << old_compact.slivers);
+		CHECK(line_compact.occupied + line_compact.slivers <= old_compact.occupied + old_compact.slivers);
+		std::cout << "BENCH tmap route compare spec=" << name << " line=" << line.micros_route << " old=" << old.micros_route << "\n";
+	}
+}
+
 TEST_CASE("BENCH the constructed T", "[junctionmap]")
 {
 	for (const auto &[name, spec] : MapSpecs()) {
-		const JunctionTMapResult result = ConstructJunctionTMap(spec);
-		REQUIRE(result.layout.has_value());
-		const JunctionCompactness compact = MeasureJunctionCompactness(*result.layout);
-		std::cout << "BENCH tmap spec=" << name << " height=" << result.height << " micros=" << result.micros << " occupied=" << compact.occupied << " slivers=" << compact.slivers << " clean=" << (result.clean ? 1 : 0) << " route=" << result.micros_route << " skeleton=" << result.micros_skeleton << " finish=" << result.micros_finish << " check=" << result.micros_check << " heights=" << result.heights_tried << "\n";
+		for (const bool line_router : {true, false}) {
+			const JunctionTMapResult result = ConstructJunctionTMap(spec, nullptr, std::nullopt, line_router);
+			REQUIRE(result.layout.has_value());
+			const JunctionCompactness compact = MeasureJunctionCompactness(*result.layout);
+			std::cout << "BENCH tmap router=" << (line_router ? "line" : "old") << " spec=" << name << " height=" << result.height << " micros=" << result.micros << " occupied=" << compact.occupied << " slivers=" << compact.slivers << " clean=" << (result.clean ? 1 : 0) << " route=" << result.micros_route << " skeleton=" << result.micros_skeleton << " finish=" << result.micros_finish << " check=" << result.micros_check << " heights=" << result.heights_tried << "\n";
+		}
 	}
 }
 

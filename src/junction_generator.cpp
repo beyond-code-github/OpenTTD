@@ -13,6 +13,7 @@
 #include "junction_rules.h"
 #include "junction_rules_internal.h"
 #include "core/math_func.hpp"
+#include "junction_line_router.h"
 #include "junction_route.h"
 #include "junction_router.h"
 #include "junction_signal_pass.h"
@@ -776,7 +777,7 @@ int JunctionTMapFirstHeight(const JunctionSpec &spec)
 	return spec.ml_gap + 10;
 }
 
-JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain, std::optional<int> first_height)
+JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain, std::optional<int> first_height, bool line_router)
 {
 	const auto time_start = std::chrono::steady_clock::now();
 	JunctionTMapResult result;
@@ -802,6 +803,54 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		return routed;
 	};
 	Clock::time_point height_start;
+
+	/**
+	 * One edge on the line router: one track, from the request's windows, against the layout so far, then added to it.
+	 * @param layout The layout so far; its track and heads are obstacles, and the route is added to it.
+	 * @param base The request's bounds, spacing and prices.
+	 * @param blocked Tiles no track or bridge may use.
+	 * @param w_row_heads_barred Whether a bridge head on the W row is prohibited (the old router's crossable rule).
+	 * @return The route's raster, or none when it does not route.
+	 */
+	auto route_line = [&](JunctionLayout &layout, const JunctionRouteRequest &base, const std::vector<TileIndexDiffC> &blocked, bool w_row_heads_barred) -> std::optional<JunctionRaster> {
+		JunctionLineRouteRequest line_request;
+		line_request.line = JunctionLineSpec{1, 0, 1};
+		auto clip = [&](const std::vector<JunctionRouteEnd> &ends) {
+			std::vector<JunctionRouteEnd> clipped;
+			for (const JunctionRouteEnd &end : ends) {
+				if (end.tile.x >= base.min.x && end.tile.x <= base.max.x && end.tile.y >= base.min.y && end.tile.y <= base.max.y) clipped.push_back(end);
+			}
+			return clipped;
+		};
+		line_request.starts = clip(base.starts);
+		line_request.goals = clip(base.goals);
+		line_request.min = base.min;
+		line_request.max = base.max;
+		line_request.blocked = blocked;
+		line_request.terrain = terrain;
+		line_request.plane = base.plane;
+		line_request.existing = &layout;
+		line_request.curve_spacing = base.curve_spacing;
+		line_request.s_bend_window = base.s_bend_window;
+		line_request.rail_piece = spec.prices.rail_piece;
+		line_request.turn_cost = base.turn_cost;
+		line_request.bridge_span_ok = spec.bridge_span_ok;
+		line_request.bridge_price = spec.prices.bridge;
+		line_request.max_bridge_middle = base.max_bridge_middle;
+		line_request.max_expansions = base.max_expansions;
+		if (w_row_heads_barred) {
+			/* A bridge head may not sit on the W row, which is the old router's crossable row (D156). */
+			line_request.resource_cost = [&](const JunctionPiece &piece, int8_t, JunctionResourceLevel level) {
+				return (level == JunctionResourceLevel::Head && piece.tile.y == w_row) ? Money(100 * 100 * spec.prices.rail_piece.base()) : Money(0);
+			};
+		}
+		const JunctionLineRouteResult routed = FindJunctionLineRoute(line_request);
+		if (!routed.route.has_value()) return std::nullopt;
+		std::vector<JunctionRaster> rasters = RasterizeJunctionLine(line_request.line, *routed.route);
+		if (rasters.empty() || !rasters[0].error.empty()) return std::nullopt;
+		AddRasterToLayout(layout, rasters[0]);
+		return std::move(rasters[0]);
+	};
 
 	for (int height = first; height <= g + 13; height++) {
 		if (result.heights_tried > 0) result.micros_per_height.push_back(since(height_start));
@@ -845,7 +894,8 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		/* A->S and N->A: final routes; B's row is crossable at cost 0 because B goes over (D156). */
 		JunctionLayout pass1;
 		base_layout(pass1);
-		AddRasterToLayout(pass1, RasterizeJunctionRoute(StraightRoute(tile(frame.width - 1, w_row), Trackdir::X_NE, frame.width - 1)));
+		/* The line router sees no W row: the old router's crossable row is empty ground to it. */
+		if (!line_router) AddRasterToLayout(pass1, RasterizeJunctionRoute(StraightRoute(tile(frame.width - 1, w_row), Trackdir::X_NE, frame.width - 1)));
 		std::vector<TileIndexDiffC> w_tiles;
 		for (int x = 0; x <= frame.width - 1; x++) w_tiles.push_back(tile(x, w_row));
 		std::vector<TileIndexDiffC> column_fence;
@@ -859,7 +909,9 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			if (TracksAt(pass1, x, 0) == TrackBits{Track::X}) request.starts.push_back({tile(x, 0), Trackdir::X_SW});
 		}
 		request.goals = {goal_s};
-		const std::optional<JunctionRaster> a_to_s = timed_route([&] { return RouteFencedAndAdd(pass1, request, column_fence, &route_cache); });
+		const std::optional<JunctionRaster> a_to_s = timed_route([&] {
+			return line_router ? route_line(pass1, request, column_fence, true) : RouteFencedAndAdd(pass1, request, column_fence, &route_cache);
+		});
 		if (!a_to_s.has_value()) {
 			say("A->S failed");
 			continue;
@@ -870,7 +922,9 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		request.starts = {start_n};
 		const int x_s = a_to_s->pieces.front().tile.x;
 		request.goals = PlainRowPieces(pass1, 0, Trackdir::X_SW, std::max(xO, x_s + static_cast<int>(spec.prio_tiles) + JUNCTION_E_PRIO_AFTER_SPLIT + result.e_phase), frame.width - 3);
-		const std::optional<JunctionRaster> n_to_a = timed_route([&] { return RouteAndAdd(pass1, request, &route_cache); });
+		const std::optional<JunctionRaster> n_to_a = timed_route([&] {
+			return line_router ? route_line(pass1, request, {}, true) : RouteAndAdd(pass1, request, &route_cache);
+		});
 		if (!n_to_a.has_value()) {
 			say("N->A failed");
 			continue;
@@ -964,14 +1018,18 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			continue;
 		}
 		request.goals = stub_pieces(xO, Trackdir::Y_SE, ys);
-		if (!timed_route([&] { return RouteFencedAndAdd(fixed, request, branch_fence, &route_cache); }).has_value()) {
+		if (!timed_route([&] {
+			return line_router ? route_line(fixed, request, branch_fence, false) : RouteFencedAndAdd(fixed, request, branch_fence, &route_cache);
+		}).has_value()) {
 			say("B->S failed");
 			continue;
 		}
 		request = base;
 		request.starts = stub_pieces(xI, Trackdir::Y_NW, ys + 1);
 		request.goals = PlainRowPieces(fixed, b_row, Trackdir::X_NE, pos.x_sb + 1, pos.x_nw);
-		if (!timed_route([&] { return RouteFencedAndAdd(fixed, request, branch_fence, &route_cache); }).has_value()) {
+		if (!timed_route([&] {
+			return line_router ? route_line(fixed, request, branch_fence, false) : RouteFencedAndAdd(fixed, request, branch_fence, &route_cache);
+		}).has_value()) {
 			say("N->B failed");
 			continue;
 		}
