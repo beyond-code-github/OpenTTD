@@ -174,8 +174,21 @@ struct JunctionTMapResult {
 	std::string log; ///< One line per height tried: which edge failed, or "built".
 };
 
-/** Construct the T's map from the rules and build it once (DESIGN-O4 "G1"). */
-JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain = nullptr);
+/**
+ * The lowest height at which the T can build (G2b amendment 1), derived from the rules G1 applies.
+ * A->S must cross column xI between rows 0 and ys (its split is at x <= xI-2, its goal at xO > xI on row ys entered from above).
+ * The column fence forbids rows 0..g+3 and ys-1, ys-2, so it crosses at y_c >= g+4.
+ * N->A starts at (xI, ys), its first piece on ys-1 carries the signal and its near head is on ys-2 (D113, D3d);
+ * its bridge over y_c needs a middle tile at y_c, so ys-2 >= y_c+1, giving ys >= g+7.
+ * ys = H-3 (D115a stub), so H >= g+10.
+ */
+int JunctionTMapFirstHeight(const JunctionSpec &spec);
+
+/**
+ * Construct the T's map from the rules and build it once (DESIGN-O4 "G1").
+ * @param first_height Test seam: when set, the heights start here instead of JunctionTMapFirstHeight.
+ */
+JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain = nullptr, std::optional<int> first_height = std::nullopt);
 
 /** D148a: the E-side window phase. 1 when prio_tiles is odd and at least 5, else 0. */
 uint8_t JunctionEWindowPhase(int prio_tiles);

@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -118,6 +120,24 @@ TEST_CASE("the T map reports its time by phase", "[junctionmap]")
 	CHECK(result.micros_check >= 0);
 	CHECK(result.micros_route + result.micros_skeleton + result.micros_finish + result.micros_check <= result.micros);
 	CHECK(static_cast<int>(result.micros_per_height.size()) == result.heights_tried);
+}
+
+TEST_CASE("the first height is a lower bound", "[junctionmap]")
+{
+	for (const auto &[name, spec] : MapSpecs()) {
+		const int bound = JunctionTMapFirstHeight(spec);
+		CHECK(bound == spec.ml_gap + 10);
+		const JunctionTMapResult below = ConstructJunctionTMap(spec, nullptr, bound - 1);
+		std::ostringstream expected;
+		expected << "height " << bound - 1 << ": A->S failed";
+		INFO(below.log);
+		CHECK(below.log.find(expected.str()) != std::string::npos);
+		const JunctionTMapResult from_bound = ConstructJunctionTMap(spec);
+		const JunctionTMapResult from_old = ConstructJunctionTMap(spec, nullptr, spec.ml_gap + 5);
+		REQUIRE(from_bound.layout.has_value());
+		CHECK(from_bound.height == from_old.height);
+		std::cout << "BENCH first height spec=" << name << " before: heights=" << from_old.heights_tried << " micros=" << from_old.micros << " after: heights=" << from_bound.heights_tried << " micros=" << from_bound.micros << "\n";
+	}
 }
 
 TEST_CASE("BENCH the constructed T", "[junctionmap]")

@@ -771,7 +771,12 @@ uint8_t JunctionEWindowPhase(int prio_tiles)
 	return (prio_tiles >= 5 && prio_tiles % 2 == 1) ? 1 : 0;
 }
 
-JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain)
+int JunctionTMapFirstHeight(const JunctionSpec &spec)
+{
+	return spec.ml_gap + 10;
+}
+
+JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain, std::optional<int> first_height)
 {
 	const auto time_start = std::chrono::steady_clock::now();
 	JunctionTMapResult result;
@@ -783,7 +788,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 	const int xO = xI + spec.branch_gap + 1;
 	const int w_row = g + 1;
 	const int b_row = g + 2;
-	const int first = g + 5;
+	const int first = first_height.value_or(JunctionTMapFirstHeight(spec));
 	constexpr int STUB = 2;
 	auto tile = [](int x, int y) { return TileIndexDiffC{static_cast<int16_t>(x), static_cast<int16_t>(y)}; };
 	JunctionRouteCache route_cache;
@@ -798,7 +803,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 	};
 	Clock::time_point height_start;
 
-	for (int height = first; height <= first + 8; height++) {
+	for (int height = first; height <= g + 13; height++) {
 		if (result.heights_tried > 0) result.micros_per_height.push_back(since(height_start));
 		height_start = Clock::now();
 		result.heights_tried++;
