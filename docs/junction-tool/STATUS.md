@@ -1,6 +1,9 @@
 # Junction tool: status
 
 ## UPDATE 2026-11-10 night (after RESUME HERE below)
+- G3a merged (D173): the line-router T builds at the flat map's height, one height, identical layout: Release 39 ms (test) / 14 ms (pinned). [junctionmap] back to 4.9 s Debug.
+- Test runs: tools/junction/jt + docs/junction-tool/TESTS.md enforce tag budgets (no slow or hidden tests, over budget = stop; wide gate Release only, 17 s). Every brief uses them.
+- Rig: T map circuit with 8 trains (mix ml4 bw2 be2) at origin 47,4 on the hubs rig, no deadlock.
 - ENGINEER VERDICT on the G1 T map in game (rig 3989, fresh map, origin 4,4): "I genuinely think that hub is actually perfect". It is the reference layout for projection (D173).
 - P2 merged (f3ca52f393): line router -8-13% per expansion, identical results; T map line-router path behind line_router=false. G3a (D173: line router starts at the flat map's height) running.
 - D172 recorded (crossings are map nodes; envelope = window on every crossing edge relative to placed crossers). G2c applied it to SoverN: parked, not merged (WIP: scratchpad/g2b/g2c_wip.patch, OneDrive g2/). Evidence the window is right: SoverN went from no layout to building on the test spec (height 14) with both crossings under one doubled bridge (test 4 green there). Not done: pinned builds no SoverN (N->A fails 7-12, B->S 13-14; lo/hi not logged); test spec SoverN unclean (Footprint "signal on the boundary" x3); SoverN has no derived first height and the line router's per-request cost makes failing heights expensive ([junctionmap] 33 s Debug with SoverN). Resume after P1: derive SoverN's first height, log lo/hi/window, then judge.

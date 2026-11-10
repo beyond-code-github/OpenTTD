@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Junction test runner with enforced time budgets (docs/junction-tool/TESTS.md).
+#   jt fast <build-dir> <tag> [budget-seconds=5]   run "<tag>~[slow]~[.]" (no slow or hidden tests), fail if over budget
+#   jt gate <build-dir>                             wide gate, Release builds only
+# Output goes to <build-dir>/jt-<name>.log; only failures, slow tests and the total are printed.
+set -u
+mode=${1:-}; build=${2:-}
+if [ -z "$mode" ] || [ -z "$build" ] || [ ! -x "$build/openttd_test" ]; then
+	echo "usage: jt fast <build-dir> <tag> [budget-s] | jt gate <build-dir>" >&2; exit 2
+fi
+type=$(grep -m1 '^CMAKE_BUILD_TYPE' "$build/CMakeCache.txt" 2>/dev/null | cut -d= -f2)
+case "$mode" in
+	fast)
+		tag=${3:?tag}; budget=${4:-5}
+		filter="${tag}~[slow]~[.]"
+		name=$(echo "$tag" | tr -c 'a-zA-Z0-9' '_')
+		;;
+	gate)
+		if [ "$type" != "Release" ]; then echo "jt gate: $build is '$type', not Release; the wide gate runs in Release only" >&2; exit 2; fi
+		filter="[junction]~[slow]~[mapexport]~[.]"; budget=${3:-120}; name=gate
+		;;
+	*) echo "jt: unknown mode $mode" >&2; exit 2;;
+esac
+log="$build/jt-$name.log"
+start=$(date +%s%N)
+timeout --signal=INT "$((budget + 1))" "$build/openttd_test" "$filter" --durations yes > "$log" 2>&1
+rc=$?
+ms=$(( ($(date +%s%N) - start) / 1000000 ))
+grep -E '^[0-9]+\.[0-9]+ s: ' "$log" | awk -F' s: ' '$1 >= 1.0' | sort -rn | head -10 | sed 's/^/  slow test: /'
+grep -E '(^|: )FAILED|error:' "$log" | head -20
+tail -3 "$log" | grep -E 'test cases|All tests passed'
+printf 'jt %s %s (%s): %d.%03d s, budget %s s\n' "$mode" "$filter" "${type:-?}" $((ms / 1000)) $((ms % 1000)) "$budget"
+if [ "$rc" = 124 ] || [ "$rc" = 130 ] || [ "$ms" -gt $((budget * 1000)) ]; then echo "jt: OVER BUDGET (stop condition)"; exit 3; fi
+exit $rc
