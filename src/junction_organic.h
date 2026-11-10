@@ -44,8 +44,12 @@ struct JunctionNegotiationPrices {
 	std::map<std::pair<int, int>, int> reserved; ///< Reserved tiles (a prio row): any piece of any movement but the one whose index is given costs 1000 x U.
 	std::map<std::pair<int, int>, Money> switch_penalties; ///< Added to a piece on the tile that forms a split or merge with another movement's piece there.
 	std::vector<uint> min_units; ///< Per movement (in JunctionTMovements() order), the least track units of its route; empty or 0 for none.
+	std::vector<std::pair<int, int>> over; ///< Forced pairs (over, under) by movement index (D167).
 	Money ml_turn_cost = 0; ///< Turn cost of the two main-line through movements (D165); 0 means the branch movements' turn cost.
 };
+
+/** The pairs of movements of a T that share no port and whose ports interleave around the box boundary, by movement index (a < b): they must cross (D167). */
+std::vector<std::pair<int, int>> JunctionForcedPairs(const std::vector<JunctionPort> &ports, int width, int height);
 
 /** Route every movement of a T together by negotiated congestion (DESIGN-O4 revision 3, search step 1; no prios, signals or rule feedback of its own). */
 JunctionNegotiation NegotiateJunctionMovements(const JunctionSpec &spec, const std::vector<JunctionPort> &ports, int width, int height, const JunctionTerrain *terrain = nullptr, int max_rounds = 16, const JunctionNegotiationPrices &prices = {});
@@ -56,6 +60,7 @@ struct JunctionFeedbackCounts {
 	int coverage_penalties = 0; ///< Coverage windows penalised for switches.
 	int bridge_block_penalties = 0; ///< Splits in a bridge's block penalised (D113).
 	int signal_gap_penalties = 0; ///< Stretches without room for a signal penalised for switches.
+	int block_mix_penalties = 0; ///< Signal blocks holding a split and a merge penalised for switches.
 	int split_moves = 0; ///< Splits of waiting-room merges pushed upstream by a penalty.
 	int iterations = 0; ///< Feedback iterations run.
 };
@@ -68,6 +73,7 @@ struct JunctionOrganicResult {
 	int p = 0;
 	JunctionCompactness compactness{};
 	Money cost = 0;
+	std::string cases; ///< One line per crossing case enumerated, the winning one marked with '*' (D167).
 	std::string error;
 };
 

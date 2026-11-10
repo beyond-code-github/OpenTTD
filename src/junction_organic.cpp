@@ -22,9 +22,11 @@
 #include "3rdparty/fmt/format.h"
 
 #include <algorithm>
+#include <numeric>
 #include <ranges>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "safeguards.h"
 
@@ -41,6 +43,7 @@ std::vector<JunctionPort> MakeOrganicTPorts(const JunctionSpec &spec, int width,
 		{JunctionPortRole::SOut, tile(p + spec.branch_gap + 1, height - 1), Trackdir::Y_SE},
 	};
 }
+
 
 namespace {
 
@@ -172,6 +175,37 @@ static int CountConflicts(const std::vector<OrganicMovement> &movements, std::se
 
 }
 
+std::vector<std::pair<int, int>> JunctionForcedPairs(const std::vector<JunctionPort> &ports, int width, int height)
+{
+	/* Clockwise position of a boundary tile: along the top row, down the right column, back along the bottom row, up the left column. */
+	auto position = [&](JunctionPortRole role) {
+		const JunctionPort *port = FindPort(ports, role);
+		if (port == nullptr) return -1;
+		const int x = port->tile.x;
+		const int y = port->tile.y;
+		if (y == 0) return x;
+		if (x == width - 1) return width - 1 + y;
+		if (y == height - 1) return (width - 1) + (height - 1) + (width - 1 - x);
+		return 2 * (width - 1) + (height - 1) + (height - 1 - y);
+	};
+
+	const auto &movements = JunctionTMovements();
+	std::vector<std::pair<int, int>> pairs;
+	for (size_t a = 0; a < movements.size(); a++) {
+		for (size_t b = a + 1; b < movements.size(); b++) {
+			const auto &[a_from, a_to] = movements[a];
+			const auto &[b_from, b_to] = movements[b];
+			if (a_from == b_from || a_from == b_to || a_to == b_from || a_to == b_to) continue;
+			const int lo = std::min(position(a_from), position(a_to));
+			const int hi = std::max(position(a_from), position(a_to));
+			int between = 0;
+			for (const int q : {position(b_from), position(b_to)}) between += lo < q && q < hi ? 1 : 0;
+			if (between == 1) pairs.emplace_back(static_cast<int>(a), static_cast<int>(b));
+		}
+	}
+	return pairs;
+}
+
 JunctionNegotiation NegotiateJunctionMovements(const JunctionSpec &spec, const std::vector<JunctionPort> &ports, int width, int height, const JunctionTerrain *terrain, int max_rounds, const JunctionNegotiationPrices &prices)
 {
 	JunctionNegotiation result;
@@ -203,6 +237,123 @@ JunctionNegotiation NegotiateJunctionMovements(const JunctionSpec &spec, const s
 		}
 	}
 
+	constexpr uint MAX_BRIDGE_MIDDLE = 10;
+	const Money cleanup_price = Money{unit.base() * 1000};
+
+	/* Forced pairs (D167): role[m][o] is 1 when m goes over o, -1 when m goes under o, 0 when the two are not a forced pair. */
+	std::vector<std::vector<int>> role(movements.size(), std::vector<int>(movements.size(), 0));
+	for (const auto &[over, under] : prices.over) {
+		role[over][under] = 1;
+		role[under][over] = -1;
+	}
+
+	/* The pieces of the other movements and the tiles on or beside them (D166 a): the prices of movement m's routes are measured against these. */
+	auto gather = [&](size_t m, OrganicIndex &others, std::unordered_set<uint64_t> &near) {
+		for (size_t o = 0; o < movements.size(); o++) {
+			if (o == m || !movements[o].routed) continue;
+			for (const OrganicOccupant &occupant : movements[o].occupants) {
+				others.emplace(TileKey(occupant.tile), &occupant);
+				for (int dy = -1; dy <= 1; dy++) {
+					for (int dx = -1; dx <= 1; dx++) near.insert(TileKey({static_cast<int16_t>(occupant.tile.x + dx), static_cast<int16_t>(occupant.tile.y + dy)}));
+				}
+			}
+		}
+	};
+
+	/* The router request of movement m; others and near must outlive its use. */
+	auto build_request = [&](size_t m, const OrganicIndex &others, const std::unordered_set<uint64_t> &near, Money conflict_price, bool use_history) {
+		const JunctionPort &from = *FindPort(ports, movements[m].from);
+		const JunctionPort &to = *FindPort(ports, movements[m].to);
+
+		JunctionLineRouteRequest request;
+		request.line = ORGANIC_LINE;
+		request.start = from.tile;
+		request.start_trackdir = from.trackdir;
+		request.goals = {{to.tile, to.trackdir}};
+		request.min = {0, 0};
+		request.max = {static_cast<int16_t>(width - 1), static_cast<int16_t>(height - 1)};
+		request.blocked = blocked;
+		request.terrain = terrain;
+		request.plane = z;
+		request.curve_spacing = spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1;
+		request.s_bend_window = 2u * spec.tl;
+		request.rail_piece = spec.prices.rail_piece;
+		const bool main_line = (movements[m].from == JunctionPortRole::EIn && movements[m].to == JunctionPortRole::EOut) || (movements[m].from == JunctionPortRole::WIn && movements[m].to == JunctionPortRole::WOut);
+		request.turn_cost = main_line && prices.ml_turn_cost != 0 ? prices.ml_turn_cost : spec.prices.rail_piece / 2;
+		request.min_units = m < prices.min_units.size() ? prices.min_units[m] : 0;
+		request.bridge_span_ok = spec.bridge_span_ok;
+		request.bridge_price = spec.prices.bridge;
+		request.max_bridge_middle = MAX_BRIDGE_MIDDLE;
+		request.resource_cost = [&, m, conflict_price, use_history](const JunctionPiece &piece, int8_t piece_z, JunctionResourceLevel level) -> Money {
+			const OrganicOccupant self{static_cast<int>(m), piece.tile, TrackdirToTrack(piece.trackdir), piece.trackdir, level, piece_z};
+			Money cost = 0;
+			/* A head on a port tile leaves the checker no approach track outside it: a rule, priced out because the callback can't forbid. */
+			if (level == JunctionResourceLevel::Head && std::ranges::any_of(ports, [&](const JunctionPort &port) { return port.tile.x == piece.tile.x && port.tile.y == piece.tile.y; })) cost += Money{unit.base() * 1000};
+			if (auto reserved = prices.reserved.find({piece.tile.x, piece.tile.y}); reserved != prices.reserved.end() && reserved->second != static_cast<int>(m)) cost += Money{unit.base() * 1000};
+			if (use_history) {
+				if (auto it = history.find(ResourceKey(self)); it != history.end()) cost += it->second;
+			}
+			/* Hug preference (D166 a): a surface piece with no other movement's piece on or beside its tile. */
+			if (level == JunctionResourceLevel::Surface && !near.contains(TileKey(piece.tile))) cost += Money{unit.base() / 8};
+			const auto penalty = prices.switch_penalties.find({piece.tile.x, piece.tile.y});
+			bool switched = false;
+			auto [first, last] = others.equal_range(TileKey(piece.tile));
+			for (auto other = first; other != last; ++other) {
+				if (Conflicts(self, *other->second, movements)) cost += conflict_price;
+				if (const int r = role[m][other->second->movement]; r != 0 && other->second->level == JunctionResourceLevel::Surface) {
+					/* The forced crossing is decided (D167): at grade, an under movement's span over the over movement, and an over movement's bore under the under movement, are prohibitive. */
+					const bool at_grade = level == JunctionResourceLevel::Surface && piece_z == other->second->z && TrackOverlapsTracks(TrackBits{other->second->bit}, self.bit);
+					const bool span_over = level == JunctionResourceLevel::BridgeSpan && r < 0;
+					const bool bore_under = level == JunctionResourceLevel::TunnelBore && r > 0;
+					if (at_grade || span_over || bore_under) cost += Money{unit.base() * 1000};
+				}
+				if (penalty != prices.switch_penalties.end() && !switched && FormsSwitch(self, *other->second, movements)) {
+					cost += penalty->second;
+					switched = true;
+				}
+			}
+			return cost;
+		};
+		return request;
+	};
+
+	/* The cost of a movement's present route as the router would price it under a request (for D166 b). */
+	auto route_cost = [&](const JunctionLineRouteRequest &request, const OrganicMovement &movement) {
+		Money cost = 0;
+		for (char move : movement.route.moves) {
+			if (move == 'L' || move == 'R') cost += request.turn_cost;
+		}
+		const std::vector<JunctionPiece> &pieces = movement.raster.pieces;
+		for (size_t k = 0; k < pieces.size(); k++) {
+			JunctionResourceLevel level = JunctionResourceLevel::Surface;
+			if (pieces[k].on_bridge) {
+				const bool head = std::ranges::any_of(movement.raster.bridges, [&](const JunctionBridge &bridge) {
+					return (pieces[k].tile.x == bridge.start.x && pieces[k].tile.y == bridge.start.y) || (pieces[k].tile.x == bridge.end.x && pieces[k].tile.y == bridge.end.y);
+				});
+				level = head ? JunctionResourceLevel::Head : JunctionResourceLevel::BridgeSpan;
+			} else if (k > 0) {
+				cost += request.rail_piece;
+			}
+			cost += request.resource_cost(pieces[k], z, level);
+		}
+		for (const JunctionBridge &bridge : movement.raster.bridges) {
+			const int middle = std::max(std::abs(bridge.end.x - bridge.start.x), std::abs(bridge.end.y - bridge.start.y)) - 1;
+			cost += request.bridge_price(static_cast<uint>(middle));
+		}
+		return cost;
+	};
+
+	/* Route movement m under a request; false when it has no route or does not rasterize. */
+	auto install = [&](size_t m, const JunctionLineRoute &route) {
+		std::vector<JunctionRaster> rasters = RasterizeJunctionLine(ORGANIC_LINE, route);
+		if (rasters.empty() || !rasters[0].error.empty()) return false;
+		movements[m].route = route;
+		movements[m].raster = std::move(rasters[0]);
+		movements[m].occupants = MakeOccupants(static_cast<int>(m), movements[m].raster, z);
+		movements[m].routed = true;
+		return true;
+	};
+
 	for (int round = 1; round <= max_rounds; round++) {
 		const Money present = unit << (round - 1);
 		result.rounds = round;
@@ -211,68 +362,19 @@ JunctionNegotiation NegotiateJunctionMovements(const JunctionSpec &spec, const s
 			if (round > 1 && !to_route.contains(static_cast<int>(m))) continue;
 			/* The others' current pieces; in round 1 only the movements already routed. */
 			OrganicIndex others;
-			for (const OrganicMovement &other : movements) {
-				if (&other == &movements[m] || !other.routed) continue;
-				for (const OrganicOccupant &occupant : other.occupants) others.emplace(TileKey(occupant.tile), &occupant);
-			}
+			std::unordered_set<uint64_t> near;
+			gather(m, others, near);
 
-			const JunctionPort &from = *FindPort(ports, movements[m].from);
-			const JunctionPort &to = *FindPort(ports, movements[m].to);
-
-			JunctionLineRouteRequest request;
-			request.line = ORGANIC_LINE;
-			request.start = from.tile;
-			request.start_trackdir = from.trackdir;
-			request.goals = {{to.tile, to.trackdir}};
-			request.min = {0, 0};
-			request.max = {static_cast<int16_t>(width - 1), static_cast<int16_t>(height - 1)};
-			request.blocked = blocked;
-			request.terrain = terrain;
-			request.plane = z;
-			request.curve_spacing = spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1;
-			request.s_bend_window = 2u * spec.tl;
-			request.rail_piece = spec.prices.rail_piece;
-			const bool main_line = (movements[m].from == JunctionPortRole::EIn && movements[m].to == JunctionPortRole::EOut) || (movements[m].from == JunctionPortRole::WIn && movements[m].to == JunctionPortRole::WOut);
-			request.turn_cost = main_line && prices.ml_turn_cost != 0 ? prices.ml_turn_cost : spec.prices.rail_piece / 2;
-			request.min_units = m < prices.min_units.size() ? prices.min_units[m] : 0;
-			request.bridge_span_ok = spec.bridge_span_ok;
-			request.bridge_price = spec.prices.bridge;
-			request.max_bridge_middle = 10;
-			request.resource_cost = [&](const JunctionPiece &piece, int8_t piece_z, JunctionResourceLevel level) -> Money {
-				const OrganicOccupant self{static_cast<int>(m), piece.tile, TrackdirToTrack(piece.trackdir), piece.trackdir, level, piece_z};
-				Money cost = 0;
-				/* A head on a port tile leaves the checker no approach track outside it: a rule, priced out because the callback can't forbid. */
-				if (level == JunctionResourceLevel::Head && std::ranges::any_of(ports, [&](const JunctionPort &port) { return port.tile.x == piece.tile.x && port.tile.y == piece.tile.y; })) cost += Money{unit.base() * 1000};
-				if (auto reserved = prices.reserved.find({piece.tile.x, piece.tile.y}); reserved != prices.reserved.end() && reserved->second != static_cast<int>(m)) cost += Money{unit.base() * 1000};
-				if (auto it = history.find(ResourceKey(self)); it != history.end()) cost += it->second;
-				const auto penalty = prices.switch_penalties.find({piece.tile.x, piece.tile.y});
-				bool switched = false;
-				auto [first, last] = others.equal_range(TileKey(piece.tile));
-				for (auto other = first; other != last; ++other) {
-					if (Conflicts(self, *other->second, movements)) cost += present;
-					if (penalty != prices.switch_penalties.end() && !switched && FormsSwitch(self, *other->second, movements)) {
-						cost += penalty->second;
-						switched = true;
-					}
-				}
-				return cost;
-			};
-
-			const JunctionLineRouteResult routed = FindJunctionLineRoute(request);
+			const JunctionLineRouteResult routed = FindJunctionLineRoute(build_request(m, others, near, present, true));
 			result.routes_run++;
 			if (!routed.route.has_value()) {
 				result.error = fmt::format("no route for movement {} (round {}): {}", m, round, routed.error);
 				return result;
 			}
-			std::vector<JunctionRaster> rasters = RasterizeJunctionLine(ORGANIC_LINE, *routed.route);
-			if (rasters.empty() || !rasters[0].error.empty()) {
+			if (!install(m, *routed.route)) {
 				result.error = fmt::format("movement {} (round {}) does not rasterize", m, round);
 				return result;
 			}
-			movements[m].route = *routed.route;
-			movements[m].raster = std::move(rasters[0]);
-			movements[m].occupants = MakeOccupants(static_cast<int>(m), movements[m].raster, z);
-			movements[m].routed = true;
 		}
 
 		std::set<uint64_t> contested;
@@ -281,6 +383,34 @@ JunctionNegotiation NegotiateJunctionMovements(const JunctionSpec &spec, const s
 		result.conflicts_per_round.push_back(result.conflicts);
 		if (result.conflicts == 0) break;
 		for (uint64_t key : contested) history[key] += unit;
+	}
+
+	/* Clean-up (D166 b): reroute each movement without history costs and with every conflict prohibitive, keeping a cheaper conflict-free route, to drop detours the negotiation's history left behind. */
+	if (result.conflicts == 0) {
+		for (int pass = 0; pass < 3; pass++) {
+			bool changed = false;
+			for (size_t m = 0; m < movements.size(); m++) {
+				OrganicIndex others;
+				std::unordered_set<uint64_t> near;
+				gather(m, others, near);
+				const JunctionLineRouteRequest request = build_request(m, others, near, cleanup_price, false);
+				const Money old_cost = route_cost(request, movements[m]);
+				const JunctionLineRouteResult routed = FindJunctionLineRoute(request);
+				result.routes_run++;
+				if (!routed.route.has_value() || !(routed.cost < old_cost)) continue;
+				std::vector<JunctionRaster> rasters = RasterizeJunctionLine(ORGANIC_LINE, *routed.route);
+				if (rasters.empty() || !rasters[0].error.empty()) continue;
+				const std::vector<OrganicOccupant> occupants = MakeOccupants(static_cast<int>(m), rasters[0], z);
+				const bool clash = std::ranges::any_of(occupants, [&](const OrganicOccupant &occupant) {
+					auto [first, last] = others.equal_range(TileKey(occupant.tile));
+					return std::any_of(first, last, [&](const auto &other) { return Conflicts(occupant, *other.second, movements); });
+				});
+				if (clash) continue;
+				install(m, *routed.route);
+				changed = true;
+			}
+			if (!changed) break;
+		}
 	}
 
 	for (const OrganicMovement &movement : movements) result.routes.push_back(movement.route);
@@ -488,6 +618,7 @@ static bool ApplyOrganicFeedback(const JunctionSpec &spec, const std::vector<Rul
 	std::set<std::pair<int, int>> bridge_penalised;
 	std::set<std::pair<int, int>> merge_penalised;
 	std::set<std::pair<int, int>> gap_penalised;
+	std::set<std::pair<int, int>> mix_penalised;
 	bool all = true;
 
 	/* The main-line movements with a piece on a tile of the negotiation box (a bridge's pieces included: a head or a span tile is a main-line tile too). */
@@ -539,10 +670,11 @@ static bool ApplyOrganicFeedback(const JunctionSpec &spec, const std::vector<Rul
 				state.prices.switch_penalties[{tile.x, tile.y}] += Money{unit.base() << iteration};
 				counts.bridge_block_penalties++;
 			}
-		} else if (violation.rule == JunctionRule::Signals && violation.message == "signals too far apart") {
-			/* The violation tile and the spec.sd tiles before and after it along each movement through it: a switch there leaves the stretch where the signal pass can't place signals. */
+		} else if ((violation.rule == JunctionRule::Signals && violation.message == "signals too far apart") || (violation.rule == JunctionRule::Deadlock && violation.message == "a signal block holds both a split and a merge")) {
+			/* The violation tile and the spec.sd tiles before and after it along each movement through it: a switch there leaves the stretch where the signal pass can't place signals (or a block holds a split and a merge). */
+			const bool mix = violation.rule == JunctionRule::Deadlock;
 			applied = true;
-			if (!gap_penalised.insert({tile.x, tile.y}).second) continue;
+			if (!(mix ? mix_penalised : gap_penalised).insert({tile.x, tile.y}).second) continue;
 			std::set<std::pair<int, int>> stretch;
 			for (size_t m = 0; m < movements.size(); m++) {
 				const auto here = std::ranges::find_if(pieces[m], [&](const JunctionPiece &piece) { return OnTile(piece, tile); });
@@ -552,7 +684,11 @@ static bool ApplyOrganicFeedback(const JunctionSpec &spec, const std::vector<Rul
 				for (const TileIndexDiffC &t : DownstreamTiles(pieces[m], at, spec.sd + 1)) stretch.insert({t.x, t.y});
 			}
 			for (const auto &[x, y] : stretch) state.prices.switch_penalties[{x, y}] += Money{unit.base() << iteration};
-			counts.signal_gap_penalties++;
+			if (mix) {
+				counts.block_mix_penalties++;
+			} else {
+				counts.signal_gap_penalties++;
+			}
 		} else if (violation.rule == JunctionRule::WaitingRoom) {
 			for (size_t m = 0; m < movements.size(); m++) {
 				const auto here = std::ranges::find_if(pieces[m], [&](const JunctionPiece &piece) { return OnTile(piece, tile); });
@@ -589,18 +725,22 @@ static bool ApplyOrganicFeedback(const JunctionSpec &spec, const std::vector<Rul
 
 }
 
-JunctionOrganicResult BuildOrganicT(const JunctionSpec &spec, int width, int height, int p, int max_feedback, Money ml_turn_cost)
+/** One crossing case's feedback loop: the negotiation with the forced pairs decided, finished and checked until rule-clean. */
+static JunctionOrganicResult BuildOrganicCase(const JunctionSpec &spec, int width, int height, int p, int max_feedback, Money ml_turn_cost, const std::vector<std::pair<int, int>> &over, int &rounds)
 {
 	JunctionOrganicResult result;
 	result.p = p;
+	rounds = 0;
 	const std::vector<JunctionPort> ports = MakeOrganicTPorts(spec, width, height, p);
 	OrganicFeedbackState state;
 	state.prices.history = &state.history;
 	state.prices.ml_turn_cost = ml_turn_cost;
+	state.prices.over = over;
 
 	for (int iteration = 0; iteration < max_feedback; iteration++) {
 		result.feedback.iterations = iteration + 1;
-		const JunctionNegotiation negotiation = NegotiateJunctionMovements(spec, ports, width, height, nullptr, 16, state.prices);
+		const JunctionNegotiation negotiation = NegotiateJunctionMovements(spec, ports, width, height, nullptr, 48, state.prices);
+		rounds = negotiation.rounds;
 		if (!negotiation.layout.has_value()) {
 			result.error = negotiation.error;
 			return result;
@@ -628,6 +768,65 @@ JunctionOrganicResult BuildOrganicT(const JunctionSpec &spec, int width, int hei
 		}
 	}
 	result.error = "still unclean after the feedback iterations";
+	return result;
+}
+
+JunctionOrganicResult BuildOrganicT(const JunctionSpec &spec, int width, int height, int p, int max_feedback, Money ml_turn_cost)
+{
+	const std::vector<std::pair<int, int>> pairs = JunctionForcedPairs(MakeOrganicTPorts(spec, width, height, p), width, height);
+	const auto is_main_line = [](int movement) { return movement == 0 || movement == 2; };
+
+	/* Every assignment of the forced pairs: bit i of a mask set means the lower movement of pair i goes over. Main-line movements over come first (D156), then by mask. */
+	std::vector<uint> masks(size_t{1} << pairs.size());
+	std::iota(masks.begin(), masks.end(), 0u);
+	auto main_line_over = [&](uint mask) {
+		int count = 0;
+		for (size_t i = 0; i < pairs.size(); i++) count += is_main_line((mask >> i & 1) != 0 ? pairs[i].first : pairs[i].second) ? 1 : 0;
+		return count;
+	};
+	std::ranges::stable_sort(masks, [&](uint a, uint b) { return main_line_over(a) > main_line_over(b); });
+
+	std::string cases;
+	std::optional<JunctionOrganicResult> best;
+	std::pair<int, Money> best_score{};
+	size_t best_case = 0;
+	std::optional<JunctionOrganicResult> least_bad;
+	for (size_t c = 0; c < masks.size(); c++) {
+		std::vector<std::pair<int, int>> over;
+		std::string label;
+		for (size_t i = 0; i < pairs.size(); i++) {
+			const bool first_over = (masks[c] >> i & 1) != 0;
+			over.emplace_back(first_over ? pairs[i].first : pairs[i].second, first_over ? pairs[i].second : pairs[i].first);
+			label += fmt::format("{}{}>{}", i == 0 ? "" : " ", over.back().first, over.back().second);
+		}
+		int rounds = 0;
+		JunctionOrganicResult attempt = BuildOrganicCase(spec, width, height, p, max_feedback, ml_turn_cost, over, rounds);
+		const int bridges = attempt.layout.has_value() ? static_cast<int>(attempt.layout->bridges.size()) : 0;
+		cases += fmt::format("case {} [{}]: clean {} iterations {} rounds {} occupied {} slivers {} bridges {}{}\n", c, label, attempt.layout.has_value() ? 1 : 0, attempt.feedback.iterations, rounds, attempt.compactness.occupied, attempt.compactness.slivers, bridges, attempt.layout.has_value() ? "" : fmt::format(" ({})", attempt.error));
+		if (!attempt.layout.has_value()) {
+			if (!least_bad.has_value() || attempt.violations.size() < least_bad->violations.size()) least_bad = std::move(attempt);
+			continue;
+		}
+		const std::pair<int, Money> score{attempt.compactness.occupied + attempt.compactness.slivers, attempt.cost};
+		if (!best.has_value() || score < best_score) {
+			best = std::move(attempt);
+			best_score = score;
+			best_case = c;
+		}
+	}
+
+	JunctionOrganicResult result;
+	if (best.has_value()) {
+		result = std::move(*best);
+		const std::string mark = fmt::format("case {} [", best_case);
+		cases.insert(cases.find(mark), "*");
+	} else if (least_bad.has_value()) {
+		result = std::move(*least_bad);
+	} else {
+		result.p = p;
+		result.error = "no crossing case built";
+	}
+	result.cases = std::move(cases);
 	return result;
 }
 

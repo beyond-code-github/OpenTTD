@@ -244,7 +244,9 @@ static void CheckOrganicClean(const JunctionSpec &spec)
 	REQUIRE(result.layout.has_value());
 	const JunctionCompactness compact = MeasureJunctionCompactness(*result.layout);
 	INFO("p " << result.p << " occupied " << compact.occupied << " slivers " << compact.slivers << " cost " << result.cost.base());
-	INFO("feedback: prio_rows " << result.feedback.prio_rows << " coverage_penalties " << result.feedback.coverage_penalties << " bridge_block_penalties " << result.feedback.bridge_block_penalties << " signal_gap_penalties " << result.feedback.signal_gap_penalties << " split_moves " << result.feedback.split_moves << " iterations " << result.feedback.iterations);
+	INFO("feedback: prio_rows " << result.feedback.prio_rows << " coverage_penalties " << result.feedback.coverage_penalties << " bridge_block_penalties " << result.feedback.bridge_block_penalties << " signal_gap_penalties " << result.feedback.signal_gap_penalties << " block_mix_penalties " << result.feedback.block_mix_penalties << " split_moves " << result.feedback.split_moves << " iterations " << result.feedback.iterations);
+	INFO("cases:\n" << result.cases);
+	INFO("bridges " << result.layout->bridges.size());
 	INFO("\n" << RenderJunctionAscii(*result.layout));
 	const JunctionGenerateResult old = GenerateJunction(spec);
 	if (old.layout.has_value()) {
@@ -283,7 +285,8 @@ TEST_CASE("BuildOrganicT: feedback fixes the measured violations", "[junction][o
 	const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, ORGANIC_P, 8, MlTurnCostOf(spec));
 	INFO("error: " << result.error);
 	INFO("violations left:\n" << ViolationText(result.violations));
-	INFO("feedback: prio_rows " << result.feedback.prio_rows << " coverage_penalties " << result.feedback.coverage_penalties << " bridge_block_penalties " << result.feedback.bridge_block_penalties << " signal_gap_penalties " << result.feedback.signal_gap_penalties << " split_moves " << result.feedback.split_moves << " iterations " << result.feedback.iterations);
+	INFO("cases:\n" << result.cases);
+	INFO("feedback: prio_rows " << result.feedback.prio_rows << " coverage_penalties " << result.feedback.coverage_penalties << " bridge_block_penalties " << result.feedback.bridge_block_penalties << " signal_gap_penalties " << result.feedback.signal_gap_penalties << " block_mix_penalties " << result.feedback.block_mix_penalties << " split_moves " << result.feedback.split_moves << " iterations " << result.feedback.iterations);
 	REQUIRE(result.layout.has_value());
 	CHECK(result.violations.empty());
 	std::vector<RuleViolation> violations = CheckJunctionRules(*result.layout, spec);
@@ -291,6 +294,37 @@ TEST_CASE("BuildOrganicT: feedback fixes the measured violations", "[junction][o
 	std::erase_if(violations, [](const RuleViolation &violation) { return violation.message == "ML bridge is not doubled"; });
 	INFO("ignored 'ML bridge is not doubled': " << before - violations.size());
 	CHECK(violations.empty());
+}
+
+TEST_CASE("BuildOrganicT: every bridge crosses something", "[junction][organic]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, 23, 8, MlTurnCostOf(spec));
+	INFO("error: " << result.error);
+	INFO("cases:\n" << result.cases);
+	REQUIRE(result.layout.has_value());
+	INFO("\n" << RenderJunctionAscii(*result.layout));
+	for (const JunctionBridge &bridge : result.layout->bridges) {
+		int crossed = 0;
+		for (int x = std::min(bridge.start.x, bridge.end.x); x <= std::max(bridge.start.x, bridge.end.x); x++) {
+			for (int y = std::min(bridge.start.y, bridge.end.y); y <= std::max(bridge.start.y, bridge.end.y); y++) {
+				const bool head = (x == bridge.start.x && y == bridge.start.y) || (x == bridge.end.x && y == bridge.end.y);
+				if (head) continue;
+				if (std::ranges::any_of(result.layout->tracks, [&](const JunctionTrack &jt) { return jt.offset.x == x && jt.offset.y == y; })) crossed++;
+			}
+		}
+		INFO("bridge " << bridge.start.x << "," << bridge.start.y << " to " << bridge.end.x << "," << bridge.end.y << " crosses " << crossed << " tiles of track");
+		CHECK(crossed > 0);
+	}
+}
+
+TEST_CASE("JunctionForcedPairs: the forced pairs of a T", "[junction][organic]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<int, int>> pairs = JunctionForcedPairs(MakeOrganicTPorts(spec, ORGANIC_W, ORGANIC_H, ORGANIC_P), ORGANIC_W, ORGANIC_H);
+	/* In JunctionTMovements() order: 1 = E->S, 2 = W main line, 5 = N->E. */
+	const std::vector<std::pair<int, int>> expected = {{1, 2}, {1, 5}, {2, 5}};
+	CHECK(pairs == expected);
 }
 
 /** Time the generation of a spec's organic T and print one BENCH line. */
