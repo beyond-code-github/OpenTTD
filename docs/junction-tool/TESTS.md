@@ -7,7 +7,8 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 
 | Tag | Debug (measured) | Debug budget | Release (measured) |
 |---|---|---|---|
-| `[junctionmap]` | 4.9 s (PH1c: 4.95 s, not split; GS1b: 4.94 s) | 5 s | 0.6 s |
+| `[junctionmap]` | 2.7 s (TC1 split: the first-height and router-comparison tests moved to `[junctionmapedges]`; was 4.94 s) | 5 s | 0.3 s |
+| `[junctionmapedges]` | 2.3 s (TC1: "the first height is a lower bound", "the line-router T matches or beats the old-router T") | 5 s | 0.3 s |
 | `[linerouter]` | 10.4 s | 12 s (over the 5 s norm: split or move tests to `[slow]` when next touched) | 1.5 s |
 | `[linebuild]` | 0.01 s | 5 s | 0.01 s |
 | `[terrainrect]` | 0.02 s | 5 s | 0.01 s |
