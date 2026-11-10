@@ -1,12 +1,12 @@
 # Junction tool: status
 
-## QUEUE (2026-11-10 evening, engineer away: "fill the queue and make as much progress through everything including projection")
-- G2a (wt-g2, .claude/g2): commits 76208e97ff (phase timing), d6a483e08e (line router starts/ends on identical existing track). Debug: test 478 ms = route 353 + check 116, 8 heights tried (first = ml_gap+5 = 6 .. 13). Part 2 resumed with rulings: no W row for A->S/N->A (Head on W row prohibitive); split fix (first move may share tile with start's track, as old from.first); merge-tile Exception 2 (as junction_router.cpp ~395-410). WIP patch scratchpad/g2/part2_wip.patch.
-- LP10 MERGED 4624a965fa (BuildJunctionLine, PlaceDragSignals shared with FillSignals). OPEN QUESTION for the engineer before LP11: which group of a painted line travels with the route heading; driving side (D66)?
-- G2b brief ready (a19dda0e4b): third crossing decided in projection, NoverS vs SoverN, best score. Launch after G2a merges.
-- G2c (to write): start height from the map instead of growing from `first` (8 heights tried = most of route time); then terrain projection (obstacles, a hill) with the line router.
-- Then G3: mandatory signals and throughput on the map. Rig: put a G1/G2 hub beside the old ones for the engineer.
-- After each merge: Release timing in build-rel (`cmake --build build-rel --target openttd_test`, run `[junctionmap]` from build-rel, output to scratchpad).
+## QUEUE (2026-11-10 night, engineer away: "fill the queue and make as much progress through everything including projection")
+- MERGED: G2a pieces c4c2a2c214 (T map time by phase), 8f341d8475 (line router start/goal on identical existing track), 5a54a047ac (line router split/merge with a curve, Exception 2). LP10 4624a965fa.
+- G2a findings: T map on the line router is rule-clean and identical but 7-8x slower per success in Debug (test 33.5 ms vs 4.1 ms route at height 13; expansions only 58-817, so per-request overhead, not search size) -> switch deferred; patch kept at scratchpad/g2/part2_tmap.patch (also OneDrive g2/). Old router logs: heights 6-11 fail on A->S, 12 skeleton/B->S, 13 built; failed heights are most of the route time; check is 116 ms of 478 ms Debug on the test spec.
+- RUNNING: G2b (wt-g2b, .claude/g2b, head a5ca791d61): third crossing decided in projection (NoverS old router; SoverN A->S/N->A on the line router with column-xI bridge-only resource_cost), best score; amendment 1 first height = ml_gap + 10 for NoverS (derivation in the brief).
+- NEXT: line router per-request overhead (profile: 58 expansions cost ~8 ms Debug); then T map onto terrain (obstacles, a hill) with the line router; G3 mandatory signals + throughput on the map; check time (prio reach sim). Rig: show a G2 hub beside the old ones.
+- OPEN QUESTION for the engineer (LP11): which group of a painted line travels with the route heading; driving side (D66)?
+- Release timing after each merge: `cmake --build build-rel --target openttd_test`, run `[junctionmap]` in build-rel, output to scratchpad.
 
 ## G1 MERGED (2026-11-10 evening) — the T constructed from its map
 e7a918c44d: ConstructJunctionTMap builds one map from the rules (main line doubled bridge over the branch, N->A over A->S, stagger by span, D148a phase), routes each edge once in dependency order, checks once. Rule-clean on the test spec (190 occupied / 53 slivers) and the pinned spec (118 / 41), identical to the old generator; Debug 481 ms and 235 ms against the old sweep's 8.3 s and 1.8 s. `[junctionmap]` runs in 2.6 s.
