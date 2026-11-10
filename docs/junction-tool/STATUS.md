@@ -1,5 +1,13 @@
 # Junction tool: status
 
+## QUEUE (2026-11-10 evening, engineer away: "fill the queue and make as much progress through everything including projection")
+- G2a (wt-g2, .claude/g2): commit 1 76208e97ff phase timing. Debug: test 478 ms = route 353 + check 116 + finish 6, heights tried 8 (first..13); pinned 232 ms, route 213. Part 2 (line router) resumed with ruling: no W row laid for A->S/N->A, Head on W-row tiles prohibitive (old crossable = empty ground, no heads, junction_router.cpp:356/425).
+- LP10 (wt-lp10, .claude/lp10): stopped on track travel direction (no convention in code/decisions); amendment 1 (9c04ff7bc8): direction from the caller (along_route per track), convention is an OPEN QUESTION for the engineer at LP11 (which group travels with the heading; driving side D66?). Resumed.
+- G2b brief ready (a19dda0e4b): third crossing decided in projection, NoverS vs SoverN, best score. Launch after G2a merges.
+- G2c (to write): start height from the map instead of growing from `first` (8 heights tried = most of route time); then terrain projection (obstacles, a hill) with the line router.
+- Then G3: mandatory signals and throughput on the map. Rig: put a G1/G2 hub beside the old ones for the engineer.
+- After each merge: Release timing in build-rel (`cmake --build build-rel --target openttd_test`, run `[junctionmap]` from build-rel, output to scratchpad).
+
 ## G1 MERGED (2026-11-10 evening) — the T constructed from its map
 e7a918c44d: ConstructJunctionTMap builds one map from the rules (main line doubled bridge over the branch, N->A over A->S, stagger by span, D148a phase), routes each edge once in dependency order, checks once. Rule-clean on the test spec (190 occupied / 53 slivers) and the pinned spec (118 / 41), identical to the old generator; Debug 481 ms and 235 ms against the old sweep's 8.3 s and 1.8 s. `[junctionmap]` runs in 2.6 s.
 Design now: revision 5 + D170a (projection makes the map fit), D171 (crossing is just "crosses"), projection = materialise edges one at a time with the line router, negotiate where necessary; several maps may be projected and the best kept.
