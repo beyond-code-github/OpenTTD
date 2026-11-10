@@ -588,6 +588,58 @@ TEST_CASE("GenerateJunctionNear's score includes the terrain cost", "[junction][
 	CHECK(near.result.score.second == ScoreJunctionLayout(*near.result.layout, spec).second + tmap.terrain_cost);
 }
 
+TEST_CASE("GenerateJunctionNear runs the flat map once", "[junction][tmapnear]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const auto since = [](std::chrono::steady_clock::time_point start) {
+		return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+	};
+	const auto flat_start = std::chrono::steady_clock::now();
+	const JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
+	const int64_t flat_micros = since(flat_start);
+	REQUIRE(flat.layout.has_value());
+	const int x_w = MakeJunctionFrame(spec).hub_x - flat.hub.x;
+	JunctionTerrain terrain = MakeNearTestTerrain();
+	/* The west port's approach is blocked at the anchor and at the offsets above it; the first offset below clears it and builds. */
+	SetNearTestRect(terrain, x_w - 4, x_w + 6, -4, 1, JunctionTileClass::Blocked);
+	const std::atomic<bool> cancel{false};
+	const auto start = std::chrono::steady_clock::now();
+	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
+	const int64_t micros = since(start);
+	/* The result equals the one the T map gives at that offset on its own. */
+	REQUIRE(near.result.layout.has_value());
+	CHECK(near.offset.x == -2);
+	CHECK(near.offset.y == 2);
+	JunctionTerrain shifted = terrain;
+	shifted.origin = {static_cast<int16_t>(terrain.origin.x - near.offset.x), static_cast<int16_t>(terrain.origin.y - near.offset.y)};
+	const JunctionTMapResult direct = ConstructJunctionTMap(spec, &shifted, std::nullopt, true);
+	REQUIRE(direct.layout.has_value());
+	CHECK(near.result.hub.x == direct.hub.x);
+	CHECK(near.result.hub.y == direct.hub.y);
+	CHECK(near.result.score == std::make_pair(ScoreJunctionLayout(*direct.layout, spec).first, ScoreJunctionLayout(*direct.layout, spec).second + direct.terrain_cost));
+	REQUIRE(near.result.layout->tracks.size() == direct.layout->tracks.size());
+	for (size_t i = 0; i < direct.layout->tracks.size(); i++) {
+		CHECK(near.result.layout->tracks[i].offset.x == direct.layout->tracks[i].offset.x);
+		CHECK(near.result.layout->tracks[i].offset.y == direct.layout->tracks[i].offset.y);
+		CHECK(near.result.layout->tracks[i].tracks == direct.layout->tracks[i].tracks);
+	}
+	/* The offsets tried: the anchor, then d = 2 and d = 4 by rows then columns, up to the one found. */
+	int tried = 1;
+	bool reached = near.offset.x == 0 && near.offset.y == 0;
+	for (int d : {2, 4}) {
+		for (int dy = -d; dy <= d && !reached; dy += d) {
+			for (int dx = -d; dx <= d && !reached; dx += d) {
+				if (dx == 0 && dy == 0) continue;
+				tried++;
+				reached = dx == near.offset.x && dy == near.offset.y;
+			}
+		}
+	}
+	REQUIRE(reached);
+	INFO("offsets tried " << tried << ", flat map " << flat_micros << " us, GenerateJunctionNear " << micros << " us");
+	CHECK(micros < flat_micros * tried / 2);
+}
+
 TEST_CASE("GenerateJunctionNear reports a blocked port", "[junction][tmapnear]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();

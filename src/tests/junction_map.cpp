@@ -146,6 +146,29 @@ TEST_CASE("the first height is a lower bound", "[junctionmapedges]")
 	}
 }
 
+TEST_CASE("a supplied flat map gives the same T", "[junctionmap]")
+{
+	for (const auto &[name, spec] : MapSpecs()) {
+		INFO("spec " << name);
+		const JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
+		const JunctionTMapResult given = ConstructJunctionTMap(spec, nullptr, std::nullopt, true, &flat);
+		const JunctionTMapResult own = ConstructJunctionTMap(spec, nullptr, std::nullopt, true);
+		REQUIRE(given.layout.has_value());
+		REQUIRE(own.layout.has_value());
+		CHECK(given.layout->tracks.size() == own.layout->tracks.size());
+		for (size_t i = 0; i < std::min(given.layout->tracks.size(), own.layout->tracks.size()); i++) {
+			CHECK(given.layout->tracks[i].offset.x == own.layout->tracks[i].offset.x);
+			CHECK(given.layout->tracks[i].offset.y == own.layout->tracks[i].offset.y);
+			CHECK(given.layout->tracks[i].tracks == own.layout->tracks[i].tracks);
+		}
+		CHECK(given.height == own.height);
+		CHECK(given.hub.x == own.hub.x);
+		CHECK(given.hub.y == own.hub.y);
+		CHECK(given.flat_runs == 0);
+		CHECK(own.flat_runs == 1);
+	}
+}
+
 TEST_CASE("the line-router T matches or beats the old-router T", "[junctionmapedges]")
 {
 	for (const auto &[name, spec] : MapSpecs()) {
