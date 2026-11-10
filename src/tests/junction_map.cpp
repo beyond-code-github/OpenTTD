@@ -174,8 +174,9 @@ TEST_CASE("line router results are unchanged by the speed work", "[linerouter]")
 		"LFFFFFFFFFFFFFLF 1800 123\n"
 		"FB2LFFFLFFFFFFRFL 2700 77\n"
 		"- 0 31886\n"
+		"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF 4000 40\n"
 		"LFFFLFFRFFFFLF 1800 58\n"
-		"FB2FLFFFLFFFFFFFFRFL 3000 172\n"
+		"FB2FLFFFLFFFFFFFFRFL 3000 120\n"
 		"RFFFRFFLFFFFFR 1700 83\n"
 		"RFFFFFFFFFFFRFFFFFFFFFFFFLFR 3100 817\n"},
 		{"pinned",
@@ -183,13 +184,14 @@ TEST_CASE("line router results are unchanged by the speed work", "[linerouter]")
 		"LFFFFFFFFFFFFFLF 1800 123\n"
 		"FB2FLFFFFL 1800 50\n"
 		"- 0 15565\n"
+		"FFFFFFFFFFFFFFFFFFFFFFFF 2400 24\n"
 		"LFFFLFFRFFFFLF 1800 58\n"
 		"FB2FFLFFFFL 1900 72\n"
 		"RFFFFFRFFFLFR 1600 55\n"
 		"RFFFFFFFRFFLFFFFFR 2100 236\n"},
 	};
 	/* D173: the line router starts at the flat map's height, so its trace is the tail of the old one: the lines of the built height. */
-	constexpr size_t BUILT_HEIGHT_LINES = 4; ///< A->S, N->A, B->S, N->B.
+	constexpr size_t BUILT_HEIGHT_LINES = 5; ///< A, A->S, N->A, B->S, N->B (E1 routes A as an edge, D178).
 	for (const auto &[name, trace] : expected) {
 		size_t cut = trace.size();
 		for (size_t i = 0; i < BUILT_HEIGHT_LINES; i++) cut = trace.rfind('\n', cut - 2) + 1;
@@ -310,15 +312,106 @@ TEST_CASE("an obstacle on A->S's route is projected around", "[junction][project
 	std::cout << "BENCH tmap obstacle height=" << result.height << " heights=" << result.heights_tried << " flat_height=" << flat.height << " micros=" << result.micros << " flat=" << result.micros_flat << " route=" << result.micros_route << "\n";
 }
 
-TEST_CASE("an obstacle on the main line is reported", "[junction][projection]")
+/** Whether two layouts hold the same tracks, bridges and signals, tile for tile. */
+static void CheckSameLayout(const JunctionLayout &a, const JunctionLayout &b)
+{
+	REQUIRE(a.tracks.size() == b.tracks.size());
+	for (size_t i = 0; i < a.tracks.size(); i++) {
+		CHECK(a.tracks[i].offset.x == b.tracks[i].offset.x);
+		CHECK(a.tracks[i].offset.y == b.tracks[i].offset.y);
+		CHECK(a.tracks[i].tracks == b.tracks[i].tracks);
+	}
+	REQUIRE(a.bridges.size() == b.bridges.size());
+	for (size_t i = 0; i < a.bridges.size(); i++) {
+		CHECK(a.bridges[i].start.x == b.bridges[i].start.x);
+		CHECK(a.bridges[i].start.y == b.bridges[i].start.y);
+		CHECK(a.bridges[i].end.x == b.bridges[i].end.x);
+		CHECK(a.bridges[i].end.y == b.bridges[i].end.y);
+		CHECK(a.bridges[i].tunnel == b.bridges[i].tunnel);
+	}
+	REQUIRE(a.signals.size() == b.signals.size());
+	for (size_t i = 0; i < a.signals.size(); i++) {
+		CHECK(a.signals[i].offset.x == b.signals[i].offset.x);
+		CHECK(a.signals[i].offset.y == b.signals[i].offset.y);
+		CHECK(a.signals[i].facing == b.signals[i].facing);
+		CHECK(a.signals[i].type == b.signals[i].type);
+		CHECK(a.signals[i].variant == b.signals[i].variant);
+	}
+}
+
+/** The frame x of A's west port in the flat T (E1, D179): the ports come from the flat T, whose crop leaves the main line content +-2. */
+static int FlatWestPortX(const JunctionTMapResult &flat)
+{
+	return MakeJunctionFrame(MakeTestJunctionSpec()).hub_x - flat.hub.x;
+}
+
+TEST_CASE("an obstacle on the main line outside the junction is ignored", "[junction][projection]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	REQUIRE(3 < FlatWestPortX(flat));
 	JunctionTerrain terrain = MakeMapTestTerrain(spec);
 	BlockMapTestTile(terrain, 3, 0);
-	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, SharedFlatT().height, true);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO(result.log);
+	REQUIRE(result.layout.has_value());
+	CHECK(result.clean);
+	CheckSameLayout(*result.layout, *flat.layout);
+}
+
+TEST_CASE("a blocked port approach is reported at once", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const int x_w = FlatWestPortX(flat);
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, x_w + 1, 0);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
 	INFO(result.log);
 	CHECK(!result.layout.has_value());
-	CHECK(result.log.find("fixed track on unusable tile 3,0") != std::string::npos);
+	CHECK(result.port_blocked);
+	std::ostringstream expected;
+	expected << "port approach blocked at " << x_w + 1 << ",0";
+	CHECK(result.log.find(expected.str()) != std::string::npos);
+	CHECK(result.heights_tried == 0);
+	CHECK(result.micros_route == 0);
+}
+
+/* [slow] until the growth stop: today it tries every height to the snapshot's end (33 heights, about 8 s Release); the growth stop (grow only when the box, not the terrain, stopped the search, DESIGN-O4) must make it fail at the first height and drop [slow]. */
+TEST_CASE("an obstacle on the main line beside the hub gives no layout", "[junction][projection][slow]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	constexpr int STUB = 2;
+	const int x_w = FlatWestPortX(flat);
+	const int x_e = x_w + flat.layout->size.x - 1;
+	const int xI = MakeJunctionFrame(spec).hub_x;
+	const TileIndexDiffC blocked{static_cast<int16_t>(xI - 1), 0};
+	REQUIRE(blocked.x > x_w + STUB);
+	REQUIRE(blocked.x < x_e - STUB);
+	REQUIRE(!MapUsesTile(flat.a_to_s_tiles, blocked));
+	REQUIRE(!MapUsesTile(flat.n_to_a_tiles, blocked));
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, blocked.x, blocked.y);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO(result.log);
+	CHECK(!result.layout.has_value());
+	CHECK(result.heights_tried > 0);
+	for (int h = flat.height; h < flat.height + result.heights_tried; h++) {
+		std::ostringstream a_line;
+		a_line << "height " << h << ": A failed\n";
+		std::ostringstream n_line;
+		n_line << "height " << h << ": N->A failed\n";
+		CHECK((result.log.find(a_line.str()) != std::string::npos || result.log.find(n_line.str()) != std::string::npos));
+	}
+	/* No other failure kind: every log line is one of the two. */
+	std::istringstream lines(result.log);
+	for (std::string line; std::getline(lines, line);) {
+		CHECK((line.ends_with(": A failed") || line.ends_with(": N->A failed")));
+	}
 }
 
 TEST_CASE("a field of obstacles grows the box", "[junction][projection]")

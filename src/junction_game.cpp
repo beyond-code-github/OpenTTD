@@ -430,7 +430,7 @@ JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const Junction
 			/* No terrain cost yet: a known gap. */
 			attempt.result.score = ScoreJunctionLayout(*tmap.layout, spec);
 		} else {
-			attempt.result.error = JunctionGenerateError::NoLayout;
+			attempt.result.error = tmap.port_blocked ? JunctionGenerateError::PortBlocked : JunctionGenerateError::NoLayout;
 		}
 		attempt.result.hub = tmap.hub;
 		attempt.result.prio_tiles = spec.prio_tiles;

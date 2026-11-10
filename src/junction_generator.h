@@ -54,7 +54,7 @@ struct JunctionSpec {
 };
 
 /** Why generation failed; PrioTooLong: the prio sizing found no coverage within its search bound; PrioDelaysMainline: the generated layout's prio delays the ML at the spec's coverage (D137). */
-enum class JunctionGenerateError : uint8_t { None, InvalidNotation, MultiLane, NoLayout, NeedsMlGap, PrioTooLong, PrioDelaysMainline };
+enum class JunctionGenerateError : uint8_t { None, InvalidNotation, MultiLane, NoLayout, NeedsMlGap, PrioTooLong, PrioDelaysMainline, PortBlocked };
 struct JunctionGenerateResult {
 	std::optional<JunctionLayout> layout;
 	JunctionGenerateError error = JunctionGenerateError::None;
@@ -161,6 +161,7 @@ struct RuleViolation;
 struct JunctionTMapResult {
 	std::optional<JunctionLayout> layout; ///< Finished (cropped, signalled) when built; set even when not rule-clean.
 	bool clean = false; ///< JunctionRulesClean on the layout, run once.
+	bool port_blocked = false; ///< D179: a port's approach is unusable; nothing was routed.
 	std::vector<RuleViolation> violations; ///< CheckJunctionRules when not clean.
 	int height = 0; ///< The height that routed.
 	int heights_tried = 0;

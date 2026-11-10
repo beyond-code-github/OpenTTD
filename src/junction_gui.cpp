@@ -578,6 +578,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			if (result.error == JunctionGenerateError::NeedsMlGap) status = STR_JUNCTION_ERROR_NEEDS_ML_GAP;
 			if (result.error == JunctionGenerateError::PrioTooLong) status = STR_JUNCTION_ERROR_PRIO_TOO_LONG;
 			if (result.error == JunctionGenerateError::PrioDelaysMainline) status = STR_JUNCTION_ERROR_PRIO_DELAYS_MAINLINE;
+			if (result.error == JunctionGenerateError::PortBlocked) status = STR_JUNCTION_ERROR_PORT_BLOCKED;
 			this->ShowNoPlacement(status);
 			return;
 		}

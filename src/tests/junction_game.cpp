@@ -564,3 +564,19 @@ TEST_CASE("GenerateJunctionNear builds the projected T map over a ridge", "[junc
 		CHECK(a.signals[i].variant == b.signals[i].variant);
 	}
 }
+
+TEST_CASE("GenerateJunctionNear reports a blocked port", "[junction][tmapnear]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, true);
+	REQUIRE(flat.layout.has_value());
+	constexpr int STUB = 2;
+	const int x_w = MakeJunctionFrame(spec).hub_x - flat.hub.x;
+	JunctionTerrain terrain = MakeNearTestTerrain();
+	/* The west port's approach at every near offset's position. */
+	SetNearTestRect(terrain, x_w - 4, x_w + STUB + 4, -4, 4, JunctionTileClass::Blocked);
+	const std::atomic<bool> cancel{false};
+	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
+	CHECK(near.result.error == JunctionGenerateError::PortBlocked);
+	CHECK(!near.result.layout.has_value());
+}
