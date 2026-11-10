@@ -783,6 +783,31 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 	JunctionTMapResult result;
 	result.e_phase = JunctionEWindowPhase(spec.prio_tiles);
 
+	/*
+	 * D173: "Flat empty ground is the relaxation of every terrain: terrain only removes options. So the height at which the T map builds on flat ground
+	 * (old router) is an exact lower bound for projection; the line router starts there."
+	 * The flat map ignores the terrain by design.
+	 */
+	if (line_router && !first_height.has_value()) {
+		const auto flat_start = std::chrono::steady_clock::now();
+		JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
+		result.micros_flat = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - flat_start).count();
+		if (!flat.layout.has_value()) {
+			std::string prefixed;
+			for (size_t from = 0; from < flat.log.size();) {
+				const size_t end = flat.log.find('\n', from);
+				const size_t stop = end == std::string::npos ? flat.log.size() : end + 1;
+				prefixed += "flat map: " + flat.log.substr(from, stop - from);
+				from = stop;
+			}
+			flat.log = std::move(prefixed);
+			flat.micros_flat = result.micros_flat;
+			flat.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
+			return flat;
+		}
+		first_height = flat.height;
+	}
+
 	const JunctionFrame frame = MakeJunctionFrame(spec);
 	const int g = spec.ml_gap;
 	const int xI = frame.hub_x;
