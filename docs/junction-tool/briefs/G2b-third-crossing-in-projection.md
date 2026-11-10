@@ -46,3 +46,11 @@ No other realisations (main line over/under stays as today), no sweep, no change
 References read; commit; red evidence; members added; suite results with times; BENCH lines; SoverN clean or its violations; stops; `git status --porcelain`, `git log -1`.
 
 When you have reported, stop.
+
+## Amendment 1: the first height from the map (folded in; orchestrator, from G2a's logs)
+G2a measured (old router, Debug): heights 6..11 all fail on A->S and cost most of the route time (test spec: route 353 ms over 8 heights; the built height costs 4 ms). For NoverS the map gives a lower bound, derived from the rules G1 already applies:
+- A->S must cross column xI between rows 0 and ys (its split is at x <= xI-2, its goal at xO > xI on row ys entered from above); the column fence forbids rows 0..g+3 and ys-1, ys-2, so it crosses at y_c >= g+4.
+- N->A starts at (xI, ys), its first piece on ys-1 carries the signal and its near head is on ys-2 (D113, D3d); its bridge over y_c needs a middle tile at y_c, so ys-2 >= y_c+1, giving ys >= g+7.
+- ys = H-3 (D115a stub), so H >= g+10.
+Add `int JunctionTMapFirstHeight(const JunctionSpec &spec)` returning `spec.ml_gap + 10`, with this derivation in its comment; NoverS starts its heights there. SoverN has no derived bound in this step: it starts at the old `first` (ml_gap + 5).
+Test: "the first height is a lower bound": for both specs, with a test seam that starts NoverS at `JunctionTMapFirstHeight(spec) - 1` (add `std::optional<int> first_height` as the last parameter of `ConstructJunctionTMap`), that height's log line is a failure (A->S), so the bound skips only heights that cannot build. Report heights_tried and micros before and after.
