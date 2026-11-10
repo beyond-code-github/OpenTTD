@@ -59,10 +59,12 @@ static constexpr int ORGANIC_W = 44;
 static constexpr int ORGANIC_H = 16;
 static constexpr int ORGANIC_P = 20;
 
-/** Negotiate the test spec's T on the standard box with the branch at x = p. */
+/** Negotiate the test spec's T on the standard box with the branch at x = p, without movement rules, masks or windows (the O4b1 negotiation). */
 static JunctionNegotiation NegotiateT(const JunctionSpec &spec, int p, int max_rounds = 16)
 {
-	return NegotiateJunctionMovements(spec, MakeOrganicTPorts(spec, ORGANIC_W, ORGANIC_H, p), ORGANIC_W, ORGANIC_H, nullptr, max_rounds);
+	JunctionNegotiationPrices prices;
+	prices.apply_rules = false;
+	return NegotiateJunctionMovements(spec, MakeOrganicTPorts(spec, ORGANIC_W, ORGANIC_H, p), ORGANIC_W, ORGANIC_H, nullptr, max_rounds, prices);
 }
 
 /** The pieces of a route, from the start. */
@@ -276,77 +278,110 @@ static void CheckOrganicClean(const JunctionSpec &spec)
 	INFO("ignored 'ML bridge is not doubled': " << before - violations.size());
 	INFO(ViolationText(violations));
 	CHECK(violations.empty());
+	CHECK(JunctionRulesClean(*result.layout, spec));
 	CHECK(result.compactness.occupied == compact.occupied);
 	CHECK(result.compactness.slivers == compact.slivers);
 	CHECK(WinningCase(result.cases) >= 0);
 }
 
-TEST_CASE("GenerateJunctionOrganic: the test spec's T is rule-clean", "[junction][organic]")
+TEST_CASE("GenerateJunctionOrganic: the map-driven organic T is rule-clean", "[junction][organic]")
 {
 	CheckOrganicClean(MakeTestJunctionSpec());
 }
 
-TEST_CASE("GenerateJunctionOrganic: the pinned spec's T is rule-clean", "[junction][organic]")
+TEST_CASE("GenerateJunctionOrganic: the map-driven organic T of the pinned spec is rule-clean", "[junction][organic]")
 {
 	CheckOrganicClean(PinnedOrganicSpec());
 }
 
-TEST_CASE("GenerateJunctionOrganic: a long train with a narrow branch is rule-clean", "[junction][organic]")
+TEST_CASE("GenerateJunctionOrganic: the map-driven organic T with a narrow branch is rule-clean", "[junction][organic]")
 {
 	CheckOrganicClean(NarrowBranchSpec());
 }
 
-TEST_CASE("BuildOrganicT: the first negotiation obeys the rules", "[junction][organic]")
+TEST_CASE("BuildOrganicT: the prio row travels with the main line", "[junction][organic]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, 23, MlTurnCostOf(spec));
-	INFO("error: " << result.error);
-	INFO("violations left:\n" << ViolationText(result.violations));
-	INFO("cases:\n" << result.cases);
+	const JunctionOrganicResult generated = GenerateJunctionOrganic(spec, MlTurnCostOf(spec));
+	REQUIRE(generated.layout.has_value());
+	const int p = generated.p;
+	const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, p, MlTurnCostOf(spec));
+	INFO("p " << p << " cases:\n" << result.cases);
 	REQUIRE(result.layout.has_value());
-	CHECK(result.violations.empty());
 
-	/* Negotiate the winning case again (its forced pairs are in its line: [a>b c>d ...]) and count each turning movement's private units from its routes. */
-	const size_t open = result.cases.find('[', result.cases.find("*case "));
-	REQUIRE(open != std::string::npos);
-	std::istringstream label(result.cases.substr(open + 1, result.cases.find(']', open) - open - 1));
+	/* The checker's prio component is empty for the finished layout. */
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(*result.layout, spec, FindJunctionPorts(*result.layout), JunctionTMovements());
+	const std::vector<RuleViolation> prio = CheckPrio(ctx);
+	INFO(ViolationText(prio));
+	CHECK(prio.empty());
+
+	/* The winning candidate is the map of the case marked '*': project it again; each main line's companion tiles carry track that no movement's route uses. */
+	const int winner = WinningCase(result.cases);
+	REQUIRE(winner >= 0);
+	const int box_width = ORGANIC_W + 4 * winner;
+	const int box_height = ORGANIC_H + 1 + 2 * winner;
+	auto maps_of = [&](int w, int h) { return JunctionTMaps(spec, MakeOrganicTPorts(spec, w, h, p, 1), w, h); };
+	auto chunk_of = [](const std::vector<JunctionTMap> &list, const JunctionTMap::Window &window) {
+		int least = window.end_lo;
+		for (const JunctionTMap &map : list) {
+			for (const JunctionTMap::Window &other : map.windows) {
+				if (other.joiner == window.joiner) least = std::min(least, other.end_lo);
+			}
+		}
+		return (window.end_lo - least) / 6;
+	};
+	const std::vector<JunctionTMap> first_maps = maps_of(ORGANIC_W, ORGANIC_H + 1);
+	const std::vector<JunctionTMap> maps = maps_of(box_width, box_height);
+	const JunctionTMap *winning = nullptr;
+	for (const JunctionTMap &map : maps) {
+		bool same = map.over == first_maps[0].over;
+		for (size_t k = 0; same && k < map.windows.size(); k++) same = chunk_of(maps, map.windows[k]) == chunk_of(first_maps, first_maps[0].windows[k]);
+		if (same) {
+			winning = &map;
+			break;
+		}
+	}
+	REQUIRE(winning != nullptr);
+	const std::vector<JunctionPort> ports = MakeOrganicTPorts(spec, box_width, box_height, p, 1);
 	JunctionNegotiationPrices prices;
 	prices.ml_turn_cost = MlTurnCostOf(spec);
-	for (std::string pair; label >> pair;) prices.over.emplace_back(LeadingInt(pair), LeadingInt(pair.substr(pair.find('>') + 1)));
-	const JunctionNegotiation negotiation = NegotiateJunctionMovements(spec, MakeOrganicTPorts(spec, ORGANIC_W, ORGANIC_H, 23), ORGANIC_W, ORGANIC_H, nullptr, 48, prices);
+	prices.map = winning;
+	const JunctionNegotiation negotiation = NegotiateJunctionMovements(spec, ports, box_width, box_height, nullptr, 48, prices);
 	INFO("negotiation error: " << negotiation.error);
 	REQUIRE(negotiation.layout.has_value());
 	REQUIRE(negotiation.routes.size() == 6);
-	CHECK(negotiation.rounds == result.rounds);
+	REQUIRE(winning->windows.size() == 2);
+	for (const JunctionTMap::Window &window : winning->windows) {
+		const std::vector<JunctionPiece> &companion = negotiation.routes[window.line].companion;
+		INFO("window of movement " << window.line);
+		REQUIRE_FALSE(companion.empty());
+		for (const JunctionPiece &piece : companion) {
+			CHECK(std::ranges::any_of(negotiation.layout->tracks, [&](const JunctionTrack &jt) { return jt.offset.x == piece.tile.x && jt.offset.y == piece.tile.y && jt.tracks.Test(TrackdirToTrack(piece.trackdir)); }));
+			for (const JunctionLineRoute &route : negotiation.routes) {
+				for (const JunctionPiece &used : RoutePieces(route)) CHECK_FALSE((used.tile.x == piece.tile.x && used.tile.y == piece.tile.y));
+			}
+		}
+	}
+}
+
+TEST_CASE("JunctionTMaps: maps are ordered by bound", "[junction][organic]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const int box_height = ORGANIC_H + 1;
+	const std::vector<JunctionPort> ports = MakeOrganicTPorts(spec, ORGANIC_W, box_height, 20, 1);
+	const std::vector<JunctionTMap> maps = JunctionTMaps(spec, ports, ORGANIC_W, box_height);
+	REQUIRE(maps.size() >= 8);
+	for (size_t i = 1; i < maps.size(); i++) CHECK(maps[i - 1].bound <= maps[i].bound);
 
 	const auto movements = JunctionTMovements();
-	std::vector<std::vector<JunctionPiece>> pieces;
-	for (const JunctionLineRoute &route : negotiation.routes) pieces.push_back(RoutePieces(route));
-	auto same = [](const JunctionPiece &a, const JunctionPiece &b) { return a.tile.x == b.tile.x && a.tile.y == b.tile.y && a.trackdir == b.trackdir; };
-	for (const size_t m : {1, 3, 4, 5}) {
-		/* The split: the first piece that parts from the sibling leaving the same port. */
-		size_t sibling = movements.size();
-		for (size_t o = 0; o < movements.size(); o++) {
-			if (o != m && movements[o].first == movements[m].first) sibling = o;
-		}
-		REQUIRE(sibling < movements.size());
-		size_t split = 0;
-		while (split < pieces[m].size() && split < pieces[sibling].size() && same(pieces[m][split], pieces[sibling][split])) split++;
-		/* The merge: the first piece after it on the route of a movement arriving at the same port. */
-		size_t merge = split;
-		auto on_arriving = [&](const JunctionPiece &piece) {
-			for (size_t o = 0; o < movements.size(); o++) {
-				if (o != m && movements[o].second == movements[m].second && std::ranges::any_of(pieces[o], [&](const JunctionPiece &other) { return same(piece, other); })) return true;
-			}
-			return false;
-		};
-		while (merge < pieces[m].size() && !on_arriving(pieces[m][merge])) merge++;
-		REQUIRE(merge < pieces[m].size());
-		unsigned units = 0;
-		for (size_t i = split; i < merge; i++) units += pieces[m][i].units;
-		INFO("movement " << m << " has " << units << " private units between its split (piece " << split << ") and its merge (piece " << merge << ")");
-		CHECK(units >= 2 * spec.tl);
+	const std::vector<std::pair<int, int>> pairs = JunctionForcedPairs(ports, ORGANIC_W, box_height);
+	REQUIRE(maps[0].over.size() == pairs.size());
+	/* Where a main line is in a forced pair, it goes over (the pair of the two turning movements has none). */
+	auto is_main_line = [&](int movement) { return (movements[movement].first == JunctionPortRole::EIn && movements[movement].second == JunctionPortRole::EOut) || (movements[movement].first == JunctionPortRole::WIn && movements[movement].second == JunctionPortRole::WOut); };
+	for (const auto &[over, under] : maps[0].over) {
+		if (is_main_line(over) || is_main_line(under)) CHECK(is_main_line(over));
 	}
+	CHECK(maps[0].windows.size() == 2);
 }
 
 TEST_CASE("BuildOrganicT: every bridge crosses something", "[junction][organic]")
@@ -382,28 +417,20 @@ TEST_CASE("JunctionForcedPairs: the forced pairs of a T", "[junction][organic]")
 	CHECK(pairs == expected);
 }
 
-/** Time the generation of a spec's organic T (1 warm-up and 5 runs) and print one BENCH line. */
-static void BenchGenerate(const char *name, const JunctionSpec &spec)
+/** Print one BENCH line and the winning cases block for a spec's organic T at each branch position p tried. */
+static void BenchSpec(const char *name, const JunctionSpec &spec)
 {
-	std::vector<int64_t> times;
-	JunctionOrganicResult result = GenerateJunctionOrganic(spec, MlTurnCostOf(spec));
-	for (int i = 0; i < 5; i++) {
-		result = GenerateJunctionOrganic(spec, MlTurnCostOf(spec));
-		times.push_back(result.micros);
+	for (int p = 14; p <= 28; p += 2) {
+		const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, p, MlTurnCostOf(spec));
+		const size_t candidates = static_cast<size_t>(std::ranges::count(result.cases, '\n')) - (result.cases.find("stopped after") != std::string::npos ? 1 : 0);
+		std::cout << "BENCH spec=" << name << " p=" << p << " candidates=" << candidates << " rounds=" << result.rounds << " micros=" << result.micros << " occupied=" << result.compactness.occupied << " slivers=" << result.compactness.slivers << " clean=" << (result.layout.has_value() ? 1 : 0) << "\n";
+		std::cout << result.cases;
 	}
-	std::sort(times.begin(), times.end());
-	std::cout << "BENCH organic_gen " << name << " clean=" << (result.layout.has_value() ? 1 : 0) << " p=" << result.p << " case=" << WinningCase(result.cases) << " rounds=" << result.rounds << " occupied=" << result.compactness.occupied << " slivers=" << result.compactness.slivers << " median_us=" << times[times.size() / 2] << "\n";
 }
 
 TEST_CASE("GenerateJunctionOrganic: timing", "[junction][organic][.bench]")
 {
-	BenchGenerate("test", MakeTestJunctionSpec());
-	BenchGenerate("pinned", PinnedOrganicSpec());
-	BenchGenerate("narrow", NarrowBranchSpec());
-
-	const JunctionSpec spec = MakeTestJunctionSpec();
-	for (int p = 14; p <= 28; p += 2) {
-		const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, p, MlTurnCostOf(spec));
-		std::cout << "BENCH organic_p " << p << " clean=" << (result.layout.has_value() ? 1 : 0) << " rounds=" << result.rounds << " us=" << result.micros << "\n";
-	}
+	BenchSpec("test", MakeTestJunctionSpec());
+	BenchSpec("pinned", PinnedOrganicSpec());
+	BenchSpec("narrow", NarrowBranchSpec());
 }

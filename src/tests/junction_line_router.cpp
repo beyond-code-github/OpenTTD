@@ -1679,3 +1679,102 @@ TEST_CASE("FindJunctionLineRoute: rule routes are as cheap as an uninformed sear
 		CHECK(informed.cost <= uninformed.cost);
 	}
 }
+
+/** A request for a one-track line heading along +x from (0, 2) to (29, 2) in a flat 30x6 box, carrying a prio window of 8 units on its +y side whose last piece lies at x 10 to 20. */
+static JunctionLineRouteRequest WindowRequest()
+{
+	JunctionLineRouteRequest request;
+	request.line = {1, 1, 1};
+	request.start = {0, 2};
+	request.start_trackdir = Trackdir::X_SW;
+	request.goals = {{{29, 2}, Trackdir::X_SW}};
+	request.min = {0, 0};
+	request.max = {29, 5};
+	request.curve_spacing = 4;
+	request.turn_cost = 3;
+	request.prio_window = JunctionPrioWindow{8, 1, 10, 20};
+	return request;
+}
+
+TEST_CASE("FindJunctionLineRoute: a prio window carries its companion track", "[junction][linerouter]")
+{
+	const JunctionLineRouteRequest request = WindowRequest();
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *result.route);
+	REQUIRE(rasters.size() == 1);
+	REQUIRE(rasters[0].error.empty());
+	const std::vector<JunctionPiece> &pieces = rasters[0].pieces;
+	const std::vector<JunctionPiece> &companion = result.route->companion;
+	REQUIRE_FALSE(companion.empty());
+	REQUIRE(result.prio_end < pieces.size());
+
+	/* Each companion lies one tile +y of a straight piece of the route; together they are one run of at least the window's units. */
+	uint units = 0;
+	int first_x = INT32_MAX;
+	int last_x = INT32_MIN;
+	for (const JunctionPiece &piece : companion) {
+		const auto at = std::ranges::find_if(pieces, [&](const JunctionPiece &other) { return other.tile.x == piece.tile.x && other.tile.y == piece.tile.y - 1 && other.trackdir == piece.trackdir; });
+		CHECK(at != pieces.end());
+		CHECK(piece.trackdir == Trackdir::X_SW);
+		units += piece.units;
+		first_x = std::min<int>(first_x, piece.tile.x);
+		last_x = std::max<int>(last_x, piece.tile.x);
+	}
+	CHECK(units >= 8);
+	CHECK(last_x >= 10);
+	CHECK(last_x <= 20);
+	CHECK(companion.size() == static_cast<size_t>(last_x - first_x + 1));
+	CHECK(pieces[result.prio_end].tile.x == last_x);
+	CHECK(pieces[result.prio_end].tile.y == 2);
+	CHECK(result.prio_end + 1 < pieces.size());
+}
+
+TEST_CASE("FindJunctionLineRoute: a prio window is never on a curve", "[junction][linerouter]")
+{
+	/* The route has to pass (9, 2) and then (10, 3): it turns between x 9 and 11, so a straight run of 4 pieces ending at x 10 to 12 does not exist. */
+	JunctionLineRouteRequest request = WindowRequest();
+	request.waypoints = {{9, 2}, {10, 3}};
+	request.prio_window.reset();
+	INFO(FindJunctionLineRoute(request).error);
+	REQUIRE(FindJunctionLineRoute(request).route.has_value());
+
+	request.prio_window = JunctionPrioWindow{8, 1, 10, 12};
+	JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	CHECK_FALSE(result.route.has_value());
+	CHECK(result.error == "no route");
+
+	/* With the range wide enough for the straight run after the turn, there is a route. */
+	request.prio_window = JunctionPrioWindow{8, 1, 10, 25};
+	result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	CHECK(result.route.has_value());
+}
+
+TEST_CASE("FindJunctionLineRoute: a companion tile that is blocked moves the window", "[junction][linerouter]")
+{
+	JunctionLineRouteRequest request = WindowRequest();
+	for (int x = 10; x <= 15; x++) request.blocked.push_back({static_cast<int16_t>(x), 3});
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	INFO(result.error);
+	REQUIRE(result.route.has_value());
+	REQUIRE_FALSE(result.route->companion.empty());
+	int first_x = INT32_MAX;
+	int last_x = INT32_MIN;
+	for (const JunctionPiece &piece : result.route->companion) {
+		CHECK((piece.tile.x < 10 || piece.tile.x > 15));
+		first_x = std::min<int>(first_x, piece.tile.x);
+		last_x = std::max<int>(last_x, piece.tile.x);
+	}
+	/* The run of the least window length (4 pieces) cannot end before x 16 + 4 - 1 and stay in range, so it ends at x 19 or 20. */
+	CHECK(first_x >= 16);
+	CHECK(last_x >= 19);
+	CHECK(last_x <= 20);
+
+	/* Out of range for the window, and with no room to move the line to another row, there is no route. */
+	request.min = {0, 2};
+	request.max = {29, 3};
+	request.prio_window = JunctionPrioWindow{8, 1, 10, 18};
+	CHECK_FALSE(FindJunctionLineRoute(request).route.has_value());
+}

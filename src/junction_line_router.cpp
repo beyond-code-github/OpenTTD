@@ -45,6 +45,8 @@ struct LineNode {
 	uint16_t private_units = 0; ///< With movement rules: units since the split, capped at wait_units.
 	uint8_t plain = 0; ///< With movement rules: signal-legal private pieces since the split or the last far head, capped at plain_before_head.
 	bool after_head = false; ///< With movement rules: a bridge or tunnel ended since the split.
+	uint8_t window_phase = 0; ///< With a prio window: 0 before it, 1 in it, 2 after it (DESIGN-O4 revision 5).
+	uint16_t window_units = 0; ///< With a prio window: the units of the window so far, capped at the window's units.
 };
 
 /** One entry of the search tree. */
@@ -55,6 +57,7 @@ struct LineTreeEntry {
 	std::string move;
 	std::vector<std::vector<JunctionPiece>> added; ///< The pieces each track added with this move.
 	std::vector<JunctionBridge> bridges; ///< The bridges this move added, one per track (D149).
+	std::vector<JunctionPiece> companion{}; ///< The prio window's parallel piece this move added, if any (DESIGN-O4 revision 5).
 };
 
 static uint64_t PackTile(int x, int y)
@@ -93,6 +96,7 @@ public:
 		const int height = std::max(0, request.max.y - request.min.y + 1);
 		blocked.assign(static_cast<size_t>(width) * height, false);
 		path_used.assign(static_cast<size_t>(width) * height, TrackBits{});
+		companion_used.assign(static_cast<size_t>(width) * height, false);
 		for (const TileIndexDiffC &tile : request.blocked) Block(tile);
 		if (request.existing != nullptr) {
 			for (const JunctionTrack &track : request.existing->tracks) existing_bits[PackTile(track.offset.x, track.offset.y)] = track.tracks;
@@ -140,6 +144,8 @@ private:
 	std::vector<bool> blocked; ///< Per tile of the bounds, row by row: no track or bridge may use it. A tile outside the bounds is never read: every use checks InBounds first.
 	std::vector<TrackBits> path_used; ///< Per tile of the bounds: the tracks of the path being expanded. Tiles outside the bounds are not recorded: a new piece is always checked in bounds first, so only a frozen prefix can lie outside and nothing reads it.
 	std::vector<size_t> touched; ///< The indices of path_used set for the current expansion, to clear.
+	std::vector<bool> companion_used; ///< Per tile of the bounds: the path's prio window has its companion piece here, so no other piece of the line may (DESIGN-O4 revision 5).
+	std::vector<size_t> companion_touched; ///< The indices of companion_used set for the current expansion, to clear.
 	std::unordered_map<uint64_t, TrackBits> existing_bits; ///< The existing layout's tracks per tile (D147).
 	std::deque<LineTreeEntry> tree; ///< A deque, so a reference to an entry stays valid while successors are pushed.
 
@@ -174,6 +180,24 @@ private:
 	{
 		for (size_t index : touched) path_used[index] = TrackBits{};
 		touched.clear();
+		for (size_t index : companion_touched) companion_used[index] = false;
+		companion_touched.clear();
+	}
+
+	/** Record a companion piece of the path's prio window on its tile; it lies in the bounds, as it was checked when it was added. */
+	void MarkCompanion(const JunctionPiece &piece)
+	{
+		const ptrdiff_t index = GridIndex(piece.tile.x, piece.tile.y);
+		if (index < 0 || companion_used[index]) return;
+		companion_used[index] = true;
+		companion_touched.push_back(static_cast<size_t>(index));
+	}
+
+	/** Whether the path's prio window has its companion piece on the piece's tile. */
+	bool OnCompanion(const JunctionPiece &piece) const
+	{
+		const ptrdiff_t index = GridIndex(piece.tile.x, piece.tile.y);
+		return index >= 0 && companion_used[index];
 	}
 
 	bool InBounds(const JunctionPiece &piece) const
@@ -327,6 +351,8 @@ private:
 		AppendBytes(key, node.private_units);
 		AppendBytes(key, node.plain);
 		AppendBytes(key, static_cast<uint8_t>(node.after_head));
+		AppendBytes(key, node.window_phase);
+		AppendBytes(key, node.window_units);
 		return key;
 	}
 
@@ -372,6 +398,7 @@ private:
 	bool IsGoal(const LineNode &node) const
 	{
 		if (node.passed != request.waypoints.size() || node.units < request.min_units) return false;
+		if (request.prio_window.has_value() && node.window_phase != 2) return false;
 		if (request.goals.empty()) return !request.waypoints.empty();
 		const JunctionPiece &piece = node.last[0];
 		/* A goal on a sibling's route towards the Out port is reached by merging into it. */
@@ -469,6 +496,63 @@ private:
 		node.after_head = true;
 	}
 
+	/** The along-travel coordinate of an axis piece: x for X-axis travel, y for Y. */
+	static int AlongTravel(const JunctionPiece &piece)
+	{
+		return TrackdirToTrack(piece.trackdir) == Track::X ? piece.tile.x : piece.tile.y;
+	}
+
+	/** The piece one tile over on a side (+1 or -1), perpendicular to travel, with the same trackdir: a window piece's companion, or with the opposite side a companion's window piece. */
+	static JunctionPiece CompanionOf(const JunctionPiece &piece, int side)
+	{
+		JunctionPiece companion = piece;
+		if (TrackdirToTrack(piece.trackdir) == Track::X) {
+			companion.tile.y = static_cast<int16_t>(companion.tile.y + side);
+		} else {
+			companion.tile.x = static_cast<int16_t>(companion.tile.x + side);
+		}
+		return companion;
+	}
+
+	/** One way a move stands to the prio window: the window's phase and units after it, and whether the piece's companion is laid. */
+	struct WindowChoice {
+		uint8_t phase;
+		uint16_t units;
+		bool companion;
+	};
+
+	/**
+	 * The ways a move may stand to the prio window (DESIGN-O4 revision 5): before it, in it, or after it; the window is a run of straight surface pieces on one axis (phase 1), of at least its units, whose last piece lies in the end range.
+	 * @param node The node before the move.
+	 * @param piece The first piece the move adds.
+	 * @param single Whether the move adds only that piece.
+	 * @return The choices; none when the move cannot be made in this phase.
+	 */
+	std::vector<WindowChoice> WindowChoices(const LineNode &node, const JunctionPiece &piece, bool single) const
+	{
+		const JunctionPrioWindow &window = *request.prio_window;
+		const bool in_window = single && !piece.on_bridge && IsDiagonalTrackdir(piece.trackdir) && (node.window_phase == 0 || piece.trackdir == node.last[0].trackdir);
+		std::vector<WindowChoice> choices;
+		switch (node.window_phase) {
+			case 0:
+				choices.push_back({0, 0, false});
+				if (in_window) choices.push_back({1, static_cast<uint16_t>(std::min<uint>(piece.units, window.units)), true});
+				break;
+
+			case 1: {
+				if (in_window) choices.push_back({1, static_cast<uint16_t>(std::min<uint>(node.window_units + piece.units, window.units)), true});
+				const int along = AlongTravel(node.last[0]);
+				if (node.window_units >= window.units && along >= window.end_lo && along <= window.end_hi) choices.push_back({2, 0, false});
+				break;
+			}
+
+			default:
+				choices.push_back({2, 0, false});
+				break;
+		}
+		return choices;
+	}
+
 	using Overlay = std::vector<std::pair<uint64_t, TrackBits>>; ///< The tracks the pieces of one successor add on top of the path's used grid.
 
 	/** Record a piece in the path's used grid; false when it clashes with the line's own pieces (anything but an exact parallel pair). A piece outside the bounds is not recorded. */
@@ -521,6 +605,8 @@ JunctionLineRouteResult LineRouter::Run()
 	if (request.goals.empty() && request.waypoints.empty()) return {std::nullopt, "a route needs a goal or a waypoint"};
 
 	if (request.rules.has_value() && (request.line.tracks != 1 || !request.prefix.empty())) return {std::nullopt, "movement rules need one track and no prefix"};
+
+	if (request.prio_window.has_value() && request.line.tracks != 1) return {std::nullopt, "prio window needs one track"};
 
 	std::vector<JunctionRouteEnd> starts = request.starts;
 	if (starts.empty()) starts.push_back({request.start, request.start_trackdir});
@@ -644,7 +730,17 @@ JunctionLineRouteResult LineRouter::Run()
 			JunctionLineRoute route{used_start.tile, used_start.trackdir, ""};
 			for (int i = index; tree[i].parent >= 0; i = tree[i].parent) route.moves.insert(0, tree[i].move);
 			route.moves.insert(0, request.prefix);
-			return {route, "", tree[index].g, expansions};
+			size_t prio_end = 0;
+			if (request.prio_window.has_value()) {
+				for (int i = index; i >= 0; i = tree[i].parent) route.companion.insert(route.companion.begin(), tree[i].companion.begin(), tree[i].companion.end());
+				/* The window's last piece is the one beside the last companion. */
+				const JunctionPiece &last = route.companion.back();
+				const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, route);
+				const JunctionPiece owner = CompanionOf(last, -request.prio_window->side);
+				const std::vector<JunctionPiece> &pieces = rasters[0].pieces;
+				prio_end = static_cast<size_t>(std::ranges::find_if(pieces, [&](const JunctionPiece &piece) { return piece.tile.x == owner.tile.x && piece.tile.y == owner.tile.y && piece.trackdir == owner.trackdir; }) - pieces.begin());
+			}
+			return {route, "", tree[index].g, expansions, prio_end};
 		}
 		if (++expansions > request.max_expansions) return {std::nullopt, "search limit", Money{0}, expansions};
 
@@ -655,6 +751,7 @@ JunctionLineRouteResult LineRouter::Run()
 		while (tree[path_root].parent >= 0) path_root = tree[path_root].parent;
 		for (const JunctionRaster &raster : roots[root_of.at(path_root)].first) OccupyBase(raster.pieces[0]);
 		for (int i = index; i >= 0; i = tree[i].parent) {
+			for (const JunctionPiece &piece : tree[i].companion) MarkCompanion(piece);
 			path_bridges.insert(path_bridges.end(), tree[i].bridges.begin(), tree[i].bridges.end());
 			for (const std::vector<JunctionPiece> &track : tree[i].added) {
 				for (const JunctionPiece &piece : track) {
@@ -684,7 +781,7 @@ JunctionLineRouteResult LineRouter::Run()
 				for (const JunctionPiece &piece : added[i]) {
 					int8_t new_z;
 					bool ramp;
-					if (!PieceUsable(piece, z, move == 'F', new_z, ramp)) {
+					if (!PieceUsable(piece, z, move == 'F', new_z, ramp) || OnCompanion(piece)) {
 						legal = false;
 						break;
 					}
@@ -711,7 +808,27 @@ JunctionLineRouteResult LineRouter::Run()
 			}
 			if (!legal) continue;
 			PassWaypoints(next.passed, added[0], false);
-			push({std::move(next), tree[index].g + cost, index, std::string(1, move), std::move(added), {}});
+			if (!request.prio_window.has_value()) {
+				push({std::move(next), tree[index].g + cost, index, std::string(1, move), std::move(added), {}});
+				continue;
+			}
+			/* The prio window (DESIGN-O4 revision 5): each way the piece may stand to it is a successor; a window piece also lays its companion. */
+			for (const WindowChoice &choice : WindowChoices(node, added[0][0], added[0].size() == 1)) {
+				LineNode window_next = next;
+				Money window_cost = cost;
+				std::vector<JunctionPiece> companion;
+				if (choice.companion) {
+					const JunctionPiece piece = CompanionOf(added[0][0], request.prio_window->side);
+					int8_t new_z;
+					bool ramp;
+					if (!PieceUsable(piece, node.z[0], false, new_z, ramp) || IsUsed(overlay, piece) || OnCompanion(piece)) continue;
+					window_cost += request.rail_piece + ResourceCost(piece, node.z[0], JunctionResourceLevel::Surface);
+					companion.push_back(piece);
+				}
+				window_next.window_phase = choice.phase;
+				window_next.window_units = choice.units;
+				push({std::move(window_next), tree[index].g + window_cost, index, std::string(1, move), added, {}, std::move(companion)});
+			}
 		}
 
 		/* D155: a tunnel straight on from axis pieces, as the game's CmdBuildTunnel finds its far end. */
@@ -749,7 +866,7 @@ JunctionLineRouteResult LineRouter::Run()
 						const JunctionPiece &piece = added[i][k];
 						if (k == 0 || k + 1 == added[i].size()) {
 							const uint64_t packed = PackTile(piece.tile.x, piece.tile.y);
-							if (!PortalUsable(piece, k == 0 ? heading : ReverseDiagDir(heading), z) || existing_bits.contains(packed) || IsUsed(overlay, piece)) {
+							if (!PortalUsable(piece, k == 0 ? heading : ReverseDiagDir(heading), z) || existing_bits.contains(packed) || IsUsed(overlay, piece) || OnCompanion(piece)) {
 								legal = false;
 								break;
 							}
@@ -786,7 +903,16 @@ JunctionLineRouteResult LineRouter::Run()
 				if (legal) {
 					if (request.rules.has_value()) RulesAfterHead(next);
 					PassWaypoints(next.passed, added[0], true);
-					push({std::move(next), tree[index].g + cost, index, fmt::format("T{}", middle), std::move(added), std::move(bridges)});
+					if (!request.prio_window.has_value()) {
+						push({std::move(next), tree[index].g + cost, index, fmt::format("T{}", middle), std::move(added), std::move(bridges)});
+					} else {
+						for (const WindowChoice &choice : WindowChoices(node, added[0][0], false)) {
+							LineNode window_next = next;
+							window_next.window_phase = choice.phase;
+							window_next.window_units = choice.units;
+							push({std::move(window_next), tree[index].g + cost, index, fmt::format("T{}", middle), added, bridges});
+						}
+					}
 				}
 			}
 		}
@@ -820,7 +946,7 @@ JunctionLineRouteResult LineRouter::Run()
 						const uint64_t packed = PackTile(piece.tile.x, piece.tile.y);
 						int8_t new_z;
 						bool ramp;
-						if (!PieceUsable(piece, node.z[i], false, new_z, ramp) || existing_bits.contains(packed) || IsUsed(overlay, piece)) {
+						if (!PieceUsable(piece, node.z[i], false, new_z, ramp) || existing_bits.contains(packed) || IsUsed(overlay, piece) || OnCompanion(piece)) {
 							legal = false;
 							break;
 						}
@@ -855,7 +981,16 @@ JunctionLineRouteResult LineRouter::Run()
 			if (!legal) continue;
 			if (request.rules.has_value()) RulesAfterHead(next);
 			PassWaypoints(next.passed, added[0], true);
-			push({std::move(next), tree[index].g + cost, index, fmt::format("B{}", n), std::move(added), std::move(bridges)});
+			if (!request.prio_window.has_value()) {
+				push({std::move(next), tree[index].g + cost, index, fmt::format("B{}", n), std::move(added), std::move(bridges)});
+				continue;
+			}
+			for (const WindowChoice &choice : WindowChoices(node, added[0][0], false)) {
+				LineNode window_next = next;
+				window_next.window_phase = choice.phase;
+				window_next.window_units = choice.units;
+				push({std::move(window_next), tree[index].g + cost, index, fmt::format("B{}", n), added, bridges});
+			}
 		}
 	}
 	return {std::nullopt, "no route", Money{0}, expansions};

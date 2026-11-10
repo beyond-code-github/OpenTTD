@@ -48,6 +48,7 @@ struct JunctionLineRoute {
 	TileIndexDiffC start;
 	Trackdir start_trackdir;
 	std::string moves; ///< F, L, R, and B<n> (a bridge with n middle tiles, D149), T<n> (a tunnel, D155).
+	std::vector<JunctionPiece> companion{}; ///< The prio window's parallel pieces (DESIGN-O4 revision 5).
 };
 
 /** Rasterize a line program into one raster per track, outermost-left first; error text in the first raster when the line can't make a move. */

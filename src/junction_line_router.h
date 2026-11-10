@@ -39,6 +39,14 @@ struct JunctionMovementRules {
 	uint plain_before_head = 0; ///< Signal-legal private pieces needed between the split and a bridge or tunnel head, and between a far head and the merge (D113).
 };
 
+/** A prio carried by this line (DESIGN-O4 revision 5): its last `units` units before the end are straight axis pieces with the parallel piece on `side` also the line's own track. */
+struct JunctionPrioWindow {
+	uint units = 0; ///< Prio coverage plus one segment, in JunctionPiece::units (as CheckWaitingRoom counts).
+	int8_t side = 0; ///< +1 or -1: the companion tile is at tile + side along the axis perpendicular to travel.
+	int end_lo = 0; ///< The window's last piece lies at an along-travel coordinate (x for X-axis travel, y for Y) in [end_lo, end_hi].
+	int end_hi = 0;
+};
+
 /** A request to route a line at one plane (LP4, LP5). */
 struct JunctionLineRouteRequest {
 	JunctionLineSpec line;
@@ -67,6 +75,7 @@ struct JunctionLineRouteRequest {
 	std::function<Money(const JunctionPiece &piece, int8_t z, JunctionResourceLevel level)> resource_cost; ///< Extra cost per piece of every track, from the negotiated search (DESIGN-O4 revision 3); must be >= 0; unset means 0. z is the track's height (bridge spans: the track's height at the heads; tunnel bores: the tunnel's floor).
 	uint min_units = 0; ///< Track 0 needs at least this many units (JunctionPiece::units, as CheckWaitingRoom counts them) from its first piece, prefix included, before a goal counts (waiting room, bays, prio coverage).
 	std::optional<JunctionMovementRules> rules; ///< When set, the route obeys them (DESIGN-O4 revision 4).
+	std::optional<JunctionPrioWindow> prio_window; ///< When set, the route carries one prio window before its goal (DESIGN-O4 revision 5); single-track requests only.
 	uint max_expansions = 200000;
 	bool use_heuristic = true; ///< Test seam: false makes the search uninformed (h = 0).
 };
@@ -76,6 +85,7 @@ struct JunctionLineRouteResult {
 	std::string error;
 	Money cost = 0; ///< The route's total cost (pieces, turns, terrain).
 	uint expansions = 0; ///< Nodes expanded by the search (O4r, O4h).
+	size_t prio_end = 0; ///< Index in route pieces of the window's last piece, when prio_window was set.
 };
 
 JunctionLineRouteResult FindJunctionLineRoute(const JunctionLineRouteRequest &request);

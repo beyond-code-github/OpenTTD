@@ -23,8 +23,16 @@
 #include <utility>
 #include <vector>
 
-/** Ports of a T on a box of width x height (DESIGN-O4 revision 3): main-line tracks on rows 0 and ml_gap + 1, branch tracks on the bottom row from x = p. */
-std::vector<JunctionPort> MakeOrganicTPorts(const JunctionSpec &spec, int width, int height, int p);
+/** Ports of a T on a box of width x height (DESIGN-O4 revision 3): main-line tracks on rows top and top + ml_gap + 1, branch tracks on the bottom row from x = p. */
+std::vector<JunctionPort> MakeOrganicTPorts(const JunctionSpec &spec, int width, int height, int p, int top = 0);
+
+/** One candidate structure of the T (DESIGN-O4 revision 5): the forced crossings' over/under, and where each prio window may end. */
+struct JunctionTMap {
+	std::vector<std::pair<int, int>> over; ///< Forced pairs (over, under), as JunctionNegotiationPrices::over.
+	struct Window { int line; int joiner; int8_t side; int end_lo; int end_hi; }; ///< Movement indices (JunctionTMovements() order).
+	std::vector<Window> windows; ///< One per merge into a main line.
+	int bound = 0; ///< Admissible lower bound on occupied tiles, for ordering.
+};
 
 /** The outcome of routing a junction's movements together. */
 struct JunctionNegotiation {
@@ -43,10 +51,15 @@ struct JunctionNegotiationPrices {
 	std::vector<uint> min_units; ///< Per movement (in JunctionTMovements() order), the least track units of its route; empty or 0 for none.
 	std::vector<std::pair<int, int>> over; ///< Forced pairs (over, under) by movement index (D167).
 	Money ml_turn_cost = 0; ///< Turn cost of the two main-line through movements (D165); 0 means the branch movements' turn cost.
+	const JunctionTMap *map = nullptr; ///< When set, the structure to project (DESIGN-O4 revision 5): its over/under replaces `over`, and each main line carries its prio window.
+	bool apply_rules = true; ///< When false, no movement rules, no masks and no windows (the O4b1 negotiation).
 };
 
 /** The pairs of movements of a T that share no port and whose ports interleave around the box boundary, by movement index (a < b): they must cross (D167). */
 std::vector<std::pair<int, int>> JunctionForcedPairs(const std::vector<JunctionPort> &ports, int width, int height);
+
+/** The candidate structures of the T for a box and ports, cheapest bound first. */
+std::vector<JunctionTMap> JunctionTMaps(const JunctionSpec &spec, const std::vector<JunctionPort> &ports, int width, int height);
 
 /** Route every movement of a T together by negotiated congestion, the turning movements under the split and merge rules (DESIGN-O4 revision 4, D168). */
 JunctionNegotiation NegotiateJunctionMovements(const JunctionSpec &spec, const std::vector<JunctionPort> &ports, int width, int height, const JunctionTerrain *terrain = nullptr, int max_rounds = 16, const JunctionNegotiationPrices &prices = {});
@@ -58,7 +71,7 @@ struct JunctionOrganicResult {
 	int p = 0;
 	JunctionCompactness compactness{};
 	Money cost = 0;
-	std::string cases; ///< One line per crossing case enumerated, the winning one marked with '*' (D167).
+	std::string cases; ///< One line per candidate map tried, the winning one marked with '*' (DESIGN-O4 revision 5).
 	std::string error;
 	int64_t micros = 0; ///< Wall time of the generation.
 	int rounds = 0; ///< Rounds of the winning case's negotiation.
