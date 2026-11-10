@@ -10,6 +10,7 @@
 #include "stdafx.h"
 
 #include "junction_generator.h"
+#include "junction_map.h"
 #include "junction_rules.h"
 #include "junction_rules_internal.h"
 #include "core/math_func.hpp"
@@ -321,7 +322,7 @@ static std::optional<std::pair<JunctionRaster, JunctionRaster>> BuildParallelogr
  * @param sb_back Unused: the parallelogram style takes its positions from the skeleton solver (D145), and its parameters bridge_margin, w_slack, gap and sb_back are ignored.
  * @return The layout, or std::nullopt when this candidate cannot be built.
  */
-static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, int gap, [[maybe_unused]] int sb_back)
+static std::optional<JunctionLayout> BuildJunctionCandidateWithGapProcedural(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, int gap, [[maybe_unused]] int sb_back)
 {
 	const JunctionFrame frame = MakeJunctionFrame(spec);
 	const int g = spec.ml_gap;
@@ -720,19 +721,31 @@ static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const Junctio
  * after lane B's S-bend and before lane A's S-bend (gap 1) is built once and returned instead.
  * The parallelogram style is built once, from the skeleton solver (D145).
  */
-std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, bool *out_clean)
+std::vector<JunctionMap> BuildJunctionTemplateMaps(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, int gap)
+{
+	return {};
+}
+
+static std::optional<JunctionLayout> BuildJunctionCandidateWithGap(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, int gap, int sb_back)
+{
+	return std::nullopt;
+}
+
+using JunctionGapBuilder = std::optional<JunctionLayout> (*)(const JunctionSpec &, const JunctionCandidateParams &, const JunctionTerrain *, Money *, TileIndexDiffC *, int, int);
+
+static std::optional<JunctionLayout> BuildJunctionCandidateWith(JunctionGapBuilder build, const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, bool *out_clean)
 {
 	bool clean = false;
 	auto attempt = [&](int sb_back) -> std::optional<JunctionLayout> {
 		clean = false;
-		std::optional<JunctionLayout> tight = BuildJunctionCandidateWithGap(spec, params, terrain, terrain_cost, hub, 0, sb_back);
+		std::optional<JunctionLayout> tight = build(spec, params, terrain, terrain_cost, hub, 0, sb_back);
 		if (tight.has_value() && JunctionRulesClean(*tight, spec)) {
 			clean = true;
 			return tight;
 		}
 		Money loose_cost = 0;
 		TileIndexDiffC loose_hub{};
-		std::optional<JunctionLayout> loose = BuildJunctionCandidateWithGap(spec, params, terrain, &loose_cost, &loose_hub, 1, sb_back);
+		std::optional<JunctionLayout> loose = build(spec, params, terrain, &loose_cost, &loose_hub, 1, sb_back);
 		if (!loose.has_value()) return tight;
 		if (terrain_cost != nullptr) *terrain_cost = loose_cost;
 		if (hub != nullptr) *hub = loose_hub;
@@ -741,13 +754,23 @@ std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, c
 	};
 	if (params.lane_style == 1) {
 		/* D145: one build, from the solver; the gap, w_slack, margin and shift-back parameters play no part. */
-		std::optional<JunctionLayout> result = BuildJunctionCandidateWithGap(spec, params, terrain, terrain_cost, hub, 0, 0);
+		std::optional<JunctionLayout> result = build(spec, params, terrain, terrain_cost, hub, 0, 0);
 		if (out_clean != nullptr) *out_clean = result.has_value() && JunctionRulesClean(*result, spec);
 		return result;
 	}
 	std::optional<JunctionLayout> single = attempt(6);
 	if (out_clean != nullptr) *out_clean = clean;
 	return single;
+}
+
+std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, bool *out_clean)
+{
+	return BuildJunctionCandidateWith(BuildJunctionCandidateWithGap, spec, params, terrain, terrain_cost, hub, out_clean);
+}
+
+std::optional<JunctionLayout> BuildJunctionCandidateProceduralForTest(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, Money *terrain_cost, TileIndexDiffC *hub, bool *out_clean)
+{
+	return BuildJunctionCandidateWith(BuildJunctionCandidateWithGapProcedural, spec, params, terrain, terrain_cost, hub, out_clean);
 }
 
 /** The number of middle tiles of a bridge. */

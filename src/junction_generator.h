@@ -112,6 +112,14 @@ struct JunctionCandidateParams {
  */
 std::optional<JunctionLayout> BuildJunctionCandidate(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain = nullptr, Money *terrain_cost = nullptr, TileIndexDiffC *hub = nullptr, bool *clean = nullptr);
 
+struct JunctionMap;
+
+/** The old template's structure as maps, one per variant the old code builds (style 1: per stagger; style 0: one), with pass 1's crossing zone measured by a trial projection. */
+std::vector<JunctionMap> BuildJunctionTemplateMaps(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain, int gap);
+
+/** Test seam, removed with the procedural builder: BuildJunctionCandidate through the old procedural body. */
+std::optional<JunctionLayout> BuildJunctionCandidateProceduralForTest(const JunctionSpec &spec, const JunctionCandidateParams &params, const JunctionTerrain *terrain = nullptr, Money *terrain_cost = nullptr, TileIndexDiffC *hub = nullptr, bool *clean = nullptr);
+
 /** Generator score of a layout: the count of tiles it builds on or over, then the build cost (D114). Lower is better. */
 std::pair<int, Money> ScoreJunctionLayout(const JunctionLayout &layout, const JunctionSpec &spec);
 
