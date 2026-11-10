@@ -262,6 +262,55 @@ DiagDirection JunctionCanonicalIncline(Slope slope, uint8_t rotation, bool mirro
 }
 
 /**
+ * Fill one snapshot cell from a map tile: height, steepness, incline and class.
+ * @param cell The cell, already marked Blocked; left Blocked for tiles the generator cannot use.
+ * @param tile The map tile.
+ * @param rotation Quarter turns of the orientation, for the canonical incline.
+ * @param mirrored Whether the orientation is mirrored, for the canonical incline.
+ */
+static void FillJunctionTerrainCell(JunctionTerrainTile &cell, TileIndex tile, uint8_t rotation, bool mirrored)
+{
+	auto [slope, z] = GetTileSlopeZ(tile);
+	cell.z_min = static_cast<int8_t>(z);
+	cell.z_max = static_cast<int8_t>(GetTileMaxZ(tile));
+	cell.steep = IsSteepSlope(slope);
+	cell.incline = JunctionCanonicalIncline(slope, rotation, mirrored);
+
+	switch (GetTileType(tile)) {
+		case TileType::Clear:
+		case TileType::Trees: {
+			CommandCost cost = QueryJunctionClear(tile);
+			if (cost.Failed()) break;
+			cell.cls = JunctionTileClass::Buildable;
+			cell.clear_cost = cost.GetCost();
+			break;
+		}
+		case TileType::Water:
+			cell.cls = JunctionTileClass::Water;
+			break;
+		case TileType::Railway:
+			if (IsPlainRail(tile)) cell.cls = JunctionTileClass::Spannable;
+			break;
+		case TileType::Road:
+			if (IsNormalRoad(tile) || IsLevelCrossing(tile)) cell.cls = JunctionTileClass::Spannable;
+			break;
+		default:
+			break;
+	}
+}
+
+/**
+ * Set the game settings a terrain snapshot carries.
+ * @param terrain The snapshot.
+ */
+static void SetJunctionTerrainSettings(JunctionTerrain &terrain)
+{
+	terrain.foundation_cost = _price[Price::BuildFoundation];
+	terrain.build_on_slopes = _settings_game.construction.build_on_slopes;
+	terrain.max_bridge_height = _settings_game.construction.max_bridge_height;
+}
+
+/**
  * Snapshot the map around an anchor for the generator, in its working frame (D93).
  * Working cell (x, y) is map tile anchor + OrientJunctionVector({x - frame.hub_x, y}, rotation, mirrored); the grid covers the frame.
  * @param anchor The anchor tile (working cell (frame.hub_x, 0)).
@@ -278,9 +327,7 @@ JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mir
 	terrain.width = frame.width + 2 * margin;
 	terrain.height = frame.terrain_height + 2 * margin;
 	terrain.tiles.resize(static_cast<size_t>(terrain.width) * terrain.height);
-	terrain.foundation_cost = _price[Price::BuildFoundation];
-	terrain.build_on_slopes = _settings_game.construction.build_on_slopes;
-	terrain.max_bridge_height = _settings_game.construction.max_bridge_height;
+	SetJunctionTerrainSettings(terrain);
 
 	for (int gy = 0; gy < terrain.height; gy++) {
 		for (int gx = 0; gx < terrain.width; gx++) {
@@ -294,33 +341,46 @@ JunctionTerrain MakeJunctionTerrain(TileIndex anchor, uint8_t rotation, bool mir
 			const TileIndex tile = TileXY(x, y);
 			if (!IsValidTile(tile)) continue;
 
-			auto [slope, z] = GetTileSlopeZ(tile);
-			cell.z_min = static_cast<int8_t>(z);
-			cell.z_max = static_cast<int8_t>(GetTileMaxZ(tile));
-			cell.steep = IsSteepSlope(slope);
-			cell.incline = JunctionCanonicalIncline(slope, rotation, mirrored);
+			FillJunctionTerrainCell(cell, tile, rotation, mirrored);
+		}
+	}
+	return terrain;
+}
 
-			switch (GetTileType(tile)) {
-				case TileType::Clear:
-				case TileType::Trees: {
-					CommandCost cost = QueryJunctionClear(tile);
-					if (cost.Failed()) break;
-					cell.cls = JunctionTileClass::Buildable;
-					cell.clear_cost = cost.GetCost();
-					break;
-				}
-				case TileType::Water:
-					cell.cls = JunctionTileClass::Water;
-					break;
-				case TileType::Railway:
-					if (IsPlainRail(tile)) cell.cls = JunctionTileClass::Spannable;
-					break;
-				case TileType::Road:
-					if (IsNormalRoad(tile) || IsLevelCrossing(tile)) cell.cls = JunctionTileClass::Spannable;
-					break;
-				default:
-					break;
-			}
+/**
+ * Snapshot a map-axis rectangle for the line painter (LP9): cell (x, y) is map tile TileXY(x, y), orientation rotation 0, not mirrored.
+ * The rectangle spans both corners (in any order) plus margin cells on every side; cells off the map are Blocked.
+ * @param a One corner tile.
+ * @param b The other corner tile.
+ * @param margin Extra cells on every side.
+ * @return The snapshot, origin at the rectangle's smallest map x and y (which may be negative).
+ */
+JunctionTerrain MakeJunctionTerrainRect(TileIndex a, TileIndex b, int margin)
+{
+	const int min_x = static_cast<int>(std::min(TileX(a), TileX(b))) - margin;
+	const int min_y = static_cast<int>(std::min(TileY(a), TileY(b))) - margin;
+	const int max_x = static_cast<int>(std::max(TileX(a), TileX(b))) + margin;
+	const int max_y = static_cast<int>(std::max(TileY(a), TileY(b))) + margin;
+
+	JunctionTerrain terrain;
+	terrain.origin = {static_cast<int16_t>(min_x), static_cast<int16_t>(min_y)};
+	terrain.width = max_x - min_x + 1;
+	terrain.height = max_y - min_y + 1;
+	terrain.tiles.resize(static_cast<size_t>(terrain.width) * terrain.height);
+	SetJunctionTerrainSettings(terrain);
+
+	for (int gy = 0; gy < terrain.height; gy++) {
+		for (int gx = 0; gx < terrain.width; gx++) {
+			JunctionTerrainTile &cell = terrain.tiles[static_cast<size_t>(gy) * terrain.width + gx];
+			cell.cls = JunctionTileClass::Blocked;
+
+			const int x = min_x + gx;
+			const int y = min_y + gy;
+			if (x < 0 || y < 0 || x >= static_cast<int>(Map::SizeX()) || y >= static_cast<int>(Map::SizeY())) continue;
+			const TileIndex tile = TileXY(x, y);
+			if (!IsValidTile(tile)) continue;
+
+			FillJunctionTerrainCell(cell, tile, 0, false);
 		}
 	}
 	return terrain;
