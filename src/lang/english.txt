@@ -2880,6 +2880,7 @@ STR_JUNCTION_ERROR_MULTILANE                                    :{RED}Only one t
 STR_JUNCTION_ERROR_NO_LAYOUT                                    :{RED}No junction fits these settings
 STR_JUNCTION_ERROR_NEEDS_ML_GAP                                 :{RED}The mainline needs a gap between its tracks
 STR_JUNCTION_ERROR_NO_LAYOUT_HERE                               :{RED}No junction fits here
+STR_JUNCTION_ERROR_PORT_BLOCKED                                 :{RED}A junction end is blocked here: move the cursor
 STR_JUNCTION_ERROR_PRIO_TOO_LONG                                :{RED}Prio coverage would exceed 32 tiles for this train
 STR_JUNCTION_ERROR_PRIO_DELAYS_MAINLINE                         :{RED}The prio coverage is too short at this spot
 STR_JUNCTION_ROTATE                                             :{BLACK}Rotate

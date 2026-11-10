@@ -149,6 +149,25 @@ std::vector<JunctionRouteEnd> PlainRowPieces(const JunctionLayout &layout, int y
 	return ends;
 }
 
+/**
+ * The plain pieces of a routed raster for x in min_x..max_x, travelling in the given direction, on any row.
+ * @param layout The layout the raster was added to; a piece is plain when its tile holds exactly the axis track X there.
+ * @param raster The raster whose pieces are the candidates.
+ * @param trackdir The direction the pieces are travelled in.
+ * @param min_x The first column.
+ * @param max_x The last column.
+ * @return The ends, in the raster's order.
+ */
+static std::vector<JunctionRouteEnd> PlainRasterPieces(const JunctionLayout &layout, const JunctionRaster &raster, Trackdir trackdir, int min_x, int max_x)
+{
+	std::vector<JunctionRouteEnd> ends;
+	for (const JunctionPiece &piece : raster.pieces) {
+		if (piece.tile.x < min_x || piece.tile.x > max_x) continue;
+		if (IsPlainX(layout, piece.tile.x, piece.tile.y)) ends.push_back({piece.tile, trackdir});
+	}
+	return ends;
+}
+
 /** Route, rasterize and add to the layout. */
 std::optional<JunctionRaster> RouteAndAdd(JunctionLayout &layout, JunctionRouteRequest request, JunctionRouteCache *cache)
 {
@@ -789,7 +808,9 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 	 * (old router) is an exact lower bound for projection; the line router starts there."
 	 * The flat map ignores the terrain by design.
 	 */
-	if (line_router && !first_height.has_value()) {
+	int x_w = 0; ///< A's west port, frame column on row 0 (line router only).
+	int x_e = 0; ///< A's east port.
+	if (line_router) {
 		const auto flat_start = std::chrono::steady_clock::now();
 		JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
 		result.micros_flat = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - flat_start).count();
@@ -806,7 +827,10 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			flat.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
 			return flat;
 		}
-		first_height = flat.height;
+		if (!first_height.has_value()) first_height = flat.height;
+		/* D179: the ports come from the flat T, whose crop leaves the main line content +-2 (FinishJunctionCandidate). */
+		x_w = MakeJunctionFrame(spec).hub_x - flat.hub.x;
+		x_e = x_w + flat.layout->size.x - 1;
 	}
 
 	const JunctionFrame frame = MakeJunctionFrame(spec);
@@ -923,10 +947,33 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		plane = hub_tile->z_max;
 	}
 
+	/*
+	 * D179: "Before any routing, every port's approach (the port tile plus the straight pieces the rules require before it, D115a) must be usable at the ground height there;
+	 * a failure returns at once with the blocked port and tile; the tool says to move the cursor." Every port is checked at D177's hub plane here;
+	 * a port at its own ground height is a later step.
+	 */
+	auto ports_blocked = [&] {
+		if (!line_router || terrain == nullptr) return false;
+		for (const int x : {x_w, x_w + 1, x_w + STUB, x_e - STUB, x_e - 1, x_e}) {
+			if (terrain->UsableAt(x, 0, plane)) continue;
+			result.log += fmt::format("port approach blocked at {},0\n", x);
+			result.port_blocked = true;
+			result.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
+			return true;
+		}
+		return false;
+	};
+	if (ports_blocked()) return result;
+
+	bool redo_height = false; ///< The ports widened: the same height is routed again, and not counted again.
 	for (int height = first; height <= height_limit; height++) {
-		if (result.heights_tried > 0) result.micros_per_height.push_back(since(height_start));
-		height_start = Clock::now();
-		result.heights_tried++;
+		if (redo_height) {
+			redo_height = false;
+		} else {
+			if (result.heights_tried > 0) result.micros_per_height.push_back(since(height_start));
+			height_start = Clock::now();
+			result.heights_tried++;
+		}
 		const int yb = height - 1;
 		last_row.clear();
 		for (int x = 0; x <= frame.width - 1; x++) {
@@ -951,8 +998,9 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		const int ys = yb - STUB;
 		const JunctionRouteEnd goal_s{tile(xO, ys), Trackdir::Y_SE};
 		const JunctionRouteEnd start_n{tile(xI, ys), Trackdir::Y_NW};
+		/* The line router routes A (E1), so only the old router's layouts hold row 0 as fixed track. */
 		auto base_layout = [&](JunctionLayout &layout) {
-			AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(0, 0), Trackdir::X_SW, frame.width - 1)));
+			if (!line_router) AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(0, 0), Trackdir::X_SW, frame.width - 1)));
 			AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xO, ys), Trackdir::Y_SE, STUB)));
 			AddRasterToLayout(layout, RasterizeJunctionRoute(StraightRoute(tile(xI, yb), Trackdir::Y_NW, STUB)));
 		};
@@ -967,8 +1015,8 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		}
 
 		/*
-		 * The fixed parts (A's main line on row 0, B's lanes on the W row, the N and S stubs) are not routed yet, so an obstacle on them cannot be worked around.
-		 * A taller box does not move row 0 or the W row: report it and stop (routing the main lines is a later step). The stubs move with the height
+		 * The fixed parts (B's lanes on the W row, the N and S stubs; with the old router also A's main line on row 0) are not routed yet, so an obstacle on them cannot be worked around.
+		 * A taller box does not move row 0 or the W row: report it and stop (routing B is a later step). The stubs move with the height
 		 * (ys = height - 3), so an obstacle on a stub is passed by growing the box (D170a).
 		 */
 		bool stub_blocked = false;
@@ -977,6 +1025,8 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			base_layout(fixed_parts);
 			AddRasterToLayout(fixed_parts, RasterizeJunctionRoute(StraightRoute(tile(frame.width - 1, w_row), Trackdir::X_NE, frame.width - 1)));
 			for (const JunctionTrack &jt : fixed_parts.tracks) {
+				/* E1: A is routed, so row 0 is not checked here; B's W row is checked only between the same ports until E3 routes B. */
+				if (line_router && jt.offset.y == w_row && (jt.offset.x < x_w || jt.offset.x > x_e)) continue;
 				if (jt.tracks.None() || terrain->UsableAt(jt.offset.x, jt.offset.y, plane)) continue;
 				if (jt.offset.y != 0 && jt.offset.y != w_row) {
 					say(fmt::format("stub on unusable tile {},{}", jt.offset.x, jt.offset.y));
@@ -994,6 +1044,23 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		/* A->S and N->A: final routes; B's row is crossable at cost 0 because B goes over (D156). */
 		JunctionLayout pass1;
 		base_layout(pass1);
+		/*
+		 * E1, D178: A is an edge of the map, routed between its two ports like the branch edges. Its band runs from row 0 to the row above B's W row and may not cross B;
+		 * leaving the band (a detour around B's rows) is a later step.
+		 */
+		std::optional<JunctionRaster> a_raster;
+		if (line_router) {
+			JunctionRouteRequest a_request = base;
+			a_request.min = tile(x_w, 0);
+			a_request.max = tile(x_e, g);
+			a_request.starts = {{tile(x_w, 0), Trackdir::X_SW}};
+			a_request.goals = {{tile(x_e, 0), Trackdir::X_SW}};
+			a_raster = timed_route([&] { return route_line(pass1, a_request, {}, false); });
+			if (!a_raster.has_value()) {
+				say("A failed");
+				continue;
+			}
+		}
 		/* The line router sees no W row: the old router's crossable row is empty ground to it. */
 		if (!line_router) AddRasterToLayout(pass1, RasterizeJunctionRoute(StraightRoute(tile(frame.width - 1, w_row), Trackdir::X_NE, frame.width - 1)));
 		std::vector<TileIndexDiffC> w_tiles;
@@ -1005,8 +1072,12 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 
 		JunctionRouteRequest request = base;
 		request.crossable = w_tiles;
-		for (int x = 2; x <= xI - 2; x++) {
-			if (TracksAt(pass1, x, 0) == TrackBits{Track::X}) request.starts.push_back({tile(x, 0), Trackdir::X_SW});
+		if (line_router) {
+			request.starts = PlainRasterPieces(pass1, *a_raster, Trackdir::X_SW, 2, xI - 2);
+		} else {
+			for (int x = 2; x <= xI - 2; x++) {
+				if (TracksAt(pass1, x, 0) == TrackBits{Track::X}) request.starts.push_back({tile(x, 0), Trackdir::X_SW});
+			}
 		}
 		request.goals = {goal_s};
 		const std::optional<JunctionRaster> a_to_s = timed_route([&] {
@@ -1056,7 +1127,8 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		request.crossable = w_tiles;
 		request.starts = {start_n};
 		const int x_s = a_to_s->pieces.front().tile.x;
-		request.goals = PlainRowPieces(pass1, 0, Trackdir::X_SW, std::max(xO, x_s + static_cast<int>(spec.prio_tiles) + JUNCTION_E_PRIO_AFTER_SPLIT + result.e_phase), frame.width - 3);
+		const int n_to_a_min_x = std::max(xO, x_s + static_cast<int>(spec.prio_tiles) + JUNCTION_E_PRIO_AFTER_SPLIT + result.e_phase);
+		request.goals = line_router ? PlainRasterPieces(pass1, *a_raster, Trackdir::X_SW, n_to_a_min_x, std::min(frame.width - 3, x_e)) : PlainRowPieces(pass1, 0, Trackdir::X_SW, n_to_a_min_x, frame.width - 3);
 		const std::optional<JunctionRaster> n_to_a = timed_route([&] {
 			return line_router ? route_line(pass1, request, n_to_a_blocked, true) : RouteAndAdd(pass1, request, &route_cache);
 		});
@@ -1136,6 +1208,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 
 		/* The doubled lanes, then B->S and N->B. */
 		JunctionLayout fixed;
+		if (line_router) AddRasterToLayout(fixed, *a_raster);
 		base_layout(fixed);
 		AddRasterToLayout(fixed, *a_to_s);
 		AddRasterToLayout(fixed, *n_to_a);
@@ -1181,6 +1254,28 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		if (!built.has_value()) {
 			say("finish failed");
 			continue;
+		}
+		if (line_router) {
+			/*
+			 * D170a (the box grows sideways) and D179: the flat T's ports are where A starts, not limits. When this height's crop reaches past them
+			 * (A->S splits or N->A merges outside the ports), A starts at the wider ports and the same height is routed again.
+			 * Ports only widen, within the frame, so this ends.
+			 */
+			const int fx_min = frame.hub_x - result.hub.x;
+			const int fx_max = fx_min + built->size.x - 1;
+			if (fx_min < x_w || fx_max > x_e) {
+				if (fx_min < 0 || fx_max > frame.width - 1) {
+					say("ports outside the frame");
+					continue;
+				}
+				x_w = std::min(x_w, fx_min);
+				x_e = std::max(x_e, fx_max);
+				say(fmt::format("ports widened to {}..{}", x_w, x_e));
+				if (ports_blocked()) return result;
+				redo_height = true;
+				height--;
+				continue;
+			}
 		}
 		say("built");
 		result.height = height;
