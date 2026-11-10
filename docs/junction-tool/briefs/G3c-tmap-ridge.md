@@ -7,7 +7,7 @@ The line router alone handles terrain (heights, ramps, foundations). The routed 
 
 ## State
 - Worktree `/home/pete/OpenTTD/.claude/g3c`, branch `wt-g3c`, head given at launch (feature/junction-tool with G3c0 merged). Create `build` (Debug) and `build-rel` (Release) like the main ones; build `openttd_test` only.
-- Tests only through `tools/junction/jt` (read `docs/junction-tool/TESTS.md`): `tools/junction/jt fast build [projection] 5`, `tools/junction/jt fast build [junctionmap] 5`, final `tools/junction/jt gate build-rel`. OVER BUDGET is a stop. Never type tag filters by hand.
+- Tests only through `tools/junction/jt` (read `docs/junction-tool/TESTS.md`): `tools/junction/jt fast build-rel [projection] 5` (Release budget, TESTS.md), `tools/junction/jt fast build [junctionmap] 5`, final `tools/junction/jt gate build-rel`. OVER BUDGET is a stop. Never type tag filters by hand.
 
 ## Read first (once each)
 `CODINGSTYLE.md`; `ConstructJunctionTMap` (whole) and `FinishJunctionCandidate`'s terrain checks in `src/junction_generator.cpp`; the `[projection]` tests in `src/tests/junction_map.cpp`; `SetRampColumn` and `SetUpRidge` in `src/tests/junction_line_router.cpp` (how a ramp column is described: z_min, z_max, incline; NE rises towards -x, so SE rises towards +y and NW towards -y).
