@@ -161,6 +161,37 @@ TEST_CASE("the line-router T matches or beats the old-router T", "[junctionmap]"
 	}
 }
 
+TEST_CASE("line router results are unchanged by the speed work", "[linerouter]")
+{
+	/* Each request's moves, cost and expansions, recorded before the speed work (P2). */
+	const std::vector<std::pair<std::string, std::string>> expected = {
+		{"test",
+		"- 0 65626\n"
+		"LFFFFFFFFFFFFFLF 1800 123\n"
+		"FB2LFFFLFFFFFFRFL 2700 77\n"
+		"- 0 31886\n"
+		"LFFFLFFRFFFFLF 1800 58\n"
+		"FB2FLFFFLFFFFFFFFRFL 3000 172\n"
+		"RFFFRFFLFFFFFR 1700 83\n"
+		"RFFFFFFFFFFFRFFFFFFFFFFFFLFR 3100 817\n"},
+		{"pinned",
+		"- 0 42338\n"
+		"LFFFFFFFFFFFFFLF 1800 123\n"
+		"FB2FLFFFFL 1800 50\n"
+		"- 0 15565\n"
+		"LFFFLFFRFFFFLF 1800 58\n"
+		"FB2FFLFFFFL 1900 72\n"
+		"RFFFFFRFFFLFR 1600 55\n"
+		"RFFFFFFFRFFLFFFFFR 2100 236\n"},
+	};
+	for (const auto &[name, trace] : expected) {
+		for (const auto &[spec_name, spec] : MapSpecs()) {
+			if (spec_name != name) continue;
+			CHECK(ConstructJunctionTMap(spec, nullptr, std::nullopt, true).line_router_trace == trace);
+		}
+	}
+}
+
 TEST_CASE("BENCH the constructed T", "[junctionmap]")
 {
 	for (const auto &[name, spec] : MapSpecs()) {

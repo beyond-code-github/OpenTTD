@@ -845,6 +845,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			};
 		}
 		const JunctionLineRouteResult routed = FindJunctionLineRoute(line_request);
+		result.line_router_trace += fmt::format("{} {} {}\n", routed.route.has_value() ? routed.route->moves : std::string("-"), routed.cost.base(), routed.expansions);
 		if (!routed.route.has_value()) return std::nullopt;
 		std::vector<JunctionRaster> rasters = RasterizeJunctionLine(line_request.line, *routed.route);
 		if (rasters.empty() || !rasters[0].error.empty()) return std::nullopt;

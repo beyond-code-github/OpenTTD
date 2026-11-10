@@ -55,6 +55,8 @@ struct LineTreeEntry {
 	std::string move;
 	std::vector<std::vector<JunctionPiece>> added; ///< The pieces each track added with this move.
 	std::vector<JunctionBridge> bridges; ///< The bridges this move added, one per track (D149).
+	int root = -1; ///< Tree index of this entry's root.
+	std::string key{}; ///< Key(node), computed once at push.
 };
 
 static uint64_t PackTile(int x, int y)
@@ -623,11 +625,14 @@ JunctionLineRouteResult LineRouter::Run()
 	uint counter = 0;
 
 	auto push = [&](LineTreeEntry &&entry) {
-		const auto [it, inserted] = best.try_emplace(Key(entry.node), entry.g.base());
+		std::string key = Key(entry.node);
+		const auto [it, inserted] = best.try_emplace(key, entry.g.base());
 		if (!inserted) {
 			if (it->second <= entry.g.base()) return;
 			it->second = entry.g.base();
 		}
+		entry.key = std::move(key);
+		entry.root = entry.parent < 0 ? static_cast<int>(tree.size()) : tree[entry.parent].root;
 		const int64_t f = entry.g.base() + Heuristic(entry.node).base();
 		const int64_t g = entry.g.base();
 		tree.push_back(std::move(entry));
@@ -647,11 +652,10 @@ JunctionLineRouteResult LineRouter::Run()
 		(void)f;
 		(void)order;
 		const LineNode &node = tree[index].node;
-		if (best[Key(node)] < g) continue; // A cheaper way to this node was found since.
+		if (best.find(tree[index].key)->second < g) continue; // A cheaper way to this node was found since.
 
 		if (IsGoal(node)) {
-			int root_index = index;
-			while (tree[root_index].parent >= 0) root_index = tree[root_index].parent;
+			const int root_index = tree[index].root;
 			const JunctionRouteEnd &used_start = roots[root_of.at(root_index)].start;
 			JunctionLineRoute route{used_start.tile, used_start.trackdir, ""};
 			for (int i = index; tree[i].parent >= 0; i = tree[i].parent) route.moves.insert(0, tree[i].move);
@@ -663,9 +667,7 @@ JunctionLineRouteResult LineRouter::Run()
 		/* Everything the line has built so far. */
 		ClearPathUsed();
 		std::vector<JunctionBridge> path_bridges;
-		int path_root = index;
-		while (tree[path_root].parent >= 0) path_root = tree[path_root].parent;
-		for (const JunctionRaster &raster : roots[root_of.at(path_root)].first) OccupyBase(raster.pieces[0]);
+		for (const JunctionRaster &raster : roots[root_of.at(tree[index].root)].first) OccupyBase(raster.pieces[0]);
 		for (int i = index; i >= 0; i = tree[i].parent) {
 			path_bridges.insert(path_bridges.end(), tree[i].bridges.begin(), tree[i].bridges.end());
 			for (const std::vector<JunctionPiece> &track : tree[i].added) {
@@ -853,6 +855,13 @@ JunctionLineRouteResult LineRouter::Run()
 
 		if (!request.bridge_span_ok || !request.bridge_price || request.max_bridge_middle == 0 || node.after_bridge) continue;
 		for (uint n = 1; n <= request.max_bridge_middle; n++) {
+			/* Track 0's far head lies n + 2 tiles along its heading from its last piece (as ExtendJunctionLineBridge places it). A head outside the bounds is rejected by PieceUsable, and every larger n puts it further along the same heading, still outside: stop. */
+			if (IsDiagonalTrackdir(node.last[0].trackdir)) {
+				const TileIndexDiffC step = TileIndexDiffCByDiagDir(TrackdirToExitdir(node.last[0].trackdir));
+				const int far_x = node.last[0].tile.x + step.x * static_cast<int>(n + 2);
+				const int far_y = node.last[0].tile.y + step.y * static_cast<int>(n + 2);
+				if (far_x < request.min.x || far_x > request.max.x || far_y < request.min.y || far_y > request.max.y) break;
+			}
 			if (!request.bridge_span_ok(n)) continue;
 			std::string error;
 			std::vector<JunctionBridge> bridges;
