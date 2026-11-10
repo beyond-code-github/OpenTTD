@@ -15,6 +15,7 @@ Engineer: "I thought we were solving the layout in a vector map first and then p
 - Straightness is a concretion matter, not topology (engineer): the map never assumes a straight main line (D160); every line, main line included, is edges like any other, and projection decides its shape.
 
 Rules are constraints on the map, mostly lengths along edges and orders along lines: waiting room (G7) and bays (D83) as edge minimum lengths; a signal-legal piece between a split and a bridge head (D113); no split inside a coverage (D108); a split and a merge not in one block; a merge with a prio has its prio as an edge of the map (below).
+Traffic on the map (engineer: "This also means that we can bring back the traffic management model"): with signals on the map its blocks are known, and edge minimum lengths give each block's shortest length, so block times at design speed from the mix and design train (D159, the throughput evaluator) are computed per structure before projection. The map layer uses them to decide which merges need a prio (D159), to reject structures that miss a throughput target, and to rank candidates; after projection the same model reruns on the real lengths as the judge (step 3).
 Solved by enumeration best first: candidate structures (crossing choices x orders x coarse placements) ranked by an admissible bound (edge minimum lengths + required bridges), cheapest tried first. Small discrete search, target a few ms.
 
 **2. Projection (negotiation).** Given one structure:
