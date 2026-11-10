@@ -208,9 +208,10 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 {
 	JunctionSpec spec = MakeTestJunctionSpec();
 	if (const char *e = std::getenv("JUNCTION_GEN_PRIO")) spec.prio_tiles = static_cast<uint8_t>((e[0] - '0') * spec.tl);
-	JunctionGenerateResult result = GenerateJunction(spec);
-	REQUIRE(result.layout.has_value());
-	JunctionLayout layout = *result.layout;
+	/* JUNCTION_TMAP: wrap the T map's layout (DESIGN-O4 "G1") instead of the template generator's. */
+	std::optional<JunctionLayout> generated = std::getenv("JUNCTION_TMAP") != nullptr ? ConstructJunctionTMap(spec).layout : GenerateJunction(spec).layout;
+	REQUIRE(generated.has_value());
+	JunctionLayout layout = *generated;
 	const int w = layout.size.x;
 	const int h = layout.size.y;
 	const std::vector<JunctionPort> ports = FindJunctionPorts(layout);
