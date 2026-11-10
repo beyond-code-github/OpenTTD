@@ -22,9 +22,11 @@
 #include "../3rdparty/fmt/format.h"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <iostream>
 #include <map>
+#include <sstream>
 #include <string>
 
 #include "../safeguards.h"
@@ -235,6 +237,21 @@ static std::string ViolationText(const std::vector<RuleViolation> &violations)
 	return text;
 }
 
+/** The integer a text starts with. */
+static int LeadingInt(const std::string &text)
+{
+	int value = 0;
+	std::from_chars(text.data(), text.data() + text.size(), value);
+	return value;
+}
+
+/** The number of the winning crossing case in a result's case lines (the line marked '*'), or -1. */
+static int WinningCase(const std::string &cases)
+{
+	const size_t star = cases.find("*case ");
+	return star == std::string::npos ? -1 : LeadingInt(cases.substr(star + 6));
+}
+
 /** Generate a spec's organic T and check it is rule-clean, reporting the numbers beside the old generator's. */
 static void CheckOrganicClean(const JunctionSpec &spec)
 {
@@ -243,9 +260,8 @@ static void CheckOrganicClean(const JunctionSpec &spec)
 	INFO("last violations:\n" << ViolationText(result.violations));
 	REQUIRE(result.layout.has_value());
 	const JunctionCompactness compact = MeasureJunctionCompactness(*result.layout);
-	INFO("p " << result.p << " occupied " << compact.occupied << " slivers " << compact.slivers << " cost " << result.cost.base());
-	INFO("feedback: prio_rows " << result.feedback.prio_rows << " coverage_penalties " << result.feedback.coverage_penalties << " bridge_block_penalties " << result.feedback.bridge_block_penalties << " signal_gap_penalties " << result.feedback.signal_gap_penalties << " block_mix_penalties " << result.feedback.block_mix_penalties << " split_moves " << result.feedback.split_moves << " iterations " << result.feedback.iterations);
-	INFO("cases:\n" << result.cases);
+	INFO("p " << result.p << " rounds " << result.rounds << " micros " << result.micros << " occupied " << compact.occupied << " slivers " << compact.slivers << " cost " << result.cost.base());
+	INFO("cases at the winning p:\n" << result.cases);
 	INFO("bridges " << result.layout->bridges.size());
 	INFO("\n" << RenderJunctionAscii(*result.layout));
 	const JunctionGenerateResult old = GenerateJunction(spec);
@@ -262,6 +278,7 @@ static void CheckOrganicClean(const JunctionSpec &spec)
 	CHECK(violations.empty());
 	CHECK(result.compactness.occupied == compact.occupied);
 	CHECK(result.compactness.slivers == compact.slivers);
+	CHECK(WinningCase(result.cases) >= 0);
 }
 
 TEST_CASE("GenerateJunctionOrganic: the test spec's T is rule-clean", "[junction][organic]")
@@ -274,32 +291,70 @@ TEST_CASE("GenerateJunctionOrganic: the pinned spec's T is rule-clean", "[juncti
 	CheckOrganicClean(PinnedOrganicSpec());
 }
 
-TEST_CASE("GenerateJunctionOrganic: a long train with a narrow branch", "[junction][organic]")
+TEST_CASE("GenerateJunctionOrganic: a long train with a narrow branch is rule-clean", "[junction][organic]")
 {
 	CheckOrganicClean(NarrowBranchSpec());
 }
 
-TEST_CASE("BuildOrganicT: feedback fixes the measured violations", "[junction][organic]")
+TEST_CASE("BuildOrganicT: the first negotiation obeys the rules", "[junction][organic]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, ORGANIC_P, 8, MlTurnCostOf(spec));
+	const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, 23, MlTurnCostOf(spec));
 	INFO("error: " << result.error);
 	INFO("violations left:\n" << ViolationText(result.violations));
 	INFO("cases:\n" << result.cases);
-	INFO("feedback: prio_rows " << result.feedback.prio_rows << " coverage_penalties " << result.feedback.coverage_penalties << " bridge_block_penalties " << result.feedback.bridge_block_penalties << " signal_gap_penalties " << result.feedback.signal_gap_penalties << " block_mix_penalties " << result.feedback.block_mix_penalties << " split_moves " << result.feedback.split_moves << " iterations " << result.feedback.iterations);
 	REQUIRE(result.layout.has_value());
 	CHECK(result.violations.empty());
-	std::vector<RuleViolation> violations = CheckJunctionRules(*result.layout, spec);
-	const size_t before = violations.size();
-	std::erase_if(violations, [](const RuleViolation &violation) { return violation.message == "ML bridge is not doubled"; });
-	INFO("ignored 'ML bridge is not doubled': " << before - violations.size());
-	CHECK(violations.empty());
+
+	/* Negotiate the winning case again (its forced pairs are in its line: [a>b c>d ...]) and count each turning movement's private units from its routes. */
+	const size_t open = result.cases.find('[', result.cases.find("*case "));
+	REQUIRE(open != std::string::npos);
+	std::istringstream label(result.cases.substr(open + 1, result.cases.find(']', open) - open - 1));
+	JunctionNegotiationPrices prices;
+	prices.ml_turn_cost = MlTurnCostOf(spec);
+	for (std::string pair; label >> pair;) prices.over.emplace_back(LeadingInt(pair), LeadingInt(pair.substr(pair.find('>') + 1)));
+	const JunctionNegotiation negotiation = NegotiateJunctionMovements(spec, MakeOrganicTPorts(spec, ORGANIC_W, ORGANIC_H, 23), ORGANIC_W, ORGANIC_H, nullptr, 48, prices);
+	INFO("negotiation error: " << negotiation.error);
+	REQUIRE(negotiation.layout.has_value());
+	REQUIRE(negotiation.routes.size() == 6);
+	CHECK(negotiation.rounds == result.rounds);
+
+	const auto movements = JunctionTMovements();
+	std::vector<std::vector<JunctionPiece>> pieces;
+	for (const JunctionLineRoute &route : negotiation.routes) pieces.push_back(RoutePieces(route));
+	auto same = [](const JunctionPiece &a, const JunctionPiece &b) { return a.tile.x == b.tile.x && a.tile.y == b.tile.y && a.trackdir == b.trackdir; };
+	for (const size_t m : {1, 3, 4, 5}) {
+		/* The split: the first piece that parts from the sibling leaving the same port. */
+		size_t sibling = movements.size();
+		for (size_t o = 0; o < movements.size(); o++) {
+			if (o != m && movements[o].first == movements[m].first) sibling = o;
+		}
+		REQUIRE(sibling < movements.size());
+		size_t split = 0;
+		while (split < pieces[m].size() && split < pieces[sibling].size() && same(pieces[m][split], pieces[sibling][split])) split++;
+		/* The merge: the first piece after it on the route of a movement arriving at the same port. */
+		size_t merge = split;
+		auto on_arriving = [&](const JunctionPiece &piece) {
+			for (size_t o = 0; o < movements.size(); o++) {
+				if (o != m && movements[o].second == movements[m].second && std::ranges::any_of(pieces[o], [&](const JunctionPiece &other) { return same(piece, other); })) return true;
+			}
+			return false;
+		};
+		while (merge < pieces[m].size() && !on_arriving(pieces[m][merge])) merge++;
+		REQUIRE(merge < pieces[m].size());
+		unsigned units = 0;
+		for (size_t i = split; i < merge; i++) units += pieces[m][i].units;
+		INFO("movement " << m << " has " << units << " private units between its split (piece " << split << ") and its merge (piece " << merge << ")");
+		CHECK(units >= 2 * spec.tl);
+	}
 }
 
 TEST_CASE("BuildOrganicT: every bridge crosses something", "[junction][organic]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, 23, 8, MlTurnCostOf(spec));
+	const int p = GenerateJunctionOrganic(spec, MlTurnCostOf(spec)).p;
+	const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, p, MlTurnCostOf(spec));
+	INFO("p " << p);
 	INFO("error: " << result.error);
 	INFO("cases:\n" << result.cases);
 	REQUIRE(result.layout.has_value());
@@ -327,19 +382,17 @@ TEST_CASE("JunctionForcedPairs: the forced pairs of a T", "[junction][organic]")
 	CHECK(pairs == expected);
 }
 
-/** Time the generation of a spec's organic T and print one BENCH line. */
+/** Time the generation of a spec's organic T (1 warm-up and 5 runs) and print one BENCH line. */
 static void BenchGenerate(const char *name, const JunctionSpec &spec)
 {
-	std::vector<long long> times;
+	std::vector<int64_t> times;
 	JunctionOrganicResult result = GenerateJunctionOrganic(spec, MlTurnCostOf(spec));
 	for (int i = 0; i < 5; i++) {
-		const auto begin = std::chrono::steady_clock::now();
 		result = GenerateJunctionOrganic(spec, MlTurnCostOf(spec));
-		const auto end = std::chrono::steady_clock::now();
-		times.push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count());
+		times.push_back(result.micros);
 	}
 	std::sort(times.begin(), times.end());
-	std::cout << "BENCH organic_gen " << name << " clean=" << (result.layout.has_value() ? 1 : 0) << " p=" << result.p << " occupied=" << result.compactness.occupied << " slivers=" << result.compactness.slivers << " iterations=" << result.feedback.iterations << " median_us=" << times[times.size() / 2] << "\n";
+	std::cout << "BENCH organic_gen " << name << " clean=" << (result.layout.has_value() ? 1 : 0) << " p=" << result.p << " case=" << WinningCase(result.cases) << " rounds=" << result.rounds << " occupied=" << result.compactness.occupied << " slivers=" << result.compactness.slivers << " median_us=" << times[times.size() / 2] << "\n";
 }
 
 TEST_CASE("GenerateJunctionOrganic: timing", "[junction][organic][.bench]")
@@ -350,9 +403,7 @@ TEST_CASE("GenerateJunctionOrganic: timing", "[junction][organic][.bench]")
 
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	for (int p = 14; p <= 28; p += 2) {
-		const auto begin = std::chrono::steady_clock::now();
-		const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, p, 8, MlTurnCostOf(spec));
-		const auto end = std::chrono::steady_clock::now();
-		std::cout << "BENCH organic_p " << p << " clean=" << (result.layout.has_value() ? 1 : 0) << " iterations=" << result.feedback.iterations << " occupied=" << result.compactness.occupied << " slivers=" << result.compactness.slivers << " us=" << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "\n";
+		const JunctionOrganicResult result = BuildOrganicT(spec, ORGANIC_W, ORGANIC_H, p, MlTurnCostOf(spec));
+		std::cout << "BENCH organic_p " << p << " clean=" << (result.layout.has_value() ? 1 : 0) << " rounds=" << result.rounds << " us=" << result.micros << "\n";
 	}
 }

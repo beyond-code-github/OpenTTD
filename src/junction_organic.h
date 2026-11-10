@@ -17,7 +17,6 @@
 #include "junction_rules.h"
 #include "junction_terrain.h"
 
-#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -38,11 +37,9 @@ struct JunctionNegotiation {
 	std::string error; ///< Why it failed, when it did.
 };
 
-/** The extra prices and minimum lengths the rule feedback gives a negotiation (DESIGN-O4 revision 3, search step 2); the defaults add nothing. */
+/** The extra prices and minimum lengths a negotiation takes (DESIGN-O4 revision 4); the defaults add nothing. */
 struct JunctionNegotiationPrices {
 	std::unordered_map<uint64_t, Money> *history = nullptr; ///< History costs carried between negotiations; the negotiation reads and adds to them. When null, a negotiation starts with none.
-	std::map<std::pair<int, int>, int> reserved; ///< Reserved tiles (a prio row): any piece of any movement but the one whose index is given costs 1000 x U.
-	std::map<std::pair<int, int>, Money> switch_penalties; ///< Added to a piece on the tile that forms a split or merge with another movement's piece there.
 	std::vector<uint> min_units; ///< Per movement (in JunctionTMovements() order), the least track units of its route; empty or 0 for none.
 	std::vector<std::pair<int, int>> over; ///< Forced pairs (over, under) by movement index (D167).
 	Money ml_turn_cost = 0; ///< Turn cost of the two main-line through movements (D165); 0 means the branch movements' turn cost.
@@ -51,33 +48,23 @@ struct JunctionNegotiationPrices {
 /** The pairs of movements of a T that share no port and whose ports interleave around the box boundary, by movement index (a < b): they must cross (D167). */
 std::vector<std::pair<int, int>> JunctionForcedPairs(const std::vector<JunctionPort> &ports, int width, int height);
 
-/** Route every movement of a T together by negotiated congestion (DESIGN-O4 revision 3, search step 1; no prios, signals or rule feedback of its own). */
+/** Route every movement of a T together by negotiated congestion, the turning movements under the split and merge rules (DESIGN-O4 revision 4, D168). */
 JunctionNegotiation NegotiateJunctionMovements(const JunctionSpec &spec, const std::vector<JunctionPort> &ports, int width, int height, const JunctionTerrain *terrain = nullptr, int max_rounds = 16, const JunctionNegotiationPrices &prices = {});
 
-/** Counts of the feedback the search applied, per rule (DESIGN-O4 revision 3, step 2). */
-struct JunctionFeedbackCounts {
-	int prio_rows = 0; ///< Prio rows reserved.
-	int coverage_penalties = 0; ///< Coverage windows penalised for switches.
-	int bridge_block_penalties = 0; ///< Splits in a bridge's block penalised (D113).
-	int signal_gap_penalties = 0; ///< Stretches without room for a signal penalised for switches.
-	int block_mix_penalties = 0; ///< Signal blocks holding a split and a merge penalised for switches.
-	int split_moves = 0; ///< Splits of waiting-room merges pushed upstream by a penalty.
-	int iterations = 0; ///< Feedback iterations run.
-};
-
-/** One organic T for a box and branch position (steps 1-4); the layout is set when it is rule-clean and passes the prio timing gate. */
+/** One organic T for a box and branch position (DESIGN-O4 revision 4); the layout is set when it is rule-clean and passes the prio timing gate. */
 struct JunctionOrganicResult {
 	std::optional<JunctionLayout> layout;
-	std::vector<RuleViolation> violations; ///< Left after the last iteration when unclean.
-	JunctionFeedbackCounts feedback;
+	std::vector<RuleViolation> violations; ///< Left after the last case when unclean.
 	int p = 0;
 	JunctionCompactness compactness{};
 	Money cost = 0;
 	std::string cases; ///< One line per crossing case enumerated, the winning one marked with '*' (D167).
 	std::string error;
+	int64_t micros = 0; ///< Wall time of the generation.
+	int rounds = 0; ///< Rounds of the winning case's negotiation.
 };
 
-JunctionOrganicResult BuildOrganicT(const JunctionSpec &spec, int width, int height, int p, int max_feedback = 8, Money ml_turn_cost = 0);
+JunctionOrganicResult BuildOrganicT(const JunctionSpec &spec, int width, int height, int p, Money ml_turn_cost = 0);
 /** The best rule-clean organic T over the branch positions tried (step 4). */
 JunctionOrganicResult GenerateJunctionOrganic(const JunctionSpec &spec, Money ml_turn_cost = 0);
 
