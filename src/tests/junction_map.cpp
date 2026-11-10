@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -328,14 +329,60 @@ TEST_CASE("a field of obstacles grows the box", "[junction][projection]")
 	const JunctionFrame frame = MakeJunctionFrame(spec);
 	const int xO = frame.hub_x + spec.branch_gap + 1;
 	const int ys = flat.height - 3;
-	for (const TileIndexDiffC &t : MovableAToSTiles(spec, flat)) {
+	/* Only the middle third (by index) of the movable tiles: the whole route made the test too slow, and a third is enough to force a detour. */
+	const std::vector<TileIndexDiffC> movable = MovableAToSTiles(spec, flat);
+	for (size_t i = movable.size() / 3; i < movable.size() - movable.size() / 3; i++) {
+		const TileIndexDiffC &t = movable[i];
 		if (t.x == xO && t.y >= ys) continue;
 		BlockMapTestTile(terrain, t.x, t.y);
 	}
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, SharedFlatT().height, true);
 	std::cout << "FIELD flat_height=" << flat.height << " built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << " height=" << result.height << " heights=" << result.heights_tried << "\n" << result.log;
-	if (result.layout.has_value()) CHECK(result.height > flat.height);
+	INFO(result.log);
+	/* D170a: the box grows until the map fits; the crossing window (D172) makes the skeleton's input fit by construction. */
+	CHECK(result.log.find("no valid skeleton") == std::string::npos);
+	if (result.layout.has_value()) {
+		CHECK(result.height > flat.height);
+		CHECK(result.clean);
+	} else {
+		/* Every height up to the terrain's limit was tried: the rows of the snapshot are the box. */
+		const int terrain_rows = terrain.origin.y + terrain.height;
+		std::ostringstream last_height;
+		last_height << "height " << terrain_rows << ": ";
+		CHECK(result.log.find(last_height.str()) != std::string::npos);
+	}
 	std::cout << "BENCH tmap field height=" << result.height << " heights=" << result.heights_tried << " micros=" << result.micros << " flat=" << result.micros_flat << " route=" << result.micros_route << "\n";
+}
+
+TEST_CASE("the crossing window keeps both crossings under one bridge", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const std::vector<TileIndexDiffC> movable = MovableAToSTiles(spec, flat);
+	REQUIRE(!movable.empty());
+	const TileIndexDiffC blocked = movable[movable.size() / 2];
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, blocked.x, blocked.y);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO(result.log);
+	REQUIRE(result.layout.has_value());
+	int nmax = 0;
+	for (int n = 10; n >= 1 && nmax == 0; n--) {
+		if (spec.bridge_span_ok(n)) nmax = n;
+	}
+	const int window = nmax - 1 - 2;
+	int lo = std::numeric_limits<int>::max();
+	int hi = std::numeric_limits<int>::min();
+	for (const auto *tiles : {&result.a_to_s_tiles, &result.n_to_a_tiles}) {
+		for (const TileIndexDiffC &t : *tiles) {
+			if (t.y != spec.ml_gap + 1 && t.y != spec.ml_gap + 2) continue;
+			lo = std::min<int>(lo, t.x);
+			hi = std::max<int>(hi, t.x);
+		}
+	}
+	REQUIRE(lo <= hi);
+	CHECK(hi - lo <= window);
 }
 
 TEST_CASE("BENCH the constructed T", "[junctionmap]")

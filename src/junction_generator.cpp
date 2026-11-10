@@ -26,6 +26,7 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -828,6 +829,11 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		return routed;
 	};
 	Clock::time_point height_start;
+	/**
+	 * The frame's last row at the current height: the checker's footprint rule forbids signals, switches and heads on the layout's boundary, and routed track gets signals,
+	 * so the boundary ring belongs to the ports. Every line-router edge request blocks it except the two stub tiles.
+	 */
+	std::vector<TileIndexDiffC> last_row;
 
 	/**
 	 * One edge on the line router: one track, from the request's windows, against the layout so far, then added to it.
@@ -852,6 +858,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		line_request.min = base.min;
 		line_request.max = base.max;
 		line_request.blocked = blocked;
+		line_request.blocked.insert(line_request.blocked.end(), last_row.begin(), last_row.end());
 		line_request.terrain = terrain;
 		line_request.plane = base.plane;
 		line_request.existing = &layout;
@@ -878,11 +885,33 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		return std::move(rasters[0]);
 	};
 
-	for (int height = first; height <= g + 13; height++) {
+	/*
+	 * D170a: the box grows until the map fits. Without a terrain that is the flat cap. With one, heights grow while the frame (rows 0 .. height - 1, its columns)
+	 * lies inside the snapshot, which is the edge of what projection can see.
+	 */
+	int height_limit = g + 13;
+	if (terrain != nullptr) {
+		auto box_fits = [&](int rows) {
+			for (int y = 0; y < rows; y++) {
+				for (int x = 0; x <= frame.width - 1; x++) {
+					if (terrain->At(x, y) == nullptr) return false;
+				}
+			}
+			return true;
+		};
+		height_limit = 0;
+		while (box_fits(height_limit + 1)) height_limit++;
+	}
+
+	for (int height = first; height <= height_limit; height++) {
 		if (result.heights_tried > 0) result.micros_per_height.push_back(since(height_start));
 		height_start = Clock::now();
 		result.heights_tried++;
 		const int yb = height - 1;
+		last_row.clear();
+		for (int x = 0; x <= frame.width - 1; x++) {
+			if (x != xI && x != xO) last_row.push_back(tile(x, yb));
+		}
 		auto say = [&](const std::string &text) { result.log += fmt::format("height {}: {}\n", height, text); };
 
 		JunctionRouteRequest base{};
@@ -962,18 +991,53 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		result.a_to_s_tiles.clear();
 		for (const JunctionPiece &piece : a_to_s->pieces) result.a_to_s_tiles.push_back(piece.tile);
 
+		/*
+		 * D172: "each crossing is a node with a tile envelope derived from its realisation (X_B: D = nmax - 1 - 2 * k_head, from the doubled bridge's span);
+		 * every edge passing the node gets the window [hi - D, lo + D] from the crossers already placed, blocked outside; the first crosser is unbounded and checked after."
+		 * A->S is X_B's first crosser; N->A gets the window. The old router's column fence is its envelope, so this is the line router's only.
+		 */
+		std::vector<TileIndexDiffC> n_to_a_blocked;
+		if (line_router) {
+			int lo = std::numeric_limits<int>::max();
+			int hi = std::numeric_limits<int>::min();
+			for (const JunctionPiece &piece : a_to_s->pieces) {
+				if (piece.tile.y != w_row && piece.tile.y != b_row) continue;
+				lo = std::min<int>(lo, piece.tile.x);
+				hi = std::max<int>(hi, piece.tile.x);
+			}
+			int nmax = 0;
+			for (int n = 10; n >= 1 && nmax == 0; n--) {
+				if (spec.bridge_span_ok(n)) nmax = n;
+			}
+			constexpr int K_HEAD = 1;
+			const int window = nmax - 1 - 2 * K_HEAD;
+			if (lo <= hi) {
+				if (hi - lo > window) {
+					say("A->S crossing wider than the doubled bridge");
+					continue;
+				}
+				for (const int row : {w_row, b_row}) {
+					for (int x = 0; x <= frame.width - 1; x++) {
+						if (x < hi - window || x > lo + window) n_to_a_blocked.push_back(tile(x, row));
+					}
+				}
+			}
+		}
+
 		request = base;
 		request.crossable = w_tiles;
 		request.starts = {start_n};
 		const int x_s = a_to_s->pieces.front().tile.x;
 		request.goals = PlainRowPieces(pass1, 0, Trackdir::X_SW, std::max(xO, x_s + static_cast<int>(spec.prio_tiles) + JUNCTION_E_PRIO_AFTER_SPLIT + result.e_phase), frame.width - 3);
 		const std::optional<JunctionRaster> n_to_a = timed_route([&] {
-			return line_router ? route_line(pass1, request, {}, true) : RouteAndAdd(pass1, request, &route_cache);
+			return line_router ? route_line(pass1, request, n_to_a_blocked, true) : RouteAndAdd(pass1, request, &route_cache);
 		});
 		if (!n_to_a.has_value()) {
 			say("N->A failed");
 			continue;
 		}
+		result.n_to_a_tiles.clear();
+		for (const JunctionPiece &piece : n_to_a->pieces) result.n_to_a_tiles.push_back(piece.tile);
 
 		/* The crossing set, and the skeleton from it. */
 		const auto skeleton_start = Clock::now();
