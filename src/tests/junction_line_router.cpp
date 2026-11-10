@@ -2195,3 +2195,64 @@ TEST_CASE("JunctionRelaxedReachable: the first step off a start may enter existi
 	request.blocked.push_back({36, 19});
 	CHECK_FALSE(JunctionRelaxedReachable(request));
 }
+
+/** XB1: a one-track request on flat ground from (5, 0) heading down to a goal on row 12 at x 15; rows 5..6 are open only at x 5, 7 and 15, and a wall at x 10 keeps the ground below them in two halves. */
+static JunctionLineRouteRequest CrossOnceRequest()
+{
+	JunctionLineRouteRequest request;
+	request.line = {1, 0, 1};
+	request.start = {5, 0};
+	request.start_trackdir = Trackdir::Y_SE;
+	request.goals = {{{15, 12}, Trackdir::Y_SE}};
+	request.min = {0, 0};
+	request.max = {30, 13};
+	request.curve_spacing = 2;
+	request.turn_cost = 3;
+	for (int x = 0; x <= 30; x++) {
+		if (x == 5 || x == 7 || x == 15) continue;
+		for (int y = 5; y <= 6; y++) request.blocked.push_back({static_cast<int16_t>(x), static_cast<int16_t>(y)});
+	}
+	for (int y = 7; y <= 13; y++) request.blocked.push_back({10, static_cast<int16_t>(y)});
+	return request;
+}
+
+TEST_CASE("a route crosses a once-band only once", "[junction][crossonce]")
+{
+	/* The waypoint below the band forces a dip into the left half; the only way on to the goal is back up through the band and down again. */
+	JunctionLineRouteRequest request = CrossOnceRequest();
+	request.waypoints = {{5, 8}};
+	const JunctionLineRouteResult free_route = FindJunctionLineRoute(request);
+	INFO(free_route.error);
+	REQUIRE(free_route.route.has_value());
+	{
+		const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *free_route.route);
+		REQUIRE(rasters.size() == 1);
+		int crossings = 0;
+		bool below = false;
+		for (const JunctionPiece &piece : rasters[0].pieces) {
+			if (piece.tile.y >= 5 && piece.tile.y <= 6 && below) {
+				crossings++;
+				below = false;
+			}
+			if (piece.tile.y > 6) below = true;
+		}
+		CHECK(crossings >= 1);
+	}
+
+	request.cross_once = std::pair<int16_t, int16_t>{5, 6};
+	const JunctionLineRouteResult once = FindJunctionLineRoute(request);
+	CHECK_FALSE(once.route.has_value());
+
+	/* Without the waypoint one crossing is enough, and the route never has a piece on the band after one below it. */
+	request.waypoints.clear();
+	const JunctionLineRouteResult single = FindJunctionLineRoute(request);
+	INFO(single.error);
+	REQUIRE(single.route.has_value());
+	const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(request.line, *single.route);
+	REQUIRE(rasters.size() == 1);
+	bool below = false;
+	for (const JunctionPiece &piece : rasters[0].pieces) {
+		if (piece.tile.y >= 5 && piece.tile.y <= 6) CHECK_FALSE(below);
+		if (piece.tile.y > 6) below = true;
+	}
+}

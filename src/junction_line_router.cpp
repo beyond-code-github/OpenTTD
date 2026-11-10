@@ -45,6 +45,7 @@ struct LineNode {
 	uint16_t private_units = 0; ///< With movement rules: units since the split, capped at wait_units.
 	uint8_t plain = 0; ///< With movement rules: signal-legal private pieces since the split or the last far head, capped at plain_before_head.
 	bool after_head = false; ///< With movement rules: a bridge or tunnel ended since the split.
+	bool left_band = false; ///< XB1: with cross_once, track 0 has had a piece beyond the band's last row.
 };
 
 /** One entry of the search tree. */
@@ -319,6 +320,21 @@ private:
 		key.append(reinterpret_cast<const char *>(&value), sizeof(T));
 	}
 
+	/**
+	 * XB1: track 0's next piece against the once-band.
+	 * @param[in,out] left_band Whether track 0 has had a piece beyond the band's last row; set by a piece beyond it.
+	 * @param piece Track 0's next piece, a bridge's middle tiles included.
+	 * @return Whether the piece is legal: not on the band after the route left it.
+	 */
+	bool CrossOnceStep(bool &left_band, const JunctionPiece &piece) const
+	{
+		if (!request.cross_once.has_value()) return true;
+		const int y = piece.tile.y;
+		if (y >= request.cross_once->first && y <= request.cross_once->second && left_band) return false;
+		if (y > request.cross_once->second) left_band = true;
+		return true;
+	}
+
 	static std::string Key(const LineNode &node)
 	{
 		std::string key;
@@ -341,6 +357,7 @@ private:
 		AppendBytes(key, node.private_units);
 		AppendBytes(key, node.plain);
 		AppendBytes(key, static_cast<uint8_t>(node.after_head));
+		AppendBytes(key, static_cast<uint8_t>(node.left_band));
 		return key;
 	}
 
@@ -666,6 +683,11 @@ JunctionLineRouteResult LineRouter::Run()
 				root.units = static_cast<uint16_t>(std::min<uint>(units, request.min_units));
 			}
 			LineTrackState state{cap, 0, true, false};
+			if (&raster == &first[0]) {
+				for (const JunctionPiece &piece : raster.pieces) {
+					if (!CrossOnceStep(root.left_band, piece)) prefix_ok = false;
+				}
+			}
 			for (size_t k = 1; k < raster.pieces.size() && prefix_ok; k++) {
 				if (!AdvanceState(state, raster.pieces[k - 1], raster.pieces[k])) prefix_ok = false;
 			}
@@ -867,6 +889,7 @@ JunctionLineRouteResult LineRouter::Run()
 					cost += request.rail_piece;
 					if (i == 0) next.units = static_cast<uint16_t>(std::min<uint>(next.units + piece.units, request.min_units));
 					if (i == 0 && request.rules.has_value() && !RulesStep(next, piece)) return false;
+					if (i == 0 && !CrossOnceStep(next.left_band, piece)) return false;
 					previous = &piece;
 				}
 				next.last[i] = added[i].back();
@@ -962,6 +985,10 @@ JunctionLineRouteResult LineRouter::Run()
 							legal = false;
 							break;
 						}
+						if (i == 0 && !CrossOnceStep(next.left_band, piece)) {
+							legal = false;
+							break;
+						}
 						if (i == 0) next.units = static_cast<uint16_t>(std::min<uint>(next.units + piece.units, request.min_units));
 						if (i == 0 && request.rules.has_value() && (k == 0 || k + 1 == added[i].size()) && ((k == 0 && !RulesHeadAllowed(next, piece)) || !RulesStep(next, piece))) {
 							legal = false;
@@ -1036,6 +1063,10 @@ JunctionLineRouteResult LineRouter::Run()
 						cost += ResourceCost(piece, node.z[i], JunctionResourceLevel::BridgeSpan);
 					}
 					if (!AdvanceState(next.states[i], *previous, piece)) {
+						legal = false;
+						break;
+					}
+					if (i == 0 && !CrossOnceStep(next.left_band, piece)) {
 						legal = false;
 						break;
 					}
