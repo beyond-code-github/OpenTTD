@@ -174,6 +174,8 @@ TEST_CASE("line router results are unchanged by the speed work", "[linerouter]")
 		"LFFFFFFFFFFFFFLF 1800 123\n"
 		"FB2LFFFLFFFFFFRFL 2700 77\n"
 		"- 0 31886\n"
+		"FF 200 2\n"
+		"FF 200 2\n"
 		"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF 4000 40\n"
 		"LFFFLFFRFFFFLF 1800 58\n"
 		"FB2FLFFFLFFFFFFFFRFL 3000 120\n"
@@ -184,6 +186,8 @@ TEST_CASE("line router results are unchanged by the speed work", "[linerouter]")
 		"LFFFFFFFFFFFFFLF 1800 123\n"
 		"FB2FLFFFFL 1800 50\n"
 		"- 0 15565\n"
+		"FF 200 2\n"
+		"FF 200 2\n"
 		"FFFFFFFFFFFFFFFFFFFFFFFF 2400 24\n"
 		"LFFFLFFRFFFFLF 1800 58\n"
 		"FB2FFLFFFFL 1900 72\n"
@@ -191,7 +195,7 @@ TEST_CASE("line router results are unchanged by the speed work", "[linerouter]")
 		"RFFFFFFFRFFLFFFFFR 2100 236\n"},
 	};
 	/* D173: the line router starts at the flat map's height, so its trace is the tail of the old one: the lines of the built height. */
-	constexpr size_t BUILT_HEIGHT_LINES = 5; ///< A, A->S, N->A, B->S, N->B (E1 routes A as an edge, D178).
+	constexpr size_t BUILT_HEIGHT_LINES = 7; ///< The S and N port edges, A, A->S, N->A, B->S, N->B (E2 routes the port edges, D178).
 	for (const auto &[name, trace] : expected) {
 		size_t cut = trace.size();
 		for (size_t i = 0; i < BUILT_HEIGHT_LINES; i++) cut = trace.rfind('\n', cut - 2) + 1;
@@ -447,6 +451,64 @@ TEST_CASE("a field of obstacles grows the box", "[junction][projection]")
 		CHECK(result.log.find(last_height.str()) != std::string::npos);
 	}
 	std::cout << "BENCH tmap field height=" << result.height << " heights=" << result.heights_tried << " micros=" << result.micros << " flat=" << result.micros_flat << " route=" << result.micros_route << "\n";
+}
+
+/** The flat T's frame x of the S port edge (D178): the O column, xO = hub_x + branch_gap + 1. */
+static int SPortEdgeX(const JunctionSpec &spec)
+{
+	return MakeJunctionFrame(spec).hub_x + spec.branch_gap + 1;
+}
+
+TEST_CASE("a house on the S port edge grows the box", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const int xO = SPortEdgeX(spec);
+	const int y = flat.height - 3;
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, xO, y);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO(result.log);
+	std::cout << "PORTEDGE house flat_height=" << flat.height << " built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << " height=" << result.height << " heights=" << result.heights_tried << "\n" << result.log;
+	REQUIRE(result.layout.has_value());
+	CHECK(result.clean);
+	CHECK(result.height > flat.height);
+	for (const JunctionTrack &track : result.layout->tracks) {
+		if (track.offset.x == xO && track.offset.y == y) CHECK(track.tracks.None());
+	}
+	std::ostringstream failed;
+	failed << "height " << flat.height << ": S port edge failed";
+	std::istringstream lines(result.log);
+	bool found = false;
+	for (std::string line; std::getline(lines, line);) {
+		if (line.ends_with(failed.str())) found = true;
+	}
+	CHECK(found);
+}
+
+TEST_CASE("a slope under the S port edge is ramped", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const int xO = SPortEdgeX(spec);
+	const int ys = flat.height - 3;
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	terrain.build_on_slopes = true;
+	for (const int y : {ys, ys + 1}) {
+		JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (xO - terrain.origin.x)];
+		tile.z_min = 0;
+		tile.z_max = 1;
+		tile.incline = DiagDirection::NW;
+	}
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
+	INFO(result.log);
+	std::cout << "PORTEDGE slope flat_height=" << flat.height << " built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << " height=" << result.height << " heights=" << result.heights_tried << "\n" << result.log;
+	REQUIRE(result.layout.has_value());
+	CHECK(result.clean);
+	/* D178: the stub is a routed port edge, not fixed track that is checked on its own. */
+	CHECK(result.log.find("stub on unusable tile") == std::string::npos);
 }
 
 TEST_CASE("the crossing window keeps both crossings under one bridge", "[junction][projection]")
