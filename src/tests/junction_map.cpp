@@ -15,6 +15,7 @@
 #include "../junction_generator.h"
 #include "../junction_route.h"
 #include "../junction_rules.h"
+#include "../junction_terrain.h"
 #include "../track_func.h"
 
 #include <algorithm>
@@ -235,6 +236,106 @@ TEST_CASE("the line-router T starts at the flat height", "[junctionmap]")
 			CHECK(a.signals[i].variant == b.signals[i].variant);
 		}
 	}
+}
+
+/** A flat, Buildable terrain at z 0 sized to the spec's frame with a margin of 4 (a copy of MakeNearTestTerrain in junction_game.cpp). */
+static JunctionTerrain MakeMapTestTerrain(const JunctionSpec &spec)
+{
+	constexpr int MARGIN = 4;
+	const JunctionFrame frame = MakeJunctionFrame(spec);
+	JunctionTerrain t;
+	t.origin = {static_cast<int16_t>(-MARGIN), static_cast<int16_t>(frame.terrain_origin_y - MARGIN)};
+	t.width = frame.width + 2 * MARGIN;
+	t.height = frame.terrain_height + 2 * MARGIN;
+	t.tiles.assign(static_cast<size_t>(t.width) * t.height, JunctionTerrainTile{});
+	t.foundation_cost = 250;
+	return t;
+}
+
+static void BlockMapTestTile(JunctionTerrain &terrain, int x, int y)
+{
+	terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)].cls = JunctionTileClass::Blocked;
+}
+
+/** The flat line-router T of the test spec, built once: its height is the first height of every projection test (D173) and its A->S tiles are the routes to block. */
+static const JunctionTMapResult &SharedFlatT()
+{
+	static const JunctionTMapResult flat = ConstructJunctionTMap(MakeTestJunctionSpec(), nullptr, std::nullopt, true);
+	return flat;
+}
+
+/** The tiles of the flat A->S route that are not on row 0, the W row or the b row. */
+static std::vector<TileIndexDiffC> MovableAToSTiles(const JunctionSpec &spec, const JunctionTMapResult &flat)
+{
+	std::vector<TileIndexDiffC> tiles;
+	for (const TileIndexDiffC &t : flat.a_to_s_tiles) {
+		if (t.y != 0 && t.y != spec.ml_gap + 1 && t.y != spec.ml_gap + 2) tiles.push_back(t);
+	}
+	return tiles;
+}
+
+static bool MapUsesTile(const std::vector<TileIndexDiffC> &tiles, TileIndexDiffC tile)
+{
+	return std::ranges::any_of(tiles, [&](const TileIndexDiffC &t) { return t.x == tile.x && t.y == tile.y; });
+}
+
+TEST_CASE("an obstacle on A->S's route is projected around", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	const std::vector<TileIndexDiffC> movable = MovableAToSTiles(spec, flat);
+	REQUIRE(!movable.empty());
+	const TileIndexDiffC blocked = movable[movable.size() / 2];
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, blocked.x, blocked.y);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, SharedFlatT().height, true);
+	INFO("blocked " << blocked.x << "," << blocked.y << "\n" << result.log);
+	REQUIRE(result.layout.has_value());
+	CHECK(result.clean);
+	CHECK(!MapUsesTile(result.a_to_s_tiles, blocked));
+	bool differs = result.layout->tracks.size() != flat.layout->tracks.size() || result.layout->bridges.size() != flat.layout->bridges.size();
+	for (size_t i = 0; !differs && i < flat.layout->tracks.size(); i++) {
+		differs = result.layout->tracks[i].offset.x != flat.layout->tracks[i].offset.x || result.layout->tracks[i].offset.y != flat.layout->tracks[i].offset.y || result.layout->tracks[i].tracks != flat.layout->tracks[i].tracks;
+	}
+	for (size_t i = 0; !differs && i < flat.layout->bridges.size(); i++) {
+		const JunctionBridge &a = result.layout->bridges[i];
+		const JunctionBridge &b = flat.layout->bridges[i];
+		differs = a.start.x != b.start.x || a.start.y != b.start.y || a.end.x != b.end.x || a.end.y != b.end.y;
+	}
+	CHECK(differs);
+	std::cout << "BENCH tmap obstacle height=" << result.height << " heights=" << result.heights_tried << " flat_height=" << flat.height << " micros=" << result.micros << " flat=" << result.micros_flat << " route=" << result.micros_route << "\n";
+}
+
+TEST_CASE("an obstacle on the main line is reported", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, 3, 0);
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, SharedFlatT().height, true);
+	INFO(result.log);
+	CHECK(!result.layout.has_value());
+	CHECK(result.log.find("fixed track on unusable tile 3,0") != std::string::npos);
+}
+
+TEST_CASE("a field of obstacles grows the box", "[junction][projection]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &flat = SharedFlatT();
+	REQUIRE(flat.layout.has_value());
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	/* The S stub (x == xO, y >= ys) is fixed track: leave it, so the fixed-part check does not fire and the growth path runs. */
+	const JunctionFrame frame = MakeJunctionFrame(spec);
+	const int xO = frame.hub_x + spec.branch_gap + 1;
+	const int ys = flat.height - 3;
+	for (const TileIndexDiffC &t : MovableAToSTiles(spec, flat)) {
+		if (t.x == xO && t.y >= ys) continue;
+		BlockMapTestTile(terrain, t.x, t.y);
+	}
+	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, SharedFlatT().height, true);
+	std::cout << "FIELD flat_height=" << flat.height << " built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << " height=" << result.height << " heights=" << result.heights_tried << "\n" << result.log;
+	if (result.layout.has_value()) CHECK(result.height > flat.height);
+	std::cout << "BENCH tmap field height=" << result.height << " heights=" << result.heights_tried << " micros=" << result.micros << " flat=" << result.micros_flat << " route=" << result.micros_route << "\n";
 }
 
 TEST_CASE("BENCH the constructed T", "[junctionmap]")
