@@ -3,7 +3,9 @@
 ## UPDATE 2026-11-10 night (after RESUME HERE below)
 - D172 recorded (crossings are map nodes; envelope = window on every crossing edge relative to placed crossers). G2c applied it to SoverN: parked, not merged (WIP: scratchpad/g2b/g2c_wip.patch, OneDrive g2/). Evidence the window is right: SoverN went from no layout to building on the test spec (height 14) with both crossings under one doubled bridge (test 4 green there). Not done: pinned builds no SoverN (N->A fails 7-12, B->S 13-14; lo/hi not logged); test spec SoverN unclean (Footprint "signal on the boundary" x3); SoverN has no derived first height and the line router's per-request cost makes failing heights expensive ([junctionmap] 33 s Debug with SoverN). Resume after P1: derive SoverN's first height, log lo/hi/window, then judge.
 - P1 (line router per-request profile) running in .claude/p1 with the rebased T-map patch (scratchpad/p1/part2_tmap_rebased.patch).
-- LP9 (painter terrain rect) running in .claude/lp9.
+- LP9 merged (9e94a32ef2): MakeJunctionTerrainRect, 64x64 in 1.7 ms.
+- P1 done (scratchpad/p1/FINDINGS-P1.md, OneDrive p1/): 91% of the line-router T map's route time is the two FAILED heights (A->S at g+10, B->S at g+11: the first-height bound is not tight; the map is missing tile-unit edge minimums); per expansion the line router is 7-9x the old router (path re-walk, string keys, allocations). P2 (F2-F4 speed, T map line-router path behind a flag, default old router) running in .claude/p2.
+- Rig demo: the G1 T map (test spec) is built on the hubs rig (port 3989) at origin 42,23, 315 steps, 0 failed (`[.tmapjson]` export, tools/ottd/layouts/tmap-LR-TL4.json).
 
 ## RESUME HERE (2026-11-10 late night, engineer away: "fill the queue and make as much progress through everything including projection")
 - T map now (feature 6b6f3a4a48): ConstructJunctionTMap = one map, edges routed once (old router), checked once, first height ml_gap+10 from the rules. RELEASE: test spec 23 ms (route 13.8, check 8.6), pinned 11 ms; 190/53 and 118/41, rule-clean, identical to the old generator (old sweep 8.3 s Debug). `[junctionmap]` 2.8 s Debug.

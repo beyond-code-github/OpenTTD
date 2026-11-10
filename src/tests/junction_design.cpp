@@ -390,3 +390,14 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 	std::cout << "junction " << extras.box[0] << "," << extras.box[1] << "," << extras.box[2] << "," << extras.box[3] << "\n";
 	if (const char *json = std::getenv("JUNCTION_CIRCUIT"); json != nullptr) WriteLayoutJson(layout, json, depots, &extras);
 }
+
+TEST_CASE("Junction T map export", "[.tmapjson]")
+{
+	const JunctionTMapResult result = ConstructJunctionTMap(MakeTestJunctionSpec());
+	REQUIRE(result.layout.has_value());
+	CHECK(result.clean);
+	JunctionLayout layout = *result.layout;
+	std::cout << RenderJunctionAscii(layout);
+	if (std::getenv("JUNCTION_MIRROR") != nullptr) layout = TransformJunctionLayout(layout, JunctionTransform::Mirror);
+	if (const char *json = std::getenv("JUNCTION_JSON"); json != nullptr) WriteLayoutJson(layout, json);
+}
