@@ -1,5 +1,17 @@
 # Junction tool: status
 
+## RESUME HERE (2026-11-10 evening, before compaction)
+
+**Running:** O4c2 (`.claude/o4c2`, branch wt-o4c2, brief `briefs/O4c2-organic-rules-in-routing.md`, Sonnet): organic T with rules in the routing (O4c1 router state machine), feedback loop deleted, PathFinder prices (U+h)(1+pf k)-U pf 0.5 x1.5, main lines routed first, per-round may_split/may_merge masks + prio row reservation, crop margin covers prio windows, micros/rounds recorded. On handback: check, merge (one squashed commit expected), report timings vs 100 ms.
+**Hub rig server UP** (engineer viewing): `OTTD_RIG_DIR=scratchpad/ottd-hubs/ OTTD_RIG_PORT=3987 OTTD_RIG_GAME_PORT=3989 OTTD_RIG_BIN=.claude/play/build-play/openttd`; join `.claude/play/build-play/openttd -n 127.0.0.1:3989` (client launched for him). Hubs built (north corners): old T (10,10), organic p23 (65,10), organic p25 (65,40), old narrow (10,70), organic narrow p24 (65,70). JSONs in `scratchpad/hubs/`. Engineer: "Apart from a couple of needless bridges, this is pretty good! They are not as compact as I'd build them" (diagonals too long/loose at (82,10)). Rebuild new versions beside these after O4c2.
+**Design:** DESIGN-O4 revision 4 (D168) on top of rev 3. RECONCILE-O4.md = inventory of mechanisms (keep/replace) and time budget. Decisions today: D157-D169 (D163 revoked by D164: main line MAY bridge; D166 c wrong, reverted; D169 CP-SAT core measured not viable: 44x16 no feasible in 120 s, 30x12 66 s to first feasible).
+**Next after O4c2 (agreed direction):** make an explicit topology layer ("vector map" first, engineer's framing): crossings (forced pairs, D167, branched lazily), split/merge order per line, sides; then the tile router projects it. Then lazy branching + p search by bound (time to 100 ms), D80 doubled-bridge move (O4b3), multi-lane: crossings decided per group (Fable steer 4), LL_RR first test. Every step reports per-generation time.
+**Merged today:** O2 tunnels, O4r benchmark, O4h/O4p (Manhattan heuristic, D161 approximate pruning, D162 multi-track floor, raw keys), O4n (resource_cost, min_units, flat grids), O4b1 (negotiated six movements), O4c1 (router `JunctionMovementRules`: phase/private_units/plain/after_head). Router single-track: turn 1.2 ms, hills 4, crossing 7.8; multi-track 20-40 ms (weak D162 floor).
+**Branches kept:** wt-o4b2 (O4b2-O4b2d WIP, 97fa49d9df; FINDINGS-O4b2b.md), fork pushed.
+**Fable spend:** two audits, ~$1-4 each (engineer cap $50 per audit).
+**Other workstreams unchanged:** painter LP9-LP12; stations waiting on the Station window check; BIOS update deferred.
+**Memory added today:** no-silent-shortcuts-feedback (D163 lesson); agent-overhead updated ("not batching changes too small").
+
 ## 2026-11-10 afternoon: first organic T (O4b1 merged)
 
 - **O4b1** (e825bf1be9): six movements of a T negotiated on flat ground; splits/merges emerge (switch rule: same from-port entering by the same edge, or same to-port leaving by the same edge); bridge heads/portals exclusive (router level `Head`); no head on a port tile. MakeTestJunctionSpec, 44x16: 4 rounds (conflicts 6,6,1,0), 14 routes, occupied 146 / slivers 25 (old generator 190 / 53), 53-83 ms over p = 14/20/26. Checker: connectivity, geometry, bridges clean except "ML bridge is not doubled" (D80 move is O4b2).
