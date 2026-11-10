@@ -973,6 +973,11 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 				return (level == JunctionResourceLevel::Head && piece.tile.y == w_row) ? Money(100 * 100 * spec.prices.rail_piece.base()) : Money(0);
 			};
 		}
+		if (!JunctionRelaxedReachable(line_request)) {
+			/* GS1b: the tile-level relaxation cannot connect the ends, so the search would fail; it is not run. */
+			result.line_router_trace += "- 0 0 relaxed\n";
+			return std::nullopt;
+		}
 		const JunctionLineRouteResult routed = FindJunctionLineRoute(line_request);
 		result.line_router_trace += fmt::format("{} {} {}\n", routed.route.has_value() ? routed.route->moves : std::string("-"), routed.cost.base(), routed.expansions);
 		if (!routed.route.has_value()) return std::nullopt;
@@ -1071,6 +1076,69 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		base.terrain = terrain;
 		base.plane = line_router ? 0 : plane; // Without a terrain only; with one the line router derives every start's height (PH1).
 
+		/** The tiles of a stub column that an edge's end can take, as a function of a box's last row: rows `last_row + from .. last_row + to` of column x. */
+		using MovingEnds = std::function<std::vector<JunctionRouteEnd>(int last_row)>;
+		auto column_ends = [&](int x, Trackdir td, int from, int to) -> MovingEnds {
+			return [=](int last_row) {
+				std::vector<JunctionRouteEnd> ends;
+				for (int y = last_row + from; y <= last_row + to; y++) ends.push_back({tile(x, y), td});
+				return ends;
+			};
+		};
+		/**
+		 * Engineer, on a T map that tried 30 heights: "30 heights???". The box grows one row per failed height and each failed height costs a full search, so before the next height
+		 * is tried, ask whether any taller box could route the edge that just failed: the same edge's request is relaxed so that every box from this height to the tallest
+		 * (height_limit) satisfies it, and JunctionRelaxedReachable, which a real route always passes, is asked. When even that cannot connect the edge's ends, growing cannot help
+		 * and the map stops with "move the cursor" (D179). The relaxation of a taller box: its bounds are the same except that a bound at the box's last row is raised to the
+		 * tallest box's; its obstacles are only the terrain and the fixed tiles the caller passes (every routed raster, A's included since A is routed again when the ports widen, the last row
+		 * and the crossing windows follow the height or the crossers, so they are dropped, and there is no `existing` layout); and an end that lies on a port edge or a stub, which moves up with the
+		 * box, is replaced by the union of that end over every height from this one to height_limit (so each such end, in each box, is one of the union's). Fewer obstacles, wider
+		 * bounds and more ends only add routes, so a route in any of those boxes is one the relaxation accepts.
+		 * Only edges whose ends depend on the height through the port and stub columns alone get this test: the S and N port edges, A, A->S (starts on A, goal on the S column) and N->A
+		 * (start on the N column, goals on A). B's lane edges, B->S and N->B have ends that follow the skeleton and the crossers placed at this height, which a taller box may move, so
+		 * a relaxation of them would not cover every taller box; they get the per-height skip in route_line only.
+		 * @param name The edge's name, as in its failure line.
+		 * @param edge The edge's request at this height: ends, bounds.
+		 * @param fixed_blocked The tiles that block the edge at every height.
+		 * @param moving_starts When set, the starts' tiles as a function of a box's last row; otherwise the edge's own starts.
+		 * @param moving_goals The same for the goals.
+		 * @return Whether the map stops: the log, the height's time and `micros` are set, and the caller returns.
+		 */
+		auto growth_cannot_help = [&](const std::string &name, const JunctionRouteRequest &edge, const std::vector<TileIndexDiffC> &fixed_blocked, const MovingEnds &moving_starts, const MovingEnds &moving_goals) {
+			JunctionLineRouteRequest relaxed;
+			relaxed.line = JunctionLineSpec{1, 0, 1};
+			relaxed.min = edge.min;
+			relaxed.max = edge.max;
+			if (relaxed.max.y == yb) relaxed.max.y = static_cast<int16_t>(height_limit - 1);
+			auto ends_of = [&](const std::vector<JunctionRouteEnd> &own, const MovingEnds &moving) {
+				std::vector<JunctionRouteEnd> ends;
+				if (!moving) {
+					ends = own;
+				} else {
+					for (int last_row = yb; last_row <= height_limit - 1; last_row++) {
+						const std::vector<JunctionRouteEnd> at = moving(last_row);
+						ends.insert(ends.end(), at.begin(), at.end());
+					}
+				}
+				std::erase_if(ends, [&](const JunctionRouteEnd &end) { return end.tile.x < relaxed.min.x || end.tile.x > relaxed.max.x || end.tile.y < relaxed.min.y || end.tile.y > relaxed.max.y; });
+				return ends;
+			};
+			relaxed.starts = ends_of(edge.starts, moving_starts);
+			relaxed.goals = ends_of(edge.goals, moving_goals);
+			relaxed.blocked = fixed_blocked;
+			relaxed.terrain = terrain;
+			relaxed.max_bridge_middle = base.max_bridge_middle;
+			if (spec.prices.tunnel) {
+				relaxed.tunnel_price = spec.prices.tunnel;
+				relaxed.max_tunnel_length = spec.max_tunnel_length;
+			}
+			if (JunctionRelaxedReachable(relaxed)) return false;
+			result.log += fmt::format("height {}: {} failed; growth cannot help\n", height, name);
+			result.micros_per_height.push_back(since(height_start));
+			result.micros = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - time_start).count();
+			return true;
+		};
+
 		const int ys = yb - STUB;
 		const JunctionRouteEnd goal_s{tile(xO, ys), Trackdir::Y_SE};
 		const JunctionRouteEnd start_n{tile(xI, ys), Trackdir::Y_NW};
@@ -1134,6 +1202,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			s_port_raster = timed_route([&] { return route_line(pass1, s_request, {}, false); });
 			if (!s_port_raster.has_value()) {
 				say("S port edge failed");
+				if (growth_cannot_help("S port edge", s_request, {}, column_ends(xO, Trackdir::Y_SE, -2, -2), column_ends(xO, Trackdir::Y_SE, 0, 0))) return result;
 				continue;
 			}
 			JunctionRouteRequest n_request = base;
@@ -1144,6 +1213,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			n_port_raster = timed_route([&] { return route_line(pass1, n_request, {}, false); });
 			if (!n_port_raster.has_value()) {
 				say("N port edge failed");
+				if (growth_cannot_help("N port edge", n_request, {}, column_ends(xI, Trackdir::Y_NW, 0, 0), column_ends(xI, Trackdir::Y_NW, -2, -2))) return result;
 				continue;
 			}
 		}
@@ -1161,6 +1231,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 			a_raster = timed_route([&] { return route_line(pass1, a_request, {}, false); });
 			if (!a_raster.has_value()) {
 				say("A failed");
+				if (growth_cannot_help("A", a_request, {}, nullptr, nullptr)) return result;
 				continue;
 			}
 		}
@@ -1188,6 +1259,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		});
 		if (!a_to_s.has_value()) {
 			say("A->S failed");
+			if (line_router && growth_cannot_help("A->S", request, std::vector<TileIndexDiffC>(column_fence.begin(), column_fence.begin() + g + 4), nullptr, column_ends(xO, Trackdir::Y_SE, -2, -2))) return result;
 			continue;
 		}
 		result.a_to_s_tiles.clear();
@@ -1237,6 +1309,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		});
 		if (!n_to_a.has_value()) {
 			say("N->A failed");
+			if (line_router && growth_cannot_help("N->A", request, {}, column_ends(xI, Trackdir::Y_NW, -2, -2), nullptr)) return result;
 			continue;
 		}
 		result.n_to_a_tiles.clear();
@@ -1397,7 +1470,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 				if (!raster.has_value()) {
 					say(fmt::format("B lane edge failed at {},{}", first_piece.tile.x, first_piece.tile.y));
 					lanes_routed = false;
-					return;
+							return;
 				}
 				if (l == 1 && merge_goals == nullptr && !flat_lane[1]->pieces[from + 1].on_bridge) routed_b.push_back(*raster);
 				edge_rasters[l][k] = std::move(*raster);

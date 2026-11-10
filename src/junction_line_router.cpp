@@ -1055,3 +1055,103 @@ JunctionLineRouteResult FindJunctionLineRoute(const JunctionLineRouteRequest &re
 {
 	return LineRouter(request).Run();
 }
+
+bool JunctionRelaxedReachable(const JunctionLineRouteRequest &request)
+{
+	if (request.goals.empty()) return true;
+	const int width = request.max.x - request.min.x + 1;
+	const int height = request.max.y - request.min.y + 1;
+	if (width <= 0 || height <= 0) return false;
+	auto index = [&](int x, int y) -> ptrdiff_t {
+		if (x < request.min.x || x > request.max.x || y < request.min.y || y > request.max.y) return -1;
+		return static_cast<ptrdiff_t>(y - request.min.y) * width + (x - request.min.x);
+	};
+
+	/* A tile no track may stand on: blocked, a bridge head, or (with a terrain) not plain buildable ground. Heights are ignored. A tile holding track is tracked: see below. */
+	std::vector<bool> walkable(static_cast<size_t>(width) * height, true);
+	std::vector<bool> tracked(walkable.size(), false);
+	auto forbid = [&](int x, int y) {
+		const ptrdiff_t i = index(x, y);
+		if (i >= 0) walkable[i] = false;
+	};
+	for (const TileIndexDiffC &tile : request.blocked) forbid(tile.x, tile.y);
+	if (request.existing != nullptr) {
+		for (const JunctionTrack &track : request.existing->tracks) {
+			const ptrdiff_t i = index(track.offset.x, track.offset.y);
+			if (i >= 0 && track.tracks.Any()) tracked[i] = true;
+		}
+		for (const JunctionBridge &bridge : request.existing->bridges) {
+			forbid(bridge.start.x, bridge.start.y);
+			forbid(bridge.end.x, bridge.end.y);
+		}
+	}
+	if (request.terrain != nullptr) {
+		for (int y = request.min.y; y <= request.max.y; y++) {
+			for (int x = request.min.x; x <= request.max.x; x++) {
+				const JunctionTerrainTile *tile = request.terrain->At(x, y);
+				if (tile == nullptr || tile->cls != JunctionTileClass::Buildable || tile->steep) forbid(x, y);
+			}
+		}
+	}
+
+	std::vector<bool> is_goal(walkable.size(), false);
+	for (const JunctionRouteEnd &goal : request.goals) {
+		const ptrdiff_t i = index(goal.tile.x, goal.tile.y);
+		if (i >= 0) {
+			is_goal[i] = true;
+			walkable[i] = true;
+			tracked[i] = false;
+		}
+	}
+	/* The router lets a route's first step off a start share the next tile with existing track (the split rule), so that step may enter a tile holding track. */
+	std::vector<TileIndexDiffC> queue;
+	std::vector<bool> seen(walkable.size(), false);
+	auto visit = [&](int x, int y, bool onto_track = false) {
+		const ptrdiff_t i = index(x, y);
+		if (i < 0 || !walkable[i] || (tracked[i] && !onto_track) || seen[i]) return;
+		seen[i] = true;
+		queue.push_back({static_cast<int16_t>(x), static_cast<int16_t>(y)});
+	};
+	std::vector<JunctionRouteEnd> starts = request.starts;
+	if (starts.empty()) starts.push_back({request.start, request.start_trackdir});
+	for (const JunctionRouteEnd &start : starts) {
+		const ptrdiff_t i = index(start.tile.x, start.tile.y);
+		if (i >= 0) {
+			walkable[i] = true;
+			tracked[i] = false;
+			visit(start.tile.x, start.tile.y);
+		} else {
+			queue.push_back(start.tile); // Outside the bounds: it may still step in.
+		}
+	}
+	for (const JunctionRouteEnd &start : starts) {
+		if (index(start.tile.x, start.tile.y) < 0) continue;
+		for (const TileIndexDiffC &step : {TileIndexDiffC{1, 0}, TileIndexDiffC{-1, 0}, TileIndexDiffC{0, 1}, TileIndexDiffC{0, -1}}) visit(start.tile.x + step.x, start.tile.y + step.y, true);
+	}
+
+	const bool bridges = request.max_bridge_middle > 0;
+	const bool tunnels = request.tunnel_price && request.terrain != nullptr;
+	for (size_t head = 0; head < queue.size(); head++) {
+		const int x = queue[head].x;
+		const int y = queue[head].y;
+		const ptrdiff_t here = index(x, y);
+		if (here >= 0 && is_goal[here]) return true;
+		for (const TileIndexDiffC &step : {TileIndexDiffC{1, 0}, TileIndexDiffC{-1, 0}, TileIndexDiffC{0, 1}, TileIndexDiffC{0, -1}}) {
+			visit(x + step.x, y + step.y);
+			if (!bridges && !tunnels) continue;
+			const uint max_middle = std::max(bridges ? request.max_bridge_middle : 0u, tunnels ? request.max_tunnel_length : 0u);
+			bool bridge_alive = bridges; // A bridge's middle tiles must all be spannable; a tunnel's may be anything.
+			for (uint middle = 1; middle <= max_middle; middle++) {
+				const int mx = x + step.x * static_cast<int>(middle);
+				const int my = y + step.y * static_cast<int>(middle);
+				if (index(mx, my) < 0) break;
+				if (bridge_alive && request.terrain != nullptr) {
+					const JunctionTerrainTile *tile = request.terrain->At(mx, my);
+					bridge_alive = tile != nullptr && tile->cls != JunctionTileClass::Blocked;
+				}
+				if ((bridge_alive && middle <= request.max_bridge_middle) || (tunnels && middle <= request.max_tunnel_length)) visit(mx + step.x, my + step.y);
+			}
+		}
+	}
+	return false;
+}

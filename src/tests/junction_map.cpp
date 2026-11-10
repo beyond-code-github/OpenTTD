@@ -769,15 +769,16 @@ static JunctionTerrain MakeTownHillTerrain(const JunctionSpec &spec)
 	return terrain;
 }
 
-/* [slow]: without a tunnel the T map tries every height up to the terrain's limit (about 3.5 s Release). */
-TEST_CASE("a hill covered by a town is not crossed without a tunnel price", "[junction][projection][slow]")
+TEST_CASE("a hill covered by a town is not crossed without a tunnel price", "[junction][projection]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTerrain terrain = MakeTownHillTerrain(spec);
-	/* Neither ramps nor bridges pass the town. */
+	/* Neither ramps nor bridges pass the town: the S port edge could route in a taller box, A->S cannot, so the third height stops the search (GS1b). */
 	const JunctionTMapResult untunnelled = ConstructJunctionTMap(spec, &terrain, SharedFlatT().height, true);
 	INFO(untunnelled.log);
 	CHECK_FALSE(untunnelled.layout.has_value());
+	CHECK(untunnelled.heights_tried <= 3);
+	CHECK(untunnelled.log.ends_with("growth cannot help\n"));
 }
 
 TEST_CASE("a hill covered by a town is tunnelled", "[junction][projection]")
