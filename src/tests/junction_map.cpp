@@ -126,7 +126,7 @@ TEST_CASE("the T map reports its time by phase", "[junctionmap]")
 	CHECK(static_cast<int>(result.micros_per_height.size()) == result.heights_tried);
 }
 
-TEST_CASE("the first height is a lower bound", "[junctionmap]")
+TEST_CASE("the first height is a lower bound", "[junctionmapedges]")
 {
 	for (const auto &[name, spec] : MapSpecs()) {
 		const int bound = JunctionTMapFirstHeight(spec);
@@ -144,7 +144,7 @@ TEST_CASE("the first height is a lower bound", "[junctionmap]")
 	}
 }
 
-TEST_CASE("the line-router T matches or beats the old-router T", "[junctionmap]")
+TEST_CASE("the line-router T matches or beats the old-router T", "[junctionmapedges]")
 {
 	for (const auto &[name, spec] : MapSpecs()) {
 		const JunctionTMapResult line = ConstructJunctionTMap(spec, nullptr, std::nullopt, true);
@@ -436,7 +436,6 @@ TEST_CASE("a house on B's lane inside the junction is reported by B", "[junction
 	LimitMapTestRows(terrain, flat.height + 3);
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
 	INFO("blocked " << blocked.x << "," << blocked.y << "\n" << result.log);
-	std::cout << "LANEHOUSE blocked=" << blocked.x << "," << blocked.y << " built=" << (result.layout.has_value() ? 1 : 0) << " heights=" << result.heights_tried << "\n" << result.log;
 	if (result.layout.has_value()) {
 		CHECK(result.clean);
 		for (const JunctionTrack &track : result.layout->tracks) {
@@ -471,7 +470,6 @@ TEST_CASE("a house under B's doubled bridge is reported", "[junction][projection
 	LimitMapTestRows(terrain, flat.height + 3);
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
 	INFO("blocked " << blocked.x << "," << blocked.y << "\n" << result.log);
-	std::cout << "BRIDGEHOUSE blocked=" << blocked.x << "," << blocked.y << " built=" << (result.layout.has_value() ? 1 : 0) << " heights=" << result.heights_tried << "\n" << result.log;
 	CHECK(result.log.find("B lane edge failed at") != std::string::npos);
 	if (result.layout.has_value()) {
 		CHECK(result.clean);
@@ -503,7 +501,6 @@ TEST_CASE("a slope under B's straight stretch is ramped or reported", "[junction
 	LimitMapTestRows(terrain, flat.height + 3);
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
 	INFO(result.log);
-	std::cout << "LANESLOPE built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << " height=" << result.height << " heights=" << result.heights_tried << "\n" << result.log;
 	if (result.layout.has_value()) {
 		CHECK(result.clean);
 	} else {
@@ -583,7 +580,6 @@ TEST_CASE("a field of obstacles grows the box", "[junction][projection]")
 		BlockMapTestTile(terrain, t.x, t.y);
 	}
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, SharedFlatT().height, true);
-	std::cout << "FIELD flat_height=" << flat.height << " built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << " height=" << result.height << " heights=" << result.heights_tried << "\n" << result.log;
 	INFO(result.log);
 	/* D170a: the box grows until the map fits; the crossing window (D172) makes the skeleton's input fit by construction. */
 	CHECK(result.log.find("no valid skeleton") == std::string::npos);
@@ -617,7 +613,6 @@ TEST_CASE("a house on the S port edge grows the box", "[junction][projectionedge
 	BlockMapTestTile(terrain, xO, y);
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
 	INFO(result.log);
-	std::cout << "PORTEDGE house flat_height=" << flat.height << " built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << " height=" << result.height << " heights=" << result.heights_tried << "\n" << result.log;
 	REQUIRE(result.layout.has_value());
 	CHECK(result.clean);
 	CHECK(result.height > flat.height);
@@ -651,7 +646,6 @@ TEST_CASE("a slope under the S port edge is ramped", "[junction][projectionedges
 	}
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
 	INFO(result.log);
-	std::cout << "PORTEDGE slope flat_height=" << flat.height << " built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << " height=" << result.height << " heights=" << result.heights_tried << "\n" << result.log;
 	REQUIRE(result.layout.has_value());
 	CHECK(result.clean);
 	/* D178: the stub is a routed port edge, not fixed track that is checked on its own. */
@@ -792,7 +786,6 @@ TEST_CASE("a hill covered by a town is tunnelled", "[junction][projection]")
 	spec.prices.tunnel = [](uint n) { return Money(600 + 300 * n); };
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
 	INFO(result.log);
-	std::cout << "TUNNEL height=" << result.height << " heights=" << result.heights_tried << " built=" << (result.layout.has_value() ? 1 : 0) << " clean=" << (result.clean ? 1 : 0) << "\n" << result.log;
 	REQUIRE(result.layout.has_value());
 	CHECK(result.clean);
 	/* The layout is normalised: its rows are the frame's plus dy, which the doubled main-line bridges (on frame rows W = ml_gap + 1 and b = ml_gap + 2, the layout's horizontal bridges) give. */
@@ -804,7 +797,6 @@ TEST_CASE("a hill covered by a town is tunnelled", "[junction][projection]")
 	dy -= spec.ml_gap + 1;
 	size_t tunnels = 0;
 	for (const JunctionBridge &bridge : result.layout->bridges) {
-		std::cout << "TUNNEL piece " << (bridge.tunnel ? "tunnel" : "bridge") << " " << bridge.start.x << "," << bridge.start.y << " -> " << bridge.end.x << "," << bridge.end.y << " z=" << static_cast<int>(bridge.z) << "\n";
 		const int lo = std::min(bridge.start.y, bridge.end.y) - dy;
 		const int hi = std::max(bridge.start.y, bridge.end.y) - dy;
 		if (bridge.tunnel) {
