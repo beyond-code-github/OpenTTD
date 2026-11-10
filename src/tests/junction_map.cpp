@@ -456,22 +456,35 @@ TEST_CASE("the ridge layout builds through the fake poster", "[junction][project
 	CHECK(poster.posted == expected);
 }
 
+/** The G3c ridge with houses on it: the two flat top rows Blocked across the terrain's width. */
+static JunctionTerrain MakeTownHillTerrain(const JunctionSpec &spec)
+{
+	const int ridge = spec.ml_gap + 2 + 6;
+	JunctionTerrain terrain = MakeRidgeTerrain(spec);
+	for (const int y : {ridge + 1, ridge + 2}) {
+		for (int x = terrain.origin.x; x < terrain.origin.x + terrain.width; x++) BlockMapTestTile(terrain, x, y);
+	}
+	return terrain;
+}
+
+/* [slow]: without a tunnel the T map tries every height up to the terrain's limit (about 3.5 s Release). */
+TEST_CASE("a hill covered by a town is not crossed without a tunnel price", "[junction][projection][slow]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTerrain terrain = MakeTownHillTerrain(spec);
+	/* Neither ramps nor bridges pass the town. */
+	const JunctionTMapResult untunnelled = ConstructJunctionTMap(spec, &terrain, SharedFlatT().height, true);
+	INFO(untunnelled.log);
+	CHECK_FALSE(untunnelled.layout.has_value());
+}
+
 TEST_CASE("a hill covered by a town is tunnelled", "[junction][projection]")
 {
 	JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTMapResult &flat = SharedFlatT();
 	REQUIRE(flat.layout.has_value());
 	const int ridge = spec.ml_gap + 2 + 6;
-	JunctionTerrain terrain = MakeRidgeTerrain(spec);
-	/* Houses on the hill: the two flat top rows are Blocked across the terrain's width. */
-	for (const int y : {ridge + 1, ridge + 2}) {
-		for (int x = terrain.origin.x; x < terrain.origin.x + terrain.width; x++) BlockMapTestTile(terrain, x, y);
-	}
-
-	/* Without a tunnel price the hill cannot be crossed: neither ramps nor bridges pass the town. */
-	const JunctionTMapResult untunnelled = ConstructJunctionTMap(spec, &terrain, flat.height, true);
-	std::cout << "TUNNEL unset built=" << (untunnelled.layout.has_value() ? 1 : 0) << "\n" << untunnelled.log;
-	CHECK_FALSE(untunnelled.layout.has_value());
+	const JunctionTerrain terrain = MakeTownHillTerrain(spec);
 
 	spec.prices.tunnel = [](uint n) { return Money(600 + 300 * n); };
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
