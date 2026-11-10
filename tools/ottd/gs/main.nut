@@ -427,7 +427,15 @@ class JunctionTestGS extends GSController {
 	{
 		if (!this.Need(msg, ["origin_x", "origin_y", "layout"], id)) return;
 		local ox = msg.origin_x, oy = msg.origin_y, lay = msg.layout;
-		if (this.SetRailType() == null) { this.Err(id, "no rail type available"); return; }
+		if ("railtype" in msg) {
+			/* a rail type by name, e.g. "Electrified railway" */
+			local found = false, names = "";
+			foreach (rt, _ in GSRailTypeList()) {
+				names += GSRail.GetName(rt) + "; ";
+				if (GSRail.IsRailTypeAvailable(rt) && GSRail.GetName(rt) == msg.railtype) { GSRail.SetCurrentRailType(rt); found = true; break; }
+			}
+			if (!found) { this.Err(id, "no available rail type named " + msg.railtype + ": " + names); return; }
+		} else if (this.SetRailType() == null) { this.Err(id, "no rail type available"); return; }
 		local built = 0, failed = [];
 		if ("stations" in lay) {
 			foreach (st in lay.stations) {

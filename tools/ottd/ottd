@@ -173,7 +173,10 @@ def cmd_build_layout(a):
         elif ox is None or oy is None:
             raise Fail("give X Y or --find-clear")
         for part in layout_batches(layout):
-            r = gs(adm, {"cmd": "build_layout", "origin_x": ox, "origin_y": oy, "layout": part}, timeout=600)
+            msg = {"cmd": "build_layout", "origin_x": ox, "origin_y": oy, "layout": part}
+            if a.railtype:
+                msg["railtype"] = a.railtype
+            r = gs(adm, msg, timeout=600)
             built += r["built"]
             failed += r["failed"]
     finally:
@@ -211,7 +214,10 @@ def junction_here(x, y, rot=0, mirror=False, ml="L_R", branch="L_R", tl=4, near=
                 timing = " " + line[line.index("snapshot_us="):].strip()
         built, failed = 0, []
         for part in layout_batches(layout):
-            r = gs(adm, {"cmd": "build_layout", "origin_x": ox, "origin_y": oy, "layout": part}, timeout=600)
+            msg = {"cmd": "build_layout", "origin_x": ox, "origin_y": oy, "layout": part}
+            if a.railtype:
+                msg["railtype"] = a.railtype
+            r = gs(adm, msg, timeout=600)
             built += r["built"]
             failed += r["failed"]
     finally:
@@ -243,7 +249,10 @@ def cmd_station_here(a):
         ox, oy = layout["origin"]
         built, failed = 0, []
         for part in layout_batches(layout):
-            r = gs(adm, {"cmd": "build_layout", "origin_x": ox, "origin_y": oy, "layout": part}, timeout=600)
+            msg = {"cmd": "build_layout", "origin_x": ox, "origin_y": oy, "layout": part}
+            if a.railtype:
+                msg["railtype"] = a.railtype
+            r = gs(adm, msg, timeout=600)
             built += r["built"]
             failed += r["failed"]
     finally:
@@ -537,7 +546,7 @@ def main():
     add("rcon", cmd_rcon, ("command", {}))
     add("gs", cmd_gs, ("json", {}))
     add("company", cmd_company, ("--id", i))
-    add("build-layout", cmd_build_layout, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}))
+    add("build-layout", cmd_build_layout, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--railtype", {"default": None}))
     add("junction-check", cmd_junction_check, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 6}), ("--wagons", {"type": int, "default": 3}), ("--ticks", {"type": int, "default": 7400}))
     add("traffic", cmd_traffic, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 8}), ("--wagons", {"type": int, "default": 3}), ("--warmup", {"type": int, "default": 20}), ("--ticks", {"type": int, "default": 20000}), ("--every", {"type": int, "default": 4}), ("--mix", {"default": None}))
     add("junction-here", cmd_junction_here, ("x", i), ("y", i), ("--rot", {"type": int, "default": 0}), ("--mirror", {"action": "store_true"}), ("--ml", {"default": "L_R"}), ("--branch", {"default": "L_R"}), ("--tl", {"type": int, "default": 4}), ("--near", {"action": "store_true"}), ("--instant", {"action": "store_true"}), ("--prio", {"type": int, "default": None}))
