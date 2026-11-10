@@ -1014,8 +1014,8 @@ TEST_CASE("the T map reports the hub offset", "[junction][projection]")
 	CHECK(flat.hub.y == generated.hub.y);
 }
 
-// Known limit (PH1c): the lanes' and merges' positions come from the flat T's skeleton, so a ramp inside the junction's footprint has nowhere to go; needs node windows instead of fixed positions. [slow]: tries every height (no growth stop for rule-caused failures).
-TEST_CASE("a height change inside the junction's W end is not built yet", "[junction][projectionedges][slow]")
+// NW1 (D178, CS2): N->B's failure moves lane B's shift-back west, which widens N->B's goal window past the incline column. [slow]: 0.96 s in Release.
+TEST_CASE("a height change inside the junction's W end moves the shift-back", "[junction][projectionedges][slow]")
 {
 	constexpr int STUB = 2;
 	const JunctionSpec spec = MakeTestJunctionSpec();
@@ -1038,8 +1038,10 @@ TEST_CASE("a height change inside the junction's W end is not built yet", "[junc
 	}
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
 	INFO(result.log);
-	CHECK(!result.layout.has_value());
-	CHECK(result.log.find("N->B failed") != std::string::npos);
+	REQUIRE(result.layout.has_value());
+	CHECK(result.clean);
+	CHECK(result.height == flat.height);
+	CHECK(result.log.find("N->B failed; shift-back moved west by 1") != std::string::npos);
 	CHECK(result.log.find("port approach") == std::string::npos);
 }
 
