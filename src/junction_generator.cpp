@@ -938,10 +938,12 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 	 * @param blocked Tiles no track or bridge may use.
 	 * @param w_row_heads_barred Whether a bridge head on the W row is prohibited (the old router's crossable rule).
 	 * @param prefix Frozen moves from the start (D150), replayed instead of searched: E3 ruling, a span edge between two head nodes is fixed by its nodes (the template's bridge, D80, D149).
+	 * @param cross_b_once Whether the route may cross B's rows (W row and b row, the X_B crossing node, D172) only once (XB1).
 	 * @return The route's raster, or none when it does not route.
 	 */
-	auto route_line = [&](JunctionLayout &layout, const JunctionRouteRequest &base, const std::vector<TileIndexDiffC> &blocked, bool w_row_heads_barred, const std::string &prefix = {}) -> std::optional<JunctionRaster> {
+	auto route_line = [&](JunctionLayout &layout, const JunctionRouteRequest &base, const std::vector<TileIndexDiffC> &blocked, bool w_row_heads_barred, const std::string &prefix = {}, bool cross_b_once = false) -> std::optional<JunctionRaster> {
 		JunctionLineRouteRequest line_request;
+		if (cross_b_once) line_request.cross_once = std::pair<int16_t, int16_t>{static_cast<int16_t>(w_row), static_cast<int16_t>(b_row)};
 		line_request.line = JunctionLineSpec{1, 0, 1};
 		line_request.prefix = prefix;
 		line_request.check_prefix = !prefix.empty(); // E3b (briefs/E3b-checked-prefix.md): a span edge's bridge is checked against the terrain like a searched one.
@@ -1354,7 +1356,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		}
 		request.goals = {goal_s};
 		const std::optional<JunctionRaster> a_to_s = timed_route([&] {
-			return line_router ? route_line(pass1, request, column_fence, true) : RouteFencedAndAdd(pass1, request, column_fence, &route_cache);
+			return line_router ? route_line(pass1, request, column_fence, true, {}, true) : RouteFencedAndAdd(pass1, request, column_fence, &route_cache);
 		});
 		if (!a_to_s.has_value()) {
 			say("A->S failed");
@@ -1403,6 +1405,7 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 		const int x_s = a_to_s->pieces.front().tile.x;
 		const int n_to_a_min_x = std::max(xO, x_s + static_cast<int>(spec.prio_tiles) + JUNCTION_E_PRIO_AFTER_SPLIT + result.e_phase);
 		request.goals = line_router ? PlainRasterPieces(pass1, *a_raster, Trackdir::X_SW, n_to_a_min_x, std::min(frame.width - 3, x_e)) : PlainRowPieces(pass1, 0, Trackdir::X_SW, n_to_a_min_x, frame.width - 3);
+		/* XB1: no cross_once here. N->A crosses B's rows going up and starts below them, and the band's rule (after a piece below the band, none on it) is written for a route that crosses downwards; mirror support is not needed for this step. */
 		const std::optional<JunctionRaster> n_to_a = timed_route([&] {
 			return line_router ? route_line(pass1, request, n_to_a_blocked, true) : RouteAndAdd(pass1, request, &route_cache);
 		});

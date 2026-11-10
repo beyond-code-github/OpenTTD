@@ -608,6 +608,8 @@ TEST_CASE("a field of obstacles grows the box", "[junction][projection]")
 	INFO(result.log);
 	/* D170a: the box grows until the map fits; the crossing window (D172) makes the skeleton's input fit by construction. */
 	CHECK(result.log.find("no valid skeleton") == std::string::npos);
+	/* XB1: A->S crosses B's rows once, so the D172 width check never has a route that crosses them three times to reject. */
+	CHECK(result.log.find("A->S crossing wider than the doubled bridge") == std::string::npos);
 	if (result.layout.has_value()) {
 		CHECK(result.height > flat.height);
 		CHECK(result.clean);

@@ -19,6 +19,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 /** Where a routed piece sits, for negotiated resource costs (DESIGN-O4 revision 3). */
@@ -71,6 +72,7 @@ struct JunctionLineRouteRequest {
 	std::function<Money(const JunctionPiece &piece, int8_t z, JunctionResourceLevel level)> resource_cost; ///< Extra cost per piece of every track, from the negotiated search (DESIGN-O4 revision 3); must be >= 0; unset means 0. z is the track's height (bridge spans: the track's height at the heads; tunnel bores: the tunnel's floor).
 	uint min_units = 0; ///< Track 0 needs at least this many units (JunctionPiece::units, as CheckWaitingRoom counts them) from its first piece, prefix included, before a goal counts (waiting room, bays, prio coverage).
 	std::optional<JunctionMovementRules> rules; ///< When set, the route obeys them (DESIGN-O4 revision 4).
+	std::optional<std::pair<int16_t, int16_t>> cross_once; ///< XB1: rows [first, last] the route may cross only once: after it has a piece beyond last (larger y), no later piece may lie on these rows. A crossing node's band (D172).
 	uint max_expansions = 200000;
 	bool use_heuristic = true; ///< Test seam: false makes the search uninformed (h = 0).
 };
