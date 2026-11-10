@@ -54,3 +54,8 @@ G2a measured (old router, Debug): heights 6..11 all fail on A->S and cost most o
 - ys = H-3 (D115a stub), so H >= g+10.
 Add `int JunctionTMapFirstHeight(const JunctionSpec &spec)` returning `spec.ml_gap + 10`, with this derivation in its comment; NoverS starts its heights there. SoverN has no derived bound in this step: it starts at the old `first` (ml_gap + 5).
 Test: "the first height is a lower bound": for both specs, with a test seam that starts NoverS at `JunctionTMapFirstHeight(spec) - 1` (add `std::optional<int> first_height` as the last parameter of `ConstructJunctionTMap`), that height's log line is a failure (A->S), so the bound skips only heights that cannot build. Report heights_tried and micros before and after.
+
+## Amendment 2: which router (correction to "State")
+G2a did NOT switch the T map to the line router (per success it is 7-8x slower in Debug; the switch is deferred). The T map's edges still use the old router. The line router now supports start/goal on identical existing track, splitting off and merging onto existing track with a curve (commits 8f341d8475, 5a54a047ac).
+- NoverS: unchanged, old router.
+- SoverN: A->S and N->A are routed with `FindJunctionLineRoute`, because only it has `resource_cost` for "only on a bridge span over column xI". Take the `route_line` lambda from `/tmp/claude-1000/-home-pete-OpenTTD/fbe4ce64-b3bc-43e9-8f0f-5ecd841b3986/scratchpad/g2/part2_tmap.patch` (it builds the line request from G1's old request: windows, fences as `blocked`, base settings; the W row is not laid and Head on W-row tiles is prohibitive), and add the column-xI resource_cost on top for A->S. B->S and N->B stay on the old router.
