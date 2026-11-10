@@ -3,7 +3,7 @@
 ## Revision 5: the theory (2026-11-10, D170; supersedes revision 4's core search)
 Engineer: "I thought we were solving the layout in a vector map first and then projecting it on to the terrain later"; agreed: negotiation is the technique that projects the map. Every step is checked against this page, not against the last failure.
 
-**Pipeline.** 1 map layer picks a structure -> 2 projection lays it on the terrain by negotiation -> 3 checker and throughput judge confirm -> on failure, back to 1 for the next structure, cheapest first.
+**Pipeline.** 1 map layer picks the structure -> 2 projection makes it fit the terrain (negotiation, more room, terraforming last) -> 3 checker and throughput judge confirm.
 
 **1. The vector map (topology, no tiles).** A small graph per junction:
 - Nodes: ports; splits; merges; forced crossings with who goes over (D167, main line over first, D156); later the D80 lift (doubled bridge) as a node kind.
@@ -22,7 +22,7 @@ Solved by enumeration best first: candidate structures (crossing choices x order
 - Fixed by the map, not on the terrain: crossing over/under and the prio edges. Nothing is reserved on tiles before routing.
 - Then every edge is routed by the line router (heights, bridges, tunnels, rule state from O4c1), all edges equal, PathFinder prices (D168), a small round limit (measured). Shared track is one edge routed once, so splits and merges are where the map put them, not emergent.
 - Split and merge spots are chosen by the router, not fixed by the map: an edge leaving a split starts from a set of pieces (O4a), every piece of the trunk that the map's constraints allow (inside the node's interval, outside coverages, room for the D113 piece and the waiting room); an edge joining a merge ends on the legal pieces of the trunk downstream. The router takes the cheapest.
-- Negotiation only packs. An edge with no route, or no convergence in K rounds, returns to step 1 with that failure recorded (the structure, or the part of it that failed, is ruled out). Never fixed by tuning prices or adding feedback.
+- Negotiation only packs. The map is MADE to fit (engineer: "it is MADE to fit either by routing or terraforming (last resort)"): when an edge finds no route or negotiation does not converge, projection gives itself room (the box grows a step) and routes again; terraforming is the last resort (with terrain, later). A map that cannot be projected at all is a missing map constraint, fixed in the map layer, not a reason to try another candidate. Never fixed by tuning prices or adding feedback.
 
 **3. Finish and judge.** Existing pipeline: crop, normalise, signal pass, full checker (safety net), prio timing gate and throughput (D119), score: compactness then cost (D153).
 

@@ -108,3 +108,10 @@ std::vector<JunctionTMap> JunctionTMaps(const JunctionSpec &spec, const std::vec
 - State: `git status --porcelain` and `git log -1`
 
 When you have reported, stop.
+
+## Amendment 1 (engineer ruling D170a, sent while running)
+Replaces section 4's candidate loop and the first stop condition. The map is MADE to fit, never rejected:
+- `BuildOrganicT` projects the FIRST map of `JunctionTMaps` only (bound order; ties main-line-over first).
+- When its negotiation fails (no route, or not converged in max_rounds) or the finished layout is not rule-clean, grow the box and project the same map again: width + 4 and height + 2 per step (ports recomputed with `MakeOrganicTPorts` for the new size, the map's window ranges recomputed by calling `JunctionTMaps` on the new box and taking the map with the same `over` and the same chunk indices), up to 4 steps. Record each attempt in `cases` (box, outcome).
+- If it still fails after 4 steps: stop, commit nothing, report the `cases` blocks (that is a missing map constraint for the orchestrator).
+- `JunctionTMaps` and test 4 stay as written. The 24-candidate cap is gone.
