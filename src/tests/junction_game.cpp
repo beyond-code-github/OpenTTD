@@ -414,7 +414,7 @@ TEST_CASE("GenerateJunctionNear: a clear spot gives offset 0 and a rule-clean la
 	CHECK(violations.empty());
 }
 
-TEST_CASE("GenerateJunctionNear: a blocked spot gives a nearby fit", "[junction][terrain][.slow]")
+TEST_CASE("GenerateJunctionNear: a blocked spot gives a nearby fit", "[junction][terrain][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	JunctionTerrain terrain = MakeNearTestTerrain();
@@ -424,6 +424,7 @@ TEST_CASE("GenerateJunctionNear: a blocked spot gives a nearby fit", "[junction]
 	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
 	REQUIRE(near.result.layout.has_value());
 	CHECK((near.offset.x != 0 || near.offset.y != 0));
+	WARN("blocked spot: offset " << near.offset.x << "," << near.offset.y);
 }
 
 TEST_CASE("GenerateJunctionNear: cancel stops the search", "[junction][terrain]")
@@ -649,9 +650,9 @@ TEST_CASE("GenerateJunctionNear reports a blocked port", "[junction][tmapnear]")
 	REQUIRE(flat.layout.has_value());
 	constexpr int STUB = 2;
 	const int x_w = MakeJunctionFrame(spec).hub_x - flat.hub.x;
-	JunctionTerrain terrain = MakeNearTestTerrain();
-	/* The west port's approach at every near offset's position. */
-	SetNearTestRect(terrain, x_w - 4, x_w + STUB + 4, -4, 4, JunctionTileClass::Blocked);
+	JunctionTerrain terrain = MakeNearTestTerrain(8);
+	/* The west port's approach at every near offset's position (rings out to 8 tiles, D195). */
+	SetNearTestRect(terrain, x_w - 8, x_w + STUB + 8, -8, 8, JunctionTileClass::Blocked);
 	const std::atomic<bool> cancel{false};
 	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
 	CHECK(near.result.error == JunctionGenerateError::PortBlocked);
