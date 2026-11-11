@@ -36,7 +36,7 @@
 
 extern RailTypeInfo _railtypes[RAILTYPE_END];
 
-TEST_CASE("MakeJunctionSpec: reads settings and the rail type")
+TEST_CASE("MakeJunctionSpec: reads settings and the rail type", "[junction][game]")
 {
 	const uint8_t old_sd = _settings_client.gui.drag_signals_density;
 	const uint8_t old_signal = _settings_client.gui.junction_signal_type;
@@ -89,7 +89,7 @@ TEST_CASE("MakeJunctionSpec caps the reference speed at the picked train", "[jun
 	_railtypes[RAILTYPE_RAIL].max_speed = old_max_speed;
 }
 
-TEST_CASE("MakeJunctionSpec: bridge closures are precomputed up to the game's max bridge length")
+TEST_CASE("MakeJunctionSpec: bridge closures are precomputed up to the game's max bridge length", "[junction][game]")
 {
 	const BridgeSpec old_bridge = _bridge[0];
 	const uint16_t old_max_speed = _railtypes[RAILTYPE_RAIL].max_speed;
@@ -124,7 +124,7 @@ TEST_CASE("MakeJunctionSpec: bridge closures are precomputed up to the game's ma
 	_settings_game.construction.max_bridge_length = old_max_length;
 }
 
-TEST_CASE("MakeJunctionSpec: a bridge type's own max length bounds the span")
+TEST_CASE("MakeJunctionSpec: a bridge type's own max length bounds the span", "[junction][game]")
 {
 	std::array<BridgeSpec, MAX_BRIDGES> old_bridges;
 	std::copy(std::begin(_bridge), std::end(_bridge), old_bridges.begin());
@@ -180,7 +180,7 @@ TEST_CASE("MakeJunctionSpec: the tunnel price and length come from the game", "[
 	_settings_game.construction.max_tunnel_length = old_max_tunnel;
 }
 
-TEST_CASE("MakeJunctionSpec: a bridge slower than the design speed is still usable (D94)")
+TEST_CASE("MakeJunctionSpec: a bridge slower than the design speed is still usable (D94)", "[junction][game]")
 {
 	const BridgeSpec old_bridge = _bridge[0];
 	const uint16_t old_max_speed = _railtypes[RAILTYPE_RAIL].max_speed;
@@ -207,7 +207,7 @@ TEST_CASE("MakeJunctionSpec: a bridge slower than the design speed is still usab
 	_settings_game.construction.max_bridge_length = old_max_length;
 }
 
-TEST_CASE("GameJunctionPricing: flat tile reports its height")
+TEST_CASE("GameJunctionPricing: flat tile reports its height", "[junction][game]")
 {
 	Map::Allocate(64, 64);
 	GameJunctionPricing pricing(RAILTYPE_RAIL);
@@ -215,7 +215,7 @@ TEST_CASE("GameJunctionPricing: flat tile reports its height")
 	CHECK(pricing.GetTileSlope(TileXY(10, 10))->z_min == 0);
 }
 
-TEST_CASE("GameJunctionPricing: raised corner is not flat")
+TEST_CASE("GameJunctionPricing: raised corner is not flat", "[junction][game]")
 {
 	Map::Allocate(64, 64);
 	GameJunctionPricing pricing(RAILTYPE_RAIL);
@@ -223,7 +223,7 @@ TEST_CASE("GameJunctionPricing: raised corner is not flat")
 	CHECK(pricing.GetTileSlope(TileXY(10, 10))->z_min != pricing.GetTileSlope(TileXY(10, 10))->z_max);
 }
 
-TEST_CASE("GameJunctionPricing: raised flat tile reports its height")
+TEST_CASE("GameJunctionPricing: raised flat tile reports its height", "[junction][game]")
 {
 	Map::Allocate(64, 64);
 	GameJunctionPricing pricing(RAILTYPE_RAIL);
@@ -235,14 +235,14 @@ TEST_CASE("GameJunctionPricing: raised flat tile reports its height")
 	CHECK(pricing.GetTileSlope(TileXY(20, 20))->z_max == 2);
 }
 
-TEST_CASE("GameJunctionPricing: off-map tile has no height")
+TEST_CASE("GameJunctionPricing: off-map tile has no height", "[junction][game]")
 {
 	Map::Allocate(64, 64);
 	GameJunctionPricing pricing(RAILTYPE_RAIL);
 	CHECK(pricing.GetTileSlope(INVALID_TILE) == std::nullopt);
 }
 
-TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working frame")
+TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working frame", "[junction][game]")
 {
 	const JunctionFrame frame{};
 	const TileIndex anchor = TileXY(64, 64);

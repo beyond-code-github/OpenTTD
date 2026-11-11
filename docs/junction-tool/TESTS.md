@@ -15,6 +15,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[projection]` | 13 s (information only) | measured in Release, 5 s | 2.7 s (PH1c split: the hub's edge tests moved to `[projectionedges]`; GS1b: the town-hill test lost `[slow]`, 0.02 s) |
 | `[relaxed]` | 0.41 s | 5 s | 0.06 s (GS1b: JunctionRelaxedReachable) |
 | `[projectionedges]` | not measured | measured in Release, 5 s | 2.6 s (G4's unbuildable-hub test, E1, E2, E3, E3b, PH1; the PH1 W-end limit test is `[slow]`, 13 s) |
+| `[game]` | 0.012 s (MakeJunctionSpec, GameJunctionPricing, MakeJunctionTerrain; 10 tests, untagged until 2026-11-12) | 5 s | 0.009 s |
 | `[tunnelprice]` | 0.012 s (BL1) | 5 s | 0.009 s (BL1) |
 | `[tmapnear]` | 0.8 s | 5 s | 0.12 s (G1a; ridge BENCH 43 ms) |
 | `[curvespeed]` | 0.01 s (CS3) | 5 s | 0.01 s |
