@@ -1,3 +1,9 @@
+## RESUME HERE (2026-11-12 day)
+- G1b(ii) split (DESIGN-G1 §7-§8): (ii-a) track graph MERGED (4017e1d46a: split/merge trees, legs, crossings per edge by largest bundle; T 3 crossings, LL_RR 9 for 16 path pairs); (ii-b) track order (sweep from the S side: node levels, row orders, crossings along each edge) RUNNING in .claude/nodes from b313e8dc86; (ii-c) rows inside the box (D203 spread, prio opposite joiner D75/D87, doubling copies), bridge grouping (D203), turns: TO DESIGN.
+- Finding (accepted): ii-a added a file-local helper struct JunctionTreeBuilder in junction_topology.cpp (not named in the brief).
+- Then: validator gate, G1c reference, G1d checker ports, LL_RR signal pass, G1e; RS1; TF1.
+- Waiting on Pete: line painter LP11; stations six-point check; in-game crossover check.
+
 ## RESUME HERE (2026-11-12 morning)
 - State: all merged on feature/junction-tool; .claude/nodes free (on wt-g1b1, builds present); no agents running.
 - Done tonight: HN1 (Height fault names part + tiles), G0 (DiffJunctionNodeTemplates; traced T fixed point), G1a (template builds from JunctionNodeInput, no layout), G1b(i) (junction_topology.*: topology type, T + LL_RR/L_R data, R1 lane expansion, R4 chord crossings). Gate 342+4 green; ORACLE accepted 90 heights=0 fits=0.
