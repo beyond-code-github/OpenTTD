@@ -1,6 +1,6 @@
 ## RESUME HERE (2026-11-12 day)
 - G1b(ii) DONE (DESIGN-G1 §7-§9): (ii-a) track graph 4017e1d46a; (ii-b) track order by a sweep from the S side 1eca9deb74; (ii-c) side tracks, row stack, bridges, turns c51d36bf2e. Both topologies pass hand-made expectations; the T's stack = traced rows 0-5. Gate 355 green.
-- NEXT: G1c design (reference: structure -> constraints over node classes -> least solution -> render -> rule builder; validator gate).
+- G1c: approach (b') chosen from RECON-G1c-seed (seed from structure, template, least solution Lo with anchor freed, validator). Draft DESIGN-G1 §10 (path programs) written; Fable reviewing -> FABLE-G1c.md. Then brief G1c(i) programs. Code fixes needed before Lo: free the anchor pin (junction_nodes.cpp:706), D80 equal copies as a template rule.
 - Findings (accepted): ii-c recomputes the row-of-slot rule inside StructureJunctionTrackGraph (duplicate of ii-b; expose it once when G1c needs rows). ii-a added a file-local helper struct JunctionTreeBuilder in junction_topology.cpp (not named in the brief).
 - Then: validator gate, G1c reference, G1d checker ports, LL_RR signal pass, G1e; RS1; TF1.
 - Waiting on Pete: line painter LP11; stations six-point check; in-game crossover check.
