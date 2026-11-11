@@ -1,0 +1,289 @@
+diff --git a/src/junction_nodes.cpp b/src/junction_nodes.cpp
+index ac5d05a47e..3b8eb5276c 100644
+--- a/src/junction_nodes.cpp
++++ b/src/junction_nodes.cpp
+@@ -953,7 +953,7 @@ bool JunctionNodeTrackFits(const JunctionFacts &facts, int x, int y, TrackBits b
+ 	return bits.Any() && facts.Half(x, y);
+ }
+ 
+-JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset)
++JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset, std::span<const JunctionNodeYPin> pins)
+ {
+ 	JunctionNodeSolve result;
+ 	using Kind = JunctionNodeFailure::Kind;
+@@ -993,6 +993,15 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
+ 		}
+ 	};
+ 
++	/* The pins of the search's row-move repair (YR1). */
++	for (const JunctionNodeYPin &pin : pins) {
++		if (!positions.RestrictRange(pin.ycls, pin.lo, pin.hi)) {
++			result.failure = JunctionNodeFailure{Kind::Template};
++			result.values.clear();
++			return result;
++		}
++	}
++
+ 	/* 2b. The Y variables: snapped to the flat rows, no facts. */
+ 	for (size_t c = classes; c < variables; c++) {
+ 		if (!snap(c)) {
+@@ -1201,7 +1210,7 @@ static bool NodeHeightStep(const JunctionTerrain &terrain, int x, int y, Trackdi
+ 	return terrain.UsableAt(x, y, z);
+ }
+ 
+-bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, std::string *why)
++bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, std::string *why, TileIndexDiffC *bad_tile)
+ {
+ 	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
+ 	std::map<std::tuple<int, int, Track>, int8_t> levels; ///< Per (working tile, track), the lower height of the piece.
+@@ -1227,7 +1236,10 @@ bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spe
+ 			}
+ 			if (piece.on_bridge) continue;
+ 			int8_t new_z = z;
+-			if (!NodeHeightStep(terrain, x, y, piece.trackdir, z, new_z)) return fail(fmt::format("not usable at height {}", z));
++			if (!NodeHeightStep(terrain, x, y, piece.trackdir, z, new_z)) {
++				if (bad_tile != nullptr) *bad_tile = {static_cast<int16_t>(x), static_cast<int16_t>(y)};
++				return fail(fmt::format("not usable at height {}", z));
++			}
+ 			const auto key = std::make_tuple(x, y, TrackdirToTrack(piece.trackdir));
+ 			const int8_t level = std::min(z, new_z);
+ 			const auto [it, inserted] = levels.emplace(key, level);
+@@ -1335,11 +1347,40 @@ std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout,
+ 	return fail(reason.empty() ? "link too short for a detour" : "no buildable detour: " + reason);
+ }
+ 
++/** The Y class of the piece a layout tile (template layout frame) holds: a piece, a free diagonal's interior or an X-free link's interior; nullopt when none (a Y-free link's interior is a straight Y piece). */
++static std::optional<uint16_t> NodeYClassAt(const JunctionNodeTemplate &tpl, const std::vector<int> &values, int x, int y)
++{
++	auto shift = [&](uint16_t cls) { return values[cls] - tpl.flat[cls]; };
++	for (const JunctionNodePiece &piece : tpl.pieces) {
++		if (piece.on_bridge) continue;
++		if (piece.tile.x + shift(piece.cls) == x && piece.tile.y + shift(piece.ycls) == y) return piece.ycls;
++	}
++	for (const JunctionNodeDiagonal &diag : tpl.diagonals) {
++		const JunctionNodePoint &from = tpl.points[tpl.links[diag.link].from];
++		const JunctionRaster raster = NodeDiagonalRaster(tpl, diag, diag.halves + 2 * NodeDiagonalSteps(tpl, diag, values));
++		for (size_t i = 1; i + 1 < raster.pieces.size(); i++) {
++			if (raster.pieces[i].tile.x + shift(from.cls) == x && raster.pieces[i].tile.y + shift(from.ycls) == y) return from.ycls;
++		}
++	}
++	for (const JunctionNodeLink &link : tpl.links) {
++		if (!link.free || link.diagonal || link.axis != Axis::X) continue;
++		const JunctionNodePoint &from = tpl.points[link.from];
++		const JunctionNodePoint &to = tpl.points[link.to];
++		if (from.tile.y + shift(from.ycls) != y) continue;
++		const int x_from = from.tile.x + shift(from.cls);
++		const int x_to = to.tile.x + shift(to.cls);
++		if (x > std::min(x_from, x_to) && x < std::max(x_from, x_to)) return from.ycls;
++	}
++	return std::nullopt;
++}
++
+ /** A state of the structure search: a layout (the flat T with detours) and its working offset (working = layout + offset). */
+ struct NodeState {
+ 	JunctionLayout layout;
+ 	TileIndexDiffC offset;
+ 	int detours;
++	std::vector<JunctionNodeYPin> pins; ///< Pins on the template of this layout.
++	int moves = 0; ///< Row moves made by the YR1 repair.
+ };
+ 
+ /** The sorted track list of a layout, as the search's visited key. */
+@@ -1367,8 +1408,14 @@ JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const Junctio
+ {
+ 	JunctionNodeSearch search;
+ 	const JunctionFacts facts(terrain);
+-	std::multimap<int, NodeState> queue; ///< By detour count; equal counts in insertion order.
+-	std::set<std::vector<std::tuple<int, int, uint>>> visited;
++	std::multimap<int, NodeState> queue; ///< By detours plus moves; equal counts in insertion order.
++	std::set<std::pair<std::vector<std::tuple<int, int, uint>>, std::vector<std::tuple<int, int, int>>>> visited; ///< The layout key and the sorted pins.
++	auto pin_key = [](const std::vector<JunctionNodeYPin> &pins) {
++		std::vector<std::tuple<int, int, int>> key;
++		for (const JunctionNodeYPin &pin : pins) key.emplace_back(pin.ycls, pin.lo, pin.hi);
++		std::ranges::sort(key);
++		return key;
++	};
+ 
+ 	/* A state is track-only: the finished flat layout's signals and prio rows are not path pieces of its template. */
+ 	const JunctionNodeTemplate flat_tpl = BuildJunctionNodeTemplate(flat, spec);
+@@ -1383,8 +1430,8 @@ JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const Junctio
+ 		return search;
+ 	}
+ 	const TileIndexDiffC start_offset = {static_cast<int16_t>(offset.x - start_shift->x), static_cast<int16_t>(offset.y - start_shift->y)};
+-	visited.insert(NodeStateKey(start));
+-	queue.emplace(0, NodeState{std::move(start), start_offset, 0});
++	visited.insert({NodeStateKey(start), {}});
++	queue.emplace(0, NodeState{std::move(start), start_offset, 0, {}, 0});
+ 
+ 	while (!queue.empty() && search.states < max_states) {
+ 		const NodeState state = std::move(queue.begin()->second);
+@@ -1392,12 +1439,12 @@ JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const Junctio
+ 
+ 		const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(state.layout, spec);
+ 		if (!tpl.error.empty()) {
+-			search.log += fmt::format("state {} detours {}: template error: {}\n", search.states + 1, state.detours, tpl.error);
++			search.log += fmt::format("state {} detours {} moves {}: template error: {}\n", search.states + 1, state.detours, state.moves, tpl.error);
+ 			continue;
+ 		}
+-		const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, state.offset);
++		const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, state.offset, state.pins);
+ 		search.states++;
+-		const std::string head = fmt::format("state {} detours {}: ", search.states, state.detours);
++		const std::string head = fmt::format("state {} detours {} moves {}: ", search.states, state.detours, state.moves);
+ 
+ 		if (solve.layout.has_value()) {
+ 			const JunctionLayout &layout = *solve.layout;
+@@ -1411,8 +1458,24 @@ JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const Junctio
+ 			const TileIndexDiffC layout_offset = {static_cast<int16_t>(state.offset.x - shift->x), static_cast<int16_t>(state.offset.y - shift->y)};
+ 
+ 			std::string why;
+-			if (!JunctionNodeHeightsOk(layout, spec, terrain, layout_offset, &why)) {
++			TileIndexDiffC bad{INT16_MIN, INT16_MIN};
++			if (!JunctionNodeHeightsOk(layout, spec, terrain, layout_offset, &why, &bad)) {
+ 				search.log += head + "heights: " + why + "\n";
++				/* The row-move repair (YR1): working = template frame + state.offset (the anchor shift cancels). */
++				if (bad.x == INT16_MIN) continue;
++				const TileIndexDiffC t = {static_cast<int16_t>(bad.x - state.offset.x), static_cast<int16_t>(bad.y - state.offset.y)};
++				const std::optional<uint16_t> c = NodeYClassAt(tpl, solve.values, t.x, t.y);
++				if (!c.has_value() || *c == tpl.anchor_y) continue;
++				const int v = solve.values[*c];
++				for (const int side : {-1, 1}) {
++					std::vector<JunctionNodeYPin> pins = state.pins;
++					const JunctionNodeYPin pin{*c, side > 0 ? v + 1 : -1024, side > 0 ? 1024 : v - 1};
++					const auto existing = std::ranges::find(pins, *c, &JunctionNodeYPin::ycls);
++					if (existing != pins.end()) *existing = pin; else pins.push_back(pin);
++					search.log += fmt::format("  move ycls {} side {}\n", *c, side);
++					if (!visited.insert({NodeStateKey(state.layout), pin_key(pins)}).second) continue;
++					queue.emplace(state.detours + state.moves + 1, NodeState{state.layout, state.offset, state.detours, std::move(pins), state.moves + 1});
++				}
+ 				continue;
+ 			}
+ 			bool fits = true;
+@@ -1454,9 +1517,9 @@ JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const Junctio
+ 				}
+ 			}
+ 			NormaliseJunctionLayout(*child);
+-			if (!visited.insert(NodeStateKey(*child)).second) continue;
++			if (!visited.insert({NodeStateKey(*child), {}}).second) continue;
+ 			const TileIndexDiffC child_offset = {static_cast<int16_t>(state.offset.x + min_x), static_cast<int16_t>(state.offset.y + min_y)};
+-			queue.emplace(state.detours + 1, NodeState{std::move(*child), child_offset, state.detours + 1});
++			queue.emplace(state.detours + 1 + state.moves, NodeState{std::move(*child), child_offset, state.detours + 1, {}, state.moves});
+ 		}
+ 	}
+ 	return search;
+diff --git a/src/junction_nodes.h b/src/junction_nodes.h
+index 7a17801ca0..1ab2b67d18 100644
+--- a/src/junction_nodes.h
++++ b/src/junction_nodes.h
+@@ -17,6 +17,7 @@
+ #include "junction_rules.h"
+ 
+ #include <optional>
++#include <span>
+ #include <string>
+ #include <utility>
+ #include <vector>
+@@ -153,8 +154,14 @@ struct JunctionNodeSolve {
+ 	std::vector<int> values; ///< Per variable (X classes, then Y classes), when solved.
+ 	std::optional<JunctionNodeFailure> failure;
+ };
+-/** Solve the template's positions on the facts (DESIGN-N3 section 2 and the facts of section 4) and render; offset maps layout to working coordinates. */
+-JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset);
++/** A Y class of the state's template held in [lo, hi] rows (layout frame of the template); the search's row-move repair (YR1). */
++struct JunctionNodeYPin {
++	uint16_t ycls;
++	int lo;
++	int hi;
++};
++/** Solve the template's positions on the facts (DESIGN-N3 section 2 and the facts of section 4) and render; offset maps layout to working coordinates; pins restrict Y classes before the Y snap. */
++JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset, std::span<const JunctionNodeYPin> pins = {});
+ 
+ /**
+  * Whether the heights of a layout's traced paths connect on the terrain, with the line router's rules (HeightStep/RampStep): along each path the track has a height z;
+@@ -163,8 +170,9 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
+  * Pieces shared by several paths must get the same z on each.
+  * @param offset Maps layout tiles to the terrain's coordinates (working = layout + offset).
+  * @param why When set and the result is false, receives "path <i> piece <j> at x,y: <reason>".
++ * @param bad_tile When set and a piece fails, receives that piece's working tile (the x, y in why).
+  */
+-bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, std::string *why);
++bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, std::string *why, TileIndexDiffC *bad_tile = nullptr);
+ 
+ /**
+  * Replace the interior of a free link of a state layout by a detour around one column (DESIGN-N3 §4).
+diff --git a/src/tests/junction_game.cpp b/src/tests/junction_game.cpp
+index 35cd21b82f..eb0f443ce7 100644
+--- a/src/tests/junction_game.cpp
++++ b/src/tests/junction_game.cpp
+@@ -529,7 +529,8 @@ TEST_CASE("GenerateJunctionNear builds the projected T map over a ridge", "[junc
+ 	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
+ 	const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+ 	std::cout << "BENCH tmapnear GenerateJunctionNear micros=" << micros << "\n";
+-	WARN("ridge: offset " << near.offset.x << "," << near.offset.y);
++	CHECK(near.offset.x == 0);
++	CHECK(near.offset.y == 0);
+ 	CHECK(near.result.error == JunctionGenerateError::None);
+ 	REQUIRE(near.result.layout.has_value());
+ 	const std::vector<RuleViolation> violations = CheckJunctionRules(*near.result.layout, spec);
+diff --git a/src/tests/junction_nodes.cpp b/src/tests/junction_nodes.cpp
+index 6a0c28c55c..3fcb1abb84 100644
+--- a/src/tests/junction_nodes.cpp
++++ b/src/tests/junction_nodes.cpp
+@@ -283,6 +283,31 @@ TEST_CASE("the node solve builds the flat T on flat terrain", "[junction][nodes]
+ 	INFO(why);
+ }
+ 
++TEST_CASE("a Y pin moves its class a row", "[junction][nodes]")
++{
++	const JunctionSpec spec = MakeTestJunctionSpec();
++	REQUIRE(FlatT().layout.has_value());
++	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
++	REQUIRE(tpl.error.empty());
++	const JunctionTerrain terrain = MakeMapTestTerrain(spec);
++	const JunctionFacts facts(terrain);
++
++	std::optional<uint16_t> pinned;
++	for (const JunctionNodeLink &link : tpl.links) {
++		if (link.axis != Axis::Y || !link.free) continue;
++		for (const uint32_t point : {link.from, link.to}) {
++			const uint16_t c = tpl.points[point].ycls;
++			if (c >= tpl.x_classes && c != tpl.anchor_y && !pinned.has_value()) pinned = c;
++		}
++	}
++	REQUIRE(pinned.has_value());
++	const uint16_t c = *pinned;
++	const JunctionNodeYPin pin{c, tpl.flat[c] + 1, tpl.flat[c] + 1};
++	const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, FlatToWorking(spec), std::span<const JunctionNodeYPin>(&pin, 1));
++	REQUIRE(solve.layout.has_value());
++	CHECK(solve.values[c] == tpl.flat[c] + 1);
++}
++
+ TEST_CASE("the node solve moves the W end off an incline", "[junction][nodes]")
+ {
+ 	constexpr int STUB = 2;
+@@ -474,6 +499,25 @@ TEST_CASE("heights: a half piece on a foundation beside a ramp does not connect"
+ 	INFO(why);
+ }
+ 
++TEST_CASE("a heights failure names its tile", "[junction][nodes]")
++{
++	const JunctionSpec spec = MakeTestJunctionSpec();
++	JunctionLayout layout;
++	AddRasterToLayout(layout, RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, "FFFFF"}));
++	AddRasterToLayout(layout, RasterizeJunctionRoute({{5, 1}, Trackdir::X_NE, "FFFFF"}));
++	NormaliseJunctionLayout(layout);
++
++	JunctionTerrain terrain = MakeStripTerrain();
++	SetStripColumn(terrain, 2, 0, 1, DiagDirection::SW);
++	std::string why;
++	TileIndexDiffC bad{-1, -1};
++	CHECK_FALSE(JunctionNodeHeightsOk(layout, spec, terrain, {0, 0}, &why, &bad));
++	INFO(why);
++	CHECK(why.find("piece 3 at 3,0") != std::string::npos);
++	CHECK(bad.x == 3);
++	CHECK(bad.y == 0);
++}
++
+ TEST_CASE("heights: the line router's route across an incline is accepted", "[junction][nodes]")
+ {
+ 	const JunctionSpec spec = MakeTestJunctionSpec();
