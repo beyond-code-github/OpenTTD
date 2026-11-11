@@ -333,10 +333,12 @@ void NodeBuilder::AddPathDiffs()
 
 	/* The switch piece of every event, and whether a merge is a prio merge, as ExtractJunctionChains reads them. */
 	std::vector<std::vector<bool>> prio(path_count);
+	std::vector<std::vector<int>> joiner_rows(path_count); // Per event, the row of the joiner's piece before a prio merge minus the merge's row.
 	for (size_t pi = 0; pi < path_count; pi++) {
 		const JunctionPath &path = this->ctx.paths[pi];
 		for (const SwitchEvent &event : this->work[pi].events) {
 			bool is_prio = false;
+			int joiner_row = 0;
 			const JunctionPiece &merge_piece = path.pieces[event.second];
 			if (!event.first && IsMainLinePath(path)) {
 				for (size_t qi = 0; qi < path_count && !is_prio; qi++) {
@@ -345,11 +347,13 @@ void NodeBuilder::AddPathDiffs()
 						const JunctionPiece &piece = this->ctx.paths[qi].pieces[other.second];
 						if (other.first || piece.tile.x != merge_piece.tile.x || piece.tile.y != merge_piece.tile.y || piece.trackdir == merge_piece.trackdir) continue;
 						is_prio = this->ctx.paths[qi].from != path.from || this->ctx.paths[qi].to != path.to;
+						if (other.second > 0) joiner_row = this->ctx.paths[qi].pieces[other.second - 1].tile.y - merge_piece.tile.y;
 						break;
 					}
 				}
 			}
 			prio[pi].push_back(is_prio);
+			joiner_rows[pi].push_back(joiner_row);
 		}
 	}
 
@@ -433,6 +437,11 @@ void NodeBuilder::AddPathDiffs()
 		for (size_t e = 0; e < w.events.size(); e++) {
 			if (!prio[pi][e]) continue;
 			const size_t mi = w.events[e].second;
+			/* The reserved prio row (§8), opposite the joiner; none when the joiner's piece is on the merge's row. */
+			const uint32_t merge = w.governing[mi];
+			if (joiner_rows[pi][e] != 0 && std::ranges::none_of(this->tpl.prio_rows, [&](const JunctionNodePrioRow &row) { return row.merge == merge; })) {
+				this->tpl.prio_rows.push_back({merge, static_cast<int8_t>(joiner_rows[pi][e] > 0 ? -1 : 1), static_cast<int8_t>(d), static_cast<uint8_t>(this->spec.prio_tiles)});
+			}
 			for (const size_t ci : curve_pieces) {
 				if (w.start[ci] < w.start[mi]) add_gap(w.governing[ci], w.start[ci], w.governing[mi], w.start[mi], cover);
 			}
@@ -809,6 +818,15 @@ bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions
 			const End x{p.cls, p.tile.x - tpl.flat[p.cls]};
 			for (int k = 1; k <= sign * (y_q - y_p) - 1; k++) add(y_p + sign * k, k <= flat_count ? p.tile.y + sign * k : NO_FLAT_ROW, x, x, Track::Y);
 		}
+	}
+
+	/* The prio rows (§8): the merge's tile and span tiles upstream, on the row beside the merge's. */
+	owners.clear();
+	for (const JunctionNodePrioRow &prio : tpl.prio_rows) {
+		const JunctionNodePoint &merge = tpl.points[prio.merge];
+		const End at_merge{merge.cls, merge.tile.x - tpl.flat[merge.cls]};
+		const End upstream{merge.cls, merge.tile.x - prio.span * prio.dir - tpl.flat[merge.cls]};
+		add(row_of(merge.ycls, merge.tile.y) + prio.side, merge.tile.y + prio.side, prio.dir > 0 ? upstream : at_merge, prio.dir > 0 ? at_merge : upstream, Track::X);
 	}
 
 	for (auto &[current_row, elements] : rows) {

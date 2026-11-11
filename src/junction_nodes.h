@@ -36,6 +36,13 @@ struct JunctionNodeLink {
 	Axis axis; ///< A free link's axis (Axis::X for rigid links).
 	bool diagonal; ///< A free diagonal (DESIGN-N3 §6); then `free` is true and `axis` is Axis::X.
 };
+/** A prio merge's reserved row (DESIGN-N3 §8). */
+struct JunctionNodePrioRow {
+	uint32_t merge; ///< The merge point on the main-line path.
+	int8_t side; ///< +1 or -1: the row of the prio relative to the merge's row (opposite the joiner).
+	int8_t dir; ///< The main line's x direction at the merge.
+	uint8_t span; ///< Reserved tiles upstream of the merge: prio_tiles, the steps the signal pass lays in the flat T (x_M - p .. x_M).
+};
 /** A free diagonal: its length changes by two half pieces per map step (DESIGN-N3 §6). */
 struct JunctionNodeDiagonal {
 	uint32_t link; ///< Index into links.
@@ -97,6 +104,7 @@ struct JunctionNodeTemplate {
 	std::vector<JunctionNodeDiagonal> diagonals; ///< The free diagonal links.
 	std::vector<JunctionNodeLateGap> late_gaps; ///< The unit rules that need the Y values.
 	std::vector<JunctionNodeLateCrossing> late_crossings; ///< The X-axis bridges over free diagonals.
+	std::vector<JunctionNodePrioRow> prio_rows; ///< One per prio merge whose joiner is off the merge's row.
 	std::vector<int> flat; ///< Per variable, its flat value: X classes (the flat x of the class's first point, lowest point index) then Y classes (the flat y of the class's first point).
 	uint16_t x_classes; ///< The number of X classes; the Y classes follow.
 	uint16_t anchor; ///< DESIGN-N3 §2 rule 5: the X class of the last point of EIn->SOut; UINT16_MAX (no constraint, no error) when the layout has no EIn->SOut path.
