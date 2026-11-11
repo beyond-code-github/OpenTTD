@@ -19,6 +19,8 @@
 #include "track_func.h"
 
 #include <algorithm>
+#include <climits>
+#include <cstdlib>
 #include <map>
 #include <set>
 #include <tuple>
@@ -643,6 +645,131 @@ bool AddJunctionNodeLateConstraints(const JunctionNodeTemplate &tpl, JunctionPos
 	return true;
 }
 
+bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions &positions, const std::vector<int> &values, int &row)
+{
+	constexpr int NO_FLAT_ROW = INT_MIN;
+	/** One end of an element: x = values[var] + offset. */
+	struct End {
+		uint16_t var;
+		int offset;
+	};
+	/** A run of tiles on one current row, with its place in the flat layout. */
+	struct Element {
+		int flat_row; ///< NO_FLAT_ROW when the element has no flat tile.
+		End lo;
+		End hi;
+		int flat_lo;
+		int flat_hi;
+		TrackBits bits; ///< The track bits of its tiles (a group: the union).
+		std::vector<uint32_t> owners; ///< The free links the element belongs to: its own link for a raster or run tile, the links it is an end point of for a piece; empty for bridge heads (a group: the union).
+	};
+	std::map<int, std::vector<Element>> rows;
+	std::vector<uint32_t> owners;
+	auto add = [&](int current_row, int flat_row, End lo, End hi, Track track) {
+		rows[current_row].push_back({flat_row, lo, hi, tpl.flat[lo.var] + lo.offset, tpl.flat[hi.var] + hi.offset, TrackBits{track}, owners});
+	};
+	auto row_of = [&](uint16_t ycls, int y) { return values[ycls] + y - tpl.flat[ycls]; };
+	auto at_least = [&](const End &a, const End &b, int k) {
+		return NodeAddAtLeast(tpl, positions, a.var, a.offset + tpl.flat[a.var], b.var, b.offset + tpl.flat[b.var], k);
+	};
+
+	for (const JunctionNodePiece &piece : tpl.pieces) {
+		if (piece.on_bridge) continue;
+		const End x{piece.cls, piece.tile.x - tpl.flat[piece.cls]};
+		owners.clear();
+		for (uint32_t i = 0; i < tpl.links.size(); i++) {
+			if (!tpl.links[i].free) continue;
+			for (const uint32_t end : {tpl.links[i].from, tpl.links[i].to}) {
+				const JunctionNodePoint &point = tpl.points[end];
+				if (point.tile.x == piece.tile.x && point.tile.y == piece.tile.y) owners.push_back(i);
+			}
+		}
+		add(row_of(piece.ycls, piece.tile.y), piece.tile.y, x, x, piece.track);
+	}
+	owners.clear();
+	for (const JunctionNodeBridge &node_bridge : tpl.bridges) {
+		for (const TileIndexDiffC &head : {node_bridge.bridge.start, node_bridge.bridge.end}) {
+			const End x{node_bridge.cls, head.x - tpl.flat[node_bridge.cls]};
+			add(row_of(node_bridge.ycls, head.y), head.y, x, x, node_bridge.bridge.start.x == node_bridge.bridge.end.x ? Track::Y : Track::X);
+		}
+	}
+	for (const JunctionNodeLink &link : tpl.links) {
+		if (!link.free) continue;
+		owners.assign(1, static_cast<uint32_t>(&link - tpl.links.data()));
+		const JunctionNodePoint &p = tpl.points[link.from];
+		const JunctionNodePoint &q = tpl.points[link.to];
+		if (link.diagonal) {
+			const JunctionNodeDiagonal &diag = *std::ranges::find_if(tpl.diagonals, [&](const JunctionNodeDiagonal &d) { return &tpl.links[d.link] == &link; });
+			const JunctionRaster raster = NodeDiagonalRaster(tpl, diag, diag.halves + 2 * NodeDiagonalSteps(tpl, diag, values));
+			const JunctionRaster flat_raster = NodeDiagonalRaster(tpl, diag, diag.halves);
+			if (!raster.error.empty() || !flat_raster.error.empty()) return false;
+			for (size_t i = 1; i + 1 < raster.pieces.size(); i++) {
+				const TileIndexDiffC &tile = raster.pieces[i].tile;
+				const End x{p.cls, tile.x - tpl.flat[p.cls]};
+				add(row_of(p.ycls, tile.y), i + 1 < flat_raster.pieces.size() ? flat_raster.pieces[i].tile.y : NO_FLAT_ROW, x, x, TrackdirToTrack(raster.pieces[i].trackdir));
+			}
+		} else if (link.axis == Axis::X) {
+			const bool p_first = p.tile.x <= q.tile.x;
+			const JunctionNodePoint &first = p_first ? p : q;
+			const JunctionNodePoint &last = p_first ? q : p;
+			if (first.tile.x + 1 > last.tile.x - 1) continue;
+			add(row_of(p.ycls, p.tile.y), p.tile.y, {first.cls, first.tile.x - tpl.flat[first.cls] + 1}, {last.cls, last.tile.x - tpl.flat[last.cls] - 1}, Track::X);
+		} else {
+			const int sign = q.tile.y > p.tile.y ? 1 : -1;
+			const int y_p = row_of(p.ycls, p.tile.y);
+			const int y_q = row_of(q.ycls, q.tile.y);
+			const int flat_count = std::abs(q.tile.y - p.tile.y) - 1;
+			const End x{p.cls, p.tile.x - tpl.flat[p.cls]};
+			for (int k = 1; k <= sign * (y_q - y_p) - 1; k++) add(y_p + sign * k, k <= flat_count ? p.tile.y + sign * k : NO_FLAT_ROW, x, x, Track::Y);
+		}
+	}
+
+	for (auto &[current_row, elements] : rows) {
+		std::ranges::stable_sort(elements, [](const Element &a, const Element &b) { return std::tie(a.flat_lo, a.flat_hi, a.flat_row) < std::tie(b.flat_lo, b.flat_hi, b.flat_row); });
+
+		/* Elements with one flat tile on one current row form a group: equal x, one entry in the chain. */
+		std::vector<Element> chain;
+		for (const Element &element : elements) {
+			if (!chain.empty()) {
+				Element &first = chain.back();
+				if (element.flat_row != NO_FLAT_ROW && element.flat_lo == element.flat_hi && first.flat_row == element.flat_row && first.flat_lo == element.flat_lo && first.flat_hi == element.flat_hi) {
+					first.bits.Set(element.bits);
+					first.owners.insert(first.owners.end(), element.owners.begin(), element.owners.end());
+					if (!at_least(element.lo, first.lo, 0) || !at_least(first.lo, element.lo, 0)) {
+						row = current_row;
+						return false;
+					}
+					continue;
+				}
+			}
+			chain.push_back(element);
+		}
+
+		for (size_t i = 0; i + 1 < chain.size(); i++) {
+			const Element &a = chain[i];
+			const Element &b = chain[i + 1];
+			if (std::ranges::any_of(a.owners, [&](uint32_t owner) { return std::ranges::find(b.owners, owner) != b.owners.end(); })) continue; // One free link's own tiles and end points: one owner.
+			if (a.flat_hi >= b.flat_lo) {
+				row = current_row;
+				return false;
+			}
+			int gap = 1;
+			if (a.flat_row != NO_FLAT_ROW && a.flat_row == b.flat_row) {
+				gap = std::min(2, b.flat_lo - a.flat_hi);
+			} else {
+				/* Different flat rows: one empty tile only when the tracks touch across the facing edges. */
+				const bool touch = a.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && b.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)));
+				gap = touch ? 2 : 1;
+			}
+			if (!at_least(b.lo, a.hi, gap)) {
+				row = current_row;
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
 std::vector<int> JunctionNodeSnap(const JunctionNodeTemplate &tpl, JunctionPositions &positions)
 {
 	std::vector<int> values(tpl.flat.size(), 0);
@@ -653,7 +780,8 @@ std::vector<int> JunctionNodeSnap(const JunctionNodeTemplate &tpl, JunctionPosit
 	for (size_t c = tpl.x_classes; c < tpl.flat.size(); c++) {
 		if (!fix(c)) return {};
 	}
-	if (!AddJunctionNodeLateConstraints(tpl, positions, values)) return {};
+	int row = 0;
+	if (!AddJunctionNodeLateConstraints(tpl, positions, values) || !AddJunctionNodeOccupancy(tpl, positions, values, row)) return {};
 	for (size_t c = 0; c < tpl.x_classes; c++) {
 		if (!fix(c)) return {};
 	}
@@ -770,6 +898,14 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 	/* 2c. The constraints that need the Y values: the free diagonals' x, the late gaps, the late crossings. */
 	if (!AddJunctionNodeLateConstraints(tpl, positions, result.values)) {
 		result.failure = JunctionNodeFailure{Kind::Template};
+		result.values.clear();
+		return result;
+	}
+
+	/* 2d. The occupancy chain (DESIGN-N3 §7). */
+	int occupancy_row = 0;
+	if (!AddJunctionNodeOccupancy(tpl, positions, result.values, occupancy_row)) {
+		result.failure = JunctionNodeFailure{Kind::Occupancy, UINT32_MAX, occupancy_row};
 		result.values.clear();
 		return result;
 	}

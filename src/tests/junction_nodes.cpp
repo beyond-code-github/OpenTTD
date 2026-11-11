@@ -918,3 +918,46 @@ TEST_CASE("the flat T's free diagonals", "[junction][nodes]")
 	}
 	CHECK(free_on_path == 1);
 }
+
+/** The Y variables of the two lines of a DetourFixture: the first line's (its row is fixture.row) and the second's. */
+static std::pair<uint16_t, uint16_t> FixtureLineRows(const DetourFixture &fixture)
+{
+	uint16_t y_a = UINT16_MAX;
+	uint16_t y_b = UINT16_MAX;
+	for (const JunctionNodePoint &point : fixture.tpl.points) {
+		if (point.tile.x != 0 && point.tile.x != 14) continue;
+		(point.tile.y == fixture.row ? y_a : y_b) = point.ycls;
+	}
+	REQUIRE(y_a != UINT16_MAX);
+	REQUIRE(y_b != UINT16_MAX);
+	return {y_a, y_b};
+}
+
+TEST_CASE("two lines forced onto one row collide", "[junction][nodes]")
+{
+	const DetourFixture fixture(2, 4);
+	const JunctionNodeTemplate &tpl = fixture.tpl;
+	JunctionPositions positions(tpl.flat.size(), -1024, 1024);
+	REQUIRE(AddJunctionNodeConstraints(tpl, positions));
+	const auto [y_a, y_b] = FixtureLineRows(fixture);
+	REQUIRE(positions.AddDifference(y_b, y_a, 0));
+	REQUIRE(positions.AddDifference(y_a, y_b, 0));
+	CHECK(JunctionNodeSnap(tpl, positions).empty());
+}
+
+TEST_CASE("two lines forced onto adjacent rows stay apart", "[junction][nodes]")
+{
+	const DetourFixture fixture(2, 4);
+	const JunctionNodeTemplate &tpl = fixture.tpl;
+	JunctionPositions positions(tpl.flat.size(), -1024, 1024);
+	REQUIRE(AddJunctionNodeConstraints(tpl, positions));
+	const auto [y_a, y_b] = FixtureLineRows(fixture);
+	REQUIRE(positions.AddDifference(y_b, y_a, 1));
+	REQUIRE(positions.AddDifference(y_a, y_b, -1));
+	const std::vector<int> values = JunctionNodeSnap(tpl, positions);
+	REQUIRE(values.size() == tpl.flat.size());
+	const JunctionLayout layout = RenderJunctionNodeTracks(tpl, values);
+	size_t tiles = 0;
+	for (const JunctionTrack &track : layout.tracks) tiles += track.tracks.Any() ? 1 : 0;
+	CHECK(tiles == 30);
+}

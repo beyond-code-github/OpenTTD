@@ -109,7 +109,14 @@ JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionLayout &flat, const
 bool AddJunctionNodeConstraints(const JunctionNodeTemplate &tpl, JunctionPositions &positions);
 /** Add the constraints that need the Y values (DESIGN-N3 §6 phase 3): free diagonals' x, late gaps, late crossings. values holds every Y variable's fixed value (X entries ignored); false when infeasible. */
 bool AddJunctionNodeLateConstraints(const JunctionNodeTemplate &tpl, JunctionPositions &positions, const std::vector<int> &values);
-/** Fix the Y variables in index order to their flat values clamped into [Lo, Up], add the late constraints (AddJunctionNodeLateConstraints), then fix the X variables the same way (difference constraints only: every value in range extends); all values in index order, or empty when infeasible. */
+/**
+ * Add the occupancy chain of DESIGN-N3 §7 for the current rows (phase 3, after AddJunctionNodeLateConstraints).
+ * @param values Every Y variable's fixed value (X entries ignored).
+ * @param[out] row On failure, the layout row (current) where it failed.
+ * @return False when two elements overlap in the flat order on one row, or a constraint is infeasible.
+ */
+bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions &positions, const std::vector<int> &values, int &row);
+/** Fix the Y variables in index order to their flat values clamped into [Lo, Up], add the late constraints (AddJunctionNodeLateConstraints) and the occupancy chain (AddJunctionNodeOccupancy), then fix the X variables the same way (difference constraints only: every value in range extends); all values in index order, or empty when infeasible. */
 std::vector<int> JunctionNodeSnap(const JunctionNodeTemplate &tpl, JunctionPositions &positions);
 /** Draw the paths' track and the bridges at the classes' values (DESIGN-N3 §3) and normalise; no signals and no prio rows. */
 JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const std::vector<int> &values);
@@ -125,10 +132,11 @@ struct JunctionNodeFailure {
 		Straight,
 		Break,
 		Edge, ///< The interior of a free link cannot stay inside the snapshot.
+		Occupancy, ///< Two elements overlap in the flat order on one row, or the occupancy chain is infeasible (DESIGN-N3 §7).
 	};
 	Kind kind;
 	uint32_t link = UINT32_MAX; ///< Straight/Break/Edge: the X-free link (index into tpl.links).
-	int column = 0; ///< Straight/Break/Edge: the working x of the bad tile (Break: the tile before the height break, in +x order; Edge: MinX() - 1 or MaxX() + 1).
+	int column = 0; ///< Occupancy: the layout row where it failed. Straight/Break/Edge: the working x of the bad tile (Break: the tile before the height break, in +x order; Edge: MinX() - 1 or MaxX() + 1).
 	uint16_t cls = UINT16_MAX; ///< Piece: the X class whose pieces (or whose vertical runs) fit nowhere left.
 };
 /** The result of one node solve. */
