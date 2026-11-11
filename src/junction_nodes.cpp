@@ -1754,3 +1754,121 @@ JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const Junctio
 	}
 	return search;
 }
+
+/** A value as text for a difference report. */
+template <typename T>
+static std::string NodeDiffText(const T &value)
+{
+	if constexpr (std::is_enum_v<T>) {
+		return fmt::format("{}", static_cast<int64_t>(to_underlying(value)));
+	} else if constexpr (std::is_same_v<T, bool>) {
+		return value ? "true" : "false";
+	} else if constexpr (std::is_same_v<T, std::string>) {
+		return value;
+	} else {
+		return fmt::format("{}", static_cast<int64_t>(value));
+	}
+}
+
+/** "<name>: <a> vs <b>" when the two differ, else empty. */
+template <typename T>
+static std::string NodeDiffField(const char *name, const T &a, const T &b)
+{
+	if (a == b) return {};
+	return fmt::format("{}: {} vs {}", name, NodeDiffText(a), NodeDiffText(b));
+}
+
+/** The first non-empty difference of a list, else empty. */
+static std::string NodeDiffFirst(std::initializer_list<std::string> diffs)
+{
+	for (const std::string &diff : diffs) {
+		if (!diff.empty()) return diff;
+	}
+	return {};
+}
+
+/** The difference of two tiles as "<name>.x" or "<name>.y". */
+static std::string NodeDiffTile(const char *name, const TileIndexDiffC &a, const TileIndexDiffC &b)
+{
+	return NodeDiffFirst({NodeDiffField((std::string(name) + ".x").c_str(), a.x, b.x), NodeDiffField((std::string(name) + ".y").c_str(), a.y, b.y)});
+}
+
+/** The difference of two vectors of numbers as "<name>: size <a> vs <b>" or "<name>[<i>]: <a> vs <b>". */
+template <typename T>
+static std::string NodeDiffNumbers(const char *name, const std::vector<T> &a, const std::vector<T> &b)
+{
+	if (a.size() != b.size()) return fmt::format("{}: size {} vs {}", name, a.size(), b.size());
+	for (size_t i = 0; i < a.size(); i++) {
+		if (a[i] != b[i]) return fmt::format("{}[{}]: {} vs {}", name, i, NodeDiffText(a[i]), NodeDiffText(b[i]));
+	}
+	return {};
+}
+
+/** The difference of two vectors of structs as "<name>: size <a> vs <b>" or "<name>[<i>].<field>: ...", the field difference coming from `diff`. */
+template <typename T, typename F>
+static std::string NodeDiffVector(const char *name, const std::vector<T> &a, const std::vector<T> &b, F diff)
+{
+	if (a.size() != b.size()) return fmt::format("{}: size {} vs {}", name, a.size(), b.size());
+	for (size_t i = 0; i < a.size(); i++) {
+		const std::string field = diff(a[i], b[i]);
+		if (!field.empty()) return fmt::format("{}[{}].{}", name, i, field);
+	}
+	return {};
+}
+
+static_assert(sizeof(JunctionNodePoint) == 10); // Update DiffJunctionNodeTemplates when this struct changes.
+static_assert(sizeof(JunctionNodeLink) == 12); // Update DiffJunctionNodeTemplates when this struct changes.
+static_assert(sizeof(JunctionNodePath) == 64); // Update DiffJunctionNodeTemplates when this struct changes.
+static_assert(sizeof(JunctionNodePiece) == 10); // Update DiffJunctionNodeTemplates when this struct changes.
+static_assert(sizeof(JunctionNodeBridge) == 14); // Update DiffJunctionNodeTemplates when this struct changes.
+static_assert(sizeof(JunctionNodeJoin) == 14); // Update DiffJunctionNodeTemplates when this struct changes.
+static_assert(sizeof(JunctionNodeDiff) == 8); // Update DiffJunctionNodeTemplates when this struct changes.
+static_assert(sizeof(JunctionNodeDiagonal) == 8); // Update DiffJunctionNodeTemplates when this struct changes.
+static_assert(sizeof(JunctionNodeLateGap) == 48); // Update DiffJunctionNodeTemplates when this struct changes.
+static_assert(sizeof(JunctionNodeLateCrossing) == 8); // Update DiffJunctionNodeTemplates when this struct changes.
+static_assert(sizeof(JunctionNodePrioRow) == 8); // Update DiffJunctionNodeTemplates when this struct changes.
+
+std::string DiffJunctionNodeTemplates(const JunctionNodeTemplate &a, const JunctionNodeTemplate &b)
+{
+	return NodeDiffFirst({
+		NodeDiffVector("points", a.points, b.points, [](const JunctionNodePoint &x, const JunctionNodePoint &y) {
+			return NodeDiffFirst({NodeDiffTile("tile", x.tile, y.tile), NodeDiffField("trackdir", x.trackdir, y.trackdir), NodeDiffField("cls", x.cls, y.cls), NodeDiffField("ycls", x.ycls, y.ycls)});
+		}),
+		NodeDiffVector("links", a.links, b.links, [](const JunctionNodeLink &x, const JunctionNodeLink &y) {
+			return NodeDiffFirst({NodeDiffField("from", x.from, y.from), NodeDiffField("to", x.to, y.to), NodeDiffField("free", x.free, y.free), NodeDiffField("axis", x.axis, y.axis), NodeDiffField("diagonal", x.diagonal, y.diagonal)});
+		}),
+		NodeDiffVector("paths", a.paths, b.paths, [](const JunctionNodePath &x, const JunctionNodePath &y) {
+			return NodeDiffFirst({NodeDiffField("from", x.from, y.from), NodeDiffField("to", x.to, y.to), NodeDiffNumbers("points", x.points, y.points), NodeDiffNumbers("units", x.units, y.units), NodeDiffField("dir", x.dir, y.dir), NodeDiffField("dir_y", x.dir_y, y.dir_y)});
+		}),
+		NodeDiffVector("pieces", a.pieces, b.pieces, [](const JunctionNodePiece &x, const JunctionNodePiece &y) {
+			return NodeDiffFirst({NodeDiffTile("tile", x.tile, y.tile), NodeDiffField("track", x.track, y.track), NodeDiffField("on_bridge", x.on_bridge, y.on_bridge), NodeDiffField("cls", x.cls, y.cls), NodeDiffField("ycls", x.ycls, y.ycls)});
+		}),
+		NodeDiffVector("bridges", a.bridges, b.bridges, [](const JunctionNodeBridge &x, const JunctionNodeBridge &y) {
+			return NodeDiffFirst({NodeDiffTile("bridge.start", x.bridge.start, y.bridge.start), NodeDiffTile("bridge.end", x.bridge.end, y.bridge.end), NodeDiffField("bridge.tunnel", x.bridge.tunnel, y.bridge.tunnel), NodeDiffField("bridge.z", x.bridge.z, y.bridge.z), NodeDiffField("cls", x.cls, y.cls), NodeDiffField("ycls", x.ycls, y.ycls)});
+		}),
+		NodeDiffVector("joins", a.joins, b.joins, [](const JunctionNodeJoin &x, const JunctionNodeJoin &y) {
+			return NodeDiffFirst({NodeDiffTile("from_tile", x.from_tile, y.from_tile), NodeDiffField("from_td", x.from_td, y.from_td), NodeDiffTile("to_tile", x.to_tile, y.to_tile), NodeDiffField("cls", x.cls, y.cls), NodeDiffField("ycls", x.ycls, y.ycls)});
+		}),
+		NodeDiffField("open_joins", a.open_joins, b.open_joins),
+		NodeDiffVector("diffs", a.diffs, b.diffs, [](const JunctionNodeDiff &x, const JunctionNodeDiff &y) {
+			return NodeDiffFirst({NodeDiffField("a", x.a, y.a), NodeDiffField("b", x.b, y.b), NodeDiffField("k", x.k, y.k)});
+		}),
+		NodeDiffVector("diagonals", a.diagonals, b.diagonals, [](const JunctionNodeDiagonal &x, const JunctionNodeDiagonal &y) {
+			return NodeDiffFirst({NodeDiffField("link", x.link, y.link), NodeDiffField("dx", x.dx, y.dx), NodeDiffField("dy", x.dy, y.dy), NodeDiffField("halves", x.halves, y.halves)});
+		}),
+		NodeDiffVector("late_gaps", a.late_gaps, b.late_gaps, [](const JunctionNodeLateGap &x, const JunctionNodeLateGap &y) {
+			return NodeDiffFirst({NodeDiffField("path", x.path, y.path), NodeDiffField("p", x.p, y.p), NodeDiffField("q", x.q, y.q), NodeDiffField("g", x.g, y.g), NodeDiffField("u", x.u, y.u), NodeDiffNumbers("diagonals", x.diagonals, y.diagonals)});
+		}),
+		NodeDiffVector("late_crossings", a.late_crossings, b.late_crossings, [](const JunctionNodeLateCrossing &x, const JunctionNodeLateCrossing &y) {
+			return NodeDiffFirst({NodeDiffField("bridge", x.bridge, y.bridge), NodeDiffField("diagonal", x.diagonal, y.diagonal)});
+		}),
+		NodeDiffVector("prio_rows", a.prio_rows, b.prio_rows, [](const JunctionNodePrioRow &x, const JunctionNodePrioRow &y) {
+			return NodeDiffFirst({NodeDiffField("merge", x.merge, y.merge), NodeDiffField("side", x.side, y.side), NodeDiffField("dir", x.dir, y.dir), NodeDiffField("span", x.span, y.span)});
+		}),
+		NodeDiffNumbers("flat", a.flat, b.flat),
+		NodeDiffField("x_classes", a.x_classes, b.x_classes),
+		NodeDiffField("anchor", a.anchor, b.anchor),
+		NodeDiffField("anchor_y", a.anchor_y, b.anchor_y),
+		NodeDiffField("error", a.error, b.error),
+	});
+}
