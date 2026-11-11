@@ -87,6 +87,14 @@ struct JunctionNodePiece {
 	uint16_t cls; ///< Its X class.
 	uint16_t ycls; ///< Its Y class.
 };
+/** Two consecutive rigid pieces of one group (same X and Y class) that must meet at one height (DESIGN-N3 §10, kind a); tiles in the flat layout. */
+struct JunctionNodeJoin {
+	TileIndexDiffC from_tile;
+	Trackdir from_td;
+	TileIndexDiffC to_tile;
+	uint16_t cls;
+	uint16_t ycls;
+};
 /** A flat bridge with the variables of its heads. */
 struct JunctionNodeBridge {
 	JunctionBridge bridge;
@@ -100,6 +108,8 @@ struct JunctionNodeTemplate {
 	std::vector<JunctionNodePath> paths; ///< In the checker's path order.
 	std::vector<JunctionNodePiece> pieces; ///< Deduplicated by (tile, track).
 	std::vector<JunctionNodeBridge> bridges; ///< Every flat bridge with the classes of its heads.
+	std::vector<JunctionNodeJoin> joins; ///< Deduplicated by from_tile, from_td, to_tile.
+	uint32_t open_joins = 0; ///< Consecutive pieces of different classes that are not the two ends of one free link: left to the oracle.
 	std::vector<JunctionNodeDiff> diffs; ///< DESIGN-N3 §2 rules 1-4 and 6.
 	std::vector<JunctionNodeDiagonal> diagonals; ///< The free diagonal links.
 	std::vector<JunctionNodeLateGap> late_gaps; ///< The unit rules that need the Y values.
@@ -141,11 +151,12 @@ struct JunctionNodeFailure {
 		Break,
 		Edge, ///< The interior of a free link cannot stay inside the snapshot.
 		Occupancy, ///< Two elements overlap in the flat order on one row, or the occupancy chain is infeasible (DESIGN-N3 §7).
+		Height, ///< No row for a Y class meets the facts and heights of its pieces (DESIGN-N3 §10); cls is the Y class.
 	};
 	Kind kind;
 	uint32_t link = UINT32_MAX; ///< Straight/Break/Edge: the X-free link (index into tpl.links).
 	int column = 0; ///< Occupancy: the layout row where it failed. Straight/Break/Edge: the working x of the bad tile (Break: the tile before the height break, in +x order; Edge: MinX() - 1 or MaxX() + 1).
-	uint16_t cls = UINT16_MAX; ///< Piece: the X class whose pieces (or whose vertical runs) fit nowhere left.
+	uint16_t cls = UINT16_MAX; ///< Piece: the X class whose pieces (or whose vertical runs) fit nowhere left. Height: the Y class.
 };
 /** The result of one node solve. */
 struct JunctionNodeSolve {

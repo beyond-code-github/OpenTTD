@@ -535,6 +535,7 @@ TEST_CASE("GenerateJunctionNear builds the projected T map over a ridge", "[junc
 	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
 	const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
 	std::cout << "BENCH tmapnear GenerateJunctionNear micros=" << micros << "\n";
+	/* (0,0) needs a structure change: path 4's free diagonal must cross the ramp row (HF1b finding); HF1b makes the solve report it as a Height failure. */
 	WARN("ridge: offset " << near.offset.x << "," << near.offset.y);
 	CHECK(near.result.error == JunctionGenerateError::None);
 	REQUIRE(near.result.layout.has_value());
@@ -579,6 +580,8 @@ TEST_CASE("the node search's layouts pass the rule checker on random terrain", "
 	int skipped = 0;
 	int accepted = 0;
 	int64_t total_search_micros = 0;
+	int heights = 0;
+	int fits = 0;
 	const auto run = [&](const JunctionTerrain &terrain, int seed) {
 		n++;
 		if (JunctionBlockedPortApproach(terrain, x_lo, x_hi).has_value()) {
@@ -588,6 +591,8 @@ TEST_CASE("the node search's layouts pass the rule checker on random terrain", "
 		const auto start = std::chrono::steady_clock::now();
 		const JunctionNodeSearch search = SearchJunctionNodes(*topo.layout, spec, terrain, start_offset, 16);
 		total_search_micros += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+		for (size_t at = search.log.find("heights:"); at != std::string::npos; at = search.log.find("heights:", at + 1)) heights++;
+		for (size_t at = search.log.find("fits:"); at != std::string::npos; at = search.log.find("fits:", at + 1)) fits++;
 		if (!search.layout.has_value()) return;
 		accepted++;
 		const std::vector<RuleViolation> violations = CheckJunctionRules(*search.layout, spec);
@@ -620,8 +625,9 @@ TEST_CASE("the node search's layouts pass the rule checker on random terrain", "
 		SetNearRampRow(terrain, r + 3, 0, 1, DiagDirection::NW);
 		run(terrain, seed);
 	}
-	std::cout << "ORACLE terrains=" << n << " skipped=" << skipped << " accepted=" << accepted << " micros=" << total_search_micros << "\n";
+	std::cout << "ORACLE terrains=" << n << " skipped=" << skipped << " accepted=" << accepted << " heights=" << heights << " fits=" << fits << " micros=" << total_search_micros << "\n";
 	CHECK(accepted > 0);
+	CHECK(heights == 0);
 }
 
 TEST_CASE("GenerateJunctionNear's score includes the terrain cost", "[junction][tmapnear]")

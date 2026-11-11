@@ -25,9 +25,12 @@
 #include "../junction_signal_pass.h"
 #include "../rail.h"
 #include "../slope_func.h"
+#include "../track_func.h"
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -763,8 +766,9 @@ TEST_CASE("a house on a vertical leg fails on its class", "[junction][nodes]")
 	CHECK(!solve.layout.has_value());
 	INFO(FailureText(solve));
 	REQUIRE(solve.failure.has_value());
-	CHECK(solve.failure->kind == JunctionNodeFailure::Kind::Piece);
-	CHECK(solve.failure->cls == from.cls);
+	/* The column check now runs in the Y snap (DESIGN-N3 §10), so the house is found there: the Y class that fixes last of the column's two ends. */
+	CHECK(solve.failure->kind == JunctionNodeFailure::Kind::Height);
+	CHECK(solve.failure->cls == std::max(from.ycls, to.ycls));
 }
 
 TEST_CASE("a longer E->S vertical leg", "[junction][nodes]")
@@ -1161,4 +1165,105 @@ TEST_CASE("the oracle sits a split on an incline level", "[junction][nodes]")
 	why.clear();
 	CHECK_FALSE(JunctionNodeHeightsOk(layout, spec, terrain, offset, &why));
 	CHECK(why.find("the game cannot build") != std::string::npos);
+}
+
+/** The layout offset of a solved layout as SearchJunctionNodes computes it: the state's offset minus where the anchor pieces moved. */
+static TileIndexDiffC SolvedLayoutOffset(const JunctionNodeTemplate &tpl, const JunctionLayout &layout, const JunctionSpec &spec, TileIndexDiffC state_offset)
+{
+	const auto anchor = std::ranges::find_if(tpl.paths, [](const JunctionNodePath &path) { return path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::SOut; });
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
+	const auto ctx_path = std::ranges::find_if(ctx.paths, [](const JunctionPath &path) { return path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::SOut; });
+	REQUIRE(anchor != tpl.paths.end());
+	REQUIRE(ctx_path != ctx.paths.end());
+	const int shift_x = ctx_path->pieces.back().tile.x - tpl.points[anchor->points.back()].tile.x;
+	const int shift_y = ctx_path->pieces.front().tile.y - tpl.points[anchor->points.front()].tile.y;
+	return {static_cast<int16_t>(state_offset.x - shift_x), static_cast<int16_t>(state_offset.y - shift_y)};
+}
+
+TEST_CASE("a free diagonal over a ramp row is a Height failure", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	REQUIRE(tpl.error.empty());
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	terrain.build_on_slopes = true;
+
+	/* The ridge test's four rows. */
+	const int ridge = spec.ml_gap + 2 + 6;
+	const auto set_row = [&](int y, int z_min, int z_max, DiagDirection incline) {
+		for (int x = terrain.origin.x; x < terrain.origin.x + terrain.width; x++) {
+			JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)];
+			tile.z_min = static_cast<int8_t>(z_min);
+			tile.z_max = static_cast<int8_t>(z_max);
+			tile.incline = incline;
+			tile.slope = incline == DiagDirection::Invalid ? SLOPE_FLAT : InclinedSlope(incline);
+		}
+	};
+	set_row(ridge, 0, 1, DiagDirection::SE);
+	set_row(ridge + 1, 1, 1, DiagDirection::Invalid);
+	set_row(ridge + 2, 1, 1, DiagDirection::Invalid);
+	set_row(ridge + 3, 0, 1, DiagDirection::NW);
+	const JunctionFacts facts(terrain);
+	const TileIndexDiffC offset = FlatToWorking(spec);
+
+	const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, offset);
+	INFO(FailureText(solve));
+	CHECK(!solve.layout.has_value());
+	REQUIRE(solve.failure.has_value());
+	CHECK(solve.failure->kind == JunctionNodeFailure::Kind::Height);
+	CHECK(std::ranges::any_of(tpl.diagonals, [&](const JunctionNodeDiagonal &diag) { return tpl.points[tpl.links[diag.link].from].ycls == solve.failure->cls; }));
+}
+
+TEST_CASE("a split whose foundation does not meet its run moves", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionLayout &flat = *FlatT().layout;
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(flat, spec);
+	REQUIRE(tpl.error.empty());
+	const TileIndexDiffC offset = FlatToWorking(spec);
+
+	/* The first free X link whose first point sits on a tile with two or more tracks. */
+	std::optional<JunctionNodePoint> p;
+	TrackBits bits;
+	for (const JunctionNodeLink &link : tpl.links) {
+		if (!link.free || link.diagonal || link.axis != Axis::X) continue;
+		const JunctionNodePoint &from = tpl.points[link.from];
+		const auto tile = std::ranges::find_if(flat.tracks, [&](const JunctionTrack &jt) { return jt.offset.x == from.tile.x && jt.offset.y == from.tile.y; });
+		if (tile == flat.tracks.end() || tile->tracks.Count() < 2) continue;
+		p = from;
+		bits = tile->tracks;
+		break;
+	}
+	REQUIRE(p.has_value());
+	const int px = p->tile.x + offset.x;
+	const int py = p->tile.y + offset.y;
+	const DiagDirection edge = TrackdirToExitdir(p->trackdir);
+	const TileIndexDiffC step = TileIndexDiffCByDiagDir(edge);
+
+	/* A slope on which the game builds p's tracks but at the edge toward the run is not at the flat run's height. */
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	terrain.build_on_slopes = true;
+	JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(py - terrain.origin.y) * terrain.width + (px - terrain.origin.x)];
+	bool found = false;
+	for (int s = 1; s <= 15 && !found; s++) {
+		tile.slope = static_cast<Slope>(s);
+		tile.z_min = 0;
+		tile.z_max = 1;
+		const JunctionFacts facts(terrain);
+		const int z_here = facts.EdgeZ(px, py, bits, edge);
+		const int z_run = facts.EdgeZ(px + step.x, py + step.y, TrackBits{Track::X}, ReverseDiagDir(edge));
+		found = facts.Fits(px, py, bits) && z_here != INT_MIN && z_run != INT_MIN && z_here != z_run;
+	}
+	REQUIRE(found);
+
+	const JunctionFacts facts(terrain);
+	const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, offset);
+	INFO(FailureText(solve));
+	if (solve.layout.has_value()) {
+		std::string why;
+		CHECK(JunctionNodeHeightsOk(*solve.layout, spec, terrain, SolvedLayoutOffset(tpl, *solve.layout, spec, offset), &why));
+		INFO(why);
+	}
 }
