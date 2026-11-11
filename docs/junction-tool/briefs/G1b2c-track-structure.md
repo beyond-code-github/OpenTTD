@@ -60,14 +60,14 @@ State every expected list literally. Node and edge numbers are those of the exis
 1. "the T's track structure" (outer): stack [{0,Prio}, {0,Lane}, {0,Approach}, {1,PrioAndCopy}, {1,Lane}, {1,Approach}] (the traced T's rows 0-5: A's prio, A, N->E's approach on the gap row, W's prio and doubling copy on row 3, W, N->W on row 5); bridges [{5, {8, 4}, true}, {8, {4}, false}] (W's doubled bridges over N->E and A->S; N->E single over A->S); turns {0, +1, 0, -1, -1, +1}.
 2. "LL_RR with an L_R sideline: track structure" (outer): stack [{0,Prio}, {0,Lane}, {0,Approach}, {1,PrioAndCopy}, {1,Lane}, {1,Approach}, {2,PrioAndCopy}, {2,Lane}, {2,Approach}, {3,PrioAndCopy}, {3,Lane}, {3,Approach}]; bridges [{3, {23}, false}, {8, {11, 15}, true}, {9, {3, 23}, true}, {10, {13, 3, 23, 17}, true}]; turns {0, 0, 0, 0, +1, +1, -1, -1, +1, +1, -1, -1}.
    If your implementation of the rules as written gives anything different in test 1 or 2, do NOT change the expected lists: STOP and report both.
-3. "two joiners on one lane are refused": a topology with groups in slot order W in 1 lane main line 0, W out 1 lane main line 0, S in 1 lane line 1, S in 1 lane line 2, E in 1 lane main line 0, E out 1 lane main line 0; movements W in -> E out, E in -> W out, both S ins -> E out. Build graph and order (CHECK both succeed; if either fails, STOP and report its error), then StructureJunctionTrackGraph: empty stack, error "more than one joiner on a lane is not ruled yet".
-Red: does not compile (record it: add the tests before the declaration); then with a stub returning an empty structure, tests 1-3 fail (record the messages).
+(No refusal test: two joiners on one lane need a three-legged merge, which BuildJunctionTrackGraph already refuses; rule 1's error is a guard.)
+Red: does not compile (record it: add the tests before the declaration); then with a stub returning an empty structure, tests 1-2 fail (record the messages).
 
 ## Do not
 - No positions, lengths, sharing of rows, bridge splitting, span limits, tunnels or over/under choices beyond rule 4 (later steps). Do not change BuildJunctionTrackGraph, OrderJunctionTrackGraph or anything they call. Do not call the new function from the template builder, solve, generator or checker.
 
 ## Stop conditions
-- Test 1 or 2 differs (report both). Test 3's graph or order fails (report).
+- Test 1 or 2 differs (report both).
 - Anything the rules above leave undecided.
 
 ## Gates
