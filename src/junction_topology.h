@@ -10,10 +10,15 @@
 #ifndef JUNCTION_TOPOLOGY_H
 #define JUNCTION_TOPOLOGY_H
 
+#include "junction_layout.h"
+
+#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
+
+struct JunctionSpec;
 
 /** A side of the junction's box in the canonical frame (the main line runs along X, D152). */
 enum class JunctionSide : uint8_t { N, E, S, W };
@@ -208,6 +213,26 @@ struct JunctionTrackPrograms {
  * @param error Receives the reason when the result is empty (no edges).
  */
 JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, std::string *error);
+
+/** A token's tiles: its first and last tile in the edge's travel order (DESIGN-G1 §11.8). */
+using JunctionTrackSpan = std::pair<TileIndexDiffC, TileIndexDiffC>;
+
+/** The seed placement of a programmed track graph (DESIGN-G1 §11.8): tiles only, x east, y south, (0, 0) the box's north-west corner. */
+struct JunctionTrackPlacement {
+	std::vector<int> item_rows; ///< Per stack item, its tile row.
+	std::vector<TileIndexDiffC> ports; ///< Per port slot, its boundary tile.
+	std::vector<TileIndexDiffC> nodes; ///< Per graph node: a split's first diverging half piece, a merge's last joining half piece.
+	std::vector<std::vector<JunctionTrackSpan>> edges; ///< Per edge, per token of JunctionTrackPrograms::edges.
+	std::vector<std::vector<JunctionTrackSpan>> copies; ///< Per edge, per token of JunctionTrackPrograms::copies.
+	std::vector<std::array<JunctionBridge, 2>> bridges; ///< Per structure bridge: copy 0's and copy 1's heads, start = the head the carrier reaches first; a single bridge's copy 1 is {{0, 0}, {0, 0}}.
+	TileIndexDiffC size; ///< The box.
+};
+
+/**
+ * The seed placement (DESIGN-G1 §11.8): the least tiles that meet the rules, Y first then X.
+ * @param error Receives the reason when the result is empty (no nodes), e.g. a bridge longer than spec.max_bridge_middle.
+ */
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error);
 
 /** The T of today's node model (L_R main line, L_R branch on the S side), groups in slot order: W side EIn then WOut; S side NIn then SOut; E side WIn then EOut. Movements in JunctionTMovements order. */
 const JunctionTopology &JunctionTTopology();

@@ -13,6 +13,7 @@
 
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
+#include "../junction_generator.h"
 #include "../junction_topology.h"
 
 #include "../safeguards.h"
@@ -479,5 +480,109 @@ TEST_CASE("topology: the row of every port slot", "[junction][topology]")
 		std::string error;
 		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(*t, &error);
 		CHECK(JunctionSlotRows(*t, paths, &error) == expected);
+	}
+}
+
+/** The placement of a topology under a spec with the given longest bridge middle. */
+static JunctionTrackPlacement PlacementOf(const JunctionTopology &t, int max_bridge_middle, std::string *error, JunctionTrackStructure *structure_out = nullptr)
+{
+	std::string ignored;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
+	REQUIRE(!graph.edges.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
+	REQUIRE(!order.rows.empty());
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
+	REQUIRE(!programs.edges.empty());
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.max_bridge_middle = max_bridge_middle;
+	if (structure_out != nullptr) *structure_out = structure;
+	return PlaceJunctionTrackGraph(t, paths, graph, order, structure, programs, spec, error);
+}
+
+/* Tiles compare as plain numbers: TileIndexDiffC has no operator==. */
+using Tile = std::array<int, 2>;
+using Span = std::array<int, 4>;
+using Spans = std::vector<Span>;
+using Heads = std::array<int, 8>;
+static Tile T(int x, int y) { return {x, y}; }
+static Span Sp(int x0, int y0, int x1, int y1) { return {x0, y0, x1, y1}; }
+static Heads Br(int a, int b, int c, int d, int e, int f, int g, int h) { return {a, b, c, d, e, f, g, h}; }
+static Tile Of(const TileIndexDiffC &t) { return {t.x, t.y}; }
+static std::vector<Tile> Of(const std::vector<TileIndexDiffC> &v) { std::vector<Tile> r; for (const TileIndexDiffC &t : v) r.push_back(Of(t)); return r; }
+static std::vector<Spans> Of(const std::vector<std::vector<JunctionTrackSpan>> &v)
+{
+	std::vector<Spans> r;
+	for (const auto &spans : v) {
+		r.emplace_back();
+		for (const JunctionTrackSpan &s : spans) r.back().push_back({s.first.x, s.first.y, s.second.x, s.second.y});
+	}
+	return r;
+}
+static Heads Of(const std::array<JunctionBridge, 2> &b) { return {b[0].start.x, b[0].start.y, b[0].end.x, b[0].end.y, b[1].start.x, b[1].start.y, b[1].end.x, b[1].end.y}; }
+
+TEST_CASE("topology: the T's placement", "[junction][topology]")
+{
+	std::string error;
+	const JunctionTrackPlacement placement = PlacementOf(JunctionTTopology(), 64, &error);
+	REQUIRE(!placement.nodes.empty());
+	CHECK(placement.item_rows == std::vector<int>{0, 1, 2, 3, 4, 5});
+	CHECK(Of(placement.size) == T(40, 14));
+	CHECK(Of(placement.ports) == std::vector<Tile>{T(0, 1), T(0, 3), T(25, 13), T(27, 13), T(39, 3), T(39, 1)});
+	CHECK(Of(placement.nodes) == std::vector<Tile>{T(22, 1), T(25, 11), T(32, 3), T(6, 4), T(27, 11), T(37, 1)});
+	const std::vector<Spans> edges = {
+		{Sp(0, 1, 0, 1)}, {}, {Sp(39, 3, 39, 3)}, {},
+		{Sp(22, 1, 24, 3), Sp(23, 3, 24, 3), Sp(24, 4, 24, 4), Sp(24, 7, 27, 9), Sp(25, 7, 25, 8)},
+		{Sp(27, 3, 26, 3), Sp(24, 3, 23, 3), Sp(21, 3, 21, 4)},
+		{Sp(32, 3, 30, 5), Sp(30, 9, 27, 11)},
+		{Sp(25, 11, 19, 5), Sp(6, 5, 6, 4)},
+		{Sp(25, 8, 25, 7), Sp(25, 4, 26, 4), Sp(26, 3, 27, 3), Sp(25, 4, 27, 2), Sp(37, 2, 37, 1)},
+		{Sp(2, 4, 2, 3)}, {}, {Sp(39, 1, 39, 1)},
+	};
+	CHECK(Of(placement.edges) == edges);
+	std::vector<Spans> copies(12);
+	copies[5] = {Sp(30, 3, 30, 4), Sp(26, 4, 25, 4), Sp(24, 4, 24, 4)};
+	CHECK(Of(placement.copies) == copies);
+	REQUIRE(placement.bridges.size() == 2);
+	CHECK(Of(placement.bridges[0]) == Br(28, 3, 22, 3, 29, 4, 23, 4));
+	CHECK(Of(placement.bridges[1]) == Br(25, 9, 25, 6, 0, 0, 0, 0));
+}
+
+TEST_CASE("topology: LL_RR's w2 bridge is too long at nmax 9", "[junction][topology]")
+{
+	std::string error;
+	const JunctionTrackPlacement placement = PlacementOf(JunctionLLRRSidelineTopology(), 9, &error);
+	CHECK(placement.nodes.empty());
+	CHECK(error == "bridge 10 needs 10 middle tiles, more than 9");
+}
+
+TEST_CASE("topology: LL_RR with an L_R sideline: placement", "[junction][topology]")
+{
+	std::string error;
+	JunctionTrackStructure structure;
+	const JunctionTrackPlacement placement = PlacementOf(JunctionLLRRSidelineTopology(), 64, &error, &structure);
+	REQUIRE(!placement.nodes.empty());
+	REQUIRE(placement.bridges.size() == structure.bridges.size());
+
+	/* X_e1 (edge 11) and X_e2 (edge 12) cross under w1's bridge four columns apart. */
+	CHECK(placement.edges[11][3].first.x - placement.edges[12][1].first.x == 4);
+
+	/* Band 2 is as deep as one corner. */
+	CHECK(placement.item_rows[6] - placement.item_rows[5] - 1 == 2);
+
+	for (size_t i = 0; i < structure.bridges.size(); i++) {
+		const int n = std::abs(placement.bridges[i][0].start.x - placement.bridges[i][0].end.x) - 1;
+		CHECK(n <= 64);
+		if (structure.bridges[i].edge == 10) CHECK(n == 10);
+	}
+
+	/* The S ports sit on the last row. */
+	const JunctionTopology &topology = JunctionLLRRSidelineTopology();
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+	REQUIRE(slots.size() == placement.ports.size());
+	for (size_t s = 0; s < slots.size(); s++) {
+		if (topology.groups[slots[s].group].side == JunctionSide::S) CHECK(placement.ports[s].y == placement.size.y - 1);
 	}
 }
