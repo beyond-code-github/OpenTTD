@@ -20,6 +20,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[curvespeed]` | 0.01 s (CS3) | 5 s | 0.01 s |
 | `[nodes]` | 2.2 s (after the [nodespeed] split, 2026-11-11) | 5 s | 0.20 s (budget 1 s) |
 | `[nodespeed]` | 2.1 s (six-speed sweeps: node solve and prio sizing at 100-196 km/h; run in the gate, not per step) | 10 s | 0.20 s (budget 5 s) |
+| `[nodeoracle]` | gate only, not measured | n/a (in the wide gate, not a per-step tag) | 1.3 s (CK1: 250 random terrains, the node search's layouts through CheckJunctionRules; ORACLE line prints terrains, skipped, accepted, search micros) |
 | `[positions]` | 0.11 s (N1) | 5 s | 0.02 s (N1: JunctionPositions, 6 tests incl. 300-system brute force) |
 | `[facts]` | 0.05 s (N2) | 1 s Release, 5 s Debug | 0.05 s Release, 0.16 s Debug (N2: JunctionFacts, 5 tests incl. 200-terrain walk comparison; 128x128 build 755 us) |
 | wide gate | (Release only) | | 17 s (budget 120 s) |

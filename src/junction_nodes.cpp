@@ -1395,11 +1395,6 @@ JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const Junctio
 			}
 			const TileIndexDiffC layout_offset = {static_cast<int16_t>(state.offset.x - shift->x), static_cast<int16_t>(state.offset.y - shift->y)};
 
-			const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec);
-			if (!violations.empty()) {
-				search.log += head + fmt::format("rules: rule {} at {},{}: {}\n", to_underlying(violations.front().rule), violations.front().tile.x, violations.front().tile.y, violations.front().message);
-				continue;
-			}
 			std::string why;
 			if (!JunctionNodeHeightsOk(layout, spec, terrain, layout_offset, &why)) {
 				search.log += head + "heights: " + why + "\n";

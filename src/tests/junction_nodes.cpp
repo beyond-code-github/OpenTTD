@@ -856,6 +856,18 @@ TEST_CASE("the node solve builds the T at 100 to 196 km/h on flat land", "[junct
 	for (const uint16_t speed : {100, 120, 140, 160, 180, 196}) CheckNodeSolveAtSpeed(speed);
 }
 
+TEST_CASE("the node search does not run the rule checker", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeExportSpec(196);
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionTerrain terrain = MakeMapTestTerrain(spec);
+
+	const JunctionNodeSearch search = SearchFlatT(spec, terrain);
+	REQUIRE(search.layout.has_value());
+	CHECK(search.log.find("rules:") == std::string::npos);
+	CHECK(search.checked == 0);
+}
+
 TEST_CASE("a lower N split stretches N->W's diagonal", "[junction][nodes]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
