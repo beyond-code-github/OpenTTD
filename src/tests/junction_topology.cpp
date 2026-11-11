@@ -318,6 +318,124 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track structure", "[junction][t
 	CHECK(structure.turns == std::vector<int8_t>{0, 0, 0, 0, +1, +1, -1, -1, +1, +1, -1, -1});
 }
 
+/** The track programs of a topology. */
+static JunctionTrackPrograms ProgramsOf(const JunctionTopology &t)
+{
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	REQUIRE(!graph.edges.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+	REQUIRE(!order.rows.empty());
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+	REQUIRE(!structure.stack.empty());
+	return ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+}
+
+using Step = JunctionTrackStep;
+using Program = std::vector<Step>;
+using Programs = std::vector<Program>;
+static constexpr uint32_t NR = JunctionTrackStep::NO_ROW;
+static Step Fan(uint32_t i) { return {Step::Kind::Fan, 0, i, 0}; }
+static Step C(int h, uint32_t i) { return {Step::Kind::Corner, static_cast<int8_t>(h), i, 0}; }
+static Step S(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0}; }
+static Step O(uint32_t x) { return {Step::Kind::Over, 0, x, 0}; }
+static Step U(uint32_t x, uint8_t c) { return {Step::Kind::Under, 0, x, c}; }
+
+TEST_CASE("topology: the T's track programs", "[junction][topology]")
+{
+	const JunctionTrackPrograms programs = ProgramsOf(JunctionTTopology());
+	REQUIRE(programs.edges.size() == 12);
+	REQUIRE(programs.copies.size() == 12);
+	const Programs edges = {
+		{Fan(1)}, {}, {Fan(3)}, {},
+		{C(+1, NR), U(5, 0), U(5, 1), S(-1, NR), U(8, 0)},
+		{O(8), O(4), S(-1, 4)},
+		{C(-1, NR), S(+1, NR)},
+		{C(-1, 5), S(+1, 4)},
+		{O(4), U(5, 1), U(5, 0), C(+1, 2), S(-1, 1)},
+		{Fan(4)}, {}, {Fan(1)},
+	};
+	CHECK(programs.edges == edges);
+	Programs copies(12);
+	copies[5] = {S(-1, 4), O(8), O(4)};
+	CHECK(programs.copies == copies);
+}
+
+TEST_CASE("topology: LL_RR with an L_R sideline: track programs", "[junction][topology]")
+{
+	const JunctionTrackPrograms programs = ProgramsOf(JunctionLLRRSidelineTopology());
+	REQUIRE(programs.edges.size() == 26);
+	REQUIRE(programs.copies.size() == 26);
+	const Programs edges = {
+		{Fan(1)}, {Fan(3)}, {}, {O(23), U(10, 1), U(10, 0), U(9, 1), U(9, 0)}, {S(-1, NR)}, {Fan(9)}, {Fan(6)}, {},
+		{O(11), O(15), S(+1, 4)}, {O(3), O(11), O(12), S(-1, 7)}, {O(13), O(3), O(11), O(12), O(17), S(-1, 10)},
+		{C(+1, NR), U(8, 0), U(8, 1), U(9, 0), U(9, 1), U(10, 0), U(10, 1)},
+		{C(+1, NR), U(9, 0), U(9, 1), U(10, 0), U(10, 1), S(-1, NR)},
+		{C(-1, NR), U(10, 0), U(10, 1)},
+		{C(-1, NR), S(+1, NR)},
+		{U(8, 1), U(8, 0), C(+1, 2), S(-1, 1)},
+		{C(+1, 5), S(-1, 4)},
+		{U(10, 1), U(10, 0), C(-1, 8), S(+1, 7)},
+		{C(-1, 11), S(+1, 10)},
+		{Fan(7)}, {Fan(10)}, {}, {S(+1, NR)}, {S(-1, NR), U(3, 0)}, {Fan(4)}, {Fan(1)},
+	};
+	CHECK(programs.edges == edges);
+	Programs copies(26);
+	copies[8] = {S(+1, 4), O(11), O(15)};
+	copies[9] = {S(-1, 7), O(3), O(11), O(12)};
+	copies[10] = {S(-1, 10), O(13), O(3), O(11), O(12), O(17)};
+	CHECK(programs.copies == copies);
+}
+
+TEST_CASE("topology: programs agree with turns and crossings", "[junction][topology]")
+{
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		std::string error;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(*t, &error);
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(*t, paths, &error);
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(*t, paths, graph, &error);
+		const JunctionTrackStructure structure = StructureJunctionTrackGraph(*t, paths, graph, order, &error);
+		const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(*t, paths, graph, order, structure, &error);
+		REQUIRE(programs.edges.size() == graph.edges.size());
+
+		/* (a) The Corner hands of a path's edges sum to its turn. */
+		for (uint32_t p = 0; p < paths.size(); p++) {
+			int sum = 0;
+			for (uint32_t e : graph.path_edges[p]) {
+				for (const Step &s : programs.edges[e]) {
+					if (s.kind == Step::Kind::Corner) sum += s.hand;
+				}
+			}
+			CHECK(sum == structure.turns[p]);
+		}
+
+		for (uint32_t e = 0; e < graph.edges.size(); e++) {
+			/* (b) Over and Under tokens, repeated Unders collapsed, are the edge's crossings. */
+			std::vector<uint32_t> seen;
+			std::map<uint32_t, int> under_count;
+			for (const Step &s : programs.edges[e]) {
+				if (s.kind == Step::Kind::Over) {
+					seen.push_back(s.index);
+				} else if (s.kind == Step::Kind::Under) {
+					if (seen.empty() || seen.back() != s.index) seen.push_back(s.index);
+					under_count[s.index]++;
+				}
+			}
+			CHECK(seen == order.edge_crossings[e]);
+
+			/* (c) A doubled bridge is passed under twice, a single one once. */
+			for (const auto &[x, count] : under_count) {
+				bool doubled = false;
+				for (const JunctionTrackBridge &bridge : structure.bridges) {
+					if (bridge.edge == x) doubled = bridge.doubled;
+				}
+				CHECK(count == (doubled ? 2 : 1));
+			}
+		}
+	}
+}
+
 TEST_CASE("topology: branches on the N side are refused", "[junction][topology]")
 {
 	JunctionTopology t;

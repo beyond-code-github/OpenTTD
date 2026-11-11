@@ -632,6 +632,229 @@ JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topol
 	return structure;
 }
 
+JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, std::string *error)
+{
+	using Step = JunctionTrackStep;
+	using StepKind = JunctionTrackStep::Kind;
+	auto fail = [&](const char *reason) {
+		if (error != nullptr) *error = reason;
+		return JunctionTrackPrograms{};
+	};
+	if (graph.edges.empty()) return fail("a track graph without edges has no programs");
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+	const int n = static_cast<int>(slots.size());
+	auto group_of = [&](int slot) -> const JunctionLaneGroup & { return topology.groups[slots[slot].group]; };
+	auto step = [](StepKind kind, int hand, uint32_t index, uint8_t copy = 0) { return Step{kind, static_cast<int8_t>(hand), index, copy}; };
+
+	/* Rows and levels. */
+	const std::vector<int> row_of = JunctionSlotRows(topology, paths, error);
+	if (row_of.empty()) return JunctionTrackPrograms{};
+	const int rows = static_cast<int>(order.rows.size());
+	auto end_level = [&](const JunctionTrackEnd &end) {
+		if (end.node) return order.node_level[end.index];
+		return group_of(end.index).main ? 2 * row_of[end.index] + 1 : 2 * rows + 1;
+	};
+	const uint32_t edge_count = static_cast<uint32_t>(graph.edges.size());
+	auto is_row_edge = [&](uint32_t e) {
+		const int level = end_level(graph.edges[e].from);
+		return level == end_level(graph.edges[e].to) && level % 2 == 1;
+	};
+	auto is_row_node = [&](const JunctionTrackEnd &end) { return end.node && order.node_level[end.index] % 2 == 1; };
+	auto is_band_node = [&](const JunctionTrackEnd &end, bool split) { return end.node && order.node_level[end.index] % 2 == 0 && graph.nodes[end.index].split == split; };
+
+	/* The heading of every row: east when its in slot is on the W side. */
+	std::vector<bool> east(rows, true);
+	for (int s = 0; s < n; s++) {
+		if (group_of(s).main && group_of(s).in) east[row_of[s]] = group_of(s).side == JunctionSide::W;
+	}
+
+	/* The stack items of every row. */
+	std::vector<uint32_t> lane_item(rows, Step::NO_ROW);
+	std::vector<uint32_t> north_item(rows, Step::NO_ROW);
+	std::vector<uint32_t> approach_item(rows, Step::NO_ROW);
+	for (uint32_t i = 0; i < structure.stack.size(); i++) {
+		const JunctionTrackStackItem &item = structure.stack[i];
+		if (item.kind == JunctionTrackStackItem::Kind::Lane) {
+			lane_item[item.row] = i;
+			if (i > 0 && structure.stack[i - 1].row == item.row && structure.stack[i - 1].kind != JunctionTrackStackItem::Kind::Approach) north_item[item.row] = i - 1;
+		} else if (item.kind == JunctionTrackStackItem::Kind::Approach) {
+			approach_item[item.row] = i;
+		}
+	}
+
+	/* The shape of every row: in, one leg, out. */
+	std::vector<int> in_count(rows, 0), leg_count(rows, 0), out_count(rows, 0), row_total(rows, 0);
+	std::vector<uint32_t> leg_of(rows, 0);
+	for (uint32_t e = 0; e < edge_count; e++) {
+		const JunctionTrackEdge &edge = graph.edges[e];
+		if (!is_row_edge(e)) {
+			if (is_row_node(edge.from) && is_row_node(edge.to)) return fail("an edge between two rows is not ruled yet");
+			continue;
+		}
+		const int r = (end_level(edge.from) - 1) / 2;
+		row_total[r]++;
+		if (!edge.from.node && edge.to.node) {
+			in_count[r]++;
+		} else if (edge.from.node && !edge.to.node) {
+			out_count[r]++;
+		} else if (edge.from.node && edge.to.node) {
+			leg_count[r]++;
+			leg_of[r] = e;
+		}
+	}
+	for (int r = 0; r < rows; r++) {
+		if (row_total[r] != 3 || in_count[r] != 1 || leg_count[r] != 1 || out_count[r] != 1) return fail("a lane other than in, one leg, out is not ruled yet");
+	}
+
+	/* Bridges. */
+	auto doubled_bridge = [&](uint32_t e) {
+		for (const JunctionTrackBridge &bridge : structure.bridges) {
+			if (bridge.edge == e && bridge.doubled) return true;
+		}
+		return false;
+	};
+	auto bridge_over = [&](uint32_t e, uint32_t x) {
+		for (const JunctionTrackBridge &bridge : structure.bridges) {
+			if (bridge.edge == e && std::find(bridge.crossed.begin(), bridge.crossed.end(), x) != bridge.crossed.end()) return true;
+		}
+		return false;
+	};
+	std::vector<bool> row_doubled(rows, false);
+	for (uint32_t e = 0; e < edge_count; e++) {
+		if (!doubled_bridge(e)) continue;
+		if (!is_row_edge(e)) continue;
+		const int r = (end_level(graph.edges[e].from) - 1) / 2;
+		if (e != leg_of[r]) return fail("a crossed lane in or out edge is not ruled yet");
+		row_doubled[r] = true;
+	}
+
+	/* Band nodes: the siblings west to east, the straight child and the side of the other. */
+	auto siblings = [&](uint16_t node_index) {
+		const JunctionTrackNode &node = graph.nodes[node_index];
+		std::vector<std::pair<int, uint32_t>> others; // (key, edge)
+		for (uint32_t f = 0; f < edge_count; f++) {
+			const JunctionTrackEdge &edge = graph.edges[f];
+			const bool trunk = node.split ? (edge.to.node && edge.to.index == node_index) : (edge.from.node && edge.from.index == node_index);
+			const bool at = node.split ? (edge.from.node && edge.from.index == node_index) : (edge.to.node && edge.to.index == node_index);
+			if (trunk || !at) continue;
+			int key = n;
+			for (uint16_t p : edge.paths) {
+				const int far = node.split ? paths[p].to : paths[p].from;
+				key = std::min(key, (far - node.slot + n) % n);
+			}
+			others.emplace_back(key, f);
+		}
+		std::stable_sort(others.begin(), others.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+		std::vector<uint32_t> result;
+		for (const auto &other : others) result.push_back(other.second);
+		return result;
+	};
+	/* Whether e diverges at the band node, and the hand of its side. */
+	auto diverges = [&](uint32_t e, uint16_t node_index, int &side_hand) {
+		const JunctionTrackNode &node = graph.nodes[node_index];
+		const std::vector<uint32_t> sibs = siblings(node_index);
+		if (sibs.size() != 2) return false;
+		auto far_level = [&](uint32_t f) { return end_level(node.split ? graph.edges[f].to : graph.edges[f].from); };
+		const uint32_t straight = far_level(sibs[1]) < far_level(sibs[0]) ? sibs[1] : sibs[0];
+		if (e == straight) return false;
+		side_hand = e == sibs[0] ? -1 : +1;
+		return true;
+	};
+	/* The slot of an edge's first path that is not on the main line. */
+	auto s_side_slot = [&](uint32_t e) {
+		const JunctionLanePath &path = paths[graph.edges[e].paths[0]];
+		return group_of(path.from).main ? path.to : path.from;
+	};
+
+	/* The programs. */
+	JunctionTrackPrograms programs;
+	programs.edges.resize(edge_count);
+	programs.copies.resize(edge_count);
+	for (uint32_t e = 0; e < edge_count; e++) {
+		const JunctionTrackEdge &edge = graph.edges[e];
+		std::vector<Step> &program = programs.edges[e];
+		const std::vector<uint32_t> &crossings = order.edge_crossings[e];
+		if (is_row_edge(e)) {
+			const int r = (end_level(edge.from) - 1) / 2;
+			if (e == leg_of[r]) {
+				if (!row_doubled[r]) continue;
+				if (lane_item[r] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+				const Step bend = step(StepKind::SBend, east[r] ? +1 : -1, lane_item[r]);
+				for (uint32_t x : crossings) program.push_back(step(StepKind::Over, 0, x));
+				program.push_back(bend);
+				programs.copies[e].push_back(bend);
+				for (uint32_t x : crossings) programs.copies[e].push_back(step(StepKind::Over, 0, x));
+			} else if (edge.to.node) {
+				const uint32_t item = row_doubled[r] ? north_item[r] : lane_item[r];
+				if (item == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+				program.push_back(step(StepKind::Fan, 0, item));
+			} else {
+				if (lane_item[r] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+				program.push_back(step(StepKind::Fan, 0, lane_item[r]));
+			}
+			continue;
+		}
+
+		const bool heads_south = end_level(edge.to) > end_level(edge.from);
+		bool corner_placed = false;
+		auto joiner_corner = [&]() {
+			const int r = (order.node_level[edge.to.index] - 1) / 2;
+			return step(StepKind::Corner, east[r] ? +1 : -1, approach_item[r]);
+		};
+
+		/* a. Start. */
+		int side_hand = 0;
+		if (is_band_node(edge.from, true) && diverges(e, edge.from.index, side_hand)) {
+			if (is_row_node(edge.to)) {
+				if (!crossings.empty()) return fail("a diverging joiner that crosses is not ruled yet");
+				const Step corner = joiner_corner();
+				if (corner.index == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+				if (corner.hand != side_hand) return fail("a diverging corner on the wrong side is not ruled yet");
+				program.push_back(corner);
+				corner_placed = true;
+			} else {
+				program.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW));
+			}
+		} else if (is_row_node(edge.from)) {
+			const int r = (order.node_level[edge.from.index] - 1) / 2;
+			program.push_back(step(StepKind::Corner, east[r] ? +1 : -1, Step::NO_ROW));
+		}
+
+		/* b. Crossings. */
+		for (uint32_t x : crossings) {
+			if (bridge_over(e, x)) {
+				program.push_back(step(StepKind::Over, 0, x));
+			} else if (doubled_bridge(x)) {
+				program.push_back(step(StepKind::Under, 0, x, heads_south ? 0 : 1));
+				program.push_back(step(StepKind::Under, 0, x, heads_south ? 1 : 0));
+			} else if (bridge_over(x, e)) {
+				program.push_back(step(StepKind::SBend, s_side_slot(e) < s_side_slot(x) ? +1 : -1, Step::NO_ROW));
+				program.push_back(step(StepKind::Under, 0, x));
+			} else {
+				return fail("a crossing without a bridge is not ruled yet");
+			}
+		}
+
+		/* c. Arrival on a row. */
+		if (is_row_node(edge.to)) {
+			const int r = (order.node_level[edge.to.index] - 1) / 2;
+			if (lane_item[r] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+			if (!corner_placed) {
+				const Step corner = joiner_corner();
+				if (corner.index == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+				program.push_back(corner);
+			}
+			program.push_back(step(StepKind::SBend, east[r] ? -1 : +1, lane_item[r]));
+		}
+
+		/* d. End. */
+		if (is_band_node(edge.to, false) && diverges(e, edge.to.index, side_hand)) {
+			program.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW));
+		}
+	}
+	return programs;
+}
+
 const JunctionTopology &JunctionTTopology()
 {
 	static const JunctionTopology topology = {
