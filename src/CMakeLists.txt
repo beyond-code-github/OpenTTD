@@ -289,6 +289,8 @@ add_files(
     junction_station_gui.cpp
     junction_station_rules.cpp
     junction_station_rules.h
+    junction_positions.cpp
+    junction_positions.h
     junction_skeleton.cpp
     junction_skeleton.h
     junction_throughput.cpp

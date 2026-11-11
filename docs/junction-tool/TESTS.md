@@ -18,6 +18,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[tunnelprice]` | 0.01 s | 5 s | 0.01 s |
 | `[tmapnear]` | 0.8 s | 5 s | 0.09 s |
 | `[curvespeed]` | 0.01 s (CS3) | 5 s | 0.01 s |
+| `[positions]` | 0.11 s (N1) | 5 s | 0.02 s (N1: JunctionPositions, 6 tests incl. 300-system brute force) |
 | wide gate | (Release only) | | 17 s (budget 120 s) |
 
 Measured 2026-11-10 at the G3a merge.
