@@ -1065,13 +1065,28 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 		return NodeJoinMeets(facts, join.from_tile.x + dx, join.from_tile.y + dy, bits_at(join.from_tile), join.from_td, join.to_tile.x + dx, join.to_tile.y + dy, bits_at(join.to_tile));
 	};
 
+	/* Fits and meets that note the working tiles of a failure in bad when it is set. */
+	auto fits_into = [&](int x, int y, TrackBits bits, std::vector<TileIndexDiffC> *bad) {
+		if (JunctionNodeTrackFits(facts, x, y, bits)) return true;
+		if (bad != nullptr) bad->push_back({static_cast<int16_t>(x), static_cast<int16_t>(y)});
+		return false;
+	};
+	auto meets_into = [&](int x1, int y1, TrackBits bits1, Trackdir td, int x2, int y2, TrackBits bits2, std::vector<TileIndexDiffC> *bad) {
+		if (NodeJoinMeets(facts, x1, y1, bits1, td, x2, y2, bits2)) return true;
+		if (bad != nullptr) {
+			bad->push_back({static_cast<int16_t>(x1), static_cast<int16_t>(y1)});
+			bad->push_back({static_cast<int16_t>(x2), static_cast<int16_t>(y2)});
+		}
+		return false;
+	};
+
 	/**
 	 * Whether the reserved tiles of a prio row (DESIGN-N3 §8) fit the facts and meet, with the merge's X class at value v and its Y class fixed.
 	 * PlacePrio lays on the row (M = the merge tile, h1 = Corner(side, exit) on M, h2 = Corner(-side, -exit) on the row):
 	 * step 0 (x_M): h2 alone; steps 1..span: the lone X, or X with h2 at a join tile. The joins are at the required blocks, so every step is checked with both sets.
 	 * Meets: consecutive row tiles (the upstream lone X into the next tile's bits, step 1 into step 0's h2), and the row tile at x_M into the merge tile built with its flat bits and h1.
 	 */
-	auto prio_ok = [&](const JunctionNodePrioRow &prio, int v) {
+	auto prio_ok = [&](const JunctionNodePrioRow &prio, int v, std::vector<TileIndexDiffC> *bad = nullptr) {
 		const JunctionNodePoint &merge = tpl.points[prio.merge];
 		const int dx = v - tpl.flat[merge.cls] + offset.x;
 		const int dy = shift_y(merge.ycls) + offset.y;
@@ -1090,20 +1105,34 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 		const Trackdir along = TrackdirThrough(Track::X, exit_edge);
 		const int row = merge.tile.y + prio.side + dy;
 		auto x_at = [&](int step) { return merge.tile.x - step * prio.dir + dx; };
+		bool ok = true;
 		for (int step = 0; step <= prio.span; step++) {
 			if (step == 0) {
-				if (!JunctionNodeTrackFits(facts, x_at(0), row, half)) return false;
+				if (!fits_into(x_at(0), row, half, bad)) {
+					if (bad == nullptr) return false;
+					ok = false;
+				}
 				continue;
 			}
-			if (!JunctionNodeTrackFits(facts, x_at(step), row, lone) || !JunctionNodeTrackFits(facts, x_at(step), row, with_half)) return false;
-			if (!NodeJoinMeets(facts, x_at(step), row, lone, along, x_at(step - 1), row, step == 1 ? half : lone)) return false;
+			if (!fits_into(x_at(step), row, lone, bad)) {
+				if (bad == nullptr) return false;
+				ok = false;
+			}
+			if (!fits_into(x_at(step), row, with_half, bad)) {
+				if (bad == nullptr) return false;
+				ok = false;
+			}
+			if (!meets_into(x_at(step), row, lone, along, x_at(step - 1), row, step == 1 ? half : lone, bad)) {
+				if (bad == nullptr) return false;
+				ok = false;
+			}
 		}
 		const TrackBits merge_bits = bits_at(merge.tile) | TrackBits{h1};
-		return NodeJoinMeets(facts, x_at(0), row, half, TrackdirThrough(h2, ReverseDiagDir(side_edge)), merge.tile.x + dx, merge.tile.y + dy, merge_bits);
+		return meets_into(x_at(0), row, half, TrackdirThrough(h2, ReverseDiagDir(side_edge)), merge.tile.x + dx, merge.tile.y + dy, merge_bits, bad) && ok;
 	};
 
 	/* Whether a free diagonal's interior tiles (the raster at its length now) fit lone tracks and the chain p -> raster[1] -> ... -> raster[n-2] -> q meets, with p's class at value v; q's x is x_p + k as AddJunctionNodeLateConstraints computes it. */
-	auto diagonal_ok = [&](const JunctionNodeDiagonal &diag, const JunctionRaster &raster, int v) {
+	auto diagonal_ok = [&](const JunctionNodeDiagonal &diag, const JunctionRaster &raster, int v, std::vector<TileIndexDiffC> *bad = nullptr) {
 		if (!raster.error.empty()) return false;
 		const JunctionNodePoint &p = tpl.points[tpl.links[diag.link].from];
 		const JunctionNodePoint &q = tpl.points[tpl.links[diag.link].to];
@@ -1113,23 +1142,31 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 		int before_y = p.tile.y + dy;
 		TrackBits before_bits = bits_at(p.tile);
 		Trackdir before_td = p.trackdir;
+		bool ok = true;
 		for (size_t i = 1; i + 1 < raster.pieces.size(); i++) {
 			const JunctionPiece &piece = raster.pieces[i];
 			const int x = piece.tile.x + dx;
 			const int y = piece.tile.y + dy;
 			const TrackBits bits{TrackdirToTrack(piece.trackdir)};
-			if (!JunctionNodeTrackFits(facts, x, y, bits) || !NodeJoinMeets(facts, before_x, before_y, before_bits, before_td, x, y, bits)) return false;
+			if (!fits_into(x, y, bits, bad)) {
+				if (bad == nullptr) return false;
+				ok = false;
+			}
+			if (!meets_into(before_x, before_y, before_bits, before_td, x, y, bits, bad)) {
+				if (bad == nullptr) return false;
+				ok = false;
+			}
 			before_x = x;
 			before_y = y;
 			before_bits = bits;
 			before_td = piece.trackdir;
 		}
 		const int k = (q.tile.x - p.tile.x) + diag.dx * NodeDiagonalSteps(tpl, diag, result.values);
-		return NodeJoinMeets(facts, before_x, before_y, before_bits, before_td, p.tile.x + dx + k, q.tile.y + shift_y(q.ycls) + offset.y, bits_at(q.tile));
+		return meets_into(before_x, before_y, before_bits, before_td, p.tile.x + dx + k, q.tile.y + shift_y(q.ycls) + offset.y, bits_at(q.tile), bad) && ok;
 	};
 
 	/* Whether a Y-free link is a column at p's class value v: every interior row is a straight Y piece, consecutive rows connect, and so do p -> first interior and last interior -> q (p -> q when there is none). */
-	auto column_ok = [&](const JunctionNodeLink &link, int v) {
+	auto column_ok = [&](const JunctionNodeLink &link, int v, std::vector<TileIndexDiffC> *bad = nullptr) {
 		const JunctionNodePoint &p = tpl.points[link.from];
 		const JunctionNodePoint &q = tpl.points[link.to];
 		const int column = p.tile.x + v - tpl.flat[p.cls] + offset.x;
@@ -1138,18 +1175,30 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 		const int lo = std::min(y_p, y_q);
 		const int hi = std::max(y_p, y_q);
 		int previous_exit = 0;
+		bool ok = true;
 		for (int r = lo + 1; r < hi; r++) {
-			int entry;
-			int exit;
-			if (!facts.Straight(column, r, Axis::Y, entry, exit) || (r > lo + 1 && previous_exit != entry)) return false;
+			int entry = 0;
+			int exit = 0;
+			if (!facts.Straight(column, r, Axis::Y, entry, exit)) {
+				if (bad == nullptr) return false;
+				bad->push_back({static_cast<int16_t>(column), static_cast<int16_t>(r)});
+				ok = false;
+			} else if (r > lo + 1 && previous_exit != entry) {
+				if (bad == nullptr) return false;
+				bad->push_back({static_cast<int16_t>(column), static_cast<int16_t>(r)});
+				ok = false;
+			}
 			previous_exit = exit;
 		}
 		const int step = y_q > y_p ? 1 : -1;
 		const TrackBits lone{Track::Y};
 		const int first = hi - lo > 1 ? y_p + step : y_q;
 		const int last = hi - lo > 1 ? y_q - step : y_p;
-		if (!NodeJoinMeets(facts, column, y_p, bits_at(p.tile), p.trackdir, column, first, hi - lo > 1 ? lone : bits_at(q.tile))) return false;
-		return hi - lo <= 1 || NodeJoinMeets(facts, column, last, lone, p.trackdir, column, y_q, bits_at(q.tile));
+		if (!meets_into(column, y_p, bits_at(p.tile), p.trackdir, column, first, hi - lo > 1 ? lone : bits_at(q.tile), bad)) {
+			if (bad == nullptr) return false;
+			ok = false;
+		}
+		return (hi - lo <= 1 || meets_into(column, last, lone, p.trackdir, column, y_q, bits_at(q.tile), bad)) && ok;
 	};
 
 	/* The x direction of an X-free link on its paths. */
@@ -1206,10 +1255,99 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 		return true;
 	};
 
+	/* Where the Y class c, fixed at row, has no x (the first failing part in y_fits' order) and which working tiles fail there; empty when every part has an x. */
+	auto height_fault = [&](size_t c, int row) -> std::optional<JunctionNodeHeightFault> {
+		JunctionNodeHeightFault fault;
+		fault.row = row;
+		auto finish = [&](JunctionNodeHeightFault::Part part, uint32_t index, uint16_t cls, auto &&collect) {
+			fault.part = part;
+			fault.index = index;
+			const auto [lo, hi] = x_values(cls);
+			fault.x = lo <= hi ? std::clamp(static_cast<int>(tpl.flat[cls]), lo, hi) : static_cast<int>(tpl.flat[cls]);
+			if (lo <= hi) collect(fault.x);
+			std::vector<TileIndexDiffC> unique;
+			for (const TileIndexDiffC &tile : fault.tiles) {
+				if (std::ranges::none_of(unique, [&](const TileIndexDiffC &u) { return u.x == tile.x && u.y == tile.y; })) unique.push_back(tile);
+			}
+			fault.tiles = std::move(unique);
+			return fault;
+		};
+		std::set<uint16_t> groups;
+		for (const JunctionNodePiece &piece : tpl.pieces) {
+			if (piece.ycls == c && !piece.on_bridge) groups.insert(piece.cls);
+		}
+		for (const uint16_t cx : groups) {
+			const auto [lo, hi] = x_values(cx);
+			bool any = false;
+			for (int v = lo; !any && v <= hi; v++) {
+				any = std::ranges::all_of(tpl.pieces, [&](const JunctionNodePiece &piece) {
+					if (piece.cls != cx || piece.ycls != c || piece.on_bridge) return true;
+					return JunctionNodeTrackFits(facts, piece.tile.x + v - tpl.flat[cx] + offset.x, piece.tile.y + shift_y(piece.ycls) + offset.y, bits_at(piece.tile));
+				}) && std::ranges::all_of(tpl.joins, [&](const JunctionNodeJoin &join) { return join.cls != cx || join.ycls != c || join_meets(join, v); })
+					&& std::ranges::all_of(tpl.prio_rows, [&](const JunctionNodePrioRow &prio) { const JunctionNodePoint &merge = tpl.points[prio.merge]; return merge.cls != cx || merge.ycls != c || prio_ok(prio, v); });
+			}
+			if (any) continue;
+			return finish(JunctionNodeHeightFault::Part::Group, cx, cx, [&](int v) {
+				for (const JunctionNodePiece &piece : tpl.pieces) {
+					if (piece.cls != cx || piece.ycls != c || piece.on_bridge) continue;
+					fits_into(piece.tile.x + v - tpl.flat[cx] + offset.x, piece.tile.y + shift_y(piece.ycls) + offset.y, bits_at(piece.tile), &fault.tiles);
+				}
+				for (const JunctionNodeJoin &join : tpl.joins) {
+					if (join.cls != cx || join.ycls != c) continue;
+					const int dx = v - tpl.flat[join.cls] + offset.x;
+					const int dy = shift_y(join.ycls) + offset.y;
+					meets_into(join.from_tile.x + dx, join.from_tile.y + dy, bits_at(join.from_tile), join.from_td, join.to_tile.x + dx, join.to_tile.y + dy, bits_at(join.to_tile), &fault.tiles);
+				}
+				for (const JunctionNodePrioRow &prio : tpl.prio_rows) {
+					const JunctionNodePoint &merge = tpl.points[prio.merge];
+					if (merge.cls == cx && merge.ycls == c) prio_ok(prio, v, &fault.tiles);
+				}
+			});
+		}
+		for (size_t d = 0; d < tpl.diagonals.size(); d++) {
+			const JunctionNodeDiagonal &diag = tpl.diagonals[d];
+			const JunctionNodePoint &p = tpl.points[tpl.links[diag.link].from];
+			const JunctionNodePoint &q = tpl.points[tpl.links[diag.link].to];
+			if (p.ycls > c || q.ycls > c || (p.ycls != c && q.ycls != c)) continue;
+			const JunctionRaster raster = NodeDiagonalRaster(tpl, diag, diag.halves + 2 * NodeDiagonalSteps(tpl, diag, result.values));
+			const auto [lo, hi] = x_values(p.cls);
+			bool any = false;
+			for (int v = lo; !any && v <= hi; v++) any = diagonal_ok(diag, raster, v);
+			if (any) continue;
+			return finish(JunctionNodeHeightFault::Part::Diagonal, static_cast<uint32_t>(d), p.cls, [&](int v) { diagonal_ok(diag, raster, v, &fault.tiles); });
+		}
+		for (size_t l = 0; l < tpl.links.size(); l++) {
+			const JunctionNodeLink &link = tpl.links[l];
+			if (!link.free || link.axis != Axis::Y || link.diagonal) continue;
+			const JunctionNodePoint &p = tpl.points[link.from];
+			const JunctionNodePoint &q = tpl.points[link.to];
+			if (p.ycls > c || q.ycls > c || (p.ycls != c && q.ycls != c)) continue;
+			const auto [lo, hi] = x_values(p.cls);
+			bool any = false;
+			for (int v = lo; !any && v <= hi; v++) any = column_ok(link, v);
+			if (any) continue;
+			return finish(JunctionNodeHeightFault::Part::Column, static_cast<uint32_t>(l), p.cls, [&](int v) { column_ok(link, v, &fault.tiles); });
+		}
+		return std::nullopt;
+	};
+
 	/* 2b. The Y variables: the nearest flat rows whose pieces fit the facts and meet at their heights. */
 	for (size_t c = classes; c < variables; c++) {
-		if (!snap(c, y_fits)) {
+		std::optional<int> first_row;
+		if (!snap(c, [&](size_t y_class) {
+			if (!first_row.has_value()) first_row = positions.Lo(y_class);
+			return y_fits(y_class);
+		})) {
 			result.failure = JunctionNodeFailure{Kind::Height, UINT32_MAX, 0, static_cast<uint16_t>(c)};
+			if (first_row.has_value()) {
+				const size_t mark = positions.Mark();
+				const bool restricted = positions.RestrictRange(c, *first_row, *first_row);
+				if (restricted) {
+					result.values[c] = positions.Lo(c);
+					result.failure->height = height_fault(c, *first_row);
+				}
+				positions.Undo(mark);
+			}
 			result.values.clear();
 			return result;
 		}

@@ -259,7 +259,13 @@ static std::string ViolationText(const std::vector<RuleViolation> &violations)
 static std::string FailureText(const JunctionNodeSolve &solve)
 {
 	if (!solve.failure.has_value()) return "no failure";
-	return fmt::format("failure kind {} link {} column {} class {}", to_underlying(solve.failure->kind), solve.failure->link, solve.failure->column, solve.failure->cls);
+	std::string text = fmt::format("failure kind {} link {} column {} class {}", to_underlying(solve.failure->kind), solve.failure->link, solve.failure->column, solve.failure->cls);
+	if (solve.failure->height.has_value()) {
+		const JunctionNodeHeightFault &fault = *solve.failure->height;
+		text += fmt::format(" height part {} index {} row {} x {} tiles", to_underlying(fault.part), fault.index, fault.row, fault.x);
+		for (const TileIndexDiffC &tile : fault.tiles) text += fmt::format(" ({},{})", tile.x, tile.y);
+	}
+	return text;
 }
 
 TEST_CASE("the node solve builds the flat T on flat terrain", "[junction][nodes]")
@@ -769,6 +775,11 @@ TEST_CASE("a house on a vertical leg fails on its class", "[junction][nodes]")
 	/* The column check now runs in the Y snap (DESIGN-N3 §10), so the house is found there: the Y class that fixes last of the column's two ends. */
 	CHECK(solve.failure->kind == JunctionNodeFailure::Kind::Height);
 	CHECK(solve.failure->cls == std::max(from.ycls, to.ycls));
+	REQUIRE(solve.failure->height.has_value());
+	const JunctionNodeHeightFault &fault = *solve.failure->height;
+	CHECK(fault.part == JunctionNodeHeightFault::Part::Column);
+	CHECK(fault.index == leg);
+	CHECK(std::ranges::any_of(fault.tiles, [&](const TileIndexDiffC &tile) { return tile.x == from.tile.x + offset.x && tile.y == (lo + hi) / 2 + offset.y; }));
 }
 
 TEST_CASE("a longer E->S vertical leg", "[junction][nodes]")
@@ -1213,6 +1224,63 @@ TEST_CASE("a free diagonal over a ramp row is a Height failure", "[junction][nod
 	REQUIRE(solve.failure.has_value());
 	CHECK(solve.failure->kind == JunctionNodeFailure::Kind::Height);
 	CHECK(std::ranges::any_of(tpl.diagonals, [&](const JunctionNodeDiagonal &diag) { return tpl.points[tpl.links[diag.link].from].ycls == solve.failure->cls; }));
+	REQUIRE(solve.failure->height.has_value());
+	const JunctionNodeHeightFault &fault = *solve.failure->height;
+	CHECK(fault.part == JunctionNodeHeightFault::Part::Diagonal);
+	REQUIRE(fault.index < tpl.diagonals.size());
+	const JunctionNodeLink &link = tpl.links[tpl.diagonals[fault.index].link];
+	CHECK((tpl.points[link.from].ycls == solve.failure->cls || tpl.points[link.to].ycls == solve.failure->cls));
+	REQUIRE(!fault.tiles.empty());
+	/* A join that does not meet reports both its tiles, so a flat partner of a ridge-row tile is reported too. */
+	const auto on_ridge = [&](const TileIndexDiffC &tile) { return tile.y >= ridge && tile.y <= ridge + 3; };
+	CHECK(std::ranges::all_of(fault.tiles, [&](const TileIndexDiffC &tile) {
+		return on_ridge(tile) || std::ranges::any_of(fault.tiles, [&](const TileIndexDiffC &other) { return on_ridge(other) && std::abs(other.x - tile.x) + std::abs(other.y - tile.y) == 1; });
+	}));
+	CHECK(std::ranges::any_of(fault.tiles, [&](const TileIndexDiffC &tile) { return tile.y == ridge || tile.y == ridge + 3; }));
+}
+
+TEST_CASE("a Height failure's tiles fail at its row and x", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	REQUIRE(tpl.error.empty());
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	terrain.build_on_slopes = true;
+
+	const int ridge = spec.ml_gap + 2 + 6;
+	const auto set_row = [&](int y, int z_min, int z_max, DiagDirection incline) {
+		for (int x = terrain.origin.x; x < terrain.origin.x + terrain.width; x++) {
+			JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)];
+			tile.z_min = static_cast<int8_t>(z_min);
+			tile.z_max = static_cast<int8_t>(z_max);
+			tile.incline = incline;
+			tile.slope = incline == DiagDirection::Invalid ? SLOPE_FLAT : InclinedSlope(incline);
+		}
+	};
+	set_row(ridge, 0, 1, DiagDirection::SE);
+	set_row(ridge + 1, 1, 1, DiagDirection::Invalid);
+	set_row(ridge + 2, 1, 1, DiagDirection::Invalid);
+	set_row(ridge + 3, 0, 1, DiagDirection::NW);
+	const JunctionFacts facts(terrain);
+
+	const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, FlatToWorking(spec));
+	INFO(FailureText(solve));
+	REQUIRE(solve.failure.has_value());
+	REQUIRE(solve.failure->height.has_value());
+	REQUIRE(!solve.failure->height->tiles.empty());
+
+	/* A cheap consistency check; the solve's own collector is the authority. */
+	const auto &tiles = solve.failure->height->tiles;
+	const auto on_ramp = [&](const TileIndexDiffC &tile) {
+		const JunctionTerrainTile &t = terrain.tiles[static_cast<size_t>(tile.y - terrain.origin.y) * terrain.width + (tile.x - terrain.origin.x)];
+		return t.z_min != t.z_max;
+	};
+	for (const TileIndexDiffC &tile : tiles) {
+		const bool unfit = !facts.Fits(tile.x, tile.y, TrackBits{Track::X}) && !facts.Fits(tile.x, tile.y, TrackBits{Track::Y});
+		const bool partner = std::ranges::any_of(tiles, [&](const TileIndexDiffC &other) { return on_ramp(other) && std::abs(other.x - tile.x) + std::abs(other.y - tile.y) == 1; });
+		CHECK((unfit || on_ramp(tile) || partner));
+	}
 }
 
 TEST_CASE("a split whose foundation does not meet its run moves", "[junction][nodes]")

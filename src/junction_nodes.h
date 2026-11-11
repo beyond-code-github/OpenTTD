@@ -142,6 +142,20 @@ JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const s
 /** Whether track bits fit a working tile by its facts: two or more tracks -> Switch; one X or Y track -> Straight along that axis; one diagonal (half) track -> Half. */
 bool JunctionNodeTrackFits(const JunctionFacts &facts, int x, int y, TrackBits bits);
 
+/** Where a Height failure is (DESIGN-N3 §11): the first part of the Y class that had no x, at the first row the Y snap tried. */
+struct JunctionNodeHeightFault {
+	enum class Part : uint8_t {
+		Group, ///< A rigid group: the pieces of one X class on this Y class, with their joins and prio rows.
+		Diagonal, ///< A free diagonal whose two Y classes are fixed.
+		Column, ///< A Y-free link whose two Y classes are fixed.
+	};
+	Part part;
+	uint32_t index; ///< Group: the X class; Diagonal: index into tpl.diagonals; Column: index into tpl.links.
+	int row; ///< The Y class's value that was tried (layout frame of the template).
+	int x; ///< The X value at which the tiles were collected: the part's X class's flat value clamped to the snapshot range (x_values).
+	std::vector<TileIndexDiffC> tiles; ///< Working tiles failing at (row, x): a tile that does not fit its tracks, both tiles of a join that does not meet; in check order, no duplicates. Empty when the snapshot range is empty.
+};
+
 /** What made a node solve infeasible: the first constraint, in the order of SolveJunctionNodes, that could not be added. */
 struct JunctionNodeFailure {
 	enum class Kind : uint8_t {
@@ -157,6 +171,7 @@ struct JunctionNodeFailure {
 	uint32_t link = UINT32_MAX; ///< Straight/Break/Edge: the X-free link (index into tpl.links).
 	int column = 0; ///< Occupancy: the layout row where it failed. Straight/Break/Edge: the working x of the bad tile (Break: the tile before the height break, in +x order; Edge: MinX() - 1 or MaxX() + 1).
 	uint16_t cls = UINT16_MAX; ///< Piece: the X class whose pieces (or whose vertical runs) fit nowhere left. Height: the Y class.
+	std::optional<JunctionNodeHeightFault> height; ///< Height: where it failed.
 };
 /** The result of one node solve. */
 struct JunctionNodeSolve {
