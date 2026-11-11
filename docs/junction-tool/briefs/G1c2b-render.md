@@ -73,3 +73,6 @@ Add a helper `RenderOf(topology, nmax, &error)` next to CutOf (SB1b): the same p
 
 ## Report
 The standard report, plus RenderJunctionAscii of the T and of LL_RR (at nmax 64) written to docs/junction-tool/wip/render-T.txt and render-LLRR.txt (not committed; name the paths). When you have reported, stop.
+
+## Ruling after the first stop (orchestrator, 2026-11-12)
+D110 applies: when an Over's near head equals the closing axis tile of the bend just emitted (cur == near, no F run between), drop that bend's closing turn (the last move character) and append `B<middle>` straight after the half pieces; the rasterizer then puts the near head where the closing axis piece would be (junction_route.cpp, D110). cur = heads.end as before. This is general (any Fan, Corner or SBend directly followed by a bridge), and only when cur == near; cur one tile before near keeps the axis form. Any other negative or off-line run is still a stop.
