@@ -10,11 +10,13 @@
 #ifndef JUNCTION_NODES_H
 #define JUNCTION_NODES_H
 
+#include "junction_facts.h"
 #include "junction_generator.h"
 #include "junction_layout.h"
 #include "junction_positions.h"
 #include "junction_rules.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -66,11 +68,37 @@ struct JunctionNodeTemplate {
 };
 /** Read the template of a flat layout. */
 JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionLayout &flat, const JunctionSpec &spec);
-/** Add the template's diffs and the anchor (fixed to flat[anchor]) to positions over template.flat.size() variables; false when infeasible. */
+/** Add the template's diffs and the anchor (fixed to flat[anchor]) to positions; its first tpl.flat.size() variables are the classes and extra variables are allowed; false when infeasible. */
 bool AddJunctionNodeConstraints(const JunctionNodeTemplate &tpl, JunctionPositions &positions);
 /** Fix every class in index order to its flat value clamped into [Lo, Up] (difference constraints only: every value in range extends); the resulting values. */
 std::vector<int> JunctionNodeSnap(const JunctionNodeTemplate &tpl, JunctionPositions &positions);
 /** Draw the paths' track and the bridges at the classes' values (DESIGN-N3 §3) and normalise; no signals and no prio rows. */
 JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const std::vector<int> &values);
+
+/** Whether track bits fit a working tile by its facts: two or more tracks -> Switch; one X or Y track -> Straight along that axis; one diagonal (half) track -> Half. */
+bool JunctionNodeTrackFits(const JunctionFacts &facts, int x, int y, TrackBits bits);
+
+/** What made a node solve infeasible: the first constraint, in the order of SolveJunctionNodes, that could not be added. */
+struct JunctionNodeFailure {
+	enum class Kind : uint8_t {
+		Template,
+		Piece,
+		Straight,
+		Break,
+		Edge, ///< The interior of a free link cannot stay inside the snapshot.
+	};
+	Kind kind;
+	uint32_t link = UINT32_MAX; ///< Straight/Break/Edge: the free link (index into tpl.links).
+	int column = 0; ///< Straight/Break/Edge: the working x of the bad tile (Break: the tile before the height break, in +x order; Edge: MinX() - 1 or MaxX() + 1).
+	uint16_t cls = UINT16_MAX; ///< Piece: the class whose pieces fit nowhere left.
+};
+/** The result of one node solve. */
+struct JunctionNodeSolve {
+	std::optional<JunctionLayout> layout; ///< Rendered, signalled and normalised (as FinishJunctionCandidate: Normalise, PlaceJunctionSignals, Normalise).
+	std::vector<int> values; ///< Per class, when solved.
+	std::optional<JunctionNodeFailure> failure;
+};
+/** Solve the template's positions on the facts (DESIGN-N3 section 2 and the facts of section 4) and render; offset maps layout to working coordinates. */
+JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset);
 
 #endif /* JUNCTION_NODES_H */
