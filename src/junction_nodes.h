@@ -181,10 +181,11 @@ std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout,
 
 /** The result of a structure search. */
 struct JunctionNodeSearch {
-	std::optional<JunctionLayout> layout; ///< Rule-clean, fitting and with connected heights.
+	std::optional<JunctionLayout> layout; ///< Fitting and with connected heights; rule-clean by construction (D193; the [nodeoracle] test checks it).
 	TileIndexDiffC offset{}; ///< For the returned layout: working = layout + offset.
 	int states = 0; ///< States solved.
-	std::string log; ///< One line per state: "state <n> detours <k>: <ok | failure kind link column | template error | rules: <first violation> | heights: <why>>".
+	int checked = 0; ///< Times the rule checker ran inside the search (D193: none; it is a test oracle).
+	std::string log; ///< One line per state: "state <n> detours <k>: <ok | failure kind link column | template error | heights: <why>>".
 };
 /** Best-first search over detours from the flat layout (DESIGN-N3 §4): at most max_states states solved. */
 JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, int max_states);

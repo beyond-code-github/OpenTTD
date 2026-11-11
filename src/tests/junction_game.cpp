@@ -12,6 +12,8 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include "../junction_game.h"
+#include "../junction_generator.h"
+#include "../junction_nodes.h"
 #include "../junction_rules.h"
 #include "../map_func.h"
 #include "../tile_map.h"
@@ -24,6 +26,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <random>
 
 #include "../safeguards.h"
 
@@ -554,6 +557,65 @@ TEST_CASE("GenerateJunctionNear builds on flat land at 196 km/h", "[junction][tm
 	const std::vector<RuleViolation> violations = CheckJunctionRules(*near.result.layout, spec);
 	for (const RuleViolation &violation : violations) INFO("rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
 	CHECK(violations.empty());
+}
+
+TEST_CASE("the node search's layouts pass the rule checker on random terrain", "[junction][nodeoracle]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &topo = JunctionNodeTopologyT();
+	REQUIRE(topo.layout.has_value());
+	const JunctionFrame frame = MakeJunctionFrame(spec);
+	const TileIndexDiffC start_offset = {static_cast<int16_t>(frame.hub_x - topo.hub.x), static_cast<int16_t>(-topo.hub.y)};
+	const int x_lo = start_offset.x;
+	const int x_hi = start_offset.x + topo.layout->size.x - 1;
+
+	int n = 0;
+	int skipped = 0;
+	int accepted = 0;
+	int64_t total_search_micros = 0;
+	const auto run = [&](const JunctionTerrain &terrain, int seed) {
+		n++;
+		if (JunctionBlockedPortApproach(terrain, x_lo, x_hi).has_value()) {
+			skipped++;
+			return;
+		}
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionNodeSearch search = SearchJunctionNodes(*topo.layout, spec, terrain, start_offset, 16);
+		total_search_micros += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+		if (!search.layout.has_value()) return;
+		accepted++;
+		const std::vector<RuleViolation> violations = CheckJunctionRules(*search.layout, spec);
+		INFO("seed " << seed);
+		for (const RuleViolation &violation : violations) INFO("rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+		CHECK(violations.empty());
+	};
+
+	for (int seed = 1; seed <= 200; seed++) {
+		std::mt19937 rng(seed);
+		JunctionTerrain terrain = MakeNearTestTerrain();
+		const int count = std::uniform_int_distribution<int>(1, 3)(rng);
+		for (int i = 0; i < count; i++) {
+			const int w = std::uniform_int_distribution<int>(1, 3)(rng);
+			const int h = std::uniform_int_distribution<int>(1, 3)(rng);
+			const int x0 = std::uniform_int_distribution<int>(start_offset.x, start_offset.x + topo.layout->size.x - 1)(rng);
+			const int y0 = std::uniform_int_distribution<int>(0, topo.layout->size.y - 1)(rng);
+			SetNearTestRect(terrain, x0, x0 + w - 1, y0, y0 + h - 1, JunctionTileClass::Blocked);
+		}
+		run(terrain, seed);
+	}
+	for (int seed = 1001; seed <= 1050; seed++) {
+		std::mt19937 rng(seed);
+		JunctionTerrain terrain = MakeNearTestTerrain();
+		terrain.build_on_slopes = true;
+		const int r = std::uniform_int_distribution<int>(2, topo.layout->size.y - 4)(rng);
+		SetNearRampRow(terrain, r, 0, 1, DiagDirection::SE);
+		SetNearRampRow(terrain, r + 1, 1, 1, DiagDirection::Invalid);
+		SetNearRampRow(terrain, r + 2, 1, 1, DiagDirection::Invalid);
+		SetNearRampRow(terrain, r + 3, 0, 1, DiagDirection::NW);
+		run(terrain, seed);
+	}
+	std::cout << "ORACLE terrains=" << n << " skipped=" << skipped << " accepted=" << accepted << " micros=" << total_search_micros << "\n";
+	CHECK(accepted > 0);
 }
 
 TEST_CASE("GenerateJunctionNear's score includes the terrain cost", "[junction][tmapnear]")
