@@ -10,6 +10,8 @@
 #include "stdafx.h"
 
 #include "junction_generator.h"
+#include "junction_nodes.h"
+#include "junction_positions.h"
 #include "junction_rules.h"
 #include "junction_rules_internal.h"
 #include "core/math_func.hpp"
@@ -1932,23 +1934,34 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 }
 
 /**
- * The least prio coverage, in tiles, that does not delay the ML on the flat generated junction for the spec's design train (D137).
+ * The least prio coverage, in tiles, that does not delay the ML on the node model's flat T for the spec's design train (D137).
+ * The layout is the node model's T at the spec (DESIGN-N3 §5-§6), judged by the train simulation (D119); it replaces the old generator's sweep (D185a).
  * The coverage starts at max(1, spec.prio_tiles); each step jumps to the farthest delaying ML start of the exact timing (S1c2).
  * @param spec The junction spec; train is required, prio_tiles is the least coverage tried.
- * @return The coverage; or {0, the generation's error} when no flat layout exists, or {0, PrioTooLong} when it would exceed the search bound.
+ * @return The coverage; or {0, NoLayout} when the flat T or its node layout cannot be built, or {0, PrioTooLong} when it would exceed the search bound.
  */
 JunctionPrioSizing SizeJunctionPrio(const JunctionSpec &spec)
 {
+	static const JunctionTMapResult flat = ConstructJunctionTMap(MakeTestJunctionSpec(), nullptr, std::nullopt, true);
+	if (!flat.layout.has_value()) return {0, JunctionGenerateError::NoLayout};
+
 	JunctionSpec copy = spec;
 	copy.prio_tiles = std::max<uint8_t>(1, spec.prio_tiles);
 	for (;;) {
-		const JunctionGenerateResult result = GenerateJunctionUnchecked(copy, nullptr);
-		if (!result.layout.has_value()) return {0, result.error};
+		const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*flat.layout, copy);
+		if (!tpl.error.empty()) return {0, JunctionGenerateError::NoLayout};
+		JunctionPositions positions(tpl.flat.size(), -1024, 1024);
+		if (!AddJunctionNodeConstraints(tpl, positions)) return {0, JunctionGenerateError::NoLayout};
+		const std::vector<int> values = JunctionNodeSnap(tpl, positions);
+		if (values.empty()) return {0, JunctionGenerateError::NoLayout};
+		JunctionLayout layout = RenderJunctionNodeTracks(tpl, values);
+		PlaceJunctionSignals(layout, copy);
+		NormaliseJunctionLayout(layout);
 
 		bool delayed = false;
 		uint next = 0;
 		/* A timed out timing steps the coverage by one: its required_distance is 0 or small. */
-		for (const JunctionPrioTiming &timing : PrioTimingsOf(*result.layout, copy)) {
+		for (const JunctionPrioTiming &timing : PrioTimingsOf(layout, copy)) {
 			if (!timing.ml_delayed && !timing.timed_out) continue;
 			delayed = true;
 			next = std::max(next, timing.required_distance / JunctionProgressPerStraightTile() + 1);
