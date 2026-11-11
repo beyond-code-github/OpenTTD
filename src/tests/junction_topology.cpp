@@ -111,7 +111,7 @@ TEST_CASE("topology: the T's track graph", "[junction][topology]")
 	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
 	REQUIRE(!graph.nodes.empty());
 
-	const std::vector<JunctionTrackNode> nodes = {{true, 0}, {true, 2}, {true, 4}, {false, 1}, {false, 3}, {false, 5}};
+	const std::vector<JunctionTrackNode> nodes = {{true, 0, 1}, {true, 2, 4}, {true, 4, 3}, {false, 1, 3}, {false, 3, 4}, {false, 5, 1}};
 	CHECK(graph.nodes == nodes);
 	const Edges edges = {
 		{Kind::In, P(0), N(0), Paths{0, 1}},
@@ -142,8 +142,7 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track graph", "[junction][topol
 	REQUIRE(!graph.nodes.empty());
 
 	const std::vector<JunctionTrackNode> nodes = {
-		{true, 0}, {true, 1}, {true, 4}, {true, 4}, {true, 4}, {true, 6}, {true, 7},
-		{false, 2}, {false, 3}, {false, 5}, {false, 5}, {false, 5}, {false, 8}, {false, 9},
+		{true, 0, 1}, {true, 1, 3}, {true, 4, 8}, {true, 4, 4}, {true, 4, 8}, {true, 6, 7}, {true, 7, 5}, {false, 2, 5}, {false, 3, 7}, {false, 5, 8}, {false, 5, 8}, {false, 5, 8}, {false, 8, 3}, {false, 9, 1},
 	};
 	CHECK(graph.nodes == nodes);
 	const Edges edges = {
@@ -180,7 +179,7 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track graph", "[junction][topol
 		{6, 13, 22, 21}, {5, 14, 22, 21}, {2, 3, 15, 25}, {2, 3, 16, 24}, {2, 4, 17, 19}, {2, 4, 18, 20},
 	};
 	CHECK(graph.path_edges == path_edges);
-	const Pairs crossings = {{3, 9}, {3, 10}, {3, 23}, {8, 11}, {8, 15}, {9, 23}, {10, 13}, {10, 17}, {10, 23}};
+	const Pairs crossings = {{3, 9}, {3, 10}, {3, 23}, {8, 11}, {8, 15}, {9, 11}, {9, 12}, {10, 11}, {10, 12}, {10, 13}, {10, 17}};
 	CHECK(graph.crossings == crossings);
 }
 
@@ -208,8 +207,8 @@ TEST_CASE("topology: a split with three legs is refused", "[junction][topology]"
 	t.groups = {
 		{JunctionSide::W, true, 1, 0, true},
 		{JunctionSide::S, false, 1, 1, false},
+		{JunctionSide::S, false, 1, 2, false},
 		{JunctionSide::E, false, 1, 0, true},
-		{JunctionSide::N, false, 1, 2, false},
 	};
 	t.movements = {{0, 1}, {0, 2}, {0, 3}};
 	std::string error;
@@ -255,24 +254,25 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track order", "[junction][topol
 	std::string error;
 	const JunctionTrackOrder order = OrderOf(JunctionLLRRSidelineTopology(), &error);
 	REQUIRE(!order.rows.empty());
-	CHECK(order.node_level == std::vector<int>{1, 3, 8, 4, 8, 7, 5, 5, 7, 8, 8, 4, 3, 1});
+	CHECK(order.node_level == std::vector<int>{1, 3, 8, 4, 8, 7, 5, 5, 7, 8, 8, 8, 3, 1});
 	using Row = std::vector<JunctionTrackRowItem>;
 	CHECK(order.rows == std::vector<Row>{
 		{RN(0), RN(13)},
 		{RN(1), RE(11), RE(15), RN(12)},
-		{RN(7), RE(23), RE(3), RN(6)},
-		{RN(8), RE(17), RE(23), RE(3), RE(13), RN(5)},
+		{RN(7), RE(12), RE(11), RE(3), RN(6)},
+		{RN(8), RE(17), RE(12), RE(11), RE(3), RE(13), RN(5)},
 	});
 	std::vector<std::vector<uint32_t>> crossings(26);
 	crossings[3] = {23, 10, 9};
 	crossings[8] = {11, 15};
-	crossings[9] = {3, 23};
-	crossings[10] = {13, 3, 23, 17};
-	crossings[11] = {8};
+	crossings[9] = {3, 11, 12};
+	crossings[10] = {13, 3, 11, 12, 17};
+	crossings[11] = {8, 9, 10};
+	crossings[12] = {9, 10};
 	crossings[13] = {10};
 	crossings[15] = {8};
 	crossings[17] = {10};
-	crossings[23] = {9, 10, 3};
+	crossings[23] = {3};
 	CHECK(order.edge_crossings == crossings);
 }
 
@@ -313,7 +313,7 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track structure", "[junction][t
 		{3, ItemKind::PrioAndCopy}, {3, ItemKind::Lane}, {3, ItemKind::Approach},
 	});
 	CHECK(structure.bridges == std::vector<Bridge>{
-		{3, {23}, false}, {8, {11, 15}, true}, {9, {3, 23}, true}, {10, {13, 3, 23, 17}, true},
+		{3, {23}, false}, {8, {11, 15}, true}, {9, {3, 11, 12}, true}, {10, {13, 3, 11, 12, 17}, true},
 	});
 	CHECK(structure.turns == std::vector<int8_t>{0, 0, 0, 0, +1, +1, -1, -1, +1, +1, -1, -1});
 }
@@ -332,7 +332,22 @@ TEST_CASE("topology: branches on the N side are refused", "[junction][topology]"
 	t.movements = {{0, 3}, {2, 1}, {0, 5}, {2, 5}, {4, 1}, {4, 3}};
 	REQUIRE(JunctionPortSlots(t).size() == 6);
 	std::string error;
-	const JunctionTrackOrder order = OrderOf(t, &error);
-	CHECK(order.rows.empty());
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	REQUIRE(!paths.empty());
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	CHECK(graph.nodes.empty());
+	CHECK(graph.edges.empty());
 	CHECK(error == "branch ports off the S side are not ruled yet");
+}
+
+TEST_CASE("topology: the row of every port slot", "[junction][topology]")
+{
+	for (const auto &[t, expected] : {
+		std::make_pair(&JunctionTTopology(), std::vector<int>{0, 1, -1, -1, 1, 0}),
+		std::make_pair(&JunctionLLRRSidelineTopology(), std::vector<int>{0, 1, 2, 3, -1, -1, 3, 2, 1, 0}),
+	}) {
+		std::string error;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(*t, &error);
+		CHECK(JunctionSlotRows(*t, paths, &error) == expected);
+	}
 }
