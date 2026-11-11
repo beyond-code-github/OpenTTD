@@ -285,6 +285,7 @@ void NodeBuilder::ReadPoints()
 
 	/* The pieces that are not strictly inside a free link, with the class of the latest point at or before them. */
 	std::set<std::tuple<int, int, Track>> piece_seen;
+	std::set<std::tuple<int, int, Trackdir, int, int>> join_seen;
 	for (size_t pi = 0; pi < path_count; pi++) {
 		const std::vector<JunctionPiece> &pieces = this->ctx.paths[pi].pieces;
 		NodePathWork &w = this->work[pi];
@@ -297,6 +298,23 @@ void NodeBuilder::ReadPoints()
 				next++;
 			} else {
 				w.governing[i] = w.governing[i - 1];
+			}
+
+			/* The join to the previous piece (DESIGN-N3 §10): both on the ground and neither strictly inside a free link. */
+			if (i > 0 && !pieces[i - 1].on_bridge && !pieces[i].on_bridge && w.link_of[i - 1] < 0 && w.link_of[i] < 0) {
+				const JunctionNodePoint &before = this->tpl.points[w.governing[i - 1]];
+				const JunctionNodePoint &after = this->tpl.points[w.governing[i]];
+				if (before.cls == after.cls && before.ycls == after.ycls) {
+					if (join_seen.emplace(pieces[i - 1].tile.x, pieces[i - 1].tile.y, pieces[i - 1].trackdir, pieces[i].tile.x, pieces[i].tile.y).second) {
+						this->tpl.joins.push_back({pieces[i - 1].tile, pieces[i - 1].trackdir, pieces[i].tile, before.cls, before.ycls});
+					}
+				} else {
+					/* The two ends of one free link are handled by the link's own rules. */
+					const bool ends_of_free_link = std::ranges::any_of(this->tpl.links, [&](const JunctionNodeLink &link) {
+						return link.free && link.from == w.governing[i - 1] && link.to == w.governing[i] && before.tile.x == pieces[i - 1].tile.x && before.tile.y == pieces[i - 1].tile.y && before.trackdir == pieces[i - 1].trackdir && after.tile.x == pieces[i].tile.x && after.tile.y == pieces[i].tile.y && after.trackdir == pieces[i].trackdir;
+					});
+					if (!ends_of_free_link) this->tpl.open_joins++;
+				}
 			}
 			if (w.link_of[i] >= 0) continue;
 			const Track track = TrackdirToTrack(pieces[i].trackdir);
@@ -953,6 +971,15 @@ bool JunctionNodeTrackFits(const JunctionFacts &facts, int x, int y, TrackBits b
 	return facts.Fits(x, y, bits);
 }
 
+/** Whether piece a (travelling out of its tile along a_td, its tile built with a_bits) meets the tile b (built with b_bits) at one height: both EdgeZ exist and are equal (DESIGN-N3 §10). */
+static bool NodeJoinMeets(const JunctionFacts &facts, int ax, int ay, TrackBits a_bits, Trackdir a_td, int bx, int by, TrackBits b_bits)
+{
+	const DiagDirection e = TrackdirToExitdir(a_td);
+	const int z_out = facts.EdgeZ(ax, ay, a_bits, e);
+	const int z_in = facts.EdgeZ(bx, by, b_bits, ReverseDiagDir(e));
+	return z_out != INT_MIN && z_in != INT_MIN && z_out == z_in;
+}
+
 JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset)
 {
 	JunctionNodeSolve result;
@@ -973,9 +1000,27 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 		return result;
 	}
 
-	/* Fix a variable at the nearest value to its flat one; false when none is left. */
+	/* The tracks of each flat tile: those of the render at the flat values. */
+	std::map<std::pair<int, int>, TrackBits> flat_bits;
+	for (const JunctionNodePiece &piece : tpl.pieces) {
+		if (!piece.on_bridge) flat_bits[{piece.tile.x, piece.tile.y}].Set(piece.track);
+	}
+	for (const JunctionNodeLink &link : tpl.links) {
+		if (!link.free || link.diagonal) continue;
+		const JunctionNodePoint &from = tpl.points[link.from];
+		const JunctionNodePoint &to = tpl.points[link.to];
+		if (link.axis == Axis::X) {
+			for (int x = std::min(from.tile.x, to.tile.x) + 1; x < std::max(from.tile.x, to.tile.x); x++) flat_bits[{x, from.tile.y}].Set(Track::X);
+		} else {
+			for (int y = std::min(from.tile.y, to.tile.y) + 1; y < std::max(from.tile.y, to.tile.y); y++) flat_bits[{from.tile.x, y}].Set(Track::Y);
+		}
+	}
+	auto bits_at = [&](TileIndexDiffC tile) { return flat_bits.at({tile.x, tile.y}); };
+	auto shift_y = [&](uint16_t ycls) { return result.values[ycls] - tpl.flat[ycls]; };
+
+	/* Fix a variable at the nearest value to its flat one that accept takes; false when none is left. */
 	result.values.assign(variables, 0);
-	auto snap = [&](size_t c) {
+	auto snap = [&](size_t c, const auto &accept) {
 		for (int distance = 0;; distance++) {
 			const int low = tpl.flat[c] - distance;
 			const int high = tpl.flat[c] + distance;
@@ -985,23 +1030,133 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 				const size_t mark = positions.Mark();
 				if (positions.RestrictRange(c, t, t)) {
 					result.values[c] = positions.Lo(c);
-					return true;
+					if (accept(c)) return true;
 				}
 				positions.Undo(mark);
 				if (distance == 0) break;
 			}
 		}
 	};
+	const auto any_value = [](size_t) { return true; };
 
-	/* 2b. The Y variables: snapped to the flat rows, no facts. */
+	/* Whether the join meets with its class at value v (x shift v - flat) and its Y class at its fixed value. */
+	auto join_meets = [&](const JunctionNodeJoin &join, int v) {
+		const int dx = v - tpl.flat[join.cls] + offset.x;
+		const int dy = shift_y(join.ycls) + offset.y;
+		return NodeJoinMeets(facts, join.from_tile.x + dx, join.from_tile.y + dy, bits_at(join.from_tile), join.from_td, join.to_tile.x + dx, join.to_tile.y + dy, bits_at(join.to_tile));
+	};
+
+	/* Whether a free diagonal's interior tiles (the raster at its length now) fit lone tracks and the chain p -> raster[1] -> ... -> raster[n-2] -> q meets, with p's class at value v; q's x is x_p + k as AddJunctionNodeLateConstraints computes it. */
+	auto diagonal_ok = [&](const JunctionNodeDiagonal &diag, const JunctionRaster &raster, int v) {
+		if (!raster.error.empty()) return false;
+		const JunctionNodePoint &p = tpl.points[tpl.links[diag.link].from];
+		const JunctionNodePoint &q = tpl.points[tpl.links[diag.link].to];
+		const int dx = v - tpl.flat[p.cls] + offset.x;
+		const int dy = shift_y(p.ycls) + offset.y;
+		int before_x = p.tile.x + dx;
+		int before_y = p.tile.y + dy;
+		TrackBits before_bits = bits_at(p.tile);
+		Trackdir before_td = p.trackdir;
+		for (size_t i = 1; i + 1 < raster.pieces.size(); i++) {
+			const JunctionPiece &piece = raster.pieces[i];
+			const int x = piece.tile.x + dx;
+			const int y = piece.tile.y + dy;
+			const TrackBits bits{TrackdirToTrack(piece.trackdir)};
+			if (!JunctionNodeTrackFits(facts, x, y, bits) || !NodeJoinMeets(facts, before_x, before_y, before_bits, before_td, x, y, bits)) return false;
+			before_x = x;
+			before_y = y;
+			before_bits = bits;
+			before_td = piece.trackdir;
+		}
+		const int k = (q.tile.x - p.tile.x) + diag.dx * NodeDiagonalSteps(tpl, diag, result.values);
+		return NodeJoinMeets(facts, before_x, before_y, before_bits, before_td, p.tile.x + dx + k, q.tile.y + shift_y(q.ycls) + offset.y, bits_at(q.tile));
+	};
+
+	/* Whether a Y-free link is a column at p's class value v: every interior row is a straight Y piece, consecutive rows connect, and so do p -> first interior and last interior -> q (p -> q when there is none). */
+	auto column_ok = [&](const JunctionNodeLink &link, int v) {
+		const JunctionNodePoint &p = tpl.points[link.from];
+		const JunctionNodePoint &q = tpl.points[link.to];
+		const int column = p.tile.x + v - tpl.flat[p.cls] + offset.x;
+		const int y_p = p.tile.y + shift_y(p.ycls) + offset.y;
+		const int y_q = q.tile.y + shift_y(q.ycls) + offset.y;
+		const int lo = std::min(y_p, y_q);
+		const int hi = std::max(y_p, y_q);
+		int previous_exit = 0;
+		for (int r = lo + 1; r < hi; r++) {
+			int entry;
+			int exit;
+			if (!facts.Straight(column, r, Axis::Y, entry, exit) || (r > lo + 1 && previous_exit != entry)) return false;
+			previous_exit = exit;
+		}
+		const int step = y_q > y_p ? 1 : -1;
+		const TrackBits lone{Track::Y};
+		const int first = hi - lo > 1 ? y_p + step : y_q;
+		const int last = hi - lo > 1 ? y_q - step : y_p;
+		if (!NodeJoinMeets(facts, column, y_p, bits_at(p.tile), p.trackdir, column, first, hi - lo > 1 ? lone : bits_at(q.tile))) return false;
+		return hi - lo <= 1 || NodeJoinMeets(facts, column, last, lone, p.trackdir, column, y_q, bits_at(q.tile));
+	};
+
+	/* The x direction of an X-free link on its paths. */
+	auto link_direction = [&](const JunctionNodeLink &link) {
+		for (const JunctionNodePath &path : tpl.paths) {
+			for (size_t i = 0; i + 1 < path.points.size(); i++) {
+				if (path.points[i] == link.from && path.points[i + 1] == link.to) return static_cast<int>(path.dir);
+			}
+		}
+		return 0;
+	};
+
+	/* The snapshot's range of values of an X class, within its bounds now. */
+	auto x_values = [&](uint16_t c) { return std::pair{std::max(positions.Lo(c), facts.MinX() - offset.x), std::min(positions.Up(c), facts.MaxX() - offset.x)}; };
+
+	/* Whether the Y class c, now fixed with the Y classes before it, leaves a row for everything it carries (DESIGN-N3 §10): its rigid groups, the free diagonals and Y-free links whose two Y classes are fixed. */
+	auto y_fits = [&](size_t c) {
+		std::set<uint16_t> groups;
+		for (const JunctionNodePiece &piece : tpl.pieces) {
+			if (piece.ycls == c && !piece.on_bridge) groups.insert(piece.cls);
+		}
+		for (const uint16_t cx : groups) {
+			const auto [lo, hi] = x_values(cx);
+			bool any = false;
+			for (int v = lo; !any && v <= hi; v++) {
+				any = std::ranges::all_of(tpl.pieces, [&](const JunctionNodePiece &piece) {
+					if (piece.cls != cx || piece.ycls != c || piece.on_bridge) return true;
+					return JunctionNodeTrackFits(facts, piece.tile.x + v - tpl.flat[cx] + offset.x, piece.tile.y + shift_y(piece.ycls) + offset.y, bits_at(piece.tile));
+				}) && std::ranges::all_of(tpl.joins, [&](const JunctionNodeJoin &join) { return join.cls != cx || join.ycls != c || join_meets(join, v); });
+			}
+			if (!any) return false;
+		}
+		for (const JunctionNodeDiagonal &diag : tpl.diagonals) {
+			const JunctionNodePoint &p = tpl.points[tpl.links[diag.link].from];
+			const JunctionNodePoint &q = tpl.points[tpl.links[diag.link].to];
+			if (p.ycls > c || q.ycls > c || (p.ycls != c && q.ycls != c)) continue;
+			const JunctionRaster raster = NodeDiagonalRaster(tpl, diag, diag.halves + 2 * NodeDiagonalSteps(tpl, diag, result.values));
+			const auto [lo, hi] = x_values(p.cls);
+			bool any = false;
+			for (int v = lo; !any && v <= hi; v++) any = diagonal_ok(diag, raster, v);
+			if (!any) return false;
+		}
+		for (const JunctionNodeLink &link : tpl.links) {
+			if (!link.free || link.axis != Axis::Y || link.diagonal) continue;
+			const JunctionNodePoint &p = tpl.points[link.from];
+			const JunctionNodePoint &q = tpl.points[link.to];
+			if (p.ycls > c || q.ycls > c || (p.ycls != c && q.ycls != c)) continue;
+			const auto [lo, hi] = x_values(p.cls);
+			bool any = false;
+			for (int v = lo; !any && v <= hi; v++) any = column_ok(link, v);
+			if (!any) return false;
+		}
+		return true;
+	};
+
+	/* 2b. The Y variables: the nearest flat rows whose pieces fit the facts and meet at their heights. */
 	for (size_t c = classes; c < variables; c++) {
-		if (!snap(c)) {
-			result.failure = JunctionNodeFailure{Kind::Template};
+		if (!snap(c, y_fits)) {
+			result.failure = JunctionNodeFailure{Kind::Height, UINT32_MAX, 0, static_cast<uint16_t>(c)};
 			result.values.clear();
 			return result;
 		}
 	}
-	auto shift_y = [&](uint16_t ycls) { return result.values[ycls] - tpl.flat[ycls]; };
 
 	/* 2c. The constraints that need the Y values: the free diagonals' x, the late gaps, the late crossings. */
 	if (!AddJunctionNodeLateConstraints(tpl, positions, result.values)) {
@@ -1022,60 +1177,45 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 	std::vector<JunctionRaster> diagonal_rasters;
 	for (const JunctionNodeDiagonal &diag : tpl.diagonals) diagonal_rasters.push_back(NodeDiagonalRaster(tpl, diag, diag.halves + 2 * NodeDiagonalSteps(tpl, diag, result.values)));
 
-	/* 3. The pieces of every class fit the facts, and so do the interior tiles of the free diagonals from their rasters at the known length; a tile's bits are those of the render at the flat values. */
-	std::map<std::pair<int, int>, TrackBits> flat_bits;
-	for (const JunctionNodePiece &piece : tpl.pieces) {
-		if (!piece.on_bridge) flat_bits[{piece.tile.x, piece.tile.y}].Set(piece.track);
-	}
-	for (const JunctionNodeLink &link : tpl.links) {
-		if (!link.free || link.diagonal) continue;
-		const JunctionNodePoint &from = tpl.points[link.from];
-		const JunctionNodePoint &to = tpl.points[link.to];
-		if (link.axis == Axis::X) {
-			for (int x = std::min(from.tile.x, to.tile.x) + 1; x < std::max(from.tile.x, to.tile.x); x++) flat_bits[{x, from.tile.y}].Set(Track::X);
-		} else {
-			for (int y = std::min(from.tile.y, to.tile.y) + 1; y < std::max(from.tile.y, to.tile.y); y++) flat_bits[{from.tile.x, y}].Set(Track::Y);
-		}
-	}
+	/* 3. The pieces of every class fit the facts, and so do the interior tiles of the free diagonals from their rasters at the known length; a tile's bits are those of the render at the flat values. Every join of the class, free run end, column and diagonal chain of the class meets. */
 	for (uint16_t c = 0; c < classes; c++) {
 		std::vector<int> allowed;
 		for (int v = -RANGE; v <= RANGE; v++) {
 			bool fits = std::ranges::all_of(tpl.pieces, [&](const JunctionNodePiece &piece) {
 				if (piece.cls != c || piece.on_bridge) return true;
-				return JunctionNodeTrackFits(facts, piece.tile.x + v - tpl.flat[c] + offset.x, piece.tile.y + shift_y(piece.ycls) + offset.y, flat_bits.at({piece.tile.x, piece.tile.y}));
+				return JunctionNodeTrackFits(facts, piece.tile.x + v - tpl.flat[c] + offset.x, piece.tile.y + shift_y(piece.ycls) + offset.y, bits_at(piece.tile));
 			});
+			fits = fits && std::ranges::all_of(tpl.joins, [&](const JunctionNodeJoin &join) { return join.cls != c || join_meets(join, v); });
 
-			/* A Y-free link of this class is a column: every interior row is a straight Y piece and consecutive rows connect. */
+			/* A Y-free link of this class is a column. */
 			for (size_t i = 0; fits && i < tpl.links.size(); i++) {
 				const JunctionNodeLink &link = tpl.links[i];
+				if (!link.free || link.axis != Axis::Y || link.diagonal || tpl.points[link.from].cls != c) continue;
+				fits = column_ok(link, v);
+			}
+
+			/* A free X run of this class: its end meets the lone X straight beside it. When the run ends up with no interior this asks a straight X where q's own tile is: conservative. */
+			for (size_t k = 0; fits && k < free_links.size(); k++) {
+				const JunctionNodeLink &link = tpl.links[free_links[k]];
 				const JunctionNodePoint &p = tpl.points[link.from];
 				const JunctionNodePoint &q = tpl.points[link.to];
-				if (!link.free || link.axis != Axis::Y || p.cls != c) continue;
-				const int column = p.tile.x + v - tpl.flat[c] + offset.x;
-				const int y_p = p.tile.y + shift_y(p.ycls) + offset.y;
-				const int y_q = q.tile.y + shift_y(q.ycls) + offset.y;
-				int previous_exit = 0;
-				for (int r = std::min(y_p, y_q) + 1; fits && r < std::max(y_p, y_q); r++) {
-					int entry;
-					int exit;
-					if (!facts.Straight(column, r, Axis::Y, entry, exit) || (r > std::min(y_p, y_q) + 1 && previous_exit != entry)) fits = false;
-					previous_exit = exit;
+				const int d = link_direction(link);
+				const int row = p.tile.y + shift_y(p.ycls) + offset.y;
+				const TrackBits lone{Track::X};
+				if (p.cls == c) {
+					const int x_p = p.tile.x + v - tpl.flat[c] + offset.x;
+					fits = NodeJoinMeets(facts, x_p, row, bits_at(p.tile), p.trackdir, x_p + d, row, lone);
+				}
+				if (fits && q.cls == c) {
+					const int x_q = q.tile.x + v - tpl.flat[c] + offset.x;
+					fits = NodeJoinMeets(facts, x_q - d, row, lone, p.trackdir, x_q, row, bits_at(q.tile));
 				}
 			}
 
-			/* A free diagonal starting at this class: every interior tile of its raster at the known length fits a half piece. */
+			/* A free diagonal starting at this class: every interior tile of its raster at the known length fits a half piece, and the chain meets. */
 			for (size_t d = 0; fits && d < tpl.diagonals.size(); d++) {
-				const JunctionNodePoint &p = tpl.points[tpl.links[tpl.diagonals[d].link].from];
-				if (p.cls != c) continue;
-				const JunctionRaster &raster = diagonal_rasters[d];
-				if (!raster.error.empty()) {
-					fits = false;
-					break;
-				}
-				for (size_t i = 1; fits && i + 1 < raster.pieces.size(); i++) {
-					const JunctionPiece &piece = raster.pieces[i];
-					fits = JunctionNodeTrackFits(facts, piece.tile.x + v - tpl.flat[c] + offset.x, piece.tile.y + shift_y(p.ycls) + offset.y, TrackBits{TrackdirToTrack(piece.trackdir)});
-				}
+				if (tpl.points[tpl.links[tpl.diagonals[d].link].from].cls != c) continue;
+				fits = diagonal_ok(tpl.diagonals[d], diagonal_rasters[d], v);
 			}
 			if (fits) allowed.push_back(v);
 		}
@@ -1092,12 +1232,7 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 		const JunctionNodeLink &link = tpl.links[link_index];
 		const JunctionNodePoint &p = tpl.points[link.from];
 		const JunctionNodePoint &q = tpl.points[link.to];
-		int d = 0;
-		for (const JunctionNodePath &path : tpl.paths) {
-			for (size_t i = 0; i + 1 < path.points.size() && d == 0; i++) {
-				if (path.points[i] == link.from && path.points[i + 1] == link.to) d = path.dir;
-			}
-		}
+		const int d = link_direction(link);
 		const size_t u = variables + 3 * k;
 		const size_t w = u + 1;
 		const size_t w2 = u + 2;
@@ -1147,7 +1282,7 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 
 	/* 5. Snap each X class to the nearest value. */
 	for (size_t c = 0; c < classes; c++) {
-		if (!snap(c)) {
+		if (!snap(c, any_value)) {
 			result.failure = JunctionNodeFailure{Kind::Template};
 			result.values.clear();
 			return result;
