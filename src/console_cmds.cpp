@@ -412,11 +412,16 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 		found = FitJunctionLibraryNear(library, terrain, static_cast<uint8_t>(*rot_arg), mirrored);
 		const auto fit_end = std::chrono::steady_clock::now();
 		timing = fmt::format(" snapshot_us={} fit_us={}", std::chrono::duration_cast<std::chrono::microseconds>(snapshot_end - snapshot_start).count(), std::chrono::duration_cast<std::chrono::microseconds>(fit_end - fit_start).count());
-	} else if (*near_arg != 0) {
-		const std::atomic<bool> no_cancel{false};
-		found = GenerateJunctionNear(spec, terrain, static_cast<uint8_t>(*rot_arg), mirrored, no_cancel);
 	} else {
-		found.result = GenerateJunction(spec, &terrain);
+		const auto gen_start = std::chrono::steady_clock::now();
+		if (*near_arg != 0) {
+			const std::atomic<bool> no_cancel{false};
+			found = GenerateJunctionNear(spec, terrain, static_cast<uint8_t>(*rot_arg), mirrored, no_cancel);
+		} else {
+			found.result = GenerateJunction(spec, &terrain);
+		}
+		const auto gen_end = std::chrono::steady_clock::now();
+		timing = fmt::format(" snapshot_us={} gen_us={}", std::chrono::duration_cast<std::chrono::microseconds>(snapshot_end - snapshot_start).count(), std::chrono::duration_cast<std::chrono::microseconds>(gen_end - gen_start).count());
 	}
 	const JunctionGenerateResult &result = found.result;
 
@@ -424,7 +429,7 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 	if (!result.layout.has_value()) {
 		const char *name = names[to_underlying(result.error)];
 		out << "{\"error\":\"" << name << "\"}\n";
-		IConsolePrint(CC_WARNING, "junction_export error {}", name);
+		IConsolePrint(CC_WARNING, "junction_export error {}{}", name, timing);
 		return true;
 	}
 
