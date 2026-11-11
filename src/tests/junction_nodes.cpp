@@ -1473,3 +1473,41 @@ TEST_CASE("the traced T is a fixed point", "[junction][nodes]")
 	INFO(diff);
 	CHECK(diff == "");
 }
+
+TEST_CASE("the template from a traced input equals the template from its layout", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const auto same = [&](const JunctionLayout &layout) {
+		const std::string diff = DiffJunctionNodeTemplates(BuildJunctionNodeTemplate(layout, spec), BuildJunctionNodeTemplate(TraceJunctionNodeInput(layout, spec), spec));
+		INFO(diff);
+		CHECK(diff.empty());
+	};
+	REQUIRE(FlatT().layout.has_value());
+	same(*FlatT().layout);
+
+	/* The layouts of "a detour around a column of the hand-built line": up and down. */
+	const DetourFixture fixture(2, 5);
+	const JunctionSpec test_spec = MakeTestJunctionSpec();
+	std::string why;
+	const std::optional<JunctionLayout> up = InsertJunctionDetour(fixture.layout, fixture.tpl, fixture.link, 7, -1, test_spec, &why);
+	const std::optional<JunctionLayout> down = InsertJunctionDetour(fixture.layout, fixture.tpl, fixture.link, 7, 1, test_spec, &why);
+	REQUIRE(up.has_value());
+	REQUIRE(down.has_value());
+	same(*up);
+	same(*down);
+}
+
+TEST_CASE("the template input holds no layout", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate expected = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	std::optional<JunctionNodeInput> input;
+	{
+		const JunctionLayout local = *FlatT().layout;
+		input = TraceJunctionNodeInput(local, spec);
+	}
+	const std::string diff = DiffJunctionNodeTemplates(expected, BuildJunctionNodeTemplate(*input, spec));
+	INFO(diff);
+	CHECK(diff.empty());
+}

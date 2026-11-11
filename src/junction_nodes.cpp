@@ -50,11 +50,11 @@ struct NodeSpan {
 	uint32_t diagonal; ///< The index into JunctionNodeTemplate::diagonals when the link is a free diagonal, else UINT32_MAX.
 };
 
-/** Reads the template of a flat layout. */
+/** Reads the template of an input. */
 struct NodeBuilder {
 	JunctionNodeTemplate &tpl;
 	const JunctionSpec &spec;
-	const JunctionCheckContext &ctx;
+	const JunctionNodeInput &input;
 	std::vector<NodePathWork> work;
 	std::vector<NodeSpan> spans;
 	std::set<std::tuple<uint16_t, uint16_t, int>> seen_diffs;
@@ -136,15 +136,13 @@ struct NodeUnion {
 
 void NodeBuilder::ReadPoints()
 {
-	const JunctionLayout &layout = this->ctx.layout;
-	const auto used = UsedTracks(this->ctx);
-	const size_t path_count = this->ctx.paths.size();
+	const size_t path_count = this->input.paths.size();
 
 	this->work.resize(path_count);
 	for (size_t pi = 0; pi < path_count; pi++) {
-		const std::vector<JunctionPiece> &pieces = this->ctx.paths[pi].pieces;
+		const std::vector<JunctionPiece> &pieces = this->input.paths[pi].pieces;
 		NodePathWork &w = this->work[pi];
-		w.events = SwitchEventsOf(layout, used, this->ctx.paths[pi]);
+		w.events = this->input.events[pi];
 		w.start.resize(pieces.size());
 		uint16_t unit = 0;
 		for (size_t i = 0; i < pieces.size(); i++) {
@@ -157,7 +155,7 @@ void NodeBuilder::ReadPoints()
 	using PieceId = std::tuple<int, int, Trackdir>;
 	std::set<PieceId> point_ids;
 	for (size_t pi = 0; pi < path_count; pi++) {
-		const std::vector<JunctionPiece> &pieces = this->ctx.paths[pi].pieces;
+		const std::vector<JunctionPiece> &pieces = this->input.paths[pi].pieces;
 		std::vector<bool> is_point(pieces.size(), false);
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const bool first_of_run = i == 0 || TrackdirToDirection(pieces[i - 1].trackdir) != TrackdirToDirection(pieces[i].trackdir);
@@ -177,7 +175,7 @@ void NodeBuilder::ReadPoints()
 	std::set<std::pair<uint32_t, uint32_t>> link_seen;
 	std::map<std::pair<uint32_t, uint32_t>, uint32_t> diagonal_of; ///< Per diagonal link (from, to), its index into tpl.diagonals.
 	for (size_t pi = 0; pi < path_count; pi++) {
-		const JunctionPath &path = this->ctx.paths[pi];
+		const JunctionPath &path = this->input.paths[pi];
 		const std::vector<JunctionPiece> &pieces = path.pieces;
 		NodePathWork &w = this->work[pi];
 		JunctionNodePath node_path{path.from, path.to, {}, {}, 0, 0};
@@ -214,7 +212,7 @@ void NodeBuilder::ReadPoints()
 			bool diagonal = b - a + 1 >= 3 && (a == 0 || TrackdirToDirection(pieces[a - 1].trackdir) != TrackdirToDirection(pieces[a].trackdir)) && (b + 1 == pieces.size() || TrackdirToDirection(pieces[b + 1].trackdir) != TrackdirToDirection(pieces[b].trackdir));
 			for (size_t i = a; diagonal && i <= b; i++) {
 				if (pieces[i].on_bridge || IsDiagonalTrackdir(pieces[i].trackdir) || TrackdirToDirection(pieces[i].trackdir) != TrackdirToDirection(pieces[a].trackdir)) diagonal = false;
-				for (const JunctionBridge &bridge : layout.bridges) {
+				for (const JunctionBridge &bridge : this->input.bridges) {
 					if (bridge.start.x == bridge.end.x && pieces[i].tile.x == bridge.start.x && pieces[i].tile.y > std::min(bridge.start.y, bridge.end.y) && pieces[i].tile.y < std::max(bridge.start.y, bridge.end.y)) diagonal = false;
 				}
 			}
@@ -287,7 +285,7 @@ void NodeBuilder::ReadPoints()
 	std::set<std::tuple<int, int, Track>> piece_seen;
 	std::set<std::tuple<int, int, Trackdir, int, int>> join_seen;
 	for (size_t pi = 0; pi < path_count; pi++) {
-		const std::vector<JunctionPiece> &pieces = this->ctx.paths[pi].pieces;
+		const std::vector<JunctionPiece> &pieces = this->input.paths[pi].pieces;
 		NodePathWork &w = this->work[pi];
 		const JunctionNodePath &node_path = this->tpl.paths[pi];
 		size_t next = 0;
@@ -324,8 +322,8 @@ void NodeBuilder::ReadPoints()
 	}
 
 	/* The bridges with the class of their heads. */
-	for (size_t bi = 0; bi < layout.bridges.size(); bi++) {
-		const JunctionBridge &bridge = layout.bridges[bi];
+	for (size_t bi = 0; bi < this->input.bridges.size(); bi++) {
+		const JunctionBridge &bridge = this->input.bridges[bi];
 		std::optional<std::pair<uint16_t, uint16_t>> cls[2];
 		const TileIndexDiffC heads[2] = {bridge.start, bridge.end};
 		for (size_t h = 0; h < 2; h++) {
@@ -348,13 +346,13 @@ void NodeBuilder::ReadPoints()
 
 void NodeBuilder::AddPathDiffs()
 {
-	const size_t path_count = this->ctx.paths.size();
+	const size_t path_count = this->input.paths.size();
 
 	/* The switch piece of every event, and whether a merge is a prio merge, as ExtractJunctionChains reads them. */
 	std::vector<std::vector<bool>> prio(path_count);
 	std::vector<std::vector<int>> joiner_rows(path_count); // Per event, the row of the joiner's piece before a prio merge minus the merge's row.
 	for (size_t pi = 0; pi < path_count; pi++) {
-		const JunctionPath &path = this->ctx.paths[pi];
+		const JunctionPath &path = this->input.paths[pi];
 		for (const SwitchEvent &event : this->work[pi].events) {
 			bool is_prio = false;
 			int joiner_row = 0;
@@ -363,10 +361,10 @@ void NodeBuilder::AddPathDiffs()
 				for (size_t qi = 0; qi < path_count && !is_prio; qi++) {
 					if (qi == pi) continue;
 					for (const SwitchEvent &other : this->work[qi].events) {
-						const JunctionPiece &piece = this->ctx.paths[qi].pieces[other.second];
+						const JunctionPiece &piece = this->input.paths[qi].pieces[other.second];
 						if (other.first || piece.tile.x != merge_piece.tile.x || piece.tile.y != merge_piece.tile.y || piece.trackdir == merge_piece.trackdir) continue;
-						is_prio = this->ctx.paths[qi].from != path.from || this->ctx.paths[qi].to != path.to;
-						if (other.second > 0) joiner_row = this->ctx.paths[qi].pieces[other.second - 1].tile.y - merge_piece.tile.y;
+						is_prio = this->input.paths[qi].from != path.from || this->input.paths[qi].to != path.to;
+						if (other.second > 0) joiner_row = this->input.paths[qi].pieces[other.second - 1].tile.y - merge_piece.tile.y;
 						break;
 					}
 				}
@@ -378,7 +376,7 @@ void NodeBuilder::AddPathDiffs()
 
 	const int cover = 2 * static_cast<int>(this->spec.prio_tiles);
 	for (size_t pi = 0; pi < path_count; pi++) {
-		const JunctionPath &path = this->ctx.paths[pi];
+		const JunctionPath &path = this->input.paths[pi];
 		const JunctionNodePath &node_path = this->tpl.paths[pi];
 		const NodePathWork &w = this->work[pi];
 		const int d = node_path.dir;
@@ -469,11 +467,11 @@ void NodeBuilder::AddPathDiffs()
 			}
 		}
 
-		/* A slot is a piece that can take a signal in the flat layout (the checker's legal or already signalled pieces, off the switches). */
+		/* A slot is a piece that can take a signal in the input (the checker's legal or already signalled pieces, off the switches). */
 		const auto is_slot = [&](size_t i) {
 			const JunctionPiece &piece = path.pieces[i];
 			if (std::ranges::any_of(w.events, [&](const SwitchEvent &e) { return e.second == i; })) return false;
-			return IsLegalSignalPiece(this->ctx.layout, piece) || IsSignalledPiece(this->ctx.layout, piece);
+			return this->input.slots[pi][i];
 		};
 		/* The greatest slot strictly between pieces a and b, or SIZE_MAX. */
 		const auto last_slot = [&](size_t a, size_t b) {
@@ -574,8 +572,8 @@ void NodeBuilder::AddCrossings()
 		const NodeCoord head_along = along == Axis::X ? head_x : head_y;
 		const NodeCoord head_across = along == Axis::X ? head_y : head_x;
 
-		for (size_t qi = 0; qi < this->ctx.paths.size(); qi++) {
-			const std::vector<JunctionPiece> &pieces = this->ctx.paths[qi].pieces;
+		for (size_t qi = 0; qi < this->input.paths.size(); qi++) {
+			const std::vector<JunctionPiece> &pieces = this->input.paths[qi].pieces;
 			const NodePathWork &w = this->work[qi];
 			const bool uses = std::ranges::any_of(pieces, [&](const JunctionPiece &p) {
 				return p.on_bridge && ((p.tile.x == bridge.start.x && p.tile.y == bridge.start.y) || (p.tile.x == bridge.end.x && p.tile.y == bridge.end.y));
@@ -655,11 +653,31 @@ void NodeBuilder::AddBoxEdges()
 	}
 }
 
+JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const JunctionSpec &spec)
+{
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(flat, spec, FindJunctionPorts(flat), JunctionTMovements());
+	JunctionNodeInput input;
+	input.paths = ctx.paths;
+	input.used = UsedTracks(ctx);
+	input.bridges = flat.bridges;
+	for (const JunctionPath &path : ctx.paths) {
+		input.events.push_back(SwitchEventsOf(flat, input.used, path));
+		std::vector<bool> slots;
+		for (const JunctionPiece &piece : path.pieces) slots.push_back(IsLegalSignalPiece(flat, piece) || IsSignalledPiece(flat, piece));
+		input.slots.push_back(std::move(slots));
+	}
+	return input;
+}
+
 JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionLayout &flat, const JunctionSpec &spec)
 {
+	return BuildJunctionNodeTemplate(TraceJunctionNodeInput(flat, spec), spec);
+}
+
+JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionNodeInput &input, const JunctionSpec &spec)
+{
 	JunctionNodeTemplate tpl{};
-	const JunctionCheckContext ctx = MakeJunctionCheckContext(flat, spec, FindJunctionPorts(flat), JunctionTMovements());
-	NodeBuilder builder{tpl, spec, ctx, {}, {}, {}};
+	NodeBuilder builder{tpl, spec, input, {}, {}, {}};
 	builder.ReadPoints();
 	if (!tpl.error.empty()) return tpl;
 	builder.AddPathDiffs();
