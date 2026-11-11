@@ -1,6 +1,9 @@
 ## RESUME HERE (2026-11-12 day)
 - G1b(ii) DONE (DESIGN-G1 §7-§9): (ii-a) track graph 4017e1d46a; (ii-b) track order by a sweep from the S side 1eca9deb74; (ii-c) side tracks, row stack, bridges, turns c51d36bf2e. Both topologies pass hand-made expectations; the T's stack = traced rows 0-5. Gate 355 green.
-- G1c: approach (b') chosen from RECON-G1c-seed (seed from structure, template, least solution Lo with anchor freed, validator). Draft DESIGN-G1 §10 (path programs) written; Fable reviewing -> FABLE-G1c.md. Then brief G1c(i) programs. Code fixes needed before Lo: free the anchor pin (junction_nodes.cpp:706), D80 equal copies as a template rule.
+- G1c: approach (b') (RECON-G1c-seed). DESIGN-G1 §10 draft reviewed by Fable (FABLE-G1c.md: F1-F5 + 4 template fixes), revised §10.6. D205 (Pete): exit lane merges by the S port (band R).
+- G1b(ii-d) RUNNING (brief G1b2d-levels-first, from 7890042f5f): levels in the graph, crossings filtered by level, in-band swap when adjacent, JunctionSlotRows (removes the ii-c duplicate). LL_RR: 11 crossings; the T unchanged. Expected lists from scratchpad prototype g2.py.
+- Then: G1c(i) programs + band slots + band y orders (brief to write: grammar Run/Corner/SBend, F2 band-crossing S-bend, F4 corner length by rows, F5 parallelogram doubling); (ii) lengths + render; (iii) template fixes (NW corner pin, Lo in Snap phase order, occupancy gap, notation spacing rule, D80 rule) + validator; (iv) T speeds.
+- Wording (Pete): "shift" = coop shifter only; sideways step = S-bend. Fable reviews only when Pete approves.
 - Findings (accepted): ii-c recomputes the row-of-slot rule inside StructureJunctionTrackGraph (duplicate of ii-b; expose it once when G1c needs rows). ii-a added a file-local helper struct JunctionTreeBuilder in junction_topology.cpp (not named in the brief).
 - Then: validator gate, G1c reference, G1d checker ports, LL_RR signal pass, G1e; RS1; TF1.
 - Waiting on Pete: line painter LP11; stations six-point check; in-game crossover check.
