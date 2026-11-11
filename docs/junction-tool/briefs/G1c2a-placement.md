@@ -100,3 +100,11 @@ Red for each: does not compile; then a stub returning `JunctionTrackPlacement{}`
 
 ## Report
 References read; commit; red evidence; types/functions added; the LL_RR placement (nodes, bridges with n, size); suites with times; stops; `git status --porcelain` and `git log -1`. When you have reported, stop.
+
+## Rulings after the first stop (orchestrator, 2026-11-12)
+1. Bend tiles come from the raster, always. Test 1's expectations become edges[4][1] = ((23,3),(24,3)) and edges[5][1] = ((24,3),(23,3)); everything else in test 1 stands.
+2. "One plain piece" is a minimum everywhere: >= 1 plain piece between a single bridge's head and its neighbouring bend or node, and >= 1 plain piece above a band merge on its straight child.
+3. Test 3: drop the "consecutive columns" check (the X_e legs cannot be packed: e2's doubling forces X_e1 >= exit split N1 + 6 = X_e2 + 4). Assert X_e1's column - X_e2's column == 4; keep band 2 depth == 2 and every n <= 64; add: w2's bridge (edge 10) n == 10.
+4. Test 2: max_bridge_middle 9; expect the error "bridge 10 needs 10 middle tiles, more than 9".
+5. Accepted as built: S-bend sizes seeded by an X pass without rows; bridge-head equalities to the outermost crossers from the previous round; JUNCTION_SHIFT_BACK_TILES as a local constexpr 4 with a comment naming the generator's constant. Band-layer slices and the side-track check move to G1c(ii-b), whose render tests (no conflicting track bits) catch what they guard; say so in a code comment.
+6. Remove every debug hook (JT_* switches, dump tests) before committing.
