@@ -15,7 +15,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[projection]` | 13 s (information only) | measured in Release, 5 s | 2.7 s (PH1c split: the hub's edge tests moved to `[projectionedges]`; GS1b: the town-hill test lost `[slow]`, 0.02 s) |
 | `[relaxed]` | 0.41 s | 5 s | 0.06 s (GS1b: JunctionRelaxedReachable) |
 | `[projectionedges]` | not measured | measured in Release, 5 s | 2.6 s (G4's unbuildable-hub test, E1, E2, E3, E3b, PH1; the PH1 W-end limit test is `[slow]`, 13 s) |
-| `[tunnelprice]` | 0.01 s | 5 s | 0.01 s |
+| `[tunnelprice]` | 0.012 s (BL1) | 5 s | 0.009 s (BL1) |
 | `[tmapnear]` | 0.8 s | 5 s | 0.12 s (G1a; ridge BENCH 43 ms) |
 | `[curvespeed]` | 0.01 s (CS3) | 5 s | 0.01 s |
 | `[nodes]` | 2.2 s (G1a, 2026-11-11) | 5 s | 0.19 s (G1a; budget 1 s) |
@@ -24,7 +24,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[positions]` | 0.11 s (N1) | 5 s | 0.02 s (N1: JunctionPositions, 6 tests incl. 300-system brute force) |
 | `[facts]` | 0.05 s (N2, HF1b) | 1 s Release, 5 s Debug | 0.05 s Release, 0.16 s Debug (N2: JunctionFacts, 5 tests incl. 200-terrain walk comparison; 128x128 build 755 us) |
 | `[topology]` | 0.01 s (G1b(i), G1b(ii-a) to G1b(ii-d), G1c(i-a), G1c(i-b): topology, lane expansion, chord crossings, slot rows, track graph with node levels, track order with band layers, track structure, track programs; 17 tests) | 5 s | 0.009 s (budget 1 s) |
-| wide gate | (Release only) | | 23 s (G1a; budget 120 s) |
+| wide gate | (Release only) | | 23.3 s (BL1; budget 120 s) |
 
 Measured 2026-11-10 at the G3a merge.
 
