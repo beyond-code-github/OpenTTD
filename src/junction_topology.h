@@ -106,6 +106,28 @@ struct JunctionTrackGraph {
  */
 JunctionTrackGraph BuildJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, std::string *error);
 
+/** A node, or an edge crossing the lane, at its place along a main-lane row. */
+struct JunctionTrackRowItem {
+	bool node; ///< index is into JunctionTrackGraph::nodes, else into its edges (an edge crossing this row).
+	uint32_t index;
+	bool operator==(const JunctionTrackRowItem &) const = default;
+};
+
+/** The order of a track graph (DESIGN-G1 §8). */
+struct JunctionTrackOrder {
+	std::vector<int> node_level; ///< Per node: 2r+1 on row r; 2b in band b (band b lies north of row b; band R south of the last row).
+	std::vector<std::vector<JunctionTrackRowItem>> rows; ///< Per row, north to south: its nodes and the edges crossing it, west to east.
+	std::vector<std::vector<uint32_t>> edge_crossings; ///< Per edge: the edges crossing it, in travel order.
+};
+
+/**
+ * The order of a track graph by a sweep from the branch side (DESIGN-G1 §8).
+ * @param paths ExpandJunctionLanes(topology).
+ * @param graph BuildJunctionTrackGraph(topology, paths).
+ * @param error Receives the reason when the result is empty (no rows).
+ */
+JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, std::string *error);
+
 /** The T of today's node model (L_R main line, L_R branch on the S side), groups in slot order: W side EIn then WOut; S side NIn then SOut; E side WIn then EOut. Movements in JunctionTMovements order. */
 const JunctionTopology &JunctionTTopology();
 
