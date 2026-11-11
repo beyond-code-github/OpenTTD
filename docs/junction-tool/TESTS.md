@@ -18,6 +18,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[tunnelprice]` | 0.01 s | 5 s | 0.01 s |
 | `[tmapnear]` | 0.8 s | 5 s | 0.09 s |
 | `[curvespeed]` | 0.01 s (CS3) | 5 s | 0.01 s |
+| `[nodes]` | 0.13 s (N0a: curve gap constraints vs the checker) | 5 s | 0.03 s (budget 1 s) |
 | wide gate | (Release only) | | 17 s (budget 120 s) |
 
 Measured 2026-11-10 at the G3a merge.

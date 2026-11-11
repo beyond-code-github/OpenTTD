@@ -291,6 +291,8 @@ add_files(
     junction_station_rules.h
     junction_skeleton.cpp
     junction_skeleton.h
+    junction_chain.cpp
+    junction_chain.h
     junction_throughput.cpp
     junction_throughput.h
     landscape.cpp

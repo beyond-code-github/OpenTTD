@@ -58,6 +58,8 @@ std::vector<RuleViolation> CheckOrder(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckCurveSpeed(const JunctionCheckContext &ctx);
 /** Rule 3 over a piece sequence: the least CurveSpeedLimitOfTrain over every 2*tl-unit window, the ends padded with straight units as CheckCurveSpeed pads a path. */
 int JunctionMinCurveSpeed(const std::vector<JunctionPiece> &pieces, uint8_t tl, uint8_t curve_speed);
+/** The least CurveSpeedLimitOfTrain over every window of 2*tl consecutive directions; UINT16_MAX when there is none. */
+int JunctionMinCurveSpeedOfDirections(const std::vector<Direction> &dirs, uint8_t tl, uint8_t curve_speed);
 std::vector<RuleViolation> CheckBridges(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckSignals(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckWaitingRoom(const JunctionCheckContext &ctx);
