@@ -170,6 +170,35 @@ struct JunctionTrackStructure {
  */
 JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, std::string *error);
 
+/** One token of a track edge's program (DESIGN-G1 §10.7), in travel order. Runs lie between tokens; lengths, columns and port rows are not part of a program. */
+struct JunctionTrackStep {
+	static constexpr uint32_t NO_ROW = UINT32_MAX; ///< A bend that ends heading N or S.
+	enum class Kind : uint8_t {
+		Fan, ///< The S-bend between a port row and a stack row, or none when they coincide (placed later).
+		Corner, ///< A same-hand 90-degree pair.
+		SBend, ///< An opposite-hand pair: the track moves sideways and keeps its heading.
+		Over, ///< This edge's bridge passes over another edge.
+		Under, ///< This edge passes under another edge's bridge.
+	};
+	Kind kind;
+	int8_t hand; ///< Corner: the turn, +1 right, -1 left (as JunctionTrackStructure::turns). SBend: its first curve. 0 otherwise.
+	uint32_t index; ///< Fan: the stack item at its inner end. Corner, SBend: the stack item it ends on, or NO_ROW. Over: the crossed edge. Under: the edge overhead.
+	uint8_t copy; ///< Under: which copy of a doubled bridge is overhead (0 or 1). 0 otherwise.
+	bool operator==(const JunctionTrackStep &) const = default;
+};
+
+/** The programs of a structured track graph (DESIGN-G1 §10.7). */
+struct JunctionTrackPrograms {
+	std::vector<std::vector<JunctionTrackStep>> edges; ///< Per graph edge; for a doubled edge its copy 0 (keeps its upstream row through the bridge, bends onto the lane row after it).
+	std::vector<std::vector<JunctionTrackStep>> copies; ///< Per graph edge: a doubled edge's copy 1 (bends onto the lane row before the bridge); empty for the others.
+};
+
+/**
+ * The programs of every edge of a structured track graph (DESIGN-G1 §10.7).
+ * @param error Receives the reason when the result is empty (no edges).
+ */
+JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, std::string *error);
+
 /** The T of today's node model (L_R main line, L_R branch on the S side), groups in slot order: W side EIn then WOut; S side NIn then SOut; E side WIn then EOut. Movements in JunctionTMovements order. */
 const JunctionTopology &JunctionTTopology();
 
