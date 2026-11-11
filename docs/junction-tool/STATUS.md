@@ -1,5 +1,5 @@
 ## RESUME HERE (2026-11-12 day)
-- OPEN Q to Pete: branch-port stub (D115a: switch, own signal, boundary tile) vs relying on the line's signal once the endpoint solver exists (saves a row).
+- D206 OPEN (Pete): branch-port stub 1 or 2 tiles depending on signal placement; keep 2 (D115a) until ruled, as one constant.
 - G1b(ii) DONE (DESIGN-G1 §7-§9): (ii-a) track graph 4017e1d46a; (ii-b) track order by a sweep from the S side 1eca9deb74; (ii-c) side tracks, row stack, bridges, turns c51d36bf2e. Both topologies pass hand-made expectations; the T's stack = traced rows 0-5. Gate 355 green.
 - G1c: approach (b') (RECON-G1c-seed). DESIGN-G1 §10 draft reviewed by Fable (FABLE-G1c.md: F1-F5 + 4 template fixes), revised §10.6. D205 (Pete): exit lane merges by the S port (band R).
 - G1b(ii-d) MERGED (54ab76c64f; ruling during run: the three-legs refusal test moved to an all-S-side topology): levels in the graph, crossings filtered by level, in-band swap when adjacent, JunctionSlotRows (removes the ii-c duplicate). LL_RR: 11 crossings; the T unchanged. Expected lists from scratchpad prototype g2.py.
