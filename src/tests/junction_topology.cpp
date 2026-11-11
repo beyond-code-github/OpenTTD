@@ -92,3 +92,131 @@ TEST_CASE("topology: groups out of slot order are refused", "[junction][topology
 	t.groups = {{JunctionSide::E, true, 1, 0, true}, {JunctionSide::W, false, 1, 0, true}};
 	CHECK(JunctionPortSlots(t).empty());
 }
+
+using Kind = JunctionTrackEdge::Kind;
+using Paths = std::vector<uint16_t>;
+using Edges = std::vector<JunctionTrackEdge>;
+using Lists = std::vector<std::vector<uint32_t>>;
+
+/** A port slot end. */
+static JunctionTrackEnd P(uint16_t slot) { return {false, slot}; }
+/** A node end. */
+static JunctionTrackEnd N(uint16_t node) { return {true, node}; }
+
+TEST_CASE("topology: the T's track graph", "[junction][topology]")
+{
+	const JunctionTopology &t = JunctionTTopology();
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	REQUIRE(!graph.nodes.empty());
+
+	const std::vector<JunctionTrackNode> nodes = {{true, 0}, {true, 2}, {true, 4}, {false, 1}, {false, 3}, {false, 5}};
+	CHECK(graph.nodes == nodes);
+	const Edges edges = {
+		{Kind::In, P(0), N(0), Paths{0, 1}},
+		{Kind::In, P(2), N(1), Paths{4, 5}},
+		{Kind::In, P(4), N(2), Paths{2, 3}},
+		{Kind::Leg, N(0), N(5), Paths{0}},
+		{Kind::Leg, N(0), N(4), Paths{1}},
+		{Kind::Leg, N(2), N(3), Paths{2}},
+		{Kind::Leg, N(2), N(4), Paths{3}},
+		{Kind::Leg, N(1), N(3), Paths{4}},
+		{Kind::Leg, N(1), N(5), Paths{5}},
+		{Kind::Out, N(3), P(1), Paths{2, 4}},
+		{Kind::Out, N(4), P(3), Paths{1, 3}},
+		{Kind::Out, N(5), P(5), Paths{0, 5}},
+	};
+	CHECK(graph.edges == edges);
+	const Lists path_edges = {{0, 3, 11}, {0, 4, 10}, {2, 5, 9}, {2, 6, 10}, {1, 7, 9}, {1, 8, 11}};
+	CHECK(graph.path_edges == path_edges);
+	CHECK(graph.crossings == Pairs{{4, 5}, {4, 8}, {5, 8}});
+}
+
+TEST_CASE("topology: LL_RR with an L_R sideline: track graph", "[junction][topology]")
+{
+	const JunctionTopology &t = JunctionLLRRSidelineTopology();
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	REQUIRE(!graph.nodes.empty());
+
+	const std::vector<JunctionTrackNode> nodes = {
+		{true, 0}, {true, 1}, {true, 4}, {true, 4}, {true, 4}, {true, 6}, {true, 7},
+		{false, 2}, {false, 3}, {false, 5}, {false, 5}, {false, 5}, {false, 8}, {false, 9},
+	};
+	CHECK(graph.nodes == nodes);
+	const Edges edges = {
+		{Kind::In, P(0), N(0), Paths{0, 4}},
+		{Kind::In, P(1), N(1), Paths{1, 5}},
+		{Kind::In, P(4), N(2), Paths{8, 9, 10, 11}},
+		{Kind::In, N(2), N(3), Paths{8, 9}},
+		{Kind::In, N(2), N(4), Paths{10, 11}},
+		{Kind::In, P(6), N(5), Paths{3, 7}},
+		{Kind::In, P(7), N(6), Paths{2, 6}},
+		{Kind::Leg, N(0), N(13), Paths{0}},
+		{Kind::Leg, N(1), N(12), Paths{1}},
+		{Kind::Leg, N(6), N(7), Paths{2}},
+		{Kind::Leg, N(5), N(8), Paths{3}},
+		{Kind::Leg, N(0), N(11), Paths{4}},
+		{Kind::Leg, N(1), N(11), Paths{5}},
+		{Kind::Leg, N(6), N(10), Paths{6}},
+		{Kind::Leg, N(5), N(10), Paths{7}},
+		{Kind::Leg, N(3), N(13), Paths{8}},
+		{Kind::Leg, N(3), N(12), Paths{9}},
+		{Kind::Leg, N(4), N(7), Paths{10}},
+		{Kind::Leg, N(4), N(8), Paths{11}},
+		{Kind::Out, N(7), P(2), Paths{2, 10}},
+		{Kind::Out, N(8), P(3), Paths{3, 11}},
+		{Kind::Out, N(9), P(5), Paths{4, 5, 6, 7}},
+		{Kind::Out, N(10), N(9), Paths{6, 7}},
+		{Kind::Out, N(11), N(9), Paths{4, 5}},
+		{Kind::Out, N(12), P(8), Paths{1, 9}},
+		{Kind::Out, N(13), P(9), Paths{0, 8}},
+	};
+	CHECK(graph.edges == edges);
+	const Lists path_edges = {
+		{0, 7, 25}, {1, 8, 24}, {6, 9, 19}, {5, 10, 20}, {0, 11, 23, 21}, {1, 12, 23, 21},
+		{6, 13, 22, 21}, {5, 14, 22, 21}, {2, 3, 15, 25}, {2, 3, 16, 24}, {2, 4, 17, 19}, {2, 4, 18, 20},
+	};
+	CHECK(graph.path_edges == path_edges);
+	const Pairs crossings = {{3, 9}, {3, 10}, {3, 23}, {8, 11}, {8, 15}, {9, 23}, {10, 13}, {10, 17}, {10, 23}};
+	CHECK(graph.crossings == crossings);
+}
+
+TEST_CASE("topology: every chord pair is crossed exactly once", "[junction][topology]")
+{
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		std::string error;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(*t, &error);
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(*t, paths, &error);
+		REQUIRE(!graph.edges.empty());
+		Pairs covered;
+		for (const auto &c : graph.crossings) {
+			for (uint16_t p : graph.edges[c.first].paths) {
+				for (uint16_t q : graph.edges[c.second].paths) covered.emplace_back(std::min(p, q), std::max(p, q));
+			}
+		}
+		std::sort(covered.begin(), covered.end());
+		CHECK(covered == JunctionChordCrossings(paths));
+	}
+}
+
+TEST_CASE("topology: a split with three legs is refused", "[junction][topology]")
+{
+	JunctionTopology t;
+	t.groups = {
+		{JunctionSide::W, true, 1, 0, true},
+		{JunctionSide::S, false, 1, 1, false},
+		{JunctionSide::E, false, 1, 0, true},
+		{JunctionSide::N, false, 1, 2, false},
+	};
+	t.movements = {{0, 1}, {0, 2}, {0, 3}};
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	REQUIRE(paths.size() == 3);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	CHECK(graph.nodes.empty());
+	CHECK(graph.edges.empty());
+	CHECK(error == "more than two legs at one split are not ruled yet");
+}

@@ -63,6 +63,49 @@ std::vector<JunctionLanePath> ExpandJunctionLanes(const JunctionTopology &topolo
  */
 std::vector<std::pair<uint32_t, uint32_t>> JunctionChordCrossings(const std::vector<JunctionLanePath> &paths);
 
+/** One end of a track-graph edge: a port slot or a node. */
+struct JunctionTrackEnd {
+	bool node; ///< index is into JunctionTrackGraph::nodes, else into JunctionPortSlots.
+	uint16_t index;
+	bool operator==(const JunctionTrackEnd &) const = default;
+};
+
+/** A switch of the track graph: where an in slot's paths split, or where an out slot's paths merge (DESIGN-G1 §7; D187, D204). */
+struct JunctionTrackNode {
+	bool split; ///< In an in slot's split tree; else in an out slot's merge tree.
+	uint16_t slot; ///< The port slot whose tree holds it.
+	bool operator==(const JunctionTrackNode &) const = default;
+};
+
+/** A run of track between two ends in the direction of travel, carried by a set of lane paths. */
+struct JunctionTrackEdge {
+	enum class Kind : uint8_t {
+		In, ///< In an in slot's split tree.
+		Leg, ///< One path's own run, from its last split (or in port) to its first merge (or out port).
+		Out, ///< In an out slot's merge tree.
+	};
+	Kind kind;
+	JunctionTrackEnd from;
+	JunctionTrackEnd to;
+	std::vector<uint16_t> paths; ///< Indices into the lane paths, ascending.
+	bool operator==(const JunctionTrackEdge &) const = default;
+};
+
+/** The track graph of a topology (DESIGN-G1 §7): switches, edges, each path's edges, and which edges cross. */
+struct JunctionTrackGraph {
+	std::vector<JunctionTrackNode> nodes;
+	std::vector<JunctionTrackEdge> edges;
+	std::vector<std::vector<uint32_t>> path_edges; ///< Per lane path, its edges in travel order.
+	std::vector<std::pair<uint32_t, uint32_t>> crossings; ///< Edge pairs (i < j) that cross, sorted.
+};
+
+/**
+ * The track graph of a topology's lane paths (DESIGN-G1 §7).
+ * @param paths ExpandJunctionLanes(topology).
+ * @param error Receives the reason when the result is empty (no nodes, no edges).
+ */
+JunctionTrackGraph BuildJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, std::string *error);
+
 /** The T of today's node model (L_R main line, L_R branch on the S side), groups in slot order: W side EIn then WOut; S side NIn then SOut; E side WIn then EOut. Movements in JunctionTMovements order. */
 const JunctionTopology &JunctionTTopology();
 
