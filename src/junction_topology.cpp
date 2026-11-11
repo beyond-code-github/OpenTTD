@@ -461,6 +461,127 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 	return order;
 }
 
+JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, std::string *error)
+{
+	auto fail = [&](const char *reason) {
+		if (error != nullptr) *error = reason;
+		return JunctionTrackStructure{};
+	};
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+	const int n = static_cast<int>(slots.size());
+	auto group_of = [&](int slot) -> const JunctionLaneGroup & { return topology.groups[slots[slot].group]; };
+
+	/* The rows of the main slots, as OrderJunctionTrackGraph finds them. */
+	std::vector<int> row_of(n, -1);
+	const int rows = static_cast<int>(order.rows.size());
+	int next_row = 0;
+	for (int s = 0; s < n; s++) {
+		if (group_of(s).main && group_of(s).side == JunctionSide::W) row_of[s] = next_row++;
+	}
+	for (int s = 0; s < n; s++) {
+		if (!group_of(s).main || row_of[s] >= 0) continue;
+		for (const JunctionLanePath &path : paths) {
+			const int other = path.from == s ? path.to : (path.to == s ? path.from : -1);
+			if (other >= 0 && group_of(other).main && group_of(other).side == JunctionSide::W) {
+				row_of[s] = row_of[other];
+				break;
+			}
+		}
+	}
+	auto end_level = [&](const JunctionTrackEnd &end) {
+		if (end.node) return order.node_level[end.index];
+		return group_of(end.index).main ? 2 * row_of[end.index] + 1 : 2 * rows + 1;
+	};
+	const uint32_t edge_count = static_cast<uint32_t>(graph.edges.size());
+	auto is_row_edge = [&](uint32_t e) {
+		const int level = end_level(graph.edges[e].from);
+		return level == end_level(graph.edges[e].to) && level % 2 == 1;
+	};
+
+	/* Joiners, prio and copy. */
+	JunctionTrackStructure structure;
+	for (int r = 0; r < rows; r++) {
+		const int level = 2 * r + 1;
+		int joiners = 0;
+		bool approach_south = false;
+		for (uint32_t e = 0; e < edge_count; e++) {
+			if (is_row_edge(e)) continue;
+			const JunctionTrackEdge &edge = graph.edges[e];
+			const bool at_from = edge.from.node && order.node_level[edge.from.index] == level && !graph.nodes[edge.from.index].split;
+			const bool at_to = edge.to.node && order.node_level[edge.to.index] == level && !graph.nodes[edge.to.index].split;
+			if (!at_from && !at_to) continue;
+			joiners++;
+			approach_south = end_level(at_from ? edge.to : edge.from) > level;
+		}
+		if (joiners > 1) return fail("more than one joiner on a lane is not ruled yet");
+		bool crossed = false;
+		for (uint32_t e = 0; e < edge_count; e++) {
+			if (is_row_edge(e) && end_level(graph.edges[e].from) == level && !order.edge_crossings[e].empty()) crossed = true;
+		}
+		const bool has_joiner = joiners == 1;
+		/* Per side: [north, south]. */
+		bool prio[2] = {false, false};
+		bool approach[2] = {false, false};
+		bool copy[2] = {false, false};
+		if (has_joiner) {
+			approach[approach_south ? 1 : 0] = true;
+			prio[approach_south ? 0 : 1] = true;
+		}
+		if (crossed) {
+			if (has_joiner) {
+				copy[approach_south ? 0 : 1] = true;
+			} else {
+				copy[0] = true;
+			}
+		}
+		auto side_item = [&](int side, std::vector<JunctionTrackStackItem> &out) {
+			using Kind = JunctionTrackStackItem::Kind;
+			if (prio[side] && copy[side]) {
+				out.push_back({static_cast<uint8_t>(r), Kind::PrioAndCopy});
+			} else if (prio[side]) {
+				out.push_back({static_cast<uint8_t>(r), Kind::Prio});
+			} else if (copy[side]) {
+				out.push_back({static_cast<uint8_t>(r), Kind::Copy});
+			} else if (approach[side]) {
+				out.push_back({static_cast<uint8_t>(r), Kind::Approach});
+			}
+		};
+		side_item(0, structure.stack);
+		structure.stack.push_back({static_cast<uint8_t>(r), JunctionTrackStackItem::Kind::Lane});
+		side_item(1, structure.stack);
+	}
+
+	/* Bridges. */
+	for (uint32_t e = 0; e < edge_count; e++) {
+		if (is_row_edge(e) && !order.edge_crossings[e].empty()) structure.bridges.push_back({e, order.edge_crossings[e], true});
+	}
+	auto from_branch = [&](uint32_t e) {
+		for (uint16_t p : graph.edges[e].paths) {
+			if (group_of(paths[p].from).main) return false;
+		}
+		return true;
+	};
+	for (const auto &[i, j] : graph.crossings) {
+		if (is_row_edge(i) || is_row_edge(j)) continue;
+		const bool bi = from_branch(i);
+		const bool bj = from_branch(j);
+		if (bi == bj) return fail("a branch crossing without one joiner is not ruled yet");
+		structure.bridges.push_back({bi ? i : j, {bi ? j : i}, false});
+	}
+	std::stable_sort(structure.bridges.begin(), structure.bridges.end(), [](const JunctionTrackBridge &a, const JunctionTrackBridge &b) { return a.edge < b.edge; });
+
+	/* Turns: clockwise quarter turns from the in heading to the out heading. Headings: 0 north, 1 east, 2 south, 3 west. */
+	auto in_heading = [](JunctionSide side) { return side == JunctionSide::W ? 1 : (side == JunctionSide::E ? 3 : (side == JunctionSide::S ? 0 : 2)); };
+	auto out_heading = [](JunctionSide side) { return side == JunctionSide::W ? 3 : (side == JunctionSide::E ? 1 : (side == JunctionSide::S ? 2 : 0)); };
+	for (const JunctionLanePath &path : paths) {
+		int turn = (out_heading(group_of(path.to).side) - in_heading(group_of(path.from).side) + 4) % 4;
+		if (turn == 3) turn = -1;
+		if (turn == 2) return fail("a reversing path is not ruled yet");
+		structure.turns.push_back(static_cast<int8_t>(turn));
+	}
+	return structure;
+}
+
 const JunctionTopology &JunctionTTopology()
 {
 	static const JunctionTopology topology = {

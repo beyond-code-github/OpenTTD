@@ -128,6 +128,41 @@ struct JunctionTrackOrder {
  */
 JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, std::string *error);
 
+/** One track of the row stack inside the box, north to south (DESIGN-G1 §9). */
+struct JunctionTrackStackItem {
+	enum class Kind : uint8_t {
+		Lane, ///< The main-line lane itself.
+		Prio, ///< Its prio track (D75/D87: opposite the joiner).
+		Copy, ///< Its doubling copy (D80).
+		PrioAndCopy, ///< Prio and doubling copy sharing one track (D108 keeps them apart along the lane).
+		Approach, ///< The joiner's last stretch beside the lane, on the joiner's side.
+	};
+	uint8_t row; ///< The lane's row (JunctionTrackOrder::rows index).
+	Kind kind;
+	bool operator==(const JunctionTrackStackItem &) const = default;
+};
+
+/** A bridge: one edge carried over a contiguous set of crossings (D203). */
+struct JunctionTrackBridge {
+	uint32_t edge; ///< The edge carried over.
+	std::vector<uint32_t> crossed; ///< The edges it passes, in the carried edge's travel order.
+	bool doubled; ///< A main-line bridge (D80, D188); a branch bridge is single (D174).
+	bool operator==(const JunctionTrackBridge &) const = default;
+};
+
+/** Side tracks, row stack, bridges and turns of an ordered track graph (DESIGN-G1 §9). */
+struct JunctionTrackStructure {
+	std::vector<JunctionTrackStackItem> stack; ///< North to south.
+	std::vector<JunctionTrackBridge> bridges; ///< Sorted by edge.
+	std::vector<int8_t> turns; ///< Per lane path: quarter turns clockwise from in heading to out heading (+1 right, -1 left, 0).
+};
+
+/**
+ * The structure of an ordered track graph (DESIGN-G1 §9).
+ * @param error Receives the reason when the result is empty (no stack).
+ */
+JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, std::string *error);
+
 /** The T of today's node model (L_R main line, L_R branch on the S side), groups in slot order: W side EIn then WOut; S side NIn then SOut; E side WIn then EOut. Movements in JunctionTMovements order. */
 const JunctionTopology &JunctionTTopology();
 

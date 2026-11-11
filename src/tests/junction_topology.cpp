@@ -276,6 +276,48 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track order", "[junction][topol
 	CHECK(order.edge_crossings == crossings);
 }
 
+/** The track structure of a topology. */
+static JunctionTrackStructure StructureOf(const JunctionTopology &t)
+{
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	REQUIRE(!graph.edges.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+	REQUIRE(!order.rows.empty());
+	return StructureJunctionTrackGraph(t, paths, graph, order, &error);
+}
+
+using Item = JunctionTrackStackItem;
+using ItemKind = JunctionTrackStackItem::Kind;
+using Bridge = JunctionTrackBridge;
+
+TEST_CASE("topology: the T's track structure", "[junction][topology]")
+{
+	const JunctionTrackStructure structure = StructureOf(JunctionTTopology());
+	CHECK(structure.stack == std::vector<Item>{
+		{0, ItemKind::Prio}, {0, ItemKind::Lane}, {0, ItemKind::Approach},
+		{1, ItemKind::PrioAndCopy}, {1, ItemKind::Lane}, {1, ItemKind::Approach},
+	});
+	CHECK(structure.bridges == std::vector<Bridge>{{5, {8, 4}, true}, {8, {4}, false}});
+	CHECK(structure.turns == std::vector<int8_t>{0, +1, 0, -1, -1, +1});
+}
+
+TEST_CASE("topology: LL_RR with an L_R sideline: track structure", "[junction][topology]")
+{
+	const JunctionTrackStructure structure = StructureOf(JunctionLLRRSidelineTopology());
+	CHECK(structure.stack == std::vector<Item>{
+		{0, ItemKind::Prio}, {0, ItemKind::Lane}, {0, ItemKind::Approach},
+		{1, ItemKind::PrioAndCopy}, {1, ItemKind::Lane}, {1, ItemKind::Approach},
+		{2, ItemKind::PrioAndCopy}, {2, ItemKind::Lane}, {2, ItemKind::Approach},
+		{3, ItemKind::PrioAndCopy}, {3, ItemKind::Lane}, {3, ItemKind::Approach},
+	});
+	CHECK(structure.bridges == std::vector<Bridge>{
+		{3, {23}, false}, {8, {11, 15}, true}, {9, {3, 23}, true}, {10, {13, 3, 23, 17}, true},
+	});
+	CHECK(structure.turns == std::vector<int8_t>{0, 0, 0, 0, +1, +1, -1, -1, +1, +1, -1, -1});
+}
+
 TEST_CASE("topology: branches on the N side are refused", "[junction][topology]")
 {
 	JunctionTopology t;
