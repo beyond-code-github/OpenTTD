@@ -12,6 +12,7 @@
 
 #include "direction_type.h"
 #include "junction_terrain.h"
+#include "track_type.h"
 
 #include <array>
 #include <cstdint>
@@ -24,10 +25,12 @@ enum class JunctionFactKind : uint8_t { Straight, Switch, Half };
 class JunctionFacts {
 public:
 	explicit JunctionFacts(const JunctionTerrain &terrain);
-	/** Whether an axis piece along the axis (travelling +x for Axis::X, +y for Axis::Y) can sit on the tile; entry/exit receive its heights. */
-	bool Straight(int x, int y, Axis axis, int8_t &entry, int8_t &exit) const;
+	/** Whether an axis piece along the axis (travelling +x for Axis::X, +y for Axis::Y) can sit on the tile; entry/exit receive the pixel z (TILE_HEIGHT per height level) of its track at the entry and exit edges, from the game's foundation (D194). */
+	bool Straight(int x, int y, Axis axis, int &entry, int &exit) const;
 	bool Switch(int x, int y) const; ///< A switch tile (two tracks): UsableAt at z_max.
 	bool Half(int x, int y) const; ///< A half (corner) piece: UsableAt at z_max.
+	bool Fits(int x, int y, TrackBits bits) const; ///< Whether the game can build exactly these tracks on the tile (buildable class as Switch/Half test it today, GetRailFoundation(slope, bits) != Invalid, and a foundation only with build_on_slopes).
+	int EdgeZ(int x, int y, TrackBits bits, DiagDirection edge) const; ///< The pixel z of the tile's track surface at the midpoint of the given edge with these tracks built: z_min * TILE_HEIGHT + ApplyPixelFoundationToSlope(GetRailFoundation(slope, bits), s) + GetPartialPixelZ(mx, my, s); INT_MIN when !Fits.
 	/** Whether straight axis pieces cover every tile from a to b (inclusive, either order) on row y (Axis::X) or column x (Axis::Y) and connect at matching heights. O(1). */
 	bool StraightRun(Axis axis, int line, int a, int b) const;
 	/** The first position >= from on the line where the fact fails (Straight for kind Straight on that axis, Switch, Half), or INT_MAX if none. O(1). */
@@ -44,9 +47,13 @@ private:
 	int origin_y; ///< Canonical y of grid cell (0,0).
 	int width;
 	int height;
-	std::array<std::vector<int8_t>, 2> entry; ///< Per axis and cell, the entry height of a straight piece.
-	std::array<std::vector<int8_t>, 2> exit; ///< Per axis and cell, the exit height of a straight piece.
+	std::array<std::vector<int16_t>, 2> entry; ///< Per axis and cell, the entry pixel z of a straight piece.
+	std::array<std::vector<int16_t>, 2> exit; ///< Per axis and cell, the exit pixel z of a straight piece.
 	std::array<std::vector<bool>, 2> straight; ///< Per axis and cell, whether a straight piece can sit there.
+	bool build_on_slopes; ///< Whether the game allows rail on a slope that needs a foundation.
+	std::vector<Slope> slope; ///< Per cell, its canonical slope.
+	std::vector<int8_t> z_min; ///< Per cell, its lowest corner height.
+	std::vector<bool> buildable; ///< Per cell, whether its class is Buildable.
 	std::vector<bool> sw; ///< Per cell, whether a switch can sit there.
 	std::vector<bool> half; ///< Per cell, whether a half piece can sit there.
 	std::array<std::vector<int>, 2> run_id; ///< Per axis and cell, the id of the connected straight run it belongs to.

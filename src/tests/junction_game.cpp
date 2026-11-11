@@ -11,12 +11,16 @@
 
 #include "../3rdparty/catch2/catch.hpp"
 
+#include "../junction_facts.h"
 #include "../junction_game.h"
 #include "../junction_generator.h"
 #include "../junction_nodes.h"
 #include "../junction_rules.h"
+#include "../landscape.h"
 #include "../map_func.h"
+#include "../rail_map.h"
 #include "../tile_map.h"
+#include "../track_func.h"
 #include "../rail.h"
 #include "../settings_type.h"
 #include "../slope_func.h"
@@ -512,6 +516,7 @@ static void SetNearRampRow(JunctionTerrain &terrain, int y, int z_min, int z_max
 		tile.z_min = static_cast<int8_t>(z_min);
 		tile.z_max = static_cast<int8_t>(z_max);
 		tile.incline = incline;
+		tile.slope = incline == DiagDirection::Invalid ? SLOPE_FLAT : InclinedSlope(incline);
 	}
 }
 
@@ -657,4 +662,46 @@ TEST_CASE("GenerateJunctionNear reports a blocked port", "[junction][tmapnear]")
 	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
 	CHECK(near.result.error == JunctionGenerateError::PortBlocked);
 	CHECK(!near.result.layout.has_value());
+}
+
+TEST_CASE("EdgeZ matches the game's track surface on a real tile", "[junction][facts]")
+{
+	Map::Allocate(64, 64);
+	const bool old_build_on_slopes = _settings_game.construction.build_on_slopes;
+	_settings_game.construction.build_on_slopes = true;
+	const TileIndex tile = TileXY(10, 10);
+	const int base = 1;
+	for (const Slope slope : {SLOPE_NE, SLOPE_SW, SLOPE_N, SLOPE_NWS, SLOPE_STEEP_N}) {
+		for (const TrackBits bits : {TrackBits{Track::X}, TrackBits{Track::Y}, TrackBits{Track::Y, Track::Upper}, TrackBits{Track::X, Track::Lower}, TrackBits{Track::Upper}, TrackBits{Track::Lower}, TrackBits{Track::Left}, TrackBits{Track::Right}, TrackBits{Track::Upper, Track::Lower}}) {
+			if (GetRailFoundation(slope, bits) == Foundation::Invalid) continue;
+			INFO("slope " << static_cast<int>(slope) << " bits " << static_cast<int>(bits.base()));
+
+			/* Corners N (0,0), E (0,1), S (1,1), W (1,0) of the tile, raised as the slope says; a steep slope has its highest corner raised once more. */
+			const Corner highest = IsSteepSlope(slope) ? GetHighestSlopeCorner(slope) : Corner::Invalid;
+			for (const auto &[corner, dx, dy] : {std::tuple{Corner::N, 0, 0}, {Corner::E, 0, 1}, {Corner::S, 1, 1}, {Corner::W, 1, 0}}) {
+				const int raised = (slope & SlopeWithOneCornerRaised(corner)) != SLOPE_FLAT ? 1 : 0;
+				SetTileHeight(TileXY(TileX(tile) + dx, TileY(tile) + dy), base + raised + (corner == highest ? 1 : 0));
+			}
+			REQUIRE(GetTileSlopeZ(tile) == std::tuple{slope, base});
+
+			const JunctionTerrain terrain = MakeJunctionTerrainRect(tile, tile, 0);
+			const JunctionFacts facts(terrain);
+			REQUIRE(facts.Fits(TileX(tile), TileY(tile), bits));
+			MakeRailNormal(tile, Owner{0}, bits, RAILTYPE_RAIL);
+
+			static constexpr std::array<std::pair<int, int>, 4> MIDPOINT = {{{0, 8}, {8, 15}, {15, 8}, {8, 0}}}; // NE, SE, SW, NW.
+			for (DiagDirection edge = DiagDirection::Begin; edge != DiagDirection::End; edge++) {
+				bool touched = false;
+				for (const Track track : bits) {
+					const Trackdir td = TrackToTrackdir(track);
+					touched |= TrackdirToExitdir(td) == edge || TrackdirToExitdir(ReverseTrackdir(td)) == edge;
+				}
+				if (!touched) continue;
+				const auto [mx, my] = MIDPOINT[to_underlying(edge)];
+				CHECK(facts.EdgeZ(TileX(tile), TileY(tile), bits, edge) == GetSlopePixelZ(TileX(tile) * TILE_SIZE + mx, TileY(tile) * TILE_SIZE + my));
+			}
+			Map::Allocate(64, 64);
+		}
+	}
+	_settings_game.construction.build_on_slopes = old_build_on_slopes;
 }

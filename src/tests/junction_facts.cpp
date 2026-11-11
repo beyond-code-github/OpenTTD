@@ -12,6 +12,9 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include "../junction_facts.h"
+#include "../landscape.h"
+#include "../rail.h"
+#include "../slope_func.h"
 #include "../track_func.h"
 
 #include <algorithm>
@@ -30,6 +33,7 @@ static JunctionTerrainTile MakeTile(int8_t z_min, int8_t z_max, DiagDirection in
 	t.z_min = z_min;
 	t.z_max = z_max;
 	t.incline = incline;
+	t.slope = incline != DiagDirection::Invalid ? InclinedSlope(incline) : (z_min != z_max ? SLOPE_N : SLOPE_FLAT);
 	return t;
 }
 
@@ -48,9 +52,9 @@ TEST_CASE("facts: a flat tile, a ramp and a foundation", "[junction][facts]")
 	JunctionTerrain terrain = MakeRow({MakeTile(1, 1), MakeTile(1, 2, _x_exit), MakeTile(2, 2), MakeTile(1, 2, _y_exit)});
 	{
 		JunctionFacts facts(terrain);
-		const int8_t expect[4][2] = {{1, 1}, {1, 2}, {2, 2}, {2, 2}};
+		const int expect[4][2] = {{8, 8}, {8, 16}, {16, 16}, {16, 16}};
 		for (int x = 0; x < 4; x++) {
-			int8_t entry = -1, exit = -1;
+			int entry = -1, exit = -1;
 			REQUIRE(facts.Straight(x, 0, Axis::X, entry, exit));
 			CHECK(entry == expect[x][0]);
 			CHECK(exit == expect[x][1]);
@@ -70,7 +74,7 @@ TEST_CASE("facts: switches and halves are flat or foundation only", "[junction][
 	JunctionTerrain terrain = MakeRow({MakeTile(1, 2, _x_exit), MakeTile(1, 1), MakeTile(1, 2, _y_exit)});
 	terrain.build_on_slopes = false; // With build_on_slopes the ramp tile would take a foundation like any slope.
 	JunctionFacts facts(terrain);
-	int8_t entry, exit;
+	int entry, exit;
 	CHECK(facts.Straight(0, 0, Axis::X, entry, exit));
 	CHECK_FALSE(facts.Switch(0, 0));
 	CHECK_FALSE(facts.Half(0, 0));
@@ -83,19 +87,24 @@ TEST_CASE("facts: switches and halves are flat or foundation only", "[junction][
 	CHECK(with_foundation.Switch(0, 0));
 	CHECK(with_foundation.Half(2, 0));
 	CHECK(with_foundation.Straight(0, 0, Axis::X, entry, exit));
-	CHECK(entry == 1);
-	CHECK(exit == 2);
+	CHECK(entry == 8);
+	CHECK(exit == 16);
 }
 
-TEST_CASE("facts: blocked and steep tiles are bad", "[junction][facts]")
+TEST_CASE("facts: blocked tiles are bad and steep tiles follow the game", "[junction][facts]")
 {
 	std::vector<JunctionTerrainTile> tiles(12, MakeTile(0, 0));
 	tiles[5].cls = JunctionTileClass::Blocked;
+	tiles[9] = MakeTile(0, 2, GetInclinedSlopeDirection(SLOPE_STEEP_N));
 	tiles[9].steep = true;
-	JunctionFacts facts(MakeRow(tiles));
+	tiles[9].slope = SLOPE_STEEP_N;
+	JunctionTerrain terrain = MakeRow(tiles);
+	const Foundation steep_foundation = GetRailFoundation(SLOPE_STEEP_N, TrackBits{Track::X});
+	const bool steep_fits = steep_foundation == Foundation::None || (steep_foundation != Foundation::Invalid && terrain.build_on_slopes);
+	JunctionFacts facts(terrain);
 	CHECK(facts.NextBad(JunctionFactKind::Straight, Axis::X, 0, 0) == 5);
 	CHECK(facts.NextBad(JunctionFactKind::Straight, Axis::X, 0, 5) == 5);
-	CHECK(facts.NextBad(JunctionFactKind::Straight, Axis::X, 0, 6) == 9);
+	CHECK(facts.NextBad(JunctionFactKind::Straight, Axis::X, 0, 6) == (steep_fits ? INT_MAX : 9));
 	CHECK(facts.NextBad(JunctionFactKind::Switch, Axis::X, 0, 10) == INT_MAX);
 	CHECK(facts.PrevBad(JunctionFactKind::Half, Axis::X, 0, 11) == 9);
 	CHECK(facts.PrevBad(JunctionFactKind::Half, Axis::X, 0, 8) == 5);
@@ -117,6 +126,7 @@ static JunctionTerrain RandomTerrain(std::minstd_rand &rng, int width, int heigh
 		t.z_min = static_cast<int8_t>(rng() % 4);
 		t.z_max = static_cast<int8_t>(t.z_min + rng() % 2);
 		if (t.z_min != t.z_max && rng() % 2 == 0) t.incline = static_cast<DiagDirection>(rng() % 4);
+		t.slope = t.incline != DiagDirection::Invalid ? InclinedSlope(t.incline) : (t.z_min != t.z_max ? SLOPE_N : SLOPE_FLAT);
 		terrain.tiles.push_back(t);
 	}
 	return terrain;
@@ -138,21 +148,23 @@ TEST_CASE("facts: queries agree with walking", "[junction][facts]")
 				CHECK(facts.Half(x, y) == level);
 				for (Axis axis : {Axis::X, Axis::Y}) {
 					const DiagDirection out = axis == Axis::X ? _x_exit : _y_exit;
-					int8_t entry = -1, exit = -1;
-					bool expect = level;
-					int8_t want_entry = ok ? t->z_max : 0, want_exit = want_entry;
-					if (ok && t->incline == out) {
-						expect = true;
-						want_entry = t->z_min;
-						want_exit = t->z_min + 1;
-					} else if (ok && t->incline == ReverseDiagDir(out)) {
-						expect = true;
-						want_exit = t->z_max - 1;
-					}
+					const TrackBits bits{axis == Axis::X ? Track::X : Track::Y};
+					int entry = -1, exit = -1;
+					const Foundation foundation = t != nullptr ? GetRailFoundation(t->slope, bits) : Foundation::Invalid;
+					const bool expect = t != nullptr && t->cls == JunctionTileClass::Buildable && foundation != Foundation::Invalid && (foundation == Foundation::None || terrain.build_on_slopes);
 					REQUIRE(facts.Straight(x, y, axis, entry, exit) == expect);
 					if (expect) {
-						CHECK(entry == want_entry);
-						CHECK(exit == want_exit);
+						const auto edge_z = [&](int px, int py) {
+							Slope s = t->slope;
+							const int lift = static_cast<int>(ApplyPixelFoundationToSlope(foundation, s));
+							return t->z_min * static_cast<int>(TILE_HEIGHT) + lift + static_cast<int>(GetPartialPixelZ(px, py, s));
+						};
+						/* Edge midpoints NE (0, 8), SE (8, 15), SW (15, 8), NW (8, 0); the entry edge is opposite the exit. */
+						const std::array<std::pair<int, int>, 4> mid = {{{0, 8}, {8, 15}, {15, 8}, {8, 0}}};
+						const auto [ox, oy] = mid[to_underlying(out)];
+						const auto [ix, iy] = mid[to_underlying(ReverseDiagDir(out))];
+						CHECK(entry == edge_z(ix, iy));
+						CHECK(exit == edge_z(ox, oy));
 					}
 				}
 			}
@@ -162,11 +174,11 @@ TEST_CASE("facts: queries agree with walking", "[junction][facts]")
 			const int line = static_cast<int>(rng() % 12) - 2 + (axis == Axis::X ? 2 : -3);
 			const int a = static_cast<int>(rng() % 22) - 5 + (axis == Axis::X ? -3 : 2);
 			const int b = static_cast<int>(rng() % 22) - 5 + (axis == Axis::X ? -3 : 2);
-			auto at = [&](int pos, int8_t &entry, int8_t &exit) {
+			auto at = [&](int pos, int &entry, int &exit) {
 				return axis == Axis::X ? facts.Straight(pos, line, axis, entry, exit) : facts.Straight(line, pos, axis, entry, exit);
 			};
 			auto good = [&](JunctionFactKind kind, int pos) {
-				int8_t entry, exit;
+				int entry, exit;
 				switch (kind) {
 					case JunctionFactKind::Straight: return at(pos, entry, exit);
 					case JunctionFactKind::Switch: return axis == Axis::X ? facts.Switch(pos, line) : facts.Switch(line, pos);
@@ -175,9 +187,9 @@ TEST_CASE("facts: queries agree with walking", "[junction][facts]")
 			};
 
 			bool run = true;
-			int8_t prev_exit = 0;
+			int prev_exit = 0;
 			for (int pos = std::min(a, b); pos <= std::max(a, b) && run; pos++) {
-				int8_t entry, exit;
+				int entry, exit;
 				if (!at(pos, entry, exit) || (pos > std::min(a, b) && prev_exit != entry)) run = false;
 				prev_exit = exit;
 			}
@@ -210,4 +222,72 @@ TEST_CASE("facts: a 128x128 snapshot builds fast", "[junction][facts]")
 	const auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
 	WARN("128x128 build: " << us << " us");
 	CHECK(facts.NextBad(JunctionFactKind::Switch, Axis::X, 2, -3) >= -3);
+}
+
+/** The slopes a tile can have, steep ones included: every non-flat one with its heights, plus the flat one. */
+static const std::vector<Slope> _tile_slopes = {SLOPE_FLAT, SLOPE_W, SLOPE_S, SLOPE_SW, SLOPE_E, SLOPE_EW, SLOPE_SE, SLOPE_WSE, SLOPE_N, SLOPE_NW, SLOPE_NS, SLOPE_NWS, SLOPE_NE, SLOPE_ENW, SLOPE_SEN, SLOPE_STEEP_W, SLOPE_STEEP_S, SLOPE_STEEP_E, SLOPE_STEEP_N};
+
+/** A one-tile terrain at (0, 0) of the given slope, lowest corner at 1. */
+static JunctionTerrain MakeSlopeTerrain(Slope slope, bool build_on_slopes)
+{
+	JunctionTerrainTile t;
+	t.z_min = 1;
+	t.z_max = static_cast<int8_t>(1 + (slope == SLOPE_FLAT ? 0 : IsSteepSlope(slope) ? 2 : 1));
+	t.steep = IsSteepSlope(slope);
+	t.incline = GetInclinedSlopeDirection(slope);
+	t.slope = slope;
+	JunctionTerrain terrain = MakeRow({t});
+	terrain.build_on_slopes = build_on_slopes;
+	return terrain;
+}
+
+TEST_CASE("Fits follows GetRailFoundation", "[junction][facts]")
+{
+	for (const bool build_on_slopes : {true, false}) {
+		for (const Slope slope : _tile_slopes) {
+			const JunctionFacts facts(MakeSlopeTerrain(slope, build_on_slopes));
+			for (uint8_t raw = 0; raw < 64; raw++) {
+				const TrackBits bits{TrackBits::BaseType(raw)};
+				const Foundation foundation = GetRailFoundation(slope, bits);
+				INFO("slope " << static_cast<int>(slope) << " bits " << static_cast<int>(raw) << " build_on_slopes " << build_on_slopes);
+				CHECK(facts.Fits(0, 0, bits) == (build_on_slopes ? foundation != Foundation::Invalid : foundation == Foundation::None));
+			}
+		}
+	}
+	/* Off the grid and not buildable never fit. */
+	JunctionTerrain terrain = MakeSlopeTerrain(SLOPE_FLAT, true);
+	terrain.tiles[0].cls = JunctionTileClass::Blocked;
+	CHECK(!JunctionFacts(terrain).Fits(0, 0, TrackBits{Track::X}));
+	CHECK(!JunctionFacts(MakeSlopeTerrain(SLOPE_FLAT, true)).Fits(1, 0, TrackBits{Track::X}));
+}
+
+TEST_CASE("the canonical slope rotates with the incline", "[junction][facts]")
+{
+	for (const Slope slope : {SLOPE_NE, SLOPE_SE, SLOPE_SW, SLOPE_NW}) {
+		for (uint8_t rotation = 0; rotation < 4; rotation++) {
+			for (const bool mirrored : {false, true}) {
+				CHECK(JunctionCanonicalSlope(slope, rotation, mirrored) == InclinedSlope(JunctionCanonicalIncline(slope, rotation, mirrored)));
+			}
+		}
+	}
+}
+
+TEST_CASE("Straight agrees with EdgeZ for a lone straight", "[junction][facts]")
+{
+	for (const Slope slope : _tile_slopes) {
+		const JunctionFacts facts(MakeSlopeTerrain(slope, true));
+		for (const Axis axis : {Axis::X, Axis::Y}) {
+			const TrackBits bits{axis == Axis::X ? Track::X : Track::Y};
+			const Trackdir travel = axis == Axis::X ? Trackdir::X_SW : Trackdir::Y_SE;
+			const DiagDirection out = TrackdirToExitdir(travel);
+			int entry = 0, exit = 0;
+			const bool straight = facts.Straight(0, 0, axis, entry, exit);
+			INFO("slope " << static_cast<int>(slope) << " axis " << static_cast<int>(axis));
+			CHECK(straight == facts.Fits(0, 0, bits));
+			if (straight && facts.Fits(0, 0, bits)) {
+				CHECK(entry == facts.EdgeZ(0, 0, bits, ReverseDiagDir(out)));
+				CHECK(exit == facts.EdgeZ(0, 0, bits, out));
+			}
+		}
+	}
 }

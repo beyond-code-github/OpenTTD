@@ -13,6 +13,7 @@
 
 #include "direction_func.h"
 #include "junction_chain.h"
+#include "junction_facts.h"
 #include "junction_rules_internal.h"
 #include "junction_signal_pass.h"
 #include "map_func.h"
@@ -945,12 +946,11 @@ JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const s
 
 bool JunctionNodeTrackFits(const JunctionFacts &facts, int x, int y, TrackBits bits)
 {
-	if (bits.Count() >= 2) return facts.Switch(x, y);
-	int8_t entry;
-	int8_t exit;
-	if (bits.Test(Track::X)) return facts.Straight(x, y, Axis::X, entry, exit);
-	if (bits.Test(Track::Y)) return facts.Straight(x, y, Axis::Y, entry, exit);
-	return bits.Any() && facts.Half(x, y);
+	int entry;
+	int exit;
+	if (bits == TrackBits{Track::X}) return facts.Straight(x, y, Axis::X, entry, exit);
+	if (bits == TrackBits{Track::Y}) return facts.Straight(x, y, Axis::Y, entry, exit);
+	return facts.Fits(x, y, bits);
 }
 
 JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset)
@@ -1054,10 +1054,10 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 				const int column = p.tile.x + v - tpl.flat[c] + offset.x;
 				const int y_p = p.tile.y + shift_y(p.ycls) + offset.y;
 				const int y_q = q.tile.y + shift_y(q.ycls) + offset.y;
-				int8_t previous_exit = 0;
+				int previous_exit = 0;
 				for (int r = std::min(y_p, y_q) + 1; fits && r < std::max(y_p, y_q); r++) {
-					int8_t entry;
-					int8_t exit;
+					int entry;
+					int exit;
 					if (!facts.Straight(column, r, Axis::Y, entry, exit) || (r > std::min(y_p, y_q) + 1 && previous_exit != entry)) fits = false;
 					previous_exit = exit;
 				}
@@ -1115,10 +1115,10 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 		}
 
 		for (int c = facts.MinX(); c <= facts.MaxX(); c++) {
-			int8_t entry;
-			int8_t exit;
-			int8_t next_entry;
-			int8_t next_exit;
+			int entry;
+			int exit;
+			int next_entry;
+			int next_exit;
 			if (!facts.Straight(c, row, Axis::X, entry, exit)) {
 				if (!(d > 0 ? positions.AddAvoid(u, w, c) : positions.AddAvoid(w, u, c))) {
 					result.failure = JunctionNodeFailure{Kind::Straight, link_index, c};
@@ -1162,77 +1162,39 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 	return result;
 }
 
-/**
- * Whether an axis piece on a Buildable, non-steep tile inclined along its direction is a ramp, and from which height (mirrors HeightStep and RampStep in junction_line_router.cpp).
- * @param tile The terrain tile of the piece, or nullptr.
- * @param trackdir The piece's trackdir.
- * @param[out] up Whether the ramp rises along the piece's direction.
- * @return Whether the piece is inclined along its direction (a ramp, or unusable when the tile cannot take one).
- */
-static bool NodeInclinedAlong(const JunctionTerrainTile *tile, Trackdir trackdir, bool &up)
-{
-	if (tile == nullptr || !IsDiagonalTrackdir(trackdir) || tile->incline == DiagDirection::Invalid) return false;
-	const DiagDirection exit = TrackdirToExitdir(trackdir);
-	up = tile->incline == exit;
-	return up || tile->incline == ReverseDiagDir(exit);
-}
-
-/**
- * The height step of one piece as the line router's HeightStep reads it with ramps allowed (RampStep for a ramp, UsableAt otherwise).
- * @param[out] new_z The height after the piece.
- * @return Whether the piece is usable at z.
- */
-static bool NodeHeightStep(const JunctionTerrain &terrain, int x, int y, Trackdir trackdir, int8_t z, int8_t &new_z)
-{
-	new_z = z;
-	const JunctionTerrainTile *tile = terrain.At(x, y);
-	bool up = false;
-	if (NodeInclinedAlong(tile, trackdir, up)) {
-		if (tile->cls != JunctionTileClass::Buildable || tile->steep) return false;
-		if (up && tile->z_min == z) {
-			new_z = static_cast<int8_t>(z + 1);
-		} else if (!up && tile->z_max == z) {
-			new_z = static_cast<int8_t>(z - 1);
-		} else {
-			return false;
-		}
-		return true;
-	}
-	return terrain.UsableAt(x, y, z);
-}
-
 bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, std::string *why)
 {
 	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
-	std::map<std::tuple<int, int, Track>, int8_t> levels; ///< Per (working tile, track), the lower height of the piece.
+	const JunctionFacts facts(terrain);
+	std::map<std::pair<int, int>, TrackBits> tile_bits; ///< Per layout tile, all the tracks the layout builds there.
+	for (const JunctionTrack &jt : layout.tracks) tile_bits[{jt.offset.x, jt.offset.y}] |= jt.tracks;
 	for (size_t i = 0; i < ctx.paths.size(); i++) {
 		const std::vector<JunctionPiece> &pieces = ctx.paths[i].pieces;
-		int8_t z = 0;
+		const JunctionPiece *before = nullptr; ///< The previous piece on the ground (not on a bridge).
+		size_t before_index = 0;
 		for (size_t j = 0; j < pieces.size(); j++) {
 			const JunctionPiece &piece = pieces[j];
+			if (piece.on_bridge) {
+				before = nullptr;
+				continue;
+			}
 			const int x = piece.tile.x + offset.x;
 			const int y = piece.tile.y + offset.y;
 			auto fail = [&](const std::string &reason) {
 				if (why != nullptr) *why = fmt::format("path {} piece {} at {},{}: {}", i, j, x, y, reason);
 				return false;
 			};
-			const JunctionTerrainTile *tile = terrain.At(x, y);
-			if (j == 0) {
-				bool up = false;
-				if (NodeInclinedAlong(tile, piece.trackdir, up) && tile->cls == JunctionTileClass::Buildable && !tile->steep) {
-					z = up ? tile->z_min : tile->z_max;
-				} else {
-					z = tile != nullptr ? tile->z_max : static_cast<int8_t>(0);
-				}
+			const TrackBits bits = tile_bits[{piece.tile.x, piece.tile.y}];
+			if (!facts.Fits(x, y, bits)) return fail("the game cannot build these tracks here");
+			if (before != nullptr) {
+				const TrackBits before_bits = tile_bits[{before->tile.x, before->tile.y}];
+				const DiagDirection exit = TrackdirToExitdir(before->trackdir);
+				const int z_out = facts.EdgeZ(before->tile.x + offset.x, before->tile.y + offset.y, before_bits, exit);
+				const int z_in = facts.EdgeZ(x, y, bits, ReverseDiagDir(exit));
+				if (z_out != z_in) return fail(fmt::format("joins piece {} at height {} but meets it at {}", before_index, z_in, z_out));
 			}
-			if (piece.on_bridge) continue;
-			int8_t new_z = z;
-			if (!NodeHeightStep(terrain, x, y, piece.trackdir, z, new_z)) return fail(fmt::format("not usable at height {}", z));
-			const auto key = std::make_tuple(x, y, TrackdirToTrack(piece.trackdir));
-			const int8_t level = std::min(z, new_z);
-			const auto [it, inserted] = levels.emplace(key, level);
-			if (!inserted && it->second != level) return fail(fmt::format("height {} but another path has it at {}", level, it->second));
-			z = new_z;
+			before = &piece;
+			before_index = j;
 		}
 	}
 	return true;

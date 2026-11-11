@@ -23,6 +23,8 @@
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
 #include "../junction_signal_pass.h"
+#include "../rail.h"
+#include "../slope_func.h"
 
 #include <algorithm>
 #include <chrono>
@@ -302,6 +304,7 @@ TEST_CASE("the node solve moves the W end off an incline", "[junction][nodes]")
 				tile.z_min = 0;
 				tile.z_max = 1;
 				tile.incline = DiagDirection::NE;
+				tile.slope = InclinedSlope(DiagDirection::NE);
 			}
 		}
 	}
@@ -408,6 +411,7 @@ TEST_CASE("JunctionNodeTrackFits by kind", "[junction][nodes]")
 	terrain.tiles.assign(4, JunctionTerrainTile{});
 	terrain.tiles[1].z_max = 1;
 	terrain.tiles[1].incline = DiagDirection::SW;
+	terrain.tiles[1].slope = InclinedSlope(DiagDirection::SW);
 	terrain.tiles[2].cls = JunctionTileClass::Blocked;
 	const JunctionFacts facts(terrain);
 
@@ -448,6 +452,7 @@ static void SetStripColumn(JunctionTerrain &terrain, int x, int z_min, int z_max
 		tile.z_min = static_cast<int8_t>(z_min);
 		tile.z_max = static_cast<int8_t>(z_max);
 		tile.incline = incline;
+		tile.slope = incline == DiagDirection::Invalid ? SLOPE_FLAT : InclinedSlope(incline);
 	}
 }
 
@@ -509,6 +514,7 @@ TEST_CASE("heights: the line router's route across an incline is accepted", "[ju
 			tile.z_min = 0;
 			tile.z_max = 1;
 			tile.incline = incline;
+			tile.slope = incline == DiagDirection::Invalid ? SLOPE_FLAT : InclinedSlope(incline);
 		}
 	}
 	request.terrain = &terrain;
@@ -1114,4 +1120,45 @@ TEST_CASE("a free diagonal's interior tiles fit the facts", "[junction][nodes]")
 			CHECK(!(jt.offset.x + offset.x == blocked_x && jt.offset.y + offset.y == blocked_y));
 		}
 	}
+}
+
+TEST_CASE("the oracle sits a split on an incline level", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionLayout &layout = *FlatT().layout;
+	const TileIndexDiffC offset = FlatToWorking(spec);
+
+	/* A split tile of the flat T: the X straight plus a diagonal. */
+	const auto split = std::ranges::find_if(layout.tracks, [](const JunctionTrack &jt) { return jt.tracks.Test(Track::X) && jt.tracks.Count() >= 2; });
+	REQUIRE(split != layout.tracks.end());
+	const TrackBits bits = split->tracks;
+
+	/* Flat land at the top height 1, with the split tile one step lower on one side. */
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	terrain.build_on_slopes = true;
+	for (JunctionTerrainTile &tile : terrain.tiles) tile.z_min = tile.z_max = 1;
+	JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(split->offset.y + offset.y - terrain.origin.y) * terrain.width + (split->offset.x + offset.x - terrain.origin.x)];
+	tile.z_min = 0;
+	std::string why;
+
+	/* Inclined along y the X straight lies across the slope: with a diagonal on the high side, the game builds the tile on a leveled foundation at the top height. */
+	const auto incline_where = [&](bool valid, std::initializer_list<DiagDirection> inclines) {
+		for (const DiagDirection incline : inclines) {
+			if ((GetRailFoundation(InclinedSlope(incline), bits) != Foundation::Invalid) != valid) continue;
+			tile.incline = incline;
+			tile.slope = InclinedSlope(incline);
+			return true;
+		}
+		return false;
+	};
+	REQUIRE(incline_where(true, {DiagDirection::NW, DiagDirection::SE}));
+	CHECK(JunctionNodeHeightsOk(layout, spec, terrain, offset, &why));
+	INFO(why);
+
+	/* Inclined along x the X straight runs up the slope, and cannot share its tile with a diagonal: the game refuses it. */
+	REQUIRE(incline_where(false, {DiagDirection::NE, DiagDirection::SW}));
+	why.clear();
+	CHECK_FALSE(JunctionNodeHeightsOk(layout, spec, terrain, offset, &why));
+	CHECK(why.find("the game cannot build") != std::string::npos);
 }
