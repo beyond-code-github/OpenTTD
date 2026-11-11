@@ -406,10 +406,12 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 	JunctionTrackOrder order;
 	order.node_level = node_level;
 	order.rows.resize(rows);
+	order.bands.resize(rows + 1);
 	std::vector<std::vector<uint32_t>> swept(edge_count);
 	std::vector<bool> south_is_to(edge_count, false); // The end the sweep entered the edge by.
 	auto north_end = [&](uint32_t e) { return south_is_to[e] ? graph.edges[e].from : graph.edges[e].to; };
 	std::vector<uint32_t> items;
+	std::vector<int> layers; // Beside items: the layer of each item inside the band.
 	for (int s = 0; s < n; s++) {
 		if (group_of(s).main) continue;
 		for (uint32_t e = 0; e < edge_count; e++) {
@@ -417,6 +419,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 			if ((!edge.from.node && edge.from.index == s) || (!edge.to.node && edge.to.index == s)) {
 				south_is_to[e] = !edge.to.node && edge.to.index == s;
 				items.push_back(e);
+				layers.push_back(0);
 				break;
 			}
 		}
@@ -424,12 +427,18 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 	for (int level = 2 * rows; level >= 0; level--) {
 		if (level % 2 == 0) {
 			std::vector<std::pair<uint32_t, uint32_t>> pending = band_crossings[level];
+			std::fill(layers.begin(), layers.end(), 0);
 			for (;;) {
 				bool swapped = false;
 				for (auto p = pending.begin(); p != pending.end(); ++p) {
 					const auto pi = std::find(items.begin(), items.end(), p->first);
 					const auto pj = std::find(items.begin(), items.end(), p->second);
 					if (pi == items.end() || pj == items.end() || std::abs(pi - pj) != 1) continue;
+					int &layer_i = layers[pi - items.begin()];
+					int &layer_j = layers[pj - items.begin()];
+					const int layer = 1 + std::max(layer_i, layer_j);
+					layer_i = layer_j = layer;
+					order.bands[level / 2].push_back({false, p->first, p->second, layer});
 					std::iter_swap(pi, pj);
 					swept[p->first].push_back(p->second);
 					swept[p->second].push_back(p->first);
@@ -444,6 +453,8 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 				});
 				if (it == items.end()) break;
 				const uint32_t item = *it;
+				const int layer = 1 + layers[it - items.begin()];
+				order.bands[level / 2].push_back({true, north_end(item).index, 0, layer});
 				const uint16_t node_index = north_end(item).index;
 				const JunctionTrackNode &node = graph.nodes[node_index];
 				std::vector<std::pair<int, uint32_t>> others; // (key, edge)
@@ -461,8 +472,15 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 					south_is_to[f] = at_to;
 				}
 				std::stable_sort(others.begin(), others.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
-				it = items.erase(it);
-				for (const auto &other : others) it = items.insert(it, other.second) + 1;
+				const size_t at = it - items.begin();
+				items.erase(it);
+				layers.erase(layers.begin() + at);
+				size_t pos = at;
+				for (const auto &other : others) {
+					items.insert(items.begin() + pos, other.second);
+					layers.insert(layers.begin() + pos, layer);
+					pos++;
+				}
 			}
 			if (!pending.empty()) return fail("a crossing between edges that are not adjacent is not ruled yet");
 		} else {
@@ -479,6 +497,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 				}
 			}
 			items = kept;
+			layers.assign(items.size(), 0);
 		}
 		if (level % 2 == 1) {
 			/* The crossing items record the row edges they cross (positions need the finished row). */

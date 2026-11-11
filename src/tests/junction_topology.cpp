@@ -247,6 +247,11 @@ TEST_CASE("topology: the T's track order", "[junction][topology]")
 	crossings[5] = {8, 4};
 	crossings[8] = {4, 5};
 	CHECK(order.edge_crossings == crossings);
+	using Band = std::vector<JunctionTrackBandEvent>;
+	REQUIRE(order.bands.size() == 3);
+	CHECK(order.bands[0].empty());
+	CHECK(order.bands[1].empty());
+	CHECK(order.bands[2] == Band{{true, 1, 0, 1}, {true, 4, 0, 1}, {false, 4, 8, 2}});
 }
 
 TEST_CASE("topology: LL_RR with an L_R sideline: track order", "[junction][topology]")
@@ -274,6 +279,13 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track order", "[junction][topol
 	crossings[17] = {10};
 	crossings[23] = {3};
 	CHECK(order.edge_crossings == crossings);
+	using Band = std::vector<JunctionTrackBandEvent>;
+	REQUIRE(order.bands.size() == 5);
+	CHECK(order.bands[0].empty());
+	CHECK(order.bands[1].empty());
+	CHECK(order.bands[3].empty());
+	CHECK(order.bands[2] == Band{{true, 3, 0, 1}});
+	CHECK(order.bands[4] == Band{{true, 2, 0, 1}, {true, 4, 0, 2}, {true, 9, 0, 1}, {false, 3, 23, 2}, {true, 11, 0, 3}, {true, 10, 0, 2}});
 }
 
 /** The track structure of a topology. */
