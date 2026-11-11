@@ -2,7 +2,7 @@
 # Junction test runner with enforced time budgets (docs/junction-tool/TESTS.md).
 #   jt fast <build-dir> <tag> [budget-seconds=5]   run "<tag>~[slow]~[.]" (no slow or hidden tests), fail if over budget
 #   jt gate <build-dir>                             wide gate, Release builds only
-# Output goes to <build-dir>/jt-<name>.log; only failures, slow tests and the total are printed.
+# Builds openttd_test first (a build failure fails the run). Output goes to <build-dir>/jt-<name>.log; only failures, slow tests and the total are printed.
 set -u
 mode=${1:-}; build=${2:-}
 if [ -z "$mode" ] || [ -z "$build" ] || [ ! -x "$build/openttd_test" ]; then
@@ -23,6 +23,10 @@ case "$mode" in
 	*) echo "jt: unknown mode $mode" >&2; exit 2;;
 esac
 log="$build/jt-$name.log"
+# Build first: a failed build must fail the run, never test a stale binary.
+if ! cmake --build "$build" --target openttd_test -j16 > "$build/jt-build.log" 2>&1; then
+	echo "jt: BUILD FAILED ($build/jt-build.log):" >&2; grep -m10 -E 'error|Error' "$build/jt-build.log" >&2; exit 1
+fi
 start=$(date +%s%N)
 timeout --signal=INT "$((budget + 1))" "$build/openttd_test" "$filter" --durations yes > "$log" 2>&1
 rc=$?
