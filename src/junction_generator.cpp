@@ -831,16 +831,7 @@ int JunctionTMapFirstHeight(const JunctionSpec &spec)
 	return spec.ml_gap + 10;
 }
 
-/**
- * SC1: the terrain cost of a finished layout: the clearing of every tile with track or a bridge head, each tile once, plus a foundation for each
- * sloped tile, except a tile whose only track is one straight track along the tile's incline: that is a ramp and needs no foundation.
- * @param layout The finished layout.
- * @param terrain The snapshot, in frame coordinates.
- * @param ox The x offset from layout coordinates to frame coordinates.
- * @param oy The y offset from layout coordinates to frame coordinates.
- * @return The cost.
- */
-static Money JunctionTMapTerrainCost(const JunctionLayout &layout, const JunctionTerrain &terrain, int ox, int oy)
+Money JunctionTMapTerrainCost(const JunctionLayout &layout, const JunctionTerrain &terrain, int ox, int oy)
 {
 	std::map<std::pair<int, int>, TrackBits> occupied;
 	for (const JunctionTrack &jt : layout.tracks) {
@@ -861,6 +852,23 @@ static Money JunctionTMapTerrainCost(const JunctionLayout &layout, const Junctio
 		if (!ramp) cost += terrain.foundation_cost;
 	}
 	return cost;
+}
+
+std::optional<int> JunctionBlockedPortApproach(const JunctionTerrain &terrain, int x_w, int x_e)
+{
+	constexpr int STUB = 2;
+	for (const int x : {x_w, x_w + 1, x_w + STUB, x_e - STUB, x_e - 1, x_e}) {
+		const JunctionTerrainTile *t = terrain.At(x, 0);
+		if (t != nullptr) {
+			if (t->incline == DiagDirection::NE || t->incline == DiagDirection::SW) {
+				if (t->cls == JunctionTileClass::Buildable && !t->steep) continue;
+			} else if (terrain.UsableAt(x, 0, t->z_max)) {
+				continue;
+			}
+		}
+		return x;
+	}
+	return std::nullopt;
 }
 
 JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const JunctionTerrain *terrain, std::optional<int> first_height, bool line_router, const JunctionTMapResult *flat_given)
@@ -1129,22 +1137,14 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 	 * a failure returns at once with the blocked port and tile; the tool says to move the cursor." PH1: each approach tile is checked at the height its straight piece along row 0
 	 * starts at, mirroring the line router's derivation: z_max for a flat or foundation tile, and an incline along the row (a ramp) is usable.
 	 */
-	auto approach_usable = [&](int x) {
-		const JunctionTerrainTile *t = terrain->At(x, 0);
-		if (t == nullptr) return false;
-		if (t->incline == DiagDirection::NE || t->incline == DiagDirection::SW) return t->cls == JunctionTileClass::Buildable && !t->steep;
-		return terrain->UsableAt(x, 0, t->z_max);
-	};
 	auto ports_blocked = [&] {
 		if (!line_router || terrain == nullptr) return false;
-		for (const int x : {x_w, x_w + 1, x_w + STUB, x_e - STUB, x_e - 1, x_e}) {
-			if (approach_usable(x)) continue;
-			result.log += fmt::format("port approach blocked at {},0\n", x);
-			result.port_blocked = true;
-			result.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
-			return true;
-		}
-		return false;
+		const std::optional<int> blocked = JunctionBlockedPortApproach(*terrain, x_w, x_e);
+		if (!blocked.has_value()) return false;
+		result.log += fmt::format("port approach blocked at {},0\n", *blocked);
+		result.port_blocked = true;
+		result.micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
+		return true;
 	};
 	if (ports_blocked()) return result;
 
@@ -1933,6 +1933,12 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
 	return result;
 }
 
+const JunctionTMapResult &JunctionNodeTopologyT()
+{
+	static const JunctionTMapResult flat = ConstructJunctionTMap(MakeTestJunctionSpec(), nullptr, std::nullopt, true);
+	return flat;
+}
+
 /**
  * The least prio coverage, in tiles, that does not delay the ML on the node model's flat T for the spec's design train (D137).
  * The layout is the node model's T at the spec (DESIGN-N3 §5-§6), judged by the train simulation (D119); it replaces the old generator's sweep (D185a).
@@ -1942,7 +1948,7 @@ JunctionGenerateResult GenerateJunction(const JunctionSpec &spec, const Junction
  */
 JunctionPrioSizing SizeJunctionPrio(const JunctionSpec &spec)
 {
-	static const JunctionTMapResult flat = ConstructJunctionTMap(MakeTestJunctionSpec(), nullptr, std::nullopt, true);
+	const JunctionTMapResult &flat = JunctionNodeTopologyT();
 	if (!flat.layout.has_value()) return {0, JunctionGenerateError::NoLayout};
 
 	JunctionSpec copy = spec;

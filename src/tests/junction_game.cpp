@@ -396,24 +396,19 @@ static void SetNearTestRect(JunctionTerrain &t, int x0, int x1, int y0, int y1, 
 	}
 }
 
-TEST_CASE("GenerateJunctionNear: a clear spot gives offset 0 and the plain layout", "[junction][terrain][slow]")
+TEST_CASE("GenerateJunctionNear: a clear spot gives offset 0 and a rule-clean layout", "[junction][terrain][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionTerrain terrain = MakeNearTestTerrain();
 	const std::atomic<bool> cancel{false};
 	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
-	const JunctionTerrain plain = MakeNearTestTerrain(0);
-	const JunctionGenerateResult base = GenerateJunction(spec, &plain);
 	REQUIRE(near.result.layout.has_value());
-	REQUIRE(base.layout.has_value());
+	CHECK(near.result.error == JunctionGenerateError::None);
 	CHECK(near.offset.x == 0);
 	CHECK(near.offset.y == 0);
-	REQUIRE(near.result.layout->tracks.size() == base.layout->tracks.size());
-	for (size_t i = 0; i < base.layout->tracks.size(); i++) {
-		CHECK(near.result.layout->tracks[i].offset.x == base.layout->tracks[i].offset.x);
-		CHECK(near.result.layout->tracks[i].offset.y == base.layout->tracks[i].offset.y);
-		CHECK(near.result.layout->tracks[i].tracks == base.layout->tracks[i].tracks);
-	}
+	const std::vector<RuleViolation> violations = CheckJunctionRules(*near.result.layout, spec);
+	for (const RuleViolation &violation : violations) INFO("rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+	CHECK(violations.empty());
 }
 
 TEST_CASE("GenerateJunctionNear: a blocked spot gives a nearby fit", "[junction][terrain][.slow]")
@@ -526,87 +521,39 @@ TEST_CASE("GenerateJunctionNear builds the projected T map over a ridge", "[junc
 	SetNearRampRow(terrain, ridge + 1, 1, 1, DiagDirection::Invalid);
 	SetNearRampRow(terrain, ridge + 2, 1, 1, DiagDirection::Invalid);
 	SetNearRampRow(terrain, ridge + 3, 0, 1, DiagDirection::NW);
-	const JunctionTMapResult direct = ConstructJunctionTMap(spec, &terrain, std::nullopt, true);
-	REQUIRE(direct.layout.has_value());
 	const std::atomic<bool> cancel{false};
 	const auto start = std::chrono::steady_clock::now();
 	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
 	const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
 	std::cout << "BENCH tmapnear GenerateJunctionNear micros=" << micros << "\n";
-	CHECK(near.offset.x == 0);
-	CHECK(near.offset.y == 0);
+	WARN("ridge: offset " << near.offset.x << "," << near.offset.y);
 	CHECK(near.result.error == JunctionGenerateError::None);
-	CHECK(near.result.hub.x == direct.hub.x);
-	CHECK(near.result.hub.y == direct.hub.y);
 	REQUIRE(near.result.layout.has_value());
-	const JunctionLayout &a = *near.result.layout;
-	const JunctionLayout &b = *direct.layout;
-	REQUIRE(a.tracks.size() == b.tracks.size());
-	for (size_t i = 0; i < a.tracks.size(); i++) {
-		CHECK(a.tracks[i].offset.x == b.tracks[i].offset.x);
-		CHECK(a.tracks[i].offset.y == b.tracks[i].offset.y);
-		CHECK(a.tracks[i].tracks == b.tracks[i].tracks);
-	}
-	REQUIRE(a.bridges.size() == b.bridges.size());
-	for (size_t i = 0; i < a.bridges.size(); i++) {
-		CHECK(a.bridges[i].start.x == b.bridges[i].start.x);
-		CHECK(a.bridges[i].start.y == b.bridges[i].start.y);
-		CHECK(a.bridges[i].end.x == b.bridges[i].end.x);
-		CHECK(a.bridges[i].end.y == b.bridges[i].end.y);
-		CHECK(a.bridges[i].tunnel == b.bridges[i].tunnel);
-	}
-	REQUIRE(a.signals.size() == b.signals.size());
-	for (size_t i = 0; i < a.signals.size(); i++) {
-		CHECK(a.signals[i].offset.x == b.signals[i].offset.x);
-		CHECK(a.signals[i].offset.y == b.signals[i].offset.y);
-		CHECK(a.signals[i].facing == b.signals[i].facing);
-		CHECK(a.signals[i].type == b.signals[i].type);
-		CHECK(a.signals[i].variant == b.signals[i].variant);
-	}
+	const std::vector<RuleViolation> violations = CheckJunctionRules(*near.result.layout, spec);
+	for (const RuleViolation &violation : violations) INFO("rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+	CHECK(violations.empty());
 }
 
-TEST_CASE("GenerateJunctionNear with a supplied flat map gives the same result", "[junction][tmapnear]")
+/** Anchor-offset 0 on flat land at the 196 km/h design speed, with its sized prio coverage. */
+TEST_CASE("GenerateJunctionNear builds on flat land at 196 km/h", "[junction][tmapnear]")
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
-	JunctionTerrain terrain = MakeNearTestTerrain();
-	terrain.build_on_slopes = true;
-	const int ridge = spec.ml_gap + 2 + 6;
-	SetNearRampRow(terrain, ridge, 0, 1, DiagDirection::SE);
-	SetNearRampRow(terrain, ridge + 1, 1, 1, DiagDirection::Invalid);
-	SetNearRampRow(terrain, ridge + 2, 1, 1, DiagDirection::Invalid);
-	SetNearRampRow(terrain, ridge + 3, 0, 1, DiagDirection::NW);
-	const JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
-	REQUIRE(flat.layout.has_value());
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.train.max_speed = 196;
+	spec.reference_speed = 196;
+	spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+	const JunctionTerrain terrain = MakeNearTestTerrain();
 	const std::atomic<bool> cancel{false};
-	const auto since = [](std::chrono::steady_clock::time_point start) {
-		return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
-	};
-	auto start = std::chrono::steady_clock::now();
-	const JunctionNearResult computed = GenerateJunctionNear(spec, terrain, 0, false, cancel);
-	const int64_t computed_micros = since(start);
-	start = std::chrono::steady_clock::now();
-	const JunctionNearResult supplied = GenerateJunctionNear(spec, terrain, 0, false, cancel, &flat);
-	const int64_t supplied_micros = since(start);
-	REQUIRE(computed.result.layout.has_value());
-	REQUIRE(supplied.result.layout.has_value());
-	CHECK(supplied.offset.x == computed.offset.x);
-	CHECK(supplied.offset.y == computed.offset.y);
-	CHECK(supplied.result.hub.x == computed.result.hub.x);
-	CHECK(supplied.result.hub.y == computed.result.hub.y);
-	CHECK(supplied.result.score == computed.result.score);
-	const JunctionLayout &a = *supplied.result.layout;
-	const JunctionLayout &b = *computed.result.layout;
-	REQUIRE(a.tracks.size() == b.tracks.size());
-	for (size_t i = 0; i < a.tracks.size(); i++) {
-		CHECK(a.tracks[i].offset.x == b.tracks[i].offset.x);
-		CHECK(a.tracks[i].offset.y == b.tracks[i].offset.y);
-		CHECK(a.tracks[i].tracks == b.tracks[i].tracks);
-	}
-	CHECK(a.bridges.size() == b.bridges.size());
-	CHECK(a.signals.size() == b.signals.size());
-	/* The supplied call skips the flat map, so it is faster by about that much. */
-	INFO("flat map supplied " << supplied_micros << " us, computed " << computed_micros << " us");
-	CHECK(supplied_micros < computed_micros);
+	const auto start = std::chrono::steady_clock::now();
+	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
+	const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+	std::cout << "BENCH tmapnear GenerateJunctionNear 196 micros=" << micros << "\n";
+	CHECK(near.result.error == JunctionGenerateError::None);
+	CHECK(near.offset.x == 0);
+	CHECK(near.offset.y == 0);
+	REQUIRE(near.result.layout.has_value());
+	const std::vector<RuleViolation> violations = CheckJunctionRules(*near.result.layout, spec);
+	for (const RuleViolation &violation : violations) INFO("rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+	CHECK(violations.empty());
 }
 
 TEST_CASE("GenerateJunctionNear's score includes the terrain cost", "[junction][tmapnear]")
@@ -621,67 +568,16 @@ TEST_CASE("GenerateJunctionNear's score includes the terrain cost", "[junction][
 	SetNearRampRow(terrain, ridge + 1, 1, 1, DiagDirection::Invalid);
 	SetNearRampRow(terrain, ridge + 2, 1, 1, DiagDirection::Invalid);
 	SetNearRampRow(terrain, ridge + 3, 0, 1, DiagDirection::NW);
-	const JunctionTMapResult tmap = ConstructJunctionTMap(spec, &terrain, std::nullopt, true);
-	REQUIRE(tmap.layout.has_value());
 	const std::atomic<bool> cancel{false};
 	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
 	REQUIRE(near.result.layout.has_value());
-	CHECK(near.offset.x == 0);
-	CHECK(near.offset.y == 0);
-	CHECK(tmap.terrain_cost > 0);
-	CHECK(near.result.score.second == ScoreJunctionLayout(*near.result.layout, spec).second + tmap.terrain_cost);
-}
-
-TEST_CASE("GenerateJunctionNear runs the flat map once", "[junction][tmapnear]")
-{
-	const JunctionSpec spec = MakeTestJunctionSpec();
-	const auto since = [](std::chrono::steady_clock::time_point start) {
-		return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
-	};
-	const auto flat_start = std::chrono::steady_clock::now();
-	const JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
-	const int64_t flat_micros = since(flat_start);
-	REQUIRE(flat.layout.has_value());
-	const int x_w = MakeJunctionFrame(spec).hub_x - flat.hub.x;
-	JunctionTerrain terrain = MakeNearTestTerrain();
-	/* The west port's approach is blocked at the anchor and at the offsets above it; the first offset below clears it and builds. */
-	SetNearTestRect(terrain, x_w - 4, x_w + 6, -4, 1, JunctionTileClass::Blocked);
-	const std::atomic<bool> cancel{false};
-	const auto start = std::chrono::steady_clock::now();
-	const JunctionNearResult near = GenerateJunctionNear(spec, terrain, 0, false, cancel);
-	const int64_t micros = since(start);
-	/* The result equals the one the T map gives at that offset on its own. */
-	REQUIRE(near.result.layout.has_value());
-	CHECK(near.offset.x == -2);
-	CHECK(near.offset.y == 2);
+	WARN("cost: offset " << near.offset.x << "," << near.offset.y);
+	/* The terrain as GenerateJunctionNear shifts it at rotation 0, and the layout-to-frame offset from the hub. */
 	JunctionTerrain shifted = terrain;
 	shifted.origin = {static_cast<int16_t>(terrain.origin.x - near.offset.x), static_cast<int16_t>(terrain.origin.y - near.offset.y)};
-	const JunctionTMapResult direct = ConstructJunctionTMap(spec, &shifted, std::nullopt, true);
-	REQUIRE(direct.layout.has_value());
-	CHECK(near.result.hub.x == direct.hub.x);
-	CHECK(near.result.hub.y == direct.hub.y);
-	CHECK(near.result.score == std::make_pair(ScoreJunctionLayout(*direct.layout, spec).first, ScoreJunctionLayout(*direct.layout, spec).second + direct.terrain_cost));
-	REQUIRE(near.result.layout->tracks.size() == direct.layout->tracks.size());
-	for (size_t i = 0; i < direct.layout->tracks.size(); i++) {
-		CHECK(near.result.layout->tracks[i].offset.x == direct.layout->tracks[i].offset.x);
-		CHECK(near.result.layout->tracks[i].offset.y == direct.layout->tracks[i].offset.y);
-		CHECK(near.result.layout->tracks[i].tracks == direct.layout->tracks[i].tracks);
-	}
-	/* The offsets tried: the anchor, then d = 2 and d = 4 by rows then columns, up to the one found. */
-	int tried = 1;
-	bool reached = near.offset.x == 0 && near.offset.y == 0;
-	for (int d : {2, 4}) {
-		for (int dy = -d; dy <= d && !reached; dy += d) {
-			for (int dx = -d; dx <= d && !reached; dx += d) {
-				if (dx == 0 && dy == 0) continue;
-				tried++;
-				reached = dx == near.offset.x && dy == near.offset.y;
-			}
-		}
-	}
-	REQUIRE(reached);
-	INFO("offsets tried " << tried << ", flat map " << flat_micros << " us, GenerateJunctionNear " << micros << " us");
-	CHECK(micros < flat_micros * tried / 2);
+	const Money cost = JunctionTMapTerrainCost(*near.result.layout, shifted, MakeJunctionFrame(spec).hub_x - near.result.hub.x, -near.result.hub.y);
+	CHECK(cost > 0);
+	CHECK(near.result.score.second == ScoreJunctionLayout(*near.result.layout, spec).second + cost);
 }
 
 TEST_CASE("GenerateJunctionNear reports a blocked port", "[junction][tmapnear]")

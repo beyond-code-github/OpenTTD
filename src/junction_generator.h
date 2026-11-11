@@ -204,4 +204,28 @@ JunctionTMapResult ConstructJunctionTMap(const JunctionSpec &spec, const Junctio
 /** D148a: the E-side window phase. 1 when prio_tiles is odd and at least 5, else 0. */
 uint8_t JunctionEWindowPhase(int prio_tiles);
 
+/**
+ * SC1: the terrain cost of a finished layout: the clearing of every tile with track or a bridge head, each tile once, plus a foundation for each
+ * sloped tile, except a tile whose only track is one straight track along the tile's incline: that is a ramp and needs no foundation.
+ * @param layout The finished layout.
+ * @param terrain The snapshot, in frame coordinates.
+ * @param ox The x offset from layout coordinates to frame coordinates.
+ * @param oy The y offset from layout coordinates to frame coordinates.
+ * @return The cost.
+ */
+Money JunctionTMapTerrainCost(const JunctionLayout &layout, const JunctionTerrain &terrain, int ox, int oy);
+
+/** The L_R topology source of the node model: the test spec's flat T, built once (D189: read for its structure only; lengths come from the solve). */
+const JunctionTMapResult &JunctionNodeTopologyT();
+
+/**
+ * D179: whether a port's approach is unusable. Every port's approach (the port tile plus the straight pieces the rules require before it, D115a) must be usable
+ * at the ground height there (PH1: z_max for a flat or foundation tile; an incline along the row is a ramp and is usable).
+ * @param terrain The snapshot, in frame coordinates.
+ * @param x_w The west port's frame column on row 0.
+ * @param x_e The east port's frame column on row 0.
+ * @return The first blocked frame column on row 0, or std::nullopt when every approach is usable.
+ */
+std::optional<int> JunctionBlockedPortApproach(const JunctionTerrain &terrain, int x_w, int x_e);
+
 #endif /* JUNCTION_GENERATOR_H */

@@ -1416,6 +1416,7 @@ JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const Junctio
 			if (!fits) continue;
 			search.log += head + "ok\n";
 			search.layout = layout;
+			search.offset = layout_offset;
 			return search;
 		}
 
