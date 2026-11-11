@@ -7,6 +7,11 @@ topology -> **structure** (combinatorial: paths as typed runs and nodes, crossin
 
 Why a reference at all (FABLE-topology-graph Q1): the solve writes every constraint as a difference from a reference, prefers it in the Y snap, and reads which pieces share a tile, the order of elements on each row, and what passes under each bridge from it. G1 makes that reference a computed output, never a drawing.
 
+## 0b. No lost progress (engineer, 2026-11-11: "I just want to make absolutely sure we're not going to end up losing progress here")
+- G1 replaces only the template's SOURCE (topology instead of the traced flat T). The solve (two-phase, facts from GetRailFoundation, height joins, prio rows, occupancy), the search and detours, HN1's failure naming, the oracle and every existing test stay as they are.
+- Every G step keeps the full gate green and [nodeoracle] at heights=0 fits=0 with accepted >= its last count; a step that would edit an existing expectation stops for a ruling.
+- The hover path switches to the generated template only after G1c shows it structurally equal to the traced T and at least as good on the oracle sweep; the traced template stays as a permanent test oracle.
+
 ## 1. Input: JunctionTopology
 - **Frame**: the box; the main line runs along X (D152 canonical frame). Sides N, E, S, W.
 - **Ports**: per side, an ordered list of lane groups. A lane group = one direction of one line: side, direction (in/out), lane count k (adjacent lanes, gap 0, D142), its line, and the gap to the next group on that side (the underscores, D38/D142).
