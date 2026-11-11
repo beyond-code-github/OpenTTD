@@ -12,9 +12,15 @@
 #include "../3rdparty/fmt/format.h"
 #include "../3rdparty/catch2/catch.hpp"
 
+#include <algorithm>
+#include <optional>
+#include <set>
+
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
 #include "../junction_generator.h"
+#include "../junction_nodes.h"
+#include "../junction_route.h"
 #include "../junction_topology.h"
 
 #include "../safeguards.h"
@@ -714,5 +720,173 @@ TEST_CASE("topology: LL_RR with an L_R sideline: placement", "[junction][topolog
 	REQUIRE(slots.size() == placement.ports.size());
 	for (size_t s = 0; s < slots.size(); s++) {
 		if (topology.groups[slots[s].group].side == JunctionSide::S) CHECK(placement.ports[s].y == placement.size.y - 1);
+	}
+}
+
+/** The pipeline through the series-bridge cut and the render, with the pieces it built on request. */
+static JunctionLayout RenderOf(const JunctionTopology &t, int max_bridge_middle, std::string *error, JunctionTrackPlacement *placement_out = nullptr, JunctionTrackStructure *cut_out = nullptr, JunctionTrackPrograms *programs_out = nullptr, std::vector<JunctionLanePath> *paths_out = nullptr, JunctionTrackGraph *graph_out = nullptr)
+{
+	std::string ignored;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
+	REQUIRE(!graph.edges.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
+	REQUIRE(!order.rows.empty());
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
+	REQUIRE(!programs.edges.empty());
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.max_bridge_middle = max_bridge_middle;
+	JunctionTrackPlacement placement;
+	const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &placement, &ignored);
+	REQUIRE(!placement.nodes.empty());
+	if (placement_out != nullptr) *placement_out = placement;
+	if (cut_out != nullptr) *cut_out = cut;
+	if (programs_out != nullptr) *programs_out = programs;
+	if (paths_out != nullptr) *paths_out = paths;
+	if (graph_out != nullptr) *graph_out = graph;
+	return RenderJunctionTrackPlacement(t, paths, graph, cut, programs, placement, error);
+}
+
+TEST_CASE("topology: the T render traces like the flat T", "[junction][topology]")
+{
+	std::string error;
+	const JunctionLayout render = RenderOf(JunctionTTopology(), 64, &error);
+	INFO(error);
+	REQUIRE(!render.tracks.empty());
+	const JunctionTMapResult flat = ConstructJunctionTMap(MakeTestJunctionSpec(), nullptr, std::nullopt, true);
+	REQUIRE(flat.layout.has_value());
+	const JunctionNodeTemplate got = BuildJunctionNodeTemplate(render, MakeTestJunctionSpec());
+	const JunctionNodeTemplate want = BuildJunctionNodeTemplate(*flat.layout, MakeTestJunctionSpec());
+	CHECK(got.error == "");
+	CHECK(got.points.size() == want.points.size());
+	CHECK(got.links.size() == want.links.size());
+	CHECK(got.paths.size() == want.paths.size());
+	CHECK(got.pieces.size() == want.pieces.size());
+	CHECK(got.bridges.size() == want.bridges.size());
+	CHECK(got.joins.size() == want.joins.size());
+	CHECK(got.diagonals.size() == want.diagonals.size());
+	CHECK(got.x_classes == want.x_classes);
+}
+
+/** The corners of a tile a track touches: bit 0 north-east edge, 1 south-east, 2 south-west, 3 north-west edge. */
+static int TrackEdges(Track track)
+{
+	switch (track) {
+		case Track::X: return 1 | 4;
+		case Track::Y: return 2 | 8;
+		case Track::Upper: return 1 | 8;
+		case Track::Lower: return 2 | 4;
+		case Track::Left: return 8 | 4;
+		default: return 1 | 2;
+	}
+}
+
+static const std::array<Track, 6> ALL_TRACKS = {Track::X, Track::Y, Track::Upper, Track::Lower, Track::Left, Track::Right};
+
+/** Every render test's topology at nmax 64. */
+static const JunctionTopology *RENDER_TOPOLOGIES[2] = {&JunctionTTopology(), &JunctionLLRRSidelineTopology()};
+
+TEST_CASE("topology: the render switches only at nodes", "[junction][topology]")
+{
+	for (const JunctionTopology *t : RENDER_TOPOLOGIES) {
+		std::string error;
+		JunctionTrackPlacement placement;
+		JunctionTrackStructure cut;
+		JunctionTrackPrograms programs;
+		const JunctionLayout render = RenderOf(*t, 64, &error, &placement, &cut, &programs);
+		INFO(error);
+		REQUIRE(!render.tracks.empty());
+		std::set<Tile> allowed;
+		for (const TileIndexDiffC &n : placement.nodes) allowed.insert(Of(n));
+		for (const JunctionTrackBridge &bridge : cut.bridges) {
+			if (!bridge.doubled) continue;
+			const uint32_t e = bridge.edge;
+			for (size_t k = 0; k < programs.copies[e].size(); k++) {
+				if (programs.copies[e][k].kind == JunctionTrackStep::Kind::SBend) allowed.insert(Of(placement.copies[e][k].first));
+			}
+			for (size_t k = 0; k < programs.edges[e].size(); k++) {
+				if (programs.edges[e][k].kind == JunctionTrackStep::Kind::SBend) allowed.insert(Of(placement.edges[e][k].second));
+			}
+		}
+		for (const JunctionTrack &jt : render.tracks) {
+			int shared = 0;
+			for (Track a : ALL_TRACKS) {
+				for (Track b : ALL_TRACKS) {
+					if (a < b && jt.tracks.Test(a) && jt.tracks.Test(b) && (TrackEdges(a) & TrackEdges(b)) != 0) shared++;
+				}
+			}
+			if (shared > 0) CHECK(allowed.contains(Tile{jt.offset.x, jt.offset.y}));
+		}
+	}
+}
+
+TEST_CASE("topology: the render has no level crossing and no track on a head", "[junction][topology]")
+{
+	for (const JunctionTopology *t : RENDER_TOPOLOGIES) {
+		std::string error;
+		const JunctionLayout render = RenderOf(*t, 64, &error);
+		INFO(error);
+		REQUIRE(!render.tracks.empty());
+		std::set<Tile> heads;
+		for (const JunctionBridge &b : render.bridges) {
+			heads.insert(Of(b.start));
+			heads.insert(Of(b.end));
+		}
+		for (const JunctionTrack &jt : render.tracks) {
+			CHECK(!(jt.tracks.Test(Track::X) && jt.tracks.Test(Track::Y)));
+			CHECK(!heads.contains(Tile{jt.offset.x, jt.offset.y}));
+		}
+	}
+}
+
+TEST_CASE("topology: the render has the bridges as placed", "[junction][topology]")
+{
+	for (const JunctionTopology *t : RENDER_TOPOLOGIES) {
+		std::string error;
+		JunctionTrackPlacement placement;
+		JunctionTrackStructure cut;
+		const JunctionLayout render = RenderOf(*t, 64, &error, &placement, &cut);
+		INFO(error);
+		REQUIRE(!render.tracks.empty());
+		auto key = [](JunctionBridge b) {
+			if (b.start.x + b.start.y > b.end.x + b.end.y) std::swap(b.start, b.end);
+			return std::array<int, 4>{b.start.x, b.start.y, b.end.x, b.end.y};
+		};
+		std::vector<std::array<int, 4>> want, got;
+		for (size_t b = 0; b < cut.bridges.size(); b++) {
+			want.push_back(key(placement.bridges[b][0]));
+			if (cut.bridges[b].doubled) want.push_back(key(placement.bridges[b][1]));
+		}
+		for (const JunctionBridge &b : render.bridges) got.push_back(key(b));
+		std::ranges::sort(want);
+		std::ranges::sort(got);
+		CHECK(got == want);
+	}
+}
+
+TEST_CASE("topology: the render stays inside the box and draws every port", "[junction][topology]")
+{
+	for (const JunctionTopology *t : RENDER_TOPOLOGIES) {
+		std::string error;
+		JunctionTrackPlacement placement;
+		std::vector<JunctionLanePath> paths;
+		const JunctionLayout render = RenderOf(*t, 64, &error, &placement, nullptr, nullptr, &paths);
+		INFO(error);
+		REQUIRE(!render.tracks.empty());
+		CHECK(Of(render.size) == Of(placement.size));
+		std::set<Tile> tiles;
+		for (const JunctionTrack &jt : render.tracks) {
+			CHECK(jt.offset.x >= 0);
+			CHECK(jt.offset.y >= 0);
+			CHECK(jt.offset.x < render.size.x);
+			CHECK(jt.offset.y < render.size.y);
+			tiles.insert(Tile{jt.offset.x, jt.offset.y});
+		}
+		for (const JunctionLanePath &p : paths) {
+			CHECK(tiles.contains(Of(placement.ports[p.from])));
+			CHECK(tiles.contains(Of(placement.ports[p.to])));
+		}
 	}
 }

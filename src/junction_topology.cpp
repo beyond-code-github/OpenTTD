@@ -877,6 +877,18 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 	return programs;
 }
 
+/** The axis piece of each heading: 0 north, 1 east, 2 south, 3 west. */
+static constexpr Trackdir JUNCTION_AXIS_TRACKDIR[4] = {Trackdir::Y_NW, Trackdir::X_SW, Trackdir::Y_SE, Trackdir::X_NE};
+
+/** The moves of a bend from its axis piece: the first turn, the halves after the first, the closing turn (DESIGN-G1 §11.8). A hand of +1 is a clockwise turn. */
+static std::string JunctionBendMoves(int hand, int halves, bool corner)
+{
+	std::string moves(1, hand > 0 ? 'L' : 'R');
+	moves.append(halves - 1, 'F');
+	moves += ((corner ? hand : -hand) > 0) ? 'L' : 'R';
+	return moves;
+}
+
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error)
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
@@ -964,11 +976,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 
 	/* The raster of a bend: its half pieces' tiles relative to the first. A hand of +1 is a clockwise turn. */
 	auto bend_tiles = [&](int heading, int hand, int halves, bool corner) {
-		static constexpr Trackdir axis[4] = {Trackdir::Y_NW, Trackdir::X_SW, Trackdir::Y_SE, Trackdir::X_NE};
-		std::string moves(1, hand > 0 ? 'L' : 'R');
-		moves.append(halves - 1, 'F');
-		moves += ((corner ? hand : -hand) > 0) ? 'L' : 'R';
-		const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, axis[heading], moves});
+		const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, halves, corner)});
 		std::vector<TileIndexDiffC> result;
 		if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != halves + 2) return result;
 		for (int i = 1; i <= halves; i++) {
@@ -1626,6 +1634,138 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 		result.bridges.push_back(heads);
 	}
 	return result;
+}
+
+JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error)
+{
+	using StepKind = JunctionTrackStep::Kind;
+	auto fail = [&](const std::string &reason) {
+		if (error != nullptr) *error = reason;
+		return JunctionLayout{};
+	};
+	if (placement.nodes.empty() || graph.path_edges.size() != paths.size()) return fail("a render needs a placement of the track graph");
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+
+	/* Unit steps by heading: 0 north, 1 east, 2 south, 3 west. */
+	static constexpr int VX[4] = {0, 1, 0, -1};
+	static constexpr int VY[4] = {-1, 0, 1, 0};
+	auto doubled_leg = [&](uint32_t e) {
+		return std::ranges::any_of(structure.bridges, [&](const JunctionTrackBridge &b) { return b.edge == e && b.doubled; });
+	};
+	auto bridge_over = [&](uint32_t e, uint32_t crossed) {
+		for (size_t b = 0; b < structure.bridges.size(); b++) {
+			const JunctionTrackBridge &bridge = structure.bridges[b];
+			if (bridge.edge == e && std::ranges::find(bridge.crossed, crossed) != bridge.crossed.end()) return static_cast<int>(b);
+		}
+		return -1;
+	};
+
+	JunctionLayout layout;
+	layout.size = placement.size;
+	for (size_t p = 0; p < paths.size(); p++) {
+		const std::vector<uint32_t> &edges = graph.path_edges[p];
+		const bool has_doubled = std::ranges::any_of(edges, doubled_leg);
+		for (int c = 0; c < (has_doubled ? 2 : 1); c++) {
+			auto fail_at = [&](const std::string &where, const std::string &reason) { return fail(fmt::format("path {} copy {}{}: {}", p, c, where, reason)); };
+			const JunctionSide side = topology.groups[slots[paths[p].from].group].side;
+			if (side == JunctionSide::N) return fail_at("", "an N port is not ruled yet");
+			int h = side == JunctionSide::W ? 1 : side == JunctionSide::E ? 3 : 0;
+			TileIndexDiffC cur = placement.ports[paths[p].from];
+			JunctionRoute route{cur, JUNCTION_AXIS_TRACKDIR[h], ""};
+			int last_over = -1;
+
+			/* The number of steps from cur to a tile along the heading, or -1. */
+			auto run = [&](const TileIndexDiffC &to) {
+				const int dx = to.x - cur.x;
+				const int dy = to.y - cur.y;
+				if (VX[h] != 0) return dy == 0 && dx * VX[h] >= 0 ? dx * VX[h] : -1;
+				return dx == 0 && dy * VY[h] >= 0 ? dy * VY[h] : -1;
+			};
+
+			for (uint32_t e : edges) {
+				const bool copy1 = c == 1 && doubled_leg(e);
+				const std::vector<JunctionTrackStep> &tokens = copy1 ? programs.copies[e] : programs.edges[e];
+				const std::vector<JunctionTrackSpan> &spans = copy1 ? placement.copies[e] : placement.edges[e];
+				if (spans.size() != tokens.size()) return fail_at(fmt::format(" edge {}", e), "the placement does not match the program");
+				for (size_t t = 0; t < tokens.size(); t++) {
+					const JunctionTrackStep &token = tokens[t];
+					const std::string where = fmt::format(" edge {} token {}", e, t);
+					if (token.kind == StepKind::Under) continue;
+					if (token.kind == StepKind::Over) {
+						const int b = bridge_over(e, token.index);
+						if (b < 0) return fail_at(where, "an Over without a bridge");
+						if (b == last_over) continue;
+						last_over = b;
+						const JunctionBridge &heads = placement.bridges[b][doubled_leg(e) ? c : 0];
+						if (cur.x == heads.start.x && cur.y == heads.start.y && !route.moves.empty() && (route.moves.back() == 'L' || route.moves.back() == 'R')) {
+							/* D110: the bridge follows the bend directly and completes it; the near head stands where the closing axis piece would. */
+							route.moves.pop_back();
+						} else {
+							const int before = run({static_cast<int16_t>(heads.start.x - VX[h]), static_cast<int16_t>(heads.start.y - VY[h])});
+							if (before < 0) return fail_at(where, "negative or off-line run");
+							route.moves.append(before, 'F');
+						}
+						const int middle = std::abs(heads.end.x - heads.start.x) + std::abs(heads.end.y - heads.start.y) - 1;
+						route.moves += fmt::format("B{}", middle);
+						cur = heads.end;
+						continue;
+					}
+					const TileIndexDiffC first = spans[t].first;
+					const TileIndexDiffC last = spans[t].second;
+					if (token.kind == StepKind::Fan) {
+						if (first.x == last.x && first.y == last.y && first.x == cur.x && first.y == cur.y) continue;
+						const bool off_line = VX[h] != 0 ? (first.y != cur.y || last.y != cur.y) : (first.x != cur.x || last.x != cur.x);
+						if (!off_line) continue;
+					}
+					int matches = 0;
+					int match_hand = 0;
+					int match_halves = 0;
+					JunctionRaster match_raster;
+					for (int hand : {-1, 1}) {
+						if (token.kind != StepKind::Fan && hand != token.hand) continue;
+						for (int halves = 1; halves <= 64; halves++) {
+							const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[h], JunctionBendMoves(hand, halves, token.kind == StepKind::Corner)});
+							if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != halves + 2) continue;
+							const int o1x = raster.pieces[1].tile.x - raster.pieces[0].tile.x;
+							const int o1y = raster.pieces[1].tile.y - raster.pieces[0].tile.y;
+							const int olx = raster.pieces[halves].tile.x - raster.pieces[0].tile.x;
+							const int oly = raster.pieces[halves].tile.y - raster.pieces[0].tile.y;
+							if (last.x - first.x != olx - o1x || last.y - first.y != oly - o1y) continue;
+							matches++;
+							match_hand = hand;
+							match_halves = halves;
+							match_raster = raster;
+						}
+					}
+					if (matches != 1) return fail_at(where, fmt::format("{} bend matches", matches));
+					const JunctionPiece &p0 = match_raster.pieces[0];
+					const TileIndexDiffC axis_tile = {static_cast<int16_t>(first.x - (match_raster.pieces[1].tile.x - p0.tile.x)), static_cast<int16_t>(first.y - (match_raster.pieces[1].tile.y - p0.tile.y))};
+					const int before = run(axis_tile);
+					if (before < 0) return fail_at(where, "negative or off-line run");
+					route.moves.append(before, 'F');
+					route.moves += JunctionBendMoves(match_hand, match_halves, token.kind == StepKind::Corner);
+					const JunctionPiece &closing = match_raster.pieces.back();
+					cur = {static_cast<int16_t>(axis_tile.x + closing.tile.x - p0.tile.x), static_cast<int16_t>(axis_tile.y + closing.tile.y - p0.tile.y)};
+					int heading = -1;
+					for (int i = 0; i < 4; i++) {
+						if (JUNCTION_AXIS_TRACKDIR[i] == closing.trackdir) heading = i;
+					}
+					if (heading < 0) return fail_at(where, "a bend does not end on an axis piece");
+					h = heading;
+				}
+			}
+			const TileIndexDiffC out = placement.ports[paths[p].to];
+			const int tail = run(out);
+			if (tail < 0) return fail_at("", "negative or off-line run to the out port");
+			route.moves.append(tail, 'F');
+
+			const JunctionRaster raster = RasterizeJunctionRoute(route);
+			if (!raster.error.empty()) return fail_at("", raster.error);
+			if (raster.pieces.back().tile.x != out.x || raster.pieces.back().tile.y != out.y) return fail_at("", "misses its out port");
+			AddRasterToLayout(layout, raster);
+		}
+	}
+	return layout;
 }
 
 const JunctionTopology &JunctionTTopology()
