@@ -25,6 +25,7 @@
 #include "../junction_signal_pass.h"
 
 #include <algorithm>
+#include <chrono>
 #include <tuple>
 #include <vector>
 
@@ -530,4 +531,134 @@ TEST_CASE("heights: the line router's route across an incline is accepted", "[ju
 	std::string why;
 	CHECK(JunctionNodeHeightsOk(layout, spec, terrain, {static_cast<int16_t>(min_x), static_cast<int16_t>(min_y)}, &why));
 	INFO(why);
+}
+
+/** Search from the flat T on the given terrain, WARN the states, the log and the time. */
+static JunctionNodeSearch SearchFlatT(const JunctionSpec &spec, const JunctionTerrain &terrain)
+{
+	const auto start = std::chrono::steady_clock::now();
+	const JunctionNodeSearch search = SearchJunctionNodes(*FlatT().layout, spec, terrain, FlatToWorking(spec), 16);
+	const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+	WARN("states " << search.states << " in " << micros << " us\n" << search.log);
+	return search;
+}
+
+TEST_CASE("the node search builds around a house beside the hub", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, MakeJunctionFrame(spec).hub_x - 1, 0);
+
+	const JunctionNodeSearch search = SearchFlatT(spec, terrain);
+	INFO(search.log);
+	REQUIRE(search.layout.has_value());
+	CHECK(search.states <= 16);
+}
+
+TEST_CASE("the node search builds around an unbuildable hub tile", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, MakeJunctionFrame(spec).hub_x, 0);
+
+	const JunctionNodeSearch search = SearchFlatT(spec, terrain);
+	INFO(search.log);
+	REQUIRE(search.layout.has_value());
+	CHECK(search.states <= 16);
+}
+
+TEST_CASE("the node search keeps the flat T on flat terrain", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+
+	/* The track-only start state has the template of the finished flat layout. */
+	const JunctionNodeTemplate finished = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	REQUIRE(finished.error.empty());
+	const JunctionNodeTemplate track_only = BuildJunctionNodeTemplate(RenderJunctionNodeTracks(finished, finished.flat), spec);
+	REQUIRE(track_only.error.empty());
+	auto free_links = [](const JunctionNodeTemplate &tpl) { return std::ranges::count_if(tpl.links, [](const JunctionNodeLink &l) { return l.free; }); };
+	INFO("finished: points " << finished.points.size() << " links " << finished.links.size() << " free " << free_links(finished) << " classes " << finished.flat.size() << " diffs " << finished.diffs.size());
+	INFO("track-only: points " << track_only.points.size() << " links " << track_only.links.size() << " free " << free_links(track_only) << " classes " << track_only.flat.size() << " diffs " << track_only.diffs.size());
+	REQUIRE(track_only.points.size() == finished.points.size());
+	REQUIRE(track_only.links.size() == finished.links.size());
+	REQUIRE(free_links(track_only) == free_links(finished));
+	REQUIRE(track_only.flat.size() == finished.flat.size());
+	REQUIRE(track_only.diffs.size() == finished.diffs.size());
+
+	const JunctionNodeSearch search = SearchFlatT(spec, MakeMapTestTerrain(spec));
+	INFO(search.log);
+	CHECK(search.states == 1);
+	REQUIRE(search.layout.has_value());
+	CHECK(TrackKeys(*search.layout) == TrackKeys(*FlatT().layout));
+}
+
+/** A straight X line of 15 tiles from (0, row_a) and a second one back from (14, row_b), normalised (the first line ends on `row`); the template and the link of the first line. */
+struct DetourFixture {
+	JunctionLayout layout;
+	JunctionNodeTemplate tpl;
+	uint32_t link = UINT32_MAX;
+	int row = 0; ///< The row of the first line.
+
+	DetourFixture(int row_a, int row_b)
+	{
+		for (const JunctionRoute &route : {JunctionRoute{{0, static_cast<int16_t>(row_a)}, Trackdir::X_SW, "FFFFFFFFFFFFFF"}, JunctionRoute{{14, static_cast<int16_t>(row_b)}, Trackdir::X_NE, "FFFFFFFFFFFFFF"}}) {
+			const JunctionRaster raster = RasterizeJunctionRoute(route);
+			REQUIRE(raster.error.empty());
+			AddRasterToLayout(layout, raster);
+		}
+		NormaliseJunctionLayout(layout);
+		tpl = BuildJunctionNodeTemplate(layout, MakeTestJunctionSpec());
+		REQUIRE(tpl.error.empty());
+		row = row_a - std::min(row_a, row_b);
+		for (uint32_t i = 0; i < tpl.links.size(); i++) {
+			if (tpl.links[i].free && tpl.points[tpl.links[i].from].tile.y == row && tpl.points[tpl.links[i].from].tile.x == 0) link = i;
+		}
+		REQUIRE(link != UINT32_MAX);
+	}
+};
+
+static bool HasTrackAt(const JunctionLayout &layout, int x, int y)
+{
+	return std::ranges::any_of(layout.tracks, [&](const JunctionTrack &jt) { return jt.offset.x == x && jt.offset.y == y && jt.tracks.Any(); });
+}
+
+TEST_CASE("a detour around a column of the hand-built line", "[junction][nodes]")
+{
+	const DetourFixture fixture(2, 5);
+	const int row = fixture.row;
+	const JunctionSpec spec = MakeTestJunctionSpec();
+
+	std::string why;
+	const std::optional<JunctionLayout> up = InsertJunctionDetour(fixture.layout, fixture.tpl, fixture.link, 7, -1, spec, &why);
+	INFO(why);
+	REQUIRE(up.has_value());
+	CHECK(!HasTrackAt(*up, 7, row));
+	CHECK(HasTrackAt(*up, 7, row - 1));
+	JunctionLayout normalised = *up;
+	NormaliseJunctionLayout(normalised);
+	const std::vector<JunctionChain> chains = ExtractJunctionChains(normalised, spec);
+	CHECK(std::ranges::any_of(chains, [](const JunctionChain &c) { return c.curves.size() == 4; }));
+
+	why.clear();
+	const std::optional<JunctionLayout> down = InsertJunctionDetour(fixture.layout, fixture.tpl, fixture.link, 7, 1, spec, &why);
+	INFO(why);
+	REQUIRE(down.has_value());
+	CHECK(!HasTrackAt(*down, 7, row));
+	CHECK(HasTrackAt(*down, 7, row + 1));
+
+	why.clear();
+	CHECK(!InsertJunctionDetour(fixture.layout, fixture.tpl, fixture.link, 0, -1, spec, &why).has_value());
+	CHECK(why.find("column outside the link") != std::string::npos);
+}
+
+TEST_CASE("a detour collides with a parallel line", "[junction][nodes]")
+{
+	const DetourFixture fixture(2, 3);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string why;
+	CHECK(!InsertJunctionDetour(fixture.layout, fixture.tpl, fixture.link, 7, 1, spec, &why).has_value());
+	CHECK(why.find("collision") != std::string::npos);
 }

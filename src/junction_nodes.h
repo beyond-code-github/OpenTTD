@@ -111,4 +111,26 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
  */
 bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, std::string *why);
 
+/**
+ * Replace the interior of a free link of a state layout by a detour around one column (DESIGN-N3 §4).
+ * @param layout The state layout (not normalised by this function).
+ * @param tpl Its template.
+ * @param link A free link of tpl.
+ * @param column The layout x the detour's shifted run must cover.
+ * @param side +1 or -1: the row the shifted run is on, relative to the link's row.
+ * @param spec The spec the child layout's template is built with.
+ * @param why On failure, receives the reason.
+ * @return The new layout, or std::nullopt.
+ */
+std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout, const JunctionNodeTemplate &tpl, uint32_t link, int column, int side, const JunctionSpec &spec, std::string *why);
+
+/** The result of a structure search. */
+struct JunctionNodeSearch {
+	std::optional<JunctionLayout> layout; ///< Rule-clean, fitting and with connected heights.
+	int states = 0; ///< States solved.
+	std::string log; ///< One line per state: "state <n> detours <k>: <ok | failure kind link column | template error | rules: <first violation> | heights: <why>>".
+};
+/** Best-first search over detours from the flat layout (DESIGN-N3 §4): at most max_states states solved. */
+JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, int max_states);
+
 #endif /* JUNCTION_NODES_H */

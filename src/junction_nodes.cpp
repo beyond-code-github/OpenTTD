@@ -713,3 +713,231 @@ bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spe
 	}
 	return true;
 }
+
+std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout, const JunctionNodeTemplate &tpl, uint32_t link, int column, int side, const JunctionSpec &spec, std::string *why)
+{
+	auto fail = [&](const std::string &reason) {
+		if (why != nullptr) *why = reason;
+		return std::optional<JunctionLayout>{};
+	};
+	if (link >= tpl.links.size() || !tpl.links[link].free || (side != 1 && side != -1)) return fail("not a free link or side");
+
+	/* 1. The link and its interior. */
+	const JunctionNodePoint &p = tpl.points[tpl.links[link].from];
+	const JunctionNodePoint &q = tpl.points[tpl.links[link].to];
+	const int row = p.tile.y;
+	const int d = q.tile.x > p.tile.x ? 1 : -1;
+	const int length = d * (q.tile.x - p.tile.x);
+	const int lo = std::min<int>(p.tile.x, q.tile.x) + 1;
+	const int hi = std::max<int>(p.tile.x, q.tile.x) - 1;
+	if (column < lo || column > hi) return fail("column outside the link");
+
+	/* 2. The hands of the S-bend. */
+	char t1 = 'L';
+	char t2 = 'R';
+	JunctionRaster probe = RasterizeJunctionRoute({p.tile, p.trackdir, "FLFRF"});
+	if (!probe.error.empty() || probe.pieces.back().tile.y != row + side) {
+		t1 = 'R';
+		t2 = 'L';
+		probe = RasterizeJunctionRoute({p.tile, p.trackdir, "FRFLF"});
+		if (!probe.error.empty() || probe.pieces.back().tile.y != row + side) return fail("no S-bend to that side");
+	}
+
+	/* The layout with the link's interior replaced by a program's raster, or the reason it cannot be had. */
+	auto build = [&](JunctionRaster raster, std::string &reason) -> std::optional<JunctionLayout> {
+		JunctionLayout result = layout;
+		for (JunctionTrack &jt : result.tracks) {
+			if (jt.offset.y == row && jt.offset.x >= lo && jt.offset.x <= hi) jt.tracks.Reset(Track::X);
+		}
+		std::erase_if(result.tracks, [](const JunctionTrack &jt) { return jt.tracks.None(); });
+		raster.pieces.pop_back();
+		raster.pieces.erase(raster.pieces.begin());
+		raster.bridges.clear();
+		for (const JunctionPiece &piece : raster.pieces) {
+			const bool taken = std::ranges::any_of(result.tracks, [&](const JunctionTrack &jt) { return jt.offset.x == piece.tile.x && jt.offset.y == piece.tile.y; });
+			if (taken) {
+				reason = fmt::format("collision at {},{}", piece.tile.x, piece.tile.y);
+				return std::nullopt;
+			}
+		}
+		AddRasterToLayout(result, raster);
+
+		/* A shifted run of one piece has no free link: the two S-bends become one rigid class and their curve gap cannot stretch, which the template reports as an error. */
+		JunctionLayout normalised = result;
+		NormaliseJunctionLayout(normalised);
+		const JunctionNodeTemplate child = BuildJunctionNodeTemplate(normalised, spec);
+		if (!child.error.empty()) {
+			reason = "template error: " + child.error;
+			return std::nullopt;
+		}
+		return result;
+	};
+
+	/* 3. The lengths of the runs: the first (n1, n2, n3) in the order of the rules whose layout has no collision and a template. */
+	auto program = [&](int n1, int n2, int n3) {
+		return std::string(static_cast<size_t>(n1), 'F') + t1 + 'F' + t2 + std::string(static_cast<size_t>(n2), 'F') + t2 + 'F' + t1 + std::string(static_cast<size_t>(n3), 'F');
+	};
+	std::string reason;
+	for (int n1 = length; n1 >= 0; n1--) {
+		for (int n2 = 0; n2 <= length; n2++) {
+			const JunctionRaster raster = RasterizeJunctionRoute({p.tile, p.trackdir, program(n1, n2, 0)});
+			if (!raster.error.empty()) continue;
+			const size_t first_shifted = static_cast<size_t>(n1) + 3;
+			const size_t last_shifted = first_shifted + static_cast<size_t>(n2);
+			if (last_shifted + 3 >= raster.pieces.size()) continue;
+
+			/* Nothing on the link's row reaches the column before the second S-bend, and the shifted run covers it. */
+			bool clear = true;
+			bool covers = false;
+			for (size_t i = 0; i <= last_shifted; i++) {
+				const JunctionPiece &piece = raster.pieces[i];
+				if (piece.tile.y == row && d * (piece.tile.x - column) >= 0) clear = false;
+				if (i >= first_shifted && piece.tile.y == row + side && piece.tile.x == column) covers = true;
+			}
+			if (!clear || !covers) continue;
+
+			/* The closing run ends on q. */
+			const JunctionPiece &end = raster.pieces.back();
+			if (end.tile.y != row || end.trackdir != q.trackdir) continue;
+			const int n3 = d * (q.tile.x - end.tile.x);
+			if (n3 < 0) continue;
+			JunctionRaster full = RasterizeJunctionRoute({p.tile, p.trackdir, program(n1, n2, n3)});
+			if (!full.error.empty() || full.pieces.back().tile.x != q.tile.x || full.pieces.back().tile.y != q.tile.y || full.pieces.back().trackdir != q.trackdir) continue;
+
+			std::optional<JunctionLayout> result = build(std::move(full), reason);
+			if (result.has_value()) return result;
+		}
+	}
+	return fail(reason.empty() ? "link too short for a detour" : "no buildable detour: " + reason);
+}
+
+/** A state of the structure search: a layout (the flat T with detours) and its working offset (working = layout + offset). */
+struct NodeState {
+	JunctionLayout layout;
+	TileIndexDiffC offset;
+	int detours;
+};
+
+/** The sorted track list of a layout, as the search's visited key. */
+static std::vector<std::tuple<int, int, uint>> NodeStateKey(const JunctionLayout &layout)
+{
+	std::vector<std::tuple<int, int, uint>> key;
+	for (const JunctionTrack &jt : layout.tracks) key.emplace_back(jt.offset.x, jt.offset.y, static_cast<uint>(jt.tracks.base()));
+	std::ranges::sort(key);
+	return key;
+}
+
+/** Where the anchor piece of a rendered layout lies relative to its tile in the template's layout (layout minus template), or nullopt without an EIn->SOut path. */
+static std::optional<TileIndexDiffC> NodeAnchorShift(const JunctionNodeTemplate &tpl, const JunctionLayout &layout, const JunctionSpec &spec)
+{
+	const auto anchor = std::ranges::find_if(tpl.paths, [](const JunctionNodePath &path) { return path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::SOut; });
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
+	const auto ctx_path = std::ranges::find_if(ctx.paths, [](const JunctionPath &path) { return path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::SOut; });
+	if (tpl.anchor == UINT16_MAX || anchor == tpl.paths.end() || anchor->points.empty() || ctx_path == ctx.paths.end()) return std::nullopt;
+	const TileIndexDiffC anchor_flat = tpl.points[anchor->points.back()].tile;
+	const TileIndexDiffC anchor_layout = ctx_path->pieces.back().tile;
+	return TileIndexDiffC{static_cast<int16_t>(anchor_layout.x - anchor_flat.x), static_cast<int16_t>(anchor_layout.y - anchor_flat.y)};
+}
+
+JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, int max_states)
+{
+	JunctionNodeSearch search;
+	const JunctionFacts facts(terrain);
+	std::multimap<int, NodeState> queue; ///< By detour count; equal counts in insertion order.
+	std::set<std::vector<std::tuple<int, int, uint>>> visited;
+
+	/* A state is track-only: the finished flat layout's signals and prio rows are not path pieces of its template. */
+	const JunctionNodeTemplate flat_tpl = BuildJunctionNodeTemplate(flat, spec);
+	if (!flat_tpl.error.empty()) {
+		search.log = "template error: " + flat_tpl.error + "\n";
+		return search;
+	}
+	JunctionLayout start = RenderJunctionNodeTracks(flat_tpl, flat_tpl.flat);
+	const std::optional<TileIndexDiffC> start_shift = NodeAnchorShift(flat_tpl, start, spec);
+	if (!start_shift.has_value()) {
+		search.log = "no anchor path\n";
+		return search;
+	}
+	const TileIndexDiffC start_offset = {static_cast<int16_t>(offset.x - start_shift->x), static_cast<int16_t>(offset.y - start_shift->y)};
+	visited.insert(NodeStateKey(start));
+	queue.emplace(0, NodeState{std::move(start), start_offset, 0});
+
+	while (!queue.empty() && search.states < max_states) {
+		const NodeState state = std::move(queue.begin()->second);
+		queue.erase(queue.begin());
+
+		const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(state.layout, spec);
+		if (!tpl.error.empty()) {
+			search.log += fmt::format("state {} detours {}: template error: {}\n", search.states + 1, state.detours, tpl.error);
+			continue;
+		}
+		const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, state.offset);
+		search.states++;
+		const std::string head = fmt::format("state {} detours {}: ", search.states, state.detours);
+
+		if (solve.layout.has_value()) {
+			const JunctionLayout &layout = *solve.layout;
+
+			/* The shift of the normalisation: the anchor class is fixed, so its piece sits at its state tile plus the state offset. */
+			const std::optional<TileIndexDiffC> shift = NodeAnchorShift(tpl, layout, spec);
+			if (!shift.has_value()) {
+				search.log += head + "no anchor path\n";
+				continue;
+			}
+			const TileIndexDiffC layout_offset = {static_cast<int16_t>(state.offset.x - shift->x), static_cast<int16_t>(state.offset.y - shift->y)};
+
+			const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec);
+			if (!violations.empty()) {
+				search.log += head + fmt::format("rules: rule {} at {},{}: {}\n", to_underlying(violations.front().rule), violations.front().tile.x, violations.front().tile.y, violations.front().message);
+				continue;
+			}
+			std::string why;
+			if (!JunctionNodeHeightsOk(layout, spec, terrain, layout_offset, &why)) {
+				search.log += head + "heights: " + why + "\n";
+				continue;
+			}
+			bool fits = true;
+			for (const JunctionTrack &jt : layout.tracks) {
+				const bool bridge_head = std::ranges::any_of(layout.bridges, [&](const JunctionBridge &b) { return (b.start.x == jt.offset.x && b.start.y == jt.offset.y) || (b.end.x == jt.offset.x && b.end.y == jt.offset.y); });
+				if (bridge_head || JunctionNodeTrackFits(facts, jt.offset.x + layout_offset.x, jt.offset.y + layout_offset.y, jt.tracks)) continue;
+				search.log += head + fmt::format("fits: tile {},{}\n", jt.offset.x + layout_offset.x, jt.offset.y + layout_offset.y);
+				fits = false;
+				break;
+			}
+			if (!fits) continue;
+			search.log += head + "ok\n";
+			search.layout = layout;
+			return search;
+		}
+
+		const JunctionNodeFailure &failure = *solve.failure;
+		search.log += head + fmt::format("failure kind {} link {} column {}\n", to_underlying(failure.kind), failure.link, failure.column);
+		if (failure.kind != JunctionNodeFailure::Kind::Straight && failure.kind != JunctionNodeFailure::Kind::Break) continue;
+
+		for (const int side : {-1, 1}) {
+			std::string why;
+			std::optional<JunctionLayout> child = InsertJunctionDetour(state.layout, tpl, failure.link, failure.column - state.offset.x, side, spec, &why);
+			if (!child.has_value()) {
+				search.log += fmt::format("  detour link {} column {} side {}: {}\n", failure.link, failure.column, side, why);
+				continue;
+			}
+			int min_x = INT32_MAX;
+			int min_y = INT32_MAX;
+			for (const JunctionTrack &jt : child->tracks) {
+				min_x = std::min<int>(min_x, jt.offset.x);
+				min_y = std::min<int>(min_y, jt.offset.y);
+			}
+			for (const JunctionBridge &bridge : child->bridges) {
+				for (const TileIndexDiffC &bridge_head : {bridge.start, bridge.end}) {
+					min_x = std::min<int>(min_x, bridge_head.x);
+					min_y = std::min<int>(min_y, bridge_head.y);
+				}
+			}
+			NormaliseJunctionLayout(*child);
+			if (!visited.insert(NodeStateKey(*child)).second) continue;
+			const TileIndexDiffC child_offset = {static_cast<int16_t>(state.offset.x + min_x), static_cast<int16_t>(state.offset.y + min_y)};
+			queue.emplace(state.detours + 1, NodeState{std::move(*child), child_offset, state.detours + 1});
+		}
+	}
+	return search;
+}
