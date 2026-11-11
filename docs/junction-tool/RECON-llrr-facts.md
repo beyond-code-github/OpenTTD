@@ -1,4 +1,5 @@
 # RECON-llrr-facts: what is ruled, built and measured for multi-lane (LL_RR) T junctions (LR0, 2026-11-11, head 9fdb82b721)
+> SUPERSEDED in part: §3 open questions 1, 2, 4, 5, 6 are ruled (D187, D186, D188, D192, D191). Check DECISIONS.md before asking.
 Read only. Companion to RECON-llrr.md (the earlier rules survey from RULES-hubs/RULES-coop, H/R/Q ids are from there; this file adds DECISIONS, code and measurements). Code refs are src/ file:line at this head.
 
 ## 1. Rulings (DECISIONS.md rows) and what each implies for an LL_RR T

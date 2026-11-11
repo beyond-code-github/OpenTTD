@@ -1,4 +1,5 @@
 # LL_RR: decision cards for the engineer (2026-11-11)
+> ANSWERED: card 1 = D186, card 2 = D187, card 3 = D188, card 4 = D192, card 5 = D191 (DECISIONS.md). Do not re-ask; re-confirmed by the engineer 2026-11-11.
 Source: RECON-llrr.md (rules survey). Each card is one question the rules leave open. Recommendations are the orchestrator's.
 
 ## Card 1: first scope
