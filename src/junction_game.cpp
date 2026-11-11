@@ -12,6 +12,7 @@
 #include "junction_game.h"
 #include "junction_generator.h"
 #include "junction_rules.h"
+#include "junction_nodes.h"
 #include "settings_type.h"
 #include "command_func.h"
 #include "rail_cmd.h"
@@ -404,54 +405,63 @@ static std::vector<TileIndexDiffC> JunctionNearOffsets()
 }
 
 /**
- * Try the anchor, then nearby anchors, on one snapshot, building the projected T map at each (D173, D177).
+ * Try the anchor, then nearby anchors, on one snapshot, running the node search at each (D182).
+ * The search starts from the node model's topology (JunctionNodeTopologyT, D189) and solves lengths and detours against the shifted terrain.
  * @param spec The junction spec.
  * @param terrain The snapshot, taken with a margin of at least 4.
  * @param rotation Quarter turns of the orientation.
  * @param mirrored Whether the orientation is mirrored.
  * @param cancel Set to stop the search.
- * @param flat D173's flat map for this spec, kept by the caller; when null it is computed here (P3).
  * @return The first layout found and its map offset from the anchor; else the result at the anchor.
  */
-JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const JunctionTerrain &terrain, uint8_t rotation, bool mirrored, const std::atomic<bool> &cancel, const JunctionTMapResult *flat)
+JunctionNearResult GenerateJunctionNear(const JunctionSpec &spec, const JunctionTerrain &terrain, uint8_t rotation, bool mirrored, const std::atomic<bool> &cancel)
 {
 	JunctionNearResult first;
 	bool have_first = false;
 	const std::vector<TileIndexDiffC> offsets = JunctionNearOffsets();
-	/* P3: the flat map depends on the spec only, so it is computed once for every offset. */
-	JunctionTMapResult computed;
-	if (flat == nullptr) {
-		computed = ConstructJunctionTMap(spec, nullptr, std::nullopt, false);
-		flat = &computed;
-	}
-	if (!flat->layout.has_value()) {
-		if (cancel) return first;
-		Debug(Facility::Misc, Severity::Debug2, "junction T map at offset {},{}: flat map: {}", offsets.front().x, offsets.front().y, flat->log);
-		first.offset = offsets.front();
-		first.result.error = JunctionGenerateError::NoLayout;
-		first.result.hub = flat->hub;
-		first.result.prio_tiles = spec.prio_tiles;
-		return first;
-	}
+	const JunctionTMapResult &topo = JunctionNodeTopologyT();
+	const JunctionFrame frame = MakeJunctionFrame(spec);
 	for (const TileIndexDiffC &d : offsets) {
 		if (cancel) break;
-		const TileIndexDiffC c = InverseOrientJunctionVector(d, rotation, mirrored);
-		JunctionTerrain shifted = terrain;
-		shifted.origin = {static_cast<int16_t>(terrain.origin.x - c.x), static_cast<int16_t>(terrain.origin.y - c.y)};
-		const JunctionTMapResult tmap = ConstructJunctionTMap(spec, &shifted, std::nullopt, true, flat);
-		Debug(Facility::Misc, Severity::Debug2, "junction T map at offset {},{}: {} us, {}", d.x, d.y, tmap.micros, tmap.log);
 		JunctionNearResult attempt{{}, d};
-		if (tmap.layout.has_value() && tmap.clean) {
-			attempt.result.layout = tmap.layout;
-			attempt.result.error = JunctionGenerateError::None;
-			/* SC1: the score carries the terrain cost, like the library fit's, so the two compare. */
-			attempt.result.score = ScoreJunctionLayout(*tmap.layout, spec);
-			attempt.result.score.second += tmap.terrain_cost;
-		} else {
-			attempt.result.error = tmap.port_blocked ? JunctionGenerateError::PortBlocked : JunctionGenerateError::NoLayout;
-		}
-		attempt.result.hub = tmap.hub;
 		attempt.result.prio_tiles = spec.prio_tiles;
+		if (!topo.layout.has_value()) {
+			attempt.result.error = JunctionGenerateError::NoLayout;
+			attempt.result.hub = topo.hub;
+		} else {
+			const TileIndexDiffC c = InverseOrientJunctionVector(d, rotation, mirrored);
+			JunctionTerrain shifted = terrain;
+			shifted.origin = {static_cast<int16_t>(terrain.origin.x - c.x), static_cast<int16_t>(terrain.origin.y - c.y)};
+			const TileIndexDiffC start_offset = {static_cast<int16_t>(frame.hub_x - topo.hub.x), static_cast<int16_t>(-topo.hub.y)};
+			/* D179: a blocked port approach is reported without a search. The ports are the topology's columns on row 0. */
+			if (JunctionBlockedPortApproach(shifted, start_offset.x, start_offset.x + topo.layout->size.x - 1).has_value()) {
+				Debug(Facility::Misc, Severity::Debug2, "junction node search at offset {},{}: port approach blocked", d.x, d.y);
+				attempt.result.error = JunctionGenerateError::PortBlocked;
+				attempt.result.hub = topo.hub;
+				if (!have_first) {
+					first = std::move(attempt);
+					have_first = true;
+				}
+				continue;
+			}
+			const auto time_start = std::chrono::steady_clock::now();
+			const JunctionNodeSearch search = SearchJunctionNodes(*topo.layout, spec, shifted, start_offset, 16);
+			const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - time_start).count();
+			const std::string_view log = search.log;
+			const size_t last_start = log.size() > 1 ? log.rfind('\n', log.size() - 2) : std::string_view::npos;
+			Debug(Facility::Misc, Severity::Debug2, "junction node search at offset {},{}: {} states, {} us, {}", d.x, d.y, search.states, micros, log.substr(last_start == std::string_view::npos ? 0 : last_start + 1));
+			if (search.layout.has_value()) {
+				attempt.result.layout = search.layout;
+				attempt.result.error = JunctionGenerateError::None;
+				attempt.result.hub = {static_cast<int16_t>(frame.hub_x - search.offset.x), static_cast<int16_t>(0 - search.offset.y)};
+				/* SC1: the score carries the terrain cost, like the library fit's, so the two compare. */
+				attempt.result.score = ScoreJunctionLayout(*search.layout, spec);
+				attempt.result.score.second += JunctionTMapTerrainCost(*search.layout, shifted, search.offset.x, search.offset.y);
+			} else {
+				attempt.result.error = JunctionGenerateError::NoLayout;
+				attempt.result.hub = topo.hub;
+			}
+		}
 		if (attempt.result.layout.has_value()) return attempt;
 		if (!have_first) {
 			first = std::move(attempt);

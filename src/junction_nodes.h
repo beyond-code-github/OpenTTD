@@ -182,6 +182,7 @@ std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout,
 /** The result of a structure search. */
 struct JunctionNodeSearch {
 	std::optional<JunctionLayout> layout; ///< Rule-clean, fitting and with connected heights.
+	TileIndexDiffC offset{}; ///< For the returned layout: working = layout + offset.
 	int states = 0; ///< States solved.
 	std::string log; ///< One line per state: "state <n> detours <k>: <ok | failure kind link column | template error | rules: <first violation> | heights: <why>>".
 };
