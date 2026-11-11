@@ -4,7 +4,7 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 
 ## State
 - Worktree /home/pete/OpenTTD/.claude/nodes (persistent; Debug `build`, Release `build-rel`). First: `git checkout -B wt-g1c2b <HEAD>` (given at launch). You are the only writer there. `tools/junction/jt` builds openttd_test before running.
-- PlaceJunctionTrackGraph (G1c(ii-a), series bridges SB1) gives per edge and token a span of tiles, node tiles, port tiles and bridge heads. This step draws it: one pure function, a track-only JunctionLayout. Nothing in the game calls it yet.
+- PlaceJunctionTrackGraph (G1c(ii-a)) and CutJunctionTrackBridges (SB1b, series bridges) gives per edge and token a span of tiles, node tiles, port tiles and bridge heads. This step draws it: one pure function, a track-only JunctionLayout. Nothing in the game calls it yet.
 
 ## Read first (once each, offset/limit)
 - CODINGSTYLE.md (C++ part); docs/junction-tool/TESTS.md (the `[topology]` row).
@@ -48,7 +48,7 @@ For each path p (paths order), for copy c in {0} or {0, 1} when one of its edges
 If any step above does not fit what you find (e.g. the axis piece before a bend is not the tile the rasterizer starts from, or a bridge after an S-bend needs D110's head-from-half-piece form), STOP and report the path, token and tiles; do not adapt the rule.
 
 ## Tests (tag `[topology]`; record each red)
-Add a helper `RenderOf(topology, nmax, &error)` next to PlacementOf (same pipeline, then RenderJunctionTrackPlacement with the placement at that nmax).
+Add a helper `RenderOf(topology, nmax, &error)` next to CutOf (SB1b): the same pipeline through CutJunctionTrackBridges, then RenderJunctionTrackPlacement with the cut structure and its placement. Every render test uses the cut structure (series bridges), never the uncut one.
 1. **T template oracle (outer)** "topology: the T render traces like the flat T": BuildJunctionNodeTemplate(render, MakeTestJunctionSpec()) has an empty error and the same sizes as the template of the traced flat T (FlatT() in junction_nodes tests: make the fixture reachable, e.g. move the needed declaration or reuse the same generator call; if that needs more than a declaration, STOP and report): points, links, paths, pieces, bridges, joins, diagonals, and x_classes. Red: the function does not exist (a link error counts here only as the first red; record the first assertion failure after a stub that returns an empty layout).
 2. **Switches only at nodes** (both topologies, at nmax 64; one TEST_CASE each or a loop): for every layout tile whose TrackBits hold two tracks sharing a tile edge, the tile is in placement.nodes, or is a doubled leg's lane split (placement.copies[leg] SBend span first) or lane merge (placement.edges[leg] SBend span last). Red with the stub: no tracks (assert the layout is non-empty first).
 3. **No level crossing, no track on a head:** no tile holds both TRACK_BIT_X and TRACK_BIT_Y; no layout track tile equals a bridge head tile.
