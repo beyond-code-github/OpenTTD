@@ -291,6 +291,8 @@ add_files(
     junction_station_rules.h
     junction_facts.cpp
     junction_facts.h
+    junction_topology.cpp
+    junction_topology.h
     junction_positions.cpp
     junction_positions.h
     junction_skeleton.cpp
