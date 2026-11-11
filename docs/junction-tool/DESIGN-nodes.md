@@ -1,6 +1,6 @@
 # DESIGN-nodes: the map as a chain of typed edges, placed before projection (D182)
 
-Status: DRAFT revision 2 (2026-11-11, after the engineer's review of revision 1). Nothing is briefed until it is agreed.
+Status: revision 3 AGREED (2026-11-11; engineer on FABLE-nodes-perf: "Yep sounds like great direction! Just be mindful of the amount of time we spend waiting for tests"). Revision 2 plus the performance plan in §9 (from FABLE-nodes-perf.md).
 Inputs: RECON-nodes.md (inventory of today's nodes with file:line), DIAG-house.md, DIAG-ph1-limit.md, D170, D172, D178, D180, D182.
 
 ## 1. The problem
@@ -29,10 +29,29 @@ xI 40, prio_tiles 14, flat AS (A->S split) 36, X_B 38..39, flat NA (N->A merge) 
 ## 6. Why this is not D169 again
 D169 modelled every tile (183k variables; no layout in 120 s). Here: per structure about a dozen integers per line, difference constraints, microseconds; crossings and over/under fixed by the map (D167, D170). O4c2 routed main lines first and found no legal merge: here nodes are placed before anything is laid out. SoverN's per-edge envelopes: here each constraint comes from an edge or node type, the same everywhere.
 
-## 7. Open (for the engineer, after the performance review)
-- Discrete search: fewest added edges first, by cost bound; branching only on infeasibility.
-- Obstacle grouping (bounding boxes vs outlines) for the discrete layer.
-- v1 scope: A and B lanes and stubs (line edges), footprints, ramps; branch edges (A->S, N->A as chains) next; bridges/tunnels as map edges.
+## 7. Settled in revision 3
+- Explicit nodes: S-port merge, N-port split, X3 (N->A over A->S), B's shift-back (no inferred nodes anywhere).
+- No outer retry loops: NW1's shift-back d and D179a's port widening become variables of the solve.
+- Diagonals are rigid (minimum length); extra length comes from adjacent straight edges.
+- Every fact a layout touches is in the model: prio rows, signal slots (each edge type carries its slots; e_phase per spec at precompile), bridge head heights and clearance. The full rule checker runs in tests (and as an oracle with the router), not on the hover path.
+- Obstacles grouped per row by the rule-derived gap (shorter than the least shift-and-return = one interval). Parallel lanes are one bundle edge.
+- Network-scale items (map-wide incremental fact table, site map, batch calls, results with slack and failure reasons) go to the D124 plan, not v1.
 
 ## 8. Scale targets (D124, D151)
 Hover generation < 100 ms (D151). Ultimate goal: fast human building and LLM-driven building of networks at the scale of a 512x1024 map with ~24k rail tiles, ~900 bridges, ~8.8k signals; thousands of deterministic generation calls; LL_RR and multi-line junctions (D176) next.
+
+## 9. Performance plan and steps (FABLE-nodes-perf.md)
+- Positions: incremental difference propagation with a trail (undo), node domains as bitsets, "edge must not cover column c" as a min/max-closed bound rule: no branching on positions.
+- Facts: per-tile fact table per snapshot (both axes), per-row run and next-bad indexes, rigid shape masks slid over it for anchor domains.
+- Structure: best-first by cost bound, expanded only on the fact named by a failure (repair table per spec), nogoods, depth bounded by rule.
+- Precompile per spec (flat structure, constraint template, masks, repair table, e_phase); warm start from the last hover's structure; x offset as one variable (the result returns the working offset range); depth and ports as variables.
+
+Steps (one agent each, test-first):
+- N0: flat T as a chain of typed edges, identical to today's; per-spec precompile. Needs the exact edge-type rule table (§4) first: recon.
+- N1: incremental solver: trail, bitset domains, avoid-column rule; replaces SolveJunctionSkeletonW's full passes (identical results on flat).
+- N2: per-snapshot fact table, indexes, shape domains.
+- N3: failure-driven structure search; house and hub-tile cases build clean with zero route failures; structure count asserted.
+- N4: offsets, depth, ports in the solve; warm start.
+- Then: PERF2 re-measure; benchmark of ~1000 random anchors on a real 512x1024 save (p50/p99 structures explored), hidden [.bench].
+
+Test time (engineer: "be mindful of the amount of time we spend waiting for tests"): every new test goes in a new fast tag `[nodes]` (budget 1 s Release, 5 s Debug, measured with jt before any brief names it); unit tests on synthetic tiny inputs (a few tiles, a handful of nodes) rather than whole T maps where the unit allows; whole-map cases only as the outer test of each step; benchmarks hidden. Briefs run only the tags the step touches, the wide gate once before the commit.
