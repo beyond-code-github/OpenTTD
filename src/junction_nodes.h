@@ -15,7 +15,9 @@
 #include "junction_layout.h"
 #include "junction_positions.h"
 #include "junction_rules.h"
+#include "junction_rules_internal.h"
 
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -121,6 +123,18 @@ struct JunctionNodeTemplate {
 	uint16_t anchor_y; ///< The Y class of the first point of EIn->SOut (on A); UINT16_MAX when anchor is.
 	std::string error; ///< Empty when the template was built.
 };
+/** What a node template is built from (DESIGN-G1 G1a): the paths and the per-piece facts the rules read. Holds no layout. */
+struct JunctionNodeInput {
+	std::vector<JunctionPath> paths; ///< In the checker's path order.
+	std::map<std::pair<int, int>, TrackBits> used; ///< Per tile, every track on it (UsedTracks).
+	std::vector<std::vector<SwitchEvent>> events; ///< Per path, its switch events (SwitchEventsOf).
+	std::vector<std::vector<bool>> slots; ///< Per path and piece: whether a signal may stand there (IsLegalSignalPiece or IsSignalledPiece).
+	std::vector<JunctionBridge> bridges; ///< Every bridge or tunnel.
+};
+/** The template input traced from a flat layout (today's only producer). */
+JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const JunctionSpec &spec);
+/** The node template of an input (DESIGN-N3 §1-§8). */
+JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionNodeInput &input, const JunctionSpec &spec);
 /** Read the template of a flat layout. */
 JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionLayout &flat, const JunctionSpec &spec);
 /**
