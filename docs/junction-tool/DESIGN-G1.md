@@ -92,7 +92,7 @@ Approach (b') per RECON-G1c-seed: draw a seed from the structure (orders, rows, 
 
 **10.2 Rules from the structure (S-side branches).**
 - Main lane, through: Run on the port row; in the W/E fan zone a S-bend to its stack row; Run on the lane row with its events; S-bend back to the port row in the far fan zone; Run to the port.
-- Fan zones: between each box side's port stubs and the first node or bridge of any lane on that side; only lanes there. Port rows = the notation rows (D38/D142) placed to minimise the largest lane shift (ties: north). Lanes shift outward monotonically (north lanes up, south lanes down), so the fan's diagonals never cross.
+- Fan zones: between each box side's port stubs and the first node or bridge of any lane on that side; only lanes there. Port rows = the notation rows (D38/D142) placed to minimise the largest lane S-bend (ties: north). Lanes S-bend outward monotonically (north lanes up, south lanes down), so the fan's diagonals never cross.
 - Doubling (crossed lane leg, D80/D145): the leg's path gives two copies: the lane copy keeps the lane row through the bridge; the side copy S-bends to the copy row (copy side, §9) at the lane split, bridges, S-bends back at the lane merge. Both bridge over the row's crossing set (one bridge per crossed row edge, §9). Lane split/merge are new nodes (decoration).
 - Exit leg leaving a lane split: Corner toward the branch side (heading E: right; W: left) to heading S; then a Y Run.
 - Joiner reaching a lane merge: Y Run north to its approach row (§9), Corner to the lane's heading, Run on the approach row, S-bend into the lane at the prio merge (D75: the merge sits inside the S-bend, D6/D8).
