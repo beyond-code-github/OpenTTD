@@ -639,20 +639,27 @@ std::vector<RuleViolation> CheckCurveSpeed(const JunctionCheckContext &ctx)
 	return out;
 }
 
-int JunctionMinCurveSpeed(const std::vector<JunctionPiece> &pieces, uint8_t tl, uint8_t curve_speed)
+int JunctionMinCurveSpeedOfDirections(const std::vector<Direction> &dirs, uint8_t tl, uint8_t curve_speed)
 {
 	int least = UINT16_MAX;
 	const size_t n = 2 * static_cast<size_t>(tl);
-	if (n == 0 || pieces.empty()) return least;
+	if (n == 0) return least;
 
-	std::vector<size_t> unit_piece;
-	size_t length;
-	const std::vector<Direction> dirs = PaddedPathDirections(pieces, n, unit_piece, length);
 	for (size_t start = 0; start + n <= dirs.size(); start++) {
 		const std::vector<Direction> window(dirs.begin() + start, dirs.begin() + start + n);
 		least = std::min(least, CurveSpeedLimitOfTrain(window, curve_speed));
 	}
 	return least;
+}
+
+int JunctionMinCurveSpeed(const std::vector<JunctionPiece> &pieces, uint8_t tl, uint8_t curve_speed)
+{
+	const size_t n = 2 * static_cast<size_t>(tl);
+	if (n == 0 || pieces.empty()) return UINT16_MAX;
+
+	std::vector<size_t> unit_piece;
+	size_t length;
+	return JunctionMinCurveSpeedOfDirections(PaddedPathDirections(pieces, n, unit_piece, length), tl, curve_speed);
 }
 
 /** Whether the layout has a signal on the tile for travel along the trackdir. */
