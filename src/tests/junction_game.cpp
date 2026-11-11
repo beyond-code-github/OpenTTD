@@ -628,6 +628,7 @@ TEST_CASE("the node search's layouts pass the rule checker on random terrain", "
 	std::cout << "ORACLE terrains=" << n << " skipped=" << skipped << " accepted=" << accepted << " heights=" << heights << " fits=" << fits << " micros=" << total_search_micros << "\n";
 	CHECK(accepted > 0);
 	CHECK(heights == 0);
+	CHECK(fits == 0);
 }
 
 TEST_CASE("GenerateJunctionNear's score includes the terrain cost", "[junction][tmapnear]")

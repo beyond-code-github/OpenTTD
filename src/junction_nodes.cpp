@@ -980,6 +980,25 @@ static bool NodeJoinMeets(const JunctionFacts &facts, int ax, int ay, TrackBits 
 	return z_out != INT_MIN && z_in != INT_MIN && z_out == z_in;
 }
 
+/** The trackdir of the track that leaves its tile through the edge. */
+static Trackdir TrackdirThrough(Track track, DiagDirection edge)
+{
+	const Trackdir td = TrackToTrackdir(track);
+	return TrackdirToExitdir(td) == edge ? td : ReverseTrackdir(td);
+}
+
+/** The track that touches both edges. */
+static Track NodeCorner(DiagDirection a, DiagDirection b)
+{
+	for (Track track : {Track::Upper, Track::Lower, Track::Left, Track::Right}) {
+		const Trackdir td = TrackToTrackdir(track);
+		const DiagDirection e1 = TrackdirToExitdir(td);
+		const DiagDirection e2 = TrackdirToExitdir(ReverseTrackdir(td));
+		if ((e1 == a || e2 == a) && (e1 == b || e2 == b)) return track;
+	}
+	NOT_REACHED();
+}
+
 JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset)
 {
 	JunctionNodeSolve result;
@@ -1044,6 +1063,43 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 		const int dx = v - tpl.flat[join.cls] + offset.x;
 		const int dy = shift_y(join.ycls) + offset.y;
 		return NodeJoinMeets(facts, join.from_tile.x + dx, join.from_tile.y + dy, bits_at(join.from_tile), join.from_td, join.to_tile.x + dx, join.to_tile.y + dy, bits_at(join.to_tile));
+	};
+
+	/**
+	 * Whether the reserved tiles of a prio row (DESIGN-N3 §8) fit the facts and meet, with the merge's X class at value v and its Y class fixed.
+	 * PlacePrio lays on the row (M = the merge tile, h1 = Corner(side, exit) on M, h2 = Corner(-side, -exit) on the row):
+	 * step 0 (x_M): h2 alone; steps 1..span: the lone X, or X with h2 at a join tile. The joins are at the required blocks, so every step is checked with both sets.
+	 * Meets: consecutive row tiles (the upstream lone X into the next tile's bits, step 1 into step 0's h2), and the row tile at x_M into the merge tile built with its flat bits and h1.
+	 */
+	auto prio_ok = [&](const JunctionNodePrioRow &prio, int v) {
+		const JunctionNodePoint &merge = tpl.points[prio.merge];
+		const int dx = v - tpl.flat[merge.cls] + offset.x;
+		const int dy = shift_y(merge.ycls) + offset.y;
+		DiagDirection exit_edge = DiagDirection::Begin;
+		DiagDirection side_edge = DiagDirection::Begin;
+		for (DiagDirection edge = DiagDirection::Begin; edge < DiagDirection::End; edge++) {
+			const TileIndexDiffC diff = TileIndexDiffCByDiagDir(edge);
+			if (diff.y == 0 && diff.x == prio.dir) exit_edge = edge;
+			if (diff.x == 0 && diff.y == prio.side) side_edge = edge;
+		}
+		const Track h1 = NodeCorner(side_edge, exit_edge);
+		const Track h2 = NodeCorner(ReverseDiagDir(side_edge), ReverseDiagDir(exit_edge));
+		const TrackBits lone{Track::X};
+		const TrackBits with_half{Track::X, h2};
+		const TrackBits half{h2};
+		const Trackdir along = TrackdirThrough(Track::X, exit_edge);
+		const int row = merge.tile.y + prio.side + dy;
+		auto x_at = [&](int step) { return merge.tile.x - step * prio.dir + dx; };
+		for (int step = 0; step <= prio.span; step++) {
+			if (step == 0) {
+				if (!JunctionNodeTrackFits(facts, x_at(0), row, half)) return false;
+				continue;
+			}
+			if (!JunctionNodeTrackFits(facts, x_at(step), row, lone) || !JunctionNodeTrackFits(facts, x_at(step), row, with_half)) return false;
+			if (!NodeJoinMeets(facts, x_at(step), row, lone, along, x_at(step - 1), row, step == 1 ? half : lone)) return false;
+		}
+		const TrackBits merge_bits = bits_at(merge.tile) | TrackBits{h1};
+		return NodeJoinMeets(facts, x_at(0), row, half, TrackdirThrough(h2, ReverseDiagDir(side_edge)), merge.tile.x + dx, merge.tile.y + dy, merge_bits);
 	};
 
 	/* Whether a free diagonal's interior tiles (the raster at its length now) fit lone tracks and the chain p -> raster[1] -> ... -> raster[n-2] -> q meets, with p's class at value v; q's x is x_p + k as AddJunctionNodeLateConstraints computes it. */
@@ -1122,7 +1178,8 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 				any = std::ranges::all_of(tpl.pieces, [&](const JunctionNodePiece &piece) {
 					if (piece.cls != cx || piece.ycls != c || piece.on_bridge) return true;
 					return JunctionNodeTrackFits(facts, piece.tile.x + v - tpl.flat[cx] + offset.x, piece.tile.y + shift_y(piece.ycls) + offset.y, bits_at(piece.tile));
-				}) && std::ranges::all_of(tpl.joins, [&](const JunctionNodeJoin &join) { return join.cls != cx || join.ycls != c || join_meets(join, v); });
+				}) && std::ranges::all_of(tpl.joins, [&](const JunctionNodeJoin &join) { return join.cls != cx || join.ycls != c || join_meets(join, v); })
+					&& std::ranges::all_of(tpl.prio_rows, [&](const JunctionNodePrioRow &prio) { const JunctionNodePoint &merge = tpl.points[prio.merge]; return merge.cls != cx || merge.ycls != c || prio_ok(prio, v); });
 			}
 			if (!any) return false;
 		}
@@ -1186,6 +1243,7 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 				return JunctionNodeTrackFits(facts, piece.tile.x + v - tpl.flat[c] + offset.x, piece.tile.y + shift_y(piece.ycls) + offset.y, bits_at(piece.tile));
 			});
 			fits = fits && std::ranges::all_of(tpl.joins, [&](const JunctionNodeJoin &join) { return join.cls != c || join_meets(join, v); });
+			fits = fits && std::ranges::all_of(tpl.prio_rows, [&](const JunctionNodePrioRow &prio) { return tpl.points[prio.merge].cls != c || prio_ok(prio, v); });
 
 			/* A Y-free link of this class is a column. */
 			for (size_t i = 0; fits && i < tpl.links.size(); i++) {
