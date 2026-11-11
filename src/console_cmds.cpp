@@ -380,7 +380,8 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 
 	Backup<CompanyID> cur_company(_current_company, CompanyID{0});
 	JunctionSpec spec = MakeJunctionSpec(RAILTYPE_RAIL, ml.gap, branch.gap, static_cast<uint8_t>(*tl_arg), *train);
-	static const char *const names[] = {"None", "InvalidNotation", "MultiLane", "NoLayout", "NeedsMlGap", "PrioTooLong", "PrioDelaysMainline"};
+	static const char *const names[] = {"None", "InvalidNotation", "MultiLane", "NoLayout", "NeedsMlGap", "PrioTooLong", "PrioDelaysMainline", "PortBlocked"};
+	static_assert(std::size(names) == to_underlying(JunctionGenerateError::PortBlocked) + 1);
 	JunctionGenerateError sizing_error = JunctionGenerateError::PrioTooLong;
 	if (prio_arg.has_value()) {
 		spec.prio_tiles = static_cast<uint8_t>(*prio_arg);
