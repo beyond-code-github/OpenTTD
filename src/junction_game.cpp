@@ -616,10 +616,11 @@ JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_
 	spec.curve_limit = _settings_game.vehicle.train_acceleration_model != AccelerationModel::Original;
 	spec.signal_type = _settings_client.gui.junction_signal_type == 0 ? SignalType::Block : SignalType::PathOneWay;
 	/* Precompute on this thread: the generator runs on a worker thread, which must not read game state. */
-	std::array<bool, 11> span_ok{};
-	std::array<Money, 11> bridge_price{};
-	bridge_price.fill(Money(std::numeric_limits<int64_t>::max() / 4));
-	for (uint n = 1; n <= 10; n++) {
+	spec.max_bridge_middle = std::max<uint>(1, _settings_game.construction.max_bridge_length);
+	const uint max_middle = spec.max_bridge_middle;
+	std::vector<bool> span_ok(max_middle + 1, false);
+	std::vector<Money> bridge_price(max_middle + 1, Money(std::numeric_limits<int64_t>::max() / 4));
+	for (uint n = 1; n <= max_middle; n++) {
 		std::optional<BridgeType> type = ChooseJunctionBridgeType(railtype, n, spec.reference_speed);
 		if (!type.has_value()) continue;
 		const BridgeSpec *bridge = GetBridgeSpec(*type);
@@ -627,13 +628,13 @@ JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_
 		span_ok[n] = true;
 		bridge_price[n] = Money(((int64_t)CalcBridgeLenCostFactor(n + 2) * _price[Price::BuildBridge] * bridge->price) >> 8) + (n + 2) * RailBuildCost(railtype);
 	}
-	spec.bridge_span_ok = [span_ok](uint n) {
-		return n >= 1 && n <= 10 && span_ok[n];
+	spec.bridge_span_ok = [span_ok, max_middle](uint n) {
+		return n >= 1 && n <= max_middle && span_ok[n];
 	};
 	spec.prices.rail_piece = RailBuildCost(railtype);
 	spec.prices.signal = _price[Price::BuildSignals];
-	spec.prices.bridge = [bridge_price](uint n) {
-		if (n < 1 || n > 10) return Money(std::numeric_limits<int64_t>::max() / 4);
+	spec.prices.bridge = [bridge_price, max_middle](uint n) {
+		if (n < 1 || n > max_middle) return Money(std::numeric_limits<int64_t>::max() / 4);
 		return bridge_price[n];
 	};
 	spec.max_tunnel_length = _settings_game.construction.max_tunnel_length;

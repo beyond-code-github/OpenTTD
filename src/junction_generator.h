@@ -47,6 +47,7 @@ struct JunctionSpec {
 	bool curve_limit; ///< False under the original acceleration model.
 	SignalType signal_type; ///< Block or PathOneWay.
 	std::function<bool(uint)> bridge_span_ok; ///< By middle-tile count.
+	uint16_t max_bridge_middle = 10; ///< The longest middle the game allows (D208): the max_bridge_length setting; bridge_span_ok and prices.bridge are defined up to it.
 	JunctionUnitPrices prices;
 	uint16_t max_tunnel_length = 64; ///< The game's max_tunnel_length, in middle tiles.
 	JunctionTrainParams train{}; ///< The loaded design train (D101, D137); required.
