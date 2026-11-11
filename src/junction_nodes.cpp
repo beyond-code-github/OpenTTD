@@ -1022,7 +1022,7 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 	std::vector<JunctionRaster> diagonal_rasters;
 	for (const JunctionNodeDiagonal &diag : tpl.diagonals) diagonal_rasters.push_back(NodeDiagonalRaster(tpl, diag, diag.halves + 2 * NodeDiagonalSteps(tpl, diag, result.values)));
 
-	/* 3. The pieces of every class fit the facts; a tile's bits are those of the render at the flat values. */
+	/* 3. The pieces of every class fit the facts, and so do the interior tiles of the free diagonals from their rasters at the known length; a tile's bits are those of the render at the flat values. */
 	std::map<std::pair<int, int>, TrackBits> flat_bits;
 	for (const JunctionNodePiece &piece : tpl.pieces) {
 		if (!piece.on_bridge) flat_bits[{piece.tile.x, piece.tile.y}].Set(piece.track);
@@ -1060,6 +1060,21 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 					int8_t exit;
 					if (!facts.Straight(column, r, Axis::Y, entry, exit) || (r > std::min(y_p, y_q) + 1 && previous_exit != entry)) fits = false;
 					previous_exit = exit;
+				}
+			}
+
+			/* A free diagonal starting at this class: every interior tile of its raster at the known length fits a half piece. */
+			for (size_t d = 0; fits && d < tpl.diagonals.size(); d++) {
+				const JunctionNodePoint &p = tpl.points[tpl.links[tpl.diagonals[d].link].from];
+				if (p.cls != c) continue;
+				const JunctionRaster &raster = diagonal_rasters[d];
+				if (!raster.error.empty()) {
+					fits = false;
+					break;
+				}
+				for (size_t i = 1; fits && i + 1 < raster.pieces.size(); i++) {
+					const JunctionPiece &piece = raster.pieces[i];
+					fits = JunctionNodeTrackFits(facts, piece.tile.x + v - tpl.flat[c] + offset.x, piece.tile.y + shift_y(p.ycls) + offset.y, TrackBits{TrackdirToTrack(piece.trackdir)});
 				}
 			}
 			if (fits) allowed.push_back(v);

@@ -1085,3 +1085,33 @@ TEST_CASE("the flat T reserves its two prio rows", "[junction][nodes]")
 		}
 	}
 }
+
+TEST_CASE("a free diagonal's interior tiles fit the facts", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	REQUIRE(tpl.error.empty());
+	REQUIRE(!tpl.diagonals.empty());
+	const JunctionNodeDiagonal &diag = tpl.diagonals[0];
+	const JunctionNodePoint &p = tpl.points[tpl.links[diag.link].from];
+	const JunctionRaster raster = RasterizeJunctionRoute({p.tile, p.trackdir, std::string(static_cast<size_t>(diag.halves - 1), 'F')});
+	REQUIRE(raster.error.empty());
+	REQUIRE(raster.pieces.size() >= 3);
+	const TileIndexDiffC offset = FlatToWorking(spec);
+	const int blocked_x = raster.pieces[1].tile.x + offset.x;
+	const int blocked_y = raster.pieces[1].tile.y + offset.y;
+
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, blocked_x, blocked_y);
+	const JunctionFacts facts(terrain);
+
+	const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, offset);
+	INFO(FailureText(solve));
+	if (solve.layout.has_value()) {
+		for (const JunctionTrack &jt : solve.layout->tracks) {
+			INFO("blocked working tile " << blocked_x << "," << blocked_y);
+			CHECK(!(jt.offset.x + offset.x == blocked_x && jt.offset.y + offset.y == blocked_y));
+		}
+	}
+}
