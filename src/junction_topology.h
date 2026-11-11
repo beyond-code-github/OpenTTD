@@ -164,7 +164,10 @@ struct JunctionTrackStackItem {
 	bool operator==(const JunctionTrackStackItem &) const = default;
 };
 
-/** A bridge: one edge carried over a contiguous set of crossings (D203). */
+/** The most crossings one bridge passes over; a longer crossing set goes on further bridges in series (D209, provisional until the D208 rig experiment). */
+static constexpr size_t JUNCTION_BRIDGE_MAX_CROSSERS = 2;
+
+/** A bridge: one edge carried over a contiguous set of crossings (D203); CutJunctionTrackBridges cuts a lane's set into bridges of at most JUNCTION_BRIDGE_MAX_CROSSERS (D209). */
 struct JunctionTrackBridge {
 	uint32_t edge; ///< The edge carried over.
 	std::vector<uint32_t> crossed; ///< The edges it passes, in the carried edge's travel order.
@@ -175,7 +178,7 @@ struct JunctionTrackBridge {
 /** Side tracks, row stack, bridges and turns of an ordered track graph (DESIGN-G1 §9). */
 struct JunctionTrackStructure {
 	std::vector<JunctionTrackStackItem> stack; ///< North to south.
-	std::vector<JunctionTrackBridge> bridges; ///< Sorted by edge.
+	std::vector<JunctionTrackBridge> bridges; ///< Sorted by edge; an edge's bridges in its travel order.
 	std::vector<int8_t> turns; ///< Per lane path: quarter turns clockwise from in heading to out heading (+1 right, -1 left, 0).
 };
 
@@ -233,6 +236,14 @@ struct JunctionTrackPlacement {
  * @param error Receives the reason when the result is empty (no nodes), e.g. a bridge longer than spec.max_bridge_middle.
  */
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error);
+
+/**
+ * The series-bridge cut (D209, DESIGN-G1 §11.9a): every doubled bridge cut into consecutive bridges of at most JUNCTION_BRIDGE_MAX_CROSSERS crossings, choosing among the cuts with the fewest bridges whose placement succeeds the one with the least box width, then height, then the first tried.
+ * @param[out] placement Receives the chosen cut's placement; empty (no nodes) when no cut places.
+ * @param error Receives the last cut's placement error when no cut places.
+ * @return The structure with the chosen cut (the input structure when none places).
+ */
+JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, JunctionTrackPlacement *placement, std::string *error);
 
 /** The T of today's node model (L_R main line, L_R branch on the S side), groups in slot order: W side EIn then WOut; S side NIn then SOut; E side WIn then EOut. Movements in JunctionTMovements order. */
 const JunctionTopology &JunctionTTopology();

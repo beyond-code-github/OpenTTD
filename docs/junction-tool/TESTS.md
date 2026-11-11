@@ -24,7 +24,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[nodeoracle]` | gate only, not measured | n/a (in the wide gate, not a per-step tag) | 1.3 s (HN1: 1.34 s; CK1: 250 random terrains, the node search's layouts through CheckJunctionRules; ORACLE line prints terrains, skipped, accepted, search micros) |
 | `[positions]` | 0.11 s (N1) | 5 s | 0.02 s (N1: JunctionPositions, 6 tests incl. 300-system brute force) |
 | `[facts]` | 0.05 s (N2, HF1b) | 1 s Release, 5 s Debug | 0.05 s Release, 0.16 s Debug (N2: JunctionFacts, 5 tests incl. 200-terrain walk comparison; 128x128 build 755 us) |
-| `[topology]` | 0.01 s (G1b(i), G1b(ii-a) to G1b(ii-d), G1c(i-a), G1c(i-b), G1c(ii-a): topology, lane expansion, chord crossings, slot rows, track graph with node levels, track order with band layers, track structure, track programs, seed placement; 20 tests) | 5 s | 0.009 s (budget 1 s) |
+| `[topology]` | 0.01 s (G1b(i), G1b(ii-a) to G1b(ii-d), G1c(i-a), G1c(i-b), G1c(ii-a), SB1: topology, lane expansion, chord crossings, slot rows, track graph with node levels, track order with band layers, track structure, track programs, seed placement, series bridge cut; 24 tests) | 5 s | 0.012 s (budget 1 s) |
 | wide gate | (Release only) | | 23.3 s (BL1; budget 120 s) |
 
 Measured 2026-11-10 at the G3a merge.
