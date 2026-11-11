@@ -12,7 +12,7 @@ Worktree `/home/pete/OpenTTD/.claude/n1`, branch `wt-n1`, head given at launch (
 `CODINGSTYLE.md`; `docs/junction-tool/FABLE-nodes-perf.md` §1.1; `src/junction_skeleton.h` and `.cpp` (style and doc conventions only; do not change them); `src/tests/CMakeLists.txt` and the `junction_skeleton` lines in `src/CMakeLists.txt` (~292).
 
 ## Tests, red first (new `src/tests/junction_positions.cpp`, tags `[junction][positions]`)
-1. "positions: differences give the least and greatest solution": 3 vars in [0, 20]; x1 - x0 >= 3, x2 - x1 >= 4, x2 <= 15 expressed as x_c - x2 >= -15 on a fixed var? No: express upper bounds through domains (RestrictRange below). Expect lo = {0, 3, 7}, up = {8, 11, 15} after RestrictRange(2, 0, 15). Red: the stub returns false / leaves bounds untouched; record the failing CHECK.
+1. "positions: differences give the least and greatest solution": 3 vars in [0, 20]; AddDifference(1, 0, 3), AddDifference(2, 1, 4), RestrictRange(2, 0, 15). Expect lo = {0, 3, 7}, up = {8, 11, 15}. Red: the stub leaves bounds untouched; record the failing CHECK.
 2. "positions: a negative cycle is infeasible": x1 - x0 >= 2 and x0 - x1 >= -1 -> the second Add returns false.
 3. "positions: a domain bitset moves lo and up to allowed values": var in [0, 10], allowed {2, 5, 9}; x0 - x1 >= 1 with x1 lo 3 -> x0 lo 5 (not 4); up 9.
 4. "positions: avoid": x0 (edge start), x1 (edge end), x1 - x0 >= 2, both in [0, 20], AddAvoid(0, 1, 1) (must not cover column 1): lo = {2, 4}; with x0 restricted to [0, 1] -> infeasible (false).
