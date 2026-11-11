@@ -1267,3 +1267,31 @@ TEST_CASE("a split whose foundation does not meet its run moves", "[junction][no
 		INFO(why);
 	}
 }
+
+TEST_CASE("a blocked prio row moves its merge", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	REQUIRE(tpl.error.empty());
+	REQUIRE(!tpl.prio_rows.empty());
+	const TileIndexDiffC offset = FlatToWorking(spec);
+
+	/* A tile inside the first merge's reserved prio row at the flat solution: three tiles upstream of the merge. */
+	const JunctionNodePrioRow &prio = tpl.prio_rows[0];
+	const JunctionNodePoint &merge = tpl.points[prio.merge];
+	const int bx = merge.tile.x - 3 * prio.dir + offset.x;
+	const int by = merge.tile.y + prio.side + offset.y;
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, bx, by);
+	const JunctionFacts facts(terrain);
+
+	const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, offset);
+	INFO(FailureText(solve));
+	if (solve.layout.has_value()) {
+		const TileIndexDiffC placed = SolvedLayoutOffset(tpl, *solve.layout, spec, offset);
+		for (const JunctionTrack &jt : solve.layout->tracks) {
+			CHECK_FALSE((jt.offset.x + placed.x == bx && jt.offset.y + placed.y == by));
+		}
+	}
+}
