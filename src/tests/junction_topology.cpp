@@ -220,3 +220,77 @@ TEST_CASE("topology: a split with three legs is refused", "[junction][topology]"
 	CHECK(graph.edges.empty());
 	CHECK(error == "more than two legs at one split are not ruled yet");
 }
+
+/** The track order of a topology, with its expected row items as (node, index). */
+static JunctionTrackOrder OrderOf(const JunctionTopology &t, std::string *error)
+{
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, error);
+	REQUIRE(!graph.edges.empty());
+	return OrderJunctionTrackGraph(t, paths, graph, error);
+}
+
+/** A node row item. */
+static JunctionTrackRowItem RN(uint32_t node) { return {true, node}; }
+/** An edge row item. */
+static JunctionTrackRowItem RE(uint32_t edge) { return {false, edge}; }
+
+TEST_CASE("topology: the T's track order", "[junction][topology]")
+{
+	std::string error;
+	const JunctionTrackOrder order = OrderOf(JunctionTTopology(), &error);
+	REQUIRE(!order.rows.empty());
+	CHECK(order.node_level == std::vector<int>{1, 4, 3, 3, 4, 1});
+	using Row = std::vector<JunctionTrackRowItem>;
+	CHECK(order.rows == std::vector<Row>{{RN(0), RN(5)}, {RN(3), RE(4), RE(8), RN(2)}});
+	std::vector<std::vector<uint32_t>> crossings(12);
+	crossings[4] = {5, 8};
+	crossings[5] = {8, 4};
+	crossings[8] = {4, 5};
+	CHECK(order.edge_crossings == crossings);
+}
+
+TEST_CASE("topology: LL_RR with an L_R sideline: track order", "[junction][topology]")
+{
+	std::string error;
+	const JunctionTrackOrder order = OrderOf(JunctionLLRRSidelineTopology(), &error);
+	REQUIRE(!order.rows.empty());
+	CHECK(order.node_level == std::vector<int>{1, 3, 8, 4, 8, 7, 5, 5, 7, 8, 8, 4, 3, 1});
+	using Row = std::vector<JunctionTrackRowItem>;
+	CHECK(order.rows == std::vector<Row>{
+		{RN(0), RN(13)},
+		{RN(1), RE(11), RE(15), RN(12)},
+		{RN(7), RE(23), RE(3), RN(6)},
+		{RN(8), RE(17), RE(23), RE(3), RE(13), RN(5)},
+	});
+	std::vector<std::vector<uint32_t>> crossings(26);
+	crossings[3] = {23, 10, 9};
+	crossings[8] = {11, 15};
+	crossings[9] = {3, 23};
+	crossings[10] = {13, 3, 23, 17};
+	crossings[11] = {8};
+	crossings[13] = {10};
+	crossings[15] = {8};
+	crossings[17] = {10};
+	crossings[23] = {9, 10, 3};
+	CHECK(order.edge_crossings == crossings);
+}
+
+TEST_CASE("topology: branches on the N side are refused", "[junction][topology]")
+{
+	JunctionTopology t;
+	t.groups = {
+		{JunctionSide::W, true, 1, 0, true},
+		{JunctionSide::W, false, 1, 0, true},
+		{JunctionSide::E, true, 1, 0, true},
+		{JunctionSide::E, false, 1, 0, true},
+		{JunctionSide::N, true, 1, 1, false},
+		{JunctionSide::N, false, 1, 1, false},
+	};
+	t.movements = {{0, 3}, {2, 1}, {0, 5}, {2, 5}, {4, 1}, {4, 3}};
+	REQUIRE(JunctionPortSlots(t).size() == 6);
+	std::string error;
+	const JunctionTrackOrder order = OrderOf(t, &error);
+	CHECK(order.rows.empty());
+	CHECK(error == "branch ports off the S side are not ruled yet");
+}
