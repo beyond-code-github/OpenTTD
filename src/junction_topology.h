@@ -120,11 +120,21 @@ struct JunctionTrackRowItem {
 	bool operator==(const JunctionTrackRowItem &) const = default;
 };
 
+/** A node or a band crossing at its place inside a band (DESIGN-G1 §10.8). */
+struct JunctionTrackBandEvent {
+	bool node; ///< A node (a is its index), else a band crossing (a and b are its edges, as in JunctionTrackGraph::crossings).
+	uint32_t a;
+	uint32_t b; ///< 0 for a node.
+	int layer; ///< 1 is southmost; an event lies north of every event of a lower layer that touched one of its items.
+	bool operator==(const JunctionTrackBandEvent &) const = default;
+};
+
 /** The order of a track graph (DESIGN-G1 §8). */
 struct JunctionTrackOrder {
 	std::vector<int> node_level; ///< Per node: 2r+1 on row r; 2b in band b (band b lies north of row b; band R south of the last row).
 	std::vector<std::vector<JunctionTrackRowItem>> rows; ///< Per row, north to south: its nodes and the edges crossing it, west to east.
 	std::vector<std::vector<uint32_t>> edge_crossings; ///< Per edge: the edges crossing it, in travel order.
+	std::vector<std::vector<JunctionTrackBandEvent>> bands; ///< Per band b (0 to R), its events in sweep order.
 };
 
 /**
