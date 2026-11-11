@@ -425,6 +425,11 @@ void NodeBuilder::AddCrossings()
 					if (!this->AddDirected(d, this->At(span.from, across), head_across, 1) || !this->AddDirected(d, head_across, this->At(span.to, across), 1)) {
 						this->Fail(fmt::format("bridge {}: path {} link under it at {},{} joins the bridge's class", bi, qi, tile.x, tile.y));
 					}
+					/* The link keeps its line along the bridge's axis: that line stays strictly between the heads. */
+					const NodeCoord link_along{pos(tile, along), this->At(span.from, along).var};
+					if (!this->Add(link_along, NodeCoord{lo, head_along.var}, 1) || !this->Add(NodeCoord{hi, head_along.var}, link_along, 1)) {
+						this->Fail(fmt::format("bridge {}: path {} link under it at {},{} is not between the heads", bi, qi, tile.x, tile.y));
+					}
 				} else {
 					const NodeCoord piece_x{tile.x, this->tpl.points[w.governing[i]].cls};
 					const NodeCoord piece_y{tile.y, this->tpl.points[w.governing[i]].ycls};
