@@ -440,6 +440,93 @@ void NodeBuilder::AddPathDiffs()
 				if (split.first && w.start[split.second] < w.start[mi]) add_gap(w.governing[split.second], w.start[split.second], w.governing[mi], w.start[mi], cover + 1);
 			}
 		}
+
+		/* A slot is a piece that can take a signal in the flat layout (the checker's legal or already signalled pieces, off the switches). */
+		const auto is_slot = [&](size_t i) {
+			const JunctionPiece &piece = path.pieces[i];
+			if (std::ranges::any_of(w.events, [&](const SwitchEvent &e) { return e.second == i; })) return false;
+			return IsLegalSignalPiece(this->ctx.layout, piece) || IsSignalledPiece(this->ctx.layout, piece);
+		};
+		/* The greatest slot strictly between pieces a and b, or SIZE_MAX. */
+		const auto last_slot = [&](size_t a, size_t b) {
+			for (size_t i = b; i-- > a + 1;) {
+				if (is_slot(i)) return i;
+			}
+			return SIZE_MAX;
+		};
+		/* The slot's end unit is a constant distance from the merge only when no free link lies between the slot and the merge but the slot's own run or free diagonal (the diagonal's end stays at the slot's distance k, see keep_slot). */
+		const auto slot_is_fixed = [&](size_t slot, size_t merge) {
+			for (size_t i = slot + 1; i < merge; i++) {
+				if (w.link_of[i] >= 0 && w.link_of[i] != w.link_of[slot]) return false;
+			}
+			return true;
+		};
+		/* The slot stays an interior piece of the free link it lies in: a run keeps one piece; a free diagonal keeps k + 2 halves, k the slot's distance to the diagonal's last half piece (a static Y bound like rule 1's). */
+		const auto keep_slot = [&](size_t slot) {
+			if (w.link_of[slot] < 0) return;
+			const NodeSpan &span = this->spans[static_cast<size_t>(w.link_of[slot])];
+			if (span.diagonal == UINT32_MAX) {
+				if (!this->AddDirected(span.axis == Axis::X ? d : d_y, this->At(span.from, span.axis), this->At(span.to, span.axis), 2)) this->Fail(fmt::format("path {}: a run keeping its last slot joins one class", pi));
+				return;
+			}
+			size_t end = slot + 1;
+			while (end < path.pieces.size() && w.link_of[end] == w.link_of[slot]) end++;
+			const JunctionNodeDiagonal &diag = this->tpl.diagonals[span.diagonal];
+			const int m_min = CeilHalf(static_cast<int>(end - slot) + 2 - diag.halves);
+			const NodeCoord cp = this->AtY(span.from);
+			const NodeCoord cq = this->AtY(span.to);
+			if (!this->AddDirected(diag.dy, cp, cq, diag.dy * (cq.pos - cp.pos) + m_min)) this->Fail(fmt::format("path {}: a free diagonal keeping its last slot joins one class", pi));
+		};
+		/* The gap g of a unit rule from the switch piece `from` to the merge piece `to` that keeps the units from after `from` to the end of `slot` at least 2 TL. */
+		const auto add_room = [&](size_t from, size_t slot, size_t to) {
+			if (!slot_is_fixed(slot, to)) {
+				this->Fail(fmt::format("path {}: slot {} before piece {} has a free link between it and the merge", pi, slot, to));
+				return;
+			}
+			keep_slot(slot);
+			const int g = 2 * static_cast<int>(this->spec.tl) + path.pieces[from].units + (w.start[to] - (w.start[slot] + path.pieces[slot].units));
+			add_gap(w.governing[from], w.start[from], w.governing[to], w.start[to], g);
+		};
+
+		/* Rule 4, mirroring CheckSignals' switch and bridge isolation: from a switch or a bridge to the next one, the last slot keeps an interior piece when it lies inside a free X or Y run. */
+		std::vector<size_t> anchors;
+		for (size_t i = 0; i < path.pieces.size(); i++) {
+			if (path.pieces[i].on_bridge || std::ranges::any_of(w.events, [&](const SwitchEvent &e) { return e.second == i; })) anchors.push_back(i);
+		}
+		for (size_t k = 0; k + 1 < anchors.size(); k++) {
+			const size_t slot = last_slot(anchors[k], anchors[k + 1]);
+			if (slot != SIZE_MAX) keep_slot(slot);
+		}
+
+		/* Rule 5, mirroring CheckWaitingRoom :850-880: from the first split to the first merge after it, the units after the split up to the last slot are at least 2 TL. */
+		if ((path.from == JunctionPortRole::EIn || path.from == JunctionPortRole::WIn) && path.to == JunctionPortRole::SOut) {
+			const auto split = std::ranges::find_if(w.events, [](const SwitchEvent &e) { return e.first; });
+			const auto merge = split == w.events.end() ? split : std::find_if(w.events.begin(), w.events.end(), [&](const SwitchEvent &e) { return !e.first && e.second > split->second; });
+			if (split != w.events.end() && merge != w.events.end()) {
+				const size_t slot = last_slot(split->second, merge->second);
+				if (slot != SIZE_MAX) add_room(split->second, slot, merge->second);
+			}
+		}
+
+		/* Rule 6, mirroring CheckWaitingRoom :890-912: before every queue merge, a bay of 2 TL between the last split before the merge's signal and that signal. */
+		if (!IsMainLinePath(path)) {
+			for (const SwitchEvent &event : w.events) {
+				if (event.first) continue;
+				size_t slot = SIZE_MAX;
+				for (size_t i = event.second; i-- > 0;) {
+					if (is_slot(i)) {
+						slot = i;
+						break;
+					}
+				}
+				if (slot == SIZE_MAX) continue;
+				std::optional<size_t> upstream;
+				for (const SwitchEvent &other : w.events) {
+					if (other.first && other.second < slot) upstream = std::max(upstream.value_or(0), other.second);
+				}
+				if (upstream.has_value()) add_room(*upstream, slot, event.second);
+			}
+		}
 	}
 }
 
