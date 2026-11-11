@@ -8,14 +8,20 @@
 /** @file junction_chain.cpp Test functionality from junction_chain. */
 
 #include "../stdafx.h"
+#include "../3rdparty/fmt/format.h"
 
 #include "../3rdparty/catch2/catch.hpp"
 
 #include "../direction_func.h"
 #include "../junction_chain.h"
+#include "../junction_generator.h"
 #include "../junction_rules.h"
+#include "../junction_rules_internal.h"
 
+#include <algorithm>
 #include <random>
+#include <set>
+#include <string>
 
 #include "../safeguards.h"
 
@@ -89,4 +95,96 @@ TEST_CASE("curve gaps agree with the checker", "[junction][nodes]")
 			WARN("tl " << static_cast<int>(tls[i]) << " conservative " << conservative[i]);
 		}
 	}
+}
+
+/** The flat line-router T of the test spec, built once. */
+static const JunctionTMapResult &FlatT()
+{
+	static const JunctionTMapResult flat = ConstructJunctionTMap(MakeTestJunctionSpec(), nullptr, std::nullopt, true);
+	return flat;
+}
+
+static std::vector<JunctionChain> FlatChains()
+{
+	REQUIRE(FlatT().layout.has_value());
+	return ExtractJunctionChains(*FlatT().layout, MakeTestJunctionSpec());
+}
+
+/** The tiles of the chain's prio merges. */
+static std::set<std::pair<int, int>> PrioMergeTiles(const JunctionChain &chain)
+{
+	std::set<std::pair<int, int>> tiles;
+	for (const JunctionChainSwitch &s : chain.switches) {
+		if (s.prio) tiles.insert({s.tile.x, s.tile.y});
+	}
+	return tiles;
+}
+
+TEST_CASE("chains of a hand-built S-bend", "[junction][nodes]")
+{
+	JunctionLayout layout;
+	for (const JunctionRoute &route : {JunctionRoute{{0, 0}, Trackdir::X_SW, "FFFLFRFFFF"}, JunctionRoute{{9, 3}, Trackdir::X_NE, "FFFFFFFFF"}}) {
+		const JunctionRaster raster = RasterizeJunctionRoute(route);
+		REQUIRE(raster.error.empty());
+		AddRasterToLayout(layout, raster);
+	}
+	NormaliseJunctionLayout(layout);
+	WARN(RenderJunctionAscii(layout));
+
+	const std::vector<JunctionChain> chains = ExtractJunctionChains(layout, MakeTestJunctionSpec());
+	REQUIRE(chains.size() >= 1);
+	WARN(FormatJunctionChain(chains[0]));
+	REQUIRE(chains[0].curves.size() == 2);
+	CHECK(chains[0].curves[0].hand != chains[0].curves[1].hand);
+	CHECK(chains[0].curves[1].unit - chains[0].curves[0].unit == 2);
+}
+
+TEST_CASE("the flat T reads as chains", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionLayout &layout = *FlatT().layout;
+	const std::vector<JunctionChain> chains = FlatChains();
+	CHECK(chains.size() == MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements()).paths.size());
+
+	/* Lane B has two traced paths that both pass the one prio merge, so the merges are counted by tile. */
+	std::set<std::pair<int, int>> a_prio;
+	std::set<std::pair<int, int>> b_prio;
+	for (const JunctionChain &chain : chains) {
+		WARN(FormatJunctionChain(chain));
+		CHECK(chain.steps90 == 0);
+		if (chain.from == JunctionPortRole::EIn && chain.to == JunctionPortRole::EOut) {
+			CHECK(chain.curves.empty());
+			a_prio.merge(PrioMergeTiles(chain));
+		} else if (chain.from == JunctionPortRole::WIn && chain.to == JunctionPortRole::WOut) {
+			b_prio.merge(PrioMergeTiles(chain));
+		} else {
+			CHECK(PrioMergeTiles(chain).empty());
+		}
+	}
+	CHECK(a_prio.size() == 1);
+	CHECK(b_prio.size() == 1);
+}
+
+TEST_CASE("the flat T meets the chain constraints", "[junction][nodes]")
+{
+	const std::vector<std::string> lines = JunctionChainViolations(FlatChains(), MakeTestJunctionSpec());
+	for (const std::string &line : lines) INFO(line);
+	CHECK(lines.empty());
+}
+
+TEST_CASE("the chain constraints catch a short prio coverage", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<JunctionChain> chains = FlatChains();
+	const auto a = std::ranges::find_if(chains, [](const JunctionChain &c) { return c.from == JunctionPortRole::EIn && c.to == JunctionPortRole::EOut; });
+	REQUIRE(a != chains.end());
+	const auto merge = std::ranges::find_if(a->switches, [](const JunctionChainSwitch &s) { return s.prio; });
+	REQUIRE(merge != a->switches.end());
+	REQUIRE(merge->unit >= 4);
+
+	a->curves.push_back({static_cast<uint16_t>(merge->unit - 4), Hand::Left, merge->tile});
+	const size_t index = static_cast<size_t>(a - chains.begin());
+	const std::vector<std::string> lines = JunctionChainViolations(chains, spec);
+	REQUIRE(lines.size() == 1);
+	CHECK(lines[0] == fmt::format("chain {} merge at unit {}: curve at unit {} inside the prio coverage", index, merge->unit, merge->unit - 4));
 }

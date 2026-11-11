@@ -18,7 +18,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[tunnelprice]` | 0.01 s | 5 s | 0.01 s |
 | `[tmapnear]` | 0.8 s | 5 s | 0.09 s |
 | `[curvespeed]` | 0.01 s (CS3) | 5 s | 0.01 s |
-| `[nodes]` | 0.13 s (N0a: curve gap constraints vs the checker) | 5 s | 0.03 s (budget 1 s) |
+| `[nodes]` | 0.45 s (N0b: gap constraints vs the checker, flat T read as chains) | 5 s | 0.06 s (budget 1 s) |
 | `[positions]` | 0.11 s (N1) | 5 s | 0.02 s (N1: JunctionPositions, 6 tests incl. 300-system brute force) |
 | wide gate | (Release only) | | 17 s (budget 120 s) |
 
