@@ -20,6 +20,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[curvespeed]` | 0.01 s (CS3) | 5 s | 0.01 s |
 | `[nodes]` | 0.13 s (N0a: curve gap constraints vs the checker) | 5 s | 0.03 s (budget 1 s) |
 | `[positions]` | 0.11 s (N1) | 5 s | 0.02 s (N1: JunctionPositions, 6 tests incl. 300-system brute force) |
+| `[facts]` | 0.05 s (N2) | 1 s Release, 5 s Debug | 0.05 s Release, 0.16 s Debug (N2: JunctionFacts, 5 tests incl. 200-terrain walk comparison; 128x128 build 755 us) |
 | wide gate | (Release only) | | 17 s (budget 120 s) |
 
 Measured 2026-11-10 at the G3a merge.

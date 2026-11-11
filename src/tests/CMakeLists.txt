@@ -23,6 +23,7 @@ add_test_files(
     junction_signal_pass.cpp
     junction_station_generator.cpp
     junction_station_rules.cpp
+    junction_facts.cpp
     junction_positions.cpp
     junction_skeleton.cpp
     junction_chain.cpp
