@@ -297,6 +297,8 @@ add_files(
     junction_skeleton.h
     junction_chain.cpp
     junction_chain.h
+    junction_nodes.cpp
+    junction_nodes.h
     junction_throughput.cpp
     junction_throughput.h
     landscape.cpp

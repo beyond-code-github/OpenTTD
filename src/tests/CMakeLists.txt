@@ -27,6 +27,7 @@ add_test_files(
     junction_positions.cpp
     junction_skeleton.cpp
     junction_chain.cpp
+    junction_nodes.cpp
     junction_throughput.cpp
     junction_train_model.cpp
     landscape_partial_pixel_z.cpp
