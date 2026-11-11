@@ -316,6 +316,7 @@ static bool ConResetTile(std::span<std::string_view> argv)
 
 	return false;
 }
+#endif /* _DEBUG */
 
 /**
  * Generate a junction at a tile and write the oriented layout as JSON, for the test rig.
@@ -476,7 +477,6 @@ static bool ConStationExport(std::span<std::string_view> argv)
 	IConsolePrint(CC_DEFAULT, "station_export ok origin={},{} size={}x{}", ox, oy, oriented.size.x, oriented.size.y);
 	return true;
 }
-#endif /* _DEBUG */
 
 /**
  * Write the rail, bridge, station and level crossing tiles of a map box as JSON.
@@ -578,7 +578,6 @@ static bool ConMapHotspots(std::span<std::string_view> argv)
 	return true;
 }
 
-#ifdef _DEBUG
 /**
  * Print what the junction tool reads from a train.
  * @copydoc IConsoleCmdProc
@@ -603,7 +602,6 @@ static bool ConJunctionTrain(std::span<std::string_view> argv)
 		t->loaded.max_te, t->loaded.air_drag, t->loaded.max_speed, JunctionPrioLength(t->loaded, t->loaded.max_speed, t->tl, 2));
 	return true;
 }
-#endif /* _DEBUG */
 
 /**
  * Zoom map to given level.
@@ -3054,9 +3052,6 @@ static bool ConNewGRFProfile(std::span<std::string_view> argv)
 static void IConsoleDebugLibRegister()
 {
 	IConsole::CmdRegister("resettile",        ConResetTile);
-	IConsole::CmdRegister("junction_export",  ConJunctionExport);
-	IConsole::CmdRegister("junction_train",   ConJunctionTrain);
-	IConsole::CmdRegister("station_export",   ConStationExport);
 	IConsole::AliasRegister("dbg_echo",       "echo %A; echo %B");
 	IConsole::AliasRegister("dbg_echo2",      "echo %!");
 }
@@ -3390,6 +3385,10 @@ void IConsoleStdLibRegister()
 #ifdef _DEBUG
 	IConsoleDebugLibRegister();
 #endif
+	/* Junction and station tool rig commands, available in release builds for benchmarking. */
+	IConsole::CmdRegister("junction_export",         ConJunctionExport);
+	IConsole::CmdRegister("junction_train",          ConJunctionTrain);
+	IConsole::CmdRegister("station_export",          ConStationExport);
 	IConsole::CmdRegister("fps",                     ConFramerate);
 	IConsole::CmdRegister("fps_wnd",                 ConFramerateWindow);
 
