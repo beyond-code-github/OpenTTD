@@ -9,6 +9,7 @@
 
 #include "../stdafx.h"
 
+#include "../3rdparty/fmt/format.h"
 #include "../3rdparty/catch2/catch.hpp"
 
 #include "../junction_rules.h"
@@ -502,6 +503,27 @@ static JunctionTrackPlacement PlacementOf(const JunctionTopology &t, int max_bri
 	return PlaceJunctionTrackGraph(t, paths, graph, order, structure, programs, spec, error);
 }
 
+/** The pipeline up to the series-bridge cut; returns the placement of the chosen cut. */
+static JunctionTrackPlacement CutOf(const JunctionTopology &t, int max_bridge_middle, std::string *error, JunctionTrackStructure *cut = nullptr)
+{
+	std::string ignored;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
+	REQUIRE(!graph.edges.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
+	REQUIRE(!order.rows.empty());
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
+	REQUIRE(!programs.edges.empty());
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.max_bridge_middle = max_bridge_middle;
+	JunctionTrackPlacement placement;
+	const JunctionTrackStructure chosen = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &placement, error);
+	if (cut != nullptr) *cut = chosen;
+	return placement;
+}
+
 /* Tiles compare as plain numbers: TileIndexDiffC has no operator==. */
 using Tile = std::array<int, 2>;
 using Span = std::array<int, 4>;
@@ -550,12 +572,120 @@ TEST_CASE("topology: the T's placement", "[junction][topology]")
 	CHECK(Of(placement.bridges[1]) == Br(25, 9, 25, 6, 0, 0, 0, 0));
 }
 
-TEST_CASE("topology: LL_RR's w2 bridge is too long at nmax 9", "[junction][topology]")
+TEST_CASE("topology: LL_RR's uncut w2 bridge is too long at nmax 9", "[junction][topology]")
 {
 	std::string error;
 	const JunctionTrackPlacement placement = PlacementOf(JunctionLLRRSidelineTopology(), 9, &error);
 	CHECK(placement.nodes.empty());
-	CHECK(error == "bridge 10 needs 10 middle tiles, more than 9");
+	CHECK(error == "bridge 3 on edge 10 needs 10 middle tiles, more than 9");
+}
+
+TEST_CASE("topology: LL_RR series bridges", "[junction][topology]")
+{
+	std::string error;
+	JunctionTrackStructure whole;
+	PlacementOf(JunctionLLRRSidelineTopology(), 64, &error, &whole);
+	JunctionTrackStructure cut;
+	const JunctionTrackPlacement placement = CutOf(JunctionLLRRSidelineTopology(), 64, &error, &cut);
+	REQUIRE(!placement.nodes.empty());
+	REQUIRE(placement.bridges.size() == cut.bridges.size());
+
+	/* At most two crossers per bridge; an edge's bridges cover its crossing set in order; the fewest bridges. */
+	std::vector<size_t> count(32, 0);
+	std::vector<std::vector<uint32_t>> joined(32);
+	for (const JunctionTrackBridge &bridge : cut.bridges) {
+		CHECK(bridge.crossed.size() <= 2);
+		count[bridge.edge]++;
+		joined[bridge.edge].insert(joined[bridge.edge].end(), bridge.crossed.begin(), bridge.crossed.end());
+	}
+	for (const JunctionTrackBridge &bridge : whole.bridges) CHECK(joined[bridge.edge] == bridge.crossed);
+	CHECK(count[8] == 1);
+	CHECK(count[9] == 2);
+	CHECK(count[10] == 3);
+
+	/* (a) Consecutive bridges of one edge leave a plain tile between their heads. */
+	for (size_t b = 0; b + 1 < cut.bridges.size(); b++) {
+		if (cut.bridges[b].edge != cut.bridges[b + 1].edge) continue;
+		for (int c = 0; c < 2; c++) {
+			const JunctionBridge &lead = placement.bridges[b][c];
+			const JunctionBridge &next = placement.bridges[b + 1][c];
+			CHECK(next.start.y == lead.end.y);
+			CHECK(std::abs(next.start.x - lead.end.x) >= 2);
+			CHECK((lead.end.x - lead.start.x) * (next.start.x - lead.end.x) > 0);
+		}
+	}
+
+	/* (b) A doubled leg's Over span for a crossed edge lies strictly between its own bridge's copy-0 heads. */
+	const JunctionTrackPrograms programs = ProgramsOf(JunctionLLRRSidelineTopology());
+	for (size_t b = 0; b < cut.bridges.size(); b++) {
+		const JunctionTrackBridge &bridge = cut.bridges[b];
+		if (!bridge.doubled) continue;
+		const int lo = std::min(placement.bridges[b][0].start.x, placement.bridges[b][0].end.x);
+		const int hi = std::max(placement.bridges[b][0].start.x, placement.bridges[b][0].end.x);
+		for (uint32_t x : bridge.crossed) {
+			bool found = false;
+			for (size_t t = 0; t < programs.edges[bridge.edge].size(); t++) {
+				const JunctionTrackStep &step = programs.edges[bridge.edge][t];
+				if (step.kind != JunctionTrackStep::Kind::Over || step.index != x) continue;
+				found = true;
+				const JunctionTrackSpan &span = placement.edges[bridge.edge][t];
+				CHECK(std::min(span.first.x, span.second.x) > lo);
+				CHECK(std::max(span.first.x, span.second.x) < hi);
+			}
+			CHECK(found);
+		}
+	}
+
+	/* (c) Band 2 is as deep as one corner. */
+	CHECK(placement.item_rows[6] - placement.item_rows[5] - 1 == 2);
+
+	/* X_e1 (edge 11) and X_e2 (edge 12) are on different bridges under w1, so the signal tile between the bridges spreads them. */
+	CHECK(placement.edges[11][3].first.x - placement.edges[12][1].first.x == 9);
+
+	/* The series cut: 2 tiles wider and taller than one bridge per lane (58x23), no bridge longer than 5 middle tiles (was 10). */
+	CHECK(placement.size.x == 60);
+	CHECK(placement.size.y == 25);
+	for (const std::array<JunctionBridge, 2> &heads : placement.bridges) {
+		CHECK(std::abs(heads[0].start.x - heads[0].end.x) + std::abs(heads[0].start.y - heads[0].end.y) - 1 <= 5);
+	}
+
+	/* The S ports sit on the last row. */
+	const JunctionTopology &topology = JunctionLLRRSidelineTopology();
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+	REQUIRE(slots.size() == placement.ports.size());
+	for (size_t s = 0; s < slots.size(); s++) {
+		if (topology.groups[slots[s].group].side == JunctionSide::S) CHECK(placement.ports[s].y == placement.size.y - 1);
+	}
+}
+
+TEST_CASE("topology: LL_RR's cut places at the old limit", "[junction][topology]")
+{
+	std::string error;
+	const JunctionTrackPlacement placement = CutOf(JunctionLLRRSidelineTopology(), 9, &error);
+	CHECK(!placement.nodes.empty());
+	CHECK(error.empty());
+}
+
+TEST_CASE("topology: LL_RR has no cut at nmax 1", "[junction][topology]")
+{
+	std::string error;
+	const JunctionTrackPlacement placement = CutOf(JunctionLLRRSidelineTopology(), 1, &error);
+	CHECK(placement.nodes.empty());
+	CHECK(!error.empty());
+}
+
+TEST_CASE("topology: the T's cut is its structure", "[junction][topology]")
+{
+	std::string error;
+	JunctionTrackStructure whole, cut;
+	const JunctionTrackPlacement direct = PlacementOf(JunctionTTopology(), 64, &error, &whole);
+	const JunctionTrackPlacement placement = CutOf(JunctionTTopology(), 64, &error, &cut);
+	REQUIRE(!placement.nodes.empty());
+	CHECK(cut.bridges == whole.bridges);
+	CHECK(placement.item_rows == direct.item_rows);
+	CHECK(Of(placement.ports) == Of(direct.ports));
+	CHECK(Of(placement.nodes) == Of(direct.nodes));
+	CHECK(Of(placement.size) == Of(direct.size));
 }
 
 TEST_CASE("topology: LL_RR with an L_R sideline: placement", "[junction][topology]")
@@ -566,8 +696,8 @@ TEST_CASE("topology: LL_RR with an L_R sideline: placement", "[junction][topolog
 	REQUIRE(!placement.nodes.empty());
 	REQUIRE(placement.bridges.size() == structure.bridges.size());
 
-	/* X_e1 (edge 11) and X_e2 (edge 12) cross under w1's bridge four columns apart. */
-	CHECK(placement.edges[11][3].first.x - placement.edges[12][1].first.x == 4);
+	/* X_e1 (edge 11) and X_e2 (edge 12) cross under w1's bridge six columns apart (the exit splits sit at their least x, DESIGN-G1 §11.9b). */
+	CHECK(placement.edges[11][3].first.x - placement.edges[12][1].first.x == 6);
 
 	/* Band 2 is as deep as one corner. */
 	CHECK(placement.item_rows[6] - placement.item_rows[5] - 1 == 2);

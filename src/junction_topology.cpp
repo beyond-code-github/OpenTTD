@@ -947,9 +947,9 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	for (int r = 0; r < rows; r++) {
 		if (in_edge[r] == NO_ROW || leg_edge[r] == NO_ROW || out_edge[r] == NO_ROW || lane_item[r] == NO_ROW) return fail("a lane other than in, one leg, out is not ruled yet");
 	}
-	std::vector<int> bridge_of(edge_count, -1);
-	for (size_t b = 0; b < structure.bridges.size(); b++) bridge_of[structure.bridges[b].edge] = static_cast<int>(b);
-	auto doubled_row = [&](int r) { return bridge_of[leg_edge[r]] >= 0 && structure.bridges[bridge_of[leg_edge[r]]].doubled; };
+	std::vector<std::vector<int>> bridges_of(edge_count);
+	for (size_t b = 0; b < structure.bridges.size(); b++) bridges_of[structure.bridges[b].edge].push_back(static_cast<int>(b));
+	auto doubled_row = [&](int r) { return !bridges_of[leg_edge[r]].empty() && structure.bridges[bridges_of[leg_edge[r]][0]].doubled; };
 
 	/* The curve size and the rule constants. */
 	const int cl = spec.curve_limit ? static_cast<int>(DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl)) : 2;
@@ -1035,8 +1035,8 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				if (step.kind == StepKind::SBend && t == 0 && edge.from.node && !from_band_split) el.first = new_pt();
 				cur = el.hout;
 			} else if (step.kind == StepKind::Over) {
-				const int b = bridge_of[e];
-				if (b < 0 || structure.bridges[b].doubled || structure.bridges[b].crossed.size() != 1) return fail("a bridge over several band crossings is not ruled yet");
+				if (bridges_of[e].size() != 1 || structure.bridges[bridges_of[e][0]].doubled || structure.bridges[bridges_of[e][0]].crossed.size() != 1) return fail("a bridge over several band crossings is not ruled yet");
+				const int b = bridges_of[e][0];
 				el.k = Elem::K::Heads;
 				el.first = new_pt();
 				el.last = new_pt();
@@ -1133,13 +1133,19 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	/* Row chains' points. */
 	struct RowPts {
 		int fif = 0, fil = 0, fof = 0, fol = 0; ///< In and out fan.
-		int lane_split = 0, sb1_last = 0, nh0 = 0, fh0 = 0, nh1 = 0, fh1 = 0, sb0_first = 0, lane_merge = 0;
+		int lane_split = 0, sb1_last = 0, sb0_first = 0, lane_merge = 0;
+		std::vector<int> nh0, fh0, nh1, fh1; ///< The heads, one point each per bridge of the row's leg.
 	};
 	std::vector<RowPts> row_pts(rows);
 	for (int r = 0; r < rows; r++) {
 		RowPts &rp = row_pts[r];
 		rp.fif = new_pt(); rp.fil = new_pt(); rp.fof = new_pt(); rp.fol = new_pt();
-		rp.lane_split = new_pt(); rp.sb1_last = new_pt(); rp.nh0 = new_pt(); rp.fh0 = new_pt(); rp.nh1 = new_pt(); rp.fh1 = new_pt(); rp.sb0_first = new_pt(); rp.lane_merge = new_pt();
+		rp.lane_split = new_pt(); rp.sb1_last = new_pt(); rp.sb0_first = new_pt(); rp.lane_merge = new_pt();
+		if (doubled_row(r)) {
+			for (size_t k = 0; k < bridges_of[leg_edge[r]].size(); k++) {
+				rp.nh0.push_back(new_pt()); rp.fh0.push_back(new_pt()); rp.nh1.push_back(new_pt()); rp.fh1.push_back(new_pt());
+			}
+		}
 	}
 
 	/* Symbolic tiles of an edge: an anchor point, a column offset, a row; in travel order. */
@@ -1229,10 +1235,12 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 			if (doubled) {
 				eq(1, rp.lane_split, item_pt[north_item[r]], 0);
 				eq(1, rp.sb1_last, item_pt[lane_item[r]], 0);
-				eq(1, rp.nh0, item_pt[north_item[r]], 0);
-				eq(1, rp.fh0, item_pt[north_item[r]], 0);
-				eq(1, rp.nh1, item_pt[lane_item[r]], 0);
-				eq(1, rp.fh1, item_pt[lane_item[r]], 0);
+				for (size_t k = 0; k < rp.nh0.size(); k++) {
+					eq(1, rp.nh0[k], item_pt[north_item[r]], 0);
+					eq(1, rp.fh0[k], item_pt[north_item[r]], 0);
+					eq(1, rp.nh1[k], item_pt[lane_item[r]], 0);
+					eq(1, rp.fh1[k], item_pt[lane_item[r]], 0);
+				}
 				eq(1, rp.sb0_first, item_pt[north_item[r]], 0);
 				eq(1, rp.lane_merge, item_pt[lane_item[r]], 0);
 			}
@@ -1252,55 +1260,62 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 			if (!doubled) {
 				along(heading, njm, nex, prio + 1, false);
 			} else {
-				along(heading, rp.lane_split, nex, 2, true);
-				along(heading, rp.nh0, rp.lane_split, 2, true);
+				/* The runs from the exit split to the lane split and on to the first heads (and from the last heads to the lane merge) are rule minima, not exact: series bridges need the slack (DESIGN-G1 §11.9b). */
+				along(heading, rp.lane_split, nex, 2, false);
+				const size_t g = rp.nh0.size();
+				along(heading, rp.nh0[0], rp.lane_split, 2, false);
 				eq(0, rp.sb1_last, rp.lane_split, 0);
-				along(heading, rp.nh1, rp.sb1_last, 1, true);
-				along(heading, rp.nh0, rp.nh1, 1, true);
-				along(heading, rp.fh0, rp.fh1, 1, true);
-				along(heading, rp.sb0_first, rp.fh0, 1, true);
+				along(heading, rp.nh1[0], rp.sb1_last, 1, false);
+				for (size_t k = 0; k < g; k++) {
+					along(heading, rp.nh0[k], rp.nh1[k], 1, true);
+					along(heading, rp.fh0[k], rp.fh1[k], 1, true);
+					if (k > 0) along(heading, rp.nh0[k], rp.fh0[k - 1], 2, false);
+				}
+				along(heading, rp.sb0_first, rp.fh0[g - 1], 1, false);
 				eq(0, rp.lane_merge, rp.sb0_first, 0);
-				along(heading, rp.lane_merge, rp.fh1, 2, true);
+				along(heading, rp.lane_merge, rp.fh1[g - 1], 2, false);
 				along(heading, njm, rp.lane_merge, prio + 1, false);
 				after = rp.lane_merge;
 
-				/* Every crosser's tiles on the copy row and the lane row lie between the heads, and the heads hug the outermost tiles (D80, D118, D145). */
-				const JunctionTrackBridge &bridge = structure.bridges[bridge_of[leg_edge[r]]];
+				/* Every crosser's tiles on the copy row and the lane row lie between its bridge's heads, and the heads hug the outermost tiles (D80, D118, D145). */
 				const int u = -s; // The upstream step.
-				bool have = false;
-				int low_pt = 0, low_dx = 0, high_pt = 0, high_dx = 0, low_value = 0, high_value = 0;
-				for (uint32_t x : bridge.crossed) {
-					if (!rows_known) break;
-					const std::vector<SymTile> tiles = edge_tiles(x);
-					for (int pass = 0; pass < 2; pass++) {
-						const int y = vy[item_pt[pass == 0 ? north_item[r] : lane_item[r]]];
-						bool any = false;
-						for (const SymTile &z : tiles) {
-							if (z.y != y) continue;
-							any = true;
-							const int near = pass == 0 ? rp.nh0 : rp.nh1;
-							const int far = pass == 0 ? rp.fh0 : rp.fh1;
-							if (s > 0) {
-								ge(0, z.pt, near, 1 - z.dx);
-								ge(0, far, z.pt, 1 + z.dx);
-							} else {
-								ge(0, near, z.pt, 1 + z.dx);
-								ge(0, z.pt, far, 1 - z.dx);
+				for (size_t k = 0; k < g; k++) {
+					const JunctionTrackBridge &bridge = structure.bridges[bridges_of[leg_edge[r]][k]];
+					bool have = false;
+					int low_pt = 0, low_dx = 0, high_pt = 0, high_dx = 0, low_value = 0, high_value = 0;
+					for (uint32_t x : bridge.crossed) {
+						if (!rows_known) break;
+						const std::vector<SymTile> tiles = edge_tiles(x);
+						for (int pass = 0; pass < 2; pass++) {
+							const int y = vy[item_pt[pass == 0 ? north_item[r] : lane_item[r]]];
+							bool any = false;
+							for (const SymTile &z : tiles) {
+								if (z.y != y) continue;
+								any = true;
+								const int near = pass == 0 ? rp.nh0[k] : rp.nh1[k];
+								const int far = pass == 0 ? rp.fh0[k] : rp.fh1[k];
+								if (s > 0) {
+									ge(0, z.pt, near, 1 - z.dx);
+									ge(0, far, z.pt, 1 + z.dx);
+								} else {
+									ge(0, near, z.pt, 1 + z.dx);
+									ge(0, z.pt, far, 1 - z.dx);
+								}
+								const int dx = pass == 0 ? z.dx : z.dx - u;
+								const int value = vx[z.pt] + dx;
+								if (!have || value < low_value) { low_value = value; low_pt = z.pt; low_dx = dx; }
+								if (!have || value > high_value) { high_value = value; high_pt = z.pt; high_dx = dx; }
+								have = true;
 							}
-							const int dx = pass == 0 ? z.dx : z.dx - u;
-							const int value = vx[z.pt] + dx;
-							if (!have || value < low_value) { low_value = value; low_pt = z.pt; low_dx = dx; }
-							if (!have || value > high_value) { high_value = value; high_pt = z.pt; high_dx = dx; }
-							have = true;
+							if (!any) { build_why = "Z row " + str(y) + " edge " + str(x) + " row " + str(r); return false; }
 						}
-						if (!any) { build_why = "Z row " + str(y) + " edge " + str(x) + " row " + str(r); return false; }
 					}
-				}
-				if (have) {
-					const int west = s > 0 ? rp.nh0 : rp.fh0;
-					const int east_head = s > 0 ? rp.fh0 : rp.nh0;
-					eq(0, west, low_pt, low_dx - 1);
-					eq(0, east_head, high_pt, high_dx + 1);
+					if (have) {
+						const int west = s > 0 ? rp.nh0[k] : rp.fh0[k];
+						const int east_head = s > 0 ? rp.fh0[k] : rp.nh0[k];
+						eq(0, west, low_pt, low_dx - 1);
+						eq(0, east_head, high_pt, high_dx + 1);
+					}
 				}
 			}
 			(void)after;
@@ -1488,14 +1503,25 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 		int far;
 		bool row; ///< On a row (else in a column).
 	};
-	auto heads_of = [&](uint32_t edge, int copy) {
+	auto heads_of = [&](int b, int copy) {
+		const uint32_t edge = structure.bridges[b].edge;
 		for (int r = 0; r < rows; r++) {
-			if (leg_edge[r] == edge && doubled_row(r)) return Heads{copy == 0 ? row_pts[r].nh0 : row_pts[r].nh1, copy == 0 ? row_pts[r].fh0 : row_pts[r].fh1, true};
+			if (leg_edge[r] != edge || !doubled_row(r)) continue;
+			const size_t k = std::find(bridges_of[edge].begin(), bridges_of[edge].end(), b) - bridges_of[edge].begin();
+			return Heads{copy == 0 ? row_pts[r].nh0[k] : row_pts[r].nh1[k], copy == 0 ? row_pts[r].fh0[k] : row_pts[r].fh1[k], true};
 		}
 		for (const Elem &el : chain[edge]) {
 			if (el.k == Elem::K::Heads) return Heads{el.first, el.last, false};
 		}
 		return Heads{0, 0, false};
+	};
+	/* The bridge of an edge whose crossed set holds another edge, or -1. */
+	auto bridge_over = [&](uint32_t edge, uint32_t crossed) {
+		for (int b : bridges_of[edge]) {
+			const std::vector<uint32_t> &set = structure.bridges[b].crossed;
+			if (std::find(set.begin(), set.end(), crossed) != set.end()) return b;
+		}
+		return -1;
 	};
 	/* The tiles of an edge strictly between a bridge's heads on a row (or in a column), in the edge's order. */
 	auto tiles_under = [&](uint32_t edge, const Heads &heads, int line) {
@@ -1532,8 +1558,10 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 						if (step.kind == StepKind::SBend) {
 							(copy == 0 ? result.edges[e] : result.copies[e]).push_back(copy == 0 ? JunctionTrackSpan{tile(rp.sb0_first), tile(rp.lane_merge)} : JunctionTrackSpan{tile(rp.lane_split), tile(rp.sb1_last)});
 						} else {
-							const Heads heads = heads_of(e, copy);
-							std::vector<TileIndexDiffC> found = tiles_under(step.index, heads, vy[copy == 0 ? row_pts[r].nh0 : row_pts[r].nh1]);
+							const int over = bridge_over(e, step.index);
+							if (over < 0) return fail("a crossing edge misses its bridge");
+							const Heads heads = heads_of(over, copy);
+							std::vector<TileIndexDiffC> found = tiles_under(step.index, heads, vy[heads.near]);
 							if (found.empty()) return fail("a crossing edge misses its bridge");
 							std::stable_sort(found.begin(), found.end(), [&](const TileIndexDiffC &a, const TileIndexDiffC &b) { return s > 0 ? a.x < b.x : a.x > b.x; });
 							(copy == 0 ? result.edges[e] : result.copies[e]).push_back({found.front(), found.back()});
@@ -1555,7 +1583,8 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 					}
 				}
 			} else if (step.kind == StepKind::Over) {
-				const Heads heads = heads_of(e, 0);
+				if (bridges_of[e].empty()) return fail("a crossing edge misses its bridge");
+				const Heads heads = heads_of(bridges_of[e][0], 0);
 				std::vector<TileIndexDiffC> found = tiles_under(step.index, heads, vx[heads.near]);
 				if (found.empty()) return fail("a crossing edge misses its bridge");
 				const bool north = vy[heads.far] < vy[heads.near];
@@ -1564,15 +1593,16 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 			} else {
 				/* Under: this edge's tiles beneath the overhead edge's bridge. */
 				const uint32_t x = step.index;
-				const bool doubled_x = bridge_of[x] >= 0 && structure.bridges[bridge_of[x]].doubled;
+				const int bx = bridge_over(x, e);
+				if (bx < 0) return fail("a crossing edge misses its bridge");
 				std::vector<TileIndexDiffC> found;
-				if (doubled_x) {
-					const Heads heads = heads_of(x, step.copy);
+				if (structure.bridges[bx].doubled) {
+					const Heads heads = heads_of(bx, step.copy);
 					int r = 0;
 					while (leg_edge[r] != x) r++;
 					found = tiles_under(e, heads, vy[item_pt[step.copy == 0 ? north_item[r] : lane_item[r]]]);
 				} else {
-					const Heads heads = heads_of(x, 0);
+					const Heads heads = heads_of(bx, 0);
 					found = tiles_under(e, heads, vx[heads.near]);
 				}
 				if (found.empty()) return fail("a crossing edge misses its bridge");
@@ -1582,14 +1612,15 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	}
 
 	/* The bridges. */
-	for (const JunctionTrackBridge &bridge : structure.bridges) {
+	for (size_t b = 0; b < structure.bridges.size(); b++) {
+		const JunctionTrackBridge &bridge = structure.bridges[b];
 		std::array<JunctionBridge, 2> heads{};
 		for (int copy = 0; copy < (bridge.doubled ? 2 : 1); copy++) {
-			const Heads hd = heads_of(bridge.edge, copy);
+			const Heads hd = heads_of(static_cast<int>(b), copy);
 			heads[copy] = JunctionBridge{tile(hd.near), tile(hd.far)};
 			if (bridge.doubled) {
 				const int middle = std::abs(vx[hd.near] - vx[hd.far]) - 1;
-				if (copy == 0 && middle > spec.max_bridge_middle) return fail(fmt::format("bridge {} needs {} middle tiles, more than {}", bridge.edge, middle, spec.max_bridge_middle));
+				if (copy == 0 && middle > spec.max_bridge_middle) return fail(fmt::format("bridge {} on edge {} needs {} middle tiles, more than {}", b, bridge.edge, middle, spec.max_bridge_middle));
 			}
 		}
 		result.bridges.push_back(heads);
@@ -1629,4 +1660,137 @@ const JunctionTopology &JunctionLLRRSidelineTopology()
 		{{0, 5}, {4, 1}, {0, 3}, {4, 3}, {2, 5}, {2, 1}},
 	};
 	return topology;
+}
+
+/**
+ * Append the compositions of n into the given number of parts, each 1..JUNCTION_BRIDGE_MAX_CROSSERS, in descending lexicographic order of part sizes.
+ * @param n The crossings left to place.
+ * @param parts The parts left.
+ * @param current The parts so far.
+ * @param[out] out Receives the compositions.
+ */
+static void AppendBridgeCompositions(size_t n, size_t parts, std::vector<size_t> &current, std::vector<std::vector<size_t>> &out)
+{
+	if (parts == 1) {
+		if (n >= 1 && n <= JUNCTION_BRIDGE_MAX_CROSSERS) {
+			current.push_back(n);
+			out.push_back(current);
+			current.pop_back();
+		}
+		return;
+	}
+	for (int p = static_cast<int>(std::min(JUNCTION_BRIDGE_MAX_CROSSERS, n - (parts - 1))); p >= 1; p--) {
+		if (n - p > (parts - 1) * JUNCTION_BRIDGE_MAX_CROSSERS) continue;
+		current.push_back(p);
+		AppendBridgeCompositions(n - p, parts - 1, current, out);
+		current.pop_back();
+	}
+}
+
+/**
+ * Append the tuples of bridge counts that sum to a total, in ascending lexicographic order.
+ * @param low The least count per bridge.
+ * @param high The greatest count per bridge.
+ * @param remaining The total left to spend.
+ * @param current The counts so far.
+ * @param[out] out Receives the tuples.
+ */
+static void AppendBridgeCounts(const std::vector<size_t> &low, const std::vector<size_t> &high, size_t remaining, std::vector<size_t> &current, std::vector<std::vector<size_t>> &out)
+{
+	const size_t i = current.size();
+	if (i == low.size()) {
+		if (remaining == 0) out.push_back(current);
+		return;
+	}
+	for (size_t c = low[i]; c <= high[i] && c <= remaining; c++) {
+		current.push_back(c);
+		AppendBridgeCounts(low, high, remaining - c, current, out);
+		current.pop_back();
+	}
+}
+
+JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, JunctionTrackPlacement *placement, std::string *error)
+{
+	/* The doubled bridges and, per bridge and bridge count, the compositions of its crossing list. */
+	std::vector<size_t> low, high;
+	std::vector<std::vector<std::vector<std::vector<size_t>>>> compositions;
+	size_t low_total = 0, high_total = 0;
+	for (const JunctionTrackBridge &bridge : structure.bridges) {
+		if (!bridge.doubled) continue;
+		const size_t n = bridge.crossed.size();
+		low.push_back((n + JUNCTION_BRIDGE_MAX_CROSSERS - 1) / JUNCTION_BRIDGE_MAX_CROSSERS);
+		high.push_back(n);
+		low_total += low.back();
+		high_total += n;
+		compositions.emplace_back();
+		for (size_t c = low.back(); c <= n; c++) {
+			compositions.back().emplace_back();
+			std::vector<size_t> current;
+			AppendBridgeCompositions(n, c, current, compositions.back().back());
+		}
+	}
+
+	std::string last_error;
+	for (size_t total = low_total; total <= high_total; total++) {
+		std::vector<std::vector<size_t>> tuples;
+		std::vector<size_t> counts;
+		AppendBridgeCounts(low, high, total, counts, tuples);
+
+		bool have = false;
+		JunctionTrackStructure best_structure;
+		JunctionTrackPlacement best;
+		for (const std::vector<size_t> &tuple : tuples) {
+			std::vector<size_t> choice(tuple.size(), 0);
+			for (;;) {
+				/* The cut structure: each doubled bridge replaced in place by its parts. */
+				JunctionTrackStructure cut = structure;
+				cut.bridges.clear();
+				size_t d = 0;
+				for (const JunctionTrackBridge &bridge : structure.bridges) {
+					if (!bridge.doubled) {
+						cut.bridges.push_back(bridge);
+						continue;
+					}
+					size_t first = 0;
+					for (size_t part : compositions[d][tuple[d] - low[d]][choice[d]]) {
+						cut.bridges.push_back({bridge.edge, std::vector<uint32_t>(bridge.crossed.begin() + first, bridge.crossed.begin() + first + part), true});
+						first += part;
+					}
+					d++;
+				}
+				std::stable_sort(cut.bridges.begin(), cut.bridges.end(), [](const JunctionTrackBridge &a, const JunctionTrackBridge &b) { return a.edge < b.edge; });
+
+				std::string why;
+				JunctionTrackPlacement placed = PlaceJunctionTrackGraph(topology, paths, graph, order, cut, programs, spec, &why);
+				if (placed.nodes.empty()) {
+					last_error = why;
+				} else if (!have || placed.size.x < best.size.x || (placed.size.x == best.size.x && placed.size.y < best.size.y)) {
+					have = true;
+					best = std::move(placed);
+					best_structure = std::move(cut);
+				}
+
+				/* The next combination of compositions, the last bridge varying fastest. */
+				size_t i = choice.size();
+				bool more = false;
+				while (i > 0 && !more) {
+					i--;
+					if (++choice[i] < compositions[i][tuple[i] - low[i]].size()) {
+						more = true;
+					} else {
+						choice[i] = 0;
+					}
+				}
+				if (!more) break;
+			}
+		}
+		if (have) {
+			if (placement != nullptr) *placement = std::move(best);
+			if (error != nullptr) error->clear();
+			return best_structure;
+		}
+	}
+	if (placement != nullptr) *placement = JunctionTrackPlacement{};
+	if (error != nullptr) *error = last_error;
+	return structure;
 }
