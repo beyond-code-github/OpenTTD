@@ -15,6 +15,7 @@
 #include "junction_chain.h"
 #include "junction_rules_internal.h"
 #include "junction_signal_pass.h"
+#include "map_func.h"
 #include "track_func.h"
 
 #include <algorithm>
@@ -43,6 +44,7 @@ struct NodeSpan {
 	uint32_t from;
 	uint32_t to;
 	Axis axis;
+	uint32_t diagonal; ///< The index into JunctionNodeTemplate::diagonals when the link is a free diagonal, else UINT32_MAX.
 };
 
 /** Reads the template of a flat layout. */
@@ -170,6 +172,7 @@ void NodeBuilder::ReadPoints()
 	/* The points in order of first appearance, and each path's points. */
 	std::map<PieceId, uint32_t> index_of;
 	std::set<std::pair<uint32_t, uint32_t>> link_seen;
+	std::map<std::pair<uint32_t, uint32_t>, uint32_t> diagonal_of; ///< Per diagonal link (from, to), its index into tpl.diagonals.
 	for (size_t pi = 0; pi < path_count; pi++) {
 		const JunctionPath &path = this->ctx.paths[pi];
 		const std::vector<JunctionPiece> &pieces = path.pieces;
@@ -203,27 +206,53 @@ void NodeBuilder::ReadPoints()
 				if (pieces[i].on_bridge || (td != Trackdir::X_NE && td != Trackdir::X_SW) || pieces[i].tile.y != pieces[a].tile.y) free_x = false;
 				if (pieces[i].on_bridge || (td != Trackdir::Y_SE && td != Trackdir::Y_NW) || pieces[i].tile.x != pieces[a].tile.x) free_y = false;
 			}
-			const bool free = free_x || free_y;
+
+			/* A free diagonal (DESIGN-N3 §6): one whole run of at least 3 half pieces, none on a bridge, none under a Y-axis bridge. */
+			bool diagonal = b - a + 1 >= 3 && (a == 0 || TrackdirToDirection(pieces[a - 1].trackdir) != TrackdirToDirection(pieces[a].trackdir)) && (b + 1 == pieces.size() || TrackdirToDirection(pieces[b + 1].trackdir) != TrackdirToDirection(pieces[b].trackdir));
+			for (size_t i = a; diagonal && i <= b; i++) {
+				if (pieces[i].on_bridge || IsDiagonalTrackdir(pieces[i].trackdir) || TrackdirToDirection(pieces[i].trackdir) != TrackdirToDirection(pieces[a].trackdir)) diagonal = false;
+				for (const JunctionBridge &bridge : layout.bridges) {
+					if (bridge.start.x == bridge.end.x && pieces[i].tile.x == bridge.start.x && pieces[i].tile.y > std::min(bridge.start.y, bridge.end.y) && pieces[i].tile.y < std::max(bridge.start.y, bridge.end.y)) diagonal = false;
+				}
+			}
+			const bool free = free_x || free_y || diagonal;
 			const Axis axis = free_y ? Axis::Y : Axis::X;
 			const uint32_t from = node_path.points[k];
 			const uint32_t to = node_path.points[k + 1];
+			uint32_t diagonal_index = UINT32_MAX;
+			if (link_seen.emplace(from, to).second) {
+				if (diagonal) {
+					const TileIndexDiffC step = TileIndexDiffCByDir(TrackdirToDirection(pieces[a].trackdir));
+					diagonal_index = static_cast<uint32_t>(this->tpl.diagonals.size());
+					this->tpl.diagonals.push_back({static_cast<uint32_t>(this->tpl.links.size()), static_cast<int8_t>(step.x), static_cast<int8_t>(step.y), static_cast<uint16_t>(b - a + 1)});
+					diagonal_of[{from, to}] = diagonal_index;
+				}
+				this->tpl.links.push_back({from, to, free, axis, diagonal});
+			} else if (diagonal) {
+				diagonal_index = diagonal_of.at({from, to});
+			}
 			if (free) {
-				const int dx = pieces[b].tile.x - pieces[a].tile.x;
-				const int dy = pieces[b].tile.y - pieces[a].tile.y;
-				if (free_x) {
+				if (diagonal) {
+					const JunctionNodeDiagonal &diag = this->tpl.diagonals[diagonal_index];
+					if (diag.dx > 0) plus = true;
+					if (diag.dx < 0) minus = true;
+					if (diag.dy > 0) plus_y = true;
+					if (diag.dy < 0) minus_y = true;
+				} else if (free_x) {
+					const int dx = pieces[b].tile.x - pieces[a].tile.x;
 					if (dx > 0) plus = true;
 					if (dx < 0) minus = true;
 				} else {
+					const int dy = pieces[b].tile.y - pieces[a].tile.y;
 					if (dy > 0) plus_y = true;
 					if (dy < 0) minus_y = true;
 				}
 				for (size_t i = a + 1; i < b; i++) w.link_of[i] = static_cast<int>(this->spans.size());
-				this->spans.push_back({from, to, axis});
+				this->spans.push_back({from, to, axis, diagonal_index});
 			}
-			if (link_seen.emplace(from, to).second) this->tpl.links.push_back({from, to, free, axis});
 		}
-		if (plus && minus) this->Fail(fmt::format("path {} has free links both ways", pi));
-		if (plus_y && minus_y) this->Fail(fmt::format("path {} has free links both ways along y", pi));
+		if (plus && minus) this->Fail(fmt::format("path {} moves both ways along x", pi));
+		if (plus_y && minus_y) this->Fail(fmt::format("path {} moves both ways along y", pi));
 		node_path.dir = plus ? 1 : (minus ? -1 : 0);
 		node_path.dir_y = plus_y ? 1 : (minus_y ? -1 : 0);
 		this->tpl.paths.push_back(std::move(node_path));
@@ -233,6 +262,7 @@ void NodeBuilder::ReadPoints()
 	NodeUnion x_union(this->tpl.points.size());
 	NodeUnion y_union(this->tpl.points.size());
 	for (const JunctionNodeLink &link : this->tpl.links) {
+		if (link.diagonal) continue;
 		if (!link.free || link.axis == Axis::Y) x_union.Join(link.from, link.to);
 		if (!link.free || link.axis == Axis::X) y_union.Join(link.from, link.to);
 	}
@@ -329,30 +359,52 @@ void NodeBuilder::AddPathDiffs()
 		const int d = node_path.dir;
 		const int d_y = node_path.dir_y;
 
-		/* The rule of §2: d * (x_q - x_p) >= d * F + ceil((g - U) / 2) for the points p before q with the flat unit difference U; the same over y with dir_y. */
+		/* The rule of §2 between the points p before q with the flat unit difference U (§6): with no X run between them and a Y run or a free diagonal, a Y difference now; with an X run between them, a late gap (an X difference after the Y snap). */
 		auto add_gap = [&](uint32_t p, int unit_p, uint32_t q, int unit_q, int g) {
 			const int u = unit_q - unit_p;
-			const bool sx = this->tpl.points[p].cls != this->tpl.points[q].cls;
-			const bool sy = this->tpl.points[p].ycls != this->tpl.points[q].ycls;
-			if (sx && sy) {
-				this->Fail(fmt::format("path {} points {},{}: gap spans free links on both axes", pi, p, q));
+			const auto ip = std::ranges::find(node_path.points, p) - node_path.points.begin();
+			const auto iq = std::ranges::find(node_path.points, q) - node_path.points.begin();
+			bool has_x = false;
+			bool has_y = false;
+			std::vector<uint32_t> diagonals;
+			for (auto k = ip; k < iq; k++) {
+				const auto link_it = std::ranges::find_if(this->tpl.links, [&](const JunctionNodeLink &l) { return l.from == node_path.points[static_cast<size_t>(k)] && l.to == node_path.points[static_cast<size_t>(k) + 1]; });
+				if (link_it == this->tpl.links.end() || !link_it->free) continue;
+				if (link_it->diagonal) {
+					has_y = true;
+					diagonals.push_back(static_cast<uint32_t>(std::ranges::find_if(this->tpl.diagonals, [&](const JunctionNodeDiagonal &diag) { return diag.link == static_cast<uint32_t>(link_it - this->tpl.links.begin()); }) - this->tpl.diagonals.begin()));
+				} else if (link_it->axis == Axis::X) {
+					has_x = true;
+				} else {
+					has_y = true;
+				}
+			}
+			if (has_x) {
+				this->tpl.late_gaps.push_back({static_cast<uint32_t>(pi), p, q, g, u, std::move(diagonals)});
 				return;
 			}
-			const Axis axis = sy ? Axis::Y : Axis::X;
-			const int dir = sy ? d_y : d;
-			if ((!sx && !sy) || dir == 0) {
+			if (!has_y || d_y == 0) {
 				if (u < g) this->Fail(fmt::format("path {} points {},{}: gap {} below {}", pi, p, q, u, g));
 				return;
 			}
-			const NodeCoord cp = this->At(p, axis);
-			const NodeCoord cq = this->At(q, axis);
-			this->AddDirected(dir, cp, cq, dir * (cq.pos - cp.pos) + CeilHalf(g - u));
+			const NodeCoord cp = this->AtY(p);
+			const NodeCoord cq = this->AtY(q);
+			if (!this->AddDirected(d_y, cp, cq, d_y * (cq.pos - cp.pos) + CeilHalf(g - u))) this->Fail(fmt::format("path {} points {},{}: gap {} below {}", pi, p, q, u, g));
 		};
 
-		/* Rule 1, along each free link's axis. */
+		/* Rule 1, along each free link's axis; a free diagonal's length stays at least two half pieces: m >= m_min (§6). */
 		for (size_t k = 0; k + 1 < node_path.points.size(); k++) {
 			const auto link = std::ranges::find_if(this->tpl.links, [&](const JunctionNodeLink &l) { return l.from == node_path.points[k] && l.to == node_path.points[k + 1]; });
 			if (link == this->tpl.links.end() || !link->free) continue;
+			if (link->diagonal) {
+				const uint32_t link_index = static_cast<uint32_t>(link - this->tpl.links.begin());
+				const JunctionNodeDiagonal &diag = *std::ranges::find_if(this->tpl.diagonals, [&](const JunctionNodeDiagonal &c) { return c.link == link_index; });
+				const NodeCoord cp = this->AtY(link->from);
+				const NodeCoord cq = this->AtY(link->to);
+				const int m_min = -((diag.halves - 2) / 2);
+				if (!this->AddDirected(diag.dy, cp, cq, diag.dy * (cq.pos - cp.pos) + m_min)) this->Fail(fmt::format("path {}: a free diagonal joins one class", pi));
+				continue;
+			}
 			if (!this->AddDirected(link->axis == Axis::X ? d : d_y, this->At(link->from, link->axis), this->At(link->to, link->axis), 1)) this->Fail(fmt::format("path {}: a free link joins one class", pi));
 		}
 
@@ -391,6 +443,7 @@ void NodeBuilder::AddPathDiffs()
 
 void NodeBuilder::AddCrossings()
 {
+	std::set<std::pair<size_t, uint32_t>> late_seen; ///< The (bridge, diagonal) pairs already added as late crossings.
 	for (size_t bi = 0; bi < this->tpl.bridges.size(); bi++) {
 		const JunctionBridge &bridge = this->tpl.bridges[bi].bridge;
 		const NodeCoord head_x{bridge.start.x, this->tpl.bridges[bi].cls};
@@ -417,6 +470,20 @@ void NodeBuilder::AddCrossings()
 				if (pos(tile, across) != line || pos(tile, along) <= lo || pos(tile, along) >= hi) continue;
 				if (w.link_of[i] >= 0) {
 					const NodeSpan &span = this->spans[static_cast<size_t>(w.link_of[i])];
+					if (span.diagonal != UINT32_MAX) {
+						/* §6: an X-axis bridge over a free diagonal: its rows now (the bridge row within the diagonal's rows), its tiles after the Y snap. */
+						if (along != Axis::X) {
+							this->Fail(fmt::format("bridge {}: path {} has a free diagonal under it at {},{}", bi, qi, tile.x, tile.y));
+						} else if (late_seen.emplace(bi, span.diagonal).second) {
+							const JunctionNodeDiagonal &diag = this->tpl.diagonals[span.diagonal];
+							const NodeCoord row{line, head_across.var};
+							this->tpl.late_crossings.push_back({static_cast<uint32_t>(bi), span.diagonal});
+							if (!this->AddDirected(diag.dy, this->AtY(span.from), row, 0) || !this->AddDirected(diag.dy, row, this->AtY(span.to), 0)) {
+								this->Fail(fmt::format("bridge {}: path {} diagonal under it at {},{} is not on the bridge's rows", bi, qi, tile.x, tile.y));
+							}
+						}
+						continue;
+					}
 					if (span.axis == along) {
 						this->Fail(fmt::format("bridge {}: path {} has a free link under it at {},{}", bi, qi, tile.x, tile.y));
 						continue;
@@ -504,13 +571,91 @@ bool AddJunctionNodeConstraints(const JunctionNodeTemplate &tpl, JunctionPositio
 	return positions.RestrictRange(tpl.anchor, tpl.flat[tpl.anchor], tpl.flat[tpl.anchor]) && positions.RestrictRange(tpl.anchor_y, tpl.flat[tpl.anchor_y], tpl.flat[tpl.anchor_y]);
 }
 
+/**
+ * x_a - x_b >= k for two coordinates x_c = value(var_c) + pos_c - flat[var_c].
+ * @return A difference over the variables, or the constant check when both are one variable; false when infeasible.
+ */
+static bool NodeAddAtLeast(const JunctionNodeTemplate &tpl, JunctionPositions &positions, uint16_t var_a, int pos_a, uint16_t var_b, int pos_b, int k)
+{
+	const int off_a = pos_a - tpl.flat[var_a];
+	const int off_b = pos_b - tpl.flat[var_b];
+	if (var_a == var_b) return off_a - off_b >= k;
+	return positions.AddDifference(var_a, var_b, k - off_a + off_b);
+}
+
+/** The extra map steps m of a free diagonal at the Y values: its flat halves plus 2 m (DESIGN-N3 §6). */
+static int NodeDiagonalSteps(const JunctionNodeTemplate &tpl, const JunctionNodeDiagonal &diag, const std::vector<int> &values)
+{
+	const JunctionNodePoint &p = tpl.points[tpl.links[diag.link].from];
+	const JunctionNodePoint &q = tpl.points[tpl.links[diag.link].to];
+	return diag.dy * ((values[q.ycls] - tpl.flat[q.ycls]) - (values[p.ycls] - tpl.flat[p.ycls]));
+}
+
+/** The raster of a free diagonal with the given number of half pieces, from its first point's flat tile. */
+static JunctionRaster NodeDiagonalRaster(const JunctionNodeTemplate &tpl, const JunctionNodeDiagonal &diag, int halves)
+{
+	const JunctionNodePoint &p = tpl.points[tpl.links[diag.link].from];
+	return RasterizeJunctionRoute({p.tile, p.trackdir, std::string(static_cast<size_t>(std::max(halves - 1, 0)), 'F')});
+}
+
+bool AddJunctionNodeLateConstraints(const JunctionNodeTemplate &tpl, JunctionPositions &positions, const std::vector<int> &values)
+{
+	auto y_of = [&](uint32_t point) { return values[tpl.points[point].ycls] + tpl.points[point].tile.y - tpl.flat[tpl.points[point].ycls]; };
+
+	/* Each free diagonal: x_q - x_p = flat + dx m. */
+	for (const JunctionNodeDiagonal &diag : tpl.diagonals) {
+		const JunctionNodePoint &p = tpl.points[tpl.links[diag.link].from];
+		const JunctionNodePoint &q = tpl.points[tpl.links[diag.link].to];
+		const int k = (q.tile.x - p.tile.x) + diag.dx * NodeDiagonalSteps(tpl, diag, values);
+		if (!NodeAddAtLeast(tpl, positions, q.cls, q.tile.x, p.cls, p.tile.x, k) || !NodeAddAtLeast(tpl, positions, p.cls, p.tile.x, q.cls, q.tile.x, -k)) return false;
+	}
+
+	/* Each late gap: d_x * (x_q - x_p) >= d_x * Fx + ceil((g - U - 2 d_y dy + 2 sum(m)) / 2). */
+	for (const JunctionNodeLateGap &gap : tpl.late_gaps) {
+		const JunctionNodePoint &p = tpl.points[gap.p];
+		const JunctionNodePoint &q = tpl.points[gap.q];
+		const int d_x = tpl.paths[gap.path].dir;
+		const int d_y = tpl.paths[gap.path].dir_y;
+		const int delta_y = (y_of(gap.q) - y_of(gap.p)) - (q.tile.y - p.tile.y);
+		int steps = 0;
+		for (const uint32_t diag : gap.diagonals) steps += NodeDiagonalSteps(tpl, tpl.diagonals[diag], values);
+		const int k = d_x * (q.tile.x - p.tile.x) + CeilHalf(gap.g - gap.u - 2 * d_y * delta_y + 2 * steps);
+		if (!(d_x > 0 ? NodeAddAtLeast(tpl, positions, q.cls, q.tile.x, p.cls, p.tile.x, k) : NodeAddAtLeast(tpl, positions, p.cls, p.tile.x, q.cls, q.tile.x, k))) return false;
+	}
+
+	/* Each late crossing: the diagonal's tiles on the bridge row, from its raster at the known length, strictly between the heads. */
+	for (const JunctionNodeLateCrossing &crossing : tpl.late_crossings) {
+		const JunctionNodeBridge &node_bridge = tpl.bridges[crossing.bridge];
+		const JunctionNodeDiagonal &diag = tpl.diagonals[crossing.diagonal];
+		const uint32_t from = tpl.links[diag.link].from;
+		const JunctionNodePoint &p = tpl.points[from];
+		const JunctionRaster raster = NodeDiagonalRaster(tpl, diag, diag.halves + 2 * NodeDiagonalSteps(tpl, diag, values));
+		if (!raster.error.empty()) return false;
+		const int row = values[node_bridge.ycls] + node_bridge.bridge.start.y - tpl.flat[node_bridge.ycls];
+		const int lo = std::min(node_bridge.bridge.start.x, node_bridge.bridge.end.x);
+		const int hi = std::max(node_bridge.bridge.start.x, node_bridge.bridge.end.x);
+		for (size_t i = 1; i + 1 < raster.pieces.size(); i++) {
+			if (raster.pieces[i].tile.y - p.tile.y != row - y_of(from)) continue;
+			const int x = raster.pieces[i].tile.x;
+			if (!NodeAddAtLeast(tpl, positions, p.cls, x, node_bridge.cls, lo, 1) || !NodeAddAtLeast(tpl, positions, node_bridge.cls, hi, p.cls, x, 1)) return false;
+		}
+	}
+	return true;
+}
+
 std::vector<int> JunctionNodeSnap(const JunctionNodeTemplate &tpl, JunctionPositions &positions)
 {
-	std::vector<int> values;
-	for (size_t c = 0; c < tpl.flat.size(); c++) {
-		const int value = std::clamp(tpl.flat[c], positions.Lo(c), positions.Up(c));
-		if (!positions.RestrictRange(c, value, value)) return {};
-		values.push_back(value);
+	std::vector<int> values(tpl.flat.size(), 0);
+	auto fix = [&](size_t c) {
+		values[c] = std::clamp(tpl.flat[c], positions.Lo(c), positions.Up(c));
+		return positions.RestrictRange(c, values[c], values[c]);
+	};
+	for (size_t c = tpl.x_classes; c < tpl.flat.size(); c++) {
+		if (!fix(c)) return {};
+	}
+	if (!AddJunctionNodeLateConstraints(tpl, positions, values)) return {};
+	for (size_t c = 0; c < tpl.x_classes; c++) {
+		if (!fix(c)) return {};
 	}
 	return values;
 }
@@ -524,8 +669,15 @@ JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const s
 		if (piece.on_bridge) continue;
 		tiles[{piece.tile.x + shift(piece.cls), piece.tile.y + shift(piece.ycls)}].Set(piece.track);
 	}
+	for (const JunctionNodeDiagonal &diag : tpl.diagonals) {
+		const JunctionNodePoint &from = tpl.points[tpl.links[diag.link].from];
+		const JunctionRaster raster = NodeDiagonalRaster(tpl, diag, diag.halves + 2 * NodeDiagonalSteps(tpl, diag, values));
+		for (size_t i = 1; i + 1 < raster.pieces.size(); i++) {
+			tiles[{raster.pieces[i].tile.x + shift(from.cls), raster.pieces[i].tile.y + shift(from.ycls)}].Set(TrackdirToTrack(raster.pieces[i].trackdir));
+		}
+	}
 	for (const JunctionNodeLink &link : tpl.links) {
-		if (!link.free) continue;
+		if (!link.free || link.diagonal) continue;
 		const JunctionNodePoint &from = tpl.points[link.from];
 		const JunctionNodePoint &to = tpl.points[link.to];
 		if (link.axis == Axis::X) {
@@ -571,9 +723,9 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 	using Kind = JunctionNodeFailure::Kind;
 	constexpr int RANGE = 1024;
 
-	std::vector<uint32_t> free_links; ///< The X-free links.
+	std::vector<uint32_t> free_links; ///< The X-free links (X runs; the free diagonals are not among them).
 	for (uint32_t i = 0; i < tpl.links.size(); i++) {
-		if (tpl.links[i].free && tpl.links[i].axis == Axis::X) free_links.push_back(i);
+		if (tpl.links[i].free && !tpl.links[i].diagonal && tpl.links[i].axis == Axis::X) free_links.push_back(i);
 	}
 	const size_t variables = tpl.flat.size();
 	const size_t classes = tpl.x_classes;
@@ -615,13 +767,24 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 	}
 	auto shift_y = [&](uint16_t ycls) { return result.values[ycls] - tpl.flat[ycls]; };
 
+	/* 2c. The constraints that need the Y values: the free diagonals' x, the late gaps, the late crossings. */
+	if (!AddJunctionNodeLateConstraints(tpl, positions, result.values)) {
+		result.failure = JunctionNodeFailure{Kind::Template};
+		result.values.clear();
+		return result;
+	}
+
+	/* The interior of every free diagonal at its length now, as rasters from the flat tile of its first point. */
+	std::vector<JunctionRaster> diagonal_rasters;
+	for (const JunctionNodeDiagonal &diag : tpl.diagonals) diagonal_rasters.push_back(NodeDiagonalRaster(tpl, diag, diag.halves + 2 * NodeDiagonalSteps(tpl, diag, result.values)));
+
 	/* 3. The pieces of every class fit the facts; a tile's bits are those of the render at the flat values. */
 	std::map<std::pair<int, int>, TrackBits> flat_bits;
 	for (const JunctionNodePiece &piece : tpl.pieces) {
 		if (!piece.on_bridge) flat_bits[{piece.tile.x, piece.tile.y}].Set(piece.track);
 	}
 	for (const JunctionNodeLink &link : tpl.links) {
-		if (!link.free) continue;
+		if (!link.free || link.diagonal) continue;
 		const JunctionNodePoint &from = tpl.points[link.from];
 		const JunctionNodePoint &to = tpl.points[link.to];
 		if (link.axis == Axis::X) {
@@ -822,7 +985,7 @@ std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout,
 		if (why != nullptr) *why = reason;
 		return std::optional<JunctionLayout>{};
 	};
-	if (link >= tpl.links.size() || !tpl.links[link].free || tpl.links[link].axis != Axis::X || (side != 1 && side != -1)) return fail("not a free link or side");
+	if (link >= tpl.links.size() || !tpl.links[link].free || tpl.links[link].diagonal || tpl.links[link].axis != Axis::X || (side != 1 && side != -1)) return fail("not a free link or side");
 
 	/* 1. The link and its interior. */
 	const JunctionNodePoint &p = tpl.points[tpl.links[link].from];
