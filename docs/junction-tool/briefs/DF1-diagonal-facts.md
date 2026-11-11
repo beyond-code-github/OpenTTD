@@ -29,7 +29,7 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 - Any existing [nodes]/[nodespeed]/[tmapnear]/[nodeoracle] test goes red.
 
 ## Gates
-- `tools/junction/jt fast build nodes 5`, `tools/junction/jt fast build-rel nodes 1`, `tools/junction/jt fast build-rel nodespeed 5`, `tools/junction/jt fast build-rel tmapnear 5`, `tools/junction/jt gate build-rel`.
+- `tools/junction/jt fast build "[nodes]" 5`, `tools/junction/jt fast build-rel "[nodes]" 1`, `tools/junction/jt fast build-rel "[nodespeed]" 5`, `tools/junction/jt fast build-rel "[tmapnear]" 5`, `tools/junction/jt gate build-rel`.
 - Commit: `Fix: Junction node solve checks free diagonal interiors against the facts`, body ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Report

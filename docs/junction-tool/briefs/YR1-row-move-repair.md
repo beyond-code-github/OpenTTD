@@ -42,7 +42,7 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 - The frame arithmetic for `t` does not hold (see Design).
 
 ## Gates
-- `tools/junction/jt fast build nodes 5`, `tools/junction/jt fast build-rel nodes 1`, `tools/junction/jt fast build-rel nodespeed 5`, `tools/junction/jt fast build-rel tmapnear 5`, `tools/junction/jt gate build-rel` (budget 120 s; note the ORACLE line).
+- `tools/junction/jt fast build "[nodes]" 5`, `tools/junction/jt fast build-rel "[nodes]" 1`, `tools/junction/jt fast build-rel "[nodespeed]" 5`, `tools/junction/jt fast build-rel "[tmapnear]" 5`, `tools/junction/jt gate build-rel` (budget 120 s; note the ORACLE line).
 - Commit: `Feature: Junction node search moves a node row on a heights failure`, body with the ridge result (offset, states, Release time from the BENCH line) and the ORACLE line, ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Report
