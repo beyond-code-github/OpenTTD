@@ -1363,3 +1363,113 @@ TEST_CASE("a blocked prio row moves its merge", "[junction][nodes]")
 		}
 	}
 }
+
+/** A different value of the same type: toggled, next enum value, +1, or an appended char. */
+template <typename T>
+static void ChangeNodeValue(T &value)
+{
+	if constexpr (std::is_enum_v<T>) {
+		value = static_cast<T>(to_underlying(value) + 1);
+	} else if constexpr (std::is_same_v<T, bool>) {
+		value = !value;
+	} else if constexpr (std::is_same_v<T, std::string>) {
+		value += 'x';
+	} else {
+		value = static_cast<T>(value + 1);
+	}
+}
+
+/** Check that `mutated` differs from `tpl` with a diff starting with `prefix`. */
+static void CheckNodeDiff(const JunctionNodeTemplate &tpl, const JunctionNodeTemplate &mutated, const std::string &prefix)
+{
+	const std::string diff = DiffJunctionNodeTemplates(tpl, mutated);
+	INFO(prefix << " -> " << diff);
+	CHECK(!diff.empty());
+	CHECK(diff.starts_with(prefix));
+}
+
+/** Check a template vector member by size (one element removed, or one default element added when it is empty in `tpl`). */
+template <typename V>
+static void CheckNodeSize(const JunctionNodeTemplate &tpl, V JunctionNodeTemplate::*member, const char *name)
+{
+	JunctionNodeTemplate copy = tpl;
+	if ((copy.*member).empty()) {
+		(copy.*member).emplace_back();
+	} else {
+		(copy.*member).pop_back();
+	}
+	CheckNodeDiff(tpl, copy, fmt::format("{}: size", name));
+}
+
+/** Check each listed field of the first element of a member: `fields` pairs a field name with a mutation of the element. */
+template <typename V, typename... Fs>
+static void CheckNodeFields(const JunctionNodeTemplate &tpl, V JunctionNodeTemplate::*member, const char *name, std::pair<const char *, Fs>... fields)
+{
+	CheckNodeSize(tpl, member, name);
+	if ((tpl.*member).empty()) {
+		WARN("empty in FlatT, size only: " << name);
+		return;
+	}
+	const auto one = [&](const char *field, auto mutate) {
+		JunctionNodeTemplate copy = tpl;
+		mutate((copy.*member).front());
+		CheckNodeDiff(tpl, copy, fmt::format("{}[0].{}", name, field));
+	};
+	(one(fields.first, fields.second), ...);
+}
+
+/** A field mutation, written `FIELD(tile)` for a plain field or `FIELD2(bridge, tunnel)` for a nested one. */
+#define FIELD(f) std::pair{#f, [](auto &e) { ChangeNodeValue(e.f); }}
+#define FIELD2(f, g) std::pair{#f "." #g, [](auto &e) { ChangeNodeValue(e.f.g); }}
+#define VEC(f) std::pair{#f, [](auto &e) { e.f.pop_back(); }}
+
+TEST_CASE("the template comparator finds every member", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	REQUIRE(tpl.error.empty());
+	CHECK(DiffJunctionNodeTemplates(tpl, tpl).empty());
+
+	using N = JunctionNodeTemplate;
+	CheckNodeFields(tpl, &N::points, "points", FIELD2(tile, x), FIELD2(tile, y), FIELD(trackdir), FIELD(cls), FIELD(ycls));
+	CheckNodeFields(tpl, &N::links, "links", FIELD(from), FIELD(to), FIELD(free), FIELD(axis), FIELD(diagonal));
+	CheckNodeFields(tpl, &N::paths, "paths", FIELD(from), FIELD(to), VEC(points), VEC(units), FIELD(dir), FIELD(dir_y));
+	CheckNodeFields(tpl, &N::pieces, "pieces", FIELD2(tile, x), FIELD2(tile, y), FIELD(track), FIELD(on_bridge), FIELD(cls), FIELD(ycls));
+	CheckNodeFields(tpl, &N::bridges, "bridges", FIELD2(bridge, start.x), FIELD2(bridge, start.y), FIELD2(bridge, end.x), FIELD2(bridge, end.y), FIELD2(bridge, tunnel), FIELD2(bridge, z), FIELD(cls), FIELD(ycls));
+	CheckNodeFields(tpl, &N::joins, "joins", FIELD2(from_tile, x), FIELD2(from_tile, y), FIELD(from_td), FIELD2(to_tile, x), FIELD2(to_tile, y), FIELD(cls), FIELD(ycls));
+	CheckNodeFields(tpl, &N::diffs, "diffs", FIELD(a), FIELD(b), FIELD(k));
+	CheckNodeFields(tpl, &N::diagonals, "diagonals", FIELD(link), FIELD(dx), FIELD(dy), FIELD(halves));
+	CheckNodeFields(tpl, &N::late_gaps, "late_gaps", FIELD(path), FIELD(p), FIELD(q), FIELD(g), FIELD(u), VEC(diagonals));
+	CheckNodeFields(tpl, &N::late_crossings, "late_crossings", FIELD(bridge), FIELD(diagonal));
+	CheckNodeFields(tpl, &N::prio_rows, "prio_rows", FIELD(merge), FIELD(side), FIELD(dir), FIELD(span));
+	CheckNodeSize(tpl, &N::flat, "flat");
+
+	const auto scalar = [&](const char *name, auto mutate) {
+		N copy = tpl;
+		mutate(copy);
+		CheckNodeDiff(tpl, copy, name);
+	};
+	scalar("open_joins", [](N &t) { ChangeNodeValue(t.open_joins); });
+	scalar("flat[0]", [](N &t) { ChangeNodeValue(t.flat.front()); });
+	scalar("x_classes", [](N &t) { ChangeNodeValue(t.x_classes); });
+	scalar("anchor", [](N &t) { ChangeNodeValue(t.anchor); });
+	scalar("anchor_y", [](N &t) { ChangeNodeValue(t.anchor_y); });
+	scalar("error", [](N &t) { ChangeNodeValue(t.error); });
+}
+
+TEST_CASE("the traced T is a fixed point", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	REQUIRE(tpl.error.empty());
+	const JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	const JunctionFacts facts(terrain);
+	const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, FlatToWorking(spec));
+	REQUIRE(solve.layout.has_value());
+	const JunctionNodeTemplate rebuilt = BuildJunctionNodeTemplate(*solve.layout, spec);
+	const std::string diff = DiffJunctionNodeTemplates(tpl, rebuilt);
+	INFO(diff);
+	CHECK(diff == "");
+}

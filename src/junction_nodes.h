@@ -123,6 +123,11 @@ struct JunctionNodeTemplate {
 };
 /** Read the template of a flat layout. */
 JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionLayout &flat, const JunctionSpec &spec);
+/**
+ * The first difference between two node templates, or empty when they are equal (DESIGN-G1 G0): every member of the template and of every struct it holds, in order, element by element.
+ * @return "<member>[<index>].<field>: <a> vs <b>" or "<member>: size <a> vs <b>"; empty when equal.
+ */
+std::string DiffJunctionNodeTemplates(const JunctionNodeTemplate &a, const JunctionNodeTemplate &b);
 /** Add the template's diffs and the anchors (fixed to flat[anchor] and flat[anchor_y]) to positions; its first tpl.flat.size() variables are the X then Y classes and extra variables are allowed; false when infeasible. */
 bool AddJunctionNodeConstraints(const JunctionNodeTemplate &tpl, JunctionPositions &positions);
 /** Add the constraints that need the Y values (DESIGN-N3 §6 phase 3): free diagonals' x, late gaps, late crossings. values holds every Y variable's fixed value (X entries ignored); false when infeasible. */
