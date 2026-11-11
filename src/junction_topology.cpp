@@ -90,6 +90,33 @@ std::vector<std::pair<uint32_t, uint32_t>> JunctionChordCrossings(const std::vec
 	return crossings;
 }
 
+std::vector<int> JunctionSlotRows(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, std::string *error)
+{
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+	const int n = static_cast<int>(slots.size());
+	auto group_of = [&](int slot) -> const JunctionLaneGroup & { return topology.groups[slots[slot].group]; };
+	std::vector<int> row_of(n, -1);
+	int rows = 0;
+	for (int s = 0; s < n; s++) {
+		if (group_of(s).main && group_of(s).side == JunctionSide::W) row_of[s] = rows++;
+	}
+	for (int s = 0; s < n; s++) {
+		if (!group_of(s).main || row_of[s] >= 0) continue;
+		for (const JunctionLanePath &path : paths) {
+			const int other = path.from == s ? path.to : (path.to == s ? path.from : -1);
+			if (other >= 0 && group_of(other).main && group_of(other).side == JunctionSide::W) {
+				row_of[s] = row_of[other];
+				break;
+			}
+		}
+		if (row_of[s] < 0) {
+			if (error != nullptr) *error = "a main slot without a through partner is not ruled yet";
+			return {};
+		}
+	}
+	return row_of;
+}
+
 /** Builds the split or merge trees of a track graph (DESIGN-G1 §7). */
 struct JunctionTreeBuilder {
 	const std::vector<JunctionPortSlot> &slots;
@@ -136,7 +163,7 @@ struct JunctionTreeBuilder {
 			return false;
 		}
 		const JunctionTrackEnd node{true, static_cast<uint16_t>(this->nodes.size())};
-		this->nodes.push_back({this->split, s});
+		this->nodes.push_back({this->split, s, 0});
 		if (this->split) {
 			this->edges.push_back({JunctionTrackEdge::Kind::In, parent, node, set});
 		} else {
@@ -175,6 +202,24 @@ struct JunctionTreeBuilder {
 JunctionTrackGraph BuildJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, std::string *error)
 {
 	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+	const int n = static_cast<int>(slots.size());
+	auto group_of = [&](int slot) -> const JunctionLaneGroup & { return topology.groups[slots[slot].group]; };
+	for (int s = 0; s < n; s++) {
+		if (!group_of(s).main && group_of(s).side != JunctionSide::S) {
+			if (error != nullptr) *error = "branch ports off the S side are not ruled yet";
+			return {};
+		}
+	}
+	std::string rows_error;
+	const std::vector<int> row_of = JunctionSlotRows(topology, paths, &rows_error);
+	if (!rows_error.empty()) {
+		if (error != nullptr) *error = rows_error;
+		return {};
+	}
+	int rows = 0;
+	for (int s = 0; s < n; s++) {
+		if (group_of(s).main && group_of(s).side == JunctionSide::W) rows++;
+	}
 	JunctionTreeBuilder in_trees{slots, paths, true, {}, {}, {}, {}};
 	JunctionTreeBuilder out_trees{slots, paths, false, {}, {}, {}, {}};
 	if (!in_trees.Build() || !out_trees.Build()) {
@@ -216,6 +261,56 @@ JunctionTrackGraph BuildJunctionTrackGraph(const JunctionTopology &topology, con
 		}
 	}
 
+	/* Levels (D204, D205). */
+	for (uint32_t i = 0; i < graph.nodes.size(); i++) {
+		JunctionTrackNode &node = graph.nodes[i];
+		if (group_of(node.slot).main) {
+			node.level = 2 * row_of[node.slot] + 1;
+			continue;
+		}
+		if (!node.split) {
+			node.level = 2 * rows;
+			continue;
+		}
+		const JunctionTrackEdge *best = nullptr;
+		for (const JunctionTrackEdge &edge : graph.edges) {
+			if (((edge.from.node && edge.from.index == i) || (edge.to.node && edge.to.index == i)) && (best == nullptr || edge.paths.size() > best->paths.size())) best = &edge;
+		}
+		const uint8_t group = slots[paths[best->paths[0]].to].group;
+		bool one_group = true;
+		for (uint16_t p : best->paths) one_group = one_group && slots[paths[p].to].group == group;
+		if (!one_group) {
+			node.level = 2 * rows;
+			continue;
+		}
+		int largest = 0;
+		for (int s = 0; s < n; s++) {
+			if (slots[s].group == group) largest = std::max(largest, row_of[s]);
+		}
+		node.level = 2 * (1 + largest);
+	}
+	auto end_level = [&](const JunctionTrackEnd &end) {
+		if (end.node) return graph.nodes[end.index].level;
+		return group_of(end.index).main ? 2 * row_of[end.index] + 1 : 2 * rows + 1;
+	};
+	auto meet = [&](uint32_t i, uint32_t j) {
+		const int ai = end_level(graph.edges[i].from);
+		const int bi = end_level(graph.edges[i].to);
+		const int aj = end_level(graph.edges[j].from);
+		const int bj = end_level(graph.edges[j].to);
+		const bool row_i = ai == bi && ai % 2 == 1;
+		const bool row_j = aj == bj && aj % 2 == 1;
+		const int lo_i = std::min(ai, bi);
+		const int hi_i = std::max(ai, bi);
+		const int lo_j = std::min(aj, bj);
+		const int hi_j = std::max(aj, bj);
+		if (row_i && row_j) return false;
+		if (row_i) return lo_j < ai && ai < hi_j;
+		if (row_j) return lo_i < aj && aj < hi_i;
+		const int low = std::max(lo_i, lo_j);
+		return low + low % 2 <= std::min(hi_i, hi_j);
+	};
+
 	/* Crossings: the biggest edge pairs first, each chord pair covered once. */
 	const std::vector<std::pair<uint32_t, uint32_t>> chords = JunctionChordCrossings(paths);
 	auto is_chord = [&](uint16_t p, uint16_t q) {
@@ -228,7 +323,7 @@ JunctionTrackGraph BuildJunctionTrackGraph(const JunctionTopology &topology, con
 			for (uint16_t p : graph.edges[i].paths) {
 				for (uint16_t q : graph.edges[j].paths) all = all && p != q && is_chord(p, q);
 			}
-			if (all) candidates.emplace_back(i, j);
+			if (all && meet(i, j)) candidates.emplace_back(i, j);
 		}
 	}
 	auto weight = [&](const std::pair<uint32_t, uint32_t> &c) { return graph.edges[c.first].paths.size() * graph.edges[c.second].paths.size(); };
@@ -262,55 +357,16 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 	const int n = static_cast<int>(slots.size());
 	auto group_of = [&](int slot) -> const JunctionLaneGroup & { return topology.groups[slots[slot].group]; };
 
-	/* Branch side and rows. */
-	for (int s = 0; s < n; s++) {
-		if (!group_of(s).main && group_of(s).side != JunctionSide::S) return fail("branch ports off the S side are not ruled yet");
-	}
-	std::vector<int> row_of(n, -1);
+	/* Rows and levels. */
+	const std::vector<int> row_of = JunctionSlotRows(topology, paths, error);
+	if (row_of.empty()) return JunctionTrackOrder{};
 	int rows = 0;
 	for (int s = 0; s < n; s++) {
-		if (group_of(s).main && group_of(s).side == JunctionSide::W) row_of[s] = rows++;
+		if (group_of(s).main && group_of(s).side == JunctionSide::W) rows++;
 	}
-	for (int s = 0; s < n; s++) {
-		if (!group_of(s).main || row_of[s] >= 0) continue;
-		for (const JunctionLanePath &path : paths) {
-			const int other = path.from == s ? path.to : (path.to == s ? path.from : -1);
-			if (other >= 0 && group_of(other).main && group_of(other).side == JunctionSide::W) {
-				row_of[s] = row_of[other];
-				break;
-			}
-		}
-		if (row_of[s] < 0) return fail("a main slot without a through partner is not ruled yet");
-	}
-
-	/* Levels. */
 	const int south_level = 2 * rows + 1;
-	std::vector<int> node_level(graph.nodes.size(), 0);
-	for (uint32_t i = 0; i < graph.nodes.size(); i++) {
-		const JunctionTrackNode &node = graph.nodes[i];
-		if (group_of(node.slot).main) {
-			node_level[i] = 2 * row_of[node.slot] + 1;
-			continue;
-		}
-		const JunctionTrackEdge *best = nullptr;
-		for (const JunctionTrackEdge &edge : graph.edges) {
-			if (((edge.from.node && edge.from.index == i) || (edge.to.node && edge.to.index == i)) && (best == nullptr || edge.paths.size() > best->paths.size())) best = &edge;
-		}
-		uint8_t group = slots[node.split ? paths[best->paths[0]].to : paths[best->paths[0]].from].group;
-		bool one_group = true;
-		for (uint16_t p : best->paths) {
-			one_group = one_group && slots[node.split ? paths[p].to : paths[p].from].group == group;
-		}
-		if (!one_group) {
-			node_level[i] = 2 * rows;
-			continue;
-		}
-		int largest = 0;
-		for (int s = 0; s < n; s++) {
-			if (slots[s].group == group) largest = std::max(largest, row_of[s]);
-		}
-		node_level[i] = 2 * (1 + largest);
-	}
+	std::vector<int> node_level;
+	for (const JunctionTrackNode &node : graph.nodes) node_level.push_back(node.level);
 	auto end_level = [&](const JunctionTrackEnd &end) {
 		if (end.node) return node_level[end.index];
 		return group_of(end.index).main ? 2 * row_of[end.index] + 1 : south_level;
@@ -367,7 +423,21 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 	}
 	for (int level = 2 * rows; level >= 0; level--) {
 		if (level % 2 == 0) {
+			std::vector<std::pair<uint32_t, uint32_t>> pending = band_crossings[level];
 			for (;;) {
+				bool swapped = false;
+				for (auto p = pending.begin(); p != pending.end(); ++p) {
+					const auto pi = std::find(items.begin(), items.end(), p->first);
+					const auto pj = std::find(items.begin(), items.end(), p->second);
+					if (pi == items.end() || pj == items.end() || std::abs(pi - pj) != 1) continue;
+					std::iter_swap(pi, pj);
+					swept[p->first].push_back(p->second);
+					swept[p->second].push_back(p->first);
+					pending.erase(p);
+					swapped = true;
+					break;
+				}
+				if (swapped) continue;
 				auto it = std::find_if(items.begin(), items.end(), [&](uint32_t e) {
 					const JunctionTrackEnd end = north_end(e);
 					return end.node && node_level[end.index] == level;
@@ -394,14 +464,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 				it = items.erase(it);
 				for (const auto &other : others) it = items.insert(it, other.second) + 1;
 			}
-			for (const auto &[i, j] : band_crossings[level]) {
-				const auto pi = std::find(items.begin(), items.end(), i);
-				const auto pj = std::find(items.begin(), items.end(), j);
-				if (pi == items.end() || pj == items.end() || std::abs(pi - pj) != 1) return fail("a crossing between edges that are not adjacent is not ruled yet");
-				std::iter_swap(pi, pj);
-				swept[i].push_back(j);
-				swept[j].push_back(i);
-			}
+			if (!pending.empty()) return fail("a crossing between edges that are not adjacent is not ruled yet");
 		} else {
 			const int row = (level - 1) / 2;
 			std::vector<JunctionTrackRowItem> &row_items = order.rows[row];
@@ -471,23 +534,10 @@ JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topol
 	const int n = static_cast<int>(slots.size());
 	auto group_of = [&](int slot) -> const JunctionLaneGroup & { return topology.groups[slots[slot].group]; };
 
-	/* The rows of the main slots, as OrderJunctionTrackGraph finds them. */
-	std::vector<int> row_of(n, -1);
+	/* The rows of the main slots. */
+	const std::vector<int> row_of = JunctionSlotRows(topology, paths, error);
+	if (row_of.empty()) return JunctionTrackStructure{};
 	const int rows = static_cast<int>(order.rows.size());
-	int next_row = 0;
-	for (int s = 0; s < n; s++) {
-		if (group_of(s).main && group_of(s).side == JunctionSide::W) row_of[s] = next_row++;
-	}
-	for (int s = 0; s < n; s++) {
-		if (!group_of(s).main || row_of[s] >= 0) continue;
-		for (const JunctionLanePath &path : paths) {
-			const int other = path.from == s ? path.to : (path.to == s ? path.from : -1);
-			if (other >= 0 && group_of(other).main && group_of(other).side == JunctionSide::W) {
-				row_of[s] = row_of[other];
-				break;
-			}
-		}
-	}
 	auto end_level = [&](const JunctionTrackEnd &end) {
 		if (end.node) return order.node_level[end.index];
 		return group_of(end.index).main ? 2 * row_of[end.index] + 1 : 2 * rows + 1;

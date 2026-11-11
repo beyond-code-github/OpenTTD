@@ -63,6 +63,12 @@ std::vector<JunctionLanePath> ExpandJunctionLanes(const JunctionTopology &topolo
  */
 std::vector<std::pair<uint32_t, uint32_t>> JunctionChordCrossings(const std::vector<JunctionLanePath> &paths);
 
+/**
+ * The row of every port slot (DESIGN-G1 §8): the main slots on the W side in slot order are rows 0, 1, ...; every other main slot takes the row of the W-side slot it shares a through path with (both ends main); a non-main slot has -1.
+ * @param error Receives the reason when the result is empty.
+ */
+std::vector<int> JunctionSlotRows(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, std::string *error);
+
 /** One end of a track-graph edge: a port slot or a node. */
 struct JunctionTrackEnd {
 	bool node; ///< index is into JunctionTrackGraph::nodes, else into JunctionPortSlots.
@@ -74,6 +80,7 @@ struct JunctionTrackEnd {
 struct JunctionTrackNode {
 	bool split; ///< In an in slot's split tree; else in an out slot's merge tree.
 	uint16_t slot; ///< The port slot whose tree holds it.
+	int level; ///< 2r+1 on row r; 2b in band b (band b north of row b; band R south of the last row) (DESIGN-G1 §8, D204, D205).
 	bool operator==(const JunctionTrackNode &) const = default;
 };
 
