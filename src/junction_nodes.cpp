@@ -24,10 +24,10 @@
 
 #include "safeguards.h"
 
-/** An x coordinate in the flat layout and the class that moves it: x = value(cls) + x - flat[cls]. */
-struct NodeX {
-	int x;
-	uint16_t cls;
+/** A coordinate (x or y) in the flat layout and the variable that moves it: pos' = value(var) + pos - flat[var]. */
+struct NodeCoord {
+	int pos;
+	uint16_t var;
 };
 
 /** What the builder keeps per path beyond the template's JunctionNodePath. */
@@ -42,6 +42,7 @@ struct NodePathWork {
 struct NodeSpan {
 	uint32_t from;
 	uint32_t to;
+	Axis axis;
 };
 
 /** Reads the template of a flat layout. */
@@ -53,8 +54,14 @@ struct NodeBuilder {
 	std::vector<NodeSpan> spans;
 	std::set<std::tuple<uint16_t, uint16_t, int>> seen_diffs;
 
-	/** The point's x with its class. */
-	NodeX At(uint32_t point) const { return {tpl.points[point].tile.x, tpl.points[point].cls}; }
+	/** The point's x with its X class. */
+	NodeCoord AtX(uint32_t point) const { return {tpl.points[point].tile.x, tpl.points[point].cls}; }
+
+	/** The point's y with its Y class. */
+	NodeCoord AtY(uint32_t point) const { return {tpl.points[point].tile.y, tpl.points[point].ycls}; }
+
+	/** The point's coordinate along an axis with its variable. */
+	NodeCoord At(uint32_t point, Axis axis) const { return axis == Axis::X ? this->AtX(point) : this->AtY(point); }
 
 	/** Fail with the first error only. */
 	void Fail(const std::string &message)
@@ -62,30 +69,30 @@ struct NodeBuilder {
 		if (this->tpl.error.empty()) this->tpl.error = message;
 	}
 
-	/** x_a - x_b >= k as a diff over classes; false when both are in one class and the constant does not hold. */
-	bool AddX(NodeX a, NodeX b, int k)
+	/** a - b >= k as a diff over variables; false when both are one variable and the constant does not hold. */
+	bool Add(NodeCoord a, NodeCoord b, int k)
 	{
-		const int off_a = a.x - this->tpl.flat[a.cls];
-		const int off_b = b.x - this->tpl.flat[b.cls];
-		if (a.cls == b.cls) return off_a - off_b >= k;
+		const int off_a = a.pos - this->tpl.flat[a.var];
+		const int off_b = b.pos - this->tpl.flat[b.var];
+		if (a.var == b.var) return off_a - off_b >= k;
 		const int rhs = k - off_a + off_b;
-		if (this->seen_diffs.emplace(a.cls, b.cls, rhs).second) this->tpl.diffs.push_back({a.cls, b.cls, rhs});
+		if (this->seen_diffs.emplace(a.var, b.var, rhs).second) this->tpl.diffs.push_back({a.var, b.var, rhs});
 		return true;
 	}
 
-	/** d * (x_b - x_a) >= k. */
-	bool AddDirected(int d, NodeX a, NodeX b, int k)
+	/** d * (b - a) >= k. */
+	bool AddDirected(int d, NodeCoord a, NodeCoord b, int k)
 	{
-		return d > 0 ? this->AddX(b, a, k) : this->AddX(a, b, k);
+		return d > 0 ? this->Add(b, a, k) : this->Add(a, b, k);
 	}
 
 	/** The points, links, classes and pieces. */
 	void ReadPoints();
 	/** DESIGN-N3 §2 rules 1-3, per path. */
 	void AddPathDiffs();
-	/** DESIGN-N3 §2 rule 4. */
+	/** DESIGN-N3 §2 rule 4, for bridges on either axis (DESIGN-N3 §5). */
 	void AddCrossings();
-	/** Rule 6: the path end points at the extreme flat x share their x. */
+	/** Rule 6: the path end points at the extreme flat x share their x, and the same for y. */
 	void AddBoxEdges();
 };
 
@@ -167,7 +174,7 @@ void NodeBuilder::ReadPoints()
 		const JunctionPath &path = this->ctx.paths[pi];
 		const std::vector<JunctionPiece> &pieces = path.pieces;
 		NodePathWork &w = this->work[pi];
-		JunctionNodePath node_path{path.from, path.to, {}, {}, 0};
+		JunctionNodePath node_path{path.from, path.to, {}, {}, 0, 0};
 		w.governing.assign(pieces.size(), 0);
 		w.link_of.assign(pieces.size(), -1);
 		std::vector<size_t> point_pieces;
@@ -175,7 +182,7 @@ void NodeBuilder::ReadPoints()
 			const PieceId id{pieces[i].tile.x, pieces[i].tile.y, pieces[i].trackdir};
 			if (!point_ids.contains(id)) continue;
 			auto [it, added] = index_of.emplace(id, static_cast<uint32_t>(this->tpl.points.size()));
-			if (added) this->tpl.points.push_back({pieces[i].tile, pieces[i].trackdir, 0});
+			if (added) this->tpl.points.push_back({pieces[i].tile, pieces[i].trackdir, 0, 0});
 			node_path.points.push_back(it->second);
 			node_path.units.push_back(w.start[i]);
 			point_pieces.push_back(i);
@@ -184,41 +191,63 @@ void NodeBuilder::ReadPoints()
 		/* Links between consecutive points. */
 		bool plus = false;
 		bool minus = false;
+		bool plus_y = false;
+		bool minus_y = false;
 		for (size_t k = 0; k + 1 < node_path.points.size(); k++) {
 			const size_t a = point_pieces[k];
 			const size_t b = point_pieces[k + 1];
-			bool free = true;
+			bool free_x = true;
+			bool free_y = true;
 			for (size_t i = a; i <= b; i++) {
 				const Trackdir td = pieces[i].trackdir;
-				if (pieces[i].on_bridge || (td != Trackdir::X_NE && td != Trackdir::X_SW) || pieces[i].tile.y != pieces[a].tile.y) free = false;
+				if (pieces[i].on_bridge || (td != Trackdir::X_NE && td != Trackdir::X_SW) || pieces[i].tile.y != pieces[a].tile.y) free_x = false;
+				if (pieces[i].on_bridge || (td != Trackdir::Y_SE && td != Trackdir::Y_NW) || pieces[i].tile.x != pieces[a].tile.x) free_y = false;
 			}
+			const bool free = free_x || free_y;
+			const Axis axis = free_y ? Axis::Y : Axis::X;
 			const uint32_t from = node_path.points[k];
 			const uint32_t to = node_path.points[k + 1];
 			if (free) {
 				const int dx = pieces[b].tile.x - pieces[a].tile.x;
-				if (dx > 0) plus = true;
-				if (dx < 0) minus = true;
+				const int dy = pieces[b].tile.y - pieces[a].tile.y;
+				if (free_x) {
+					if (dx > 0) plus = true;
+					if (dx < 0) minus = true;
+				} else {
+					if (dy > 0) plus_y = true;
+					if (dy < 0) minus_y = true;
+				}
 				for (size_t i = a + 1; i < b; i++) w.link_of[i] = static_cast<int>(this->spans.size());
-				this->spans.push_back({from, to});
+				this->spans.push_back({from, to, axis});
 			}
-			if (link_seen.emplace(from, to).second) this->tpl.links.push_back({from, to, free});
+			if (link_seen.emplace(from, to).second) this->tpl.links.push_back({from, to, free, axis});
 		}
 		if (plus && minus) this->Fail(fmt::format("path {} has free links both ways", pi));
+		if (plus_y && minus_y) this->Fail(fmt::format("path {} has free links both ways along y", pi));
 		node_path.dir = plus ? 1 : (minus ? -1 : 0);
+		node_path.dir_y = plus_y ? 1 : (minus_y ? -1 : 0);
 		this->tpl.paths.push_back(std::move(node_path));
 	}
 
-	/* Classes: union-find over rigid links, numbered by their first point. */
-	NodeUnion classes(this->tpl.points.size());
+	/* Classes: X classes join rigid and Y-free links, Y classes join rigid and X-free links; each numbered by its first point, X classes first. */
+	NodeUnion x_union(this->tpl.points.size());
+	NodeUnion y_union(this->tpl.points.size());
 	for (const JunctionNodeLink &link : this->tpl.links) {
-		if (!link.free) classes.Join(link.from, link.to);
+		if (!link.free || link.axis == Axis::Y) x_union.Join(link.from, link.to);
+		if (!link.free || link.axis == Axis::X) y_union.Join(link.from, link.to);
 	}
-	std::map<uint32_t, uint16_t> class_of_root;
+	std::map<uint32_t, uint16_t> x_of_root;
 	for (uint32_t p = 0; p < this->tpl.points.size(); p++) {
-		const uint32_t root = classes.Find(p);
-		auto [it, added] = class_of_root.emplace(root, static_cast<uint16_t>(class_of_root.size()));
+		auto [it, added] = x_of_root.emplace(x_union.Find(p), static_cast<uint16_t>(x_of_root.size()));
 		if (added) this->tpl.flat.push_back(this->tpl.points[p].tile.x);
 		this->tpl.points[p].cls = it->second;
+	}
+	this->tpl.x_classes = static_cast<uint16_t>(x_of_root.size());
+	std::map<uint32_t, uint16_t> y_of_root;
+	for (uint32_t p = 0; p < this->tpl.points.size(); p++) {
+		auto [it, added] = y_of_root.emplace(y_union.Find(p), static_cast<uint16_t>(this->tpl.x_classes + y_of_root.size()));
+		if (added) this->tpl.flat.push_back(this->tpl.points[p].tile.y);
+		this->tpl.points[p].ycls = it->second;
 	}
 
 	/* The pieces that are not strictly inside a free link, with the class of the latest point at or before them. */
@@ -239,29 +268,29 @@ void NodeBuilder::ReadPoints()
 			if (w.link_of[i] >= 0) continue;
 			const Track track = TrackdirToTrack(pieces[i].trackdir);
 			if (!piece_seen.emplace(pieces[i].tile.x, pieces[i].tile.y, track).second) continue;
-			this->tpl.pieces.push_back({pieces[i].tile, track, pieces[i].on_bridge, this->tpl.points[w.governing[i]].cls});
+			this->tpl.pieces.push_back({pieces[i].tile, track, pieces[i].on_bridge, this->tpl.points[w.governing[i]].cls, this->tpl.points[w.governing[i]].ycls});
 		}
 	}
 
 	/* The bridges with the class of their heads. */
 	for (size_t bi = 0; bi < layout.bridges.size(); bi++) {
 		const JunctionBridge &bridge = layout.bridges[bi];
-		std::optional<uint16_t> cls[2];
+		std::optional<std::pair<uint16_t, uint16_t>> cls[2];
 		const TileIndexDiffC heads[2] = {bridge.start, bridge.end};
 		for (size_t h = 0; h < 2; h++) {
 			for (const JunctionNodePiece &piece : this->tpl.pieces) {
 				if (piece.on_bridge && piece.tile.x == heads[h].x && piece.tile.y == heads[h].y) {
-					cls[h] = piece.cls;
+					cls[h] = std::make_pair(piece.cls, piece.ycls);
 					break;
 				}
 			}
 		}
 		if (!cls[0].has_value() || !cls[1].has_value()) {
 			this->Fail(fmt::format("bridge {}: a head is not a piece of any path", bi));
-			this->tpl.bridges.emplace_back(bridge, 0);
+			this->tpl.bridges.push_back({bridge, 0, this->tpl.x_classes});
 		} else {
 			if (*cls[0] != *cls[1]) this->Fail(fmt::format("bridge {}: heads in different classes", bi));
-			this->tpl.bridges.emplace_back(bridge, *cls[0]);
+			this->tpl.bridges.push_back({bridge, cls[0]->first, cls[0]->second});
 		}
 	}
 }
@@ -298,23 +327,33 @@ void NodeBuilder::AddPathDiffs()
 		const JunctionNodePath &node_path = this->tpl.paths[pi];
 		const NodePathWork &w = this->work[pi];
 		const int d = node_path.dir;
+		const int d_y = node_path.dir_y;
 
-		/* The rule of §2: d * (x_q - x_p) >= d * F + ceil((g - U) / 2) for the points p before q with the flat unit difference U. */
+		/* The rule of §2: d * (x_q - x_p) >= d * F + ceil((g - U) / 2) for the points p before q with the flat unit difference U; the same over y with dir_y. */
 		auto add_gap = [&](uint32_t p, int unit_p, uint32_t q, int unit_q, int g) {
 			const int u = unit_q - unit_p;
-			if (this->tpl.points[p].cls == this->tpl.points[q].cls || d == 0) {
+			const bool sx = this->tpl.points[p].cls != this->tpl.points[q].cls;
+			const bool sy = this->tpl.points[p].ycls != this->tpl.points[q].ycls;
+			if (sx && sy) {
+				this->Fail(fmt::format("path {} points {},{}: gap spans free links on both axes", pi, p, q));
+				return;
+			}
+			const Axis axis = sy ? Axis::Y : Axis::X;
+			const int dir = sy ? d_y : d;
+			if ((!sx && !sy) || dir == 0) {
 				if (u < g) this->Fail(fmt::format("path {} points {},{}: gap {} below {}", pi, p, q, u, g));
 				return;
 			}
-			const int f = this->tpl.points[q].tile.x - this->tpl.points[p].tile.x;
-			this->AddDirected(d, this->At(p), this->At(q), d * f + CeilHalf(g - u));
+			const NodeCoord cp = this->At(p, axis);
+			const NodeCoord cq = this->At(q, axis);
+			this->AddDirected(dir, cp, cq, dir * (cq.pos - cp.pos) + CeilHalf(g - u));
 		};
 
-		/* Rule 1. */
+		/* Rule 1, along each free link's axis. */
 		for (size_t k = 0; k + 1 < node_path.points.size(); k++) {
 			const auto link = std::ranges::find_if(this->tpl.links, [&](const JunctionNodeLink &l) { return l.from == node_path.points[k] && l.to == node_path.points[k + 1]; });
 			if (link == this->tpl.links.end() || !link->free) continue;
-			if (!this->AddDirected(d, this->At(link->from), this->At(link->to), 1)) this->Fail(fmt::format("path {}: a free link joins one class", pi));
+			if (!this->AddDirected(link->axis == Axis::X ? d : d_y, this->At(link->from, link->axis), this->At(link->to, link->axis), 1)) this->Fail(fmt::format("path {}: a free link joins one class", pi));
 		}
 
 		/* Rule 2: the curves of the path are the pieces where the direction changes by 45 degrees. */
@@ -353,9 +392,17 @@ void NodeBuilder::AddPathDiffs()
 void NodeBuilder::AddCrossings()
 {
 	for (size_t bi = 0; bi < this->tpl.bridges.size(); bi++) {
-		const JunctionBridge &bridge = this->tpl.bridges[bi].first;
-		const uint16_t head_cls = this->tpl.bridges[bi].second;
-		const bool x_axis = bridge.start.y == bridge.end.y;
+		const JunctionBridge &bridge = this->tpl.bridges[bi].bridge;
+		const NodeCoord head_x{bridge.start.x, this->tpl.bridges[bi].cls};
+		const NodeCoord head_y{bridge.start.y, this->tpl.bridges[bi].ycls};
+		const Axis along = bridge.start.y == bridge.end.y ? Axis::X : Axis::Y; ///< The bridge's axis A; B is the other.
+		const Axis across = along == Axis::X ? Axis::Y : Axis::X;
+		const auto pos = [](TileIndexDiffC tile, Axis axis) { return axis == Axis::X ? tile.x : tile.y; };
+		const int lo = std::min(pos(bridge.start, along), pos(bridge.end, along));
+		const int hi = std::max(pos(bridge.start, along), pos(bridge.end, along));
+		const int line = pos(bridge.start, across);
+		const NodeCoord head_along = along == Axis::X ? head_x : head_y;
+		const NodeCoord head_across = along == Axis::X ? head_y : head_x;
 
 		for (size_t qi = 0; qi < this->ctx.paths.size(); qi++) {
 			const std::vector<JunctionPiece> &pieces = this->ctx.paths[qi].pieces;
@@ -367,33 +414,26 @@ void NodeBuilder::AddCrossings()
 
 			for (size_t i = 0; i < pieces.size(); i++) {
 				const TileIndexDiffC tile = pieces[i].tile;
-				if (x_axis) {
-					const int lo = std::min(bridge.start.x, bridge.end.x);
-					const int hi = std::max(bridge.start.x, bridge.end.x);
-					if (tile.y != bridge.start.y || tile.x <= lo || tile.x >= hi) continue;
-					if (w.link_of[i] >= 0) {
+				if (pos(tile, across) != line || pos(tile, along) <= lo || pos(tile, along) >= hi) continue;
+				if (w.link_of[i] >= 0) {
+					const NodeSpan &span = this->spans[static_cast<size_t>(w.link_of[i])];
+					if (span.axis == along) {
 						this->Fail(fmt::format("bridge {}: path {} has a free link under it at {},{}", bi, qi, tile.x, tile.y));
 						continue;
 					}
-					const NodeX piece{tile.x, this->tpl.points[w.governing[i]].cls};
-					const NodeX h1{lo, head_cls};
-					const NodeX h2{hi, head_cls};
-					if (!this->AddX(piece, h1, 1) || !this->AddX(h2, piece, 1)) this->Fail(fmt::format("bridge {}: path {} piece at {},{} is not between the heads", bi, qi, tile.x, tile.y));
-				} else {
-					const int lo = std::min(bridge.start.y, bridge.end.y);
-					const int hi = std::max(bridge.start.y, bridge.end.y);
-					if (tile.x != bridge.start.x || tile.y <= lo || tile.y >= hi) continue;
-					const NodeX head{bridge.start.x, head_cls};
-					if (w.link_of[i] >= 0) {
-						const NodeSpan &span = this->spans[static_cast<size_t>(w.link_of[i])];
-						const int d = this->tpl.paths[qi].dir;
-						if (!this->AddDirected(d, this->At(span.from), head, 1) || !this->AddDirected(d, head, this->At(span.to), 1)) {
-							this->Fail(fmt::format("bridge {}: path {} link under it at {},{} joins the bridge's class", bi, qi, tile.x, tile.y));
-						}
-					} else {
-						const NodeX piece{tile.x, this->tpl.points[w.governing[i]].cls};
-						if (!this->AddX(piece, head, 0) || !this->AddX(head, piece, 0)) this->Fail(fmt::format("bridge {}: path {} piece at {},{} is not under the heads", bi, qi, tile.x, tile.y));
+					const int d = across == Axis::X ? this->tpl.paths[qi].dir : this->tpl.paths[qi].dir_y;
+					if (!this->AddDirected(d, this->At(span.from, across), head_across, 1) || !this->AddDirected(d, head_across, this->At(span.to, across), 1)) {
+						this->Fail(fmt::format("bridge {}: path {} link under it at {},{} joins the bridge's class", bi, qi, tile.x, tile.y));
 					}
+				} else {
+					const NodeCoord piece_x{tile.x, this->tpl.points[w.governing[i]].cls};
+					const NodeCoord piece_y{tile.y, this->tpl.points[w.governing[i]].ycls};
+					const NodeCoord piece_along = along == Axis::X ? piece_x : piece_y;
+					const NodeCoord piece_across = along == Axis::X ? piece_y : piece_x;
+					const NodeCoord h1{lo, head_along.var};
+					const NodeCoord h2{hi, head_along.var};
+					if (!this->Add(piece_along, h1, 1) || !this->Add(h2, piece_along, 1)) this->Fail(fmt::format("bridge {}: path {} piece at {},{} is not between the heads", bi, qi, tile.x, tile.y));
+					if (!this->Add(piece_across, head_across, 0) || !this->Add(head_across, piece_across, 0)) this->Fail(fmt::format("bridge {}: path {} piece at {},{} is not under the heads", bi, qi, tile.x, tile.y));
 				}
 			}
 		}
@@ -409,16 +449,19 @@ void NodeBuilder::AddBoxEdges()
 		ends.insert(path.points.back());
 	}
 	if (ends.empty()) return;
-	const auto [min_it, max_it] = std::ranges::minmax_element(ends, [&](uint32_t a, uint32_t b) { return this->tpl.points[a].tile.x < this->tpl.points[b].tile.x; });
-	for (const int edge : {this->tpl.points[*min_it].tile.x, this->tpl.points[*max_it].tile.x}) {
-		std::optional<uint32_t> previous;
-		for (const uint32_t point : ends) {
-			if (this->tpl.points[point].tile.x != edge) continue;
-			if (previous.has_value() && this->tpl.points[*previous].cls != this->tpl.points[point].cls) {
-				this->AddX(this->At(*previous), this->At(point), 0);
-				this->AddX(this->At(point), this->At(*previous), 0);
+	for (const Axis axis : {Axis::X, Axis::Y}) {
+		const auto less = [&](uint32_t a, uint32_t b) { return this->At(a, axis).pos < this->At(b, axis).pos; };
+		const auto [min_it, max_it] = std::ranges::minmax_element(ends, less);
+		for (const int edge : {this->At(*min_it, axis).pos, this->At(*max_it, axis).pos}) {
+			std::optional<uint32_t> previous;
+			for (const uint32_t point : ends) {
+				if (this->At(point, axis).pos != edge) continue;
+				if (previous.has_value() && this->At(*previous, axis).var != this->At(point, axis).var) {
+					this->Add(this->At(*previous, axis), this->At(point, axis), 0);
+					this->Add(this->At(point, axis), this->At(*previous, axis), 0);
+				}
+				previous = point;
 			}
-			previous = point;
 		}
 	}
 }
@@ -438,8 +481,10 @@ JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionLayout &flat, const
 	const auto anchor = std::ranges::find_if(tpl.paths, [](const JunctionNodePath &p) { return p.from == JunctionPortRole::EIn && p.to == JunctionPortRole::SOut; });
 	if (anchor == tpl.paths.end() || anchor->points.empty()) {
 		tpl.anchor = UINT16_MAX;
+		tpl.anchor_y = UINT16_MAX;
 	} else {
 		tpl.anchor = tpl.points[anchor->points.back()].cls;
+		tpl.anchor_y = tpl.points[anchor->points.front()].ycls;
 	}
 	return tpl;
 }
@@ -451,7 +496,7 @@ bool AddJunctionNodeConstraints(const JunctionNodeTemplate &tpl, JunctionPositio
 		if (!positions.AddDifference(diff.a, diff.b, diff.k)) return false;
 	}
 	if (tpl.anchor == UINT16_MAX) return true;
-	return positions.RestrictRange(tpl.anchor, tpl.flat[tpl.anchor], tpl.flat[tpl.anchor]);
+	return positions.RestrictRange(tpl.anchor, tpl.flat[tpl.anchor], tpl.flat[tpl.anchor]) && positions.RestrictRange(tpl.anchor_y, tpl.flat[tpl.anchor_y], tpl.flat[tpl.anchor_y]);
 }
 
 std::vector<int> JunctionNodeSnap(const JunctionNodeTemplate &tpl, JunctionPositions &positions)
@@ -472,23 +517,33 @@ JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const s
 
 	for (const JunctionNodePiece &piece : tpl.pieces) {
 		if (piece.on_bridge) continue;
-		tiles[{piece.tile.x + shift(piece.cls), piece.tile.y}].Set(piece.track);
+		tiles[{piece.tile.x + shift(piece.cls), piece.tile.y + shift(piece.ycls)}].Set(piece.track);
 	}
 	for (const JunctionNodeLink &link : tpl.links) {
 		if (!link.free) continue;
 		const JunctionNodePoint &from = tpl.points[link.from];
 		const JunctionNodePoint &to = tpl.points[link.to];
-		const int x_from = from.tile.x + shift(from.cls);
-		const int x_to = to.tile.x + shift(to.cls);
-		for (int x = std::min(x_from, x_to) + 1; x < std::max(x_from, x_to); x++) tiles[{x, from.tile.y}].Set(Track::X);
+		if (link.axis == Axis::X) {
+			const int row = from.tile.y + shift(from.ycls);
+			const int x_from = from.tile.x + shift(from.cls);
+			const int x_to = to.tile.x + shift(to.cls);
+			for (int x = std::min(x_from, x_to) + 1; x < std::max(x_from, x_to); x++) tiles[{x, row}].Set(Track::X);
+		} else {
+			const int column = from.tile.x + shift(from.cls);
+			const int y_from = from.tile.y + shift(from.ycls);
+			const int y_to = to.tile.y + shift(to.ycls);
+			for (int y = std::min(y_from, y_to) + 1; y < std::max(y_from, y_to); y++) tiles[{column, y}].Set(Track::Y);
+		}
 	}
 
 	JunctionLayout layout{};
 	for (const auto &[tile, bits] : tiles) layout.tracks.push_back({{static_cast<int16_t>(tile.first), static_cast<int16_t>(tile.second)}, bits});
-	for (const auto &[bridge, cls] : tpl.bridges) {
-		JunctionBridge moved = bridge;
-		moved.start.x = static_cast<int16_t>(moved.start.x + shift(cls));
-		moved.end.x = static_cast<int16_t>(moved.end.x + shift(cls));
+	for (const JunctionNodeBridge &node_bridge : tpl.bridges) {
+		JunctionBridge moved = node_bridge.bridge;
+		moved.start.x = static_cast<int16_t>(moved.start.x + shift(node_bridge.cls));
+		moved.end.x = static_cast<int16_t>(moved.end.x + shift(node_bridge.cls));
+		moved.start.y = static_cast<int16_t>(moved.start.y + shift(node_bridge.ycls));
+		moved.end.y = static_cast<int16_t>(moved.end.y + shift(node_bridge.ycls));
 		layout.bridges.push_back(moved);
 	}
 	NormaliseJunctionLayout(layout);
@@ -511,18 +566,49 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 	using Kind = JunctionNodeFailure::Kind;
 	constexpr int RANGE = 1024;
 
-	std::vector<uint32_t> free_links;
+	std::vector<uint32_t> free_links; ///< The X-free links.
 	for (uint32_t i = 0; i < tpl.links.size(); i++) {
-		if (tpl.links[i].free) free_links.push_back(i);
+		if (tpl.links[i].free && tpl.links[i].axis == Axis::X) free_links.push_back(i);
 	}
-	const size_t classes = tpl.flat.size();
-	JunctionPositions positions(classes + 3 * free_links.size(), -RANGE, RANGE);
+	const size_t variables = tpl.flat.size();
+	const size_t classes = tpl.x_classes;
+	JunctionPositions positions(variables + 3 * free_links.size(), -RANGE, RANGE);
 
 	/* 2. The template. */
 	if (!AddJunctionNodeConstraints(tpl, positions)) {
 		result.failure = JunctionNodeFailure{Kind::Template};
 		return result;
 	}
+
+	/* Fix a variable at the nearest value to its flat one; false when none is left. */
+	result.values.assign(variables, 0);
+	auto snap = [&](size_t c) {
+		for (int distance = 0;; distance++) {
+			const int low = tpl.flat[c] - distance;
+			const int high = tpl.flat[c] + distance;
+			if (low < positions.Lo(c) && high > positions.Up(c)) return false;
+			for (const int t : {low, high}) {
+				if (t < positions.Lo(c) || t > positions.Up(c)) continue;
+				const size_t mark = positions.Mark();
+				if (positions.RestrictRange(c, t, t)) {
+					result.values[c] = positions.Lo(c);
+					return true;
+				}
+				positions.Undo(mark);
+				if (distance == 0) break;
+			}
+		}
+	};
+
+	/* 2b. The Y variables: snapped to the flat rows, no facts. */
+	for (size_t c = classes; c < variables; c++) {
+		if (!snap(c)) {
+			result.failure = JunctionNodeFailure{Kind::Template};
+			result.values.clear();
+			return result;
+		}
+	}
+	auto shift_y = [&](uint16_t ycls) { return result.values[ycls] - tpl.flat[ycls]; };
 
 	/* 3. The pieces of every class fit the facts; a tile's bits are those of the render at the flat values. */
 	std::map<std::pair<int, int>, TrackBits> flat_bits;
@@ -531,26 +617,49 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 	}
 	for (const JunctionNodeLink &link : tpl.links) {
 		if (!link.free) continue;
-		const int x_from = tpl.points[link.from].tile.x;
-		const int x_to = tpl.points[link.to].tile.x;
-		for (int x = std::min(x_from, x_to) + 1; x < std::max(x_from, x_to); x++) flat_bits[{x, tpl.points[link.from].tile.y}].Set(Track::X);
+		const JunctionNodePoint &from = tpl.points[link.from];
+		const JunctionNodePoint &to = tpl.points[link.to];
+		if (link.axis == Axis::X) {
+			for (int x = std::min(from.tile.x, to.tile.x) + 1; x < std::max(from.tile.x, to.tile.x); x++) flat_bits[{x, from.tile.y}].Set(Track::X);
+		} else {
+			for (int y = std::min(from.tile.y, to.tile.y) + 1; y < std::max(from.tile.y, to.tile.y); y++) flat_bits[{from.tile.x, y}].Set(Track::Y);
+		}
 	}
 	for (uint16_t c = 0; c < classes; c++) {
 		std::vector<int> allowed;
 		for (int v = -RANGE; v <= RANGE; v++) {
-			const bool fits = std::ranges::all_of(tpl.pieces, [&](const JunctionNodePiece &piece) {
+			bool fits = std::ranges::all_of(tpl.pieces, [&](const JunctionNodePiece &piece) {
 				if (piece.cls != c || piece.on_bridge) return true;
-				return JunctionNodeTrackFits(facts, piece.tile.x + v - tpl.flat[c] + offset.x, piece.tile.y + offset.y, flat_bits.at({piece.tile.x, piece.tile.y}));
+				return JunctionNodeTrackFits(facts, piece.tile.x + v - tpl.flat[c] + offset.x, piece.tile.y + shift_y(piece.ycls) + offset.y, flat_bits.at({piece.tile.x, piece.tile.y}));
 			});
+
+			/* A Y-free link of this class is a column: every interior row is a straight Y piece and consecutive rows connect. */
+			for (size_t i = 0; fits && i < tpl.links.size(); i++) {
+				const JunctionNodeLink &link = tpl.links[i];
+				const JunctionNodePoint &p = tpl.points[link.from];
+				const JunctionNodePoint &q = tpl.points[link.to];
+				if (!link.free || link.axis != Axis::Y || p.cls != c) continue;
+				const int column = p.tile.x + v - tpl.flat[c] + offset.x;
+				const int y_p = p.tile.y + shift_y(p.ycls) + offset.y;
+				const int y_q = q.tile.y + shift_y(q.ycls) + offset.y;
+				int8_t previous_exit = 0;
+				for (int r = std::min(y_p, y_q) + 1; fits && r < std::max(y_p, y_q); r++) {
+					int8_t entry;
+					int8_t exit;
+					if (!facts.Straight(column, r, Axis::Y, entry, exit) || (r > std::min(y_p, y_q) + 1 && previous_exit != entry)) fits = false;
+					previous_exit = exit;
+				}
+			}
 			if (fits) allowed.push_back(v);
 		}
 		if (allowed.empty() || !positions.RestrictDomain(c, allowed)) {
 			result.failure = JunctionNodeFailure{Kind::Piece, UINT32_MAX, 0, c};
+			result.values.clear();
 			return result;
 		}
 	}
 
-	/* 4. The free links. */
+	/* 4. The X-free links. */
 	for (size_t k = 0; k < free_links.size(); k++) {
 		const uint32_t link_index = free_links[k];
 		const JunctionNodeLink &link = tpl.links[link_index];
@@ -562,10 +671,10 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 				if (path.points[i] == link.from && path.points[i + 1] == link.to) d = path.dir;
 			}
 		}
-		const size_t u = classes + 3 * k;
+		const size_t u = variables + 3 * k;
 		const size_t w = u + 1;
 		const size_t w2 = u + 2;
-		const int row = p.tile.y + offset.y;
+		const int row = p.tile.y + shift_y(p.ycls) + offset.y;
 
 		/* aux = x_cls + shift, in working x, as two difference constraints. */
 		auto tie = [&](size_t aux, const JunctionNodePoint &point, int shift) {
@@ -574,6 +683,7 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 		};
 		if (!tie(u, p, d) || !tie(w, q, -d) || !tie(w2, q, -2 * d)) {
 			result.failure = JunctionNodeFailure{Kind::Template};
+			result.values.clear();
 			return result;
 		}
 
@@ -585,49 +695,36 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 			if (!facts.Straight(c, row, Axis::X, entry, exit)) {
 				if (!(d > 0 ? positions.AddAvoid(u, w, c) : positions.AddAvoid(w, u, c))) {
 					result.failure = JunctionNodeFailure{Kind::Straight, link_index, c};
+					result.values.clear();
 					return result;
 				}
 			} else if (c + 1 <= facts.MaxX() && facts.Straight(c + 1, row, Axis::X, next_entry, next_exit) && exit != next_entry) {
 				if (!(d > 0 ? positions.AddAvoid(u, w2, c) : positions.AddAvoid(w2, u, c + 1))) {
 					result.failure = JunctionNodeFailure{Kind::Break, link_index, c};
+					result.values.clear();
 					return result;
 				}
 			}
 		}
 		if (!positions.RestrictRange(u, facts.MinX(), facts.MaxX())) {
 			result.failure = JunctionNodeFailure{Kind::Edge, link_index, facts.MinX() - 1};
+			result.values.clear();
 			return result;
 		}
 		if (!positions.RestrictRange(w, facts.MinX(), facts.MaxX())) {
 			result.failure = JunctionNodeFailure{Kind::Edge, link_index, facts.MaxX() + 1};
+			result.values.clear();
 			return result;
 		}
 	}
 
-	/* 5. Snap each class to the nearest value. */
+	/* 5. Snap each X class to the nearest value. */
 	for (size_t c = 0; c < classes; c++) {
-		bool done = false;
-		for (int distance = 0; !done; distance++) {
-			const int low = tpl.flat[c] - distance;
-			const int high = tpl.flat[c] + distance;
-			if (low < positions.Lo(c) && high > positions.Up(c)) break;
-			for (const int t : {low, high}) {
-				if (done || t < positions.Lo(c) || t > positions.Up(c)) continue;
-				const size_t mark = positions.Mark();
-				if (positions.RestrictRange(c, t, t)) {
-					done = true;
-				} else {
-					positions.Undo(mark);
-				}
-				if (distance == 0) break;
-			}
-		}
-		if (!done) {
+		if (!snap(c)) {
 			result.failure = JunctionNodeFailure{Kind::Template};
 			result.values.clear();
 			return result;
 		}
-		result.values.push_back(positions.Lo(c));
 	}
 
 	/* 6. Render. */
@@ -720,7 +817,7 @@ std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout,
 		if (why != nullptr) *why = reason;
 		return std::optional<JunctionLayout>{};
 	};
-	if (link >= tpl.links.size() || !tpl.links[link].free || (side != 1 && side != -1)) return fail("not a free link or side");
+	if (link >= tpl.links.size() || !tpl.links[link].free || tpl.links[link].axis != Axis::X || (side != 1 && side != -1)) return fail("not a free link or side");
 
 	/* 1. The link and its interior. */
 	const JunctionNodePoint &p = tpl.points[tpl.links[link].from];
@@ -827,16 +924,16 @@ static std::vector<std::tuple<int, int, uint>> NodeStateKey(const JunctionLayout
 	return key;
 }
 
-/** Where the anchor piece of a rendered layout lies relative to its tile in the template's layout (layout minus template), or nullopt without an EIn->SOut path. */
+/** Where the anchor pieces of a rendered layout lie relative to their tiles in the template's layout (layout minus template: x from the last piece of EIn->SOut, y from its first), or nullopt without an EIn->SOut path. */
 static std::optional<TileIndexDiffC> NodeAnchorShift(const JunctionNodeTemplate &tpl, const JunctionLayout &layout, const JunctionSpec &spec)
 {
 	const auto anchor = std::ranges::find_if(tpl.paths, [](const JunctionNodePath &path) { return path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::SOut; });
 	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
 	const auto ctx_path = std::ranges::find_if(ctx.paths, [](const JunctionPath &path) { return path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::SOut; });
 	if (tpl.anchor == UINT16_MAX || anchor == tpl.paths.end() || anchor->points.empty() || ctx_path == ctx.paths.end()) return std::nullopt;
-	const TileIndexDiffC anchor_flat = tpl.points[anchor->points.back()].tile;
-	const TileIndexDiffC anchor_layout = ctx_path->pieces.back().tile;
-	return TileIndexDiffC{static_cast<int16_t>(anchor_layout.x - anchor_flat.x), static_cast<int16_t>(anchor_layout.y - anchor_flat.y)};
+	const TileIndexDiffC anchor_flat_x = tpl.points[anchor->points.back()].tile;
+	const TileIndexDiffC anchor_flat_y = tpl.points[anchor->points.front()].tile;
+	return TileIndexDiffC{static_cast<int16_t>(ctx_path->pieces.back().tile.x - anchor_flat_x.x), static_cast<int16_t>(ctx_path->pieces.front().tile.y - anchor_flat_y.y)};
 }
 
 JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, int max_states)

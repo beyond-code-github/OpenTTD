@@ -25,13 +25,15 @@
 struct JunctionNodePoint {
 	TileIndexDiffC tile; ///< In the flat layout.
 	Trackdir trackdir;
-	uint16_t cls; ///< Its x class; x = value(cls) + tile.x - flat[cls].
+	uint16_t cls; ///< Its x variable (an X class, < x_classes); x = value(cls) + tile.x - flat[cls].
+	uint16_t ycls; ///< Its y variable (a Y class, >= x_classes); y = value(ycls) + tile.y - flat[ycls].
 };
 /** Two consecutive points on a path; deduplicated over paths. */
 struct JunctionNodeLink {
 	uint32_t from; ///< Point index, first in travel order.
 	uint32_t to;
-	bool free; ///< Same row, travel along X, no on_bridge piece from `from` to `to` inclusive: its length may change.
+	bool free; ///< No on_bridge piece from `from` to `to` inclusive, and either same row with X trackdirs or same column with Y trackdirs: its length may change.
+	Axis axis; ///< A free link's axis (Axis::X for rigid links).
 };
 /** One traced path of the flat layout as points. */
 struct JunctionNodePath {
@@ -39,38 +41,48 @@ struct JunctionNodePath {
 	JunctionPortRole to;
 	std::vector<uint32_t> points; ///< In travel order: every piece of the path that is a point.
 	std::vector<uint16_t> units; ///< Per point, the flat unit at which its piece starts along this path.
-	int8_t dir; ///< +1 or -1: the x direction of travel of the path's free links; 0 when it has none.
+	int8_t dir; ///< +1 or -1: the x direction of travel of the path's free X links; 0 when it has none.
+	int8_t dir_y; ///< +1 (y grows) or -1: the y direction of travel of the path's free Y links; 0 when it has none.
 };
-/** value(a) - value(b) >= k over classes. */
+/** value(a) - value(b) >= k over variables (two X classes or two Y classes). */
 struct JunctionNodeDiff {
 	uint16_t a;
 	uint16_t b;
 	int k;
 };
-/** A piece of a rigid run (any path piece that is not strictly inside a free link), drawn with its class. */
+/** A piece of a rigid run (any path piece that is not strictly inside a free link), drawn with its classes. */
 struct JunctionNodePiece {
 	TileIndexDiffC tile; ///< In the flat layout.
 	Track track;
 	bool on_bridge;
-	uint16_t cls;
+	uint16_t cls; ///< Its X class.
+	uint16_t ycls; ///< Its Y class.
 };
-/** The flat layout's positions as classes and difference constraints (DESIGN-N3 §1-§2). */
+/** A flat bridge with the variables of its heads. */
+struct JunctionNodeBridge {
+	JunctionBridge bridge;
+	uint16_t cls; ///< The X class of both heads.
+	uint16_t ycls; ///< The Y class of both heads.
+};
+/** The flat layout's positions as X and Y classes and difference constraints (DESIGN-N3 §1-§2). */
 struct JunctionNodeTemplate {
 	std::vector<JunctionNodePoint> points;
 	std::vector<JunctionNodeLink> links;
 	std::vector<JunctionNodePath> paths; ///< In the checker's path order.
 	std::vector<JunctionNodePiece> pieces; ///< Deduplicated by (tile, track).
-	std::vector<std::pair<JunctionBridge, uint16_t>> bridges; ///< Every flat bridge with the class of its heads.
+	std::vector<JunctionNodeBridge> bridges; ///< Every flat bridge with the classes of its heads.
 	std::vector<JunctionNodeDiff> diffs; ///< DESIGN-N3 §2 rules 1-4 and 6.
-	std::vector<int> flat; ///< Per class, its flat value: the flat x of the class's first point (lowest point index).
-	uint16_t anchor; ///< DESIGN-N3 §2 rule 5; UINT16_MAX (no constraint, no error) when the layout has no EIn->SOut path.
+	std::vector<int> flat; ///< Per variable, its flat value: X classes (the flat x of the class's first point, lowest point index) then Y classes (the flat y of the class's first point).
+	uint16_t x_classes; ///< The number of X classes; the Y classes follow.
+	uint16_t anchor; ///< DESIGN-N3 §2 rule 5: the X class of the last point of EIn->SOut; UINT16_MAX (no constraint, no error) when the layout has no EIn->SOut path.
+	uint16_t anchor_y; ///< The Y class of the first point of EIn->SOut (on A); UINT16_MAX when anchor is.
 	std::string error; ///< Empty when the template was built.
 };
 /** Read the template of a flat layout. */
 JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionLayout &flat, const JunctionSpec &spec);
-/** Add the template's diffs and the anchor (fixed to flat[anchor]) to positions; its first tpl.flat.size() variables are the classes and extra variables are allowed; false when infeasible. */
+/** Add the template's diffs and the anchors (fixed to flat[anchor] and flat[anchor_y]) to positions; its first tpl.flat.size() variables are the X then Y classes and extra variables are allowed; false when infeasible. */
 bool AddJunctionNodeConstraints(const JunctionNodeTemplate &tpl, JunctionPositions &positions);
-/** Fix every class in index order to its flat value clamped into [Lo, Up] (difference constraints only: every value in range extends); the resulting values. */
+/** Fix every variable in index order to its flat value clamped into [Lo, Up] (difference constraints only: every value in range extends); the resulting values. */
 std::vector<int> JunctionNodeSnap(const JunctionNodeTemplate &tpl, JunctionPositions &positions);
 /** Draw the paths' track and the bridges at the classes' values (DESIGN-N3 §3) and normalise; no signals and no prio rows. */
 JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const std::vector<int> &values);
@@ -88,14 +100,14 @@ struct JunctionNodeFailure {
 		Edge, ///< The interior of a free link cannot stay inside the snapshot.
 	};
 	Kind kind;
-	uint32_t link = UINT32_MAX; ///< Straight/Break/Edge: the free link (index into tpl.links).
+	uint32_t link = UINT32_MAX; ///< Straight/Break/Edge: the X-free link (index into tpl.links).
 	int column = 0; ///< Straight/Break/Edge: the working x of the bad tile (Break: the tile before the height break, in +x order; Edge: MinX() - 1 or MaxX() + 1).
-	uint16_t cls = UINT16_MAX; ///< Piece: the class whose pieces fit nowhere left.
+	uint16_t cls = UINT16_MAX; ///< Piece: the X class whose pieces (or whose vertical runs) fit nowhere left.
 };
 /** The result of one node solve. */
 struct JunctionNodeSolve {
 	std::optional<JunctionLayout> layout; ///< Rendered, signalled and normalised (as FinishJunctionCandidate: Normalise, PlaceJunctionSignals, Normalise).
-	std::vector<int> values; ///< Per class, when solved.
+	std::vector<int> values; ///< Per variable (X classes, then Y classes), when solved.
 	std::optional<JunctionNodeFailure> failure;
 };
 /** Solve the template's positions on the facts (DESIGN-N3 section 2 and the facts of section 4) and render; offset maps layout to working coordinates. */

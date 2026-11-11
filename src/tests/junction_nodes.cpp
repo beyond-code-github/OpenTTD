@@ -662,3 +662,135 @@ TEST_CASE("a detour collides with a parallel line", "[junction][nodes]")
 	CHECK(!InsertJunctionDetour(fixture.layout, fixture.tpl, fixture.link, 7, 1, spec, &why).has_value());
 	CHECK(why.find("collision") != std::string::npos);
 }
+
+/** The first Y-free link on the path from a to b (index into tpl.links), or UINT32_MAX. */
+static uint32_t FirstYFreeLink(const JunctionNodeTemplate &tpl, JunctionPortRole from, JunctionPortRole to)
+{
+	const JunctionNodePath &path = tpl.paths[PathIndex(tpl, from, to)];
+	for (size_t k = 0; k + 1 < path.points.size(); k++) {
+		for (uint32_t i = 0; i < tpl.links.size(); i++) {
+			const JunctionNodeLink &l = tpl.links[i];
+			if (l.from == path.points[k] && l.to == path.points[k + 1] && l.free && l.axis == Axis::Y) return i;
+		}
+	}
+	return UINT32_MAX;
+}
+
+TEST_CASE("a deeper box keeps the flat T clean", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionLayout &flat = *FlatT().layout;
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(flat, spec);
+	INFO(tpl.error);
+	REQUIRE(tpl.error.empty());
+
+	JunctionPositions positions(tpl.flat.size(), -1024, 1024);
+	REQUIRE(AddJunctionNodeConstraints(tpl, positions));
+
+	/* y_S - y_A >= (flat y_S - flat y_A) + 2 with y = value + tile.y - flat[ycls]. */
+	const JunctionNodePath &path = tpl.paths[PathIndex(tpl, JunctionPortRole::EIn, JunctionPortRole::SOut)];
+	const JunctionNodePoint &a = tpl.points[path.points.front()];
+	const JunctionNodePoint &s = tpl.points[path.points.back()];
+	const int off_a = a.tile.y - tpl.flat[a.ycls];
+	const int off_s = s.tile.y - tpl.flat[s.ycls];
+	const int f = s.tile.y - a.tile.y;
+	REQUIRE(positions.AddDifference(s.ycls, a.ycls, f + 2 - (off_s - off_a)));
+
+	const std::vector<int> values = JunctionNodeSnap(tpl, positions);
+	REQUIRE(values.size() == tpl.flat.size());
+	const JunctionLayout layout = RenderWithSignals(tpl, values, spec);
+	const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec);
+	INFO(ViolationText(violations));
+	CHECK(violations.empty());
+	CHECK(layout.size.y == flat.size.y + 2);
+}
+
+TEST_CASE("the flat T's vertical runs are free", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	INFO(tpl.error);
+	REQUIRE(tpl.error.empty());
+
+	size_t x_free = 0;
+	size_t y_free = 0;
+	for (const JunctionNodeLink &link : tpl.links) {
+		if (!link.free) continue;
+		if (link.axis == Axis::X) x_free++;
+		if (link.axis == Axis::Y) {
+			y_free++;
+			CHECK(tpl.points[link.from].cls == tpl.points[link.to].cls);
+			CHECK(tpl.points[link.from].tile.x == tpl.points[link.to].tile.x);
+		}
+	}
+	CHECK(y_free >= 3);
+
+	const JunctionNodePath &path = tpl.paths[PathIndex(tpl, JunctionPortRole::EIn, JunctionPortRole::SOut)];
+	CHECK(tpl.anchor_y == tpl.points[path.points.front()].ycls);
+
+	WARN("points " << tpl.points.size() << ", links " << tpl.links.size() << ", X-free " << x_free << ", Y-free " << y_free << ", X classes " << tpl.x_classes << ", Y classes " << (tpl.flat.size() - tpl.x_classes) << ", diffs " << tpl.diffs.size());
+}
+
+TEST_CASE("a house on a vertical leg fails on its class", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	REQUIRE(tpl.error.empty());
+
+	const uint32_t leg = FirstYFreeLink(tpl, JunctionPortRole::EIn, JunctionPortRole::SOut);
+	REQUIRE(leg != UINT32_MAX);
+	const JunctionNodePoint &from = tpl.points[tpl.links[leg].from];
+	const JunctionNodePoint &to = tpl.points[tpl.links[leg].to];
+	const int lo = std::min<int>(from.tile.y, to.tile.y);
+	const int hi = std::max<int>(from.tile.y, to.tile.y);
+	REQUIRE(hi - lo >= 2);
+
+	const TileIndexDiffC offset = FlatToWorking(spec);
+	JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	BlockMapTestTile(terrain, from.tile.x + offset.x, (lo + hi) / 2 + offset.y);
+	const JunctionFacts facts(terrain);
+
+	const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, offset);
+	CHECK(!solve.layout.has_value());
+	INFO(FailureText(solve));
+	REQUIRE(solve.failure.has_value());
+	CHECK(solve.failure->kind == JunctionNodeFailure::Kind::Piece);
+	CHECK(solve.failure->cls == from.cls);
+}
+
+TEST_CASE("a longer E->S vertical leg", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	REQUIRE(tpl.error.empty());
+
+	const uint32_t leg = FirstYFreeLink(tpl, JunctionPortRole::EIn, JunctionPortRole::SOut);
+	REQUIRE(leg != UINT32_MAX);
+	const JunctionNodePoint &p = tpl.points[tpl.links[leg].from];
+	const JunctionNodePoint &q = tpl.points[tpl.links[leg].to];
+
+	const JunctionNodePath &path = tpl.paths[PathIndex(tpl, JunctionPortRole::EIn, JunctionPortRole::SOut)];
+	for (size_t k = 0; k + 1 < path.points.size(); k++) {
+		const JunctionNodePoint &from = tpl.points[path.points[k]];
+		const JunctionNodePoint &to = tpl.points[path.points[k + 1]];
+		const auto link = std::ranges::find_if(tpl.links, [&](const JunctionNodeLink &l) { return l.from == path.points[k] && l.to == path.points[k + 1]; });
+		WARN("E->S link " << k << ": " << from.tile.x << "," << from.tile.y << " (x " << from.cls << ", y " << from.ycls << ") to " << to.tile.x << "," << to.tile.y << " (x " << to.cls << ", y " << to.ycls << ") " << (link->free ? (link->axis == Axis::X ? "free X" : "free Y") : "rigid"));
+	}
+
+	JunctionPositions positions(tpl.flat.size(), -1024, 1024);
+	REQUIRE(AddJunctionNodeConstraints(tpl, positions));
+	const int off_p = p.tile.y - tpl.flat[p.ycls];
+	const int off_q = q.tile.y - tpl.flat[q.ycls];
+	const bool added = positions.AddDifference(q.ycls, p.ycls, (q.tile.y - p.tile.y) + 1 - (off_q - off_p));
+	WARN("longer leg: p " << p.tile.x << "," << p.tile.y << " y class " << p.ycls << ", q " << q.tile.x << "," << q.tile.y << " y class " << q.ycls << ", AddDifference " << (added ? "ok" : "failed"));
+	if (!added) return;
+	const std::vector<int> values = JunctionNodeSnap(tpl, positions);
+	WARN("longer leg: snap " << (values.size() == tpl.flat.size() ? "ok" : "failed"));
+	if (values.size() != tpl.flat.size()) return;
+	const JunctionLayout layout = RenderWithSignals(tpl, values, spec);
+	WARN("longer leg: rule violations " << CheckJunctionRules(layout, spec).size() << "\n" << ViolationText(CheckJunctionRules(layout, spec)));
+}
