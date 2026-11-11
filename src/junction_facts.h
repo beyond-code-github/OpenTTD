@@ -34,6 +34,8 @@ public:
 	int NextBad(JunctionFactKind kind, Axis axis, int line, int from) const;
 	/** The last position <= from where it fails, or INT_MIN. O(1). */
 	int PrevBad(JunctionFactKind kind, Axis axis, int line, int from) const;
+	int MinX() const { return this->origin_x; } ///< Working x of the snapshot's first column.
+	int MaxX() const { return this->origin_x + this->width - 1; } ///< Working x of its last column.
 
 private:
 	bool Cell(Axis axis, int line, int pos, size_t &index) const;

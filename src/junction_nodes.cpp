@@ -14,6 +14,7 @@
 #include "direction_func.h"
 #include "junction_chain.h"
 #include "junction_rules_internal.h"
+#include "junction_signal_pass.h"
 #include "track_func.h"
 
 #include <algorithm>
@@ -445,7 +446,7 @@ JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionLayout &flat, const
 
 bool AddJunctionNodeConstraints(const JunctionNodeTemplate &tpl, JunctionPositions &positions)
 {
-	if (tpl.flat.empty() || positions.Size() != tpl.flat.size()) return false;
+	if (tpl.flat.empty() || positions.Size() < tpl.flat.size()) return false;
 	for (const JunctionNodeDiff &diff : tpl.diffs) {
 		if (!positions.AddDifference(diff.a, diff.b, diff.k)) return false;
 	}
@@ -492,4 +493,147 @@ JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const s
 	}
 	NormaliseJunctionLayout(layout);
 	return layout;
+}
+
+bool JunctionNodeTrackFits(const JunctionFacts &facts, int x, int y, TrackBits bits)
+{
+	if (bits.Count() >= 2) return facts.Switch(x, y);
+	int8_t entry;
+	int8_t exit;
+	if (bits.Test(Track::X)) return facts.Straight(x, y, Axis::X, entry, exit);
+	if (bits.Test(Track::Y)) return facts.Straight(x, y, Axis::Y, entry, exit);
+	return bits.Any() && facts.Half(x, y);
+}
+
+JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset)
+{
+	JunctionNodeSolve result;
+	using Kind = JunctionNodeFailure::Kind;
+	constexpr int RANGE = 1024;
+
+	std::vector<uint32_t> free_links;
+	for (uint32_t i = 0; i < tpl.links.size(); i++) {
+		if (tpl.links[i].free) free_links.push_back(i);
+	}
+	const size_t classes = tpl.flat.size();
+	JunctionPositions positions(classes + 3 * free_links.size(), -RANGE, RANGE);
+
+	/* 2. The template. */
+	if (!AddJunctionNodeConstraints(tpl, positions)) {
+		result.failure = JunctionNodeFailure{Kind::Template};
+		return result;
+	}
+
+	/* 3. The pieces of every class fit the facts; a tile's bits are those of the render at the flat values. */
+	std::map<std::pair<int, int>, TrackBits> flat_bits;
+	for (const JunctionNodePiece &piece : tpl.pieces) {
+		if (!piece.on_bridge) flat_bits[{piece.tile.x, piece.tile.y}].Set(piece.track);
+	}
+	for (const JunctionNodeLink &link : tpl.links) {
+		if (!link.free) continue;
+		const int x_from = tpl.points[link.from].tile.x;
+		const int x_to = tpl.points[link.to].tile.x;
+		for (int x = std::min(x_from, x_to) + 1; x < std::max(x_from, x_to); x++) flat_bits[{x, tpl.points[link.from].tile.y}].Set(Track::X);
+	}
+	for (uint16_t c = 0; c < classes; c++) {
+		std::vector<int> allowed;
+		for (int v = -RANGE; v <= RANGE; v++) {
+			const bool fits = std::ranges::all_of(tpl.pieces, [&](const JunctionNodePiece &piece) {
+				if (piece.cls != c || piece.on_bridge) return true;
+				return JunctionNodeTrackFits(facts, piece.tile.x + v - tpl.flat[c] + offset.x, piece.tile.y + offset.y, flat_bits.at({piece.tile.x, piece.tile.y}));
+			});
+			if (fits) allowed.push_back(v);
+		}
+		if (allowed.empty() || !positions.RestrictDomain(c, allowed)) {
+			result.failure = JunctionNodeFailure{Kind::Piece, UINT32_MAX, 0, c};
+			return result;
+		}
+	}
+
+	/* 4. The free links. */
+	for (size_t k = 0; k < free_links.size(); k++) {
+		const uint32_t link_index = free_links[k];
+		const JunctionNodeLink &link = tpl.links[link_index];
+		const JunctionNodePoint &p = tpl.points[link.from];
+		const JunctionNodePoint &q = tpl.points[link.to];
+		int d = 0;
+		for (const JunctionNodePath &path : tpl.paths) {
+			for (size_t i = 0; i + 1 < path.points.size() && d == 0; i++) {
+				if (path.points[i] == link.from && path.points[i + 1] == link.to) d = path.dir;
+			}
+		}
+		const size_t u = classes + 3 * k;
+		const size_t w = u + 1;
+		const size_t w2 = u + 2;
+		const int row = p.tile.y + offset.y;
+
+		/* aux = x_cls + shift, in working x, as two difference constraints. */
+		auto tie = [&](size_t aux, const JunctionNodePoint &point, int shift) {
+			const int constant = point.tile.x - tpl.flat[point.cls] + offset.x + shift;
+			return positions.AddDifference(aux, point.cls, constant) && positions.AddDifference(point.cls, aux, -constant);
+		};
+		if (!tie(u, p, d) || !tie(w, q, -d) || !tie(w2, q, -2 * d)) {
+			result.failure = JunctionNodeFailure{Kind::Template};
+			return result;
+		}
+
+		for (int c = facts.MinX(); c <= facts.MaxX(); c++) {
+			int8_t entry;
+			int8_t exit;
+			int8_t next_entry;
+			int8_t next_exit;
+			if (!facts.Straight(c, row, Axis::X, entry, exit)) {
+				if (!(d > 0 ? positions.AddAvoid(u, w, c) : positions.AddAvoid(w, u, c))) {
+					result.failure = JunctionNodeFailure{Kind::Straight, link_index, c};
+					return result;
+				}
+			} else if (c + 1 <= facts.MaxX() && facts.Straight(c + 1, row, Axis::X, next_entry, next_exit) && exit != next_entry) {
+				if (!(d > 0 ? positions.AddAvoid(u, w2, c) : positions.AddAvoid(w2, u, c + 1))) {
+					result.failure = JunctionNodeFailure{Kind::Break, link_index, c};
+					return result;
+				}
+			}
+		}
+		if (!positions.RestrictRange(u, facts.MinX(), facts.MaxX())) {
+			result.failure = JunctionNodeFailure{Kind::Edge, link_index, facts.MinX() - 1};
+			return result;
+		}
+		if (!positions.RestrictRange(w, facts.MinX(), facts.MaxX())) {
+			result.failure = JunctionNodeFailure{Kind::Edge, link_index, facts.MaxX() + 1};
+			return result;
+		}
+	}
+
+	/* 5. Snap each class to the nearest value. */
+	for (size_t c = 0; c < classes; c++) {
+		bool done = false;
+		for (int distance = 0; !done; distance++) {
+			const int low = tpl.flat[c] - distance;
+			const int high = tpl.flat[c] + distance;
+			if (low < positions.Lo(c) && high > positions.Up(c)) break;
+			for (const int t : {low, high}) {
+				if (done || t < positions.Lo(c) || t > positions.Up(c)) continue;
+				const size_t mark = positions.Mark();
+				if (positions.RestrictRange(c, t, t)) {
+					done = true;
+				} else {
+					positions.Undo(mark);
+				}
+				if (distance == 0) break;
+			}
+		}
+		if (!done) {
+			result.failure = JunctionNodeFailure{Kind::Template};
+			result.values.clear();
+			return result;
+		}
+		result.values.push_back(positions.Lo(c));
+	}
+
+	/* 6. Render. */
+	JunctionLayout layout = RenderJunctionNodeTracks(tpl, result.values);
+	PlaceJunctionSignals(layout, spec);
+	NormaliseJunctionLayout(layout);
+	result.layout = std::move(layout);
+	return result;
 }
