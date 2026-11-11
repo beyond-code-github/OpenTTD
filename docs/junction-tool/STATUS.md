@@ -1,4 +1,5 @@
 ## RESUME HERE (2026-11-12 day)
+- G1c(ii): §11 draft reviewed (FABLE-G1c2: runs touching bridge heads are rigid, so the seed must be exact, not loose; F1-F4, F6-F9 to fold into §11); D208 (nmax from the game; long-bridge flow limit to measure on the rig: tripled vs split by a signal tile). NEXT: revise §11, brief (ii-a) placement. QUEUED: rig long-bridge experiment (D208(2)). Reviewer agent: .claude/agents/junction-reviewer.md (local).
 - D206 OPEN (Pete): branch-port stub 1 or 2 tiles depending on signal placement; keep 2 (D115a) until ruled, as one constant.
 - G1b(ii) DONE (DESIGN-G1 §7-§9): (ii-a) track graph 4017e1d46a; (ii-b) track order by a sweep from the S side 1eca9deb74; (ii-c) side tracks, row stack, bridges, turns c51d36bf2e. Both topologies pass hand-made expectations; the T's stack = traced rows 0-5. Gate 355 green.
 - G1c: approach (b') (RECON-G1c-seed). DESIGN-G1 §10 draft reviewed by Fable (FABLE-G1c.md: F1-F5 + 4 template fixes), revised §10.6. D205 (Pete): exit lane merges by the S port (band R).
