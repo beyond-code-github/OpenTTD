@@ -819,31 +819,41 @@ static JunctionSpec MakeExportSpec(uint16_t speed)
 	return spec;
 }
 
-TEST_CASE("the node solve builds the T at 100 to 196 km/h on flat land", "[junction][nodes]")
+/** Solve the test-spec topology at one design speed on flat land and check it with the rule checker. */
+static void CheckNodeSolveAtSpeed(uint16_t speed)
+{
+	const JunctionSpec spec = MakeExportSpec(speed);
+	INFO("speed " << speed << " prio_tiles " << static_cast<int>(spec.prio_tiles));
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	INFO("template: " << tpl.error);
+	CHECK(tpl.error.empty());
+	if (!tpl.error.empty()) return;
+
+	const JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	const JunctionFacts facts(terrain);
+	const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, FlatToWorking(spec));
+	INFO(FailureText(solve));
+	CHECK(solve.layout.has_value());
+	if (!solve.layout.has_value()) return;
+
+	const std::vector<RuleViolation> violations = CheckJunctionRules(*solve.layout, spec);
+	INFO(ViolationText(violations));
+	CHECK(violations.empty());
+	std::string halves;
+	for (size_t i = 0; i < tpl.diagonals.size(); i++) halves += fmt::format(" {}", DiagonalHalves(tpl, solve.values, i));
+	WARN("speed " << speed << " prio_tiles " << static_cast<int>(spec.prio_tiles) << " halves" << halves << " size " << solve.layout->size.x << "x" << solve.layout->size.y);
+}
+
+TEST_CASE("the node solve builds the T at 196 km/h on flat land", "[junction][nodes]")
 {
 	REQUIRE(FlatT().layout.has_value());
-	for (const uint16_t speed : {100, 120, 140, 160, 180, 196}) {
-		const JunctionSpec spec = MakeExportSpec(speed);
-		INFO("speed " << speed << " prio_tiles " << static_cast<int>(spec.prio_tiles));
-		const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
-		INFO("template: " << tpl.error);
-		CHECK(tpl.error.empty());
-		if (!tpl.error.empty()) continue;
+	CheckNodeSolveAtSpeed(196);
+}
 
-		const JunctionTerrain terrain = MakeMapTestTerrain(spec);
-		const JunctionFacts facts(terrain);
-		const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, FlatToWorking(spec));
-		INFO(FailureText(solve));
-		CHECK(solve.layout.has_value());
-		if (!solve.layout.has_value()) continue;
-
-		const std::vector<RuleViolation> violations = CheckJunctionRules(*solve.layout, spec);
-		INFO(ViolationText(violations));
-		CHECK(violations.empty());
-		std::string halves;
-		for (size_t i = 0; i < tpl.diagonals.size(); i++) halves += fmt::format(" {}", DiagonalHalves(tpl, solve.values, i));
-		WARN("speed " << speed << " prio_tiles " << static_cast<int>(spec.prio_tiles) << " halves" << halves << " size " << solve.layout->size.x << "x" << solve.layout->size.y);
-	}
+TEST_CASE("the node solve builds the T at 100 to 196 km/h on flat land", "[junction][nodespeed]")
+{
+	REQUIRE(FlatT().layout.has_value());
+	for (const uint16_t speed : {100, 120, 140, 160, 180, 196}) CheckNodeSolveAtSpeed(speed);
 }
 
 TEST_CASE("a lower N split stretches N->W's diagonal", "[junction][nodes]")
@@ -962,8 +972,7 @@ TEST_CASE("two lines forced onto adjacent rows stay apart", "[junction][nodes]")
 	CHECK(tiles == 30);
 }
 
-/* Hidden until OC2: the Y snap puts a grown diagonal onto an occupied row (Occupancy at row 12). */
-TEST_CASE("a short waiting room is lengthened", "[junction][nodes][.]")
+TEST_CASE("a short waiting room is lengthened", "[junction][nodes]")
 {
 	JunctionSpec spec = MakeTestJunctionSpec();
 	spec.tl = 8;

@@ -812,7 +812,9 @@ bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions
 	}
 
 	for (auto &[current_row, elements] : rows) {
-		std::ranges::stable_sort(elements, [](const Element &a, const Element &b) { return std::tie(a.flat_lo, a.flat_hi, a.flat_row) < std::tie(b.flat_lo, b.flat_hi, b.flat_row); });
+		/* Order by the least solution of the X system so far (all classes at Lo: a solution of min-closed constraints), ties by the flat order. */
+		const auto now = [&](const End &end) { return positions.Lo(end.var) + end.offset; };
+		std::ranges::stable_sort(elements, [&](const Element &a, const Element &b) { return std::make_tuple(now(a.lo), a.flat_lo, a.flat_hi, a.flat_row) < std::make_tuple(now(b.lo), b.flat_lo, b.flat_hi, b.flat_row); });
 
 		/* Elements with one flat tile on one current row form a group: equal x, one entry in the chain. */
 		std::vector<Element> chain;
@@ -836,7 +838,8 @@ bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions
 			const Element &a = chain[i];
 			const Element &b = chain[i + 1];
 			if (std::ranges::any_of(a.owners, [&](uint32_t owner) { return std::ranges::find(b.owners, owner) != b.owners.end(); })) continue; // One free link's own tiles and end points: one owner.
-			if (a.flat_hi >= b.flat_lo) {
+			const bool flat_ordered = a.flat_row != NO_FLAT_ROW && a.flat_row == b.flat_row && a.flat_hi < b.flat_lo;
+			if (now(a.hi) >= now(b.lo) && !flat_ordered) {
 				row = current_row;
 				return false;
 			}

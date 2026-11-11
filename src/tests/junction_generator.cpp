@@ -94,7 +94,7 @@ static bool NodeTDelaysMainline(const JunctionSpec &spec)
 	return std::ranges::any_of(TimingsOf(layout, spec), [](const JunctionPrioTiming &t) { return t.ml_delayed || t.timed_out; });
 }
 
-TEST_CASE("SizeJunctionPrio sizes 100 to 196 km/h on the node model", "[junction][nodes]")
+TEST_CASE("SizeJunctionPrio sizes 100 to 196 km/h on the node model", "[junction][nodespeed]")
 {
 	const auto start = std::chrono::steady_clock::now();
 	for (const uint16_t speed : {100, 120, 140, 160, 180, 196}) {
