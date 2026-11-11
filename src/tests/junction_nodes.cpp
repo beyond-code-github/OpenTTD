@@ -1042,3 +1042,34 @@ TEST_CASE("slot keeping keeps an interior piece", "[junction][nodes]")
 	}
 	FAIL("no free X run holds a last slot");
 }
+
+/** The flat x range of a prio row: its merge's x and span tiles upstream of it. */
+static std::pair<int, int> PrioRowRange(const JunctionNodeTemplate &tpl, const JunctionNodePrioRow &prio)
+{
+	const int x = tpl.points[prio.merge].tile.x;
+	const int far = x - prio.span * prio.dir;
+	return {std::min(x, far), std::max(x, far)};
+}
+
+TEST_CASE("the flat T reserves its two prio rows", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	REQUIRE(tpl.error.empty());
+	REQUIRE(tpl.prio_rows.size() == 2);
+	for (const JunctionNodePrioRow &prio : tpl.prio_rows) {
+		const JunctionNodePoint &merge = tpl.points[prio.merge];
+		INFO("merge " << merge.tile.x << "," << merge.tile.y << " side " << static_cast<int>(prio.side) << " dir " << static_cast<int>(prio.dir));
+		CHECK(prio.side == -1);
+		const auto [lo, hi] = PrioRowRange(tpl, prio);
+		if (merge.tile.y + prio.side == 0) {
+			CHECK(lo == 24); // The signal pass lays x 24..38 in the flat T.
+			CHECK(hi == 38);
+		} else {
+			CHECK(merge.tile.y + prio.side == 3);
+			CHECK(lo == 6);
+			CHECK(hi == 20);
+		}
+	}
+}
