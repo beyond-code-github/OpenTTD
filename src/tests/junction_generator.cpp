@@ -12,6 +12,9 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include "../junction_generator.h"
+#include "../junction_nodes.h"
+#include "../junction_positions.h"
+#include "../junction_signal_pass.h"
 #include "../junction_route.h"
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
@@ -64,6 +67,56 @@ static std::vector<JunctionPrioTiming> TimingsOf(const JunctionLayout &layout, c
 	return JunctionPrioTimings(layout, spec, paths, spec.train, JunctionTerminalSpeed(spec.train), spec.tl);
 }
 
+/** The spec at a design speed with the prio coverage unsized, as the node tests' export spec. */
+static JunctionSpec MakeSizingSpec(uint16_t speed)
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.train.max_speed = speed;
+	spec.reference_speed = speed;
+	spec.prio_tiles = 0;
+	return spec;
+}
+
+/** Whether the node model's T at the spec, with the spec's prio_tiles, has a prio timing that delays the ML. */
+static bool NodeTDelaysMainline(const JunctionSpec &spec)
+{
+	static const JunctionTMapResult flat = ConstructJunctionTMap(MakeTestJunctionSpec(), nullptr, std::nullopt, true);
+	REQUIRE(flat.layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*flat.layout, spec);
+	REQUIRE(tpl.error.empty());
+	JunctionPositions positions(tpl.flat.size(), -1024, 1024);
+	REQUIRE(AddJunctionNodeConstraints(tpl, positions));
+	const std::vector<int> values = JunctionNodeSnap(tpl, positions);
+	REQUIRE_FALSE(values.empty());
+	JunctionLayout layout = RenderJunctionNodeTracks(tpl, values);
+	PlaceJunctionSignals(layout, spec);
+	NormaliseJunctionLayout(layout);
+	return std::ranges::any_of(TimingsOf(layout, spec), [](const JunctionPrioTiming &t) { return t.ml_delayed || t.timed_out; });
+}
+
+TEST_CASE("SizeJunctionPrio sizes 100 to 196 km/h on the node model", "[junction][nodes]")
+{
+	const auto start = std::chrono::steady_clock::now();
+	for (const uint16_t speed : {100, 120, 140, 160, 180, 196}) {
+		const JunctionSpec spec = MakeSizingSpec(speed);
+		INFO("speed " << speed);
+		const JunctionPrioSizing sizing = SizeJunctionPrio(spec);
+		CHECK(sizing.error == JunctionGenerateError::None);
+		CHECK(sizing.prio_tiles > 0);
+		WARN("speed " << speed << " prio_tiles " << static_cast<int>(sizing.prio_tiles) << " JunctionPrioLength " << JunctionPrioLength(spec.train, speed, spec.tl, spec.sd));
+		if (sizing.prio_tiles == 0) continue;
+
+		JunctionSpec sized = spec;
+		sized.prio_tiles = sizing.prio_tiles;
+		CHECK_FALSE(NodeTDelaysMainline(sized));
+		if (sizing.prio_tiles >= 2) {
+			sized.prio_tiles = sizing.prio_tiles - 1;
+			CHECK(NodeTDelaysMainline(sized));
+		}
+	}
+	WARN("elapsed ms " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
+}
+
 TEST_CASE("SizeJunctionPrio sizes the test spec", "[junction][generator][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
@@ -79,14 +132,18 @@ TEST_CASE("SizeJunctionPrio sizes the test spec", "[junction][generator][slow]")
 	CHECK(std::ranges::none_of(timings, [](const JunctionPrioTiming &t) { return t.ml_delayed || t.timed_out; }));
 }
 
-TEST_CASE("SizeJunctionPrio reports the generation error", "[junction][generator]")
+TEST_CASE("SizeJunctionPrio sizes a 300 km/h design speed on the node model", "[junction][generator]")
 {
-	JunctionSpec spec = MakeTestJunctionSpec();
-	spec.reference_speed = 300;
-	spec.prio_tiles = 0;
+	const JunctionSpec spec = MakeSizingSpec(300);
 	const JunctionPrioSizing sizing = SizeJunctionPrio(spec);
-	CHECK(sizing.prio_tiles == 0);
-	CHECK(sizing.error == JunctionGenerateError::NoLayout);
+	CHECK(sizing.error == JunctionGenerateError::None);
+	CHECK(sizing.prio_tiles > 0);
+	WARN("speed 300 prio_tiles " << static_cast<int>(sizing.prio_tiles));
+	if (sizing.prio_tiles >= 2) {
+		JunctionSpec shorter = spec;
+		shorter.prio_tiles = sizing.prio_tiles - 1;
+		CHECK(NodeTDelaysMainline(shorter));
+	}
 }
 
 TEST_CASE("SizeJunctionPrio: a slower train needs more coverage", "[junction][generator][slow]")
