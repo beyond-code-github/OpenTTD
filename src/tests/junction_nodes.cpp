@@ -961,3 +961,75 @@ TEST_CASE("two lines forced onto adjacent rows stay apart", "[junction][nodes]")
 	for (const JunctionTrack &track : layout.tracks) tiles += track.tracks.Any() ? 1 : 0;
 	CHECK(tiles == 30);
 }
+
+/* Hidden until OC2: the Y snap puts a grown diagonal onto an occupied row (Occupancy at row 12). */
+TEST_CASE("a short waiting room is lengthened", "[junction][nodes][.]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.tl = 8;
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	INFO("template: " << tpl.error);
+	REQUIRE(tpl.error.empty());
+
+	const JunctionTerrain terrain = MakeMapTestTerrain(spec);
+	const JunctionFacts facts(terrain);
+	const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, FlatToWorking(spec));
+	INFO(FailureText(solve));
+	REQUIRE(solve.layout.has_value());
+
+	const std::vector<RuleViolation> violations = CheckJunctionRules(*solve.layout, spec);
+	INFO(ViolationText(violations));
+	CHECK(std::ranges::none_of(violations, [](const RuleViolation &v) { return v.rule == JunctionRule::WaitingRoom; }));
+}
+
+TEST_CASE("slot keeping keeps an interior piece", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionLayout &flat = *FlatT().layout;
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(flat, spec);
+	REQUIRE(tpl.error.empty());
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(flat, spec, FindJunctionPorts(flat), JunctionTMovements());
+	const auto used = UsedTracks(ctx);
+
+	/* The first free X run that holds the last slot of a stretch between two switches or bridge pieces. */
+	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
+		const std::vector<JunctionPiece> &pieces = ctx.paths[pi].pieces;
+		const std::vector<SwitchEvent> events = SwitchEventsOf(flat, used, ctx.paths[pi]);
+		const auto is_switch = [&](size_t i) { return std::ranges::any_of(events, [&](const SwitchEvent &e) { return e.second == i; }); };
+		std::vector<size_t> anchors;
+		for (size_t i = 0; i < pieces.size(); i++) {
+			if (pieces[i].on_bridge || is_switch(i)) anchors.push_back(i);
+		}
+		for (size_t k = 0; k + 1 < anchors.size(); k++) {
+			size_t slot = SIZE_MAX;
+			for (size_t i = anchors[k + 1]; i-- > anchors[k] + 1;) {
+				if (!is_switch(i) && (IsLegalSignalPiece(flat, pieces[i]) || IsSignalledPiece(flat, pieces[i]))) {
+					slot = i;
+					break;
+				}
+			}
+			if (slot == SIZE_MAX) continue;
+			const JunctionNodePath &path = tpl.paths[pi];
+			for (size_t j = 0; j + 1 < path.points.size(); j++) {
+				const JunctionNodePoint &p = tpl.points[path.points[j]];
+				const JunctionNodePoint &q = tpl.points[path.points[j + 1]];
+				const auto link = std::ranges::find_if(tpl.links, [&](const JunctionNodeLink &l) { return l.from == path.points[j] && l.to == path.points[j + 1]; });
+				const int x = pieces[slot].tile.x;
+				if (!link->free || link->diagonal || link->axis != Axis::X || p.tile.y != pieces[slot].tile.y || x <= std::min(p.tile.x, q.tile.x) || x >= std::max(p.tile.x, q.tile.x)) continue;
+
+				WARN("slot " << x << "," << pieces[slot].tile.y << " of path " << pi << " in the run " << p.tile.x << " to " << q.tile.x);
+				JunctionPositions positions(tpl.flat.size(), -1024, 1024);
+				REQUIRE(AddJunctionNodeConstraints(tpl, positions));
+				/* The run shortened to one tile step: d * (x_q - x_p) <= 1. */
+				const int off_p = p.tile.x - tpl.flat[p.cls];
+				const int off_q = q.tile.x - tpl.flat[q.cls];
+				const bool added = path.dir > 0 ? positions.AddDifference(p.cls, q.cls, off_q - off_p - 1) : positions.AddDifference(q.cls, p.cls, off_p - off_q - 1);
+				CHECK_FALSE(added);
+				return;
+			}
+		}
+	}
+	FAIL("no free X run holds a last slot");
+}
