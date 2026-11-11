@@ -415,6 +415,7 @@ TEST_CASE("FindJunctionRoute: a leveled foundation is paid for", "[junction][rou
 	JunctionTerrainTile &slope = TerrainTileAt(terrain, 5, 6);
 	slope.z_min = 0;
 	slope.z_max = 1;
+	slope.slope = SLOPE_N;
 	JunctionRouteRequest request = MakeRequest({0, 6}, {12, 6});
 	request.starts = {{{0, 6}, Trackdir::X_SW}};
 	request.goals = {{{10, 6}, Trackdir::X_SW}};

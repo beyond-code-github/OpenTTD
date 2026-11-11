@@ -31,12 +31,16 @@ struct JunctionTerrainTile {
 	int8_t z_max = 0; ///< Highest corner height.
 	bool steep = false;
 	DiagDirection incline = DiagDirection::Invalid; ///< The canonical direction an inclined slope rises in, Invalid otherwise (D152).
+	Slope slope = SLOPE_FLAT; ///< The tile's slope in the canonical frame (corners rotated and mirrored with it, D152), steep bit kept.
 	JunctionTileClass cls = JunctionTileClass::Buildable;
 	Money clear_cost = 0;
 };
 
 /** The canonical uphill direction of an inclined slope under a junction orientation, or DiagDirection::Invalid when the slope isn't inclined (D152). */
 DiagDirection JunctionCanonicalIncline(Slope slope, uint8_t rotation, bool mirrored);
+
+/** The slope of a tile under a junction orientation: its corners rotated and mirrored into the canonical frame, steep bit kept (D152). */
+Slope JunctionCanonicalSlope(Slope slope, uint8_t rotation, bool mirrored);
 
 /** A terrain snapshot in the generator's canonical frame. Tiles outside the grid are Blocked. */
 struct JunctionTerrain {

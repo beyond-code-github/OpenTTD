@@ -157,10 +157,8 @@ struct JunctionNodeSolve {
 JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset);
 
 /**
- * Whether the heights of a layout's traced paths connect on the terrain, with the line router's rules (HeightStep/RampStep): along each path the track has a height z;
- * an axis piece on a Buildable, non-steep tile inclined along its direction is a ramp (z == z_min going up -> z + 1; z == z_max going down -> z - 1), any other piece needs UsableAt(tile, z);
- * on_bridge pieces keep z and are not checked. The first piece of a path starts at z_min if it is a ramp up, z_max if a ramp down, otherwise at z_max.
- * Pieces shared by several paths must get the same z on each.
+ * Whether the heights of a layout's traced paths connect on the terrain, by the game's own rail foundations (D194): every piece not on a bridge must Fit with its whole tile's tracks,
+ * and consecutive such pieces meet iff the exit edge of the first and the entry edge of the second have equal EdgeZ, each computed with its whole tile's tracks.
  * @param offset Maps layout tiles to the terrain's coordinates (working = layout + offset).
  * @param why When set and the result is false, receives "path <i> piece <j> at x,y: <reason>".
  */

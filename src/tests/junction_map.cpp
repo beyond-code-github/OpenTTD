@@ -18,6 +18,7 @@
 #include "../junction_terrain.h"
 #include "../junction_build.h"
 #include "../map_func.h"
+#include "../slope_func.h"
 #include "../track_func.h"
 
 #include <algorithm>
@@ -522,6 +523,7 @@ TEST_CASE("a slope under B's straight stretch is ramped or reported", "[junction
 		tile.z_min = 0;
 		tile.z_max = 1;
 		tile.incline = DiagDirection::NE;
+		tile.slope = InclinedSlope(DiagDirection::NE);
 	}
 	LimitMapTestRows(terrain, flat.height + 3);
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
@@ -670,6 +672,7 @@ TEST_CASE("a slope under the S port edge is ramped", "[junction][projectionedges
 		tile.z_min = 0;
 		tile.z_max = 1;
 		tile.incline = DiagDirection::NW;
+		tile.slope = InclinedSlope(DiagDirection::NW);
 	}
 	const JunctionTMapResult result = ConstructJunctionTMap(spec, &terrain, flat.height, true);
 	INFO(result.log);
@@ -718,6 +721,7 @@ static void SetRampRow(JunctionTerrain &terrain, int y, int z_min, int z_max, Di
 		tile.z_min = static_cast<int8_t>(z_min);
 		tile.z_max = static_cast<int8_t>(z_max);
 		tile.incline = incline;
+		tile.slope = incline == DiagDirection::Invalid ? SLOPE_FLAT : InclinedSlope(incline);
 	}
 }
 
@@ -1035,6 +1039,7 @@ TEST_CASE("a height change inside the junction's W end moves the shift-back", "[
 				tile.z_min = 0;
 				tile.z_max = 1;
 				tile.incline = DiagDirection::NE;
+				tile.slope = InclinedSlope(DiagDirection::NE);
 			}
 		}
 	}

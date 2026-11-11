@@ -1083,6 +1083,7 @@ static void SetRampColumn(JunctionTerrain &terrain, int x, int z_min, int z_max,
 		tile.z_min = static_cast<int8_t>(z_min);
 		tile.z_max = static_cast<int8_t>(z_max);
 		tile.incline = incline;
+		tile.slope = incline == DiagDirection::Invalid ? SLOPE_FLAT : InclinedSlope(incline);
 	}
 }
 

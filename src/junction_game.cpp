@@ -265,6 +265,29 @@ DiagDirection JunctionCanonicalIncline(Slope slope, uint8_t rotation, bool mirro
 }
 
 /**
+ * The slope of a tile under a junction orientation (D152).
+ * @param slope The tile's slope.
+ * @param rotation Quarter turns of the orientation.
+ * @param mirrored Whether the orientation is mirrored.
+ * @return The slope in the canonical frame: each raised corner moved with the frame, the steep bit kept.
+ */
+Slope JunctionCanonicalSlope(Slope slope, uint8_t rotation, bool mirrored)
+{
+	/* Corner positions relative to the tile centre in map x and y: N (-1,-1), E (-1,1), S (1,1), W (1,-1). */
+	static constexpr TileIndexDiffC CORNER_OFFSET[] = {{1, -1}, {1, 1}, {-1, 1}, {-1, -1}}; // Indexed by Corner: W, S, E, N.
+	Slope result = slope & SLOPE_STEEP;
+	for (const Corner corner : {Corner::W, Corner::S, Corner::E, Corner::N}) {
+		if ((slope & SlopeWithOneCornerRaised(corner)) == SLOPE_FLAT) continue;
+		const TileIndexDiffC canonical = InverseOrientJunctionVector(CORNER_OFFSET[to_underlying(corner)], rotation, mirrored);
+		for (const Corner target : {Corner::W, Corner::S, Corner::E, Corner::N}) {
+			const TileIndexDiffC position = CORNER_OFFSET[to_underlying(target)];
+			if (position.x == canonical.x && position.y == canonical.y) result |= SlopeWithOneCornerRaised(target);
+		}
+	}
+	return result;
+}
+
+/**
  * Fill one snapshot cell from a map tile: height, steepness, incline and class.
  * @param cell The cell, already marked Blocked; left Blocked for tiles the generator cannot use.
  * @param tile The map tile.
@@ -278,6 +301,7 @@ static void FillJunctionTerrainCell(JunctionTerrainTile &cell, TileIndex tile, u
 	cell.z_max = static_cast<int8_t>(GetTileMaxZ(tile));
 	cell.steep = IsSteepSlope(slope);
 	cell.incline = JunctionCanonicalIncline(slope, rotation, mirrored);
+	cell.slope = JunctionCanonicalSlope(slope, rotation, mirrored);
 
 	switch (GetTileType(tile)) {
 		case TileType::Clear:

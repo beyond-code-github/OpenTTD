@@ -17,6 +17,7 @@
 #include "../junction_router.h"
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
+#include "../slope_func.h"
 #include "../track_func.h"
 #include "../core/format.hpp"
 
@@ -423,6 +424,7 @@ TEST_CASE("Junction T map over a ridge export", "[.ridgejson]")
 			t.z_min = static_cast<int8_t>(z_min);
 			t.z_max = static_cast<int8_t>(z_max);
 			t.incline = incline;
+			t.slope = incline == DiagDirection::Invalid ? SLOPE_FLAT : InclinedSlope(incline);
 		}
 	};
 	set_row(ridge, 0, 1, DiagDirection::SE);

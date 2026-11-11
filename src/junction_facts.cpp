@@ -10,15 +10,21 @@
 #include "stdafx.h"
 
 #include "junction_facts.h"
+#include "landscape.h"
+#include "rail.h"
+#include "slope_func.h"
 #include "track_func.h"
 
 #include <climits>
 
 #include "safeguards.h"
 
-JunctionFacts::JunctionFacts(const JunctionTerrain &terrain) : origin_x(terrain.origin.x), origin_y(terrain.origin.y), width(terrain.width), height(terrain.height)
+JunctionFacts::JunctionFacts(const JunctionTerrain &terrain) : origin_x(terrain.origin.x), origin_y(terrain.origin.y), width(terrain.width), height(terrain.height), build_on_slopes(terrain.build_on_slopes)
 {
 	const size_t cells = static_cast<size_t>(this->width) * this->height;
+	this->slope.assign(cells, SLOPE_FLAT);
+	this->z_min.assign(cells, 0);
+	this->buildable.assign(cells, false);
 	this->sw.assign(cells, false);
 	this->half.assign(cells, false);
 	for (size_t a = 0; a < 2; a++) {
@@ -34,24 +40,25 @@ JunctionFacts::JunctionFacts(const JunctionTerrain &terrain) : origin_x(terrain.
 			const int x = gx + this->origin_x;
 			const int y = gy + this->origin_y;
 			const JunctionTerrainTile *tile = terrain.At(x, y);
-			if (tile->cls != JunctionTileClass::Buildable || tile->steep) continue;
-			const bool level = terrain.UsableAt(x, y, tile->z_max);
-			this->sw[i] = level;
-			this->half[i] = level;
+			assert((tile->slope == SLOPE_FLAT) == (tile->z_min == tile->z_max));
+			assert(tile->incline == DiagDirection::Invalid || InclinedSlope(tile->incline) == tile->slope);
+			this->slope[i] = tile->slope;
+			this->z_min[i] = tile->z_min;
+			this->buildable[i] = tile->cls == JunctionTileClass::Buildable;
+			if (tile->cls != JunctionTileClass::Buildable) continue;
+			if (!tile->steep) {
+				const bool level = terrain.UsableAt(x, y, tile->z_max);
+				this->sw[i] = level;
+				this->half[i] = level;
+			}
+			/* A lone axis track is what the game builds: its fit and edge heights come from the game's foundation (D194). */
 			for (size_t a = 0; a < 2; a++) {
+				const Track track = a == 0 ? Track::X : Track::Y;
 				const DiagDirection out = TrackdirToExitdir(a == 0 ? Trackdir::X_SW : Trackdir::Y_SE);
-				if (tile->incline == out) {
-					this->straight[a][i] = true;
-					this->entry[a][i] = tile->z_min;
-					this->exit[a][i] = static_cast<int8_t>(tile->z_min + 1);
-				} else if (tile->incline == ReverseDiagDir(out)) {
-					this->straight[a][i] = true;
-					this->entry[a][i] = tile->z_max;
-					this->exit[a][i] = static_cast<int8_t>(tile->z_max - 1);
-				} else if (level) {
-					this->straight[a][i] = true;
-					this->entry[a][i] = this->exit[a][i] = tile->z_max;
-				}
+				if (!this->Fits(x, y, TrackBits{track})) continue;
+				this->straight[a][i] = true;
+				this->entry[a][i] = static_cast<int16_t>(this->EdgeZ(x, y, TrackBits{track}, ReverseDiagDir(out)));
+				this->exit[a][i] = static_cast<int16_t>(this->EdgeZ(x, y, TrackBits{track}, out));
 			}
 		}
 	}
@@ -107,13 +114,36 @@ bool JunctionFacts::Cell(Axis axis, int line, int pos, size_t &index) const
 	return true;
 }
 
-bool JunctionFacts::Straight(int x, int y, Axis axis, int8_t &entry, int8_t &exit) const
+bool JunctionFacts::Straight(int x, int y, Axis axis, int &entry, int &exit) const
 {
 	size_t i;
 	if (!this->Cell(Axis::X, y, x, i) || !this->straight[to_underlying(axis)][i]) return false;
 	entry = this->entry[to_underlying(axis)][i];
 	exit = this->exit[to_underlying(axis)][i];
 	return true;
+}
+
+bool JunctionFacts::Fits(int x, int y, TrackBits bits) const
+{
+	size_t i;
+	if (!this->Cell(Axis::X, y, x, i) || !this->buildable[i]) return false;
+	const Foundation foundation = GetRailFoundation(this->slope[i], bits);
+	if (foundation == Foundation::Invalid) return false;
+	return foundation == Foundation::None || this->build_on_slopes;
+}
+
+int JunctionFacts::EdgeZ(int x, int y, TrackBits bits, DiagDirection edge) const
+{
+	if (!this->Fits(x, y, bits)) return INT_MIN;
+	size_t i;
+	this->Cell(Axis::X, y, x, i);
+	static constexpr int MID = TILE_SIZE / 2;
+	static constexpr int LAST = TILE_SIZE - 1;
+	static constexpr std::array<std::pair<int, int>, 4> MIDPOINT = {{{0, MID}, {MID, LAST}, {LAST, MID}, {MID, 0}}}; // Indexed by DiagDirection: NE, SE, SW, NW.
+	Slope s = this->slope[i];
+	const int lift = ApplyPixelFoundationToSlope(GetRailFoundation(s, bits), s);
+	const auto [mx, my] = MIDPOINT[to_underlying(edge)];
+	return this->z_min[i] * static_cast<int>(TILE_HEIGHT) + lift + static_cast<int>(GetPartialPixelZ(mx, my, s));
 }
 
 bool JunctionFacts::Switch(int x, int y) const
