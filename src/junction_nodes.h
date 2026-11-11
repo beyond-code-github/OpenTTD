@@ -34,6 +34,28 @@ struct JunctionNodeLink {
 	uint32_t to;
 	bool free; ///< No on_bridge piece from `from` to `to` inclusive, and either same row with X trackdirs or same column with Y trackdirs: its length may change.
 	Axis axis; ///< A free link's axis (Axis::X for rigid links).
+	bool diagonal; ///< A free diagonal (DESIGN-N3 §6); then `free` is true and `axis` is Axis::X.
+};
+/** A free diagonal: its length changes by two half pieces per map step (DESIGN-N3 §6). */
+struct JunctionNodeDiagonal {
+	uint32_t link; ///< Index into links.
+	int8_t dx; ///< The x of one map step along it (two half pieces).
+	int8_t dy; ///< The y of one map step along it.
+	uint16_t halves; ///< Flat half pieces from the link's `from` to its `to`, both included.
+};
+/** A unit rule between two points of a path with a free X run between them: an X difference added after the Y snap (DESIGN-N3 §6). */
+struct JunctionNodeLateGap {
+	uint32_t path;
+	uint32_t p; ///< Point before q on the path.
+	uint32_t q;
+	int g; ///< Required unit gap.
+	int u; ///< Flat unit gap.
+	std::vector<uint32_t> diagonals; ///< Indices into JunctionNodeTemplate::diagonals between p and q.
+};
+/** An X-axis bridge over the interior of a free diagonal (DESIGN-N3 §6). */
+struct JunctionNodeLateCrossing {
+	uint32_t bridge; ///< Index into bridges.
+	uint32_t diagonal; ///< Index into diagonals.
 };
 /** One traced path of the flat layout as points. */
 struct JunctionNodePath {
@@ -41,8 +63,8 @@ struct JunctionNodePath {
 	JunctionPortRole to;
 	std::vector<uint32_t> points; ///< In travel order: every piece of the path that is a point.
 	std::vector<uint16_t> units; ///< Per point, the flat unit at which its piece starts along this path.
-	int8_t dir; ///< +1 or -1: the x direction of travel of the path's free X links; 0 when it has none.
-	int8_t dir_y; ///< +1 (y grows) or -1: the y direction of travel of the path's free Y links; 0 when it has none.
+	int8_t dir; ///< +1 or -1: the x sign of the path's X runs and free diagonals; 0 when it has none.
+	int8_t dir_y; ///< +1 (y grows) or -1: the y sign of the path's Y runs and free diagonals; 0 when it has none.
 };
 /** value(a) - value(b) >= k over variables (two X classes or two Y classes). */
 struct JunctionNodeDiff {
@@ -72,6 +94,9 @@ struct JunctionNodeTemplate {
 	std::vector<JunctionNodePiece> pieces; ///< Deduplicated by (tile, track).
 	std::vector<JunctionNodeBridge> bridges; ///< Every flat bridge with the classes of its heads.
 	std::vector<JunctionNodeDiff> diffs; ///< DESIGN-N3 §2 rules 1-4 and 6.
+	std::vector<JunctionNodeDiagonal> diagonals; ///< The free diagonal links.
+	std::vector<JunctionNodeLateGap> late_gaps; ///< The unit rules that need the Y values.
+	std::vector<JunctionNodeLateCrossing> late_crossings; ///< The X-axis bridges over free diagonals.
 	std::vector<int> flat; ///< Per variable, its flat value: X classes (the flat x of the class's first point, lowest point index) then Y classes (the flat y of the class's first point).
 	uint16_t x_classes; ///< The number of X classes; the Y classes follow.
 	uint16_t anchor; ///< DESIGN-N3 §2 rule 5: the X class of the last point of EIn->SOut; UINT16_MAX (no constraint, no error) when the layout has no EIn->SOut path.
@@ -82,7 +107,9 @@ struct JunctionNodeTemplate {
 JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionLayout &flat, const JunctionSpec &spec);
 /** Add the template's diffs and the anchors (fixed to flat[anchor] and flat[anchor_y]) to positions; its first tpl.flat.size() variables are the X then Y classes and extra variables are allowed; false when infeasible. */
 bool AddJunctionNodeConstraints(const JunctionNodeTemplate &tpl, JunctionPositions &positions);
-/** Fix every variable in index order to its flat value clamped into [Lo, Up] (difference constraints only: every value in range extends); the resulting values. */
+/** Add the constraints that need the Y values (DESIGN-N3 §6 phase 3): free diagonals' x, late gaps, late crossings. values holds every Y variable's fixed value (X entries ignored); false when infeasible. */
+bool AddJunctionNodeLateConstraints(const JunctionNodeTemplate &tpl, JunctionPositions &positions, const std::vector<int> &values);
+/** Fix the Y variables in index order to their flat values clamped into [Lo, Up], add the late constraints (AddJunctionNodeLateConstraints), then fix the X variables the same way (difference constraints only: every value in range extends); all values in index order, or empty when infeasible. */
 std::vector<int> JunctionNodeSnap(const JunctionNodeTemplate &tpl, JunctionPositions &positions);
 /** Draw the paths' track and the bridges at the classes' values (DESIGN-N3 §3) and normalise; no signals and no prio rows. */
 JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const std::vector<int> &values);

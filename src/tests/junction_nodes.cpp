@@ -794,3 +794,127 @@ TEST_CASE("a longer E->S vertical leg", "[junction][nodes]")
 	const JunctionLayout layout = RenderWithSignals(tpl, values, spec);
 	WARN("longer leg: rule violations " << CheckJunctionRules(layout, spec).size() << "\n" << ViolationText(CheckJunctionRules(layout, spec)));
 }
+
+/** The halves of a free diagonal at the solved values: its flat halves plus two per map step (DESIGN-N3 §6). */
+static int DiagonalHalves(const JunctionNodeTemplate &tpl, const std::vector<int> &values, size_t diagonal)
+{
+	const JunctionNodeDiagonal &d = tpl.diagonals[diagonal];
+	const JunctionNodeLink &link = tpl.links[d.link];
+	const int shift_p = values[tpl.points[link.from].ycls] - tpl.flat[tpl.points[link.from].ycls];
+	const int shift_q = values[tpl.points[link.to].ycls] - tpl.flat[tpl.points[link.to].ycls];
+	return d.halves + 2 * d.dy * (shift_q - shift_p);
+}
+
+/**
+ * The spec junction_export builds for `ml 1 branch 1 tl 4 train=14194,1090000,561,25,<speed>` without prio=: the command, the speed, the loaded train and the sized prio.
+ * MakeJunctionSpec also reads the game (an unlimited rail type, curve_speed 0, realistic acceleration, block signals, signal density 2 as in the rig's configuration), which the test spec carries.
+ * The prio coverage is SizeJunctionPrio's result, measured once per speed: sizing takes about 7 s for the six speeds (Release), far over the [nodes] budget.
+ */
+static JunctionSpec MakeExportSpec(uint16_t speed)
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.train.max_speed = speed;
+	spec.reference_speed = speed;
+	spec.prio_tiles = speed == 100 ? 9 : speed == 120 ? 8 : speed == 140 ? 10 : speed == 160 ? 11 : speed == 180 ? 12 : 14;
+	return spec;
+}
+
+TEST_CASE("the node solve builds the T at 100 to 196 km/h on flat land", "[junction][nodes]")
+{
+	REQUIRE(FlatT().layout.has_value());
+	for (const uint16_t speed : {100, 120, 140, 160, 180, 196}) {
+		const JunctionSpec spec = MakeExportSpec(speed);
+		INFO("speed " << speed << " prio_tiles " << static_cast<int>(spec.prio_tiles));
+		const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+		INFO("template: " << tpl.error);
+		CHECK(tpl.error.empty());
+		if (!tpl.error.empty()) continue;
+
+		const JunctionTerrain terrain = MakeMapTestTerrain(spec);
+		const JunctionFacts facts(terrain);
+		const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, FlatToWorking(spec));
+		INFO(FailureText(solve));
+		CHECK(solve.layout.has_value());
+		if (!solve.layout.has_value()) continue;
+
+		const std::vector<RuleViolation> violations = CheckJunctionRules(*solve.layout, spec);
+		INFO(ViolationText(violations));
+		CHECK(violations.empty());
+		std::string halves;
+		for (size_t i = 0; i < tpl.diagonals.size(); i++) halves += fmt::format(" {}", DiagonalHalves(tpl, solve.values, i));
+		WARN("speed " << speed << " prio_tiles " << static_cast<int>(spec.prio_tiles) << " halves" << halves << " size " << solve.layout->size.x << "x" << solve.layout->size.y);
+	}
+}
+
+TEST_CASE("a lower N split stretches N->W's diagonal", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	REQUIRE(tpl.error.empty());
+
+	/* The shared split: the first point after the start that NIn->WOut has in common with NIn->EOut. */
+	const JunctionNodePath &to_w = tpl.paths[PathIndex(tpl, JunctionPortRole::NIn, JunctionPortRole::WOut)];
+	const JunctionNodePath &to_e = tpl.paths[PathIndex(tpl, JunctionPortRole::NIn, JunctionPortRole::EOut)];
+	uint32_t split = UINT32_MAX;
+	for (size_t k = 1; k < to_w.points.size() && split == UINT32_MAX; k++) {
+		if (std::ranges::find(to_e.points, to_w.points[k]) != to_e.points.end()) split = to_w.points[k];
+	}
+	REQUIRE(split != UINT32_MAX);
+	const JunctionNodePoint &s = tpl.points[split];
+	const JunctionNodePoint &a = tpl.points[tpl.paths[PathIndex(tpl, JunctionPortRole::EIn, JunctionPortRole::SOut)].points.front()];
+
+	JunctionPositions positions(tpl.flat.size(), -1024, 1024);
+	REQUIRE(AddJunctionNodeConstraints(tpl, positions));
+	const int off_s = s.tile.y - tpl.flat[s.ycls];
+	const int off_a = a.tile.y - tpl.flat[a.ycls];
+	REQUIRE(positions.AddDifference(s.ycls, a.ycls, (s.tile.y - a.tile.y) + 1 - (off_s - off_a)));
+
+	const std::vector<int> values = JunctionNodeSnap(tpl, positions);
+	REQUIRE(values.size() == tpl.flat.size());
+	const JunctionLayout layout = RenderWithSignals(tpl, values, spec);
+	const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec);
+	INFO(ViolationText(violations));
+	CHECK(violations.empty());
+
+	/* N->W's diagonal follows the split on its Y class and is the only free diagonal of the path. */
+	size_t found = 0;
+	for (size_t i = 0; i < tpl.diagonals.size(); i++) {
+		const JunctionNodeLink &link = tpl.links[tpl.diagonals[i].link];
+		const bool on_path = std::ranges::find(to_w.points, link.from) != to_w.points.end() && std::ranges::find(to_w.points, link.to) != to_w.points.end();
+		if (!on_path) continue;
+		found++;
+		CHECK(tpl.points[link.from].ycls == s.ycls);
+		CHECK(DiagonalHalves(tpl, values, i) == tpl.diagonals[i].halves + 2);
+	}
+	CHECK(found == 1);
+}
+
+TEST_CASE("the flat T's free diagonals", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	REQUIRE(FlatT().layout.has_value());
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(*FlatT().layout, spec);
+	INFO(tpl.error);
+	REQUIRE(tpl.error.empty());
+
+	/* RECON D1, D3, D4, D5, D7. */
+	std::vector<int> halves;
+	for (const JunctionNodeDiagonal &d : tpl.diagonals) {
+		CHECK(tpl.links[d.link].free);
+		CHECK(tpl.links[d.link].diagonal);
+		halves.push_back(d.halves);
+	}
+	std::ranges::sort(halves);
+	CHECK(halves == std::vector<int>{5, 5, 5, 6, 13});
+
+	/* D2, EIn->SOut's second diagonal (under N->E's bridge), is rigid: only D1 of that path is free. */
+	const JunctionNodePath &path = tpl.paths[PathIndex(tpl, JunctionPortRole::EIn, JunctionPortRole::SOut)];
+	size_t free_on_path = 0;
+	for (size_t k = 0; k + 1 < path.points.size(); k++) {
+		const auto link = std::ranges::find_if(tpl.links, [&](const JunctionNodeLink &l) { return l.from == path.points[k] && l.to == path.points[k + 1]; });
+		REQUIRE(link != tpl.links.end());
+		free_on_path += link->diagonal ? 1 : 0;
+	}
+	CHECK(free_on_path == 1);
+}
