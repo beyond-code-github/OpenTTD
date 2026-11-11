@@ -14,6 +14,8 @@
 
 #include "../junction_chain.h"
 #include "../junction_generator.h"
+#include "../junction_line.h"
+#include "../junction_line_router.h"
 #include "../junction_nodes.h"
 #include "../junction_positions.h"
 #include "../junction_route.h"
@@ -275,6 +277,9 @@ TEST_CASE("the node solve builds the flat T on flat terrain", "[junction][nodes]
 		INFO("tile " << jt.offset.x << "," << jt.offset.y);
 		CHECK(JunctionNodeTrackFits(facts, jt.offset.x + offset.x, jt.offset.y + offset.y, jt.tracks));
 	}
+	std::string why;
+	CHECK(JunctionNodeHeightsOk(*solve.layout, spec, terrain, offset, &why));
+	INFO(why);
 }
 
 TEST_CASE("the node solve moves the W end off an incline", "[junction][nodes]")
@@ -325,6 +330,9 @@ TEST_CASE("the node solve moves the W end off an incline", "[junction][nodes]")
 		INFO("layout tile " << jt.offset.x << "," << jt.offset.y << " bits " << static_cast<uint>(jt.tracks.base()));
 		CHECK(JunctionNodeTrackFits(facts, jt.offset.x + dx, jt.offset.y + dy, jt.tracks));
 	}
+	std::string why;
+	CHECK(JunctionNodeHeightsOk(layout, spec, terrain, {static_cast<int16_t>(dx), static_cast<int16_t>(dy)}, &why));
+	INFO(why);
 	for (size_t c = 0; c < tpl.flat.size(); c++) {
 		if (solve.values[c] != tpl.flat[c]) WARN("class " << c << ": " << tpl.flat[c] << " -> " << solve.values[c]);
 	}
@@ -417,4 +425,109 @@ TEST_CASE("JunctionNodeTrackFits by kind", "[junction][nodes]")
 	CHECK(JunctionNodeTrackFits(facts, 0, 0, two));
 	CHECK(!JunctionNodeTrackFits(facts, 1, 0, half));
 	CHECK(!JunctionNodeTrackFits(facts, 1, 0, two));
+}
+
+/** A flat terrain at z 0 over 6 x 2 tiles from (0, 0). */
+static JunctionTerrain MakeStripTerrain()
+{
+	JunctionTerrain terrain;
+	terrain.origin = {0, 0};
+	terrain.width = 6;
+	terrain.height = 2;
+	terrain.tiles.assign(12, JunctionTerrainTile{});
+	terrain.build_on_slopes = true;
+	return terrain;
+}
+
+/** Set the heights and incline of one column of a strip terrain. */
+static void SetStripColumn(JunctionTerrain &terrain, int x, int z_min, int z_max, DiagDirection incline)
+{
+	for (int y = 0; y < terrain.height; y++) {
+		JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(y) * terrain.width + x];
+		tile.z_min = static_cast<int8_t>(z_min);
+		tile.z_max = static_cast<int8_t>(z_max);
+		tile.incline = incline;
+	}
+}
+
+TEST_CASE("heights: a half piece on a foundation beside a ramp does not connect", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionLayout layout;
+	AddRasterToLayout(layout, RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, "FFFFF"}));
+	AddRasterToLayout(layout, RasterizeJunctionRoute({{5, 1}, Trackdir::X_NE, "FFFFF"}));
+	NormaliseJunctionLayout(layout);
+
+	/* Level at 0, a ramp up (towards SW) over x = 2, then the ground at 0: the piece after the ramp needs height 1. */
+	JunctionTerrain terrain = MakeStripTerrain();
+	SetStripColumn(terrain, 2, 0, 1, DiagDirection::SW);
+	std::string why;
+	CHECK_FALSE(JunctionNodeHeightsOk(layout, spec, terrain, {0, 0}, &why));
+	INFO(why);
+	CHECK(why.find("piece 3 at 3,0") != std::string::npos);
+
+	/* The ground at 1 after the ramp: it connects. */
+	for (int x = 3; x < 6; x++) SetStripColumn(terrain, x, 1, 1, DiagDirection::Invalid);
+	why.clear();
+	CHECK(JunctionNodeHeightsOk(layout, spec, terrain, {0, 0}, &why));
+	INFO(why);
+}
+
+TEST_CASE("heights: the line router's route across an incline is accepted", "[junction][nodes]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionLineRouteRequest request;
+	request.line = {2, 1, 1};
+	request.start = {40, 20};
+	request.start_trackdir = Trackdir::X_NE;
+	request.goals = {{{20, 20}, Trackdir::X_NE}};
+	request.min = {10, 5};
+	request.max = {50, 40};
+	request.curve_spacing = 4;
+	request.rail_piece = 1;
+	request.slope_piece = 100;
+	request.plane = 1;
+	std::vector<int> rows;
+	for (const JunctionRaster &raster : RasterizeJunctionLine(request.line, {request.start, request.start_trackdir, ""})) rows.push_back(raster.pieces[0].tile.y);
+	request.min.y = static_cast<int16_t>(*std::ranges::min_element(rows));
+	request.max.y = static_cast<int16_t>(*std::ranges::max_element(rows));
+
+	JunctionTerrain terrain;
+	terrain.origin = request.min;
+	terrain.width = request.max.x - request.min.x + 1;
+	terrain.height = request.max.y - request.min.y + 1;
+	JunctionTerrainTile ground;
+	ground.z_min = ground.z_max = 1;
+	ground.clear_cost = 5;
+	terrain.tiles.assign(static_cast<size_t>(terrain.width) * terrain.height, ground);
+	terrain.build_on_slopes = true;
+	terrain.foundation_cost = 1;
+	for (const auto &[x, incline] : {std::pair{33, DiagDirection::SW}, std::pair{32, DiagDirection::NE}}) {
+		for (int y = terrain.origin.y; y < terrain.origin.y + terrain.height; y++) {
+			JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)];
+			tile.z_min = 0;
+			tile.z_max = 1;
+			tile.incline = incline;
+		}
+	}
+	request.terrain = &terrain;
+	const JunctionLineRouteResult result = FindJunctionLineRoute(request);
+	REQUIRE(result.route.has_value());
+
+	/* The raster is laid at the router's coordinates, then normalised: the offset maps the layout back. */
+	JunctionLayout layout;
+	for (const JunctionRaster &raster : RasterizeJunctionLine(request.line, *result.route)) AddRasterToLayout(layout, raster);
+	int min_x = INT16_MAX;
+	int min_y = INT16_MAX;
+	for (const JunctionTrack &jt : layout.tracks) {
+		min_x = std::min<int>(min_x, jt.offset.x);
+		min_y = std::min<int>(min_y, jt.offset.y);
+	}
+	NormaliseJunctionLayout(layout);
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
+	INFO("traced paths " << ctx.paths.size());
+	REQUIRE_FALSE(ctx.paths.empty());
+	std::string why;
+	CHECK(JunctionNodeHeightsOk(layout, spec, terrain, {static_cast<int16_t>(min_x), static_cast<int16_t>(min_y)}, &why));
+	INFO(why);
 }
