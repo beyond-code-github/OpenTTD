@@ -16,14 +16,14 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[relaxed]` | 0.41 s | 5 s | 0.06 s (GS1b: JunctionRelaxedReachable) |
 | `[projectionedges]` | not measured | measured in Release, 5 s | 2.6 s (G4's unbuildable-hub test, E1, E2, E3, E3b, PH1; the PH1 W-end limit test is `[slow]`, 13 s) |
 | `[tunnelprice]` | 0.01 s | 5 s | 0.01 s |
-| `[tmapnear]` | 0.8 s | 5 s | 0.12 s (HF1b; ridge BENCH 43 ms) |
+| `[tmapnear]` | 0.8 s | 5 s | 0.12 s (HN1; ridge BENCH 43 ms) |
 | `[curvespeed]` | 0.01 s (CS3) | 5 s | 0.01 s |
-| `[nodes]` | 2.0 s (HF1b, 2026-11-11) | 5 s | 0.19 s (HF1b; budget 1 s) |
-| `[nodespeed]` | 2.1 s (six-speed sweeps: node solve and prio sizing at 100-196 km/h; run in the gate, not per step) | 10 s | 0.20 s (HF1b; budget 5 s) |
-| `[nodeoracle]` | gate only, not measured | n/a (in the wide gate, not a per-step tag) | 1.3 s (HF1b: 1.26 s; CK1: 250 random terrains, the node search's layouts through CheckJunctionRules; ORACLE line prints terrains, skipped, accepted, search micros) |
+| `[nodes]` | 2.1 s (HN1, 2026-11-11) | 5 s | 0.19 s (HN1; budget 1 s) |
+| `[nodespeed]` | 2.1 s (six-speed sweeps: node solve and prio sizing at 100-196 km/h; run in the gate, not per step) | 10 s | 0.20 s (HN1; budget 5 s) |
+| `[nodeoracle]` | gate only, not measured | n/a (in the wide gate, not a per-step tag) | 1.3 s (HN1: 1.34 s; CK1: 250 random terrains, the node search's layouts through CheckJunctionRules; ORACLE line prints terrains, skipped, accepted, search micros) |
 | `[positions]` | 0.11 s (N1) | 5 s | 0.02 s (N1: JunctionPositions, 6 tests incl. 300-system brute force) |
 | `[facts]` | 0.05 s (N2, HF1b) | 1 s Release, 5 s Debug | 0.05 s Release, 0.16 s Debug (N2: JunctionFacts, 5 tests incl. 200-terrain walk comparison; 128x128 build 755 us) |
-| wide gate | (Release only) | | 23 s (HF1b; budget 120 s) |
+| wide gate | (Release only) | | 23 s (HN1; budget 120 s) |
 
 Measured 2026-11-10 at the G3a merge.
 
