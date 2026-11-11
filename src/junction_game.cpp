@@ -389,10 +389,10 @@ JunctionTerrain MakeJunctionTerrainRect(TileIndex a, TileIndex b, int margin)
 	return terrain;
 }
 
-/** @return The map offsets tried around the anchor, nearest first. */
+/** @return The map offsets tried around the anchor, nearest first: rings at 2, 4, 6 and 8 tiles (D195: the fallback when no structure clears an obstacle). */
 static std::vector<TileIndexDiffC> JunctionNearOffsets()
 {
-	static constexpr int16_t DISTANCES[] = {2, 4};
+	static constexpr int16_t DISTANCES[] = {2, 4, 6, 8};
 	std::vector<TileIndexDiffC> offsets{{0, 0}};
 	for (int16_t d : DISTANCES) {
 		for (int16_t dy = -d; dy <= d; dy += d) {
