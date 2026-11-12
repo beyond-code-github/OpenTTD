@@ -95,6 +95,8 @@ struct NodeBuilder {
 
 	/** The points, links, classes and pieces. */
 	void ReadPoints();
+	/** The port bends' lean per class (D212, DESIGN-G1 §13.3); needs the tags. */
+	void ReadLeans();
 	/** DESIGN-N3 §2 rules 1-3, per path. */
 	void AddPathDiffs();
 	/** DESIGN-N3 §2 rule 4, for bridges on either axis (DESIGN-N3 §5). */
@@ -784,6 +786,90 @@ JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const Junct
 	return TraceJunctionNodeInput(flat, spec, JunctionTTopology());
 }
 
+void NodeBuilder::ReadLeans()
+{
+	this->tpl.lean.assign(this->tpl.flat.size(), 0);
+	if (this->input.tags.empty()) return;
+
+	using BendId = std::tuple<uint32_t, uint16_t, uint8_t>;
+	using PieceId = std::tuple<int, int, Trackdir>;
+	const auto is_bend_piece = [](const JunctionPiece &piece, const JunctionTrackPieceTag &tag) { return tag.token != JunctionTrackPieceTag::RUN && !piece.on_bridge; };
+
+	/* The pieces of each token, and the run pieces of each edge and copy, over every route. */
+	std::map<BendId, std::set<PieceId>> bend_pieces;
+	std::map<std::pair<uint32_t, uint8_t>, std::set<PieceId>> run_pieces;
+	for (size_t pi = 0; pi < this->input.paths.size(); pi++) {
+		const std::vector<JunctionPiece> &pieces = this->input.paths[pi].pieces;
+		for (size_t i = 0; i < pieces.size(); i++) {
+			const JunctionTrackPieceTag &tag = this->input.tags[pi][i];
+			if (is_bend_piece(pieces[i], tag)) bend_pieces[{tag.edge, tag.token, tag.copy}].emplace(pieces[i].tile.x, pieces[i].tile.y, pieces[i].trackdir);
+			if (tag.token == JunctionTrackPieceTag::RUN && !pieces[i].on_bridge) run_pieces[{tag.edge, tag.copy}].emplace(pieces[i].tile.x, pieces[i].tile.y, pieces[i].trackdir);
+		}
+	}
+
+	std::vector<int8_t> direction(this->tpl.flat.size(), 0);
+	std::vector<bool> barred(this->tpl.flat.size(), false);
+	std::vector<std::set<uint16_t>> bends; ///< The classes of each port bend.
+	for (size_t pi = 0; pi < this->input.paths.size(); pi++) {
+		const std::vector<JunctionPiece> &pieces = this->input.paths[pi].pieces;
+		const std::vector<JunctionTrackPieceTag> &tags = this->input.tags[pi];
+		if (pieces.empty()) continue;
+		for (const bool in : {true, false}) {
+			/* The bend is the token of the piece nearest the port that is not on a run or a bridge, on the route's first (in) or last (out) edge; that piece is the candidate. */
+			const size_t port = in ? 0 : pieces.size() - 1;
+			std::optional<size_t> nearest;
+			for (size_t k = 0; k < pieces.size(); k++) {
+				const size_t i = in ? k : pieces.size() - 1 - k;
+				if (tags[i].edge != tags[port].edge) break;
+				if (is_bend_piece(pieces[i], tags[i])) {
+					nearest = i;
+					break;
+				}
+			}
+			if (!nearest.has_value()) continue;
+
+			const Trackdir port_td = pieces[port].trackdir;
+			const bool x_axis = port_td == Trackdir::X_NE || port_td == Trackdir::X_SW;
+			const bool y_axis = port_td == Trackdir::Y_SE || port_td == Trackdir::Y_NW;
+			if (!x_axis && !y_axis) continue;
+			const TileIndexDiffC step = TileIndexDiffCByDir(TrackdirToDirection(port_td));
+			const int travel = x_axis ? step.x : step.y;
+			const int8_t lean = static_cast<int8_t>(in ? travel : -travel);
+
+			/* Every class on the axis that holds a piece of the bend leans (the bend's pieces on this route). */
+			const JunctionTrackPieceTag &tag = tags[*nearest];
+			std::set<uint16_t> classes;
+			for (size_t i = 0; i < pieces.size(); i++) {
+				if (tags[i].edge != tag.edge || tags[i].token != tag.token || tags[i].copy != tag.copy || pieces[i].on_bridge) continue;
+				const JunctionNodePoint &governing = this->tpl.points[this->work[pi].governing[i]];
+				classes.insert(x_axis ? governing.cls : governing.ycls);
+			}
+
+			/* A node must never slide: every point of each class is a piece of the bend or a run piece of its edge and copy; all-or-nothing per bend. */
+			const std::set<PieceId> &bend = bend_pieces.at({tag.edge, tag.token, tag.copy});
+			const std::set<PieceId> &run = run_pieces[{tag.edge, tag.copy}];
+			for (const uint16_t cls : classes) {
+				for (const JunctionNodePoint &point : this->tpl.points) {
+					if ((x_axis ? point.cls : point.ycls) != cls) continue;
+					const PieceId id{point.tile.x, point.tile.y, point.trackdir};
+					if (!bend.contains(id) && !run.contains(id)) barred[cls] = true;
+				}
+				if (direction[cls] != 0 && direction[cls] != lean) barred[cls] = true;
+				direction[cls] = lean;
+			}
+			bends.push_back(std::move(classes));
+		}
+	}
+	for (const std::set<uint16_t> &classes : bends) {
+		if (std::ranges::any_of(classes, [&](uint16_t cls) { return barred[cls]; })) {
+			for (const uint16_t cls : classes) barred[cls] = true;
+		}
+	}
+	for (size_t c = 0; c < direction.size(); c++) {
+		if (!barred[c]) this->tpl.lean[c] = direction[c];
+	}
+}
+
 JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionLayout &flat, const JunctionSpec &spec)
 {
 	return BuildJunctionNodeTemplate(TraceJunctionNodeInput(flat, spec), spec);
@@ -795,6 +881,7 @@ JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionNodeInput &input, c
 	NodeBuilder builder{tpl, spec, input, {}, {}, {}};
 	builder.ReadPoints();
 	if (!tpl.error.empty()) return tpl;
+	builder.ReadLeans();
 	builder.AddPathDiffs();
 	builder.AddCrossings();
 	builder.AddBoxEdges();
@@ -1270,6 +1357,7 @@ static JunctionNodeSolve SolveJunctionNodesWith(const JunctionNodeTemplate &tpl,
 	}
 	const size_t variables = tpl.flat.size();
 	const size_t classes = tpl.x_classes;
+	assert(tpl.lean.size() == variables);
 	JunctionPositions positions(variables + 3 * free_links.size(), -RANGE, RANGE);
 
 	/* 2. The template. */
@@ -1314,6 +1402,33 @@ static JunctionNodeSolve SolveJunctionNodesWith(const JunctionNodeTemplate &tpl,
 				if (distance == 0) break;
 			}
 		}
+	};
+	/* Fix a leaning class (D212) at its greatest (lean +1) or least value that accept takes, stepping back toward its flat value as far as it; then, or when its lean side is the domain limit, the nearest value to flat as snap; false when none is left. */
+	auto snap_lean = [&](size_t c, const auto &accept) {
+		const int lean = tpl.lean[c];
+		if (lean > 0 ? positions.Up(c) >= RANGE : positions.Lo(c) <= -RANGE) return snap(c, accept);
+		for (int t = lean > 0 ? positions.Up(c) : positions.Lo(c); lean > 0 ? t >= tpl.flat[c] : t <= tpl.flat[c]; t -= lean) {
+			if (t < positions.Lo(c) || t > positions.Up(c)) continue;
+			const size_t mark = positions.Mark();
+			if (positions.RestrictRange(c, t, t)) {
+				result.values[c] = positions.Lo(c);
+				if (accept(c)) return true;
+			}
+			positions.Undo(mark);
+		}
+		return snap(c, accept);
+	};
+	/* snap for a class without a lean, snap_lean for one with. */
+	auto snap_class = [&](size_t c, const auto &accept) { return tpl.lean[c] == 0 ? snap(c, accept) : snap_lean(c, accept); };
+	/* The classes in [first, last) without a lean in class order, then those with one. */
+	auto snap_order = [&](size_t first, size_t last) {
+		std::vector<size_t> order;
+		for (const bool leaning : {false, true}) {
+			for (size_t c = first; c < last; c++) {
+				if ((tpl.lean[c] != 0) == leaning) order.push_back(c);
+			}
+		}
+		return order;
 	};
 	const auto any_value = [](size_t) { return true; };
 
@@ -1586,9 +1701,9 @@ static JunctionNodeSolve SolveJunctionNodesWith(const JunctionNodeTemplate &tpl,
 	};
 
 	/* 2b. The Y variables: the nearest flat rows whose pieces fit the facts and meet at their heights. */
-	for (size_t c = classes; c < variables; c++) {
+	for (const size_t c : snap_order(classes, variables)) {
 		std::optional<int> first_row;
-		if (!snap(c, [&](size_t y_class) {
+		if (!snap_class(c, [&](size_t y_class) {
 			if (!first_row.has_value()) first_row = positions.Lo(y_class);
 			return y_fits(y_class);
 		})) {
@@ -1731,8 +1846,8 @@ static JunctionNodeSolve SolveJunctionNodesWith(const JunctionNodeTemplate &tpl,
 	}
 
 	/* 5. Snap each X class to the nearest value. */
-	for (size_t c = 0; c < classes; c++) {
-		if (!snap(c, any_value)) {
+	for (const size_t c : snap_order(0, classes)) {
+		if (!snap_class(c, any_value)) {
 			result.failure = JunctionNodeFailure{Kind::Template};
 			result.values.clear();
 			return result;
@@ -2137,6 +2252,7 @@ std::string DiffJunctionNodeTemplates(const JunctionNodeTemplate &a, const Junct
 			return NodeDiffFirst({NodeDiffField("merge", x.merge, y.merge), NodeDiffField("side", x.side, y.side), NodeDiffField("dir", x.dir, y.dir), NodeDiffField("span", x.span, y.span)});
 		}),
 		NodeDiffNumbers("flat", a.flat, b.flat),
+		NodeDiffNumbers("lean", a.lean, b.lean),
 		NodeDiffField("x_classes", a.x_classes, b.x_classes),
 		NodeDiffField("anchor", a.anchor, b.anchor),
 		NodeDiffField("anchor_y", a.anchor_y, b.anchor_y),

@@ -1444,6 +1444,7 @@ TEST_CASE("the template comparator finds every member", "[junction][nodes]")
 	CheckNodeFields(tpl, &N::late_crossings, "late_crossings", FIELD(bridge), FIELD(diagonal));
 	CheckNodeFields(tpl, &N::prio_rows, "prio_rows", FIELD(merge), FIELD(side), FIELD(dir), FIELD(span));
 	CheckNodeSize(tpl, &N::flat, "flat");
+	CheckNodeSize(tpl, &N::lean, "lean");
 
 	const auto scalar = [&](const char *name, auto mutate) {
 		N copy = tpl;
@@ -1452,6 +1453,7 @@ TEST_CASE("the template comparator finds every member", "[junction][nodes]")
 	};
 	scalar("open_joins", [](N &t) { ChangeNodeValue(t.open_joins); });
 	scalar("flat[0]", [](N &t) { ChangeNodeValue(t.flat.front()); });
+	scalar("lean[0]", [](N &t) { ChangeNodeValue(t.lean.front()); });
 	scalar("x_classes", [](N &t) { ChangeNodeValue(t.x_classes); });
 	scalar("anchor", [](N &t) { ChangeNodeValue(t.anchor); });
 	scalar("anchor_y", [](N &t) { ChangeNodeValue(t.anchor_y); });

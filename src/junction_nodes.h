@@ -121,6 +121,7 @@ struct JunctionNodeTemplate {
 	std::vector<JunctionNodeLateCrossing> late_crossings; ///< The X-axis bridges over free diagonals.
 	std::vector<JunctionNodePrioRow> prio_rows; ///< One per prio merge whose joiner is off the merge's row.
 	std::vector<int> flat; ///< Per variable, its flat value: X classes (the flat x of the class's first point, lowest point index) then Y classes (the flat y of the class's first point).
+	std::vector<int8_t> lean; ///< Per class (X then Y): +1 snap to its greatest value, -1 to its least, 0 to the value nearest flat; nonzero only for a port bend's class (D212, DESIGN-G1 §13.3).
 	uint16_t x_classes; ///< The number of X classes; the Y classes follow.
 	uint16_t anchor; ///< DESIGN-N3 §2 rule 5: the X class of the last point of EIn->SOut; UINT16_MAX (no constraint, no error) when the layout has no EIn->SOut path.
 	uint16_t anchor_y; ///< The Y class of the first point of EIn->SOut (on A); UINT16_MAX when anchor is.
