@@ -1,0 +1,33 @@
+# RECON-exact-corners (HC0): the level solve's objective from exact corners
+
+Recon by experiment at ef1c04b4f5, Release, 48 fixtures x 153 offsets (7344 offsets) as LEVELHASH. Patch: /tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/hc0.patch (hidden test "hc0 sweep", env HC0_MODE 0/1/2, HC0_SLOPE 0/1/2). Per-offset results of every run: scratchpad m0.txt (current) and s<mode>s<slope>.txt. Everything below is MEASURED unless marked INFERRED.
+
+Names in this tree: ADJ = the corner-mismatch term of `local_cost` (sum of terraform_cost x |corner difference| to every adjacent track tile); SLOPE2 = `SLOPE_RANGE = 2` (track corners within Manhattan distance d differ by <= d, as positions constraints); FLEX = the merge that lets a foundation tile take any corner from ground to level, then Propagate with all track corners fixed.
+
+## 1. Derivation: verified
+For every plan the current solve makes (2775), the clamp terrain (clamp(g, L, U), L/U = L1 cones of the fixed track corners and of the immovable corners at ground) equals PropagateJunctionTerraform's corners AND cost: 2775/2775, both with all track corners fixed (as Propagate) and with foundation-tile corners free. Cost totals identical (90 747 129). The clamp is never infeasible where Propagate succeeds.
+The other direction differs: of 222 plans where Propagate fails ("fixed corner would move"), the clamp is feasible in 6 (fixed corners) and 20 (foundation corners free). Cause, read from a window dump: Propagate is order dependent. A free corner raised by one source is later checked against a fixed neighbour, and Propagate then pushes the FIXED neighbour (conflict) instead of lowering the free one to the least value the clamp gives (min(max(g, L), U)). So Propagate rejects some feasible plans; the clamp does not.
+
+## 2. Exact objective in the descent (mode 1; slope range 1)
+Per evaluated move: choices of all tiles (memoised per tile/kind/level), fixed targets = corners of non-foundation tiles, clamp cost = terraform_cost x sum|h - g| + clear_cost of every tile with a moved corner + choice cost of untouched tiles + foundation_cost of a foundation tile whose corners moved but is not flat (the old total counted such a tile as cleared only). Infeasible assignments cost 1e9 x violation, so the descent has a gradient. The final plan is the clamp itself (Propagate not called).
+Dense version (two L1 passes over the snapshot per evaluation): 8.0 ms mean. Sparse version (below): same results (verified: sparse corners == dense clamp on all 2862 plans), 3.5 ms.
+Sparse exact clamp: raised targets (t > g) spread L = t - d by BFS while L > g, lowered ones spread U = t + d while U < g; an untouched corner is at ground (Lipschitz ground makes L <= g <= U there). Violations: a touched corner with L > U, a touched corner outside the base cone of the immovable corners, a fixed corner whose height is not its target, and the pair check (raised target vs lowered target: |t_s - t_l| <= d), which the BFS cannot see when the cone stops binding in between.
+
+| | planned | gained / lost | cost, common plans (mean) | ms mean / max (all solves) | T3 fails |
+|---|---|---|---|---|---|
+| current (ADJ/FLEX/SLOPE2) | 2775 | - | 36218 | 1.83 / 3.6 | 0 |
+| exact, slope 1 (mode 2) | 2862 | +87 / 0 (12 fixtures) | 35499 (-2.0%; 1097 cheaper, 998 dearer) | 3.5 / 17.6 | 0 |
+| exact, slope 2 | 2862 | +87 / 0 | 35499 | same plans as slope 1 | 0 |
+Cost caveat: the new total is stricter (foundation_cost of a moved non-flat foundation tile) so "dearer" is partly accounting; the old model undercounts those. INFERRED, not separated. Max cost 247106 -> 247293. The 87 gained plans cost 44179 on average. Corners moved on common plans: 99.7 -> 98.2 mean. Timings above are single runs alone (3.48 / 17.56 ms); runs in parallel read about 10% higher.
+
+## 3. Foundation after terraform
+Current plans: 2394 have a foundation tile; in 2323 of them the terraform moves a corner of one (12767 tile cases); none ends invalid (neither flat at its level nor Leveled at z_max == level): 0 T3 failures in 2775 plans. So HM1's effect does not occur on these fixtures under the fitted model (SLOPE2/ADJ keep it away). Exact objective, requirement ON (mode 2: a moved foundation tile must be flat at its level or still Leveled with z_max == level, else penalty) vs OFF (mode 1): identical plans at slope 1 and 2 (0 plans change), T3 0 in both. The requirement matters only when the slope constraints are removed: slope 0 mode 1 gives 14 T3 failures (of 2844 plans); mode 2 gives 0 (2853 plans).
+
+## 4. Can ADJ/FLEX/SLOPE2 be deleted?
+- ADJ: yes, it is replaced by the exact cost. FLEX: yes (foundation corners are free in the clamp; the demanded/foundation merge loops and the Propagate call leave the solve). 
+- SLOPE2 (d = 2): yes, deleted outright: slope 1 gives identical plans to slope 2 (planned 2862, lost 0, cost 98 509 326 vs 98 509 175 on common plans, i.e. within 151 of 98.5 M).
+- SLOPE d = 1 should stay. Slope 0 (all SLOPE constraints deleted) loses plans: 2853 planned, 15 of the current 2775 lost (and 14 T3 failures if the foundation requirement is off): the descent starts from the cheapest flat level per tile, which can be infeasible, and no single move repairs it. Not tried: a feasible-start repair, or a violation-aware start. INFERRED that either would recover them.
+- Time: 3.5 ms mean = 1.9x today's 1.83 ms (within the 2x ask); max 17.6 ms vs 3.6 ms, far under 100 ms. Further headroom, not built: update the target array incrementally for the moved group's tiles only; choices are already memoised.
+
+## Recommendation (implementation step)
+Delete in junction_levels.cpp: `local_cost` and its use, the demanded/FLEX merge loops and the PropagateJunctionTerraform call in SolveJunctionLevels, the SLOPE_RANGE = 2 loop (keep d = 1), the second `total` pass. Add: the sparse exact clamp (about 90 lines: targets, two BFS passes, pair check, base cone check), the foundation-after check in the cost (moved foundation tile: flat at its level or Leveled at z_max == level), choice memo, the clamp's moved corners as the plan, cost as defined above. Keep PropagateJunctionTerraform for its other callers (tests). Expected: 2775 -> 2862 planned (cone_rejects stays 99, INFERRED), LEVELHASH re-pinned, T3 0, about 3.5 ms mean, cost about -2% (partly accounting). Test to add: clamp vs an independent dense clamp on every plan (the sweep did this, 2862/2862 equal). Not measured: the game's own terraform on the clamp terrain (a Lipschitz terrain; INFERRED reachable by raising/lowering corners in a suitable order); T3 was measured on the solve's signalled layout, not the test's unsignalled one.
