@@ -32,3 +32,8 @@ CODINGSTYLE.md (C++ part); the ES1 patch and es1-ce.txt; src/junction_topology.c
 
 ## Report
 The standard report, plus step 0's findings and the EDITSOUND lines. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after step 0)
+- H1: as step 0 found: check `port_row[s] >= 0` right after `set_port_rows` (fixed branch and wherever else set_port_rows runs), failing with reason "box" naming the port slot and its row.
+- H2: option (a). A head whose flat side is 0 (on the bridge's row, inside its span) is a contradiction of the bridge middle clearance family: the placement fails with that family's reason naming both edges and the tile (sound and general; the flat state is already illegal, and a later separation would be negotiation's job, DESIGN-G1 §17). No side-picking rule.
+- Then changes 3, tests 1-3, gates and the commit as the brief says. Test 3's corner case expects the failure with the clearance reason.
