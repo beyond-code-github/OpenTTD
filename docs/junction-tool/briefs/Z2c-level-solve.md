@@ -41,3 +41,6 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 
 ## Report
 The standard report, plus the three REALTERRAIN lines, the terraform-conflict count, mean and max Release micros of the height solve, and the cost distribution (min/median/max) over solved fixtures. When you have reported, stop.
+
+## Note (orchestrator, from Z2b's report)
+Z2b's `heights = false` mode is not class-only: its kept facts (Straight/Switch/Half) still fail on slopes the game cannot build without terraform (e.g. a level-needing switch on a slope). With `terraform = true` the X phase must use class facts only: add `bool Buildable(int x, int y) const; ///< The tile's class is Buildable (D218: hard facts only; heights are the level solve's).` to JunctionFacts and use it for every tile check in terraform mode (row runs, element tiles, node tiles). Spannable stays allowed only under a bridge middle, as today.
