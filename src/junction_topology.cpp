@@ -15,6 +15,9 @@
 #include "junction_route.h"
 #include "junction_rules_internal.h"
 #include "junction_signal_pass.h"
+#include "direction_func.h"
+#include "map_func.h"
+#include "track_func.h"
 
 #include <algorithm>
 
@@ -971,6 +974,8 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	if (h % 2 == 0) h++;
 	const int k = (h - 1) / 2;
 	const int prio = spec.prio_tiles;
+	/* The prio element's coverage in tiles: joins at even offsets 0..even_prio upstream of the joiner merge (DESIGN-G1 §12.4, RECON-prio-element §3). */
+	const int even_prio = prio + (prio & 1);
 	/* The generator's JUNCTION_SHIFT_BACK_TILES (junction_generator.cpp, D145), repeated here because that one is file-local. */
 	static constexpr int JUNCTION_SHIFT_BACK_TILES = 4;
 	/* Not checked here, left to G1c(ii-b), whose render tests (no conflicting track bits) catch them: the band-layer slices (DESIGN-G1 §10.8) and a vertical edge meeting a side track. */
@@ -1268,7 +1273,8 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 			along(heading, nex, rp.fil, 2, false);
 			int after = nex; // The last point of the lane chain before the joiner merge.
 			if (!doubled) {
-				along(heading, njm, nex, prio + 1, false);
+				/* The prio element covers even_prio tiles upstream of the joiner merge; the exit split stays outside it. */
+				along(heading, njm, nex, even_prio + 1, false);
 			} else {
 				/* The runs from the exit split to the lane split and on to the first heads (and from the last heads to the lane merge) are rule minima, not exact: series bridges need the slack (DESIGN-G1 §11.9b). */
 				along(heading, rp.lane_split, nex, 2, false);
@@ -1284,7 +1290,8 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				along(heading, rp.sb0_first, rp.fh0[g - 1], 1, false);
 				eq(0, rp.lane_merge, rp.sb0_first, 0);
 				along(heading, rp.lane_merge, rp.fh1[g - 1], 2, false);
-				along(heading, njm, rp.lane_merge, prio + 1, false);
+				/* The element's row ends at step even_prio + 1, which must not meet the lane merge's S-bend (RECON-prio-element §3-4). */
+				along(heading, njm, rp.lane_merge, even_prio + 2, false);
 				after = rp.lane_merge;
 
 				/* Every crosser's tiles on the copy row and the lane row lie between its bridge's heads, and the heads hug the outermost tiles (D80, D118, D145). */
@@ -1772,6 +1779,44 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 	return layout;
 }
 
+/** Whether a track touches the given tile edge. */
+static bool JunctionTrackTouches(Track track, DiagDirection edge)
+{
+	const Trackdir td = TrackToTrackdir(track);
+	return TrackdirToExitdir(td) == edge || TrackdirToExitdir(ReverseTrackdir(td)) == edge;
+}
+
+/** The track that touches both edges. */
+static Track JunctionCornerTrack(DiagDirection a, DiagDirection b)
+{
+	for (Track track : {Track::Upper, Track::Lower, Track::Left, Track::Right}) {
+		if (JunctionTrackTouches(track, a) && JunctionTrackTouches(track, b)) return track;
+	}
+	NOT_REACHED();
+}
+
+/** Add tracks to a tile of the layout. */
+static void AddJunctionTracks(JunctionLayout &layout, TileIndexDiffC tile, TrackBits tracks)
+{
+	for (JunctionTrack &jt : layout.tracks) {
+		if (jt.offset.x == tile.x && jt.offset.y == tile.y) {
+			jt.tracks = jt.tracks | tracks;
+			return;
+		}
+	}
+	layout.tracks.push_back({tile, tracks});
+}
+
+/** The tracks of a tile of the layout. */
+static TrackBits JunctionTracksAt(const JunctionLayout &layout, TileIndexDiffC tile)
+{
+	TrackBits bits;
+	for (const JunctionTrack &jt : layout.tracks) {
+		if (jt.offset.x == tile.x && jt.offset.y == tile.y) bits = bits | jt.tracks;
+	}
+	return bits;
+}
+
 std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionSpec &spec)
 {
 	using Reason = JunctionSignalReason;
@@ -1786,6 +1831,101 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 		bool bridge;
 		bool split;
 	};
+
+	/* Phase 0: the prio elements (DESIGN-G1 §12.4). Each draws its own joins, row, row signals and the ML signals inside its coverage; the joiner's Entry follows in phase 4. */
+	const int n_prio = static_cast<int>(spec.prio_tiles + (spec.prio_tiles & 1));
+	std::vector<std::pair<size_t, size_t>> entries; // The joiner route and the index of its merge piece.
+	for (size_t r = 0; r < routes.size(); r++) {
+		const auto &movement = topology.movements[paths[routes[r].path].movement];
+		if (!topology.groups[movement.first].main || !topology.groups[movement.second].main) continue;
+		const std::vector<JunctionPiece> &P = routes[r].pieces;
+		JunctionPath path{};
+		path.pieces = P;
+		const std::vector<SwitchEvent> switches = SwitchEventsOf(layout, used, path);
+		for (const SwitchEvent &merge : switches) {
+			if (merge.first) continue;
+			const size_t j = merge.second;
+			const JunctionPiece &mp = P[j];
+			const TileIndexDiffC M = mp.tile;
+
+			/* 1. The joiner: the first route of another movement with a piece on M. */
+			std::optional<size_t> joiner, joiner_k;
+			for (size_t r2 = 0; r2 < routes.size() && !joiner.has_value(); r2++) {
+				if (paths[routes[r2].path].movement == paths[routes[r].path].movement) continue;
+				for (size_t k = 1; k < routes[r2].pieces.size(); k++) {
+					const JunctionPiece &piece = routes[r2].pieces[k];
+					if (piece.on_bridge || piece.tile.x != M.x || piece.tile.y != M.y) continue;
+					joiner = r2;
+					joiner_k = k;
+					break;
+				}
+			}
+			if (!joiner.has_value()) continue;
+			const auto tracks_at_m = [&](const std::map<std::pair<int, int>, TrackBits> &m) {
+				const auto it = m.find({M.x, M.y});
+				return it == m.end() ? TrackBits{} : it->second;
+			};
+			if (JunctionTracksAt(layout, M) != tracks_at_m(used)) continue;
+
+			/* 2. The geometry, as GeometryOfPrio. */
+			if (!IsDiagonalTrackdir(mp.trackdir)) continue;
+			const Track axis = TrackdirToTrack(mp.trackdir);
+			const bool along_x = axis == Track::X;
+			const DiagDirection exit_edge = TrackdirToExitdir(mp.trackdir);
+			const TileIndexDiffC from = routes[*joiner].pieces[*joiner_k - 1].tile;
+			const int offset = along_x ? from.y - M.y : from.x - M.x;
+			if (offset == 0) continue;
+			std::optional<DiagDirection> side;
+			for (DiagDirection edge = DiagDirection::Begin; edge < DiagDirection::End; edge++) {
+				if (JunctionTrackTouches(axis, edge)) continue;
+				const TileIndexDiffC diff = TileIndexDiffCByDiagDir(edge);
+				if ((along_x ? diff.y : diff.x) == (offset < 0 ? 1 : -1)) side = edge;
+			}
+			if (!side.has_value()) continue;
+			const TileIndexDiffC dir = TileIndexDiffCByDiagDir(exit_edge);
+			const TileIndexDiffC side_diff = TileIndexDiffCByDiagDir(*side);
+			const Track h1 = JunctionCornerTrack(*side, exit_edge);
+			const Track h2 = JunctionCornerTrack(ReverseDiagDir(*side), ReverseDiagDir(exit_edge));
+
+			/* 3. The requirements, all before anything is written. */
+			const auto ml = [&](int s) { return TileIndexDiffC{static_cast<int16_t>(M.x - s * dir.x), static_cast<int16_t>(M.y - s * dir.y)}; };
+			const auto row = [&](int s) { const TileIndexDiffC t = ml(s); return TileIndexDiffC{static_cast<int16_t>(t.x + side_diff.x), static_cast<int16_t>(t.y + side_diff.y)}; };
+			bool fits = static_cast<int>(j) >= n_prio;
+			for (int s = 1; fits && s <= n_prio; s++) {
+				const JunctionPiece &piece = P[j - s];
+				const TileIndexDiffC t = ml(s);
+				fits = !piece.on_bridge && piece.tile.x == t.x && piece.tile.y == t.y && piece.trackdir == mp.trackdir && std::ranges::none_of(switches, [&](const SwitchEvent &sw) { return sw.second == j - s; });
+			}
+			for (int s = 0; fits && s <= n_prio; s++) fits = JunctionTracksAt(layout, row(s)) == TrackBits{};
+			if (fits) {
+				const TrackBits beyond = JunctionTracksAt(layout, row(n_prio + 1));
+				for (Track t : beyond) {
+					if (JunctionTrackTouches(t, exit_edge)) fits = false;
+				}
+			}
+			if (!fits) continue;
+
+			/* 4. Write. */
+			for (int s = 0; s <= n_prio; s++) {
+				if (s % 2 == 0) AddJunctionTracks(layout, ml(s), TrackBits{h1});
+				if (s == 0) {
+					AddJunctionTracks(layout, row(s), TrackBits{h2});
+				} else if (s % 2 == 0) {
+					AddJunctionTracks(layout, row(s), TrackBits{axis, h2});
+				} else {
+					AddJunctionTracks(layout, row(s), TrackBits{axis});
+				}
+			}
+			for (int s = 1; s < n_prio; s += 2) {
+				layout.signals.push_back({ml(s), mp.trackdir, spec.signal_type, SignalVariant::Electric});
+				tokens.push_back({static_cast<uint16_t>(r), Reason::Prio, ml(s), mp.trackdir});
+				const Trackdir back = ReverseTrackdir(mp.trackdir);
+				layout.signals.push_back({row(s), back, s == n_prio - 1 ? SignalType::Exit : SignalType::Combo, SignalVariant::Electric});
+				tokens.push_back({static_cast<uint16_t>(r), Reason::Prio, row(s), back});
+			}
+			entries.emplace_back(*joiner, *joiner_k);
+		}
+	}
 
 	for (size_t r = 0; r < routes.size(); r++) {
 		const std::vector<JunctionPiece> &P = routes[r].pieces;
@@ -1906,6 +2046,21 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 		PlaceDragSignals(layout, routes[r].pieces, spec.sd, spec.signal_type);
 		for (size_t i = before; i < layout.signals.size(); i++) {
 			tokens.push_back({static_cast<uint16_t>(r), Reason::Fill, layout.signals[i].offset, layout.signals[i].facing});
+		}
+	}
+	/* Phase 4: the joiner's last signal before each element's merge is an Entry. */
+	for (const auto &[r2, k] : entries) {
+		const std::vector<JunctionPiece> &P = routes[r2].pieces;
+		JunctionPath path{};
+		path.pieces = P;
+		const std::vector<SwitchEvent> switches = SwitchEventsOf(layout, used, path);
+		for (size_t i = k; i-- > 0;) {
+			if (std::ranges::any_of(switches, [&](const SwitchEvent &sw) { return sw.second > i && sw.second < k; })) break;
+			if (!IsSignalledPiece(layout, P[i])) continue;
+			for (JunctionSignal &signal : layout.signals) {
+				if (signal.offset.x == P[i].tile.x && signal.offset.y == P[i].tile.y && TrackdirToTrack(signal.facing) == TrackdirToTrack(P[i].trackdir)) signal.type = SignalType::Entry;
+			}
+			break;
 		}
 	}
 	return tokens;

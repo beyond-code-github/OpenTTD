@@ -254,7 +254,9 @@ struct JunctionTrackRoute {
 };
 
 /** Why a signal stands where it does (DESIGN-G1 §12.2, §12.3). */
-enum class JunctionSignalReason : uint8_t { BeforeSplit, AfterSplit, BeforeMerge, AfterMerge, BeforeBridge, AfterBridge, SeriesGap, Stub, Bay, Fill };
+enum class JunctionSignalReason : uint8_t { BeforeSplit, AfterSplit, BeforeMerge, AfterMerge, BeforeBridge, AfterBridge, SeriesGap, Stub, Bay, Fill,
+	Prio ///< Inside a prio element: its ML signals and its row signals (D211: the prio places its own).
+};
 
 /** A signal token: a signal placed by a rule of the graph, on one route (D211). */
 struct JunctionTrackSignal {
