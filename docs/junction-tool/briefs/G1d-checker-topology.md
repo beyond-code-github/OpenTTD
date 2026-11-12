@@ -61,7 +61,7 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 - Anything not covered here.
 
 ## Gates
-- `tools/junction/jt fast .claude/nodes/build '[topology]' 5` and `tools/junction/jt fast .claude/nodes/build '[rules]' 10` green (if `[rules]` is not a TESTS.md tag, use the tag TESTS.md gives the rule checker tests); then `tools/junction/jt gate .claude/nodes/build-rel` green (380 before; report the count).
+- `tools/junction/jt fast .claude/nodes/build '[topology]' 5` and `tools/junction/jt fast .claude/nodes/build '[rules]' 10` green (`[rules]` has no TESTS.md row: report its time); then `tools/junction/jt gate .claude/nodes/build-rel` green (380 before; report the count).
 - One commit: `Add: Junction checker ports and movements from a topology (G1d)`, ending with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. TESTS.md `[topology]` row: add "G1d" and the new test count.
 
 ## Report
