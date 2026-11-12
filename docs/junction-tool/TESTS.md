@@ -25,7 +25,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[positions]` | 0.11 s (N1) | 5 s | 0.02 s (N1: JunctionPositions, 6 tests incl. 300-system brute force) |
 | `[facts]` | 0.05 s (N2, HF1b) | 1 s Release, 5 s Debug | 0.05 s Release, 0.16 s Debug (N2: JunctionFacts, 5 tests incl. 200-terrain walk comparison; 128x128 build 755 us) |
 | `[topology]` | 0.01 s (G1b(i), G1b(ii-a) to G1b(ii-d), G1c(i-a), G1c(i-b), G1c(ii-a), SB1, G1c(ii-b), G1d, ST1, ST2, CS1, NP1, NP2, P1, P2a, P2b, P3: topology, lane expansion, chord crossings, slot rows, track graph with node levels, track order with band layers, track structure, track programs, seed placement, series bridge cut, seed render: checker ports and movements from a topology, signal tokens, prio element, link directions; 45 tests) | 5 s | 0.012 s (budget 1 s) |
-| `[topoproj]` | 2.3 s Debug (P4a, 2026-11-12; P2b, P3, P4a...: graph projection solves on facts; the P4a sweep moved to `[topoprojsweep]`) | 5 s | 2.3 s Debug |
+| `[topoproj]` | 2.3 s Debug (P4a, 2026-11-12; P2b, P3, P3b, P4a... 6 tests: graph projection solves on facts; the P4a sweep moved to `[topoprojsweep]`) | 5 s | 2.3 s Debug |
 | `[topoprojsweep]` | gate only, not per step (P4a's 20-solve failure sweep on LL_RR) | 10 s | 2.1 s Debug |
 | wide gate | (Release only) | | 23.3 s (BL1; budget 120 s) |
 

@@ -705,6 +705,57 @@ JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const Junct
 	return input;
 }
 
+/**
+ * The lean of each piece's bend on a route (D212, D215): +1 toward the route's travel, -1 against, 0 where the piece is on no leaning bend.
+ * A bend is the non-bridge pieces of one emitting token. Kinds: a fan on the route's first edge +1, on its last edge -1; the SBend of a doubled leg's copy 1 +1 (toward its bridge heads); the SBend of its copy 0 -1; any other SBend +1 when no later token of its edge emits on this route but an earlier one does, -1 when an earlier one does not but a later one does. Corners, Over and Under never lean.
+ */
+static std::vector<int8_t> LeansOfRoute(const JunctionTrackPrograms &programs, const JunctionTrackRoute &route)
+{
+	using StepKind = JunctionTrackStep::Kind;
+	std::vector<int8_t> lean(route.pieces.size(), 0);
+	if (route.pieces.empty()) return lean;
+	const uint32_t first_edge = route.tags.front().edge;
+	const uint32_t last_edge = route.tags.back().edge;
+	/* The least and greatest emitting token of each edge on this route. */
+	std::map<uint32_t, uint16_t> lo;
+	std::map<uint32_t, uint16_t> hi;
+	for (const JunctionTrackPieceTag &tag : route.tags) {
+		if (tag.token == JunctionTrackPieceTag::RUN) continue;
+		const auto [it, fresh] = lo.emplace(tag.edge, tag.token);
+		if (!fresh) it->second = std::min(it->second, tag.token);
+		const auto [jt, fresh_hi] = hi.emplace(tag.edge, tag.token);
+		if (!fresh_hi) jt->second = std::max(jt->second, tag.token);
+	}
+	for (size_t i = 0; i < route.pieces.size(); i++) {
+		const JunctionTrackPieceTag &tag = route.tags[i];
+		if (tag.token == JunctionTrackPieceTag::RUN || route.pieces[i].on_bridge) continue;
+		const std::vector<JunctionTrackStep> &program = tag.copy == 1 && !programs.copies[tag.edge].empty() ? programs.copies[tag.edge] : programs.edges[tag.edge];
+		const JunctionTrackStep &step = program[tag.token];
+		int8_t direction = 0;
+		if (step.kind == StepKind::Fan) {
+			const bool in = tag.edge == first_edge && tag.token == lo[tag.edge];
+			const bool out = tag.edge == last_edge && tag.token == hi[tag.edge];
+			if (in != out) direction = in ? 1 : -1;
+		} else if (step.kind == StepKind::SBend) {
+			if (tag.copy == 1 && !programs.copies[tag.edge].empty()) {
+				direction = 1;
+			} else if (!programs.copies[tag.edge].empty()) {
+				direction = -1;
+			} else {
+				const bool before = lo[tag.edge] < tag.token;
+				const bool after = hi[tag.edge] > tag.token;
+				if (!after && before) {
+					direction = 1;
+				} else if (!before && after) {
+					direction = -1;
+				}
+			}
+		}
+		lean[i] = direction;
+	}
+	return lean;
+}
+
 JunctionNodeInput JunctionNodeInputOfGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, const std::vector<JunctionTrackRoute> &routes)
 {
 	using StepKind = JunctionTrackStep::Kind;
@@ -790,6 +841,7 @@ JunctionNodeInput JunctionNodeInputOfGraph(const JunctionTopology &topology, con
 		input.slots.push_back(std::move(slots));
 		input.tags.push_back(route.tags);
 		input.routes.emplace_back(route.path, route.copy);
+		input.lean.push_back(LeansOfRoute(programs, route));
 	}
 	return input;
 }
@@ -802,11 +854,12 @@ JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const Junct
 void NodeBuilder::ReadLeans()
 {
 	this->tpl.lean.assign(this->tpl.flat.size(), 0);
-	if (this->input.tags.empty()) return;
+	if (this->input.tags.empty() || this->input.lean.empty()) return;
 
 	using BendId = std::tuple<uint32_t, uint16_t, uint8_t>;
 	using PieceId = std::tuple<int, int, Trackdir>;
 	const auto is_bend_piece = [](const JunctionPiece &piece, const JunctionTrackPieceTag &tag) { return tag.token != JunctionTrackPieceTag::RUN && !piece.on_bridge; };
+	const auto straight_axis = [](Trackdir td) { return td == Trackdir::X_NE || td == Trackdir::X_SW || td == Trackdir::Y_SE || td == Trackdir::Y_NW; };
 
 	/* The pieces of each token, and the run pieces of each edge and copy, over every route. */
 	std::map<BendId, std::set<PieceId>> bend_pieces;
@@ -822,45 +875,42 @@ void NodeBuilder::ReadLeans()
 
 	std::vector<int8_t> direction(this->tpl.flat.size(), 0);
 	std::vector<bool> barred(this->tpl.flat.size(), false);
-	std::vector<std::set<uint16_t>> bends; ///< The classes of each port bend.
+	std::vector<std::set<uint16_t>> bends; ///< The classes of each bend.
 	for (size_t pi = 0; pi < this->input.paths.size(); pi++) {
 		const std::vector<JunctionPiece> &pieces = this->input.paths[pi].pieces;
 		const std::vector<JunctionTrackPieceTag> &tags = this->input.tags[pi];
-		if (pieces.empty()) continue;
-		for (const bool in : {true, false}) {
-			/* The bend is the token of the piece nearest the port that is not on a run or a bridge, on the route's first (in) or last (out) edge; that piece is the candidate. */
-			const size_t port = in ? 0 : pieces.size() - 1;
-			std::optional<size_t> nearest;
-			for (size_t k = 0; k < pieces.size(); k++) {
-				const size_t i = in ? k : pieces.size() - 1 - k;
-				if (tags[i].edge != tags[port].edge) break;
-				if (is_bend_piece(pieces[i], tags[i])) {
-					nearest = i;
-					break;
-				}
+		const std::vector<int8_t> &leans = this->input.lean[pi];
+		/* A bend is the pieces of one token on this route with a nonzero lean. */
+		std::map<BendId, std::vector<size_t>> routes_bends;
+		for (size_t i = 0; i < pieces.size(); i++) {
+			if (leans[i] != 0 && is_bend_piece(pieces[i], tags[i])) routes_bends[{tags[i].edge, tags[i].token, tags[i].copy}].push_back(i);
+		}
+		for (const auto &[tag_id, members] : routes_bends) {
+			const auto &[edge, token, copy] = tag_id;
+			/* The bend's travel axis: the nearest straight piece, looking back from its first piece, then forward. */
+			std::optional<Trackdir> heading;
+			for (size_t i = members.front() + 1; i-- > 0 && !heading.has_value();) {
+				if (straight_axis(pieces[i].trackdir)) heading = pieces[i].trackdir;
 			}
-			if (!nearest.has_value()) continue;
-
-			const Trackdir port_td = pieces[port].trackdir;
-			const bool x_axis = port_td == Trackdir::X_NE || port_td == Trackdir::X_SW;
-			const bool y_axis = port_td == Trackdir::Y_SE || port_td == Trackdir::Y_NW;
-			if (!x_axis && !y_axis) continue;
-			const TileIndexDiffC step = TileIndexDiffCByDir(TrackdirToDirection(port_td));
+			for (size_t i = members.front(); i < pieces.size() && !heading.has_value(); i++) {
+				if (straight_axis(pieces[i].trackdir)) heading = pieces[i].trackdir;
+			}
+			if (!heading.has_value()) continue;
+			const bool x_axis = *heading == Trackdir::X_NE || *heading == Trackdir::X_SW;
+			const TileIndexDiffC step = TileIndexDiffCByDir(TrackdirToDirection(*heading));
 			const int travel = x_axis ? step.x : step.y;
-			const int8_t lean = static_cast<int8_t>(in ? travel : -travel);
+			const int8_t lean = static_cast<int8_t>(leans[members.front()] * travel);
 
-			/* Every class on the axis that holds a piece of the bend leans (the bend's pieces on this route). */
-			const JunctionTrackPieceTag &tag = tags[*nearest];
+			/* Every class on the axis that holds a piece of the bend leans. */
 			std::set<uint16_t> classes;
-			for (size_t i = 0; i < pieces.size(); i++) {
-				if (tags[i].edge != tag.edge || tags[i].token != tag.token || tags[i].copy != tag.copy || pieces[i].on_bridge) continue;
+			for (const size_t i : members) {
 				const JunctionNodePoint &governing = this->tpl.points[this->work[pi].governing[i]];
 				classes.insert(x_axis ? governing.cls : governing.ycls);
 			}
 
 			/* A node must never slide: every point of each class is a piece of the bend or a run piece of its edge and copy; all-or-nothing per bend. */
-			const std::set<PieceId> &bend = bend_pieces.at({tag.edge, tag.token, tag.copy});
-			const std::set<PieceId> &run = run_pieces[{tag.edge, tag.copy}];
+			const std::set<PieceId> &bend = bend_pieces.at(tag_id);
+			const std::set<PieceId> &run = run_pieces[{edge, copy}];
 			for (const uint16_t cls : classes) {
 				for (const JunctionNodePoint &point : this->tpl.points) {
 					if ((x_axis ? point.cls : point.ycls) != cls) continue;
