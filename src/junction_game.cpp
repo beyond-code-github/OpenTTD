@@ -207,9 +207,33 @@ CommandCost GameJunctionPricing::PriceBridge(TileIndex start, TileIndex end) con
 	if (ret.Failed()) return ret;
 
 	/* The query excludes the bridge itself; add it as the bridge window does. */
+	return CommandCost(ExpensesType::Construction, ret.GetCost() + this->BridgePrice(start, end));
+}
+
+/**
+ * The price of one track piece as CmdBuildSingleRail charges it, without any terrain check or clearing: the piece and, when the ground needs one, the foundation.
+ * @param track The piece (the price does not depend on it).
+ * @param foundation Whether the tile's planned ground needs a foundation for the piece.
+ * @return The price.
+ */
+Money GameJunctionPricing::RailPrice([[maybe_unused]] Track track, bool foundation) const
+{
+	return RailBuildCost(this->railtype) + (foundation ? _price[Price::BuildFoundation] : Money{});
+}
+
+/**
+ * The price of the bridge as CmdBuildBridge and the bridge window charge it, without the command's terrain checks and without clearing or foundations of its heads and span: the bridge itself and the rail on its heads and span.
+ * @param start One bridge head.
+ * @param end The other bridge head.
+ * @return The price; nothing when no bridge type qualifies.
+ */
+Money GameJunctionPricing::BridgePrice(TileIndex start, TileIndex end) const
+{
+	const uint length = GetTunnelBridgeLength(start, end);
+	const std::optional<BridgeType> type = ChooseJunctionBridgeType(this->railtype, length);
+	if (!type.has_value()) return Money{};
 	const BridgeSpec *spec = GetBridgeSpec(*type);
-	const Money total = ret.GetCost() + (((int64_t)CalcBridgeLenCostFactor(length + 2) * _price[Price::BuildBridge] * spec->price) >> 8) + (length + 2) * RailBuildCost(this->railtype);
-	return CommandCost(ExpensesType::Construction, total);
+	return (((int64_t)CalcBridgeLenCostFactor(length + 2) * _price[Price::BuildBridge] * spec->price) >> 8) + (length + 2) * RailBuildCost(this->railtype);
 }
 
 /**

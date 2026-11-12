@@ -13,12 +13,16 @@
 #include "map_func.h"
 #include "direction_func.h"
 #include "track_func.h"
+#include "rail.h"
+#include "tile_map.h"
+#include "slope_func.h"
 #include "core/format.hpp"
 #include "table/strings.h"
 
 #include <algorithm>
 #include <array>
 #include <map>
+#include <set>
 
 #include "safeguards.h"
 
@@ -311,18 +315,65 @@ static void MarkBad(JunctionEstimate &estimate, TileIndex tile)
 	if (std::ranges::find(estimate.bad_tiles, tile) == estimate.bad_tiles.end()) estimate.bad_tiles.push_back(tile);
 }
 
+/** The net level change of the moved map corners; the key (x, y) is the north corner of tile (x, y). */
+using JunctionCornerMoves = std::map<std::pair<int, int>, int>;
+
+/**
+ * The slope a tile has once the terraform steps are applied: its corners' current heights moved by the steps (each step moves a tile's north corner).
+ * @param tile The tile.
+ * @param moved The net level change of each moved corner.
+ * @return The planned slope.
+ */
+static Slope JunctionPlannedSlope(TileIndex tile, const JunctionCornerMoves &moved)
+{
+	static constexpr std::pair<int, int> CORNER_OFFSET[4] = {{1, 0}, {1, 1}, {0, 1}, {0, 0}}; // W, S, E, N.
+	const int x = static_cast<int>(TileX(tile));
+	const int y = static_cast<int>(TileY(tile));
+	std::array<int, 4> corners;
+	for (int i = 0; i < 4; i++) {
+		const int cx = x + CORNER_OFFSET[i].first;
+		const int cy = y + CORNER_OFFSET[i].second;
+		const auto found = moved.find({cx, cy});
+		corners[i] = static_cast<int>(TileHeightOutsideMap(cx, cy)) + (found == moved.end() ? 0 : found->second);
+	}
+	JunctionTerrainTile ground;
+	SetJunctionTileCorners(ground, corners);
+	return ground.slope;
+}
+
 /**
  * Estimate the price and validity of placing a layout.
  * @param layout The layout to place.
  * @param origin The tile for the north corner of the layout.
  * @param pricing Source of tile and price information.
  * @param single_plane Whether every occupied tile must lie in one plane (flat ground); false when a terraform plan makes the ground fit (H1).
+ * @param steps The terraform plan's steps; the tiles they move are judged on the planned ground, not tested with the commands.
  * @return The estimate.
  * @note 6. Clearing under a bridge over track is counted once (D50).
  */
-static JunctionEstimate EstimateJunctionImpl(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing, bool single_plane)
+static JunctionEstimate EstimateJunctionImpl(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing, bool single_plane, const std::vector<JunctionTerraformStep> &steps)
 {
 	JunctionEstimate estimate;
+
+	/* A tile is planned when the steps move any of its corners; each step moves the north corner of its tile, shared by four tiles. */
+	JunctionCornerMoves moved;
+	std::set<TileIndex> planned;
+	for (const JunctionTerraformStep &step : steps) {
+		const int x = static_cast<int>(TileX(step.tile));
+		const int y = static_cast<int>(TileY(step.tile));
+		moved[{x, y}] += step.raise ? 1 : -1;
+		for (int dy = -1; dy <= 0; dy++) {
+			for (int dx = -1; dx <= 0; dx++) {
+				if (x + dx >= 0 && y + dy >= 0) planned.insert(TileXY(x + dx, y + dy));
+			}
+		}
+	}
+	/* Every track piece of each tile, for the foundation the planned ground needs. */
+	std::map<TileIndex, TrackBits> tile_bits;
+	for (const JunctionTrack &jt : layout.tracks) {
+		const TileIndex tile = AddTileIndexDiffCWrap(origin, jt.offset);
+		if (tile != INVALID_TILE) tile_bits[tile].Set(jt.tracks);
+	}
 
 	/* Collect the occupied tiles: track tiles and bridge heads, and separately each bridge's span. */
 	std::vector<TileIndex> occupied;
@@ -386,6 +437,17 @@ static JunctionEstimate EstimateJunctionImpl(const JunctionLayout &layout, TileI
 				if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
 				continue;
 			}
+			if (planned.contains(rail->tile)) {
+				/* The planner proved this piece on the planned ground (T3): no command test, which would judge the current ground. */
+				const Foundation foundation = GetRailFoundation(JunctionPlannedSlope(rail->tile, moved), tile_bits[rail->tile]);
+				if (foundation == Foundation::Invalid) {
+					MarkBad(estimate, rail->tile);
+					if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_LAND_SLOPED_IN_WRONG_DIRECTION;
+				} else {
+					estimate.total += pricing.RailPrice(rail->track, foundation != Foundation::None);
+				}
+				continue;
+			}
 			CommandCost result = pricing.TestRail(rail->tile, rail->track);
 			if (result.Succeeded()) {
 				estimate.total += result.GetCost();
@@ -398,6 +460,16 @@ static JunctionEstimate EstimateJunctionImpl(const JunctionLayout &layout, TileI
 				MarkBad(estimate, INVALID_TILE);
 				if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
 				continue;
+			}
+			if (!bridge->tunnel) {
+				bool on_planned = planned.contains(bridge->start) || planned.contains(bridge->end);
+				const TileIndexDiff delta = TileOffsByDiagDir(DiagdirBetweenTiles(bridge->start, bridge->end));
+				for (TileIndex t = bridge->start + delta; t != bridge->end && !on_planned; t += delta) on_planned = planned.contains(t);
+				if (on_planned) {
+					/* The heads and span are judged on the planned ground: no command test, and the span's clearing is not priced, so nothing is taken back for it below. */
+					estimate.total += pricing.BridgePrice(bridge->start, bridge->end);
+					continue;
+				}
 			}
 			CommandCost result = bridge->tunnel ? pricing.PriceTunnel(bridge->start, bridge->end) : pricing.PriceBridge(bridge->start, bridge->end);
 			if (result.Succeeded()) {
@@ -456,12 +528,12 @@ static JunctionEstimate EstimateJunctionImpl(const JunctionLayout &layout, TileI
 
 JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing)
 {
-	return EstimateJunctionImpl(layout, origin, pricing, true);
+	return EstimateJunctionImpl(layout, origin, pricing, true, {});
 }
 
-JunctionEstimate EstimateJunctionTerraformed(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing, Money height_cost)
+JunctionEstimate EstimateJunctionTerraformed(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing, Money height_cost, const std::vector<JunctionTerraformStep> &steps)
 {
-	JunctionEstimate estimate = EstimateJunctionImpl(layout, origin, pricing, false);
+	JunctionEstimate estimate = EstimateJunctionImpl(layout, origin, pricing, false, steps);
 	estimate.total += height_cost;
 	estimate.affordable = estimate.bad_tiles.empty() && estimate.total <= pricing.AvailableMoney();
 	return estimate;

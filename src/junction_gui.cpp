@@ -311,13 +311,14 @@ void DrawJunctionGhostOutline(const TileInfo *ti)
 
 /**
  * Reason shown when a junction can't be placed. Errors come per tile, so instead of the first tile's
- * error a generic message points at the red tiles; only "too close to the edge" applies to the whole junction.
+ * error a generic message points at the red tiles; "too close to the edge" applies to the whole junction, and the game's own error (the first the estimate met) is named when there is one.
  * @param estimate Estimate with at least one bad tile.
  * @return Message for the tooltip, the cost line and the Shift-click estimate.
  */
 static StringID GetPlacementError(const JunctionEstimate &estimate)
 {
 	if (std::ranges::find(estimate.bad_tiles, INVALID_TILE) != estimate.bad_tiles.end()) return STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
+	if (estimate.first_error != INVALID_STRING_ID && estimate.first_error != STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP) return estimate.first_error;
 	return STR_JUNCTION_ERROR_TILES_BLOCKED;
 }
 
@@ -773,7 +774,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		JunctionEstimate estimate;
 		std::vector<std::optional<BridgeType>> bridge_types;
 		Money available;
-		this->ComputePlacement(layout, origin, height_cost, estimate, bridge_types, available);
+		this->ComputePlacement(layout, origin, height_cost, steps, estimate, bridge_types, available);
 		/* The ghost outlines its own footprint; a big tile selection would add a blue outer row. */
 		SetTileSelectSize(1, 1);
 
@@ -1200,14 +1201,15 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	 * @param layout The oriented layout.
 	 * @param origin North corner of the junction.
 	 * @param height_cost The height cost of the projection plan, which replaces the plane check; nullopt on the earlier path.
+	 * @param terraform The terraform steps of the projection plan; the estimate judges the tiles they move on the planned ground.
 	 * @param[out] estimate The estimate of building it.
 	 * @param[out] bridge_types Bridge type chosen per layout bridge.
 	 * @param[out] available Money the local company can spend.
 	 */
-	void ComputePlacement(const JunctionLayout &layout, TileIndex origin, std::optional<Money> height_cost, JunctionEstimate &estimate, std::vector<std::optional<BridgeType>> &bridge_types, Money &available) const
+	void ComputePlacement(const JunctionLayout &layout, TileIndex origin, std::optional<Money> height_cost, const std::vector<JunctionTerraformStep> &terraform, JunctionEstimate &estimate, std::vector<std::optional<BridgeType>> &bridge_types, Money &available) const
 	{
 		GameJunctionPricing pricing(this->railtype);
-		estimate = height_cost.has_value() ? EstimateJunctionTerraformed(layout, origin, pricing, *height_cost) : EstimateJunction(layout, origin, pricing);
+		estimate = height_cost.has_value() ? EstimateJunctionTerraformed(layout, origin, pricing, *height_cost, terraform) : EstimateJunction(layout, origin, pricing);
 		available = pricing.AvailableMoney();
 
 		bridge_types.clear();
@@ -1230,7 +1232,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		JunctionEstimate estimate;
 		std::vector<std::optional<BridgeType>> bridge_types;
 		Money available;
-		this->ComputePlacement(layout, origin, this->shown_height_cost, estimate, bridge_types, available);
+		this->ComputePlacement(layout, origin, this->shown_height_cost, this->shown_terraform, estimate, bridge_types, available);
 
 		/* Shift-click estimates the cost instead of building, as with every other build tool. */
 		if (IsShiftPressed()) {

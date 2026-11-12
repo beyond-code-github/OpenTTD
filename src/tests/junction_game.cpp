@@ -14,6 +14,10 @@
 #include "../junction_facts.h"
 #include "../junction_game.h"
 #include "../junction_generator.h"
+#include "../junction_hover.h"
+#include "../junction_layout.h"
+#include "../junction_terraform.h"
+#include "../junction_terrain_json.h"
 #include "../junction_nodes.h"
 #include "../junction_rules.h"
 #include "../junction_topology.h"
@@ -28,9 +32,21 @@
 #include "../bridge.h"
 #include "../economy_func.h"
 #include "../timer/timer_game_calendar.h"
+#include "../company_base.h"
+#include "../company_func.h"
+#include "../command_func.h"
+#include "../clear_map.h"
+#include "../water_map.h"
+#include "../tunnelbridge.h"
+#include "../terraform_cmd.h"
+#include "../table/strings.h"
 
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <map>
+#include <sstream>
 #include <random>
 #include <set>
 #include <tuple>
@@ -867,4 +883,256 @@ TEST_CASE("EdgeZ matches the game's track surface on a real tile", "[junction][f
 		}
 	}
 	_settings_game.construction.build_on_slopes = old_build_on_slopes;
+}
+
+namespace {
+
+/** The game state the commands need to price and run junction steps: a company with unlimited money and limits, the settings of a typical game, the vanilla bridges and rail types. Restores what it changes. */
+struct JunctionGameWorld {
+	bool created = false;
+	CompanyID old_current = _current_company;
+	CompanyID old_local = _local_company;
+	GameSettings old_settings = _settings_game;
+
+	JunctionGameWorld()
+	{
+		_settings_game.construction.build_on_slopes = true;
+		_settings_game.construction.max_bridge_height = 12;
+		_settings_game.construction.max_bridge_length = 16;
+		_settings_game.construction.map_height_limit = 15;
+		_settings_game.construction.extra_dynamite = false;
+		ResetBridges();
+		ResetRailTypes();
+		InitRailTypes();
+		TimerGameCalendar::year = TimerGameCalendar::Year{2000};
+		RecomputePrices();
+		Map::Allocate(256, 256);
+		if (!Company::IsValidID(CompanyID::Begin())) {
+			Company *c = Company::CreateAtIndex(CompanyID::Begin(), STR_SV_UNNAMED, false);
+			c->avail_railtypes = RailTypes{RAILTYPE_RAIL};
+			this->created = true;
+		}
+		_current_company = _local_company = CompanyID::Begin();
+		Company *c = Company::Get(CompanyID::Begin());
+		c->money = c->current_loan = INT64_MAX / 8;
+		c->terraform_limit = c->clear_limit = c->tree_limit = c->build_object_limit = UINT32_MAX;
+	}
+
+	~JunctionGameWorld()
+	{
+		if (this->created) delete Company::Get(CompanyID::Begin());
+		_current_company = this->old_current;
+		_local_company = this->old_local;
+		_settings_game = this->old_settings;
+	}
+};
+
+/** Make every tile of the map clear grass of density 0, which the game clears for nothing. */
+void MakeBareGrass(TileIndex first, uint size)
+{
+	for (uint y = 0; y < size; y++) {
+		for (uint x = 0; x < size; x++) MakeClear(first + TileDiffXY(x, y), ClearGround::Grass, 0);
+	}
+}
+
+}
+
+TEST_CASE("RailPrice is what TestRail charges on a flat and on a foundation tile", "[junction][game][junctionprice]")
+{
+	JunctionGameWorld world;
+	GameJunctionPricing pricing(RAILTYPE_RAIL);
+	MakeBareGrass(TileXY(8, 8), 8);
+
+	const TileIndex flat = TileXY(10, 10);
+	for (Track track : {Track::X, Track::Y, Track::Upper}) {
+		CommandCost result = pricing.TestRail(flat, track);
+		REQUIRE(result.Succeeded());
+		CHECK(result.GetCost() == pricing.RailPrice(track, false));
+	}
+
+	/* One raised corner (the tile's north corner) and a piece that needs a foundation on it. */
+	const TileIndex sloped = TileXY(12, 12);
+	SetTileHeight(sloped, 1);
+	const Slope slope = GetTileSlope(sloped);
+	std::optional<Track> found;
+	for (Track track : {Track::X, Track::Y, Track::Upper, Track::Lower, Track::Left, Track::Right}) {
+		const Foundation f = GetRailFoundation(slope, TrackBits{track});
+		if (f != Foundation::Invalid && f != Foundation::None) { found = track; break; }
+	}
+	REQUIRE(found.has_value());
+	CommandCost result = pricing.TestRail(sloped, *found);
+	REQUIRE(result.Succeeded());
+	CHECK(result.GetCost() == pricing.RailPrice(*found, true));
+	CHECK(pricing.RailPrice(*found, true) > pricing.RailPrice(*found, false));
+}
+
+TEST_CASE("BridgePrice is what PriceBridge charges on flat ground", "[junction][game][junctionprice]")
+{
+	JunctionGameWorld world;
+	GameJunctionPricing pricing(RAILTYPE_RAIL);
+	MakeBareGrass(TileXY(8, 8), 12);
+	/* Raise the span tiles? No: a bridge over flat ground needs the heads one level above nothing; flat is enough for a bridge over bare ground. */
+	for (uint middle : {1, 3, 6}) {
+		const TileIndex start = TileXY(10, 10);
+		const TileIndex end = TileXY(10 + middle + 1, 10);
+		CommandCost result = pricing.PriceBridge(start, end);
+		REQUIRE(result.Succeeded());
+		CHECK(result.GetCost() == pricing.BridgePrice(start, end));
+		CHECK(pricing.BridgePrice(start, end) > 0);
+	}
+}
+
+namespace {
+
+/** What the estimate of one fixture's plan and the commands after its terraform say. */
+struct IG2Counts {
+	int planned = 0;
+	int bad_before = 0; ///< Bad tiles of the estimate.
+	int rail_bad_before = 0; ///< Of those, tiles that are no bridge head.
+	int bad_not_failing_bridge_head = 0;
+	int bridges_failing_after = 0;
+	int bridges_failing_after_too_low = 0;
+	int rail_bad_after = 0;
+	Money worst_diff = 0;
+	std::string worst_diff_fixture;
+};
+
+}
+
+TEST_CASE("the in-game estimate of a terraformed plan has no red tile the terraform fixes", "[junction][junctiongame]")
+{
+	namespace fs = std::filesystem;
+	JunctionGameWorld world;
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.slope_steepness = 3;
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(JunctionTTopology(), spec, &error);
+	REQUIRE(!seed.routes.empty());
+	const int hub_x = seed.placement.size.x / 2;
+
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) if (entry.path().extension() == ".json") files.push_back(entry.path());
+	std::ranges::sort(files);
+
+	IG2Counts counts;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		std::optional<JunctionTerrain> loaded = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(loaded.has_value());
+		JunctionTerrain terrain = std::move(*loaded);
+		const TileIndexDiffC centred = {static_cast<int16_t>((terrain.width - seed.placement.size.x) / 2), static_cast<int16_t>((terrain.height - seed.placement.size.y) / 2)};
+		terrain.origin = {static_cast<int16_t>(-centred.x), static_cast<int16_t>(-centred.y)};
+		const JunctionHoverPlan plan = PlanJunctionHoverNear(seed, spec, terrain, {0, 0});
+		if (!plan.layout.has_value()) continue;
+		counts.planned++;
+		INFO("fixture " << file.filename().string());
+
+		/* The fixture as a game map: cell (cx, cy) is map tile anchor + (cx - hub_x, cy). */
+		Map::Allocate(256, 256);
+		const TileIndex anchor = TileXY(100, 100);
+		auto tile_of = [&](int cx, int cy) { return TileXY(static_cast<int>(TileX(anchor)) + cx - hub_x, static_cast<int>(TileY(anchor)) + cy); };
+		for (int fy = 0; fy < terrain.height; fy++) {
+			for (int fx = 0; fx < terrain.width; fx++) {
+				const TileIndex t = tile_of(terrain.origin.x + fx, terrain.origin.y + fy);
+				const std::array<int, 4> c = JunctionTileCorners(terrain.tiles[static_cast<size_t>(fy) * terrain.width + fx]);
+				SetTileHeight(TileXY(TileX(t) + 1, TileY(t)), c[0]);
+				SetTileHeight(TileXY(TileX(t) + 1, TileY(t) + 1), c[1]);
+				SetTileHeight(TileXY(TileX(t), TileY(t) + 1), c[2]);
+				SetTileHeight(TileXY(TileX(t), TileY(t)), c[3]);
+			}
+		}
+		for (int fy = 0; fy < terrain.height; fy++) {
+			for (int fx = 0; fx < terrain.width; fx++) {
+				const JunctionTerrainTile &cell = terrain.tiles[static_cast<size_t>(fy) * terrain.width + fx];
+				const TileIndex t = tile_of(terrain.origin.x + fx, terrain.origin.y + fy);
+				switch (cell.cls) {
+					case JunctionTileClass::Buildable: MakeClear(t, ClearGround::Grass, 0); break;
+					case JunctionTileClass::Water: if (cell.z_max == 0) MakeSea(t); else MakeRiver(t, 0); break;
+					case JunctionTileClass::Spannable: MakeRailNormal(t, OWNER_NONE, TrackBits{Track::X}, RAILTYPE_RAIL); break;
+					case JunctionTileClass::Blocked: MakeRailDepot(t, OWNER_NONE, DepotID::Begin(), DiagDirection::NE, RAILTYPE_RAIL); break;
+				}
+			}
+		}
+
+		/* As ShowProjection and ShowPlaced do. */
+		const std::vector<JunctionTerraformStep> steps = MakeJunctionTerraformSteps(plan.terraform, terrain, anchor, 0, false, hub_x);
+		const TileIndexDiffC hub = {static_cast<int16_t>(hub_x - plan.moved.x), static_cast<int16_t>(-plan.moved.y)};
+		const TileIndexDiffC offset = OrientJunctionOffset(hub, plan.layout->size, 0, false);
+		const TileIndex origin = TileXY(static_cast<int>(TileX(anchor)) - offset.x, static_cast<int>(TileY(anchor)) - offset.y);
+		const JunctionLayout layout = ApplyJunctionOrientation(*plan.layout, 0, false);
+		GameJunctionPricing pricing(RAILTYPE_RAIL);
+
+		/* The estimate the GUI shows, before the terraform. */
+		const JunctionEstimate estimate = EstimateJunctionTerraformed(layout, origin, pricing, plan.height_cost, steps);
+
+		/* The commands after the terraform. */
+		for (const JunctionTerraformStep &step : steps) {
+			auto [result, cost, tile] = Command<Commands::TerraformLand>::Do(DoCommandFlag::Execute, step.tile, SlopeWithOneCornerRaised(step.corner), step.raise);
+			REQUIRE(result.Succeeded());
+		}
+		std::set<TileIndex> failing_heads;
+		Money commands = 0;
+		Money signals = 0;
+		for (const JunctionBuildStep &step : MakeJunctionBuildSteps(layout, origin)) {
+			if (const JunctionRailStep *rail = std::get_if<JunctionRailStep>(&step); rail != nullptr) {
+				const CommandCost result = pricing.TestRail(rail->tile, rail->track);
+				if (result.Failed()) {
+					counts.rail_bad_after++;
+					INFO("rail tile " << rail->tile.base() << " track " << to_underlying(rail->track));
+					CHECK(result.Succeeded());
+				} else {
+					commands += result.GetCost();
+				}
+			} else if (const JunctionBridgeStep *bridge = std::get_if<JunctionBridgeStep>(&step); bridge != nullptr) {
+				const CommandCost result = bridge->tunnel ? pricing.PriceTunnel(bridge->start, bridge->end) : pricing.PriceBridge(bridge->start, bridge->end);
+				if (result.Failed()) {
+					counts.bridges_failing_after++;
+					if (result.GetErrorMessage() == STR_ERROR_BRIDGE_TOO_LOW_FOR_TERRAIN) counts.bridges_failing_after_too_low++;
+					failing_heads.insert(bridge->start);
+					failing_heads.insert(bridge->end);
+					commands += pricing.BridgePrice(bridge->start, bridge->end);
+				} else {
+					commands += result.GetCost();
+				}
+			} else if (std::holds_alternative<JunctionSignalStep>(step)) {
+				signals += pricing.SignalCost();
+			}
+		}
+
+		/* No bad tile except a head of a bridge the game still refuses after the terraform. */
+		for (TileIndex bad : estimate.bad_tiles) {
+			if (!failing_heads.contains(bad)) {
+				counts.bad_not_failing_bridge_head++;
+				INFO("bad tile " << TileX(bad) << "," << TileY(bad));
+				CHECK(failing_heads.contains(bad));
+			}
+		}
+		counts.bad_before += static_cast<int>(estimate.bad_tiles.size());
+		std::set<TileIndex> heads;
+		for (const JunctionBridge &bridge : layout.bridges) {
+			heads.insert(AddTileIndexDiffCWrap(origin, bridge.start));
+			heads.insert(AddTileIndexDiffCWrap(origin, bridge.end));
+		}
+		for (TileIndex bad : estimate.bad_tiles) {
+			if (!heads.contains(bad)) counts.rail_bad_before++;
+		}
+
+		/* The total is the commands' sum, apart from the foundation price (the estimate charges it on every piece of a tile that needs one, the commands per piece that changes it). */
+		const Money diff = estimate.total - plan.height_cost - signals - commands;
+		if (std::abs(diff.base()) > std::abs(counts.worst_diff.base())) {
+			counts.worst_diff = diff;
+			counts.worst_diff_fixture = file.filename().string();
+		}
+		const Money foundation_price = _price[Price::BuildFoundation];
+		CHECK(diff.base() % foundation_price.base() == 0);
+	}
+	std::cout << "IG2: planned " << counts.planned << ", estimate bad tiles " << counts.bad_before << " (rail: " << counts.rail_bad_before << "; not heads of a bridge failing after the terraform: " << counts.bad_not_failing_bridge_head << "), rail pieces failing after the terraform " << counts.rail_bad_after
+		<< ", bridges failing after the terraform " << counts.bridges_failing_after << " (BRIDGE_TOO_LOW " << counts.bridges_failing_after_too_low << "), worst total difference " << counts.worst_diff << " in " << counts.worst_diff_fixture << std::endl;
+	CHECK(counts.planned == 31);
+	CHECK(counts.rail_bad_before == 0);
+	CHECK(counts.bad_not_failing_bridge_head == 0);
+	CHECK(counts.rail_bad_after == 0);
 }

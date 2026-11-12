@@ -34,6 +34,8 @@ public:
 	}
 	CommandCost TestRail([[maybe_unused]] TileIndex tile, [[maybe_unused]] Track track) const override { return CommandCost(ExpensesType::Construction, 100); }
 	CommandCost PriceBridge([[maybe_unused]] TileIndex start, [[maybe_unused]] TileIndex end) const override { return CommandCost(ExpensesType::Construction, 1000); }
+	Money RailPrice([[maybe_unused]] Track track, [[maybe_unused]] bool foundation) const override { return 100; }
+	Money BridgePrice([[maybe_unused]] TileIndex start, [[maybe_unused]] TileIndex end) const override { return 1000; }
 	CommandCost PriceTunnel([[maybe_unused]] TileIndex start, [[maybe_unused]] TileIndex end) const override { return CommandCost(ExpensesType::Construction, 700); }
 	CommandCost TestStation([[maybe_unused]] TileIndex tile, [[maybe_unused]] Axis axis, [[maybe_unused]] uint8_t platforms, [[maybe_unused]] uint8_t length) const override { return CommandCost(ExpensesType::Construction, 500); }
 	CommandCost TestClear([[maybe_unused]] TileIndex tile) const override { return CommandCost(ExpensesType::Construction, 0); }

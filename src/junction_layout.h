@@ -99,6 +99,8 @@ public:
 	virtual CommandCost TestRail(TileIndex tile, Track track) const = 0;
 	/** Full price of the cheapest suitable bridge type between two heads, or an error. */
 	virtual CommandCost PriceBridge(TileIndex start, TileIndex end) const = 0;
+	virtual Money RailPrice(Track track, bool foundation) const = 0; ///< The price of building one track piece on a tile with the planned ground, with a foundation or not, as CmdBuildSingleRail charges it (no terrain checks).
+	virtual Money BridgePrice(TileIndex start, TileIndex end) const = 0; ///< The price of the bridge as CmdBuildBridge charges it, without its terrain checks (as JunctionTunnelPrice mirrors the tunnel command).
 	/** Test-only run of building a rail tunnel from start; an error when its far end isn't end. */
 	virtual CommandCost PriceTunnel(TileIndex start, TileIndex end) const = 0;
 	/** Test-only run of building a block of station tiles as a new station; the cost includes clearing and the station tiles' own track. */
@@ -138,8 +140,12 @@ TileIndexDiffC InverseOrientJunctionVector(TileIndexDiffC v, uint8_t rotation, b
 JunctionLayout MakeTestJunctionLayout();
 std::vector<JunctionBuildStep> MakeJunctionBuildSteps(const JunctionLayout &layout, TileIndex origin);
 JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing);
-/** The estimate of a layout on ground that a terraform plan makes fit (H1): rail, station, bridge and signal prices as EstimateJunction, with no single-plane check, plus height_cost (the plan's price). */
-JunctionEstimate EstimateJunctionTerraformed(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing, Money height_cost);
+/**
+ * The estimate of a layout on ground that a terraform plan makes fit (H1): rail, station, bridge and signal prices as EstimateJunction, with no single-plane check, plus height_cost (the plan's price).
+ * A rail piece on a tile the steps move is valid and priced on the planned ground; a bridge with a head or span tile so moved is priced without the game's terrain checks. All other steps are tested on the current map.
+ * @param steps The plan's terraform steps (map coordinates).
+ */
+JunctionEstimate EstimateJunctionTerraformed(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing, Money height_cost, const std::vector<JunctionTerraformStep> &steps);
 /**
  * The terraform plan as map build steps, one per corner-level move, in an order where every step leaves orthogonally adjacent corners within one level (raises lowest corner first, then lowers highest corner first), so the game's own propagation moves nothing else.
  * The canonical corner (x, y) is the north corner of canonical cell (x, y); the cell maps to map tile anchor + OrientJunctionVector({x - frame.hub_x, y}, rotation, mirrored) as in MakeJunctionTerrain, and the corner to the north corner of the map tile at the image lattice point.

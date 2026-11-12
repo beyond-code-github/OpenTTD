@@ -81,6 +81,9 @@ public:
 		return CommandCost(ExpensesType::Construction, 1000);
 	}
 
+	Money RailPrice([[maybe_unused]] Track track, bool foundation) const override { return foundation ? 130 : 100; }
+	Money BridgePrice([[maybe_unused]] TileIndex start, [[maybe_unused]] TileIndex end) const override { return 1000; }
+
 	CommandCost PriceTunnel([[maybe_unused]] TileIndex start, [[maybe_unused]] TileIndex end) const override
 	{
 		if (this->tunnel_fails) return CommandCost(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE);
@@ -981,13 +984,13 @@ TEST_CASE("the terraformed estimate adds the height cost", "[junction][hoverplan
 	pricing.slope_zs[TileXY(12, 12)] = {1, 2};
 	pricing.heights[TileXY(11, 12)] = 3;
 	CHECK(!EstimateJunction(layout, TileXY(10, 10), pricing).bad_tiles.empty());
-	const JunctionEstimate terraformed = EstimateJunctionTerraformed(layout, TileXY(10, 10), pricing, 777);
+	const JunctionEstimate terraformed = EstimateJunctionTerraformed(layout, TileXY(10, 10), pricing, 777, {});
 	CHECK(terraformed.bad_tiles.empty());
 	CHECK(terraformed.total == flat.total + 777);
 	CHECK(terraformed.affordable);
 
 	pricing.money = flat.total + 776;
-	CHECK(!EstimateJunctionTerraformed(layout, TileXY(10, 10), pricing, 777).affordable);
+	CHECK(!EstimateJunctionTerraformed(layout, TileXY(10, 10), pricing, 777, {}).affordable);
 }
 
 TEST_CASE("the cone reject is sound", "[junction][hoverplan]")
