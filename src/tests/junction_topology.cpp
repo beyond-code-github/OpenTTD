@@ -1816,7 +1816,7 @@ TEST_CASE("topology: lean classes come from the port bends", "[junction][topopro
 	CHECK(west > 0);
 }
 
-TEST_CASE("topology: LL_RR's port fans keep their port rows as long as they can", "[junction][topoproj]")
+TEST_CASE("topology: LL_RR's port fans keep their port rows as long as they can", "[junction][topoprojsweep]")
 {
 	const JunctionTopology &topology = JunctionLLRRSidelineTopology();
 	const GraphSolveSetup setup = GraphSolveSetupOf(topology);
@@ -2726,6 +2726,58 @@ TEST_CASE("topology: row chains reproduce the row geometry across the sweep", "[
 		}
 	}
 	CHECK(cells == 44);
+}
+
+TEST_CASE("topology: a fan edge may hold more than its fan", "[junction][topology]")
+{
+	/* R3 (DESIGN-G1 §16): an in edge's fan is its program's first token, not its only one. The T's doubled row's in edge is edited to [Fan to the lane item, S-bend back to the item above]: the placement takes it, its chain is the only row chain the R2 check refuses (its row points know the fan alone), and the checker is clean. */
+	const JunctionTopology &t = JunctionTTopology();
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+	JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+	uint32_t lane_item = UINT32_MAX;
+	int hand = 0;
+	for (size_t e = 0; e < programs.edges.size(); e++) {
+		if (programs.copies[e].empty()) continue;
+		lane_item = programs.edges[e].back().index;
+		hand = programs.edges[e].back().hand; // The doubled leg's S-bend goes from the item above onto the lane item; the edit goes back.
+	}
+	REQUIRE(lane_item != UINT32_MAX);
+	size_t edited = SIZE_MAX;
+	for (size_t e = 0; e < programs.edges.size(); e++) {
+		if (programs.edges[e].size() == 1 && programs.edges[e][0].kind == JunctionTrackStep::Kind::Fan && programs.edges[e][0].index + 1 == lane_item && !graph.edges[e].from.node) edited = e;
+	}
+	REQUIRE(edited != SIZE_MAX);
+	programs.edges[edited][0].index = lane_item;
+	programs.edges[edited].push_back({JunctionTrackStep::Kind::SBend, static_cast<int8_t>(-hand), lane_item - 1, 0});
+
+	JunctionTrackPlacement placement;
+	const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &placement, &error);
+	INFO(error);
+	REQUIRE(!placement.nodes.empty());
+	for (const std::string &m : placement.row_chain_mismatches) {
+		INFO(m);
+		CHECK(m.starts_with(fmt::format("edge {} ", edited)));
+	}
+	std::vector<JunctionTrackRoute> routes;
+	JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, placement, &error, &routes);
+	INFO(error);
+	REQUIRE(!layout.tracks.empty());
+	SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
+	/* The curve-gap family sees a row edge's fan only (R3: not the S-bend after it), so the checker may name the edited edge's own tiles; no other. */
+	REQUIRE(placement.edges[edited].size() == 2);
+	for (const RuleViolation &viol : CheckJunctionRules(layout, spec, t)) {
+		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message));
+		bool on_edge = false;
+		for (const JunctionTrackSpan &span : placement.edges[edited]) {
+			on_edge |= viol.tile.x >= std::min(span.first.x, span.second.x) && viol.tile.x <= std::max(span.first.x, span.second.x) && viol.tile.y >= std::min(span.first.y, span.second.y) && viol.tile.y <= std::max(span.first.y, span.second.y);
+		}
+		CHECK(on_edge);
+	}
 }
 
 TEST_CASE("topology: the D215 objective keys on graph elements", "[junction][topology]")

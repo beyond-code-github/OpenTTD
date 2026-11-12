@@ -976,6 +976,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		const int level = end_level(graph.edges[e].from);
 		return level == end_level(graph.edges[e].to) && level % 2 == 1;
 	};
+	/* A row edge that starts or ends at a port: the in and out edges of a row, whose chains carry their own relations (R3); the legs keep the row points. */
+	auto is_in_out_edge = [&](uint32_t e) { return is_row_edge(e) && !(graph.edges[e].from.node && graph.edges[e].to.node); };
 	auto is_row_node = [&](const JunctionTrackEnd &end) { return end.node && order.node_level[end.index] % 2 == 1; };
 	auto row_of_node = [&](uint32_t node) { return (order.node_level[node] - 1) / 2; };
 
@@ -1191,6 +1193,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	std::vector<ClearanceY> clear_y;
 	std::vector<JunctionPlacementReason> failure; ///< The explanation chain of the last failed solve.
 	std::vector<int> fan_m(edge_count, 0);
+	std::vector<int> port_row(n, 0);
 	/** A row change of kinds 1-4 (DESIGN-G1 §14.5, D215): the point its bend starts at, whether its feature lies toward larger columns, and for a fan the edge whose fan size must be nonzero. */
 	struct RowChange {
 		int anchor;
@@ -1312,9 +1315,19 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	/* The size of every bend, refreshed from the rows and columns. */
 	auto refresh = [&](bool rows_known) {
 		for (uint32_t e = 0; e < edge_count; e++) {
-			if (is_row_edge(e)) continue; // The row chains' sizes come from the rows, in the R2 check.
+			if (is_row_edge(e) && !is_in_out_edge(e)) continue; // The legs' sizes come from the rows, in the R2 check.
 			for (Elem &el : chain[e]) {
-				if (el.k == Elem::K::Corner) {
+				if (el.k == Elem::K::Fan) {
+					/* The fan's size is the distance of the port row to its item row, 0 until the port rows are set (the rows are known then). */
+					el.m = fan_m[e];
+					el.offs.clear();
+					if (el.m != 0) {
+						const int y_item = vy[item_pt[el.index]];
+						const int y_port = port_row[el.slot];
+						el.hand = (((el.port_first ? y_item - y_port : y_port - y_item) > 0) == (el.hin == 1)) ? 1 : -1;
+						el.offs = bend_tiles(el.hin, el.hand, 2 * el.m, false);
+					}
+				} else if (el.k == Elem::K::Corner) {
 					const int kk = el.joiner_div && rows_known ? std::abs(vy[el.first] - vy[el.last]) : k;
 					el.offs = bend_tiles(el.hin, el.hand, 2 * kk + 1, true);
 				} else if (el.k == Elem::K::SBend) {
@@ -1338,13 +1351,17 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			notation[side_slots[i]] = row++;
 		}
 	}
-	std::vector<int> port_row(n, 0);
-	auto fan_item = [&](uint32_t e) -> uint32_t { return programs.edges[e].size() == 1 && programs.edges[e][0].kind == StepKind::Fan ? programs.edges[e][0].index : NO_ROW; };
+	/* The stack item of an edge's fan: its program's first token on an in edge, its last on an out edge, when that token is a Fan (R3). */
+	auto fan_item = [&](uint32_t e) -> uint32_t {
+		if (!is_in_out_edge(e) || programs.edges[e].empty()) return NO_ROW;
+		const Step &token = graph.edges[e].from.node ? programs.edges[e].back() : programs.edges[e].front();
+		return token.kind == StepKind::Fan ? token.index : NO_ROW;
+	};
 	auto edge_port = [&](uint32_t e) { return graph.edges[e].from.node ? graph.edges[e].to.index : graph.edges[e].from.index; };
 
 	/* Row chains' points. */
 	struct RowPts {
-		int fif = 0, fil = 0, fof = 0, fol = 0; ///< In and out fan.
+		int fif = 0, fil = 0, fof = 0, fol = 0; ///< In and out fan: the points of the in and out chains' Fan elements (R3), kept as row points for the occupancy, facts, curves and the point numbering of the reports.
 		int lane_split = 0, sb1_last = 0, sb0_first = 0, lane_merge = 0;
 		std::vector<int> nh0, fh0, nh1, fh1; ///< The heads, one point each per bridge of the row's leg.
 	};
@@ -1360,7 +1377,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		}
 	}
 
-	/* The row edges' chains (R2), built beside row_pts and tied to it: the points are new (allocated after every other), each tied to its row_pts counterpart in both phases (rule "row chain (R2)"), so the solve is the row points' alone. A second chain holds copy 1 of a doubled leg. */
+	/* The row edges' chains. The in and out edges' chains carry their own relations (R3) on the fan points of row_pts. The legs' chains (R2) are built beside row_pts: their points are new (allocated after every other), each tied to its row_pts counterpart in both phases (rule "row chain (R2)"), so the solve is the row points' alone. A second chain holds copy 1 of a doubled leg. */
 	struct RowTie {
 		int chain_pt;
 		int row_pt;
@@ -1390,25 +1407,33 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		};
 		std::vector<Elem> &elems = chain[e];
 		if (e == in_edge[r] || e == out_edge[r]) {
+			/* The program's tokens in travel order: the fan (the first token of an in edge, the last of an out edge, on the fan's own points: their row points are the chain's, R3) and S-bends beside it. */
 			const bool in = e == in_edge[r];
-			Elem fan;
-			fan.k = Elem::K::Fan;
-			fan.hin = fan.hout = heading;
-			fan.tok = 0;
-			fan.index = programs.edges[e][0].index;
-			fan.slot = in ? edge.from.index : edge.to.index;
-			fan.port_first = in;
-			fan.first = tied(in ? rp.fif : rp.fof);
-			fan.last = tied(in ? rp.fil : rp.fol);
-			if (in) {
-				elems.push_back(tile_elem(port_pt[edge.from.index], edge.from.index));
-				elems.push_back(fan);
-				elems.push_back(tile_elem(node_pt[edge.to.index], -1));
-			} else {
-				elems.push_back(tile_elem(node_pt[edge.from.index], -1));
-				elems.push_back(fan);
-				elems.push_back(tile_elem(port_pt[edge.to.index], edge.to.index));
+			const std::vector<Step> &program = programs.edges[e];
+			elems.push_back(in ? tile_elem(port_pt[edge.from.index], edge.from.index) : tile_elem(node_pt[edge.from.index], -1));
+			for (size_t t = 0; t < program.size(); t++) {
+				const Step &step = program[t];
+				Elem el;
+				el.hin = el.hout = heading;
+				el.tok = static_cast<int>(t);
+				el.index = step.index;
+				if (step.kind == StepKind::Fan && t == (in ? 0 : program.size() - 1)) {
+					el.k = Elem::K::Fan;
+					el.slot = in ? edge.from.index : edge.to.index;
+					el.port_first = in;
+					el.first = in ? rp.fif : rp.fof;
+					el.last = in ? rp.fil : rp.fol;
+				} else if (step.kind == StepKind::SBend) {
+					el.k = Elem::K::SBend;
+					el.hand = step.hand;
+					el.first = new_pt();
+					el.last = new_pt();
+				} else {
+					return fail("a token of an in or out edge other than its fan and S-bends is not ruled yet");
+				}
+				elems.push_back(el);
 			}
+			elems.push_back(in ? tile_elem(node_pt[edge.to.index], -1) : tile_elem(port_pt[edge.to.index], edge.to.index));
 		} else if (!doubled_row(r)) {
 			elems.push_back(tile_elem(node_pt[edge.from.index], -1));
 			elems.push_back(tile_elem(node_pt[edge.to.index], -1));
@@ -1458,10 +1483,14 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			const int r = (end_level(graph.edges[e].from) - 1) / 2;
 			const RowPts &rp = row_pts[r];
 			const bool eastward = east[r];
-			if (e == in_edge[r] && fan_item(e) != NO_ROW) {
-				row_changes.push_back({rp.fif, node_pt[graph.edges[e].to.index], eastward, e, e, r, 0, 0}); // Kind 1, first edge: with the travel, toward its node.
-			} else if (e == out_edge[r] && fan_item(e) != NO_ROW) {
-				row_changes.push_back({rp.fof, node_pt[graph.edges[e].from.index], !eastward, e, e, r, 0, 0}); // Kind 1, last edge: against the travel.
+			const Elem *fan = nullptr; // The chain's Fan element, if the edge has one.
+			for (const Elem &el : chain[e]) {
+				if (el.k == Elem::K::Fan) fan = &el;
+			}
+			if (e == in_edge[r] && fan != nullptr) {
+				row_changes.push_back({fan->first, node_pt[graph.edges[e].to.index], eastward, e, e, r, fan->tok, 0}); // Kind 1, first edge: with the travel, toward its node.
+			} else if (e == out_edge[r] && fan != nullptr) {
+				row_changes.push_back({fan->first, node_pt[graph.edges[e].from.index], !eastward, e, e, r, fan->tok, 0}); // Kind 1, last edge: against the travel.
 			} else if (e == leg_edge[r] && doubled_row(r)) {
 				row_changes.push_back({rp.sb0_first, rp.fh0[rp.fh0.size() - 1], !eastward, UINT32_MAX, e, r, static_cast<int>(programs.edges[e].size()) - 1, 0}); // Kind 3: the lane merge, against the travel.
 				row_changes.push_back({rp.lane_split, rp.nh0[0], eastward, UINT32_MAX, e, r, 0, 1}); // Kind 2: the lane split, with the travel.
@@ -2087,8 +2116,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			eq(1, njm, item_pt[lane_item[r]], 0);
 			const int s = east[r] ? 1 : -1;
 			const int heading = east[r] ? 1 : 3;
-			const int pin = port_pt[in.from.index];
-			const int pout = port_pt[out.to.index];
 			why("row items", leg_edge[r], UINT32_MAX, r);
 			if (doubled) {
 				eq(1, rp.lane_split, item_pt[north_item[r]], 0);
@@ -2104,19 +2131,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 			if (!x_phase) continue;
 
-			/* In: port, fan, exit split. */
-			const int m_in = fan_m[in_edge[r]];
-			why("in fan", in_edge[r], in.to.index, r);
-			if (m_in == 0) {
-				eq(0, rp.fif, pin, 0);
-				eq(0, rp.fil, pin, 0);
-			} else {
-				along(heading, rp.fif, pin, JunctionRunFloor(FloorKind::Port, FloorKind::Fan, spec, even_prio), false);
-				along(heading, rp.fil, rp.fif, m_in - 1, true);
-			}
-			/* The run from the fan to the exit split is the rule's run minimum; the curve gaps along the route are the family's (D217). */
-			why("in fan run", in_edge[r], in.to.index, r);
-			along(heading, nex, rp.fil, JunctionRunFloor(FloorKind::Fan, FloorKind::Node, spec, even_prio), false);
 			int after = nex; // The last point of the lane chain before the joiner merge.
 			if (!doubled) {
 				/* The prio element covers even_prio tiles upstream of the joiner merge; the exit split stays outside it. */
@@ -2178,19 +2192,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 			(void)after;
 
-			/* Out: joiner merge, fan, port. */
-			const int m_out = fan_m[out_edge[r]];
-			why("out port run", out_edge[r], out.from.index, r);
-			if (m_out == 0) {
-				eq(0, rp.fof, pout, 0);
-				eq(0, rp.fol, pout, 0);
-				along(heading, pout, njm, JunctionRunFloor(FloorKind::PrioNode, FloorKind::Port, spec, even_prio), false);
-			} else {
-				why("out fan run", out_edge[r], out.from.index, r);
-				along(heading, rp.fof, njm, JunctionRunFloor(FloorKind::PrioNode, FloorKind::Fan, spec, even_prio), false);
-				along(heading, rp.fol, rp.fof, m_out - 1, true);
-				along(heading, pout, rp.fol, JunctionRunFloor(FloorKind::Fan, FloorKind::Port, spec, even_prio), true);
-			}
 		}
 
 		if (!x_phase) {
@@ -2220,7 +2221,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 		}
 
-		/* The row chains' points are their row points (R2): the only relations the row chains add. */
+		/* The legs' chain points are their row points (R2): the only relations the leg chains add. */
 		for (const RowTie &tie : row_ties) {
 			why("row chain (R2)", tie.edge, UINT32_MAX, tie.row);
 			eq(0, tie.chain_pt, tie.row_pt, 0);
@@ -2229,12 +2230,23 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 
 		/* The chains of the other edges. */
 		for (uint32_t e = 0; e < edge_count; e++) {
-			if (is_row_edge(e)) continue; // Row edges are the rows' relations above; their chains carry only the ties (R2).
+			if (is_row_edge(e) && !is_in_out_edge(e)) continue; // The legs are the rows' relations above; their chains carry only the ties (R2).
 			const std::vector<Elem> &elems = chain[e];
 			const JunctionTrackEdge &edge = graph.edges[e];
 			for (size_t i = 0; i < elems.size(); i++) {
 				const Elem &el = elems[i];
-				if (el.k == Elem::K::Corner) {
+				if (el.k == Elem::K::Fan) {
+					/* The fan is its port row's S-bend: m - 1 columns across, first at the port row and last at its item row; empty, it lies on the port's column (R3). */
+					why("fan size", e, UINT32_MAX, (end_level(edge.from) - 1) / 2);
+					const int port = el.port_first ? elems[i - 1].first : elems[i + 1].first;
+					if (el.m == 0) {
+						eq(0, el.first, port, 0);
+						eq(0, el.last, port, 0);
+					} else {
+						along(el.hin, el.last, el.first, el.m - 1, true);
+					}
+					eq(1, el.port_first ? el.last : el.first, item_pt[el.index], 0);
+				} else if (el.k == Elem::K::Corner) {
 					const int kk = k;
 					const int dx = kk * (VX[el.hin] + VX[el.hout]);
 					const int dy = kk * (VY[el.hin] + VY[el.hout]);
@@ -2279,13 +2291,27 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				if (next.first == el.last) continue;
 				why("chain run", e);
 				bool exact = false;
-				const auto floor_kind = [](Elem::K k) { return k == Elem::K::Corner ? FloorKind::Corner : k == Elem::K::SBend ? FloorKind::SBend : k == Elem::K::Heads ? FloorKind::Heads : FloorKind::Tile; };
-				const int dist = JunctionRunFloor(floor_kind(el.k), floor_kind(next.k), spec, even_prio);
-				if (next.k == Elem::K::Tile && i + 2 == elems.size()) {
-					const bool band_merge = edge.to.node && !graph.nodes[edge.to.index].split && order.node_level[edge.to.index] % 2 == 0;
-										if (!edge.to.node) exact = true;
+				const bool in_out = is_in_out_edge(e);
+				/* A row edge's tiles name their kind: a port, the exit split of an in edge (Node), the joiner merge of an out edge (PrioNode), a fan (R3). */
+				const auto floor_kind = [&](const Elem &o) {
+					if (o.k == Elem::K::Corner) return FloorKind::Corner;
+					if (o.k == Elem::K::SBend) return FloorKind::SBend;
+					if (o.k == Elem::K::Heads) return FloorKind::Heads;
+					if (o.k == Elem::K::Fan) return FloorKind::Fan;
+					if (!in_out) return FloorKind::Tile;
+					return o.slot >= 0 ? FloorKind::Port : (edge.to.node ? FloorKind::Node : FloorKind::PrioNode);
+				};
+				const int dist = JunctionRunFloor(floor_kind(el), floor_kind(next), spec, even_prio);
+				if (next.k == Elem::K::Tile && i + 2 == elems.size() && !edge.to.node) exact = true;
+				if (el.k == Elem::K::Tile && i == 0 && !edge.from.node && !in_out) exact = true;
+				const auto port_tile = [](const Elem &o) { return o.k == Elem::K::Tile && o.slot >= 0; };
+				if (in_out && (port_tile(el) || port_tile(next))) {
+					/* A run to a port is along the heading only: the port's row is a number, not a point (R3); an empty fan lies on its port already. */
+					const Elem &fan = el.k == Elem::K::Fan ? el : next;
+					if (fan.k == Elem::K::Fan && fan.m == 0) continue;
+					along(el.hout, next.first, el.last, dist, exact);
+					continue;
 				}
-				if (el.k == Elem::K::Tile && i == 0 && !edge.from.node) exact = true;
 				run(el.hout, next.first, el.last, dist, exact);
 			}
 
@@ -2902,15 +2928,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		if (!is_row_edge(e)) continue;
 		for (std::vector<Elem> *elems : {&chain[e], &chain_copy[e]}) {
 			for (Elem &el : *elems) {
-				if (el.k == Elem::K::Fan) {
-					vy[el.first] = el.port_first ? port_row[el.slot] : vy[item_pt[el.index]];
-					vy[el.last] = el.port_first ? vy[item_pt[el.index]] : port_row[el.slot];
-					const int dy = vy[el.last] - vy[el.first];
-					el.m = std::abs(dy);
-					el.hand = ((dy > 0) == (el.hin == 1)) ? 1 : -1;
-					el.offs.clear();
-					if (el.m != 0) el.offs = bend_tiles(el.hin, el.hand, 2 * el.m, false);
-				} else if (el.k == Elem::K::SBend) {
+				if (el.k == Elem::K::SBend) {
 					el.m = std::abs(vy[item_pt[el.index]] - vy[el.first]);
 					el.offs = bend_tiles(el.hin, el.hand, 2 * el.m, false);
 				}
@@ -3047,15 +3065,11 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	result.copies.resize(edge_count);
 	for (uint32_t e = 0; e < edge_count; e++) {
 		const std::vector<Step> &program = programs.edges[e];
-		if (is_row_edge(e)) {
+		if (is_row_edge(e) && !is_in_out_edge(e)) {
 			const int r = (end_level(graph.edges[e].from) - 1) / 2;
 			const RowPts &rp = row_pts[r];
 			const int s = east[r] ? 1 : -1;
-			if (e == in_edge[r] && !program.empty()) {
-				result.edges[e].push_back({tile(rp.fif), tile(rp.fil)});
-			} else if (e == out_edge[r] && !program.empty()) {
-				result.edges[e].push_back({tile(rp.fof), tile(rp.fol)});
-			} else if (e == leg_edge[r] && doubled_row(r)) {
+			if (doubled_row(r)) {
 				for (int copy = 0; copy < 2; copy++) {
 					const std::vector<Step> &tokens = copy == 0 ? program : programs.copies[e];
 					for (const Step &step : tokens) {
@@ -3078,7 +3092,11 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		const std::vector<Elem> &elems = chain[e];
 		for (size_t t = 0; t < program.size(); t++) {
 			const Step &step = program[t];
-			if (step.kind == StepKind::Corner || step.kind == StepKind::SBend) {
+			if (step.kind == StepKind::Fan) {
+				for (const Elem &el : elems) {
+					if (el.tok == static_cast<int>(t)) result.edges[e].push_back({tile(el.first), tile(el.last)});
+				}
+			} else if (step.kind == StepKind::Corner || step.kind == StepKind::SBend) {
 				for (const Elem &el : elems) {
 					if (el.tok == static_cast<int>(t)) {
 						const TileIndexDiffC first = tile(el.first);
