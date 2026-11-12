@@ -446,7 +446,7 @@ TEST_CASE("level solve: identical plans at every near offset", "[junction][realt
 	std::cout << "LEVELHASH offsets=" << offsets << " planned=" << planned << " cone_rejects=" << cone_rejects << " hash=" << level_hash << " ms_total=" << millis << "\n";
 	CHECK(offsets == 48 * 153);
 	/* A cone reject that the solve without the check would plan would lose a plan: the pinned planned count and hash rule that out (cone_rejects_that_would_plan == 0). */
-	CHECK(cone_rejects == 95);
-	CHECK(planned == 2690);
-	CHECK(level_hash == 4062497645733470380ULL);
+	CHECK(cone_rejects == 99);
+	CHECK(planned == 2775);
+	CHECK(level_hash == 15194301700082165760ULL);
 }

@@ -12,6 +12,7 @@
 #include "junction_levels.h"
 #include "junction_positions.h"
 #include "direction_func.h"
+#include "rail.h"
 #include "track_func.h"
 
 #include <algorithm>
@@ -25,7 +26,7 @@
 
 namespace {
 
-using Tile = std::pair<int, int>; ///< A snapshot tile.
+using SnapshotTile = std::pair<int, int>; ///< A snapshot tile.
 using MapCorner = std::pair<int, int>;
 
 constexpr Money INFINITE_COST = Money(INT64_MAX / 4);
@@ -35,7 +36,7 @@ constexpr std::pair<int, int> CORNER_OFFSET[4] = {{1, 0}, {1, 1}, {0, 1}, {0, 0}
 
 /** A tile of an edge in travel order: consecutive pieces on one tile are one visit. */
 struct Visit {
-	Tile tile;
+	SnapshotTile tile;
 	TrackBits bits; ///< Every track the layout builds on the tile.
 	bool fixed = false; ///< A node, port, bridge head or route end tile: flat at its own level.
 	bool axis = false; ///< Only a lone axis track: the tile may be a ramp.
@@ -96,11 +97,10 @@ std::optional<Choice> Evaluate(const Context &c, const Visit &v, int kind, int l
 	choice.cost = tile->clear_cost + c.terrain.terraform_cost * steps;
 	choice.corners = target;
 	choice.moves = true;
-	/* A leveled foundation: flat at the top of a gentle slope, but not for an axis piece along its own incline (D152b: that is a ramp). */
-	if (kind == 0 && !tile->steep && tile->z_min < tile->z_max && tile->z_max == level && c.terrain.build_on_slopes && c.facts.Fits(v.tile.first, v.tile.second, v.bits)) {
-		const bool along = v.axis && tile->incline != DiagDirection::Invalid && (tile->incline == v.dir || tile->incline == ReverseDiagDir(v.dir));
+	/* A leveled foundation: flat at the top of the slope, where the game builds exactly that for these tracks (GetRailFoundation, rail_cmd.cpp; a lone axis piece on one raised corner or along an incline is built inclined, not flat). */
+	if (kind == 0 && tile->z_max == level && c.terrain.build_on_slopes && GetRailFoundation(tile->slope, v.bits) == Foundation::Leveled && c.facts.Fits(v.tile.first, v.tile.second, v.bits)) {
 		const Money foundation = tile->clear_cost + c.terrain.foundation_cost;
-		if (!along && foundation <= choice.cost) {
+		if (foundation <= choice.cost) {
 			choice.cost = foundation;
 			choice.corners = current;
 			choice.moves = false;
@@ -198,8 +198,8 @@ struct LevelTile {
 	Visit visit; ///< The first visit of the tile.
 	bool rampable = true; ///< Only a lone axis track, every route through it the same way, not a node, port, head or route end.
 	bool has_next = false;
-	Tile next; ///< The tile after this one on its route (when has_next).
-	std::vector<Tile> preds; ///< The rampable tiles whose route goes on to this one.
+	SnapshotTile next; ///< The tile after this one on its route (when has_next).
+	std::vector<SnapshotTile> preds; ///< The rampable tiles whose route goes on to this one.
 };
 
 /**
@@ -220,10 +220,10 @@ struct LevelTile {
  * @param[out] chosen The choice of every track tile.
  * @return The empty string on success, else the reason.
  */
-std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visit>> &route_visits, const std::set<Tile> &heads, const std::set<Tile> &fixed_tiles, const std::vector<std::pair<Tile, Tile>> &ties, const JunctionLayout &layout, TileIndexDiffC offset, int ramp_levels, int train_length, std::map<Tile, Chosen> &chosen)
+std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visit>> &route_visits, const std::set<SnapshotTile> &heads, const std::set<SnapshotTile> &fixed_tiles, const std::vector<std::pair<SnapshotTile, SnapshotTile>> &ties, const JunctionLayout &layout, TileIndexDiffC offset, int ramp_levels, int train_length, std::map<SnapshotTile, Chosen> &chosen)
 {
-	std::map<Tile, LevelTile> tiles;
-	std::map<Tile, std::set<DiagDirection>> directions;
+	std::map<SnapshotTile, LevelTile> tiles;
+	std::map<SnapshotTile, std::set<DiagDirection>> directions;
 	for (const std::vector<Visit> &visits : route_visits) {
 		for (const Visit &v : visits) {
 			const auto [slot, fresh] = tiles.try_emplace(v.tile);
@@ -245,8 +245,8 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	}
 	/* Levels run from 3 below the lowest ground to 3 above the highest; the variable v is the level v + base. */
 	const int base = lowest - 3;
-	std::vector<Tile> order_tiles;
-	std::map<Tile, size_t> var;
+	std::vector<SnapshotTile> order_tiles;
+	std::map<SnapshotTile, size_t> var;
 	for (const auto &[tile, lt] : tiles) {
 		var[tile] = order_tiles.size();
 		order_tiles.push_back(tile);
@@ -261,7 +261,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	std::vector<std::pair<int, int>> reach(n, {0, top}); ///< Per tile the lowest and highest variable with a surviving option.
 	std::vector<bool> cut(n, false); ///< Whether the tile's levels were shrunk.
 	for (size_t i = 0; i < n; i++) {
-		const Tile &tile = order_tiles[i];
+		const SnapshotTile &tile = order_tiles[i];
 		const LevelTile &lt = tiles[tile];
 		bool inside = true; ///< Every level of the tile keeps the corners in the cone.
 		for (int ci = 0; ci < 4; ci++) {
@@ -312,10 +312,10 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		reasons.push_back(why);
 		return static_cast<uint32_t>(reasons.size() - 1);
 	};
-	auto name = [](const Tile &t) { return fmt::format("({}, {})", t.first, t.second); };
+	auto name = [](const SnapshotTile &t) { return fmt::format("({}, {})", t.first, t.second); };
 	auto why_text = [&](const Why &w) -> std::string {
-		const Tile a{w.a0, w.a1};
-		const Tile b{w.b0, w.b1};
+		const SnapshotTile a{w.a0, w.a1};
+		const SnapshotTile b{w.b0, w.b1};
 		switch (w.kind) {
 			case 0: return "ramp tile " + name(a) + " to " + name(b) + " drops at most one level";
 			case 1: return "ramp tile " + name(a) + " to " + name(b) + " climbs at most one level";
@@ -348,8 +348,8 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	for (const std::vector<Visit> &visits : route_visits) {
 		for (size_t i = 0; i + 1 < visits.size(); i++) {
 			if (visits[i + 1].break_before) continue;
-			const Tile a = visits[i].tile;
-			const Tile b = visits[i + 1].tile;
+			const SnapshotTile a = visits[i].tile;
+			const SnapshotTile b = visits[i + 1].tile;
 			LevelTile &la = tiles[a];
 			la.has_next = true;
 			la.next = b;
@@ -366,8 +366,8 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			for (size_t i = 0; i + train_length < visits.size(); i++) {
 				bool broken = false;
 				for (size_t j = i + 1; j <= i + train_length; j++) broken = broken || visits[j].break_before;
-				const Tile a = visits[i].tile;
-				const Tile b = visits[i + train_length].tile;
+				const SnapshotTile a = visits[i].tile;
+				const SnapshotTile b = visits[i + train_length].tile;
 				if (broken || a == b) continue;
 				diff(var[a], var[b], -ramp_levels, {3, a.first, a.second, b.first, b.second, ramp_levels});
 			}
@@ -397,12 +397,12 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	/* A crosser under a bridge middle stays at or below both heads. */
 	for (const JunctionBridge &b : layout.bridges) {
 		if (b.tunnel) continue;
-		const Tile a{b.start.x + offset.x, b.start.y + offset.y};
-		const Tile e{b.end.x + offset.x, b.end.y + offset.y};
+		const SnapshotTile a{b.start.x + offset.x, b.start.y + offset.y};
+		const SnapshotTile e{b.end.x + offset.x, b.end.y + offset.y};
 		if (!var.contains(a) || !var.contains(e)) continue;
 		const int dx = (e.first > a.first) - (e.first < a.first);
 		const int dy = (e.second > a.second) - (e.second < a.second);
-		for (Tile t{a.first + dx, a.second + dy}; t != e; t = {t.first + dx, t.second + dy}) {
+		for (SnapshotTile t{a.first + dx, a.second + dy}; t != e; t = {t.first + dx, t.second + dy}) {
 			if (!var.contains(t)) continue;
 			diff(var[a], var[t], 0, {5, a.first, a.second, t.first, t.second, 0});
 			diff(var[e], var[t], 0, {5, e.first, e.second, t.first, t.second, 0});
@@ -479,7 +479,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	const size_t start_mark = pos.Mark();
 	for (int rank = 0; rank < 3; rank++) {
 		for (size_t i = 0; i < n; i++) {
-			const Tile &t = order_tiles[i];
+			const SnapshotTile &t = order_tiles[i];
 			if ((heads.contains(t) ? 0 : fixed_tiles.contains(t) ? 1 : 2) != rank) continue;
 			int best = INT_MIN;
 			Money best_cost = INFINITE_COST;
@@ -521,7 +521,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			const std::optional<Choice> &mine = get(i);
 			total += mine.has_value() ? mine->cost : NO_CHOICE;
 			if (!mine.has_value()) continue;
-			const Tile &t = order_tiles[i];
+			const SnapshotTile &t = order_tiles[i];
 			for (int dx = -1; dx <= 1; dx++) {
 				for (int dy = -1; dy <= 1; dy++) {
 					const auto f = var.find({t.first + dx, t.second + dy});
@@ -562,7 +562,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			if (lo >= up) continue;
 			std::set<size_t> affected(member_set);
 			for (size_t m : members) {
-				for (const Tile &p : tiles[order_tiles[m]].preds) affected.insert(var[p]);
+				for (const SnapshotTile &p : tiles[order_tiles[m]].preds) affected.insert(var[p]);
 			}
 			const int current = level[members.front()];
 			Money best_cost = local_cost(affected, level);
@@ -603,11 +603,11 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 		if (why != nullptr) *why = reason;
 		return false;
 	};
-	auto world = [&](TileIndexDiffC t) { return Tile{t.x + offset.x, t.y + offset.y}; };
+	auto world = [&](TileIndexDiffC t) { return SnapshotTile{t.x + offset.x, t.y + offset.y}; };
 
-	std::map<Tile, TrackBits> tile_bits;
+	std::map<SnapshotTile, TrackBits> tile_bits;
 	for (const JunctionTrack &jt : layout.tracks) tile_bits[world(jt.offset)] |= jt.tracks;
-	std::set<Tile> heads;
+	std::set<SnapshotTile> heads;
 	for (const JunctionBridge &b : layout.bridges) {
 		heads.insert(world(b.start));
 		heads.insert(world(b.end));
@@ -616,7 +616,7 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 		tile_bits[world(b.start)] |= axis_track;
 		tile_bits[world(b.end)] |= axis_track;
 	}
-	std::set<Tile> fixed_tiles = heads;
+	std::set<SnapshotTile> fixed_tiles = heads;
 	for (const TileIndexDiffC &t : placement.nodes) fixed_tiles.insert(world(t));
 	for (const TileIndexDiffC &t : placement.ports) fixed_tiles.insert(world(t));
 
@@ -627,7 +627,7 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 		bool broken = false;
 		for (size_t j = 0; j < route.pieces.size(); j++) {
 			const JunctionPiece &piece = route.pieces[j];
-			const Tile tile = world(piece.tile);
+			const SnapshotTile tile = world(piece.tile);
 			if (piece.on_bridge && !heads.contains(tile)) {
 				broken = true;
 				continue;
@@ -651,13 +651,13 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 	}
 
 	/* The prio elements: each tile one flat visit of its own, tied to the main-line tile beside it. */
-	std::vector<std::pair<Tile, Tile>> ties;
-	std::set<Tile> routed;
+	std::vector<std::pair<SnapshotTile, SnapshotTile>> ties;
+	std::set<SnapshotTile> routed;
 	for (const std::vector<Visit> &visits : route_visits) {
 		for (const Visit &v : visits) routed.insert(v.tile);
 	}
 	for (const auto &[prio, beside] : prio_beside) {
-		const Tile tile = world(prio);
+		const SnapshotTile tile = world(prio);
 		ties.emplace_back(tile, world(beside));
 		if (routed.contains(tile)) continue;
 		routed.insert(tile);
@@ -668,12 +668,12 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 		route_visits.push_back({v});
 	}
 
-	std::map<Tile, Chosen> chosen;
+	std::map<SnapshotTile, Chosen> chosen;
 	const std::string levels_why = SolveTileLevels(ctx, route_visits, heads, fixed_tiles, ties, layout, offset, ramp_levels, train_length, chosen);
 	if (!levels_why.empty()) return fail(levels_why);
 
 	/* The plan: every corner a tile demands, merged over the tiles; two tiles that demand different heights of one corner conflict. A tile on a foundation takes any corner height from its ground up to its level. */
-	std::map<MapCorner, std::pair<int, Tile>> demanded;
+	std::map<MapCorner, std::pair<int, SnapshotTile>> demanded;
 	std::set<MapCorner> fixed_corners;
 	JunctionTerraform result;
 	for (const auto &[tile, item] : chosen) {
@@ -708,7 +708,7 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 	if (!PropagateJunctionTerraform(terrain, result, &propagate_why, &fixed_corners)) return fail(propagate_why);
 
 	/* Total: the plan, plus foundations and clearing of the track tiles it does not touch (the plan clears the tiles it moves). */
-	std::set<Tile> dirty;
+	std::set<SnapshotTile> dirty;
 	for (const auto &[corner, height] : result.corners) {
 		for (const auto &[dx, dy] : CORNER_OFFSET) dirty.emplace(corner.first - dx, corner.second - dy);
 	}

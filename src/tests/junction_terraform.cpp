@@ -12,6 +12,11 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include "../junction_facts.h"
+#include "../junction_levels.h"
+#include "../junction_nodes.h"
+#include "../junction_topology.h"
+#include "../rail.h"
+#include "../track_func.h"
 #include "../junction_terraform.h"
 #include "../slope_func.h"
 
@@ -225,4 +230,97 @@ TEST_CASE("terraform: a fixed corner is not moved by a propagation", "[junction]
 	CHECK(why.find("terraform conflict") != std::string::npos);
 	CHECK(why.find("corner (4, 3)") != std::string::npos);
 	CHECK(why.find("tile (") != std::string::npos);
+}
+
+/** The level solve on a snapshot where the layout is one route through the tiles, each a trackdir along its first track. */
+static bool SolveTestLevels(const JunctionTerrain &terrain, const std::vector<std::pair<TileIndexDiffC, TrackBits>> &tiles, JunctionLayout &layout, std::vector<JunctionTrackRoute> &routes, JunctionTerraform &plan, Money &cost, std::string &why)
+{
+	JunctionTrackRoute route{};
+	for (const auto &[offset, bits] : tiles) {
+		layout.tracks.push_back({offset, bits});
+		route.pieces.push_back({offset, TrackToTrackdir(FindFirstTrack(bits)), 1, false});
+		route.tags.push_back({0, JunctionTrackPieceTag::RUN, 0, 0});
+	}
+	routes = {route};
+	const JunctionFacts facts(terrain);
+	const JunctionTrackPlacement placement{};
+	std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
+	return SolveJunctionLevels(terrain, facts, {0, 0}, 1, 1, placement, layout, routes, {}, plan, cost, levels, &why);
+}
+
+TEST_CASE("the level solve's foundation is the game's", "[junction][hoverplan]")
+{
+	/* An X run of three tiles at level 2: tile 1 has three corners raised (a leveled foundation), tile 2 one corner raised (the game builds the track inclined, not flat). */
+	constexpr int LEVEL = 2;
+	JunctionTerrain terrain = MakeTerrainFromCorners(3, 4, [](int cx, int cy) { return (cx == 3 && cy == 2) || (cx == 3 && cy == 3) || (cx == 2 && cy == 3) ? LEVEL - 1 : LEVEL; });
+	terrain.foundation_cost = 5;
+	REQUIRE(terrain.At(2, 2)->slope == SLOPE_N);
+	REQUIRE(GetRailFoundation(terrain.At(2, 2)->slope, TrackBits{Track::X}) == Foundation::InclinedX);
+	REQUIRE(GetRailFoundation(terrain.At(1, 2)->slope, TrackBits{Track::X}) == Foundation::Leveled);
+
+	JunctionLayout layout;
+	std::vector<JunctionTrackRoute> routes;
+	JunctionTerraform plan;
+	Money cost = 0;
+	std::string why;
+	const std::vector<std::pair<TileIndexDiffC, TrackBits>> tiles = {{{0, 2}, TrackBits{Track::X}}, {{1, 2}, TrackBits{Track::X}}, {{2, 2}, TrackBits{Track::X}}};
+	if (SolveTestLevels(terrain, tiles, layout, routes, plan, cost, why)) {
+		/* A planned tile is never the lone X on one raised corner (the game's InclinedX), and the heights facts accept the plan. */
+		const JunctionTerrain after = ApplyJunctionTerraform(terrain, plan);
+		for (int x = 0; x < 3; x++) {
+			INFO("tile " << x);
+			const Foundation foundation = GetRailFoundation(after.At(x, 2)->slope, TrackBits{Track::X});
+			CHECK(foundation != Foundation::InclinedX);
+			CHECK(foundation != Foundation::Invalid);
+		}
+		std::string heights;
+		const bool ok = JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, {0, 0}, &heights);
+		INFO(heights);
+		CHECK(ok);
+	} else {
+		INFO(why);
+		CHECK(!why.empty());
+	}
+}
+
+TEST_CASE("the level solve offers a leveled foundation exactly where the game builds one", "[junction][hoverplan]")
+{
+	std::vector<TrackBits> sets = {TrackBits{Track::X}, TrackBits{Track::Y}, TRACK_BIT_HORZ, TRACK_BIT_VERT};
+	for (Track t : {Track::Upper, Track::Lower, Track::Left, Track::Right}) {
+		sets.push_back(TrackBits{t});
+		sets.push_back(TrackBits{Track::X} | TrackBits{t});
+		sets.push_back(TrackBits{Track::Y} | TrackBits{t});
+	}
+	constexpr Money CLEAR = 10;
+	constexpr Money FOUNDATION = 5;
+	int leveled = 0;
+	for (int s = 1; s < 15; s++) {
+		const Slope slope = static_cast<Slope>(s);
+		for (TrackBits bits : sets) {
+			INFO("slope " << s << " bits " << static_cast<int>(bits.base()));
+			JunctionTerrain terrain;
+			terrain.origin = {0, 0};
+			terrain.width = 1;
+			terrain.height = 1;
+			terrain.terraform_cost = TERRAFORM_COST;
+			terrain.foundation_cost = FOUNDATION;
+			terrain.tiles.resize(1);
+			terrain.tiles[0].clear_cost = CLEAR;
+			SetJunctionTileCorners(terrain.tiles[0], {(s & 1) ? 1 : 0, (s & 2) ? 1 : 0, (s & 4) ? 1 : 0, (s & 8) ? 1 : 0});
+			REQUIRE(terrain.tiles[0].slope == slope);
+
+			JunctionLayout layout;
+			std::vector<JunctionTrackRoute> routes;
+			JunctionTerraform plan;
+			Money cost = 0;
+			std::string why;
+			const bool solved = SolveTestLevels(terrain, {{{0, 0}, bits}}, layout, routes, plan, cost, why);
+			/* A 1-tile snapshot has no movable corner: the only plan that solves is the foundation. */
+			const bool offered = solved && plan.corners.empty() && cost == CLEAR + FOUNDATION;
+			const bool game = GetRailFoundation(slope, bits) == Foundation::Leveled;
+			CHECK(offered == game);
+			leveled += game ? 1 : 0;
+		}
+	}
+	CHECK(leveled > 0);
 }
