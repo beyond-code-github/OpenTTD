@@ -37,3 +37,9 @@ New tag `[topoproj]` (add a TESTS.md row: "graph projection solves on facts (P2b
 
 ## Report
 The standard report, plus the failure kinds and elements for tests 1-3. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the two test-premise stops; the premises were the brief's error)
+- Test 1 becomes "topoproj: a house on LL_RR's W in-lane port run names its edge": block the route's piece 1 (the port run's tile next to the port; it is rigid with the bend, so it cannot be avoided). REQUIRE a failure whose elements contain a tag with the route's first edge. (Piece 8 being avoided by the solve is correct behaviour: record it in the test as a second SECTION: blocking piece 8 solves, and the house tile holds no track.)
+- Test 2 is dropped.
+- Straight/Break/Edge elements: add `std::vector<JunctionTrackPieceTag> link_tags; ///< Per link: the tag of its first interior input piece, else its from point's tag with token RUN (graph input only).` to JunctionNodeTemplate (filled where links are made; compared by the comparator; copied in P1's oracle test like point_tags), and use it for those failures instead of the from point's tag.
+- Piece/Height/Occupancy stay class-coarse for now (P4b refines what it needs).
