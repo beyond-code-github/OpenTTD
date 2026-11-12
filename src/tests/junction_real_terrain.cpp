@@ -418,7 +418,7 @@ static std::vector<int64_t> FlattenPlacement(const JunctionTrackPlacement &p, co
 	return v;
 }
 
-TEST_CASE("level solve: identical plans at every near offset", "[junction][realterrainsweep]")
+TEST_CASE("level solve: identical plans at every near offset", "[junction][realterrainsweep][.identity]")
 {
 	namespace fs = std::filesystem;
 	std::vector<fs::path> files;

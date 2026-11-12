@@ -2668,7 +2668,7 @@ TEST_CASE("topology: the curve family alone keeps every seed clean", "[junction]
 	CHECK(cells == old_columns.size());
 }
 
-TEST_CASE("topology: every placement edit fails with a reason or is checker-clean", "[junction][topologysweep]")
+TEST_CASE("topology: every placement edit fails with a reason or is checker-clean", "[junction][topologysweep][.identity]")
 {
 	/* ES1 (D193): 200 random edits of the seed's choices and floors per topology and spec; each fails with a reason or renders checker clean. */
 	for (int ti = 0; ti < 2; ti++) {
