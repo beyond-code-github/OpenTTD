@@ -36,6 +36,7 @@ std::string JunctionTerrainToJson(const JunctionTerrain &terrain)
 		{"width", terrain.width},
 		{"height", terrain.height},
 		{"foundation_cost", static_cast<int64_t>(terrain.foundation_cost)},
+		{"terraform_cost", static_cast<int64_t>(terrain.terraform_cost)},
 		{"build_on_slopes", terrain.build_on_slopes},
 		{"max_bridge_height", terrain.max_bridge_height},
 		{"tiles", rows},
@@ -59,6 +60,7 @@ std::optional<JunctionTerrain> JunctionTerrainFromJson(std::string_view json, st
 		terrain.height = in.at("height").get<int>();
 		if (terrain.width < 0 || terrain.height < 0) return fail("negative size");
 		terrain.foundation_cost = static_cast<Money>(in.at("foundation_cost").get<int64_t>());
+		terrain.terraform_cost = static_cast<Money>(in.at("terraform_cost").get<int64_t>());
 		terrain.build_on_slopes = in.at("build_on_slopes").get<bool>();
 		terrain.max_bridge_height = in.at("max_bridge_height").get<int>();
 		const auto &rows = in.at("tiles");

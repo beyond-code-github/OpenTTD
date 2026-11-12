@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file junction_levels.h The height solve of a junction placement: a level per tile on every edge by a shortest path (DESIGN-G1 §15.1-§15.3; D218, D219). */
+/** @file junction_levels.h The height solve of a junction placement: one level per track tile, solved jointly (DESIGN-G1 §15.1-§15.3; D218, D219). */
 
 #ifndef JUNCTION_LEVELS_H
 #define JUNCTION_LEVELS_H
@@ -18,7 +18,7 @@
 
 /**
  * Choose the level and shape of every track tile of a rendered placement, and the terraform that makes the ground fit.
- * Node tiles, port tiles and bridge heads sit flat at their cheapest level alone; between two such tiles an edge's tiles are solved alone by a shortest path over (tile, exit level, tiles since the last up-ramp) with ramp tiles (axis pieces along their axis, one level) and the ramp rule (D219); a crosser under a bridge middle stays at or below the bridge's lower head. The targets of every tile whose corners must move are merged and completed by PropagateJunctionTerraform with every corner of every track tile fixed.
+ * One level per track tile is solved jointly (DESIGN-G1 §15.3, D218, D219): continuity along every route (a tile that is not a lone axis track continues flat, a ramp tile moves one level), the ramp rule L(t + tl) - L(t) <= k per route, a crosser under a bridge middle at or below both heads, a corner shared by two track tiles one height, track corners within distance d at most d apart, then a coordinate descent on the cost. The targets of every tile whose corners must move are merged (a tile on a foundation takes any corner from its ground up to its level) and completed by PropagateJunctionTerraform with every corner of every track tile fixed.
  * @param terrain The snapshot (canonical frame; the placement's tile (x, y) is the snapshot's (x + offset)).
  * @param facts The facts of terrain.
  * @param offset The snapshot tile of the placement's (0, 0).

@@ -16,6 +16,7 @@
 #include <chrono>
 #include <climits>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <optional>
 #include <set>
@@ -3195,6 +3196,69 @@ TEST_CASE("topoproj: a ridge row is cut, not avoided", "[junction][topoproj]")
 	std::string why;
 	CHECK(JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, {0, 0}, &why));
 	INFO(why);
+}
+
+TEST_CASE("levels: ridges across the T", "[junction][topoprojsweep]")
+{
+	const JunctionTopology &t = JunctionTTopology();
+	const SeedPipeline p = SeedPipelineOf(t, MakeTestJunctionSpec());
+	/* Margin 8 around the box: a cut across a ridge as wide as the box spills over the margin (a ridge of height h is h tiles wide each side). */
+	constexpr int MARGIN = 8;
+	JunctionTerrain flat = FlatTerrainFor(p);
+	flat.origin = {-MARGIN, -MARGIN};
+	flat.width = p.seed.size.x + 2 * MARGIN;
+	flat.height = p.seed.size.y + 2 * MARGIN;
+	flat.tiles.assign(static_cast<size_t>(flat.width) * flat.height, JunctionTerrainTile{});
+	std::string error;
+	const JunctionTrackPlacement reference = PlaceTerraformed(t, p, flat, &error);
+	INFO(error);
+	REQUIRE(!reference.nodes.empty());
+
+	/* Every ridge column and row over the box, heights 1-4, each a one-level step per tile on both sides. Each solved cut must re-place the reference on the terraformed ground and meet every height (T3). */
+	int total = 0;
+	int solved = 0;
+	int failing = 0;
+	int64_t micros_sum = 0;
+	int64_t micros_max = 0;
+	std::map<std::string, int> reasons;
+	for (int axis = 0; axis < 2; axis++) {
+		const int limit = axis == 0 ? p.seed.size.x : p.seed.size.y;
+		for (int h = 1; h <= 4; h++) {
+			for (int c = 0; c <= limit; c++) {
+				const JunctionTerrain ridge = TerrainFromCorners(flat, [&](int cx, int cy) { return std::max(0, h - std::abs((axis == 0 ? cx : cy) - c)); });
+				const auto start = std::chrono::steady_clock::now();
+				const JunctionTrackPlacement cut = PlaceTerraformed(t, p, ridge, &error);
+				const int64_t micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+				total++;
+				if (cut.nodes.empty()) {
+					reasons[error.substr(0, error.find(':'))]++;
+					continue;
+				}
+				solved++;
+				micros_sum += micros;
+				micros_max = std::max(micros_max, micros);
+				const JunctionTerrain after = ApplyJunctionTerraform(ridge, cut.terraform);
+				const JunctionFacts after_facts(after);
+				std::string again_error;
+				const JunctionTrackPlacement again = PlaceJunctionTrackGraph(t, p.paths, p.graph, p.order, p.cut, p.programs, p.spec, p.seed.choices, after_facts, {0, 0}, &again_error);
+				bool ok = !again.nodes.empty() && SamePlacement(reference, again);
+				if (ok) {
+					std::vector<JunctionTrackRoute> routes;
+					std::string render_error;
+					std::string why;
+					const JunctionLayout layout = RenderJunctionTrackPlacement(t, p.paths, p.graph, p.cut, p.programs, again, &render_error, &routes);
+					ok = !layout.tracks.empty() && JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, {0, 0}, &why);
+				}
+				INFO((axis == 0 ? "column " : "row ") << c << " height " << h << ": " << again_error);
+				CHECK(ok);
+				if (!ok) failing++;
+			}
+		}
+	}
+	std::cout << "LEVELS ridges total=" << total << " solved=" << solved << " t3fail=" << failing << " micros mean=" << (solved > 0 ? micros_sum / solved : 0) << " max=" << micros_max << "\n";
+	for (const auto &[reason, count] : reasons) std::cout << "LEVELS ridge failure " << count << " x " << reason << "\n";
+	CHECK(total == 228);
+	CHECK(solved >= 227);
 }
 
 TEST_CASE("topology: flat ground needs no terraform", "[junction][topology]")

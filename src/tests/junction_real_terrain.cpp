@@ -38,6 +38,7 @@ static void CheckTerrainEqual(const JunctionTerrain &a, const JunctionTerrain &b
 	CHECK(a.width == b.width);
 	CHECK(a.height == b.height);
 	CHECK(a.foundation_cost == b.foundation_cost);
+	CHECK(a.terraform_cost == b.terraform_cost);
 	CHECK(a.build_on_slopes == b.build_on_slopes);
 	CHECK(a.max_bridge_height == b.max_bridge_height);
 	REQUIRE(a.tiles.size() == b.tiles.size());
@@ -57,6 +58,7 @@ TEST_CASE("real terrain: json round trip", "[junction][realterrain]")
 	t.width = 5;
 	t.height = 4;
 	t.foundation_cost = 4321;
+	t.terraform_cost = 9876;
 	t.build_on_slopes = false;
 	t.max_bridge_height = 9;
 	const JunctionTileClass classes[] = {JunctionTileClass::Buildable, JunctionTileClass::Water, JunctionTileClass::Spannable, JunctionTileClass::Blocked};
@@ -230,10 +232,11 @@ TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
 		const JunctionTrackPlacement again = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, after_facts, offset, &again_error);
 		INFO(file.filename().string() << " terraformed terrain: " << again_error);
 		REQUIRE(!again.nodes.empty());
-		CHECK(again.item_rows == hard.item_rows);
-		CHECK(again.columns == hard.columns);
-		CHECK(again.size.x == hard.size.x);
-		CHECK(again.size.y == hard.size.y);
+		/* The terraformed ground re-places what the terraform-mode placement placed (that placement may differ from the hard-facts one). */
+		CHECK(again.item_rows == solved_placement.item_rows);
+		CHECK(again.columns == solved_placement.columns);
+		CHECK(again.size.x == solved_placement.size.x);
+		CHECK(again.size.y == solved_placement.size.y);
 		std::vector<JunctionTrackRoute> routes;
 		std::string render_error;
 		JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, again, &render_error, &routes);
@@ -243,6 +246,8 @@ TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
 		INFO(file.filename().string() << " heights after terraform: " << why);
 		CHECK(ok);
 	}
+	/* Z2e: the joint level solve (RECON-joint-levels) solves 17 of the 18 hard-solved fixtures at the game's prices. */
+	CHECK(tf_solved >= 17);
 	std::ranges::sort(costs);
 	const int64_t cost_sum = std::accumulate(costs.begin(), costs.end(), int64_t(0));
 	std::cout << "REALTERRAIN terraform solved=" << tf_solved << " failed=" << tf_failed << " cost_mean=" << (costs.empty() ? int64_t(0) : cost_sum / static_cast<int64_t>(costs.size())) << "\n";
