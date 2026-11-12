@@ -230,6 +230,18 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	}
 	for (const auto &[prio, beside] : ties) {
 		if (!var.contains(beside)) return fmt::format("the prio tile {} has no main-line tile {} beside it", name(prio), name(beside));
+		/* A prio tile that is a lone axis piece (a visit of its own, no direction yet) ramps exactly as the main-line tile beside it: the same entry and exit levels. */
+		LevelTile &lp = tiles[prio];
+		const LevelTile &lm = tiles[beside];
+		if (lp.rampable && lp.visit.dir == DiagDirection::Invalid) {
+			lp.rampable = lm.rampable && lm.has_next;
+			if (lp.rampable) {
+				lp.visit.dir = lm.visit.dir;
+				lp.has_next = true;
+				lp.next = lm.next;
+				tiles[lm.next].preds.push_back(prio);
+			}
+		}
 		equal(var[prio], var[beside], "prio tile " + name(prio) + " is at the level of " + name(beside));
 	}
 	for (auto &[tile, lt] : tiles) {
@@ -498,6 +510,7 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 		Visit v;
 		v.tile = tile;
 		v.bits = tile_bits.at(tile);
+		v.axis = v.bits == TrackBits{Track::X} || v.bits == TrackBits{Track::Y};
 		route_visits.push_back({v});
 	}
 

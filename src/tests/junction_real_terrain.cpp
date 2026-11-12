@@ -248,7 +248,7 @@ TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
 		CHECK(ok);
 	}
 	/* Z2e: the joint level solve (RECON-joint-levels) solved 17 of the 18 hard-solved fixtures at the game's prices; H3 levels the prio elements' tiles too (flat, at the main-line tile's level), which 4 more fixtures (arctic-hilly-13, arctic-hilly-3, temperate-hilly-4, temperate-mountainous-1) cannot take. */
-	CHECK(tf_solved >= 13);
+	CHECK(tf_solved >= 18);
 	std::ranges::sort(costs);
 	const int64_t cost_sum = std::accumulate(costs.begin(), costs.end(), int64_t(0));
 	std::cout << "REALTERRAIN terraform solved=" << tf_solved << " failed=" << tf_failed << " cost_mean=" << (costs.empty() ? int64_t(0) : cost_sum / static_cast<int64_t>(costs.size())) << "\n";
@@ -324,6 +324,6 @@ TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
 	const double mean = millis.empty() ? 0.0 : std::accumulate(millis.begin(), millis.end(), 0.0) / static_cast<double>(millis.size());
 	const double max = millis.empty() ? 0.0 : *std::ranges::max_element(millis);
 	std::cout << "HOVERPLAN fixtures=" << files.size() << " planned=" << planned << " failed=" << failed << " ms_mean=" << mean << " ms_max=" << max << "\n";
-	CHECK(planned >= 14);
+	CHECK(planned >= 19);
 	REQUIRE(max < 100.0);
 }
