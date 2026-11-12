@@ -41,3 +41,8 @@ CODINGSTYLE.md (C++ part); docs/junction-tool/TESTS.md (rows for [hoverplan], [r
 
 ## Report
 The standard report (references read, commit, red evidence, types/members added, suites, stops, `git status --porcelain`, `git log -1`), plus HOVERPLAN and HOVERNEAR lines, the moved distances, and what the engineer should look at in game. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop on near_max 483 ms)
+1. Work invariant across offsets is done once: split PlanJunctionHover's body into a file-local `static JunctionHoverPlan PlanJunctionHoverAt(const JunctionGraphSeed &seed, const JunctionSpec &spec, const JunctionTerrain &terrain, const JunctionTrackOrder &order, const JunctionFacts &facts, TileIndexDiffC offset)`; PlanJunctionHover builds the order (with its error return as today) and the facts, then calls it; PlanJunctionHoverNear builds them once and calls it per offset. Behaviour and counts identical.
+2. Measure again. If near_max is still >= 100 ms, do not change anything else: report, for one failing offset of temperate-mountainous-6 and the passing offset of temperate-hilly-15, the time of facts construction, order, the placement (Y solve, X solve, levels/terraform if reached) and render+signals (temporary timers, removed before you stop), plus the number of offsets tried per slow fixture; then stop at a clean state with your edits uncommitted.
+3. If under 100 ms: continue with the rest of the brief (GUI, [hoverplan] test, TESTS.md, gates, commit).
