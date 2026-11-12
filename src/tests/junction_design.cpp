@@ -15,12 +15,14 @@
 #include "../junction_layout.h"
 #include "../junction_route.h"
 #include "../junction_router.h"
+#include "../junction_topology.h"
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
 #include "../slope_func.h"
 #include "../track_func.h"
 #include "../core/format.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -205,59 +207,11 @@ TEST_CASE("Junction generator candidate sweep", "[.gen]")
 	if (const char *json = std::getenv("JUNCTION_JSON"); json != nullptr) WriteLayoutJson(layout, json);
 }
 
-TEST_CASE("Junction test circuit", "[.circuit]")
+/** The depot on the given loop: on A, its outermost axis piece with a free outward neighbour D, the half-piece track joining D's edge and A's exit edge is added to the layout. */
+static CircuitDepot AddCircuitDepot(JunctionLayout &layout, const JunctionRaster &loop)
 {
-	JunctionSpec spec = MakeTestJunctionSpec();
-	if (const char *e = std::getenv("JUNCTION_GEN_PRIO")) spec.prio_tiles = static_cast<uint8_t>((e[0] - '0') * spec.tl);
-	/* JUNCTION_TMAP: wrap the T map's layout (DESIGN-O4 "G1") instead of the template generator's. */
-	std::optional<JunctionLayout> generated = std::getenv("JUNCTION_TMAP") != nullptr ? ConstructJunctionTMap(spec).layout : GenerateJunction(spec).layout;
-	REQUIRE(generated.has_value());
-	JunctionLayout layout = *generated;
-	const int w = layout.size.x;
-	const int h = layout.size.y;
-	const std::vector<JunctionPort> ports = FindJunctionPorts(layout);
-	auto port = [&](JunctionPortRole role) -> JunctionPort {
-		for (const auto &p : ports) if (p.role == role) return p;
-		FAIL("missing port");
-		return {};
-	};
-
-	JunctionRouteRequest base{};
-	base.max_expansions = 200000;
-	base.curve_spacing = spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1;
-	base.s_bend_window = 2u * spec.tl;
-	base.bridge_span_ok = spec.bridge_span_ok;
-	base.max_bridge_middle = 10;
-	base.prices = spec.prices;
-	base.crossable_cost = 0;
-
 	auto tile = [](int x, int y) { return TileIndexDiffC{static_cast<int16_t>(x), static_cast<int16_t>(y)}; };
-	constexpr int DEPTH = 24;
-	struct Loop { const char *name; JunctionPortRole out; JunctionPortRole in; TileIndexDiffC min; TileIndexDiffC max; };
-	const Loop loops[] = {
-		{"west", JunctionPortRole::WOut, JunctionPortRole::EIn, tile(-DEPTH, -DEPTH), tile(0, h - 1 + DEPTH)},
-		{"east", JunctionPortRole::EOut, JunctionPortRole::WIn, tile(w - 1, -DEPTH), tile(w - 1 + DEPTH, h - 1 + DEPTH)},
-		{"south", JunctionPortRole::SOut, JunctionPortRole::NIn, tile(-DEPTH, h - 1), tile(w - 1 + DEPTH, h - 1 + DEPTH)},
-	};
-	std::vector<JunctionRaster> rasters;
-	for (const Loop &loop : loops) {
-		const JunctionPort o = port(loop.out);
-		const JunctionPort i = port(loop.in);
-		JunctionRouteRequest request = base;
-		request.starts = {{o.tile, o.trackdir}};
-		request.goals = {{i.tile, i.trackdir}};
-		request.min = loop.min;
-		request.max = loop.max;
-		const std::optional<JunctionRoute> route = FindJunctionRoute(layout, request);
-		if (!route.has_value()) FAIL("no loop route for " << loop.name);
-		JunctionRaster raster = RasterizeJunctionRoute(*route);
-		if (!raster.error.empty()) FAIL("bad loop route for " << loop.name << ": " << raster.error);
-		AddRasterToLayout(layout, raster);
-		rasters.push_back(raster);
-	}
-
-	/* The depot: on A, the west loop's outermost axis piece with a free outward neighbour D, add the half-piece track joining D's edge and A's exit edge. */
-	const JunctionRaster &west = rasters[0];
+	/* The depot: on A, the loop's outermost axis piece with a free outward neighbour D, add the half-piece track joining D's edge and A's exit edge. */
 	auto track_at = [&](TileIndexDiffC t) {
 		for (const auto &jt : layout.tracks) if (jt.offset.x == t.x && jt.offset.y == t.y) return jt.tracks;
 		return TrackBits{};
@@ -273,7 +227,7 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 	};
 	const JunctionPiece *piece_a = nullptr;
 	Track a_track = Track::X;
-	for (const JunctionPiece &p : west.pieces) {
+	for (const JunctionPiece &p : loop.pieces) {
 		const Track axis = TrackdirToTrack(p.trackdir);
 		if (p.on_bridge || (axis != Track::X && axis != Track::Y)) continue;
 		if (piece_a != nullptr && p.tile.x >= piece_a->tile.x) continue;
@@ -288,9 +242,16 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 	for (auto &jt : layout.tracks) {
 		if (jt.offset.x == piece_a->tile.x && jt.offset.y == piece_a->tile.y) jt.tracks.Set(a_track);
 	}
-	std::vector<CircuitDepot> depots = {{piece_a->tile.x - 1, piece_a->tile.y, "SW"}};
+	return {piece_a->tile.x - 1, piece_a->tile.y, "SW"};
+}
 
-	/* One-way block signals along each loop, spaced as drag-signalling with minimise gaps would (D97). */
+/** One-way block signals along each loop, spaced as drag-signalling with minimise gaps would (D97). */
+static void AddCircuitLoopSignals(JunctionLayout &layout, const std::vector<JunctionRaster> &rasters, const JunctionSpec &spec)
+{
+	auto track_at = [&](TileIndexDiffC t) {
+		for (const auto &jt : layout.tracks) if (jt.offset.x == t.x && jt.offset.y == t.y) return jt.tracks;
+		return TrackBits{};
+	};
 	const uint density = spec.sd * 192u;
 	for (const JunctionRaster &raster : rasters) {
 		auto legal = [&](const JunctionPiece &p) { return !p.on_bridge && !TracksOverlap(track_at(p.tile)); };
@@ -349,7 +310,67 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 			}
 		}
 	}
+}
 
+TEST_CASE("Junction test circuit", "[.circuit]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	if (const char *e = std::getenv("JUNCTION_GEN_PRIO")) spec.prio_tiles = static_cast<uint8_t>((e[0] - '0') * spec.tl);
+	/* JUNCTION_TMAP: wrap the T map's layout (DESIGN-O4 "G1") instead of the template generator's. */
+	std::optional<JunctionLayout> generated = std::getenv("JUNCTION_TMAP") != nullptr ? ConstructJunctionTMap(spec).layout : GenerateJunction(spec).layout;
+	REQUIRE(generated.has_value());
+	JunctionLayout layout = *generated;
+	const int w = layout.size.x;
+	const int h = layout.size.y;
+	const std::vector<JunctionPort> ports = FindJunctionPorts(layout);
+	auto port = [&](JunctionPortRole role) -> JunctionPort {
+		for (const auto &p : ports) if (p.role == role) return p;
+		FAIL("missing port");
+		return {};
+	};
+
+	JunctionRouteRequest base{};
+	base.max_expansions = 200000;
+	base.curve_spacing = spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1;
+	base.s_bend_window = 2u * spec.tl;
+	base.bridge_span_ok = spec.bridge_span_ok;
+	base.max_bridge_middle = 10;
+	base.prices = spec.prices;
+	base.crossable_cost = 0;
+
+	auto tile = [](int x, int y) { return TileIndexDiffC{static_cast<int16_t>(x), static_cast<int16_t>(y)}; };
+	constexpr int DEPTH = 24;
+	struct Loop { const char *name; JunctionPortRole out; JunctionPortRole in; TileIndexDiffC min; TileIndexDiffC max; };
+	const Loop loops[] = {
+		{"west", JunctionPortRole::WOut, JunctionPortRole::EIn, tile(-DEPTH, -DEPTH), tile(0, h - 1 + DEPTH)},
+		{"east", JunctionPortRole::EOut, JunctionPortRole::WIn, tile(w - 1, -DEPTH), tile(w - 1 + DEPTH, h - 1 + DEPTH)},
+		{"south", JunctionPortRole::SOut, JunctionPortRole::NIn, tile(-DEPTH, h - 1), tile(w - 1 + DEPTH, h - 1 + DEPTH)},
+	};
+	std::vector<JunctionRaster> rasters;
+	for (const Loop &loop : loops) {
+		const JunctionPort o = port(loop.out);
+		const JunctionPort i = port(loop.in);
+		JunctionRouteRequest request = base;
+		request.starts = {{o.tile, o.trackdir}};
+		request.goals = {{i.tile, i.trackdir}};
+		request.min = loop.min;
+		request.max = loop.max;
+		const std::optional<JunctionRoute> route = FindJunctionRoute(layout, request);
+		if (!route.has_value()) FAIL("no loop route for " << loop.name);
+		JunctionRaster raster = RasterizeJunctionRoute(*route);
+		if (!raster.error.empty()) FAIL("bad loop route for " << loop.name << ": " << raster.error);
+		AddRasterToLayout(layout, raster);
+		rasters.push_back(raster);
+	}
+
+	std::vector<CircuitDepot> depots = {AddCircuitDepot(layout, rasters[0])};
+
+	AddCircuitLoopSignals(layout, rasters, spec);
+
+	auto track_at = [&](TileIndexDiffC t) {
+		for (const auto &jt : layout.tracks) if (jt.offset.x == t.x && jt.offset.y == t.y) return jt.tracks;
+		return TrackBits{};
+	};
 	/* One waypoint per loop: the axis piece nearest the raster's middle, alone on its tile, with axis pieces (signalled or not) on both sides. */
 	auto has_signal = [&](TileIndexDiffC t) {
 		for (const auto &sg : layout.signals) if (sg.offset.x == t.x && sg.offset.y == t.y) return true;
@@ -390,6 +411,124 @@ TEST_CASE("Junction test circuit", "[.circuit]")
 	for (const auto &d : depots) std::cout << "depot " << d.x << "," << d.y << " " << d.dir << "\n";
 	for (const auto &wp : extras.waypoints) std::cout << "waypoint " << wp.name << " " << wp.x << "," << wp.y << " " << wp.axis << "\n";
 	std::cout << "junction " << extras.box[0] << "," << extras.box[1] << "," << extras.box[2] << "," << extras.box[3] << "\n";
+	if (const char *json = std::getenv("JUNCTION_CIRCUIT"); json != nullptr) WriteLayoutJson(layout, json, depots, &extras);
+}
+
+TEST_CASE("Junction LL_RR test circuit", "[.circuitllrr]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.max_bridge_middle = 10;
+	const JunctionTopology &topology = JunctionLLRRSidelineTopology();
+
+	std::string ignored;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(topology, &ignored);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(topology, paths, &ignored);
+	REQUIRE(!graph.edges.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, paths, graph, &ignored);
+	REQUIRE(!order.rows.empty());
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(topology, paths, graph, order, &ignored);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(topology, paths, graph, order, structure, &ignored);
+	REQUIRE(!programs.edges.empty());
+	JunctionTrackPlacement placement;
+	const JunctionTrackStructure cut = CutJunctionTrackBridges(topology, paths, graph, order, structure, programs, spec, &placement, &ignored);
+	REQUIRE(!placement.nodes.empty());
+	std::vector<JunctionTrackRoute> routes;
+	JunctionLayout layout = RenderJunctionTrackPlacement(topology, paths, graph, cut, programs, placement, &ignored, &routes);
+	SignalJunctionTrackRoutes(layout, routes, topology, paths, MakeTestJunctionSpec());
+	REQUIRE(!layout.tracks.empty());
+	const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec, topology);
+	for (const RuleViolation &v : violations) std::cout << "violation " << v.tile.x << "," << v.tile.y << " " << v.message << "\n";
+	REQUIRE(violations.empty());
+	const int w = layout.size.x;
+	const int h = layout.size.y;
+
+	const std::vector<JunctionPort> ports = FindJunctionPorts(layout, topology);
+	REQUIRE(ports.size() == 10);
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+
+	JunctionRouteRequest base{};
+	base.max_expansions = 200000;
+	base.curve_spacing = spec.curve_limit ? DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) : 1;
+	base.s_bend_window = 2u * spec.tl;
+	base.bridge_span_ok = spec.bridge_span_ok;
+	base.max_bridge_middle = 10;
+	base.prices = spec.prices;
+	base.crossable_cost = 0;
+
+	auto tile = [](int x, int y) { return TileIndexDiffC{static_cast<int16_t>(x), static_cast<int16_t>(y)}; };
+	constexpr int DEPTH = 24;
+	struct Side { const char *name; JunctionSide side; TileIndexDiffC min; TileIndexDiffC max; };
+	const Side sides[] = {
+		{"W", JunctionSide::W, tile(-DEPTH, -DEPTH), tile(0, h - 1 + DEPTH)},
+		{"E", JunctionSide::E, tile(w - 1, -DEPTH), tile(w - 1 + DEPTH, h - 1 + DEPTH)},
+		{"S", JunctionSide::S, tile(-DEPTH, h - 1), tile(w - 1 + DEPTH, h - 1 + DEPTH)},
+	};
+	/* The distance along the box edge: the port's row on the W and E sides, its column on the S side. */
+	auto along = [&](const JunctionPort &p, JunctionSide side) { return side == JunctionSide::S ? p.tile.x : p.tile.y; };
+
+	std::vector<JunctionRaster> rasters;
+	std::optional<size_t> outer_west;
+	for (const Side &side : sides) {
+		std::vector<JunctionPort> ins;
+		std::vector<JunctionPort> outs;
+		for (const JunctionPort &p : ports) {
+			const JunctionLaneGroup &group = topology.groups[slots[p.slot].group];
+			if (group.side != side.side) continue;
+			(group.in ? ins : outs).push_back(p);
+		}
+		/* Nearest first by the distance to the nearest port of the other kind; ties by position. */
+		auto sort_by_gap = [&](std::vector<JunctionPort> &mine, const std::vector<JunctionPort> &other) {
+			auto gap = [&](const JunctionPort &p) {
+				int least = 1 << 20;
+				for (const JunctionPort &o : other) least = std::min(least, std::abs(along(p, side.side) - along(o, side.side)));
+				return least;
+			};
+			std::ranges::stable_sort(mine, [&](const JunctionPort &a, const JunctionPort &b) {
+				const int ga = gap(a);
+				const int gb = gap(b);
+				return ga != gb ? ga < gb : along(a, side.side) < along(b, side.side);
+			});
+		};
+		sort_by_gap(ins, outs);
+		sort_by_gap(outs, ins);
+		REQUIRE(ins.size() == outs.size());
+		for (size_t i = 0; i < ins.size(); i++) {
+			JunctionRouteRequest request = base;
+			request.starts = {{outs[i].tile, outs[i].trackdir}};
+			request.goals = {{ins[i].tile, ins[i].trackdir}};
+			request.min = side.min;
+			request.max = side.max;
+			const std::optional<JunctionRoute> route = FindJunctionRoute(layout, request);
+			if (!route.has_value()) FAIL("no loop route for side " << side.name << " pair " << i);
+			JunctionRaster raster = RasterizeJunctionRoute(*route);
+			if (!raster.error.empty()) FAIL("bad loop route for side " << side.name << " pair " << i << ": " << raster.error);
+			AddRasterToLayout(layout, raster);
+			rasters.push_back(raster);
+			if (side.side == JunctionSide::W) outer_west = rasters.size() - 1;
+		}
+	}
+	REQUIRE(outer_west.has_value());
+
+	AddCircuitLoopSignals(layout, rasters, spec);
+	std::vector<CircuitDepot> depots = {AddCircuitDepot(layout, rasters[*outer_west])};
+
+	CircuitExtras extras{};
+	extras.box[0] = 0; extras.box[1] = 0; extras.box[2] = w; extras.box[3] = h;
+
+	int min_x = 1 << 20, min_y = 1 << 20;
+	for (const auto &jt : layout.tracks) { min_x = std::min<int>(min_x, jt.offset.x); min_y = std::min<int>(min_y, jt.offset.y); }
+	for (const auto &b : layout.bridges) {
+		min_x = std::min<int>({min_x, b.start.x, b.end.x});
+		min_y = std::min<int>({min_y, b.start.y, b.end.y});
+	}
+	NormaliseJunctionLayout(layout);
+	for (auto &d : depots) { d.x -= min_x; d.y -= min_y; }
+	extras.box[0] -= min_x; extras.box[1] -= min_y;
+	std::cout << RenderJunctionAscii(layout);
+	for (const auto &d : depots) std::cout << "depot " << d.x << "," << d.y << " " << d.dir << "\n";
+	std::cout << "junction " << extras.box[0] << "," << extras.box[1] << "," << extras.box[2] << "," << extras.box[3] << "\n";
+	std::cout << "loops " << rasters.size() << " size " << layout.size.x << "x" << layout.size.y << "\n";
 	if (const char *json = std::getenv("JUNCTION_CIRCUIT"); json != nullptr) WriteLayoutJson(layout, json, depots, &extras);
 }
 
