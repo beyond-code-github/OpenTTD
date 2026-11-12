@@ -13,6 +13,7 @@
 
 #include "junction_chain.h"
 #include "junction_generator.h"
+#include "junction_positions.h"
 #include "junction_route.h"
 #include "junction_rules_internal.h"
 #include "junction_signal_pass.h"
@@ -929,7 +930,11 @@ static int JunctionRunBetween(int kind_a, int hand_a, int m_a, int kind_b, int h
 	return d;
 }
 
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error)
+/**
+ * The placement of a programmed track graph (DESIGN-G1 §11.8, §14.2).
+ * @param fixed The choices to solve with (one Y and one X solve), or nullptr for the rounds that find them.
+ */
+static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error)
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
 	using Step = JunctionTrackStep;
@@ -939,6 +944,12 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 		return JunctionTrackPlacement{};
 	};
 	if (graph.edges.empty() || programs.edges.size() != graph.edges.size() || programs.copies.size() != graph.edges.size()) return fail("a placement needs the programs of a track graph");
+	if (fixed != nullptr) {
+		if (fixed->m.size() != graph.edges.size() || fixed->corner.size() != graph.edges.size()) return fail("the choices do not fit the programs of this track graph");
+		for (size_t e = 0; e < graph.edges.size(); e++) {
+			if (fixed->m[e].size() != programs.edges[e].size() || fixed->corner[e].size() != programs.edges[e].size()) return fail("the choices do not fit the programs of this track graph");
+		}
+	}
 	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
 	const int n = static_cast<int>(slots.size());
 	auto group_of = [&](int slot) -> const JunctionLaneGroup & { return topology.groups[slots[slot].group]; };
@@ -1106,29 +1117,59 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 		int v;
 		int u;
 		int k;
+		uint32_t reason; ///< Index into 'reasons'.
 	};
 	std::vector<Cons> cons;
+	std::vector<JunctionPlacementReason> reasons;
+	JunctionPlacementReason why_now; ///< The reason of the relations added now (DESIGN-G1 §14.4).
+	auto why = [&](const char *rule, uint32_t edge = UINT32_MAX, uint32_t node = UINT32_MAX, int row = -1) { why_now = JunctionPlacementReason{rule, edge, node, static_cast<int32_t>(row)}; };
 	int phase = 0; // 0: X, 1: Y.
-	auto ge = [&](int axis, int v, int u, int c) { if (axis == phase) cons.push_back({v, u, c}); };
+	auto ge = [&](int axis, int v, int u, int c) {
+		if (axis != phase) return;
+		assert(why_now.rule != nullptr);
+		if (reasons.empty() || reasons.back().rule != why_now.rule || reasons.back().edge != why_now.edge || reasons.back().node != why_now.node || reasons.back().row != why_now.row) reasons.push_back(why_now);
+		cons.push_back({v, u, c, static_cast<uint32_t>(reasons.size() - 1)});
+	};
 	auto eq = [&](int axis, int v, int u, int c) { ge(axis, v, u, c); ge(axis, u, v, -c); };
 	std::vector<int> vx, vy;
 	std::string build_why;
 	bool rows_known = false; // False in the first pass, which only gives the S-bends' first sizes.
+	std::vector<std::array<int, 4>> hug_picks; ///< The bridge-hug picks of the last X build, in (row, k) order.
+	std::vector<JunctionPlacementReason> failure; ///< The explanation chain of the last failed solve.
 	auto solve = [&](std::vector<int> &val) {
-		val.assign(pt_count, 0);
-		for (int round = 0; round <= pt_count; round++) {
-			bool changed = false;
-			for (const Cons &c : cons) {
-				if (val[c.u] + c.k > val[c.v]) {
-					val[c.v] = val[c.u] + c.k;
-					changed = true;
-				}
-			}
-			if (!changed) return val[0] == 0;
+		/* A least solution is a longest path, so no point lies beyond the sum of the positive constants; a larger lo is a positive cycle. */
+		int bound = 1;
+		for (const Cons &cn : cons) bound += std::max(cn.k, 0);
+		JunctionPositions positions(pt_count, 0, bound);
+		reasons.push_back(JunctionPlacementReason{"origin"});
+		bool ok = positions.RestrictRange(0, 0, 0, static_cast<uint32_t>(reasons.size() - 1));
+		for (const Cons &cn : cons) {
+			if (!ok) break;
+			ok = positions.AddDifference(cn.v, cn.u, cn.k, cn.reason);
 		}
-		/* Still relaxing after one round per point: a positive cycle. */
-		if (error != nullptr) *error = "the placement rules contradict each other";
-		return false;
+		if (!ok) {
+			std::string chain_text;
+			failure.clear();
+			for (uint32_t index : positions.Explain()) {
+				const JunctionPlacementReason &reason = reasons[index];
+				failure.push_back(reason);
+				std::string parts;
+				if (reason.edge != UINT32_MAX) parts += fmt::format("edge {}", reason.edge);
+				if (reason.node != UINT32_MAX) parts += fmt::format("{}node {}", parts.empty() ? "" : ", ", reason.node);
+				if (reason.row >= 0) parts += fmt::format("{}row {}", parts.empty() ? "" : ", ", reason.row);
+				chain_text += fmt::format("{}{}{}", chain_text.empty() ? "" : " <- ", reason.rule, parts.empty() ? "" : " (" + parts + ")");
+			}
+			if (error != nullptr) *error = "the placement rules contradict each other: " + chain_text;
+			return false;
+		}
+		val.resize(pt_count);
+		for (int i = 0; i < pt_count; i++) val[i] = positions.Lo(i);
+		return true;
+	};
+	auto solve_failed = [&]() {
+		JunctionTrackPlacement result;
+		result.why = failure;
+		return result;
 	};
 	/* A relation along a heading: coord(next) - coord(prev) in the heading's sense >= d (= d when exact), no relation across. */
 	auto along = [&](int heading, int next, int prev, int d, bool exact) {
@@ -1226,11 +1267,16 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	/* One round: the constraints of a phase. */
 	auto build = [&]() {
 		cons.clear();
+		reasons.clear();
+		why_now = JunctionPlacementReason{};
 		const bool x_phase = phase == 0;
+		if (x_phase) hug_picks.clear();
 
 		/* Stack rows. */
+		why("stack origin");
 		eq(1, item_pt[0], 0, 0);
 		for (int i = 1; i < items; i++) {
+			why("stack rows", UINT32_MAX, UINT32_MAX, static_cast<int>(structure.stack[i].row));
 			if (structure.stack[i].row == structure.stack[i - 1].row) eq(1, item_pt[i], item_pt[i - 1], 1); else ge(1, item_pt[i], item_pt[i - 1], 1);
 		}
 		std::vector<int> layer1;
@@ -1238,6 +1284,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 			const int level = order.node_level[i];
 			if (level % 2 != 0) continue;
 			const int b = level / 2;
+			why("band gap", UINT32_MAX, i);
 			if (b >= 1) ge(1, node_pt[i], item_pt[row_last[b - 1]], 1);
 			if (b < rows) ge(1, item_pt[row_first[b]], node_pt[i], 1);
 		}
@@ -1245,21 +1292,25 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 			if (event.node && event.layer == 1) layer1.push_back(static_cast<int>(event.a));
 		}
 		for (size_t i = 0; i < layer1.size(); i++) {
+			why("S edge", UINT32_MAX, static_cast<uint32_t>(layer1[i]));
 			if (i > 0) eq(1, node_pt[layer1[i]], node_pt[layer1[0]], 0);
 			eq(1, se_pt, node_pt[layer1[i]], STUB);
 		}
+		why("S port row");
 		for (int s = 0; s < n; s++) {
 			if (!group_of(s).main) eq(1, port_pt[s], se_pt, 0);
 		}
 
 		/* Ports. */
 		std::vector<int> south;
+		why("port columns");
 		for (int s = 0; s < n; s++) {
 			if (group_of(s).side == JunctionSide::W) eq(0, port_pt[s], 0, 0);
 			if (group_of(s).side == JunctionSide::E) eq(0, port_pt[s], xe_pt, 0);
 			if (group_of(s).side == JunctionSide::S) south.push_back(s);
 		}
 		int column = 0;
+		why("S port spacing");
 		for (size_t i = 1; i < south.size(); i++) {
 			column += 1 + (slots[south[i]].group != slots[south[i - 1]].group ? 1 : 0);
 			eq(0, port_pt[south[i]], port_pt[south[0]], column);
@@ -1280,6 +1331,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 			const int heading = east[r] ? 1 : 3;
 			const int pin = port_pt[in.from.index];
 			const int pout = port_pt[out.to.index];
+			why("row items", leg_edge[r], UINT32_MAX, r);
 			if (doubled) {
 				eq(1, rp.lane_split, item_pt[north_item[r]], 0);
 				eq(1, rp.sb1_last, item_pt[lane_item[r]], 0);
@@ -1302,6 +1354,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 
 			/* In: port, fan, exit split. */
 			const int m_in = fan_m[in_edge[r]];
+			why("in fan", in_edge[r], in.to.index, r);
 			int d_min = 2;
 			if (m_in == 0) {
 				eq(0, rp.fif, pin, 0);
@@ -1327,13 +1380,16 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				d_min = std::max(d_min, 1 + (g2 - h + 1) / 2);
 				d_min = std::max(d_min, 1 + (g3 - 2 * m_in - h + 1) / 2);
 			}
+			why("in fan d_min", in_edge[r], in.to.index, r);
 			along(heading, nex, rp.fil, d_min, false);
 			int after = nex; // The last point of the lane chain before the joiner merge.
 			if (!doubled) {
 				/* The prio element covers even_prio tiles upstream of the joiner merge; the exit split stays outside it. */
+				why("prio element", leg_edge[r], out.from.index, r);
 				along(heading, njm, nex, even_prio + 1, false);
 			} else {
 				/* The lane split sits next to its bridge (D215); the run from the exit split to the lane split, and from the last heads to the lane merge, are rule minima, not exact: series bridges need the slack (DESIGN-G1 §11.9b). */
+				why("lane split run", leg_edge[r], in.to.index, r);
 				along(heading, rp.lane_split, nex, 2, false);
 				const size_t g = rp.nh0.size();
 				along(heading, rp.nh0[0], rp.lane_split, 2, true);
@@ -1344,15 +1400,18 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 					along(heading, rp.fh0[k], rp.fh1[k], 1, true);
 					if (k > 0) along(heading, rp.nh0[k], rp.fh0[k - 1], 2, false);
 				}
+				why("series bridge heads", leg_edge[r], UINT32_MAX, r);
 				along(heading, rp.sb0_first, rp.fh0[g - 1], 1, false);
 				eq(0, rp.lane_merge, rp.sb0_first, 0);
 				along(heading, rp.lane_merge, rp.fh1[g - 1], 2, false);
 				/* The element's row ends at step even_prio + 1, which must not meet the lane merge's S-bend (RECON-prio-element §3-4). */
+				why("prio element", leg_edge[r], out.from.index, r);
 				along(heading, njm, rp.lane_merge, even_prio + 2, false);
 				after = rp.lane_merge;
 
 				/* Every crosser's tiles on the copy row and the lane row lie between its bridge's heads, and the heads hug the outermost tiles (D80, D118, D145). */
 				const int u = -s; // The upstream step.
+				why("bridge heads hug crossers", leg_edge[r], UINT32_MAX, r);
 				for (size_t k = 0; k < g; k++) {
 					const JunctionTrackBridge &bridge = structure.bridges[bridges_of[leg_edge[r]][k]];
 					bool have = false;
@@ -1375,15 +1434,25 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 									ge(0, near, z.pt, 1 + z.dx);
 									ge(0, z.pt, far, 1 - z.dx);
 								}
-								const int dx = pass == 0 ? z.dx : z.dx - u;
-								const int value = vx[z.pt] + dx;
-								if (!have || value < low_value) { low_value = value; low_pt = z.pt; low_dx = dx; }
-								if (!have || value > high_value) { high_value = value; high_pt = z.pt; high_dx = dx; }
+								if (fixed == nullptr) {
+									const int dx = pass == 0 ? z.dx : z.dx - u;
+									const int value = vx[z.pt] + dx;
+									if (!have || value < low_value) { low_value = value; low_pt = z.pt; low_dx = dx; }
+									if (!have || value > high_value) { high_value = value; high_pt = z.pt; high_dx = dx; }
+								}
 								have = true;
 							}
 							if (!any) { build_why = "Z row " + str(y) + " edge " + str(x) + " row " + str(r); return false; }
 						}
 					}
+					if (have && fixed != nullptr) {
+						if (hug_picks.size() >= fixed->hug.size()) { build_why = "the choices miss a bridge-hug pick"; return false; }
+						low_pt = fixed->hug[hug_picks.size()][0];
+						low_dx = fixed->hug[hug_picks.size()][1];
+						high_pt = fixed->hug[hug_picks.size()][2];
+						high_dx = fixed->hug[hug_picks.size()][3];
+					}
+					hug_picks.push_back({low_pt, low_dx, high_pt, high_dx});
 					if (have) {
 						const int west = s > 0 ? rp.nh0[k] : rp.fh0[k];
 						const int east_head = s > 0 ? rp.fh0[k] : rp.nh0[k];
@@ -1396,6 +1465,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 
 			/* Out: joiner merge, fan, port. */
 			const int m_out = fan_m[out_edge[r]];
+			why("out port run", out_edge[r], out.from.index, r);
 			if (m_out == 0) {
 				eq(0, rp.fof, pout, 0);
 				eq(0, rp.fol, pout, 0);
@@ -1414,6 +1484,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				int k_out = std::max((g2 + 1) / 2, c1_hand == c2_out_hand ? 1 + (g1 + 1) / 2 : 2);
 				/* (c0, c3), the joiner S-bend's first curve to the fan's last, three curves apart: 2 + 2 (k - 1) + 2 m_out units. */
 				k_out = std::max(k_out, 1 + (g3 - 2 - 2 * m_out + 1) / 2);
+				why("out fan k_out", out_edge[r], out.from.index, r);
 				along(heading, rp.fof, njm, k_out, true);
 				along(heading, rp.fol, rp.fof, m_out - 1, true);
 				along(heading, pout, rp.fol, 2, true);
@@ -1434,6 +1505,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 					if (split_node < 0 && graph.nodes[nd].split) {
 						split_node = nd;
 					} else if (split_node >= 0 && !graph.nodes[nd].split) {
+						why("waiting room", cur_edge, static_cast<uint32_t>(nd));
 						ge(1, node_pt[nd], node_pt[split_node], static_cast<int>(spec.tl) + 1);
 						break;
 					}
@@ -1457,32 +1529,45 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 					const int dx = kk * (VX[el.hin] + VX[el.hout]);
 					const int dy = kk * (VY[el.hin] + VY[el.hout]);
 					if (el.joiner_div) {
+						why("joiner_div Corner floor", e);
 						ge(1, el.first, el.last, k);
+						if (fixed != nullptr) {
+							why("joiner_div Corner choice", e);
+							eq(1, el.first, el.last, fixed->corner[e][el.tok]);
+						}
 						if (x_phase) {
-							const int kp = rows_known ? std::abs(vy[el.first] - vy[el.last]) : k;
+							const int kp = fixed != nullptr ? fixed->corner[e][el.tok] : (rows_known ? std::abs(vy[el.first] - vy[el.last]) : k);
 							eq(0, el.last, el.first, kp * (VX[el.hin] + VX[el.hout]));
 						}
 					} else {
+						why("Corner size", e);
 						eq(0, el.last, el.first, dx);
 						eq(1, el.last, el.first, dy);
 					}
 					if (el.index != NO_ROW) eq(1, el.last, item_pt[el.index], 0);
 				} else if (el.k == Elem::K::SBend) {
 					const int side = (el.hin + el.hand + 4) % 4;
+					why("S-bend size", e);
 					if (el.hin == 0 || el.hin == 2) {
 						eq(1, el.last, el.first, VY[el.hin] * (el.m - 1));
-						if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
+						if (fixed != nullptr) {
+							if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
+						} else {
+							if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
+						}
 					} else {
 						eq(1, el.last, el.first, VY[side]);
 						eq(0, el.last, el.first, VX[el.hin] * 0);
 					}
 					if (el.index != NO_ROW) eq(1, el.last, item_pt[el.index], 0);
 				} else if (el.k == Elem::K::Heads) {
+					why("bridge heads", e);
 					eq(VX[el.hin] != 0 ? 1 : 0, el.last, el.first, 0);
 				}
 				if (i + 1 >= elems.size()) continue;
 				const Elem &next = elems[i + 1];
 				if (next.first == el.last) continue;
+				why("chain run", e);
 				bool exact = false;
 				int dist = 2;
 				auto run_between = [&](const Elem *ea, const Elem *eb) {
@@ -1521,6 +1606,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 					if (o.k == Elem::K::SBend && o.tok >= 0 && static_cast<size_t>(o.tok) + 1 < programs.edges[el.cross].size() && programs.edges[el.cross][o.tok + 1].kind == StepKind::Under && programs.edges[el.cross][o.tok + 1].index == e) crossed = &o;
 				}
 				if (crossed == nullptr) { build_why = "no crossed sbend"; return false; }
+				why("bridge over S-bend", e);
 				const int side = (crossed->hin + crossed->hand + 4) % 4;
 				const std::vector<TileIndexDiffC> tiles = bend_tiles(crossed->hin, crossed->hand, 2 * std::max(crossed->m, 2), false);
 				int lo = 1000, hi = -1000;
@@ -1537,6 +1623,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 			}
 		}
 
+		why("box bound");
 		if (x_phase) {
 			for (int p = 1; p < pt_count; p++) {
 				if (p != xe_pt) ge(0, xe_pt, p, 0);
@@ -1549,24 +1636,8 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 		return true;
 	};
 
-	/* The rounds: a first X pass without rows gives the S-bends' sizes, then Y and X alternate until the sizes hold. */
-	phase = 0;
-	refresh(false);
-	if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
-	if (!solve(vx)) return JunctionTrackPlacement{};
-	for (uint32_t e = 0; e < edge_count; e++) {
-		for (Elem &el : chain[e]) {
-			if (el.free_m) el.m = std::max(1, std::abs(vx[el.last] - vx[el.first]));
-		}
-	}
-	rows_known = true;
-	for (int round = 0; round < 5; round++) {
-		phase = 1;
-		refresh(false);
-		if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
-		if (!solve(vy)) return JunctionTrackPlacement{};
-
-		/* The port rows: the offset that minimises the largest fan (ties: the smaller). */
+	/* The port rows' offset: the one that minimises the largest fan (ties: the smaller). */
+	auto best_offset = [&]() {
 		int best = -1, best_o = 0;
 		for (int o = 0; o <= vy[item_pt[items - 1]]; o++) {
 			int worst = 0;
@@ -1580,32 +1651,94 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				best_o = o;
 			}
 		}
+		return best_o;
+	};
+	auto set_port_rows = [&](int offset) {
 		for (int s = 0; s < n; s++) {
-			if (notation[s] >= 0) port_row[s] = best_o + notation[s];
+			if (notation[s] >= 0) port_row[s] = offset + notation[s];
 		}
 		for (uint32_t e = 0; e < edge_count; e++) {
 			const uint32_t item = fan_item(e);
 			if (item != NO_ROW) fan_m[e] = std::abs(port_row[edge_port(e)] - vy[item_pt[item]]);
 		}
+	};
+	JunctionPlacementChoices choices;
+	int port_offset = 0;
 
+	if (fixed != nullptr) {
+		/* One Y solve and one X solve with the choices fixed (DESIGN-G1 §14.2). */
+		for (uint32_t e = 0; e < edge_count; e++) {
+			for (Elem &el : chain[e]) {
+				if (el.free_m) el.m = std::max(1, fixed->m[e][el.tok]);
+			}
+		}
+		rows_known = true;
+		phase = 1;
+		refresh(false);
+		if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
+		if (!solve(vy)) return solve_failed();
+		port_offset = fixed->port_offset;
+		set_port_rows(port_offset);
 		phase = 0;
 		refresh(true);
 		if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
-		if (!solve(vx)) return JunctionTrackPlacement{};
-
-		bool changed = false;
+		if (!solve(vx)) return solve_failed();
+		choices = *fixed;
+	} else {
+		/* The rounds: a first X pass without rows gives the S-bends' sizes, then Y and X alternate until the sizes hold. */
+		phase = 0;
+		refresh(false);
+		if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
+		if (!solve(vx)) return solve_failed();
 		for (uint32_t e = 0; e < edge_count; e++) {
 			for (Elem &el : chain[e]) {
-				if (!el.free_m) continue;
-				const int m = std::abs(vx[el.last] - vx[el.first]);
-				if (m != el.m) {
-					el.m = m;
-					changed = true;
-				}
+				if (el.free_m) el.m = std::max(1, std::abs(vx[el.last] - vx[el.first]));
 			}
 		}
-		if (!changed) break;
-		if (round == 4) return fail("the placement does not settle");
+		rows_known = true;
+		for (int round = 0; round < 5; round++) {
+			phase = 1;
+			refresh(false);
+			if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
+			if (!solve(vy)) return solve_failed();
+
+			/* The port rows. */
+			port_offset = best_offset();
+			set_port_rows(port_offset);
+
+			phase = 0;
+			refresh(true);
+			if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
+			if (!solve(vx)) return solve_failed();
+
+			bool changed = false;
+			for (uint32_t e = 0; e < edge_count; e++) {
+				for (Elem &el : chain[e]) {
+					if (!el.free_m) continue;
+					const int m = std::abs(vx[el.last] - vx[el.first]);
+					if (m != el.m) {
+						el.m = m;
+						changed = true;
+					}
+				}
+			}
+			if (!changed) break;
+			if (round == 4) return fail("the placement does not settle");
+		}
+
+		/* The choices the rounds settled on. */
+		choices.port_offset = port_offset;
+		choices.hug = hug_picks;
+		choices.m.resize(edge_count);
+		choices.corner.resize(edge_count);
+		for (uint32_t e = 0; e < edge_count; e++) {
+			choices.m[e].assign(programs.edges[e].size(), 0);
+			choices.corner[e].assign(programs.edges[e].size(), 0);
+			for (const Elem &el : chain[e]) {
+				if (el.free_m) choices.m[e][el.tok] = el.m;
+				if (el.joiner_div) choices.corner[e][el.tok] = vy[el.first] - vy[el.last];
+			}
+		}
 	}
 
 	/* The fans' and ports' rows. */
@@ -1628,6 +1761,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	for (int s = 0; s < n; s++) result.ports.push_back(tile(port_pt[s]));
 	for (uint32_t i = 0; i < graph.nodes.size(); i++) result.nodes.push_back(tile(node_pt[i]));
 	result.size = {static_cast<int16_t>(vx[xe_pt] + 1), static_cast<int16_t>(vy[se_pt] + 1)};
+	result.choices = choices;
 
 	/* The heads of a bridge: its near and far point, and the carrier's travel direction along the axis. */
 	struct Heads {
@@ -1758,6 +1892,16 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 		result.bridges.push_back(heads);
 	}
 	return result;
+}
+
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error)
+{
+	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, nullptr, error);
+}
+
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error)
+{
+	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error);
 }
 
 JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error, std::vector<JunctionTrackRoute> *routes)

@@ -2342,6 +2342,125 @@ TEST_CASE("topology: the seeds are clean at every train length and speed", "[jun
 	CHECK(failing == 0);
 }
 
+/** Every field of two placements but the explanation; the first difference goes to INFO. */
+static bool SamePlacement(const JunctionTrackPlacement &p, const JunctionTrackPlacement &q)
+{
+	auto differ = [](const char *field) { INFO("first difference: " << field); return false; };
+	if (p.item_rows != q.item_rows) return differ("item_rows");
+	if (Of(p.ports) != Of(q.ports)) return differ("ports");
+	if (Of(p.nodes) != Of(q.nodes)) return differ("nodes");
+	if (Of(p.edges) != Of(q.edges)) return differ("edges");
+	if (Of(p.copies) != Of(q.copies)) return differ("copies");
+	if (p.bridges.size() != q.bridges.size()) return differ("bridges");
+	for (size_t b = 0; b < p.bridges.size(); b++) {
+		if (Of(p.bridges[b]) != Of(q.bridges[b])) return differ("bridges");
+	}
+	if (p.size.x != q.size.x || p.size.y != q.size.y) return differ("size");
+	if (!(p.choices == q.choices)) return differ("choices");
+	return true;
+}
+
+/** The cut's placement of a topology, and the placement the overload makes from that placement's own choices on the cut structure. */
+static void PlaceTwice(const JunctionTopology &t, const JunctionSpec &spec, JunctionTrackPlacement *cut_placement, JunctionTrackPlacement *again, std::string *error)
+{
+	std::string ignored;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
+	const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, cut_placement, &ignored);
+	REQUIRE(!cut_placement->nodes.empty());
+	*again = PlaceJunctionTrackGraph(t, paths, graph, order, cut, programs, spec, cut_placement->choices, error);
+}
+
+TEST_CASE("topology: placement from its own choices equals the seed (sweep)", "[junction][topologysweep]")
+{
+	for (int ti = 0; ti < 2; ti++) {
+		const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
+		for (int tl = 3; tl <= 8; tl++) {
+			for (int v : {100, 120, 160, 196}) {
+				JunctionSpec spec = MakeTestJunctionSpec();
+				spec.tl = tl;
+				spec.train.max_speed = v;
+				spec.reference_speed = v;
+				spec.prio_tiles = 0;
+				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+				if (spec.prio_tiles == 0) continue;
+				const std::string cell = fmt::format("{} tl {} v {}", ti == 0 ? "T" : "LL_RR", tl, v);
+				JunctionTrackPlacement p, q;
+				std::string error;
+				PlaceTwice(t, spec, &p, &q, &error);
+				INFO(cell << ": " << error);
+				REQUIRE(!q.nodes.empty());
+				CHECK(SamePlacement(p, q));
+			}
+		}
+	}
+}
+
+TEST_CASE("topology: placement from its own choices equals the seed", "[junction][topology]")
+{
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		JunctionTrackPlacement p, q;
+		std::string error;
+		PlaceTwice(*t, MakeTestJunctionSpec(), &p, &q, &error);
+		INFO(error);
+		REQUIRE(!q.nodes.empty());
+		CHECK(SamePlacement(p, q));
+	}
+}
+
+TEST_CASE("topology: a contradictory choice is explained", "[junction][topology]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	bool tried = false;
+	for (const JunctionTopology *t : {&JunctionLLRRSidelineTopology(), &JunctionTTopology()}) {
+		std::string ignored;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(*t, &ignored);
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(*t, paths, &ignored);
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(*t, paths, graph, &ignored);
+		const JunctionTrackStructure structure = StructureJunctionTrackGraph(*t, paths, graph, order, &ignored);
+		const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(*t, paths, graph, order, structure, &ignored);
+		JunctionTrackPlacement placement;
+		const JunctionTrackStructure cut = CutJunctionTrackBridges(*t, paths, graph, order, structure, programs, spec, &placement, &ignored);
+		REQUIRE(!placement.nodes.empty());
+
+		/* The first joiner_div Corner: the first token of an edge that leaves a band split. */
+		uint32_t found = UINT32_MAX;
+		for (uint32_t e = 0; e < graph.edges.size() && found == UINT32_MAX; e++) {
+			const JunctionTrackEdge &edge = graph.edges[e];
+			if (!edge.from.node || programs.edges[e].empty() || programs.edges[e][0].kind != JunctionTrackStep::Kind::Corner) continue;
+			if (order.node_level[edge.from.index] % 2 == 0 && graph.nodes[edge.from.index].split) found = e;
+		}
+		if (found == UINT32_MAX) continue;
+		tried = true;
+
+		const int cl = spec.curve_limit ? static_cast<int>(DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl)) : 2;
+		int h = std::min(2 * static_cast<int>(spec.tl) - 1, std::max(2, cl));
+		if (h % 2 == 0) h++;
+		const int floor_k = (h - 1) / 2;
+		JunctionPlacementChoices choices = placement.choices;
+		REQUIRE(found < choices.corner.size());
+		REQUIRE(!choices.corner[found].empty());
+		choices.corner[found][0] = floor_k - 1;
+		std::string error;
+		const JunctionTrackPlacement q = PlaceJunctionTrackGraph(*t, paths, graph, order, cut, programs, spec, choices, &error);
+		INFO(error);
+		CHECK(q.nodes.empty());
+		REQUIRE(!q.why.empty());
+		bool has_edge = false;
+		for (const JunctionPlacementReason &reason : q.why) {
+			REQUIRE(reason.rule != nullptr);
+			has_edge = has_edge || reason.edge == found;
+			CHECK(error.find(reason.rule) != std::string::npos);
+		}
+		CHECK(has_edge);
+		break;
+	}
+	REQUIRE(tried);
+}
+
 TEST_CASE("topology: the seeds keep their test-spec size", "[junction][topology]")
 {
 	std::string error;

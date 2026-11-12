@@ -65,6 +65,18 @@ TEST_CASE("positions: avoid", "[junction][positions]")
 	}
 }
 
+TEST_CASE("positions: an infeasible propagation explains itself", "[junction][positions]")
+{
+	JunctionPositions p(4, 0, 100);
+	CHECK(p.AddDifference(1, 0, 3, 7));
+	CHECK(p.AddDifference(2, 1, 4, 8));
+	CHECK(p.RestrictRange(0, 5, 5, 6));
+	const JunctionPositions feasible = p;
+	CHECK_FALSE(p.RestrictRange(2, 0, 10, 9));
+	CHECK(p.Explain() == std::vector<uint32_t>{8, 7, 6, 9});
+	CHECK(feasible.Explain(2, true) == std::vector<uint32_t>{8, 7, 6});
+}
+
 TEST_CASE("positions: undo restores exactly", "[junction][positions]")
 {
 	JunctionPositions p(3, 0, 20);

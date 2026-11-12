@@ -221,6 +221,23 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 /** A token's tiles: its first and last tile in the edge's travel order (DESIGN-G1 §11.8). */
 using JunctionTrackSpan = std::pair<TileIndexDiffC, TileIndexDiffC>;
 
+/** Why a placement relation exists (DESIGN-G1 §14.4): the rule and the graph elements it serves. */
+struct JunctionPlacementReason {
+	const char *rule = nullptr; ///< A literal naming the floor or block, as the code's comment there names it (e.g. "out fan k_out", "chain run", "waiting room").
+	uint32_t edge = UINT32_MAX;
+	uint32_t node = UINT32_MAX;
+	int32_t row = -1; ///< The row chain's index, -1 when none.
+};
+
+/** The values placement does not derive from its relations (DESIGN-G1 §14.2): fixed within a search state, changed only by an edit. */
+struct JunctionPlacementChoices {
+	std::vector<std::vector<int>> m; ///< Per edge, per token of JunctionTrackPrograms::edges: a vertical S-bend's size, 0 for other tokens.
+	std::vector<std::vector<int>> corner; ///< Per edge, per token: a joiner_div Corner's row span, 0 for other tokens.
+	std::vector<std::array<int, 4>> hug; ///< Per doubled-leg bridge, in (row, k) order of the crosser block: low point, low dx, high point, high dx of the crosser tiles the copy-0 heads hug (D80, D118; point ids of this structure's placement, valid only with the same structure).
+	int port_offset = 0; ///< The port rows' offset.
+	bool operator==(const JunctionPlacementChoices &) const = default;
+};
+
 /** The seed placement of a programmed track graph (DESIGN-G1 §11.8): tiles only, x east, y south, (0, 0) the box's north-west corner. */
 struct JunctionTrackPlacement {
 	std::vector<int> item_rows; ///< Per stack item, its tile row.
@@ -230,6 +247,8 @@ struct JunctionTrackPlacement {
 	std::vector<std::vector<JunctionTrackSpan>> copies; ///< Per edge, per token of JunctionTrackPrograms::copies.
 	std::vector<std::array<JunctionBridge, 2>> bridges; ///< Per structure bridge: copy 0's and copy 1's heads, start = the head the carrier reaches first; a single bridge's copy 1 is {{0, 0}, {0, 0}}.
 	TileIndexDiffC size; ///< The box.
+	JunctionPlacementChoices choices; ///< The choices this placement was solved with.
+	std::vector<JunctionPlacementReason> why; ///< On failure: the explanation chain of the contradiction.
 };
 
 /**
@@ -237,6 +256,13 @@ struct JunctionTrackPlacement {
  * @param error Receives the reason when the result is empty (no nodes), e.g. a bridge longer than spec.max_bridge_middle.
  */
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error);
+
+/**
+ * The placement with its choices fixed (DESIGN-G1 §14.2): one Y solve and one X solve, no rounds.
+ * @param choices The S-bend sizes, Corner spans and port offset to solve with, e.g. those of an earlier placement.
+ * @param error Receives the reason when the result is empty; JunctionTrackPlacement::why then names the relations of a contradiction.
+ */
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error);
 
 /**
  * The series-bridge cut (D209, DESIGN-G1 §11.9a): every doubled bridge cut into consecutive bridges of at most JUNCTION_BRIDGE_MAX_CROSSERS crossings, choosing among the cuts with the fewest bridges whose placement succeeds the one with the least box width, then height, then the first tried.

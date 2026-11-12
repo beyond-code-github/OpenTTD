@@ -15,7 +15,7 @@
 
 #include "safeguards.h"
 
-JunctionPositions::JunctionPositions(size_t vars, int min_value, int max_value) : min_value(min_value), max_value(max_value), lo(vars, min_value), up(vars, max_value), differences_of(vars), avoids_of(vars)
+JunctionPositions::JunctionPositions(size_t vars, int min_value, int max_value) : min_value(min_value), max_value(max_value), lo(vars, min_value), up(vars, max_value), lo_cause(vars), up_cause(vars), differences_of(vars), avoids_of(vars)
 {
 	size_t bits = static_cast<size_t>(max_value - min_value + 1);
 	std::vector<uint64_t> full((bits + 63) / 64, ~static_cast<uint64_t>(0));
@@ -33,41 +33,47 @@ bool JunctionPositions::Allowed(size_t v, int value) const
  * Raise lo of v to the first allowed value >= value (a no-op when that is not above lo).
  * @return Whether v still has lo <= up.
  */
-bool JunctionPositions::SetLo(size_t v, int value)
+bool JunctionPositions::SetLo(size_t v, int value, Cause cause)
 {
 	value = std::max(value, this->lo[v]);
 	while (value <= this->max_value && !this->Allowed(v, value)) value++;
 	if (value == this->lo[v]) return true;
-	this->trail.push_back({TrailEntry::Kind::Lo, v, this->lo[v]});
+	this->trail.push_back({TrailEntry::Kind::Lo, v, this->lo[v], this->lo_cause[v]});
 	this->lo[v] = value;
+	this->lo_cause[v] = cause;
 	this->queue.push_back(v);
-	return value <= this->up[v];
+	if (value <= this->up[v]) return true;
+	this->failed = v;
+	return false;
 }
 
 /**
  * Lower up of v to the last allowed value <= value (a no-op when that is not below up).
  * @return Whether v still has lo <= up.
  */
-bool JunctionPositions::SetUp(size_t v, int value)
+bool JunctionPositions::SetUp(size_t v, int value, Cause cause)
 {
 	value = std::min(value, this->up[v]);
 	while (value >= this->min_value && !this->Allowed(v, value)) value--;
 	if (value == this->up[v]) return true;
-	this->trail.push_back({TrailEntry::Kind::Up, v, this->up[v]});
+	this->trail.push_back({TrailEntry::Kind::Up, v, this->up[v], this->up_cause[v]});
 	this->up[v] = value;
+	this->up_cause[v] = cause;
 	this->queue.push_back(v);
-	return this->lo[v] <= value;
+	if (this->lo[v] <= value) return true;
+	this->failed = v;
+	return false;
 }
 
 bool JunctionPositions::PropagateDifference(const Difference &d)
 {
-	return this->SetLo(d.a, this->lo[d.b] + d.k) && this->SetUp(d.b, this->up[d.a] - d.k);
+	return this->SetLo(d.a, this->lo[d.b] + d.k, {d.reason, d.b}) && this->SetUp(d.b, this->up[d.a] - d.k, {d.reason, d.a});
 }
 
 bool JunctionPositions::PropagateAvoid(const Avoid &a)
 {
-	if (this->lo[a.a] <= a.c && a.c <= this->lo[a.b] && !this->SetLo(a.a, a.c + 1)) return false;
-	if (this->up[a.a] <= a.c && a.c <= this->up[a.b] && !this->SetUp(a.b, a.c - 1)) return false;
+	if (this->lo[a.a] <= a.c && a.c <= this->lo[a.b] && !this->SetLo(a.a, a.c + 1, {})) return false;
+	if (this->up[a.a] <= a.c && a.c <= this->up[a.b] && !this->SetUp(a.b, a.c - 1, {})) return false;
 	return true;
 }
 
@@ -93,20 +99,20 @@ bool JunctionPositions::Propagate()
 	return true;
 }
 
-bool JunctionPositions::AddDifference(size_t a, size_t b, int k)
+bool JunctionPositions::AddDifference(size_t a, size_t b, int k, uint32_t reason)
 {
-	this->trail.push_back({TrailEntry::Kind::Difference, this->differences.size(), 0});
+	this->trail.push_back({TrailEntry::Kind::Difference, this->differences.size(), 0, {}});
 	this->differences_of[a].push_back(this->differences.size());
 	this->differences_of[b].push_back(this->differences.size());
-	this->differences.push_back({a, b, k});
+	this->differences.push_back({a, b, k, reason});
 	this->queue.push_back(a);
 	this->queue.push_back(b);
 	return this->Propagate();
 }
 
-bool JunctionPositions::RestrictRange(size_t v, int min_value, int max_value)
+bool JunctionPositions::RestrictRange(size_t v, int min_value, int max_value, uint32_t reason)
 {
-	if (!this->SetLo(v, min_value) || !this->SetUp(v, max_value)) {
+	if (!this->SetLo(v, min_value, {reason, SIZE_MAX}) || !this->SetUp(v, max_value, {reason, SIZE_MAX})) {
 		this->queue.clear();
 		return false;
 	}
@@ -124,10 +130,10 @@ bool JunctionPositions::RestrictDomain(size_t v, const std::vector<int> &allowed
 	for (size_t w = 0; w < keep.size(); w++) {
 		uint64_t word = this->domain[v][w] & keep[w];
 		if (word == this->domain[v][w]) continue;
-		this->trail.push_back({TrailEntry::Kind::DomainWord, v * keep.size() + w, static_cast<int64_t>(this->domain[v][w])});
+		this->trail.push_back({TrailEntry::Kind::DomainWord, v * keep.size() + w, static_cast<int64_t>(this->domain[v][w]), {}});
 		this->domain[v][w] = word;
 	}
-	if (!this->SetLo(v, this->lo[v]) || !this->SetUp(v, this->up[v])) {
+	if (!this->SetLo(v, this->lo[v], {}) || !this->SetUp(v, this->up[v], {})) {
 		this->queue.clear();
 		return false;
 	}
@@ -136,7 +142,7 @@ bool JunctionPositions::RestrictDomain(size_t v, const std::vector<int> &allowed
 
 bool JunctionPositions::AddAvoid(size_t a, size_t b, int c)
 {
-	this->trail.push_back({TrailEntry::Kind::Avoid, this->avoids.size(), 0});
+	this->trail.push_back({TrailEntry::Kind::Avoid, this->avoids.size(), 0, {}});
 	this->avoids_of[a].push_back(this->avoids.size());
 	this->avoids_of[b].push_back(this->avoids.size());
 	this->avoids.push_back({a, b, c});
@@ -153,8 +159,14 @@ void JunctionPositions::Undo(size_t mark)
 	while (this->trail.size() > mark) {
 		const TrailEntry &e = this->trail.back();
 		switch (e.kind) {
-			case TrailEntry::Kind::Lo: this->lo[e.index] = static_cast<int>(e.old); break;
-			case TrailEntry::Kind::Up: this->up[e.index] = static_cast<int>(e.old); break;
+			case TrailEntry::Kind::Lo:
+				this->lo[e.index] = static_cast<int>(e.old);
+				this->lo_cause[e.index] = e.old_cause;
+				break;
+			case TrailEntry::Kind::Up:
+				this->up[e.index] = static_cast<int>(e.old);
+				this->up_cause[e.index] = e.old_cause;
+				break;
 			case TrailEntry::Kind::DomainWord: {
 				size_t words = this->domain[0].size();
 				this->domain[e.index / words][e.index % words] = static_cast<uint64_t>(e.old);
@@ -178,3 +190,24 @@ void JunctionPositions::Undo(size_t mark)
 int JunctionPositions::Lo(size_t v) const { return this->lo[v]; }
 int JunctionPositions::Up(size_t v) const { return this->up[v]; }
 size_t JunctionPositions::Size() const { return this->lo.size(); }
+
+std::vector<uint32_t> JunctionPositions::Explain(size_t v, bool lo) const
+{
+	std::vector<uint32_t> reasons;
+	std::vector<bool> seen(this->lo.size(), false);
+	for (size_t cur = v; cur != SIZE_MAX && !seen[cur];) {
+		seen[cur] = true;
+		const Cause &cause = lo ? this->lo_cause[cur] : this->up_cause[cur];
+		if (cause.reason != NO_REASON) reasons.push_back(cause.reason);
+		cur = cause.from;
+	}
+	return reasons;
+}
+
+std::vector<uint32_t> JunctionPositions::Explain() const
+{
+	if (this->failed == SIZE_MAX) return {};
+	std::vector<uint32_t> reasons = this->Explain(this->failed, true);
+	for (uint32_t reason : this->Explain(this->failed, false)) reasons.push_back(reason);
+	return reasons;
+}
