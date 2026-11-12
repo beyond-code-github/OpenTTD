@@ -899,6 +899,36 @@ static std::string JunctionBendMoves(int hand, int halves, bool corner)
 	return moves;
 }
 
+/**
+ * The run of tiles between two consecutive elements of an edge's chain, from the curve gaps of JunctionCurveGaps (DESIGN-G1 §14.7). A run of d tiles puts the last curve of the first element and the first curve of the second 2 (d - 1) units apart.
+ * @param kind_a The first element: 0 not a curve element, 1 Corner, 2 S-bend.
+ * @param hand_a The first element's hand (Corner: its turn, S-bend: its first curve).
+ * @param m_a The first element's S-bend size.
+ * @param kind_b The second element, as kind_a.
+ * @param hand_b The second element's hand.
+ * @param m_b The second element's S-bend size.
+ * @param tl Train length.
+ * @param cl Curve spacing in units.
+ * @param h The Corner's size in units.
+ * @return The run in tiles, at least 2.
+ */
+static int JunctionRunBetween(int kind_a, int hand_a, int m_a, int kind_b, int hand_b, int m_b, int tl, int cl, int h)
+{
+	if (kind_a == 0 || kind_b == 0) return 2;
+	const int cap = 2 * tl - 1;
+	const int g1 = std::min(cap, std::max(2, cl));
+	const int g2 = std::min(cap, 2 * cl);
+	const int span_a = kind_a == 1 ? h : 2 * m_a;
+	const int span_b = kind_b == 1 ? h : 2 * m_b;
+	const int last_hand_a = kind_a == 1 ? hand_a : -hand_a;
+	auto lift = [](int need) { return 1 + (need + 1) / 2; };
+	int d = 2;
+	if (last_hand_a == hand_b) d = std::max(d, lift(g1)); // The last curve of A and the first of B, adjacent and of the same hand.
+	d = std::max(d, lift(g2 - span_a)); // The first curve of A and the first of B, two apart: span_a + 2 (d - 1).
+	d = std::max(d, lift(g2 - span_b)); // The last curve of A and the second of B, two apart: 2 (d - 1) + span_b.
+	return d;
+}
+
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error)
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
@@ -1047,7 +1077,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				el.index = step.index;
 				el.hout = step.kind == StepKind::Corner ? (cur + step.hand + 4) % 4 : cur;
 				el.first = t == 0 && edge.from.node ? start : new_pt();
-				el.last = t + 1 == program.size() && edge.to.node && (is_row_node(edge.to) || to_merge) && step.kind == StepKind::SBend ? stop : new_pt();
+				el.last = t + 1 == program.size() && edge.to.node && to_merge && step.kind == StepKind::SBend ? stop : new_pt();
 				el.joiner_div = step.kind == StepKind::Corner && t == 0 && from_band_split;
 				el.free_m = step.kind == StepKind::SBend && (cur == 0 || cur == 2);
 				if (step.kind == StepKind::SBend && t == 0 && edge.from.node && !from_band_split) el.first = new_pt();
@@ -1267,6 +1297,8 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 			/* The curve gaps of JunctionCurveGaps: adjacent same-hand curves g1 apart, any other two curves g2 apart. */
 			const int g1 = std::min(2 * static_cast<int>(spec.tl) - 1, std::max(2, cl));
 			const int g2 = std::min(2 * static_cast<int>(spec.tl) - 1, 2 * cl);
+			/* The three-apart pair of JunctionCurveGaps. */
+			const int g3 = std::min(2 * static_cast<int>(spec.tl) - 1, 3 * cl);
 
 			/* In: port, fan, exit split. */
 			const int m_in = fan_m[in_edge[r]];
@@ -1291,6 +1323,9 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				}
 				if (c2_hand == 0) { build_why = "the exit leg of row " + str(r) + " has no exit Corner"; return false; }
 				if (c2_hand == -c0_hand) d_min = std::max(d_min, 1 + (g1 + 1) / 2);
+				/* The exit Corner's second curve lies h units after its first: (c1, c3) two curves apart, (c0, c3) three apart. */
+				d_min = std::max(d_min, 1 + (g2 - h + 1) / 2);
+				d_min = std::max(d_min, 1 + (g3 - 2 * m_in - h + 1) / 2);
 			}
 			along(heading, nex, rp.fil, d_min, false);
 			int after = nex; // The last point of the lane chain before the joiner merge.
@@ -1376,10 +1411,38 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				}
 				if (c1_hand == 0) { build_why = "the joiner of row " + str(r) + " has no merge S-bend"; return false; }
 				const int c2_out_hand = ((port_row[out.to.index] > vy[item_pt[lane_item[r]]]) == (heading == 1)) ? 1 : -1;
-				const int k_out = std::max((g2 + 1) / 2, c1_hand == c2_out_hand ? 1 + (g1 + 1) / 2 : 2);
+				int k_out = std::max((g2 + 1) / 2, c1_hand == c2_out_hand ? 1 + (g1 + 1) / 2 : 2);
+				/* (c0, c3), the joiner S-bend's first curve to the fan's last, three curves apart: 2 + 2 (k - 1) + 2 m_out units. */
+				k_out = std::max(k_out, 1 + (g3 - 2 - 2 * m_out + 1) / 2);
 				along(heading, rp.fof, njm, k_out, true);
 				along(heading, rp.fol, rp.fof, m_out - 1, true);
 				along(heading, pout, rp.fol, 2, true);
+			}
+		}
+
+		if (!x_phase) {
+			/* The waiting room of an exit path, from its first split to the first merge after it: 2 dy - 1 >= 2 tl units, so dy >= tl + 1 tiles (rule WaitingRoom). */
+			for (size_t p = 0; p < paths.size(); p++) {
+				if (!group_of(paths[p].from).main || group_of(paths[p].to).main) continue;
+				uint32_t cur_edge = edge_count;
+				for (uint32_t e = 0; e < edge_count; e++) {
+					if (!graph.edges[e].from.node && graph.edges[e].from.index == paths[p].from && std::ranges::count(graph.edges[e].paths, static_cast<uint16_t>(p)) > 0) cur_edge = e;
+				}
+				int split_node = -1;
+				for (int guard = 0; guard < 64 && cur_edge < edge_count && graph.edges[cur_edge].to.node; guard++) {
+					const int nd = graph.edges[cur_edge].to.index;
+					if (split_node < 0 && graph.nodes[nd].split) {
+						split_node = nd;
+					} else if (split_node >= 0 && !graph.nodes[nd].split) {
+						ge(1, node_pt[nd], node_pt[split_node], static_cast<int>(spec.tl) + 1);
+						break;
+					}
+					uint32_t next_edge = edge_count;
+					for (uint32_t e = 0; e < edge_count; e++) {
+						if (graph.edges[e].from.node && graph.edges[e].from.index == nd && std::ranges::count(graph.edges[e].paths, static_cast<uint16_t>(p)) > 0) next_edge = e;
+					}
+					cur_edge = next_edge;
+				}
 			}
 		}
 
@@ -1421,7 +1484,26 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				const Elem &next = elems[i + 1];
 				if (next.first == el.last) continue;
 				bool exact = false;
-				const int dist = 2;
+				int dist = 2;
+				auto run_between = [&](const Elem *ea, const Elem *eb) {
+					auto kind_of = [](const Elem *q) { return q->k == Elem::K::Corner ? 1 : (q->k == Elem::K::SBend ? 2 : 0); };
+					return JunctionRunBetween(kind_of(ea), ea->hand, ea->m, kind_of(eb), eb->hand, eb->m, static_cast<int>(spec.tl), cl, h);
+				};
+				if (el.k == Elem::K::Tile && i == 0 && edge.from.node) {
+					/* Across the from-node: the predecessor edges' last curve element to this edge's first element. */
+					for (uint32_t pe = 0; pe < edge_count; pe++) {
+						if (is_row_edge(pe) || !graph.edges[pe].to.node || graph.edges[pe].to.index != edge.from.index || chain[pe].size() < 2) continue;
+						dist = std::max(dist, run_between(&chain[pe][chain[pe].size() - 2], &next));
+					}
+				} else if (next.k == Elem::K::Tile && i + 2 == elems.size() && edge.to.node) {
+					/* Across the to-node: this edge's last element to the successor edges' first element. */
+					for (uint32_t se = 0; se < edge_count; se++) {
+						if (is_row_edge(se) || !graph.edges[se].from.node || graph.edges[se].from.index != edge.to.index || chain[se].size() < 3) continue;
+						dist = std::max(dist, run_between(&el, &chain[se][1]));
+					}
+				} else {
+					dist = run_between(&el, &next);
+				}
 				if (next.k == Elem::K::Tile && i + 2 == elems.size()) {
 					const bool band_merge = edge.to.node && !graph.nodes[edge.to.index].split && order.node_level[edge.to.index] % 2 == 0;
 										if (!edge.to.node) exact = true;

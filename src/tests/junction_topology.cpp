@@ -585,12 +585,12 @@ TEST_CASE("topology: the T's placement", "[junction][topology]")
 	CHECK(Of(placement.bridges[1]) == Br(26, 9, 26, 6, 0, 0, 0, 0));
 }
 
-TEST_CASE("topology: LL_RR's uncut w2 bridge is too long at nmax 9", "[junction][topology]")
+TEST_CASE("topology: LL_RR's uncut w2 bridge is too long at nmax 8", "[junction][topology]")
 {
 	std::string error;
-	const JunctionTrackPlacement placement = PlacementOf(JunctionLLRRSidelineTopology(), 9, &error);
+	const JunctionTrackPlacement placement = PlacementOf(JunctionLLRRSidelineTopology(), 8, &error);
 	CHECK(placement.nodes.empty());
-	CHECK(error == "bridge 3 on edge 10 needs 10 middle tiles, more than 9");
+	CHECK(error == "bridge 3 on edge 10 needs 9 middle tiles, more than 8");
 }
 
 TEST_CASE("topology: LL_RR series bridges", "[junction][topology]")
@@ -710,8 +710,8 @@ TEST_CASE("topology: LL_RR with an L_R sideline: placement", "[junction][topolog
 	REQUIRE(!placement.nodes.empty());
 	REQUIRE(placement.bridges.size() == structure.bridges.size());
 
-	/* X_e1 (edge 11) and X_e2 (edge 12) cross under w1's bridge six columns apart (the exit splits sit at their least x, DESIGN-G1 §11.9b). */
-	CHECK(placement.edges[11][3].first.x - placement.edges[12][1].first.x == 6);
+	/* X_e1 (edge 11) and X_e2 (edge 12) cross under w1's bridge four columns apart (the exit splits sit at their least x, DESIGN-G1 §11.9b); the exit legs' (Corner, S-bend) runs of edges 17 and 18 lift to 4 tiles (TL1b), which moves the columns from six. */
+	CHECK(placement.edges[11][3].first.x - placement.edges[12][1].first.x == 4);
 
 	/* Band 2 is as deep as one corner. */
 	CHECK(placement.item_rows[6] - placement.item_rows[5] - 1 == 2);
@@ -719,7 +719,7 @@ TEST_CASE("topology: LL_RR with an L_R sideline: placement", "[junction][topolog
 	for (size_t i = 0; i < structure.bridges.size(); i++) {
 		const int n = std::abs(placement.bridges[i][0].start.x - placement.bridges[i][0].end.x) - 1;
 		CHECK(n <= 64);
-		if (structure.bridges[i].edge == 10) CHECK(n == 10);
+		if (structure.bridges[i].edge == 10) CHECK(n == 9);
 	}
 
 	/* The S ports sit on the last row. */
@@ -2282,4 +2282,171 @@ TEST_CASE("topoproj: a detour edit on routes", "[junction][topoproj]")
 		}
 	}
 	CHECK(refused > 0);
+}
+
+/** The seed pipeline under a given spec: render and signals, for the sweep. */
+static JunctionLayout SeedOf(const JunctionTopology &t, const JunctionSpec &spec, std::string *error, JunctionTrackPlacement *placement_out = nullptr, std::vector<JunctionTrackRoute> *routes_out = nullptr, JunctionTrackPrograms *programs_out = nullptr, JunctionTrackGraph *graph_out = nullptr)
+{
+	std::string ignored;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
+	JunctionTrackPlacement placement;
+	const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &placement, error);
+	if (placement_out != nullptr) *placement_out = placement;
+	if (programs_out != nullptr) *programs_out = programs;
+	if (graph_out != nullptr) *graph_out = graph;
+	if (placement.nodes.empty()) return {};
+	std::vector<JunctionTrackRoute> routes;
+	JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, placement, error, &routes);
+	SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
+	if (routes_out != nullptr) *routes_out = routes;
+	return layout;
+}
+
+TEST_CASE("topology: the seeds are clean at every train length and speed", "[junction][topologysweep]")
+{
+	size_t failing = 0;
+	for (int ti = 0; ti < 2; ti++) {
+		const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
+		for (int tl = 3; tl <= 8; tl++) {
+			for (int v : {100, 120, 160, 196}) {
+				JunctionSpec spec = MakeTestJunctionSpec();
+				spec.tl = tl;
+				spec.train.max_speed = v;
+				spec.reference_speed = v;
+				spec.prio_tiles = 0;
+				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+				const std::string cell = fmt::format("{} tl {} v {}", ti == 0 ? "T" : "LL_RR", tl, v);
+				if (spec.prio_tiles == 0) {
+					INFO(cell << ": prio_tiles 0, skipped");
+					continue;
+				}
+				std::string error;
+				const JunctionLayout layout = SeedOf(t, spec, &error);
+				INFO(cell << ": " << error);
+				REQUIRE(!layout.tracks.empty());
+				bool bad = false;
+				for (const RuleViolation &viol : CheckJunctionRules(layout, spec, t)) {
+					INFO(fmt::format("{}: rule {} tile {},{}: {}", cell, static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message));
+					CHECK(false);
+					bad = true;
+				}
+				if (bad) failing++;
+			}
+		}
+	}
+	INFO("failing cells " << failing);
+	CHECK(failing == 0);
+}
+
+TEST_CASE("topology: the seeds keep their test-spec size", "[junction][topology]")
+{
+	std::string error;
+	JunctionTrackPlacement t_placement;
+	JunctionTrackPlacement llrr_placement;
+	SeedOf(JunctionTTopology(), MakeTestJunctionSpec(), &error, &t_placement);
+	SeedOf(JunctionLLRRSidelineTopology(), MakeTestJunctionSpec(), &error, &llrr_placement);
+	CHECK(t_placement.size.x == 41);
+	CHECK(t_placement.size.y == 14);
+	CHECK(llrr_placement.size.x == 62);
+	CHECK(llrr_placement.size.y == 25);
+}
+
+TEST_CASE("topology: curve spans in the seed routes", "[junction][topology]")
+{
+	/* The formulas the placement floors use (DESIGN-G1 §14.7): a Corner's curves lie h units apart, an S-bend of m's 2 m; a run of d tiles between two elements puts the last curve of the first and the first curve of the second 2 (d - 1) units apart, and the neighbouring curves one further out by the span of the element they belong to. */
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const int cl = spec.curve_limit ? static_cast<int>(DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl)) : 2;
+	int h = std::min(2 * static_cast<int>(spec.tl) - 1, std::max(2, cl));
+	if (h % 2 == 0) h++;
+
+	std::string error;
+	std::vector<JunctionTrackRoute> routes;
+	JunctionTrackPrograms programs;
+	JunctionTrackGraph graph;
+	const JunctionLayout layout = SeedOf(JunctionLLRRSidelineTopology(), spec, &error, nullptr, &routes, &programs, &graph);
+	REQUIRE(!layout.tracks.empty());
+
+	struct Curve {
+		size_t piece; ///< The piece after the turn.
+		int unit; ///< Units from the route's start to the start of that piece.
+		int x, y;
+		uint32_t edge;
+		int token; ///< The element's token on its edge, -1 when the curve belongs to no Corner or SBend.
+		uint8_t copy;
+		JunctionTrackStep::Kind kind;
+	};
+	size_t spans = 0;
+	size_t gaps = 0;
+	for (size_t r = 0; r < routes.size(); r++) {
+		const JunctionTrackRoute &route = routes[r];
+		std::vector<Curve> curves;
+		int unit = 0;
+		for (size_t i = 0; i < route.pieces.size(); i++) {
+			if (i > 0) {
+				const DirDiff diff = DirDifference(TrackdirToDirection(route.pieces[i - 1].trackdir), TrackdirToDirection(route.pieces[i].trackdir));
+				if (diff == DirDiff::Left45 || diff == DirDiff::Right45) {
+					Curve c{i, unit, route.pieces[i].tile.x, route.pieces[i].tile.y, 0, -1, 0, JunctionTrackStep::Kind::Fan};
+					for (size_t q : {i, i - 1}) {
+						const JunctionTrackPieceTag &g = route.tags[q];
+						if (c.token >= 0 || g.token == JunctionTrackPieceTag::RUN) continue;
+						const JunctionTrackStep &step = (g.copy ? programs.copies[g.edge] : programs.edges[g.edge])[g.token];
+						if (step.kind != JunctionTrackStep::Kind::Corner && step.kind != JunctionTrackStep::Kind::SBend) continue;
+						c = {i, unit, route.pieces[i].tile.x, route.pieces[i].tile.y, g.edge, g.token, g.copy, step.kind};
+					}
+					curves.push_back(c);
+				}
+			}
+			unit += route.pieces[i].units;
+		}
+
+		/* Each element's two curves. */
+		for (size_t c = 0; c < curves.size(); c++) {
+			if (curves[c].token < 0) continue;
+			REQUIRE(c + 1 < curves.size());
+			const Curve &a = curves[c];
+			const Curve &b = curves[c + 1];
+			INFO(fmt::format("route {} curve {}: edge {} token {}", r, c, a.edge, a.token));
+			REQUIRE(b.token == a.token);
+			REQUIRE(b.edge == a.edge);
+			spans++;
+			if (a.kind == JunctionTrackStep::Kind::Corner) {
+				CHECK(b.unit - a.unit == h);
+			} else {
+				/* The S-bend moves sideways by m tiles on the diagonal, m = |dx| = |dy|. */
+				const int m = std::abs(b.x - a.x);
+				CHECK(std::abs(b.y - a.y) == m);
+				CHECK(b.unit - a.unit == 2 * m);
+			}
+			c++;
+		}
+
+		/* Two elements of one edge with a run of plain tiles between them. */
+		for (size_t c = 0; c + 3 < curves.size(); c++) {
+			const Curve &a0 = curves[c];
+			const Curve &a1 = curves[c + 1];
+			const Curve &b0 = curves[c + 2];
+			const Curve &b1 = curves[c + 3];
+			if (a0.token < 0 || a0.token != a1.token || a0.edge != a1.edge || b0.token < 0 || b0.token != b1.token || b0.edge != b1.edge || a0.edge != b0.edge || a0.copy != b0.copy) continue;
+			size_t run = 0;
+			for (size_t q = a1.piece; q < b0.piece; q++) {
+				const JunctionTrackPieceTag &g = route.tags[q];
+				if (g.token == JunctionTrackPieceTag::RUN && g.edge == a0.edge) run++;
+			}
+			if (run != b0.piece - a1.piece) continue;
+			const int span_a = a1.unit - a0.unit;
+			const int span_b = b1.unit - b0.unit;
+			const int d = static_cast<int>(run) + 1;
+			INFO(fmt::format("route {} edge {} tokens {} and {}: run of {} tiles", r, a0.edge, a0.token, b0.token, d));
+			CHECK(b0.unit - a1.unit == 2 * (d - 1));
+			CHECK(b0.unit - a0.unit == span_a + 2 * (d - 1));
+			CHECK(b1.unit - a1.unit == 2 * (d - 1) + span_b);
+			gaps++;
+		}
+	}
+	CHECK(spans > 0);
+	CHECK(gaps > 0);
 }
