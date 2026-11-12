@@ -285,6 +285,15 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
  */
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors = {}, const std::vector<std::pair<int, int>> &y_floors = {});
 
+/** The stages of the facts placement that do not read the facts or the offset (the Y phase: its clearance relations from the flat solve, and the Y solution), solved once for a near search over many offsets. */
+struct JunctionPlacementShared {
+	bool ok = false; ///< False when the stages did not solve: the placement then computes them itself (and reports their failure as today).
+	std::vector<int> vy; ///< The rows of the Y solve, per point.
+};
+
+/** The shared stages for these inputs (the same as those of the facts overload, with the choices fixed). */
+JunctionPlacementShared MakeJunctionPlacementShared(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices);
+
 /**
  * The fixed-choices placement with the target terrain's facts in the X phase (DESIGN-G1 §14.4, D216): every group of tiles (a bend, a switch tile, a bridge head, a vertical run's tile) is restricted to the columns where its tile is buildable, and a straight run on a row must be buildable on every tile it covers. Rows stay as the structure gives them.
  * @param facts The target terrain's facts.
@@ -293,8 +302,9 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
  * @param heights False (D218, the hard-facts mode): only the class facts apply (blocked, water, not spannable, outside the snapshot); height steps, joins and the fits of bends and nodes are skipped.
  * @param terraform True (D218): X uses the class facts only (JunctionFacts::Buildable, forces heights = false) and then the height solve (DESIGN-G1 §15.3) chooses a level per tile on every edge and sets terraform and height_cost; on failure the placement is empty and error says why ("terraform conflict" when two tiles or a propagation want a corner at different heights).
  * @param terrain The snapshot the facts were made from; required (non-null) when terraform is true.
+ * @param shared The offset-independent stages made once by MakeJunctionPlacementShared for these same inputs; null (or not ok) computes them here. The result is the same either way.
  */
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error, bool heights = true, bool terraform = false, const JunctionTerrain *terrain = nullptr);
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error, bool heights = true, bool terraform = false, const JunctionTerrain *terrain = nullptr, const JunctionPlacementShared *shared = nullptr);
 
 /**
  * The series-bridge cut (D209, DESIGN-G1 §11.9a): every doubled bridge cut into consecutive bridges of at most JUNCTION_BRIDGE_MAX_CROSSERS crossings, choosing among the cuts with the fewest bridges whose placement succeeds the one with the least box width, then height, then the first tried.

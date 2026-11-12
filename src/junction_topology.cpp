@@ -1010,7 +1010,7 @@ static int JunctionRunFloor(FloorKind before, FloorKind after, const JunctionSpe
  * @param heights False: only the class facts (D218): the height steps, joins and element fits are skipped.
  * @param classes_only True (the height solve's X phase): every tile check is JunctionFacts::Buildable, the game's slope rules are the level solve's.
  */
-static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0}, bool heights = true, bool classes_only = false)
+static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0}, bool heights = true, bool classes_only = false, const JunctionPlacementShared *shared = nullptr, JunctionPlacementShared *make_shared = nullptr)
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
 	using Step = JunctionTrackStep;
@@ -2951,11 +2951,23 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			if (error != nullptr) *error = fmt::format("the placement rules contradict each other: box (port slot {} would lie on row {})", s, fixed->port_offset + notation[s]);
 			return solve_failed();
 		}
-		plan_clearance(fixed->port_offset);
-		phase = 1;
-		refresh(false);
-		if (!build()) return build_failed();
-		if (!solve(vy)) return solve_failed();
+		if (shared != nullptr && shared->ok) {
+			/* The offset-independent stages were solved once by MakeJunctionPlacementShared: the Y solution is theirs. */
+			phase = 1;
+			refresh(false);
+			vy = shared->vy;
+		} else {
+			plan_clearance(fixed->port_offset);
+			phase = 1;
+			refresh(false);
+			if (!build()) return build_failed();
+			if (!solve(vy)) return solve_failed();
+		}
+		if (make_shared != nullptr) {
+			make_shared->vy = vy;
+			make_shared->ok = true;
+			return JunctionTrackPlacement{};
+		}
 		port_offset = fixed->port_offset;
 		set_port_rows(port_offset);
 		phase = 0;
@@ -3199,13 +3211,13 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, x_floors, y_floors);
 }
 
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error, bool heights, bool terraform, const JunctionTerrain *terrain)
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error, bool heights, bool terraform, const JunctionTerrain *terrain, const JunctionPlacementShared *shared)
 {
 	if (terraform && terrain == nullptr) {
 		if (error != nullptr) *error = "terraform needs the terrain";
 		return {};
 	}
-	JunctionTrackPlacement placement = PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, {}, {}, &facts, offset, heights && !terraform, terraform);
+	JunctionTrackPlacement placement = PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, {}, {}, &facts, offset, heights && !terraform, terraform, shared);
 	if (!terraform || placement.nodes.empty()) return placement;
 
 	/* The height solve (DESIGN-G1 §15.3) on the render of the placement. */
@@ -3223,6 +3235,13 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	SignalJunctionTrackRoutes(layout, routes, topology, paths, graph, programs, spec, nullptr, &prio_beside);
 	if (!SolveJunctionLevels(*terrain, facts, offset, JunctionRampLevels(spec), spec.tl, placement, layout, routes, prio_beside, placement.terraform, placement.height_cost, placement.track_levels, &text)) return fail(text);
 	return placement;
+}
+
+JunctionPlacementShared MakeJunctionPlacementShared(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices)
+{
+	JunctionPlacementShared shared;
+	PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, nullptr, {}, {}, nullptr, {0, 0}, true, false, nullptr, &shared);
+	return shared;
 }
 
 JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error, std::vector<JunctionTrackRoute> *routes)

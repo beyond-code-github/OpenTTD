@@ -19,12 +19,12 @@
 #include "safeguards.h"
 
 /** Plan at one offset with the order and facts made by the caller (they do not depend on the offset). */
-static JunctionHoverPlan PlanJunctionHoverAt(const JunctionGraphSeed &seed, const JunctionSpec &spec, const JunctionTerrain &terrain, const JunctionTrackOrder &order, const JunctionFacts &facts, TileIndexDiffC offset)
+static JunctionHoverPlan PlanJunctionHoverAt(const JunctionGraphSeed &seed, const JunctionSpec &spec, const JunctionTerrain &terrain, const JunctionTrackOrder &order, const JunctionFacts &facts, TileIndexDiffC offset, const JunctionPlacementShared *shared = nullptr)
 {
 	JunctionHoverPlan plan;
 	const JunctionTopology &topology = *seed.topology;
 	std::string error;
-	const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(topology, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &error, true, true, &terrain);
+	const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(topology, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &error, true, true, &terrain, shared);
 	if (placement.nodes.empty()) {
 		plan.why = error.empty() ? "no placement" : error;
 		return plan;
@@ -71,7 +71,8 @@ JunctionHoverPlan PlanJunctionHoverNear(const JunctionGraphSeed &seed, const Jun
 		return plan;
 	}
 	const JunctionFacts facts(terrain);
-	JunctionHoverPlan cursor = PlanJunctionHoverAt(seed, spec, terrain, order, facts, offset);
+	const JunctionPlacementShared shared = MakeJunctionPlacementShared(*seed.topology, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices);
+	JunctionHoverPlan cursor = PlanJunctionHoverAt(seed, spec, terrain, order, facts, offset, &shared);
 	if (cursor.layout.has_value()) return cursor;
 
 	std::vector<TileIndexDiffC> moves;
@@ -89,7 +90,7 @@ JunctionHoverPlan PlanJunctionHoverNear(const JunctionGraphSeed &seed, const Jun
 		return a.y < b.y;
 	});
 	for (const TileIndexDiffC &move : moves) {
-			JunctionHoverPlan plan = PlanJunctionHoverAt(seed, spec, terrain, order, facts, {static_cast<int16_t>(offset.x + move.x), static_cast<int16_t>(offset.y + move.y)});
+			JunctionHoverPlan plan = PlanJunctionHoverAt(seed, spec, terrain, order, facts, {static_cast<int16_t>(offset.x + move.x), static_cast<int16_t>(offset.y + move.y)}, &shared);
 		if (!plan.layout.has_value()) continue;
 		plan.moved = move;
 		return plan;

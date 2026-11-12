@@ -385,6 +385,39 @@ static void LevelHashFold(uint64_t &hash, int64_t value)
 	}
 }
 
+/** Every field of a placement that the near search reads, as one flat list (for the identity of a placement with and without the shared stages). */
+static std::vector<int64_t> FlattenPlacement(const JunctionTrackPlacement &p, const std::string &error)
+{
+	std::vector<int64_t> v;
+	auto tile = [&](const TileIndexDiffC &t) { v.push_back(t.x); v.push_back(t.y); };
+	auto spans = [&](const std::vector<std::vector<JunctionTrackSpan>> &all) {
+		for (const auto &row : all) {
+			v.push_back(-1);
+			for (const JunctionTrackSpan &span : row) { tile(span.first); tile(span.second); }
+		}
+	};
+	v.push_back(static_cast<int64_t>(std::hash<std::string>{}(error)));
+	v.push_back(p.nodes.size());
+	for (int r : p.item_rows) v.push_back(r);
+	for (const TileIndexDiffC &t : p.ports) tile(t);
+	for (const TileIndexDiffC &t : p.nodes) tile(t);
+	spans(p.edges);
+	spans(p.copies);
+	for (const auto &pair : p.bridges) for (const JunctionBridge &b : pair) { tile(b.start); tile(b.end); v.push_back(b.tunnel); v.push_back(b.z); }
+	tile(p.size);
+	for (int c : p.columns) v.push_back(c);
+	v.push_back(p.choices.port_offset);
+	for (const auto &row : p.choices.m) for (int m : row) v.push_back(m);
+	for (const auto &row : p.choices.corner) for (int m : row) v.push_back(m);
+	for (const auto &[corner, height] : p.terraform.corners) { v.push_back(corner.first); v.push_back(corner.second); v.push_back(height); }
+	v.push_back(p.terraform.cost);
+	v.push_back(p.height_cost);
+	for (const auto &[t, level] : p.track_levels) { tile(t); v.push_back(level); }
+	v.push_back(p.why.size());
+	for (const JunctionPlacementReason &reason : p.why) { v.push_back(static_cast<int64_t>(std::hash<std::string>{}(reason.rule))); v.push_back(reason.edge); v.push_back(reason.node); v.push_back(reason.row); }
+	return v;
+}
+
 TEST_CASE("level solve: identical plans at every near offset", "[junction][realterrainsweep]")
 {
 	namespace fs = std::filesystem;
@@ -403,7 +436,10 @@ TEST_CASE("level solve: identical plans at every near offset", "[junction][realt
 	const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
 	REQUIRE(!seed_layout.tracks.empty());
 
-	int offsets = 0, planned = 0, cone_rejects = 0;
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+	const JunctionPlacementShared shared = MakeJunctionPlacementShared(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices);
+	REQUIRE(shared.ok);
+	int offsets = 0, planned = 0, cone_rejects = 0, shared_differences = 0;
 	double millis = 0;
 	uint64_t level_hash = 14695981039346656037ULL; ///< One hash per offset, folded into this: a difference at any offset moves it.
 	for (const fs::path &file : files) {
@@ -414,9 +450,17 @@ TEST_CASE("level solve: identical plans at every near offset", "[junction][realt
 		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
 		REQUIRE(terrain.has_value());
 		const TileIndexDiffC centre = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		const JunctionFacts facts(*terrain);
 		for (int dy = -4; dy <= 4; dy++) {
 			for (int dx = -8; dx <= 8; dx++) {
 				const TileIndexDiffC offset = {static_cast<int16_t>(centre.x + dx), static_cast<int16_t>(centre.y + dy)};
+				/* P2: the placement (X with the height facts, no level solve) with the shared stages (made once, above) is the placement without them, every field and the error text. The level solve and the render are deterministic functions of the placement, so equal placements give equal plans; LEVELHASH pins the plans themselves. */
+				{
+					std::string error_without, error_with;
+					const JunctionTrackPlacement without = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &error_without, true, false, &*terrain);
+					const JunctionTrackPlacement with = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &error_with, true, false, &*terrain, &shared);
+					if (FlattenPlacement(without, error_without) != FlattenPlacement(with, error_with)) shared_differences++;
+				}
 				const auto start = std::chrono::steady_clock::now();
 				const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, *terrain, offset);
 				millis += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
@@ -445,6 +489,7 @@ TEST_CASE("level solve: identical plans at every near offset", "[junction][realt
 	}
 	std::cout << "LEVELHASH offsets=" << offsets << " planned=" << planned << " cone_rejects=" << cone_rejects << " hash=" << level_hash << " ms_total=" << millis << "\n";
 	CHECK(offsets == 48 * 153);
+	CHECK(shared_differences == 0);
 	/* A cone reject that the solve without the check would plan would lose a plan: the pinned planned count and hash rule that out (cone_rejects_that_would_plan == 0). */
 	CHECK(cone_rejects == 99);
 	CHECK(planned == 2862);
