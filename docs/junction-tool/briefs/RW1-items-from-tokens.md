@@ -28,3 +28,8 @@ CODINGSTYLE.md (C++ part); docs/junction-tool/RECON-per-row-code.md (whole, 49 l
 
 ## Report
 The standard report, plus the sites changed (file:line before -> after) and the identity diff result. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop)
+1. **A node's row is the item of the token whose element ends (in edge) or starts (out edge) at that node**, not the edge's first token. For an in edge that is its last row-positioned token (Fan, SBend, Corner: the last one carrying an item); for an out edge its first. So R10's exit pin = the in edge's last positioned token's index; the lane pin on out.from = the out edge's first positioned token's index. On every seed that is the Fan (identity holds); on the test "a fan edge may hold more than its fan" it is the S-bend back to lane-1, which is the north row the old code pinned: the test must pass unchanged. Do not edit that test.
+2. **North for the doubled leg** (K6 heads copy 0, K7 north pins) = the exit split node's row from rule 1 (the in edge's last positioned token's index); lane (copy 1) = bend1.index as in your patch. No new Step member; Over tokens keep the crossed edge in `index`.
+3. Resume from rw1-attempt.patch; all identity checks again; gates; the one commit.
