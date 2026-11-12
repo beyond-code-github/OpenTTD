@@ -3744,3 +3744,42 @@ TEST_CASE("topoproj: placement on facts around each of 20 houses", "[junction][t
 	}
 	WARN("placement solved " << placed << " of 20, node path solved " << node_placed << " of 20; mean " << solve_ms / 20 << " ms per facts placement (with its terrain and facts)");
 }
+
+TEST_CASE("topology: occupancy legality reads the graph", "[junction][topology]")
+{
+	/* L1: two pieces on one tile are legal when the graph relates them or share no track end; the settled placement is checked, not a reference solve's edge pairs. */
+	JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTopology &t = JunctionLLRRSidelineTopology();
+	std::string ignored;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
+	JunctionTrackPlacement seed;
+	const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &seed, &ignored);
+	REQUIRE(!seed.nodes.empty());
+
+	/* (b) Edges 12 and 17 are unrelated in the graph and share the tiles (28,11) and (28,12) in the seed, as LEFT against RIGHT and Y against LEFT, with no shared track end: legal. */
+	std::string render_error;
+	std::vector<JunctionTrackRoute> routes;
+	const JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, seed, &render_error, &routes);
+	REQUIRE(!layout.tracks.empty());
+	TrackBits at_28_11;
+	for (const JunctionTrack &track : layout.tracks) {
+		if (track.offset.x == 28 && track.offset.y == 11) at_28_11 = at_28_11 | track.tracks;
+	}
+	CHECK(at_28_11.Test(Track::Left));
+	CHECK(at_28_11.Test(Track::Right));
+	for (const auto &[a, b] : graph.crossings) CHECK(!(a == 12 && b == 17));
+
+	/* (a) The first free S-bend size of edge 4 one column shorter than the seed's puts edge 17's RIGHT piece on edge 12's Y piece (a shared SE end): the settled placement is illegal. */
+	REQUIRE(seed.choices.m[4][0] == 6);
+	JunctionPlacementChoices choices = seed.choices;
+	choices.m[4][0] = 5;
+	std::string error;
+	const JunctionTrackPlacement bad = PlaceJunctionTrackGraph(t, paths, graph, order, cut, programs, spec, choices, &error);
+	CHECK(bad.nodes.empty());
+	CHECK(error.starts_with("the placement rules contradict each other: occupancy (edge 17) [edge 17 and edge 12 on row 10]"));
+	CHECK(error.find(" <- ") == std::string::npos);
+}

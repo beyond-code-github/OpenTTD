@@ -1175,8 +1175,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	};
 	std::vector<HugCandidate> hugs;
 	/* Modes of a build (D217): the flat state has no floors, no clearance and, in X, only the relations; clearance relations of the Y phase come from the flat state; an illegal occupancy group is a placement failure. */
-	bool floors_off = false, relations_only = false, skip_clearance = false, occupancy_failed = false, collecting = false;
-	std::set<std::pair<uint32_t, uint32_t>> ref_shares; ///< The edge pairs that share a tile in the reference solve (the state's flat solve without floors).
+	bool floors_off = false, relations_only = false, skip_clearance = false, occupancy_failed = false;
 	/** One bridge's middle line: a Y-axis bridge's column variable and its two heads' points, or an X-axis bridge's row variable and its heads' columns. */
 	struct BridgeLine {
 		int bridge;
@@ -1876,8 +1875,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		return bits;
 	};
 
-	/* The occupancy family (D217): unrelated tracks never share or touch a tile. */
-	auto add_occupancy = [&](const std::vector<int> &flat) -> bool {
+	/* The occupancy family (D217): unrelated tracks never share or touch a tile; two unrelated pieces on one tile are legal only when they share no track end on a tile edge. */
+	auto add_occupancy = [&](const std::vector<int> &flat, bool legality) -> bool {
 		/** One occupant of a row: the columns [left, right], each end a point and an offset, with the tracks of its tiles and what it belongs to. */
 		struct Occupant {
 			int row;
@@ -1899,11 +1898,9 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 			row.push_back({y, pt, dx, pt, dx, bits, edge, copy, UINT32_MAX});
 		};
-		/* The tiles strictly between points a and b on row y, a before b in the sense sgn; nothing when there are none at the flat solve. */
+		/* The tiles strictly between points a and b on row y, a before b in the sense sgn; a run with none at the flat solve is an empty interval (right = left - 1), which keeps its place in the order for the solves with floors. */
 		auto add_run = [&](int a, int b, int y, int sgn, uint32_t edge, int copy) {
-			Occupant run{y, sgn > 0 ? a : b, 1, sgn > 0 ? b : a, -1, TrackBits{Track::X}, edge, copy, UINT32_MAX};
-			if (flat_left(run) > flat_right(run)) return;
-			by_row[y].push_back(run);
+			by_row[y].push_back({y, sgn > 0 ? a : b, 1, sgn > 0 ? b : a, -1, TrackBits{Track::X}, edge, copy, UINT32_MAX});
 		};
 		auto add_bend = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t edge, int copy, bool skip_first, bool skip_last) {
 			const std::vector<TileIndexDiffC> offs = bend_tiles(heading, hand, halves, corner);
@@ -1995,25 +1992,11 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			/* On equal columns a footprint comes first in its travel direction: the unrelated track stands downstream of it. */
 			std::ranges::stable_sort(occupants, [&](const Occupant &a, const Occupant &b) { return std::make_tuple(flat_left(a), flat_right(a), -a.footprint) < std::make_tuple(flat_left(b), flat_right(b), -b.footprint); });
 			auto add_relation = [&](const Occupant &a, const Occupant &b, bool tie) -> bool {
-				if (collecting) {
-					if (tie) ref_shares.emplace(std::min(a.edge, b.edge), std::max(a.edge, b.edge));
-					return true;
-				}
 				reasons.push_back(JunctionPlacementReason{"occupancy", b.edge, b.node, -1});
 				const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
 				notes[reason] = fmt::format("[{} and {} on row {}]", label(a), label(b), y);
 				const int apart = flat_left(b) - flat_right(a);
 				if (tie) {
-					/* A group is legal when the same edges share a tile in the reference: the state's flat solve without floors (checker-clean by the sweeps; when row edits arrive the reference becomes the cached root seed). One that appears only with floors is legal only when no two of its unrelated pieces share a track end on a tile edge. */
-					const bool in_reference = ref_shares.contains({std::min(a.edge, b.edge), std::max(a.edge, b.edge)});
-					for (const DiagDirection d : {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW}) {
-						if (!in_reference && a.bits.Any(DiagdirReachesTracks(d)) && b.bits.Any(DiagdirReachesTracks(d))) {
-							occupancy_failed = true;
-							failure.assign(1, reasons.back());
-							if (error != nullptr) *error = "the placement rules contradict each other: occupancy (edge " + (a.edge != UINT32_MAX ? str(static_cast<int>(a.edge)) : std::string("-")) + ") " + notes[reason];
-							return false;
-						}
-					}
 					cons.push_back({b.lp, a.rp, apart - b.ldx + a.rdx, reason});
 					cons.push_back({a.rp, b.lp, -(apart - b.ldx + a.rdx), reason});
 				} else {
@@ -2022,10 +2005,28 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				}
 				return true;
 			};
+			/* Legality per pair of occupants: two on one tile are legal when the graph relates them, or when their tracks share no track end on any tile edge (a footprint is not a track: its pairs are ordered below); checked once, on the settled placement. */
+			for (size_t i = 0; legality && i < occupants.size(); i++) {
+				if (occupants[i].footprint != 0 || flat_left(occupants[i]) > flat_right(occupants[i])) continue;
+				for (size_t j = i + 1; j < occupants.size() && flat_left(occupants[j]) <= flat_right(occupants[i]); j++) {
+					if (occupants[j].footprint != 0 || flat_left(occupants[j]) > flat_right(occupants[j]) || related(occupants[i], occupants[j])) continue;
+					for (const DiagDirection d : {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW}) {
+						if (!occupants[i].bits.Any(DiagdirReachesTracks(d)) || !occupants[j].bits.Any(DiagdirReachesTracks(d))) continue;
+						reasons.push_back(JunctionPlacementReason{"occupancy", occupants[j].edge, occupants[j].node, -1});
+						const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
+						notes[reason] = fmt::format("[{} and {} on row {}]", label(occupants[i]), label(occupants[j]), y);
+						occupancy_failed = true;
+						failure.assign(1, reasons.back());
+						if (error != nullptr) *error = "the placement rules contradict each other: occupancy (edge " + (occupants[i].edge != UINT32_MAX ? str(static_cast<int>(occupants[i].edge)) : std::string("-")) + ") " + notes[reason];
+						return false;
+					}
+				}
+			}
+			if (legality) continue;
 			/* Occupants on one flat tile form a group, tied to each other; groups are neighbours in the order. */
 			std::vector<std::pair<size_t, size_t>> groups;
 			for (size_t i = 0; i < occupants.size(); i++) {
-				if (!groups.empty() && occupants[i].footprint == 0 && occupants[groups.back().second].footprint == 0 && flat_left(occupants[groups.back().first]) == flat_left(occupants[i]) && flat_right(occupants[groups.back().first]) == flat_right(occupants[i])) {
+				if (!groups.empty() && occupants[i].footprint == 0 && flat_left(occupants[i]) <= flat_right(occupants[i]) && occupants[groups.back().second].footprint == 0 && flat_left(occupants[groups.back().first]) == flat_left(occupants[i]) && flat_right(occupants[groups.back().first]) == flat_right(occupants[i])) {
 					groups.back().second = i;
 				} else {
 					groups.emplace_back(i, i);
@@ -2468,7 +2469,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			compute_node_tracks();
 			std::vector<int> flat;
 			if (flat_solve(flat)) {
-				if (!add_occupancy(flat)) return false;
+				if (!add_occupancy(flat, false)) return false;
 				hug_heads(flat);
 				if (!skip_clearance) add_clearance_x(flat);
 			}
@@ -2802,7 +2803,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	/* The Y-phase clearance of the X-axis bridges (D217): from the flat state, the Y and the X solve with no floors and only the relations, a head whose column lies strictly within an X-axis bridge keeps its flat side of the bridge's row by one. */
 	auto plan_clearance = [&](int fixed_offset) {
 		clear_y.clear();
-		ref_shares.clear();
 		std::vector<BridgeLine> lines;
 		std::vector<HeadRef> heads;
 		collect_bridges(lines, heads);
@@ -2821,10 +2821,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			ok = build() && flat_solve(flat_x);
 			if (ok) {
 				vx = flat_x;
-				compute_node_tracks();
-				collecting = true;
-				add_occupancy(flat_x);
-				collecting = false;
 			}
 		}
 		floors_off = relations_only = skip_clearance = false;
@@ -2928,6 +2924,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				if (el.joiner_div) choices.corner[e][el.tok] = vy[el.first] - vy[el.last];
 			}
 		}
+	}
+
+	/* The legality of the settled placement (the rounds' states may overlap unrelated pieces while the S-bend sizes settle). */
+	if (rows_known && !relations_only) {
+		compute_node_tracks();
+		if (!add_occupancy(vx, true)) return solve_failed();
 	}
 
 	/* The fans' and ports' rows. */
