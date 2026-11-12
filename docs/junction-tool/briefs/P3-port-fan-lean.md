@@ -39,3 +39,8 @@ For each graph input path (route): its **in bend** = the pieces of the first tok
 
 ## Report
 The standard report, plus per lean class: its route(s), direction, flat value and solved value; RenderJunctionAscii of LL_RR before (seed) and after (solved) to docs/junction-tool/wip/p3-llrr.txt. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop: rule (a) left every LL_RR class unleaning)
+1. Rule (a) relaxed: every point in C is a piece of the bend, or a RUN piece (token == RUN) of the bend's own edge and copy (the axis piece rigidly joined to a half-piece bend). Node pieces, port pieces and other edges' pieces still bar a lean.
+2. A class whose lean-side bound is still the domain limit after the other classes are snapped does not lean (nearest-flat snap).
+3. If no value from the extreme back to flat is accepted, the normal nearest-flat snap applies; only its failure is a solve failure.
