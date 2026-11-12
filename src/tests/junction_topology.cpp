@@ -1216,6 +1216,8 @@ TEST_CASE("topology: the graph builds the traced template", "[junction][topology
 		JunctionNodeTemplate want = BuildJunctionNodeTemplate(TraceJunctionNodeInput(render, spec, *t), spec);
 		REQUIRE(want.error.empty());
 		want.lean = got.lean; // The traced input has no tags, so no leans.
+		want.point_tags = got.point_tags; // Nor point tags.
+		want.link_tags = got.link_tags; // Nor link tags.
 		const std::string diff = DiffJunctionNodeTemplates(got, want);
 		INFO(diff);
 		CHECK(diff.empty());
@@ -1539,12 +1541,12 @@ static void CheckGraphSolvesFlat(const JunctionTopology &topology)
 	}
 }
 
-TEST_CASE("topology: the LL_RR graph solves on flat ground", "[junction][topology]")
+TEST_CASE("topology: the LL_RR graph solves on flat ground", "[junction][topoproj]")
 {
 	CheckGraphSolvesFlat(JunctionLLRRSidelineTopology());
 }
 
-TEST_CASE("topology: the T graph solves on flat ground", "[junction][topology]")
+TEST_CASE("topology: the T graph solves on flat ground", "[junction][topoproj]")
 {
 	CheckGraphSolvesFlat(JunctionTTopology());
 }
@@ -1618,7 +1620,7 @@ static size_t PortBendPiece(const JunctionTrackRoute &route, bool in)
 	return SIZE_MAX;
 }
 
-TEST_CASE("topology: lean classes come from the port bends", "[junction][topology]")
+TEST_CASE("topology: lean classes come from the port bends", "[junction][topoproj]")
 {
 	for (const JunctionTopology *t : RENDER_TOPOLOGIES) {
 		const GraphSolveSetup setup = GraphSolveSetupOf(*t);
@@ -1669,7 +1671,7 @@ TEST_CASE("topology: lean classes come from the port bends", "[junction][topolog
 	CHECK(west > 0);
 }
 
-TEST_CASE("topology: LL_RR's port fans keep their port rows as long as they can", "[junction][topology]")
+TEST_CASE("topology: LL_RR's port fans keep their port rows as long as they can", "[junction][topoproj]")
 {
 	const JunctionTopology &topology = JunctionLLRRSidelineTopology();
 	const GraphSolveSetup setup = GraphSolveSetupOf(topology);
@@ -1718,4 +1720,84 @@ TEST_CASE("topology: LL_RR's port fans keep their port rows as long as they can"
 		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
 		CHECK(false);
 	}
+}
+
+/** Solve LL_RR's graph input on flat ground with some tiles blocked; the setup and terrain are the caller's. */
+static JunctionNodeSolve SolveLLRRBlocked(const GraphSolveSetup &setup, const JunctionTerrain &flat, const std::vector<std::pair<int, int>> &blocked)
+{
+	JunctionTerrain terrain = flat;
+	for (const auto &[x, y] : blocked) terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)].cls = JunctionTileClass::Blocked;
+	const JunctionFacts facts(terrain);
+	return SolveJunctionNodes(setup.tpl, MakeTestJunctionSpec(), facts, {0, 0}, JunctionLLRRSidelineTopology(), setup.paths, setup.graph, setup.programs, setup.input);
+}
+
+/** The first route that starts at a W in slot (P3's predicate), or SIZE_MAX. */
+static size_t FirstWestInRoute(const GraphSolveSetup &setup)
+{
+	for (size_t r = 0; r < setup.routes.size(); r++) {
+		const Trackdir td = setup.routes[r].pieces.front().trackdir;
+		if ((td == Trackdir::X_NE || td == Trackdir::X_SW) && TravelX(td) > 0) return r;
+	}
+	return SIZE_MAX;
+}
+
+static std::string FailureElementsText(const JunctionNodeFailure &failure)
+{
+	std::string text = fmt::format("kind {} link {} class {} elements", to_underlying(failure.kind), failure.link, failure.cls);
+	for (const JunctionTrackPieceTag &tag : failure.elements) text += fmt::format(" (edge {} token {} run {} copy {})", tag.edge, tag.token == JunctionTrackPieceTag::RUN ? -1 : tag.token, tag.run, tag.copy);
+	return text;
+}
+
+TEST_CASE("topoproj: a house on LL_RR's W in-lane run after the bend is avoided", "[junction][topoproj]")
+{
+	const GraphSolveSetup setup = GraphSolveSetupOf(JunctionLLRRSidelineTopology());
+	const JunctionTerrain flat = FlatTerrainAround(setup.signalled);
+	const size_t r = FirstWestInRoute(setup);
+	REQUIRE(r != SIZE_MAX);
+	const JunctionTrackRoute &route = setup.routes[r];
+	REQUIRE(route.pieces.size() > 8);
+
+	/* Piece 8 is the first run piece after the bend: the solve moves clear of the house. */
+	const TileIndexDiffC house = route.pieces[8].tile;
+	const JunctionNodeSolve solve = SolveLLRRBlocked(setup, flat, {{house.x, house.y}});
+	REQUIRE(solve.layout.has_value());
+	for (const JunctionTrack &jt : solve.layout->tracks) CHECK(!(jt.offset.x == house.x && jt.offset.y == house.y));
+}
+
+TEST_CASE("topoproj: every failure on LL_RR names the graph elements it hit", "[junction][topoproj]")
+{
+	const GraphSolveSetup setup = GraphSolveSetupOf(JunctionLLRRSidelineTopology());
+	const JunctionTerrain flat = FlatTerrainAround(setup.signalled);
+	const JunctionNodeSolve base = SolveLLRRBlocked(setup, flat, {});
+	REQUIRE(base.layout.has_value());
+	std::set<std::pair<int, int>> tile_set;
+	for (const JunctionTrack &jt : base.layout->tracks) tile_set.emplace(jt.offset.x, jt.offset.y);
+	const std::vector<std::pair<int, int>> tiles(tile_set.begin(), tile_set.end());
+	REQUIRE(tiles.size() >= 20);
+	const size_t k = tiles.size() / 20;
+
+	std::map<int, int> kinds;
+	int failures = 0;
+	for (size_t j = 0; j < 20; j++) {
+		const std::pair<int, int> tile = tiles[j * k];
+		const JunctionNodeSolve solve = SolveLLRRBlocked(setup, flat, {tile});
+		if (!solve.failure.has_value()) continue;
+		failures++;
+		kinds[to_underlying(solve.failure->kind)]++;
+		INFO("tile " << tile.first << "," << tile.second << " " << FailureElementsText(*solve.failure));
+		if (solve.failure->kind == JunctionNodeFailure::Kind::Template) continue;
+		CHECK(!solve.failure->elements.empty());
+		for (const JunctionTrackPieceTag &tag : solve.failure->elements) CHECK(tag.edge < setup.graph.edges.size());
+		const JunctionNodeFailure &failure = *solve.failure;
+		using Kind = JunctionNodeFailure::Kind;
+		if (failure.kind == Kind::Straight || failure.kind == Kind::Break || failure.kind == Kind::Edge) {
+			REQUIRE(failure.link < setup.tpl.link_tags.size());
+			CHECK(std::ranges::find(failure.elements, setup.tpl.link_tags[failure.link]) != failure.elements.end());
+		} else if (failure.kind == Kind::Piece) {
+			for (size_t p = 0; p < setup.tpl.points.size(); p++) {
+				if (setup.tpl.points[p].cls == failure.cls) CHECK(std::ranges::find(failure.elements, setup.tpl.point_tags[p]) != failure.elements.end());
+			}
+		}
+	}
+	for (const auto &[kind, count] : kinds) WARN("failure kind " << kind << ": " << count << " of " << failures);
 }

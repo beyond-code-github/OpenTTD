@@ -20,6 +20,7 @@
 #include "track_func.h"
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cstdlib>
 #include <functional>
@@ -184,7 +185,10 @@ void NodeBuilder::ReadPoints()
 			const PieceId id{pieces[i].tile.x, pieces[i].tile.y, pieces[i].trackdir};
 			if (!point_ids.contains(id)) continue;
 			auto [it, added] = index_of.emplace(id, static_cast<uint32_t>(this->tpl.points.size()));
-			if (added) this->tpl.points.push_back({pieces[i].tile, pieces[i].trackdir, 0, 0});
+			if (added) {
+				this->tpl.points.push_back({pieces[i].tile, pieces[i].trackdir, 0, 0});
+				if (!this->input.tags.empty()) this->tpl.point_tags.push_back(this->input.tags[pi][i]);
+			}
 			node_path.points.push_back(it->second);
 			node_path.units.push_back(w.start[i]);
 			point_pieces.push_back(i);
@@ -232,6 +236,15 @@ void NodeBuilder::ReadPoints()
 					diagonal_of[{from, to}] = diagonal_index;
 				}
 				this->tpl.links.push_back({from, to, free, axis, link_dir, diagonal});
+				if (!this->input.tags.empty()) {
+					JunctionTrackPieceTag tag = this->input.tags[pi][a];
+					if (a + 1 < b) {
+						tag = this->input.tags[pi][a + 1];
+					} else {
+						tag.token = JunctionTrackPieceTag::RUN;
+					}
+					this->tpl.link_tags.push_back(tag);
+				}
 			} else if (diagonal) {
 				diagonal_index = diagonal_of.at({from, to});
 			}
@@ -988,7 +1001,7 @@ bool AddJunctionNodeLateConstraints(const JunctionNodeTemplate &tpl, JunctionPos
 	return true;
 }
 
-bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions &positions, const std::vector<int> &values, int &row)
+bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions &positions, const std::vector<int> &values, int &row, std::array<uint16_t, 2> *classes)
 {
 	constexpr int NO_FLAT_ROW = INT_MIN;
 	/** One end of an element: x = values[var] + offset. */
@@ -1091,6 +1104,7 @@ bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions
 					first.owners.insert(first.owners.end(), element.owners.begin(), element.owners.end());
 					if (!at_least(element.lo, first.lo, 0) || !at_least(first.lo, element.lo, 0)) {
 						row = current_row;
+						if (classes != nullptr) *classes = {first.lo.var, element.lo.var};
 						return false;
 					}
 					continue;
@@ -1106,6 +1120,7 @@ bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions
 			const bool flat_ordered = a.flat_row != NO_FLAT_ROW && a.flat_row == b.flat_row && a.flat_hi < b.flat_lo;
 			if (now(a.hi) >= now(b.lo) && !flat_ordered) {
 				row = current_row;
+				if (classes != nullptr) *classes = {a.lo.var, b.lo.var};
 				return false;
 			}
 			int gap = 1;
@@ -1118,6 +1133,7 @@ bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions
 			}
 			if (!at_least(b.lo, a.hi, gap)) {
 				row = current_row;
+				if (classes != nullptr) *classes = {a.lo.var, b.lo.var};
 				return false;
 			}
 		}
@@ -1342,6 +1358,32 @@ static Track NodeCorner(DiagDirection a, DiagDirection b)
 		if ((e1 == a || e2 == a) && (e1 == b || e2 == b)) return track;
 	}
 	NOT_REACHED();
+}
+
+/** Add a graph element to a list once. */
+static void NodeAddTag(std::vector<JunctionTrackPieceTag> &tags, const JunctionTrackPieceTag &tag)
+{
+	if (std::ranges::find(tags, tag) == tags.end()) tags.push_back(tag);
+}
+
+/** The elements of a free link: its link_tags entry. */
+static std::vector<JunctionTrackPieceTag> NodeLinkElements(const JunctionNodeTemplate &tpl, uint32_t link)
+{
+	std::vector<JunctionTrackPieceTag> tags;
+	if (tpl.link_tags.empty()) return tags;
+	tags.push_back(tpl.link_tags[link]);
+	return tags;
+}
+
+/** The tags of the points of a class (X or Y). */
+static std::vector<JunctionTrackPieceTag> NodeClassElements(const JunctionNodeTemplate &tpl, uint16_t cls)
+{
+	std::vector<JunctionTrackPieceTag> tags;
+	if (tpl.point_tags.empty()) return tags;
+	for (size_t i = 0; i < tpl.points.size(); i++) {
+		if (tpl.points[i].cls == cls || tpl.points[i].ycls == cls) NodeAddTag(tags, tpl.point_tags[i]);
+	}
+	return tags;
 }
 
 /** The solve: the template's positions on the facts, rendered, signalled and normalised by `finish`. */
@@ -1708,12 +1750,38 @@ static JunctionNodeSolve SolveJunctionNodesWith(const JunctionNodeTemplate &tpl,
 			return y_fits(y_class);
 		})) {
 			result.failure = JunctionNodeFailure{Kind::Height, UINT32_MAX, 0, static_cast<uint16_t>(c)};
+			result.failure->elements = NodeClassElements(tpl, static_cast<uint16_t>(c));
 			if (first_row.has_value()) {
 				const size_t mark = positions.Mark();
 				const bool restricted = positions.RestrictRange(c, *first_row, *first_row);
 				if (restricted) {
 					result.values[c] = positions.Lo(c);
 					result.failure->height = height_fault(c, *first_row);
+					if (!tpl.point_tags.empty() && result.failure->height.has_value()) {
+						const JunctionNodeHeightFault &fault = *result.failure->height;
+						std::vector<uint32_t> part; ///< The points of the failing part.
+						uint16_t part_cls = UINT16_MAX; ///< The X class that fault.x is a value of.
+						if (fault.part == JunctionNodeHeightFault::Part::Group) {
+							part_cls = static_cast<uint16_t>(fault.index);
+							for (uint32_t i = 0; i < tpl.points.size(); i++) {
+								if (tpl.points[i].cls == part_cls && tpl.points[i].ycls == c) part.push_back(i);
+							}
+						} else {
+							const JunctionNodeLink &link = tpl.links[fault.part == JunctionNodeHeightFault::Part::Diagonal ? tpl.diagonals[fault.index].link : fault.index];
+							part_cls = tpl.points[link.from].cls;
+							part = {link.from, link.to};
+						}
+						for (const uint32_t i : part) {
+							const JunctionNodePoint &point = tpl.points[i];
+							if (point.cls != part_cls) continue;
+							const int x = point.tile.x + fault.x - tpl.flat[part_cls] + offset.x;
+							const int y = point.tile.y + shift_y(point.ycls) + offset.y;
+							if (std::ranges::any_of(fault.tiles, [&](const TileIndexDiffC &tile) { return tile.x == x && tile.y == y; })) NodeAddTag(result.failure->elements, tpl.point_tags[i]);
+						}
+						if (result.failure->elements.empty()) {
+							for (const uint32_t i : part) NodeAddTag(result.failure->elements, tpl.point_tags[i]);
+						}
+					}
 				}
 				positions.Undo(mark);
 			}
@@ -1731,8 +1799,13 @@ static JunctionNodeSolve SolveJunctionNodesWith(const JunctionNodeTemplate &tpl,
 
 	/* 2d. The occupancy chain (DESIGN-N3 §7). */
 	int occupancy_row = 0;
-	if (!AddJunctionNodeOccupancy(tpl, positions, result.values, occupancy_row)) {
+	std::array<uint16_t, 2> occupancy_classes{UINT16_MAX, UINT16_MAX};
+	if (!AddJunctionNodeOccupancy(tpl, positions, result.values, occupancy_row, &occupancy_classes)) {
 		result.failure = JunctionNodeFailure{Kind::Occupancy, UINT32_MAX, occupancy_row};
+		for (const uint16_t cls : occupancy_classes) {
+			if (cls == UINT16_MAX) continue;
+			for (const JunctionTrackPieceTag &tag : NodeClassElements(tpl, cls)) NodeAddTag(result.failure->elements, tag);
+		}
 		result.values.clear();
 		return result;
 	}
@@ -1786,6 +1859,7 @@ static JunctionNodeSolve SolveJunctionNodesWith(const JunctionNodeTemplate &tpl,
 		}
 		if (allowed.empty() || !positions.RestrictDomain(c, allowed)) {
 			result.failure = JunctionNodeFailure{Kind::Piece, UINT32_MAX, 0, c};
+			result.failure->elements = NodeClassElements(tpl, c);
 			result.values.clear();
 			return result;
 		}
@@ -1822,12 +1896,14 @@ static JunctionNodeSolve SolveJunctionNodesWith(const JunctionNodeTemplate &tpl,
 			if (!facts.Straight(c, row, Axis::X, entry, exit)) {
 				if (!(d > 0 ? positions.AddAvoid(u, w, c) : positions.AddAvoid(w, u, c))) {
 					result.failure = JunctionNodeFailure{Kind::Straight, link_index, c};
+					result.failure->elements = NodeLinkElements(tpl, link_index);
 					result.values.clear();
 					return result;
 				}
 			} else if (c + 1 <= facts.MaxX() && facts.Straight(c + 1, row, Axis::X, next_entry, next_exit) && exit != next_entry) {
 				if (!(d > 0 ? positions.AddAvoid(u, w2, c) : positions.AddAvoid(w2, u, c + 1))) {
 					result.failure = JunctionNodeFailure{Kind::Break, link_index, c};
+					result.failure->elements = NodeLinkElements(tpl, link_index);
 					result.values.clear();
 					return result;
 				}
@@ -1835,11 +1911,13 @@ static JunctionNodeSolve SolveJunctionNodesWith(const JunctionNodeTemplate &tpl,
 		}
 		if (!positions.RestrictRange(u, facts.MinX(), facts.MaxX())) {
 			result.failure = JunctionNodeFailure{Kind::Edge, link_index, facts.MinX() - 1};
+					result.failure->elements = NodeLinkElements(tpl, link_index);
 			result.values.clear();
 			return result;
 		}
 		if (!positions.RestrictRange(w, facts.MinX(), facts.MaxX())) {
 			result.failure = JunctionNodeFailure{Kind::Edge, link_index, facts.MaxX() + 1};
+					result.failure->elements = NodeLinkElements(tpl, link_index);
 			result.values.clear();
 			return result;
 		}
@@ -2253,6 +2331,12 @@ std::string DiffJunctionNodeTemplates(const JunctionNodeTemplate &a, const Junct
 		}),
 		NodeDiffNumbers("flat", a.flat, b.flat),
 		NodeDiffNumbers("lean", a.lean, b.lean),
+		NodeDiffVector("point_tags", a.point_tags, b.point_tags, [](const JunctionTrackPieceTag &x, const JunctionTrackPieceTag &y) {
+			return NodeDiffFirst({NodeDiffField("edge", x.edge, y.edge), NodeDiffField("token", x.token, y.token), NodeDiffField("run", x.run, y.run), NodeDiffField("copy", x.copy, y.copy)});
+		}),
+		NodeDiffVector("link_tags", a.link_tags, b.link_tags, [](const JunctionTrackPieceTag &x, const JunctionTrackPieceTag &y) {
+			return NodeDiffFirst({NodeDiffField("edge", x.edge, y.edge), NodeDiffField("token", x.token, y.token), NodeDiffField("run", x.run, y.run), NodeDiffField("copy", x.copy, y.copy)});
+		}),
 		NodeDiffField("x_classes", a.x_classes, b.x_classes),
 		NodeDiffField("anchor", a.anchor, b.anchor),
 		NodeDiffField("anchor_y", a.anchor_y, b.anchor_y),
