@@ -25,8 +25,8 @@ public:
 	static constexpr uint32_t NO_REASON = UINT32_MAX;
 	bool AddDifference(size_t a, size_t b, int k, uint32_t reason = NO_REASON); ///< x_a - x_b >= k.
 	bool RestrictRange(size_t v, int min_value, int max_value, uint32_t reason = NO_REASON); ///< x_v in [min_value, max_value].
-	bool RestrictDomain(size_t v, const std::vector<int> &allowed); ///< x_v in the given values (others removed from its bitset).
-	bool AddAvoid(size_t a, size_t b, int c); ///< Not (x_a <= c <= x_b): an edge from x_a to x_b must not cover column c.
+	bool RestrictDomain(size_t v, const std::vector<int> &allowed, uint32_t reason = NO_REASON); ///< x_v in the given values (others removed from its bitset); a lo or up it moves records the reason.
+	bool AddAvoid(size_t a, size_t b, int c, uint32_t reason = NO_REASON); ///< Not (x_a <= c <= x_b): an edge from x_a to x_b must not cover column c; a lo or up it moves records the reason and the other variable.
 	size_t Mark() const; ///< A trail position for Undo().
 	void Undo(size_t mark); ///< Restore lo, up and domains to the state at the mark; constraints added since are removed.
 	int Lo(size_t v) const;
@@ -41,7 +41,7 @@ private:
 		size_t from = SIZE_MAX;
 	};
 	struct Difference { size_t a, b; int k; uint32_t reason; };
-	struct Avoid { size_t a, b; int c; };
+	struct Avoid { size_t a, b; int c; uint32_t reason; };
 	struct TrailEntry {
 		enum class Kind : uint8_t { Lo, Up, DomainWord, Difference, Avoid } kind;
 		size_t index;

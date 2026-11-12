@@ -2636,3 +2636,195 @@ TEST_CASE("topology: the relations keep the seed", "[junction][topology]")
 	CHECK(llrr_placement.size.x == 62);
 	CHECK(llrr_placement.size.y == 25);
 }
+
+/** A topology's seed pipeline: the inputs of a placement and the cut's seed placement, under a spec. */
+struct SeedPipeline {
+	std::vector<JunctionLanePath> paths;
+	JunctionTrackGraph graph;
+	JunctionTrackOrder order;
+	JunctionTrackStructure cut;
+	JunctionTrackPrograms programs;
+	JunctionSpec spec;
+	JunctionTrackPlacement seed;
+	JunctionLayout layout; ///< The seed's render.
+};
+
+static SeedPipeline SeedPipelineOf(const JunctionTopology &t, const JunctionSpec &spec)
+{
+	SeedPipeline p;
+	p.spec = spec;
+	std::string error;
+	p.paths = ExpandJunctionLanes(t, &error);
+	p.graph = BuildJunctionTrackGraph(t, p.paths, &error);
+	p.order = OrderJunctionTrackGraph(t, p.paths, p.graph, &error);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, p.paths, p.graph, p.order, &error);
+	p.programs = ProgramJunctionTrackGraph(t, p.paths, p.graph, p.order, structure, &error);
+	p.cut = CutJunctionTrackBridges(t, p.paths, p.graph, p.order, structure, p.programs, spec, &p.seed, &error);
+	INFO(error);
+	REQUIRE(!p.seed.nodes.empty());
+	p.layout = RenderJunctionTrackPlacement(t, p.paths, p.graph, p.cut, p.programs, p.seed, &error);
+	REQUIRE(!p.layout.tracks.empty());
+	return p;
+}
+
+/** The seed's placement on terrain with the given tiles blocked, at offset (0, 0): the seed's frame is the terrain's. */
+static JunctionTrackPlacement PlaceWithHouses(const JunctionTopology &t, const SeedPipeline &p, const JunctionTerrain &flat, const std::vector<std::pair<int, int>> &houses, std::string *error)
+{
+	JunctionTerrain terrain = flat;
+	for (const auto &[x, y] : houses) terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)].cls = JunctionTileClass::Blocked;
+	const JunctionFacts facts(terrain);
+	return PlaceJunctionTrackGraph(t, p.paths, p.graph, p.order, p.cut, p.programs, p.spec, p.seed.choices, facts, {0, 0}, error);
+}
+
+TEST_CASE("topology: placement on flat facts is the seed", "[junction][topology]")
+{
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		const SeedPipeline p = SeedPipelineOf(*t, MakeTestJunctionSpec());
+		const JunctionTerrain flat = FlatTerrainAround(p.layout);
+		std::string error;
+		const JunctionTrackPlacement q = PlaceWithHouses(*t, p, flat, {}, &error);
+		INFO(error);
+		REQUIRE(!q.nodes.empty());
+		CHECK(SamePlacement(p.seed, q));
+	}
+}
+
+TEST_CASE("topology: run and group tiles match the render", "[junction][topology]")
+{
+	/* The facts are applied to the tiles of the rendered routes but the bridge middles, no others: a house on a tile changes the placement (or fails it) exactly when a fact is applied to a tile the seed uses. */
+	const JunctionTopology &t = JunctionLLRRSidelineTopology();
+	const SeedPipeline p = SeedPipelineOf(t, MakeTestJunctionSpec());
+	std::string error;
+	std::vector<JunctionTrackRoute> routes;
+	const JunctionLayout render = RenderJunctionTrackPlacement(t, p.paths, p.graph, p.cut, p.programs, p.seed, &error, &routes);
+	REQUIRE(!render.tracks.empty());
+	std::set<std::pair<int, int>> heads;
+	for (const std::array<JunctionBridge, 2> &copies : p.seed.bridges) {
+		for (const JunctionBridge &b : copies) {
+			if (b.start.x == b.end.x && b.start.y == b.end.y) continue;
+			heads.emplace(b.start.x, b.start.y);
+			heads.emplace(b.end.x, b.end.y);
+		}
+	}
+	std::set<std::pair<int, int>> rendered;
+	for (const JunctionTrackRoute &route : routes) {
+		for (const JunctionPiece &piece : route.pieces) {
+			if (piece.on_bridge && !heads.contains({piece.tile.x, piece.tile.y})) continue;
+			rendered.emplace(piece.tile.x, piece.tile.y);
+		}
+	}
+	REQUIRE(!rendered.empty());
+
+	/* Flat ground over the box with a margin of 1: the facts of each solve are rebuilt, so the snapshot stays small. */
+	JunctionTerrain flat;
+	flat.origin = {-1, -1};
+	flat.width = p.seed.size.x + 2;
+	flat.height = p.seed.size.y + 2;
+	flat.tiles.assign(static_cast<size_t>(flat.width) * flat.height, JunctionTerrainTile{});
+	flat.foundation_cost = 250;
+	/* Every rendered tile on its own changes the placement or fails it: a fact is applied to it. */
+	std::string missing;
+	for (const auto &[x, y] : rendered) {
+		const JunctionTrackPlacement q = PlaceWithHouses(t, p, flat, {{x, y}}, &error);
+		if (!q.nodes.empty() && SamePlacement(p.seed, q)) missing += fmt::format(" ({},{})", x, y);
+	}
+	/* Every other tile of the box blocked at once leaves the seed as it is: a fact applied to any of them would move it, as the seed covers the tile (the seed is the least solution of any set of facts it meets). */
+	std::vector<std::pair<int, int>> others;
+	for (int y = 0; y < p.seed.size.y; y++) {
+		for (int x = 0; x < p.seed.size.x; x++) {
+			if (!rendered.contains({x, y})) others.emplace_back(x, y);
+		}
+	}
+	const JunctionTrackPlacement rest = PlaceWithHouses(t, p, flat, others, &error);
+	INFO(error);
+	REQUIRE(!rest.nodes.empty());
+	INFO("rendered tiles without a fact:" << missing);
+	CHECK(missing.empty());
+	CHECK(SamePlacement(p.seed, rest));
+}
+
+TEST_CASE("topoproj: placement on facts around each of 20 houses", "[junction][topoprojsweep]")
+{
+	/* The terrain and the 20 tiles of the P4a sweep. The node path's working frame is the seed's: the terrain is FlatTerrainAround of the seed's render, so the offset is (0, 0). */
+	const JunctionTopology &t = JunctionLLRRSidelineTopology();
+	const GraphSolveSetup setup = GraphSolveSetupOf(t);
+	const JunctionTerrain flat = FlatTerrainAround(setup.signalled);
+	const JunctionNodeSolve base = SolveLLRRBlocked(setup, flat, {});
+	REQUIRE(base.layout.has_value());
+	std::set<std::pair<int, int>> tile_set;
+	for (const JunctionTrack &jt : base.layout->tracks) tile_set.emplace(jt.offset.x, jt.offset.y);
+	const std::vector<std::pair<int, int>> tiles(tile_set.begin(), tile_set.end());
+	REQUIRE(tiles.size() >= 20);
+	const size_t k = tiles.size() / 20;
+
+	/* The seed of the setup's frame: RenderOf's spec (max_bridge_middle 64). */
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.max_bridge_middle = 64;
+	const SeedPipeline p = SeedPipelineOf(t, spec);
+	{
+		std::string render_error;
+		const auto a = TileBitsOf(p.layout), b = TileBitsOf(RenderOf(t, 64, &render_error));
+		int diff = 0;
+		for (const auto &[tile, bits] : a) {
+			const auto it = b.find(tile);
+			if (it == b.end() || it->second != bits) diff++;
+		}
+		INFO("tiles " << a.size() << " vs " << b.size());
+		CHECK(diff == 0);
+		CHECK(a.size() == b.size());
+	}
+
+	int placed = 0, node_placed = 0;
+	double solve_ms = 0;
+	for (size_t j = 0; j < 20; j++) {
+		const std::pair<int, int> tile = tiles[j * k];
+		const JunctionNodeSolve node = SolveLLRRBlocked(setup, flat, {tile});
+		if (!node.failure.has_value()) node_placed++;
+		std::string error;
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionTrackPlacement q = PlaceWithHouses(t, p, flat, {tile}, &error);
+		solve_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+		INFO("tile " << tile.first << "," << tile.second << ": " << error);
+		if (q.nodes.empty()) {
+			/* A failure names the house first, and every entry names a graph element or a fact. */
+			REQUIRE(!q.why.empty());
+			CHECK(std::string(q.why.front().rule) == "blocked tile");
+			CHECK(error.find(fmt::format("({},{})", tile.first, tile.second)) != std::string::npos);
+			for (const JunctionPlacementReason &reason : q.why) {
+				REQUIRE(reason.rule != nullptr);
+				CHECK(error.find(reason.rule) != std::string::npos);
+				const std::string rule = reason.rule;
+				CHECK((reason.edge != UINT32_MAX || reason.node != UINT32_MAX || reason.row >= 0 || rule == "blocked tile" || rule == "origin" || rule == "port columns"));
+			}
+			std::string first_two;
+			for (size_t i = 0; i < std::min<size_t>(2, q.why.size()); i++) first_two += fmt::format("{}{} (edge {} node {} row {})", i == 0 ? "" : " <- ", q.why[i].rule, static_cast<int>(q.why[i].edge), static_cast<int>(q.why[i].node), q.why[i].row);
+			WARN("tile " << tile.first << "," << tile.second << " fails: " << first_two);
+			continue;
+		}
+		placed++;
+		WARN("tile " << tile.first << "," << tile.second << " solved");
+		std::vector<JunctionTrackRoute> routes;
+		JunctionLayout layout = RenderJunctionTrackPlacement(t, p.paths, p.graph, p.cut, p.programs, q, &error, &routes);
+		INFO(error);
+		REQUIRE(!layout.tracks.empty());
+		SignalJunctionTrackRoutes(layout, routes, t, p.paths, p.graph, p.programs, p.spec);
+		for (const RuleViolation &viol : CheckJunctionRules(layout, p.spec, t)) {
+			INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message));
+			CHECK(false);
+		}
+		std::set<std::pair<int, int>> heads;
+		for (const std::array<JunctionBridge, 2> &copies : q.bridges) {
+			for (const JunctionBridge &b : copies) {
+				heads.emplace(b.start.x, b.start.y);
+				heads.emplace(b.end.x, b.end.y);
+			}
+		}
+		for (const JunctionTrackRoute &route : routes) {
+			for (const JunctionPiece &piece : route.pieces) {
+				if (piece.tile.x != tile.first || piece.tile.y != tile.second) continue;
+				CHECK((piece.on_bridge && !heads.contains(tile)));
+			}
+		}
+	}
+	WARN("placement solved " << placed << " of 20, node path solved " << node_placed << " of 20; mean " << solve_ms / 20 << " ms per facts placement (with its terrain and facts)");
+}

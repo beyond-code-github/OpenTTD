@@ -934,8 +934,10 @@ static int JunctionRunBetween(int kind_a, int hand_a, int m_a, int kind_b, int h
  * The placement of a programmed track graph (DESIGN-G1 §11.8, §14.2).
  * @param fixed The choices to solve with (one Y and one X solve), or nullptr for the rounds that find them.
  * @param x_floors (point, least column) pairs for the X phase (see the public overload).
+ * @param facts The target terrain's facts for the X phase of a fixed solve (DESIGN-G1 §14.4), or nullptr.
+ * @param offset The working tile of the placement's (0, 0); only with facts.
  */
-static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors)
+static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0})
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
 	using Step = JunctionTrackStep;
@@ -1122,6 +1124,15 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	};
 	std::vector<Cons> cons;
 	std::vector<JunctionPlacementReason> reasons;
+	/* A terrain fact of the X phase: a domain of columns for a point, or a run from point v to point u that must not cover the column columns[0]. */
+	struct FactCons {
+		int v;
+		int u; ///< -1 for a domain.
+		std::vector<int> columns;
+		uint32_t reason; ///< Index into 'reasons'.
+	};
+	std::vector<FactCons> fact_cons;
+	std::map<uint32_t, std::string> notes; ///< Per reason of a fact, the tiles it names, for the error text.
 	JunctionPlacementReason why_now; ///< The reason of the relations added now (DESIGN-G1 §14.4).
 	auto why = [&](const char *rule, uint32_t edge = UINT32_MAX, uint32_t node = UINT32_MAX, int row = -1) { why_now = JunctionPlacementReason{rule, edge, node, static_cast<int32_t>(row)}; };
 	int phase = 0; // 0: X, 1: Y.
@@ -1141,12 +1152,18 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		/* A least solution is a longest path, so no point lies beyond the sum of the positive constants; a larger lo is a positive cycle. */
 		int bound = 1;
 		for (const Cons &cn : cons) bound += std::max(cn.k, 0);
+		/* Facts can push points across the whole snapshot (DESIGN-G1 §14.4). */
+		if (facts != nullptr && phase == 0) bound = std::max(bound, facts->MaxX() - offset.x + 1);
 		JunctionPositions positions(pt_count, 0, bound);
 		reasons.push_back(JunctionPlacementReason{"origin"});
 		bool ok = positions.RestrictRange(0, 0, 0, static_cast<uint32_t>(reasons.size() - 1));
 		for (const Cons &cn : cons) {
 			if (!ok) break;
 			ok = positions.AddDifference(cn.v, cn.u, cn.k, cn.reason);
+		}
+		for (const FactCons &fc : fact_cons) {
+			if (!ok) break;
+			ok = fc.u < 0 ? positions.RestrictDomain(fc.v, fc.columns, fc.reason) : positions.AddAvoid(fc.v, fc.u, fc.columns[0], fc.reason);
 		}
 		if (!ok) {
 			std::string chain_text;
@@ -1158,7 +1175,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				if (reason.edge != UINT32_MAX) parts += fmt::format("edge {}", reason.edge);
 				if (reason.node != UINT32_MAX) parts += fmt::format("{}node {}", parts.empty() ? "" : ", ", reason.node);
 				if (reason.row >= 0) parts += fmt::format("{}row {}", parts.empty() ? "" : ", ", reason.row);
-				chain_text += fmt::format("{}{}{}", chain_text.empty() ? "" : " <- ", reason.rule, parts.empty() ? "" : " (" + parts + ")");
+				const auto note = notes.find(index);
+				chain_text += fmt::format("{}{}{}{}", chain_text.empty() ? "" : " <- ", reason.rule, parts.empty() ? "" : " (" + parts + ")", note == notes.end() ? "" : " " + note->second);
 			}
 			if (error != nullptr) *error = "the placement rules contradict each other: " + chain_text;
 			return false;
@@ -1269,6 +1287,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	auto build = [&]() {
 		cons.clear();
 		reasons.clear();
+		fact_cons.clear();
+		notes.clear();
 		why_now = JunctionPlacementReason{};
 		const bool x_phase = phase == 0;
 		if (x_phase) hug_picks.clear();
@@ -1660,6 +1680,145 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			for (const std::pair<int, int> &floor : x_floors) ge(0, floor.first, 0, floor.second);
 		}
 
+		if (x_phase && facts != nullptr) {
+			/* The terrain's facts (DESIGN-G1 §14.4): every group of tiles gets the columns where its tile is buildable, every straight run on a row must be buildable on each tile it covers. Bridge middles are not checked: the node path checks no bridge piece either (JunctionNodeHeightsOk skips on_bridge). */
+			const int high = facts->MaxX() - offset.x;
+			std::vector<uint32_t> node_of_pt(pt_count, UINT32_MAX);
+			for (uint32_t i = 0; i < node_pt.size(); i++) node_of_pt[node_pt[i]] = i;
+			auto fact_reason = [&](uint32_t e, uint32_t node, int row, const std::string &note) {
+				reasons.push_back(JunctionPlacementReason{"blocked tile", e, node, static_cast<int32_t>(row)});
+				if (!note.empty()) notes[static_cast<uint32_t>(reasons.size() - 1)] = note;
+				return static_cast<uint32_t>(reasons.size() - 1);
+			};
+			auto holds = [&](JunctionFactKind kind, Axis axis, int x, int y) {
+				int entry, exit;
+				switch (kind) {
+					case JunctionFactKind::Straight: return facts->Straight(x, y, axis, entry, exit);
+					case JunctionFactKind::Switch: return facts->Switch(x, y);
+					default: return facts->Half(x, y);
+				}
+			};
+			/* A group tile: anchor point pt, column offset dx, row y; its anchor's columns where the fact holds. */
+			auto group = [&](int pt, int dx, int y, JunctionFactKind kind, Axis axis, uint32_t e, uint32_t node, int row) {
+				std::vector<int> allowed;
+				std::string tiles;
+				int named = 0;
+				for (int c = 0; c <= high; c++) {
+					const int x = c + dx + offset.x;
+					if (holds(kind, axis, x, y + offset.y)) {
+						allowed.push_back(c);
+					} else if (x >= facts->MinX() && x <= facts->MaxX() && named++ < 4) {
+						tiles += fmt::format("{}({},{})", tiles.empty() ? "" : " ", x, y + offset.y);
+					}
+				}
+				const uint32_t reason = fact_reason(e, node, row, tiles.empty() ? std::string() : "[blocked tile " + tiles + "]");
+				fact_cons.push_back({pt, -1, std::move(allowed), reason});
+			};
+			/* A straight run on row y from point a to point b, in the travel sense sgn (+1 east). */
+			auto row_run = [&](int a, int b, int y, int sgn, uint32_t e, int row) {
+				for (int x = facts->MinX(); x <= facts->MaxX(); x++) {
+					int entry, exit;
+					if (facts->Straight(x, y + offset.y, Axis::X, entry, exit)) continue;
+					const uint32_t reason = fact_reason(e, UINT32_MAX, row, fmt::format("[blocked tile ({},{})]", x, y + offset.y));
+					fact_cons.push_back({sgn > 0 ? a : b, sgn > 0 ? b : a, {x - offset.x}, reason});
+				}
+			};
+
+			/* The chains of the edges that are not rows. */
+			for (uint32_t e = 0; e < edge_count; e++) {
+				if (is_row_edge(e)) continue;
+				const std::vector<Elem> &elems = chain[e];
+				for (size_t i = 0; i < elems.size(); i++) {
+					const Elem &el = elems[i];
+					if (el.k == Elem::K::Tile) {
+						const uint32_t node = node_of_pt[el.first];
+						if (node != UINT32_MAX) {
+							group(el.first, 0, vy[el.first], JunctionFactKind::Switch, Axis::X, e, node, -1);
+						} else {
+							group(el.first, 0, vy[el.first], JunctionFactKind::Straight, VX[el.hin] != 0 ? Axis::X : Axis::Y, e, UINT32_MAX, -1);
+						}
+					} else if (el.k == Elem::K::Heads) {
+						const Axis axis = VX[el.hin] != 0 ? Axis::X : Axis::Y;
+						group(el.first, 0, vy[el.first], JunctionFactKind::Straight, axis, e, UINT32_MAX, -1);
+						group(el.last, 0, vy[el.last], JunctionFactKind::Straight, axis, e, UINT32_MAX, -1);
+					} else {
+						for (size_t j = 0; j < el.offs.size(); j++) {
+							const TileIndexDiffC &o = el.offs[j];
+							const bool at_first = j == 0 && node_of_pt[el.first] != UINT32_MAX;
+							const bool at_last = j + 1 == el.offs.size() && node_of_pt[el.last] != UINT32_MAX;
+							const uint32_t node = at_first ? node_of_pt[el.first] : (at_last ? node_of_pt[el.last] : UINT32_MAX);
+							group(el.first, o.x, vy[el.first] + o.y, node != UINT32_MAX ? JunctionFactKind::Switch : JunctionFactKind::Half, Axis::X, e, node, -1);
+						}
+					}
+					if (i + 1 >= elems.size() || elems[i + 1].first == el.last) continue;
+					const Elem &next = elems[i + 1];
+					if (VX[el.hout] == 0) {
+						const int d = VY[el.hout];
+						for (int y = vy[el.last] + d; d > 0 ? y < vy[next.first] : y > vy[next.first]; y += d) group(el.last, 0, y, JunctionFactKind::Straight, Axis::Y, e, UINT32_MAX, -1);
+					} else {
+						row_run(el.last, next.first, vy[el.last], VX[el.hout], e, -1);
+					}
+				}
+			}
+
+			/* The rows: in fan, lane, doubled lane, out fan. */
+			for (int r = 0; r < rows; r++) {
+				const RowPts &rp = row_pts[r];
+				const JunctionTrackEdge &in = graph.edges[in_edge[r]];
+				const JunctionTrackEdge &out = graph.edges[out_edge[r]];
+				const int sgn = east[r] ? 1 : -1;
+				const int heading = east[r] ? 1 : 3;
+				const int m_in = fan_m[in_edge[r]];
+				const int m_out = fan_m[out_edge[r]];
+				const int y_in = port_row[in.from.index];
+				const int y_out = port_row[out.to.index];
+				const int y_exit = vy[item_pt[doubled_row(r) ? north_item[r] : lane_item[r]]];
+				const int y_lane = vy[item_pt[lane_item[r]]];
+				const int nex = node_pt[in.to.index];
+				const int njm = node_pt[out.from.index];
+				const uint32_t lane_edge = leg_edge[r];
+				if (m_in != 0) {
+					row_run(port_pt[in.from.index], rp.fif, y_in, sgn, in_edge[r], r);
+					const int hand = ((y_exit > y_in) == (heading == 1)) ? 1 : -1;
+					for (const TileIndexDiffC &o : bend_tiles(heading, hand, 2 * m_in, false)) group(rp.fif, o.x, y_in + o.y, JunctionFactKind::Half, Axis::X, in_edge[r], UINT32_MAX, r);
+				}
+				row_run(rp.fil, nex, y_exit, sgn, in_edge[r], r);
+				if (!doubled_row(r)) {
+					row_run(nex, njm, y_lane, sgn, lane_edge, r);
+				} else {
+					row_run(nex, rp.lane_split, y_exit, sgn, lane_edge, r);
+					row_run(rp.lane_split, rp.nh0[0], y_exit, sgn, lane_edge, r);
+					const size_t g = rp.nh0.size();
+					for (size_t k = 0; k < g; k++) {
+						group(rp.nh0[k], 0, y_exit, JunctionFactKind::Straight, Axis::X, lane_edge, UINT32_MAX, r);
+						group(rp.fh0[k], 0, y_exit, JunctionFactKind::Straight, Axis::X, lane_edge, UINT32_MAX, r);
+						group(rp.nh1[k], 0, y_lane, JunctionFactKind::Straight, Axis::X, lane_edge, UINT32_MAX, r);
+						group(rp.fh1[k], 0, y_lane, JunctionFactKind::Straight, Axis::X, lane_edge, UINT32_MAX, r);
+						if (k + 1 < g) {
+							row_run(rp.fh0[k], rp.nh0[k + 1], y_exit, sgn, lane_edge, r);
+							row_run(rp.fh1[k], rp.nh1[k + 1], y_lane, sgn, lane_edge, r);
+						}
+					}
+					row_run(rp.fh0[g - 1], rp.sb0_first, y_exit, sgn, lane_edge, r);
+					row_run(rp.sb1_last, rp.nh1[0], y_lane, sgn, lane_edge, r);
+					row_run(rp.fh1[g - 1], rp.lane_merge, y_lane, sgn, lane_edge, r);
+					row_run(rp.lane_merge, njm, y_lane, sgn, lane_edge, r);
+					for (int copy = 0; copy < 2; copy++) {
+						for (const Step &step : copy == 0 ? programs.edges[lane_edge] : programs.copies[lane_edge]) {
+							if (step.kind != StepKind::SBend) continue;
+							for (const TileIndexDiffC &o : bend_tiles(heading, step.hand, 2 * std::abs(y_lane - y_exit), false)) group(copy == 0 ? rp.sb0_first : rp.lane_split, o.x, y_exit + o.y, JunctionFactKind::Half, Axis::X, lane_edge, UINT32_MAX, r);
+						}
+					}
+				}
+				row_run(njm, rp.fof, y_lane, sgn, out_edge[r], r);
+				if (m_out != 0) {
+					const int hand = ((y_out > y_lane) == (heading == 1)) ? 1 : -1;
+					for (const TileIndexDiffC &o : bend_tiles(heading, hand, 2 * m_out, false)) group(rp.fof, o.x, y_lane + o.y, JunctionFactKind::Half, Axis::X, out_edge[r], UINT32_MAX, r);
+					row_run(rp.fol, port_pt[out.to.index], y_out, sgn, out_edge[r], r);
+				}
+			}
+		}
+
 		why("box bound");
 		if (x_phase) {
 			for (int p = 1; p < pt_count; p++) {
@@ -1940,6 +2099,11 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors)
 {
 	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, x_floors);
+}
+
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error)
+{
+	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, {}, &facts, offset);
 }
 
 JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error, std::vector<JunctionTrackRoute> *routes)

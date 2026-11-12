@@ -10,6 +10,7 @@
 #ifndef JUNCTION_TOPOLOGY_H
 #define JUNCTION_TOPOLOGY_H
 
+#include "junction_facts.h"
 #include "junction_layout.h"
 #include "junction_route.h"
 
@@ -265,6 +266,14 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
  * @param x_floors (point, least column) pairs added as lower bounds in the X phase, reason "x floor"; a test seam until terrain facts (DESIGN-G1 §14.4). Points are the placement's internal ids, as choices.hug uses.
  */
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors = {});
+
+/**
+ * The fixed-choices placement with the target terrain's facts in the X phase (DESIGN-G1 §14.4, D216): every group of tiles (a bend, a switch tile, a bridge head, a vertical run's tile) is restricted to the columns where its tile is buildable, and a straight run on a row must be buildable on every tile it covers. Rows stay as the structure gives them.
+ * @param facts The target terrain's facts.
+ * @param offset The working tile of the placement's (0, 0), as the node solve's offset.
+ * @param error Receives the reason when the result is empty; JunctionTrackPlacement::why then names the relations of a contradiction, a fact's tile in the error text.
+ */
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error);
 
 /**
  * The series-bridge cut (D209, DESIGN-G1 §11.9a): every doubled bridge cut into consecutive bridges of at most JUNCTION_BRIDGE_MAX_CROSSERS crossings, choosing among the cuts with the fewest bridges whose placement succeeds the one with the least box width, then height, then the first tried.

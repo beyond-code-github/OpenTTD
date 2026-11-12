@@ -77,6 +77,17 @@ TEST_CASE("positions: an infeasible propagation explains itself", "[junction][po
 	CHECK(feasible.Explain(2, true) == std::vector<uint32_t>{8, 7, 6});
 }
 
+TEST_CASE("positions: a domain or avoid explains itself", "[junction][positions]")
+{
+	JunctionPositions p(2, 0, 100);
+	CHECK(p.AddDifference(1, 0, 3, 7));
+	CHECK(p.RestrictDomain(0, {5}, 10));
+	const JunctionPositions feasible = p;
+	CHECK(feasible.Explain(1, true) == std::vector<uint32_t>{7, 10});
+	CHECK_FALSE(p.AddAvoid(0, 1, 5, 11));
+	CHECK(p.Explain() == std::vector<uint32_t>{11, 7, 10});
+}
+
 TEST_CASE("positions: undo restores exactly", "[junction][positions]")
 {
 	JunctionPositions p(3, 0, 20);

@@ -72,8 +72,8 @@ bool JunctionPositions::PropagateDifference(const Difference &d)
 
 bool JunctionPositions::PropagateAvoid(const Avoid &a)
 {
-	if (this->lo[a.a] <= a.c && a.c <= this->lo[a.b] && !this->SetLo(a.a, a.c + 1, {})) return false;
-	if (this->up[a.a] <= a.c && a.c <= this->up[a.b] && !this->SetUp(a.b, a.c - 1, {})) return false;
+	if (this->lo[a.a] <= a.c && a.c <= this->lo[a.b] && !this->SetLo(a.a, a.c + 1, {a.reason, a.b})) return false;
+	if (this->up[a.a] <= a.c && a.c <= this->up[a.b] && !this->SetUp(a.b, a.c - 1, {a.reason, a.a})) return false;
 	return true;
 }
 
@@ -119,7 +119,7 @@ bool JunctionPositions::RestrictRange(size_t v, int min_value, int max_value, ui
 	return this->Propagate();
 }
 
-bool JunctionPositions::RestrictDomain(size_t v, const std::vector<int> &allowed)
+bool JunctionPositions::RestrictDomain(size_t v, const std::vector<int> &allowed, uint32_t reason)
 {
 	std::vector<uint64_t> keep(this->domain[v].size(), 0);
 	for (int value : allowed) {
@@ -133,19 +133,19 @@ bool JunctionPositions::RestrictDomain(size_t v, const std::vector<int> &allowed
 		this->trail.push_back({TrailEntry::Kind::DomainWord, v * keep.size() + w, static_cast<int64_t>(this->domain[v][w]), {}});
 		this->domain[v][w] = word;
 	}
-	if (!this->SetLo(v, this->lo[v], {}) || !this->SetUp(v, this->up[v], {})) {
+	if (!this->SetLo(v, this->lo[v], {reason, SIZE_MAX}) || !this->SetUp(v, this->up[v], {reason, SIZE_MAX})) {
 		this->queue.clear();
 		return false;
 	}
 	return this->Propagate();
 }
 
-bool JunctionPositions::AddAvoid(size_t a, size_t b, int c)
+bool JunctionPositions::AddAvoid(size_t a, size_t b, int c, uint32_t reason)
 {
 	this->trail.push_back({TrailEntry::Kind::Avoid, this->avoids.size(), 0, {}});
 	this->avoids_of[a].push_back(this->avoids.size());
 	this->avoids_of[b].push_back(this->avoids.size());
-	this->avoids.push_back({a, b, c});
+	this->avoids.push_back({a, b, c, reason});
 	this->queue.push_back(a);
 	this->queue.push_back(b);
 	return this->Propagate();
