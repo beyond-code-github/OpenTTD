@@ -2867,7 +2867,6 @@ STR_BUILD_DEPOT_TRAIN_ORIENTATION_TOOLTIP                       :{BLACK}Select r
 
 # Rail junction construction window
 STR_JUNCTION_CAPTION                                            :{WHITE}Junction
-STR_JUNCTION_NAME                                               :{BLACK}{RAW_STRING} × {RAW_STRING}, train {NUM}
 STR_JUNCTION_MAINLINE_LABEL                                     :{BLACK}Mainline
 STR_JUNCTION_MAINLINE_TOOLTIP                                   :{BLACK}Lines of the mainline: L is a track going left, R a track going right, each underscore a tile of gap. "L_R" is one track each way with one tile between; more underscores widen the gap
 STR_JUNCTION_BRANCH_LABEL                                       :{BLACK}Branch
@@ -2884,12 +2883,11 @@ STR_JUNCTION_ERROR_NO_LAYOUT_HERE                               :{RED}No junctio
 STR_JUNCTION_ERROR_PORT_BLOCKED                                 :{RED}A junction end is blocked here: move the cursor
 STR_JUNCTION_ERROR_PRIO_TOO_LONG                                :{RED}Prio coverage would exceed 32 tiles for this train
 STR_JUNCTION_ERROR_PRIO_DELAYS_MAINLINE                         :{RED}The prio coverage is too short at this spot
-STR_JUNCTION_PROJECTION                                         :{BLACK}Projection (terraform)
-STR_JUNCTION_PROJECTION_TOOLTIP                                 :{BLACK}Plan the junction on the projection pipeline, with terraforming where the ground needs it; off uses the earlier generator
 STR_JUNCTION_ROTATE                                             :{BLACK}Rotate
 STR_JUNCTION_ROTATE_TOOLTIP                                     :{BLACK}Rotate the junction a quarter turn (hotkey .)
 STR_JUNCTION_MIRROR                                             :{BLACK}Mirror
 STR_JUNCTION_MIRROR_TOOLTIP                                     :{BLACK}Mirror the junction (hotkey ,)
+STR_JUNCTION_TOOLTIP                                             :{RAW_STRING}
 STR_JUNCTION_TOOLTIP_COST                                       :{BLACK}Cost: {CURRENCY_LONG}
 STR_JUNCTION_TOOLTIP_UNAFFORDABLE                               :{RED}Cost: {CURRENCY_LONG} (you have {CURRENCY_LONG})
 STR_JUNCTION_TOOLTIP_INVALID                                    :{RED}Can't build here: {STRING}

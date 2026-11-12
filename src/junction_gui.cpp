@@ -34,6 +34,9 @@
 #include "tilehighlight_type.h"
 #include "bridge.h"
 #include "vehicle_base.h"
+#include "vehicle_gui.h"
+#include "company_func.h"
+#include "train.h"
 #include "settings_type.h"
 #include "debug.h"
 #include "widgets/junction_widget.h"
@@ -340,7 +343,9 @@ bool IsJunctionTrainPickActive()
 
 static uint8_t _junction_rotation = 0; ///< Quarter turns applied to the junction being placed.
 static bool _junction_mirrored = false; ///< Whether the junction being placed is mirrored.
-static bool _junction_projection = true; ///< Whether the hover plans on the projection pipeline with terraform (H2) instead of the earlier generator.
+static constexpr bool _junction_projection = true; ///< The hover plans on the projection pipeline with terraform (H2); the earlier generator is no longer reachable from the window.
+static std::optional<VehicleID> _junction_picked_train; ///< The last picked design train, remembered between openings of the window (game session only).
+static uint8_t _junction_prio_tiles = 0; ///< The last slider choice, remembered between openings of the window; 0 = the strict maximum.
 
 /** What a generated junction depends on: the spot, the orientation and the generator inputs. */
 struct JunctionGenerateKey {
@@ -438,6 +443,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	std::optional<JunctionPickedTrain> picked_train; ///< The picked train, if the train length comes from one.
 	StringID pick_error = INVALID_STRING_ID; ///< Error of the last pick, shown in the status line.
 	uint8_t prio_choice = 0; ///< Slider choice; 0 = the strict maximum (D139).
+	EncodedString shown_tooltip; ///< The cursor tooltip as last shown; empty when none is.
 
 	BuildJunctionWindow(WindowDesc &desc, Window *parent, RailType railtype) : PickerWindowBase(desc, parent), railtype(railtype),
 		ml_editbox(MAX_NOTATION_LENGTH * MAX_CHAR_LENGTH, MAX_NOTATION_LENGTH), branch_editbox(MAX_NOTATION_LENGTH * MAX_CHAR_LENGTH, MAX_NOTATION_LENGTH),
@@ -448,7 +454,13 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->ml_editbox.text.Assign(_settings_client.gui.junction_ml_notation);
 		this->branch_editbox.text.Assign(_settings_client.gui.junction_branch_notation);
 		this->InitNested(TransportType::Rail);
-		this->SetWidgetLoweredState(WID_BJ_PROJECTION, _junction_projection);
+		/* Restore the remembered train if it is still one of ours; its data is read afresh. */
+		if (_junction_picked_train.has_value()) {
+			const Vehicle *v = Vehicle::GetIfValid(*_junction_picked_train);
+			if (v != nullptr && v->type == VehicleType::Train && v->IsFrontEngine() && v->owner == _local_company) this->picked_train = ReadJunctionTrain(v);
+			if (!this->picked_train.has_value()) _junction_picked_train = std::nullopt;
+		}
+		this->prio_choice = _junction_prio_tiles;
 		this->Regenerate();
 	}
 
@@ -641,8 +653,6 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->hover_why.clear();
 		_thd.make_square_red = false;
 		SetTileSelectSize(1, 1);
-		this->SetWidgetDirty(WID_BJ_COST);
-		this->SetWidgetDirty(WID_BJ_STATUS);
 		this->SetWidgetDirty(WID_BJ_PRIO_LABEL);
 		this->SetWidgetDirty(WID_BJ_PRIO_SLIDER);
 	}
@@ -810,20 +820,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->placement_cost = estimate.total;
 		this->placement_affordable = estimate.affordable;
 		this->placement_error = estimate.bad_tiles.empty() ? INVALID_STRING_ID : GetPlacementError(estimate);
-		this->SetWidgetDirty(WID_BJ_COST);
-		this->SetWidgetDirty(WID_BJ_STATUS);
 		this->SetWidgetDirty(WID_BJ_PRIO_LABEL);
 		this->SetWidgetDirty(WID_BJ_PRIO_SLIDER);
-
-		EncodedString text;
-		if (!estimate.bad_tiles.empty()) {
-			text = GetEncodedString(STR_JUNCTION_TOOLTIP_INVALID, GetPlacementError(estimate));
-		} else if (!estimate.affordable) {
-			text = GetEncodedString(STR_JUNCTION_TOOLTIP_UNAFFORDABLE, estimate.total, available);
-		} else {
-			text = GetEncodedString(STR_JUNCTION_TOOLTIP_COST, estimate.total);
-		}
-		GuiShowTooltips(this, std::move(text), TooltipCloseCondition::ExitViewport);
 	}
 
 	/** Start a job for the hovered tile on the main thread's snapshot, unless one for it is running. */
@@ -1025,14 +1023,13 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				this->pick_error = INVALID_STRING_ID;
 				_junction_picking_train = true;
 				SetObjectToPlaceWnd(SPR_CURSOR_CLONE_TRAIN, PAL_NONE, HT_VEHICLE, this);
-				this->SetWidgetDirty(WID_BJ_STATUS);
 				SndClickBeep();
 				break;
 
 			case WID_BJ_TL_DECREASE:
 				if (this->tl > 2) {
 					this->tl--;
-					this->prio_choice = 0;
+					this->prio_choice = _junction_prio_tiles = 0;
 					this->Regenerate();
 				}
 				break;
@@ -1040,7 +1037,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			case WID_BJ_TL_INCREASE:
 				if (this->tl < 12) {
 					this->tl++;
-					this->prio_choice = 0;
+					this->prio_choice = _junction_prio_tiles = 0;
 					this->Regenerate();
 				}
 				break;
@@ -1052,22 +1049,13 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				if (ClickSliderWidget(this->GetWidget<NWidgetBase>(widget)->GetCurrentRect(), pt, std::min(this->tl, sized), sized, 0, value)) {
 					const uint8_t choice = value >= sized ? 0 : value;
 					if (choice != this->prio_choice) {
-						this->prio_choice = choice;
+						this->prio_choice = _junction_prio_tiles = choice;
 						this->Regenerate();
 					}
 				}
 				if (click_count > 0) this->mouse_capture_widget = widget;
 				break;
 			}
-
-			case WID_BJ_PROJECTION:
-				_junction_projection = !_junction_projection;
-				this->SetWidgetLoweredState(WID_BJ_PROJECTION, _junction_projection);
-				this->SetWidgetDirty(WID_BJ_PROJECTION);
-				this->DetachJob();
-				this->ResetHover();
-				SndClickBeep();
-				break;
 
 			case WID_BJ_ROTATE:
 				_junction_rotation = (_junction_rotation + 1) % 4;
@@ -1088,14 +1076,15 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		std::optional<JunctionPickedTrain> picked = ReadJunctionTrain(v);
 		if (!picked.has_value()) {
 			this->pick_error = STR_JUNCTION_ERROR_NOT_OUR_TRAIN;
-			this->SetWidgetDirty(WID_BJ_STATUS);
 			return true;
 		}
 
 		this->pick_error = INVALID_STRING_ID;
 		this->tl = picked->tl;
 		this->picked_train = std::move(picked);
-		this->prio_choice = 0;
+		_junction_picked_train = v->First()->index;
+		this->SetWidgetDirty(WID_BJ_TRAIN_IMAGE);
+		this->prio_choice = _junction_prio_tiles = 0;
 		this->Regenerate();
 		this->SetWidgetDirty(WID_BJ_TRAIN);
 		_junction_picking_train = false;
@@ -1133,9 +1122,6 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
-		if (widget == WID_BJ_NAME) {
-			return GetString(STR_JUNCTION_NAME, this->ml_editbox.text.GetText(), this->branch_editbox.text.GetText(), this->tl);
-		}
 		if (widget == WID_BJ_TRAIN) {
 			if (!this->picked_train.has_value()) return GetString(STR_JUNCTION_TRAIN_NONE);
 			const JunctionPickedTrain &t = *this->picked_train;
@@ -1148,34 +1134,17 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			return GetString(STR_JUNCTION_PRIO_LENGTH, this->EffectivePrio(), this->SizedPrio());
 		}
 		if (widget == WID_BJ_TL_LABEL) return GetString(STR_JUNCTION_TRAIN_LENGTH, this->tl);
-		if (widget == WID_BJ_STATUS) {
-			const JunctionSequencer &seq = GetJunctionSequencer();
-			if (seq.GetState() == JunctionBuildState::Idle) {
-				if (this->pick_error != INVALID_STRING_ID && _junction_picking_train) return GetString(this->pick_error);
-				if (this->generate_error != INVALID_STRING_ID) return GetString(this->generate_error);
-				if (!this->picked_train.has_value()) return GetString(STR_JUNCTION_STATUS_PICK_TRAIN);
-				if (this->SizingStatus() != INVALID_STRING_ID) return GetString(this->SizingStatus());
-				if (this->hover_status == STR_JUNCTION_STATUS_PLAN_FAILED) return GetString(this->hover_status, this->hover_why);
-				if (this->hover_status != INVALID_STRING_ID) return GetString(this->hover_status);
-				if (this->has_shown && this->shown_distance != 0) return GetString(STR_JUNCTION_STATUS_NEARBY, this->shown_distance);
-			}
-			switch (seq.GetState()) {
-				case JunctionBuildState::Building: return GetString(STR_JUNCTION_STATUS_BUILDING, seq.GetDone(), seq.GetTotal());
-				case JunctionBuildState::Failed: return GetString(STR_JUNCTION_STATUS_FAILED, seq.GetDone(), seq.GetTotal());
-				default: return GetString(STR_JUNCTION_STATUS_READY);
-			}
-		}
-		if (widget == WID_BJ_COST) {
-			if (!this->has_placement) return GetString(STR_EMPTY);
-			if (this->placement_error != INVALID_STRING_ID) return GetString(STR_JUNCTION_COST_INVALID, this->placement_error);
-			if (!this->placement_affordable) return GetString(STR_JUNCTION_COST_UNAFFORDABLE, this->placement_cost);
-			return GetString(STR_JUNCTION_COST, this->placement_cost);
-		}
 		return this->PickerWindowBase::GetWidgetString(widget, stringid);
 	}
 
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
+		if (widget == WID_BJ_TRAIN_IMAGE) {
+			/* The remembered train, if it is still there; a longer one is clipped at the widget's end. */
+			const Train *t = _junction_picked_train.has_value() && this->picked_train.has_value() ? Train::GetIfValid(*_junction_picked_train) : nullptr;
+			if (t != nullptr) DrawTrainImage(t, r.Shrink(WidgetDimensions::scaled.framerect), VehicleID::Invalid(), EngineImageType::OnMap, 0);
+			return;
+		}
 		if (widget != WID_BJ_PRIO_SLIDER) return;
 		const uint8_t sized = this->SizedPrio();
 		if (sized == 0) return; // No value to show: the row stays blank.
@@ -1184,15 +1153,14 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
 	{
-		if (widget == WID_BJ_TRAIN) {
-			/* Room for a 20 character name and 2 digit numbers. */
-			size.width = std::max(size.width, GetStringBoundingBox(GetString(STR_JUNCTION_TRAIN, std::string(20, 'W'), GetParamMaxDigits(2), GetParamMaxDigits(2))).width + padding.width);
+		if (widget == WID_BJ_TRAIN_IMAGE) {
+			size.height = std::max(size.height, GetVehicleImageCellSize(VehicleType::Train, EngineImageType::OnMap).height + WidgetDimensions::scaled.framerect.Vertical());
+			size.width = std::max(size.width, (GetVehicleImageCellSize(VehicleType::Train, EngineImageType::OnMap).extend_left + GetVehicleImageCellSize(VehicleType::Train, EngineImageType::OnMap).extend_right) * 2);
 		}
-		if (widget == WID_BJ_COST) {
-			/* Reserve room for late-game amounts of up to 15 digits. */
-			size.width = std::max(size.width, std::max(
-				GetStringBoundingBox(GetString(STR_JUNCTION_COST, GetParamMaxDigits(15))).width,
-				GetStringBoundingBox(GetString(STR_JUNCTION_COST_UNAFFORDABLE, GetParamMaxDigits(15))).width) + padding.width);
+		if (widget == WID_BJ_TRAIN) {
+			/* Room for the current text, or for a 12 character name and 2 digit numbers when that is wider. */
+			size.width = std::max({size.width, GetStringBoundingBox(this->GetWidgetString(widget, STR_NULL)).width + padding.width,
+				GetStringBoundingBox(GetString(STR_JUNCTION_TRAIN, std::string(12, 'W'), GetParamMaxDigits(2), GetParamMaxDigits(2))).width + padding.width});
 		}
 	}
 
@@ -1262,6 +1230,54 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		SetTileSelectSize(1, 1);
 	}
 
+	/** @return The cost line of the placement at the cursor; empty when there is none. */
+	std::string CostText() const
+	{
+		if (!this->has_placement) return {};
+		if (this->placement_error != INVALID_STRING_ID) return GetString(STR_JUNCTION_TOOLTIP_INVALID, this->placement_error);
+		if (!this->placement_affordable) return GetString(STR_JUNCTION_TOOLTIP_UNAFFORDABLE, this->placement_cost, GameJunctionPricing(this->railtype).AvailableMoney());
+		return GetString(STR_JUNCTION_TOOLTIP_COST, this->placement_cost);
+	}
+
+	/** @return The status line: the pick error, why nothing is shown, how the shown placement sits, or the build progress. */
+	std::string StatusText() const
+	{
+		const JunctionSequencer &seq = GetJunctionSequencer();
+		if (seq.GetState() == JunctionBuildState::Idle) {
+			if (this->pick_error != INVALID_STRING_ID && _junction_picking_train) return GetString(this->pick_error);
+			if (this->generate_error != INVALID_STRING_ID) return GetString(this->generate_error);
+			if (!this->picked_train.has_value()) return GetString(STR_JUNCTION_STATUS_PICK_TRAIN);
+			if (this->SizingStatus() != INVALID_STRING_ID) return GetString(this->SizingStatus());
+			if (this->hover_status == STR_JUNCTION_STATUS_PLAN_FAILED) return GetString(this->hover_status, this->hover_why);
+			if (this->hover_status != INVALID_STRING_ID) return GetString(this->hover_status);
+			if (this->has_shown && this->shown_distance != 0) return GetString(STR_JUNCTION_STATUS_NEARBY, this->shown_distance);
+		}
+		switch (seq.GetState()) {
+			case JunctionBuildState::Building: return GetString(STR_JUNCTION_STATUS_BUILDING, seq.GetDone(), seq.GetTotal());
+			case JunctionBuildState::Failed: return GetString(STR_JUNCTION_STATUS_FAILED, seq.GetDone(), seq.GetTotal());
+			default: return GetString(STR_JUNCTION_STATUS_READY);
+		}
+	}
+
+	/** Show Retry and Cancel while a build is pinned, else nothing. */
+	void ShowBuildButtons(bool show)
+	{
+		if (this->GetWidget<NWidgetStacked>(WID_BJ_BUILD_SEL)->SetDisplayedPlane(show ? 0 : SZSP_HORIZONTAL)) this->ReInit();
+	}
+
+	/** Show the cost and status as a cursor tooltip while the cursor is over the map, and close it when it is not; only a change of text shows it anew. */
+	void UpdateTooltip()
+	{
+		EncodedString text;
+		if (GetTileBelowCursor().x != -1) {
+			const std::string cost = this->CostText();
+			text = GetEncodedString(STR_JUNCTION_TOOLTIP, cost.empty() ? this->StatusText() : cost + "\n" + this->StatusText());
+		}
+		if (text == this->shown_tooltip) return;
+		this->shown_tooltip = text;
+		GuiShowTooltips(this, std::move(text), TooltipCloseCondition::ExitViewport);
+	}
+
 	void OnRealtimeTick([[maybe_unused]] uint delta_ms) override
 	{
 		GameJunctionStepPoster poster(this->railtype);
@@ -1311,14 +1327,16 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				/* Set() clears, which unpins; the footprint stays pinned while the build is paused. */
 				JunctionGhost::SetPinned(true);
 			}
+			this->ShowBuildButtons(true);
 			this->SetWidgetDisabledState(WID_BJ_RETRY, state != JunctionBuildState::Failed);
 			this->SetWidgetDisabledState(WID_BJ_CANCEL, false);
-			this->SetWidgetDirty(WID_BJ_STATUS);
 			this->SetWidgetDirty(WID_BJ_RETRY);
 			this->SetWidgetDirty(WID_BJ_CANCEL);
+			this->UpdateTooltip();
 			return;
 		}
 
+		this->ShowBuildButtons(false);
 		this->SetWidgetDisabledState(WID_BJ_RETRY, true);
 		this->SetWidgetDisabledState(WID_BJ_CANCEL, true);
 		this->SetWidgetDirty(WID_BJ_RETRY);
@@ -1331,10 +1349,9 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			if (this->has_placement) {
 				JunctionGhost::Clear();
 				this->has_placement = false;
-				this->SetWidgetDirty(WID_BJ_COST);
 			}
 			SetTileSelectSize(1, 1);
-			this->SetWidgetDirty(WID_BJ_STATUS);
+			this->UpdateTooltip();
 			return;
 		}
 
@@ -1344,8 +1361,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				JunctionGhost::Clear();
 				this->ResetHover();
 				this->has_placement = false;
-				this->SetWidgetDirty(WID_BJ_COST);
 			}
+			this->UpdateTooltip();
 			return;
 		}
 
@@ -1354,8 +1371,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			JunctionGhost::Clear();
 			this->ResetHover();
 			this->has_placement = false;
-			this->SetWidgetDirty(WID_BJ_COST);
-			this->SetWidgetDirty(WID_BJ_STATUS);
+			this->UpdateTooltip();
 			return;
 		}
 
@@ -1364,6 +1380,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (tile != this->hover_tile) {
 			this->hover_tile = tile;
 			this->hover_since = now;
+			this->shown_tooltip.clear(); // The tooltip is placed where it is shown, so it is shown anew at each tile.
 			this->ShowHover();
 		}
 
@@ -1371,6 +1388,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			const JunctionGenerateKey key = this->MakeKey(tile);
 			if (!this->IsCached(key)) this->StartJob();
 		}
+		this->UpdateTooltip();
 	}
 
 	static inline HotkeyList hotkeys{"buildjunction", {
@@ -1387,12 +1405,9 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widge
 	EndContainer(),
 	NWidget(WWT_PANEL, Colours::DarkGreen),
 		NWidget(NWID_VERTICAL), SetPIP(0, WidgetDimensions::unscaled.vsep_normal, 0), SetPadding(WidgetDimensions::unscaled.picker),
-			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_NAME), SetFill(1, 0),
 			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
 				NWidget(WWT_TEXT, Colours::Invalid, WID_BJ_ML_LABEL), SetStringTip(STR_JUNCTION_MAINLINE_LABEL, STR_JUNCTION_MAINLINE_TOOLTIP),
 				NWidget(WWT_EDITBOX, Colours::Grey, WID_BJ_ML_TEXT), SetToolTip(STR_JUNCTION_MAINLINE_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
-			EndContainer(),
-			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
 				NWidget(WWT_TEXT, Colours::Invalid, WID_BJ_BRANCH_LABEL), SetStringTip(STR_JUNCTION_BRANCH_LABEL, STR_JUNCTION_BRANCH_TOOLTIP),
 				NWidget(WWT_EDITBOX, Colours::Grey, WID_BJ_BRANCH_TEXT), SetToolTip(STR_JUNCTION_BRANCH_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
 			EndContainer(),
@@ -1400,21 +1415,21 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widge
 				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_BJ_TL_DECREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Decrease, STR_JUNCTION_TRAIN_LENGTH_DECREASE_TOOLTIP),
 				NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_TL_LABEL), SetFill(1, 0),
 				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_BJ_TL_INCREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Increase, STR_JUNCTION_TRAIN_LENGTH_INCREASE_TOOLTIP),
-			EndContainer(),
-			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_PICK_TRAIN), SetStringTip(STR_JUNCTION_PICK_TRAIN, STR_JUNCTION_PICK_TRAIN_TOOLTIP), SetFill(1, 0),
-			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_TRAIN), SetFill(1, 0),
-			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_PRIO_LABEL), SetFill(1, 0),
-			NWidget(WWT_EMPTY, Colours::Invalid, WID_BJ_PRIO_SLIDER), SetMinimalTextLines(1, 12 + WidgetDimensions::unscaled.vsep_normal, FontSize::Small), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_JUNCTION_PRIO_SLIDER_TOOLTIP),
-			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_COST), SetFill(1, 0),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BJ_PROJECTION), SetStringTip(STR_JUNCTION_PROJECTION, STR_JUNCTION_PROJECTION_TOOLTIP), SetFill(1, 0),
-			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_PICK_TRAIN), SetStringTip(STR_JUNCTION_PICK_TRAIN, STR_JUNCTION_PICK_TRAIN_TOOLTIP), SetFill(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_ROTATE), SetStringTip(STR_JUNCTION_ROTATE, STR_JUNCTION_ROTATE_TOOLTIP), SetFill(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_MIRROR), SetStringTip(STR_JUNCTION_MIRROR, STR_JUNCTION_MIRROR_TOOLTIP), SetFill(1, 0),
 			EndContainer(),
-			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_STATUS), SetFill(1, 0),
 			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
-				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_RETRY), SetStringTip(STR_JUNCTION_RETRY, STR_JUNCTION_RETRY_TOOLTIP), SetFill(1, 0),
-				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_CANCEL), SetStringTip(STR_JUNCTION_CANCEL, STR_JUNCTION_CANCEL_TOOLTIP), SetFill(1, 0),
+				NWidget(WWT_EMPTY, Colours::Invalid, WID_BJ_TRAIN_IMAGE), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_TRAIN), SetFill(1, 0),
+				NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_PRIO_LABEL), SetFill(1, 0),
+			EndContainer(),
+			NWidget(WWT_EMPTY, Colours::Invalid, WID_BJ_PRIO_SLIDER), SetMinimalTextLines(1, 12 + WidgetDimensions::unscaled.vsep_normal, FontSize::Small), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_JUNCTION_PRIO_SLIDER_TOOLTIP),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_BJ_BUILD_SEL),
+				NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+					NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_RETRY), SetStringTip(STR_JUNCTION_RETRY, STR_JUNCTION_RETRY_TOOLTIP), SetFill(1, 0),
+					NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_CANCEL), SetStringTip(STR_JUNCTION_CANCEL, STR_JUNCTION_CANCEL_TOOLTIP), SetFill(1, 0),
+				EndContainer(),
 			EndContainer(),
 		EndContainer(),
 	EndContainer(),
