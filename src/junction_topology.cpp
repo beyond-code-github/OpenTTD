@@ -681,7 +681,7 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
 	const int n = static_cast<int>(slots.size());
 	auto group_of = [&](int slot) -> const JunctionLaneGroup & { return topology.groups[slots[slot].group]; };
-	auto step = [](StepKind kind, int hand, uint32_t index, uint8_t copy = 0) { return Step{kind, static_cast<int8_t>(hand), index, copy}; };
+	auto step = [](StepKind kind, int hand, uint32_t index, uint8_t copy = 0, Step::Role role = Step::Role::None) { return Step{kind, static_cast<int8_t>(hand), index, copy, role}; };
 
 	/* Rows and levels. */
 	const std::vector<int> row_of = JunctionSlotRows(topology, paths, error);
@@ -719,8 +719,8 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		}
 	}
 
-	/* The shape of every row: in, one leg, out. */
-	std::vector<int> in_count(rows, 0), leg_count(rows, 0), out_count(rows, 0), row_total(rows, 0);
+	/* The roles of every row's edges (graph structure, not token shape: any program may sit on them): one in edge from a main port, one leg between two nodes, one out edge to a main port. */
+	std::vector<int> in_count(rows, 0), leg_count(rows, 0), out_count(rows, 0);
 	std::vector<uint32_t> leg_of(rows, 0);
 	for (uint32_t e = 0; e < edge_count; e++) {
 		const JunctionTrackEdge &edge = graph.edges[e];
@@ -729,7 +729,6 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 			continue;
 		}
 		const int r = (end_level(edge.from) - 1) / 2;
-		row_total[r]++;
 		if (!edge.from.node && edge.to.node) {
 			in_count[r]++;
 		} else if (edge.from.node && !edge.to.node) {
@@ -737,10 +736,12 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		} else if (edge.from.node && edge.to.node) {
 			leg_count[r]++;
 			leg_of[r] = e;
+		} else {
+			return fail("a lane other than in, one leg, out is not ruled yet");
 		}
 	}
 	for (int r = 0; r < rows; r++) {
-		if (row_total[r] != 3 || in_count[r] != 1 || leg_count[r] != 1 || out_count[r] != 1) return fail("a lane other than in, one leg, out is not ruled yet");
+		if (in_count[r] != 1 || leg_count[r] != 1 || out_count[r] != 1) return fail("a lane other than in, one leg, out is not ruled yet");
 	}
 
 	/* Bridges. */
@@ -816,10 +817,11 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 			if (e == leg_of[r]) {
 				if (!row_doubled[r]) continue;
 				if (lane_item[r] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
-				const Step bend = step(StepKind::SBend, east[r] ? +1 : -1, lane_item[r]);
+				const Step merge = step(StepKind::SBend, east[r] ? +1 : -1, lane_item[r], 0, Step::Role::LaneMerge);
+				const Step split = step(StepKind::SBend, east[r] ? +1 : -1, lane_item[r], 0, Step::Role::LaneSplit);
 				for (uint32_t x : crossings) program.push_back(step(StepKind::Over, 0, x));
-				program.push_back(bend);
-				programs.copies[e].push_back(bend);
+				program.push_back(merge);
+				programs.copies[e].push_back(split);
 				for (uint32_t x : crossings) programs.copies[e].push_back(step(StepKind::Over, 0, x));
 			} else if (edge.to.node) {
 				const uint32_t item = row_doubled[r] ? north_item[r] : lane_item[r];
@@ -1433,13 +1435,23 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		} else {
 			const std::vector<Step> &program = programs.edges[e];
 			std::vector<Elem> &copy = chain_copy[e];
+			const auto with_role = [](const std::vector<Step> &tokens, Step::Role role) {
+				size_t t = 0;
+				while (t < tokens.size() && !(tokens[t].kind == StepKind::SBend && tokens[t].role == role)) t++;
+				return t;
+			};
+			const size_t merge_token = with_role(program, Step::Role::LaneMerge);
+			const size_t split_token = with_role(programs.copies[e], Step::Role::LaneSplit);
+			if (merge_token == program.size() || split_token == programs.copies[e].size()) return fail("a doubled leg without its lane split and merge is not ruled yet");
 			Elem bend0, bend1;
 			bend0.k = bend1.k = Elem::K::SBend;
 			bend0.hin = bend0.hout = bend1.hin = bend1.hout = heading;
-			bend0.hand = bend1.hand = program.back().hand;
-			bend0.index = bend1.index = program.back().index;
-			bend0.tok = static_cast<int>(program.size()) - 1;
-			bend1.tok = 0;
+			bend0.hand = program[merge_token].hand;
+			bend1.hand = programs.copies[e][split_token].hand;
+			bend0.index = program[merge_token].index;
+			bend1.index = programs.copies[e][split_token].index;
+			bend0.tok = static_cast<int>(merge_token);
+			bend1.tok = static_cast<int>(split_token);
 			bend0.first = rp.sb0_first;
 			bend0.last = rp.lane_merge;
 			bend1.first = rp.lane_split;
@@ -3354,14 +3366,14 @@ std::vector<std::pair<bool, size_t>> JunctionRouteEvents(const JunctionTrackGrap
 		if (sibling == routes.size()) continue;
 		const JunctionTrackRoute &copy0 = route.copy == 0 ? route : routes[sibling];
 		const JunctionTrackRoute &copy1 = route.copy == 0 ? routes[sibling] : route;
-		const auto sbend = [](const std::vector<JunctionTrackStep> &program) {
+		const auto with_role = [](const std::vector<JunctionTrackStep> &program, JunctionTrackStep::Role role) {
 			for (size_t t = 0; t < program.size(); t++) {
-				if (program[t].kind == JunctionTrackStep::Kind::SBend) return t;
+				if (program[t].kind == JunctionTrackStep::Kind::SBend && program[t].role == role) return t;
 			}
 			return program.size();
 		};
-		const size_t split_token = sbend(programs.copies[e]);
-		const size_t merge_token = sbend(programs.edges[e]);
+		const size_t split_token = with_role(programs.copies[e], JunctionTrackStep::Role::LaneSplit);
+		const size_t merge_token = with_role(programs.edges[e], JunctionTrackStep::Role::LaneMerge);
 		const auto on_tile = [&](TileIndexDiffC tile) -> std::optional<size_t> {
 			for (size_t k = 0; k < route.pieces.size(); k++) {
 				if (!route.pieces[k].on_bridge && route.pieces[k].tile.x == tile.x && route.pieces[k].tile.y == tile.y) return k;

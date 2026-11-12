@@ -369,6 +369,8 @@ static constexpr uint32_t NR = JunctionTrackStep::NO_ROW;
 static Step Fan(uint32_t i) { return {Step::Kind::Fan, 0, i, 0}; }
 static Step C(int h, uint32_t i) { return {Step::Kind::Corner, static_cast<int8_t>(h), i, 0}; }
 static Step S(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0}; }
+static Step SM(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0, Step::Role::LaneMerge}; }
+static Step SL(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0, Step::Role::LaneSplit}; }
 static Step O(uint32_t x) { return {Step::Kind::Over, 0, x, 0}; }
 static Step U(uint32_t x, uint8_t c) { return {Step::Kind::Under, 0, x, c}; }
 
@@ -380,7 +382,7 @@ TEST_CASE("topology: the T's track programs", "[junction][topology]")
 	const Programs edges = {
 		{Fan(1)}, {}, {Fan(3)}, {},
 		{C(+1, NR), U(5, 0), U(5, 1), S(-1, NR), U(8, 0)},
-		{O(8), O(4), S(-1, 4)},
+		{O(8), O(4), SM(-1, 4)},
 		{C(-1, NR), S(+1, NR)},
 		{C(-1, 5), S(+1, 4)},
 		{O(4), U(5, 1), U(5, 0), C(+1, 2), S(-1, 1)},
@@ -388,7 +390,7 @@ TEST_CASE("topology: the T's track programs", "[junction][topology]")
 	};
 	CHECK(programs.edges == edges);
 	Programs copies(12);
-	copies[5] = {S(-1, 4), O(8), O(4)};
+	copies[5] = {SL(-1, 4), O(8), O(4)};
 	CHECK(programs.copies == copies);
 }
 
@@ -399,7 +401,7 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track programs", "[junction][to
 	REQUIRE(programs.copies.size() == 26);
 	const Programs edges = {
 		{Fan(1)}, {Fan(3)}, {}, {O(23), U(10, 1), U(10, 0), U(9, 1), U(9, 0)}, {S(-1, NR)}, {Fan(9)}, {Fan(6)}, {},
-		{O(11), O(15), S(+1, 4)}, {O(3), O(11), O(12), S(-1, 7)}, {O(13), O(3), O(11), O(12), O(17), S(-1, 10)},
+		{O(11), O(15), SM(+1, 4)}, {O(3), O(11), O(12), SM(-1, 7)}, {O(13), O(3), O(11), O(12), O(17), SM(-1, 10)},
 		{C(+1, NR), U(8, 0), U(8, 1), U(9, 0), U(9, 1), U(10, 0), U(10, 1)},
 		{C(+1, NR), U(9, 0), U(9, 1), U(10, 0), U(10, 1), S(-1, NR)},
 		{C(-1, NR), U(10, 0), U(10, 1)},
@@ -412,9 +414,9 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track programs", "[junction][to
 	};
 	CHECK(programs.edges == edges);
 	Programs copies(26);
-	copies[8] = {S(+1, 4), O(11), O(15)};
-	copies[9] = {S(-1, 7), O(3), O(11), O(12)};
-	copies[10] = {S(-1, 10), O(13), O(3), O(11), O(12), O(17)};
+	copies[8] = {SL(+1, 4), O(11), O(15)};
+	copies[9] = {SL(-1, 7), O(3), O(11), O(12)};
+	copies[10] = {SL(-1, 10), O(13), O(3), O(11), O(12), O(17)};
 	CHECK(programs.copies == copies);
 }
 
@@ -2704,6 +2706,78 @@ TEST_CASE("topology: placement from its own choices equals the seed", "[junction
 		INFO(error);
 		REQUIRE(!q.nodes.empty());
 		CHECK(SamePlacement(p, q));
+	}
+}
+
+TEST_CASE("topology: an inserted S-bend pair does not move the lane events", "[junction][topology]")
+{
+	/* R6: a doubled leg's lane split and merge are found by their roles, not as the first S-bend of a copy. The routes come from the unedited placement; their tags are shifted by hand (the edited programs are not placed in this step, R7). */
+	for (const JunctionTopology *t : {&JunctionLLRRSidelineTopology(), &JunctionTTopology()}) {
+		std::string error;
+		JunctionTrackPrograms programs;
+		JunctionTrackGraph graph;
+		std::vector<JunctionTrackRoute> routes;
+		RenderOf(*t, 64, &error, nullptr, nullptr, &programs, nullptr, &graph, &routes);
+		INFO(error);
+		REQUIRE(!routes.empty());
+		std::vector<std::vector<std::pair<bool, size_t>>> before;
+		for (size_t r = 0; r < routes.size(); r++) before.push_back(JunctionRouteEvents(graph, programs, routes, r));
+
+		/* Every doubled leg's copy 0 gets the pair just before its lane merge. */
+		std::vector<size_t> at(graph.edges.size(), SIZE_MAX);
+		size_t inserted = 0;
+		for (size_t e = 0; e < programs.edges.size(); e++) {
+			if (programs.copies[e].empty()) continue;
+			std::vector<Step> &program = programs.edges[e];
+			size_t pos = 0;
+			while (program[pos].role != Step::Role::LaneMerge) pos++;
+			const Step merge = program[pos];
+			program.insert(program.begin() + pos, {Step{Step::Kind::SBend, static_cast<int8_t>(+1), merge.index, 0, Step::Role::Shift}, Step{Step::Kind::SBend, static_cast<int8_t>(-1), merge.index, 0, Step::Role::Shift}});
+			at[e] = pos;
+			inserted++;
+		}
+		REQUIRE(inserted > 0);
+		for (JunctionTrackRoute &route : routes) {
+			for (JunctionTrackPieceTag &tag : route.tags) {
+				if (tag.copy != 0 || at[tag.edge] == SIZE_MAX) continue;
+				if (tag.token != JunctionTrackPieceTag::RUN && tag.token >= at[tag.edge]) tag.token += 2;
+				if (tag.run > at[tag.edge]) tag.run += 2;
+			}
+		}
+		size_t with_events = 0;
+		for (size_t r = 0; r < routes.size(); r++) {
+			INFO("route " << r);
+			const std::vector<std::pair<bool, size_t>> after = JunctionRouteEvents(graph, programs, routes, r);
+			CHECK(after == before[r]);
+			if (!after.empty()) with_events++;
+		}
+		CHECK(with_events > 0);
+	}
+}
+
+TEST_CASE("topology: a row edge may hold any token sequence", "[junction][topology]")
+{
+	/* R6: the programs' row checks are graph structure (one in, one leg, one out per lane), not token shape: an S-bend pair on an undoubled leg is not refused with "not ruled yet" by the programs or by the placement's chain builder. Placing it is R7's. */
+	for (const JunctionTopology *t : {&JunctionLLRRSidelineTopology(), &JunctionTTopology()}) {
+		std::string error;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(*t, &error);
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(*t, paths, &error);
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(*t, paths, graph, &error);
+		const JunctionTrackStructure structure = StructureJunctionTrackGraph(*t, paths, graph, order, &error);
+		JunctionTrackPrograms programs = ProgramJunctionTrackGraph(*t, paths, graph, order, structure, &error);
+		INFO(error);
+		REQUIRE(!programs.edges.empty());
+		size_t edited = SIZE_MAX;
+		for (size_t e = 0; e < programs.edges.size(); e++) {
+			const JunctionTrackEdge &edge = graph.edges[e];
+			if (edge.from.node && edge.to.node && order.node_level[edge.from.index] % 2 == 1 && order.node_level[edge.from.index] == order.node_level[edge.to.index] && programs.copies[e].empty()) edited = e; // An undoubled row leg.
+		}
+		REQUIRE(edited != SIZE_MAX);
+		programs.edges[edited] = {Step{Step::Kind::SBend, +1, 0, 0, Step::Role::Shift}, Step{Step::Kind::SBend, -1, 0, 0, Step::Role::Shift}};
+		const JunctionSpec spec = MakeTestJunctionSpec();
+		JunctionTrackPlacement placement;
+		CutJunctionTrackBridges(*t, paths, graph, order, structure, programs, spec, &placement, &error);
+		CHECK(error.find("not ruled yet") == std::string::npos);
 	}
 }
 

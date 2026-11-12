@@ -201,10 +201,17 @@ struct JunctionTrackStep {
 		Over, ///< This edge's bridge passes over another edge.
 		Under, ///< This edge passes under another edge's bridge.
 	};
+	enum class Role : uint8_t {
+		None,
+		LaneSplit, ///< SBend: a doubled leg's copy 1 bends onto the lane row.
+		LaneMerge, ///< SBend: a doubled leg's copy 0 bends onto the lane row.
+		Shift, ///< SBend: a pair that moves a line sideways and back (R7 inserts them).
+	};
 	Kind kind;
 	int8_t hand; ///< Corner: the turn, +1 right, -1 left (as JunctionTrackStructure::turns). SBend: its first curve. 0 otherwise.
 	uint32_t index; ///< Fan: the stack item at its inner end. Corner, SBend: the stack item it ends on, or NO_ROW. Over: the crossed edge. Under: the edge overhead.
 	uint8_t copy; ///< Under: which copy of a doubled bridge is overhead (0 or 1). 0 otherwise.
+	Role role = Role::None; ///< SBend: what it serves (D215 feature; R7 inserts Shift pairs).
 	bool operator==(const JunctionTrackStep &) const = default;
 };
 
