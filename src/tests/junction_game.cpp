@@ -38,6 +38,8 @@
 #include "../clear_map.h"
 #include "../water_map.h"
 #include "../tunnelbridge.h"
+#include "../tunnelbridge_cmd.h"
+#include "../tunnelbridge_map.h"
 #include "../terraform_cmd.h"
 #include "../table/strings.h"
 
@@ -980,6 +982,31 @@ TEST_CASE("BridgePrice is what PriceBridge charges on flat ground", "[junction][
 		CHECK(result.GetCost() == pricing.BridgePrice(start, end));
 		CHECK(pricing.BridgePrice(start, end) > 0);
 	}
+}
+
+TEST_CASE("an inclined bridge head builds", "[junction][junctiongame]")
+{
+	JunctionGameWorld world;
+	GameJunctionPricing pricing(RAILTYPE_RAIL);
+	MakeBareGrass(TileXY(96, 96), 16);
+	/* The corners are at 1, but the column x = 100 at 2: the head tile (100, 100) has its north-east edge a level above the span side (the valid inclined slope for a head at the north-east end),
+	 * the head (104, 100) is flat at the level the first one's span side has. */
+	for (uint y = 96; y <= 112; y++) {
+		for (uint x = 96; x <= 112; x++) SetTileHeight(TileXY(x, y), x == 100 ? 2 : 1);
+	}
+	const TileIndex start = TileXY(100, 100);
+	const TileIndex end = TileXY(104, 100);
+	REQUIRE(GetTileSlope(start) == SLOPE_NE);
+	REQUIRE(GetTileSlope(end) == SLOPE_FLAT);
+	const std::optional<BridgeType> type = ChooseJunctionBridgeType(RAILTYPE_RAIL, GetTunnelBridgeLength(start, end));
+	REQUIRE(type.has_value());
+	const CommandCost tested = Command<Commands::BuildBridge>::Do(DoCommandFlag::QueryCost, end, start, TransportType::Rail, *type, RAILTYPE_RAIL, INVALID_ROADTYPE);
+	INFO("test: error " << tested.GetErrorMessage().base());
+	CHECK(tested.Succeeded());
+	const CommandCost built = Command<Commands::BuildBridge>::Do(DoCommandFlag::Execute, end, start, TransportType::Rail, *type, RAILTYPE_RAIL, INVALID_ROADTYPE);
+	INFO("execute: error " << built.GetErrorMessage().base());
+	CHECK(built.Succeeded());
+	CHECK(IsBridge(start));
 }
 
 namespace {

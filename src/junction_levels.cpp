@@ -449,6 +449,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		equal_pairs.emplace(std::min(a, b), std::max(a, b));
 	};
 
+	std::vector<std::tuple<size_t, bool, size_t, bool>> deck_windows; ///< The windows of the ramp rule with an end at a bridge's deck: (variable, at the deck of that span's head), twice.
 	for (const std::vector<Visit> &visits : route_visits) {
 		for (size_t i = 0; i + 1 < visits.size(); i++) {
 			if (visits[i + 1].break_before) continue;
@@ -464,15 +465,37 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				equal(var[a], var[b], {2, a.first, a.second, b.first, b.second, 0});
 			}
 		}
-		/* The ramp rule: L(t + tl) - L(t) <= k, not across a bridge middle. */
+		/* The ramp rule: L(t + tl) - L(t) <= k over the entries the train sees: a bridge's middle tiles and its far head are entered at the deck (a flat head climbs onto it, an inclined one is at it). */
 		if (ramp_levels < train_length) {
-			for (size_t i = 0; i + train_length < visits.size(); i++) {
-				bool broken = false;
-				for (size_t j = i + 1; j <= i + train_length; j++) broken = broken || visits[j].break_before;
-				const SnapshotTile a = visits[i].tile;
-				const SnapshotTile b = visits[i + train_length].tile;
-				if (broken || a == b) continue;
-				diff(var[a], var[b], -ramp_levels, {3, a.first, a.second, b.first, b.second, ramp_levels});
+			std::vector<std::pair<size_t, bool>> entries; ///< Per tile the variable of its level, or of the near head of the span whose deck it is entered at.
+			for (size_t i = 0; i < visits.size(); i++) {
+				const size_t v = var[visits[i].tile];
+				if (visits[i].break_before && i > 0 && partner[var[visits[i - 1].tile]] != SIZE_MAX) {
+					const size_t near = var[visits[i - 1].tile];
+					const SnapshotTile &p = visits[i - 1].tile;
+					const SnapshotTile &q = visits[i].tile;
+					const int middles = std::abs(q.first - p.first) + std::abs(q.second - p.second) - 1;
+					for (int m = 0; m < middles; m++) entries.emplace_back(near, true);
+					entries.emplace_back(near, true);
+				} else {
+					entries.emplace_back(v, false);
+				}
+			}
+			for (size_t i = 0; i + train_length < entries.size(); i++) {
+				const auto [sa, deck_a] = entries[i];
+				const auto [sb, deck_b] = entries[i + train_length];
+				if (deck_a && deck_b) continue;
+				if (deck_a || deck_b) {
+					deck_windows.emplace_back(sa, deck_a, sb, deck_b);
+					/* The deck is at least the higher head: a necessary part of the rule as a difference. */
+					if (deck_b && sa != sb && sa != partner[sb]) {
+						diff(sa, sb, -ramp_levels, {3, order_tiles[sa].first, order_tiles[sa].second, order_tiles[sb].first, order_tiles[sb].second, ramp_levels});
+						diff(sa, partner[sb], -ramp_levels, {3, order_tiles[sa].first, order_tiles[sa].second, order_tiles[partner[sb]].first, order_tiles[partner[sb]].second, ramp_levels});
+					}
+					continue;
+				}
+				if (sa == sb) continue;
+				diff(sa, sb, -ramp_levels, {3, order_tiles[sa].first, order_tiles[sa].second, order_tiles[sb].first, order_tiles[sb].second, ramp_levels});
 			}
 		}
 	}
@@ -651,6 +674,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	std::vector<std::pair<size_t, int>> ex_moved; ///< The corners the last evaluation moved, as (index, height).
 	std::vector<const Choice *> ex_ch(n);
 	long ex_violation = 0; ///< The violation of the last evaluation.
+	long ex_ramp_violation = 0; ///< The part of it that is the ramp rule at a bridge's deck.
 	auto exact_cost = [&](const std::vector<int> &lv) -> Money {
 		/* Reset what the last evaluation touched. */
 		for (size_t k : t_set) ex_target[k] = NO_TARGET;
@@ -810,6 +834,13 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			SetJunctionTileCorners(moved, f);
 			if (moved.z_max != ex_ch[i]->level || GetRailFoundation(moved.slope, tiles[t].visit.bits) != Foundation::Leveled) viol++;
 		}
+		/* The ramp rule at a bridge's deck: a flat head is entered at its level and the deck is one above it, an inclined head (the higher of the two) is at the deck. */
+		ex_ramp_violation = 0;
+		for (const auto &[sa, deck_a, sb, deck_b] : deck_windows) {
+			auto level_of = [&](size_t v, bool deck) { return deck ? std::max(lv[v], lv[partner[v]]) + (lv[v] == lv[partner[v]] ? 1 : 0) : lv[v]; };
+			ex_ramp_violation += std::max(0, level_of(sb, deck_b) - level_of(sa, deck_a) - ramp_levels);
+		}
+		viol += ex_ramp_violation;
 		ex_violation = viol;
 		return cost + viol * VIOLATION;
 	};
@@ -868,6 +899,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			}
 		}
 	}
+	if (ex_ramp_violation > 0) return fmt::format("ramp rule: a route climbs more than {} levels within {} tiles onto or across a bridge", ramp_levels, train_length);
 	if (ex_violation > 0) return fmt::format("terraform conflict: the corners the tracks fix cannot be joined by one terraform (violation {})", ex_violation);
 	for (size_t i = 0; i < n; i++) {
 		const Visit &v = tiles[order_tiles[i]].visit;

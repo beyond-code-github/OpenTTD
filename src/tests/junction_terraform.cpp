@@ -403,3 +403,43 @@ TEST_CASE("the ground under a bridge stays at or below its heads", "[junction][h
 		CHECK(why.find("bridge") != std::string::npos);
 	}
 }
+
+TEST_CASE("the ramp rule sees the climb onto a bridge", "[junction][hoverplan]")
+{
+	/* An X route over tiles 0 to 9 on row 2 with a bridge from the head (5, 2) to the head (8, 2); the ground is at 0 up to corner 3 and at 1 from corner 4: tile 3 is a ramp, so the route
+	 * is at 0 when it enters tile 3, at 1 on the head, and a flat head puts the deck at 2: two levels within three tiles where one level (ramp_levels) is allowed. */
+	JunctionTerrain terrain = MakeTerrainFromCorners(12, 5, [](int cx, int) { return cx <= 3 ? 0 : 1; });
+	terrain.foundation_cost = 5;
+	JunctionLayout layout;
+	for (int x = 0; x <= 4; x++) layout.tracks.push_back({{static_cast<int16_t>(x), 2}, TrackBits{Track::X}});
+	layout.tracks.push_back({{9, 2}, TrackBits{Track::X}});
+	layout.bridges.push_back({{5, 2}, {8, 2}});
+	JunctionTrackRoute route{};
+	for (int x = 0; x < 10; x++) {
+		route.pieces.push_back({{static_cast<int16_t>(x), 2}, Trackdir::X_SW, 1, x >= 5 && x <= 8});
+		route.tags.push_back({0, JunctionTrackPieceTag::RUN, 0, 0});
+	}
+	const std::vector<JunctionTrackRoute> routes = {route};
+	const JunctionFacts facts(terrain);
+	const JunctionTrackPlacement placement{};
+	JunctionTerraform plan;
+	std::string why;
+	std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
+	Money cost = 0;
+	constexpr int RAMP_LEVELS = 1;
+	constexpr int TRAIN_LENGTH = 3;
+	if (SolveJunctionLevels(terrain, facts, {0, 0}, RAMP_LEVELS, TRAIN_LENGTH, placement, layout, routes, {}, plan, cost, levels, &why)) {
+		std::map<int, int> level;
+		for (const auto &[tile, l] : levels) level[tile.x] = l;
+		/* The entries the train sees: the head at its level, the deck over the span (a flat head's level + 1, an inclined head's the higher level), the far head entered at the deck. */
+		const int deck = level[5] == level[8] ? level[5] + 1 : std::max(level[5], level[8]);
+		const std::vector<int> entries = {level[0], level[1], level[2], level[3], level[4], level[5], deck, deck, deck, level[9]};
+		for (size_t i = 0; i + TRAIN_LENGTH < entries.size(); i++) {
+			INFO("window from tile " << i);
+			CHECK(entries[i + TRAIN_LENGTH] - entries[i] <= RAMP_LEVELS);
+		}
+	} else {
+		INFO(why);
+		CHECK(why.find("ramp rule") != std::string::npos);
+	}
+}
