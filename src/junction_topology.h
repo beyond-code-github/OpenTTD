@@ -13,6 +13,7 @@
 #include "junction_facts.h"
 #include "junction_layout.h"
 #include "junction_route.h"
+#include "junction_terraform.h"
 
 #include <array>
 #include <cstdint>
@@ -250,6 +251,8 @@ struct JunctionTrackPlacement {
 	JunctionPlacementChoices choices; ///< The choices this placement was solved with.
 	std::vector<JunctionPlacementReason> why; ///< On failure: the explanation chain of the contradiction.
 	std::vector<int> columns; ///< The column of every placement point (x_floors refer to these ids).
+	JunctionTerraform terraform; ///< The height solve's plan (D218), empty on flat ground.
+	Money height_cost = 0; ///< Terraform, foundations and clearing of the chosen levels.
 	std::vector<std::vector<std::pair<int8_t, int>>> curves; ///< Per lane path and copy (paths first, then copies in path order): each curve's hand (+1 right, -1 left) and unit position at the solved columns, from the curve family's walk (for tests).
 };
 
@@ -274,8 +277,10 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
  * @param offset The working tile of the placement's (0, 0), as the node solve's offset.
  * @param error Receives the reason when the result is empty; JunctionTrackPlacement::why then names the relations of a contradiction, a fact's tile in the error text.
  * @param heights False (D218, the hard-facts mode): only the class facts apply (blocked, water, not spannable, outside the snapshot); height steps, joins and the fits of bends and nodes are skipped.
+ * @param terraform True (D218): X uses the class facts only (JunctionFacts::Buildable, forces heights = false) and then the height solve (DESIGN-G1 §15.3) chooses a level per tile on every edge and sets terraform and height_cost; on failure the placement is empty and error says why ("terraform conflict" when two tiles or a propagation want a corner at different heights).
+ * @param terrain The snapshot the facts were made from; required (non-null) when terraform is true.
  */
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error, bool heights = true);
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error, bool heights = true, bool terraform = false, const JunctionTerrain *terrain = nullptr);
 
 /**
  * The series-bridge cut (D209, DESIGN-G1 §11.9a): every doubled bridge cut into consecutive bridges of at most JUNCTION_BRIDGE_MAX_CROSSERS crossings, choosing among the cuts with the fewest bridges whose placement succeeds the one with the least box width, then height, then the first tried.

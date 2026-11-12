@@ -15,6 +15,7 @@
 
 #include <array>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -24,8 +25,8 @@ struct JunctionTerraform {
 	Money cost = 0; ///< Set by PropagateJunctionTerraform.
 };
 
-/** Complete the plan as CmdTerraformLand would: every corner orthogonally next to a changed corner is moved so neighbouring corners differ by at most one, repeatedly; fails with the reason (tile, class) when a corner of a tile that cannot be terraformed (not Buildable) or outside the snapshot would move. Sets cost (corner-level moves x terraform_cost + clear_cost of each Buildable tile whose corners change). */
-bool PropagateJunctionTerraform(const JunctionTerrain &terrain, JunctionTerraform &plan, std::string *why);
+/** Complete the plan as CmdTerraformLand would: every corner orthogonally next to a changed corner is moved so neighbouring corners differ by at most one, repeatedly; fails with the reason (tile, class) when a corner of a tile that cannot be terraformed (not Buildable) or outside the snapshot would move. A corner in fixed (corners that must keep their target or current height) that a propagation would move fails with the reason "terraform conflict" naming the corner and tile. Sets cost (corner-level moves x terraform_cost + clear_cost of each Buildable tile whose corners change). */
+bool PropagateJunctionTerraform(const JunctionTerrain &terrain, JunctionTerraform &plan, std::string *why, const std::set<std::pair<int, int>> *fixed = nullptr);
 
 /** The terrain with the plan applied: z_min, z_max, slope, steep and incline recomputed for every tile with a changed corner. */
 JunctionTerrain ApplyJunctionTerraform(const JunctionTerrain &terrain, const JunctionTerraform &plan);

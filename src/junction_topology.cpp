@@ -13,6 +13,7 @@
 
 #include "junction_chain.h"
 #include "junction_generator.h"
+#include "junction_levels.h"
 #include "junction_positions.h"
 #include "junction_route.h"
 #include "junction_rules_internal.h"
@@ -911,8 +912,9 @@ static std::string JunctionBendMoves(int hand, int halves, bool corner)
  * @param facts The target terrain's facts for the X phase of a fixed solve (DESIGN-G1 §14.4), or nullptr.
  * @param offset The working tile of the placement's (0, 0); only with facts.
  * @param heights False: only the class facts (D218): the height steps, joins and element fits are skipped.
+ * @param classes_only True (the height solve's X phase): every tile check is JunctionFacts::Buildable, the game's slope rules are the level solve's.
  */
-static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0}, bool heights = true)
+static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0}, bool heights = true, bool classes_only = false)
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
 	using Step = JunctionTrackStep;
@@ -2252,6 +2254,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			};
 			auto holds = [&](JunctionFactKind kind, Axis axis, int x, int y) {
 				int entry, exit;
+				if (classes_only) return facts->Buildable(x, y);
 				switch (kind) {
 					case JunctionFactKind::Straight: return facts->Straight(x, y, axis, entry, exit);
 					case JunctionFactKind::Switch: return facts->Switch(x, y);
@@ -2295,7 +2298,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				int entry, exit;
 				bool before = false;
 				for (int x = facts->MinX(); x <= facts->MaxX(); x++) {
-					const bool straight = facts->Straight(x, y, Axis::X, entry, exit);
+					const bool straight = classes_only ? facts->Buildable(x, y) : facts->Straight(x, y, Axis::X, entry, exit);
 					if (!straight) bad.first.push_back(x);
 					if (x > facts->MinX() && before && straight && !facts->Joins(Axis::X, y, x - 1)) bad.second.push_back(x - 1);
 					before = straight;
@@ -2904,9 +2907,26 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, x_floors, y_floors);
 }
 
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error, bool heights)
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error, bool heights, bool terraform, const JunctionTerrain *terrain)
 {
-	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, {}, {}, &facts, offset, heights);
+	if (terraform && terrain == nullptr) {
+		if (error != nullptr) *error = "terraform needs the terrain";
+		return {};
+	}
+	JunctionTrackPlacement placement = PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, {}, {}, &facts, offset, heights && !terraform, terraform);
+	if (!terraform || placement.nodes.empty()) return placement;
+
+	/* The height solve (DESIGN-G1 §15.3) on the render of the placement. */
+	std::vector<JunctionTrackRoute> routes;
+	std::string text;
+	const JunctionLayout layout = RenderJunctionTrackPlacement(topology, paths, graph, structure, programs, placement, &text, &routes);
+	auto fail = [&](const std::string &reason) {
+		if (error != nullptr) *error = reason;
+		return JunctionTrackPlacement{};
+	};
+	if (layout.tracks.empty()) return fail("the placement does not render: " + text);
+	if (!SolveJunctionLevels(*terrain, facts, offset, JunctionRampLevels(spec), spec.tl, placement, layout, routes, placement.terraform, placement.height_cost, &text)) return fail(text);
+	return placement;
 }
 
 JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error, std::vector<JunctionTrackRoute> *routes)

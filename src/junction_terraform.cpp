@@ -94,7 +94,7 @@ static bool JunctionCornerMovable(const JunctionTerrain &terrain, const Junction
 	return true;
 }
 
-bool PropagateJunctionTerraform(const JunctionTerrain &terrain, JunctionTerraform &plan, std::string *why)
+bool PropagateJunctionTerraform(const JunctionTerrain &terrain, JunctionTerraform &plan, std::string *why, const std::set<std::pair<int, int>> *fixed)
 {
 	std::map<JunctionCorner, int> heights;
 	std::deque<JunctionCorner> work;
@@ -115,6 +115,10 @@ bool PropagateJunctionTerraform(const JunctionTerrain &terrain, JunctionTerrafor
 			const auto it = heights.find(next);
 			const std::optional<int> other = it != heights.end() ? std::optional<int>(it->second) : JunctionCornerHeight(terrain, next);
 			if (!other.has_value() || std::abs(height - *other) <= 1) continue;
+			if (fixed != nullptr && fixed->contains(next)) {
+				if (why != nullptr) *why = fmt::format("terraform conflict: corner ({}, {}) of tile ({}, {}) is fixed at {} and would move to {}", next.first, next.second, next.first, next.second, *other, *other > height ? height + 1 : height - 1);
+				return false;
+			}
 			if (!JunctionCornerMovable(terrain, next, why)) return false;
 			heights[next] = *other > height ? height + 1 : height - 1;
 			work.push_back(next);

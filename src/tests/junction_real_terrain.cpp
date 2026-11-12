@@ -14,15 +14,18 @@
 #include "../junction_generator.h"
 #include "../junction_nodes.h"
 #include "../junction_rules.h"
+#include "../junction_terraform.h"
 #include "../junction_terrain_json.h"
 #include "../junction_topology.h"
 
 #include <algorithm>
+#include <set>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <numeric>
 #include <sstream>
 
 #include "../safeguards.h"
@@ -186,4 +189,64 @@ TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
 		}
 	}
 	std::cout << "REALTERRAIN hard solved=" << hard_solved << " failed=" << hard_failed << "\n";
+
+	/* The height solve (D218, DESIGN-G1 §15): on every hard-facts placement, levels per edge, a terraform plan and its cost. The terraformed terrain must pass the height facts: the same placement on it with heights, and every route of its render meets the ground. */
+	int tf_solved = 0, tf_failed = 0, tf_conflicts = 0;
+	std::vector<int64_t> costs;
+	std::vector<int64_t> solve_micros;
+	std::map<std::string, int> tf_reasons;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		const JunctionFacts facts(*terrain);
+		std::string place_error;
+		auto clock = [] { return std::chrono::steady_clock::now(); };
+		const auto hard_start = clock();
+		const JunctionTrackPlacement hard = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error, false);
+		const auto hard_end = clock();
+		if (hard.nodes.empty()) continue;
+		const JunctionTrackPlacement solved_placement = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error, true, true, &*terrain);
+		const auto solve_end = clock();
+		INFO(file.filename().string() << ": " << place_error);
+		/* Time of the solve: the second placement less the first (X is solved twice), render and levels included. */
+		solve_micros.push_back(std::chrono::duration_cast<std::chrono::microseconds>((solve_end - hard_end) - (hard_end - hard_start)).count());
+		if (solved_placement.nodes.empty()) {
+			tf_failed++;
+			if (place_error.find("terraform conflict") != std::string::npos) tf_conflicts++;
+			tf_reasons[place_error.substr(0, place_error.find(':'))]++;
+			std::cout << "REALTERRAIN terraform fail " << file.filename().string() << ": " << place_error << "\n";
+			continue;
+		}
+		tf_solved++;
+		costs.push_back(solved_placement.height_cost.base());
+		const JunctionTerrain after = ApplyJunctionTerraform(*terrain, solved_placement.terraform);
+		const JunctionFacts after_facts(after);
+		std::string again_error;
+		const JunctionTrackPlacement again = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, after_facts, offset, &again_error);
+		INFO(file.filename().string() << " terraformed terrain: " << again_error);
+		REQUIRE(!again.nodes.empty());
+		CHECK(again.item_rows == hard.item_rows);
+		CHECK(again.columns == hard.columns);
+		CHECK(again.size.x == hard.size.x);
+		CHECK(again.size.y == hard.size.y);
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, again, &render_error, &routes);
+		REQUIRE(!layout.tracks.empty());
+		std::string why;
+		const bool ok = JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, offset, &why);
+		INFO(file.filename().string() << " heights after terraform: " << why);
+		CHECK(ok);
+	}
+	std::ranges::sort(costs);
+	const int64_t cost_sum = std::accumulate(costs.begin(), costs.end(), int64_t(0));
+	std::cout << "REALTERRAIN terraform solved=" << tf_solved << " failed=" << tf_failed << " cost_mean=" << (costs.empty() ? int64_t(0) : cost_sum / static_cast<int64_t>(costs.size())) << "\n";
+	std::cout << "REALTERRAIN terraform conflicts=" << tf_conflicts << " cost min=" << (costs.empty() ? int64_t(0) : costs.front()) << " median=" << (costs.empty() ? int64_t(0) : costs[costs.size() / 2]) << " max=" << (costs.empty() ? int64_t(0) : costs.back()) << "\n";
+	if (!solve_micros.empty()) std::cout << "REALTERRAIN terraform solve micros mean=" << std::accumulate(solve_micros.begin(), solve_micros.end(), int64_t(0)) / static_cast<int64_t>(solve_micros.size()) << " max=" << *std::ranges::max_element(solve_micros) << "\n";
+	for (const auto &[reason, count] : tf_reasons) std::cout << "REALTERRAIN terraform failure " << count << " x " << reason << "\n";
 }

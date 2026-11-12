@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <map>
+#include <set>
 #include <string>
 
 #include "../safeguards.h"
@@ -198,4 +199,30 @@ TEST_CASE("terraform: corner heights round-trip", "[junction][terraform]")
 		CHECK(back.steep == tile.steep);
 		CHECK(back.incline == tile.incline);
 	}
+}
+
+TEST_CASE("terraform: a fixed corner is not moved by a propagation", "[junction][terraform]")
+{
+	/* Raising corner (3,3) to 5 pushes its neighbours to 4 and theirs to 3 on flat 3 ground. A neighbour that is fixed makes the plan fail. */
+	const JunctionTerrain flat = MakeTerrainFromCorners(8, 8, [](int, int) { return 3; });
+	JunctionTerraform plan;
+	plan.corners[{3, 3}] = 5;
+	std::string why;
+	REQUIRE(PropagateJunctionTerraform(flat, plan, &why));
+	CHECK(plan.corners.at({4, 3}) == 4);
+
+	/* A fixed corner the propagation does not reach, or that already has the height it would get from the plan's targets, is fine. */
+	const std::set<std::pair<int, int>> far{{7, 7}, {3, 3}};
+	JunctionTerraform ok;
+	ok.corners[{3, 3}] = 5;
+	CHECK(PropagateJunctionTerraform(flat, ok, &why, &far));
+
+	/* A fixed neighbour (at its current height 3) would be moved to 4. */
+	const std::set<std::pair<int, int>> near_corner{{4, 3}};
+	JunctionTerraform conflict;
+	conflict.corners[{3, 3}] = 5;
+	CHECK_FALSE(PropagateJunctionTerraform(flat, conflict, &why, &near_corner));
+	CHECK(why.find("terraform conflict") != std::string::npos);
+	CHECK(why.find("corner (4, 3)") != std::string::npos);
+	CHECK(why.find("tile (") != std::string::npos);
 }

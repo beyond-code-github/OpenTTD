@@ -28,6 +28,7 @@
 #include "../junction_generator.h"
 #include "../junction_nodes.h"
 #include "../junction_route.h"
+#include "../junction_terraform.h"
 #include "../junction_topology.h"
 #include "../track_func.h"
 
@@ -3061,6 +3062,161 @@ TEST_CASE("topology: the hard-facts mode ignores heights", "[junction][topology]
 	for (int y = wall.origin.y; y < wall.origin.y + wall.height; y++) wall.tiles[static_cast<size_t>(y - wall.origin.y) * wall.width + (ridge_x - wall.origin.x)].cls = JunctionTileClass::Blocked;
 	CHECK(place(wall, true).nodes.empty());
 	CHECK(place(wall, false).nodes.empty());
+}
+
+/** A flat terrain of height 0 around the seed's box (origin -1, so the seed's frame is the terrain's frame at offset (0, 0)), foundations 250, terraform 100, clearing 0. */
+static JunctionTerrain FlatTerrainFor(const SeedPipeline &p)
+{
+	JunctionTerrain flat;
+	flat.origin = {-1, -1};
+	flat.width = p.seed.size.x + 2;
+	flat.height = p.seed.size.y + 2;
+	flat.tiles.assign(static_cast<size_t>(flat.width) * flat.height, JunctionTerrainTile{});
+	flat.foundation_cost = 250;
+	flat.terraform_cost = 100;
+	flat.build_on_slopes = true;
+	return flat;
+}
+
+/** The terrain with every corner (cx, cy) at height_of(cx, cy), consistent across tiles. */
+template <typename F>
+static JunctionTerrain TerrainFromCorners(JunctionTerrain terrain, F height_of)
+{
+	for (int y = terrain.origin.y; y < terrain.origin.y + terrain.height; y++) {
+		for (int x = terrain.origin.x; x < terrain.origin.x + terrain.width; x++) {
+			SetJunctionTileCorners(terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)], {height_of(x + 1, y), height_of(x + 1, y + 1), height_of(x, y + 1), height_of(x, y)});
+		}
+	}
+	return terrain;
+}
+
+/** The placement with the height solve on the terrain (offset (0, 0)). */
+static JunctionTrackPlacement PlaceTerraformed(const JunctionTopology &t, const SeedPipeline &p, const JunctionTerrain &terrain, std::string *error)
+{
+	const JunctionFacts facts(terrain);
+	return PlaceJunctionTrackGraph(t, p.paths, p.graph, p.order, p.cut, p.programs, p.spec, p.seed.choices, facts, {0, 0}, error, true, true, &terrain);
+}
+
+TEST_CASE("topoproj: a ridge row is cut, not avoided", "[junction][topoproj]")
+{
+	const JunctionTopology &t = JunctionTTopology();
+	const SeedPipeline p = SeedPipelineOf(t, MakeTestJunctionSpec());
+	const JunctionTerrain flat = FlatTerrainFor(p);
+	std::string error;
+	const JunctionTrackPlacement reference = PlaceTerraformed(t, p, flat, &error);
+	INFO(error);
+	REQUIRE(!reference.nodes.empty());
+
+	/* A ridge row across the whole box, two levels high with a one-level step per tile on both sides, at row 8 (the placement's lane rows lie on both sides of it: every Y run and diagonal crossing it must be cut or climb it). Chosen from a scan of 68 ridges (columns and rows, heights 1-4): the first cut solved 31, failed 21 on a corner two tiles want at different heights or two copies sharing a run, and 16 with no levels between two fixed ends (Z2c report). */
+	constexpr int RIDGE_Y = 8;
+	const JunctionTerrain ridge = TerrainFromCorners(flat, [&](int, int cy) { return std::max(0, 2 - std::abs(cy - RIDGE_Y)); });
+	const JunctionTrackPlacement cut = PlaceTerraformed(t, p, ridge, &error);
+	INFO(error);
+	REQUIRE(!cut.nodes.empty());
+	CHECK(!cut.terraform.corners.empty());
+	CHECK(cut.terraform.cost > 0);
+	CHECK(cut.height_cost >= cut.terraform.cost);
+	CHECK(SamePlacement(reference, cut));
+	CHECK(reference.columns == cut.columns);
+
+	/* The terraformed terrain passes the height facts: the same placement, and its render meets every height. */
+	const JunctionTerrain after = ApplyJunctionTerraform(ridge, cut.terraform);
+	const JunctionFacts after_facts(after);
+	const JunctionTrackPlacement again = PlaceJunctionTrackGraph(t, p.paths, p.graph, p.order, p.cut, p.programs, p.spec, p.seed.choices, after_facts, {0, 0}, &error);
+	INFO(error);
+	REQUIRE(!again.nodes.empty());
+	CHECK(SamePlacement(reference, again));
+	std::vector<JunctionTrackRoute> routes;
+	JunctionLayout layout = RenderJunctionTrackPlacement(t, p.paths, p.graph, p.cut, p.programs, again, &error, &routes);
+	REQUIRE(!layout.tracks.empty());
+	std::string why;
+	CHECK(JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, {0, 0}, &why));
+	INFO(why);
+}
+
+TEST_CASE("topology: flat ground needs no terraform", "[junction][topology]")
+{
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		const SeedPipeline p = SeedPipelineOf(*t, MakeTestJunctionSpec());
+		const JunctionTerrain flat = FlatTerrainFor(p);
+		std::string error;
+		const JunctionTrackPlacement placement = PlaceTerraformed(*t, p, flat, &error);
+		INFO(error);
+		REQUIRE(!placement.nodes.empty());
+		CHECK(placement.terraform.corners.empty());
+		CHECK(placement.terraform.cost == 0);
+		CHECK(placement.height_cost == 0);
+	}
+}
+
+TEST_CASE("topology: the ramp rule spaces up-ramps", "[junction][topology]")
+{
+	/* Ground that climbs 3 levels on three tiles in a row (corner columns 10, 11, 12 at 1, 2, 3) across the whole T: every edge that crosses it climbs 3 levels. */
+	const JunctionTopology &t = JunctionTTopology();
+	constexpr int HILL_X = 10;
+	auto up_ramps = [&](const SeedPipeline &p, const JunctionTerrain &terrain, const JunctionTrackPlacement &placement, int d, bool *adjacent) {
+		std::string error;
+		std::vector<JunctionTrackRoute> routes;
+		const JunctionLayout layout = RenderJunctionTrackPlacement(t, p.paths, p.graph, p.cut, p.programs, placement, &error, &routes);
+		REQUIRE(!layout.tracks.empty());
+		int checked = 0;
+		for (const JunctionTrackRoute &route : routes) {
+			int last = INT_MIN;
+			for (size_t i = 0; i < route.pieces.size(); i++) {
+				const JunctionPiece &piece = route.pieces[i];
+				if (piece.on_bridge) continue;
+				const JunctionTerrainTile *tile = terrain.At(piece.tile.x, piece.tile.y);
+				REQUIRE(tile != nullptr);
+				const bool axis = piece.trackdir == Trackdir::X_SW || piece.trackdir == Trackdir::X_NE || piece.trackdir == Trackdir::Y_SE || piece.trackdir == Trackdir::Y_NW;
+				if (!axis || tile->incline != TrackdirToExitdir(piece.trackdir)) continue;
+				/* An up-ramp: the index of the piece counts along the route. */
+				if (last != INT_MIN) {
+					checked++;
+					if (static_cast<int>(i) - last < d) {
+						if (adjacent != nullptr) *adjacent = true;
+						else CHECK(static_cast<int>(i) - last >= d);
+					}
+				}
+				last = static_cast<int>(i);
+			}
+		}
+		return checked;
+	};
+
+	auto solve = [&](JunctionSpec spec) {
+		const SeedPipeline p = SeedPipelineOf(t, spec);
+		const JunctionTerrain flat = FlatTerrainFor(p);
+		const JunctionTerrain hill = TerrainFromCorners(flat, [&](int cx, int) { return std::clamp(cx - HILL_X, 0, 3); });
+		std::string error;
+		const JunctionTrackPlacement placement = PlaceTerraformed(t, p, hill, &error);
+		INFO(error);
+		REQUIRE(!placement.nodes.empty());
+		const JunctionTerrain after = ApplyJunctionTerraform(hill, placement.terraform);
+		return std::make_tuple(p, after, placement);
+	};
+
+	/* One level per four tiles at most: up-ramps at least d = 4 apart (D219: floor(3 / d) + 1 <= 1). */
+	JunctionSpec slow = MakeTestJunctionSpec();
+	slow.reference_speed = 196;
+	slow.slope_steepness = 3;
+	slow.tl = 4;
+	slow.train.power_hp = 7097;
+	REQUIRE(JunctionRampLevels(slow) == 1);
+	{
+		const auto [p, after, placement] = solve(slow);
+		CHECK(up_ramps(p, after, placement, 4, nullptr) > 0); // Up-ramp pairs exist, so the spacing is not vacuous.
+	}
+
+	/* No limit: the ground's own three adjacent inclines are the cheapest solution on some edge. */
+	JunctionSpec free_climb = MakeTestJunctionSpec();
+	free_climb.slope_steepness = 0;
+	REQUIRE(JunctionRampLevels(free_climb) >= free_climb.tl);
+	{
+		const auto [p, after, placement] = solve(free_climb);
+		bool adjacent = false;
+		up_ramps(p, after, placement, 2, &adjacent);
+		CHECK(adjacent);
+	}
 }
 
 TEST_CASE("topology: doubled bridge heads hug their outermost crossers", "[junction][topologystretch]")

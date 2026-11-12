@@ -187,3 +187,9 @@ int JunctionFacts::PrevBad(JunctionFactKind kind, Axis axis, int line, int from)
 	if (!this->Cell(axis, line, from, i)) return from;
 	return this->prev_bad[to_underlying(kind) * 2 + to_underlying(axis)][i];
 }
+
+bool JunctionFacts::Buildable(int x, int y) const
+{
+	size_t i;
+	return this->Cell(Axis::X, y, x, i) && this->buildable[i];
+}
