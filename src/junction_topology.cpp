@@ -1352,8 +1352,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 						const int kk = el.joiner_div && rows_known ? std::abs(vy[el.first] - vy[el.last]) : k;
 						el.offs = bend_tiles(el.hin, el.hand, 2 * kk + 1, true);
 					} else if (el.k == Elem::K::SBend) {
-						/* A horizontal S-bend of a row edge is sized by the rows it joins (rule of the lane change); known with the rows. */
-						if (is_row_edge(e)) el.m = rows_known ? std::abs(vy[item_pt[el.index]] - vy[el.first]) : 0;
+						/* A horizontal S-bend, of a row edge or a joiner's arrival, is sized by the rows it joins (rule of the lane change); known with the rows. */
+						if (is_row_edge(e)) {
+							el.m = rows_known ? std::abs(vy[item_pt[el.index]] - vy[el.first]) : 0;
+						} else if (VX[el.hin] != 0 && el.index != NO_ROW) {
+							el.m = rows_known ? std::abs(vy[item_pt[el.index]] - vy[el.first]) : 1; // A bend of a chain that is no row keeps one row until the rows are known.
+						}
 						el.offs.clear();
 						if (el.m != 0) el.offs = bend_tiles(el.hin, el.hand, 2 * el.m, false);
 					}
@@ -2373,7 +2377,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 							if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
 						}
 					} else {
-						eq(1, el.last, el.first, VY[side]);
+						if (el.index == NO_ROW) eq(1, el.last, el.first, VY[side]); // No item pins it: one row.
 						eq(0, el.last, el.first, VX[el.hin] * 0);
 					}
 					if (el.index != NO_ROW) eq(1, el.last, item_pt[el.index], 0);
