@@ -708,6 +708,7 @@ TEST_CASE("topology: LL_RR with an L_R sideline: placement", "[junction][topolog
 	std::string error;
 	JunctionTrackStructure structure;
 	const JunctionTrackPlacement placement = PlacementOf(JunctionLLRRSidelineTopology(), 64, &error, &structure);
+	INFO(error);
 	REQUIRE(!placement.nodes.empty());
 	REQUIRE(placement.bridges.size() == structure.bridges.size());
 
@@ -2762,7 +2763,7 @@ TEST_CASE("topology: curve spans in the seed routes", "[junction][topology]")
 
 TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][topologystretch]")
 {
-	/* The gate of the placement relations (RECON-stretch C1, C3, C4): every placement point pushed later by hand in X, and every stack boundary's row gap pushed 1 and 2 rows wider in Y, as terrain will (DESIGN-G1 §14.4); a solve failure is an edit, never a bug. In Y the curve speed rule must hold in every solved run; the other rules are counted (T1c-2's). */
+	/* The gate of the placement relations (RECON-stretch C1, C3, C4): every placement point pushed later by hand in X, and every stack boundary's row gap pushed 1 and 2 rows wider in Y, as terrain will (DESIGN-G1 §14.4); a solve failure is an edit, never a bug. In Y every rule but Prio (RECON-stretch C5, counted) must hold in every solved run (T1c-2: the occupancy family and bridge middle clearance of D217). */
 	for (int si = 0; si < 2; si++) {
 		JunctionSpec spec = MakeTestJunctionSpec();
 		if (si == 1) {
@@ -2812,7 +2813,8 @@ TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][
 			if (si == 0) WARN(name << ": X runs " << runs << ", solve failures " << failures << ", clean " << clean);
 
 			/* Y: the row gap before stack item i, 1 and 2 wider (the floor on item i's row; later items follow). */
-			int y_runs = 0, y_failures = 0, y_curve = 0, y_other = 0, y_clean = 0;
+			int y_runs = 0, y_failures = 0, y_violating = 0, y_clean = 0;
+			std::map<int, int> per_rule;
 			for (int i = 1; i < static_cast<int>(p.item_rows.size()); i++) {
 				for (int s : {1, 2}) {
 					y_runs++;
@@ -2831,27 +2833,30 @@ TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][
 						continue;
 					}
 					SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
-					size_t curve = 0, other = 0;
 					std::string detail = fmt::format("{} item {} s {}:", name, i, s);
+					size_t required = 0;
 					for (const RuleViolation &viol : CheckJunctionRules(layout, spec, t)) {
-						(viol.rule == JunctionRule::CurveSpeed ? curve : other)++;
-						if (viol.rule == JunctionRule::CurveSpeed) detail += fmt::format(" [rule 3 at {},{}: {}]", viol.tile.x, viol.tile.y, viol.message);
+						detail += fmt::format(" [rule {} at {},{}: {}]", static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message);
+						per_rule[static_cast<int>(viol.rule)]++;
+						/* The prio element under a row stretch is its own recon (RECON-stretch C5): counted, not required. */
+						if (viol.rule != JunctionRule::Prio) required++;
 					}
 					INFO(detail);
-					CHECK(curve == 0);
-					y_curve += curve != 0;
-					y_other += other != 0;
-					y_clean += curve == 0 && other == 0;
+					CHECK(required == 0);
+					y_violating += required != 0;
+					y_clean += required == 0;
 				}
 			}
-			WARN(name << ": Y runs " << y_runs << ", solve failures " << y_failures << ", runs with a curve speed violation " << y_curve << ", runs with other violations " << y_other << ", clean " << y_clean);
+			std::string rules;
+			for (const auto &[rule, count] : per_rule) rules += fmt::format(" rule {}: {}", rule, count);
+			WARN(name << ": Y runs " << y_runs << ", solve failures " << y_failures << ", runs with violations " << y_violating << " (violations per rule:" << rules << "), clean " << y_clean);
 		}
 	}
 }
 
-TEST_CASE("topology: the relations keep the seed", "[junction][topology]")
+TEST_CASE("topology: occupancy replaces the site relations", "[junction][topology]")
 {
-	/* The in fan order and bridge head relations are tight at the seed (RECON-stretch C1, C3): the seeds keep their numbers. */
+	/* The occupancy family (D217) is tight at the seed, where C1 (in fan order), C3 (bridge head clear of rows) and the hug picks used to be: the seeds keep their numbers. */
 	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
 		JunctionTrackPlacement p, q;
 		std::string error;
@@ -2910,6 +2915,52 @@ static JunctionTrackPlacement PlaceWithHouses(const JunctionTopology &t, const S
 	return PlaceJunctionTrackGraph(t, p.paths, p.graph, p.order, p.cut, p.programs, p.spec, p.seed.choices, facts, {0, 0}, error);
 }
 
+TEST_CASE("topology: doubled bridge heads hug their outermost crossers", "[junction][topologystretch]")
+{
+	/* Under every Y stretch that solves, each doubled bridge's copy-0 heads lie one tile outside the outermost tiles of the crossers on both rows (D217: by order, not by a pick that goes stale; RECON-stretch §4). */
+	int checked = 0;
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		const JunctionSpec spec = MakeTestJunctionSpec();
+		const SeedPipeline sp = SeedPipelineOf(*t, spec);
+		for (int i = 0; i <= static_cast<int>(sp.seed.item_rows.size()); i++) {
+			for (int s : {0, 1, 2}) {
+				/* i 0 is the seed itself; item i >= 1 has the row gap before it s rows wider. */
+				if ((i == 0) != (s == 0) || i == static_cast<int>(sp.seed.item_rows.size())) continue;
+				std::string error;
+				std::vector<std::pair<int, int>> floors;
+				if (i > 0) floors.emplace_back(1 + i, sp.seed.item_rows[i] + s);
+				const JunctionTrackPlacement q = PlaceJunctionTrackGraph(*t, sp.paths, sp.graph, sp.order, sp.cut, sp.programs, spec, sp.seed.choices, &error, {}, floors);
+				if (q.nodes.empty()) continue;
+				for (size_t b = 0; b < sp.cut.bridges.size(); b++) {
+					const JunctionTrackBridge &bridge = sp.cut.bridges[b];
+					if (!bridge.doubled) continue;
+					/* The crossers' tiles on the copy row, and on the lane row in the copy-0 heads' frame (the lane row's heads stand one step upstream). */
+					const int dir = q.bridges[b][0].end.x > q.bridges[b][0].start.x ? 1 : -1;
+					int low = INT_MAX, high = INT_MIN;
+					for (uint32_t x : bridge.crossed) {
+						for (size_t tok = 0; tok < sp.programs.edges[x].size(); tok++) {
+							const JunctionTrackStep &step = sp.programs.edges[x][tok];
+							if (step.kind != JunctionTrackStep::Kind::Under || step.index != bridge.edge) continue;
+							const JunctionTrackSpan &span = q.edges[x][tok];
+							const int shift = step.copy == 0 ? 0 : dir;
+							low = std::min({low, static_cast<int>(span.first.x) + shift, static_cast<int>(span.second.x) + shift});
+							high = std::max({high, static_cast<int>(span.first.x) + shift, static_cast<int>(span.second.x) + shift});
+						}
+					}
+					REQUIRE(low <= high);
+					const int head_low = std::min(q.bridges[b][0].start.x, q.bridges[b][0].end.x);
+					const int head_high = std::max(q.bridges[b][0].start.x, q.bridges[b][0].end.x);
+					INFO(fmt::format("{} item {} s {} bridge {} (edge {}): heads {}..{}, crossers {}..{}", t == &JunctionTTopology() ? "T" : "LL_RR", i, s, b, bridge.edge, head_low, head_high, low, high));
+					CHECK(head_low == low - 1);
+					CHECK(head_high == high + 1);
+					checked++;
+				}
+			}
+		}
+	}
+	CHECK(checked > 0);
+}
+
 TEST_CASE("topology: placement on flat facts is the seed", "[junction][topology]")
 {
 	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
@@ -2923,7 +2974,7 @@ TEST_CASE("topology: placement on flat facts is the seed", "[junction][topology]
 	}
 }
 
-TEST_CASE("topology: run and group tiles match the render", "[junction][topology]")
+TEST_CASE("topology: run and group tiles match the render", "[junction][topoprojsweep]")
 {
 	/* The facts are applied to the tiles of the rendered routes but the bridge middles, no others: a house on a tile changes the placement (or fails it) exactly when a fact is applied to a tile the seed uses. */
 	const JunctionTopology &t = JunctionLLRRSidelineTopology();

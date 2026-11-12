@@ -1119,7 +1119,36 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	std::vector<int> vx, vy;
 	std::string build_why;
 	bool rows_known = false; // False in the first pass, which only gives the S-bends' first sizes.
-	std::vector<std::array<int, 4>> hug_picks; ///< The bridge-hug picks of the last X build, in (row, k) order.
+	/** A doubled bridge's crosser tiles on its two rows, as (point, column offset) in the copy-0 heads' frame: the heads hug the outermost by the flat solve's order (D217). */
+	struct HugCandidate {
+		int west;
+		int east;
+		uint32_t edge;
+		int row;
+		std::vector<std::pair<int, int>> tiles;
+	};
+	std::vector<HugCandidate> hugs;
+	/* Modes of a build (D217): the flat state has no floors, no clearance and, in X, only the relations; clearance relations of the Y phase come from the flat state; an illegal occupancy group is a placement failure. */
+	bool floors_off = false, relations_only = false, skip_clearance = false, occupancy_failed = false, collecting = false;
+	std::set<std::pair<uint32_t, uint32_t>> ref_shares; ///< The edge pairs that share a tile in the reference solve (the state's flat solve without floors).
+	/** One bridge's middle line: a Y-axis bridge's column variable and its two heads' points, or an X-axis bridge's row variable and its heads' columns. */
+	struct BridgeLine {
+		int bridge;
+		uint32_t edge;
+		bool x_axis;
+		int a, b; ///< The heads' points.
+		int line; ///< The point whose column (Y-axis) or row (X-axis) is the line.
+	};
+	struct HeadRef {
+		int bridge;
+		uint32_t edge;
+		int xpt, ypt; ///< The points whose column and row are the head's.
+	};
+	struct ClearanceY {
+		int v, u;
+		uint32_t edge_b, edge_h;
+	};
+	std::vector<ClearanceY> clear_y;
 	std::vector<JunctionPlacementReason> failure; ///< The explanation chain of the last failed solve.
 	auto solve = [&](std::vector<int> &val) {
 		/* A least solution is a longest path, so no point lies beyond the sum of the positive constants; a larger lo is a positive cycle. */
@@ -1425,6 +1454,336 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		return true;
 	};
 
+	/* The tracks the routes build on each node's tile, and the headings of the routes that go straight through it (JunctionRoutesHeightsOk reads the union per tile): the piece of a route on its node's tile is the half that leaves or joins there, or an axis piece. */
+	std::vector<TrackBits> node_bits(graph.nodes.size());
+	std::vector<std::vector<int>> node_straight(graph.nodes.size());
+	auto compute_node_tracks = [&]() {
+		std::ranges::fill(node_bits, TrackBits{});
+		for (std::vector<int> &headings : node_straight) headings.clear();
+		std::map<std::pair<const Elem *, bool>, TrackBits> half_cache;
+		auto bend_half = [&](const Elem &el, bool last) {
+			const auto cached = half_cache.find({&el, last});
+			if (cached != half_cache.end()) return cached->second;
+			const size_t halves = el.offs.size();
+			const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[el.hin], JunctionBendMoves(el.hand, static_cast<int>(halves), el.k == Elem::K::Corner)});
+			const TrackBits half = !raster.error.empty() || raster.pieces.size() != halves + 2 ? TrackBits{} : TrackBits{TrackdirToTrack(raster.pieces[last ? halves : 1].trackdir)};
+			half_cache[{&el, last}] = half;
+			return half;
+		};
+		for (const std::vector<uint32_t> &edges : graph.path_edges) {
+			for (size_t i = 0; i + 1 < edges.size(); i++) {
+				if (!graph.edges[edges[i]].to.node) continue;
+				const uint32_t node = graph.edges[edges[i]].to.index;
+				const uint32_t e_in = edges[i];
+				const uint32_t e_out = edges[i + 1];
+				const Elem *leaving = nullptr;
+				const Elem *joining = nullptr;
+				if (!is_row_edge(e_out) && chain[e_out].size() > 2 && chain[e_out][1].first == chain[e_out][0].first && chain[e_out][1].k != Elem::K::Heads) leaving = &chain[e_out][1];
+				if (!is_row_edge(e_in) && chain[e_in].size() > 2 && chain[e_in][chain[e_in].size() - 2].last == chain[e_in].back().first && chain[e_in][chain[e_in].size() - 2].k != Elem::K::Heads) joining = &chain[e_in][chain[e_in].size() - 2];
+				if (leaving != nullptr) {
+					node_bits[node] = node_bits[node] | bend_half(*leaving, false);
+				} else if (joining != nullptr) {
+					node_bits[node] = node_bits[node] | bend_half(*joining, true);
+				} else {
+					const int heading = is_row_edge(e_out) ? (east[(end_level(graph.edges[e_out].from) - 1) / 2] ? 1 : 3) : chain[e_out][0].hout;
+					node_bits[node] = node_bits[node] | TrackBits{TrackdirToTrack(JUNCTION_AXIS_TRACKDIR[heading])};
+					if (std::ranges::find(node_straight[node], heading) == node_straight[node].end()) node_straight[node].push_back(heading);
+				}
+			}
+		}
+	};
+
+	/* The flat solve (D217): the least columns of the relations added so far, with no facts and no floors; false when they contradict each other. */
+	auto flat_solve = [&](std::vector<int> &val) {
+		int bound = 1;
+		for (const Cons &cn : cons) bound += std::max(cn.k, 0);
+		JunctionPositions positions(pt_count, 0, bound);
+		bool ok = positions.RestrictRange(0, 0, 0);
+		for (const Cons &cn : cons) {
+			if (!ok) break;
+			ok = positions.AddDifference(cn.v, cn.u, cn.k);
+		}
+		if (!ok) return false;
+		val.resize(pt_count);
+		for (int i = 0; i < pt_count; i++) val[i] = positions.Lo(i);
+		return true;
+	};
+
+	/** The half pieces of a bend as track bits, one per half tile as bend_tiles lists them; empty when the bend has no raster. */
+	auto bend_bits = [&](int heading, int hand, int halves, bool corner) {
+		auto cached = bend_rasters.find({heading, hand, halves, corner});
+		if (cached == bend_rasters.end()) cached = bend_rasters.emplace(std::make_tuple(heading, hand, halves, corner), RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, halves, corner)})).first;
+		const JunctionRaster &raster = cached->second;
+		std::vector<TrackBits> bits;
+		if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != halves + 2) return bits;
+		for (int i = 1; i <= halves; i++) bits.push_back(TrackBits{TrackdirToTrack(raster.pieces[i].trackdir)});
+		return bits;
+	};
+
+	/* The occupancy family (D217): unrelated tracks never share or touch a tile. */
+	auto add_occupancy = [&](const std::vector<int> &flat) -> bool {
+		/** One occupant of a row: the columns [left, right], each end a point and an offset, with the tracks of its tiles and what it belongs to. */
+		struct Occupant {
+			int row;
+			int lp, ldx, rp, rdx;
+			TrackBits bits;
+			uint32_t edge; ///< The graph edge, UINT32_MAX for a node's tile.
+			int copy; ///< 0 or 1, -1 for the part both copies share.
+			uint32_t node; ///< The node of a node's tile, else UINT32_MAX.
+		};
+		std::map<int, std::vector<Occupant>> by_row;
+		auto flat_left = [&](const Occupant &o) { return flat[o.lp] + o.ldx; };
+		auto flat_right = [&](const Occupant &o) { return flat[o.rp] + o.rdx; };
+		auto add_tile = [&](int pt, int dx, int y, TrackBits bits, uint32_t edge, int copy) {
+			std::vector<Occupant> &row = by_row[y];
+			if (!row.empty() && row.back().edge == edge && row.back().copy == copy && row.back().node == UINT32_MAX && row.back().lp == pt && row.back().ldx == dx && row.back().rp == pt && row.back().rdx == dx) {
+				row.back().bits = row.back().bits | bits;
+				return;
+			}
+			row.push_back({y, pt, dx, pt, dx, bits, edge, copy, UINT32_MAX});
+		};
+		/* The tiles strictly between points a and b on row y, a before b in the sense sgn; nothing when there are none at the flat solve. */
+		auto add_run = [&](int a, int b, int y, int sgn, uint32_t edge, int copy) {
+			Occupant run{y, sgn > 0 ? a : b, 1, sgn > 0 ? b : a, -1, TrackBits{Track::X}, edge, copy, UINT32_MAX};
+			if (flat_left(run) > flat_right(run)) return;
+			by_row[y].push_back(run);
+		};
+		auto add_bend = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t edge, int copy, bool skip_first, bool skip_last) {
+			const std::vector<TileIndexDiffC> offs = bend_tiles(heading, hand, halves, corner);
+			const std::vector<TrackBits> bits = bend_bits(heading, hand, halves, corner);
+			if (bits.size() != offs.size()) return;
+			for (size_t j = 0; j < offs.size(); j++) {
+				if ((skip_first && j == 0) || (skip_last && j + 1 == offs.size())) continue;
+				add_tile(pt, offs[j].x, y + offs[j].y, bits[j], edge, copy);
+			}
+		};
+		std::vector<uint32_t> node_of_pt(pt_count, UINT32_MAX);
+		for (uint32_t i = 0; i < node_pt.size(); i++) node_of_pt[node_pt[i]] = i;
+		for (uint32_t i = 0; i < node_pt.size(); i++) by_row[vy[node_pt[i]]].push_back({vy[node_pt[i]], node_pt[i], 0, node_pt[i], 0, node_bits[i], UINT32_MAX, 0, i});
+
+		/* The chains of the edges that are not rows. */
+		for (uint32_t e = 0; e < edge_count; e++) {
+			if (is_row_edge(e)) continue;
+			const std::vector<Elem> &elems = chain[e];
+			for (size_t i = 0; i < elems.size(); i++) {
+				const Elem &el = elems[i];
+				if (el.k == Elem::K::Tile) {
+					if (node_of_pt[el.first] == UINT32_MAX) add_tile(el.first, 0, vy[el.first], VX[el.hin] != 0 ? TrackBits{Track::X} : TrackBits{Track::Y}, e, 0);
+				} else if (el.k == Elem::K::Heads) {
+					const TrackBits head = VX[el.hin] != 0 ? TrackBits{Track::X} : TrackBits{Track::Y};
+					add_tile(el.first, 0, vy[el.first], head, e, 0);
+					add_tile(el.last, 0, vy[el.last], head, e, 0);
+				} else {
+					add_bend(el.first, vy[el.first], el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, 0, node_of_pt[el.first] != UINT32_MAX, node_of_pt[el.last] != UINT32_MAX);
+				}
+				if (i + 1 >= elems.size() || elems[i + 1].first == el.last) continue;
+				const Elem &next = elems[i + 1];
+				if (VX[el.hout] == 0) {
+					const int d = VY[el.hout];
+					for (int y = vy[el.last] + d; d > 0 ? y < vy[next.first] : y > vy[next.first]; y += d) add_tile(el.last, 0, y, TrackBits{Track::Y}, e, 0);
+				} else {
+					add_run(el.last, next.first, vy[el.last], VX[el.hout], e, 0);
+				}
+			}
+		}
+
+		/* The rows: in fan, lane, doubled lane, out fan. */
+		for (int r = 0; r < rows; r++) {
+			const RowPts &rp = row_pts[r];
+			const JunctionTrackEdge &in = graph.edges[in_edge[r]];
+			const JunctionTrackEdge &out = graph.edges[out_edge[r]];
+			const int sgn = east[r] ? 1 : -1;
+			const int heading = east[r] ? 1 : 3;
+			const int m_in = fan_m[in_edge[r]];
+			const int m_out = fan_m[out_edge[r]];
+			const int y_in = port_row[in.from.index];
+			const int y_out = port_row[out.to.index];
+			const int y_exit = vy[item_pt[doubled_row(r) ? north_item[r] : lane_item[r]]];
+			const int y_lane = vy[item_pt[lane_item[r]]];
+			const int nex = node_pt[in.to.index];
+			const int njm = node_pt[out.from.index];
+			const uint32_t lane_edge = leg_edge[r];
+			const TrackBits axis{Track::X};
+			add_tile(port_pt[in.from.index], 0, y_in, axis, in_edge[r], 0);
+			if (m_in != 0) {
+				add_run(port_pt[in.from.index], rp.fif, y_in, sgn, in_edge[r], 0);
+				add_bend(rp.fif, y_in, heading, ((y_exit > y_in) == (heading == 1)) ? 1 : -1, 2 * m_in, false, in_edge[r], 0, false, false);
+			}
+			add_run(rp.fil, nex, y_exit, sgn, in_edge[r], 0);
+			if (!doubled_row(r)) {
+				add_run(nex, njm, y_lane, sgn, lane_edge, 0);
+			} else {
+				add_run(nex, rp.lane_split, y_exit, sgn, lane_edge, -1);
+				add_run(rp.lane_split, rp.nh0[0], y_exit, sgn, lane_edge, 0);
+				const size_t g = rp.nh0.size();
+				for (size_t k = 0; k < g; k++) {
+					add_tile(rp.nh0[k], 0, y_exit, axis, lane_edge, 0);
+					add_tile(rp.fh0[k], 0, y_exit, axis, lane_edge, 0);
+					add_tile(rp.nh1[k], 0, y_lane, axis, lane_edge, 1);
+					add_tile(rp.fh1[k], 0, y_lane, axis, lane_edge, 1);
+					if (k + 1 < g) {
+						add_run(rp.fh0[k], rp.nh0[k + 1], y_exit, sgn, lane_edge, 0);
+						add_run(rp.fh1[k], rp.nh1[k + 1], y_lane, sgn, lane_edge, 1);
+					}
+				}
+				add_run(rp.fh0[g - 1], rp.sb0_first, y_exit, sgn, lane_edge, 0);
+				add_run(rp.sb1_last, rp.nh1[0], y_lane, sgn, lane_edge, 1);
+				add_run(rp.fh1[g - 1], rp.lane_merge, y_lane, sgn, lane_edge, 1);
+				add_run(rp.lane_merge, njm, y_lane, sgn, lane_edge, -1);
+				for (int copy = 0; copy < 2; copy++) {
+					for (const Step &step : copy == 0 ? programs.edges[lane_edge] : programs.copies[lane_edge]) {
+						if (step.kind != StepKind::SBend) continue;
+						add_bend(copy == 0 ? rp.sb0_first : rp.lane_split, y_exit, heading, step.hand, 2 * std::abs(y_lane - y_exit), false, lane_edge, copy, false, false);
+					}
+				}
+			}
+			add_run(njm, rp.fof, y_lane, sgn, out_edge[r], 0);
+			if (m_out != 0) {
+				add_bend(rp.fof, y_lane, heading, ((y_out > y_lane) == (heading == 1)) ? 1 : -1, 2 * m_out, false, out_edge[r], 0, false, false);
+				add_run(rp.fol, port_pt[out.to.index], y_out, sgn, out_edge[r], 0);
+			}
+			add_tile(port_pt[out.to.index], 0, y_out, axis, out_edge[r], 0);
+		}
+
+		/* Related occupants never constrain each other: the same edge and copy, a node's tile and an edge that starts or ends at the node. */
+		auto at_node = [&](uint32_t edge, uint32_t node) { return edge != UINT32_MAX && ((graph.edges[edge].from.node && graph.edges[edge].from.index == node) || (graph.edges[edge].to.node && graph.edges[edge].to.index == node)); };
+		auto related = [&](const Occupant &a, const Occupant &b) {
+			if (a.edge != UINT32_MAX && a.edge == b.edge) return a.copy == b.copy || a.copy < 0 || b.copy < 0;
+			return (a.node != UINT32_MAX && at_node(b.edge, a.node)) || (b.node != UINT32_MAX && at_node(a.edge, b.node));
+		};
+		auto label = [&](const Occupant &o) { return o.node != UINT32_MAX ? fmt::format("node {}", o.node) : fmt::format("edge {}", o.edge); };
+		for (auto &[y, occupants] : by_row) {
+			std::ranges::stable_sort(occupants, [&](const Occupant &a, const Occupant &b) { return std::make_pair(flat_left(a), flat_right(a)) < std::make_pair(flat_left(b), flat_right(b)); });
+			auto add_relation = [&](const Occupant &a, const Occupant &b, bool tie) -> bool {
+				if (collecting) {
+					if (tie) ref_shares.emplace(std::min(a.edge, b.edge), std::max(a.edge, b.edge));
+					return true;
+				}
+				reasons.push_back(JunctionPlacementReason{"occupancy", b.edge, b.node, -1});
+				const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
+				notes[reason] = fmt::format("[{} and {} on row {}]", label(a), label(b), y);
+				const int apart = flat_left(b) - flat_right(a);
+				if (tie) {
+					/* A group is legal when the same edges share a tile in the reference: the state's flat solve without floors (checker-clean by the sweeps; when row edits arrive the reference becomes the cached root seed). One that appears only with floors is legal only when no two of its unrelated pieces share a track end on a tile edge. */
+					const bool in_reference = ref_shares.contains({std::min(a.edge, b.edge), std::max(a.edge, b.edge)});
+					for (const DiagDirection d : {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW}) {
+						if (!in_reference && a.bits.Any(DiagdirReachesTracks(d)) && b.bits.Any(DiagdirReachesTracks(d))) {
+							occupancy_failed = true;
+							failure.assign(1, reasons.back());
+							if (error != nullptr) *error = "the placement rules contradict each other: occupancy (edge " + (a.edge != UINT32_MAX ? str(static_cast<int>(a.edge)) : std::string("-")) + ") " + notes[reason];
+							return false;
+						}
+					}
+					cons.push_back({b.lp, a.rp, apart - b.ldx + a.rdx, reason});
+					cons.push_back({a.rp, b.lp, -(apart - b.ldx + a.rdx), reason});
+				} else {
+					const bool touch = a.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && b.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)));
+					cons.push_back({b.lp, a.rp, (touch ? 2 : 1) - b.ldx + a.rdx, reason});
+				}
+				return true;
+			};
+			/* Occupants on one flat tile form a group, tied to each other; groups are neighbours in the order. */
+			std::vector<std::pair<size_t, size_t>> groups;
+			for (size_t i = 0; i < occupants.size(); i++) {
+				if (!groups.empty() && flat_left(occupants[groups.back().first]) == flat_left(occupants[i]) && flat_right(occupants[groups.back().first]) == flat_right(occupants[i])) {
+					groups.back().second = i;
+				} else {
+					groups.emplace_back(i, i);
+				}
+			}
+			for (size_t gi = 0; gi < groups.size(); gi++) {
+				for (size_t i = groups[gi].first; i < groups[gi].second; i++) {
+					if (!related(occupants[i], occupants[i + 1]) && !add_relation(occupants[i], occupants[i + 1], true)) return false;
+				}
+				if (gi + 1 == groups.size()) continue;
+				bool any_related = false;
+				TrackBits left_bits, right_bits;
+				for (size_t i = groups[gi].first; i <= groups[gi].second; i++) {
+					left_bits = left_bits | occupants[i].bits;
+					for (size_t j = groups[gi + 1].first; j <= groups[gi + 1].second; j++) any_related = any_related || related(occupants[i], occupants[j]);
+				}
+				for (size_t j = groups[gi + 1].first; j <= groups[gi + 1].second; j++) right_bits = right_bits | occupants[j].bits;
+				if (any_related) continue;
+				Occupant a = occupants[groups[gi].second];
+				Occupant b = occupants[groups[gi + 1].first];
+				a.bits = left_bits;
+				b.bits = right_bits;
+				if (!add_relation(a, b, flat_left(b) <= flat_right(a))) return false;
+			}
+		}
+		return true;
+	};
+
+	/* The heads of a doubled bridge hug its outermost crosser tiles by the flat solve's order (D80, D118, D217). */
+	auto hug_heads = [&](const std::vector<int> &flat) {
+		for (const HugCandidate &hug : hugs) {
+			if (hug.tiles.empty()) continue;
+			auto value = [&](const std::pair<int, int> &tile) { return flat[tile.first] + tile.second; };
+			const std::pair<int, int> *low = &hug.tiles[0];
+			const std::pair<int, int> *high = &hug.tiles[0];
+			for (const std::pair<int, int> &tile : hug.tiles) {
+				if (value(tile) < value(*low)) low = &tile;
+				if (value(tile) > value(*high)) high = &tile;
+			}
+			why("bridge heads hug crossers", hug.edge, UINT32_MAX, hug.row);
+			eq(0, hug.west, low->first, low->second - 1);
+			eq(0, hug.east, high->first, high->second + 1);
+		}
+	};
+
+
+	/* The bridges' middle lines and heads (D217): a Y-axis bridge's column and rows, an X-axis (doubled) bridge's row and columns. */
+	auto collect_bridges = [&](std::vector<BridgeLine> &lines, std::vector<HeadRef> &heads) {
+		lines.clear();
+		heads.clear();
+		for (uint32_t e = 0; e < edge_count; e++) {
+			if (is_row_edge(e)) continue;
+			for (const Elem &el : chain[e]) {
+				if (el.k != Elem::K::Heads || VX[el.hin] != 0 || bridges_of[e].empty()) continue;
+				const int b = bridges_of[e][0];
+				lines.push_back({b, e, false, el.first, el.last, el.first});
+				heads.push_back({b, e, el.first, el.first});
+				heads.push_back({b, e, el.last, el.last});
+			}
+		}
+		for (int r = 0; r < rows; r++) {
+			if (!doubled_row(r)) continue;
+			const RowPts &rp = row_pts[r];
+			for (size_t k = 0; k < rp.nh0.size(); k++) {
+				const int b = bridges_of[leg_edge[r]][k];
+				for (int copy = 0; copy < 2; copy++) {
+					const int n = copy == 0 ? rp.nh0[k] : rp.nh1[k];
+					const int f = copy == 0 ? rp.fh0[k] : rp.fh1[k];
+					const int line = item_pt[copy == 0 ? north_item[r] : lane_item[r]];
+					lines.push_back({b, leg_edge[r], true, n, f, line});
+					heads.push_back({b, leg_edge[r], n, line});
+					heads.push_back({b, leg_edge[r], f, line});
+				}
+			}
+		}
+	};
+
+	/* Bridge middle clearance in X (D217): a head whose row lies strictly within a Y-axis bridge's rows keeps its flat side of the bridge's column by one. */
+	auto add_clearance_x = [&](const std::vector<int> &flat) {
+		std::vector<BridgeLine> lines;
+		std::vector<HeadRef> heads;
+		collect_bridges(lines, heads);
+		for (const BridgeLine &line : lines) {
+			if (line.x_axis) continue;
+			const int top = std::min(vy[line.a], vy[line.b]);
+			const int bottom = std::max(vy[line.a], vy[line.b]);
+			for (const HeadRef &head : heads) {
+				if (head.bridge == line.bridge || vy[head.ypt] <= top || vy[head.ypt] >= bottom) continue;
+				const int side = flat[head.xpt] - flat[line.line];
+				if (side == 0) continue;
+				reasons.push_back(JunctionPlacementReason{"bridge middle clearance", line.edge, UINT32_MAX, -1});
+				const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
+				notes[reason] = fmt::format("[edge {} and the head of edge {}]", line.edge, head.edge);
+				if (side > 0) cons.push_back({head.xpt, line.line, 1, reason}); else cons.push_back({line.line, head.xpt, 1, reason});
+			}
+		}
+	};
+
 	/* One round: the constraints of a phase. */
 	auto build = [&]() {
 		cons.clear();
@@ -1433,7 +1792,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		notes.clear();
 		why_now = JunctionPlacementReason{};
 		const bool x_phase = phase == 0;
-		if (x_phase) hug_picks.clear();
+		if (x_phase) hugs.clear();
 
 		/* Stack rows. */
 		why("stack origin");
@@ -1549,13 +1908,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				along(heading, njm, rp.lane_merge, even_prio + 2, false);
 				after = rp.lane_merge;
 
-				/* Every crosser's tiles on the copy row and the lane row lie between its bridge's heads, and the heads hug the outermost tiles (D80, D118, D145). */
+				/* Every crosser's tiles on the copy row and the lane row lie between its bridge's heads; the heads hug the outermost tiles by the flat solve's order, below (D80, D118, D145, D217). */
 				const int u = -s; // The upstream step.
 				why("bridge heads hug crossers", leg_edge[r], UINT32_MAX, r);
 				for (size_t k = 0; k < g; k++) {
 					const JunctionTrackBridge &bridge = structure.bridges[bridges_of[leg_edge[r]][k]];
-					bool have = false;
-					int low_pt = 0, low_dx = 0, high_pt = 0, high_dx = 0, low_value = 0, high_value = 0;
+					HugCandidate hug{s > 0 ? rp.nh0[k] : rp.fh0[k], s > 0 ? rp.fh0[k] : rp.nh0[k], leg_edge[r], r, {}};
 					for (uint32_t x : bridge.crossed) {
 						if (!rows_known) break;
 						const std::vector<SymTile> tiles = edge_tiles(x);
@@ -1574,31 +1932,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 									ge(0, near, z.pt, 1 + z.dx);
 									ge(0, z.pt, far, 1 - z.dx);
 								}
-								if (fixed == nullptr) {
-									const int dx = pass == 0 ? z.dx : z.dx - u;
-									const int value = vx[z.pt] + dx;
-									if (!have || value < low_value) { low_value = value; low_pt = z.pt; low_dx = dx; }
-									if (!have || value > high_value) { high_value = value; high_pt = z.pt; high_dx = dx; }
-								}
-								have = true;
+								hug.tiles.emplace_back(z.pt, pass == 0 ? z.dx : z.dx - u);
 							}
 							if (!any) { build_why = "Z row " + str(y) + " edge " + str(x) + " row " + str(r); return false; }
 						}
 					}
-					if (have && fixed != nullptr) {
-						if (hug_picks.size() >= fixed->hug.size()) { build_why = "the choices miss a bridge-hug pick"; return false; }
-						low_pt = fixed->hug[hug_picks.size()][0];
-						low_dx = fixed->hug[hug_picks.size()][1];
-						high_pt = fixed->hug[hug_picks.size()][2];
-						high_dx = fixed->hug[hug_picks.size()][3];
-					}
-					hug_picks.push_back({low_pt, low_dx, high_pt, high_dx});
-					if (have) {
-						const int west = s > 0 ? rp.nh0[k] : rp.fh0[k];
-						const int east_head = s > 0 ? rp.fh0[k] : rp.nh0[k];
-						eq(0, west, low_pt, low_dx - 1);
-						eq(0, east_head, high_pt, high_dx + 1);
-					}
+					hugs.push_back(std::move(hug));
 				}
 			}
 			(void)after;
@@ -1615,24 +1954,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				along(heading, rp.fof, njm, 2, false);
 				along(heading, rp.fol, rp.fof, m_out - 1, true);
 				along(heading, pout, rp.fol, 2, true);
-			}
-		}
-
-		if (x_phase) {
-			/* Nested in-fans of one heading keep their order: B's stack row lies within A's span from its port row, so B reaches it only after A has left it (RECON-stretch C1). */
-			for (int ra = 0; ra < rows; ra++) {
-				for (int rb = 0; rb < rows; rb++) {
-					if (ra == rb || east[ra] != east[rb]) continue;
-					const uint32_t ea = in_edge[ra], eb = in_edge[rb];
-					if (fan_m[ea] == 0 || fan_m[eb] == 0) continue;
-					const int pr_a = port_row[graph.edges[ea].from.index], sr_a = vy[item_pt[fan_item(ea)]];
-					const int pr_b = port_row[graph.edges[eb].from.index], sr_b = vy[item_pt[fan_item(eb)]];
-					const bool b_in_a = sr_b >= std::min(pr_a, sr_a) && sr_b <= std::max(pr_a, sr_a);
-					const bool a_in_b = sr_a >= std::min(pr_b, sr_b) && sr_a <= std::max(pr_b, sr_b);
-					if (!b_in_a || a_in_b) continue;
-					why("in fan order", eb, UINT32_MAX, rb);
-					along(east[ra] ? 1 : 3, row_pts[rb].fil, row_pts[ra].fif, std::abs(sr_b - pr_a), false);
-				}
 			}
 		}
 
@@ -1726,19 +2047,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			/* A single bridge passes over the S-bend it crosses, in the column next to the S-bend's start (D113, F4). */
 			for (const Elem &el : elems) {
 				if (el.k != Elem::K::Heads) continue;
-				{
-					/* This single bridge's northernmost head lies beyond both rows of a doubled bridge passing over this edge (RECON-stretch C3). It assumes the doubled leg's rows lie north of the head; a topology with the leg south fails the Y solve with this reason ("not ruled yet"). */
-					for (const JunctionTrackBridge &b2 : structure.bridges) {
-						if (!b2.doubled || std::ranges::count(b2.crossed, e) == 0) continue;
-						for (int r = 0; r < rows; r++) {
-							if (leg_edge[r] != b2.edge || !doubled_row(r)) continue;
-							why("bridge head clear of rows", e, UINT32_MAX, r);
-							const int nm = el.hin == 0 ? el.last : el.first; // The northernmost head.
-							ge(1, nm, item_pt[north_item[r]], 1);
-							ge(1, nm, item_pt[lane_item[r]], 1);
-						}
-					}
-				}
 				const std::vector<Elem> &other = chain[el.cross];
 				const Elem *crossed = nullptr;
 				for (const Elem &o : other) {
@@ -1762,12 +2070,16 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 		}
 
-		if (x_phase) {
-			why("x floor");
-			for (const std::pair<int, int> &floor : x_floors) ge(0, floor.first, 0, floor.second);
-		} else {
+		if (!x_phase && !floors_off) {
 			why("y floor");
 			for (const std::pair<int, int> &floor : y_floors) ge(1, floor.first, 0, floor.second);
+		}
+		if (!x_phase && !skip_clearance) {
+			for (const ClearanceY &c : clear_y) {
+				reasons.push_back(JunctionPlacementReason{"bridge middle clearance", c.edge_b, UINT32_MAX, -1});
+				notes[static_cast<uint32_t>(reasons.size() - 1)] = fmt::format("[edge {} and the head of edge {}]", c.edge_b, c.edge_h);
+				cons.push_back({c.v, c.u, 1, static_cast<uint32_t>(reasons.size() - 1)});
+			}
 		}
 
 		if ((!x_phase || rows_known) && spec.curve_limit) {
@@ -1815,7 +2127,23 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 		}
 
-		if (x_phase && facts != nullptr) {
+		if (x_phase && rows_known && !relations_only) {
+			/* The occupancy family and the bridge heads follow the order of the flat solve of the relations above (D217); when the relations contradict each other the solve below explains it. */
+			compute_node_tracks();
+			std::vector<int> flat;
+			if (flat_solve(flat)) {
+				if (!add_occupancy(flat)) return false;
+				hug_heads(flat);
+				if (!skip_clearance) add_clearance_x(flat);
+			}
+		}
+
+		if (x_phase && !floors_off) {
+			why("x floor");
+			for (const std::pair<int, int> &floor : x_floors) ge(0, floor.first, 0, floor.second);
+		}
+
+		if (x_phase && facts != nullptr && !relations_only) {
 			/* The terrain's facts (DESIGN-G1 §14.4): every group of tiles gets the columns where its tile is buildable, every straight run on a row must be buildable on each tile it covers. Bridge middles are not checked: the node path checks no bridge piece either (JunctionNodeHeightsOk skips on_bridge). */
 			const int high = facts->MaxX() - offset.x;
 			std::vector<uint32_t> node_of_pt(pt_count, UINT32_MAX);
@@ -1916,40 +2244,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				fact_cons.push_back({pt, -1, std::move(allowed), reason});
 			};
 			auto column_run = [&](int pt, int y_a, int y_b, uint32_t e) { pending.push_back([&column_run_now, pt, y_a, y_b, e] { column_run_now(pt, y_a, y_b, e); }); };
-			/* The tracks the routes build on each node's tile, and the headings of the routes that go straight through it (JunctionRoutesHeightsOk reads the union per tile): the piece of a route on its node's tile is the half that leaves or joins there, or an axis piece. */
-			std::vector<TrackBits> node_bits(graph.nodes.size());
-			std::vector<std::vector<int>> node_straight(graph.nodes.size());
-			std::map<std::pair<const Elem *, bool>, TrackBits> half_cache;
-			auto bend_half = [&](const Elem &el, bool last) {
-				const auto cached = half_cache.find({&el, last});
-				if (cached != half_cache.end()) return cached->second;
-				const size_t halves = el.offs.size();
-				const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[el.hin], JunctionBendMoves(el.hand, static_cast<int>(halves), el.k == Elem::K::Corner)});
-				const TrackBits half = !raster.error.empty() || raster.pieces.size() != halves + 2 ? TrackBits{} : TrackBits{TrackdirToTrack(raster.pieces[last ? halves : 1].trackdir)};
-				half_cache[{&el, last}] = half;
-				return half;
-			};
-			for (const std::vector<uint32_t> &edges : graph.path_edges) {
-				for (size_t i = 0; i + 1 < edges.size(); i++) {
-					if (!graph.edges[edges[i]].to.node) continue;
-					const uint32_t node = graph.edges[edges[i]].to.index;
-					const uint32_t e_in = edges[i];
-					const uint32_t e_out = edges[i + 1];
-					const Elem *leaving = nullptr;
-					const Elem *joining = nullptr;
-					if (!is_row_edge(e_out) && chain[e_out].size() > 2 && chain[e_out][1].first == chain[e_out][0].first && chain[e_out][1].k != Elem::K::Heads) leaving = &chain[e_out][1];
-					if (!is_row_edge(e_in) && chain[e_in].size() > 2 && chain[e_in][chain[e_in].size() - 2].last == chain[e_in].back().first && chain[e_in][chain[e_in].size() - 2].k != Elem::K::Heads) joining = &chain[e_in][chain[e_in].size() - 2];
-					if (leaving != nullptr) {
-						node_bits[node] = node_bits[node] | bend_half(*leaving, false);
-					} else if (joining != nullptr) {
-						node_bits[node] = node_bits[node] | bend_half(*joining, true);
-					} else {
-						const int heading = is_row_edge(e_out) ? (east[(end_level(graph.edges[e_out].from) - 1) / 2] ? 1 : 3) : chain[e_out][0].hout;
-						node_bits[node] = node_bits[node] | TrackBits{TrackdirToTrack(JUNCTION_AXIS_TRACKDIR[heading])};
-						if (std::ranges::find(node_straight[node], heading) == node_straight[node].end()) node_straight[node].push_back(heading);
-					}
-				}
-			}
 			/* A node's tile: the columns where all its tracks fit (and the axis pieces on both sides of a route that goes straight through), and of those where the route meets them at one height. */
 			auto node_checks = [&]() {
 				for (uint32_t node = 0; node < graph.nodes.size(); node++) {
@@ -2208,6 +2502,58 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			if (item != NO_ROW) fan_m[e] = std::abs(port_row[edge_port(e)] - vy[item_pt[item]]);
 		}
 	};
+
+	/* The Y-phase clearance of the X-axis bridges (D217): from the flat state, the Y and the X solve with no floors and only the relations, a head whose column lies strictly within an X-axis bridge keeps its flat side of the bridge's row by one. */
+	auto plan_clearance = [&](int fixed_offset) {
+		clear_y.clear();
+		ref_shares.clear();
+		std::vector<BridgeLine> lines;
+		std::vector<HeadRef> heads;
+		collect_bridges(lines, heads);
+		const std::vector<int> saved_vx = vx, saved_vy = vy, saved_port_row = port_row, saved_fan_m = fan_m;
+		const int saved_phase = phase;
+		floors_off = relations_only = skip_clearance = true;
+		std::vector<int> flat_y, flat_x;
+		phase = 1;
+		refresh(false);
+		bool ok = build() && flat_solve(flat_y);
+		if (ok) {
+			vy = flat_y;
+			set_port_rows(fixed_offset >= 0 ? fixed_offset : best_offset());
+			phase = 0;
+			refresh(true);
+			ok = build() && flat_solve(flat_x);
+			if (ok) {
+				vx = flat_x;
+				compute_node_tracks();
+				collecting = true;
+				add_occupancy(flat_x);
+				collecting = false;
+			}
+		}
+		floors_off = relations_only = skip_clearance = false;
+		phase = saved_phase;
+		vx = saved_vx;
+		vy = saved_vy;
+		port_row = saved_port_row;
+		fan_m = saved_fan_m;
+		if (!ok) return;
+		for (const BridgeLine &line : lines) {
+			if (!line.x_axis) continue;
+			const int left = std::min(flat_x[line.a], flat_x[line.b]);
+			const int right = std::max(flat_x[line.a], flat_x[line.b]);
+			for (const HeadRef &head : heads) {
+				if (head.bridge == line.bridge || flat_x[head.xpt] <= left || flat_x[head.xpt] >= right) continue;
+				const int side = flat_y[head.ypt] - flat_y[line.line];
+				if (side == 0) continue;
+				if (side > 0) clear_y.push_back({head.ypt, line.line, line.edge, head.edge}); else clear_y.push_back({line.line, head.ypt, line.edge, head.edge});
+			}
+		}
+	};
+	auto build_failed = [&]() {
+		if (occupancy_failed) return solve_failed();
+		return fail("the placement rules are not complete for this topology " + build_why);
+	};
 	JunctionPlacementChoices choices;
 	int port_offset = 0;
 
@@ -2219,22 +2565,23 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 		}
 		rows_known = true;
+		plan_clearance(fixed->port_offset);
 		phase = 1;
 		refresh(false);
-		if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
+		if (!build()) return build_failed();
 		if (!solve(vy)) return solve_failed();
 		port_offset = fixed->port_offset;
 		set_port_rows(port_offset);
 		phase = 0;
 		refresh(true);
-		if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
+		if (!build()) return build_failed();
 		if (!solve(vx)) return solve_failed();
 		choices = *fixed;
 	} else {
 		/* The rounds: a first X pass without rows gives the S-bends' sizes, then Y and X alternate until the sizes hold. */
 		phase = 0;
 		refresh(false);
-		if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
+		if (!build()) return build_failed();
 		if (!solve(vx)) return solve_failed();
 		for (uint32_t e = 0; e < edge_count; e++) {
 			for (Elem &el : chain[e]) {
@@ -2243,9 +2590,10 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		}
 		rows_known = true;
 		for (int round = 0; round < 5; round++) {
+			plan_clearance(-1);
 			phase = 1;
 			refresh(false);
-			if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
+			if (!build()) return build_failed();
 			if (!solve(vy)) return solve_failed();
 
 			/* The port rows. */
@@ -2254,7 +2602,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 
 			phase = 0;
 			refresh(true);
-			if (!build()) return fail("the placement rules are not complete for this topology " + build_why);
+			if (!build()) return build_failed();
 			if (!solve(vx)) return solve_failed();
 
 			bool changed = false;
@@ -2274,7 +2622,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 
 		/* The choices the rounds settled on. */
 		choices.port_offset = port_offset;
-		choices.hug = hug_picks;
 		choices.m.resize(edge_count);
 		choices.corner.resize(edge_count);
 		for (uint32_t e = 0; e < edge_count; e++) {

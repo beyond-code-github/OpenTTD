@@ -234,7 +234,6 @@ struct JunctionPlacementReason {
 struct JunctionPlacementChoices {
 	std::vector<std::vector<int>> m; ///< Per edge, per token of JunctionTrackPrograms::edges: a vertical S-bend's size, 0 for other tokens.
 	std::vector<std::vector<int>> corner; ///< Per edge, per token: a joiner_div Corner's row span, 0 for other tokens.
-	std::vector<std::array<int, 4>> hug; ///< Per doubled-leg bridge, in (row, k) order of the crosser block: low point, low dx, high point, high dx of the crosser tiles the copy-0 heads hug (D80, D118; point ids of this structure's placement, valid only with the same structure).
 	int port_offset = 0; ///< The port rows' offset.
 	bool operator==(const JunctionPlacementChoices &) const = default;
 };
@@ -264,7 +263,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
  * The placement with its choices fixed (DESIGN-G1 §14.2): one Y solve and one X solve, no rounds.
  * @param choices The S-bend sizes, Corner spans and port offset to solve with, e.g. those of an earlier placement.
  * @param error Receives the reason when the result is empty; JunctionTrackPlacement::why then names the relations of a contradiction.
- * @param x_floors (point, least column) pairs added as lower bounds in the X phase, reason "x floor"; a test seam until terrain facts (DESIGN-G1 §14.4). Points are the placement's internal ids, as choices.hug uses.
+ * @param x_floors (point, least column) pairs added as lower bounds in the X phase, reason "x floor"; a test seam until terrain facts (DESIGN-G1 §14.4). Points are the placement's internal ids.
  * @param y_floors (point, least row) pairs added as lower bounds in the Y phase, reason "y floor"; a test seam until the row-gap edit (DESIGN-G1 §14.6). Point 1 + i is stack item i.
  */
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors = {}, const std::vector<std::pair<int, int>> &y_floors = {});
