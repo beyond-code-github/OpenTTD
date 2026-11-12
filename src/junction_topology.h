@@ -293,6 +293,32 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
  * @return The tokens, in placement order; a signal shared by several routes or rules gives one token per route and rule that resolved to it.
  */
 std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec);
+/** The graph pipeline's products for one topology and spec (DESIGN-G1 §13): the seed a projection search starts from. */
+struct JunctionGraphSeed {
+	const JunctionTopology *topology;
+	std::vector<JunctionLanePath> paths;
+	JunctionTrackGraph graph;
+	JunctionTrackStructure structure; ///< After the bridge cut.
+	JunctionTrackPrograms programs;
+	JunctionTrackPlacement placement;
+	std::vector<JunctionTrackRoute> routes;
+};
+/** Run the graph pipeline (expand, graph, order, structure, programs, cut, render routes); empty routes and the reason in error on failure. */
+JunctionGraphSeed MakeJunctionGraphSeed(const JunctionTopology &topology, const JunctionSpec &spec, std::string *error);
+
+/** A local detour as a graph edit (DESIGN-G1 §13.5): an out-and-back S-bend on one run of one edge, around the failing tile's column, to side +1 (right of travel) or -1. Lengths are recomputed when applied; the column is clamped strictly inside the seed's run. */
+struct JunctionDetourEdit {
+	uint32_t edge;
+	uint16_t run;
+	uint8_t copy;
+	int32_t column; ///< The failing tile's working x (the house is fixed in the world).
+	int8_t side;
+	uint16_t variant; ///< How many of the candidates that pass ApplyJunctionDetours' rules, in its scan order, are skipped (the search tries them in order until a child template builds).
+	auto operator<=>(const JunctionDetourEdit &) const = default;
+};
+/** The routes with every edit applied to every route carrying its (edge, copy) run (D213: realised on routes, not a layout; offset maps the template frame to working, working = frame + offset); empty with the reason in why when an edit is refused (not an X run, piece not strictly inside, a shifted run of one piece, a curve gap of the edited route that does not hold, no S-bend to that side, a new tile meeting another route or a bridge head). */
+std::vector<JunctionTrackRoute> ApplyJunctionDetours(const std::vector<JunctionTrackRoute> &routes, const std::vector<JunctionDetourEdit> &edits, const JunctionSpec &spec, TileIndexDiffC offset, std::string *why);
+
 /** The T of today's node model (L_R main line, L_R branch on the S side), groups in slot order: W side EIn then WOut; S side NIn then SOut; E side WIn then EOut. Movements in JunctionTMovements order. */
 const JunctionTopology &JunctionTTopology();
 

@@ -13,6 +13,7 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <climits>
 #include <fstream>
 #include <map>
@@ -1980,4 +1981,305 @@ TEST_CASE("topoproj: every failure on LL_RR names the graph elements it hit", "[
 		}
 	}
 	for (const auto &[kind, count] : kinds) WARN("failure kind " << kind << ": " << count << " of " << failures);
+}
+
+/** The solve of a seed's routes with the edits applied, on the terrain at the offset. */
+static JunctionNodeSolve SolveSeedEdits(const JunctionGraphSeed &seed, const std::vector<JunctionDetourEdit> &edits, const JunctionTerrain &terrain, TileIndexDiffC offset)
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string why;
+	const std::vector<JunctionTrackRoute> routes = ApplyJunctionDetours(seed.routes, edits, spec, offset, &why);
+	INFO(why);
+	REQUIRE(!routes.empty());
+	const JunctionNodeInput input = JunctionNodeInputOfGraph(*seed.topology, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, routes);
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(input, spec);
+	INFO(tpl.error);
+	REQUIRE(tpl.error.empty());
+	return SolveJunctionNodes(tpl, spec, JunctionFacts(terrain), offset, *seed.topology, seed.paths, seed.graph, seed.programs, input);
+}
+
+/** The houses of the P4b tests (Amendment 3): a row of 5 (else 7, else 9) consecutive tiles centred on the middle of the longest free X run on LL_RR's seed routes that lies outside every prio coverage, the first width whose solve fails Straight. */
+struct StraightHouse {
+	std::vector<std::pair<int, int>> tiles;
+	int width;
+	JunctionTrackPieceTag tag; ///< The failing link's element.
+	int column; ///< The failure's column.
+};
+static std::optional<StraightHouse> FindStraightHouse(const GraphSolveSetup &setup, const JunctionGraphSeed &seed, const JunctionTerrain &flat, std::string *considered)
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	struct Run {
+		size_t route;
+		size_t first;
+		size_t last;
+	};
+	std::vector<Run> runs;
+	std::set<std::tuple<uint32_t, uint16_t, uint8_t>> seen;
+	for (size_t r = 0; r < seed.routes.size(); r++) {
+		const JunctionTrackRoute &route = seed.routes[r];
+		for (size_t i = 0; i < route.pieces.size();) {
+			const JunctionTrackPieceTag &tag = route.tags[i];
+			size_t j = i;
+			while (j + 1 < route.pieces.size() && route.tags[j + 1] == tag) j++;
+			const bool x_run = tag.token == JunctionTrackPieceTag::RUN && j >= i + 2 && std::all_of(route.pieces.begin() + i, route.pieces.begin() + j + 1, [&](const JunctionPiece &piece) { return !piece.on_bridge && (piece.trackdir == Trackdir::X_NE || piece.trackdir == Trackdir::X_SW) && piece.tile.y == route.pieces[i].tile.y; });
+			if (x_run && seen.emplace(tag.edge, tag.run, tag.copy).second) runs.push_back({r, i, j});
+			i = j + 1;
+		}
+	}
+
+	/* Outside every prio coverage: no merge of any route through the run within 2 * prio_tiles units downstream of any of its pieces. */
+	auto covered = [&](const Run &run) {
+		const JunctionTrackPieceTag &tag = seed.routes[run.route].tags[run.first];
+		for (size_t r = 0; r < seed.routes.size(); r++) {
+			const JunctionTrackRoute &route = seed.routes[r];
+			if (!std::ranges::any_of(route.tags, [&](const JunctionTrackPieceTag &t) { return t == tag; })) continue;
+			std::vector<int> start(route.pieces.size());
+			int unit = 0;
+			for (size_t i = 0; i < route.pieces.size(); i++) {
+				start[i] = unit;
+				unit += route.pieces[i].units;
+			}
+			size_t in_run = 0;
+			while (route.tags[in_run] != tag) in_run++;
+			for (const auto &[split, piece] : JunctionRouteEvents(seed.graph, seed.programs, seed.routes, r)) {
+				if (split) continue;
+				for (size_t i = in_run; i < route.pieces.size() && route.tags[i] == tag; i++) {
+					if (start[piece] - start[i] >= 0 && start[piece] - start[i] <= 2 * static_cast<int>(spec.prio_tiles)) return true;
+				}
+			}
+		}
+		return false;
+	};
+	std::erase_if(runs, covered);
+	std::ranges::stable_sort(runs, [](const Run &a, const Run &b) { return a.last - a.first > b.last - b.first; });
+	if (runs.empty()) return std::nullopt;
+	const Run &run = runs.front();
+	const JunctionTrackPieceTag tag = seed.routes[run.route].tags[run.first];
+	const size_t mid = (run.first + run.last) / 2;
+	for (const int width : {5, 7, 9}) {
+		std::vector<std::pair<int, int>> tiles;
+		for (int k = -(width / 2); k <= width / 2; k++) {
+			const JunctionPiece &piece = seed.routes[run.route].pieces[mid + k];
+			tiles.emplace_back(piece.tile.x, piece.tile.y);
+		}
+		const JunctionNodeSolve solve = SolveLLRRBlocked(setup, flat, tiles);
+		*considered += fmt::format(" (edge {} run {} copy {} len {} width {} kind {})", tag.edge, tag.run, tag.copy, run.last - run.first + 1, width, solve.failure.has_value() ? static_cast<int>(solve.failure->kind) : -1);
+		if (solve.failure.has_value() && solve.failure->kind == JunctionNodeFailure::Kind::Straight && solve.failure->link < setup.tpl.link_tags.size()) return StraightHouse{tiles, width, setup.tpl.link_tags[solve.failure->link], solve.failure->column};
+	}
+	return std::nullopt;
+}
+
+/** The run (first and last piece index) of the tag on a route, or {SIZE_MAX, 0}. */
+static std::pair<size_t, size_t> RunOf(const JunctionTrackRoute &route, const JunctionTrackPieceTag &tag)
+{
+	size_t first = route.tags.size();
+	size_t last = 0;
+	for (size_t i = 0; i < route.tags.size(); i++) {
+		if (route.tags[i] != tag) continue;
+		if (first == route.tags.size()) first = i;
+		last = i;
+	}
+	return first == route.tags.size() ? std::pair<size_t, size_t>{SIZE_MAX, 0} : std::pair<size_t, size_t>{first, last};
+}
+
+/** The 45 degree turns of a route. */
+static int TurnsOf(const JunctionTrackRoute &route)
+{
+	int turns = 0;
+	for (size_t i = 1; i < route.pieces.size(); i++) {
+		if (!route.pieces[i].on_bridge && !route.pieces[i - 1].on_bridge && TrackdirToDirection(route.pieces[i].trackdir) != TrackdirToDirection(route.pieces[i - 1].trackdir)) turns++;
+	}
+	return turns;
+}
+
+TEST_CASE("topoproj: LL_RR builds around a house it cannot slide past", "[junction][topoprojsweep]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const GraphSolveSetup setup = GraphSolveSetupOf(JunctionLLRRSidelineTopology());
+	const JunctionTerrain flat = FlatTerrainAround(setup.signalled);
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(JunctionLLRRSidelineTopology(), spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	std::string considered;
+	const std::optional<StraightHouse> house = FindStraightHouse(setup, seed, flat, &considered);
+	INFO("runs considered:" << considered);
+	REQUIRE(house.has_value());
+	INFO("house width " << house->width);
+
+	JunctionTerrain terrain = flat;
+	for (const auto &[hx, hy] : house->tiles) terrain.tiles[static_cast<size_t>(hy - terrain.origin.y) * terrain.width + (hx - terrain.origin.x)].cls = JunctionTileClass::Blocked;
+
+	const auto start = std::chrono::steady_clock::now();
+	const JunctionGraphSearch search = SearchJunctionGraph(seed, spec, terrain, {0, 0}, 16);
+	const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+	std::string edits;
+	for (const JunctionDetourEdit &e : search.edits) edits += fmt::format(" (edge {} run {} copy {} column {} side {} variant {})", e.edge, e.run, e.copy, e.column, e.side, e.variant);
+	WARN("house width " << house->width << " centred " << house->tiles[house->tiles.size() / 2].first << "," << house->tiles[house->tiles.size() / 2].second << " states " << search.states << " in " << micros << " us, edits:" << edits << "\n" << search.log);
+	INFO(search.log);
+	REQUIRE(search.layout.has_value());
+	CHECK(!search.edits.empty());
+
+	/* The layout's tile of the house: the solve of the same edits says where the layout's (0, 0) is. */
+	const JunctionNodeSolve again = SolveSeedEdits(seed, search.edits, terrain, {0, 0});
+	REQUIRE(again.layout.has_value());
+	for (const JunctionTrack &jt : search.layout->tracks) CHECK(std::ranges::find(house->tiles, std::pair<int, int>{jt.offset.x + again.origin.x, jt.offset.y + again.origin.y}) == house->tiles.end());
+	for (const RuleViolation &v : CheckJunctionRules(*search.layout, spec, JunctionLLRRSidelineTopology())) {
+		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
+		CHECK(false);
+	}
+}
+
+/** The terrain and offset of the legacy node search tests (junction_nodes.cpp): flat, the spec's frame with a margin of 4, a house at hub_x - 1, 0. */
+static JunctionTerrain LegacyHouseTerrain(const JunctionSpec &spec)
+{
+	constexpr int MARGIN = 4;
+	const JunctionFrame frame = MakeJunctionFrame(spec);
+	JunctionTerrain t;
+	t.origin = {static_cast<int16_t>(-MARGIN), static_cast<int16_t>(frame.terrain_origin_y - MARGIN)};
+	t.width = frame.width + 2 * MARGIN;
+	t.height = frame.terrain_height + 2 * MARGIN;
+	t.tiles.assign(static_cast<size_t>(t.width) * t.height, JunctionTerrainTile{});
+	t.foundation_cost = 250;
+	return t;
+}
+
+static TileIndexDiffC LegacyFlatToWorking(const JunctionSpec &spec)
+{
+	const JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, true);
+	const JunctionFrame frame = MakeJunctionFrame(spec);
+	return {static_cast<int16_t>(frame.hub_x - flat.hub.x), static_cast<int16_t>(-flat.hub.y)};
+}
+
+TEST_CASE("topoproj: the T graph search builds around a house beside the hub", "[junction][topoproj]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionTerrain terrain = LegacyHouseTerrain(spec);
+	const int hub_x = MakeJunctionFrame(spec).hub_x;
+	terrain.tiles[static_cast<size_t>(0 - terrain.origin.y) * terrain.width + (hub_x - 1 - terrain.origin.x)].cls = JunctionTileClass::Blocked;
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(JunctionTTopology(), spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+
+	const auto start = std::chrono::steady_clock::now();
+	const JunctionGraphSearch search = SearchJunctionGraph(seed, spec, terrain, LegacyFlatToWorking(spec), 16);
+	const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+	WARN("states " << search.states << " in " << micros << " us\n" << search.log);
+	INFO(search.log);
+	REQUIRE(search.layout.has_value());
+	CHECK(search.states <= 16);
+	for (const RuleViolation &v : CheckJunctionRules(*search.layout, spec, JunctionTTopology())) {
+		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
+		CHECK(false);
+	}
+}
+
+TEST_CASE("topoproj: the graph search keeps the flat seed on flat terrain", "[junction][topoproj]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const JunctionTopology *t : RENDER_TOPOLOGIES) {
+		const GraphSolveSetup setup = GraphSolveSetupOf(*t);
+		const JunctionTerrain flat = FlatTerrainAround(setup.signalled);
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(*t, spec, &error);
+		INFO(error);
+		REQUIRE(!seed.routes.empty());
+		const JunctionGraphSearch search = SearchJunctionGraph(seed, spec, flat, {0, 0}, 16);
+		INFO(search.log);
+		CHECK(search.states == 1);
+		CHECK(search.edits.empty());
+		REQUIRE(search.layout.has_value());
+		const JunctionNodeSolve solve = SolveJunctionNodes(setup.tpl, spec, JunctionFacts(flat), {0, 0}, *t, setup.paths, setup.graph, setup.programs, setup.input);
+		REQUIRE(solve.layout.has_value());
+		CHECK(TrackSetOf(*search.layout) == TrackSetOf(*solve.layout));
+	}
+}
+
+TEST_CASE("topoproj: a detour edit on routes", "[junction][topoproj]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const GraphSolveSetup setup = GraphSolveSetupOf(JunctionLLRRSidelineTopology());
+	const JunctionTerrain flat = FlatTerrainAround(setup.signalled);
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(JunctionLLRRSidelineTopology(), spec, &error);
+	REQUIRE(!seed.routes.empty());
+	std::string considered;
+	const std::optional<StraightHouse> house = FindStraightHouse(setup, seed, flat, &considered);
+	INFO("runs considered:" << considered);
+	REQUIRE(house.has_value());
+
+	/* The run of the failing link; the edit's column is clamped strictly inside it. */
+	const JunctionTrackPieceTag tag = house->tag;
+	size_t carrier = SIZE_MAX;
+	for (size_t r = 0; r < seed.routes.size() && carrier == SIZE_MAX; r++) {
+		if (RunOf(seed.routes[r], tag).first != SIZE_MAX) carrier = r;
+	}
+	REQUIRE(carrier != SIZE_MAX);
+	const auto [first, last] = RunOf(seed.routes[carrier], tag);
+	const int length = static_cast<int>(last - first + 1);
+	REQUIRE(length >= 3);
+	const int px = seed.routes[carrier].pieces[first].tile.x;
+	const int dir = seed.routes[carrier].pieces[last].tile.x > px ? 1 : -1;
+	const size_t piece = static_cast<size_t>(std::clamp(dir * (house->column - px), 1, length - 2));
+	INFO("run " << first << ".." << last << " column " << house->column << " clamped piece " << piece);
+
+	int accepted = 0;
+	for (const int side : {1, -1}) {
+		const JunctionDetourEdit edit{tag.edge, tag.run, tag.copy, house->column, static_cast<int8_t>(side), 0};
+		std::string why;
+		const std::vector<JunctionTrackRoute> routes = ApplyJunctionDetours(seed.routes, {edit}, spec, {0, 0}, &why);
+		INFO("side " << side << ": " << why);
+		if (routes.empty()) {
+			CHECK(!why.empty());
+			continue;
+		}
+		accepted++;
+		REQUIRE(routes.size() == seed.routes.size());
+		const TileIndexDiffC edited_tile = seed.routes[carrier].pieces[first + piece].tile;
+		int changed = 0;
+		for (size_t r = 0; r < routes.size(); r++) {
+			const JunctionTrackRoute &route = routes[r];
+			REQUIRE(route.pieces.size() == route.tags.size());
+			for (size_t i = 1; i < route.pieces.size(); i++) {
+				if (route.pieces[i].on_bridge || route.pieces[i - 1].on_bridge) continue;
+				const DiagDirection exit = TrackdirToExitdir(route.pieces[i - 1].trackdir);
+				const TileIndexDiffC step = exit == DiagDirection::NE ? TileIndexDiffC{-1, 0} : exit == DiagDirection::SE ? TileIndexDiffC{0, 1} : exit == DiagDirection::SW ? TileIndexDiffC{1, 0} : TileIndexDiffC{0, -1};
+				const bool same_tile = route.pieces[i].tile.x == route.pieces[i - 1].tile.x && route.pieces[i].tile.y == route.pieces[i - 1].tile.y;
+				const bool next_tile = route.pieces[i].tile.x == route.pieces[i - 1].tile.x + step.x && route.pieces[i].tile.y == route.pieces[i - 1].tile.y + step.y;
+				INFO("route " << r << " piece " << i);
+				CHECK((same_tile || next_tile));
+			}
+			if (RunOf(seed.routes[r], tag).first == SIZE_MAX) {
+				CHECK(route.pieces.size() == seed.routes[r].pieces.size());
+				continue;
+			}
+			changed++;
+			for (size_t i = 0; i < route.pieces.size(); i++) CHECK(!(route.pieces[i].tile.x == edited_tile.x && route.pieces[i].tile.y == edited_tile.y && route.tags[i] == tag));
+			CHECK(TurnsOf(route) == TurnsOf(seed.routes[r]) + 4);
+			const auto [rf, rl] = RunOf(route, tag);
+			REQUIRE(rf != SIZE_MAX);
+			for (size_t i = rf; i <= rl; i++) CHECK(route.tags[i] == tag);
+		}
+		CHECK(changed >= 1);
+	}
+	CHECK(accepted >= 1);
+
+	/* Refused: a side meeting another route. */
+	std::string why;
+	size_t refused = 0;
+	for (size_t r = 0; r < seed.routes.size(); r++) {
+		for (size_t i = 0; i < seed.routes[r].pieces.size(); i++) {
+			const JunctionTrackPieceTag &t = seed.routes[r].tags[i];
+			if (t.token != JunctionTrackPieceTag::RUN || (t.edge == tag.edge && t.run == tag.run && t.copy == tag.copy)) continue;
+			const auto [f, l] = RunOf(seed.routes[r], t);
+			if (f != i || l < f + 2) continue;
+			for (const int side : {1, -1}) {
+				std::string reason;
+				const bool empty = ApplyJunctionDetours(seed.routes, {JunctionDetourEdit{t.edge, t.run, t.copy, seed.routes[r].pieces[i + 1].tile.x, static_cast<int8_t>(side), 0}}, spec, {0, 0}, &reason).empty();
+				if (empty && reason.find("collision") != std::string::npos) refused++;
+			}
+		}
+	}
+	CHECK(refused > 0);
 }

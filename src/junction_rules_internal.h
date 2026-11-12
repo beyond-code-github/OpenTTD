@@ -12,8 +12,10 @@
 
 #include "junction_rules.h"
 
+#include <functional>
 #include <map>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -74,5 +76,17 @@ std::map<std::pair<int, int>, size_t> ComputeBlocks(const JunctionLayout &layout
 
 /** The block of a path piece; bridge pieces are in the block of their bridge. */
 std::optional<size_t> BlockOfPiece(const JunctionLayout &layout, const std::map<std::pair<int, int>, size_t> &blocks, const JunctionPiece &piece);
+
+/** Accepts a detour's raster (p to q, both included) with its shifted-run extra length n2, or sets the reason it cannot. */
+using JunctionDetourBuild = std::function<bool(const JunctionRaster &raster, int n2, std::string &reason)>;
+
+/**
+ * The shape of a local detour on a straight X run (DESIGN-N3 §4, DESIGN-G1 §13.5): an out-and-back S-bend from piece p to piece q on one row, to row + side, around `column`. Chooses the latest out-bend and the shortest shifted run that covers the column, the first whose raster `build` accepts.
+ * @param p The run's first piece (tile and trackdir).
+ * @param q The run's last piece.
+ * @param[out] chosen The accepted raster.
+ * @param why Receives the reason on failure.
+ */
+bool ChooseJunctionDetour(const JunctionPiece &p, const JunctionPiece &q, int column, int side, const JunctionDetourBuild &build, JunctionRaster *chosen, std::string *why);
 
 #endif /* JUNCTION_RULES_INTERNAL_H */

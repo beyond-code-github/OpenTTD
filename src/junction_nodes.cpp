@@ -1999,12 +1999,30 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 
 JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionNodeInput &input)
 {
-	return SolveJunctionNodesWith(tpl, facts, offset, [&](const std::vector<int> &values) {
+	TileIndexDiffC origin{};
+	JunctionNodeSolve result = SolveJunctionNodesWith(tpl, facts, offset, [&](const std::vector<int> &values) {
 		JunctionLayout layout = RenderJunctionNodeTracksRaw(tpl, values);
 		SignalJunctionTrackRoutes(layout, RenderJunctionNodeRoutes(tpl, input, values), topology, paths, graph, programs, spec);
+
+		/* NormaliseJunctionLayout shifts by the least tile of the tracks and bridges. */
+		int min_x = INT16_MAX;
+		int min_y = INT16_MAX;
+		for (const JunctionTrack &jt : layout.tracks) {
+			min_x = std::min<int>(min_x, jt.offset.x);
+			min_y = std::min<int>(min_y, jt.offset.y);
+		}
+		for (const JunctionBridge &bridge : layout.bridges) {
+			for (const TileIndexDiffC head : {bridge.start, bridge.end}) {
+				min_x = std::min<int>(min_x, head.x);
+				min_y = std::min<int>(min_y, head.y);
+			}
+		}
+		origin = {static_cast<int16_t>(min_x), static_cast<int16_t>(min_y)};
 		NormaliseJunctionLayout(layout);
 		return layout;
 	});
+	result.origin = origin;
+	return result;
 }
 
 bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, std::string *why)
@@ -2045,25 +2063,64 @@ bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spe
 	return true;
 }
 
-std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout, const JunctionNodeTemplate &tpl, uint32_t link, int column, int side, const JunctionSpec &spec, std::string *why)
+bool JunctionRoutesHeightsOk(const std::vector<JunctionTrackRoute> &routes, const JunctionLayout &layout, TileIndexDiffC origin, const JunctionTerrain &terrain, TileIndexDiffC offset, std::string *why)
+{
+	const JunctionFacts facts(terrain);
+	std::map<std::pair<int, int>, TrackBits> tile_bits; ///< Per template-frame tile, all the tracks the layout builds there.
+	for (const JunctionTrack &jt : layout.tracks) tile_bits[{jt.offset.x + origin.x, jt.offset.y + origin.y}] |= jt.tracks;
+	for (size_t i = 0; i < routes.size(); i++) {
+		const std::vector<JunctionPiece> &pieces = routes[i].pieces;
+		const JunctionPiece *before = nullptr; ///< The previous piece on the ground (not on a bridge).
+		size_t before_index = 0;
+		for (size_t j = 0; j < pieces.size(); j++) {
+			const JunctionPiece &piece = pieces[j];
+			if (piece.on_bridge) {
+				before = nullptr;
+				continue;
+			}
+			const int x = piece.tile.x + offset.x;
+			const int y = piece.tile.y + offset.y;
+			auto fail = [&](const std::string &reason) {
+				if (why != nullptr) *why = fmt::format("route {} piece {} at {},{}: {}", i, j, x, y, reason);
+				return false;
+			};
+			const TrackBits bits = tile_bits[{piece.tile.x, piece.tile.y}];
+			if (!facts.Fits(x, y, bits)) return fail("the game cannot build these tracks here");
+			if (before != nullptr) {
+				const TrackBits before_bits = tile_bits[{before->tile.x, before->tile.y}];
+				const DiagDirection exit = TrackdirToExitdir(before->trackdir);
+				const int z_out = facts.EdgeZ(before->tile.x + offset.x, before->tile.y + offset.y, before_bits, exit);
+				const int z_in = facts.EdgeZ(x, y, bits, ReverseDiagDir(exit));
+				if (z_out != z_in) return fail(fmt::format("joins piece {} at height {} but meets it at {}", before_index, z_in, z_out));
+			}
+			before = &piece;
+			before_index = j;
+		}
+	}
+
+	/* The search's fits loop: every tile of the layout except a bridge head. */
+	for (const JunctionTrack &jt : layout.tracks) {
+		const bool bridge_head = std::ranges::any_of(layout.bridges, [&](const JunctionBridge &b) { return (b.start.x == jt.offset.x && b.start.y == jt.offset.y) || (b.end.x == jt.offset.x && b.end.y == jt.offset.y); });
+		const int x = jt.offset.x + origin.x + offset.x;
+		const int y = jt.offset.y + origin.y + offset.y;
+		if (bridge_head || JunctionNodeTrackFits(facts, x, y, jt.tracks)) continue;
+		if (why != nullptr) *why = fmt::format("fits: tile {},{}", x, y);
+		return false;
+	}
+	return true;
+}
+
+bool ChooseJunctionDetour(const JunctionPiece &p, const JunctionPiece &q, int column, int side, const JunctionDetourBuild &build, JunctionRaster *chosen, std::string *why)
 {
 	auto fail = [&](const std::string &reason) {
 		if (why != nullptr) *why = reason;
-		return std::optional<JunctionLayout>{};
+		return false;
 	};
-	if (link >= tpl.links.size() || !tpl.links[link].free || tpl.links[link].diagonal || tpl.links[link].axis != Axis::X || (side != 1 && side != -1)) return fail("not a free link or side");
-
-	/* 1. The link and its interior. */
-	const JunctionNodePoint &p = tpl.points[tpl.links[link].from];
-	const JunctionNodePoint &q = tpl.points[tpl.links[link].to];
 	const int row = p.tile.y;
 	const int d = q.tile.x > p.tile.x ? 1 : -1;
 	const int length = d * (q.tile.x - p.tile.x);
-	const int lo = std::min<int>(p.tile.x, q.tile.x) + 1;
-	const int hi = std::max<int>(p.tile.x, q.tile.x) - 1;
-	if (column < lo || column > hi) return fail("column outside the link");
 
-	/* 2. The hands of the S-bend. */
+	/* The hands of the S-bend. */
 	char t1 = 'L';
 	char t2 = 'R';
 	JunctionRaster probe = RasterizeJunctionRoute({p.tile, p.trackdir, "FLFRF"});
@@ -2074,37 +2131,7 @@ std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout,
 		if (!probe.error.empty() || probe.pieces.back().tile.y != row + side) return fail("no S-bend to that side");
 	}
 
-	/* The layout with the link's interior replaced by a program's raster, or the reason it cannot be had. */
-	auto build = [&](JunctionRaster raster, std::string &reason) -> std::optional<JunctionLayout> {
-		JunctionLayout result = layout;
-		for (JunctionTrack &jt : result.tracks) {
-			if (jt.offset.y == row && jt.offset.x >= lo && jt.offset.x <= hi) jt.tracks.Reset(Track::X);
-		}
-		std::erase_if(result.tracks, [](const JunctionTrack &jt) { return jt.tracks.None(); });
-		raster.pieces.pop_back();
-		raster.pieces.erase(raster.pieces.begin());
-		raster.bridges.clear();
-		for (const JunctionPiece &piece : raster.pieces) {
-			const bool taken = std::ranges::any_of(result.tracks, [&](const JunctionTrack &jt) { return jt.offset.x == piece.tile.x && jt.offset.y == piece.tile.y; });
-			if (taken) {
-				reason = fmt::format("collision at {},{}", piece.tile.x, piece.tile.y);
-				return std::nullopt;
-			}
-		}
-		AddRasterToLayout(result, raster);
-
-		/* A shifted run of one piece has no free link: the two S-bends become one rigid class and their curve gap cannot stretch, which the template reports as an error. */
-		JunctionLayout normalised = result;
-		NormaliseJunctionLayout(normalised);
-		const JunctionNodeTemplate child = BuildJunctionNodeTemplate(normalised, spec);
-		if (!child.error.empty()) {
-			reason = "template error: " + child.error;
-			return std::nullopt;
-		}
-		return result;
-	};
-
-	/* 3. The lengths of the runs: the first (n1, n2, n3) in the order of the rules whose layout has no collision and a template. */
+	/* The lengths of the runs: the first (n1, n2, n3) in the order of the rules whose build takes the raster. */
 	auto program = [&](int n1, int n2, int n3) {
 		return std::string(static_cast<size_t>(n1), 'F') + t1 + 'F' + t2 + std::string(static_cast<size_t>(n2), 'F') + t2 + 'F' + t1 + std::string(static_cast<size_t>(n3), 'F');
 	};
@@ -2135,11 +2162,67 @@ std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout,
 			JunctionRaster full = RasterizeJunctionRoute({p.tile, p.trackdir, program(n1, n2, n3)});
 			if (!full.error.empty() || full.pieces.back().tile.x != q.tile.x || full.pieces.back().tile.y != q.tile.y || full.pieces.back().trackdir != q.trackdir) continue;
 
-			std::optional<JunctionLayout> result = build(std::move(full), reason);
-			if (result.has_value()) return result;
+			if (build(full, n2, reason)) {
+				*chosen = std::move(full);
+				return true;
+			}
 		}
 	}
 	return fail(reason.empty() ? "link too short for a detour" : "no buildable detour: " + reason);
+}
+
+std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout, const JunctionNodeTemplate &tpl, uint32_t link, int column, int side, const JunctionSpec &spec, std::string *why)
+{
+	auto fail = [&](const std::string &reason) {
+		if (why != nullptr) *why = reason;
+		return std::optional<JunctionLayout>{};
+	};
+	if (link >= tpl.links.size() || !tpl.links[link].free || tpl.links[link].diagonal || tpl.links[link].axis != Axis::X || (side != 1 && side != -1)) return fail("not a free link or side");
+
+	/* 1. The link and its interior. */
+	const JunctionNodePoint &p = tpl.points[tpl.links[link].from];
+	const JunctionNodePoint &q = tpl.points[tpl.links[link].to];
+	const int row = p.tile.y;
+	const int lo = std::min<int>(p.tile.x, q.tile.x) + 1;
+	const int hi = std::max<int>(p.tile.x, q.tile.x) - 1;
+	if (column < lo || column > hi) return fail("column outside the link");
+
+	/* The layout with the link's interior replaced by a program's raster, or the reason it cannot be had. */
+	std::optional<JunctionLayout> result;
+	auto build = [&](JunctionRaster raster, int, std::string &reason) {
+		JunctionLayout candidate = layout;
+		for (JunctionTrack &jt : candidate.tracks) {
+			if (jt.offset.y == row && jt.offset.x >= lo && jt.offset.x <= hi) jt.tracks.Reset(Track::X);
+		}
+		std::erase_if(candidate.tracks, [](const JunctionTrack &jt) { return jt.tracks.None(); });
+		raster.pieces.pop_back();
+		raster.pieces.erase(raster.pieces.begin());
+		raster.bridges.clear();
+		for (const JunctionPiece &piece : raster.pieces) {
+			const bool taken = std::ranges::any_of(candidate.tracks, [&](const JunctionTrack &jt) { return jt.offset.x == piece.tile.x && jt.offset.y == piece.tile.y; });
+			if (taken) {
+				reason = fmt::format("collision at {},{}", piece.tile.x, piece.tile.y);
+				return false;
+			}
+		}
+		AddRasterToLayout(candidate, raster);
+
+		/* A shifted run of one piece has no free link: the two S-bends become one rigid class and their curve gap cannot stretch, which the template reports as an error. */
+		JunctionLayout normalised = candidate;
+		NormaliseJunctionLayout(normalised);
+		const JunctionNodeTemplate child = BuildJunctionNodeTemplate(normalised, spec);
+		if (!child.error.empty()) {
+			reason = "template error: " + child.error;
+			return false;
+		}
+		result = std::move(candidate);
+		return true;
+	};
+	JunctionRaster chosen;
+	const JunctionPiece p_piece{p.tile, p.trackdir, 0, false};
+	const JunctionPiece q_piece{q.tile, q.trackdir, 0, false};
+	if (!ChooseJunctionDetour(p_piece, q_piece, column, side, build, &chosen, why)) return std::nullopt;
+	return result;
 }
 
 /** A state of the structure search: a layout (the flat T with detours) and its working offset (working = layout + offset). */
@@ -2264,6 +2347,111 @@ JunctionNodeSearch SearchJunctionNodes(const JunctionLayout &flat, const Junctio
 			if (!visited.insert(NodeStateKey(*child)).second) continue;
 			const TileIndexDiffC child_offset = {static_cast<int16_t>(state.offset.x + min_x), static_cast<int16_t>(state.offset.y + min_y)};
 			queue.emplace(state.detours + 1, NodeState{std::move(*child), child_offset, state.detours + 1});
+		}
+	}
+	return search;
+}
+
+/** The cost of routes (D198): rail_piece per piece off a bridge and turn_cost (half a rail piece) per 45 degree turn, summed over all routes. */
+static int64_t GraphStateCost(const std::vector<JunctionTrackRoute> &routes, const JunctionSpec &spec)
+{
+	const int64_t rail_piece = spec.prices.rail_piece.base();
+	const int64_t turn_cost = (spec.prices.rail_piece / 2).base();
+	int64_t cost = 0;
+	for (const JunctionTrackRoute &route : routes) {
+		for (size_t i = 0; i < route.pieces.size(); i++) {
+			if (route.pieces[i].on_bridge) continue;
+			cost += rail_piece;
+			if (i > 0 && !route.pieces[i - 1].on_bridge && TrackdirToDirection(route.pieces[i - 1].trackdir) != TrackdirToDirection(route.pieces[i].trackdir)) cost += turn_cost;
+		}
+	}
+	return cost;
+}
+
+/** The edits as text for the log. */
+static std::string GraphEditsText(const std::vector<JunctionDetourEdit> &edits)
+{
+	std::string text = "[";
+	for (const JunctionDetourEdit &e : edits) text += fmt::format("({} {} {} {} {} {})", e.edge, e.run, e.copy, e.column, e.side, e.variant);
+	return text + "]";
+}
+
+JunctionGraphSearch SearchJunctionGraph(const JunctionGraphSeed &seed, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, int max_states)
+{
+	JunctionGraphSearch search;
+	const JunctionFacts facts(terrain);
+	std::multimap<int64_t, std::vector<JunctionDetourEdit>> queue; ///< By cost; equal costs in insertion order.
+	std::set<std::vector<JunctionDetourEdit>> visited;
+	if (seed.routes.empty()) {
+		search.log = "no seed routes\n";
+		return search;
+	}
+	std::string why;
+	queue.emplace(GraphStateCost(seed.routes, spec), std::vector<JunctionDetourEdit>{});
+	visited.insert({});
+
+	while (!queue.empty() && search.states < max_states) {
+		const int64_t cost = queue.begin()->first;
+		const std::vector<JunctionDetourEdit> edits = std::move(queue.begin()->second);
+		queue.erase(queue.begin());
+		const std::string head = fmt::format("state {} edits {} cost {}: ", search.states + 1, GraphEditsText(edits), cost);
+
+		/* Rebuilt from the seed and the edits. */
+		const std::vector<JunctionTrackRoute> routes = ApplyJunctionDetours(seed.routes, edits, spec, offset, &why);
+		if (routes.empty()) {
+			search.log += head + "refused: " + why + "\n";
+			continue;
+		}
+		const JunctionNodeInput input = JunctionNodeInputOfGraph(*seed.topology, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, routes);
+		const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(input, spec);
+		if (!tpl.error.empty()) {
+			search.log += head + "template error: " + tpl.error + "\n";
+			continue;
+		}
+		const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, offset, *seed.topology, seed.paths, seed.graph, seed.programs, input);
+		search.states++;
+
+		if (solve.layout.has_value()) {
+			if (!JunctionRoutesHeightsOk(RenderJunctionNodeRoutes(tpl, input, solve.values), *solve.layout, solve.origin, terrain, offset, &why)) {
+				search.log += head + "heights: " + why + "\n";
+				continue;
+			}
+			search.log += head + "ok\n";
+			search.layout = solve.layout;
+			search.edits = edits;
+			return search;
+		}
+
+		const JunctionNodeFailure &failure = *solve.failure;
+		search.log += head + fmt::format("failure kind {} link {} column {}\n", to_underlying(failure.kind), failure.link, failure.column);
+		if ((failure.kind != JunctionNodeFailure::Kind::Straight && failure.kind != JunctionNodeFailure::Kind::Break) || failure.link >= tpl.link_tags.size()) continue;
+
+		/* The failing run, once: its tag (edge, run, copy); the edit keeps the failing working column. */
+		const JunctionTrackPieceTag tag = tpl.link_tags[failure.link];
+		if (tag.token != JunctionTrackPieceTag::RUN) continue;
+		if (std::ranges::any_of(edits, [&](const JunctionDetourEdit &e) { return e.edge == tag.edge && e.run == tag.run && e.copy == tag.copy; })) continue;
+
+		/* One child per side: the first candidate, in the edit's order, whose template builds (as the legacy detour). */
+		for (const int side : {-1, 1}) {
+			std::string side_why;
+			for (uint16_t variant = 0;; variant++) {
+				std::vector<JunctionDetourEdit> child = edits;
+				child.push_back({tag.edge, tag.run, tag.copy, failure.column, static_cast<int8_t>(side), variant});
+				std::ranges::sort(child);
+				const std::vector<JunctionTrackRoute> child_routes = ApplyJunctionDetours(seed.routes, child, spec, offset, &why);
+				if (child_routes.empty()) {
+					search.log += fmt::format("  detour edge {} run {} copy {} column {} side {}: {}\n", tag.edge, tag.run, tag.copy, failure.column, side, side_why.empty() ? why : side_why);
+					break;
+				}
+				const JunctionNodeInput child_input = JunctionNodeInputOfGraph(*seed.topology, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, child_routes);
+				const JunctionNodeTemplate child_tpl = BuildJunctionNodeTemplate(child_input, spec);
+				if (!child_tpl.error.empty()) {
+					side_why = "template error: " + child_tpl.error;
+					continue;
+				}
+				if (visited.insert(child).second) queue.emplace(GraphStateCost(child_routes, spec), std::move(child));
+				break;
+			}
 		}
 	}
 	return search;
