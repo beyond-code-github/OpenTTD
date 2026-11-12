@@ -1,0 +1,158 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+/** @file junction_real_terrain.cpp Tests for terrain snapshots dumped from generated maps. */
+
+#include "../stdafx.h"
+
+#include "../3rdparty/catch2/catch.hpp"
+#include "../junction_facts.h"
+#include "../junction_generator.h"
+#include "../junction_nodes.h"
+#include "../junction_rules.h"
+#include "../junction_terrain_json.h"
+#include "../junction_topology.h"
+
+#include <algorithm>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <sstream>
+
+#include "../safeguards.h"
+
+/** Compare two snapshots member by member. */
+static void CheckTerrainEqual(const JunctionTerrain &a, const JunctionTerrain &b)
+{
+	CHECK(a.origin.x == b.origin.x);
+	CHECK(a.origin.y == b.origin.y);
+	CHECK(a.width == b.width);
+	CHECK(a.height == b.height);
+	CHECK(a.foundation_cost == b.foundation_cost);
+	CHECK(a.build_on_slopes == b.build_on_slopes);
+	CHECK(a.max_bridge_height == b.max_bridge_height);
+	REQUIRE(a.tiles.size() == b.tiles.size());
+	for (size_t i = 0; i < a.tiles.size(); i++) {
+		const JunctionTerrainTile &x = a.tiles[i];
+		const JunctionTerrainTile &y = b.tiles[i];
+		const bool same = x.z_min == y.z_min && x.z_max == y.z_max && x.steep == y.steep && x.incline == y.incline && x.slope == y.slope && x.cls == y.cls && x.clear_cost == y.clear_cost;
+		INFO("tile " << i);
+		CHECK(same);
+	}
+}
+
+TEST_CASE("real terrain: json round trip", "[junction][realterrain]")
+{
+	JunctionTerrain t;
+	t.origin = {-3, 7};
+	t.width = 5;
+	t.height = 4;
+	t.foundation_cost = 4321;
+	t.build_on_slopes = false;
+	t.max_bridge_height = 9;
+	const JunctionTileClass classes[] = {JunctionTileClass::Buildable, JunctionTileClass::Water, JunctionTileClass::Spannable, JunctionTileClass::Blocked};
+	const DiagDirection inclines[] = {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW, DiagDirection::Invalid};
+	const Slope slopes[] = {SLOPE_FLAT, SLOPE_W, SLOPE_NE, SLOPE_STEEP_S, SLOPE_ELEVATED};
+	for (int i = 0; i < t.width * t.height; i++) {
+		JunctionTerrainTile tile;
+		tile.z_min = static_cast<int8_t>(i - 5);
+		tile.z_max = static_cast<int8_t>(i + 3);
+		tile.steep = (i % 3) == 1;
+		tile.incline = inclines[i % 5];
+		tile.slope = slopes[(i + 2) % 5];
+		tile.cls = classes[i % 4];
+		tile.clear_cost = 1000000007LL * (i + 1);
+		t.tiles.push_back(tile);
+	}
+	std::string error;
+	const std::optional<JunctionTerrain> back = JunctionTerrainFromJson(JunctionTerrainToJson(t), &error);
+	INFO(error);
+	REQUIRE(back.has_value());
+	CheckTerrainEqual(t, *back);
+
+	CHECK(!JunctionTerrainFromJson("{\"origin\":[0]}", &error).has_value());
+	CHECK(!error.empty());
+}
+
+TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
+{
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	INFO("fixture directory " << JUNCTION_TERRAIN_DIR);
+	REQUIRE(!files.empty());
+
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionTopology &t = JunctionTTopology();
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+	INFO(error);
+	const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+	REQUIRE(!seed_layout.tracks.empty());
+
+	int solved = 0, failed = 0;
+	int64_t micros = 0;
+	std::map<std::string, int> failure_reasons;
+	std::map<int, int> rule_counts;
+	int heights = 0;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		INFO(file.filename().string() << ": " << load_error);
+		REQUIRE(terrain.has_value());
+
+		/* The seed's box centred in the snapshot. */
+		const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		const JunctionFacts facts(*terrain);
+		std::string place_error;
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error);
+		micros += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+		if (placement.nodes.empty()) {
+			failed++;
+			/* The kind is the explanation's first rule: the text before its first " (" or " [". */
+			std::string kind = place_error.substr(0, place_error.find('\n'));
+			kind = kind.substr(0, kind.find(" ["));
+			kind = kind.substr(0, kind.find(" ("));
+			failure_reasons[kind]++;
+			continue;
+		}
+		solved++;
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, placement, &render_error, &routes);
+		INFO(file.filename().string() << " " << render_error);
+		REQUIRE(!layout.tracks.empty());
+		std::string why;
+		const bool ok = JunctionRoutesHeightsOk(routes, layout, {0, 0}, *terrain, offset, &why);
+		INFO(file.filename().string() << " heights: " << why);
+		CHECK(ok);
+		if (!ok) heights++;
+		SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec);
+		for (const RuleViolation &violation : CheckJunctionRules(layout, spec, t)) {
+			INFO(file.filename().string() << " rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+			CHECK(false);
+			rule_counts[to_underlying(violation.rule)]++;
+		}
+	}
+	std::cout << "REALTERRAIN fixtures=" << files.size() << " solved=" << solved << " failed=" << failed << " micros=" << micros << "\n";
+	for (const auto &[reason, count] : failure_reasons) std::cout << "REALTERRAIN failure " << count << " x " << reason << "\n";
+	std::cout << "REALTERRAIN heights=" << heights << "\n";
+	for (const auto &[rule, count] : rule_counts) std::cout << "REALTERRAIN rule " << rule << " x " << count << "\n";
+	CHECK(solved + failed == static_cast<int>(files.size()));
+}

@@ -17,6 +17,7 @@ add_test_files(
     junction_map.cpp
     junction_map_export.cpp
     junction_organic.cpp
+    junction_real_terrain.cpp
     junction_route.cpp
     junction_router.cpp
     junction_rules.cpp
@@ -48,3 +49,6 @@ add_test_files(
     tilearea.cpp
     utf8.cpp
 )
+
+# The terrain fixtures dumped from generated maps (tools/junction/terrain).
+target_compile_definitions(openttd_test PRIVATE JUNCTION_TERRAIN_DIR="${CMAKE_SOURCE_DIR}/tools/junction/terrain")

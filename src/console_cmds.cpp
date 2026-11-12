@@ -51,6 +51,7 @@
 #include "3rdparty/nlohmann/json.hpp"
 #include "station_base.h"
 #include "junction_station_generator.h"
+#include "junction_terrain_json.h"
 #include "vehicle_base.h"
 #include "company_base.h"
 #include <fstream>
@@ -317,6 +318,48 @@ static bool ConResetTile(std::span<std::string_view> argv)
 	return false;
 }
 #endif /* _DEBUG */
+
+/**
+ * Snapshot a map rectangle as a terrain fixture and write it as JSON.
+ * @copydoc IConsoleCmdProc
+ */
+static bool ConJunctionTerrainDump(std::span<std::string_view> argv)
+{
+	if (argv.empty()) {
+		IConsolePrint(CC_HELP, "Snapshot the junction terrain of a map rectangle and write it as JSON. Usage: 'junction_terrain_dump <x> <y> <w> <h> <file>'.");
+		IConsolePrint(CC_HELP, "The rectangle starts at tile (x, y) and spans w by h tiles; the file is a terrain fixture for the junction tests.");
+		return true;
+	}
+
+	if (argv.size() != 6) return false;
+	auto x_arg = ParseInteger(argv[1], 10);
+	auto y_arg = ParseInteger(argv[2], 10);
+	auto w_arg = ParseInteger(argv[3], 10);
+	auto h_arg = ParseInteger(argv[4], 10);
+	if (!x_arg.has_value() || !y_arg.has_value() || !w_arg.has_value() || !h_arg.has_value()) return false;
+	if (*w_arg == 0 || *h_arg == 0 || *x_arg + *w_arg > Map::SizeX() || *y_arg + *h_arg > Map::SizeY()) {
+		IConsolePrint(CC_ERROR, "The rectangle must lie inside the map.");
+		return true;
+	}
+
+	if (!Company::IsValidID(CompanyID{0})) {
+		IConsolePrint(CC_ERROR, "junction_terrain_dump needs company 0.");
+		return true;
+	}
+
+	Backup<CompanyID> cur_company(_current_company, CompanyID{0});
+	const JunctionTerrain terrain = MakeJunctionTerrainRect(TileXY(*x_arg, *y_arg), TileXY(*x_arg + *w_arg - 1, *y_arg + *h_arg - 1), 0);
+	cur_company.Restore();
+
+	std::ofstream out{std::string{argv[5]}};
+	out << JunctionTerrainToJson(terrain) << "\n";
+	if (!out) {
+		IConsolePrint(CC_ERROR, "Could not write {}.", argv[5]);
+		return true;
+	}
+	IConsolePrint(CC_DEFAULT, "junction_terrain_dump ok origin={},{} size={}x{}", terrain.origin.x, terrain.origin.y, terrain.width, terrain.height);
+	return true;
+}
 
 /**
  * Generate a junction at a tile and write the oriented layout as JSON, for the test rig.
@@ -3393,6 +3436,7 @@ void IConsoleStdLibRegister()
 #endif
 	/* Junction and station tool rig commands, available in release builds for benchmarking. */
 	IConsole::CmdRegister("junction_export",         ConJunctionExport);
+	IConsole::CmdRegister("junction_terrain_dump",   ConJunctionTerrainDump);
 	IConsole::CmdRegister("junction_train",          ConJunctionTrain);
 	IConsole::CmdRegister("station_export",          ConStationExport);
 	IConsole::CmdRegister("fps",                     ConFramerate);
