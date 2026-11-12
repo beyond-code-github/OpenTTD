@@ -179,6 +179,10 @@ class JunctionTestGS extends GSController {
 		else if (cmd == "loan_max") this.CmdLoanMax(id);
 		else if (cmd == "find_clear") this.CmdFindClear(id, msg);
 		else if (cmd == "raise_rect") this.CmdRaiseRect(id, msg);
+		else if (cmd == "demolish") this.CmdDemolish(id, msg);
+		else if (cmd == "remove_track") this.CmdRemoveTrack(id, msg);
+		else if (cmd == "sell") this.CmdSell(id, msg);
+		else if (cmd == "clear_orders") this.CmdClearOrders(id, msg);
 		else this.Err(id, "unknown cmd");
 	}
 
@@ -337,6 +341,45 @@ class JunctionTestGS extends GSController {
 			}
 		}
 		this.Reply(id, { started = true });
+	}
+
+	/* Clear one tile (a depot, a waypoint, track). */
+	function CmdDemolish(id, msg)
+	{
+		if (!this.Need(msg, ["x", "y"], id)) return;
+		if (!GSTile.DemolishTile(GSMap.GetTileIndex(msg.x, msg.y))) { this.Err(id, "DemolishTile failed: " + GSError.GetLastErrorString()); return; }
+		this.Reply(id, { ok = true });
+	}
+
+	/* Remove one track piece; track is a name as in build_layout (X, Y, Upper, Lower, Left, Right). */
+	function CmdRemoveTrack(id, msg)
+	{
+		if (!this.Need(msg, ["x", "y", "track"], id)) return;
+		local names = { X = GSRail.RAILTRACK_NE_SW, Y = GSRail.RAILTRACK_NW_SE, Upper = GSRail.RAILTRACK_NW_NE, Lower = GSRail.RAILTRACK_SW_SE, Left = GSRail.RAILTRACK_NW_SW, Right = GSRail.RAILTRACK_NE_SE };
+		if (!(msg.track in names)) { this.Err(id, "bad track"); return; }
+		if (!GSRail.RemoveRailTrack(GSMap.GetTileIndex(msg.x, msg.y), names[msg.track])) { this.Err(id, "RemoveRailTrack failed: " + GSError.GetLastErrorString()); return; }
+		this.Reply(id, { ok = true });
+	}
+
+	/* Remove every order of a vehicle. */
+	function CmdClearOrders(id, msg)
+	{
+		if (!this.Need(msg, ["vehicle"], id)) return;
+		if (!GSVehicle.IsValidVehicle(msg.vehicle)) { this.Err(id, "bad vehicle"); return; }
+		while (GSOrder.GetOrderCount(msg.vehicle) > 0) {
+			if (!GSOrder.RemoveOrder(msg.vehicle, 0)) { this.Err(id, "RemoveOrder failed: " + GSError.GetLastErrorString()); return; }
+		}
+		this.Reply(id, { orders = 0 });
+	}
+
+	/* Stop a train in its depot if needed, then sell it. */
+	function CmdSell(id, msg)
+	{
+		if (!this.Need(msg, ["vehicle"], id)) return;
+		if (!GSVehicle.IsValidVehicle(msg.vehicle)) { this.Err(id, "bad vehicle"); return; }
+		if (GSVehicle.GetState(msg.vehicle) == GSVehicle.VS_RUNNING) GSVehicle.StartStopVehicle(msg.vehicle);
+		if (!GSVehicle.SellVehicle(msg.vehicle)) { this.Err(id, "SellVehicle failed: " + GSError.GetLastErrorString()); return; }
+		this.Reply(id, { sold = true });
 	}
 
 	function CmdVehicles(id)
