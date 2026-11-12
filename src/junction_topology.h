@@ -22,6 +22,7 @@
 #include <vector>
 
 struct JunctionSpec;
+struct JunctionLineSpec;
 
 /** A side of the junction's box in the canonical frame (the main line runs along X, D152). */
 enum class JunctionSide : uint8_t { N, E, S, W };
@@ -394,5 +395,15 @@ const JunctionTopology &JunctionTTopology();
 
 /** An LL_RR main line with an L_R sideline on the S side (D186-D188, D202): W side e-in (2 lanes) then w-out (2); S side branch-in (1) then branch-out (1); E side w-in (2) then e-out (2). Movements: e through, w through, e exit, w exit, join to e-out, join to w-out. */
 const JunctionTopology &JunctionLLRRSidelineTopology();
+
+/**
+ * Build the hub topology of a main line and a branch line (D189): the main line enters on the W side and leaves on the E side, the branch on the S side.
+ * Its left group is the one heading into the box at W (and out of it at E and, as the branch's own direction, in at S); the right group the other way.
+ * Movements are every in group to every out group on another side, in group order, each in group's outs in slot order.
+ * @param main The main line (D142 groups).
+ * @param branch The branch line.
+ * @return The topology; equals JunctionTTopology() as groups and as a set of movements for L_R and L_R, and JunctionLLRRSidelineTopology() for LL_RR and L_R.
+ */
+JunctionTopology MakeJunctionHubTopology(const JunctionLineSpec &main, const JunctionLineSpec &branch);
 
 #endif /* JUNCTION_TOPOLOGY_H */

@@ -29,6 +29,7 @@
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
 #include "../junction_generator.h"
+#include "../junction_line.h"
 #include "../junction_nodes.h"
 #include "../junction_route.h"
 #include "../junction_terraform.h"
@@ -4028,4 +4029,57 @@ TEST_CASE("topology: occupancy legality reads the graph", "[junction][topology]"
 	CHECK(bad.nodes.empty());
 	CHECK(error.starts_with("the placement rules contradict each other: occupancy (edge 17) [edge 17 and edge 12 on row 10]"));
 	CHECK(error.find(" <- ") == std::string::npos);
+}
+
+TEST_CASE("topology: the built hub topology is the hand topology and seeds the same", "[junction][topology][topologysweep]")
+{
+	struct Pair {
+		const char *main;
+		const char *branch;
+		const JunctionTopology &hand;
+	};
+	const Pair pairs[] = {{"L_R", "L_R", JunctionTTopology()}, {"LL_RR", "L_R", JunctionLLRRSidelineTopology()}};
+	for (const Pair &pair : pairs) {
+		const JunctionTopology built = MakeJunctionHubTopology(ParseLineNotation(pair.main).spec, ParseLineNotation(pair.branch).spec);
+		INFO(pair.main);
+		REQUIRE(built.groups.size() == pair.hand.groups.size());
+		for (size_t g = 0; g < built.groups.size(); g++) {
+			CHECK(built.groups[g].side == pair.hand.groups[g].side);
+			CHECK(built.groups[g].in == pair.hand.groups[g].in);
+			CHECK(built.groups[g].lanes == pair.hand.groups[g].lanes);
+			CHECK(built.groups[g].line == pair.hand.groups[g].line);
+			CHECK(built.groups[g].main == pair.hand.groups[g].main);
+		}
+		const std::set<std::pair<uint8_t, uint8_t>> got(built.movements.begin(), built.movements.end());
+		const std::set<std::pair<uint8_t, uint8_t>> want(pair.hand.movements.begin(), pair.hand.movements.end());
+		CHECK(built.movements.size() == pair.hand.movements.size());
+		CHECK(got == want);
+
+		/* The pipeline does not depend on the order of the movements. */
+		for (int tl = 3; tl <= 8; tl += 5) {
+			for (int v : {100, 196}) {
+				JunctionSpec spec = MakeTestJunctionSpec();
+				spec.tl = tl;
+				spec.train.max_speed = v;
+				spec.reference_speed = v;
+				spec.prio_tiles = 0;
+				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+				if (spec.prio_tiles == 0) continue;
+				INFO(pair.main << " tl " << tl << " v " << v);
+				std::string error;
+				JunctionTrackPlacement hand_placement, built_placement;
+				const JunctionLayout hand_layout = SeedOf(pair.hand, spec, &error, &hand_placement);
+				const JunctionLayout built_layout = SeedOf(built, spec, &error, &built_placement);
+				REQUIRE(!hand_layout.tracks.empty());
+				/* Edge numbers follow the movement order; the placement is the same graph (ports, nodes, size, and the render below), not the same numbering. */
+				CHECK(Of(hand_placement.ports) == Of(built_placement.ports));
+				CHECK(Of(hand_placement.nodes) == Of(built_placement.nodes));
+				CHECK(Of(hand_placement.size) == Of(built_placement.size));
+				CHECK(RenderJunctionAscii(hand_layout) == RenderJunctionAscii(built_layout));
+				CHECK(hand_layout.bridges.size() == built_layout.bridges.size());
+				CHECK(hand_layout.signals.size() == built_layout.signals.size());
+				CHECK(hand_layout.tracks.size() == built_layout.tracks.size());
+			}
+		}
+	}
 }

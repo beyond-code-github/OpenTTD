@@ -14,6 +14,7 @@
 #include "junction_chain.h"
 #include "junction_generator.h"
 #include "junction_levels.h"
+#include "junction_line.h"
 #include "junction_positions.h"
 #include "junction_route.h"
 #include "junction_rules_internal.h"
@@ -3809,6 +3810,32 @@ const JunctionTopology &JunctionLLRRSidelineTopology()
 		/* e through, w through, e exit, w exit, join to e-out, join to w-out. */
 		{{0, 5}, {4, 1}, {0, 3}, {4, 3}, {2, 5}, {2, 1}},
 	};
+	return topology;
+}
+
+JunctionTopology MakeJunctionHubTopology(const JunctionLineSpec &main, const JunctionLineSpec &branch)
+{
+	const uint8_t main_left = main.left_tracks;
+	const uint8_t main_right = main.tracks - main.left_tracks;
+	const uint8_t branch_left = branch.left_tracks;
+	const uint8_t branch_right = branch.tracks - branch.left_tracks;
+
+	JunctionTopology topology;
+	topology.groups = {
+		{JunctionSide::W, true, main_left, 0, true},
+		{JunctionSide::W, false, main_right, 0, true},
+		{JunctionSide::S, true, branch_left, 1, false},
+		{JunctionSide::S, false, branch_right, 1, false},
+		{JunctionSide::E, true, main_right, 0, true},
+		{JunctionSide::E, false, main_left, 0, true},
+	};
+	for (uint8_t in = 0; in < topology.groups.size(); in++) {
+		if (!topology.groups[in].in) continue;
+		for (uint8_t out = 0; out < topology.groups.size(); out++) {
+			if (topology.groups[out].in || topology.groups[out].side == topology.groups[in].side) continue;
+			topology.movements.emplace_back(in, out);
+		}
+	}
 	return topology;
 }
 

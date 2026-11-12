@@ -15,6 +15,7 @@
 #include "junction_game.h"
 #include "junction_generator.h"
 #include "junction_hover.h"
+#include "junction_line.h"
 #include "junction_terraform.h"
 #include "junction_topology.h"
 #include "junction_rules.h"
@@ -354,6 +355,10 @@ struct JunctionGenerateKey {
 	bool mirrored; ///< Effective mirror, including the road side.
 	uint8_t ml_gap;
 	uint8_t branch_gap;
+	uint8_t ml_left; ///< Left tracks of the mainline notation: with the three below, the lane counts the hub topology is built from.
+	uint8_t ml_right;
+	uint8_t branch_left;
+	uint8_t branch_right;
 	uint8_t tl;
 	uint8_t signal_type;
 	uint8_t sd;
@@ -405,7 +410,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	std::chrono::steady_clock::time_point hover_since; ///< When the cursor reached hover_tile.
 	std::vector<std::pair<JunctionGenerateKey, JunctionNearResult>> cache; ///< Generated junctions, most recently used first.
 	std::vector<std::pair<JunctionGenerateKey, JunctionProjectionResult>> projection_cache; ///< Projection plans, most recently used first.
-	std::shared_ptr<const JunctionGraphSeed> seed; ///< The T graph seed of seed_key, made on the main thread; shared read-only with the jobs.
+	std::shared_ptr<const JunctionGraphSeed> seed; ///< The hub graph seed of seed_key, aliasing the topology it was made from, made on the main thread; shared read-only with the jobs.
 	std::optional<JunctionGenerateKey> seed_key; ///< The spec key of seed: the key with no anchor, rotation 0 and not mirrored.
 	std::string seed_error; ///< Why the seed could not be made; empty when it was.
 	std::string hover_why; ///< The plan's reason when hover_status is STR_JUNCTION_STATUS_PLAN_FAILED.
@@ -426,6 +431,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	StringID hover_status = INVALID_STRING_ID; ///< Status of the hovered spot while there is no placement.
 	uint8_t ml_gap = 0; ///< Gap of the mainline notation.
 	uint8_t branch_gap = 0; ///< Gap of the branch notation.
+	JunctionLineSpec ml_line; ///< The mainline notation's lines.
+	JunctionLineSpec branch_line; ///< The branch notation's lines.
 	RailType railtype; ///< Rail type of the toolbar that opened this window.
 	JunctionLayout build_layout; ///< Layout being built, as it was when the build started.
 	TileIndex build_origin = INVALID_TILE; ///< North corner of the junction being built.
@@ -489,7 +496,9 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	 */
 	JunctionGenerateKey MakeBaseKey(TileIndex tile) const
 	{
-		return {tile, _junction_rotation, EffectiveMirror(), this->ml_gap, this->branch_gap, this->tl,
+		return {tile, _junction_rotation, EffectiveMirror(), this->ml_gap, this->branch_gap,
+			static_cast<uint8_t>(this->ml_line.left_tracks), static_cast<uint8_t>(this->ml_line.tracks - this->ml_line.left_tracks),
+			static_cast<uint8_t>(this->branch_line.left_tracks), static_cast<uint8_t>(this->branch_line.tracks - this->branch_line.left_tracks), this->tl,
 			static_cast<uint8_t>(_settings_client.gui.junction_signal_type), _settings_client.gui.drag_signals_density,
 			this->picked_train.has_value() ? this->picked_train->loaded : JunctionTrainParams{}, 0};
 	}
@@ -890,7 +899,11 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		spec_key.mirrored = false;
 		if (this->seed_key != spec_key) {
 			std::string error;
-			this->seed = std::make_shared<const JunctionGraphSeed>(MakeJunctionGraphSeed(JunctionTTopology(), job->spec, &error));
+			/* The seed points at its topology: the holder keeps both alive for the jobs that share the seed. */
+			auto holder = std::make_shared<std::pair<JunctionTopology, JunctionGraphSeed>>();
+			holder->first = MakeJunctionHubTopology(this->ml_line, this->branch_line);
+			holder->second = MakeJunctionGraphSeed(holder->first, job->spec, &error);
+			this->seed = std::shared_ptr<const JunctionGraphSeed>(holder, &holder->second);
 			this->seed_error = this->seed->routes.empty() ? (error.empty() ? "no seed" : error) : std::string{};
 			this->seed_key = spec_key;
 		}
@@ -961,16 +974,16 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 		const std::string ml_text{this->ml_editbox.text.GetText()};
 		const std::string branch_text{this->branch_editbox.text.GetText()};
-		const JunctionNotation ml = ParseJunctionNotation(ml_text);
-		const JunctionNotation branch = ParseJunctionNotation(branch_text);
+		const JunctionLineNotation ml = ParseLineNotation(ml_text);
+		const JunctionLineNotation branch = ParseLineNotation(branch_text);
 
-		if (ml.error == JunctionNotationError::Invalid || branch.error == JunctionNotationError::Invalid) {
+		if (ml.error != JunctionNotationError::None || branch.error != JunctionNotationError::None) {
 			this->generate_error = STR_JUNCTION_ERROR_NOTATION;
-		} else if (ml.error == JunctionNotationError::MultiLane || branch.error == JunctionNotationError::MultiLane) {
-			this->generate_error = STR_JUNCTION_ERROR_MULTILANE;
 		} else {
-			this->ml_gap = ml.gap;
-			this->branch_gap = branch.gap;
+			this->ml_gap = ml.spec.gap;
+			this->branch_gap = branch.spec.gap;
+			this->ml_line = ml.spec;
+			this->branch_line = branch.spec;
 		}
 
 		_settings_client.gui.junction_ml_notation = ml_text;

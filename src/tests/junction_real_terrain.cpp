@@ -13,6 +13,7 @@
 #include "../junction_facts.h"
 #include "../junction_generator.h"
 #include "../junction_hover.h"
+#include "../junction_line.h"
 #include "../junction_nodes.h"
 #include "../junction_rules.h"
 #include "../junction_terraform.h"
@@ -257,7 +258,15 @@ TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
 	for (const auto &[reason, count] : tf_reasons) std::cout << "REALTERRAIN terraform failure " << count << " x " << reason << "\n";
 }
 
-TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
+/**
+ * The hover plan, and the near search, of a topology on every real fixture at the centred offset.
+ * @param t The topology.
+ * @param suffix Appended to the HOVERPLAN and HOVERNEAR lines.
+ * @param plan_floor The least fixtures the plan must find.
+ * @param near_floor The least fixtures the near search must find.
+ * @param time_limited Whether the 100 ms hover target is required.
+ */
+static void RunHoverSweep(const JunctionTopology &t, const char *suffix, int plan_floor, int near_floor, bool time_limited)
 {
 	namespace fs = std::filesystem;
 	std::vector<fs::path> files;
@@ -269,7 +278,6 @@ TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
 
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::string error;
-	const JunctionTopology &t = JunctionTTopology();
 	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
 	INFO(error);
 	REQUIRE(!seed.routes.empty());
@@ -323,9 +331,9 @@ TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
 	}
 	const double mean = millis.empty() ? 0.0 : std::accumulate(millis.begin(), millis.end(), 0.0) / static_cast<double>(millis.size());
 	const double max = millis.empty() ? 0.0 : *std::ranges::max_element(millis);
-	std::cout << "HOVERPLAN fixtures=" << files.size() << " planned=" << planned << " failed=" << failed << " ms_mean=" << mean << " ms_max=" << max << "\n";
-	CHECK(planned >= 19);
-	REQUIRE(max < 100.0);
+	std::cout << "HOVERPLAN" << suffix << " fixtures=" << files.size() << " planned=" << planned << " failed=" << failed << " ms_mean=" << mean << " ms_max=" << max << "\n";
+	CHECK(planned >= plan_floor);
+	if (time_limited) REQUIRE(max < 100.0);
 
 	/* The near search (D197, F1): the cursor spot first, a nearby offset only when it has no plan. */
 	int near_planned = 0, near_moved = 0;
@@ -347,7 +355,7 @@ TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
 		near_planned++;
 		if (plan.moved.x != 0 || plan.moved.y != 0) {
 			near_moved++;
-			std::cout << "HOVERNEAR moved " << file.filename().string() << " by " << plan.moved.x << "," << plan.moved.y << "\n";
+			std::cout << "HOVERNEAR" << suffix << " moved " << file.filename().string() << " by " << plan.moved.x << "," << plan.moved.y << "\n";
 		}
 		const TileIndexDiffC at = {static_cast<int16_t>(offset.x + plan.moved.x), static_cast<int16_t>(offset.y + plan.moved.y)};
 		const JunctionTerrain after = ApplyJunctionTerraform(*terrain, plan.terraform);
@@ -371,9 +379,20 @@ TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
 	}
 	const double near_mean = near_millis.empty() ? 0.0 : std::accumulate(near_millis.begin(), near_millis.end(), 0.0) / static_cast<double>(near_millis.size());
 	const double near_max = near_millis.empty() ? 0.0 : *std::ranges::max_element(near_millis);
-	std::cout << "HOVERNEAR fixtures=" << files.size() << " planned=" << near_planned << " moved=" << near_moved << " ms_mean=" << near_mean << " ms_max=" << near_max << "\n";
-	CHECK(near_planned >= 32);
-	REQUIRE(near_max < 100.0);
+	std::cout << "HOVERNEAR" << suffix << " fixtures=" << files.size() << " planned=" << near_planned << " moved=" << near_moved << " ms_mean=" << near_mean << " ms_max=" << near_max << "\n";
+	CHECK(near_planned >= near_floor);
+	if (time_limited) REQUIRE(near_max < 100.0);
+}
+
+TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
+{
+	RunHoverSweep(JunctionTTopology(), "", 19, 32, true);
+}
+
+TEST_CASE("hover plan on real terrain, LL_RR", "[junction][realterrainsweep]")
+{
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("L_R").spec);
+	RunHoverSweep(t, "_LLRR", 7, 20, false);
 }
 
 /** Fold a value into a 64-bit FNV-1a hash. */
