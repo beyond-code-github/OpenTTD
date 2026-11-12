@@ -80,3 +80,8 @@ JunctionGraphSearch SearchJunctionGraph(const JunctionGraphSeed &seed, const Jun
 
 ## Report
 The standard report, plus: test 1's house tile, the accepted edits, states and Release time; test 2's states and time. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop: house column outside the seed run; detour curve gap)
+1. **The house column:** the edit stores the failure's working column (a world tile column: fixed for a given offset), not a piece index: `JunctionDetourEdit::piece` becomes `int32_t column; ///< The failing tile's working x (the house is fixed in the world).` ApplyJunctionDetours takes the offset and maps column - offset.x into the seed run, CLAMPED strictly inside it (the seed run is only the reference shape; the solve moves the detour, and the blocked tile's facts keep the original row off it). Test 1 keeps the sweep's first Straight house.
+2. **Curve gap by construction:** ChooseJunctionDetour's candidates (n1, n2, n3) are filtered by the curve rule: for a candidate, take the edited route's full curve-hand sequence (as the template's rule 2 reads curves: 45-degree direction changes) and keep only candidates for which every JunctionCurveGaps pair holds on the units of the edited route; the first surviving candidate in the existing order wins; none: refuse with a reason. No template build inside the edit. If the legacy InsertJunctionDetour's results would change by sharing this filter, keep the filter in the graph path only (a parameter to the shared helper) and say so.
+3. **Reds:** record them properly: run each new test once against stubs (ApplyJunctionDetours returning empty, SearchJunctionGraph returning no layout) before restoring the code.
