@@ -326,6 +326,54 @@ TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
 	std::cout << "HOVERPLAN fixtures=" << files.size() << " planned=" << planned << " failed=" << failed << " ms_mean=" << mean << " ms_max=" << max << "\n";
 	CHECK(planned >= 19);
 	REQUIRE(max < 100.0);
+
+	/* The near search (D197, F1): the cursor spot first, a nearby offset only when it has no plan. */
+	int near_planned = 0, near_moved = 0;
+	std::vector<double> near_millis;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionHoverPlan plan = PlanJunctionHoverNear(seed, spec, *terrain, offset);
+		near_millis.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+		INFO(file.filename().string() << ": " << plan.why);
+		if (!plan.layout.has_value()) continue;
+		near_planned++;
+		if (plan.moved.x != 0 || plan.moved.y != 0) {
+			near_moved++;
+			std::cout << "HOVERNEAR moved " << file.filename().string() << " by " << plan.moved.x << "," << plan.moved.y << "\n";
+		}
+		const TileIndexDiffC at = {static_cast<int16_t>(offset.x + plan.moved.x), static_cast<int16_t>(offset.y + plan.moved.y)};
+		const JunctionTerrain after = ApplyJunctionTerraform(*terrain, plan.terraform);
+		const JunctionFacts facts(*terrain);
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+		std::string again_error;
+		const JunctionTrackPlacement again = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, at, &again_error, true, true, &*terrain);
+		INFO("placement: " << again_error);
+		REQUIRE(!again.nodes.empty());
+		CHECK(again.height_cost == plan.height_cost);
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		const JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, again, &render_error, &routes);
+		std::string why;
+		CHECK(JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, at, &why));
+		INFO(why);
+		for (const RuleViolation &violation : CheckJunctionRules(*plan.layout, spec, t)) {
+			INFO("rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+			CHECK(false);
+		}
+	}
+	const double near_mean = near_millis.empty() ? 0.0 : std::accumulate(near_millis.begin(), near_millis.end(), 0.0) / static_cast<double>(near_millis.size());
+	const double near_max = near_millis.empty() ? 0.0 : *std::ranges::max_element(near_millis);
+	std::cout << "HOVERNEAR fixtures=" << files.size() << " planned=" << near_planned << " moved=" << near_moved << " ms_mean=" << near_mean << " ms_max=" << near_max << "\n";
+	CHECK(near_planned >= 31);
+	REQUIRE(near_max < 100.0);
 }
 
 /** Fold a value into a 64-bit FNV-1a hash. */

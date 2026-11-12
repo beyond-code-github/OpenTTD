@@ -365,6 +365,7 @@ struct JunctionProjectionResult {
 	std::vector<std::pair<TileIndexDiffC, int8_t>> track_levels; ///< The level of every track tile of layout (canonical frame).
 	std::string why; ///< The reason when there is no layout.
 	TileIndexDiffC hub{}; ///< The layout position of the hovered tile.
+	int distance = 0; ///< How far the plan was moved from the hovered spot (D197), 0 at the spot.
 };
 
 /** A generation running on a worker thread; owns everything the worker reads, and outlives the window if needed. */
@@ -754,7 +755,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		}
 		std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
 		for (const auto &[tile_offset, level] : projection.track_levels) levels.emplace_back(OrientJunctionOffset(tile_offset, projection.layout->size, _junction_rotation, mirrored), level);
-		this->ShowPlaced(ApplyJunctionOrientation(*projection.layout, _junction_rotation, mirrored), TileXY(ox, oy), this->EffectivePrio(), 0, projection.height_cost, projection.steps, std::move(levels));
+		this->ShowPlaced(ApplyJunctionOrientation(*projection.layout, _junction_rotation, mirrored), TileXY(ox, oy), this->EffectivePrio(), projection.distance, projection.height_cost, projection.steps, std::move(levels));
 	}
 
 	/**
@@ -905,7 +906,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			return;
 		}
 
-		/* The frame is the seed's box with the hub column in the middle, the box's first row on the anchor row; levels need margin 8. */
+		/* The frame is the seed's box with the hub column in the middle, the box's first row on the anchor row; levels need margin 8, and the near search moves the box by up to its columns or rows. */
 		const TileIndexDiffC size = job->seed->placement.size;
 		JunctionFrame frame;
 		frame.hub_x = size.x / 2;
@@ -913,16 +914,17 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		frame.terrain_origin_y = 0;
 		frame.terrain_height = size.y;
 		const auto t0 = std::chrono::steady_clock::now();
-		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, frame, 8);
+		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, frame, 8 + std::max(JUNCTION_HOVER_NEAR_COLUMNS, JUNCTION_HOVER_NEAR_ROWS));
 		Debug(Facility::Misc, Severity::Debug2, "junction projection snapshot: {} us", std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
 		const int hub_x = frame.hub_x;
 		if (!StartNewThread(&this->pending_thread, "ottd:junctionproj", [job, key, hub_x]() {
-			JunctionHoverPlan plan = PlanJunctionHover(*job->seed, job->spec, job->terrain, {0, 0});
+			JunctionHoverPlan plan = PlanJunctionHoverNear(*job->seed, job->spec, job->terrain, {0, 0});
 			JunctionProjectionResult &result = job->projection_result;
 			result.why = plan.why;
 			result.height_cost = plan.height_cost;
 			result.track_levels = plan.track_levels;
-			result.hub = {static_cast<int16_t>(hub_x), 0};
+			result.hub = {static_cast<int16_t>(hub_x - plan.moved.x), static_cast<int16_t>(-plan.moved.y)};
+			result.distance = std::max(std::abs(plan.moved.x), std::abs(plan.moved.y));
 			if (plan.layout.has_value()) {
 				result.steps = MakeJunctionTerraformSteps(plan.terraform, job->terrain, key.anchor, key.rotation, key.mirrored, hub_x);
 				result.layout = std::move(plan.layout);

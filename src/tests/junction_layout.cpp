@@ -1025,3 +1025,76 @@ TEST_CASE("the cone reject is sound", "[junction][hoverplan]")
 		CHECK(plan.why.find(test.why) != std::string::npos);
 	}
 }
+
+TEST_CASE("the hover moves the box only when the cursor spot fails", "[junction][hoverplan]")
+{
+	namespace fs = std::filesystem;
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionTopology &t = JunctionTTopology();
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+
+	const auto load = [](const char *file) {
+		std::ifstream in(fs::path(JUNCTION_TERRAIN_DIR) / file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		return *terrain;
+	};
+	const auto centred = [&](const JunctionTerrain &terrain) {
+		return TileIndexDiffC{static_cast<int16_t>(terrain.origin.x + (terrain.width - seed.placement.size.x) / 2), static_cast<int16_t>(terrain.origin.y + (terrain.height - seed.placement.size.y) / 2)};
+	};
+	const auto same_layout = [](const JunctionLayout &a, const JunctionLayout &b) {
+		return std::ranges::equal(a.tracks, b.tracks, [](const JunctionTrack &x, const JunctionTrack &y) { return x.offset.x == y.offset.x && x.offset.y == y.offset.y && x.tracks == y.tracks; }) &&
+				std::ranges::equal(a.signals, b.signals, [](const JunctionSignal &x, const JunctionSignal &y) { return x.offset.x == y.offset.x && x.offset.y == y.offset.y && x.facing == y.facing && x.type == y.type && x.variant == y.variant; });
+	};
+
+	/* (a) A fixture that plans at its offset: no move, the same layout as the plain hover. */
+	{
+		const JunctionTerrain terrain = load("arctic-hilly-2.json");
+		const TileIndexDiffC offset = centred(terrain);
+		const JunctionHoverPlan plain = PlanJunctionHover(seed, spec, terrain, offset);
+		REQUIRE(plain.layout.has_value());
+		const JunctionHoverPlan near = PlanJunctionHoverNear(seed, spec, terrain, offset);
+		REQUIRE(near.layout.has_value());
+		CHECK(near.moved.x == 0);
+		CHECK(near.moved.y == 0);
+		CHECK(same_layout(*near.layout, *plain.layout));
+	}
+
+	/* (b) A fixture that fails at its offset: it moves, the plain hover at the moved offset gives the same layout, and every earlier offset of the search order fails. */
+	{
+		const JunctionTerrain terrain = load("arctic-hilly-1.json");
+		const TileIndexDiffC offset = centred(terrain);
+		REQUIRE(!PlanJunctionHover(seed, spec, terrain, offset).layout.has_value());
+		const JunctionHoverPlan near = PlanJunctionHoverNear(seed, spec, terrain, offset);
+		REQUIRE(near.layout.has_value());
+		CHECK((near.moved.x != 0 || near.moved.y != 0));
+		const JunctionHoverPlan there = PlanJunctionHover(seed, spec, terrain, {static_cast<int16_t>(offset.x + near.moved.x), static_cast<int16_t>(offset.y + near.moved.y)});
+		REQUIRE(there.layout.has_value());
+		CHECK(same_layout(*near.layout, *there.layout));
+
+		/* The search order: |dx| + |dy|, then |dy|, then dx, then dy. */
+		const auto before = [&](int dx, int dy) {
+			const int a = std::abs(dx) + std::abs(dy), b = std::abs(near.moved.x) + std::abs(near.moved.y);
+			if (a != b) return a < b;
+			if (std::abs(dy) != std::abs(near.moved.y)) return std::abs(dy) < std::abs(near.moved.y);
+			if (dx != near.moved.x) return dx < near.moved.x;
+			return dy < near.moved.y;
+		};
+		int earlier = 0;
+		for (int dy = -JUNCTION_HOVER_NEAR_ROWS; dy <= JUNCTION_HOVER_NEAR_ROWS; dy++) {
+			for (int dx = -JUNCTION_HOVER_NEAR_COLUMNS; dx <= JUNCTION_HOVER_NEAR_COLUMNS; dx++) {
+				if ((dx == 0 && dy == 0) || !before(dx, dy)) continue;
+				earlier++;
+				INFO("offset " << dx << "," << dy);
+				CHECK(!PlanJunctionHover(seed, spec, terrain, {static_cast<int16_t>(offset.x + dx), static_cast<int16_t>(offset.y + dy)}).layout.has_value());
+			}
+		}
+		CHECK(earlier > 0);
+	}
+}
