@@ -1803,6 +1803,49 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 			if (!raster.error.empty()) return fail_at("", raster.error);
 			if (tags.size() != raster.pieces.size()) return fail_at("", "the piece tags do not match the pieces");
 			if (raster.pieces.back().tile.x != out.x || raster.pieces.back().tile.y != out.y) return fail_at("", "misses its out port");
+
+			/* Each piece lies on the edge it is on: consecutive edges meet at their shared node's piece, which a merge leaves to the first edge and a split gives to the next. */
+			size_t block_start = 0;
+			uint32_t block_edge = edges.front();
+			size_t edge_index = 0;
+			bool token_moved = false;
+			auto set_block = [&](size_t end) {
+				for (size_t i = block_start; i < end; i++) {
+					if (tags[i].token != JunctionTrackPieceTag::RUN && tags[i].edge != block_edge) token_moved = true;
+					tags[i].edge = block_edge;
+				}
+			};
+			for (size_t k = 0; k + 1 < edges.size(); k++) {
+				const JunctionTrackEnd &shared = graph.edges[edges[k]].to;
+				if (!shared.node || !(shared == graph.edges[edges[k + 1]].from)) return fail_at("", "consecutive edges do not share a node");
+				const TileIndexDiffC node_tile = placement.nodes[shared.index];
+				size_t at = 0;
+				while (at < raster.pieces.size() && (raster.pieces[at].on_bridge || raster.pieces[at].tile.x != node_tile.x || raster.pieces[at].tile.y != node_tile.y)) at++;
+				if (at == raster.pieces.size()) return fail_at("", "a node has no piece on the route");
+				const size_t next_start = graph.nodes[shared.index].split ? at : at + 1;
+				if (next_start < block_start) return fail_at("", "the edge blocks are out of order");
+				set_block(next_start);
+				block_start = next_start;
+				block_edge = edges[++edge_index];
+			}
+			set_block(tags.size());
+			if (token_moved) return fail_at("", "a token piece lies outside its edge's block");
+			/* Copy 1 only on a doubled edge; run counts the edge's tokens before the piece, from its own token tags. */
+			for (size_t i = 0; i < tags.size(); i++) {
+				tags[i].copy = c == 1 && doubled_leg(tags[i].edge) ? 1 : 0;
+				if (tags[i].token != JunctionTrackPieceTag::RUN) {
+					tags[i].run = tags[i].token;
+					continue;
+				}
+				tags[i].run = 0;
+				for (size_t j = i; j-- > 0;) {
+					if (tags[j].edge != tags[i].edge) break;
+					if (tags[j].token != JunctionTrackPieceTag::RUN) {
+						tags[i].run = tags[j].token + 1;
+						break;
+					}
+				}
+			}
 			AddRasterToLayout(layout, raster);
 			if (routes != nullptr) routes->push_back({static_cast<uint16_t>(p), static_cast<uint8_t>(c), raster.pieces, std::move(tags)});
 		}
