@@ -48,3 +48,12 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 
 ## Report
 The standard report, plus LL_RR template counts (points, links, classes, diagonals, late gaps). When you have reported, stop.
+
+## Amendment 1 (orchestrator, after stop 1 and stop 2)
+Derivation (units of the links between p and q, δ = change from flat): ΔU = Σ_Xfree 2 s_l (δx_to - δx_from) + Σ_Yfree 2 s_l (δy_to - δy_from) + Σ_diag 2 m_d. Points joined by a rigid or Y-free link share an X class; across a diagonal δx changes by dx_d m_d. So if the free X links agree on one sign d_x: ΔU = 2 d_x (δx_q - δx_p) - 2 d_x Σ_diag dx_d m_d + Σ_Yfree 2 s_l (δy_to - δy_from) + 2 Σ_diag m_d. After the Y snap every term but δx_q - δx_p is known, so a late gap needs only the free X links to agree; the diagonals and the free Y links may have any signs. For a monotone stretch this equals today's formula (d_x dx_d = 1, d_y dy_d = 1), so the T does not change.
+Changes to the brief:
+- **JunctionNodeLateGap**: `int8_t dir; ///< The x sign of the free X links between p and q.` and, in place of dir_y, `std::vector<uint32_t> y_links; ///< The free Y links between p and q (indices into links).` (after `diagonals`). Comparator: dir and y_links. Comparator test: FIELD(dir), VEC(y_links).
+- **add_gap**: with an X run between p and q (late): only the free X links' signs must agree (else Fail "moves both ways along x"); push {path, p, q, g, u, diagonals, dir = d_x, y_links}. Without an X run (a Y difference now): the free Y links' signs and the diagonals' dy must agree (else Fail "moves both ways along y"), as in the brief.
+- **Late constraint**: with m_d = NodeDiagonalSteps(...) and the Y shifts known: `yfree = Σ_{l in y_links} 2 * links[l].dir * (shift_y(points[l.to].ycls) - shift_y(points[l.from].ycls))`, `k = d_x * (q.tile.x - p.tile.x) + CeilHalf(g - u - yfree - 2 Σ m_d + 2 d_x Σ dx_d m_d)` where shift_y(c) = values[c] - tpl.flat[c]. Keep the existing NodeAddAtLeast call shape by d_x's sign.
+- **Test 2**: for every late gap, gap.dir == its path's dir (drop the dir_y check).
+- The keep_slot use you found (`span.axis == X ? d : d_y` -> `span.dir`) is accepted.
