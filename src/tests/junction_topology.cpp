@@ -25,6 +25,7 @@
 #include "../junction_nodes.h"
 #include "../junction_route.h"
 #include "../junction_topology.h"
+#include "../track_func.h"
 
 #include "../safeguards.h"
 
@@ -560,25 +561,25 @@ TEST_CASE("topology: the T's placement", "[junction][topology]")
 	const JunctionTrackPlacement placement = PlacementOf(JunctionTTopology(), 64, &error);
 	REQUIRE(!placement.nodes.empty());
 	CHECK(placement.item_rows == std::vector<int>{0, 1, 2, 3, 4, 5});
-	CHECK(Of(placement.size) == T(40, 14));
-	CHECK(Of(placement.ports) == std::vector<Tile>{T(0, 1), T(0, 3), T(25, 13), T(27, 13), T(39, 3), T(39, 1)});
-	CHECK(Of(placement.nodes) == std::vector<Tile>{T(22, 1), T(25, 11), T(32, 3), T(6, 4), T(27, 11), T(37, 1)});
+	CHECK(Of(placement.size) == T(41, 14));
+	CHECK(Of(placement.ports) == std::vector<Tile>{T(0, 1), T(0, 3), T(26, 13), T(28, 13), T(40, 3), T(40, 1)});
+	CHECK(Of(placement.nodes) == std::vector<Tile>{T(23, 1), T(26, 11), T(33, 3), T(6, 4), T(28, 11), T(38, 1)});
 	const std::vector<Spans> edges = {
-		{Sp(0, 1, 0, 1)}, {}, {Sp(39, 3, 39, 3)}, {},
-		{Sp(22, 1, 24, 3), Sp(23, 3, 24, 3), Sp(24, 4, 24, 4), Sp(24, 7, 27, 9), Sp(25, 7, 25, 8)},
-		{Sp(27, 3, 26, 3), Sp(24, 3, 23, 3), Sp(21, 3, 21, 4)},
-		{Sp(32, 3, 30, 5), Sp(30, 9, 27, 11)},
-		{Sp(25, 11, 19, 5), Sp(6, 5, 6, 4)},
-		{Sp(25, 8, 25, 7), Sp(25, 4, 26, 4), Sp(26, 3, 27, 3), Sp(25, 4, 27, 2), Sp(37, 2, 37, 1)},
-		{Sp(2, 4, 2, 3)}, {}, {Sp(39, 1, 39, 1)},
+		{Sp(0, 1, 0, 1)}, {}, {Sp(40, 3, 40, 3)}, {},
+		{Sp(23, 1, 25, 3), Sp(24, 3, 25, 3), Sp(25, 4, 25, 4), Sp(25, 7, 28, 9), Sp(26, 7, 26, 8)},
+		{Sp(28, 3, 27, 3), Sp(25, 3, 24, 3), Sp(22, 3, 22, 4)},
+		{Sp(33, 3, 31, 5), Sp(31, 9, 28, 11)},
+		{Sp(26, 11, 20, 5), Sp(6, 5, 6, 4)},
+		{Sp(26, 8, 26, 7), Sp(26, 4, 27, 4), Sp(27, 3, 28, 3), Sp(26, 4, 28, 2), Sp(38, 2, 38, 1)},
+		{Sp(2, 4, 2, 3)}, {}, {Sp(40, 1, 40, 1)},
 	};
 	CHECK(Of(placement.edges) == edges);
 	std::vector<Spans> copies(12);
-	copies[5] = {Sp(30, 3, 30, 4), Sp(26, 4, 25, 4), Sp(24, 4, 24, 4)};
+	copies[5] = {Sp(31, 3, 31, 4), Sp(27, 4, 26, 4), Sp(25, 4, 25, 4)};
 	CHECK(Of(placement.copies) == copies);
 	REQUIRE(placement.bridges.size() == 2);
-	CHECK(Of(placement.bridges[0]) == Br(28, 3, 22, 3, 29, 4, 23, 4));
-	CHECK(Of(placement.bridges[1]) == Br(25, 9, 25, 6, 0, 0, 0, 0));
+	CHECK(Of(placement.bridges[0]) == Br(29, 3, 23, 3, 30, 4, 24, 4));
+	CHECK(Of(placement.bridges[1]) == Br(26, 9, 26, 6, 0, 0, 0, 0));
 }
 
 TEST_CASE("topology: LL_RR's uncut w2 bridge is too long at nmax 9", "[junction][topology]")
@@ -652,7 +653,8 @@ TEST_CASE("topology: LL_RR series bridges", "[junction][topology]")
 	CHECK(placement.edges[11][3].first.x - placement.edges[12][1].first.x == 9);
 
 	/* The series cut: 2 tiles wider and taller than one bridge per lane (58x23), no bridge longer than 5 middle tiles (was 10). */
-	CHECK(placement.size.x == 60);
+	/* 62: the prio element's n + 2 floor on both doubled sides (DESIGN-G1 §12.4). */
+	CHECK(placement.size.x == 62);
 	CHECK(placement.size.y == 25);
 	for (const std::array<JunctionBridge, 2> &heads : placement.bridges) {
 		CHECK(std::abs(heads[0].start.x - heads[0].end.x) + std::abs(heads[0].start.y - heads[0].end.y) - 1 <= 5);
@@ -982,16 +984,11 @@ TEST_CASE("topology: the T's signal tokens meet the signal rules", "[junction][t
 	const JunctionLayout layout = SignalledOf(JunctionTTopology(), &error, &tokens, &routes);
 	INFO(error);
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	const JunctionCheckContext ctx = MakeJunctionTopologyCheckContext(layout, spec, JunctionTTopology(), FindJunctionPorts(layout, JunctionTTopology()));
-	/* The footprint waits for the prio element, DESIGN-G1 §12.4. */
-	const std::pair<const char *, std::vector<RuleViolation>> groups[] = {
-		{"Connectivity", CheckConnectivity(ctx)}, {"Geometry", CheckGeometry(ctx)}, {"Bridges", CheckBridges(ctx)},
-		{"Signals", CheckSignals(ctx)}, {"WaitingRoom", CheckWaitingRoom(ctx)}, {"Deadlock", CheckDeadlock(ctx)},
-	};
-	for (const auto &[name, violations] : groups) {
-		for (const RuleViolation &v : violations) INFO(fmt::format("{} at {},{}: {}", name, v.tile.x, v.tile.y, v.message));
-		CHECK(violations.empty());
-	}
+	const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec, JunctionTTopology());
+	std::string listed;
+	for (const RuleViolation &v : violations) listed += fmt::format("rule {} at {},{}: {}\n", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message);
+	INFO(listed);
+	CHECK(violations.empty());
 }
 
 TEST_CASE("topology: the T's signal tokens are the signals", "[junction][topology]")
@@ -1058,6 +1055,67 @@ TEST_CASE("topology: the T's signal reasons", "[junction][topology]")
 	CHECK(std::ranges::any_of(tokens, [](const JunctionTrackSignal &t) { return t.reason == JunctionSignalReason::AfterBridge; }));
 }
 
+TEST_CASE("topology: the T's prio elements follow the pattern", "[junction][topology]")
+{
+	std::string error;
+	std::vector<JunctionTrackSignal> tokens;
+	std::vector<JunctionTrackRoute> routes;
+	std::vector<JunctionLanePath> paths;
+	const JunctionLayout layout = SignalledOf(JunctionTTopology(), &error, &tokens, &routes, &paths);
+	INFO(error);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const int even_prio = spec.prio_tiles + (spec.prio_tiles & 1);
+	const auto tracks_at = [&](int x, int y) {
+		TrackBits bits;
+		for (const JunctionTrack &t : layout.tracks) {
+			if (t.offset.x == x && t.offset.y == y) bits.Set(t.tracks);
+		}
+		return bits;
+	};
+	const auto signal_at = [&](int x, int y, Trackdir facing) -> const JunctionSignal * {
+		for (const JunctionSignal &s : layout.signals) {
+			if (s.offset.x == x && s.offset.y == y && s.facing == facing) return &s;
+		}
+		return nullptr;
+	};
+	/* The two elements: the merges of the W and E joiners (the nodes (6,4) and (38,1)), both with the row on the north side. */
+	int found = 0;
+	for (const TileIndexDiffC merge : {TileIndexDiffC{6, 4}, TileIndexDiffC{38, 1}}) {
+		const JunctionPiece *piece = nullptr;
+		for (const JunctionTrackRoute &route : routes) {
+			for (const JunctionPiece &pc : route.pieces) {
+				if (pc.tile.x == merge.x && pc.tile.y == merge.y && IsDiagonalTrackdir(pc.trackdir) && !pc.on_bridge && tracks_at(merge.x, merge.y).Any(TrackBits{Track::Upper, Track::Lower, Track::Left, Track::Right})) piece = &pc;
+			}
+		}
+		REQUIRE(piece != nullptr);
+		found++;
+		const Track axis = TrackdirToTrack(piece->trackdir);
+		static const TileIndexDiffC EDGE_DIFF[4] = {{-1, 0}, {0, 1}, {1, 0}, {0, -1}}; // NE, SE, SW, NW.
+		const TileIndexDiffC dir = EDGE_DIFF[static_cast<int>(TrackdirToExitdir(piece->trackdir))];
+		const TileIndexDiffC sd = {0, -1};
+		const int n = even_prio;
+		for (int s = 0; s <= n; s++) {
+			const int mx = merge.x - s * dir.x, my = merge.y - s * dir.y;
+			const TrackBits ml = tracks_at(mx, my);
+			const TrackBits row = tracks_at(mx + sd.x, my + sd.y);
+			INFO(fmt::format("merge {},{} s {}", merge.x, merge.y, s));
+			CHECK(ml.Test(axis));
+			if (s % 2 == 0) {
+				CHECK(ml.Count() == (s == 0 ? 3 : 2));
+				CHECK(row.Count() == (s == 0 ? 1 : 2));
+			} else {
+				CHECK(ml.Count() == 1);
+				CHECK(row == TrackBits{axis});
+				CHECK(signal_at(mx, my, piece->trackdir) != nullptr);
+				const JunctionSignal *rs = signal_at(mx + sd.x, my + sd.y, ReverseTrackdir(piece->trackdir));
+				REQUIRE(rs != nullptr);
+				CHECK(rs->type == (s == n - 1 ? SignalType::Exit : SignalType::Combo));
+			}
+		}
+	}
+	CHECK(found == 2);
+}
+
 TEST_CASE("topology: signal token findings", "[.][diag]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
@@ -1086,4 +1144,23 @@ TEST_CASE("topology: signal token findings", "[.][diag]")
 		for (const auto &[rule, count] : per_rule) file << fmt::format(" {}:{}", rule, count);
 		file << '\n' << RenderJunctionAscii(layout);
 	}
+}
+
+TEST_CASE("topology: LL_RR prio findings", "[.][diag]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	std::vector<JunctionTrackSignal> tokens;
+	std::vector<JunctionTrackRoute> routes;
+	const JunctionLayout layout = SignalledOf(JunctionLLRRSidelineTopology(), &error, &tokens, &routes);
+	std::ofstream file("docs/junction-tool/wip/st2-llrr.txt");
+	REQUIRE(file.is_open());
+	std::map<int, int> per_rule;
+	for (const RuleViolation &v : CheckJunctionRules(layout, spec, JunctionLLRRSidelineTopology())) {
+		per_rule[static_cast<int>(v.rule)]++;
+		file << fmt::format("rule {} tile {},{}: {}\n", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message);
+	}
+	file << "violations per rule:";
+	for (const auto &[rule, count] : per_rule) file << fmt::format(" {}:{}", rule, count);
+	file << '\n' << RenderJunctionAscii(layout);
 }
