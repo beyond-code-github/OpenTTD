@@ -256,6 +256,8 @@ add_files(
     junction_compact.h
     junction_game.cpp
     junction_game.h
+    junction_hover.cpp
+    junction_hover.h
     junction_generator.cpp
     junction_generator.h
     junction_ghost_draw.cpp

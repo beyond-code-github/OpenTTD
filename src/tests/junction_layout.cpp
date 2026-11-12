@@ -12,11 +12,14 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include "../junction_layout.h"
+#include "../junction_terraform.h"
 #include "../map_func.h"
 #include "../track_func.h"
 #include "../table/strings.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdlib>
 #include <map>
 #include <set>
 #include <tuple>
@@ -635,4 +638,107 @@ TEST_CASE("JunctionLayout: a tunnel is priced as a tunnel, a bridge as a bridge"
 	both.bridges.push_back({{1, 2}, {5, 2}});
 	pricing.tunnel_fails = false;
 	CHECK(EstimateJunction(both, TileXY(10, 10), pricing).total == 2 * 100 + 700 + 1000);
+}
+
+TEST_CASE("terraform steps: every orientation", "[junction][hoverplan]")
+{
+	Map::Allocate(64, 64);
+
+	/* A 16 x 14 snapshot, ground rising along x from corner column 8, every tile Buildable. */
+	auto ground = [](int cx) { return 3 + std::clamp(cx - 8, 0, 2); };
+	JunctionTerrain terrain;
+	terrain.origin = {-3, -2};
+	terrain.width = 16;
+	terrain.height = 14;
+	terrain.terraform_cost = 100;
+	terrain.tiles.resize(static_cast<size_t>(terrain.width) * terrain.height);
+	for (int y = terrain.origin.y; y < terrain.origin.y + terrain.height; y++) {
+		for (int x = terrain.origin.x; x < terrain.origin.x + terrain.width; x++) {
+			SetJunctionTileCorners(terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)], {ground(x + 1), ground(x + 1), ground(x), ground(x)});
+		}
+	}
+	JunctionTerraform plan;
+	plan.corners[{5, 5}] = 5; // Two up on flat ground.
+	plan.corners[{9, 6}] = 2; // Two down on the slope.
+	std::string why;
+	REQUIRE(PropagateJunctionTerraform(terrain, plan, &why));
+	INFO(why);
+	REQUIRE(!plan.corners.empty());
+	const JunctionTerrain after = ApplyJunctionTerraform(terrain, plan);
+
+	constexpr int HUB_X = 8;
+	constexpr std::pair<int, int> CORNER_OFFSET[4] = {{1, 0}, {1, 1}, {0, 1}, {0, 0}}; // W, S, E, N.
+	const TileIndex anchor = TileXY(30, 30);
+	for (int mirror = 0; mirror < 2; mirror++) {
+		for (uint8_t rotation = 0; rotation < 4; rotation++) {
+			INFO("rotation " << int(rotation) << " mirrored " << mirror);
+			/* The terrain in a map frame: each cell's tile is anchor + O(cell); the lattice map is the affine map that sends the cell's square to that tile's square. */
+			auto to_map = [&](const JunctionTerrain &t) {
+				std::map<std::pair<int, int>, int> heights;
+				for (int y = t.origin.y; y < t.origin.y + t.height; y++) {
+					for (int x = t.origin.x; x < t.origin.x + t.width; x++) {
+						const TileIndexDiffC image = OrientJunctionVector({static_cast<int16_t>(x - HUB_X), static_cast<int16_t>(y)}, rotation, mirror != 0);
+						const int tx = static_cast<int>(TileX(anchor)) + image.x;
+						const int ty = static_cast<int>(TileY(anchor)) + image.y;
+						int min_x = 2, min_y = 2;
+						for (int u = 0; u < 4; u++) {
+							const TileIndexDiffC o = OrientJunctionVector({static_cast<int16_t>(u & 1), static_cast<int16_t>(u >> 1)}, rotation, mirror != 0);
+							min_x = std::min<int>(min_x, o.x);
+							min_y = std::min<int>(min_y, o.y);
+						}
+						const std::array<int, 4> corners = JunctionTileCorners(*t.At(x, y));
+						for (int i = 0; i < 4; i++) {
+							const TileIndexDiffC o = OrientJunctionVector({static_cast<int16_t>(CORNER_OFFSET[i].first), static_cast<int16_t>(CORNER_OFFSET[i].second)}, rotation, mirror != 0);
+							const std::pair<int, int> lattice{tx + o.x - min_x, ty + o.y - min_y};
+							const auto [it, inserted] = heights.emplace(lattice, corners[i]);
+							if (!inserted) REQUIRE(it->second == corners[i]);
+						}
+					}
+				}
+				return heights;
+			};
+			std::map<std::pair<int, int>, int> map_heights = to_map(terrain);
+			const std::map<std::pair<int, int>, int> expected = to_map(after);
+
+			const std::vector<JunctionTerraformStep> steps = MakeJunctionTerraformSteps(plan, terrain, anchor, rotation, mirror != 0, HUB_X);
+			int moves = 0;
+			std::map<std::pair<int, int>, int> before = to_map(terrain);
+			for (const auto &[corner, target] : plan.corners) moves += std::abs(target - JunctionTileCorners(*terrain.At(corner.first, corner.second))[3]);
+			CHECK(static_cast<int>(steps.size()) == moves);
+
+			/* Each step moves one corner one level; the game's propagation must then have nothing to move. */
+			for (const JunctionTerraformStep &step : steps) {
+				const std::pair<int, int> lattice{static_cast<int>(TileX(step.tile)) + CORNER_OFFSET[to_underlying(step.corner)].first, static_cast<int>(TileY(step.tile)) + CORNER_OFFSET[to_underlying(step.corner)].second};
+				REQUIRE(map_heights.contains(lattice));
+				const int h = map_heights[lattice] + (step.raise ? 1 : -1);
+				map_heights[lattice] = h;
+				for (const auto &[dx, dy] : {std::pair{1, 0}, std::pair{0, 1}, std::pair{-1, 0}, std::pair{0, -1}}) {
+					const auto it = map_heights.find({lattice.first + dx, lattice.second + dy});
+					if (it != map_heights.end()) REQUIRE(std::abs(it->second - h) <= 1);
+				}
+			}
+			CHECK(map_heights == expected);
+		}
+	}
+}
+
+TEST_CASE("the terraformed estimate adds the height cost", "[junction][hoverplan]")
+{
+	Map::Allocate(64, 64);
+
+	StubJunctionPricing pricing;
+	const JunctionLayout layout = MakeTestJunctionLayout();
+	const JunctionEstimate flat = EstimateJunction(layout, TileXY(10, 10), pricing);
+
+	/* Ground that is not in one plane: the plane check marks it bad, the terraformed estimate does not (the plan levels it). */
+	pricing.slope_zs[TileXY(12, 12)] = {1, 2};
+	pricing.heights[TileXY(11, 12)] = 3;
+	CHECK(!EstimateJunction(layout, TileXY(10, 10), pricing).bad_tiles.empty());
+	const JunctionEstimate terraformed = EstimateJunctionTerraformed(layout, TileXY(10, 10), pricing, 777);
+	CHECK(terraformed.bad_tiles.empty());
+	CHECK(terraformed.total == flat.total + 777);
+	CHECK(terraformed.affordable);
+
+	pricing.money = flat.total + 776;
+	CHECK(!EstimateJunctionTerraformed(layout, TileXY(10, 10), pricing, 777).affordable);
 }

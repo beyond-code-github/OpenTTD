@@ -564,6 +564,9 @@ bool GameJunctionStepPoster::Post(const JunctionBuildStep &step)
 			auto type = ChooseJunctionBridgeType(this->railtype, length);
 			if (!type.has_value()) return false;
 			return Command<Commands::BuildBridge>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, CcJunctionStep, s.end, s.start, TransportType::Rail, *type, this->railtype, INVALID_ROADTYPE);
+		} else if constexpr (std::is_same_v<T, JunctionTerraformStep>) {
+			/* Terraform steps are not posted until the GUI uses them (H2). */
+			return false;
 		} else {
 			return Command<Commands::BuildSignal>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, CcJunctionStep, s.tile, TrackdirToTrack(s.facing), s.type, s.variant, false, false, false, SignalType::Block, SignalType::Block, 0, SignalAlongTrackdir(s.facing));
 		}

@@ -14,10 +14,12 @@
 #include "map_type.h"
 #include "track_type.h"
 #include "signal_type.h"
+#include "slope_type.h"
 #include "command_type.h"
 #include "economy_type.h"
 #include "strings_type.h"
 #include "tile_type.h"
+#include "junction_terraform.h"
 
 #include <optional>
 #include <string>
@@ -74,8 +76,10 @@ struct JunctionBridgeStep { TileIndex start; TileIndex end; bool tunnel = false;
 struct JunctionSignalStep { TileIndex tile; Trackdir facing; SignalType type; SignalVariant variant; };
 /** Build step: one block of station tiles; the station tiles carry their own track. */
 struct JunctionStationStep { TileIndex tile; Axis axis; uint8_t platforms; uint8_t length; };
+/** Build step: move one tile corner one level (one CmdTerraformLand of a single corner). */
+struct JunctionTerraformStep { TileIndex tile; Corner corner; bool raise; };
 /** Any one build step. */
-using JunctionBuildStep = std::variant<JunctionRailStep, JunctionBridgeStep, JunctionSignalStep, JunctionStationStep>;
+using JunctionBuildStep = std::variant<JunctionRailStep, JunctionBridgeStep, JunctionSignalStep, JunctionStationStep, JunctionTerraformStep>;
 
 /** Slope facts of one tile. */
 struct JunctionTileSlope {
@@ -134,5 +138,18 @@ TileIndexDiffC InverseOrientJunctionVector(TileIndexDiffC v, uint8_t rotation, b
 JunctionLayout MakeTestJunctionLayout();
 std::vector<JunctionBuildStep> MakeJunctionBuildSteps(const JunctionLayout &layout, TileIndex origin);
 JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing);
+/** The estimate of a layout on ground that a terraform plan makes fit (H1): rail, station, bridge and signal prices as EstimateJunction, with no single-plane check, plus height_cost (the plan's price). */
+JunctionEstimate EstimateJunctionTerraformed(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing, Money height_cost);
+/**
+ * The terraform plan as map build steps, one per corner-level move, in an order where every step leaves orthogonally adjacent corners within one level (raises lowest corner first, then lowers highest corner first), so the game's own propagation moves nothing else.
+ * The canonical corner (x, y) is the north corner of canonical cell (x, y); the cell maps to map tile anchor + OrientJunctionVector({x - frame.hub_x, y}, rotation, mirrored) as in MakeJunctionTerrain, and the corner to the north corner of the map tile at the image lattice point.
+ * @param plan The plan, in the canonical frame of terrain.
+ * @param terrain The snapshot the plan was made on (its current corner heights).
+ * @param anchor The anchor tile of MakeJunctionTerrain.
+ * @param rotation Quarter turns of the orientation.
+ * @param mirrored Whether the orientation is mirrored.
+ * @param frame_hub_x The frame's hub_x.
+ */
+std::vector<JunctionTerraformStep> MakeJunctionTerraformSteps(const JunctionTerraform &plan, const JunctionTerrain &terrain, TileIndex anchor, uint8_t rotation, bool mirrored, int frame_hub_x);
 
 #endif /* JUNCTION_LAYOUT_H */

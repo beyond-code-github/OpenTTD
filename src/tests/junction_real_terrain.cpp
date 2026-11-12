@@ -12,6 +12,7 @@
 #include "../3rdparty/catch2/catch.hpp"
 #include "../junction_facts.h"
 #include "../junction_generator.h"
+#include "../junction_hover.h"
 #include "../junction_nodes.h"
 #include "../junction_rules.h"
 #include "../junction_terraform.h"
@@ -254,4 +255,72 @@ TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
 	std::cout << "REALTERRAIN terraform conflicts=" << tf_conflicts << " cost min=" << (costs.empty() ? int64_t(0) : costs.front()) << " median=" << (costs.empty() ? int64_t(0) : costs[costs.size() / 2]) << " max=" << (costs.empty() ? int64_t(0) : costs.back()) << "\n";
 	if (!solve_micros.empty()) std::cout << "REALTERRAIN terraform solve micros mean=" << std::accumulate(solve_micros.begin(), solve_micros.end(), int64_t(0)) / static_cast<int64_t>(solve_micros.size()) << " max=" << *std::ranges::max_element(solve_micros) << "\n";
 	for (const auto &[reason, count] : tf_reasons) std::cout << "REALTERRAIN terraform failure " << count << " x " << reason << "\n";
+}
+
+TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep][hoverplan]")
+{
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	REQUIRE(!files.empty());
+
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionTopology &t = JunctionTTopology();
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+	REQUIRE(!seed_layout.tracks.empty());
+
+	int planned = 0, failed = 0;
+	std::vector<double> millis;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, *terrain, offset);
+		millis.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+		INFO(file.filename().string() << ": " << plan.why);
+		if (!plan.layout.has_value()) {
+			failed++;
+			CHECK(!plan.why.empty());
+			continue;
+		}
+		planned++;
+		CHECK(!plan.layout->signals.empty());
+		/* The terraformed ground passes the height facts: the placement's routes meet it (Z2e's check). */
+		const JunctionTerrain after = ApplyJunctionTerraform(*terrain, plan.terraform);
+		const JunctionFacts facts(*terrain);
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+		std::string again_error;
+		const JunctionTrackPlacement again = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &again_error, true, true, &*terrain);
+		INFO("placement: " << again_error);
+		REQUIRE(!again.nodes.empty());
+		CHECK(again.height_cost == plan.height_cost);
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		const JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, again, &render_error, &routes);
+		std::string why;
+		CHECK(JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, offset, &why));
+		INFO(why);
+		for (const RuleViolation &violation : CheckJunctionRules(*plan.layout, spec, t)) {
+			INFO("rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+			CHECK(false);
+		}
+	}
+	const double mean = millis.empty() ? 0.0 : std::accumulate(millis.begin(), millis.end(), 0.0) / static_cast<double>(millis.size());
+	const double max = millis.empty() ? 0.0 : *std::ranges::max_element(millis);
+	std::cout << "HOVERPLAN fixtures=" << files.size() << " planned=" << planned << " failed=" << failed << " ms_mean=" << mean << " ms_max=" << max << "\n";
+	CHECK(planned >= 17);
+	REQUIRE(max < 100.0);
 }

@@ -1029,6 +1029,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 						for (int y = 0; y < h; y++) {
 							for (int x = 0; x < w; x++) estimate.bad_tiles.push_back(AddTileIndexDiffCWrap(station->tile, {static_cast<int16_t>(x), static_cast<int16_t>(y)}));
 						}
+					} else if (const auto *terraform = std::get_if<JunctionTerraformStep>(&step)) {
+						estimate.bad_tiles.push_back(terraform->tile);
 					} else {
 						estimate.bad_tiles.push_back(std::get<JunctionSignalStep>(step).tile);
 					}

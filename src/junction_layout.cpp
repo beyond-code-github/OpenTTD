@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <map>
 
 #include "safeguards.h"
 
@@ -315,10 +316,11 @@ static void MarkBad(JunctionEstimate &estimate, TileIndex tile)
  * @param layout The layout to place.
  * @param origin The tile for the north corner of the layout.
  * @param pricing Source of tile and price information.
+ * @param single_plane Whether every occupied tile must lie in one plane (flat ground); false when a terraform plan makes the ground fit (H1).
  * @return The estimate.
  * @note 6. Clearing under a bridge over track is counted once (D50).
  */
-JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing)
+static JunctionEstimate EstimateJunctionImpl(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing, bool single_plane)
 {
 	JunctionEstimate estimate;
 
@@ -346,6 +348,7 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 	/* Off-map tiles are bad; the others must lie in one plane H, the top of the first occupied tile: non-steep, top at H, and flat or built on a slope. Span tiles are validated by PriceBridge. */
 	std::optional<int> plane;
 	for (TileIndex tile : occupied) {
+		if (!single_plane) break;
 		if (tile == INVALID_TILE) continue;
 		std::optional<JunctionTileSlope> slope = pricing.GetTileSlope(tile);
 		if (slope.has_value()) {
@@ -360,6 +363,7 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 			if (estimate.first_error == INVALID_STRING_ID) estimate.first_error = STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP;
 			continue;
 		}
+		if (!single_plane) continue;
 		std::optional<JunctionTileSlope> slope = pricing.GetTileSlope(tile);
 		if (!slope.has_value() || slope->steep || slope->z_max != plane || (slope->z_min != slope->z_max && !slope->build_on_slopes)) {
 			MarkBad(estimate, tile);
@@ -448,4 +452,69 @@ JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin
 
 	estimate.affordable = estimate.bad_tiles.empty() && estimate.total <= pricing.AvailableMoney();
 	return estimate;
+}
+
+JunctionEstimate EstimateJunction(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing)
+{
+	return EstimateJunctionImpl(layout, origin, pricing, true);
+}
+
+JunctionEstimate EstimateJunctionTerraformed(const JunctionLayout &layout, TileIndex origin, const JunctionPricing &pricing, Money height_cost)
+{
+	JunctionEstimate estimate = EstimateJunctionImpl(layout, origin, pricing, false);
+	estimate.total += height_cost;
+	estimate.affordable = estimate.bad_tiles.empty() && estimate.total <= pricing.AvailableMoney();
+	return estimate;
+}
+
+/** A corner of the canonical lattice. */
+using TerraformLattice = std::pair<int, int>;
+
+std::vector<JunctionTerraformStep> MakeJunctionTerraformSteps(const JunctionTerraform &plan, const JunctionTerrain &terrain, TileIndex anchor, uint8_t rotation, bool mirrored, int frame_hub_x)
+{
+	/* Offset of each tile corner (W, S, E, N) from the tile's own coordinates. */
+	static constexpr std::pair<int, int> CORNER_OFFSET[4] = {{1, 0}, {1, 1}, {0, 1}, {0, 0}};
+
+	/* The current height of a canonical corner, from any snapshot tile that has it. */
+	auto current = [&](const TerraformLattice &corner) -> int {
+		for (int i = 0; i < 4; i++) {
+			const JunctionTerrainTile *tile = terrain.At(corner.first - CORNER_OFFSET[i].first, corner.second - CORNER_OFFSET[i].second);
+			if (tile != nullptr) return JunctionTileCorners(*tile)[i];
+		}
+		return 0;
+	};
+
+	/* Cells map to tiles by OrientJunctionVector, which is linear, about the tile centres; so a corner's image is the cell's image tile centre plus the oriented half-diagonal. In half units the north corner of canonical cell c is at 2 * image(c) + (1, 1) + O((-1, -1)); the result is even per axis and is the north corner of map tile (X, Y). */
+	struct Move { TerraformLattice canonical; TileIndex tile; int from; int to; };
+	std::vector<Move> moves;
+	const TileIndexDiffC half = OrientJunctionVector({-1, -1}, rotation, mirrored);
+	for (const auto &[corner, target] : plan.corners) {
+		const int from = current(corner);
+		if (from == target) continue;
+		const TileIndexDiffC image = OrientJunctionVector({static_cast<int16_t>(corner.first - frame_hub_x), static_cast<int16_t>(corner.second)}, rotation, mirrored);
+		const int x = static_cast<int>(TileX(anchor)) + image.x + (1 + half.x) / 2;
+		const int y = static_cast<int>(TileY(anchor)) + image.y + (1 + half.y) / 2;
+		moves.push_back({corner, TileXY(x, y), from, target});
+	}
+
+	/* Order in the canonical frame (the rotation and mirror keep adjacency): raises lowest corner first, then lowers highest corner first. Each such corner is legal when it moves (RECON-hover-switch; no neighbour is more than one level beyond it). */
+	std::vector<JunctionTerraformStep> steps;
+	std::map<TerraformLattice, int> height;
+	for (const Move &move : moves) height[move.canonical] = move.from;
+	for (const bool raise : {true, false}) {
+		for (;;) {
+			const Move *best = nullptr;
+			for (const Move &move : moves) {
+				const int h = height[move.canonical];
+				if (raise ? h >= move.to : h <= move.to) continue;
+				if (best == nullptr) { best = &move; continue; }
+				const int bh = height[best->canonical];
+				if (raise ? h < bh : h > bh) best = &move;
+			}
+			if (best == nullptr) break;
+			height[best->canonical] += raise ? 1 : -1;
+			steps.push_back({best->tile, Corner::N, raise});
+		}
+	}
+	return steps;
 }
