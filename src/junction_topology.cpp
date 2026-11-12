@@ -1263,14 +1263,31 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 
 			/* In: port, fan, exit split. */
 			const int m_in = fan_m[in_edge[r]];
+			int d_min = 2;
 			if (m_in == 0) {
 				eq(0, rp.fif, pin, 0);
 				eq(0, rp.fil, pin, 0);
 			} else {
 				along(heading, rp.fif, pin, 2, false);
 				along(heading, rp.fil, rp.fif, m_in - 1, true);
+
+				/* The fan's S-bend (2 m_in units) plus the d - 1 axis pieces to the exit split's curve must keep JunctionCurveGaps' gaps: c0 to c2 two curves apart, c1 to c2 consecutive when of the same hand (CS1). */
+				const int g1 = std::min(2 * static_cast<int>(spec.tl) - 1, std::max(2, cl));
+				const int g2 = std::min(2 * static_cast<int>(spec.tl) - 1, 2 * cl);
+				d_min = std::max(d_min, 1 + (g2 - 2 * m_in + 1) / 2);
+				const uint32_t fan_it = fan_item(in_edge[r]);
+				const int c0_hand = ((vy[item_pt[fan_it]] > port_row[in.from.index]) == (heading == 1)) ? 1 : -1;
+				int c2_hand = 0;
+				for (uint32_t x = 0; x < edge_count; x++) {
+					if (is_row_edge(x) || !graph.edges[x].from.node || graph.edges[x].from.index != in.to.index) continue;
+					if (programs.edges[x].empty() || programs.edges[x][0].kind != StepKind::Corner) { build_why = "the exit leg of row " + str(r) + " does not begin with a Corner"; return false; }
+					c2_hand = programs.edges[x][0].hand;
+					break;
+				}
+				if (c2_hand == 0) { build_why = "the exit leg of row " + str(r) + " has no exit Corner"; return false; }
+				if (c2_hand == -c0_hand) d_min = std::max(d_min, 1 + (g1 + 1) / 2);
 			}
-			along(heading, nex, rp.fil, 2, false);
+			along(heading, nex, rp.fil, d_min, false);
 			int after = nex; // The last point of the lane chain before the joiner merge.
 			if (!doubled) {
 				/* The prio element covers even_prio tiles upstream of the joiner merge; the exit split stays outside it. */
