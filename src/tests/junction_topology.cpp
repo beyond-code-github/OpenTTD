@@ -14,8 +14,10 @@
 
 #include <algorithm>
 #include <fstream>
+#include <map>
 #include <optional>
 #include <set>
+#include <tuple>
 
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
@@ -725,7 +727,7 @@ TEST_CASE("topology: LL_RR with an L_R sideline: placement", "[junction][topolog
 }
 
 /** The pipeline through the series-bridge cut and the render, with the pieces it built on request. */
-static JunctionLayout RenderOf(const JunctionTopology &t, int max_bridge_middle, std::string *error, JunctionTrackPlacement *placement_out = nullptr, JunctionTrackStructure *cut_out = nullptr, JunctionTrackPrograms *programs_out = nullptr, std::vector<JunctionLanePath> *paths_out = nullptr, JunctionTrackGraph *graph_out = nullptr)
+static JunctionLayout RenderOf(const JunctionTopology &t, int max_bridge_middle, std::string *error, JunctionTrackPlacement *placement_out = nullptr, JunctionTrackStructure *cut_out = nullptr, JunctionTrackPrograms *programs_out = nullptr, std::vector<JunctionLanePath> *paths_out = nullptr, JunctionTrackGraph *graph_out = nullptr, std::vector<JunctionTrackRoute> *routes_out = nullptr)
 {
 	std::string ignored;
 	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
@@ -747,7 +749,17 @@ static JunctionLayout RenderOf(const JunctionTopology &t, int max_bridge_middle,
 	if (programs_out != nullptr) *programs_out = programs;
 	if (paths_out != nullptr) *paths_out = paths;
 	if (graph_out != nullptr) *graph_out = graph;
-	return RenderJunctionTrackPlacement(t, paths, graph, cut, programs, placement, error);
+	return RenderJunctionTrackPlacement(t, paths, graph, cut, programs, placement, error, routes_out);
+}
+
+/** The render with its signal tokens (ST1). */
+static JunctionLayout SignalledOf(const JunctionTopology &t, std::string *error, std::vector<JunctionTrackSignal> *tokens, std::vector<JunctionTrackRoute> *routes, std::vector<JunctionLanePath> *paths_out = nullptr)
+{
+	std::vector<JunctionLanePath> paths;
+	JunctionLayout layout = RenderOf(t, 64, error, nullptr, nullptr, nullptr, &paths, nullptr, routes);
+	if (paths_out != nullptr) *paths_out = paths;
+	*tokens = SignalJunctionTrackRoutes(layout, *routes, t, paths, MakeTestJunctionSpec());
+	return layout;
 }
 
 TEST_CASE("topology: the T render traces like the flat T", "[junction][topology]")
@@ -959,5 +971,119 @@ TEST_CASE("topology: LL_RR render findings", "[.][diag]")
 	REQUIRE(file.is_open());
 	for (const RuleViolation &v : CheckJunctionRules(render, MakeTestJunctionSpec(), topology)) {
 		file << fmt::format("rule {} tile {},{}: {}\n", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message);
+	}
+}
+
+TEST_CASE("topology: the T's signal tokens meet the signal rules", "[junction][topology]")
+{
+	std::string error;
+	std::vector<JunctionTrackSignal> tokens;
+	std::vector<JunctionTrackRoute> routes;
+	const JunctionLayout layout = SignalledOf(JunctionTTopology(), &error, &tokens, &routes);
+	INFO(error);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionCheckContext ctx = MakeJunctionTopologyCheckContext(layout, spec, JunctionTTopology(), FindJunctionPorts(layout, JunctionTTopology()));
+	/* The footprint waits for the prio element, DESIGN-G1 §12.4. */
+	const std::pair<const char *, std::vector<RuleViolation>> groups[] = {
+		{"Connectivity", CheckConnectivity(ctx)}, {"Geometry", CheckGeometry(ctx)}, {"Bridges", CheckBridges(ctx)},
+		{"Signals", CheckSignals(ctx)}, {"WaitingRoom", CheckWaitingRoom(ctx)}, {"Deadlock", CheckDeadlock(ctx)},
+	};
+	for (const auto &[name, violations] : groups) {
+		for (const RuleViolation &v : violations) INFO(fmt::format("{} at {},{}: {}", name, v.tile.x, v.tile.y, v.message));
+		CHECK(violations.empty());
+	}
+}
+
+TEST_CASE("topology: the T's signal tokens are the signals", "[junction][topology]")
+{
+	std::string error;
+	std::vector<JunctionTrackSignal> tokens;
+	std::vector<JunctionTrackRoute> routes;
+	const JunctionLayout layout = SignalledOf(JunctionTTopology(), &error, &tokens, &routes);
+	INFO(error);
+	REQUIRE(!tokens.empty());
+	const auto key = [](const TileIndexDiffC &tile, Trackdir facing) { return std::make_tuple(tile.x, tile.y, static_cast<int>(facing)); };
+	std::set<std::tuple<int, int, int>> signals;
+	for (const JunctionSignal &s : layout.signals) CHECK(signals.insert(key(s.offset, s.facing)).second);
+	std::set<std::tuple<int, int, int>> token_keys;
+	for (const JunctionTrackSignal &t : tokens) {
+		CHECK(signals.contains(key(t.tile, t.facing)));
+		token_keys.insert(key(t.tile, t.facing));
+	}
+	for (const auto &k : signals) CHECK(token_keys.contains(k));
+}
+
+TEST_CASE("topology: the T's signal reasons", "[junction][topology]")
+{
+	std::string error;
+	std::vector<JunctionTrackSignal> tokens;
+	std::vector<JunctionTrackRoute> routes;
+	const JunctionLayout layout = SignalledOf(JunctionTTopology(), &error, &tokens, &routes);
+	INFO(error);
+	REQUIRE(!tokens.empty());
+	const auto has = [&](size_t route, size_t index, auto reason_ok) {
+		const JunctionPiece &piece = routes[route].pieces[index];
+		return std::ranges::any_of(tokens, [&](const JunctionTrackSignal &t) {
+			return t.route == route && reason_ok(t.reason) && t.tile.x == piece.tile.x && t.tile.y == piece.tile.y && t.facing == piece.trackdir;
+		});
+	};
+	const auto is_before = [](JunctionSignalReason r) { return r == JunctionSignalReason::BeforeBridge || r == JunctionSignalReason::SeriesGap; };
+	const auto is_after = [](JunctionSignalReason r) { return r == JunctionSignalReason::AfterBridge || r == JunctionSignalReason::SeriesGap; };
+	const auto ok = [&](const std::vector<JunctionPiece> &P, int64_t i) {
+		return i > 0 && i < static_cast<int64_t>(P.size()) - 1 && !P[i].on_bridge && FindBridgeByHead(layout, P[i].tile) == nullptr && IsSignalledPiece(layout, P[i]);
+	};
+	for (size_t r = 0; r < routes.size(); r++) {
+		const std::vector<JunctionPiece> &P = routes[r].pieces;
+		const size_t n = P.size();
+		const auto stubs = std::ranges::count_if(tokens, [&](const JunctionTrackSignal &t) { return t.route == r && t.reason == JunctionSignalReason::Stub; });
+		if (ok(P, static_cast<int64_t>(n) - 2)) {
+			CHECK(stubs == 1);
+			CHECK(has(r, n - 2, [](JunctionSignalReason reason) { return reason == JunctionSignalReason::Stub; }));
+		}
+		for (size_t i = 0; i < n; i++) {
+			if (!P[i].on_bridge) continue;
+			size_t last = i;
+			while (last + 1 < n && P[last + 1].on_bridge) last++;
+			/* The nearest signalled piece on each side, within the stretch (no bridge or head between). */
+			for (int64_t k = static_cast<int64_t>(i) - 1; k > 0 && !P[k].on_bridge; k--) {
+				if (ok(P, k)) { CHECK(has(r, k, is_before)); break; }
+			}
+			for (size_t k = last + 1; k + 1 < n && !P[k].on_bridge; k++) {
+				if (ok(P, k)) { CHECK(has(r, k, is_after)); break; }
+			}
+			i = last;
+		}
+	}
+	CHECK(std::ranges::any_of(tokens, [](const JunctionTrackSignal &t) { return t.reason == JunctionSignalReason::BeforeBridge; }));
+	CHECK(std::ranges::any_of(tokens, [](const JunctionTrackSignal &t) { return t.reason == JunctionSignalReason::AfterBridge; }));
+}
+
+TEST_CASE("topology: signal token findings", "[.][diag]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const struct { const JunctionTopology &topology; const char *file; } runs[] = {
+		{JunctionLLRRSidelineTopology(), "docs/junction-tool/wip/st1-llrr.txt"},
+		{JunctionTTopology(), "docs/junction-tool/wip/st1-t.txt"},
+	};
+	for (const auto &run : runs) {
+		std::string error;
+		std::vector<JunctionTrackSignal> tokens;
+		std::vector<JunctionTrackRoute> routes;
+		const JunctionLayout layout = SignalledOf(run.topology, &error, &tokens, &routes);
+		std::ofstream file(run.file);
+		REQUIRE(file.is_open());
+		std::map<int, int> per_reason;
+		for (const JunctionTrackSignal &t : tokens) per_reason[static_cast<int>(t.reason)]++;
+		file << "tokens per reason (BeforeSplit AfterSplit BeforeMerge AfterMerge BeforeBridge AfterBridge SeriesGap Stub Bay Fill):";
+		for (int i = 0; i < 10; i++) file << ' ' << per_reason[i];
+		file << '\n';
+		std::map<int, int> per_rule;
+		for (const RuleViolation &v : CheckJunctionRules(layout, spec, run.topology)) {
+			per_rule[static_cast<int>(v.rule)]++;
+			file << fmt::format("rule {} tile {},{}: {}\n", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message);
+		}
+		file << "violations per rule:";
+		for (const auto &[rule, count] : per_rule) file << fmt::format(" {}:{}", rule, count);
+		file << '\n' << RenderJunctionAscii(layout);
 	}
 }
