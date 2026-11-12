@@ -1463,7 +1463,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		}
 	}
 
-	/* The row edges' chains. Their elements use the points of row_pts (the fan, lane split and merge, head points allocated above, so the point ids of the reports do not move); a doubled leg's second chain holds copy 1: the lane split's S-bend, then its heads. */
+	/* The row edges' chains, one builder for every row edge (RW4a): a chain is its start tile, one element per token of its program in order (a Fan token a Fan, an S-bend token an S-bend, an Over token the heads of that bridge), its end tile. A doubled leg's second chain is built from copy 1's tokens the same way. The elements use the points of row_pts (the fan, lane split and merge, head points allocated above, so the point ids of the reports do not move); an S-bend of no lane role takes fresh points. */
 	const int base_pts = pt_count; ///< The points before the row chains' S-bends; the columns reported are these.
 	for (uint32_t e = 0; e < edge_count; e++) {
 		if (!is_row_edge(e)) continue;
@@ -1478,88 +1478,68 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			el.slot = slot;
 			return el;
 		};
-		std::vector<Elem> &elems = chain[e];
-		if (IsInEdge(e) || IsOutEdge(e)) {
-			/* The program's tokens in travel order: the fan (the first Fan token of an in edge, the last of an out edge, on the fan's own points: their row points are the chain's, R3) and S-bends beside it. */
-			const bool in = IsInEdge(e);
-			const std::vector<Step> &program = programs.edges[e];
-			const size_t fan_token = FanTokenOf(programs, e, in);
-			elems.push_back(in ? tile_elem(port_pt[edge.from.index], edge.from.index) : tile_elem(node_pt[edge.from.index], -1));
+		const bool doubled = IsDoubledEdge(e);
+		if (doubled) {
+			/* R11 reads the lane split and merge S-bends by position, so a doubled leg without them is still refused. */
+			const auto has_role = [](const std::vector<Step> &tokens, Step::Role role) {
+				return std::ranges::any_of(tokens, [&](const Step &token) { return token.kind == StepKind::SBend && token.role == role; });
+			};
+			if (!has_role(programs.edges[e], Step::Role::LaneMerge) || !has_role(programs.copies[e], Step::Role::LaneSplit)) return fail("a doubled leg without its lane split and merge is not ruled yet");
+		}
+		for (int c = 0; c < (doubled ? 2 : 1); c++) {
+			const std::vector<Step> &program = c == 0 ? programs.edges[e] : programs.copies[e];
+			std::vector<Elem> &elems = c == 0 ? chain[e] : chain_copy[e];
+			elems.push_back(edge.from.node ? tile_elem(node_pt[edge.from.index], -1) : tile_elem(port_pt[edge.from.index], edge.from.index));
+			bool fan_built = false;
+			uint32_t row_item = NO_ROW; ///< The stack item the line is on after the elements so far; NO_ROW before the first fan or S-bend.
 			for (size_t t = 0; t < program.size(); t++) {
 				const Step &step = program[t];
 				Elem el;
 				el.hin = el.hout = heading;
 				el.tok = static_cast<int>(t);
 				el.index = step.index;
-				if (step.kind == StepKind::Fan && t == fan_token) {
+				if (step.kind == StepKind::Fan && !fan_built) {
+					/* The fan is at the end of the edge that is a port: first if the edge starts at the port, else last. */
+					fan_built = true;
 					el.k = Elem::K::Fan;
-					el.slot = in ? edge.from.index : edge.to.index;
-					el.port_first = in;
-					el.first = in ? rp.fif : rp.fof;
-					el.last = in ? rp.fil : rp.fol;
+					el.port_first = !edge.from.node;
+					el.slot = el.port_first ? edge.from.index : edge.to.index;
+					el.first = el.port_first ? rp.fif : rp.fof;
+					el.last = el.port_first ? rp.fil : rp.fol;
+					row_item = step.index;
 				} else if (step.kind == StepKind::SBend) {
 					el.k = Elem::K::SBend;
 					el.hand = step.hand;
-					el.first = new_pt();
-					el.last = new_pt();
+					if (step.role == Step::Role::LaneMerge) {
+						el.first = rp.sb0_first;
+						el.last = rp.lane_merge;
+					} else if (step.role == Step::Role::LaneSplit) {
+						el.first = rp.lane_split;
+						el.last = rp.sb1_last;
+					} else {
+						el.first = new_pt();
+						el.last = new_pt();
+					}
+					row_item = step.index;
+				} else if (step.kind == StepKind::Over && doubled) {
+					/* A bridge crosses one or several edges, one Over token each; its heads are one element, at the token of its first crossed edge, and its other Over tokens add none. The bridge's number picks the head points of row_pts. */
+					const auto bridge_it = std::ranges::find_if(bridges_of[e], [&](int b) { return structure.bridges[b].crossed[0] == step.index; });
+					if (bridge_it == bridges_of[e].end()) {
+						if (std::ranges::any_of(bridges_of[e], [&](int b) { return std::ranges::find(structure.bridges[b].crossed, step.index) != structure.bridges[b].crossed.end(); })) continue;
+						return fail("an Over token of a row edge without a bridge is not ruled yet");
+					}
+					const size_t b = bridge_it - bridges_of[e].begin();
+					el.k = Elem::K::HeadsPair;
+					el.first = c == 0 ? rp.nh0[b] : rp.nh1[b];
+					el.last = c == 0 ? rp.fh0[b] : rp.fh1[b];
+					/* The row the heads lie on: the item of the last fan or S-bend before them, or, with none before, the row the start node is on, which no token of this chain names (the item the in edge ends on: RW3's in edge of the row). */
+					el.index = row_item != NO_ROW ? row_item : node_item(in_edge[r]);
 				} else {
-					return fail("a token of an in or out edge other than its fan and S-bends is not ruled yet");
+					return fail("a token of a row edge other than its fan, S-bends and bridges is not ruled yet");
 				}
 				elems.push_back(el);
 			}
-			elems.push_back(in ? tile_elem(node_pt[edge.to.index], -1) : tile_elem(port_pt[edge.to.index], edge.to.index));
-		} else if (!IsDoubledEdge(e)) {
-			elems.push_back(tile_elem(node_pt[edge.from.index], -1));
-			elems.push_back(tile_elem(node_pt[edge.to.index], -1));
-		} else {
-			const std::vector<Step> &program = programs.edges[e];
-			std::vector<Elem> &copy = chain_copy[e];
-			const auto with_role = [](const std::vector<Step> &tokens, Step::Role role) {
-				size_t t = 0;
-				while (t < tokens.size() && !(tokens[t].kind == StepKind::SBend && tokens[t].role == role)) t++;
-				return t;
-			};
-			const size_t merge_token = with_role(program, Step::Role::LaneMerge);
-			const size_t split_token = with_role(programs.copies[e], Step::Role::LaneSplit);
-			if (merge_token == program.size() || split_token == programs.copies[e].size()) return fail("a doubled leg without its lane split and merge is not ruled yet");
-			Elem bend0, bend1;
-			bend0.k = bend1.k = Elem::K::SBend;
-			bend0.hin = bend0.hout = bend1.hin = bend1.hout = heading;
-			bend0.hand = program[merge_token].hand;
-			bend1.hand = programs.copies[e][split_token].hand;
-			bend0.index = program[merge_token].index;
-			bend1.index = programs.copies[e][split_token].index;
-			bend0.tok = static_cast<int>(merge_token);
-			bend1.tok = static_cast<int>(split_token);
-			bend0.first = rp.sb0_first;
-			bend0.last = rp.lane_merge;
-			bend1.first = rp.lane_split;
-			bend1.last = rp.sb1_last;
-			elems.push_back(tile_elem(node_pt[edge.from.index], -1));
-			copy.push_back(tile_elem(node_pt[edge.from.index], -1));
-			copy.push_back(bend1);
-			for (size_t b = 0; b < bridges_of[e].size(); b++) {
-				const JunctionTrackBridge &bridge = structure.bridges[bridges_of[e][b]];
-				Elem h0 = tile_elem(0, -1), h1 = tile_elem(0, -1);
-				h0.k = h1.k = Elem::K::HeadsPair;
-				for (size_t t = 0; t < program.size(); t++) {
-					if (program[t].kind == StepKind::Over && program[t].index == bridge.crossed[0]) h0.tok = static_cast<int>(t);
-				}
-				for (size_t t = 0; t < programs.copies[e].size(); t++) {
-					if (programs.copies[e][t].kind == StepKind::Over && programs.copies[e][t].index == bridge.crossed[0]) h1.tok = static_cast<int>(t);
-				}
-				h0.first = rp.nh0[b];
-				h0.last = rp.fh0[b];
-				h1.first = rp.nh1[b];
-				h1.last = rp.fh1[b];
-				h0.index = node_item(in_edge[r]); // The rows the heads lie on: the exit item (copy 0: the in edge's fan ends on it) and the lane item (copy 1: its lane split ends on it).
-				h1.index = bend1.index;
-				elems.push_back(h0);
-				copy.push_back(h1);
-			}
-			elems.push_back(bend0);
-			elems.push_back(tile_elem(node_pt[edge.to.index], -1));
-			copy.push_back(tile_elem(node_pt[edge.to.index], -1));
+			elems.push_back(edge.to.node ? tile_elem(node_pt[edge.to.index], -1) : tile_elem(port_pt[edge.to.index], edge.to.index));
 		}
 	}
 
@@ -1568,21 +1548,20 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		if (is_row_edge(e)) {
 			const int r = (end_level(graph.edges[e].from) - 1) / 2;
 			const bool eastward = east[r];
-			const Elem *fan = nullptr; // The chain's Fan element, if the edge has one.
-			for (const Elem &el : chain[e]) {
-				if (el.k == Elem::K::Fan) fan = &el;
-			}
-			if (IsInEdge(e) && fan != nullptr) {
-				row_changes.push_back({fan->first, node_pt[graph.edges[e].to.index], eastward, e, e, r, fan->tok, 0}); // Kind 1, first edge: with the travel, toward its node.
-			} else if (IsOutEdge(e) && fan != nullptr) {
-				row_changes.push_back({fan->first, node_pt[graph.edges[e].from.index], !eastward, e, e, r, fan->tok, 0}); // Kind 1, last edge: against the travel.
-			} else if (IsLegEdge(e) && IsDoubledEdge(e)) {
-				/* A doubled leg: copy 0's chain is [Tile, HeadsPair.., SBend, Tile], copy 1's [Tile, SBend, HeadsPair.., Tile]. */
-				const Elem &merge_bend = chain[e][chain[e].size() - 2];
-				const Elem &last_heads = chain[e][chain[e].size() - 3];
-				const Elem &split_bend = chain_copy[e][1];
-				row_changes.push_back({merge_bend.first, last_heads.last, !eastward, UINT32_MAX, e, r, merge_bend.tok, 0}); // Kind 3: the lane merge, against the travel.
-				row_changes.push_back({split_bend.first, chain[e][1].first, eastward, UINT32_MAX, e, r, split_bend.tok, 1}); // Kind 2: the lane split, with the travel.
+			for (int c = 0; c < (IsDoubledEdge(e) ? 2 : 1); c++) {
+				const std::vector<Elem> &elems = c == 0 ? chain[e] : chain_copy[e];
+				const std::vector<Step> &program = c == 0 ? programs.edges[e] : programs.copies[e];
+				for (size_t i = 0; i < elems.size(); i++) {
+					const Elem &el = elems[i];
+					if (el.k == Elem::K::Fan) {
+						/* Kind 1: a fan at the edge's start leans toward the node it ends at, with the travel; at its end, toward the node it starts at, against it. */
+						row_changes.push_back({el.first, node_pt[el.port_first ? graph.edges[e].to.index : graph.edges[e].from.index], el.port_first ? eastward : !eastward, e, e, r, el.tok, c});
+					} else if (el.k == Elem::K::SBend && program[el.tok].role == Step::Role::LaneMerge) {
+						row_changes.push_back({el.first, elems[i - 1].last, !eastward, UINT32_MAX, e, r, el.tok, c}); // Kind 3: the lane merge leans toward the element before it, against the travel.
+					} else if (el.k == Elem::K::SBend && program[el.tok].role == Step::Role::LaneSplit) {
+						row_changes.push_back({el.first, chain[e][1].first, eastward, UINT32_MAX, e, r, el.tok, c}); // Kind 2: the lane split leans toward the first element after the start of copy 0, with the travel.
+					}
+				}
 			}
 			continue;
 		}
@@ -1601,6 +1580,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			row_changes.push_back({el.first, end.node ? node_pt[end.index] : port_pt[end.index], VX[el.hin] * (before ? 1 : -1) > 0, UINT32_MAX, e, -1, el.tok, 0});
 		}
 	}
+
 
 	/* The objective's order is the graph's, not the points' (R2): by (edge, copy, token). */
 	std::ranges::stable_sort(row_changes, [](const RowChange &a, const RowChange &b) { return std::array<int, 3>{static_cast<int>(a.edge), a.copy, a.token} < std::array<int, 3>{static_cast<int>(b.edge), b.copy, b.token}; });
@@ -1827,64 +1807,56 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	/* Row r's pieces in order: the in edge, the leg, the out edge, each read from its chain(s). */
 	auto row_pieces = [&](int r) {
 		std::vector<RowPiece> pieces;
-		/* An edge's chain read in travel order: its tiles at the ports, its fan and S-bends, the runs between its elements (an empty fan has no run to its port). */
+		/* An edge's chains read in travel order, element by element: its tiles at the ports, its fan, S-bends and heads, the runs between its elements (an empty fan has no run to its port). The copies of a doubled leg share one lane before the lane split and after the lane merge (copy -1): the run from the start tile to the split is shared and copy 0's run begins at the split; the run after the merge is shared and copy 1's run ends at the merge. */
 		auto walk = [&](uint32_t e) {
-			const std::vector<Elem> &elems = chain[e];
-			for (size_t i = 0; i < elems.size(); i++) {
-				const Elem &el = elems[i];
-				int y_end = vy[el.last];
-				if (el.k == Elem::K::Tile) {
-					if (el.slot >= 0) {
-						y_end = port_row[el.slot];
-						pieces.push_back({RowPiece::T::Tile, el.first, 0, y_end, 0, e, 0, 0, true, false});
-					}
-				} else if (el.k == Elem::K::Fan) {
-					const int y_item = vy[item_pt[el.index]];
-					const int y_port = port_row[el.slot];
-					y_end = el.port_first ? y_item : y_port;
-					if (el.m != 0) pieces.push_back({RowPiece::T::Bend, el.first, 0, el.port_first ? y_port : y_item, 0, e, el.hand, static_cast<int>(el.offs.size()), false, false});
-				} else if (el.k == Elem::K::SBend) {
-					pieces.push_back({RowPiece::T::Bend, el.first, 0, vy[el.first], 0, e, el.hand, static_cast<int>(el.offs.size()), false, false});
+			const int n_chains = IsDoubledEdge(e) ? 2 : 1;
+			const auto role_of = [&](int c, const Elem &el) { return el.k == Elem::K::SBend ? (c == 0 ? programs.edges[e] : programs.copies[e])[el.tok].role : Step::Role::None; };
+			const auto find_role = [&](int c, Step::Role role) -> const Elem * {
+				for (const Elem &el : c == 0 ? chain[e] : chain_copy[e]) {
+					if (role_of(c, el) == role) return &el;
 				}
-				if (i + 1 >= elems.size() || elems[i + 1].first == el.last) continue;
-				const Elem &next = elems[i + 1];
-				if ((el.k == Elem::K::Tile && el.slot >= 0 && next.k == Elem::K::Fan && next.m == 0) || (el.k == Elem::K::Fan && el.m == 0 && next.k == Elem::K::Tile && next.slot >= 0)) continue;
-				pieces.push_back({RowPiece::T::Run, el.last, next.first, y_end, 0, e, 0, 0, false, false});
+				return nullptr;
+			};
+			const Elem *split = n_chains == 2 ? find_role(1, Step::Role::LaneSplit) : nullptr;
+			const Elem *merge = n_chains == 2 ? find_role(0, Step::Role::LaneMerge) : nullptr;
+			for (int c = 0; c < n_chains; c++) {
+				const std::vector<Elem> &elems = c == 0 ? chain[e] : chain_copy[e];
+				for (size_t i = 0; i < elems.size(); i++) {
+					const Elem &el = elems[i];
+					int y_end = vy[el.last];
+					if (el.k == Elem::K::Tile) {
+						if (el.slot >= 0) {
+							y_end = port_row[el.slot];
+							pieces.push_back({RowPiece::T::Tile, el.first, 0, y_end, 0, e, 0, 0, true, false});
+						}
+					} else if (el.k == Elem::K::Fan) {
+						const int y_item = vy[item_pt[el.index]];
+						const int y_port = port_row[el.slot];
+						y_end = el.port_first ? y_item : y_port;
+						if (el.m != 0) pieces.push_back({RowPiece::T::Bend, el.first, 0, el.port_first ? y_port : y_item, 0, e, el.hand, static_cast<int>(el.offs.size()), false, false});
+					} else if (el.k == Elem::K::SBend) {
+						pieces.push_back({RowPiece::T::Bend, el.first, 0, vy[el.first], c, e, el.hand, static_cast<int>(el.offs.size()), false, false});
+					} else if (el.k == Elem::K::HeadsPair) {
+						pieces.push_back({RowPiece::T::Tile, el.first, 0, vy[el.first], c, e, 0, 0, false, true});
+						pieces.push_back({RowPiece::T::Tile, el.last, 0, vy[el.first], c, e, 0, 0, false, true});
+					}
+					if (i + 1 >= elems.size()) continue;
+					const Elem &next = elems[i + 1];
+					int a = el.last, b = next.first, copy = c;
+					if (split != nullptr && i == 0) {
+						if (c == 0) a = split->first;
+						else copy = -1;
+					}
+					if (merge != nullptr && c == 0 && el.k == Elem::K::SBend && &el == merge) copy = -1;
+					if (merge != nullptr && c == 1 && i + 2 == elems.size()) b = merge->last;
+					if (a == b) continue;
+					if ((el.k == Elem::K::Tile && el.slot >= 0 && next.k == Elem::K::Fan && next.m == 0) || (el.k == Elem::K::Fan && el.m == 0 && next.k == Elem::K::Tile && next.slot >= 0)) continue;
+					pieces.push_back({RowPiece::T::Run, a, b, y_end, copy, e, 0, 0, false, false});
+				}
 			}
 		};
 		walk(in_edge[r]);
-		const uint32_t leg = leg_edge[r];
-		if (!IsDoubledEdge(leg_edge[r])) {
-			walk(leg);
-		} else {
-			/* A doubled leg: copy 0's chain is [Tile, HeadsPair.., SBend, Tile], copy 1's [Tile, SBend, HeadsPair.., Tile]; before the lane split and after the lane merge the two copies share one lane (copy -1). */
-			const std::vector<Elem> &c0 = chain[leg];
-			const std::vector<Elem> &c1 = chain_copy[leg];
-			const size_t g = c0.size() - 3;
-			const int nex = c0.front().first, njm = c0.back().first;
-			const Elem &bend0 = c0[g + 1];
-			const Elem &bend1 = c1[1];
-			const int y_exit = vy[nex], y_lane = vy[njm];
-			auto run = [&](int a, int b, int y, int copy) { pieces.push_back({RowPiece::T::Run, a, b, y, copy, leg, 0, 0, false, false}); };
-			auto head = [&](int pt, int y, int copy) { pieces.push_back({RowPiece::T::Tile, pt, 0, y, copy, leg, 0, 0, false, true}); };
-			run(nex, bend1.first, y_exit, -1);
-			run(bend1.first, c0[1].first, y_exit, 0);
-			for (size_t k = 0; k < g; k++) {
-				head(c0[1 + k].first, y_exit, 0);
-				head(c0[1 + k].last, y_exit, 0);
-				head(c1[2 + k].first, y_lane, 1);
-				head(c1[2 + k].last, y_lane, 1);
-				if (k + 1 < g) {
-					run(c0[1 + k].last, c0[2 + k].first, y_exit, 0);
-					run(c1[2 + k].last, c1[3 + k].first, y_lane, 1);
-				}
-			}
-			run(c0[g].last, bend0.first, y_exit, 0);
-			run(bend1.last, c1[2].first, y_lane, 1);
-			run(c1[1 + g].last, bend0.last, y_lane, 1);
-			run(bend0.last, njm, y_lane, -1);
-			for (const Elem *bend : {&bend0, &bend1}) pieces.push_back({RowPiece::T::Bend, bend->first, 0, y_exit, bend == &bend0 ? 0 : 1, leg, bend->hand, static_cast<int>(bend->offs.size()), false, false});
-		}
+		walk(leg_edge[r]);
 		walk(out_edge[r]);
 		return pieces;
 	};
