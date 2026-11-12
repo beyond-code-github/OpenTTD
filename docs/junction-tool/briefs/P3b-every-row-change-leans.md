@@ -43,3 +43,6 @@ Corners and Over/Under tokens never lean. Rule (a), all-or-nothing per bend, and
 
 ## Report
 The standard report, plus per new lean class: kind, edge, direction, flat and solved value; and p3b-llrr.txt. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop: ReadLeans sees no token kinds)
+The classification moves to where the graph is known. JunctionNodeInput gains `std::vector<std::vector<int8_t>> lean; ///< Per path and piece: the lean of the bend the piece belongs to (+1 with travel, -1 against; D212, D215), 0 otherwise; graph input only.` JunctionNodeInputOfGraph fills it by the rule's kinds 1-4 (it has graph and programs; kind 1 moves here from ReadLeans). ReadLeans then reads it: a bend = the pieces of one (edge, token, copy) with nonzero lean on one route; rule (a), all-or-nothing and conflict barring as before; the lean axis is the bend's travel axis. With input.lean empty (traced input) nothing leans. P3's tests must stay green unedited.
