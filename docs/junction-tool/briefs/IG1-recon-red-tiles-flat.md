@@ -3,7 +3,7 @@
 Recon by experiment: change code in your worktree to measure, commit nothing; save experiments as a patch in /tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/ig1.patch and leave the worktree clean. Never start a game client; never touch the engineer's game or the rig servers (pids 316883, 381268, 1090844). Keep your context small: output to files, report only what matters. Never use git stash. Mark anything not measured or read as INFERRED.
 
 ## State
-- Worktree /home/pete/OpenTTD/.claude/ng1 (Debug `build`, Release `build-rel`, both stale: rebuild). First: `git -C /home/pete/OpenTTD/.claude/ng1 checkout -B wt-ig1 <HEAD>` (given at launch; branch wt-ng1 there is old WIP: leave it). Other agents work in /home/pete/OpenTTD/.claude/nodes and .claude/nodes2: never touch them. Use absolute paths.
+- Worktree /home/pete/OpenTTD/.claude/nodes (Debug `build`, Release `build-rel`). First: `git -C /home/pete/OpenTTD/.claude/nodes checkout -B wt-ig1 <HEAD>` (given at launch). Another agent works in /home/pete/OpenTTD/.claude/nodes2: never touch it. Use absolute paths.
 - The engineer ran the play binary at 56686e4517 on real hilly maps: (1) "not able to place a single junction on real terrain because of at least one red tile" — red = `estimate.bad_tiles` (src/junction_gui.cpp ~:94-200, ~:1210: `EstimateJunctionTerraformed`, src/junction_layout.cpp ~:320-470), which tests every rail/bridge step with `pricing.TestRail`/`PriceBridge` on the CURRENT map, before the plan's terraform; (2) "the terraform seems to be making everything flat rather than changing heights and working with the terrain".
 - Planning checks heights against the terraformed snapshot (T3) and passes on every fixture; no test runs the GUI estimate on a real map.
 - Ramp rule D219 (zero speed loss): JunctionRampLevels (src/junction_generator.cpp ~:108) = floor(tl x spare force at reference_speed / (m x s x 100)); 0 when the train has no spare force at the reference speed. MakeJunctionSpec caps reference_speed at the picked train's speed.
@@ -17,4 +17,4 @@ Recon by experiment: change code in your worktree to measure, commit nothing; sa
 docs/junction-tool/RECON-in-game-red-flat.md (untracked, ~60 lines) and the patch path.
 
 ## Report
-10 lines: the red-tile causes with counts, whether terraform-first then test clears them, the ramp_levels values for typical trains, the ramp share in plans, and the cause of flattening. `git -C /home/pete/OpenTTD/.claude/ng1 status --porcelain` (clean). When you have reported, stop.
+10 lines: the red-tile causes with counts, whether terraform-first then test clears them, the ramp_levels values for typical trains, the ramp share in plans, and the cause of flattening. `git -C /home/pete/OpenTTD/.claude/nodes status --porcelain` (clean). When you have reported, stop.
