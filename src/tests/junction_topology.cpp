@@ -1179,7 +1179,7 @@ TEST_CASE("topology: the LL_RR seed is clean", "[junction][topology]")
 	}
 }
 
-TEST_CASE("topology: the LL_RR seed traces into the node template", "[junction][topology]")
+TEST_CASE("topology: the LL_RR seed builds a node template", "[junction][topology]")
 {
 	std::string error;
 	std::vector<JunctionTrackSignal> tokens;
@@ -1189,8 +1189,33 @@ TEST_CASE("topology: the LL_RR seed traces into the node template", "[junction][
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(TraceJunctionNodeInput(layout, spec, JunctionLLRRSidelineTopology()), spec);
 	INFO(tpl.error);
-	REQUIRE(tpl.error.starts_with("path "));
-	REQUIRE(tpl.error.ends_with(" moves both ways along y"));
+	REQUIRE(tpl.error.empty());
+}
+
+TEST_CASE("topology: link directions match the T's path directions", "[junction][topology]")
+{
+	std::string error;
+	std::vector<JunctionTrackSignal> tokens;
+	std::vector<JunctionTrackRoute> routes;
+	const JunctionLayout layout = SignalledOf(JunctionTTopology(), &error, &tokens, &routes);
+	INFO(error);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(layout, spec);
+	REQUIRE(tpl.error.empty());
+	size_t checked = 0;
+	for (const JunctionNodePath &path : tpl.paths) {
+		for (size_t i = 0; i + 1 < path.points.size(); i++) {
+			const auto it = std::ranges::find_if(tpl.links, [&](const JunctionNodeLink &l) { return l.from == path.points[i] && l.to == path.points[i + 1]; });
+			REQUIRE(it != tpl.links.end());
+			if (!it->free || it->diagonal) continue;
+			CHECK(it->dir == (it->axis == Axis::X ? path.dir : path.dir_y));
+			checked++;
+		}
+	}
+	CHECK(checked > 0);
+	for (const JunctionNodeLateGap &gap : tpl.late_gaps) {
+		CHECK(gap.dir == tpl.paths[gap.path].dir);
+	}
 }
 
 TEST_CASE("topology: the T seed traces the same by its topology", "[junction][topology]")

@@ -36,6 +36,7 @@ struct JunctionNodeLink {
 	uint32_t to;
 	bool free; ///< No on_bridge piece from `from` to `to` inclusive, and either same row with X trackdirs or same column with Y trackdirs: its length may change.
 	Axis axis; ///< A free link's axis (Axis::X for rigid links).
+	int8_t dir; ///< A free X or Y link: +1 when travel grows its axis coordinate, -1 when it shrinks it; 0 for a rigid link or a free diagonal (whose signs are its JunctionNodeDiagonal dx, dy).
 	bool diagonal; ///< A free diagonal (DESIGN-N3 §6); then `free` is true and `axis` is Axis::X.
 };
 /** A prio merge's reserved row (DESIGN-N3 §8). */
@@ -60,6 +61,8 @@ struct JunctionNodeLateGap {
 	int g; ///< Required unit gap.
 	int u; ///< Flat unit gap.
 	std::vector<uint32_t> diagonals; ///< Indices into JunctionNodeTemplate::diagonals between p and q.
+	int8_t dir; ///< The x sign of the free X links between p and q.
+	std::vector<uint32_t> y_links; ///< The free Y links between p and q (indices into links).
 };
 /** An X-axis bridge over the interior of a free diagonal (DESIGN-N3 §6). */
 struct JunctionNodeLateCrossing {
@@ -72,8 +75,8 @@ struct JunctionNodePath {
 	JunctionPortRole to;
 	std::vector<uint32_t> points; ///< In travel order: every piece of the path that is a point.
 	std::vector<uint16_t> units; ///< Per point, the flat unit at which its piece starts along this path.
-	int8_t dir; ///< +1 or -1: the x sign of the path's X runs and free diagonals; 0 when it has none.
-	int8_t dir_y; ///< +1 (y grows) or -1: the y sign of the path's Y runs and free diagonals; 0 when it has none.
+	int8_t dir; ///< +1 or -1: the x sign of the path's X runs and free diagonals; 0 when it has none or moves both ways (then only per-link and per-gap signs apply).
+	int8_t dir_y; ///< +1 (y grows) or -1: the y sign of the path's Y runs and free diagonals; 0 when it has none or moves both ways (then only per-link and per-gap signs apply).
 };
 /** value(a) - value(b) >= k over variables (two X classes or two Y classes). */
 struct JunctionNodeDiff {
