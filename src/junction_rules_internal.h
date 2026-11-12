@@ -35,6 +35,12 @@ TrackBits TracksAt(const JunctionLayout &layout, TileIndexDiffC tile);
 /** The bridge that has the tile as one of its heads, or nullptr. */
 const JunctionBridge *FindBridgeByHead(const JunctionLayout &layout, TileIndexDiffC tile);
 
+/** Whether the path is a through movement: both groups of its movement are main line. */
+bool IsThroughPath(const JunctionCheckContext &ctx, const JunctionPath &path);
+
+/** Whether the path is an exit: from a main line group to a group that is not main line. */
+bool IsExitPath(const JunctionCheckContext &ctx, const JunctionPath &path);
+
 /** The tracks used by the paths, per tile. */
 std::map<std::pair<int, int>, TrackBits> UsedTracks(const JunctionCheckContext &ctx);
 

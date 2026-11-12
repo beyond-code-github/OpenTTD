@@ -1178,3 +1178,28 @@ TEST_CASE("topology: the LL_RR seed is clean", "[junction][topology]")
 		CHECK(false);
 	}
 }
+
+TEST_CASE("topology: the LL_RR seed traces into the node template", "[junction][topology]")
+{
+	std::string error;
+	std::vector<JunctionTrackSignal> tokens;
+	std::vector<JunctionTrackRoute> routes;
+	const JunctionLayout layout = SignalledOf(JunctionLLRRSidelineTopology(), &error, &tokens, &routes);
+	INFO(error);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(TraceJunctionNodeInput(layout, spec, JunctionLLRRSidelineTopology()), spec);
+	INFO(tpl.error);
+	REQUIRE(tpl.error.starts_with("path "));
+	REQUIRE(tpl.error.ends_with(" moves both ways along y"));
+}
+
+TEST_CASE("topology: the T seed traces the same by its topology", "[junction][topology]")
+{
+	std::string error;
+	std::vector<JunctionTrackSignal> tokens;
+	std::vector<JunctionTrackRoute> routes;
+	const JunctionLayout layout = SignalledOf(JunctionTTopology(), &error, &tokens, &routes);
+	INFO(error);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	CHECK(DiffJunctionNodeTemplates(BuildJunctionNodeTemplate(TraceJunctionNodeInput(layout, spec, JunctionTTopology()), spec), BuildJunctionNodeTemplate(layout, spec)).empty());
+}

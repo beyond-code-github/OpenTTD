@@ -107,12 +107,6 @@ static int CeilHalf(int n)
 	return n >= 0 ? (n + 1) / 2 : -((-n) / 2);
 }
 
-/** Whether a path is a main line, as CheckPrio reads it. */
-static bool IsMainLinePath(const JunctionPath &path)
-{
-	return (path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::EOut) || (path.from == JunctionPortRole::WIn && path.to == JunctionPortRole::WOut);
-}
-
 /** Union-find over point indices. */
 struct NodeUnion {
 	std::vector<uint32_t> parent;
@@ -357,13 +351,13 @@ void NodeBuilder::AddPathDiffs()
 			bool is_prio = false;
 			int joiner_row = 0;
 			const JunctionPiece &merge_piece = path.pieces[event.second];
-			if (!event.first && IsMainLinePath(path)) {
+			if (!event.first && this->input.through[pi]) {
 				for (size_t qi = 0; qi < path_count && !is_prio; qi++) {
 					if (qi == pi) continue;
 					for (const SwitchEvent &other : this->work[qi].events) {
 						const JunctionPiece &piece = this->input.paths[qi].pieces[other.second];
 						if (other.first || piece.tile.x != merge_piece.tile.x || piece.tile.y != merge_piece.tile.y || piece.trackdir == merge_piece.trackdir) continue;
-						is_prio = this->input.paths[qi].from != path.from || this->input.paths[qi].to != path.to;
+						is_prio = this->input.paths[qi].movement != path.movement;
 						if (other.second > 0) joiner_row = this->input.paths[qi].pieces[other.second - 1].tile.y - merge_piece.tile.y;
 						break;
 					}
@@ -525,7 +519,7 @@ void NodeBuilder::AddPathDiffs()
 		}
 
 		/* Rule 5, mirroring CheckWaitingRoom :850-880: from the first split to the first merge after it, the units after the split up to the last slot are at least 2 TL. */
-		if ((path.from == JunctionPortRole::EIn || path.from == JunctionPortRole::WIn) && path.to == JunctionPortRole::SOut) {
+		if (this->input.exit[pi]) {
 			const auto split = std::ranges::find_if(w.events, [](const SwitchEvent &e) { return e.first; });
 			const auto merge = split == w.events.end() ? split : std::find_if(w.events.begin(), w.events.end(), [&](const SwitchEvent &e) { return !e.first && e.second > split->second; });
 			if (split != w.events.end() && merge != w.events.end()) {
@@ -535,7 +529,7 @@ void NodeBuilder::AddPathDiffs()
 		}
 
 		/* Rule 6, mirroring CheckWaitingRoom :890-912: before every queue merge, a bay of 2 TL between the last split before the merge's signal and that signal. */
-		if (!IsMainLinePath(path)) {
+		if (!this->input.through[pi]) {
 			for (const SwitchEvent &event : w.events) {
 				if (event.first) continue;
 				size_t slot = SIZE_MAX;
@@ -653,20 +647,27 @@ void NodeBuilder::AddBoxEdges()
 	}
 }
 
-JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const JunctionSpec &spec)
+JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const JunctionSpec &spec, const JunctionTopology &topology)
 {
-	const JunctionCheckContext ctx = MakeJunctionCheckContext(flat, spec, FindJunctionPorts(flat), JunctionTMovements());
+	const JunctionCheckContext ctx = MakeJunctionTopologyCheckContext(flat, spec, topology, FindJunctionPorts(flat, topology));
 	JunctionNodeInput input;
 	input.paths = ctx.paths;
 	input.used = UsedTracks(ctx);
 	input.bridges = flat.bridges;
 	for (const JunctionPath &path : ctx.paths) {
+		input.through.push_back(IsThroughPath(ctx, path));
+		input.exit.push_back(IsExitPath(ctx, path));
 		input.events.push_back(SwitchEventsOf(flat, input.used, path));
 		std::vector<bool> slots;
 		for (const JunctionPiece &piece : path.pieces) slots.push_back(IsLegalSignalPiece(flat, piece) || IsSignalledPiece(flat, piece));
 		input.slots.push_back(std::move(slots));
 	}
 	return input;
+}
+
+JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const JunctionSpec &spec)
+{
+	return TraceJunctionNodeInput(flat, spec, JunctionTTopology());
 }
 
 JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionLayout &flat, const JunctionSpec &spec)
@@ -684,14 +685,16 @@ JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionNodeInput &input, c
 	builder.AddCrossings();
 	builder.AddBoxEdges();
 
-	/* Rule 5: the class of the last piece of the EIn->SOut path. */
-	const auto anchor = std::ranges::find_if(tpl.paths, [](const JunctionNodePath &p) { return p.from == JunctionPortRole::EIn && p.to == JunctionPortRole::SOut; });
-	if (anchor == tpl.paths.end() || anchor->points.empty()) {
+	/* Rule 5: the class of the last piece of the first exit path (for the T, EIn->SOut). */
+	size_t anchor_index = 0;
+	while (anchor_index < input.exit.size() && !input.exit[anchor_index]) anchor_index++;
+	if (anchor_index == input.exit.size() || tpl.paths[anchor_index].points.empty()) {
 		tpl.anchor = UINT16_MAX;
 		tpl.anchor_y = UINT16_MAX;
 	} else {
-		tpl.anchor = tpl.points[anchor->points.back()].cls;
-		tpl.anchor_y = tpl.points[anchor->points.front()].ycls;
+		const JunctionNodePath &anchor = tpl.paths[anchor_index];
+		tpl.anchor = tpl.points[anchor.points.back()].cls;
+		tpl.anchor_y = tpl.points[anchor.points.front()].ycls;
 	}
 	return tpl;
 }
