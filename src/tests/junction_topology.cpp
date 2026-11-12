@@ -2569,3 +2569,70 @@ TEST_CASE("topology: curve spans in the seed routes", "[junction][topology]")
 	CHECK(spans > 0);
 	CHECK(gaps > 0);
 }
+
+TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][topologystretch]")
+{
+	/* The gate of the placement relations (RECON-stretch C1, C3): every placement point pushed later by hand, as terrain will (DESIGN-G1 §14.4); a solve failure is an edit, never a bug. */
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (int ti = 0; ti < 2; ti++) {
+		const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
+		const char *name = ti == 0 ? "T" : "LL_RR";
+		std::string ignored;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
+		const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
+		const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
+		JunctionTrackPlacement p;
+		const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &p, &ignored);
+		REQUIRE(!p.nodes.empty());
+		int runs = 0, failures = 0, clean = 0;
+		for (int v = 1; v < static_cast<int>(p.columns.size()); v++) {
+			for (int s : {1, 2}) {
+				runs++;
+				std::string error;
+				const JunctionTrackPlacement q = PlaceJunctionTrackGraph(t, paths, graph, order, cut, programs, spec, p.choices, &error, {{v, p.columns[v] + s}});
+				if (q.nodes.empty()) {
+					failures++;
+					INFO(name << " v " << v << " s " << s << " solve failure: " << (q.why.empty() ? std::string("none") : std::string(q.why.front().rule)));
+					continue;
+				}
+				std::string render_error;
+				std::vector<JunctionTrackRoute> routes;
+				JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, q, &render_error, &routes);
+				INFO(name << " v " << v << " s " << s << " render: " << render_error);
+				REQUIRE(!layout.tracks.empty());
+				SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
+				const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec, t);
+				std::string detail = fmt::format("{} v {} s {}:", name, v, s);
+				for (const RuleViolation &viol : violations) detail += fmt::format(" [rule {} at {},{}: {}]", static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message);
+				INFO(detail);
+				REQUIRE(violations.empty());
+				clean++;
+			}
+		}
+		WARN(name << ": runs " << runs << ", solve failures " << failures << ", clean " << clean);
+	}
+}
+
+TEST_CASE("topology: the relations keep the seed", "[junction][topology]")
+{
+	/* The in fan order and bridge head relations are tight at the seed (RECON-stretch C1, C3): the seeds keep their numbers. */
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		JunctionTrackPlacement p, q;
+		std::string error;
+		PlaceTwice(*t, MakeTestJunctionSpec(), &p, &q, &error);
+		INFO(error);
+		REQUIRE(!q.nodes.empty());
+		CHECK(SamePlacement(p, q));
+		CHECK(q.columns == p.columns);
+	}
+	JunctionTrackPlacement t_placement, llrr_placement;
+	std::string error;
+	SeedOf(JunctionTTopology(), MakeTestJunctionSpec(), &error, &t_placement);
+	SeedOf(JunctionLLRRSidelineTopology(), MakeTestJunctionSpec(), &error, &llrr_placement);
+	CHECK(t_placement.size.x == 41);
+	CHECK(t_placement.size.y == 14);
+	CHECK(llrr_placement.size.x == 62);
+	CHECK(llrr_placement.size.y == 25);
+}

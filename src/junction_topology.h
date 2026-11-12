@@ -249,6 +249,7 @@ struct JunctionTrackPlacement {
 	TileIndexDiffC size; ///< The box.
 	JunctionPlacementChoices choices; ///< The choices this placement was solved with.
 	std::vector<JunctionPlacementReason> why; ///< On failure: the explanation chain of the contradiction.
+	std::vector<int> columns; ///< The column of every placement point (x_floors refer to these ids).
 };
 
 /**
@@ -261,8 +262,9 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
  * The placement with its choices fixed (DESIGN-G1 §14.2): one Y solve and one X solve, no rounds.
  * @param choices The S-bend sizes, Corner spans and port offset to solve with, e.g. those of an earlier placement.
  * @param error Receives the reason when the result is empty; JunctionTrackPlacement::why then names the relations of a contradiction.
+ * @param x_floors (point, least column) pairs added as lower bounds in the X phase, reason "x floor"; a test seam until terrain facts (DESIGN-G1 §14.4). Points are the placement's internal ids, as choices.hug uses.
  */
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error);
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors = {});
 
 /**
  * The series-bridge cut (D209, DESIGN-G1 §11.9a): every doubled bridge cut into consecutive bridges of at most JUNCTION_BRIDGE_MAX_CROSSERS crossings, choosing among the cuts with the fewest bridges whose placement succeeds the one with the least box width, then height, then the first tried.

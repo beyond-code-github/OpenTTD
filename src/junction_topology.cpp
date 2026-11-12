@@ -933,8 +933,9 @@ static int JunctionRunBetween(int kind_a, int hand_a, int m_a, int kind_b, int h
 /**
  * The placement of a programmed track graph (DESIGN-G1 §11.8, §14.2).
  * @param fixed The choices to solve with (one Y and one X solve), or nullptr for the rounds that find them.
+ * @param x_floors (point, least column) pairs for the X phase (see the public overload).
  */
-static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error)
+static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors)
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
 	using Step = JunctionTrackStep;
@@ -1491,6 +1492,24 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 		}
 
+		if (x_phase) {
+			/* Nested in-fans of one heading keep their order: B's stack row lies within A's span from its port row, so B reaches it only after A has left it (RECON-stretch C1). */
+			for (int ra = 0; ra < rows; ra++) {
+				for (int rb = 0; rb < rows; rb++) {
+					if (ra == rb || east[ra] != east[rb]) continue;
+					const uint32_t ea = in_edge[ra], eb = in_edge[rb];
+					if (fan_m[ea] == 0 || fan_m[eb] == 0) continue;
+					const int pr_a = port_row[graph.edges[ea].from.index], sr_a = vy[item_pt[fan_item(ea)]];
+					const int pr_b = port_row[graph.edges[eb].from.index], sr_b = vy[item_pt[fan_item(eb)]];
+					const bool b_in_a = sr_b >= std::min(pr_a, sr_a) && sr_b <= std::max(pr_a, sr_a);
+					const bool a_in_b = sr_a >= std::min(pr_b, sr_b) && sr_a <= std::max(pr_b, sr_b);
+					if (!b_in_a || a_in_b) continue;
+					why("in fan order", eb, UINT32_MAX, rb);
+					along(east[ra] ? 1 : 3, row_pts[rb].fil, row_pts[ra].fif, std::abs(sr_b - pr_a), false);
+				}
+			}
+		}
+
 		if (!x_phase) {
 			/* The waiting room of an exit path, from its first split to the first merge after it: 2 dy - 1 >= 2 tl units, so dy >= tl + 1 tiles (rule WaitingRoom). */
 			for (size_t p = 0; p < paths.size(); p++) {
@@ -1600,6 +1619,19 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			/* A single bridge passes over the S-bend it crosses, in the column next to the S-bend's start (D113, F4). */
 			for (const Elem &el : elems) {
 				if (el.k != Elem::K::Heads) continue;
+				{
+					/* This single bridge's northernmost head lies beyond both rows of a doubled bridge passing over this edge (RECON-stretch C3). It assumes the doubled leg's rows lie north of the head; a topology with the leg south fails the Y solve with this reason ("not ruled yet"). */
+					for (const JunctionTrackBridge &b2 : structure.bridges) {
+						if (!b2.doubled || std::ranges::count(b2.crossed, e) == 0) continue;
+						for (int r = 0; r < rows; r++) {
+							if (leg_edge[r] != b2.edge || !doubled_row(r)) continue;
+							why("bridge head clear of rows", e, UINT32_MAX, r);
+							const int nm = el.hin == 0 ? el.last : el.first; // The northernmost head.
+							ge(1, nm, item_pt[north_item[r]], 1);
+							ge(1, nm, item_pt[lane_item[r]], 1);
+						}
+					}
+				}
 				const std::vector<Elem> &other = chain[el.cross];
 				const Elem *crossed = nullptr;
 				for (const Elem &o : other) {
@@ -1621,6 +1653,11 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				eq(1, el.first, crossed->first, north ? hi + 1 : lo - 1);
 				eq(1, el.last, crossed->first, north ? lo - 1 : hi + 1);
 			}
+		}
+
+		if (x_phase) {
+			why("x floor");
+			for (const std::pair<int, int> &floor : x_floors) ge(0, floor.first, 0, floor.second);
 		}
 
 		why("box bound");
@@ -1762,6 +1799,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	for (uint32_t i = 0; i < graph.nodes.size(); i++) result.nodes.push_back(tile(node_pt[i]));
 	result.size = {static_cast<int16_t>(vx[xe_pt] + 1), static_cast<int16_t>(vy[se_pt] + 1)};
 	result.choices = choices;
+	result.columns = vx;
 
 	/* The heads of a bridge: its near and far point, and the carrier's travel direction along the axis. */
 	struct Heads {
@@ -1896,12 +1934,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error)
 {
-	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, nullptr, error);
+	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, nullptr, error, {});
 }
 
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error)
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors)
 {
-	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error);
+	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, x_floors);
 }
 
 JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error, std::vector<JunctionTrackRoute> *routes)
