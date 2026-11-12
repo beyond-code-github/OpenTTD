@@ -1147,6 +1147,20 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	};
 	std::vector<std::vector<Elem>> chain(edge_count);
 	std::vector<std::vector<Elem>> chain_copy(edge_count); ///< Copy 1 of a doubled row leg: SBend, then its heads.
+	/* A doubled leg's elements by their tokens (R9, R11): the k-th bridge's heads of a chain, and its S-bend of a lane role. */
+	auto nth_heads = [](const std::vector<Elem> &elems, size_t k) -> const Elem & {
+		for (const Elem &el : elems) {
+			if (el.k == Elem::K::HeadsPair && k-- == 0) return el;
+		}
+		return elems.front();
+	};
+	auto lane_bend = [&](uint32_t e, const std::vector<Elem> &elems, Step::Role role) -> const Elem & {
+		const std::vector<Step> &program = &elems == &chain[e] ? programs.edges[e] : programs.copies[e];
+		for (const Elem &el : elems) {
+			if (el.k == Elem::K::SBend && program[el.tok].role == role) return el;
+		}
+		return elems.front();
+	};
 	for (uint32_t e = 0; e < edge_count; e++) {
 		if (is_row_edge(e)) continue;
 		const JunctionTrackEdge &edge = graph.edges[e];
@@ -1445,31 +1459,11 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	};
 	auto edge_port = [&](uint32_t e) { return graph.edges[e].from.node ? graph.edges[e].to.index : graph.edges[e].from.index; };
 
-	/* The row chains' points: allocated here, in this order, so the point ids of the reports stay; the chains' elements alias them and nothing else reads them. */
-	struct RowPts {
-		int fif = 0, fil = 0, fof = 0, fol = 0; ///< In and out fan: the points of the in and out chains' Fan elements.
-		int lane_split = 0, sb1_last = 0, sb0_first = 0, lane_merge = 0;
-		std::vector<int> nh0, fh0, nh1, fh1; ///< The heads, one point each per bridge of the row's leg.
-	};
-	std::vector<RowPts> row_pts(rows);
-	for (int r = 0; r < rows; r++) {
-		RowPts &rp = row_pts[r];
-		rp.fif = new_pt(); rp.fil = new_pt(); rp.fof = new_pt(); rp.fol = new_pt();
-		rp.lane_split = new_pt(); rp.sb1_last = new_pt(); rp.sb0_first = new_pt(); rp.lane_merge = new_pt();
-		if (IsDoubledEdge(leg_edge[r])) {
-			for (size_t k = 0; k < bridges_of[leg_edge[r]].size(); k++) {
-				rp.nh0.push_back(new_pt()); rp.fh0.push_back(new_pt()); rp.nh1.push_back(new_pt()); rp.fh1.push_back(new_pt());
-			}
-		}
-	}
-
-	/* The row edges' chains, one builder for every row edge (RW4a): a chain is its start tile, one element per token of its program in order (a Fan token a Fan, an S-bend token an S-bend, an Over token the heads of that bridge), its end tile. A doubled leg's second chain is built from copy 1's tokens the same way. The elements use the points of row_pts (the fan, lane split and merge, head points allocated above, so the point ids of the reports do not move); an S-bend of no lane role takes fresh points. */
-	const int base_pts = pt_count; ///< The points before the row chains' S-bends; the columns reported are these.
+	/* The row edges' chains, one builder for every row edge (RW4a): a chain is its start tile, one element per token of its program in order (a Fan token a Fan, an S-bend token an S-bend, an Over token the heads of that bridge), its end tile. A doubled leg's second chain is built from copy 1's tokens the same way. Every element takes its points from new_pt() as it is built, in chain order. */
 	for (uint32_t e = 0; e < edge_count; e++) {
 		if (!is_row_edge(e)) continue;
 		const JunctionTrackEdge &edge = graph.edges[e];
 		const int r = (end_level(edge.from) - 1) / 2;
-		const RowPts &rp = row_pts[r];
 		const int heading = east[r] ? 1 : 3;
 		auto tile_elem = [&](int pt, int slot) {
 			Elem el;
@@ -1480,7 +1474,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		};
 		const bool doubled = IsDoubledEdge(e);
 		if (doubled) {
-			/* R11 reads the lane split and merge S-bends by position, so a doubled leg without them is still refused. */
+			/* R11 reads the lane split and merge S-bends by their role, so a doubled leg without them is still refused. */
 			const auto has_role = [](const std::vector<Step> &tokens, Step::Role role) {
 				return std::ranges::any_of(tokens, [&](const Step &token) { return token.kind == StepKind::SBend && token.role == role; });
 			};
@@ -1504,34 +1498,25 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 					el.k = Elem::K::Fan;
 					el.port_first = !edge.from.node;
 					el.slot = el.port_first ? edge.from.index : edge.to.index;
-					el.first = el.port_first ? rp.fif : rp.fof;
-					el.last = el.port_first ? rp.fil : rp.fol;
+					el.first = new_pt();
+					el.last = new_pt();
 					row_item = step.index;
 				} else if (step.kind == StepKind::SBend) {
 					el.k = Elem::K::SBend;
 					el.hand = step.hand;
-					if (step.role == Step::Role::LaneMerge) {
-						el.first = rp.sb0_first;
-						el.last = rp.lane_merge;
-					} else if (step.role == Step::Role::LaneSplit) {
-						el.first = rp.lane_split;
-						el.last = rp.sb1_last;
-					} else {
-						el.first = new_pt();
-						el.last = new_pt();
-					}
+					el.first = new_pt();
+					el.last = new_pt();
 					row_item = step.index;
 				} else if (step.kind == StepKind::Over && doubled) {
-					/* A bridge crosses one or several edges, one Over token each; its heads are one element, at the token of its first crossed edge, and its other Over tokens add none. The bridge's number picks the head points of row_pts. */
+					/* A bridge crosses one or several edges, one Over token each; its heads are one element, at the token of its first crossed edge, and its other Over tokens add none. */
 					const auto bridge_it = std::ranges::find_if(bridges_of[e], [&](int b) { return structure.bridges[b].crossed[0] == step.index; });
 					if (bridge_it == bridges_of[e].end()) {
 						if (std::ranges::any_of(bridges_of[e], [&](int b) { return std::ranges::find(structure.bridges[b].crossed, step.index) != structure.bridges[b].crossed.end(); })) continue;
 						return fail("an Over token of a row edge without a bridge is not ruled yet");
 					}
-					const size_t b = bridge_it - bridges_of[e].begin();
 					el.k = Elem::K::HeadsPair;
-					el.first = c == 0 ? rp.nh0[b] : rp.nh1[b];
-					el.last = c == 0 ? rp.fh0[b] : rp.fh1[b];
+					el.first = new_pt();
+					el.last = new_pt();
 					/* The row the heads lie on: the item of the last fan or S-bend before them, or, with none before, the row the start node is on, which no token of this chain names (the item the in edge ends on: RW3's in edge of the row). */
 					el.index = row_item != NO_ROW ? row_item : node_item(in_edge[r]);
 				} else {
@@ -2145,7 +2130,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			const uint32_t leg = leg_edge[r];
 			for (size_t k = 0; k < bridges_of[leg].size(); k++) {
 				const int b = bridges_of[leg][k];
-				for (const Elem *h : {&chain[leg][1 + k], &chain_copy[leg][2 + k]}) {
+				for (const Elem *h : {&nth_heads(chain[leg], k), &nth_heads(chain_copy[leg], k)}) {
 					const int line = item_pt[h->index];
 					lines.push_back({b, leg, true, h->first, h->last, line});
 					heads.push_back({b, leg, h->first, line});
@@ -2271,15 +2256,15 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			const std::vector<Elem> &elems = chain[e];
 			const JunctionTrackEdge &edge = graph.edges[e];
 			if (is_row_edge(e) && doubled_edge(e)) {
-				/* A doubled leg: copy 0's chain is [Tile, HeadsPair.., SBend, Tile], copy 1's [Tile, SBend, HeadsPair.., Tile]. The lane pair joins the two (copy 1's S-bend starts at the lane split, copy 0's ends at the lane merge) and the heads of copy 1 are copy 0's one tile upstream (D118). */
+				/* A doubled leg: copy 0's chain holds its HeadsPairs and its lane merge S-bend, copy 1's its lane split S-bend and its HeadsPairs, each between its two Tiles. The lane pair joins the two (copy 1's S-bend starts at the lane split, copy 0's ends at the lane merge) and the heads of copy 1 are copy 0's one tile upstream (D118). */
 				const int r = (end_level(edge.from) - 1) / 2;
 				const std::vector<Elem> &copy = chain_copy[e];
-				const size_t g = elems.size() - 3;
+				const size_t g = std::ranges::count(elems, Elem::K::HeadsPair, &Elem::k);
 				const int nex = elems.front().first, njm = elems.back().first;
-				const Elem &bend0 = elems[g + 1];
-				const Elem &bend1 = copy[1];
-				auto heads0 = [&](size_t b) -> const Elem & { return elems[1 + b]; };
-				auto heads1 = [&](size_t b) -> const Elem & { return copy[2 + b]; };
+				const Elem &bend0 = lane_bend(e, elems, Step::Role::LaneMerge);
+				const Elem &bend1 = lane_bend(e, copy, Step::Role::LaneSplit);
+				auto heads0 = [&](size_t b) -> const Elem & { return nth_heads(elems, b); };
+				auto heads1 = [&](size_t b) -> const Elem & { return nth_heads(copy, b); };
 				why("row items", e, UINT32_MAX, r);
 				/* The leg's S-bends start on the exit item, where the in edge's fan ends (the exit split lies there), and end on their own token's item. */
 				const uint32_t exit_item = node_item(in_edge[r]);
@@ -3030,7 +3015,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	for (uint32_t i = 0; i < graph.nodes.size(); i++) result.nodes.push_back(tile(node_pt[i]));
 	result.size = {static_cast<int16_t>(vx[xe_pt] + 1), static_cast<int16_t>(vy[se_pt] + 1)};
 	result.choices = choices;
-	result.columns.assign(vx.begin(), vx.begin() + base_pts); // The points of the row chains' S-bends are not reported.
+	result.columns.assign(vx.begin(), vx.end());
 
 	/* The heads of a bridge: its near and far point, and the carrier's travel direction along the axis. */
 	struct Heads {
@@ -3042,7 +3027,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		const uint32_t edge = structure.bridges[b].edge;
 		if (structure.bridges[b].doubled) {
 			const size_t k = std::find(bridges_of[edge].begin(), bridges_of[edge].end(), b) - bridges_of[edge].begin();
-			const Elem &el = copy == 0 ? chain[edge][1 + k] : chain_copy[edge][2 + k];
+			const Elem &el = nth_heads(copy == 0 ? chain[edge] : chain_copy[edge], k);
 			return Heads{el.first, el.last, true};
 		}
 		for (const Elem &el : chain[edge]) {

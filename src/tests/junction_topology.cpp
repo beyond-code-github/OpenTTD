@@ -2609,8 +2609,7 @@ static const char *const OLD_SEED_COLUMNS = R"(
 
 TEST_CASE("topology: the curve family alone keeps every seed clean", "[junction][topologysweep]")
 {
-	/* The site curve floors are gone: every cell is checker clean, and against the old seeds no box is larger; each point that moved (a run now shorter than the site floor made it) is reported. */
-	std::map<std::tuple<int, int, int>, std::vector<int>> old_columns;
+	/* The site curve floors are gone: every cell is checker clean, and against the old seeds no box is larger. */
 	std::map<std::tuple<int, int, int>, std::pair<int, int>> old_size;
 	std::istringstream lines(OLD_SEED_COLUMNS);
 	for (std::string line; std::getline(lines, line);) {
@@ -2619,12 +2618,9 @@ TEST_CASE("topology: the curve family alone keeps every seed clean", "[junction]
 		int ti, tl, v, w, h;
 		char colon;
 		in >> ti >> tl >> v >> w >> h >> colon;
-		std::vector<int> cols;
-		for (int c; in >> c;) cols.push_back(c);
-		old_columns[{ti, tl, v}] = cols;
 		old_size[{ti, tl, v}] = {w, h};
 	}
-	size_t cells = 0, moved = 0, earlier = 0, later = 0;
+	size_t cells = 0;
 	for (int ti = 0; ti < 2; ti++) {
 		const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
 		for (int tl = 3; tl <= 8; tl++) {
@@ -2647,25 +2643,14 @@ TEST_CASE("topology: the curve family alone keeps every seed clean", "[junction]
 					CHECK(false);
 				}
 				const auto key = std::make_tuple(ti, tl, v);
-				REQUIRE(old_columns.contains(key));
+				REQUIRE(old_size.contains(key));
 				cells++;
-				const std::vector<int> &before = old_columns[key];
-				REQUIRE(before.size() == p.columns.size());
 				CHECK(p.size.x <= old_size[key].first);
 				CHECK(p.size.y <= old_size[key].second);
-				bool differs = false;
-				for (size_t i = 0; i < before.size(); i++) {
-					if (p.columns[i] == before[i]) continue;
-					differs = true;
-					(p.columns[i] < before[i] ? earlier : later) += 1;
-					WARN(fmt::format("{}: point {} lies at {} (was {})", cell, i, p.columns[i], before[i]));
-				}
-				moved += differs;
 			}
 		}
 	}
-	WARN("cells " << cells << ", with a point moved: " << moved << " (" << earlier << " points earlier, " << later << " later)");
-	CHECK(cells == old_columns.size());
+	CHECK(cells == old_size.size());
 }
 
 TEST_CASE("topology: every placement edit fails with a reason or is checker-clean", "[junction][topologysweep][.identity]")
