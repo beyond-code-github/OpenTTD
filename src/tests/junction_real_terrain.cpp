@@ -155,4 +155,35 @@ TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
 	std::cout << "REALTERRAIN heights=" << heights << "\n";
 	for (const auto &[rule, count] : rule_counts) std::cout << "REALTERRAIN rule " << rule << " x " << count << "\n";
 	CHECK(solved + failed == static_cast<int>(files.size()));
+
+	/* The hard-facts mode (D218): class facts only. Every solved placement renders and passes the rules; the heights are the Z solve's, not checked here. */
+	int hard_solved = 0, hard_failed = 0;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		const JunctionFacts facts(*terrain);
+		std::string place_error;
+		const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error, false);
+		if (placement.nodes.empty()) {
+			hard_failed++;
+			continue;
+		}
+		hard_solved++;
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, placement, &render_error, &routes);
+		INFO(file.filename().string() << " " << render_error);
+		REQUIRE(!layout.tracks.empty());
+		SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec);
+		for (const RuleViolation &violation : CheckJunctionRules(layout, spec, t)) {
+			INFO(file.filename().string() << " rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+			CHECK(false);
+		}
+	}
+	std::cout << "REALTERRAIN hard solved=" << hard_solved << " failed=" << hard_failed << "\n";
 }

@@ -99,6 +99,28 @@ uint DeriveCurveSpacing(uint16_t speed, uint8_t curve_speed, uint8_t tl)
 	return std::min<uint>(spacing, 2 * tl);
 }
 
+/**
+ * The most levels a route may rise within tl consecutive tiles with no speed loss at the reference speed (D219).
+ * The slope force on the train is m x s x 100 N times the share of its parts on up tiles, one level per tile, so within tl tiles the train holds its speed while tl x S(v) >= levels x m x s x 100, S(v) being the tractive force at v less the flat resistances, as GroundVehicle::GetAcceleration computes them.
+ * @param spec The spec; train, tl, reference_speed and slope_steepness are read.
+ * @return floor(tl x S(v) / (m x s x 100)), 0 when the train cannot hold the speed on the level; tl when the steepness is 0.
+ */
+int JunctionRampLevels(const JunctionSpec &spec)
+{
+	const int64_t mass = spec.train.mass_t;
+	const int64_t slope = mass * spec.slope_steepness * 100;
+	if (slope == 0) return spec.tl;
+	const int64_t speed = spec.reference_speed;
+	const int64_t power = static_cast<int64_t>(spec.train.power_hp) * 746;
+	int64_t force = speed > 0 ? power * 18 / (speed * 5) : spec.train.max_te;
+	force = std::min<int64_t>(force, spec.train.max_te);
+	/* Axle, rolling (the factor is an integer in the game) and air resistance (area 14). */
+	const int64_t resistance = 10 * mass + mass * (15 * (512 + speed) / 512) + 14 * static_cast<int64_t>(spec.train.air_drag) * speed * speed / 1000;
+	const int64_t spare = force - resistance;
+	if (spare <= 0) return 0;
+	return static_cast<int>(spec.tl * spare / slope);
+}
+
 JunctionSpec MakeTestJunctionSpec()
 {
 	JunctionSpec spec{};

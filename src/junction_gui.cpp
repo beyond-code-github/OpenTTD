@@ -418,7 +418,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	/** Start building the library if the spec changed, and join the build when it is done. */
 	void EnsureLibrary()
 	{
-		if (!this->picked_train.has_value()) return;
+		if (!this->picked_train.has_value() || _settings_game.vehicle.train_acceleration_model == AccelerationModel::Original) return;
 		const JunctionGenerateKey key = this->SpecKey();
 		if (this->library_key != key) {
 			if (this->library_thread.joinable()) this->library_thread.detach();
@@ -461,6 +461,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	StringID SizingStatus() const
 	{
 		if (!this->picked_train.has_value()) return INVALID_STRING_ID;
+		/* D219: the ramp and curve rules are the realistic model's. */
+		if (_settings_game.vehicle.train_acceleration_model == AccelerationModel::Original) return STR_JUNCTION_ERROR_NEEDS_REALISTIC;
 		if (this->library_job == nullptr || this->library_key != this->SpecKey() || !this->library_job->sizing_done) return STR_JUNCTION_STATUS_SIZING_PRIO;
 		if (this->library_job->spec.prio_tiles != 0) return INVALID_STRING_ID;
 		switch (this->library_job->sizing_error) {

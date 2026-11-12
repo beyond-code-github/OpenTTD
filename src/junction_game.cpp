@@ -615,6 +615,7 @@ JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_
 	spec.reference_speed = speed;
 	spec.curve_speed = GetRailTypeInfo(railtype)->curve_speed;
 	spec.curve_limit = _settings_game.vehicle.train_acceleration_model != AccelerationModel::Original;
+	spec.slope_steepness = _settings_game.vehicle.train_slope_steepness;
 	spec.signal_type = _settings_client.gui.junction_signal_type == 0 ? SignalType::Block : SignalType::PathOneWay;
 	/* Precompute on this thread: the generator runs on a worker thread, which must not read game state. */
 	spec.max_bridge_middle = std::max<uint>(1, _settings_game.construction.max_bridge_length);

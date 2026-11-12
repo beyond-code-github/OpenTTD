@@ -2993,6 +2993,76 @@ static JunctionTrackPlacement PlaceWithHouses(const JunctionTopology &t, const S
 	return PlaceJunctionTrackGraph(t, p.paths, p.graph, p.order, p.cut, p.programs, p.spec, p.seed.choices, facts, {0, 0}, error);
 }
 
+TEST_CASE("topology: ramp levels per train length from the train", "[junction][topology]")
+{
+	/* D219. The D138 train at v 196, s 3, by the game's integer arithmetic: tractive force 14194 hp x 746 x 18 / (5 x 196) = 194486 N (under max T.E.); resistance 10 x 561 + 561 x (15 x 708 / 512 = 20) + 14 x 25 x 196^2 / 1000 = 30275 N; spare 164211 N; slope force 561 x 3 x 100 = 168300 N. */
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.reference_speed = 196;
+	spec.slope_steepness = 3;
+	spec.tl = 4;
+	CHECK(JunctionRampLevels(spec) == 3); // floor(4 x 164211 / 168300) = floor(3.90).
+	spec.tl = 8;
+	CHECK(JunctionRampLevels(spec) == 7); // floor(7.81).
+	/* Half the power: tractive force 97243 N, spare 66968 N, so floor(4 x 66968 / 168300) = 1. */
+	spec.tl = 4;
+	spec.train.power_hp = 7097;
+	CHECK(JunctionRampLevels(spec) == 1);
+	/* No slope force: no limit. */
+	spec.slope_steepness = 0;
+	CHECK(JunctionRampLevels(spec) >= spec.tl);
+}
+
+TEST_CASE("topology: the hard-facts mode ignores heights", "[junction][topology]")
+{
+	const JunctionTopology &t = JunctionTTopology();
+	const SeedPipeline p = SeedPipelineOf(t, MakeTestJunctionSpec());
+	JunctionTerrain flat;
+	flat.origin = {-1, -1};
+	flat.width = p.seed.size.x + 2;
+	flat.height = p.seed.size.y + 2;
+	flat.tiles.assign(static_cast<size_t>(flat.width) * flat.height, JunctionTerrainTile{});
+	flat.foundation_cost = 250;
+	flat.build_on_slopes = true;
+	std::string error;
+	auto place = [&](const JunctionTerrain &terrain, bool heights) {
+		const JunctionFacts facts(terrain);
+		return PlaceJunctionTrackGraph(t, p.paths, p.graph, p.order, p.cut, p.programs, p.spec, p.seed.choices, facts, {0, 0}, &error, heights);
+	};
+	auto height_reason = [](const JunctionTrackPlacement &q) {
+		return std::ranges::any_of(q.why, [](const JunctionPlacementReason &r) { return std::string_view{r.rule}.find("height") != std::string_view::npos; });
+	};
+	const JunctionTrackPlacement reference = place(flat, true);
+	REQUIRE(!reference.nodes.empty());
+
+	/* A ridge column of one level across the box: a run that crosses it meets a height step. */
+	bool found = false;
+	int ridge_x = -1;
+	for (int x = 2; x < p.seed.size.x - 2 && !found; x++) {
+		JunctionTerrain ridge = flat;
+		for (int y = ridge.origin.y; y < ridge.origin.y + ridge.height; y++) {
+			JunctionTerrainTile &tile = ridge.tiles[static_cast<size_t>(y - ridge.origin.y) * ridge.width + (x - ridge.origin.x)];
+			tile.z_min = tile.z_max = 1;
+		}
+		const JunctionTrackPlacement with = place(ridge, true);
+		if (!with.nodes.empty()) continue;
+		found = true;
+		ridge_x = x;
+		CHECK(height_reason(with));
+		const JunctionTrackPlacement without = place(ridge, false);
+		REQUIRE(!without.nodes.empty());
+		CHECK(SamePlacement(reference, without));
+		CHECK(reference.columns == without.columns);
+	}
+	CHECK(found);
+
+	/* Houses on a whole column fail both, where the ridge failed one. */
+	REQUIRE(ridge_x >= 0);
+	JunctionTerrain wall = flat;
+	for (int y = wall.origin.y; y < wall.origin.y + wall.height; y++) wall.tiles[static_cast<size_t>(y - wall.origin.y) * wall.width + (ridge_x - wall.origin.x)].cls = JunctionTileClass::Blocked;
+	CHECK(place(wall, true).nodes.empty());
+	CHECK(place(wall, false).nodes.empty());
+}
+
 TEST_CASE("topology: doubled bridge heads hug their outermost crossers", "[junction][topologystretch]")
 {
 	/* Under every Y stretch that solves, each doubled bridge's copy-0 heads lie one tile outside the outermost tiles of the crossers on both rows (D217: by order, not by a pick that goes stale; RECON-stretch §4). */

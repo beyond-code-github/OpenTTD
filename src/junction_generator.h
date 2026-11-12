@@ -45,6 +45,7 @@ struct JunctionSpec {
 	uint16_t reference_speed; ///< Same units as Train::GetCurveSpeedLimit.
 	uint8_t curve_speed; ///< RailTypeInfo::curve_speed.
 	bool curve_limit; ///< False under the original acceleration model.
+	uint8_t slope_steepness = 3; ///< _settings_game.vehicle.train_slope_steepness (%).
 	SignalType signal_type; ///< Block or PathOneWay.
 	std::function<bool(uint)> bridge_span_ok; ///< By middle-tile count.
 	uint16_t max_bridge_middle = 10; ///< The longest middle the game allows (D208): the max_bridge_length setting; bridge_span_ok and prices.bridge are defined up to it.
@@ -66,6 +67,7 @@ struct JunctionGenerateResult {
 
 uint16_t CurveSpeedLimitForSpacing(uint spacing, uint8_t curve_speed);
 uint DeriveCurveSpacing(uint16_t speed, uint8_t curve_speed, uint8_t tl);
+int JunctionRampLevels(const JunctionSpec &spec); ///< D219: the most levels a route may rise within tl consecutive tiles with no speed loss at reference_speed (realistic model, RECON-slope-physics); tl or more when the slope costs nothing.
 JunctionSpec MakeTestJunctionSpec();
 /** The result of SizeJunctionPrio. */
 struct JunctionPrioSizing {
