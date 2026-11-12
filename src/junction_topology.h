@@ -11,6 +11,7 @@
 #define JUNCTION_TOPOLOGY_H
 
 #include "junction_layout.h"
+#include "junction_route.h"
 
 #include <array>
 #include <cstdint>
@@ -245,11 +246,35 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
  */
 JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, JunctionTrackPlacement *placement, std::string *error);
 
+/** One rendered route: a lane path's pieces from its in port to its out port, for one copy (DESIGN-G1 §11.10). */
+struct JunctionTrackRoute {
+	uint16_t path; ///< Index into the lane paths.
+	uint8_t copy; ///< 1 for the copy-1 route of a path through a doubled leg, else 0.
+	std::vector<JunctionPiece> pieces;
+};
+
+/** Why a signal stands where it does (DESIGN-G1 §12.2, §12.3). */
+enum class JunctionSignalReason : uint8_t { BeforeSplit, AfterSplit, BeforeMerge, AfterMerge, BeforeBridge, AfterBridge, SeriesGap, Stub, Bay, Fill };
+
+/** A signal token: a signal placed by a rule of the graph, on one route (D211). */
+struct JunctionTrackSignal {
+	uint16_t route; ///< Index into the routes.
+	JunctionSignalReason reason;
+	TileIndexDiffC tile;
+	Trackdir facing;
+};
+
 /**
  * The track-only layout of a seed placement (DESIGN-G1 §11.10): one route per lane path and copy, rasterized and merged.
  * @param error Receives the reason when the result is empty (no tracks).
  */
-JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error);
+JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error, std::vector<JunctionTrackRoute> *routes = nullptr);
+
+/**
+ * Place the signal tokens of a rendered seed (DESIGN-G1 §12.2, §12.3): the anchor signals of every route's splits, merges, bridges and out port, then the whole-train bays before the merges of non-through paths, then drag fill; each drawn into layout.signals once.
+ * @return The tokens, in placement order; a signal shared by several routes or rules gives one token per route and rule that resolved to it.
+ */
+std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionSpec &spec);
 /** The T of today's node model (L_R main line, L_R branch on the S side), groups in slot order: W side EIn then WOut; S side NIn then SOut; E side WIn then EOut. Movements in JunctionTMovements order. */
 const JunctionTopology &JunctionTTopology();
 

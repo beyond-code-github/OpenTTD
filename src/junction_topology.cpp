@@ -13,6 +13,8 @@
 
 #include "junction_generator.h"
 #include "junction_route.h"
+#include "junction_rules_internal.h"
+#include "junction_signal_pass.h"
 
 #include <algorithm>
 
@@ -1636,7 +1638,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	return result;
 }
 
-JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error)
+JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error, std::vector<JunctionTrackRoute> *routes)
 {
 	using StepKind = JunctionTrackStep::Kind;
 	auto fail = [&](const std::string &reason) {
@@ -1662,6 +1664,7 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 
 	JunctionLayout layout;
 	layout.size = placement.size;
+	if (routes != nullptr) routes->clear();
 	for (size_t p = 0; p < paths.size(); p++) {
 		const std::vector<uint32_t> &edges = graph.path_edges[p];
 		const bool has_doubled = std::ranges::any_of(edges, doubled_leg);
@@ -1763,9 +1766,149 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 			if (!raster.error.empty()) return fail_at("", raster.error);
 			if (raster.pieces.back().tile.x != out.x || raster.pieces.back().tile.y != out.y) return fail_at("", "misses its out port");
 			AddRasterToLayout(layout, raster);
+			if (routes != nullptr) routes->push_back({static_cast<uint16_t>(p), static_cast<uint8_t>(c), raster.pieces});
 		}
 	}
 	return layout;
+}
+
+std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionSpec &spec)
+{
+	using Reason = JunctionSignalReason;
+	std::vector<JunctionTrackSignal> tokens;
+	std::map<std::pair<int, int>, TrackBits> used;
+	for (const JunctionTrack &track : layout.tracks) used[{track.offset.x, track.offset.y}] |= track.tracks;
+
+	/** One event of a route: a switch (one index) or a bridge (first to last index). */
+	struct Event {
+		size_t first;
+		size_t last;
+		bool bridge;
+		bool split;
+	};
+
+	for (size_t r = 0; r < routes.size(); r++) {
+		const std::vector<JunctionPiece> &P = routes[r].pieces;
+		const int64_t n = static_cast<int64_t>(P.size());
+		JunctionPath path{};
+		path.pieces = P;
+		const std::vector<SwitchEvent> switches = SwitchEventsOf(layout, used, path);
+		std::vector<Event> events;
+		for (const SwitchEvent &sw : switches) events.push_back({sw.second, sw.second, false, sw.first});
+		for (size_t i = 0; i < P.size(); i++) {
+			if (!P[i].on_bridge) continue;
+			size_t last = i;
+			while (last + 1 < P.size() && P[last + 1].on_bridge) last++;
+			events.push_back({i, last, true, false});
+			i = last;
+		}
+		std::ranges::sort(events, {}, &Event::first);
+
+		auto ok = [&](int64_t i) {
+			if (i <= 0 || i >= n - 1) return false;
+			const JunctionPiece &piece = P[i];
+			if (piece.on_bridge || FindBridgeByHead(layout, piece.tile) != nullptr) return false;
+			if (std::ranges::any_of(switches, [&](const SwitchEvent &sw) { return static_cast<int64_t>(sw.second) == i; })) return false;
+			return IsLegalSignalPiece(layout, piece) || IsSignalledPiece(layout, piece);
+		};
+		auto put = [&](int64_t i, Reason reason, size_t route) {
+			const JunctionPiece &piece = P[i];
+			if (!IsSignalledPiece(layout, piece)) layout.signals.push_back({piece.tile, piece.trackdir, spec.signal_type, SignalVariant::Electric});
+			tokens.push_back({static_cast<uint16_t>(route), reason, piece.tile, piece.trackdir});
+		};
+		/* The largest ok index in (lo, hi), or -1. */
+		auto last_ok = [&](int64_t lo, int64_t hi) {
+			for (int64_t i = hi - 1; i > lo; i--) if (ok(i)) return i;
+			return int64_t{-1};
+		};
+		/* The smallest ok index in (lo, hi), or -1. */
+		auto first_ok = [&](int64_t lo, int64_t hi) {
+			for (int64_t i = lo + 1; i < hi; i++) if (ok(i)) return i;
+			return int64_t{-1};
+		};
+
+		for (size_t e = 0; e < events.size(); e++) {
+			const Event &ev = events[e];
+			const bool has_prev = e > 0;
+			const bool has_next = e + 1 < events.size();
+			const int64_t prev = has_prev ? static_cast<int64_t>(events[e - 1].last) : -1;
+			const int64_t next = has_next ? static_cast<int64_t>(events[e + 1].first) : n;
+			const int64_t before = last_ok(prev, static_cast<int64_t>(ev.first));
+			const int64_t after = first_ok(static_cast<int64_t>(ev.last), next);
+			if (ev.bridge) {
+				if (before >= 0) put(before, has_prev && events[e - 1].bridge ? Reason::SeriesGap : Reason::BeforeBridge, r);
+				if (after >= 0) put(after, has_next && events[e + 1].bridge ? Reason::SeriesGap : Reason::AfterBridge, r);
+			} else if (ev.split) {
+				if (before >= 0) put(before, Reason::BeforeSplit, r);
+				if (after >= 0) put(after, Reason::AfterSplit, r);
+			} else {
+				if (before >= 0) put(before, Reason::BeforeMerge, r);
+				if (after >= 0) put(after, Reason::AfterMerge, r);
+			}
+		}
+		if (ok(n - 2)) put(n - 2, Reason::Stub, r);
+	}
+
+	/* Phase 2: the whole-train bays before the merges of non-through paths, walked as PlaceBaySignals walks them. */
+	const uint bay = 2u * spec.tl;
+	for (size_t r = 0; r < routes.size(); r++) {
+		const auto &movement = topology.movements[paths[routes[r].path].movement];
+		if (topology.groups[movement.first].main && topology.groups[movement.second].main) continue;
+		const std::vector<JunctionPiece> &P = routes[r].pieces;
+		JunctionPath path{};
+		path.pieces = P;
+		const std::vector<SwitchEvent> events = SwitchEventsOf(layout, used, path);
+		for (const SwitchEvent &event : events) {
+			if (event.first) continue;
+			const size_t m = event.second;
+
+			size_t s = m;
+			for (size_t i = m; i-- > 0;) {
+				if (!IsSignalledPiece(layout, P[i])) continue;
+				s = i;
+				break;
+			}
+			if (s == m) continue;
+
+			size_t u = 0;
+			for (const SwitchEvent &other : events) {
+				if (other.first && other.second < s) u = std::max(u, other.second);
+			}
+			uint length = 0;
+			for (size_t i = u + 1; i <= s; i++) length += P[i].units;
+			if (length < bay) continue;
+
+			size_t prev = s;
+			for (;;) {
+				std::optional<size_t> cand;
+				uint distance = 0;
+				for (size_t i = prev; i-- > 0;) {
+					distance += P[i + 1].units;
+					if (distance < bay) continue;
+					const JunctionPiece &piece = P[i];
+					if (!IsLegalSignalPiece(layout, piece) && !IsSignalledPiece(layout, piece)) continue;
+					if (piece.on_bridge || FindBridgeByHead(layout, piece.tile) != nullptr) continue;
+					if (std::ranges::any_of(events, [&](const SwitchEvent &e) { return e.second == i; })) continue;
+					cand = i;
+					break;
+				}
+				if (!cand.has_value() || *cand <= u) break;
+				if (!IsSignalledPiece(layout, P[*cand])) layout.signals.push_back({P[*cand].tile, P[*cand].trackdir, spec.signal_type, SignalVariant::Electric});
+				tokens.push_back({static_cast<uint16_t>(r), Reason::Bay, P[*cand].tile, P[*cand].trackdir});
+				prev = *cand;
+			}
+		}
+	}
+
+	/* Phase 3: drag fill. */
+	for (size_t r = 0; r < routes.size(); r++) {
+		const size_t before = layout.signals.size();
+		PlaceDragSignals(layout, routes[r].pieces, spec.sd, spec.signal_type);
+		for (size_t i = before; i < layout.signals.size(); i++) {
+			tokens.push_back({static_cast<uint16_t>(r), Reason::Fill, layout.signals[i].offset, layout.signals[i].facing});
+		}
+	}
+	return tokens;
 }
 
 const JunctionTopology &JunctionTTopology()
