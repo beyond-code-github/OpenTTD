@@ -989,3 +989,39 @@ TEST_CASE("the terraformed estimate adds the height cost", "[junction][hoverplan
 	pricing.money = flat.total + 776;
 	CHECK(!EstimateJunctionTerraformed(layout, TileXY(10, 10), pricing, 777).affordable);
 }
+
+TEST_CASE("the cone reject is sound", "[junction][hoverplan]")
+{
+	namespace fs = std::filesystem;
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionTopology &t = JunctionTTopology();
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+
+	/* Two offsets the sweep rejects by the cone: a tile with no option that keeps the ground the terraform must keep, and tile levels that cannot meet. */
+	struct Case {
+		const char *file;
+		int dx; ///< Offset from the centred placement.
+		int dy;
+		const char *why; ///< The start of the reason.
+	};
+	const Case cases[] = {
+		{"arctic-hilly-12.json", -2, 3, "tile (159, 54) cannot reach the ground the terraform must keep"},
+		{"arctic-hilly-14.json", 4, 2, "the tiles around (28, 231) cannot meet: they cannot reach the ground the terraform must keep"},
+	};
+	for (const Case &test : cases) {
+		std::ifstream in(fs::path(JUNCTION_TERRAIN_DIR) / test.file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC centred = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed.placement.size.x) / 2 + test.dx), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed.placement.size.y) / 2 + test.dy)};
+		const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, *terrain, centred);
+		INFO(test.file << ": " << plan.why);
+		CHECK(!plan.layout.has_value());
+		CHECK(plan.why.find(test.why) != std::string::npos);
+	}
+}

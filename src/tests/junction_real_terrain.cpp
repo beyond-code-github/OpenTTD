@@ -327,3 +327,78 @@ TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
 	CHECK(planned >= 19);
 	REQUIRE(max < 100.0);
 }
+
+/** Fold a value into a 64-bit FNV-1a hash. */
+static void LevelHashFold(uint64_t &hash, int64_t value)
+{
+	for (int i = 0; i < 8; i++) {
+		hash ^= static_cast<uint64_t>(value >> (i * 8)) & 0xFF;
+		hash *= 1099511628211ULL;
+	}
+}
+
+TEST_CASE("level solve: identical plans at every near offset", "[junction][realterrainsweep]")
+{
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	REQUIRE(!files.empty());
+
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionTopology &t = JunctionTTopology();
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+	REQUIRE(!seed_layout.tracks.empty());
+
+	int offsets = 0, planned = 0, cone_rejects = 0;
+	double millis = 0;
+	uint64_t level_hash = 14695981039346656037ULL; ///< One hash per offset, folded into this: a difference at any offset moves it.
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC centre = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		for (int dy = -4; dy <= 4; dy++) {
+			for (int dx = -8; dx <= 8; dx++) {
+				const TileIndexDiffC offset = {static_cast<int16_t>(centre.x + dx), static_cast<int16_t>(centre.y + dy)};
+				const auto start = std::chrono::steady_clock::now();
+				const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, *terrain, offset);
+				millis += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+				offsets++;
+				uint64_t one = 14695981039346656037ULL;
+				LevelHashFold(one, plan.layout.has_value() ? 1 : 0);
+				if (plan.why.find("cannot reach the ground the terraform must keep") != std::string::npos) cone_rejects++;
+				if (plan.layout.has_value()) {
+					planned++;
+					LevelHashFold(one, plan.height_cost);
+					for (const auto &[tile, level] : plan.track_levels) {
+						LevelHashFold(one, tile.x);
+						LevelHashFold(one, tile.y);
+						LevelHashFold(one, level);
+					}
+					for (const auto &[corner, height] : plan.terraform.corners) {
+						LevelHashFold(one, corner.first);
+						LevelHashFold(one, corner.second);
+						LevelHashFold(one, height);
+					}
+					LevelHashFold(one, plan.terraform.cost);
+				}
+				LevelHashFold(level_hash, static_cast<int64_t>(one));
+			}
+		}
+	}
+	std::cout << "LEVELHASH offsets=" << offsets << " planned=" << planned << " cone_rejects=" << cone_rejects << " hash=" << level_hash << " ms_total=" << millis << "\n";
+	CHECK(offsets == 48 * 153);
+	/* A cone reject that the solve without the check would plan would lose a plan: the pinned planned count and hash rule that out (cone_rejects_that_would_plan == 0). */
+	CHECK(cone_rejects == 95);
+	CHECK(planned == 2690);
+	CHECK(level_hash == 4062497645733470380ULL);
+}

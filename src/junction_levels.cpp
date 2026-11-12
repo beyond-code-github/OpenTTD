@@ -110,6 +110,82 @@ std::optional<Choice> Evaluate(const Context &c, const Visit &v, int kind, int l
 	return choice;
 }
 
+/** The heights the corners of the snapshot may end at (the cone of the ground a terraform must keep). */
+struct CornerCone {
+	int x0 = 0; ///< Snapshot x of the first corner.
+	int y0 = 0; ///< Snapshot y of the first corner.
+	int stride = 0; ///< Corners per row.
+	std::vector<int> lower; ///< Per corner the lowest height it can end at.
+	std::vector<int> upper; ///< Per corner the highest height it can end at.
+
+	/** The index of a corner. */
+	size_t Index(int cx, int cy) const { return static_cast<size_t>(cy - this->y0) * this->stride + (cx - this->x0); }
+};
+
+/**
+ * The cone of a snapshot. A corner that no terraform can move (a tile around it is not Buildable, or lies outside the snapshot) ends at its ground height g.
+ * A finished terraform leaves every moved corner within 1 of each neighbour, and a corner it does not move is within 1 of them by the ground, so every corner ends within d of g
+ * when d is its Manhattan distance to the unmovable corner: two passes of an L1 distance transform.
+ * @param terrain The snapshot.
+ * @return The bounds of every corner.
+ */
+CornerCone MakeCornerCone(const JunctionTerrain &terrain)
+{
+	constexpr int UNBOUNDED = 1000000;
+	CornerCone cone;
+	cone.x0 = terrain.origin.x;
+	cone.y0 = terrain.origin.y;
+	cone.stride = terrain.width + 1;
+	const int rows = terrain.height + 1;
+	cone.lower.assign(static_cast<size_t>(cone.stride) * rows, -UNBOUNDED);
+	cone.upper.assign(static_cast<size_t>(cone.stride) * rows, UNBOUNDED);
+	for (int y = 0; y < rows; y++) {
+		for (int x = 0; x < cone.stride; x++) {
+			bool movable = true;
+			std::optional<int> ground;
+			for (int i = 0; i < 4; i++) {
+				const JunctionTerrainTile *tile = terrain.At(cone.x0 + x - CORNER_OFFSET[i].first, cone.y0 + y - CORNER_OFFSET[i].second);
+				if (tile == nullptr) {
+					movable = false;
+					continue;
+				}
+				movable = movable && tile->cls == JunctionTileClass::Buildable;
+				if (!ground.has_value()) ground = JunctionTileCorners(*tile)[i];
+			}
+			if (movable || !ground.has_value()) continue;
+			cone.lower[cone.Index(cone.x0 + x, cone.y0 + y)] = *ground;
+			cone.upper[cone.Index(cone.x0 + x, cone.y0 + y)] = *ground;
+		}
+	}
+	for (int y = 0; y < rows; y++) {
+		for (int x = 0; x < cone.stride; x++) {
+			const size_t k = static_cast<size_t>(y) * cone.stride + x;
+			if (x > 0) {
+				cone.lower[k] = std::max(cone.lower[k], cone.lower[k - 1] - 1);
+				cone.upper[k] = std::min(cone.upper[k], cone.upper[k - 1] + 1);
+			}
+			if (y > 0) {
+				cone.lower[k] = std::max(cone.lower[k], cone.lower[k - cone.stride] - 1);
+				cone.upper[k] = std::min(cone.upper[k], cone.upper[k - cone.stride] + 1);
+			}
+		}
+	}
+	for (int y = rows - 1; y >= 0; y--) {
+		for (int x = cone.stride - 1; x >= 0; x--) {
+			const size_t k = static_cast<size_t>(y) * cone.stride + x;
+			if (x + 1 < cone.stride) {
+				cone.lower[k] = std::max(cone.lower[k], cone.lower[k + 1] - 1);
+				cone.upper[k] = std::min(cone.upper[k], cone.upper[k + 1] + 1);
+			}
+			if (y + 1 < rows) {
+				cone.lower[k] = std::max(cone.lower[k], cone.lower[k + cone.stride] - 1);
+				cone.upper[k] = std::min(cone.upper[k], cone.upper[k + cone.stride] + 1);
+			}
+		}
+	}
+	return cone;
+}
+
 /** The choice of a tile and the edge that routes through it first (for the reasons). */
 struct Chosen {
 	Choice choice;
@@ -176,25 +252,94 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		order_tiles.push_back(tile);
 	}
 	const size_t n = order_tiles.size();
-	JunctionPositions pos(n, 0, highest + 3 - base);
+	const int top = highest + 3 - base;
+	JunctionPositions pos(n, 0, top);
 
-	std::vector<std::string> reasons;
-	auto reason = [&](std::string text) {
-		reasons.push_back(std::move(text));
+	/* The cone filter: a tile's option (shape and level) that is not a foundation and moves a corner out of the cone can be in no successful plan,
+	 * so the tile's levels shrink to those with a surviving option; a tile with none cannot be built. */
+	const CornerCone cone = MakeCornerCone(c.terrain);
+	std::vector<std::pair<int, int>> reach(n, {0, top}); ///< Per tile the lowest and highest variable with a surviving option.
+	std::vector<bool> cut(n, false); ///< Whether the tile's levels were shrunk.
+	for (size_t i = 0; i < n; i++) {
+		const Tile &tile = order_tiles[i];
+		const LevelTile &lt = tiles[tile];
+		bool inside = true; ///< Every level of the tile keeps the corners in the cone.
+		for (int ci = 0; ci < 4; ci++) {
+			const size_t k = cone.Index(tile.first + CORNER_OFFSET[ci].first, tile.second + CORNER_OFFSET[ci].second);
+			inside = inside && cone.lower[k] <= base && cone.upper[k] >= base + top;
+		}
+		if (inside) continue;
+		const std::array<int, 4> ground = JunctionTileCorners(*c.terrain.At(tile.first, tile.second));
+		/* A prio tile that is a lone axis piece ramps as the main-line tile beside it. */
+		Visit probe = lt.visit;
+		if (probe.dir == DiagDirection::Invalid) {
+			for (const auto &[prio, beside] : ties) {
+				if (prio == tile && tiles.contains(beside)) probe.dir = tiles.at(beside).visit.dir;
+			}
+		}
+		const int kinds = lt.rampable && probe.dir != DiagDirection::Invalid ? 3 : 1;
+		int lowest_ok = INT_MAX;
+		int highest_ok = INT_MIN;
+		for (int l = 0; l <= top; l++) {
+			for (int kind = 0; kind < kinds; kind++) {
+				const std::optional<Choice> choice = Evaluate(c, probe, kind, l + base);
+				if (!choice.has_value()) continue;
+				bool survives = true;
+				for (int ci = 0; ci < 4 && survives && !choice->foundation; ci++) {
+					if (choice->corners[ci] == ground[ci]) continue;
+					const size_t k = cone.Index(tile.first + CORNER_OFFSET[ci].first, tile.second + CORNER_OFFSET[ci].second);
+					survives = choice->corners[ci] >= cone.lower[k] && choice->corners[ci] <= cone.upper[k];
+				}
+				if (!survives) continue;
+				lowest_ok = std::min(lowest_ok, l);
+				highest_ok = std::max(highest_ok, l);
+				break;
+			}
+		}
+		if (lowest_ok > highest_ok) return fmt::format("tile ({}, {}) cannot reach the ground the terraform must keep", tile.first, tile.second);
+		reach[i] = {lowest_ok, highest_ok};
+		cut[i] = true;
+	}
+
+	/* A reason is kept as numbers and formatted only when a failure reports it. */
+	struct Why {
+		int kind; ///< The sentence: the order of why_text's cases.
+		int a0, a1, b0, b1; ///< Two tiles or corners.
+		int k; ///< The distance or the levels.
+	};
+	std::vector<Why> reasons;
+	auto reason = [&](const Why &why) {
+		reasons.push_back(why);
 		return static_cast<uint32_t>(reasons.size() - 1);
 	};
 	auto name = [](const Tile &t) { return fmt::format("({}, {})", t.first, t.second); };
+	auto why_text = [&](const Why &w) -> std::string {
+		const Tile a{w.a0, w.a1};
+		const Tile b{w.b0, w.b1};
+		switch (w.kind) {
+			case 0: return "ramp tile " + name(a) + " to " + name(b) + " drops at most one level";
+			case 1: return "ramp tile " + name(a) + " to " + name(b) + " climbs at most one level";
+			case 2: return "flat tile " + name(a) + " continues at its level into " + name(b);
+			case 3: return fmt::format("ramp rule: {} to {} climbs at most {}", name(a), name(b), w.k);
+			case 4: return "prio tile " + name(a) + " is at the level of " + name(b);
+			case 5: return "crosser " + name(b) + " under the head " + name(a);
+			case 6: return fmt::format("the corner ({}, {}) shared by track tiles is one height", w.a0, w.a1);
+			case 7: return fmt::format("track corners ({}, {}) and ({}, {}) differ by at most {}", w.a0, w.a1, w.b0, w.b1, w.k);
+			default: return "start level of " + name(a);
+		}
+	};
 	std::set<std::tuple<size_t, size_t, int>> seen;
-	std::vector<std::vector<size_t>> neighbours(n); ///< Per variable, the variables a constraint ties it to.
+	std::vector<std::vector<std::pair<size_t, int>>> lower(n); ///< Per variable a, the (b, k) of its constraints x_a - x_b >= k.
+	std::vector<std::vector<std::pair<size_t, int>>> upper(n); ///< Per variable b, the (a, k) of its constraints x_a - x_b >= k.
 	std::set<std::pair<size_t, size_t>> equal_pairs;
 	bool feasible = true;
-	auto diff = [&](size_t a, size_t b, int k, const std::string &why) { ///< x_a - x_b >= k.
+	auto diff = [&](size_t a, size_t b, int k, const Why &why) { ///< x_a - x_b >= k.
 		if (!seen.emplace(a, b, k).second) return;
-		neighbours[a].push_back(b);
-		neighbours[b].push_back(a);
+		lower[a].emplace_back(b, k);
+		upper[b].emplace_back(a, k);
 		feasible = pos.AddDifference(a, b, k, reason(why)) && feasible;
 	};
-	auto equal = [&](size_t a, size_t b, const std::string &why) {
+	auto equal = [&](size_t a, size_t b, const Why &why) {
 		diff(a, b, 0, why);
 		diff(b, a, 0, why);
 		equal_pairs.emplace(std::min(a, b), std::max(a, b));
@@ -210,10 +355,10 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			la.next = b;
 			if (la.rampable) {
 				tiles[b].preds.push_back(a);
-				diff(var[b], var[a], -1, "ramp tile " + name(a) + " to " + name(b) + " drops at most one level");
-				diff(var[a], var[b], -1, "ramp tile " + name(a) + " to " + name(b) + " climbs at most one level");
+				diff(var[b], var[a], -1, {0, a.first, a.second, b.first, b.second, 0});
+				diff(var[a], var[b], -1, {1, a.first, a.second, b.first, b.second, 0});
 			} else {
-				equal(var[a], var[b], "flat tile " + name(a) + " continues at its level into " + name(b));
+				equal(var[a], var[b], {2, a.first, a.second, b.first, b.second, 0});
 			}
 		}
 		/* The ramp rule: L(t + tl) - L(t) <= k, not across a bridge middle. */
@@ -224,7 +369,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				const Tile a = visits[i].tile;
 				const Tile b = visits[i + train_length].tile;
 				if (broken || a == b) continue;
-				diff(var[a], var[b], -ramp_levels, fmt::format("ramp rule: {} to {} climbs at most {}", name(a), name(b), ramp_levels));
+				diff(var[a], var[b], -ramp_levels, {3, a.first, a.second, b.first, b.second, ramp_levels});
 			}
 		}
 	}
@@ -242,7 +387,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				tiles[lm.next].preds.push_back(prio);
 			}
 		}
-		equal(var[prio], var[beside], "prio tile " + name(prio) + " is at the level of " + name(beside));
+		equal(var[prio], var[beside], {4, prio.first, prio.second, beside.first, beside.second, 0});
 	}
 	for (auto &[tile, lt] : tiles) {
 		std::ranges::sort(lt.preds);
@@ -259,10 +404,20 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		const int dy = (e.second > a.second) - (e.second < a.second);
 		for (Tile t{a.first + dx, a.second + dy}; t != e; t = {t.first + dx, t.second + dy}) {
 			if (!var.contains(t)) continue;
-			diff(var[a], var[t], 0, "crosser " + name(t) + " under the head " + name(a));
-			diff(var[e], var[t], 0, "crosser " + name(t) + " under the head " + name(e));
+			diff(var[a], var[t], 0, {5, a.first, a.second, t.first, t.second, 0});
+			diff(var[e], var[t], 0, {5, e.first, e.second, t.first, t.second, 0});
 		}
 	}
+
+	/* The shrunk levels of the tiles must meet under the constraints so far. */
+	const size_t cone_mark = pos.Mark();
+	for (size_t i = 0; i < n && feasible; i++) {
+		if (!cut[i]) continue;
+		if (!pos.RestrictRange(i, reach[i].first, reach[i].second, reason({8, order_tiles[i].first, order_tiles[i].second, 0, 0, 0}))) {
+			return fmt::format("the tiles around ({}, {}) cannot meet: they cannot reach the ground the terraform must keep", order_tiles[i].first, order_tiles[i].second);
+		}
+	}
+	pos.Undo(cone_mark);
 
 	/* The variable of each corner of a track tile: a rampable tile's exit-side corners are the next tile's level. */
 	std::map<MapCorner, std::vector<size_t>> corner_vars;
@@ -279,7 +434,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	/* A corner shared by two track tiles is one height. */
 	for (const auto &[corner, vars] : corner_vars) {
 		for (size_t i = 1; i < vars.size(); i++) {
-			if (vars[i] != vars[0]) equal(vars[0], vars[i], fmt::format("the corner ({}, {}) shared by track tiles is one height", corner.first, corner.second));
+			if (vars[i] != vars[0]) equal(vars[0], vars[i], {6, corner.first, corner.second, 0, 0, 0});
 		}
 	}
 	/* Track corners within Manhattan distance d differ by at most d (the terraform slope limit; the propagation moves anything steeper). */
@@ -291,7 +446,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				if (d == 0 || d > SLOPE_RANGE) continue;
 				const auto other = corner_vars.find({corner.first + dx, corner.second + dy});
 				if (other == corner_vars.end() || other->second[0] == vars[0]) continue;
-				diff(vars[0], other->second[0], -d, fmt::format("track corners ({}, {}) and ({}, {}) differ by at most {}", corner.first, corner.second, other->first.first, other->first.second, d));
+				diff(vars[0], other->second[0], -d, {7, corner.first, corner.second, other->first.first, other->first.second, d});
 			}
 		}
 	}
@@ -301,7 +456,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		size_t count = 0;
 		for (uint32_t r : pos.Explain()) {
 			if (r >= reasons.size()) continue;
-			text += (count++ == 0 ? " " : "; ") + reasons[r];
+			text += (count++ == 0 ? " " : "; ") + why_text(reasons[r]);
 			if (count >= 3) break;
 		}
 		return text;
@@ -337,7 +492,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			}
 			if (best == INT_MIN) return fmt::format("no level for the tile {}", name(t));
 			level[i] = best + base;
-			if (!pos.RestrictRange(i, best, best, reason("start level of " + name(t)))) return explain();
+			if (!pos.RestrictRange(i, best, best, reason({8, t.first, t.second, 0, 0, 0}))) return explain();
 		}
 	}
 	pos.Undo(start_mark);
@@ -393,19 +548,18 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		bool moved = false;
 		for (const auto &[key, members] : groups) {
 			const std::set<size_t> member_set(members.begin(), members.end());
-			std::set<size_t> outside;
+			/* The range the constraints to the held outside tiles leave the group (all have k <= 0, so no propagation through the others is needed). */
+			int lo = 0;
+			int up = top;
 			for (size_t m : members) {
-				for (size_t o : neighbours[m]) {
-					if (!member_set.contains(o)) outside.insert(o);
+				for (const auto &[o, k] : lower[m]) {
+					if (!member_set.contains(o)) lo = std::max(lo, level[o] - base + k);
+				}
+				for (const auto &[a, k] : upper[m]) {
+					if (!member_set.contains(a)) up = std::min(up, level[a] - base - k);
 				}
 			}
-			const size_t mark = pos.Mark();
-			bool held = true;
-			for (size_t o : outside) held = held && pos.RestrictRange(o, level[o] - base, level[o] - base);
-			const int lo = held ? pos.Lo(members.front()) : 0;
-			const int up = held ? pos.Up(members.front()) : -1;
-			pos.Undo(mark);
-			if (!held || lo >= up) continue;
+			if (lo >= up) continue;
 			std::set<size_t> affected(member_set);
 			for (size_t m : members) {
 				for (const Tile &p : tiles[order_tiles[m]].preds) affected.insert(var[p]);
