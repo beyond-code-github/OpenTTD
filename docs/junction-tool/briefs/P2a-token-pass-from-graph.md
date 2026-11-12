@@ -56,3 +56,10 @@ void PlaceDragSignals(const std::vector<JunctionPiece> &pieces, uint8_t sd, cons
 
 ## Report
 The standard report. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the lane-event stop)
+Option 1, with the sibling route: the doubled leg's lane split and lane merge are switches both copies pass, located by the copy that bends there. Signature:
+```cpp
+std::vector<SwitchEvent> JunctionRouteEvents(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const std::vector<JunctionTrackRoute> &routes, size_t r);
+```
+For routes[r], on each doubled edge e of its lane path: the sibling route s = the route with the same lane path and the other copy. Lane split tile = the first piece tagged (edge e, copy 1, the SBend token of programs.copies[e]) in whichever of r/s is the copy-1 route; lane merge tile = the last piece tagged (edge e, copy 0, the SBend token of programs.edges[e]) in the copy-0 route. The event is routes[r]'s first non-bridge piece on that tile (split: true; merge: false). Node events as the brief says. Routes are graph output (tagged), so this is not a layout read. Callers pass the whole route vector. Test 2 compares per route as before. Also update the fourth caller, src/tests/junction_design.cpp:438.
