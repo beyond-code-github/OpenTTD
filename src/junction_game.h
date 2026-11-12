@@ -17,6 +17,7 @@
 #include "junction_generator.h"
 #include "junction_terrain.h"
 #include "junction_train_model.h"
+#include "engine_type.h"
 
 struct Vehicle;
 
@@ -42,6 +43,7 @@ struct JunctionPickedTrain {
 	JunctionTrainParams loaded; ///< Loaded mass (sum of GetMaxWeight over parts), effective power, TE and air drag from the caches; max_speed = min(train max, rail type max).
 	uint8_t tl = 0; ///< Train length in whole tiles, rounded up: ceil(cached_total_length / TILE_SIZE).
 	std::string name; ///< The vehicle's name, as GetString(STR_VEHICLE_NAME, id) gives it.
+	std::vector<EngineID> engines; ///< The engine IDs of the train's parts, front to back, for the image.
 };
 
 /** Read a train for the junction tool; std::nullopt if v is not a train of the local company. */

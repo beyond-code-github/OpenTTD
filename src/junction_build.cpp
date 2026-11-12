@@ -21,6 +21,7 @@ void JunctionSequencer::Start(std::vector<JunctionBuildStep> steps)
 {
 	this->steps = std::move(steps);
 	this->next = 0;
+	this->spent = 0;
 	this->awaiting = false;
 	this->state = this->steps.empty() ? JunctionBuildState::Done : JunctionBuildState::Building;
 }

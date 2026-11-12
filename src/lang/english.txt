@@ -2902,6 +2902,7 @@ STR_JUNCTION_STATUS_PLAN_FAILED                                :{BLACK}{RAW_STRI
 STR_JUNCTION_STATUS_NEARBY                                      :{BLACK}Nearest fit shown, {NUM} tiles from the cursor
 STR_JUNCTION_STATUS_READY                                       :{BLACK}Click to build
 STR_JUNCTION_STATUS_BUILDING                                    :{BLACK}Building... {NUM} of {NUM}
+STR_JUNCTION_STATUS_SPENT                                       :{BLACK}Spent {CURRENCY_LONG}, quoted {CURRENCY_LONG}
 STR_JUNCTION_STATUS_FAILED                                      :{RED}Stopped after {NUM} of {NUM} steps
 STR_JUNCTION_PICK_TRAIN                                         :{BLACK}Pick train
 STR_JUNCTION_PICK_TRAIN_TOOLTIP                                 :{BLACK}Click one of your trains to size the junction for it

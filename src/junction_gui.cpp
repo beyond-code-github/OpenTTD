@@ -38,6 +38,10 @@
 #include "vehicle_gui.h"
 #include "company_func.h"
 #include "train.h"
+#include "engine_base.h"
+#include "engine_gui.h"
+#include "vehicle_func.h"
+#include "zoom_func.h"
 #include "settings_type.h"
 #include "debug.h"
 #include "widgets/junction_widget.h"
@@ -53,6 +57,7 @@
 
 #include <array>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <map>
 #include <memory>
@@ -347,7 +352,6 @@ static uint8_t _junction_rotation = 0; ///< Quarter turns applied to the junctio
 static bool _junction_mirrored = false; ///< Whether the junction being placed is mirrored.
 static constexpr bool _junction_projection = true; ///< The hover plans on the projection pipeline with terraform (H2); the earlier generator is no longer reachable from the window.
 static std::optional<VehicleID> _junction_picked_train; ///< The last picked design train, remembered between openings of the window (game session only).
-static uint8_t _junction_prio_tiles = 0; ///< The last slider choice, remembered between openings of the window; 0 = the strict maximum.
 
 /** What a generated junction depends on: the spot, the orientation and the generator inputs. */
 struct JunctionGenerateKey {
@@ -441,6 +445,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	std::vector<std::optional<BridgeType>> build_bridge_types; ///< Bridge types chosen for the junction being built, per layout bridge.
 	JunctionBuildState last_state = JunctionBuildState::Idle; ///< Sequencer state at the previous tick, to detect a failure.
 	Money placement_cost = 0; ///< Cost of the junction at the cursor.
+	Money build_quote = 0; ///< The quote (estimate total) of the junction being built.
+	bool show_spent = false; ///< A build has finished: the status shows spent and quoted until the hover moves to another tile.
 	bool placement_affordable = false; ///< Whether the local company can pay for the junction at the cursor.
 	StringID placement_error = INVALID_STRING_ID; ///< First error if the placement is invalid, else INVALID_STRING_ID.
 	bool has_placement = false; ///< The cursor is over the map and the fields above are set.
@@ -468,7 +474,29 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			if (v != nullptr && v->type == VehicleType::Train && v->IsFrontEngine() && v->owner == _local_company) this->picked_train = ReadJunctionTrain(v);
 			if (!this->picked_train.has_value()) _junction_picked_train = std::nullopt;
 		}
-		this->prio_choice = _junction_prio_tiles;
+		/* Else the train saved in the client config: its numbers are all the spec needs. */
+		if (!this->picked_train.has_value() && _settings_client.gui.junction_train_mass > 0) {
+			JunctionPickedTrain saved;
+			saved.loaded.power_hp = _settings_client.gui.junction_train_power;
+			saved.loaded.max_te = _settings_client.gui.junction_train_te;
+			saved.loaded.mass_t = _settings_client.gui.junction_train_mass;
+			saved.loaded.air_drag = _settings_client.gui.junction_train_air_drag;
+			saved.loaded.max_speed = _settings_client.gui.junction_train_speed;
+			saved.tl = Clamp<uint8_t>(_settings_client.gui.junction_train_tl, 2, 12);
+			saved.name = _settings_client.gui.junction_train_name;
+			std::string_view rest = _settings_client.gui.junction_train_engines;
+			while (!rest.empty()) {
+				const size_t comma = rest.find(',');
+				const std::string_view item = rest.substr(0, comma);
+				rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+				uint32_t id = 0;
+				if (std::from_chars(item.data(), item.data() + item.size(), id).ec != std::errc{}) continue;
+				if (Engine::IsValidID(id) && Engine::Get(id)->type == VehicleType::Train) saved.engines.push_back(static_cast<EngineID>(id));
+			}
+			this->picked_train = std::move(saved);
+			this->tl = this->picked_train->tl;
+		}
+		this->prio_choice = _settings_client.gui.junction_prio;
 		this->Regenerate();
 	}
 
@@ -1043,7 +1071,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			case WID_BJ_TL_DECREASE:
 				if (this->tl > 2) {
 					this->tl--;
-					this->prio_choice = _junction_prio_tiles = 0;
+					this->prio_choice = _settings_client.gui.junction_prio = 0;
 					this->Regenerate();
 				}
 				break;
@@ -1051,7 +1079,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			case WID_BJ_TL_INCREASE:
 				if (this->tl < 12) {
 					this->tl++;
-					this->prio_choice = _junction_prio_tiles = 0;
+					this->prio_choice = _settings_client.gui.junction_prio = 0;
 					this->Regenerate();
 				}
 				break;
@@ -1063,7 +1091,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				if (ClickSliderWidget(this->GetWidget<NWidgetBase>(widget)->GetCurrentRect(), pt, std::min(this->tl, sized), sized, 0, value)) {
 					const uint8_t choice = value >= sized ? 0 : value;
 					if (choice != this->prio_choice) {
-						this->prio_choice = _junction_prio_tiles = choice;
+						this->prio_choice = _settings_client.gui.junction_prio = choice;
 						this->Regenerate();
 					}
 				}
@@ -1097,8 +1125,19 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->tl = picked->tl;
 		this->picked_train = std::move(picked);
 		_junction_picked_train = v->First()->index;
+		const JunctionPickedTrain &t = *this->picked_train;
+		_settings_client.gui.junction_train_power = t.loaded.power_hp;
+		_settings_client.gui.junction_train_te = t.loaded.max_te;
+		_settings_client.gui.junction_train_mass = t.loaded.mass_t;
+		_settings_client.gui.junction_train_air_drag = t.loaded.air_drag;
+		_settings_client.gui.junction_train_speed = t.loaded.max_speed;
+		_settings_client.gui.junction_train_tl = t.tl;
+		_settings_client.gui.junction_train_name = t.name;
+		std::string engines;
+		for (const EngineID e : t.engines) engines += fmt::format("{}{}", engines.empty() ? "" : ",", e.base());
+		_settings_client.gui.junction_train_engines = std::move(engines);
 		this->SetWidgetDirty(WID_BJ_TRAIN_IMAGE);
-		this->prio_choice = _junction_prio_tiles = 0;
+		this->prio_choice = _settings_client.gui.junction_prio = 0;
 		this->Regenerate();
 		this->SetWidgetDirty(WID_BJ_TRAIN);
 		_junction_picking_train = false;
@@ -1156,7 +1195,21 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (widget == WID_BJ_TRAIN_IMAGE) {
 			/* The remembered train, if it is still there; a longer one is clipped at the widget's end. */
 			const Train *t = _junction_picked_train.has_value() && this->picked_train.has_value() ? Train::GetIfValid(*_junction_picked_train) : nullptr;
-			if (t != nullptr) DrawTrainImage(t, r.Shrink(WidgetDimensions::scaled.framerect), VehicleID::Invalid(), EngineImageType::InDepot, 0);
+			const Rect ir = r.Shrink(WidgetDimensions::scaled.framerect);
+			if (t != nullptr) {
+				DrawTrainImage(t, ir, VehicleID::Invalid(), EngineImageType::InDepot, 0);
+			} else if (this->picked_train.has_value()) {
+				/* A train saved in the client config: each engine's sprite, left to right. */
+				int x = ir.left;
+				for (const EngineID e : this->picked_train->engines) {
+					const RailVehicleInfo *rvi = RailVehInfo(e);
+					const GRFFile *grf = Engine::Get(e)->GetGRF();
+					const int ref_width = grf != nullptr && IsCustomVehicleSpriteNum(rvi->image_index) ? grf->traininfo_vehicle_width : TRAININFO_DEFAULT_VEHICLE_WIDTH;
+					const int width = ScaleSpriteTrad((VEHICLE_LENGTH - rvi->shorten_factor) * ref_width / VEHICLE_LENGTH);
+					DrawTrainEngine(ir.left, ir.right, x + width / 2, CentreBounds(ir.top, ir.bottom, 0), e, GetEnginePalette(e, _local_company), EngineImageType::InDepot);
+					x += width;
+				}
+			}
 			return;
 		}
 		if (widget != WID_BJ_PRIO_SLIDER) return;
@@ -1232,6 +1285,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->build_layout = layout;
 		this->build_origin = origin;
 		this->build_height = estimate.height;
+		this->build_quote = estimate.total;
+		this->show_spent = false;
 		this->build_bridge_types = bridge_types;
 		this->last_state = JunctionBuildState::Building;
 		/* The terraform steps come first, then the rail, bridge and signal steps. */
@@ -1247,7 +1302,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	/** @return The cost line of the placement at the cursor; empty when there is none. */
 	std::string CostText() const
 	{
-		if (!this->has_placement) return {};
+		if (!this->has_placement || this->show_spent) return {};
 		if (this->placement_error != INVALID_STRING_ID) return GetString(STR_JUNCTION_TOOLTIP_INVALID, this->placement_error);
 		if (!this->placement_affordable) return GetString(STR_JUNCTION_TOOLTIP_UNAFFORDABLE, this->placement_cost, GameJunctionPricing(this->railtype).AvailableMoney());
 		return GetString(STR_JUNCTION_TOOLTIP_COST, this->placement_cost);
@@ -1258,6 +1313,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	{
 		const JunctionSequencer &seq = GetJunctionSequencer();
 		if (seq.GetState() == JunctionBuildState::Idle) {
+			if (this->show_spent) return GetString(STR_JUNCTION_STATUS_SPENT, seq.spent, this->build_quote);
 			if (this->pick_error != INVALID_STRING_ID && _junction_picking_train) return GetString(this->pick_error);
 			if (this->generate_error != INVALID_STRING_ID) return GetString(this->generate_error);
 			if (!this->picked_train.has_value()) return GetString(STR_JUNCTION_STATUS_PICK_TRAIN);
@@ -1300,6 +1356,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 		if (seq.GetState() == JunctionBuildState::Done) {
 			if (_settings_client.sound.confirm) SndPlayTileFx(SND_20_CONSTRUCTION_RAIL, this->build_origin);
+			Debug(Facility::Misc, Severity::Debug1, "Junction built: spent {}, quoted {}", seq.spent.base(), this->build_quote.base());
+			this->show_spent = true;
 			seq.Cancel();
 			/* The map changed, so earlier results no longer hold. */
 			this->cache.clear();
@@ -1394,6 +1452,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (tile != this->hover_tile) {
 			this->hover_tile = tile;
 			this->hover_since = now;
+			this->show_spent = false;
 			this->shown_tooltip.clear(); // The tooltip is placed where it is shown, so it is shown anew at each tile.
 			this->ShowHover();
 		}

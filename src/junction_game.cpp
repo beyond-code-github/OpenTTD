@@ -67,6 +67,7 @@ std::optional<JunctionPickedTrain> ReadJunctionTrain(const Vehicle *v)
 
 	picked.tl = static_cast<uint8_t>(Clamp<uint32_t>(CeilDiv(first->gcache.cached_total_length, TILE_SIZE), 2, 12));
 	picked.name = GetString(STR_VEHICLE_NAME, first->index);
+	for (const Train *part = first; part != nullptr; part = part->Next()) picked.engines.push_back(part->engine_type);
 	return picked;
 }
 
@@ -615,6 +616,7 @@ JunctionSequencer &GetJunctionSequencer()
  */
 void CcJunctionStep([[maybe_unused]] Commands cmd, const CommandCost &result, [[maybe_unused]] TileIndex tile)
 {
+	if (result.Succeeded()) GetJunctionSequencer().spent += result.GetCost();
 	GetJunctionSequencer().OnStepResult(result.Succeeded());
 }
 
@@ -625,8 +627,9 @@ void CcJunctionStep([[maybe_unused]] Commands cmd, const CommandCost &result, [[
  * @param cost The cost of the command.
  * @param tile The tile the command was executed on.
  */
-void CcJunctionTerraformStep([[maybe_unused]] Commands cmd, const CommandCost &result, [[maybe_unused]] Money cost, [[maybe_unused]] TileIndex tile)
+void CcJunctionTerraformStep([[maybe_unused]] Commands cmd, const CommandCost &result, Money cost, [[maybe_unused]] TileIndex tile)
 {
+	if (result.Succeeded()) GetJunctionSequencer().spent += cost;
 	GetJunctionSequencer().OnStepResult(result.Succeeded());
 }
 

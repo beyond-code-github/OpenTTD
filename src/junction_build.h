@@ -12,6 +12,8 @@
 
 #include "junction_layout.h"
 
+#include "economy_type.h"
+
 #include <span>
 #include <vector>
 
@@ -46,6 +48,8 @@ public:
 	size_t GetDone() const { return this->next; }
 	size_t GetTotal() const { return this->steps.size(); }
 	std::span<const JunctionBuildStep> GetRemaining() const;
+
+	Money spent = 0; ///< Sum of the costs the executed steps reported.
 
 private:
 	std::vector<JunctionBuildStep> steps; ///< Steps in build order.

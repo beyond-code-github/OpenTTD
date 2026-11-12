@@ -273,6 +273,15 @@ struct GUISettings {
 	std::string junction_ml_notation; ///< Mainline notation last used in the junction window.
 	std::string junction_branch_notation; ///< Branch notation last used in the junction window.
 	uint8_t junction_tl; ///< Train length in tiles last used in the junction window.
+	uint32_t junction_train_power; ///< Power (hp) of the junction design train, remembered across sessions; 0 with mass 0 = none.
+	uint32_t junction_train_te; ///< Maximum tractive effort of the junction design train.
+	uint32_t junction_train_mass; ///< Loaded mass (t) of the junction design train; 0 = no train is remembered.
+	uint32_t junction_train_air_drag; ///< Air drag of the junction design train.
+	uint16_t junction_train_speed; ///< Speed cap of the junction design train.
+	uint8_t junction_train_tl; ///< Length in tiles of the junction design train.
+	std::string junction_train_name; ///< Name of the junction design train.
+	std::string junction_train_engines; ///< Engine IDs of the parts of the junction design train, as a comma list.
+	uint8_t junction_prio; ///< Prio slider choice last used in the junction window; 0 = the strict maximum.
 	uint8_t junction_station_platforms; ///< Number of platforms last used in the junction station window.
 	TimerGameCalendar::Year semaphore_build_before; ///< build semaphore signals automatically before this year
 	uint8_t news_message_timeout; ///< how much longer than the news message "age" should we keep the message in the history
