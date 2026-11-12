@@ -1192,6 +1192,76 @@ TEST_CASE("topology: the LL_RR seed builds a node template", "[junction][topolog
 	REQUIRE(tpl.error.empty());
 }
 
+TEST_CASE("topology: the graph builds the traced template", "[junction][topology]")
+{
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		std::string error;
+		JunctionTrackPlacement placement;
+		JunctionTrackStructure cut;
+		JunctionTrackPrograms programs;
+		std::vector<JunctionLanePath> paths;
+		JunctionTrackGraph graph;
+		std::vector<JunctionTrackRoute> routes;
+		const JunctionLayout render = RenderOf(*t, 64, &error, &placement, &cut, &programs, &paths, &graph, &routes);
+		INFO(error);
+		REQUIRE(!render.tracks.empty());
+		JunctionSpec spec = MakeTestJunctionSpec();
+		spec.max_bridge_middle = 64;
+		const JunctionNodeInput from_graph = JunctionNodeInputOfGraph(*t, paths, graph, cut, programs, placement, routes);
+		const JunctionNodeTemplate got = BuildJunctionNodeTemplate(from_graph, spec);
+		const JunctionNodeTemplate want = BuildJunctionNodeTemplate(TraceJunctionNodeInput(render, spec, *t), spec);
+		REQUIRE(want.error.empty());
+		const std::string diff = DiffJunctionNodeTemplates(got, want);
+		INFO(diff);
+		CHECK(diff.empty());
+	}
+}
+
+TEST_CASE("topology: route pieces carry their graph tags", "[junction][topology]")
+{
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		std::string error;
+		JunctionTrackPlacement placement;
+		JunctionTrackStructure cut;
+		JunctionTrackPrograms programs;
+		std::vector<JunctionLanePath> paths;
+		JunctionTrackGraph graph;
+		std::vector<JunctionTrackRoute> routes;
+		RenderOf(*t, 64, &error, &placement, &cut, &programs, &paths, &graph, &routes);
+		INFO(error);
+		REQUIRE(!routes.empty());
+		for (const JunctionTrackRoute &route : routes) {
+			REQUIRE(route.tags.size() == route.pieces.size());
+			const std::vector<uint32_t> &edges = graph.path_edges[route.path];
+			for (const JunctionTrackPieceTag &tag : route.tags) {
+				CHECK(std::ranges::find(edges, tag.edge) != edges.end());
+				CHECK(tag.copy == route.copy);
+			}
+			/* A port edge's Fan tokens: the pieces tagged with the token run from the span's first tile to its last. */
+			for (const uint32_t e : edges) {
+				const JunctionTrackEdge &edge = graph.edges[e];
+				if (edge.from.node && edge.to.node) continue;
+				const bool copy1 = route.copy == 1 && placement.copies[e].size() != 0;
+				const std::vector<JunctionTrackStep> &tokens = copy1 ? programs.copies[e] : programs.edges[e];
+				const std::vector<JunctionTrackSpan> &spans = copy1 ? placement.copies[e] : placement.edges[e];
+				for (size_t k = 0; k < tokens.size(); k++) {
+					if (tokens[k].kind != JunctionTrackStep::Kind::Fan) continue;
+					std::vector<size_t> at;
+					for (size_t i = 0; i < route.tags.size(); i++) {
+						if (route.tags[i].edge == e && route.tags[i].token == k) at.push_back(i);
+					}
+					if (at.empty()) continue;
+					INFO("edge " << e << " token " << k << " path " << route.path << " copy " << static_cast<int>(route.copy));
+					CHECK(route.pieces[at.front()].tile.x == spans[k].first.x);
+					CHECK(route.pieces[at.front()].tile.y == spans[k].first.y);
+					CHECK(route.pieces[at.back()].tile.x == spans[k].second.x);
+					CHECK(route.pieces[at.back()].tile.y == spans[k].second.y);
+				}
+			}
+		}
+	}
+}
+
 TEST_CASE("topology: link directions match the T's path directions", "[junction][topology]")
 {
 	std::string error;

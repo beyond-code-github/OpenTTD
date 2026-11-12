@@ -131,15 +131,20 @@ struct JunctionNodeInput {
 	std::vector<JunctionPath> paths; ///< In the checker's path order.
 	std::vector<bool> through; ///< Per path: a through movement (IsThroughPath).
 	std::vector<bool> exit; ///< Per path: an exit, main line to a group that is not (IsExitPath).
-	std::map<std::pair<int, int>, TrackBits> used; ///< Per tile, every track on it (UsedTracks).
 	std::vector<std::vector<SwitchEvent>> events; ///< Per path, its switch events (SwitchEventsOf).
 	std::vector<std::vector<bool>> slots; ///< Per path and piece: whether a signal may stand there (IsLegalSignalPiece or IsSignalledPiece).
 	std::vector<JunctionBridge> bridges; ///< Every bridge or tunnel.
+	std::vector<std::vector<JunctionTrackPieceTag>> tags; ///< Per path and piece: its graph element; empty when traced from a layout.
 };
 /** The template input traced from a flat layout (today's only producer). */
 JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const JunctionSpec &spec);
 /** The template input traced from a flat layout whose ports and movements come from a topology (G1d). */
 JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const JunctionSpec &spec, const JunctionTopology &topology);
+/**
+ * The template input built from the graph (D201, D213): no layout is read. Paths in the checker's order (RECON-graph-input Q1), events from the graph's nodes and the doubled legs' lane split/merge (Q4), slots by the geometric rule (Q5), bridges in route-appearance order (Q6), every piece tagged.
+ * @param routes RenderJunctionTrackPlacement's routes.
+ */
+JunctionNodeInput JunctionNodeInputOfGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, const std::vector<JunctionTrackRoute> &routes);
 /** The node template of an input (DESIGN-N3 §1-§8). */
 JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionNodeInput &input, const JunctionSpec &spec);
 /** Read the template of a flat layout. */

@@ -112,7 +112,7 @@ static const char *RoleName(JunctionPortRole role)
 }
 
 /** The T role of a T topology slot: slot 0 EIn, 1 WOut, 2 NIn, 3 SOut, 4 WIn, 5 EOut. */
-static JunctionPortRole TRoleOfSlot(size_t slot)
+JunctionPortRole TRoleOfSlot(size_t slot)
 {
 	static const JunctionPortRole roles[] = {JunctionPortRole::EIn, JunctionPortRole::WOut, JunctionPortRole::NIn, JunctionPortRole::SOut, JunctionPortRole::WIn, JunctionPortRole::EOut};
 	return slot < lengthof(roles) ? roles[slot] : JunctionPortRole::EIn;

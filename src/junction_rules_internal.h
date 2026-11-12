@@ -29,6 +29,9 @@ using SwitchEvent = std::pair<bool, size_t>;
 /** The six movements of a T junction. */
 const std::vector<std::pair<JunctionPortRole, JunctionPortRole>> &JunctionTMovements();
 
+/** The T's port role of a slot (JunctionTTopology slot order); EIn beyond. */
+JunctionPortRole TRoleOfSlot(size_t slot);
+
 /** The track bits of all layout entries on a tile. */
 TrackBits TracksAt(const JunctionLayout &layout, TileIndexDiffC tile);
 
