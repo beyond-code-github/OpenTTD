@@ -20,3 +20,6 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 
 ## Report
 The standard report. When you have reported, stop.
+
+## Amendment 1 (engineer: "The tooltip showing the estimate vs actual was replaced instantly by feedback about the ground under the cursor")
+4. The "spent vs quoted" result moves out of the hover tooltip: when a build finishes (where QL2 sets `show_spent = true`, src/junction_gui.cpp ~:1360), show it with the game's information message (`ShowErrorMessage(GetEncodedString(STR_JUNCTION_STATUS_SPENT, spent, quote), {}, WarningLevel::Info, x, y)` at the junction's screen position, as command.cpp ~:214 shows an info message at a tile; read error_gui.cpp ~:280-300 for the signature), which stays on screen for its usual time whatever the cursor does. Remove `show_spent` and its uses (the tooltip goes back to cost/status only). Keep the Debug line. Add to the manual checklist: after a build, an information message with spent and quoted appears and stays while the cursor moves.
