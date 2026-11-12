@@ -28,3 +28,11 @@ docs/junction-tool/RECON-graph-input.md, at most ~100 lines, one section per que
 
 ## Report
 References read; the recipe; any field that cannot come from the graph (and why); `git status --porcelain` and `git log -1`. When you have reported, stop.
+
+## Additions (DESIGN-G1 §13.8 item 10, FABLE-projection)
+9. **The token pass's own layout reads:** SignalJunctionTrackRoutes reads SwitchEventsOf over layout tiles (junction_topology.cpp ~:1861, :1952, :2017, :2073), finds the joiner by tile coincidence (~:1863-1876), and calls IsLegalSignalPiece/IsSignalledPiece on the layout (~:1969, :2046). For each: what graph data replaces it (nodes, routes, tokens)?
+10. **The builder's tile-coincidence reads:** prio detection and joiner_row (junction_nodes.cpp ~:355-365), anything else in NodeBuilder that compares tiles across paths. Graph replacement for each.
+11. **LL_RR** in Q2 (pieces) and Q8 (oracle): include it; NP2 made the LL_RR seed traceable, so the oracle is exact equality (list order ignored) for both topologies.
+12. **Timing (Release, median of 5):** one LL_RR state: placement (CutJunctionTrackBridges), routes (render), template build, solve on flat facts. Same for the T.
+13. **Doubling decorations:** the lane split/merge of doubled edges are not graph nodes: where are their tiles in placement/programs (§11.10: copy 1's SBend first piece, copy 0's SBend last)?
+14. **Anchor:** what NodeAnchorShift and tpl.anchor are used for (offsets in GenerateJunctionNear / the search), and whether the placement's port slots give the same translation reference.
