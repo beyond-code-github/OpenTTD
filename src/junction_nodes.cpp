@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <climits>
 #include <cstdlib>
+#include <functional>
 #include <map>
 #include <set>
 #include <tuple>
@@ -773,6 +774,7 @@ JunctionNodeInput JunctionNodeInputOfGraph(const JunctionTopology &topology, con
 		}
 		input.slots.push_back(std::move(slots));
 		input.tags.push_back(route.tags);
+		input.routes.emplace_back(route.path, route.copy);
 	}
 	return input;
 }
@@ -1054,7 +1056,8 @@ std::vector<int> JunctionNodeSnap(const JunctionNodeTemplate &tpl, JunctionPosit
 	return values;
 }
 
-JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const std::vector<int> &values)
+/** The tracks and bridges at the values, in the template's frame (not normalised). */
+static JunctionLayout RenderJunctionNodeTracksRaw(const JunctionNodeTemplate &tpl, const std::vector<int> &values)
 {
 	std::map<std::pair<int, int>, TrackBits> tiles;
 	auto shift = [&](uint16_t cls) { return values[cls] - tpl.flat[cls]; };
@@ -1097,8 +1100,124 @@ JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const s
 		moved.end.y = static_cast<int16_t>(moved.end.y + shift(node_bridge.ycls));
 		layout.bridges.push_back(moved);
 	}
+	return layout;
+}
+
+JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const std::vector<int> &values)
+{
+	JunctionLayout layout = RenderJunctionNodeTracksRaw(tpl, values);
 	NormaliseJunctionLayout(layout);
 	return layout;
+}
+
+std::vector<JunctionTrackRoute> RenderJunctionNodeRoutes(const JunctionNodeTemplate &tpl, const JunctionNodeInput &input, const std::vector<int> &values)
+{
+	auto shift = [&](uint16_t cls) { return values[cls] - tpl.flat[cls]; };
+	std::map<std::tuple<int, int, int>, const JunctionNodePiece *> piece_of;
+	for (const JunctionNodePiece &piece : tpl.pieces) piece_of.emplace(std::tuple{piece.tile.x, piece.tile.y, static_cast<int>(piece.track)}, &piece);
+
+	std::vector<JunctionTrackRoute> routes;
+	for (size_t i = 0; i < tpl.paths.size(); i++) {
+		const std::vector<JunctionPiece> &pieces = input.paths[i].pieces;
+		const std::vector<JunctionTrackPieceTag> &tags = input.tags[i];
+		const JunctionNodePath &node_path = tpl.paths[i];
+		JunctionTrackRoute route{input.routes[i].first, input.routes[i].second, {}, {}};
+
+		/* The input piece of each point. */
+		std::vector<size_t> at;
+		for (const uint32_t point : node_path.points) {
+			size_t k = at.empty() ? 0 : at.back() + 1;
+			const JunctionNodePoint &p = tpl.points[point];
+			while (k < pieces.size() && !(pieces[k].tile.x == p.tile.x && pieces[k].tile.y == p.tile.y && pieces[k].trackdir == p.trackdir)) k++;
+			if (k == pieces.size()) return {};
+			at.push_back(k);
+		}
+		if (at.empty()) return {};
+
+		auto emit = [&](JunctionPiece piece, const JunctionTrackPieceTag &tag) {
+			route.pieces.push_back(piece);
+			route.tags.push_back(tag);
+		};
+		/* A piece of a rigid run, shifted by its classes (a bridge piece by its bridge's). */
+		auto emit_rigid = [&](size_t k) {
+			JunctionPiece piece = pieces[k];
+			int dx;
+			int dy;
+			if (piece.on_bridge) {
+				const auto it = std::ranges::find_if(tpl.bridges, [&](const JunctionNodeBridge &b) {
+					const JunctionBridge &br = b.bridge;
+					if (br.start.x == br.end.x) return piece.tile.x == br.start.x && piece.tile.y >= std::min(br.start.y, br.end.y) && piece.tile.y <= std::max(br.start.y, br.end.y);
+					return br.start.y == br.end.y && piece.tile.y == br.start.y && piece.tile.x >= std::min(br.start.x, br.end.x) && piece.tile.x <= std::max(br.start.x, br.end.x);
+				});
+				if (it == tpl.bridges.end()) return false;
+				dx = shift(it->cls);
+				dy = shift(it->ycls);
+			} else {
+				const auto it = piece_of.find({piece.tile.x, piece.tile.y, static_cast<int>(TrackdirToTrack(piece.trackdir))});
+				if (it == piece_of.end()) return false;
+				dx = shift(it->second->cls);
+				dy = shift(it->second->ycls);
+			}
+			piece.tile.x = static_cast<int16_t>(piece.tile.x + dx);
+			piece.tile.y = static_cast<int16_t>(piece.tile.y + dy);
+			emit(piece, tags[k]);
+			return true;
+		};
+
+		if (!emit_rigid(at[0])) return {};
+		for (size_t j = 0; j + 1 < at.size(); j++) {
+			const size_t a = at[j];
+			const size_t b = at[j + 1];
+			const auto link_it = std::ranges::find_if(tpl.links, [&](const JunctionNodeLink &l) { return l.from == node_path.points[j] && l.to == node_path.points[j + 1]; });
+			if (link_it == tpl.links.end()) return {};
+			const JunctionNodeLink &link = *link_it;
+			if (!link.free) {
+				for (size_t k = a + 1; k < b; k++) {
+					if (!emit_rigid(k)) return {};
+				}
+			} else {
+				const JunctionNodePoint &from = tpl.points[link.from];
+				const JunctionNodePoint &to = tpl.points[link.to];
+				JunctionTrackPieceTag tag = tags[a];
+				tag.token = JunctionTrackPieceTag::RUN;
+				if (a + 1 < b) tag = tags[a + 1];
+				if (link.diagonal) {
+					const auto diag_it = std::ranges::find_if(tpl.diagonals, [&](const JunctionNodeDiagonal &d) { return &tpl.links[d.link] == &link; });
+					if (diag_it == tpl.diagonals.end()) return {};
+					const JunctionRaster raster = NodeDiagonalRaster(tpl, *diag_it, diag_it->halves + 2 * NodeDiagonalSteps(tpl, *diag_it, values));
+					for (size_t k = 1; k + 1 < raster.pieces.size(); k++) {
+						JunctionPiece piece = raster.pieces[k];
+						piece.tile.x = static_cast<int16_t>(piece.tile.x + shift(from.cls));
+						piece.tile.y = static_cast<int16_t>(piece.tile.y + shift(from.ycls));
+						emit(piece, tag);
+					}
+				} else {
+					JunctionPiece piece = pieces[a];
+					const int x_from = from.tile.x + shift(from.cls);
+					const int y_from = from.tile.y + shift(from.ycls);
+					const int x_to = to.tile.x + shift(to.cls);
+					const int y_to = to.tile.y + shift(to.ycls);
+					if (link.axis == Axis::X) {
+						const int step = x_to > x_from ? 1 : -1;
+						for (int x = x_from + step; x != x_to; x += step) {
+							piece.tile = {static_cast<int16_t>(x), static_cast<int16_t>(y_from)};
+							emit(piece, tag);
+						}
+					} else {
+						const int step = y_to > y_from ? 1 : -1;
+						for (int y = y_from + step; y != y_to; y += step) {
+							piece.tile = {static_cast<int16_t>(x_from), static_cast<int16_t>(y)};
+							emit(piece, tag);
+						}
+					}
+				}
+			}
+			if (!emit_rigid(b)) return {};
+		}
+		routes.push_back(std::move(route));
+	}
+	std::ranges::stable_sort(routes, [](const JunctionTrackRoute &a, const JunctionTrackRoute &b) { return std::pair{a.path, a.copy} < std::pair{b.path, b.copy}; });
+	return routes;
 }
 
 bool JunctionNodeTrackFits(const JunctionFacts &facts, int x, int y, TrackBits bits)
@@ -1138,7 +1257,8 @@ static Track NodeCorner(DiagDirection a, DiagDirection b)
 	NOT_REACHED();
 }
 
-JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset)
+/** The solve: the template's positions on the facts, rendered, signalled and normalised by `finish`. */
+static JunctionNodeSolve SolveJunctionNodesWith(const JunctionNodeTemplate &tpl, const JunctionFacts &facts, TileIndexDiffC offset, const std::function<JunctionLayout(const std::vector<int> &)> &finish)
 {
 	JunctionNodeSolve result;
 	using Kind = JunctionNodeFailure::Kind;
@@ -1620,11 +1740,28 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 	}
 
 	/* 6. Render. */
-	JunctionLayout layout = RenderJunctionNodeTracks(tpl, result.values);
-	PlaceJunctionSignals(layout, spec);
-	NormaliseJunctionLayout(layout);
-	result.layout = std::move(layout);
+	result.layout = finish(result.values);
 	return result;
+}
+
+JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset)
+{
+	return SolveJunctionNodesWith(tpl, facts, offset, [&](const std::vector<int> &values) {
+		JunctionLayout layout = RenderJunctionNodeTracks(tpl, values);
+		PlaceJunctionSignals(layout, spec);
+		NormaliseJunctionLayout(layout);
+		return layout;
+	});
+}
+
+JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionNodeInput &input)
+{
+	return SolveJunctionNodesWith(tpl, facts, offset, [&](const std::vector<int> &values) {
+		JunctionLayout layout = RenderJunctionNodeTracksRaw(tpl, values);
+		SignalJunctionTrackRoutes(layout, RenderJunctionNodeRoutes(tpl, input, values), topology, paths, graph, programs, spec);
+		NormaliseJunctionLayout(layout);
+		return layout;
+	});
 }
 
 bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, std::string *why)

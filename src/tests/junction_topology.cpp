@@ -13,6 +13,7 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include <algorithm>
+#include <climits>
 #include <fstream>
 #include <map>
 #include <optional>
@@ -1432,5 +1433,136 @@ TEST_CASE("topology: route events from tags", "[junction][topology]")
 			if (!got.empty()) with_events++;
 		}
 		CHECK(with_events > 0);
+	}
+}
+
+/** The track bits per tile of a layout. */
+static std::map<std::pair<int, int>, TrackBits> TileBitsOf(const JunctionLayout &layout)
+{
+	std::map<std::pair<int, int>, TrackBits> bits;
+	for (const JunctionTrack &jt : layout.tracks) bits[{jt.offset.x, jt.offset.y}] |= jt.tracks;
+	return bits;
+}
+
+/** The graph input and template of a topology's render, with everything the graph solve takes. */
+struct GraphSolveSetup {
+	JunctionLayout signalled; ///< SignalledOf's layout.
+	std::vector<JunctionLanePath> paths;
+	JunctionTrackGraph graph;
+	JunctionTrackPrograms programs;
+	std::vector<JunctionTrackRoute> routes;
+	JunctionNodeInput input;
+	JunctionNodeTemplate tpl;
+};
+
+static GraphSolveSetup GraphSolveSetupOf(const JunctionTopology &t)
+{
+	GraphSolveSetup setup;
+	std::string error;
+	JunctionTrackPlacement placement;
+	JunctionTrackStructure cut;
+	std::vector<JunctionTrackSignal> tokens;
+	setup.signalled = SignalledOf(t, &error, &tokens, &setup.routes, &setup.paths);
+	INFO(error);
+	REQUIRE(!setup.routes.empty());
+	/* The pieces SignalledOf does not hand out, rebuilt by RenderOf. */
+	std::vector<JunctionTrackRoute> routes;
+	RenderOf(t, 64, &error, &placement, &cut, &setup.programs, &setup.paths, &setup.graph, &routes);
+	setup.input = JunctionNodeInputOfGraph(t, setup.paths, setup.graph, cut, setup.programs, placement, setup.routes);
+	setup.tpl = BuildJunctionNodeTemplate(setup.input, MakeTestJunctionSpec());
+	INFO(setup.tpl.error);
+	REQUIRE(setup.tpl.error.empty());
+	return setup;
+}
+
+/** Solve a topology's graph input on flat ground (offset 0, terrain covering the render's box with a margin of 8) and compare it with SignalledOf. */
+static void CheckGraphSolvesFlat(const JunctionTopology &topology)
+{
+	constexpr int MARGIN = 8;
+	const GraphSolveSetup setup = GraphSolveSetupOf(topology);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+
+	int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
+	auto cover = [&](int x, int y) {
+		min_x = std::min(min_x, x);
+		max_x = std::max(max_x, x);
+		min_y = std::min(min_y, y);
+		max_y = std::max(max_y, y);
+	};
+	for (const JunctionTrack &jt : setup.signalled.tracks) cover(jt.offset.x, jt.offset.y);
+	for (const JunctionBridge &b : setup.signalled.bridges) {
+		cover(b.start.x, b.start.y);
+		cover(b.end.x, b.end.y);
+	}
+	JunctionTerrain terrain;
+	terrain.origin = {static_cast<int16_t>(min_x - MARGIN), static_cast<int16_t>(min_y - MARGIN)};
+	terrain.width = max_x - min_x + 1 + 2 * MARGIN;
+	terrain.height = max_y - min_y + 1 + 2 * MARGIN;
+	terrain.tiles.assign(static_cast<size_t>(terrain.width) * terrain.height, JunctionTerrainTile{});
+	terrain.foundation_cost = 250;
+	const JunctionFacts facts(terrain);
+
+	const JunctionNodeSolve solve = SolveJunctionNodes(setup.tpl, spec, facts, {0, 0}, topology, setup.paths, setup.graph, setup.programs, setup.input);
+	std::string failure = "no failure";
+	if (solve.failure.has_value()) failure = fmt::format("failure kind {} link {} column {} class {}", to_underlying(solve.failure->kind), solve.failure->link, solve.failure->column, solve.failure->cls);
+	INFO(failure);
+	REQUIRE(solve.layout.has_value());
+
+	JunctionLayout want_layout = setup.signalled;
+	NormaliseJunctionLayout(want_layout);
+	const std::map<std::pair<int, int>, TrackBits> want = TileBitsOf(want_layout);
+	const std::map<std::pair<int, int>, TrackBits> got = TileBitsOf(*solve.layout);
+	std::set<std::pair<int, int>> tiles;
+	for (const auto &[tile, bits] : want) tiles.insert(tile);
+	for (const auto &[tile, bits] : got) tiles.insert(tile);
+	int differing = 0;
+	for (const auto &tile : tiles) {
+		const auto w = want.find(tile);
+		const auto g = got.find(tile);
+		const int wb = w == want.end() ? 0 : w->second.base();
+		const int gb = g == got.end() ? 0 : g->second.base();
+		if (wb == gb) continue;
+		INFO(fmt::format("tile {},{}: render {} solved {}", tile.first, tile.second, wb, gb));
+		if (differing++ < 10) CHECK(wb == gb);
+	}
+	CHECK(differing == 0);
+	CHECK(SignalSetOf(*solve.layout) == SignalSetOf(want_layout));
+	for (const RuleViolation &v : CheckJunctionRules(*solve.layout, spec, topology)) {
+		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
+		CHECK(false);
+	}
+}
+
+TEST_CASE("topology: the LL_RR graph solves on flat ground", "[junction][topology]")
+{
+	CheckGraphSolvesFlat(JunctionLLRRSidelineTopology());
+}
+
+TEST_CASE("topology: the T graph solves on flat ground", "[junction][topology]")
+{
+	CheckGraphSolvesFlat(JunctionTTopology());
+}
+
+TEST_CASE("topology: the node render's routes at flat values are the input's routes", "[junction][topology]")
+{
+	for (const JunctionTopology *t : RENDER_TOPOLOGIES) {
+		const GraphSolveSetup setup = GraphSolveSetupOf(*t);
+		const std::vector<JunctionTrackRoute> got = RenderJunctionNodeRoutes(setup.tpl, setup.input, setup.tpl.flat);
+		REQUIRE(got.size() == setup.routes.size());
+		for (size_t r = 0; r < got.size(); r++) {
+			INFO("route " << r);
+			CHECK(got[r].path == setup.routes[r].path);
+			CHECK(got[r].copy == setup.routes[r].copy);
+			REQUIRE(got[r].pieces.size() == setup.routes[r].pieces.size());
+			for (size_t i = 0; i < got[r].pieces.size(); i++) {
+				INFO("piece " << i);
+				CHECK(got[r].pieces[i].tile.x == setup.routes[r].pieces[i].tile.x);
+				CHECK(got[r].pieces[i].tile.y == setup.routes[r].pieces[i].tile.y);
+				CHECK(got[r].pieces[i].trackdir == setup.routes[r].pieces[i].trackdir);
+				CHECK(got[r].pieces[i].units == setup.routes[r].pieces[i].units);
+				CHECK(got[r].pieces[i].on_bridge == setup.routes[r].pieces[i].on_bridge);
+				CHECK(got[r].tags[i] == setup.routes[r].tags[i]);
+			}
+		}
 	}
 }
