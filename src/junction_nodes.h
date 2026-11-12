@@ -126,6 +126,8 @@ struct JunctionNodeTemplate {
 /** What a node template is built from (DESIGN-G1 G1a): the paths and the per-piece facts the rules read. Holds no layout. */
 struct JunctionNodeInput {
 	std::vector<JunctionPath> paths; ///< In the checker's path order.
+	std::vector<bool> through; ///< Per path: a through movement (IsThroughPath).
+	std::vector<bool> exit; ///< Per path: an exit, main line to a group that is not (IsExitPath).
 	std::map<std::pair<int, int>, TrackBits> used; ///< Per tile, every track on it (UsedTracks).
 	std::vector<std::vector<SwitchEvent>> events; ///< Per path, its switch events (SwitchEventsOf).
 	std::vector<std::vector<bool>> slots; ///< Per path and piece: whether a signal may stand there (IsLegalSignalPiece or IsSignalledPiece).
@@ -133,6 +135,8 @@ struct JunctionNodeInput {
 };
 /** The template input traced from a flat layout (today's only producer). */
 JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const JunctionSpec &spec);
+/** The template input traced from a flat layout whose ports and movements come from a topology (G1d). */
+JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const JunctionSpec &spec, const JunctionTopology &topology);
 /** The node template of an input (DESIGN-N3 §1-§8). */
 JunctionNodeTemplate BuildJunctionNodeTemplate(const JunctionNodeInput &input, const JunctionSpec &spec);
 /** Read the template of a flat layout. */

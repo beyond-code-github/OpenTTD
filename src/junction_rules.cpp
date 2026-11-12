@@ -148,16 +148,14 @@ static bool IsInSlot(const JunctionTopology &topology, uint16_t slot)
 	return topology.groups[SlotOf(topology, slot).group].in;
 }
 
-/** Whether the path is a through movement: both groups of its movement are main line. */
-static bool IsThroughPath(const JunctionCheckContext &ctx, const JunctionPath &path)
+bool IsThroughPath(const JunctionCheckContext &ctx, const JunctionPath &path)
 {
 	if (path.movement == UINT16_MAX) return false;
 	const auto &[in, out] = ctx.topology->movements[path.movement];
 	return ctx.topology->groups[in].main && ctx.topology->groups[out].main;
 }
 
-/** Whether the path is an exit: from a main line group to a group that is not main line. */
-static bool IsExitPath(const JunctionCheckContext &ctx, const JunctionPath &path)
+bool IsExitPath(const JunctionCheckContext &ctx, const JunctionPath &path)
 {
 	if (path.movement == UINT16_MAX) return false;
 	const auto &[in, out] = ctx.topology->movements[path.movement];
