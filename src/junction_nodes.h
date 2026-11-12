@@ -17,6 +17,7 @@
 #include "junction_rules.h"
 #include "junction_rules_internal.h"
 
+#include <array>
 #include <map>
 #include <optional>
 #include <string>
@@ -109,7 +110,9 @@ struct JunctionNodeBridge {
 /** The flat layout's positions as X and Y classes and difference constraints (DESIGN-N3 §1-§2). */
 struct JunctionNodeTemplate {
 	std::vector<JunctionNodePoint> points;
+	std::vector<JunctionTrackPieceTag> point_tags; ///< Per point: the graph element of its input piece (graph input only; empty when traced).
 	std::vector<JunctionNodeLink> links;
+	std::vector<JunctionTrackPieceTag> link_tags; ///< Per link: the tag of its first interior input piece, else its from point's tag with token RUN (graph input only).
 	std::vector<JunctionNodePath> paths; ///< In the checker's path order.
 	std::vector<JunctionNodePiece> pieces; ///< Deduplicated by (tile, track).
 	std::vector<JunctionNodeBridge> bridges; ///< Every flat bridge with the classes of its heads.
@@ -164,9 +167,10 @@ bool AddJunctionNodeLateConstraints(const JunctionNodeTemplate &tpl, JunctionPos
  * Add the occupancy chain of DESIGN-N3 §7 for the current rows (phase 3, after AddJunctionNodeLateConstraints).
  * @param values Every Y variable's fixed value (X entries ignored).
  * @param[out] row On failure, the layout row (current) where it failed.
+ * @param[out] classes When set, on failure the X classes of the two elements compared.
  * @return False when two elements overlap in the flat order on one row, or a constraint is infeasible.
  */
-bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions &positions, const std::vector<int> &values, int &row);
+bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions &positions, const std::vector<int> &values, int &row, std::array<uint16_t, 2> *classes = nullptr);
 /** Fix the Y variables in index order to their flat values clamped into [Lo, Up], add the late constraints (AddJunctionNodeLateConstraints) and the occupancy chain (AddJunctionNodeOccupancy), then fix the X variables the same way (difference constraints only: every value in range extends); all values in index order, or empty when infeasible. */
 std::vector<int> JunctionNodeSnap(const JunctionNodeTemplate &tpl, JunctionPositions &positions);
 /** Draw the paths' track and the bridges at the classes' values (DESIGN-N3 §3) and normalise; no signals and no prio rows. */
@@ -210,6 +214,7 @@ struct JunctionNodeFailure {
 	int column = 0; ///< Occupancy: the layout row where it failed. Straight/Break/Edge: the working x of the bad tile (Break: the tile before the height break, in +x order; Edge: MinX() - 1 or MaxX() + 1).
 	uint16_t cls = UINT16_MAX; ///< Piece: the X class whose pieces (or whose vertical runs) fit nowhere left. Height: the Y class.
 	std::optional<JunctionNodeHeightFault> height; ///< Height: where it failed.
+	std::vector<JunctionTrackPieceTag> elements; ///< The graph elements it hit (graph input only; empty when traced): Straight/Break/Edge: the link's link_tags entry; Piece: the tags of the class's points; Height: the tags of the points whose tiles are in height->tiles (or of the part's points when none is); Occupancy: the tags of the points of the X classes of both overlapping elements.
 };
 /** The result of one node solve. */
 struct JunctionNodeSolve {
