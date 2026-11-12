@@ -1700,6 +1700,11 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 			TileIndexDiffC cur = placement.ports[paths[p].from];
 			JunctionRoute route{cur, JUNCTION_AXIS_TRACKDIR[h], ""};
 			int last_over = -1;
+			/* One tag per piece the moves have made so far (piece 0 is the start piece). */
+			std::vector<JunctionTrackPieceTag> tags{{edges.front(), JunctionTrackPieceTag::RUN, 0, static_cast<uint8_t>(c)}};
+			auto tag_pieces = [&](size_t count, uint32_t edge, uint16_t token, size_t run) {
+				tags.insert(tags.end(), count, JunctionTrackPieceTag{edge, token, static_cast<uint16_t>(run), static_cast<uint8_t>(c)});
+			};
 
 			/* The number of steps from cur to a tile along the heading, or -1. */
 			auto run = [&](const TileIndexDiffC &to) {
@@ -1727,13 +1732,16 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 						if (cur.x == heads.start.x && cur.y == heads.start.y && !route.moves.empty() && (route.moves.back() == 'L' || route.moves.back() == 'R')) {
 							/* D110: the bridge follows the bend directly and completes it; the near head stands where the closing axis piece would. */
 							route.moves.pop_back();
+							tags.pop_back();
 						} else {
 							const int before = run({static_cast<int16_t>(heads.start.x - VX[h]), static_cast<int16_t>(heads.start.y - VY[h])});
 							if (before < 0) return fail_at(where, "negative or off-line run");
 							route.moves.append(before, 'F');
+							tag_pieces(before, e, JunctionTrackPieceTag::RUN, t);
 						}
 						const int middle = std::abs(heads.end.x - heads.start.x) + std::abs(heads.end.y - heads.start.y) - 1;
 						route.moves += fmt::format("B{}", middle);
+						tag_pieces(middle + 2, e, static_cast<uint16_t>(t), t);
 						cur = heads.end;
 						continue;
 					}
@@ -1770,7 +1778,10 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 					const int before = run(axis_tile);
 					if (before < 0) return fail_at(where, "negative or off-line run");
 					route.moves.append(before, 'F');
+					tag_pieces(before, e, JunctionTrackPieceTag::RUN, t);
 					route.moves += JunctionBendMoves(match_hand, match_halves, token.kind == StepKind::Corner);
+					tag_pieces(match_halves, e, static_cast<uint16_t>(t), t);
+					tag_pieces(1, e, JunctionTrackPieceTag::RUN, t + 1);
 					const JunctionPiece &closing = match_raster.pieces.back();
 					cur = {static_cast<int16_t>(axis_tile.x + closing.tile.x - p0.tile.x), static_cast<int16_t>(axis_tile.y + closing.tile.y - p0.tile.y)};
 					int heading = -1;
@@ -1785,12 +1796,15 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 			const int tail = run(out);
 			if (tail < 0) return fail_at("", "negative or off-line run to the out port");
 			route.moves.append(tail, 'F');
+			const uint32_t last_edge = edges.back();
+			tag_pieces(tail, last_edge, JunctionTrackPieceTag::RUN, (c == 1 && doubled_leg(last_edge) ? programs.copies : programs.edges)[last_edge].size());
 
 			const JunctionRaster raster = RasterizeJunctionRoute(route);
 			if (!raster.error.empty()) return fail_at("", raster.error);
+			if (tags.size() != raster.pieces.size()) return fail_at("", "the piece tags do not match the pieces");
 			if (raster.pieces.back().tile.x != out.x || raster.pieces.back().tile.y != out.y) return fail_at("", "misses its out port");
 			AddRasterToLayout(layout, raster);
-			if (routes != nullptr) routes->push_back({static_cast<uint16_t>(p), static_cast<uint8_t>(c), raster.pieces});
+			if (routes != nullptr) routes->push_back({static_cast<uint16_t>(p), static_cast<uint8_t>(c), raster.pieces, std::move(tags)});
 		}
 	}
 	return layout;

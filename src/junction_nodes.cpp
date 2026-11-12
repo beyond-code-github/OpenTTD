@@ -676,15 +676,131 @@ JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const Junct
 	const JunctionCheckContext ctx = MakeJunctionTopologyCheckContext(flat, spec, topology, FindJunctionPorts(flat, topology));
 	JunctionNodeInput input;
 	input.paths = ctx.paths;
-	input.used = UsedTracks(ctx);
+	const std::map<std::pair<int, int>, TrackBits> used = UsedTracks(ctx);
 	input.bridges = flat.bridges;
 	for (const JunctionPath &path : ctx.paths) {
 		input.through.push_back(IsThroughPath(ctx, path));
 		input.exit.push_back(IsExitPath(ctx, path));
-		input.events.push_back(SwitchEventsOf(flat, input.used, path));
+		input.events.push_back(SwitchEventsOf(flat, used, path));
 		std::vector<bool> slots;
 		for (const JunctionPiece &piece : path.pieces) slots.push_back(IsLegalSignalPiece(flat, piece) || IsSignalledPiece(flat, piece));
 		input.slots.push_back(std::move(slots));
+	}
+	return input;
+}
+
+JunctionNodeInput JunctionNodeInputOfGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, const std::vector<JunctionTrackRoute> &routes)
+{
+	using StepKind = JunctionTrackStep::Kind;
+	const bool is_t = &topology == &JunctionTTopology();
+	const std::vector<JunctionPortSlot> port_slots = JunctionPortSlots(topology);
+	auto same = [](TileIndexDiffC a, TileIndexDiffC b) { return a.x == b.x && a.y == b.y; };
+	JunctionNodeInput input;
+
+	/* Bridges: the runs of bridge pieces of one token, in route-appearance order, near head first by x + y (Q6). */
+	for (const JunctionTrackRoute &route : routes) {
+		for (size_t i = 0; i < route.pieces.size();) {
+			if (!route.pieces[i].on_bridge) {
+				i++;
+				continue;
+			}
+			size_t j = i;
+			while (j + 1 < route.pieces.size() && route.pieces[j + 1].on_bridge && route.tags[j + 1].edge == route.tags[i].edge && route.tags[j + 1].token == route.tags[i].token) j++;
+			JunctionBridge bridge{route.pieces[i].tile, route.pieces[j].tile};
+			if (bridge.start.x + bridge.start.y > bridge.end.x + bridge.end.y) std::swap(bridge.start, bridge.end);
+			const bool present = std::ranges::any_of(input.bridges, [&](const JunctionBridge &b) { return same(b.start, bridge.start) && same(b.end, bridge.end); });
+			if (!present) input.bridges.push_back(bridge);
+			i = j + 1;
+		}
+	}
+
+	/* The tracks of every route per tile, and the bridge heads, for the slot rule (Q5). */
+	std::map<std::pair<int, int>, TrackBits> occupied;
+	for (const JunctionTrackRoute &route : routes) {
+		for (const JunctionPiece &piece : route.pieces) {
+			if (!piece.on_bridge) occupied[{piece.tile.x, piece.tile.y}].Set(TrackdirToTrack(piece.trackdir));
+		}
+	}
+	std::vector<TileIndexDiffC> heads;
+	for (const std::array<JunctionBridge, 2> &copies : placement.bridges) {
+		for (const JunctionBridge &bridge : copies) {
+			if (same(bridge.start, bridge.end)) continue;
+			heads.push_back(bridge.start);
+			heads.push_back(bridge.end);
+		}
+	}
+
+	/* The checker's order (Q1): the in port's side (W, E, S) and place along it, then the trackdirs from the in port. */
+	auto key_of = [&](const JunctionTrackRoute &route) {
+		const uint16_t from = paths[route.path].from;
+		const JunctionSide side = topology.groups[port_slots[from].group].side;
+		const int rank = side == JunctionSide::W ? 0 : side == JunctionSide::E ? 1 : side == JunctionSide::S ? 2 : 3;
+		const TileIndexDiffC port = placement.ports[from];
+		return std::pair<int, int>{rank, side == JunctionSide::W || side == JunctionSide::E ? port.y : port.x};
+	};
+	std::vector<size_t> order(routes.size());
+	for (size_t i = 0; i < order.size(); i++) order[i] = i;
+	std::ranges::stable_sort(order, [&](size_t a, size_t b) {
+		const std::pair<int, int> ka = key_of(routes[a]);
+		const std::pair<int, int> kb = key_of(routes[b]);
+		if (ka != kb) return ka < kb;
+		return std::ranges::lexicographical_compare(routes[a].pieces, routes[b].pieces, [](const JunctionPiece &x, const JunctionPiece &y) { return static_cast<int>(x.trackdir) < static_cast<int>(y.trackdir); });
+	});
+
+	auto doubled_leg = [&](uint32_t e) {
+		return std::ranges::any_of(structure.bridges, [&](const JunctionTrackBridge &b) { return b.edge == e && b.doubled; });
+	};
+	for (const size_t ri : order) {
+		const JunctionTrackRoute &route = routes[ri];
+		const JunctionLanePath &lane = paths[route.path];
+		input.paths.push_back({is_t ? TRoleOfSlot(lane.from) : JunctionPortRole::EIn, is_t ? TRoleOfSlot(lane.to) : JunctionPortRole::EIn, route.pieces, lane.from, lane.to, lane.movement});
+		bool through = false;
+		bool exit = false;
+		if (lane.movement != UINT16_MAX) {
+			const auto &[in, out] = topology.movements[lane.movement];
+			through = topology.groups[in].main && topology.groups[out].main;
+			exit = topology.groups[in].main && !topology.groups[out].main;
+		}
+		input.through.push_back(through);
+		input.exit.push_back(exit);
+
+		/* Events (Q4): the graph's nodes on the route, and the lane split and merge of the doubled legs. */
+		std::vector<SwitchEvent> events;
+		auto first_on = [&](TileIndexDiffC tile) -> std::optional<size_t> {
+			for (size_t k = 0; k < route.pieces.size(); k++) {
+				if (!route.pieces[k].on_bridge && same(route.pieces[k].tile, tile)) return k;
+			}
+			return std::nullopt;
+		};
+		for (const uint32_t e : graph.path_edges[route.path]) {
+			if (graph.edges[e].to.node) {
+				const uint16_t n = graph.edges[e].to.index;
+				if (const std::optional<size_t> k = first_on(placement.nodes[n]); k.has_value()) events.emplace_back(graph.nodes[n].split, *k);
+			}
+			if (!doubled_leg(e)) continue;
+			for (size_t t = 0; t < programs.copies[e].size(); t++) {
+				if (programs.copies[e][t].kind != StepKind::SBend) continue;
+				if (const std::optional<size_t> k = first_on(placement.copies[e][t].first); k.has_value()) events.emplace_back(true, *k);
+				break;
+			}
+			for (size_t t = 0; t < programs.edges[e].size(); t++) {
+				if (programs.edges[e][t].kind != StepKind::SBend) continue;
+				if (const std::optional<size_t> k = first_on(placement.edges[e][t].second); k.has_value()) events.emplace_back(false, *k);
+				break;
+			}
+		}
+		std::ranges::stable_sort(events, [](const SwitchEvent &a, const SwitchEvent &b) { return a.second != b.second ? a.second < b.second : a.first > b.first; });
+		events.erase(std::unique(events.begin(), events.end()), events.end());
+		input.events.push_back(std::move(events));
+
+		/* Slots (Q5): not on a bridge, not a bridge head, no overlapping tracks on the tile. */
+		std::vector<bool> slots;
+		for (const JunctionPiece &piece : route.pieces) {
+			const bool head = std::ranges::any_of(heads, [&](TileIndexDiffC h) { return same(h, piece.tile); });
+			slots.push_back(!piece.on_bridge && !head && !TracksOverlap(occupied[{piece.tile.x, piece.tile.y}]));
+		}
+		input.slots.push_back(std::move(slots));
+		input.tags.push_back(route.tags);
 	}
 	return input;
 }
