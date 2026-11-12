@@ -34,24 +34,34 @@ SIZE = 256
 W, H = 80, 40
 EDGE = 2
 PER_MAP = 16
-# name, seed, landscape, difficulty terrain_type (None: the rig's hilly settings)
+# name, seed, landscape, difficulty terrain_type, variety, smoothness, max height level, quantity_sea_lakes (None: the rig's value).
+# Hilly maps: terrain_type 2 (the Hilly level, not custom), variety 5 (Very High), smoothness 3 (Very Rough), max height level 30
+# (construction.map_height_limit), quantity_sea_lakes 0 (Very Low; the custom sea level stays at its minimum, 1).
 MAPS = [
-    ("temperate-hilly", 101, "temperate", None),
-    ("temperate-mountainous", 202, "temperate", 3),
-    ("arctic-hilly", 303, "arctic", None),
+    ("temperate-hilly", 101, "temperate", 2, 5, 3, 30, 0),
+    ("temperate-mountainous", 202, "temperate", 3, None, None, None, None),
+    ("arctic-hilly", 303, "arctic", 2, 5, 3, 30, 0),
 ]
 
 
-def configure(landscape, terrain_type):
+def configure(landscape, terrain_type, variety, smoothness, height_limit, sea_lakes):
     cfg = S.CFG.replace("[game_creation]\n", "[game_creation]\nlandscape = %s\n" % landscape)
     if terrain_type is not None:
         cfg = cfg.replace("terrain_type = 5", "terrain_type = %d" % terrain_type)
+    if variety is not None:
+        cfg = cfg.replace("variety = %(variety)d", "variety = %d" % variety)
+    if smoothness is not None:
+        cfg = cfg.replace("tgen_smoothness = %(smooth)d", "tgen_smoothness = %d" % smoothness)
+    if sea_lakes is not None:
+        cfg = cfg.replace("quantity_sea_lakes = %(lakes)d", "quantity_sea_lakes = %d" % sea_lakes)
+    if height_limit is not None:
+        cfg = cfg.replace("[economy]\n", "[construction]\nmap_height_limit = %d\n[economy]\n" % height_limit)
     S.CFG = cfg
 
 
-def dump_map(name, seed, landscape, terrain_type):
+def dump_map(name, seed, landscape, terrain_type, variety, smoothness, height_limit, sea_lakes):
     base_cfg = S.CFG
-    configure(landscape, terrain_type)
+    configure(landscape, terrain_type, variety, smoothness, height_limit, sea_lakes)
     S.SEED = seed
     try:
         S.start(hilly=True)
@@ -80,8 +90,8 @@ def dump_map(name, seed, landscape, terrain_type):
 
 
 def main():
-    for name, seed, landscape, terrain_type in MAPS:
-        dump_map(name, seed, landscape, terrain_type)
+    for name, seed, landscape, terrain_type, variety, smoothness, height_limit, sea_lakes in MAPS:
+        dump_map(name, seed, landscape, terrain_type, variety, smoothness, height_limit, sea_lakes)
         print("dumped", name)
 
 
