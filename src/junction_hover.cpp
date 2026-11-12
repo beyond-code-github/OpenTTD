@@ -37,7 +37,12 @@ JunctionHoverPlan PlanJunctionHover(const JunctionGraphSeed &seed, const Junctio
 		plan.why = error.empty() ? "empty render" : error;
 		return plan;
 	}
-	SignalJunctionTrackRoutes(layout, routes, topology, seed.paths, seed.graph, seed.programs, spec);
+	std::string signal_why;
+	SignalJunctionTrackRoutes(layout, routes, topology, seed.paths, seed.graph, seed.programs, spec, &signal_why);
+	if (!signal_why.empty()) {
+		plan.why = signal_why;
+		return plan;
+	}
 	plan.layout = std::move(layout);
 	plan.terraform = placement.terraform;
 	plan.height_cost = placement.height_cost;

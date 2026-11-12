@@ -907,6 +907,7 @@ static std::string JunctionBendMoves(int hand, int halves, bool corner)
 /** The kinds of element a placement run lies between (D217, DESIGN-G1 §16.1). */
 enum class FloorKind : uint8_t { Port, Fan, Tile, Corner, SBend, Heads, Node, PrioNode, LaneSplit, LaneMerge };
 
+static Track JunctionCornerTrack(DiagDirection a, DiagDirection b);
 /**
  * The least run in tiles between two neighbouring elements: the one table of every run floor in placement (D217, DESIGN-G1 §16.1). A pair not listed has the chain run.
  * @param before The kind of the element the run starts at.
@@ -1873,6 +1874,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			uint32_t edge; ///< The graph edge, UINT32_MAX for a node's tile.
 			int copy; ///< 0 or 1, -1 for the part both copies share.
 			uint32_t node; ///< The node of a node's tile, else UINT32_MAX.
+			int footprint = 0; ///< A prio element's footprint: +1 when it lies downstream of its tile column (columns grow), -1 when downstream is lower; 0 for tracks.
 		};
 		std::map<int, std::vector<Occupant>> by_row;
 		auto flat_left = [&](const Occupant &o) { return flat[o.lp] + o.ldx; };
@@ -1943,15 +1945,43 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 		}
 
+		/* The prio element's footprint (DESIGN-G1 12.4): on the side of the ML row opposite the joiner's approach, the row tiles from the joiner merge's tile to even_prio upstream; unrelated tracks may not stand on them nor touch the row's open far end. */
+		for (int r = 0; r < rows; r++) {
+			const uint32_t njm_node = graph.edges[out_edge[r]].from.index;
+			const int njm = node_pt[njm_node];
+			bool main_path = false;
+			for (size_t pi = 0; pi < graph.path_edges.size() && !main_path; pi++) {
+				if (std::ranges::find(graph.path_edges[pi], leg_edge[r]) == graph.path_edges[pi].end()) continue;
+				const auto &mv = topology.movements[paths[pi].movement];
+				main_path = topology.groups[mv.first].main && topology.groups[mv.second].main;
+			}
+			if (!main_path || !node_bits[njm_node].Test(Track::X)) continue;
+			bool nw = false, se = false;
+			for (Track t : node_bits[njm_node]) {
+				if (t == Track::Upper || t == Track::Left) nw = true;
+				if (t == Track::Lower || t == Track::Right) se = true;
+			}
+			if (nw == se) continue;
+			const int sgn = east[r] ? 1 : -1;
+			const int y_row = vy[item_pt[lane_item[r]]] + (nw ? 1 : -1);
+			const DiagDirection side = nw ? DiagDirection::SE : DiagDirection::NW;
+			const DiagDirection exit_edge = east[r] ? DiagDirection::SW : DiagDirection::NE;
+			const TrackBits h2{JunctionCornerTrack(ReverseDiagDir(side), ReverseDiagDir(exit_edge))};
+			by_row[y_row].push_back({y_row, njm, 0, njm, 0, h2, UINT32_MAX, 0, njm_node, sgn});
+			by_row[y_row].push_back(sgn > 0 ? Occupant{y_row, njm, -even_prio, njm, -1, TrackBits{Track::X}, UINT32_MAX, 0, njm_node, sgn} : Occupant{y_row, njm, 1, njm, even_prio, TrackBits{Track::X}, UINT32_MAX, 0, njm_node, sgn});
+		}
+
 		/* Related occupants never constrain each other: the same edge and copy, a node's tile and an edge that starts or ends at the node. */
 		auto at_node = [&](uint32_t edge, uint32_t node) { return edge != UINT32_MAX && ((graph.edges[edge].from.node && graph.edges[edge].from.index == node) || (graph.edges[edge].to.node && graph.edges[edge].to.index == node)); };
 		auto related = [&](const Occupant &a, const Occupant &b) {
 			if (a.edge != UINT32_MAX && a.edge == b.edge) return a.copy == b.copy || a.copy < 0 || b.copy < 0;
+			if (a.edge == UINT32_MAX && b.edge == UINT32_MAX && a.node != UINT32_MAX && a.node == b.node) return true; // The two parts of one prio footprint.
 			return (a.node != UINT32_MAX && at_node(b.edge, a.node)) || (b.node != UINT32_MAX && at_node(a.edge, b.node));
 		};
 		auto label = [&](const Occupant &o) { return o.node != UINT32_MAX ? fmt::format("node {}", o.node) : fmt::format("edge {}", o.edge); };
 		for (auto &[y, occupants] : by_row) {
-			std::ranges::stable_sort(occupants, [&](const Occupant &a, const Occupant &b) { return std::make_pair(flat_left(a), flat_right(a)) < std::make_pair(flat_left(b), flat_right(b)); });
+			/* On equal columns a footprint comes first in its travel direction: the unrelated track stands downstream of it. */
+			std::ranges::stable_sort(occupants, [&](const Occupant &a, const Occupant &b) { return std::make_tuple(flat_left(a), flat_right(a), -a.footprint) < std::make_tuple(flat_left(b), flat_right(b), -b.footprint); });
 			auto add_relation = [&](const Occupant &a, const Occupant &b, bool tie) -> bool {
 				if (collecting) {
 					if (tie) ref_shares.emplace(std::min(a.edge, b.edge), std::max(a.edge, b.edge));
@@ -1983,7 +2013,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			/* Occupants on one flat tile form a group, tied to each other; groups are neighbours in the order. */
 			std::vector<std::pair<size_t, size_t>> groups;
 			for (size_t i = 0; i < occupants.size(); i++) {
-				if (!groups.empty() && flat_left(occupants[groups.back().first]) == flat_left(occupants[i]) && flat_right(occupants[groups.back().first]) == flat_right(occupants[i])) {
+				if (!groups.empty() && occupants[i].footprint == 0 && occupants[groups.back().second].footprint == 0 && flat_left(occupants[groups.back().first]) == flat_left(occupants[i]) && flat_right(occupants[groups.back().first]) == flat_right(occupants[i])) {
 					groups.back().second = i;
 				} else {
 					groups.emplace_back(i, i);
@@ -2006,7 +2036,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				Occupant b = occupants[groups[gi + 1].first];
 				a.bits = left_bits;
 				b.bits = right_bits;
-				if (!add_relation(a, b, flat_left(b) <= flat_right(a))) return false;
+				if (!add_relation(a, b, flat_left(b) <= flat_right(a) && a.footprint == 0 && b.footprint == 0)) return false;
 			}
 		}
 		return true;
@@ -3354,7 +3384,7 @@ std::vector<std::pair<bool, size_t>> JunctionRouteEvents(const JunctionTrackGrap
 	return events;
 }
 
-std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec)
+std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why)
 {
 	using Reason = JunctionSignalReason;
 	std::vector<JunctionTrackSignal> tokens;
@@ -3473,7 +3503,10 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 					if (JunctionTrackTouches(t, exit_edge)) fits = false;
 				}
 			}
-			if (!fits) continue;
+			if (!fits) {
+				if (why != nullptr && why->empty()) *why = fmt::format("the prio element at {},{} does not fit", M.x, M.y);
+				continue;
+			}
 
 			/* 4. Write. */
 			for (int s = 0; s <= n_prio; s++) {

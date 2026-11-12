@@ -334,9 +334,10 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 
 /**
  * Place the signal tokens of a rendered seed (DESIGN-G1 §12.2, §12.3): the anchor signals of every route's splits, merges, bridges and out port, then the whole-train bays before the merges of non-through paths, then drag fill; each drawn into layout.signals once.
+ * @param why Receives the first prio element that does not fit (its merge tile), empty when every element was drawn.
  * @return The tokens, in placement order; a signal shared by several routes or rules gives one token per route and rule that resolved to it.
  */
-std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec);
+std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why = nullptr);
 /** The graph pipeline's products for one topology and spec (DESIGN-G1 §13): the seed a projection search starts from. */
 struct JunctionGraphSeed {
 	const JunctionTopology *topology;

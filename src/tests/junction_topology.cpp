@@ -1125,6 +1125,31 @@ TEST_CASE("topology: the T's prio elements follow the pattern", "[junction][topo
 	CHECK(found == 2);
 }
 
+TEST_CASE("topology: the signal pass names a prio element that does not fit", "[junction][topology]")
+{
+	/* The T's W element (merge (6,4), row on y 3): the seed draws it and reports nothing; with another track on the row's step 0 the pass skips the element and says so. */
+	std::string error, why;
+	std::vector<JunctionTrackRoute> routes;
+	std::vector<JunctionLanePath> paths;
+	JunctionTrackGraph graph;
+	JunctionTrackPrograms programs;
+	JunctionLayout layout = RenderOf(JunctionTTopology(), 64, &error, nullptr, nullptr, &programs, &paths, &graph, &routes);
+	INFO(error);
+	REQUIRE(!layout.tracks.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionLayout layout_ok = layout;
+	SignalJunctionTrackRoutes(layout_ok, routes, JunctionTTopology(), paths, graph, programs, spec, &why);
+	CHECK(why.empty());
+
+	std::vector<JunctionTrackRoute> edited = routes;
+	JunctionTrackRoute stray = routes.front();
+	stray.pieces = {JunctionPiece{{6, 3}, Trackdir::X_NE, 0, false}};
+	stray.tags = {routes.front().tags.front()};
+	edited.push_back(stray);
+	SignalJunctionTrackRoutes(layout, edited, JunctionTTopology(), paths, graph, programs, spec, &why);
+	CHECK(why == "the prio element at 6,4 does not fit");
+}
+
 TEST_CASE("topology: signal token findings", "[.][diag]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
@@ -2969,7 +2994,7 @@ TEST_CASE("topology: curve spans in the seed routes", "[junction][topology]")
 
 TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][topologystretch]")
 {
-	/* The gate of the placement relations (RECON-stretch C1, C3, C4): every placement point pushed later by hand in X, and every stack boundary's row gap pushed 1 and 2 rows wider in Y, as terrain will (DESIGN-G1 §14.4); a solve failure is an edit, never a bug. In Y every rule but Prio (RECON-stretch C5, counted) must hold in every solved run (T1c-2: the occupancy family and bridge middle clearance of D217). */
+	/* The gate of the placement relations (RECON-stretch C1, C3, C4): every placement point pushed later by hand in X, and every stack boundary's row gap pushed 1 and 2 rows wider in Y, as terrain will (DESIGN-G1 §14.4); a solve failure is an edit, never a bug. In Y every rule must hold in every solved run (T1c-2: the occupancy family and bridge middle clearance of D217; C5b: the prio element footprint). */
 	for (int si = 0; si < 2; si++) {
 		JunctionSpec spec = MakeTestJunctionSpec();
 		if (si == 1) {
@@ -3044,8 +3069,7 @@ TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][
 					for (const RuleViolation &viol : CheckJunctionRules(layout, spec, t)) {
 						detail += fmt::format(" [rule {} at {},{}: {}]", static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message);
 						per_rule[static_cast<int>(viol.rule)]++;
-						/* The prio element under a row stretch is its own recon (RECON-stretch C5): counted, not required. */
-						if (viol.rule != JunctionRule::Prio) required++;
+						required++;
 					}
 					INFO(detail);
 					CHECK(required == 0);
