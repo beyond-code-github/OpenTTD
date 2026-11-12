@@ -71,3 +71,9 @@ struct JunctionPlacementChoices {
 
 ## Report
 The standard report, plus: Release time of CutJunctionTrackBridges (whole cut search) for LL_RR at the test spec and at tl 6 v196, before and after; the number of relations per phase at the test spec for LL_RR; and, as a scratch measurement not committed: on "LL_RR with an L_R sideline: placement", Explain(v, true) for the X_e1 and X_e2 points (the chains of reasons that put them at their columns). When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop: the bridge-hug pick reads the previous X solve)
+1. **The hug pick is a fourth choice.** `JunctionPlacementChoices` gains `std::vector<std::array<int, 4>> hug; ///< Per doubled-leg bridge, in (row, k) order of the crosser block: low point, low dx, high point, high dx of the crosser tiles the copy-0 heads hug (D80, D118; point ids of this structure's placement, valid only with the same structure).` With `fixed`, the crosser block takes its pick from `hug` (no read of vx); the crossers' `ge` relations are unchanged. Without `fixed`, the rounds pick as today and the final round's picks fill `hug`. (Later, T1b's packed bridge groups replace the pick; not now.)
+2. Restart from your saved patch (/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/t1-partial.patch) and the positions part in the worktree; run every gate and the byte-identical circuit check; complete the report items.
+3. Test 4's red: run it once against an `Explain` returning empty and record it.
+4. Accepted: reusing `Elem::tok`; `why_now` pushed lazily and deduplicated, provided every relation's reason is the block or floor it was added in.
