@@ -34,3 +34,9 @@ CODINGSTYLE.md (both parts: C++ and GUI/widgets); src/junction_gui.cpp the widge
 
 ## Report
 The standard report, plus the widget tree before/after (row list), the unreachable old-path functions, and the manual checklist. When you have reported, stop.
+
+## Amendment 1 (engineer, before launch: "Is there an option to have error messages appear in the status bar at the bottom of the screen instead of in the window? That would save space")
+The game's status bar holds date, money and the news ticker; the idiom for hover feedback is the cursor tooltip the measuring tool uses (src/viewport.cpp ShowMeasurementTooltips: `GuiShowTooltips(_thd.GetCallbackWnd(), text, TooltipCloseCondition::ExitViewport)`). So:
+- The cost and status rows (WID_BJ_COST, WID_BJ_STATUS) leave the window. Their text (cost line, and the status/error when there is one, e.g. the game's first_error, "moved", "pick a design train first") is shown as one cursor tooltip, refreshed whenever the shown placement or status changes while the cursor is over the viewport, closed on leaving it (ExitViewport), the same way as the measure tooltip. Use the existing strings; if two lines are needed, one string with both parameters (a new string only if no existing one fits: say which).
+- When nothing is hovered (cursor off the map), no tooltip.
+- Add to the manual checklist: the tooltip follows the cursor, shows cost / error / moved, disappears off the map.
