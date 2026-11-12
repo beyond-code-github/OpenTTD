@@ -2682,55 +2682,9 @@ TEST_CASE("topology: placement from its own choices equals the seed", "[junction
 	}
 }
 
-TEST_CASE("topology: row chains reproduce the row geometry", "[junction][topology]")
-{
-	/* R2 (DESIGN-G1 §16): every row edge's Elem chain (both copies of a doubled leg) has the row points' kinds, points and tiles; the check runs inside every placement. */
-	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
-		JunctionTrackPlacement p;
-		std::string error;
-		SeedOf(*t, MakeTestJunctionSpec(), &error, &p);
-		INFO(error);
-		REQUIRE(!p.nodes.empty());
-		for (const std::string &m : p.row_chain_mismatches) {
-			INFO(m);
-			CHECK(false);
-		}
-	}
-}
-
-TEST_CASE("topology: row chains reproduce the row geometry across the sweep", "[junction][topologysweep]")
-{
-	size_t cells = 0;
-	for (int ti = 0; ti < 2; ti++) {
-		const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
-		for (int tl = 3; tl <= 8; tl++) {
-			for (int v : {100, 120, 160, 196}) {
-				JunctionSpec spec = MakeTestJunctionSpec();
-				spec.tl = tl;
-				spec.train.max_speed = v;
-				spec.reference_speed = v;
-				spec.prio_tiles = 0;
-				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
-				if (spec.prio_tiles == 0) continue;
-				std::string error;
-				JunctionTrackPlacement p;
-				SeedOf(t, spec, &error, &p);
-				INFO(fmt::format("{} tl {} v {}: {}", ti == 0 ? "T" : "LL_RR", tl, v, error));
-				REQUIRE(!p.nodes.empty());
-				for (const std::string &m : p.row_chain_mismatches) {
-					INFO(m);
-					CHECK(false);
-				}
-				cells++;
-			}
-		}
-	}
-	CHECK(cells == 44);
-}
-
 TEST_CASE("topology: a fan edge may hold more than its fan", "[junction][topology]")
 {
-	/* R3 (DESIGN-G1 §16): an in edge's fan is its program's first token, not its only one. The T's doubled row's in edge is edited to [Fan to the lane item, S-bend back to the item above]: the placement takes it, its chain is the only row chain the R2 check refuses (its row points know the fan alone), and the checker is clean (R4: the curve family reads the chain's S-bend). */
+	/* R3 (DESIGN-G1 §16): an in edge's fan is its program's first token, not its only one. The T's doubled row's in edge is edited to [Fan to the lane item, S-bend back to the item above]: the placement takes it (R4: the curve family reads the chain's S-bend). */
 	const JunctionTopology &t = JunctionTTopology();
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::string error;
@@ -2759,10 +2713,6 @@ TEST_CASE("topology: a fan edge may hold more than its fan", "[junction][topolog
 	const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &placement, &error);
 	INFO(error);
 	REQUIRE(!placement.nodes.empty());
-	for (const std::string &m : placement.row_chain_mismatches) {
-		INFO(m);
-		CHECK(m.starts_with(fmt::format("edge {} ", edited)));
-	}
 	std::vector<JunctionTrackRoute> routes;
 	JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, placement, &error, &routes);
 	INFO(error);
@@ -2776,21 +2726,86 @@ TEST_CASE("topology: a fan edge may hold more than its fan", "[junction][topolog
 	}
 }
 
-TEST_CASE("topology: the D215 objective keys on graph elements", "[junction][topology]")
+/** Every doubled leg of a seed at a spec checked against its chains' rules (R5): copy 1's heads are copy 0's plus the stagger u, the lane split lies 2 before the first near head, every crosser's tiles under a bridge lie between that copy's heads. Returns the doubled bridges checked. */
+static size_t CheckDoubledLegs(const JunctionTopology &t, const JunctionSpec &spec, const std::string &cell)
 {
-	/* R2: every row change carries (edge, copy, token) and the list is in that order, so the objective does not depend on point ids; the placement from its own choices equals the seed. */
-	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
-		JunctionTrackPlacement p, q;
-		std::string error;
-		PlaceTwice(*t, MakeTestJunctionSpec(), &p, &q, &error);
-		INFO(error);
-		REQUIRE(!q.nodes.empty());
-		CHECK(!p.row_change_keys.empty());
-		CHECK(std::ranges::is_sorted(p.row_change_keys));
-		CHECK(std::ranges::adjacent_find(p.row_change_keys) == p.row_change_keys.end());
-		CHECK(p.row_change_keys == q.row_change_keys);
-		CHECK(SamePlacement(p, q));
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+	JunctionTrackPlacement placement;
+	const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &placement, &error);
+	INFO(cell << ": " << error);
+	REQUIRE(!placement.nodes.empty());
+	size_t checked = 0;
+	for (size_t b = 0; b < cut.bridges.size(); b++) {
+		const JunctionTrackBridge &bridge = cut.bridges[b];
+		if (!bridge.doubled) continue;
+		const uint32_t e = bridge.edge;
+		const JunctionBridge &h0 = placement.bridges[b][0];
+		const JunctionBridge &h1 = placement.bridges[b][1];
+		const int sgn = h0.end.x > h0.start.x ? 1 : -1;
+		INFO(cell << " bridge " << b << " edge " << e);
+		/* The stagger: copy 1 one tile upstream of copy 0 at both heads, one row further. */
+		CHECK(h1.start.x == h0.start.x - sgn);
+		CHECK(h1.end.x == h0.end.x - sgn);
+		CHECK(h1.start.y == h1.end.y);
+		CHECK(h0.start.y == h0.end.y);
+		CHECK(h1.start.y != h0.start.y);
+		/* D215: the lane split is the first tile of copy 1's S-bend, exactly 2 before the leg's first near head. */
+		if (b == 0 || cut.bridges[b - 1].edge != e) {
+			const TileIndexDiffC split = placement.copies[e][0].first;
+			CHECK(split.y == h0.start.y);
+			CHECK(split.x == h0.start.x - 2 * sgn);
+		}
+		/* Every crosser tile under the bridge lies strictly between that copy's heads, on that copy's row. */
+		for (const uint32_t x : bridge.crossed) {
+			size_t under = 0;
+			for (size_t tok = 0; tok < programs.edges[x].size(); tok++) {
+				const JunctionTrackStep &step = programs.edges[x][tok];
+				if (step.kind != JunctionTrackStep::Kind::Under || step.index != e) continue;
+				const JunctionBridge &heads = placement.bridges[b][step.copy];
+				const JunctionTrackSpan &span = placement.edges[x][tok];
+				for (const TileIndexDiffC &tile : {span.first, span.second}) {
+					CHECK(tile.y == heads.start.y);
+					CHECK(tile.x > std::min(heads.start.x, heads.end.x));
+					CHECK(tile.x < std::max(heads.start.x, heads.end.x));
+				}
+				under++;
+			}
+			CHECK(under >= 1);
+		}
+		checked++;
 	}
+	return checked;
+}
+
+TEST_CASE("topology: doubled legs place by their chains", "[junction][topology]")
+{
+	/* R5 (DESIGN-G1 §16): a doubled leg's relations come from its two chains (HeadsPair, the lane pair's joins); LL_RR at the test spec has six doubled bridges on three legs (D215). */
+	CHECK(CheckDoubledLegs(JunctionLLRRSidelineTopology(), MakeTestJunctionSpec(), "LL_RR") == 6);
+}
+
+TEST_CASE("topology: doubled legs place by their chains across the sweep", "[junction][topologysweep]")
+{
+	size_t cells = 0, checked = 0;
+	for (int tl = 3; tl <= 8; tl++) {
+		for (int v : {100, 120, 160, 196}) {
+			JunctionSpec spec = MakeTestJunctionSpec();
+			spec.tl = tl;
+			spec.train.max_speed = v;
+			spec.reference_speed = v;
+			spec.prio_tiles = 0;
+			spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+			if (spec.prio_tiles == 0) continue;
+			checked += CheckDoubledLegs(JunctionLLRRSidelineTopology(), spec, fmt::format("LL_RR tl {} v {}", tl, v));
+			cells++;
+		}
+	}
+	CHECK(cells == 22);
+	CHECK(checked >= cells);
 }
 
 TEST_CASE("topology: a contradictory choice is explained", "[junction][topology]")

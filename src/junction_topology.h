@@ -253,8 +253,6 @@ struct JunctionTrackPlacement {
 	std::vector<int> columns; ///< The column of every placement point (x_floors refer to these ids).
 	JunctionTerraform terraform; ///< The height solve's plan (D218), empty on flat ground.
 	Money height_cost = 0; ///< Terraform, foundations and clearing of the chosen levels.
-	std::vector<std::string> row_chain_mismatches; ///< R2 check (for tests): empty when the row chains equal the row points and row tiles. Removed in R5 with row_pts.
-	std::vector<std::array<int, 3>> row_change_keys; ///< The D215 objective's (edge, copy, token) keys in order (for tests). Removed in R5 with row_pts.
 	std::vector<std::vector<std::pair<int8_t, int>>> curves; ///< Per lane path and copy (paths first, then copies in path order): each curve's hand (+1 right, -1 left) and unit position at the solved columns, from the curve family's walk (for tests).
 };
 
