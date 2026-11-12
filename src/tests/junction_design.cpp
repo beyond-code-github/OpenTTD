@@ -13,6 +13,7 @@
 
 #include "../junction_generator.h"
 #include "../junction_layout.h"
+#include "../junction_nodes.h"
 #include "../junction_route.h"
 #include "../junction_router.h"
 #include "../junction_topology.h"
@@ -434,9 +435,24 @@ TEST_CASE("Junction LL_RR test circuit", "[.circuitllrr]")
 	const JunctionTrackStructure cut = CutJunctionTrackBridges(topology, paths, graph, order, structure, programs, spec, &placement, &ignored);
 	REQUIRE(!placement.nodes.empty());
 	std::vector<JunctionTrackRoute> routes;
-	JunctionLayout layout = RenderJunctionTrackPlacement(topology, paths, graph, cut, programs, placement, &ignored, &routes);
-	SignalJunctionTrackRoutes(layout, routes, topology, paths, graph, programs, MakeTestJunctionSpec());
-	REQUIRE(!layout.tracks.empty());
+	const JunctionLayout seed = RenderJunctionTrackPlacement(topology, paths, graph, cut, programs, placement, &ignored, &routes);
+	REQUIRE(!seed.tracks.empty());
+
+	/* The layout is the graph solved on flat ground (the port fans lean toward their nodes, D212): terrain around the seed's box with a margin of 8. */
+	constexpr int MARGIN = 8;
+	JunctionTerrain terrain;
+	terrain.origin = {static_cast<int16_t>(-MARGIN), static_cast<int16_t>(-MARGIN)};
+	terrain.width = seed.size.x + 2 * MARGIN;
+	terrain.height = seed.size.y + 2 * MARGIN;
+	terrain.tiles.assign(static_cast<size_t>(terrain.width) * terrain.height, JunctionTerrainTile{});
+	terrain.foundation_cost = 250;
+	const JunctionFacts facts(terrain);
+	const JunctionNodeInput input = JunctionNodeInputOfGraph(topology, paths, graph, cut, programs, placement, routes);
+	const JunctionNodeTemplate tpl = BuildJunctionNodeTemplate(input, spec);
+	REQUIRE(tpl.error.empty());
+	const JunctionNodeSolve solve = SolveJunctionNodes(tpl, spec, facts, {0, 0}, topology, paths, graph, programs, input);
+	REQUIRE(solve.layout.has_value());
+	JunctionLayout layout = *solve.layout;
 	const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec, topology);
 	for (const RuleViolation &v : violations) std::cout << "violation " << v.tile.x << "," << v.tile.y << " " << v.message << "\n";
 	REQUIRE(violations.empty());

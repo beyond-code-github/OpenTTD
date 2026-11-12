@@ -20,6 +20,7 @@
 #include <set>
 #include <tuple>
 
+#include "../direction_func.h"
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
 #include "../junction_generator.h"
@@ -1212,8 +1213,9 @@ TEST_CASE("topology: the graph builds the traced template", "[junction][topology
 		spec.max_bridge_middle = 64;
 		const JunctionNodeInput from_graph = JunctionNodeInputOfGraph(*t, paths, graph, cut, programs, placement, routes);
 		const JunctionNodeTemplate got = BuildJunctionNodeTemplate(from_graph, spec);
-		const JunctionNodeTemplate want = BuildJunctionNodeTemplate(TraceJunctionNodeInput(render, spec, *t), spec);
+		JunctionNodeTemplate want = BuildJunctionNodeTemplate(TraceJunctionNodeInput(render, spec, *t), spec);
 		REQUIRE(want.error.empty());
+		want.lean = got.lean; // The traced input has no tags, so no leans.
 		const std::string diff = DiffJunctionNodeTemplates(got, want);
 		INFO(diff);
 		CHECK(diff.empty());
@@ -1523,10 +1525,14 @@ static void CheckGraphSolvesFlat(const JunctionTopology &topology)
 		const int gb = g == got.end() ? 0 : g->second.base();
 		if (wb == gb) continue;
 		INFO(fmt::format("tile {},{}: render {} solved {}", tile.first, tile.second, wb, gb));
-		if (differing++ < 10) CHECK(wb == gb);
+		if (differing++ < 10 && !std::ranges::any_of(setup.tpl.lean, [](int8_t lean) { return lean != 0; })) CHECK(wb == gb);
 	}
-	CHECK(differing == 0);
-	CHECK(SignalSetOf(*solve.layout) == SignalSetOf(want_layout));
+	/* A leaning class moves off the seed (D212): equality with the seed holds only where nothing leans. */
+	const bool leaning = std::ranges::any_of(setup.tpl.lean, [](int8_t lean) { return lean != 0; });
+	if (!leaning) {
+		CHECK(differing == 0);
+		CHECK(SignalSetOf(*solve.layout) == SignalSetOf(want_layout));
+	}
 	for (const RuleViolation &v : CheckJunctionRules(*solve.layout, spec, topology)) {
 		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
 		CHECK(false);
@@ -1564,5 +1570,152 @@ TEST_CASE("topology: the node render's routes at flat values are the input's rou
 				CHECK(got[r].tags[i] == setup.routes[r].tags[i]);
 			}
 		}
+	}
+}
+
+/** The facts of flat ground covering a layout's box with a margin of 8. */
+static JunctionTerrain FlatTerrainAround(const JunctionLayout &layout)
+{
+	constexpr int MARGIN = 8;
+	int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
+	for (const JunctionTrack &jt : layout.tracks) {
+		min_x = std::min<int>(min_x, jt.offset.x);
+		max_x = std::max<int>(max_x, jt.offset.x);
+		min_y = std::min<int>(min_y, jt.offset.y);
+		max_y = std::max<int>(max_y, jt.offset.y);
+	}
+	for (const JunctionBridge &b : layout.bridges) {
+		for (const TileIndexDiffC tile : {b.start, b.end}) {
+			min_x = std::min<int>(min_x, tile.x);
+			max_x = std::max<int>(max_x, tile.x);
+			min_y = std::min<int>(min_y, tile.y);
+			max_y = std::max<int>(max_y, tile.y);
+		}
+	}
+	JunctionTerrain terrain;
+	terrain.origin = {static_cast<int16_t>(min_x - MARGIN), static_cast<int16_t>(min_y - MARGIN)};
+	terrain.width = max_x - min_x + 1 + 2 * MARGIN;
+	terrain.height = max_y - min_y + 1 + 2 * MARGIN;
+	terrain.tiles.assign(static_cast<size_t>(terrain.width) * terrain.height, JunctionTerrainTile{});
+	terrain.foundation_cost = 250;
+	return terrain;
+}
+
+/** The x step of a piece's travel (+1 grows x), 0 for a Y or diagonal trackdir. */
+static int TravelX(Trackdir td)
+{
+	return td == Trackdir::X_SW ? 1 : (td == Trackdir::X_NE ? -1 : 0);
+}
+
+/** The first non-run, non-bridge piece of a route from its in port (in) or out port (out), or SIZE_MAX. */
+static size_t PortBendPiece(const JunctionTrackRoute &route, bool in)
+{
+	for (size_t k = 0; k < route.pieces.size(); k++) {
+		const size_t i = in ? k : route.pieces.size() - 1 - k;
+		if (route.tags[i].edge != route.tags[in ? 0 : route.pieces.size() - 1].edge) break;
+		if (route.tags[i].token != JunctionTrackPieceTag::RUN && !route.pieces[i].on_bridge) return i;
+	}
+	return SIZE_MAX;
+}
+
+TEST_CASE("topology: lean classes come from the port bends", "[junction][topology]")
+{
+	for (const JunctionTopology *t : RENDER_TOPOLOGIES) {
+		const GraphSolveSetup setup = GraphSolveSetupOf(*t);
+		const JunctionNodeTemplate &tpl = setup.tpl;
+		REQUIRE(tpl.lean.size() == tpl.flat.size());
+
+		/* Rule (a): every point of a leaning class is a piece of one port bend token, or a run piece. */
+		for (size_t c = 0; c < tpl.lean.size(); c++) {
+			if (tpl.lean[c] == 0) continue;
+			INFO("class " << c);
+			std::set<std::tuple<uint32_t, uint16_t, uint8_t>> tokens;
+			for (const JunctionNodePoint &point : tpl.points) {
+				if ((c < tpl.x_classes ? point.cls : point.ycls) != c) continue;
+				std::set<std::tuple<uint32_t, uint16_t, uint8_t>> here;
+				bool on_run = false;
+				for (const JunctionTrackRoute &route : setup.routes) {
+					for (size_t i = 0; i < route.pieces.size(); i++) {
+						const JunctionPiece &piece = route.pieces[i];
+						if (piece.tile.x != point.tile.x || piece.tile.y != point.tile.y || piece.trackdir != point.trackdir || piece.on_bridge) continue;
+						if (route.tags[i].token != JunctionTrackPieceTag::RUN) here.emplace(route.tags[i].edge, route.tags[i].token, route.tags[i].copy);
+						else on_run = true;
+					}
+				}
+				CHECK((here.size() == 1 || (here.empty() && on_run)));
+				tokens.insert(here.begin(), here.end());
+			}
+			CHECK(tokens.size() == 1);
+		}
+	}
+
+	/* LL_RR: the W-side in bends lean +1. */
+	const GraphSolveSetup setup = GraphSolveSetupOf(JunctionLLRRSidelineTopology());
+	int west = 0;
+	for (const JunctionTrackRoute &route : setup.routes) {
+		const Trackdir td = route.pieces.front().trackdir;
+		if (td != Trackdir::X_NE && td != Trackdir::X_SW) continue;
+		if (TravelX(td) <= 0) continue;
+		const size_t i = PortBendPiece(route, true);
+		if (i == SIZE_MAX) continue;
+		for (size_t p = 0; p < setup.tpl.points.size(); p++) {
+			const JunctionNodePoint &point = setup.tpl.points[p];
+			if (point.tile.x != route.pieces[i].tile.x || point.tile.y != route.pieces[i].tile.y || point.trackdir != route.pieces[i].trackdir) continue;
+			INFO("route path " << route.path << " class " << point.cls);
+			CHECK(setup.tpl.lean[point.cls] == 1);
+			west++;
+		}
+	}
+	CHECK(west > 0);
+}
+
+TEST_CASE("topology: LL_RR's port fans keep their port rows as long as they can", "[junction][topology]")
+{
+	const JunctionTopology &topology = JunctionLLRRSidelineTopology();
+	const GraphSolveSetup setup = GraphSolveSetupOf(topology);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTerrain terrain = FlatTerrainAround(setup.signalled);
+	const JunctionFacts facts(terrain);
+	const JunctionNodeSolve solve = SolveJunctionNodes(setup.tpl, spec, facts, {0, 0}, topology, setup.paths, setup.graph, setup.programs, setup.input);
+	REQUIRE(solve.layout.has_value());
+	const JunctionNodeTemplate &tpl = setup.tpl;
+
+	/* With every other class fixed at its solved value, a leaning class cannot move one more step. */
+	size_t free_links = 0;
+	for (const JunctionNodeLink &link : tpl.links) free_links += link.free && !link.diagonal && link.axis == Axis::X;
+	int leaning = 0;
+	for (size_t c = 0; c < tpl.lean.size(); c++) {
+		if (tpl.lean[c] == 0) continue;
+		leaning++;
+		JunctionPositions positions(tpl.flat.size() + 3 * free_links, -1024, 1024);
+		REQUIRE(AddJunctionNodeConstraints(tpl, positions));
+		for (size_t y = tpl.x_classes; y < tpl.flat.size(); y++) REQUIRE(positions.RestrictRange(y, solve.values[y], solve.values[y]));
+		REQUIRE(AddJunctionNodeLateConstraints(tpl, positions, solve.values));
+		int row = 0;
+		REQUIRE(AddJunctionNodeOccupancy(tpl, positions, solve.values, row));
+		for (size_t x = 0; x < tpl.x_classes; x++) {
+			if (x != c) REQUIRE(positions.RestrictRange(x, solve.values[x], solve.values[x]));
+		}
+		INFO("class " << c << " lean " << static_cast<int>(tpl.lean[c]) << " flat " << tpl.flat[c] << " solved " << solve.values[c]);
+		CHECK(!positions.RestrictRange(c, solve.values[c] + tpl.lean[c], solve.values[c] + tpl.lean[c]));
+	}
+	CHECK(leaning > 0);
+
+	/* At least one W-side in-port class left its flat value. */
+	bool moved = false;
+	for (const JunctionTrackRoute &route : setup.routes) {
+		const Trackdir td = route.pieces.front().trackdir;
+		if ((td != Trackdir::X_NE && td != Trackdir::X_SW) || TravelX(td) <= 0) continue;
+		const size_t i = PortBendPiece(route, true);
+		if (i == SIZE_MAX) continue;
+		for (const JunctionNodePoint &point : tpl.points) {
+			if (point.tile.x == route.pieces[i].tile.x && point.tile.y == route.pieces[i].tile.y && point.trackdir == route.pieces[i].trackdir && solve.values[point.cls] != tpl.flat[point.cls]) moved = true;
+		}
+	}
+	CHECK(moved);
+
+	for (const RuleViolation &v : CheckJunctionRules(*solve.layout, spec, topology)) {
+		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
+		CHECK(false);
 	}
 }
