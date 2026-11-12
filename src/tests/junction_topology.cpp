@@ -1722,6 +1722,112 @@ TEST_CASE("topology: LL_RR's port fans keep their port rows as long as they can"
 	}
 }
 
+/** The y step of a piece's travel (+1 grows y), 0 for an X or diagonal trackdir. */
+static int TravelY(Trackdir td)
+{
+	return td == Trackdir::Y_SE ? 1 : (td == Trackdir::Y_NW ? -1 : 0);
+}
+
+/** The token's non-bridge piece indices on a route. */
+static std::vector<size_t> TokenPieces(const JunctionTrackRoute &route, uint32_t edge, uint16_t token, uint8_t copy)
+{
+	std::vector<size_t> pieces;
+	for (size_t i = 0; i < route.pieces.size(); i++) {
+		const JunctionTrackPieceTag &tag = route.tags[i];
+		if (tag.edge == edge && tag.token == token && tag.copy == copy && !route.pieces[i].on_bridge) pieces.push_back(i);
+	}
+	return pieces;
+}
+
+/** The nearest straight piece's trackdir to a token's first piece, looking back first, or Trackdir::INVALID. */
+static std::optional<Trackdir> BendHeading(const JunctionTrackRoute &route, size_t first)
+{
+	const auto straight = [](Trackdir td) { return td == Trackdir::X_NE || td == Trackdir::X_SW || td == Trackdir::Y_SE || td == Trackdir::Y_NW; };
+	for (size_t i = first + 1; i-- > 0;) {
+		if (straight(route.pieces[i].trackdir)) return route.pieces[i].trackdir;
+	}
+	for (size_t i = first; i < route.pieces.size(); i++) {
+		if (straight(route.pieces[i].trackdir)) return route.pieces[i].trackdir;
+	}
+	return std::nullopt;
+}
+
+TEST_CASE("topoproj: lean kinds", "[junction][topoproj]")
+{
+	const GraphSolveSetup setup = GraphSolveSetupOf(JunctionLLRRSidelineTopology());
+	REQUIRE(setup.input.lean.size() == setup.routes.size());
+	/* The input's paths are in the checker's order: find each route's. */
+	const auto input_of = [&](size_t r) {
+		for (size_t p = 0; p < setup.input.routes.size(); p++) {
+			if (setup.input.routes[p] == std::pair<uint16_t, uint8_t>{setup.routes[r].path, setup.routes[r].copy}) return p;
+		}
+		FAIL("route without input path");
+		return size_t{0};
+	};
+	int checked = 0;
+	for (size_t e = 0; e < setup.programs.copies.size(); e++) {
+		if (setup.programs.copies[e].empty()) continue;
+		/* Kind 2: copy 1's SBends lean +1 in the input; kind 3: copy 0's lean -1. */
+		for (const uint8_t copy : {1, 0}) {
+			const std::vector<JunctionTrackStep> &program = copy == 1 ? setup.programs.copies[e] : setup.programs.edges[e];
+			for (size_t k = 0; k < program.size(); k++) {
+				if (program[k].kind != JunctionTrackStep::Kind::SBend) continue;
+				for (size_t r = 0; r < setup.routes.size(); r++) {
+					const JunctionTrackRoute &route = setup.routes[r];
+					const std::vector<size_t> pieces = TokenPieces(route, static_cast<uint32_t>(e), static_cast<uint16_t>(k), copy);
+					const std::optional<Trackdir> found = pieces.empty() ? std::nullopt : BendHeading(route, pieces.front());
+					if (pieces.empty()) continue;
+					REQUIRE(found.has_value());
+					const bool x_axis = *found == Trackdir::X_NE || *found == Trackdir::X_SW;
+					for (const size_t i : pieces) {
+						INFO("edge " << e << " copy " << static_cast<int>(copy) << " token " << k << " route " << r << " piece " << i);
+						CHECK(setup.input.lean[input_of(r)][i] == (copy == 1 ? 1 : -1));
+						checked++;
+
+						/* Rule (a) bars the class: the bend shares it with its bridge heads, so the template does not lean it. */
+						for (const JunctionNodePoint &point : setup.tpl.points) {
+							if (point.tile.x != route.pieces[i].tile.x || point.tile.y != route.pieces[i].tile.y || point.trackdir != route.pieces[i].trackdir) continue;
+							const uint16_t cls = x_axis ? point.cls : point.ycls;
+							std::string others;
+							for (const JunctionNodePoint &q : setup.tpl.points) {
+								if ((x_axis ? q.cls : q.ycls) != cls) continue;
+								for (size_t rr = 0; rr < setup.routes.size(); rr++) {
+									for (size_t ii = 0; ii < setup.routes[rr].pieces.size(); ii++) {
+										const JunctionPiece &pc = setup.routes[rr].pieces[ii];
+										const JunctionTrackPieceTag &tag = setup.routes[rr].tags[ii];
+										if (pc.tile.x == q.tile.x && pc.tile.y == q.tile.y && pc.trackdir == q.trackdir && (tag.edge != e || tag.token != k || tag.copy != copy) && tag.token != JunctionTrackPieceTag::RUN) {
+											others += fmt::format(" ({},{} edge {} token {} copy {}{})", pc.tile.x, pc.tile.y, tag.edge, tag.token, tag.copy, pc.on_bridge ? " bridge" : "");
+										}
+									}
+								}
+							}
+							INFO("class " << cls << " also holds" << others);
+							CHECK(setup.tpl.lean[cls] == 0);
+						}
+					}
+				}
+			}
+		}
+	}
+	CHECK(checked > 0);
+
+	/* Port fans as P3: the first edge's fan leans +1, the last edge's -1, where the input says so. */
+	int fans = 0;
+	for (size_t r = 0; r < setup.routes.size(); r++) {
+		const size_t in = PortBendPiece(setup.routes[r], true);
+		if (in != SIZE_MAX && setup.programs.edges[setup.routes[r].tags[in].edge][setup.routes[r].tags[in].token].kind == JunctionTrackStep::Kind::Fan) {
+			CHECK(setup.input.lean[input_of(r)][in] == 1);
+			fans++;
+		}
+		const size_t out = PortBendPiece(setup.routes[r], false);
+		if (out != SIZE_MAX && setup.programs.edges[setup.routes[r].tags[out].edge][setup.routes[r].tags[out].token].kind == JunctionTrackStep::Kind::Fan) {
+			CHECK(setup.input.lean[input_of(r)][out] == -1);
+			fans++;
+		}
+	}
+	CHECK(fans > 0);
+}
+
 /** Solve LL_RR's graph input on flat ground with some tiles blocked; the setup and terrain are the caller's. */
 static JunctionNodeSolve SolveLLRRBlocked(const GraphSolveSetup &setup, const JunctionTerrain &flat, const std::vector<std::pair<int, int>> &blocked)
 {
@@ -1764,7 +1870,7 @@ TEST_CASE("topoproj: a house on LL_RR's W in-lane run after the bend is avoided"
 	for (const JunctionTrack &jt : solve.layout->tracks) CHECK(!(jt.offset.x == house.x && jt.offset.y == house.y));
 }
 
-TEST_CASE("topoproj: every failure on LL_RR names the graph elements it hit", "[junction][topoproj]")
+TEST_CASE("topoproj: every failure on LL_RR names the graph elements it hit", "[junction][topoprojsweep]")
 {
 	const GraphSolveSetup setup = GraphSolveSetupOf(JunctionLLRRSidelineTopology());
 	const JunctionTerrain flat = FlatTerrainAround(setup.signalled);
