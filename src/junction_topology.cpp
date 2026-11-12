@@ -135,6 +135,39 @@ std::vector<int> JunctionSlotRows(const JunctionTopology &topology, const std::v
 	return row_of;
 }
 
+namespace {
+
+/** The stack items a row's tokens end on. */
+struct RowItems {
+	size_t lane; ///< The lane's item.
+	size_t approach; ///< The joiner's approach item, or NONE.
+	size_t north; ///< The item before the lane unless that is the approach, or NONE.
+	static constexpr size_t NONE = JunctionTrackStep::NO_ROW; ///< Not in the stack.
+};
+
+/**
+ * The lane, approach and north items of a row (the item before Lane that is not Approach is north).
+ * @param stack The track structure's stack.
+ * @param row The row.
+ * @return Its items.
+ */
+RowItems FindRowItems(const std::vector<JunctionTrackStackItem> &stack, int row)
+{
+	RowItems items{RowItems::NONE, RowItems::NONE, RowItems::NONE};
+	for (size_t i = 0; i < stack.size(); i++) {
+		if (stack[i].row != row) continue;
+		if (stack[i].kind == JunctionTrackStackItem::Kind::Lane) {
+			items.lane = i;
+			if (i > 0 && stack[i - 1].row == row && stack[i - 1].kind != JunctionTrackStackItem::Kind::Approach) items.north = i - 1;
+		} else if (stack[i].kind == JunctionTrackStackItem::Kind::Approach) {
+			items.approach = i;
+		}
+	}
+	return items;
+}
+
+} // namespace
+
 /** Builds the split or merge trees of a track graph (DESIGN-G1 §7). */
 struct JunctionTreeBuilder {
 	const std::vector<JunctionPortSlot> &slots;
@@ -706,18 +739,8 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 	}
 
 	/* The stack items of every row. */
-	std::vector<uint32_t> lane_item(rows, Step::NO_ROW);
-	std::vector<uint32_t> north_item(rows, Step::NO_ROW);
-	std::vector<uint32_t> approach_item(rows, Step::NO_ROW);
-	for (uint32_t i = 0; i < structure.stack.size(); i++) {
-		const JunctionTrackStackItem &item = structure.stack[i];
-		if (item.kind == JunctionTrackStackItem::Kind::Lane) {
-			lane_item[item.row] = i;
-			if (i > 0 && structure.stack[i - 1].row == item.row && structure.stack[i - 1].kind != JunctionTrackStackItem::Kind::Approach) north_item[item.row] = i - 1;
-		} else if (item.kind == JunctionTrackStackItem::Kind::Approach) {
-			approach_item[item.row] = i;
-		}
-	}
+	std::vector<RowItems> row_items;
+	for (int r = 0; r < rows; r++) row_items.push_back(FindRowItems(structure.stack, r));
 
 	/* The roles of every row's edges (graph structure, not token shape: any program may sit on them): one in edge from a main port, one leg between two nodes, one out edge to a main port. */
 	std::vector<int> in_count(rows, 0), leg_count(rows, 0), out_count(rows, 0);
@@ -816,20 +839,20 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 			const int r = (end_level(edge.from) - 1) / 2;
 			if (e == leg_of[r]) {
 				if (!row_doubled[r]) continue;
-				if (lane_item[r] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
-				const Step merge = step(StepKind::SBend, east[r] ? +1 : -1, lane_item[r], 0, Step::Role::LaneMerge);
-				const Step split = step(StepKind::SBend, east[r] ? +1 : -1, lane_item[r], 0, Step::Role::LaneSplit);
+				if (row_items[r].lane == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+				const Step merge = step(StepKind::SBend, east[r] ? +1 : -1, row_items[r].lane, 0, Step::Role::LaneMerge);
+				const Step split = step(StepKind::SBend, east[r] ? +1 : -1, row_items[r].lane, 0, Step::Role::LaneSplit);
 				for (uint32_t x : crossings) program.push_back(step(StepKind::Over, 0, x));
 				program.push_back(merge);
 				programs.copies[e].push_back(split);
 				for (uint32_t x : crossings) programs.copies[e].push_back(step(StepKind::Over, 0, x));
 			} else if (edge.to.node) {
-				const uint32_t item = row_doubled[r] ? north_item[r] : lane_item[r];
+				const uint32_t item = row_doubled[r] ? row_items[r].north : row_items[r].lane;
 				if (item == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
 				program.push_back(step(StepKind::Fan, 0, item));
 			} else {
-				if (lane_item[r] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
-				program.push_back(step(StepKind::Fan, 0, lane_item[r]));
+				if (row_items[r].lane == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+				program.push_back(step(StepKind::Fan, 0, row_items[r].lane));
 			}
 			continue;
 		}
@@ -838,7 +861,7 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		bool corner_placed = false;
 		auto joiner_corner = [&]() {
 			const int r = (order.node_level[edge.to.index] - 1) / 2;
-			return step(StepKind::Corner, east[r] ? +1 : -1, approach_item[r]);
+			return step(StepKind::Corner, east[r] ? +1 : -1, row_items[r].approach);
 		};
 
 		/* a. Start. */
@@ -877,13 +900,13 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		/* c. Arrival on a row. */
 		if (is_row_node(edge.to)) {
 			const int r = (order.node_level[edge.to.index] - 1) / 2;
-			if (lane_item[r] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+			if (row_items[r].lane == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
 			if (!corner_placed) {
 				const Step corner = joiner_corner();
 				if (corner.index == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
 				program.push_back(corner);
 			}
-			program.push_back(step(StepKind::SBend, east[r] ? -1 : +1, lane_item[r]));
+			program.push_back(step(StepKind::SBend, east[r] ? -1 : +1, row_items[r].lane));
 		}
 
 		/* d. End. */
@@ -994,18 +1017,13 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 
 	/* Stack items and rows. */
 	const int items = static_cast<int>(structure.stack.size());
-	std::vector<uint32_t> lane_item(rows, NO_ROW), north_item(rows, NO_ROW), approach_item(rows, NO_ROW);
+	std::vector<RowItems> row_items;
+	for (int r = 0; r < rows; r++) row_items.push_back(FindRowItems(structure.stack, r));
 	std::vector<int> row_first(rows, -1), row_last(rows, -1);
 	for (int i = 0; i < items; i++) {
 		const JunctionTrackStackItem &item = structure.stack[i];
 		if (row_first[item.row] < 0) row_first[item.row] = i;
 		row_last[item.row] = i;
-		if (item.kind == JunctionTrackStackItem::Kind::Lane) {
-			lane_item[item.row] = i;
-			if (i > 0 && structure.stack[i - 1].row == item.row && structure.stack[i - 1].kind != JunctionTrackStackItem::Kind::Approach) north_item[item.row] = i - 1;
-		} else if (item.kind == JunctionTrackStackItem::Kind::Approach) {
-			approach_item[item.row] = i;
-		}
 	}
 
 	/* The shape of every row: its in edge, leg and out edge. */
@@ -1023,7 +1041,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		}
 	}
 	for (int r = 0; r < rows; r++) {
-		if (in_edge[r] == NO_ROW || leg_edge[r] == NO_ROW || out_edge[r] == NO_ROW || lane_item[r] == NO_ROW) return fail("a lane other than in, one leg, out is not ruled yet");
+		if (in_edge[r] == NO_ROW || leg_edge[r] == NO_ROW || out_edge[r] == NO_ROW || row_items[r].lane == NO_ROW) return fail("a lane other than in, one leg, out is not ruled yet");
 	}
 	std::vector<std::vector<int>> bridges_of(edge_count);
 	for (size_t b = 0; b < structure.bridges.size(); b++) bridges_of[structure.bridges[b].edge].push_back(static_cast<int>(b));
@@ -1364,6 +1382,20 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		const Step &token = graph.edges[e].from.node ? programs.edges[e].back() : programs.edges[e].front();
 		return token.kind == StepKind::Fan ? token.index : NO_ROW;
 	};
+	/* The row of the node an in or out edge meets: the item of the token whose element ends at it (an in edge's last token that carries an item) or starts at it (an out edge's first). */
+	auto node_item = [&](uint32_t e) -> uint32_t {
+		const std::vector<Step> &program = programs.edges[e];
+		if (graph.edges[e].to.node) {
+			for (size_t t = program.size(); t-- > 0;) {
+				if (program[t].index != NO_ROW) return program[t].index;
+			}
+		} else {
+			for (const Step &token : program) {
+				if (token.index != NO_ROW) return token.index;
+			}
+		}
+		return NO_ROW;
+	};
 	auto edge_port = [&](uint32_t e) { return graph.edges[e].from.node ? graph.edges[e].to.index : graph.edges[e].from.index; };
 
 	/* The row chains' points: allocated here, in this order, so the point ids of the reports stay; the chains' elements alias them and nothing else reads them. */
@@ -1472,8 +1504,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				h0.last = rp.fh0[b];
 				h1.first = rp.nh1[b];
 				h1.last = rp.fh1[b];
-				h0.index = north_item[r]; // The rows the heads lie on: the exit item (copy 0) and the lane item (copy 1).
-				h1.index = lane_item[r];
+				h0.index = node_item(in_edge[r]); // The rows the heads lie on: the exit item (copy 0: the in edge's fan ends on it) and the lane item (copy 1: its lane split ends on it).
+				h1.index = bend1.index;
 				elems.push_back(h0);
 				copy.push_back(h1);
 			}
@@ -1972,7 +2004,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 			if (nw == se) continue;
 			const int sgn = east[r] ? 1 : -1;
-			const int y_row = vy[item_pt[lane_item[r]]] + (nw ? 1 : -1);
+			const int y_row = vy[item_pt[row_items[r].lane]] + (nw ? 1 : -1);
 			const DiagDirection side = nw ? DiagDirection::SE : DiagDirection::NW;
 			const DiagDirection exit_edge = east[r] ? DiagDirection::SW : DiagDirection::NE;
 			const TrackBits h2{JunctionCornerTrack(ReverseDiagDir(side), ReverseDiagDir(exit_edge))};
@@ -2180,11 +2212,11 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 
 		/* The rows' nodes: the exit split lies on the exit item's row, the joiner merge on the lane item's. */
 		for (int r = 0; r < rows; r++) {
-			const uint32_t exit_item = doubled_row(r) ? north_item[r] : lane_item[r];
+			const uint32_t exit_item = node_item(in_edge[r]); // The in edge's fan ends on the exit item.
 			const JunctionTrackEdge &in = graph.edges[in_edge[r]];
 			const JunctionTrackEdge &out = graph.edges[out_edge[r]];
 			eq(1, node_pt[in.to.index], item_pt[exit_item], 0);
-			eq(1, node_pt[out.from.index], item_pt[lane_item[r]], 0);
+			eq(1, node_pt[out.from.index], item_pt[node_item(out_edge[r])], 0); // The out edge's fan starts on the lane item, at the joiner merge.
 		}
 
 		if (!x_phase) {
@@ -2229,16 +2261,18 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				auto heads0 = [&](size_t b) -> const Elem & { return elems[1 + b]; };
 				auto heads1 = [&](size_t b) -> const Elem & { return copy[2 + b]; };
 				why("row items", e, UINT32_MAX, r);
-				eq(1, bend1.first, item_pt[north_item[r]], 0);
-				eq(1, bend1.last, item_pt[lane_item[r]], 0);
+				/* The leg's S-bends start on the exit item, where the in edge's fan ends (the exit split lies there), and end on their own token's item. */
+				const uint32_t exit_item = node_item(in_edge[r]);
+				eq(1, bend1.first, item_pt[exit_item], 0);
+				eq(1, bend1.last, item_pt[bend1.index], 0);
 				for (size_t b = 0; b < g; b++) {
 					for (const Elem *h : {&heads0(b), &heads1(b)}) {
 						eq(1, h->first, item_pt[h->index], 0);
 						eq(1, h->last, item_pt[h->index], 0);
 					}
 				}
-				eq(1, bend0.first, item_pt[north_item[r]], 0);
-				eq(1, bend0.last, item_pt[lane_item[r]], 0);
+				eq(1, bend0.first, item_pt[exit_item], 0);
+				eq(1, bend0.last, item_pt[bend0.index], 0);
 				if (!x_phase) continue;
 
 				const int s = east[r] ? 1 : -1;
