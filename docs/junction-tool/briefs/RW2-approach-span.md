@@ -29,3 +29,8 @@ CODINGSTYLE.md (C++ part); RECON-per-row-code.md §2; src/junction_topology.cpp 
 
 ## Report
 The standard report, plus the red reason chain and the EDITSOUND movements. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop)
+1. Drop test 1: a gap between Approach and Lane needs a stack item between them, which only the Shift edit makes; R7b's resumption carries that red test (it already failed there). RW2 is an identity step that removes the joiner special case.
+2. Your two readings are accepted, each with a comment: (a) until the rows are known, an S-bend on a non-row edge keeps m = 1 (readers size from offs before the Y solve); (b) the fixed one-row `eq(1, ...)` stays only for horizontal S-bends with no item (NO_ROW): report which tokens those are (edge kinds, program position) and why one row is their rule.
+3. Run the full outer identity diffs against launch HEAD (all five sweeps, times stripped; EDITSOUND must be identical too now that no test moves rows), circuit byte-identical; TESTS.md untouched unless a row's text changes; gates; the one commit.
