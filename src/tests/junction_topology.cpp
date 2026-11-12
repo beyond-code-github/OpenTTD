@@ -1183,6 +1183,80 @@ TEST_CASE("topology: the LL_RR seed is clean", "[junction][topology]")
 	}
 }
 
+TEST_CASE("topology: a doubled leg's lane split sits next to its bridge", "[junction][topology]")
+{
+	/* D215: the copy-0 first near head lies exactly 2 tiles along the heading after the lane split (the copy-1 S-bend's first tile). */
+	std::string error;
+	JunctionTrackStructure cut;
+	const JunctionTrackPlacement placement = CutOf(JunctionLLRRSidelineTopology(), 64, &error, &cut);
+	REQUIRE(!placement.nodes.empty());
+	size_t checked = 0;
+	std::set<uint32_t> seen;
+	for (size_t b = 0; b < cut.bridges.size(); b++) {
+		const uint32_t e = cut.bridges[b].edge;
+		if (!cut.bridges[b].doubled || !seen.insert(e).second) continue;
+		REQUIRE(!placement.copies[e].empty());
+		const TileIndexDiffC split = placement.copies[e][0].first;
+		const TileIndexDiffC head = placement.bridges[b][0].start;
+		INFO(fmt::format("edge {}: lane split {},{} first head {},{}", e, split.x, split.y, head.x, head.y));
+		CHECK(split.y == head.y);
+		CHECK(std::abs(head.x - split.x) == 2);
+		checked++;
+	}
+	CHECK(checked == 3);
+}
+
+TEST_CASE("topology: the out-fan gap is the curve-gap minimum", "[junction][topology]")
+{
+	/* D215: every out fan starts as many tiles after its joiner merge as the curve gaps of the joiner's route need (RECON-seed-floors 1); tl 5 gives g2 = 9, one tile more than the test spec's 7. */
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.tl = 5;
+	spec.max_bridge_middle = 64;
+	const int cl = static_cast<int>(DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl));
+	const int g1 = std::min(2 * static_cast<int>(spec.tl) - 1, std::max(2, cl));
+	const int g2 = std::min(2 * static_cast<int>(spec.tl) - 1, 2 * cl);
+	REQUIRE(g2 == 9);
+	REQUIRE(1 + (g1 + 1) / 2 < (g2 + 1) / 2); // The cap binds, not the same-hand gap.
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		std::string error;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(*t, &error);
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(*t, paths, &error);
+		REQUIRE(!graph.edges.empty());
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(*t, paths, graph, &error);
+		const JunctionTrackStructure structure = StructureJunctionTrackGraph(*t, paths, graph, order, &error);
+		const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(*t, paths, graph, order, structure, &error);
+		JunctionTrackPlacement placement;
+		const JunctionTrackStructure cut = CutJunctionTrackBridges(*t, paths, graph, order, structure, programs, spec, &placement, &error);
+		INFO(error);
+		REQUIRE(!placement.nodes.empty());
+		size_t fans = 0;
+		for (uint32_t e = 0; e < graph.edges.size(); e++) {
+			if (graph.edges[e].kind != JunctionTrackEdge::Kind::Out || !graph.edges[e].from.node) continue;
+			if (programs.edges[e].size() != 1 || programs.edges[e][0].kind != JunctionTrackStep::Kind::Fan) continue;
+			const TileIndexDiffC merge = placement.nodes[graph.edges[e].from.index];
+			const TileIndexDiffC fan = placement.edges[e][0].first;
+			if (placement.edges[e][0].second.y == fan.y) continue; // A port on the row has no fan.
+			const int k = std::abs(fan.x - merge.x);
+			INFO(fmt::format("edge {}: merge {},{} fan {},{}", e, merge.x, merge.y, fan.x, fan.y));
+			CHECK(k == (g2 + 1) / 2);
+			fans++;
+		}
+		CHECK(fans >= 1);
+
+		/* The LL_RR seed at tl 5 breaks other curve gaps (in-fans and exit splits, not the out fans); only the T is clean. */
+		if (t != &JunctionTTopology()) continue;
+		std::vector<JunctionTrackRoute> routes;
+		JunctionLayout layout = RenderJunctionTrackPlacement(*t, paths, graph, cut, programs, placement, &error, &routes);
+		INFO(error);
+		REQUIRE(!layout.tracks.empty());
+		SignalJunctionTrackRoutes(layout, routes, *t, paths, graph, programs, spec);
+		for (const RuleViolation &v : CheckJunctionRules(layout, spec, *t)) {
+			INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
+			CHECK(false);
+		}
+	}
+}
+
 TEST_CASE("topology: the LL_RR seed builds a node template", "[junction][topology]")
 {
 	std::string error;
