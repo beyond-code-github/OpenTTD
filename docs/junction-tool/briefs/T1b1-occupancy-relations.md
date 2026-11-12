@@ -36,3 +36,8 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 
 ## Report
 The standard report, plus test 1's counts (runs, solve failures, clean) per topology and its red (v, s, violation); `[topologystretch]` Release time. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop)
+1. **Columns:** replace the `points` member by `std::vector<int> columns; ///< The column of every placement point (x_floors refer to these ids).` filled from the final vx. Test 1 iterates 0 < v < columns.size().
+2. **C3's north case:** no detection. Add the relation only; its comment says it assumes the doubled leg's rows lie north of the head, and that a topology with the leg south fails the Y solve with this reason (an honest "not ruled yet"). Drop the stop condition on it.
+3. **x_floors** goes after `error` (default `{}`), so existing callers stay unedited.
