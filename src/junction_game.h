@@ -125,5 +125,6 @@ private:
 
 JunctionSequencer &GetJunctionSequencer();
 void CcJunctionStep(Commands cmd, const CommandCost &result, TileIndex tile);
+void CcJunctionTerraformStep(Commands cmd, const CommandCost &result, Money cost, TileIndex tile);
 
 #endif /* JUNCTION_GAME_H */

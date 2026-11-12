@@ -16,6 +16,8 @@
 #include "rail_type.h"
 #include "direction_type.h"
 
+#include <span>
+
 /** Ghost of a bridge head on one tile. */
 struct JunctionGhostBridgeHead {
 	BridgeType type;
@@ -38,11 +40,12 @@ struct JunctionGhostTile {
 	std::optional<JunctionGhostBridgeHead> head;
 	std::optional<JunctionGhostBridgeSpan> span;
 	bool bad = false; ///< Draw in red: the estimate found this tile unbuildable.
+	bool terraform = false; ///< Draw in blue: the projection plan changes the ground of this tile.
 };
 
 /** Client-side store of the junction placement ghost. */
 namespace JunctionGhost {
-	void Set(const JunctionLayout &layout, TileIndex origin, int height, RailType railtype, const std::vector<std::optional<BridgeType>> &bridge_types, const JunctionEstimate &estimate);
+	void Set(const JunctionLayout &layout, TileIndex origin, int height, RailType railtype, const std::vector<std::optional<BridgeType>> &bridge_types, const JunctionEstimate &estimate, std::span<const TileIndex> terraform_tiles = {});
 	void Clear();
 	const JunctionGhostTile *Get(TileIndex tile);
 	RailType GetRailType();

@@ -257,7 +257,7 @@ TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
 	for (const auto &[reason, count] : tf_reasons) std::cout << "REALTERRAIN terraform failure " << count << " x " << reason << "\n";
 }
 
-TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep][hoverplan]")
+TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
 {
 	namespace fs = std::filesystem;
 	std::vector<fs::path> files;
@@ -310,6 +310,9 @@ TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep][hoverplan]
 		std::vector<JunctionTrackRoute> routes;
 		std::string render_error;
 		const JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, again, &render_error, &routes);
+		/* The routes checked are those of the plan's layout (the plan's has the signal pass on top). */
+		CHECK(layout.size.x == plan.layout->size.x);
+		CHECK(layout.size.y == plan.layout->size.y);
 		std::string why;
 		CHECK(JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, offset, &why));
 		INFO(why);

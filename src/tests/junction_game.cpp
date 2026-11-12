@@ -310,6 +310,37 @@ TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working fram
 	CHECK(terrain.At(0, 0)->cls == JunctionTileClass::Blocked);
 }
 
+TEST_CASE("the hover snapshot: the projection frame costs at most 3 times the earlier one", "[junction][game]")
+{
+	Map::Allocate(256, 256);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(JunctionTTopology(), spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	JunctionFrame frame;
+	frame.hub_x = seed.placement.size.x / 2;
+	frame.width = seed.placement.size.x;
+	frame.terrain_origin_y = 0;
+	frame.terrain_height = seed.placement.size.y;
+
+	/* The best of five: the first run pays for cold caches. */
+	auto best_micros = [](auto &&make) {
+		int64_t best = INT64_MAX;
+		for (int i = 0; i < 5; i++) {
+			const auto start = std::chrono::steady_clock::now();
+			const JunctionTerrain terrain = make();
+			best = std::min<int64_t>(best, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
+			REQUIRE(!terrain.tiles.empty());
+		}
+		return best;
+	};
+	const int64_t old_us = best_micros([&]() { return MakeJunctionTerrain(TileXY(128, 128), 0, false, MakeJunctionFrame(spec), 4); });
+	const int64_t new_us = best_micros([&]() { return MakeJunctionTerrain(TileXY(128, 128), 0, false, frame, 8); });
+	std::cout << "HOVERSNAPSHOT old_us=" << old_us << " new_us=" << new_us << " box=" << seed.placement.size.x << "x" << seed.placement.size.y << "\n";
+	CHECK(new_us <= 3 * old_us);
+}
+
 TEST_CASE("MakeJunctionTerrainRect: cells are map tiles", "[terrainrect]")
 {
 	Map::Allocate(128, 128);

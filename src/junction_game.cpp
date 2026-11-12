@@ -20,6 +20,7 @@
 #include "newgrf_station.h"
 #include "landscape_cmd.h"
 #include "tunnelbridge_cmd.h"
+#include "terraform_cmd.h"
 #include "bridge.h"
 #include "tunnelbridge.h"
 #include "signal_func.h"
@@ -565,8 +566,7 @@ bool GameJunctionStepPoster::Post(const JunctionBuildStep &step)
 			if (!type.has_value()) return false;
 			return Command<Commands::BuildBridge>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, CcJunctionStep, s.end, s.start, TransportType::Rail, *type, this->railtype, INVALID_ROADTYPE);
 		} else if constexpr (std::is_same_v<T, JunctionTerraformStep>) {
-			/* Terraform steps are not posted until the GUI uses them (H2). */
-			return false;
+			return Command<Commands::TerraformLand>::Post(s.raise ? STR_ERROR_CAN_T_RAISE_LAND_HERE : STR_ERROR_CAN_T_LOWER_LAND_HERE, CcJunctionTerraformStep, s.tile, SlopeWithOneCornerRaised(s.corner), s.raise);
 		} else {
 			return Command<Commands::BuildSignal>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, CcJunctionStep, s.tile, TrackdirToTrack(s.facing), s.type, s.variant, false, false, false, SignalType::Block, SignalType::Block, 0, SignalAlongTrackdir(s.facing));
 		}
@@ -590,6 +590,18 @@ JunctionSequencer &GetJunctionSequencer()
  * @param tile The tile the command was executed on.
  */
 void CcJunctionStep([[maybe_unused]] Commands cmd, const CommandCost &result, [[maybe_unused]] TileIndex tile)
+{
+	GetJunctionSequencer().OnStepResult(result.Succeeded());
+}
+
+/**
+ * Command callback of every junction terraform step; reports the result to the sequencer.
+ * @param cmd The command that was executed.
+ * @param result The result of the command.
+ * @param cost The cost of the command.
+ * @param tile The tile the command was executed on.
+ */
+void CcJunctionTerraformStep([[maybe_unused]] Commands cmd, const CommandCost &result, [[maybe_unused]] Money cost, [[maybe_unused]] TileIndex tile)
 {
 	GetJunctionSequencer().OnStepResult(result.Succeeded());
 }

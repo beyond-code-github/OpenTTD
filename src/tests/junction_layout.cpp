@@ -11,8 +11,13 @@
 
 #include "../3rdparty/catch2/catch.hpp"
 
+#include "../junction_game.h"
+#include "../junction_generator.h"
+#include "../junction_hover.h"
 #include "../junction_layout.h"
 #include "../junction_terraform.h"
+#include "../junction_terrain_json.h"
+#include "../junction_topology.h"
 #include "../map_func.h"
 #include "../track_func.h"
 #include "../table/strings.h"
@@ -20,7 +25,10 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <map>
+#include <sstream>
 #include <set>
 #include <tuple>
 
@@ -640,6 +648,54 @@ TEST_CASE("JunctionLayout: a tunnel is priced as a tunnel, a bridge as a bridge"
 	CHECK(EstimateJunction(both, TileXY(10, 10), pricing).total == 2 * 100 + 700 + 1000);
 }
 
+/** The corner offsets of a tile from its own coordinates: W, S, E, N. */
+static constexpr std::pair<int, int> TERRAFORM_CORNER_OFFSET[4] = {{1, 0}, {1, 1}, {0, 1}, {0, 0}};
+
+/**
+ * The terrain in a map frame: each cell's tile is anchor + O(cell); the lattice map is the affine map that sends the cell's square to that tile's square.
+ * @return The corner height of each map lattice point the snapshot covers.
+ */
+static std::map<std::pair<int, int>, int> TerrainToMapLattice(const JunctionTerrain &t, TileIndex anchor, int hub_x, uint8_t rotation, bool mirror)
+{
+	std::map<std::pair<int, int>, int> heights;
+	int min_x = 2, min_y = 2;
+	for (int u = 0; u < 4; u++) {
+		const TileIndexDiffC o = OrientJunctionVector({static_cast<int16_t>(u & 1), static_cast<int16_t>(u >> 1)}, rotation, mirror);
+		min_x = std::min<int>(min_x, o.x);
+		min_y = std::min<int>(min_y, o.y);
+	}
+	for (int y = t.origin.y; y < t.origin.y + t.height; y++) {
+		for (int x = t.origin.x; x < t.origin.x + t.width; x++) {
+			const TileIndexDiffC image = OrientJunctionVector({static_cast<int16_t>(x - hub_x), static_cast<int16_t>(y)}, rotation, mirror);
+			const int tx = static_cast<int>(TileX(anchor)) + image.x;
+			const int ty = static_cast<int>(TileY(anchor)) + image.y;
+			const std::array<int, 4> corners = JunctionTileCorners(*t.At(x, y));
+			for (int i = 0; i < 4; i++) {
+				const TileIndexDiffC o = OrientJunctionVector({static_cast<int16_t>(TERRAFORM_CORNER_OFFSET[i].first), static_cast<int16_t>(TERRAFORM_CORNER_OFFSET[i].second)}, rotation, mirror);
+				const std::pair<int, int> lattice{tx + o.x - min_x, ty + o.y - min_y};
+				const auto [it, inserted] = heights.emplace(lattice, corners[i]);
+				if (!inserted) REQUIRE(it->second == corners[i]);
+			}
+		}
+	}
+	return heights;
+}
+
+/** Apply terraform steps corner by corner to a lattice map; each step moves one corner one level, and the game's propagation must then have nothing to move. */
+static void SimulateTerraformSteps(std::map<std::pair<int, int>, int> &map_heights, const std::vector<JunctionTerraformStep> &steps)
+{
+	for (const JunctionTerraformStep &step : steps) {
+		const std::pair<int, int> lattice{static_cast<int>(TileX(step.tile)) + TERRAFORM_CORNER_OFFSET[to_underlying(step.corner)].first, static_cast<int>(TileY(step.tile)) + TERRAFORM_CORNER_OFFSET[to_underlying(step.corner)].second};
+		REQUIRE(map_heights.contains(lattice));
+		const int h = map_heights[lattice] + (step.raise ? 1 : -1);
+		map_heights[lattice] = h;
+		for (const auto &[dx, dy] : {std::pair{1, 0}, std::pair{0, 1}, std::pair{-1, 0}, std::pair{0, -1}}) {
+			const auto it = map_heights.find({lattice.first + dx, lattice.second + dy});
+			if (it != map_heights.end()) REQUIRE(std::abs(it->second - h) <= 1);
+		}
+	}
+}
+
 TEST_CASE("terraform steps: every orientation", "[junction][hoverplan]")
 {
 	Map::Allocate(64, 64);
@@ -667,59 +723,92 @@ TEST_CASE("terraform steps: every orientation", "[junction][hoverplan]")
 	const JunctionTerrain after = ApplyJunctionTerraform(terrain, plan);
 
 	constexpr int HUB_X = 8;
-	constexpr std::pair<int, int> CORNER_OFFSET[4] = {{1, 0}, {1, 1}, {0, 1}, {0, 0}}; // W, S, E, N.
 	const TileIndex anchor = TileXY(30, 30);
 	for (int mirror = 0; mirror < 2; mirror++) {
 		for (uint8_t rotation = 0; rotation < 4; rotation++) {
 			INFO("rotation " << int(rotation) << " mirrored " << mirror);
-			/* The terrain in a map frame: each cell's tile is anchor + O(cell); the lattice map is the affine map that sends the cell's square to that tile's square. */
-			auto to_map = [&](const JunctionTerrain &t) {
-				std::map<std::pair<int, int>, int> heights;
-				for (int y = t.origin.y; y < t.origin.y + t.height; y++) {
-					for (int x = t.origin.x; x < t.origin.x + t.width; x++) {
-						const TileIndexDiffC image = OrientJunctionVector({static_cast<int16_t>(x - HUB_X), static_cast<int16_t>(y)}, rotation, mirror != 0);
-						const int tx = static_cast<int>(TileX(anchor)) + image.x;
-						const int ty = static_cast<int>(TileY(anchor)) + image.y;
-						int min_x = 2, min_y = 2;
-						for (int u = 0; u < 4; u++) {
-							const TileIndexDiffC o = OrientJunctionVector({static_cast<int16_t>(u & 1), static_cast<int16_t>(u >> 1)}, rotation, mirror != 0);
-							min_x = std::min<int>(min_x, o.x);
-							min_y = std::min<int>(min_y, o.y);
-						}
-						const std::array<int, 4> corners = JunctionTileCorners(*t.At(x, y));
-						for (int i = 0; i < 4; i++) {
-							const TileIndexDiffC o = OrientJunctionVector({static_cast<int16_t>(CORNER_OFFSET[i].first), static_cast<int16_t>(CORNER_OFFSET[i].second)}, rotation, mirror != 0);
-							const std::pair<int, int> lattice{tx + o.x - min_x, ty + o.y - min_y};
-							const auto [it, inserted] = heights.emplace(lattice, corners[i]);
-							if (!inserted) REQUIRE(it->second == corners[i]);
-						}
-					}
-				}
-				return heights;
-			};
-			std::map<std::pair<int, int>, int> map_heights = to_map(terrain);
-			const std::map<std::pair<int, int>, int> expected = to_map(after);
+			std::map<std::pair<int, int>, int> map_heights = TerrainToMapLattice(terrain, anchor, HUB_X, rotation, mirror != 0);
+			const std::map<std::pair<int, int>, int> expected = TerrainToMapLattice(after, anchor, HUB_X, rotation, mirror != 0);
 
 			const std::vector<JunctionTerraformStep> steps = MakeJunctionTerraformSteps(plan, terrain, anchor, rotation, mirror != 0, HUB_X);
 			int moves = 0;
-			std::map<std::pair<int, int>, int> before = to_map(terrain);
 			for (const auto &[corner, target] : plan.corners) moves += std::abs(target - JunctionTileCorners(*terrain.At(corner.first, corner.second))[3]);
 			CHECK(static_cast<int>(steps.size()) == moves);
 
-			/* Each step moves one corner one level; the game's propagation must then have nothing to move. */
-			for (const JunctionTerraformStep &step : steps) {
-				const std::pair<int, int> lattice{static_cast<int>(TileX(step.tile)) + CORNER_OFFSET[to_underlying(step.corner)].first, static_cast<int>(TileY(step.tile)) + CORNER_OFFSET[to_underlying(step.corner)].second};
-				REQUIRE(map_heights.contains(lattice));
-				const int h = map_heights[lattice] + (step.raise ? 1 : -1);
-				map_heights[lattice] = h;
-				for (const auto &[dx, dy] : {std::pair{1, 0}, std::pair{0, 1}, std::pair{-1, 0}, std::pair{0, -1}}) {
-					const auto it = map_heights.find({lattice.first + dx, lattice.second + dy});
-					if (it != map_heights.end()) REQUIRE(std::abs(it->second - h) <= 1);
-				}
-			}
+			SimulateTerraformSteps(map_heights, steps);
 			CHECK(map_heights == expected);
 		}
 	}
+}
+
+TEST_CASE("hover job: snapshot, plan and steps on real terrain", "[junction][hoverplan]")
+{
+	namespace fs = std::filesystem;
+	Map::Allocate(256, 256);
+
+	/* The hover job's frame (H2): the seed's box with the hub column in the middle, the plan at the snapshot's canonical (0, 0). */
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionTopology &t = JunctionTTopology();
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	const int hub_x = seed.placement.size.x / 2;
+	const TileIndex anchor = TileXY(120, 120);
+
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+
+	int checked = 0;
+	for (const fs::path &file : files) {
+		if (checked == 3) break;
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		std::optional<JunctionTerrain> loaded = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(loaded.has_value());
+		/* The fixture as the job's snapshot: canonical (0, 0) is the box's first tile, so the origin shifts to where the fixture centres the box. */
+		JunctionTerrain terrain = std::move(*loaded);
+		const TileIndexDiffC centred = {static_cast<int16_t>((terrain.width - seed.placement.size.x) / 2), static_cast<int16_t>((terrain.height - seed.placement.size.y) / 2)};
+		terrain.origin = {static_cast<int16_t>(-centred.x), static_cast<int16_t>(-centred.y)};
+		const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, terrain, {0, 0});
+		if (!plan.layout.has_value() || plan.terraform.corners.empty()) continue;
+		checked++;
+		INFO(file.filename().string());
+		const JunctionTerrain after = ApplyJunctionTerraform(terrain, plan.terraform);
+
+		for (int mirror = 0; mirror < 2; mirror++) {
+			for (uint8_t rotation = 0; rotation < 4; rotation++) {
+				INFO("rotation " << int(rotation) << " mirrored " << mirror);
+				std::map<std::pair<int, int>, int> map_heights = TerrainToMapLattice(terrain, anchor, hub_x, rotation, mirror != 0);
+				const std::map<std::pair<int, int>, int> expected = TerrainToMapLattice(after, anchor, hub_x, rotation, mirror != 0);
+				const std::vector<JunctionTerraformStep> steps = MakeJunctionTerraformSteps(plan.terraform, terrain, anchor, rotation, mirror != 0, hub_x);
+				CHECK(!steps.empty());
+				/* Every step's corner lies in the snapshot (the simulation requires it), and the result is the plan. */
+				SimulateTerraformSteps(map_heights, steps);
+				CHECK(map_heights == expected);
+
+				/* The ghost's frame: the layout, oriented and placed at its origin, lies on the same tiles as the canonical layout through the snapshot's mapping. */
+				const JunctionLayout oriented = ApplyJunctionOrientation(*plan.layout, rotation, mirror != 0);
+				const TileIndexDiffC hub = {static_cast<int16_t>(hub_x), 0};
+				const TileIndexDiffC offset = OrientJunctionOffset(hub, plan.layout->size, rotation, mirror != 0);
+				const TileIndexDiffC origin = {static_cast<int16_t>(static_cast<int>(TileX(anchor)) - offset.x), static_cast<int16_t>(static_cast<int>(TileY(anchor)) - offset.y)};
+				std::set<std::pair<int, int>> ghost_tiles;
+				for (const JunctionTrack &track : oriented.tracks) ghost_tiles.insert({origin.x + track.offset.x, origin.y + track.offset.y});
+				std::set<std::pair<int, int>> mapped_tiles;
+				for (const JunctionTrack &track : plan.layout->tracks) {
+					const TileIndexDiffC image = OrientJunctionVector({static_cast<int16_t>(track.offset.x - hub_x), static_cast<int16_t>(track.offset.y)}, rotation, mirror != 0);
+					mapped_tiles.insert({static_cast<int>(TileX(anchor)) + image.x, static_cast<int>(TileY(anchor)) + image.y});
+				}
+				CHECK(ghost_tiles == mapped_tiles);
+			}
+		}
+	}
+	CHECK(checked == 3);
 }
 
 TEST_CASE("the terraformed estimate adds the height cost", "[junction][hoverplan]")

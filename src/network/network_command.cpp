@@ -86,7 +86,8 @@ static constexpr auto _callback_tuple = std::make_tuple(
 	&CcAddVehicleNewGroup,
 	&CcMoveStationName,
 	&CcMoveWaypointName,
-	&CcJunctionStep
+	&CcJunctionStep,
+	&CcJunctionTerraformStep
 );
 
 #ifdef SILENCE_GCC_FUNCTION_POINTER_CAST

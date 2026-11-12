@@ -2884,6 +2884,8 @@ STR_JUNCTION_ERROR_NO_LAYOUT_HERE                               :{RED}No junctio
 STR_JUNCTION_ERROR_PORT_BLOCKED                                 :{RED}A junction end is blocked here: move the cursor
 STR_JUNCTION_ERROR_PRIO_TOO_LONG                                :{RED}Prio coverage would exceed 32 tiles for this train
 STR_JUNCTION_ERROR_PRIO_DELAYS_MAINLINE                         :{RED}The prio coverage is too short at this spot
+STR_JUNCTION_PROJECTION                                         :{BLACK}Projection (terraform)
+STR_JUNCTION_PROJECTION_TOOLTIP                                 :{BLACK}Plan the junction on the projection pipeline, with terraforming where the ground needs it; off uses the earlier generator
 STR_JUNCTION_ROTATE                                             :{BLACK}Rotate
 STR_JUNCTION_ROTATE_TOOLTIP                                     :{BLACK}Rotate the junction a quarter turn (hotkey .)
 STR_JUNCTION_MIRROR                                             :{BLACK}Mirror
@@ -2898,6 +2900,7 @@ STR_JUNCTION_ERROR_TILES_BLOCKED                                :tiles shown in 
 STR_JUNCTION_STATUS_GENERATING                                :{BLACK}Working out a junction for this spot…
 STR_JUNCTION_STATUS_PICK_TRAIN                                  :{BLACK}Pick a design train first
 STR_JUNCTION_STATUS_SIZING_PRIO                                 :{BLACK}Sizing the prio for this train…
+STR_JUNCTION_STATUS_PLAN_FAILED                                :{BLACK}{RAW_STRING}
 STR_JUNCTION_STATUS_NEARBY                                      :{BLACK}Nearest fit shown, {NUM} tiles from the cursor
 STR_JUNCTION_STATUS_READY                                       :{BLACK}Click to build
 STR_JUNCTION_STATUS_BUILDING                                    :{BLACK}Building... {NUM} of {NUM}

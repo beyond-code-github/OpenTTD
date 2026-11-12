@@ -14,6 +14,8 @@
 #include "junction_ghost_draw.h"
 #include "junction_game.h"
 #include "junction_generator.h"
+#include "junction_hover.h"
+#include "junction_topology.h"
 #include "junction_rules.h"
 #include "querystring_gui.h"
 #include "window_gui.h"
@@ -87,8 +89,9 @@ static void MarkJunctionGhostDirty()
  * @param railtype Rail type to draw.
  * @param bridge_types Chosen bridge type per layout bridge, in order; std::nullopt where none qualifies.
  * @param estimate Estimate of the junction; its bad tiles are drawn red.
+ * @param terraform_tiles Tiles whose ground the projection plan changes; outlined blue.
  */
-void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int height, RailType railtype, const std::vector<std::optional<BridgeType>> &bridge_types, const JunctionEstimate &estimate)
+void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int height, RailType railtype, const std::vector<std::optional<BridgeType>> &bridge_types, const JunctionEstimate &estimate, std::span<const TileIndex> terraform_tiles)
 {
 	JunctionGhost::Clear();
 	_junction_ghost_railtype = railtype;
@@ -147,6 +150,11 @@ void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int heig
 	for (TileIndex tile : estimate.bad_tiles) {
 		if (tile == INVALID_TILE) continue;
 		_junction_ghost_tiles[tile].bad = true;
+	}
+
+	for (TileIndex tile : terraform_tiles) {
+		if (tile == INVALID_TILE) continue;
+		_junction_ghost_tiles[tile].terraform = true;
 	}
 
 	MarkJunctionGhostDirty();
@@ -226,6 +234,7 @@ void DrawJunctionGhost(const TileInfo *ti)
  * Draw the junction ghost's outlines on one tile, after the tile selection so they show over it.
  * Sloped and bad tiles get a red outline; while a build is pinned, bad tiles are the pieces still
  * to build and get a blue one (D53, D54), and the rest of the pinned footprint gets a white one.
+ * Tiles the projection plan terraforms get a blue outline while the ghost is not pinned.
  * @param ti Tile that is being drawn.
  */
 void DrawJunctionGhostOutline(const TileInfo *ti)
@@ -238,6 +247,8 @@ void DrawJunctionGhostOutline(const TileInfo *ti)
 	 * Slopes are not bad by themselves: leveled foundations make them usable (D78). */
 	if (ghost != nullptr && ghost->bad) {
 		DrawTileSelectionRect(ti, _junction_ghost_pinned ? PALETTE_SEL_TILE_BLUE : PALETTE_SEL_TILE_RED);
+	} else if (ghost != nullptr && ghost->terraform && !_junction_ghost_pinned) {
+		DrawTileSelectionRect(ti, _junction_ghost_unaffordable ? PALETTE_SEL_TILE_RED : PALETTE_SEL_TILE_BLUE);
 	} else {
 		DrawTileSelectionRect(ti, _junction_ghost_unaffordable && !_junction_ghost_pinned ? PALETTE_SEL_TILE_RED : PAL_NONE);
 	}
@@ -273,6 +284,7 @@ bool IsJunctionTrainPickActive()
 
 static uint8_t _junction_rotation = 0; ///< Quarter turns applied to the junction being placed.
 static bool _junction_mirrored = false; ///< Whether the junction being placed is mirrored.
+static bool _junction_projection = true; ///< Whether the hover plans on the projection pipeline with terraform (H2) instead of the earlier generator.
 
 /** What a generated junction depends on: the spot, the orientation and the generator inputs. */
 struct JunctionGenerateKey {
@@ -290,6 +302,15 @@ struct JunctionGenerateKey {
 	bool operator==(const JunctionGenerateKey &) const = default;
 };
 
+/** The hover plan of the projection pipeline for one spot; the layout is canonical, the steps are in map coordinates for the key's orientation. */
+struct JunctionProjectionResult {
+	std::optional<JunctionLayout> layout; ///< The signalled layout, nullopt when no plan was found.
+	std::vector<JunctionTerraformStep> steps; ///< The terraform steps, legal in order.
+	Money height_cost = 0; ///< The plan's height cost.
+	std::string why; ///< The reason when there is no layout.
+	TileIndexDiffC hub{}; ///< The layout position of the hovered tile.
+};
+
 /** A generation running on a worker thread; owns everything the worker reads, and outlives the window if needed. */
 struct JunctionGenerateJob {
 	std::atomic<bool> done{false}; ///< Set by the worker when result is final.
@@ -298,6 +319,9 @@ struct JunctionGenerateJob {
 	JunctionNearResult result; ///< Written by the worker.
 	std::atomic<bool> cancel{false}; ///< Set when the job is detached; the worker stops searching.
 	std::shared_ptr<const std::vector<JunctionLibraryEntry>> library; ///< Library for the spec, or null if not built yet.
+	bool projection = false; ///< The job runs the projection pipeline: seed in, projection_result out.
+	std::shared_ptr<const JunctionGraphSeed> seed; ///< The T graph seed of the spec, for the projection pipeline.
+	JunctionProjectionResult projection_result; ///< Written by the worker of a projection job.
 };
 
 /** A library build running on a worker thread, or finished; owns everything the worker reads, and outlives the window if needed. */
@@ -317,6 +341,13 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	TileIndex hover_tile = INVALID_TILE; ///< Tile the cursor rests on.
 	std::chrono::steady_clock::time_point hover_since; ///< When the cursor reached hover_tile.
 	std::vector<std::pair<JunctionGenerateKey, JunctionNearResult>> cache; ///< Generated junctions, most recently used first.
+	std::vector<std::pair<JunctionGenerateKey, JunctionProjectionResult>> projection_cache; ///< Projection plans, most recently used first.
+	std::shared_ptr<const JunctionGraphSeed> seed; ///< The T graph seed of seed_key, made on the main thread; shared read-only with the jobs.
+	std::optional<JunctionGenerateKey> seed_key; ///< The spec key of seed: the key with no anchor, rotation 0 and not mirrored.
+	std::string seed_error; ///< Why the seed could not be made; empty when it was.
+	std::string hover_why; ///< The plan's reason when hover_status is STR_JUNCTION_STATUS_PLAN_FAILED.
+	std::vector<JunctionTerraformStep> shown_terraform; ///< Terraform steps of the shown placement; empty on the earlier path.
+	std::optional<Money> shown_height_cost; ///< Height cost of the shown placement; nullopt on the earlier path.
 	std::optional<JunctionGenerateKey> pending_key; ///< Key of the running job, if any.
 	std::thread pending_thread; ///< Thread of the running job.
 	std::shared_ptr<JunctionGenerateJob> pending_job; ///< State of the running job.
@@ -359,6 +390,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->ml_editbox.text.Assign(_settings_client.gui.junction_ml_notation);
 		this->branch_editbox.text.Assign(_settings_client.gui.junction_branch_notation);
 		this->InitNested(TransportType::Rail);
+		this->SetWidgetLoweredState(WID_BJ_PROJECTION, _junction_projection);
 		this->Regenerate();
 	}
 
@@ -503,6 +535,26 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (this->cache.size() > MAX_JUNCTION_CACHE) this->cache.pop_back();
 	}
 
+	/**
+	 * Find a cached projection plan, and make it the most recently used.
+	 * @param key The key.
+	 * @return The plan, valid until the cache changes; nullptr if not cached.
+	 */
+	const JunctionProjectionResult *FindProjectionCached(const JunctionGenerateKey &key)
+	{
+		auto it = std::ranges::find(this->projection_cache, key, &std::pair<JunctionGenerateKey, JunctionProjectionResult>::first);
+		if (it == this->projection_cache.end()) return nullptr;
+		std::rotate(this->projection_cache.begin(), it, it + 1);
+		return &this->projection_cache.front().second;
+	}
+
+	/** @return Whether a result of the active generator is cached for the key. */
+	bool IsCached(const JunctionGenerateKey &key) const
+	{
+		if (_junction_projection) return std::ranges::find(this->projection_cache, key, &std::pair<JunctionGenerateKey, JunctionProjectionResult>::first) != this->projection_cache.end();
+		return std::ranges::find(this->cache, key, &std::pair<JunctionGenerateKey, JunctionNearResult>::first) != this->cache.end();
+	}
+
 	/** Let any running job finish on its own; the shared state keeps it alive. */
 	void DetachJob()
 	{
@@ -518,6 +570,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->hover_tile = INVALID_TILE;
 		this->has_shown = false;
 		this->hover_status = INVALID_STRING_ID;
+		this->hover_why.clear();
 	}
 
 	/** Show no placement at the cursor, with a status for the spot. */
@@ -527,6 +580,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->has_shown = false;
 		this->has_placement = false;
 		this->hover_status = status;
+		this->hover_why.clear();
 		_thd.make_square_red = false;
 		SetTileSelectSize(1, 1);
 		this->SetWidgetDirty(WID_BJ_COST);
@@ -538,6 +592,22 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	/** Show the placement for the hovered tile: the cached result, or that one is being worked out. */
 	void ShowHover()
 	{
+		if (_junction_projection) {
+			const JunctionProjectionResult *projection = this->FindProjectionCached(this->MakeKey(this->hover_tile));
+			if (projection != nullptr) {
+				this->ShowProjection(*projection);
+			} else if (!this->picked_train.has_value()) {
+				this->ShowNoPlacement(STR_JUNCTION_STATUS_PICK_TRAIN);
+			} else if (this->SizingStatus() != INVALID_STRING_ID) {
+				this->ShowNoPlacement(this->SizingStatus());
+			} else if (this->ml_gap == 0) {
+				this->ShowNoPlacement(STR_JUNCTION_ERROR_NEEDS_ML_GAP);
+			} else {
+				this->ShowNoPlacement(STR_JUNCTION_STATUS_GENERATING);
+			}
+			return;
+		}
+
 		const JunctionNearResult *result = this->FindCached(this->MakeKey(this->hover_tile));
 		if (result != nullptr) {
 			this->ShowResult(*result);
@@ -603,24 +673,77 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			return;
 		}
 		const TileIndex origin = TileXY(ox, oy);
+		this->ShowPlaced(std::move(layout), origin, result.prio_tiles, std::max(std::abs(near_result.offset.x), std::abs(near_result.offset.y)), std::nullopt, {});
+	}
 
+	/**
+	 * Show a projection plan at the hovered tile, or why there is none.
+	 * @param projection The plan made for the hovered tile and the current settings.
+	 */
+	void ShowProjection(const JunctionProjectionResult &projection)
+	{
+		if (!projection.layout.has_value()) {
+			this->ShowNoPlacement(STR_JUNCTION_STATUS_PLAN_FAILED);
+			this->hover_why = projection.why;
+			return;
+		}
+
+		const bool mirrored = EffectiveMirror();
+		const TileIndexDiffC offset = OrientJunctionOffset(projection.hub, projection.layout->size, _junction_rotation, mirrored);
+		const int ox = static_cast<int>(TileX(this->hover_tile)) - offset.x;
+		const int oy = static_cast<int>(TileY(this->hover_tile)) - offset.y;
+		if (ox < 0 || oy < 0 || ox >= static_cast<int>(Map::SizeX()) || oy >= static_cast<int>(Map::SizeY())) {
+			this->ShowNoPlacement(STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP);
+			return;
+		}
+		this->ShowPlaced(ApplyJunctionOrientation(*projection.layout, _junction_rotation, mirrored), TileXY(ox, oy), this->EffectivePrio(), 0, projection.height_cost, projection.steps);
+	}
+
+	/**
+	 * Show an oriented layout at its origin, with its ghost, cost and tooltip.
+	 * @param layout The oriented layout.
+	 * @param origin North corner of the layout.
+	 * @param prio_tiles Prio coverage of the layout, in tiles.
+	 * @param distance Chebyshev distance in tiles from the hovered tile to the layout's anchor.
+	 * @param height_cost The height cost of the projection plan; nullopt on the earlier path.
+	 * @param steps The terraform steps of the projection plan; empty on the earlier path.
+	 */
+	void ShowPlaced(JunctionLayout &&layout, TileIndex origin, uint8_t prio_tiles, int distance, std::optional<Money> height_cost, std::vector<JunctionTerraformStep> steps)
+	{
 		JunctionEstimate estimate;
 		std::vector<std::optional<BridgeType>> bridge_types;
 		Money available;
-		this->ComputePlacement(layout, origin, estimate, bridge_types, available);
+		this->ComputePlacement(layout, origin, height_cost, estimate, bridge_types, available);
 		/* The ghost outlines its own footprint; a big tile selection would add a blue outer row. */
 		SetTileSelectSize(1, 1);
 
-		JunctionGhost::Set(layout, origin, estimate.height, this->railtype, bridge_types, estimate);
+		/* A moved corner changes the four tiles around it. */
+		std::vector<TileIndex> terraform_tiles;
+		for (const JunctionTerraformStep &step : steps) {
+			const int x = static_cast<int>(TileX(step.tile));
+			const int y = static_cast<int>(TileY(step.tile));
+			for (int dy = -1; dy <= 0; dy++) {
+				for (int dx = -1; dx <= 0; dx++) {
+					if (x + dx >= 0 && y + dy >= 0 && x + dx < static_cast<int>(Map::SizeX()) && y + dy < static_cast<int>(Map::SizeY())) terraform_tiles.push_back(TileXY(x + dx, y + dy));
+				}
+			}
+		}
+		std::ranges::sort(terraform_tiles);
+		terraform_tiles.erase(std::ranges::unique(terraform_tiles).begin(), terraform_tiles.end());
+
+		JunctionGhost::Set(layout, origin, estimate.height, this->railtype, bridge_types, estimate, terraform_tiles);
 		_thd.make_square_red = false;
 
 		this->has_shown = true;
 		this->shown_layout = std::move(layout);
-		this->shown_prio_tiles = result.prio_tiles;
+		this->shown_prio_tiles = prio_tiles;
 		this->SetWidgetDirty(WID_BJ_TRAIN);
 		this->shown_origin = origin;
 		this->shown_tile = this->hover_tile;
-		this->shown_distance = std::max(std::abs(near_result.offset.x), std::abs(near_result.offset.y));
+		this->shown_distance = distance;
+		this->shown_terraform = std::move(steps);
+		this->shown_height_cost = height_cost;
+		this->hover_why.clear();
 		this->hover_status = INVALID_STRING_ID;
 		this->has_placement = true;
 		this->placement_cost = estimate.total;
@@ -655,6 +778,10 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl, this->picked_train->loaded);
 		/* The sized prio sets the frame, so it goes in before the snapshot (D137). */
 		std::tie(job->spec.prio_tiles, job->spec.prio_strict) = JunctionPrioChoice(this->prio_choice, key.tl, this->library_job->spec.prio_tiles);
+		if (_junction_projection) {
+			this->StartProjectionJob(std::move(job), key);
+			return;
+		}
 		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, MakeJunctionFrame(job->spec), 4);
 		if (this->LibraryUsable()) job->library = this->library_job->library;
 		if (!StartNewThread(&this->pending_thread, "ottd:junction", [job, key]() {
@@ -690,13 +817,77 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->pending_key = key;
 	}
 
+	/**
+	 * Start a projection job: the seed is made here on the main thread, once per spec; the worker plans on the snapshot and makes the terraform steps.
+	 * @param job The job, with its spec set.
+	 * @param key The key of the job.
+	 */
+	void StartProjectionJob(std::shared_ptr<JunctionGenerateJob> job, const JunctionGenerateKey &key)
+	{
+		if (this->ml_gap == 0) return;
+		JunctionGenerateKey spec_key = key;
+		spec_key.anchor = INVALID_TILE;
+		spec_key.rotation = 0;
+		spec_key.mirrored = false;
+		if (this->seed_key != spec_key) {
+			std::string error;
+			this->seed = std::make_shared<const JunctionGraphSeed>(MakeJunctionGraphSeed(JunctionTTopology(), job->spec, &error));
+			this->seed_error = this->seed->routes.empty() ? (error.empty() ? "no seed" : error) : std::string{};
+			this->seed_key = spec_key;
+		}
+
+		job->projection = true;
+		job->seed = this->seed;
+		this->pending_key = key;
+		if (!this->seed_error.empty()) {
+			job->projection_result.why = this->seed_error;
+			job->done = true;
+			this->pending_job = std::move(job);
+			return;
+		}
+
+		/* The frame is the seed's box with the hub column in the middle, the box's first row on the anchor row; levels need margin 8. */
+		const TileIndexDiffC size = job->seed->placement.size;
+		JunctionFrame frame;
+		frame.hub_x = size.x / 2;
+		frame.width = size.x;
+		frame.terrain_origin_y = 0;
+		frame.terrain_height = size.y;
+		const auto t0 = std::chrono::steady_clock::now();
+		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, frame, 8);
+		Debug(Facility::Misc, Severity::Debug2, "junction projection snapshot: {} us", std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
+		const int hub_x = frame.hub_x;
+		if (!StartNewThread(&this->pending_thread, "ottd:junctionproj", [job, key, hub_x]() {
+			JunctionHoverPlan plan = PlanJunctionHover(*job->seed, job->spec, job->terrain, {0, 0});
+			JunctionProjectionResult &result = job->projection_result;
+			result.why = plan.why;
+			result.height_cost = plan.height_cost;
+			result.hub = {static_cast<int16_t>(hub_x), 0};
+			if (plan.layout.has_value()) {
+				result.steps = MakeJunctionTerraformSteps(plan.terraform, job->terrain, key.anchor, key.rotation, key.mirrored, hub_x);
+				result.layout = std::move(plan.layout);
+			}
+			job->done = true;
+		})) {
+			job->projection_result.why = "no thread";
+			job->done = true;
+		}
+		this->pending_job = std::move(job);
+	}
+
 	/** Store the running job's result when it is done, and show it if it is for the hovered spot. */
 	void PollJob()
 	{
 		if (this->pending_job == nullptr || !this->pending_job->done) return;
 		if (this->pending_thread.joinable()) this->pending_thread.join();
 		const JunctionGenerateKey key = *this->pending_key;
-		this->StoreCached(key, std::move(this->pending_job->result));
+		if (this->pending_job->projection) {
+			std::erase_if(this->projection_cache, [&](const auto &entry) { return entry.first == key; });
+			this->projection_cache.emplace(this->projection_cache.begin(), key, std::move(this->pending_job->projection_result));
+			if (this->projection_cache.size() > MAX_JUNCTION_CACHE) this->projection_cache.pop_back();
+		} else {
+			this->StoreCached(key, std::move(this->pending_job->result));
+		}
 		this->pending_job.reset();
 		this->pending_key = std::nullopt;
 		if (this->hover_tile != INVALID_TILE && key == this->MakeKey(this->hover_tile)) this->ShowHover();
@@ -726,6 +917,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		_settings_client.gui.junction_tl = this->tl;
 
 		this->cache.clear();
+		this->projection_cache.clear();
 		this->ResetHover();
 		this->EnsureLibrary();
 		this->SetWidgetDisabledState(WID_BJ_TL_DECREASE, this->tl <= 2);
@@ -804,6 +996,15 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				if (click_count > 0) this->mouse_capture_widget = widget;
 				break;
 			}
+
+			case WID_BJ_PROJECTION:
+				_junction_projection = !_junction_projection;
+				this->SetWidgetLoweredState(WID_BJ_PROJECTION, _junction_projection);
+				this->SetWidgetDirty(WID_BJ_PROJECTION);
+				this->DetachJob();
+				this->ResetHover();
+				SndClickBeep();
+				break;
 
 			case WID_BJ_ROTATE:
 				_junction_rotation = (_junction_rotation + 1) % 4;
@@ -891,6 +1092,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				if (this->generate_error != INVALID_STRING_ID) return GetString(this->generate_error);
 				if (!this->picked_train.has_value()) return GetString(STR_JUNCTION_STATUS_PICK_TRAIN);
 				if (this->SizingStatus() != INVALID_STRING_ID) return GetString(this->SizingStatus());
+				if (this->hover_status == STR_JUNCTION_STATUS_PLAN_FAILED) return GetString(this->hover_status, this->hover_why);
 				if (this->hover_status != INVALID_STRING_ID) return GetString(this->hover_status);
 				if (this->has_shown && this->shown_distance != 0) return GetString(STR_JUNCTION_STATUS_NEARBY, this->shown_distance);
 			}
@@ -935,14 +1137,15 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	 * Work out the estimate and bridge types for placing an oriented junction.
 	 * @param layout The oriented layout.
 	 * @param origin North corner of the junction.
+	 * @param height_cost The height cost of the projection plan, which replaces the plane check; nullopt on the earlier path.
 	 * @param[out] estimate The estimate of building it.
 	 * @param[out] bridge_types Bridge type chosen per layout bridge.
 	 * @param[out] available Money the local company can spend.
 	 */
-	void ComputePlacement(const JunctionLayout &layout, TileIndex origin, JunctionEstimate &estimate, std::vector<std::optional<BridgeType>> &bridge_types, Money &available) const
+	void ComputePlacement(const JunctionLayout &layout, TileIndex origin, std::optional<Money> height_cost, JunctionEstimate &estimate, std::vector<std::optional<BridgeType>> &bridge_types, Money &available) const
 	{
 		GameJunctionPricing pricing(this->railtype);
-		estimate = EstimateJunction(layout, origin, pricing);
+		estimate = height_cost.has_value() ? EstimateJunctionTerraformed(layout, origin, pricing, *height_cost) : EstimateJunction(layout, origin, pricing);
 		available = pricing.AvailableMoney();
 
 		bridge_types.clear();
@@ -965,7 +1168,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		JunctionEstimate estimate;
 		std::vector<std::optional<BridgeType>> bridge_types;
 		Money available;
-		this->ComputePlacement(layout, origin, estimate, bridge_types, available);
+		this->ComputePlacement(layout, origin, this->shown_height_cost, estimate, bridge_types, available);
 
 		/* Shift-click estimates the cost instead of building, as with every other build tool. */
 		if (IsShiftPressed()) {
@@ -985,7 +1188,11 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->build_height = estimate.height;
 		this->build_bridge_types = bridge_types;
 		this->last_state = JunctionBuildState::Building;
-		GetJunctionSequencer().Start(MakeJunctionBuildSteps(layout, origin));
+		/* The terraform steps come first, then the rail, bridge and signal steps. */
+		std::vector<JunctionBuildStep> steps(this->shown_terraform.begin(), this->shown_terraform.end());
+		const std::vector<JunctionBuildStep> build_steps = MakeJunctionBuildSteps(layout, origin);
+		steps.insert(steps.end(), build_steps.begin(), build_steps.end());
+		GetJunctionSequencer().Start(std::move(steps));
 		JunctionGhost::SetPinned(true);
 		/* Shrink the cursor box to one tile while the pinned footprint shows the build; 0x0 trips an assert in SetSelectionTilesDirty. */
 		SetTileSelectSize(1, 1);
@@ -1002,6 +1209,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			seq.Cancel();
 			/* The map changed, so earlier results no longer hold. */
 			this->cache.clear();
+			this->projection_cache.clear();
 			this->DetachJob();
 			JunctionGhost::SetPinned(false);
 			SetTileSelectSize(1, 1);
@@ -1097,7 +1305,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 
 		if (now - this->hover_since >= JUNCTION_HOVER_REST) {
 			const JunctionGenerateKey key = this->MakeKey(tile);
-			if (std::ranges::find(this->cache, key, &std::pair<JunctionGenerateKey, JunctionNearResult>::first) == this->cache.end()) this->StartJob();
+			if (!this->IsCached(key)) this->StartJob();
 		}
 	}
 
@@ -1134,6 +1342,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widge
 			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_PRIO_LABEL), SetFill(1, 0),
 			NWidget(WWT_EMPTY, Colours::Invalid, WID_BJ_PRIO_SLIDER), SetMinimalTextLines(1, 12 + WidgetDimensions::unscaled.vsep_normal, FontSize::Small), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_JUNCTION_PRIO_SLIDER_TOOLTIP),
 			NWidget(WWT_LABEL, Colours::Invalid, WID_BJ_COST), SetFill(1, 0),
+			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BJ_PROJECTION), SetStringTip(STR_JUNCTION_PROJECTION, STR_JUNCTION_PROJECTION_TOOLTIP), SetFill(1, 0),
 			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_ROTATE), SetStringTip(STR_JUNCTION_ROTATE, STR_JUNCTION_ROTATE_TOOLTIP), SetFill(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_MIRROR), SetStringTip(STR_JUNCTION_MIRROR, STR_JUNCTION_MIRROR_TOOLTIP), SetFill(1, 0),
