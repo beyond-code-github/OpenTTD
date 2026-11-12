@@ -904,6 +904,36 @@ static std::string JunctionBendMoves(int hand, int halves, bool corner)
 	return moves;
 }
 
+/** The kinds of element a placement run lies between (D217, DESIGN-G1 §16.1). */
+enum class FloorKind : uint8_t { Port, Fan, Tile, Corner, SBend, Heads, Node, PrioNode, LaneSplit, LaneMerge };
+
+/**
+ * The least run in tiles between two neighbouring elements: the one table of every run floor in placement (D217, DESIGN-G1 §16.1). A pair not listed has the chain run.
+ * @param before The kind of the element the run starts at.
+ * @param after The kind of the element the run ends at.
+ * @param spec The junction spec (the waiting room reads the train length).
+ * @param even_prio The prio element's coverage in tiles, rounded up to even.
+ * @return The least run.
+ */
+static int JunctionRunFloor(FloorKind before, FloorKind after, const JunctionSpec &spec, int even_prio)
+{
+	using K = FloorKind;
+	if (before == K::Port && after == K::Fan) return 2; // The fan starts 2 tiles inside the port: the signal tile and the boundary tile (D115a, D206).
+	if (before == K::Fan && after == K::Node) return 2; // The run from a fan to the exit split is the chain run (D217).
+	if (before == K::Fan && after == K::Port) return 2; // The last fan tile to its port: the port stub (D206, D115a).
+	if (before == K::Node && after == K::Port) return 2; // A branch port's stub below its node (D206, D115a).
+	if (before == K::PrioNode && after == K::Fan) return 2; // The joiner merge to the out fan: the chain run (D217).
+	if (before == K::PrioNode && after == K::Port) return 2; // The joiner merge to an unfanned port: the chain run and port stub (D217, D206).
+	if (before == K::Node && after == K::PrioNode) return even_prio + 1; // The exit split stays outside the prio element's coverage; its row ends one step on (DESIGN-G1 §12.4, RECON-prio-element §3).
+	if (before == K::LaneMerge && after == K::PrioNode) return even_prio + 2; // The element's row must not meet the lane merge's S-bend (RECON-prio-element §3-4).
+	if (before == K::Node && after == K::LaneSplit) return 2; // The exit split to the lane split: the chain run, a minimum so series bridges have slack (D217, DESIGN-G1 §11.9b).
+	if (before == K::LaneSplit && after == K::Heads) return 2; // Shared split tile, one plain piece, then the near head (D145, D113, D117, D118).
+	if (before == K::Heads && after == K::Heads) return 2; // Series bridges: the next near head 2 tiles past the last far head (DESIGN-G1 §11.9b).
+	if (before == K::Heads && after == K::LaneMerge) return 2; // The last far head to the lane merge (D145: x_hwA - x_lm = 2).
+	if (before == K::Node && after == K::Node) return static_cast<int>(spec.tl) + 1; // The waiting room of an exit path, from its first split to the first merge: 2 dy - 1 >= 2 tl units (rule WaitingRoom).
+	return 2; // The chain run: a signal tile and a boundary tile between elements (D217).
+}
+
 /**
  * The placement of a programmed track graph (DESIGN-G1 §11.8, §14.2).
  * @param fixed The choices to solve with (one Y and one X solve), or nullptr for the rounds that find them.
@@ -1003,7 +1033,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	/* The prio element's coverage in tiles: joins at even offsets 0..even_prio upstream of the joiner merge (DESIGN-G1 §12.4, RECON-prio-element §3). */
 	const int even_prio = prio + (prio & 1);
 	/* Not checked here, left to G1c(ii-b), whose render tests (no conflicting track bits) catch them: the band-layer slices (DESIGN-G1 §10.8) and a vertical edge meeting a side track. */
-	static constexpr int STUB = 2; // D206.
 
 	/* The raster of a bend: its half pieces' tiles relative to the first. A hand of +1 is a clockwise turn. */
 	auto bend_tiles = [&](int heading, int hand, int halves, bool corner) {
@@ -1911,7 +1940,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		for (size_t i = 0; i < layer1.size(); i++) {
 			why("S edge", UINT32_MAX, static_cast<uint32_t>(layer1[i]));
 			if (i > 0) eq(1, node_pt[layer1[i]], node_pt[layer1[0]], 0);
-			eq(1, se_pt, node_pt[layer1[i]], STUB);
+			eq(1, se_pt, node_pt[layer1[i]], JunctionRunFloor(FloorKind::Node, FloorKind::Port, spec, even_prio));
 		}
 		why("S port row");
 		for (int s = 0; s < n; s++) {
@@ -1970,37 +1999,37 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				eq(0, rp.fif, pin, 0);
 				eq(0, rp.fil, pin, 0);
 			} else {
-				along(heading, rp.fif, pin, 2, false);
+				along(heading, rp.fif, pin, JunctionRunFloor(FloorKind::Port, FloorKind::Fan, spec, even_prio), false);
 				along(heading, rp.fil, rp.fif, m_in - 1, true);
 			}
 			/* The run from the fan to the exit split is the rule's run minimum; the curve gaps along the route are the family's (D217). */
 			why("in fan run", in_edge[r], in.to.index, r);
-			along(heading, nex, rp.fil, 2, false);
+			along(heading, nex, rp.fil, JunctionRunFloor(FloorKind::Fan, FloorKind::Node, spec, even_prio), false);
 			int after = nex; // The last point of the lane chain before the joiner merge.
 			if (!doubled) {
 				/* The prio element covers even_prio tiles upstream of the joiner merge; the exit split stays outside it. */
 				why("prio element", leg_edge[r], out.from.index, r);
-				along(heading, njm, nex, even_prio + 1, false);
+				along(heading, njm, nex, JunctionRunFloor(FloorKind::Node, FloorKind::PrioNode, spec, even_prio), false);
 			} else {
 				/* The lane split sits next to its bridge (D215); the run from the exit split to the lane split, and from the last heads to the lane merge, are rule minima, not exact: series bridges need the slack (DESIGN-G1 §11.9b). */
 				why("lane split run", leg_edge[r], in.to.index, r);
-				along(heading, rp.lane_split, nex, 2, false);
+				along(heading, rp.lane_split, nex, JunctionRunFloor(FloorKind::Node, FloorKind::LaneSplit, spec, even_prio), false);
 				const size_t g = rp.nh0.size();
-				along(heading, rp.nh0[0], rp.lane_split, 2, true);
+				along(heading, rp.nh0[0], rp.lane_split, JunctionRunFloor(FloorKind::LaneSplit, FloorKind::Heads, spec, even_prio), true);
 				eq(0, rp.sb1_last, rp.lane_split, 0);
-				along(heading, rp.nh1[0], rp.sb1_last, 1, true);
+				along(heading, rp.nh1[0], rp.sb1_last, 1, true); // A shape, not a floor: copy 1 sits one tile nearer than copy 0, the head stagger (D118, D145).
 				for (size_t k = 0; k < g; k++) {
-					along(heading, rp.nh0[k], rp.nh1[k], 1, true);
-					along(heading, rp.fh0[k], rp.fh1[k], 1, true);
-					if (k > 0) along(heading, rp.nh0[k], rp.fh0[k - 1], 2, false);
+					along(heading, rp.nh0[k], rp.nh1[k], 1, true); // Shape: the head stagger, copy 0 one past copy 1 (D118).
+					along(heading, rp.fh0[k], rp.fh1[k], 1, true); // Shape: the head stagger (D118).
+					if (k > 0) along(heading, rp.nh0[k], rp.fh0[k - 1], JunctionRunFloor(FloorKind::Heads, FloorKind::Heads, spec, even_prio), false);
 				}
 				why("series bridge heads", leg_edge[r], UINT32_MAX, r);
-				along(heading, rp.sb0_first, rp.fh0[g - 1], 1, false);
+				along(heading, rp.sb0_first, rp.fh0[g - 1], 1, false); // Shape: one tile past copy 0's far head, the stagger (D118, D145); the floor is the lane merge's, next.
 				eq(0, rp.lane_merge, rp.sb0_first, 0);
-				along(heading, rp.lane_merge, rp.fh1[g - 1], 2, false);
+				along(heading, rp.lane_merge, rp.fh1[g - 1], JunctionRunFloor(FloorKind::Heads, FloorKind::LaneMerge, spec, even_prio), false);
 				/* The element's row ends at step even_prio + 1, which must not meet the lane merge's S-bend (RECON-prio-element §3-4). */
 				why("prio element", leg_edge[r], out.from.index, r);
-				along(heading, njm, rp.lane_merge, even_prio + 2, false);
+				along(heading, njm, rp.lane_merge, JunctionRunFloor(FloorKind::LaneMerge, FloorKind::PrioNode, spec, even_prio), false);
 				after = rp.lane_merge;
 
 				/* Every crosser's tiles on the copy row and the lane row lie between its bridge's heads; the heads hug the outermost tiles by the flat solve's order, below (D80, D118, D145, D217). */
@@ -2043,12 +2072,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			if (m_out == 0) {
 				eq(0, rp.fof, pout, 0);
 				eq(0, rp.fol, pout, 0);
-				along(heading, pout, njm, 2, false);
+				along(heading, pout, njm, JunctionRunFloor(FloorKind::PrioNode, FloorKind::Port, spec, even_prio), false);
 			} else {
 				why("out fan run", out_edge[r], out.from.index, r);
-				along(heading, rp.fof, njm, 2, false);
+				along(heading, rp.fof, njm, JunctionRunFloor(FloorKind::PrioNode, FloorKind::Fan, spec, even_prio), false);
 				along(heading, rp.fol, rp.fof, m_out - 1, true);
-				along(heading, pout, rp.fol, 2, true);
+				along(heading, pout, rp.fol, JunctionRunFloor(FloorKind::Fan, FloorKind::Port, spec, even_prio), true);
 			}
 		}
 
@@ -2067,7 +2096,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 						split_node = nd;
 					} else if (split_node >= 0 && !graph.nodes[nd].split) {
 						why("waiting room", cur_edge, static_cast<uint32_t>(nd));
-						ge(1, node_pt[nd], node_pt[split_node], static_cast<int>(spec.tl) + 1);
+						ge(1, node_pt[nd], node_pt[split_node], JunctionRunFloor(FloorKind::Node, FloorKind::Node, spec, even_prio));
 						break;
 					}
 					uint32_t next_edge = edge_count;
@@ -2130,7 +2159,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				if (next.first == el.last) continue;
 				why("chain run", e);
 				bool exact = false;
-				const int dist = 2;
+				const auto floor_kind = [](Elem::K k) { return k == Elem::K::Corner ? FloorKind::Corner : k == Elem::K::SBend ? FloorKind::SBend : k == Elem::K::Heads ? FloorKind::Heads : FloorKind::Tile; };
+				const int dist = JunctionRunFloor(floor_kind(el.k), floor_kind(next.k), spec, even_prio);
 				if (next.k == Elem::K::Tile && i + 2 == elems.size()) {
 					const bool band_merge = edge.to.node && !graph.nodes[edge.to.index].split && order.node_level[edge.to.index] % 2 == 0;
 										if (!edge.to.node) exact = true;
