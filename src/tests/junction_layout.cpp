@@ -1098,3 +1098,111 @@ TEST_CASE("the hover moves the box only when the cursor spot fails", "[junction]
 		CHECK(earlier > 0);
 	}
 }
+
+TEST_CASE("the terraform plan is the game's", "[junction][hoverplan]")
+{
+	namespace fs = std::filesystem;
+	Map::Allocate(256, 256);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(JunctionTTopology(), spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	const int hub_x = seed.placement.size.x / 2;
+	const TileIndex anchor = TileXY(120, 120);
+
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+
+	/* Every fixture that plans at its centred offset: the steps the game would run, corner by corner, end at exactly the plan's corners. */
+	int planned = 0;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		std::optional<JunctionTerrain> loaded = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(loaded.has_value());
+		JunctionTerrain terrain = std::move(*loaded);
+		const TileIndexDiffC centred = {static_cast<int16_t>((terrain.width - seed.placement.size.x) / 2), static_cast<int16_t>((terrain.height - seed.placement.size.y) / 2)};
+		terrain.origin = {static_cast<int16_t>(-centred.x), static_cast<int16_t>(-centred.y)};
+		const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, terrain, {0, 0});
+		if (!plan.layout.has_value()) continue;
+		planned++;
+		INFO(file.filename().string());
+		const JunctionTerrain after = ApplyJunctionTerraform(terrain, plan.terraform);
+		for (const auto &[rotation, mirror] : {std::pair<uint8_t, bool>{0, false}, std::pair<uint8_t, bool>{3, true}}) {
+			INFO("rotation " << int(rotation) << " mirrored " << mirror);
+			std::map<std::pair<int, int>, int> map_heights = TerrainToMapLattice(terrain, anchor, hub_x, rotation, mirror);
+			const std::map<std::pair<int, int>, int> expected = TerrainToMapLattice(after, anchor, hub_x, rotation, mirror);
+			const std::vector<JunctionTerraformStep> steps = MakeJunctionTerraformSteps(plan.terraform, terrain, anchor, rotation, mirror, hub_x);
+			SimulateTerraformSteps(map_heights, steps);
+			CHECK(map_heights == expected);
+		}
+	}
+	CHECK(planned >= 19);
+}
+
+TEST_CASE("the clamp equals propagation where propagation succeeds", "[junction][terraform]")
+{
+	namespace fs = std::filesystem;
+	Map::Allocate(256, 256);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(JunctionTTopology(), spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+
+	int checked = 0;
+	for (const fs::path &file : files) {
+		if (checked == 3) break;
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		std::optional<JunctionTerrain> loaded = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(loaded.has_value());
+		JunctionTerrain terrain = std::move(*loaded);
+		const TileIndexDiffC centred = {static_cast<int16_t>((terrain.width - seed.placement.size.x) / 2), static_cast<int16_t>((terrain.height - seed.placement.size.y) / 2)};
+		terrain.origin = {static_cast<int16_t>(-centred.x), static_cast<int16_t>(-centred.y)};
+		const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, terrain, {0, 0});
+		if (!plan.layout.has_value() || plan.terraform.corners.empty()) continue;
+		INFO(file.filename().string());
+		const JunctionTerrain after = ApplyJunctionTerraform(terrain, plan.terraform);
+
+		/* The corners of every track tile after the plan are fixed; propagation of those demands must move what the clamp moved, at the same cost. */
+		std::set<std::pair<int, int>> tiles;
+		for (const JunctionTrack &track : plan.layout->tracks) tiles.insert({track.offset.x, track.offset.y});
+		for (const JunctionBridge &bridge : plan.layout->bridges) {
+			tiles.insert({bridge.start.x, bridge.start.y});
+			tiles.insert({bridge.end.x, bridge.end.y});
+		}
+		JunctionTerraform demand;
+		std::set<std::pair<int, int>> fixed;
+		for (const auto &[x, y] : tiles) {
+			const std::array<int, 4> g = JunctionTileCorners(*terrain.At(x, y));
+			const std::array<int, 4> a = JunctionTileCorners(*after.At(x, y));
+			for (int i = 0; i < 4; i++) {
+				const std::pair<int, int> corner{x + TERRAFORM_CORNER_OFFSET[i].first, y + TERRAFORM_CORNER_OFFSET[i].second};
+				fixed.insert(corner);
+				if (a[i] != g[i]) demand.corners[corner] = a[i];
+			}
+		}
+		std::string why;
+		if (!PropagateJunctionTerraform(terrain, demand, &why, &fixed)) continue;
+		checked++;
+		INFO(why);
+		CHECK(demand.corners == plan.terraform.corners);
+		CHECK(demand.cost == plan.terraform.cost);
+	}
+	CHECK(checked == 3);
+}

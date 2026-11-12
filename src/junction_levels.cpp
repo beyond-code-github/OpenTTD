@@ -199,7 +199,6 @@ struct LevelTile {
 	bool rampable = true; ///< Only a lone axis track, every route through it the same way, not a node, port, head or route end.
 	bool has_next = false;
 	SnapshotTile next; ///< The tile after this one on its route (when has_next).
-	std::vector<SnapshotTile> preds; ///< The rampable tiles whose route goes on to this one.
 };
 
 /**
@@ -207,7 +206,8 @@ struct LevelTile {
  * The level of a tile is its entry level in the direction of travel. A tile that is not rampable continues at its own level; a rampable one at most one level either way.
  * The ramp rule (D219) is L(t + tl) - L(t) <= k per route, a crosser under a bridge middle stays at or below both heads, a corner shared by two track tiles is one height
  * (a rampable tile's exit-side corners are the next tile's level) and track corners within Manhattan distance d differ by at most d.
- * The start is each tile at its cheapest flat level; a coordinate descent over the tiles tied by equality then lowers the cost.
+ * The start is each tile at its cheapest flat level; a coordinate descent over the tiles tied by equality then lowers the cost, which is the exact cost of the finished terraform:
+ * the heights the tracks fix at their corners, and every other corner the ground clamped to the cones of those (clamp(g, L, U)), with the foundation tiles' corners free.
  * @param c The terrain and facts.
  * @param route_visits The tiles of every route in travel order.
  * @param heads The bridge head tiles.
@@ -218,9 +218,11 @@ struct LevelTile {
  * @param ramp_levels JunctionRampLevels(spec).
  * @param train_length Tiles of the train.
  * @param[out] chosen The choice of every track tile.
+ * @param[out] terraform The corners the clamp moves, and the cost of moving them and clearing the tiles they touch.
+ * @param[out] total The cost of the whole plan: the terraform, plus the tiles it does not touch.
  * @return The empty string on success, else the reason.
  */
-std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visit>> &route_visits, const std::set<SnapshotTile> &heads, const std::set<SnapshotTile> &fixed_tiles, const std::vector<std::pair<SnapshotTile, SnapshotTile>> &ties, const JunctionLayout &layout, TileIndexDiffC offset, int ramp_levels, int train_length, std::map<SnapshotTile, Chosen> &chosen)
+std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visit>> &route_visits, const std::set<SnapshotTile> &heads, const std::set<SnapshotTile> &fixed_tiles, const std::vector<std::pair<SnapshotTile, SnapshotTile>> &ties, const JunctionLayout &layout, TileIndexDiffC offset, int ramp_levels, int train_length, std::map<SnapshotTile, Chosen> &chosen, JunctionTerraform &terraform, Money &total)
 {
 	std::map<SnapshotTile, LevelTile> tiles;
 	std::map<SnapshotTile, std::set<DiagDirection>> directions;
@@ -354,7 +356,6 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			la.has_next = true;
 			la.next = b;
 			if (la.rampable) {
-				tiles[b].preds.push_back(a);
 				diff(var[b], var[a], -1, {0, a.first, a.second, b.first, b.second, 0});
 				diff(var[a], var[b], -1, {1, a.first, a.second, b.first, b.second, 0});
 			} else {
@@ -384,16 +385,10 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				lp.visit.dir = lm.visit.dir;
 				lp.has_next = true;
 				lp.next = lm.next;
-				tiles[lm.next].preds.push_back(prio);
 			}
 		}
 		equal(var[prio], var[beside], {4, prio.first, prio.second, beside.first, beside.second, 0});
 	}
-	for (auto &[tile, lt] : tiles) {
-		std::ranges::sort(lt.preds);
-		lt.preds.erase(std::unique(lt.preds.begin(), lt.preds.end()), lt.preds.end());
-	}
-
 	/* A crosser under a bridge middle stays at or below both heads. */
 	for (const JunctionBridge &b : layout.bridges) {
 		if (b.tunnel) continue;
@@ -437,8 +432,8 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			if (vars[i] != vars[0]) equal(vars[0], vars[i], {6, corner.first, corner.second, 0, 0, 0});
 		}
 	}
-	/* Track corners within Manhattan distance d differ by at most d (the terraform slope limit; the propagation moves anything steeper). */
-	constexpr int SLOPE_RANGE = 2;
+	/* Track corners within Manhattan distance d differ by at most d (the terraform slope limit; the clamp cannot join anything steeper). */
+	constexpr int SLOPE_RANGE = 1;
 	for (const auto &[corner, vars] : corner_vars) {
 		for (int dx = -SLOPE_RANGE; dx <= SLOPE_RANGE; dx++) {
 			for (int dy = -SLOPE_RANGE; dy <= SLOPE_RANGE; dy++) {
@@ -497,49 +492,183 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	}
 	pos.Undo(start_mark);
 
-	/* The choice of tile i at the levels lv: flat, or the ramp its exit level makes. */
-	auto choice_at = [&](size_t i, const std::vector<int> &lv) {
+	/* The choice of tile i at the levels lv: flat, or the ramp its exit level makes; memoised per tile, kind and level. */
+	std::vector<size_t> next_var(n, SIZE_MAX);
+	for (size_t i = 0; i < n; i++) {
 		const LevelTile &lt = tiles[order_tiles[i]];
+		if (lt.rampable && lt.has_next) next_var[i] = var[lt.next];
+	}
+	std::vector<int8_t> memo_state(n * 3 * (top + 1), 0); ///< 0 unknown, 1 has a choice, 2 none.
+	std::vector<Choice> memo_choice(n * 3 * (top + 1));
+	auto choice_at = [&](size_t i, const std::vector<int> &lv) -> const Choice * {
 		int kind = 0;
-		if (lt.rampable && lt.has_next) {
-			const int d = lv[var[lt.next]] - lv[i];
+		if (next_var[i] != SIZE_MAX) {
+			const int d = lv[next_var[i]] - lv[i];
 			kind = d > 0 ? 1 : d < 0 ? 2 : 0;
 		}
-		return Evaluate(c, lt.visit, kind, lv[i]);
+		const size_t slot = (i * 3 + kind) * (top + 1) + (lv[i] - base);
+		if (memo_state[slot] == 0) {
+			const std::optional<Choice> e = Evaluate(c, tiles[order_tiles[i]].visit, kind, lv[i]);
+			memo_state[slot] = e.has_value() ? 1 : 2;
+			if (e.has_value()) memo_choice[slot] = *e;
+		}
+		return memo_state[slot] == 1 ? &memo_choice[slot] : nullptr;
 	};
+
+	/* The exact objective: the finished terraform of the choices at the levels lv. The corners of the non-foundation tiles are fixed at the heights the choices demand;
+	 * every other corner ends at its ground clamped to [L, U], the L1 cones (one level per step) of the raised and lowered fixed corners and of the corners nothing can move.
+	 * Only the corners the cones reach are visited. */
+	const int GW = c.terrain.width;
+	const int GH = c.terrain.height;
+	const int stride = cone.stride;
+	const size_t rows = static_cast<size_t>(GH) + 1;
+	const size_t corner_count = static_cast<size_t>(stride) * rows;
+	std::vector<int> ground_h(corner_count, 0);
+	for (int ty = 0; ty < GH; ty++) {
+		for (int tx = 0; tx < GW; tx++) {
+			const std::array<int, 4> cs = JunctionTileCorners(c.terrain.tiles[static_cast<size_t>(ty) * GW + tx]);
+			for (int ci = 0; ci < 4; ci++) ground_h[cone.Index(cone.x0 + tx + CORNER_OFFSET[ci].first, cone.y0 + ty + CORNER_OFFSET[ci].second)] = cs[ci];
+		}
+	}
+	constexpr int NO_TARGET = INT_MIN;
+	constexpr int BIG = 1000000;
+	constexpr Money VIOLATION = 1000000000LL; ///< Per level of violation: an infeasible assignment costs more than any feasible one and still has a gradient.
 	constexpr Money NO_CHOICE = 1000000000000LL;
-	/* The cost of the tiles affected at the levels lv: their choices, and the corner mismatch against every adjacent track tile. */
-	auto local_cost = [&](const std::set<size_t> &affected, const std::vector<int> &lv) {
-		Money total = 0;
-		std::map<size_t, std::optional<Choice>> memo;
-		auto get = [&](size_t i) -> const std::optional<Choice> & {
-			auto it = memo.find(i);
-			if (it == memo.end()) it = memo.emplace(i, choice_at(i, lv)).first;
-			return it->second;
-		};
-		for (size_t i : affected) {
-			const std::optional<Choice> &mine = get(i);
-			total += mine.has_value() ? mine->cost : NO_CHOICE;
-			if (!mine.has_value()) continue;
+	std::vector<int> ex_target(corner_count, NO_TARGET), ex_l(corner_count, -BIG), ex_u(corner_count, BIG);
+	std::vector<int> ex_h = ground_h; ///< The heights after the terraform: the ground, except at the touched corners.
+	std::vector<char> ex_dirty(static_cast<size_t>(GW) * GH, 0);
+	std::vector<size_t> t_set, t_touch, t_dirty, t_queue;
+	std::vector<std::pair<size_t, int>> ex_moved; ///< The corners the last evaluation moved, as (index, height).
+	std::vector<const Choice *> ex_ch(n);
+	long ex_violation = 0; ///< The violation of the last evaluation.
+	auto exact_cost = [&](const std::vector<int> &lv) -> Money {
+		/* Reset what the last evaluation touched. */
+		for (size_t k : t_set) ex_target[k] = NO_TARGET;
+		for (size_t k : t_touch) {
+			ex_l[k] = -BIG;
+			ex_u[k] = BIG;
+			ex_h[k] = ground_h[k];
+		}
+		for (size_t d : t_dirty) ex_dirty[d] = 0;
+		t_set.clear();
+		t_touch.clear();
+		t_dirty.clear();
+		ex_moved.clear();
+		Money nochoice = 0;
+		for (size_t i = 0; i < n; i++) {
+			ex_ch[i] = choice_at(i, lv);
+			if (ex_ch[i] == nullptr) nochoice += NO_CHOICE;
+		}
+		if (nochoice != 0) return nochoice;
+		long viol = 0;
+		for (size_t i = 0; i < n; i++) {
+			if (ex_ch[i]->foundation) continue;
 			const SnapshotTile &t = order_tiles[i];
-			for (int dx = -1; dx <= 1; dx++) {
-				for (int dy = -1; dy <= 1; dy++) {
-					const auto f = var.find({t.first + dx, t.second + dy});
-					if ((dx == 0 && dy == 0) || f == var.end()) continue;
-					const size_t j = f->second;
-					if (affected.contains(j) && j < i) continue; // Counted from j.
-					const std::optional<Choice> &other = get(j);
-					if (!other.has_value()) continue;
-					for (int ci = 0; ci < 4; ci++) {
-						for (int cj = 0; cj < 4; cj++) {
-							if (f->first.first + CORNER_OFFSET[cj].first != t.first + CORNER_OFFSET[ci].first || f->first.second + CORNER_OFFSET[cj].second != t.second + CORNER_OFFSET[ci].second) continue;
-							total += c.terrain.terraform_cost * std::abs(mine->corners[ci] - other->corners[cj]);
-						}
+			for (int ci = 0; ci < 4; ci++) {
+				const size_t k = cone.Index(t.first + CORNER_OFFSET[ci].first, t.second + CORNER_OFFSET[ci].second);
+				const int target = ex_ch[i]->corners[ci];
+				if (ex_target[k] == NO_TARGET) {
+					ex_target[k] = target;
+					t_set.push_back(k);
+				} else if (ex_target[k] != target) {
+					viol += std::abs(ex_target[k] - target);
+				}
+			}
+		}
+		auto touch = [&](size_t k) {
+			if (ex_l[k] == -BIG && ex_u[k] == BIG) t_touch.push_back(k);
+		};
+		/* Raised targets spread L = t - d while it exceeds the ground; lowered ones spread U = t + d while it is below. */
+		for (int pass = 0; pass < 2; pass++) {
+			const bool up = pass == 0;
+			std::vector<int> &bound = up ? ex_l : ex_u;
+			t_queue.clear();
+			for (size_t k : t_set) {
+				if (up ? ex_target[k] > ground_h[k] : ex_target[k] < ground_h[k]) {
+					touch(k);
+					bound[k] = ex_target[k];
+					t_queue.push_back(k);
+				}
+			}
+			for (size_t qi = 0; qi < t_queue.size(); qi++) {
+				const size_t k = t_queue[qi];
+				const int v = up ? bound[k] - 1 : bound[k] + 1;
+				const size_t x = k % stride;
+				const size_t y = k / stride;
+				const size_t nb[4] = {x > 0 ? k - 1 : SIZE_MAX, x + 1 < static_cast<size_t>(stride) ? k + 1 : SIZE_MAX, y > 0 ? k - stride : SIZE_MAX, y + 1 < rows ? k + stride : SIZE_MAX};
+				for (size_t m : nb) {
+					if (m == SIZE_MAX) continue;
+					if (up ? (v > ground_h[m] && v > bound[m]) : (v < ground_h[m] && v < bound[m])) {
+						touch(m);
+						bound[m] = v;
+						t_queue.push_back(m);
 					}
 				}
 			}
 		}
-		return total;
+		/* A raised target against a lowered one, where no cone binds in between: they differ by at most their distance. */
+		for (size_t s : t_set) {
+			if (ex_target[s] <= ground_h[s]) continue;
+			for (size_t l : t_set) {
+				if (ex_target[l] >= ground_h[l]) continue;
+				const int d = std::abs(static_cast<int>(s % stride) - static_cast<int>(l % stride)) + std::abs(static_cast<int>(s / stride) - static_cast<int>(l / stride));
+				viol += std::max(0, ex_target[s] - ex_target[l] - d);
+			}
+		}
+		int64_t moves = 0;
+		for (size_t k : t_touch) {
+			const bool lo_bind = ex_l[k] > ground_h[k];
+			const bool hi_bind = ex_u[k] < ground_h[k];
+			int h = ground_h[k];
+			if (lo_bind && hi_bind) viol += ex_l[k] - ex_u[k];
+			else if (lo_bind) h = ex_l[k];
+			else if (hi_bind) h = ex_u[k];
+			/* The corners nothing can move (the base cone). */
+			if (h > cone.upper[k]) viol += h - cone.upper[k];
+			if (h < cone.lower[k]) viol += cone.lower[k] - h;
+			ex_h[k] = h;
+			if (ex_target[k] != NO_TARGET) viol += std::abs(h - ex_target[k]);
+			if (h == ground_h[k]) continue;
+			ex_moved.emplace_back(k, h);
+			moves += std::abs(h - ground_h[k]);
+			const int cx = static_cast<int>(k % stride);
+			const int cy = static_cast<int>(k / stride);
+			for (const auto &[dx, dy] : CORNER_OFFSET) {
+				const int tx = cx - dx;
+				const int ty = cy - dy;
+				if (tx < 0 || ty < 0 || tx >= GW || ty >= GH) continue;
+				const size_t d = static_cast<size_t>(ty) * GW + tx;
+				if (!ex_dirty[d]) {
+					ex_dirty[d] = 1;
+					t_dirty.push_back(d);
+				}
+			}
+		}
+		Money cost = c.terrain.terraform_cost * moves;
+		for (size_t d : t_dirty) cost += c.terrain.tiles[d].clear_cost;
+		for (size_t i = 0; i < n; i++) {
+			const SnapshotTile &t = order_tiles[i];
+			const size_t di = static_cast<size_t>(t.second - cone.y0) * GW + (t.first - cone.x0);
+			if (!ex_dirty[di]) {
+				cost += ex_ch[i]->cost;
+				continue;
+			}
+			if (!ex_ch[i]->foundation) continue;
+			/* A foundation tile whose corners moved: flat at its level, or still a leveled foundation at that level (else infeasible). */
+			std::array<int, 4> f;
+			bool flat = true;
+			for (int ci = 0; ci < 4; ci++) {
+				f[ci] = ex_h[cone.Index(t.first + CORNER_OFFSET[ci].first, t.second + CORNER_OFFSET[ci].second)];
+				flat = flat && f[ci] == ex_ch[i]->level;
+			}
+			if (flat) continue;
+			cost += c.terrain.foundation_cost;
+			JunctionTerrainTile moved = c.terrain.tiles[di];
+			SetJunctionTileCorners(moved, f);
+			if (moved.z_max != ex_ch[i]->level || GetRailFoundation(moved.slope, tiles[t].visit.bits) != Foundation::Leveled) viol++;
+		}
+		ex_violation = viol;
+		return cost + viol * VIOLATION;
 	};
 
 	/* Coordinate descent on the groups: each in turn takes the level in its feasible range (the rest held at their levels) that costs least. */
@@ -560,18 +689,14 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				}
 			}
 			if (lo >= up) continue;
-			std::set<size_t> affected(member_set);
-			for (size_t m : members) {
-				for (const SnapshotTile &p : tiles[order_tiles[m]].preds) affected.insert(var[p]);
-			}
 			const int current = level[members.front()];
-			Money best_cost = local_cost(affected, level);
+			Money best_cost = exact_cost(level);
 			int best = current;
 			std::vector<int> trial = level;
 			for (int l = lo + base; l <= up + base; l++) {
 				if (l == current) continue;
 				for (size_t m : members) trial[m] = l;
-				const Money cost_here = local_cost(affected, trial);
+				const Money cost_here = exact_cost(trial);
 				if (cost_here < best_cost) {
 					best_cost = cost_here;
 					best = l;
@@ -585,12 +710,29 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		if (!moved) break;
 	}
 
+	/* The finished terraform: the clamp of the final levels. */
+	const Money final_cost = exact_cost(level);
 	for (size_t i = 0; i < n; i++) {
-		const std::optional<Choice> choice = choice_at(i, level);
-		if (!choice.has_value()) return fmt::format("no choice for the tile {}", name(order_tiles[i]));
-		const Visit &v = tiles[order_tiles[i]].visit;
-		chosen[order_tiles[i]] = {*choice, v.edge, v.copy};
+		if (ex_ch[i] == nullptr) return fmt::format("no choice for the tile {}", name(order_tiles[i]));
 	}
+	if (ex_violation > 0) return fmt::format("terraform conflict: the corners the tracks fix cannot be joined by one terraform (violation {})", ex_violation);
+	for (size_t i = 0; i < n; i++) {
+		const Visit &v = tiles[order_tiles[i]].visit;
+		chosen[order_tiles[i]] = {*ex_ch[i], v.edge, v.copy};
+	}
+	int64_t moves = 0;
+	std::set<SnapshotTile> dirty;
+	for (const auto &[k, h] : ex_moved) {
+		const MapCorner corner{cone.x0 + static_cast<int>(k % stride), cone.y0 + static_cast<int>(k / stride)};
+		terraform.corners[corner] = h;
+		moves += std::abs(h - ground_h[k]);
+		for (const auto &[dx, dy] : CORNER_OFFSET) dirty.emplace(corner.first - dx, corner.second - dy);
+	}
+	terraform.cost = c.terrain.terraform_cost * moves;
+	for (const SnapshotTile &t : dirty) {
+		if (const JunctionTerrainTile *tile = c.terrain.At(t.first, t.second); tile != nullptr) terraform.cost += tile->clear_cost;
+	}
+	total = final_cost;
 	return "";
 }
 
@@ -669,53 +811,11 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 	}
 
 	std::map<SnapshotTile, Chosen> chosen;
-	const std::string levels_why = SolveTileLevels(ctx, route_visits, heads, fixed_tiles, ties, layout, offset, ramp_levels, train_length, chosen);
+	JunctionTerraform result;
+	Money total = 0;
+	const std::string levels_why = SolveTileLevels(ctx, route_visits, heads, fixed_tiles, ties, layout, offset, ramp_levels, train_length, chosen, result, total);
 	if (!levels_why.empty()) return fail(levels_why);
 
-	/* The plan: every corner a tile demands, merged over the tiles; two tiles that demand different heights of one corner conflict. A tile on a foundation takes any corner height from its ground up to its level. */
-	std::map<MapCorner, std::pair<int, SnapshotTile>> demanded;
-	std::set<MapCorner> fixed_corners;
-	JunctionTerraform result;
-	for (const auto &[tile, item] : chosen) {
-		const JunctionTerrainTile *ground = terrain.At(tile.first, tile.second);
-		const std::array<int, 4> current = JunctionTileCorners(*ground);
-		for (int i = 0; i < 4; i++) {
-			const MapCorner corner{tile.first + CORNER_OFFSET[i].first, tile.second + CORNER_OFFSET[i].second};
-			fixed_corners.insert(corner);
-			if (item.choice.foundation) continue;
-			const auto [found, inserted] = demanded.emplace(corner, std::make_pair(item.choice.corners[i], tile));
-			if (!inserted && found->second.first != item.choice.corners[i]) {
-				const Chosen &other = chosen.at(found->second.second);
-				return fail(fmt::format("terraform conflict: corner ({}, {}) is wanted at {} by tile ({}, {}) (edge {} copy {}) and at {} by tile ({}, {}) (edge {} copy {})", corner.first, corner.second, found->second.first, found->second.second.first, found->second.second.second, other.edge, other.copy, item.choice.corners[i], tile.first, tile.second, item.edge, item.copy));
-			}
-			if (item.choice.corners[i] != current[i]) result.corners[corner] = item.choice.corners[i];
-		}
-	}
-	for (const auto &[tile, item] : chosen) {
-		if (!item.choice.foundation) continue;
-		const JunctionTerrainTile *ground = terrain.At(tile.first, tile.second);
-		const std::array<int, 4> current = JunctionTileCorners(*ground);
-		for (int i = 0; i < 4; i++) {
-			const MapCorner corner{tile.first + CORNER_OFFSET[i].first, tile.second + CORNER_OFFSET[i].second};
-			const auto found = demanded.find(corner);
-			if (found == demanded.end()) continue;
-			const int wanted = found->second.first;
-			if (wanted < current[i] || wanted > ground->z_max) return fail(fmt::format("terraform conflict: corner ({}, {}) is wanted at {} by tile ({}, {}) but the foundation tile ({}, {}) takes {} to {}", corner.first, corner.second, wanted, found->second.second.first, found->second.second.second, tile.first, tile.second, current[i], ground->z_max));
-			if (wanted != current[i]) result.corners[corner] = wanted;
-		}
-	}
-	std::string propagate_why;
-	if (!PropagateJunctionTerraform(terrain, result, &propagate_why, &fixed_corners)) return fail(propagate_why);
-
-	/* Total: the plan, plus foundations and clearing of the track tiles it does not touch (the plan clears the tiles it moves). */
-	std::set<SnapshotTile> dirty;
-	for (const auto &[corner, height] : result.corners) {
-		for (const auto &[dx, dy] : CORNER_OFFSET) dirty.emplace(corner.first - dx, corner.second - dy);
-	}
-	Money total = result.cost;
-	for (const auto &[tile, item] : chosen) {
-		if (!dirty.contains(tile)) total += item.choice.cost;
-	}
 	plan = std::move(result);
 	cost = total;
 	levels.clear();
