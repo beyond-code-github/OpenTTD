@@ -903,43 +903,14 @@ static std::string JunctionBendMoves(int hand, int halves, bool corner)
 }
 
 /**
- * The run of tiles between two consecutive elements of an edge's chain, from the curve gaps of JunctionCurveGaps (DESIGN-G1 §14.7). A run of d tiles puts the last curve of the first element and the first curve of the second 2 (d - 1) units apart.
- * @param kind_a The first element: 0 not a curve element, 1 Corner, 2 S-bend.
- * @param hand_a The first element's hand (Corner: its turn, S-bend: its first curve).
- * @param m_a The first element's S-bend size.
- * @param kind_b The second element, as kind_a.
- * @param hand_b The second element's hand.
- * @param m_b The second element's S-bend size.
- * @param tl Train length.
- * @param cl Curve spacing in units.
- * @param h The Corner's size in units.
- * @return The run in tiles, at least 2.
- */
-static int JunctionRunBetween(int kind_a, int hand_a, int m_a, int kind_b, int hand_b, int m_b, int tl, int cl, int h)
-{
-	if (kind_a == 0 || kind_b == 0) return 2;
-	const int cap = 2 * tl - 1;
-	const int g1 = std::min(cap, std::max(2, cl));
-	const int g2 = std::min(cap, 2 * cl);
-	const int span_a = kind_a == 1 ? h : 2 * m_a;
-	const int span_b = kind_b == 1 ? h : 2 * m_b;
-	const int last_hand_a = kind_a == 1 ? hand_a : -hand_a;
-	auto lift = [](int need) { return 1 + (need + 1) / 2; };
-	int d = 2;
-	if (last_hand_a == hand_b) d = std::max(d, lift(g1)); // The last curve of A and the first of B, adjacent and of the same hand.
-	d = std::max(d, lift(g2 - span_a)); // The first curve of A and the first of B, two apart: span_a + 2 (d - 1).
-	d = std::max(d, lift(g2 - span_b)); // The last curve of A and the second of B, two apart: 2 (d - 1) + span_b.
-	return d;
-}
-
-/**
  * The placement of a programmed track graph (DESIGN-G1 §11.8, §14.2).
  * @param fixed The choices to solve with (one Y and one X solve), or nullptr for the rounds that find them.
  * @param x_floors (point, least column) pairs for the X phase (see the public overload).
+ * @param y_floors (point, least row) pairs for the Y phase (see the public overload).
  * @param facts The target terrain's facts for the X phase of a fixed solve (DESIGN-G1 §14.4), or nullptr.
  * @param offset The working tile of the placement's (0, 0); only with facts.
  */
-static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0})
+static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0})
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
 	using Step = JunctionTrackStep;
@@ -1285,6 +1256,175 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		return tiles;
 	};
 
+	/* The curves of every route (D217): per lane path and copy, in travel order, each curve as its bend's anchor point (the bend's first half tile), its hand and its element, and the route's units up to it in two forms. In the X form (rows known, one horizontal heading s per route) the units are xoff + 2 s (x[anchor] - x[the route's start]): along a horizontal stretch of that heading every column adds 2 units, a vertical stretch adds the fixed units of its rows, and a bend adds what its own pieces do. In the Y form (a segment of curves with only vertical runs between them, vertical heading sv) the units from the segment's first curve are yoff + 2 sv (y[anchor] - y[first anchor]). Row bends (fans, lane S-bends) lie between horizontal runs, so they have no segment (seg -1) and their curves pair in the X form only. */
+	struct SymCurve {
+		int pt;
+		int xoff;
+		int yoff;
+		int seg;
+		JunctionCurveHand hand;
+		uint32_t edge;
+		int row;
+	};
+	struct SymRoute {
+		size_t path = 0;
+		int copy = 0;
+		int start = 0; ///< The route's start point.
+		int sign = 1; ///< s.
+		std::vector<int> seg_sign; ///< Per segment, sv.
+		std::vector<SymCurve> curves;
+	};
+	auto doubled_edge = [&](uint32_t e) {
+		return std::ranges::any_of(bridges_of[e], [&](int b) { return structure.bridges[b].doubled; });
+	};
+	/* With numeric_y false (the Y phase) the rows are unknown: the X form is not made and the row bends are left out. */
+	std::map<std::tuple<int, int, int, bool>, JunctionRaster> bend_rasters; ///< The rasters of the bends the walk meets, by heading, hand, half pieces and corner.
+	auto sym_routes = [&](std::vector<SymRoute> &routes, bool numeric_y) {
+		/* A bend of the route: the anchor point and row of its first half tile, the heading it starts on, its hand, its half pieces. */
+		struct Bend {
+			int pt, y, heading, hand, halves;
+			bool corner;
+			uint32_t edge;
+			int row;
+			bool on_row;
+		};
+		routes.clear();
+		for (size_t p = 0; p < paths.size(); p++) {
+			const std::vector<uint32_t> &edges = graph.path_edges[p];
+			const JunctionSide side = group_of(paths[p].from).side;
+			if (side == JunctionSide::N) continue; // Not ruled yet (RenderJunctionTrackPlacement fails on it).
+			const int start_heading = side == JunctionSide::W ? 1 : side == JunctionSide::E ? 3 : 0;
+			const int start_y = !numeric_y ? 0 : (side == JunctionSide::S ? vy[port_pt[paths[p].from]] : port_row[paths[p].from]);
+			const bool has_doubled = std::ranges::any_of(edges, doubled_edge);
+			for (int c = 0; c < (has_doubled ? 2 : 1); c++) {
+				std::vector<Bend> bends;
+				std::vector<int> row_heading; ///< Per bend, the heading of the row edge crossed just before it, or -1.
+				int pending_row = -1;
+				for (uint32_t e : edges) {
+					const std::vector<Step> &tokens = c == 1 && doubled_edge(e) ? programs.copies[e] : programs.edges[e];
+					if (is_row_edge(e)) {
+						const int r = (end_level(graph.edges[e].from) - 1) / 2;
+						const int heading = east[r] ? 1 : 3;
+						pending_row = heading;
+						if (!numeric_y) continue;
+						row_heading.resize(bends.size(), -1);
+						const int y_exit = vy[item_pt[doubled_row(r) ? north_item[r] : lane_item[r]]];
+						const int y_lane = vy[item_pt[lane_item[r]]];
+						if (e == in_edge[r] && fan_m[e] != 0 && !tokens.empty()) {
+							const int y_in = port_row[graph.edges[e].from.index];
+							bends.push_back({row_pts[r].fif, y_in, heading, ((y_exit > y_in) == (heading == 1)) ? 1 : -1, 2 * fan_m[e], false, e, r, true});
+						} else if (e == out_edge[r] && fan_m[e] != 0 && !tokens.empty()) {
+							const int y_out = port_row[graph.edges[e].to.index];
+							bends.push_back({row_pts[r].fof, y_lane, heading, ((y_out > y_lane) == (heading == 1)) ? 1 : -1, 2 * fan_m[e], false, e, r, true});
+						} else if (e == leg_edge[r] && doubled_row(r)) {
+							for (const Step &step : tokens) {
+								if (step.kind == StepKind::SBend) bends.push_back({c == 0 ? row_pts[r].sb0_first : row_pts[r].lane_split, y_exit, heading, step.hand, 2 * std::abs(y_lane - y_exit), false, e, r, true});
+							}
+						}
+						continue;
+					}
+					for (size_t t = 0; t < tokens.size(); t++) {
+						if (tokens[t].kind != StepKind::Corner && tokens[t].kind != StepKind::SBend) continue;
+						for (const Elem &el : chain[e]) {
+							if (el.tok != static_cast<int>(t)) continue;
+							row_heading.resize(bends.size(), -1);
+							row_heading.push_back(pending_row);
+							pending_row = -1;
+							bends.push_back({el.first, numeric_y ? vy[el.first] : 0, el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, -1, false});
+						}
+					}
+				}
+				row_heading.resize(bends.size(), -1);
+
+				/* Each bend's pieces: its curves with the units before them, the offsets of the axis piece before it and the closing axis piece from the first half tile, and the heading it leaves on. */
+				struct Pieces {
+					std::vector<std::pair<int, JunctionCurveHand>> curves; ///< Units from the start of the axis piece before the bend, hand.
+					int before_dx, before_dy, close_dx, close_dy, close_units, heading;
+				};
+				std::vector<Pieces> pieces;
+				for (const Bend &b : bends) {
+					auto cached = bend_rasters.find({b.heading, b.hand, b.halves, b.corner});
+					if (cached == bend_rasters.end()) cached = bend_rasters.emplace(std::make_tuple(b.heading, b.hand, b.halves, b.corner), RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[b.heading], JunctionBendMoves(b.hand, b.halves, b.corner)})).first;
+					const JunctionRaster &raster = cached->second;
+					if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != b.halves + 2) { build_why = "a bend of edge " + str(b.edge) + " has no raster"; return false; }
+					Pieces q{{}, raster.pieces[0].tile.x - raster.pieces[1].tile.x, raster.pieces[0].tile.y - raster.pieces[1].tile.y, raster.pieces.back().tile.x - raster.pieces[1].tile.x, raster.pieces.back().tile.y - raster.pieces[1].tile.y, 0, -1};
+					for (size_t i = 0; i < raster.pieces.size(); i++) {
+						if (i > 0) {
+							const DirDiff diff = DirDifference(TrackdirToDirection(raster.pieces[i - 1].trackdir), TrackdirToDirection(raster.pieces[i].trackdir));
+							if (diff == DirDiff::Left45 || diff == DirDiff::Right45) q.curves.emplace_back(q.close_units, diff == DirDiff::Left45 ? JunctionCurveHand::Left : JunctionCurveHand::Right);
+						}
+						if (i + 1 < raster.pieces.size()) q.close_units += raster.pieces[i].units;
+					}
+					for (int i = 0; i < 4; i++) {
+						if (JUNCTION_AXIS_TRACKDIR[i] == raster.pieces.back().trackdir) q.heading = i;
+					}
+					if (q.heading < 0) { build_why = "a bend of edge " + str(b.edge) + " does not end on an axis piece"; return false; }
+					pieces.push_back(std::move(q));
+				}
+
+				/* The one horizontal heading of the route up to its last bend (the X form's s). */
+				SymRoute route;
+				route.path = p;
+				route.copy = c;
+				route.start = port_pt[paths[p].from];
+				route.sign = 0;
+				auto note = [&](int heading) { return VX[heading] == 0 || (route.sign == 0 ? (route.sign = VX[heading]) != 0 : route.sign == VX[heading]); };
+				bool one_heading = note(start_heading);
+				for (size_t i = 0; i + 1 < pieces.size(); i++) one_heading = one_heading && note(pieces[i].heading);
+				if (!one_heading) { build_why = "path " + str(static_cast<int>(p)) + " has two horizontal headings"; return false; }
+				if (route.sign == 0) route.sign = 1;
+
+				/* The segments: a bend on a row, or one that follows a horizontal run, starts one; a bend that follows a vertical run joins it. Its vertical heading sv is that of its first vertical run. */
+				std::vector<int> seg_of(bends.size(), -1);
+				{
+					int h = start_heading, cur = -1;
+					for (size_t i = 0; i < bends.size(); i++) {
+						const int in_heading = row_heading[i] >= 0 ? row_heading[i] : h;
+						if (bends[i].on_row) {
+							cur = -1;
+						} else {
+							if (cur < 0 || VX[in_heading] != 0) {
+								route.seg_sign.push_back(0);
+								cur = static_cast<int>(route.seg_sign.size()) - 1;
+							} else if (route.seg_sign[cur] == 0) {
+								route.seg_sign[cur] = VY[in_heading];
+							} else if (route.seg_sign[cur] != VY[in_heading]) {
+								build_why = "a segment of path " + str(static_cast<int>(p)) + " has two vertical headings";
+								return false;
+							}
+							seg_of[i] = cur;
+						}
+						h = pieces[i].heading;
+						if (!bends[i].on_row && VX[h] != 0) cur = -1;
+					}
+				}
+
+				/* w: the units at the route's current piece less 2 s times its columns from the start (X form). v: the same for the segment, less 2 sv times its rows (Y form, with the anchors' rows symbolic). */
+				int w = 0, y = start_y, heading = start_heading, v = 0, last_seg = -2;
+				for (size_t i = 0; i < bends.size(); i++) {
+					const Bend &b = bends[i];
+					const Pieces &q = pieces[i];
+					const int in_heading = row_heading[i] >= 0 ? row_heading[i] : heading;
+					if (numeric_y && VX[in_heading] == 0) {
+						const int run = (b.y + q.before_dy - y) * VY[in_heading];
+						if (run < 0) { build_why = "a vertical run before edge " + str(b.edge) + " is negative"; return false; }
+						w += 2 * run;
+					}
+					if (seg_of[i] != last_seg) v = 0;
+					last_seg = seg_of[i];
+					const int ysign = seg_of[i] < 0 ? 0 : (route.seg_sign[seg_of[i]] != 0 ? route.seg_sign[seg_of[i]] : 1);
+					for (const auto &[units, hand] : q.curves) route.curves.push_back({b.pt, numeric_y ? w + 2 * route.sign * q.before_dx + units : 0, v + 2 * ysign * q.before_dy + units, seg_of[i], hand, b.edge, b.row});
+					w += 2 * route.sign * (q.before_dx - q.close_dx) + q.close_units;
+					v += 2 * ysign * (q.before_dy - q.close_dy) + q.close_units;
+					y = b.y + q.close_dy;
+					heading = q.heading;
+				}
+				routes.push_back(std::move(route));
+			}
+		}
+		return true;
+	};
+
 	/* One round: the constraints of a phase. */
 	auto build = [&]() {
 		cons.clear();
@@ -1369,42 +1509,19 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 			if (!x_phase) continue;
 
-			/* The curve gaps of JunctionCurveGaps: adjacent same-hand curves g1 apart, any other two curves g2 apart. */
-			const int g1 = std::min(2 * static_cast<int>(spec.tl) - 1, std::max(2, cl));
-			const int g2 = std::min(2 * static_cast<int>(spec.tl) - 1, 2 * cl);
-			/* The three-apart pair of JunctionCurveGaps. */
-			const int g3 = std::min(2 * static_cast<int>(spec.tl) - 1, 3 * cl);
-
 			/* In: port, fan, exit split. */
 			const int m_in = fan_m[in_edge[r]];
 			why("in fan", in_edge[r], in.to.index, r);
-			int d_min = 2;
 			if (m_in == 0) {
 				eq(0, rp.fif, pin, 0);
 				eq(0, rp.fil, pin, 0);
 			} else {
 				along(heading, rp.fif, pin, 2, false);
 				along(heading, rp.fil, rp.fif, m_in - 1, true);
-
-				/* The fan's S-bend (2 m_in units) plus the d - 1 axis pieces to the exit split's curve must keep JunctionCurveGaps' gaps: c0 to c2 two curves apart, c1 to c2 consecutive when of the same hand (CS1). */
-				d_min = std::max(d_min, 1 + (g2 - 2 * m_in + 1) / 2);
-				const uint32_t fan_it = fan_item(in_edge[r]);
-				const int c0_hand = ((vy[item_pt[fan_it]] > port_row[in.from.index]) == (heading == 1)) ? 1 : -1;
-				int c2_hand = 0;
-				for (uint32_t x = 0; x < edge_count; x++) {
-					if (is_row_edge(x) || !graph.edges[x].from.node || graph.edges[x].from.index != in.to.index) continue;
-					if (programs.edges[x].empty() || programs.edges[x][0].kind != StepKind::Corner) { build_why = "the exit leg of row " + str(r) + " does not begin with a Corner"; return false; }
-					c2_hand = programs.edges[x][0].hand;
-					break;
-				}
-				if (c2_hand == 0) { build_why = "the exit leg of row " + str(r) + " has no exit Corner"; return false; }
-				if (c2_hand == -c0_hand) d_min = std::max(d_min, 1 + (g1 + 1) / 2);
-				/* The exit Corner's second curve lies h units after its first: (c1, c3) two curves apart, (c0, c3) three apart. */
-				d_min = std::max(d_min, 1 + (g2 - h + 1) / 2);
-				d_min = std::max(d_min, 1 + (g3 - 2 * m_in - h + 1) / 2);
 			}
-			why("in fan d_min", in_edge[r], in.to.index, r);
-			along(heading, nex, rp.fil, d_min, false);
+			/* The run from the fan to the exit split is the rule's run minimum; the curve gaps along the route are the family's (D217). */
+			why("in fan run", in_edge[r], in.to.index, r);
+			along(heading, nex, rp.fil, 2, false);
 			int after = nex; // The last point of the lane chain before the joiner merge.
 			if (!doubled) {
 				/* The prio element covers even_prio tiles upstream of the joiner merge; the exit split stays outside it. */
@@ -1494,21 +1611,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				eq(0, rp.fol, pout, 0);
 				along(heading, pout, njm, 2, false);
 			} else {
-				/* The fan's first curve c2 lies k_out tiles after the joiner merge's closing curve c1: the curve gaps of the joiner's route (JunctionCurveGaps; RECON-seed-floors §1) give (c0, c2) >= g2 and, when c1 and c2 turn the same way, (c1, c2) >= g1. */
-				int c1_hand = 0;
-				for (uint32_t x = 0; x < edge_count; x++) {
-					if (is_row_edge(x) || !graph.edges[x].to.node || graph.edges[x].to.index != out.from.index) continue;
-					if (programs.edges[x].empty() || programs.edges[x].back().kind != StepKind::SBend) { build_why = "the joiner of row " + str(r) + " does not end with an S-bend"; return false; }
-					c1_hand = -programs.edges[x].back().hand;
-					break;
-				}
-				if (c1_hand == 0) { build_why = "the joiner of row " + str(r) + " has no merge S-bend"; return false; }
-				const int c2_out_hand = ((port_row[out.to.index] > vy[item_pt[lane_item[r]]]) == (heading == 1)) ? 1 : -1;
-				int k_out = std::max((g2 + 1) / 2, c1_hand == c2_out_hand ? 1 + (g1 + 1) / 2 : 2);
-				/* (c0, c3), the joiner S-bend's first curve to the fan's last, three curves apart: 2 + 2 (k - 1) + 2 m_out units. */
-				k_out = std::max(k_out, 1 + (g3 - 2 - 2 * m_out + 1) / 2);
-				why("out fan k_out", out_edge[r], out.from.index, r);
-				along(heading, rp.fof, njm, k_out, true);
+				why("out fan run", out_edge[r], out.from.index, r);
+				along(heading, rp.fof, njm, 2, false);
 				along(heading, rp.fol, rp.fof, m_out - 1, true);
 				along(heading, pout, rp.fol, 2, true);
 			}
@@ -1610,26 +1714,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				if (next.first == el.last) continue;
 				why("chain run", e);
 				bool exact = false;
-				int dist = 2;
-				auto run_between = [&](const Elem *ea, const Elem *eb) {
-					auto kind_of = [](const Elem *q) { return q->k == Elem::K::Corner ? 1 : (q->k == Elem::K::SBend ? 2 : 0); };
-					return JunctionRunBetween(kind_of(ea), ea->hand, ea->m, kind_of(eb), eb->hand, eb->m, static_cast<int>(spec.tl), cl, h);
-				};
-				if (el.k == Elem::K::Tile && i == 0 && edge.from.node) {
-					/* Across the from-node: the predecessor edges' last curve element to this edge's first element. */
-					for (uint32_t pe = 0; pe < edge_count; pe++) {
-						if (is_row_edge(pe) || !graph.edges[pe].to.node || graph.edges[pe].to.index != edge.from.index || chain[pe].size() < 2) continue;
-						dist = std::max(dist, run_between(&chain[pe][chain[pe].size() - 2], &next));
-					}
-				} else if (next.k == Elem::K::Tile && i + 2 == elems.size() && edge.to.node) {
-					/* Across the to-node: this edge's last element to the successor edges' first element. */
-					for (uint32_t se = 0; se < edge_count; se++) {
-						if (is_row_edge(se) || !graph.edges[se].from.node || graph.edges[se].from.index != edge.to.index || chain[se].size() < 3) continue;
-						dist = std::max(dist, run_between(&el, &chain[se][1]));
-					}
-				} else {
-					dist = run_between(&el, &next);
-				}
+				const int dist = 2;
 				if (next.k == Elem::K::Tile && i + 2 == elems.size()) {
 					const bool band_merge = edge.to.node && !graph.nodes[edge.to.index].split && order.node_level[edge.to.index] % 2 == 0;
 										if (!edge.to.node) exact = true;
@@ -1680,6 +1765,54 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		if (x_phase) {
 			why("x floor");
 			for (const std::pair<int, int> &floor : x_floors) ge(0, floor.first, 0, floor.second);
+		} else {
+			why("y floor");
+			for (const std::pair<int, int> &floor : y_floors) ge(1, floor.first, 0, floor.second);
+		}
+
+		if ((!x_phase || rows_known) && spec.curve_limit) {
+			/* The curve-gap family (D217): every pair JunctionCurveGaps returns for a route's curves. A pair in one segment (only vertical runs and fixed spans between the curves) is a difference of its anchors' rows in the Y phase; every other pair is a difference of its anchors' columns in the X phase. Pairs on one anchor are constants. */
+			std::vector<SymRoute> routes;
+			if (!sym_routes(routes, x_phase)) return false;
+			/* One relation per (v, u): the largest of the pairs'. */
+			struct Relation {
+				int v, u, least;
+				uint32_t edge;
+				int row;
+			};
+			std::vector<Relation> relations;
+			std::map<std::pair<int, int>, size_t> at;
+			for (const SymRoute &route : routes) {
+				std::vector<JunctionCurveHand> hands;
+				for (const SymCurve &curve : route.curves) hands.push_back(curve.hand);
+				for (const JunctionCurveGap &gap : JunctionCurveGaps(hands, spec.tl, spec.curve_speed, spec.reference_speed)) {
+					const SymCurve &ci = route.curves[gap.i];
+					const SymCurve &cj = route.curves[gap.j];
+					const bool vertical = ci.seg >= 0 && ci.seg == cj.seg;
+					if (vertical == x_phase) continue;
+					/* The units from curve i to curve j are off_j - off_i + 2 sg (a_j - a_i), at least min_gap; sg is s (columns) or sv (rows). */
+					const int sg = vertical ? (route.seg_sign[ci.seg] != 0 ? route.seg_sign[ci.seg] : 1) : route.sign;
+					const int delta = vertical ? cj.yoff - ci.yoff : cj.xoff - ci.xoff;
+					const int need = gap.min_gap - delta;
+					const int least = need > 0 ? (need + 1) / 2 : -(-need / 2);
+					if (ci.pt == cj.pt) {
+						if (least > 0) { build_why = "curve gap " + str(gap.min_gap) + " between edge " + str(ci.edge) + " and edge " + str(cj.edge) + " is not kept: " + str(delta); return false; }
+						continue;
+					}
+					const int v = sg > 0 ? cj.pt : ci.pt;
+					const int u = v == cj.pt ? ci.pt : cj.pt;
+					const auto [found, added] = at.emplace(std::make_pair(v, u), relations.size());
+					if (added) {
+						relations.push_back({v, u, least, cj.edge, cj.row});
+					} else if (relations[found->second].least < least) {
+						relations[found->second] = {v, u, least, cj.edge, cj.row};
+					}
+				}
+			}
+			for (const Relation &relation : relations) {
+				why("curve gap", relation.edge, UINT32_MAX, relation.row);
+				ge(x_phase ? 0 : 1, relation.v, relation.u, relation.least);
+			}
 		}
 
 		if (x_phase && facts != nullptr) {
@@ -2305,22 +2438,34 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		}
 		result.bridges.push_back(heads);
 	}
+
+	/* The curves at the solved columns (for tests): paths first, then the copies in path order. */
+	std::vector<SymRoute> sym;
+	if (!sym_routes(sym, true)) return fail("the curves of the routes are not ruled yet " + build_why);
+	for (int copy = 0; copy < 2; copy++) {
+		for (const SymRoute &route : sym) {
+			if (route.copy != copy) continue;
+			std::vector<std::pair<int8_t, int>> curves;
+			for (const SymCurve &curve : route.curves) curves.emplace_back(curve.hand == JunctionCurveHand::Right ? 1 : -1, curve.xoff + 2 * route.sign * (vx[curve.pt] - vx[route.start]));
+			result.curves.push_back(std::move(curves));
+		}
+	}
 	return result;
 }
 
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error)
 {
-	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, nullptr, error, {});
+	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, nullptr, error, {}, {});
 }
 
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors)
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors)
 {
-	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, x_floors);
+	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, x_floors, y_floors);
 }
 
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error)
 {
-	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, {}, &facts, offset);
+	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, {}, {}, &facts, offset);
 }
 
 JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error, std::vector<JunctionTrackRoute> *routes)

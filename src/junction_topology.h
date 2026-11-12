@@ -251,6 +251,7 @@ struct JunctionTrackPlacement {
 	JunctionPlacementChoices choices; ///< The choices this placement was solved with.
 	std::vector<JunctionPlacementReason> why; ///< On failure: the explanation chain of the contradiction.
 	std::vector<int> columns; ///< The column of every placement point (x_floors refer to these ids).
+	std::vector<std::vector<std::pair<int8_t, int>>> curves; ///< Per lane path and copy (paths first, then copies in path order): each curve's hand (+1 right, -1 left) and unit position at the solved columns, from the curve family's walk (for tests).
 };
 
 /**
@@ -264,8 +265,9 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
  * @param choices The S-bend sizes, Corner spans and port offset to solve with, e.g. those of an earlier placement.
  * @param error Receives the reason when the result is empty; JunctionTrackPlacement::why then names the relations of a contradiction.
  * @param x_floors (point, least column) pairs added as lower bounds in the X phase, reason "x floor"; a test seam until terrain facts (DESIGN-G1 §14.4). Points are the placement's internal ids, as choices.hug uses.
+ * @param y_floors (point, least row) pairs added as lower bounds in the Y phase, reason "y floor"; a test seam until the row-gap edit (DESIGN-G1 §14.6). Point 1 + i is stack item i.
  */
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors = {});
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors = {}, const std::vector<std::pair<int, int>> &y_floors = {});
 
 /**
  * The fixed-choices placement with the target terrain's facts in the X phase (DESIGN-G1 §14.4, D216): every group of tiles (a bend, a switch tile, a bridge head, a vertical run's tile) is restricted to the columns where its tile is buildable, and a straight run on a row must be buildable on every tile it covers. Rows stay as the structure gives them.

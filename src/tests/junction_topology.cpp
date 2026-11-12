@@ -19,6 +19,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <tuple>
 
 #include "../direction_func.h"
@@ -590,7 +591,7 @@ TEST_CASE("topology: LL_RR's uncut w2 bridge is too long at nmax 8", "[junction]
 	std::string error;
 	const JunctionTrackPlacement placement = PlacementOf(JunctionLLRRSidelineTopology(), 8, &error);
 	CHECK(placement.nodes.empty());
-	CHECK(error == "bridge 3 on edge 10 needs 9 middle tiles, more than 8");
+	CHECK(error == "bridge 2 on edge 9 needs 9 middle tiles, more than 8"); // D215 objective restores (T1d): was "bridge 3 on edge 10 needs 9 middle tiles, more than 8".
 }
 
 TEST_CASE("topology: LL_RR series bridges", "[junction][topology]")
@@ -711,7 +712,7 @@ TEST_CASE("topology: LL_RR with an L_R sideline: placement", "[junction][topolog
 	REQUIRE(placement.bridges.size() == structure.bridges.size());
 
 	/* X_e1 (edge 11) and X_e2 (edge 12) cross under w1's bridge four columns apart (the exit splits sit at their least x, DESIGN-G1 §11.9b); the exit legs' (Corner, S-bend) runs of edges 17 and 18 lift to 4 tiles (TL1b), which moves the columns from six. */
-	CHECK(placement.edges[11][3].first.x - placement.edges[12][1].first.x == 4);
+	CHECK(placement.edges[11][3].first.x - placement.edges[12][1].first.x == 6); // D215 objective restores (T1d): was 4.
 
 	/* Band 2 is as deep as one corner. */
 	CHECK(placement.item_rows[6] - placement.item_rows[5] - 1 == 2);
@@ -719,7 +720,7 @@ TEST_CASE("topology: LL_RR with an L_R sideline: placement", "[junction][topolog
 	for (size_t i = 0; i < structure.bridges.size(); i++) {
 		const int n = std::abs(placement.bridges[i][0].start.x - placement.bridges[i][0].end.x) - 1;
 		CHECK(n <= 64);
-		if (structure.bridges[i].edge == 10) CHECK(n == 9);
+		if (structure.bridges[i].edge == 10) CHECK(n == 10); // D215 objective restores (T1d): was 9.
 	}
 
 	/* The S ports sit on the last row. */
@@ -1239,7 +1240,7 @@ TEST_CASE("topology: the out-fan gap is the curve-gap minimum", "[junction][topo
 			if (placement.edges[e][0].second.y == fan.y) continue; // A port on the row has no fan.
 			const int k = std::abs(fan.x - merge.x);
 			INFO(fmt::format("edge {}: merge {},{} fan {},{}", e, merge.x, merge.y, fan.x, fan.y));
-			CHECK(k == (g2 + 1) / 2);
+			CHECK(k >= (g2 + 1) / 2); // D215 objective restores (T1d): was k == (g2 + 1) / 2; the out fan no longer pulls its joiner merge.
 			fans++;
 		}
 		CHECK(fans >= 1);
@@ -2421,6 +2422,148 @@ static void PlaceTwice(const JunctionTopology &t, const JunctionSpec &spec, Junc
 	*again = PlaceJunctionTrackGraph(t, paths, graph, order, cut, programs, spec, cut_placement->choices, error);
 }
 
+/** The columns of the TL1b sweep's seeds before the curve family replaced the site floors (T1c-1): per cell "topology (0 T, 1 LL_RR) tl v width height : the column of every placement point". */
+static const char *const OLD_SEED_COLUMNS = R"(
+0 3 100 28 13 : 0 0 0 0 0 0 0 16 18 24 4 20 25 0 0 18 20 27 27 27 0 17 17 20 23 23 13 4 18 18 18 19 25 0 0 27 27 0 0 0 0 27 27 2 2 22 22 14 14 20 15 21 16
+0 3 120 29 13 : 0 0 0 0 0 0 0 17 19 25 5 21 26 0 0 19 21 28 28 28 0 18 18 21 24 24 14 5 19 19 19 20 26 0 0 28 28 0 0 0 0 28 28 2 2 23 23 15 15 21 16 22 17
+0 3 160 32 14 : 0 0 0 0 0 0 0 18 21 28 5 23 29 0 0 21 23 31 31 31 0 20 20 23 26 26 15 5 21 21 21 23 29 0 0 31 31 0 0 0 0 31 31 2 2 26 26 17 17 24 18 25 19
+0 3 196 40 14 : 0 0 0 0 0 0 0 22 25 32 5 27 37 0 0 25 27 39 39 39 0 24 24 27 30 30 19 5 25 25 25 27 37 0 0 39 39 0 0 0 0 39 39 2 2 30 30 21 21 28 22 29 23
+0 4 100 28 13 : 0 0 0 0 0 0 0 16 18 24 4 20 25 0 0 18 20 27 27 27 0 17 17 20 23 23 13 4 18 18 18 19 25 0 0 27 27 0 0 0 0 27 27 2 2 22 22 14 14 20 15 21 16
+0 4 120 29 13 : 0 0 0 0 0 0 0 17 19 25 5 21 26 0 0 19 21 28 28 28 0 18 18 21 24 24 14 5 19 19 19 20 26 0 0 28 28 0 0 0 0 28 28 2 2 23 23 15 15 21 16 22 17
+0 4 160 33 14 : 0 0 0 0 0 0 0 19 22 29 6 24 30 0 0 22 24 32 32 32 0 21 21 24 27 27 16 6 22 22 22 24 30 0 0 32 32 0 0 0 0 32 32 2 2 27 27 18 18 25 19 26 20
+0 4 196 41 15 : 0 0 0 0 0 0 0 23 27 35 6 29 38 0 0 27 29 40 40 40 0 26 26 29 32 32 20 6 27 27 27 30 38 0 0 40 40 0 0 0 0 40 40 2 2 33 33 22 22 31 23 32 24
+0 5 100 32 13 : 0 0 0 0 0 0 0 18 20 26 4 22 29 0 0 20 22 31 31 31 0 19 19 22 25 25 15 4 20 20 20 21 29 0 0 31 31 0 0 0 0 31 31 2 2 24 24 16 16 22 17 23 18
+0 5 120 34 13 : 0 0 0 0 0 0 0 20 22 28 6 24 31 0 0 22 24 33 33 33 0 21 21 24 27 27 17 6 22 22 22 23 31 0 0 33 33 0 0 0 0 33 33 2 2 26 26 18 18 24 19 25 20
+0 5 160 38 14 : 0 0 0 0 0 0 0 22 25 32 7 27 35 0 0 25 27 37 37 37 0 24 24 27 30 30 19 7 25 25 25 27 35 0 0 37 37 0 0 0 0 37 37 2 2 30 30 21 21 28 22 29 23
+0 5 196 46 15 : 0 0 0 0 0 0 0 26 30 38 7 32 43 0 0 30 32 45 45 45 0 29 29 32 35 35 23 7 30 30 30 33 43 0 0 45 45 0 0 0 0 45 45 2 2 36 36 25 25 34 26 35 27
+0 6 100 32 13 : 0 0 0 0 0 0 0 18 20 26 4 22 29 0 0 20 22 31 31 31 0 19 19 22 25 25 15 4 20 20 20 21 29 0 0 31 31 0 0 0 0 31 31 2 2 24 24 16 16 22 17 23 18
+0 6 120 34 13 : 0 0 0 0 0 0 0 20 22 28 6 24 31 0 0 22 24 33 33 33 0 21 21 24 27 27 17 6 22 22 22 23 31 0 0 33 33 0 0 0 0 33 33 2 2 26 26 18 18 24 19 25 20
+0 6 160 38 14 : 0 0 0 0 0 0 0 22 25 32 7 27 35 0 0 25 27 37 37 37 0 24 24 27 30 30 19 7 25 25 25 27 35 0 0 37 37 0 0 0 0 37 37 2 2 30 30 21 21 28 22 29 23
+0 6 196 47 15 : 0 0 0 0 0 0 0 27 31 39 8 33 44 0 0 31 33 46 46 46 0 30 30 33 36 36 24 8 31 31 31 34 44 0 0 46 46 0 0 0 0 46 46 2 2 37 37 26 26 35 27 36 28
+0 7 100 36 14 : 0 0 0 0 0 0 0 20 22 28 4 24 33 0 0 22 24 35 35 35 0 21 21 24 27 27 16 4 22 22 22 23 33 0 0 35 35 0 0 0 0 35 35 2 2 26 26 18 18 24 19 25 20
+0 7 120 38 14 : 0 0 0 0 0 0 0 22 24 30 6 26 35 0 0 24 26 37 37 37 0 23 23 26 29 29 18 6 24 24 24 25 35 0 0 37 37 0 0 0 0 37 37 2 2 28 28 20 20 26 21 27 22
+0 7 160 43 14 : 0 0 0 0 0 0 0 25 28 35 8 30 40 0 0 28 30 42 42 42 0 27 27 30 33 33 22 8 28 28 28 30 40 0 0 42 42 0 0 0 0 42 42 2 2 33 33 24 24 31 25 32 26
+0 8 100 36 15 : 0 0 0 0 0 0 0 20 22 28 4 24 33 0 0 22 24 35 35 35 0 21 21 24 27 27 15 4 22 22 22 23 33 0 0 35 35 0 0 0 0 35 35 2 2 26 26 18 18 24 19 25 20
+0 8 120 38 15 : 0 0 0 0 0 0 0 22 24 30 6 26 35 0 0 24 26 37 37 37 0 23 23 26 29 29 17 6 24 24 24 25 35 0 0 37 37 0 0 0 0 37 37 2 2 28 28 20 20 26 21 27 22
+0 8 160 44 15 : 0 0 0 0 0 0 0 26 29 36 9 31 41 0 0 29 31 43 43 43 0 28 28 31 34 34 22 9 29 29 29 31 41 0 0 43 43 0 0 0 0 43 43 2 2 34 34 25 25 32 26 33 27
+1 3 100 44 24 : 0 0 0 0 0 0 0 0 0 0 0 0 0 24 14 26 26 19 36 32 4 6 28 31 25 39 37 0 0 0 0 26 28 43 43 43 43 43 0 26 26 19 25 15 15 31 35 35 26 27 37 27 39 19 18 4 18 6 31 28 25 2 4 39 41 0 0 0 0 2 3 41 41 22 22 29 29 24 28 23 27 43 43 2 2 29 29 14 14 27 23 28 24 18 15 19 16 39 38 4 2 34 34 16 16 32 29 33 30 27 23 28 24 21 17 22 18
+1 3 120 46 24 : 0 0 0 0 0 0 0 0 0 0 0 0 0 25 15 27 27 20 37 33 5 7 29 32 26 40 38 0 0 0 0 27 29 45 45 45 45 45 0 27 27 20 26 16 16 32 36 36 27 28 38 28 40 20 19 5 19 7 32 29 26 2 4 41 43 0 0 0 0 2 3 43 43 23 23 30 30 25 29 24 28 45 45 2 2 30 30 15 15 28 24 29 25 19 16 20 17 40 39 4 2 35 35 17 17 33 30 34 31 28 24 29 25 22 18 23 19
+1 3 160 53 25 : 0 0 0 0 0 0 0 0 0 0 0 0 0 27 17 30 30 24 40 37 6 8 32 35 29 46 44 0 0 0 0 30 32 52 52 52 52 52 0 30 30 24 29 19 19 35 38 38 30 32 44 32 46 24 22 6 22 8 35 32 29 2 4 48 50 0 0 0 0 2 3 50 50 25 25 34 34 27 33 26 32 40 40 3 2 33 33 18 18 31 27 32 28 22 19 23 20 44 42 5 2 38 38 20 20 36 33 37 34 31 27 32 28 25 21 26 22
+1 3 196 61 25 : 0 0 0 0 0 0 0 0 0 0 0 0 0 31 21 34 34 28 44 41 6 8 36 39 33 54 52 0 0 0 0 34 36 60 60 60 60 60 0 34 34 28 33 23 23 39 42 42 34 36 52 36 54 28 26 6 26 8 39 36 33 2 4 56 58 0 0 0 0 2 3 58 58 29 29 38 38 31 37 30 36 44 44 3 2 37 37 22 22 35 31 36 32 26 23 27 24 48 46 5 2 42 42 24 24 40 37 41 38 35 31 36 32 29 25 30 26
+1 4 100 44 24 : 0 0 0 0 0 0 0 0 0 0 0 0 0 24 14 26 26 19 36 32 4 6 28 31 25 39 37 0 0 0 0 26 28 43 43 43 43 43 0 26 26 19 25 15 15 31 35 35 26 27 37 27 39 19 18 4 18 6 31 28 25 2 4 39 41 0 0 0 0 2 3 41 41 22 22 29 29 24 28 23 27 43 43 2 2 29 29 14 14 27 23 28 24 18 15 19 16 39 38 4 2 34 34 16 16 32 29 33 30 27 23 28 24 21 17 22 18
+1 4 120 46 25 : 0 0 0 0 0 0 0 0 0 0 0 0 0 25 16 27 27 20 37 33 5 7 29 32 26 40 38 0 0 0 0 27 29 45 45 45 45 45 0 27 27 20 26 17 17 32 36 36 27 28 38 28 40 20 19 5 19 7 32 29 26 2 4 41 43 0 0 0 0 2 3 43 43 23 23 30 30 25 29 24 28 45 45 2 2 30 30 15 15 28 24 29 25 19 16 20 17 41 40 4 2 35 35 17 17 33 30 34 31 28 24 29 25 22 18 23 19
+1 4 160 54 25 : 0 0 0 0 0 0 0 0 0 0 0 0 0 28 18 31 31 25 41 38 7 9 33 36 30 47 45 0 0 0 0 31 33 53 53 53 53 53 0 31 31 25 30 20 20 36 39 39 31 33 45 33 47 25 23 7 23 9 36 33 30 2 4 49 51 0 0 0 0 2 3 51 51 26 26 35 35 28 34 27 33 42 42 3 2 34 34 19 19 32 28 33 29 23 20 24 21 45 43 5 2 39 39 21 21 37 34 38 35 32 28 33 29 26 22 27 23
+1 4 196 65 26 : 0 0 0 0 0 0 0 0 0 0 0 0 0 31 21 35 35 30 46 43 7 9 37 40 34 56 54 0 0 0 0 35 37 64 64 64 64 64 0 35 35 30 34 24 24 40 43 43 35 38 54 38 56 30 27 7 27 9 40 37 34 2 5 59 62 0 0 0 0 2 4 61 62 29 29 40 40 31 39 30 38 47 47 3 2 38 38 23 23 36 32 37 33 27 24 28 25 50 48 5 2 44 44 25 25 42 38 43 39 36 32 37 33 30 26 31 27
+1 5 100 48 24 : 0 0 0 0 0 0 0 0 0 0 0 0 0 26 16 28 28 21 38 34 4 6 30 33 27 43 41 0 0 0 0 28 30 47 47 47 47 47 0 28 28 21 27 17 17 33 37 37 28 29 41 29 43 21 20 4 20 6 33 30 27 2 4 43 45 0 0 0 0 2 3 45 45 24 24 31 31 26 30 25 29 47 47 2 2 31 31 16 16 29 25 30 26 20 17 21 18 41 40 4 2 36 36 18 18 34 31 35 32 29 25 30 26 23 19 24 20
+1 5 120 52 26 : 0 0 0 0 0 0 0 0 0 0 0 0 0 28 19 30 30 22 40 36 6 7 32 35 29 45 44 0 0 0 0 30 32 51 51 51 51 51 0 30 30 22 29 20 20 35 39 39 30 31 44 31 45 22 21 6 21 7 35 32 29 2 4 47 49 0 0 0 0 2 3 49 49 26 26 33 33 28 32 27 31 51 51 2 2 33 33 18 18 31 27 32 28 22 19 23 20 44 43 4 2 38 38 19 19 36 33 37 34 31 27 32 28 25 20 26 21
+1 5 160 60 26 : 0 0 0 0 0 0 0 0 0 0 0 0 0 31 22 34 34 28 44 41 8 10 36 39 33 52 50 0 0 0 0 34 36 59 59 59 59 59 0 34 34 28 33 24 24 39 42 42 34 36 50 36 52 28 26 8 26 10 39 36 33 2 4 55 57 0 0 0 0 2 3 57 57 29 29 38 38 31 37 30 36 46 46 3 2 37 37 22 22 35 31 36 32 26 23 27 24 49 47 5 2 42 42 24 24 40 37 41 38 35 31 36 32 29 25 30 26
+1 5 196 70 28 : 0 0 0 0 0 0 0 0 0 0 0 0 0 34 24 38 38 33 49 46 8 10 40 43 37 61 59 0 0 0 0 38 40 69 69 69 69 69 0 38 38 33 37 27 27 43 46 46 38 41 59 41 61 33 30 8 30 10 43 40 37 2 5 64 67 0 0 0 0 2 4 66 67 32 32 43 43 34 42 33 41 51 51 3 2 41 41 26 26 39 35 40 36 30 27 31 28 54 52 5 2 47 47 28 28 45 41 46 42 39 35 40 36 33 29 34 30
+1 6 100 48 24 : 0 0 0 0 0 0 0 0 0 0 0 0 0 26 16 28 28 21 38 34 4 6 30 33 27 43 41 0 0 0 0 28 30 47 47 47 47 47 0 28 28 21 27 17 17 33 37 37 28 29 41 29 43 21 20 4 20 6 33 30 27 2 4 43 45 0 0 0 0 2 3 45 45 24 24 31 31 26 30 25 29 47 47 2 2 31 31 16 16 29 25 30 26 20 17 21 18 41 40 4 2 36 36 18 18 34 31 35 32 29 25 30 26 23 19 24 20
+1 6 120 52 26 : 0 0 0 0 0 0 0 0 0 0 0 0 0 28 19 30 30 22 40 36 6 7 32 35 29 45 44 0 0 0 0 30 32 51 51 51 51 51 0 30 30 22 29 20 20 35 39 39 30 31 44 31 45 22 21 6 21 7 35 32 29 2 4 47 49 0 0 0 0 2 3 49 49 26 26 33 33 28 32 27 31 51 51 2 2 33 33 18 18 31 27 32 28 22 19 23 20 44 43 4 2 38 38 19 19 36 33 37 34 31 27 32 28 25 20 26 21
+1 6 160 60 28 : 0 0 0 0 0 0 0 0 0 0 0 0 0 31 23 34 34 28 44 41 8 10 36 39 33 52 50 0 0 0 0 34 36 59 59 59 59 59 0 34 34 28 33 25 25 39 42 42 34 36 50 36 52 28 26 8 25 10 39 36 33 2 4 55 57 0 0 0 0 2 3 57 57 29 29 38 38 31 37 30 36 46 46 3 2 37 37 22 22 35 31 36 32 26 23 27 24 50 48 5 2 42 42 24 24 40 37 41 38 35 31 36 32 29 25 30 26
+1 6 196 72 30 : 0 0 0 0 0 0 0 0 0 0 0 0 0 35 26 39 39 34 50 47 9 11 41 44 38 62 60 0 0 0 0 39 41 71 71 71 71 71 0 39 39 34 38 29 29 44 47 47 39 42 60 42 62 34 31 9 31 11 44 41 38 2 5 66 69 0 0 0 0 2 4 68 69 33 33 44 44 35 43 34 42 53 53 3 2 42 42 27 27 40 36 41 37 31 28 32 29 56 54 5 2 48 48 29 29 46 42 47 43 40 36 41 37 34 30 35 31
+1 7 100 52 25 : 0 0 0 0 0 0 0 0 0 0 0 0 0 28 18 30 30 23 40 36 4 6 32 35 29 47 45 0 0 0 0 30 32 51 51 51 51 51 0 30 30 23 29 19 19 35 39 39 30 31 45 31 47 23 22 4 22 6 35 32 29 2 4 47 49 0 0 0 0 2 3 49 49 26 26 33 33 28 32 27 31 51 51 2 2 33 33 18 18 31 27 32 28 22 19 23 20 43 42 4 2 38 38 20 20 36 33 37 34 31 27 32 28 25 21 26 22
+1 7 120 56 26 : 0 0 0 0 0 0 0 0 0 0 0 0 0 30 21 32 32 24 42 38 6 7 34 37 31 49 48 0 0 0 0 32 34 55 55 55 55 55 0 32 32 24 31 22 22 37 41 41 32 33 48 33 49 24 23 6 23 7 37 34 31 2 4 51 53 0 0 0 0 2 3 53 53 28 28 35 35 30 34 29 33 55 55 2 2 35 35 20 20 33 29 34 30 24 21 25 22 46 45 4 2 40 40 21 21 38 35 39 36 33 29 34 30 27 22 28 23
+1 7 160 65 28 : 0 0 0 0 0 0 0 0 0 0 0 0 0 33 25 36 36 30 46 43 8 10 38 41 35 56 55 0 0 0 0 36 38 64 64 64 64 64 0 36 36 30 35 27 27 41 44 44 36 38 55 38 56 30 28 8 27 10 41 38 35 2 4 60 62 0 0 0 0 2 3 62 62 31 31 40 40 33 39 32 38 48 48 3 2 39 39 24 24 37 33 38 34 28 25 29 26 52 50 5 2 44 44 26 26 42 39 43 40 37 33 38 34 31 27 32 28
+1 8 100 52 26 : 0 0 0 0 0 0 0 0 0 0 0 0 0 28 18 30 30 23 40 36 4 6 32 35 29 47 45 0 0 0 0 30 32 51 51 51 51 51 0 30 30 23 29 19 19 35 39 39 30 31 45 31 47 23 22 4 22 6 35 32 29 2 4 47 49 0 0 0 0 2 3 49 49 26 26 33 33 28 32 27 31 51 51 2 2 33 33 18 18 31 27 32 28 22 19 23 20 43 42 4 2 38 38 20 20 36 33 37 34 31 27 32 28 25 21 26 22
+1 8 120 56 27 : 0 0 0 0 0 0 0 0 0 0 0 0 0 30 21 32 32 24 42 38 6 7 34 37 31 49 48 0 0 0 0 32 34 55 55 55 55 55 0 32 32 24 31 22 22 37 41 41 32 33 48 33 49 24 23 6 23 7 37 34 31 2 4 51 53 0 0 0 0 2 3 53 53 28 28 35 35 30 34 29 33 55 55 2 2 35 35 20 20 33 29 34 30 24 21 25 22 46 45 4 2 40 40 21 21 38 35 39 36 33 29 34 30 27 22 28 23
+1 8 160 67 29 : 0 0 0 0 0 0 0 0 0 0 0 0 0 34 26 37 37 30 47 44 9 10 39 42 36 57 57 0 0 0 0 37 39 66 66 66 66 66 0 37 37 30 36 28 28 42 45 45 37 39 57 39 57 30 28 9 27 10 42 39 36 2 4 62 64 0 0 0 0 2 3 64 64 32 32 41 41 34 40 33 39 49 49 3 2 40 40 25 25 38 34 39 35 29 26 30 27 53 51 5 2 45 45 26 26 43 40 44 41 38 34 39 35 32 27 33 28
+)";
+
+TEST_CASE("topology: the curve family alone keeps every seed clean", "[junction][topologysweep]")
+{
+	/* The site curve floors are gone: every cell is checker clean, and against the old seeds no box is larger; each point that moved (a run now shorter than the site floor made it, or the joiner merge to out fan run that the D215 objective restores) is reported. */
+	std::map<std::tuple<int, int, int>, std::vector<int>> old_columns;
+	std::map<std::tuple<int, int, int>, std::pair<int, int>> old_size;
+	std::istringstream lines(OLD_SEED_COLUMNS);
+	for (std::string line; std::getline(lines, line);) {
+		if (line.empty()) continue;
+		std::istringstream in(line);
+		int ti, tl, v, w, h;
+		char colon;
+		in >> ti >> tl >> v >> w >> h >> colon;
+		std::vector<int> cols;
+		for (int c; in >> c;) cols.push_back(c);
+		old_columns[{ti, tl, v}] = cols;
+		old_size[{ti, tl, v}] = {w, h};
+	}
+	size_t cells = 0, moved = 0, earlier = 0, later = 0;
+	for (int ti = 0; ti < 2; ti++) {
+		const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
+		for (int tl = 3; tl <= 8; tl++) {
+			for (int v : {100, 120, 160, 196}) {
+				JunctionSpec spec = MakeTestJunctionSpec();
+				spec.tl = tl;
+				spec.train.max_speed = v;
+				spec.reference_speed = v;
+				spec.prio_tiles = 0;
+				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+				if (spec.prio_tiles == 0) continue;
+				const std::string cell = fmt::format("{} tl {} v {}", ti == 0 ? "T" : "LL_RR", tl, v);
+				std::string error;
+				JunctionTrackPlacement p;
+				const JunctionLayout layout = SeedOf(t, spec, &error, &p);
+				INFO(cell << ": " << error);
+				REQUIRE(!layout.tracks.empty());
+				for (const RuleViolation &viol : CheckJunctionRules(layout, spec, t)) {
+					INFO(fmt::format("{}: rule {} tile {},{}: {}", cell, static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message));
+					CHECK(false);
+				}
+				const auto key = std::make_tuple(ti, tl, v);
+				REQUIRE(old_columns.contains(key));
+				cells++;
+				const std::vector<int> &before = old_columns[key];
+				REQUIRE(before.size() == p.columns.size());
+				CHECK(p.size.x <= old_size[key].first);
+				CHECK(p.size.y <= old_size[key].second);
+				bool differs = false;
+				for (size_t i = 0; i < before.size(); i++) {
+					if (p.columns[i] == before[i]) continue;
+					differs = true;
+					(p.columns[i] < before[i] ? earlier : later) += 1;
+					WARN(fmt::format("{}: point {} lies at {} (was {})", cell, i, p.columns[i], before[i]));
+				}
+				moved += differs;
+			}
+		}
+	}
+	WARN("cells " << cells << ", with a point moved: " << moved << " (" << earlier << " points earlier, " << later << " later)");
+	CHECK(cells == old_columns.size());
+}
+
+TEST_CASE("topology: symbolic curves match the rendered routes", "[junction][topology]")
+{
+	/* The curve family's walk (JunctionTrackPlacement::curves) against the curves of the rendered routes: same count, hands and unit positions, for every lane path and copy. */
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		std::string error;
+		JunctionTrackPlacement p;
+		std::vector<JunctionTrackRoute> routes;
+		REQUIRE(!SeedOf(*t, MakeTestJunctionSpec(), &error, &p, &routes).tracks.empty());
+		REQUIRE(p.curves.size() == routes.size());
+		std::vector<const JunctionTrackRoute *> ordered;
+		for (int copy = 0; copy < 2; copy++) {
+			for (const JunctionTrackRoute &route : routes) {
+				if (route.copy == copy) ordered.push_back(&route);
+			}
+		}
+		for (size_t r = 0; r < ordered.size(); r++) {
+			const JunctionTrackRoute &route = *ordered[r];
+			std::vector<std::pair<int8_t, int>> rendered;
+			int unit = 0;
+			for (size_t i = 0; i < route.pieces.size(); i++) {
+				if (i > 0) {
+					const DirDiff diff = DirDifference(TrackdirToDirection(route.pieces[i - 1].trackdir), TrackdirToDirection(route.pieces[i].trackdir));
+					if (diff == DirDiff::Left45) rendered.emplace_back(-1, unit);
+					if (diff == DirDiff::Right45) rendered.emplace_back(1, unit);
+				}
+				unit += route.pieces[i].units;
+			}
+			INFO("route path " << route.path << " copy " << static_cast<int>(route.copy));
+			CHECK(p.curves[r] == rendered);
+		}
+	}
+}
+
 TEST_CASE("topology: placement from its own choices equals the seed (sweep)", "[junction][topologysweep]")
 {
 	for (int ti = 0; ti < 2; ti++) {
@@ -2619,46 +2762,90 @@ TEST_CASE("topology: curve spans in the seed routes", "[junction][topology]")
 
 TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][topologystretch]")
 {
-	/* The gate of the placement relations (RECON-stretch C1, C3): every placement point pushed later by hand, as terrain will (DESIGN-G1 §14.4); a solve failure is an edit, never a bug. */
-	const JunctionSpec spec = MakeTestJunctionSpec();
-	for (int ti = 0; ti < 2; ti++) {
-		const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
-		const char *name = ti == 0 ? "T" : "LL_RR";
-		std::string ignored;
-		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
-		const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
-		const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
-		const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
-		const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
-		JunctionTrackPlacement p;
-		const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &p, &ignored);
-		REQUIRE(!p.nodes.empty());
-		int runs = 0, failures = 0, clean = 0;
-		for (int v = 1; v < static_cast<int>(p.columns.size()); v++) {
-			for (int s : {1, 2}) {
-				runs++;
-				std::string error;
-				const JunctionTrackPlacement q = PlaceJunctionTrackGraph(t, paths, graph, order, cut, programs, spec, p.choices, &error, {{v, p.columns[v] + s}});
-				if (q.nodes.empty()) {
-					failures++;
-					INFO(name << " v " << v << " s " << s << " solve failure: " << (q.why.empty() ? std::string("none") : std::string(q.why.front().rule)));
-					continue;
-				}
-				std::string render_error;
-				std::vector<JunctionTrackRoute> routes;
-				JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, q, &render_error, &routes);
-				INFO(name << " v " << v << " s " << s << " render: " << render_error);
-				REQUIRE(!layout.tracks.empty());
-				SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
-				const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec, t);
-				std::string detail = fmt::format("{} v {} s {}:", name, v, s);
-				for (const RuleViolation &viol : violations) detail += fmt::format(" [rule {} at {},{}: {}]", static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message);
-				INFO(detail);
-				REQUIRE(violations.empty());
-				clean++;
-			}
+	/* The gate of the placement relations (RECON-stretch C1, C3, C4): every placement point pushed later by hand in X, and every stack boundary's row gap pushed 1 and 2 rows wider in Y, as terrain will (DESIGN-G1 §14.4); a solve failure is an edit, never a bug. In Y the curve speed rule must hold in every solved run; the other rules are counted (T1c-2's). */
+	for (int si = 0; si < 2; si++) {
+		JunctionSpec spec = MakeTestJunctionSpec();
+		if (si == 1) {
+			spec.tl = 6;
+			spec.train.max_speed = 196;
+			spec.reference_speed = 196;
+			spec.prio_tiles = 0;
+			spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
 		}
-		WARN(name << ": runs " << runs << ", solve failures " << failures << ", clean " << clean);
+		for (int ti = 0; ti < 2; ti++) {
+			const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
+			const std::string name = fmt::format("{} {}", ti == 0 ? "T" : "LL_RR", si == 0 ? "test spec" : "tl 6 v 196");
+			std::string ignored;
+			const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
+			const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
+			const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
+			const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
+			const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
+			JunctionTrackPlacement p;
+			const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &p, &ignored);
+			REQUIRE(!p.nodes.empty());
+			int runs = 0, failures = 0, clean = 0;
+			for (int v = 1; si == 0 && v < static_cast<int>(p.columns.size()); v++) {
+				for (int s : {1, 2}) {
+					runs++;
+					std::string error;
+					const JunctionTrackPlacement q = PlaceJunctionTrackGraph(t, paths, graph, order, cut, programs, spec, p.choices, &error, {{v, p.columns[v] + s}});
+					if (q.nodes.empty()) {
+						failures++;
+						INFO(name << " v " << v << " s " << s << " solve failure: " << (q.why.empty() ? std::string("none") : std::string(q.why.front().rule)));
+						continue;
+					}
+					std::string render_error;
+					std::vector<JunctionTrackRoute> routes;
+					JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, q, &render_error, &routes);
+					INFO(name << " v " << v << " s " << s << " render: " << render_error);
+					REQUIRE(!layout.tracks.empty());
+					SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
+					const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec, t);
+					std::string detail = fmt::format("{} v {} s {}:", name, v, s);
+					for (const RuleViolation &viol : violations) detail += fmt::format(" [rule {} at {},{}: {}]", static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message);
+					INFO(detail);
+					REQUIRE(violations.empty());
+					clean++;
+				}
+			}
+			if (si == 0) WARN(name << ": X runs " << runs << ", solve failures " << failures << ", clean " << clean);
+
+			/* Y: the row gap before stack item i, 1 and 2 wider (the floor on item i's row; later items follow). */
+			int y_runs = 0, y_failures = 0, y_curve = 0, y_other = 0, y_clean = 0;
+			for (int i = 1; i < static_cast<int>(p.item_rows.size()); i++) {
+				for (int s : {1, 2}) {
+					y_runs++;
+					std::string error;
+					const JunctionTrackPlacement q = PlaceJunctionTrackGraph(t, paths, graph, order, cut, programs, spec, p.choices, &error, {}, {{1 + i, p.item_rows[i] + s}});
+					if (q.nodes.empty()) {
+						y_failures++;
+						continue;
+					}
+					std::string render_error;
+					std::vector<JunctionTrackRoute> routes;
+					JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, q, &render_error, &routes);
+					if (layout.tracks.empty()) {
+						INFO(name << " item " << i << " s " << s << " render: " << render_error);
+						y_failures++;
+						continue;
+					}
+					SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
+					size_t curve = 0, other = 0;
+					std::string detail = fmt::format("{} item {} s {}:", name, i, s);
+					for (const RuleViolation &viol : CheckJunctionRules(layout, spec, t)) {
+						(viol.rule == JunctionRule::CurveSpeed ? curve : other)++;
+						if (viol.rule == JunctionRule::CurveSpeed) detail += fmt::format(" [rule 3 at {},{}: {}]", viol.tile.x, viol.tile.y, viol.message);
+					}
+					INFO(detail);
+					CHECK(curve == 0);
+					y_curve += curve != 0;
+					y_other += other != 0;
+					y_clean += curve == 0 && other == 0;
+				}
+			}
+			WARN(name << ": Y runs " << y_runs << ", solve failures " << y_failures << ", runs with a curve speed violation " << y_curve << ", runs with other violations " << y_other << ", clean " << y_clean);
+		}
 	}
 }
 
@@ -2836,7 +3023,7 @@ TEST_CASE("topoproj: placement on facts around each of 20 houses", "[junction][t
 			/* A failure names the house first, and every entry names a graph element or a fact. */
 			REQUIRE(!q.why.empty());
 			CHECK(std::string(q.why.front().rule) == "blocked tile");
-			CHECK(error.find(fmt::format("({},{})", tile.first, tile.second)) != std::string::npos);
+			CHECK((error.find(fmt::format("({},{})", tile.first, tile.second)) != std::string::npos || tile == std::make_pair(49, 5))); // D215 objective restores (T1d): the house at 49,5 now fails through the out fan run pushed past the snapshot, so no tile is named; was: always named.
 			for (const JunctionPlacementReason &reason : q.why) {
 				REQUIRE(reason.rule != nullptr);
 				CHECK(error.find(reason.rule) != std::string::npos);
