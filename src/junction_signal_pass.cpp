@@ -156,17 +156,25 @@ static void PlaceBaySignals(JunctionLayout &layout, const JunctionSpec &spec, co
 
 void PlaceDragSignals(JunctionLayout &layout, const std::vector<JunctionPiece> &pieces, uint8_t sd, SignalType type)
 {
+	PlaceDragSignals(pieces, sd,
+		[&](const JunctionPiece &piece) { return IsSignalledPiece(layout, piece); },
+		[&](const JunctionPiece &piece) { return IsLegalSignalPiece(layout, piece); },
+		[&](const JunctionPiece &piece) { PlaceSignal(layout, piece, type); });
+}
+
+void PlaceDragSignals(const std::vector<JunctionPiece> &pieces, uint8_t sd, const std::function<bool(const JunctionPiece &)> &signalled, const std::function<bool(const JunctionPiece &)> &legal_piece, const std::function<void(const JunctionPiece &)> &put)
+{
 	if (pieces.empty()) return;
 	const auto place = [&](const JunctionPiece &piece) {
-		if (IsSignalledPiece(layout, piece)) return;
-		PlaceSignal(layout, piece, type);
+		if (signalled(piece)) return;
+		put(piece);
 	};
 	const uint density = sd * 192u;
 	std::vector<size_t> anchors;
 	for (size_t i = 0; i < pieces.size(); i++) {
-		if (i == 0 || i + 1 == pieces.size() || IsSignalledPiece(layout, pieces[i])) anchors.push_back(i);
+		if (i == 0 || i + 1 == pieces.size() || signalled(pieces[i])) anchors.push_back(i);
 	}
-	const auto legal = [&](size_t k) { return k != 0 && k + 1 != pieces.size() && IsLegalSignalPiece(layout, pieces[k]); };
+	const auto legal = [&](size_t k) { return k != 0 && k + 1 != pieces.size() && legal_piece(pieces[k]); };
 	for (size_t ai = 0; ai + 1 < anchors.size(); ai++) {
 		const size_t a = anchors[ai];
 		size_t last = anchors[ai + 1];

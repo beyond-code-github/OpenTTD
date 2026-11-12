@@ -758,9 +758,11 @@ static JunctionLayout RenderOf(const JunctionTopology &t, int max_bridge_middle,
 static JunctionLayout SignalledOf(const JunctionTopology &t, std::string *error, std::vector<JunctionTrackSignal> *tokens, std::vector<JunctionTrackRoute> *routes, std::vector<JunctionLanePath> *paths_out = nullptr)
 {
 	std::vector<JunctionLanePath> paths;
-	JunctionLayout layout = RenderOf(t, 64, error, nullptr, nullptr, nullptr, &paths, nullptr, routes);
+	JunctionTrackGraph graph;
+	JunctionTrackPrograms programs;
+	JunctionLayout layout = RenderOf(t, 64, error, nullptr, nullptr, &programs, &paths, &graph, routes);
 	if (paths_out != nullptr) *paths_out = paths;
-	*tokens = SignalJunctionTrackRoutes(layout, *routes, t, paths, MakeTestJunctionSpec());
+	*tokens = SignalJunctionTrackRoutes(layout, *routes, t, paths, graph, programs, MakeTestJunctionSpec());
 	return layout;
 }
 
@@ -1342,4 +1344,93 @@ TEST_CASE("topology: the T seed traces the same by its topology", "[junction][to
 	INFO(error);
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	CHECK(DiffJunctionNodeTemplates(BuildJunctionNodeTemplate(TraceJunctionNodeInput(layout, spec, JunctionTTopology()), spec), BuildJunctionNodeTemplate(layout, spec)).empty());
+}
+
+/** The tracks of a layout as a set of (x, y, track). */
+static std::set<std::tuple<int, int, int>> TrackSetOf(const JunctionLayout &layout)
+{
+	std::set<std::tuple<int, int, int>> set;
+	for (const JunctionTrack &jt : layout.tracks) {
+		for (Track t : jt.tracks) set.emplace(jt.offset.x, jt.offset.y, static_cast<int>(t));
+	}
+	return set;
+}
+
+/** The signals of a layout as a set of (x, y, facing, type, variant). */
+static std::set<std::tuple<int, int, int, int, int>> SignalSetOf(const JunctionLayout &layout)
+{
+	std::set<std::tuple<int, int, int, int, int>> set;
+	for (const JunctionSignal &s : layout.signals) set.emplace(s.offset.x, s.offset.y, static_cast<int>(s.facing), static_cast<int>(s.type), static_cast<int>(s.variant));
+	return set;
+}
+
+TEST_CASE("topology: the token pass reads no layout", "[junction][topology]")
+{
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		std::string error;
+		JunctionTrackPrograms programs;
+		std::vector<JunctionLanePath> paths;
+		JunctionTrackGraph graph;
+		std::vector<JunctionTrackRoute> routes;
+		const JunctionLayout render = RenderOf(*t, 64, &error, nullptr, nullptr, &programs, &paths, &graph, &routes);
+		INFO(error);
+		REQUIRE(!render.tracks.empty());
+		JunctionLayout layout_a = render;
+		const std::vector<JunctionTrackSignal> tokens_a = SignalJunctionTrackRoutes(layout_a, routes, *t, paths, graph, programs, MakeTestJunctionSpec());
+		JunctionLayout layout_b;
+		const std::vector<JunctionTrackSignal> tokens_b = SignalJunctionTrackRoutes(layout_b, routes, *t, paths, graph, programs, MakeTestJunctionSpec());
+		REQUIRE(!tokens_a.empty());
+		REQUIRE(tokens_b.size() == tokens_a.size());
+		for (size_t i = 0; i < tokens_a.size(); i++) {
+			INFO("token " << i);
+			CHECK(tokens_b[i].route == tokens_a[i].route);
+			CHECK(tokens_b[i].reason == tokens_a[i].reason);
+			CHECK(tokens_b[i].tile.x == tokens_a[i].tile.x);
+			CHECK(tokens_b[i].tile.y == tokens_a[i].tile.y);
+			CHECK(tokens_b[i].facing == tokens_a[i].facing);
+		}
+		CHECK(SignalSetOf(layout_b) == SignalSetOf(layout_a));
+		CHECK(layout_b.signals.size() == layout_a.signals.size());
+		std::set<std::tuple<int, int, int>> prio = TrackSetOf(layout_a);
+		for (const auto &x : TrackSetOf(render)) prio.erase(x);
+		CHECK(!prio.empty());
+		CHECK(TrackSetOf(layout_b) == prio);
+		CHECK(layout_b.bridges.empty());
+	}
+}
+
+TEST_CASE("topology: route events from tags", "[junction][topology]")
+{
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		std::string error;
+		JunctionTrackPlacement placement;
+		JunctionTrackStructure cut;
+		JunctionTrackPrograms programs;
+		std::vector<JunctionLanePath> paths;
+		JunctionTrackGraph graph;
+		std::vector<JunctionTrackRoute> routes;
+		RenderOf(*t, 64, &error, &placement, &cut, &programs, &paths, &graph, &routes);
+		INFO(error);
+		REQUIRE(!routes.empty());
+		const JunctionNodeInput input = JunctionNodeInputOfGraph(*t, paths, graph, cut, programs, placement, routes);
+		REQUIRE(input.paths.size() == routes.size());
+		size_t with_events = 0;
+		for (size_t r = 0; r < routes.size(); r++) {
+			/* The input path of this route: the same lane path and the same pieces. */
+			size_t found = input.paths.size();
+			for (size_t i = 0; i < input.paths.size(); i++) {
+				const JunctionPath &ip = input.paths[i];
+				if (ip.from_slot != paths[routes[r].path].from || ip.to_slot != paths[routes[r].path].to || ip.pieces.size() != routes[r].pieces.size()) continue;
+				bool same = true;
+				for (size_t k = 0; same && k < ip.pieces.size(); k++) same = ip.pieces[k].tile.x == routes[r].pieces[k].tile.x && ip.pieces[k].tile.y == routes[r].pieces[k].tile.y && ip.pieces[k].trackdir == routes[r].pieces[k].trackdir;
+				if (same) { found = i; break; }
+			}
+			INFO("route " << r << " path " << routes[r].path << " copy " << static_cast<int>(routes[r].copy));
+			REQUIRE(found < input.paths.size());
+			const std::vector<std::pair<bool, size_t>> got = JunctionRouteEvents(graph, programs, routes, r);
+			CHECK(got == std::vector<std::pair<bool, size_t>>(input.events[found].begin(), input.events[found].end()));
+			if (!got.empty()) with_events++;
+		}
+		CHECK(with_events > 0);
+	}
 }

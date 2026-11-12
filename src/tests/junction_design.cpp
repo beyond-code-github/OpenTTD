@@ -435,7 +435,7 @@ TEST_CASE("Junction LL_RR test circuit", "[.circuitllrr]")
 	REQUIRE(!placement.nodes.empty());
 	std::vector<JunctionTrackRoute> routes;
 	JunctionLayout layout = RenderJunctionTrackPlacement(topology, paths, graph, cut, programs, placement, &ignored, &routes);
-	SignalJunctionTrackRoutes(layout, routes, topology, paths, MakeTestJunctionSpec());
+	SignalJunctionTrackRoutes(layout, routes, topology, paths, graph, programs, MakeTestJunctionSpec());
 	REQUIRE(!layout.tracks.empty());
 	const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec, topology);
 	for (const RuleViolation &v : violations) std::cout << "violation " << v.tile.x << "," << v.tile.y << " " << v.message << "\n";
