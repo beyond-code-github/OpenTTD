@@ -24,3 +24,9 @@ Explain e12/e17 at (28,11) and (28,12) from the code: which graph elements those
 
 ## Report
 The standard report, plus step 0's explanation and any counts that moved. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after step 0)
+Step 0 found no checker gap: the e12/e17 shared ends exist only in the unsettled rounds of the rounds loop (~:2880; S-bend sizes from a first X pass without rows); the settled placement separates them. Ruling:
+1. The pairwise shared-track-end legality (change 1) is checked once, on the placement the rounds loop returns (the settled round), after the loop; a violation fails the placement with "occupancy" naming the tile, both edges and the shared end. Unsettled rounds do not fail on legality; their tie/order constraints are unchanged. The reference-solve whitelist (`ref_shares`, `collecting`) stays removed. Changes 2 and 3 as in your attempt.
+2. Resume from /tmp/claude-1000/l1/l1-attempt.diff. Outer test 1 must then be identical to launch HEAD; if any count, seed or sweep moves, report which and why (tile, edges, bits) and stop.
+3. Test 2(a) and (c) are built on a settled placement (x_floors make it so); the red is the whitelist build at launch HEAD accepting them.
