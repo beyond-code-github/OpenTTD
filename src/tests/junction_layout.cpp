@@ -13,12 +13,14 @@
 
 #include "../junction_game.h"
 #include "../junction_generator.h"
+#include "../junction_gui.h"
 #include "../junction_hover.h"
 #include "../junction_layout.h"
 #include "../junction_terraform.h"
 #include "../junction_terrain_json.h"
 #include "../junction_topology.h"
 #include "../map_func.h"
+#include "../tile_map.h"
 #include "../track_func.h"
 #include "../table/strings.h"
 
@@ -877,6 +879,92 @@ TEST_CASE("the hover plan carries a level for every track tile", "[junction][hov
 			}
 		}
 		for (const auto &[offset, level] : levels) CHECK(tiles.contains(offset));
+	}
+	CHECK(checked == 3);
+}
+
+TEST_CASE("the ghost has the level and ground it draws signals and planned ground at", "[junction][hoverplan]")
+{
+	namespace fs = std::filesystem;
+	Map::Allocate(256, 256);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(JunctionTTopology(), spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	const int hub_x = seed.placement.size.x / 2;
+	const TileIndex anchor = TileXY(120, 120);
+
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+
+	int checked = 0;
+	for (const fs::path &file : files) {
+		if (checked == 3) break;
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		std::optional<JunctionTerrain> loaded = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(loaded.has_value());
+		JunctionTerrain terrain = std::move(*loaded);
+		const TileIndexDiffC centred = {static_cast<int16_t>((terrain.width - seed.placement.size.x) / 2), static_cast<int16_t>((terrain.height - seed.placement.size.y) / 2)};
+		terrain.origin = {static_cast<int16_t>(-centred.x), static_cast<int16_t>(-centred.y)};
+		const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, terrain, {0, 0});
+		if (!plan.layout.has_value() || plan.terraform.corners.empty()) continue;
+		checked++;
+		INFO(file.filename().string());
+		const JunctionTerrain after = ApplyJunctionTerraform(terrain, plan.terraform);
+
+		/* The map holds the snapshot's heights, and the ghost is set with the steps the hover would give it (no rotation, no mirror). */
+		for (const auto &[lattice, height] : TerrainToMapLattice(terrain, anchor, hub_x, 0, false)) SetTileHeight(TileXY(lattice.first, lattice.second), height);
+		const std::vector<JunctionTerraformStep> steps = MakeJunctionTerraformSteps(plan.terraform, terrain, anchor, 0, false, hub_x);
+		std::vector<TileIndex> terraform_tiles;
+		for (const JunctionTerraformStep &step : steps) {
+			for (int dy = -1; dy <= 0; dy++) {
+				for (int dx = -1; dx <= 0; dx++) terraform_tiles.push_back(TileXY(static_cast<int>(TileX(step.tile)) + dx, static_cast<int>(TileY(step.tile)) + dy));
+			}
+		}
+		std::ranges::sort(terraform_tiles);
+		terraform_tiles.erase(std::ranges::unique(terraform_tiles).begin(), terraform_tiles.end());
+		REQUIRE(!terraform_tiles.empty());
+
+		const TileIndexDiffC origin = {static_cast<int16_t>(static_cast<int>(TileX(anchor)) - hub_x), static_cast<int16_t>(TileY(anchor))};
+		const TileIndex origin_tile = TileXY(origin.x, origin.y);
+		JunctionGhost::Set(*plan.layout, origin_tile, 0, RAILTYPE_RAIL, {}, JunctionEstimate{}, terraform_tiles, steps, plan.track_levels);
+
+		/* Every signal lies on a tile that has a level, and the ghost keeps the signals and the planned ground to draw them on. */
+		std::set<std::pair<int, int>> level_tiles;
+		for (const auto &[offset, level] : plan.track_levels) level_tiles.insert({offset.x, offset.y});
+		CHECK(!plan.layout->signals.empty());
+		for (const JunctionSignal &signal : plan.layout->signals) {
+			INFO("signal " << signal.offset.x << ", " << signal.offset.y);
+			CHECK(level_tiles.contains({signal.offset.x, signal.offset.y}));
+			const JunctionGhostTile *ghost = JunctionGhost::Get(TileXY(origin.x + signal.offset.x, origin.y + signal.offset.y));
+			REQUIRE(ghost != nullptr);
+			CHECK(ghost->leveled);
+			CHECK(!ghost->signals.empty());
+		}
+
+		/* Every tile with a planned ground change and no track has the plan's slope and height. */
+		int ground_only = 0;
+		for (TileIndex tile : terraform_tiles) {
+			const JunctionGhostTile *ghost = JunctionGhost::Get(tile);
+			REQUIRE(ghost != nullptr);
+			if (ghost->tracks.Any() || ghost->head.has_value()) continue;
+			ground_only++;
+			INFO("ground tile " << TileX(tile) << ", " << TileY(tile));
+			const JunctionTerrainTile *planned = after.At(static_cast<int>(TileX(tile)) - origin.x, static_cast<int>(TileY(tile)) - origin.y);
+			REQUIRE(planned != nullptr);
+			CHECK(ghost->leveled);
+			CHECK(ghost->slope == planned->slope);
+			CHECK(ghost->z == planned->z_min * static_cast<int>(TILE_HEIGHT));
+		}
+		CHECK(ground_only > 0);
+		JunctionGhost::Clear();
 	}
 	CHECK(checked == 3);
 }

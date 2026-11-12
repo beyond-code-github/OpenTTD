@@ -131,11 +131,8 @@ void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int heig
 	/* The terraformed ground of every level tile: its corners' current heights moved by the steps (each moves a tile's north corner). */
 	std::map<std::pair<int, int>, int> moved;
 	for (const JunctionTerraformStep &step : steps) moved[{static_cast<int>(TileX(step.tile)), static_cast<int>(TileY(step.tile))}] += step.raise ? 1 : -1;
-	std::unordered_map<TileIndex, int> level_of;
-	for (const auto &[offset, level] : levels) {
-		TileIndex tile = AddTileIndexDiffCWrap(origin, offset);
-		if (tile == INVALID_TILE) continue;
-		level_of[tile] = level;
+	/* Store the terraformed ground of a tile as the ghost's slope and height. */
+	auto set_ground = [&](TileIndex tile) {
 		const int x = static_cast<int>(TileX(tile));
 		const int y = static_cast<int>(TileY(tile));
 		std::array<int, 4> corners; // W, S, E, N.
@@ -152,6 +149,22 @@ void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int heig
 		ghost.leveled = true;
 		ghost.slope = ground.slope;
 		ghost.z = ground.z_min * static_cast<int>(TILE_HEIGHT);
+	};
+
+	std::unordered_map<TileIndex, int> level_of;
+	for (const auto &[offset, level] : levels) {
+		TileIndex tile = AddTileIndexDiffCWrap(origin, offset);
+		if (tile == INVALID_TILE) continue;
+		level_of[tile] = level;
+		set_ground(tile);
+	}
+
+	/* A tile the plan terraforms that carries no track shows its planned ground. */
+	for (TileIndex tile : terraform_tiles) {
+		if (tile == INVALID_TILE || level_of.contains(tile)) continue;
+		const auto existing = _junction_ghost_tiles.find(tile);
+		if (existing != _junction_ghost_tiles.end() && (existing->second.tracks.Any() || existing->second.leveled)) continue;
+		set_ground(tile);
 	}
 
 	for (size_t i = 0; i < layout.bridges.size(); i++) {
@@ -259,16 +272,17 @@ void DrawJunctionGhost(TileInfo *ti)
 		DrawOnCurrentTileAs(ghost->slope, ghost->z, [&](TileInfo *at) {
 			if (ghost->tracks.Any()) DrawRailTrackGhost(at, ghost->tracks, railtype);
 			if (ghost->head.has_value()) DrawBridgeHeadGhost(at, ghost->head->type, railtype, ghost->head->dir);
+			/* A tile with no track is planned ground only: its ground sprite on the planned slope. */
+			if (ghost->tracks.None() && !ghost->head.has_value()) DrawRailTrackGhost(at, {}, railtype);
+			for (const JunctionSignalStep &signal : ghost->signals) DrawRailSignalGhost(at, railtype, signal.facing, signal.type, signal.variant);
 		});
 	} else {
 		TileInfo copy = *ti;
 		if (ghost->tracks.Any()) DrawRailTrackGhost(&copy, ghost->tracks, railtype);
 		if (ghost->head.has_value()) DrawBridgeHeadGhost(&copy, ghost->head->type, railtype, ghost->head->dir);
+		for (const JunctionSignalStep &signal : ghost->signals) DrawRailSignalGhost(&copy, railtype, signal.facing, signal.type, signal.variant);
 	}
 	if (ghost->span.has_value()) DrawBridgeMiddleGhost(ti, ghost->span->type, railtype, ghost->span->axis, ghost->span->bridge_z, ghost->span->piece_north, ghost->span->piece_south);
-	for (const JunctionSignalStep &signal : ghost->signals) {
-		DrawRailSignalGhost(ti->tile, railtype, signal.facing, signal.type, signal.variant);
-	}
 }
 
 /**

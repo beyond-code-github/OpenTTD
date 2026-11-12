@@ -1866,9 +1866,10 @@ static CommandCost ClearTile_Rail(TileIndex tile, DoCommandFlags flags)
  * @param x The world X-coordinate.
  * @param y The world Y-coordinate.
  * @param track The track to get the height for.
+ * @param ti When not nullptr, the tile info to take the ground from instead of the map (the junction placement ghost).
  * @return The world Z-coordinate.
  */
-static uint GetSafeSlopeZ(uint x, uint y, Track track)
+static uint GetSafeSlopeZ(uint x, uint y, Track track, const TileInfo *ti = nullptr)
 {
 	switch (track) {
 		case Track::Upper: x &= ~0xF; y &= ~0xF; break;
@@ -1877,6 +1878,7 @@ static uint GetSafeSlopeZ(uint x, uint y, Track track)
 		case Track::Right: x &= ~0xF; y |=  0xF; break;
 		default: break;
 	}
+	if (ti != nullptr) return ti->z + GetPartialPixelZ(x & 0xF, y & 0xF, ti->tileh);
 	return GetSlopePixelZ(x, y);
 }
 
@@ -1898,7 +1900,7 @@ static bool IsTrainSignalSideRight()
 	}
 }
 
-static void DrawSingleSignal(TileIndex tile, const RailTypeInfo *rti, Track track, SignalState condition, SignalOffsets image, uint pos, SignalType type, SignalVariant variant, TileIndex sprite_tile)
+static void DrawSingleSignal(TileIndex tile, const RailTypeInfo *rti, Track track, SignalState condition, SignalOffsets image, uint pos, SignalType type, SignalVariant variant, TileIndex sprite_tile, const TileInfo *ti = nullptr)
 {
 	static const Point SignalPositions[2][12] = {
 		{ // Signals on the left side
@@ -1927,7 +1929,7 @@ static void DrawSingleSignal(TileIndex tile, const RailTypeInfo *rti, Track trac
 		sprite += to_underlying(type) * 16 + to_underlying(variant) * 64 + image * 2 + to_underlying(condition) + (type >= SignalType::Path ? 64 : 0);
 	}
 
-	AddSortableSpriteToDraw(sprite, PAL_NONE, x, y, GetSafeSlopeZ(x, y, track), {{}, {1, 1, BB_HEIGHT_UNDER_BRIDGE}, {}});
+	AddSortableSpriteToDraw(sprite, PAL_NONE, x, y, GetSafeSlopeZ(x, y, track, ti), {{}, {1, 1, BB_HEIGHT_UNDER_BRIDGE}, {}});
 }
 
 /** Offsets for drawing fences */
@@ -2497,19 +2499,19 @@ static void DrawSignals(TileIndex tile, TrackBits rails, const RailTypeInfo *rti
 
 /**
  * Draw one one-way signal for the junction placement ghost, without reading the tile's map data.
- * @param tile Tile to draw on.
+ * @param ti Tile to draw on; its slope and height are where the signal stands.
  * @param rt Rail type whose signal sprites to use.
  * @param facing Trains travelling along this trackdir see the signal.
  * @param type Signal type.
  * @param variant Signal variant.
  */
-void DrawRailSignalGhost(TileIndex tile, RailType rt, Trackdir facing, SignalType type, SignalVariant variant)
+void DrawRailSignalGhost(const TileInfo *ti, RailType rt, Trackdir facing, SignalType type, SignalVariant variant)
 {
 	const RailTypeInfo *rti = GetRailTypeInfo(rt);
 	Track ghost_track = TrackdirToTrack(facing);
 	uint8_t mask = SignalAlongTrackdir(facing);
 	ForEachSignalPosition(TrackBits{ghost_track}, [&](uint8_t signalbit, SignalOffsets image, uint pos, Track track) {
-		if (track == ghost_track && HasBit(mask, signalbit)) DrawSingleSignal(tile, rti, track, SignalState::Green, image, pos, type, variant, INVALID_TILE);
+		if (track == ghost_track && HasBit(mask, signalbit)) DrawSingleSignal(ti->tile, rti, track, SignalState::Green, image, pos, type, variant, INVALID_TILE, ti);
 	});
 }
 
