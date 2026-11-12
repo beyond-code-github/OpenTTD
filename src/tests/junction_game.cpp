@@ -1135,4 +1135,5 @@ TEST_CASE("the in-game estimate of a terraformed plan has no red tile the terraf
 	CHECK(counts.rail_bad_before == 0);
 	CHECK(counts.bad_not_failing_bridge_head == 0);
 	CHECK(counts.rail_bad_after == 0);
+	CHECK(counts.bridges_failing_after == 0);
 }

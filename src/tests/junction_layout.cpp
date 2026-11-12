@@ -1186,8 +1186,15 @@ TEST_CASE("the clamp equals propagation where propagation succeeds", "[junction]
 		std::set<std::pair<int, int>> tiles;
 		for (const JunctionTrack &track : plan.layout->tracks) tiles.insert({track.offset.x, track.offset.y});
 		for (const JunctionBridge &bridge : plan.layout->bridges) {
-			tiles.insert({bridge.start.x, bridge.start.y});
-			tiles.insert({bridge.end.x, bridge.end.y});
+			if (bridge.tunnel) {
+				tiles.insert({bridge.start.x, bridge.start.y});
+				tiles.insert({bridge.end.x, bridge.end.y});
+				continue;
+			}
+			/* The span's ground is held by the clamp too (IG3): the middle tiles' corners are demands as well. */
+			const int dx = (bridge.end.x > bridge.start.x) - (bridge.end.x < bridge.start.x);
+			const int dy = (bridge.end.y > bridge.start.y) - (bridge.end.y < bridge.start.y);
+			for (TileIndexDiffC t = bridge.start; t.x != bridge.end.x + dx || t.y != bridge.end.y + dy; t = {static_cast<int16_t>(t.x + dx), static_cast<int16_t>(t.y + dy)}) tiles.insert({t.x, t.y});
 		}
 		JunctionTerraform demand;
 		std::set<std::pair<int, int>> fixed;

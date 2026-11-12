@@ -11,7 +11,9 @@
 
 #include "junction_levels.h"
 #include "junction_positions.h"
+#include "bridge.h"
 #include "direction_func.h"
+#include "landscape.h"
 #include "rail.h"
 #include "track_func.h"
 
@@ -39,6 +41,7 @@ struct Visit {
 	SnapshotTile tile;
 	TrackBits bits; ///< Every track the layout builds on the tile.
 	bool fixed = false; ///< A node, port, bridge head or route end tile: flat at its own level.
+	bool head = false; ///< A bridge head: dir is then the direction into the span, and the tile's level is the height of its outer edge.
 	bool axis = false; ///< Only a lone axis track: the tile may be a ramp.
 	DiagDirection dir = DiagDirection::Invalid; ///< The direction of travel.
 	uint32_t edge = 0;
@@ -71,12 +74,79 @@ std::array<int, 2> ExitCorners(DiagDirection dir)
 	}
 }
 
+/** What the game's bridge command makes of a head tile (CheckBridgeSlope, tunnelbridge_cmd.cpp). */
+struct BridgeHeadGround {
+	int z; ///< The head's z (the game's z_start): the tile's lowest corner plus the foundation's rise.
+	bool inclined; ///< The slope on top of the foundation is the valid inclined one (the outer edge one level above the span side).
+	bool foundation; ///< The game charges a foundation.
+};
+
+/**
+ * The game's bridge head test.
+ * @param slope The tile's slope.
+ * @param z_min The tile's lowest corner.
+ * @param inward The direction from the outer edge into the span.
+ * @return The head, or nullopt when the game refuses the slope.
+ */
+std::optional<BridgeHeadGround> GetBridgeHeadGround(Slope slope, int z_min, DiagDirection inward)
+{
+	const Axis axis = inward == DiagDirection::SW || inward == DiagDirection::NE ? Axis::X : Axis::Y;
+	const Slope valid = inward == DiagDirection::SW ? SLOPE_NE : inward == DiagDirection::SE ? SLOPE_NW : inward == DiagDirection::NE ? SLOPE_SW : SLOPE_SE;
+	const Foundation f = GetBridgeFoundation(slope, axis);
+	const int z = z_min + static_cast<int>(ApplyFoundationToSlope(f, slope));
+	if (slope != SLOPE_FLAT && slope != valid) return std::nullopt;
+	return BridgeHeadGround{z, slope != SLOPE_FLAT, f != Foundation::None};
+}
+
+/**
+ * A bridge head tile built as the game takes it: kind 0 flat at the level (the span side and the outer edge both at level), kind 2 on the valid inclined slope
+ * (the outer edge at level, the span side at level - 1), or on a foundation the game builds there for that. The head's z (the game's z_start) is level - (kind == 2 ? 1 : 0).
+ */
+std::optional<Choice> EvaluateHead(const Context &c, const Visit &v, int kind, int level)
+{
+	if (kind == 1) return std::nullopt;
+	const JunctionTerrainTile *tile = c.terrain.At(v.tile.first, v.tile.second);
+	if (tile == nullptr || tile->cls != JunctionTileClass::Buildable) return std::nullopt;
+	std::array<int, 4> target;
+	target.fill(level);
+	if (kind == 2) {
+		for (int i : ExitCorners(v.dir)) target[i] = level - 1;
+	}
+	const std::array<int, 4> current = JunctionTileCorners(*tile);
+	Choice choice;
+	choice.level = level;
+	if (current == target) {
+		choice.cost = tile->clear_cost;
+		choice.corners = current;
+		return choice;
+	}
+	int steps = 0;
+	for (int i = 0; i < 4; i++) steps += std::abs(target[i] - current[i]);
+	choice.cost = tile->clear_cost + c.terrain.terraform_cost * steps;
+	choice.corners = target;
+	choice.moves = true;
+	if (c.terrain.build_on_slopes) {
+		const std::optional<BridgeHeadGround> ground = GetBridgeHeadGround(tile->slope, tile->z_min, v.dir);
+		if (ground.has_value() && ground->foundation && ground->inclined == (kind == 2) && ground->z == level - (kind == 2 ? 1 : 0)) {
+			const Money foundation = tile->clear_cost + c.terrain.foundation_cost;
+			if (foundation <= choice.cost) {
+				choice.cost = foundation;
+				choice.corners = current;
+				choice.moves = false;
+				choice.foundation = true;
+			}
+		}
+	}
+	return choice;
+}
+
 /**
  * The tile built as a shape at a level (D218 cost of a tile at a shape).
  * @param kind 0 flat at level, 1 a ramp up from level to level + 1, 2 a ramp down from level to level - 1 (entry level first).
  */
 std::optional<Choice> Evaluate(const Context &c, const Visit &v, int kind, int level)
 {
+	if (v.head) return EvaluateHead(c, v, kind, level);
 	const JunctionTerrainTile *tile = c.terrain.At(v.tile.first, v.tile.second);
 	if (tile == nullptr || tile->cls != JunctionTileClass::Buildable) return std::nullopt;
 	std::array<int, 4> target;
@@ -206,6 +276,8 @@ struct LevelTile {
  * The level of a tile is its entry level in the direction of travel. A tile that is not rampable continues at its own level; a rampable one at most one level either way.
  * The ramp rule (D219) is L(t + tl) - L(t) <= k per route, a crosser under a bridge middle stays at or below both heads, a corner shared by two track tiles is one height
  * (a rampable tile's exit-side corners are the next tile's level) and track corners within Manhattan distance d differ by at most d.
+ * A bridge head's level is the height of its outer edge: flat, or on the game's inclined slope (the head a level above the other), or on the game's bridge foundation; the two heads share one z,
+ * and the corners of the span's ground stay within [z - max_bridge_height + 1, z] in the clamp.
  * The start is each tile at its cheapest flat level; a coordinate descent over the tiles tied by equality then lowers the cost, which is the exact cost of the finished terraform:
  * the heights the tracks fix at their corners, and every other corner the ground clamped to the cones of those (clamp(g, L, U)), with the foundation tiles' corners free.
  * @param c The terrain and facts.
@@ -260,6 +332,35 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	/* The cone filter: a tile's option (shape and level) that is not a foundation and moves a corner out of the cone can be in no successful plan,
 	 * so the tile's levels shrink to those with a surviving option; a tile with none cannot be built. */
 	const CornerCone cone = MakeCornerCone(c.terrain);
+
+	/* The bridges: the two heads share one z, and every corner of the span's ground stays within [z - max_bridge_height + 1, z] (CmdBuildBridge). */
+	struct Span {
+		size_t a, e; ///< The head variables.
+		SnapshotTile start, end; ///< The head tiles.
+		std::vector<std::pair<SnapshotTile, size_t>> corners; ///< The middle tile of each corner and its index in the cone.
+	};
+	std::vector<Span> spans;
+	std::vector<size_t> partner(n, SIZE_MAX); ///< Per head variable, the other head's.
+	for (const JunctionBridge &b : layout.bridges) {
+		if (b.tunnel) continue;
+		const SnapshotTile a{b.start.x + offset.x, b.start.y + offset.y};
+		const SnapshotTile e{b.end.x + offset.x, b.end.y + offset.y};
+		if (!var.contains(a) || !var.contains(e) || !tiles[a].visit.head || !tiles[e].visit.head) continue;
+		Span span{var[a], var[e], a, e, {}};
+		partner[var[a]] = var[e];
+		partner[var[e]] = var[a];
+		const int dx = (e.first > a.first) - (e.first < a.first);
+		const int dy = (e.second > a.second) - (e.second < a.second);
+		std::set<size_t> seen_corners;
+		for (SnapshotTile t{a.first + dx, a.second + dy}; t != e; t = {t.first + dx, t.second + dy}) {
+			if (c.terrain.At(t.first, t.second) == nullptr) continue;
+			for (const auto &[ox, oy] : CORNER_OFFSET) {
+				const size_t k = cone.Index(t.first + ox, t.second + oy);
+				if (seen_corners.insert(k).second) span.corners.emplace_back(t, k);
+			}
+		}
+		spans.push_back(std::move(span));
+	}
 	std::vector<std::pair<int, int>> reach(n, {0, top}); ///< Per tile the lowest and highest variable with a surviving option.
 	std::vector<bool> cut(n, false); ///< Whether the tile's levels were shrunk.
 	for (size_t i = 0; i < n; i++) {
@@ -279,7 +380,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				if (prio == tile && tiles.contains(beside)) probe.dir = tiles.at(beside).visit.dir;
 			}
 		}
-		const int kinds = lt.rampable && probe.dir != DiagDirection::Invalid ? 3 : 1;
+		const int kinds = (lt.rampable && probe.dir != DiagDirection::Invalid) || probe.head ? 3 : 1;
 		int lowest_ok = INT_MAX;
 		int highest_ok = INT_MIN;
 		for (int l = 0; l <= top; l++) {
@@ -327,6 +428,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			case 5: return "crosser " + name(b) + " under the head " + name(a);
 			case 6: return fmt::format("the corner ({}, {}) shared by track tiles is one height", w.a0, w.a1);
 			case 7: return fmt::format("track corners ({}, {}) and ({}, {}) differ by at most {}", w.a0, w.a1, w.b0, w.b1, w.k);
+			case 9: return "the heads " + name(a) + " and " + name(b) + " of a bridge are at the same z";
 			default: return "start level of " + name(a);
 		}
 	};
@@ -388,6 +490,11 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			}
 		}
 		equal(var[prio], var[beside], {4, prio.first, prio.second, beside.first, beside.second, 0});
+	}
+	/* The heads of a bridge are at the same z: their outer edges differ by at most one level (the head on the inclined slope is the higher). */
+	for (const Span &span : spans) {
+		diff(span.a, span.e, -1, {9, span.start.first, span.start.second, span.end.first, span.end.second, 0});
+		diff(span.e, span.a, -1, {9, span.end.first, span.end.second, span.start.first, span.start.second, 0});
 	}
 	/* A crosser under a bridge middle stays at or below both heads. */
 	for (const JunctionBridge &b : layout.bridges) {
@@ -502,7 +609,9 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	std::vector<Choice> memo_choice(n * 3 * (top + 1));
 	auto choice_at = [&](size_t i, const std::vector<int> &lv) -> const Choice * {
 		int kind = 0;
-		if (next_var[i] != SIZE_MAX) {
+		if (partner[i] != SIZE_MAX) {
+			kind = lv[i] > lv[partner[i]] ? 2 : 0; /* the higher head of a bridge is on the inclined slope */
+		} else if (next_var[i] != SIZE_MAX) {
 			const int d = lv[next_var[i]] - lv[i];
 			kind = d > 0 ? 1 : d < 0 ? 2 : 0;
 		}
@@ -538,6 +647,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	std::vector<int> ex_h = ground_h; ///< The heights after the terraform: the ground, except at the touched corners.
 	std::vector<char> ex_dirty(static_cast<size_t>(GW) * GH, 0);
 	std::vector<size_t> t_set, t_touch, t_dirty, t_queue;
+	std::vector<std::pair<size_t, int>> t_span_lo, t_span_hi; ///< The span corners the ground is below the least or above the greatest height of.
 	std::vector<std::pair<size_t, int>> ex_moved; ///< The corners the last evaluation moved, as (index, height).
 	std::vector<const Choice *> ex_ch(n);
 	long ex_violation = 0; ///< The violation of the last evaluation.
@@ -578,6 +688,16 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		auto touch = [&](size_t k) {
 			if (ex_l[k] == -BIG && ex_u[k] == BIG) t_touch.push_back(k);
 		};
+		/* The span's ground: at or below the heads' z and above z - max_bridge_height, as a bound on each corner of the middle tiles. */
+		t_span_lo.clear();
+		t_span_hi.clear();
+		for (const Span &span : spans) {
+			const int z = std::min(lv[span.a], lv[span.e]);
+			for (const auto &[tile, k] : span.corners) {
+				if (z < ground_h[k]) t_span_hi.emplace_back(k, z);
+				if (z - c.terrain.max_bridge_height + 1 > ground_h[k]) t_span_lo.emplace_back(k, z - c.terrain.max_bridge_height + 1);
+			}
+		}
 		/* Raised targets spread L = t - d while it exceeds the ground; lowered ones spread U = t + d while it is below. */
 		for (int pass = 0; pass < 2; pass++) {
 			const bool up = pass == 0;
@@ -587,6 +707,13 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				if (up ? ex_target[k] > ground_h[k] : ex_target[k] < ground_h[k]) {
 					touch(k);
 					bound[k] = ex_target[k];
+					t_queue.push_back(k);
+				}
+			}
+			for (const auto &[k, value] : up ? t_span_lo : t_span_hi) {
+				if (up ? value > bound[k] : value < bound[k]) {
+					touch(k);
+					bound[k] = value;
 					t_queue.push_back(k);
 				}
 			}
@@ -644,6 +771,12 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				}
 			}
 		}
+		for (const Span &span : spans) {
+			const int z = std::min(lv[span.a], lv[span.e]);
+			for (const auto &[tile, k] : span.corners) {
+				viol += std::max(0, ex_h[k] - z) + std::max(0, z - c.terrain.max_bridge_height + 1 - ex_h[k]);
+			}
+		}
 		Money cost = c.terrain.terraform_cost * moves;
 		for (size_t d : t_dirty) cost += c.terrain.tiles[d].clear_cost;
 		for (size_t i = 0; i < n; i++) {
@@ -660,6 +793,16 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			for (int ci = 0; ci < 4; ci++) {
 				f[ci] = ex_h[cone.Index(t.first + CORNER_OFFSET[ci].first, t.second + CORNER_OFFSET[ci].second)];
 				flat = flat && f[ci] == ex_ch[i]->level;
+			}
+			if (tiles[t].visit.head) {
+				/* A bridge head on the planned ground: the game's head test must give the head's z and slope. */
+				const bool inclined = lv[i] > lv[partner[i]];
+				JunctionTerrainTile moved = c.terrain.tiles[di];
+				SetJunctionTileCorners(moved, f);
+				const std::optional<BridgeHeadGround> ground = GetBridgeHeadGround(moved.slope, moved.z_min, tiles[t].visit.dir);
+				if (!ground.has_value() || ground->inclined != inclined || ground->z != lv[i] - (inclined ? 1 : 0)) viol++;
+				else if (ground->foundation) cost += c.terrain.foundation_cost;
+				continue;
 			}
 			if (flat) continue;
 			cost += c.terrain.foundation_cost;
@@ -715,6 +858,16 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	for (size_t i = 0; i < n; i++) {
 		if (ex_ch[i] == nullptr) return fmt::format("no choice for the tile {}", name(order_tiles[i]));
 	}
+	if (ex_violation > 0) {
+		for (const Span &span : spans) {
+			const int z = std::min(level[span.a], level[span.e]);
+			for (const auto &[tile, k] : span.corners) {
+				if (ex_h[k] > z || ex_h[k] < z - c.terrain.max_bridge_height + 1) {
+					return fmt::format("the bridge from {} to {} cannot keep the ground of tile {} at most {} and above {}: its corner ends at {}", name(span.start), name(span.end), name(tile), z, z - c.terrain.max_bridge_height, ex_h[k]);
+				}
+			}
+		}
+	}
 	if (ex_violation > 0) return fmt::format("terraform conflict: the corners the tracks fix cannot be joined by one terraform (violation {})", ex_violation);
 	for (size_t i = 0; i < n; i++) {
 		const Visit &v = tiles[order_tiles[i]].visit;
@@ -750,9 +903,16 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 	std::map<SnapshotTile, TrackBits> tile_bits;
 	for (const JunctionTrack &jt : layout.tracks) tile_bits[world(jt.offset)] |= jt.tracks;
 	std::set<SnapshotTile> heads;
+	std::map<SnapshotTile, DiagDirection> into_span; ///< Per head of a bridge, the direction from its outer edge into the span.
 	for (const JunctionBridge &b : layout.bridges) {
 		heads.insert(world(b.start));
 		heads.insert(world(b.end));
+		if (!b.tunnel) {
+			const bool along_x = b.start.y == b.end.y;
+			const bool start_first = along_x ? b.start.x < b.end.x : b.start.y < b.end.y;
+			into_span[world(b.start)] = along_x ? (start_first ? DiagDirection::SW : DiagDirection::NE) : (start_first ? DiagDirection::SE : DiagDirection::NW);
+			into_span[world(b.end)] = along_x ? (start_first ? DiagDirection::NE : DiagDirection::SW) : (start_first ? DiagDirection::NW : DiagDirection::SE);
+		}
 		/* No track is laid on a head: it is judged as the bridge's axis track (flat; its incline is kept out of this step). */
 		const TrackBits axis_track{b.start.y == b.end.y ? Track::X : Track::Y};
 		tile_bits[world(b.start)] |= axis_track;
@@ -787,6 +947,10 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 			v.copy = route.tags[j].copy;
 			v.break_before = broken;
 			broken = false;
+			if (const auto head = into_span.find(tile); head != into_span.end()) {
+				v.head = true;
+				v.dir = head->second;
+			}
 			visits.push_back(v);
 		}
 		route_visits.push_back(std::move(visits));

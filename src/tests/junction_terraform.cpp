@@ -11,6 +11,7 @@
 
 #include "../3rdparty/catch2/catch.hpp"
 
+#include "../bridge.h"
 #include "../junction_facts.h"
 #include "../junction_levels.h"
 #include "../junction_nodes.h"
@@ -18,6 +19,7 @@
 #include "../rail.h"
 #include "../track_func.h"
 #include "../junction_terraform.h"
+#include "../landscape.h"
 #include "../slope_func.h"
 
 #include <algorithm>
@@ -323,4 +325,81 @@ TEST_CASE("the level solve offers a leveled foundation exactly where the game bu
 		}
 	}
 	CHECK(leveled > 0);
+}
+
+/** The game's z_start of the head of an X bridge on a tile, or INT_MIN when the game refuses its slope (CheckBridgeSlope). */
+static int GameHeadZ(const JunctionTerrainTile &tile, bool north)
+{
+	Slope slope = tile.slope;
+	const int z = tile.z_min + static_cast<int>(ApplyFoundationToSlope(GetBridgeFoundation(slope, Axis::X), slope));
+	return slope == SLOPE_FLAT || slope == (north ? SLOPE_NE : SLOPE_SW) ? z : INT_MIN;
+}
+
+/** The level solve of an X bridge from tile (1, 2) to tile (4, 2) on a 6 x 5 snapshot, with a track tile at each end; the heads' levels are returned. */
+static bool SolveTestBridge(const JunctionTerrain &terrain, JunctionTerraform &plan, std::string &why, std::vector<std::pair<TileIndexDiffC, int8_t>> &levels)
+{
+	JunctionLayout layout;
+	layout.tracks.push_back({{0, 2}, TrackBits{Track::X}});
+	layout.tracks.push_back({{5, 2}, TrackBits{Track::X}});
+	layout.bridges.push_back({{1, 2}, {4, 2}});
+	JunctionTrackRoute route{};
+	for (int x = 0; x < 6; x++) {
+		route.pieces.push_back({{static_cast<int16_t>(x), 2}, Trackdir::X_SW, 1, x >= 1 && x <= 4});
+		route.tags.push_back({0, JunctionTrackPieceTag::RUN, 0, 0});
+	}
+	const std::vector<JunctionTrackRoute> routes = {route};
+	const JunctionFacts facts(terrain);
+	const JunctionTrackPlacement placement{};
+	Money cost = 0;
+	return SolveJunctionLevels(terrain, facts, {0, 0}, 1, 1, placement, layout, routes, {}, plan, cost, levels, &why);
+}
+
+TEST_CASE("a bridge head may sit on the slope rising to its span", "[junction][hoverplan]")
+{
+	/* The ground is at 2 for the corners x <= 1 and at 1 beyond: the north head tile (1, 2) has its north-east edge a level above the span side (the game's valid slope for it), the south head is flat at 1. */
+	JunctionTerrain terrain = MakeTerrainFromCorners(6, 5, [](int cx, int) { return cx <= 1 ? 2 : 1; });
+	terrain.foundation_cost = 5;
+	REQUIRE(terrain.At(1, 2)->slope == SLOPE_NE);
+	REQUIRE(GameHeadZ(*terrain.At(1, 2), true) == 1);
+	REQUIRE(GameHeadZ(*terrain.At(4, 2), false) == 1);
+
+	JunctionTerraform plan;
+	std::string why;
+	std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
+	REQUIRE(SolveTestBridge(terrain, plan, why, levels));
+	INFO(why);
+	/* The head is not terraformed (no corner of tile (1, 2) moves) and its level is the top of the slope, the height of its outer edge. */
+	for (const auto &[corner, height] : plan.corners) {
+		const bool on_head = corner.first >= 1 && corner.first <= 2 && corner.second >= 2 && corner.second <= 3;
+		CHECK_FALSE(on_head);
+	}
+	CHECK(plan.corners.empty());
+	for (const auto &[tile, level] : levels) {
+		if (tile.x == 1 && tile.y == 2) CHECK(level == 2);
+		if (tile.x == 4 && tile.y == 2) CHECK(level == 1);
+	}
+}
+
+TEST_CASE("the ground under a bridge stays at or below its heads", "[junction][hoverplan]")
+{
+	/* Flat ground at 1 with the first middle tile (2, 2) one level higher: a plan that leaves the heads at 1 would put the span under higher ground. */
+	JunctionTerrain terrain = MakeTerrainFromCorners(6, 5, [](int cx, int cy) { return cx >= 2 && cx <= 3 && cy >= 2 && cy <= 3 ? 2 : 1; });
+	terrain.foundation_cost = 5;
+	JunctionTerraform plan;
+	std::string why;
+	std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
+	if (SolveTestBridge(terrain, plan, why, levels)) {
+		const JunctionTerrain after = ApplyJunctionTerraform(terrain, plan);
+		const int north = GameHeadZ(*after.At(1, 2), true);
+		const int south = GameHeadZ(*after.At(4, 2), false);
+		CHECK(north != INT_MIN);
+		CHECK(north == south);
+		for (int x = 2; x <= 3; x++) {
+			INFO("middle tile " << x);
+			CHECK(after.At(x, 2)->z_max <= north);
+		}
+	} else {
+		INFO(why);
+		CHECK(why.find("bridge") != std::string::npos);
+	}
 }

@@ -493,5 +493,5 @@ TEST_CASE("level solve: identical plans at every near offset", "[junction][realt
 	/* A cone reject that the solve without the check would plan would lose a plan: the pinned planned count and hash rule that out (cone_rejects_that_would_plan == 0). */
 	CHECK(cone_rejects == 99);
 	CHECK(planned == 2862);
-	CHECK(level_hash == 18415799895429992853ULL);
+	CHECK(level_hash == 2942472176959953894ULL);
 }
