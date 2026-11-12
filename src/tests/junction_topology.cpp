@@ -1764,7 +1764,7 @@ TEST_CASE("topoproj: a house on LL_RR's W in-lane run after the bend is avoided"
 	for (const JunctionTrack &jt : solve.layout->tracks) CHECK(!(jt.offset.x == house.x && jt.offset.y == house.y));
 }
 
-TEST_CASE("topoproj: every failure on LL_RR names the graph elements it hit", "[junction][topoproj]")
+TEST_CASE("topoproj: every failure on LL_RR names the graph elements it hit", "[junction][topoprojsweep]")
 {
 	const GraphSolveSetup setup = GraphSolveSetupOf(JunctionLLRRSidelineTopology());
 	const JunctionTerrain flat = FlatTerrainAround(setup.signalled);
