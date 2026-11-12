@@ -25,6 +25,7 @@
 #include <climits>
 #include <functional>
 #include <map>
+#include <numeric>
 #include <optional>
 #include <set>
 #include <tuple>
@@ -1150,6 +1151,17 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	};
 	std::vector<ClearanceY> clear_y;
 	std::vector<JunctionPlacementReason> failure; ///< The explanation chain of the last failed solve.
+	std::vector<int> fan_m(edge_count, 0);
+	/** A row change of kinds 1-4 (DESIGN-G1 §14.5, D215): the point its bend starts at, whether its feature lies toward larger columns, and for a fan the edge whose fan size must be nonzero. */
+	struct RowChange {
+		int anchor;
+		int feature; ///< The point of the feature it serves.
+		bool larger;
+		uint32_t fan_edge;
+		uint32_t edge;
+		int row;
+	};
+	std::vector<RowChange> row_changes;
 	auto solve = [&](std::vector<int> &val) {
 		/* A least solution is a longest path, so no point lies beyond the sum of the positive constants; a larger lo is a positive cycle. */
 		int bound = 1;
@@ -1166,6 +1178,55 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		for (const FactCons &fc : fact_cons) {
 			if (!ok) break;
 			ok = fc.u < 0 ? positions.RestrictDomain(fc.v, fc.columns, fc.reason) : positions.AddAvoid(fc.v, fc.u, fc.columns[0], fc.columns[1], fc.reason);
+		}
+		if (ok && phase == 0 && rows_known) {
+			/* The D215 objective (DESIGN-G1 §14.5): with every other point at its least column, each row change whose feature lies toward larger columns moves as far as the relations and facts allow. The tokens' rigid groups are the points tied by exact relations. */
+			std::map<std::pair<int, int>, int> most;
+			for (const Cons &cn : cons) {
+				const auto [found, added] = most.emplace(std::make_pair(cn.v, cn.u), cn.k);
+				if (!added) found->second = std::max(found->second, cn.k);
+			}
+			std::vector<int> group(pt_count);
+			std::iota(group.begin(), group.end(), 0);
+			auto root = [&](int p) {
+				while (group[p] != p) p = group[p] = group[group[p]];
+				return p;
+			};
+			for (const auto &[pair, k] : most) {
+				const auto back = most.find({pair.second, pair.first});
+				if (back != most.end() && back->second == -k) group[root(pair.first)] = root(pair.second);
+			}
+			/* A group may not hold a port, the origin or the box's edges; it may hold a node only when that node is the feature being pushed. */
+			std::vector<bool> fixed_point(pt_count, false), node_point(pt_count, false);
+			fixed_point[0] = fixed_point[xe_pt] = fixed_point[se_pt] = true;
+			for (const int p : port_pt) fixed_point[p] = true;
+			for (const int p : node_pt) node_point[p] = true;
+			/* First the tokens whose feature lies toward larger columns move to it; then, for the others, the feature's group moves toward the token (an eastbound out fan stays at its port and its joiner merge comes to it). */
+			/* A token held back by another still short of its own feature goes on in the next round; columns only grow, so the rounds end. */
+			for (bool pushed = true; pushed;) {
+			pushed = false;
+			for (const bool push_feature : {false, true}) {
+				for (const RowChange &change : row_changes) {
+					if (change.larger == push_feature || (change.fan_edge != UINT32_MAX && fan_m[change.fan_edge] == 0)) continue;
+					const int moved = push_feature ? change.feature : change.anchor;
+					const int moved_root = root(moved);
+					bool tied_to_fixed = false;
+					for (int p = 0; p < pt_count; p++) tied_to_fixed |= root(p) == moved_root && (fixed_point[p] || (node_point[p] && !(push_feature && p == change.feature)));
+					if (tied_to_fixed) continue;
+					const size_t mark = positions.Mark();
+					bool held = true;
+					for (int p = 0; p < pt_count && held; p++) {
+						if (root(p) != moved_root) held = positions.RestrictRange(p, positions.Lo(p), positions.Lo(p));
+					}
+					const int up = held ? positions.Up(moved) : positions.Lo(moved);
+					positions.Undo(mark);
+					if (up == positions.Lo(moved)) continue;
+					reasons.push_back(JunctionPlacementReason{"next to feature", change.edge, UINT32_MAX, change.row});
+					const size_t before = positions.Mark();
+					if (!positions.RestrictRange(moved, up, up, static_cast<uint32_t>(reasons.size() - 1))) positions.Undo(before); else pushed = true;
+				}
+			}
+			}
 		}
 		if (!ok) {
 			std::string chain_text;
@@ -1236,7 +1297,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		}
 	}
 	std::vector<int> port_row(n, 0);
-	std::vector<int> fan_m(edge_count, 0);
 	auto fan_item = [&](uint32_t e) -> uint32_t { return programs.edges[e].size() == 1 && programs.edges[e][0].kind == StepKind::Fan ? programs.edges[e][0].index : NO_ROW; };
 	auto edge_port = [&](uint32_t e) { return graph.edges[e].from.node ? graph.edges[e].to.index : graph.edges[e].from.index; };
 
@@ -1255,6 +1315,38 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			for (size_t k = 0; k < bridges_of[leg_edge[r]].size(); k++) {
 				rp.nh0.push_back(new_pt()); rp.fh0.push_back(new_pt()); rp.nh1.push_back(new_pt()); rp.fh1.push_back(new_pt());
 			}
+		}
+	}
+
+	/* The row changes of kinds 1-4 (briefs/P3b-every-row-change-leans.md, "The rule") in the objective's order: edges ascending, an edge's tokens ascending, its copies after them. Each leans toward the feature it serves; only one whose feature lies toward larger columns can move. */
+	for (uint32_t e = 0; e < edge_count; e++) {
+		if (is_row_edge(e)) {
+			const int r = (end_level(graph.edges[e].from) - 1) / 2;
+			const RowPts &rp = row_pts[r];
+			const bool eastward = east[r];
+			if (e == in_edge[r] && fan_item(e) != NO_ROW) {
+				row_changes.push_back({rp.fif, node_pt[graph.edges[e].to.index], eastward, e, e, r}); // Kind 1, first edge: with the travel, toward its node.
+			} else if (e == out_edge[r] && fan_item(e) != NO_ROW) {
+				row_changes.push_back({rp.fof, node_pt[graph.edges[e].from.index], !eastward, e, e, r}); // Kind 1, last edge: against the travel.
+			} else if (e == leg_edge[r] && doubled_row(r)) {
+				row_changes.push_back({rp.sb0_first, rp.fh0[rp.fh0.size() - 1], !eastward, UINT32_MAX, e, r}); // Kind 3: the lane merge, against the travel.
+				row_changes.push_back({rp.lane_split, rp.nh0[0], eastward, UINT32_MAX, e, r}); // Kind 2: the lane split, with the travel.
+			}
+			continue;
+		}
+		if (!programs.copies[e].empty()) continue;
+		const std::vector<Step> &program = programs.edges[e];
+		for (const Elem &el : chain[e]) {
+			if (el.k != Elem::K::SBend || VX[el.hin] == 0) continue;
+			/* Kind 4: toward the node at the end of the edge when no emitting token follows, toward the one at its start when none precedes. */
+			bool before = false, after = false;
+			for (size_t t = 0; t < program.size(); t++) {
+				if (program[t].kind == StepKind::Under || static_cast<int>(t) == el.tok) continue;
+				(static_cast<int>(t) < el.tok ? before : after) = true;
+			}
+			if (before == after) continue;
+			const JunctionTrackEnd &end = before ? graph.edges[e].to : graph.edges[e].from;
+			row_changes.push_back({el.first, end.node ? node_pt[end.index] : port_pt[end.index], VX[el.hin] * (before ? 1 : -1) > 0, UINT32_MAX, e, -1});
 		}
 	}
 
