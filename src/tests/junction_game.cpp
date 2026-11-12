@@ -16,6 +16,7 @@
 #include "../junction_generator.h"
 #include "../junction_nodes.h"
 #include "../junction_rules.h"
+#include "../junction_topology.h"
 #include "../landscape.h"
 #include "../map_func.h"
 #include "../rail_map.h"
@@ -31,6 +32,8 @@
 #include <chrono>
 #include <iostream>
 #include <random>
+#include <set>
+#include <tuple>
 
 #include "../safeguards.h"
 
@@ -655,6 +658,102 @@ TEST_CASE("the node search's layouts pass the rule checker on random terrain", "
 	CHECK(accepted > 0);
 	CHECK(heights == 0);
 	CHECK(fits == 0);
+}
+
+/** The nodeoracle's 250 terrains (same seeds, generators and skip rule): each is passed to run with its seed. */
+template <typename F>
+static void ForEachOracleTerrain(const JunctionLayout &t_layout, TileIndexDiffC start_offset, F &&run)
+{
+	for (int seed = 1; seed <= 200; seed++) {
+		std::mt19937 rng(seed);
+		JunctionTerrain terrain = MakeNearTestTerrain();
+		const int count = std::uniform_int_distribution<int>(1, 3)(rng);
+		for (int i = 0; i < count; i++) {
+			const int w = std::uniform_int_distribution<int>(1, 3)(rng);
+			const int h = std::uniform_int_distribution<int>(1, 3)(rng);
+			const int x0 = std::uniform_int_distribution<int>(start_offset.x, start_offset.x + t_layout.size.x - 1)(rng);
+			const int y0 = std::uniform_int_distribution<int>(0, t_layout.size.y - 1)(rng);
+			SetNearTestRect(terrain, x0, x0 + w - 1, y0, y0 + h - 1, JunctionTileClass::Blocked);
+		}
+		run(terrain, seed);
+	}
+	for (int seed = 1001; seed <= 1050; seed++) {
+		std::mt19937 rng(seed);
+		JunctionTerrain terrain = MakeNearTestTerrain();
+		terrain.build_on_slopes = true;
+		const int r = std::uniform_int_distribution<int>(2, t_layout.size.y - 4)(rng);
+		SetNearRampRow(terrain, r, 0, 1, DiagDirection::SE);
+		SetNearRampRow(terrain, r + 1, 1, 1, DiagDirection::Invalid);
+		SetNearRampRow(terrain, r + 2, 1, 1, DiagDirection::Invalid);
+		SetNearRampRow(terrain, r + 3, 0, 1, DiagDirection::NW);
+		run(terrain, seed);
+	}
+}
+
+TEST_CASE("placement on facts is buildable on random terrain", "[junction][placeoracle]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTMapResult &topo = JunctionNodeTopologyT();
+	REQUIRE(topo.layout.has_value());
+	const JunctionFrame frame = MakeJunctionFrame(spec);
+	/* The graph seed of the T renders the traced T's tiles (checked below), so its hub is the traced T's: the node test's start offset. */
+	const TileIndexDiffC offset = {static_cast<int16_t>(frame.hub_x - topo.hub.x), static_cast<int16_t>(-topo.hub.y)};
+	std::string error;
+	const JunctionTopology &t = JunctionTTopology();
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+	INFO(error);
+	{
+		/* The two layouts differ inside (the seed's bridges stagger otherwise) but have the same ports, so one frame and one hub. */
+		const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+		auto port_set = [](const JunctionLayout &layout) {
+			std::set<std::tuple<int, int, int>> ports;
+			for (const JunctionPort &port : FindJunctionPorts(layout)) ports.emplace(port.tile.x, port.tile.y, static_cast<int>(port.trackdir));
+			return ports;
+		};
+		CHECK((seed_layout.size.x == topo.layout->size.x && seed_layout.size.y == topo.layout->size.y));
+		CHECK(!port_set(seed_layout).empty());
+		CHECK(port_set(seed_layout) == port_set(*topo.layout));
+	}
+
+	int n = 0, skipped = 0, solved = 0, heights = 0, violations = 0;
+	int64_t micros = 0;
+	ForEachOracleTerrain(*topo.layout, offset, [&](const JunctionTerrain &terrain, int terrain_seed) {
+		n++;
+		if (JunctionBlockedPortApproach(terrain, offset.x, offset.x + topo.layout->size.x - 1).has_value()) {
+			skipped++;
+			return;
+		}
+		const JunctionFacts facts(terrain);
+		std::string place_error;
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error);
+		micros += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+		if (placement.nodes.empty()) return;
+		solved++;
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, placement, &render_error, &routes);
+		INFO("seed " << terrain_seed << " " << render_error);
+		REQUIRE(!layout.tracks.empty());
+		std::string why;
+		const bool ok = JunctionRoutesHeightsOk(routes, layout, {0, 0}, terrain, offset, &why);
+		INFO("heights: " << why);
+		CHECK(ok);
+		if (!ok) heights++;
+		SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec);
+		for (const RuleViolation &violation : CheckJunctionRules(layout, spec, t)) {
+			INFO("rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+			CHECK(false);
+			violations++;
+		}
+	});
+	std::cout << "PLACEORACLE terrains=" << n << " skipped=" << skipped << " solved=" << solved << " heights=" << heights << " violations=" << violations << " micros=" << micros << "\n";
+	CHECK(solved > 0);
+	CHECK(heights == 0);
+	CHECK(violations == 0);
 }
 
 TEST_CASE("GenerateJunctionNear's score includes the terrain cost", "[junction][tmapnear]")

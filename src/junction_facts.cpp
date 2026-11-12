@@ -166,6 +166,14 @@ bool JunctionFacts::StraightRun(Axis axis, int line, int a, int b) const
 	return this->straight[ax][ia] && this->straight[ax][ib] && this->run_id[ax][ia] == this->run_id[ax][ib];
 }
 
+bool JunctionFacts::Joins(Axis axis, int line, int pos) const
+{
+	size_t ia, ib;
+	if (!this->Cell(axis, line, pos, ia) || !this->Cell(axis, line, pos + 1, ib)) return false;
+	const size_t ax = to_underlying(axis);
+	return this->straight[ax][ia] && this->straight[ax][ib] && this->run_id[ax][ia] == this->run_id[ax][ib];
+}
+
 int JunctionFacts::NextBad(JunctionFactKind kind, Axis axis, int line, int from) const
 {
 	size_t i;

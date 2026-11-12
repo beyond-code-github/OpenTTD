@@ -65,6 +65,48 @@ TEST_CASE("positions: avoid", "[junction][positions]")
 	}
 }
 
+TEST_CASE("positions: an avoid between two columns", "[junction][positions]")
+{
+	/* AddAvoid(a, b, 4, 5) forbids exactly x_a <= 4 together with x_b >= 5. */
+	{
+		/* Forced left: x_b >= 5 holds, so x_a must be 5 or more. */
+		JunctionPositions p(2, 0, 20);
+		CHECK(p.RestrictRange(1, 6, 20, 1));
+		CHECK(p.AddAvoid(0, 1, 4, 5, 2));
+		CHECK(p.Lo(0) == 5);
+		CHECK(p.Up(0) == 20);
+		CHECK(p.Lo(1) == 6);
+		CHECK(p.Explain(0, true) == std::vector<uint32_t>{2, 1});
+	}
+	{
+		/* Forced right: x_a <= 4 holds, so x_b must be 4 or less. */
+		JunctionPositions p(2, 0, 20);
+		CHECK(p.RestrictRange(0, 0, 3, 1));
+		CHECK(p.AddAvoid(0, 1, 4, 5, 2));
+		CHECK(p.Up(1) == 4);
+		CHECK(p.Lo(1) == 0);
+		CHECK(p.Up(0) == 3);
+		CHECK(p.Explain(1, false) == std::vector<uint32_t>{2, 1});
+	}
+	{
+		/* Infeasible: x_a <= 4 and x_b >= 5 both forced. */
+		JunctionPositions p(2, 0, 20);
+		CHECK(p.RestrictRange(0, 0, 4, 1));
+		CHECK(p.RestrictRange(1, 5, 20, 3));
+		CHECK_FALSE(p.AddAvoid(0, 1, 4, 5, 2));
+		CHECK(p.Explain() == std::vector<uint32_t>{2, 3, 1});
+	}
+	{
+		/* Nothing is forbidden outside that corner: x_a = 5, x_b = 4 and x_a = 0, x_b = 4 both stay. */
+		JunctionPositions p(2, 0, 20);
+		CHECK(p.AddAvoid(0, 1, 4, 5, 2));
+		CHECK(p.Lo(0) == 0);
+		CHECK(p.Up(1) == 20);
+		CHECK(p.RestrictRange(0, 5, 20));
+		CHECK(p.RestrictRange(1, 0, 4));
+	}
+}
+
 TEST_CASE("positions: an infeasible propagation explains itself", "[junction][positions]")
 {
 	JunctionPositions p(4, 0, 100);

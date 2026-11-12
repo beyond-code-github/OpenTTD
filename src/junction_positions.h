@@ -27,6 +27,7 @@ public:
 	bool RestrictRange(size_t v, int min_value, int max_value, uint32_t reason = NO_REASON); ///< x_v in [min_value, max_value].
 	bool RestrictDomain(size_t v, const std::vector<int> &allowed, uint32_t reason = NO_REASON); ///< x_v in the given values (others removed from its bitset); a lo or up it moves records the reason.
 	bool AddAvoid(size_t a, size_t b, int c, uint32_t reason = NO_REASON); ///< Not (x_a <= c <= x_b): an edge from x_a to x_b must not cover column c; a lo or up it moves records the reason and the other variable.
+	bool AddAvoid(size_t a, size_t b, int c_a, int c_b, uint32_t reason); ///< Not (x_a <= c_a and x_b >= c_b): an edge from x_a to x_b must not cover both columns (the reason is required: with a default, a call with four integers would be ambiguous with the form above).
 	size_t Mark() const; ///< A trail position for Undo().
 	void Undo(size_t mark); ///< Restore lo, up and domains to the state at the mark; constraints added since are removed.
 	int Lo(size_t v) const;
@@ -41,7 +42,7 @@ private:
 		size_t from = SIZE_MAX;
 	};
 	struct Difference { size_t a, b; int k; uint32_t reason; };
-	struct Avoid { size_t a, b; int c; uint32_t reason; };
+	struct Avoid { size_t a, b; int c_a, c_b; uint32_t reason; };
 	struct TrailEntry {
 		enum class Kind : uint8_t { Lo, Up, DomainWord, Difference, Avoid } kind;
 		size_t index;

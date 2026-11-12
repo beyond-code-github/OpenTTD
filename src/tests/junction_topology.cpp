@@ -2175,6 +2175,53 @@ TEST_CASE("topoproj: the T graph search builds around a house beside the hub", "
 	}
 }
 
+TEST_CASE("topoproj: placement moves the W end off an incline", "[junction][topoproj]")
+{
+	/* The terrain of "the node solve moves the W end off an incline" (junction_nodes.cpp): z 1 up to three tiles past the W stub, then one inclined tile, then z 0. The seed's hub is the traced T's. */
+	constexpr int STUB = 2;
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const TileIndexDiffC offset = LegacyFlatToWorking(spec);
+	const int x_w = offset.x;
+	JunctionTerrain terrain = LegacyHouseTerrain(spec);
+	terrain.build_on_slopes = true;
+	for (int y = terrain.origin.y; y < terrain.origin.y + terrain.height; y++) {
+		for (int x = terrain.origin.x; x <= x_w + STUB + 3; x++) {
+			JunctionTerrainTile &tile = terrain.tiles[static_cast<size_t>(y - terrain.origin.y) * terrain.width + (x - terrain.origin.x)];
+			if (x <= x_w + STUB + 2) {
+				tile.z_min = tile.z_max = 1;
+			} else {
+				tile.z_min = 0;
+				tile.z_max = 1;
+				tile.incline = DiagDirection::NE;
+				tile.slope = InclinedSlope(DiagDirection::NE);
+			}
+		}
+	}
+	const JunctionTopology &t = JunctionTTopology();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+	INFO(error);
+	const JunctionFacts facts(terrain);
+	const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &error);
+	INFO(error);
+	REQUIRE(!placement.nodes.empty());
+	std::vector<JunctionTrackRoute> routes;
+	JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, placement, &error, &routes);
+	INFO(error);
+	REQUIRE(!layout.tracks.empty());
+	std::string why;
+	CHECK(JunctionRoutesHeightsOk(routes, layout, {0, 0}, terrain, offset, &why));
+	INFO(why);
+	SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec);
+	for (const RuleViolation &v : CheckJunctionRules(layout, spec, t)) {
+		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
+		CHECK(false);
+	}
+}
+
 TEST_CASE("topoproj: the graph search keeps the flat seed on flat terrain", "[junction][topoproj]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();

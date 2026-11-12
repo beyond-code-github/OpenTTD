@@ -72,8 +72,8 @@ bool JunctionPositions::PropagateDifference(const Difference &d)
 
 bool JunctionPositions::PropagateAvoid(const Avoid &a)
 {
-	if (this->lo[a.a] <= a.c && a.c <= this->lo[a.b] && !this->SetLo(a.a, a.c + 1, {a.reason, a.b})) return false;
-	if (this->up[a.a] <= a.c && a.c <= this->up[a.b] && !this->SetUp(a.b, a.c - 1, {a.reason, a.a})) return false;
+	if (this->lo[a.a] <= a.c_a && a.c_b <= this->lo[a.b] && !this->SetLo(a.a, a.c_a + 1, {a.reason, a.b})) return false;
+	if (this->up[a.a] <= a.c_a && a.c_b <= this->up[a.b] && !this->SetUp(a.b, a.c_b - 1, {a.reason, a.a})) return false;
 	return true;
 }
 
@@ -142,10 +142,15 @@ bool JunctionPositions::RestrictDomain(size_t v, const std::vector<int> &allowed
 
 bool JunctionPositions::AddAvoid(size_t a, size_t b, int c, uint32_t reason)
 {
+	return this->AddAvoid(a, b, c, c, reason);
+}
+
+bool JunctionPositions::AddAvoid(size_t a, size_t b, int c_a, int c_b, uint32_t reason)
+{
 	this->trail.push_back({TrailEntry::Kind::Avoid, this->avoids.size(), 0, {}});
 	this->avoids_of[a].push_back(this->avoids.size());
 	this->avoids_of[b].push_back(this->avoids.size());
-	this->avoids.push_back({a, b, c, reason});
+	this->avoids.push_back({a, b, c_a, c_b, reason});
 	this->queue.push_back(a);
 	this->queue.push_back(b);
 	return this->Propagate();

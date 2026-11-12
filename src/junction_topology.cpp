@@ -22,6 +22,8 @@
 #include "track_func.h"
 
 #include <algorithm>
+#include <climits>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -1124,7 +1126,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	};
 	std::vector<Cons> cons;
 	std::vector<JunctionPlacementReason> reasons;
-	/* A terrain fact of the X phase: a domain of columns for a point, or a run from point v to point u that must not cover the column columns[0]. */
+	/* A terrain fact of the X phase: a domain of columns for a point, or a run from point v to point u that must not cover both the column columns[0] and the column columns[1]. */
 	struct FactCons {
 		int v;
 		int u; ///< -1 for a domain.
@@ -1163,7 +1165,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		}
 		for (const FactCons &fc : fact_cons) {
 			if (!ok) break;
-			ok = fc.u < 0 ? positions.RestrictDomain(fc.v, fc.columns, fc.reason) : positions.AddAvoid(fc.v, fc.u, fc.columns[0], fc.reason);
+			ok = fc.u < 0 ? positions.RestrictDomain(fc.v, fc.columns, fc.reason) : positions.AddAvoid(fc.v, fc.u, fc.columns[0], fc.columns[1], fc.reason);
 		}
 		if (!ok) {
 			std::string chain_text;
@@ -1685,8 +1687,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			const int high = facts->MaxX() - offset.x;
 			std::vector<uint32_t> node_of_pt(pt_count, UINT32_MAX);
 			for (uint32_t i = 0; i < node_pt.size(); i++) node_of_pt[node_pt[i]] = i;
-			auto fact_reason = [&](uint32_t e, uint32_t node, int row, const std::string &note) {
-				reasons.push_back(JunctionPlacementReason{"blocked tile", e, node, static_cast<int32_t>(row)});
+			/* The height facts are the costly ones: they wait until every other fact of the block is in, and then look only at the columns a point can take under the relations and those facts (least and most, below). */
+			std::vector<int> least(pt_count, 0);
+			std::vector<int> most(pt_count, INT_MAX / 2);
+			std::vector<std::function<void()>> pending;
+			auto fact_reason = [&](uint32_t e, uint32_t node, int row, const std::string &note, const char *rule = "blocked tile") {
+				reasons.push_back(JunctionPlacementReason{rule, e, node, static_cast<int32_t>(row)});
 				if (!note.empty()) notes[static_cast<uint32_t>(reasons.size() - 1)] = note;
 				return static_cast<uint32_t>(reasons.size() - 1);
 			};
@@ -1698,30 +1704,206 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 					default: return facts->Half(x, y);
 				}
 			};
+			/* Per (fact, axis, row), whether the fact holds at each column of the snapshot: every group on that row asks for it. */
+			std::map<std::tuple<int, int, int>, std::vector<bool>> holding;
+			auto holds_on_row = [&](JunctionFactKind kind, Axis axis, int y) -> const std::vector<bool> & {
+				const auto key = std::make_tuple(static_cast<int>(kind), static_cast<int>(axis), y);
+				auto found = holding.find(key);
+				if (found != holding.end()) return found->second;
+				std::vector<bool> row;
+				for (int x = facts->MinX(); x <= facts->MaxX(); x++) row.push_back(holds(kind, axis, x, y));
+				return holding.emplace(key, std::move(row)).first->second;
+			};
 			/* A group tile: anchor point pt, column offset dx, row y; its anchor's columns where the fact holds. */
 			auto group = [&](int pt, int dx, int y, JunctionFactKind kind, Axis axis, uint32_t e, uint32_t node, int row) {
 				std::vector<int> allowed;
 				std::string tiles;
 				int named = 0;
+				const std::vector<bool> &here = holds_on_row(kind, axis, y + offset.y);
 				for (int c = 0; c <= high; c++) {
 					const int x = c + dx + offset.x;
-					if (holds(kind, axis, x, y + offset.y)) {
+					const bool inside = x >= facts->MinX() && x <= facts->MaxX();
+					if (inside && here[x - facts->MinX()]) {
 						allowed.push_back(c);
-					} else if (x >= facts->MinX() && x <= facts->MaxX() && named++ < 4) {
+					} else if (inside && named++ < 4) {
 						tiles += fmt::format("{}({},{})", tiles.empty() ? "" : " ", x, y + offset.y);
 					}
 				}
 				const uint32_t reason = fact_reason(e, node, row, tiles.empty() ? std::string() : "[blocked tile " + tiles + "]");
 				fact_cons.push_back({pt, -1, std::move(allowed), reason});
 			};
+			/* Per row, the columns of the snapshot where a straight X piece cannot sit, and the columns whose straight X piece does not meet the next one's height. */
+			std::map<int, std::pair<std::vector<int>, std::vector<int>>> row_facts;
+			auto row_facts_of = [&](int y) -> const std::pair<std::vector<int>, std::vector<int>> & {
+				auto found = row_facts.find(y);
+				if (found != row_facts.end()) return found->second;
+				std::pair<std::vector<int>, std::vector<int>> bad;
+				int entry, exit;
+				bool before = false;
+				for (int x = facts->MinX(); x <= facts->MaxX(); x++) {
+					const bool straight = facts->Straight(x, y, Axis::X, entry, exit);
+					if (!straight) bad.first.push_back(x);
+					if (x > facts->MinX() && before && straight && !facts->Joins(Axis::X, y, x - 1)) bad.second.push_back(x - 1);
+					before = straight;
+				}
+				return row_facts.emplace(y, std::move(bad)).first->second;
+			};
 			/* A straight run on row y from point a to point b, in the travel sense sgn (+1 east). */
 			auto row_run = [&](int a, int b, int y, int sgn, uint32_t e, int row) {
-				for (int x = facts->MinX(); x <= facts->MaxX(); x++) {
-					int entry, exit;
-					if (facts->Straight(x, y + offset.y, Axis::X, entry, exit)) continue;
+				const auto &[blocked, steps] = row_facts_of(y + offset.y);
+				for (int x : blocked) {
 					const uint32_t reason = fact_reason(e, UINT32_MAX, row, fmt::format("[blocked tile ({},{})]", x, y + offset.y));
-					fact_cons.push_back({sgn > 0 ? a : b, sgn > 0 ? b : a, {x - offset.x}, reason});
+					fact_cons.push_back({sgn > 0 ? a : b, sgn > 0 ? b : a, {x - offset.x, x - offset.x}, reason});
 				}
+				/* Two straight tiles side by side that do not meet at one height: the run must not cover both. */
+				for (int x : steps) {
+					const uint32_t reason = fact_reason(e, UINT32_MAX, row, fmt::format("[height step ({},{}) to ({},{})]", x, y + offset.y, x + 1, y + offset.y), "height step");
+					fact_cons.push_back({sgn > 0 ? a : b, sgn > 0 ? b : a, {x - offset.x, x + 1 - offset.x}, reason});
+				}
+			};
+			/* A vertical run of straight tiles at column offset 0 of point pt, rows from y_a to y_b (either order): the columns where every two neighbours meet at one height. */
+			auto column_run_now = [&](int pt, int y_a, int y_b, uint32_t e) {
+				const int y_lo = std::min(y_a, y_b);
+				const int y_hi = std::max(y_a, y_b);
+				if (y_lo == y_hi) return;
+				std::vector<int> allowed;
+				std::string tiles;
+				for (int c = std::max(0, least[pt]); c <= std::min(high, most[pt]); c++) {
+					int bad = INT_MIN;
+					for (int y = y_lo; y < y_hi && bad == INT_MIN; y++) {
+						if (!facts->Joins(Axis::Y, c + offset.x, y + offset.y)) bad = y;
+					}
+					if (bad == INT_MIN) {
+						allowed.push_back(c);
+					} else if (c + offset.x >= facts->MinX() && c + offset.x <= facts->MaxX() && tiles.size() < 40) {
+						tiles += fmt::format("{}({},{})", tiles.empty() ? "" : " ", c + offset.x, bad + offset.y);
+					}
+				}
+				const uint32_t reason = fact_reason(e, UINT32_MAX, -1, tiles.empty() ? std::string() : "[height step " + tiles + "]", "height step");
+				fact_cons.push_back({pt, -1, std::move(allowed), reason});
+			};
+			auto column_run = [&](int pt, int y_a, int y_b, uint32_t e) { pending.push_back([&column_run_now, pt, y_a, y_b, e] { column_run_now(pt, y_a, y_b, e); }); };
+			/* The tracks the routes build on each node's tile, and the headings of the routes that go straight through it (JunctionRoutesHeightsOk reads the union per tile): the piece of a route on its node's tile is the half that leaves or joins there, or an axis piece. */
+			std::vector<TrackBits> node_bits(graph.nodes.size());
+			std::vector<std::vector<int>> node_straight(graph.nodes.size());
+			std::map<std::pair<const Elem *, bool>, TrackBits> half_cache;
+			auto bend_half = [&](const Elem &el, bool last) {
+				const auto cached = half_cache.find({&el, last});
+				if (cached != half_cache.end()) return cached->second;
+				const size_t halves = el.offs.size();
+				const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[el.hin], JunctionBendMoves(el.hand, static_cast<int>(halves), el.k == Elem::K::Corner)});
+				const TrackBits half = !raster.error.empty() || raster.pieces.size() != halves + 2 ? TrackBits{} : TrackBits{TrackdirToTrack(raster.pieces[last ? halves : 1].trackdir)};
+				half_cache[{&el, last}] = half;
+				return half;
+			};
+			for (const std::vector<uint32_t> &edges : graph.path_edges) {
+				for (size_t i = 0; i + 1 < edges.size(); i++) {
+					if (!graph.edges[edges[i]].to.node) continue;
+					const uint32_t node = graph.edges[edges[i]].to.index;
+					const uint32_t e_in = edges[i];
+					const uint32_t e_out = edges[i + 1];
+					const Elem *leaving = nullptr;
+					const Elem *joining = nullptr;
+					if (!is_row_edge(e_out) && chain[e_out].size() > 2 && chain[e_out][1].first == chain[e_out][0].first && chain[e_out][1].k != Elem::K::Heads) leaving = &chain[e_out][1];
+					if (!is_row_edge(e_in) && chain[e_in].size() > 2 && chain[e_in][chain[e_in].size() - 2].last == chain[e_in].back().first && chain[e_in][chain[e_in].size() - 2].k != Elem::K::Heads) joining = &chain[e_in][chain[e_in].size() - 2];
+					if (leaving != nullptr) {
+						node_bits[node] = node_bits[node] | bend_half(*leaving, false);
+					} else if (joining != nullptr) {
+						node_bits[node] = node_bits[node] | bend_half(*joining, true);
+					} else {
+						const int heading = is_row_edge(e_out) ? (east[(end_level(graph.edges[e_out].from) - 1) / 2] ? 1 : 3) : chain[e_out][0].hout;
+						node_bits[node] = node_bits[node] | TrackBits{TrackdirToTrack(JUNCTION_AXIS_TRACKDIR[heading])};
+						if (std::ranges::find(node_straight[node], heading) == node_straight[node].end()) node_straight[node].push_back(heading);
+					}
+				}
+			}
+			/* A node's tile: the columns where all its tracks fit (and the axis pieces on both sides of a route that goes straight through), and of those where the route meets them at one height. */
+			auto node_checks = [&]() {
+				for (uint32_t node = 0; node < graph.nodes.size(); node++) {
+					const int y = vy[node_pt[node]] + offset.y;
+					std::vector<int> fits_ok, joins_ok;
+					std::string fit_tiles, join_tiles;
+					for (int c = std::max(0, least[node_pt[node]]); c <= std::min(high, most[node_pt[node]]); c++) {
+						const int x = c + offset.x;
+						bool fits = facts->Fits(x, y, node_bits[node]);
+						bool joins = true;
+						for (int heading : node_straight[node]) {
+							const DiagDirection exit = TrackdirToExitdir(JUNCTION_AXIS_TRACKDIR[heading]);
+							const TrackBits lone{TrackdirToTrack(JUNCTION_AXIS_TRACKDIR[heading])};
+							/* The neighbours beyond the snapshot's columns carry no facts. */
+							const bool before_inside = x - VX[heading] >= facts->MinX() && x - VX[heading] <= facts->MaxX();
+							const bool after_inside = x + VX[heading] >= facts->MinX() && x + VX[heading] <= facts->MaxX();
+							const int before = before_inside ? facts->EdgeZ(x - VX[heading], y - VY[heading], lone, exit) : 0;
+							const int after = after_inside ? facts->EdgeZ(x + VX[heading], y + VY[heading], lone, ReverseDiagDir(exit)) : 0;
+							const int in = facts->EdgeZ(x, y, node_bits[node], ReverseDiagDir(exit));
+							const int out = facts->EdgeZ(x, y, node_bits[node], exit);
+							fits = fits && before != INT_MIN && after != INT_MIN && in != INT_MIN && out != INT_MIN;
+							joins = joins && (!before_inside || before == in) && (!after_inside || out == after);
+						}
+						if (fits) fits_ok.push_back(c);
+						if (fits && joins) joins_ok.push_back(c);
+						if (x >= facts->MinX() && x <= facts->MaxX() && fit_tiles.size() < 40 && !fits) fit_tiles += fmt::format("{}({},{})", fit_tiles.empty() ? "" : " ", x, y);
+						if (x >= facts->MinX() && x <= facts->MaxX() && join_tiles.size() < 40 && fits && !joins) join_tiles += fmt::format("{}({},{})", join_tiles.empty() ? "" : " ", x, y);
+					}
+					const size_t evaluated = static_cast<size_t>(std::max(0, std::min(high, most[node_pt[node]]) + 1 - std::max(0, least[node_pt[node]])));
+					if (fits_ok.size() != evaluated) fact_cons.push_back({node_pt[node], -1, std::move(fits_ok), fact_reason(UINT32_MAX, node, -1, fit_tiles.empty() ? std::string() : "[blocked tile " + fit_tiles + "]")});
+					if (joins_ok.size() != evaluated) fact_cons.push_back({node_pt[node], -1, std::move(joins_ok), fact_reason(UINT32_MAX, node, -1, join_tiles.empty() ? std::string() : "[height join " + join_tiles + "]", "height join")});
+				}
+			};
+			/* A bend of 'halves' half pieces whose first sits at row y of point pt: the columns where each piece fits with its own track, each join inside it meets at one height, and its two joins with the axis pieces just outside it do too (DESIGN-G1 §14.3). */
+			auto bend_heights_now = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t e, int row, uint32_t node_first, uint32_t node_last) {
+				const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, halves, corner)});
+				if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != halves + 2) return;
+				const std::vector<JunctionPiece> &pieces = raster.pieces;
+				/* Per piece: its tile relative to the first half, its track (a piece on a node's tile sits with every other track the routes build there), the edge it leaves by. */
+				const size_t count = pieces.size();
+				std::vector<int> dx(count), dy(count);
+				std::vector<TrackBits> bits(count);
+				std::vector<DiagDirection> exit(count);
+				for (size_t i = 0; i < count; i++) {
+					dx[i] = pieces[i].tile.x - pieces[1].tile.x;
+					dy[i] = y + pieces[i].tile.y - pieces[1].tile.y + offset.y;
+					bits[i] = TrackBits{TrackdirToTrack(pieces[i].trackdir)};
+					exit[i] = TrackdirToExitdir(pieces[i].trackdir);
+				}
+				if (node_first != UINT32_MAX) bits[1] = node_bits[node_first];
+				if (node_last != UINT32_MAX) bits[halves] = node_bits[node_last];
+				/* Two domains: where the tracks cannot be built (a blocked tile, a slope without a foundation) and, of the rest, where the pieces do not meet at one height. */
+				std::vector<int> fits_ok, joins_ok;
+				std::string fit_tiles, join_tiles;
+				for (int c = std::max(0, least[pt]); c <= std::min(high, most[pt]); c++) {
+					size_t bad_fit = count, bad_join = count;
+					for (size_t i = 0; bad_fit == count && i < count; i++) {
+						const int x = c + dx[i] + offset.x;
+						/* Columns beyond the snapshot carry no facts (as in the blocked-tile facts above): a join with such a tile is not checked. */
+						if (i + 1 < count && (x < facts->MinX() || x > facts->MaxX() || c + dx[i + 1] + offset.x < facts->MinX() || c + dx[i + 1] + offset.x > facts->MaxX())) continue;
+						if (i + 1 == count || (dx[i] == dx[i + 1] && dy[i] == dy[i + 1])) {
+							if (i >= 1 && i <= static_cast<size_t>(halves) && !facts->Fits(x, dy[i], bits[i])) bad_fit = i;
+							continue;
+						}
+						/* The join to the next piece; EdgeZ is INT_MIN where the tracks do not fit. */
+						const int z_out = facts->EdgeZ(x, dy[i], bits[i], exit[i]);
+						const int z_in = facts->EdgeZ(c + dx[i + 1] + offset.x, dy[i + 1], bits[i + 1], ReverseDiagDir(exit[i]));
+						if (z_out == INT_MIN || z_in == INT_MIN) {
+							bad_fit = i;
+						} else if (z_out != z_in && bad_join == count) {
+							bad_join = i;
+						}
+					}
+					const auto note = [&](std::string &text, size_t bad) {
+						if (c + dx[bad] + offset.x >= facts->MinX() && c + dx[bad] + offset.x <= facts->MaxX() && text.size() < 40) text += fmt::format("{}({},{})", text.empty() ? "" : " ", c + dx[bad] + offset.x, dy[bad]);
+					};
+					if (bad_fit == count) fits_ok.push_back(c); else note(fit_tiles, bad_fit);
+					if (bad_join == count) joins_ok.push_back(c); else if (bad_fit == count) note(join_tiles, bad_join);
+				}
+				/* A domain that keeps every column is no fact. */
+				const size_t evaluated = static_cast<size_t>(std::max(0, std::min(high, most[pt]) + 1 - std::max(0, least[pt])));
+				if (fits_ok.size() != evaluated) fact_cons.push_back({pt, -1, std::move(fits_ok), fact_reason(e, UINT32_MAX, row, fit_tiles.empty() ? std::string() : "[blocked tile " + fit_tiles + "]")});
+				if (joins_ok.size() != evaluated) fact_cons.push_back({pt, -1, std::move(joins_ok), fact_reason(e, UINT32_MAX, row, "[height join " + join_tiles + "]", "height join")});
+			};
+
+			auto bend_heights = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t e, int row, uint32_t node_first = UINT32_MAX, uint32_t node_last = UINT32_MAX) {
+				pending.push_back([&bend_heights_now, pt, y, heading, hand, halves, corner, e, row, node_first, node_last] { bend_heights_now(pt, y, heading, hand, halves, corner, e, row, node_first, node_last); });
 			};
 
 			/* The chains of the edges that are not rows. */
@@ -1742,6 +1924,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 						group(el.first, 0, vy[el.first], JunctionFactKind::Straight, axis, e, UINT32_MAX, -1);
 						group(el.last, 0, vy[el.last], JunctionFactKind::Straight, axis, e, UINT32_MAX, -1);
 					} else {
+						bend_heights(el.first, vy[el.first], el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, -1, node_of_pt[el.first], node_of_pt[el.last]);
 						for (size_t j = 0; j < el.offs.size(); j++) {
 							const TileIndexDiffC &o = el.offs[j];
 							const bool at_first = j == 0 && node_of_pt[el.first] != UINT32_MAX;
@@ -1755,6 +1938,14 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 					if (VX[el.hout] == 0) {
 						const int d = VY[el.hout];
 						for (int y = vy[el.last] + d; d > 0 ? y < vy[next.first] : y > vy[next.first]; y += d) group(el.last, 0, y, JunctionFactKind::Straight, Axis::Y, e, UINT32_MAX, -1);
+						/* The run's tiles, and a port tile at either end, which is an axis piece like them. */
+						int y_a = vy[el.last] + d;
+						int y_b = vy[next.first] - d;
+						if (d > 0 ? y_a <= y_b : y_a >= y_b) {
+							if (el.k == Elem::K::Tile && node_of_pt[el.last] == UINT32_MAX) y_a = vy[el.last];
+							if (next.k == Elem::K::Tile && node_of_pt[next.first] == UINT32_MAX) y_b = vy[next.first];
+							column_run(el.last, y_a, y_b, e);
+						}
 					} else {
 						row_run(el.last, next.first, vy[el.last], VX[el.hout], e, -1);
 					}
@@ -1780,6 +1971,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				if (m_in != 0) {
 					row_run(port_pt[in.from.index], rp.fif, y_in, sgn, in_edge[r], r);
 					const int hand = ((y_exit > y_in) == (heading == 1)) ? 1 : -1;
+					bend_heights(rp.fif, y_in, heading, hand, 2 * m_in, false, in_edge[r], r);
 					for (const TileIndexDiffC &o : bend_tiles(heading, hand, 2 * m_in, false)) group(rp.fif, o.x, y_in + o.y, JunctionFactKind::Half, Axis::X, in_edge[r], UINT32_MAX, r);
 				}
 				row_run(rp.fil, nex, y_exit, sgn, in_edge[r], r);
@@ -1806,6 +1998,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 					for (int copy = 0; copy < 2; copy++) {
 						for (const Step &step : copy == 0 ? programs.edges[lane_edge] : programs.copies[lane_edge]) {
 							if (step.kind != StepKind::SBend) continue;
+							bend_heights(copy == 0 ? rp.sb0_first : rp.lane_split, y_exit, heading, step.hand, 2 * std::abs(y_lane - y_exit), false, lane_edge, r);
 							for (const TileIndexDiffC &o : bend_tiles(heading, step.hand, 2 * std::abs(y_lane - y_exit), false)) group(copy == 0 ? rp.sb0_first : rp.lane_split, o.x, y_exit + o.y, JunctionFactKind::Half, Axis::X, lane_edge, UINT32_MAX, r);
 						}
 					}
@@ -1813,10 +2006,34 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				row_run(njm, rp.fof, y_lane, sgn, out_edge[r], r);
 				if (m_out != 0) {
 					const int hand = ((y_out > y_lane) == (heading == 1)) ? 1 : -1;
+					bend_heights(rp.fof, y_lane, heading, hand, 2 * m_out, false, out_edge[r], r);
 					for (const TileIndexDiffC &o : bend_tiles(heading, hand, 2 * m_out, false)) group(rp.fof, o.x, y_lane + o.y, JunctionFactKind::Half, Axis::X, out_edge[r], UINT32_MAX, r);
 					row_run(rp.fol, port_pt[out.to.index], y_out, sgn, out_edge[r], r);
 				}
 			}
+
+			/* The columns each point can take: the least and the greatest solution of the relations (a longest path; x_v - x_u >= k) within the domains the facts above gave. */
+			for (const FactCons &fc : fact_cons) {
+				if (fc.u >= 0) continue;
+				least[fc.v] = std::max(least[fc.v], fc.columns.empty() ? INT_MAX / 2 : fc.columns.front());
+				most[fc.v] = std::min(most[fc.v], fc.columns.empty() ? -1 : fc.columns.back());
+			}
+			for (int round = 0; round <= pt_count; round++) {
+				bool changed = false;
+				for (const Cons &cn : cons) {
+					if (least[cn.u] + cn.k > least[cn.v]) {
+						least[cn.v] = least[cn.u] + cn.k;
+						changed = true;
+					}
+					if (most[cn.v] - cn.k < most[cn.u]) {
+						most[cn.u] = most[cn.v] - cn.k;
+						changed = true;
+					}
+				}
+				if (!changed) break;
+			}
+			node_checks();
+			for (const std::function<void()> &job : pending) job();
 		}
 
 		why("box bound");

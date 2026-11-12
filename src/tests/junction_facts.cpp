@@ -291,3 +291,16 @@ TEST_CASE("Straight agrees with EdgeZ for a lone straight", "[junction][facts]")
 		}
 	}
 }
+
+TEST_CASE("facts: Joins", "[junction][facts]")
+{
+	/* A row of flat tiles with a step of one level between tiles 2 and 3: they are straight-ok but do not meet. */
+	const JunctionFacts facts(MakeRow({MakeTile(1, 1), MakeTile(1, 1), MakeTile(1, 1), MakeTile(2, 2), MakeTile(2, 2)}));
+	int entry, exit;
+	for (int x = 0; x < 5; x++) CHECK(facts.Straight(x, 0, Axis::X, entry, exit));
+	CHECK(facts.Joins(Axis::X, 0, 0));
+	CHECK(facts.Joins(Axis::X, 0, 1));
+	CHECK_FALSE(facts.Joins(Axis::X, 0, 2));
+	CHECK(facts.Joins(Axis::X, 0, 3));
+	CHECK_FALSE(facts.Joins(Axis::X, 0, 4)); // The last tile has no neighbour.
+}

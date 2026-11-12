@@ -33,6 +33,7 @@ public:
 	int EdgeZ(int x, int y, TrackBits bits, DiagDirection edge) const; ///< The pixel z of the tile's track surface at the midpoint of the given edge with these tracks built: z_min * TILE_HEIGHT + ApplyPixelFoundationToSlope(GetRailFoundation(slope, bits), s) + GetPartialPixelZ(mx, my, s); INT_MIN when !Fits.
 	/** Whether straight axis pieces cover every tile from a to b (inclusive, either order) on row y (Axis::X) or column x (Axis::Y) and connect at matching heights. O(1). */
 	bool StraightRun(Axis axis, int line, int a, int b) const;
+	bool Joins(Axis axis, int line, int pos) const; ///< Whether straight pieces at pos and pos + 1 on the line meet at the same height (one straight run).
 	/** The first position >= from on the line where the fact fails (Straight for kind Straight on that axis, Switch, Half), or INT_MAX if none. O(1). */
 	int NextBad(JunctionFactKind kind, Axis axis, int line, int from) const;
 	/** The last position <= from where it fails, or INT_MIN. O(1). */
