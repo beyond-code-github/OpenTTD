@@ -34,3 +34,6 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 
 ## Report
 The standard report, plus test 1's house, side used, box before/after, Release time of ApplyJunctionShifts + placement. When you have reported, stop.
+
+## Note (orchestrator, from R6's report)
+The result-spans loop for doubled legs looks up an S-bend's chain element with an unchecked find_if; a Shift S-bend with no chain element would be undefined behaviour, and on an undoubled leg with tokens it leaves an empty span. Building the Shift S-bends as chain elements (this step) must cover both loops; add a check that every SBend token has its chain element (a placement failure naming the token otherwise).
