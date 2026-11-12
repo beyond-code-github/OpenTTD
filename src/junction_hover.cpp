@@ -46,5 +46,6 @@ JunctionHoverPlan PlanJunctionHover(const JunctionGraphSeed &seed, const Junctio
 	plan.layout = std::move(layout);
 	plan.terraform = placement.terraform;
 	plan.height_cost = placement.height_cost;
+	plan.track_levels = placement.track_levels;
 	return plan;
 }

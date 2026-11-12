@@ -12,6 +12,7 @@
 #define JUNCTION_GUI_H
 
 #include "junction_layout.h"
+#include "slope_type.h"
 #include "bridge_type.h"
 #include "rail_type.h"
 #include "direction_type.h"
@@ -41,11 +42,14 @@ struct JunctionGhostTile {
 	std::optional<JunctionGhostBridgeSpan> span;
 	bool bad = false; ///< Draw in red: the estimate found this tile unbuildable.
 	bool terraform = false; ///< Draw in blue: the projection plan changes the ground of this tile.
+	bool leveled = false; ///< The tile has a solved level: its sprites are drawn on the terraformed ground below, not the tile's own.
+	Slope slope = SLOPE_FLAT; ///< The terraformed ground's slope (when leveled).
+	int z = 0; ///< The terraformed ground's lowest corner, in pixels (when leveled).
 };
 
 /** Client-side store of the junction placement ghost. */
 namespace JunctionGhost {
-	void Set(const JunctionLayout &layout, TileIndex origin, int height, RailType railtype, const std::vector<std::optional<BridgeType>> &bridge_types, const JunctionEstimate &estimate, std::span<const TileIndex> terraform_tiles = {});
+	void Set(const JunctionLayout &layout, TileIndex origin, int height, RailType railtype, const std::vector<std::optional<BridgeType>> &bridge_types, const JunctionEstimate &estimate, std::span<const TileIndex> terraform_tiles = {}, std::span<const JunctionTerraformStep> steps = {}, std::span<const std::pair<TileIndexDiffC, int8_t>> levels = {});
 	void Clear();
 	const JunctionGhostTile *Get(TileIndex tile);
 	RailType GetRailType();
@@ -54,7 +58,7 @@ namespace JunctionGhost {
 }
 
 struct TileInfo;
-void DrawJunctionGhost(const TileInfo *ti);
+void DrawJunctionGhost(TileInfo *ti);
 void DrawJunctionGhostOutline(const TileInfo *ti);
 
 struct Window;

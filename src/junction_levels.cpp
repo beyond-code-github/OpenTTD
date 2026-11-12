@@ -51,6 +51,7 @@ struct Choice {
 	std::array<int, 4> corners{}; ///< W, S, E, N heights the tile demands: its target, or its current ones when the ground fits.
 	bool moves = false; ///< Some corner differs from the ground.
 	bool foundation = false; ///< Leveled by a foundation on a slope.
+	int level = 0; ///< The tile's level: its entry level in the direction of travel.
 };
 
 struct Context {
@@ -84,6 +85,7 @@ std::optional<Choice> Evaluate(const Context &c, const Visit &v, int kind, int l
 	}
 	const std::array<int, 4> current = JunctionTileCorners(*tile);
 	Choice choice;
+	choice.level = level;
 	if (current == target) {
 		choice.cost = tile->clear_cost;
 		choice.corners = current;
@@ -134,6 +136,7 @@ struct LevelTile {
  * @param route_visits The tiles of every route in travel order.
  * @param heads The bridge head tiles.
  * @param fixed_tiles The head, node and port tiles.
+ * @param ties (prio tile, main-line tile beside it) pairs: one level; the prio tiles are in route_visits as one-tile routes.
  * @param layout The render.
  * @param offset The snapshot tile of the placement's (0, 0).
  * @param ramp_levels JunctionRampLevels(spec).
@@ -141,7 +144,7 @@ struct LevelTile {
  * @param[out] chosen The choice of every track tile.
  * @return The empty string on success, else the reason.
  */
-std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visit>> &route_visits, const std::set<Tile> &heads, const std::set<Tile> &fixed_tiles, const JunctionLayout &layout, TileIndexDiffC offset, int ramp_levels, int train_length, std::map<Tile, Chosen> &chosen)
+std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visit>> &route_visits, const std::set<Tile> &heads, const std::set<Tile> &fixed_tiles, const std::vector<std::pair<Tile, Tile>> &ties, const JunctionLayout &layout, TileIndexDiffC offset, int ramp_levels, int train_length, std::map<Tile, Chosen> &chosen)
 {
 	std::map<Tile, LevelTile> tiles;
 	std::map<Tile, std::set<DiagDirection>> directions;
@@ -224,6 +227,10 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				diff(var[a], var[b], -ramp_levels, fmt::format("ramp rule: {} to {} climbs at most {}", name(a), name(b), ramp_levels));
 			}
 		}
+	}
+	for (const auto &[prio, beside] : ties) {
+		if (!var.contains(beside)) return fmt::format("the prio tile {} has no main-line tile {} beside it", name(prio), name(beside));
+		equal(var[prio], var[beside], "prio tile " + name(prio) + " is at the level of " + name(beside));
 	}
 	for (auto &[tile, lt] : tiles) {
 		std::ranges::sort(lt.preds);
@@ -423,7 +430,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 
 } // namespace
 
-bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const JunctionTrackPlacement &placement, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, JunctionTerraform &plan, Money &cost, std::string *why)
+bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const JunctionTrackPlacement &placement, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &prio_beside, JunctionTerraform &plan, Money &cost, std::vector<std::pair<TileIndexDiffC, int8_t>> &levels, std::string *why)
 {
 	const Context ctx{terrain, facts};
 	auto fail = [&](const std::string &reason) {
@@ -477,8 +484,25 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 		route_visits.push_back(std::move(visits));
 	}
 
+	/* The prio elements: each tile one flat visit of its own, tied to the main-line tile beside it. */
+	std::vector<std::pair<Tile, Tile>> ties;
+	std::set<Tile> routed;
+	for (const std::vector<Visit> &visits : route_visits) {
+		for (const Visit &v : visits) routed.insert(v.tile);
+	}
+	for (const auto &[prio, beside] : prio_beside) {
+		const Tile tile = world(prio);
+		ties.emplace_back(tile, world(beside));
+		if (routed.contains(tile)) continue;
+		routed.insert(tile);
+		Visit v;
+		v.tile = tile;
+		v.bits = tile_bits.at(tile);
+		route_visits.push_back({v});
+	}
+
 	std::map<Tile, Chosen> chosen;
-	const std::string levels_why = SolveTileLevels(ctx, route_visits, heads, fixed_tiles, layout, offset, ramp_levels, train_length, chosen);
+	const std::string levels_why = SolveTileLevels(ctx, route_visits, heads, fixed_tiles, ties, layout, offset, ramp_levels, train_length, chosen);
 	if (!levels_why.empty()) return fail(levels_why);
 
 	/* The plan: every corner a tile demands, merged over the tiles; two tiles that demand different heights of one corner conflict. A tile on a foundation takes any corner height from its ground up to its level. */
@@ -527,5 +551,7 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 	}
 	plan = std::move(result);
 	cost = total;
+	levels.clear();
+	for (const auto &[tile, item] : chosen) levels.emplace_back(TileIndexDiffC{static_cast<int16_t>(tile.first - offset.x), static_cast<int16_t>(tile.second - offset.y)}, static_cast<int8_t>(item.choice.level));
 	return true;
 }

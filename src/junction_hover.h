@@ -23,6 +23,7 @@ struct JunctionHoverPlan {
 	std::optional<JunctionLayout> layout; ///< The signalled layout in the canonical frame, nullopt when no placement was found.
 	JunctionTerraform terraform; ///< The terraform plan the layout needs.
 	Money height_cost = 0; ///< The placement's height cost (terraform, foundations and clearing).
+	std::vector<std::pair<TileIndexDiffC, int8_t>> track_levels; ///< The level of every track tile of layout (the layout's frame, as the placement's).
 	std::string why; ///< The reason when there is no layout.
 };
 

@@ -15,6 +15,7 @@
 #include "junction_game.h"
 #include "junction_generator.h"
 #include "junction_hover.h"
+#include "junction_terraform.h"
 #include "junction_topology.h"
 #include "junction_rules.h"
 #include "querystring_gui.h"
@@ -46,8 +47,10 @@
 #include "table/strings.h"
 #include "thread.h"
 
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <map>
 #include <memory>
 #include <thread>
 #include <unordered_map>
@@ -90,8 +93,10 @@ static void MarkJunctionGhostDirty()
  * @param bridge_types Chosen bridge type per layout bridge, in order; std::nullopt where none qualifies.
  * @param estimate Estimate of the junction; its bad tiles are drawn red.
  * @param terraform_tiles Tiles whose ground the projection plan changes; outlined blue.
+ * @param steps The terraform steps of the projection plan (map coordinates); with levels, the ground of each level tile is the current corner heights moved by them.
+ * @param levels The level of every track tile as an offset from origin (the ghost's frame); a tile in it is drawn at its terraformed ground, a bridge deck at its head level + 1.
  */
-void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int height, RailType railtype, const std::vector<std::optional<BridgeType>> &bridge_types, const JunctionEstimate &estimate, std::span<const TileIndex> terraform_tiles)
+void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int height, RailType railtype, const std::vector<std::optional<BridgeType>> &bridge_types, const JunctionEstimate &estimate, std::span<const TileIndex> terraform_tiles, std::span<const JunctionTerraformStep> steps, std::span<const std::pair<TileIndexDiffC, int8_t>> levels)
 {
 	JunctionGhost::Clear();
 	_junction_ghost_railtype = railtype;
@@ -123,6 +128,32 @@ void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int heig
 		_junction_ghost_tiles[tile].signals.push_back({tile, signal.facing, signal.type, signal.variant});
 	}
 
+	/* The terraformed ground of every level tile: its corners' current heights moved by the steps (each moves a tile's north corner). */
+	std::map<std::pair<int, int>, int> moved;
+	for (const JunctionTerraformStep &step : steps) moved[{static_cast<int>(TileX(step.tile)), static_cast<int>(TileY(step.tile))}] += step.raise ? 1 : -1;
+	std::unordered_map<TileIndex, int> level_of;
+	for (const auto &[offset, level] : levels) {
+		TileIndex tile = AddTileIndexDiffCWrap(origin, offset);
+		if (tile == INVALID_TILE) continue;
+		level_of[tile] = level;
+		const int x = static_cast<int>(TileX(tile));
+		const int y = static_cast<int>(TileY(tile));
+		std::array<int, 4> corners; // W, S, E, N.
+		static constexpr std::pair<int, int> CORNER_OFFSET[4] = {{1, 0}, {1, 1}, {0, 1}, {0, 0}};
+		for (int i = 0; i < 4; i++) {
+			const int cx = x + CORNER_OFFSET[i].first;
+			const int cy = y + CORNER_OFFSET[i].second;
+			const auto found = moved.find({cx, cy});
+			corners[i] = static_cast<int>(TileHeightOutsideMap(cx, cy)) + (found == moved.end() ? 0 : found->second);
+		}
+		JunctionTerrainTile ground;
+		SetJunctionTileCorners(ground, corners);
+		JunctionGhostTile &ghost = _junction_ghost_tiles[tile];
+		ghost.leveled = true;
+		ghost.slope = ground.slope;
+		ghost.z = ground.z_min * static_cast<int>(TILE_HEIGHT);
+	}
+
 	for (size_t i = 0; i < layout.bridges.size(); i++) {
 		TileIndex start = AddTileIndexDiffCWrap(origin, layout.bridges[i].start);
 		TileIndex end = AddTileIndexDiffCWrap(origin, layout.bridges[i].end);
@@ -141,9 +172,12 @@ void JunctionGhost::Set(const JunctionLayout &layout, TileIndex origin, int heig
 
 		/* Tiles strictly between the heads. */
 		uint len = (axis == Axis::Y ? Delta(TileY(start), TileY(end)) : Delta(TileX(start), TileX(end))) - 1;
+		/* The deck is one level above the head's level, else above the junction's ground height. */
+		const auto head_level = level_of.find(start);
+		const int deck_level = (head_level != level_of.end() ? head_level->second : height) + 1;
 		for (uint d = 1; d <= len; d++) {
 			TileIndex tile = axis == Axis::Y ? TileXY(TileX(start), TileY(start) + d) : TileXY(TileX(start) + d, TileY(start));
-			_junction_ghost_tiles[tile].span = JunctionGhostBridgeSpan{*type, axis, static_cast<int>((height + 1) * TILE_HEIGHT), d, len + 1 - d};
+			_junction_ghost_tiles[tile].span = JunctionGhostBridgeSpan{*type, axis, static_cast<int>(deck_level * TILE_HEIGHT), d, len + 1 - d};
 		}
 	}
 
@@ -212,18 +246,25 @@ RailType JunctionGhost::GetRailType()
 /**
  * Draw the junction ghost's sprites on one tile, if it has any.
  * Called before the tile selection, so the selection outline is drawn over the ghost's ground sprites.
- * The ghost is always drawn opaque in normal colours (D44, D53); sloped tiles get no sprites.
+ * The ghost is always drawn opaque in normal colours (D44, D53). A tile with a solved level is drawn on its terraformed ground (slope and height), with the game's own foundation choice; any other tile only when the real ground is flat.
  * @param ti Tile that is being drawn.
  */
-void DrawJunctionGhost(const TileInfo *ti)
+void DrawJunctionGhost(TileInfo *ti)
 {
 	const JunctionGhostTile *ghost = JunctionGhost::Get(ti->tile);
-	if (ghost == nullptr || ti->tileh != SLOPE_FLAT) return;
+	if (ghost == nullptr || (!ghost->leveled && ti->tileh != SLOPE_FLAT)) return;
 
-	TileInfo copy = *ti;
 	RailType railtype = JunctionGhost::GetRailType();
-	if (ghost->tracks.Any()) DrawRailTrackGhost(&copy, ghost->tracks, railtype);
-	if (ghost->head.has_value()) DrawBridgeHeadGhost(&copy, ghost->head->type, railtype, ghost->head->dir);
+	if (ghost->leveled) {
+		DrawOnCurrentTileAs(ghost->slope, ghost->z, [&](TileInfo *at) {
+			if (ghost->tracks.Any()) DrawRailTrackGhost(at, ghost->tracks, railtype);
+			if (ghost->head.has_value()) DrawBridgeHeadGhost(at, ghost->head->type, railtype, ghost->head->dir);
+		});
+	} else {
+		TileInfo copy = *ti;
+		if (ghost->tracks.Any()) DrawRailTrackGhost(&copy, ghost->tracks, railtype);
+		if (ghost->head.has_value()) DrawBridgeHeadGhost(&copy, ghost->head->type, railtype, ghost->head->dir);
+	}
 	if (ghost->span.has_value()) DrawBridgeMiddleGhost(ti, ghost->span->type, railtype, ghost->span->axis, ghost->span->bridge_z, ghost->span->piece_north, ghost->span->piece_south);
 	for (const JunctionSignalStep &signal : ghost->signals) {
 		DrawRailSignalGhost(ti->tile, railtype, signal.facing, signal.type, signal.variant);
@@ -307,6 +348,7 @@ struct JunctionProjectionResult {
 	std::optional<JunctionLayout> layout; ///< The signalled layout, nullopt when no plan was found.
 	std::vector<JunctionTerraformStep> steps; ///< The terraform steps, legal in order.
 	Money height_cost = 0; ///< The plan's height cost.
+	std::vector<std::pair<TileIndexDiffC, int8_t>> track_levels; ///< The level of every track tile of layout (canonical frame).
 	std::string why; ///< The reason when there is no layout.
 	TileIndexDiffC hub{}; ///< The layout position of the hovered tile.
 };
@@ -673,7 +715,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			return;
 		}
 		const TileIndex origin = TileXY(ox, oy);
-		this->ShowPlaced(std::move(layout), origin, result.prio_tiles, std::max(std::abs(near_result.offset.x), std::abs(near_result.offset.y)), std::nullopt, {});
+		this->ShowPlaced(std::move(layout), origin, result.prio_tiles, std::max(std::abs(near_result.offset.x), std::abs(near_result.offset.y)), std::nullopt, {}, {});
 	}
 
 	/**
@@ -696,7 +738,9 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			this->ShowNoPlacement(STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP);
 			return;
 		}
-		this->ShowPlaced(ApplyJunctionOrientation(*projection.layout, _junction_rotation, mirrored), TileXY(ox, oy), this->EffectivePrio(), 0, projection.height_cost, projection.steps);
+		std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
+		for (const auto &[tile_offset, level] : projection.track_levels) levels.emplace_back(OrientJunctionOffset(tile_offset, projection.layout->size, _junction_rotation, mirrored), level);
+		this->ShowPlaced(ApplyJunctionOrientation(*projection.layout, _junction_rotation, mirrored), TileXY(ox, oy), this->EffectivePrio(), 0, projection.height_cost, projection.steps, std::move(levels));
 	}
 
 	/**
@@ -707,8 +751,9 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	 * @param distance Chebyshev distance in tiles from the hovered tile to the layout's anchor.
 	 * @param height_cost The height cost of the projection plan; nullopt on the earlier path.
 	 * @param steps The terraform steps of the projection plan; empty on the earlier path.
+	 * @param levels The track levels of the projection plan, as offsets from origin; empty on the earlier path.
 	 */
-	void ShowPlaced(JunctionLayout &&layout, TileIndex origin, uint8_t prio_tiles, int distance, std::optional<Money> height_cost, std::vector<JunctionTerraformStep> steps)
+	void ShowPlaced(JunctionLayout &&layout, TileIndex origin, uint8_t prio_tiles, int distance, std::optional<Money> height_cost, std::vector<JunctionTerraformStep> steps, std::vector<std::pair<TileIndexDiffC, int8_t>> levels)
 	{
 		JunctionEstimate estimate;
 		std::vector<std::optional<BridgeType>> bridge_types;
@@ -731,7 +776,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		std::ranges::sort(terraform_tiles);
 		terraform_tiles.erase(std::ranges::unique(terraform_tiles).begin(), terraform_tiles.end());
 
-		JunctionGhost::Set(layout, origin, estimate.height, this->railtype, bridge_types, estimate, terraform_tiles);
+		JunctionGhost::Set(layout, origin, estimate.height, this->railtype, bridge_types, estimate, terraform_tiles, steps, levels);
 		_thd.make_square_red = false;
 
 		this->has_shown = true;
@@ -862,6 +907,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			JunctionProjectionResult &result = job->projection_result;
 			result.why = plan.why;
 			result.height_cost = plan.height_cost;
+			result.track_levels = plan.track_levels;
 			result.hub = {static_cast<int16_t>(hub_x), 0};
 			if (plan.layout.has_value()) {
 				result.steps = MakeJunctionTerraformSteps(plan.terraform, job->terrain, key.anchor, key.rotation, key.mirrored, hub_x);

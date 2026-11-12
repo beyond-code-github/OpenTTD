@@ -3115,13 +3115,17 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	/* The height solve (DESIGN-G1 §15.3) on the render of the placement. */
 	std::vector<JunctionTrackRoute> routes;
 	std::string text;
-	const JunctionLayout layout = RenderJunctionTrackPlacement(topology, paths, graph, structure, programs, placement, &text, &routes);
+	const JunctionLayout rendered = RenderJunctionTrackPlacement(topology, paths, graph, structure, programs, placement, &text, &routes);
 	auto fail = [&](const std::string &reason) {
 		if (error != nullptr) *error = reason;
 		return JunctionTrackPlacement{};
 	};
-	if (layout.tracks.empty()) return fail("the placement does not render: " + text);
-	if (!SolveJunctionLevels(*terrain, facts, offset, JunctionRampLevels(spec), spec.tl, placement, layout, routes, placement.terraform, placement.height_cost, &text)) return fail(text);
+	if (rendered.tracks.empty()) return fail("the placement does not render: " + text);
+	/* The prio elements the signal pass draws are track tiles too (H3): the solve takes the signalled layout and the tiles beside the main line. */
+	JunctionLayout layout = rendered;
+	std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> prio_beside;
+	SignalJunctionTrackRoutes(layout, routes, topology, paths, graph, programs, spec, nullptr, &prio_beside);
+	if (!SolveJunctionLevels(*terrain, facts, offset, JunctionRampLevels(spec), spec.tl, placement, layout, routes, prio_beside, placement.terraform, placement.height_cost, placement.track_levels, &text)) return fail(text);
 	return placement;
 }
 
@@ -3396,7 +3400,7 @@ std::vector<std::pair<bool, size_t>> JunctionRouteEvents(const JunctionTrackGrap
 	return events;
 }
 
-std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why)
+std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why, std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> *prio_beside)
 {
 	using Reason = JunctionSignalReason;
 	std::vector<JunctionTrackSignal> tokens;
@@ -3523,6 +3527,7 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 			/* 4. Write. */
 			for (int s = 0; s <= n_prio; s++) {
 				if (s % 2 == 0) draw(ml(s), TrackBits{h1});
+				if (prio_beside != nullptr) prio_beside->emplace_back(row(s), ml(s));
 				if (s == 0) {
 					draw(row(s), TrackBits{h2});
 				} else if (s % 2 == 0) {

@@ -260,6 +260,7 @@ struct JunctionTrackPlacement {
 	std::vector<int> columns; ///< The column of every placement point (x_floors refer to these ids).
 	JunctionTerraform terraform; ///< The height solve's plan (D218), empty on flat ground.
 	Money height_cost = 0; ///< Terraform, foundations and clearing of the chosen levels.
+	std::vector<std::pair<TileIndexDiffC, int8_t>> track_levels; ///< The level solve's track level per track tile (placement frame), for the ghost and the build check.
 	std::vector<std::vector<std::pair<int8_t, int>>> curves; ///< Per lane path and copy (paths first, then copies in path order): each curve's hand (+1 right, -1 left) and unit position at the solved columns, from the curve family's walk (for tests).
 };
 
@@ -342,9 +343,10 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 /**
  * Place the signal tokens of a rendered seed (DESIGN-G1 §12.2, §12.3): the anchor signals of every route's splits, merges, bridges and out port, then the whole-train bays before the merges of non-through paths, then drag fill; each drawn into layout.signals once.
  * @param why Receives the first prio element that does not fit (its merge tile), empty when every element was drawn.
+ * @param prio_beside Receives, for every tile a prio element draws beside the main line (its side row, steps 0 to n_prio), that tile and the main-line tile next to it in the same column (H3, the level solve).
  * @return The tokens, in placement order; a signal shared by several routes or rules gives one token per route and rule that resolved to it.
  */
-std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why = nullptr);
+std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why = nullptr, std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> *prio_beside = nullptr);
 /** The graph pipeline's products for one topology and spec (DESIGN-G1 §13): the seed a projection search starts from. */
 struct JunctionGraphSeed {
 	const JunctionTopology *topology;

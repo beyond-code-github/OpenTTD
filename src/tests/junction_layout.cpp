@@ -811,6 +811,76 @@ TEST_CASE("hover job: snapshot, plan and steps on real terrain", "[junction][hov
 	CHECK(checked == 3);
 }
 
+TEST_CASE("the hover plan carries a level for every track tile", "[junction][hoverplan]")
+{
+	namespace fs = std::filesystem;
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(JunctionTTopology(), spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+
+	int checked = 0;
+	for (const fs::path &file : files) {
+		if (checked == 3) break;
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		std::optional<JunctionTerrain> loaded = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(loaded.has_value());
+		JunctionTerrain terrain = std::move(*loaded);
+		const TileIndexDiffC centred = {static_cast<int16_t>((terrain.width - seed.placement.size.x) / 2), static_cast<int16_t>((terrain.height - seed.placement.size.y) / 2)};
+		terrain.origin = {static_cast<int16_t>(-centred.x), static_cast<int16_t>(-centred.y)};
+		const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, terrain, {0, 0});
+		if (!plan.layout.has_value() || plan.terraform.corners.empty()) continue;
+		checked++;
+		INFO(file.filename().string());
+		const JunctionTerrain after = ApplyJunctionTerraform(terrain, plan.terraform);
+
+		/* Every track tile of the layout (bridge heads included) has exactly one level. */
+		std::map<std::pair<int, int>, TrackBits> tiles;
+		for (const JunctionTrack &track : plan.layout->tracks) tiles[{track.offset.x, track.offset.y}] |= track.tracks;
+		for (const JunctionBridge &bridge : plan.layout->bridges) {
+			const TrackBits axis_track{bridge.start.y == bridge.end.y ? Track::X : Track::Y};
+			tiles[{bridge.start.x, bridge.start.y}] |= axis_track;
+			tiles[{bridge.end.x, bridge.end.y}] |= axis_track;
+		}
+		std::map<std::pair<int, int>, int> levels;
+		for (const auto &[offset, level] : plan.track_levels) CHECK(levels.emplace(std::make_pair<int, int>(offset.x, offset.y), level).second);
+		CHECK(levels.size() == plan.track_levels.size());
+		for (const auto &[tile, bits] : tiles) {
+			INFO("tile " << tile.first << ", " << tile.second);
+			const auto found = levels.find(tile);
+			REQUIRE(found != levels.end());
+			const int level = found->second;
+			const JunctionTerrainTile *ground = after.At(tile.first, tile.second);
+			REQUIRE(ground != nullptr);
+			if (ground->z_min == ground->z_max) {
+				CHECK(ground->z_min == level);
+			} else if (ground->z_max == level) {
+				/* A foundation on a slope, or a ramp that ends at the level. */
+				CHECK(ground->z_max - ground->z_min <= 2);
+			} else {
+				/* A ramp that starts at the level: one level up, inclined along the piece. */
+				CHECK(ground->z_min == level);
+				CHECK(ground->z_max == level + 1);
+				CHECK(!ground->steep);
+				const bool along = bits == TrackBits{Track::X} ? (ground->incline == DiagDirection::NE || ground->incline == DiagDirection::SW) : (bits == TrackBits{Track::Y} && (ground->incline == DiagDirection::NW || ground->incline == DiagDirection::SE));
+				CHECK(along);
+			}
+		}
+		for (const auto &[offset, level] : levels) CHECK(tiles.contains(offset));
+	}
+	CHECK(checked == 3);
+}
+
 TEST_CASE("the terraformed estimate adds the height cost", "[junction][hoverplan]")
 {
 	Map::Allocate(64, 64);

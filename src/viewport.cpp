@@ -601,6 +601,37 @@ void DrawGroundSprite(SpriteID image, PaletteID pal, const SubSprite *sub, int e
 }
 
 /**
+ * Draw on the tile being drawn as if its ground had another slope and height, for the junction placement ghost.
+ * The per-tile foundation state starts empty for the callback and is restored afterwards, as are the tile's slope and height, so the real tile's own sprites and its selection are unaffected.
+ * @param tileh The slope to draw with.
+ * @param z The pixel height of the lowest corner to draw with.
+ * @param draw Draws with the adjusted tile info (the callback may change it, e.g. by drawing a foundation).
+ */
+void DrawOnCurrentTileAs(Slope tileh, int z, const std::function<void(TileInfo *)> &draw)
+{
+	const TileInfo saved_ti = _cur_ti;
+	const FoundationPart saved_part = _vd.foundation_part;
+	const auto saved_foundation = _vd.foundation;
+	const auto saved_last_child = _vd.last_foundation_child;
+	const auto saved_offset = _vd.foundation_offset;
+
+	_vd.foundation_part = FoundationPart::None;
+	_vd.foundation[FoundationPart::Normal] = -1;
+	_vd.foundation[FoundationPart::Halftile] = -1;
+	_vd.last_foundation_child[FoundationPart::Normal] = LAST_CHILD_NONE;
+	_vd.last_foundation_child[FoundationPart::Halftile] = LAST_CHILD_NONE;
+	_cur_ti.tileh = tileh;
+	_cur_ti.z = z;
+	draw(&_cur_ti);
+
+	_cur_ti = saved_ti;
+	_vd.foundation_part = saved_part;
+	_vd.foundation = saved_foundation;
+	_vd.last_foundation_child = saved_last_child;
+	_vd.foundation_offset = saved_offset;
+}
+
+/**
  * Get the next foundation part
  * @param foundation_part The current foundation part.
  * @return The next foundation part.

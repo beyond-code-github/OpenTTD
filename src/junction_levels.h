@@ -25,13 +25,15 @@
  * @param ramp_levels JunctionRampLevels(spec).
  * @param train_length Tiles of the train (spec.tl).
  * @param placement The placement (ports and nodes).
- * @param layout The render of placement (tracks and bridges).
+ * @param layout The render of placement with the signal pass's prio elements drawn (tracks and bridges).
  * @param routes The routes of that render.
+ * @param prio_beside The tiles of the prio elements the signal pass draws, each with the main-line tile beside it (layout is the signalled layout): each is flat and at that tile's level.
  * @param[out] plan The terraform plan.
  * @param[out] cost The total cost: the plan's, plus foundations and clearing of the tiles it does not touch.
+ * @param[out] levels The level of every track tile (placement frame; a ramp tile's entry level in the direction of travel).
  * @param[out] why The reason on failure ("terraform conflict ..." when two tiles or a propagation want a corner at different heights).
  * @return Whether the levels were solved.
  */
-bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const JunctionTrackPlacement &placement, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, JunctionTerraform &plan, Money &cost, std::string *why);
+bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const JunctionTrackPlacement &placement, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &prio_beside, JunctionTerraform &plan, Money &cost, std::vector<std::pair<TileIndexDiffC, int8_t>> &levels, std::string *why);
 
 #endif /* JUNCTION_LEVELS_H */

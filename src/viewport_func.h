@@ -11,6 +11,8 @@
 #define VIEWPORT_FUNC_H
 
 #include "gfx_type.h"
+#include "slope_type.h"
+#include <functional>
 #include "sprite.h"
 #include "viewport_type.h"
 #include "window_type.h"
@@ -49,6 +51,8 @@ inline void MaxZoomInOut(ZoomStateChange how, Window *w)
 }
 
 void OffsetGroundSprite(int x, int y);
+struct TileInfo;
+void DrawOnCurrentTileAs(Slope tileh, int z, const std::function<void(TileInfo *)> &draw);
 
 void DrawGroundSprite(SpriteID image, PaletteID pal, const SubSprite *sub = nullptr, int extra_offs_x = 0, int extra_offs_y = 0);
 void DrawGroundSpriteAt(SpriteID image, PaletteID pal, int32_t x, int32_t y, int z, const SubSprite *sub = nullptr, int extra_offs_x = 0, int extra_offs_y = 0);
