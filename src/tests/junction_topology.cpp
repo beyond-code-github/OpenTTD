@@ -1164,3 +1164,17 @@ TEST_CASE("topology: LL_RR prio findings", "[.][diag]")
 	for (const auto &[rule, count] : per_rule) file << fmt::format(" {}:{}", rule, count);
 	file << '\n' << RenderJunctionAscii(layout);
 }
+
+TEST_CASE("topology: the LL_RR seed is clean", "[junction][topology]")
+{
+	std::string error;
+	std::vector<JunctionTrackSignal> tokens;
+	std::vector<JunctionTrackRoute> routes;
+	const JunctionLayout layout = SignalledOf(JunctionLLRRSidelineTopology(), &error, &tokens, &routes);
+	INFO(error);
+	REQUIRE(!layout.tracks.empty());
+	for (const RuleViolation &v : CheckJunctionRules(layout, MakeTestJunctionSpec(), JunctionLLRRSidelineTopology())) {
+		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
+		CHECK(false);
+	}
+}
