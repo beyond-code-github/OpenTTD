@@ -37,3 +37,6 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 
 ## Report
 The standard report, plus k_max for the D138 train at tl 4 and tl 8 (v 196, s 3), and both REALTERRAIN lines. When you have reported, stop.
+
+## Note (orchestrator, from Z2a's report)
+With build_on_slopes, JunctionFacts::StraightRun stays true across any ridge (the game ramps the track along inclines and the heights still join); it fails only without slope building. So today's facts let a straight run climb with no ramp rule at all: that is what D219 must close (Z2c's level solve). Nothing in this step depends on it beyond knowing it.
