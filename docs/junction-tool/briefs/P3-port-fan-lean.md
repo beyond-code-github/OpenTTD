@@ -44,3 +44,4 @@ The standard report, plus per lean class: its route(s), direction, flat value an
 1. Rule (a) relaxed: every point in C is a piece of the bend, or a RUN piece (token == RUN) of the bend's own edge and copy (the axis piece rigidly joined to a half-piece bend). Node pieces, port pieces and other edges' pieces still bar a lean.
 2. A class whose lean-side bound is still the domain limit after the other classes are snapped does not lean (nearest-flat snap).
 3. If no value from the extreme back to flat is accepted, the normal nearest-flat snap applies; only its failure is a solve failure.
+4. (Amendment 2, after the second stop: a fan spans several X classes tied by the diagonal's fixed extent.) Every class on the edge's travel axis that holds a piece of the port bend leans, in the same direction; rule (a) per class, all-or-nothing per bend. A class shared by the bend's end and the next run's start is in the bend.
