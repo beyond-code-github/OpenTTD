@@ -1155,7 +1155,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (widget == WID_BJ_TRAIN_IMAGE) {
 			/* The remembered train, if it is still there; a longer one is clipped at the widget's end. */
 			const Train *t = _junction_picked_train.has_value() && this->picked_train.has_value() ? Train::GetIfValid(*_junction_picked_train) : nullptr;
-			if (t != nullptr) DrawTrainImage(t, r.Shrink(WidgetDimensions::scaled.framerect), VehicleID::Invalid(), EngineImageType::OnMap, 0);
+			if (t != nullptr) DrawTrainImage(t, r.Shrink(WidgetDimensions::scaled.framerect), VehicleID::Invalid(), EngineImageType::InDepot, 0);
 			return;
 		}
 		if (widget != WID_BJ_PRIO_SLIDER) return;
@@ -1167,8 +1167,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
 	{
 		if (widget == WID_BJ_TRAIN_IMAGE) {
-			size.height = std::max(size.height, GetVehicleImageCellSize(VehicleType::Train, EngineImageType::OnMap).height + WidgetDimensions::scaled.framerect.Vertical());
-			size.width = std::max(size.width, (GetVehicleImageCellSize(VehicleType::Train, EngineImageType::OnMap).extend_left + GetVehicleImageCellSize(VehicleType::Train, EngineImageType::OnMap).extend_right) * 2);
+			size.height = std::max(size.height, GetVehicleImageCellSize(VehicleType::Train, EngineImageType::InDepot).height + WidgetDimensions::scaled.framerect.Vertical());
+			size.width = std::max(size.width, (GetVehicleImageCellSize(VehicleType::Train, EngineImageType::InDepot).extend_left + GetVehicleImageCellSize(VehicleType::Train, EngineImageType::InDepot).extend_right) * 2);
 		}
 		if (widget == WID_BJ_TRAIN) {
 			/* Room for the current text, or for a 12 character name and 2 digit numbers when that is wider. */
