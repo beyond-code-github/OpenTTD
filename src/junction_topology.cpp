@@ -678,32 +678,32 @@ JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topol
 		for (uint32_t e = 0; e < edge_count; e++) {
 			if (is_row_edge(e) && end_level(graph.edges[e].from) == level && !order.edge_crossings[e].empty()) crossed = true;
 		}
-		const bool has_joiner = joiners == 1;
-		/* Per side: [north, south]. */
-		bool prio[2] = {false, false};
-		bool approach[2] = {false, false};
-		bool copy[2] = {false, false};
-		if (has_joiner) {
-			approach[approach_south ? 1 : 0] = true;
-			prio[approach_south ? 0 : 1] = true;
+		/*
+		 * The row's per-edge needs, each landing on a side [north, south]:
+		 * - a joiner edge into the row needs an Approach item on the joiner's side, and (D75/D87) the prio track opposite it for the joiner merge;
+		 * - a crossing that doubles the row's leg needs a Copy item (D80): opposite the joiner's side when there is a joiner, else north;
+		 * - the row's own lane is the Lane item between the sides.
+		 * Needs landing on the same side share one track: prio and copy become PrioAndCopy (D108 keeps them apart along the lane).
+		 */
+		bool need_approach[2] = {false, false};
+		bool need_prio[2] = {false, false};
+		bool need_copy[2] = {false, false};
+		if (joiners == 1) {
+			need_approach[approach_south ? 1 : 0] = true;
+			need_prio[approach_south ? 0 : 1] = true;
 		}
-		if (crossed) {
-			if (has_joiner) {
-				copy[approach_south ? 0 : 1] = true;
-			} else {
-				copy[0] = true;
-			}
-		}
+		if (crossed) need_copy[joiners == 1 ? (approach_south ? 0 : 1) : 0] = true;
 		auto side_item = [&](int side, std::vector<JunctionTrackStackItem> &out) {
 			using Kind = JunctionTrackStackItem::Kind;
-			if (prio[side] && copy[side]) {
-				out.push_back({static_cast<uint8_t>(r), Kind::PrioAndCopy});
-			} else if (prio[side]) {
-				out.push_back({static_cast<uint8_t>(r), Kind::Prio});
-			} else if (copy[side]) {
-				out.push_back({static_cast<uint8_t>(r), Kind::Copy});
-			} else if (approach[side]) {
-				out.push_back({static_cast<uint8_t>(r), Kind::Approach});
+			const uint8_t row = static_cast<uint8_t>(r);
+			if (need_prio[side] && need_copy[side]) {
+				out.push_back({row, Kind::PrioAndCopy});
+			} else if (need_prio[side]) {
+				out.push_back({row, Kind::Prio});
+			} else if (need_copy[side]) {
+				out.push_back({row, Kind::Copy});
+			} else if (need_approach[side]) {
+				out.push_back({row, Kind::Approach});
 			}
 		};
 		side_item(0, structure.stack);
