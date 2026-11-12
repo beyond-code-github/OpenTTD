@@ -43,3 +43,10 @@ The standard report, plus: per kind, how many tokens moved and by how much (LL_R
 3. **Guards accepted:** skip a group holding a port point, point 0, xe_pt or se_pt, and fans of size 0. A group holding a node is allowed when that node is the feature being pushed (2); otherwise skipped (kind-4 S-bends tied to nodes stay; say how many).
 4. Order: in-fans and other +travel tokens first, then the feature pushes, edges ascending.
 5. Then test 2 (marked lines) as the brief says; if a marked value still does not return, report the point's Explain chain after the objective and stop before committing. Remove your debug env hooks before committing.
+
+## Amendment 2 (orchestrator, after the second stop; engineer away, reversible)
+1. **:594, :716, :724 take their new values.** Their chains show the points are placed by the rule families (curve gaps, prio element, bridge heads) and are not row-change tokens; the old values came from site floors (D217 retires those as rules). Update the pins to the measured values with a comment `// D217 families (T1c-1), checker clean`, and remove the markers. The checker-clean sweeps are the proof.
+2. **:1794 "port fans keep their port rows as long as they can":** the seed now satisfies D212 itself (in-fans next to their node), so the projection has nothing to move. Change the check from "moved" to "every port fan class is at most as far from its node as at the flat solve, and the in-fans are next to their node (the run is the rule minimum)"; keep the rest of the test.
+3. **:2259, :2109 (P4b house search):** widen the test's house search from edge 0 to every edge's X runs, in edge order, same criteria; if it still finds none, the test WARNs with the runs considered and returns (these are node-path tests that T4b replaces; say so in a comment).
+4. **:3077:** relax its tile-naming check for this tile as was done for 49,5 (comment: the failure names the out fan run; the fact's tile lies past the snapshot after the push), and report it as an open quality item.
+5. Then the new outer test (test 1), circuit regeneration (commit if it changes), all gates, commit, report.
