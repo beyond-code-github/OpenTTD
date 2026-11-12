@@ -49,6 +49,7 @@ struct JunctionTerrain {
 	int height = 0;
 	std::vector<JunctionTerrainTile> tiles; ///< Row-major, width * height.
 	Money foundation_cost = 0; ///< Price of a leveled foundation (BuildFoundation).
+	Money terraform_cost = 0; ///< Price of moving one corner one level (PR_TERRAFORM).
 	bool build_on_slopes = true;
 	int max_bridge_height = 12;
 

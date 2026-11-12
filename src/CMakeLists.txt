@@ -279,6 +279,8 @@ add_files(
     junction_terrain.h
     junction_terrain_json.cpp
     junction_terrain_json.h
+    junction_terraform.cpp
+    junction_terraform.h
     junction_rules.cpp
     junction_rules.h
     junction_rules_internal.h

@@ -333,6 +333,7 @@ static void FillJunctionTerrainCell(JunctionTerrainTile &cell, TileIndex tile, u
 static void SetJunctionTerrainSettings(JunctionTerrain &terrain)
 {
 	terrain.foundation_cost = _price[Price::BuildFoundation];
+	terrain.terraform_cost = _price[Price::Terraform];
 	terrain.build_on_slopes = _settings_game.construction.build_on_slopes;
 	terrain.max_bridge_height = _settings_game.construction.max_bridge_height;
 }
