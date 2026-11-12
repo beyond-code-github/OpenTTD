@@ -24,3 +24,6 @@ docs/junction-tool/RECON-seed-floors.md (untracked, ~80 lines): a table per expe
 
 ## Report
 The tables' conclusions, the proposed formulas, `git status --porcelain` (clean) and `git log -1`. When you have reported, stop.
+
+## Addition (orchestrator, after P3b: every kind-4 S-bend is also rigid with neighbouring features in the template, so D215 must hold in the seed for all row changes)
+5. **Every row-change token** (Fan, SBend, incl. doubled legs' SBends and the kind-4 S-bends of P3b's report: edges 12, 14, 15, 16, 17, 18 on LL_RR): for each, its feature per D215 (the node or bridge it serves: kinds 1-4 in briefs/P3b-every-row-change-leans.md), the placement constraint between it and that feature (file:line, the `along`/`eq` and its constant), its seed distance to the feature vs that constraint's minimum (at the minimum, or how many tiles early/late), and whether the least-x solve explains the gap (heading +x vs -x). A table, one row per token.
