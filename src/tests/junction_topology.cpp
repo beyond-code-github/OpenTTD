@@ -13,6 +13,7 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include <algorithm>
+#include <fstream>
 #include <optional>
 #include <set>
 
@@ -888,5 +889,75 @@ TEST_CASE("topology: the render stays inside the box and draws every port", "[ju
 			CHECK(tiles.contains(Of(placement.ports[p.from])));
 			CHECK(tiles.contains(Of(placement.ports[p.to])));
 		}
+	}
+}
+
+TEST_CASE("topology: the checker traces the LL_RR render", "[junction][topology]")
+{
+	std::string error;
+	JunctionTrackPlacement placement;
+	const JunctionTopology &topology = JunctionLLRRSidelineTopology();
+	const JunctionLayout render = RenderOf(topology, 64, &error, &placement);
+	INFO(error);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionCheckContext ctx = MakeJunctionTopologyCheckContext(render, spec, topology, FindJunctionPorts(render, topology));
+	REQUIRE(ctx.ports.size() == 10);
+	for (const JunctionPort &port : ctx.ports) {
+		REQUIRE(port.slot < placement.ports.size());
+		CHECK(Of(port.tile) == Of(placement.ports[port.slot]));
+	}
+
+	const std::vector<RuleViolation> violations = CheckConnectivity(ctx);
+	for (const RuleViolation &v : violations) INFO(fmt::format("rule {} at {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
+	CHECK(violations.empty());
+
+	REQUIRE(!ctx.lanes.empty());
+	for (const JunctionLanePath &lane : ctx.lanes) {
+		const auto count = std::ranges::count_if(ctx.paths, [&](const JunctionPath &p) { return p.from_slot == lane.from && p.to_slot == lane.to; });
+		CHECK(count >= 1);
+		CHECK(count <= 2);
+	}
+}
+
+TEST_CASE("topology: the T render, both ways", "[junction][topology]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionLayout render = RenderOf(JunctionTTopology(), 64, &error);
+	INFO(error);
+	const JunctionTMapResult flat = ConstructJunctionTMap(spec, nullptr, std::nullopt, true);
+	REQUIRE(flat.layout.has_value());
+	for (const JunctionLayout *layout : {&render, &*flat.layout}) {
+		const std::vector<RuleViolation> legacy = CheckJunctionRules(*layout, spec);
+		const std::vector<RuleViolation> generic = CheckJunctionRules(*layout, spec, JunctionTTopology());
+		REQUIRE(legacy.size() == generic.size());
+		for (size_t i = 0; i < legacy.size(); i++) {
+			CHECK(legacy[i].rule == generic[i].rule);
+			CHECK(Of(legacy[i].tile) == Of(generic[i].tile));
+			CHECK(legacy[i].message == generic[i].message);
+		}
+	}
+}
+
+TEST_CASE("topology: the LL_RR render has no level crossing", "[junction][topology]")
+{
+	std::string error;
+	const JunctionTopology &topology = JunctionLLRRSidelineTopology();
+	const JunctionLayout render = RenderOf(topology, 64, &error);
+	INFO(error);
+	const JunctionCheckContext ctx = MakeJunctionTopologyCheckContext(render, MakeTestJunctionSpec(), topology, FindJunctionPorts(render, topology));
+	CHECK(CheckGeometry(ctx).empty());
+	/* The footprint waits for the prio element, DESIGN-G1 §12.4. */
+}
+
+TEST_CASE("topology: LL_RR render findings", "[.][diag]")
+{
+	std::string error;
+	const JunctionTopology &topology = JunctionLLRRSidelineTopology();
+	const JunctionLayout render = RenderOf(topology, 64, &error);
+	std::ofstream file("docs/junction-tool/wip/g1d-llrr-violations.txt");
+	REQUIRE(file.is_open());
+	for (const RuleViolation &v : CheckJunctionRules(render, MakeTestJunctionSpec(), topology)) {
+		file << fmt::format("rule {} tile {},{}: {}\n", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message);
 	}
 }

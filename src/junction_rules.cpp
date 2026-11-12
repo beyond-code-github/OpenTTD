@@ -27,9 +27,6 @@
 /** The most pieces a traced path may have before it is given up on. */
 static constexpr size_t MAX_PATH_PIECES = 4096;
 
-/** One movement through the junction. */
-using Movement = std::pair<JunctionPortRole, JunctionPortRole>;
-
 static bool SameTile(TileIndexDiffC a, TileIndexDiffC b)
 {
 	return a.x == b.x && a.y == b.y;
@@ -114,9 +111,63 @@ static const char *RoleName(JunctionPortRole role)
 	}
 }
 
-static bool IsInRole(JunctionPortRole role)
+/** The T role of a T topology slot: slot 0 EIn, 1 WOut, 2 NIn, 3 SOut, 4 WIn, 5 EOut. */
+static JunctionPortRole TRoleOfSlot(size_t slot)
 {
-	return role == JunctionPortRole::EIn || role == JunctionPortRole::WIn || role == JunctionPortRole::NIn;
+	static const JunctionPortRole roles[] = {JunctionPortRole::EIn, JunctionPortRole::WOut, JunctionPortRole::NIn, JunctionPortRole::SOut, JunctionPortRole::WIn, JunctionPortRole::EOut};
+	return slot < lengthof(roles) ? roles[slot] : JunctionPortRole::EIn;
+}
+
+/** The group and lane of a port slot; the slots are the groups' lanes in group order (JunctionPortSlots), reversed within a group on the E and N sides. */
+static JunctionPortSlot SlotOf(const JunctionTopology &topology, uint16_t slot)
+{
+	for (size_t g = 0; g < topology.groups.size(); g++) {
+		const JunctionLaneGroup &group = topology.groups[g];
+		if (slot < group.lanes) {
+			const bool reversed = group.side == JunctionSide::E || group.side == JunctionSide::N;
+			return {static_cast<uint8_t>(g), static_cast<uint8_t>(reversed ? group.lanes - 1 - slot : slot)};
+		}
+		slot -= group.lanes;
+	}
+	NOT_REACHED();
+}
+
+/** The name of a port slot in messages: the T's role name on the T, else side letter, lane and direction. */
+static std::string PortName(const JunctionCheckContext &ctx, uint16_t slot)
+{
+	if (ctx.topology == &JunctionTTopology()) return RoleName(TRoleOfSlot(slot));
+	const JunctionPortSlot port_slot = SlotOf(*ctx.topology, slot);
+	const JunctionLaneGroup &group = ctx.topology->groups[port_slot.group];
+	const char side = group.side == JunctionSide::W ? 'W' : group.side == JunctionSide::S ? 'S' : group.side == JunctionSide::E ? 'E' : 'N';
+	return fmt::format("{}{} {}", side, port_slot.lane + 1, group.in ? "in" : "out");
+}
+
+/** Whether the lane group of a port slot takes trains in. */
+static bool IsInSlot(const JunctionTopology &topology, uint16_t slot)
+{
+	return topology.groups[SlotOf(topology, slot).group].in;
+}
+
+/** Whether the path is a through movement: both groups of its movement are main line. */
+static bool IsThroughPath(const JunctionCheckContext &ctx, const JunctionPath &path)
+{
+	if (path.movement == UINT16_MAX) return false;
+	const auto &[in, out] = ctx.topology->movements[path.movement];
+	return ctx.topology->groups[in].main && ctx.topology->groups[out].main;
+}
+
+/** Whether the path is an exit: from a main line group to a group that is not main line. */
+static bool IsExitPath(const JunctionCheckContext &ctx, const JunctionPath &path)
+{
+	if (path.movement == UINT16_MAX) return false;
+	const auto &[in, out] = ctx.topology->movements[path.movement];
+	return ctx.topology->groups[in].main && !ctx.topology->groups[out].main;
+}
+
+/** Whether two paths run between the same two slots (the routes of one doubled lane path). */
+static bool SameLanePath(const JunctionPath &a, const JunctionPath &b)
+{
+	return a.from_slot == b.from_slot && a.to_slot == b.to_slot;
 }
 
 /**
@@ -147,35 +198,50 @@ static std::map<int, TrackBits> EdgeTiles(const JunctionLayout &layout, DiagDire
 
 /**
  * Find the ports of a layout in the canonical right-hand frame.
- * An edge that does not have exactly two port tiles, each holding only the expected axis track, gives no ports.
+ * An edge whose tile count differs from its slot count, or with a port tile not holding only the axis track, gives no ports.
+ * A group on the N side gives no ports: the checker has no N edge.
  * @param layout The layout.
- * @return The ports found.
+ * @param topology The topology whose port slots the edges are matched to.
+ * @return The ports found, edge W, E, S, ascending along each edge.
  */
-std::vector<JunctionPort> FindJunctionPorts(const JunctionLayout &layout)
+std::vector<JunctionPort> FindJunctionPorts(const JunctionLayout &layout, const JunctionTopology &topology)
 {
 	std::vector<JunctionPort> ports;
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+	const bool is_t = &topology == &JunctionTTopology();
 
-	auto add_edge = [&](DiagDirection edge, Track axis, JunctionPortRole first, Trackdir first_td, JunctionPortRole second, Trackdir second_td) {
+	auto add_edge = [&](DiagDirection edge, JunctionSide side, Track axis, Trackdir in_td, Trackdir out_td) {
+		std::vector<uint16_t> side_slots;
+		for (size_t i = 0; i < slots.size(); i++) {
+			if (topology.groups[slots[i].group].side == side) side_slots.push_back(static_cast<uint16_t>(i));
+		}
 		const std::map<int, TrackBits> tiles = EdgeTiles(layout, edge);
-		if (tiles.size() != 2) return;
+		if (tiles.size() != side_slots.size()) return;
 		for (const auto &[along, tracks] : tiles) {
 			if (tracks != TrackBits{axis}) return;
 		}
-		auto it = tiles.begin();
+		if (edge == DiagDirection::SW) std::ranges::reverse(side_slots);
 		const bool vertical = edge == DiagDirection::SE; // Along x instead of y.
-		auto tile_at = [&](int along) -> TileIndexDiffC {
-			if (vertical) return {static_cast<int16_t>(along), static_cast<int16_t>(layout.size.y - 1)};
-			return {static_cast<int16_t>(edge == DiagDirection::NE ? 0 : layout.size.x - 1), static_cast<int16_t>(along)};
-		};
-		ports.push_back({first, tile_at(it->first), first_td});
-		++it;
-		ports.push_back({second, tile_at(it->first), second_td});
+		size_t index = 0;
+		for (const auto &[along, tracks] : tiles) {
+			const uint16_t slot = side_slots[index++];
+			const TileIndexDiffC tile = vertical
+				? TileIndexDiffC{static_cast<int16_t>(along), static_cast<int16_t>(layout.size.y - 1)}
+				: TileIndexDiffC{static_cast<int16_t>(edge == DiagDirection::NE ? 0 : layout.size.x - 1), static_cast<int16_t>(along)};
+			const bool in = topology.groups[slots[slot].group].in;
+			ports.push_back({is_t ? TRoleOfSlot(slot) : JunctionPortRole::EIn, tile, in ? in_td : out_td, slot});
+		}
 	};
 
-	add_edge(DiagDirection::NE, Track::X, JunctionPortRole::EIn, Trackdir::X_SW, JunctionPortRole::WOut, Trackdir::X_NE);
-	add_edge(DiagDirection::SW, Track::X, JunctionPortRole::EOut, Trackdir::X_SW, JunctionPortRole::WIn, Trackdir::X_NE);
-	add_edge(DiagDirection::SE, Track::Y, JunctionPortRole::NIn, Trackdir::Y_NW, JunctionPortRole::SOut, Trackdir::Y_SE);
+	add_edge(DiagDirection::NE, JunctionSide::W, Track::X, Trackdir::X_SW, Trackdir::X_NE);
+	add_edge(DiagDirection::SW, JunctionSide::E, Track::X, Trackdir::X_NE, Trackdir::X_SW);
+	add_edge(DiagDirection::SE, JunctionSide::S, Track::Y, Trackdir::Y_NW, Trackdir::Y_SE);
 	return ports;
+}
+
+std::vector<JunctionPort> FindJunctionPorts(const JunctionLayout &layout)
+{
+	return FindJunctionPorts(layout, JunctionTTopology());
 }
 
 static void AddTraceProblem(JunctionCheckContext &ctx, TileIndexDiffC tile, std::string message)
@@ -194,10 +260,10 @@ static bool IsOnPath(const std::vector<JunctionPiece> &path, TileIndexDiffC tile
 /**
  * Depth-first search for all paths from the last piece of the given path.
  * @param ctx The context to add paths and problems to.
- * @param from The role of the In port the search started at.
+ * @param from The slot of the In port the search started at.
  * @param path The pieces so far; never empty.
  */
-static void TraceFrom(JunctionCheckContext &ctx, JunctionPortRole from, std::vector<JunctionPiece> &path)
+static void TraceFrom(JunctionCheckContext &ctx, uint16_t from, std::vector<JunctionPiece> &path)
 {
 	const JunctionPiece cur = path.back();
 	if (path.size() >= MAX_PATH_PIECES) {
@@ -208,8 +274,10 @@ static void TraceFrom(JunctionCheckContext &ctx, JunctionPortRole from, std::vec
 	const TileIndexDiffC next = NextTile(cur.tile, cur.trackdir);
 	if (!InBox(ctx.layout, next)) {
 		for (const JunctionPort &port : ctx.ports) {
-			if (IsInRole(port.role) || !SameTile(port.tile, cur.tile) || port.trackdir != cur.trackdir) continue;
-			ctx.paths.push_back({from, port.role, path});
+			if (IsInSlot(*ctx.topology, port.slot) || !SameTile(port.tile, cur.tile) || port.trackdir != cur.trackdir) continue;
+			const auto lane = std::ranges::find_if(ctx.lanes, [&](const JunctionLanePath &l) { return l.from == from && l.to == port.slot; });
+			const JunctionPortRole from_role = std::ranges::find_if(ctx.ports, [&](const JunctionPort &p) { return p.slot == from; })->role;
+			ctx.paths.push_back({from_role, port.role, path, from, port.slot, lane == ctx.lanes.end() ? static_cast<uint16_t>(UINT16_MAX) : lane->movement});
 			return;
 		}
 		AddTraceProblem(ctx, cur.tile, "unexpected exit");
@@ -260,22 +328,60 @@ static void TraceFrom(JunctionCheckContext &ctx, JunctionPortRole from, std::vec
 	}
 }
 
+/** Trace all paths from the In ports of the context's topology. */
+static void TraceAllPaths(JunctionCheckContext &ctx)
+{
+	for (const JunctionPort &port : ctx.ports) {
+		if (!IsInSlot(*ctx.topology, port.slot)) continue;
+		std::vector<JunctionPiece> path{{port.tile, port.trackdir, UnitsOf(port.trackdir), false}};
+		TraceFrom(ctx, port.slot, path);
+	}
+}
+
 /**
  * Make a check context and trace all paths from the In ports.
  * @param layout The layout; must outlive the context.
  * @param spec The spec; must outlive the context.
- * @param ports The ports.
+ * @param topology The topology; must outlive the context.
+ * @param ports The ports, with their slots.
+ * @return The context with paths and trace problems filled in.
+ */
+JunctionCheckContext MakeJunctionTopologyCheckContext(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTopology &topology, std::vector<JunctionPort> ports)
+{
+	JunctionCheckContext ctx{layout, spec, &topology, ExpandJunctionLanes(topology, nullptr), std::move(ports), {}, {}, {}};
+	TraceAllPaths(ctx);
+	return ctx;
+}
+
+/**
+ * Make a check context for the T topology and trace all paths from the In ports.
+ * @param layout The layout; must outlive the context.
+ * @param spec The spec; must outlive the context.
+ * @param ports The ports; one without a slot gets the slot of its role.
  * @param expected The movements that must exist.
  * @return The context with paths and trace problems filled in.
  */
 JunctionCheckContext MakeJunctionCheckContext(const JunctionLayout &layout, const JunctionSpec &spec, std::vector<JunctionPort> ports, std::vector<std::pair<JunctionPortRole, JunctionPortRole>> expected)
 {
-	JunctionCheckContext ctx{layout, spec, std::move(ports), std::move(expected), {}, {}};
-	for (const JunctionPort &port : ctx.ports) {
-		if (!IsInRole(port.role)) continue;
-		std::vector<JunctionPiece> path{{port.tile, port.trackdir, UnitsOf(port.trackdir), false}};
-		TraceFrom(ctx, port.role, path);
+	const JunctionTopology &topology = JunctionTTopology();
+	auto slot_of = [](JunctionPortRole role) -> uint16_t {
+		for (uint16_t slot = 0; slot < 6; slot++) {
+			if (TRoleOfSlot(slot) == role) return slot;
+		}
+		NOT_REACHED();
+	};
+	for (JunctionPort &port : ports) {
+		if (port.slot == UINT16_MAX) port.slot = slot_of(port.role);
 	}
+	std::vector<JunctionLanePath> lanes;
+	for (const auto &[from, to] : expected) {
+		const uint16_t from_slot = slot_of(from);
+		const uint16_t to_slot = slot_of(to);
+		const auto movement = std::ranges::find(topology.movements, std::pair<uint8_t, uint8_t>{static_cast<uint8_t>(from_slot), static_cast<uint8_t>(to_slot)});
+		lanes.push_back({from_slot, to_slot, static_cast<uint16_t>(movement == topology.movements.end() ? UINT16_MAX : movement - topology.movements.begin())});
+	}
+	JunctionCheckContext ctx{layout, spec, &topology, std::move(lanes), std::move(ports), std::move(expected), {}, {}};
+	TraceAllPaths(ctx);
 	return ctx;
 }
 
@@ -335,10 +441,10 @@ static void AddViolation(std::vector<RuleViolation> &out, JunctionRule rule, Til
 	if (!present) out.push_back({rule, tile, std::move(message)});
 }
 
-static TileIndexDiffC PortTile(const JunctionCheckContext &ctx, JunctionPortRole role)
+static TileIndexDiffC PortTile(const JunctionCheckContext &ctx, uint16_t slot)
 {
 	for (const JunctionPort &port : ctx.ports) {
-		if (port.role == role) return port.tile;
+		if (port.slot == slot) return port.tile;
 	}
 	return {0, 0};
 }
@@ -348,14 +454,16 @@ std::vector<RuleViolation> CheckConnectivity(const JunctionCheckContext &ctx)
 {
 	std::vector<RuleViolation> out = ctx.trace_problems;
 
-	for (const auto &[from, to] : ctx.expected) {
-		const auto count = std::ranges::count_if(ctx.paths, [&](const JunctionPath &path) { return path.from == from && path.to == to; });
-		const std::string movement = fmt::format("{} to {}", RoleName(from), RoleName(to));
+	for (const JunctionLanePath &lane_path : ctx.lanes) {
+		const uint16_t from = lane_path.from;
+		const uint16_t to = lane_path.to;
+		const auto count = std::ranges::count_if(ctx.paths, [&](const JunctionPath &path) { return path.from_slot == from && path.to_slot == to; });
+		const std::string movement = fmt::format("{} to {}", PortName(ctx, from), PortName(ctx, to));
 		if (count == 0) AddViolation(out, JunctionRule::Connectivity, PortTile(ctx, from), fmt::format("missing movement {}", movement));
 		if (count > 1) {
 			std::vector<const JunctionPath *> lanes;
 			for (const JunctionPath &path : ctx.paths) {
-				if (path.from == from && path.to == to) lanes.push_back(&path);
+				if (path.from_slot == from && path.to_slot == to) lanes.push_back(&path);
 			}
 			auto length_of = [](const JunctionPath &path) {
 				uint units = 0;
@@ -398,18 +506,18 @@ std::vector<RuleViolation> CheckConnectivity(const JunctionCheckContext &ctx)
 	}
 
 	for (const JunctionPath &path : ctx.paths) {
-		if (std::ranges::find(ctx.expected, Movement{path.from, path.to}) != ctx.expected.end()) continue;
-		AddViolation(out, JunctionRule::Connectivity, path.pieces.back().tile, fmt::format("unexpected movement {} to {}", RoleName(path.from), RoleName(path.to)));
+		if (path.movement != UINT16_MAX) continue;
+		AddViolation(out, JunctionRule::Connectivity, path.pieces.back().tile, fmt::format("unexpected movement {} to {}", PortName(ctx, path.from_slot), PortName(ctx, path.to_slot)));
 	}
 
-	std::set<JunctionPortRole> roles;
-	for (const auto &[from, to] : ctx.expected) {
-		roles.insert(from);
-		roles.insert(to);
+	std::set<uint16_t> named;
+	for (const JunctionLanePath &lane_path : ctx.lanes) {
+		named.insert(lane_path.from);
+		named.insert(lane_path.to);
 	}
-	for (JunctionPortRole role : roles) {
-		const bool present = std::ranges::any_of(ctx.ports, [&](const JunctionPort &port) { return port.role == role; });
-		if (!present) AddViolation(out, JunctionRule::Connectivity, {0, 0}, fmt::format("missing port {}", RoleName(role)));
+	for (uint16_t slot : named) {
+		const bool present = std::ranges::any_of(ctx.ports, [&](const JunctionPort &port) { return port.slot == slot; });
+		if (!present) AddViolation(out, JunctionRule::Connectivity, {0, 0}, fmt::format("missing port {}", PortName(ctx, slot)));
 	}
 	return out;
 }
@@ -432,7 +540,7 @@ std::vector<RuleViolation> CheckOrder(const JunctionCheckContext &ctx)
 	std::vector<RuleViolation> out;
 	for (const JunctionPath &path : ctx.paths) {
 		const std::vector<SwitchEvent> events = SwitchEventsOf(ctx.layout, used, path);
-		const bool is_ml = (path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::EOut) || (path.from == JunctionPortRole::WIn && path.to == JunctionPortRole::WOut);
+		const bool is_ml = IsThroughPath(ctx, path);
 		if (is_ml) {
 			const SwitchEvent *previous = nullptr;
 			for (const SwitchEvent &event : events) {
@@ -512,10 +620,10 @@ std::vector<RuleViolation> CheckBridges(const JunctionCheckContext &ctx)
 		};
 		bool doubled = true;
 		for (const JunctionPath &ml : ctx.paths) {
-			const bool is_ml = (ml.from == JunctionPortRole::EIn && ml.to == JunctionPortRole::EOut) || (ml.from == JunctionPortRole::WIn && ml.to == JunctionPortRole::WOut);
+			const bool is_ml = IsThroughPath(ctx, ml);
 			if (!is_ml || std::ranges::none_of(ml.pieces, on_bridge)) continue;
 			const bool has_other = std::ranges::any_of(ctx.paths, [&](const JunctionPath &other) {
-				return &other != &ml && other.from == ml.from && other.to == ml.to && std::ranges::none_of(other.pieces, on_bridge);
+				return &other != &ml && SameLanePath(other, ml) && std::ranges::none_of(other.pieces, on_bridge);
 			});
 			if (!has_other) doubled = false;
 		}
@@ -692,7 +800,7 @@ std::vector<std::pair<TileIndexDiffC, Trackdir>> JoinerSignals(const JunctionChe
 	std::vector<std::pair<TileIndexDiffC, Trackdir>> result;
 	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
 		const JunctionPath &ml = ctx.paths[pi];
-		const bool is_ml = (ml.from == JunctionPortRole::EIn && ml.to == JunctionPortRole::EOut) || (ml.from == JunctionPortRole::WIn && ml.to == JunctionPortRole::WOut);
+		const bool is_ml = IsThroughPath(ctx, ml);
 		if (!is_ml) continue;
 		for (const SwitchEvent &event : SwitchEventsOf(ctx.layout, used, ml)) {
 			if (event.first) continue;
@@ -704,7 +812,7 @@ std::vector<std::pair<TileIndexDiffC, Trackdir>> JoinerSignals(const JunctionChe
 					if (other.first) continue;
 					const JunctionPiece &joiner_piece = joiner.pieces[other.second];
 					if (!SameTile(joiner_piece.tile, merge_piece.tile) || joiner_piece.trackdir == merge_piece.trackdir) continue;
-					if (joiner.from == ml.from && joiner.to == ml.to) continue; // A lane merge has no prio.
+					if (SameLanePath(joiner, ml)) continue; // A lane merge has no prio.
 					for (size_t i = other.second; i-- > 0;) {
 						if (!IsSignalledPiece(ctx.layout, joiner.pieces[i])) continue;
 						result.emplace_back(joiner.pieces[i].tile, joiner.pieces[i].trackdir);
@@ -845,12 +953,12 @@ std::vector<RuleViolation> CheckWaitingRoom(const JunctionCheckContext &ctx)
 	const auto used = UsedTracks(ctx);
 	std::vector<RuleViolation> out;
 	for (const JunctionPath &path : ctx.paths) {
-		if ((path.from != JunctionPortRole::EIn && path.from != JunctionPortRole::WIn) || path.to != JunctionPortRole::SOut) continue;
+		if (!IsExitPath(ctx, path)) continue;
 
 		const std::vector<SwitchEvent> events = SwitchEventsOf(ctx.layout, used, path);
 		const auto split = std::ranges::find_if(events, [](const SwitchEvent &e) { return e.first; });
 		if (split == events.end()) {
-			AddViolation(out, JunctionRule::WaitingRoom, PortTile(ctx, path.from), "no split on the connection");
+			AddViolation(out, JunctionRule::WaitingRoom, PortTile(ctx, path.from_slot), "no split on the connection");
 			continue;
 		}
 		const TileIndexDiffC split_tile = path.pieces[split->second].tile;
@@ -880,7 +988,7 @@ std::vector<RuleViolation> CheckWaitingRoom(const JunctionCheckContext &ctx)
 	/* Whole-train bays (D83) before every queue merge. */
 	const uint bay = 2u * ctx.spec.tl;
 	for (const JunctionPath &path : ctx.paths) {
-		const bool is_ml = (path.from == JunctionPortRole::EIn && path.to == JunctionPortRole::EOut) || (path.from == JunctionPortRole::WIn && path.to == JunctionPortRole::WOut);
+		const bool is_ml = IsThroughPath(ctx, path);
 		if (is_ml) continue;
 		const std::vector<SwitchEvent> events = SwitchEventsOf(ctx.layout, used, path);
 		for (const SwitchEvent &event : events) {
@@ -1091,7 +1199,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 	std::set<size_t> matched;
 	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
 		const JunctionPath &ml = ctx.paths[pi];
-		const bool is_ml = (ml.from == JunctionPortRole::EIn && ml.to == JunctionPortRole::EOut) || (ml.from == JunctionPortRole::WIn && ml.to == JunctionPortRole::WOut);
+		const bool is_ml = IsThroughPath(ctx, ml);
 		if (!is_ml) continue;
 
 		for (const SwitchEvent &event : SwitchEventsOf(layout, used, ml)) {
@@ -1114,7 +1222,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 					break;
 				}
 			}
-			if (joiner != nullptr && joiner->from == ml.from && joiner->to == ml.to) continue; // A lane merge has no prio.
+			if (joiner != nullptr && SameLanePath(*joiner, ml)) continue; // A lane merge has no prio.
 			if (joiner == nullptr) {
 				AddViolation(out, JunctionRule::Prio, tile, "ML merge without joiner");
 			} else {
@@ -1304,7 +1412,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 
 			/* 4b. G9c (D108, D116): no split of an ML lane inside the coverage itself. Anything beyond it is judged by G9b (the real-semantics prio reach). */
 			for (const JunctionPath &lane : ctx.paths) {
-				if (lane.from != ml.from || lane.to != ml.to) continue;
+				if (!SameLanePath(lane, ml)) continue;
 				const auto at = std::ranges::find_if(lane.pieces, [&](const JunctionPiece &piece) { return !piece.on_bridge && SameTile(piece.tile, tile) && piece.trackdir == merge_piece.trackdir; });
 				if (at == lane.pieces.end()) continue;
 				const size_t merge_at = static_cast<size_t>(at - lane.pieces.begin());
@@ -1541,7 +1649,7 @@ std::vector<RuleViolation> CheckPrioReach(const JunctionCheckContext &ctx)
 
 	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
 		const JunctionPath &ml = ctx.paths[pi];
-		const bool is_ml = (ml.from == JunctionPortRole::EIn && ml.to == JunctionPortRole::EOut) || (ml.from == JunctionPortRole::WIn && ml.to == JunctionPortRole::WOut);
+		const bool is_ml = IsThroughPath(ctx, ml);
 		if (!is_ml) continue;
 
 		for (const SwitchEvent &event : SwitchEventsOf(layout, used, ml)) {
@@ -1562,7 +1670,7 @@ std::vector<RuleViolation> CheckPrioReach(const JunctionCheckContext &ctx)
 					break;
 				}
 			}
-			if (joiner == nullptr || (joiner->from == ml.from && joiner->to == ml.to)) continue;
+			if (joiner == nullptr || SameLanePath(*joiner, ml)) continue;
 			const JunctionPiece *signalled = nullptr;
 			for (size_t i = joiner_index; i-- > 0;) {
 				if (!IsSignalledPiece(layout, joiner->pieces[i])) continue;
@@ -1585,7 +1693,7 @@ std::vector<RuleViolation> CheckPrioReach(const JunctionCheckContext &ctx)
 			/* The covered pieces: the coverage walk along every lane of the movement through the merge piece, and the piece beyond a signalled end. */
 			std::vector<const JunctionPiece *> covered;
 			for (const JunctionPath &lane : ctx.paths) {
-				if (lane.from != ml.from || lane.to != ml.to) continue;
+				if (!SameLanePath(lane, ml)) continue;
 				const auto at = std::ranges::find_if(lane.pieces, [&](const JunctionPiece &piece) { return !piece.on_bridge && SameTile(piece.tile, merge_piece.tile) && piece.trackdir == merge_piece.trackdir; });
 				if (at == lane.pieces.end()) continue;
 				const size_t merge_at = static_cast<size_t>(at - lane.pieces.begin());
@@ -1693,7 +1801,12 @@ const std::vector<std::pair<JunctionPortRole, JunctionPortRole>> &JunctionTMovem
 
 std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec)
 {
-	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
+	return CheckJunctionRules(layout, spec, JunctionTTopology());
+}
+
+std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTopology &topology)
+{
+	const JunctionCheckContext ctx = MakeJunctionTopologyCheckContext(layout, spec, topology, FindJunctionPorts(layout, topology));
 
 	std::vector<RuleViolation> out;
 	auto add = [&](const std::vector<RuleViolation> &group) { out.insert(out.end(), group.begin(), group.end()); };
@@ -1717,7 +1830,12 @@ std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, cons
  */
 bool JunctionRulesClean(const JunctionLayout &layout, const JunctionSpec &spec)
 {
-	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, FindJunctionPorts(layout), JunctionTMovements());
+	return JunctionRulesClean(layout, spec, JunctionTTopology());
+}
+
+bool JunctionRulesClean(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTopology &topology)
+{
+	const JunctionCheckContext ctx = MakeJunctionTopologyCheckContext(layout, spec, topology, FindJunctionPorts(layout, topology));
 	return CheckConnectivity(ctx).empty() &&
 			CheckGeometry(ctx).empty() &&
 			CheckFootprint(ctx).empty() &&

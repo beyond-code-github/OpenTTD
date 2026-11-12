@@ -519,7 +519,7 @@ static JunctionPrioTiming SimulatePrioTiming(const JunctionLayout &layout, const
  */
 std::vector<JunctionPrioTiming> JunctionPrioTimings(const JunctionLayout &layout, const JunctionSpec &spec, const std::vector<JunctionPath> &paths, const JunctionTrainParams &train, uint16_t design_speed, uint8_t tl)
 {
-	const JunctionCheckContext ctx{layout, spec, {}, {}, paths, {}};
+	const JunctionCheckContext ctx{layout, spec, &JunctionTTopology(), {}, {}, {}, paths, {}};
 	const auto used = UsedTracks(ctx);
 	const auto blocks = ComputeBlocks(layout);
 

@@ -13,6 +13,7 @@
 #include "junction_generator.h"
 #include "junction_layout.h"
 #include "junction_route.h"
+#include "junction_topology.h"
 #include "track_type.h"
 
 #include <set>
@@ -27,30 +28,38 @@ struct RuleViolation { JunctionRule rule; TileIndexDiffC tile; std::string messa
 enum class JunctionPortRole : uint8_t { EIn, EOut, WIn, WOut, NIn, SOut };
 /** One port: a track on the bounding box boundary that leaves through the outer edge. */
 struct JunctionPort {
-	JunctionPortRole role;
+	JunctionPortRole role; ///< The T's role; meaningful only when the topology is JunctionTTopology().
 	TileIndexDiffC tile;
 	Trackdir trackdir; ///< Travel direction on the port tile (inward for In, outward for Out).
+	uint16_t slot = UINT16_MAX; ///< Index into JunctionPortSlots of the context's topology.
 };
 
 /** One traced route through the junction. */
 struct JunctionPath {
-	JunctionPortRole from;
-	JunctionPortRole to;
+	JunctionPortRole from; ///< The T's role; meaningful only when the topology is JunctionTTopology().
+	JunctionPortRole to; ///< The T's role; meaningful only when the topology is JunctionTTopology().
 	std::vector<JunctionPiece> pieces;
+	uint16_t from_slot = UINT16_MAX;
+	uint16_t to_slot = UINT16_MAX;
+	uint16_t movement = UINT16_MAX; ///< Index into the topology's movements; UINT16_MAX when no expected lane path has these slots.
 };
 
 /** Everything the rule groups work on. */
 struct JunctionCheckContext {
 	const JunctionLayout &layout;
 	const JunctionSpec &spec;
+	const JunctionTopology *topology; ///< Never null.
+	std::vector<JunctionLanePath> lanes; ///< The lane paths that must exist (ExpandJunctionLanes).
 	std::vector<JunctionPort> ports;
-	std::vector<std::pair<JunctionPortRole, JunctionPortRole>> expected; ///< Movements that must exist.
+	std::vector<std::pair<JunctionPortRole, JunctionPortRole>> expected; ///< Movements that must exist; filled only by the legacy maker, not read by the checker.
 	std::vector<JunctionPath> paths; ///< Filled by TraceJunctionPaths.
 	std::vector<RuleViolation> trace_problems; ///< Dead ends, cycles, unexpected exits.
 };
 
 std::vector<JunctionPort> FindJunctionPorts(const JunctionLayout &layout);
+std::vector<JunctionPort> FindJunctionPorts(const JunctionLayout &layout, const JunctionTopology &topology);
 JunctionCheckContext MakeJunctionCheckContext(const JunctionLayout &layout, const JunctionSpec &spec, std::vector<JunctionPort> ports, std::vector<std::pair<JunctionPortRole, JunctionPortRole>> expected);
+JunctionCheckContext MakeJunctionTopologyCheckContext(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTopology &topology, std::vector<JunctionPort> ports);
 
 std::vector<RuleViolation> CheckConnectivity(const JunctionCheckContext &ctx);
 std::vector<RuleViolation> CheckGeometry(const JunctionCheckContext &ctx);
@@ -72,6 +81,8 @@ std::vector<RuleViolation> CheckPrioReach(const JunctionCheckContext &ctx);
 bool JunctionStretchHasSignal(const JunctionLayout &layout, const JunctionPath &path, const std::set<size_t> &switches, size_t from, int step);
 
 std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec);
+std::vector<RuleViolation> CheckJunctionRules(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTopology &topology);
 bool JunctionRulesClean(const JunctionLayout &layout, const JunctionSpec &spec);
+bool JunctionRulesClean(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTopology &topology);
 
 #endif /* JUNCTION_RULES_H */
