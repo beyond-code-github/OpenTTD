@@ -980,8 +980,6 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	const int prio = spec.prio_tiles;
 	/* The prio element's coverage in tiles: joins at even offsets 0..even_prio upstream of the joiner merge (DESIGN-G1 §12.4, RECON-prio-element §3). */
 	const int even_prio = prio + (prio & 1);
-	/* The generator's JUNCTION_SHIFT_BACK_TILES (junction_generator.cpp, D145), repeated here because that one is file-local. */
-	static constexpr int JUNCTION_SHIFT_BACK_TILES = 4;
 	/* Not checked here, left to G1c(ii-b), whose render tests (no conflicting track bits) catch them: the band-layer slices (DESIGN-G1 §10.8) and a vertical edge meeting a side track. */
 	static constexpr int STUB = 2; // D206.
 
@@ -1265,6 +1263,10 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 			}
 			if (!x_phase) continue;
 
+			/* The curve gaps of JunctionCurveGaps: adjacent same-hand curves g1 apart, any other two curves g2 apart. */
+			const int g1 = std::min(2 * static_cast<int>(spec.tl) - 1, std::max(2, cl));
+			const int g2 = std::min(2 * static_cast<int>(spec.tl) - 1, 2 * cl);
+
 			/* In: port, fan, exit split. */
 			const int m_in = fan_m[in_edge[r]];
 			int d_min = 2;
@@ -1276,8 +1278,6 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				along(heading, rp.fil, rp.fif, m_in - 1, true);
 
 				/* The fan's S-bend (2 m_in units) plus the d - 1 axis pieces to the exit split's curve must keep JunctionCurveGaps' gaps: c0 to c2 two curves apart, c1 to c2 consecutive when of the same hand (CS1). */
-				const int g1 = std::min(2 * static_cast<int>(spec.tl) - 1, std::max(2, cl));
-				const int g2 = std::min(2 * static_cast<int>(spec.tl) - 1, 2 * cl);
 				d_min = std::max(d_min, 1 + (g2 - 2 * m_in + 1) / 2);
 				const uint32_t fan_it = fan_item(in_edge[r]);
 				const int c0_hand = ((vy[item_pt[fan_it]] > port_row[in.from.index]) == (heading == 1)) ? 1 : -1;
@@ -1297,12 +1297,12 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				/* The prio element covers even_prio tiles upstream of the joiner merge; the exit split stays outside it. */
 				along(heading, njm, nex, even_prio + 1, false);
 			} else {
-				/* The runs from the exit split to the lane split and on to the first heads (and from the last heads to the lane merge) are rule minima, not exact: series bridges need the slack (DESIGN-G1 §11.9b). */
+				/* The lane split sits next to its bridge (D215); the run from the exit split to the lane split, and from the last heads to the lane merge, are rule minima, not exact: series bridges need the slack (DESIGN-G1 §11.9b). */
 				along(heading, rp.lane_split, nex, 2, false);
 				const size_t g = rp.nh0.size();
-				along(heading, rp.nh0[0], rp.lane_split, 2, false);
+				along(heading, rp.nh0[0], rp.lane_split, 2, true);
 				eq(0, rp.sb1_last, rp.lane_split, 0);
-				along(heading, rp.nh1[0], rp.sb1_last, 1, false);
+				along(heading, rp.nh1[0], rp.sb1_last, 1, true);
 				for (size_t k = 0; k < g; k++) {
 					along(heading, rp.nh0[k], rp.nh1[k], 1, true);
 					along(heading, rp.fh0[k], rp.fh1[k], 1, true);
@@ -1365,7 +1365,18 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 				eq(0, rp.fol, pout, 0);
 				along(heading, pout, njm, 2, false);
 			} else {
-				along(heading, rp.fof, njm, JUNCTION_SHIFT_BACK_TILES, true);
+				/* The fan's first curve c2 lies k_out tiles after the joiner merge's closing curve c1: the curve gaps of the joiner's route (JunctionCurveGaps; RECON-seed-floors §1) give (c0, c2) >= g2 and, when c1 and c2 turn the same way, (c1, c2) >= g1. */
+				int c1_hand = 0;
+				for (uint32_t x = 0; x < edge_count; x++) {
+					if (is_row_edge(x) || !graph.edges[x].to.node || graph.edges[x].to.index != out.from.index) continue;
+					if (programs.edges[x].empty() || programs.edges[x].back().kind != StepKind::SBend) { build_why = "the joiner of row " + str(r) + " does not end with an S-bend"; return false; }
+					c1_hand = -programs.edges[x].back().hand;
+					break;
+				}
+				if (c1_hand == 0) { build_why = "the joiner of row " + str(r) + " has no merge S-bend"; return false; }
+				const int c2_out_hand = ((port_row[out.to.index] > vy[item_pt[lane_item[r]]]) == (heading == 1)) ? 1 : -1;
+				const int k_out = std::max((g2 + 1) / 2, c1_hand == c2_out_hand ? 1 + (g1 + 1) / 2 : 2);
+				along(heading, rp.fof, njm, k_out, true);
 				along(heading, rp.fol, rp.fof, m_out - 1, true);
 				along(heading, pout, rp.fol, 2, true);
 			}
