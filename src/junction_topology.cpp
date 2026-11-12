@@ -1315,7 +1315,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	/* The size of every bend, refreshed from the rows and columns. */
 	auto refresh = [&](bool rows_known) {
 		for (uint32_t e = 0; e < edge_count; e++) {
-			if (is_row_edge(e) && !is_in_out_edge(e)) continue; // The legs' sizes come from the rows, in the R2 check.
+			if (is_row_edge(e) && !is_in_out_edge(e) && doubled_row((end_level(graph.edges[e].from) - 1) / 2)) continue; // A doubled leg's sizes come from the rows, in the R2 check.
 			for (Elem &el : chain[e]) {
 				if (el.k == Elem::K::Fan) {
 					/* The fan's size is the distance of the port row to its item row, 0 until the port rows are set (the rows are known then). */
@@ -1602,17 +1602,28 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 						pending_row = heading;
 						if (!numeric_y) continue;
 						row_heading.resize(bends.size(), -1);
-						const int y_exit = vy[item_pt[doubled_row(r) ? north_item[r] : lane_item[r]]];
-						const int y_lane = vy[item_pt[lane_item[r]]];
-						if (e == in_edge[r] && fan_m[e] != 0 && !tokens.empty()) {
-							const int y_in = port_row[graph.edges[e].from.index];
-							bends.push_back({row_pts[r].fif, y_in, heading, ((y_exit > y_in) == (heading == 1)) ? 1 : -1, 2 * fan_m[e], false, e, r, true});
-						} else if (e == out_edge[r] && fan_m[e] != 0 && !tokens.empty()) {
-							const int y_out = port_row[graph.edges[e].to.index];
-							bends.push_back({row_pts[r].fof, y_lane, heading, ((y_out > y_lane) == (heading == 1)) ? 1 : -1, 2 * fan_m[e], false, e, r, true});
-						} else if (e == leg_edge[r] && doubled_row(r)) {
+						if (e == leg_edge[r]) {
+							if (!doubled_row(r)) continue; // An undoubled leg has no tokens.
+							const int y_exit = vy[item_pt[north_item[r]]];
+							const int y_lane = vy[item_pt[lane_item[r]]];
 							for (const Step &step : tokens) {
 								if (step.kind == StepKind::SBend) bends.push_back({c == 0 ? row_pts[r].sb0_first : row_pts[r].lane_split, y_exit, heading, step.hand, 2 * std::abs(y_lane - y_exit), false, e, r, true});
+							}
+							continue;
+						}
+						/* An in or out edge: every token of its chain, in travel order (R4). */
+						for (size_t t = 0; t < tokens.size(); t++) {
+							for (const Elem &el : chain[e]) {
+								if (el.tok != static_cast<int>(t)) continue;
+								row_heading.resize(bends.size(), -1);
+								if (el.k == Elem::K::Fan) {
+									if (fan_m[e] == 0) continue;
+									const int y_fan = el.port_first ? port_row[el.slot] : vy[item_pt[el.index]];
+									const int y_far = el.port_first ? vy[item_pt[el.index]] : port_row[el.slot];
+									bends.push_back({el.first, y_fan, heading, ((y_far > y_fan) == (heading == 1)) ? 1 : -1, 2 * fan_m[e], false, e, r, true});
+								} else {
+									bends.push_back({el.first, vy[el.first], heading, el.hand, 2 * std::abs(vy[item_pt[el.index]] - vy[el.first]), false, e, r, true});
+								}
 							}
 						}
 						continue;
@@ -2132,11 +2143,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			if (!x_phase) continue;
 
 			int after = nex; // The last point of the lane chain before the joiner merge.
-			if (!doubled) {
-				/* The prio element covers even_prio tiles upstream of the joiner merge; the exit split stays outside it. */
-				why("prio element", leg_edge[r], out.from.index, r);
-				along(heading, njm, nex, JunctionRunFloor(FloorKind::Node, FloorKind::PrioNode, spec, even_prio), false);
-			} else {
+			if (doubled) {
 				/* The lane split sits next to its bridge (D215); the run from the exit split to the lane split, and from the last heads to the lane merge, are rule minima, not exact: series bridges need the slack (DESIGN-G1 §11.9b). */
 				why("lane split run", leg_edge[r], in.to.index, r);
 				along(heading, rp.lane_split, nex, JunctionRunFloor(FloorKind::Node, FloorKind::LaneSplit, spec, even_prio), false);
@@ -2230,7 +2237,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 
 		/* The chains of the other edges. */
 		for (uint32_t e = 0; e < edge_count; e++) {
-			if (is_row_edge(e) && !is_in_out_edge(e)) continue; // The legs are the rows' relations above; their chains carry only the ties (R2).
+			if (is_row_edge(e) && !is_in_out_edge(e) && doubled_row((end_level(graph.edges[e].from) - 1) / 2)) continue; // A doubled leg is the rows' relations above; its chains carry only the ties (R2).
 			const std::vector<Elem> &elems = chain[e];
 			const JunctionTrackEdge &edge = graph.edges[e];
 			for (size_t i = 0; i < elems.size(); i++) {
@@ -2289,7 +2296,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				if (i + 1 >= elems.size()) continue;
 				const Elem &next = elems[i + 1];
 				if (next.first == el.last) continue;
-				why("chain run", e);
 				bool exact = false;
 				const bool in_out = is_in_out_edge(e);
 				/* A row edge's tiles name their kind: a port, the exit split of an in edge (Node), the joiner merge of an out edge (PrioNode), a fan (R3). */
@@ -2298,10 +2304,16 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 					if (o.k == Elem::K::SBend) return FloorKind::SBend;
 					if (o.k == Elem::K::Heads) return FloorKind::Heads;
 					if (o.k == Elem::K::Fan) return FloorKind::Fan;
+					if (is_row_edge(e) && !in_out) return &o == &elems.front() ? FloorKind::Node : FloorKind::PrioNode; // An undoubled leg: the exit split to the joiner merge.
 					if (!in_out) return FloorKind::Tile;
 					return o.slot >= 0 ? FloorKind::Port : (edge.to.node ? FloorKind::Node : FloorKind::PrioNode);
 				};
 				const int dist = JunctionRunFloor(floor_kind(el), floor_kind(next), spec, even_prio);
+				if (floor_kind(next) == FloorKind::PrioNode) {
+					why("prio element", e, edge.to.index, (end_level(graph.edges[e].from) - 1) / 2); // The prio element's coverage is a floor on the joiner merge (D217).
+				} else {
+					why("chain run", e);
+				}
 				if (next.k == Elem::K::Tile && i + 2 == elems.size() && !edge.to.node) exact = true;
 				if (el.k == Elem::K::Tile && i == 0 && !edge.from.node && !in_out) exact = true;
 				const auto port_tile = [](const Elem &o) { return o.k == Elem::K::Tile && o.slot >= 0; };

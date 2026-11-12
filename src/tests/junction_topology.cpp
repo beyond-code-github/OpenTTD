@@ -1174,7 +1174,7 @@ TEST_CASE("topology: LL_RR prio findings", "[.][diag]")
 	file << '\n' << RenderJunctionAscii(layout);
 }
 
-TEST_CASE("topology: the LL_RR seed is clean", "[junction][topology]")
+TEST_CASE("topology: the LL_RR seed is clean", "[junction][topologysweep]")
 {
 	std::string error;
 	std::vector<JunctionTrackSignal> tokens;
@@ -2730,7 +2730,7 @@ TEST_CASE("topology: row chains reproduce the row geometry across the sweep", "[
 
 TEST_CASE("topology: a fan edge may hold more than its fan", "[junction][topology]")
 {
-	/* R3 (DESIGN-G1 §16): an in edge's fan is its program's first token, not its only one. The T's doubled row's in edge is edited to [Fan to the lane item, S-bend back to the item above]: the placement takes it, its chain is the only row chain the R2 check refuses (its row points know the fan alone), and the checker is clean. */
+	/* R3 (DESIGN-G1 §16): an in edge's fan is its program's first token, not its only one. The T's doubled row's in edge is edited to [Fan to the lane item, S-bend back to the item above]: the placement takes it, its chain is the only row chain the R2 check refuses (its row points know the fan alone), and the checker is clean (R4: the curve family reads the chain's S-bend). */
 	const JunctionTopology &t = JunctionTTopology();
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::string error;
@@ -2768,15 +2768,11 @@ TEST_CASE("topology: a fan edge may hold more than its fan", "[junction][topolog
 	INFO(error);
 	REQUIRE(!layout.tracks.empty());
 	SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
-	/* The curve-gap family sees a row edge's fan only (R3: not the S-bend after it), so the checker may name the edited edge's own tiles; no other. */
+	/* The curve-gap family walks every row edge's chain (R4), so the S-bend after the fan is in it: the checker is clean. */
 	REQUIRE(placement.edges[edited].size() == 2);
 	for (const RuleViolation &viol : CheckJunctionRules(layout, spec, t)) {
 		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message));
-		bool on_edge = false;
-		for (const JunctionTrackSpan &span : placement.edges[edited]) {
-			on_edge |= viol.tile.x >= std::min(span.first.x, span.second.x) && viol.tile.x <= std::max(span.first.x, span.second.x) && viol.tile.y >= std::min(span.first.y, span.second.y) && viol.tile.y <= std::max(span.first.y, span.second.y);
-		}
-		CHECK(on_edge);
+		CHECK(false);
 	}
 }
 
