@@ -24,3 +24,6 @@ CODINGSTYLE.md (C++ part); src/junction_gui.cpp (notation parsing, SpecKey/seed_
 
 ## Report
 The standard report, plus the notations to type for LL_RR, the LL_RR counts and times, and what the engineer should try in game. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop: the window rejects "LL_RR" as MultiLane)
+Option 1, the general one: the window parses its two boxes with `ParseLineNotation` (src/junction_line.h: L count, gap, R count) instead of `ParseJunctionNotation`; ml_gap / branch_gap come from the parsed gaps exactly as today's values (verify equal on every single-lane notation the old parser accepts: a `[junction]` unit test over "L_R", "L__R", "L___R" and the old test strings); the lane counts select the topology: main 1/1 + branch 1/1 -> the T; main 2/2 + branch 1/1 -> the LL_RR sideline topology; anything else -> nullptr ("no hub layout for these lines yet"). The key (SpecKey/seed_key) gains the lane counts (or the topology pointer: pick the one that keeps the spec cache correct and say why). `ParseJunctionNotation` and its test stay unchanged (the old path still uses it). Errors from ParseLineNotation show as the window shows parse errors today. Then changes 1-3 as the brief says.
