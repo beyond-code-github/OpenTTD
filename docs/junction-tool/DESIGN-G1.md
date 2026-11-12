@@ -292,6 +292,7 @@ Rulings: D216 (projection = the graph's placement solved on the target terrain),
 - Pairwise curve gaps on every route (JunctionCurveGaps over all pairs, not only at the fans), as late X differences.
 - Occupancy: unrelated tracks never share or touch a tile (order relations per row and per column), as the node template's D193 rule did. Today placement leaves collisions to the render tests (:984).
 - Bridges: the crossers under one bridge are packed exactly, so bridge, heads and crossers are one rigid group with one domain; a longer span is an edit. Two elements sharing a tile on a slope are bundled into one group, or that tile must be flat.
+- **General, not per site (D217):** the curve-gap rule is one relation family: every JunctionCurveGaps pair along every route, as a difference between the two curves' points (routes fixed in Y, so the units between two points on one row are 2 x their column difference plus fixed spans). Occupancy is one family: unrelated tracks never share or touch a tile, as order relations per row and per column. TL1b's five site floors and T1b-1's C1/C3 become the oracle: the general relations must give the same seeds in all [topologysweep] cells and keep [topologystretch], [topoprojsweep] and [placeoracle] green. Open from T3: LL_RR tiles shared by pieces of two elements not tied exactly (fan pairs (2,4)/(3,3), (2,8)/(3,9); e12/e17 at (27,10)-(29,12); e24/e25 at (59,4)); height joins outside the facts snapshot are skipped (a snapshot must cover the box plus the push room).
 
 **14.4 Facts (X phase only; the Y phase takes none).**
 - Rows (Y) stay as the structure gives them; they change only by an edit named by an X failure (row gap +1, a Shift). So the X phase is exactly monotone and there is no greedy Y snap.
@@ -315,12 +316,15 @@ Rulings: D216 (projection = the graph's placement solved on the target terrain),
 | Terraform (D196) | a fact overlay; no graph change | X solve only |
 Cost: track pieces, curves, bridges/tunnels, foundations once solved, terraform, with D199's organic/artificial weight; the bound from the flat solve. Shift and Node move need a general row chain (any sequence of tokens and nodes on a row, floors per token kind); placement today knows only rows of the shape in + one leg + out (:738, :970). It is the largest piece of T4 and is designed before T4 is briefed.
 
+**Both directions and cost (D217).** Within one graph the least solution is already earliest-everywhere, so nothing in it can be pushed earlier. What can move earlier is outside the points: the frame (cursor offset, D197) and the per-state values (m, port offset, hug, row gaps). Their edits go both ways (m - 1 as well as m + 1, row gap - 1, offset -1). Cost edit: a point moves to the cheapest column in its legal range [Lo, Up] (foundations, terraform), earlier or later, as one more edit kind. The search is A*: cost so far plus the flat solve's cost of the state's graph as the admissible bound (terrain only adds cost).
+
 **14.7 Steps (each test-first, outermost first).**
 - **T0 (TL1b):** every placement floor derived and scaling with train length and speed (RECON-train-length's five fixes). Outer: the T and LL_RR seeds checker-clean across tl 3-8 x 100/120/160/196 km/h (a gate sweep test).
 - **T1:** placement on JunctionPositions with reasons on the trail, no facts; the hidden choices of 14.2 become variables. Oracle: the T and LL_RR placements equal today's (after T0).
 - **T1b:** the missing relations (pairwise curve gaps, occupancy, packed bridge groups) and the D215 objective. Outer: a stretch sweep (random forced run lengths on the flat solve: checker and heights clean every time).
 - **T2:** blocked tiles as run bounds and group domains (X phase). Outer: P4a's 20-tile sweep on LL_RR: every result clean, more tiles solved than the node path, each failure naming its chain. Timing check per state.
 - **T3:** height facts (runs, group domains, bridge ramps). Outer: the §0b incline and ridge cases.
+- **T1c (D217):** the general curve-gap and occupancy relation families replace TL1b's site floors and C1/C3 (oracle: identical seeds and the sweeps green); then the Y-stretch classes of RECON-stretch (C2, C4, prio) must be clean under row-gap stretches, and packed bridge groups replace choices.hug.
 - **T4a:** design the general row chain (doc + Fable), then T4b: edits in the P4b search frame (row gap, Shift, span, m, node move, swap roots). Outer: a core house on LL_RR builds by a Shift; the T's house-beside-hub and hub-tile cases.
 - **T5:** hover by topology with warm start and a topology picker, gated by the §0b cases and the [nodeoracle] counts. Outer: hover p99 < 100 ms over a cursor sweep.
 - **T6:** ramp, terraform and tunnel edits.
