@@ -1440,7 +1440,7 @@ TEST_CASE("the template comparator finds every member", "[junction][nodes]")
 	CheckNodeFields(tpl, &N::joins, "joins", FIELD2(from_tile, x), FIELD2(from_tile, y), FIELD(from_td), FIELD2(to_tile, x), FIELD2(to_tile, y), FIELD(cls), FIELD(ycls));
 	CheckNodeFields(tpl, &N::diffs, "diffs", FIELD(a), FIELD(b), FIELD(k));
 	CheckNodeFields(tpl, &N::diagonals, "diagonals", FIELD(link), FIELD(dx), FIELD(dy), FIELD(halves));
-	CheckNodeFields(tpl, &N::late_gaps, "late_gaps", FIELD(path), FIELD(p), FIELD(q), FIELD(g), FIELD(u), VEC(diagonals));
+	CheckNodeFields(tpl, &N::late_gaps, "late_gaps", FIELD(path), FIELD(p), FIELD(q), FIELD(g), FIELD(u), VEC(diagonals), FIELD(dir), VEC(y_links));
 	CheckNodeFields(tpl, &N::late_crossings, "late_crossings", FIELD(bridge), FIELD(diagonal));
 	CheckNodeFields(tpl, &N::prio_rows, "prio_rows", FIELD(merge), FIELD(side), FIELD(dir), FIELD(span));
 	CheckNodeSize(tpl, &N::flat, "flat");

@@ -47,6 +47,7 @@ struct NodeSpan {
 	uint32_t from;
 	uint32_t to;
 	Axis axis;
+	int8_t dir; ///< As JunctionNodeLink::dir.
 	uint32_t diagonal; ///< The index into JunctionNodeTemplate::diagonals when the link is a free diagonal, else UINT32_MAX.
 };
 
@@ -212,6 +213,11 @@ void NodeBuilder::ReadPoints()
 			}
 			const bool free = free_x || free_y || diagonal;
 			const Axis axis = free_y ? Axis::Y : Axis::X;
+			int8_t link_dir = 0;
+			if (free && !diagonal) {
+				const int step = free_x ? pieces[b].tile.x - pieces[a].tile.x : pieces[b].tile.y - pieces[a].tile.y;
+				link_dir = step > 0 ? 1 : (step < 0 ? -1 : 0);
+			}
 			const uint32_t from = node_path.points[k];
 			const uint32_t to = node_path.points[k + 1];
 			uint32_t diagonal_index = UINT32_MAX;
@@ -222,7 +228,7 @@ void NodeBuilder::ReadPoints()
 					this->tpl.diagonals.push_back({static_cast<uint32_t>(this->tpl.links.size()), static_cast<int8_t>(step.x), static_cast<int8_t>(step.y), static_cast<uint16_t>(b - a + 1)});
 					diagonal_of[{from, to}] = diagonal_index;
 				}
-				this->tpl.links.push_back({from, to, free, axis, diagonal});
+				this->tpl.links.push_back({from, to, free, axis, link_dir, diagonal});
 			} else if (diagonal) {
 				diagonal_index = diagonal_of.at({from, to});
 			}
@@ -243,13 +249,11 @@ void NodeBuilder::ReadPoints()
 					if (dy < 0) minus_y = true;
 				}
 				for (size_t i = a + 1; i < b; i++) w.link_of[i] = static_cast<int>(this->spans.size());
-				this->spans.push_back({from, to, axis, diagonal_index});
+				this->spans.push_back({from, to, axis, link_dir, diagonal_index});
 			}
 		}
-		if (plus && minus) this->Fail(fmt::format("path {} moves both ways along x", pi));
-		if (plus_y && minus_y) this->Fail(fmt::format("path {} moves both ways along y", pi));
-		node_path.dir = plus ? 1 : (minus ? -1 : 0);
-		node_path.dir_y = plus_y ? 1 : (minus_y ? -1 : 0);
+		node_path.dir = plus && !minus ? 1 : (minus && !plus ? -1 : 0);
+		node_path.dir_y = plus_y && !minus_y ? 1 : (minus_y && !plus_y ? -1 : 0);
 		this->tpl.paths.push_back(std::move(node_path));
 	}
 
@@ -373,8 +377,6 @@ void NodeBuilder::AddPathDiffs()
 		const JunctionPath &path = this->input.paths[pi];
 		const JunctionNodePath &node_path = this->tpl.paths[pi];
 		const NodePathWork &w = this->work[pi];
-		const int d = node_path.dir;
-		const int d_y = node_path.dir_y;
 
 		/* The rule of §2 between the points p before q with the flat unit difference U (§6): with no X run between them and a Y run or a free diagonal, a Y difference now; with an X run between them, a late gap (an X difference after the Y snap). */
 		auto add_gap = [&](uint32_t p, int unit_p, uint32_t q, int unit_q, int g) {
@@ -383,21 +385,41 @@ void NodeBuilder::AddPathDiffs()
 			const auto iq = std::ranges::find(node_path.points, q) - node_path.points.begin();
 			bool has_x = false;
 			bool has_y = false;
+			int d_x = 0;
+			int d_y = 0;
+			bool mixed_x = false;
+			bool mixed_y = false;
+			const auto add_sign = [](int &sign, bool &mixed, int value) {
+				if (value == 0) return;
+				if (sign != 0 && sign != value) mixed = true;
+				sign = value;
+			};
 			std::vector<uint32_t> diagonals;
+			std::vector<uint32_t> y_links;
 			for (auto k = ip; k < iq; k++) {
 				const auto link_it = std::ranges::find_if(this->tpl.links, [&](const JunctionNodeLink &l) { return l.from == node_path.points[static_cast<size_t>(k)] && l.to == node_path.points[static_cast<size_t>(k) + 1]; });
 				if (link_it == this->tpl.links.end() || !link_it->free) continue;
 				if (link_it->diagonal) {
 					has_y = true;
-					diagonals.push_back(static_cast<uint32_t>(std::ranges::find_if(this->tpl.diagonals, [&](const JunctionNodeDiagonal &diag) { return diag.link == static_cast<uint32_t>(link_it - this->tpl.links.begin()); }) - this->tpl.diagonals.begin()));
+					const uint32_t diagonal_index = static_cast<uint32_t>(std::ranges::find_if(this->tpl.diagonals, [&](const JunctionNodeDiagonal &diag) { return diag.link == static_cast<uint32_t>(link_it - this->tpl.links.begin()); }) - this->tpl.diagonals.begin());
+					diagonals.push_back(diagonal_index);
+					add_sign(d_y, mixed_y, this->tpl.diagonals[diagonal_index].dy);
 				} else if (link_it->axis == Axis::X) {
 					has_x = true;
+					add_sign(d_x, mixed_x, link_it->dir);
 				} else {
 					has_y = true;
+					add_sign(d_y, mixed_y, link_it->dir);
+					y_links.push_back(static_cast<uint32_t>(link_it - this->tpl.links.begin()));
 				}
 			}
+			/* A late gap needs only its free X links to agree; the free Y links and diagonals enter per link. */
+			if (mixed_x || (!has_x && mixed_y)) {
+				this->Fail(fmt::format("path {} points {},{}: moves both ways along {}", pi, p, q, mixed_x ? "x" : "y"));
+				return;
+			}
 			if (has_x) {
-				this->tpl.late_gaps.push_back({static_cast<uint32_t>(pi), p, q, g, u, std::move(diagonals)});
+				this->tpl.late_gaps.push_back({static_cast<uint32_t>(pi), p, q, g, u, std::move(diagonals), static_cast<int8_t>(d_x), std::move(y_links)});
 				return;
 			}
 			if (!has_y || d_y == 0) {
@@ -422,7 +444,7 @@ void NodeBuilder::AddPathDiffs()
 				if (!this->AddDirected(diag.dy, cp, cq, diag.dy * (cq.pos - cp.pos) + m_min)) this->Fail(fmt::format("path {}: a free diagonal joins one class", pi));
 				continue;
 			}
-			if (!this->AddDirected(link->axis == Axis::X ? d : d_y, this->At(link->from, link->axis), this->At(link->to, link->axis), 1)) this->Fail(fmt::format("path {}: a free link joins one class", pi));
+			if (!this->AddDirected(link->dir, this->At(link->from, link->axis), this->At(link->to, link->axis), 1)) this->Fail(fmt::format("path {}: a free link joins one class", pi));
 		}
 
 		/* Rule 2: the curves of the path are the pieces where the direction changes by 45 degrees. */
@@ -451,7 +473,9 @@ void NodeBuilder::AddPathDiffs()
 			/* The reserved prio row (§8), opposite the joiner; none when the joiner's piece is on the merge's row. */
 			const uint32_t merge = w.governing[mi];
 			if (joiner_rows[pi][e] != 0 && std::ranges::none_of(this->tpl.prio_rows, [&](const JunctionNodePrioRow &row) { return row.merge == merge; })) {
-				this->tpl.prio_rows.push_back({merge, static_cast<int8_t>(joiner_rows[pi][e] > 0 ? -1 : 1), static_cast<int8_t>(d), static_cast<uint8_t>(this->spec.prio_tiles)});
+				const int merge_dx = TileIndexDiffCByDiagDir(TrackdirToExitdir(path.pieces[mi].trackdir)).x;
+				if (merge_dx == 0) this->Fail(fmt::format("path {}: prio merge not on an X piece", pi));
+				this->tpl.prio_rows.push_back({merge, static_cast<int8_t>(joiner_rows[pi][e] > 0 ? -1 : 1), static_cast<int8_t>(merge_dx), static_cast<uint8_t>(this->spec.prio_tiles)});
 			}
 			for (const size_t ci : curve_pieces) {
 				if (w.start[ci] < w.start[mi]) add_gap(w.governing[ci], w.start[ci], w.governing[mi], w.start[mi], cover);
@@ -486,7 +510,7 @@ void NodeBuilder::AddPathDiffs()
 			if (w.link_of[slot] < 0) return;
 			const NodeSpan &span = this->spans[static_cast<size_t>(w.link_of[slot])];
 			if (span.diagonal == UINT32_MAX) {
-				if (!this->AddDirected(span.axis == Axis::X ? d : d_y, this->At(span.from, span.axis), this->At(span.to, span.axis), 2)) this->Fail(fmt::format("path {}: a run keeping its last slot joins one class", pi));
+				if (!this->AddDirected(span.dir, this->At(span.from, span.axis), this->At(span.to, span.axis), 2)) this->Fail(fmt::format("path {}: a run keeping its last slot joins one class", pi));
 				return;
 			}
 			size_t end = slot + 1;
@@ -597,7 +621,7 @@ void NodeBuilder::AddCrossings()
 						this->Fail(fmt::format("bridge {}: path {} has a free link under it at {},{}", bi, qi, tile.x, tile.y));
 						continue;
 					}
-					const int d = across == Axis::X ? this->tpl.paths[qi].dir : this->tpl.paths[qi].dir_y;
+					const int d = span.dir;
 					if (!this->AddDirected(d, this->At(span.from, across), head_across, 1) || !this->AddDirected(d, head_across, this->At(span.to, across), 1)) {
 						this->Fail(fmt::format("bridge {}: path {} link under it at {},{} joins the bridge's class", bi, qi, tile.x, tile.y));
 					}
@@ -748,16 +772,22 @@ bool AddJunctionNodeLateConstraints(const JunctionNodeTemplate &tpl, JunctionPos
 		if (!NodeAddAtLeast(tpl, positions, q.cls, q.tile.x, p.cls, p.tile.x, k) || !NodeAddAtLeast(tpl, positions, p.cls, p.tile.x, q.cls, q.tile.x, -k)) return false;
 	}
 
-	/* Each late gap: d_x * (x_q - x_p) >= d_x * Fx + ceil((g - U - 2 d_y dy + 2 sum(m)) / 2). */
+	/* Each late gap: d_x * (x_q - x_p) >= d_x * Fx + ceil((g - U - yfree - 2 sum(m) + 2 d_x sum(dx m)) / 2), yfree the free Y links' 2 s (dy_to - dy_from). */
 	for (const JunctionNodeLateGap &gap : tpl.late_gaps) {
 		const JunctionNodePoint &p = tpl.points[gap.p];
 		const JunctionNodePoint &q = tpl.points[gap.q];
-		const int d_x = tpl.paths[gap.path].dir;
-		const int d_y = tpl.paths[gap.path].dir_y;
-		const int delta_y = (y_of(gap.q) - y_of(gap.p)) - (q.tile.y - p.tile.y);
+		auto shift_y = [&](uint16_t ycls) { return values[ycls] - tpl.flat[ycls]; };
+		const int d_x = gap.dir;
+		int yfree = 0;
+		for (const uint32_t l : gap.y_links) yfree += 2 * tpl.links[l].dir * (shift_y(tpl.points[tpl.links[l].to].ycls) - shift_y(tpl.points[tpl.links[l].from].ycls));
 		int steps = 0;
-		for (const uint32_t diag : gap.diagonals) steps += NodeDiagonalSteps(tpl, tpl.diagonals[diag], values);
-		const int k = d_x * (q.tile.x - p.tile.x) + CeilHalf(gap.g - gap.u - 2 * d_y * delta_y + 2 * steps);
+		int steps_x = 0;
+		for (const uint32_t diag : gap.diagonals) {
+			const int m = NodeDiagonalSteps(tpl, tpl.diagonals[diag], values);
+			steps += m;
+			steps_x += tpl.diagonals[diag].dx * m;
+		}
+		const int k = d_x * (q.tile.x - p.tile.x) + CeilHalf(gap.g - gap.u - yfree - 2 * steps + 2 * d_x * steps_x);
 		if (!(d_x > 0 ? NodeAddAtLeast(tpl, positions, q.cls, q.tile.x, p.cls, p.tile.x, k) : NodeAddAtLeast(tpl, positions, p.cls, p.tile.x, q.cls, q.tile.x, k))) return false;
 	}
 
@@ -1224,12 +1254,7 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 
 	/* The x direction of an X-free link on its paths. */
 	auto link_direction = [&](const JunctionNodeLink &link) {
-		for (const JunctionNodePath &path : tpl.paths) {
-			for (size_t i = 0; i + 1 < path.points.size(); i++) {
-				if (path.points[i] == link.from && path.points[i + 1] == link.to) return static_cast<int>(path.dir);
-			}
-		}
-		return 0;
+		return static_cast<int>(link.dir);
 	};
 
 	/* The snapshot's range of values of an X class, within its bounds now. */
@@ -1845,7 +1870,7 @@ static_assert(sizeof(JunctionNodeBridge) == 14); // Update DiffJunctionNodeTempl
 static_assert(sizeof(JunctionNodeJoin) == 14); // Update DiffJunctionNodeTemplates when this struct changes.
 static_assert(sizeof(JunctionNodeDiff) == 8); // Update DiffJunctionNodeTemplates when this struct changes.
 static_assert(sizeof(JunctionNodeDiagonal) == 8); // Update DiffJunctionNodeTemplates when this struct changes.
-static_assert(sizeof(JunctionNodeLateGap) == 48); // Update DiffJunctionNodeTemplates when this struct changes.
+static_assert(sizeof(JunctionNodeLateGap) == 80); // Update DiffJunctionNodeTemplates when this struct changes.
 static_assert(sizeof(JunctionNodeLateCrossing) == 8); // Update DiffJunctionNodeTemplates when this struct changes.
 static_assert(sizeof(JunctionNodePrioRow) == 8); // Update DiffJunctionNodeTemplates when this struct changes.
 
@@ -1856,7 +1881,7 @@ std::string DiffJunctionNodeTemplates(const JunctionNodeTemplate &a, const Junct
 			return NodeDiffFirst({NodeDiffTile("tile", x.tile, y.tile), NodeDiffField("trackdir", x.trackdir, y.trackdir), NodeDiffField("cls", x.cls, y.cls), NodeDiffField("ycls", x.ycls, y.ycls)});
 		}),
 		NodeDiffVector("links", a.links, b.links, [](const JunctionNodeLink &x, const JunctionNodeLink &y) {
-			return NodeDiffFirst({NodeDiffField("from", x.from, y.from), NodeDiffField("to", x.to, y.to), NodeDiffField("free", x.free, y.free), NodeDiffField("axis", x.axis, y.axis), NodeDiffField("diagonal", x.diagonal, y.diagonal)});
+			return NodeDiffFirst({NodeDiffField("from", x.from, y.from), NodeDiffField("to", x.to, y.to), NodeDiffField("free", x.free, y.free), NodeDiffField("axis", x.axis, y.axis), NodeDiffField("dir", x.dir, y.dir), NodeDiffField("diagonal", x.diagonal, y.diagonal)});
 		}),
 		NodeDiffVector("paths", a.paths, b.paths, [](const JunctionNodePath &x, const JunctionNodePath &y) {
 			return NodeDiffFirst({NodeDiffField("from", x.from, y.from), NodeDiffField("to", x.to, y.to), NodeDiffNumbers("points", x.points, y.points), NodeDiffNumbers("units", x.units, y.units), NodeDiffField("dir", x.dir, y.dir), NodeDiffField("dir_y", x.dir_y, y.dir_y)});
@@ -1878,7 +1903,7 @@ std::string DiffJunctionNodeTemplates(const JunctionNodeTemplate &a, const Junct
 			return NodeDiffFirst({NodeDiffField("link", x.link, y.link), NodeDiffField("dx", x.dx, y.dx), NodeDiffField("dy", x.dy, y.dy), NodeDiffField("halves", x.halves, y.halves)});
 		}),
 		NodeDiffVector("late_gaps", a.late_gaps, b.late_gaps, [](const JunctionNodeLateGap &x, const JunctionNodeLateGap &y) {
-			return NodeDiffFirst({NodeDiffField("path", x.path, y.path), NodeDiffField("p", x.p, y.p), NodeDiffField("q", x.q, y.q), NodeDiffField("g", x.g, y.g), NodeDiffField("u", x.u, y.u), NodeDiffNumbers("diagonals", x.diagonals, y.diagonals)});
+			return NodeDiffFirst({NodeDiffField("path", x.path, y.path), NodeDiffField("p", x.p, y.p), NodeDiffField("q", x.q, y.q), NodeDiffField("g", x.g, y.g), NodeDiffField("u", x.u, y.u), NodeDiffNumbers("diagonals", x.diagonals, y.diagonals), NodeDiffField("dir", x.dir, y.dir), NodeDiffNumbers("y_links", x.y_links, y.y_links)});
 		}),
 		NodeDiffVector("late_crossings", a.late_crossings, b.late_crossings, [](const JunctionNodeLateCrossing &x, const JunctionNodeLateCrossing &y) {
 			return NodeDiffFirst({NodeDiffField("bridge", x.bridge, y.bridge), NodeDiffField("diagonal", x.diagonal, y.diagonal)});
