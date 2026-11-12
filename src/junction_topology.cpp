@@ -2837,7 +2837,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			for (const HeadRef &head : heads) {
 				if (head.bridge == line.bridge || flat_x[head.xpt] <= left || flat_x[head.xpt] >= right) continue;
 				const int side = flat_y[head.ypt] - flat_y[line.line];
-				if (side == 0) continue;
+				/* Flat side 0: the head lies on the bridge's row inside its span, a contradiction of the family (both sides are demanded). */
+				if (side == 0) {
+					clear_y.push_back({head.ypt, line.line, line.edge, head.edge});
+					clear_y.push_back({line.line, head.ypt, line.edge, head.edge});
+					continue;
+				}
 				if (side > 0) clear_y.push_back({head.ypt, line.line, line.edge, head.edge}); else clear_y.push_back({line.line, head.ypt, line.edge, head.edge});
 			}
 		}
@@ -2857,6 +2862,13 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 		}
 		rows_known = true;
+		/* The box's first row bounds the port rows as it bounds every solved point. */
+		for (int s = 0; s < n; s++) {
+			if (notation[s] < 0 || fixed->port_offset + notation[s] >= 0) continue;
+			failure.assign(1, JunctionPlacementReason{"box", UINT32_MAX, UINT32_MAX, fixed->port_offset + notation[s]});
+			if (error != nullptr) *error = fmt::format("the placement rules contradict each other: box (port slot {} would lie on row {})", s, fixed->port_offset + notation[s]);
+			return solve_failed();
+		}
 		plan_clearance(fixed->port_offset);
 		phase = 1;
 		refresh(false);

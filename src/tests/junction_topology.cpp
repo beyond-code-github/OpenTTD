@@ -16,9 +16,11 @@
 #include <chrono>
 #include <climits>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <optional>
+#include <random>
 #include <set>
 #include <sstream>
 #include <tuple>
@@ -2637,6 +2639,182 @@ TEST_CASE("topology: the curve family alone keeps every seed clean", "[junction]
 	}
 	WARN("cells " << cells << ", with a point moved: " << moved << " (" << earlier << " points earlier, " << later << " later)");
 	CHECK(cells == old_columns.size());
+}
+
+TEST_CASE("topology: every placement edit fails with a reason or is checker-clean", "[junction][topologysweep]")
+{
+	/* ES1 (D193): 200 random edits of the seed's choices and floors per topology and spec; each fails with a reason or renders checker clean. */
+	for (int ti = 0; ti < 2; ti++) {
+		const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
+		const char *name = ti == 0 ? "T" : "LL_RR";
+		for (int tl : {3, 4, 6}) {
+			for (int v : {100, 160}) {
+				JunctionSpec spec = MakeTestJunctionSpec();
+				spec.tl = tl;
+				spec.train.max_speed = v;
+				spec.reference_speed = v;
+				spec.prio_tiles = 0;
+				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+				REQUIRE(spec.prio_tiles != 0);
+				std::string ignored;
+				const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
+				const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
+				const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
+				const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
+				const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
+				JunctionTrackPlacement seed;
+				std::string error;
+				const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &seed, &error);
+				INFO(name << " tl " << tl << " v " << v << ": " << error);
+				REQUIRE(!seed.nodes.empty());
+
+				std::vector<std::pair<int, int>> ms, corners;
+				for (size_t e = 0; e < seed.choices.m.size(); e++) {
+					for (size_t k = 0; k < seed.choices.m[e].size(); k++) {
+						if (seed.choices.m[e][k] > 0) ms.emplace_back(e, k);
+					}
+				}
+				for (size_t e = 0; e < seed.choices.corner.size(); e++) {
+					for (size_t k = 0; k < seed.choices.corner[e].size(); k++) {
+						if (seed.choices.corner[e][k] > 0) corners.emplace_back(e, k);
+					}
+				}
+				std::vector<int> kinds{2, 3, 4}; // port, row gap, push always exist
+				if (!ms.empty()) kinds.push_back(0);
+				if (!corners.empty()) kinds.push_back(1);
+
+				std::mt19937 rng(1);
+				auto pick = [&rng](int n) { return static_cast<int>(rng() % static_cast<unsigned>(n)); };
+				int failed = 0, clean = 0, dirty = 0;
+				std::vector<std::string> counterexamples;
+				for (int edit = 0; edit < 200; edit++) {
+					JunctionPlacementChoices choices = seed.choices;
+					std::vector<std::pair<int, int>> x_floors, y_floors;
+					std::string atoms;
+					const int count = 1 + pick(2);
+					for (int a = 0; a < count; a++) {
+						switch (kinds[pick(static_cast<int>(kinds.size()))]) {
+							case 0: {
+								const auto [e, k] = ms[pick(static_cast<int>(ms.size()))];
+								static constexpr int D[] = {-2, -1, 1, 2};
+								const int d = D[pick(4)];
+								int &m = choices.m[e][k];
+								m = std::max(1, m + d);
+								atoms += fmt::format(" m[{}][{}]{:+}->{}", e, k, d, m);
+								break;
+							}
+							case 1: {
+								const auto [e, k] = corners[pick(static_cast<int>(corners.size()))];
+								const int d = pick(2) == 0 ? -1 : 1;
+								int &c = choices.corner[e][k];
+								c = std::max(1, c + d);
+								atoms += fmt::format(" corner[{}][{}]{:+}->{}", e, k, d, c);
+								break;
+							}
+							case 2: {
+								static constexpr int D[] = {-2, -1, 1, 2};
+								const int d = D[pick(4)];
+								choices.port_offset += d;
+								atoms += fmt::format(" port{:+}->{}", d, choices.port_offset);
+								break;
+							}
+							case 3: {
+								const int i = pick(static_cast<int>(seed.item_rows.size()));
+								const int d = 1 + pick(3);
+								y_floors.emplace_back(1 + i, seed.item_rows[i] + d);
+								atoms += fmt::format(" yfloor[item {}]+{}->{}", i, d, seed.item_rows[i] + d);
+								break;
+							}
+							default: {
+								const int p = pick(static_cast<int>(seed.columns.size()));
+								const int d = 1 + pick(8);
+								x_floors.emplace_back(p, seed.columns[p] + d);
+								atoms += fmt::format(" xfloor[point {}]+{}->{}", p, d, seed.columns[p] + d);
+								break;
+							}
+						}
+					}
+					std::string place_error;
+					const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(t, paths, graph, order, cut, programs, spec, choices, &place_error, x_floors, y_floors);
+					if (placed.nodes.empty()) {
+						if (!place_error.empty()) {
+							failed++;
+						} else {
+							dirty++;
+							counterexamples.push_back(fmt::format("{} tl {} v {}:{}: failed with no reason", name, tl, v, atoms));
+						}
+						continue;
+					}
+					std::string render_error, signal_why;
+					std::vector<JunctionTrackRoute> routes;
+					JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, placed, &render_error, &routes);
+					if (layout.tracks.empty()) {
+						dirty++;
+						counterexamples.push_back(fmt::format("{} tl {} v {}:{}: empty render: {}", name, tl, v, atoms, render_error));
+						continue;
+					}
+					SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec, &signal_why);
+					if (!signal_why.empty()) {
+						dirty++;
+						counterexamples.push_back(fmt::format("{} tl {} v {}:{}: signal error: {}", name, tl, v, atoms, signal_why));
+						continue;
+					}
+					const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec, t);
+					if (violations.empty()) {
+						clean++;
+					} else {
+						dirty++;
+						const RuleViolation &viol = violations.front();
+						counterexamples.push_back(fmt::format("{} tl {} v {}:{}: rule {} tile {},{}: {}", name, tl, v, atoms, static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message));
+					}
+				}
+				std::cout << fmt::format("EDITSOUND topology={} tl={} v={} tried=200 failed={} clean={} dirty={}\n", name, tl, v, failed, clean, dirty);
+				for (const std::string &line : counterexamples) std::cout << "COUNTEREXAMPLE " << line << "\n";
+				CHECK(dirty == 0);
+			}
+		}
+	}
+}
+
+/** The T at tl 3, 100 km/h, placed from its seed with one choice edit; fills error. */
+static JunctionTrackPlacement PlaceTEdited(const std::function<void(JunctionPlacementChoices &)> &edit, std::string &error)
+{
+	const JunctionTopology &t = JunctionTTopology();
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.tl = 3;
+	spec.train.max_speed = 100;
+	spec.reference_speed = 100;
+	spec.prio_tiles = 0;
+	spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+	std::string ignored;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
+	JunctionTrackPlacement seed;
+	const JunctionTrackStructure cut = CutJunctionTrackBridges(t, paths, graph, order, structure, programs, spec, &seed, &error);
+	REQUIRE(!seed.nodes.empty());
+	JunctionPlacementChoices choices = seed.choices;
+	edit(choices);
+	error.clear();
+	return PlaceJunctionTrackGraph(t, paths, graph, order, cut, programs, spec, choices, &error, {}, {});
+}
+
+TEST_CASE("topology: a port above the box fails with its reason", "[junction][topology]")
+{
+	std::string error;
+	const JunctionTrackPlacement placed = PlaceTEdited([](JunctionPlacementChoices &c) { c.port_offset = -1; }, error);
+	CHECK(placed.nodes.empty());
+	CHECK(error.find("box") != std::string::npos);
+}
+
+TEST_CASE("topology: a corner edit keeps bridges apart", "[junction][topology]")
+{
+	std::string error;
+	const JunctionTrackPlacement placed = PlaceTEdited([](JunctionPlacementChoices &c) { c.corner[7][0] = 4; }, error);
+	CHECK(placed.nodes.empty());
+	CHECK(error.find("bridge middle clearance") != std::string::npos);
 }
 
 TEST_CASE("topology: symbolic curves match the rendered routes", "[junction][topology]")
