@@ -135,6 +135,7 @@ struct JunctionNodeInput {
 	std::vector<std::vector<bool>> slots; ///< Per path and piece: whether a signal may stand there (IsLegalSignalPiece or IsSignalledPiece).
 	std::vector<JunctionBridge> bridges; ///< Every bridge or tunnel.
 	std::vector<std::vector<JunctionTrackPieceTag>> tags; ///< Per path and piece: its graph element; empty when traced from a layout.
+	std::vector<std::pair<uint16_t, uint8_t>> routes; ///< Per path: its lane path and copy (graph input only; empty when traced).
 };
 /** The template input traced from a flat layout (today's only producer). */
 JunctionNodeInput TraceJunctionNodeInput(const JunctionLayout &flat, const JunctionSpec &spec);
@@ -169,6 +170,11 @@ bool AddJunctionNodeOccupancy(const JunctionNodeTemplate &tpl, JunctionPositions
 std::vector<int> JunctionNodeSnap(const JunctionNodeTemplate &tpl, JunctionPositions &positions);
 /** Draw the paths' track and the bridges at the classes' values (DESIGN-N3 §3) and normalise; no signals and no prio rows. */
 JunctionLayout RenderJunctionNodeTracks(const JunctionNodeTemplate &tpl, const std::vector<int> &values);
+/**
+ * The routes of the template's paths at the given values (DESIGN-G1 §13.3): rigid pieces shifted by their classes, free links drawn at their solved length (X/Y runs, free diagonals by NodeDiagonalRaster), every piece keeping the tag of the input piece it renders. In the graph's route order (lane path, then copy).
+ * @param input The graph input the template was built from (its tags and routes).
+ */
+std::vector<JunctionTrackRoute> RenderJunctionNodeRoutes(const JunctionNodeTemplate &tpl, const JunctionNodeInput &input, const std::vector<int> &values);
 
 /** Whether track bits fit a working tile by its facts: two or more tracks -> Switch; one X or Y track -> Straight along that axis; one diagonal (half) track -> Half. */
 bool JunctionNodeTrackFits(const JunctionFacts &facts, int x, int y, TrackBits bits);
@@ -212,6 +218,8 @@ struct JunctionNodeSolve {
 };
 /** Solve the template's positions on the facts (DESIGN-N3 section 2 and the facts of section 4) and render; offset maps layout to working coordinates. */
 JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset);
+/** SolveJunctionNodes for a graph input (D213): its routes rendered from the template and signalled by SignalJunctionTrackRoutes (DESIGN-G1 §12) instead of the T pass. */
+JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionNodeInput &input);
 
 /**
  * Whether the heights of a layout's traced paths connect on the terrain, by the game's own rail foundations (D194): every piece not on a bridge must Fit with its whole tile's tracks,
