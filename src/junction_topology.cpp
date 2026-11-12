@@ -11,6 +11,7 @@
 
 #include "junction_topology.h"
 
+#include "junction_chain.h"
 #include "junction_generator.h"
 #include "junction_route.h"
 #include "junction_rules_internal.h"
@@ -2390,4 +2391,180 @@ JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology,
 	if (placement != nullptr) *placement = JunctionTrackPlacement{};
 	if (error != nullptr) *error = last_error;
 	return structure;
+}
+
+JunctionGraphSeed MakeJunctionGraphSeed(const JunctionTopology &topology, const JunctionSpec &spec, std::string *error)
+{
+	JunctionGraphSeed seed{};
+	seed.topology = &topology;
+	std::string reason;
+	auto fail = [&]() {
+		if (error != nullptr) *error = reason;
+		seed.routes.clear();
+		return seed;
+	};
+	seed.paths = ExpandJunctionLanes(topology, &reason);
+	if (seed.paths.empty()) return fail();
+	seed.graph = BuildJunctionTrackGraph(topology, seed.paths, &reason);
+	if (seed.graph.edges.empty()) return fail();
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, seed.paths, seed.graph, &reason);
+	if (order.rows.empty()) return fail();
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(topology, seed.paths, seed.graph, order, &reason);
+	if (structure.stack.empty()) return fail();
+	seed.programs = ProgramJunctionTrackGraph(topology, seed.paths, seed.graph, order, structure, &reason);
+	if (seed.programs.edges.empty()) return fail();
+	seed.structure = CutJunctionTrackBridges(topology, seed.paths, seed.graph, order, structure, seed.programs, spec, &seed.placement, &reason);
+	if (seed.placement.nodes.empty()) return fail();
+	RenderJunctionTrackPlacement(topology, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &reason, &seed.routes);
+	if (seed.routes.empty()) return fail();
+	return seed;
+}
+
+/** Whether a piece's tag is a run piece of (edge, run, copy). */
+static bool IsRunPiece(const JunctionTrackPieceTag &tag, const JunctionDetourEdit &edit)
+{
+	return tag.token == JunctionTrackPieceTag::RUN && tag.edge == edit.edge && tag.run == edit.run && tag.copy == edit.copy;
+}
+
+std::vector<JunctionTrackRoute> ApplyJunctionDetours(const std::vector<JunctionTrackRoute> &routes, const std::vector<JunctionDetourEdit> &edits, const JunctionSpec &spec, TileIndexDiffC offset, std::string *why)
+{
+	std::vector<JunctionTrackRoute> result = routes;
+	auto fail = [&](const std::string &reason) {
+		if (why != nullptr) *why = reason;
+		return std::vector<JunctionTrackRoute>{};
+	};
+	if (routes.empty()) return fail("no routes");
+
+	for (const JunctionDetourEdit &edit : edits) {
+		const std::string name = fmt::format("edit (edge {} run {} copy {} column {} side {} variant {}): ", edit.edge, edit.run, edit.copy, edit.column, edit.side, edit.variant);
+		if (edit.side != 1 && edit.side != -1) return fail(name + "not a side");
+
+		/* The carrying routes and each one's run: the first to the last piece tagged with it. */
+		struct Carrier {
+			size_t route;
+			size_t first;
+			size_t last;
+		};
+		std::vector<Carrier> carriers;
+		for (size_t r = 0; r < result.size(); r++) {
+			const std::vector<JunctionTrackPieceTag> &tags = result[r].tags;
+			size_t first = tags.size();
+			size_t last = 0;
+			for (size_t i = 0; i < tags.size(); i++) {
+				if (!IsRunPiece(tags[i], edit)) continue;
+				if (first == tags.size()) first = i;
+				last = i;
+			}
+			if (first == tags.size()) continue;
+			for (size_t i = first; i <= last; i++) {
+				if (!IsRunPiece(tags[i], edit)) return fail(name + "the run is not contiguous");
+			}
+			carriers.push_back({r, first, last});
+		}
+		if (carriers.empty()) return fail(name + "no route carries the run");
+
+		/* A straight X run on one row, the same on every carrier, with the piece strictly inside. */
+		const std::vector<JunctionPiece> &reference = result[carriers[0].route].pieces;
+		const size_t length = carriers[0].last - carriers[0].first + 1;
+		for (const Carrier &c : carriers) {
+			if (c.last - c.first + 1 != length) return fail(name + "the routes disagree on the run");
+			for (size_t i = 0; i < length; i++) {
+				const JunctionPiece &piece = result[c.route].pieces[c.first + i];
+				const JunctionPiece &ref = reference[carriers[0].first + i];
+				if (piece.on_bridge || (piece.trackdir != Trackdir::X_NE && piece.trackdir != Trackdir::X_SW)) return fail(name + "not an X run");
+				if (piece.tile.x != ref.tile.x || piece.tile.y != ref.tile.y || piece.trackdir != ref.trackdir || piece.tile.y != reference[carriers[0].first].tile.y) return fail(name + "the routes disagree on the run");
+			}
+		}
+		if (length < 3) return fail(name + "the run has no interior piece");
+		const JunctionPiece p = reference[carriers[0].first];
+		const JunctionPiece q = reference[carriers[0].last];
+
+		/* The failing column clamped strictly inside the seed run, which is only the reference shape. */
+		const int direction = q.tile.x > p.tile.x ? 1 : -1;
+		const int along = std::clamp(direction * (edit.column - offset.x - p.tile.x), 1, static_cast<int>(length) - 2);
+		const int middle = (static_cast<int>(length) - 1) / 2;
+
+		/* The tiles taken by every other piece: the carriers' run interiors are being replaced. */
+		std::set<std::pair<int, int>> taken;
+		std::set<std::pair<int, int>> own; ///< The run's own interior tiles: a new piece on one is not a new tile (a bridge may pass over it).
+		for (size_t r = 0; r < result.size(); r++) {
+			const auto carrier = std::ranges::find_if(carriers, [&](const Carrier &c) { return c.route == r; });
+			for (size_t i = 0; i < result[r].pieces.size(); i++) {
+				if (carrier != carriers.end() && i > carrier->first && i < carrier->last) {
+					own.emplace(result[r].pieces[i].tile.x, result[r].pieces[i].tile.y);
+					continue;
+				}
+				taken.emplace(result[r].pieces[i].tile.x, result[r].pieces[i].tile.y);
+			}
+		}
+
+		/* A shifted run of one piece has no free link, and the new tiles may meet no other route or bridge head. */
+		int skipped = 0;
+		auto build = [&](const JunctionRaster &raster, int n2, std::string &reason) {
+			if (n2 == 0) {
+				reason = "a shifted run of one piece";
+				return false;
+			}
+			for (size_t i = 1; i + 1 < raster.pieces.size(); i++) {
+				const TileIndexDiffC tile = raster.pieces[i].tile;
+				if (taken.contains({tile.x, tile.y}) && !own.contains({tile.x, tile.y})) {
+					reason = fmt::format("collision at {},{}", tile.x, tile.y);
+					return false;
+				}
+			}
+
+			/* The curve gaps of every carrier's edited route hold on its units (rule 2 of the template). */
+			for (const Carrier &c : carriers) {
+				const std::vector<JunctionPiece> &old = result[c.route].pieces;
+				std::vector<JunctionPiece> edited(old.begin(), old.begin() + c.first);
+				edited.insert(edited.end(), raster.pieces.begin(), raster.pieces.end());
+				edited.insert(edited.end(), old.begin() + c.last + 1, old.end());
+				std::vector<JunctionCurveHand> hands;
+				std::vector<int> starts;
+				int unit = 0;
+				for (size_t i = 0; i < edited.size(); i++) {
+					if (i > 0) {
+						const DirDiff diff = DirDifference(TrackdirToDirection(edited[i - 1].trackdir), TrackdirToDirection(edited[i].trackdir));
+						if (diff == DirDiff::Left45 || diff == DirDiff::Right45) {
+							hands.push_back(diff == DirDiff::Left45 ? JunctionCurveHand::Left : JunctionCurveHand::Right);
+							starts.push_back(unit);
+						}
+					}
+					unit += edited[i].units;
+				}
+				for (const JunctionCurveGap &gap : JunctionCurveGaps(hands, spec.tl, spec.curve_speed, spec.reference_speed)) {
+					if (starts[gap.j] - starts[gap.i] >= gap.min_gap) continue;
+					reason = fmt::format("curve gap {} below {}", starts[gap.j] - starts[gap.i], gap.min_gap);
+					return false;
+				}
+			}
+			if (skipped < edit.variant) {
+				skipped++;
+				reason = "skipped candidate";
+				return false;
+			}
+			return true;
+		};
+		JunctionRaster chosen;
+		std::string reason;
+		/* From the clamped column toward the run's middle and on to its far interior end: the first column with a candidate. */
+		std::string first_reason;
+		bool found = false;
+		for (int a = along, step = along > middle ? -1 : 1; a >= 1 && a <= static_cast<int>(length) - 2 && !found; a += step) {
+			found = ChooseJunctionDetour(p, q, p.tile.x + direction * a, edit.side, build, &chosen, &reason);
+			if (!found && reason != "link too short for a detour") first_reason = reason;
+		}
+		if (!found) return fail(name + (first_reason.empty() ? reason : first_reason));
+
+		/* The run's interior replaced on every carrier, the new pieces tagged as the run. */
+		const JunctionTrackPieceTag tag{edit.edge, JunctionTrackPieceTag::RUN, edit.run, edit.copy};
+		for (const Carrier &c : carriers) {
+			JunctionTrackRoute &route = result[c.route];
+			route.pieces.erase(route.pieces.begin() + c.first + 1, route.pieces.begin() + c.last);
+			route.tags.erase(route.tags.begin() + c.first + 1, route.tags.begin() + c.last);
+			route.pieces.insert(route.pieces.begin() + c.first + 1, chosen.pieces.begin() + 1, chosen.pieces.end() - 1);
+			route.tags.insert(route.tags.begin() + c.first + 1, chosen.pieces.size() - 2, tag);
+		}
+	}
+	return result;
 }

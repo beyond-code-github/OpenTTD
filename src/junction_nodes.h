@@ -222,6 +222,7 @@ struct JunctionNodeSolve {
 	std::optional<JunctionLayout> layout; ///< Rendered, signalled and normalised (as FinishJunctionCandidate: Normalise, PlaceJunctionSignals, Normalise).
 	std::vector<int> values; ///< Per variable (X classes, then Y classes), when solved.
 	std::optional<JunctionNodeFailure> failure;
+	TileIndexDiffC origin{}; ///< Graph overload: the template-frame tile of the layout's (0, 0) (the normalisation shift).
 };
 /** Solve the template's positions on the facts (DESIGN-N3 section 2 and the facts of section 4) and render; offset maps layout to working coordinates. */
 JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const JunctionSpec &spec, const JunctionFacts &facts, TileIndexDiffC offset);
@@ -237,6 +238,16 @@ JunctionNodeSolve SolveJunctionNodes(const JunctionNodeTemplate &tpl, const Junc
 bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, std::string *why);
 
 /**
+ * JunctionNodeHeightsOk's per-piece fit and join-height checks over the routes of a graph solve, plus the fits of every layout tile except bridge heads.
+ * @param routes RenderJunctionNodeRoutes of the solve (template frame).
+ * @param layout The solve's layout.
+ * @param origin JunctionNodeSolve::origin.
+ * @param offset The offset the solve took: working = template frame + offset.
+ * @param why When set and the result is false, receives the reason.
+ */
+bool JunctionRoutesHeightsOk(const std::vector<JunctionTrackRoute> &routes, const JunctionLayout &layout, TileIndexDiffC origin, const JunctionTerrain &terrain, TileIndexDiffC offset, std::string *why);
+
+/**
  * Replace the interior of a free link of a state layout by a detour around one column (DESIGN-N3 §4).
  * @param layout The state layout (not normalised by this function).
  * @param tpl Its template.
@@ -248,6 +259,15 @@ bool JunctionNodeHeightsOk(const JunctionLayout &layout, const JunctionSpec &spe
  * @return The new layout, or std::nullopt.
  */
 std::optional<JunctionLayout> InsertJunctionDetour(const JunctionLayout &layout, const JunctionNodeTemplate &tpl, uint32_t link, int column, int side, const JunctionSpec &spec, std::string *why);
+
+/** One projection search (DESIGN-G1 §13.8): best-first by cost over edit lists (D198), each state rebuilt from the seed. */
+struct JunctionGraphSearch {
+	std::optional<JunctionLayout> layout;
+	std::vector<JunctionDetourEdit> edits; ///< Of the accepted state.
+	int states = 0;
+	std::string log;
+};
+JunctionGraphSearch SearchJunctionGraph(const JunctionGraphSeed &seed, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, int max_states);
 
 /** The result of a structure search. */
 struct JunctionNodeSearch {
