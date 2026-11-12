@@ -792,7 +792,7 @@ TEST_CASE("placement on facts is buildable on random terrain", "[junction][place
 		INFO("heights: " << why);
 		CHECK(ok);
 		if (!ok) heights++;
-		SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec);
+		SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec, nullptr, nullptr, &placement.prio);
 		for (const RuleViolation &violation : CheckJunctionRules(layout, spec, t)) {
 			INFO("rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
 			CHECK(false);

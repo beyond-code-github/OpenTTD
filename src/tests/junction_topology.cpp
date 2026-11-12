@@ -1377,7 +1377,7 @@ TEST_CASE("topology: the out-fan gap is the curve-gap minimum", "[junction][topo
 		JunctionLayout layout = RenderJunctionTrackPlacement(*t, paths, graph, cut, programs, placement, &error, &routes);
 		INFO(error);
 		REQUIRE(!layout.tracks.empty());
-		SignalJunctionTrackRoutes(layout, routes, *t, paths, graph, programs, spec);
+		SignalJunctionTrackRoutes(layout, routes, *t, paths, graph, programs, spec, nullptr, nullptr, &placement.prio);
 		for (const RuleViolation &v : CheckJunctionRules(layout, spec, *t)) {
 			INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
 			CHECK(false);
@@ -2345,7 +2345,7 @@ TEST_CASE("topoproj: placement moves the W end off an incline", "[junction][topo
 	std::string why;
 	CHECK(JunctionRoutesHeightsOk(routes, layout, {0, 0}, terrain, offset, &why));
 	INFO(why);
-	SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec);
+	SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec, nullptr, nullptr, &placement.prio);
 	for (const RuleViolation &v : CheckJunctionRules(layout, spec, t)) {
 		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
 		CHECK(false);
@@ -2487,7 +2487,7 @@ static JunctionLayout SeedOf(const JunctionTopology &t, const JunctionSpec &spec
 	if (placement.nodes.empty()) return {};
 	std::vector<JunctionTrackRoute> routes;
 	JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, placement, error, &routes);
-	SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
+	SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec, nullptr, nullptr, &placement.prio);
 	if (routes_out != nullptr) *routes_out = routes;
 	return layout;
 }
@@ -2766,7 +2766,7 @@ TEST_CASE("topology: every placement edit fails with a reason or is checker-clea
 						counterexamples.push_back(fmt::format("{} tl {} v {}:{}: empty render: {}", name, tl, v, atoms, render_error));
 						continue;
 					}
-					SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec, &signal_why);
+					SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec, &signal_why, nullptr, &placed.prio);
 					if (!signal_why.empty()) {
 						dirty++;
 						counterexamples.push_back(fmt::format("{} tl {} v {}:{}: signal error: {}", name, tl, v, atoms, signal_why));
@@ -3007,7 +3007,7 @@ TEST_CASE("topology: a fan edge may hold more than its fan", "[junction][topolog
 	JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, placement, &error, &routes);
 	INFO(error);
 	REQUIRE(!layout.tracks.empty());
-	SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
+	SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec, nullptr, nullptr, &placement.prio);
 	/* The curve-gap family walks every row edge's chain (R4), so the S-bend after the fan is in it: the checker is clean. */
 	REQUIRE(placement.edges[edited].size() == 2);
 	for (const RuleViolation &viol : CheckJunctionRules(layout, spec, t)) {
@@ -3297,7 +3297,7 @@ TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][
 					JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, cut, programs, q, &render_error, &routes);
 					INFO(name << " v " << v << " s " << s << " render: " << render_error);
 					REQUIRE(!layout.tracks.empty());
-					SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
+					SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec, nullptr, nullptr, &q.prio);
 					const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec, t);
 					std::string detail = fmt::format("{} v {} s {}:", name, v, s);
 					for (const RuleViolation &viol : violations) detail += fmt::format(" [rule {} at {},{}: {}]", static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message);
@@ -3328,7 +3328,7 @@ TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][
 						y_failures++;
 						continue;
 					}
-					SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec);
+					SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec, nullptr, nullptr, &q.prio);
 					std::string detail = fmt::format("{} item {} s {}:", name, i, s);
 					size_t required = 0;
 					for (const RuleViolation &viol : CheckJunctionRules(layout, spec, t)) {
@@ -3569,7 +3569,7 @@ TEST_CASE("topoproj: the prio element sees the terrain", "[junction][topoproj]")
 		JunctionLayout layout = RenderJunctionTrackPlacement(t, p.paths, p.graph, p.cut, p.programs, q, error, &routes);
 		REQUIRE(!layout.tracks.empty());
 		std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> beside;
-		SignalJunctionTrackRoutes(layout, routes, t, p.paths, p.graph, p.programs, p.spec, nullptr, &beside);
+		SignalJunctionTrackRoutes(layout, routes, t, p.paths, p.graph, p.programs, p.spec, nullptr, &beside, &q.prio);
 		for (const auto &[row, ml] : beside) tiles.push_back(row);
 		return tiles;
 	};
@@ -3793,6 +3793,72 @@ TEST_CASE("topology: doubled bridge heads hug their outermost crossers", "[junct
 	CHECK(checked > 0);
 }
 
+TEST_CASE("topology: the prio element has one source", "[junction][topology]")
+{
+	/* The placement's prio spans are what the signal pass draws when it derives the elements from the routes (RW6b), and the tiles beside the main line the level solve reads. */
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		const SeedPipeline p = SeedPipelineOf(*t, MakeTestJunctionSpec());
+		std::string error;
+		std::vector<JunctionTrackRoute> routes;
+		const JunctionLayout render = RenderJunctionTrackPlacement(*t, p.paths, p.graph, p.cut, p.programs, p.seed, &error, &routes);
+		INFO(error);
+		REQUIRE(!render.tracks.empty());
+		const auto bits_of = [](const JunctionLayout &layout) {
+			std::map<std::pair<int, int>, TrackBits> bits;
+			for (const JunctionTrack &jt : layout.tracks) bits[{jt.offset.x, jt.offset.y}] |= jt.tracks;
+			return bits;
+		};
+		JunctionLayout derived = render;
+		std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> derived_beside;
+		SignalJunctionTrackRoutes(derived, routes, *t, p.paths, p.graph, p.programs, p.spec, nullptr, &derived_beside);
+		JunctionLayout given = render;
+		std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> given_beside;
+		SignalJunctionTrackRoutes(given, routes, *t, p.paths, p.graph, p.programs, p.spec, nullptr, &given_beside, &p.seed.prio);
+		CHECK(bits_of(derived) == bits_of(given));
+		const auto same_beside = [](const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &a, const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &b) {
+			return std::ranges::equal(a, b, [](const auto &l, const auto &r) { return l.first.x == r.first.x && l.first.y == r.first.y && l.second.x == r.second.x && l.second.y == r.second.y; });
+		};
+		CHECK(same_beside(derived_beside, given_beside));
+		const auto subset = [](TrackBits a, TrackBits b) {
+			for (Track track : a) {
+				if (!b.Test(track)) return false;
+			}
+			return true;
+		};
+		/* The spans' bits are the bits the derived layout has on top of the render's. */
+		const std::map<std::pair<int, int>, TrackBits> before = bits_of(render);
+		std::map<std::pair<int, int>, TrackBits> drawn;
+		for (const auto &[key, bits] : bits_of(derived)) {
+			const auto it = before.find(key);
+			TrackBits extra;
+			for (Track track : bits) {
+				if (it == before.end() || !it->second.Test(track)) extra.Set(track);
+			}
+			if (extra.Any()) drawn[key] = extra;
+		}
+		std::map<std::pair<int, int>, TrackBits> spans;
+		size_t n_tiles = 0;
+		for (const JunctionPrioSpan &span : p.seed.prio) {
+			for (const auto &[tile, bits] : span.tiles) {
+				spans[{tile.x, tile.y}] |= bits;
+				n_tiles++;
+			}
+		}
+		CHECK(n_tiles > 0);
+		const std::map<std::pair<int, int>, TrackBits> after = bits_of(derived);
+		for (const auto &[key, bits] : spans) {
+			const auto it = after.find(key);
+			REQUIRE(it != after.end());
+			CHECK(subset(bits, it->second));
+		}
+		for (const auto &[key, bits] : drawn) {
+			const auto it = spans.find(key);
+			REQUIRE(it != spans.end());
+			CHECK(subset(bits, it->second));
+		}
+	}
+}
+
 TEST_CASE("topology: placement on flat facts is the seed", "[junction][topology]")
 {
 	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
@@ -3834,7 +3900,7 @@ TEST_CASE("topology: run and group tiles match the render", "[junction][topoproj
 	{
 		JunctionLayout signalled = render;
 		std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> beside;
-		SignalJunctionTrackRoutes(signalled, routes, t, p.paths, p.graph, p.programs, p.spec, nullptr, &beside);
+		SignalJunctionTrackRoutes(signalled, routes, t, p.paths, p.graph, p.programs, p.spec, nullptr, &beside, &p.seed.prio);
 		for (const auto &[row, ml] : beside) rendered.emplace(row.x, row.y);
 	}
 	REQUIRE(!rendered.empty());
@@ -3895,7 +3961,7 @@ TEST_CASE("topoproj: the objective gives way to a house", "[junction][topoprojsw
 		JunctionLayout layout = RenderJunctionTrackPlacement(t, p.paths, p.graph, p.cut, p.programs, q, &error, &routes);
 		INFO(error);
 		REQUIRE(!layout.tracks.empty());
-		SignalJunctionTrackRoutes(layout, routes, t, p.paths, p.graph, p.programs, p.spec);
+		SignalJunctionTrackRoutes(layout, routes, t, p.paths, p.graph, p.programs, p.spec, nullptr, nullptr, &q.prio);
 		for (const RuleViolation &v : CheckJunctionRules(layout, p.spec, t)) {
 			INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
 			CHECK(false);
@@ -3970,7 +4036,7 @@ TEST_CASE("topoproj: placement on facts around each of 20 houses", "[junction][t
 		JunctionLayout layout = RenderJunctionTrackPlacement(t, p.paths, p.graph, p.cut, p.programs, q, &error, &routes);
 		INFO(error);
 		REQUIRE(!layout.tracks.empty());
-		SignalJunctionTrackRoutes(layout, routes, t, p.paths, p.graph, p.programs, p.spec);
+		SignalJunctionTrackRoutes(layout, routes, t, p.paths, p.graph, p.programs, p.spec, nullptr, nullptr, &q.prio);
 		for (const RuleViolation &viol : CheckJunctionRules(layout, p.spec, t)) {
 			INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(viol.rule), viol.tile.x, viol.tile.y, viol.message));
 			CHECK(false);

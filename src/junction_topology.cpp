@@ -975,6 +975,27 @@ enum class FloorKind : uint8_t { Port, Fan, Tile, Corner, SBend, Heads, Node, Pr
 
 static Track JunctionCornerTrack(DiagDirection a, DiagDirection b);
 /**
+ * The tracks a prio element draws at one of its steps (DESIGN-G1 12.4), the one pattern occupancy and the placement's JunctionPrioSpan share.
+ * @param step The step upstream of the joiner merge (0 at the merge's column).
+ * @param side The side of the main line the element's row lies on.
+ * @param exit_edge The edge the main line leaves its tiles by (SW eastbound, NE westbound).
+ * @return The bits on the element's row and those on the main line (lane row) tile of the same column.
+ */
+static std::pair<TrackBits, TrackBits> JunctionPrioStepBits(int step, DiagDirection side, DiagDirection exit_edge)
+{
+	const Track h1 = JunctionCornerTrack(side, exit_edge);
+	const Track h2 = JunctionCornerTrack(ReverseDiagDir(side), ReverseDiagDir(exit_edge));
+	TrackBits row;
+	if (step == 0) {
+		row = TrackBits{h2};
+	} else if (step % 2 == 0) {
+		row = TrackBits{Track::X, h2};
+	} else {
+		row = TrackBits{Track::X};
+	}
+	return {row, step % 2 == 0 ? TrackBits{h1} : TrackBits{}};
+}
+/**
  * The least run in tiles between two neighbouring elements: the one table of every run floor in placement (D217, DESIGN-G1 §16.1). A pair not listed has the chain run.
  * @param before The kind of the element the run starts at.
  * @param after The kind of the element the run ends at.
@@ -2014,11 +2035,14 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			const uint32_t njm_node = graph.edges[out_edge[r]].from.index;
 			const int sgn = east[r] ? 1 : -1;
 			const int y_row = vy[prio_el.first];
+			const int y_lane = vy[item_pt[row_items[r].lane]];
 			const DiagDirection side = prio_el.index < row_items[r].lane ? DiagDirection::NW : DiagDirection::SE;
 			const DiagDirection exit_edge = east[r] ? DiagDirection::SW : DiagDirection::NE;
-			const TrackBits h2{JunctionCornerTrack(ReverseDiagDir(side), ReverseDiagDir(exit_edge))};
-			by_row[y_row].push_back({y_row, prio_el.last, 0, prio_el.last, 0, h2, UINT32_MAX, 0, njm_node, sgn});
-			by_row[y_row].push_back(sgn > 0 ? Occupant{y_row, prio_el.first, 0, prio_el.last, -1, TrackBits{Track::X}, UINT32_MAX, 0, njm_node, sgn} : Occupant{y_row, prio_el.last, 1, prio_el.first, 0, TrackBits{Track::X}, UINT32_MAX, 0, njm_node, sgn});
+			for (int step = 0; step <= even_prio; step++) {
+				const auto [row_bits, lane_bits] = JunctionPrioStepBits(step, side, exit_edge);
+				by_row[y_row].push_back({y_row, prio_el.last, -step * sgn, prio_el.last, -step * sgn, row_bits, UINT32_MAX, 0, njm_node, sgn});
+				if (lane_bits.Any()) by_row[y_lane].push_back({y_lane, prio_el.last, -step * sgn, prio_el.last, -step * sgn, lane_bits, UINT32_MAX, 0, njm_node, sgn});
+			}
 		}
 
 		/* Related occupants never constrain each other: the same edge and copy, a node's tile and an edge that starts or ends at the node. */
@@ -3042,6 +3066,23 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	result.size = {static_cast<int16_t>(vx[xe_pt] + 1), static_cast<int16_t>(vy[se_pt] + 1)};
 	result.choices = choices;
 	result.columns.assign(vx.begin(), vx.end());
+	/* The prio elements (RW6b): per element, its tiles and drawn bits, the one source of occupancy, the signal pass and the level solve. */
+	for (int r = 0; r < rows; r++) {
+		const Elem &prio_el = chain[leg_edge[r]].back();
+		if (prio_el.k != Elem::K::Prio) continue;
+		const int sgn = east[r] ? 1 : -1;
+		const DiagDirection side = prio_el.index < row_items[r].lane ? DiagDirection::NW : DiagDirection::SE;
+		const DiagDirection exit_edge = east[r] ? DiagDirection::SW : DiagDirection::NE;
+		JunctionPrioSpan span;
+		span.merge = {static_cast<int16_t>(vx[prio_el.last]), static_cast<int16_t>(vy[item_pt[row_items[r].lane]])};
+		for (int step = 0; step <= even_prio; step++) {
+			const auto [row_bits, lane_bits] = JunctionPrioStepBits(step, side, exit_edge);
+			const int x = vx[prio_el.last] - step * sgn;
+			if (lane_bits.Any()) span.tiles.emplace_back(TileIndexDiffC{static_cast<int16_t>(x), span.merge.y}, lane_bits);
+			span.tiles.emplace_back(TileIndexDiffC{static_cast<int16_t>(x), static_cast<int16_t>(vy[prio_el.first])}, row_bits);
+		}
+		result.prio.push_back(std::move(span));
+	}
 
 	/* The heads of a bridge: its near and far point, and the carrier's travel direction along the axis. */
 	struct Heads {
@@ -3215,7 +3256,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	/* The prio elements the signal pass draws are track tiles too (H3): the solve takes the signalled layout and the tiles beside the main line. */
 	JunctionLayout layout = rendered;
 	std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> prio_beside;
-	SignalJunctionTrackRoutes(layout, routes, topology, paths, graph, programs, spec, nullptr, &prio_beside);
+	SignalJunctionTrackRoutes(layout, routes, topology, paths, graph, programs, spec, nullptr, &prio_beside, &placement.prio);
 	if (!SolveJunctionLevels(*terrain, facts, offset, JunctionRampLevels(spec), spec.tl, placement, layout, routes, prio_beside, placement.terraform, placement.height_cost, placement.track_levels, &text)) return fail(text);
 	return placement;
 }
@@ -3498,7 +3539,7 @@ std::vector<std::pair<bool, size_t>> JunctionRouteEvents(const JunctionTrackGrap
 	return events;
 }
 
-std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why, std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> *prio_beside)
+std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why, std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> *prio_beside, const std::vector<JunctionPrioSpan> *prio)
 {
 	using Reason = JunctionSignalReason;
 	std::vector<JunctionTrackSignal> tokens;
@@ -3623,15 +3664,24 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 			}
 
 			/* 4. Write. */
-			for (int s = 0; s <= n_prio; s++) {
-				if (s % 2 == 0) draw(ml(s), TrackBits{h1});
-				if (prio_beside != nullptr) prio_beside->emplace_back(row(s), ml(s));
-				if (s == 0) {
-					draw(row(s), TrackBits{h2});
-				} else if (s % 2 == 0) {
-					draw(row(s), TrackBits{axis, h2});
-				} else {
-					draw(row(s), TrackBits{axis});
+			if (prio != nullptr) {
+				const auto span = std::ranges::find_if(*prio, [&](const JunctionPrioSpan &candidate) { return candidate.merge.x == M.x && candidate.merge.y == M.y; });
+				if (span == prio->end()) continue;
+				for (const auto &[tile, bits] : span->tiles) {
+					draw(tile, bits);
+					if (prio_beside != nullptr && tile.y != M.y) prio_beside->emplace_back(tile, TileIndexDiffC{tile.x, M.y});
+				}
+			} else {
+				for (int s = 0; s <= n_prio; s++) {
+					if (s % 2 == 0) draw(ml(s), TrackBits{h1});
+					if (prio_beside != nullptr) prio_beside->emplace_back(row(s), ml(s));
+					if (s == 0) {
+						draw(row(s), TrackBits{h2});
+					} else if (s % 2 == 0) {
+						draw(row(s), TrackBits{axis, h2});
+					} else {
+						draw(row(s), TrackBits{axis});
+					}
 				}
 			}
 			for (int s = 1; s < n_prio; s += 2) {

@@ -36,7 +36,7 @@ static JunctionHoverPlan PlanJunctionHoverAt(const JunctionGraphSeed &seed, cons
 		return plan;
 	}
 	std::string signal_why;
-	SignalJunctionTrackRoutes(layout, routes, topology, seed.paths, seed.graph, seed.programs, spec, &signal_why);
+	SignalJunctionTrackRoutes(layout, routes, topology, seed.paths, seed.graph, seed.programs, spec, &signal_why, nullptr, &placement.prio);
 	if (!signal_why.empty()) {
 		plan.why = signal_why;
 		return plan;

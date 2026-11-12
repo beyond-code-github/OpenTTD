@@ -150,7 +150,7 @@ TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
 		INFO(file.filename().string() << " heights: " << why);
 		CHECK(ok);
 		if (!ok) heights++;
-		SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec);
+		SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec, nullptr, nullptr, &placement.prio);
 		for (const RuleViolation &violation : CheckJunctionRules(layout, spec, t)) {
 			INFO(file.filename().string() << " rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
 			CHECK(false);
@@ -186,7 +186,7 @@ TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
 		JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, placement, &render_error, &routes);
 		INFO(file.filename().string() << " " << render_error);
 		REQUIRE(!layout.tracks.empty());
-		SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec);
+		SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec, nullptr, nullptr, &placement.prio);
 		for (const RuleViolation &violation : CheckJunctionRules(layout, spec, t)) {
 			INFO(file.filename().string() << " rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
 			CHECK(false);
