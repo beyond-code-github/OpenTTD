@@ -36,3 +36,10 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 
 ## Report
 The standard report, plus: per kind, how many tokens moved and by how much (LL_RR test spec); the restored values; pins moved (old/new); sweep solved counts; mean Release micros per facts placement before/after. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop; engineer away, reversible)
+1. **Keep both relations exact** (revert Change 1): the out port 2 after the out fan (E ports line up; relaxing it crossed rows) and the lane split 2 before its first near head.
+2. **Push the side that can move.** For a token whose feature lies toward LARGER columns: push the token's rigid group (as built). For a token whose feature lies toward SMALLER columns: push the FEATURE's rigid group (the node point and the points tied exactly to it) toward larger columns, with every other point fixed, as far as Up allows (an eastbound out fan stays at its port; its joiner merge moves to it, which is what k_out's old exact pull did). Same Mark / RestrictRange / Up / Undo / commit pattern, reason "next to feature".
+3. **Guards accepted:** skip a group holding a port point, point 0, xe_pt or se_pt, and fans of size 0. A group holding a node is allowed when that node is the feature being pushed (2); otherwise skipped (kind-4 S-bends tied to nodes stay; say how many).
+4. Order: in-fans and other +travel tokens first, then the feature pushes, edges ascending.
+5. Then test 2 (marked lines) as the brief says; if a marked value still does not return, report the point's Explain chain after the objective and stop before committing. Remove your debug env hooks before committing.
