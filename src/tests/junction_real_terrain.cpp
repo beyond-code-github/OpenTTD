@@ -372,7 +372,7 @@ TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
 	const double near_mean = near_millis.empty() ? 0.0 : std::accumulate(near_millis.begin(), near_millis.end(), 0.0) / static_cast<double>(near_millis.size());
 	const double near_max = near_millis.empty() ? 0.0 : *std::ranges::max_element(near_millis);
 	std::cout << "HOVERNEAR fixtures=" << files.size() << " planned=" << near_planned << " moved=" << near_moved << " ms_mean=" << near_mean << " ms_max=" << near_max << "\n";
-	CHECK(near_planned >= 31);
+	CHECK(near_planned >= 32);
 	REQUIRE(near_max < 100.0);
 }
 
@@ -492,6 +492,6 @@ TEST_CASE("level solve: identical plans at every near offset", "[junction][realt
 	CHECK(shared_differences == 0);
 	/* A cone reject that the solve without the check would plan would lose a plan: the pinned planned count and hash rule that out (cone_rejects_that_would_plan == 0). */
 	CHECK(cone_rejects == 99);
-	CHECK(planned == 2862);
-	CHECK(level_hash == 2942472176959953894ULL);
+	CHECK(planned == 2919);
+	CHECK(level_hash == 16256945156918441187ULL);
 }

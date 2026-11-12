@@ -1158,7 +1158,7 @@ TEST_CASE("the in-game estimate of a terraformed plan has no red tile the terraf
 	}
 	std::cout << "IG2: planned " << counts.planned << ", estimate bad tiles " << counts.bad_before << " (rail: " << counts.rail_bad_before << "; not heads of a bridge failing after the terraform: " << counts.bad_not_failing_bridge_head << "), rail pieces failing after the terraform " << counts.rail_bad_after
 		<< ", bridges failing after the terraform " << counts.bridges_failing_after << " (BRIDGE_TOO_LOW " << counts.bridges_failing_after_too_low << "), worst total difference " << counts.worst_diff << " in " << counts.worst_diff_fixture << std::endl;
-	CHECK(counts.planned == 31);
+	CHECK(counts.planned == 32);
 	CHECK(counts.rail_bad_before == 0);
 	CHECK(counts.bad_not_failing_bridge_head == 0);
 	CHECK(counts.rail_bad_after == 0);

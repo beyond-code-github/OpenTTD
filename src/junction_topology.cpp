@@ -970,7 +970,7 @@ static std::string JunctionBendMoves(int hand, int halves, bool corner)
 }
 
 /** The kinds of element a placement run lies between (D217, DESIGN-G1 §16.1). */
-enum class FloorKind : uint8_t { Port, Fan, Tile, Corner, SBend, Heads, Node, PrioNode, LaneSplit, LaneMerge };
+enum class FloorKind : uint8_t { Port, Fan, Tile, Corner, SBend, Heads, Node, PrioNode, Prio, LaneSplit, LaneMerge };
 
 static Track JunctionCornerTrack(DiagDirection a, DiagDirection b);
 /**
@@ -978,10 +978,9 @@ static Track JunctionCornerTrack(DiagDirection a, DiagDirection b);
  * @param before The kind of the element the run starts at.
  * @param after The kind of the element the run ends at.
  * @param spec The junction spec (the waiting room reads the train length).
- * @param even_prio The prio element's coverage in tiles, rounded up to even.
  * @return The least run.
  */
-static int JunctionRunFloor(FloorKind before, FloorKind after, const JunctionSpec &spec, int even_prio)
+static int JunctionRunFloor(FloorKind before, FloorKind after, const JunctionSpec &spec)
 {
 	using K = FloorKind;
 	if (before == K::Port && after == K::Fan) return 2; // The fan starts 2 tiles inside the port: the signal tile and the boundary tile (D115a, D206).
@@ -990,8 +989,8 @@ static int JunctionRunFloor(FloorKind before, FloorKind after, const JunctionSpe
 	if (before == K::Node && after == K::Port) return 2; // A branch port's stub below its node (D206, D115a).
 	if (before == K::PrioNode && after == K::Fan) return 2; // The joiner merge to the out fan: the chain run (D217).
 	if (before == K::PrioNode && after == K::Port) return 2; // The joiner merge to an unfanned port: the chain run and port stub (D217, D206).
-	if (before == K::Node && after == K::PrioNode) return even_prio + 1; // The exit split stays outside the prio element's coverage; its row ends one step on (DESIGN-G1 §12.4, RECON-prio-element §3).
-	if (before == K::LaneMerge && after == K::PrioNode) return even_prio + 2; // The element's row must not meet the lane merge's S-bend (RECON-prio-element §3-4).
+	if (before == K::Node && after == K::Prio) return 1; // The exit split stays outside the prio element's coverage; its row ends one step on (DESIGN-G1 §12.4, RECON-prio-element §3).
+	if (before == K::LaneMerge && after == K::Prio) return 2; // The element's row must not meet the lane merge's S-bend (RECON-prio-element §3-4).
 	if (before == K::Node && after == K::LaneSplit) return 2; // The exit split to the lane split: the chain run, a minimum so series bridges have slack (D217, DESIGN-G1 §11.9b).
 	if (before == K::LaneSplit && after == K::Heads) return 2; // Shared split tile, one plain piece, then the near head (D145, D113, D117, D118).
 	if (before == K::Heads && after == K::Heads) return 2; // Series bridges: the next near head 2 tiles past the last far head (DESIGN-G1 §11.9b).
@@ -1128,8 +1127,9 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		 * Tile: one tile (a node, a port or an edge's own point). Corner: a quarter turn. SBend: a sideways step, vertical (size from the columns) or, on a row edge, horizontal (size |item row - its first row| from the rows, rule of the lane change).
 		 * Heads: a Y-axis bridge's two heads. Fan (R2): the port stub's S-bend between the port row and an item row, size |port row - item row| from the port rows, 0 allowed (no tiles, first and last at one column).
 		 * HeadsPair (R2): the near and far head of a doubled row bridge on one copy's row; copy 1's heads are copy 0's plus the stagger u (D118, D145), a rule of the row relations, not of the element.
+		 * Prio (RW6): the prio element on the row of its Prio item (index): a straight run of tiles from first to last (the joiner merge's column, which it ends on), even_prio steps long. It is the last element of the leg's chain, after the end tile, and no track of the chain: the walks along the chain stop before it.
 		 */
-		enum class K : uint8_t { Tile, Corner, SBend, Heads, Fan, HeadsPair } k = K::Tile;
+		enum class K : uint8_t { Tile, Corner, SBend, Heads, Fan, HeadsPair, Prio } k = K::Tile;
 		int first = 0;
 		int last = 0;
 		int tok = -1;
@@ -1525,6 +1525,20 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				elems.push_back(el);
 			}
 			elems.push_back(edge.to.node ? tile_elem(node_pt[edge.to.index], -1) : tile_elem(port_pt[edge.to.index], edge.to.index));
+			/* The leg ends at the joiner merge, upstream of which the prio element lies (D75, D87: on the Prio item's row, opposite the joiner). It is the leg's, not the out edge's: its tiles precede the merge along the heading. */
+			if (c == 0 && leg_edge[r] == e) {
+				for (int i = 0; i < items; i++) {
+					const JunctionTrackStackItem &item = structure.stack[i];
+					if (item.row != r || (item.kind != JunctionTrackStackItem::Kind::Prio && item.kind != JunctionTrackStackItem::Kind::PrioAndCopy)) continue;
+					Elem prio_el;
+					prio_el.k = Elem::K::Prio;
+					prio_el.hin = prio_el.hout = heading;
+					prio_el.index = static_cast<uint32_t>(i);
+					prio_el.first = new_pt();
+					prio_el.last = new_pt();
+					elems.push_back(prio_el);
+				}
+			}
 		}
 	}
 
@@ -1827,6 +1841,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 					}
 					if (i + 1 >= elems.size()) continue;
 					const Elem &next = elems[i + 1];
+					if (next.k == Elem::K::Prio) continue; // The prio element is no track of the chain (its tiles are read where the walk is used).
 					int a = el.last, b = next.first, copy = c;
 					if (split != nullptr && i == 0) {
 						if (c == 0) a = split->first;
@@ -1991,30 +2006,18 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 		}
 
-		/* The prio element's footprint (DESIGN-G1 12.4): on the side of the ML row opposite the joiner's approach, the row tiles from the joiner merge's tile to even_prio upstream; unrelated tracks may not stand on them nor touch the row's open far end. */
+		/* The prio element's footprint (DESIGN-G1 12.4): on the Prio item's row, opposite the joiner's approach, the row tiles from the joiner merge's column to even_prio upstream, from the leg chain's Prio element; unrelated tracks may not stand on them nor touch the row's open far end. */
 		for (int r = 0; r < rows; r++) {
+			const Elem &prio_el = chain[leg_edge[r]].back();
+			if (prio_el.k != Elem::K::Prio) continue;
 			const uint32_t njm_node = graph.edges[out_edge[r]].from.index;
-			const int njm = node_pt[njm_node];
-			bool main_path = false;
-			for (size_t pi = 0; pi < graph.path_edges.size() && !main_path; pi++) {
-				if (std::ranges::find(graph.path_edges[pi], leg_edge[r]) == graph.path_edges[pi].end()) continue;
-				const auto &mv = topology.movements[paths[pi].movement];
-				main_path = topology.groups[mv.first].main && topology.groups[mv.second].main;
-			}
-			if (!main_path || !node_bits[njm_node].Test(Track::X)) continue;
-			bool nw = false, se = false;
-			for (Track t : node_bits[njm_node]) {
-				if (t == Track::Upper || t == Track::Left) nw = true;
-				if (t == Track::Lower || t == Track::Right) se = true;
-			}
-			if (nw == se) continue;
 			const int sgn = east[r] ? 1 : -1;
-			const int y_row = vy[item_pt[row_items[r].lane]] + (nw ? 1 : -1);
-			const DiagDirection side = nw ? DiagDirection::SE : DiagDirection::NW;
+			const int y_row = vy[prio_el.first];
+			const DiagDirection side = prio_el.index < row_items[r].lane ? DiagDirection::NW : DiagDirection::SE;
 			const DiagDirection exit_edge = east[r] ? DiagDirection::SW : DiagDirection::NE;
 			const TrackBits h2{JunctionCornerTrack(ReverseDiagDir(side), ReverseDiagDir(exit_edge))};
-			by_row[y_row].push_back({y_row, njm, 0, njm, 0, h2, UINT32_MAX, 0, njm_node, sgn});
-			by_row[y_row].push_back(sgn > 0 ? Occupant{y_row, njm, -even_prio, njm, -1, TrackBits{Track::X}, UINT32_MAX, 0, njm_node, sgn} : Occupant{y_row, njm, 1, njm, even_prio, TrackBits{Track::X}, UINT32_MAX, 0, njm_node, sgn});
+			by_row[y_row].push_back({y_row, prio_el.last, 0, prio_el.last, 0, h2, UINT32_MAX, 0, njm_node, sgn});
+			by_row[y_row].push_back(sgn > 0 ? Occupant{y_row, prio_el.first, 0, prio_el.last, -1, TrackBits{Track::X}, UINT32_MAX, 0, njm_node, sgn} : Occupant{y_row, prio_el.last, 1, prio_el.first, 0, TrackBits{Track::X}, UINT32_MAX, 0, njm_node, sgn});
 		}
 
 		/* Related occupants never constrain each other: the same edge and copy, a node's tile and an edge that starts or ends at the node. */
@@ -2193,7 +2196,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		for (size_t i = 0; i < layer1.size(); i++) {
 			why("S edge", UINT32_MAX, static_cast<uint32_t>(layer1[i]));
 			if (i > 0) eq(1, node_pt[layer1[i]], node_pt[layer1[0]], 0);
-			eq(1, se_pt, node_pt[layer1[i]], JunctionRunFloor(FloorKind::Node, FloorKind::Port, spec, even_prio));
+			eq(1, se_pt, node_pt[layer1[i]], JunctionRunFloor(FloorKind::Node, FloorKind::Port, spec));
 		}
 		why("S port row");
 		for (int s = 0; s < n; s++) {
@@ -2239,7 +2242,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 						split_node = nd;
 					} else if (split_node >= 0 && !graph.nodes[nd].split) {
 						why("waiting room", cur_edge, static_cast<uint32_t>(nd));
-						ge(1, node_pt[nd], node_pt[split_node], JunctionRunFloor(FloorKind::Node, FloorKind::Node, spec, even_prio));
+						ge(1, node_pt[nd], node_pt[split_node], JunctionRunFloor(FloorKind::Node, FloorKind::Node, spec));
 						break;
 					}
 					uint32_t next_edge = edge_count;
@@ -2255,12 +2258,21 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		for (uint32_t e = 0; e < edge_count; e++) {
 			const std::vector<Elem> &elems = chain[e];
 			const JunctionTrackEdge &edge = graph.edges[e];
+			/* The prio element (RW6): on its Prio item's row, ending in the column of the joiner merge, even_prio steps long. Its run from the element before it is added with that element, below. */
+			const Elem *prio_el = !elems.empty() && elems.back().k == Elem::K::Prio ? &elems.back() : nullptr;
+			if (prio_el != nullptr) {
+				why("prio element", e, edge.to.index, (end_level(edge.from) - 1) / 2);
+				eq(1, prio_el->first, item_pt[prio_el->index], 0);
+				eq(1, prio_el->last, item_pt[prio_el->index], 0);
+				eq(0, prio_el->last, node_pt[edge.to.index], 0);
+				along(prio_el->hout, prio_el->last, prio_el->first, even_prio, true);
+			}
 			if (is_row_edge(e) && doubled_edge(e)) {
 				/* A doubled leg: copy 0's chain holds its HeadsPairs and its lane merge S-bend, copy 1's its lane split S-bend and its HeadsPairs, each between its two Tiles. The lane pair joins the two (copy 1's S-bend starts at the lane split, copy 0's ends at the lane merge) and the heads of copy 1 are copy 0's one tile upstream (D118). */
 				const int r = (end_level(edge.from) - 1) / 2;
 				const std::vector<Elem> &copy = chain_copy[e];
 				const size_t g = std::ranges::count(elems, Elem::K::HeadsPair, &Elem::k);
-				const int nex = elems.front().first, njm = elems.back().first;
+				const int nex = elems.front().first;
 				const Elem &bend0 = lane_bend(e, elems, Step::Role::LaneMerge);
 				const Elem &bend1 = lane_bend(e, copy, Step::Role::LaneSplit);
 				auto heads0 = [&](size_t b) -> const Elem & { return nth_heads(elems, b); };
@@ -2284,22 +2296,24 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				const int heading = east[r] ? 1 : 3;
 				/* The lane split sits next to its bridge (D215); the run from the exit split to the lane split, and from the last heads to the lane merge, are rule minima, not exact: series bridges need the slack (DESIGN-G1 §11.9b). */
 				why("lane split run", e, edge.from.index, r);
-				along(heading, bend1.first, nex, JunctionRunFloor(FloorKind::Node, FloorKind::LaneSplit, spec, even_prio), false);
-				along(heading, heads0(0).first, bend1.first, JunctionRunFloor(FloorKind::LaneSplit, FloorKind::Heads, spec, even_prio), true);
+				along(heading, bend1.first, nex, JunctionRunFloor(FloorKind::Node, FloorKind::LaneSplit, spec), false);
+				along(heading, heads0(0).first, bend1.first, JunctionRunFloor(FloorKind::LaneSplit, FloorKind::Heads, spec), true);
 				eq(0, bend1.last, bend1.first, 0);
 				along(heading, heads1(0).first, bend1.last, 1, true); // A shape, not a floor: copy 1 sits one tile nearer than copy 0, the head stagger (D118, D145).
 				for (size_t b = 0; b < g; b++) {
 					along(heading, heads0(b).first, heads1(b).first, 1, true); // Shape: the head stagger, copy 0 one past copy 1 (D118).
 					along(heading, heads0(b).last, heads1(b).last, 1, true); // Shape: the head stagger (D118).
-					if (b > 0) along(heading, heads0(b).first, heads0(b - 1).last, JunctionRunFloor(FloorKind::Heads, FloorKind::Heads, spec, even_prio), false);
+					if (b > 0) along(heading, heads0(b).first, heads0(b - 1).last, JunctionRunFloor(FloorKind::Heads, FloorKind::Heads, spec), false);
 				}
 				why("series bridge heads", e, UINT32_MAX, r);
 				along(heading, bend0.first, heads0(g - 1).last, 1, false); // Shape: one tile past copy 0's far head, the stagger (D118, D145); the floor is the lane merge's, next.
 				eq(0, bend0.last, bend0.first, 0);
-				along(heading, bend0.last, heads1(g - 1).last, JunctionRunFloor(FloorKind::Heads, FloorKind::LaneMerge, spec, even_prio), false);
+				along(heading, bend0.last, heads1(g - 1).last, JunctionRunFloor(FloorKind::Heads, FloorKind::LaneMerge, spec), false);
 				/* The element's row ends at step even_prio + 1, which must not meet the lane merge's S-bend (RECON-prio-element §3-4). */
-				why("prio element", e, graph.edges[out_edge[r]].from.index, r);
-				along(heading, njm, bend0.last, JunctionRunFloor(FloorKind::LaneMerge, FloorKind::PrioNode, spec, even_prio), false);
+				if (prio_el != nullptr) {
+					why("prio element", e, graph.edges[out_edge[r]].from.index, r);
+					along(heading, prio_el->first, bend0.last, JunctionRunFloor(FloorKind::LaneMerge, FloorKind::Prio, spec), false);
+				}
 
 				/* Every crosser's tiles on the copy row and the lane row lie between its bridge's heads; the heads hug the outermost tiles by the flat solve's order, below (D80, D118, D145, D217). */
 				const int u = -s; // The upstream step.
@@ -2388,6 +2402,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				}
 				if (i + 1 >= elems.size()) continue;
 				const Elem &next = elems[i + 1];
+				if (next.k == Elem::K::Prio) continue; // The prio element is no track of the chain: nothing runs to it from the end tile.
 				if (next.first == el.last) continue;
 				bool exact = false;
 				const bool in_out = IsInEdge(e) || IsOutEdge(e);
@@ -2401,9 +2416,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 					if (!in_out) return FloorKind::Tile;
 					return o.slot >= 0 ? FloorKind::Port : (edge.to.node ? FloorKind::Node : FloorKind::PrioNode);
 				};
-				const int dist = JunctionRunFloor(floor_kind(el), floor_kind(next), spec, even_prio);
-				if (floor_kind(next) == FloorKind::PrioNode) {
-					why("prio element", e, edge.to.index, (end_level(graph.edges[e].from) - 1) / 2); // The prio element's coverage is a floor on the joiner merge (D217).
+				/* The element before the end tile of a leg with a prio element: its run to the prio element's first tile is the floor, the run on to the merge only keeps the lane row (the element's span is exact). */
+				const bool before_prio = prio_el != nullptr && i + 3 == elems.size();
+				const int dist = before_prio ? 0 : JunctionRunFloor(floor_kind(el), floor_kind(next), spec);
+				if (before_prio) {
+					why("prio element", e, edge.to.index, (end_level(graph.edges[e].from) - 1) / 2); // The prio element's coverage is a floor on its first tile (D217).
+					along(el.hout, prio_el->first, el.last, JunctionRunFloor(floor_kind(el), FloorKind::Prio, spec), false);
 				} else {
 					why("chain run", e);
 				}
@@ -2772,6 +2790,13 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 							for (const TileIndexDiffC &o : bend_tiles(heading, piece.hand, piece.halves, false)) group(piece.a, o.x, piece.y + o.y, JunctionFactKind::Half, Axis::X, piece.edge, UINT32_MAX, r);
 							break;
 					}
+				}
+				/* The prio element's tiles (RW6): a straight run on its row, the tile at either end and the run between them. */
+				const Elem &prio_el = chain[leg_edge[r]].back();
+				if (prio_el.k == Elem::K::Prio) {
+					group(prio_el.first, 0, vy[prio_el.first], JunctionFactKind::Straight, Axis::X, leg_edge[r], UINT32_MAX, r);
+					group(prio_el.last, 0, vy[prio_el.last], JunctionFactKind::Straight, Axis::X, leg_edge[r], UINT32_MAX, r);
+					row_run(prio_el.first, prio_el.last, vy[prio_el.first], sgn, leg_edge[r], r);
 				}
 			}
 

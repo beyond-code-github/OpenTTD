@@ -3549,6 +3549,55 @@ TEST_CASE("topoproj: a ridge row is cut, not avoided", "[junction][topoproj]")
 	INFO(why);
 }
 
+TEST_CASE("topoproj: the prio element sees the terrain", "[junction][topoproj]")
+{
+	/* RW6: a house on a prio tile that no other track uses. The facts placement moves the prio element or fails naming it; it never leaves the element on the house. */
+	const JunctionTopology &t = JunctionTTopology();
+	const SeedPipeline p = SeedPipelineOf(t, MakeTestJunctionSpec());
+	constexpr int MARGIN = 8;
+	JunctionTerrain flat = FlatTerrainFor(p);
+	flat.origin = {-MARGIN, -MARGIN};
+	flat.width = p.seed.size.x + 2 * MARGIN;
+	flat.height = p.seed.size.y + 2 * MARGIN;
+	flat.tiles.assign(static_cast<size_t>(flat.width) * flat.height, JunctionTerrainTile{});
+
+	/* The tiles the signal pass draws beside the main line for a placement (its prio elements' side rows). */
+	const auto prio_tiles = [&](const JunctionTrackPlacement &q, std::string *error) {
+		std::vector<TileIndexDiffC> tiles;
+		std::vector<JunctionTrackRoute> routes;
+		JunctionLayout layout = RenderJunctionTrackPlacement(t, p.paths, p.graph, p.cut, p.programs, q, error, &routes);
+		REQUIRE(!layout.tracks.empty());
+		std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> beside;
+		SignalJunctionTrackRoutes(layout, routes, t, p.paths, p.graph, p.programs, p.spec, nullptr, &beside);
+		for (const auto &[row, ml] : beside) tiles.push_back(row);
+		return tiles;
+	};
+	std::string error;
+	std::set<std::pair<int, int>> used;
+	for (const JunctionTrack &jt : p.layout.tracks) used.emplace(jt.offset.x, jt.offset.y);
+	const std::vector<TileIndexDiffC> seed_prio = prio_tiles(p.seed, &error);
+	std::vector<TileIndexDiffC> free_tiles;
+	for (const TileIndexDiffC &tile : seed_prio) {
+		if (!used.contains({tile.x, tile.y})) free_tiles.push_back(tile);
+	}
+	REQUIRE(!free_tiles.empty());
+	const TileIndexDiffC house = free_tiles[free_tiles.size() / 2];
+	INFO("house " << house.x << "," << house.y << " of " << free_tiles.size() << " free prio tiles");
+
+	const JunctionTrackPlacement q = PlaceWithHouses(t, p, flat, {{house.x, house.y}}, &error);
+	INFO(error);
+	if (q.nodes.empty()) {
+		bool names_prio = error.find("prio element") != std::string::npos;
+		for (const JunctionPlacementReason &reason : q.why) names_prio = names_prio || (reason.rule != nullptr && std::string(reason.rule) == "prio element");
+		CHECK(names_prio);
+		return;
+	}
+	std::string render_error;
+	const std::vector<TileIndexDiffC> moved = prio_tiles(q, &render_error);
+	CHECK(!moved.empty());
+	for (const TileIndexDiffC &tile : moved) CHECK(!(tile.x == house.x && tile.y == house.y));
+}
+
 TEST_CASE("levels: ridges across the T", "[junction][topoprojsweep]")
 {
 	const JunctionTopology &t = JunctionTTopology();
@@ -3758,7 +3807,7 @@ TEST_CASE("topology: placement on flat facts is the seed", "[junction][topology]
 
 TEST_CASE("topology: run and group tiles match the render", "[junction][topoprojsweep]")
 {
-	/* The facts are applied to the tiles of the rendered routes but the bridge middles, no others: a house on a tile changes the placement (or fails it) exactly when a fact is applied to a tile the seed uses. */
+	/* The facts are applied to the tiles of the rendered routes but the bridge middles, and to the prio elements' side rows, no others: a house on a tile changes the placement (or fails it) exactly when a fact is applied to a tile the seed uses. */
 	const JunctionTopology &t = JunctionLLRRSidelineTopology();
 	const SeedPipeline p = SeedPipelineOf(t, MakeTestJunctionSpec());
 	std::string error;
@@ -3779,6 +3828,13 @@ TEST_CASE("topology: run and group tiles match the render", "[junction][topoproj
 			if (piece.on_bridge && !heads.contains({piece.tile.x, piece.tile.y})) continue;
 			rendered.emplace(piece.tile.x, piece.tile.y);
 		}
+	}
+	/* The prio elements' side rows are tiles the seed uses too (RW6): the signal pass draws them, the facts see them. */
+	{
+		JunctionLayout signalled = render;
+		std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> beside;
+		SignalJunctionTrackRoutes(signalled, routes, t, p.paths, p.graph, p.programs, p.spec, nullptr, &beside);
+		for (const auto &[row, ml] : beside) rendered.emplace(row.x, row.y);
 	}
 	REQUIRE(!rendered.empty());
 
