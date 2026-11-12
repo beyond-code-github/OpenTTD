@@ -29,3 +29,8 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 
 ## Report
 The standard report, plus what the engineer should look at in game. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop; engineer away, reversible)
+1. **The prio element is levelled and terraformed for (a pipeline fix, now in scope).** The level solve takes the prio element's footprint tiles (C5b's footprint occupants: per main-main row, step 0 and steps 1..even_prio on the row side) as track tiles: each flat (never a ramp: joins are diagonal pieces), and each at the level of the main-line tile beside it in the same column (`==`). Their bits for the per-tile cost/fit are the bits the signal pass draws there (X plus the join halves; read the signal pass for the exact bits, or use X | both halves as the worst case for fits; say which). The terraform plan then covers them. Test: the brief's "a level for every track tile" holds with no exclusion, and T3 on the terraformed terrain still passes on every planned fixture; REALTERRAIN/HOVERPLAN counts reported before/after (they may drop: then report which fixtures and why).
+2. **Viewport helper approved:** add the small src/viewport.cpp helper that lets the ghost draw a tile at a given z and slope (reset the per-tile foundation state, set `_cur_ti.z`/`tileh` for the ghost draw, restore after); `DrawJunctionGhost` may take a non-const TileInfo. No `const_cast` of `_cur_ti`.
+3. Resume from your saved patch; then changes 2-5 and all gates.
