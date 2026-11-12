@@ -1057,7 +1057,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 
 	/* The chains of the edges that are not rows: elements in travel order. */
 	struct Elem {
-		enum class K : uint8_t { Tile, Corner, SBend, Heads } k = K::Tile;
+		/**
+		 * Tile: one tile (a node, a port or an edge's own point). Corner: a quarter turn. SBend: a sideways step, vertical (size from the columns) or, on a row edge, horizontal (size |item row - its first row| from the rows, rule of the lane change).
+		 * Heads: a Y-axis bridge's two heads. Fan (R2): the port stub's S-bend between the port row and an item row, size |port row - item row| from the port rows, 0 allowed (no tiles, first and last at one column).
+		 * HeadsPair (R2): the near and far head of a doubled row bridge on one copy's row; copy 1's heads are copy 0's plus the stagger u (D118, D145), a rule of the row relations, not of the element.
+		 */
+		enum class K : uint8_t { Tile, Corner, SBend, Heads, Fan, HeadsPair } k = K::Tile;
 		int first = 0;
 		int last = 0;
 		int tok = -1;
@@ -1069,6 +1074,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		int m = 1;
 		int cross = -1; ///< Heads: the crossed edge.
 		uint32_t index = NO_ROW; ///< The stack item the token ends on.
+		int slot = -1; ///< Row edges: the port slot of a port Tile or a Fan.
+		bool port_first = false; ///< A Fan: it starts on the port row (an in edge's), else it ends on it.
 		std::vector<TileIndexDiffC> offs;
 	};
 	std::vector<std::vector<Elem>> chain(edge_count);
@@ -1192,6 +1199,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		uint32_t fan_edge;
 		uint32_t edge;
 		int row;
+		int token; ///< The token of the edge's program (copy's program for copy 1) the change belongs to; with edge and copy it is the change's key (R2).
+		int copy;
 	};
 	std::vector<RowChange> row_changes;
 	auto solve = [&](std::vector<int> &val) {
@@ -1303,6 +1312,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	/* The size of every bend, refreshed from the rows and columns. */
 	auto refresh = [&](bool rows_known) {
 		for (uint32_t e = 0; e < edge_count; e++) {
+			if (is_row_edge(e)) continue; // The row chains' sizes come from the rows, in the R2 check.
 			for (Elem &el : chain[e]) {
 				if (el.k == Elem::K::Corner) {
 					const int kk = el.joiner_div && rows_known ? std::abs(vy[el.first] - vy[el.last]) : k;
@@ -1350,6 +1360,98 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		}
 	}
 
+	/* The row edges' chains (R2), built beside row_pts and tied to it: the points are new (allocated after every other), each tied to its row_pts counterpart in both phases (rule "row chain (R2)"), so the solve is the row points' alone. A second chain holds copy 1 of a doubled leg. */
+	struct RowTie {
+		int chain_pt;
+		int row_pt;
+		uint32_t edge;
+		int row;
+	};
+	std::vector<RowTie> row_ties;
+	std::vector<std::vector<Elem>> chain_copy(edge_count); ///< Copy 1 of a doubled row leg: SBend, then its heads.
+	const int base_pts = pt_count; ///< The points before the row chains; the columns reported are these.
+	for (uint32_t e = 0; e < edge_count; e++) {
+		if (!is_row_edge(e)) continue;
+		const JunctionTrackEdge &edge = graph.edges[e];
+		const int r = (end_level(edge.from) - 1) / 2;
+		const RowPts &rp = row_pts[r];
+		const int heading = east[r] ? 1 : 3;
+		auto tile_elem = [&](int pt, int slot) {
+			Elem el;
+			el.first = el.last = pt;
+			el.hin = el.hout = heading;
+			el.slot = slot;
+			return el;
+		};
+		auto tied = [&](int row_pt) {
+			const int pt = new_pt();
+			row_ties.push_back({pt, row_pt, e, r});
+			return pt;
+		};
+		std::vector<Elem> &elems = chain[e];
+		if (e == in_edge[r] || e == out_edge[r]) {
+			const bool in = e == in_edge[r];
+			Elem fan;
+			fan.k = Elem::K::Fan;
+			fan.hin = fan.hout = heading;
+			fan.tok = 0;
+			fan.index = programs.edges[e][0].index;
+			fan.slot = in ? edge.from.index : edge.to.index;
+			fan.port_first = in;
+			fan.first = tied(in ? rp.fif : rp.fof);
+			fan.last = tied(in ? rp.fil : rp.fol);
+			if (in) {
+				elems.push_back(tile_elem(port_pt[edge.from.index], edge.from.index));
+				elems.push_back(fan);
+				elems.push_back(tile_elem(node_pt[edge.to.index], -1));
+			} else {
+				elems.push_back(tile_elem(node_pt[edge.from.index], -1));
+				elems.push_back(fan);
+				elems.push_back(tile_elem(port_pt[edge.to.index], edge.to.index));
+			}
+		} else if (!doubled_row(r)) {
+			elems.push_back(tile_elem(node_pt[edge.from.index], -1));
+			elems.push_back(tile_elem(node_pt[edge.to.index], -1));
+		} else {
+			const std::vector<Step> &program = programs.edges[e];
+			std::vector<Elem> &copy = chain_copy[e];
+			Elem bend0, bend1;
+			bend0.k = bend1.k = Elem::K::SBend;
+			bend0.hin = bend0.hout = bend1.hin = bend1.hout = heading;
+			bend0.hand = bend1.hand = program.back().hand;
+			bend0.index = bend1.index = program.back().index;
+			bend0.tok = static_cast<int>(program.size()) - 1;
+			bend1.tok = 0;
+			bend0.first = tied(rp.sb0_first);
+			bend0.last = tied(rp.lane_merge);
+			bend1.first = tied(rp.lane_split);
+			bend1.last = tied(rp.sb1_last);
+			elems.push_back(tile_elem(node_pt[edge.from.index], -1));
+			copy.push_back(tile_elem(node_pt[edge.from.index], -1));
+			copy.push_back(bend1);
+			for (size_t b = 0; b < bridges_of[e].size(); b++) {
+				const JunctionTrackBridge &bridge = structure.bridges[bridges_of[e][b]];
+				Elem h0 = tile_elem(0, -1), h1 = tile_elem(0, -1);
+				h0.k = h1.k = Elem::K::HeadsPair;
+				for (size_t t = 0; t < program.size(); t++) {
+					if (program[t].kind == StepKind::Over && program[t].index == bridge.crossed[0]) h0.tok = static_cast<int>(t);
+				}
+				for (size_t t = 0; t < programs.copies[e].size(); t++) {
+					if (programs.copies[e][t].kind == StepKind::Over && programs.copies[e][t].index == bridge.crossed[0]) h1.tok = static_cast<int>(t);
+				}
+				h0.first = tied(rp.nh0[b]);
+				h0.last = tied(rp.fh0[b]);
+				h1.first = tied(rp.nh1[b]);
+				h1.last = tied(rp.fh1[b]);
+				elems.push_back(h0);
+				copy.push_back(h1);
+			}
+			elems.push_back(bend0);
+			elems.push_back(tile_elem(node_pt[edge.to.index], -1));
+			copy.push_back(tile_elem(node_pt[edge.to.index], -1));
+		}
+	}
+
 	/* The row changes of kinds 1-4 (briefs/P3b-every-row-change-leans.md, "The rule") in the objective's order: edges ascending, an edge's tokens ascending, its copies after them. Each leans toward the feature it serves; only one whose feature lies toward larger columns can move. */
 	for (uint32_t e = 0; e < edge_count; e++) {
 		if (is_row_edge(e)) {
@@ -1357,12 +1459,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			const RowPts &rp = row_pts[r];
 			const bool eastward = east[r];
 			if (e == in_edge[r] && fan_item(e) != NO_ROW) {
-				row_changes.push_back({rp.fif, node_pt[graph.edges[e].to.index], eastward, e, e, r}); // Kind 1, first edge: with the travel, toward its node.
+				row_changes.push_back({rp.fif, node_pt[graph.edges[e].to.index], eastward, e, e, r, 0, 0}); // Kind 1, first edge: with the travel, toward its node.
 			} else if (e == out_edge[r] && fan_item(e) != NO_ROW) {
-				row_changes.push_back({rp.fof, node_pt[graph.edges[e].from.index], !eastward, e, e, r}); // Kind 1, last edge: against the travel.
+				row_changes.push_back({rp.fof, node_pt[graph.edges[e].from.index], !eastward, e, e, r, 0, 0}); // Kind 1, last edge: against the travel.
 			} else if (e == leg_edge[r] && doubled_row(r)) {
-				row_changes.push_back({rp.sb0_first, rp.fh0[rp.fh0.size() - 1], !eastward, UINT32_MAX, e, r}); // Kind 3: the lane merge, against the travel.
-				row_changes.push_back({rp.lane_split, rp.nh0[0], eastward, UINT32_MAX, e, r}); // Kind 2: the lane split, with the travel.
+				row_changes.push_back({rp.sb0_first, rp.fh0[rp.fh0.size() - 1], !eastward, UINT32_MAX, e, r, static_cast<int>(programs.edges[e].size()) - 1, 0}); // Kind 3: the lane merge, against the travel.
+				row_changes.push_back({rp.lane_split, rp.nh0[0], eastward, UINT32_MAX, e, r, 0, 1}); // Kind 2: the lane split, with the travel.
 			}
 			continue;
 		}
@@ -1378,9 +1480,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 			if (before == after) continue;
 			const JunctionTrackEnd &end = before ? graph.edges[e].to : graph.edges[e].from;
-			row_changes.push_back({el.first, end.node ? node_pt[end.index] : port_pt[end.index], VX[el.hin] * (before ? 1 : -1) > 0, UINT32_MAX, e, -1});
+			row_changes.push_back({el.first, end.node ? node_pt[end.index] : port_pt[end.index], VX[el.hin] * (before ? 1 : -1) > 0, UINT32_MAX, e, -1, el.tok, 0});
 		}
 	}
+
+	/* The objective's order is the graph's, not the points' (R2): by (edge, copy, token). */
+	std::ranges::stable_sort(row_changes, [](const RowChange &a, const RowChange &b) { return std::array<int, 3>{static_cast<int>(a.edge), a.copy, a.token} < std::array<int, 3>{static_cast<int>(b.edge), b.copy, b.token}; });
 
 	/* Symbolic tiles of an edge: an anchor point, a column offset, a row; in travel order. */
 	struct SymTile {
@@ -1388,13 +1493,19 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		int dx;
 		int y;
 	};
-	auto edge_tiles = [&](uint32_t e) {
+	auto edge_tiles_of = [&](const std::vector<Elem> &elems) {
 		std::vector<SymTile> tiles;
-		const std::vector<Elem> &elems = chain[e];
 		for (size_t i = 0; i < elems.size(); i++) {
 			const Elem &el = elems[i];
 			if (el.k == Elem::K::Tile) {
+				tiles.push_back({el.first, 0, el.slot >= 0 ? port_row[el.slot] : vy[el.first]});
+			} else if (el.k == Elem::K::HeadsPair) {
 				tiles.push_back({el.first, 0, vy[el.first]});
+				tiles.push_back({el.last, 0, vy[el.last]});
+			} else if (el.k == Elem::K::Fan) {
+				/* The fan starts on the port row (an in edge's) or on its item row (an out edge's). */
+				const int y = el.port_first ? port_row[el.slot] : vy[item_pt[el.index]];
+				for (const TileIndexDiffC &o : el.offs) tiles.push_back({el.first, o.x, y + o.y});
 			} else if (el.k == Elem::K::Heads) {
 				const int step = vy[el.last] > vy[el.first] ? 1 : -1;
 				for (int y = vy[el.first]; y != vy[el.last] + step; y += step) tiles.push_back({el.first, 0, y});
@@ -1408,6 +1519,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		}
 		return tiles;
 	};
+	auto edge_tiles = [&](uint32_t e) { return edge_tiles_of(chain[e]); };
 
 	/* The curves of every route (D217): per lane path and copy, in travel order, each curve as its bend's anchor point (the bend's first half tile), its hand and its element, and the route's units up to it in two forms. In the X form (rows known, one horizontal heading s per route) the units are xoff + 2 s (x[anchor] - x[the route's start]): along a horizontal stretch of that heading every column adds 2 units, a vertical stretch adds the fixed units of its rows, and a bend adds what its own pieces do. In the Y form (a segment of curves with only vertical runs between them, vertical heading sv) the units from the segment's first curve are yoff + 2 sv (y[anchor] - y[first anchor]). Row bends (fans, lane S-bends) lie between horizontal runs, so they have no segment (seg -1) and their curves pair in the X form only. */
 	struct SymCurve {
@@ -2108,8 +2220,16 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			}
 		}
 
+		/* The row chains' points are their row points (R2): the only relations the row chains add. */
+		for (const RowTie &tie : row_ties) {
+			why("row chain (R2)", tie.edge, UINT32_MAX, tie.row);
+			eq(0, tie.chain_pt, tie.row_pt, 0);
+			eq(1, tie.chain_pt, tie.row_pt, 0);
+		}
+
 		/* The chains of the other edges. */
 		for (uint32_t e = 0; e < edge_count; e++) {
+			if (is_row_edge(e)) continue; // Row edges are the rows' relations above; their chains carry only the ties (R2).
 			const std::vector<Elem> &elems = chain[e];
 			const JunctionTrackEdge &edge = graph.edges[e];
 			for (size_t i = 0; i < elems.size(); i++) {
@@ -2776,13 +2896,110 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	}
 	auto tile = [&](int pt) { return TileIndexDiffC{static_cast<int16_t>(vx[pt]), static_cast<int16_t>(vy[pt])}; };
 
+	/* The R2 check: the row chains' kinds, points and tiles equal the row points' and the row blocks' (the occupancy and facts enumeration of a row's in fan, lane, doubled lane and out fan). Removed in R5 with row_pts. */
+	std::vector<std::string> mismatches;
+	for (uint32_t e = 0; e < edge_count; e++) {
+		if (!is_row_edge(e)) continue;
+		for (std::vector<Elem> *elems : {&chain[e], &chain_copy[e]}) {
+			for (Elem &el : *elems) {
+				if (el.k == Elem::K::Fan) {
+					vy[el.first] = el.port_first ? port_row[el.slot] : vy[item_pt[el.index]];
+					vy[el.last] = el.port_first ? vy[item_pt[el.index]] : port_row[el.slot];
+					const int dy = vy[el.last] - vy[el.first];
+					el.m = std::abs(dy);
+					el.hand = ((dy > 0) == (el.hin == 1)) ? 1 : -1;
+					el.offs.clear();
+					if (el.m != 0) el.offs = bend_tiles(el.hin, el.hand, 2 * el.m, false);
+				} else if (el.k == Elem::K::SBend) {
+					el.m = std::abs(vy[item_pt[el.index]] - vy[el.first]);
+					el.offs = bend_tiles(el.hin, el.hand, 2 * el.m, false);
+				}
+			}
+		}
+	}
+	for (uint32_t e = 0; e < edge_count; e++) {
+		if (!is_row_edge(e)) continue;
+		const JunctionTrackEdge &edge = graph.edges[e];
+		const int r = (end_level(edge.from) - 1) / 2;
+		const RowPts &rp = row_pts[r];
+		using K = Elem::K;
+		struct Expect {
+			K k;
+			int first, last;
+		};
+		auto compare = [&](int copy, const std::vector<Elem> &elems, const std::vector<Expect> &expected, std::vector<std::pair<int, int>> want) {
+			auto say = [&](const std::string &what) { mismatches.push_back(fmt::format("edge {} copy {} row {}: {}", e, copy, r, what)); };
+			if (elems.size() != expected.size()) {
+				say(fmt::format("{} elements, the row points have {}", elems.size(), expected.size()));
+				return;
+			}
+			for (size_t i = 0; i < elems.size(); i++) {
+				if (elems[i].k != expected[i].k) say(fmt::format("element {} has kind {}, expected {}", i, static_cast<int>(elems[i].k), static_cast<int>(expected[i].k)));
+				const std::pair<int, int> have_pts[2] = {{elems[i].first, expected[i].first}, {elems[i].last, expected[i].last}};
+				for (const auto &[c, w] : have_pts) {
+					if (vx[c] != vx[w] || vy[c] != vy[w]) say(fmt::format("element {} point at {},{}, the row point at {},{}", i, vx[c], vy[c], vx[w], vy[w]));
+				}
+			}
+			std::vector<std::pair<int, int>> have;
+			for (const SymTile &t : edge_tiles_of(elems)) {
+				if (std::ranges::find(node_pt, t.pt) != node_pt.end()) continue;
+				have.emplace_back(vx[t.pt] + t.dx, t.y);
+			}
+			std::ranges::sort(have);
+			std::ranges::sort(want);
+			if (have != want) say(fmt::format("{} tiles, the row blocks enumerate {}", have.size(), want.size()));
+		};
+		const int heading = east[r] ? 1 : 3;
+		const int y_exit = vy[item_pt[doubled_row(r) ? north_item[r] : lane_item[r]]];
+		const int y_lane = vy[item_pt[lane_item[r]]];
+		auto bend_at = [&](std::vector<std::pair<int, int>> &out, int pt, int y, int hand, int halves) {
+			for (const TileIndexDiffC &o : bend_tiles(heading, hand, halves, false)) out.emplace_back(vx[pt] + o.x, y + o.y);
+		};
+		std::vector<std::pair<int, int>> want;
+		if (e == in_edge[r]) {
+			const int y_in = port_row[edge.from.index];
+			want.emplace_back(vx[port_pt[edge.from.index]], y_in);
+			if (fan_m[e] != 0) bend_at(want, rp.fif, y_in, ((y_exit > y_in) == (heading == 1)) ? 1 : -1, 2 * fan_m[e]);
+			compare(0, chain[e], {{K::Tile, port_pt[edge.from.index], port_pt[edge.from.index]}, {K::Fan, rp.fif, rp.fil}, {K::Tile, node_pt[edge.to.index], node_pt[edge.to.index]}}, want);
+		} else if (e == out_edge[r]) {
+			const int y_out = port_row[edge.to.index];
+			if (fan_m[e] != 0) bend_at(want, rp.fof, y_lane, ((y_out > y_lane) == (heading == 1)) ? 1 : -1, 2 * fan_m[e]);
+			want.emplace_back(vx[port_pt[edge.to.index]], y_out);
+			compare(0, chain[e], {{K::Tile, node_pt[edge.from.index], node_pt[edge.from.index]}, {K::Fan, rp.fof, rp.fol}, {K::Tile, port_pt[edge.to.index], port_pt[edge.to.index]}}, want);
+		} else if (!doubled_row(r)) {
+			compare(0, chain[e], {{K::Tile, node_pt[edge.from.index], node_pt[edge.from.index]}, {K::Tile, node_pt[edge.to.index], node_pt[edge.to.index]}}, want);
+		} else {
+			const int hand = programs.edges[e].back().hand;
+			std::vector<Expect> first = {{K::Tile, node_pt[edge.from.index], node_pt[edge.from.index]}};
+			std::vector<Expect> second = {{K::Tile, node_pt[edge.from.index], node_pt[edge.from.index]}, {K::SBend, rp.lane_split, rp.sb1_last}};
+			std::vector<std::pair<int, int>> want1;
+			for (size_t b = 0; b < rp.nh0.size(); b++) {
+				first.push_back({K::HeadsPair, rp.nh0[b], rp.fh0[b]});
+				second.push_back({K::HeadsPair, rp.nh1[b], rp.fh1[b]});
+				want.emplace_back(vx[rp.nh0[b]], y_exit);
+				want.emplace_back(vx[rp.fh0[b]], y_exit);
+				want1.emplace_back(vx[rp.nh1[b]], y_lane);
+				want1.emplace_back(vx[rp.fh1[b]], y_lane);
+			}
+			first.push_back({K::SBend, rp.sb0_first, rp.lane_merge});
+			first.push_back({K::Tile, node_pt[edge.to.index], node_pt[edge.to.index]});
+			second.push_back({K::Tile, node_pt[edge.to.index], node_pt[edge.to.index]});
+			bend_at(want, rp.sb0_first, y_exit, hand, 2 * std::abs(y_lane - y_exit));
+			bend_at(want1, rp.lane_split, y_exit, hand, 2 * std::abs(y_lane - y_exit));
+			compare(0, chain[e], first, want);
+			compare(1, chain_copy[e], second, want1);
+		}
+	}
+
 	JunctionTrackPlacement result;
 	for (int i = 0; i < items; i++) result.item_rows.push_back(vy[item_pt[i]]);
 	for (int s = 0; s < n; s++) result.ports.push_back(tile(port_pt[s]));
 	for (uint32_t i = 0; i < graph.nodes.size(); i++) result.nodes.push_back(tile(node_pt[i]));
 	result.size = {static_cast<int16_t>(vx[xe_pt] + 1), static_cast<int16_t>(vy[se_pt] + 1)};
 	result.choices = choices;
-	result.columns = vx;
+	result.columns.assign(vx.begin(), vx.begin() + base_pts); // The row chains' points are not reported (R2).
+	result.row_chain_mismatches = std::move(mismatches);
+	for (const RowChange &change : row_changes) result.row_change_keys.push_back({static_cast<int>(change.edge), change.copy, change.token});
 
 	/* The heads of a bridge: its near and far point, and the carrier's travel direction along the axis. */
 	struct Heads {

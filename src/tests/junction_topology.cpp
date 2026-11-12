@@ -2681,6 +2681,69 @@ TEST_CASE("topology: placement from its own choices equals the seed", "[junction
 	}
 }
 
+TEST_CASE("topology: row chains reproduce the row geometry", "[junction][topology]")
+{
+	/* R2 (DESIGN-G1 §16): every row edge's Elem chain (both copies of a doubled leg) has the row points' kinds, points and tiles; the check runs inside every placement. */
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		JunctionTrackPlacement p;
+		std::string error;
+		SeedOf(*t, MakeTestJunctionSpec(), &error, &p);
+		INFO(error);
+		REQUIRE(!p.nodes.empty());
+		for (const std::string &m : p.row_chain_mismatches) {
+			INFO(m);
+			CHECK(false);
+		}
+	}
+}
+
+TEST_CASE("topology: row chains reproduce the row geometry across the sweep", "[junction][topologysweep]")
+{
+	size_t cells = 0;
+	for (int ti = 0; ti < 2; ti++) {
+		const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
+		for (int tl = 3; tl <= 8; tl++) {
+			for (int v : {100, 120, 160, 196}) {
+				JunctionSpec spec = MakeTestJunctionSpec();
+				spec.tl = tl;
+				spec.train.max_speed = v;
+				spec.reference_speed = v;
+				spec.prio_tiles = 0;
+				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+				if (spec.prio_tiles == 0) continue;
+				std::string error;
+				JunctionTrackPlacement p;
+				SeedOf(t, spec, &error, &p);
+				INFO(fmt::format("{} tl {} v {}: {}", ti == 0 ? "T" : "LL_RR", tl, v, error));
+				REQUIRE(!p.nodes.empty());
+				for (const std::string &m : p.row_chain_mismatches) {
+					INFO(m);
+					CHECK(false);
+				}
+				cells++;
+			}
+		}
+	}
+	CHECK(cells == 44);
+}
+
+TEST_CASE("topology: the D215 objective keys on graph elements", "[junction][topology]")
+{
+	/* R2: every row change carries (edge, copy, token) and the list is in that order, so the objective does not depend on point ids; the placement from its own choices equals the seed. */
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		JunctionTrackPlacement p, q;
+		std::string error;
+		PlaceTwice(*t, MakeTestJunctionSpec(), &p, &q, &error);
+		INFO(error);
+		REQUIRE(!q.nodes.empty());
+		CHECK(!p.row_change_keys.empty());
+		CHECK(std::ranges::is_sorted(p.row_change_keys));
+		CHECK(std::ranges::adjacent_find(p.row_change_keys) == p.row_change_keys.end());
+		CHECK(p.row_change_keys == q.row_change_keys);
+		CHECK(SamePlacement(p, q));
+	}
+}
+
 TEST_CASE("topology: a contradictory choice is explained", "[junction][topology]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
