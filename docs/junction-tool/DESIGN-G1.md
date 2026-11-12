@@ -280,22 +280,50 @@ An edit changes the graph, and from it the template entries of the edges it touc
 
 **13.9.4 Tests (outside-in).** LL_RR with a house on a core tile where no detour fits (e.g. P4a sweep's Piece and Height tiles: (40,8), (44,11)) builds by a Shift, checker clean, states gated; a house on a node tile builds by a Node move or a Shift; the T §0b cases (house beside the hub, hub tile, incline) keep building.
 
-## 14. Placement on the terrain (orchestrator DRAFT, 2026-11-12, D216; for Fable's review, then the engineer's)
-Rulings: D216 (projection = the graph's placement solved on the target terrain; no flat stage), D213 (graph is the source; layout output only), D201, D183 + FABLE-nodes-perf §1 (facts are bounds; monotone propagation, no branching on positions; failure-driven structure search; warm start), D193 (correct by construction), D194 (heights as facts), D196-D199 (repairs from named failures, few children, cost), D212/D215 (row changes next to their features), DESIGN-nodes §2-§3. Supersedes §13.1-§13.3 and parks §13.9.
+## 14. Placement on the terrain (orchestrator, 2026-11-12; D216 as amended; revised after FABLE-terrain-placement.md, TL1a; for the engineer's approval)
+Rulings: D216 (projection = the graph's placement solved on the target terrain), D213, D201, D183 + FABLE-nodes-perf §1, D193, D194, D196-D199, D212/D215, DESIGN-nodes §2-§3. Reviews: FABLE-terrain-placement.md (all nine changes adopted here), RECON-train-length.md (TL1a). Supersedes §13.1-§13.3; §13.9 is replaced by 14.6.
 
-**14.1 One solve.** Variables: the placement's points (node tiles, token spans, bridge heads, ports, stack rows; the `along`/`eq`/`ge` system of PlaceJunctionTrackGraph). Relations: the gap table as today (each a rule floor with its source; SF1b/CS1-style derived floors; TL1 makes every floor scale with tl/speed). Facts: the target terrain's per-tile facts (JunctionFacts: Fits, EdgeZ, Blocked). The flat layout is this solve on flat facts. The traced node template stays only as a test oracle and checker.
+**14.1 One solve, and what the flat solve is for.** Projection solves the graph's placement (PlaceJunctionTrackGraph's points and relations) on the target terrain's facts. No flat positions enter it. A cached flat solve per (topology, spec) gives three things only: the root structure of the search (bridge cut, rows, sizes), an admissible cost bound, and the test oracle. The traced node template becomes an oracle and checker only; P2's signal tokens are reused as they are; P4b's best-first search over edit lists is kept with placement as the solve; P1's graph input stays as an oracle.
 
-**14.2 Facts as monotone relations (FABLE-nodes-perf §1.1-1.2).** With the structure fixed (rows, token order, crossings):
-- a straight run on row r between points a and b must be buildable on every tile between: `x_b <= next_bad_r(x_a)` (and its mirror for the other heading), next_bad nondecreasing, so the least solution exists and propagation finds it;
-- a token's footprint (bend halves, switch tile, prio element, bridge head) is a rigid mask relative to its anchor: its legal anchor positions are a domain bitset (mask AND the fact rows);
-- heights: a run is buildable only if consecutive tiles meet at equal edge heights (an interval property, the same monotone form); a bridge's heads must suit a ramp at equal z; spans <= max_bridge_middle;
-- Y first, then X, as placement does today; the Y phase's fact-blindness (DESIGN-N3 §6) is measured, not assumed away.
-What moves across from the node solve: JunctionFacts, JunctionPositions (propagation with trail and domains), the height checks; what is already in placement: prio element floors, the stack (occupancy by construction), the curve-gap floors.
+**14.2 The graph variables (engineer: nothing slides, stretches or leans unless it is in the graph).** Variables: every placement point (run lengths are differences of points), row gaps between stack items, band depths, each S-bend's size m, each fan's m and port-row offset, the joiner_div corner size, the bridge cut, each bridge's span extension, later the cursor offset (D197). Rigid shapes are not variables: bend halves, switch tiles, the prio element, the head stagger. Today three of these move outside the relations (S-bend m's fixed-point loop, junction_topology.cpp :1477/:1526; the port-row minimax, :1487; the joiner_div size taken from rows, :1399); they become per-state variables, fixed within a state and changed only by an edit. The four preference pins (:1304, :1355, :1380, :1382) each get a stated rule source, or become a variable or an objective.
 
-**14.3 Preference.** Every run length at its rule floor unless the terrain forces it longer; each row change sits next to the feature it serves (D215) as an exact relation in the graph (SF1b's pattern; port fans included). No snap toward a seed, no lean step: the P3 lean and the node solve's snap-to-flat are retired with the node path.
+**14.3 Relations (all rule floors, scaling with the train).**
+- Every floor derived from its rule, scaling with tl and speed (TL1a classes A-G: the missing curve-gap pairs at k_out and d_min, the constant run of 2 between chain elements, the pinned in-edge S-bend, the waiting room 2 TL between an exit split and the next merge on main-in to branch-out paths).
+- Pairwise curve gaps on every route (JunctionCurveGaps over all pairs, not only at the fans), as late X differences.
+- Occupancy: unrelated tracks never share or touch a tile (order relations per row and per column), as the node template's D193 rule did. Today placement leaves collisions to the render tests (:984).
+- Bridges: the crossers under one bridge are packed exactly, so bridge, heads and crossers are one rigid group with one domain; a longer span is an edit. Two elements sharing a tile on a slope are bundled into one group, or that tile must be flat.
 
-**14.4 Failures and structure edits.** An infeasible propagation names its chain of relations and the fact at its end; the variables ARE graph elements, so the failure names them with no tags. Structure edits for every change the relations cannot absorb (DESIGN-nodes §2: obstacles and heights add structure so the map stays consistent): graph choices (node order, a crossing's over/under and bridge/tunnel, D190 roots, an added row, D185a); obstacles (an S-bend pair around, or staying shifted past, D182/D195); elevation (a ramp: a straight run forced where the line changes height, D194/D196; a bridge or tunnel inserted to cross a dip or ridge); terraform is a fact change (D196). No position moves except through a graph variable (engineer: "things shouldn't slide stretch or lean unless that's in the graph"): each run between two tokens or nodes has a length variable in the graph, at least its rule floor and preferred at it; rows are graph variables; D215 is an exact relation in the graph, not a lean in the solver. Terrain may lengthen a run only through that run's variable; anything else needs an edit. Search: best-first by cost over edit lists (D198/D214; P4b's frame), each state = graph + edits, re-placed per state.
+**14.4 Facts (X phase only; the Y phase takes none).**
+- Rows (Y) stay as the structure gives them; they change only by an edit named by an X failure (row gap +1, a Shift). So the X phase is exactly monotone and there is no greedy Y snap.
+- A straight run on row r between points a and b is buildable on every tile between, heights included: `x_b <= next_bad_r(x_a)` (and its mirror), monotone; a mid-row obstacle is therefore never absorbed by positions: the line covers its whole row up to its next row change, so it needs an edit.
+- Each rigid group (bend of fixed size, switch tile, prio element, bridge group) has a domain of legal anchor positions: its mask AND the fact rows.
+- JunctionPositions gains a reason per lo/up change on its trail, so an infeasible propagation yields its explanation chain: the relations and the fact at its end, all graph elements.
 
-**14.5 Steps (each test-first).** T1: placement on JunctionPositions with no facts; oracle: the T and LL_RR placements equal today's. T2: blocked tiles as run bounds and footprint domains; outer: P4a's 20-tile sweep on LL_RR solves more tiles by relations alone, every result checker clean. T3: height facts; outer: the §0b incline and ridge cases. T4: failures as named relation chains; structure edits in the P4b search frame; outer: a core house on LL_RR builds by a row edit. T5: hover by topology with warm start and a topology picker; outer: hover p99 < 100 ms over a cursor sweep. T6: terraform and tunnel edits. The P1-P4b node path stays until T4 replaces it.
+**14.5 Objective.** The least solution of the relations on the facts; then the D215 objectives: with the other points fixed, each row-change token is pushed toward the feature it serves as far as the relations and facts allow, in a fixed rule order. On flat ground this gives SF1b's numbers; on terrain it gives way by itself. (D215 is an objective, not an exact relation: as a relation it would make a house on a port row before an in-fan unavoidable.)
 
-**14.6 Open for review.** (a) Is the "run buildable" relation exactly monotone with heights (foundations make a tile's fit depend on its tracks; runs are straight, so per row it is fixed)? (b) Bends on slopes: a bend's mask depends on the slope under each half piece; is a per-anchor domain enough? (c) Bridges: head z equality couples two positions; is it a domain on the pair? (d) What the Y phase must know about X facts to avoid fact-blind row choices. (e) Cost model for the search (D199 organic/artificial weight).
+**14.6 Edits (search children; best-first by cost over edit lists, D198/D214; each state re-placed, ~0.5 ms; render and signals only for the accepted state).**
+| Edit | Produced by | Restart at |
+|---|---|---|
+| Row gap +1 at a stack boundary | X failure on a row run or column, named row | placement |
+| Shift (S-bend pair or staying shifted, D182/D195) | a mid-row obstacle (chain ending at a port or node) | programs + placement |
+| Span extension | a bridge group's domain empty, named bridge | placement |
+| Re-cut bridge | as span extension, when the cut is the cause | structure |
+| S-bend m + 1 | a bend's domain empty | placement |
+| Ramp (RS1, D196) | Height on a bend or diagonal | programs |
+| Crossing swap (D190) | roots of the search, not children | structure |
+| Node move | a node footprint's domain empty over its whole range | order |
+| Terraform (D196) | a fact overlay; no graph change | X solve only |
+Cost: track pieces, curves, bridges/tunnels, foundations once solved, terraform, with D199's organic/artificial weight; the bound from the flat solve. Shift and Node move need a general row chain (any sequence of tokens and nodes on a row, floors per token kind); placement today knows only rows of the shape in + one leg + out (:738, :970). It is the largest piece of T4 and is designed before T4 is briefed.
+
+**14.7 Steps (each test-first, outermost first).**
+- **T0 (TL1b):** every placement floor derived and scaling with train length and speed (RECON-train-length's five fixes). Outer: the T and LL_RR seeds checker-clean across tl 3-8 x 100/120/160/196 km/h (a gate sweep test).
+- **T1:** placement on JunctionPositions with reasons on the trail, no facts; the hidden choices of 14.2 become variables. Oracle: the T and LL_RR placements equal today's (after T0).
+- **T1b:** the missing relations (pairwise curve gaps, occupancy, packed bridge groups) and the D215 objective. Outer: a stretch sweep (random forced run lengths on the flat solve: checker and heights clean every time).
+- **T2:** blocked tiles as run bounds and group domains (X phase). Outer: P4a's 20-tile sweep on LL_RR: every result clean, more tiles solved than the node path, each failure naming its chain. Timing check per state.
+- **T3:** height facts (runs, group domains, bridge ramps). Outer: the §0b incline and ridge cases.
+- **T4a:** design the general row chain (doc + Fable), then T4b: edits in the P4b search frame (row gap, Shift, span, m, node move, swap roots). Outer: a core house on LL_RR builds by a Shift; the T's house-beside-hub and hub-tile cases.
+- **T5:** hover by topology with warm start and a topology picker, gated by the §0b cases and the [nodeoracle] counts. Outer: hover p99 < 100 ms over a cursor sweep.
+- **T6:** ramp, terraform and tunnel edits.
+The P1-P4b node path stays until T4b replaces it.
+
+**14.8 Risks.** Hover time (measure at T2 and T4b); rows fixed in Y may need row edits often on rough ground (measure at T3); explanation chains must stay short enough to name one element; TL scaling beyond tl 8 and other topologies untested.
