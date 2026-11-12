@@ -577,6 +577,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 			if (!pending.empty()) return fail("a crossing between edges that are not adjacent is not ruled yet");
 		} else {
 			const int row = (level - 1) / 2;
+			if (static_cast<size_t>(row) >= order.rows.size()) return fail("a row edge on a row the order has not made is not ruled yet");
 			std::vector<JunctionTrackRowItem> &row_items = order.rows[row];
 			std::vector<uint32_t> kept;
 			for (uint32_t e : items) {
@@ -593,6 +594,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 		}
 		if (level % 2 == 1) {
 			/* The crossing items record the row edges they cross (positions need the finished row). */
+			if (static_cast<size_t>((level - 1) / 2) >= order.rows.size()) return fail("a row edge on a row the order has not made is not ruled yet");
 			const std::vector<JunctionTrackRowItem> &row_items = order.rows[(level - 1) / 2];
 			for (uint32_t f = 0; f < edge_count; f++) {
 				if (!is_row_edge(f) || end_level(graph.edges[f].from) != level) continue;
@@ -615,6 +617,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 			continue;
 		}
 		const int row = (end_level(graph.edges[e].from) - 1) / 2;
+		if (static_cast<size_t>(row) >= order.rows.size()) return fail("a row edge on a row the order has not made is not ruled yet");
 		const std::vector<JunctionTrackRowItem> &row_items = order.rows[row];
 		const int from = row_position(graph.edges[e].from, row_items);
 		const int to = row_position(graph.edges[e].to, row_items);
