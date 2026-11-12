@@ -1233,9 +1233,54 @@ TEST_CASE("topology: route pieces carry their graph tags", "[junction][topology]
 		for (const JunctionTrackRoute &route : routes) {
 			REQUIRE(route.tags.size() == route.pieces.size());
 			const std::vector<uint32_t> &edges = graph.path_edges[route.path];
+			/* The tag edges form contiguous blocks in the path's edge order. */
+			std::vector<size_t> block_first; // first piece of each edge's block
+			{
+				size_t k = 0;
+				for (size_t i = 0; i < route.tags.size(); i++) {
+					if (i == 0 || route.tags[i].edge != route.tags[i - 1].edge) {
+						INFO("path " << route.path << " copy " << static_cast<int>(route.copy) << " piece " << i);
+						REQUIRE(k < edges.size());
+						REQUIRE(route.tags[i].edge == edges[k]);
+						block_first.push_back(i);
+						k++;
+					}
+				}
+				CHECK(k == edges.size());
+			}
+			for (size_t k = 0; k + 1 < block_first.size(); k++) {
+				const JunctionTrackNode &node = graph.nodes[graph.edges[edges[k]].to.index];
+				const TileIndexDiffC at = placement.nodes[graph.edges[edges[k]].to.index];
+				size_t node_piece = 0;
+				while (node_piece < route.pieces.size() && (route.pieces[node_piece].on_bridge || route.pieces[node_piece].tile.x != at.x || route.pieces[node_piece].tile.y != at.y)) node_piece++;
+				INFO("path " << route.path << " copy " << static_cast<int>(route.copy) << " boundary " << k);
+				REQUIRE(node_piece < route.pieces.size());
+				CHECK(block_first[k + 1] == (node.split ? node_piece : node_piece + 1));
+			}
 			for (const JunctionTrackPieceTag &tag : route.tags) {
 				CHECK(std::ranges::find(edges, tag.edge) != edges.end());
-				CHECK(tag.copy == route.copy);
+				const bool doubled = programs.copies[tag.edge].size() != 0;
+				CHECK(tag.copy == (route.copy == 1 && doubled ? 1 : 0));
+			}
+			for (size_t i = 0; i < route.tags.size(); i++) {
+				const JunctionTrackPieceTag &tag = route.tags[i];
+				const std::vector<JunctionTrackStep> &program = tag.copy == 1 ? programs.copies[tag.edge] : programs.edges[tag.edge];
+				size_t before = 0; // the program tokens before the piece: after the previous token piece of the edge
+				bool seen = false;
+				for (size_t j = i; j-- > 0 && route.tags[j].edge == tag.edge && !seen;) {
+					if (route.tags[j].token != JunctionTrackPieceTag::RUN) {
+						before = route.tags[j].token + 1;
+						seen = true;
+					}
+				}
+				INFO("piece " << i << " edge " << tag.edge);
+				if (tag.token != JunctionTrackPieceTag::RUN) {
+					CHECK(tag.token < program.size());
+					CHECK(tag.run == tag.token);
+				} else {
+					CHECK(tag.run == before);
+					CHECK(tag.run <= program.size());
+				}
 			}
 			/* A port edge's Fan tokens: the pieces tagged with the token run from the span's first tile to its last. */
 			for (const uint32_t e : edges) {
