@@ -14,6 +14,7 @@
 #include "junction_layout.h"
 #include "junction_route.h"
 
+#include <functional>
 #include <vector>
 
 /** Add signals and prios to a layout of tracks and bridges, in the canonical frame. */
@@ -24,6 +25,9 @@ void PlaceJunctionSignals(JunctionLayout &layout, const JunctionSpec &spec);
  * walking upstream from the last piece; an unsuitable piece moves a signal to the last suitable piece before it. The first and last piece never take one.
  */
 void PlaceDragSignals(JunctionLayout &layout, const std::vector<JunctionPiece> &pieces, uint8_t sd, SignalType type);
+
+/** PlaceDragSignals over callbacks: `signalled` and `legal` answer for a piece, `place` puts a signal on it (the token pass's own state, no layout). */
+void PlaceDragSignals(const std::vector<JunctionPiece> &pieces, uint8_t sd, const std::function<bool(const JunctionPiece &)> &signalled, const std::function<bool(const JunctionPiece &)> &legal, const std::function<void(const JunctionPiece &)> &place);
 
 /** Of two signals on adjacent pieces of a path, drop one when every rule still holds without it (D117 b, D117b: run once per chosen layout, not per candidate). */
 void RemoveRedundantJunctionSignals(JunctionLayout &layout, const JunctionSpec &spec);

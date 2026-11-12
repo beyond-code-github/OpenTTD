@@ -747,9 +747,6 @@ JunctionNodeInput JunctionNodeInputOfGraph(const JunctionTopology &topology, con
 		return std::ranges::lexicographical_compare(routes[a].pieces, routes[b].pieces, [](const JunctionPiece &x, const JunctionPiece &y) { return static_cast<int>(x.trackdir) < static_cast<int>(y.trackdir); });
 	});
 
-	auto doubled_leg = [&](uint32_t e) {
-		return std::ranges::any_of(structure.bridges, [&](const JunctionTrackBridge &b) { return b.edge == e && b.doubled; });
-	};
 	for (const size_t ri : order) {
 		const JunctionTrackRoute &route = routes[ri];
 		const JunctionLanePath &lane = paths[route.path];
@@ -764,33 +761,8 @@ JunctionNodeInput JunctionNodeInputOfGraph(const JunctionTopology &topology, con
 		input.through.push_back(through);
 		input.exit.push_back(exit);
 
-		/* Events (Q4): the graph's nodes on the route, and the lane split and merge of the doubled legs. */
-		std::vector<SwitchEvent> events;
-		auto first_on = [&](TileIndexDiffC tile) -> std::optional<size_t> {
-			for (size_t k = 0; k < route.pieces.size(); k++) {
-				if (!route.pieces[k].on_bridge && same(route.pieces[k].tile, tile)) return k;
-			}
-			return std::nullopt;
-		};
-		for (const uint32_t e : graph.path_edges[route.path]) {
-			if (graph.edges[e].to.node) {
-				const uint16_t n = graph.edges[e].to.index;
-				if (const std::optional<size_t> k = first_on(placement.nodes[n]); k.has_value()) events.emplace_back(graph.nodes[n].split, *k);
-			}
-			if (!doubled_leg(e)) continue;
-			for (size_t t = 0; t < programs.copies[e].size(); t++) {
-				if (programs.copies[e][t].kind != StepKind::SBend) continue;
-				if (const std::optional<size_t> k = first_on(placement.copies[e][t].first); k.has_value()) events.emplace_back(true, *k);
-				break;
-			}
-			for (size_t t = 0; t < programs.edges[e].size(); t++) {
-				if (programs.edges[e][t].kind != StepKind::SBend) continue;
-				if (const std::optional<size_t> k = first_on(placement.edges[e][t].second); k.has_value()) events.emplace_back(false, *k);
-				break;
-			}
-		}
-		std::ranges::stable_sort(events, [](const SwitchEvent &a, const SwitchEvent &b) { return a.second != b.second ? a.second < b.second : a.first > b.first; });
-		events.erase(std::unique(events.begin(), events.end()), events.end());
+		/* Events: from the route's tags (JunctionRouteEvents). */
+		std::vector<SwitchEvent> events = JunctionRouteEvents(graph, programs, routes, ri);
 		input.events.push_back(std::move(events));
 
 		/* Slots (Q5): not on a bridge, not a bridge head, no overlapping tracks on the tile. */
