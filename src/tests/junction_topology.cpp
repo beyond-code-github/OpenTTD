@@ -4149,3 +4149,16 @@ TEST_CASE("topology: the built hub topology is the hand topology and seeds the s
 		}
 	}
 }
+
+TEST_CASE("topology: an L_R main with a multi-lane branch is refused, not crashed", "[junction][topology]")
+{
+	for (const char *branch : {"LL_RR", "LL_R", "L_RR"}) {
+		INFO(branch);
+		const JunctionTopology topology = MakeJunctionHubTopology(ParseLineNotation("L_R").spec, ParseLineNotation(branch).spec);
+		JunctionSpec spec = MakeTestJunctionSpec();
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &error);
+		CHECK(seed.routes.empty());
+		CHECK(!error.empty());
+	}
+}

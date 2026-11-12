@@ -487,11 +487,12 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 		if (level >= north && level <= 2 * rows) band_crossings[level].emplace_back(i, j);
 	}
 
-	/* The place of an end along a row: a port is before the first item on the W side, else after the last. */
+	/* The place of an end along a row: a port is before the first item on the W side, else after the last.
+	 * A node the row has not made (only a row edge reaches it) has no place: -2. */
 	auto row_position = [&](const JunctionTrackEnd &end, const std::vector<JunctionTrackRowItem> &row_items) {
 		if (!end.node) return group_of(end.index).side == JunctionSide::W ? -1 : static_cast<int>(row_items.size());
 		const auto it = std::find(row_items.begin(), row_items.end(), JunctionTrackRowItem{true, end.index});
-		return static_cast<int>(it - row_items.begin());
+		return it == row_items.end() ? -2 : static_cast<int>(it - row_items.begin());
 	};
 
 	/* Sweep. */
@@ -577,7 +578,6 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 			if (!pending.empty()) return fail("a crossing between edges that are not adjacent is not ruled yet");
 		} else {
 			const int row = (level - 1) / 2;
-			if (static_cast<size_t>(row) >= order.rows.size()) return fail("a row edge on a row the order has not made is not ruled yet");
 			std::vector<JunctionTrackRowItem> &row_items = order.rows[row];
 			std::vector<uint32_t> kept;
 			for (uint32_t e : items) {
@@ -594,12 +594,12 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 		}
 		if (level % 2 == 1) {
 			/* The crossing items record the row edges they cross (positions need the finished row). */
-			if (static_cast<size_t>((level - 1) / 2) >= order.rows.size()) return fail("a row edge on a row the order has not made is not ruled yet");
 			const std::vector<JunctionTrackRowItem> &row_items = order.rows[(level - 1) / 2];
 			for (uint32_t f = 0; f < edge_count; f++) {
 				if (!is_row_edge(f) || end_level(graph.edges[f].from) != level) continue;
 				const int lo = row_position(graph.edges[f].from, row_items);
 				const int hi = row_position(graph.edges[f].to, row_items);
+				if (lo == -2 || hi == -2) return fail("a row edge to a node the row has not made is not ruled yet");
 				for (int k = std::min(lo, hi) + 1; k < std::max(lo, hi); k++) {
 					if (!row_items[k].node) swept[row_items[k].index].push_back(f);
 				}
