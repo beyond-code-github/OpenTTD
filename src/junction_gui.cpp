@@ -446,7 +446,6 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	JunctionBuildState last_state = JunctionBuildState::Idle; ///< Sequencer state at the previous tick, to detect a failure.
 	Money placement_cost = 0; ///< Cost of the junction at the cursor.
 	Money build_quote = 0; ///< The quote (estimate total) of the junction being built.
-	bool show_spent = false; ///< A build has finished: the status shows spent and quoted until the hover moves to another tile.
 	bool placement_affordable = false; ///< Whether the local company can pay for the junction at the cursor.
 	StringID placement_error = INVALID_STRING_ID; ///< First error if the placement is invalid, else INVALID_STRING_ID.
 	bool has_placement = false; ///< The cursor is over the map and the fields above are set.
@@ -959,7 +958,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		Debug(Facility::Misc, Severity::Debug2, "junction projection snapshot: {} us", std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
 		const int hub_x = frame.hub_x;
 		if (!StartNewThread(&this->pending_thread, "ottd:junctionproj", [job, key, hub_x]() {
-			JunctionHoverPlan plan = PlanJunctionHoverNear(*job->seed, job->spec, job->terrain, {0, 0});
+			JunctionHoverPlan plan = PlanJunctionHoverNear(*job->seed, job->spec, job->terrain, {0, 0}, &job->cancel);
 			JunctionProjectionResult &result = job->projection_result;
 			result.why = plan.why;
 			result.height_cost = plan.height_cost;
@@ -1286,7 +1285,6 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->build_origin = origin;
 		this->build_height = estimate.height;
 		this->build_quote = estimate.total;
-		this->show_spent = false;
 		this->build_bridge_types = bridge_types;
 		this->last_state = JunctionBuildState::Building;
 		/* The terraform steps come first, then the rail, bridge and signal steps. */
@@ -1302,7 +1300,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	/** @return The cost line of the placement at the cursor; empty when there is none. */
 	std::string CostText() const
 	{
-		if (!this->has_placement || this->show_spent) return {};
+		if (!this->has_placement) return {};
 		if (this->placement_error != INVALID_STRING_ID) return GetString(STR_JUNCTION_TOOLTIP_INVALID, this->placement_error);
 		if (!this->placement_affordable) return GetString(STR_JUNCTION_TOOLTIP_UNAFFORDABLE, this->placement_cost, GameJunctionPricing(this->railtype).AvailableMoney());
 		return GetString(STR_JUNCTION_TOOLTIP_COST, this->placement_cost);
@@ -1313,7 +1311,6 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	{
 		const JunctionSequencer &seq = GetJunctionSequencer();
 		if (seq.GetState() == JunctionBuildState::Idle) {
-			if (this->show_spent) return GetString(STR_JUNCTION_STATUS_SPENT, seq.spent, this->build_quote);
 			if (this->pick_error != INVALID_STRING_ID && _junction_picking_train) return GetString(this->pick_error);
 			if (this->generate_error != INVALID_STRING_ID) return GetString(this->generate_error);
 			if (!this->picked_train.has_value()) return GetString(STR_JUNCTION_STATUS_PICK_TRAIN);
@@ -1357,7 +1354,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (seq.GetState() == JunctionBuildState::Done) {
 			if (_settings_client.sound.confirm) SndPlayTileFx(SND_20_CONSTRUCTION_RAIL, this->build_origin);
 			Debug(Facility::Misc, Severity::Debug1, "Junction built: spent {}, quoted {}", seq.spent.base(), this->build_quote.base());
-			this->show_spent = true;
+			ShowErrorMessage(GetEncodedString(STR_JUNCTION_STATUS_SPENT, seq.spent, this->build_quote), {}, WarningLevel::Info, TileX(this->build_origin) * TILE_SIZE, TileY(this->build_origin) * TILE_SIZE);
 			seq.Cancel();
 			/* The map changed, so earlier results no longer hold. */
 			this->cache.clear();
@@ -1452,8 +1449,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (tile != this->hover_tile) {
 			this->hover_tile = tile;
 			this->hover_since = now;
-			this->show_spent = false;
-			this->shown_tooltip.clear(); // The tooltip is placed where it is shown, so it is shown anew at each tile.
+				this->shown_tooltip.clear(); // The tooltip is placed where it is shown, so it is shown anew at each tile.
 			this->ShowHover();
 		}
 

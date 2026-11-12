@@ -15,6 +15,7 @@
 #include "junction_terraform.h"
 #include "junction_topology.h"
 
+#include <atomic>
 #include <optional>
 #include <string>
 
@@ -50,8 +51,9 @@ JunctionHoverPlan PlanJunctionHover(const JunctionGraphSeed &seed, const Junctio
  * @param spec The junction spec the seed was made for.
  * @param terrain The snapshot, canonical frame.
  * @param offset The snapshot tile of the placement's tile (0, 0) at the cursor spot.
+ * @param cancel When not null: checked before each offset; once set, the search returns at once with why = "cancelled" and no layout.
  * @return The plan.
  */
-JunctionHoverPlan PlanJunctionHoverNear(const JunctionGraphSeed &seed, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset);
+JunctionHoverPlan PlanJunctionHoverNear(const JunctionGraphSeed &seed, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, const std::atomic<bool> *cancel = nullptr);
 
 #endif /* JUNCTION_HOVER_H */

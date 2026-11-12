@@ -18,3 +18,4 @@ Use the Release build, `build-rel/openttd`. Generation takes about 0.5 s there, 
 4. Rotate and mirror re-generate for the new orientation.
 5. The building matches the ghost.
 6. With the left-hand road side, the junction is mirrored correctly.
+7. After a build, an information message with spent and quoted appears and stays while the cursor moves.

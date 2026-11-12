@@ -26,6 +26,8 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -1100,6 +1102,34 @@ TEST_CASE("the hover moves the box only when the cursor spot fails", "[junction]
 		}
 		CHECK(earlier > 0);
 	}
+}
+
+TEST_CASE("a cancelled near search stops at once", "[junction][hoverplan]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(JunctionTTopology(), spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	std::ifstream in(std::filesystem::path(JUNCTION_TERRAIN_DIR) / "arctic-hilly-1.json");
+	std::stringstream text;
+	text << in.rdbuf();
+	std::string load_error;
+	std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+	REQUIRE(terrain.has_value());
+	const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed.placement.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed.placement.size.y) / 2)};
+	REQUIRE(!PlanJunctionHover(seed, spec, *terrain, offset).layout.has_value()); // It fails at its offset, so the near search runs.
+
+	const std::atomic<bool> cancel{true};
+	const auto start = std::chrono::steady_clock::now();
+	const JunctionHoverPlan plan = PlanJunctionHoverNear(seed, spec, *terrain, offset, &cancel);
+	const auto elapsed = std::chrono::steady_clock::now() - start;
+	CHECK(!plan.layout.has_value());
+	CHECK(plan.why == "cancelled");
+#ifdef NDEBUG
+	CHECK(elapsed < std::chrono::milliseconds(1));
+#endif
+	(void)elapsed;
 }
 
 TEST_CASE("the terraform plan is the game's", "[junction][hoverplan]")

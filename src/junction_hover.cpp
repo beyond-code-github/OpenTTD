@@ -14,6 +14,7 @@
 #include "junction_generator.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 
 #include "safeguards.h"
@@ -61,8 +62,14 @@ JunctionHoverPlan PlanJunctionHover(const JunctionGraphSeed &seed, const Junctio
 	return PlanJunctionHoverAt(seed, spec, terrain, order, facts, offset);
 }
 
-JunctionHoverPlan PlanJunctionHoverNear(const JunctionGraphSeed &seed, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset)
+JunctionHoverPlan PlanJunctionHoverNear(const JunctionGraphSeed &seed, const JunctionSpec &spec, const JunctionTerrain &terrain, TileIndexDiffC offset, const std::atomic<bool> *cancel)
 {
+	const auto cancelled = []() {
+		JunctionHoverPlan plan;
+		plan.why = "cancelled";
+		return plan;
+	};
+	if (cancel != nullptr && cancel->load()) return cancelled();
 	std::string error;
 	const JunctionTrackOrder order = OrderJunctionTrackGraph(*seed.topology, seed.paths, seed.graph, &error);
 	if (!error.empty()) {
@@ -90,7 +97,8 @@ JunctionHoverPlan PlanJunctionHoverNear(const JunctionGraphSeed &seed, const Jun
 		return a.y < b.y;
 	});
 	for (const TileIndexDiffC &move : moves) {
-			JunctionHoverPlan plan = PlanJunctionHoverAt(seed, spec, terrain, order, facts, {static_cast<int16_t>(offset.x + move.x), static_cast<int16_t>(offset.y + move.y)}, &shared);
+		if (cancel != nullptr && cancel->load()) return cancelled();
+		JunctionHoverPlan plan = PlanJunctionHoverAt(seed, spec, terrain, order, facts, {static_cast<int16_t>(offset.x + move.x), static_cast<int16_t>(offset.y + move.y)}, &shared);
 		if (!plan.layout.has_value()) continue;
 		plan.moved = move;
 		return plan;
