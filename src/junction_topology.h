@@ -227,6 +227,12 @@ struct JunctionTrackPrograms {
  */
 JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, std::string *error);
 
+/** The roles of a row's edges, from the graph and the programs (DESIGN-G1 §16.4 RW3). */
+bool JunctionIsInEdge(const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackPrograms &programs, uint32_t e); ///< An edge from a port to a row node whose program starts with a Fan.
+bool JunctionIsOutEdge(const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackPrograms &programs, uint32_t e); ///< An edge from a row node to a port whose program ends with a Fan.
+bool JunctionIsLegEdge(const JunctionTrackGraph &graph, const JunctionTrackOrder &order, uint32_t e); ///< An edge between two nodes of one row.
+bool JunctionIsDoubledEdge(const JunctionTrackPrograms &programs, uint32_t e); ///< An edge with a copy 1.
+
 /** A token's tiles: its first and last tile in the edge's travel order (DESIGN-G1 §11.8). */
 using JunctionTrackSpan = std::pair<TileIndexDiffC, TileIndexDiffC>;
 

@@ -422,6 +422,33 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track programs", "[junction][to
 	CHECK(programs.copies == copies);
 }
 
+TEST_CASE("topology: edge roles come from the graph", "[junction][topology]")
+{
+	/* A characterisation: the predicates against the old per-row derivation (a row edge is in when it runs from a port to a row node, out from a row node to a port, a leg between two nodes of one row; doubled when its leg carries a doubled bridge). */
+	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
+		std::string error;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(*t, &error);
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(*t, paths, &error);
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(*t, paths, graph, &error);
+		const JunctionTrackStructure structure = StructureJunctionTrackGraph(*t, paths, graph, order, &error);
+		const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(*t, paths, graph, order, structure, &error);
+		REQUIRE(programs.edges.size() == graph.edges.size());
+		for (uint32_t e = 0; e < graph.edges.size(); e++) {
+			const JunctionTrackEdge &edge = graph.edges[e];
+			const bool row_to = edge.to.node && order.node_level[edge.to.index] % 2 == 1;
+			const bool row_from = edge.from.node && order.node_level[edge.from.index] % 2 == 1;
+			bool doubled = false;
+			for (const JunctionTrackBridge &bridge : structure.bridges) doubled = doubled || (bridge.edge == e && bridge.doubled);
+			const bool leg = row_from && row_to && order.node_level[edge.from.index] == order.node_level[edge.to.index];
+			INFO("edge " << e);
+			CHECK(JunctionIsInEdge(graph, order, programs, e) == (!edge.from.node && row_to));
+			CHECK(JunctionIsOutEdge(graph, order, programs, e) == (row_from && !edge.to.node));
+			CHECK(JunctionIsLegEdge(graph, order, e) == leg);
+			CHECK(JunctionIsDoubledEdge(programs, e) == doubled);
+		}
+	}
+}
+
 TEST_CASE("topology: programs agree with turns and crossings", "[junction][topology]")
 {
 	for (const JunctionTopology *t : {&JunctionTTopology(), &JunctionLLRRSidelineTopology()}) {
