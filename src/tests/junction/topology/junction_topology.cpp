@@ -5042,7 +5042,7 @@ TEST_CASE("programs: every node has a shape and every edge two ends", "[junction
 
 TEST_CASE("programs: node shapes match placement's inference", "[junction][topology]")
 {
-	/* Outer and characterisation only. The old inference is copied here as a test-only rule: placement's node_item (junction_placement.cpp ~544) read over the same programs, the start heading of a band edge (~246-252) and the chain walk of its tokens (~265-271). */
+	/* Outer and characterisation only. The old inference is copied here as a test-only rule: placement's node_item (junction_placement.cpp ~544, removed from placement in the commit that read the node shapes instead, so this copy is the oracle) read over the same programs, the start heading of a band edge (~246-252) and the chain walk of its tokens (~265-271). */
 	using Step = JunctionTrackStep;
 	for (const auto &[name, t] : NodeShapeTopologies()) {
 		const bool placed = name == "T" || name == "LL_RR x L_R";
@@ -5132,6 +5132,31 @@ TEST_CASE("programs: node shapes match placement's inference", "[junction][topol
 			const std::string where = fmt::format("edge {}", e);
 			differ(where, "start heading", old_start(e), programs.ends[e].first.heading);
 			differ(where, "end heading", old_end(e), programs.ends[e].second.heading);
+		}
+		/* The old pin rule of a band chain's bends (placement's, junction_placement.cpp ~273-277, as of the commit before it was removed): the token of each band edge that begins or ends on its node's point, against the ends. */
+		auto pin_diff = [&](uint32_t e, const char *which, uint32_t old_token, uint32_t new_token) {
+			if (old_token == new_token) return;
+			auto show = [](uint32_t v) { return v == JunctionTrackEdgeEnd::NO_TOKEN ? std::string("none") : fmt::format("{}", v); };
+			diffs.push_back(fmt::format("edge {} {}: old {} -> new {}", e, which, show(old_token), show(new_token)));
+		};
+		for (uint32_t e = 0; e < graph.edges.size(); e++) {
+			if (is_row_edge(e)) continue;
+			const JunctionTrackEdge &edge = graph.edges[e];
+			const std::vector<Step> &program = programs.edges[e];
+			uint32_t old_first = JunctionTrackEdgeEnd::NO_TOKEN;
+			uint32_t old_last = JunctionTrackEdgeEnd::NO_TOKEN;
+			if (!program.empty()) {
+				const bool band_split = edge.from.node && order.node_level[edge.from.index] % 2 == 0 && graph.nodes[edge.from.index].split;
+				const bool merge = edge.to.node && !graph.nodes[edge.to.index].split;
+				const Step &front = program.front();
+				const Step &back = program.back();
+				const bool bends_front = front.kind == Step::Kind::Corner || front.kind == Step::Kind::SBend || front.kind == Step::Kind::Fan;
+				if (edge.from.node && bends_front && (front.kind == Step::Kind::Corner || (band_split && !(front.kind == Step::Kind::SBend && front.role == Step::Role::Converge)))) old_first = 0;
+				if (edge.to.node && merge && back.kind == Step::Kind::SBend && back.role != Step::Role::Diverge) old_last = static_cast<uint32_t>(program.size() - 1);
+			}
+			/* Only the ends at a node: a port end is pinned by placement's own rule, not this one. */
+			if (edge.from.node) pin_diff(e, "start", old_first, programs.ends[e].first.token);
+			if (edge.to.node) pin_diff(e, "end", old_last, programs.ends[e].second.token);
 		}
 		if (placed) {
 			INFO("disagreements: " << diffs.size());

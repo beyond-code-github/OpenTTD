@@ -10,6 +10,7 @@
 - Site floors and per-shape constants exist only as test oracles.
 - Every edge is one chain of elements; one floor table keyed by (previous kind, next kind) holds every run constant.
 - A band edge's chain starts on its row's heading when it leaves a row node, else south when it carries exit paths and north when it carries joiner paths.
+- A band chain's start heading, which of its bends begins or ends exactly on a node's point, and a row node's stack item are read from the programs' edge ends and node shapes; placement infers none of them from token order.
 - An S-bend is pinned to a node only by its role (Diverge to its split, Converge to its merge), never by its token position.
 - Curve gaps: consecutive same-hand bends at least `min(2TL - 1, max(2, CL))` in units along the path, opposite hands at least 2, non-consecutive at least `min(2TL - 1, (j - i) CL)` (`JunctionCurveGaps`).
 - Curve length CL is derived from the train, not set: the smallest bend spacing (1..12) whose curve speed limit is at least the design speed, capped at 2 TL (`DeriveCurveSpacing`).

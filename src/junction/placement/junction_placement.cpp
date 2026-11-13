@@ -116,8 +116,6 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		const int level = end_level(graph.edges[e].from);
 		return level == end_level(graph.edges[e].to) && level % 2 == 1;
 	};
-	auto is_row_node = [&](const JunctionTrackEnd &end) { return end.node && order.node_level[end.index] % 2 == 1; };
-	auto row_of_node = [&](uint32_t node) { return (order.node_level[node] - 1) / 2; };
 
 	/* Headings: 0 north, 1 east, 2 south, 3 west. */
 	static constexpr int VX[4] = {0, 1, 0, -1};
@@ -243,15 +241,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		const std::vector<Step> &program = programs.edges[e];
 		const int start = edge.from.node ? node_pt[edge.from.index] : port_pt[edge.from.index];
 		const int stop = edge.to.node ? node_pt[edge.to.index] : port_pt[edge.to.index];
-		/* A band edge starts on its row's heading at a row node, else south when it carries exit paths from the main line and north when it carries joiner paths from the S side (G1 §10.2, REVIEW-port-fans F1). */
-		bool from_main = false;
+		/* A band edge carries exit paths or joiner paths, never both; its start heading comes from the programs' edge ends (a row's heading at a row node, else south for exit paths from the main line and north for joiner paths from the S side). */
 		for (uint16_t p : edge.paths) {
 			if (group_of(paths[p].from).main != group_of(paths[edge.paths[0]].from).main) return fail("a band edge carrying exit and joiner paths is not ruled yet");
 		}
-		if (!edge.paths.empty()) from_main = group_of(paths[edge.paths[0]].from).main;
-		int cur = is_row_node(edge.from) ? (east[row_of_node(edge.from.index)] ? 1 : 3) : (from_main ? 2 : 0);
+		int cur = programs.ends[e].first.heading;
 		const bool from_band_split = edge.from.node && order.node_level[edge.from.index] % 2 == 0 && graph.nodes[edge.from.index].split;
-		const bool to_merge = edge.to.node && !graph.nodes[edge.to.index].split;
 		std::vector<Elem> &elems = chain[e];
 		Elem begin;
 		begin.first = begin.last = start;
@@ -269,12 +264,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				el.hand = step.hand;
 				el.index = step.index;
 				el.hout = step.kind == StepKind::Corner ? (cur + step.hand + 4) % 4 : cur;
-				/* An S-bend is pinned to the node it serves, by its role, never by its position (DESIGN-G2 §G2.6). */
-				el.first = t == 0 && edge.from.node && !(step.kind == StepKind::SBend && step.role == Step::Role::Converge) ? start : new_pt();
-				el.last = t + 1 == program.size() && edge.to.node && to_merge && step.kind == StepKind::SBend && step.role != Step::Role::Diverge ? stop : new_pt();
+				/* A bend is pinned to the node it serves when the programs' edge end names its token, never by its position (DESIGN-G2 §G2.6). */
+				el.first = edge.from.node && programs.ends[e].first.token == static_cast<uint32_t>(t) ? start : new_pt();
+				el.last = edge.to.node && programs.ends[e].second.token == static_cast<uint32_t>(t) ? stop : new_pt();
 				el.joiner_div = step.kind == StepKind::Corner && t == 0 && from_band_split;
 				el.free_m = step.kind != StepKind::Corner && (cur == 0 || cur == 2);
-				if ((step.kind == StepKind::SBend || step.kind == StepKind::Fan) && t == 0 && edge.from.node && !from_band_split) el.first = new_pt();
 				cur = el.hout;
 			} else if (step.kind == StepKind::Over || step.kind == StepKind::Tunnel) {
 				/* A tunnel's portals are the heads of a single bridge (D220). */
@@ -540,22 +534,6 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		if (!IsInEdge(e) && !IsOutEdge(e)) return NO_ROW;
 		return programs.edges[e][FanTokenOf(programs, e, IsInEdge(e))].index;
 	};
-	/* The row of the node an in or out edge meets: the item of the token whose element ends at it (an in edge's last token that carries an item) or starts at it (an out edge's first). */
-	auto node_item = [&](uint32_t e) -> uint32_t {
-		const std::vector<Step> &program = programs.edges[e];
-		/* Only Fan, Corner and SBend tokens name a stack item; a bridge's tokens name an edge. */
-		auto names_item = [](const Step &token) { return token.index != NO_ROW && (token.kind == Step::Kind::Fan || token.kind == Step::Kind::Corner || token.kind == Step::Kind::SBend); };
-		if (graph.edges[e].to.node) {
-			for (size_t t = program.size(); t-- > 0;) {
-				if (names_item(program[t])) return program[t].index;
-			}
-		} else {
-			for (const Step &token : program) {
-				if (names_item(token)) return token.index;
-			}
-		}
-		return NO_ROW;
-	};
 	auto edge_port = [&](uint32_t e) { return graph.edges[e].from.node ? graph.edges[e].to.index : graph.edges[e].from.index; };
 
 	/* The row edges' chains, one builder for every row edge (RW4a): a chain is its start tile, one element per token of its program in order (a Fan token a Fan, an S-bend token an S-bend, an Over token the heads of that bridge), its end tile. A doubled leg's second chain is built from copy 1's tokens the same way. Every element takes its points from new_pt() as it is built, in chain order. */
@@ -617,7 +595,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					el.first = new_pt();
 					el.last = new_pt();
 					/* The row the heads lie on: the item of the last fan or S-bend before them, or, with none before, the row the start node is on, which no token of this chain names (the item the in edge ends on: RW3's in edge of the row). */
-					el.index = row_item != NO_ROW ? row_item : node_item(in_edge[r]);
+					el.index = row_item != NO_ROW ? row_item : programs.nodes[graph.edges[in_edge[r]].to.index].item;
 				} else {
 					return fail("a token of a row edge other than its fan, S-bends and bridges is not ruled yet");
 				}
@@ -780,6 +758,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 									const int y_far = el.port_first ? vy[item_pt[el.index]] : port_row[el.slot];
 									bends.push_back({el.first, y_fan, heading, ((y_far > y_fan) == (heading == 1)) ? 1 : -1, 2 * fan_m[e], false, e, r, true});
 								} else {
+									if (vy[item_pt[el.index]] == vy[el.first]) continue; // An S-bend sized to 0 columns is no bend.
 									bends.push_back({el.first, vy[el.first], heading, el.hand, 2 * std::abs(vy[item_pt[el.index]] - vy[el.first]), false, e, r, true});
 								}
 							}
@@ -1327,11 +1306,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		why("row nodes");
 		/* The rows' nodes: the exit split lies on the exit item's row, the joiner merge on the lane item's. */
 		for (int r = 0; r < rows; r++) {
-			const uint32_t exit_item = node_item(in_edge[r]); // The in edge's fan ends on the exit item.
+			const uint32_t exit_item = programs.nodes[graph.edges[in_edge[r]].to.index].item; // The exit split's item, from the programs' node shape: the in edge's fan ends on it.
 			const JunctionTrackEdge &in = graph.edges[in_edge[r]];
 			const JunctionTrackEdge &out = graph.edges[out_edge[r]];
 			eq(1, node_pt[in.to.index], item_pt[exit_item], 0);
-			eq(1, node_pt[out.from.index], item_pt[node_item(out_edge[r])], 0); // The out edge's fan starts on the lane item, at the joiner merge.
+			eq(1, node_pt[out.from.index], item_pt[programs.nodes[graph.edges[out_edge[r]].from.index].item], 0); // The joiner merge's item, from the programs' node shape: the out edge's fan starts on it.
 		}
 
 		if (!x_phase) {
@@ -1386,7 +1365,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				auto heads1 = [&](size_t b) -> const Elem & { return nth_heads(copy, b); };
 				why("row items", e, UINT32_MAX, r);
 				/* The leg's S-bends start on the exit item, where the in edge's fan ends (the exit split lies there), and end on their own token's item. */
-				const uint32_t exit_item = node_item(in_edge[r]);
+				const uint32_t exit_item = programs.nodes[graph.edges[in_edge[r]].to.index].item;
 				eq(1, bend1.first, item_pt[exit_item], 0);
 				eq(1, bend1.last, item_pt[bend1.index], 0);
 				for (size_t b = 0; b < g; b++) {
