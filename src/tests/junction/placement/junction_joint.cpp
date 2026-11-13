@@ -1199,7 +1199,8 @@ TEST_CASE("joint: a bridge may pass over the S-bend after its crossing", "[junct
 	const JunctionJointResult joint = SolveJunctionJoint(system, spec);
 	std::string conflict;
 	for (const std::string &reason : joint.conflict) conflict += (conflict.empty() ? "" : " <- ") + reason;
-	CHECK(!(joint.status == JunctionMilp::Status::Infeasible && conflict.find("bridge over S-bend") != std::string::npos));
+	/* Edge 14's bridge reaches the S-bend after its crossing; another conflict may remain (the round-0 recording at all floors). */
+	CHECK(conflict.find("bridge over S-bend (edge 14)") == std::string::npos);
 	std::string edge14;
 	for (size_t i = 0; i < system.overs.size(); i++) {
 		const JunctionSystemOver &over = system.overs[i];
