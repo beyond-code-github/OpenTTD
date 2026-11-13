@@ -13,6 +13,7 @@ A real switch is two-way, so a lane bound for k destinations splits as a binary 
 - **Level 2, by lane within the group.**
 - **Within a level,** the ordered key list (lane order across the line) splits into two contiguous halves, recursively; for 3 keys that is 1 + 2. Contiguous halves keep legs in lane order, so a cascade never creates a crossing of its own.
 - **Merges are the mirror image:** lanes merge pairwise in lane order, by lane within a group first and then by group.
+- **Splits before merges (D24):** along every path, every split of its cascade comes before any merge. With pairing any, a main lane's exit cascade splits fully, and only then do legs from different main lanes merge into each branch lane. The graph test asserts D24 on every path.
 
 ## G2.2 Only the first node of a cascade sits on the main row; the rest sit in the band (D224 both sides)
 - **Exit side:** one leg leaves the main lane, then splits in the band into the branch lanes it serves.
@@ -21,7 +22,8 @@ A real switch is two-way, so a lane bound for k destinations splits as a binary 
 So each main row carries one in, one leg and one out for a T at any lane count and any pairing. The structure's row rule stays as it is, and is now true by construction instead of a refusal.
 
 ## G2.3 Band edges follow the same bridge rule as every other edge
-- Consecutive crossings of one band edge share a bridge up to the series cap (2 crossers, `JUNCTION_BRIDGE_MAX_CROSSERS`) and within the span limit. Beyond that, the next crossing starts a new bridge.
+- Consecutive crossings of one edge may share a bridge. No rule caps how many tracks one bridge crosses (D228 replaces the provisional cap of 2 in D209).
+- What bounds a bridge is the game's maximum bridge length and the heights. Whether a long crossing set gets one bridge or several in series, with track and signals between, is a cost choice (D209, "cost decides").
 - Over/under at each crossing follows D223/D227.
 - This removes placement's "one bridge per band edge" refusal.
 
