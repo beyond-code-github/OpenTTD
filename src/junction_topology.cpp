@@ -394,6 +394,15 @@ JunctionTrackGraph BuildJunctionTrackGraph(const JunctionTopology &topology, con
 		JunctionTrackNode &node = graph.nodes[i];
 		if (group_of(node.slot).main) {
 			node.level = 2 * row_of[node.slot] + 1;
+			if (!node.split) {
+				/* D224: the legs bound for one main lane from the branch merge with each other first, in the band below the lane, and join it as one joiner. */
+				for (const JunctionTrackEdge &edge : graph.edges) {
+					if (edge.kind != JunctionTrackEdge::Kind::Out || !edge.from.node || edge.from.index != i || !edge.to.node) continue;
+					bool branch_only = true;
+					for (uint16_t p : edge.paths) branch_only = branch_only && !group_of(paths[p].from).main;
+					if (branch_only) node.level = 2 * row_of[node.slot] + 2;
+				}
+			}
 			continue;
 		}
 		if (!node.split) {
@@ -586,9 +595,31 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 				 * expanded while a pending crossing names it with a partner that has not yet appeared as an item, because the
 				 * crossing is on the bundle and the bundle must still be whole when its partner arrives. Only when every
 				 * candidate is deferred does the leftmost go first. */
+				/* MJ1: a merge node entered from its legs (not from its out edge) merges them in its band: its feeding legs must all be items and adjacent. */
+				auto feeds_of = [&](uint32_t e) {
+					std::vector<uint32_t> feeds;
+					const JunctionTrackEnd end = north_end(e);
+					if (!end.node || graph.nodes[end.index].split || south_is_to[e] || !(graph.edges[e].to.node && graph.edges[e].to.index == end.index)) return feeds;
+					for (uint32_t f = 0; f < edge_count; f++) {
+						if (graph.edges[f].to.node && graph.edges[f].to.index == end.index) feeds.push_back(f);
+					}
+					return feeds;
+				};
+				auto feeds_adjacent = [&](const std::vector<uint32_t> &feeds) {
+					std::vector<ptrdiff_t> at;
+					for (uint32_t f : feeds) {
+						const auto found = std::find(items.begin(), items.end(), f);
+						if (found == items.end()) return false;
+						at.push_back(found - items.begin());
+					}
+					std::sort(at.begin(), at.end());
+					return at.back() - at.front() + 1 == static_cast<ptrdiff_t>(at.size());
+				};
 				auto expandable = [&](uint32_t e) {
 					const JunctionTrackEnd end = north_end(e);
-					return end.node && node_level[end.index] == level;
+					if (!end.node || node_level[end.index] != level) return false;
+					const std::vector<uint32_t> feeds = feeds_of(e);
+					return feeds.empty() || feeds_adjacent(feeds);
 				};
 				auto defers = [&](uint32_t e) {
 					for (const auto &[a, b] : pending) {
@@ -608,8 +639,40 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 				}
 				/* A full pass that defers every candidate and places nothing cannot end by itself. */
 				if (any_candidate && it == items.end()) return fail("the crossings cannot be ordered");
-				if (it == items.end()) break;
+				if (it == items.end()) {
+					for (uint32_t e : items) {
+						const JunctionTrackEnd end = north_end(e);
+						if (end.node && node_level[end.index] == level && !feeds_of(e).empty()) return fail("the legs of a merge cannot be brought together");
+					}
+					break;
+				}
 				const uint32_t item = *it;
+				const std::vector<uint32_t> merging = feeds_of(item);
+				if (!merging.empty()) {
+					const uint16_t merge_node = north_end(item).index;
+					size_t first = items.size();
+					int merged_layer = 0;
+					for (uint32_t f : merging) {
+						const size_t k = std::find(items.begin(), items.end(), f) - items.begin();
+						first = std::min(first, k);
+						merged_layer = std::max(merged_layer, layers[k]);
+					}
+					for (uint32_t f : merging) {
+						const size_t k = std::find(items.begin(), items.end(), f) - items.begin();
+						items.erase(items.begin() + k);
+						layers.erase(layers.begin() + k);
+					}
+					order.bands[level / 2].push_back({true, merge_node, 0, 1 + merged_layer});
+					for (uint32_t f = 0; f < edge_count; f++) {
+						if (graph.edges[f].from.node && graph.edges[f].from.index == merge_node) {
+							south_is_to[f] = false;
+							items.insert(items.begin() + first, f);
+							appeared[f] = true;
+							layers.insert(layers.begin() + first, 1 + merged_layer);
+						}
+					}
+					continue;
+				}
 				const int layer = 1 + layers[it - items.begin()];
 				order.bands[level / 2].push_back({true, north_end(item).index, 0, layer});
 				const uint16_t node_index = north_end(item).index;

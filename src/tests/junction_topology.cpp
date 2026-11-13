@@ -4362,6 +4362,41 @@ TEST_CASE("topology: a row node reached only by row edges is placed by the order
 	}
 }
 
+TEST_CASE("topology: branch legs bound for one main lane merge before joining it", "[junction][topologysweep]")
+{
+	/* MJ1 (D224): LL_RR x LL_RR and L_R x LL_RR under pairing any: every main lane has exactly one joiner and the structure stage passes its joiner check. */
+	for (const auto &[main_notation, branch_notation] : {std::pair{"LL_RR", "LL_RR"}, std::pair{"L_R", "LL_RR"}}) {
+		const JunctionTopology topology = MakeJunctionHubTopology(ParseLineNotation(main_notation).spec, ParseLineNotation(branch_notation).spec, JunctionLanePairing::AnyToAny);
+		std::string why;
+		const auto paths = ExpandJunctionLanes(topology, &why);
+		REQUIRE(!paths.empty());
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(topology, paths, &why);
+		std::string order_error;
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, paths, graph, &order_error);
+		INFO(main_notation << " x " << branch_notation << ": " << order_error);
+		REQUIRE(order_error.empty());
+		for (size_t r = 0; r < order.rows.size(); r++) {
+			const int level = static_cast<int>(2 * r + 1);
+			int joiners = 0;
+			for (const JunctionTrackEdge &edge : graph.edges) {
+				if (!edge.from.node || !edge.to.node || order.node_level[edge.from.index] == order.node_level[edge.to.index]) continue;
+				const bool at_from = order.node_level[edge.from.index] == level && !graph.nodes[edge.from.index].split;
+				const bool at_to = order.node_level[edge.to.index] == level && !graph.nodes[edge.to.index].split;
+				if (at_from || at_to) joiners++;
+			}
+			INFO("row " << r);
+			CHECK(joiners == 1);
+		}
+		std::string structure_error;
+		StructureJunctionTrackGraph(topology, paths, graph, order, &structure_error);
+		CHECK(structure_error.find("joiner on a lane") == std::string::npos);
+		JunctionSpec spec = MakeTestJunctionSpec();
+		std::string next;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &next);
+		WARN("MJ1 " << main_notation << " x " << branch_notation << " any: " << (seed.routes.empty() ? next : std::string("seed")));
+	}
+}
+
 TEST_CASE("topology: an L_R main with a multi-lane branch is refused, not crashed", "[junction][topology]")
 {
 	for (const char *branch : {"LL_RR", "LL_R", "L_RR"}) {
