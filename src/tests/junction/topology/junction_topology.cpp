@@ -4958,7 +4958,7 @@ TEST_CASE("programs: a band edge's S-bends name the node they serve (DESIGN-G2 �
 	CHECK(lone > 0);
 }
 
-TEST_CASE("placement: a lone converge S-bend leaves a run after its split (DESIGN-G2 §G2.6)", "[junction][topology]")
+TEST_CASE("placement: a lone converge S-bend leaves a run after its split (DESIGN-G2 §G2.6)", "[junction][topologysweep]")
 {
 	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("L_R").spec, ParseLineNotation("L_RR").spec);
 	std::string error;
