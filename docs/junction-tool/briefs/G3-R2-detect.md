@@ -5,70 +5,54 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 ## Goal
 Today `build()` runs its own flat solve in the X phase and adds the occupancy, hug-pin and X-clearance families from that solve's order (the block "The occupancy family and the bridge heads follow the order of the flat solve"). When that inner solve fails, those families are silently missing. That is why the joint model's rulebook is incomplete on the failing hubs.
 
-This step moves the families that read columns out of `build()` into one lambda, `detect(x)`, which the caller runs at a point it hands in. The fixed path hands it the same flat solve as today: over exactly the rows `build()` had emitted when the old block ran, so this is a pure refactor and identity does not change. R3 will hand it the joint loop's canonical point instead.
+This step moves the families that read columns out of `build()` into one lambda, `detect(x)`, which the caller runs at a point it hands in. `build()` still calls it at the old place with the same flat solve, so this is a pure refactor and identity does not change. R3 will hand it the joint loop's canonical point instead.
 
 The families that move: `compute_node_tracks`, `add_occupancy`, `hug_heads` and `add_clearance_x`; and `plan_clearance`'s side rule (the Y clearance), as `detect_y`.
 
 The hug of a doubled bridge's heads around its crossers ("bridge heads hug crossers", its inequalities and the `hugs` it fills) stays in `build()` unchanged: it reads only the rows, which the X phase has, and the flat solve must see it.
 
-## Amendment (2026-11-14, after the first attempt stopped)
-The first attempt (patch: `/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/r2/r2-attempt.patch`) solved the flat point after `build()` returned, so the solve also saw the x floors, the facts and the box bound, and the T seed failed. The brief was wrong; this version fixes it by solving over a prefix of `cons`. The guard test and `SystemDigest` from that attempt are uncommitted in the worktree and were captured on the unchanged code: keep them as they are (read them; do not re-capture) and use them as the guard.
+## Amendment 2 (2026-11-14, after the second attempt stopped)
+Two attempts stopped, and both stops were brief defects:
+- Attempt 1 (`scratchpad/r2/r2-attempt.patch`) solved the flat point after `build()` returned, over the floors, facts and box too.
+- Attempt 2 (`scratchpad/r2/r2-v2.patch`) solved over the right prefix, but added `detect`'s rows after the facts block. The facts block prunes each point by the relations already in `cons`, so "placement on real terrain" (temperate-hilly-12) changed outcome.
+
+So R2 now only extracts the column-reading families into `detect(x)`, and `build()` still calls it at exactly the old place, at the same flat point. There is no `build_x`, no `detect_rows`, and no prefix parameter on `flat_solve`. Where `detect`'s rows go relative to the facts when the point comes from outside is R3's question, not this step's.
+
+The guard test and `SystemDigest` are uncommitted in the worktree and were captured on the unchanged code. Keep their bodies and digests exactly as they are; only their tags change (see Tests). Use `r2-v2.patch` as the base for `detect_y` and `detect`'s body.
 
 ## State
-- Worktree `<WORKTREE given at launch>`, branch `wt-r2` already checked out at `<HEAD given at launch>`, with the guard test uncommitted in `src/tests/junction/placement/junction_joint.cpp`. Do not reset or check out over it.
-- `build/` was rebuilt after deleting stale .pch files; `build-rel/` was not: rebuild `openttd_test` there before its gates (delete its stale .pch files the same way if the build complains about them).
-- First, before any change to `junction_placement.cpp`: `tools/junction/jt fast build '[milp]' 10` passes with the guard test.
+- Worktree `<WORKTREE given at launch>`, which holds the uncommitted guard test. First: `git -C <WORKTREE> checkout -B wt-r2 <HEAD given at launch>`. The guard test file is not changed between the old and new head, so the uncommitted change carries over. If the checkout refuses, STOP.
+- Rebuild `openttd_test` in `build` and `build-rel` (delete stale `.pch` files if the build complains about them).
 - Never touch the other worktrees under `.claude/`.
-- Output files go in `/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/r2/` (name new files `*-v2.*`).
+- Output files go in `/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/r2/`; name them `*-v3.*`.
 
 ## Read first (once each, offset/limit)
 - `CODINGSTYLE.md`;
-- `docs/junction-tool/DESIGN-G3-vectors.md` §G3.6 (lines 95-170);
-- `src/junction/placement/junction_placement.cpp`:
-  - `flat_solve` (grep "auto flat_solve");
-  - `add_occupancy`, `hug_heads`, `collect_bridges`, `add_clearance_x`;
-  - `build()` (grep "auto build = ") to the box bound, in particular the occupancy block (grep "follow the order of the flat solve");
-  - `plan_clearance`;
-  - every call of `build()` (grep "build()");
-- the first attempt's patch, for the call sites it already found;
-- `src/tests/junction/placement/junction_joint.cpp`: the uncommitted guard test and `SystemDigest`.
+- `scratchpad/r2/r2-v2.patch`;
+- `src/junction/placement/junction_placement.cpp`: the old block (grep "follow the order of the flat solve"), `plan_clearance`, and whatever the patch touches.
 
 ## Changes in `junction_placement.cpp`
-1. **`flat_solve` takes a prefix.** `flat_solve(std::vector<int> &val, size_t count = SIZE_MAX)` uses only the first `std::min(count, cons.size())` rows of `cons`, in its bound as well as its differences. Every existing call passes nothing and is unchanged.
-2. **`build()` marks the point.** A new local `size_t detect_rows = SIZE_MAX;` (next to `hugs`). `build()` sets it to `SIZE_MAX` at its start, and, where the old block stood, when `x_phase && rows_known && !relations_only`, sets `detect_rows = cons.size();`.
-3. **`detect`.** Add, after `build()`:
+1. **`detect`.** Add, just before `build()`:
    ```cpp
    /* The families that read columns (DESIGN-G3 §G3.6, R2): at columns x, the occupancy, the hug pins and the X clearance; false when the occupancy refuses. */
    auto detect = [&](const std::vector<int> &x) -> bool { ... };
    ```
-   Its body: `compute_node_tracks();`, `if (!add_occupancy(x, false)) return false;`, `hug_heads(x);`, `if (!skip_clearance) add_clearance_x(x);`, `return true;`. Then delete the old block from `build()` (the `if (x_phase && rows_known && !relations_only) { ... }` around "follow the order of the flat solve"), leaving only the `detect_rows` mark in its place.
-   - The `why` of each family stays its own.
-   - `detect` adds rows to `cons` after `build()`'s rows, the floors and the box bound. If a test that pins an explanation chain changes text only because of that order, STOP and report it. Do not reorder to fix it.
-4. **`build_x`.** Every X-phase call of `build()` outside `plan_clearance` becomes a call of:
+   Its body: `if (!add_occupancy(x, false)) return false;`, `hug_heads(x);`, `if (!skip_clearance) add_clearance_x(x);`, `return true;`.
+2. **The old block in `build()`** becomes exactly:
    ```cpp
-   /* build() and, when the rows are known, detect at the flat solve of the rows build() had made at the old point, as the old build() did (DESIGN-G3 §G3.6, R2). */
-   auto build_x = [&]() -> bool {
-   	if (!build()) return false;
-   	if (detect_rows == SIZE_MAX) return true;
+   if (x_phase && rows_known && !relations_only) {
+   	/* The column-reading families (detect) follow the order of the flat solve of the relations above (D217); when the relations contradict each other the solve below explains it. R3 hands detect another point. */
+   	compute_node_tracks();
    	std::vector<int> flat;
-   	if (!flat_solve(flat, detect_rows)) return true;
-   	return detect(flat);
-   };
+   	if (flat_solve(flat) && !detect(flat)) return false;
+   }
    ```
-   If `build_x` returns false, the call site treats it as a failed `build()` does today. Calls in the Y phase, and `plan_clearance`'s own calls, keep `build()`.
-5. **`detect_y`.** Move `plan_clearance`'s loop "for (const BridgeLine &line : lines)" into:
-   ```cpp
-   /* The Y-phase clearance of the X-axis bridges at a point (DESIGN-G3 §G3.6, R2): a head whose column lies strictly within an X-axis bridge keeps its side of the bridge's row by one; on the row itself, both sides (as today). */
-   auto detect_y = [&](const std::vector<int> &x, const std::vector<int> &y) { ... };
-   ```
-   - It clears `clear_y` and fills it exactly as today, calling `collect_bridges` itself.
-   - `plan_clearance` keeps its two flat solves and calls `detect_y(flat_x, flat_y)` where the loop was.
-   - `build()`'s rows from `clear_y` stay where they are.
+3. **`detect_y`**, as in `r2-v2.patch`: it holds `plan_clearance`'s loop "for (const BridgeLine &line : lines)", with the comment from the earlier brief text. It clears and fills `clear_y`, calling `collect_bridges` itself. `plan_clearance` calls `detect_y(flat_x, flat_y)` where the loop was. Locals that the move leaves unused go.
 
-No `HugSite`. Nothing else changes. That includes `edge_tiles`, `row_pieces`, the hug loop, `add_occupancy`'s body, the facts, the curve gaps, the rounds' order, the joint model, the hover and the pipeline.
+There is no `HugSite`, no `build_x`, no `detect_rows`, and no change to `flat_solve`. The hug loop stays in `build()` unchanged. Nothing else changes.
 
-## Tests (`src/tests/junction/placement/junction_joint.cpp`, `[junction][milp]`)
-This is a refactor, so its tests are guards captured before the change. They exist already (uncommitted, from the first attempt, captured on the unchanged code); they must hold after the change. The spec below is what they are.
+## Tests (`src/tests/junction/placement/junction_joint.cpp`)
+This is a refactor, so its tests are guards captured before the change. They exist already (uncommitted, from the first attempt, captured on the unchanged code); they must hold after the change. The spec below is what they are. One change to the guard test: its tags become `[junction][milp][.sweep]`. It takes about 50 s in Debug and about 10 s in Release, so it runs in `jt sweep` (the hidden slow sweeps, Release) and not in `jt fast` or the wide gate.
 
 - **Helper `SystemDigest(const JunctionPlacementSystem &)`** returns `std::pair<size_t, uint64_t>`:
   - the number of relations plus clashes;
@@ -87,13 +71,14 @@ Every existing test stays exactly as it is.
 ## Stop conditions
 - Identity, an existing test, or a test 1 digest changes after the change.
 - `detect` would need a value that is neither `x`, `vy`, nor state `build()` left.
-- The guard test in the worktree does not match the spec below, or does not pass on the unchanged code.
+- The guard test in the worktree does not match the spec in Tests.
 - Anything not covered.
 
 ## Gates
 - 0 new warnings;
 - `tools/junction/jt fast build '[milp]' 10`;
 - `tools/junction/jt gate build-rel`;
+- `tools/junction/jt sweep build-rel` (6 cases now, with the guard test; budget 90 s);
 - `tools/junction/jt identity build-rel`. Other agents build in parallel. If a gate is over budget, re-run it once and report both times.
 
 No CLAUDE.md change (a refactor). One commit on wt-r2: `Codechange: Junction placement detects position families at a given point`, ending with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
