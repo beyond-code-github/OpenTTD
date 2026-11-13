@@ -810,6 +810,112 @@ static void CheckZeroBend(const JunctionPlacementSystem &forced, const JunctionJ
 	CHECK(checked > 0);
 }
 
+/** The count of a recording's relations and clashes, and an FNV-1a 64 hash of both lists' text (each sorted), as a guard that its rulebook is unchanged. */
+static std::pair<size_t, uint64_t> SystemDigest(const JunctionPlacementSystem &system)
+{
+	std::vector<std::string> lines;
+	for (const JunctionSystemRelation &r : system.relations) lines.push_back(fmt::format("{} {} {} {} {} {} {} {} {} {} {}", r.axis, r.v, r.u, r.c, r.bend, r.a, r.b, r.nonlinear, r.zero_branch, r.order_pin, r.reason));
+	std::sort(lines.begin(), lines.end());
+	std::vector<std::string> clashes;
+	for (const JunctionSystemClash &c : system.clashes) clashes.push_back(fmt::format("{} {} {}", c.key, c.gap, c.held));
+	std::sort(clashes.begin(), clashes.end());
+	uint64_t hash = 14695981039346656037ULL;
+	for (const std::vector<std::string> *list : {&lines, &clashes}) {
+		for (const std::string &line : *list) {
+			for (const char ch : line) hash = (hash ^ static_cast<unsigned char>(ch)) * 1099511628211ULL;
+			hash = (hash ^ '\n') * 1099511628211ULL;
+		}
+		hash = (hash ^ '\f') * 1099511628211ULL;
+	}
+	return {system.relations.size() + system.clashes.size(), hash};
+}
+
+TEST_CASE("rule source: detection at the flat solve is today's rulebook", "[junction][milp][.sweep]")
+{
+	struct Case {
+		std::string name;
+		size_t count;
+		uint64_t hash;
+	};
+	/* The digests printed by the unchanged code (R2 is a refactor), per case in the order the loop below produces them. */
+	const std::vector<Case> expected = {
+		{"L_R x L_R seed", 393, 640164135075738815ULL},
+		{"L_R x L_R bend 5 m+1", 396, 15574989440103210876ULL},
+		{"L_R x L_R bend 7 m+1", 396, 49917478393215249ULL},
+		{"L_R x L_R bend 8 m+1", 395, 6861077751002777490ULL},
+		{"L_R x L_R bend 9 m+1", 395, 10328024605206432383ULL},
+		{"L_R x L_R bend 12 m+1", 395, 11232606783720670483ULL},
+		{"LL_RR x L_R seed", 1109, 2683259685928647513ULL},
+		{"LL_RR x L_R bend 0 m+1", 1111, 17783139826289707174ULL},
+		{"LL_RR x L_R bend 1 m+1", 1112, 4109831045377491802ULL},
+		{"LL_RR x L_R bend 3 m+1", 1111, 2826417799457400576ULL},
+		{"LL_RR x L_R bend 4 m+1", 1111, 528841753813247845ULL},
+		{"LL_RR x L_R bend 8 m+1", 1114, 16306449433040433292ULL},
+		{"LL_RR x L_R bend 9 m+1", 1111, 15615666931685096934ULL},
+		{"L_R x L_RR all floors", 232, 15268210347479608433ULL},
+		{"L_R x LL_RR all floors", 588, 1677340243617776238ULL},
+		{"LL_RR x LL_RR all floors", 1518, 17095948853165792227ULL},
+	};
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<Case> got;
+	auto digest = [&](const std::string &name, const JunctionPlacementSystem &system) {
+		const auto [count, hash] = SystemDigest(system);
+		std::cout << fmt::format("[digest] {} {} {}\n", name, count, hash);
+		got.push_back({name, count, hash});
+	};
+	for (const auto &[main, branch] : {std::pair{"L_R", "L_R"}, std::pair{"LL_RR", "L_R"}}) {
+		const std::string hub = fmt::format("{} x {}", main, branch);
+		const JointInputs in = MakeJointInputs(main, branch);
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+		REQUIRE(!seed.routes.empty());
+		const JunctionPlacementSystem base = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices);
+		digest(hub + " seed", base);
+		int sized = 0;
+		for (const JunctionSystemBend &bend : base.bends) {
+			if ((bend.source != "rows" && bend.source != "port_rows") || bend.m < 1 || sized == 6) continue;
+			sized++;
+			JunctionBendSizes sizes = SizesOfBends(base);
+			sizes.m[bend.id] = bend.m + 1;
+			digest(fmt::format("{} bend {} m+1", hub, bend.id), RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices, &sizes));
+		}
+	}
+	for (const auto &[main, branch] : {std::pair{"L_R", "L_RR"}, std::pair{"L_R", "LL_RR"}, std::pair{"LL_RR", "LL_RR"}}) {
+		const std::string hub = fmt::format("{} x {}", main, branch);
+		const JointInputs in = MakeJointInputs(main, branch);
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+		const bool seeded = !seed.routes.empty();
+		const std::vector<JunctionLanePath> &paths = seeded ? seed.paths : in.paths;
+		const JunctionTrackGraph &graph = seeded ? seed.graph : in.graph;
+		const JunctionTrackStructure cut = seeded ? seed.structure : DefaultCut(in);
+		const JunctionTrackPrograms &programs = seeded ? seed.programs : in.programs;
+		/* All floors, as [.g3loop] takes them: every free S-bend 1, S fan 0, joiner Corner k. */
+		JunctionPlacementSystem rounds_system;
+		PlaceTrackGraph(in.topology, paths, graph, in.order, cut, programs, spec, nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &rounds_system);
+		REQUIRE(!rounds_system.tokens.empty());
+		JunctionPlacementChoices choices;
+		for (const uint32_t tokens : rounds_system.tokens) {
+			choices.m.emplace_back(tokens, 0);
+			choices.corner.emplace_back(tokens, 0);
+		}
+		for (const JunctionSystemBend &b : rounds_system.bends) {
+			if (b.copy != 0) continue;
+			if (b.source == "free") choices.m[b.edge][b.tok] = b.kind == "SFan" ? 0 : 1;
+			if (b.source == "corner_rows") choices.corner[b.edge][b.tok] = rounds_system.k;
+		}
+		choices.port_offset = rounds_system.port_offset;
+		digest(hub + " all floors", RecordJunctionPlacementSystem(in.topology, paths, graph, in.order, cut, programs, spec, choices));
+	}
+	REQUIRE(expected.size() == got.size());
+	for (size_t i = 0; i < got.size(); i++) {
+		INFO(expected[i].name);
+		CHECK(got[i].name == expected[i].name);
+		CHECK(got[i].count == expected[i].count);
+		CHECK(got[i].hash == expected[i].hash);
+	}
+}
+
 TEST_CASE("joint: a zero-size bend adds no units", "[junction][milp]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();

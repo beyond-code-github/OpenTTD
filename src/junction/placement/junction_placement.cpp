@@ -1461,6 +1461,14 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 	};
 
+	/* The families that read columns (DESIGN-G3 §G3.6, R2): at columns x, the occupancy, the hug pins and the X clearance; false when the occupancy refuses. */
+	auto detect = [&](const std::vector<int> &x) -> bool {
+		if (!add_occupancy(x, false)) return false;
+		hug_heads(x);
+		if (!skip_clearance) add_clearance_x(x);
+		return true;
+	};
+
 	/* One round: the constraints of a phase. */
 	auto build = [&]() {
 		cons.clear();
@@ -1902,14 +1910,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 
 		if (x_phase && rows_known && !relations_only) {
-			/* The occupancy family and the bridge heads follow the order of the flat solve of the relations above (D217); when the relations contradict each other the solve below explains it. */
+			/* The column-reading families (detect) follow the order of the flat solve of the relations above (D217); when the relations contradict each other the solve below explains it. R3 hands detect another point. */
 			compute_node_tracks();
 			std::vector<int> flat;
-			if (flat_solve(flat)) {
-				if (!add_occupancy(flat, false)) return false;
-				hug_heads(flat);
-				if (!skip_clearance) add_clearance_x(flat);
-			}
+			if (flat_solve(flat) && !detect(flat)) return false;
 		}
 
 		if (x_phase && !floors_off) {
@@ -2262,12 +2266,33 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 	};
 
-	/* The Y-phase clearance of the X-axis bridges (D217): from the flat state, the Y and the X solve with no floors and only the relations, a head whose column lies strictly within an X-axis bridge keeps its flat side of the bridge's row by one. */
-	auto plan_clearance = [&](int fixed_offset) {
+	/* The Y-phase clearance of the X-axis bridges at a point (DESIGN-G3 §G3.6, R2): a head whose column lies strictly within an X-axis bridge keeps its side of the bridge's row by one; on the row itself, both sides (as today). */
+	auto detect_y = [&](const std::vector<int> &x, const std::vector<int> &y) {
 		clear_y.clear();
 		std::vector<BridgeLine> lines;
 		std::vector<HeadRef> heads;
 		collect_bridges(lines, heads);
+		for (const BridgeLine &line : lines) {
+			if (!line.x_axis) continue;
+			const int left = std::min(x[line.a], x[line.b]);
+			const int right = std::max(x[line.a], x[line.b]);
+			for (const HeadRef &head : heads) {
+				if (head.bridge == line.bridge || x[head.xpt] <= left || x[head.xpt] >= right) continue;
+				const int side = y[head.ypt] - y[line.line];
+				/* Flat side 0: the head lies on the bridge's row inside its span, a contradiction of the family (both sides are demanded). */
+				if (side == 0) {
+					clear_y.push_back({head.ypt, line.line, line.edge, head.edge});
+					clear_y.push_back({line.line, head.ypt, line.edge, head.edge});
+					continue;
+				}
+				if (side > 0) clear_y.push_back({head.ypt, line.line, line.edge, head.edge}); else clear_y.push_back({line.line, head.ypt, line.edge, head.edge});
+			}
+		}
+	};
+
+	/* The Y-phase clearance of the X-axis bridges (D217): from the flat state, the Y and the X solve with no floors and only the relations, a head whose column lies strictly within an X-axis bridge keeps its flat side of the bridge's row by one. */
+	auto plan_clearance = [&](int fixed_offset) {
+		clear_y.clear();
 		const std::vector<int> saved_vx = vx, saved_vy = vy, saved_port_row = port_row, saved_fan_m = fan_m;
 		const int saved_phase = phase;
 		floors_off = relations_only = skip_clearance = true;
@@ -2292,22 +2317,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		port_row = saved_port_row;
 		fan_m = saved_fan_m;
 		if (!ok) return;
-		for (const BridgeLine &line : lines) {
-			if (!line.x_axis) continue;
-			const int left = std::min(flat_x[line.a], flat_x[line.b]);
-			const int right = std::max(flat_x[line.a], flat_x[line.b]);
-			for (const HeadRef &head : heads) {
-				if (head.bridge == line.bridge || flat_x[head.xpt] <= left || flat_x[head.xpt] >= right) continue;
-				const int side = flat_y[head.ypt] - flat_y[line.line];
-				/* Flat side 0: the head lies on the bridge's row inside its span, a contradiction of the family (both sides are demanded). */
-				if (side == 0) {
-					clear_y.push_back({head.ypt, line.line, line.edge, head.edge});
-					clear_y.push_back({line.line, head.ypt, line.edge, head.edge});
-					continue;
-				}
-				if (side > 0) clear_y.push_back({head.ypt, line.line, line.edge, head.edge}); else clear_y.push_back({line.line, head.ypt, line.edge, head.edge});
-			}
-		}
+		detect_y(flat_x, flat_y);
 	};
 	auto build_failed = [&]() {
 		if (occupancy_failed) return solve_failed();
