@@ -12,7 +12,7 @@
 - Branch ports are on the S side only; N-side and both-side branches are refused as not ruled (G1 §8).
 - Lane pairing for multi-to-multi movements is a topology option: any (default), keep, or per direction; it applies only where both groups of a turning movement have more than one lane (D221).
 - Driving side follows the game's road-side setting; Mirror flips a placement (D66).
-- Terms: game compass (N up), right-hand running; say "split" for any point where tracks diverge or join, "S-bend" for a sideways step, "shift" only for the coop shifter (D108).
+- Terms: game compass (N up), right-hand running; a split is a node where tracks diverge, a merge a node where they join (both topological); a merger is a coop pattern built from merges, prios and signals, and a prio is one merger style (D231); "switch" is never used (D108: the checker's "split inside prio coverage" covers both splits and merges); "S-bend" is a sideways step, "shift" only the coop shifter (D108).
 
 ## Graph, order and structure
 - Splits come before merges along every track; outgoing lines split before incoming lines merge (D24, D189).

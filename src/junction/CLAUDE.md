@@ -18,6 +18,11 @@ Rules of the junction tool as present-tense facts, split per folder: each fact l
 - Root files: `junction_pipeline` (the driver: bridge cut, seed, detours, terraform entry), `junction_track_geometry` (axis and bend helpers shared by placement, render and signals), `junction_layout` (the output type), `junction_route` (route programs, rasteriser, ASCII, `JunctionTrackRoute`/`JunctionTrackPieceTag`), `junction_train_model`, `junction_rules` (the rule checker), `junction_spec` (shared spec, notation, prices, curve spacing, prio sizing).
 - Tests are in `src/tests/junction/`, mirroring these folders (see its CLAUDE.md).
 
+## Terms
+- Split: a graph node where tracks diverge. Merge: a graph node where tracks join. Both are topological (D231).
+- Merger: a coop pattern (ABR06 style) built from merges, prios and signals; a prio is one merger style; the style is a user option per hub type with presets, from the throughput work on (D231).
+- S-bend: a sideways step; shift: only the coop shifter; never "switch" (D108).
+
 ## Pipeline
 - Topology: ports (sides, tracks, order) and movements; names the junction type (D189).
 - Graph: nodes (splits, merges), edges, crossings per edge, built by rule from the topology (D201, D202, G1 §7).
