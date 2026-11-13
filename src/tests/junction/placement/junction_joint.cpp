@@ -563,6 +563,156 @@ TEST_CASE("joint: recordings at other sizes keep their points", "[junction][milp
 	CHECK(compared > 0);
 }
 
+/** The sizes a recording's bends have, as the rule source is given them. */
+static JunctionBendSizes SizesOfBends(const JunctionPlacementSystem &system)
+{
+	JunctionBendSizes sizes;
+	for (const JunctionSystemBend &bend : system.bends) {
+		REQUIRE(bend.id == static_cast<int>(sizes.m.size()));
+		sizes.m.push_back(bend.m);
+		sizes.hand.push_back(static_cast<int8_t>(bend.hand));
+	}
+	return sizes;
+}
+
+TEST_CASE("record: given sizes are what the rule source reads", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JointInputs in = MakeJointInputs("LL_RR", "L_R");
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionPlacementSystem base = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices);
+	REQUIRE(!base.relations.empty());
+	const JunctionSystemBend *chosen = nullptr;
+	for (const JunctionSystemBend &bend : base.bends) {
+		if (bend.source == "rows" && bend.m >= 1) {
+			chosen = &bend;
+			break;
+		}
+	}
+	REQUIRE(chosen != nullptr);
+	const int id = chosen->id;
+	const int m = chosen->m;
+	JunctionBendSizes sizes = SizesOfBends(base);
+	sizes.m[id] = m + 1;
+	const JunctionPlacementSystem other = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices, &sizes);
+	REQUIRE(!other.relations.empty());
+	REQUIRE(other.bends.size() == base.bends.size());
+	CHECK(other.bends[id].m == m + 1);
+
+	/* A W/E fan: its size is read, and its tagged X relations follow it. */
+	const JunctionSystemBend *fan = nullptr;
+	for (const JunctionSystemBend &bend : base.bends) {
+		if (bend.source == "port_rows" && bend.m >= 1) {
+			fan = &bend;
+			break;
+		}
+	}
+	REQUIRE(fan != nullptr);
+	const int fan_id = fan->id;
+	const int fan_m = fan->m;
+	JunctionBendSizes fan_sizes = SizesOfBends(base);
+	fan_sizes.m[fan_id] = fan_m + 1;
+	const JunctionPlacementSystem fan_other = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices, &fan_sizes);
+	REQUIRE(fan_other.bends.size() == base.bends.size());
+	CHECK(fan_other.bends[fan_id].m == fan_m + 1);
+	int tagged = 0;
+	for (const JunctionSystemRelation &relation : fan_other.relations) {
+		if (relation.axis != 0 || relation.bend != fan_id || relation.nonlinear) continue;
+		CHECK(relation.c == relation.a * (fan_m + 1) + relation.b);
+		tagged++;
+	}
+	CHECK(tagged > 0);
+}
+
+TEST_CASE("record: the measured sizes given back change nothing", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch] : {std::pair{"L_R", "L_R"}, std::pair{"LL_RR", "L_R"}}) {
+		INFO(main << " x " << branch);
+		const JointInputs in = MakeJointInputs(main, branch);
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+		REQUIRE(!seed.routes.empty());
+		const JunctionPlacementSystem a = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices);
+		const JunctionBendSizes sizes = SizesOfBends(a);
+		const JunctionPlacementSystem b = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices, &sizes);
+		REQUIRE(!a.relations.empty());
+		REQUIRE(a.relations.size() == b.relations.size());
+		for (size_t i = 0; i < a.relations.size(); i++) {
+			const JunctionSystemRelation &x = a.relations[i];
+			const JunctionSystemRelation &y = b.relations[i];
+			INFO("relation " << i << ": " << x.reason);
+			CHECK(x.axis == y.axis);
+			CHECK(x.v == y.v);
+			CHECK(x.u == y.u);
+			CHECK(x.c == y.c);
+			CHECK(x.bend == y.bend);
+			CHECK(x.a == y.a);
+			CHECK(x.b == y.b);
+			CHECK(x.nonlinear == y.nonlinear);
+			CHECK(x.zero_branch == y.zero_branch);
+			CHECK(x.order_pin == y.order_pin);
+			CHECK(x.reason == y.reason);
+		}
+		REQUIRE(a.bends.size() == b.bends.size());
+		for (size_t i = 0; i < a.bends.size(); i++) {
+			const JunctionSystemBend &x = a.bends[i];
+			const JunctionSystemBend &y = b.bends[i];
+			INFO("bend " << i);
+			CHECK(x.id == y.id);
+			CHECK(x.edge == y.edge);
+			CHECK(x.copy == y.copy);
+			CHECK(x.tok == y.tok);
+			CHECK(x.kind == y.kind);
+			CHECK(x.source == y.source);
+			CHECK(x.hand == y.hand);
+			CHECK(x.hin == y.hin);
+			CHECK(x.first == y.first);
+			CHECK(x.last == y.last);
+			CHECK(x.item_pt == y.item_pt);
+			CHECK(x.m == y.m);
+			CHECK(x.floor == y.floor);
+		}
+		REQUIRE(a.clashes.size() == b.clashes.size());
+		for (size_t i = 0; i < a.clashes.size(); i++) {
+			const JunctionSystemClash &x = a.clashes[i];
+			const JunctionSystemClash &y = b.clashes[i];
+			INFO("clash " << i);
+			CHECK(x.key == y.key);
+			CHECK(x.reversed == y.reversed);
+			CHECK(x.a_right == y.a_right);
+			CHECK(x.b_left == y.b_left);
+			CHECK(x.gap == y.gap);
+			CHECK(x.held == y.held);
+			CHECK(x.reason == y.reason);
+		}
+		REQUIRE(a.routes.size() == b.routes.size());
+		for (size_t i = 0; i < a.routes.size(); i++) {
+			const JunctionSystemRoute &x = a.routes[i];
+			const JunctionSystemRoute &y = b.routes[i];
+			INFO("route " << i);
+			CHECK(x.start_pt == y.start_pt);
+			CHECK(x.start_heading == y.start_heading);
+			CHECK(x.hands == y.hands);
+			REQUIRE(x.bends.size() == y.bends.size());
+			for (size_t j = 0; j < x.bends.size(); j++) {
+				const JunctionSystemRouteBend &p = x.bends[j];
+				const JunctionSystemRouteBend &q = y.bends[j];
+				CHECK(p.pt == q.pt);
+				CHECK(p.bend == q.bend);
+				CHECK(p.hin == q.hin);
+				CHECK(p.hout == q.hout);
+				CHECK(p.hand == q.hand);
+				CHECK(p.corner == q.corner);
+				CHECK(p.quantity == q.quantity);
+				CHECK(p.curve_units == q.curve_units);
+			}
+		}
+	}
+}
+
 /** A route bend's quantity at the joint's length: 0 when a sized bend has vanished, else the affine value. */
 static int JointQuantity(const JunctionJointResult &joint, const JunctionSystemRouteBend &b, const std::pair<int, int> &q)
 {
