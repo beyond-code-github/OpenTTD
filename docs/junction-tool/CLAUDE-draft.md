@@ -164,6 +164,8 @@ Rules of the junction tool as present-tense facts. Ids in brackets point to docs
 - The estimate is the exact sum of test-only runs of every command, re-checked just before building; building is refused when unaffordable (D9).
 - Where a bridge span tile is also a rail tile, its clearing cost is counted once (D50).
 - Estimate and build cover terraform steps first; after a build an information message states `Spent X, quoted Y` (CN1, QL2, IG2).
+- Only tiles the layout uses are outlined, while hovering and while building: white for track tiles, blue for tiles that are only terraformed; no full grid is drawn (QL1, CN1).
+- Cost and placement errors appear in the cursor tooltip, not in the window (QL1).
 - Building is not network-aware beyond the game's own commands; no new network command exists (D136(c), D69).
 
 ## Game rules the model mirrors
