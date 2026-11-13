@@ -30,6 +30,7 @@
 - Ramp rule: along every route the level gain over any train length is at most `k_max = floor(tl x S(v) / (m x s x 100))` in the travel direction; descents are free (D219, G1 §15.4).
 - The junction tool requires the realistic acceleration model and refuses to generate with the original model, saying why (D219).
 - The level solve costs terraform exactly by clamping the ground to the cones of fixed track corners and descends to the cheapest levels (HC1, P4b, P6b).
+- Every corner a plan ends at lies in [0, map height limit], as the game's terraform allows; the corner cone carries the bound (HH3, terraform_cmd.cpp).
 - The hover plan carries a level for every track tile, prio tiles included (H3).
 - A bridge head may sit on the slope rising to its span; the ground under a span stays at or below the heads (IG3).
 - The ramp rule counts the climb onto and across bridges: a flat head climbs onto the deck, an inclined head sits at it (IG4).

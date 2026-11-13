@@ -52,6 +52,7 @@ struct JunctionTerrain {
 	Money terraform_cost = 0; ///< Price of moving one corner one level (PR_TERRAFORM).
 	bool build_on_slopes = true;
 	int max_bridge_height = 12;
+	int max_height = 255; ///< The highest corner height the game allows (map_height_limit); the lowest is 0.
 
 	/** The tile at canonical (x, y), or nullptr outside the grid. */
 	const JunctionTerrainTile *At(int x, int y) const

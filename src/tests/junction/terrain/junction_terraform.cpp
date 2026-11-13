@@ -253,6 +253,35 @@ static bool SolveTestLevels(const JunctionTerrain &terrain, const std::vector<st
 	return SolveJunctionLevels(terrain, facts, {0, 0}, 1, 1, placement.nodes, placement.ports, layout, routes, {}, plan, cost, levels, &why);
 }
 
+TEST_CASE("levels: the corner cone keeps every corner in the map's height range (F7)", "[junction][terraform]")
+{
+	/* An 8 x 8 Buildable snapshot flat at 2 under a map height limit of 3: the snapshot's edge pins its outer corners at 2 and the cone widens by 1 per corner inwards, up to 2 +- 4 at the middle. */
+	JunctionTerrain terrain = MakeTerrainFromCorners(8, 8, [](int, int) { return 2; });
+	terrain.max_height = 3;
+	CornerCone cone = MakeCornerCone(terrain);
+	REQUIRE(cone.lower.size() == 81);
+	for (size_t k = 0; k < cone.lower.size(); k++) {
+		CHECK(cone.lower[k] >= 0);
+		CHECK(cone.upper[k] <= 3);
+		CHECK(cone.lower[k] <= 2);
+		CHECK(cone.upper[k] >= 2);
+	}
+	CHECK(cone.lower[cone.Index(4, 4)] == 0);
+	CHECK(cone.upper[cone.Index(4, 4)] == 3);
+
+	/* A Blocked tile still pins its corners to their ground. */
+	terrain.tiles[static_cast<size_t>(4) * 8 + 4].cls = JunctionTileClass::Blocked;
+	cone = MakeCornerCone(terrain);
+	for (const auto &[cx, cy] : {std::pair{4, 4}, std::pair{5, 4}, std::pair{4, 5}, std::pair{5, 5}}) {
+		CHECK(cone.lower[cone.Index(cx, cy)] == 2);
+		CHECK(cone.upper[cone.Index(cx, cy)] == 2);
+	}
+	for (size_t k = 0; k < cone.lower.size(); k++) {
+		CHECK(cone.lower[k] >= 0);
+		CHECK(cone.upper[k] <= 3);
+	}
+}
+
 TEST_CASE("the level solve's foundation is the game's", "[junction][hoverplan]")
 {
 	/* An X run of three tiles at level 2: tile 1 has three corners raised (a leveled foundation), tile 2 one corner raised (the game builds the track inclined, not flat). */

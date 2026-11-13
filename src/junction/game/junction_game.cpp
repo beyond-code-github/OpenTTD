@@ -362,6 +362,7 @@ static void SetJunctionTerrainSettings(JunctionTerrain &terrain)
 	terrain.terraform_cost = _price[Price::Terraform];
 	terrain.build_on_slopes = _settings_game.construction.build_on_slopes;
 	terrain.max_bridge_height = _settings_game.construction.max_bridge_height;
+	terrain.max_height = _settings_game.construction.map_height_limit;
 }
 
 /**

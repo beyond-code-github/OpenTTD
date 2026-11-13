@@ -299,6 +299,7 @@ TEST_CASE("MakeJunctionTerrain: heights, steepness and class in the working fram
 		CHECK(terrain.origin.y == frame.terrain_origin_y);
 		CHECK(terrain.build_on_slopes == _settings_game.construction.build_on_slopes);
 		CHECK(terrain.max_bridge_height == _settings_game.construction.max_bridge_height);
+		CHECK(terrain.max_height == _settings_game.construction.map_height_limit);
 
 		const JunctionTerrainTile *raised = terrain.At(35, 5);
 		REQUIRE(raised != nullptr);

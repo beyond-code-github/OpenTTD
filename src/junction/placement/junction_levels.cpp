@@ -209,22 +209,13 @@ std::optional<Choice> Evaluate(const Context &c, const Visit &v, int kind, int l
 	return choice;
 }
 
-/** The heights the corners of the snapshot may end at (the cone of the ground a terraform must keep). */
-struct CornerCone {
-	int x0 = 0; ///< Snapshot x of the first corner.
-	int y0 = 0; ///< Snapshot y of the first corner.
-	int stride = 0; ///< Corners per row.
-	std::vector<int> lower; ///< Per corner the lowest height it can end at.
-	std::vector<int> upper; ///< Per corner the highest height it can end at.
-
-	/** The index of a corner. */
-	size_t Index(int cx, int cy) const { return static_cast<size_t>(cy - this->y0) * this->stride + (cx - this->x0); }
-};
+} // namespace
 
 /**
  * The cone of a snapshot. A corner that no terraform can move (a tile around it is not Buildable, or lies outside the snapshot) ends at its ground height g.
  * A finished terraform leaves every moved corner within 1 of each neighbour, and a corner it does not move is within 1 of them by the ground, so every corner ends within d of g
- * when d is its Manhattan distance to the unmovable corner: two passes of an L1 distance transform.
+ * when d is its Manhattan distance to the unmovable corner: two passes of an L1 distance transform,
+ * and every corner stays within [0, max_height], the game's height range (terraform_cmd.cpp).
  * @param terrain The snapshot.
  * @return The bounds of every corner.
  */
@@ -282,8 +273,12 @@ CornerCone MakeCornerCone(const JunctionTerrain &terrain)
 			}
 		}
 	}
+	for (int &lower : cone.lower) lower = std::max(lower, 0);
+	for (int &upper : cone.upper) upper = std::min(upper, terrain.max_height);
 	return cone;
 }
+
+namespace {
 
 /** The choice of a tile and the edge that routes through it first (for the reasons). */
 struct Chosen {
