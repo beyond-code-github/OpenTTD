@@ -937,6 +937,13 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		}
 		return false;
 	};
+	/* Whether the separation of an edge against another is a tunnel (D220). */
+	auto tunnel_over = [&](uint32_t e, uint32_t x) {
+		for (const JunctionTrackBridge &bridge : structure.bridges) {
+			if (bridge.edge == e && bridge.tunnel && std::find(bridge.crossed.begin(), bridge.crossed.end(), x) != bridge.crossed.end()) return true;
+		}
+		return false;
+	};
 	std::vector<bool> row_doubled(rows, false);
 	for (uint32_t e = 0; e < edge_count; e++) {
 		if (!doubled_bridge(e)) continue;
@@ -1042,13 +1049,13 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		/* b. Crossings. */
 		for (uint32_t x : crossings) {
 			if (bridge_over(e, x)) {
-				program.push_back(step(StepKind::Over, 0, x));
+				program.push_back(step(tunnel_over(e, x) ? StepKind::Tunnel : StepKind::Over, 0, x));
 			} else if (doubled_bridge(x)) {
 				program.push_back(step(StepKind::Under, 0, x, heads_south ? 0 : 1));
 				program.push_back(step(StepKind::Under, 0, x, heads_south ? 1 : 0));
 			} else if (bridge_over(x, e)) {
 				program.push_back(step(StepKind::SBend, s_side_slot(e) < s_side_slot(x) ? +1 : -1, Step::NO_ROW));
-				program.push_back(step(StepKind::Under, 0, x));
+				program.push_back(step(tunnel_over(x, e) ? StepKind::Above : StepKind::Under, 0, x));
 			} else {
 				return fail("a crossing without a bridge is not ruled yet");
 			}
@@ -1156,6 +1163,13 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		if (error != nullptr) *error = reason;
 		return JunctionTrackPlacement{};
 	};
+	/* Tunnels are not placed yet (D220): a tunnel separation or a Tunnel or Above token is refused here, before any element is built. */
+	if (std::ranges::any_of(structure.bridges, [](const JunctionTrackBridge &b) { return b.tunnel; })) return fail("tunnel crossings are not placed yet");
+	for (const std::vector<std::vector<JunctionTrackStep>> *set : {&programs.edges, &programs.copies}) {
+		for (const std::vector<JunctionTrackStep> &program : *set) {
+			if (std::ranges::any_of(program, [](const JunctionTrackStep &t) { return t.kind == StepKind::Tunnel || t.kind == StepKind::Above; })) return fail("tunnel crossings are not placed yet");
+		}
+	}
 	if (graph.edges.empty() || programs.edges.size() != graph.edges.size() || programs.copies.size() != graph.edges.size()) return fail("a placement needs the programs of a track graph");
 	if (fixed != nullptr) {
 		if (fixed->m.size() != graph.edges.size() || fixed->corner.size() != graph.edges.size()) return fail("the choices do not fit the programs of this track graph");
@@ -3304,6 +3318,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				const bool north = vy[heads.far] < vy[heads.near];
 				std::stable_sort(found.begin(), found.end(), [&](const TileIndexDiffC &a, const TileIndexDiffC &b) { return north ? a.y > b.y : a.y < b.y; });
 				result.edges[e].push_back({found.front(), found.back()});
+			} else if (step.kind == StepKind::Tunnel || step.kind == StepKind::Above) {
+				return fail("tunnel crossings are not placed yet");
 			} else {
 				/* Under: this edge's tiles beneath the overhead edge's bridge. */
 				const uint32_t x = step.index;
@@ -3455,6 +3471,7 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 				for (size_t t = 0; t < tokens.size(); t++) {
 					const JunctionTrackStep &token = tokens[t];
 					const std::string where = fmt::format(" edge {} token {}", e, t);
+					if (token.kind == StepKind::Tunnel || token.kind == StepKind::Above) return fail_at(where, "tunnel crossings are not placed yet");
 					if (token.kind == StepKind::Under) continue;
 					if (token.kind == StepKind::Over) {
 						const int b = bridge_over(e, token.index);

@@ -184,6 +184,7 @@ struct JunctionTrackBridge {
 	uint32_t edge; ///< The edge carried over.
 	std::vector<uint32_t> crossed; ///< The edges it passes, in the carried edge's travel order.
 	bool doubled; ///< A main-line bridge (D80, D188); a branch bridge is single (D174).
+	bool tunnel = false; ///< The edge passes under the crossed edges in a tunnel instead of over them on a bridge (D220); only on a single (not doubled) separation.
 	bool operator==(const JunctionTrackBridge &) const = default;
 };
 
@@ -209,6 +210,8 @@ struct JunctionTrackStep {
 		SBend, ///< An opposite-hand pair: the track moves sideways and keeps its heading.
 		Over, ///< This edge's bridge passes over another edge.
 		Under, ///< This edge passes under another edge's bridge.
+		Tunnel, ///< This edge's tunnel passes under another edge (D220); where a bridge's edge has Over.
+		Above, ///< This edge passes over another edge's tunnel (D220); where a crossed edge has Under.
 	};
 	enum class Role : uint8_t {
 		None,
@@ -218,7 +221,7 @@ struct JunctionTrackStep {
 	};
 	Kind kind;
 	int8_t hand; ///< Corner: the turn, +1 right, -1 left (as JunctionTrackStructure::turns). SBend: its first curve. 0 otherwise.
-	uint32_t index; ///< Fan: the stack item at its inner end. Corner, SBend: the stack item it ends on, or NO_ROW. Over: the crossed edge. Under: the edge overhead.
+	uint32_t index; ///< Fan: the stack item at its inner end. Corner, SBend: the stack item it ends on, or NO_ROW. Over, Tunnel: the crossed edge. Under, Above: the edge overhead (Above: the edge in the tunnel).
 	uint8_t copy; ///< Under: which copy of a doubled bridge is overhead (0 or 1). 0 otherwise.
 	Role role = Role::None; ///< SBend: what it serves (D215 feature; R7 inserts Shift pairs).
 	bool operator==(const JunctionTrackStep &) const = default;

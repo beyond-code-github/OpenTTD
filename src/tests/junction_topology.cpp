@@ -426,6 +426,48 @@ static Step SL(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_
 static Step O(uint32_t x) { return {Step::Kind::Over, 0, x, 0}; }
 static Step U(uint32_t x, uint8_t c) { return {Step::Kind::Under, 0, x, c}; }
 
+TEST_CASE("topology: a tunnel separation gives tunnel tokens", "[junction][topology]")
+{
+	const JunctionTopology &t = JunctionTTopology();
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+	JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+	const JunctionTrackPrograms bridged = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+	REQUIRE(!bridged.edges.empty());
+
+	/* The T's single bridge: edge 8 over edge 4. */
+	auto single = std::ranges::find_if(structure.bridges, [](const Bridge &b) { return !b.doubled; });
+	REQUIRE(single != structure.bridges.end());
+	CHECK(!single->tunnel);
+	const uint32_t edge = single->edge;
+	const uint32_t crossed = single->crossed[0];
+	single->tunnel = true;
+	const JunctionTrackPrograms tunnelled = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+	REQUIRE(!tunnelled.edges.empty());
+
+	auto count = [](const Program &p, Step::Kind kind, uint32_t index) { return std::ranges::count_if(p, [&](const Step &s) { return s.kind == kind && s.index == index; }); };
+	CHECK(count(bridged.edges[edge], Step::Kind::Over, crossed) == 1);
+	CHECK(count(bridged.edges[crossed], Step::Kind::Under, edge) == 1);
+	CHECK(count(tunnelled.edges[edge], Step::Kind::Over, crossed) == 0);
+	CHECK(count(tunnelled.edges[edge], Step::Kind::Tunnel, crossed) == 1);
+	CHECK(count(tunnelled.edges[crossed], Step::Kind::Under, edge) == 0);
+	CHECK(count(tunnelled.edges[crossed], Step::Kind::Above, edge) == 1);
+	/* Every other token is as it was. */
+	for (uint32_t e = 0; e < graph.edges.size(); e++) {
+		if (e == edge || e == crossed) continue;
+		CHECK(tunnelled.edges[e] == bridged.edges[e]);
+	}
+
+	/* Placement refuses them. */
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string reason;
+	const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t, paths, graph, order, structure, tunnelled, spec, &reason);
+	CHECK(placement.edges.empty());
+	CHECK(reason == "tunnel crossings are not placed yet");
+}
+
 TEST_CASE("topology: the T's track programs", "[junction][topology]")
 {
 	const JunctionTrackPrograms programs = ProgramsOf(JunctionTTopology());
