@@ -25,7 +25,7 @@
 - Every layer-1 node of band R lies at least a port stub above the S edge.
 - A row node lies on the stack item of its node shape (the last item token of its trunk for a split, of its straight leg for a merge); bridge tokens name edges, not items.
 - A Fan, Corner or S-bend sized to 0 columns is no bend: it adds no pieces, occupancy or bend bits.
-- A single bridge over an S-bend may cross it at any sideways column the S-bend's diagonal allows; the joint model chooses that column.
+- A single bridge over an S-bend may cross it at any sideways column the S-bend's diagonal allows; the joint model chooses that column. The bridge may pass over the crossed edge's S-bend just before or just after its crossing; the joint model chooses which.
 - The junction footprint ends one tile beyond the outermost signal on each leg; every track of a leg ends flush at the footprint edge.
 - Planar signal windows and node footprints: a node has a footprint from the rules (the split or merge tile, required straight runs, prio coverage) and a window along its line.
 

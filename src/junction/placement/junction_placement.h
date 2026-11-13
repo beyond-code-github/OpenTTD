@@ -39,6 +39,7 @@ struct JunctionPlacementChoices {
 	std::vector<std::vector<int>> m; ///< Per edge, per token of JunctionTrackPrograms::edges: a vertical S-bend's size, 0 for other tokens.
 	std::vector<std::vector<int>> corner; ///< Per edge, per token: a joiner_div Corner's row span, 0 for other tokens.
 	std::vector<std::vector<int>> over; ///< Per edge, per token: for a single bridge's Over token over an S-bend, its sideways column t - 1 (DESIGN-G3 §G3.4a); empty means 0 everywhere.
+	std::vector<std::vector<int>> over_after; ///< Per edge, per token: for a single bridge's Over token, 1 when it passes over the crossed edge's S-bend after its Under (or Above) token, 0 the one before (DESIGN-G3 §G3.4b); empty means 0 everywhere.
 	int port_offset = 0; ///< The port rows' offset.
 	bool operator==(const JunctionPlacementChoices &) const = default;
 };
@@ -55,6 +56,7 @@ struct JunctionSystemRelation {
 	std::string reason; ///< The why() text with edge, node and row.
 	int over = -1; ///< When >= 0: c also has + d * (t(over) - t at the recording).
 	int d = 0;
+	int alt = -1; ///< When >= 0: the relation holds only when its over entry's alternative is alt (0 the S-bend before the crossing, 1 after).
 };
 
 /** One bend of the placement's chains (a Corner, an S-bend, an S fan or a fan), with how its size is known. */
@@ -148,6 +150,9 @@ struct JunctionSystemOver {
 	int bend; ///< The crossed S-bend's id.
 	int t; ///< The column at the recording.
 	int t0, t1; ///< t <= t0 + t1 L(bend).
+	int bend_after = -1; ///< The S-bend after the crossing's id, -1 when none; bend is the one before, -1 when none.
+	int t0_after = 0, t1_after = 0; ///< t <= t0_after + t1_after L(bend_after).
+	int chosen = 0; ///< The alternative at the recording: 0 before, 1 after.
 };
 
 /** The relation system of the last X and the last Y round of one placement call, with each constant's dependence on a bend's length (DESIGN-G3 §G3.3). */

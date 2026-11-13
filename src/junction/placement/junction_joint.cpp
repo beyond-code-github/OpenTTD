@@ -212,12 +212,26 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 		}
 	}
 
-	/* The columns of the single bridges over an S-bend (DESIGN-G3 §G3.4a): t in [1, 64], t - t1 L(bend) <= t0, and the tie break EPS t keeps an equal-cost solution at t = 1. */
+	/* The columns of the single bridges over an S-bend (DESIGN-G3 §G3.4a): t in [1, 64], t - t1 L(bend) <= t0, and the tie break EPS t keeps an equal-cost solution at t = 1.
+	 * A bridge with an S-bend on both sides of its crossing (DESIGN-G3 §G3.4b) has a binary w, 1 when it passes over the one after:
+	 *   t - t1 L(before) - BIG w <= t0 and t - t1_after L(after) + BIG w <= t0_after + BIG. */
 	std::vector<uint32_t> T;
+	std::vector<int> W; ///< Per over entry, the variable w, -1 when the entry has one alternative.
 	for (const JunctionSystemOver &over : system.overs) {
 		T.push_back(model.Var(1, 64));
+		const bool both = over.bend >= 0 && over.bend_after >= 0;
+		W.push_back(both ? static_cast<int>(model.Var(0, 1)) : -1);
 		/* The fixed path allows t <= t0 + t1 max(m, 2); this row is stricter at L = 1, so every joint t is accepted by the fixed path. */
-		model.AddRow({{T.back(), 1}, {L[over.bend], -over.t1}}, -JunctionMilp::INF, over.t0); // bridge over an S-bend: t <= t0 + t1 L
+		if (over.bend >= 0) {
+			Coefs coefs{{T.back(), 1}, {L[over.bend], -over.t1}};
+			if (both) coefs[W.back()] -= BIG;
+			model.AddRow(coefs, -JunctionMilp::INF, over.t0); // bridge over an S-bend: t <= t0 + t1 L (+ BIG w)
+		}
+		if (over.bend_after >= 0) {
+			Coefs coefs{{T.back(), 1}, {L[over.bend_after], -over.t1_after}};
+			if (both) coefs[W.back()] += BIG;
+			model.AddRow(coefs, -JunctionMilp::INF, over.t0_after + (both ? BIG : 0)); // bridge over an S-bend: t <= t0_after + t1_after L (+ BIG (1 - w))
+		}
 		model.cost[T.back()] += EPS;
 	}
 
@@ -238,21 +252,30 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 			over_constant = -static_cast<double>(relation.d) * system.overs[relation.over].t;
 		}
 		const int bid = relation.bend;
+		double lower = relation.c + over_constant;
 		if (relation.zero_branch && bid >= 0 && Z.count(bid) != 0) {
 			coefs[Z[bid]] = BIG; // only when the fan is empty
-			model.AddRow(coefs, relation.c, JunctionMilp::INF, static_cast<int>(r));
+			lower = relation.c;
 		} else if (!relation.nonlinear && !relation.zero_branch && bid >= 0) {
 			coefs[L[bid]] -= relation.a;
-			double lower = relation.b + over_constant;
+			lower = relation.b + over_constant;
 			if (Z.count(bid) != 0) { // an S fan's sized branch: only when the fan is not empty
 				coefs[Z[bid]] = -BIG;
 				lower = relation.b - BIG;
 			}
 			if (relation.axis == 1) tagged_y.insert(bid);
-			model.AddRow(coefs, lower, JunctionMilp::INF, static_cast<int>(r));
-		} else {
-			model.AddRow(coefs, relation.c + over_constant, JunctionMilp::INF, static_cast<int>(r));
 		}
+		/* A relation of one alternative of a bridge over an S-bend (DESIGN-G3 §G3.4b) holds only when w says so:
+		 *   alt 0 (before): row + BIG w >= lower; alt 1 (after): row - BIG w >= lower - BIG. */
+		if (relation.alt >= 0 && relation.over >= 0 && W[relation.over] >= 0) {
+			if (relation.alt == 0) {
+				coefs[W[relation.over]] += BIG;
+			} else {
+				coefs[W[relation.over]] -= BIG;
+				lower -= BIG;
+			}
+		}
+		model.AddRow(coefs, lower, JunctionMilp::INF, static_cast<int>(r));
 	}
 
 	/* The clashes: x[b] + c1 L - x[a] - c1 L >= gap - b.c0 + a.c0, relaxed by BIG (1 - z) once per bend that may vanish. */
@@ -394,6 +417,14 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 			if (moved) {
 				for (const uint32_t tokens : system.tokens) result.choices.over.emplace_back(tokens, 0);
 				for (size_t i = 0; i < system.overs.size(); i++) result.choices.over[system.overs[i].edge][system.overs[i].tok] = static_cast<int>(std::lround(milp.Value(T[i]))) - 1;
+			}
+			bool after = false; ///< An all-0 alternative is the empty choice.
+			for (const int w : W) after |= w >= 0 && std::lround(milp.Value(static_cast<uint32_t>(w))) != 0;
+			if (after) {
+				for (const uint32_t tokens : system.tokens) result.choices.over_after.emplace_back(tokens, 0);
+				for (size_t i = 0; i < system.overs.size(); i++) {
+					if (W[i] >= 0) result.choices.over_after[system.overs[i].edge][system.overs[i].tok] = static_cast<int>(std::lround(milp.Value(static_cast<uint32_t>(W[i]))));
+				}
 			}
 		}
 		for (uint32_t p = 0; p < npts; p++) {
