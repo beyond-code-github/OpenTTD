@@ -1329,6 +1329,65 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 	return programs;
 }
 
+JunctionTrackArrangement ArrangeJunctionTrackGraph(const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackPrograms &programs)
+{
+	using StepKind = JunctionTrackStep::Kind;
+	JunctionTrackArrangement arrangement;
+
+	for (uint32_t row = 0; row < order.rows.size(); row++) {
+		for (size_t i = 0; i + 1 < order.rows[row].size(); i++) {
+			arrangement.row_pairs.push_back({row, order.rows[row][i], order.rows[row][i + 1]});
+		}
+	}
+
+	/* The edges an event touches: a node's incident edges, a crossing's two edges. */
+	auto touched = [&](const JunctionTrackBandEvent &event) {
+		std::set<uint32_t> edges;
+		if (!event.node) {
+			edges = {event.a, event.b};
+			return edges;
+		}
+		for (uint32_t e = 0; e < graph.edges.size(); e++) {
+			const JunctionTrackEdge &edge = graph.edges[e];
+			if ((edge.from.node && edge.from.index == event.a) || (edge.to.node && edge.to.index == event.a)) edges.insert(e);
+		}
+		return edges;
+	};
+	for (uint32_t band = 0; band < order.bands.size(); band++) {
+		const std::vector<JunctionTrackBandEvent> &events = order.bands[band];
+		for (uint32_t i = 0; i < events.size(); i++) {
+			const std::set<uint32_t> earlier = touched(events[i]);
+			for (uint32_t j = i + 1; j < events.size(); j++) {
+				if (events[j].layer <= events[i].layer) continue;
+				const std::set<uint32_t> later = touched(events[j]);
+				if (std::ranges::any_of(later, [&](uint32_t e) { return earlier.count(e) != 0; })) arrangement.band_pairs.push_back({band, i, j});
+			}
+		}
+	}
+
+	/* A doubled bridge's crossers carry two adjacent Under tokens of the same edge overhead, one per copy. */
+	auto is_bend = [](StepKind kind) { return kind == StepKind::Fan || kind == StepKind::Corner || kind == StepKind::SBend; };
+	for (uint32_t e = 0; e < programs.edges.size(); e++) {
+		const std::vector<JunctionTrackStep> &program = programs.edges[e];
+		auto doubled_pair = [&](size_t a, size_t b) {
+			return program[a].kind == StepKind::Under && program[b].kind == StepKind::Under && program[a].index == program[b].index && program[a].copy != program[b].copy;
+		};
+		for (uint32_t u = 0; u < program.size(); u++) {
+			if (program[u].kind != StepKind::Under) continue;
+			if (!((u + 1 < program.size() && doubled_pair(u, u + 1)) || (u > 0 && doubled_pair(u - 1, u)))) continue;
+			JunctionArrangementUnder under{e, u, program[u].index, program[u].copy, {JunctionUnderPiece::RunBefore, JunctionUnderPiece::RunAfter}};
+			bool before = false;
+			for (uint32_t k = 0; k < u; k++) before = before || is_bend(program[k].kind);
+			bool after = false;
+			for (size_t k = u + 1; k < program.size(); k++) after = after || is_bend(program[k].kind);
+			if (before) under.pieces.push_back(JunctionUnderPiece::PreviousBendTail);
+			if (after) under.pieces.push_back(JunctionUnderPiece::NextBendHead);
+			arrangement.unders.push_back(std::move(under));
+		}
+	}
+	return arrangement;
+}
+
 const JunctionTopology &JunctionTTopology()
 {
 	static const JunctionTopology topology = {

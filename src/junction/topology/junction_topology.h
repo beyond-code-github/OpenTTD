@@ -262,6 +262,37 @@ struct JunctionTrackPrograms {
  */
 JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, std::string *error);
 
+/** Which piece of a crosser lies between a doubled bridge copy's heads on that copy's head row (D255). */
+enum class JunctionUnderPiece : uint8_t {
+	RunBefore, ///< The run that ends at the Under token.
+	RunAfter, ///< The run that starts at the Under token.
+	PreviousBendTail, ///< The tail of the nearest bend token (Fan, Corner, SBend) before the Under token.
+	NextBendHead, ///< The head of the nearest bend token after the Under token.
+};
+
+/** A crosser's Under token under one copy of a row edge's doubled bridge, with the pieces that may pass under it. */
+struct JunctionArrangementUnder {
+	uint32_t edge; ///< The crosser.
+	uint32_t token; ///< Index of its Under token in the edge's program.
+	uint32_t bridge_edge; ///< The row edge overhead (the token's index).
+	uint8_t copy; ///< The bridge copy (the token's copy).
+	std::vector<JunctionUnderPiece> pieces; ///< The candidates that exist in the program, in enum order (a bend candidate exists only when such a bend token exists).
+};
+
+/** The arrangement the order and programs fix (D255): placement's static rows read it. */
+struct JunctionTrackArrangement {
+	struct RowPair { uint32_t row; JunctionTrackRowItem west; JunctionTrackRowItem east; };
+	struct BandPair { uint32_t band; uint32_t south; uint32_t north; }; ///< Indexes into order.bands[band]: north lies strictly north of south.
+	std::vector<RowPair> row_pairs; ///< Per row, each consecutive pair of order.rows[row].
+	std::vector<BandPair> band_pairs; ///< Per band, each pair of events where the later has a higher layer and touches an item of the earlier.
+	std::vector<JunctionArrangementUnder> unders; ///< Per Under token of a doubled bridge (both copies), in edge then token order.
+};
+
+/**
+ * The arrangement of an ordered, programmed track graph (D255): each row's consecutive items west to east, each band's touching events of a higher layer strictly north, and per Under token of a doubled bridge (a pair of Under tokens of one edge, copies 0 and 1) the pieces that may pass under it.
+ */
+JunctionTrackArrangement ArrangeJunctionTrackGraph(const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackPrograms &programs);
+
 /** The stack items a row's tokens end on. */
 struct RowItems {
 	size_t lane; ///< The lane's item.

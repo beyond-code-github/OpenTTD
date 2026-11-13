@@ -5389,3 +5389,167 @@ TEST_CASE("wide hubs: how far each gets", "[junction][topologysweep]")
 		WARN(fmt::format("{} x {}: {}", main, branch, result));
 	}
 }
+
+/** The topology of an arrangement test: the T for a null notation, else main x branch. */
+static JunctionTopology ArrangementTopology(const char *main, const char *branch)
+{
+	if (main == nullptr) return JunctionTTopology();
+	return MakeJunctionHubTopology(ParseLineNotation(main).spec, ParseLineNotation(branch).spec, JunctionLanePairing::AnyToAny);
+}
+
+/** Seed a topology, arrange its graph and check every arrangement fact against the seed's rendered pieces (D255). */
+static void CheckArrangementSeed(const char *main, const char *branch)
+{
+	using StepKind = JunctionTrackStep::Kind;
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTopology topology = ArrangementTopology(main, branch);
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, seed.paths, seed.graph, &error);
+	const JunctionTrackPrograms &programs = seed.programs;
+	const JunctionTrackPlacement &placement = seed.placement;
+	const JunctionTrackArrangement arrangement = ArrangeJunctionTrackGraph(seed.graph, order, programs);
+	REQUIRE(!arrangement.row_pairs.empty());
+	REQUIRE(!arrangement.unders.empty());
+
+	/* The seed's distinct rendered pieces of each edge. */
+	struct Piece { int x, y; uint32_t edge; uint16_t token, run; uint8_t copy; bool bridge; };
+	std::vector<Piece> pieces;
+	{
+		std::set<std::array<int, 7>> seen;
+		for (const JunctionTrackRoute &route : seed.routes) {
+			for (size_t i = 0; i < route.pieces.size(); i++) {
+				const JunctionTrackPieceTag &tag = route.tags[i];
+				const Piece p{route.pieces[i].tile.x, route.pieces[i].tile.y, tag.edge, tag.token, tag.run, tag.copy, route.pieces[i].on_bridge};
+				if (seen.insert({p.x, p.y, static_cast<int>(p.edge), p.token, p.run, p.copy, p.bridge}).second) pieces.push_back(p);
+			}
+		}
+	}
+
+	/* Row pairs: on each stack y of the row where both items have tiles, west is not east of east at either end. */
+	std::vector<std::set<int>> stack_y(order.rows.size());
+	for (size_t i = 0; i < seed.structure.stack.size(); i++) stack_y[seed.structure.stack[i].row].insert(placement.item_rows[i]);
+	auto columns = [&](const JunctionTrackRowItem &item, int y, int &lo, int &hi) {
+		lo = INT_MAX;
+		hi = INT_MIN;
+		if (item.node) {
+			if (placement.nodes[item.index].y != y) return false;
+			lo = hi = placement.nodes[item.index].x;
+			return true;
+		}
+		for (const Piece &p : pieces) {
+			if (p.edge != item.index || p.y != y || p.bridge) continue;
+			lo = std::min(lo, p.x);
+			hi = std::max(hi, p.x);
+		}
+		return lo <= hi;
+	};
+	auto name = [](const JunctionTrackRowItem &item) { return fmt::format("{}{}", item.node ? "node " : "edge ", item.index); };
+	for (const JunctionTrackArrangement::RowPair &pair : arrangement.row_pairs) {
+		for (int y : stack_y[pair.row]) {
+			int wlo, whi, elo, ehi;
+			if (!columns(pair.west, y, wlo, whi) || !columns(pair.east, y, elo, ehi)) continue;
+			INFO(fmt::format("row pair, row {} y {}: {} [{}..{}] west of {} [{}..{}]", pair.row, y, name(pair.west), wlo, whi, name(pair.east), elo, ehi));
+			CHECK((wlo <= elo && whi <= ehi));
+		}
+	}
+
+	/* Band pairs: the north event's y is less than the south event's. */
+	auto event_y = [&](const JunctionTrackBandEvent &event) {
+		if (event.node) return 2 * placement.nodes[event.a].y;
+		int y2 = INT_MIN;
+		for (uint32_t e : {event.a, event.b}) {
+			const uint32_t other = e == event.a ? event.b : event.a;
+			for (size_t t = 0; t < programs.edges[e].size(); t++) {
+				const JunctionTrackStep &step = programs.edges[e][t];
+				if ((step.kind == StepKind::Under || step.kind == StepKind::Above) && step.index == other) y2 = placement.edges[e][t].first.y + placement.edges[e][t].second.y;
+			}
+		}
+		return y2;
+	};
+	for (const JunctionTrackArrangement::BandPair &pair : arrangement.band_pairs) {
+		const JunctionTrackBandEvent &south = order.bands[pair.band][pair.south];
+		const JunctionTrackBandEvent &north = order.bands[pair.band][pair.north];
+		INFO(fmt::format("band pair, band {}: event {} (y2 {}) north of event {} (y2 {})", pair.band, pair.north, event_y(north), pair.south, event_y(south)));
+		CHECK(event_y(north) < event_y(south));
+	}
+
+	/* Unders: the crosser's tile between the copy's heads on its head row belongs to a candidate piece. */
+	for (const JunctionArrangementUnder &under : arrangement.unders) {
+		const JunctionTrackStructure &structure = seed.structure;
+		size_t index = structure.bridges.size();
+		for (size_t b = 0; b < structure.bridges.size(); b++) {
+			if (structure.bridges[b].edge == under.bridge_edge && structure.bridges[b].doubled && std::ranges::count(structure.bridges[b].crossed, under.edge) > 0) index = b;
+		}
+		INFO(fmt::format("under, edge {} token {} under edge {} copy {}", under.edge, under.token, under.bridge_edge, under.copy));
+		REQUIRE(index < structure.bridges.size());
+		const JunctionBridge &heads = placement.bridges[index][under.copy];
+		const int lo = std::min(heads.start.x, heads.end.x), hi = std::max(heads.start.x, heads.end.x), y = heads.start.y;
+		const std::vector<JunctionTrackStep> &program = programs.edges[under.edge];
+		auto is_bend = [&](uint32_t t) { return program[t].kind == StepKind::Fan || program[t].kind == StepKind::Corner || program[t].kind == StepKind::SBend; };
+		uint32_t previous = UINT32_MAX, next = UINT32_MAX;
+		for (uint32_t t = 0; t < under.token; t++) if (is_bend(t)) previous = t;
+		for (uint32_t t = static_cast<uint32_t>(program.size()); t-- > under.token + 1;) if (is_bend(t)) next = t;
+		auto allowed = [&](JunctionUnderPiece piece) { return std::ranges::count(under.pieces, piece) > 0; };
+		bool found = false;
+		for (const Piece &p : pieces) {
+			if (p.edge != under.edge || p.y != y || p.x <= lo || p.x >= hi) continue;
+			found = true;
+			bool held;
+			if (p.token == JunctionTrackPieceTag::RUN) {
+				held = allowed(p.run <= under.token ? JunctionUnderPiece::RunBefore : JunctionUnderPiece::RunAfter);
+			} else {
+				held = (p.token == previous && allowed(JunctionUnderPiece::PreviousBendTail)) || (p.token == next && allowed(JunctionUnderPiece::NextBendHead));
+			}
+			INFO(fmt::format("tile {},{} token {} run {}", p.x, p.y, p.token, p.run));
+			CHECK(held);
+		}
+		CHECK(found);
+	}
+	WARN(fmt::format("arrangement {} x {}: row pairs {}, band pairs {}, unders {}", main == nullptr ? "T" : main, main == nullptr ? "" : branch, arrangement.row_pairs.size(), arrangement.band_pairs.size(), arrangement.unders.size()));
+}
+
+TEST_CASE("arrangement: the seeds obey the arrangement", "[junction][topology]")
+{
+	CheckArrangementSeed(nullptr, nullptr);
+	CheckArrangementSeed("LL_RR", "L_R");
+}
+
+TEST_CASE("arrangement: the seeds obey the arrangement (L_R x LL_RR)", "[junction][topologysweep][.sweep]")
+{
+	CheckArrangementSeed("L_R", "LL_RR");
+}
+
+TEST_CASE("arrangement: one Under fact per doubled bridge Under token", "[junction][topology]")
+{
+	using StepKind = JunctionTrackStep::Kind;
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch] : {std::pair<const char *, const char *>{nullptr, nullptr}, {"LL_RR", "L_R"}}) {
+		const JunctionTopology topology = ArrangementTopology(main, branch);
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &error);
+		INFO(error);
+		REQUIRE(!seed.routes.empty());
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, seed.paths, seed.graph, &error);
+		const JunctionTrackArrangement arrangement = ArrangeJunctionTrackGraph(seed.graph, order, seed.programs);
+		/* Counted from the structure: an Under token of an edge a doubled bridge passes over. */
+		size_t expected = 0;
+		for (const std::vector<JunctionTrackStep> &program : seed.programs.edges) {
+			for (const JunctionTrackStep &step : program) {
+				if (step.kind != StepKind::Under) continue;
+				for (const JunctionTrackBridge &bridge : seed.structure.bridges) {
+					if (bridge.edge == step.index && bridge.doubled) {
+						expected++;
+						break;
+					}
+				}
+			}
+		}
+		INFO(fmt::format("{}", main == nullptr ? "T" : main));
+		CHECK(arrangement.unders.size() == expected);
+		for (const JunctionArrangementUnder &under : arrangement.unders) CHECK(!under.pieces.empty());
+		if (main == nullptr) CHECK(arrangement.unders.size() == 4);
+	}
+}

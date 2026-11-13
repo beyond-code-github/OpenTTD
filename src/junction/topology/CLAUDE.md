@@ -31,6 +31,7 @@
 - Branch-on-branch crossings sit in the outermost band beside the branch ports.
 - One bridge or tunnel may straddle several crossings of one path within its span limits, except that a band edge carries one single bridge per crossing, in series along it, and placement refuses a single bridge over several band crossings; the default is one bridge per crossed row edge, cut into series bridges at `JUNCTION_BRIDGE_MAX_CROSSERS` (2) crossers per bridge.
 - The programs emit each node's shape (its stack item, trunk heading, trunk, straight and diverging legs with the diverging hand) and each edge's two ends (heading, and the token whose end is the node's point, if any).
+- The arrangement is built from the order and the programs: each row's consecutive items west to east, each band's touching events of a higher layer strictly north, and per Under token of a doubled bridge the pieces that may pass under it (the runs either side, the previous bend's tail, the next bend's head).
 - Rows: lanes spread inside the box by S-bends to open rows for prio rows, doubling copies and joiner approaches, and return to the notation spacing at the ports.
 - An S branch port edge starts (in) or ends (out) with a Fan token, on in and out ports alike: the west half of its group opens west, the east half east, the middle lane of an odd group (a one-lane group) has none, so the port block lies between its lanes' inside ends.
 - A prio sits opposite the joiner; the approach is on the joiner's side; a crossed lane's doubling copy shares the prio's row or sits away from the branch.
