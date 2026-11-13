@@ -26,6 +26,7 @@ enum BuildJunctionWidgets : WidgetID {
 	WID_BJ_PRIO_SLIDER, ///< Slider of the prio length.
 	WID_BJ_ROTATE, ///< Rotate the junction.
 	WID_BJ_MIRROR, ///< Mirror the junction.
+	WID_BJ_LANES, ///< Cycle the lane pairing of multi-lane branches (D221).
 	WID_BJ_BUILD_SEL, ///< Selection of the Retry and Cancel row: shown while a build is pinned.
 	WID_BJ_RETRY,  ///< Retry building after a failure.
 	WID_BJ_CANCEL, ///< Cancel a failed or ongoing build.

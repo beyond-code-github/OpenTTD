@@ -36,10 +36,18 @@ struct JunctionLaneGroup {
 	bool main; ///< Part of the main line (D60: main line and branch take their own notation).
 };
 
+/** How the lanes of a turning movement connect where both groups have more than one lane (D221); single-lane groups and through movements are not affected. */
+enum class JunctionLanePairing : uint8_t {
+	AnyToAny, ///< Every in lane to every out lane (D221 A, the default): each lane splits by direction, then by lane (D204, D187).
+	LaneKeepsLane, ///< In lane k to out lane k; needs equal lane counts (D221 B).
+	LanePerDirection, ///< A group's lanes are dealt round-robin to its turning movements, each fanning to the other group's lanes (D221 C).
+};
+
 /** A junction type: its lane groups and movements (D189). */
 struct JunctionTopology {
 	std::vector<JunctionLaneGroup> groups; ///< In slot order (JunctionPortSlots).
 	std::vector<std::pair<uint8_t, uint8_t>> movements; ///< (in group, out group), indices into groups.
+	JunctionLanePairing pairing = JunctionLanePairing::AnyToAny; ///< Lane pairing of multi-to-multi turning movements (D221).
 };
 
 /** One lane of a group at the box: a port slot. */
@@ -61,7 +69,7 @@ struct JunctionLanePath {
 /**
  * The lane-level paths of a topology (DESIGN-G1 R1; D186, D187): per movement in order, lanes ascending (from lane, then to lane).
  * Through movement (both groups main, same line): lane i to lane i (equal lane counts, else error). Otherwise one side has one lane: every pair (an exit from every lane, D187; a fan onto every lane, D186).
- * Both sides with more than one lane and not a through movement: error "multi-to-multi movements are not ruled yet" (D186: later).
+ * Both sides with more than one lane and not a through movement: by the topology's pairing (D221). AnyToAny: every pair. LaneKeepsLane: lane k to lane k, unequal lane counts are the error "lane keeps lane needs equal lane counts". LanePerDirection: a group with several turning movements deals its lanes round-robin to them in movement order (lane k serves its (k mod n)-th turning movement), the dealt lanes of a movement connect to all lanes (or the dealt lanes) of the other group; a group with fewer lanes than turning movements is the error "lane per direction needs a lane for each direction".
  * @param error Receives the reason when the result is empty.
  */
 std::vector<JunctionLanePath> ExpandJunctionLanes(const JunctionTopology &topology, std::string *error);
@@ -410,8 +418,9 @@ const JunctionTopology &JunctionLLRRSidelineTopology();
  * Movements are every in group to every out group on another side, in group order, each in group's outs in slot order.
  * @param main The main line (D142 groups).
  * @param branch The branch line.
+ * @param pairing The lane pairing of multi-to-multi turning movements (D221), stored on the topology.
  * @return The topology; equals JunctionTTopology() as groups and as a set of movements for L_R and L_R, and JunctionLLRRSidelineTopology() for LL_RR and L_R.
  */
-JunctionTopology MakeJunctionHubTopology(const JunctionLineSpec &main, const JunctionLineSpec &branch);
+JunctionTopology MakeJunctionHubTopology(const JunctionLineSpec &main, const JunctionLineSpec &branch, JunctionLanePairing pairing = JunctionLanePairing::AnyToAny);
 
 #endif /* JUNCTION_TOPOLOGY_H */

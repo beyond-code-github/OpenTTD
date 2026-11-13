@@ -368,6 +368,7 @@ struct JunctionGenerateKey {
 	uint8_t sd;
 	JunctionTrainParams train; ///< The picked train, loaded (D137); default when none is picked.
 	uint8_t prio_tiles; ///< Effective prio coverage of the slider (D139); 0 in the library key and before sizing.
+	uint8_t lane_pairing; ///< JunctionLanePairing of the hub topology (D221).
 
 	bool operator==(const JunctionGenerateKey &) const = default;
 };
@@ -527,7 +528,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			static_cast<uint8_t>(this->ml_line.left_tracks), static_cast<uint8_t>(this->ml_line.tracks - this->ml_line.left_tracks),
 			static_cast<uint8_t>(this->branch_line.left_tracks), static_cast<uint8_t>(this->branch_line.tracks - this->branch_line.left_tracks), this->tl,
 			static_cast<uint8_t>(_settings_client.gui.junction_signal_type), _settings_client.gui.drag_signals_density,
-			this->picked_train.has_value() ? this->picked_train->loaded : JunctionTrainParams{}, 0};
+			this->picked_train.has_value() ? this->picked_train->loaded : JunctionTrainParams{}, 0,
+			static_cast<uint8_t>(_settings_client.gui.junction_lane_pairing)};
 	}
 
 	/** @return The strict coverage the sizing found for the current spec; 0 before sizing is done or when it failed. */
@@ -928,7 +930,7 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			std::string error;
 			/* The seed points at its topology: the holder keeps both alive for the jobs that share the seed. */
 			auto holder = std::make_shared<std::pair<JunctionTopology, JunctionGraphSeed>>();
-			holder->first = MakeJunctionHubTopology(this->ml_line, this->branch_line);
+			holder->first = MakeJunctionHubTopology(this->ml_line, this->branch_line, static_cast<JunctionLanePairing>(key.lane_pairing));
 			holder->second = MakeJunctionGraphSeed(holder->first, job->spec, &error);
 			this->seed = std::shared_ptr<const JunctionGraphSeed>(holder, &holder->second);
 			this->seed_error = this->seed->routes.empty() ? (error.empty() ? "no seed" : error) : std::string{};
@@ -1023,7 +1025,21 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->EnsureLibrary();
 		this->SetWidgetDisabledState(WID_BJ_TL_DECREASE, this->tl <= 2);
 		this->SetWidgetDisabledState(WID_BJ_TL_INCREASE, this->tl >= 12);
+		this->UpdateLanesButton();
 		this->SetDirty();
+	}
+
+	/** Set the lane pairing button's text from the setting, and disable it when no turning movement is multi-to-multi (D221). */
+	void UpdateLanesButton()
+	{
+		static const StringID labels[] = {STR_JUNCTION_LANES_ANY, STR_JUNCTION_LANES_KEEP, STR_JUNCTION_LANES_DIRECTION};
+		this->GetWidget<NWidgetCore>(WID_BJ_LANES)->SetString(labels[std::min<uint8_t>(_settings_client.gui.junction_lane_pairing, 2)]);
+		const uint8_t ml_left = this->ml_line.left_tracks, ml_right = this->ml_line.tracks - this->ml_line.left_tracks;
+		const uint8_t branch_left = this->branch_line.left_tracks, branch_right = this->branch_line.tracks - this->branch_line.left_tracks;
+		/* A turning movement goes between a main group and a branch group, in either direction. */
+		const bool multi = this->generate_error == INVALID_STRING_ID && std::max(ml_left, ml_right) > 1 && std::max(branch_left, branch_right) > 1;
+		this->SetWidgetDisabledState(WID_BJ_LANES, !multi);
+		this->SetWidgetDirty(WID_BJ_LANES);
 	}
 
 	void Close(int data = 0) override
@@ -1106,6 +1122,16 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			case WID_BJ_MIRROR:
 				_junction_mirrored = !_junction_mirrored;
 				this->ResetHover();
+				SndClickBeep();
+				break;
+
+			case WID_BJ_LANES:
+				_settings_client.gui.junction_lane_pairing = (_settings_client.gui.junction_lane_pairing + 1) % 3;
+				this->UpdateLanesButton();
+				this->cache.clear();
+				this->projection_cache.clear();
+				this->ResetHover();
+				this->EnsureLibrary();
 				SndClickBeep();
 				break;
 		}
@@ -1486,6 +1512,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widge
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_PICK_TRAIN), SetStringTip(STR_JUNCTION_PICK_TRAIN, STR_JUNCTION_PICK_TRAIN_TOOLTIP), SetFill(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_ROTATE), SetStringTip(STR_JUNCTION_ROTATE, STR_JUNCTION_ROTATE_TOOLTIP), SetFill(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_MIRROR), SetStringTip(STR_JUNCTION_MIRROR, STR_JUNCTION_MIRROR_TOOLTIP), SetFill(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_LANES), SetStringTip(STR_JUNCTION_LANES_ANY, STR_JUNCTION_LANES_TOOLTIP), SetFill(1, 0),
 			EndContainer(),
 			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
 				NWidget(WWT_EMPTY, Colours::Invalid, WID_BJ_TRAIN_IMAGE), SetFill(1, 0), SetResize(1, 0),

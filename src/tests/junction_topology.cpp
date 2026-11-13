@@ -98,13 +98,62 @@ TEST_CASE("topology: LL_RR with an L_R sideline: lanes and crossings", "[junctio
 	CHECK(JunctionChordCrossings(paths) == expected);
 }
 
-TEST_CASE("topology: multi-to-multi is refused", "[junction][topology]")
+TEST_CASE("topology: lane pairing for a multi-lane branch", "[junction][topology]")
 {
-	JunctionTopology t = JunctionLLRRSidelineTopology();
-	t.groups[3].lanes = 2;
+	const JunctionLineSpec llrr = ParseLineNotation("LL_RR").spec;
+	JunctionTopology t = MakeJunctionHubTopology(llrr, llrr);
+	CHECK(t.pairing == JunctionLanePairing::AnyToAny);
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(t);
+	auto slot_of = [&](uint8_t group, uint8_t lane) -> uint16_t {
+		for (size_t s = 0; s < slots.size(); s++) {
+			if (slots[s].group == group && slots[s].lane == lane) return static_cast<uint16_t>(s);
+		}
+		return 0;
+	};
+	/* Groups: 0 W in, 1 W out, 2 S in (branch), 3 S out, 4 E in, 5 E out. */
+	size_t branch_to_w = t.movements.size();
+	for (size_t m = 0; m < t.movements.size(); m++) {
+		if (t.movements[m] == std::pair<uint8_t, uint8_t>{2, 1}) branch_to_w = m;
+	}
+	REQUIRE(branch_to_w < t.movements.size());
+	using Lanes = std::vector<std::pair<uint16_t, uint16_t>>;
+	auto lanes_of = [&](const JunctionTopology &topology, std::string *error) {
+		Lanes lanes;
+		for (const JunctionLanePath &path : ExpandJunctionLanes(topology, error)) {
+			if (path.movement == branch_to_w) lanes.emplace_back(path.from, path.to);
+		}
+		return lanes;
+	};
 	std::string error;
-	CHECK(ExpandJunctionLanes(t, &error).empty());
-	CHECK(error == "multi-to-multi movements are not ruled yet");
+
+	t.pairing = JunctionLanePairing::AnyToAny;
+	CHECK(lanes_of(t, &error) == Lanes{{slot_of(2, 0), slot_of(1, 0)}, {slot_of(2, 0), slot_of(1, 1)}, {slot_of(2, 1), slot_of(1, 0)}, {slot_of(2, 1), slot_of(1, 1)}});
+
+	t.pairing = JunctionLanePairing::LaneKeepsLane;
+	CHECK(lanes_of(t, &error) == Lanes{{slot_of(2, 0), slot_of(1, 0)}, {slot_of(2, 1), slot_of(1, 1)}});
+
+	/* The branch deals lane 0 to the W exit and lane 1 to the E exit; the W exit has one turning movement into it, so all its lanes serve it. */
+	t.pairing = JunctionLanePairing::LanePerDirection;
+	CHECK(lanes_of(t, &error) == Lanes{{slot_of(2, 0), slot_of(1, 0)}, {slot_of(2, 0), slot_of(1, 1)}});
+
+	/* Unequal lane counts: keep refuses, any fans, per direction deals what it has. */
+	JunctionTopology unequal = MakeJunctionHubTopology(llrr, ParseLineNotation("LLL_R").spec, JunctionLanePairing::LaneKeepsLane);
+	CHECK(ExpandJunctionLanes(unequal, &error).empty());
+	CHECK(error == "lane keeps lane needs equal lane counts");
+	unequal.pairing = JunctionLanePairing::AnyToAny;
+	CHECK(!ExpandJunctionLanes(unequal, &error).empty());
+
+	/* A group with fewer lanes than turning movements. */
+	JunctionTopology few = MakeJunctionHubTopology(llrr, llrr, JunctionLanePairing::LanePerDirection);
+	few.groups[2].lanes = 1;
+	few.groups[3].lanes = 1;
+	CHECK(!ExpandJunctionLanes(few, &error).empty());
+	few.movements.emplace_back(2, 3);
+	few.movements.emplace_back(2, 3);
+	few.movements.emplace_back(2, 3);
+	few.groups[2].lanes = 2;
+	CHECK(ExpandJunctionLanes(few, &error).empty());
+	CHECK(error == "lane per direction needs a lane for each direction");
 }
 
 TEST_CASE("topology: groups out of slot order are refused", "[junction][topology]")
@@ -4147,6 +4196,20 @@ TEST_CASE("topology: the built hub topology is the hand topology and seeds the s
 				CHECK(hand_layout.tracks.size() == built_layout.tracks.size());
 			}
 		}
+	}
+}
+
+TEST_CASE("topology: LL_RR x LL_RR under each lane pairing seeds or names a reason", "[junction][topologysweep]")
+{
+	const JunctionLineSpec llrr = ParseLineNotation("LL_RR").spec;
+	/* The seed of each pairing either makes routes or names a reason. */
+	for (const JunctionLanePairing pairing : {JunctionLanePairing::AnyToAny, JunctionLanePairing::LaneKeepsLane, JunctionLanePairing::LanePerDirection}) {
+		const JunctionTopology topology = MakeJunctionHubTopology(llrr, llrr, pairing);
+		JunctionSpec spec = MakeTestJunctionSpec();
+		std::string why;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &why);
+		INFO("pairing " << static_cast<int>(pairing) << ": " << why);
+		CHECK((!seed.routes.empty() || !why.empty()));
 	}
 }
 

@@ -80,9 +80,45 @@ std::vector<JunctionLanePath> ExpandJunctionLanes(const JunctionTopology &topolo
 				paths.push_back({slot_of(in_group, i), slot_of(out_group, i), static_cast<uint16_t>(m)});
 			}
 		} else {
-			if (in.lanes > 1 && out.lanes > 1) return fail("multi-to-multi movements are not ruled yet");
-			for (uint8_t i = 0; i < in.lanes; i++) {
-				for (uint8_t o = 0; o < out.lanes; o++) {
+			std::vector<uint8_t> in_lanes(in.lanes), out_lanes(out.lanes);
+			std::iota(in_lanes.begin(), in_lanes.end(), 0);
+			std::iota(out_lanes.begin(), out_lanes.end(), 0);
+			if (in.lanes > 1 && out.lanes > 1) {
+				switch (topology.pairing) {
+					case JunctionLanePairing::AnyToAny:
+						break;
+
+					case JunctionLanePairing::LaneKeepsLane:
+						if (in.lanes != out.lanes) return fail("lane keeps lane needs equal lane counts");
+						for (uint8_t i = 0; i < in.lanes; i++) paths.push_back({slot_of(in_group, i), slot_of(out_group, i), static_cast<uint16_t>(m)});
+						continue;
+
+					case JunctionLanePairing::LanePerDirection: {
+						/* The lanes of a group that serve movement m: lane k serves the (k mod n)-th of the n turning movements of the group, in movement order. */
+						auto dealt = [&](uint8_t group, bool group_in, std::vector<uint8_t> &lanes) {
+							size_t n = 0, index = 0;
+							for (size_t k = 0; k < topology.movements.size(); k++) {
+								const uint8_t from = topology.movements[k].first;
+								const uint8_t to = topology.movements[k].second;
+								if ((group_in ? from : to) != group) continue;
+								if (topology.groups[from].main && topology.groups[to].main && topology.groups[from].line == topology.groups[to].line) continue;
+								if (k == m) index = n;
+								n++;
+							}
+							if (topology.groups[group].lanes < n) return false;
+							lanes.clear();
+							for (uint8_t lane = 0; lane < topology.groups[group].lanes; lane++) {
+								if (lane % n == index) lanes.push_back(lane);
+							}
+							return true;
+						};
+						if (!dealt(in_group, true, in_lanes) || !dealt(out_group, false, out_lanes)) return fail("lane per direction needs a lane for each direction");
+						break;
+					}
+				}
+			}
+			for (const uint8_t i : in_lanes) {
+				for (const uint8_t o : out_lanes) {
 					paths.push_back({slot_of(in_group, i), slot_of(out_group, o), static_cast<uint16_t>(m)});
 				}
 			}
@@ -3877,7 +3913,7 @@ const JunctionTopology &JunctionLLRRSidelineTopology()
 	return topology;
 }
 
-JunctionTopology MakeJunctionHubTopology(const JunctionLineSpec &main, const JunctionLineSpec &branch)
+JunctionTopology MakeJunctionHubTopology(const JunctionLineSpec &main, const JunctionLineSpec &branch, JunctionLanePairing pairing)
 {
 	const uint8_t main_left = main.left_tracks;
 	const uint8_t main_right = main.tracks - main.left_tracks;
@@ -3885,6 +3921,7 @@ JunctionTopology MakeJunctionHubTopology(const JunctionLineSpec &main, const Jun
 	const uint8_t branch_right = branch.tracks - branch.left_tracks;
 
 	JunctionTopology topology;
+	topology.pairing = pairing;
 	topology.groups = {
 		{JunctionSide::W, true, main_left, 0, true},
 		{JunctionSide::W, false, main_right, 0, true},

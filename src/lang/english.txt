@@ -2887,6 +2887,10 @@ STR_JUNCTION_ROTATE                                             :{BLACK}Rotate
 STR_JUNCTION_ROTATE_TOOLTIP                                     :{BLACK}Rotate the junction a quarter turn (hotkey .)
 STR_JUNCTION_MIRROR                                             :{BLACK}Mirror
 STR_JUNCTION_MIRROR_TOOLTIP                                     :{BLACK}Mirror the junction (hotkey ,)
+STR_JUNCTION_LANES_ANY                                          :{BLACK}Lanes: any
+STR_JUNCTION_LANES_KEEP                                         :{BLACK}Lanes: keep
+STR_JUNCTION_LANES_DIRECTION                                    :{BLACK}Lanes: per direction
+STR_JUNCTION_LANES_TOOLTIP                                      :{BLACK}How the lanes of a multi-lane branch connect to the main line's lanes
 STR_JUNCTION_TOOLTIP                                             :{RAW_STRING}
 STR_JUNCTION_TOOLTIP_COST                                       :{BLACK}Cost: {CURRENCY_LONG}
 STR_JUNCTION_TOOLTIP_UNAFFORDABLE                               :{RED}Cost: {CURRENCY_LONG} (you have {CURRENCY_LONG})
