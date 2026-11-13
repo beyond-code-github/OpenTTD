@@ -75,6 +75,13 @@ Today these three rules are why the prototype could not decide L_R x L_RR and L_
 ## G3.4 Relax smallest-shape pins to floors (after G3.3)
 The item-less horizontal S-bend of one row, the bridge's exact rows, the Corner of exactly k: each becomes a floor. A bridge over a diagonal may stand anywhere along it.
 
+**G3.4a, the bridge over an S-bend (first, from the b-6 measure: LL_RR x LL_RR is infeasible with the exact pins and feasible without them).**
+- Today a single bridge over an S-bend stands in the column next to the S-bend's start (t = 1), with its heads just outside the bend's tiles in that column.
+- **The choice.** t, the bend's sideways column the bridge stands in, counted from the start, becomes a choice: `over[edge][token]` of the bridge's Over token. It is stored as t - 1, so an empty or 0 choice is today's t = 1.
+- **Premise P3 (test first).** For every (heading, hand) and L = 2..64, the rows of the bend's tiles in column t satisfy `lo(t) = lo(1) + s (t - 1)` and `hi(t) = hi(1) + s (t - 1)`, for t = 1..T(L) with T(L) = T0 + T1 L. The rows are contiguous within a column. The test reads s, T0 and T1 from the rasters and checks them; if no such form exists, the premise fails and comes back.
+- **Fixed path.** The bridge's column is `x_first + side t`, and its heads are at `lo(t) - 1` and `hi(t) + 1` (north) or mirrored, all at the chosen t.
+- **Joint model.** There is one integer variable t per such bridge, with 1 <= t <= T0 + T1 L(bend). The X relation's constant is `side t`, and the Y relations' constants are affine in t. The tie break adds EPS t, so an equal-cost solution keeps today's t = 1.
+
 ## G3.5 Order of work
 0. Land D234(3) alone: the bridge-cut search reports the default cut's failure (from wip/s3a-stopped.patch, part C).
 1. Prototype (offline, docs/junction-tool/tools/, Python + HiGHS): a hidden test dumps each topology's points, relations (both axes), bends with hands and floors, and cost terms as JSON; the script builds the ILP, solves it, records feasibility, integrality of the LP relaxation, the objective, the choices and time. Topologies: T, LL_RR x L_R, L_R x L_RR, L_R x LL_RR, LL_RR x LL_RR. Check: T and LL_RR x L_R give today's choices (or smaller: list for re-pin).

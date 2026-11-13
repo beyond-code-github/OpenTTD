@@ -27,7 +27,7 @@ In the `[.g3loop]` test, for every round, WARN:
 - the fixed path's error;
 - whether that round's recording reached the occupancy site. Add the recording member `bool occupancy_read; ///< The recording reached the occupancy family with its rows known.` to `JunctionPlacementSystem` to report it.
 
-Run it before Part B. If, in any round of L_R x L_RR or L_R x LL_RR, the recording never reaches the site's `if (x_phase && rows_known && !relations_only)`, STOP. That covers a failure in the Y phase or before the rows are known. Report the round, the stage and the error.
+Run it before Part B and keep its lines for the report. A first run found, for L_R x L_RR, that rounds 0 and 2 fail in the Y phase, before the rows are known, so they never reach the site. Part B covers that case.
 
 ## Part B: the order from given positions
 - Add to `junction_placement.h`:
@@ -45,7 +45,14 @@ Run it before Part B. If, in any round of L_R x L_RR or L_R x LL_RR, the recordi
   - skip `flat_solve`;
   - call `add_occupancy(order->x, order->y, false)`, `hug_heads(order->x)` and, unless `skip_clearance`, `add_clearance_x(order->x)`;
   - otherwise the site is unchanged.
-- The fixed path goes on as today. A recording records what it reached.
+- **A failed solve in a recording with an order.** When `order != nullptr && system != nullptr` and a Y solve fails, the recording does not stop:
+  - it records that Y system (as today, `record_system` runs at the start of `solve`);
+  - it sets `vy` to `order->y` and the rows as known;
+  - it goes on to the X phase.
+  - When the X phase's own solve fails after the occupancy site, the recording has already recorded it, and the placement stops as today.
+  - The placement result is still the failure, with its error. Only the recording goes further.
+  - If carrying on hits an assert or a crash anywhere, STOP and report where. Do not guard it.
+- Without an order, the fixed path goes on as today. A recording records what it reached.
 
 ## Part C: the loop reads the order from the previous round
 In `[.g3loop]`:
@@ -72,10 +79,11 @@ Tests of b-2..b-6 stay exactly as they are.
 ## Do not
 - Change the fixed path's behaviour when `order` is null, the rounds, the seed, the pipeline, the clash form or the hug relations.
 - Make the loop live.
+- Change the fixed path's result (placement or error) in any call, with or without an order.
 - Use `pkill`, a broad `kill`, or a bare `git stash`.
 
 ## Stop conditions
-- Part A's stop.
+- Carrying on past a failed Y solve crashes or asserts.
 - Identity or any existing test changes.
 - Anything not covered.
 
