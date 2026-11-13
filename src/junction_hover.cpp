@@ -98,7 +98,9 @@ JunctionHoverPlan PlanJunctionHoverNear(const JunctionGraphSeed &seed, const Jun
 	});
 	for (const TileIndexDiffC &move : moves) {
 		if (cancel != nullptr && cancel->load()) return cancelled();
-		JunctionHoverPlan plan = PlanJunctionHoverAt(seed, spec, terrain, order, facts, {static_cast<int16_t>(offset.x + move.x), static_cast<int16_t>(offset.y + move.y)}, &shared);
+		const TileIndexDiffC at = {static_cast<int16_t>(offset.x + move.x), static_cast<int16_t>(offset.y + move.y)};
+		if (JunctionPlacementNearReject(shared, facts, at)) continue;
+		JunctionHoverPlan plan = PlanJunctionHoverAt(seed, spec, terrain, order, facts, at, &shared);
 		if (!plan.layout.has_value()) continue;
 		plan.moved = move;
 		return plan;

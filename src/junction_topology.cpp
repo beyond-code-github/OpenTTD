@@ -1217,7 +1217,7 @@ static int JunctionRunFloor(FloorKind before, FloorKind after, const JunctionSpe
  * @param heights False: only the class facts (D218): the height steps, joins and element fits are skipped.
  * @param classes_only True (the height solve's X phase): every tile check is JunctionFacts::Buildable, the game's slope rules are the level solve's.
  */
-static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0}, bool heights = true, bool classes_only = false, const JunctionPlacementShared *shared = nullptr, JunctionPlacementShared *make_shared = nullptr)
+static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0}, bool heights = true, bool classes_only = false, const JunctionPlacementShared *shared = nullptr, JunctionPlacementShared *make_shared = nullptr, JunctionPlacementShared *record = nullptr)
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
 	using Step = JunctionTrackStep;
@@ -1437,6 +1437,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	};
 	std::vector<FactCons> fact_cons;
 	std::map<uint32_t, std::string> notes; ///< Per reason of a fact, the tiles it names, for the error text.
+	std::vector<std::array<int, 6>> group_tiles; ///< Per lazy note of kind 3: the row and the first (up to four) blocked tiles' columns of a group, count first: (count, y, x0..x3).
 	std::vector<std::array<int, 3>> lazy_notes; ///< Per reason index, (kind, x, y) of a note formatted only when a failure reports it: 1 a blocked tile, 2 a height step.
 	JunctionPlacementReason why_now; ///< The reason of the relations added now (DESIGN-G1 §14.4).
 	auto why = [&](const char *rule, uint32_t edge = UINT32_MAX, uint32_t node = UINT32_MAX, int row = -1) { why_now = JunctionPlacementReason{rule, edge, node, static_cast<int32_t>(row)}; };
@@ -1574,6 +1575,12 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				const auto note = notes.find(index);
 				std::string note_text = note == notes.end() ? std::string() : " " + note->second;
 				if (note == notes.end() && index < lazy_notes.size() && lazy_notes[index][0] == 1) note_text = fmt::format(" [blocked tile ({},{})]", lazy_notes[index][1], lazy_notes[index][2]);
+				if (note == notes.end() && index < lazy_notes.size() && lazy_notes[index][0] == 3) {
+					const std::array<int, 6> &named = group_tiles[lazy_notes[index][1]];
+					std::string tiles;
+					for (int i = 0; i < named[0]; i++) tiles += fmt::format("{}({},{})", tiles.empty() ? "" : " ", named[2 + i], named[1]);
+					note_text = " [blocked tile " + tiles + "]";
+				}
 				if (note == notes.end() && index < lazy_notes.size() && lazy_notes[index][0] == 2) note_text = fmt::format(" [height step ({},{}) to ({},{})]", lazy_notes[index][1], lazy_notes[index][2], lazy_notes[index][1] + 1, lazy_notes[index][2]);
 				chain_text += fmt::format("{}{}{}{}", chain_text.empty() ? "" : " <- ", reason.rule, parts.empty() ? "" : " (" + parts + ")", note_text);
 			}
@@ -2388,6 +2395,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		fact_cons.clear();
 		notes.clear();
 		lazy_notes.clear();
+		group_tiles.clear();
 		why_now = JunctionPlacementReason{};
 		const bool x_phase = phase == 0;
 		if (x_phase) hugs.clear();
@@ -2785,7 +2793,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			/* Per (fact, axis, row), whether the fact holds at each column of the snapshot: every group on that row asks for it. */
 			std::map<std::tuple<int, int, int>, std::vector<bool>> holding;
 			auto holds_on_row = [&](JunctionFactKind kind, Axis axis, int y) -> const std::vector<bool> & {
-				const auto key = std::make_tuple(static_cast<int>(kind), static_cast<int>(axis), y);
+				const auto key = classes_only ? std::make_tuple(0, 0, y) : std::make_tuple(static_cast<int>(kind), static_cast<int>(axis), y);
 				auto found = holding.find(key);
 				if (found != holding.end()) return found->second;
 				std::vector<bool> row;
@@ -2794,20 +2802,25 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			};
 			/* A group tile: anchor point pt, column offset dx, row y; its anchor's columns where the fact holds. */
 			auto group = [&](int pt, int dx, int y, JunctionFactKind kind, Axis axis, uint32_t e, uint32_t node, int row) {
+				if (record != nullptr) record->near_groups.push_back({pt, dx, y});
 				std::vector<int> allowed;
-				std::string tiles;
-				int named = 0;
+				std::array<int, 6> named{0, y + offset.y, 0, 0, 0, 0};
 				const std::vector<bool> &here = holds_on_row(kind, axis, y + offset.y);
 				for (int c = 0; c <= high; c++) {
 					const int x = c + dx + offset.x;
 					const bool inside = x >= facts->MinX() && x <= facts->MaxX();
 					if (inside && here[x - facts->MinX()]) {
 						allowed.push_back(c);
-					} else if (inside && named++ < 4) {
-						tiles += fmt::format("{}({},{})", tiles.empty() ? "" : " ", x, y + offset.y);
+					} else if (inside && named[0] < 4) {
+						named[2 + named[0]++] = x;
 					}
 				}
-				const uint32_t reason = fact_reason(e, node, row, tiles.empty() ? std::string() : "[blocked tile " + tiles + "]");
+				/* The note names the first blocked tiles; it is formatted only when a failure reports the reason. */
+				const uint32_t reason = fact_reason(e, node, row, std::string());
+				if (named[0] > 0) {
+					lazy_note(reason, 3, static_cast<int>(group_tiles.size()), 0);
+					group_tiles.push_back(named);
+				}
 				fact_cons.push_back({pt, -1, std::move(allowed), reason});
 			};
 			/* Per row, the columns of the snapshot where a straight X piece cannot sit, and the columns whose straight X piece does not meet the next one's height. */
@@ -2828,6 +2841,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			};
 			/* A straight run on row y from point a to point b, in the travel sense sgn (+1 east). */
 			auto row_run = [&](int a, int b, int y, int sgn, uint32_t e, int row) {
+				if (record != nullptr) record->near_runs.push_back({a, b, y, sgn});
 				const auto &[blocked, steps] = row_facts_of(y + offset.y);
 				for (int x : blocked) {
 					const uint32_t reason = fact_reason(e, UINT32_MAX, row, std::string());
@@ -3024,6 +3038,11 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				}
 			}
 
+			if (record != nullptr) {
+				record->near_cons.clear();
+				for (const Cons &cn : cons) record->near_cons.push_back({cn.v, cn.u, cn.k});
+				record->near_pts = pt_count;
+			}
 			/* The columns each point can take: the least and the greatest solution of the relations (a longest path; x_v - x_u >= k) within the domains the facts above gave. */
 			for (const FactCons &fc : fact_cons) {
 				if (fc.u >= 0) continue;
@@ -3179,6 +3198,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		phase = 0;
 		refresh(true);
 		if (!build()) return build_failed();
+		if (record != nullptr) return JunctionTrackPlacement{};
 		if (!solve(vx)) return solve_failed();
 		choices = *fixed;
 	} else {
@@ -3469,7 +3489,105 @@ JunctionPlacementShared MakeJunctionPlacementShared(const JunctionTopology &topo
 {
 	JunctionPlacementShared shared;
 	PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, nullptr, {}, {}, nullptr, {0, 0}, true, false, nullptr, &shared);
+	if (!shared.ok) return shared;
+	/* Record the shape of the X phase with all-buildable facts (the groups, runs and relations do not depend on the terrain or the offset): the near search's early reject reads it. */
+	JunctionTerrain flat;
+	flat.origin = {0, 0};
+	flat.width = 512;
+	flat.height = 128;
+	flat.tiles.assign(static_cast<size_t>(flat.width) * flat.height, JunctionTerrainTile{});
+	const JunctionFacts dummy(flat);
+	shared.near_groups.clear();
+	shared.near_runs.clear();
+	shared.near_cons.clear();
+	std::string recorded_error;
+	PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, &recorded_error, {}, {}, &dummy, {64, 8}, false, true, &shared, nullptr, &shared);
+	if (shared.near_pts > 0) {
+		shared.near_lo.assign(shared.near_pts, 0);
+		for (int round = 0; round <= shared.near_pts; round++) {
+			bool changed = false;
+			for (const auto &c : shared.near_cons) {
+				if (shared.near_lo[c[1]] + c[2] > shared.near_lo[c[0]]) {
+					shared.near_lo[c[0]] = shared.near_lo[c[1]] + c[2];
+					changed = true;
+				}
+			}
+			if (!changed) break;
+		}
+		shared.near_ok = true;
+	}
 	return shared;
+}
+
+bool JunctionPlacementNearReject(const JunctionPlacementShared &shared, const JunctionFacts &facts, TileIndexDiffC offset)
+{
+	if (!shared.near_ok) return false;
+	const int pts = shared.near_pts;
+	const int high = facts.MaxX() - offset.x;
+	constexpr int INF = INT_MAX / 4;
+	std::vector<int> lo = shared.near_lo;
+	std::vector<int> hi(pts, INF);
+	auto next = [&](const std::array<int, 3> &g, int c) {
+		for (; c <= high; c++) {
+			if (facts.Buildable(c + g[1] + offset.x, g[2] + offset.y)) return c;
+		}
+		return INF;
+	};
+	auto prev = [&](const std::array<int, 3> &g, int c) {
+		for (c = std::min(c, high); c >= 0; c--) {
+			if (facts.Buildable(c + g[1] + offset.x, g[2] + offset.y)) return c;
+		}
+		return -1;
+	};
+	/* The blocked columns (relative to the offset) of each run's row. */
+	std::map<int, std::vector<int>> blocked_of_row;
+	std::vector<const std::vector<int> *> blocked;
+	for (const auto &r : shared.near_runs) {
+		auto found = blocked_of_row.find(r[2]);
+		if (found == blocked_of_row.end()) {
+			std::vector<int> list;
+			for (int x = facts.MinX(); x <= facts.MaxX(); x++) {
+				if (!facts.Buildable(x, r[2] + offset.y)) list.push_back(x - offset.x);
+			}
+			found = blocked_of_row.emplace(r[2], std::move(list)).first;
+		}
+		blocked.push_back(&found->second);
+	}
+	for (const auto &g : shared.near_groups) {
+		const int c = next(g, std::max(0, lo[g[0]]));
+		if (c == INF) return true;
+		lo[g[0]] = c;
+	}
+	for (int round = 0; round <= pts * 4; round++) {
+		bool changed = false;
+		for (const auto &c : shared.near_cons) {
+			if (lo[c[1]] + c[2] > lo[c[0]]) { lo[c[0]] = lo[c[1]] + c[2]; changed = true; }
+			if (hi[c[0]] < INF && hi[c[0]] - c[2] < hi[c[1]]) { hi[c[1]] = hi[c[0]] - c[2]; changed = true; }
+		}
+		for (const auto &g : shared.near_groups) {
+			const int p = g[0];
+			if (lo[p] > high || lo[p] > hi[p]) return true;
+			const int c = next(g, lo[p]);
+			if (c == INF) return true;
+			if (c != lo[p]) { lo[p] = c; changed = true; }
+			const int d = prev(g, hi[p]);
+			if (d < lo[p]) return true;
+			if (d != hi[p]) { hi[p] = d; changed = true; }
+		}
+		for (size_t i = 0; i < shared.near_runs.size(); i++) {
+			const auto &r = shared.near_runs[i];
+			const int west = r[3] > 0 ? r[0] : r[1];
+			const int east = r[3] > 0 ? r[1] : r[0];
+			for (const int c : *blocked[i]) {
+				/* Not (x_west <= c <= x_east). */
+				if (lo[east] >= c && lo[west] < c + 1) { lo[west] = c + 1; changed = true; }
+				if (hi[west] <= c && hi[east] > c - 1) { hi[east] = c - 1; changed = true; }
+			}
+			if (lo[west] > hi[west] || lo[east] > hi[east]) return true;
+		}
+		if (!changed) break;
+	}
+	return false;
 }
 
 JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error, std::vector<JunctionTrackRoute> *routes)

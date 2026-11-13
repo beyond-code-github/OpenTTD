@@ -21,6 +21,7 @@
 #include "../junction_topology.h"
 
 #include <algorithm>
+#include <array>
 #include <set>
 #include <chrono>
 #include <filesystem>
@@ -638,4 +639,64 @@ TEST_CASE("level solve: identical plans at every near offset", "[junction][realt
 	CHECK(cone_rejects == 99);
 	CHECK(planned == 2919);
 	CHECK(level_hash == 16256945156918441187ULL);
+}
+
+/** Every fixture x near offset: where JunctionPlacementNearReject rejects, the facts placement as the near search runs it fails. Returns the rejects, the counterexamples and the offsets. */
+static std::array<int, 3> RunNearRejectSweep(const JunctionTopology &t)
+{
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	REQUIRE(!files.empty());
+
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+	REQUIRE(!seed_layout.tracks.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+	const JunctionPlacementShared shared = MakeJunctionPlacementShared(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices);
+	REQUIRE(shared.ok);
+	int offsets = 0, rejects = 0, counterexamples = 0;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC centre = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		const JunctionFacts facts(*terrain);
+		for (int dy = -4; dy <= 4; dy++) {
+			for (int dx = -8; dx <= 8; dx++) {
+				const TileIndexDiffC offset = {static_cast<int16_t>(centre.x + dx), static_cast<int16_t>(centre.y + dy)};
+				offsets++;
+				if (!JunctionPlacementNearReject(shared, facts, offset)) continue;
+				rejects++;
+				std::string why;
+				const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &why, true, true, &*terrain, &shared);
+				if (!placement.nodes.empty()) {
+					counterexamples++;
+					UNSCOPED_INFO(file.filename().string() << " at " << offset.x << "," << offset.y << " is rejected but places");
+				}
+			}
+		}
+	}
+	return {rejects, counterexamples, offsets};
+}
+
+TEST_CASE("the near reject never rejects a placeable offset", "[junction][realterrainsweep][.identity]")
+{
+	const auto t_result = RunNearRejectSweep(JunctionTTopology());
+	const JunctionTopology llrr = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("L_R").spec);
+	const auto llrr_result = RunNearRejectSweep(llrr);
+	std::cout << "NEARREJECT T offsets=" << t_result[2] << " rejects=" << t_result[0] << " counterexamples=" << t_result[1] << " LL_RR offsets=" << llrr_result[2] << " rejects=" << llrr_result[0] << " counterexamples=" << llrr_result[1] << "\n";
+	CHECK(t_result[2] == 48 * 153);
+	CHECK(llrr_result[2] == 48 * 153);
+	CHECK(t_result[1] == 0);
+	CHECK(llrr_result[1] == 0);
 }

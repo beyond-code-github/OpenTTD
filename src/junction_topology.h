@@ -308,7 +308,17 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 struct JunctionPlacementShared {
 	bool ok = false; ///< False when the stages did not solve: the placement then computes them itself (and reports their failure as today).
 	std::vector<int> vy; ///< The rows of the Y solve, per point.
+	/* The X phase's offset-independent shape, for the early reject of a near offset. */
+	bool near_ok = false;
+	int near_pts = 0;
+	std::vector<std::array<int, 3>> near_groups; ///< (point, column offset, row) of every tile group the facts must allow.
+	std::vector<std::array<int, 4>> near_runs; ///< (a, b, row, sense) of every straight run on a row.
+	std::vector<std::array<int, 3>> near_cons; ///< (v, u, k): x_v - x_u >= k.
+	std::vector<int> near_lo; ///< The least column of every point under the relations alone.
 };
+
+/** True when the X solve of the class facts at this offset must fail (a sound bounds propagation over the shared relations, the groups and the runs); false proves nothing. The error text is not produced. */
+bool JunctionPlacementNearReject(const JunctionPlacementShared &shared, const JunctionFacts &facts, TileIndexDiffC offset);
 
 /** The shared stages for these inputs (the same as those of the facts overload, with the choices fixed). */
 JunctionPlacementShared MakeJunctionPlacementShared(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices);
