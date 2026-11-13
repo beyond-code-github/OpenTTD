@@ -580,14 +580,13 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	}
 
 	/* The shrunk levels of the tiles must meet under the constraints so far. */
-	const size_t cone_mark = pos.Mark();
 	for (size_t i = 0; i < n && feasible; i++) {
 		if (!cut[i]) continue;
 		if (!pos.RestrictRange(i, reach[i].first, reach[i].second, reason({8, order_tiles[i].first, order_tiles[i].second, 0, 0, 0}))) {
 			return fmt::format("the tiles around ({}, {}) cannot meet: they cannot reach the ground the terraform must keep", order_tiles[i].first, order_tiles[i].second);
 		}
 	}
-	pos.Undo(cone_mark);
+	/* The cone's ranges stay for the rest of the solve: the start levels and the descent keep inside what the ground cone allows (RECON-corner-join-reject.md, P6). */
 
 	/* The variable of each corner of a track tile: a rampable tile's exit-side corners are the next tile's level. */
 	std::map<MapCorner, std::vector<size_t>> corner_vars;
@@ -1379,6 +1378,11 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				for (const auto &[a, k] : upper[m]) {
 					if (!member_set.contains(a)) up = std::min(up, level[a] - base - k);
 				}
+			}
+			/* The cone's level ranges bound the group too (P6). */
+			for (size_t m : members) {
+				lo = std::max(lo, pos.Lo(m));
+				up = std::min(up, pos.Up(m));
 			}
 			if (lo >= up) continue;
 			const int current = level[members.front()];

@@ -393,7 +393,7 @@ TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
 TEST_CASE("hover plan on real terrain, LL_RR", "[junction][realterrainsweep]")
 {
 	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("L_R").spec);
-	RunHoverSweep(t, "_LLRR", 7, 20, false);
+	RunHoverSweep(t, "_LLRR", 9, 20, true);
 }
 
 /** Fold a value into a 64-bit FNV-1a hash. */
@@ -559,8 +559,8 @@ TEST_CASE("level solve: identical LL_RR plans at every near offset", "[junction]
 	}
 	std::cout << "LEVELHASH_LLRR offsets=" << offsets << " planned=" << planned << " hash=" << level_hash << " ms_total=" << millis << "\n";
 	CHECK(offsets == 48 * 153);
-	CHECK(planned == 1180);
-	CHECK(level_hash == 11818222337964832513ULL);
+	CHECK(planned == 1601);
+	CHECK(level_hash == 12769444602347636435ULL);
 }
 
 TEST_CASE("level solve: identical plans at every near offset", "[junction][realterrainsweep][.identity]")
@@ -637,8 +637,8 @@ TEST_CASE("level solve: identical plans at every near offset", "[junction][realt
 	CHECK(shared_differences == 0);
 	/* A cone reject that the solve without the check would plan would lose a plan: the pinned planned count and hash rule that out (cone_rejects_that_would_plan == 0). */
 	CHECK(cone_rejects == 99);
-	CHECK(planned == 2919);
-	CHECK(level_hash == 16256945156918441187ULL);
+	CHECK(planned == 3064);
+	CHECK(level_hash == 3055087328228626086ULL);
 }
 
 /** Every fixture x near offset: where JunctionPlacementNearReject rejects, the facts placement as the near search runs it fails. Returns the rejects, the counterexamples and the offsets. */
