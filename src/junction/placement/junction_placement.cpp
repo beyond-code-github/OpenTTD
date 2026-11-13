@@ -213,6 +213,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		int hand = 0;
 		bool joiner_div = false; ///< A Corner from a band split: its size comes from the rows (F4).
 		bool free_m = false; ///< A vertical S-bend: its size comes from the columns.
+		bool fan = false; ///< A band edge's fan at an S branch port (D230): a vertical S-bend sized from the columns that may be empty (m 0, no tiles).
 		int m = 1;
 		int cross = -1; ///< Heads: the crossed edge.
 		uint32_t index = NO_ROW; ///< The stack item the token ends on.
@@ -261,16 +262,18 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			Elem el;
 			el.tok = static_cast<int>(t);
 			el.hin = cur;
-			if (step.kind == StepKind::Corner || step.kind == StepKind::SBend) {
+			if (step.kind == StepKind::Corner || step.kind == StepKind::SBend || step.kind == StepKind::Fan) {
 				el.k = step.kind == StepKind::Corner ? Elem::K::Corner : Elem::K::SBend;
+				el.fan = step.kind == StepKind::Fan;
+				if (el.fan) el.m = 0;
 				el.hand = step.hand;
 				el.index = step.index;
 				el.hout = step.kind == StepKind::Corner ? (cur + step.hand + 4) % 4 : cur;
 				el.first = t == 0 && edge.from.node ? start : new_pt();
 				el.last = t + 1 == program.size() && edge.to.node && to_merge && step.kind == StepKind::SBend ? stop : new_pt();
 				el.joiner_div = step.kind == StepKind::Corner && t == 0 && from_band_split;
-				el.free_m = step.kind == StepKind::SBend && (cur == 0 || cur == 2);
-				if (step.kind == StepKind::SBend && t == 0 && edge.from.node && !from_band_split) el.first = new_pt();
+				el.free_m = step.kind != StepKind::Corner && (cur == 0 || cur == 2);
+				if ((step.kind == StepKind::SBend || step.kind == StepKind::Fan) && t == 0 && edge.from.node && !from_band_split) el.first = new_pt();
 				cur = el.hout;
 			} else if (step.kind == StepKind::Over || step.kind == StepKind::Tunnel) {
 				/* A tunnel's portals are the heads of a single bridge (D220). */
@@ -539,13 +542,15 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	/* The row of the node an in or out edge meets: the item of the token whose element ends at it (an in edge's last token that carries an item) or starts at it (an out edge's first). */
 	auto node_item = [&](uint32_t e) -> uint32_t {
 		const std::vector<Step> &program = programs.edges[e];
+		/* Only Fan, Corner and SBend tokens name a stack item; a bridge's tokens name an edge. */
+		auto names_item = [](const Step &token) { return token.index != NO_ROW && (token.kind == Step::Kind::Fan || token.kind == Step::Kind::Corner || token.kind == Step::Kind::SBend); };
 		if (graph.edges[e].to.node) {
 			for (size_t t = program.size(); t-- > 0;) {
-				if (program[t].index != NO_ROW) return program[t].index;
+				if (names_item(program[t])) return program[t].index;
 			}
 		} else {
 			for (const Step &token : program) {
-				if (token.index != NO_ROW) return token.index;
+				if (names_item(token)) return token.index;
 			}
 		}
 		return NO_ROW;
@@ -781,9 +786,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						continue;
 					}
 					for (size_t t = 0; t < tokens.size(); t++) {
-						if (tokens[t].kind != StepKind::Corner && tokens[t].kind != StepKind::SBend) continue;
+						if (tokens[t].kind != StepKind::Corner && tokens[t].kind != StepKind::SBend && tokens[t].kind != StepKind::Fan) continue;
 						for (const Elem &el : chain[e]) {
-							if (el.tok != static_cast<int>(t)) continue;
+							if (el.tok != static_cast<int>(t) || (el.fan && el.m == 0) || el.offs.empty()) continue;
 							row_heading.resize(bends.size(), -1);
 							row_heading.push_back(pending_row);
 							pending_row = -1;
@@ -927,7 +932,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						y_end = el.port_first ? y_item : y_port;
 						if (el.m != 0) pieces.push_back({RowPiece::T::Bend, el.first, 0, el.port_first ? y_port : y_item, 0, e, el.hand, static_cast<int>(el.offs.size()), false, false});
 					} else if (el.k == Elem::K::SBend) {
-						pieces.push_back({RowPiece::T::Bend, el.first, 0, vy[el.first], c, e, el.hand, static_cast<int>(el.offs.size()), false, false});
+						if (!el.offs.empty()) pieces.push_back({RowPiece::T::Bend, el.first, 0, vy[el.first], c, e, el.hand, static_cast<int>(el.offs.size()), false, false});
 					} else if (el.k == Elem::K::HeadsPair) {
 						pieces.push_back({RowPiece::T::Tile, el.first, 0, vy[el.first], c, e, 0, 0, false, true});
 						pieces.push_back({RowPiece::T::Tile, el.last, 0, vy[el.first], c, e, 0, 0, false, true});
@@ -965,6 +970,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			const auto cached = half_cache.find({&el, last});
 			if (cached != half_cache.end()) return cached->second;
 			const size_t halves = el.offs.size();
+			if (halves == 0) return TrackBits{}; // Sized to 0 columns: no bend, no half.
 			const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[el.hin], JunctionBendMoves(el.hand, static_cast<int>(halves), el.k == Elem::K::Corner)});
 			const TrackBits half = !raster.error.empty() || raster.pieces.size() != halves + 2 ? TrackBits{} : TrackBits{TrackdirToTrack(raster.pieces[last ? halves : 1].trackdir)};
 			half_cache[{&el, last}] = half;
@@ -1048,6 +1054,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			by_row[y].push_back({y, sgn > 0 ? a : b, 1, sgn > 0 ? b : a, -1, TrackBits{Track::X}, edge, copy, UINT32_MAX});
 		};
 		auto add_bend = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t edge, int copy, bool skip_first, bool skip_last) {
+			if (halves < 1) return; // A bend sized to 0 columns is no bend.
 			const std::vector<TileIndexDiffC> offs = bend_tiles(heading, hand, halves, corner);
 			const std::vector<TrackBits> bits = bend_bits(heading, hand, halves, corner);
 			if (bits.size() != offs.size()) return;
@@ -1293,8 +1300,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 		for (size_t i = 0; i < layer1.size(); i++) {
 			why("S edge", UINT32_MAX, static_cast<uint32_t>(layer1[i]));
-			if (i > 0) eq(1, node_pt[layer1[i]], node_pt[layer1[0]], 0);
-			eq(1, se_pt, node_pt[layer1[i]], JunctionRunFloor(FloorKind::Node, FloorKind::Port, spec));
+			/* Every layer-1 node of band R lies at least a port stub above the S edge; a node behind a fan lies further, by its chain (D115a, D230). */
+			ge(1, se_pt, node_pt[layer1[i]], JunctionRunFloor(FloorKind::Node, FloorKind::Port, spec));
 		}
 		why("S port row");
 		for (int s = 0; s < n; s++) {
@@ -1483,7 +1490,15 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				} else if (el.k == Elem::K::SBend) {
 					const int side = (el.hin + el.hand + 4) % 4;
 					why("S-bend size", e);
-					if (el.hin == 0 || el.hin == 2) {
+					if (el.fan && (el.hin == 0 || el.hin == 2)) {
+						/* A fan at an S branch port: any size toward its side, 0 allowed (D230). */
+						if (el.m == 0) eq(1, el.last, el.first, 0); else eq(1, el.last, el.first, VY[el.hin] * (el.m - 1));
+						if (fixed != nullptr) {
+							if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
+						} else {
+							if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
+						}
+					} else if (el.hin == 0 || el.hin == 2) {
 						eq(1, el.last, el.first, VY[el.hin] * (el.m - 1));
 						if (fixed != nullptr) {
 							if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
@@ -1503,6 +1518,13 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				const Elem &next = elems[i + 1];
 				if (next.k == Elem::K::Prio) continue; // The prio element is no track of the chain: nothing runs to it from the end tile.
 				if (next.first == el.last) continue;
+				/* An empty fan joins its port tile; the run on its node side stays (D230). */
+				if ((i == 0 && !edge.from.node && next.fan && next.m == 0) || (el.fan && el.m == 0 && !edge.to.node && i + 2 == elems.size())) {
+					why("fan size", e);
+					eq(0, next.first, el.last, 0);
+					eq(1, next.first, el.last, 0);
+					continue;
+				}
 				bool exact = false;
 				const bool in_out = IsInEdge(e) || IsOutEdge(e);
 				/* A row edge's tiles name their kind: a port, the exit split of an in edge (Node), the joiner merge of an out edge (PrioNode), a fan (R3). */
@@ -1543,7 +1565,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				const std::vector<Elem> &other = chain[el.cross];
 				const Elem *crossed = nullptr;
 				for (const Elem &o : other) {
-					if (o.k == Elem::K::SBend && o.tok >= 0 && static_cast<size_t>(o.tok) + 1 < programs.edges[el.cross].size() && (programs.edges[el.cross][o.tok + 1].kind == StepKind::Under || programs.edges[el.cross][o.tok + 1].kind == StepKind::Above) && programs.edges[el.cross][o.tok + 1].index == e) crossed = &o;
+					if (o.k == Elem::K::SBend && !o.fan && o.tok >= 0 && static_cast<size_t>(o.tok) + 1 < programs.edges[el.cross].size() && (programs.edges[el.cross][o.tok + 1].kind == StepKind::Under || programs.edges[el.cross][o.tok + 1].kind == StepKind::Above) && programs.edges[el.cross][o.tok + 1].index == e) crossed = &o;
 				}
 				if (crossed == nullptr) { build_why = "no crossed sbend"; return false; }
 				why("bridge over S-bend", e);
@@ -1786,6 +1808,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			};
 			/* A bend of 'halves' half pieces whose first sits at row y of point pt: the columns where each piece fits with its own track, each join inside it meets at one height, and its two joins with the axis pieces just outside it do too (DESIGN-G1 §14.3). */
 			auto bend_heights_now = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t e, int row, uint32_t node_first, uint32_t node_last) {
+				if (halves < 1) return; // A bend sized to 0 columns is no bend.
 				const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, halves, corner)});
 				if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != halves + 2) return;
 				const std::vector<JunctionPiece> &pieces = raster.pieces;
@@ -1857,7 +1880,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						const Axis axis = VX[el.hin] != 0 ? Axis::X : Axis::Y;
 						group(el.first, 0, vy[el.first], JunctionFactKind::Straight, axis, e, UINT32_MAX, -1);
 						group(el.last, 0, vy[el.last], JunctionFactKind::Straight, axis, e, UINT32_MAX, -1);
-					} else {
+					} else if (!(el.fan && el.m == 0)) {
 						bend_heights(el.first, vy[el.first], el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, -1, node_of_pt[el.first], node_of_pt[el.last]);
 						for (size_t j = 0; j < el.offs.size(); j++) {
 							const TileIndexDiffC &o = el.offs[j];
@@ -2038,7 +2061,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		/* One Y solve and one X solve with the choices fixed (DESIGN-G1 §14.2). */
 		for (uint32_t e = 0; e < edge_count; e++) {
 			for (Elem &el : chain[e]) {
-				if (el.free_m) el.m = std::max(1, fixed->m[e][el.tok]);
+				if (el.free_m) el.m = el.fan ? fixed->m[e][el.tok] : std::max(1, fixed->m[e][el.tok]);
 			}
 		}
 		rows_known = true;
@@ -2082,7 +2105,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		if (!solve(vx)) return solve_failed();
 		for (uint32_t e = 0; e < edge_count; e++) {
 			for (Elem &el : chain[e]) {
-				if (el.free_m) el.m = std::max(1, std::abs(vx[el.last] - vx[el.first]));
+				if (el.free_m) el.m = el.fan ? std::abs(vx[el.last] - vx[el.first]) : std::max(1, std::abs(vx[el.last] - vx[el.first]));
 			}
 		}
 		rows_known = true;

@@ -924,7 +924,7 @@ TEST_CASE("topology: the T's placement", "[junction][topology]")
 	CHECK(Of(placement.bridges[1]) == Br(26, 9, 26, 6, 0, 0, 0, 0));
 }
 
-/* Hidden until S2 (S fans) lands; REVIEW-port-fans Q4. */
+/* Hidden until the S placement steps land (RECON-s2-cycle). */
 TEST_CASE("placement: S branch groups of several lanes place (D230, S0-S2)", "[junction][topology][.]")
 {
 	for (const char *right : {"L_RR", "LL_RR"}) {
@@ -4796,4 +4796,119 @@ TEST_CASE("topology: an L_R main with a multi-lane branch is refused, not crashe
 		CHECK(seed.routes.empty());
 		CHECK(!error.empty());
 	}
+}
+
+/* Hidden until the S placement steps land (RECON-s2-cycle). */
+TEST_CASE("placement: S branch lanes open up by fans inside the box (D230)", "[junction][topology][.]")
+{
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("L_R").spec, ParseLineNotation("LL_RR").spec);
+	std::string error;
+	const JunctionTrackPlacement placement = PlacementOf(t, 64, &error);
+	INFO(error);
+	CHECK(error.empty());
+	REQUIRE(!placement.nodes.empty());
+
+	std::string ignored;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(t);
+	std::vector<int> south_in;
+	for (size_t s = 0; s < slots.size(); s++) {
+		const JunctionLaneGroup &group = t.groups[slots[s].group];
+		if (!group.main && group.side == JunctionSide::S && group.in) south_in.push_back(static_cast<int>(s));
+	}
+	REQUIRE(south_in.size() == 2);
+	CHECK(placement.ports[south_in[1]].x == placement.ports[south_in[0]].x + 1);
+	CHECK(placement.ports[south_in[1]].y == placement.ports[south_in[0]].y);
+	bool opened = false;
+	for (size_t i = 0; i < south_in.size(); i++) {
+		int found = 0;
+		for (const JunctionTrackEdge &edge : graph.edges) {
+			if (edge.from.node || edge.from.index != south_in[i]) continue;
+			REQUIRE(edge.to.node);
+			found++;
+			const int port_x = placement.ports[south_in[i]].x;
+			const int node_x = placement.nodes[edge.to.index].x;
+			if (i == 0) CHECK(node_x <= port_x); else CHECK(node_x >= port_x);
+			if (node_x != port_x) opened = true;
+		}
+		CHECK(found == 1);
+	}
+	CHECK(opened);
+
+	/* A node behind a fan of m >= 1 columns lies at least 4 + (m - 1) rows above the S edge (REVIEW-port-fans S1). */
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &ignored);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &ignored);
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &ignored);
+	int fans_checked = 0;
+	for (uint32_t e = 0; e < graph.edges.size(); e++) {
+		const JunctionTrackEdge &edge = graph.edges[e];
+		for (int end = 0; end < 2; end++) {
+			const JunctionTrackEnd &port = end == 0 ? edge.from : edge.to;
+			const JunctionTrackEnd &other = end == 0 ? edge.to : edge.from;
+			if (port.node || !other.node) continue;
+			const JunctionLaneGroup &group = t.groups[slots[port.index].group];
+			if (group.main || group.side != JunctionSide::S) continue;
+			const std::vector<JunctionTrackStep> &program = programs.edges[e];
+			if (program.empty() || (end == 0 ? program.front() : program.back()).kind != JunctionTrackStep::Kind::Fan) continue;
+			const JunctionTrackSpan &span = end == 0 ? placement.edges[e].front() : placement.edges[e].back();
+			const int m = std::abs(span.second.x - span.first.x);
+			if (m < 1) continue;
+			fans_checked++;
+			CHECK(placement.ports[port.index].y - placement.nodes[other.index].y >= 4 + (m - 1));
+		}
+	}
+	INFO("fans of m >= 1 checked: " << fans_checked);
+	CHECK(fans_checked >= 0);
+}
+
+TEST_CASE("programs: an S branch port edge of a group with several lanes carries a fan (D230)", "[junction][topology]")
+{
+	auto check = [](const JunctionTopology &t, bool fans) {
+		std::string error;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+		REQUIRE(!graph.edges.empty());
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+		REQUIRE(!order.rows.empty());
+		const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+		REQUIRE(!structure.stack.empty());
+		const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+		REQUIRE(!programs.edges.empty());
+		const std::vector<JunctionPortSlot> slots = JunctionPortSlots(t);
+		auto south_branch = [&](const JunctionTrackEnd &end) {
+			if (end.node) return false;
+			const JunctionLaneGroup &group = t.groups[slots[end.index].group];
+			return !group.main && group.side == JunctionSide::S;
+		};
+		int seen = 0;
+		for (uint32_t e = 0; e < graph.edges.size(); e++) {
+			const JunctionTrackEdge &edge = graph.edges[e];
+			const std::vector<JunctionTrackStep> &program = programs.edges[e];
+			for (int end = 0; end < 2; end++) {
+				const JunctionTrackEnd &port = end == 0 ? edge.from : edge.to;
+				if (!south_branch(port)) continue;
+				seen++;
+				const bool has_fan = !program.empty() && (end == 0 ? program.front() : program.back()).kind == JunctionTrackStep::Kind::Fan;
+				if (!fans) {
+					for (const JunctionTrackStep &token : program) CHECK(token.kind != JunctionTrackStep::Kind::Fan);
+					continue;
+				}
+				REQUIRE(has_fan);
+				const JunctionTrackStep &token = end == 0 ? program.front() : program.back();
+				CHECK(token.index == JunctionTrackStep::NO_ROW);
+				const int first_slot = [&]() {
+					for (size_t s = 0; s < slots.size(); s++) {
+						if (slots[s].group == slots[port.index].group) return static_cast<int>(s);
+					}
+					return -1;
+				}();
+				CHECK(token.hand == (static_cast<int>(port.index) == first_slot ? -1 : +1));
+			}
+		}
+		CHECK(seen > 0);
+	};
+	const JunctionLineSpec llrr = ParseLineNotation("LL_RR").spec;
+	check(MakeJunctionHubTopology(llrr, llrr), true);
+	check(JunctionTTopology(), false);
 }

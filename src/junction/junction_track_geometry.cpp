@@ -19,6 +19,7 @@
 /** The moves of a bend from its axis piece: the first turn, the halves after the first, the closing turn (DESIGN-G1 §11.8). A hand of +1 is a clockwise turn. */
 std::string JunctionBendMoves(int hand, int halves, bool corner)
 {
+	assert(halves >= 1);
 	std::string moves(1, hand > 0 ? 'L' : 'R');
 	moves.append(halves - 1, 'F');
 	moves += ((corner ? hand : -hand) > 0) ? 'L' : 'R';

@@ -205,7 +205,7 @@ JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topol
 struct JunctionTrackStep {
 	static constexpr uint32_t NO_ROW = UINT32_MAX; ///< A bend that ends heading N or S.
 	enum class Kind : uint8_t {
-		Fan, ///< The S-bend between a port row and a stack row, or none when they coincide (placed later).
+		Fan, ///< The S-bend between a port row and a stack row on a row edge, or none when they coincide; on an S branch port edge, a vertical S-bend sized by placement, 0 allowed (D230).
 		Corner, ///< A same-hand 90-degree pair.
 		SBend, ///< An opposite-hand pair: the track moves sideways and keeps its heading.
 		Over, ///< This edge's bridge passes over another edge.
@@ -221,7 +221,7 @@ struct JunctionTrackStep {
 	};
 	Kind kind;
 	int8_t hand; ///< Corner: the turn, +1 right, -1 left (as JunctionTrackStructure::turns). SBend: its first curve. 0 otherwise.
-	uint32_t index; ///< Fan: the stack item at its inner end. Corner, SBend: the stack item it ends on, or NO_ROW. Over, Tunnel: the crossed edge. Under, Above: the edge overhead (Above: the edge in the tunnel).
+	uint32_t index; ///< Fan: the stack item at its inner end, or NO_ROW at an S branch port. Corner, SBend: the stack item it ends on, or NO_ROW. Over, Tunnel: the crossed edge. Under, Above: the edge overhead (Above: the edge in the tunnel).
 	uint8_t copy; ///< Under: which copy of a doubled bridge is overhead (0 or 1). 0 otherwise.
 	Role role = Role::None; ///< SBend: what it serves (D215 feature; R7 inserts Shift pairs).
 	bool operator==(const JunctionTrackStep &) const = default;

@@ -1094,6 +1094,20 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		const JunctionLanePath &path = paths[graph.edges[e].paths[0]];
 		return group_of(path.from).main ? path.to : path.from;
 	};
+	/* The hand of an S branch port's fan: -1 for the west half of its group, +1 for the east half, 0 for the middle lane of an odd group, a main group or a group of one lane. */
+	auto south_fan_hand = [&](int slot) {
+		const JunctionLaneGroup &group = group_of(slot);
+		if (group.main || group.side != JunctionSide::S) return 0;
+		int k = 0, i = 0;
+		for (int s = 0; s < n; s++) {
+			if (slots[s].group != slots[slot].group) continue;
+			k++;
+			if (s < slot) i++;
+		}
+		if (2 * i + 1 < k) return -1;
+		if (2 * i + 1 > k) return +1;
+		return 0;
+	};
 
 	/* The programs. */
 	JunctionTrackPrograms programs;
@@ -1147,6 +1161,9 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 			return step(StepKind::Corner, east[r] ? +1 : -1, row_items[r].approach);
 		};
 
+		/* An S branch port of a group with several lanes opens its lane inside the box by a fan, west half west and east half east, and keeps the notation spacing at the port (D230, D203, D38). */
+		if (!edge.from.node && south_fan_hand(edge.from.index) != 0) program.push_back(step(StepKind::Fan, south_fan_hand(edge.from.index), Step::NO_ROW));
+
 		/* a. Start. */
 		int side_hand = 0;
 		if (is_band_node(edge.from, true) && diverges(e, edge.from.index, side_hand)) {
@@ -1196,6 +1213,7 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		if (is_band_node(edge.to, false) && diverges(e, edge.to.index, side_hand)) {
 			program.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW));
 		}
+		if (!edge.to.node && south_fan_hand(edge.to.index) != 0) program.push_back(step(StepKind::Fan, south_fan_hand(edge.to.index), Step::NO_ROW));
 	}
 	return programs;
 }

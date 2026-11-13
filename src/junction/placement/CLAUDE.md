@@ -19,6 +19,10 @@
 - Rows (Y) come from the structure and change only by an edit named by an X failure.
 - Objective within a graph: the least solution, then each row change pushed toward its feature.
 - Stub length at a branch port is two tiles: the signal tile then the boundary tile; the stub is one rule constant.
+- An S branch port's fan is a vertical S-bend sized by the solve, 0 columns allowed (then it lies on the port's run); the ports keep the notation spacing.
+- Every layer-1 node of band R lies at least a port stub above the S edge.
+- A row's in or out edge meets its node on the row of the stack item named by its nearest Fan, Corner or S-bend token; bridge tokens name edges, not items.
+- A Fan, Corner or S-bend sized to 0 columns is no bend: it adds no pieces, occupancy or bend bits.
 - The junction footprint ends one tile beyond the outermost signal on each leg; every track of a leg ends flush at the footprint edge.
 - Planar signal windows and node footprints: a node has a footprint from the rules (the split or merge tile, required straight runs, prio coverage) and a window along its line.
 
