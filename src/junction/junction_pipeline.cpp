@@ -128,7 +128,9 @@ JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology,
 		}
 	}
 
-	std::string last_error;
+	/* The failure reported when no cut places: the default cut's, the first one tried (the series of at most the cap from the start). */
+	std::string default_error;
+	bool first_cut = true;
 	for (size_t total = low_total; total <= high_total; total++) {
 		std::vector<std::vector<size_t>> tuples;
 		std::vector<size_t> counts;
@@ -160,8 +162,10 @@ JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology,
 
 				std::string why;
 				JunctionTrackPlacement placed = PlaceJunctionTrackGraph(topology, paths, graph, order, cut, programs, spec, &why);
+				const bool is_first = first_cut;
+				first_cut = false;
 				if (placed.nodes.empty()) {
-					last_error = why;
+					if (is_first) default_error = why;
 				} else if (!have || placed.size.x < best.size.x || (placed.size.x == best.size.x && placed.size.y < best.size.y)) {
 					have = true;
 					best = std::move(placed);
@@ -189,7 +193,7 @@ JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology,
 		}
 	}
 	if (placement != nullptr) *placement = JunctionTrackPlacement{};
-	if (error != nullptr) *error = last_error;
+	if (error != nullptr) *error = default_error;
 	return structure;
 }
 

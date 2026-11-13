@@ -4973,3 +4973,13 @@ TEST_CASE("placement: a lone converge S-bend leaves a run after its split (DESIG
 	PlacementOf(t, 64, &error);
 	CHECK(!(error.find("S-bend size (edge 12)") != std::string::npos && error.find("bridge over S-bend (edge 6)") != std::string::npos));
 }
+
+TEST_CASE("bridge cut: the reported failure is the default cut's", "[junction][topology]")
+{
+	/* L_R x L_RR: every cut fails; the finer cuts fail on the bridge-head hug, the default cut (series of at most the cap from the start) on its own reason. */
+	const JunctionTopology topology = MakeJunctionHubTopology(ParseLineNotation("L_R").spec, ParseLineNotation("L_RR").spec, JunctionLanePairing::AnyToAny);
+	std::string error;
+	MakeJunctionGraphSeed(topology, MakeTestJunctionSpec(), &error);
+	INFO(error);
+	CHECK(error.find("bridge heads hug crossers") == std::string::npos);
+}
