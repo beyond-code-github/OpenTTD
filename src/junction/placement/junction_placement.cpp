@@ -1,0 +1,2433 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+/** @file junction_placement.cpp Horizontal placement of a programmed track graph (DESIGN-G1 §11.8, §14). */
+
+#include "../../stdafx.h"
+
+#include "junction_placement.h"
+
+#include "../junction_spec.h"
+#include "../junction_track_geometry.h"
+#include "../junction_route.h"
+#include "../junction_rules_internal.h"
+#include "../topology/junction_chain.h"
+#include "../line/junction_line.h"
+#include "junction_positions.h"
+
+#include "../../direction_func.h"
+#include "../../map_func.h"
+#include "../../track_func.h"
+
+#include <algorithm>
+#include <climits>
+#include <functional>
+#include <map>
+#include <numeric>
+#include <optional>
+#include <set>
+#include <tuple>
+
+#include "../../safeguards.h"
+
+/** The kinds of element a placement run lies between (D217, DESIGN-G1 §16.1). */
+enum class FloorKind : uint8_t { Port, Fan, Tile, Corner, SBend, Heads, Node, PrioNode, Prio, LaneSplit, LaneMerge };
+
+/**
+ * The tracks a prio element draws at one of its steps (DESIGN-G1 12.4), the one pattern occupancy and the placement's JunctionPrioSpan share.
+ * @param step The step upstream of the joiner merge (0 at the merge's column).
+ * @param side The side of the main line the element's row lies on.
+ * @param exit_edge The edge the main line leaves its tiles by (SW eastbound, NE westbound).
+ * @return The bits on the element's row and those on the main line (lane row) tile of the same column.
+ */
+static std::pair<TrackBits, TrackBits> JunctionPrioStepBits(int step, DiagDirection side, DiagDirection exit_edge)
+{
+	const Track h1 = JunctionCornerTrack(side, exit_edge);
+	const Track h2 = JunctionCornerTrack(ReverseDiagDir(side), ReverseDiagDir(exit_edge));
+	TrackBits row;
+	if (step == 0) {
+		row = TrackBits{h2};
+	} else if (step % 2 == 0) {
+		row = TrackBits{Track::X, h2};
+	} else {
+		row = TrackBits{Track::X};
+	}
+	return {row, step % 2 == 0 ? TrackBits{h1} : TrackBits{}};
+}
+/**
+ * The least run in tiles between two neighbouring elements: the one table of every run floor in placement (D217, DESIGN-G1 §16.1). A pair not listed has the chain run.
+ * @param before The kind of the element the run starts at.
+ * @param after The kind of the element the run ends at.
+ * @param spec The junction spec (the waiting room reads the train length).
+ * @return The least run.
+ */
+static int JunctionRunFloor(FloorKind before, FloorKind after, const JunctionSpec &spec)
+{
+	using K = FloorKind;
+	if (before == K::Port && after == K::Fan) return 2; // The fan starts 2 tiles inside the port: the signal tile and the boundary tile (D115a, D206).
+	if (before == K::Fan && after == K::Node) return 2; // The run from a fan to the exit split is the chain run (D217).
+	if (before == K::Fan && after == K::Port) return 2; // The last fan tile to its port: the port stub (D206, D115a).
+	if (before == K::Node && after == K::Port) return 2; // A branch port's stub below its node (D206, D115a).
+	if (before == K::PrioNode && after == K::Fan) return 2; // The joiner merge to the out fan: the chain run (D217).
+	if (before == K::PrioNode && after == K::Port) return 2; // The joiner merge to an unfanned port: the chain run and port stub (D217, D206).
+	if (before == K::Node && after == K::Prio) return 1; // The exit split stays outside the prio element's coverage; its row ends one step on (DESIGN-G1 §12.4, RECON-prio-element §3).
+	if (before == K::LaneMerge && after == K::Prio) return 2; // The element's row must not meet the lane merge's S-bend (RECON-prio-element §3-4).
+	if (before == K::Node && after == K::LaneSplit) return 2; // The exit split to the lane split: the chain run, a minimum so series bridges have slack (D217, DESIGN-G1 §11.9b).
+	if (before == K::LaneSplit && after == K::Heads) return 2; // Shared split tile, one plain piece, then the near head (D145, D113, D117, D118).
+	if (before == K::Heads && after == K::Heads) return 2; // Series bridges: the next near head 2 tiles past the last far head (DESIGN-G1 §11.9b).
+	if (before == K::Heads && after == K::LaneMerge) return 2; // The last far head to the lane merge (D145: x_hwA - x_lm = 2).
+	if (before == K::Node && after == K::Node) return static_cast<int>(spec.tl) + 1; // The waiting room of an exit path, from its first split to the first merge: 2 dy - 1 >= 2 tl units (rule WaitingRoom).
+	return 2; // The chain run: a signal tile and a boundary tile between elements (D217).
+}
+
+JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts, TileIndexDiffC offset, bool heights, bool classes_only, const JunctionPlacementShared *shared, JunctionPlacementShared *make_shared, JunctionPlacementShared *record)
+{
+	auto str = [](int v) { return fmt::format("{}", v); };
+	using Step = JunctionTrackStep;
+	using StepKind = JunctionTrackStep::Kind;
+	auto fail = [&](const std::string &reason) {
+		if (error != nullptr) *error = reason;
+		return JunctionTrackPlacement{};
+	};
+	if (graph.edges.empty() || programs.edges.size() != graph.edges.size() || programs.copies.size() != graph.edges.size()) return fail("a placement needs the programs of a track graph");
+	if (fixed != nullptr) {
+		if (fixed->m.size() != graph.edges.size() || fixed->corner.size() != graph.edges.size()) return fail("the choices do not fit the programs of this track graph");
+		for (size_t e = 0; e < graph.edges.size(); e++) {
+			if (fixed->m[e].size() != programs.edges[e].size() || fixed->corner[e].size() != programs.edges[e].size()) return fail("the choices do not fit the programs of this track graph");
+		}
+	}
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+	const int n = static_cast<int>(slots.size());
+	auto group_of = [&](int slot) -> const JunctionLaneGroup & { return topology.groups[slots[slot].group]; };
+	const std::vector<int> row_of = JunctionSlotRows(topology, paths, error);
+	if (row_of.empty()) return JunctionTrackPlacement{};
+	const int rows = static_cast<int>(order.rows.size());
+	const uint32_t edge_count = static_cast<uint32_t>(graph.edges.size());
+	const uint32_t NO_ROW = Step::NO_ROW;
+	auto end_level = [&](const JunctionTrackEnd &end) {
+		if (end.node) return order.node_level[end.index];
+		return group_of(end.index).main ? 2 * row_of[end.index] + 1 : 2 * rows + 1;
+	};
+	auto is_row_edge = [&](uint32_t e) {
+		const int level = end_level(graph.edges[e].from);
+		return level == end_level(graph.edges[e].to) && level % 2 == 1;
+	};
+	auto is_row_node = [&](const JunctionTrackEnd &end) { return end.node && order.node_level[end.index] % 2 == 1; };
+	auto row_of_node = [&](uint32_t node) { return (order.node_level[node] - 1) / 2; };
+
+	/* Headings: 0 north, 1 east, 2 south, 3 west. */
+	static constexpr int VX[4] = {0, 1, 0, -1};
+	static constexpr int VY[4] = {-1, 0, 1, 0};
+	std::vector<bool> east(rows, true);
+	for (int s = 0; s < n; s++) {
+		if (group_of(s).main && group_of(s).in) east[row_of[s]] = group_of(s).side == JunctionSide::W;
+	}
+
+	/* Stack items and rows. */
+	const int items = static_cast<int>(structure.stack.size());
+	std::vector<RowItems> row_items;
+	for (int r = 0; r < rows; r++) row_items.push_back(FindRowItems(structure.stack, r));
+	std::vector<int> row_first(rows, -1), row_last(rows, -1);
+	for (int i = 0; i < items; i++) {
+		const JunctionTrackStackItem &item = structure.stack[i];
+		if (row_first[item.row] < 0) row_first[item.row] = i;
+		row_last[item.row] = i;
+	}
+
+	/* The roles of the edges, from the graph and the programs (not from a row index). */
+	auto IsInEdge = [&](uint32_t e) { return JunctionIsInEdge(graph, order, programs, e); };
+	auto IsOutEdge = [&](uint32_t e) { return JunctionIsOutEdge(graph, order, programs, e); };
+	auto IsLegEdge = [&](uint32_t e) { return JunctionIsLegEdge(graph, order, e); };
+	auto IsDoubledEdge = [&](uint32_t e) { return JunctionIsDoubledEdge(programs, e); };
+
+	/* The shape of every row: its in edge, leg and out edge, a lookup filled here from the roles. */
+	std::vector<uint32_t> in_edge(rows, NO_ROW), leg_edge(rows, NO_ROW), out_edge(rows, NO_ROW);
+	for (uint32_t e = 0; e < edge_count; e++) {
+		const JunctionTrackEdge &edge = graph.edges[e];
+		if (IsInEdge(e)) {
+			if (in_edge[(order.node_level[edge.to.index] - 1) / 2] != NO_ROW) return fail("a lane other than in, one leg, out is not ruled yet");
+			in_edge[(order.node_level[edge.to.index] - 1) / 2] = e;
+		} else if (IsOutEdge(e)) {
+			if (out_edge[(order.node_level[edge.from.index] - 1) / 2] != NO_ROW) return fail("a lane other than in, one leg, out is not ruled yet");
+			out_edge[(order.node_level[edge.from.index] - 1) / 2] = e;
+		} else if (IsLegEdge(e)) {
+			if (leg_edge[(order.node_level[edge.from.index] - 1) / 2] != NO_ROW) return fail("a lane other than in, one leg, out is not ruled yet");
+			leg_edge[(order.node_level[edge.from.index] - 1) / 2] = e;
+		}
+	}
+	for (int r = 0; r < rows; r++) {
+		if (in_edge[r] == NO_ROW || leg_edge[r] == NO_ROW || out_edge[r] == NO_ROW || row_items[r].lane == NO_ROW) return fail("a lane other than in, one leg, out is not ruled yet");
+	}
+	std::vector<std::vector<int>> bridges_of(edge_count);
+	for (size_t b = 0; b < structure.bridges.size(); b++) bridges_of[structure.bridges[b].edge].push_back(static_cast<int>(b));
+
+	/* The curve size and the rule constants. */
+	const int cl = spec.curve_limit ? static_cast<int>(DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl)) : 2;
+	int h = std::min(2 * static_cast<int>(spec.tl) - 1, std::max(2, cl));
+	if (h % 2 == 0) h++;
+	const int k = (h - 1) / 2;
+	const int prio = spec.prio_tiles;
+	/* The prio element's coverage in tiles: joins at even offsets 0..even_prio upstream of the joiner merge (DESIGN-G1 §12.4, RECON-prio-element §3). */
+	const int even_prio = prio + (prio & 1);
+	/* Not checked here, left to G1c(ii-b), whose render tests (no conflicting track bits) catch them: the band-layer slices (DESIGN-G1 §10.8) and a vertical edge meeting a side track. */
+
+	/* The raster of a bend: its half pieces' tiles relative to the first. A hand of +1 is a clockwise turn. */
+	auto bend_tiles = [&](int heading, int hand, int halves, bool corner) {
+		const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, halves, corner)});
+		std::vector<TileIndexDiffC> result;
+		if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != halves + 2) return result;
+		for (int i = 1; i <= halves; i++) {
+			result.push_back({static_cast<int16_t>(raster.pieces[i].tile.x - raster.pieces[1].tile.x), static_cast<int16_t>(raster.pieces[i].tile.y - raster.pieces[1].tile.y)});
+		}
+		return result;
+	};
+
+	/* Points: a variable in the X system and in the Y system. Point 0 is the box's north-west corner. */
+	int pt_count = 1;
+	auto new_pt = [&]() { return pt_count++; };
+	std::vector<int> item_pt(items), node_pt(graph.nodes.size()), port_pt(n);
+	for (int &p : item_pt) p = new_pt();
+	for (int &p : node_pt) p = new_pt();
+	for (int &p : port_pt) p = new_pt();
+	const int xe_pt = new_pt(); // The E ports' column.
+	const int se_pt = new_pt(); // The S edge's row.
+
+	/* The chains of the edges that are not rows: elements in travel order. */
+	struct Elem {
+		/**
+		 * Tile: one tile (a node, a port or an edge's own point). Corner: a quarter turn. SBend: a sideways step, vertical (size from the columns) or, on a row edge, horizontal (size |item row - its first row| from the rows, rule of the lane change).
+		 * Heads: a Y-axis bridge's two heads. Fan (R2): the port stub's S-bend between the port row and an item row, size |port row - item row| from the port rows, 0 allowed (no tiles, first and last at one column).
+		 * HeadsPair (R2): the near and far head of a doubled row bridge on one copy's row; copy 1's heads are copy 0's plus the stagger u (D118, D145), a rule of the row relations, not of the element.
+		 * Prio (RW6): the prio element on the row of its Prio item (index): a straight run of tiles from first to last (the joiner merge's column, which it ends on), even_prio steps long. It is the last element of the leg's chain, after the end tile, and no track of the chain: the walks along the chain stop before it.
+		 */
+		enum class K : uint8_t { Tile, Corner, SBend, Heads, Fan, HeadsPair, Prio } k = K::Tile;
+		int first = 0;
+		int last = 0;
+		int tok = -1;
+		int hin = 0;
+		int hout = 0;
+		int hand = 0;
+		bool joiner_div = false; ///< A Corner from a band split: its size comes from the rows (F4).
+		bool free_m = false; ///< A vertical S-bend: its size comes from the columns.
+		int m = 1;
+		int cross = -1; ///< Heads: the crossed edge.
+		uint32_t index = NO_ROW; ///< The stack item the token ends on.
+		int slot = -1; ///< Row edges: the port slot of a port Tile or a Fan.
+		bool port_first = false; ///< A Fan: it starts on the port row (an in edge's), else it ends on it.
+		std::vector<TileIndexDiffC> offs;
+	};
+	std::vector<std::vector<Elem>> chain(edge_count);
+	std::vector<std::vector<Elem>> chain_copy(edge_count); ///< Copy 1 of a doubled row leg: SBend, then its heads.
+	/* A doubled leg's elements by their tokens (R9, R11): the k-th bridge's heads of a chain, and its S-bend of a lane role. */
+	auto nth_heads = [](const std::vector<Elem> &elems, size_t k) -> const Elem & {
+		for (const Elem &el : elems) {
+			if (el.k == Elem::K::HeadsPair && k-- == 0) return el;
+		}
+		return elems.front();
+	};
+	auto lane_bend = [&](uint32_t e, const std::vector<Elem> &elems, Step::Role role) -> const Elem & {
+		const std::vector<Step> &program = &elems == &chain[e] ? programs.edges[e] : programs.copies[e];
+		for (const Elem &el : elems) {
+			if (el.k == Elem::K::SBend && program[el.tok].role == role) return el;
+		}
+		return elems.front();
+	};
+	for (uint32_t e = 0; e < edge_count; e++) {
+		if (is_row_edge(e)) continue;
+		const JunctionTrackEdge &edge = graph.edges[e];
+		const std::vector<Step> &program = programs.edges[e];
+		const int start = edge.from.node ? node_pt[edge.from.index] : port_pt[edge.from.index];
+		const int stop = edge.to.node ? node_pt[edge.to.index] : port_pt[edge.to.index];
+		int cur = edge.kind == JunctionTrackEdge::Kind::In ? 0 : (edge.kind == JunctionTrackEdge::Kind::Out ? 2 : (is_row_node(edge.from) ? (east[row_of_node(edge.from.index)] ? 1 : 3) : 0));
+		const bool from_band_split = edge.from.node && order.node_level[edge.from.index] % 2 == 0 && graph.nodes[edge.from.index].split;
+		const bool to_merge = edge.to.node && !graph.nodes[edge.to.index].split;
+		std::vector<Elem> &elems = chain[e];
+		Elem begin;
+		begin.first = begin.last = start;
+		begin.hin = begin.hout = cur;
+		elems.push_back(begin);
+		for (size_t t = 0; t < program.size(); t++) {
+			const Step &step = program[t];
+			Elem el;
+			el.tok = static_cast<int>(t);
+			el.hin = cur;
+			if (step.kind == StepKind::Corner || step.kind == StepKind::SBend) {
+				el.k = step.kind == StepKind::Corner ? Elem::K::Corner : Elem::K::SBend;
+				el.hand = step.hand;
+				el.index = step.index;
+				el.hout = step.kind == StepKind::Corner ? (cur + step.hand + 4) % 4 : cur;
+				el.first = t == 0 && edge.from.node ? start : new_pt();
+				el.last = t + 1 == program.size() && edge.to.node && to_merge && step.kind == StepKind::SBend ? stop : new_pt();
+				el.joiner_div = step.kind == StepKind::Corner && t == 0 && from_band_split;
+				el.free_m = step.kind == StepKind::SBend && (cur == 0 || cur == 2);
+				if (step.kind == StepKind::SBend && t == 0 && edge.from.node && !from_band_split) el.first = new_pt();
+				cur = el.hout;
+			} else if (step.kind == StepKind::Over || step.kind == StepKind::Tunnel) {
+				/* A tunnel's portals are the heads of a single bridge (D220). */
+				if (bridges_of[e].size() != 1 || structure.bridges[bridges_of[e][0]].doubled || structure.bridges[bridges_of[e][0]].crossed.size() != 1) return fail("a bridge over several band crossings is not ruled yet");
+				const int b = bridges_of[e][0];
+				el.k = Elem::K::Heads;
+				el.first = new_pt();
+				el.last = new_pt();
+				el.hout = cur;
+				el.cross = static_cast<int>(structure.bridges[b].crossed[0]);
+			} else {
+				continue;
+			}
+			elems.push_back(el);
+		}
+		Elem finish;
+		finish.first = finish.last = stop;
+		finish.hin = finish.hout = cur;
+		elems.push_back(finish);
+	}
+
+	/* The solutions. */
+	struct Cons {
+		int v;
+		int u;
+		int k;
+		uint32_t reason; ///< Index into 'reasons'.
+	};
+	std::vector<Cons> cons;
+	std::vector<JunctionPlacementReason> reasons;
+	/* A terrain fact of the X phase: a domain of columns for a point, or a run from point v to point u that must not cover both the column columns[0] and the column columns[1]. */
+	struct FactCons {
+		int v;
+		int u; ///< -1 for a domain.
+		std::vector<int> columns;
+		uint32_t reason; ///< Index into 'reasons'.
+	};
+	std::vector<FactCons> fact_cons;
+	std::map<uint32_t, std::string> notes; ///< Per reason of a fact, the tiles it names, for the error text.
+	std::vector<std::array<int, 6>> group_tiles; ///< Per lazy note of kind 3: the row and the first (up to four) blocked tiles' columns of a group, count first: (count, y, x0..x3).
+	std::vector<std::array<int, 3>> lazy_notes; ///< Per reason index, (kind, x, y) of a note formatted only when a failure reports it: 1 a blocked tile, 2 a height step.
+	JunctionPlacementReason why_now; ///< The reason of the relations added now (DESIGN-G1 §14.4).
+	auto why = [&](const char *rule, uint32_t edge = UINT32_MAX, uint32_t node = UINT32_MAX, int row = -1) { why_now = JunctionPlacementReason{rule, edge, node, static_cast<int32_t>(row)}; };
+	int phase = 0; // 0: X, 1: Y.
+	auto ge = [&](int axis, int v, int u, int c) {
+		if (axis != phase) return;
+		assert(why_now.rule != nullptr);
+		if (reasons.empty() || reasons.back().rule != why_now.rule || reasons.back().edge != why_now.edge || reasons.back().node != why_now.node || reasons.back().row != why_now.row) reasons.push_back(why_now);
+		cons.push_back({v, u, c, static_cast<uint32_t>(reasons.size() - 1)});
+	};
+	auto eq = [&](int axis, int v, int u, int c) { ge(axis, v, u, c); ge(axis, u, v, -c); };
+	std::vector<int> vx, vy;
+	std::string build_why;
+	bool rows_known = false; // False in the first pass, which only gives the S-bends' first sizes.
+	/** A doubled bridge's crosser tiles on its two rows, as (point, column offset) in the copy-0 heads' frame: the heads hug the outermost by the flat solve's order (D217). */
+	struct HugCandidate {
+		int west;
+		int east;
+		uint32_t edge;
+		int row;
+		std::vector<std::pair<int, int>> tiles;
+	};
+	std::vector<HugCandidate> hugs;
+	/* Modes of a build (D217): the flat state has no floors, no clearance and, in X, only the relations; clearance relations of the Y phase come from the flat state; an illegal occupancy group is a placement failure. */
+	bool floors_off = false, relations_only = false, skip_clearance = false, occupancy_failed = false;
+	/** One bridge's middle line: a Y-axis bridge's column variable and its two heads' points, or an X-axis bridge's row variable and its heads' columns. */
+	struct BridgeLine {
+		int bridge;
+		uint32_t edge;
+		bool x_axis;
+		int a, b; ///< The heads' points.
+		int line; ///< The point whose column (Y-axis) or row (X-axis) is the line.
+	};
+	struct HeadRef {
+		int bridge;
+		uint32_t edge;
+		int xpt, ypt; ///< The points whose column and row are the head's.
+	};
+	struct ClearanceY {
+		int v, u;
+		uint32_t edge_b, edge_h;
+	};
+	std::vector<ClearanceY> clear_y;
+	std::vector<JunctionPlacementReason> failure; ///< The explanation chain of the last failed solve.
+	std::vector<int> fan_m(edge_count, 0);
+	std::vector<int> port_row(n, 0);
+	/** A row change of kinds 1-4 (DESIGN-G1 §14.5, D215): the point its bend starts at, whether its feature lies toward larger columns, and for a fan the edge whose fan size must be nonzero. */
+	struct RowChange {
+		int anchor;
+		int feature; ///< The point of the feature it serves.
+		bool larger;
+		uint32_t fan_edge;
+		uint32_t edge;
+		int row;
+		int token; ///< The token of the edge's program (copy's program for copy 1) the change belongs to; with edge and copy it is the change's key (R2).
+		int copy;
+	};
+	std::vector<RowChange> row_changes;
+	auto solve = [&](std::vector<int> &val) {
+		/* A least solution is a longest path, so no point lies beyond the sum of the positive constants; a larger lo is a positive cycle. */
+		int bound = 1;
+		for (const Cons &cn : cons) bound += std::max(cn.k, 0);
+		/* Facts can push points across the whole snapshot (DESIGN-G1 §14.4). */
+		if (facts != nullptr && phase == 0) bound = std::max(bound, facts->MaxX() - offset.x + 1);
+		JunctionPositions positions(pt_count, 0, bound);
+		reasons.push_back(JunctionPlacementReason{"origin"});
+		bool ok = positions.RestrictRange(0, 0, 0, static_cast<uint32_t>(reasons.size() - 1));
+		for (const Cons &cn : cons) {
+			if (!ok) break;
+			ok = positions.AddDifference(cn.v, cn.u, cn.k, cn.reason);
+		}
+		for (const FactCons &fc : fact_cons) {
+			if (!ok) break;
+			ok = fc.u < 0 ? positions.RestrictDomain(fc.v, fc.columns, fc.reason) : positions.AddAvoid(fc.v, fc.u, fc.columns[0], fc.columns[1], fc.reason);
+		}
+		if (ok && phase == 0 && rows_known) {
+			/* The D215 objective (DESIGN-G1 §14.5): with every other point at its least column, each row change whose feature lies toward larger columns moves as far as the relations and facts allow. The tokens' rigid groups are the points tied by exact relations. */
+			std::map<std::pair<int, int>, int> most;
+			for (const Cons &cn : cons) {
+				const auto [found, added] = most.emplace(std::make_pair(cn.v, cn.u), cn.k);
+				if (!added) found->second = std::max(found->second, cn.k);
+			}
+			std::vector<int> group(pt_count);
+			std::iota(group.begin(), group.end(), 0);
+			auto root = [&](int p) {
+				while (group[p] != p) p = group[p] = group[group[p]];
+				return p;
+			};
+			for (const auto &[pair, k] : most) {
+				const auto back = most.find({pair.second, pair.first});
+				if (back != most.end() && back->second == -k) group[root(pair.first)] = root(pair.second);
+			}
+			/* A group may not hold a port, the origin or the box's edges; it may hold a node only when that node is the feature being pushed. */
+			std::vector<bool> fixed_point(pt_count, false), node_point(pt_count, false);
+			fixed_point[0] = fixed_point[xe_pt] = fixed_point[se_pt] = true;
+			for (const int p : port_pt) fixed_point[p] = true;
+			for (const int p : node_pt) node_point[p] = true;
+			/* First the tokens whose feature lies toward larger columns move to it; then, for the others, the feature's group moves toward the token (an eastbound out fan stays at its port and its joiner merge comes to it). */
+			/* A token held back by another still short of its own feature goes on in the next round; columns only grow, so the rounds end. */
+			for (bool pushed = true; pushed;) {
+			pushed = false;
+			for (const bool push_feature : {false, true}) {
+				for (const RowChange &change : row_changes) {
+					if (change.larger == push_feature || (change.fan_edge != UINT32_MAX && fan_m[change.fan_edge] == 0)) continue;
+					const int moved = push_feature ? change.feature : change.anchor;
+					const int moved_root = root(moved);
+					bool tied_to_fixed = false;
+					for (int p = 0; p < pt_count; p++) tied_to_fixed |= root(p) == moved_root && (fixed_point[p] || (node_point[p] && !(push_feature && p == change.feature)));
+					if (tied_to_fixed) continue;
+					const size_t mark = positions.Mark();
+					bool held = true;
+					for (int p = 0; p < pt_count && held; p++) {
+						if (root(p) != moved_root) held = positions.RestrictRange(p, positions.Lo(p), positions.Lo(p));
+					}
+					const int up = held ? positions.Up(moved) : positions.Lo(moved);
+					positions.Undo(mark);
+					if (up == positions.Lo(moved)) continue;
+					reasons.push_back(JunctionPlacementReason{"next to feature", change.edge, UINT32_MAX, change.row});
+					const size_t before = positions.Mark();
+					if (!positions.RestrictRange(moved, up, up, static_cast<uint32_t>(reasons.size() - 1))) positions.Undo(before); else pushed = true;
+				}
+			}
+			}
+		}
+		if (!ok) {
+			std::string chain_text;
+			failure.clear();
+			for (uint32_t index : positions.Explain()) {
+				const JunctionPlacementReason &reason = reasons[index];
+				failure.push_back(reason);
+				std::string parts;
+				if (reason.edge != UINT32_MAX) parts += fmt::format("edge {}", reason.edge);
+				if (reason.node != UINT32_MAX) parts += fmt::format("{}node {}", parts.empty() ? "" : ", ", reason.node);
+				if (reason.row >= 0) parts += fmt::format("{}row {}", parts.empty() ? "" : ", ", reason.row);
+				const auto note = notes.find(index);
+				std::string note_text = note == notes.end() ? std::string() : " " + note->second;
+				if (note == notes.end() && index < lazy_notes.size() && lazy_notes[index][0] == 1) note_text = fmt::format(" [blocked tile ({},{})]", lazy_notes[index][1], lazy_notes[index][2]);
+				if (note == notes.end() && index < lazy_notes.size() && lazy_notes[index][0] == 3) {
+					const std::array<int, 6> &named = group_tiles[lazy_notes[index][1]];
+					std::string tiles;
+					for (int i = 0; i < named[0]; i++) tiles += fmt::format("{}({},{})", tiles.empty() ? "" : " ", named[2 + i], named[1]);
+					note_text = " [blocked tile " + tiles + "]";
+				}
+				if (note == notes.end() && index < lazy_notes.size() && lazy_notes[index][0] == 2) note_text = fmt::format(" [height step ({},{}) to ({},{})]", lazy_notes[index][1], lazy_notes[index][2], lazy_notes[index][1] + 1, lazy_notes[index][2]);
+				chain_text += fmt::format("{}{}{}{}", chain_text.empty() ? "" : " <- ", reason.rule, parts.empty() ? "" : " (" + parts + ")", note_text);
+			}
+			if (error != nullptr) *error = "the placement rules contradict each other: " + chain_text;
+			return false;
+		}
+		val.resize(pt_count);
+		for (int i = 0; i < pt_count; i++) val[i] = positions.Lo(i);
+		return true;
+	};
+	auto solve_failed = [&]() {
+		JunctionTrackPlacement result;
+		result.why = failure;
+		return result;
+	};
+	/* A relation along a heading: coord(next) - coord(prev) in the heading's sense >= d (= d when exact), no relation across. */
+	auto along = [&](int heading, int next, int prev, int d, bool exact) {
+		const int axis = VX[heading] != 0 ? 0 : 1;
+		const int sign = VX[heading] + VY[heading];
+		if (sign > 0) {
+			if (exact) eq(axis, next, prev, d); else ge(axis, next, prev, d);
+		} else {
+			if (exact) eq(axis, prev, next, d); else ge(axis, prev, next, d);
+		}
+	};
+	auto run = [&](int heading, int next, int prev, int d, bool exact) {
+		along(heading, next, prev, d, exact);
+		eq(VX[heading] != 0 ? 1 : 0, next, prev, 0);
+	};
+
+	/* The size of every bend, refreshed from the rows and columns. */
+	auto refresh = [&](bool rows_known) {
+		for (uint32_t e = 0; e < edge_count; e++) {
+			for (std::vector<Elem> *elems : {&chain[e], &chain_copy[e]}) {
+				for (Elem &el : *elems) {
+					if (el.k == Elem::K::Fan) {
+						/* The fan's size is the distance of the port row to its item row, 0 until the port rows are set (the rows are known then). */
+						el.m = fan_m[e];
+						el.offs.clear();
+						if (el.m != 0) {
+							const int y_item = vy[item_pt[el.index]];
+							const int y_port = port_row[el.slot];
+							el.hand = (((el.port_first ? y_item - y_port : y_port - y_item) > 0) == (el.hin == 1)) ? 1 : -1;
+							el.offs = bend_tiles(el.hin, el.hand, 2 * el.m, false);
+						}
+					} else if (el.k == Elem::K::Corner) {
+						const int kk = el.joiner_div && rows_known ? std::abs(vy[el.first] - vy[el.last]) : k;
+						el.offs = bend_tiles(el.hin, el.hand, 2 * kk + 1, true);
+					} else if (el.k == Elem::K::SBend) {
+						/* A horizontal S-bend, of a row edge or a joiner's arrival, is sized by the rows it joins (rule of the lane change); known with the rows. */
+						if (is_row_edge(e)) {
+							el.m = rows_known ? std::abs(vy[item_pt[el.index]] - vy[el.first]) : 0;
+						} else if (VX[el.hin] != 0 && el.index != NO_ROW) {
+							el.m = rows_known ? std::abs(vy[item_pt[el.index]] - vy[el.first]) : 1; // A bend of a chain that is no row keeps one row until the rows are known.
+						}
+						el.offs.clear();
+						if (el.m != 0) el.offs = bend_tiles(el.hin, el.hand, 2 * el.m, false);
+					}
+				}
+			}
+		}
+	};
+
+	/* The notation rows of the W and E sides. */
+	std::vector<int> notation(n, -1);
+	for (const JunctionSide side : {JunctionSide::W, JunctionSide::E}) {
+		std::vector<int> side_slots;
+		for (int s = 0; s < n; s++) {
+			if (group_of(s).side == side) side_slots.push_back(s);
+		}
+		if (side == JunctionSide::E) std::reverse(side_slots.begin(), side_slots.end());
+		int row = 0;
+		for (size_t i = 0; i < side_slots.size(); i++) {
+			if (i > 0 && slots[side_slots[i]].group != slots[side_slots[i - 1]].group) row++;
+			notation[side_slots[i]] = row++;
+		}
+	}
+	/* The stack item of an edge's fan: the first Fan token of an in edge's program, the last of an out edge's (R3). */
+	auto fan_item = [&](uint32_t e) -> uint32_t {
+		if (!IsInEdge(e) && !IsOutEdge(e)) return NO_ROW;
+		return programs.edges[e][FanTokenOf(programs, e, IsInEdge(e))].index;
+	};
+	/* The row of the node an in or out edge meets: the item of the token whose element ends at it (an in edge's last token that carries an item) or starts at it (an out edge's first). */
+	auto node_item = [&](uint32_t e) -> uint32_t {
+		const std::vector<Step> &program = programs.edges[e];
+		if (graph.edges[e].to.node) {
+			for (size_t t = program.size(); t-- > 0;) {
+				if (program[t].index != NO_ROW) return program[t].index;
+			}
+		} else {
+			for (const Step &token : program) {
+				if (token.index != NO_ROW) return token.index;
+			}
+		}
+		return NO_ROW;
+	};
+	auto edge_port = [&](uint32_t e) { return graph.edges[e].from.node ? graph.edges[e].to.index : graph.edges[e].from.index; };
+
+	/* The row edges' chains, one builder for every row edge (RW4a): a chain is its start tile, one element per token of its program in order (a Fan token a Fan, an S-bend token an S-bend, an Over token the heads of that bridge), its end tile. A doubled leg's second chain is built from copy 1's tokens the same way. Every element takes its points from new_pt() as it is built, in chain order. */
+	for (uint32_t e = 0; e < edge_count; e++) {
+		if (!is_row_edge(e)) continue;
+		const JunctionTrackEdge &edge = graph.edges[e];
+		const int r = (end_level(edge.from) - 1) / 2;
+		const int heading = east[r] ? 1 : 3;
+		auto tile_elem = [&](int pt, int slot) {
+			Elem el;
+			el.first = el.last = pt;
+			el.hin = el.hout = heading;
+			el.slot = slot;
+			return el;
+		};
+		const bool doubled = IsDoubledEdge(e);
+		if (doubled) {
+			/* R11 reads the lane split and merge S-bends by their role, so a doubled leg without them is still refused. */
+			const auto has_role = [](const std::vector<Step> &tokens, Step::Role role) {
+				return std::ranges::any_of(tokens, [&](const Step &token) { return token.kind == StepKind::SBend && token.role == role; });
+			};
+			if (!has_role(programs.edges[e], Step::Role::LaneMerge) || !has_role(programs.copies[e], Step::Role::LaneSplit)) return fail("a doubled leg without its lane split and merge is not ruled yet");
+		}
+		for (int c = 0; c < (doubled ? 2 : 1); c++) {
+			const std::vector<Step> &program = c == 0 ? programs.edges[e] : programs.copies[e];
+			std::vector<Elem> &elems = c == 0 ? chain[e] : chain_copy[e];
+			elems.push_back(edge.from.node ? tile_elem(node_pt[edge.from.index], -1) : tile_elem(port_pt[edge.from.index], edge.from.index));
+			bool fan_built = false;
+			uint32_t row_item = NO_ROW; ///< The stack item the line is on after the elements so far; NO_ROW before the first fan or S-bend.
+			for (size_t t = 0; t < program.size(); t++) {
+				const Step &step = program[t];
+				Elem el;
+				el.hin = el.hout = heading;
+				el.tok = static_cast<int>(t);
+				el.index = step.index;
+				if (step.kind == StepKind::Fan && !fan_built) {
+					/* The fan is at the end of the edge that is a port: first if the edge starts at the port, else last. */
+					fan_built = true;
+					el.k = Elem::K::Fan;
+					el.port_first = !edge.from.node;
+					el.slot = el.port_first ? edge.from.index : edge.to.index;
+					el.first = new_pt();
+					el.last = new_pt();
+					row_item = step.index;
+				} else if (step.kind == StepKind::SBend) {
+					el.k = Elem::K::SBend;
+					el.hand = step.hand;
+					el.first = new_pt();
+					el.last = new_pt();
+					row_item = step.index;
+				} else if (step.kind == StepKind::Over && doubled) {
+					/* A bridge crosses one or several edges, one Over token each; its heads are one element, at the token of its first crossed edge, and its other Over tokens add none. */
+					const auto bridge_it = std::ranges::find_if(bridges_of[e], [&](int b) { return structure.bridges[b].crossed[0] == step.index; });
+					if (bridge_it == bridges_of[e].end()) {
+						if (std::ranges::any_of(bridges_of[e], [&](int b) { return std::ranges::find(structure.bridges[b].crossed, step.index) != structure.bridges[b].crossed.end(); })) continue;
+						return fail("an Over token of a row edge without a bridge is not ruled yet");
+					}
+					el.k = Elem::K::HeadsPair;
+					el.first = new_pt();
+					el.last = new_pt();
+					/* The row the heads lie on: the item of the last fan or S-bend before them, or, with none before, the row the start node is on, which no token of this chain names (the item the in edge ends on: RW3's in edge of the row). */
+					el.index = row_item != NO_ROW ? row_item : node_item(in_edge[r]);
+				} else {
+					return fail("a token of a row edge other than its fan, S-bends and bridges is not ruled yet");
+				}
+				elems.push_back(el);
+			}
+			elems.push_back(edge.to.node ? tile_elem(node_pt[edge.to.index], -1) : tile_elem(port_pt[edge.to.index], edge.to.index));
+			/* The leg ends at the joiner merge, upstream of which the prio element lies (D75, D87: on the Prio item's row, opposite the joiner). It is the leg's, not the out edge's: its tiles precede the merge along the heading. */
+			if (c == 0 && leg_edge[r] == e) {
+				for (int i = 0; i < items; i++) {
+					const JunctionTrackStackItem &item = structure.stack[i];
+					if (item.row != r || (item.kind != JunctionTrackStackItem::Kind::Prio && item.kind != JunctionTrackStackItem::Kind::PrioAndCopy)) continue;
+					Elem prio_el;
+					prio_el.k = Elem::K::Prio;
+					prio_el.hin = prio_el.hout = heading;
+					prio_el.index = static_cast<uint32_t>(i);
+					prio_el.first = new_pt();
+					prio_el.last = new_pt();
+					elems.push_back(prio_el);
+				}
+			}
+		}
+	}
+
+	/* The row changes of kinds 1-4 (briefs/P3b-every-row-change-leans.md, "The rule") in the objective's order: edges ascending, an edge's tokens ascending, its copies after them. Each leans toward the feature it serves; only one whose feature lies toward larger columns can move. */
+	for (uint32_t e = 0; e < edge_count; e++) {
+		if (is_row_edge(e)) {
+			const int r = (end_level(graph.edges[e].from) - 1) / 2;
+			const bool eastward = east[r];
+			for (int c = 0; c < (IsDoubledEdge(e) ? 2 : 1); c++) {
+				const std::vector<Elem> &elems = c == 0 ? chain[e] : chain_copy[e];
+				const std::vector<Step> &program = c == 0 ? programs.edges[e] : programs.copies[e];
+				for (size_t i = 0; i < elems.size(); i++) {
+					const Elem &el = elems[i];
+					if (el.k == Elem::K::Fan) {
+						/* Kind 1: a fan at the edge's start leans toward the node it ends at, with the travel; at its end, toward the node it starts at, against it. */
+						row_changes.push_back({el.first, node_pt[el.port_first ? graph.edges[e].to.index : graph.edges[e].from.index], el.port_first ? eastward : !eastward, e, e, r, el.tok, c});
+					} else if (el.k == Elem::K::SBend && program[el.tok].role == Step::Role::LaneMerge) {
+						row_changes.push_back({el.first, elems[i - 1].last, !eastward, UINT32_MAX, e, r, el.tok, c}); // Kind 3: the lane merge leans toward the element before it, against the travel.
+					} else if (el.k == Elem::K::SBend && program[el.tok].role == Step::Role::LaneSplit) {
+						row_changes.push_back({el.first, chain[e][1].first, eastward, UINT32_MAX, e, r, el.tok, c}); // Kind 2: the lane split leans toward the first element after the start of copy 0, with the travel.
+					}
+				}
+			}
+			continue;
+		}
+		if (!programs.copies[e].empty()) continue;
+		const std::vector<Step> &program = programs.edges[e];
+		for (const Elem &el : chain[e]) {
+			if (el.k != Elem::K::SBend || VX[el.hin] == 0) continue;
+			/* Kind 4: toward the node at the end of the edge when no emitting token follows, toward the one at its start when none precedes. */
+			bool before = false, after = false;
+			for (size_t t = 0; t < program.size(); t++) {
+				if (program[t].kind == StepKind::Under || program[t].kind == StepKind::Above || static_cast<int>(t) == el.tok) continue;
+				(static_cast<int>(t) < el.tok ? before : after) = true;
+			}
+			if (before == after) continue;
+			const JunctionTrackEnd &end = before ? graph.edges[e].to : graph.edges[e].from;
+			row_changes.push_back({el.first, end.node ? node_pt[end.index] : port_pt[end.index], VX[el.hin] * (before ? 1 : -1) > 0, UINT32_MAX, e, -1, el.tok, 0});
+		}
+	}
+
+
+	/* The objective's order is the graph's, not the points' (R2): by (edge, copy, token). */
+	std::ranges::stable_sort(row_changes, [](const RowChange &a, const RowChange &b) { return std::array<int, 3>{static_cast<int>(a.edge), a.copy, a.token} < std::array<int, 3>{static_cast<int>(b.edge), b.copy, b.token}; });
+
+	/* Symbolic tiles of an edge: an anchor point, a column offset, a row; in travel order. */
+	struct SymTile {
+		int pt;
+		int dx;
+		int y;
+	};
+	auto edge_tiles_of = [&](const std::vector<Elem> &elems) {
+		std::vector<SymTile> tiles;
+		for (size_t i = 0; i < elems.size(); i++) {
+			const Elem &el = elems[i];
+			if (el.k == Elem::K::Tile) {
+				tiles.push_back({el.first, 0, el.slot >= 0 ? port_row[el.slot] : vy[el.first]});
+			} else if (el.k == Elem::K::HeadsPair) {
+				tiles.push_back({el.first, 0, vy[el.first]});
+				tiles.push_back({el.last, 0, vy[el.last]});
+			} else if (el.k == Elem::K::Fan) {
+				/* The fan starts on the port row (an in edge's) or on its item row (an out edge's). */
+				const int y = el.port_first ? port_row[el.slot] : vy[item_pt[el.index]];
+				for (const TileIndexDiffC &o : el.offs) tiles.push_back({el.first, o.x, y + o.y});
+			} else if (el.k == Elem::K::Heads) {
+				const int step = vy[el.last] > vy[el.first] ? 1 : -1;
+				for (int y = vy[el.first]; y != vy[el.last] + step; y += step) tiles.push_back({el.first, 0, y});
+			} else {
+				for (const TileIndexDiffC &o : el.offs) tiles.push_back({el.first, o.x, vy[el.first] + o.y});
+			}
+			if (i + 1 < elems.size() && elems[i + 1].first != el.last && VX[el.hout] == 0) {
+				const int d = VY[el.hout];
+				for (int y = vy[el.last] + d; d > 0 ? y < vy[elems[i + 1].first] : y > vy[elems[i + 1].first]; y += d) tiles.push_back({el.last, 0, y});
+			}
+		}
+		return tiles;
+	};
+	auto edge_tiles = [&](uint32_t e) { return edge_tiles_of(chain[e]); };
+
+	/* The curves of every route (D217): per lane path and copy, in travel order, each curve as its bend's anchor point (the bend's first half tile), its hand and its element, and the route's units up to it in two forms. In the X form (rows known, one horizontal heading s per route) the units are xoff + 2 s (x[anchor] - x[the route's start]): along a horizontal stretch of that heading every column adds 2 units, a vertical stretch adds the fixed units of its rows, and a bend adds what its own pieces do. In the Y form (a segment of curves with only vertical runs between them, vertical heading sv) the units from the segment's first curve are yoff + 2 sv (y[anchor] - y[first anchor]). Row bends (fans, lane S-bends) lie between horizontal runs, so they have no segment (seg -1) and their curves pair in the X form only. */
+	struct SymCurve {
+		int pt;
+		int xoff;
+		int yoff;
+		int seg;
+		JunctionCurveHand hand;
+		uint32_t edge;
+		int row;
+	};
+	struct SymRoute {
+		size_t path = 0;
+		int copy = 0;
+		int start = 0; ///< The route's start point.
+		int sign = 1; ///< s.
+		std::vector<int> seg_sign; ///< Per segment, sv.
+		std::vector<SymCurve> curves;
+	};
+	auto doubled_edge = [&](uint32_t e) {
+		return std::ranges::any_of(bridges_of[e], [&](int b) { return structure.bridges[b].doubled; });
+	};
+	/* With numeric_y false (the Y phase) the rows are unknown: the X form is not made and the row bends are left out. */
+	std::map<std::tuple<int, int, int, bool>, JunctionRaster> bend_rasters; ///< The rasters of the bends the walk meets, by heading, hand, half pieces and corner.
+	auto sym_routes = [&](std::vector<SymRoute> &routes, bool numeric_y) {
+		/* A bend of the route: the anchor point and row of its first half tile, the heading it starts on, its hand, its half pieces. */
+		struct Bend {
+			int pt, y, heading, hand, halves;
+			bool corner;
+			uint32_t edge;
+			int row;
+			bool on_row;
+		};
+		routes.clear();
+		for (size_t p = 0; p < paths.size(); p++) {
+			const std::vector<uint32_t> &edges = graph.path_edges[p];
+			const JunctionSide side = group_of(paths[p].from).side;
+			if (side == JunctionSide::N) continue; // Not ruled yet (RenderJunctionTrackPlacement fails on it).
+			const int start_heading = side == JunctionSide::W ? 1 : side == JunctionSide::E ? 3 : 0;
+			const int start_y = !numeric_y ? 0 : (side == JunctionSide::S ? vy[port_pt[paths[p].from]] : port_row[paths[p].from]);
+			const bool has_doubled = std::ranges::any_of(edges, doubled_edge);
+			for (int c = 0; c < (has_doubled ? 2 : 1); c++) {
+				std::vector<Bend> bends;
+				std::vector<int> row_heading; ///< Per bend, the heading of the row edge crossed just before it, or -1.
+				int pending_row = -1;
+				for (uint32_t e : edges) {
+					const std::vector<Step> &tokens = c == 1 && doubled_edge(e) ? programs.copies[e] : programs.edges[e];
+					if (is_row_edge(e)) {
+						const int r = (end_level(graph.edges[e].from) - 1) / 2;
+						const int heading = east[r] ? 1 : 3;
+						pending_row = heading;
+						if (!numeric_y) continue;
+						row_heading.resize(bends.size(), -1);
+						/* Every bend token of the edge's chain, in travel order (R4, R5): the fan, an S-bend, a doubled leg's lane split and merge (copy 1's are in its own chain); a bridge's heads are no bend. */
+						for (size_t t = 0; t < tokens.size(); t++) {
+							for (const Elem &el : c == 1 && doubled_edge(e) ? chain_copy[e] : chain[e]) {
+								if (el.tok != static_cast<int>(t) || (el.k != Elem::K::Fan && el.k != Elem::K::SBend)) continue;
+								row_heading.resize(bends.size(), -1);
+								if (el.k == Elem::K::Fan) {
+									if (fan_m[e] == 0) continue;
+									const int y_fan = el.port_first ? port_row[el.slot] : vy[item_pt[el.index]];
+									const int y_far = el.port_first ? vy[item_pt[el.index]] : port_row[el.slot];
+									bends.push_back({el.first, y_fan, heading, ((y_far > y_fan) == (heading == 1)) ? 1 : -1, 2 * fan_m[e], false, e, r, true});
+								} else {
+									bends.push_back({el.first, vy[el.first], heading, el.hand, 2 * std::abs(vy[item_pt[el.index]] - vy[el.first]), false, e, r, true});
+								}
+							}
+						}
+						continue;
+					}
+					for (size_t t = 0; t < tokens.size(); t++) {
+						if (tokens[t].kind != StepKind::Corner && tokens[t].kind != StepKind::SBend) continue;
+						for (const Elem &el : chain[e]) {
+							if (el.tok != static_cast<int>(t)) continue;
+							row_heading.resize(bends.size(), -1);
+							row_heading.push_back(pending_row);
+							pending_row = -1;
+							bends.push_back({el.first, numeric_y ? vy[el.first] : 0, el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, -1, false});
+						}
+					}
+				}
+				row_heading.resize(bends.size(), -1);
+
+				/* Each bend's pieces: its curves with the units before them, the offsets of the axis piece before it and the closing axis piece from the first half tile, and the heading it leaves on. */
+				struct Pieces {
+					std::vector<std::pair<int, JunctionCurveHand>> curves; ///< Units from the start of the axis piece before the bend, hand.
+					int before_dx, before_dy, close_dx, close_dy, close_units, heading;
+				};
+				std::vector<Pieces> pieces;
+				for (const Bend &b : bends) {
+					auto cached = bend_rasters.find({b.heading, b.hand, b.halves, b.corner});
+					if (cached == bend_rasters.end()) cached = bend_rasters.emplace(std::make_tuple(b.heading, b.hand, b.halves, b.corner), RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[b.heading], JunctionBendMoves(b.hand, b.halves, b.corner)})).first;
+					const JunctionRaster &raster = cached->second;
+					if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != b.halves + 2) { build_why = "a bend of edge " + str(b.edge) + " has no raster"; return false; }
+					Pieces q{{}, raster.pieces[0].tile.x - raster.pieces[1].tile.x, raster.pieces[0].tile.y - raster.pieces[1].tile.y, raster.pieces.back().tile.x - raster.pieces[1].tile.x, raster.pieces.back().tile.y - raster.pieces[1].tile.y, 0, -1};
+					for (size_t i = 0; i < raster.pieces.size(); i++) {
+						if (i > 0) {
+							const DirDiff diff = DirDifference(TrackdirToDirection(raster.pieces[i - 1].trackdir), TrackdirToDirection(raster.pieces[i].trackdir));
+							if (diff == DirDiff::Left45 || diff == DirDiff::Right45) q.curves.emplace_back(q.close_units, diff == DirDiff::Left45 ? JunctionCurveHand::Left : JunctionCurveHand::Right);
+						}
+						if (i + 1 < raster.pieces.size()) q.close_units += raster.pieces[i].units;
+					}
+					for (int i = 0; i < 4; i++) {
+						if (JUNCTION_AXIS_TRACKDIR[i] == raster.pieces.back().trackdir) q.heading = i;
+					}
+					if (q.heading < 0) { build_why = "a bend of edge " + str(b.edge) + " does not end on an axis piece"; return false; }
+					pieces.push_back(std::move(q));
+				}
+
+				/* The one horizontal heading of the route up to its last bend (the X form's s). */
+				SymRoute route;
+				route.path = p;
+				route.copy = c;
+				route.start = port_pt[paths[p].from];
+				route.sign = 0;
+				auto note = [&](int heading) { return VX[heading] == 0 || (route.sign == 0 ? (route.sign = VX[heading]) != 0 : route.sign == VX[heading]); };
+				bool one_heading = note(start_heading);
+				for (size_t i = 0; i + 1 < pieces.size(); i++) one_heading = one_heading && note(pieces[i].heading);
+				if (!one_heading) { build_why = "path " + str(static_cast<int>(p)) + " has two horizontal headings"; return false; }
+				if (route.sign == 0) route.sign = 1;
+
+				/* The segments: a bend on a row, or one that follows a horizontal run, starts one; a bend that follows a vertical run joins it. Its vertical heading sv is that of its first vertical run. */
+				std::vector<int> seg_of(bends.size(), -1);
+				{
+					int h = start_heading, cur = -1;
+					for (size_t i = 0; i < bends.size(); i++) {
+						const int in_heading = row_heading[i] >= 0 ? row_heading[i] : h;
+						if (bends[i].on_row) {
+							cur = -1;
+						} else {
+							if (cur < 0 || VX[in_heading] != 0) {
+								route.seg_sign.push_back(0);
+								cur = static_cast<int>(route.seg_sign.size()) - 1;
+							} else if (route.seg_sign[cur] == 0) {
+								route.seg_sign[cur] = VY[in_heading];
+							} else if (route.seg_sign[cur] != VY[in_heading]) {
+								build_why = "a segment of path " + str(static_cast<int>(p)) + " has two vertical headings";
+								return false;
+							}
+							seg_of[i] = cur;
+						}
+						h = pieces[i].heading;
+						if (!bends[i].on_row && VX[h] != 0) cur = -1;
+					}
+				}
+
+				/* w: the units at the route's current piece less 2 s times its columns from the start (X form). v: the same for the segment, less 2 sv times its rows (Y form, with the anchors' rows symbolic). */
+				int w = 0, y = start_y, heading = start_heading, v = 0, last_seg = -2;
+				for (size_t i = 0; i < bends.size(); i++) {
+					const Bend &b = bends[i];
+					const Pieces &q = pieces[i];
+					const int in_heading = row_heading[i] >= 0 ? row_heading[i] : heading;
+					if (numeric_y && VX[in_heading] == 0) {
+						const int run = (b.y + q.before_dy - y) * VY[in_heading];
+						if (run < 0) { build_why = "a vertical run before edge " + str(b.edge) + " is negative"; return false; }
+						w += 2 * run;
+					}
+					if (seg_of[i] != last_seg) v = 0;
+					last_seg = seg_of[i];
+					const int ysign = seg_of[i] < 0 ? 0 : (route.seg_sign[seg_of[i]] != 0 ? route.seg_sign[seg_of[i]] : 1);
+					for (const auto &[units, hand] : q.curves) route.curves.push_back({b.pt, numeric_y ? w + 2 * route.sign * q.before_dx + units : 0, v + 2 * ysign * q.before_dy + units, seg_of[i], hand, b.edge, b.row});
+					w += 2 * route.sign * (q.before_dx - q.close_dx) + q.close_units;
+					v += 2 * ysign * (q.before_dy - q.close_dy) + q.close_units;
+					y = b.y + q.close_dy;
+					heading = q.heading;
+				}
+				routes.push_back(std::move(route));
+			}
+		}
+		return true;
+	};
+
+	/**
+	 * One piece of a row's chains in the walk of the occupancy and the facts (R5): a tile (a port's, a bridge head), a run of straight tiles strictly between two points, or a bend at a point. The row of a piece is a number (a port's row and a fan's ends are not points' rows).
+	 * copy: 0 or 1 for a doubled leg's copies, -1 for the part both share.
+	 */
+	struct RowPiece {
+		enum class T : uint8_t { Tile, Run, Bend } t;
+		int a, b; ///< Tile, Bend: the anchor point a. Run: from a to b.
+		int y;
+		int copy;
+		uint32_t edge;
+		int hand, halves;
+		bool port; ///< A port's tile (it has no fact: the port's column is fixed).
+		bool fact; ///< A bridge head's tile (a straight tile fact).
+	};
+	/* Row r's pieces in order: the in edge, the leg, the out edge, each read from its chain(s). */
+	auto row_pieces = [&](int r) {
+		std::vector<RowPiece> pieces;
+		/* An edge's chains read in travel order, element by element: its tiles at the ports, its fan, S-bends and heads, the runs between its elements (an empty fan has no run to its port). The copies of a doubled leg share one lane before the lane split and after the lane merge (copy -1): the run from the start tile to the split is shared and copy 0's run begins at the split; the run after the merge is shared and copy 1's run ends at the merge. */
+		auto walk = [&](uint32_t e) {
+			const int n_chains = IsDoubledEdge(e) ? 2 : 1;
+			const auto role_of = [&](int c, const Elem &el) { return el.k == Elem::K::SBend ? (c == 0 ? programs.edges[e] : programs.copies[e])[el.tok].role : Step::Role::None; };
+			const auto find_role = [&](int c, Step::Role role) -> const Elem * {
+				for (const Elem &el : c == 0 ? chain[e] : chain_copy[e]) {
+					if (role_of(c, el) == role) return &el;
+				}
+				return nullptr;
+			};
+			const Elem *split = n_chains == 2 ? find_role(1, Step::Role::LaneSplit) : nullptr;
+			const Elem *merge = n_chains == 2 ? find_role(0, Step::Role::LaneMerge) : nullptr;
+			for (int c = 0; c < n_chains; c++) {
+				const std::vector<Elem> &elems = c == 0 ? chain[e] : chain_copy[e];
+				for (size_t i = 0; i < elems.size(); i++) {
+					const Elem &el = elems[i];
+					int y_end = vy[el.last];
+					if (el.k == Elem::K::Tile) {
+						if (el.slot >= 0) {
+							y_end = port_row[el.slot];
+							pieces.push_back({RowPiece::T::Tile, el.first, 0, y_end, 0, e, 0, 0, true, false});
+						}
+					} else if (el.k == Elem::K::Fan) {
+						const int y_item = vy[item_pt[el.index]];
+						const int y_port = port_row[el.slot];
+						y_end = el.port_first ? y_item : y_port;
+						if (el.m != 0) pieces.push_back({RowPiece::T::Bend, el.first, 0, el.port_first ? y_port : y_item, 0, e, el.hand, static_cast<int>(el.offs.size()), false, false});
+					} else if (el.k == Elem::K::SBend) {
+						pieces.push_back({RowPiece::T::Bend, el.first, 0, vy[el.first], c, e, el.hand, static_cast<int>(el.offs.size()), false, false});
+					} else if (el.k == Elem::K::HeadsPair) {
+						pieces.push_back({RowPiece::T::Tile, el.first, 0, vy[el.first], c, e, 0, 0, false, true});
+						pieces.push_back({RowPiece::T::Tile, el.last, 0, vy[el.first], c, e, 0, 0, false, true});
+					}
+					if (i + 1 >= elems.size()) continue;
+					const Elem &next = elems[i + 1];
+					if (next.k == Elem::K::Prio) continue; // The prio element is no track of the chain (its tiles are read where the walk is used).
+					int a = el.last, b = next.first, copy = c;
+					if (split != nullptr && i == 0) {
+						if (c == 0) a = split->first;
+						else copy = -1;
+					}
+					if (merge != nullptr && c == 0 && el.k == Elem::K::SBend && &el == merge) copy = -1;
+					if (merge != nullptr && c == 1 && i + 2 == elems.size()) b = merge->last;
+					if (a == b) continue;
+					if ((el.k == Elem::K::Tile && el.slot >= 0 && next.k == Elem::K::Fan && next.m == 0) || (el.k == Elem::K::Fan && el.m == 0 && next.k == Elem::K::Tile && next.slot >= 0)) continue;
+					pieces.push_back({RowPiece::T::Run, a, b, y_end, copy, e, 0, 0, false, false});
+				}
+			}
+		};
+		walk(in_edge[r]);
+		walk(leg_edge[r]);
+		walk(out_edge[r]);
+		return pieces;
+	};
+
+	/* The tracks the routes build on each node's tile, and the headings of the routes that go straight through it (JunctionRoutesHeightsOk reads the union per tile): the piece of a route on its node's tile is the half that leaves or joins there, or an axis piece. */
+	std::vector<TrackBits> node_bits(graph.nodes.size());
+	std::vector<std::vector<int>> node_straight(graph.nodes.size());
+	auto compute_node_tracks = [&]() {
+		std::ranges::fill(node_bits, TrackBits{});
+		for (std::vector<int> &headings : node_straight) headings.clear();
+		std::map<std::pair<const Elem *, bool>, TrackBits> half_cache;
+		auto bend_half = [&](const Elem &el, bool last) {
+			const auto cached = half_cache.find({&el, last});
+			if (cached != half_cache.end()) return cached->second;
+			const size_t halves = el.offs.size();
+			const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[el.hin], JunctionBendMoves(el.hand, static_cast<int>(halves), el.k == Elem::K::Corner)});
+			const TrackBits half = !raster.error.empty() || raster.pieces.size() != halves + 2 ? TrackBits{} : TrackBits{TrackdirToTrack(raster.pieces[last ? halves : 1].trackdir)};
+			half_cache[{&el, last}] = half;
+			return half;
+		};
+		for (const std::vector<uint32_t> &edges : graph.path_edges) {
+			for (size_t i = 0; i + 1 < edges.size(); i++) {
+				if (!graph.edges[edges[i]].to.node) continue;
+				const uint32_t node = graph.edges[edges[i]].to.index;
+				const uint32_t e_in = edges[i];
+				const uint32_t e_out = edges[i + 1];
+				const Elem *leaving = nullptr;
+				const Elem *joining = nullptr;
+				if (!is_row_edge(e_out) && chain[e_out].size() > 2 && chain[e_out][1].first == chain[e_out][0].first && chain[e_out][1].k != Elem::K::Heads) leaving = &chain[e_out][1];
+				if (!is_row_edge(e_in) && chain[e_in].size() > 2 && chain[e_in][chain[e_in].size() - 2].last == chain[e_in].back().first && chain[e_in][chain[e_in].size() - 2].k != Elem::K::Heads) joining = &chain[e_in][chain[e_in].size() - 2];
+				if (leaving != nullptr) {
+					node_bits[node] = node_bits[node] | bend_half(*leaving, false);
+				} else if (joining != nullptr) {
+					node_bits[node] = node_bits[node] | bend_half(*joining, true);
+				} else {
+					const int heading = is_row_edge(e_out) ? (east[(end_level(graph.edges[e_out].from) - 1) / 2] ? 1 : 3) : chain[e_out][0].hout;
+					node_bits[node] = node_bits[node] | TrackBits{TrackdirToTrack(JUNCTION_AXIS_TRACKDIR[heading])};
+					if (std::ranges::find(node_straight[node], heading) == node_straight[node].end()) node_straight[node].push_back(heading);
+				}
+			}
+		}
+	};
+
+	/* The flat solve (D217): the least columns of the relations added so far, with no facts and no floors; false when they contradict each other. */
+	auto flat_solve = [&](std::vector<int> &val) {
+		int bound = 1;
+		for (const Cons &cn : cons) bound += std::max(cn.k, 0);
+		JunctionPositions positions(pt_count, 0, bound);
+		bool ok = positions.RestrictRange(0, 0, 0);
+		for (const Cons &cn : cons) {
+			if (!ok) break;
+			ok = positions.AddDifference(cn.v, cn.u, cn.k);
+		}
+		if (!ok) return false;
+		val.resize(pt_count);
+		for (int i = 0; i < pt_count; i++) val[i] = positions.Lo(i);
+		return true;
+	};
+
+	/** The half pieces of a bend as track bits, one per half tile as bend_tiles lists them; empty when the bend has no raster. */
+	auto bend_bits = [&](int heading, int hand, int halves, bool corner) {
+		auto cached = bend_rasters.find({heading, hand, halves, corner});
+		if (cached == bend_rasters.end()) cached = bend_rasters.emplace(std::make_tuple(heading, hand, halves, corner), RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, halves, corner)})).first;
+		const JunctionRaster &raster = cached->second;
+		std::vector<TrackBits> bits;
+		if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != halves + 2) return bits;
+		for (int i = 1; i <= halves; i++) bits.push_back(TrackBits{TrackdirToTrack(raster.pieces[i].trackdir)});
+		return bits;
+	};
+
+	/* The occupancy family (D217): unrelated tracks never share or touch a tile; two unrelated pieces on one tile are legal only when they share no track end on a tile edge. */
+	auto add_occupancy = [&](const std::vector<int> &flat, bool legality) -> bool {
+		/** One occupant of a row: the columns [left, right], each end a point and an offset, with the tracks of its tiles and what it belongs to. */
+		struct Occupant {
+			int row;
+			int lp, ldx, rp, rdx;
+			TrackBits bits;
+			uint32_t edge; ///< The graph edge, UINT32_MAX for a node's tile.
+			int copy; ///< 0 or 1, -1 for the part both copies share.
+			uint32_t node; ///< The node of a node's tile, else UINT32_MAX.
+			int footprint = 0; ///< A prio element's footprint: +1 when it lies downstream of its tile column (columns grow), -1 when downstream is lower; 0 for tracks.
+		};
+		std::map<int, std::vector<Occupant>> by_row;
+		auto flat_left = [&](const Occupant &o) { return flat[o.lp] + o.ldx; };
+		auto flat_right = [&](const Occupant &o) { return flat[o.rp] + o.rdx; };
+		auto add_tile = [&](int pt, int dx, int y, TrackBits bits, uint32_t edge, int copy) {
+			std::vector<Occupant> &row = by_row[y];
+			if (!row.empty() && row.back().edge == edge && row.back().copy == copy && row.back().node == UINT32_MAX && row.back().lp == pt && row.back().ldx == dx && row.back().rp == pt && row.back().rdx == dx) {
+				row.back().bits = row.back().bits | bits;
+				return;
+			}
+			row.push_back({y, pt, dx, pt, dx, bits, edge, copy, UINT32_MAX});
+		};
+		/* The tiles strictly between points a and b on row y, a before b in the sense sgn; a run with none at the flat solve is an empty interval (right = left - 1), which keeps its place in the order for the solves with floors. */
+		auto add_run = [&](int a, int b, int y, int sgn, uint32_t edge, int copy) {
+			by_row[y].push_back({y, sgn > 0 ? a : b, 1, sgn > 0 ? b : a, -1, TrackBits{Track::X}, edge, copy, UINT32_MAX});
+		};
+		auto add_bend = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t edge, int copy, bool skip_first, bool skip_last) {
+			const std::vector<TileIndexDiffC> offs = bend_tiles(heading, hand, halves, corner);
+			const std::vector<TrackBits> bits = bend_bits(heading, hand, halves, corner);
+			if (bits.size() != offs.size()) return;
+			for (size_t j = 0; j < offs.size(); j++) {
+				if ((skip_first && j == 0) || (skip_last && j + 1 == offs.size())) continue;
+				add_tile(pt, offs[j].x, y + offs[j].y, bits[j], edge, copy);
+			}
+		};
+		std::vector<uint32_t> node_of_pt(pt_count, UINT32_MAX);
+		for (uint32_t i = 0; i < node_pt.size(); i++) node_of_pt[node_pt[i]] = i;
+		for (uint32_t i = 0; i < node_pt.size(); i++) by_row[vy[node_pt[i]]].push_back({vy[node_pt[i]], node_pt[i], 0, node_pt[i], 0, node_bits[i], UINT32_MAX, 0, i});
+
+		/* The chains of the edges that are not rows. */
+		for (uint32_t e = 0; e < edge_count; e++) {
+			if (is_row_edge(e)) continue;
+			const std::vector<Elem> &elems = chain[e];
+			for (size_t i = 0; i < elems.size(); i++) {
+				const Elem &el = elems[i];
+				if (el.k == Elem::K::Tile) {
+					if (node_of_pt[el.first] == UINT32_MAX) add_tile(el.first, 0, vy[el.first], VX[el.hin] != 0 ? TrackBits{Track::X} : TrackBits{Track::Y}, e, 0);
+				} else if (el.k == Elem::K::Heads) {
+					const TrackBits head = VX[el.hin] != 0 ? TrackBits{Track::X} : TrackBits{Track::Y};
+					add_tile(el.first, 0, vy[el.first], head, e, 0);
+					add_tile(el.last, 0, vy[el.last], head, e, 0);
+				} else {
+					add_bend(el.first, vy[el.first], el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, 0, node_of_pt[el.first] != UINT32_MAX, node_of_pt[el.last] != UINT32_MAX);
+				}
+				if (i + 1 >= elems.size() || elems[i + 1].first == el.last) continue;
+				const Elem &next = elems[i + 1];
+				if (VX[el.hout] == 0) {
+					const int d = VY[el.hout];
+					for (int y = vy[el.last] + d; d > 0 ? y < vy[next.first] : y > vy[next.first]; y += d) add_tile(el.last, 0, y, TrackBits{Track::Y}, e, 0);
+				} else {
+					add_run(el.last, next.first, vy[el.last], VX[el.hout], e, 0);
+				}
+			}
+		}
+
+		/* The rows' chains: in edge, leg (both copies of a doubled one), out edge. */
+		for (int r = 0; r < rows; r++) {
+			const int sgn = east[r] ? 1 : -1;
+			const TrackBits axis{Track::X};
+			for (const RowPiece &piece : row_pieces(r)) {
+				switch (piece.t) {
+					case RowPiece::T::Tile: add_tile(piece.a, 0, piece.y, axis, piece.edge, piece.copy); break;
+					case RowPiece::T::Run: add_run(piece.a, piece.b, piece.y, sgn, piece.edge, piece.copy); break;
+					case RowPiece::T::Bend: add_bend(piece.a, piece.y, east[r] ? 1 : 3, piece.hand, piece.halves, false, piece.edge, piece.copy, false, false); break;
+				}
+			}
+		}
+
+		/* The prio element's footprint (DESIGN-G1 12.4): on the Prio item's row, opposite the joiner's approach, the row tiles from the joiner merge's column to even_prio upstream, from the leg chain's Prio element; unrelated tracks may not stand on them nor touch the row's open far end. */
+		for (int r = 0; r < rows; r++) {
+			const Elem &prio_el = chain[leg_edge[r]].back();
+			if (prio_el.k != Elem::K::Prio) continue;
+			const uint32_t njm_node = graph.edges[out_edge[r]].from.index;
+			const int sgn = east[r] ? 1 : -1;
+			const int y_row = vy[prio_el.first];
+			const int y_lane = vy[item_pt[row_items[r].lane]];
+			const DiagDirection side = prio_el.index < row_items[r].lane ? DiagDirection::NW : DiagDirection::SE;
+			const DiagDirection exit_edge = east[r] ? DiagDirection::SW : DiagDirection::NE;
+			for (int step = 0; step <= even_prio; step++) {
+				const auto [row_bits, lane_bits] = JunctionPrioStepBits(step, side, exit_edge);
+				by_row[y_row].push_back({y_row, prio_el.last, -step * sgn, prio_el.last, -step * sgn, row_bits, UINT32_MAX, 0, njm_node, sgn});
+				if (lane_bits.Any()) by_row[y_lane].push_back({y_lane, prio_el.last, -step * sgn, prio_el.last, -step * sgn, lane_bits, UINT32_MAX, 0, njm_node, sgn});
+			}
+		}
+
+		/* Related occupants never constrain each other: the same edge and copy, a node's tile and an edge that starts or ends at the node. */
+		auto at_node = [&](uint32_t edge, uint32_t node) { return edge != UINT32_MAX && ((graph.edges[edge].from.node && graph.edges[edge].from.index == node) || (graph.edges[edge].to.node && graph.edges[edge].to.index == node)); };
+		auto related = [&](const Occupant &a, const Occupant &b) {
+			if (a.edge != UINT32_MAX && a.edge == b.edge) return a.copy == b.copy || a.copy < 0 || b.copy < 0;
+			if (a.edge == UINT32_MAX && b.edge == UINT32_MAX && a.node != UINT32_MAX && a.node == b.node) return true; // The two parts of one prio footprint.
+			return (a.node != UINT32_MAX && at_node(b.edge, a.node)) || (b.node != UINT32_MAX && at_node(a.edge, b.node));
+		};
+		auto label = [&](const Occupant &o) { return o.node != UINT32_MAX ? fmt::format("node {}", o.node) : fmt::format("edge {}", o.edge); };
+		for (auto &[y, occupants] : by_row) {
+			/* On equal columns a footprint comes first in its travel direction: the unrelated track stands downstream of it. */
+			std::ranges::stable_sort(occupants, [&](const Occupant &a, const Occupant &b) { return std::make_tuple(flat_left(a), flat_right(a), -a.footprint) < std::make_tuple(flat_left(b), flat_right(b), -b.footprint); });
+			auto add_relation = [&](const Occupant &a, const Occupant &b, bool tie) -> bool {
+				reasons.push_back(JunctionPlacementReason{"occupancy", b.edge, b.node, -1});
+				const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
+				notes[reason] = fmt::format("[{} and {} on row {}]", label(a), label(b), y);
+				const int apart = flat_left(b) - flat_right(a);
+				if (tie) {
+					cons.push_back({b.lp, a.rp, apart - b.ldx + a.rdx, reason});
+					cons.push_back({a.rp, b.lp, -(apart - b.ldx + a.rdx), reason});
+				} else {
+					const bool touch = a.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && b.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)));
+					cons.push_back({b.lp, a.rp, (touch ? 2 : 1) - b.ldx + a.rdx, reason});
+				}
+				return true;
+			};
+			/* Legality per pair of occupants: two on one tile are legal when the graph relates them, or when their tracks share no track end on any tile edge (a footprint is not a track: its pairs are ordered below); checked once, on the settled placement. */
+			for (size_t i = 0; legality && i < occupants.size(); i++) {
+				if (occupants[i].footprint != 0 || flat_left(occupants[i]) > flat_right(occupants[i])) continue;
+				for (size_t j = i + 1; j < occupants.size() && flat_left(occupants[j]) <= flat_right(occupants[i]); j++) {
+					if (occupants[j].footprint != 0 || flat_left(occupants[j]) > flat_right(occupants[j]) || related(occupants[i], occupants[j])) continue;
+					for (const DiagDirection d : {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW}) {
+						if (!occupants[i].bits.Any(DiagdirReachesTracks(d)) || !occupants[j].bits.Any(DiagdirReachesTracks(d))) continue;
+						reasons.push_back(JunctionPlacementReason{"occupancy", occupants[j].edge, occupants[j].node, -1});
+						const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
+						notes[reason] = fmt::format("[{} and {} on row {}]", label(occupants[i]), label(occupants[j]), y);
+						occupancy_failed = true;
+						failure.assign(1, reasons.back());
+						if (error != nullptr) *error = "the placement rules contradict each other: occupancy (edge " + (occupants[i].edge != UINT32_MAX ? str(static_cast<int>(occupants[i].edge)) : std::string("-")) + ") " + notes[reason];
+						return false;
+					}
+				}
+			}
+			if (legality) continue;
+			/* Occupants on one flat tile form a group, tied to each other; groups are neighbours in the order. */
+			std::vector<std::pair<size_t, size_t>> groups;
+			for (size_t i = 0; i < occupants.size(); i++) {
+				if (!groups.empty() && occupants[i].footprint == 0 && flat_left(occupants[i]) <= flat_right(occupants[i]) && occupants[groups.back().second].footprint == 0 && flat_left(occupants[groups.back().first]) == flat_left(occupants[i]) && flat_right(occupants[groups.back().first]) == flat_right(occupants[i])) {
+					groups.back().second = i;
+				} else {
+					groups.emplace_back(i, i);
+				}
+			}
+			for (size_t gi = 0; gi < groups.size(); gi++) {
+				for (size_t i = groups[gi].first; i < groups[gi].second; i++) {
+					if (!related(occupants[i], occupants[i + 1]) && !add_relation(occupants[i], occupants[i + 1], true)) return false;
+				}
+				if (gi + 1 == groups.size()) continue;
+				bool any_related = false;
+				TrackBits left_bits, right_bits;
+				for (size_t i = groups[gi].first; i <= groups[gi].second; i++) {
+					left_bits = left_bits | occupants[i].bits;
+					for (size_t j = groups[gi + 1].first; j <= groups[gi + 1].second; j++) any_related = any_related || related(occupants[i], occupants[j]);
+				}
+				for (size_t j = groups[gi + 1].first; j <= groups[gi + 1].second; j++) right_bits = right_bits | occupants[j].bits;
+				if (any_related) continue;
+				Occupant a = occupants[groups[gi].second];
+				Occupant b = occupants[groups[gi + 1].first];
+				a.bits = left_bits;
+				b.bits = right_bits;
+				if (!add_relation(a, b, flat_left(b) <= flat_right(a) && a.footprint == 0 && b.footprint == 0)) return false;
+			}
+		}
+		return true;
+	};
+
+	/* The heads of a doubled bridge hug its outermost crosser tiles by the flat solve's order (D80, D118, D217). */
+	auto hug_heads = [&](const std::vector<int> &flat) {
+		for (const HugCandidate &hug : hugs) {
+			if (hug.tiles.empty()) continue;
+			auto value = [&](const std::pair<int, int> &tile) { return flat[tile.first] + tile.second; };
+			const std::pair<int, int> *low = &hug.tiles[0];
+			const std::pair<int, int> *high = &hug.tiles[0];
+			for (const std::pair<int, int> &tile : hug.tiles) {
+				if (value(tile) < value(*low)) low = &tile;
+				if (value(tile) > value(*high)) high = &tile;
+			}
+			why("bridge heads hug crossers", hug.edge, UINT32_MAX, hug.row);
+			eq(0, hug.west, low->first, low->second - 1);
+			eq(0, hug.east, high->first, high->second + 1);
+		}
+	};
+
+
+	/* The bridges' middle lines and heads (D217): a Y-axis bridge's column and rows, an X-axis (doubled) bridge's row and columns. */
+	auto collect_bridges = [&](std::vector<BridgeLine> &lines, std::vector<HeadRef> &heads) {
+		lines.clear();
+		heads.clear();
+		for (uint32_t e = 0; e < edge_count; e++) {
+			if (is_row_edge(e)) continue;
+			for (const Elem &el : chain[e]) {
+				if (el.k != Elem::K::Heads || VX[el.hin] != 0 || bridges_of[e].empty()) continue;
+				const int b = bridges_of[e][0];
+				/* A tunnel has no deck above the ground to keep clear (D220); its portals still count as heads. */
+				if (!structure.bridges[b].tunnel) lines.push_back({b, e, false, el.first, el.last, el.first});
+				heads.push_back({b, e, el.first, el.first});
+				heads.push_back({b, e, el.last, el.last});
+			}
+		}
+		/* A doubled leg's bridges: the HeadsPair elements of its two chains, one pair per bridge in travel order; the line of a copy's heads is the row item its chain lies on. */
+		for (int r = 0; r < rows; r++) {
+			if (!IsDoubledEdge(leg_edge[r])) continue;
+			const uint32_t leg = leg_edge[r];
+			for (size_t k = 0; k < bridges_of[leg].size(); k++) {
+				const int b = bridges_of[leg][k];
+				for (const Elem *h : {&nth_heads(chain[leg], k), &nth_heads(chain_copy[leg], k)}) {
+					const int line = item_pt[h->index];
+					lines.push_back({b, leg, true, h->first, h->last, line});
+					heads.push_back({b, leg, h->first, line});
+					heads.push_back({b, leg, h->last, line});
+				}
+			}
+		}
+	};
+
+	/* Bridge middle clearance in X (D217): a head whose row lies strictly within a Y-axis bridge's rows keeps its flat side of the bridge's column by one. */
+	auto add_clearance_x = [&](const std::vector<int> &flat) {
+		std::vector<BridgeLine> lines;
+		std::vector<HeadRef> heads;
+		collect_bridges(lines, heads);
+		for (const BridgeLine &line : lines) {
+			if (line.x_axis) continue;
+			const int top = std::min(vy[line.a], vy[line.b]);
+			const int bottom = std::max(vy[line.a], vy[line.b]);
+			for (const HeadRef &head : heads) {
+				if (head.bridge == line.bridge || vy[head.ypt] <= top || vy[head.ypt] >= bottom) continue;
+				const int side = flat[head.xpt] - flat[line.line];
+				if (side == 0) continue;
+				reasons.push_back(JunctionPlacementReason{"bridge middle clearance", line.edge, UINT32_MAX, -1});
+				const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
+				notes[reason] = fmt::format("[edge {} and the head of edge {}]", line.edge, head.edge);
+				if (side > 0) cons.push_back({head.xpt, line.line, 1, reason}); else cons.push_back({line.line, head.xpt, 1, reason});
+			}
+		}
+	};
+
+	/* One round: the constraints of a phase. */
+	auto build = [&]() {
+		cons.clear();
+		reasons.clear();
+		fact_cons.clear();
+		notes.clear();
+		lazy_notes.clear();
+		group_tiles.clear();
+		why_now = JunctionPlacementReason{};
+		const bool x_phase = phase == 0;
+		if (x_phase) hugs.clear();
+
+		/* Stack rows. */
+		why("stack origin");
+		eq(1, item_pt[0], 0, 0);
+		for (int i = 1; i < items; i++) {
+			why("stack rows", UINT32_MAX, UINT32_MAX, static_cast<int>(structure.stack[i].row));
+			if (structure.stack[i].row == structure.stack[i - 1].row) eq(1, item_pt[i], item_pt[i - 1], 1); else ge(1, item_pt[i], item_pt[i - 1], 1);
+		}
+		std::vector<int> layer1;
+		for (uint32_t i = 0; i < graph.nodes.size(); i++) {
+			const int level = order.node_level[i];
+			if (level % 2 != 0) continue;
+			const int b = level / 2;
+			why("band gap", UINT32_MAX, i);
+			if (b >= 1) ge(1, node_pt[i], item_pt[row_last[b - 1]], 1);
+			if (b < rows) ge(1, item_pt[row_first[b]], node_pt[i], 1);
+		}
+		for (const JunctionTrackBandEvent &event : order.bands[rows]) {
+			if (event.node && event.layer == 1) layer1.push_back(static_cast<int>(event.a));
+		}
+		for (size_t i = 0; i < layer1.size(); i++) {
+			why("S edge", UINT32_MAX, static_cast<uint32_t>(layer1[i]));
+			if (i > 0) eq(1, node_pt[layer1[i]], node_pt[layer1[0]], 0);
+			eq(1, se_pt, node_pt[layer1[i]], JunctionRunFloor(FloorKind::Node, FloorKind::Port, spec));
+		}
+		why("S port row");
+		for (int s = 0; s < n; s++) {
+			if (!group_of(s).main) eq(1, port_pt[s], se_pt, 0);
+		}
+
+		/* Ports. */
+		std::vector<int> south;
+		why("port columns");
+		for (int s = 0; s < n; s++) {
+			if (group_of(s).side == JunctionSide::W) eq(0, port_pt[s], 0, 0);
+			if (group_of(s).side == JunctionSide::E) eq(0, port_pt[s], xe_pt, 0);
+			if (group_of(s).side == JunctionSide::S) south.push_back(s);
+		}
+		int column = 0;
+		why("S port spacing");
+		for (size_t i = 1; i < south.size(); i++) {
+			column += 1 + (slots[south[i]].group != slots[south[i - 1]].group ? 1 : 0);
+			eq(0, port_pt[south[i]], port_pt[south[0]], column);
+		}
+
+		/* The rows' nodes: the exit split lies on the exit item's row, the joiner merge on the lane item's. */
+		for (int r = 0; r < rows; r++) {
+			const uint32_t exit_item = node_item(in_edge[r]); // The in edge's fan ends on the exit item.
+			const JunctionTrackEdge &in = graph.edges[in_edge[r]];
+			const JunctionTrackEdge &out = graph.edges[out_edge[r]];
+			eq(1, node_pt[in.to.index], item_pt[exit_item], 0);
+			eq(1, node_pt[out.from.index], item_pt[node_item(out_edge[r])], 0); // The out edge's fan starts on the lane item, at the joiner merge.
+		}
+
+		if (!x_phase) {
+			/* The waiting room of an exit path, from its first split to the first merge after it: 2 dy - 1 >= 2 tl units, so dy >= tl + 1 tiles (rule WaitingRoom). */
+			for (size_t p = 0; p < paths.size(); p++) {
+				if (!group_of(paths[p].from).main || group_of(paths[p].to).main) continue;
+				uint32_t cur_edge = edge_count;
+				for (uint32_t e = 0; e < edge_count; e++) {
+					if (!graph.edges[e].from.node && graph.edges[e].from.index == paths[p].from && std::ranges::count(graph.edges[e].paths, static_cast<uint16_t>(p)) > 0) cur_edge = e;
+				}
+				int split_node = -1;
+				for (int guard = 0; guard < 64 && cur_edge < edge_count && graph.edges[cur_edge].to.node; guard++) {
+					const int nd = graph.edges[cur_edge].to.index;
+					if (split_node < 0 && graph.nodes[nd].split) {
+						split_node = nd;
+					} else if (split_node >= 0 && !graph.nodes[nd].split) {
+						why("waiting room", cur_edge, static_cast<uint32_t>(nd));
+						ge(1, node_pt[nd], node_pt[split_node], JunctionRunFloor(FloorKind::Node, FloorKind::Node, spec));
+						break;
+					}
+					uint32_t next_edge = edge_count;
+					for (uint32_t e = 0; e < edge_count; e++) {
+						if (graph.edges[e].from.node && graph.edges[e].from.index == nd && std::ranges::count(graph.edges[e].paths, static_cast<uint16_t>(p)) > 0) next_edge = e;
+					}
+					cur_edge = next_edge;
+				}
+			}
+		}
+
+		/* The chains of the other edges. */
+		for (uint32_t e = 0; e < edge_count; e++) {
+			const std::vector<Elem> &elems = chain[e];
+			const JunctionTrackEdge &edge = graph.edges[e];
+			/* The prio element (RW6): on its Prio item's row, ending in the column of the joiner merge, even_prio steps long. Its run from the element before it is added with that element, below. */
+			const Elem *prio_el = !elems.empty() && elems.back().k == Elem::K::Prio ? &elems.back() : nullptr;
+			if (prio_el != nullptr) {
+				why("prio element", e, edge.to.index, (end_level(edge.from) - 1) / 2);
+				eq(1, prio_el->first, item_pt[prio_el->index], 0);
+				eq(1, prio_el->last, item_pt[prio_el->index], 0);
+				eq(0, prio_el->last, node_pt[edge.to.index], 0);
+				along(prio_el->hout, prio_el->last, prio_el->first, even_prio, true);
+			}
+			if (is_row_edge(e) && doubled_edge(e)) {
+				/* A doubled leg: copy 0's chain holds its HeadsPairs and its lane merge S-bend, copy 1's its lane split S-bend and its HeadsPairs, each between its two Tiles. The lane pair joins the two (copy 1's S-bend starts at the lane split, copy 0's ends at the lane merge) and the heads of copy 1 are copy 0's one tile upstream (D118). */
+				const int r = (end_level(edge.from) - 1) / 2;
+				const std::vector<Elem> &copy = chain_copy[e];
+				const size_t g = std::ranges::count(elems, Elem::K::HeadsPair, &Elem::k);
+				const int nex = elems.front().first;
+				const Elem &bend0 = lane_bend(e, elems, Step::Role::LaneMerge);
+				const Elem &bend1 = lane_bend(e, copy, Step::Role::LaneSplit);
+				auto heads0 = [&](size_t b) -> const Elem & { return nth_heads(elems, b); };
+				auto heads1 = [&](size_t b) -> const Elem & { return nth_heads(copy, b); };
+				why("row items", e, UINT32_MAX, r);
+				/* The leg's S-bends start on the exit item, where the in edge's fan ends (the exit split lies there), and end on their own token's item. */
+				const uint32_t exit_item = node_item(in_edge[r]);
+				eq(1, bend1.first, item_pt[exit_item], 0);
+				eq(1, bend1.last, item_pt[bend1.index], 0);
+				for (size_t b = 0; b < g; b++) {
+					for (const Elem *h : {&heads0(b), &heads1(b)}) {
+						eq(1, h->first, item_pt[h->index], 0);
+						eq(1, h->last, item_pt[h->index], 0);
+					}
+				}
+				eq(1, bend0.first, item_pt[exit_item], 0);
+				eq(1, bend0.last, item_pt[bend0.index], 0);
+				if (!x_phase) continue;
+
+				const int s = east[r] ? 1 : -1;
+				const int heading = east[r] ? 1 : 3;
+				/* The lane split sits next to its bridge (D215); the run from the exit split to the lane split, and from the last heads to the lane merge, are rule minima, not exact: series bridges need the slack (DESIGN-G1 §11.9b). */
+				why("lane split run", e, edge.from.index, r);
+				along(heading, bend1.first, nex, JunctionRunFloor(FloorKind::Node, FloorKind::LaneSplit, spec), false);
+				along(heading, heads0(0).first, bend1.first, JunctionRunFloor(FloorKind::LaneSplit, FloorKind::Heads, spec), true);
+				eq(0, bend1.last, bend1.first, 0);
+				along(heading, heads1(0).first, bend1.last, 1, true); // A shape, not a floor: copy 1 sits one tile nearer than copy 0, the head stagger (D118, D145).
+				for (size_t b = 0; b < g; b++) {
+					along(heading, heads0(b).first, heads1(b).first, 1, true); // Shape: the head stagger, copy 0 one past copy 1 (D118).
+					along(heading, heads0(b).last, heads1(b).last, 1, true); // Shape: the head stagger (D118).
+					if (b > 0) along(heading, heads0(b).first, heads0(b - 1).last, JunctionRunFloor(FloorKind::Heads, FloorKind::Heads, spec), false);
+				}
+				why("series bridge heads", e, UINT32_MAX, r);
+				along(heading, bend0.first, heads0(g - 1).last, 1, false); // Shape: one tile past copy 0's far head, the stagger (D118, D145); the floor is the lane merge's, next.
+				eq(0, bend0.last, bend0.first, 0);
+				along(heading, bend0.last, heads1(g - 1).last, JunctionRunFloor(FloorKind::Heads, FloorKind::LaneMerge, spec), false);
+				/* The element's row ends at step even_prio + 1, which must not meet the lane merge's S-bend (RECON-prio-element §3-4). */
+				if (prio_el != nullptr) {
+					why("prio element", e, graph.edges[out_edge[r]].from.index, r);
+					along(heading, prio_el->first, bend0.last, JunctionRunFloor(FloorKind::LaneMerge, FloorKind::Prio, spec), false);
+				}
+
+				/* Every crosser's tiles on the copy row and the lane row lie between its bridge's heads; the heads hug the outermost tiles by the flat solve's order, below (D80, D118, D145, D217). */
+				const int u = -s; // The upstream step.
+				why("bridge heads hug crossers", e, UINT32_MAX, r);
+				for (size_t b = 0; b < g; b++) {
+					const JunctionTrackBridge &bridge = structure.bridges[bridges_of[e][b]];
+					HugCandidate hug{s > 0 ? heads0(b).first : heads0(b).last, s > 0 ? heads0(b).last : heads0(b).first, e, r, {}};
+					for (uint32_t x : bridge.crossed) {
+						if (!rows_known) break;
+						const std::vector<SymTile> tiles = edge_tiles(x);
+						for (int pass = 0; pass < 2; pass++) {
+							const Elem &near_far = pass == 0 ? heads0(b) : heads1(b);
+							const int y = vy[near_far.first];
+							bool any = false;
+							for (const SymTile &z : tiles) {
+								if (z.y != y) continue;
+								any = true;
+								if (s > 0) {
+									ge(0, z.pt, near_far.first, 1 - z.dx);
+									ge(0, near_far.last, z.pt, 1 + z.dx);
+								} else {
+									ge(0, near_far.first, z.pt, 1 + z.dx);
+									ge(0, z.pt, near_far.last, 1 - z.dx);
+								}
+								hug.tiles.emplace_back(z.pt, pass == 0 ? z.dx : z.dx - u);
+							}
+							if (!any) { build_why = "Z row " + str(y) + " edge " + str(x) + " row " + str(r); return false; }
+						}
+					}
+					hugs.push_back(std::move(hug));
+				}
+				continue;
+			}
+			for (size_t i = 0; i < elems.size(); i++) {
+				const Elem &el = elems[i];
+				if (el.k == Elem::K::Fan) {
+					/* The fan is its port row's S-bend: m - 1 columns across, first at the port row and last at its item row; empty, it lies on the port's column (R3). */
+					why("fan size", e, UINT32_MAX, (end_level(edge.from) - 1) / 2);
+					const int port = el.port_first ? elems[i - 1].first : elems[i + 1].first;
+					if (el.m == 0) {
+						eq(0, el.first, port, 0);
+						eq(0, el.last, port, 0);
+					} else {
+						along(el.hin, el.last, el.first, el.m - 1, true);
+					}
+					eq(1, el.port_first ? el.last : el.first, item_pt[el.index], 0);
+				} else if (el.k == Elem::K::Corner) {
+					const int kk = k;
+					const int dx = kk * (VX[el.hin] + VX[el.hout]);
+					const int dy = kk * (VY[el.hin] + VY[el.hout]);
+					if (el.joiner_div) {
+						why("joiner_div Corner floor", e);
+						ge(1, el.first, el.last, k);
+						if (fixed != nullptr) {
+							why("joiner_div Corner choice", e);
+							eq(1, el.first, el.last, fixed->corner[e][el.tok]);
+						}
+						if (x_phase) {
+							const int kp = fixed != nullptr ? fixed->corner[e][el.tok] : (rows_known ? std::abs(vy[el.first] - vy[el.last]) : k);
+							eq(0, el.last, el.first, kp * (VX[el.hin] + VX[el.hout]));
+						}
+					} else {
+						why("Corner size", e);
+						eq(0, el.last, el.first, dx);
+						eq(1, el.last, el.first, dy);
+					}
+					if (el.index != NO_ROW) eq(1, el.last, item_pt[el.index], 0);
+				} else if (el.k == Elem::K::SBend) {
+					const int side = (el.hin + el.hand + 4) % 4;
+					why("S-bend size", e);
+					if (el.hin == 0 || el.hin == 2) {
+						eq(1, el.last, el.first, VY[el.hin] * (el.m - 1));
+						if (fixed != nullptr) {
+							if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
+						} else {
+							if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
+						}
+					} else {
+						if (el.index == NO_ROW) eq(1, el.last, el.first, VY[side]); // No item pins it: one row.
+						eq(0, el.last, el.first, VX[el.hin] * 0);
+					}
+					if (el.index != NO_ROW) eq(1, el.last, item_pt[el.index], 0);
+				} else if (el.k == Elem::K::Heads) {
+					why("bridge heads", e);
+					eq(VX[el.hin] != 0 ? 1 : 0, el.last, el.first, 0);
+				}
+				if (i + 1 >= elems.size()) continue;
+				const Elem &next = elems[i + 1];
+				if (next.k == Elem::K::Prio) continue; // The prio element is no track of the chain: nothing runs to it from the end tile.
+				if (next.first == el.last) continue;
+				bool exact = false;
+				const bool in_out = IsInEdge(e) || IsOutEdge(e);
+				/* A row edge's tiles name their kind: a port, the exit split of an in edge (Node), the joiner merge of an out edge (PrioNode), a fan (R3). */
+				const auto floor_kind = [&](const Elem &o) {
+					if (o.k == Elem::K::Corner) return FloorKind::Corner;
+					if (o.k == Elem::K::SBend) return FloorKind::SBend;
+					if (o.k == Elem::K::Heads) return FloorKind::Heads;
+					if (o.k == Elem::K::Fan) return FloorKind::Fan;
+					if (is_row_edge(e) && !in_out) return &o == &elems.front() ? FloorKind::Node : FloorKind::PrioNode; // An undoubled leg: the exit split to the joiner merge.
+					if (!in_out) return FloorKind::Tile;
+					return o.slot >= 0 ? FloorKind::Port : (edge.to.node ? FloorKind::Node : FloorKind::PrioNode);
+				};
+				/* The element before the end tile of a leg with a prio element: its run to the prio element's first tile is the floor, the run on to the merge only keeps the lane row (the element's span is exact). */
+				const bool before_prio = prio_el != nullptr && i + 3 == elems.size();
+				const int dist = before_prio ? 0 : JunctionRunFloor(floor_kind(el), floor_kind(next), spec);
+				if (before_prio) {
+					why("prio element", e, edge.to.index, (end_level(graph.edges[e].from) - 1) / 2); // The prio element's coverage is a floor on its first tile (D217).
+					along(el.hout, prio_el->first, el.last, JunctionRunFloor(floor_kind(el), FloorKind::Prio, spec), false);
+				} else {
+					why("chain run", e);
+				}
+				if (next.k == Elem::K::Tile && i + 2 == elems.size() && !edge.to.node) exact = true;
+				if (el.k == Elem::K::Tile && i == 0 && !edge.from.node && !in_out) exact = true;
+				const auto port_tile = [](const Elem &o) { return o.k == Elem::K::Tile && o.slot >= 0; };
+				if (in_out && (port_tile(el) || port_tile(next))) {
+					/* A run to a port is along the heading only: the port's row is a number, not a point (R3); an empty fan lies on its port already. */
+					const Elem &fan = el.k == Elem::K::Fan ? el : next;
+					if (fan.k == Elem::K::Fan && fan.m == 0) continue;
+					along(el.hout, next.first, el.last, dist, exact);
+					continue;
+				}
+				run(el.hout, next.first, el.last, dist, exact);
+			}
+
+			/* A single bridge passes over the S-bend it crosses, in the column next to the S-bend's start (D113, F4). */
+			for (const Elem &el : elems) {
+				if (el.k != Elem::K::Heads) continue;
+				const std::vector<Elem> &other = chain[el.cross];
+				const Elem *crossed = nullptr;
+				for (const Elem &o : other) {
+					if (o.k == Elem::K::SBend && o.tok >= 0 && static_cast<size_t>(o.tok) + 1 < programs.edges[el.cross].size() && (programs.edges[el.cross][o.tok + 1].kind == StepKind::Under || programs.edges[el.cross][o.tok + 1].kind == StepKind::Above) && programs.edges[el.cross][o.tok + 1].index == e) crossed = &o;
+				}
+				if (crossed == nullptr) { build_why = "no crossed sbend"; return false; }
+				why("bridge over S-bend", e);
+				const int side = (crossed->hin + crossed->hand + 4) % 4;
+				const std::vector<TileIndexDiffC> tiles = bend_tiles(crossed->hin, crossed->hand, 2 * std::max(crossed->m, 2), false);
+				int lo = 1000, hi = -1000;
+				for (const TileIndexDiffC &t : tiles) {
+					if (t.x * VX[side] + t.y * VY[side] != 1) continue;
+					lo = std::min<int>(lo, t.y);
+					hi = std::max<int>(hi, t.y);
+				}
+				if (lo > hi) { build_why = "no column tile"; return false; }
+				eq(0, el.first, crossed->first, VX[side]);
+				const bool north = el.hin == 0;
+				eq(1, el.first, crossed->first, north ? hi + 1 : lo - 1);
+				eq(1, el.last, crossed->first, north ? lo - 1 : hi + 1);
+			}
+		}
+
+		if (!x_phase && !floors_off) {
+			why("y floor");
+			for (const std::pair<int, int> &floor : y_floors) ge(1, floor.first, 0, floor.second);
+		}
+		if (!x_phase && !skip_clearance) {
+			for (const ClearanceY &c : clear_y) {
+				reasons.push_back(JunctionPlacementReason{"bridge middle clearance", c.edge_b, UINT32_MAX, -1});
+				notes[static_cast<uint32_t>(reasons.size() - 1)] = fmt::format("[edge {} and the head of edge {}]", c.edge_b, c.edge_h);
+				cons.push_back({c.v, c.u, 1, static_cast<uint32_t>(reasons.size() - 1)});
+			}
+		}
+
+		if ((!x_phase || rows_known) && spec.curve_limit) {
+			/* The curve-gap family (D217): every pair JunctionCurveGaps returns for a route's curves. A pair in one segment (only vertical runs and fixed spans between the curves) is a difference of its anchors' rows in the Y phase; every other pair is a difference of its anchors' columns in the X phase. Pairs on one anchor are constants. */
+			std::vector<SymRoute> routes;
+			if (!sym_routes(routes, x_phase)) return false;
+			/* One relation per (v, u): the largest of the pairs'. */
+			struct Relation {
+				int v, u, least;
+				uint32_t edge;
+				int row;
+			};
+			std::vector<Relation> relations;
+			std::map<std::pair<int, int>, size_t> at;
+			for (const SymRoute &route : routes) {
+				std::vector<JunctionCurveHand> hands;
+				for (const SymCurve &curve : route.curves) hands.push_back(curve.hand);
+				for (const JunctionCurveGap &gap : JunctionCurveGaps(hands, spec.tl, spec.curve_speed, spec.reference_speed)) {
+					const SymCurve &ci = route.curves[gap.i];
+					const SymCurve &cj = route.curves[gap.j];
+					const bool vertical = ci.seg >= 0 && ci.seg == cj.seg;
+					if (vertical == x_phase) continue;
+					/* The units from curve i to curve j are off_j - off_i + 2 sg (a_j - a_i), at least min_gap; sg is s (columns) or sv (rows). */
+					const int sg = vertical ? (route.seg_sign[ci.seg] != 0 ? route.seg_sign[ci.seg] : 1) : route.sign;
+					const int delta = vertical ? cj.yoff - ci.yoff : cj.xoff - ci.xoff;
+					const int need = gap.min_gap - delta;
+					const int least = need > 0 ? (need + 1) / 2 : -(-need / 2);
+					if (ci.pt == cj.pt) {
+						if (least > 0) { build_why = "curve gap " + str(gap.min_gap) + " between edge " + str(ci.edge) + " and edge " + str(cj.edge) + " is not kept: " + str(delta); return false; }
+						continue;
+					}
+					const int v = sg > 0 ? cj.pt : ci.pt;
+					const int u = v == cj.pt ? ci.pt : cj.pt;
+					const auto [found, added] = at.emplace(std::make_pair(v, u), relations.size());
+					if (added) {
+						relations.push_back({v, u, least, cj.edge, cj.row});
+					} else if (relations[found->second].least < least) {
+						relations[found->second] = {v, u, least, cj.edge, cj.row};
+					}
+				}
+			}
+			for (const Relation &relation : relations) {
+				why("curve gap", relation.edge, UINT32_MAX, relation.row);
+				ge(x_phase ? 0 : 1, relation.v, relation.u, relation.least);
+			}
+		}
+
+		if (x_phase && rows_known && !relations_only) {
+			/* The occupancy family and the bridge heads follow the order of the flat solve of the relations above (D217); when the relations contradict each other the solve below explains it. */
+			compute_node_tracks();
+			std::vector<int> flat;
+			if (flat_solve(flat)) {
+				if (!add_occupancy(flat, false)) return false;
+				hug_heads(flat);
+				if (!skip_clearance) add_clearance_x(flat);
+			}
+		}
+
+		if (x_phase && !floors_off) {
+			why("x floor");
+			for (const std::pair<int, int> &floor : x_floors) ge(0, floor.first, 0, floor.second);
+		}
+
+		if (x_phase && facts != nullptr && !relations_only) {
+			/* The terrain's facts (DESIGN-G1 §14.4): every group of tiles gets the columns where its tile is buildable, every straight run on a row must be buildable on each tile it covers. Bridge middles are not checked: the node path checks no bridge piece either (JunctionNodeHeightsOk skips on_bridge). */
+			const int high = facts->MaxX() - offset.x;
+			std::vector<uint32_t> node_of_pt(pt_count, UINT32_MAX);
+			for (uint32_t i = 0; i < node_pt.size(); i++) node_of_pt[node_pt[i]] = i;
+			/* The height facts are the costly ones: they wait until every other fact of the block is in, and then look only at the columns a point can take under the relations and those facts (least and most, below). */
+			std::vector<int> least(pt_count, 0);
+			std::vector<int> most(pt_count, INT_MAX / 2);
+			std::vector<std::function<void()>> pending;
+			auto fact_reason = [&](uint32_t e, uint32_t node, int row, const std::string &note, const char *rule = "blocked tile") {
+				reasons.push_back(JunctionPlacementReason{rule, e, node, static_cast<int32_t>(row)});
+				if (!note.empty()) notes[static_cast<uint32_t>(reasons.size() - 1)] = note;
+				return static_cast<uint32_t>(reasons.size() - 1);
+			};
+			auto lazy_note = [&](uint32_t reason, int kind, int x, int y) {
+				if (lazy_notes.size() <= reason) lazy_notes.resize(reason + 1, {0, 0, 0});
+				lazy_notes[reason] = {kind, x, y};
+			};
+			auto holds = [&](JunctionFactKind kind, Axis axis, int x, int y) {
+				int entry, exit;
+				if (classes_only) return facts->Buildable(x, y);
+				switch (kind) {
+					case JunctionFactKind::Straight: return facts->Straight(x, y, axis, entry, exit);
+					case JunctionFactKind::Switch: return facts->Switch(x, y);
+					default: return facts->Half(x, y);
+				}
+			};
+			/* Per (fact, axis, row), whether the fact holds at each column of the snapshot: every group on that row asks for it. */
+			std::map<std::tuple<int, int, int>, std::vector<bool>> holding;
+			auto holds_on_row = [&](JunctionFactKind kind, Axis axis, int y) -> const std::vector<bool> & {
+				const auto key = classes_only ? std::make_tuple(0, 0, y) : std::make_tuple(static_cast<int>(kind), static_cast<int>(axis), y);
+				auto found = holding.find(key);
+				if (found != holding.end()) return found->second;
+				std::vector<bool> row;
+				for (int x = facts->MinX(); x <= facts->MaxX(); x++) row.push_back(holds(kind, axis, x, y));
+				return holding.emplace(key, std::move(row)).first->second;
+			};
+			/* A group tile: anchor point pt, column offset dx, row y; its anchor's columns where the fact holds. */
+			auto group = [&](int pt, int dx, int y, JunctionFactKind kind, Axis axis, uint32_t e, uint32_t node, int row) {
+				if (record != nullptr) record->near_groups.push_back({pt, dx, y});
+				std::vector<int> allowed;
+				std::array<int, 6> named{0, y + offset.y, 0, 0, 0, 0};
+				const std::vector<bool> &here = holds_on_row(kind, axis, y + offset.y);
+				for (int c = 0; c <= high; c++) {
+					const int x = c + dx + offset.x;
+					const bool inside = x >= facts->MinX() && x <= facts->MaxX();
+					if (inside && here[x - facts->MinX()]) {
+						allowed.push_back(c);
+					} else if (inside && named[0] < 4) {
+						named[2 + named[0]++] = x;
+					}
+				}
+				/* The note names the first blocked tiles; it is formatted only when a failure reports the reason. */
+				const uint32_t reason = fact_reason(e, node, row, std::string());
+				if (named[0] > 0) {
+					lazy_note(reason, 3, static_cast<int>(group_tiles.size()), 0);
+					group_tiles.push_back(named);
+				}
+				fact_cons.push_back({pt, -1, std::move(allowed), reason});
+			};
+			/* Per row, the columns of the snapshot where a straight X piece cannot sit, and the columns whose straight X piece does not meet the next one's height. */
+			std::map<int, std::pair<std::vector<int>, std::vector<int>>> row_facts;
+			auto row_facts_of = [&](int y) -> const std::pair<std::vector<int>, std::vector<int>> & {
+				auto found = row_facts.find(y);
+				if (found != row_facts.end()) return found->second;
+				std::pair<std::vector<int>, std::vector<int>> bad;
+				int entry, exit;
+				bool before = false;
+				for (int x = facts->MinX(); x <= facts->MaxX(); x++) {
+					const bool straight = classes_only ? facts->Buildable(x, y) : facts->Straight(x, y, Axis::X, entry, exit);
+					if (!straight) bad.first.push_back(x);
+					if (x > facts->MinX() && before && straight && !facts->Joins(Axis::X, y, x - 1)) bad.second.push_back(x - 1);
+					before = straight;
+				}
+				return row_facts.emplace(y, std::move(bad)).first->second;
+			};
+			/* A straight run on row y from point a to point b, in the travel sense sgn (+1 east). */
+			auto row_run = [&](int a, int b, int y, int sgn, uint32_t e, int row) {
+				if (record != nullptr) record->near_runs.push_back({a, b, y, sgn});
+				const auto &[blocked, steps] = row_facts_of(y + offset.y);
+				for (int x : blocked) {
+					const uint32_t reason = fact_reason(e, UINT32_MAX, row, std::string());
+					lazy_note(reason, 1, x, y + offset.y);
+					fact_cons.push_back({sgn > 0 ? a : b, sgn > 0 ? b : a, {x - offset.x, x - offset.x}, reason});
+				}
+				/* Two straight tiles side by side that do not meet at one height: the run must not cover both. */
+				if (!heights) return;
+				for (int x : steps) {
+					const uint32_t reason = fact_reason(e, UINT32_MAX, row, std::string(), "height step");
+					lazy_note(reason, 2, x, y + offset.y);
+					fact_cons.push_back({sgn > 0 ? a : b, sgn > 0 ? b : a, {x - offset.x, x + 1 - offset.x}, reason});
+				}
+			};
+			/* A vertical run of straight tiles at column offset 0 of point pt, rows from y_a to y_b (either order): the columns where every two neighbours meet at one height. */
+			auto column_run_now = [&](int pt, int y_a, int y_b, uint32_t e) {
+				const int y_lo = std::min(y_a, y_b);
+				const int y_hi = std::max(y_a, y_b);
+				if (y_lo == y_hi) return;
+				std::vector<int> allowed;
+				std::string tiles;
+				for (int c = std::max(0, least[pt]); c <= std::min(high, most[pt]); c++) {
+					int bad = INT_MIN;
+					for (int y = y_lo; y < y_hi && bad == INT_MIN; y++) {
+						if (!facts->Joins(Axis::Y, c + offset.x, y + offset.y)) bad = y;
+					}
+					if (bad == INT_MIN) {
+						allowed.push_back(c);
+					} else if (c + offset.x >= facts->MinX() && c + offset.x <= facts->MaxX() && tiles.size() < 40) {
+						tiles += fmt::format("{}({},{})", tiles.empty() ? "" : " ", c + offset.x, bad + offset.y);
+					}
+				}
+				const uint32_t reason = fact_reason(e, UINT32_MAX, -1, tiles.empty() ? std::string() : "[height step " + tiles + "]", "height step");
+				fact_cons.push_back({pt, -1, std::move(allowed), reason});
+			};
+			auto column_run = [&](int pt, int y_a, int y_b, uint32_t e) { if (heights) pending.push_back([&column_run_now, pt, y_a, y_b, e] { column_run_now(pt, y_a, y_b, e); }); };
+			/* A node's tile: the columns where all its tracks fit (and the axis pieces on both sides of a route that goes straight through), and of those where the route meets them at one height. */
+			auto node_checks = [&]() {
+				for (uint32_t node = 0; node < graph.nodes.size(); node++) {
+					const int y = vy[node_pt[node]] + offset.y;
+					std::vector<int> fits_ok, joins_ok;
+					std::string fit_tiles, join_tiles;
+					for (int c = std::max(0, least[node_pt[node]]); c <= std::min(high, most[node_pt[node]]); c++) {
+						const int x = c + offset.x;
+						bool fits = facts->Fits(x, y, node_bits[node]);
+						bool joins = true;
+						for (int heading : node_straight[node]) {
+							const DiagDirection exit = TrackdirToExitdir(JUNCTION_AXIS_TRACKDIR[heading]);
+							const TrackBits lone{TrackdirToTrack(JUNCTION_AXIS_TRACKDIR[heading])};
+							/* The neighbours beyond the snapshot's columns carry no facts. */
+							const bool before_inside = x - VX[heading] >= facts->MinX() && x - VX[heading] <= facts->MaxX();
+							const bool after_inside = x + VX[heading] >= facts->MinX() && x + VX[heading] <= facts->MaxX();
+							const int before = before_inside ? facts->EdgeZ(x - VX[heading], y - VY[heading], lone, exit) : 0;
+							const int after = after_inside ? facts->EdgeZ(x + VX[heading], y + VY[heading], lone, ReverseDiagDir(exit)) : 0;
+							const int in = facts->EdgeZ(x, y, node_bits[node], ReverseDiagDir(exit));
+							const int out = facts->EdgeZ(x, y, node_bits[node], exit);
+							fits = fits && before != INT_MIN && after != INT_MIN && in != INT_MIN && out != INT_MIN;
+							joins = joins && (!before_inside || before == in) && (!after_inside || out == after);
+						}
+						if (fits) fits_ok.push_back(c);
+						if (fits && joins) joins_ok.push_back(c);
+						if (x >= facts->MinX() && x <= facts->MaxX() && fit_tiles.size() < 40 && !fits) fit_tiles += fmt::format("{}({},{})", fit_tiles.empty() ? "" : " ", x, y);
+						if (x >= facts->MinX() && x <= facts->MaxX() && join_tiles.size() < 40 && fits && !joins) join_tiles += fmt::format("{}({},{})", join_tiles.empty() ? "" : " ", x, y);
+					}
+					const size_t evaluated = static_cast<size_t>(std::max(0, std::min(high, most[node_pt[node]]) + 1 - std::max(0, least[node_pt[node]])));
+					if (fits_ok.size() != evaluated) fact_cons.push_back({node_pt[node], -1, std::move(fits_ok), fact_reason(UINT32_MAX, node, -1, fit_tiles.empty() ? std::string() : "[blocked tile " + fit_tiles + "]")});
+					if (joins_ok.size() != evaluated) fact_cons.push_back({node_pt[node], -1, std::move(joins_ok), fact_reason(UINT32_MAX, node, -1, join_tiles.empty() ? std::string() : "[height join " + join_tiles + "]", "height join")});
+				}
+			};
+			/* A bend of 'halves' half pieces whose first sits at row y of point pt: the columns where each piece fits with its own track, each join inside it meets at one height, and its two joins with the axis pieces just outside it do too (DESIGN-G1 §14.3). */
+			auto bend_heights_now = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t e, int row, uint32_t node_first, uint32_t node_last) {
+				const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, halves, corner)});
+				if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != halves + 2) return;
+				const std::vector<JunctionPiece> &pieces = raster.pieces;
+				/* Per piece: its tile relative to the first half, its track (a piece on a node's tile sits with every other track the routes build there), the edge it leaves by. */
+				const size_t count = pieces.size();
+				std::vector<int> dx(count), dy(count);
+				std::vector<TrackBits> bits(count);
+				std::vector<DiagDirection> exit(count);
+				for (size_t i = 0; i < count; i++) {
+					dx[i] = pieces[i].tile.x - pieces[1].tile.x;
+					dy[i] = y + pieces[i].tile.y - pieces[1].tile.y + offset.y;
+					bits[i] = TrackBits{TrackdirToTrack(pieces[i].trackdir)};
+					exit[i] = TrackdirToExitdir(pieces[i].trackdir);
+				}
+				if (node_first != UINT32_MAX) bits[1] = node_bits[node_first];
+				if (node_last != UINT32_MAX) bits[halves] = node_bits[node_last];
+				/* Two domains: where the tracks cannot be built (a blocked tile, a slope without a foundation) and, of the rest, where the pieces do not meet at one height. */
+				std::vector<int> fits_ok, joins_ok;
+				std::string fit_tiles, join_tiles;
+				for (int c = std::max(0, least[pt]); c <= std::min(high, most[pt]); c++) {
+					size_t bad_fit = count, bad_join = count;
+					for (size_t i = 0; bad_fit == count && i < count; i++) {
+						const int x = c + dx[i] + offset.x;
+						/* Columns beyond the snapshot carry no facts (as in the blocked-tile facts above): a join with such a tile is not checked. */
+						if (i + 1 < count && (x < facts->MinX() || x > facts->MaxX() || c + dx[i + 1] + offset.x < facts->MinX() || c + dx[i + 1] + offset.x > facts->MaxX())) continue;
+						if (i + 1 == count || (dx[i] == dx[i + 1] && dy[i] == dy[i + 1])) {
+							if (i >= 1 && i <= static_cast<size_t>(halves) && !facts->Fits(x, dy[i], bits[i])) bad_fit = i;
+							continue;
+						}
+						/* The join to the next piece; EdgeZ is INT_MIN where the tracks do not fit. */
+						const int z_out = facts->EdgeZ(x, dy[i], bits[i], exit[i]);
+						const int z_in = facts->EdgeZ(c + dx[i + 1] + offset.x, dy[i + 1], bits[i + 1], ReverseDiagDir(exit[i]));
+						if (z_out == INT_MIN || z_in == INT_MIN) {
+							bad_fit = i;
+						} else if (z_out != z_in && bad_join == count) {
+							bad_join = i;
+						}
+					}
+					const auto note = [&](std::string &text, size_t bad) {
+						if (c + dx[bad] + offset.x >= facts->MinX() && c + dx[bad] + offset.x <= facts->MaxX() && text.size() < 40) text += fmt::format("{}({},{})", text.empty() ? "" : " ", c + dx[bad] + offset.x, dy[bad]);
+					};
+					if (bad_fit == count) fits_ok.push_back(c); else note(fit_tiles, bad_fit);
+					if (bad_join == count) joins_ok.push_back(c); else if (bad_fit == count) note(join_tiles, bad_join);
+				}
+				/* A domain that keeps every column is no fact. */
+				const size_t evaluated = static_cast<size_t>(std::max(0, std::min(high, most[pt]) + 1 - std::max(0, least[pt])));
+				if (fits_ok.size() != evaluated) fact_cons.push_back({pt, -1, std::move(fits_ok), fact_reason(e, UINT32_MAX, row, fit_tiles.empty() ? std::string() : "[blocked tile " + fit_tiles + "]")});
+				if (joins_ok.size() != evaluated) fact_cons.push_back({pt, -1, std::move(joins_ok), fact_reason(e, UINT32_MAX, row, "[height join " + join_tiles + "]", "height join")});
+			};
+
+			auto bend_heights = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t e, int row, uint32_t node_first = UINT32_MAX, uint32_t node_last = UINT32_MAX) {
+				if (heights) pending.push_back([&bend_heights_now, pt, y, heading, hand, halves, corner, e, row, node_first, node_last] { bend_heights_now(pt, y, heading, hand, halves, corner, e, row, node_first, node_last); });
+			};
+
+			/* The chains of the edges that are not rows. */
+			for (uint32_t e = 0; e < edge_count; e++) {
+				if (is_row_edge(e)) continue;
+				const std::vector<Elem> &elems = chain[e];
+				for (size_t i = 0; i < elems.size(); i++) {
+					const Elem &el = elems[i];
+					if (el.k == Elem::K::Tile) {
+						const uint32_t node = node_of_pt[el.first];
+						if (node != UINT32_MAX) {
+							group(el.first, 0, vy[el.first], JunctionFactKind::Switch, Axis::X, e, node, -1);
+						} else {
+							group(el.first, 0, vy[el.first], JunctionFactKind::Straight, VX[el.hin] != 0 ? Axis::X : Axis::Y, e, UINT32_MAX, -1);
+						}
+					} else if (el.k == Elem::K::Heads) {
+						const Axis axis = VX[el.hin] != 0 ? Axis::X : Axis::Y;
+						group(el.first, 0, vy[el.first], JunctionFactKind::Straight, axis, e, UINT32_MAX, -1);
+						group(el.last, 0, vy[el.last], JunctionFactKind::Straight, axis, e, UINT32_MAX, -1);
+					} else {
+						bend_heights(el.first, vy[el.first], el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, -1, node_of_pt[el.first], node_of_pt[el.last]);
+						for (size_t j = 0; j < el.offs.size(); j++) {
+							const TileIndexDiffC &o = el.offs[j];
+							const bool at_first = j == 0 && node_of_pt[el.first] != UINT32_MAX;
+							const bool at_last = j + 1 == el.offs.size() && node_of_pt[el.last] != UINT32_MAX;
+							const uint32_t node = at_first ? node_of_pt[el.first] : (at_last ? node_of_pt[el.last] : UINT32_MAX);
+							group(el.first, o.x, vy[el.first] + o.y, node != UINT32_MAX ? JunctionFactKind::Switch : JunctionFactKind::Half, Axis::X, e, node, -1);
+						}
+					}
+					if (i + 1 >= elems.size() || elems[i + 1].first == el.last) continue;
+					const Elem &next = elems[i + 1];
+					if (VX[el.hout] == 0) {
+						const int d = VY[el.hout];
+						for (int y = vy[el.last] + d; d > 0 ? y < vy[next.first] : y > vy[next.first]; y += d) group(el.last, 0, y, JunctionFactKind::Straight, Axis::Y, e, UINT32_MAX, -1);
+						/* The run's tiles, and a port tile at either end, which is an axis piece like them. */
+						int y_a = vy[el.last] + d;
+						int y_b = vy[next.first] - d;
+						if (d > 0 ? y_a <= y_b : y_a >= y_b) {
+							if (el.k == Elem::K::Tile && node_of_pt[el.last] == UINT32_MAX) y_a = vy[el.last];
+							if (next.k == Elem::K::Tile && node_of_pt[next.first] == UINT32_MAX) y_b = vy[next.first];
+							column_run(el.last, y_a, y_b, e);
+						}
+					} else {
+						row_run(el.last, next.first, vy[el.last], VX[el.hout], e, -1);
+					}
+				}
+			}
+
+			/* The rows' chains: in edge, leg (both copies of a doubled one), out edge. */
+			for (int r = 0; r < rows; r++) {
+				const int sgn = east[r] ? 1 : -1;
+				const int heading = east[r] ? 1 : 3;
+				for (const RowPiece &piece : row_pieces(r)) {
+					switch (piece.t) {
+						case RowPiece::T::Tile:
+							if (piece.fact) group(piece.a, 0, piece.y, JunctionFactKind::Straight, Axis::X, piece.edge, UINT32_MAX, r);
+							break;
+						case RowPiece::T::Run: row_run(piece.a, piece.b, piece.y, sgn, piece.edge, r); break;
+						case RowPiece::T::Bend:
+							bend_heights(piece.a, piece.y, heading, piece.hand, piece.halves, false, piece.edge, r);
+							for (const TileIndexDiffC &o : bend_tiles(heading, piece.hand, piece.halves, false)) group(piece.a, o.x, piece.y + o.y, JunctionFactKind::Half, Axis::X, piece.edge, UINT32_MAX, r);
+							break;
+					}
+				}
+				/* The prio element's tiles (RW6): a straight run on its row, the tile at either end and the run between them. */
+				const Elem &prio_el = chain[leg_edge[r]].back();
+				if (prio_el.k == Elem::K::Prio) {
+					group(prio_el.first, 0, vy[prio_el.first], JunctionFactKind::Straight, Axis::X, leg_edge[r], UINT32_MAX, r);
+					group(prio_el.last, 0, vy[prio_el.last], JunctionFactKind::Straight, Axis::X, leg_edge[r], UINT32_MAX, r);
+					row_run(prio_el.first, prio_el.last, vy[prio_el.first], sgn, leg_edge[r], r);
+				}
+			}
+
+			if (record != nullptr) {
+				record->near_cons.clear();
+				for (const Cons &cn : cons) record->near_cons.push_back({cn.v, cn.u, cn.k});
+				record->near_pts = pt_count;
+			}
+			/* The columns each point can take: the least and the greatest solution of the relations (a longest path; x_v - x_u >= k) within the domains the facts above gave. */
+			for (const FactCons &fc : fact_cons) {
+				if (fc.u >= 0) continue;
+				least[fc.v] = std::max(least[fc.v], fc.columns.empty() ? INT_MAX / 2 : fc.columns.front());
+				most[fc.v] = std::min(most[fc.v], fc.columns.empty() ? -1 : fc.columns.back());
+			}
+			for (int round = 0; round <= pt_count; round++) {
+				bool changed = false;
+				for (const Cons &cn : cons) {
+					if (least[cn.u] + cn.k > least[cn.v]) {
+						least[cn.v] = least[cn.u] + cn.k;
+						changed = true;
+					}
+					if (most[cn.v] - cn.k < most[cn.u]) {
+						most[cn.u] = most[cn.v] - cn.k;
+						changed = true;
+					}
+				}
+				if (!changed) break;
+			}
+			if (heights) node_checks();
+			for (const std::function<void()> &job : pending) job();
+		}
+
+		why("box bound");
+		if (x_phase) {
+			for (int p = 1; p < pt_count; p++) {
+				if (p != xe_pt) ge(0, xe_pt, p, 0);
+			}
+		} else {
+			for (int p = 1; p < pt_count; p++) {
+				if (p != se_pt) ge(1, se_pt, p, 0);
+			}
+		}
+		return true;
+	};
+
+	/* The port rows' offset: the one that minimises the largest fan (ties: the smaller). */
+	auto best_offset = [&]() {
+		int best = -1, best_o = 0;
+		for (int o = 0; o <= vy[item_pt[items - 1]]; o++) {
+			int worst = 0;
+			for (uint32_t e = 0; e < edge_count; e++) {
+				const uint32_t item = fan_item(e);
+				if (item == NO_ROW) continue;
+				worst = std::max(worst, std::abs(o + notation[edge_port(e)] - vy[item_pt[item]]));
+			}
+			if (best < 0 || worst < best) {
+				best = worst;
+				best_o = o;
+			}
+		}
+		return best_o;
+	};
+	auto set_port_rows = [&](int offset) {
+		for (int s = 0; s < n; s++) {
+			if (notation[s] >= 0) port_row[s] = offset + notation[s];
+		}
+		for (uint32_t e = 0; e < edge_count; e++) {
+			const uint32_t item = fan_item(e);
+			if (item != NO_ROW) fan_m[e] = std::abs(port_row[edge_port(e)] - vy[item_pt[item]]);
+		}
+	};
+
+	/* The Y-phase clearance of the X-axis bridges (D217): from the flat state, the Y and the X solve with no floors and only the relations, a head whose column lies strictly within an X-axis bridge keeps its flat side of the bridge's row by one. */
+	auto plan_clearance = [&](int fixed_offset) {
+		clear_y.clear();
+		std::vector<BridgeLine> lines;
+		std::vector<HeadRef> heads;
+		collect_bridges(lines, heads);
+		const std::vector<int> saved_vx = vx, saved_vy = vy, saved_port_row = port_row, saved_fan_m = fan_m;
+		const int saved_phase = phase;
+		floors_off = relations_only = skip_clearance = true;
+		std::vector<int> flat_y, flat_x;
+		phase = 1;
+		refresh(false);
+		bool ok = build() && flat_solve(flat_y);
+		if (ok) {
+			vy = flat_y;
+			set_port_rows(fixed_offset >= 0 ? fixed_offset : best_offset());
+			phase = 0;
+			refresh(true);
+			ok = build() && flat_solve(flat_x);
+			if (ok) {
+				vx = flat_x;
+			}
+		}
+		floors_off = relations_only = skip_clearance = false;
+		phase = saved_phase;
+		vx = saved_vx;
+		vy = saved_vy;
+		port_row = saved_port_row;
+		fan_m = saved_fan_m;
+		if (!ok) return;
+		for (const BridgeLine &line : lines) {
+			if (!line.x_axis) continue;
+			const int left = std::min(flat_x[line.a], flat_x[line.b]);
+			const int right = std::max(flat_x[line.a], flat_x[line.b]);
+			for (const HeadRef &head : heads) {
+				if (head.bridge == line.bridge || flat_x[head.xpt] <= left || flat_x[head.xpt] >= right) continue;
+				const int side = flat_y[head.ypt] - flat_y[line.line];
+				/* Flat side 0: the head lies on the bridge's row inside its span, a contradiction of the family (both sides are demanded). */
+				if (side == 0) {
+					clear_y.push_back({head.ypt, line.line, line.edge, head.edge});
+					clear_y.push_back({line.line, head.ypt, line.edge, head.edge});
+					continue;
+				}
+				if (side > 0) clear_y.push_back({head.ypt, line.line, line.edge, head.edge}); else clear_y.push_back({line.line, head.ypt, line.edge, head.edge});
+			}
+		}
+	};
+	auto build_failed = [&]() {
+		if (occupancy_failed) return solve_failed();
+		return fail("the placement rules are not complete for this topology " + build_why);
+	};
+	JunctionPlacementChoices choices;
+	int port_offset = 0;
+
+	if (fixed != nullptr) {
+		/* One Y solve and one X solve with the choices fixed (DESIGN-G1 §14.2). */
+		for (uint32_t e = 0; e < edge_count; e++) {
+			for (Elem &el : chain[e]) {
+				if (el.free_m) el.m = std::max(1, fixed->m[e][el.tok]);
+			}
+		}
+		rows_known = true;
+		/* The box's first row bounds the port rows as it bounds every solved point. */
+		for (int s = 0; s < n; s++) {
+			if (notation[s] < 0 || fixed->port_offset + notation[s] >= 0) continue;
+			failure.assign(1, JunctionPlacementReason{"box", UINT32_MAX, UINT32_MAX, fixed->port_offset + notation[s]});
+			if (error != nullptr) *error = fmt::format("the placement rules contradict each other: box (port slot {} would lie on row {})", s, fixed->port_offset + notation[s]);
+			return solve_failed();
+		}
+		if (shared != nullptr && shared->ok) {
+			/* The offset-independent stages were solved once by MakeJunctionPlacementShared: the Y solution is theirs. */
+			phase = 1;
+			refresh(false);
+			vy = shared->vy;
+		} else {
+			plan_clearance(fixed->port_offset);
+			phase = 1;
+			refresh(false);
+			if (!build()) return build_failed();
+			if (!solve(vy)) return solve_failed();
+		}
+		if (make_shared != nullptr) {
+			make_shared->vy = vy;
+			make_shared->ok = true;
+			return JunctionTrackPlacement{};
+		}
+		port_offset = fixed->port_offset;
+		set_port_rows(port_offset);
+		phase = 0;
+		refresh(true);
+		if (!build()) return build_failed();
+		if (record != nullptr) return JunctionTrackPlacement{};
+		if (!solve(vx)) return solve_failed();
+		choices = *fixed;
+	} else {
+		/* The rounds: a first X pass without rows gives the S-bends' sizes, then Y and X alternate until the sizes hold. */
+		phase = 0;
+		refresh(false);
+		if (!build()) return build_failed();
+		if (!solve(vx)) return solve_failed();
+		for (uint32_t e = 0; e < edge_count; e++) {
+			for (Elem &el : chain[e]) {
+				if (el.free_m) el.m = std::max(1, std::abs(vx[el.last] - vx[el.first]));
+			}
+		}
+		rows_known = true;
+		for (int round = 0; round < 5; round++) {
+			plan_clearance(-1);
+			phase = 1;
+			refresh(false);
+			if (!build()) return build_failed();
+			if (!solve(vy)) return solve_failed();
+
+			/* The port rows. */
+			port_offset = best_offset();
+			set_port_rows(port_offset);
+
+			phase = 0;
+			refresh(true);
+			if (!build()) return build_failed();
+			if (!solve(vx)) return solve_failed();
+
+			bool changed = false;
+			for (uint32_t e = 0; e < edge_count; e++) {
+				for (Elem &el : chain[e]) {
+					if (!el.free_m) continue;
+					const int m = std::abs(vx[el.last] - vx[el.first]);
+					if (m != el.m) {
+						el.m = m;
+						changed = true;
+					}
+				}
+			}
+			if (!changed) break;
+			if (round == 4) return fail("the placement does not settle");
+		}
+
+		/* The choices the rounds settled on. */
+		choices.port_offset = port_offset;
+		choices.m.resize(edge_count);
+		choices.corner.resize(edge_count);
+		for (uint32_t e = 0; e < edge_count; e++) {
+			choices.m[e].assign(programs.edges[e].size(), 0);
+			choices.corner[e].assign(programs.edges[e].size(), 0);
+			for (const Elem &el : chain[e]) {
+				if (el.free_m) choices.m[e][el.tok] = el.m;
+				if (el.joiner_div) choices.corner[e][el.tok] = vy[el.first] - vy[el.last];
+			}
+		}
+	}
+
+	/* The legality of the settled placement (the rounds' states may overlap unrelated pieces while the S-bend sizes settle). */
+	if (rows_known && !relations_only) {
+		compute_node_tracks();
+		if (!add_occupancy(vx, true)) return solve_failed();
+	}
+
+	/* The fans' and ports' rows. */
+	for (int s = 0; s < n; s++) {
+		if (notation[s] >= 0) vy[port_pt[s]] = port_row[s];
+	}
+	/* A fan's two ends: the port row and its item's row. */
+	for (uint32_t e = 0; e < edge_count; e++) {
+		for (const Elem &el : chain[e]) {
+			if (el.k != Elem::K::Fan) continue;
+			vy[el.port_first ? el.first : el.last] = port_row[el.slot];
+			vy[el.port_first ? el.last : el.first] = vy[item_pt[el.index]];
+		}
+	}
+	auto tile = [&](int pt) { return TileIndexDiffC{static_cast<int16_t>(vx[pt]), static_cast<int16_t>(vy[pt])}; };
+
+	JunctionTrackPlacement result;
+	for (int i = 0; i < items; i++) result.item_rows.push_back(vy[item_pt[i]]);
+	for (int s = 0; s < n; s++) result.ports.push_back(tile(port_pt[s]));
+	for (uint32_t i = 0; i < graph.nodes.size(); i++) result.nodes.push_back(tile(node_pt[i]));
+	result.size = {static_cast<int16_t>(vx[xe_pt] + 1), static_cast<int16_t>(vy[se_pt] + 1)};
+	result.choices = choices;
+	result.columns.assign(vx.begin(), vx.end());
+	/* The prio elements (RW6b): per element, its tiles and drawn bits, the one source of occupancy, the signal pass and the level solve. */
+	for (int r = 0; r < rows; r++) {
+		const Elem &prio_el = chain[leg_edge[r]].back();
+		if (prio_el.k != Elem::K::Prio) continue;
+		const int sgn = east[r] ? 1 : -1;
+		const DiagDirection side = prio_el.index < row_items[r].lane ? DiagDirection::NW : DiagDirection::SE;
+		const DiagDirection exit_edge = east[r] ? DiagDirection::SW : DiagDirection::NE;
+		JunctionPrioSpan span;
+		span.merge = {static_cast<int16_t>(vx[prio_el.last]), static_cast<int16_t>(vy[item_pt[row_items[r].lane]])};
+		for (int step = 0; step <= even_prio; step++) {
+			const auto [row_bits, lane_bits] = JunctionPrioStepBits(step, side, exit_edge);
+			const int x = vx[prio_el.last] - step * sgn;
+			if (lane_bits.Any()) span.tiles.emplace_back(TileIndexDiffC{static_cast<int16_t>(x), span.merge.y}, lane_bits);
+			span.tiles.emplace_back(TileIndexDiffC{static_cast<int16_t>(x), static_cast<int16_t>(vy[prio_el.first])}, row_bits);
+		}
+		result.prio.push_back(std::move(span));
+	}
+
+	/* The heads of a bridge: its near and far point, and the carrier's travel direction along the axis. */
+	struct Heads {
+		int near;
+		int far;
+		bool row; ///< On a row (else in a column).
+	};
+	auto heads_of = [&](int b, int copy) {
+		const uint32_t edge = structure.bridges[b].edge;
+		if (structure.bridges[b].doubled) {
+			const size_t k = std::find(bridges_of[edge].begin(), bridges_of[edge].end(), b) - bridges_of[edge].begin();
+			const Elem &el = nth_heads(copy == 0 ? chain[edge] : chain_copy[edge], k);
+			return Heads{el.first, el.last, true};
+		}
+		for (const Elem &el : chain[edge]) {
+			if (el.k == Elem::K::Heads) return Heads{el.first, el.last, false};
+		}
+		return Heads{0, 0, false};
+	};
+	/* The bridge of an edge whose crossed set holds another edge, or -1. */
+	auto bridge_over = [&](uint32_t edge, uint32_t crossed) {
+		for (int b : bridges_of[edge]) {
+			const std::vector<uint32_t> &set = structure.bridges[b].crossed;
+			if (std::find(set.begin(), set.end(), crossed) != set.end()) return b;
+		}
+		return -1;
+	};
+	/* The tiles of an edge strictly between a bridge's heads on a row (or in a column), in the edge's order. */
+	auto tiles_under = [&](uint32_t edge, const Heads &heads, int line) {
+		std::vector<TileIndexDiffC> found;
+		for (const SymTile &t : edge_tiles(edge)) {
+			const int x = vx[t.pt] + t.dx;
+			if (heads.row) {
+				if (t.y != line) continue;
+				if (x > std::min(vx[heads.near], vx[heads.far]) && x < std::max(vx[heads.near], vx[heads.far])) found.push_back({static_cast<int16_t>(x), static_cast<int16_t>(t.y)});
+			} else {
+				if (x != line) continue;
+				if (t.y > std::min(vy[heads.near], vy[heads.far]) && t.y < std::max(vy[heads.near], vy[heads.far])) found.push_back({static_cast<int16_t>(x), static_cast<int16_t>(t.y)});
+			}
+		}
+		return found;
+	};
+
+	result.edges.resize(edge_count);
+	result.copies.resize(edge_count);
+	for (uint32_t e = 0; e < edge_count; e++) {
+		const std::vector<Step> &program = programs.edges[e];
+		if (is_row_edge(e) && doubled_edge(e)) {
+			/* A doubled leg: each copy's S-bend spans its chain's S-bend, a bridge the crosser's tiles between that copy's heads. */
+			const int s = east[(end_level(graph.edges[e].from) - 1) / 2] ? 1 : -1;
+			for (int copy = 0; copy < 2; copy++) {
+				const std::vector<Step> &tokens = copy == 0 ? program : programs.copies[e];
+				for (size_t t = 0; t < tokens.size(); t++) {
+					const Step &step = tokens[t];
+					if (step.kind == StepKind::SBend) {
+						const std::vector<Elem> &elems = copy == 0 ? chain[e] : chain_copy[e];
+						const Elem &bend = *std::ranges::find_if(elems, [&](const Elem &el) { return el.k == Elem::K::SBend && el.tok == static_cast<int>(t); });
+						(copy == 0 ? result.edges[e] : result.copies[e]).push_back({tile(bend.first), tile(bend.last)});
+					} else {
+						const int over = bridge_over(e, step.index);
+						if (over < 0) return fail("a crossing edge misses its bridge");
+						const Heads heads = heads_of(over, copy);
+						std::vector<TileIndexDiffC> found = tiles_under(step.index, heads, vy[heads.near]);
+						if (found.empty()) return fail("a crossing edge misses its bridge");
+						std::stable_sort(found.begin(), found.end(), [&](const TileIndexDiffC &a, const TileIndexDiffC &b) { return s > 0 ? a.x < b.x : a.x > b.x; });
+						(copy == 0 ? result.edges[e] : result.copies[e]).push_back({found.front(), found.back()});
+					}
+				}
+			}
+			continue;
+		}
+		const std::vector<Elem> &elems = chain[e];
+		for (size_t t = 0; t < program.size(); t++) {
+			const Step &step = program[t];
+			if (step.kind == StepKind::Fan) {
+				for (const Elem &el : elems) {
+					if (el.tok == static_cast<int>(t)) result.edges[e].push_back({tile(el.first), tile(el.last)});
+				}
+			} else if (step.kind == StepKind::Corner || step.kind == StepKind::SBend) {
+				for (const Elem &el : elems) {
+					if (el.tok == static_cast<int>(t)) {
+						const TileIndexDiffC first = tile(el.first);
+						const TileIndexDiffC last = {static_cast<int16_t>(vx[el.first] + el.offs.back().x), static_cast<int16_t>(vy[el.first] + el.offs.back().y)};
+						result.edges[e].push_back({first, last});
+					}
+				}
+			} else if (step.kind == StepKind::Over || step.kind == StepKind::Tunnel) {
+				if (bridges_of[e].empty()) return fail("a crossing edge misses its bridge");
+				const Heads heads = heads_of(bridges_of[e][0], 0);
+				std::vector<TileIndexDiffC> found = tiles_under(step.index, heads, vx[heads.near]);
+				if (found.empty()) return fail("a crossing edge misses its bridge");
+				const bool north = vy[heads.far] < vy[heads.near];
+				std::stable_sort(found.begin(), found.end(), [&](const TileIndexDiffC &a, const TileIndexDiffC &b) { return north ? a.y > b.y : a.y < b.y; });
+				result.edges[e].push_back({found.front(), found.back()});
+			} else {
+				/* Under, Above: this edge's tiles beneath the overhead edge's bridge. */
+				const uint32_t x = step.index;
+				const int bx = bridge_over(x, e);
+				if (bx < 0) return fail("a crossing edge misses its bridge");
+				std::vector<TileIndexDiffC> found;
+				if (structure.bridges[bx].doubled) {
+					const Heads heads = heads_of(bx, step.copy);
+					found = tiles_under(e, heads, vy[heads.near]);
+				} else {
+					const Heads heads = heads_of(bx, 0);
+					found = tiles_under(e, heads, vx[heads.near]);
+				}
+				if (found.empty()) return fail("a crossing edge misses its bridge");
+				result.edges[e].push_back({found.front(), found.back()});
+			}
+		}
+	}
+
+	/* The bridges. */
+	for (size_t b = 0; b < structure.bridges.size(); b++) {
+		const JunctionTrackBridge &bridge = structure.bridges[b];
+		std::array<JunctionBridge, 2> heads{};
+		for (int copy = 0; copy < (bridge.doubled ? 2 : 1); copy++) {
+			const Heads hd = heads_of(static_cast<int>(b), copy);
+			heads[copy] = JunctionBridge{tile(hd.near), tile(hd.far)};
+			if (bridge.doubled) {
+				const int middle = std::abs(vx[hd.near] - vx[hd.far]) - 1;
+				if (copy == 0 && middle > spec.max_bridge_middle) return fail(fmt::format("bridge {} on edge {} needs {} middle tiles, more than {}", b, bridge.edge, middle, spec.max_bridge_middle));
+			}
+		}
+		if (bridge.tunnel) {
+			/* A tunnel's length is capped by the game's max_tunnel_length (D220), not by the bridge span. */
+			const int middle = std::abs(heads[0].start.x - heads[0].end.x) + std::abs(heads[0].start.y - heads[0].end.y) - 1;
+			if (middle > spec.max_tunnel_length) return fail(fmt::format("tunnel {} on edge {} needs {} middle tiles, more than {}", b, bridge.edge, middle, spec.max_tunnel_length));
+		}
+		result.bridges.push_back(heads);
+	}
+
+	/* The curves at the solved columns (for tests): paths first, then the copies in path order. */
+	std::vector<SymRoute> sym;
+	if (!sym_routes(sym, true)) return fail("the curves of the routes are not ruled yet " + build_why);
+	for (int copy = 0; copy < 2; copy++) {
+		for (const SymRoute &route : sym) {
+			if (route.copy != copy) continue;
+			std::vector<std::pair<int8_t, int>> curves;
+			for (const SymCurve &curve : route.curves) curves.emplace_back(curve.hand == JunctionCurveHand::Right ? 1 : -1, curve.xoff + 2 * route.sign * (vx[curve.pt] - vx[route.start]));
+			result.curves.push_back(std::move(curves));
+		}
+	}
+	return result;
+}
+
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error)
+{
+	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, nullptr, error, {}, {});
+}
+
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors)
+{
+	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, x_floors, y_floors);
+}
+
+
+JunctionPlacementShared MakeJunctionPlacementShared(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices)
+{
+	JunctionPlacementShared shared;
+	PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, nullptr, {}, {}, nullptr, {0, 0}, true, false, nullptr, &shared);
+	if (!shared.ok) return shared;
+	/* Record the shape of the X phase with all-buildable facts (the groups, runs and relations do not depend on the terrain or the offset): the near search's early reject reads it. */
+	JunctionTerrain flat;
+	flat.origin = {0, 0};
+	flat.width = 512;
+	flat.height = 128;
+	flat.tiles.assign(static_cast<size_t>(flat.width) * flat.height, JunctionTerrainTile{});
+	const JunctionFacts dummy(flat);
+	shared.near_groups.clear();
+	shared.near_runs.clear();
+	shared.near_cons.clear();
+	std::string recorded_error;
+	PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, &recorded_error, {}, {}, &dummy, {64, 8}, false, true, &shared, nullptr, &shared);
+	if (shared.near_pts > 0) {
+		shared.near_lo.assign(shared.near_pts, 0);
+		for (int round = 0; round <= shared.near_pts; round++) {
+			bool changed = false;
+			for (const auto &c : shared.near_cons) {
+				if (shared.near_lo[c[1]] + c[2] > shared.near_lo[c[0]]) {
+					shared.near_lo[c[0]] = shared.near_lo[c[1]] + c[2];
+					changed = true;
+				}
+			}
+			if (!changed) break;
+		}
+		shared.near_ok = true;
+	}
+	return shared;
+}
+
+bool JunctionPlacementNearReject(const JunctionPlacementShared &shared, const JunctionFacts &facts, TileIndexDiffC offset)
+{
+	if (!shared.near_ok) return false;
+	const int pts = shared.near_pts;
+	const int high = facts.MaxX() - offset.x;
+	constexpr int INF = INT_MAX / 4;
+	std::vector<int> lo = shared.near_lo;
+	std::vector<int> hi(pts, INF);
+	auto next = [&](const std::array<int, 3> &g, int c) {
+		for (; c <= high; c++) {
+			if (facts.Buildable(c + g[1] + offset.x, g[2] + offset.y)) return c;
+		}
+		return INF;
+	};
+	auto prev = [&](const std::array<int, 3> &g, int c) {
+		for (c = std::min(c, high); c >= 0; c--) {
+			if (facts.Buildable(c + g[1] + offset.x, g[2] + offset.y)) return c;
+		}
+		return -1;
+	};
+	/* The blocked columns (relative to the offset) of each run's row. */
+	std::map<int, std::vector<int>> blocked_of_row;
+	std::vector<const std::vector<int> *> blocked;
+	for (const auto &r : shared.near_runs) {
+		auto found = blocked_of_row.find(r[2]);
+		if (found == blocked_of_row.end()) {
+			std::vector<int> list;
+			for (int x = facts.MinX(); x <= facts.MaxX(); x++) {
+				if (!facts.Buildable(x, r[2] + offset.y)) list.push_back(x - offset.x);
+			}
+			found = blocked_of_row.emplace(r[2], std::move(list)).first;
+		}
+		blocked.push_back(&found->second);
+	}
+	for (const auto &g : shared.near_groups) {
+		const int c = next(g, std::max(0, lo[g[0]]));
+		if (c == INF) return true;
+		lo[g[0]] = c;
+	}
+	for (int round = 0; round <= pts * 4; round++) {
+		bool changed = false;
+		for (const auto &c : shared.near_cons) {
+			if (lo[c[1]] + c[2] > lo[c[0]]) { lo[c[0]] = lo[c[1]] + c[2]; changed = true; }
+			if (hi[c[0]] < INF && hi[c[0]] - c[2] < hi[c[1]]) { hi[c[1]] = hi[c[0]] - c[2]; changed = true; }
+		}
+		for (const auto &g : shared.near_groups) {
+			const int p = g[0];
+			if (lo[p] > high || lo[p] > hi[p]) return true;
+			const int c = next(g, lo[p]);
+			if (c == INF) return true;
+			if (c != lo[p]) { lo[p] = c; changed = true; }
+			const int d = prev(g, hi[p]);
+			if (d < lo[p]) return true;
+			if (d != hi[p]) { hi[p] = d; changed = true; }
+		}
+		for (size_t i = 0; i < shared.near_runs.size(); i++) {
+			const auto &r = shared.near_runs[i];
+			const int west = r[3] > 0 ? r[0] : r[1];
+			const int east = r[3] > 0 ? r[1] : r[0];
+			for (const int c : *blocked[i]) {
+				/* Not (x_west <= c <= x_east). */
+				if (lo[east] >= c && lo[west] < c + 1) { lo[west] = c + 1; changed = true; }
+				if (hi[west] <= c && hi[east] > c - 1) { hi[east] = c - 1; changed = true; }
+			}
+			if (lo[west] > hi[west] || lo[east] > hi[east]) return true;
+		}
+		if (!changed) break;
+	}
+	return false;
+}

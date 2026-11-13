@@ -16,6 +16,8 @@
 #include "../placement/junction_positions.h"
 #include "../junction_rules.h"
 #include "../junction_rules_internal.h"
+#include "../placement/junction_placement.h"
+#include "../junction_pipeline.h"
 
 #include <array>
 #include <map>

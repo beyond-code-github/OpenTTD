@@ -19,6 +19,7 @@
 #include "../../junction/terrain/junction_terraform.h"
 #include "../../junction/terrain/junction_terrain_json.h"
 #include "../../junction/topology/junction_topology.h"
+#include "../../junction/junction_pipeline.h"
 #include "../../map_func.h"
 #include "../../tile_map.h"
 #include "../../track_func.h"

@@ -14,6 +14,7 @@
 #include "../junction_layout.h"
 #include "../terrain/junction_terraform.h"
 #include "../topology/junction_topology.h"
+#include "../junction_pipeline.h"
 
 #include <atomic>
 #include <optional>

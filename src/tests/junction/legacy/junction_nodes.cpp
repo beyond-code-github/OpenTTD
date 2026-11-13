@@ -22,7 +22,7 @@
 #include "../../../junction/terrain/junction_facts.h"
 #include "../../../junction/junction_rules.h"
 #include "../../../junction/junction_rules_internal.h"
-#include "../../../junction/topology/junction_signal_pass.h"
+#include "../../../junction/signals/junction_signal_pass.h"
 #include "../../../rail.h"
 #include "../../../slope_func.h"
 #include "../../../track_func.h"

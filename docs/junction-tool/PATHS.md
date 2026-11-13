@@ -27,8 +27,8 @@ Docs written before MV1 cite the old flat paths; this table maps them.
 | `src/junction_topology.cpp` | `src/junction/topology/junction_topology.cpp` |
 | `src/junction_chain.h` | `src/junction/topology/junction_chain.h` |
 | `src/junction_chain.cpp` | `src/junction/topology/junction_chain.cpp` |
-| `src/junction_signal_pass.h` | `src/junction/topology/junction_signal_pass.h` |
-| `src/junction_signal_pass.cpp` | `src/junction/topology/junction_signal_pass.cpp` |
+| `src/junction_signal_pass.h` | `src/junction/signals/junction_signal_pass.h` |
+| `src/junction_signal_pass.cpp` | `src/junction/signals/junction_signal_pass.cpp` |
 | `src/junction_positions.h` | `src/junction/placement/junction_positions.h` |
 | `src/junction_positions.cpp` | `src/junction/placement/junction_positions.cpp` |
 | `src/junction_levels.h` | `src/junction/placement/junction_levels.h` |
@@ -75,7 +75,7 @@ Docs written before MV1 cite the old flat paths; this table maps them.
 | `src/tests/junction_terraform.cpp` | `src/tests/junction/terrain/junction_terraform.cpp` |
 | `src/tests/junction_topology.cpp` | `src/tests/junction/topology/junction_topology.cpp` |
 | `src/tests/junction_chain.cpp` | `src/tests/junction/topology/junction_chain.cpp` |
-| `src/tests/junction_signal_pass.cpp` | `src/tests/junction/topology/junction_signal_pass.cpp` |
+| `src/tests/junction_signal_pass.cpp` | `src/tests/junction/signals/junction_signal_pass.cpp` |
 | `src/tests/junction_positions.cpp` | `src/tests/junction/placement/junction_positions.cpp` |
 | `src/tests/junction_gui.cpp` | `src/tests/junction/tool/junction_gui.cpp` |
 | `src/tests/junction_real_terrain.cpp` | `src/tests/junction/tool/junction_real_terrain.cpp` |
@@ -96,3 +96,13 @@ Docs written before MV1 cite the old flat paths; this table maps them.
 | `src/tests/junction_design.cpp` | `src/tests/junction/legacy/junction_design.cpp` |
 
 GS1: `JunctionSpec`, `JunctionNotation`, `ParseJunctionNotation`, `JunctionUnitPrices`, `CurveSpeedLimitForSpacing`, `DeriveCurveSpacing`, `JunctionRampLevels` and `MakeTestJunctionSpec` moved from `legacy/junction_generator.{h,cpp}` to `src/junction/junction_spec.{h,cpp}`.
+
+SP2 (D226): `src/junction/topology/junction_topology.{h,cpp}` split; each group of symbols moved verbatim.
+- Placement helpers (`FloorKind`, `JunctionPrioStepBits`, `JunctionRunFloor`), `PlaceTrackGraph` (now exported), the seed and fixed-choices `PlaceJunctionTrackGraph` overloads, `MakeJunctionPlacementShared` and `JunctionPlacementNearReject` to `src/junction/placement/junction_placement.{h,cpp}`.
+- Placement types (`JunctionTrackSpan`, `JunctionPlacementReason`, `JunctionPlacementChoices`, `JunctionPrioSpan`, `JunctionTrackPlacement`, `JunctionPlacementShared`) to `src/junction/placement/junction_placement.h`.
+- `RenderJunctionTrackPlacement` and `AddJunctionTracks` to `src/junction/placement/junction_render.{h,cpp}`.
+- `JunctionRouteEvents`, `SignalJunctionTrackRoutes`, `JunctionSignalReason` and `JunctionTrackSignal` to `src/junction/signals/junction_signals.{h,cpp}`.
+- `junction_signal_pass.{h,cpp}` from `topology/` to `src/junction/signals/`; its test to `src/tests/junction/signals/`.
+- `AppendBridgeCompositions`, `AppendBridgeCounts`, `CutJunctionTrackBridges`, `MakeJunctionGraphSeed`, `JunctionGraphSeed`, `JunctionDetourEdit`, `IsRunPiece`, `ApplyJunctionDetours` and the facts-and-terraform `PlaceJunctionTrackGraph` overload to `src/junction/junction_pipeline.{h,cpp}`.
+- `JUNCTION_AXIS_TRACKDIR`, `JunctionBendMoves`, `JunctionCornerTrack` and `JunctionTrackTouches` to `src/junction/junction_track_geometry.{h,cpp}`.
+- `RowItems`, `FindRowItems` and `FanTokenOf` stay in `topology/junction_topology.{h,cpp}`, now declared in the header.

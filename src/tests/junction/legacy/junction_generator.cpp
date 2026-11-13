@@ -14,7 +14,7 @@
 #include "../../../junction/legacy/junction_generator.h"
 #include "../../../junction/legacy/junction_nodes.h"
 #include "../../../junction/placement/junction_positions.h"
-#include "../../../junction/topology/junction_signal_pass.h"
+#include "../../../junction/signals/junction_signal_pass.h"
 #include "../../../junction/junction_route.h"
 #include "../../../junction/junction_rules.h"
 #include "../../../junction/junction_rules_internal.h"

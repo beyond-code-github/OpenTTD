@@ -18,7 +18,7 @@
 #include "../line/junction_line_router.h"
 #include "../junction_route.h"
 #include "../line/junction_router.h"
-#include "../topology/junction_signal_pass.h"
+#include "../signals/junction_signal_pass.h"
 #include "junction_skeleton.h"
 #include "junction_throughput.h"
 #include "../../track_func.h"

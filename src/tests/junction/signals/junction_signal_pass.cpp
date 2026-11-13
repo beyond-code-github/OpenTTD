@@ -16,7 +16,7 @@
 #include "../../../junction/junction_rules.h"
 #include "../../../junction/junction_rules_internal.h"
 #include "../../../core/format.hpp"
-#include "../../../junction/topology/junction_signal_pass.h"
+#include "../../../junction/signals/junction_signal_pass.h"
 #include "../../../track_func.h"
 
 #include <algorithm>

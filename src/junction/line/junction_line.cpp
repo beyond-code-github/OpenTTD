@@ -52,7 +52,7 @@
 #include "../../stdafx.h"
 
 #include "junction_line.h"
-#include "../topology/junction_signal_pass.h"
+#include "../signals/junction_signal_pass.h"
 #include "../../direction_func.h"
 #include "../../map_func.h"
 #include "../../track_func.h"

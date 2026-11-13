@@ -15,7 +15,10 @@
 #include "../topology/junction_chain.h"
 #include "../terrain/junction_facts.h"
 #include "../junction_rules_internal.h"
-#include "../topology/junction_signal_pass.h"
+#include "../signals/junction_signal_pass.h"
+#include "../placement/junction_placement.h"
+#include "../signals/junction_signals.h"
+#include "../junction_pipeline.h"
 #include "../../map_func.h"
 #include "../../track_func.h"
 

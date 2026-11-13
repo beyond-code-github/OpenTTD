@@ -1,6 +1,10 @@
 add_files(
     junction_levels.cpp
     junction_levels.h
+    junction_placement.cpp
+    junction_placement.h
     junction_positions.cpp
     junction_positions.h
+    junction_render.cpp
+    junction_render.h
 )

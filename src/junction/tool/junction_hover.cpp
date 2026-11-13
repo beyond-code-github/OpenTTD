@@ -12,6 +12,10 @@
 #include "junction_hover.h"
 #include "../terrain/junction_facts.h"
 #include "../junction_spec.h"
+#include "../placement/junction_placement.h"
+#include "../placement/junction_render.h"
+#include "../signals/junction_signals.h"
+#include "../junction_pipeline.h"
 
 #include <algorithm>
 #include <atomic>

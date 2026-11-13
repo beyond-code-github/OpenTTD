@@ -1,6 +1,6 @@
-# Junction tool: placement/ (difference-constraint solver, level solve)
+# Junction tool: placement/ (horizontal placement, render, positions solver, level solve)
 
-- `junction_positions` solves difference constraints (`JunctionPositions`); `junction_levels` is the level solve (D216, D218).
+- `junction_placement` is the horizontal placement and `junction_render` rasterises it to routes and a layout; `junction_positions` solves difference constraints (`JunctionPositions`); `junction_levels` is the level solve (D216, D218).
 
 ## Placement
 - Placement is relations plus terrain facts solved together; no flat positions enter the terrain solve (D216, G1 §14.1).

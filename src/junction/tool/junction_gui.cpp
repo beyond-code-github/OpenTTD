@@ -18,6 +18,7 @@
 #include "../line/junction_line.h"
 #include "../terrain/junction_terraform.h"
 #include "../topology/junction_topology.h"
+#include "../junction_pipeline.h"
 #include "../junction_rules.h"
 #include "../../window_gui.h"
 #include "../../gui.h"

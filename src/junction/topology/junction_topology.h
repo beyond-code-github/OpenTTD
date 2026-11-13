@@ -239,168 +239,36 @@ struct JunctionTrackPrograms {
  */
 JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, std::string *error);
 
+/** The stack items a row's tokens end on. */
+struct RowItems {
+	size_t lane; ///< The lane's item.
+	size_t approach; ///< The joiner's approach item, or NONE.
+	size_t north; ///< The item before the lane unless that is the approach, or NONE.
+	static constexpr size_t NONE = JunctionTrackStep::NO_ROW; ///< Not in the stack.
+};
+
+/**
+ * The lane, approach and north items of a row (the item before Lane that is not Approach is north).
+ * @param stack The track structure's stack.
+ * @param row The row.
+ * @return Its items.
+ */
+RowItems FindRowItems(const std::vector<JunctionTrackStackItem> &stack, int row);
+
+/**
+ * The first or last Fan token of an edge's program, found by kind (R3).
+ * @param programs The programs.
+ * @param e The edge.
+ * @param first True for the first Fan (an in edge's), false for the last (an out edge's).
+ * @return Its index in the program, or the program's size when it has none.
+ */
+size_t FanTokenOf(const JunctionTrackPrograms &programs, uint32_t e, bool first);
+
 /** The roles of a row's edges, from the graph and the programs (DESIGN-G1 §16.4 RW3). */
 bool JunctionIsInEdge(const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackPrograms &programs, uint32_t e); ///< An edge from a port to a row node whose program starts with a Fan.
 bool JunctionIsOutEdge(const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackPrograms &programs, uint32_t e); ///< An edge from a row node to a port whose program ends with a Fan.
 bool JunctionIsLegEdge(const JunctionTrackGraph &graph, const JunctionTrackOrder &order, uint32_t e); ///< An edge between two nodes of one row.
 bool JunctionIsDoubledEdge(const JunctionTrackPrograms &programs, uint32_t e); ///< An edge with a copy 1.
-
-/** A token's tiles: its first and last tile in the edge's travel order (DESIGN-G1 §11.8). */
-using JunctionTrackSpan = std::pair<TileIndexDiffC, TileIndexDiffC>;
-
-/** Why a placement relation exists (DESIGN-G1 §14.4): the rule and the graph elements it serves. */
-struct JunctionPlacementReason {
-	const char *rule = nullptr; ///< A literal naming the floor or block, as the code's comment there names it (e.g. "out fan k_out", "chain run", "waiting room").
-	uint32_t edge = UINT32_MAX;
-	uint32_t node = UINT32_MAX;
-	int32_t row = -1; ///< The row chain's index, -1 when none.
-};
-
-/** The values placement does not derive from its relations (DESIGN-G1 §14.2): fixed within a search state, changed only by an edit. */
-struct JunctionPlacementChoices {
-	std::vector<std::vector<int>> m; ///< Per edge, per token of JunctionTrackPrograms::edges: a vertical S-bend's size, 0 for other tokens.
-	std::vector<std::vector<int>> corner; ///< Per edge, per token: a joiner_div Corner's row span, 0 for other tokens.
-	int port_offset = 0; ///< The port rows' offset.
-	bool operator==(const JunctionPlacementChoices &) const = default;
-};
-
-/** One prio element as the placement fixes it (DESIGN-G1 12.4). */
-struct JunctionPrioSpan {
-	std::vector<std::pair<TileIndexDiffC, TrackBits>> tiles; ///< Its tiles in drawing order (per step upstream of the merge: the main-line tile's corner half on even steps, then the row tile) with the bits drawn on each.
-	TileIndexDiffC merge; ///< The joiner merge's tile (step 0 on the main line).
-};
-
-/** The seed placement of a programmed track graph (DESIGN-G1 §11.8): tiles only, x east, y south, (0, 0) the box's north-west corner. */
-struct JunctionTrackPlacement {
-	std::vector<int> item_rows; ///< Per stack item, its tile row.
-	std::vector<TileIndexDiffC> ports; ///< Per port slot, its boundary tile.
-	std::vector<TileIndexDiffC> nodes; ///< Per graph node: a split's first diverging half piece, a merge's last joining half piece.
-	std::vector<std::vector<JunctionTrackSpan>> edges; ///< Per edge, per token of JunctionTrackPrograms::edges.
-	std::vector<std::vector<JunctionTrackSpan>> copies; ///< Per edge, per token of JunctionTrackPrograms::copies.
-	std::vector<std::array<JunctionBridge, 2>> bridges; ///< Per structure bridge: copy 0's and copy 1's heads, start = the head the carrier reaches first; a single bridge's copy 1 is {{0, 0}, {0, 0}}.
-	TileIndexDiffC size; ///< The box.
-	JunctionPlacementChoices choices; ///< The choices this placement was solved with.
-	std::vector<JunctionPlacementReason> why; ///< On failure: the explanation chain of the contradiction.
-	std::vector<int> columns; ///< The column of every placement point (x_floors refer to these ids).
-	JunctionTerraform terraform; ///< The height solve's plan (D218), empty on flat ground.
-	Money height_cost = 0; ///< Terraform, foundations and clearing of the chosen levels.
-	std::vector<std::pair<TileIndexDiffC, int8_t>> track_levels; ///< The level solve's track level per track tile (placement frame), for the ghost and the build check.
-	std::vector<JunctionPrioSpan> prio; ///< Per prio element, its tiles and drawn bits (placement frame), from the Prio Elem.
-	std::vector<std::vector<std::pair<int8_t, int>>> curves; ///< Per lane path and copy (paths first, then copies in path order): each curve's hand (+1 right, -1 left) and unit position at the solved columns, from the curve family's walk (for tests).
-};
-
-/**
- * The seed placement (DESIGN-G1 §11.8): the least tiles that meet the rules, Y first then X.
- * @param error Receives the reason when the result is empty (no nodes), e.g. a bridge longer than spec.max_bridge_middle.
- */
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error);
-
-/**
- * The placement with its choices fixed (DESIGN-G1 §14.2): one Y solve and one X solve, no rounds.
- * @param choices The S-bend sizes, Corner spans and port offset to solve with, e.g. those of an earlier placement.
- * @param error Receives the reason when the result is empty; JunctionTrackPlacement::why then names the relations of a contradiction.
- * @param x_floors (point, least column) pairs added as lower bounds in the X phase, reason "x floor"; a test seam until terrain facts (DESIGN-G1 §14.4). Points are the placement's internal ids.
- * @param y_floors (point, least row) pairs added as lower bounds in the Y phase, reason "y floor"; a test seam until the row-gap edit (DESIGN-G1 §14.6). Point 1 + i is stack item i.
- */
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors = {}, const std::vector<std::pair<int, int>> &y_floors = {});
-
-/** The stages of the facts placement that do not read the facts or the offset (the Y phase: its clearance relations from the flat solve, and the Y solution), solved once for a near search over many offsets. */
-struct JunctionPlacementShared {
-	bool ok = false; ///< False when the stages did not solve: the placement then computes them itself (and reports their failure as today).
-	std::vector<int> vy; ///< The rows of the Y solve, per point.
-	/* The X phase's offset-independent shape, for the early reject of a near offset. */
-	bool near_ok = false;
-	int near_pts = 0;
-	std::vector<std::array<int, 3>> near_groups; ///< (point, column offset, row) of every tile group the facts must allow.
-	std::vector<std::array<int, 4>> near_runs; ///< (a, b, row, sense) of every straight run on a row.
-	std::vector<std::array<int, 3>> near_cons; ///< (v, u, k): x_v - x_u >= k.
-	std::vector<int> near_lo; ///< The least column of every point under the relations alone.
-};
-
-/** True when the X solve of the class facts at this offset must fail (a sound bounds propagation over the shared relations, the groups and the runs); false proves nothing. The error text is not produced. */
-bool JunctionPlacementNearReject(const JunctionPlacementShared &shared, const JunctionFacts &facts, TileIndexDiffC offset);
-
-/** The shared stages for these inputs (the same as those of the facts overload, with the choices fixed). */
-JunctionPlacementShared MakeJunctionPlacementShared(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices);
-
-/**
- * The fixed-choices placement with the target terrain's facts in the X phase (DESIGN-G1 §14.4, D216): every group of tiles (a bend, a switch tile, a bridge head, a vertical run's tile) is restricted to the columns where its tile is buildable, and a straight run on a row must be buildable on every tile it covers. Rows stay as the structure gives them.
- * @param facts The target terrain's facts.
- * @param offset The working tile of the placement's (0, 0), as the node solve's offset.
- * @param error Receives the reason when the result is empty; JunctionTrackPlacement::why then names the relations of a contradiction, a fact's tile in the error text.
- * @param heights False (D218, the hard-facts mode): only the class facts apply (blocked, water, not spannable, outside the snapshot); height steps, joins and the fits of bends and nodes are skipped.
- * @param terraform True (D218): X uses the class facts only (JunctionFacts::Buildable, forces heights = false) and then the height solve (DESIGN-G1 §15.3) chooses a level per tile on every edge and sets terraform and height_cost; on failure the placement is empty and error says why ("terraform conflict" when two tiles or a propagation want a corner at different heights).
- * @param terrain The snapshot the facts were made from; required (non-null) when terraform is true.
- * @param shared The offset-independent stages made once by MakeJunctionPlacementShared for these same inputs; null (or not ok) computes them here. The result is the same either way.
- * @param incremental_check Tests only, passed on to SolveJunctionLevels.
- */
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error, bool heights = true, bool terraform = false, const JunctionTerrain *terrain = nullptr, const JunctionPlacementShared *shared = nullptr, std::pair<long, long> *incremental_check = nullptr);
-
-/**
- * The series-bridge cut (D209, DESIGN-G1 §11.9a): every doubled bridge cut into consecutive bridges of at most JUNCTION_BRIDGE_MAX_CROSSERS crossings, choosing among the cuts with the fewest bridges whose placement succeeds the one with the least box width, then height, then the first tried.
- * @param[out] placement Receives the chosen cut's placement; empty (no nodes) when no cut places.
- * @param error Receives the last cut's placement error when no cut places.
- * @return The structure with the chosen cut (the input structure when none places).
- */
-JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, JunctionTrackPlacement *placement, std::string *error);
-
-/**
- * The switch events of routes[r] from the tags (DESIGN-G1 §13.8 item 4): at each boundary between consecutive edges, the node piece, a split when graph.nodes[node].split; on a doubled edge, the lane split and the lane merge. The lane split tile is the first piece of the copy-1 route's SBend token, the lane merge tile the last piece of the copy-0 route's SBend token (the sibling route of the same lane path and the other copy supplies the one routes[r] lacks); the event is routes[r]'s first non-bridge piece on that tile. Sorted by piece, a split before a merge on one piece.
- */
-std::vector<std::pair<bool, size_t>> JunctionRouteEvents(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const std::vector<JunctionTrackRoute> &routes, size_t r);
-
-/** Why a signal stands where it does (DESIGN-G1 §12.2, §12.3). */
-enum class JunctionSignalReason : uint8_t { BeforeSplit, AfterSplit, BeforeMerge, AfterMerge, BeforeBridge, AfterBridge, SeriesGap, Stub, Bay, Fill,
-	Prio ///< Inside a prio element: its ML signals and its row signals (D211: the prio places its own).
-};
-
-/** A signal token: a signal placed by a rule of the graph, on one route (D211). */
-struct JunctionTrackSignal {
-	uint16_t route; ///< Index into the routes.
-	JunctionSignalReason reason;
-	TileIndexDiffC tile;
-	Trackdir facing;
-};
-
-/**
- * The track-only layout of a seed placement (DESIGN-G1 §11.10): one route per lane path and copy, rasterized and merged.
- * @param error Receives the reason when the result is empty (no tracks).
- */
-JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionTrackPlacement &placement, std::string *error, std::vector<JunctionTrackRoute> *routes = nullptr);
-
-/**
- * Place the signal tokens of a rendered seed (DESIGN-G1 §12.2, §12.3): the anchor signals of every route's splits, merges, bridges and out port, then the whole-train bays before the merges of non-through paths, then drag fill; each drawn into layout.signals once.
- * @param why Receives the first prio element that does not fit (its merge tile), empty when every element was drawn.
- * @param prio_beside Receives, for every tile a prio element draws beside the main line (its side row, steps 0 to n_prio), that tile and the main-line tile next to it in the same column (H3, the level solve).
- * @param prio The placement's prio elements: when given, the pass draws exactly their tiles and bits; nullptr derives the elements from the routes (callers with no placement).
- * @return The tokens, in placement order; a signal shared by several routes or rules gives one token per route and rule that resolved to it.
- */
-std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why = nullptr, std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> *prio_beside = nullptr, const std::vector<JunctionPrioSpan> *prio = nullptr);
-/** The graph pipeline's products for one topology and spec (DESIGN-G1 §13): the seed a projection search starts from. */
-struct JunctionGraphSeed {
-	const JunctionTopology *topology;
-	std::vector<JunctionLanePath> paths;
-	JunctionTrackGraph graph;
-	JunctionTrackStructure structure; ///< After the bridge cut.
-	JunctionTrackPrograms programs;
-	JunctionTrackPlacement placement;
-	std::vector<JunctionTrackRoute> routes;
-};
-/** Run the graph pipeline (expand, graph, order, structure, programs, cut, render routes); empty routes and the reason in error on failure. */
-JunctionGraphSeed MakeJunctionGraphSeed(const JunctionTopology &topology, const JunctionSpec &spec, std::string *error);
-
-/** A local detour as a graph edit (DESIGN-G1 §13.5): an out-and-back S-bend on one run of one edge, around the failing tile's column, to side +1 (right of travel) or -1. Lengths are recomputed when applied; the column is clamped strictly inside the seed's run. */
-struct JunctionDetourEdit {
-	uint32_t edge;
-	uint16_t run;
-	uint8_t copy;
-	int32_t column; ///< The failing tile's working x (the house is fixed in the world).
-	int8_t side;
-	uint16_t variant; ///< How many of the candidates that pass ApplyJunctionDetours' rules, in its scan order, are skipped (the search tries them in order until a child template builds).
-	auto operator<=>(const JunctionDetourEdit &) const = default;
-};
-/** The routes with every edit applied to every route carrying its (edge, copy) run (D213: realised on routes, not a layout; offset maps the template frame to working, working = frame + offset); empty with the reason in why when an edit is refused (not an X run, piece not strictly inside, a shifted run of one piece, a curve gap of the edited route that does not hold, no S-bend to that side, a new tile meeting another route or a bridge head). */
-std::vector<JunctionTrackRoute> ApplyJunctionDetours(const std::vector<JunctionTrackRoute> &routes, const std::vector<JunctionDetourEdit> &edits, const JunctionSpec &spec, TileIndexDiffC offset, std::string *why);
 
 /** The T of today's node model (L_R main line, L_R branch on the S side), groups in slot order: W side EIn then WOut; S side NIn then SOut; E side WIn then EOut. Movements in JunctionTMovements order. */
 const JunctionTopology &JunctionTTopology();

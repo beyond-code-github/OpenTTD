@@ -34,6 +34,10 @@
 #include "../../../junction/junction_route.h"
 #include "../../../junction/terrain/junction_terraform.h"
 #include "../../../junction/topology/junction_topology.h"
+#include "../../../junction/placement/junction_placement.h"
+#include "../../../junction/placement/junction_render.h"
+#include "../../../junction/signals/junction_signals.h"
+#include "../../../junction/junction_pipeline.h"
 #include "../../../track_func.h"
 
 #include "../../../safeguards.h"
