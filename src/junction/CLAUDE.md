@@ -37,7 +37,7 @@ Rules of the junction tool as present-tense facts, split per folder: each fact l
 - Prio length: the slider in the window decides the coverage built; its top and start M is `JunctionPrioTiles`: a joiner starting from rest at the merge and a main-line train of the same picked train following at the reference speed, stepped by the game's acceleration model; M is the main train's largest lead until the joiner reaches that speed, in tiles rounded up, plus TL and the signal spacing, on flat track; at most `JUNCTION_MAX_PRIO_TILES`.
 - Hover: `PlanJunctionHoverNear` solves at the cursor, then near offsets, and feeds the GUI estimate and build.
 - A `JunctionLayout` is output only. Stages read the graph, never a rendered layout; the level solve is the one exception today: it reads the rendered, signalled layout (`junction_pipeline.cpp`).
-- The bridge-cut search reports the default cut's failure (a series of at most the cap from the start) when no cut places.
+- The bridge-cut search, when no cut places, runs the joint loop on the default cut (a series of at most the cap from the start) from all-floor lengths, and takes its placement if the loop settles and the placement at its lengths succeeds; otherwise it reports the default cut's failure with the loop's outcome.
 - The checker `CheckJunctionRules` is a test oracle; the search still keeps it in acceptance, because the template does not yet cover every rule.
 
 ## Rule checker

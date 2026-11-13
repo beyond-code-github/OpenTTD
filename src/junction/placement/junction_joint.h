@@ -53,4 +53,10 @@ struct JunctionJointLoopResult {
  */
 JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, int max_rounds = 12);
 
+/**
+ * The joint loop's first choices when no placement exists (DESIGN-G3 §G3.6, R4): every free S-bend 1, every S fan 0, every joiner Corner k, read from a recording of the rounds.
+ * @return The choices, or empty choices (no m) when the rounds recorded no bends.
+ */
+JunctionPlacementChoices JunctionFloorChoices(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec);
+
 #endif /* JUNCTION_JOINT_H */
