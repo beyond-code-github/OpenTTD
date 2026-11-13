@@ -44,3 +44,4 @@
 - The level solve never asks the game about an impossible slope; it returns a plan or a reason.
 - Each port has its own height, derived from its tile and the piece's direction as the game builds track.
 - Linear and integer programs go through `JunctionMilp`, the one seam to the solver (HiGHS); it solves quietly, exactly and deterministically (one thread, zero gap, fixed seed).
+- Placement can record its last X and Y relation systems with each constant's dependence on a bend's length (`RecordJunctionPlacementSystem`); `SolveJunctionJoint` solves both axes and every bend length together as one integer program whose objective is the flat build cost.

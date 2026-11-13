@@ -1,4 +1,6 @@
 add_files(
+    junction_joint.cpp
+    junction_joint.h
     junction_levels.cpp
     junction_levels.h
     junction_milp.cpp

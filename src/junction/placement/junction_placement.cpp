@@ -84,7 +84,7 @@ static int JunctionRunFloor(FloorKind before, FloorKind after, const JunctionSpe
 	return 2; // The chain run: a signal tile and a boundary tile between elements (D217).
 }
 
-JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts, TileIndexDiffC offset, bool heights, bool classes_only, const JunctionPlacementShared *shared, JunctionPlacementShared *make_shared, JunctionPlacementShared *record)
+JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts, TileIndexDiffC offset, bool heights, bool classes_only, const JunctionPlacementShared *shared, JunctionPlacementShared *make_shared, JunctionPlacementShared *record, JunctionPlacementSystem *system)
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
 	using Step = JunctionTrackStep;
@@ -313,13 +313,40 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	JunctionPlacementReason why_now; ///< The reason of the relations added now (DESIGN-G1 §14.4).
 	auto why = [&](const char *rule, uint32_t edge = UINT32_MAX, uint32_t node = UINT32_MAX, int row = -1) { why_now = JunctionPlacementReason{rule, edge, node, static_cast<int32_t>(row)}; };
 	int phase = 0; // 0: X, 1: Y.
+	/** What the constant of the relations added now depends on (DESIGN-G3 §G3.3): c = a * m + b of the bend, or a site that depends on the sizes non-linearly or by a zero-size branch. */
+	struct SystemTag {
+		const Elem *bend = nullptr;
+		int a = 0;
+		int b = 0;
+		bool nonlinear = false;
+		bool zero_branch = false;
+	};
+	SystemTag tag; ///< The tag of the relations added now.
+	bool tag_negated = false; ///< The second relation of an equality: its constant is the negation.
+	std::vector<SystemTag> cons_tag; ///< Per relation of 'cons', its tag.
+	/* Relations pushed to 'cons' without ge() carry a tag of their own, given here. */
+	auto pad_tags = [&](bool nonlinear) {
+		while (cons_tag.size() < cons.size()) cons_tag.push_back(SystemTag{nullptr, 0, 0, nonlinear, false});
+	};
 	auto ge = [&](int axis, int v, int u, int c) {
 		if (axis != phase) return;
 		assert(why_now.rule != nullptr);
 		if (reasons.empty() || reasons.back().rule != why_now.rule || reasons.back().edge != why_now.edge || reasons.back().node != why_now.node || reasons.back().row != why_now.row) reasons.push_back(why_now);
+		pad_tags(false);
 		cons.push_back({v, u, c, static_cast<uint32_t>(reasons.size() - 1)});
+		SystemTag t = tag;
+		if (tag_negated) {
+			t.a = -t.a;
+			t.b = -t.b;
+		}
+		cons_tag.push_back(t);
 	};
-	auto eq = [&](int axis, int v, int u, int c) { ge(axis, v, u, c); ge(axis, u, v, -c); };
+	auto eq = [&](int axis, int v, int u, int c) {
+		ge(axis, v, u, c);
+		tag_negated = !tag_negated;
+		ge(axis, u, v, -c);
+		tag_negated = !tag_negated;
+	};
 	std::vector<int> vx, vy;
 	std::string build_why;
 	bool rows_known = false; // False in the first pass, which only gives the S-bends' first sizes.
@@ -355,6 +382,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	std::vector<JunctionPlacementReason> failure; ///< The explanation chain of the last failed solve.
 	std::vector<int> fan_m(edge_count, 0);
 	std::vector<int> port_row(n, 0);
+	int port_offset = 0;
 	/** A row change of kinds 1-4 (DESIGN-G1 §14.5, D215): the point its bend starts at, whether its feature lies toward larger columns, and for a fan the edge whose fan size must be nonzero. */
 	struct RowChange {
 		int anchor;
@@ -367,7 +395,76 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		int copy;
 	};
 	std::vector<RowChange> row_changes;
+	/* The relation system of the last X and the last Y solve, for the caller that asked to record it (DESIGN-G3 §G3.3). */
+	JunctionPlacementSystem recorded[2]; ///< Per axis (0 X, 1 Y), the system of its last solve.
+	bool recorded_axis[2] = {false, false};
+	auto record_system = [&]() {
+		pad_tags(false);
+		JunctionPlacementSystem &now = recorded[phase];
+		now = JunctionPlacementSystem{};
+		now.pt_count = pt_count;
+		now.k = k;
+		now.rows_known = rows_known;
+		now.item_pt = item_pt;
+		now.port_row = port_row;
+		now.port_offset = port_offset;
+		now.rail_piece = spec.prices.rail_piece.base();
+		now.signal = spec.prices.signal.base();
+		now.bridge0 = spec.prices.bridge ? spec.prices.bridge(0).base() : 0;
+		now.bridge1 = spec.prices.bridge ? spec.prices.bridge(1).base() : 0;
+		now.sd = spec.sd;
+		for (size_t p = 0; p < paths.size(); p++) now.paths.emplace_back(graph.path_edges[p].begin(), graph.path_edges[p].end());
+		std::map<const Elem *, int> bend_id;
+		for (uint32_t e = 0; e < edge_count; e++) {
+			for (int c = 0; c < 2; c++) {
+				const std::vector<Elem> &elems = c == 0 ? chain[e] : chain_copy[e];
+				for (const Elem &el : elems) {
+					int id = -1;
+					if (el.k == Elem::K::Corner || el.k == Elem::K::SBend || el.k == Elem::K::Fan) {
+						id = static_cast<int>(bend_id.size());
+						bend_id[&el] = id;
+						const char *kind = el.k == Elem::K::Corner ? "Corner" : el.k == Elem::K::Fan ? "Fan" : (el.fan ? "SFan" : "SBend");
+						const char *source = el.free_m ? "free" : el.k == Elem::K::Fan ? "port_rows" : el.k == Elem::K::Corner ? (el.joiner_div ? "corner_rows" : "fixed_k") : (el.index != NO_ROW ? "rows" : "one_row");
+						const int floor = el.free_m ? (el.fan ? 0 : 1) : el.k == Elem::K::Corner ? k : (el.k == Elem::K::Fan ? 0 : (el.index != NO_ROW ? 0 : 1));
+						const bool span_known = el.joiner_div && rows_known && static_cast<size_t>(std::max(el.first, el.last)) < vy.size();
+						const int size = el.k == Elem::K::Corner ? (span_known ? std::abs(vy[el.first] - vy[el.last]) : k) : el.m;
+						now.bends.push_back({id, static_cast<int>(e), c, el.tok, kind, source, el.hand, el.hin, el.first, el.last, el.index != NO_ROW ? item_pt[el.index] : -1, size, floor});
+					}
+					const char *kk = el.k == Elem::K::Tile ? "Tile" : el.k == Elem::K::Corner ? "Corner" : el.k == Elem::K::SBend ? "SBend" : el.k == Elem::K::Heads ? "Heads" : el.k == Elem::K::Fan ? "Fan" : el.k == Elem::K::HeadsPair ? "HeadsPair" : "Prio";
+					const bool tunnel = !bridges_of[e].empty() && structure.bridges[bridges_of[e][0]].tunnel;
+					now.chains.push_back({static_cast<int>(e), c, tunnel, kk, el.first, el.last, el.hin, el.hout, id});
+				}
+			}
+		}
+		std::vector<std::string> reason_text(reasons.size());
+		for (size_t i = 0; i < reasons.size(); i++) {
+			const JunctionPlacementReason &reason = reasons[i];
+			std::string parts;
+			if (reason.edge != UINT32_MAX) parts += fmt::format("edge {}", reason.edge);
+			if (reason.node != UINT32_MAX) parts += fmt::format("{}node {}", parts.empty() ? "" : ", ", reason.node);
+			if (reason.row >= 0) parts += fmt::format("{}row {}", parts.empty() ? "" : ", ", reason.row);
+			reason_text[i] = fmt::format("{}{}", reason.rule != nullptr ? reason.rule : "?", parts.empty() ? "" : " (" + parts + ")");
+		}
+		for (size_t i = 0; i < cons.size(); i++) {
+			const SystemTag &t = cons_tag[i];
+			const int bid = t.bend != nullptr && bend_id.count(t.bend) ? bend_id[t.bend] : -1;
+			now.relations.push_back({static_cast<uint8_t>(phase), cons[i].v, cons[i].u, cons[i].k, bid, t.a, t.b, t.nonlinear, t.zero_branch, reason_text[cons[i].reason]});
+		}
+		recorded_axis[phase] = true;
+
+		/* The record: the chains, paths and prices of the X system (the Y system when X never solved), the bends of the X system once its rows were known (else the Y system), and both axes' relations. */
+		const JunctionPlacementSystem &any = recorded_axis[0] ? recorded[0] : recorded[1];
+		const JunctionPlacementSystem &bends_from = recorded_axis[0] && recorded[0].rows_known ? recorded[0] : (recorded_axis[1] ? recorded[1] : recorded[0]);
+		*system = any;
+		system->bends = bends_from.bends;
+		system->rows_known = bends_from.rows_known;
+		system->relations.clear();
+		for (int axis = 0; axis < 2; axis++) {
+			if (recorded_axis[axis]) system->relations.insert(system->relations.end(), recorded[axis].relations.begin(), recorded[axis].relations.end());
+		}
+	};
 	auto solve = [&](std::vector<int> &val) {
+		if (system != nullptr) record_system();
 		/* A least solution is a longest path, so no point lies beyond the sum of the positive constants; a larger lo is a positive cycle. */
 		int bound = 1;
 		for (const Cons &cn : cons) bound += std::max(cn.k, 0);
@@ -1126,6 +1223,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					const bool touch = a.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && b.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)));
 					cons.push_back({b.lp, a.rp, (touch ? 2 : 1) - b.ldx + a.rdx, reason});
 				}
+				pad_tags(true); // The tile extents of the occupants' pieces (bend rasters of 2m halves, rows) and the pair order from the flat solve.
 				return true;
 			};
 			/* Legality per pair of occupants: two on one tile are legal when the graph relates them, or when they stand as Upper|Lower or Left|Right (D182, D217; a footprint is not a track: its pairs are ordered below); checked once, on the settled placement. */
@@ -1189,8 +1287,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				if (value(tile) > value(*high)) high = &tile;
 			}
 			why("bridge heads hug crossers", hug.edge, UINT32_MAX, hug.row);
+			tag = SystemTag{nullptr, 0, 0, true, false}; // The crosser tile offset dx comes from the bend rasters of 2m halves and the rows; the outermost tile from the flat solve.
 			eq(0, hug.west, low->first, low->second - 1);
 			eq(0, hug.east, high->first, high->second + 1);
+			tag = SystemTag{};
 		}
 	};
 
@@ -1243,6 +1343,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
 				notes[reason] = fmt::format("[edge {} and the head of edge {}]", line.edge, head.edge);
 				if (side > 0) cons.push_back({head.xpt, line.line, 1, reason}); else cons.push_back({line.line, head.xpt, 1, reason});
+				pad_tags(false); // Bridge middle clearance: the side comes from the flat solve, the constant 1 has no m.
 			}
 		}
 	};
@@ -1250,6 +1351,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	/* One round: the constraints of a phase. */
 	auto build = [&]() {
 		cons.clear();
+		cons_tag.clear();
 		reasons.clear();
 		fact_cons.clear();
 		notes.clear();
@@ -1414,6 +1516,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 							const Elem &near_far = pass == 0 ? heads0(b) : heads1(b);
 							const int y = vy[near_far.first];
 							bool any = false;
+							tag = SystemTag{nullptr, 0, 0, true, false}; // The crosser tile offset dx comes from the bend rasters of 2m halves and the rows.
 							for (const SymTile &z : tiles) {
 								if (z.y != y) continue;
 								any = true;
@@ -1426,6 +1529,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 								}
 								hug.tiles.emplace_back(z.pt, pass == 0 ? z.dx : z.dx - u);
 							}
+							tag = SystemTag{};
 							if (!any) { build_why = "Z row " + str(y) + " edge " + str(x) + " row " + str(r); return false; }
 						}
 					}
@@ -1440,11 +1544,14 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					why("fan size", e, UINT32_MAX, (end_level(edge.from) - 1) / 2);
 					const int port = el.port_first ? elems[i - 1].first : elems[i + 1].first;
 					if (el.m == 0) {
+						tag = SystemTag{&el, 0, 0, false, true}; // An empty fan lies on its port.
 						eq(0, el.first, port, 0);
 						eq(0, el.last, port, 0);
 					} else {
+						tag = SystemTag{&el, 1, -1, false, false};
 						along(el.hin, el.last, el.first, el.m - 1, true);
 					}
+					tag = SystemTag{};
 					eq(1, el.port_first ? el.last : el.first, item_pt[el.index], 0);
 				} else if (el.k == Elem::K::Corner) {
 					const int kk = k;
@@ -1455,11 +1562,15 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						ge(1, el.first, el.last, k);
 						if (fixed != nullptr) {
 							why("joiner_div Corner choice", e);
+							tag = SystemTag{&el, 1, 0, false, false};
 							eq(1, el.first, el.last, fixed->corner[e][el.tok]);
+							tag = SystemTag{};
 						}
 						if (x_phase) {
 							const int kp = fixed != nullptr ? fixed->corner[e][el.tok] : (rows_known ? std::abs(vy[el.first] - vy[el.last]) : k);
+							tag = SystemTag{&el, VX[el.hin] + VX[el.hout], 0, false, false};
 							eq(0, el.last, el.first, kp * (VX[el.hin] + VX[el.hout]));
+							tag = SystemTag{};
 						}
 					} else {
 						why("Corner size", e);
@@ -1472,19 +1583,25 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					why("S-bend size", e);
 					if (el.fan && (el.hin == 0 || el.hin == 2)) {
 						/* A fan at an S branch port: any size toward its side, 0 allowed (D230). */
+						tag = el.m == 0 ? SystemTag{&el, 0, 0, false, true} : SystemTag{&el, VY[el.hin], -VY[el.hin], false, false}; // An empty S fan has no rows.
 						if (el.m == 0) eq(1, el.last, el.first, 0); else eq(1, el.last, el.first, VY[el.hin] * (el.m - 1));
+						tag = SystemTag{&el, 1, 0, false, false};
 						if (fixed != nullptr) {
 							if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
 						} else {
 							if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
 						}
+						tag = SystemTag{};
 					} else if (el.hin == 0 || el.hin == 2) {
+						tag = SystemTag{&el, VY[el.hin], -VY[el.hin], false, false};
 						eq(1, el.last, el.first, VY[el.hin] * (el.m - 1));
+						tag = SystemTag{&el, 1, 0, false, false};
 						if (fixed != nullptr) {
 							if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
 						} else {
 							if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
 						}
+						tag = SystemTag{};
 					} else {
 						if (el.index == NO_ROW) eq(1, el.last, el.first, VY[side]); // No item pins it: one row.
 						eq(0, el.last, el.first, VX[el.hin] * 0);
@@ -1501,8 +1618,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				/* An empty fan joins its port tile; the run on its node side stays (D230). */
 				if ((i == 0 && !edge.from.node && next.fan && next.m == 0) || (el.fan && el.m == 0 && !edge.to.node && i + 2 == elems.size())) {
 					why("fan size", e);
+					tag = SystemTag{next.fan ? &next : &el, 0, 0, false, true}; // An empty S fan joins its port tile.
 					eq(0, next.first, el.last, 0);
 					eq(1, next.first, el.last, 0);
+					tag = SystemTag{};
 					continue;
 				}
 				bool exact = false;
@@ -1560,8 +1679,24 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				if (lo > hi) { build_why = "no column tile"; return false; }
 				eq(0, el.first, crossed->first, VX[side]);
 				const bool north = el.hin == 0;
+				/* The rows of the bend's first column, lo and hi, come from the raster of max(m, 2): constant over m = 2..64 or the relations depend on m non-linearly. Only a recording looks. */
+				bool constant_rows = true;
+				if (system != nullptr) {
+					for (int mm = 2; mm <= 64 && constant_rows; mm++) {
+						int l2 = 1000, h2 = -1000;
+						for (const TileIndexDiffC &t : bend_tiles(crossed->hin, crossed->hand, 2 * mm, false)) {
+							if (t.x * VX[side] + t.y * VY[side] != 1) continue;
+							l2 = std::min<int>(l2, t.y);
+							h2 = std::max<int>(h2, t.y);
+						}
+						constant_rows = l2 == lo && h2 == hi;
+					}
+				}
+				tag = constant_rows ? SystemTag{crossed, 0, north ? hi + 1 : lo - 1, false, false} : SystemTag{crossed, 0, 0, true, false};
 				eq(1, el.first, crossed->first, north ? hi + 1 : lo - 1);
+				tag.b = north ? lo - 1 : hi + 1;
 				eq(1, el.last, crossed->first, north ? lo - 1 : hi + 1);
+				tag = SystemTag{};
 			}
 		}
 
@@ -1574,6 +1709,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				reasons.push_back(JunctionPlacementReason{"bridge middle clearance", c.edge_b, UINT32_MAX, -1});
 				notes[static_cast<uint32_t>(reasons.size() - 1)] = fmt::format("[edge {} and the head of edge {}]", c.edge_b, c.edge_h);
 				cons.push_back({c.v, c.u, 1, static_cast<uint32_t>(reasons.size() - 1)});
+				pad_tags(false); // The side comes from the flat state, the constant 1 has no m.
 			}
 		}
 
@@ -1618,7 +1754,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			}
 			for (const Relation &relation : relations) {
 				why("curve gap", relation.edge, UINT32_MAX, relation.row);
+				tag = SystemTag{nullptr, 0, 0, true, false}; // The unit offsets come from the bend rasters of 2m halves (and, in X, the rows): ceil(need / 2), the largest pair per (v, u).
 				ge(x_phase ? 0 : 1, relation.v, relation.u, relation.least);
+				tag = SystemTag{};
 			}
 		}
 
@@ -2035,7 +2173,6 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		return fail("the placement rules are not complete for this topology " + build_why);
 	};
 	JunctionPlacementChoices choices;
-	int port_offset = 0;
 
 	if (fixed != nullptr) {
 		/* One Y solve and one X solve with the choices fixed (DESIGN-G1 §14.2). */
@@ -2353,6 +2490,13 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors)
 {
 	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, x_floors, y_floors);
+}
+
+JunctionPlacementSystem RecordJunctionPlacementSystem(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices)
+{
+	JunctionPlacementSystem system;
+	PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, nullptr, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system);
+	return system;
 }
 
 

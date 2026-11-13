@@ -42,6 +42,67 @@ struct JunctionPlacementChoices {
 	bool operator==(const JunctionPlacementChoices &) const = default;
 };
 
+/** A relation x_v - x_u >= c of one axis of the placement's last rounds, with what c depends on (DESIGN-G3 §G3.3). */
+struct JunctionSystemRelation {
+	uint8_t axis; ///< 0 X, 1 Y.
+	int v, u, c;
+	int bend = -1; ///< When >= 0 and not nonlinear: c = a * L(bend) + b.
+	int a = 0, b = 0;
+	bool nonlinear = false; ///< c depends on lengths non-linearly; held at c.
+	bool zero_branch = false; ///< Holds only when the bend's S-fan size is 0 (see solve.py), else only when it is not.
+	std::string reason; ///< The why() text with edge, node and row.
+};
+
+/** One bend of the placement's chains (a Corner, an S-bend, an S fan or a fan), with how its size is known. */
+struct JunctionSystemBend {
+	int id; ///< The bend's index in JunctionPlacementSystem::bends; chain elements name it by this.
+	int edge; ///< The edge whose chain holds it.
+	int copy; ///< 0 the edge's chain, 1 the copy of a doubled row leg.
+	int tok; ///< The token of the edge's program it is.
+	std::string kind; ///< "Corner", "Fan", "SFan" or "SBend".
+	/** The size's source: free (read back from the columns), rows (from a Y difference), corner_rows (joiner Corner, from the rows), port_rows (a W/E fan, from the port rows), fixed_k (a Corner of k), one_row (an item-less horizontal S-bend). */
+	std::string source;
+	int hand; ///< The bend's hand.
+	int hin; ///< The heading the bend starts on.
+	int first; ///< The point at its start.
+	int last; ///< The point at its end.
+	int item_pt; ///< The point of the stack item it ends on, -1 when none.
+	int m; ///< Its size at the recording (a Corner's: the row span when the rows are known, else k).
+	int floor; ///< The least size the placement allows it.
+};
+
+/** One element of a chain, in chain order; consecutive elements of one (edge, copy) form its chain. */
+struct JunctionSystemElement {
+	int edge; ///< The chain's edge.
+	int copy; ///< The chain's copy, as JunctionSystemBend::copy.
+	bool tunnel; ///< The chain's edge is carried by a tunnel.
+	std::string k; ///< "Tile", "Corner", "SBend", "Heads", "Fan", "HeadsPair" or "Prio".
+	int first; ///< The element's first point.
+	int last; ///< The element's last point.
+	int hin; ///< The heading it starts on.
+	int hout; ///< The heading it ends on.
+	int bend; ///< The id of its bend, -1 when it is none.
+};
+
+/** The relation system of the last X and the last Y round of one placement call, with each constant's dependence on a bend's length (DESIGN-G3 §G3.3). */
+struct JunctionPlacementSystem {
+	int pt_count = 0; ///< The number of placement points.
+	int k = 0; ///< The Corner's least size.
+	bool rows_known = false; ///< Whether the bends' sizes were taken after the rows were known.
+	std::vector<int> item_pt; ///< Per stack item, its point.
+	std::vector<int> port_row; ///< Per port slot, its row.
+	int port_offset = 0; ///< The port rows' offset.
+	int64_t rail_piece = 0; ///< The price of a rail piece.
+	int64_t signal = 0; ///< The price of a signal.
+	int64_t bridge0 = 0; ///< The price of a bridge of no middle tiles.
+	int64_t bridge1 = 0; ///< The price of a bridge of one middle tile.
+	int sd = 0; ///< The signal distance, in track pieces.
+	std::vector<std::vector<int>> paths; ///< Per lane path, its edges.
+	std::vector<JunctionSystemBend> bends; ///< The bends, from the last round whose rows were known (else the last Y round).
+	std::vector<JunctionSystemElement> chains; ///< The elements of every chain.
+	std::vector<JunctionSystemRelation> relations; ///< The X relations, then the Y relations.
+};
+
 /** One prio element as the placement fixes it (DESIGN-G1 12.4). */
 struct JunctionPrioSpan {
 	std::vector<std::pair<TileIndexDiffC, TrackBits>> tiles; ///< Its tiles in drawing order (per step upstream of the merge: the main-line tile's corner half on even steps, then the row tile) with the bits drawn on each.
@@ -82,6 +143,9 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
  */
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors = {}, const std::vector<std::pair<int, int>> &y_floors = {});
 
+/** The placement with its choices fixed (see above), returning the relation system it solved (DESIGN-G3 §G3.3): its last X and Y rounds, with each constant's dependence on a bend's length. Empty when the placement fails before its first solve. */
+JunctionPlacementSystem RecordJunctionPlacementSystem(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices);
+
 /** The stages of the facts placement that do not read the facts or the offset (the Y phase: its clearance relations from the flat solve, and the Y solution), solved once for a near search over many offsets. */
 struct JunctionPlacementShared {
 	bool ok = false; ///< False when the stages did not solve: the placement then computes them itself (and reports their failure as today).
@@ -110,7 +174,8 @@ JunctionPlacementShared MakeJunctionPlacementShared(const JunctionTopology &topo
  * @param offset The working tile of the placement's (0, 0); only with facts.
  * @param heights False: only the class facts (D218): the height steps, joins and element fits are skipped.
  * @param classes_only True (the height solve's X phase): every tile check is JunctionFacts::Buildable, the game's slope rules are the level solve's.
+ * @param system When non-null, receives the last X and last Y relation systems of the call (DESIGN-G3 §G3.3); the result is the same either way.
  */
-JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0}, bool heights = true, bool classes_only = false, const JunctionPlacementShared *shared = nullptr, JunctionPlacementShared *make_shared = nullptr, JunctionPlacementShared *record = nullptr);
+JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0}, bool heights = true, bool classes_only = false, const JunctionPlacementShared *shared = nullptr, JunctionPlacementShared *make_shared = nullptr, JunctionPlacementShared *record = nullptr, JunctionPlacementSystem *system = nullptr);
 
 #endif /* JUNCTION_PLACEMENT_H */
