@@ -14,7 +14,7 @@
 - Every step runs: its fast tag in Debug, the gate in Release, and `jt identity` where the line above applies (D140).
 - Identity tests pin placements, renders, signals and plan hashes over the sweeps (the [topologysweep] cells, `LEVELHASH` over the 48 fixtures); a pinned number moves only by a stated rule with the changed cases listed.
 - A refactor step is an identity on every seed: `SamePlacement` over the [topologysweep] cells, the circuit file byte-identical, all sweep numbers equal; a step that moves a seed stops and reports (G1 §16.2, G1 §16.4).
-- A planned count in a sweep (`HOVERPLAN`, `HOVERNEAR`, `LEVELHASH`) may only rise; a drop is a stop (P6b).
+- A planned count in a sweep (`HOVERPLAN`, `HOVERNEAR`, `LEVELHASH`) may only rise; a drop is a stop, except when a correctness rule refuses plans that were wrong, with every changed offset listed and explained (P6b, HH2).
 - Real terrain comes from the 48 fixtures in `tools/junction/terrain` (generated 256x256 maps); the game seam is tested on a game map with a company (`[junctiongame]`) (RT1, IG2).
 - Write red tests red first and record the failure text before the fix.
 - Slow sweeps are tagged `[slow]` and stay out of per-step runs; no baseline rebuilds for timing (D140).

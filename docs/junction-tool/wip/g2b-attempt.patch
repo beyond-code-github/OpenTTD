@@ -1,0 +1,76 @@
+diff --git a/src/junction/topology/CLAUDE.md b/src/junction/topology/CLAUDE.md
+index 7746d634d6..296973bb57 100644
+--- a/src/junction/topology/CLAUDE.md
++++ b/src/junction/topology/CLAUDE.md
+@@ -17,7 +17,7 @@
+ ## Graph, order and structure
+ - Splits come before merges along every track; outgoing lines split before incoming lines merge (D24, D189).
+ - A line splits by direction first, then by lane (line choice); a lane group's lane legs merge before the port on the exit side, and a joining branch splits by direction then by lane next to the main line it feeds (D187, D204, D205).
+-- Two legs of one branch bound for one main lane merge with each other first and join as one joiner, with one prio element per lane (D224).
++- Two legs of one branch bound for one main lane merge with each other first and join as one joiner, with one prio element per lane; on the exit side a main lane's splits among branch lanes sit in the band below its row, so each main row carries one in, one leg and one out (D224, D228, DESIGN-G2 §G2.2).
+ - Every lane of a direction splits toward the branch; no shifters in LL_RR (D187, D191).
+ - A switch has two legs; a lane bound for more than two keys splits as a cascade of two-way nodes over contiguous halves of the ordered key list (1 + 2, 2 + 2, ...); merges mirror it (D228, DESIGN-G2 §G2.1).
+ - Crossings are counted per graph edge; two paths cross when their end ports interleave around the box; every chord pair is crossed exactly once (G1 §6, G1 §7).
+diff --git a/src/junction/topology/junction_topology.cpp b/src/junction/topology/junction_topology.cpp
+index eeccdffdc6..f535c1d154 100644
+--- a/src/junction/topology/junction_topology.cpp
++++ b/src/junction/topology/junction_topology.cpp
+@@ -402,6 +402,14 @@ JunctionTrackGraph BuildJunctionTrackGraph(const JunctionTopology &topology, con
+ 					for (uint16_t p : edge.paths) branch_only = branch_only && !group_of(paths[p].from).main;
+ 					if (branch_only) node.level = 2 * row_of[node.slot] + 2;
+ 				}
++			} else {
++				/* D224 (exit side, DESIGN-G2 §G2.2): a main lane's splits among branch lanes sit in the band below the lane; only the first split of the cascade is on the row. */
++				for (const JunctionTrackEdge &edge : graph.edges) {
++					if (edge.kind != JunctionTrackEdge::Kind::In || !edge.from.node || !edge.to.node || edge.to.index != i) continue;
++					bool branch_only = true;
++					for (uint16_t p : edge.paths) branch_only = branch_only && !group_of(paths[p].to).main;
++					if (branch_only) node.level = 2 * row_of[node.slot] + 2;
++				}
+ 			}
+ 			continue;
+ 		}
+diff --git a/src/tests/junction/topology/junction_topology.cpp b/src/tests/junction/topology/junction_topology.cpp
+index 5659bbc16a..048ddfbbbc 100644
+--- a/src/tests/junction/topology/junction_topology.cpp
++++ b/src/tests/junction/topology/junction_topology.cpp
+@@ -4491,6 +4491,39 @@ TEST_CASE("topology: the order sweep places crossings between edges that are not
+ 	}
+ }
+ 
++TEST_CASE("topology: exit side: a main lane's branch-only splits sit in the band (D224)", "[junction][topology]")
++{
++	const JunctionLineSpec llrr = ParseLineNotation("LL_RR").spec;
++	const JunctionTopology t = MakeJunctionHubTopology(llrr, llrr, JunctionLanePairing::AnyToAny);
++	std::string error;
++	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
++	REQUIRE(!paths.empty());
++	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
++	REQUIRE(!graph.nodes.empty());
++	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(t);
++	const std::vector<int> row_of = JunctionSlotRows(t, paths, &error);
++	auto main_of = [&](int slot) { return t.groups[slots[slot].group].main; };
++	size_t found = 0;
++	for (uint32_t i = 0; i < graph.nodes.size(); i++) {
++		const JunctionTrackNode &node = graph.nodes[i];
++		if (!node.split || !main_of(node.slot)) continue;
++		for (const JunctionTrackEdge &edge : graph.edges) {
++			if (edge.kind != JunctionTrackEdge::Kind::In || !edge.from.node || !edge.to.node || edge.to.index != i) continue;
++			bool branch_only = true;
++			for (uint16_t p : edge.paths) branch_only = branch_only && !main_of(paths[p].to);
++			if (!branch_only) continue;
++			found++;
++			CHECK(node.level == 2 * row_of[node.slot] + 2);
++		}
++	}
++	CHECK(found > 0);
++	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
++	INFO("order: " << error);
++	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
++	INFO("structure: " << error);
++	CHECK(error.empty());
++}
++
+ TEST_CASE("topology: a row node reached only by row edges is placed by the order", "[junction][topologysweep]")
+ {
+ 	/* OF2: LL_RR x LL_RR (pairing any) and L_R x LL_RR have row nodes (E main splits, merges before the W port) that no swept item makes. */
