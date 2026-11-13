@@ -36,6 +36,15 @@ So each main row carries one in, one leg and one out for a T at any lane count a
 - Run floors: joiner merge to lane split, and lane merge to fan, are the chain run (2, D217).
 - A doubled in edge is the mirror and is not built yet; it is refused by name.
 
+## G2.5 Rows and bands have sizes; fans are their tapers at the ports (engineer, 2026-11-13: "maybe rows need to grow or shrink and then they push everything else up with them. So instead of a fan being a change of row, it's a change in size of a row?")
+- Every row (W/E) and every S port group's column band has an inside size. At its port the size is the notation spacing (D38); inside the box it may grow to hold what the row needs (prio rows, doubling copies, joiner approaches, crossings: D203(1)). A fan is the taper between the two.
+- A row that grows pushes every row beyond it outward; the stack and band relations are "at least" chains, so the solve already behaves this way.
+- D230's halves rule is how an S band grows about its port block: its west lanes move west, its east lanes east. A band need not grow evenly, so fan sizes stay per lane; the band names and bounds them. The fan objective (REVIEW-port-fans S4) is: keep each band's growth minimal.
+- A band that moves without changing size is a bundle shift (all lanes of one direction S-bending together at one place, as doubled copies already do). Not built; for whole-line moves around terrain and obstacles (D216) when the search needs them.
+
+## G2.6 An S-bend token names the node it serves
+- A band edge's S-bend tokens carry what they serve: Diverge (the split at the edge's start: it starts on the split's point), Converge (the merge at the edge's end, including a joiner's arrival on its lane: it ends on the merge's point), or None (a crossing's S-bend, placed by its bridge). Placement pins an S-bend to a node only by its role, never by its token position (RECON-s2-cycle: a lone S-bend that is both first and last token was pinned to both nodes, making its edge rigid).
+
 ## What this does not cover (named, later)
 - **Four-way hubs:** a main lane with two branch groups (left and right) needs two legs on one row. That is the next generalisation, rows with several legs, and it is not needed for T hubs at any lane count.
 - **Tunnels as a cost choice for the diving leg** (D227 toggle candidate).
