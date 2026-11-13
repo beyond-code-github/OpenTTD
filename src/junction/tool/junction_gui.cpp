@@ -844,7 +844,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				job->spec.prio_tiles = sizing.prio_tiles;
 				job->sizing_error = sizing.error;
 				job->sizing_done = true;
-				job->library = std::make_shared<const std::vector<JunctionLibraryEntry>>(job->spec.prio_tiles == 0 ? std::vector<JunctionLibraryEntry>{} : BuildJunctionLibrary(job->spec));
+				/* PS1: the hover plans on the projection pipeline (_junction_projection), which never reads the library; only the prio sizing runs. */
+				job->library = std::make_shared<const std::vector<JunctionLibraryEntry>>();
 				job->done = true;
 			})) {
 				/* No thread: an empty library, so the refine tier alone works. */

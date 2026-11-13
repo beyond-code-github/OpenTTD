@@ -22,3 +22,4 @@
 - Rotation (`.`) and mirroring (`,`) are by hotkey (D15).
 - Only tiles the layout uses are outlined, while hovering and while building: white for track tiles, blue for tiles that are only terraformed; no full grid is drawn (QL1, CN1).
 - Cost and placement errors appear in the cursor tooltip, not in the window (QL1).
+- On a spec change the window sizes the prio on a worker thread (`EnsureLibrary`); it builds no legacy library, because the hover plans on the projection pipeline only (PS1).
