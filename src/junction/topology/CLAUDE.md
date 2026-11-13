@@ -24,7 +24,7 @@
 - Over and under: a crossed row edge (a lane along its own row) carries one doubled bridge over all its crossings (D156, D190, G1 §9).
 - A crossing of two non-row edges needs exactly one joiner (a path from a branch slot): the joiner goes over on a single bridge; zero or two joiners are refused as not ruled (G1 §9).
 - Branch-on-branch crossings sit in the outermost band beside the branch ports (G1 §8).
-- One bridge or tunnel may straddle several crossings of one path within its span limits; the default is one bridge per crossed row edge, cut into series bridges at `JUNCTION_BRIDGE_MAX_CROSSERS` (2) crossers per bridge (D203, D209, G1 §13).
+- One bridge or tunnel may straddle several crossings of one path within its span limits, except that a band edge carries at most one bridge, over one crossing; placement refuses more (F3); the default is one bridge per crossed row edge, cut into series bridges at `JUNCTION_BRIDGE_MAX_CROSSERS` (2) crossers per bridge (D203, D209, G1 §13).
 - Rows: lanes spread inside the box by S-bends to open rows for prio rows, doubling copies and joiner approaches, and return to the notation spacing at the ports (D203, D38).
 - A prio sits opposite the joiner; the approach is on the joiner's side; a crossed lane's doubling copy shares the prio's row or sits away from the branch (G1 §9).
 - A row change sits next to the feature it serves, and the free run lies on its other side (D212, D215).
@@ -43,7 +43,7 @@
 - A placement whose doubled bridge needs a middle above that is refused naming the bridge (D208).
 - Bridge type: the cheapest bridge at least as fast as the design speed; if no bridge reaches it on an unlimited rail type, the fastest bridge is used and trains slow on it (D35, D94, D141).
 - A tunnel is a wormhole like a bridge: one block, no signals inside, surface track may cross the tiles between portals (D154).
-- A tunnel is a `JunctionBridge` with `tunnel = true`; only build, pricing, JSON, ASCII (`O` portals) and the rig script branch on it (D154).
+- A tunnel is a `JunctionBridge` with `tunnel = true`; build steps, estimate pricing, layout transform and JSON, ASCII (`O` portals), the rig script, the line router, and in the graph pipeline the bridge structure, placement, render and the level solve branch on it (D154, D220).
 - In the graph pipeline a `JunctionTrackBridge` has `tunnel`, valid on a single (not doubled) separation only; tokens Tunnel and Above mirror Over and Under; a tunnel longer than `max_tunnel_length` is refused naming it (D220, TU1-TU3).
 - A crossing may be a tunnel or a bridge; tunnels have no span-height limit and suit wide topologies (D220).
 - Tunnel portals are on Buildable, non-steep, free inclines; entry rises along travel with the track at its low edge; the exit is the first tile with the same low edge inclined the other way (D155).

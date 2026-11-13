@@ -21,9 +21,9 @@
 - Planar signal windows and node footprints: a node has a footprint from the rules (switch tile, required straight runs, prio coverage) and a window along its line (D182).
 
 ## Heights
-- Height is solved per tile on the rendered routes after placement; a ramp is a tile, not a graph token, and a height failure is not a graph edit (D218, G1 §15).
+- Height is solved per tile on the rendered routes after placement.
 - A tile can be a ramp only when it holds a lone axis track that every route crosses the same way and is not a node, port, head or route end; a ramp climbs or drops at most one level (`SolveTileLevels`).
-- A track piece running along a tile's incline is a ramp and is never levelled; a levelled foundation applies only across an incline and to diagonal pieces (D152b).
+- A track piece running along a tile's incline is a ramp and is never levelled; a lone diagonal piece gets a levelled foundation only on a slope with three corners raised; on any other slope it gets a halftile foundation (when the corners next to its track corner are lowered) or the special anti-zig-zag foundation (D152b, `GetRailFoundation`).
 - Curves and diagonals cannot sit on a ramp tile (G1 §15.4).
 - Ramp rule: along every route the level gain over any train length is at most `k_max = floor(tl x S(v) / (m x s x 100))` in the travel direction; descents are free (D219, G1 §15.4).
 - The junction tool requires the realistic acceleration model and refuses to generate with the original model, saying why (D219).

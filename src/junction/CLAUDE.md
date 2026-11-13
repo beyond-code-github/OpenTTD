@@ -29,8 +29,8 @@ Rules of the junction tool as present-tense facts, split per folder: each fact l
 - Render: routes rasterised to a track-only `JunctionLayout` (G1 §11.10).
 - Signals: signal tokens resolved on the rendered routes by `SignalJunctionTrackRoutes` (drag spacing through `PlaceDragSignals`), plus the prio element (D211, G1 §12).
 - Hover: `PlanJunctionHoverNear` solves at the cursor, then near offsets, and feeds the GUI estimate and build (D197, D96).
-- A `JunctionLayout` is output only; no stage reads a rendered layout as its input (D201, D213).
-- The checker `CheckJunctionRules` is a test oracle, never an acceptance step on the hover path (D193).
+- A `JunctionLayout` is output only. Stages read the graph, never a rendered layout (D201, D213); the level solve is the one exception today: it reads the rendered, signalled layout (`junction_pipeline.cpp`).
+- The checker `CheckJunctionRules` becomes a test oracle only, never an acceptance step on the hover path; until the RC0 audit shows full rule coverage, the search keeps it in acceptance, and each uncovered rule moves into the template as its own step (D193).
 
 ## Rule checker
 - The checker (G9c) rejects a split of a main-line lane inside a prio's coverage; a split here means any divergence or join of main-line tracks (D108, D116).
