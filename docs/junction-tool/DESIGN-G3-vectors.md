@@ -61,6 +61,14 @@ Today these three rules are why the prototype could not decide L_R x L_RR and L_
   - (a) The sweep also emits, per band slice, the south-to-north order of the bends' ends. Everything is then linear, and the arrangement is fully topological. This is more sweep work, and a wrong order shows as an infeasible set that names the pair.
   - (b) Lazy clash constraints (constraint rows of the solver, not track rows): solve, check occupancy on the result, add the violated pairs with the order the solution shows, and solve again. HiGHS re-solves warm in milliseconds. This is today's flat-order idea, but it converges, because rows only ever get added, never swapped.
   - **Recommendation and D236: (b) first.** It needs no new sweep output, and it shows how many rounds real hubs take. (a) is the fallback if a hub cycles or a pair's order flips.
+  - **Measured (b-5):** re-reading the held occupancy constants every round cycles with period 2 on L_R x L_RR and L_R x LL_RR. Each round's rows replace the last round's, so (b) must keep its rows.
+  - **The b-6 form.**
+    - **Tile forms (premise P2, test first).** Every tile of a bend's raster at length L is either a head tile, whose offset from the bend's first tile is constant, or a tail tile, whose offset is `(dx0 + dx1 L, dy0 + dy1 L)` counted by its index from the raster's end. The form is read from the rasters at L and L + 1, and checked against L' = L + 1..64.
+    - **Columns.** So every occupant end's column is `x[pt] + c0 + c1 L(bend)`. That holds for a straight tile, a run's end (±1), a node, a prio footprint tile and a bend's tile.
+    - **Clash rows.** A clash is the pair the recording emits today (neighbours on a row in the flat order). As a row it is `b.left - a.right >= gap`, with the gap the recorded one (1, 2 when the two touch, or the recorded apart for a tie). The row fact, that both stand on one row, is held: it is the lazy part.
+    - **Accumulation.** A clash is keyed by its two occupants' forms and its tie flag. The loop keeps every clash it has seen. A key seen again, or seen with a and b reversed, keeps its first form. Rows are only ever added, so the loop ends.
+    - **Zero-size bends.** A clash on a tile of a bend with a zero branch gets `- BIG (1 - z)`.
+    - **What it does not do.** A kept clash whose two occupants later stand on different rows is stricter than the game needs. The fixed path at the fixed point is the check.
 
 **What stays non-linear, and why that is fine.** The W/E fan size is `|port row - item row|` with port rows from the `best_offset` scan. Make the port row a variable: `best_offset` becomes the objective's job (a short fan costs less), and the fan length is then a difference. That is linear with the sign fixed by the side.
 
