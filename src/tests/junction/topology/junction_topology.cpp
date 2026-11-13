@@ -5167,3 +5167,86 @@ TEST_CASE("programs: node shapes match placement's inference", "[junction][topol
 		}
 	}
 }
+
+/** The pipeline of a LLL_RRR-style hub (any pairing) up to the structure, with the stage error. */
+struct WideHubStages {
+	JunctionTopology topology;
+	std::vector<JunctionLanePath> paths;
+	JunctionTrackGraph graph;
+	JunctionTrackOrder order;
+	JunctionTrackStructure structure;
+	std::string structure_error;
+	JunctionTrackPrograms programs;
+	std::string programs_error;
+};
+
+static WideHubStages WideHubThroughStructure(const char *main, const char *branch)
+{
+	WideHubStages s;
+	std::string error;
+	s.topology = MakeJunctionHubTopology(ParseLineNotation(main).spec, ParseLineNotation(branch).spec, JunctionLanePairing::AnyToAny);
+	s.paths = ExpandJunctionLanes(s.topology, &error);
+	s.graph = BuildJunctionTrackGraph(s.topology, s.paths, &error);
+	s.order = OrderJunctionTrackGraph(s.topology, s.paths, s.graph, &error);
+	s.structure = StructureJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, &s.structure_error);
+	return s;
+}
+
+TEST_CASE("programs: a diverging joiner that crosses starts with a Diverge S-bend", "[junction][topology]")
+{
+	WideHubStages s = WideHubThroughStructure("LLL_RRR", "L_R");
+	REQUIRE(s.structure_error.empty());
+	s.programs = ProgramJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, s.structure, &s.programs_error);
+	INFO(s.programs_error);
+	REQUIRE(s.programs_error.empty());
+	REQUIRE(s.programs.edges.size() > 21);
+	const std::vector<JunctionTrackStep> &program = s.programs.edges[21];
+	REQUIRE(!program.empty());
+	CHECK(program[0].kind == Step::Kind::SBend);
+	CHECK(program[0].role == Step::Role::Diverge);
+	size_t tokens = 0;
+	for (const JunctionTrackStep &step : program) {
+		if (step.kind == Step::Kind::Under || step.kind == Step::Kind::Over) tokens++;
+	}
+	CHECK(tokens >= s.order.edge_crossings[21].size());
+	CHECK(!s.order.edge_crossings[21].empty());
+}
+
+TEST_CASE("structure: joiners crossing at one level break the tie by branch slot", "[junction][topology]")
+{
+	const WideHubStages s = WideHubThroughStructure("LLL_RRR", "LL_RR");
+	INFO(s.structure_error);
+	REQUIRE(s.structure_error.empty());
+	const JunctionTrackBridge *over = nullptr;
+	for (const JunctionTrackBridge &bridge : s.structure.bridges) {
+		if (bridge.edge == 13 || bridge.edge == 39) {
+			if (std::find(bridge.crossed.begin(), bridge.crossed.end(), bridge.edge == 13 ? 39u : 13u) != bridge.crossed.end()) over = &bridge;
+		}
+	}
+	REQUIRE(over != nullptr);
+	auto slot_of = [&](uint32_t e) { return s.paths[s.graph.edges[e].paths[0]].from; };
+	CHECK(slot_of(39) < slot_of(13));
+	CHECK(over->edge == 39);
+}
+
+TEST_CASE("wide hubs: how far each gets", "[junction][topologysweep]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch] : {std::pair{"LLL_RRR", "L_R"}, std::pair{"LLL_RRR", "LL_RR"}, std::pair{"LLL_RRR", "LLL_RRR"}, std::pair{"LLLL_RRRR", "L_R"}, std::pair{"LLLL_RRRR", "LLLL_RRRR"}, std::pair{"LLL_RRR", "LLLL_RRRR"}, std::pair{"LLLL_RRRR", "LL_RR"}}) {
+		WideHubStages s = WideHubThroughStructure(main, branch);
+		std::string result;
+		if (!s.structure_error.empty()) {
+			result = "structure fails: " + s.structure_error;
+		} else {
+			s.programs = ProgramJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, s.structure, &s.programs_error);
+			if (!s.programs_error.empty()) {
+				result = "programs fails: " + s.programs_error;
+			} else {
+				std::string error;
+				const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, s.structure, s.programs, spec, &error);
+				result = placed.nodes.empty() ? "placement fails: " + error : "seed places";
+			}
+		}
+		WARN(fmt::format("{} x {}: {}", main, branch, result));
+	}
+}

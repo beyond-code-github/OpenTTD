@@ -25,6 +25,8 @@
 - Over and under: a crossed row edge (a lane along its own row) carries one doubled bridge over all its crossings.
 - A crossed out edge (the joiner merged before the crossing) carries its doubled bridge like the leg with the items swapped: copy 1 S-bends from the lane to the row's copy item before the bridge, copy 0 after it, and the fan leaves from the copy item; a crossed in edge is refused as not ruled.
 - A crossing of two non-row edges: a joiner goes over a turning leg; of two joiners the one whose near end lies farther from the main line goes over; of two turning legs the one from the far side of the main line goes over; each on a single bridge. A through edge goes over: on its row it is the row edge's doubled bridge; a through edge off its row in a crossing is refused as not ruled.
+- A diverging joiner that crosses starts with a Diverge S-bend, then crosses and arrives as any joiner; only a diverging joiner with no crossings starts with a Corner.
+- Two joiners crossing at the same main-line distance: the one from the lower (west) branch in slot goes over.
 - Branch-on-branch crossings sit in the outermost band beside the branch ports.
 - One bridge or tunnel may straddle several crossings of one path within its span limits, except that a band edge carries at most one bridge, over one crossing; placement refuses more; the default is one bridge per crossed row edge, cut into series bridges at `JUNCTION_BRIDGE_MAX_CROSSERS` (2) crossers per bridge.
 - The programs emit each node's shape (its stack item, trunk heading, trunk, straight and diverging legs with the diverging hand) and each edge's two ends (heading, and the token whose end is the node's point, if any).

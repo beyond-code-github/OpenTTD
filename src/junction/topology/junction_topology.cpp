@@ -924,6 +924,12 @@ JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topol
 		return false;
 	};
 	auto near_end = [&](uint32_t e) { return std::min(end_level(graph.edges[e].from), end_level(graph.edges[e].to)); };
+	/* The branch in slot a joiner starts from: JunctionLanePath::from, the lowest of its paths'. */
+	auto branch_slot = [&](uint32_t e) {
+		int slot = INT_MAX;
+		for (uint16_t p : graph.edges[e].paths) slot = std::min<int>(slot, paths[p].from);
+		return slot;
+	};
 	auto main_row = [&](uint32_t e) {
 		int row = INT_MAX;
 		for (uint16_t p : graph.edges[e].paths) row = std::min<int>(row, row_of[paths[p].from]);
@@ -941,8 +947,13 @@ JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topol
 		}
 		bool i_over;
 		if (bi) {
-			if (near_end(i) == near_end(j)) return fail("two joiners that meet the main line at one level are not ruled yet");
-			i_over = near_end(i) > near_end(j);
+			if (near_end(i) == near_end(j)) {
+				/* On a tie the edge from the lower (west) branch in slot goes over. */
+				if (branch_slot(i) == branch_slot(j)) return fail("two joiners from one branch slot that meet the main line at one level are not ruled yet");
+				i_over = branch_slot(i) < branch_slot(j);
+			} else {
+				i_over = near_end(i) > near_end(j);
+			}
 		} else {
 			if (main_row(i) == main_row(j)) return fail("two turning legs from one main row are not ruled yet");
 			i_over = main_row(i) < main_row(j);
@@ -1167,8 +1178,7 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		/* a. Start. */
 		int side_hand = 0;
 		if (is_band_node(edge.from, true) && diverges(e, edge.from.index, side_hand)) {
-			if (is_row_node(edge.to)) {
-				if (!crossings.empty()) return fail("a diverging joiner that crosses is not ruled yet");
+			if (is_row_node(edge.to) && crossings.empty()) {
 				const Step corner = joiner_corner();
 				if (corner.index == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
 				if (corner.hand != side_hand) return fail("a diverging corner on the wrong side is not ruled yet");
