@@ -91,7 +91,7 @@
 #include "network/network_func.h"
 #include "framerate_type.h"
 #include "viewport_cmd.h"
-#include "junction_gui.h"
+#include "junction/tool/junction_gui.h"
 
 #include <forward_list>
 #include <stack>

@@ -4,35 +4,6 @@ add_test_files(
     enum_over_optimisation.cpp
     flatset_type.cpp
     history_func.cpp
-    junction_build.cpp
-    junction_compact.cpp
-    junction_design.cpp
-    junction_game.cpp
-    junction_generator.cpp
-    junction_gui.cpp
-    junction_layout.cpp
-    junction_line.cpp
-    junction_line_build.cpp
-    junction_line_router.cpp
-    junction_map.cpp
-    junction_map_export.cpp
-    junction_organic.cpp
-    junction_real_terrain.cpp
-    junction_route.cpp
-    junction_router.cpp
-    junction_rules.cpp
-    junction_signal_pass.cpp
-    junction_station_generator.cpp
-    junction_station_rules.cpp
-    junction_facts.cpp
-    junction_terraform.cpp
-    junction_topology.cpp
-    junction_positions.cpp
-    junction_skeleton.cpp
-    junction_chain.cpp
-    junction_nodes.cpp
-    junction_throughput.cpp
-    junction_train_model.cpp
     landscape_partial_pixel_z.cpp
     math_func.cpp
     mock_environment.h
@@ -50,6 +21,8 @@ add_test_files(
     tilearea.cpp
     utf8.cpp
 )
+
+add_subdirectory(junction)
 
 # The terrain fixtures dumped from generated maps (tools/junction/terrain).
 target_compile_definitions(openttd_test PRIVATE JUNCTION_TERRAIN_DIR="${CMAKE_SOURCE_DIR}/tools/junction/terrain")

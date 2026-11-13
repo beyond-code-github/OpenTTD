@@ -34,7 +34,7 @@
 #include "vehicle_func.h"
 #include "zoom_func.h"
 #include "rail_gui.h"
-#include "junction_gui.h"
+#include "junction/tool/junction_gui.h"
 #include "toolbar_gui.h"
 #include "station_cmd.h"
 #include "tunnelbridge_cmd.h"

@@ -1,0 +1,10 @@
+add_files(
+    junction_generator.cpp
+    junction_generator.h
+    junction_nodes.cpp
+    junction_nodes.h
+    junction_skeleton.cpp
+    junction_skeleton.h
+    junction_throughput.cpp
+    junction_throughput.h
+)

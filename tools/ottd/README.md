@@ -39,7 +39,7 @@ GameScript commands (`ottd gs`): `occupancy {vehicles:[ids],ticks:T,every?:4,slo
 
 ## Layout JSON
 
-Mirrors `JunctionLayout` in `src/junction_layout.h`. Coordinates are relative to the layout's north corner. Fixture: `layouts/test-1a.json` (`MakeTestJunctionLayout`).
+Mirrors `JunctionLayout` in `src/junction/junction_layout.h`. Coordinates are relative to the layout's north corner. Fixture: `layouts/test-1a.json` (`MakeTestJunctionLayout`).
 
 ```json
 {"size":[8,6],
@@ -84,4 +84,4 @@ New games are generated flat by the `openttd.cfg` that `start` writes: `difficul
 
 ## Test circuit
 
-Hidden test `[.circuit]` in `src/tests/junction_design.cpp`: `JUNCTION_CIRCUIT=tools/ottd/layouts/circuit-LR-TL4.json build/openttd_test "[.circuit]"`. It takes `GenerateJunction(MakeTestJunctionSpec())`, routes a turnaround loop beyond each of the three leg ends (boxes include the edge row or column of the port), puts one-way block signals along the loops, and adds a depot beside the west loop (a half-piece track on its outermost axis piece, depot on the free neighbour). `start` sets `[difficulty] max_loan = 2000000000` so the IdleAI company can pay for it.
+Hidden test `[.circuit]` in `src/tests/junction/legacy/junction_design.cpp`: `JUNCTION_CIRCUIT=tools/ottd/layouts/circuit-LR-TL4.json build/openttd_test "[.circuit]"`. It takes `GenerateJunction(MakeTestJunctionSpec())`, routes a turnaround loop beyond each of the three leg ends (boxes include the edge row or column of the port), puts one-way block signals along the loops, and adds a depot beside the west loop (a half-piece track on its outermost axis piece, depot on the free neighbour). `start` sets `[difficulty] max_loan = 2000000000` so the IdleAI company can pay for it.

@@ -12,6 +12,7 @@ add_subdirectory(blitter)
 add_subdirectory(core)
 add_subdirectory(fontcache)
 add_subdirectory(game)
+add_subdirectory(junction)
 add_subdirectory(lang)
 add_subdirectory(linkgraph)
 add_subdirectory(misc)
@@ -250,67 +251,6 @@ add_files(
     ini_load.cpp
     ini_type.h
     intro_gui.cpp
-    junction_build.cpp
-    junction_build.h
-    junction_compact.cpp
-    junction_compact.h
-    junction_game.cpp
-    junction_game.h
-    junction_hover.cpp
-    junction_hover.h
-    junction_generator.cpp
-    junction_generator.h
-    junction_ghost_draw.cpp
-    junction_ghost_draw.h
-    junction_gui.cpp
-    junction_gui.h
-    junction_layout.cpp
-    junction_layout.h
-    junction_line.cpp
-    junction_line.h
-    junction_line_router.cpp
-    junction_line_router.h
-    junction_organic.cpp
-    junction_organic.h
-    junction_map_export.cpp
-    junction_map_export.h
-    junction_route.cpp
-    junction_route.h
-    junction_router.cpp
-    junction_router.h
-    junction_terrain.h
-    junction_terrain_json.cpp
-    junction_terrain_json.h
-    junction_levels.cpp
-    junction_levels.h
-    junction_terraform.cpp
-    junction_terraform.h
-    junction_rules.cpp
-    junction_rules.h
-    junction_rules_internal.h
-    junction_train_model.cpp
-    junction_train_model.h
-    junction_signal_pass.cpp
-    junction_signal_pass.h
-    junction_station_generator.cpp
-    junction_station_generator.h
-    junction_station_gui.cpp
-    junction_station_rules.cpp
-    junction_station_rules.h
-    junction_facts.cpp
-    junction_facts.h
-    junction_topology.cpp
-    junction_topology.h
-    junction_positions.cpp
-    junction_positions.h
-    junction_skeleton.cpp
-    junction_skeleton.h
-    junction_chain.cpp
-    junction_chain.h
-    junction_nodes.cpp
-    junction_nodes.h
-    junction_throughput.cpp
-    junction_throughput.h
     landscape.cpp
     landscape.h
     landscape_cmd.h

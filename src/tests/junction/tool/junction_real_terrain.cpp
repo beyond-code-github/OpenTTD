@@ -1,0 +1,702 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+/** @file junction_real_terrain.cpp Tests for terrain snapshots dumped from generated maps. */
+
+#include "../../../stdafx.h"
+
+#include "../../../3rdparty/catch2/catch.hpp"
+#include "../../../junction/terrain/junction_facts.h"
+#include "../../../junction/legacy/junction_generator.h"
+#include "../../../junction/tool/junction_hover.h"
+#include "../../../junction/line/junction_line.h"
+#include "../../../junction/legacy/junction_nodes.h"
+#include "../../../junction/junction_rules.h"
+#include "../../../junction/terrain/junction_terraform.h"
+#include "../../../junction/terrain/junction_terrain_json.h"
+#include "../../../junction/topology/junction_topology.h"
+
+#include <algorithm>
+#include <array>
+#include <set>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <numeric>
+#include <sstream>
+
+#include "../../../safeguards.h"
+
+/** Compare two snapshots member by member. */
+static void CheckTerrainEqual(const JunctionTerrain &a, const JunctionTerrain &b)
+{
+	CHECK(a.origin.x == b.origin.x);
+	CHECK(a.origin.y == b.origin.y);
+	CHECK(a.width == b.width);
+	CHECK(a.height == b.height);
+	CHECK(a.foundation_cost == b.foundation_cost);
+	CHECK(a.terraform_cost == b.terraform_cost);
+	CHECK(a.build_on_slopes == b.build_on_slopes);
+	CHECK(a.max_bridge_height == b.max_bridge_height);
+	REQUIRE(a.tiles.size() == b.tiles.size());
+	for (size_t i = 0; i < a.tiles.size(); i++) {
+		const JunctionTerrainTile &x = a.tiles[i];
+		const JunctionTerrainTile &y = b.tiles[i];
+		const bool same = x.z_min == y.z_min && x.z_max == y.z_max && x.steep == y.steep && x.incline == y.incline && x.slope == y.slope && x.cls == y.cls && x.clear_cost == y.clear_cost;
+		INFO("tile " << i);
+		CHECK(same);
+	}
+}
+
+TEST_CASE("real terrain: json round trip", "[junction][realterrain]")
+{
+	JunctionTerrain t;
+	t.origin = {-3, 7};
+	t.width = 5;
+	t.height = 4;
+	t.foundation_cost = 4321;
+	t.terraform_cost = 9876;
+	t.build_on_slopes = false;
+	t.max_bridge_height = 9;
+	const JunctionTileClass classes[] = {JunctionTileClass::Buildable, JunctionTileClass::Water, JunctionTileClass::Spannable, JunctionTileClass::Blocked};
+	const DiagDirection inclines[] = {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW, DiagDirection::Invalid};
+	const Slope slopes[] = {SLOPE_FLAT, SLOPE_W, SLOPE_NE, SLOPE_STEEP_S, SLOPE_ELEVATED};
+	for (int i = 0; i < t.width * t.height; i++) {
+		JunctionTerrainTile tile;
+		tile.z_min = static_cast<int8_t>(i - 5);
+		tile.z_max = static_cast<int8_t>(i + 3);
+		tile.steep = (i % 3) == 1;
+		tile.incline = inclines[i % 5];
+		tile.slope = slopes[(i + 2) % 5];
+		tile.cls = classes[i % 4];
+		tile.clear_cost = 1000000007LL * (i + 1);
+		t.tiles.push_back(tile);
+	}
+	std::string error;
+	const std::optional<JunctionTerrain> back = JunctionTerrainFromJson(JunctionTerrainToJson(t), &error);
+	INFO(error);
+	REQUIRE(back.has_value());
+	CheckTerrainEqual(t, *back);
+
+	CHECK(!JunctionTerrainFromJson("{\"origin\":[0]}", &error).has_value());
+	CHECK(!error.empty());
+}
+
+TEST_CASE("placement on real terrain", "[junction][realterrainsweep]")
+{
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	INFO("fixture directory " << JUNCTION_TERRAIN_DIR);
+	REQUIRE(!files.empty());
+
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionTopology &t = JunctionTTopology();
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+	INFO(error);
+	const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+	REQUIRE(!seed_layout.tracks.empty());
+
+	int solved = 0, failed = 0;
+	int64_t micros = 0;
+	std::map<std::string, int> failure_reasons;
+	std::map<int, int> rule_counts;
+	int heights = 0;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		INFO(file.filename().string() << ": " << load_error);
+		REQUIRE(terrain.has_value());
+
+		/* The seed's box centred in the snapshot. */
+		const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		const JunctionFacts facts(*terrain);
+		std::string place_error;
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error);
+		micros += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+		if (placement.nodes.empty()) {
+			failed++;
+			/* The kind is the explanation's first rule: the text before its first " (" or " [". */
+			std::string kind = place_error.substr(0, place_error.find('\n'));
+			kind = kind.substr(0, kind.find(" ["));
+			kind = kind.substr(0, kind.find(" ("));
+			failure_reasons[kind]++;
+			continue;
+		}
+		solved++;
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, placement, &render_error, &routes);
+		INFO(file.filename().string() << " " << render_error);
+		REQUIRE(!layout.tracks.empty());
+		std::string why;
+		const bool ok = JunctionRoutesHeightsOk(routes, layout, {0, 0}, *terrain, offset, &why);
+		INFO(file.filename().string() << " heights: " << why);
+		CHECK(ok);
+		if (!ok) heights++;
+		SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec, nullptr, nullptr, &placement.prio);
+		for (const RuleViolation &violation : CheckJunctionRules(layout, spec, t)) {
+			INFO(file.filename().string() << " rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+			CHECK(false);
+			rule_counts[to_underlying(violation.rule)]++;
+		}
+	}
+	std::cout << "REALTERRAIN fixtures=" << files.size() << " solved=" << solved << " failed=" << failed << " micros=" << micros << "\n";
+	for (const auto &[reason, count] : failure_reasons) std::cout << "REALTERRAIN failure " << count << " x " << reason << "\n";
+	std::cout << "REALTERRAIN heights=" << heights << "\n";
+	for (const auto &[rule, count] : rule_counts) std::cout << "REALTERRAIN rule " << rule << " x " << count << "\n";
+	CHECK(solved + failed == static_cast<int>(files.size()));
+
+	/* The hard-facts mode (D218): class facts only. Every solved placement renders and passes the rules; the heights are the Z solve's, not checked here. */
+	int hard_solved = 0, hard_failed = 0;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		const JunctionFacts facts(*terrain);
+		std::string place_error;
+		const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error, false);
+		if (placement.nodes.empty()) {
+			hard_failed++;
+			continue;
+		}
+		hard_solved++;
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, placement, &render_error, &routes);
+		INFO(file.filename().string() << " " << render_error);
+		REQUIRE(!layout.tracks.empty());
+		SignalJunctionTrackRoutes(layout, routes, t, seed.paths, seed.graph, seed.programs, spec, nullptr, nullptr, &placement.prio);
+		for (const RuleViolation &violation : CheckJunctionRules(layout, spec, t)) {
+			INFO(file.filename().string() << " rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+			CHECK(false);
+		}
+	}
+	std::cout << "REALTERRAIN hard solved=" << hard_solved << " failed=" << hard_failed << "\n";
+
+	/* The height solve (D218, DESIGN-G1 §15): on every hard-facts placement, levels per edge, a terraform plan and its cost. The terraformed terrain must pass the height facts: the same placement on it with heights, and every route of its render meets the ground. */
+	int tf_solved = 0, tf_failed = 0, tf_conflicts = 0;
+	std::vector<int64_t> costs;
+	std::vector<int64_t> solve_micros;
+	std::map<std::string, int> tf_reasons;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		const JunctionFacts facts(*terrain);
+		std::string place_error;
+		auto clock = [] { return std::chrono::steady_clock::now(); };
+		const auto hard_start = clock();
+		const JunctionTrackPlacement hard = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error, false);
+		const auto hard_end = clock();
+		if (hard.nodes.empty()) continue;
+		const JunctionTrackPlacement solved_placement = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error, true, true, &*terrain);
+		const auto solve_end = clock();
+		INFO(file.filename().string() << ": " << place_error);
+		/* Time of the solve: the second placement less the first (X is solved twice), render and levels included. */
+		solve_micros.push_back(std::chrono::duration_cast<std::chrono::microseconds>((solve_end - hard_end) - (hard_end - hard_start)).count());
+		if (solved_placement.nodes.empty()) {
+			tf_failed++;
+			if (place_error.find("terraform conflict") != std::string::npos) tf_conflicts++;
+			tf_reasons[place_error.substr(0, place_error.find(':'))]++;
+			std::cout << "REALTERRAIN terraform fail " << file.filename().string() << ": " << place_error << "\n";
+			continue;
+		}
+		tf_solved++;
+		costs.push_back(solved_placement.height_cost.base());
+		const JunctionTerrain after = ApplyJunctionTerraform(*terrain, solved_placement.terraform);
+		const JunctionFacts after_facts(after);
+		std::string again_error;
+		const JunctionTrackPlacement again = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, after_facts, offset, &again_error);
+		INFO(file.filename().string() << " terraformed terrain: " << again_error);
+		REQUIRE(!again.nodes.empty());
+		/* The terraformed ground re-places what the terraform-mode placement placed (that placement may differ from the hard-facts one). */
+		CHECK(again.item_rows == solved_placement.item_rows);
+		CHECK(again.columns == solved_placement.columns);
+		CHECK(again.size.x == solved_placement.size.x);
+		CHECK(again.size.y == solved_placement.size.y);
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, again, &render_error, &routes);
+		REQUIRE(!layout.tracks.empty());
+		std::string why;
+		const bool ok = JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, offset, &why);
+		INFO(file.filename().string() << " heights after terraform: " << why);
+		CHECK(ok);
+	}
+	/* Z2e: the joint level solve (RECON-joint-levels) solved 17 of the 18 hard-solved fixtures at the game's prices; H3 levels the prio elements' tiles too (flat, at the main-line tile's level), which 4 more fixtures (arctic-hilly-13, arctic-hilly-3, temperate-hilly-4, temperate-mountainous-1) cannot take. */
+	CHECK(tf_solved >= 18);
+	std::ranges::sort(costs);
+	const int64_t cost_sum = std::accumulate(costs.begin(), costs.end(), int64_t(0));
+	std::cout << "REALTERRAIN terraform solved=" << tf_solved << " failed=" << tf_failed << " cost_mean=" << (costs.empty() ? int64_t(0) : cost_sum / static_cast<int64_t>(costs.size())) << "\n";
+	std::cout << "REALTERRAIN terraform conflicts=" << tf_conflicts << " cost min=" << (costs.empty() ? int64_t(0) : costs.front()) << " median=" << (costs.empty() ? int64_t(0) : costs[costs.size() / 2]) << " max=" << (costs.empty() ? int64_t(0) : costs.back()) << "\n";
+	if (!solve_micros.empty()) std::cout << "REALTERRAIN terraform solve micros mean=" << std::accumulate(solve_micros.begin(), solve_micros.end(), int64_t(0)) / static_cast<int64_t>(solve_micros.size()) << " max=" << *std::ranges::max_element(solve_micros) << "\n";
+	for (const auto &[reason, count] : tf_reasons) std::cout << "REALTERRAIN terraform failure " << count << " x " << reason << "\n";
+}
+
+/**
+ * The hover plan, and the near search, of a topology on every real fixture at the centred offset.
+ * @param t The topology.
+ * @param suffix Appended to the HOVERPLAN and HOVERNEAR lines.
+ * @param plan_floor The least fixtures the plan must find.
+ * @param near_floor The least fixtures the near search must find.
+ * @param time_limited Whether the 100 ms hover target is required.
+ */
+static void RunHoverSweep(const JunctionTopology &t, const char *suffix, int plan_floor, int near_floor, bool time_limited)
+{
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	REQUIRE(!files.empty());
+
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+	REQUIRE(!seed_layout.tracks.empty());
+
+	int planned = 0, failed = 0;
+	std::vector<double> millis;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, *terrain, offset);
+		millis.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+		INFO(file.filename().string() << ": " << plan.why);
+		if (!plan.layout.has_value()) {
+			failed++;
+			CHECK(!plan.why.empty());
+			continue;
+		}
+		planned++;
+		CHECK(!plan.layout->signals.empty());
+		/* The terraformed ground passes the height facts: the placement's routes meet it (Z2e's check). */
+		const JunctionTerrain after = ApplyJunctionTerraform(*terrain, plan.terraform);
+		const JunctionFacts facts(*terrain);
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+		std::string again_error;
+		const JunctionTrackPlacement again = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &again_error, true, true, &*terrain);
+		INFO("placement: " << again_error);
+		REQUIRE(!again.nodes.empty());
+		CHECK(again.height_cost == plan.height_cost);
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		const JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, again, &render_error, &routes);
+		/* The routes checked are those of the plan's layout (the plan's has the signal pass on top). */
+		CHECK(layout.size.x == plan.layout->size.x);
+		CHECK(layout.size.y == plan.layout->size.y);
+		std::string why;
+		CHECK(JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, offset, &why));
+		INFO(why);
+		for (const RuleViolation &violation : CheckJunctionRules(*plan.layout, spec, t)) {
+			INFO("rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+			CHECK(false);
+		}
+	}
+	const double mean = millis.empty() ? 0.0 : std::accumulate(millis.begin(), millis.end(), 0.0) / static_cast<double>(millis.size());
+	const double max = millis.empty() ? 0.0 : *std::ranges::max_element(millis);
+	std::cout << "HOVERPLAN" << suffix << " fixtures=" << files.size() << " planned=" << planned << " failed=" << failed << " ms_mean=" << mean << " ms_max=" << max << "\n";
+	CHECK(planned >= plan_floor);
+	if (time_limited) REQUIRE(max < 100.0);
+
+	/* The near search (D197, F1): the cursor spot first, a nearby offset only when it has no plan. */
+	int near_planned = 0, near_moved = 0;
+	std::vector<double> near_millis;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionHoverPlan plan = PlanJunctionHoverNear(seed, spec, *terrain, offset);
+		near_millis.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+		INFO(file.filename().string() << ": " << plan.why);
+		if (!plan.layout.has_value()) continue;
+		near_planned++;
+		if (plan.moved.x != 0 || plan.moved.y != 0) {
+			near_moved++;
+			std::cout << "HOVERNEAR" << suffix << " moved " << file.filename().string() << " by " << plan.moved.x << "," << plan.moved.y << "\n";
+		}
+		const TileIndexDiffC at = {static_cast<int16_t>(offset.x + plan.moved.x), static_cast<int16_t>(offset.y + plan.moved.y)};
+		const JunctionTerrain after = ApplyJunctionTerraform(*terrain, plan.terraform);
+		const JunctionFacts facts(*terrain);
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+		std::string again_error;
+		const JunctionTrackPlacement again = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, at, &again_error, true, true, &*terrain);
+		INFO("placement: " << again_error);
+		REQUIRE(!again.nodes.empty());
+		CHECK(again.height_cost == plan.height_cost);
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		const JunctionLayout layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, again, &render_error, &routes);
+		std::string why;
+		CHECK(JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, at, &why));
+		INFO(why);
+		for (const RuleViolation &violation : CheckJunctionRules(*plan.layout, spec, t)) {
+			INFO("rule " << to_underlying(violation.rule) << " at " << violation.tile.x << "," << violation.tile.y << ": " << violation.message);
+			CHECK(false);
+		}
+	}
+	const double near_mean = near_millis.empty() ? 0.0 : std::accumulate(near_millis.begin(), near_millis.end(), 0.0) / static_cast<double>(near_millis.size());
+	const double near_max = near_millis.empty() ? 0.0 : *std::ranges::max_element(near_millis);
+	std::cout << "HOVERNEAR" << suffix << " fixtures=" << files.size() << " planned=" << near_planned << " moved=" << near_moved << " ms_mean=" << near_mean << " ms_max=" << near_max << "\n";
+	CHECK(near_planned >= near_floor);
+	if (time_limited) REQUIRE(near_max < 100.0);
+}
+
+TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
+{
+	RunHoverSweep(JunctionTTopology(), "", 19, 32, true);
+}
+
+TEST_CASE("hover plan on real terrain, LL_RR", "[junction][realterrainsweep]")
+{
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("L_R").spec);
+	RunHoverSweep(t, "_LLRR", 9, 20, true);
+}
+
+/** Fold a value into a 64-bit FNV-1a hash. */
+static void LevelHashFold(uint64_t &hash, int64_t value)
+{
+	for (int i = 0; i < 8; i++) {
+		hash ^= static_cast<uint64_t>(value >> (i * 8)) & 0xFF;
+		hash *= 1099511628211ULL;
+	}
+}
+
+/** Every field of a placement that the near search reads, as one flat list (for the identity of a placement with and without the shared stages). */
+static std::vector<int64_t> FlattenPlacement(const JunctionTrackPlacement &p, const std::string &error)
+{
+	std::vector<int64_t> v;
+	auto tile = [&](const TileIndexDiffC &t) { v.push_back(t.x); v.push_back(t.y); };
+	auto spans = [&](const std::vector<std::vector<JunctionTrackSpan>> &all) {
+		for (const auto &row : all) {
+			v.push_back(-1);
+			for (const JunctionTrackSpan &span : row) { tile(span.first); tile(span.second); }
+		}
+	};
+	v.push_back(static_cast<int64_t>(std::hash<std::string>{}(error)));
+	v.push_back(p.nodes.size());
+	for (int r : p.item_rows) v.push_back(r);
+	for (const TileIndexDiffC &t : p.ports) tile(t);
+	for (const TileIndexDiffC &t : p.nodes) tile(t);
+	spans(p.edges);
+	spans(p.copies);
+	for (const auto &pair : p.bridges) for (const JunctionBridge &b : pair) { tile(b.start); tile(b.end); v.push_back(b.tunnel); v.push_back(b.z); }
+	tile(p.size);
+	for (int c : p.columns) v.push_back(c);
+	v.push_back(p.choices.port_offset);
+	for (const auto &row : p.choices.m) for (int m : row) v.push_back(m);
+	for (const auto &row : p.choices.corner) for (int m : row) v.push_back(m);
+	for (const auto &[corner, height] : p.terraform.corners) { v.push_back(corner.first); v.push_back(corner.second); v.push_back(height); }
+	v.push_back(p.terraform.cost);
+	v.push_back(p.height_cost);
+	for (const auto &[t, level] : p.track_levels) { tile(t); v.push_back(level); }
+	v.push_back(p.why.size());
+	for (const JunctionPlacementReason &reason : p.why) { v.push_back(static_cast<int64_t>(std::hash<std::string>{}(reason.rule))); v.push_back(reason.edge); v.push_back(reason.node); v.push_back(reason.row); }
+	return v;
+}
+
+TEST_CASE("the level solve never asks the game about an impossible slope", "[junction][hoverplan]")
+{
+	/* P3b: on arctic-hilly-4 at (137,109) the LL_RR level solve evaluates a foundation tile whose corners the clamp leaves two levels apart on two raised corners (slope 22): GetRailFoundation and GetBridgeHeadGround reach NOT_REACHED there. The tile is a violation of that assignment; the hover answers with a plan or a reason. */
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("L_R").spec);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	std::ifstream in(std::filesystem::path(JUNCTION_TERRAIN_DIR) / "arctic-hilly-4.json");
+	std::stringstream text;
+	text << in.rdbuf();
+	std::string load_error;
+	const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+	REQUIRE(terrain.has_value());
+	const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, *terrain, {137, 109});
+	INFO(plan.why);
+	CHECK((plan.layout.has_value() || !plan.why.empty()));
+}
+
+TEST_CASE("the incremental exact cost equals the full one", "[junction][hoverplan]")
+{
+	/* P4b: the level solve's descent keeps the exact cost up to date as one group's level changes. With the test-only counter passed down, every trial is also costed in full and compared: on 3 LL_RR and 3 T fixtures that place on the terrain, not one differs. */
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	REQUIRE(!files.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTopology llrr = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("L_R").spec);
+	for (const JunctionTopology *t : {&llrr, &JunctionTTopology()}) {
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(*t, spec, &error);
+		INFO(error);
+		REQUIRE(!seed.routes.empty());
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(*t, seed.paths, seed.graph, &error);
+		const JunctionLayout seed_layout = RenderJunctionTrackPlacement(*t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+		REQUIRE(!seed_layout.tracks.empty());
+		int checked_fixtures = 0;
+		std::pair<long, long> check{0, 0}; ///< Comparisons, differences.
+		for (const fs::path &file : files) {
+			if (checked_fixtures == 3) break;
+			std::ifstream in(file);
+			std::stringstream text;
+			text << in.rdbuf();
+			std::string load_error;
+			const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+			REQUIRE(terrain.has_value());
+			const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+			const JunctionFacts facts(*terrain);
+			std::string place_error;
+			const JunctionTrackPlacement hard = PlaceJunctionTrackGraph(*t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error, false);
+			if (hard.nodes.empty()) continue;
+			const long before = check.first;
+			PlaceJunctionTrackGraph(*t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error, true, true, &*terrain, nullptr, &check);
+			if (check.first == before) continue;
+			checked_fixtures++;
+		}
+		CHECK(checked_fixtures == 3);
+		CHECK(check.first > 0);
+		CHECK(check.second == 0);
+	}
+}
+
+TEST_CASE("level solve: identical LL_RR plans at every near offset", "[junction][realterrainsweep][.identity]")
+{
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	REQUIRE(!files.empty());
+
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("L_R").spec);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+	REQUIRE(!seed_layout.tracks.empty());
+	int offsets = 0, planned = 0;
+	double millis = 0;
+	uint64_t level_hash = 14695981039346656037ULL;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC centre = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		for (int dy = -4; dy <= 4; dy++) {
+			for (int dx = -8; dx <= 8; dx++) {
+				const TileIndexDiffC offset = {static_cast<int16_t>(centre.x + dx), static_cast<int16_t>(centre.y + dy)};
+				const auto start = std::chrono::steady_clock::now();
+				const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, *terrain, offset);
+				millis += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+				offsets++;
+				LevelHashFold(level_hash, plan.layout.has_value() ? static_cast<int64_t>(plan.height_cost) : -1);
+				LevelHashFold(level_hash, static_cast<int64_t>(std::hash<std::string>{}(plan.why)));
+				if (!plan.layout.has_value()) continue;
+				planned++;
+				for (const auto &[tile, level] : plan.track_levels) {
+					LevelHashFold(level_hash, tile.x);
+					LevelHashFold(level_hash, tile.y);
+					LevelHashFold(level_hash, level);
+				}
+				LevelHashFold(level_hash, plan.terraform.cost);
+				for (const auto &[corner, height] : plan.terraform.corners) {
+					LevelHashFold(level_hash, corner.first);
+					LevelHashFold(level_hash, corner.second);
+					LevelHashFold(level_hash, height);
+				}
+			}
+		}
+	}
+	std::cout << "LEVELHASH_LLRR offsets=" << offsets << " planned=" << planned << " hash=" << level_hash << " ms_total=" << millis << "\n";
+	CHECK(offsets == 48 * 153);
+	CHECK(planned == 1601);
+	CHECK(level_hash == 12769444602347636435ULL);
+}
+
+TEST_CASE("level solve: identical plans at every near offset", "[junction][realterrainsweep][.identity]")
+{
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	REQUIRE(!files.empty());
+
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionTopology &t = JunctionTTopology();
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+	REQUIRE(!seed_layout.tracks.empty());
+
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+	const JunctionPlacementShared shared = MakeJunctionPlacementShared(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices);
+	REQUIRE(shared.ok);
+	int offsets = 0, planned = 0, cone_rejects = 0, shared_differences = 0;
+	double millis = 0;
+	uint64_t level_hash = 14695981039346656037ULL; ///< One hash per offset, folded into this: a difference at any offset moves it.
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC centre = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		const JunctionFacts facts(*terrain);
+		for (int dy = -4; dy <= 4; dy++) {
+			for (int dx = -8; dx <= 8; dx++) {
+				const TileIndexDiffC offset = {static_cast<int16_t>(centre.x + dx), static_cast<int16_t>(centre.y + dy)};
+				/* P2: the placement (X with the height facts, no level solve) with the shared stages (made once, above) is the placement without them, every field and the error text. The level solve and the render are deterministic functions of the placement, so equal placements give equal plans; LEVELHASH pins the plans themselves. */
+				{
+					std::string error_without, error_with;
+					const JunctionTrackPlacement without = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &error_without, true, false, &*terrain);
+					const JunctionTrackPlacement with = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &error_with, true, false, &*terrain, &shared);
+					if (FlattenPlacement(without, error_without) != FlattenPlacement(with, error_with)) shared_differences++;
+				}
+				const auto start = std::chrono::steady_clock::now();
+				const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, *terrain, offset);
+				millis += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+				offsets++;
+				uint64_t one = 14695981039346656037ULL;
+				LevelHashFold(one, plan.layout.has_value() ? 1 : 0);
+				if (plan.why.find("cannot reach the ground the terraform must keep") != std::string::npos) cone_rejects++;
+				if (plan.layout.has_value()) {
+					planned++;
+					LevelHashFold(one, plan.height_cost);
+					for (const auto &[tile, level] : plan.track_levels) {
+						LevelHashFold(one, tile.x);
+						LevelHashFold(one, tile.y);
+						LevelHashFold(one, level);
+					}
+					for (const auto &[corner, height] : plan.terraform.corners) {
+						LevelHashFold(one, corner.first);
+						LevelHashFold(one, corner.second);
+						LevelHashFold(one, height);
+					}
+					LevelHashFold(one, plan.terraform.cost);
+				}
+				LevelHashFold(level_hash, static_cast<int64_t>(one));
+			}
+		}
+	}
+	std::cout << "LEVELHASH offsets=" << offsets << " planned=" << planned << " cone_rejects=" << cone_rejects << " hash=" << level_hash << " ms_total=" << millis << "\n";
+	CHECK(offsets == 48 * 153);
+	CHECK(shared_differences == 0);
+	/* A cone reject that the solve without the check would plan would lose a plan: the pinned planned count and hash rule that out (cone_rejects_that_would_plan == 0). */
+	CHECK(cone_rejects == 99);
+	CHECK(planned == 3064);
+	CHECK(level_hash == 3055087328228626086ULL);
+}
+
+/** Every fixture x near offset: where JunctionPlacementNearReject rejects, the facts placement as the near search runs it fails. Returns the rejects, the counterexamples and the offsets. */
+static std::array<int, 3> RunNearRejectSweep(const JunctionTopology &t)
+{
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	REQUIRE(!files.empty());
+
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+	REQUIRE(!seed_layout.tracks.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, seed.paths, seed.graph, &error);
+	const JunctionPlacementShared shared = MakeJunctionPlacementShared(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices);
+	REQUIRE(shared.ok);
+	int offsets = 0, rejects = 0, counterexamples = 0;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC centre = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		const JunctionFacts facts(*terrain);
+		for (int dy = -4; dy <= 4; dy++) {
+			for (int dx = -8; dx <= 8; dx++) {
+				const TileIndexDiffC offset = {static_cast<int16_t>(centre.x + dx), static_cast<int16_t>(centre.y + dy)};
+				offsets++;
+				if (!JunctionPlacementNearReject(shared, facts, offset)) continue;
+				rejects++;
+				std::string why;
+				const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &why, true, true, &*terrain, &shared);
+				if (!placement.nodes.empty()) {
+					counterexamples++;
+					UNSCOPED_INFO(file.filename().string() << " at " << offset.x << "," << offset.y << " is rejected but places");
+				}
+			}
+		}
+	}
+	return {rejects, counterexamples, offsets};
+}
+
+TEST_CASE("the near reject never rejects a placeable offset", "[junction][realterrainsweep][.identity]")
+{
+	const auto t_result = RunNearRejectSweep(JunctionTTopology());
+	const JunctionTopology llrr = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("L_R").spec);
+	const auto llrr_result = RunNearRejectSweep(llrr);
+	std::cout << "NEARREJECT T offsets=" << t_result[2] << " rejects=" << t_result[0] << " counterexamples=" << t_result[1] << " LL_RR offsets=" << llrr_result[2] << " rejects=" << llrr_result[0] << " counterexamples=" << llrr_result[1] << "\n";
+	CHECK(t_result[2] == 48 * 153);
+	CHECK(llrr_result[2] == 48 * 153);
+	CHECK(t_result[1] == 0);
+	CHECK(llrr_result[1] == 0);
+}

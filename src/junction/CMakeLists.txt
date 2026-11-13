@@ -1,0 +1,20 @@
+add_subdirectory(game)
+add_subdirectory(legacy)
+add_subdirectory(line)
+add_subdirectory(placement)
+add_subdirectory(station)
+add_subdirectory(terrain)
+add_subdirectory(tool)
+add_subdirectory(topology)
+
+add_files(
+    junction_layout.cpp
+    junction_layout.h
+    junction_route.cpp
+    junction_route.h
+    junction_rules.cpp
+    junction_rules.h
+    junction_rules_internal.h
+    junction_train_model.cpp
+    junction_train_model.h
+)

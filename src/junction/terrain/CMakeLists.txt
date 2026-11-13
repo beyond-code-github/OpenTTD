@@ -1,0 +1,9 @@
+add_files(
+    junction_facts.cpp
+    junction_facts.h
+    junction_terraform.cpp
+    junction_terraform.h
+    junction_terrain.h
+    junction_terrain_json.cpp
+    junction_terrain_json.h
+)
