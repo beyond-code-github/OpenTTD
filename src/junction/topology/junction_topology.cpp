@@ -271,10 +271,15 @@ struct JunctionTreeBuilder {
 			if (by_slot) return false; // A key of one slot holds one path.
 			return this->Partition(set, true, parent, s);
 		}
-		if (keys.size() > 2) {
-			this->error = this->split ? "more than two legs at one split are not ruled yet" : "more than two legs at one merge are not ruled yet";
-			return false;
-		}
+		return this->Cascade(keys, by_slot, parent, s);
+	}
+
+	/** Makes a two-way node under parent for the ordered keys; with more than two keys its children are the halves of the key list, each half a node of its own (D228, DESIGN-G2 §G2.1). */
+	bool Cascade(const std::vector<std::vector<uint16_t>> &keys, bool by_slot, JunctionTrackEnd parent, uint16_t s)
+	{
+		std::vector<uint16_t> set;
+		for (const auto &key : keys) set.insert(set.end(), key.begin(), key.end());
+		std::sort(set.begin(), set.end());
 		const JunctionTrackEnd node{true, static_cast<uint16_t>(this->nodes.size())};
 		this->nodes.push_back({this->split, s, 0});
 		if (this->split) {
@@ -282,10 +287,20 @@ struct JunctionTreeBuilder {
 		} else {
 			this->edges.push_back({JunctionTrackEdge::Kind::Out, node, parent, set});
 		}
-		for (const auto &key : keys) {
-			if (key.size() == 1) {
-				this->leaf[key[0]] = node;
-			} else if (!this->Partition(key, by_slot, node, s)) {
+		std::vector<std::vector<std::vector<uint16_t>>> children;
+		if (keys.size() > 2) {
+			const size_t h = keys.size() / 2;
+			children.emplace_back(keys.begin(), keys.begin() + h);
+			children.emplace_back(keys.begin() + h, keys.end());
+		} else {
+			for (const auto &key : keys) children.push_back({key});
+		}
+		for (const auto &half : children) {
+			if (half.size() > 1) {
+				if (!this->Cascade(half, by_slot, node, s)) return false;
+			} else if (half[0].size() == 1) {
+				this->leaf[half[0][0]] = node;
+			} else if (!this->Partition(half[0], by_slot, node, s)) {
 				return false;
 			}
 		}

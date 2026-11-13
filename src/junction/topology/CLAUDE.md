@@ -19,7 +19,7 @@
 - A line splits by direction first, then by lane (line choice); a lane group's lane legs merge before the port on the exit side, and a joining branch splits by direction then by lane next to the main line it feeds (D187, D204, D205).
 - Two legs of one branch bound for one main lane merge with each other first and join as one joiner, with one prio element per lane (D224).
 - Every lane of a direction splits toward the branch; no shifters in LL_RR (D187, D191).
-- A switch has two legs; more are refused as not ruled (G1 §7).
+- A switch has two legs; a lane bound for more than two keys splits as a cascade of two-way nodes over contiguous halves of the ordered key list (1 + 2, 2 + 2, ...); merges mirror it (D228, DESIGN-G2 §G2.1).
 - Crossings are counted per graph edge; two paths cross when their end ports interleave around the box; every chord pair is crossed exactly once (G1 §6, G1 §7).
 - Over and under: a crossed row edge (a lane along its own row) carries one doubled bridge over all its crossings (D156, D190, G1 §9).
 - A crossing of two non-row edges needs exactly one joiner (a path from a branch slot): the joiner goes over on a single bridge; zero or two joiners are refused as not ruled (G1 §9).

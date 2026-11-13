@@ -275,7 +275,54 @@ TEST_CASE("topology: every chord pair is crossed exactly once", "[junction][topo
 	}
 }
 
-TEST_CASE("topology: a split with three legs is refused", "[junction][topology]")
+/** Checks a graph is cascades of two-way nodes only, with D24 on every path (all In edges before all Out edges). */
+static void CheckCascadeGraph(const JunctionTrackGraph &graph)
+{
+	for (uint32_t i = 0; i < graph.nodes.size(); i++) {
+		size_t children = 0, parents = 0;
+		for (const JunctionTrackEdge &edge : graph.edges) {
+			if (edge.from.node && edge.from.index == i) children++;
+			if (edge.to.node && edge.to.index == i) parents++;
+		}
+		if (graph.nodes[i].split) {
+			CHECK(children == 2);
+		} else {
+			CHECK(parents == 2);
+		}
+	}
+	for (const auto &list : graph.path_edges) {
+		bool seen_out = false;
+		for (uint32_t e : list) {
+			if (graph.edges[e].kind == JunctionTrackEdge::Kind::Out) seen_out = true;
+			if (graph.edges[e].kind == JunctionTrackEdge::Kind::In) CHECK(!seen_out);
+		}
+	}
+}
+
+/** The path sets of the two child edges of split node n, in edge order. */
+static std::vector<std::vector<uint16_t>> ChildPaths(const JunctionTrackGraph &graph, uint16_t n)
+{
+	std::vector<std::vector<uint16_t>> result;
+	for (const JunctionTrackEdge &edge : graph.edges) {
+		if (edge.from.node && edge.from.index == n) result.push_back(edge.paths);
+	}
+	return result;
+}
+
+/** Checks the children of split node n are {k0} | {k1, k2} in lane order: the single path is nearer counter-clockwise from the node's slot than both of the pair. */
+static void CheckOnePlusTwo(const JunctionTopology &t, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, uint16_t n)
+{
+	const size_t slots = JunctionPortSlots(t).size();
+	auto distance = [&](uint16_t p) { return (paths[p].to + slots - graph.nodes[n].slot) % slots; };
+	auto children = ChildPaths(graph, n);
+	REQUIRE(children.size() == 2);
+	std::sort(children.begin(), children.end(), [](const auto &a, const auto &b) { return a.size() < b.size(); });
+	REQUIRE(children[0].size() == 1);
+	REQUIRE(children[1].size() == 2);
+	CHECK(distance(children[0][0]) < std::min(distance(children[1][0]), distance(children[1][1])));
+}
+
+TEST_CASE("topology: a split with three legs is a cascade of two-way nodes", "[junction][topology]")
 {
 	JunctionTopology t;
 	t.groups = {
@@ -289,9 +336,64 @@ TEST_CASE("topology: a split with three legs is refused", "[junction][topology]"
 	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
 	REQUIRE(paths.size() == 3);
 	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
-	CHECK(graph.nodes.empty());
-	CHECK(graph.edges.empty());
-	CHECK(error == "more than two legs at one split are not ruled yet");
+	CHECK(error.empty());
+	REQUIRE(!graph.nodes.empty());
+	CheckCascadeGraph(graph);
+	/* The first node of the W slot's tree splits {k0} | {k1, k2}. */
+	REQUIRE(graph.nodes[0].split);
+	CheckOnePlusTwo(t, paths, graph, 0);
+}
+
+TEST_CASE("topology: a split to three lanes is a cascade of two-way nodes", "[junction][topology]")
+{
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("LLL_RRR").spec, ParseLineNotation("L_R").spec);
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	CHECK(error.empty());
+	REQUIRE(!graph.nodes.empty());
+	CheckCascadeGraph(graph);
+	size_t three = 0;
+	for (uint32_t i = 0; i < graph.nodes.size(); i++) {
+		if (!graph.nodes[i].split) continue;
+		const auto children = ChildPaths(graph, i);
+		REQUIRE(children.size() == 2);
+		if (children[0].size() + children[1].size() == 3) {
+			three++;
+			CheckOnePlusTwo(t, paths, graph, static_cast<uint16_t>(i));
+		}
+	}
+	CHECK(three > 0);
+}
+
+TEST_CASE("topology: the cascade of four keys is two halves", "[junction][topology]")
+{
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("LLLL_RRRR").spec, ParseLineNotation("L_R").spec);
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	CHECK(error.empty());
+	REQUIRE(!graph.nodes.empty());
+	CheckCascadeGraph(graph);
+	const size_t slots = JunctionPortSlots(t).size();
+	size_t four = 0;
+	for (uint32_t i = 0; i < graph.nodes.size(); i++) {
+		if (!graph.nodes[i].split) continue;
+		const auto children = ChildPaths(graph, i);
+		REQUIRE(children.size() == 2);
+		if (children[0].size() + children[1].size() != 4) continue;
+		four++;
+		CHECK(children[0].size() == 2);
+		CHECK(children[1].size() == 2);
+		/* Contiguous halves: every path of one half is nearer counter-clockwise than every path of the other. */
+		auto distance = [&](uint16_t p) { return (paths[p].to + slots - graph.nodes[i].slot) % slots; };
+		const size_t first = std::max(distance(children[0][0]), distance(children[0][1]));
+		const size_t second = std::max(distance(children[1][0]), distance(children[1][1]));
+		const size_t first_min = std::min(distance(children[0][0]), distance(children[0][1]));
+		const size_t second_min = std::min(distance(children[1][0]), distance(children[1][1]));
+		CHECK((first < second_min || second < first_min));
+	}
+	CHECK(four > 0);
 }
 
 /** The track order of a topology, with its expected row items as (node, index). */
