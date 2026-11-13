@@ -84,7 +84,7 @@ static int JunctionRunFloor(FloorKind before, FloorKind after, const JunctionSpe
 	return 2; // The chain run: a signal tile and a boundary tile between elements (D217).
 }
 
-JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts, TileIndexDiffC offset, bool heights, bool classes_only, const JunctionPlacementShared *shared, JunctionPlacementShared *make_shared, JunctionPlacementShared *record, JunctionPlacementSystem *system)
+JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts, TileIndexDiffC offset, bool heights, bool classes_only, const JunctionPlacementShared *shared, JunctionPlacementShared *make_shared, JunctionPlacementShared *record, JunctionPlacementSystem *system, const JunctionBendSizes *sizes)
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
 	using Step = JunctionTrackStep;
@@ -599,31 +599,59 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		eq(VX[heading] != 0 ? 1 : 0, next, prev, 0);
 	};
 
-	/* The size of every bend, refreshed from the rows and columns. */
-	auto refresh = [&](bool rows_known) {
+	/* The sizes of the bends that are read from a solution: the one place that reads vy, port_row and fan_m for them (DESIGN-G3 §G3.6, R1). */
+	auto measure = [&](bool rows_known) {
+		JunctionBendSizes sizes_now;
 		for (uint32_t e = 0; e < edge_count; e++) {
 			for (std::vector<Elem> *elems : {&chain[e], &chain_copy[e]}) {
 				for (Elem &el : *elems) {
+					if (el.k != Elem::K::Corner && el.k != Elem::K::SBend && el.k != Elem::K::Fan) continue;
+					int m = el.m;
+					int hand = el.hand;
 					if (el.k == Elem::K::Fan) {
 						/* The fan's size is the distance of the port row to its item row, 0 until the port rows are set (the rows are known then). */
-						el.m = fan_m[e];
-						el.offs.clear();
-						if (el.m != 0) {
+						m = fan_m[e];
+						if (m != 0) {
 							const int y_item = vy[item_pt[el.index]];
 							const int y_port = port_row[el.slot];
-							el.hand = (((el.port_first ? y_item - y_port : y_port - y_item) > 0) == (el.hin == 1)) ? 1 : -1;
+							hand = (((el.port_first ? y_item - y_port : y_port - y_item) > 0) == (el.hin == 1)) ? 1 : -1;
+						}
+					} else if (el.k == Elem::K::SBend) {
+						/* A horizontal S-bend, of a row edge or a joiner's arrival, is sized by the rows it joins (rule of the lane change); known with the rows. */
+						if (is_row_edge(e)) {
+							m = rows_known ? std::abs(vy[item_pt[el.index]] - vy[el.first]) : 0;
+						} else if (VX[el.hin] != 0 && el.index != NO_ROW) {
+							m = rows_known ? std::abs(vy[item_pt[el.index]] - vy[el.first]) : 1; // A bend of a chain that is no row keeps one row until the rows are known.
+						}
+					}
+					sizes_now.m.push_back(m);
+					sizes_now.hand.push_back(static_cast<int8_t>(hand));
+				}
+			}
+		}
+		return sizes_now;
+	};
+
+	/* The size of every bend, applied from the sizes it is given. */
+	auto refresh = [&](bool rows_known, const JunctionBendSizes &given) {
+		size_t id = 0;
+		for (uint32_t e = 0; e < edge_count; e++) {
+			for (std::vector<Elem> *elems : {&chain[e], &chain_copy[e]}) {
+				for (Elem &el : *elems) {
+					if (el.k != Elem::K::Corner && el.k != Elem::K::SBend && el.k != Elem::K::Fan) continue;
+					const size_t bend = id++;
+					if (el.k == Elem::K::Fan) {
+						el.m = given.m[bend];
+						el.offs.clear();
+						if (el.m != 0) {
+							el.hand = given.hand[bend];
 							el.offs = bend_tiles(el.hin, el.hand, 2 * el.m, false);
 						}
 					} else if (el.k == Elem::K::Corner) {
 						const int kk = el.joiner_div && rows_known ? std::abs(vy[el.first] - vy[el.last]) : k;
 						el.offs = bend_tiles(el.hin, el.hand, 2 * kk + 1, true);
-					} else if (el.k == Elem::K::SBend) {
-						/* A horizontal S-bend, of a row edge or a joiner's arrival, is sized by the rows it joins (rule of the lane change); known with the rows. */
-						if (is_row_edge(e)) {
-							el.m = rows_known ? std::abs(vy[item_pt[el.index]] - vy[el.first]) : 0;
-						} else if (VX[el.hin] != 0 && el.index != NO_ROW) {
-							el.m = rows_known ? std::abs(vy[item_pt[el.index]] - vy[el.first]) : 1; // A bend of a chain that is no row keeps one row until the rows are known.
-						}
+					} else {
+						if (is_row_edge(e) || (VX[el.hin] != 0 && el.index != NO_ROW)) el.m = given.m[bend];
 						el.offs.clear();
 						if (el.m != 0) el.offs = bend_tiles(el.hin, el.hand, 2 * el.m, false);
 					}
@@ -874,13 +902,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 								if (el.tok != static_cast<int>(t) || (el.k != Elem::K::Fan && el.k != Elem::K::SBend)) continue;
 								row_heading.resize(bends.size(), -1);
 								if (el.k == Elem::K::Fan) {
-									if (fan_m[e] == 0) continue;
+									if (el.m == 0) continue;
 									const int y_fan = el.port_first ? port_row[el.slot] : vy[item_pt[el.index]];
-									const int y_far = el.port_first ? vy[item_pt[el.index]] : port_row[el.slot];
-									bends.push_back({el.first, y_fan, heading, ((y_far > y_fan) == (heading == 1)) ? 1 : -1, 2 * fan_m[e], false, e, r, true, &el});
+									bends.push_back({el.first, y_fan, heading, el.hand, 2 * el.m, false, e, r, true, &el});
 								} else {
-									if (vy[item_pt[el.index]] == vy[el.first]) continue; // An S-bend sized to 0 columns is no bend.
-									bends.push_back({el.first, vy[el.first], heading, el.hand, 2 * std::abs(vy[item_pt[el.index]] - vy[el.first]), false, e, r, true, &el});
+									if (el.m == 0) continue; // An S-bend sized to 0 columns is no bend.
+									bends.push_back({el.first, vy[el.first], heading, el.hand, 2 * el.m, false, e, r, true, &el});
 								}
 							}
 						}
@@ -2246,13 +2273,13 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		floors_off = relations_only = skip_clearance = true;
 		std::vector<int> flat_y, flat_x;
 		phase = 1;
-		refresh(false);
+		refresh(false, measure(false));
 		bool ok = build() && flat_solve(flat_y);
 		if (ok) {
 			vy = flat_y;
 			set_port_rows(fixed_offset >= 0 ? fixed_offset : best_offset());
 			phase = 0;
-			refresh(true);
+			refresh(true, measure(true));
 			ok = build() && flat_solve(flat_x);
 			if (ok) {
 				vx = flat_x;
@@ -2306,12 +2333,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		if (shared != nullptr && shared->ok) {
 			/* The offset-independent stages were solved once by MakeJunctionPlacementShared: the Y solution is theirs. */
 			phase = 1;
-			refresh(false);
+			refresh(false, measure(false));
 			vy = shared->vy;
 		} else {
 			plan_clearance(fixed->port_offset);
 			phase = 1;
-			refresh(false);
+			refresh(false, measure(false));
 			if (!build()) return build_failed();
 			if (!solve(vy)) return solve_failed();
 		}
@@ -2322,8 +2349,17 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 		port_offset = fixed->port_offset;
 		set_port_rows(port_offset);
+		if (sizes != nullptr) {
+			size_t bend_count = 0;
+			for (uint32_t e = 0; e < edge_count; e++) {
+				for (const std::vector<Elem> *elems : {&chain[e], &chain_copy[e]}) {
+					for (const Elem &el : *elems) bend_count += el.k == Elem::K::Corner || el.k == Elem::K::SBend || el.k == Elem::K::Fan;
+				}
+			}
+			if (sizes->m.size() != bend_count) return fail("the given sizes do not fit the bends");
+		}
 		phase = 0;
-		refresh(true);
+		refresh(true, sizes != nullptr ? *sizes : measure(true));
 		if (!build()) return build_failed();
 		if (record != nullptr) return JunctionTrackPlacement{};
 		if (!solve(vx)) return solve_failed();
@@ -2331,7 +2367,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	} else {
 		/* The rounds: a first X pass without rows gives the S-bends' sizes, then Y and X alternate until the sizes hold. */
 		phase = 0;
-		refresh(false);
+		refresh(false, measure(false));
 		if (!build()) return build_failed();
 		if (!solve(vx)) return solve_failed();
 		for (uint32_t e = 0; e < edge_count; e++) {
@@ -2343,7 +2379,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		for (int round = 0; round < 5; round++) {
 			plan_clearance(-1);
 			phase = 1;
-			refresh(false);
+			refresh(false, measure(false));
 			if (!build()) return build_failed();
 			if (!solve(vy)) return solve_failed();
 
@@ -2352,7 +2388,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			set_port_rows(port_offset);
 
 			phase = 0;
-			refresh(true);
+			refresh(true, measure(true));
 			if (!build()) return build_failed();
 			if (!solve(vx)) return solve_failed();
 
@@ -2606,10 +2642,10 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, x_floors, y_floors);
 }
 
-JunctionPlacementSystem RecordJunctionPlacementSystem(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices)
+JunctionPlacementSystem RecordJunctionPlacementSystem(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionBendSizes *sizes)
 {
 	JunctionPlacementSystem system;
-	PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, nullptr, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system);
+	PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, nullptr, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system, sizes);
 	return system;
 }
 
