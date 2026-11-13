@@ -15,6 +15,9 @@
 #include "../../junction/junction_route.h"
 #include "../../junction/junction_track_geometry.h"
 
+#include <map>
+#include <set>
+
 #include "../../safeguards.h"
 
 TEST_CASE("unrelated pieces share a tile only as a parallel diagonal pair", "[junction][geometry]")
@@ -128,6 +131,71 @@ TEST_CASE("bend tile forms predict the raster", "[junction][geometry]")
 					}
 				}
 			}
+		}
+	}
+}
+
+TEST_CASE("S-bend columns are affine in the column", "[junction][geometry]")
+{
+	static constexpr int VX[] = {0, 1, 0, -1};
+	static constexpr int VY[] = {-1, 0, 1, 0};
+	/** The rows of one column of a raster: least, greatest, and whether they are contiguous. */
+	struct Column {
+		int lo = 1000, hi = -1000;
+		std::set<int> rows;
+		bool contiguous() const { return !this->rows.empty() && static_cast<int>(this->rows.size()) == this->hi - this->lo + 1; }
+	};
+	for (int heading = 0; heading < 4; heading++) {
+		for (int hand : {-1, 1}) {
+			const int side = (heading + hand + 4) % 4;
+			std::vector<std::map<int, Column>> by_length(65); ///< Index L.
+			for (int length = 2; length <= 64; length++) {
+				const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, 2 * length, false)});
+				REQUIRE(raster.error.empty());
+				REQUIRE(static_cast<int>(raster.pieces.size()) == 2 * length + 2);
+				for (int i = 1; i <= 2 * length; i++) {
+					const int x = raster.pieces[i].tile.x - raster.pieces[1].tile.x;
+					const int y = raster.pieces[i].tile.y - raster.pieces[1].tile.y;
+					Column &c = by_length[length][x * VX[side] + y * VY[side]];
+					c.lo = std::min(c.lo, y);
+					c.hi = std::max(c.hi, y);
+					c.rows.insert(y);
+				}
+			}
+			const std::map<int, Column> &big = by_length[64];
+			REQUIRE(big.count(1) != 0);
+			REQUIRE(big.count(2) != 0);
+			const int s = big.at(2).lo - big.at(1).lo;
+			const int lo1 = big.at(1).lo;
+			const int hi1 = big.at(1).hi;
+			/* T(L): the largest t with columns 1..t contiguous and on the diagonal. */
+			std::vector<int> reach(65, 0);
+			for (int length = 2; length <= 64; length++) {
+				int t = 1;
+				while (true) {
+					const auto found = by_length[length].find(t);
+					if (found == by_length[length].end()) break;
+					const Column &c = found->second;
+					if (!c.contiguous() || c.lo != lo1 + s * (t - 1) || c.hi != hi1 + s * (t - 1)) break;
+					t++;
+				}
+				reach[length] = t - 1;
+			}
+			const int t1 = reach[64] - reach[63];
+			const int t0 = reach[64] - 64 * t1;
+			INFO("TABLE heading " << heading << " hand " << hand << " s " << s << " T0 " << t0 << " T1 " << t1 << " lo1 " << lo1 << " hi1 " << hi1);
+			for (int length = 2; length <= 64; length++) {
+				INFO("L " << length);
+				CHECK(reach[length] == t0 + t1 * length);
+				CHECK(by_length[length].at(1).lo == lo1);
+				CHECK(by_length[length].at(1).hi == hi1);
+			}
+			const JunctionSBendColumns form = JunctionSBendColumnForm(heading, hand);
+			CHECK(form.lo == lo1);
+			CHECK(form.hi == hi1);
+			CHECK(form.s == s);
+			CHECK(form.t0 == t0);
+			CHECK(form.t1 == t1);
 		}
 	}
 }

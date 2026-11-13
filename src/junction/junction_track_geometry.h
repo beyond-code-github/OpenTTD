@@ -31,6 +31,14 @@ struct JunctionBendTileForm {
 /** Per tile of the raster of a bend of length L (an S-bend: 2L halves; a Corner: 2L + 1), its form, read from the rasters at L and L + 1. */
 std::vector<JunctionBendTileForm> JunctionBendTileForms(int heading, int hand, int length, bool corner);
 
+/** The rows of an S-bend's sideways column 1 and how they move per column (DESIGN-G3 §G3.4a): lo(t) = lo + s (t - 1), hi(t) = hi + s (t - 1) for t = 1..t0 + t1 L. */
+struct JunctionSBendColumns {
+	int lo, hi, s, t0, t1;
+};
+
+/** The column form of the S-bend of 2L halves starting on the given heading with the given hand, read from the rasters. */
+JunctionSBendColumns JunctionSBendColumnForm(int heading, int hand);
+
 /** Whether a track touches the given tile edge. */
 bool JunctionTrackTouches(Track track, DiagDirection edge);
 

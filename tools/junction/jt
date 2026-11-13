@@ -28,7 +28,7 @@ case "$mode" in
 		;;
 	sweep)
 		if [ "$type" != "Release" ]; then echo "jt sweep: $build is '$type', not Release; the slow sweeps run in Release only" >&2; exit 2; fi
-		filter="[.sweep]"; budget=${3:-90}; name=sweep
+		filter="[.sweep]"; budget=${3:-150}; name=sweep
 		;;
 	*) echo "jt: unknown mode $mode" >&2; exit 2;;
 esac

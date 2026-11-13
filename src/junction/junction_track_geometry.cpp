@@ -15,6 +15,10 @@
 #include "../track_func.h"
 #include "../direction_func.h"
 
+#include <climits>
+#include <map>
+#include <set>
+
 #include "../safeguards.h"
 
 /** The moves of a bend from its axis piece: the first turn, the halves after the first, the closing turn (DESIGN-G1 §11.8). A hand of +1 is a clockwise turn. */
@@ -66,6 +70,47 @@ std::vector<JunctionBendTileForm> JunctionBendTileForms(int heading, int hand, i
 		forms.push_back({true, now[j].first - length * dx, dx, now[j].second - length * dy, dy});
 	}
 	return forms;
+}
+
+/** The column form of the S-bend of 2L halves starting on the given heading with the given hand, read from the rasters. */
+JunctionSBendColumns JunctionSBendColumnForm(int heading, int hand)
+{
+	static constexpr int VX[] = {0, 1, 0, -1};
+	static constexpr int VY[] = {-1, 0, 1, 0};
+	const int side = (heading + hand + 4) % 4;
+
+	/** The rows of one column: least, greatest and the number of distinct rows. */
+	struct Column {
+		int lo = INT_MAX, hi = INT_MIN;
+		std::set<int> rows;
+	};
+	auto columns_at = [&](int length) {
+		std::map<int, Column> columns;
+		for (const std::pair<int, int> &tile : BendRasterOffsets(heading, hand, length, false)) {
+			Column &column = columns[tile.first * VX[side] + tile.second * VY[side]];
+			column.lo = std::min(column.lo, tile.second);
+			column.hi = std::max(column.hi, tile.second);
+			column.rows.insert(tile.second);
+		}
+		return columns;
+	};
+	const std::map<int, Column> big = columns_at(64);
+	if (big.count(1) == 0 || big.count(2) == 0) return {0, 0, 0, 0, 0};
+	JunctionSBendColumns form{big.at(1).lo, big.at(1).hi, big.at(2).lo - big.at(1).lo, 0, 0};
+
+	/* T(L): the largest t with columns 1..t contiguous and on the diagonal. */
+	auto reach = [&](int length) {
+		const std::map<int, Column> columns = columns_at(length);
+		int t = 1;
+		for (auto found = columns.find(t); found != columns.end(); found = columns.find(++t)) {
+			const Column &column = found->second;
+			if (static_cast<int>(column.rows.size()) != column.hi - column.lo + 1 || column.lo != form.lo + form.s * (t - 1) || column.hi != form.hi + form.s * (t - 1)) break;
+		}
+		return t - 1;
+	};
+	form.t1 = reach(64) - reach(63);
+	form.t0 = reach(64) - 64 * form.t1;
+	return form;
 }
 
 /** Whether a track touches the given tile edge. */
