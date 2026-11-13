@@ -1064,8 +1064,7 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		if (!doubled_bridge(e)) continue;
 		if (!is_row_edge(e)) continue;
 		const int r = (end_level(graph.edges[e].from) - 1) / 2;
-		if (!graph.edges[e].from.node) return fail("a crossed lane in edge is not ruled yet");
-		if (graph.edges[e].to.node) row_doubled[r] = true;
+		if (graph.edges[e].from.node && graph.edges[e].to.node) row_doubled[r] = true;
 	}
 
 	/* Band nodes: the siblings west to east, the straight child and the side of the other. */
@@ -1138,6 +1137,20 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 				for (uint32_t x : crossings) program.push_back(step(StepKind::Over, 0, x));
 				program.push_back(merge);
 				programs.copies[e].push_back(split);
+				for (uint32_t x : crossings) programs.copies[e].push_back(step(StepKind::Over, 0, x));
+			} else if (edge.to.node && doubled_bridge(e)) {
+				/* A doubled in edge, the mirror of the doubled out edge: the fan arrives on whichever of the lane and copy items the node does not sit on, copy 1 S-bends to the node's item before the bridge, copy 0 after it. */
+				const uint32_t lane = static_cast<uint32_t>(row_items[r].lane);
+				const uint32_t copy = static_cast<uint32_t>(row_items[r].copy);
+				const uint32_t b = row_doubled[r] ? row_items[r].north : row_items[r].lane;
+				if (lane == Step::NO_ROW || copy == Step::NO_ROW || b == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+				if (b != lane && b != copy) return fail("a crossed in edge whose node sits off its lane and copy items is not ruled yet");
+				const uint32_t a = (b == lane) ? copy : lane;
+				const int hand = ((b > a) == east[r]) ? +1 : -1;
+				program.push_back(step(StepKind::Fan, 0, a));
+				for (uint32_t x : crossings) program.push_back(step(StepKind::Over, 0, x));
+				program.push_back(step(StepKind::SBend, hand, b, 0, Step::Role::LaneMerge));
+				programs.copies[e].push_back(step(StepKind::SBend, hand, b, 0, Step::Role::LaneSplit));
 				for (uint32_t x : crossings) programs.copies[e].push_back(step(StepKind::Over, 0, x));
 			} else if (edge.to.node) {
 				const uint32_t item = row_doubled[r] ? row_items[r].north : row_items[r].lane;
