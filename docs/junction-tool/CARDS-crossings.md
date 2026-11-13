@@ -1,4 +1,5 @@
 # Cards for the engineer: crossings D223 does not cover (CX1 step 0, 2026-11-13)
+**CLOSED by D227 (2026-11-13): C1 (b), C2 (a), C3 (a) are the defaults, kept as future toggles.**
 
 Source: CX1's dump of LL_RR x LL_RR (scratchpad/dump.txt). Today's rule with exactly one branch joiner in a crossing: the joiner is carried over on a single bridge. D223: main x main: the straight-through lane over, the turn under ("for a compact footprint"); joiner x joiner: the one farther from the main line over.
 
