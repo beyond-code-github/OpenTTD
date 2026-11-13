@@ -402,6 +402,14 @@ JunctionTrackGraph BuildJunctionTrackGraph(const JunctionTopology &topology, con
 					for (uint16_t p : edge.paths) branch_only = branch_only && !group_of(paths[p].from).main;
 					if (branch_only) node.level = 2 * row_of[node.slot] + 2;
 				}
+			} else {
+				/* D224 (exit side, DESIGN-G2 §G2.2): a main lane's splits among branch lanes sit in the band below the lane; only the first split of the cascade is on the row. */
+				for (const JunctionTrackEdge &edge : graph.edges) {
+					if (edge.kind != JunctionTrackEdge::Kind::In || !edge.from.node || !edge.to.node || edge.to.index != i) continue;
+					bool branch_only = true;
+					for (uint16_t p : edge.paths) branch_only = branch_only && !group_of(paths[p].to).main;
+					if (branch_only) node.level = 2 * row_of[node.slot] + 2;
+				}
 			}
 			continue;
 		}
@@ -599,9 +607,14 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 				auto feeds_of = [&](uint32_t e) {
 					std::vector<uint32_t> feeds;
 					const JunctionTrackEnd end = north_end(e);
-					if (!end.node || graph.nodes[end.index].split || south_is_to[e] || !(graph.edges[e].to.node && graph.edges[e].to.index == end.index)) return feeds;
+					if (!end.node) return feeds;
+					const bool split = graph.nodes[end.index].split;
+					/* A merge node entered from a leg (its to end), or a split node entered from a leg (its from end): the legs gather. */
+					const JunctionTrackEnd &at = split ? graph.edges[e].from : graph.edges[e].to;
+					if (south_is_to[e] != split || !(at.node && at.index == end.index)) return feeds;
 					for (uint32_t f = 0; f < edge_count; f++) {
-						if (graph.edges[f].to.node && graph.edges[f].to.index == end.index) feeds.push_back(f);
+						const JunctionTrackEnd &leg_end = split ? graph.edges[f].from : graph.edges[f].to;
+						if (leg_end.node && leg_end.index == end.index) feeds.push_back(f);
 					}
 					return feeds;
 				};
@@ -663,9 +676,11 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 						layers.erase(layers.begin() + k);
 					}
 					order.bands[level / 2].push_back({true, merge_node, 0, 1 + merged_layer});
+					const bool split = graph.nodes[merge_node].split;
 					for (uint32_t f = 0; f < edge_count; f++) {
-						if (graph.edges[f].from.node && graph.edges[f].from.index == merge_node) {
-							south_is_to[f] = false;
+						const JunctionTrackEnd &trunk_end = split ? graph.edges[f].to : graph.edges[f].from;
+						if (trunk_end.node && trunk_end.index == merge_node) {
+							south_is_to[f] = split;
 							items.insert(items.begin() + first, f);
 							appeared[f] = true;
 							layers.insert(layers.begin() + first, 1 + merged_layer);

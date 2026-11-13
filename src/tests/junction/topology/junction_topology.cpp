@@ -4536,6 +4536,39 @@ TEST_CASE("topology: the order sweep places crossings between edges that are not
 	}
 }
 
+TEST_CASE("topology: exit side: a main lane's branch-only splits sit in the band (D224)", "[junction][topology]")
+{
+	const JunctionLineSpec llrr = ParseLineNotation("LL_RR").spec;
+	const JunctionTopology t = MakeJunctionHubTopology(llrr, llrr, JunctionLanePairing::AnyToAny);
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	REQUIRE(!paths.empty());
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	REQUIRE(!graph.nodes.empty());
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(t);
+	const std::vector<int> row_of = JunctionSlotRows(t, paths, &error);
+	auto main_of = [&](int slot) { return t.groups[slots[slot].group].main; };
+	size_t found = 0;
+	for (uint32_t i = 0; i < graph.nodes.size(); i++) {
+		const JunctionTrackNode &node = graph.nodes[i];
+		if (!node.split || !main_of(node.slot)) continue;
+		for (const JunctionTrackEdge &edge : graph.edges) {
+			if (edge.kind != JunctionTrackEdge::Kind::In || !edge.from.node || !edge.to.node || edge.to.index != i) continue;
+			bool branch_only = true;
+			for (uint16_t p : edge.paths) branch_only = branch_only && !main_of(paths[p].to);
+			if (!branch_only) continue;
+			found++;
+			CHECK(node.level == 2 * row_of[node.slot] + 2);
+		}
+	}
+	CHECK(found > 0);
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+	INFO("order: " << error);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+	INFO("structure: " << error);
+	CHECK(error.empty());
+}
+
 TEST_CASE("topology: a row node reached only by row edges is placed by the order", "[junction][topologysweep]")
 {
 	/* OF2: LL_RR x LL_RR (pairing any) and L_R x LL_RR have row nodes (E main splits, merges before the W port) that no swept item makes. */
