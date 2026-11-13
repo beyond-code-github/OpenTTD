@@ -3,82 +3,60 @@
 You execute this brief and nothing else. Make exactly the changes listed. Do not add any type, member, file, abstraction or mechanism that the brief does not name, and do not widen or narrow its scope. If something is not covered, or you would have to choose between approaches, stop at a clean state and report the question. A workaround that avoids a stop condition is a breach, not a stop. Keep your context small: send command output to files and report only what failed.
 
 ## Goal
-Today `build()` runs its own flat solve in the X phase and adds the occupancy, hug and X-clearance families from that solve's order (the block "The occupancy family and the bridge heads follow the order of the flat solve"). When that inner solve fails, those families are silently missing. That is why the joint model's rulebook is incomplete on the failing hubs.
+Today `build()` runs its own flat solve in the X phase and adds the occupancy, hug-pin and X-clearance families from that solve's order (the block "The occupancy family and the bridge heads follow the order of the flat solve"). When that inner solve fails, those families are silently missing. That is why the joint model's rulebook is incomplete on the failing hubs.
 
-This step moves every family that needs positions out of `build()` into one lambda, `detect`, which the caller runs at a point it hands in. The fixed path hands it the same flat solve as today, so this is a pure refactor and identity does not change. R3 will hand it the joint loop's canonical point instead.
+This step moves the families that read columns out of `build()` into one lambda, `detect(x)`, which the caller runs at a point it hands in. The fixed path hands it the same flat solve as today: over exactly the rows `build()` had emitted when the old block ran, so this is a pure refactor and identity does not change. R3 will hand it the joint loop's canonical point instead.
 
-The families that move:
-- the doubled bridge heads' hug of their crossers ("bridge heads hug crossers"), both its inequalities and the `hugs` it fills;
-- `compute_node_tracks`, `add_occupancy`, `hug_heads` and `add_clearance_x`;
-- `plan_clearance`'s side rule (the Y clearance), as `detect_y`.
+The families that move: `compute_node_tracks`, `add_occupancy`, `hug_heads` and `add_clearance_x`; and `plan_clearance`'s side rule (the Y clearance), as `detect_y`.
 
-Decided here (orchestrator, reversible): the hug inequalities of a straight crosser move with the rest of the hug, because which crosser tiles lie on a head row needs the rows. §G3.6 lists them as static; R3 may promote them.
+The hug of a doubled bridge's heads around its crossers ("bridge heads hug crossers", its inequalities and the `hugs` it fills) stays in `build()` unchanged: it reads only the rows, which the X phase has, and the flat solve must see it.
+
+## Amendment (2026-11-14, after the first attempt stopped)
+The first attempt (patch: `/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/r2/r2-attempt.patch`) solved the flat point after `build()` returned, so the solve also saw the x floors, the facts and the box bound, and the T seed failed. The brief was wrong; this version fixes it by solving over a prefix of `cons`. The guard test and `SystemDigest` from that attempt are uncommitted in the worktree and were captured on the unchanged code: keep them as they are (read them; do not re-capture) and use them as the guard.
 
 ## State
-- Worktree `<WORKTREE given at launch>`. First: `git -C <WORKTREE> checkout -B wt-r2 <HEAD given at launch>`. Rebuild `openttd_test` in `build` and `build-rel` first (configured with HiGHS).
+- Worktree `<WORKTREE given at launch>`, branch `wt-r2` already checked out at `<HEAD given at launch>`, with the guard test uncommitted in `src/tests/junction/placement/junction_joint.cpp`. Do not reset or check out over it.
+- `build/` was rebuilt after deleting stale .pch files; `build-rel/` was not: rebuild `openttd_test` there before its gates (delete its stale .pch files the same way if the build complains about them).
+- First, before any change to `junction_placement.cpp`: `tools/junction/jt fast build '[milp]' 10` passes with the guard test.
 - Never touch the other worktrees under `.claude/`.
-- Output files go in `/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/r2/`.
+- Output files go in `/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/r2/` (name new files `*-v2.*`).
 
 ## Read first (once each, offset/limit)
 - `CODINGSTYLE.md`;
 - `docs/junction-tool/DESIGN-G3-vectors.md` §G3.6 (lines 95-170);
-- `docs/junction-tool/RECON-R2-families.md` (a map of `build()`'s families; its line numbers predate R1 by a few lines);
 - `src/junction/placement/junction_placement.cpp`:
-  - `edge_tiles` and `row_pieces`;
-  - `flat_solve`;
+  - `flat_solve` (grep "auto flat_solve");
   - `add_occupancy`, `hug_heads`, `collect_bridges`, `add_clearance_x`;
-  - `build()` from its start to its first relation, the hug block (grep "bridge heads hug crossers"), the clearance Y rows (grep "bridge middle clearance"), and the occupancy block (grep "follow the order of the flat solve");
+  - `build()` (grep "auto build = ") to the box bound, in particular the occupancy block (grep "follow the order of the flat solve");
   - `plan_clearance`;
   - every call of `build()` (grep "build()");
-- `src/tests/junction/placement/junction_joint.cpp`: the helpers, "joint: choices round-trip", "record: the measured sizes given back change nothing" (from R1), and `[.g3loop]`'s all-floor choices.
+- the first attempt's patch, for the call sites it already found;
+- `src/tests/junction/placement/junction_joint.cpp`: the uncommitted guard test and `SystemDigest`.
 
 ## Changes in `junction_placement.cpp`
-1. **The hug moves.** In `build()`, the loop over `bridge.crossed` inside "bridge heads hug crossers" goes, with the `hugs.push_back` and `if (x_phase) hugs.clear();`.
-   - Keep, in `build()`, everything around it that needs no rows: the `why`, `u`, and the `HugCandidate` heads.
-   - In its place, push into a new local `std::vector<HugSite> hug_sites;` (cleared at `build()`'s start in the X phase) one entry per bridge, holding what the moved loop needs:
-     ```cpp
-     /** A doubled bridge whose heads hug their crossers, found by build() and filled by detect (DESIGN-G3 §G3.6, R2). */
-     struct HugSite {
-     	uint32_t e; ///< The row edge.
-     	int r; ///< Its row.
-     	size_t b; ///< The bridge's index in bridges_of[e].
-     	int s; ///< The heading's sign along X.
-     };
-     ```
-   - Declare it next to `HugCandidate`.
-   - The old `if (!rows_known) break;` becomes: `build()` pushes the site only when `rows_known`.
-2. **`detect`.** Add, after `build()`:
+1. **`flat_solve` takes a prefix.** `flat_solve(std::vector<int> &val, size_t count = SIZE_MAX)` uses only the first `std::min(count, cons.size())` rows of `cons`, in its bound as well as its differences. Every existing call passes nothing and is unchanged.
+2. **`build()` marks the point.** A new local `size_t detect_rows = SIZE_MAX;` (next to `hugs`). `build()` sets it to `SIZE_MAX` at its start, and, where the old block stood, when `x_phase && rows_known && !relations_only`, sets `detect_rows = cons.size();`.
+3. **`detect`.** Add, after `build()`:
    ```cpp
-   /* The families that read positions (DESIGN-G3 §G3.6, R2): at columns x and the rows vy, the hug of every doubled bridge's heads, the occupancy, the hug pins and the X clearance; false with build_why when a crosser has no tile on a head row. */
+   /* The families that read columns (DESIGN-G3 §G3.6, R2): at columns x, the occupancy, the hug pins and the X clearance; false when the occupancy refuses. */
    auto detect = [&](const std::vector<int> &x) -> bool { ... };
    ```
-   Its body, in this order:
-   - `hugs.clear()`;
-   - for each `hug_sites` entry, the moved crosser loop, unchanged: same `why`, same `tag` handling, same "Z row" `build_why` and `return false`, and the `hugs.push_back`;
-   - `compute_node_tracks();`
-   - `if (!add_occupancy(x, false)) return false;`
-   - `hug_heads(x);`
-   - `if (!skip_clearance) add_clearance_x(x);`
-   - `return true;`
-   
-   Then delete the block "The occupancy family and the bridge heads follow the order of the flat solve" from `build()`.
-   - The `why` of each family stays its own, so the reasons are unchanged.
+   Its body: `compute_node_tracks();`, `if (!add_occupancy(x, false)) return false;`, `hug_heads(x);`, `if (!skip_clearance) add_clearance_x(x);`, `return true;`. Then delete the old block from `build()` (the `if (x_phase && rows_known && !relations_only) { ... }` around "follow the order of the flat solve"), leaving only the `detect_rows` mark in its place.
+   - The `why` of each family stays its own.
    - `detect` adds rows to `cons` after `build()`'s rows, the floors and the box bound. If a test that pins an explanation chain changes text only because of that order, STOP and report it. Do not reorder to fix it.
-3. **Every X-phase call of `build()`** where the old block could run (`rows_known && !relations_only`) becomes a call of a new lambda:
+4. **`build_x`.** Every X-phase call of `build()` outside `plan_clearance` becomes a call of:
    ```cpp
-   /* build() and, when the rows are known, detect at the flat solve's columns, as the old build() did (DESIGN-G3 §G3.6, R2). */
+   /* build() and, when the rows are known, detect at the flat solve of the rows build() had made at the old point, as the old build() did (DESIGN-G3 §G3.6, R2). */
    auto build_x = [&]() -> bool {
    	if (!build()) return false;
-   	if (!rows_known || relations_only) return true;
+   	if (detect_rows == SIZE_MAX) return true;
    	std::vector<int> flat;
-   	if (!flat_solve(flat)) return true;
+   	if (!flat_solve(flat, detect_rows)) return true;
    	return detect(flat);
    };
    ```
-   - Calls in the Y phase, and `plan_clearance`'s own calls, keep `build()`.
-   - The first X pass of the rounds (rows not known) may call either; use `build_x()` for every X call outside `plan_clearance`.
-   - If `detect` returns false, the call site treats it as a failed `build()` does today.
-4. **`detect_y`.** Move `plan_clearance`'s loop "for (const BridgeLine &line : lines)" into:
+   If `build_x` returns false, the call site treats it as a failed `build()` does today. Calls in the Y phase, and `plan_clearance`'s own calls, keep `build()`.
+5. **`detect_y`.** Move `plan_clearance`'s loop "for (const BridgeLine &line : lines)" into:
    ```cpp
    /* The Y-phase clearance of the X-axis bridges at a point (DESIGN-G3 §G3.6, R2): a head whose column lies strictly within an X-axis bridge keeps its side of the bridge's row by one; on the row itself, both sides (as today). */
    auto detect_y = [&](const std::vector<int> &x, const std::vector<int> &y) { ... };
@@ -87,10 +65,10 @@ Decided here (orchestrator, reversible): the hug inequalities of a straight cros
    - `plan_clearance` keeps its two flat solves and calls `detect_y(flat_x, flat_y)` where the loop was.
    - `build()`'s rows from `clear_y` stay where they are.
 
-Nothing else changes. That includes `edge_tiles`, `row_pieces`, `add_occupancy`'s body, the facts, the curve gaps, the rounds' order, the joint model, the hover and the pipeline.
+No `HugSite`. Nothing else changes. That includes `edge_tiles`, `row_pieces`, the hug loop, `add_occupancy`'s body, the facts, the curve gaps, the rounds' order, the joint model, the hover and the pipeline.
 
 ## Tests (`src/tests/junction/placement/junction_joint.cpp`, `[junction][milp]`)
-This is a refactor, so its tests are guards captured before the change. Write them first and run them on the unchanged code. Copy the printed values into the CHECKs. They must then hold after the change.
+This is a refactor, so its tests are guards captured before the change. They exist already (uncommitted, from the first attempt, captured on the unchanged code); they must hold after the change. The spec below is what they are.
 
 - **Helper `SystemDigest(const JunctionPlacementSystem &)`** returns `std::pair<size_t, uint64_t>`:
   - the number of relations plus clashes;
@@ -109,6 +87,7 @@ Every existing test stays exactly as it is.
 ## Stop conditions
 - Identity, an existing test, or a test 1 digest changes after the change.
 - `detect` would need a value that is neither `x`, `vy`, nor state `build()` left.
+- The guard test in the worktree does not match the spec below, or does not pass on the unchanged code.
 - Anything not covered.
 
 ## Gates
