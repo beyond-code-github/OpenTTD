@@ -4213,6 +4213,29 @@ TEST_CASE("topology: LL_RR x LL_RR under each lane pairing seeds or names a reas
 	}
 }
 
+TEST_CASE("topology: the order sweep places crossings between edges that are not yet adjacent", "[junction][topologysweep]")
+{
+	/* OC1: LL_RR x LL_RR under lane pairing any and keep needs crossings between edges that are not adjacent when the sweep reaches them. */
+	const JunctionLineSpec llrr = ParseLineNotation("LL_RR").spec;
+	for (const JunctionLanePairing pairing : {JunctionLanePairing::AnyToAny, JunctionLanePairing::LaneKeepsLane}) {
+		const JunctionTopology topology = MakeJunctionHubTopology(llrr, llrr, pairing);
+		std::string why;
+		const auto paths = ExpandJunctionLanes(topology, &why);
+		REQUIRE(!paths.empty());
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(topology, paths, &why);
+		std::string order_error;
+		OrderJunctionTrackGraph(topology, paths, graph, &order_error);
+		INFO("pairing " << static_cast<int>(pairing) << ": " << order_error);
+		CHECK(order_error.find("not adjacent") == std::string::npos);
+		CHECK(order_error.find("cannot be ordered") == std::string::npos);
+		WARN("OF1 pairing " << static_cast<int>(pairing) << " order stage: " << (order_error.empty() ? "ok" : order_error));
+		JunctionSpec spec = MakeTestJunctionSpec();
+		std::string next;
+		MakeJunctionGraphSeed(topology, spec, &next);
+		WARN("OF1 pairing " << static_cast<int>(pairing) << " next stage: " << next);
+	}
+}
+
 TEST_CASE("topology: an L_R main with a multi-lane branch is refused, not crashed", "[junction][topology]")
 {
 	for (const char *branch : {"LL_RR", "LL_R", "L_RR"}) {

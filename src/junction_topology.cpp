@@ -539,6 +539,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 	std::vector<std::vector<uint32_t>> swept(edge_count);
 	std::vector<bool> south_is_to(edge_count, false); // The end the sweep entered the edge by.
 	auto north_end = [&](uint32_t e) { return south_is_to[e] ? graph.edges[e].from : graph.edges[e].to; };
+	std::vector<bool> appeared(edge_count, false); // Edges that have been an item of the sweep.
 	std::vector<uint32_t> items;
 	std::vector<int> layers; // Beside items: the layer of each item inside the band.
 	for (int s = 0; s < n; s++) {
@@ -548,14 +549,19 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 			if ((!edge.from.node && edge.from.index == s) || (!edge.to.node && edge.to.index == s)) {
 				south_is_to[e] = !edge.to.node && edge.to.index == s;
 				items.push_back(e);
+				appeared[e] = true;
 				layers.push_back(0);
 				break;
 			}
 		}
 	}
+	/* OC1 rule B: a crossing the band of its outermost level could not place (an edge between its two edges crosses neither)
+	 * is carried to the bands further north, not refused: the band choice is a property of the graph, the adjacency of the sweep. */
+	std::vector<std::pair<uint32_t, uint32_t>> carried;
 	for (int level = 2 * rows; level >= 0; level--) {
 		if (level % 2 == 0) {
-			std::vector<std::pair<uint32_t, uint32_t>> pending = band_crossings[level];
+			std::vector<std::pair<uint32_t, uint32_t>> pending = carried;
+			pending.insert(pending.end(), band_crossings[level].begin(), band_crossings[level].end());
 			std::fill(layers.begin(), layers.end(), 0);
 			for (;;) {
 				bool swapped = false;
@@ -576,10 +582,32 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 					break;
 				}
 				if (swapped) continue;
-				auto it = std::find_if(items.begin(), items.end(), [&](uint32_t e) {
+				/* OC1 rule A: the order of expansion follows the pending crossings, not the leftmost item: an item is not
+				 * expanded while a pending crossing names it with a partner that has not yet appeared as an item, because the
+				 * crossing is on the bundle and the bundle must still be whole when its partner arrives. Only when every
+				 * candidate is deferred does the leftmost go first. */
+				auto expandable = [&](uint32_t e) {
 					const JunctionTrackEnd end = north_end(e);
 					return end.node && node_level[end.index] == level;
-				});
+				};
+				auto defers = [&](uint32_t e) {
+					for (const auto &[a, b] : pending) {
+						if ((a == e && !appeared[b]) || (b == e && !appeared[a])) return true;
+					}
+					return false;
+				};
+				auto it = items.end();
+				bool any_candidate = false;
+				for (auto c = items.begin(); c != items.end(); ++c) {
+					if (!expandable(*c)) continue;
+					any_candidate = true;
+					if (!defers(*c)) {
+						it = c;
+						break;
+					}
+				}
+				/* A full pass that defers every candidate and places nothing cannot end by itself. */
+				if (any_candidate && it == items.end()) return fail("the crossings cannot be ordered");
 				if (it == items.end()) break;
 				const uint32_t item = *it;
 				const int layer = 1 + layers[it - items.begin()];
@@ -607,11 +635,13 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 				size_t pos = at;
 				for (const auto &other : others) {
 					items.insert(items.begin() + pos, other.second);
+					appeared[other.second] = true;
 					layers.insert(layers.begin() + pos, layer);
 					pos++;
 				}
 			}
-			if (!pending.empty()) return fail("a crossing between edges that are not adjacent is not ruled yet");
+			carried = pending;
+			if (level == 0 && !pending.empty()) return fail("a crossing between edges that are not adjacent is not ruled yet");
 		} else {
 			const int row = (level - 1) / 2;
 			std::vector<JunctionTrackRowItem> &row_items = order.rows[row];
