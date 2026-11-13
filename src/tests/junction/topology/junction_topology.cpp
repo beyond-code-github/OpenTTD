@@ -4698,6 +4698,73 @@ TEST_CASE("structure: crossings without one joiner follow D223 and D227 (C1, C3)
 	}
 }
 
+TEST_CASE("programs: a crossed out edge carries a doubled bridge (D229, G2 §G2.4)", "[junction][topology]")
+{
+	const JunctionTopology topology = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("LL_RR").spec, JunctionLanePairing::AnyToAny);
+	std::string why;
+	const auto paths = ExpandJunctionLanes(topology, &why);
+	REQUIRE(!paths.empty());
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(topology, paths, &why);
+	std::string error;
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, paths, graph, &error);
+	REQUIRE(error.empty());
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(topology, paths, graph, order, &error);
+	REQUIRE(error.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(topology, paths, graph, order, structure, &error);
+	INFO("programs: " << error);
+	REQUIRE(error.empty());
+
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+	using Step = JunctionTrackStep;
+	int doubled_out = 0;
+	for (uint32_t e = 0; e < graph.edges.size(); e++) {
+		const JunctionTrackEdge &edge = graph.edges[e];
+		if (edge.to.node || !edge.from.node) continue;
+		bool doubled = false;
+		for (const JunctionTrackBridge &bridge : structure.bridges) doubled = doubled || (bridge.edge == e && bridge.doubled);
+		if (!doubled) continue;
+		doubled_out++;
+		const int r = (order.node_level[edge.from.index] - 1) / 2;
+		const RowItems items = FindRowItems(structure.stack, r);
+		REQUIRE(items.copy != RowItems::NONE);
+		/* The row runs W to E when its in slot is on the W side. */
+		bool east = true;
+		for (const JunctionTrackEdge &other : graph.edges) {
+			if (other.from.node || !other.to.node || (order.node_level[other.to.index] - 1) / 2 != r || order.node_level[other.to.index] % 2 != 1) continue;
+			east = topology.groups[slots[other.from.index].group].side == JunctionSide::W;
+		}
+		const int hand = ((items.copy > items.lane) == east) ? +1 : -1;
+		const uint32_t c = static_cast<uint32_t>(items.copy);
+		std::vector<Step> want_edge, want_copy;
+		want_copy.push_back(Step{Step::Kind::SBend, static_cast<int8_t>(hand), c, 0, Step::Role::LaneSplit});
+		for (uint32_t x : order.edge_crossings[e]) {
+			want_edge.push_back(Step{Step::Kind::Over, 0, x, 0});
+			want_copy.push_back(Step{Step::Kind::Over, 0, x, 0});
+		}
+		want_edge.push_back(Step{Step::Kind::SBend, static_cast<int8_t>(hand), c, 0, Step::Role::LaneMerge});
+		want_edge.push_back(Step{Step::Kind::Fan, 0, c, 0});
+		INFO("edge " << e << " row " << r);
+		CHECK(programs.edges[e] == want_edge);
+		CHECK(programs.copies[e] == want_copy);
+	}
+	CHECK(doubled_out > 0);
+}
+
+TEST_CASE("programs: FindRowItems names a row's copy item on either side of the lane", "[junction][topology]")
+{
+	using Kind = JunctionTrackStackItem::Kind;
+	const std::vector<JunctionTrackStackItem> stack = {
+		{0, Kind::Copy}, {0, Kind::Lane}, {0, Kind::Approach},
+		{1, Kind::Approach}, {1, Kind::Lane}, {1, Kind::PrioAndCopy},
+	};
+	const RowItems row0 = FindRowItems(stack, 0);
+	const RowItems row1 = FindRowItems(stack, 1);
+	CHECK(row0.copy == 0);
+	CHECK(row1.copy == 5);
+	CHECK(row0.north == 0);
+	CHECK(row1.north == RowItems::NONE);
+}
+
 TEST_CASE("topology: an L_R main with a multi-lane branch is refused, not crashed", "[junction][topology]")
 {
 	for (const char *branch : {"LL_RR", "LL_R", "L_RR"}) {

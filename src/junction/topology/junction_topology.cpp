@@ -177,7 +177,7 @@ std::vector<int> JunctionSlotRows(const JunctionTopology &topology, const std::v
  */
 RowItems FindRowItems(const std::vector<JunctionTrackStackItem> &stack, int row)
 {
-	RowItems items{RowItems::NONE, RowItems::NONE, RowItems::NONE};
+	RowItems items{RowItems::NONE, RowItems::NONE, RowItems::NONE, RowItems::NONE};
 	for (size_t i = 0; i < stack.size(); i++) {
 		if (stack[i].row != row) continue;
 		if (stack[i].kind == JunctionTrackStackItem::Kind::Lane) {
@@ -186,6 +186,7 @@ RowItems FindRowItems(const std::vector<JunctionTrackStackItem> &stack, int row)
 		} else if (stack[i].kind == JunctionTrackStackItem::Kind::Approach) {
 			items.approach = i;
 		}
+		if (stack[i].kind == JunctionTrackStackItem::Kind::Copy || stack[i].kind == JunctionTrackStackItem::Kind::PrioAndCopy) items.copy = i;
 	}
 	return items;
 }
@@ -1052,8 +1053,8 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		if (!doubled_bridge(e)) continue;
 		if (!is_row_edge(e)) continue;
 		const int r = (end_level(graph.edges[e].from) - 1) / 2;
-		if (e != leg_of[r]) return fail("a crossed lane in or out edge is not ruled yet");
-		row_doubled[r] = true;
+		if (!graph.edges[e].from.node) return fail("a crossed lane in edge is not ruled yet");
+		if (graph.edges[e].to.node) row_doubled[r] = true;
 	}
 
 	/* Band nodes: the siblings west to east, the straight child and the side of the other. */
@@ -1117,6 +1118,16 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 				const uint32_t item = row_doubled[r] ? row_items[r].north : row_items[r].lane;
 				if (item == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
 				program.push_back(step(StepKind::Fan, 0, item));
+			} else if (doubled_bridge(e)) {
+				/* A doubled out edge (D229, DESIGN-G2 §G2.4): copy 1 S-bends from the lane to the copy item before the bridge, copy 0 after it; the fan leaves from the copy item. */
+				const uint32_t c = static_cast<uint32_t>(row_items[r].copy);
+				if (c == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+				const int hand = ((c > row_items[r].lane) == east[r]) ? +1 : -1;
+				for (uint32_t x : crossings) program.push_back(step(StepKind::Over, 0, x));
+				program.push_back(step(StepKind::SBend, hand, c, 0, Step::Role::LaneMerge));
+				program.push_back(step(StepKind::Fan, 0, c));
+				programs.copies[e].push_back(step(StepKind::SBend, hand, c, 0, Step::Role::LaneSplit));
+				for (uint32_t x : crossings) programs.copies[e].push_back(step(StepKind::Over, 0, x));
 			} else {
 				if (row_items[r].lane == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
 				program.push_back(step(StepKind::Fan, 0, row_items[r].lane));

@@ -244,6 +244,7 @@ struct RowItems {
 	size_t lane; ///< The lane's item.
 	size_t approach; ///< The joiner's approach item, or NONE.
 	size_t north; ///< The item before the lane unless that is the approach, or NONE.
+	size_t copy; ///< The row's Copy or PrioAndCopy item, on either side of the lane, or NONE.
 	static constexpr size_t NONE = JunctionTrackStep::NO_ROW; ///< Not in the stack.
 };
 
