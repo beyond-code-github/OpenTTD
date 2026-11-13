@@ -34,7 +34,7 @@ So each main row carries one in, one leg and one out for a T at any lane count a
 - Out edge: A is Lane (the joiner merge sits on the lane), B is the row's Copy item; the out edge's Fan runs from the Copy item to the port. Programs: `edges[e]` = `[Over..., SBend(copy, LaneMerge), Fan(copy)]`, `copies[e]` = `[SBend(copy, LaneSplit), Over...]`.
 - A row's one Copy item (Copy or PrioAndCopy, either side of Lane) serves every doubled edge of the row; the bridges lie at different x.
 - Run floors: joiner merge to lane split, and lane merge to fan, are the chain run (2, D217).
-- A doubled in edge is the mirror and is not built yet; it is refused by name.
+- In edge (the mirror, D229 "in or out edge"; RECON-crossed-in-edge): A is the row's Copy item, where the in edge's Fan arrives, and B is the item its node sits on (`north` when the leg is doubled, else Lane). Programs: `edges[e]` = `[Fan(copy), Over..., SBend(B, LaneMerge)]`, `copies[e]` = `[SBend(B, LaneSplit), Over...]`. The node's item stays B. An in edge's doubled bridge does not make the leg doubled.
 
 ## G2.5 Rows and bands have sizes; fans are their tapers at the ports (engineer, 2026-11-13: "maybe rows need to grow or shrink and then they push everything else up with them. So instead of a fan being a change of row, it's a change in size of a row?")
 - Every row (W/E) and every S port group's column band has an inside size. At its port the size is the notation spacing (D38); inside the box it may grow to hold what the row needs (prio rows, doubling copies, joiner approaches, crossings: D203(1)). A fan is the taper between the two.
