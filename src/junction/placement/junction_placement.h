@@ -139,8 +139,13 @@ struct JunctionSystemClash {
 	std::string reversed; ///< The key of the same pair with a and b swapped.
 	JunctionSystemColumn a_right;
 	JunctionSystemColumn b_left;
+	JunctionSystemColumn a_left; ///< a's left column, for the reversed order.
+	JunctionSystemColumn b_right; ///< b's right column, for the reversed order.
 	int gap; ///< As the recorded relation: 1, 2 when the two touch, or the recorded apart of a tie.
+	int gap_reversed; ///< The gap when a lies after b: 2 when b reaches SW and a reaches NE, else 1; for a tie, as gap.
 	bool held; ///< A column's c1 multiplies a bend the joint model gives no length variable; the model uses the recorded size.
+	bool tie; ///< Whether it was recorded as a tie: the joint model keeps its offset, not a choice of order.
+	bool choose = false; ///< The joint model may reverse this pair (its order came from a joint solution, not a solved placement).
 	std::string reason; ///< The occupancy reason text, as the relation's.
 };
 

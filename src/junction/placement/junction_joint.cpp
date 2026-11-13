@@ -297,27 +297,40 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 		model.AddRow(coefs, lower, JunctionMilp::INF, static_cast<int>(r));
 	}
 
-	/* The clashes: x[b] + c1 L - x[a] - c1 L >= gap - b.c0 + a.c0, relaxed by BIG (1 - z) once per bend that may vanish. */
+	/* The clashes: x[b] + c1 L - x[a] - c1 L >= gap - b.c0 + a.c0, relaxed by BIG (1 - z) once per bend that may vanish.
+	 * A clash that is not a tie and may be chosen is a choice of order, o binary: b after a (o = 0) holds b.left - a.right >= gap, a after b (o = 1) holds a.left - b.right >= gap_reversed; the other row is relaxed by BIG. */
 	for (size_t i = 0; i < system.clashes.size(); i++) {
 		const JunctionSystemClash &clash = system.clashes[i];
-		Coefs coefs;
-		double lower = clash.gap - clash.b_left.c0 + clash.a_right.c0;
-		std::set<int> relaxed_bends;
-		for (const auto &[column, sign] : {std::pair{&clash.b_left, 1}, std::pair{&clash.a_right, -1}}) {
-			coefs[x[column->pt]] += sign;
-			if (column->c1 == 0) continue;
-			const auto length = L.find(column->bend);
-			if (length != L.end()) {
-				coefs[length->second] += sign * column->c1;
-			} else {
-				lower -= sign * column->c1 * system.bends[column->bend].m; // No length variable: the recorded size.
+		const bool choice = clash.choose && !clash.tie;
+		const uint32_t order = choice ? model.Var(0, 1) : 0;
+		auto add_order_row = [&](const JunctionSystemColumn &later, const JunctionSystemColumn &earlier, int gap, bool b_after_a) {
+			Coefs coefs;
+			double lower = gap - later.c0 + earlier.c0;
+			std::set<int> relaxed_bends;
+			for (const auto &[column, sign] : {std::pair{&later, 1}, std::pair{&earlier, -1}}) {
+				coefs[x[column->pt]] += sign;
+				if (column->c1 == 0) continue;
+				const auto length = L.find(column->bend);
+				if (length != L.end()) {
+					coefs[length->second] += sign * column->c1;
+				} else {
+					lower -= sign * column->c1 * system.bends[column->bend].m; // No length variable: the recorded size.
+				}
+				const auto z = zero.find(column->bend);
+				if (z == zero.end() || !relaxed_bends.insert(column->bend).second) continue;
+				coefs[z->second] -= BIG;
+				lower -= BIG;
 			}
-			const auto z = zero.find(column->bend);
-			if (z == zero.end() || !relaxed_bends.insert(column->bend).second) continue;
-			coefs[z->second] -= BIG;
-			lower -= BIG;
-		}
-		model.AddRow(coefs, lower, JunctionMilp::INF, -1, static_cast<int>(i));
+			if (choice && b_after_a) {
+				coefs[order] += BIG; // Relaxed by BIG o: holds when o = 0.
+			} else if (choice) {
+				coefs[order] -= BIG; // Relaxed by BIG (1 - o): holds when o = 1.
+				lower -= BIG;
+			}
+			model.AddRow(coefs, lower, JunctionMilp::INF, -1, static_cast<int>(i));
+		};
+		add_order_row(clash.b_left, clash.a_right, clash.gap, true);
+		if (choice) add_order_row(clash.a_left, clash.b_right, clash.gap_reversed, false);
 	}
 
 	AddCurveGapCounters(model, system, spec, x, y, L, zero);
@@ -478,6 +491,7 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 	std::vector<std::pair<JunctionPlacementChoices, JunctionSystemPoint>> history;
 	std::vector<size_t> added_in_round; ///< Per round, the clashes it kept.
 	std::map<std::string, JunctionSystemClash> kept; ///< Every clash seen, by key.
+	bool point_joint = false; ///< Whether the point the round detects at is a joint solution's.
 	for (int k = 0; k < max_rounds; k++) {
 		const auto start = std::chrono::steady_clock::now();
 		const JunctionPlacementChoices round_choices = result.choices;
@@ -492,7 +506,8 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 		size_t added = 0;
 		for (const JunctionSystemClash &clash : system.clashes) {
 			if (kept.count(clash.key) != 0 || kept.count(clash.reversed) != 0) continue;
-			kept.emplace(clash.key, clash);
+			JunctionSystemClash &entry = kept.emplace(clash.key, clash).first->second;
+			entry.choose = point_joint;
 			added++;
 		}
 		added_in_round.push_back(added);
@@ -515,7 +530,7 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 		for (const JunctionSystemRelation &relation : system.relations) has_x |= relation.axis == 0;
 		const char *point_kind = !system.solved.x.empty() ? "solved" : (has_x && !joint.x.empty() ? "joint" : "none");
 		const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-		result.log.push_back(fmt::format("round {}: status {}, objective {:.3f}, sum L {}, sum t - 1 {}, changed {}, new clashes kept {}, kept total {}, failed [{}], point: {}, {:.1f} ms", k, static_cast<int>(joint.status), joint.objective, sum, sum_t, changed, added, kept.size(), failed, point_kind, ms));
+		result.log.push_back(fmt::format("round {}: status {}, objective {:.3f}, sum L {}, sum t - 1 {}, changed {}, new clashes kept {}, kept total {}, chosen {}, failed [{}], point: {}, {:.1f} ms", k, static_cast<int>(joint.status), joint.objective, sum, sum_t, changed, added, kept.size(), std::count_if(system.clashes.begin(), system.clashes.end(), [](const JunctionSystemClash &c) { return c.choose; }), failed, point_kind, ms));
 		if (joint.status == JunctionMilp::Status::Infeasible) {
 			std::string chain;
 			for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
@@ -528,6 +543,7 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 		}
 		result.choices = joint.choices;
 		/* The canonical point of this round's recording; the joint solution's when the recording's solves failed but had X relations; none otherwise. */
+		point_joint = system.solved.x.empty() && has_x;
 		if (!system.solved.x.empty()) {
 			result.point = system.solved;
 		} else if (has_x) {

@@ -1122,6 +1122,36 @@ TEST_CASE("joint: a recording at a point detects there", "[junction][milp]")
 	}
 }
 
+TEST_CASE("joint: a clash's order is the joint's choice", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	/* Three points: the origin, a and b. One clash between two occupants of width 0 records b after a; a relation x[a] - x[b] >= 3 contradicts that order. */
+	JunctionPlacementSystem system;
+	system.pt_count = 3;
+	system.relations.push_back({0, 1, 2, 3, -1, 0, 0, false, false, false, "test relation"});
+	JunctionSystemClash clash{};
+	clash.key = "a|b|0";
+	clash.reversed = "b|a|0";
+	clash.a_left = clash.a_right = {1, 0, 0, -1};
+	clash.b_left = clash.b_right = {2, 0, 0, -1};
+	clash.gap = clash.gap_reversed = 1;
+	clash.held = false;
+	clash.tie = false;
+	clash.choose = true;
+	clash.reason = "occupancy (test)";
+	system.clashes.push_back(clash);
+
+	const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+	INFO("status " << static_cast<int>(joint.status));
+	REQUIRE(joint.status == JunctionMilp::Status::Optimal);
+	CHECK(joint.x[1] - joint.x[2] >= 3);
+
+	/* A tie keeps its offset: the same clash as a tie is infeasible and names the clash's reason. */
+	system.clashes[0].tie = true;
+	const JunctionJointResult tied = SolveJunctionJoint(system, spec);
+	CHECK(tied.status == JunctionMilp::Status::Infeasible);
+}
+
 TEST_CASE("joint: a port fan's size follows the rows", "[junction][milp]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
