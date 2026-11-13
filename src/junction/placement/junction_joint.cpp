@@ -554,3 +554,23 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 	if (result.outcome.empty()) result.outcome = "round limit";
 	return result;
 }
+
+JunctionPlacementChoices JunctionFloorChoices(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec)
+{
+	JunctionPlacementSystem system;
+	std::string error;
+	PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system);
+	JunctionPlacementChoices choices;
+	if (system.tokens.empty()) return choices;
+	for (const uint32_t tokens : system.tokens) {
+		choices.m.emplace_back(tokens, 0);
+		choices.corner.emplace_back(tokens, 0);
+	}
+	for (const JunctionSystemBend &b : system.bends) {
+		if (b.copy != 0) continue;
+		if (b.source == "free") choices.m[b.edge][b.tok] = b.kind == "SFan" ? 0 : 1;
+		if (b.source == "corner_rows") choices.corner[b.edge][b.tok] = system.k;
+	}
+	choices.port_offset = system.port_offset;
+	return choices;
+}

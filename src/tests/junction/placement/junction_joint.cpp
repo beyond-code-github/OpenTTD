@@ -892,20 +892,8 @@ TEST_CASE("rule source: detection at the flat solve is today's rulebook", "[junc
 		const JunctionTrackStructure cut = seeded ? seed.structure : DefaultCut(in);
 		const JunctionTrackPrograms &programs = seeded ? seed.programs : in.programs;
 		/* All floors, as [.g3loop] takes them: every free S-bend 1, S fan 0, joiner Corner k. */
-		JunctionPlacementSystem rounds_system;
-		PlaceTrackGraph(in.topology, paths, graph, in.order, cut, programs, spec, nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &rounds_system);
-		REQUIRE(!rounds_system.tokens.empty());
-		JunctionPlacementChoices choices;
-		for (const uint32_t tokens : rounds_system.tokens) {
-			choices.m.emplace_back(tokens, 0);
-			choices.corner.emplace_back(tokens, 0);
-		}
-		for (const JunctionSystemBend &b : rounds_system.bends) {
-			if (b.copy != 0) continue;
-			if (b.source == "free") choices.m[b.edge][b.tok] = b.kind == "SFan" ? 0 : 1;
-			if (b.source == "corner_rows") choices.corner[b.edge][b.tok] = rounds_system.k;
-		}
-		choices.port_offset = rounds_system.port_offset;
+		const JunctionPlacementChoices choices = JunctionFloorChoices(in.topology, paths, graph, in.order, cut, programs, spec);
+		REQUIRE(!choices.m.empty());
 		digest(hub + " all floors", RecordJunctionPlacementSystem(in.topology, paths, graph, in.order, cut, programs, spec, choices));
 	}
 	REQUIRE(expected.size() == got.size());
@@ -1060,24 +1048,14 @@ static LoopStart MakeLoopStart(const char *main, const char *branch, const Junct
 		start.description = "the seed's choices";
 		return start;
 	}
-	JunctionPlacementSystem system;
-	const JunctionTrackPlacement rounds = PlaceTrackGraph(in.topology, start.paths, start.graph, in.order, start.cut, start.programs, spec, nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system);
+	const JunctionTrackPlacement rounds = PlaceJunctionTrackGraph(in.topology, start.paths, start.graph, in.order, start.cut, start.programs, spec, &error);
 	if (!rounds.nodes.empty() && !rounds.choices.m.empty()) {
 		start.choices = rounds.choices;
 		start.description = "the rounds-mode choices";
 		return start;
 	}
-	REQUIRE(!system.tokens.empty());
-	for (const uint32_t tokens : system.tokens) {
-		start.choices.m.emplace_back(tokens, 0);
-		start.choices.corner.emplace_back(tokens, 0);
-	}
-	for (const JunctionSystemBend &b : system.bends) {
-		if (b.copy != 0) continue;
-		if (b.source == "free") start.choices.m[b.edge][b.tok] = b.kind == "SFan" ? 0 : 1;
-		if (b.source == "corner_rows") start.choices.corner[b.edge][b.tok] = system.k;
-	}
-	start.choices.port_offset = system.port_offset;
+	start.choices = JunctionFloorChoices(in.topology, start.paths, start.graph, in.order, start.cut, start.programs, spec);
+	REQUIRE(!start.choices.m.empty());
 	start.description = "all-floor choices";
 	return start;
 }

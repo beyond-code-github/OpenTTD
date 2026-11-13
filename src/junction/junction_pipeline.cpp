@@ -14,6 +14,7 @@
 #include "junction_spec.h"
 #include "junction_rules_internal.h"
 #include "line/junction_line.h"
+#include "placement/junction_joint.h"
 #include "placement/junction_levels.h"
 #include "placement/junction_render.h"
 #include "signals/junction_signals.h"
@@ -130,6 +131,7 @@ JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology,
 
 	/* The failure reported when no cut places: the default cut's, the first one tried (the series of at most the cap from the start). */
 	std::string default_error;
+	JunctionTrackStructure default_cut;
 	bool first_cut = true;
 	for (size_t total = low_total; total <= high_total; total++) {
 		std::vector<std::vector<size_t>> tuples;
@@ -165,7 +167,10 @@ JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology,
 				const bool is_first = first_cut;
 				first_cut = false;
 				if (placed.nodes.empty()) {
-					if (is_first) default_error = why;
+					if (is_first) {
+						default_error = why;
+						default_cut = cut;
+					}
 				} else if (!have || placed.size.x < best.size.x || (placed.size.x == best.size.x && placed.size.y < best.size.y)) {
 					have = true;
 					best = std::move(placed);
@@ -190,6 +195,23 @@ JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology,
 			if (placement != nullptr) *placement = std::move(best);
 			if (error != nullptr) error->clear();
 			return best_structure;
+		}
+	}
+	/* No cut places: the joint loop on the default cut, from all-floor lengths, may find lengths the rounds cannot. */
+	const JunctionPlacementChoices floors = JunctionFloorChoices(topology, paths, graph, order, default_cut, programs, spec);
+	if (!floors.m.empty()) {
+		const JunctionJointLoopResult loop = SolveJunctionJointLoop(topology, paths, graph, order, default_cut, programs, spec, floors);
+		std::string why;
+		if (loop.outcome == "settled") {
+			JunctionTrackPlacement placed = PlaceJunctionTrackGraph(topology, paths, graph, order, default_cut, programs, spec, loop.choices, &why, {}, {});
+			if (!placed.nodes.empty()) {
+				if (placement != nullptr) *placement = std::move(placed);
+				if (error != nullptr) error->clear();
+				return default_cut;
+			}
+			default_error += "; the joint loop: " + why;
+		} else {
+			default_error += "; the joint loop: " + loop.outcome;
 		}
 	}
 	if (placement != nullptr) *placement = JunctionTrackPlacement{};

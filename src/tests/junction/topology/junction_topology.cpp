@@ -4543,6 +4543,31 @@ TEST_CASE("topology: LL_RR x LL_RR under each lane pairing seeds or names a reas
 	}
 }
 
+TEST_CASE("topology: a seed the cuts cannot place comes from the joint loop", "[junction][topologysweep][.sweep]")
+{
+	for (const auto &[main_notation, branch_notation] : {std::pair{"L_R", "L_RR"}}) {
+		const JunctionTopology topology = MakeJunctionHubTopology(ParseLineNotation(main_notation).spec, ParseLineNotation(branch_notation).spec, JunctionLanePairing::AnyToAny);
+		const JunctionSpec spec = MakeTestJunctionSpec();
+		std::string why;
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &why);
+		const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+		INFO(main_notation << " x " << branch_notation << ": " << why);
+		const bool seeded = !seed.routes.empty();
+		CHECK((seeded || why.find("the joint loop:") != std::string::npos));
+		WARN(main_notation << " x " << branch_notation << ": " << (seeded ? std::string("seeded") : why) << " in " << ms << " ms");
+		if (!seeded) continue;
+		std::string render_error;
+		const JunctionLayout layout = RenderJunctionTrackPlacement(topology, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &render_error);
+		INFO(render_error);
+		REQUIRE(!layout.tracks.empty());
+		for (const RuleViolation &v : CheckJunctionRules(layout, spec, topology)) {
+			INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
+			CHECK(false);
+		}
+	}
+}
+
 TEST_CASE("topology: the order sweep places crossings between edges that are not yet adjacent", "[junction][topologysweep][.sweep]")
 {
 	/* OC1: LL_RR x LL_RR under lane pairing any and keep needs crossings between edges that are not adjacent when the sweep reaches them. */
