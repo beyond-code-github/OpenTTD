@@ -1955,7 +1955,7 @@ TEST_CASE("FindJunctionLineRoute: a route may start on an identical existing pie
 	CHECK_FALSE(FindJunctionLineRoute(request).route.has_value());
 }
 
-TEST_CASE("FindJunctionLineRoute: a route may end on an identical existing piece", "[junction][linerouter]")
+TEST_CASE("FindJunctionLineRoute: a route may end on an identical existing piece", "[junction][slow]")
 {
 	JunctionLayout existing;
 	existing.tracks.push_back({{20, 20}, TrackBits{Track::X}});
