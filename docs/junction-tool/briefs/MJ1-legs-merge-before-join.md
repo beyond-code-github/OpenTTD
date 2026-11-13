@@ -25,3 +25,6 @@ The graph's join-side tree merges the legs bound for the same main lane (from di
 
 ## Report
 The standard report, plus step 0, the NM1 counts and LL_RR x LL_RR's next refusal or result. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop)
+Option (a), the general one: the order stage learns in-band merges. Keep your level-pass change (a main-slot merge node whose paths all come from non-main groups moves to the band below its lane, 2*row_of + 2). In OrderJunctionTrackGraph's sweep, when an item to expand is a merge node whose feeding legs are both already items in its own band and adjacent there (nothing between them, or only items those legs do not cross), the two leg items are replaced by ONE item (the merge node's out edge) at the position they held; if they are not adjacent, the existing pending-crossing machinery (OF1's rules A/B) applies first; if they still cannot be made adjacent, fail "the legs of a merge cannot be brought together" (no special case). The split side's mirror (a split node in its own band whose two out legs are adjacent) only if the same LL_RR x LL_RR needs it; say if so. Then the tests, NM1 rerun and gates as the brief says. D204's split levels stay unchanged.
