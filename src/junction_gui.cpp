@@ -297,18 +297,17 @@ void DrawJunctionGhost(TileInfo *ti)
 /**
  * Draw the junction ghost's outlines on one tile, after the tile selection so they show over it.
  * Bad tiles get a red outline; while a build is pinned, bad tiles are the pieces still
- * to build and get a blue one (D53, D54), and the rest of the pinned footprint gets a white one.
+ * to build and get a blue one (D53, D54), and the other built tiles get a white one.
  * Tiles the projection plan terraforms get a blue outline while the ghost is not pinned.
  * @param ti Tile that is being drawn.
  */
 void DrawJunctionGhostOutline(const TileInfo *ti)
 {
 	const JunctionGhostTile *ghost = JunctionGhost::Get(ti->tile);
-	/* While hovering only the tiles the junction builds on or terraforms are outlined; the empty rest of the footprint stays clear (engineer: the full grid hides the ground when zoomed out). */
-	const bool in_footprint = _junction_ghost_pinned && _junction_ghost_footprint.Contains(ti->tile);
-	if (ghost == nullptr && !in_footprint) return;
+	/* Only the tiles the junction builds on or terraforms are outlined, while hovering and while building; the empty rest of the footprint stays clear (engineer: the full grid hides the ground when zoomed out). */
+	if (ghost == nullptr) return;
 
-	/* Bad tiles are red, or blue for the pieces still to build while a build is pinned (D53); every other footprint tile is white.
+	/* Bad tiles are red, or blue for the pieces still to build while a build is pinned (D53); every other ghost tile is white.
 	 * Slopes are not bad by themselves: leveled foundations make them usable (D78). */
 	if (ghost != nullptr && ghost->bad) {
 		DrawTileSelectionRect(ti, _junction_ghost_pinned ? PALETTE_SEL_TILE_BLUE : PALETTE_SEL_TILE_RED);
