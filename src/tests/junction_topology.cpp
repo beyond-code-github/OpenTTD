@@ -1023,7 +1023,7 @@ TEST_CASE("topology: the checker traces the LL_RR render", "[junction][topology]
 	}
 }
 
-TEST_CASE("topology: the T render, both ways", "[junction][topology]")
+TEST_CASE("topology: the T render, both ways", "[junction][topologysweep]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::string error;
@@ -4146,7 +4146,7 @@ TEST_CASE("topology: occupancy legality reads the graph", "[junction][topology]"
 	CHECK(error.find(" <- ") == std::string::npos);
 }
 
-TEST_CASE("topology: the built hub topology is the hand topology and seeds the same", "[junction][topology][topologysweep]")
+TEST_CASE("topology: the built hub topology is the hand topology and seeds the same", "[junction][topologysweep]")
 {
 	struct Pair {
 		const char *main;
