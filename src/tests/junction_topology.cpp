@@ -460,12 +460,69 @@ TEST_CASE("topology: a tunnel separation gives tunnel tokens", "[junction][topol
 		CHECK(tunnelled.edges[e] == bridged.edges[e]);
 	}
 
-	/* Placement refuses them. */
+}
+
+TEST_CASE("topology: a tunnel separation is placed", "[junction][topology]")
+{
+	const JunctionTopology &t = JunctionTTopology();
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+	JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+	auto single = std::ranges::find_if(structure.bridges, [](const Bridge &b) { return !b.doubled; });
+	REQUIRE(single != structure.bridges.end());
+	const size_t index = single - structure.bridges.begin();
+	const uint32_t edge = single->edge;
+	const uint32_t crossed = single->crossed[0];
+	single->tunnel = true;
+	const JunctionTrackPrograms tunnelled = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+	REQUIRE(!tunnelled.edges.empty());
+
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::string reason;
 	const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t, paths, graph, order, structure, tunnelled, spec, &reason);
-	CHECK(placement.edges.empty());
-	CHECK(reason == "tunnel crossings are not placed yet");
+	INFO(reason);
+	REQUIRE(!placement.edges.empty());
+
+	/* Two portals on one row (or column), the run between them a tunnel within the game's length. */
+	const JunctionBridge &portals = placement.bridges[index][0];
+	const int dx = portals.end.x - portals.start.x;
+	const int dy = portals.end.y - portals.start.y;
+	CHECK((dx == 0) != (dy == 0));
+	const int middle = std::abs(dx) + std::abs(dy) - 1;
+	CHECK(middle >= 1);
+	CHECK(middle <= spec.max_tunnel_length);
+
+	/* An axis run of at least one tile before the near portal and after the far one. */
+	const auto &spans = placement.edges[edge];
+	size_t token = 0;
+	while (token < tunnelled.edges[edge].size() && tunnelled.edges[edge][token].kind != Step::Kind::Tunnel) token++;
+	REQUIRE(token < tunnelled.edges[edge].size());
+	const auto along = [&](TileIndexDiffC a, TileIndexDiffC b) { return std::abs(a.x - b.x) + std::abs(a.y - b.y); };
+	if (token > 0) CHECK(along(spans[token - 1].second, portals.start) >= 2);
+	if (token + 1 < spans.size()) CHECK(along(portals.end, spans[token + 1].first) >= 2);
+
+	/* The crossed edge crosses strictly between the portals: its Above span lies on the portals' row (or column) between them. */
+	size_t above = 0;
+	while (above < tunnelled.edges[crossed].size() && tunnelled.edges[crossed][above].kind != Step::Kind::Above) above++;
+	REQUIRE(above < tunnelled.edges[crossed].size());
+	const int lo_x = std::min(portals.start.x, portals.end.x), hi_x = std::max(portals.start.x, portals.end.x);
+	const int lo_y = std::min(portals.start.y, portals.end.y), hi_y = std::max(portals.start.y, portals.end.y);
+	for (const TileIndexDiffC &tile : {placement.edges[crossed][above].first, placement.edges[crossed][above].second}) {
+		if (dy == 0) {
+			CHECK(tile.y == portals.start.y);
+			CHECK((tile.x > lo_x && tile.x < hi_x));
+		} else {
+			CHECK(tile.x == portals.start.x);
+			CHECK((tile.y > lo_y && tile.y < hi_y));
+		}
+	}
+
+	/* The render still refuses (TU3). */
+	const JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, structure, tunnelled, placement, &reason);
+	CHECK(layout.tracks.empty());
+	CHECK(reason.find("tunnel crossings are not placed yet") != std::string::npos);
 }
 
 TEST_CASE("topology: the T's track programs", "[junction][topology]")

@@ -1163,13 +1163,6 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		if (error != nullptr) *error = reason;
 		return JunctionTrackPlacement{};
 	};
-	/* Tunnels are not placed yet (D220): a tunnel separation or a Tunnel or Above token is refused here, before any element is built. */
-	if (std::ranges::any_of(structure.bridges, [](const JunctionTrackBridge &b) { return b.tunnel; })) return fail("tunnel crossings are not placed yet");
-	for (const std::vector<std::vector<JunctionTrackStep>> *set : {&programs.edges, &programs.copies}) {
-		for (const std::vector<JunctionTrackStep> &program : *set) {
-			if (std::ranges::any_of(program, [](const JunctionTrackStep &t) { return t.kind == StepKind::Tunnel || t.kind == StepKind::Above; })) return fail("tunnel crossings are not placed yet");
-		}
-	}
 	if (graph.edges.empty() || programs.edges.size() != graph.edges.size() || programs.copies.size() != graph.edges.size()) return fail("a placement needs the programs of a track graph");
 	if (fixed != nullptr) {
 		if (fixed->m.size() != graph.edges.size() || fixed->corner.size() != graph.edges.size()) return fail("the choices do not fit the programs of this track graph");
@@ -1343,7 +1336,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				el.free_m = step.kind == StepKind::SBend && (cur == 0 || cur == 2);
 				if (step.kind == StepKind::SBend && t == 0 && edge.from.node && !from_band_split) el.first = new_pt();
 				cur = el.hout;
-			} else if (step.kind == StepKind::Over) {
+			} else if (step.kind == StepKind::Over || step.kind == StepKind::Tunnel) {
+				/* A tunnel's portals are the heads of a single bridge (D220). */
 				if (bridges_of[e].size() != 1 || structure.bridges[bridges_of[e][0]].doubled || structure.bridges[bridges_of[e][0]].crossed.size() != 1) return fail("a bridge over several band crossings is not ruled yet");
 				const int b = bridges_of[e][0];
 				el.k = Elem::K::Heads;
@@ -1727,7 +1721,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			/* Kind 4: toward the node at the end of the edge when no emitting token follows, toward the one at its start when none precedes. */
 			bool before = false, after = false;
 			for (size_t t = 0; t < program.size(); t++) {
-				if (program[t].kind == StepKind::Under || static_cast<int>(t) == el.tok) continue;
+				if (program[t].kind == StepKind::Under || program[t].kind == StepKind::Above || static_cast<int>(t) == el.tok) continue;
 				(static_cast<int>(t) < el.tok ? before : after) = true;
 			}
 			if (before == after) continue;
@@ -2281,7 +2275,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			for (const Elem &el : chain[e]) {
 				if (el.k != Elem::K::Heads || VX[el.hin] != 0 || bridges_of[e].empty()) continue;
 				const int b = bridges_of[e][0];
-				lines.push_back({b, e, false, el.first, el.last, el.first});
+				/* A tunnel has no deck above the ground to keep clear (D220); its portals still count as heads. */
+				if (!structure.bridges[b].tunnel) lines.push_back({b, e, false, el.first, el.last, el.first});
 				heads.push_back({b, e, el.first, el.first});
 				heads.push_back({b, e, el.last, el.last});
 			}
@@ -2604,7 +2599,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				const std::vector<Elem> &other = chain[el.cross];
 				const Elem *crossed = nullptr;
 				for (const Elem &o : other) {
-					if (o.k == Elem::K::SBend && o.tok >= 0 && static_cast<size_t>(o.tok) + 1 < programs.edges[el.cross].size() && programs.edges[el.cross][o.tok + 1].kind == StepKind::Under && programs.edges[el.cross][o.tok + 1].index == e) crossed = &o;
+					if (o.k == Elem::K::SBend && o.tok >= 0 && static_cast<size_t>(o.tok) + 1 < programs.edges[el.cross].size() && (programs.edges[el.cross][o.tok + 1].kind == StepKind::Under || programs.edges[el.cross][o.tok + 1].kind == StepKind::Above) && programs.edges[el.cross][o.tok + 1].index == e) crossed = &o;
 				}
 				if (crossed == nullptr) { build_why = "no crossed sbend"; return false; }
 				why("bridge over S-bend", e);
@@ -3310,7 +3305,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 						result.edges[e].push_back({first, last});
 					}
 				}
-			} else if (step.kind == StepKind::Over) {
+			} else if (step.kind == StepKind::Over || step.kind == StepKind::Tunnel) {
 				if (bridges_of[e].empty()) return fail("a crossing edge misses its bridge");
 				const Heads heads = heads_of(bridges_of[e][0], 0);
 				std::vector<TileIndexDiffC> found = tiles_under(step.index, heads, vx[heads.near]);
@@ -3318,10 +3313,8 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				const bool north = vy[heads.far] < vy[heads.near];
 				std::stable_sort(found.begin(), found.end(), [&](const TileIndexDiffC &a, const TileIndexDiffC &b) { return north ? a.y > b.y : a.y < b.y; });
 				result.edges[e].push_back({found.front(), found.back()});
-			} else if (step.kind == StepKind::Tunnel || step.kind == StepKind::Above) {
-				return fail("tunnel crossings are not placed yet");
 			} else {
-				/* Under: this edge's tiles beneath the overhead edge's bridge. */
+				/* Under, Above: this edge's tiles beneath the overhead edge's bridge. */
 				const uint32_t x = step.index;
 				const int bx = bridge_over(x, e);
 				if (bx < 0) return fail("a crossing edge misses its bridge");
@@ -3350,6 +3343,11 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				const int middle = std::abs(vx[hd.near] - vx[hd.far]) - 1;
 				if (copy == 0 && middle > spec.max_bridge_middle) return fail(fmt::format("bridge {} on edge {} needs {} middle tiles, more than {}", b, bridge.edge, middle, spec.max_bridge_middle));
 			}
+		}
+		if (bridge.tunnel) {
+			/* A tunnel's length is capped by the game's max_tunnel_length (D220), not by the bridge span. */
+			const int middle = std::abs(heads[0].start.x - heads[0].end.x) + std::abs(heads[0].start.y - heads[0].end.y) - 1;
+			if (middle > spec.max_tunnel_length) return fail(fmt::format("tunnel {} on edge {} needs {} middle tiles, more than {}", b, bridge.edge, middle, spec.max_tunnel_length));
 		}
 		result.bridges.push_back(heads);
 	}
