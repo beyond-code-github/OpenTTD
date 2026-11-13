@@ -4236,6 +4236,33 @@ TEST_CASE("topology: the order sweep places crossings between edges that are not
 	}
 }
 
+TEST_CASE("topology: a row node reached only by row edges is placed by the order", "[junction][topologysweep]")
+{
+	/* OF2: LL_RR x LL_RR (pairing any) and L_R x LL_RR have row nodes (E main splits, merges before the W port) that no swept item makes. */
+	for (const auto &[main_notation, branch_notation] : {std::pair{"LL_RR", "LL_RR"}, std::pair{"L_R", "LL_RR"}}) {
+		const JunctionTopology topology = MakeJunctionHubTopology(ParseLineNotation(main_notation).spec, ParseLineNotation(branch_notation).spec, JunctionLanePairing::AnyToAny);
+		std::string why;
+		const auto paths = ExpandJunctionLanes(topology, &why);
+		REQUIRE(!paths.empty());
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(topology, paths, &why);
+		std::string order_error;
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, paths, graph, &order_error);
+		INFO(main_notation << " x " << branch_notation << ": " << order_error);
+		CHECK(order_error.empty());
+		REQUIRE(!order.rows.empty());
+		/* Every node of a row's level is an item of that row. */
+		for (uint16_t node = 0; node < graph.nodes.size(); node++) {
+			if (graph.nodes[node].level % 2 == 0) continue;
+			const auto &row = order.rows[(graph.nodes[node].level - 1) / 2];
+			CHECK(std::find(row.begin(), row.end(), JunctionTrackRowItem{true, node}) != row.end());
+		}
+		JunctionSpec spec = MakeTestJunctionSpec();
+		std::string next;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &next);
+		WARN("OF2 " << main_notation << " x " << branch_notation << " any: " << (seed.routes.empty() ? next : std::string("seed")));
+	}
+}
+
 TEST_CASE("topology: an L_R main with a multi-lane branch is refused, not crashed", "[junction][topology]")
 {
 	for (const char *branch : {"LL_RR", "LL_R", "L_RR"}) {

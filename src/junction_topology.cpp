@@ -659,8 +659,55 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 			layers.assign(items.size(), 0);
 		}
 		if (level % 2 == 1) {
+			std::vector<JunctionTrackRowItem> &row_items = order.rows[(level - 1) / 2];
+			/* OF2: a node that only row edges reach is made by no item of the sweep. Its place is fixed when it has a placed node or
+			 * port before it and one after it in travel order with no edge item between them: it goes between them. Where the row
+			 * does not fix it, the node stays unmade and the refusal below stands. */
+			int travel = 0; // +1 when the row runs W to E, -1 when E to W.
+			for (uint32_t f = 0; f < edge_count && travel == 0; f++) {
+				if (!is_row_edge(f) || end_level(graph.edges[f].from) != level || graph.edges[f].from.node) continue;
+				travel = group_of(graph.edges[f].from.index).side == JunctionSide::W ? 1 : -1;
+			}
+			for (bool placed = travel != 0; placed;) {
+				placed = false;
+				for (uint16_t node = 0; node < graph.nodes.size() && !placed; node++) {
+					if (node_level[node] != level || row_position({true, node}, row_items) != -2) continue;
+					const int size = static_cast<int>(row_items.size());
+					auto time_of = [&](int position) { return travel > 0 ? position : size - 1 - position; };
+					int before = INT_MIN; // The latest time of any placed end that feeds the node.
+					int after = INT_MAX; // The earliest time of any placed end the node feeds.
+					for (uint32_t f = 0; f < edge_count; f++) {
+						if (!is_row_edge(f) || end_level(graph.edges[f].from) != level) continue;
+						const JunctionTrackEdge &edge = graph.edges[f];
+						const bool feeds = edge.to.node && edge.to.index == node;
+						if (!feeds && !(edge.from.node && edge.from.index == node)) continue;
+						const JunctionTrackEnd &other = feeds ? edge.from : edge.to;
+						std::vector<int> places; // A port has one place, a node every item it made.
+						if (!other.node) {
+							places.push_back(row_position(other, row_items));
+						} else {
+							for (int k = 0; k < size; k++) {
+								if (row_items[k].node && row_items[k].index == other.index) places.push_back(k);
+							}
+						}
+						for (int k : places) {
+							if (feeds) before = std::max(before, time_of(k));
+							else after = std::min(after, time_of(k));
+						}
+					}
+					if (before == INT_MIN || after == INT_MAX || before >= after) continue;
+					bool clear = true;
+					for (int k = 0; k < size; k++) {
+						if (time_of(k) > before && time_of(k) < after && !row_items[k].node) clear = false;
+					}
+					if (!clear) continue;
+					/* Travel order runs with the index when W to E, against it when E to W; the node goes just before the item at `after`. */
+					const int at = travel > 0 ? after : size - after;
+					row_items.insert(row_items.begin() + at, JunctionTrackRowItem{true, node});
+					placed = true;
+				}
+			}
 			/* The crossing items record the row edges they cross (positions need the finished row). */
-			const std::vector<JunctionTrackRowItem> &row_items = order.rows[(level - 1) / 2];
 			for (uint32_t f = 0; f < edge_count; f++) {
 				if (!is_row_edge(f) || end_level(graph.edges[f].from) != level) continue;
 				const int lo = row_position(graph.edges[f].from, row_items);
