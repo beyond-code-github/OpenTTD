@@ -3591,7 +3591,7 @@ TEST_CASE("topology: curve spans in the seed routes", "[junction][topology]")
 	CHECK(gaps > 0);
 }
 
-TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][topologystretch]")
+TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][topologystretch][.sweep]")
 {
 	/* The gate of the placement relations (RECON-stretch C1, C3, C4): every placement point pushed later by hand in X, and every stack boundary's row gap pushed 1 and 2 rows wider in Y, as terrain will (DESIGN-G1 §14.4); a solve failure is an edit, never a bug. In Y every rule must hold in every solved run (T1c-2: the occupancy family and bridge middle clearance of D217; C5b: the prio element footprint). */
 	for (int si = 0; si < 2; si++) {
@@ -4529,7 +4529,7 @@ TEST_CASE("topology: the built hub topology is the hand topology and seeds the s
 	}
 }
 
-TEST_CASE("topology: LL_RR x LL_RR under each lane pairing seeds or names a reason", "[junction][topologysweep]")
+TEST_CASE("topology: LL_RR x LL_RR under each lane pairing seeds or names a reason", "[junction][topologysweep][.sweep]")
 {
 	const JunctionLineSpec llrr = ParseLineNotation("LL_RR").spec;
 	/* The seed of each pairing either makes routes or names a reason. */
@@ -4543,7 +4543,7 @@ TEST_CASE("topology: LL_RR x LL_RR under each lane pairing seeds or names a reas
 	}
 }
 
-TEST_CASE("topology: the order sweep places crossings between edges that are not yet adjacent", "[junction][topologysweep]")
+TEST_CASE("topology: the order sweep places crossings between edges that are not yet adjacent", "[junction][topologysweep][.sweep]")
 {
 	/* OC1: LL_RR x LL_RR under lane pairing any and keep needs crossings between edges that are not adjacent when the sweep reaches them. */
 	const JunctionLineSpec llrr = ParseLineNotation("LL_RR").spec;
@@ -4599,7 +4599,7 @@ TEST_CASE("topology: exit side: a main lane's branch-only splits sit in the band
 	CHECK(error.empty());
 }
 
-TEST_CASE("topology: a row node reached only by row edges is placed by the order", "[junction][topologysweep]")
+TEST_CASE("topology: a row node reached only by row edges is placed by the order", "[junction][topologysweep][.sweep]")
 {
 	/* OF2: LL_RR x LL_RR (pairing any) and L_R x LL_RR have row nodes (E main splits, merges before the W port) that no swept item makes. */
 	for (const auto &[main_notation, branch_notation] : {std::pair{"LL_RR", "LL_RR"}, std::pair{"L_R", "LL_RR"}}) {
@@ -4626,7 +4626,7 @@ TEST_CASE("topology: a row node reached only by row edges is placed by the order
 	}
 }
 
-TEST_CASE("topology: branch legs bound for one main lane merge before joining it", "[junction][topologysweep]")
+TEST_CASE("topology: branch legs bound for one main lane merge before joining it", "[junction][topologysweep][.sweep]")
 {
 	/* MJ1 (D224): LL_RR x LL_RR and L_R x LL_RR under pairing any: every main lane has exactly one joiner and the structure stage passes its joiner check. */
 	for (const auto &[main_notation, branch_notation] : {std::pair{"LL_RR", "LL_RR"}, std::pair{"L_R", "LL_RR"}}) {
