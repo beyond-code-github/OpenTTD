@@ -229,10 +229,31 @@ struct JunctionTrackStep {
 	bool operator==(const JunctionTrackStep &) const = default;
 };
 
+/** Where an edge meets a node or port: its heading there and the token whose end is that point (DESIGN-G3 §G3.1). */
+struct JunctionTrackEdgeEnd {
+	static constexpr uint32_t NO_TOKEN = UINT32_MAX;
+	uint8_t heading; ///< Travel heading at the end: 0 N, 1 E, 2 S, 3 W (as placement's chain headings).
+	uint32_t token = NO_TOKEN; ///< Index into the edge's program of the token whose end is the end's point, or NO_TOKEN when a run joins it.
+	bool operator==(const JunctionTrackEdgeEnd &) const = default;
+};
+
+/** A node's shape: its directions and row, never its position (DESIGN-G3 §G3.1). */
+struct JunctionTrackNodeShape {
+	uint32_t item = JunctionTrackStep::NO_ROW; ///< The stack item the node lies on; NO_ROW for a band node.
+	uint8_t heading; ///< The trunk's travel heading at the node: 0 N, 1 E, 2 S, 3 W.
+	uint32_t trunk; ///< The edge into a split, or out of a merge.
+	uint32_t straight; ///< The leg that keeps the trunk's heading.
+	uint32_t diverging; ///< The other leg.
+	int8_t hand; ///< The diverging leg's side: +1 right, -1 left, seen in the travel direction (as JunctionTrackStep::hand).
+	bool operator==(const JunctionTrackNodeShape &) const = default;
+};
+
 /** The programs of a structured track graph (DESIGN-G1 §10.7). */
 struct JunctionTrackPrograms {
 	std::vector<std::vector<JunctionTrackStep>> edges; ///< Per graph edge; for a doubled edge its copy 0 (keeps its upstream row through the bridge, bends onto the lane row after it).
 	std::vector<std::vector<JunctionTrackStep>> copies; ///< Per graph edge: a doubled edge's copy 1 (bends onto the lane row before the bridge); empty for the others.
+	std::vector<JunctionTrackNodeShape> nodes; ///< Per graph node.
+	std::vector<std::pair<JunctionTrackEdgeEnd, JunctionTrackEdgeEnd>> ends; ///< Per graph edge: its start and its end (copy 0 for a doubled edge).
 };
 
 /**

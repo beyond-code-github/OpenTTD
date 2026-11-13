@@ -1215,6 +1215,94 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		}
 		if (!edge.to.node && south_fan_hand(edge.to.index) != 0) program.push_back(step(StepKind::Fan, south_fan_hand(edge.to.index), Step::NO_ROW));
 	}
+
+	/* The edge ends (DESIGN-G3 §G3.1). A band edge starts on its row's heading at a row node, else south when it carries exit paths and north when it carries joiner paths; a row edge keeps its row's heading. */
+	auto heads_south_of = [&](uint32_t e) { return !graph.edges[e].paths.empty() && group_of(paths[graph.edges[e].paths[0]].from).main; };
+	auto row_heading = [&](uint32_t node) -> uint8_t { return east[(order.node_level[node] - 1) / 2] ? 1 : 3; };
+	auto start_heading = [&](uint32_t e) -> uint8_t {
+		const JunctionTrackEdge &edge = graph.edges[e];
+		if (is_row_edge(e)) return east[(end_level(edge.from) - 1) / 2] ? 1 : 3;
+		if (is_row_node(edge.from)) return row_heading(edge.from.index);
+		return heads_south_of(e) ? 2 : 0;
+	};
+	programs.ends.resize(edge_count);
+	for (uint32_t e = 0; e < edge_count; e++) {
+		const JunctionTrackEdge &edge = graph.edges[e];
+		const std::vector<Step> &program = programs.edges[e];
+		int heading = start_heading(e);
+		for (const Step &token : program) {
+			if (token.kind == StepKind::Corner) heading = (heading + token.hand + 4) % 4;
+		}
+		JunctionTrackEdgeEnd &first = programs.ends[e].first;
+		JunctionTrackEdgeEnd &last = programs.ends[e].second;
+		first.heading = start_heading(e);
+		last.heading = static_cast<uint8_t>(heading);
+		if (program.empty()) continue;
+		if (edge.from.node) {
+			const bool split = graph.nodes[edge.from.index].split;
+			if (split && (program.front().kind == StepKind::Corner || (program.front().kind == StepKind::SBend && program.front().role == Step::Role::Diverge))) first.token = 0;
+		} else if (program.front().kind == StepKind::Fan) {
+			first.token = 0;
+		}
+		if (edge.to.node) {
+			const bool merge = !graph.nodes[edge.to.index].split;
+			if (merge && program.back().kind == StepKind::SBend && program.back().role == Step::Role::Converge) last.token = static_cast<uint32_t>(program.size() - 1);
+		} else if (program.back().kind == StepKind::Fan) {
+			last.token = static_cast<uint32_t>(program.size() - 1);
+		}
+	}
+
+	/* The node shapes. */
+	auto in_item = [&](uint32_t e) {
+		const std::vector<Step> &program = programs.edges[e];
+		for (size_t t = program.size(); t-- > 0;) {
+			const Step &token = program[t];
+			if (token.index != Step::NO_ROW && (token.kind == StepKind::Fan || token.kind == StepKind::Corner || token.kind == StepKind::SBend)) return token.index;
+		}
+		return Step::NO_ROW;
+	};
+	programs.nodes.resize(graph.nodes.size());
+	for (uint32_t v = 0; v < graph.nodes.size(); v++) {
+		const bool split = graph.nodes[v].split;
+		const JunctionTrackEnd self{true, static_cast<uint16_t>(v)};
+		std::vector<uint32_t> trunks, legs;
+		for (uint32_t e = 0; e < edge_count; e++) {
+			const JunctionTrackEnd &near = split ? graph.edges[e].to : graph.edges[e].from;
+			const JunctionTrackEnd &far = split ? graph.edges[e].from : graph.edges[e].to;
+			if (near == self) trunks.push_back(e);
+			if (far == self) legs.push_back(e);
+		}
+		if (trunks.size() != 1 || legs.size() != 2) return fail("a node without one trunk and two legs is not ruled yet");
+		JunctionTrackNodeShape &shape = programs.nodes[v];
+		shape.trunk = trunks[0];
+		if (is_row_node(self)) {
+			/* A row node: its leg that stays on the row (a row edge) is the straight one, and the other leaves the row to the side of the row's turn (the Corner of an edge from a row node, and joiner_corner). */
+			const bool first_on_row = is_row_edge(legs[0]);
+			if (first_on_row == is_row_edge(legs[1])) return fail("a row node without one leg on its row is not ruled yet");
+			shape.straight = first_on_row ? legs[0] : legs[1];
+			shape.diverging = first_on_row ? legs[1] : legs[0];
+			shape.hand = east[(order.node_level[v] - 1) / 2] ? +1 : -1;
+			shape.heading = row_heading(v);
+			/* The row's item: an edge that ends at the node names it by its last item token; a split's trunk wins, a merge's straight leg wins, and the other leg's stands when that names none. */
+			shape.item = split ? in_item(shape.trunk) : in_item(shape.straight);
+			if (!split && shape.item == Step::NO_ROW) shape.item = in_item(shape.diverging);
+		} else {
+			int hand0 = 0, hand1 = 0;
+			if (diverges(legs[0], static_cast<uint16_t>(v), hand0)) {
+				shape.straight = legs[1];
+				shape.diverging = legs[0];
+				shape.hand = static_cast<int8_t>(hand0);
+			} else if (diverges(legs[1], static_cast<uint16_t>(v), hand1)) {
+				shape.straight = legs[0];
+				shape.diverging = legs[1];
+				shape.hand = static_cast<int8_t>(hand1);
+			} else {
+				return fail("a band node whose legs do not diverge is not ruled yet");
+			}
+			shape.heading = heads_south_of(shape.trunk) ? 2 : 0;
+			shape.item = JunctionTrackStep::NO_ROW;
+		}
+	}
 	return programs;
 }
 

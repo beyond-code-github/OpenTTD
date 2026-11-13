@@ -4983,3 +4983,162 @@ TEST_CASE("bridge cut: the reported failure is the default cut's", "[junction][t
 	INFO(error);
 	CHECK(error.find("bridge heads hug crossers") == std::string::npos);
 }
+
+/** The five topologies of the node-shape tests: T, LL_RR x L_R, L_R x L_RR, L_R x LL_RR, LL_RR x LL_RR (pairing any); the first two are the ones placement handles. */
+static std::vector<std::pair<std::string, JunctionTopology>> NodeShapeTopologies()
+{
+	auto hub = [](const char *main, const char *branch) { return MakeJunctionHubTopology(ParseLineNotation(main).spec, ParseLineNotation(branch).spec, JunctionLanePairing::AnyToAny); };
+	return {
+		{"T", JunctionTTopology()},
+		{"LL_RR x L_R", hub("LL_RR", "L_R")},
+		{"L_R x L_RR", hub("L_R", "L_RR")},
+		{"L_R x LL_RR", hub("L_R", "LL_RR")},
+		{"LL_RR x LL_RR", hub("LL_RR", "LL_RR")},
+	};
+}
+
+TEST_CASE("programs: every node has a shape and every edge two ends", "[junction][topology]")
+{
+	int succeeded = 0;
+	for (const auto &[name, t] : NodeShapeTopologies()) {
+		INFO(name);
+		std::string error;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+		if (graph.edges.empty()) continue;
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+		if (order.rows.empty()) continue;
+		const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+		if (structure.stack.empty()) continue;
+		const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+		if (programs.edges.empty()) continue;
+		succeeded++;
+		REQUIRE(programs.nodes.size() == graph.nodes.size());
+		REQUIRE(programs.ends.size() == graph.edges.size());
+		for (uint32_t v = 0; v < graph.nodes.size(); v++) {
+			INFO("node " << v);
+			const JunctionTrackNodeShape &shape = programs.nodes[v];
+			auto incident = [&](uint32_t e) {
+				const JunctionTrackEdge &edge = graph.edges[e];
+				return (edge.from.node && edge.from.index == v) || (edge.to.node && edge.to.index == v);
+			};
+			REQUIRE(shape.trunk < graph.edges.size());
+			REQUIRE(shape.straight < graph.edges.size());
+			REQUIRE(shape.diverging < graph.edges.size());
+			CHECK(incident(shape.trunk));
+			CHECK(incident(shape.straight));
+			CHECK(incident(shape.diverging));
+			CHECK(shape.straight != shape.diverging);
+			CHECK((shape.hand == 1 || shape.hand == -1));
+			CHECK(shape.heading < 4);
+		}
+		for (const auto &[start, finish] : programs.ends) {
+			CHECK(start.heading < 4);
+			CHECK(finish.heading < 4);
+		}
+	}
+	CHECK(succeeded > 0);
+}
+
+TEST_CASE("programs: node shapes match placement's inference", "[junction][topology]")
+{
+	/* Outer and characterisation only. The old inference is copied here as a test-only rule: placement's node_item (junction_placement.cpp ~544) read over the same programs, the start heading of a band edge (~246-252) and the chain walk of its tokens (~265-271). */
+	using Step = JunctionTrackStep;
+	for (const auto &[name, t] : NodeShapeTopologies()) {
+		const bool placed = name == "T" || name == "LL_RR x L_R";
+		INFO(name);
+		std::string error;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+		if (graph.edges.empty()) { WARN(name << ": no graph: " << error); continue; }
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+		if (order.rows.empty()) { WARN(name << ": no order: " << error); continue; }
+		const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+		if (structure.stack.empty()) { WARN(name << ": no structure: " << error); continue; }
+		const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+		if (programs.edges.empty()) { WARN(name << ": no programs: " << error); continue; }
+		REQUIRE(programs.nodes.size() == graph.nodes.size());
+		REQUIRE(programs.ends.size() == graph.edges.size());
+
+		const std::vector<JunctionPortSlot> slots = JunctionPortSlots(t);
+		const int n = static_cast<int>(slots.size());
+		auto group_of = [&](int slot) -> const JunctionLaneGroup & { return t.groups[slots[slot].group]; };
+		const std::vector<int> row_of = JunctionSlotRows(t, paths, &error);
+		const int rows = static_cast<int>(order.rows.size());
+		std::vector<bool> east(rows, true);
+		for (int s = 0; s < n; s++) {
+			if (group_of(s).main && group_of(s).in) east[row_of[s]] = group_of(s).side == JunctionSide::W;
+		}
+		auto end_level = [&](const JunctionTrackEnd &end) {
+			if (end.node) return order.node_level[end.index];
+			return group_of(end.index).main ? 2 * row_of[end.index] + 1 : 2 * rows + 1;
+		};
+		auto is_row_node = [&](const JunctionTrackEnd &end) { return end.node && order.node_level[end.index] % 2 == 1; };
+		auto is_row_edge = [&](uint32_t e) {
+			const int level = end_level(graph.edges[e].from);
+			return level == end_level(graph.edges[e].to) && level % 2 == 1;
+		};
+		auto names_item = [](const Step &token) { return token.index != Step::NO_ROW && (token.kind == Step::Kind::Fan || token.kind == Step::Kind::Corner || token.kind == Step::Kind::SBend); };
+		auto last_item = [&](uint32_t e) {
+			const std::vector<Step> &program = programs.edges[e];
+			for (size_t i = program.size(); i-- > 0;) if (names_item(program[i])) return program[i].index;
+			return Step::NO_ROW;
+		};
+		auto first_item = [&](uint32_t e) {
+			for (const Step &token : programs.edges[e]) if (names_item(token)) return token.index;
+			return Step::NO_ROW;
+		};
+		/* The old start heading of an edge, and the heading after its tokens. */
+		auto old_start = [&](uint32_t e) -> uint8_t {
+			const JunctionTrackEdge &edge = graph.edges[e];
+			if (is_row_edge(e)) return east[(end_level(edge.from) - 1) / 2] ? 1 : 3;
+			if (is_row_node(edge.from)) return east[(order.node_level[edge.from.index] - 1) / 2] ? 1 : 3;
+			return !edge.paths.empty() && group_of(paths[edge.paths[0]].from).main ? 2 : 0;
+		};
+		auto old_end = [&](uint32_t e) -> uint8_t {
+			int cur = old_start(e);
+			for (const Step &token : programs.edges[e]) {
+				if (token.kind == Step::Kind::Corner) cur = (cur + token.hand + 4) % 4;
+			}
+			return static_cast<uint8_t>(cur);
+		};
+
+		std::vector<std::string> diffs;
+		auto differ = [&](const std::string &where, const char *field, uint32_t old_value, uint32_t new_value) {
+			if (old_value == new_value) return;
+			auto show = [](uint32_t v) { return v == Step::NO_ROW ? std::string("none") : fmt::format("{}", v); };
+			diffs.push_back(where + ": " + field + " " + show(old_value) + " -> " + show(new_value));
+		};
+		for (uint32_t v = 0; v < graph.nodes.size(); v++) {
+			const std::string where = fmt::format("node {}", v);
+			const JunctionTrackNodeShape &shape = programs.nodes[v];
+			const bool split = graph.nodes[v].split;
+			const uint32_t trunk = shape.trunk;
+			if (order.node_level[v] % 2 == 1) {
+				/* A row node: the in edge's last item (split), the out edge's first item (merge). */
+				differ(where, "item", split ? last_item(trunk) : first_item(trunk), shape.item);
+			} else {
+				differ(where, "item", Step::NO_ROW, shape.item);
+			}
+			differ(where, "heading", split ? old_end(trunk) : old_start(trunk), shape.heading);
+			/* The in edges of the node must end on one item. */
+			std::set<uint32_t> items;
+			for (uint32_t e = 0; e < graph.edges.size(); e++) {
+				if (graph.edges[e].to.node && graph.edges[e].to.index == v && last_item(e) != Step::NO_ROW) items.insert(last_item(e));
+			}
+			if (items.size() > 1) diffs.push_back(where + ": its in edges end on " + fmt::format("{}", items.size()) + " different items");
+		}
+		for (uint32_t e = 0; e < graph.edges.size(); e++) {
+			const std::string where = fmt::format("edge {}", e);
+			differ(where, "start heading", old_start(e), programs.ends[e].first.heading);
+			differ(where, "end heading", old_end(e), programs.ends[e].second.heading);
+		}
+		if (placed) {
+			INFO("disagreements: " << diffs.size());
+			for (const std::string &d : diffs) { INFO(d); }
+			CHECK(diffs.empty());
+		} else {
+			for (const std::string &d : diffs) WARN(name << " " << d);
+		}
+	}
+}
