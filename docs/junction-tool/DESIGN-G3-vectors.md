@@ -91,3 +91,62 @@ The item-less horizontal S-bend of one row, the bridge's exact rows, the Corner 
 5. G3.3 in the fork (library decided from the prototype: HiGHS via vcpkg, or a hand-written LP if the relaxation is integral).
 6. G3.4.
 Held: D234(1)(2) (become G3.1 data), S4 (becomes the G3.3 objective), DB1b and G2c (re-briefed on G3).
+
+## G3.6 One rule source (D240) — DRAFT for review, then Pete
+**Why.** The joint solve takes its rules from a recording of the old placement at fixed sizes. That placement writes some rules only after a solve inside it succeeds:
+- occupancy and the hug use the flat X order;
+- the bridge-middle clearance uses a flat Y and X solve;
+- the X rules use the rows from a Y solve.
+
+On the hubs that fail, those inner solves fail, the rulebook is incomplete, and the loop cycles. b-7 tried to carry the recording past each failure; D240 retires that path instead.
+
+**The split.** Every rule today is one of two kinds.
+- **Static:** what the rule says, and between which points, is fixed by the graph, programs, node shapes and chains alone. Its constant is affine in the lengths. This covers:
+  - chain runs from the floor table, and bend links;
+  - node pins by serving bend, and stack rows;
+  - port rows (with the port offset as a variable, D236), the S edge, waiting room, row nodes and the box;
+  - bridge heads, series bridges and doubled stagger, and the bridge over an S-bend (G3.4a, affine in t);
+  - the prio element;
+  - the curve-gap counters (b-3).
+- **Lazy:** which pairs a rule joins, or on which side, depends on where things end up. This covers:
+  - occupancy (which occupants share a row, and their order);
+  - the hug (which crosser tiles lie on a bridge's row);
+  - bridge-middle clearance in X (which heads lie inside a span) and in Y (which side of the bridge line a head is on).
+  - A lazy rule's row is still affine once its pair and side are known (b-6 forms, P2).
+
+**The source.** One module, `junction_rules`, built from the same chains the placement builds, never from a solve.
+- `BuildJunctionRules(...)` returns the static rows over the variables x[p], y[p], L[bend], z[bend], t[over] and the port offset. Each row carries its reason text and family.
+- `DetectJunctionLazyRules(rules, solution)`: given a full candidate (x, y, L), it rasterises every occupant at those values, through the P1/P2 forms and the existing occupant walk. It returns the lazy rows that solution needs, each with the pair and side it shows.
+- Held rows (a constant not yet affine) are counted, and the target is 0. Today's known held rows are the W/E fan sizes, which become port-row variables here, and the bend-tile hug, which takes the P2 forms.
+
+**Consumers.**
+1. **Seed (joint):**
+   - solve the static rows plus the kept lazy rows;
+   - detect at the optimum;
+   - add the new lazy rows (keyed, never dropped or reversed, b-6);
+   - repeat until detection adds nothing.
+   - That final detection is the validity check, and it is the same occupancy and legality test as today's.
+   - Output: L, t, the port offset and every point's (x, y).
+2. **Hover (per offset, < 100 ms):**
+   - rows come from the seed and stay fixed, as today ("rows change only by an edit named by an X failure");
+   - the static and kept lazy rows, evaluated at the seed's L, t and y, become X difference constraints, plus the terrain facts in `JunctionPositions`, exactly the solver the hover uses now;
+   - a row that does not reduce to two X points at fixed L and y is a design error, caught by a test over all hubs. The curve-gap counters telescope to two points when a route's X runs between the two curves share one heading sign.
+   - X-only lazy detection then runs on the solved columns, and the solve repeats until clean.
+   - The D215 push toward features stays the hover's objective.
+3. **Render, signals and levels** read a `JunctionTrackPlacement` built from (x, y, L, t) by the existing span code, which is kept.
+
+**What is retired:** the rounds; the fixed path's own `build()` families; the recording (`RecordJunctionPlacementSystem`, `SystemTag`), which serves only as the migration oracle; the shared Y solve (`JunctionPlacementShared`); `plan_clearance`; and the flat solves.
+
+**Migration (each step test-first, identity unchanged until R4):**
+- **R1:** extract the chain construction (`Elem` lists) from `PlaceTrackGraph` into a function both sides call. This is a pure refactor.
+- **R2a-c:** port the static families into `junction_rules`, a few families per step. The oracle is the recording: on T and LL_RR x L_R at the seed, every recorded linear relation equals a rule row evaluated at the seed's values, family by family. Port rows become a variable in R2c.
+- **R3:** lazy detection. Its oracle: at the seed solution, the detected occupancy, hug and clearance pairs equal the recorded ones.
+- **R4:** the seed goes live through the joint loop on the new source. The re-pins go to Pete case by case (T's Corner e5 6 → 5 is known).
+- **R5:** the hover reads the new source. The oracle is the identity sweeps (LEVELHASH, HOVERPLAN and HOVERNEAR), equal or re-pinned by listed rule.
+- **R6:** delete what is retired.
+
+**Risks, for the review:**
+- the two consumers drift (bounded by the single source and R5's oracle);
+- the lazy loop on hubs where a kept pair's order turns out wrong (it shows as infeasible, naming the pair; fallback (a): the sweep emits the order);
+- hover speed, if the lazy X loop needs many rounds;
+- render, signals and the checker on LL_RR x LL_RR doubled in and out edges, which are untested whatever the source.
