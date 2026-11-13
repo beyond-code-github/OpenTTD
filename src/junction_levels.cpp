@@ -294,7 +294,7 @@ struct LevelTile {
  * @param[out] total The cost of the whole plan: the terraform, plus the tiles it does not touch.
  * @return The empty string on success, else the reason.
  */
-std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visit>> &route_visits, const std::set<SnapshotTile> &heads, const std::set<SnapshotTile> &fixed_tiles, const std::vector<std::pair<SnapshotTile, SnapshotTile>> &ties, const JunctionLayout &layout, TileIndexDiffC offset, int ramp_levels, int train_length, std::map<SnapshotTile, Chosen> &chosen, JunctionTerraform &terraform, Money &total)
+std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visit>> &route_visits, const std::set<SnapshotTile> &heads, const std::set<SnapshotTile> &fixed_tiles, const std::vector<std::pair<SnapshotTile, SnapshotTile>> &ties, const JunctionLayout &layout, TileIndexDiffC offset, int ramp_levels, int train_length, std::map<SnapshotTile, Chosen> &chosen, JunctionTerraform &terraform, Money &total, std::pair<long, long> *incremental_check)
 {
 	std::map<SnapshotTile, LevelTile> tiles;
 	std::map<SnapshotTile, std::set<DiagDirection>> directions;
@@ -863,10 +863,459 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		return cost + viol * VIOLATION;
 	};
 
+	/* The incremental exact cost (P4). The state below is exact_cost(I_lv) kept up to date as one group's level changes: only what the change can reach is recomputed.
+	 * Invariant: after every inc_apply the state equals what exact_cost computes at I_lv, because each stored quantity is a function of the choices (targets), of the
+	 * corner bounds L and U (the fixed point of the cone propagation: the maximum over the raised seeds of seed - path length, the path staying above the ground, and the dual for U)
+	 * and of the held heights; a quantity is recomputed whenever one of its inputs changed, and an input that did not change cannot change it:
+	 *   - a tile's choice depends on I_lv of itself, its partner head and its next tile (the group's dependants);
+	 *   - a corner's effective target and conflict violation on the choices of the tiles that touch it (at most four);
+	 *   - L at a corner changes only if a seed whose cone (single-source reach, a superset: the multi-source reach of max(old, new) at the changed seeds) contains it changed,
+	 *     and then it is recomputed inside that reach from the seeds there and from the unchanged bound of the neighbours outside it;
+	 *   - the raised-against-lowered violation changes only in the pairs that contain a corner whose target changed;
+	 *   - a tile's foundation cost depends on its choice, whether it is dirty and the heights of its corners (the corners that changed height are visited). */
+	struct IncCont {
+		int tile;
+		int ci;
+	};
+	std::vector<std::array<IncCont, 4>> inc_cont(corner_count);
+	std::vector<uint8_t> inc_cont_n(corner_count, 0);
+	std::vector<int> tile_of_cell(static_cast<size_t>(GW) * GH, -1);
+	std::vector<size_t> tile_cell(n);
+	std::vector<std::array<size_t, 4>> tile_corner(n);
+	for (size_t i = 0; i < n; i++) {
+		const SnapshotTile &t = order_tiles[i];
+		tile_cell[i] = static_cast<size_t>(t.second - cone.y0) * GW + (t.first - cone.x0);
+		tile_of_cell[tile_cell[i]] = static_cast<int>(i);
+		for (int ci = 0; ci < 4; ci++) {
+			const size_t k = cone.Index(t.first + CORNER_OFFSET[ci].first, t.second + CORNER_OFFSET[ci].second);
+			tile_corner[i][ci] = k;
+			inc_cont[k][inc_cont_n[k]++] = {static_cast<int>(i), ci};
+		}
+	}
+	std::vector<int> sp_first(corner_count, -1);
+	std::vector<std::array<int, 2>> sp_ent; ///< (span, next entry) lists of the spans a corner belongs to.
+	for (size_t si = 0; si < spans.size(); si++) {
+		for (const auto &[tile, k] : spans[si].corners) {
+			sp_ent.push_back({static_cast<int>(si), sp_first[k]});
+			sp_first[k] = static_cast<int>(sp_ent.size() - 1);
+		}
+	}
+	const int T_OFF = base - 1; ///< Targets lie in [base - 1, base + top + 1]: a level in [base, base + top], a corner within one of it.
+	std::vector<int> I_lv = level;
+	std::vector<const Choice *> I_ch(n, nullptr);
+	std::vector<int> I_tgt(corner_count, NO_TARGET), I_cviol(corner_count, 0);
+	std::vector<int> I_seed_up(corner_count, -BIG), I_seed_dn(corner_count, BIG), I_sp_up(corner_count, -BIG), I_sp_dn(corner_count, BIG);
+	std::vector<int> I_L(corner_count, -BIG), I_U(corner_count, BIG), I_h = ground_h, I_mv(corner_count, 0);
+	std::vector<long> I_tv(corner_count, 0);
+	std::vector<char> I_moved(corner_count, 0);
+	std::vector<int> I_dcnt(static_cast<size_t>(GW) * GH, 0);
+	std::vector<Money> I_tcost(n, 0);
+	std::vector<long> I_tviol(n, 0);
+	std::vector<int> I_span_z(spans.size(), INT_MIN);
+	std::vector<int> I_hist_r(static_cast<size_t>(top) + 4, 0), I_hist_l(static_cast<size_t>(top) + 4, 0);
+	std::vector<size_t> I_rl, I_ll;
+	std::vector<int> I_pos(corner_count, -1);
+	Money I_tiles = 0, I_clear = 0;
+	long I_moves = 0, I_viol_tgt = 0, I_viol_touch = 0, I_viol_tile = 0, I_pairs = 0;
+	std::vector<uint32_t> st_kt(corner_count, 0), st_seed(corner_count, 0), st_up(corner_count, 0), st_dn(corner_count, 0), st_term(corner_count, 0), st_tile(n, 0), st_cell(static_cast<size_t>(GW) * GH, 0);
+	std::vector<int> rv(corner_count, 0);
+	uint32_t epoch = 0;
+	std::vector<size_t> l_kt, l_kc, l_seed, l_up, l_dn, l_term, l_tile, l_queue, l_spk;
+	std::vector<size_t> l_changed;
+	std::vector<std::pair<size_t, int>> seeds_up, seeds_dn;
+	std::vector<const Choice *> new_ch;
+
+	auto for_nb = [&](size_t k, auto &&f) {
+		const size_t x = k % stride;
+		const size_t y = k / stride;
+		if (x > 0) f(k - 1);
+		if (x + 1 < static_cast<size_t>(stride)) f(k + 1);
+		if (y > 0) f(k - stride);
+		if (y + 1 < rows) f(k + stride);
+	};
+
+	/* The raised-against-lowered violation: the sum over pairs (r, l) of dt - d where dt = target_r - target_l >= 2 and d < dt (d the Manhattan distance). */
+	auto pair_scan = [&](size_t k, int tk, bool raised) -> long {
+		const std::vector<int> &hist = raised ? I_hist_l : I_hist_r;
+		const std::vector<size_t> &list = raised ? I_ll : I_rl;
+		if (list.empty()) return 0;
+		int rho = 0;
+		if (raised) {
+			size_t lo = 0;
+			while (hist[lo] == 0) lo++;
+			rho = tk - (static_cast<int>(lo) + T_OFF) - 1;
+		} else {
+			size_t hi = hist.size() - 1;
+			while (hist[hi] == 0) hi--;
+			rho = (static_cast<int>(hi) + T_OFF) - tk - 1;
+		}
+		if (rho < 1) return 0;
+		long sum = 0;
+		const int cx = static_cast<int>(k % stride);
+		const int cy = static_cast<int>(k / stride);
+		if (static_cast<size_t>(2 * rho * rho + 2 * rho + 1) < list.size()) {
+			for (int dy = -rho; dy <= rho; dy++) {
+				const int y = cy + dy;
+				if (y < 0 || y >= static_cast<int>(rows)) continue;
+				const int r2 = rho - std::abs(dy);
+				for (int dx = -r2; dx <= r2; dx++) {
+					const int x = cx + dx;
+					if (x < 0 || x >= stride || (dx == 0 && dy == 0)) continue;
+					const size_t m = static_cast<size_t>(y) * stride + x;
+					const int tm = I_tgt[m];
+					if (tm == NO_TARGET || (raised ? tm >= ground_h[m] : tm <= ground_h[m])) continue;
+					const int dt = raised ? tk - tm : tm - tk;
+					const int d = std::abs(dx) + std::abs(dy);
+					if (dt >= 2 && d < dt) sum += dt - d;
+				}
+			}
+		} else {
+			for (size_t m : list) {
+				const int dt = raised ? tk - I_tgt[m] : I_tgt[m] - tk;
+				const int d = std::abs(static_cast<int>(m % stride) - cx) + std::abs(static_cast<int>(m / stride) - cy);
+				if (dt >= 2 && d < dt) sum += dt - d;
+			}
+		}
+		return sum;
+	};
+	auto pair_register = [&](size_t k, int tk, bool add) {
+		const int g = ground_h[k];
+		if (tk == NO_TARGET || tk == g) return;
+		const bool raised = tk > g;
+		std::vector<size_t> &list = raised ? I_rl : I_ll;
+		std::vector<int> &hist = raised ? I_hist_r : I_hist_l;
+		const long s = pair_scan(k, tk, raised);
+		if (add) {
+			I_pairs += s;
+			I_pos[k] = static_cast<int>(list.size());
+			list.push_back(k);
+			hist[static_cast<size_t>(tk - T_OFF)]++;
+		} else {
+			I_pairs -= s;
+			const int p = I_pos[k];
+			list[p] = list.back();
+			I_pos[list[p]] = p;
+			list.pop_back();
+			hist[static_cast<size_t>(tk - T_OFF)]--;
+		}
+	};
+
+	/* The effective target of a corner (the first non-foundation tile's, in tile order) and the violation of the later tiles that differ. */
+	auto corner_target = [&](size_t k, int &eff, long &viol) {
+		eff = NO_TARGET;
+		viol = 0;
+		for (int j = 0; j < inc_cont_n[k]; j++) {
+			const IncCont &cc = inc_cont[k][j];
+			const Choice *ch = I_ch[cc.tile];
+			if (ch->foundation) continue;
+			const int target = ch->corners[cc.ci];
+			if (eff == NO_TARGET) eff = target;
+			else if (eff != target) viol += std::abs(eff - target);
+		}
+	};
+
+	/* The foundation part of a tile: its cost and violation given its choice, whether it is dirty and its corner heights. */
+	auto tile_eval = [&](size_t i, Money &cost_out, long &viol_out) {
+		const SnapshotTile &t = order_tiles[i];
+		const size_t di = tile_cell[i];
+		const Choice *ch = I_ch[i];
+		cost_out = 0;
+		viol_out = 0;
+		if (!I_dcnt[di]) {
+			cost_out = ch->cost;
+			return;
+		}
+		if (!ch->foundation) return;
+		std::array<int, 4> f;
+		bool flat = true;
+		for (int ci = 0; ci < 4; ci++) {
+			f[ci] = I_h[tile_corner[i][ci]];
+			flat = flat && f[ci] == ch->level;
+		}
+		if (tiles[t].visit.head) {
+			const bool inclined = I_lv[i] > I_lv[partner[i]];
+			JunctionTerrainTile moved = c.terrain.tiles[di];
+			SetJunctionTileCorners(moved, f);
+			if (IsSteepSlope(moved.slope) && !IsSlopeWithOneCornerRaised(ComplementSlope(static_cast<Slope>(moved.slope & ~SLOPE_STEEP)))) { viol_out++; return; }
+			const std::optional<BridgeHeadGround> ground = GetBridgeHeadGround(moved.slope, moved.z_min, tiles[t].visit.dir);
+			if (!ground.has_value() || ground->inclined != inclined || ground->z != I_lv[i] - (inclined ? 1 : 0)) viol_out++;
+			else if (ground->foundation) cost_out += c.terrain.foundation_cost;
+			return;
+		}
+		if (flat) return;
+		cost_out += c.terrain.foundation_cost;
+		JunctionTerrainTile moved = c.terrain.tiles[di];
+		SetJunctionTileCorners(moved, f);
+		if (IsSteepSlope(moved.slope) && !IsSlopeWithOneCornerRaised(ComplementSlope(static_cast<Slope>(moved.slope & ~SLOPE_STEEP)))) { viol_out++; return; }
+		if (moved.z_max != ch->level || GetRailFoundation(moved.slope, tiles[t].visit.bits) != Foundation::Leveled) viol_out++;
+	};
+
+	/* Reaches (support of the max-propagation from the seeds) and the bounds inside them. */
+	auto reach_and_bound = [&](bool up, const std::vector<std::pair<size_t, int>> &seeds, std::vector<uint32_t> &stamp, std::vector<size_t> &list) {
+		list.clear();
+		l_queue.clear();
+		for (const auto &[k, v] : seeds) {
+			if (stamp[k] != epoch) {
+				stamp[k] = epoch;
+				list.push_back(k);
+				rv[k] = v;
+				l_queue.push_back(k);
+			} else if (up ? v > rv[k] : v < rv[k]) {
+				rv[k] = v;
+				l_queue.push_back(k);
+			}
+		}
+		for (size_t qi = 0; qi < l_queue.size(); qi++) {
+			const size_t k = l_queue[qi];
+			const int v = up ? rv[k] - 1 : rv[k] + 1;
+			for_nb(k, [&](size_t m) {
+				if (!(up ? v > ground_h[m] : v < ground_h[m])) return;
+				if (stamp[m] != epoch) {
+					stamp[m] = epoch;
+					list.push_back(m);
+					rv[m] = v;
+					l_queue.push_back(m);
+				} else if (up ? v > rv[m] : v < rv[m]) {
+					rv[m] = v;
+					l_queue.push_back(m);
+				}
+			});
+		}
+		std::vector<int> &bound = up ? I_L : I_U;
+		const std::vector<int> &seed = up ? I_seed_up : I_seed_dn;
+		for (size_t k : list) bound[k] = up ? -BIG : BIG;
+		l_queue.clear();
+		for (size_t k : list) {
+			int v = seed[k];
+			for_nb(k, [&](size_t m) {
+				if (stamp[m] == epoch) return;
+				const int bm = bound[m];
+				if (up ? bm == -BIG : bm == BIG) return;
+				const int w = up ? bm - 1 : bm + 1;
+				if (up ? (w > ground_h[k] && w > v) : (w < ground_h[k] && w < v)) v = w;
+			});
+			bound[k] = v;
+			if (up ? v > -BIG : v < BIG) l_queue.push_back(k);
+		}
+		for (size_t qi = 0; qi < l_queue.size(); qi++) {
+			const size_t k = l_queue[qi];
+			const int v = up ? bound[k] - 1 : bound[k] + 1;
+			for_nb(k, [&](size_t m) {
+				if (stamp[m] != epoch) return;
+				if (up ? (v > ground_h[m] && v > bound[m]) : (v < ground_h[m] && v < bound[m])) {
+					bound[m] = v;
+					l_queue.push_back(m);
+				}
+			});
+		}
+	};
+
+	long inc_viol_last = 0;
+	/** Bring the state to I_lv, re-evaluating the tiles of dep; false (and the cost of the missing choices in cost) when a tile has no choice there (the state is then unchanged). */
+	auto inc_apply = [&](const std::vector<size_t> &dep, Money &cost) -> bool {
+		new_ch.clear();
+		Money nochoice = 0;
+		for (size_t i : dep) {
+			const Choice *ch = choice_at(i, I_lv);
+			new_ch.push_back(ch);
+			if (ch == nullptr) nochoice += NO_CHOICE;
+		}
+		if (nochoice != 0) {
+			cost = nochoice;
+			return false;
+		}
+		epoch++;
+		l_changed.clear();
+		l_kt.clear();
+		l_kc.clear();
+		l_seed.clear();
+		l_term.clear();
+		l_tile.clear();
+		l_spk.clear();
+		seeds_up.clear();
+		seeds_dn.clear();
+		/* 1. the changed choices and the corners they touch */
+		for (size_t j = 0; j < dep.size(); j++) {
+			const size_t i = dep[j];
+			if (I_ch[i] == new_ch[j]) continue;
+			I_ch[i] = new_ch[j];
+			l_changed.push_back(i);
+			for (int ci = 0; ci < 4; ci++) {
+				const size_t k = tile_corner[i][ci];
+				if (st_kt[k] != epoch) {
+					st_kt[k] = epoch;
+					l_kt.push_back(k);
+				}
+			}
+		}
+		/* 2. effective targets, conflicts, and the pair violation */
+		for (size_t k : l_kt) {
+			int eff;
+			long viol;
+			corner_target(k, eff, viol);
+			I_viol_tgt += viol - I_cviol[k];
+			I_cviol[k] = viol;
+			if (eff != I_tgt[k]) {
+				pair_register(k, I_tgt[k], false);
+				I_tgt[k] = eff;
+				pair_register(k, eff, true);
+				l_kc.push_back(k);
+			}
+		}
+		/* 3. the span bounds: the spans whose z changed */
+		for (size_t si = 0; si < spans.size(); si++) {
+			const int z = std::min(I_lv[spans[si].a], I_lv[spans[si].e]);
+			if (z == I_span_z[si]) continue;
+			I_span_z[si] = z;
+			for (const auto &[tile, k] : spans[si].corners) l_spk.push_back(k);
+		}
+		for (size_t k : l_spk) {
+			int up = -BIG, dn = BIG;
+			for (int e = sp_first[k]; e >= 0; e = sp_ent[e][1]) {
+				const int z = I_span_z[sp_ent[e][0]];
+				if (z < ground_h[k]) dn = std::min(dn, z);
+				if (z - c.terrain.max_bridge_height + 1 > ground_h[k]) up = std::max(up, z - c.terrain.max_bridge_height + 1);
+			}
+			I_sp_up[k] = up;
+			I_sp_dn[k] = dn;
+			if (st_seed[k] != epoch) {
+				st_seed[k] = epoch;
+				l_seed.push_back(k);
+			}
+		}
+		for (size_t k : l_kc) {
+			if (st_seed[k] != epoch) {
+				st_seed[k] = epoch;
+				l_seed.push_back(k);
+			}
+		}
+		/* 4. the seeds that changed and the bounds in their reach */
+		for (size_t k : l_seed) {
+			const int g = ground_h[k];
+			const int up = std::max(I_tgt[k] != NO_TARGET && I_tgt[k] > g ? I_tgt[k] : -BIG, I_sp_up[k]);
+			const int dn = std::min(I_tgt[k] != NO_TARGET && I_tgt[k] < g ? I_tgt[k] : BIG, I_sp_dn[k]);
+			if (up != I_seed_up[k]) {
+				seeds_up.emplace_back(k, std::max(up, I_seed_up[k]));
+				I_seed_up[k] = up;
+			}
+			if (dn != I_seed_dn[k]) {
+				seeds_dn.emplace_back(k, std::min(dn, I_seed_dn[k]));
+				I_seed_dn[k] = dn;
+			}
+		}
+		reach_and_bound(true, seeds_up, st_up, l_up);
+		reach_and_bound(false, seeds_dn, st_dn, l_dn);
+		/* 5. the corner terms where a bound or a target changed */
+		for (const std::vector<size_t> *lst : {&l_up, &l_dn, &l_kc}) {
+			for (size_t k : *lst) {
+				if (st_term[k] != epoch) {
+					st_term[k] = epoch;
+					l_term.push_back(k);
+				}
+			}
+		}
+		for (size_t k : l_term) {
+			const int g = ground_h[k];
+			const bool lo = I_L[k] > g;
+			const bool hi = I_U[k] < g;
+			long v = 0;
+			int h = g;
+			if (lo || hi) {
+				if (lo && hi) v += I_L[k] - I_U[k];
+				else if (lo) h = I_L[k];
+				else h = I_U[k];
+				if (h > cone.upper[k]) v += h - cone.upper[k];
+				if (h < cone.lower[k]) v += cone.lower[k] - h;
+				if (I_tgt[k] != NO_TARGET) v += std::abs(h - I_tgt[k]);
+			}
+			I_viol_touch += v - I_tv[k];
+			I_tv[k] = v;
+			const int mv = std::abs(h - g);
+			I_moves += mv - I_mv[k];
+			I_mv[k] = mv;
+			if (h == I_h[k]) continue;
+			I_h[k] = h;
+			const bool moved = h != g;
+			const int cx = static_cast<int>(k % stride);
+			const int cy = static_cast<int>(k / stride);
+			for (const auto &[dx, dy] : CORNER_OFFSET) {
+				const int tx = cx - dx;
+				const int ty = cy - dy;
+				if (tx < 0 || ty < 0 || tx >= GW || ty >= GH) continue;
+				const size_t d = static_cast<size_t>(ty) * GW + tx;
+				if (moved != static_cast<bool>(I_moved[k])) {
+					if (moved) {
+						if (I_dcnt[d]++ == 0) I_clear += c.terrain.tiles[d].clear_cost;
+					} else {
+						if (--I_dcnt[d] == 0) I_clear -= c.terrain.tiles[d].clear_cost;
+					}
+				}
+				if (tile_of_cell[d] >= 0 && st_tile[tile_of_cell[d]] != epoch) {
+					st_tile[tile_of_cell[d]] = epoch;
+					l_tile.push_back(static_cast<size_t>(tile_of_cell[d]));
+				}
+			}
+			I_moved[k] = moved;
+		}
+		/* 6. the tiles whose choice, dirtiness or corner heights changed */
+		for (size_t i : l_changed) {
+			if (st_tile[i] != epoch) {
+				st_tile[i] = epoch;
+				l_tile.push_back(i);
+			}
+		}
+		for (size_t i : l_tile) {
+			Money tc;
+			long tv;
+			tile_eval(i, tc, tv);
+			I_tiles += tc - I_tcost[i];
+			I_tcost[i] = tc;
+			I_viol_tile += tv - I_tviol[i];
+			I_tviol[i] = tv;
+		}
+		/* 7. the span's ground and the ramp rule: small, recomputed */
+		long viol = I_viol_tgt + I_pairs + I_viol_touch + I_viol_tile;
+		for (size_t si = 0; si < spans.size(); si++) {
+			const int z = I_span_z[si];
+			for (const auto &[tile, k] : spans[si].corners) viol += std::max(0, I_h[k] - z) + std::max(0, z - c.terrain.max_bridge_height + 1 - I_h[k]);
+		}
+		for (const auto &[sa, deck_a, sb, deck_b] : deck_windows) {
+			auto level_of = [&](size_t v, bool deck) { return deck ? std::max(I_lv[v], I_lv[partner[v]]) + (I_lv[v] == I_lv[partner[v]] ? 1 : 0) : I_lv[v]; };
+			viol += std::max(0, level_of(sb, deck_b) - level_of(sa, deck_a) - ramp_levels);
+		}
+		inc_viol_last = viol;
+		cost = c.terrain.terraform_cost * I_moves + I_clear + I_tiles + viol * VIOLATION;
+		return true;
+	};
+
 	/* Coordinate descent on the groups: each in turn takes the level in its feasible range (the rest held at their levels) that costs least. */
 	constexpr int MAX_ROUNDS = 20;
+	constexpr bool P4_INCREMENTAL = true;
 	Money level_cost = 0;
 	bool level_cost_known = false;
+	std::vector<std::vector<size_t>> who_next(n);
+	for (size_t i = 0; i < n; i++) {
+		if (next_var[i] != SIZE_MAX) who_next[next_var[i]].push_back(i);
+	}
+	/* The incremental state is built at the start levels when every tile has a choice there; else the descent evaluates every trial in full. */
+	bool inc_ok = false;
+	if constexpr (P4_INCREMENTAL) {
+		bool all = true;
+		for (size_t i = 0; i < n && all; i++) all = choice_at(i, level) != nullptr;
+		if (all) {
+			std::vector<size_t> everyone(n);
+			for (size_t i = 0; i < n; i++) everyone[i] = i;
+			Money cost0 = 0;
+			inc_ok = inc_apply(everyone, cost0);
+			level_cost = cost0;
+			level_cost_known = inc_ok;
+			if (incremental_check != nullptr) {
+				incremental_check->first++;
+				if (cost0 != exact_cost(level) || inc_viol_last != ex_violation) incremental_check->second++;
+			}
+		}
+	}
+	std::vector<size_t> dep;
 	for (int round = 0; round < MAX_ROUNDS; round++) {
 		bool moved = false;
 		for (const auto &[key, members] : groups) {
@@ -891,14 +1340,47 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			}
 			Money best_cost = level_cost;
 			int best = current;
-			std::vector<int> trial = level;
-			for (int l = lo + base; l <= up + base; l++) {
-				if (l == current) continue;
-				for (size_t m : members) trial[m] = l;
-				const Money cost_here = exact_cost(trial);
-				if (cost_here < best_cost) {
-					best_cost = cost_here;
-					best = l;
+			if (inc_ok) {
+				/* The tiles whose choice depends on the group: its members, their partner heads and the tiles that exit into a member. */
+				dep.clear();
+				for (size_t m : members) {
+					dep.push_back(m);
+					if (partner[m] != SIZE_MAX) dep.push_back(partner[m]);
+					for (size_t i : who_next[m]) dep.push_back(i);
+				}
+				std::sort(dep.begin(), dep.end());
+				dep.erase(std::unique(dep.begin(), dep.end()), dep.end());
+				int applied = current;
+				for (int l = lo + base; l <= up + base; l++) {
+					if (l == current) continue;
+					for (size_t m : members) I_lv[m] = l;
+					Money cost_here = 0;
+					if (inc_apply(dep, cost_here)) applied = l;
+					if (incremental_check != nullptr) {
+						const Money full = exact_cost(I_lv);
+						incremental_check->first++;
+						if (full != cost_here || (applied == l && inc_viol_last != ex_violation)) incremental_check->second++;
+					}
+					if (cost_here < best_cost) {
+						best_cost = cost_here;
+						best = l;
+					}
+				}
+				if (applied != best) {
+					for (size_t m : members) I_lv[m] = best;
+					Money back = 0;
+					if (!inc_apply(dep, back)) std::abort();
+				}
+			} else {
+				std::vector<int> trial = level;
+				for (int l = lo + base; l <= up + base; l++) {
+					if (l == current) continue;
+					for (size_t m : members) trial[m] = l;
+					const Money cost_here = exact_cost(trial);
+					if (cost_here < best_cost) {
+						best_cost = cost_here;
+						best = l;
+					}
 				}
 			}
 			if (best != current) {
@@ -949,7 +1431,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 
 } // namespace
 
-bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const JunctionTrackPlacement &placement, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &prio_beside, JunctionTerraform &plan, Money &cost, std::vector<std::pair<TileIndexDiffC, int8_t>> &levels, std::string *why)
+bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const JunctionTrackPlacement &placement, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &prio_beside, JunctionTerraform &plan, Money &cost, std::vector<std::pair<TileIndexDiffC, int8_t>> &levels, std::string *why, std::pair<long, long> *incremental_check)
 {
 	const Context ctx{terrain, facts};
 	auto fail = [&](const std::string &reason) {
@@ -1035,7 +1517,7 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 	std::map<SnapshotTile, Chosen> chosen;
 	JunctionTerraform result;
 	Money total = 0;
-	const std::string levels_why = SolveTileLevels(ctx, route_visits, heads, fixed_tiles, ties, layout, offset, ramp_levels, train_length, chosen, result, total);
+	const std::string levels_why = SolveTileLevels(ctx, route_visits, heads, fixed_tiles, ties, layout, offset, ramp_levels, train_length, chosen, result, total, incremental_check);
 	if (!levels_why.empty()) return fail(levels_why);
 
 	plan = std::move(result);

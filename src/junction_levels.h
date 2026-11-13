@@ -32,8 +32,9 @@
  * @param[out] cost The total cost: the plan's, plus foundations and clearing of the tiles it does not touch.
  * @param[out] levels The level of every track tile (placement frame; a ramp tile's entry level in the direction of travel).
  * @param[out] why The reason on failure ("terraform conflict ..." when two tiles or a propagation want a corner at different heights).
+ * @param[in,out] incremental_check Tests only: when set, the descent also computes every incremental cost in full and counts (first) the comparisons and (second) the differences.
  * @return Whether the levels were solved.
  */
-bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const JunctionTrackPlacement &placement, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &prio_beside, JunctionTerraform &plan, Money &cost, std::vector<std::pair<TileIndexDiffC, int8_t>> &levels, std::string *why);
+bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const JunctionTrackPlacement &placement, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &prio_beside, JunctionTerraform &plan, Money &cost, std::vector<std::pair<TileIndexDiffC, int8_t>> &levels, std::string *why, std::pair<long, long> *incremental_check = nullptr);
 
 #endif /* JUNCTION_LEVELS_H */

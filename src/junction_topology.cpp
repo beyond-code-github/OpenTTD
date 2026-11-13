@@ -3378,7 +3378,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, x_floors, y_floors);
 }
 
-JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error, bool heights, bool terraform, const JunctionTerrain *terrain, const JunctionPlacementShared *shared)
+JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionFacts &facts, TileIndexDiffC offset, std::string *error, bool heights, bool terraform, const JunctionTerrain *terrain, const JunctionPlacementShared *shared, std::pair<long, long> *incremental_check)
 {
 	if (terraform && terrain == nullptr) {
 		if (error != nullptr) *error = "terraform needs the terrain";
@@ -3400,7 +3400,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	JunctionLayout layout = rendered;
 	std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> prio_beside;
 	SignalJunctionTrackRoutes(layout, routes, topology, paths, graph, programs, spec, nullptr, &prio_beside, &placement.prio);
-	if (!SolveJunctionLevels(*terrain, facts, offset, JunctionRampLevels(spec), spec.tl, placement, layout, routes, prio_beside, placement.terraform, placement.height_cost, placement.track_levels, &text)) return fail(text);
+	if (!SolveJunctionLevels(*terrain, facts, offset, JunctionRampLevels(spec), spec.tl, placement, layout, routes, prio_beside, placement.terraform, placement.height_cost, placement.track_levels, &text, incremental_check)) return fail(text);
 	return placement;
 }
 

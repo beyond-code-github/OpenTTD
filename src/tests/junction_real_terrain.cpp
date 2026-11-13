@@ -457,6 +457,52 @@ TEST_CASE("the level solve never asks the game about an impossible slope", "[jun
 	CHECK((plan.layout.has_value() || !plan.why.empty()));
 }
 
+TEST_CASE("the incremental exact cost equals the full one", "[junction][hoverplan]")
+{
+	/* P4b: the level solve's descent keeps the exact cost up to date as one group's level changes. With the test-only counter passed down, every trial is also costed in full and compared: on 3 LL_RR and 3 T fixtures that place on the terrain, not one differs. */
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	REQUIRE(!files.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionTopology llrr = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("L_R").spec);
+	for (const JunctionTopology *t : {&llrr, &JunctionTTopology()}) {
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(*t, spec, &error);
+		INFO(error);
+		REQUIRE(!seed.routes.empty());
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(*t, seed.paths, seed.graph, &error);
+		const JunctionLayout seed_layout = RenderJunctionTrackPlacement(*t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+		REQUIRE(!seed_layout.tracks.empty());
+		int checked_fixtures = 0;
+		std::pair<long, long> check{0, 0}; ///< Comparisons, differences.
+		for (const fs::path &file : files) {
+			if (checked_fixtures == 3) break;
+			std::ifstream in(file);
+			std::stringstream text;
+			text << in.rdbuf();
+			std::string load_error;
+			const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+			REQUIRE(terrain.has_value());
+			const TileIndexDiffC offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+			const JunctionFacts facts(*terrain);
+			std::string place_error;
+			const JunctionTrackPlacement hard = PlaceJunctionTrackGraph(*t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error, false);
+			if (hard.nodes.empty()) continue;
+			const long before = check.first;
+			PlaceJunctionTrackGraph(*t, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, seed.placement.choices, facts, offset, &place_error, true, true, &*terrain, nullptr, &check);
+			if (check.first == before) continue;
+			checked_fixtures++;
+		}
+		CHECK(checked_fixtures == 3);
+		CHECK(check.first > 0);
+		CHECK(check.second == 0);
+	}
+}
+
 TEST_CASE("level solve: identical LL_RR plans at every near offset", "[junction][realterrainsweep][.identity]")
 {
 	namespace fs = std::filesystem;
