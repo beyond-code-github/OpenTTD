@@ -1345,10 +1345,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				const int apart = flat_left(b) - flat_right(a);
 				if (record) {
 					const bool touch = !tie && a.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && b.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)));
+					const bool touch_reversed = !tie && b.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && a.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)));
 					auto occupant_key = [&](const Occupant &o) {
 						return fmt::format("{}/{}/{}/{},{},{},{}/{},{},{},{}", static_cast<int>(o.edge), o.copy, static_cast<int>(o.node), o.left.pt, o.left.c0, o.left.c1, o.left.bend, o.right.pt, o.right.c0, o.right.c1, o.right.bend);
 					};
-					recorded_clashes.push_back({fmt::format("{}|{}|{}", occupant_key(a), occupant_key(b), tie), fmt::format("{}|{}|{}", occupant_key(b), occupant_key(a), tie), a.right, b.left, tie ? apart : (touch ? 2 : 1), false, ""});
+					recorded_clashes.push_back({fmt::format("{}|{}|{}", occupant_key(a), occupant_key(b), tie), fmt::format("{}|{}|{}", occupant_key(b), occupant_key(a), tie), a.right, b.left, a.left, b.right, tie ? apart : (touch ? 2 : 1), tie ? apart : (touch_reversed ? 2 : 1), false, tie, false, ""});
 					recorded_clash_reasons.push_back(reason);
 				}
 				if (tie) {
