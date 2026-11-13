@@ -1253,6 +1253,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 	};
 	std::vector<FactCons> fact_cons;
 	std::map<uint32_t, std::string> notes; ///< Per reason of a fact, the tiles it names, for the error text.
+	std::vector<std::array<int, 3>> lazy_notes; ///< Per reason index, (kind, x, y) of a note formatted only when a failure reports it: 1 a blocked tile, 2 a height step.
 	JunctionPlacementReason why_now; ///< The reason of the relations added now (DESIGN-G1 §14.4).
 	auto why = [&](const char *rule, uint32_t edge = UINT32_MAX, uint32_t node = UINT32_MAX, int row = -1) { why_now = JunctionPlacementReason{rule, edge, node, static_cast<int32_t>(row)}; };
 	int phase = 0; // 0: X, 1: Y.
@@ -1387,7 +1388,10 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				if (reason.node != UINT32_MAX) parts += fmt::format("{}node {}", parts.empty() ? "" : ", ", reason.node);
 				if (reason.row >= 0) parts += fmt::format("{}row {}", parts.empty() ? "" : ", ", reason.row);
 				const auto note = notes.find(index);
-				chain_text += fmt::format("{}{}{}{}", chain_text.empty() ? "" : " <- ", reason.rule, parts.empty() ? "" : " (" + parts + ")", note == notes.end() ? "" : " " + note->second);
+				std::string note_text = note == notes.end() ? std::string() : " " + note->second;
+				if (note == notes.end() && index < lazy_notes.size() && lazy_notes[index][0] == 1) note_text = fmt::format(" [blocked tile ({},{})]", lazy_notes[index][1], lazy_notes[index][2]);
+				if (note == notes.end() && index < lazy_notes.size() && lazy_notes[index][0] == 2) note_text = fmt::format(" [height step ({},{}) to ({},{})]", lazy_notes[index][1], lazy_notes[index][2], lazy_notes[index][1] + 1, lazy_notes[index][2]);
+				chain_text += fmt::format("{}{}{}{}", chain_text.empty() ? "" : " <- ", reason.rule, parts.empty() ? "" : " (" + parts + ")", note_text);
 			}
 			if (error != nullptr) *error = "the placement rules contradict each other: " + chain_text;
 			return false;
@@ -2198,6 +2202,7 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 		reasons.clear();
 		fact_cons.clear();
 		notes.clear();
+		lazy_notes.clear();
 		why_now = JunctionPlacementReason{};
 		const bool x_phase = phase == 0;
 		if (x_phase) hugs.clear();
@@ -2579,6 +2584,10 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 				if (!note.empty()) notes[static_cast<uint32_t>(reasons.size() - 1)] = note;
 				return static_cast<uint32_t>(reasons.size() - 1);
 			};
+			auto lazy_note = [&](uint32_t reason, int kind, int x, int y) {
+				if (lazy_notes.size() <= reason) lazy_notes.resize(reason + 1, {0, 0, 0});
+				lazy_notes[reason] = {kind, x, y};
+			};
 			auto holds = [&](JunctionFactKind kind, Axis axis, int x, int y) {
 				int entry, exit;
 				if (classes_only) return facts->Buildable(x, y);
@@ -2636,13 +2645,15 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, 
 			auto row_run = [&](int a, int b, int y, int sgn, uint32_t e, int row) {
 				const auto &[blocked, steps] = row_facts_of(y + offset.y);
 				for (int x : blocked) {
-					const uint32_t reason = fact_reason(e, UINT32_MAX, row, fmt::format("[blocked tile ({},{})]", x, y + offset.y));
+					const uint32_t reason = fact_reason(e, UINT32_MAX, row, std::string());
+					lazy_note(reason, 1, x, y + offset.y);
 					fact_cons.push_back({sgn > 0 ? a : b, sgn > 0 ? b : a, {x - offset.x, x - offset.x}, reason});
 				}
 				/* Two straight tiles side by side that do not meet at one height: the run must not cover both. */
 				if (!heights) return;
 				for (int x : steps) {
-					const uint32_t reason = fact_reason(e, UINT32_MAX, row, fmt::format("[height step ({},{}) to ({},{})]", x, y + offset.y, x + 1, y + offset.y), "height step");
+					const uint32_t reason = fact_reason(e, UINT32_MAX, row, std::string(), "height step");
+					lazy_note(reason, 2, x, y + offset.y);
 					fact_cons.push_back({sgn > 0 ? a : b, sgn > 0 ? b : a, {x - offset.x, x + 1 - offset.x}, reason});
 				}
 			};

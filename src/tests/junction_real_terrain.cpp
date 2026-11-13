@@ -437,6 +437,85 @@ static std::vector<int64_t> FlattenPlacement(const JunctionTrackPlacement &p, co
 	return v;
 }
 
+TEST_CASE("the level solve never asks the game about an impossible slope", "[junction][hoverplan]")
+{
+	/* P3b: on arctic-hilly-4 at (137,109) the LL_RR level solve evaluates a foundation tile whose corners the clamp leaves two levels apart on two raised corners (slope 22): GetRailFoundation and GetBridgeHeadGround reach NOT_REACHED there. The tile is a violation of that assignment; the hover answers with a plan or a reason. */
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("L_R").spec);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	INFO(error);
+	REQUIRE(!seed.routes.empty());
+	std::ifstream in(std::filesystem::path(JUNCTION_TERRAIN_DIR) / "arctic-hilly-4.json");
+	std::stringstream text;
+	text << in.rdbuf();
+	std::string load_error;
+	const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+	REQUIRE(terrain.has_value());
+	const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, *terrain, {137, 109});
+	INFO(plan.why);
+	CHECK((plan.layout.has_value() || !plan.why.empty()));
+}
+
+TEST_CASE("level solve: identical LL_RR plans at every near offset", "[junction][realterrainsweep][.identity]")
+{
+	namespace fs = std::filesystem;
+	std::vector<fs::path> files;
+	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
+		if (entry.path().extension() == ".json") files.push_back(entry.path());
+	}
+	std::ranges::sort(files);
+	REQUIRE(!files.empty());
+
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("L_R").spec);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(t, spec, &error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionLayout seed_layout = RenderJunctionTrackPlacement(t, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &error);
+	REQUIRE(!seed_layout.tracks.empty());
+	int offsets = 0, planned = 0;
+	double millis = 0;
+	uint64_t level_hash = 14695981039346656037ULL;
+	for (const fs::path &file : files) {
+		std::ifstream in(file);
+		std::stringstream text;
+		text << in.rdbuf();
+		std::string load_error;
+		const std::optional<JunctionTerrain> terrain = JunctionTerrainFromJson(text.str(), &load_error);
+		REQUIRE(terrain.has_value());
+		const TileIndexDiffC centre = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
+		for (int dy = -4; dy <= 4; dy++) {
+			for (int dx = -8; dx <= 8; dx++) {
+				const TileIndexDiffC offset = {static_cast<int16_t>(centre.x + dx), static_cast<int16_t>(centre.y + dy)};
+				const auto start = std::chrono::steady_clock::now();
+				const JunctionHoverPlan plan = PlanJunctionHover(seed, spec, *terrain, offset);
+				millis += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+				offsets++;
+				LevelHashFold(level_hash, plan.layout.has_value() ? static_cast<int64_t>(plan.height_cost) : -1);
+				LevelHashFold(level_hash, static_cast<int64_t>(std::hash<std::string>{}(plan.why)));
+				if (!plan.layout.has_value()) continue;
+				planned++;
+				for (const auto &[tile, level] : plan.track_levels) {
+					LevelHashFold(level_hash, tile.x);
+					LevelHashFold(level_hash, tile.y);
+					LevelHashFold(level_hash, level);
+				}
+				LevelHashFold(level_hash, plan.terraform.cost);
+				for (const auto &[corner, height] : plan.terraform.corners) {
+					LevelHashFold(level_hash, corner.first);
+					LevelHashFold(level_hash, corner.second);
+					LevelHashFold(level_hash, height);
+				}
+			}
+		}
+	}
+	std::cout << "LEVELHASH_LLRR offsets=" << offsets << " planned=" << planned << " hash=" << level_hash << " ms_total=" << millis << "\n";
+	CHECK(offsets == 48 * 153);
+	CHECK(planned == 1180);
+	CHECK(level_hash == 11818222337964832513ULL);
+}
+
 TEST_CASE("level solve: identical plans at every near offset", "[junction][realterrainsweep][.identity]")
 {
 	namespace fs = std::filesystem;

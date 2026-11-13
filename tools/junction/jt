@@ -23,7 +23,7 @@ case "$mode" in
 		;;
 	identity)
 		if [ "$type" != "Release" ]; then echo "jt identity: $build is '$type', not Release; the identity sweeps run in Release only" >&2; exit 2; fi
-		filter="[identity]"; budget=${3:-60}; name=identity
+		filter="[identity]"; budget=${3:-90}; name=identity
 		;;
 	*) echo "jt: unknown mode $mode" >&2; exit 2;;
 esac

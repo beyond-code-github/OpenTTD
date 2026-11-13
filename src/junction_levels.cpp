@@ -670,6 +670,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	std::vector<int> ex_h = ground_h; ///< The heights after the terraform: the ground, except at the touched corners.
 	std::vector<char> ex_dirty(static_cast<size_t>(GW) * GH, 0);
 	std::vector<size_t> t_set, t_touch, t_dirty, t_queue;
+	std::vector<std::array<int, 3>> q_raised, q_lowered; ///< The raised and the lowered targets as (x, y, target).
 	std::vector<std::pair<size_t, int>> t_span_lo, t_span_hi; ///< The span corners the ground is below the least or above the greatest height of.
 	std::vector<std::pair<size_t, int>> ex_moved; ///< The corners the last evaluation moved, as (index, height).
 	std::vector<const Choice *> ex_ch(n);
@@ -758,12 +759,26 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			}
 		}
 		/* A raised target against a lowered one, where no cone binds in between: they differ by at most their distance. */
-		for (size_t s : t_set) {
-			if (ex_target[s] <= ground_h[s]) continue;
-			for (size_t l : t_set) {
-				if (ex_target[l] >= ground_h[l]) continue;
-				const int d = std::abs(static_cast<int>(s % stride) - static_cast<int>(l % stride)) + std::abs(static_cast<int>(s / stride) - static_cast<int>(l / stride));
-				viol += std::max(0, ex_target[s] - ex_target[l] - d);
+		/* Only a raised target at least two above a lowered one can break the rule (they are at least one apart): collect the two kinds with their coordinates, and pair them. */
+		q_raised.clear();
+		q_lowered.clear();
+		for (size_t k : t_set) {
+			if (ex_target[k] > ground_h[k]) q_raised.push_back({static_cast<int>(k % stride), static_cast<int>(k / stride), ex_target[k]});
+			else if (ex_target[k] < ground_h[k]) q_lowered.push_back({static_cast<int>(k % stride), static_cast<int>(k / stride), ex_target[k]});
+		}
+		if (!q_raised.empty() && !q_lowered.empty()) {
+			int max_raised = INT_MIN, min_lowered = INT_MAX;
+			for (const auto &r : q_raised) max_raised = std::max(max_raised, r[2]);
+			for (const auto &l : q_lowered) min_lowered = std::min(min_lowered, l[2]);
+			if (max_raised - min_lowered >= 2) {
+				for (const auto &r : q_raised) {
+					for (const auto &l : q_lowered) {
+						const int dt = r[2] - l[2];
+						if (dt < 2) continue;
+						const int d = std::abs(r[0] - l[0]) + std::abs(r[1] - l[1]);
+						if (d < dt) viol += dt - d;
+					}
+				}
 			}
 		}
 		int64_t moves = 0;
@@ -823,6 +838,8 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 				const bool inclined = lv[i] > lv[partner[i]];
 				JunctionTerrainTile moved = c.terrain.tiles[di];
 				SetJunctionTileCorners(moved, f);
+				/* Corners that spread two levels over other than three raised corners are no slope of the game (GetHighestSlopeCorner aborts on it): a violation. */
+				if (IsSteepSlope(moved.slope) && !IsSlopeWithOneCornerRaised(ComplementSlope(static_cast<Slope>(moved.slope & ~SLOPE_STEEP)))) { viol++; continue; }
 				const std::optional<BridgeHeadGround> ground = GetBridgeHeadGround(moved.slope, moved.z_min, tiles[t].visit.dir);
 				if (!ground.has_value() || ground->inclined != inclined || ground->z != lv[i] - (inclined ? 1 : 0)) viol++;
 				else if (ground->foundation) cost += c.terrain.foundation_cost;
@@ -832,6 +849,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			cost += c.terrain.foundation_cost;
 			JunctionTerrainTile moved = c.terrain.tiles[di];
 			SetJunctionTileCorners(moved, f);
+			if (IsSteepSlope(moved.slope) && !IsSlopeWithOneCornerRaised(ComplementSlope(static_cast<Slope>(moved.slope & ~SLOPE_STEEP)))) { viol++; continue; }
 			if (moved.z_max != ex_ch[i]->level || GetRailFoundation(moved.slope, tiles[t].visit.bits) != Foundation::Leveled) viol++;
 		}
 		/* The ramp rule at a bridge's deck: a flat head is entered at its level and the deck is one above it, an inclined head (the higher of the two) is at the deck. */
@@ -847,6 +865,8 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 
 	/* Coordinate descent on the groups: each in turn takes the level in its feasible range (the rest held at their levels) that costs least. */
 	constexpr int MAX_ROUNDS = 20;
+	Money level_cost = 0;
+	bool level_cost_known = false;
 	for (int round = 0; round < MAX_ROUNDS; round++) {
 		bool moved = false;
 		for (const auto &[key, members] : groups) {
@@ -864,7 +884,12 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			}
 			if (lo >= up) continue;
 			const int current = level[members.front()];
-			Money best_cost = exact_cost(level);
+			/* The cost of the held levels is the same until a group moves: it is not evaluated again for every group. */
+			if (!level_cost_known) {
+				level_cost = exact_cost(level);
+				level_cost_known = true;
+			}
+			Money best_cost = level_cost;
 			int best = current;
 			std::vector<int> trial = level;
 			for (int l = lo + base; l <= up + base; l++) {
@@ -878,6 +903,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			}
 			if (best != current) {
 				for (size_t m : members) level[m] = best;
+				level_cost = best_cost;
 				moved = true;
 			}
 		}
