@@ -12,7 +12,7 @@
 #include "junction_chain.h"
 
 #include "../../direction_func.h"
-#include "../legacy/junction_generator.h"
+#include "../junction_spec.h"
 #include "../junction_rules_internal.h"
 
 #include <algorithm>

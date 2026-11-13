@@ -11,7 +11,7 @@
 
 #include "junction_hover.h"
 #include "../terrain/junction_facts.h"
-#include "../legacy/junction_generator.h"
+#include "../junction_spec.h"
 
 #include <algorithm>
 #include <atomic>

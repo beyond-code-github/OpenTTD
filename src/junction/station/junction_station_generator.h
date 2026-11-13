@@ -10,7 +10,7 @@
 #ifndef JUNCTION_STATION_GENERATOR_H
 #define JUNCTION_STATION_GENERATOR_H
 
-#include "../legacy/junction_generator.h"
+#include "../junction_spec.h"
 #include "../junction_layout.h"
 #include "junction_station_rules.h"
 

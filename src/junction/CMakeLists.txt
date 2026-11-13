@@ -15,6 +15,8 @@ add_files(
     junction_rules.cpp
     junction_rules.h
     junction_rules_internal.h
+    junction_spec.cpp
+    junction_spec.h
     junction_train_model.cpp
     junction_train_model.h
 )

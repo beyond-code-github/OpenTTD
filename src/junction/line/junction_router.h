@@ -11,7 +11,7 @@
 #define JUNCTION_ROUTER_H
 
 #include "../../economy_type.h"
-#include "../legacy/junction_generator.h"
+#include "../junction_spec.h"
 #include "../junction_layout.h"
 #include "../junction_route.h"
 #include "../terrain/junction_terrain.h"

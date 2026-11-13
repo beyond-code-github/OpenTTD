@@ -12,7 +12,7 @@
 #include "../../3rdparty/catch2/catch.hpp"
 
 #include "../../junction/game/junction_game.h"
-#include "../../junction/legacy/junction_generator.h"
+#include "../../junction/junction_spec.h"
 #include "../../junction/tool/junction_gui.h"
 #include "../../junction/tool/junction_hover.h"
 #include "../../junction/junction_layout.h"

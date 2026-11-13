@@ -94,3 +94,5 @@ Docs written before MV1 cite the old flat paths; this table maps them.
 | `src/tests/junction_skeleton.cpp` | `src/tests/junction/legacy/junction_skeleton.cpp` |
 | `src/tests/junction_throughput.cpp` | `src/tests/junction/legacy/junction_throughput.cpp` |
 | `src/tests/junction_design.cpp` | `src/tests/junction/legacy/junction_design.cpp` |
+
+GS1: `JunctionSpec`, `JunctionNotation`, `ParseJunctionNotation`, `JunctionUnitPrices`, `CurveSpeedLimitForSpacing`, `DeriveCurveSpacing`, `JunctionRampLevels` and `MakeTestJunctionSpec` moved from `legacy/junction_generator.{h,cpp}` to `src/junction/junction_spec.{h,cpp}`.

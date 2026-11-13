@@ -12,7 +12,7 @@
 #include "junction_topology.h"
 
 #include "junction_chain.h"
-#include "../legacy/junction_generator.h"
+#include "../junction_spec.h"
 #include "../placement/junction_levels.h"
 #include "../line/junction_line.h"
 #include "../placement/junction_positions.h"

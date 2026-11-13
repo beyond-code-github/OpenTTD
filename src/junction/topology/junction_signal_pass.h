@@ -10,7 +10,7 @@
 #ifndef JUNCTION_SIGNAL_PASS_H
 #define JUNCTION_SIGNAL_PASS_H
 
-#include "../legacy/junction_generator.h"
+#include "../junction_spec.h"
 #include "../junction_layout.h"
 #include "../junction_route.h"
 

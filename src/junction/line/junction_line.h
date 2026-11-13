@@ -10,7 +10,7 @@
 #ifndef JUNCTION_LINE_H
 #define JUNCTION_LINE_H
 
-#include "../legacy/junction_generator.h"
+#include "../junction_spec.h"
 #include "../junction_route.h"
 
 #include <string>

@@ -11,7 +11,7 @@
 
 #include "../../../3rdparty/catch2/catch.hpp"
 #include "../../../junction/terrain/junction_facts.h"
-#include "../../../junction/legacy/junction_generator.h"
+#include "../../../junction/junction_spec.h"
 #include "../../../junction/tool/junction_hover.h"
 #include "../../../junction/line/junction_line.h"
 #include "../../../junction/legacy/junction_nodes.h"

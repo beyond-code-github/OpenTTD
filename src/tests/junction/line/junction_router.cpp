@@ -12,7 +12,7 @@
 #include "../../../3rdparty/catch2/catch.hpp"
 
 #include "../../../direction_func.h"
-#include "../../../junction/legacy/junction_generator.h"
+#include "../../../junction/junction_spec.h"
 #include "../../../junction/junction_route.h"
 #include "../../../junction/line/junction_router.h"
 #include "../../../junction/junction_rules.h"
