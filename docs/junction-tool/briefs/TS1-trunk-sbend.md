@@ -22,3 +22,8 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 
 ## Report
 The standard report, plus LL_RR x LL_RR per direction's result and the NM1 OK counts. When you have reported, stop.
+
+## Amendment 1 (orchestrator, after the stop: an S-bend cannot have size 0)
+Option 1, as a per-token minimum: an SBend token may be OPTIONAL, with least size 0. Add to the program step the smallest change that carries it (a field on the SBend step, e.g. `uint8_t min_m = 1; ///< 0: an optional S-bend that may vanish (a straight run) when the placement does not need it.` — name it and say where), and in placement an S-bend element whose solved m is 0 emits no tiles and no curves: it is a straight run between its neighbours, and every reader that assumes m >= 1 (refresh, bend_tiles, the curve-gap and floor families, occupancy, render, D113) treats it as absent. Every existing token keeps min_m = 1 (so every seed is identical). The new trunk S-bend before a doubled bridge's Under pair is emitted with min_m = 0.
+Step 0 for this amendment: list every reader of an S-bend element's m or its curves (file:line) and how each treats m = 0; if one cannot (e.g. a relation that needs the two curves to exist), stop and report it.
+Then the changes, tests and gates as the brief says.
