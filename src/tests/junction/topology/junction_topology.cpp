@@ -527,6 +527,8 @@ static constexpr uint32_t NR = JunctionTrackStep::NO_ROW;
 static Step Fan(uint32_t i) { return {Step::Kind::Fan, 0, i, 0}; }
 static Step C(int h, uint32_t i) { return {Step::Kind::Corner, static_cast<int8_t>(h), i, 0}; }
 static Step S(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0}; }
+static Step SV(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0, Step::Role::Converge}; }
+static Step SD(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0, Step::Role::Diverge}; }
 static Step SM(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0, Step::Role::LaneMerge}; }
 static Step SL(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0, Step::Role::LaneSplit}; }
 static Step O(uint32_t x) { return {Step::Kind::Over, 0, x, 0}; }
@@ -690,9 +692,9 @@ TEST_CASE("topology: the T's track programs", "[junction][topology]")
 		{Fan(1)}, {}, {Fan(3)}, {},
 		{C(+1, NR), U(5, 0), U(5, 1), S(-1, NR), U(8, 0)},
 		{O(8), O(4), SM(-1, 4)},
-		{C(-1, NR), S(+1, NR)},
-		{C(-1, 5), S(+1, 4)},
-		{O(4), U(5, 1), U(5, 0), C(+1, 2), S(-1, 1)},
+		{C(-1, NR), SV(+1, NR)},
+		{C(-1, 5), SV(+1, 4)},
+		{O(4), U(5, 1), U(5, 0), C(+1, 2), SV(-1, 1)},
 		{Fan(4)}, {}, {Fan(1)},
 	};
 	CHECK(programs.edges == edges);
@@ -707,17 +709,17 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track programs", "[junction][to
 	REQUIRE(programs.edges.size() == 26);
 	REQUIRE(programs.copies.size() == 26);
 	const Programs edges = {
-		{Fan(1)}, {Fan(3)}, {}, {O(23), U(10, 1), U(10, 0), U(9, 1), U(9, 0)}, {S(-1, NR)}, {Fan(9)}, {Fan(6)}, {},
+		{Fan(1)}, {Fan(3)}, {}, {O(23), U(10, 1), U(10, 0), U(9, 1), U(9, 0)}, {SD(-1, NR)}, {Fan(9)}, {Fan(6)}, {},
 		{O(11), O(15), SM(+1, 4)}, {O(3), O(11), O(12), SM(-1, 7)}, {O(13), O(3), O(11), O(12), O(17), SM(-1, 10)},
 		{C(+1, NR), U(8, 0), U(8, 1), U(9, 0), U(9, 1), U(10, 0), U(10, 1)},
-		{C(+1, NR), U(9, 0), U(9, 1), U(10, 0), U(10, 1), S(-1, NR)},
+		{C(+1, NR), U(9, 0), U(9, 1), U(10, 0), U(10, 1), SV(-1, NR)},
 		{C(-1, NR), U(10, 0), U(10, 1)},
-		{C(-1, NR), S(+1, NR)},
-		{U(8, 1), U(8, 0), C(+1, 2), S(-1, 1)},
-		{C(+1, 5), S(-1, 4)},
-		{U(10, 1), U(10, 0), C(-1, 8), S(+1, 7)},
-		{C(-1, 11), S(+1, 10)},
-		{Fan(7)}, {Fan(10)}, {}, {S(+1, NR)}, {S(-1, NR), U(3, 0)}, {Fan(4)}, {Fan(1)},
+		{C(-1, NR), SV(+1, NR)},
+		{U(8, 1), U(8, 0), C(+1, 2), SV(-1, 1)},
+		{C(+1, 5), SV(-1, 4)},
+		{U(10, 1), U(10, 0), C(-1, 8), SV(+1, 7)},
+		{C(-1, 11), SV(+1, 10)},
+		{Fan(7)}, {Fan(10)}, {}, {SV(+1, NR)}, {S(-1, NR), U(3, 0)}, {Fan(4)}, {Fan(1)},
 	};
 	CHECK(programs.edges == edges);
 	Programs copies(26);
@@ -4911,4 +4913,55 @@ TEST_CASE("programs: an S branch port edge of a group with several lanes carries
 	const JunctionLineSpec llrr = ParseLineNotation("LL_RR").spec;
 	check(MakeJunctionHubTopology(llrr, llrr), true);
 	check(JunctionTTopology(), false);
+}
+
+TEST_CASE("programs: a band edge's S-bends name the node they serve (DESIGN-G2 §G2.6)", "[junction][topology]")
+{
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("L_R").spec, ParseLineNotation("L_RR").spec);
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	REQUIRE(!graph.edges.empty());
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+	REQUIRE(!order.rows.empty());
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+	REQUIRE(!programs.edges.empty());
+	using Step = JunctionTrackStep;
+	int converge = 0;
+	int lone = 0;
+	for (uint32_t e = 0; e < graph.edges.size(); e++) {
+		const JunctionTrackEdge &edge = graph.edges[e];
+		const std::vector<Step> &program = programs.edges[e];
+		INFO("edge " << e);
+		for (size_t i = 0; i < program.size(); i++) {
+			if (program[i].kind != Step::Kind::SBend) continue;
+			if (program[i].role == Step::Role::LaneSplit || program[i].role == Step::Role::LaneMerge || program[i].role == Step::Role::Shift) continue; // A doubled leg's own bends.
+			const bool before_crossing = i + 1 < program.size() && (program[i + 1].kind == Step::Kind::Under || program[i + 1].kind == Step::Kind::Above);
+			if (i == 0 && edge.from.node && order.node_level[edge.from.index] % 2 == 0 && graph.nodes[edge.from.index].split && !(i + 1 == program.size() && edge.to.node)) {
+				CHECK(program[i].role == Step::Role::Diverge);
+			} else if (before_crossing) {
+				CHECK(program[i].role == Step::Role::None); // A crossing's S-bend serves no node.
+			} else if (i + 1 == program.size() || program[i].index != Step::NO_ROW) {
+				CHECK(program[i].role == Step::Role::Converge);
+				converge++;
+			}
+		}
+		/* e12 of the recon: a straight leg at a band split, one S-bend, into a merge. */
+		if (edge.from.node && graph.nodes[edge.from.index].split && order.node_level[edge.from.index] % 2 == 0 && edge.to.node && !graph.nodes[edge.to.index].split && program.size() == 1 && program[0].kind == Step::Kind::SBend) {
+			lone++;
+			CHECK(program[0].role == Step::Role::Converge);
+		}
+	}
+	CHECK(converge > 0);
+	CHECK(lone > 0);
+}
+
+TEST_CASE("placement: a lone converge S-bend leaves a run after its split (DESIGN-G2 §G2.6)", "[junction][topology]")
+{
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("L_R").spec, ParseLineNotation("L_RR").spec);
+	std::string error;
+	PlacementOf(t, 64, &error);
+	CHECK(!(error.find("S-bend size (edge 12)") != std::string::npos && error.find("bridge over S-bend (edge 6)") != std::string::npos));
 }

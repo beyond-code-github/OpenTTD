@@ -269,8 +269,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				el.hand = step.hand;
 				el.index = step.index;
 				el.hout = step.kind == StepKind::Corner ? (cur + step.hand + 4) % 4 : cur;
-				el.first = t == 0 && edge.from.node ? start : new_pt();
-				el.last = t + 1 == program.size() && edge.to.node && to_merge && step.kind == StepKind::SBend ? stop : new_pt();
+				/* An S-bend is pinned to the node it serves, by its role, never by its position (DESIGN-G2 §G2.6). */
+				el.first = t == 0 && edge.from.node && !(step.kind == StepKind::SBend && step.role == Step::Role::Converge) ? start : new_pt();
+				el.last = t + 1 == program.size() && edge.to.node && to_merge && step.kind == StepKind::SBend && step.role != Step::Role::Diverge ? stop : new_pt();
 				el.joiner_div = step.kind == StepKind::Corner && t == 0 && from_band_split;
 				el.free_m = step.kind != StepKind::Corner && (cur == 0 || cur == 2);
 				if ((step.kind == StepKind::SBend || step.kind == StepKind::Fan) && t == 0 && edge.from.node && !from_band_split) el.first = new_pt();

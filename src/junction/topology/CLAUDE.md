@@ -31,6 +31,7 @@
 - An S branch port edge starts (in) or ends (out) with a Fan token, on in and out ports alike: the west half of its group opens west, the east half east, the middle lane of an odd group (a one-lane group) has none, so the port block lies between its lanes' inside ends.
 - A prio sits opposite the joiner; the approach is on the joiner's side; a crossed lane's doubling copy shares the prio's row or sits away from the branch.
 - A row change sits next to the feature it serves, and the free run lies on its other side.
+- A band edge's S-bend names the node it serves: Diverge (the split it leaves), Converge (the merge it joins, a joiner's arrival included), None (a crossing's).
 - Exit lane legs of a direction merge in the outer band beside the branch port.
 
 ## Bridges and tunnels

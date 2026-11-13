@@ -1175,7 +1175,7 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 				program.push_back(corner);
 				corner_placed = true;
 			} else {
-				program.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW));
+				program.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW, 0, Step::Role::Diverge));
 			}
 		} else if (is_row_node(edge.from)) {
 			const int r = (order.node_level[edge.from.index] - 1) / 2;
@@ -1206,12 +1206,12 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 				if (corner.index == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
 				program.push_back(corner);
 			}
-			program.push_back(step(StepKind::SBend, east[r] ? -1 : +1, row_items[r].lane));
+			program.push_back(step(StepKind::SBend, east[r] ? -1 : +1, row_items[r].lane, 0, Step::Role::Converge));
 		}
 
 		/* d. End. */
 		if (is_band_node(edge.to, false) && diverges(e, edge.to.index, side_hand)) {
-			program.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW));
+			program.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW, 0, Step::Role::Converge));
 		}
 		if (!edge.to.node && south_fan_hand(edge.to.index) != 0) program.push_back(step(StepKind::Fan, south_fan_hand(edge.to.index), Step::NO_ROW));
 	}

@@ -218,6 +218,8 @@ struct JunctionTrackStep {
 		LaneSplit, ///< SBend: a doubled leg's copy 1 bends onto the lane row.
 		LaneMerge, ///< SBend: a doubled leg's copy 0 bends onto the lane row.
 		Shift, ///< SBend: a pair that moves a line sideways and back (R7 inserts them).
+		Diverge, ///< SBend: leaves the split the edge starts at; starts on its point (DESIGN-G2 §G2.6).
+		Converge, ///< SBend: joins the merge the edge ends at (a joiner's arrival included); ends on its point (DESIGN-G2 §G2.6).
 	};
 	Kind kind;
 	int8_t hand; ///< Corner: the turn, +1 right, -1 left (as JunctionTrackStructure::turns). SBend: its first curve. 0 otherwise.
