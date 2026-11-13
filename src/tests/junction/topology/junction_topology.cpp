@@ -4598,6 +4598,73 @@ TEST_CASE("topology: branch legs bound for one main lane merge before joining it
 	}
 }
 
+TEST_CASE("structure: crossings without one joiner follow D223 and D227 (C1, C3)", "[junction][topology]")
+{
+	const JunctionTopology topology = MakeJunctionHubTopology(ParseLineNotation("LL_RR").spec, ParseLineNotation("LL_RR").spec, JunctionLanePairing::AnyToAny);
+	std::string why;
+	const auto paths = ExpandJunctionLanes(topology, &why);
+	REQUIRE(!paths.empty());
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(topology, paths, &why);
+	std::string order_error;
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, paths, graph, &order_error);
+	REQUIRE(order_error.empty());
+	std::string structure_error;
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(topology, paths, graph, order, &structure_error);
+	INFO("structure error: " << structure_error);
+	REQUIRE(structure_error.empty());
+
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+	/* A slot named by side letter, in or out, lane, and M (main) or B (branch), e.g. "W in 0 M". */
+	auto slot_name = [&](int slot) {
+		const JunctionLaneGroup &group = topology.groups[slots[slot].group];
+		const char side = group.side == JunctionSide::W ? 'W' : (group.side == JunctionSide::E ? 'E' : (group.side == JunctionSide::S ? 'S' : 'N'));
+		return fmt::format("{} {} {} {}", side, group.in ? "in" : "out", slots[slot].lane, group.main ? "M" : "B");
+	};
+	using Movements = std::set<std::pair<std::string, std::string>>;
+	auto find_edge = [&](const Movements &wanted) {
+		int found = -1;
+		for (uint32_t e = 0; e < graph.edges.size(); e++) {
+			Movements have;
+			for (uint16_t p : graph.edges[e].paths) have.insert({slot_name(paths[p].from), slot_name(paths[p].to)});
+			if (have != wanted) continue;
+			REQUIRE(found < 0);
+			found = static_cast<int>(e);
+		}
+		return found;
+	};
+	struct Row {
+		Movements over;
+		Movements under;
+	};
+	const std::vector<Row> rows = {
+		{{{"W in 0 M", "S out 0 B"}}, {{"W in 1 M", "S out 1 B"}}},
+		{{{"E in 0 M", "S out 1 B"}}, {{"E in 1 M", "S out 0 B"}}},
+		{{{"W in 0 M", "S out 1 B"}, {"W in 1 M", "S out 1 B"}}, {{"E in 0 M", "S out 0 B"}, {"E in 1 M", "S out 0 B"}}},
+		{{{"S in 1 B", "W out 0 M"}, {"S in 1 B", "W out 1 M"}}, {{"S in 0 B", "E out 0 M"}, {"S in 0 B", "E out 1 M"}}},
+		{{{"S in 1 B", "W out 1 M"}}, {{"S in 0 B", "W out 0 M"}}},
+		{{{"S in 0 B", "E out 1 M"}}, {{"S in 1 B", "E out 0 M"}}},
+	};
+	for (size_t r = 0; r < rows.size(); r++) {
+		INFO("table row " << r);
+		const int over = find_edge(rows[r].over);
+		const int under = find_edge(rows[r].under);
+		REQUIRE(over >= 0);
+		REQUIRE(under >= 0);
+		int carried_over = 0;
+		for (const JunctionTrackBridge &bridge : structure.bridges) {
+			const bool crosses_under = std::find(bridge.crossed.begin(), bridge.crossed.end(), static_cast<uint32_t>(under)) != bridge.crossed.end();
+			const bool crosses_over = std::find(bridge.crossed.begin(), bridge.crossed.end(), static_cast<uint32_t>(over)) != bridge.crossed.end();
+			if (bridge.edge == static_cast<uint32_t>(over) && crosses_under) {
+				carried_over++;
+				CHECK(!bridge.doubled);
+				CHECK(!bridge.tunnel);
+			}
+			CHECK(!(bridge.edge == static_cast<uint32_t>(under) && crosses_over));
+		}
+		CHECK(carried_over == 1);
+	}
+}
+
 TEST_CASE("topology: an L_R main with a multi-lane branch is refused, not crashed", "[junction][topology]")
 {
 	for (const char *branch : {"LL_RR", "LL_R", "L_RR"}) {

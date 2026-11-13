@@ -22,7 +22,7 @@
 - A switch has two legs; a lane bound for more than two keys splits as a cascade of two-way nodes over contiguous halves of the ordered key list (1 + 2, 2 + 2, ...); merges mirror it (D228, DESIGN-G2 §G2.1).
 - Crossings are counted per graph edge; two paths cross when their end ports interleave around the box; every chord pair is crossed exactly once (G1 §6, G1 §7).
 - Over and under: a crossed row edge (a lane along its own row) carries one doubled bridge over all its crossings (D156, D190, G1 §9).
-- A crossing of two non-row edges needs exactly one joiner (a path from a branch slot): the joiner goes over on a single bridge; zero or two joiners are refused as not ruled (G1 §9).
+- A crossing of two non-row edges: a joiner goes over a turning leg; of two joiners the one whose near end lies farther from the main line goes over (C3); of two turning legs the one from the far side of the main line goes over (C1); each on a single bridge (D174, D223, D227). A through edge goes over (C2): on its row it is the row edge's doubled bridge; a through edge off its row in a crossing is refused as not ruled until doubled bridges off the row exist.
 - Branch-on-branch crossings sit in the outermost band beside the branch ports (G1 §8).
 - One bridge or tunnel may straddle several crossings of one path within its span limits, except that a band edge carries at most one bridge, over one crossing; placement refuses more (F3); the default is one bridge per crossed row edge, cut into series bridges at `JUNCTION_BRIDGE_MAX_CROSSERS` (2) crossers per bridge (D203, D209, G1 §13).
 - Rows: lanes spread inside the box by S-bends to open rows for prio rows, doubling copies and joiner approaches, and return to the notation spacing at the ports (D203, D38).

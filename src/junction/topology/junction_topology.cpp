@@ -901,12 +901,37 @@ JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topol
 		}
 		return true;
 	};
+	auto carries_through = [&](uint32_t e) {
+		for (uint16_t p : graph.edges[e].paths) {
+			if (group_of(paths[p].from).main && group_of(paths[p].to).main) return true;
+		}
+		return false;
+	};
+	auto near_end = [&](uint32_t e) { return std::min(end_level(graph.edges[e].from), end_level(graph.edges[e].to)); };
+	auto main_row = [&](uint32_t e) {
+		int row = INT_MAX;
+		for (uint16_t p : graph.edges[e].paths) row = std::min<int>(row, row_of[paths[p].from]);
+		return row;
+	};
+	/* Crossings of two non-row edges (D223, D227): through goes over (C2, not built), a joiner goes over a turning leg, of two joiners the one meeting the main line farther from it goes over (C3), of two turning legs the one from the far side of the main line goes over (C1). */
 	for (const auto &[i, j] : graph.crossings) {
 		if (is_row_edge(i) || is_row_edge(j)) continue;
+		if (carries_through(i) || carries_through(j)) return fail("a crossing of a through edge off its row is not ruled yet");
 		const bool bi = from_branch(i);
 		const bool bj = from_branch(j);
-		if (bi == bj) return fail("a branch crossing without one joiner is not ruled yet");
-		structure.bridges.push_back({bi ? i : j, {bi ? j : i}, false});
+		if (bi != bj) {
+			structure.bridges.push_back({bi ? i : j, {bi ? j : i}, false});
+			continue;
+		}
+		bool i_over;
+		if (bi) {
+			if (near_end(i) == near_end(j)) return fail("two joiners that meet the main line at one level are not ruled yet");
+			i_over = near_end(i) > near_end(j);
+		} else {
+			if (main_row(i) == main_row(j)) return fail("two turning legs from one main row are not ruled yet");
+			i_over = main_row(i) < main_row(j);
+		}
+		structure.bridges.push_back({i_over ? i : j, {i_over ? j : i}, false});
 	}
 	std::stable_sort(structure.bridges.begin(), structure.bridges.end(), [](const JunctionTrackBridge &a, const JunctionTrackBridge &b) { return a.edge < b.edge; });
 
