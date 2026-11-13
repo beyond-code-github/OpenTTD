@@ -121,6 +121,8 @@ set(CMAKE_THREAD_PREFER_PTHREAD YES)
 # Make sure we have Threads available.
 find_package(Threads REQUIRED)
 
+find_package(highs CONFIG REQUIRED)
+
 find_package(ZLIB)
 find_package(LibLZMA)
 find_package(LZO)
@@ -312,6 +314,7 @@ link_package(PNG TARGET PNG::PNG ENCOURAGED)
 link_package(ZLIB TARGET ZLIB::ZLIB ENCOURAGED)
 link_package(LIBLZMA TARGET LibLZMA::LibLZMA ENCOURAGED)
 link_package(LZO)
+target_link_libraries(openttd_lib highs::highs)
 
 if(NOT WIN32 AND NOT EMSCRIPTEN)
     link_package(CURL ENCOURAGED)

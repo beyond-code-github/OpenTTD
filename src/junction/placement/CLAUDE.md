@@ -43,3 +43,4 @@
 - Tunnel level plan: portals on the game's raw slope rising into the tunnel, the outer edge at level L, ground over the middle at least L+1, the game's exit search ends at the planned portal.
 - The level solve never asks the game about an impossible slope; it returns a plan or a reason.
 - Each port has its own height, derived from its tile and the piece's direction as the game builds track.
+- Linear and integer programs go through `JunctionMilp`, the one seam to the solver (HiGHS); it solves quietly, exactly and deterministically (one thread, zero gap, fixed seed).

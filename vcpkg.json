@@ -30,6 +30,9 @@
       "platform": "linux"
     },
     {
+      "name": "highs"
+    },
+    {
       "name": "icu",
       "platform": "linux"
     },
