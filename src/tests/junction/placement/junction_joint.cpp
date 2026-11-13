@@ -852,9 +852,10 @@ TEST_CASE("rule source: detection at the flat solve is today's rulebook", "[junc
 		{"LL_RR x L_R bend 4 m+1", 1111, 528841753813247845ULL},
 		{"LL_RR x L_R bend 8 m+1", 1114, 16306449433040433292ULL},
 		{"LL_RR x L_R bend 9 m+1", 1111, 15615666931685096934ULL},
-		{"L_R x L_RR all floors", 232, 15268210347479608433ULL},
-		{"L_R x LL_RR all floors", 588, 1677340243617776238ULL},
-		{"LL_RR x LL_RR all floors", 1518, 17095948853165792227ULL},
+		/* From the bridge over either S-bend, the recording also holds the other flanking S-bend's rows (the next three). */
+		{"L_R x L_RR all floors", 236, 14665511438918810305ULL},
+		{"L_R x LL_RR all floors", 594, 10034201909365135891ULL},
+		{"LL_RR x LL_RR all floors", 1542, 8612936502437310721ULL},
 	};
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::vector<Case> got;
@@ -1210,6 +1211,28 @@ TEST_CASE("joint: a bridge over an S-bend may move along it", "[junction][milp][
 			WARN(fmt::format("{}: the settled choices {}", hub, placed.nodes.empty() ? "do not place, error: " + error : fmt::format("place, box {} x {}", placed.size.x, placed.size.y)));
 		}
 	}
+}
+
+TEST_CASE("joint: a bridge may pass over the S-bend after its crossing", "[junction][milp][.sweep]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const LoopStart s = MakeLoopStart("LL_RR", "LL_RR", spec);
+	const JunctionPlacementSystem system = RecordAt(s, spec, s.choices, nullptr);
+	const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+	std::string conflict;
+	for (const std::string &reason : joint.conflict) conflict += (conflict.empty() ? "" : " <- ") + reason;
+	CHECK(!(joint.status == JunctionMilp::Status::Infeasible && conflict.find("bridge over S-bend") != std::string::npos));
+	std::string edge14;
+	for (size_t i = 0; i < system.overs.size(); i++) {
+		const JunctionSystemOver &over = system.overs[i];
+		if (over.edge != 14) continue;
+		const bool after = joint.status == JunctionMilp::Status::Optimal && !joint.choices.over_after.empty() && joint.choices.over_after[over.edge][over.tok] != 0;
+		const int t = joint.status == JunctionMilp::Status::Optimal && !joint.choices.over.empty() ? joint.choices.over[over.edge][over.tok] + 1 : 1;
+		edge14 += fmt::format(" [tok {}: before {}, after {}, chosen {}, t {}]", over.tok, over.bend, over.bend_after, after ? "after" : "before", t);
+	}
+	WARN(fmt::format("round 0: status {}, conflict [{}], edge 14{}", static_cast<int>(joint.status), conflict, edge14));
+	const JunctionJointLoopResult loop = SolveJunctionJointLoop(s.topology, s.paths, s.graph, s.order, s.cut, s.programs, spec, s.choices);
+	WARN(fmt::format("loop: outcome {}, rounds {}, last line [{}]", loop.outcome, loop.rounds, loop.log.empty() ? "" : loop.log.back()));
 }
 
 TEST_CASE("joint: the joint loop on the hubs", "[junction][milp][.g3loop]")
