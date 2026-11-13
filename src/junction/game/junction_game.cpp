@@ -716,7 +716,7 @@ Money JunctionTunnelPrice(uint middle, Money build_tunnel, Money rail_piece)
  * The coverage and strictness for a slider choice (D139).
  * @param choice The slider choice; 0 is the maximum.
  * @param tl Train length in tiles.
- * @param sized The strict coverage from SizeJunctionPrio (> 0).
+ * @param sized The prio length M from JunctionPrioTiles (> 0).
  * @return {prio_tiles, prio_strict}.
  */
 std::pair<uint8_t, bool> JunctionPrioChoice(uint8_t choice, uint8_t tl, uint8_t sized)

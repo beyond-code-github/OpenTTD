@@ -430,9 +430,7 @@ static bool ConJunctionExport(std::span<std::string_view> argv)
 		spec.prio_tiles = static_cast<uint8_t>(*prio_arg);
 		spec.prio_strict = false;
 	} else {
-		const JunctionPrioSizing sizing = SizeJunctionPrio(spec);
-		spec.prio_tiles = sizing.prio_tiles;
-		sizing_error = sizing.error;
+		spec.prio_tiles = JunctionPrioTiles(spec);
 	}
 	if (spec.prio_tiles == 0) {
 		const char *name = names[to_underlying(sizing_error)];

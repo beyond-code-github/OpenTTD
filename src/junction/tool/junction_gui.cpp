@@ -840,9 +840,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			auto job = std::make_shared<JunctionLibraryJob>();
 			job->spec = MakeJunctionSpec(this->railtype, key.ml_gap, key.branch_gap, key.tl, this->picked_train->loaded);
 			if (!StartNewThread(&this->library_thread, "ottd:junctionlib", [job]() {
-				const JunctionPrioSizing sizing = SizeJunctionPrio(job->spec);
-				job->spec.prio_tiles = sizing.prio_tiles;
-				job->sizing_error = sizing.error;
+				job->spec.prio_tiles = JunctionPrioTiles(job->spec);
+				job->sizing_error = job->spec.prio_tiles == 0 ? JunctionGenerateError::PrioTooLong : JunctionGenerateError::None;
 				job->sizing_done = true;
 				/* PS1: the hover plans on the projection pipeline (_junction_projection), which never reads the library; only the prio sizing runs. */
 				job->library = std::make_shared<const std::vector<JunctionLibraryEntry>>();

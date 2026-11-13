@@ -11,6 +11,7 @@
 
 #include "../../3rdparty/catch2/catch.hpp"
 
+#include "../../junction/junction_spec.h"
 #include "../../junction/junction_train_model.h"
 
 #include "../../safeguards.h"
@@ -156,4 +157,26 @@ TEST_CASE("StepJunctionTrain: one tick is two loco-handler passes", "[junction][
 	/* The rig samples once per tick, so the 190 km/h crossing can land on either side of the model's (R2). */
 	CHECK(calls >= 63);
 	CHECK(calls <= 65);
+}
+
+TEST_CASE("prio tiles are the game-rules prio length", "[junction]")
+{
+	SECTION("the test spec at each speed") {
+		for (const uint16_t speed : {100, 120, 140, 160, 180, 196}) {
+			INFO("speed " << speed);
+			JunctionSpec spec = MakeTestJunctionSpec();
+			spec.train.max_speed = speed;
+			spec.reference_speed = speed;
+			CHECK(JunctionPrioTiles(spec) == JunctionPrioLength(spec.train, spec.reference_speed, spec.tl, spec.sd));
+			CHECK(JunctionPrioTiles(spec) > 0);
+		}
+	}
+
+	SECTION("a length past the bound gives 0") {
+		JunctionSpec spec = MakeTestJunctionSpec();
+		spec.train.power_hp = 1000;
+		spec.train.max_te = 60000;
+		REQUIRE(JunctionPrioLength(spec.train, spec.reference_speed, spec.tl, spec.sd) > JUNCTION_MAX_PRIO_TILES);
+		CHECK(JunctionPrioTiles(spec) == 0);
+	}
 }

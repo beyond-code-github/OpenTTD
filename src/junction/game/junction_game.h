@@ -61,7 +61,7 @@ JunctionSpec MakeJunctionSpec(RailType railtype, uint8_t ml_gap, uint8_t branch_
  */
 Money JunctionTunnelPrice(uint middle, Money build_tunnel, Money rail_piece);
 
-/** The coverage and strictness for a slider choice (D139). @param choice 0 = the maximum. @param tl Train length. @param sized The strict coverage from SizeJunctionPrio (> 0). @return {prio_tiles, prio_strict}. */
+/** The coverage and strictness for a slider choice (D139). @param choice 0 = the maximum. @param tl Train length. @param sized The prio length M from JunctionPrioTiles (> 0). @return {prio_tiles, prio_strict}. */
 std::pair<uint8_t, bool> JunctionPrioChoice(uint8_t choice, uint8_t tl, uint8_t sized);
 
 /** Snapshot the map around an anchor for the generator, in its working frame (D93): cell (cx, cy) is map tile anchor + OrientJunctionVector({cx - frame.hub_x, cy}, rotation, mirrored). */

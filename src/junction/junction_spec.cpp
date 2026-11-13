@@ -10,6 +10,7 @@
 #include "../stdafx.h"
 
 #include "junction_spec.h"
+#include "junction_train_model.h"
 #include "../core/math_func.hpp"
 
 #include <algorithm>
@@ -99,13 +100,19 @@ int JunctionRampLevels(const JunctionSpec &spec)
 	return static_cast<int>(spec.tl * spare / slope);
 }
 
+uint8_t JunctionPrioTiles(const JunctionSpec &spec)
+{
+	const uint32_t length = JunctionPrioLength(spec.train, spec.reference_speed, spec.tl, spec.sd);
+	return length > JUNCTION_MAX_PRIO_TILES ? 0 : static_cast<uint8_t>(length);
+}
+
 JunctionSpec MakeTestJunctionSpec()
 {
 	JunctionSpec spec{};
 	spec.ml_gap = 1;
 	spec.branch_gap = 1;
 	spec.tl = 4;
-	spec.prio_tiles = 14; /* Measured: SizeJunctionPrio of this spec with prio_tiles 0 (see the test "SizeJunctionPrio sizes the test spec"). */
+	spec.prio_tiles = 14; /* A fixed fixture coverage (the old sizing's value at this spec), as a slider choice. */
 	/* The D138 design train: Buborough's main-line consist, loaded. */
 	spec.train.power_hp = 14194;
 	spec.train.max_te = 1090000;

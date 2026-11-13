@@ -635,7 +635,7 @@ TEST_CASE("GenerateJunctionNear builds on flat land at 196 km/h", "[junction][tm
 	JunctionSpec spec = MakeTestJunctionSpec();
 	spec.train.max_speed = 196;
 	spec.reference_speed = 196;
-	spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+	spec.prio_tiles = JunctionPrioTiles(spec);
 	const JunctionTerrain terrain = MakeNearTestTerrain();
 	const std::atomic<bool> cancel{false};
 	const auto start = std::chrono::steady_clock::now();

@@ -2830,7 +2830,7 @@ TEST_CASE("topology: the seeds are clean at every train length and speed", "[jun
 				spec.train.max_speed = v;
 				spec.reference_speed = v;
 				spec.prio_tiles = 0;
-				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+				spec.prio_tiles = JunctionPrioTiles(spec);
 				const std::string cell = fmt::format("{} tl {} v {}", ti == 0 ? "T" : "LL_RR", tl, v);
 				if (spec.prio_tiles == 0) {
 					INFO(cell << ": prio_tiles 0, skipped");
@@ -2947,7 +2947,7 @@ TEST_CASE("topology: the curve family alone keeps every seed clean", "[junction]
 		in >> ti >> tl >> v >> w >> h >> colon;
 		old_size[{ti, tl, v}] = {w, h};
 	}
-	size_t cells = 0;
+	size_t cells = 0, unboxed = 0;
 	for (int ti = 0; ti < 2; ti++) {
 		const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
 		for (int tl = 3; tl <= 8; tl++) {
@@ -2957,7 +2957,7 @@ TEST_CASE("topology: the curve family alone keeps every seed clean", "[junction]
 				spec.train.max_speed = v;
 				spec.reference_speed = v;
 				spec.prio_tiles = 0;
-				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+				spec.prio_tiles = JunctionPrioTiles(spec);
 				if (spec.prio_tiles == 0) continue;
 				const std::string cell = fmt::format("{} tl {} v {}", ti == 0 ? "T" : "LL_RR", tl, v);
 				std::string error;
@@ -2970,14 +2970,21 @@ TEST_CASE("topology: the curve family alone keeps every seed clean", "[junction]
 					CHECK(false);
 				}
 				const auto key = std::make_tuple(ti, tl, v);
-				REQUIRE(old_size.contains(key));
 				cells++;
+				if (!old_size.contains(key)) {
+					/* The old sizing refused v196 tl 7 and 8, so no old seed box exists; the game-rules prio length sizes them. Every other check above still runs. */
+					REQUIRE(v == 196);
+					REQUIRE((tl == 7 || tl == 8));
+					unboxed++;
+					continue;
+				}
 				CHECK(p.size.x <= old_size[key].first);
 				CHECK(p.size.y <= old_size[key].second);
 			}
 		}
 	}
-	CHECK(cells == old_size.size());
+	CHECK(unboxed == 4);
+	CHECK(cells == old_size.size() + unboxed);
 }
 
 TEST_CASE("topology: every placement edit fails with a reason or is checker-clean", "[junction][topologysweep][.identity]")
@@ -2993,7 +3000,7 @@ TEST_CASE("topology: every placement edit fails with a reason or is checker-clea
 				spec.train.max_speed = v;
 				spec.reference_speed = v;
 				spec.prio_tiles = 0;
-				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+				spec.prio_tiles = JunctionPrioTiles(spec);
 				REQUIRE(spec.prio_tiles != 0);
 				std::string ignored;
 				const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
@@ -3124,7 +3131,7 @@ static JunctionTrackPlacement PlaceTEdited(const std::function<void(JunctionPlac
 	spec.train.max_speed = 100;
 	spec.reference_speed = 100;
 	spec.prio_tiles = 0;
-	spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+	spec.prio_tiles = JunctionPrioTiles(spec);
 	std::string ignored;
 	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &ignored);
 	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &ignored);
@@ -3200,7 +3207,7 @@ TEST_CASE("topology: placement from its own choices equals the seed (sweep)", "[
 				spec.train.max_speed = v;
 				spec.reference_speed = v;
 				spec.prio_tiles = 0;
-				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+				spec.prio_tiles = JunctionPrioTiles(spec);
 				if (spec.prio_tiles == 0) continue;
 				const std::string cell = fmt::format("{} tl {} v {}", ti == 0 ? "T" : "LL_RR", tl, v);
 				JunctionTrackPlacement p, q;
@@ -3414,13 +3421,14 @@ TEST_CASE("topology: doubled legs place by their chains across the sweep", "[jun
 			spec.train.max_speed = v;
 			spec.reference_speed = v;
 			spec.prio_tiles = 0;
-			spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+			spec.prio_tiles = JunctionPrioTiles(spec);
 			if (spec.prio_tiles == 0) continue;
 			checked += CheckDoubledLegs(JunctionLLRRSidelineTopology(), spec, fmt::format("LL_RR tl {} v {}", tl, v));
 			cells++;
 		}
 	}
-	CHECK(cells == 22);
+	/* The old sizing refused v196 tl 7 and 8; the game-rules prio length sizes them, so 24 cells. */
+	CHECK(cells == 24);
 	CHECK(checked >= cells);
 }
 
@@ -3593,7 +3601,7 @@ TEST_CASE("topology: pushing any point later keeps the seed legal", "[junction][
 			spec.train.max_speed = 196;
 			spec.reference_speed = 196;
 			spec.prio_tiles = 0;
-			spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+			spec.prio_tiles = JunctionPrioTiles(spec);
 		}
 		for (int ti = 0; ti < 2; ti++) {
 			const JunctionTopology &t = ti == 0 ? JunctionTTopology() : JunctionLLRRSidelineTopology();
@@ -4500,7 +4508,7 @@ TEST_CASE("topology: the built hub topology is the hand topology and seeds the s
 				spec.train.max_speed = v;
 				spec.reference_speed = v;
 				spec.prio_tiles = 0;
-				spec.prio_tiles = SizeJunctionPrio(spec).prio_tiles;
+				spec.prio_tiles = JunctionPrioTiles(spec);
 				if (spec.prio_tiles == 0) continue;
 				INFO(pair.main << " tl " << tl << " v " << v);
 				std::string error;

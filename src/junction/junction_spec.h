@@ -29,6 +29,8 @@ struct JunctionUnitPrices {
 	std::function<Money(uint)> tunnel; ///< One tunnel by middle-tile count, as CmdBuildTunnel charges it without clearing the portals; unset: no tunnels (D155).
 };
 
+static constexpr uint8_t JUNCTION_MAX_PRIO_TILES = 32; ///< The longest prio coverage the tool offers, in tiles.
+
 /** Everything the generator needs; the game fills it (PLAN-1b §5.1). */
 struct JunctionSpec {
 	uint8_t ml_gap;
@@ -52,6 +54,8 @@ struct JunctionSpec {
 uint16_t CurveSpeedLimitForSpacing(uint spacing, uint8_t curve_speed);
 uint DeriveCurveSpacing(uint16_t speed, uint8_t curve_speed, uint8_t tl);
 int JunctionRampLevels(const JunctionSpec &spec); ///< D219: the most levels a route may rise within tl consecutive tiles with no speed loss at reference_speed (realistic model, RECON-slope-physics); tl or more when the slope costs nothing.
+/** The prio length M, the slider's top and start (D139): the game-rules prio length of the spec's train at its reference speed on flat track (JunctionPrioLength); 0 when it exceeds JUNCTION_MAX_PRIO_TILES. */
+uint8_t JunctionPrioTiles(const JunctionSpec &spec);
 JunctionSpec MakeTestJunctionSpec();
 
 #endif /* JUNCTION_SPEC_H */
