@@ -81,3 +81,19 @@ One commit on wt-g31b: `Codechange: Junction placement reads node shapes and edg
 - stops;
 - `git status --porcelain` and `git log -1`.
 When you have reported, stop.
+
+## Addendum (relaunch after the first attempt's stop)
+The first attempt is saved at `/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/g31b/g31b-attempt.patch`. Apply it first, read it, and keep what matches this brief. Its findings:
+- Test 1 is equal on T and LL_RR x L_R, with port ends excluded. That exclusion is correct; keep it.
+- The only disagreements are on the failing topologies: today's rule pins a Corner that leaves a merge to the merge point, and the data does not.
+
+**Ruling (orchestrator, applying D234(2) and D235):** the data's rule stands. Only a node's serving bend shares its point. A Corner leaving a merge gets a run of at least its floor before it, which only relaxes the layout. Do not add the old case back.
+
+Further changes:
+5. **The `halves >= 1` crash.** With the switch in, LL_RR x LL_RR in "topology: ... under each lane pairing seeds or names a reason" (junction_topology.cpp ~4532) aborts in `JunctionBendMoves` with halves 0.
+   - Find the caller from a Debug backtrace (gdb batch mode, output to a file), and name it with its line.
+   - The standing ruling is that a Fan, Corner or S-bend sized to 0 columns is no bend: it adds no pieces, occupancy or bend bits. Guard that call site the way the other sites already skip `m == 0` (for example jp ~517: `if (el.m != 0)`).
+   - If the 0 comes from a Corner (halves `2k + 1` can't be 0), or the call site has no `m` to test, STOP and report.
+6. **Unused lambdas.** Remove `is_row_node` and `row_of_node` in placement if nothing reads them after the switch.
+
+Changed stop condition: on L_R x L_RR, L_R x LL_RR and LL_RR x LL_RR, a changed failure text or outcome in an existing test is allowed and is not a stop. List each one with its old and new text. A crash or abort is still a stop if guarding as in 5 does not remove it. Everything on T and LL_RR x L_R, and identity, must stay exactly as it is.
