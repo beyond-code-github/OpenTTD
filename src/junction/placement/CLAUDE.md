@@ -11,7 +11,7 @@
 - Every edge is one chain of elements; one floor table keyed by (previous kind, next kind) holds every run constant.
 - A band edge's chain starts on its row's heading when it leaves a row node, else south when it carries exit paths and north when it carries joiner paths.
 - A band chain's start heading, which of its bends begins or ends exactly on a node's point, and a row node's stack item are read from the programs' edge ends and node shapes; placement infers none of them from token order.
-- An S-bend is pinned to a node only by its role (Diverge to its split, Converge to its merge), never by its token position.
+- Only a node's serving bend shares its point: a Diverge S-bend or a Corner leaving a split, a Converge S-bend joining a merge; any other bend next to a node has a run of at least its floor between them.
 - Curve gaps: consecutive same-hand bends at least `min(2TL - 1, max(2, CL))` in units along the path, opposite hands at least 2, non-consecutive at least `min(2TL - 1, (j - i) CL)` (`JunctionCurveGaps`).
 - Curve length CL is derived from the train, not set: the smallest bend spacing (1..12) whose curve speed limit is at least the design speed, capped at 2 TL (`DeriveCurveSpacing`).
 - A diagonal half piece counts as half a tile for CL.
@@ -23,7 +23,7 @@
 - Stub length at a branch port is two tiles: the signal tile then the boundary tile; the stub is one rule constant.
 - An S branch port's fan is a vertical S-bend sized by the solve, 0 columns allowed (then it lies on the port's run); the ports keep the notation spacing.
 - Every layer-1 node of band R lies at least a port stub above the S edge.
-- A row's in or out edge meets its node on the row of the stack item named by its nearest Fan, Corner or S-bend token; bridge tokens name edges, not items.
+- A row node lies on the stack item of its node shape (the last item token of its trunk for a split, of its straight leg for a merge); bridge tokens name edges, not items.
 - A Fan, Corner or S-bend sized to 0 columns is no bend: it adds no pieces, occupancy or bend bits.
 - The junction footprint ends one tile beyond the outermost signal on each leg; every track of a leg ends flush at the footprint edge.
 - Planar signal windows and node footprints: a node has a footprint from the rules (the split or merge tile, required straight runs, prio coverage) and a window along its line.
