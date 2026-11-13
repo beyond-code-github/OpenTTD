@@ -4258,25 +4258,28 @@ TEST_CASE("topology: run and group tiles match the render", "[junction][topoproj
 		if (!q.nodes.empty() && SamePlacement(p.seed, q)) missing += fmt::format(" ({},{})", x, y);
 	}
 	/* Every other tile of the box blocked at once leaves the seed as it is: a fact applied to any of them would move it, as the seed covers the tile (the seed is the least solution of any set of facts it meets). */
+	/* Bridge middles are left out: a house under one is refused by the span fact (HH2, D175), not a tile the seed covers. */
+	std::set<std::pair<int, int>> middles;
+	for (const auto &copies : p.seed.bridges) {
+		for (const JunctionBridge &span : copies) {
+			const int sx = (span.end.x > span.start.x) - (span.end.x < span.start.x);
+			const int sy = (span.end.y > span.start.y) - (span.end.y < span.start.y);
+			if (sx == 0 && sy == 0) continue;
+			for (int x = span.start.x + sx, y = span.start.y + sy; x != span.end.x || y != span.end.y; x += sx, y += sy) middles.emplace(x, y);
+		}
+	}
 	std::vector<std::pair<int, int>> others;
 	for (int y = 0; y < p.seed.size.y; y++) {
 		for (int x = 0; x < p.seed.size.x; x++) {
-			if (!rendered.contains({x, y})) others.emplace_back(x, y);
+			if (!rendered.contains({x, y}) && !middles.contains({x, y})) others.emplace_back(x, y);
 		}
 	}
 	const JunctionTrackPlacement rest = PlaceWithHouses(t, p, flat, others, &error);
 	INFO(error);
 	INFO("rendered tiles without a fact:" << missing);
 	CHECK(missing.empty());
-	/* A house under a bridge middle is a legitimate refusal (HH2, D175): that case is skipped. */
-	int skipped = 0;
-	if (rest.nodes.empty() && error.find("bridge span over a blocked tile") != std::string::npos) {
-		skipped++;
-	} else {
-		REQUIRE(!rest.nodes.empty());
-		CHECK(SamePlacement(p.seed, rest));
-	}
-	WARN("skipped " << skipped << " case(s) refused over a bridge middle");
+	REQUIRE(!rest.nodes.empty());
+	CHECK(SamePlacement(p.seed, rest));
 }
 
 TEST_CASE("topoproj: the objective gives way to a house", "[junction][topoprojsweep]")
