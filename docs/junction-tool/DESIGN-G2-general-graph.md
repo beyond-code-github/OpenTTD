@@ -27,6 +27,15 @@ So each main row carries one in, one leg and one out for a T at any lane count a
 - Over/under at each crossing follows D223/D227.
 - This removes placement's "one bridge per band edge" refusal.
 
+## G2.4 A doubled bridge on a row's out edge (D229)
+- Where a joiner merges into a main lane before a crossing of that lane (D229, merge then bridge), the lane's out edge (joiner merge to the main out port) carries its doubled bridge.
+- One rule covers the leg and the out edge: the two copies run from a start item A to an end item B of the row (A != B, each the Lane or the Copy item). Copy 1 (`programs.copies[e]`) S-bends from A to B before the bridge (`LaneSplit`); copy 0 (`programs.edges[e]`) stays on A over the bridge and S-bends to B after it (`LaneMerge`). Each copy has exactly one S-bend, so both have equal pathfinder cost (D100, D105); copy 1's heads sit one tile upstream of copy 0's (D118, D145).
+- Leg: A is the item the exit split sits on (`north` when the leg is doubled), B is Lane (today, unchanged).
+- Out edge: A is Lane (the joiner merge sits on the lane), B is the row's Copy item; the out edge's Fan runs from the Copy item to the port. Programs: `edges[e]` = `[Over..., SBend(copy, LaneMerge), Fan(copy)]`, `copies[e]` = `[SBend(copy, LaneSplit), Over...]`.
+- A row's one Copy item (Copy or PrioAndCopy, either side of Lane) serves every doubled edge of the row; the bridges lie at different x.
+- Run floors: joiner merge to lane split, and lane merge to fan, are the chain run (2, D217).
+- A doubled in edge is the mirror and is not built yet; it is refused by name.
+
 ## What this does not cover (named, later)
 - **Four-way hubs:** a main lane with two branch groups (left and right) needs two legs on one row. That is the next generalisation, rows with several legs, and it is not needed for T hubs at any lane count.
 - **Tunnels as a cost choice for the diving leg** (D227 toggle candidate).
