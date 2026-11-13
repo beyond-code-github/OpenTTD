@@ -1,0 +1,465 @@
+diff --git a/src/junction/junction_track_geometry.cpp b/src/junction/junction_track_geometry.cpp
+index 97596d03f1..3eded855e0 100644
+--- a/src/junction/junction_track_geometry.cpp
++++ b/src/junction/junction_track_geometry.cpp
+@@ -15,6 +15,10 @@
+ #include "../track_func.h"
+ #include "../direction_func.h"
+ 
++#include <climits>
++#include <map>
++#include <set>
++
+ #include "../safeguards.h"
+ 
+ /** The moves of a bend from its axis piece: the first turn, the halves after the first, the closing turn (DESIGN-G1 §11.8). A hand of +1 is a clockwise turn. */
+@@ -68,6 +72,47 @@ std::vector<JunctionBendTileForm> JunctionBendTileForms(int heading, int hand, i
+ 	return forms;
+ }
+ 
++/** The column form of the S-bend of 2L halves starting on the given heading with the given hand, read from the rasters. */
++JunctionSBendColumns JunctionSBendColumnForm(int heading, int hand)
++{
++	static constexpr int VX[] = {0, 1, 0, -1};
++	static constexpr int VY[] = {-1, 0, 1, 0};
++	const int side = (heading + hand + 4) % 4;
++
++	/** The rows of one column: least, greatest and the number of distinct rows. */
++	struct Column {
++		int lo = INT_MAX, hi = INT_MIN;
++		std::set<int> rows;
++	};
++	auto columns_at = [&](int length) {
++		std::map<int, Column> columns;
++		for (const std::pair<int, int> &tile : BendRasterOffsets(heading, hand, length, false)) {
++			Column &column = columns[tile.first * VX[side] + tile.second * VY[side]];
++			column.lo = std::min(column.lo, tile.second);
++			column.hi = std::max(column.hi, tile.second);
++			column.rows.insert(tile.second);
++		}
++		return columns;
++	};
++	const std::map<int, Column> big = columns_at(64);
++	if (big.count(1) == 0 || big.count(2) == 0) return {0, 0, 0, 0, 0};
++	JunctionSBendColumns form{big.at(1).lo, big.at(1).hi, big.at(2).lo - big.at(1).lo, 0, 0};
++
++	/* T(L): the largest t with columns 1..t contiguous and on the diagonal. */
++	auto reach = [&](int length) {
++		const std::map<int, Column> columns = columns_at(length);
++		int t = 1;
++		for (auto found = columns.find(t); found != columns.end(); found = columns.find(++t)) {
++			const Column &column = found->second;
++			if (static_cast<int>(column.rows.size()) != column.hi - column.lo + 1 || column.lo != form.lo + form.s * (t - 1) || column.hi != form.hi + form.s * (t - 1)) break;
++		}
++		return t - 1;
++	};
++	form.t1 = reach(64) - reach(63);
++	form.t0 = reach(64) - 64 * form.t1;
++	return form;
++}
++
+ /** Whether a track touches the given tile edge. */
+ bool JunctionTrackTouches(Track track, DiagDirection edge)
+ {
+diff --git a/src/junction/junction_track_geometry.h b/src/junction/junction_track_geometry.h
+index c5a2a7d6b2..1849d9dc90 100644
+--- a/src/junction/junction_track_geometry.h
++++ b/src/junction/junction_track_geometry.h
+@@ -31,6 +31,14 @@ struct JunctionBendTileForm {
+ /** Per tile of the raster of a bend of length L (an S-bend: 2L halves; a Corner: 2L + 1), its form, read from the rasters at L and L + 1. */
+ std::vector<JunctionBendTileForm> JunctionBendTileForms(int heading, int hand, int length, bool corner);
+ 
++/** The rows of an S-bend's sideways column 1 and how they move per column (DESIGN-G3 §G3.4a): lo(t) = lo + s (t - 1), hi(t) = hi + s (t - 1) for t = 1..t0 + t1 L. */
++struct JunctionSBendColumns {
++	int lo, hi, s, t0, t1;
++};
++
++/** The column form of the S-bend of 2L halves starting on the given heading with the given hand, read from the rasters. */
++JunctionSBendColumns JunctionSBendColumnForm(int heading, int hand);
++
+ /** Whether a track touches the given tile edge. */
+ bool JunctionTrackTouches(Track track, DiagDirection edge);
+ 
+diff --git a/src/junction/placement/junction_joint.cpp b/src/junction/placement/junction_joint.cpp
+index 556814573d..011361b212 100644
+--- a/src/junction/placement/junction_joint.cpp
++++ b/src/junction/placement/junction_joint.cpp
+@@ -211,7 +211,15 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
+ 		}
+ 	}
+ 
+-	/* The recorded relations: coord(v) - coord(u) - a L >= b (tagged) or >= c. */
++	/* The columns of the single bridges over an S-bend (DESIGN-G3 §G3.4a): t in [1, 64], t - t1 L(bend) <= t0, and the tie break EPS t keeps an equal-cost solution at t = 1. */
++	std::vector<uint32_t> T;
++	for (const JunctionSystemOver &over : system.overs) {
++		T.push_back(model.Var(1, 64));
++		model.AddRow({{T.back(), 1}, {L[over.bend], -over.t1}}, -JunctionMilp::INF, over.t0); // bridge over an S-bend: t <= t0 + t1 L
++		model.cost[T.back()] += EPS;
++	}
++
++	/* The recorded relations: coord(v) - coord(u) - a L - d t >= b - d t_recorded (tagged, d from a bridge's column) or >= c. */
+ 	std::set<int> tagged_y;
+ 	for (size_t r = 0; r < system.relations.size(); r++) {
+ 		const JunctionSystemRelation &relation = system.relations[r];
+@@ -222,13 +230,18 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
+ 		Coefs coefs;
+ 		coefs[axis_coord[relation.v]] += 1;
+ 		coefs[axis_coord[relation.u]] -= 1; // v == u: a constant row
++		double over_constant = 0; ///< c has + d (t - t_recorded): the row takes - d t and its constant - d t_recorded.
++		if (relation.over >= 0) {
++			coefs[T[relation.over]] -= relation.d;
++			over_constant = -static_cast<double>(relation.d) * system.overs[relation.over].t;
++		}
+ 		const int bid = relation.bend;
+ 		if (relation.zero_branch && bid >= 0 && Z.count(bid) != 0) {
+ 			coefs[Z[bid]] = BIG; // only when the fan is empty
+ 			model.AddRow(coefs, relation.c, JunctionMilp::INF, static_cast<int>(r));
+ 		} else if (!relation.nonlinear && !relation.zero_branch && bid >= 0) {
+ 			coefs[L[bid]] -= relation.a;
+-			double lower = relation.b;
++			double lower = relation.b + over_constant;
+ 			if (Z.count(bid) != 0) { // an S fan's sized branch: only when the fan is not empty
+ 				coefs[Z[bid]] = -BIG;
+ 				lower = relation.b - BIG;
+@@ -236,7 +249,7 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
+ 			if (relation.axis == 1) tagged_y.insert(bid);
+ 			model.AddRow(coefs, lower, JunctionMilp::INF, static_cast<int>(r));
+ 		} else {
+-			model.AddRow(coefs, relation.c, JunctionMilp::INF, static_cast<int>(r));
++			model.AddRow(coefs, relation.c + over_constant, JunctionMilp::INF, static_cast<int>(r));
+ 		}
+ 	}
+ 
+@@ -373,6 +386,14 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
+ 			if (b.source == "free") result.choices.m[b.edge][b.tok] = result.length[i];
+ 			if (b.source == "corner_rows") result.choices.corner[b.edge][b.tok] = result.length[i];
+ 		}
++		if (!system.overs.empty()) {
++			bool moved = false; ///< An all-1 column is the empty choice: it stays empty, as the fixed path reads it.
++			for (const uint32_t column : T) moved |= std::lround(milp.Value(column)) != 1;
++			if (moved) {
++				for (const uint32_t tokens : system.tokens) result.choices.over.emplace_back(tokens, 0);
++				for (size_t i = 0; i < system.overs.size(); i++) result.choices.over[system.overs[i].edge][system.overs[i].tok] = static_cast<int>(std::lround(milp.Value(T[i]))) - 1;
++			}
++		}
+ 		for (uint32_t p = 0; p < npts; p++) {
+ 			result.x.push_back(static_cast<int>(std::lround(milp.Value(x[p]))));
+ 			result.y.push_back(static_cast<int>(std::lround(milp.Value(y[p]))));
+diff --git a/src/junction/placement/junction_placement.cpp b/src/junction/placement/junction_placement.cpp
+index e243442f20..5c0525b258 100644
+--- a/src/junction/placement/junction_placement.cpp
++++ b/src/junction/placement/junction_placement.cpp
+@@ -99,6 +99,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 		for (size_t e = 0; e < graph.edges.size(); e++) {
+ 			if (fixed->m[e].size() != programs.edges[e].size() || fixed->corner[e].size() != programs.edges[e].size()) return fail("the choices do not fit the programs of this track graph");
+ 		}
++		if (!fixed->over.empty()) {
++			if (fixed->over.size() != graph.edges.size()) return fail("the choices do not fit the programs of this track graph");
++			for (size_t e = 0; e < graph.edges.size(); e++) {
++				if (fixed->over[e].size() != programs.edges[e].size()) return fail("the choices do not fit the programs of this track graph");
++			}
++		}
+ 	}
+ 	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
+ 	const int n = static_cast<int>(slots.size());
+@@ -321,6 +327,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 		bool nonlinear = false;
+ 		bool zero_branch = false;
+ 		bool order_pin = false; ///< The hug's equalities: the joint model drops them.
++		int over = -1, d = 0; ///< When over >= 0: c also has + d * (t(over) - t at the recording) (DESIGN-G3 §G3.4a).
+ 	};
+ 	SystemTag tag; ///< The tag of the relations added now.
+ 	bool tag_negated = false; ///< The second relation of an equality: its constant is the negation.
+@@ -339,6 +346,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 		if (tag_negated) {
+ 			t.a = -t.a;
+ 			t.b = -t.b;
++			t.d = -t.d;
+ 		}
+ 		cons_tag.push_back(t);
+ 	};
+@@ -402,6 +410,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 	std::vector<JunctionSystemRoute> recorded_routes; ///< The curve-gap routes of the X build now (DESIGN-G3 §G3.3a), taken by the X record.
+ 	std::vector<std::array<int, 5>> recorded_route_curves; ///< Their curve forms (for tests).
+ 	std::vector<JunctionSystemClash> recorded_clashes; ///< The occupancy clashes of the X build now (DESIGN-G3 §G3.3a, b-6), taken by the X record; the reason is set there.
++	std::vector<JunctionSystemOver> recorded_overs; ///< The single bridges over an S-bend of the build now, in order (DESIGN-G3 §G3.4a); record_system sets the bend from over_elems.
++	std::vector<const Elem *> over_elems; ///< Per recorded over, the crossed S-bend's element.
+ 	std::vector<uint32_t> recorded_clash_reasons; ///< Per clash, its index into 'reasons'.
+ 	auto record_system = [&]() {
+ 		pad_tags(false);
+@@ -447,6 +457,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				}
+ 			}
+ 		}
++		now.overs = recorded_overs;
++		for (size_t i = 0; i < now.overs.size(); i++) now.overs[i].bend = bend_id.at(over_elems[i]);
+ 		std::vector<std::string> reason_text(reasons.size());
+ 		for (size_t i = 0; i < reasons.size(); i++) {
+ 			const JunctionPlacementReason &reason = reasons[i];
+@@ -469,6 +481,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 			const SystemTag &t = cons_tag[i];
+ 			const int bid = t.bend != nullptr && bend_id.count(t.bend) ? bend_id[t.bend] : -1;
+ 			now.relations.push_back({static_cast<uint8_t>(phase), cons[i].v, cons[i].u, cons[i].k, bid, t.a, t.b, t.nonlinear, t.zero_branch, t.order_pin, reason_text[cons[i].reason]});
++			now.relations.back().over = t.over;
++			now.relations.back().d = t.d;
+ 		}
+ 		recorded_axis[phase] = true;
+ 
+@@ -1438,6 +1452,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 	auto build = [&]() {
+ 		cons.clear();
+ 		cons_tag.clear();
++		recorded_overs.clear();
++		over_elems.clear();
+ 		reasons.clear();
+ 		fact_cons.clear();
+ 		notes.clear();
+@@ -1744,7 +1760,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				run(el.hout, next.first, el.last, dist, exact);
+ 			}
+ 
+-			/* A single bridge passes over the S-bend it crosses, in the column next to the S-bend's start (D113, F4). */
++			/* A single bridge passes over the S-bend it crosses, in the column t of the S-bend, 1 unless a choice says otherwise (D113, F4, DESIGN-G3 §G3.4a). */
+ 			for (const Elem &el : elems) {
+ 				if (el.k != Elem::K::Heads) continue;
+ 				const std::vector<Elem> &other = chain[el.cross];
+@@ -1755,30 +1771,20 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				if (crossed == nullptr) { build_why = "no crossed sbend"; return false; }
+ 				why("bridge over S-bend", e);
+ 				const int side = (crossed->hin + crossed->hand + 4) % 4;
+-				const std::vector<TileIndexDiffC> tiles = bend_tiles(crossed->hin, crossed->hand, 2 * std::max(crossed->m, 2), false);
+-				int lo = 1000, hi = -1000;
+-				for (const TileIndexDiffC &t : tiles) {
+-					if (t.x * VX[side] + t.y * VY[side] != 1) continue;
+-					lo = std::min<int>(lo, t.y);
+-					hi = std::max<int>(hi, t.y);
+-				}
+-				if (lo > hi) { build_why = "no column tile"; return false; }
+-				eq(0, el.first, crossed->first, VX[side]);
++				const JunctionSBendColumns form = JunctionSBendColumnForm(crossed->hin, crossed->hand);
++				/* The column t counted from the start: 1 + the choice, 1 when empty or when not fixed. */
++				const int t = 1 + (fixed != nullptr && !fixed->over.empty() ? fixed->over[e][el.tok] : 0);
++				if (t > form.t0 + form.t1 * std::max(crossed->m, 2)) { build_why = "a bridge over an S-bend beyond its diagonal"; return false; }
++				const int lo = form.lo + form.s * (t - 1);
++				const int hi = form.hi + form.s * (t - 1);
+ 				const bool north = el.hin == 0;
+-				/* The rows of the bend's first column, lo and hi, come from the raster of max(m, 2): constant over m = 2..64 or the relations depend on m non-linearly. Only a recording looks. */
+-				bool constant_rows = true;
+-				if (system != nullptr) {
+-					for (int mm = 2; mm <= 64 && constant_rows; mm++) {
+-						int l2 = 1000, h2 = -1000;
+-						for (const TileIndexDiffC &t : bend_tiles(crossed->hin, crossed->hand, 2 * mm, false)) {
+-							if (t.x * VX[side] + t.y * VY[side] != 1) continue;
+-							l2 = std::min<int>(l2, t.y);
+-							h2 = std::max<int>(h2, t.y);
+-						}
+-						constant_rows = l2 == lo && h2 == hi;
+-					}
+-				}
+-				tag = constant_rows ? SystemTag{crossed, 0, north ? hi + 1 : lo - 1, false, false} : SystemTag{crossed, 0, 0, true, false};
++				/* The rows of column t follow the diagonal (premise P3): the relations are linear in t, so a recording tags them with it. */
++				recorded_overs.push_back({static_cast<int>(e), el.tok, -1, t, form.t0, form.t1});
++				over_elems.push_back(crossed);
++				const int over_index = static_cast<int>(recorded_overs.size()) - 1;
++				tag = SystemTag{nullptr, 0, 0, false, false, false, over_index, VX[side]};
++				eq(0, el.first, crossed->first, VX[side] * t);
++				tag = SystemTag{crossed, 0, north ? hi + 1 : lo - 1, false, false, false, over_index, form.s};
+ 				eq(1, el.first, crossed->first, north ? hi + 1 : lo - 1);
+ 				tag.b = north ? lo - 1 : hi + 1;
+ 				eq(1, el.last, crossed->first, north ? lo - 1 : hi + 1);
+diff --git a/src/junction/placement/junction_placement.h b/src/junction/placement/junction_placement.h
+index 2a81eab0f8..41a45936e7 100644
+--- a/src/junction/placement/junction_placement.h
++++ b/src/junction/placement/junction_placement.h
+@@ -38,6 +38,7 @@ struct JunctionPlacementReason {
+ struct JunctionPlacementChoices {
+ 	std::vector<std::vector<int>> m; ///< Per edge, per token of JunctionTrackPrograms::edges: a vertical S-bend's size, 0 for other tokens.
+ 	std::vector<std::vector<int>> corner; ///< Per edge, per token: a joiner_div Corner's row span, 0 for other tokens.
++	std::vector<std::vector<int>> over; ///< Per edge, per token: for a single bridge's Over token over an S-bend, its sideways column t - 1 (DESIGN-G3 §G3.4a); empty means 0 everywhere.
+ 	int port_offset = 0; ///< The port rows' offset.
+ 	bool operator==(const JunctionPlacementChoices &) const = default;
+ };
+@@ -52,6 +53,8 @@ struct JunctionSystemRelation {
+ 	bool zero_branch = false; ///< Holds only when the bend's S-fan size is 0 (see solve.py), else only when it is not.
+ 	bool order_pin = false; ///< Pins a head to the outermost crosser by the flat solve's order (the hug); the joint model drops it.
+ 	std::string reason; ///< The why() text with edge, node and row.
++	int over = -1; ///< When >= 0: c also has + d * (t(over) - t at the recording).
++	int d = 0;
+ };
+ 
+ /** One bend of the placement's chains (a Corner, an S-bend, an S fan or a fan), with how its size is known. */
+@@ -125,6 +128,15 @@ struct JunctionSystemClash {
+ 	std::string reason; ///< The occupancy reason text, as the relation's.
+ };
+ 
++/** A single bridge over an S-bend whose sideways column t is a choice (DESIGN-G3 §G3.4a). */
++struct JunctionSystemOver {
++	int edge; ///< The bridge's edge.
++	int tok; ///< Its Over token.
++	int bend; ///< The crossed S-bend's id.
++	int t; ///< The column at the recording.
++	int t0, t1; ///< t <= t0 + t1 L(bend).
++};
++
+ /** The relation system of the last X and the last Y round of one placement call, with each constant's dependence on a bend's length (DESIGN-G3 §G3.3). */
+ struct JunctionPlacementSystem {
+ 	int pt_count = 0; ///< The number of placement points.
+@@ -144,6 +156,7 @@ struct JunctionPlacementSystem {
+ 	std::vector<JunctionSystemElement> chains; ///< The elements of every chain.
+ 	std::vector<JunctionSystemRelation> relations; ///< The X relations, then the Y relations.
+ 	std::vector<JunctionSystemRoute> routes; ///< The routes of the last X round whose rows were known, for the curve-gap counters; empty when none.
++	std::vector<JunctionSystemOver> overs; ///< The single bridges over an S-bend, in the order of the last build.
+ 	std::vector<JunctionSystemClash> clashes; ///< The occupancy pairs of the last X round whose rows were known, as clash rows.
+ 	std::vector<std::array<int, 5>> route_curves; ///< For tests: per route curve (route, curve in travel order, xoff, yoff, seg) of the walk's curve forms.
+ };
+diff --git a/src/tests/junction/junction_track_geometry.cpp b/src/tests/junction/junction_track_geometry.cpp
+index 6f59e37139..525373b125 100644
+--- a/src/tests/junction/junction_track_geometry.cpp
++++ b/src/tests/junction/junction_track_geometry.cpp
+@@ -15,6 +15,9 @@
+ #include "../../junction/junction_route.h"
+ #include "../../junction/junction_track_geometry.h"
+ 
++#include <map>
++#include <set>
++
+ #include "../../safeguards.h"
+ 
+ TEST_CASE("unrelated pieces share a tile only as a parallel diagonal pair", "[junction][geometry]")
+@@ -131,3 +134,68 @@ TEST_CASE("bend tile forms predict the raster", "[junction][geometry]")
+ 		}
+ 	}
+ }
++
++TEST_CASE("S-bend columns are affine in the column", "[junction][geometry]")
++{
++	static constexpr int VX[] = {0, 1, 0, -1};
++	static constexpr int VY[] = {-1, 0, 1, 0};
++	/** The rows of one column of a raster: least, greatest, and whether they are contiguous. */
++	struct Column {
++		int lo = 1000, hi = -1000;
++		std::set<int> rows;
++		bool contiguous() const { return !this->rows.empty() && static_cast<int>(this->rows.size()) == this->hi - this->lo + 1; }
++	};
++	for (int heading = 0; heading < 4; heading++) {
++		for (int hand : {-1, 1}) {
++			const int side = (heading + hand + 4) % 4;
++			std::vector<std::map<int, Column>> by_length(65); ///< Index L.
++			for (int length = 2; length <= 64; length++) {
++				const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, 2 * length, false)});
++				REQUIRE(raster.error.empty());
++				REQUIRE(static_cast<int>(raster.pieces.size()) == 2 * length + 2);
++				for (int i = 1; i <= 2 * length; i++) {
++					const int x = raster.pieces[i].tile.x - raster.pieces[1].tile.x;
++					const int y = raster.pieces[i].tile.y - raster.pieces[1].tile.y;
++					Column &c = by_length[length][x * VX[side] + y * VY[side]];
++					c.lo = std::min(c.lo, y);
++					c.hi = std::max(c.hi, y);
++					c.rows.insert(y);
++				}
++			}
++			const std::map<int, Column> &big = by_length[64];
++			REQUIRE(big.count(1) != 0);
++			REQUIRE(big.count(2) != 0);
++			const int s = big.at(2).lo - big.at(1).lo;
++			const int lo1 = big.at(1).lo;
++			const int hi1 = big.at(1).hi;
++			/* T(L): the largest t with columns 1..t contiguous and on the diagonal. */
++			std::vector<int> reach(65, 0);
++			for (int length = 2; length <= 64; length++) {
++				int t = 1;
++				while (true) {
++					const auto found = by_length[length].find(t);
++					if (found == by_length[length].end()) break;
++					const Column &c = found->second;
++					if (!c.contiguous() || c.lo != lo1 + s * (t - 1) || c.hi != hi1 + s * (t - 1)) break;
++					t++;
++				}
++				reach[length] = t - 1;
++			}
++			const int t1 = reach[64] - reach[63];
++			const int t0 = reach[64] - 64 * t1;
++			INFO("TABLE heading " << heading << " hand " << hand << " s " << s << " T0 " << t0 << " T1 " << t1 << " lo1 " << lo1 << " hi1 " << hi1);
++			for (int length = 2; length <= 64; length++) {
++				INFO("L " << length);
++				CHECK(reach[length] == t0 + t1 * length);
++				CHECK(by_length[length].at(1).lo == lo1);
++				CHECK(by_length[length].at(1).hi == hi1);
++			}
++			const JunctionSBendColumns form = JunctionSBendColumnForm(heading, hand);
++			CHECK(form.lo == lo1);
++			CHECK(form.hi == hi1);
++			CHECK(form.s == s);
++			CHECK(form.t0 == t0);
++			CHECK(form.t1 == t1);
++		}
++	}
++}
+diff --git a/src/tests/junction/placement/junction_joint.cpp b/src/tests/junction/placement/junction_joint.cpp
+index 954f43d860..728f263317 100644
+--- a/src/tests/junction/placement/junction_joint.cpp
++++ b/src/tests/junction/placement/junction_joint.cpp
+@@ -750,6 +750,45 @@ TEST_CASE("joint: choices round-trip", "[junction][milp]")
+ 	}
+ }
+ 
++TEST_CASE("joint: a bridge over an S-bend may move along it", "[junction][milp]")
++{
++	const JunctionSpec spec = MakeTestJunctionSpec();
++	const JointInputs in = MakeJointInputs("LL_RR", "LL_RR");
++	const JunctionTrackStructure cut = DefaultCut(in);
++	std::string error;
++	/* All floors: every free S-bend 1, S fan 0, joiner Corner k (as the joint loop builds them). */
++	JunctionPlacementSystem shape;
++	PlaceTrackGraph(in.topology, in.paths, in.graph, in.order, cut, in.programs, spec, nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &shape);
++	REQUIRE(!shape.tokens.empty());
++	JunctionPlacementChoices choices;
++	for (const uint32_t tokens : shape.tokens) {
++		choices.m.emplace_back(tokens, 0);
++		choices.corner.emplace_back(tokens, 0);
++	}
++	for (const JunctionSystemBend &b : shape.bends) {
++		if (b.copy != 0) continue;
++		if (b.source == "free") choices.m[b.edge][b.tok] = b.kind == "SFan" ? 0 : 1;
++		if (b.source == "corner_rows") choices.corner[b.edge][b.tok] = shape.k;
++	}
++	choices.port_offset = shape.port_offset;
++
++	const JunctionPlacementSystem system = RecordJunctionPlacementSystem(in.topology, in.paths, in.graph, in.order, cut, in.programs, spec, choices);
++	REQUIRE(!system.relations.empty());
++	const JunctionJointResult joint = SolveJunctionJoint(system, spec);
++	std::string chain;
++	for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
++	WARN(fmt::format("round 0: status {}{}", static_cast<int>(joint.status), chain.empty() ? "" : ", conflict: " + chain));
++	for (size_t i = 0; i < system.overs.size(); i++) {
++		const JunctionSystemOver &over = system.overs[i];
++		WARN(fmt::format("over {}: edge {} tok {} bend {} ({}, size {}), t at the recording {}, t at the joint {}, t <= {} + {} L", i, over.edge, over.tok, over.bend, system.bends[over.bend].source, system.bends[over.bend].m, over.t, joint.status != JunctionMilp::Status::Optimal ? 0 : joint.choices.over.empty() ? 1 : joint.choices.over[over.edge][over.tok] + 1, over.t0, over.t1));
++	}
++	REQUIRE(joint.status == JunctionMilp::Status::Optimal);
++
++	const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(in.topology, in.paths, in.graph, in.order, cut, in.programs, spec, joint.choices, &error);
++	const std::string outcome = placed.nodes.empty() ? "does not place, error: " + error : fmt::format("places, box {} x {}", placed.size.x, placed.size.y);
++	WARN("the fixed path at the joint's choices " << outcome);
++}
++
+ /** The curve-gap rows of the counters where a vanished bend lies strictly between the two curves' bends (their gaps count the vanished curves). */
+ static int ApproximatedGaps(const JunctionPlacementSystem &system, const JunctionJointResult &joint, const JunctionSpec &spec)
+ {
+@@ -846,12 +885,15 @@ TEST_CASE("joint: the joint loop on the hubs", "[junction][milp][.g3loop]")
+ 			if (k == 0) round0 = system;
+ 			const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+ 			const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+-			int sum = 0, changed = 0;
++			int sum = 0, changed = 0, sum_t = 0;
++			for (const std::vector<int> &edge : joint.choices.over) {
++				for (const int t : edge) sum_t += t;
++			}
+ 			for (size_t i = 0; i < joint.length.size(); i++) {
+ 				sum += joint.length[i];
+ 				changed += joint.length[i] != system.bends[i].m;
+ 			}
+-			WARN(fmt::format("{} round {}: status {}, objective {:.3f}, sum L {}, changed {}, new clashes kept {}, kept total {}, held {}, {:.1f} ms", hub, k, static_cast<int>(joint.status), joint.objective, sum, changed, added, kept.size(), held, ms));
++			WARN(fmt::format("{} round {}: status {}, objective {:.3f}, sum L {}, sum t - 1 {}, changed {}, new clashes kept {}, kept total {}, held {}, {:.1f} ms", hub, k, static_cast<int>(joint.status), joint.objective, sum, sum_t, changed, added, kept.size(), held, ms));
+ 			if (joint.status == JunctionMilp::Status::Infeasible) {
+ 				std::string chain;
+ 				for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
