@@ -30,8 +30,9 @@ struct JunctionJointResult {
  * Solve the joint model of a recorded placement system (DESIGN-G3 §G3.3): one integer position per point and axis, one integer length per bend, the relations with their length-dependent constants, and the flat build cost as the objective.
  * @param system The record of the last X and Y rounds of a placement.
  * @param spec The spec the system was recorded with.
+ * @param relaxed Whether to add every variable as continuous (the LP relaxation; a scale probe).
  * @return The status, and for Optimal each bend's length and the objective.
  */
-JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, const JunctionSpec &spec);
+JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, const JunctionSpec &spec, bool relaxed = false);
 
 #endif /* JUNCTION_JOINT_H */

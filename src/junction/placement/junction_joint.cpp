@@ -156,7 +156,7 @@ static void AddCurveGapCounters(JointModel &model, const JunctionPlacementSystem
 	}
 }
 
-JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, const JunctionSpec &spec)
+JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, const JunctionSpec &spec, bool relaxed)
 {
 	JunctionJointResult result;
 	result.status = JunctionMilp::Status::Error;
@@ -307,7 +307,7 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 	for (const auto &[id, column] : L) model.cost[column] += EPS;
 
 	JunctionMilp milp;
-	for (size_t i = 0; i < model.lo.size(); i++) milp.AddVariable(model.lo[i], model.hi[i], model.cost[i], model.integer[i]);
+	for (size_t i = 0; i < model.lo.size(); i++) milp.AddVariable(model.lo[i], model.hi[i], model.cost[i], model.integer[i] && !relaxed);
 	std::vector<std::pair<uint32_t, double>> terms;
 	for (const JointModel::Row &row : model.rows) {
 		terms.assign(row.coefs.begin(), row.coefs.end());

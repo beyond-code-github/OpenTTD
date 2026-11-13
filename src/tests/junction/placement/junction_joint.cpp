@@ -439,3 +439,54 @@ TEST_CASE("joint: failing topologies with counters", "[junction][milp]")
 		CHECK((joint.status == JunctionMilp::Status::Infeasible || joint.status == JunctionMilp::Status::Optimal));
 	}
 }
+
+TEST_CASE("joint: scale probe on wider hubs", "[.g3scale]")
+{
+	using Clock = std::chrono::steady_clock;
+	auto since = [](Clock::time_point t) { return std::chrono::duration<double, std::milli>(Clock::now() - t).count(); };
+	auto median = [](std::vector<double> v) { std::sort(v.begin(), v.end()); return v[v.size() / 2]; };
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch] : {std::pair{"L_R", "L_R"}, std::pair{"LL_RR", "L_R"}, std::pair{"LLL_RRR", "L_R"}, std::pair{"LLL_RRR", "LL_RR"}, std::pair{"LLL_RRR", "LLL_RRR"}, std::pair{"LLLL_RRRR", "L_R"}, std::pair{"LLLL_RRRR", "LLLL_RRRR"}}) {
+		const std::string hub = std::string(main) == "L_R" && std::string(branch) == "L_R" ? std::string("T") : std::string(main) + " x " + branch;
+		JointInputs in;
+		std::string why;
+		in.topology = MakeJunctionHubTopology(ParseLineNotation(main).spec, ParseLineNotation(branch).spec, JunctionLanePairing::AnyToAny);
+		in.paths = ExpandJunctionLanes(in.topology, &why);
+		if (in.paths.empty()) { WARN(hub << ": stopped at lanes: " << why); continue; }
+		in.graph = BuildJunctionTrackGraph(in.topology, in.paths, &why);
+		if (in.graph.nodes.empty()) { WARN(hub << ": stopped at graph: " << why); continue; }
+		in.order = OrderJunctionTrackGraph(in.topology, in.paths, in.graph, &why);
+		if (!why.empty()) { WARN(hub << ": stopped at order: " << why); continue; }
+		in.structure = StructureJunctionTrackGraph(in.topology, in.paths, in.graph, in.order, &why);
+		if (!why.empty()) { WARN(hub << ": stopped at structure: " << why); continue; }
+		in.programs = ProgramJunctionTrackGraph(in.topology, in.paths, in.graph, in.order, in.structure, &why);
+		if (!why.empty()) { WARN(hub << ": stopped at programs: " << why); continue; }
+		const JunctionTrackStructure cut = DefaultCut(in);
+
+		std::string error;
+		std::vector<double> seed_ms;
+		JunctionTrackPlacement placed;
+		for (int i = 0; i < 3; i++) {
+			error.clear();
+			const auto t0 = Clock::now();
+			placed = PlaceJunctionTrackGraph(in.topology, in.paths, in.graph, in.order, cut, in.programs, spec, &error);
+			seed_ms.push_back(since(t0));
+		}
+		const bool places = !placed.nodes.empty();
+		JunctionPlacementSystem system;
+		PlaceTrackGraph(in.topology, in.paths, in.graph, in.order, cut, in.programs, spec, places ? &placed.choices : nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system);
+		if (system.relations.empty()) { WARN(hub << ": seed " << (places ? "places" : "fails") << ", recorded no system: " << error); continue; }
+
+		std::vector<double> ms;
+		JunctionJointResult joint;
+		for (int i = 0; i < 5; i++) {
+			const auto t0 = Clock::now();
+			joint = SolveJunctionJoint(system, spec);
+			ms.push_back(since(t0));
+		}
+		const JunctionJointResult relaxed = SolveJunctionJoint(system, spec, true);
+		std::string chain;
+		for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
+		WARN(fmt::format("{}: reached solve, seed {} ({:.1f} ms), bends {}, relations {}, routes {}, status {}, objective {:.3f}, median {:.1f} ms, relaxed status {} objective {:.3f}, conflict length {}", hub, places ? "places" : "fails", median(seed_ms), system.bends.size(), system.relations.size(), system.routes.size(), static_cast<int>(joint.status), joint.objective, median(ms), static_cast<int>(relaxed.status), relaxed.objective, joint.conflict.size()));
+	}
+}
