@@ -1155,8 +1155,17 @@ TEST_CASE("joint: a clash's order is the joint's choice", "[junction][milp]")
 TEST_CASE("joint: a port fan's size follows the rows", "[junction][milp]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	const LoopStart s = MakeLoopStart("L_R", "LL_RR", spec);
-	REQUIRE(s.description == "all-floor choices");
+	/* The all-floor start, whether or not the hub seeds. */
+	const JointInputs in = MakeJointInputs("L_R", "LL_RR");
+	LoopStart s;
+	s.topology = in.topology;
+	s.order = in.order;
+	s.paths = in.paths;
+	s.graph = in.graph;
+	s.cut = DefaultCut(in);
+	s.programs = in.programs;
+	s.choices = JunctionFloorChoices(in.topology, s.paths, s.graph, in.order, s.cut, s.programs, spec);
+	REQUIRE(!s.choices.m.empty());
 	const JunctionPlacementSystem first = RecordAt(s, spec, s.choices, nullptr);
 	REQUIRE(!first.relations.empty());
 	const JunctionJointResult joint = SolveJunctionJoint(first, spec);
