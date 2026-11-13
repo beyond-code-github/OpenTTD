@@ -59,8 +59,8 @@ Today these three rules are why the prototype could not decide L_R x L_RR and L_
 - On a row, the occupants are known by topology (row items, and the crossing pieces as in 2), and their order is the sweep's (G3.2). Neighbours in that order get the rows above, with n = the row's heading.
 - Between rows, in a band slice, the west-to-east order of edges comes from the sweep. A pair needs separating only where the two edges are at the same height, and which pieces are at the same height is the open part. Today the flat solve's order decides it, and that is class G. Two ways:
   - (a) The sweep also emits, per band slice, the south-to-north order of the bends' ends. Everything is then linear, and the arrangement is fully topological. This is more sweep work, and a wrong order shows as an infeasible set that names the pair.
-  - (b) Lazy rows: solve, check occupancy on the result, add the violated pairs with the order the solution shows, and solve again. HiGHS re-solves warm in milliseconds. This is today's flat-order idea, but it converges, because rows only ever get added, never swapped.
-  - **Recommendation: (b) first.** It needs no new sweep output, and it shows how many rounds real hubs take. (a) is the fallback if a hub cycles or a pair's order flips.
+  - (b) Lazy clash constraints (constraint rows of the solver, not track rows): solve, check occupancy on the result, add the violated pairs with the order the solution shows, and solve again. HiGHS re-solves warm in milliseconds. This is today's flat-order idea, but it converges, because rows only ever get added, never swapped.
+  - **Recommendation and D236: (b) first.** It needs no new sweep output, and it shows how many rounds real hubs take. (a) is the fallback if a hub cycles or a pair's order flips.
 
 **What stays non-linear, and why that is fine.** The W/E fan size is `|port row - item row|` with port rows from the `best_offset` scan. Make the port row a variable: `best_offset` becomes the objective's job (a short fan costs less), and the fan length is then a difference. That is linear with the sign fixed by the side.
 
