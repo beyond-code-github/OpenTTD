@@ -73,6 +73,7 @@ struct JunctionSystemBend {
 	int item_pt; ///< The point of the stack item it ends on, -1 when none.
 	int m; ///< Its size at the recording (a Corner's: the row span when the rows are known, else k).
 	int floor; ///< The least size the placement allows it.
+	int port_row = 0; ///< For a "port_rows" fan, the row of its port at the recording; else 0.
 };
 
 /** The sizes the rule source is given instead of reading them from a solution (DESIGN-G3 §G3.6, R1), indexed by JunctionSystemBend::id. Only bends of source "rows" (a row S-bend) and "port_rows" (a W/E fan) read it; every other bend keeps its sizing from the choices and the rules. */

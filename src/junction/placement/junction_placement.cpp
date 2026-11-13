@@ -454,7 +454,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						const int floor = el.free_m ? (el.fan ? 0 : 1) : el.k == Elem::K::Corner ? k : (el.k == Elem::K::Fan ? 0 : (el.index != NO_ROW ? 0 : 1));
 						const bool span_known = el.joiner_div && rows_known && static_cast<size_t>(std::max(el.first, el.last)) < vy.size();
 						const int size = el.k == Elem::K::Corner ? (span_known ? std::abs(vy[el.first] - vy[el.last]) : k) : el.m;
-						now.bends.push_back({id, static_cast<int>(e), c, el.tok, kind, source, el.hand, el.hin, el.first, el.last, el.index != NO_ROW ? item_pt[el.index] : -1, size, floor});
+						now.bends.push_back({id, static_cast<int>(e), c, el.tok, kind, source, el.hand, el.hin, el.first, el.last, el.index != NO_ROW ? item_pt[el.index] : -1, size, floor, el.k == Elem::K::Fan ? port_row[el.slot] : 0});
 					}
 					const char *kk = el.k == Elem::K::Tile ? "Tile" : el.k == Elem::K::Corner ? "Corner" : el.k == Elem::K::SBend ? "SBend" : el.k == Elem::K::Heads ? "Heads" : el.k == Elem::K::Fan ? "Fan" : el.k == Elem::K::HeadsPair ? "HeadsPair" : "Prio";
 					const bool tunnel = !bridges_of[e].empty() && structure.bridges[bridges_of[e][0]].tunnel;
