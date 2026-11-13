@@ -40,3 +40,15 @@ Track JunctionCornerTrack(DiagDirection a, DiagDirection b)
 	}
 	NOT_REACHED();
 }
+
+/**
+ * Whether two unrelated pieces may stand on one tile: only as the parallel diagonal pair Upper|Lower or Left|Right, never as an at-grade X|Y diamond (D182, D217).
+ * @param a The tracks of one piece on the tile.
+ * @param b The tracks of the other piece on the tile.
+ * @return True when (a | b) is exactly TRACK_BIT_HORZ or TRACK_BIT_VERT and the two share no track.
+ */
+bool JunctionTracksMayShareTile(TrackBits a, TrackBits b)
+{
+	const TrackBits both = a | b;
+	return (both == TRACK_BIT_HORZ || both == TRACK_BIT_VERT) && (a & b).None();
+}

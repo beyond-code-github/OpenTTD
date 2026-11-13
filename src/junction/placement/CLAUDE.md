@@ -6,6 +6,7 @@
 - Placement is relations plus terrain facts solved together; no flat positions enter the terrain solve (D216, G1 §14.1).
 - Every relation is a rule floor "at least N", scaling with train length and speed; each entry cites its rule (G1 §14.3, G1 §16.1).
 - Relations are rule families applied everywhere, never per site: every curve-gap pair on every route, and unrelated tracks never share or touch a tile (D217).
+- Two unrelated pieces share a tile only as Upper|Lower or Left|Right (D182, D217; JunctionTracksMayShareTile).
 - Site floors and per-shape constants exist only as test oracles (D217).
 - Every edge is one chain of elements; one floor table keyed by (previous kind, next kind) holds every run constant (G1 §16.1, RW1-RW6).
 - Curve gaps: consecutive same-hand bends at least `min(2TL - 1, max(2, CL))` in units along the path, opposite hands at least 2, non-consecutive at least `min(2TL - 1, (j - i) CL)` (`JunctionCurveGaps`, G1 §11.8).

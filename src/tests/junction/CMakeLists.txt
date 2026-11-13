@@ -14,6 +14,7 @@ add_test_files(
     junction_compactness.h
     junction_layout.cpp
     junction_route.cpp
+    junction_track_geometry.cpp
     junction_rules.cpp
     junction_train_model.cpp
 )

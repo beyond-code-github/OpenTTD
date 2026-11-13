@@ -1014,7 +1014,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		return bits;
 	};
 
-	/* The occupancy family (D217): unrelated tracks never share or touch a tile; two unrelated pieces on one tile are legal only when they share no track end on a tile edge. */
+	/* The occupancy family (D217): unrelated tracks never share or touch a tile; two unrelated pieces on one tile are legal only as Upper|Lower or Left|Right (JunctionTracksMayShareTile). */
 	auto add_occupancy = [&](const std::vector<int> &flat, bool legality) -> bool {
 		/** One occupant of a row: the columns [left, right], each end a point and an offset, with the tracks of its tiles and what it belongs to. */
 		struct Occupant {
@@ -1135,13 +1135,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				}
 				return true;
 			};
-			/* Legality per pair of occupants: two on one tile are legal when the graph relates them, or when their tracks share no track end on any tile edge (a footprint is not a track: its pairs are ordered below); checked once, on the settled placement. */
+			/* Legality per pair of occupants: two on one tile are legal when the graph relates them, or when they stand as Upper|Lower or Left|Right (D182, D217; a footprint is not a track: its pairs are ordered below); checked once, on the settled placement. */
 			for (size_t i = 0; legality && i < occupants.size(); i++) {
 				if (occupants[i].footprint != 0 || flat_left(occupants[i]) > flat_right(occupants[i])) continue;
 				for (size_t j = i + 1; j < occupants.size() && flat_left(occupants[j]) <= flat_right(occupants[i]); j++) {
 					if (occupants[j].footprint != 0 || flat_left(occupants[j]) > flat_right(occupants[j]) || related(occupants[i], occupants[j])) continue;
-					for (const DiagDirection d : {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW}) {
-						if (!occupants[i].bits.Any(DiagdirReachesTracks(d)) || !occupants[j].bits.Any(DiagdirReachesTracks(d))) continue;
+					if (!JunctionTracksMayShareTile(occupants[i].bits, occupants[j].bits)) {
 						reasons.push_back(JunctionPlacementReason{"occupancy", occupants[j].edge, occupants[j].node, -1});
 						const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
 						notes[reason] = fmt::format("[{} and {} on row {}]", label(occupants[i]), label(occupants[j]), y);
