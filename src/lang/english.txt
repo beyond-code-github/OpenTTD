@@ -2868,9 +2868,9 @@ STR_BUILD_DEPOT_TRAIN_ORIENTATION_TOOLTIP                       :{BLACK}Select r
 # Rail junction construction window
 STR_JUNCTION_CAPTION                                            :{WHITE}Junction
 STR_JUNCTION_MAINLINE_LABEL                                     :{BLACK}Mainline
-STR_JUNCTION_MAINLINE_TOOLTIP                                   :{BLACK}Lines of the mainline: L is a track going left, R a track going right, each underscore a tile of gap. "L_R" is one track each way with one tile between; more underscores widen the gap
+STR_JUNCTION_MAINLINE_TOOLTIP                                       :{BLACK}Lanes of the main line: each direction's lanes, and the gap between the two directions
 STR_JUNCTION_BRANCH_LABEL                                       :{BLACK}Branch
-STR_JUNCTION_BRANCH_TOOLTIP                                     :{BLACK}Lines of the branch: L is a track going left, R a track going right, each underscore a tile of gap. "L_R" is one track each way with one tile between; more underscores widen the gap
+STR_JUNCTION_BRANCH_TOOLTIP                                         :{BLACK}Lanes of the branch: each direction's lanes, and the gap between the two directions
 STR_JUNCTION_TRAIN_LENGTH                                       :{BLACK}Train length: {NUM} tiles
 STR_JUNCTION_TRAIN_LENGTH_DECREASE_TOOLTIP                      :{BLACK}Decrease the train length the junction is designed for
 STR_JUNCTION_TRAIN_LENGTH_INCREASE_TOOLTIP                      :{BLACK}Increase the train length the junction is designed for
@@ -2887,10 +2887,31 @@ STR_JUNCTION_ROTATE                                             :{BLACK}Rotate
 STR_JUNCTION_ROTATE_TOOLTIP                                     :{BLACK}Rotate the junction a quarter turn (hotkey .)
 STR_JUNCTION_MIRROR                                             :{BLACK}Mirror
 STR_JUNCTION_MIRROR_TOOLTIP                                     :{BLACK}Mirror the junction (hotkey ,)
-STR_JUNCTION_LANES_ANY                                          :{BLACK}Lanes: any
-STR_JUNCTION_LANES_KEEP                                         :{BLACK}Lanes: keep
-STR_JUNCTION_LANES_DIRECTION                                    :{BLACK}Lanes: per direction
-STR_JUNCTION_LANES_TOOLTIP                                      :{BLACK}How the lanes of a multi-lane branch connect to the main line's lanes
+STR_JUNCTION_PRESET_TOOLTIP                                         :{BLACK}Pick a topology; it sets the choices in the Topology window
+STR_JUNCTION_PRESET_CUSTOM                                          :Custom
+STR_JUNCTION_PRESET_T                                               :T
+STR_JUNCTION_PRESET_SIDELINE                                        :LL_RR + sideline
+STR_JUNCTION_PRESET_LL_RR_ANY                                       :LL_RR × LL_RR, any lanes
+STR_JUNCTION_PRESET_LL_RR_KEEP                                      :LL_RR × LL_RR, keep lanes
+STR_JUNCTION_PRESET_LL_RR_DIRECTION                                 :LL_RR × LL_RR, per direction
+STR_JUNCTION_TOPOLOGY_BUTTON                                        :{BLACK}Topology...
+STR_JUNCTION_TOPOLOGY_BUTTON_TOOLTIP                                :{BLACK}Open the window with the lanes and gaps of the main line and the branch
+STR_JUNCTION_TOPOLOGY_CAPTION                                       :{WHITE}Junction topology
+STR_JUNCTION_TOPOLOGY_LEFT_LANES                                    :{BLACK}Left lanes: {NUM}
+STR_JUNCTION_TOPOLOGY_LEFT_LANES_DECREASE_TOOLTIP                   :{BLACK}Fewer lanes going left
+STR_JUNCTION_TOPOLOGY_LEFT_LANES_INCREASE_TOOLTIP                   :{BLACK}More lanes going left
+STR_JUNCTION_TOPOLOGY_RIGHT_LANES                                   :{BLACK}Right lanes: {NUM}
+STR_JUNCTION_TOPOLOGY_RIGHT_LANES_DECREASE_TOOLTIP                  :{BLACK}Fewer lanes going right
+STR_JUNCTION_TOPOLOGY_RIGHT_LANES_INCREASE_TOOLTIP                  :{BLACK}More lanes going right
+STR_JUNCTION_TOPOLOGY_GAP                                           :{BLACK}Gap: {NUM}
+STR_JUNCTION_TOPOLOGY_GAP_DECREASE_TOOLTIP                          :{BLACK}Narrower gap between the two directions
+STR_JUNCTION_TOPOLOGY_GAP_INCREASE_TOOLTIP                          :{BLACK}Wider gap between the two directions
+STR_JUNCTION_TOPOLOGY_SUMMARY                                       :{BLACK}{RAW_STRING} × {RAW_STRING}
+STR_JUNCTION_PAIRING_LABEL                                          :{BLACK}Lane pairing
+STR_JUNCTION_PAIRING_TOOLTIP                                        :{BLACK}How the lanes of a multi-lane branch connect to the main line's lanes; only matters when a turn goes from several lanes to several lanes
+STR_JUNCTION_PAIRING_ANY                                            :Any
+STR_JUNCTION_PAIRING_KEEP                                           :Keep
+STR_JUNCTION_PAIRING_DIRECTION                                      :Per direction
 STR_JUNCTION_TOOLTIP                                             :{RAW_STRING}
 STR_JUNCTION_TOOLTIP_COST                                       :{BLACK}Cost: {CURRENCY_LONG}
 STR_JUNCTION_TOOLTIP_UNAFFORDABLE                               :{RED}Cost: {CURRENCY_LONG} (you have {CURRENCY_LONG})

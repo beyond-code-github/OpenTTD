@@ -19,10 +19,12 @@
 #include "junction_terraform.h"
 #include "junction_topology.h"
 #include "junction_rules.h"
-#include "querystring_gui.h"
 #include "window_gui.h"
 #include "gui.h"
 #include "error.h"
+#include "dropdown_type.h"
+#include "dropdown_func.h"
+#include "dropdown_common_type.h"
 #include "gfx_func.h"
 #include "window_func.h"
 #include "picker_gui.h"
@@ -331,7 +333,283 @@ static StringID GetPlacementError(const JunctionEstimate &estimate)
 	return STR_JUNCTION_ERROR_TILES_BLOCKED;
 }
 
-static constexpr uint MAX_NOTATION_LENGTH = 16; ///< Maximum number of characters of a line notation.
+/** A topology preset of the junction window's dropdown (D222): it only sets the Topology window's choices. */
+struct JunctionTopologyPreset {
+	StringID name; ///< Name shown in the dropdown.
+	uint8_t ml_left, ml_gap, ml_right; ///< Main line left lanes, gap and right lanes.
+	uint8_t branch_left, branch_gap, branch_right; ///< Branch left lanes, gap and right lanes.
+	JunctionLanePairing pairing; ///< Lane pairing; it only counts where a turning movement is multi-to-multi.
+};
+
+static constexpr JunctionTopologyPreset _junction_topology_presets[] = {
+	{STR_JUNCTION_PRESET_T,               1, 1, 1, 1, 1, 1, JunctionLanePairing::AnyToAny},
+	{STR_JUNCTION_PRESET_SIDELINE,        2, 1, 2, 1, 1, 1, JunctionLanePairing::AnyToAny},
+	{STR_JUNCTION_PRESET_LL_RR_ANY,       2, 1, 2, 2, 1, 2, JunctionLanePairing::AnyToAny},
+	{STR_JUNCTION_PRESET_LL_RR_KEEP,      2, 1, 2, 2, 1, 2, JunctionLanePairing::LaneKeepsLane},
+	{STR_JUNCTION_PRESET_LL_RR_DIRECTION, 2, 1, 2, 2, 1, 2, JunctionLanePairing::LanePerDirection},
+};
+
+static constexpr uint8_t MIN_TOPOLOGY_LANES = 1; ///< Fewest lanes of a direction group in the Topology window.
+static constexpr uint8_t MAX_TOPOLOGY_LANES = 3; ///< Most lanes of a direction group in the Topology window.
+static constexpr uint8_t MIN_TOPOLOGY_GAP = 1; ///< Narrowest gap in the Topology window.
+static constexpr uint8_t MAX_TOPOLOGY_GAP = 3; ///< Widest gap in the Topology window.
+
+/**
+ * Make a line from its lane counts.
+ * @param left Left lanes.
+ * @param gap Gap tiles.
+ * @param right Right lanes.
+ * @return The line.
+ */
+static JunctionLineSpec MakeTopologyLine(uint8_t left, uint8_t gap, uint8_t right)
+{
+	JunctionLineSpec line;
+	line.tracks = left + right;
+	line.gap = gap;
+	line.left_tracks = left;
+	return line;
+}
+
+/**
+ * Read a line from a notation setting.
+ * @param text The notation.
+ * @return The line; "L_R" when the notation is not valid.
+ */
+static JunctionLineSpec ReadTopologyLine(const std::string &text)
+{
+	const JunctionLineNotation notation = ParseLineNotation(text);
+	return notation.error == JunctionNotationError::None ? notation.spec : MakeTopologyLine(1, 1, 1);
+}
+
+/**
+ * Write a line as the notation ParseLineNotation reads.
+ * @param line The line.
+ * @return The notation.
+ */
+static std::string MakeTopologyNotation(const JunctionLineSpec &line)
+{
+	return std::string(line.left_tracks, 'L') + std::string(line.gap, '_') + std::string(line.tracks - line.left_tracks, 'R');
+}
+
+/**
+ * Whether a turning movement between the main line and the branch is multi-to-multi, so that the lane pairing matters (D221).
+ * @param ml The main line.
+ * @param branch The branch.
+ * @return Whether any turning movement has more than one lane on both sides.
+ */
+static bool IsTopologyMultiToMulti(const JunctionLineSpec &ml, const JunctionLineSpec &branch)
+{
+	return std::max<int>(ml.left_tracks, ml.tracks - ml.left_tracks) > 1 && std::max<int>(branch.left_tracks, branch.tracks - branch.left_tracks) > 1;
+}
+
+/** @return The index of the preset the settings match, or -1 for a custom choice. */
+static int MatchTopologyPreset()
+{
+	const std::string ml = MakeTopologyNotation(ReadTopologyLine(_settings_client.gui.junction_ml_notation));
+	const std::string branch = MakeTopologyNotation(ReadTopologyLine(_settings_client.gui.junction_branch_notation));
+	const bool multi = IsTopologyMultiToMulti(ReadTopologyLine(ml), ReadTopologyLine(branch));
+	for (size_t i = 0; i < lengthof(_junction_topology_presets); i++) {
+		const JunctionTopologyPreset &p = _junction_topology_presets[i];
+		if (ml != MakeTopologyNotation(MakeTopologyLine(p.ml_left, p.ml_gap, p.ml_right))) continue;
+		if (branch != MakeTopologyNotation(MakeTopologyLine(p.branch_left, p.branch_gap, p.branch_right))) continue;
+		if (multi && _settings_client.gui.junction_lane_pairing != static_cast<uint8_t>(p.pairing)) continue;
+		return static_cast<int>(i);
+	}
+	return -1;
+}
+
+/**
+ * Write the topology choices as settings, and tell the junction window and the Topology window.
+ * @param ml The main line.
+ * @param branch The branch.
+ * @param pairing The lane pairing.
+ */
+static void SetTopologyChoices(const JunctionLineSpec &ml, const JunctionLineSpec &branch, JunctionLanePairing pairing)
+{
+	_settings_client.gui.junction_ml_notation = MakeTopologyNotation(ml);
+	_settings_client.gui.junction_branch_notation = MakeTopologyNotation(branch);
+	_settings_client.gui.junction_lane_pairing = static_cast<uint8_t>(pairing);
+	InvalidateWindowData(WindowClass::BuildJunction, TransportType::Rail);
+	InvalidateWindowData(WindowClass::JunctionTopology, 0);
+}
+
+/** The window with the individual topology choices (D222): the lanes and gap of the main line and the branch, and the lane pairing. */
+struct JunctionTopologyWindow : Window {
+	/** Lane pairing names, in JunctionLanePairing order. */
+	static constexpr StringID pairing_names[] = {STR_JUNCTION_PAIRING_ANY, STR_JUNCTION_PAIRING_KEEP, STR_JUNCTION_PAIRING_DIRECTION};
+
+	JunctionTopologyWindow(WindowDesc &desc, WindowNumber number) : Window(desc)
+	{
+		this->InitNested(number);
+		this->UpdateButtons();
+	}
+
+	/** @return The main line as set. */
+	static JunctionLineSpec MainLine() { return ReadTopologyLine(_settings_client.gui.junction_ml_notation); }
+
+	/** @return The branch as set. */
+	static JunctionLineSpec Branch() { return ReadTopologyLine(_settings_client.gui.junction_branch_notation); }
+
+	/** @return The lane pairing as set. */
+	static JunctionLanePairing Pairing() { return static_cast<JunctionLanePairing>(std::min<uint8_t>(_settings_client.gui.junction_lane_pairing, 2)); }
+
+	/**
+	 * Get a stepper's value.
+	 * @param stepper Stepper number: 0 left lanes, 1 right lanes, 2 gap, and 3 to 5 the same for the branch.
+	 * @return The value.
+	 */
+	static int GetStepper(int stepper)
+	{
+		const JunctionLineSpec line = stepper < 3 ? MainLine() : Branch();
+		switch (stepper % 3) {
+			case 0: return line.left_tracks;
+			case 1: return line.tracks - line.left_tracks;
+			default: return line.gap;
+		}
+	}
+
+	/**
+	 * Get the limits of a stepper.
+	 * @param stepper Stepper number, as for GetStepper.
+	 * @return Smallest and largest value.
+	 */
+	static std::pair<int, int> StepperLimits(int stepper)
+	{
+		return stepper % 3 == 2 ? std::pair<int, int>{MIN_TOPOLOGY_GAP, MAX_TOPOLOGY_GAP} : std::pair<int, int>{MIN_TOPOLOGY_LANES, MAX_TOPOLOGY_LANES};
+	}
+
+	/** Disable the steppers at their limits and the pairing when it makes no difference. */
+	void UpdateButtons()
+	{
+		for (int stepper = 0; stepper < 6; stepper++) {
+			const WidgetID first = (stepper < 3 ? WID_JT_ML_LEFT_DECREASE : WID_JT_BRANCH_LEFT_DECREASE) + (stepper % 3) * 3;
+			const auto [low, high] = StepperLimits(stepper);
+			this->SetWidgetDisabledState(first, GetStepper(stepper) <= low);
+			this->SetWidgetDisabledState(first + 2, GetStepper(stepper) >= high);
+		}
+		this->SetWidgetDisabledState(WID_JT_PAIRING, !IsTopologyMultiToMulti(MainLine(), Branch()));
+		this->SetDirty();
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, bool gui_scope = true) override
+	{
+		if (gui_scope) this->UpdateButtons();
+	}
+
+	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
+	{
+		switch (widget) {
+			case WID_JT_ML_LEFT_LABEL: case WID_JT_BRANCH_LEFT_LABEL:
+				return GetString(STR_JUNCTION_TOPOLOGY_LEFT_LANES, GetStepper(widget == WID_JT_ML_LEFT_LABEL ? 0 : 3));
+			case WID_JT_ML_RIGHT_LABEL: case WID_JT_BRANCH_RIGHT_LABEL:
+				return GetString(STR_JUNCTION_TOPOLOGY_RIGHT_LANES, GetStepper(widget == WID_JT_ML_RIGHT_LABEL ? 1 : 4));
+			case WID_JT_ML_GAP_LABEL: case WID_JT_BRANCH_GAP_LABEL:
+				return GetString(STR_JUNCTION_TOPOLOGY_GAP, GetStepper(widget == WID_JT_ML_GAP_LABEL ? 2 : 5));
+			case WID_JT_PAIRING:
+				return GetString(pairing_names[to_underlying(Pairing())]);
+			case WID_JT_SUMMARY:
+				return GetString(STR_JUNCTION_TOPOLOGY_SUMMARY, MakeTopologyNotation(MainLine()), MakeTopologyNotation(Branch()));
+			default:
+				return this->Window::GetWidgetString(widget, stringid);
+		}
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		if (widget == WID_JT_PAIRING) {
+			ShowDropDownMenu(this, pairing_names, to_underlying(Pairing()), WID_JT_PAIRING, 0, 0);
+			return;
+		}
+
+		int stepper;
+		int step;
+		if (widget >= WID_JT_ML_LEFT_DECREASE && widget <= WID_JT_ML_GAP_INCREASE) {
+			stepper = (widget - WID_JT_ML_LEFT_DECREASE) / 3;
+			step = (widget - WID_JT_ML_LEFT_DECREASE) % 3;
+		} else if (widget >= WID_JT_BRANCH_LEFT_DECREASE && widget <= WID_JT_BRANCH_GAP_INCREASE) {
+			stepper = 3 + (widget - WID_JT_BRANCH_LEFT_DECREASE) / 3;
+			step = (widget - WID_JT_BRANCH_LEFT_DECREASE) % 3;
+		} else {
+			return;
+		}
+		if (step == 1) return; // The label.
+
+		const auto [low, high] = StepperLimits(stepper);
+		std::array<int, 6> values;
+		for (int i = 0; i < 6; i++) values[i] = GetStepper(i);
+		values[stepper] = Clamp(values[stepper] + (step == 0 ? -1 : 1), low, high);
+		SetTopologyChoices(MakeTopologyLine(values[0], values[2], values[1]), MakeTopologyLine(values[3], values[5], values[4]), Pairing());
+		SndClickBeep();
+	}
+
+	void OnDropdownSelect(WidgetID widget, int index, [[maybe_unused]] int click_result) override
+	{
+		if (widget == WID_JT_PAIRING) SetTopologyChoices(MainLine(), Branch(), static_cast<JunctionLanePairing>(index));
+	}
+};
+
+/** Nested widget definition of the topology window. */
+static constexpr std::initializer_list<NWidgetPart> _nested_junction_topology_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_CLOSEBOX, Colours::DarkGreen),
+		NWidget(WWT_CAPTION, Colours::DarkGreen), SetStringTip(STR_JUNCTION_TOPOLOGY_CAPTION, STR_TOOLTIP_WINDOW_TITLE_DRAG_THIS),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::DarkGreen),
+		NWidget(NWID_VERTICAL), SetPIP(0, WidgetDimensions::unscaled.vsep_normal, 0), SetPadding(WidgetDimensions::unscaled.picker),
+			NWidget(WWT_LABEL, Colours::Invalid), SetStringTip(STR_JUNCTION_MAINLINE_LABEL, STR_JUNCTION_MAINLINE_TOOLTIP), SetFill(1, 0),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_ML_LEFT_DECREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Decrease, STR_JUNCTION_TOPOLOGY_LEFT_LANES_DECREASE_TOOLTIP),
+				NWidget(WWT_LABEL, Colours::Invalid, WID_JT_ML_LEFT_LABEL), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_ML_LEFT_INCREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Increase, STR_JUNCTION_TOPOLOGY_LEFT_LANES_INCREASE_TOOLTIP),
+			EndContainer(),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_ML_RIGHT_DECREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Decrease, STR_JUNCTION_TOPOLOGY_RIGHT_LANES_DECREASE_TOOLTIP),
+				NWidget(WWT_LABEL, Colours::Invalid, WID_JT_ML_RIGHT_LABEL), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_ML_RIGHT_INCREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Increase, STR_JUNCTION_TOPOLOGY_RIGHT_LANES_INCREASE_TOOLTIP),
+			EndContainer(),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_ML_GAP_DECREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Decrease, STR_JUNCTION_TOPOLOGY_GAP_DECREASE_TOOLTIP),
+				NWidget(WWT_LABEL, Colours::Invalid, WID_JT_ML_GAP_LABEL), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_ML_GAP_INCREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Increase, STR_JUNCTION_TOPOLOGY_GAP_INCREASE_TOOLTIP),
+			EndContainer(),
+			NWidget(WWT_LABEL, Colours::Invalid), SetStringTip(STR_JUNCTION_BRANCH_LABEL, STR_JUNCTION_BRANCH_TOOLTIP), SetFill(1, 0),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_BRANCH_LEFT_DECREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Decrease, STR_JUNCTION_TOPOLOGY_LEFT_LANES_DECREASE_TOOLTIP),
+				NWidget(WWT_LABEL, Colours::Invalid, WID_JT_BRANCH_LEFT_LABEL), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_BRANCH_LEFT_INCREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Increase, STR_JUNCTION_TOPOLOGY_LEFT_LANES_INCREASE_TOOLTIP),
+			EndContainer(),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_BRANCH_RIGHT_DECREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Decrease, STR_JUNCTION_TOPOLOGY_RIGHT_LANES_DECREASE_TOOLTIP),
+				NWidget(WWT_LABEL, Colours::Invalid, WID_JT_BRANCH_RIGHT_LABEL), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_BRANCH_RIGHT_INCREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Increase, STR_JUNCTION_TOPOLOGY_RIGHT_LANES_INCREASE_TOOLTIP),
+			EndContainer(),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_BRANCH_GAP_DECREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Decrease, STR_JUNCTION_TOPOLOGY_GAP_DECREASE_TOOLTIP),
+				NWidget(WWT_LABEL, Colours::Invalid, WID_JT_BRANCH_GAP_LABEL), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_JT_BRANCH_GAP_INCREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Increase, STR_JUNCTION_TOPOLOGY_GAP_INCREASE_TOOLTIP),
+			EndContainer(),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
+				NWidget(WWT_TEXT, Colours::Invalid, WID_JT_PAIRING_LABEL), SetStringTip(STR_JUNCTION_PAIRING_LABEL, STR_JUNCTION_PAIRING_TOOLTIP),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_JT_PAIRING), SetToolTip(STR_JUNCTION_PAIRING_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+			EndContainer(),
+			NWidget(WWT_LABEL, Colours::Invalid, WID_JT_SUMMARY), SetFill(1, 0), SetResize(1, 0),
+		EndContainer(),
+	EndContainer(),
+};
+
+/** Window definition for the topology window. */
+static WindowDesc _junction_topology_desc(
+	WindowPosition::Automatic, {}, 0, 0,
+	WindowClass::JunctionTopology, WindowClass::BuildJunction,
+	{},
+	_nested_junction_topology_widgets
+);
+
+/** Open the topology window, or bring it to the front when it is open. */
+static void ShowJunctionTopologyWindow()
+{
+	AllocateWindowDescFront<JunctionTopologyWindow>(_junction_topology_desc, 0);
+}
 
 /** Hotkeys of the junction window. */
 enum JunctionHotkeys : int {
@@ -450,8 +728,6 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	StringID placement_error = INVALID_STRING_ID; ///< First error if the placement is invalid, else INVALID_STRING_ID.
 	bool has_placement = false; ///< The cursor is over the map and the fields above are set.
 	StringID generate_error = INVALID_STRING_ID; ///< Why the notations can't be generated.
-	QueryString ml_editbox; ///< Editbox of the mainline notation.
-	QueryString branch_editbox; ///< Editbox of the branch notation.
 	uint8_t tl; ///< Train length in tiles.
 	std::optional<JunctionPickedTrain> picked_train; ///< The picked train, if the train length comes from one.
 	StringID pick_error = INVALID_STRING_ID; ///< Error of the last pick, shown in the status line.
@@ -459,13 +735,8 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	EncodedString shown_tooltip; ///< The cursor tooltip as last shown; empty when none is.
 
 	BuildJunctionWindow(WindowDesc &desc, Window *parent, RailType railtype) : PickerWindowBase(desc, parent), railtype(railtype),
-		ml_editbox(MAX_NOTATION_LENGTH * MAX_CHAR_LENGTH, MAX_NOTATION_LENGTH), branch_editbox(MAX_NOTATION_LENGTH * MAX_CHAR_LENGTH, MAX_NOTATION_LENGTH),
 		tl(Clamp<uint8_t>(_settings_client.gui.junction_tl, 2, 12))
 	{
-		this->querystrings[WID_BJ_ML_TEXT] = &this->ml_editbox;
-		this->querystrings[WID_BJ_BRANCH_TEXT] = &this->branch_editbox;
-		this->ml_editbox.text.Assign(_settings_client.gui.junction_ml_notation);
-		this->branch_editbox.text.Assign(_settings_client.gui.junction_branch_notation);
 		this->InitNested(TransportType::Rail);
 		/* Restore the remembered train if it is still one of ours; its data is read afresh. */
 		if (_junction_picked_train.has_value()) {
@@ -996,15 +1267,13 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		if (this->hover_tile != INVALID_TILE && key == this->MakeKey(this->hover_tile)) this->ShowHover();
 	}
 
-	/** Check and remember the notations and the train length as settings. Generation itself happens per hovered spot. */
+	/** Read the notations from the settings, and remember the train length as a setting. Generation itself happens per hovered spot. */
 	void Regenerate()
 	{
 		this->generate_error = INVALID_STRING_ID;
 
-		const std::string ml_text{this->ml_editbox.text.GetText()};
-		const std::string branch_text{this->branch_editbox.text.GetText()};
-		const JunctionLineNotation ml = ParseLineNotation(ml_text);
-		const JunctionLineNotation branch = ParseLineNotation(branch_text);
+		const JunctionLineNotation ml = ParseLineNotation(_settings_client.gui.junction_ml_notation);
+		const JunctionLineNotation branch = ParseLineNotation(_settings_client.gui.junction_branch_notation);
 
 		if (ml.error != JunctionNotationError::None || branch.error != JunctionNotationError::None) {
 			this->generate_error = STR_JUNCTION_ERROR_NOTATION;
@@ -1015,8 +1284,6 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			this->branch_line = branch.spec;
 		}
 
-		_settings_client.gui.junction_ml_notation = ml_text;
-		_settings_client.gui.junction_branch_notation = branch_text;
 		_settings_client.gui.junction_tl = this->tl;
 
 		this->cache.clear();
@@ -1025,25 +1292,12 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->EnsureLibrary();
 		this->SetWidgetDisabledState(WID_BJ_TL_DECREASE, this->tl <= 2);
 		this->SetWidgetDisabledState(WID_BJ_TL_INCREASE, this->tl >= 12);
-		this->UpdateLanesButton();
 		this->SetDirty();
-	}
-
-	/** Set the lane pairing button's text from the setting, and disable it when no turning movement is multi-to-multi (D221). */
-	void UpdateLanesButton()
-	{
-		static const StringID labels[] = {STR_JUNCTION_LANES_ANY, STR_JUNCTION_LANES_KEEP, STR_JUNCTION_LANES_DIRECTION};
-		this->GetWidget<NWidgetCore>(WID_BJ_LANES)->SetString(labels[std::min<uint8_t>(_settings_client.gui.junction_lane_pairing, 2)]);
-		const uint8_t ml_left = this->ml_line.left_tracks, ml_right = this->ml_line.tracks - this->ml_line.left_tracks;
-		const uint8_t branch_left = this->branch_line.left_tracks, branch_right = this->branch_line.tracks - this->branch_line.left_tracks;
-		/* A turning movement goes between a main group and a branch group, in either direction. */
-		const bool multi = this->generate_error == INVALID_STRING_ID && std::max(ml_left, ml_right) > 1 && std::max(branch_left, branch_right) > 1;
-		this->SetWidgetDisabledState(WID_BJ_LANES, !multi);
-		this->SetWidgetDirty(WID_BJ_LANES);
 	}
 
 	void Close(int data = 0) override
 	{
+		CloseWindowById(WindowClass::JunctionTopology, 0);
 		_junction_picking_train = false;
 		this->DetachJob();
 		if (this->library_thread.joinable()) this->library_thread.detach();
@@ -1125,13 +1379,15 @@ struct BuildJunctionWindow : public PickerWindowBase {
 				SndClickBeep();
 				break;
 
-			case WID_BJ_LANES:
-				_settings_client.gui.junction_lane_pairing = (_settings_client.gui.junction_lane_pairing + 1) % 3;
-				this->UpdateLanesButton();
-				this->cache.clear();
-				this->projection_cache.clear();
-				this->ResetHover();
-				this->EnsureLibrary();
+			case WID_BJ_PRESET: {
+				DropDownList list;
+				for (size_t i = 0; i < lengthof(_junction_topology_presets); i++) list.push_back(MakeDropDownListStringItem(_junction_topology_presets[i].name, static_cast<int>(i)));
+				ShowDropDownList(this, std::move(list), MatchTopologyPreset(), WID_BJ_PRESET);
+				break;
+			}
+
+			case WID_BJ_TOPOLOGY:
+				ShowJunctionTopologyWindow();
 				SndClickBeep();
 				break;
 		}
@@ -1176,9 +1432,16 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		RestoreJunctionPlacement();
 	}
 
-	void OnEditboxChanged(WidgetID widget) override
+	void OnDropdownSelect(WidgetID widget, int index, [[maybe_unused]] int click_result) override
 	{
-		if (widget == WID_BJ_ML_TEXT || widget == WID_BJ_BRANCH_TEXT) this->Regenerate();
+		if (widget != WID_BJ_PRESET || index < 0 || index >= static_cast<int>(lengthof(_junction_topology_presets))) return;
+		const JunctionTopologyPreset &p = _junction_topology_presets[index];
+		SetTopologyChoices(MakeTopologyLine(p.ml_left, p.ml_gap, p.ml_right), MakeTopologyLine(p.branch_left, p.branch_gap, p.branch_right), p.pairing);
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, bool gui_scope = true) override
+	{
+		if (gui_scope) this->Regenerate();
 	}
 
 	EventState OnHotkey(int hotkey) override
@@ -1211,6 +1474,10 @@ struct BuildJunctionWindow : public PickerWindowBase {
 			return GetString(STR_JUNCTION_PRIO_LENGTH, this->EffectivePrio(), this->SizedPrio());
 		}
 		if (widget == WID_BJ_TL_LABEL) return GetString(STR_JUNCTION_TRAIN_LENGTH, this->tl);
+		if (widget == WID_BJ_PRESET) {
+			const int preset = MatchTopologyPreset();
+			return GetString(preset < 0 ? STR_JUNCTION_PRESET_CUSTOM : _junction_topology_presets[preset].name);
+		}
 		return this->PickerWindowBase::GetWidgetString(widget, stringid);
 	}
 
@@ -1500,10 +1767,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widge
 	NWidget(WWT_PANEL, Colours::DarkGreen),
 		NWidget(NWID_VERTICAL), SetPIP(0, WidgetDimensions::unscaled.vsep_normal, 0), SetPadding(WidgetDimensions::unscaled.picker),
 			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
-				NWidget(WWT_TEXT, Colours::Invalid, WID_BJ_ML_LABEL), SetStringTip(STR_JUNCTION_MAINLINE_LABEL, STR_JUNCTION_MAINLINE_TOOLTIP),
-				NWidget(WWT_EDITBOX, Colours::Grey, WID_BJ_ML_TEXT), SetToolTip(STR_JUNCTION_MAINLINE_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
-				NWidget(WWT_TEXT, Colours::Invalid, WID_BJ_BRANCH_LABEL), SetStringTip(STR_JUNCTION_BRANCH_LABEL, STR_JUNCTION_BRANCH_TOOLTIP),
-				NWidget(WWT_EDITBOX, Colours::Grey, WID_BJ_BRANCH_TEXT), SetToolTip(STR_JUNCTION_BRANCH_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_BJ_PRESET), SetToolTip(STR_JUNCTION_PRESET_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_TOPOLOGY), SetStringTip(STR_JUNCTION_TOPOLOGY_BUTTON, STR_JUNCTION_TOPOLOGY_BUTTON_TOOLTIP), SetFill(1, 0),
 			EndContainer(),
 			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
 				NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_BJ_TL_DECREASE), SetMinimalSize(9, 12), SetArrowWidgetTypeTip(ArrowWidgetType::Decrease, STR_JUNCTION_TRAIN_LENGTH_DECREASE_TOOLTIP),
@@ -1512,7 +1777,6 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_junction_widge
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_PICK_TRAIN), SetStringTip(STR_JUNCTION_PICK_TRAIN, STR_JUNCTION_PICK_TRAIN_TOOLTIP), SetFill(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_ROTATE), SetStringTip(STR_JUNCTION_ROTATE, STR_JUNCTION_ROTATE_TOOLTIP), SetFill(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_MIRROR), SetStringTip(STR_JUNCTION_MIRROR, STR_JUNCTION_MIRROR_TOOLTIP), SetFill(1, 0),
-				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BJ_LANES), SetStringTip(STR_JUNCTION_LANES_ANY, STR_JUNCTION_LANES_TOOLTIP), SetFill(1, 0),
 			EndContainer(),
 			NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0),
 				NWidget(WWT_EMPTY, Colours::Invalid, WID_BJ_TRAIN_IMAGE), SetFill(1, 0), SetResize(1, 0),

@@ -452,6 +452,12 @@ enum class WindowClass : uint16_t {
 	BuildJunctionStation,
 
 	/**
+	 * Junction topology choices; %Window numbers:
+	 *   - 0 = #JunctionTopologyWidgets
+	 */
+	JunctionTopology,
+
+	/**
 	 * Build waypoint; %Window numbers:
 	 *   - #TransportType::Rail = #BuildRailWaypointWidgets
 	 */
