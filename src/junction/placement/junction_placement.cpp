@@ -398,6 +398,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	/* The relation system of the last X and the last Y solve, for the caller that asked to record it (DESIGN-G3 §G3.3). */
 	JunctionPlacementSystem recorded[2]; ///< Per axis (0 X, 1 Y), the system of its last solve.
 	bool recorded_axis[2] = {false, false};
+	std::vector<JunctionSystemRoute> recorded_routes; ///< The curve-gap routes of the X build now (DESIGN-G3 §G3.3a), taken by the X record.
+	std::vector<std::array<int, 5>> recorded_route_curves; ///< Their curve forms (for tests).
 	auto record_system = [&]() {
 		pad_tags(false);
 		JunctionPlacementSystem &now = recorded[phase];
@@ -413,6 +415,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		now.bridge0 = spec.prices.bridge ? spec.prices.bridge(0).base() : 0;
 		now.bridge1 = spec.prices.bridge ? spec.prices.bridge(1).base() : 0;
 		now.sd = spec.sd;
+		if (phase == 0) {
+			now.routes = recorded_routes;
+			now.route_curves = recorded_route_curves;
+		}
 		for (size_t p = 0; p < paths.size(); p++) now.paths.emplace_back(graph.path_edges[p].begin(), graph.path_edges[p].end());
 		std::map<const Elem *, int> bend_id;
 		for (uint32_t e = 0; e < edge_count; e++) {
@@ -809,6 +815,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		int sign = 1; ///< s.
 		std::vector<int> seg_sign; ///< Per segment, sv.
 		std::vector<SymCurve> curves;
+		JunctionSystemRoute rec; ///< The route as the curve-gap counters read it (X form builds of a recording call only).
+		std::vector<const Elem *> rec_elems; ///< Per bend of 'rec', the element it is.
 	};
 	auto doubled_edge = [&](uint32_t e) {
 		return std::ranges::any_of(bridges_of[e], [&](int b) { return structure.bridges[b].doubled; });
@@ -823,6 +831,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			uint32_t edge;
 			int row;
 			bool on_row;
+			const Elem *el;
 		};
 		routes.clear();
 		for (size_t p = 0; p < paths.size(); p++) {
@@ -853,10 +862,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 									if (fan_m[e] == 0) continue;
 									const int y_fan = el.port_first ? port_row[el.slot] : vy[item_pt[el.index]];
 									const int y_far = el.port_first ? vy[item_pt[el.index]] : port_row[el.slot];
-									bends.push_back({el.first, y_fan, heading, ((y_far > y_fan) == (heading == 1)) ? 1 : -1, 2 * fan_m[e], false, e, r, true});
+									bends.push_back({el.first, y_fan, heading, ((y_far > y_fan) == (heading == 1)) ? 1 : -1, 2 * fan_m[e], false, e, r, true, &el});
 								} else {
 									if (vy[item_pt[el.index]] == vy[el.first]) continue; // An S-bend sized to 0 columns is no bend.
-									bends.push_back({el.first, vy[el.first], heading, el.hand, 2 * std::abs(vy[item_pt[el.index]] - vy[el.first]), false, e, r, true});
+									bends.push_back({el.first, vy[el.first], heading, el.hand, 2 * std::abs(vy[item_pt[el.index]] - vy[el.first]), false, e, r, true, &el});
 								}
 							}
 						}
@@ -869,7 +878,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 							row_heading.resize(bends.size(), -1);
 							row_heading.push_back(pending_row);
 							pending_row = -1;
-							bends.push_back({el.first, numeric_y ? vy[el.first] : 0, el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, -1, false});
+							bends.push_back({el.first, numeric_y ? vy[el.first] : 0, el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, -1, false, &el});
 						}
 					}
 				}
@@ -881,12 +890,13 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					int before_dx, before_dy, close_dx, close_dy, close_units, heading;
 				};
 				std::vector<Pieces> pieces;
-				for (const Bend &b : bends) {
-					auto cached = bend_rasters.find({b.heading, b.hand, b.halves, b.corner});
-					if (cached == bend_rasters.end()) cached = bend_rasters.emplace(std::make_tuple(b.heading, b.hand, b.halves, b.corner), RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[b.heading], JunctionBendMoves(b.hand, b.halves, b.corner)})).first;
+				/* The pieces of a bend of this many half pieces, from its raster. */
+				auto read_pieces = [&](const Bend &b, int halves, Pieces &q) {
+					auto cached = bend_rasters.find({b.heading, b.hand, halves, b.corner});
+					if (cached == bend_rasters.end()) cached = bend_rasters.emplace(std::make_tuple(b.heading, b.hand, halves, b.corner), RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[b.heading], JunctionBendMoves(b.hand, halves, b.corner)})).first;
 					const JunctionRaster &raster = cached->second;
-					if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != b.halves + 2) { build_why = "a bend of edge " + str(b.edge) + " has no raster"; return false; }
-					Pieces q{{}, raster.pieces[0].tile.x - raster.pieces[1].tile.x, raster.pieces[0].tile.y - raster.pieces[1].tile.y, raster.pieces.back().tile.x - raster.pieces[1].tile.x, raster.pieces.back().tile.y - raster.pieces[1].tile.y, 0, -1};
+					if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != halves + 2) { build_why = "a bend of edge " + str(b.edge) + " has no raster"; return false; }
+					q = Pieces{{}, raster.pieces[0].tile.x - raster.pieces[1].tile.x, raster.pieces[0].tile.y - raster.pieces[1].tile.y, raster.pieces.back().tile.x - raster.pieces[1].tile.x, raster.pieces.back().tile.y - raster.pieces[1].tile.y, 0, -1};
 					for (size_t i = 0; i < raster.pieces.size(); i++) {
 						if (i > 0) {
 							const DirDiff diff = DirDifference(TrackdirToDirection(raster.pieces[i - 1].trackdir), TrackdirToDirection(raster.pieces[i].trackdir));
@@ -898,6 +908,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						if (JUNCTION_AXIS_TRACKDIR[i] == raster.pieces.back().trackdir) q.heading = i;
 					}
 					if (q.heading < 0) { build_why = "a bend of edge " + str(b.edge) + " does not end on an axis piece"; return false; }
+					return true;
+				};
+				for (const Bend &b : bends) {
+					Pieces q;
+					if (!read_pieces(b, b.halves, q)) return false;
 					pieces.push_back(std::move(q));
 				}
 
@@ -957,6 +972,25 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					v += 2 * ysign * (q.before_dy - q.close_dy) + q.close_units;
 					y = b.y + q.close_dy;
 					heading = q.heading;
+				}
+				if (system != nullptr && numeric_y) {
+					/* The counters' record: each bend's raster quantities as (q at L = 1, q at L = 2) when its halves are 2L (a joiner Corner's 2L + 1), else the constant of its one raster. */
+					route.rec.start_pt = route.start;
+					route.rec.start_heading = start_heading;
+					for (size_t i = 0; i < bends.size(); i++) {
+						const Bend &b = bends[i];
+						const bool sized = !b.corner || b.el->joiner_div;
+						Pieces q1 = pieces[i], q2 = pieces[i];
+						if (sized && (!read_pieces(b, b.corner ? 3 : 2, q1) || !read_pieces(b, b.corner ? 5 : 4, q2))) return false;
+						if (q1.curves.size() != q2.curves.size() || q1.heading != q2.heading) { build_why = "a bend of edge " + str(b.edge) + " is not affine in its length"; return false; }
+						JunctionSystemRouteBend rb{b.pt, sized ? -2 : -1, b.heading, q1.heading, b.hand, b.corner, {{{q1.before_dx, q2.before_dx}, {q1.before_dy, q2.before_dy}, {q1.close_dx, q2.close_dx}, {q1.close_dy, q2.close_dy}, {q1.close_units, q2.close_units}}}, {}};
+						for (size_t k = 0; k < q1.curves.size(); k++) {
+							rb.curve_units.emplace_back(q1.curves[k].first, q2.curves[k].first);
+							route.rec.hands.push_back(q1.curves[k].second == JunctionCurveHand::Right ? 1 : -1);
+						}
+						route.rec.bends.push_back(std::move(rb));
+						route.rec_elems.push_back(b.el);
+					}
 				}
 				routes.push_back(std::move(route));
 			}
@@ -1713,10 +1747,36 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			}
 		}
 
+		if (x_phase) {
+			recorded_routes.clear();
+			recorded_route_curves.clear();
+		}
 		if ((!x_phase || rows_known) && spec.curve_limit) {
 			/* The curve-gap family (D217): every pair JunctionCurveGaps returns for a route's curves. A pair in one segment (only vertical runs and fixed spans between the curves) is a difference of its anchors' rows in the Y phase; every other pair is a difference of its anchors' columns in the X phase. Pairs on one anchor are constants. */
 			std::vector<SymRoute> routes;
 			if (!sym_routes(routes, x_phase)) return false;
+			if (x_phase && system != nullptr) {
+				/* The routes of the counters, with each sized bend's length variable named by the system's bend id (the order record_system gives them). */
+				std::map<const Elem *, int> ids;
+				for (uint32_t e = 0; e < edge_count; e++) {
+					for (const std::vector<Elem> *elems : {&chain[e], &chain_copy[e]}) {
+						for (const Elem &el : *elems) {
+							if (el.k == Elem::K::Corner || el.k == Elem::K::SBend || el.k == Elem::K::Fan) ids.emplace(&el, static_cast<int>(ids.size()));
+						}
+					}
+				}
+				for (SymRoute &route : routes) {
+					for (size_t i = 0; i < route.rec.bends.size(); i++) {
+						if (route.rec.bends[i].bend != -2) continue;
+						const auto found = ids.find(route.rec_elems[i]);
+						if (found == ids.end()) { build_why = "a sized bend has no system bend"; return false; }
+						route.rec.bends[i].bend = found->second;
+					}
+					const int index = static_cast<int>(recorded_routes.size());
+					for (size_t k = 0; k < route.curves.size(); k++) recorded_route_curves.push_back({index, static_cast<int>(k), route.curves[k].xoff, route.curves[k].yoff, route.curves[k].seg});
+					recorded_routes.push_back(route.rec);
+				}
+			}
 			/* One relation per (v, u): the largest of the pairs'. */
 			struct Relation {
 				int v, u, least;

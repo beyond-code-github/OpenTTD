@@ -11,6 +11,9 @@
 
 #include "junction_joint.h"
 
+#include "../junction_spec.h"
+#include "../topology/junction_chain.h"
+
 #include <cmath>
 #include <map>
 #include <set>
@@ -67,7 +70,93 @@ static int SideOf(const JunctionSystemBend &bend)
 	return (bend.hin + bend.hand + 4) % 4;
 }
 
-JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, [[maybe_unused]] const JunctionSpec &spec)
+/** A linear expression: its terms and its constant. */
+struct Expr {
+	Coefs coefs;
+	double constant = 0;
+};
+
+/**
+ * The curve gaps as unit counters (DESIGN-G3 §G3.3a item 1): per route, the units E_i at each bend's entry tile as an integer variable, and each pair of JunctionCurveGaps as one row on the difference of two curves' units.
+ * @param model The model to add the rows to.
+ * @param system The record, with its routes.
+ * @param spec The spec the system was recorded with.
+ * @param x The X variable of every point.
+ * @param y The Y variable of every point.
+ * @param L The length variable of every bend.
+ */
+static void AddCurveGapCounters(JointModel &model, const JunctionPlacementSystem &system, const JunctionSpec &spec, const std::vector<uint32_t> &x, const std::vector<uint32_t> &y, const std::map<int, uint32_t> &L)
+{
+	for (const JunctionSystemRoute &route : system.routes) {
+		const size_t n = route.bends.size();
+		std::vector<uint32_t> entry;
+		for (size_t i = 0; i < n; i++) entry.push_back(model.Var(-JunctionMilp::INF, JunctionMilp::INF));
+
+		/* scale * (a + b L) of one raster quantity (q at L = 1, q at L = 2): the quantity is the constant a - b + ... of its affine form. */
+		auto add_quantity = [&](Expr &e, double scale, const JunctionSystemRouteBend &bend, const std::pair<int, int> &q) {
+			const int slope = q.second - q.first;
+			if (slope != 0) e.coefs[L.at(bend.bend)] += scale * slope;
+			e.constant += scale * (q.first - slope);
+		};
+		/* scale * h . (the bend's quantity pair at index dx). */
+		auto add_offset = [&](Expr &e, double scale, int heading, const JunctionSystemRouteBend &bend, size_t dx) {
+			if (VX[heading] != 0) add_quantity(e, scale * VX[heading], bend, bend.quantity[dx]);
+			if (VY[heading] != 0) add_quantity(e, scale * VY[heading], bend, bend.quantity[dx + 1]);
+		};
+		/* scale * h . point. */
+		auto add_point = [&](Expr &e, double scale, int heading, int pt) {
+			e.coefs[x[pt]] += scale * VX[heading];
+			e.coefs[y[pt]] += scale * VY[heading];
+		};
+		auto add_row = [&](const Expr &e, double lower, double upper) {
+			model.AddRow(e.coefs, lower - e.constant, upper - e.constant);
+		};
+
+		for (size_t i = 0; i < n; i++) {
+			const JunctionSystemRouteBend &bend = route.bends[i];
+			Expr e;
+			e.coefs[entry[i]] += 1;
+			if (i == 0) {
+				/* E_0 = 2 h_start . ((f_0 + before_0) - start) */
+				add_point(e, -2, route.start_heading, bend.pt);
+				add_point(e, 2, route.start_heading, route.start_pt);
+				add_offset(e, -2, route.start_heading, bend, 0);
+			} else {
+				/* E_i = E_{i-1} + close_units_{i-1} + 2 h_{i-1} . ((f_i + before_i) - (f_{i-1} + close_{i-1})) */
+				const JunctionSystemRouteBend &prev = route.bends[i - 1];
+				e.coefs[entry[i - 1]] -= 1;
+				add_quantity(e, -1, prev, prev.quantity[4]);
+				add_point(e, -2, prev.hout, bend.pt);
+				add_point(e, 2, prev.hout, prev.pt);
+				add_offset(e, -2, prev.hout, bend, 0);
+				add_offset(e, 2, prev.hout, prev, 2);
+			}
+			add_row(e, 0, 0);
+		}
+
+		/* The curves in travel order: (bend, curve of the bend). */
+		std::vector<std::pair<size_t, size_t>> curves;
+		for (size_t i = 0; i < n; i++) {
+			for (size_t k = 0; k < route.bends[i].curve_units.size(); k++) curves.emplace_back(i, k);
+		}
+		assert(curves.size() == route.hands.size());
+		std::vector<JunctionCurveHand> hands;
+		for (const int8_t hand : route.hands) hands.push_back(hand > 0 ? JunctionCurveHand::Right : JunctionCurveHand::Left);
+		for (const JunctionCurveGap &gap : JunctionCurveGaps(hands, spec.tl, spec.curve_speed, spec.reference_speed)) {
+			/* U_j - U_i >= min_gap, with U = E_bend + cu_k. */
+			Expr e;
+			const auto [bi, ki] = curves[gap.i];
+			const auto [bj, kj] = curves[gap.j];
+			e.coefs[entry[bj]] += 1;
+			e.coefs[entry[bi]] -= 1;
+			add_quantity(e, 1, route.bends[bj], route.bends[bj].curve_units[kj]);
+			add_quantity(e, -1, route.bends[bi], route.bends[bi].curve_units[ki]);
+			add_row(e, gap.min_gap, JunctionMilp::INF);
+		}
+	}
+}
+
+JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, const JunctionSpec &spec)
 {
 	JunctionJointResult result;
 	result.status = JunctionMilp::Status::Error;
@@ -105,6 +194,7 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, [[
 	std::set<int> tagged_y;
 	for (size_t r = 0; r < system.relations.size(); r++) {
 		const JunctionSystemRelation &relation = system.relations[r];
+		if (relation.nonlinear && !system.routes.empty() && relation.reason.starts_with("curve gap")) continue; // Replaced by the unit counters below.
 		const std::vector<uint32_t> &axis_coord = *coord[relation.axis];
 		Coefs coefs;
 		coefs[axis_coord[relation.v]] += 1;
@@ -126,6 +216,8 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, [[
 			model.AddRow(coefs, relation.c, JunctionMilp::INF, static_cast<int>(r));
 		}
 	}
+
+	AddCurveGapCounters(model, system, spec, x, y, L);
 
 	/* Link rows per diagonal. */
 	for (const JunctionSystemBend &b : system.bends) {

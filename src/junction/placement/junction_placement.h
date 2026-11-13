@@ -84,6 +84,26 @@ struct JunctionSystemElement {
 	int bend; ///< The id of its bend, -1 when it is none.
 };
 
+/** One bend of a route as the curve-gap counters read it (DESIGN-G3 §G3.3a): its raster quantities q(L) = first + (L - 1) * (second - first) as (q at L = 1, q at L = 2), or (q, q) when its size is constant. */
+struct JunctionSystemRouteBend {
+	int pt; ///< The point at the bend's first half tile.
+	int bend; ///< The JunctionPlacementSystem bend whose length it has, -1 when its halves are constant.
+	int hin; ///< The heading it starts on.
+	int hout; ///< The heading it leaves on.
+	int hand; ///< The bend's hand.
+	bool corner; ///< The raster is a Corner's.
+	std::array<std::pair<int, int>, 5> quantity; ///< before_dx, before_dy, close_dx, close_dy, close_units.
+	std::vector<std::pair<int, int>> curve_units; ///< Per curve, its units from the start of the axis piece before the bend.
+};
+
+/** One route (lane path and copy, N side skipped) of the curve-gap counters. */
+struct JunctionSystemRoute {
+	int start_pt; ///< The route's start point.
+	int start_heading; ///< The heading it starts on.
+	std::vector<JunctionSystemRouteBend> bends; ///< In travel order.
+	std::vector<int8_t> hands; ///< Each curve's hand in travel order (+1 right, -1 left).
+};
+
 /** The relation system of the last X and the last Y round of one placement call, with each constant's dependence on a bend's length (DESIGN-G3 §G3.3). */
 struct JunctionPlacementSystem {
 	int pt_count = 0; ///< The number of placement points.
@@ -101,6 +121,8 @@ struct JunctionPlacementSystem {
 	std::vector<JunctionSystemBend> bends; ///< The bends, from the last round whose rows were known (else the last Y round).
 	std::vector<JunctionSystemElement> chains; ///< The elements of every chain.
 	std::vector<JunctionSystemRelation> relations; ///< The X relations, then the Y relations.
+	std::vector<JunctionSystemRoute> routes; ///< The routes of the last X round whose rows were known, for the curve-gap counters; empty when none.
+	std::vector<std::array<int, 5>> route_curves; ///< For tests: per route curve (route, curve in travel order, xoff, yoff, seg) of the walk's curve forms.
 };
 
 /** One prio element as the placement fixes it (DESIGN-G1 12.4). */
