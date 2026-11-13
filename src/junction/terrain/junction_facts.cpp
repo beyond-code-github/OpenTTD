@@ -25,6 +25,7 @@ JunctionFacts::JunctionFacts(const JunctionTerrain &terrain) : origin_x(terrain.
 	this->slope.assign(cells, SLOPE_FLAT);
 	this->z_min.assign(cells, 0);
 	this->buildable.assign(cells, false);
+	this->spannable.assign(cells, false);
 	this->sw.assign(cells, false);
 	this->half.assign(cells, false);
 	for (size_t a = 0; a < 2; a++) {
@@ -45,6 +46,7 @@ JunctionFacts::JunctionFacts(const JunctionTerrain &terrain) : origin_x(terrain.
 			this->slope[i] = tile->slope;
 			this->z_min[i] = tile->z_min;
 			this->buildable[i] = tile->cls == JunctionTileClass::Buildable;
+			this->spannable[i] = tile->cls != JunctionTileClass::Blocked;
 			if (tile->cls != JunctionTileClass::Buildable) continue;
 			if (!tile->steep) {
 				const bool level = terrain.UsableAt(x, y, tile->z_max);
@@ -192,4 +194,10 @@ bool JunctionFacts::Buildable(int x, int y) const
 {
 	size_t i;
 	return this->Cell(Axis::X, y, x, i) && this->buildable[i];
+}
+
+bool JunctionFacts::Spannable(int x, int y) const
+{
+	size_t i;
+	return this->Cell(Axis::X, y, x, i) && this->spannable[i];
 }

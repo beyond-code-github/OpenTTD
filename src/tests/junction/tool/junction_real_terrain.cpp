@@ -563,8 +563,9 @@ TEST_CASE("level solve: identical LL_RR plans at every near offset", "[junction]
 	}
 	std::cout << "LEVELHASH_LLRR offsets=" << offsets << " planned=" << planned << " hash=" << level_hash << " ms_total=" << millis << "\n";
 	CHECK(offsets == 48 * 153);
-	CHECK(planned == 1601);
-	CHECK(level_hash == 12769444602347636435ULL);
+	/* HH2/D175: a bridge middle over a Blocked tile is refused, so 23 offsets that planned (1601) are refused (1578); every other offset's plan is unchanged. */
+	CHECK(planned == 1578);
+	CHECK(level_hash == 1530266114778831833ULL);
 }
 
 TEST_CASE("level solve: identical plans at every near offset", "[junction][realterrainsweep][.identity]")

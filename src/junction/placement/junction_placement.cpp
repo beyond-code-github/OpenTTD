@@ -2300,6 +2300,26 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 		result.bridges.push_back(heads);
 	}
+	/* A bridge middle never spans a Blocked tile (D175, HH2); tunnels pass under anything. Each head pair lies on one row or column. */
+	if (facts != nullptr) {
+		for (size_t b = 0; b < structure.bridges.size(); b++) {
+			if (structure.bridges[b].tunnel) continue;
+			for (int copy = 0; copy < (structure.bridges[b].doubled ? 2 : 1); copy++) {
+				const JunctionBridge &span = result.bridges[b][copy];
+				const int sx = (span.end.x > span.start.x) - (span.end.x < span.start.x);
+				const int sy = (span.end.y > span.start.y) - (span.end.y < span.start.y);
+				for (int x = span.start.x + sx, y = span.start.y + sy; x != span.end.x || y != span.end.y; x += sx, y += sy) {
+					if (facts->Spannable(x + offset.x, y + offset.y)) continue;
+					/* As a house under a track tile reports: the blocked tile first, then the bridge that spans it, each naming its edge. */
+					const uint32_t edge = structure.bridges[b].edge;
+					JunctionTrackPlacement refused;
+					refused.why = {JunctionPlacementReason{"blocked tile", edge}, JunctionPlacementReason{"bridge span over a blocked tile", edge}};
+					if (error != nullptr) *error = fmt::format("the placement rules contradict each other: blocked tile (edge {}) [blocked tile ({},{})] <- bridge span over a blocked tile (edge {})", edge, x, y, edge);
+					return refused;
+				}
+			}
+		}
+	}
 
 	/* The curves at the solved columns (for tests): paths first, then the copies in path order. */
 	std::vector<SymRoute> sym;

@@ -3714,6 +3714,41 @@ static JunctionTrackPlacement PlaceWithHouses(const JunctionTopology &t, const S
 	return PlaceJunctionTrackGraph(t, p.paths, p.graph, p.order, p.cut, p.programs, p.spec, p.seed.choices, facts, {0, 0}, error);
 }
 
+TEST_CASE("topology: a bridge middle over a Blocked tile fails the placement naming the tile", "[junction][topology]")
+{
+	const JunctionTopology &t = JunctionTTopology();
+	const SeedPipeline p = SeedPipelineOf(t, MakeTestJunctionSpec());
+	JunctionTerrain flat;
+	flat.origin = {-1, -1};
+	flat.width = p.seed.size.x + 2;
+	flat.height = p.seed.size.y + 2;
+	flat.tiles.assign(static_cast<size_t>(flat.width) * flat.height, JunctionTerrainTile{});
+	flat.foundation_cost = 250;
+	flat.build_on_slopes = true;
+	std::string error;
+	const JunctionFacts flat_facts(flat);
+	const JunctionTrackPlacement reference = PlaceJunctionTrackGraph(t, p.paths, p.graph, p.order, p.cut, p.programs, p.spec, p.seed.choices, flat_facts, {0, 0}, &error);
+	INFO(error);
+	REQUIRE(!reference.nodes.empty());
+
+	size_t b = 0;
+	while (b < p.cut.bridges.size() && p.cut.bridges[b].tunnel) b++;
+	REQUIRE(b < p.cut.bridges.size());
+	const JunctionBridge &head = reference.bridges[b][0];
+	const int dx = (head.end.x > head.start.x) - (head.end.x < head.start.x);
+	const int dy = (head.end.y > head.start.y) - (head.end.y < head.start.y);
+	REQUIRE(std::abs(head.end.x - head.start.x) + std::abs(head.end.y - head.start.y) >= 2);
+	const int mx = head.start.x + dx;
+	const int my = head.start.y + dy;
+
+	JunctionTerrain terrain = flat;
+	terrain.tiles[static_cast<size_t>(my - terrain.origin.y) * terrain.width + (mx - terrain.origin.x)].cls = JunctionTileClass::Blocked;
+	const JunctionFacts facts(terrain);
+	const JunctionTrackPlacement blocked = PlaceJunctionTrackGraph(t, p.paths, p.graph, p.order, p.cut, p.programs, p.spec, p.seed.choices, facts, {0, 0}, &error);
+	CHECK(blocked.nodes.empty());
+	CHECK(error.find("bridge span over a blocked tile") != std::string::npos);
+}
+
 TEST_CASE("topology: ramp levels per train length from the train", "[junction][topology]")
 {
 	/* D219. The D138 train at v 196, s 3, by the game's integer arithmetic: tractive force 14194 hp x 746 x 18 / (5 x 196) = 194486 N (under max T.E.); resistance 10 x 561 + 561 x (15 x 708 / 512 = 20) + 14 x 25 x 196^2 / 1000 = 30275 N; spare 164211 N; slope force 561 x 3 x 100 = 168300 N. */
@@ -4231,10 +4266,17 @@ TEST_CASE("topology: run and group tiles match the render", "[junction][topoproj
 	}
 	const JunctionTrackPlacement rest = PlaceWithHouses(t, p, flat, others, &error);
 	INFO(error);
-	REQUIRE(!rest.nodes.empty());
 	INFO("rendered tiles without a fact:" << missing);
 	CHECK(missing.empty());
-	CHECK(SamePlacement(p.seed, rest));
+	/* A house under a bridge middle is a legitimate refusal (HH2, D175): that case is skipped. */
+	int skipped = 0;
+	if (rest.nodes.empty() && error.find("bridge span over a blocked tile") != std::string::npos) {
+		skipped++;
+	} else {
+		REQUIRE(!rest.nodes.empty());
+		CHECK(SamePlacement(p.seed, rest));
+	}
+	WARN("skipped " << skipped << " case(s) refused over a bridge middle");
 }
 
 TEST_CASE("topoproj: the objective gives way to a house", "[junction][topoprojsweep]")

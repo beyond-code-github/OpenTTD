@@ -112,6 +112,23 @@ TEST_CASE("facts: blocked tiles are bad and steep tiles follow the game", "[junc
 	CHECK(facts.NextBad(JunctionFactKind::Straight, Axis::X, 3, 0) == 0);
 }
 
+TEST_CASE("a span fact is false only on Blocked tiles and outside the snapshot", "[junction][facts]")
+{
+	std::vector<JunctionTerrainTile> tiles(4, MakeTile(0, 0));
+	tiles[1].cls = JunctionTileClass::Water;
+	tiles[2].cls = JunctionTileClass::Spannable;
+	tiles[3].cls = JunctionTileClass::Blocked;
+	const JunctionFacts facts(MakeRow(tiles));
+	CHECK(facts.Spannable(0, 0));
+	CHECK(facts.Spannable(1, 0));
+	CHECK(facts.Spannable(2, 0));
+	CHECK(!facts.Spannable(3, 0));
+	CHECK(!facts.Spannable(-1, 0));
+	CHECK(!facts.Spannable(4, 0));
+	CHECK(!facts.Spannable(0, 1));
+	CHECK(!facts.Spannable(0, -1));
+}
+
 static JunctionTerrain RandomTerrain(std::minstd_rand &rng, int width, int height)
 {
 	JunctionTerrain terrain;

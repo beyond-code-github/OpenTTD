@@ -5,6 +5,7 @@
 ## Terrain facts
 - Only hard facts fail a solve: houses or objects kept, water, the map edge, unpurchasable tiles; heights cost instead of failing (D218).
 - Blocked tile classes: houses, other companies' property, unclearable objects; own track is blocked for track and Spannable for bridges; water is allowed only under spans; trees and rough land cost their clearing price (D93, D104).
+- A bridge middle never spans a Blocked tile; placement fails naming the tile; tunnels are exempt (D175, HH2).
 
 ## Foundations and terraform
 - Terraform is allowed by default and costed with the game's price per moved corner, shared corners counted once (D218, D95).
