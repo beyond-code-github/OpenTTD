@@ -297,6 +297,128 @@ TEST_CASE("joint: an infeasible system names its conflict", "[junction][milp]")
 	}
 }
 
+/** The default cut: every doubled bridge in series of the most crossings, from the start (the first cut the cut search tries). */
+static JunctionTrackStructure DefaultCutOf(const JunctionTrackStructure &structure)
+{
+	JunctionTrackStructure cut = structure;
+	cut.bridges.clear();
+	for (const JunctionTrackBridge &bridge : structure.bridges) {
+		if (!bridge.doubled) {
+			cut.bridges.push_back(bridge);
+			continue;
+		}
+		for (size_t first = 0; first < bridge.crossed.size(); first += JUNCTION_BRIDGE_MAX_CROSSERS) {
+			const size_t end = std::min(bridge.crossed.size(), first + JUNCTION_BRIDGE_MAX_CROSSERS);
+			cut.bridges.push_back({bridge.edge, std::vector<uint32_t>(bridge.crossed.begin() + first, bridge.crossed.begin() + end), true});
+		}
+	}
+	return cut;
+}
+
+TEST_CASE("joint: bridge heads hug without the flat order", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch] : {std::pair{"L_R", "L_R"}, std::pair{"LL_RR", "L_R"}}) {
+		INFO(main << " x " << branch);
+		const JointInputs in = MakeJointInputs(main, branch);
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+		REQUIRE(!seed.routes.empty());
+		const JunctionPlacementSystem system = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices);
+
+		/* With the hug's pins kept (they become ordinary relations) and without them (the joint model drops them). */
+		JunctionPlacementSystem pinned = system;
+		for (JunctionSystemRelation &r : pinned.relations) r.order_pin = false;
+		const JunctionJointResult with_pins = SolveJunctionJoint(pinned, spec);
+		const JunctionJointResult without_pins = SolveJunctionJoint(system, spec);
+		REQUIRE(with_pins.status == JunctionMilp::Status::Optimal);
+		REQUIRE(without_pins.status == JunctionMilp::Status::Optimal);
+		CHECK(with_pins.length == without_pins.length);
+
+		/* Each joint's lengths as choices, placed through the fixed path. */
+		std::vector<JunctionTrackPlacement> placed;
+		for (const JunctionJointResult *joint : {&with_pins, &without_pins}) {
+			JunctionPlacementChoices choices = seed.placement.choices;
+			for (size_t i = 0; i < system.bends.size(); i++) {
+				const JunctionSystemBend &b = system.bends[i];
+				if (b.copy != 0) continue;
+				if (b.source == "free") choices.m[b.edge][b.tok] = joint->length[i];
+				if (b.source == "corner_rows") choices.corner[b.edge][b.tok] = joint->length[i];
+			}
+			placed.push_back(PlaceJunctionTrackGraph(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, choices, &error));
+			INFO(error);
+			REQUIRE(!placed.back().nodes.empty());
+		}
+		REQUIRE(placed[0].bridges.size() == placed[1].bridges.size());
+		for (size_t b = 0; b < placed[0].bridges.size(); b++) {
+			if (!seed.structure.bridges[b].doubled) continue;
+			for (int copy = 0; copy < 2; copy++) {
+				const int pinned_span = std::abs(placed[0].bridges[b][copy].end.x - placed[0].bridges[b][copy].start.x);
+				const int free_span = std::abs(placed[1].bridges[b][copy].end.x - placed[1].bridges[b][copy].start.x);
+				INFO(fmt::format("bridge {} copy {}: pinned span {} free span {}", b, copy, pinned_span, free_span));
+				CHECK(free_span == pinned_span);
+				if (std::string(main) == "L_R" && b == 1) CHECK(free_span == 5); // T: the Corner of edge 5 at 5 shortens the bridge from the seed's 6.
+			}
+		}
+	}
+}
+
+TEST_CASE("joint: straight crosser tiles are exact", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	struct Case {
+		const char *main, *branch;
+		bool seed; ///< Recorded at the seed's choices (else the default cut).
+	};
+	for (const Case &c : {Case{"L_R", "L_R", true}, Case{"LL_RR", "L_R", true}, Case{"L_R", "L_RR", false}, Case{"L_R", "LL_RR", false}, Case{"LL_RR", "LL_RR", false}}) {
+		INFO(c.main << " x " << c.branch);
+		const JointInputs in = MakeJointInputs(c.main, c.branch);
+		std::string error;
+		JunctionPlacementSystem system;
+		std::vector<int> columns;
+		if (c.seed) {
+			const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+			REQUIRE(!seed.routes.empty());
+			system = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices);
+			columns = seed.placement.columns;
+		} else {
+			const JunctionTrackStructure cut = DefaultCutOf(in.structure);
+			PlaceTrackGraph(in.topology, in.paths, in.graph, in.order, cut, in.programs, spec, nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system);
+		}
+		int straight = 0, bend = 0, violated = 0;
+		for (const JunctionSystemRelation &r : system.relations) {
+			if (r.order_pin || r.reason.rfind("bridge heads hug crossers", 0) != 0) continue;
+			(r.nonlinear ? bend : straight)++;
+			if (r.nonlinear || columns.empty() || r.axis != 0) continue;
+			if (columns[r.v] - columns[r.u] < r.c) violated++;
+		}
+		std::cout << fmt::format("[joint] hug inequalities {} x {}: straight {}, bend {}\n", c.main, c.branch, straight, bend);
+		if (c.seed) {
+			CHECK(straight > 0);
+			CHECK(violated == 0);
+		}
+	}
+}
+
+TEST_CASE("joint: failing topologies with the hug relaxed", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch] : {std::pair{"L_R", "L_RR"}, std::pair{"L_R", "LL_RR"}, std::pair{"LL_RR", "LL_RR"}}) {
+		const JointInputs in = MakeJointInputs(main, branch);
+		const JunctionTrackStructure cut = DefaultCutOf(in.structure);
+		std::string error;
+		JunctionPlacementSystem system;
+		const JunctionTrackPlacement placed = PlaceTrackGraph(in.topology, in.paths, in.graph, in.order, cut, in.programs, spec, nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system);
+		REQUIRE(!system.relations.empty());
+		const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+		std::string chain;
+		for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
+		int box = 0;
+		for (int len : joint.length) box += len;
+		WARN(fmt::format("{} x {}: placement {}, status {}, objective {:.3f}, sum of lengths {}, conflict: {}", main, branch, placed.nodes.empty() ? "fails" : "places", static_cast<int>(joint.status), joint.objective, box, chain));
+	}
+}
+
 TEST_CASE("joint: failing topologies with counters", "[junction][milp]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();

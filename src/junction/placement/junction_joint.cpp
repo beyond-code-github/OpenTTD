@@ -195,6 +195,7 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 	for (size_t r = 0; r < system.relations.size(); r++) {
 		const JunctionSystemRelation &relation = system.relations[r];
 		if (relation.nonlinear && !system.routes.empty() && relation.reason.starts_with("curve gap")) continue; // Replaced by the unit counters below.
+		if (relation.order_pin) continue; // The hug's pin to the flat solve's order: the span cost pulls the heads tight instead.
 		const std::vector<uint32_t> &axis_coord = *coord[relation.axis];
 		Coefs coefs;
 		coefs[axis_coord[relation.v]] += 1;

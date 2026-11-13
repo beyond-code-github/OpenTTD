@@ -50,6 +50,7 @@ struct JunctionSystemRelation {
 	int a = 0, b = 0;
 	bool nonlinear = false; ///< c depends on lengths non-linearly; held at c.
 	bool zero_branch = false; ///< Holds only when the bend's S-fan size is 0 (see solve.py), else only when it is not.
+	bool order_pin = false; ///< Pins a head to the outermost crosser by the flat solve's order (the hug); the joint model drops it.
 	std::string reason; ///< The why() text with edge, node and row.
 };
 

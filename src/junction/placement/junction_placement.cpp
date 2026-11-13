@@ -320,6 +320,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		int b = 0;
 		bool nonlinear = false;
 		bool zero_branch = false;
+		bool order_pin = false; ///< The hug's equalities: the joint model drops them.
 	};
 	SystemTag tag; ///< The tag of the relations added now.
 	bool tag_negated = false; ///< The second relation of an equality: its constant is the negation.
@@ -454,7 +455,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		for (size_t i = 0; i < cons.size(); i++) {
 			const SystemTag &t = cons_tag[i];
 			const int bid = t.bend != nullptr && bend_id.count(t.bend) ? bend_id[t.bend] : -1;
-			now.relations.push_back({static_cast<uint8_t>(phase), cons[i].v, cons[i].u, cons[i].k, bid, t.a, t.b, t.nonlinear, t.zero_branch, reason_text[cons[i].reason]});
+			now.relations.push_back({static_cast<uint8_t>(phase), cons[i].v, cons[i].u, cons[i].k, bid, t.a, t.b, t.nonlinear, t.zero_branch, t.order_pin, reason_text[cons[i].reason]});
 		}
 		recorded_axis[phase] = true;
 
@@ -769,6 +770,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		int pt;
 		int dx;
 		int y;
+		bool bend = false; ///< Made by a bend's raster offsets (a Fan or another bend), so its dx depends on the bend's length and rows.
 	};
 	auto edge_tiles_of = [&](const std::vector<Elem> &elems) {
 		std::vector<SymTile> tiles;
@@ -782,12 +784,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			} else if (el.k == Elem::K::Fan) {
 				/* The fan starts on the port row (an in edge's) or on its item row (an out edge's). */
 				const int y = el.port_first ? port_row[el.slot] : vy[item_pt[el.index]];
-				for (const TileIndexDiffC &o : el.offs) tiles.push_back({el.first, o.x, y + o.y});
+				for (const TileIndexDiffC &o : el.offs) tiles.push_back({el.first, o.x, y + o.y, true});
 			} else if (el.k == Elem::K::Heads) {
 				const int step = vy[el.last] > vy[el.first] ? 1 : -1;
 				for (int y = vy[el.first]; y != vy[el.last] + step; y += step) tiles.push_back({el.first, 0, y});
 			} else {
-				for (const TileIndexDiffC &o : el.offs) tiles.push_back({el.first, o.x, vy[el.first] + o.y});
+				for (const TileIndexDiffC &o : el.offs) tiles.push_back({el.first, o.x, vy[el.first] + o.y, true});
 			}
 			if (i + 1 < elems.size() && elems[i + 1].first != el.last && VX[el.hout] == 0) {
 				const int d = VY[el.hout];
@@ -1321,7 +1323,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				if (value(tile) > value(*high)) high = &tile;
 			}
 			why("bridge heads hug crossers", hug.edge, UINT32_MAX, hug.row);
-			tag = SystemTag{nullptr, 0, 0, true, false}; // The crosser tile offset dx comes from the bend rasters of 2m halves and the rows; the outermost tile from the flat solve.
+			tag = SystemTag{nullptr, 0, 0, true, false, true}; // The crosser tile offset dx comes from the bend rasters of 2m halves and the rows; the outermost tile from the flat solve.
 			eq(0, hug.west, low->first, low->second - 1);
 			eq(0, hug.east, high->first, high->second + 1);
 			tag = SystemTag{};
@@ -1550,10 +1552,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 							const Elem &near_far = pass == 0 ? heads0(b) : heads1(b);
 							const int y = vy[near_far.first];
 							bool any = false;
-							tag = SystemTag{nullptr, 0, 0, true, false}; // The crosser tile offset dx comes from the bend rasters of 2m halves and the rows.
 							for (const SymTile &z : tiles) {
 								if (z.y != y) continue;
 								any = true;
+								tag = SystemTag{nullptr, 0, 0, z.bend, false}; // A bend tile's offset dx comes from the bend rasters of 2m halves and the rows; a straight tile's is exact (0).
 								if (s > 0) {
 									ge(0, z.pt, near_far.first, 1 - z.dx);
 									ge(0, near_far.last, z.pt, 1 + z.dx);
