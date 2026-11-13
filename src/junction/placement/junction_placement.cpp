@@ -242,7 +242,13 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		const std::vector<Step> &program = programs.edges[e];
 		const int start = edge.from.node ? node_pt[edge.from.index] : port_pt[edge.from.index];
 		const int stop = edge.to.node ? node_pt[edge.to.index] : port_pt[edge.to.index];
-		int cur = edge.kind == JunctionTrackEdge::Kind::In ? 0 : (edge.kind == JunctionTrackEdge::Kind::Out ? 2 : (is_row_node(edge.from) ? (east[row_of_node(edge.from.index)] ? 1 : 3) : 0));
+		/* A band edge starts on its row's heading at a row node, else south when it carries exit paths from the main line and north when it carries joiner paths from the S side (G1 §10.2, REVIEW-port-fans F1). */
+		bool from_main = false;
+		for (uint16_t p : edge.paths) {
+			if (group_of(paths[p].from).main != group_of(paths[edge.paths[0]].from).main) return fail("a band edge carrying exit and joiner paths is not ruled yet");
+		}
+		if (!edge.paths.empty()) from_main = group_of(paths[edge.paths[0]].from).main;
+		int cur = is_row_node(edge.from) ? (east[row_of_node(edge.from.index)] ? 1 : 3) : (from_main ? 2 : 0);
 		const bool from_band_split = edge.from.node && order.node_level[edge.from.index] % 2 == 0 && graph.nodes[edge.from.index].split;
 		const bool to_merge = edge.to.node && !graph.nodes[edge.to.index].split;
 		std::vector<Elem> &elems = chain[e];
@@ -1310,6 +1316,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			eq(0, port_pt[south[i]], port_pt[south[0]], column);
 		}
 
+		why("row nodes");
 		/* The rows' nodes: the exit split lies on the exit item's row, the joiner merge on the lane item's. */
 		for (int r = 0; r < rows; r++) {
 			const uint32_t exit_item = node_item(in_edge[r]); // The in edge's fan ends on the exit item.

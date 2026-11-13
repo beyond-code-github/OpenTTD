@@ -1135,7 +1135,12 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 			continue;
 		}
 
-		const bool heads_south = end_level(edge.to) > end_level(edge.from);
+		/* Heads south when its paths come from a main slot: exit paths, also after the Corner of an edge from a row node (G1 §10.2, REVIEW-port-fans F1). */
+		bool heads_south = false;
+		for (uint16_t p : edge.paths) {
+			if (group_of(paths[p].from).main != group_of(paths[edge.paths[0]].from).main) return fail("a band edge carrying exit and joiner paths is not ruled yet");
+		}
+		if (!edge.paths.empty()) heads_south = group_of(paths[edge.paths[0]].from).main;
 		bool corner_placed = false;
 		auto joiner_corner = [&]() {
 			const int r = (order.node_level[edge.to.index] - 1) / 2;

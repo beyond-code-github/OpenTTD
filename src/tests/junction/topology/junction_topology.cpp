@@ -924,6 +924,26 @@ TEST_CASE("topology: the T's placement", "[junction][topology]")
 	CHECK(Of(placement.bridges[1]) == Br(26, 9, 26, 6, 0, 0, 0, 0));
 }
 
+/* Hidden until S2 (S fans) lands; REVIEW-port-fans Q4. */
+TEST_CASE("placement: S branch groups of several lanes place (D230, S0-S2)", "[junction][topology][.]")
+{
+	for (const char *right : {"L_RR", "LL_RR"}) {
+		const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("L_R").spec, ParseLineNotation(right).spec);
+		std::string error;
+		PlacementOf(t, 64, &error);
+		CHECK(error == "");
+	}
+}
+
+TEST_CASE("placement: an exit split on a main row no longer reads as heading north (REVIEW-port-fans F1)", "[junction][topology]")
+{
+	const JunctionTopology t = MakeJunctionHubTopology(ParseLineNotation("L_R").spec, ParseLineNotation("L_RR").spec);
+	std::string error;
+	PlacementOf(t, 64, &error);
+	CHECK(error.find("S-bend size (edge 1)") == std::string::npos);
+	CHECK(error.find("S port spacing") == std::string::npos);
+}
+
 TEST_CASE("topology: LL_RR's uncut w2 bridge is too long at nmax 8", "[junction][topology]")
 {
 	std::string error;

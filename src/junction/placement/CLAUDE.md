@@ -9,6 +9,7 @@
 - Two unrelated pieces share a tile only as Upper|Lower or Left|Right (D182, D217; JunctionTracksMayShareTile).
 - Site floors and per-shape constants exist only as test oracles (D217).
 - Every edge is one chain of elements; one floor table keyed by (previous kind, next kind) holds every run constant (G1 §16.1, RW1-RW6).
+- A band edge's chain starts on its row's heading when it leaves a row node, else south when it carries exit paths and north when it carries joiner paths (G1 §10.2).
 - Curve gaps: consecutive same-hand bends at least `min(2TL - 1, max(2, CL))` in units along the path, opposite hands at least 2, non-consecutive at least `min(2TL - 1, (j - i) CL)` (`JunctionCurveGaps`, G1 §11.8).
 - Curve length CL is derived from the train, not set: the smallest bend spacing (1..12) whose curve speed limit is at least the design speed, capped at 2 TL (`DeriveCurveSpacing`, D67).
 - A diagonal half piece counts as half a tile for CL (D36).
