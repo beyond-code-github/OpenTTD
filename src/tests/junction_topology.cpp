@@ -518,11 +518,61 @@ TEST_CASE("topology: a tunnel separation is placed", "[junction][topology]")
 			CHECK((tile.y > lo_y && tile.y < hi_y));
 		}
 	}
+}
 
-	/* The render still refuses (TU3). */
-	const JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, structure, tunnelled, placement, &reason);
-	CHECK(layout.tracks.empty());
-	CHECK(reason.find("tunnel crossings are not placed yet") != std::string::npos);
+TEST_CASE("topology: a tunnel separation renders and signals", "[junction][topology]")
+{
+	const JunctionTopology &t = JunctionTTopology();
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+	JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+	auto single = std::ranges::find_if(structure.bridges, [](const Bridge &b) { return !b.doubled; });
+	REQUIRE(single != structure.bridges.end());
+	const size_t index = single - structure.bridges.begin();
+	single->tunnel = true;
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+	REQUIRE(!programs.edges.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string reason;
+	const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t, paths, graph, order, structure, programs, spec, &reason);
+	INFO(reason);
+	REQUIRE(!placement.edges.empty());
+
+	std::vector<JunctionTrackRoute> routes;
+	JunctionLayout layout = RenderJunctionTrackPlacement(t, paths, graph, structure, programs, placement, &reason, &routes);
+	INFO(reason);
+	REQUIRE(!layout.tracks.empty());
+
+	/* Exactly one tunnel, at the placement's portals; the separation has no bridge. */
+	const JunctionBridge &portals = placement.bridges[index][0];
+	size_t tunnels = 0;
+	size_t bridges = 0;
+	for (const JunctionBridge &bridge : layout.bridges) {
+		if (!bridge.tunnel) {
+			bridges++;
+			continue;
+		}
+		tunnels++;
+		/* The rasteriser may list the portals in either order. */
+		const bool same = bridge.start.x == portals.start.x && bridge.start.y == portals.start.y && bridge.end.x == portals.end.x && bridge.end.y == portals.end.y;
+		const bool swapped = bridge.start.x == portals.end.x && bridge.start.y == portals.end.y && bridge.end.x == portals.start.x && bridge.end.y == portals.start.y;
+		CHECK((same || swapped));
+	}
+	CHECK(tunnels == 1);
+	size_t expected = 0;
+	for (size_t b = 0; b < structure.bridges.size(); b++) {
+		if (b != index) expected += structure.bridges[b].doubled ? 2 : 1;
+	}
+	CHECK(bridges == expected);
+
+	SignalJunctionTrackRoutes(layout, routes, t, paths, graph, programs, spec, &reason, nullptr, &placement.prio);
+	CHECK(reason.empty());
+	for (const RuleViolation &v : CheckJunctionRules(layout, spec, t)) {
+		INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
+		CHECK(false);
+	}
 }
 
 TEST_CASE("topology: the T's track programs", "[junction][topology]")

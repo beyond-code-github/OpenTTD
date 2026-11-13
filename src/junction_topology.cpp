@@ -3532,15 +3532,14 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 				for (size_t t = 0; t < tokens.size(); t++) {
 					const JunctionTrackStep &token = tokens[t];
 					const std::string where = fmt::format(" edge {} token {}", e, t);
-					if (token.kind == StepKind::Tunnel || token.kind == StepKind::Above) return fail_at(where, "tunnel crossings are not placed yet");
-					if (token.kind == StepKind::Under) continue;
-					if (token.kind == StepKind::Over) {
+					if (token.kind == StepKind::Under || token.kind == StepKind::Above) continue;
+					if (token.kind == StepKind::Over || token.kind == StepKind::Tunnel) {
 						const int b = bridge_over(e, token.index);
 						if (b < 0) return fail_at(where, "an Over without a bridge");
 						if (b == last_over) continue;
 						last_over = b;
 						const JunctionBridge &heads = placement.bridges[b][doubled_leg(e) ? c : 0];
-						if (cur.x == heads.start.x && cur.y == heads.start.y && !route.moves.empty() && (route.moves.back() == 'L' || route.moves.back() == 'R')) {
+						if (!structure.bridges[b].tunnel && cur.x == heads.start.x && cur.y == heads.start.y && !route.moves.empty() && (route.moves.back() == 'L' || route.moves.back() == 'R')) {
 							/* D110: the bridge follows the bend directly and completes it; the near head stands where the closing axis piece would. */
 							route.moves.pop_back();
 							tags.pop_back();
@@ -3551,7 +3550,7 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 							tag_pieces(before, e, JunctionTrackPieceTag::RUN, t);
 						}
 						const int middle = std::abs(heads.end.x - heads.start.x) + std::abs(heads.end.y - heads.start.y) - 1;
-						route.moves += fmt::format("B{}", middle);
+						route.moves += fmt::format("{}{}", structure.bridges[b].tunnel ? 'T' : 'B', middle);
 						tag_pieces(middle + 2, e, static_cast<uint16_t>(t), t);
 						cur = heads.end;
 						continue;
