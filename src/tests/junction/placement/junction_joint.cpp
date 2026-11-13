@@ -16,12 +16,14 @@
 #include <array>
 #include <chrono>
 #include <iostream>
+#include <set>
 
 #include "../../../junction/junction_pipeline.h"
 #include "../../../junction/junction_spec.h"
 #include "../../../junction/line/junction_line.h"
 #include "../../../junction/placement/junction_joint.h"
 #include "../../../junction/placement/junction_placement.h"
+#include "../../../junction/topology/junction_chain.h"
 #include "../../../junction/topology/junction_topology.h"
 
 #include "../../../safeguards.h"
@@ -488,5 +490,319 @@ TEST_CASE("joint: scale probe on wider hubs", "[.g3scale]")
 		std::string chain;
 		for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
 		WARN(fmt::format("{}: reached solve, seed {} ({:.1f} ms), bends {}, relations {}, routes {}, status {}, objective {:.3f}, median {:.1f} ms, relaxed status {} objective {:.3f}, conflict length {}", hub, places ? "places" : "fails", median(seed_ms), system.bends.size(), system.relations.size(), system.routes.size(), static_cast<int>(joint.status), joint.objective, median(ms), static_cast<int>(relaxed.status), relaxed.objective, joint.conflict.size()));
+	}
+}
+
+/** A route bend's quantity at the joint's length: 0 when a sized bend has vanished, else the affine value. */
+static int JointQuantity(const JunctionJointResult &joint, const JunctionSystemRouteBend &b, const std::pair<int, int> &q)
+{
+	if (b.bend < 0) return q.first;
+	const int length = joint.length[b.bend];
+	return length == 0 ? 0 : q.first + (length - 1) * (q.second - q.first);
+}
+
+/** The units at each bend's entry of a route at the joint's solution, chained from the start. */
+static std::vector<int> JointEntries(const JunctionJointResult &joint, const JunctionSystemRoute &route)
+{
+	std::vector<int> entry;
+	for (size_t i = 0; i < route.bends.size(); i++) {
+		const JunctionSystemRouteBend &b = route.bends[i];
+		auto q = [&](const JunctionSystemRouteBend &bend, size_t k) { return JointQuantity(joint, bend, bend.quantity[k]); };
+		if (i == 0) {
+			const int h = route.start_heading;
+			entry.push_back(2 * (HEAD_VX[h] * (joint.x[b.pt] + q(b, 0) - joint.x[route.start_pt]) + HEAD_VY[h] * (joint.y[b.pt] + q(b, 1) - joint.y[route.start_pt])));
+		} else {
+			const JunctionSystemRouteBend &p = route.bends[i - 1];
+			const int h = p.hout;
+			entry.push_back(entry[i - 1] + q(p, 4) + 2 * (HEAD_VX[h] * (joint.x[b.pt] + q(b, 0) - joint.x[p.pt] - q(p, 2)) + HEAD_VY[h] * (joint.y[b.pt] + q(b, 1) - joint.y[p.pt] - q(p, 3))));
+		}
+	}
+	return entry;
+}
+
+/** Forces the bend's L to 0 by relations: an S fan's end columns equal (x_last - x_first = s L), a rows-sized S-bend's rows equal (L = |y(item) - y(first)|). */
+static JunctionPlacementSystem ForceZero(const JunctionPlacementSystem &system, size_t bi)
+{
+	const JunctionSystemBend &bend = system.bends[bi];
+	JunctionPlacementSystem forced = system;
+	const bool fan = bend.kind == "SFan";
+	const uint8_t axis = fan ? 0 : 1;
+	const int a = fan ? bend.last : bend.item_pt, b = bend.first;
+	forced.relations.push_back({axis, a, b, 0, -1, 0, 0, false, false, false, "test: zero-size bend"});
+	forced.relations.push_back({axis, b, a, 0, -1, 0, 0, false, false, false, "test: zero-size bend"});
+	return forced;
+}
+
+/** Whether the bend can vanish and is walked by a route. */
+static bool ZeroCandidate(const JunctionPlacementSystem &system, size_t bi)
+{
+	const JunctionSystemBend &bend = system.bends[bi];
+	if (!(bend.kind == "SFan" || (bend.kind == "SBend" && bend.source == "rows"))) return false;
+	for (const JunctionSystemRoute &route : system.routes) {
+		for (const JunctionSystemRouteBend &b : route.bends) {
+			if (b.bend == static_cast<int>(bi)) return true;
+		}
+	}
+	return false;
+}
+
+/** The counters' checks at a solved system with bend bi at L = 0. */
+static void CheckZeroBend(const JunctionPlacementSystem &forced, const JunctionJointResult &joint, size_t bi, const JunctionSpec &spec)
+{
+	REQUIRE(joint.length[bi] == 0);
+	int checked = 0, gaps_checked = 0;
+	for (const JunctionSystemRoute &route : forced.routes) {
+		const std::vector<int> entry = JointEntries(joint, route);
+		for (size_t i = 0; i + 1 < route.bends.size(); i++) {
+			if (route.bends[i].bend != static_cast<int>(bi)) continue;
+			/* The route with the bend removed: E_prev_exit + 2 h . delta. */
+			const JunctionSystemRouteBend &next = route.bends[i + 1];
+			auto q = [&](const JunctionSystemRouteBend &b, size_t k) { return JointQuantity(joint, b, b.quantity[k]); };
+			int removed;
+			if (i == 0) {
+				const int h = route.start_heading;
+				removed = 2 * (HEAD_VX[h] * (joint.x[next.pt] + q(next, 0) - joint.x[route.start_pt]) + HEAD_VY[h] * (joint.y[next.pt] + q(next, 1) - joint.y[route.start_pt]));
+			} else {
+				const JunctionSystemRouteBend &p = route.bends[i - 1];
+				const int h = p.hout;
+				removed = entry[i - 1] + q(p, 4) + 2 * (HEAD_VX[h] * (joint.x[next.pt] + q(next, 0) - joint.x[p.pt] - q(p, 2)) + HEAD_VY[h] * (joint.y[next.pt] + q(next, 1) - joint.y[p.pt] - q(p, 3)));
+			}
+			CHECK(entry[i + 1] == removed);
+			checked++;
+		}
+
+		/* Every curve-gap pair that involves no vanished bend's curve holds at the true units. */
+		std::vector<std::pair<size_t, int>> curves; // (bend, units)
+		for (size_t i = 0; i < route.bends.size(); i++) {
+			for (const auto &cu : route.bends[i].curve_units) curves.emplace_back(i, entry[i] + JointQuantity(joint, route.bends[i], cu));
+		}
+		std::vector<JunctionCurveHand> hands;
+		for (const int8_t hand : route.hands) hands.push_back(hand > 0 ? JunctionCurveHand::Right : JunctionCurveHand::Left);
+		REQUIRE(curves.size() == hands.size());
+		for (const JunctionCurveGap &gap : JunctionCurveGaps(hands, spec.tl, spec.curve_speed, spec.reference_speed)) {
+			auto vanished = [&](size_t curve) { const int id = route.bends[curves[curve].first].bend; return id >= 0 && joint.length[id] == 0; };
+			if (vanished(gap.i) || vanished(gap.j)) continue;
+			CHECK(curves[gap.j].second - curves[gap.i].second >= gap.min_gap);
+			gaps_checked++;
+		}
+	}
+	std::cout << fmt::format("[joint] zero-size: routes through it checked {}, gap pairs checked {}\n", checked, gaps_checked);
+	CHECK(checked > 0);
+}
+
+TEST_CASE("joint: a zero-size bend adds no units", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	bool found = false;
+	/* First the three failing hubs at the default cut, then (below) a synthetic system. */
+	for (const auto &[main, branch] : {std::pair{"L_R", "L_RR"}, std::pair{"L_R", "LL_RR"}, std::pair{"LL_RR", "LL_RR"}}) {
+		if (found) break;
+		const JointInputs in = MakeJointInputs(main, branch);
+		const JunctionTrackStructure cut = DefaultCut(in);
+		std::string error;
+		JunctionPlacementSystem system;
+		PlaceTrackGraph(in.topology, in.paths, in.graph, in.order, cut, in.programs, JunctionSpec(spec), nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system);
+		int fans = 0, rows = 0;
+		for (const JunctionSystemBend &b : system.bends) { fans += b.kind == "SFan"; rows += b.kind == "SBend" && b.source == "rows"; }
+		std::cout << fmt::format("[joint] zero-size: {} x {}: routes {}, S fans {}, rows-sized S-bends {}\n", main, branch, system.routes.size(), fans, rows);
+		for (size_t bi = 0; bi < system.bends.size() && !found; bi++) {
+			if (!ZeroCandidate(system, bi)) continue;
+			const JunctionPlacementSystem forced = ForceZero(system, bi);
+			const JunctionJointResult joint = SolveJunctionJoint(forced, spec);
+			if (joint.status != JunctionMilp::Status::Optimal) continue;
+			found = true;
+			std::cout << fmt::format("[joint] zero-size: {} x {}, bend {} ({} {} edge {} tok {})\n", main, branch, bi, system.bends[bi].kind, system.bends[bi].source, system.bends[bi].edge, system.bends[bi].tok);
+			CheckZeroBend(forced, joint, bi, spec);
+		}
+	}
+	if (!found) {
+		/* Synthetic: LL_RR x L_R's record, a walked rows-sized bend forced to 0, with the relations its conflict chain names removed. */
+		const JointInputs in = MakeJointInputs("LL_RR", "L_R");
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+		REQUIRE(!seed.routes.empty());
+		const JunctionPlacementSystem system = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices);
+		for (size_t bi = 0; bi < system.bends.size() && !found; bi++) {
+			if (!ZeroCandidate(system, bi)) continue;
+			JunctionPlacementSystem forced = ForceZero(system, bi);
+			JunctionJointResult joint = SolveJunctionJoint(forced, spec);
+			if (joint.status != JunctionMilp::Status::Infeasible) continue;
+			/* The reasons of each conflict chain, except the forced bound, are removed from the copy (every relation with that reason text); a further chain is handled the same way. */
+			std::set<std::string> drop;
+			int rounds = 0;
+			for (; joint.status == JunctionMilp::Status::Infeasible && rounds < 12; rounds++) {
+				std::set<std::string> now;
+				for (const std::string &reason : joint.conflict) {
+					if (reason != "test: zero-size bend") now.insert(reason);
+				}
+				if (now.empty()) break;
+				for (const std::string &reason : now) INFO("removed relations of: " << reason);
+				drop.insert(now.begin(), now.end());
+				std::erase_if(forced.relations, [&](const JunctionSystemRelation &r) { return now.count(r.reason) != 0; });
+				joint = SolveJunctionJoint(forced, spec);
+			}
+			std::string removed;
+			for (const std::string &reason : drop) removed += (removed.empty() ? "" : "; ") + reason;
+			std::cout << fmt::format("[joint] zero-size synthetic: LL_RR x L_R bend {} ({} edge {} tok {}), chains removed {}, [{}], status {}, left: {}\n", bi, system.bends[bi].kind, system.bends[bi].edge, system.bends[bi].tok, rounds, removed, static_cast<int>(joint.status), joint.conflict.size());
+			if (joint.status != JunctionMilp::Status::Optimal) continue;
+			found = true;
+			CheckZeroBend(forced, joint, bi, spec);
+		}
+	}
+	REQUIRE(found);
+}
+
+TEST_CASE("joint: choices round-trip", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch] : {std::pair{"L_R", "L_R"}, std::pair{"LL_RR", "L_R"}}) {
+		INFO(main << " x " << branch);
+		const JointInputs in = MakeJointInputs(main, branch);
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+		REQUIRE(!seed.routes.empty());
+		JunctionPlacementChoices expected = seed.placement.choices;
+		const JunctionPlacementSystem system = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, expected);
+		const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+		REQUIRE(joint.status == JunctionMilp::Status::Optimal);
+		REQUIRE(joint.x.size() == static_cast<size_t>(system.pt_count));
+		REQUIRE(joint.y.size() == static_cast<size_t>(system.pt_count));
+		if (std::string(main) == "L_R") {
+			REQUIRE(expected.corner.size() > 5);
+			REQUIRE(expected.corner[5].size() > 0);
+			CHECK(expected.corner[5][0] == 6);
+			expected.corner[5][0] = 5; // The joint model shortens T's Corner of edge 5 (b-3).
+		}
+		CHECK(joint.choices.port_offset == expected.port_offset);
+		CHECK(joint.choices.m == expected.m);
+		CHECK(joint.choices.corner == expected.corner);
+		CHECK(joint.choices == expected);
+	}
+}
+
+/** The curve-gap rows of the counters where a vanished bend lies strictly between the two curves' bends (their gaps count the vanished curves). */
+static int ApproximatedGaps(const JunctionPlacementSystem &system, const JunctionJointResult &joint, const JunctionSpec &spec)
+{
+	int count = 0;
+	for (const JunctionSystemRoute &route : system.routes) {
+		std::vector<size_t> bend_of;
+		for (size_t i = 0; i < route.bends.size(); i++) bend_of.insert(bend_of.end(), route.bends[i].curve_units.size(), i);
+		std::vector<JunctionCurveHand> hands;
+		for (const int8_t hand : route.hands) hands.push_back(hand > 0 ? JunctionCurveHand::Right : JunctionCurveHand::Left);
+		for (const JunctionCurveGap &gap : JunctionCurveGaps(hands, spec.tl, spec.curve_speed, spec.reference_speed)) {
+			for (size_t between = bend_of[gap.i] + 1; between < bend_of[gap.j]; between++) {
+				const int id = route.bends[between].bend;
+				if (id >= 0 && ZeroCandidate(system, static_cast<size_t>(id)) && joint.length[id] == 0) {
+					count++;
+					break;
+				}
+			}
+		}
+	}
+	return count;
+}
+
+TEST_CASE("joint: the joint loop on the hubs", "[junction][milp][.g3loop]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch] : {std::pair{"L_R", "L_R"}, std::pair{"LL_RR", "L_R"}, std::pair{"L_R", "L_RR"}, std::pair{"L_R", "LL_RR"}, std::pair{"LL_RR", "LL_RR"}}) {
+		const std::string hub = fmt::format("{} x {}", main, branch);
+		const auto hub_start = std::chrono::steady_clock::now();
+		const JointInputs in = MakeJointInputs(main, branch);
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+		const bool seeded = !seed.routes.empty();
+		const std::vector<JunctionLanePath> &paths = seeded ? seed.paths : in.paths;
+		const JunctionTrackGraph &graph = seeded ? seed.graph : in.graph;
+		const JunctionTrackStructure cut = seeded ? seed.structure : DefaultCut(in);
+		const JunctionTrackPrograms &programs = seeded ? seed.programs : in.programs;
+
+		JunctionPlacementChoices choices;
+		std::string c0;
+		if (seeded) {
+			choices = seed.placement.choices;
+			c0 = "the seed's choices";
+		} else {
+			JunctionPlacementSystem system;
+			const JunctionTrackPlacement rounds = PlaceTrackGraph(in.topology, paths, graph, in.order, cut, programs, spec, nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system);
+			if (!rounds.nodes.empty() && !rounds.choices.m.empty()) {
+				choices = rounds.choices;
+				c0 = "the rounds-mode choices";
+			} else {
+				/* All floors: every free S-bend 1, S fan 0, joiner Corner k. */
+				REQUIRE(!system.tokens.empty());
+				for (const uint32_t tokens : system.tokens) {
+					choices.m.emplace_back(tokens, 0);
+					choices.corner.emplace_back(tokens, 0);
+				}
+				for (const JunctionSystemBend &b : system.bends) {
+					if (b.copy != 0) continue;
+					if (b.source == "free") choices.m[b.edge][b.tok] = b.kind == "SFan" ? 0 : 1;
+					if (b.source == "corner_rows") choices.corner[b.edge][b.tok] = system.k;
+				}
+				choices.port_offset = system.port_offset;
+				c0 = "all-floor choices";
+			}
+		}
+
+		std::vector<JunctionPlacementChoices> history;
+		std::vector<std::vector<int>> lengths;
+		std::string outcome;
+		int approx = 0;
+		for (int k = 0; k < 12 && outcome.empty(); k++) {
+			const auto start = std::chrono::steady_clock::now();
+			history.push_back(choices);
+			const JunctionPlacementSystem system = RecordJunctionPlacementSystem(in.topology, paths, graph, in.order, cut, programs, spec, choices);
+			if (system.relations.empty()) {
+				outcome = "the fixed path recorded nothing";
+				break;
+			}
+			const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+			const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+			int sum = 0, changed = 0;
+			for (size_t i = 0; i < joint.length.size(); i++) {
+				sum += joint.length[i];
+				changed += joint.length[i] != system.bends[i].m;
+			}
+			WARN(fmt::format("{} round {}: status {}, objective {:.3f}, sum L {}, changed {}, {:.1f} ms", hub, k, static_cast<int>(joint.status), joint.objective, sum, changed, ms));
+			if (joint.status == JunctionMilp::Status::Infeasible) {
+				std::string chain;
+				for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
+				outcome = "infeasible, conflict: " + chain;
+				break;
+			}
+			if (joint.status != JunctionMilp::Status::Optimal) {
+				outcome = fmt::format("solver status {}", static_cast<int>(joint.status));
+				break;
+			}
+			approx = ApproximatedGaps(system, joint, spec);
+			lengths.push_back(joint.length);
+			if (joint.choices == choices) {
+				const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(in.topology, paths, graph, in.order, cut, programs, spec, choices, &error);
+				outcome = placed.nodes.empty() ? "fixed point that fails, error: " + error : fmt::format("fixed point that places, box {} x {}", placed.size.x, placed.size.y);
+				break;
+			}
+			size_t first = history.size();
+			for (size_t j = 0; j < history.size(); j++) {
+				if (history[j] == joint.choices) { first = j; break; }
+			}
+			if (first < history.size()) {
+				std::string repeating;
+				for (size_t i = 0; i < system.bends.size(); i++) {
+					for (size_t j = first; j < lengths.size(); j++) {
+						if (lengths[j].size() == lengths[first].size() && lengths[j][i] != lengths[first][i]) {
+							repeating += fmt::format("{}e{}t{}", repeating.empty() ? "" : " ", system.bends[i].edge, system.bends[i].tok);
+							break;
+						}
+					}
+				}
+				outcome = fmt::format("cycle of period {} from round {}, bends whose L repeats: {}", history.size() - first, first, repeating);
+				break;
+			}
+			choices = joint.choices;
+		}
+		if (outcome.empty()) outcome = "12 rounds without settling";
+		const double total = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - hub_start).count();
+		WARN(fmt::format("{}: C_0 {}, {}, approximated gap rows at the last solve {}, total {:.1f} ms", hub, c0, outcome, approx, total));
 	}
 }

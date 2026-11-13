@@ -118,6 +118,7 @@ struct JunctionPlacementSystem {
 	int64_t bridge0 = 0; ///< The price of a bridge of no middle tiles.
 	int64_t bridge1 = 0; ///< The price of a bridge of one middle tile.
 	int sd = 0; ///< The signal distance, in track pieces.
+	std::vector<uint32_t> tokens; ///< Per edge, its program's token count, the fixed path's choices shape.
 	std::vector<std::vector<int>> paths; ///< Per lane path, its edges.
 	std::vector<JunctionSystemBend> bends; ///< The bends, from the last round whose rows were known (else the last Y round).
 	std::vector<JunctionSystemElement> chains; ///< The elements of every chain.

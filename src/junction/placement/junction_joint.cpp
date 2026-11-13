@@ -84,19 +84,25 @@ struct Expr {
  * @param x The X variable of every point.
  * @param y The Y variable of every point.
  * @param L The length variable of every bend.
+ * @param zero The binary z of every bend that may have size 0 (an S fan's, a rows-sized S-bend's): 1 when it has a size.
  */
-static void AddCurveGapCounters(JointModel &model, const JunctionPlacementSystem &system, const JunctionSpec &spec, const std::vector<uint32_t> &x, const std::vector<uint32_t> &y, const std::map<int, uint32_t> &L)
+static void AddCurveGapCounters(JointModel &model, const JunctionPlacementSystem &system, const JunctionSpec &spec, const std::vector<uint32_t> &x, const std::vector<uint32_t> &y, const std::map<int, uint32_t> &L, const std::map<int, uint32_t> &zero)
 {
 	for (const JunctionSystemRoute &route : system.routes) {
 		const size_t n = route.bends.size();
 		std::vector<uint32_t> entry;
 		for (size_t i = 0; i < n; i++) entry.push_back(model.Var(-JunctionMilp::INF, JunctionMilp::INF));
 
-		/* scale * (a + b L) of one raster quantity (q at L = 1, q at L = 2): the quantity is the constant a - b + ... of its affine form. */
+		/* scale * q of one raster quantity (q at L = 1, q at L = 2), q = q1 + (L - 1) d. A bend that may have size 0 writes it (q1 - d) z + d L: exact for L >= 1 and 0 at L = 0. */
 		auto add_quantity = [&](Expr &e, double scale, const JunctionSystemRouteBend &bend, const std::pair<int, int> &q) {
 			const int slope = q.second - q.first;
 			if (slope != 0) e.coefs[L.at(bend.bend)] += scale * slope;
-			e.constant += scale * (q.first - slope);
+			const auto z = bend.bend >= 0 ? zero.find(bend.bend) : zero.end();
+			if (z != zero.end()) {
+				e.coefs[z->second] += scale * (q.first - slope);
+			} else {
+				e.constant += scale * (q.first - slope);
+			}
 		};
 		/* scale * h . (the bend's quantity pair at index dx). */
 		auto add_offset = [&](Expr &e, double scale, int heading, const JunctionSystemRouteBend &bend, size_t dx) {
@@ -151,7 +157,17 @@ static void AddCurveGapCounters(JointModel &model, const JunctionPlacementSystem
 			e.coefs[entry[bi]] -= 1;
 			add_quantity(e, 1, route.bends[bj], route.bends[bj].curve_units[kj]);
 			add_quantity(e, -1, route.bends[bi], route.bends[bi].curve_units[ki]);
-			add_row(e, gap.min_gap, JunctionMilp::INF);
+			/* A vanished bend has no curves: the row is relaxed by M (1 - z), once per such bend in it. */
+			double lower = gap.min_gap;
+			std::set<int> relaxed;
+			for (const size_t bend_index : {bi, bj}) {
+				const int id = route.bends[bend_index].bend;
+				const auto z = id >= 0 ? zero.find(id) : zero.end();
+				if (z == zero.end() || !relaxed.insert(id).second) continue;
+				e.coefs[z->second] -= BIG;
+				lower -= BIG;
+			}
+			add_row(e, lower, JunctionMilp::INF);
 		}
 	}
 }
@@ -169,7 +185,7 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 	model.AddRow({{x[0], 1}}, 0, 0); // origin x
 	model.AddRow({{y[0], 1}}, 0, 0); // origin y
 	const int k = system.k;
-	std::map<int, uint32_t> L, Z;
+	std::map<int, uint32_t> L, Z, zero; ///< zero: z of every bend that may have size 0 (Z for S fans).
 	for (const JunctionSystemBend &b : system.bends) {
 		const std::string &src = b.source;
 		if (src == "free") {
@@ -178,6 +194,7 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 				Z[b.id] = model.Var(0, 1);
 				model.AddRow({{L[b.id], 1}, {Z[b.id], -1}}, 0, JunctionMilp::INF); // fan: L >= z
 				model.AddRow({{L[b.id], 1}, {Z[b.id], -BIG}}, -JunctionMilp::INF, 0); // fan: L <= M z
+				zero[b.id] = Z[b.id];
 			} else {
 				L[b.id] = model.Var(b.floor);
 			}
@@ -185,6 +202,9 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 			L[b.id] = model.Var(k);
 		} else if (src == "rows") {
 			L[b.id] = model.Var(0);
+			zero[b.id] = model.Var(0, 1);
+			model.AddRow({{L[b.id], 1}, {zero[b.id], -1}}, 0, JunctionMilp::INF); // rows-sized S-bend: L >= z
+			model.AddRow({{L[b.id], 1}, {zero[b.id], -BIG}}, -JunctionMilp::INF, 0); // rows-sized S-bend: L <= M z
 		} else { // port_rows, fixed_k, one_row: held at the recorded size
 			L[b.id] = model.Var(b.m, b.m);
 		}
@@ -218,7 +238,7 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 		}
 	}
 
-	AddCurveGapCounters(model, system, spec, x, y, L);
+	AddCurveGapCounters(model, system, spec, x, y, L, zero);
 
 	/* Link rows per diagonal. */
 	for (const JunctionSystemBend &b : system.bends) {
@@ -317,6 +337,21 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 	if (result.status == JunctionMilp::Status::Optimal) {
 		result.objective = milp.Objective();
 		for (const JunctionSystemBend &b : system.bends) result.length.push_back(static_cast<int>(std::lround(milp.Value(L[b.id]))));
+		result.choices.port_offset = system.port_offset;
+		for (const uint32_t tokens : system.tokens) {
+			result.choices.m.emplace_back(tokens, 0);
+			result.choices.corner.emplace_back(tokens, 0);
+		}
+		for (size_t i = 0; i < system.bends.size(); i++) {
+			const JunctionSystemBend &b = system.bends[i];
+			if (b.copy != 0) continue;
+			if (b.source == "free") result.choices.m[b.edge][b.tok] = result.length[i];
+			if (b.source == "corner_rows") result.choices.corner[b.edge][b.tok] = result.length[i];
+		}
+		for (uint32_t p = 0; p < npts; p++) {
+			result.x.push_back(static_cast<int>(std::lround(milp.Value(x[p]))));
+			result.y.push_back(static_cast<int>(std::lround(milp.Value(y[p]))));
+		}
 	} else if (result.status == JunctionMilp::Status::Infeasible) {
 		for (uint32_t row : milp.InfeasibleRows()) {
 			if (model.rows[row].relation >= 0) result.conflict.push_back(system.relations[model.rows[row].relation].reason);

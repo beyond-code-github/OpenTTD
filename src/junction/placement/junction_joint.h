@@ -22,6 +22,8 @@ struct JunctionSpec;
 struct JunctionJointResult {
 	JunctionMilp::Status status;
 	std::vector<int> length; ///< Per JunctionPlacementSystem bend, its L.
+	std::vector<int> x, y; ///< Per system point, its column and row at the optimum.
+	JunctionPlacementChoices choices; ///< The lengths as the fixed path's choices.
 	double objective = 0;
 	std::vector<std::string> conflict; ///< When infeasible: the reasons of the infeasible set's relation rows, in row order.
 };

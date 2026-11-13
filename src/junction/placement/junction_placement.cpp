@@ -416,6 +416,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		now.bridge0 = spec.prices.bridge ? spec.prices.bridge(0).base() : 0;
 		now.bridge1 = spec.prices.bridge ? spec.prices.bridge(1).base() : 0;
 		now.sd = spec.sd;
+		for (uint32_t e = 0; e < edge_count; e++) now.tokens.push_back(static_cast<uint32_t>(programs.edges[e].size()));
 		if (phase == 0) {
 			now.routes = recorded_routes;
 			now.route_curves = recorded_route_curves;
