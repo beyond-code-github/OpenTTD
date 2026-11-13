@@ -1160,3 +1160,50 @@ TEST_CASE("joint: the joint loop on the hubs", "[junction][milp][.g3loop]")
 		}
 	}
 }
+
+TEST_CASE("placement: a band edge carries a series of single bridges", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const char *refusal = "a bridge over several band crossings is not ruled yet";
+	for (const bool keep : {false, true}) {
+		const char *hub = keep ? "LL_RR x LL_RR keep" : "LLL_RRR x LL_RR";
+		JointInputs in = MakeJointInputs(keep ? "LL_RR" : "LLL_RRR", keep ? "LL_RR" : "LL_RR");
+		if (keep) {
+			const JunctionLineSpec llrr = ParseLineNotation("LL_RR").spec;
+			std::string why;
+			in.topology = MakeJunctionHubTopology(llrr, llrr, JunctionLanePairing::LaneKeepsLane);
+			in.paths = ExpandJunctionLanes(in.topology, &why);
+			in.graph = BuildJunctionTrackGraph(in.topology, in.paths, &why);
+			in.order = OrderJunctionTrackGraph(in.topology, in.paths, in.graph, &why);
+			in.structure = StructureJunctionTrackGraph(in.topology, in.paths, in.graph, in.order, &why);
+			in.programs = ProgramJunctionTrackGraph(in.topology, in.paths, in.graph, in.order, in.structure, &why);
+		}
+		INFO(hub);
+		REQUIRE(!in.structure.bridges.empty());
+		const JunctionTrackStructure cut = DefaultCut(in);
+		auto is_row = [&](uint32_t e) { return std::any_of(cut.bridges.begin(), cut.bridges.end(), [&](const JunctionTrackBridge &b) { return b.edge == e && b.doubled; }); };
+		bool series = false;
+		for (uint32_t e = 0; e < in.graph.edges.size(); e++) {
+			if (is_row(e)) continue;
+			series = series || std::count_if(cut.bridges.begin(), cut.bridges.end(), [&](const JunctionTrackBridge &b) { return b.edge == e; }) >= 2;
+		}
+		CHECK(series);
+
+		std::string error;
+		const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(in.topology, in.paths, in.graph, in.order, cut, in.programs, spec, &error);
+		CHECK(error.find(refusal) == std::string::npos);
+		WARN(hub << ": " << (placed.nodes.empty() ? error : std::string("places")));
+		if (placed.nodes.empty()) continue;
+		/* No existing test checks an Over span against its crossed edge's track; check only that every band Over/Tunnel token has a span. */
+		for (uint32_t e = 0; e < in.graph.edges.size(); e++) {
+			if (is_row(e)) continue;
+			for (size_t t = 0; t < in.programs.edges[e].size(); t++) {
+				const JunctionTrackStep::Kind kind = in.programs.edges[e][t].kind;
+				if (kind != JunctionTrackStep::Kind::Over && kind != JunctionTrackStep::Kind::Tunnel) continue;
+				REQUIRE(t < placed.edges[e].size());
+				const JunctionTrackSpan &span = placed.edges[e][t];
+				CHECK((span.first.x != span.second.x || span.first.y != span.second.y));
+			}
+		}
+	}
+}

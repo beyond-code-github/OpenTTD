@@ -29,7 +29,7 @@
 - A diverging joiner that crosses starts with a Diverge S-bend, then crosses and arrives as any joiner; only a diverging joiner with no crossings starts with a Corner.
 - Two joiners crossing at the same main-line distance: the one from the lower (west) branch in slot goes over.
 - Branch-on-branch crossings sit in the outermost band beside the branch ports.
-- One bridge or tunnel may straddle several crossings of one path within its span limits, except that a band edge carries at most one bridge, over one crossing; placement refuses more; the default is one bridge per crossed row edge, cut into series bridges at `JUNCTION_BRIDGE_MAX_CROSSERS` (2) crossers per bridge.
+- One bridge or tunnel may straddle several crossings of one path within its span limits, except that a band edge carries one single bridge per crossing, in series along it, and placement refuses a single bridge over several band crossings; the default is one bridge per crossed row edge, cut into series bridges at `JUNCTION_BRIDGE_MAX_CROSSERS` (2) crossers per bridge.
 - The programs emit each node's shape (its stack item, trunk heading, trunk, straight and diverging legs with the diverging hand) and each edge's two ends (heading, and the token whose end is the node's point, if any).
 - Rows: lanes spread inside the box by S-bends to open rows for prio rows, doubling copies and joiner approaches, and return to the notation spacing at the ports.
 - An S branch port edge starts (in) or ends (out) with a Fan token, on in and out ports alike: the west half of its group opens west, the east half east, the middle lane of an odd group (a one-lane group) has none, so the port block lies between its lanes' inside ends.

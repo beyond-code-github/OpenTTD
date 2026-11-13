@@ -272,13 +272,13 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				cur = el.hout;
 			} else if (step.kind == StepKind::Over || step.kind == StepKind::Tunnel) {
 				/* A tunnel's portals are the heads of a single bridge (D220). */
-				if (bridges_of[e].size() != 1 || structure.bridges[bridges_of[e][0]].doubled || structure.bridges[bridges_of[e][0]].crossed.size() != 1) return fail("a bridge over several band crossings is not ruled yet");
-				const int b = bridges_of[e][0];
+				const auto bridge_it = std::ranges::find_if(bridges_of[e], [&](int b) { return std::ranges::find(structure.bridges[b].crossed, step.index) != structure.bridges[b].crossed.end(); });
+				if (bridge_it == bridges_of[e].end() || structure.bridges[*bridge_it].doubled || structure.bridges[*bridge_it].crossed.size() != 1) return fail("a bridge over several band crossings is not ruled yet");
 				el.k = Elem::K::Heads;
 				el.first = new_pt();
 				el.last = new_pt();
 				el.hout = cur;
-				el.cross = static_cast<int>(structure.bridges[b].crossed[0]);
+				el.cross = static_cast<int>(step.index);
 			} else {
 				continue;
 			}
@@ -1416,7 +1416,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			if (is_row_edge(e)) continue;
 			for (const Elem &el : chain[e]) {
 				if (el.k != Elem::K::Heads || VX[el.hin] != 0 || bridges_of[e].empty()) continue;
-				const int b = bridges_of[e][0];
+				const int b = *std::ranges::find_if(bridges_of[e], [&](int bb) { return structure.bridges[bb].crossed[0] == static_cast<uint32_t>(el.cross); });
 				/* A tunnel has no deck above the ground to keep clear (D220); its portals still count as heads. */
 				if (!structure.bridges[b].tunnel) lines.push_back({b, e, false, el.first, el.last, el.first});
 				heads.push_back({b, e, el.first, el.first});
@@ -2490,7 +2490,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			return Heads{el.first, el.last, true};
 		}
 		for (const Elem &el : chain[edge]) {
-			if (el.k == Elem::K::Heads) return Heads{el.first, el.last, false};
+			if (el.k == Elem::K::Heads && el.cross == static_cast<int>(structure.bridges[b].crossed[0])) return Heads{el.first, el.last, false};
 		}
 		return Heads{0, 0, false};
 	};
@@ -2563,7 +2563,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				}
 			} else if (step.kind == StepKind::Over || step.kind == StepKind::Tunnel) {
 				if (bridges_of[e].empty()) return fail("a crossing edge misses its bridge");
-				const Heads heads = heads_of(bridges_of[e][0], 0);
+				const auto over_it = std::ranges::find_if(bridges_of[e], [&](int b) { return structure.bridges[b].crossed[0] == step.index; });
+				if (over_it == bridges_of[e].end()) return fail("a crossing edge misses its bridge");
+				const Heads heads = heads_of(*over_it, 0);
 				std::vector<TileIndexDiffC> found = tiles_under(step.index, heads, vx[heads.near]);
 				if (found.empty()) return fail("a crossing edge misses its bridge");
 				const bool north = vy[heads.far] < vy[heads.near];
