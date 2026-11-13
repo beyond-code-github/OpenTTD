@@ -14,7 +14,7 @@ Rules of the junction tool as present-tense facts, split per folder: each fact l
 - `line/`: line painter and the router shared with the station tool; `junction_router` is live, not superseded (D112, D106, D128).
 - `station/`: station generator, rules and window.
 - `legacy/`: superseded generator code, not extended; see its CLAUDE.md.
-- Root files: `junction_layout` (the output type), `junction_route` (route programs, rasteriser, ASCII), `junction_train_model`, `junction_rules` (the rule checker), `junction_spec` (shared spec, notation, prices, curve spacing, prio sizing).
+- Root files: `junction_layout` (the output type), `junction_route` (route programs, rasteriser, ASCII, `JunctionTrackRoute`/`JunctionTrackPieceTag`), `junction_train_model`, `junction_rules` (the rule checker), `junction_spec` (shared spec, notation, prices, curve spacing, prio sizing).
 - Tests are in `src/tests/junction/`, mirroring these folders (see its CLAUDE.md).
 
 ## Pipeline

@@ -1207,7 +1207,7 @@ TEST_CASE("a planned tunnel builds", "[junction][junctiongame]")
 	std::string why;
 	std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
 	Money cost = 0;
-	REQUIRE(SolveJunctionLevels(terrain, facts, {0, 0}, 1, 3, JunctionTrackPlacement{}, layout, routes, {}, plan, cost, levels, &why));
+	REQUIRE(SolveJunctionLevels(terrain, facts, {0, 0}, 1, 3, {}, {}, layout, routes, {}, plan, cost, levels, &why));
 	for (uint y = 88; y < 128; y++) {
 		for (uint x = 88; x < 128; x++) SetTileHeight(TileXY(x, y), 4);
 	}

@@ -344,24 +344,6 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
  */
 JunctionTrackStructure CutJunctionTrackBridges(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, JunctionTrackPlacement *placement, std::string *error);
 
-/** Which graph element a route piece renders (DESIGN-G1 §13.2). */
-struct JunctionTrackPieceTag {
-	static constexpr uint16_t RUN = UINT16_MAX; ///< `token` of a piece on a run between tokens.
-	uint32_t edge; ///< Graph edge.
-	uint16_t token; ///< Index into the edge's program (JunctionTrackPrograms::edges or ::copies by `copy`), or RUN.
-	uint16_t run; ///< The number of the edge's tokens before this piece (run k lies between tokens k - 1 and k).
-	uint8_t copy;
-	bool operator==(const JunctionTrackPieceTag &) const = default;
-};
-
-/** One rendered route: a lane path's pieces from its in port to its out port, for one copy (DESIGN-G1 §11.10). */
-struct JunctionTrackRoute {
-	uint16_t path; ///< Index into the lane paths.
-	uint8_t copy; ///< 1 for the copy-1 route of a path through a doubled leg, else 0.
-	std::vector<JunctionPiece> pieces;
-	std::vector<JunctionTrackPieceTag> tags; ///< Per piece.
-};
-
 /**
  * The switch events of routes[r] from the tags (DESIGN-G1 §13.8 item 4): at each boundary between consecutive edges, the node piece, a split when graph.nodes[node].split; on a doubled edge, the lane split and the lane merge. The lane split tile is the first piece of the copy-1 route's SBend token, the lane merge tile the last piece of the copy-0 route's SBend token (the sibling route of the same lane path and the other copy supplies the one routes[r] lacks); the event is routes[r]'s first non-bridge piece on that tile. Sorted by piece, a split before a merge on one piece.
  */

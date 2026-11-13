@@ -3481,7 +3481,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	JunctionLayout layout = rendered;
 	std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> prio_beside;
 	SignalJunctionTrackRoutes(layout, routes, topology, paths, graph, programs, spec, nullptr, &prio_beside, &placement.prio);
-	if (!SolveJunctionLevels(*terrain, facts, offset, JunctionRampLevels(spec), spec.tl, placement, layout, routes, prio_beside, placement.terraform, placement.height_cost, placement.track_levels, &text, incremental_check)) return fail(text);
+	if (!SolveJunctionLevels(*terrain, facts, offset, JunctionRampLevels(spec), spec.tl, placement.nodes, placement.ports, layout, routes, prio_beside, placement.terraform, placement.height_cost, placement.track_levels, &text, incremental_check)) return fail(text);
 	return placement;
 }
 

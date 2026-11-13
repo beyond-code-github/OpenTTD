@@ -247,7 +247,7 @@ static bool SolveTestLevels(const JunctionTerrain &terrain, const std::vector<st
 	const JunctionFacts facts(terrain);
 	const JunctionTrackPlacement placement{};
 	std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
-	return SolveJunctionLevels(terrain, facts, {0, 0}, 1, 1, placement, layout, routes, {}, plan, cost, levels, &why);
+	return SolveJunctionLevels(terrain, facts, {0, 0}, 1, 1, placement.nodes, placement.ports, layout, routes, {}, plan, cost, levels, &why);
 }
 
 TEST_CASE("the level solve's foundation is the game's", "[junction][hoverplan]")
@@ -351,7 +351,7 @@ static bool SolveTestBridge(const JunctionTerrain &terrain, JunctionTerraform &p
 	const JunctionFacts facts(terrain);
 	const JunctionTrackPlacement placement{};
 	Money cost = 0;
-	return SolveJunctionLevels(terrain, facts, {0, 0}, 1, 1, placement, layout, routes, {}, plan, cost, levels, &why);
+	return SolveJunctionLevels(terrain, facts, {0, 0}, 1, 1, placement.nodes, placement.ports, layout, routes, {}, plan, cost, levels, &why);
 }
 
 TEST_CASE("a bridge head may sit on the slope rising to its span", "[junction][hoverplan]")
@@ -428,7 +428,7 @@ TEST_CASE("the ramp rule sees the climb onto a bridge", "[junction][hoverplan]")
 	Money cost = 0;
 	constexpr int RAMP_LEVELS = 1;
 	constexpr int TRAIN_LENGTH = 3;
-	if (SolveJunctionLevels(terrain, facts, {0, 0}, RAMP_LEVELS, TRAIN_LENGTH, placement, layout, routes, {}, plan, cost, levels, &why)) {
+	if (SolveJunctionLevels(terrain, facts, {0, 0}, RAMP_LEVELS, TRAIN_LENGTH, placement.nodes, placement.ports, layout, routes, {}, plan, cost, levels, &why)) {
 		std::map<int, int> level;
 		for (const auto &[tile, l] : levels) level[tile.x] = l;
 		/* The entries the train sees: the head at its level, the deck over the span (a flat head's level + 1, an inclined head's the higher level), the far head entered at the deck. */
@@ -519,7 +519,7 @@ TEST_CASE("the level solve plans a tunnel", "[junction][hoverplan]")
 	Money cost = 0;
 	std::string why;
 	std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
-	const bool solved = SolveJunctionLevels(terrain, facts, {0, 0}, 1, 3, JunctionTrackPlacement{}, layout, routes, {}, plan, cost, levels, &why);
+	const bool solved = SolveJunctionLevels(terrain, facts, {0, 0}, 1, 3, {}, {}, layout, routes, {}, plan, cost, levels, &why);
 	INFO(why);
 	REQUIRE(solved);
 	INFO("the planned cost is " << cost << ", the terraform " << plan.cost << ", " << plan.corners.size() << " corners");
@@ -553,6 +553,6 @@ TEST_CASE("the level solve refuses the T's tunnel as a terraform conflict", "[ju
 	Money cost = 0;
 	std::string why;
 	std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
-	CHECK_FALSE(SolveJunctionLevels(terrain, facts, offset, JunctionRampLevels(tt.spec), tt.spec.tl, tt.placement, tt.layout, tt.routes, tt.prio_beside, plan, cost, levels, &why));
+	CHECK_FALSE(SolveJunctionLevels(terrain, facts, offset, JunctionRampLevels(tt.spec), tt.spec.tl, tt.placement.nodes, tt.placement.ports, tt.layout, tt.routes, tt.prio_beside, plan, cost, levels, &why));
 	CHECK(why.find("terraform conflict") != std::string::npos);
 }

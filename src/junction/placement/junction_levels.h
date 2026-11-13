@@ -11,7 +11,7 @@
 #define JUNCTION_LEVELS_H
 
 #include "../terrain/junction_facts.h"
-#include "../topology/junction_topology.h"
+#include "../junction_route.h"
 
 #include <string>
 #include <vector>
@@ -24,7 +24,8 @@
  * @param offset The snapshot tile of the placement's (0, 0).
  * @param ramp_levels JunctionRampLevels(spec).
  * @param train_length Tiles of the train (spec.tl).
- * @param placement The placement (ports and nodes).
+ * @param nodes The placement's node tiles (JunctionTrackPlacement::nodes).
+ * @param ports The placement's port boundary tiles (JunctionTrackPlacement::ports).
  * @param layout The render of placement with the signal pass's prio elements drawn (tracks and bridges).
  * @param routes The routes of that render.
  * @param prio_beside The tiles of the prio elements the signal pass draws, each with the main-line tile beside it (layout is the signalled layout): each is flat and at that tile's level.
@@ -35,6 +36,6 @@
  * @param[in,out] incremental_check Tests only: when set, the descent also computes every incremental cost in full and counts (first) the comparisons and (second) the differences.
  * @return Whether the levels were solved.
  */
-bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const JunctionTrackPlacement &placement, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &prio_beside, JunctionTerraform &plan, Money &cost, std::vector<std::pair<TileIndexDiffC, int8_t>> &levels, std::string *why, std::pair<long, long> *incremental_check = nullptr);
+bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const std::vector<TileIndexDiffC> &nodes, const std::vector<TileIndexDiffC> &ports, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &prio_beside, JunctionTerraform &plan, Money &cost, std::vector<std::pair<TileIndexDiffC, int8_t>> &levels, std::string *why, std::pair<long, long> *incremental_check = nullptr);
 
 #endif /* JUNCTION_LEVELS_H */

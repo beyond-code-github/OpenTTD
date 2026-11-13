@@ -1485,7 +1485,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 
 } // namespace
 
-bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const JunctionTrackPlacement &placement, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &prio_beside, JunctionTerraform &plan, Money &cost, std::vector<std::pair<TileIndexDiffC, int8_t>> &levels, std::string *why, std::pair<long, long> *incremental_check)
+bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &facts, TileIndexDiffC offset, int ramp_levels, int train_length, const std::vector<TileIndexDiffC> &nodes, const std::vector<TileIndexDiffC> &ports, const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> &prio_beside, JunctionTerraform &plan, Money &cost, std::vector<std::pair<TileIndexDiffC, int8_t>> &levels, std::string *why, std::pair<long, long> *incremental_check)
 {
 	const Context ctx{terrain, facts};
 	auto fail = [&](const std::string &reason) {
@@ -1516,8 +1516,8 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 		tile_bits[world(b.end)] |= axis_track;
 	}
 	std::set<SnapshotTile> fixed_tiles = heads;
-	for (const TileIndexDiffC &t : placement.nodes) fixed_tiles.insert(world(t));
-	for (const TileIndexDiffC &t : placement.ports) fixed_tiles.insert(world(t));
+	for (const TileIndexDiffC &t : nodes) fixed_tiles.insert(world(t));
+	for (const TileIndexDiffC &t : ports) fixed_tiles.insert(world(t));
 
 	/* The tiles of every route in travel order, one visit per tile. */
 	std::vector<std::vector<Visit>> route_visits;
