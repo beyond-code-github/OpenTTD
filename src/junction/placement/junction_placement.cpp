@@ -401,6 +401,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	bool recorded_axis[2] = {false, false};
 	std::vector<JunctionSystemRoute> recorded_routes; ///< The curve-gap routes of the X build now (DESIGN-G3 §G3.3a), taken by the X record.
 	std::vector<std::array<int, 5>> recorded_route_curves; ///< Their curve forms (for tests).
+	std::vector<JunctionSystemClash> recorded_clashes; ///< The occupancy clashes of the X build now (DESIGN-G3 §G3.3a, b-6), taken by the X record; the reason is set there.
+	std::vector<uint32_t> recorded_clash_reasons; ///< Per clash, its index into 'reasons'.
 	auto record_system = [&]() {
 		pad_tags(false);
 		JunctionPlacementSystem &now = recorded[phase];
@@ -420,6 +422,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		if (phase == 0) {
 			now.routes = recorded_routes;
 			now.route_curves = recorded_route_curves;
+			now.clashes = recorded_clashes;
 		}
 		for (size_t p = 0; p < paths.size(); p++) now.paths.emplace_back(graph.path_edges[p].begin(), graph.path_edges[p].end());
 		std::map<const Elem *, int> bend_id;
@@ -452,6 +455,15 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			if (reason.node != UINT32_MAX) parts += fmt::format("{}node {}", parts.empty() ? "" : ", ", reason.node);
 			if (reason.row >= 0) parts += fmt::format("{}row {}", parts.empty() ? "" : ", ", reason.row);
 			reason_text[i] = fmt::format("{}{}", reason.rule != nullptr ? reason.rule : "?", parts.empty() ? "" : " (" + parts + ")");
+		}
+		for (size_t i = 0; i < now.clashes.size(); i++) {
+			JunctionSystemClash &clash = now.clashes[i];
+			clash.reason = reason_text[recorded_clash_reasons[i]];
+			for (const JunctionSystemColumn *column : {&clash.a_right, &clash.b_left}) {
+				if (column->c1 == 0) continue;
+				const std::string &source = now.bends[column->bend].source;
+				clash.held |= source != "free" && source != "corner_rows" && source != "rows";
+			}
 		}
 		for (size_t i = 0; i < cons.size(); i++) {
 			const SystemTag &t = cons_tag[i];
@@ -1014,6 +1026,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		int hand, halves;
 		bool port; ///< A port's tile (it has no fact: the port's column is fixed).
 		bool fact; ///< A bridge head's tile (a straight tile fact).
+		const Elem *bend = nullptr; ///< Bend: its chain element.
 	};
 	/* Row r's pieces in order: the in edge, the leg, the out edge, each read from its chain(s). */
 	auto row_pieces = [&](int r) {
@@ -1044,9 +1057,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						const int y_item = vy[item_pt[el.index]];
 						const int y_port = port_row[el.slot];
 						y_end = el.port_first ? y_item : y_port;
-						if (el.m != 0) pieces.push_back({RowPiece::T::Bend, el.first, 0, el.port_first ? y_port : y_item, 0, e, el.hand, static_cast<int>(el.offs.size()), false, false});
+						if (el.m != 0) pieces.push_back({RowPiece::T::Bend, el.first, 0, el.port_first ? y_port : y_item, 0, e, el.hand, static_cast<int>(el.offs.size()), false, false, &el});
 					} else if (el.k == Elem::K::SBend) {
-						if (!el.offs.empty()) pieces.push_back({RowPiece::T::Bend, el.first, 0, vy[el.first], c, e, el.hand, static_cast<int>(el.offs.size()), false, false});
+						if (!el.offs.empty()) pieces.push_back({RowPiece::T::Bend, el.first, 0, vy[el.first], c, e, el.hand, static_cast<int>(el.offs.size()), false, false, &el});
 					} else if (el.k == Elem::K::HeadsPair) {
 						pieces.push_back({RowPiece::T::Tile, el.first, 0, vy[el.first], c, e, 0, 0, false, true});
 						pieces.push_back({RowPiece::T::Tile, el.last, 0, vy[el.first], c, e, 0, 0, false, true});
@@ -1151,35 +1164,63 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			int copy; ///< 0 or 1, -1 for the part both copies share.
 			uint32_t node; ///< The node of a node's tile, else UINT32_MAX.
 			int footprint = 0; ///< A prio element's footprint: +1 when it lies downstream of its tile column (columns grow), -1 when downstream is lower; 0 for tracks.
+			JunctionSystemColumn left, right; ///< The ends as columns of the joint model, filled when recording.
 		};
+		const bool record = system != nullptr && !legality;
+		std::map<const Elem *, int> bend_ids; ///< The system's bend id of each chain bend (the order record_system gives them), when recording.
+		if (record) {
+			for (uint32_t e = 0; e < edge_count; e++) {
+				for (const std::vector<Elem> *elems : {&chain[e], &chain_copy[e]}) {
+					for (const Elem &el : *elems) {
+						if (el.k == Elem::K::Corner || el.k == Elem::K::SBend || el.k == Elem::K::Fan) bend_ids.emplace(&el, static_cast<int>(bend_ids.size()));
+					}
+				}
+			}
+		}
 		std::map<int, std::vector<Occupant>> by_row;
 		auto flat_left = [&](const Occupant &o) { return flat[o.lp] + o.ldx; };
 		auto flat_right = [&](const Occupant &o) { return flat[o.rp] + o.rdx; };
-		auto add_tile = [&](int pt, int dx, int y, TrackBits bits, uint32_t edge, int copy) {
+		auto add_tile = [&](int pt, int dx, int y, TrackBits bits, uint32_t edge, int copy, const JunctionSystemColumn *column = nullptr) {
 			std::vector<Occupant> &row = by_row[y];
 			if (!row.empty() && row.back().edge == edge && row.back().copy == copy && row.back().node == UINT32_MAX && row.back().lp == pt && row.back().ldx == dx && row.back().rp == pt && row.back().rdx == dx) {
 				row.back().bits = row.back().bits | bits;
 				return;
 			}
-			row.push_back({y, pt, dx, pt, dx, bits, edge, copy, UINT32_MAX});
+			const JunctionSystemColumn at = column != nullptr ? *column : JunctionSystemColumn{pt, dx};
+			row.push_back({y, pt, dx, pt, dx, bits, edge, copy, UINT32_MAX, 0, at, at});
 		};
 		/* The tiles strictly between points a and b on row y, a before b in the sense sgn; a run with none at the flat solve is an empty interval (right = left - 1), which keeps its place in the order for the solves with floors. */
 		auto add_run = [&](int a, int b, int y, int sgn, uint32_t edge, int copy) {
-			by_row[y].push_back({y, sgn > 0 ? a : b, 1, sgn > 0 ? b : a, -1, TrackBits{Track::X}, edge, copy, UINT32_MAX});
+			by_row[y].push_back({y, sgn > 0 ? a : b, 1, sgn > 0 ? b : a, -1, TrackBits{Track::X}, edge, copy, UINT32_MAX, 0, {sgn > 0 ? a : b, 1}, {sgn > 0 ? b : a, -1}});
 		};
-		auto add_bend = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t edge, int copy, bool skip_first, bool skip_last) {
+		auto add_bend = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t edge, int copy, bool skip_first, bool skip_last, const Elem *bend) {
 			if (halves < 1) return; // A bend sized to 0 columns is no bend.
 			const std::vector<TileIndexDiffC> offs = bend_tiles(heading, hand, halves, corner);
 			const std::vector<TrackBits> bits = bend_bits(heading, hand, halves, corner);
 			if (bits.size() != offs.size()) return;
+			std::vector<JunctionBendTileForm> forms;
+			int bend_id = -1;
+			if (record) {
+				const int length = corner ? (halves - 1) / 2 : halves / 2;
+				assert((corner ? 2 * length + 1 : 2 * length) == halves);
+				forms = JunctionBendTileForms(heading, hand, length, corner);
+				assert(forms.size() == offs.size());
+				assert(bend_ids.count(bend) != 0);
+				bend_id = bend_ids.at(bend);
+			}
 			for (size_t j = 0; j < offs.size(); j++) {
 				if ((skip_first && j == 0) || (skip_last && j + 1 == offs.size())) continue;
-				add_tile(pt, offs[j].x, y + offs[j].y, bits[j], edge, copy);
+				if (record) {
+					const JunctionSystemColumn column{pt, forms[j].dx0, forms[j].dx1, forms[j].dx1 != 0 ? bend_id : -1};
+					add_tile(pt, offs[j].x, y + offs[j].y, bits[j], edge, copy, &column);
+				} else {
+					add_tile(pt, offs[j].x, y + offs[j].y, bits[j], edge, copy);
+				}
 			}
 		};
 		std::vector<uint32_t> node_of_pt(pt_count, UINT32_MAX);
 		for (uint32_t i = 0; i < node_pt.size(); i++) node_of_pt[node_pt[i]] = i;
-		for (uint32_t i = 0; i < node_pt.size(); i++) by_row[vy[node_pt[i]]].push_back({vy[node_pt[i]], node_pt[i], 0, node_pt[i], 0, node_bits[i], UINT32_MAX, 0, i});
+		for (uint32_t i = 0; i < node_pt.size(); i++) by_row[vy[node_pt[i]]].push_back({vy[node_pt[i]], node_pt[i], 0, node_pt[i], 0, node_bits[i], UINT32_MAX, 0, i, 0, {node_pt[i]}, {node_pt[i]}});
 
 		/* The chains of the edges that are not rows. */
 		for (uint32_t e = 0; e < edge_count; e++) {
@@ -1194,7 +1235,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					add_tile(el.first, 0, vy[el.first], head, e, 0);
 					add_tile(el.last, 0, vy[el.last], head, e, 0);
 				} else {
-					add_bend(el.first, vy[el.first], el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, 0, node_of_pt[el.first] != UINT32_MAX, node_of_pt[el.last] != UINT32_MAX);
+					add_bend(el.first, vy[el.first], el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, 0, node_of_pt[el.first] != UINT32_MAX, node_of_pt[el.last] != UINT32_MAX, &el);
 				}
 				if (i + 1 >= elems.size() || elems[i + 1].first == el.last) continue;
 				const Elem &next = elems[i + 1];
@@ -1215,7 +1256,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				switch (piece.t) {
 					case RowPiece::T::Tile: add_tile(piece.a, 0, piece.y, axis, piece.edge, piece.copy); break;
 					case RowPiece::T::Run: add_run(piece.a, piece.b, piece.y, sgn, piece.edge, piece.copy); break;
-					case RowPiece::T::Bend: add_bend(piece.a, piece.y, east[r] ? 1 : 3, piece.hand, piece.halves, false, piece.edge, piece.copy, false, false); break;
+					case RowPiece::T::Bend: add_bend(piece.a, piece.y, east[r] ? 1 : 3, piece.hand, piece.halves, false, piece.edge, piece.copy, false, false, piece.bend); break;
 				}
 			}
 		}
@@ -1232,8 +1273,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			const DiagDirection exit_edge = east[r] ? DiagDirection::SW : DiagDirection::NE;
 			for (int step = 0; step <= even_prio; step++) {
 				const auto [row_bits, lane_bits] = JunctionPrioStepBits(step, side, exit_edge);
-				by_row[y_row].push_back({y_row, prio_el.last, -step * sgn, prio_el.last, -step * sgn, row_bits, UINT32_MAX, 0, njm_node, sgn});
-				if (lane_bits.Any()) by_row[y_lane].push_back({y_lane, prio_el.last, -step * sgn, prio_el.last, -step * sgn, lane_bits, UINT32_MAX, 0, njm_node, sgn});
+				by_row[y_row].push_back({y_row, prio_el.last, -step * sgn, prio_el.last, -step * sgn, row_bits, UINT32_MAX, 0, njm_node, sgn, {prio_el.last, -step * sgn}, {prio_el.last, -step * sgn}});
+				if (lane_bits.Any()) by_row[y_lane].push_back({y_lane, prio_el.last, -step * sgn, prio_el.last, -step * sgn, lane_bits, UINT32_MAX, 0, njm_node, sgn, {prio_el.last, -step * sgn}, {prio_el.last, -step * sgn}});
 			}
 		}
 
@@ -1253,6 +1294,14 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
 				notes[reason] = fmt::format("[{} and {} on row {}]", label(a), label(b), y);
 				const int apart = flat_left(b) - flat_right(a);
+				if (record) {
+					const bool touch = !tie && a.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && b.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)));
+					auto occupant_key = [&](const Occupant &o) {
+						return fmt::format("{}/{}/{}/{},{},{},{}/{},{},{},{}", static_cast<int>(o.edge), o.copy, static_cast<int>(o.node), o.left.pt, o.left.c0, o.left.c1, o.left.bend, o.right.pt, o.right.c0, o.right.c1, o.right.bend);
+					};
+					recorded_clashes.push_back({fmt::format("{}|{}|{}", occupant_key(a), occupant_key(b), tie), fmt::format("{}|{}|{}", occupant_key(b), occupant_key(a), tie), a.right, b.left, tie ? apart : (touch ? 2 : 1), false, ""});
+					recorded_clash_reasons.push_back(reason);
+				}
 				if (tie) {
 					cons.push_back({b.lp, a.rp, apart - b.ldx + a.rdx, reason});
 					cons.push_back({a.rp, b.lp, -(apart - b.ldx + a.rdx), reason});
@@ -1753,6 +1802,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		if (x_phase) {
 			recorded_routes.clear();
 			recorded_route_curves.clear();
+			recorded_clashes.clear();
+			recorded_clash_reasons.clear();
 		}
 		if ((!x_phase || rows_known) && spec.curve_limit) {
 			/* The curve-gap family (D217): every pair JunctionCurveGaps returns for a route's curves. A pair in one segment (only vertical runs and fixed spans between the curves) is a difference of its anchors' rows in the Y phase; every other pair is a difference of its anchors' columns in the X phase. Pairs on one anchor are constants. */

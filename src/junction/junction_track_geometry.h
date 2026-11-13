@@ -14,12 +14,22 @@
 #include "../track_type.h"
 
 #include <string>
+#include <vector>
 
 /** The axis piece of each heading: 0 north, 1 east, 2 south, 3 west. */
 constexpr Trackdir JUNCTION_AXIS_TRACKDIR[4] = {Trackdir::Y_NW, Trackdir::X_SW, Trackdir::Y_SE, Trackdir::X_NE};
 
 /** The moves of a bend from its axis piece: the first turn, the halves after the first, the closing turn (DESIGN-G1 §11.8). A hand of +1 is a clockwise turn. */
 std::string JunctionBendMoves(int hand, int halves, bool corner);
+
+/** One tile of a bend's raster as an affine form of the bend's length L: a head tile's offset from the bend's first tile is constant; a tail tile's is (dx0 + dx1 L, dy0 + dy1 L), counted by its index from the raster's end. */
+struct JunctionBendTileForm {
+	bool tail;
+	int dx0, dx1, dy0, dy1;
+};
+
+/** Per tile of the raster of a bend of length L (an S-bend: 2L halves; a Corner: 2L + 1), its form, read from the rasters at L and L + 1. */
+std::vector<JunctionBendTileForm> JunctionBendTileForms(int heading, int hand, int length, bool corner);
 
 /** Whether a track touches the given tile edge. */
 bool JunctionTrackTouches(Track track, DiagDirection edge);

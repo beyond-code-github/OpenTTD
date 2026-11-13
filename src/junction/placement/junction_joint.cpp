@@ -37,6 +37,7 @@ struct JointModel {
 		double lo, hi;
 		Coefs coefs;
 		int relation; ///< The index of the JunctionPlacementSystem relation it is, -1 when none.
+		int clash; ///< The index of the JunctionPlacementSystem clash it is, -1 when none.
 	};
 	std::vector<Row> rows;
 
@@ -49,9 +50,9 @@ struct JointModel {
 		return static_cast<uint32_t>(this->lo.size() - 1);
 	}
 
-	void AddRow(const Coefs &coefs, double lower, double upper, int relation = -1)
+	void AddRow(const Coefs &coefs, double lower, double upper, int relation = -1, int clash = -1)
 	{
-		Row row{lower, upper, {}, relation};
+		Row row{lower, upper, {}, relation, clash};
 		for (const auto &[column, coefficient] : coefs) {
 			if (coefficient != 0) row.coefs[column] = coefficient;
 		}
@@ -214,6 +215,7 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 	std::set<int> tagged_y;
 	for (size_t r = 0; r < system.relations.size(); r++) {
 		const JunctionSystemRelation &relation = system.relations[r];
+		if (!system.clashes.empty() && relation.reason.starts_with("occupancy")) continue; // Replaced by the clash rows below.
 		if (relation.nonlinear && !system.routes.empty() && relation.reason.starts_with("curve gap")) continue; // Replaced by the unit counters below.
 		if (relation.order_pin) continue; // The hug's pin to the flat solve's order: the span cost pulls the heads tight instead.
 		const std::vector<uint32_t> &axis_coord = *coord[relation.axis];
@@ -236,6 +238,29 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 		} else {
 			model.AddRow(coefs, relation.c, JunctionMilp::INF, static_cast<int>(r));
 		}
+	}
+
+	/* The clashes: x[b] + c1 L - x[a] - c1 L >= gap - b.c0 + a.c0, relaxed by BIG (1 - z) once per bend that may vanish. */
+	for (size_t i = 0; i < system.clashes.size(); i++) {
+		const JunctionSystemClash &clash = system.clashes[i];
+		Coefs coefs;
+		double lower = clash.gap - clash.b_left.c0 + clash.a_right.c0;
+		std::set<int> relaxed_bends;
+		for (const auto &[column, sign] : {std::pair{&clash.b_left, 1}, std::pair{&clash.a_right, -1}}) {
+			coefs[x[column->pt]] += sign;
+			if (column->c1 == 0) continue;
+			const auto length = L.find(column->bend);
+			if (length != L.end()) {
+				coefs[length->second] += sign * column->c1;
+			} else {
+				lower -= sign * column->c1 * system.bends[column->bend].m; // No length variable: the recorded size.
+			}
+			const auto z = zero.find(column->bend);
+			if (z == zero.end() || !relaxed_bends.insert(column->bend).second) continue;
+			coefs[z->second] -= BIG;
+			lower -= BIG;
+		}
+		model.AddRow(coefs, lower, JunctionMilp::INF, -1, static_cast<int>(i));
 	}
 
 	AddCurveGapCounters(model, system, spec, x, y, L, zero);
@@ -355,6 +380,7 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 	} else if (result.status == JunctionMilp::Status::Infeasible) {
 		for (uint32_t row : milp.InfeasibleRows()) {
 			if (model.rows[row].relation >= 0) result.conflict.push_back(system.relations[model.rows[row].relation].reason);
+			if (model.rows[row].clash >= 0) result.conflict.push_back(system.clashes[model.rows[row].clash].reason);
 		}
 	}
 	return result;

@@ -105,6 +105,26 @@ struct JunctionSystemRoute {
 	std::vector<int8_t> hands; ///< Each curve's hand in travel order (+1 right, -1 left).
 };
 
+/** A column of the joint model: x[pt] + c0 + c1 * L(bend); bend is -1 when c1 is 0. */
+struct JunctionSystemColumn {
+	int pt;
+	int c0 = 0;
+	int c1 = 0;
+	int bend = -1;
+	auto operator<=>(const JunctionSystemColumn &) const = default;
+};
+
+/** An occupancy pair of the last X round as a clash row: b's left column minus a's right column at least gap, while both stand on one row (DESIGN-G3 §G3.3a, b-6). */
+struct JunctionSystemClash {
+	std::string key; ///< The pair's identity across recordings at other sizes: both occupants' edge, copy, node and columns, and tie.
+	std::string reversed; ///< The key of the same pair with a and b swapped.
+	JunctionSystemColumn a_right;
+	JunctionSystemColumn b_left;
+	int gap; ///< As the recorded relation: 1, 2 when the two touch, or the recorded apart of a tie.
+	bool held; ///< A column's c1 multiplies a bend the joint model gives no length variable; the model uses the recorded size.
+	std::string reason; ///< The occupancy reason text, as the relation's.
+};
+
 /** The relation system of the last X and the last Y round of one placement call, with each constant's dependence on a bend's length (DESIGN-G3 §G3.3). */
 struct JunctionPlacementSystem {
 	int pt_count = 0; ///< The number of placement points.
@@ -124,6 +144,7 @@ struct JunctionPlacementSystem {
 	std::vector<JunctionSystemElement> chains; ///< The elements of every chain.
 	std::vector<JunctionSystemRelation> relations; ///< The X relations, then the Y relations.
 	std::vector<JunctionSystemRoute> routes; ///< The routes of the last X round whose rows were known, for the curve-gap counters; empty when none.
+	std::vector<JunctionSystemClash> clashes; ///< The occupancy pairs of the last X round whose rows were known, as clash rows.
 	std::vector<std::array<int, 5>> route_curves; ///< For tests: per route curve (route, curve in travel order, xoff, yoff, seg) of the walk's curve forms.
 };
 
