@@ -84,7 +84,7 @@ static int JunctionRunFloor(FloorKind before, FloorKind after, const JunctionSpe
 	return 2; // The chain run: a signal tile and a boundary tile between elements (D217).
 }
 
-JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts, TileIndexDiffC offset, bool heights, bool classes_only, const JunctionPlacementShared *shared, JunctionPlacementShared *make_shared, JunctionPlacementShared *record, JunctionPlacementSystem *system, const JunctionBendSizes *sizes)
+JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts, TileIndexDiffC offset, bool heights, bool classes_only, const JunctionPlacementShared *shared, JunctionPlacementShared *make_shared, JunctionPlacementShared *record, JunctionPlacementSystem *system, const JunctionBendSizes *sizes, const JunctionSystemPoint *at)
 {
 	auto str = [](int v) { return fmt::format("{}", v); };
 	using Step = JunctionTrackStep;
@@ -100,6 +100,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			if (fixed->m[e].size() != programs.edges[e].size() || fixed->corner[e].size() != programs.edges[e].size()) return fail("the choices do not fit the programs of this track graph");
 		}
 	}
+	/* A recording given a point detects the lazy families there, not at its flat solves (DESIGN-G3 §G3.6, R3). */
+	const bool at_mode = at != nullptr && fixed != nullptr && system != nullptr;
+	std::string at_error; ///< Receives the text of a failed build or solve when the caller gave no error.
+	if (at_mode && error == nullptr) error = &at_error;
+	std::vector<std::string> at_failed; ///< The failed builds and solves of a recording at a point, for JunctionPlacementSystem::failed.
 	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
 	const int n = static_cast<int>(slots.size());
 	auto group_of = [&](int slot) -> const JunctionLaneGroup & { return topology.groups[slots[slot].group]; };
@@ -478,6 +483,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		*system = any;
 		system->bends = bends_from.bends;
 		system->rows_known = bends_from.rows_known;
+		system->failed = at_failed;
 		system->relations.clear();
 		for (int axis = 0; axis < 2; axis++) {
 			if (recorded_axis[axis]) system->relations.insert(system->relations.end(), recorded[axis].relations.begin(), recorded[axis].relations.end());
@@ -1317,6 +1323,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			/* On equal columns a footprint comes first in its travel direction: the unrelated track stands downstream of it. */
 			std::ranges::stable_sort(occupants, [&](const Occupant &a, const Occupant &b) { return std::make_tuple(flat_left(a), flat_right(a), -a.footprint) < std::make_tuple(flat_left(b), flat_right(b), -b.footprint); });
 			auto add_relation = [&](const Occupant &a, const Occupant &b, bool tie) -> bool {
+				/* At a given point, pieces that may not share a tile are separated, not tied (DESIGN-G3 §G3.6 F1). */
+				if (at_mode && tie && a.footprint == 0 && b.footprint == 0 && !JunctionTracksMayShareTile(a.bits, b.bits)) tie = false;
 				reasons.push_back(JunctionPlacementReason{"occupancy", b.edge, b.node, -1});
 				const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
 				notes[reason] = fmt::format("[{} and {} on row {}]", label(a), label(b), y);
@@ -1912,8 +1920,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		if (x_phase && rows_known && !relations_only) {
 			/* The column-reading families (detect) follow the order of the flat solve of the relations above (D217); when the relations contradict each other the solve below explains it. R3 hands detect another point. */
 			compute_node_tracks();
-			std::vector<int> flat;
-			if (flat_solve(flat) && !detect(flat)) return false;
+			if (at_mode) {
+				if (!detect(at->x)) return false;
+			} else {
+				std::vector<int> flat;
+				if (flat_solve(flat) && !detect(flat)) return false;
+			}
 		}
 
 		if (x_phase && !floors_off) {
@@ -2332,6 +2344,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				if (el.free_m) el.m = el.fan ? fixed->m[e][el.tok] : std::max(1, fixed->m[e][el.tok]);
 			}
 		}
+		if (at_mode && (at->x.size() != static_cast<size_t>(pt_count) || at->y.size() != static_cast<size_t>(pt_count))) return fail("the given point does not fit the placement points");
 		rows_known = true;
 		/* The box's first row bounds the port rows as it bounds every solved point. */
 		for (int s = 0; s < n; s++) {
@@ -2340,17 +2353,36 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			if (error != nullptr) *error = fmt::format("the placement rules contradict each other: box (port slot {} would lie on row {})", s, fixed->port_offset + notation[s]);
 			return solve_failed();
 		}
+		bool y_solved = true; ///< Whether a recording at a point solved its Y rows (else they stand at the point).
 		if (shared != nullptr && shared->ok) {
 			/* The offset-independent stages were solved once by MakeJunctionPlacementShared: the Y solution is theirs. */
 			phase = 1;
 			refresh(false, measure(false));
 			vy = shared->vy;
 		} else {
-			plan_clearance(fixed->port_offset);
-			phase = 1;
-			refresh(false, measure(false));
-			if (!build()) return build_failed();
-			if (!solve(vy)) return solve_failed();
+			if (at_mode) {
+				phase = 1;
+				/* The clearance is detected at the given point; a failed build or solve is recorded and the Y rows stand at the point. */
+				detect_y(at->x, at->y);
+				refresh(false, measure(false));
+				error->clear();
+				build_why.clear();
+				if (!build()) {
+					at_failed.push_back("Y build: " + (error->empty() ? build_why : *error));
+					vy = at->y;
+					y_solved = false;
+				} else if (!solve(vy)) {
+					at_failed.push_back("Y solve: " + *error);
+					vy = at->y;
+					y_solved = false;
+				}
+			} else {
+				plan_clearance(fixed->port_offset);
+				phase = 1;
+				refresh(false, measure(false));
+				if (!build()) return build_failed();
+				if (!solve(vy)) return solve_failed();
+			}
 		}
 		if (make_shared != nullptr) {
 			make_shared->vy = vy;
@@ -2370,9 +2402,27 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 		phase = 0;
 		refresh(true, sizes != nullptr ? *sizes : measure(true));
-		if (!build()) return build_failed();
-		if (record != nullptr) return JunctionTrackPlacement{};
-		if (!solve(vx)) return solve_failed();
+		if (at_mode) {
+			error->clear();
+			build_why.clear();
+			if (!build()) {
+				system->failed = at_failed;
+				system->failed.push_back("X build: " + (error->empty() ? build_why : *error));
+				return build_failed();
+			}
+			if (!solve(vx)) {
+				at_failed.push_back("X solve: " + *error);
+				system->failed = at_failed;
+				return solve_failed();
+			}
+			system->failed = at_failed;
+			if (y_solved) system->solved = {vx, vy};
+		} else {
+			if (!build()) return build_failed();
+			if (record != nullptr) return JunctionTrackPlacement{};
+			if (!solve(vx)) return solve_failed();
+			if (system != nullptr) system->solved = {vx, vy};
+		}
 		choices = *fixed;
 	} else {
 		/* The rounds: a first X pass without rows gives the S-bends' sizes, then Y and X alternate until the sizes hold. */
@@ -2652,10 +2702,10 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
 	return PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, x_floors, y_floors);
 }
 
-JunctionPlacementSystem RecordJunctionPlacementSystem(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionBendSizes *sizes)
+JunctionPlacementSystem RecordJunctionPlacementSystem(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionBendSizes *sizes, const JunctionSystemPoint *at)
 {
 	JunctionPlacementSystem system;
-	PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, nullptr, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system, sizes);
+	PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, nullptr, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system, sizes, at);
 	return system;
 }
 

@@ -78,6 +78,13 @@ struct JunctionBendSizes {
 	std::vector<int8_t> hand; ///< Per bend id, a "port_rows" fan's hand (+1 or -1); the fan's sign against its port row (§G3.6 F4) in the bend's own terms. Ignored for a fan of size 0 and for other bends.
 };
 
+/** A placement point set: per placement point, its column and row (DESIGN-G3 §G3.6 F2, R3). */
+struct JunctionSystemPoint {
+	std::vector<int> x; ///< Per point, its column.
+	std::vector<int> y; ///< Per point, its row.
+	auto operator<=>(const JunctionSystemPoint &) const = default;
+};
+
 /** One element of a chain, in chain order; consecutive elements of one (edge, copy) form its chain. */
 struct JunctionSystemElement {
 	int edge; ///< The chain's edge.
@@ -152,6 +159,8 @@ struct JunctionPlacementSystem {
 	std::vector<JunctionSystemRoute> routes; ///< The routes of the last X round whose rows were known, for the curve-gap counters; empty when none.
 	std::vector<JunctionSystemClash> clashes; ///< The occupancy pairs of the last X round whose rows were known, as clash rows.
 	std::vector<std::array<int, 5>> route_curves; ///< For tests: per route curve (route, curve in travel order, xoff, yoff, seg) of the walk's curve forms.
+	JunctionSystemPoint solved; ///< The recording's own solution when its Y and X solves both succeed (least rows, then least columns with the D215 push); empty otherwise.
+	std::vector<std::string> failed; ///< The recording's failed solves and builds, in order, e.g. "Y solve: <error>", "X build: <error>".
 };
 
 /** One prio element as the placement fixes it (DESIGN-G1 12.4). */
@@ -194,8 +203,8 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
  */
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, std::string *error, const std::vector<std::pair<int, int>> &x_floors = {}, const std::vector<std::pair<int, int>> &y_floors = {});
 
-/** The placement with its choices fixed (see above), returning the relation system it solved (DESIGN-G3 §G3.3): its last X and Y rounds, with each constant's dependence on a bend's length. Empty when the placement fails before its first solve. */
-JunctionPlacementSystem RecordJunctionPlacementSystem(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionBendSizes *sizes = nullptr);
+/** The placement with its choices fixed (see above), returning the relation system it solved (DESIGN-G3 §G3.3): its last X and Y rounds, with each constant's dependence on a bend's length. Empty when the placement fails before its first solve. With a point (at), it detects the lazy families at that point instead of at its flat solves, keeps recording when a solve fails, and returns its own solution in JunctionPlacementSystem::solved. */
+JunctionPlacementSystem RecordJunctionPlacementSystem(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionBendSizes *sizes = nullptr, const JunctionSystemPoint *at = nullptr);
 
 /** The stages of the facts placement that do not read the facts or the offset (the Y phase: its clearance relations from the flat solve, and the Y solution), solved once for a near search over many offsets. */
 struct JunctionPlacementShared {
@@ -228,6 +237,6 @@ JunctionPlacementShared MakeJunctionPlacementShared(const JunctionTopology &topo
  * @param system When non-null, receives the last X and last Y relation systems of the call (DESIGN-G3 §G3.3); the result is the same either way.
  * @param sizes With fixed choices, the bend sizes and fan hands the X phase takes instead of measuring them from the Y solution (DESIGN-G3 §G3.6, R1), or nullptr.
  */
-JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0}, bool heights = true, bool classes_only = false, const JunctionPlacementShared *shared = nullptr, JunctionPlacementShared *make_shared = nullptr, JunctionPlacementShared *record = nullptr, JunctionPlacementSystem *system = nullptr, const JunctionBendSizes *sizes = nullptr);
+JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts = nullptr, TileIndexDiffC offset = {0, 0}, bool heights = true, bool classes_only = false, const JunctionPlacementShared *shared = nullptr, JunctionPlacementShared *make_shared = nullptr, JunctionPlacementShared *record = nullptr, JunctionPlacementSystem *system = nullptr, const JunctionBendSizes *sizes = nullptr, const JunctionSystemPoint *at = nullptr);
 
 #endif /* JUNCTION_PLACEMENT_H */
