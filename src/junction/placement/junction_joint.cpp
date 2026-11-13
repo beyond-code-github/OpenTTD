@@ -212,7 +212,16 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 		}
 	}
 
-	/* The recorded relations: coord(v) - coord(u) - a L >= b (tagged) or >= c. */
+	/* The columns of the single bridges over an S-bend (DESIGN-G3 §G3.4a): t in [1, 64], t - t1 L(bend) <= t0, and the tie break EPS t keeps an equal-cost solution at t = 1. */
+	std::vector<uint32_t> T;
+	for (const JunctionSystemOver &over : system.overs) {
+		T.push_back(model.Var(1, 64));
+		/* The fixed path allows t <= t0 + t1 max(m, 2); this row is stricter at L = 1, so every joint t is accepted by the fixed path. */
+		model.AddRow({{T.back(), 1}, {L[over.bend], -over.t1}}, -JunctionMilp::INF, over.t0); // bridge over an S-bend: t <= t0 + t1 L
+		model.cost[T.back()] += EPS;
+	}
+
+	/* The recorded relations: coord(v) - coord(u) - a L - d t >= b - d t_recorded (tagged, d from a bridge's column) or >= c. */
 	std::set<int> tagged_y;
 	for (size_t r = 0; r < system.relations.size(); r++) {
 		const JunctionSystemRelation &relation = system.relations[r];
@@ -223,13 +232,18 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 		Coefs coefs;
 		coefs[axis_coord[relation.v]] += 1;
 		coefs[axis_coord[relation.u]] -= 1; // v == u: a constant row
+		double over_constant = 0; ///< c has + d (t - t_recorded): the row takes - d t and its constant - d t_recorded.
+		if (relation.over >= 0) {
+			coefs[T[relation.over]] -= relation.d;
+			over_constant = -static_cast<double>(relation.d) * system.overs[relation.over].t;
+		}
 		const int bid = relation.bend;
 		if (relation.zero_branch && bid >= 0 && Z.count(bid) != 0) {
 			coefs[Z[bid]] = BIG; // only when the fan is empty
 			model.AddRow(coefs, relation.c, JunctionMilp::INF, static_cast<int>(r));
 		} else if (!relation.nonlinear && !relation.zero_branch && bid >= 0) {
 			coefs[L[bid]] -= relation.a;
-			double lower = relation.b;
+			double lower = relation.b + over_constant;
 			if (Z.count(bid) != 0) { // an S fan's sized branch: only when the fan is not empty
 				coefs[Z[bid]] = -BIG;
 				lower = relation.b - BIG;
@@ -237,7 +251,7 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 			if (relation.axis == 1) tagged_y.insert(bid);
 			model.AddRow(coefs, lower, JunctionMilp::INF, static_cast<int>(r));
 		} else {
-			model.AddRow(coefs, relation.c, JunctionMilp::INF, static_cast<int>(r));
+			model.AddRow(coefs, relation.c + over_constant, JunctionMilp::INF, static_cast<int>(r));
 		}
 	}
 
@@ -374,6 +388,14 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 			if (b.source == "free") result.choices.m[b.edge][b.tok] = result.length[i];
 			if (b.source == "corner_rows") result.choices.corner[b.edge][b.tok] = result.length[i];
 		}
+		if (!system.overs.empty()) {
+			bool moved = false; ///< An all-1 column is the empty choice: it stays empty, as the fixed path reads it.
+			for (const uint32_t column : T) moved |= std::lround(milp.Value(column)) != 1;
+			if (moved) {
+				for (const uint32_t tokens : system.tokens) result.choices.over.emplace_back(tokens, 0);
+				for (size_t i = 0; i < system.overs.size(); i++) result.choices.over[system.overs[i].edge][system.overs[i].tok] = static_cast<int>(std::lround(milp.Value(T[i]))) - 1;
+			}
+		}
 		for (uint32_t p = 0; p < npts; p++) {
 			result.x.push_back(static_cast<int>(std::lround(milp.Value(x[p]))));
 			result.y.push_back(static_cast<int>(std::lround(milp.Value(y[p]))));
@@ -421,10 +443,14 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 			sum += joint.length[i];
 			changed += joint.length[i] != system.bends[i].m;
 		}
+		int sum_t = 0;
+		for (const std::vector<int> &edge : joint.choices.over) {
+			for (const int t : edge) sum_t += t;
+		}
 		std::string failed;
 		for (const std::string &text : system.failed) failed += (failed.empty() ? "" : "; ") + text;
 		const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-		result.log.push_back(fmt::format("round {}: status {}, objective {:.3f}, sum L {}, changed {}, new clashes kept {}, kept total {}, failed [{}], {:.1f} ms", k, static_cast<int>(joint.status), joint.objective, sum, changed, added, kept.size(), failed, ms));
+		result.log.push_back(fmt::format("round {}: status {}, objective {:.3f}, sum L {}, sum t - 1 {}, changed {}, new clashes kept {}, kept total {}, failed [{}], {:.1f} ms", k, static_cast<int>(joint.status), joint.objective, sum, sum_t, changed, added, kept.size(), failed, ms));
 		if (joint.status == JunctionMilp::Status::Infeasible) {
 			std::string chain;
 			for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;

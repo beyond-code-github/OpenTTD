@@ -1164,6 +1164,31 @@ TEST_CASE("joint: the loop ends settled or names a reason", "[junction][milp][.s
 	}
 }
 
+TEST_CASE("joint: a bridge over an S-bend may move along it", "[junction][milp][.sweep]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch] : {std::pair{"L_R", "LL_RR"}}) {
+		const std::string hub = fmt::format("{} x {}", main, branch);
+		INFO(hub);
+		const LoopStart s = MakeLoopStart(main, branch, spec);
+		const JunctionJointLoopResult loop = SolveJunctionJointLoop(s.topology, s.paths, s.graph, s.order, s.cut, s.programs, spec, s.choices);
+		/* On L_R x LL_RR no round's conflict, and not the final outcome, names a bridge over an S-bend. */
+		if (hub == "L_R x LL_RR") { // LL_RR x LL_RR is a measure only: its conflict needs columns beyond the diagonal.
+			for (const std::string &line : loop.log) CHECK(line.find("bridge over S-bend") == std::string::npos);
+			CHECK(loop.outcome.find("bridge over S-bend") == std::string::npos);
+		}
+		const JunctionPlacementSystem last = RecordAt(s, spec, loop.choices, &loop.point);
+		std::string ts;
+		for (size_t i = 0; i < last.overs.size(); i++) ts += fmt::format("{}t{}", ts.empty() ? "" : ", ", last.overs[i].t);
+		WARN(fmt::format("{}: outcome {}, rounds {}, last line [{}], overs t [{}]", hub, loop.outcome, loop.rounds, loop.log.empty() ? "" : loop.log.back(), ts));
+		if (loop.outcome == "settled") {
+			std::string error;
+			const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, s.cut, s.programs, spec, loop.choices, &error);
+			WARN(fmt::format("{}: the settled choices {}", hub, placed.nodes.empty() ? "do not place, error: " + error : fmt::format("place, box {} x {}", placed.size.x, placed.size.y)));
+		}
+	}
+}
+
 TEST_CASE("joint: the joint loop on the hubs", "[junction][milp][.g3loop]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();

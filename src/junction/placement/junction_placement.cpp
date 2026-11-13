@@ -99,6 +99,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		for (size_t e = 0; e < graph.edges.size(); e++) {
 			if (fixed->m[e].size() != programs.edges[e].size() || fixed->corner[e].size() != programs.edges[e].size()) return fail("the choices do not fit the programs of this track graph");
 		}
+		if (!fixed->over.empty()) {
+			if (fixed->over.size() != graph.edges.size()) return fail("the choices do not fit the programs of this track graph");
+			for (size_t e = 0; e < graph.edges.size(); e++) {
+				if (fixed->over[e].size() != programs.edges[e].size()) return fail("the choices do not fit the programs of this track graph");
+			}
+		}
 	}
 	/* A recording given a point detects the lazy families there, not at its flat solves (DESIGN-G3 §G3.6, R3). */
 	const bool at_mode = at != nullptr && fixed != nullptr && system != nullptr;
@@ -326,6 +332,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		bool nonlinear = false;
 		bool zero_branch = false;
 		bool order_pin = false; ///< The hug's equalities: the joint model drops them.
+		int over = -1, d = 0; ///< When over >= 0: c also has + d * (t(over) - t at the recording) (DESIGN-G3 §G3.4a).
 	};
 	SystemTag tag; ///< The tag of the relations added now.
 	bool tag_negated = false; ///< The second relation of an equality: its constant is the negation.
@@ -344,6 +351,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		if (tag_negated) {
 			t.a = -t.a;
 			t.b = -t.b;
+			t.d = -t.d;
 		}
 		cons_tag.push_back(t);
 	};
@@ -407,6 +415,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	std::vector<JunctionSystemRoute> recorded_routes; ///< The curve-gap routes of the X build now (DESIGN-G3 §G3.3a), taken by the X record.
 	std::vector<std::array<int, 5>> recorded_route_curves; ///< Their curve forms (for tests).
 	std::vector<JunctionSystemClash> recorded_clashes; ///< The occupancy clashes of the X build now (DESIGN-G3 §G3.3a, b-6), taken by the X record; the reason is set there.
+	std::vector<JunctionSystemOver> recorded_overs; ///< The single bridges over an S-bend of the build now, in order (DESIGN-G3 §G3.4a); record_system sets the bend from over_elems.
+	std::vector<const Elem *> over_elems; ///< Per recorded over, the crossed S-bend's element.
 	std::vector<uint32_t> recorded_clash_reasons; ///< Per clash, its index into 'reasons'.
 	auto record_system = [&]() {
 		pad_tags(false);
@@ -452,6 +462,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				}
 			}
 		}
+		now.overs = recorded_overs;
+		for (size_t i = 0; i < now.overs.size(); i++) now.overs[i].bend = bend_id.at(over_elems[i]);
 		std::vector<std::string> reason_text(reasons.size());
 		for (size_t i = 0; i < reasons.size(); i++) {
 			const JunctionPlacementReason &reason = reasons[i];
@@ -474,6 +486,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			const SystemTag &t = cons_tag[i];
 			const int bid = t.bend != nullptr && bend_id.count(t.bend) ? bend_id[t.bend] : -1;
 			now.relations.push_back({static_cast<uint8_t>(phase), cons[i].v, cons[i].u, cons[i].k, bid, t.a, t.b, t.nonlinear, t.zero_branch, t.order_pin, reason_text[cons[i].reason]});
+			now.relations.back().over = t.over;
+			now.relations.back().d = t.d;
 		}
 		recorded_axis[phase] = true;
 
@@ -1481,6 +1495,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	auto build = [&]() {
 		cons.clear();
 		cons_tag.clear();
+		recorded_overs.clear();
+		over_elems.clear();
 		reasons.clear();
 		fact_cons.clear();
 		notes.clear();
@@ -1787,7 +1803,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				run(el.hout, next.first, el.last, dist, exact);
 			}
 
-			/* A single bridge passes over the S-bend it crosses, in the column next to the S-bend's start (D113, F4). */
+			/* A single bridge passes over the S-bend it crosses, in the column t of the S-bend, 1 unless a choice says otherwise (D113, F4, DESIGN-G3 §G3.4a). */
 			for (const Elem &el : elems) {
 				if (el.k != Elem::K::Heads) continue;
 				const std::vector<Elem> &other = chain[el.cross];
@@ -1798,30 +1814,20 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				if (crossed == nullptr) { build_why = "no crossed sbend"; return false; }
 				why("bridge over S-bend", e);
 				const int side = (crossed->hin + crossed->hand + 4) % 4;
-				const std::vector<TileIndexDiffC> tiles = bend_tiles(crossed->hin, crossed->hand, 2 * std::max(crossed->m, 2), false);
-				int lo = 1000, hi = -1000;
-				for (const TileIndexDiffC &t : tiles) {
-					if (t.x * VX[side] + t.y * VY[side] != 1) continue;
-					lo = std::min<int>(lo, t.y);
-					hi = std::max<int>(hi, t.y);
-				}
-				if (lo > hi) { build_why = "no column tile"; return false; }
-				eq(0, el.first, crossed->first, VX[side]);
+				const JunctionSBendColumns form = JunctionSBendColumnForm(crossed->hin, crossed->hand);
+				/* The column t counted from the start: 1 + the choice, 1 when empty or when not fixed. */
+				const int t = 1 + (fixed != nullptr && !fixed->over.empty() ? fixed->over[e][el.tok] : 0);
+				if (t > form.t0 + form.t1 * std::max(crossed->m, 2)) { build_why = "a bridge over an S-bend beyond its diagonal"; return false; }
+				const int lo = form.lo + form.s * (t - 1);
+				const int hi = form.hi + form.s * (t - 1);
 				const bool north = el.hin == 0;
-				/* The rows of the bend's first column, lo and hi, come from the raster of max(m, 2): constant over m = 2..64 or the relations depend on m non-linearly. Only a recording looks. */
-				bool constant_rows = true;
-				if (system != nullptr) {
-					for (int mm = 2; mm <= 64 && constant_rows; mm++) {
-						int l2 = 1000, h2 = -1000;
-						for (const TileIndexDiffC &t : bend_tiles(crossed->hin, crossed->hand, 2 * mm, false)) {
-							if (t.x * VX[side] + t.y * VY[side] != 1) continue;
-							l2 = std::min<int>(l2, t.y);
-							h2 = std::max<int>(h2, t.y);
-						}
-						constant_rows = l2 == lo && h2 == hi;
-					}
-				}
-				tag = constant_rows ? SystemTag{crossed, 0, north ? hi + 1 : lo - 1, false, false} : SystemTag{crossed, 0, 0, true, false};
+				/* The rows of column t follow the diagonal (premise P3): the relations are linear in t, so a recording tags them with it. */
+				recorded_overs.push_back({static_cast<int>(e), el.tok, -1, t, form.t0, form.t1});
+				over_elems.push_back(crossed);
+				const int over_index = static_cast<int>(recorded_overs.size()) - 1;
+				tag = SystemTag{nullptr, 0, 0, false, false, false, over_index, VX[side]};
+				eq(0, el.first, crossed->first, VX[side] * t);
+				tag = SystemTag{crossed, 0, north ? hi + 1 : lo - 1, false, false, false, over_index, form.s};
 				eq(1, el.first, crossed->first, north ? hi + 1 : lo - 1);
 				tag.b = north ? lo - 1 : hi + 1;
 				eq(1, el.last, crossed->first, north ? lo - 1 : hi + 1);

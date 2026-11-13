@@ -38,6 +38,7 @@ struct JunctionPlacementReason {
 struct JunctionPlacementChoices {
 	std::vector<std::vector<int>> m; ///< Per edge, per token of JunctionTrackPrograms::edges: a vertical S-bend's size, 0 for other tokens.
 	std::vector<std::vector<int>> corner; ///< Per edge, per token: a joiner_div Corner's row span, 0 for other tokens.
+	std::vector<std::vector<int>> over; ///< Per edge, per token: for a single bridge's Over token over an S-bend, its sideways column t - 1 (DESIGN-G3 §G3.4a); empty means 0 everywhere.
 	int port_offset = 0; ///< The port rows' offset.
 	bool operator==(const JunctionPlacementChoices &) const = default;
 };
@@ -52,6 +53,8 @@ struct JunctionSystemRelation {
 	bool zero_branch = false; ///< Holds only when the bend's S-fan size is 0 (see solve.py), else only when it is not.
 	bool order_pin = false; ///< Pins a head to the outermost crosser by the flat solve's order (the hug); the joint model drops it.
 	std::string reason; ///< The why() text with edge, node and row.
+	int over = -1; ///< When >= 0: c also has + d * (t(over) - t at the recording).
+	int d = 0;
 };
 
 /** One bend of the placement's chains (a Corner, an S-bend, an S fan or a fan), with how its size is known. */
@@ -138,6 +141,15 @@ struct JunctionSystemClash {
 	std::string reason; ///< The occupancy reason text, as the relation's.
 };
 
+/** A single bridge over an S-bend whose sideways column t is a choice (DESIGN-G3 §G3.4a). */
+struct JunctionSystemOver {
+	int edge; ///< The bridge's edge.
+	int tok; ///< Its Over token.
+	int bend; ///< The crossed S-bend's id.
+	int t; ///< The column at the recording.
+	int t0, t1; ///< t <= t0 + t1 L(bend).
+};
+
 /** The relation system of the last X and the last Y round of one placement call, with each constant's dependence on a bend's length (DESIGN-G3 §G3.3). */
 struct JunctionPlacementSystem {
 	int pt_count = 0; ///< The number of placement points.
@@ -157,6 +169,7 @@ struct JunctionPlacementSystem {
 	std::vector<JunctionSystemElement> chains; ///< The elements of every chain.
 	std::vector<JunctionSystemRelation> relations; ///< The X relations, then the Y relations.
 	std::vector<JunctionSystemRoute> routes; ///< The routes of the last X round whose rows were known, for the curve-gap counters; empty when none.
+	std::vector<JunctionSystemOver> overs; ///< The single bridges over an S-bend, in the order of the last build.
 	std::vector<JunctionSystemClash> clashes; ///< The occupancy pairs of the last X round whose rows were known, as clash rows.
 	std::vector<std::array<int, 5>> route_curves; ///< For tests: per route curve (route, curve in travel order, xoff, yoff, seg) of the walk's curve forms.
 	JunctionSystemPoint solved; ///< The recording's own solution when its Y and X solves both succeed (least rows, then least columns with the D215 push); empty otherwise.
