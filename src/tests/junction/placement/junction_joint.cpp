@@ -56,11 +56,11 @@ TEST_CASE("joint: reproduces the prototype on T and LL_RR x L_R and with counter
 {
 	struct Case {
 		const char *name, *main, *branch;
-		double objective; ///< The prototype's, without the tie break.
+		double objective; ///< The joint optimum without the tie break (T keeps its Corner of edge 5 at 6: the port fans follow the rows).
 		int differing; ///< The bends that differ from the seed's size.
 	};
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	for (const Case &c : {Case{"T", "L_R", "L_R", 27050, 1}, Case{"LL_RR x L_R", "LL_RR", "L_R", 86350, 0}}) {
+	for (const Case &c : {Case{"T", "L_R", "L_R", 27300, 0}, Case{"LL_RR x L_R", "LL_RR", "L_R", 86350, 0}}) {
 		INFO(c.name);
 		const JointInputs in = MakeJointInputs(c.main, c.branch);
 		std::string error;
@@ -360,7 +360,7 @@ TEST_CASE("joint: bridge heads hug without the flat order", "[junction][milp]")
 				const int free_span = std::abs(placed[1].bridges[b][copy].end.x - placed[1].bridges[b][copy].start.x);
 				INFO(fmt::format("bridge {} copy {}: pinned span {} free span {}", b, copy, pinned_span, free_span));
 				CHECK(free_span == pinned_span);
-				if (std::string(main) == "L_R" && b == 1) CHECK(free_span == 5); // T: the Corner of edge 5 at 5 shortens the bridge from the seed's 6.
+				if (std::string(main) == "L_R" && b == 1) CHECK(free_span == 6); // T: the Corner of edge 5 stays at the seed's 6, as the port fans follow the rows.
 			}
 		}
 	}
@@ -997,7 +997,7 @@ TEST_CASE("joint: choices round-trip", "[junction][milp]")
 			REQUIRE(expected.corner.size() > 5);
 			REQUIRE(expected.corner[5].size() > 0);
 			CHECK(expected.corner[5][0] == 6);
-			expected.corner[5][0] = 5; // The joint model shortens T's Corner of edge 5 (b-3).
+			/* The joint keeps T's Corner of edge 5 at 6: its port fans follow the rows, and at 5 the rows give them sizes the held fans did not have. */
 		}
 		CHECK(joint.choices.port_offset == expected.port_offset);
 		CHECK(joint.choices.m == expected.m);
@@ -1141,6 +1141,29 @@ TEST_CASE("joint: a recording at a point detects there", "[junction][milp]")
 		CHECK(std::ranges::any_of(at.relations, [](const JunctionSystemRelation &r) { return r.axis == 0; }));
 		CHECK(!at.clashes.empty());
 	}
+}
+
+TEST_CASE("joint: a port fan's size follows the rows", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const LoopStart s = MakeLoopStart("L_R", "LL_RR", spec);
+	REQUIRE(s.description == "all-floor choices");
+	const JunctionPlacementSystem first = RecordAt(s, spec, s.choices, nullptr);
+	REQUIRE(!first.relations.empty());
+	const JunctionJointResult joint = SolveJunctionJoint(first, spec);
+	REQUIRE(joint.status == JunctionMilp::Status::Optimal);
+	const JunctionPlacementSystem second = RecordAt(s, spec, joint.choices, nullptr);
+	REQUIRE(!second.relations.empty());
+	REQUIRE(second.bends.size() == first.bends.size());
+	int fans = 0, sized = 0;
+	for (const JunctionSystemBend &b : second.bends) {
+		if (b.source != "port_rows") continue;
+		fans++;
+		sized += b.m >= 1;
+		CHECK(b.m == joint.length[b.id]);
+	}
+	CHECK(fans > 0);
+	CHECK(sized >= 1);
 }
 
 TEST_CASE("joint: the loop ends settled or names a reason", "[junction][milp][.sweep]")

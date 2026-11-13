@@ -187,6 +187,19 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 	model.AddRow({{x[0], 1}}, 0, 0); // origin x
 	model.AddRow({{y[0], 1}}, 0, 0); // origin y
 	const int k = system.k;
+	std::set<int> in_edges; ///< The edges a lane path starts on: their fan starts on its port.
+	std::set<int> out_edges; ///< The edges a lane path ends on.
+	for (const std::vector<int> &path : system.paths) {
+		if (path.empty()) continue;
+		in_edges.insert(path.front());
+		out_edges.insert(path.back());
+	}
+	for (const JunctionSystemBend &b : system.bends) {
+		if (b.source == "port_rows" && in_edges.count(b.edge) != 0 && out_edges.count(b.edge) != 0) {
+			result.conflict.push_back("a port fan at both ends of a path");
+			return result;
+		}
+	}
 	std::map<int, uint32_t> L, Z, zero; ///< zero: z of every bend that may have size 0 (Z for S fans).
 	for (const JunctionSystemBend &b : system.bends) {
 		const std::string &src = b.source;
@@ -207,7 +220,13 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 			zero[b.id] = model.Var(0, 1);
 			model.AddRow({{L[b.id], 1}, {zero[b.id], -1}}, 0, JunctionMilp::INF); // rows-sized S-bend: L >= z
 			model.AddRow({{L[b.id], 1}, {zero[b.id], -BIG}}, -JunctionMilp::INF, 0); // rows-sized S-bend: L <= M z
-		} else { // port_rows, fixed_k, one_row: held at the recorded size
+		} else if (src == "port_rows") {
+			assert(b.item_pt >= 0);
+			L[b.id] = model.Var(0);
+			zero[b.id] = model.Var(0, 1);
+			model.AddRow({{L[b.id], 1}, {zero[b.id], -1}}, 0, JunctionMilp::INF); // port fan: L >= z
+			model.AddRow({{L[b.id], 1}, {zero[b.id], -BIG}}, -JunctionMilp::INF, 0); // port fan: L <= M z
+		} else { // fixed_k, one_row: held at the recorded size
 			L[b.id] = model.Var(b.m, b.m);
 		}
 	}
@@ -301,6 +320,17 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 			/* A horizontal S-bend's size is |y(item) - y(first)| (refresh); its sign is the side's VY. */
 			const int sv = VY[SideOf(b)];
 			model.AddRow({{y[b.item_pt], 1}, {y[b.first], -1}, {L[i], -sv}}, 0, 0);
+		} else if (b.source == "port_rows") {
+			if (b.m == 0) {
+				/* Recorded empty: the side is unknown, L >= |port row - y(item)|; the next recording fixes it. */
+				model.AddRow({{L[i], 1}, {y[b.item_pt], 1}}, b.port_row, JunctionMilp::INF);
+				model.AddRow({{L[i], 1}, {y[b.item_pt], -1}}, -b.port_row, JunctionMilp::INF);
+			} else {
+				/* y(last) - y(first) goes south iff (hand > 0) == (hin == 1); sigma = sign(port row - y(item)) is that sign, negated when the fan starts on its port (an in edge's). */
+				const bool south = (b.hand > 0) == (b.hin == 1);
+				const int sigma = (south ? 1 : -1) * (in_edges.count(b.edge) != 0 ? -1 : 1);
+				model.AddRow({{y[b.item_pt], -sigma}, {L[i], -1}}, -sigma * b.port_row, -sigma * b.port_row);
+			}
 		}
 	}
 
@@ -423,7 +453,7 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 		const JunctionSystemPoint round_point = result.point;
 		history.emplace_back(round_choices, round_point);
 		result.rounds = k + 1;
-		JunctionPlacementSystem system = RecordJunctionPlacementSystem(topology, paths, graph, order, structure, programs, spec, round_choices, nullptr, k == 0 ? nullptr : &round_point);
+		JunctionPlacementSystem system = RecordJunctionPlacementSystem(topology, paths, graph, order, structure, programs, spec, round_choices, nullptr, round_point.x.empty() ? nullptr : &round_point);
 		if (system.relations.empty()) {
 			result.outcome = "recorded nothing";
 			break;
@@ -449,8 +479,12 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 		}
 		std::string failed;
 		for (const std::string &text : system.failed) failed += (failed.empty() ? "" : "; ") + text;
+		/* The point the next round detects at: the recording's own, else the joint's when this system had X relations (else its x is meaningless), else none. */
+		bool has_x = false;
+		for (const JunctionSystemRelation &relation : system.relations) has_x |= relation.axis == 0;
+		const char *point_kind = !system.solved.x.empty() ? "solved" : (has_x && !joint.x.empty() ? "joint" : "none");
 		const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-		result.log.push_back(fmt::format("round {}: status {}, objective {:.3f}, sum L {}, sum t - 1 {}, changed {}, new clashes kept {}, kept total {}, failed [{}], {:.1f} ms", k, static_cast<int>(joint.status), joint.objective, sum, sum_t, changed, added, kept.size(), failed, ms));
+		result.log.push_back(fmt::format("round {}: status {}, objective {:.3f}, sum L {}, sum t - 1 {}, changed {}, new clashes kept {}, kept total {}, failed [{}], point: {}, {:.1f} ms", k, static_cast<int>(joint.status), joint.objective, sum, sum_t, changed, added, kept.size(), failed, point_kind, ms));
 		if (joint.status == JunctionMilp::Status::Infeasible) {
 			std::string chain;
 			for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
@@ -462,11 +496,13 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 			break;
 		}
 		result.choices = joint.choices;
-		/* The canonical point of this round's recording; the joint solution's when the recording's solves failed. */
+		/* The canonical point of this round's recording; the joint solution's when the recording's solves failed but had X relations; none otherwise. */
 		if (!system.solved.x.empty()) {
 			result.point = system.solved;
-		} else {
+		} else if (has_x) {
 			result.point = {joint.x, joint.y};
+		} else {
+			result.point = {};
 		}
 		if (k > 0 && joint.choices == round_choices && added == 0 && system.solved == round_point) {
 			result.outcome = "settled";
