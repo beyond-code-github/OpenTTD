@@ -5229,6 +5229,105 @@ TEST_CASE("structure: joiners crossing at one level break the tie by branch slot
 	CHECK(over->edge == 39);
 }
 
+TEST_CASE("programs: a crossed in edge carries a doubled bridge", "[junction][topology]")
+{
+	WideHubStages s = WideHubThroughStructure("LLL_RRR", "LLL_RRR");
+	REQUIRE(s.structure_error.empty());
+	s.programs = ProgramJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, s.structure, &s.programs_error);
+	INFO(s.programs_error);
+	REQUIRE(s.programs_error.empty());
+	REQUIRE(s.programs.edges.size() > 3);
+	const std::vector<uint32_t> expected_crossings{54, 57, 60};
+	CHECK(s.order.edge_crossings[3] == expected_crossings);
+	const std::vector<JunctionTrackStep> &program = s.programs.edges[3];
+	const std::vector<JunctionTrackStep> &copy = s.programs.copies[3];
+	REQUIRE(program.size() == 5);
+	REQUIRE(copy.size() == 4);
+	const uint32_t a = program[0].index;
+	const uint32_t b = program[4].index;
+	CHECK(a != b);
+	const bool east = s.programs.ends[3].first.heading == 1;
+	const int hand = ((b > a) == east) ? +1 : -1;
+	CHECK(program[0].kind == Step::Kind::Fan);
+	for (size_t i = 0; i < 3; i++) {
+		CHECK(program[1 + i].kind == Step::Kind::Over);
+		CHECK(program[1 + i].index == expected_crossings[i]);
+		CHECK(copy[1 + i].kind == Step::Kind::Over);
+		CHECK(copy[1 + i].index == expected_crossings[i]);
+	}
+	CHECK(program[4].kind == Step::Kind::SBend);
+	CHECK(program[4].role == Step::Role::LaneMerge);
+	CHECK(program[4].hand == hand);
+	CHECK(copy[0].kind == Step::Kind::SBend);
+	CHECK(copy[0].role == Step::Role::LaneSplit);
+	CHECK(copy[0].hand == hand);
+	CHECK(copy[0].index == b);
+	CHECK(s.programs.nodes[3].item == b);
+}
+
+TEST_CASE("structure: a crossed in edge does not double the leg", "[junction][topology]")
+{
+	WideHubStages s = WideHubThroughStructure("LLL_RRR", "LLL_RRR");
+	REQUIRE(s.structure_error.empty());
+	s.programs = ProgramJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, s.structure, &s.programs_error);
+	REQUIRE(s.programs_error.empty());
+	/* The leg of e3's row: the row edge that starts and ends at a node, following e3's end node. */
+	const uint32_t node = s.graph.edges[3].to.index;
+	bool found = false;
+	uint32_t candidates = 0;
+	for (uint32_t e = 0; e < s.graph.edges.size(); e++) {
+		const JunctionTrackEdge &edge = s.graph.edges[e];
+		if (e == 3 || !edge.from.node || !edge.to.node || edge.from.index != node) continue;
+		for (const JunctionTrackStep &step : s.programs.edges[e]) {
+			if (step.role == Step::Role::LaneSplit || step.role == Step::Role::LaneMerge) found = true;
+		}
+		INFO("leg candidate e" << e << " crossings " << s.order.edge_crossings[e].size());
+		candidates++;
+	}
+	CHECK(candidates > 0);
+	CHECK(!found);
+}
+
+TEST_CASE("structure: a crossed in edge on a doubled leg arrives on the lane", "[junction][topology]")
+{
+	/* LL_RR x LL_RR under lane keeps lane: e5 is a crossed in edge on a row whose leg is doubled, so B is north (the Copy item) and A is the Lane. */
+	WideHubStages s;
+	std::string error;
+	const JunctionLineSpec llrr = ParseLineNotation("LL_RR").spec;
+	s.topology = MakeJunctionHubTopology(llrr, llrr, JunctionLanePairing::LaneKeepsLane);
+	s.paths = ExpandJunctionLanes(s.topology, &error);
+	s.graph = BuildJunctionTrackGraph(s.topology, s.paths, &error);
+	s.order = OrderJunctionTrackGraph(s.topology, s.paths, s.graph, &error);
+	s.structure = StructureJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, &s.structure_error);
+	REQUIRE(s.structure_error.empty());
+	s.programs = ProgramJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, s.structure, &s.programs_error);
+	INFO(s.programs_error);
+	REQUIRE(s.programs_error.empty());
+	REQUIRE(s.programs.edges.size() > 5);
+	const std::vector<JunctionTrackStep> &program = s.programs.edges[5];
+	const std::vector<JunctionTrackStep> &copy = s.programs.copies[5];
+	REQUIRE(!s.graph.edges[5].from.node);
+	REQUIRE(s.graph.edges[5].to.node);
+	REQUIRE(!program.empty());
+	REQUIRE(!copy.empty());
+	const uint32_t a = program.front().index;
+	const uint32_t b = program.back().index;
+	CHECK(program.front().kind == Step::Kind::Fan);
+	CHECK(program.back().kind == Step::Kind::SBend);
+	CHECK(program.back().role == Step::Role::LaneMerge);
+	CHECK(copy.front().role == Step::Role::LaneSplit);
+	CHECK(copy.front().index == b);
+	CHECK(a != b);
+	CHECK(s.programs.nodes[s.graph.edges[5].to.index].item == b);
+	/* The leg of that row is doubled, and its S-bends are the rule 2 pair: the node sits on north, the fan arrives on the lane. */
+	bool leg_doubled = false;
+	for (uint32_t e = 0; e < s.graph.edges.size(); e++) {
+		if (e == 5 || !s.graph.edges[e].from.node || !s.graph.edges[e].to.node || s.graph.edges[e].from.index != s.graph.edges[5].to.index) continue;
+		leg_doubled = leg_doubled || !s.programs.copies[e].empty();
+	}
+	CHECK(leg_doubled);
+}
+
 TEST_CASE("wide hubs: how far each gets", "[junction][topologysweep]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
