@@ -20,7 +20,7 @@
 - Objective within a graph: the least solution, then each row change pushed toward its feature (D215, G1 §14.5).
 - Stub length at a branch port is two tiles: the signal tile then the boundary tile; the stub is one rule constant (D115a, D206).
 - The junction footprint ends one tile beyond the outermost signal on each leg; every track of a leg ends flush at the footprint edge (D58).
-- Planar signal windows and node footprints: a node has a footprint from the rules (switch tile, required straight runs, prio coverage) and a window along its line (D182).
+- Planar signal windows and node footprints: a node has a footprint from the rules (the split or merge tile, required straight runs, prio coverage) and a window along its line (D182).
 
 ## Heights
 - Height is solved per tile on the rendered routes after placement.

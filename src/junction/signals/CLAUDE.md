@@ -8,7 +8,7 @@
 - Fill walks upstream from the downstream fixed signal, so the short block falls at the upstream end and bays line up on the grid (D97).
 - Signals are graph tokens placed by rule; a run floor that exists to hold a signal becomes a Signal token with its own rule (D211).
 - A legal signal piece is not on a bridge, a head or a split tile and has no overlapping track on its tile (G1 §12.2).
-- BeforeSplit and BeforeMerge: the last legal piece before the switch; AfterSplit and AfterMerge: the first legal piece after it; BeforeBridge and AfterBridge likewise; Stub: the piece before the boundary tile (G1 §12.2).
+- BeforeSplit and BeforeMerge: the last legal piece before the split or merge node; AfterSplit and AfterMerge: the first legal piece after it; BeforeBridge and AfterBridge likewise; Stub: the piece before the boundary tile (G1 §12.2).
 - Every bridge and tunnel is its own block: a signal on the nearest legal piece before the near head and after the far head, on every path (D82, D154).
 - Between a split and the next bridge head there is a signal-legal piece with a signal; likewise a merge after a far head (D113).
 - A signal straight after every line-choice split stands; no minimum length from a split to the next bridge head (D192).
