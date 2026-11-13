@@ -1131,7 +1131,7 @@ static JunctionLayout SignalledOf(const JunctionTopology &t, std::string *error,
 	return layout;
 }
 
-TEST_CASE("topology: the T render traces like the flat T", "[junction][topology]")
+TEST_CASE("topology: the T render traces like the flat T", "[junction][topologysweep]")
 {
 	std::string error;
 	const JunctionLayout render = RenderOf(JunctionTTopology(), 64, &error);
@@ -2069,7 +2069,7 @@ static void CheckGraphSolvesFlat(const JunctionTopology &topology)
 	}
 }
 
-TEST_CASE("topology: the LL_RR graph solves on flat ground", "[junction][topoproj]")
+TEST_CASE("topology: the LL_RR graph solves on flat ground", "[junction][topoprojsweep]")
 {
 	CheckGraphSolvesFlat(JunctionLLRRSidelineTopology());
 }
@@ -4795,7 +4795,7 @@ TEST_CASE("programs: FindRowItems names a row's copy item on either side of the 
 	CHECK(row1.north == RowItems::NONE);
 }
 
-TEST_CASE("topology: an L_R main with a multi-lane branch is refused, not crashed", "[junction][topology]")
+TEST_CASE("topology: an L_R main with a multi-lane branch is refused, not crashed", "[junction][topologysweep]")
 {
 	for (const char *branch : {"LL_RR", "LL_R", "L_RR"}) {
 		INFO(branch);
