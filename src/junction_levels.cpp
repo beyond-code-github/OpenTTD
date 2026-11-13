@@ -42,6 +42,7 @@ struct Visit {
 	TrackBits bits; ///< Every track the layout builds on the tile.
 	bool fixed = false; ///< A node, port, bridge head or route end tile: flat at its own level.
 	bool head = false; ///< A bridge head: dir is then the direction into the span, and the tile's level is the height of its outer edge.
+	bool tunnel = false; ///< A tunnel portal: dir is then the direction into the tunnel, and the tile's level is the tunnel's level L, the height of its outer edge.
 	bool axis = false; ///< Only a lone axis track: the tile may be a ramp.
 	DiagDirection dir = DiagDirection::Invalid; ///< The direction of travel.
 	uint32_t edge = 0;
@@ -141,11 +142,39 @@ std::optional<Choice> EvaluateHead(const Context &c, const Visit &v, int kind, i
 }
 
 /**
+ * A tunnel portal built as the game takes it (CmdBuildTunnel): the raw inclined slope rising into the tunnel, its outer edge at the tunnel's level and its tunnel-side edge one above;
+ * the game takes no foundation there, so this is the portal's only option.
+ */
+std::optional<Choice> EvaluateTunnelPortal(const Context &c, const Visit &v, int level)
+{
+	const JunctionTerrainTile *tile = c.terrain.At(v.tile.first, v.tile.second);
+	if (tile == nullptr || tile->cls != JunctionTileClass::Buildable) return std::nullopt;
+	std::array<int, 4> target;
+	target.fill(level);
+	for (int i : ExitCorners(v.dir)) target[i] = level + 1;
+	const std::array<int, 4> current = JunctionTileCorners(*tile);
+	Choice choice;
+	choice.level = level;
+	if (current == target) {
+		choice.cost = tile->clear_cost;
+		choice.corners = current;
+		return choice;
+	}
+	int steps = 0;
+	for (int i = 0; i < 4; i++) steps += std::abs(target[i] - current[i]);
+	choice.cost = tile->clear_cost + c.terrain.terraform_cost * steps;
+	choice.corners = target;
+	choice.moves = true;
+	return choice;
+}
+
+/**
  * The tile built as a shape at a level (D218 cost of a tile at a shape).
  * @param kind 0 flat at level, 1 a ramp up from level to level + 1, 2 a ramp down from level to level - 1 (entry level first).
  */
 std::optional<Choice> Evaluate(const Context &c, const Visit &v, int kind, int level)
 {
+	if (v.tunnel) return kind == 0 ? EvaluateTunnelPortal(c, v, level) : std::nullopt;
 	if (v.head) return EvaluateHead(c, v, kind, level);
 	const JunctionTerrainTile *tile = c.terrain.At(v.tile.first, v.tile.second);
 	if (tile == nullptr || tile->cls != JunctionTileClass::Buildable) return std::nullopt;
@@ -278,6 +307,9 @@ struct LevelTile {
  * (a rampable tile's exit-side corners are the next tile's level) and track corners within Manhattan distance d differ by at most d.
  * A bridge head's level is the height of its outer edge: flat, or on the game's inclined slope (the head a level above the other), or on the game's bridge foundation; the two heads share one z,
  * and the corners of the span's ground stay within [z - max_bridge_height + 1, z] in the clamp.
+ * A tunnel's two portals are tied to one level L and each has one option, the game's raw slope rising into the tunnel (outer edge at L, tunnel-side edge at L + 1, no foundation);
+ * the corners of the ground over the tunnel stay at L + 1 or more in the clamp (a lower tile would end the tunnel early), so a crosser's track tile there is raised with it.
+ * For the ramp rule a portal is no climb (the game puts a train on a portal at the tile's z), and each middle tile counts as a tile at L.
  * The start is each tile at its cheapest flat level; a coordinate descent over the tiles tied by equality then lowers the cost, which is the exact cost of the finished terraform:
  * the heights the tracks fix at their corners, and every other corner the ground clamped to the cones of those (clamp(g, L, U)), with the foundation tiles' corners free.
  * @param c The terrain and facts.
@@ -336,19 +368,21 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	/* The bridges: the two heads share one z, and every corner of the span's ground stays within [z - max_bridge_height + 1, z] (CmdBuildBridge). */
 	struct Span {
 		size_t a, e; ///< The head variables.
+		bool tunnel; ///< The portals of a tunnel: the ground over it only has a lower bound.
 		SnapshotTile start, end; ///< The head tiles.
 		std::vector<std::pair<SnapshotTile, size_t>> corners; ///< The middle tile of each corner and its index in the cone.
 	};
 	std::vector<Span> spans;
 	std::vector<size_t> partner(n, SIZE_MAX); ///< Per head variable, the other head's.
 	for (const JunctionBridge &b : layout.bridges) {
-		if (b.tunnel) continue;
 		const SnapshotTile a{b.start.x + offset.x, b.start.y + offset.y};
 		const SnapshotTile e{b.end.x + offset.x, b.end.y + offset.y};
-		if (!var.contains(a) || !var.contains(e) || !tiles[a].visit.head || !tiles[e].visit.head) continue;
-		Span span{var[a], var[e], a, e, {}};
-		partner[var[a]] = var[e];
-		partner[var[e]] = var[a];
+		if (!var.contains(a) || !var.contains(e) || !(b.tunnel ? tiles[a].visit.tunnel && tiles[e].visit.tunnel : tiles[a].visit.head && tiles[e].visit.head)) continue;
+		Span span{var[a], var[e], b.tunnel, a, e, {}};
+		if (!b.tunnel) {
+			partner[var[a]] = var[e];
+			partner[var[e]] = var[a];
+		}
 		const int dx = (e.first > a.first) - (e.first < a.first);
 		const int dy = (e.second > a.second) - (e.second < a.second);
 		std::set<size_t> seen_corners;
@@ -428,7 +462,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			case 5: return "crosser " + name(b) + " under the head " + name(a);
 			case 6: return fmt::format("the corner ({}, {}) shared by track tiles is one height", w.a0, w.a1);
 			case 7: return fmt::format("track corners ({}, {}) and ({}, {}) differ by at most {}", w.a0, w.a1, w.b0, w.b1, w.k);
-			case 9: return "the heads " + name(a) + " and " + name(b) + " of a bridge are at the same z";
+			case 9: return "the heads " + name(a) + " and " + name(b) + " of a bridge or tunnel are at the same z";
 			default: return "start level of " + name(a);
 		}
 	};
@@ -470,7 +504,14 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 			std::vector<std::pair<size_t, bool>> entries; ///< Per tile the variable of its level, or of the near head of the span whose deck it is entered at.
 			for (size_t i = 0; i < visits.size(); i++) {
 				const size_t v = var[visits[i].tile];
-				if (visits[i].break_before && i > 0 && partner[var[visits[i - 1].tile]] != SIZE_MAX) {
+				if (visits[i].break_before && i > 0 && tiles.at(visits[i - 1].tile).visit.tunnel) {
+					/* A tunnel's middle tiles are level at L, the level of its portals (a portal is no climb): each counts as a tile at the near portal's level. */
+					const SnapshotTile &p = visits[i - 1].tile;
+					const SnapshotTile &q = visits[i].tile;
+					const int middles = std::abs(q.first - p.first) + std::abs(q.second - p.second) - 1;
+					for (int m = 0; m < middles; m++) entries.emplace_back(var[p], false);
+					entries.emplace_back(v, false);
+				} else if (visits[i].break_before && i > 0 && partner[var[visits[i - 1].tile]] != SIZE_MAX) {
 					const size_t near = var[visits[i - 1].tile];
 					const SnapshotTile &p = visits[i - 1].tile;
 					const SnapshotTile &q = visits[i].tile;
@@ -514,8 +555,12 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		}
 		equal(var[prio], var[beside], {4, prio.first, prio.second, beside.first, beside.second, 0});
 	}
-	/* The heads of a bridge are at the same z: their outer edges differ by at most one level (the head on the inclined slope is the higher). */
+	/* The heads of a bridge are at the same z: their outer edges differ by at most one level (the head on the inclined slope is the higher); the portals of a tunnel are at one level. */
 	for (const Span &span : spans) {
+		if (span.tunnel) {
+			equal(span.a, span.e, {9, span.start.first, span.start.second, span.end.first, span.end.second, 0});
+			continue;
+		}
 		diff(span.a, span.e, -1, {9, span.start.first, span.start.second, span.end.first, span.end.second, 0});
 		diff(span.e, span.a, -1, {9, span.end.first, span.end.second, span.start.first, span.start.second, 0});
 	}
@@ -666,6 +711,9 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 	constexpr int BIG = 1000000;
 	constexpr Money VIOLATION = 1000000000LL; ///< Per level of violation: an infeasible assignment costs more than any feasible one and still has a gradient.
 	constexpr Money NO_CHOICE = 1000000000000LL;
+	/* The ground of a span's middle corners: a bridge's within [z - max_bridge_height + 1, z]; a tunnel's at L + 1 or more (a lower tile ends the tunnel early) with no upper bound. */
+	auto span_lo = [&](const Span &span, int z) { return span.tunnel ? z + 1 : z - c.terrain.max_bridge_height + 1; };
+	auto span_hi = [&](const Span &span, int z) { return span.tunnel ? BIG : z; };
 	std::vector<int> ex_target(corner_count, NO_TARGET), ex_l(corner_count, -BIG), ex_u(corner_count, BIG);
 	std::vector<int> ex_h = ground_h; ///< The heights after the terraform: the ground, except at the touched corners.
 	std::vector<char> ex_dirty(static_cast<size_t>(GW) * GH, 0);
@@ -719,8 +767,8 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		for (const Span &span : spans) {
 			const int z = std::min(lv[span.a], lv[span.e]);
 			for (const auto &[tile, k] : span.corners) {
-				if (z < ground_h[k]) t_span_hi.emplace_back(k, z);
-				if (z - c.terrain.max_bridge_height + 1 > ground_h[k]) t_span_lo.emplace_back(k, z - c.terrain.max_bridge_height + 1);
+				if (span_hi(span, z) < ground_h[k]) t_span_hi.emplace_back(k, span_hi(span, z));
+				if (span_lo(span, z) > ground_h[k]) t_span_lo.emplace_back(k, span_lo(span, z));
 			}
 		}
 		/* Raised targets spread L = t - d while it exceeds the ground; lowered ones spread U = t + d while it is below. */
@@ -813,7 +861,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		for (const Span &span : spans) {
 			const int z = std::min(lv[span.a], lv[span.e]);
 			for (const auto &[tile, k] : span.corners) {
-				viol += std::max(0, ex_h[k] - z) + std::max(0, z - c.terrain.max_bridge_height + 1 - ex_h[k]);
+				viol += std::max(0, ex_h[k] - span_hi(span, z)) + std::max(0, span_lo(span, z) - ex_h[k]);
 			}
 		}
 		Money cost = c.terrain.terraform_cost * moves;
@@ -1172,9 +1220,10 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		for (size_t k : l_spk) {
 			int up = -BIG, dn = BIG;
 			for (int e = sp_first[k]; e >= 0; e = sp_ent[e][1]) {
+				const Span &span = spans[sp_ent[e][0]];
 				const int z = I_span_z[sp_ent[e][0]];
-				if (z < ground_h[k]) dn = std::min(dn, z);
-				if (z - c.terrain.max_bridge_height + 1 > ground_h[k]) up = std::max(up, z - c.terrain.max_bridge_height + 1);
+				if (span_hi(span, z) < ground_h[k]) dn = std::min(dn, span_hi(span, z));
+				if (span_lo(span, z) > ground_h[k]) up = std::max(up, span_lo(span, z));
 			}
 			I_sp_up[k] = up;
 			I_sp_dn[k] = dn;
@@ -1277,7 +1326,7 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		long viol = I_viol_tgt + I_pairs + I_viol_touch + I_viol_tile;
 		for (size_t si = 0; si < spans.size(); si++) {
 			const int z = I_span_z[si];
-			for (const auto &[tile, k] : spans[si].corners) viol += std::max(0, I_h[k] - z) + std::max(0, z - c.terrain.max_bridge_height + 1 - I_h[k]);
+			for (const auto &[tile, k] : spans[si].corners) viol += std::max(0, I_h[k] - span_hi(spans[si], z)) + std::max(0, span_lo(spans[si], z) - I_h[k]);
 		}
 		for (const auto &[sa, deck_a, sb, deck_b] : deck_windows) {
 			auto level_of = [&](size_t v, bool deck) { return deck ? std::max(I_lv[v], I_lv[partner[v]]) + (I_lv[v] == I_lv[partner[v]] ? 1 : 0) : I_lv[v]; };
@@ -1401,7 +1450,8 @@ std::string SolveTileLevels(const Context &c, const std::vector<std::vector<Visi
 		for (const Span &span : spans) {
 			const int z = std::min(level[span.a], level[span.e]);
 			for (const auto &[tile, k] : span.corners) {
-				if (ex_h[k] > z || ex_h[k] < z - c.terrain.max_bridge_height + 1) {
+				if (ex_h[k] > span_hi(span, z) || ex_h[k] < span_lo(span, z)) {
+					if (span.tunnel) return fmt::format("the tunnel from {} to {} cannot keep the ground of tile {} above {}: its corner ends at {}", name(span.start), name(span.end), name(tile), z, ex_h[k]);
 					return fmt::format("the bridge from {} to {} cannot keep the ground of tile {} at most {} and above {}: its corner ends at {}", name(span.start), name(span.end), name(tile), z, z - c.terrain.max_bridge_height, ex_h[k]);
 				}
 			}
@@ -1443,15 +1493,18 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 	std::map<SnapshotTile, TrackBits> tile_bits;
 	for (const JunctionTrack &jt : layout.tracks) tile_bits[world(jt.offset)] |= jt.tracks;
 	std::set<SnapshotTile> heads;
-	std::map<SnapshotTile, DiagDirection> into_span; ///< Per head of a bridge, the direction from its outer edge into the span.
+	std::map<SnapshotTile, DiagDirection> into_span; ///< Per head of a bridge or portal of a tunnel, the direction from its outer edge into the span.
+	std::set<SnapshotTile> portals; ///< The portals of the tunnels.
 	for (const JunctionBridge &b : layout.bridges) {
 		heads.insert(world(b.start));
 		heads.insert(world(b.end));
-		if (!b.tunnel) {
-			const bool along_x = b.start.y == b.end.y;
-			const bool start_first = along_x ? b.start.x < b.end.x : b.start.y < b.end.y;
-			into_span[world(b.start)] = along_x ? (start_first ? DiagDirection::SW : DiagDirection::NE) : (start_first ? DiagDirection::SE : DiagDirection::NW);
-			into_span[world(b.end)] = along_x ? (start_first ? DiagDirection::NE : DiagDirection::SW) : (start_first ? DiagDirection::NW : DiagDirection::SE);
+		const bool along_x = b.start.y == b.end.y;
+		const bool start_first = along_x ? b.start.x < b.end.x : b.start.y < b.end.y;
+		into_span[world(b.start)] = along_x ? (start_first ? DiagDirection::SW : DiagDirection::NE) : (start_first ? DiagDirection::SE : DiagDirection::NW);
+		into_span[world(b.end)] = along_x ? (start_first ? DiagDirection::NE : DiagDirection::SW) : (start_first ? DiagDirection::NW : DiagDirection::SE);
+		if (b.tunnel) {
+			portals.insert(world(b.start));
+			portals.insert(world(b.end));
 		}
 		/* No track is laid on a head: it is judged as the bridge's axis track (flat; its incline is kept out of this step). */
 		const TrackBits axis_track{b.start.y == b.end.y ? Track::X : Track::Y};
@@ -1488,7 +1541,8 @@ bool SolveJunctionLevels(const JunctionTerrain &terrain, const JunctionFacts &fa
 			v.break_before = broken;
 			broken = false;
 			if (const auto head = into_span.find(tile); head != into_span.end()) {
-				v.head = true;
+				v.head = !portals.contains(tile);
+				v.tunnel = portals.contains(tile);
 				v.dir = head->second;
 			}
 			visits.push_back(v);

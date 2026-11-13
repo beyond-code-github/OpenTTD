@@ -443,3 +443,116 @@ TEST_CASE("the ramp rule sees the climb onto a bridge", "[junction][hoverplan]")
 		CHECK(why.find("ramp rule") != std::string::npos);
 	}
 }
+
+/** The T seed with its single bridge a tunnel (TU3), placed, rendered and signalled, with the routes and the prio tiles the level solve takes. */
+struct TunnelT {
+	JunctionTrackPlacement placement;
+	JunctionLayout layout;
+	std::vector<JunctionTrackRoute> routes;
+	std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> prio_beside;
+	JunctionSpec spec;
+};
+
+static TunnelT MakeTunnelT()
+{
+	const JunctionTopology &t = JunctionTTopology();
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, paths, &error);
+	const JunctionTrackOrder order = OrderJunctionTrackGraph(t, paths, graph, &error);
+	JunctionTrackStructure structure = StructureJunctionTrackGraph(t, paths, graph, order, &error);
+	auto single = std::ranges::find_if(structure.bridges, [](const JunctionTrackBridge &b) { return !b.doubled; });
+	REQUIRE(single != structure.bridges.end());
+	single->tunnel = true;
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t, paths, graph, order, structure, &error);
+	REQUIRE(!programs.edges.empty());
+	TunnelT result;
+	result.spec = MakeTestJunctionSpec();
+	result.placement = PlaceJunctionTrackGraph(t, paths, graph, order, structure, programs, result.spec, &error);
+	INFO(error);
+	REQUIRE(!result.placement.edges.empty());
+	result.layout = RenderJunctionTrackPlacement(t, paths, graph, structure, programs, result.placement, &error, &result.routes);
+	INFO(error);
+	REQUIRE(!result.layout.tracks.empty());
+	SignalJunctionTrackRoutes(result.layout, result.routes, t, paths, graph, programs, result.spec, &error, &result.prio_beside, &result.placement.prio);
+	return result;
+}
+
+/** A snapshot of flat ground at height 4 around a layout, with a margin of 12 tiles; the layout's offset is returned. */
+static JunctionTerrain FlatAround(const JunctionLayout &layout, TileIndexDiffC &offset)
+{
+	constexpr int MARGIN = 12;
+	offset = {MARGIN, MARGIN};
+	return MakeTerrainFromCorners(layout.size.x + 2 * MARGIN, layout.size.y + 2 * MARGIN, [](int, int) { return 4; });
+}
+
+/** An X tunnel from the portal (2, 3) to the portal (6, 3) on a 9 x 7 snapshot with a Y crosser on column 4 over its middle; the route of the tunnel and the crosser's. */
+static void MakeTunnelUnderCrosser(JunctionLayout &layout, std::vector<JunctionTrackRoute> &routes)
+{
+	JunctionTrackRoute under{};
+	for (int x = 0; x < 9; x++) {
+		const bool on_tunnel = x >= 2 && x <= 6;
+		if (!on_tunnel || x == 2 || x == 6) layout.tracks.push_back({{static_cast<int16_t>(x), 3}, TrackBits{Track::X}});
+		under.pieces.push_back({{static_cast<int16_t>(x), 3}, Trackdir::X_SW, 1, on_tunnel});
+		under.tags.push_back({0, JunctionTrackPieceTag::RUN, 0, 0});
+	}
+	layout.bridges.push_back({{2, 3}, {6, 3}, true});
+	JunctionTrackRoute over{};
+	for (int y = 0; y < 7; y++) {
+		layout.tracks.push_back({{4, static_cast<int16_t>(y)}, TrackBits{Track::Y}});
+		over.pieces.push_back({{4, static_cast<int16_t>(y)}, Trackdir::Y_SE, 1, false});
+		over.tags.push_back({1, JunctionTrackPieceTag::RUN, 0, 0});
+	}
+	routes = {under, over};
+}
+
+TEST_CASE("the level solve plans a tunnel", "[junction][hoverplan]")
+{
+	/* TU4: flat ground at 4. The portals are on the game's raw inclined slope (the outer edge at the tunnel's level L, the tunnel side at L + 1, rising into the tunnel),
+	 * the ground over the middle is at L + 1 or more (a middle tile at L would end the tunnel early) and the plan passes the height facts. */
+	const JunctionTerrain terrain = MakeTerrainFromCorners(9, 7, [](int, int) { return 4; });
+	JunctionLayout layout;
+	std::vector<JunctionTrackRoute> routes;
+	MakeTunnelUnderCrosser(layout, routes);
+	const JunctionFacts facts(terrain);
+	JunctionTerraform plan;
+	Money cost = 0;
+	std::string why;
+	std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
+	const bool solved = SolveJunctionLevels(terrain, facts, {0, 0}, 1, 3, JunctionTrackPlacement{}, layout, routes, {}, plan, cost, levels, &why);
+	INFO(why);
+	REQUIRE(solved);
+	INFO("the planned cost is " << cost << ", the terraform " << plan.cost << ", " << plan.corners.size() << " corners");
+	CHECK(cost > 0);
+	const JunctionTerrain after = ApplyJunctionTerraform(terrain, plan);
+	const JunctionTerrainTile *entry = after.At(2, 3);
+	const JunctionTerrainTile *exit = after.At(6, 3);
+	CHECK(GetInclinedSlopeDirection(entry->slope) == DiagDirection::SW);
+	CHECK(GetInclinedSlopeDirection(exit->slope) == DiagDirection::NE);
+	const int level = entry->z_min;
+	CHECK(exit->z_min == level);
+	/* The game's exit search: the first tile on from the entry at the entry's z is the exit; every middle tile is above it. */
+	int x = 3;
+	for (; after.At(x, 3)->z_min != level; x++) CHECK(after.At(x, 3)->z_min >= level + 1);
+	CHECK(x == 6);
+	std::string heights;
+	const bool ok = JunctionRoutesHeightsOk(routes, layout, {0, 0}, after, {0, 0}, &heights);
+	INFO(heights);
+	CHECK(ok);
+}
+
+TEST_CASE("the level solve refuses the T's tunnel as a terraform conflict", "[junction][hoverplan]")
+{
+	/* TU4: on the T seed the crosser over the tunnel is a staircase of half pieces, flat and in one level group with the tiles beside the exit portal, which sit at the tunnel's level:
+	 * no levels exist, and the reason is a terraform conflict (a tunnel is not always possible; the bridge is the fallback, TU5). */
+	const TunnelT tt = MakeTunnelT();
+	TileIndexDiffC offset;
+	const JunctionTerrain terrain = FlatAround(tt.layout, offset);
+	const JunctionFacts facts(terrain);
+	JunctionTerraform plan;
+	Money cost = 0;
+	std::string why;
+	std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
+	CHECK_FALSE(SolveJunctionLevels(terrain, facts, offset, JunctionRampLevels(tt.spec), tt.spec.tl, tt.placement, tt.layout, tt.routes, tt.prio_beside, plan, cost, levels, &why));
+	CHECK(why.find("terraform conflict") != std::string::npos);
+}

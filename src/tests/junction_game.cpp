@@ -16,6 +16,7 @@
 #include "../junction_generator.h"
 #include "../junction_hover.h"
 #include "../junction_layout.h"
+#include "../junction_levels.h"
 #include "../junction_terraform.h"
 #include "../junction_terrain_json.h"
 #include "../junction_nodes.h"
@@ -1163,4 +1164,60 @@ TEST_CASE("the in-game estimate of a terraformed plan has no red tile the terraf
 	CHECK(counts.bad_not_failing_bridge_head == 0);
 	CHECK(counts.rail_bad_after == 0);
 	CHECK(counts.bridges_failing_after == 0);
+}
+
+TEST_CASE("a planned tunnel builds", "[junction][junctiongame]")
+{
+	/* TU4: the level solve's plan of an X tunnel under a Y crosser on flat ground (the same fixture as the [hoverplan] test), applied to a game map: the game's CmdBuildTunnel test and execute succeed and the far end is the planned portal. */
+	JunctionGameWorld world;
+	MakeBareGrass(TileXY(88, 88), 40);
+	JunctionTerrain terrain;
+	terrain.origin = {0, 0};
+	terrain.width = 9;
+	terrain.height = 7;
+	terrain.terraform_cost = 100;
+	terrain.tiles.resize(63);
+	for (JunctionTerrainTile &t : terrain.tiles) {
+		t.clear_cost = 10;
+		SetJunctionTileCorners(t, {4, 4, 4, 4});
+	}
+	JunctionLayout layout;
+	JunctionTrackRoute under{};
+	for (int x = 0; x < 9; x++) {
+		const bool on_tunnel = x >= 2 && x <= 6;
+		if (!on_tunnel || x == 2 || x == 6) layout.tracks.push_back({{static_cast<int16_t>(x), 3}, TrackBits{Track::X}});
+		under.pieces.push_back({{static_cast<int16_t>(x), 3}, Trackdir::X_SW, 1, on_tunnel});
+		under.tags.push_back({0, JunctionTrackPieceTag::RUN, 0, 0});
+	}
+	layout.bridges.push_back({{2, 3}, {6, 3}, true});
+	JunctionTrackRoute over{};
+	for (int y = 0; y < 7; y++) {
+		layout.tracks.push_back({{4, static_cast<int16_t>(y)}, TrackBits{Track::Y}});
+		over.pieces.push_back({{4, static_cast<int16_t>(y)}, Trackdir::Y_SE, 1, false});
+		over.tags.push_back({1, JunctionTrackPieceTag::RUN, 0, 0});
+	}
+	const std::vector<JunctionTrackRoute> routes = {under, over};
+	const JunctionFacts facts(terrain);
+	JunctionTerraform plan;
+	std::string why;
+	std::vector<std::pair<TileIndexDiffC, int8_t>> levels;
+	Money cost = 0;
+	REQUIRE(SolveJunctionLevels(terrain, facts, {0, 0}, 1, 3, JunctionTrackPlacement{}, layout, routes, {}, plan, cost, levels, &why));
+	for (uint y = 88; y < 128; y++) {
+		for (uint x = 88; x < 128; x++) SetTileHeight(TileXY(x, y), 4);
+	}
+	for (const auto &[corner, h] : plan.corners) SetTileHeight(TileXY(96 + corner.first, 96 + corner.second), h);
+	/* The harness leaves the game's max_tunnel_length at 0 (a tunnel of any middle is then "too long"): set it here, to the game's default. */
+	_settings_game.construction.max_tunnel_length = 64;
+	const TileIndex start = TileXY(96 + 2, 96 + 3);
+	const TileIndex end = TileXY(96 + 6, 96 + 3);
+	const CommandCost tested = Command<Commands::BuildTunnel>::Do(DoCommandFlag::QueryCost, start, TransportType::Rail, RAILTYPE_RAIL, INVALID_ROADTYPE);
+	INFO("test: error " << tested.GetErrorMessage().base());
+	REQUIRE(tested.Succeeded());
+	const CommandCost built = Command<Commands::BuildTunnel>::Do(DoCommandFlag::Execute, start, TransportType::Rail, RAILTYPE_RAIL, INVALID_ROADTYPE);
+	INFO("execute: error " << built.GetErrorMessage().base());
+	REQUIRE(built.Succeeded());
+	CHECK(_build_tunnel_endtile == end);
+	CHECK(IsTunnelTile(start));
+	CHECK(IsTunnelTile(end));
 }
