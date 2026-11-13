@@ -3,11 +3,12 @@
 #   jt fast <build-dir> <tag> [budget-seconds=5]   run "<tag>~[slow]~[.]" (no slow or hidden tests), fail if over budget
 #   jt gate <build-dir>                             wide gate, Release builds only
 #   jt identity <build-dir>                         the identity sweeps "[identity]", Release builds only
+#   jt sweep <build-dir>                            the slow gate sweeps "[.sweep]", Release builds only
 # Builds openttd_test first (a build failure fails the run). Output goes to <build-dir>/jt-<name>.log; only failures, slow tests and the total are printed.
 set -u
 mode=${1:-}; build=${2:-}
 if [ -z "$mode" ] || [ -z "$build" ] || [ ! -x "$build/openttd_test" ]; then
-	echo "usage: jt fast <build-dir> <tag> [budget-s] | jt gate <build-dir> | jt identity <build-dir>" >&2; exit 2
+	echo "usage: jt fast <build-dir> <tag> [budget-s] | jt gate <build-dir> | jt identity <build-dir> | jt sweep <build-dir>" >&2; exit 2
 fi
 type=$(grep -m1 '^CMAKE_BUILD_TYPE' "$build/CMakeCache.txt" 2>/dev/null | cut -d= -f2)
 case "$mode" in
@@ -24,6 +25,10 @@ case "$mode" in
 	identity)
 		if [ "$type" != "Release" ]; then echo "jt identity: $build is '$type', not Release; the identity sweeps run in Release only" >&2; exit 2; fi
 		filter="[identity]"; budget=${3:-90}; name=identity
+		;;
+	sweep)
+		if [ "$type" != "Release" ]; then echo "jt sweep: $build is '$type', not Release; the slow sweeps run in Release only" >&2; exit 2; fi
+		filter="[.sweep]"; budget=${3:-90}; name=sweep
 		;;
 	*) echo "jt: unknown mode $mode" >&2; exit 2;;
 esac
