@@ -26,42 +26,44 @@ Replace the refusal "a crossed lane in edge is not ruled yet" with the mirror of
 ## Rules (from DESIGN-G2 §G2.4 "In edge", not open)
 1. **Structure.** Delete the refusal. Only the leg (a row edge that starts and ends at a node) sets `row_doubled[r]`. Write the condition as `graph.edges[e].from.node && graph.edges[e].to.node`. An in edge's doubled bridge does not make the leg doubled.
 2. **Programs.** Add a branch for an in edge (`edge.to.node`, not `edge.from.node`) with `doubled_bridge(e)`, placed before the plain `else if (edge.to.node)` branch:
-   - c = `row_items[r].copy`, and B = `row_doubled[r] ? row_items[r].north : row_items[r].lane`;
-   - if c or B is `NO_ROW`, fail "a row without its side tracks is not ruled yet";
-   - if c == B, STOP and report (do not invent a rule);
-   - hand = `((B > c) == east[r]) ? +1 : -1` (the out edge's rule for a step from item `from` to item `to`, with from = c and to = B);
-   - `edges[e]` = `Fan(c)`, then `Over(x)` for each crossing, then `SBend(hand, B, LaneMerge)`;
+   - B = `row_doubled[r] ? row_items[r].north : row_items[r].lane` (the item the in edge's node sits on);
+   - A = whichever of `row_items[r].lane` and `row_items[r].copy` is not B (D241). When the leg is not doubled, A is Copy and B is Lane. When the leg is doubled, B is north, which is the Copy item, and A is Lane;
+   - if lane, copy or B is `NO_ROW`, fail "a row without its side tracks is not ruled yet";
+   - if B is neither the lane nor the copy item, fail "a crossed in edge whose node sits off its lane and copy items is not ruled yet";
+   - hand = `((B > A) == east[r]) ? +1 : -1` (the out edge's rule for a step from item `from` to item `to`, with from = A and to = B);
+   - `edges[e]` = `Fan(A)`, then `Over(x)` for each crossing, then `SBend(hand, B, LaneMerge)`;
    - `copies[e]` = `SBend(hand, B, LaneSplit)`, then `Over(x)` for each crossing.
 3. **Edge ends and node shapes.** These need no change: the first token is the Fan, no token ends on the split, and `in_item` reads B from the LaneMerge S-bend. If the node shape's item for the in edge's node is not B, STOP.
 
 ## Tests (`src/tests/junction/topology/junction_topology.cpp`, `[junction][topology]`), red first
+0. A first attempt's patch, `/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/di1/di1-uncommitted.patch`, holds the tests and most of the change. You may apply it and then correct it to this brief. Its `assert(c != b)` goes: the A/B rule above replaces it. Record the red evidence again from your own run.
 1. **"programs: a crossed in edge carries a doubled bridge"** (outer). LLL_RRR x LLL_RRR under pairing any:
    - programs succeed;
    - for the in edge the recon names (e3, W-in 1 to node 3), `programs.edges` and `programs.copies` are exactly the token lists of rule 2, with each Over naming e54, e57 and e60 in the order's crossing order;
    - `programs.nodes[3].item` is B.
    - Red: it fails today with the refusal text; record it.
-2. **"structure: a crossed in edge does not double the leg"** (inner). For the same hub, the leg of e3's row has no LaneSplit or LaneMerge token unless that row's leg is itself crossed. State which it is in the report.
+2. **"structure: a crossed in edge does not double the leg"** (inner). Also check LL_RR x LL_RR's e5 (leg doubled): its programs follow rule 2 with A = Lane and B = north. For LLL_RRR x LLL_RRR, the leg of e3's row has no LaneSplit or LaneMerge token unless that row's leg is itself crossed. State which it is in the report.
 3. **The W1 characterisation test** ("wide hubs: how far each gets", `[topologysweep]`): run it, and report its lines before and after.
 
 ## Changes
 Only the two sites above and the tests. In `src/junction/topology/CLAUDE.md`, with no D-ids or design, brief or recon references:
 - replace ", a crossed in edge is refused as not ruled" in the out-edge line with ".";
-- add "- A crossed in edge carries its doubled bridge as the mirror: the fan arrives on the row's copy item, copy 1 S-bends to the item of the lane's first node before the bridge, copy 0 after it; an in edge's bridge does not double the leg."
+- add "- A crossed in edge carries its doubled bridge as the mirror: its fan arrives on whichever of the lane and copy items the lane's first node does not sit on, copy 1 S-bends to the node's item before the bridge, copy 0 after it; an in edge's bridge does not double the leg."
 
 ## Do not
 - Touch placement, render or signals, or the refusal "a bridge over several band crossings".
 - Use `pkill`, a broad `kill`, or a bare `git stash`.
 
 ## Stop conditions
-- Identity or any existing test changes. Today's hubs have no crossed in edge, so nothing may move.
-- c == B, or the node item is not B.
+- Identity or any existing test changes, except one. LL_RR x LL_RR has a crossed in edge (e5, row 2, with a doubled leg; a first attempt found it). So the `[topologysweep]` test "topology: LL_RR x LL_RR under each lane pairing seeds or names a reason" may now reach a later stage. Report its lines before and after. Change its expectations only if it pins the old refusal text, and say exactly what you changed.
+- The node item is not B.
 - Anything not covered.
 
 ## Gates
 - 0 new warnings;
 - `tools/junction/jt fast build '[topology]' 5`;
 - `tools/junction/jt gate build-rel`;
-- `tools/junction/jt identity build-rel`.
+- `tools/junction/jt identity build-rel`. Another agent builds and gates in parallel, so if identity is over budget, re-run it once and report both times.
 
 One commit on wt-di1: `Add: Junction doubled bridge on a crossed in edge`, ending with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 
