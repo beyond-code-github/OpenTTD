@@ -16,6 +16,7 @@
 #include <array>
 #include <chrono>
 #include <iostream>
+#include <map>
 #include <set>
 
 #include "../../../junction/junction_pipeline.h"
@@ -493,6 +494,75 @@ TEST_CASE("joint: scale probe on wider hubs", "[.g3scale]")
 	}
 }
 
+/** A column's value at the recorded columns and sizes. */
+static int ClashColumnValue(const JunctionPlacementSystem &system, const std::vector<int> &columns, const JunctionSystemColumn &column)
+{
+	return columns[column.pt] + column.c0 + (column.bend >= 0 ? column.c1 * system.bends[column.bend].m : 0);
+}
+
+TEST_CASE("joint: clash rows replace the held occupancy", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch] : {std::pair{"L_R", "L_R"}, std::pair{"LL_RR", "L_R"}}) {
+		INFO(main << " x " << branch);
+		const JointInputs in = MakeJointInputs(main, branch);
+		std::string error;
+		const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+		REQUIRE(!seed.routes.empty());
+		const JunctionPlacementSystem with = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices);
+		JunctionPlacementSystem without = with;
+		without.clashes.clear();
+		REQUIRE(!with.clashes.empty());
+
+		int held = 0, violated = 0, variable = 0;
+		for (const JunctionSystemClash &clash : with.clashes) {
+			held += clash.held;
+			variable += clash.a_right.c1 != 0 || clash.b_left.c1 != 0;
+			if (ClashColumnValue(with, seed.placement.columns, clash.b_left) - ClashColumnValue(with, seed.placement.columns, clash.a_right) < clash.gap) violated++;
+		}
+		std::cout << fmt::format("[joint] clashes {} x {}: {}, held {}, with a length term {}, violated at the recording {}\n", main, branch, with.clashes.size(), held, variable, violated);
+		CHECK(violated == 0);
+
+		const JunctionJointResult a = SolveJunctionJoint(with, spec);
+		const JunctionJointResult b = SolveJunctionJoint(without, spec);
+		REQUIRE(a.status == JunctionMilp::Status::Optimal);
+		REQUIRE(b.status == JunctionMilp::Status::Optimal);
+		CHECK(a.choices == b.choices);
+		CHECK(std::abs(a.objective - b.objective) < 1e-6);
+	}
+}
+
+TEST_CASE("joint: recordings at other sizes keep their points", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JointInputs in = MakeJointInputs("L_R", "L_R");
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+	REQUIRE(!seed.routes.empty());
+	const JunctionPlacementSystem base = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, seed.placement.choices);
+	REQUIRE(!base.relations.empty());
+	int compared = 0;
+	for (const JunctionSystemBend &free_bend : base.bends) {
+		if (free_bend.copy != 0 || free_bend.source != "free" || free_bend.kind != "SBend") continue;
+		JunctionPlacementChoices bigger = seed.placement.choices;
+		bigger.m[free_bend.edge][free_bend.tok]++;
+		const JunctionPlacementSystem other = RecordJunctionPlacementSystem(in.topology, seed.paths, seed.graph, in.order, seed.structure, seed.programs, spec, bigger);
+		INFO(fmt::format("bend edge {} tok {}", free_bend.edge, free_bend.tok));
+		REQUIRE(!other.relations.empty());
+		CHECK(other.pt_count == base.pt_count);
+		REQUIRE(other.bends.size() == base.bends.size());
+		for (size_t i = 0; i < base.bends.size(); i++) {
+			CHECK(other.bends[i].edge == base.bends[i].edge);
+			CHECK(other.bends[i].copy == base.bends[i].copy);
+			CHECK(other.bends[i].tok == base.bends[i].tok);
+			CHECK(other.bends[i].first == base.bends[i].first);
+			CHECK(other.bends[i].last == base.bends[i].last);
+		}
+		compared++;
+	}
+	CHECK(compared > 0);
+}
+
 /** A route bend's quantity at the joint's length: 0 when a sized bend has vanished, else the affine value. */
 static int JointQuantity(const JunctionJointResult &joint, const JunctionSystemRouteBend &b, const std::pair<int, int> &q)
 {
@@ -747,16 +817,33 @@ TEST_CASE("joint: the joint loop on the hubs", "[junction][milp][.g3loop]")
 
 		std::vector<JunctionPlacementChoices> history;
 		std::vector<std::vector<int>> lengths;
+		std::vector<size_t> added_in_round; ///< Per round, the clashes it kept.
+		std::map<std::string, JunctionSystemClash> kept; ///< Every clash seen, by key.
+		JunctionPlacementSystem round0;
 		std::string outcome;
 		int approx = 0;
 		for (int k = 0; k < 12 && outcome.empty(); k++) {
 			const auto start = std::chrono::steady_clock::now();
 			history.push_back(choices);
-			const JunctionPlacementSystem system = RecordJunctionPlacementSystem(in.topology, paths, graph, in.order, cut, programs, spec, choices);
+			JunctionPlacementSystem system = RecordJunctionPlacementSystem(in.topology, paths, graph, in.order, cut, programs, spec, choices);
 			if (system.relations.empty()) {
 				outcome = "the fixed path recorded nothing";
 				break;
 			}
+			size_t added = 0;
+			for (const JunctionSystemClash &clash : system.clashes) {
+				if (kept.count(clash.key) != 0 || kept.count(clash.reversed) != 0) continue;
+				kept.emplace(clash.key, clash);
+				added++;
+			}
+			added_in_round.push_back(added);
+			system.clashes.clear();
+			size_t held = 0;
+			for (const auto &[key, clash] : kept) {
+				system.clashes.push_back(clash);
+				held += clash.held;
+			}
+			if (k == 0) round0 = system;
 			const JunctionJointResult joint = SolveJunctionJoint(system, spec);
 			const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 			int sum = 0, changed = 0;
@@ -764,7 +851,7 @@ TEST_CASE("joint: the joint loop on the hubs", "[junction][milp][.g3loop]")
 				sum += joint.length[i];
 				changed += joint.length[i] != system.bends[i].m;
 			}
-			WARN(fmt::format("{} round {}: status {}, objective {:.3f}, sum L {}, changed {}, {:.1f} ms", hub, k, static_cast<int>(joint.status), joint.objective, sum, changed, ms));
+			WARN(fmt::format("{} round {}: status {}, objective {:.3f}, sum L {}, changed {}, new clashes kept {}, kept total {}, held {}, {:.1f} ms", hub, k, static_cast<int>(joint.status), joint.objective, sum, changed, added, kept.size(), held, ms));
 			if (joint.status == JunctionMilp::Status::Infeasible) {
 				std::string chain;
 				for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
@@ -783,8 +870,11 @@ TEST_CASE("joint: the joint loop on the hubs", "[junction][milp][.g3loop]")
 				break;
 			}
 			size_t first = history.size();
-			for (size_t j = 0; j < history.size(); j++) {
-				if (history[j] == joint.choices) { first = j; break; }
+			for (size_t j = 0; j < history.size() && first == history.size(); j++) {
+				if (history[j] != joint.choices) continue;
+				size_t added_since = 0; // A repeat is a cycle only when no clash was kept since that round.
+				for (size_t later = j + 1; later < added_in_round.size(); later++) added_since += added_in_round[later];
+				if (added_since == 0) first = j;
 			}
 			if (first < history.size()) {
 				std::string repeating;
@@ -804,5 +894,13 @@ TEST_CASE("joint: the joint loop on the hubs", "[junction][milp][.g3loop]")
 		if (outcome.empty()) outcome = "12 rounds without settling";
 		const double total = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - hub_start).count();
 		WARN(fmt::format("{}: C_0 {}, {}, approximated gap rows at the last solve {}, total {:.1f} ms", hub, c0, outcome, approx, total));
+		if (hub == "LL_RR x LL_RR" && !round0.relations.empty()) {
+			/* A measure for the next step: the round-0 system without the bridge-over-S-bend relations. */
+			std::erase_if(round0.relations, [](const JunctionSystemRelation &r) { return r.reason.starts_with("bridge over S-bend"); });
+			const JunctionJointResult without_bridges = SolveJunctionJoint(round0, spec);
+			std::string chain;
+			for (const std::string &reason : without_bridges.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
+			WARN(fmt::format("{} round 0 without the bridge-over-S-bend relations: status {}{}", hub, static_cast<int>(without_bridges.status), without_bridges.status == JunctionMilp::Status::Infeasible ? ", conflict: " + chain : ""));
+		}
 	}
 }

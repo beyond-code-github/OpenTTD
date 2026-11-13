@@ -94,3 +94,40 @@ TEST_CASE("bend rasters are affine in their length", "[junction][geometry]")
 		}
 	}
 }
+
+TEST_CASE("bend tile forms predict the raster", "[junction][geometry]")
+{
+	auto offsets = [](int heading, int hand, int length, bool corner) {
+		const int halves = corner ? 2 * length + 1 : 2 * length;
+		const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, halves, corner)});
+		REQUIRE(raster.error.empty());
+		REQUIRE(static_cast<int>(raster.pieces.size()) == halves + 2);
+		std::vector<std::pair<int, int>> result;
+		for (int i = 1; i <= halves; i++) result.emplace_back(raster.pieces[i].tile.x - raster.pieces[1].tile.x, raster.pieces[i].tile.y - raster.pieces[1].tile.y);
+		return result;
+	};
+	for (bool corner : {false, true}) {
+		for (int heading = 0; heading < 4; heading++) {
+			for (int hand : {-1, 1}) {
+				std::vector<std::vector<std::pair<int, int>>> raster; ///< Index L - 1.
+				for (int length = 1; length <= 64; length++) raster.push_back(offsets(heading, hand, length, corner));
+				for (int length = 1; length <= 63; length++) {
+					const std::vector<JunctionBendTileForm> forms = JunctionBendTileForms(heading, hand, length, corner);
+					INFO("corner " << corner << " heading " << heading << " hand " << hand << " L " << length);
+					REQUIRE(forms.size() == raster[length - 1].size());
+					const int n = static_cast<int>(forms.size());
+					for (int j = 0; j < n; j++) {
+						for (int later = length + 1; later <= 64; later++) {
+							const std::vector<std::pair<int, int>> &at = raster[later - 1];
+							const int index = forms[j].tail ? static_cast<int>(at.size()) - 1 - (n - 1 - j) : j;
+							INFO("L' " << later << " tile " << j);
+							REQUIRE(index >= 0);
+							CHECK(forms[j].dx0 + forms[j].dx1 * later == at[index].first);
+							CHECK(forms[j].dy0 + forms[j].dy1 * later == at[index].second);
+						}
+					}
+				}
+			}
+		}
+	}
+}
