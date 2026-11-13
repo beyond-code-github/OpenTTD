@@ -14,6 +14,7 @@
 #include "../junction_spec.h"
 #include "../topology/junction_chain.h"
 
+#include <chrono>
 #include <cmath>
 #include <map>
 #include <set>
@@ -383,5 +384,80 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 			if (model.rows[row].clash >= 0) result.conflict.push_back(system.clashes[model.rows[row].clash].reason);
 		}
 	}
+	return result;
+}
+
+JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, int max_rounds)
+{
+	JunctionJointLoopResult result;
+	result.choices = choices;
+	/* The state a round starts from: its choices and the point it detects at (empty in round 0). */
+	std::vector<std::pair<JunctionPlacementChoices, JunctionSystemPoint>> history;
+	std::vector<size_t> added_in_round; ///< Per round, the clashes it kept.
+	std::map<std::string, JunctionSystemClash> kept; ///< Every clash seen, by key.
+	for (int k = 0; k < max_rounds; k++) {
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionPlacementChoices round_choices = result.choices;
+		const JunctionSystemPoint round_point = result.point;
+		history.emplace_back(round_choices, round_point);
+		result.rounds = k + 1;
+		JunctionPlacementSystem system = RecordJunctionPlacementSystem(topology, paths, graph, order, structure, programs, spec, round_choices, nullptr, k == 0 ? nullptr : &round_point);
+		if (system.relations.empty()) {
+			result.outcome = "recorded nothing";
+			break;
+		}
+		size_t added = 0;
+		for (const JunctionSystemClash &clash : system.clashes) {
+			if (kept.count(clash.key) != 0 || kept.count(clash.reversed) != 0) continue;
+			kept.emplace(clash.key, clash);
+			added++;
+		}
+		added_in_round.push_back(added);
+		system.clashes.clear();
+		for (const auto &[key, clash] : kept) system.clashes.push_back(clash);
+		const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+		int sum = 0, changed = 0;
+		for (size_t i = 0; i < joint.length.size(); i++) {
+			sum += joint.length[i];
+			changed += joint.length[i] != system.bends[i].m;
+		}
+		std::string failed;
+		for (const std::string &text : system.failed) failed += (failed.empty() ? "" : "; ") + text;
+		const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+		result.log.push_back(fmt::format("round {}: status {}, objective {:.3f}, sum L {}, changed {}, new clashes kept {}, kept total {}, failed [{}], {:.1f} ms", k, static_cast<int>(joint.status), joint.objective, sum, changed, added, kept.size(), failed, ms));
+		if (joint.status == JunctionMilp::Status::Infeasible) {
+			std::string chain;
+			for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
+			result.outcome = "infeasible: " + chain;
+			break;
+		}
+		if (joint.status != JunctionMilp::Status::Optimal) {
+			result.outcome = fmt::format("solver status {}", static_cast<int>(joint.status));
+			break;
+		}
+		result.choices = joint.choices;
+		/* The canonical point of this round's recording; the joint solution's when the recording's solves failed. */
+		if (!system.solved.x.empty()) {
+			result.point = system.solved;
+		} else {
+			result.point = {joint.x, joint.y};
+		}
+		if (k > 0 && joint.choices == round_choices && added == 0 && system.solved == round_point) {
+			result.outcome = "settled";
+			break;
+		}
+		size_t first = history.size();
+		for (size_t j = 0; j < history.size() - 1 && first == history.size(); j++) {
+			if (history[j].first != result.choices || history[j].second != result.point) continue;
+			size_t added_since = 0; // A repeat is a cycle only when no clash was kept since that round.
+			for (size_t later = j + 1; later < added_in_round.size(); later++) added_since += added_in_round[later];
+			if (added_since == 0) first = j;
+		}
+		if (first < history.size()) {
+			result.outcome = fmt::format("cycle of period {}", history.size() - first);
+			break;
+		}
+	}
+	if (result.outcome.empty()) result.outcome = "round limit";
 	return result;
 }

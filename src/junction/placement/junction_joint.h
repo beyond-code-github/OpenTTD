@@ -37,4 +37,20 @@ struct JunctionJointResult {
  */
 JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, const JunctionSpec &spec, bool relaxed = false);
 
+/** The joint loop's result (DESIGN-G3 §G3.6, R3). */
+struct JunctionJointLoopResult {
+	JunctionPlacementChoices choices; ///< The last joint solution's lengths as choices.
+	JunctionSystemPoint point; ///< The last canonical point.
+	int rounds = 0;
+	std::string outcome; ///< "settled", or the reason it stopped: "infeasible: <conflict chain>", "solver status <n>", "cycle of period <p>", "round limit".
+	std::vector<std::string> log; ///< One line per round: lengths changed, clashes kept, new clashes, the recording's failures.
+};
+
+/**
+ * The joint loop (DESIGN-G3 §G3.6, R3): record the rules at the choices and the point, solve the joint model with every clash kept so far, take the recording's canonical point (or the joint solution's when the recording's solves fail), and repeat until a round keeps no new clash and changes no length.
+ * @param choices The first round's choices (a seed's, or all floors).
+ * @param max_rounds The round limit.
+ */
+JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices &choices, int max_rounds = 12);
+
 #endif /* JUNCTION_JOINT_H */

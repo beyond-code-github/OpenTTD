@@ -1028,130 +1028,169 @@ static int ApproximatedGaps(const JunctionPlacementSystem &system, const Junctio
 	return count;
 }
 
+/** A hub's inputs for the joint loop, and the choices its first round records at. */
+struct LoopStart {
+	JunctionTopology topology;
+	JunctionTrackOrder order;
+	std::vector<JunctionLanePath> paths;
+	JunctionTrackGraph graph;
+	JunctionTrackStructure cut;
+	JunctionTrackPrograms programs;
+	JunctionPlacementChoices choices;
+	std::string description; ///< Where the choices come from.
+};
+
+/** The loop's start at a hub: the seed's choices when it has a seed, else the rounds-mode choices, else all floors (every free S-bend 1, S fan 0, joiner Corner k). */
+static LoopStart MakeLoopStart(const char *main, const char *branch, const JunctionSpec &spec)
+{
+	const JointInputs in = MakeJointInputs(main, branch);
+	std::string error;
+	const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
+	const bool seeded = !seed.routes.empty();
+	LoopStart start;
+	start.topology = in.topology;
+	start.order = in.order;
+	start.paths = seeded ? seed.paths : in.paths;
+	start.graph = seeded ? seed.graph : in.graph;
+	start.cut = seeded ? seed.structure : DefaultCut(in);
+	start.programs = seeded ? seed.programs : in.programs;
+	if (seeded) {
+		start.choices = seed.placement.choices;
+		start.description = "the seed's choices";
+		return start;
+	}
+	JunctionPlacementSystem system;
+	const JunctionTrackPlacement rounds = PlaceTrackGraph(in.topology, start.paths, start.graph, in.order, start.cut, start.programs, spec, nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system);
+	if (!rounds.nodes.empty() && !rounds.choices.m.empty()) {
+		start.choices = rounds.choices;
+		start.description = "the rounds-mode choices";
+		return start;
+	}
+	REQUIRE(!system.tokens.empty());
+	for (const uint32_t tokens : system.tokens) {
+		start.choices.m.emplace_back(tokens, 0);
+		start.choices.corner.emplace_back(tokens, 0);
+	}
+	for (const JunctionSystemBend &b : system.bends) {
+		if (b.copy != 0) continue;
+		if (b.source == "free") start.choices.m[b.edge][b.tok] = b.kind == "SFan" ? 0 : 1;
+		if (b.source == "corner_rows") start.choices.corner[b.edge][b.tok] = system.k;
+	}
+	start.choices.port_offset = system.port_offset;
+	start.description = "all-floor choices";
+	return start;
+}
+
+static JunctionPlacementSystem RecordAt(const LoopStart &s, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionSystemPoint *at)
+{
+	return RecordJunctionPlacementSystem(s.topology, s.paths, s.graph, s.order, s.cut, s.programs, spec, choices, nullptr, at);
+}
+
+TEST_CASE("joint: a recording at a point detects there", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	/* The recording at its own canonical point holds every relation and clash it recorded there, and its rulebook is pinned. */
+	struct Hub {
+		const char *main, *branch;
+		size_t count;
+		uint64_t hash;
+	};
+	for (const Hub &hub : {Hub{"LL_RR", "L_R", 1083, 9031261406966711500ULL}, Hub{"L_R", "L_R", 393, 640164135075738815ULL}}) {
+		const LoopStart s = MakeLoopStart(hub.main, hub.branch, spec);
+		REQUIRE(s.description == "the seed's choices");
+		INFO(fmt::format("{} x {}", hub.main, hub.branch));
+		const JunctionPlacementSystem plain = RecordAt(s, spec, s.choices, nullptr);
+		REQUIRE(!plain.solved.x.empty());
+		CHECK(plain.solved.y.size() == plain.solved.x.size());
+		const JunctionPlacementSystem at = RecordAt(s, spec, s.choices, &plain.solved);
+		REQUIRE(!at.solved.x.empty());
+		CHECK(at.failed.empty());
+		int broken = 0;
+		for (const JunctionSystemRelation &r : at.relations) {
+			const std::vector<int> &coord = r.axis == 0 ? plain.solved.x : plain.solved.y;
+			if (coord[r.v] - coord[r.u] < r.c && broken++ == 0) FAIL_CHECK(fmt::format("first relation that fails at the point: axis {} v {} u {} c {} (has {}) {}", r.axis, r.v, r.u, r.c, coord[r.v] - coord[r.u], r.reason));
+		}
+		CHECK(broken == 0);
+		int unheld = 0;
+		for (const JunctionSystemClash &c : at.clashes) {
+			if (ClashColumnValue(at, plain.solved.x, c.b_left) - ClashColumnValue(at, plain.solved.x, c.a_right) < c.gap && unheld++ == 0) FAIL_CHECK(fmt::format("first clash that fails at the point: {} gap {} {}", c.key, c.gap, c.reason));
+		}
+		CHECK(unheld == 0);
+		const auto [count, hash] = SystemDigest(at);
+		CHECK(count == hub.count);
+		CHECK(hash == hub.hash);
+	}
+	{
+		const LoopStart s = MakeLoopStart("LL_RR", "L_R", spec);
+		const JunctionPlacementSystem plain = RecordAt(s, spec, s.choices, nullptr);
+		/* A point of the wrong size is refused. */
+		JunctionSystemPoint wrong = plain.solved;
+		wrong.x.pop_back();
+		CHECK(RecordAt(s, spec, s.choices, &wrong).relations.empty());
+	}
+	{
+		const LoopStart s = MakeLoopStart("L_R", "L_RR", spec);
+		REQUIRE(s.description == "all-floor choices");
+		const JunctionPlacementSystem plain = RecordAt(s, spec, s.choices, nullptr);
+		REQUIRE(!plain.relations.empty());
+		CHECK(plain.clashes.empty());
+		const JunctionJointResult joint = SolveJunctionJoint(plain, spec);
+		REQUIRE(joint.status == JunctionMilp::Status::Optimal);
+		const JunctionSystemPoint point{joint.x, joint.y};
+		const JunctionPlacementSystem at = RecordAt(s, spec, s.choices, &point);
+		CHECK(std::ranges::any_of(at.relations, [](const JunctionSystemRelation &r) { return r.axis == 0; }));
+		CHECK(!at.clashes.empty());
+	}
+}
+
+TEST_CASE("joint: the loop ends settled or names a reason", "[junction][milp][.sweep]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch] : {std::pair{"L_R", "L_R"}, std::pair{"LL_RR", "L_R"}, std::pair{"L_R", "L_RR"}, std::pair{"L_R", "LL_RR"}, std::pair{"LL_RR", "LL_RR"}}) {
+		const std::string hub = fmt::format("{} x {}", main, branch);
+		const LoopStart s = MakeLoopStart(main, branch, spec);
+		const JunctionJointLoopResult loop = SolveJunctionJointLoop(s.topology, s.paths, s.graph, s.order, s.cut, s.programs, spec, s.choices);
+		CHECK(!loop.outcome.empty());
+		if (hub == "L_R x L_R" || hub == "LL_RR x L_R") {
+			CHECK(loop.outcome == "settled");
+			std::string error;
+			const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, s.cut, s.programs, spec, loop.choices, &error);
+			CHECK(!placed.nodes.empty());
+		} else {
+			std::string log;
+			for (const std::string &line : loop.log) log += "\n  " + line;
+			WARN(fmt::format("{}: C_0 {}, outcome {}, rounds {}{}", hub, s.description, loop.outcome, loop.rounds, log));
+		}
+	}
+}
+
 TEST_CASE("joint: the joint loop on the hubs", "[junction][milp][.g3loop]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	for (const auto &[main, branch] : {std::pair{"L_R", "L_R"}, std::pair{"LL_RR", "L_R"}, std::pair{"L_R", "L_RR"}, std::pair{"L_R", "LL_RR"}, std::pair{"LL_RR", "LL_RR"}}) {
 		const std::string hub = fmt::format("{} x {}", main, branch);
 		const auto hub_start = std::chrono::steady_clock::now();
-		const JointInputs in = MakeJointInputs(main, branch);
-		std::string error;
-		const JunctionGraphSeed seed = MakeJunctionGraphSeed(in.topology, spec, &error);
-		const bool seeded = !seed.routes.empty();
-		const std::vector<JunctionLanePath> &paths = seeded ? seed.paths : in.paths;
-		const JunctionTrackGraph &graph = seeded ? seed.graph : in.graph;
-		const JunctionTrackStructure cut = seeded ? seed.structure : DefaultCut(in);
-		const JunctionTrackPrograms &programs = seeded ? seed.programs : in.programs;
-
-		JunctionPlacementChoices choices;
-		std::string c0;
-		if (seeded) {
-			choices = seed.placement.choices;
-			c0 = "the seed's choices";
-		} else {
-			JunctionPlacementSystem system;
-			const JunctionTrackPlacement rounds = PlaceTrackGraph(in.topology, paths, graph, in.order, cut, programs, spec, nullptr, &error, {}, {}, nullptr, {0, 0}, true, false, nullptr, nullptr, nullptr, &system);
-			if (!rounds.nodes.empty() && !rounds.choices.m.empty()) {
-				choices = rounds.choices;
-				c0 = "the rounds-mode choices";
-			} else {
-				/* All floors: every free S-bend 1, S fan 0, joiner Corner k. */
-				REQUIRE(!system.tokens.empty());
-				for (const uint32_t tokens : system.tokens) {
-					choices.m.emplace_back(tokens, 0);
-					choices.corner.emplace_back(tokens, 0);
-				}
-				for (const JunctionSystemBend &b : system.bends) {
-					if (b.copy != 0) continue;
-					if (b.source == "free") choices.m[b.edge][b.tok] = b.kind == "SFan" ? 0 : 1;
-					if (b.source == "corner_rows") choices.corner[b.edge][b.tok] = system.k;
-				}
-				choices.port_offset = system.port_offset;
-				c0 = "all-floor choices";
-			}
-		}
-
-		std::vector<JunctionPlacementChoices> history;
-		std::vector<std::vector<int>> lengths;
-		std::vector<size_t> added_in_round; ///< Per round, the clashes it kept.
-		std::map<std::string, JunctionSystemClash> kept; ///< Every clash seen, by key.
-		JunctionPlacementSystem round0;
-		std::string outcome;
+		const LoopStart s = MakeLoopStart(main, branch, spec);
+		const JunctionJointLoopResult loop = SolveJunctionJointLoop(s.topology, s.paths, s.graph, s.order, s.cut, s.programs, spec, s.choices);
+		for (const std::string &line : loop.log) WARN(fmt::format("{} {}", hub, line));
+		/* The approximated gap rows at the last solve: the last round's recording and joint solution again. */
+		const JunctionPlacementSystem last = RecordAt(s, spec, loop.choices, &loop.point);
 		int approx = 0;
-		for (int k = 0; k < 12 && outcome.empty(); k++) {
-			const auto start = std::chrono::steady_clock::now();
-			history.push_back(choices);
-			JunctionPlacementSystem system = RecordJunctionPlacementSystem(in.topology, paths, graph, in.order, cut, programs, spec, choices);
-			if (system.relations.empty()) {
-				outcome = "the fixed path recorded nothing";
-				break;
-			}
-			size_t added = 0;
-			for (const JunctionSystemClash &clash : system.clashes) {
-				if (kept.count(clash.key) != 0 || kept.count(clash.reversed) != 0) continue;
-				kept.emplace(clash.key, clash);
-				added++;
-			}
-			added_in_round.push_back(added);
-			system.clashes.clear();
-			size_t held = 0;
-			for (const auto &[key, clash] : kept) {
-				system.clashes.push_back(clash);
-				held += clash.held;
-			}
-			if (k == 0) round0 = system;
-			const JunctionJointResult joint = SolveJunctionJoint(system, spec);
-			const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-			int sum = 0, changed = 0;
-			for (size_t i = 0; i < joint.length.size(); i++) {
-				sum += joint.length[i];
-				changed += joint.length[i] != system.bends[i].m;
-			}
-			WARN(fmt::format("{} round {}: status {}, objective {:.3f}, sum L {}, changed {}, new clashes kept {}, kept total {}, held {}, {:.1f} ms", hub, k, static_cast<int>(joint.status), joint.objective, sum, changed, added, kept.size(), held, ms));
-			if (joint.status == JunctionMilp::Status::Infeasible) {
-				std::string chain;
-				for (const std::string &reason : joint.conflict) chain += (chain.empty() ? "" : " <- ") + reason;
-				outcome = "infeasible, conflict: " + chain;
-				break;
-			}
-			if (joint.status != JunctionMilp::Status::Optimal) {
-				outcome = fmt::format("solver status {}", static_cast<int>(joint.status));
-				break;
-			}
-			approx = ApproximatedGaps(system, joint, spec);
-			lengths.push_back(joint.length);
-			if (joint.choices == choices) {
-				const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(in.topology, paths, graph, in.order, cut, programs, spec, choices, &error);
-				outcome = placed.nodes.empty() ? "fixed point that fails, error: " + error : fmt::format("fixed point that places, box {} x {}", placed.size.x, placed.size.y);
-				break;
-			}
-			size_t first = history.size();
-			for (size_t j = 0; j < history.size() && first == history.size(); j++) {
-				if (history[j] != joint.choices) continue;
-				size_t added_since = 0; // A repeat is a cycle only when no clash was kept since that round.
-				for (size_t later = j + 1; later < added_in_round.size(); later++) added_since += added_in_round[later];
-				if (added_since == 0) first = j;
-			}
-			if (first < history.size()) {
-				std::string repeating;
-				for (size_t i = 0; i < system.bends.size(); i++) {
-					for (size_t j = first; j < lengths.size(); j++) {
-						if (lengths[j].size() == lengths[first].size() && lengths[j][i] != lengths[first][i]) {
-							repeating += fmt::format("{}e{}t{}", repeating.empty() ? "" : " ", system.bends[i].edge, system.bends[i].tok);
-							break;
-						}
-					}
-				}
-				outcome = fmt::format("cycle of period {} from round {}, bends whose L repeats: {}", history.size() - first, first, repeating);
-				break;
-			}
-			choices = joint.choices;
+		if (!last.relations.empty()) {
+			const JunctionJointResult joint = SolveJunctionJoint(last, spec);
+			if (joint.status == JunctionMilp::Status::Optimal) approx = ApproximatedGaps(last, joint, spec);
 		}
-		if (outcome.empty()) outcome = "12 rounds without settling";
 		const double total = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - hub_start).count();
-		WARN(fmt::format("{}: C_0 {}, {}, approximated gap rows at the last solve {}, total {:.1f} ms", hub, c0, outcome, approx, total));
-		if (hub == "LL_RR x LL_RR" && !round0.relations.empty()) {
+		WARN(fmt::format("{}: C_0 {}, {} after {} rounds, approximated gap rows at the last solve {}, total {:.1f} ms", hub, s.description, loop.outcome, loop.rounds, approx, total));
+		if (loop.outcome == "settled") {
+			std::string error;
+			const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, s.cut, s.programs, spec, loop.choices, &error);
+			CHECK(!placed.nodes.empty());
+			if (!placed.nodes.empty()) WARN(fmt::format("{}: the settled choices place, box {} x {}", hub, placed.size.x, placed.size.y));
+		}
+		if (hub == "LL_RR x LL_RR") {
 			/* A measure for the next step: the round-0 system without the bridge-over-S-bend relations. */
+			JunctionPlacementSystem round0 = RecordAt(s, spec, s.choices, nullptr);
 			std::erase_if(round0.relations, [](const JunctionSystemRelation &r) { return r.reason.starts_with("bridge over S-bend"); });
 			const JunctionJointResult without_bridges = SolveJunctionJoint(round0, spec);
 			std::string chain;
