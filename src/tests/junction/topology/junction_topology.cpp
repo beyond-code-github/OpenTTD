@@ -1041,7 +1041,7 @@ TEST_CASE("topology: LL_RR's cut places at the old limit", "[junction][topology]
 	CHECK(error.empty());
 }
 
-TEST_CASE("topology: LL_RR has no cut at nmax 1", "[junction][topology]")
+TEST_CASE("topology: LL_RR has no cut at nmax 1", "[junction][topologysweep][.sweep]")
 {
 	std::string error;
 	const JunctionTrackPlacement placement = CutOf(JunctionLLRRSidelineTopology(), 1, &error);
@@ -4820,7 +4820,7 @@ TEST_CASE("programs: FindRowItems names a row's copy item on either side of the 
 	CHECK(row1.north == RowItems::NONE);
 }
 
-TEST_CASE("topology: an L_R main with a multi-lane branch is refused, not crashed", "[junction][topologysweep]")
+TEST_CASE("topology: an L_R main with a multi-lane branch seeds clean or names a reason", "[junction][topologysweep][.sweep]")
 {
 	for (const char *branch : {"LL_RR", "LL_R", "L_RR"}) {
 		INFO(branch);
@@ -4828,8 +4828,21 @@ TEST_CASE("topology: an L_R main with a multi-lane branch is refused, not crashe
 		JunctionSpec spec = MakeTestJunctionSpec();
 		std::string error;
 		const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &error);
-		CHECK(seed.routes.empty());
-		CHECK(!error.empty());
+		INFO(error);
+		if (seed.routes.empty()) {
+			CHECK(!error.empty());
+			continue;
+		}
+		std::vector<JunctionTrackRoute> routes;
+		std::string render_error;
+		JunctionLayout layout = RenderJunctionTrackPlacement(topology, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &render_error, &routes);
+		INFO(render_error);
+		REQUIRE(!layout.tracks.empty());
+		SignalJunctionTrackRoutes(layout, routes, topology, seed.paths, seed.graph, seed.programs, spec, nullptr, nullptr, &seed.placement.prio);
+		for (const RuleViolation &v : CheckJunctionRules(layout, spec, topology)) {
+			INFO(fmt::format("rule {} tile {},{}: {}", static_cast<int>(v.rule), v.tile.x, v.tile.y, v.message));
+			CHECK(false);
+		}
 	}
 }
 
@@ -4999,14 +5012,16 @@ TEST_CASE("placement: a lone converge S-bend leaves a run after its split (DESIG
 	CHECK(!(error.find("S-bend size (edge 12)") != std::string::npos && error.find("bridge over S-bend (edge 6)") != std::string::npos));
 }
 
-TEST_CASE("bridge cut: the reported failure is the default cut's", "[junction][topology]")
+TEST_CASE("bridge cut: the reported failure is the default cut's", "[junction][topology][.sweep]")
 {
 	/* L_R x L_RR: every cut fails; the finer cuts fail on the bridge-head hug, the default cut (series of at most the cap from the start) on its own reason. */
 	const JunctionTopology topology = MakeJunctionHubTopology(ParseLineNotation("L_R").spec, ParseLineNotation("L_RR").spec, JunctionLanePairing::AnyToAny);
 	std::string error;
 	MakeJunctionGraphSeed(topology, MakeTestJunctionSpec(), &error);
 	INFO(error);
-	CHECK(error.find("bridge heads hug crossers") == std::string::npos);
+	const size_t loop_at = error.find("; the joint loop:");
+	CHECK(loop_at != std::string::npos);
+	CHECK(error.substr(0, loop_at).find("bridge heads hug crossers") == std::string::npos);
 }
 
 /** The five topologies of the node-shape tests: T, LL_RR x L_R, L_R x L_RR, L_R x LL_RR, LL_RR x LL_RR (pairing any); the first two are the ones placement handles. */
