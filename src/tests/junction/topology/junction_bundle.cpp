@@ -11,6 +11,7 @@
 
 #include "../../../3rdparty/catch2/catch.hpp"
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -91,7 +92,11 @@ TEST_CASE("bundle: the T's programs two wide", "[junction][bundle]")
 	Programs copies(12);
 	copies[0] = {Fan(1)};
 	copies[2] = {Fan(4)};
+	copies[4] = edges[4];
 	copies[5] = {O(8), O(4)};
+	copies[6] = {C(-1, NR)};
+	copies[7] = {C(-1, 6)};
+	copies[8] = {O(4), U(5, 0), U(5, 1), C(+1, 3)};
 	copies[9] = {Fan(4)};
 	copies[11] = {Fan(1)};
 	CHECK(programs.copies == copies);
@@ -103,4 +108,52 @@ TEST_CASE("bundle: the T's programs two wide", "[junction][bundle]")
 	REQUIRE(programs.nodes.size() == 6);
 	const uint32_t items[6] = {0, NR, 5, 5, NR, 0};
 	for (size_t v = 0; v < 6; v++) CHECK(programs.nodes[v].item == items[v]);
+}
+
+TEST_CASE("bundle: edge tracks", "[junction][bundle]")
+{
+	for (uint8_t lanes : {1, 2}) {
+		BundleT t(lanes);
+		const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
+		REQUIRE(!structure.stack.empty());
+		const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
+		REQUIRE(programs.edges.size() == 12);
+		for (uint32_t e = 0; e < 12; e++) CHECK(JunctionEdgeTracks(t.graph, programs, e) == (lanes == 2 || e == 5 ? 2 : 1));
+	}
+}
+
+TEST_CASE("bundle: the T's arrangement reads track 0", "[junction][bundle]")
+{
+	BundleT t(2);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
+	REQUIRE(programs.edges.size() == 12);
+	const JunctionTrackArrangement arrangement = ArrangeJunctionTrackGraph(t.graph, t.order, programs);
+	std::vector<std::array<uint32_t, 3>> unders;
+	for (const JunctionArrangementUnder &under : arrangement.unders) unders.push_back({under.edge, under.token, programs.edges[under.edge][under.token].copy});
+	CHECK(unders == std::vector<std::array<uint32_t, 3>>{{4, 1, 1}, {4, 2, 0}, {8, 1, 0}, {8, 2, 1}});
+}
+
+TEST_CASE("bundle: band track 1 is track 0 with its own items", "[junction][bundle]")
+{
+	BundleT t(2);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
+	REQUIRE(programs.copies.size() == 12);
+	CHECK(programs.copies[4] == programs.edges[4]);
+	CHECK(programs.copies[6] == Program{C(-1, NR)});
+	CHECK(programs.copies[7] == Program{C(-1, 6)});
+	CHECK(programs.copies[8] == Program{O(4), U(5, 0), U(5, 1), C(+1, 3)});
+	CHECK(programs.copies[1].empty());
+	CHECK(programs.copies[10].empty());
+	for (uint32_t e : {4, 6, 7, 8}) {
+		REQUIRE(programs.copies[e].size() == programs.edges[e].size());
+		for (size_t i = 0; i < programs.edges[e].size(); i++) {
+			Step a = programs.edges[e][i], b = programs.copies[e][i];
+			if (a.kind == Step::Kind::Corner) a.index = b.index = 0;
+			CHECK(a == b);
+		}
+	}
 }
