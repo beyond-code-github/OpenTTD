@@ -421,3 +421,29 @@ None is the engineer's. Recommendations, reversible and toggle candidates under 
 - one form binary per D258 group (toggle: per crossing);
 - r as hover data (forced by §6's two-point rows);
 - the rounds default to the S-bend form.
+
+## 12. Amendment: O3 over A4 segments (D273, D275; RECON-O3)
+
+RECON-O3 measured §3's O3 at the seeds: every band-edge clash off the item rows is between neighbour pairs; (i) read with one run column per segment fails where a segment holds two runs or none, and holds everywhere with the column taken at the rows where the pair coexists; (ii) holds everywhere. This section fixes how 2b2b2 states O3 on the data 2b2b1a and 2b2b1b record.
+
+### 12.1 Cuts and their rows
+- A band edge's cuts (A4, `JunctionBandEdge`): Start, End, Crossing, Row, Free. Their rows: a band node end or crossing, its event row Y(E) (2b2b1b: a node's point row, a crossing's rho); a row-node end or a Row cut, an item row (outside every band, so ordered statically against every band event); an S port end, beyond band R; a Free cut, the free bend's two point rows (its near end bounds the segment before it, its far end the segment after).
+- A segment of a in band B covers the rows between its two cuts' rows. With Free cuts every segment holds at most one vertical run (2b2b1a: LL² 4 free cuts).
+
+### 12.2 Coexistence as order literals
+- Two segments sa of a and sb of b in band B coexist when `lo(sa) <= hi(sb)` and `lo(sb) <= hi(sa)` (rows grow south; lo is the north cut's row). Each comparison between two cut rows is either fixed (same edge in travel order; an item-row or port cut against a band event; two events ordered by the layer closure of `band_pairs`) or a literal of an order binary: an A3 event order (`event_orders`) for two events, or a new free order for a free bend's end row against an event of the neighbour (made only where fixed order does not decide it).
+- A comparison fixed false drops the pair; fixed true drops the literal. An O3 row holds under the conjunction of its literals (`JunctionStaticRow::orders` and the new free-order guards). Ties are allowed both ways (a row shared by two cuts is a coexisting row).
+
+### 12.3 The rows (a west of b; g from `JunctionUnrelatedTileGap` of the two pieces' bits)
+- **(i) Runs.** For each coexisting segment pair where both hold a vertical run: `x(run a) + g <= x(run b)`. Where one holds no run, its column is each of its bends' row forms (`JunctionBendRowForms`) evaluated at each of the pair's coexistence bound rows (the later of the two lo rows, the earlier of the two hi rows; which cut binds is one more literal where not fixed).
+- **(ii) Boundary rows.** At each cut row R of a or b that lies inside the other's segment (literals as above): `A(R) + g <= B(R)`, with A(R) the run column of a's segment covering R and the row form at R of every bend of that segment whose partners do not include b (Free bends included); B the mirror. A cut of a itself has a's segments on both sides; each gives its own rows.
+- **(iii) The pair's own crossing.** A pair that swaps at its own crossing coexists up to rho on each side as two phases (A2 lists both); no row at rho itself: the crossing families (over rows, run rows) hold it.
+- Reason strings begin "O3 band ".
+
+### 12.4 Oracles
+- Every O3 row whose guards are as recorded holds at T, LL_RR x L_R and L_R x LL_RR.
+- Coverage: every recorded clash at the seeds between pieces of two band edges on a non-item row (RECON-O3 Q1 class D bb: 15 / 31 / 118) names a pair that has an O3 row in that band.
+- Counts of rows, literals and free orders are logged for LL² and both 3-lane hubs (arrangement and recording at the joint point; the rows need not hold there, D274).
+
+### 12.5 Left to 2b2b3 and 2b2b4
+Band pieces against W/E fans, nodes, row pieces and prio tiles in band rows (RECON-O3 finding 3), the square form's shapes, and clearance.
