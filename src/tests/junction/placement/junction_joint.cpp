@@ -839,24 +839,25 @@ TEST_CASE("rule source: detection at the flat solve is today's rulebook", "[junc
 		uint64_t hash;
 	};
 	/* The digests printed by the unchanged code (R2 is a refactor), per case in the order the loop below produces them. */
+	/* F8: the lane split to heads run is a floor. */
 	const std::vector<Case> expected = {
-		{"L_R x L_R seed", 446, 14802777959651676388ULL},
-		{"L_R x L_R bend 7 m+1", 449, 7582544829627777912ULL},
-		{"L_R x L_R bend 9 m+1", 449, 13332447767454157400ULL},
-		{"L_R x L_R bend 10 m+1", 448, 17785871538389213835ULL},
-		{"L_R x L_R bend 11 m+1", 448, 3929186208261139349ULL},
-		{"L_R x L_R bend 14 m+1", 448, 7180079264614909077ULL},
-		{"LL_RR x L_R seed", 1162, 3829521513360354111ULL},
-		{"LL_RR x L_R bend 0 m+1", 1164, 9796855279250968608ULL},
-		{"LL_RR x L_R bend 1 m+1", 1165, 8898522546777363190ULL},
-		{"LL_RR x L_R bend 3 m+1", 1164, 17185678019932262768ULL},
-		{"LL_RR x L_R bend 4 m+1", 1164, 14520957331040999837ULL},
-		{"LL_RR x L_R bend 8 m+1", 1167, 2952351648646072964ULL},
-		{"LL_RR x L_R bend 9 m+1", 1164, 1180697935782198002ULL},
+		{"L_R x L_R seed", 445, 15374563602457975767ULL},
+		{"L_R x L_R bend 7 m+1", 448, 2169800905664677495ULL},
+		{"L_R x L_R bend 9 m+1", 448, 10525376498812998303ULL},
+		{"L_R x L_R bend 10 m+1", 447, 15196743687705971916ULL},
+		{"L_R x L_R bend 11 m+1", 447, 1248344976150436712ULL},
+		{"L_R x L_R bend 14 m+1", 447, 8583449302908795736ULL},
+		{"LL_RR x L_R seed", 1159, 16529182752061987640ULL},
+		{"LL_RR x L_R bend 0 m+1", 1161, 10891191729295827199ULL},
+		{"LL_RR x L_R bend 1 m+1", 1162, 11200776896870426627ULL},
+		{"LL_RR x L_R bend 3 m+1", 1161, 7566971260567251369ULL},
+		{"LL_RR x L_R bend 4 m+1", 1161, 10231693098196120340ULL},
+		{"LL_RR x L_R bend 8 m+1", 1164, 16547229642273642883ULL},
+		{"LL_RR x L_R bend 9 m+1", 1161, 7302525409474184249ULL},
 		/* From the bridge over either S-bend, the recording also holds the other flanking S-bend's rows (the next three). */
 		{"L_R x L_RR all floors", 288, 17935178021883995481ULL},
-		{"L_R x LL_RR all floors", 753, 2646054013010121244ULL},
-		{"LL_RR x LL_RR all floors", 1979, 3194431235379471599ULL},
+		{"L_R x LL_RR all floors", 752, 16308207419445016847ULL},
+		{"LL_RR x LL_RR all floors", 1975, 15523839035345197107ULL},
 	};
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::vector<Case> got;
@@ -1085,7 +1086,8 @@ TEST_CASE("joint: a recording at a point detects there", "[junction][milp]")
 		size_t count;
 		uint64_t hash;
 	};
-	for (const Hub &hub : {Hub{"LL_RR", "L_R", 1136, 16559509548753834260ULL}, Hub{"L_R", "L_R", 446, 14802777959651676388ULL}}) {
+	/* F8: the lane split to heads run is a floor. */
+	for (const Hub &hub : {Hub{"LL_RR", "L_R", 1133, 18342985209816344387ULL}, Hub{"L_R", "L_R", 445, 15374563602457975767ULL}}) {
 		const LoopStart s = MakeLoopStart(hub.main, hub.branch, spec);
 		REQUIRE(s.description == "the seed's choices");
 		INFO(fmt::format("{} x {}", hub.main, hub.branch));

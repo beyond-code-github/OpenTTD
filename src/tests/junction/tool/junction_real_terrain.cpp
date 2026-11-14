@@ -565,7 +565,8 @@ TEST_CASE("level solve: identical LL_RR plans at every near offset", "[junction]
 	CHECK(offsets == 48 * 153);
 	/* HH2/D175: a bridge middle over a Blocked tile is refused, so 23 offsets that planned (1601) are refused (1578); every other offset's plan is unchanged. */
 	CHECK(planned == 1578);
-	CHECK(level_hash == 1530266114778831833ULL);
+	/* F8: the lane split to heads run is a floor. */
+	CHECK(level_hash == 6450915802184407514ULL);
 }
 
 TEST_CASE("level solve: identical plans at every near offset", "[junction][realterrainsweep][.identity]")

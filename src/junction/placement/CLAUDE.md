@@ -4,6 +4,7 @@
 
 ## Placement
 - Placement is relations plus terrain facts solved together; no flat positions enter the terrain solve.
+- In a doubled leg, the runs from the exit split to the lane split, from the lane split to the first heads, and from the last heads to the lane merge are rule floors; the objective's push keeps the lane split next to its bridge; copy 1's heads sit exactly one tile nearer than copy 0's.
 - Every relation is a rule floor "at least N", scaling with train length and speed; each entry cites its rule.
 - Relations are rule families applied everywhere, never per site: every curve-gap pair on every route, and unrelated tracks never share or touch a tile.
 - Two unrelated pieces share a tile only as Upper|Lower or Left|Right (`JunctionTracksMayShareTile`).
