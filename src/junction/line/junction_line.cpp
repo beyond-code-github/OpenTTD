@@ -20,7 +20,7 @@
  * Spacing. The right vector is perpendicular to the heading (rotating (hx, hy) to (hy, -hx)):
  *  - Axis heading: R = 2 (gap + 1) (hy, -hx). Neighbouring tracks are gap + 1 tiles apart (gap 0 is adjacent tiles).
  *  - Diagonal heading: R = S (gap) (hy, -hx), where S is the number of diagonals (lines x + y = k or x - y = k)
- *    between neighbours: S = round((gap + 1) * sqrt 2) = 1, 3, 4, 6 for gap 0, 1, 2, 3.
+ *    between neighbours: S = round((gap + 1) * sqrt 2) = 1, 3, 4, 6, 7, 8, 10, 11, 13, 14, 16, 17, 18 for gap 0 to 12.
  *    S = 1 puts the two tracks in the same tiles as Upper/Lower or Left/Right pairs, the doubled track of OpenTTD.
  * An axis spacing of d tiles and a diagonal spacing of S diagonals cannot be exactly equal in perpendicular distance
  * (it would need S = d sqrt 2, which is never an integer), so the diagonal spacing is the nearest whole number of
@@ -45,7 +45,7 @@
  *
  * Each track's offset from track 0 is the sum of the spacings of its neighbours (R of the gap between the groups, R of gap 0 within a group), so the difference of a track is the sum of the neighbours' differences. Turning back to an
  * axis heading (diagonal to axis) uses the same equation with the roles swapped. The equation always has an integer
- * solution for gaps 0 to 3 in all 8 headings and both hands (checked by the tests); the code reports an error if it
+ * solution for gaps 0 to JUNCTION_MAX_LINE_GAP in all 8 headings and both hands (checked by the tests); the code reports an error if it
  * ever does not.
  */
 
@@ -360,7 +360,7 @@ JunctionLineNotation ParseLineNotation(std::string_view text)
 	size_t rights = 0;
 	while (lefts + gap + rights < text.size() && text[lefts + gap + rights] == 'R') rights++;
 
-	if (lefts == 0 || rights == 0 || gap > 3 || lefts + gap + rights != text.size() || lefts + rights > UINT8_MAX) {
+	if (lefts == 0 || rights == 0 || gap > JUNCTION_MAX_LINE_GAP || lefts + gap + rights != text.size() || lefts + rights > UINT8_MAX) {
 		return {{}, JunctionNotationError::Invalid};
 	}
 	JunctionLineNotation result;

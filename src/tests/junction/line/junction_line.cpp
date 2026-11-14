@@ -21,7 +21,8 @@
 #include "../../../safeguards.h"
 
 /** Perpendicular spacing between neighbouring tracks of a diagonal line, in diagonals (x + y or x - y), by gap. */
-static const int DIAGONAL_SPACING[] = {1, 3, 4, 6};
+static const int DIAGONAL_SPACING[] = {1, 3, 4, 6, 7, 8, 10, 11, 13, 14, 16, 17, 18};
+static_assert(lengthof(DIAGONAL_SPACING) == JUNCTION_MAX_LINE_GAP + 1);
 
 static const Trackdir ALL_START_TRACKDIRS[] = {
 	Trackdir::X_NE, Trackdir::X_SW, Trackdir::Y_NW, Trackdir::Y_SE,
@@ -107,7 +108,7 @@ static void CheckLine(const JunctionLineSpec &spec, Trackdir start, const char *
 
 TEST_CASE("JunctionLine: straight", "[junction][line]")
 {
-	for (uint8_t gap = 0; gap < 3; gap++) {
+	for (uint8_t gap = 0; gap <= JUNCTION_MAX_LINE_GAP; gap++) {
 		const JunctionLineSpec spec{2, gap};
 		const std::vector<JunctionRaster> rasters = RasterizeJunctionLine(spec, {{20, 20}, Trackdir::X_NE, "FFFF"});
 		REQUIRE(rasters.size() == 2);
@@ -137,14 +138,14 @@ TEST_CASE("JunctionLine: straight", "[junction][line]")
 TEST_CASE("JunctionLine: straight in all directions", "[junction][line]")
 {
 	for (Trackdir start : ALL_START_TRACKDIRS) {
-		for (uint8_t gap = 0; gap < 4; gap++) CheckLine({2, gap}, start, "FFFFF", false);
+		for (uint8_t gap = 0; gap <= JUNCTION_MAX_LINE_GAP; gap++) CheckLine({2, gap}, start, "FFFFF", false);
 		CheckLine({3, 1}, start, "FFFFF", false);
 	}
 }
 
 TEST_CASE("JunctionLine: one left turn", "[junction][line]")
 {
-	for (uint8_t gap = 0; gap < 3; gap++) {
+	for (uint8_t gap = 0; gap <= JUNCTION_MAX_LINE_GAP; gap++) {
 		CheckLine({2, gap}, Trackdir::X_NE, "FFLFFF", true);
 	}
 
@@ -160,14 +161,14 @@ TEST_CASE("JunctionLine: one left turn", "[junction][line]")
 
 TEST_CASE("JunctionLine: one right turn", "[junction][line]")
 {
-	for (uint8_t gap = 0; gap < 3; gap++) {
+	for (uint8_t gap = 0; gap <= JUNCTION_MAX_LINE_GAP; gap++) {
 		CheckLine({2, gap}, Trackdir::X_NE, "FFRFFF", true);
 	}
 }
 
 TEST_CASE("JunctionLine: S-bends and quarter turns", "[junction][line]")
 {
-	for (uint8_t gap = 0; gap < 3; gap++) {
+	for (uint8_t gap = 0; gap <= JUNCTION_MAX_LINE_GAP; gap++) {
 		CheckLine({2, gap}, Trackdir::X_NE, "FFLFFRFF", true);
 		CheckLine({2, gap}, Trackdir::X_NE, "FFRFFLFF", true);
 		CheckLine({2, gap}, Trackdir::X_NE, "FLRF", true);
@@ -180,7 +181,7 @@ TEST_CASE("JunctionLine: every start and turn combination", "[junction][line]")
 {
 	const char *programs[] = {"L", "R", "FLF", "FRF", "FLFF", "FFRF", "LL", "RR", "LLL", "RRR", "LR", "RL", "FLFRF", "FRFLF", "LFLF", "RFRF", "LLLL", "RRRR", "LLLLL", "RRRRR"};
 	for (Trackdir start : ALL_START_TRACKDIRS) {
-		for (uint8_t gap = 0; gap < 4; gap++) {
+		for (uint8_t gap = 0; gap <= JUNCTION_MAX_LINE_GAP; gap++) {
 			for (const char *program : programs) CheckLine({2, gap}, start, program, false);
 		}
 		for (const char *program : programs) CheckLine({3, 1}, start, program, false);
@@ -191,7 +192,7 @@ TEST_CASE("JunctionLine: every start and turn combination", "[junction][line]")
 TEST_CASE("ParseLineNotation reads direction groups", "[junction][line]")
 {
 	struct Case { const char *text; uint8_t tracks; uint8_t gap; uint8_t left; };
-	const Case good[] = {{"L_R", 2, 1, 1}, {"LR", 2, 0, 1}, {"LL_RR", 4, 1, 2}, {"LLL__RR", 5, 2, 3}, {"L___R", 2, 3, 1}};
+	const Case good[] = {{"L_R", 2, 1, 1}, {"LR", 2, 0, 1}, {"LL_RR", 4, 1, 2}, {"LLL__RR", 5, 2, 3}, {"L___R", 2, 3, 1}, {"LL__________RR", 4, 10, 2}, {"L____________R", 2, 12, 1}};
 	for (const Case &c : good) {
 		INFO(c.text);
 		const JunctionLineNotation n = ParseLineNotation(c.text);
@@ -200,7 +201,7 @@ TEST_CASE("ParseLineNotation reads direction groups", "[junction][line]")
 		CHECK(n.spec.gap == c.gap);
 		CHECK(n.spec.left_tracks == c.left);
 	}
-	for (const char *bad : {"L____R", "R_L", "L_", "_R", "", "L_L_R", "LxR"}) {
+	for (const char *bad : {"L_____________R", "R_L", "L_", "_R", "", "L_L_R", "LxR"}) {
 		INFO(bad);
 		CHECK(ParseLineNotation(bad).error == JunctionNotationError::Invalid);
 	}
