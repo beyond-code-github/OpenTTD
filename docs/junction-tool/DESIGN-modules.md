@@ -73,16 +73,23 @@ Each block is testable alone: an exit block or a join block on a straight line, 
 4. **Three-input joins and lane-count changes (3 to 2 to 3)** come with the PSG 227 and PSG 197 patterns, not before.
 5. **Rows and bands** stay as the core generator's internals; nothing outside the core sees them.
 
-## 6. Order of work (each a small step with its own test)
-1. Tunnels skip bridge-only rule families. Test: a tunnel crossing has no bridge-over-S-bend row.
-2. Notation gap up to 12. Test: `LL_______RR` parses with gap 7.
-3. (dropped: the core is now a bundle T, step 5, not today's keep graph.)
-4. Join block alone, per pattern (keep, balanced no prios, PSG 227): two bundles in, two lanes out, on flat ground; checker clean; reach as the pattern says. Then the exit block the same way.
-5. Bundle core: a T whose tracks are two wide (parallel bridges and tunnels, S-bends together); places and checks as a T does today.
-5a. Composition: exits + core + joins; LL² any (PSG 227 pattern) places, reach as PSG 227's table, checker clean; hover under 100 ms.
-6. LLL_RRR x LL_RR and LLL_RRR x LLL_RRR the same way.
-6a. The other patterns as toggles (D284): keep, choice crossing (bridges and tunnels), full any. Acceptance: a test over every pattern x every line pair places with the checker clean.
-7. Later: three-lane bundles and lane-count changes (PSG 197), throughput score (§7). The choice crossing fits the same blocks: its line split moves into the exit block and its bundles are as wide as the output arm.
+## 6. Order of work (D289: blocks by template, core by the generalised graph/MILP pipeline; each a small step with its own test)
+Two streams, run in parallel.
+Core (graph/MILP, RECON-bundle-copies steps 2-12):
+- C1. Graph data: a leg may end at a block port (third endpoint kind), and an edge has a width (tracks, each its own path). Width 1 and node ends everywhere reproduce today exactly (identity tests).
+- C2. The bundle T core graph: 6 legs, 3 crossings, ends at block ports. Graph test.
+- C3. Order and structure for a port-ended core. C4. Programs width 2 on row legs. C5. Programs width 2 on band legs.
+- C6. Placement chains for parallel tracks (row and band). C7. Render, one route per path. C8. Signals and checker for parallel tracks.
+- C9. Series cut for bundle bridges. C10. Parallel tunnels.
+Blocks (template generator):
+- B1. Seam: what a template block hands render, signals, checker and build (recon first).
+- B2. Join block alone, per pattern (227 first, then keep, balanced no prios): two bundles in, two lanes out, flat ground, checker clean, reach as the pattern says.
+- B3. Exit block alone, the same way.
+Then:
+- H1. Composition: exits + bundle T + joins; LL² any (PSG 227 pattern) places, checker clean, hover under 100 ms.
+- H2. LLL_RRR x LL_RR and LLL_RRR x LLL_RRR (blocks by rule for 3 lanes).
+- H3. Every pattern as a toggle (D284): a test over every pattern x every line pair places with the checker clean.
+- Still open, independent: tunnels skip bridge-only rule families; notation gaps up to 12.
 
 ## 7. Throughput (later, D279)
 A score per pattern so the tool can trade footprint against throughput: trains per hour through each movement under the benchmark train (D138/D280), from the existing train model and signal blocks. Needed before the tool chooses patterns itself; not needed for steps 1-6.
