@@ -32,6 +32,7 @@
 #include "../../../junction/line/junction_line.h"
 #include "../../../junction/legacy/junction_nodes.h"
 #include "../../../junction/junction_route.h"
+#include "../../../junction/junction_track_geometry.h"
 #include "../../../junction/terrain/junction_terraform.h"
 #include "../../../junction/topology/junction_topology.h"
 #include "../../../junction/placement/junction_placement.h"
@@ -5869,4 +5870,157 @@ TEST_CASE("ARR1 at the S seeds names no absent piece", "[junction][topology]")
 		}
 	}
 	CHECK(checked > 0);
+}
+
+/** The stages of an arrangement seed and the recording of its own choices. */
+struct ItemRowSeed {
+	JunctionTopology topology;
+	JunctionGraphSeed seed;
+	JunctionTrackOrder order;
+	JunctionTrackArrangement arrangement;
+	JunctionSpec spec;
+	JunctionPlacementSystem system;
+};
+
+/** Build a seed as CheckArrangementSeed does and record it at its own choices, at its own solution or, with at, at a point. */
+static ItemRowSeed RecordItemRowSeed(const char *main, const char *branch, const JunctionSystemPoint *at = nullptr)
+{
+	ItemRowSeed result;
+	result.spec = MakeTestJunctionSpec();
+	result.topology = ArrangementTopology(main, branch);
+	std::string error;
+	result.seed = MakeJunctionGraphSeed(result.topology, result.spec, &error);
+	INFO(error);
+	REQUIRE(!result.seed.routes.empty());
+	result.order = OrderJunctionTrackGraph(result.topology, result.seed.paths, result.seed.graph, &error);
+	result.arrangement = ArrangeJunctionTrackGraph(result.seed.graph, result.order, result.seed.programs);
+	result.system = RecordJunctionPlacementSystem(result.topology, result.seed.paths, result.seed.graph, result.order, result.seed.structure, result.seed.programs, result.spec, result.seed.placement.choices, nullptr, at);
+	return result;
+}
+
+/** The value of a column at a point of the recording. */
+static int ItemRowColumn(const JunctionPlacementSystem &system, const JunctionSystemColumn &column, const JunctionSystemPoint &point)
+{
+	return point.x[column.pt] + column.c0 + (column.bend >= 0 ? column.c1 * system.bends[column.bend].m : 0);
+}
+
+static void CheckItemRowSeed(const char *main, const char *branch)
+{
+	const ItemRowSeed seed = RecordItemRowSeed(main, branch);
+	const JunctionPlacementSystem &system = seed.system;
+	REQUIRE(!system.solved.x.empty());
+	CHECK(!system.static_rows.empty());
+	REQUIRE(system.item_rows.size() == seed.seed.structure.stack.size());
+	for (size_t i = 0; i < system.item_rows.size(); i++) CHECK(!system.item_rows[i].empty());
+	int failed = 0;
+	int touching = 0;
+	for (const JunctionStaticRow &row : system.static_rows) {
+		const int v = ItemRowColumn(system, row.v, system.solved);
+		const int u = ItemRowColumn(system, row.u, system.solved);
+		INFO(fmt::format("{}: v {} u {} gap {}", row.reason, v, u, row.gap));
+		if (v - u < row.gap) failed++;
+		CHECK(v - u >= row.gap);
+		if (row.gap != 0) continue;
+		/* A share row whose pair would touch at gap 1: find a pair of the rows with the row's columns. */
+		bool touches = false;
+		for (const std::vector<JunctionItemRowOccupant> &occupants : system.item_rows) {
+			for (size_t a = 0; a < occupants.size(); a++) {
+				for (size_t b = a + 1; b < occupants.size(); b++) {
+					if (occupants[b].west != row.v || occupants[a].east != row.u) continue;
+					const JunctionTileGap gap = JunctionUnrelatedTileGap(occupants[a].bits, occupants[b].bits);
+					touches = touches || (gap.share && gap.apart == 2);
+				}
+			}
+		}
+		if (touches) touching++;
+	}
+	size_t occupants = 0;
+	for (const std::vector<JunctionItemRowOccupant> &row : system.item_rows) occupants += row.size();
+	WARN(fmt::format("item rows {} x {}: occupants {}, static rows {} ({} failing), skipped {}, share {}, share at gap 1 {}", main == nullptr ? "T" : main, main == nullptr ? "" : branch, occupants, system.static_rows.size(), failed, system.item_row_skipped, system.item_row_share, touching));
+}
+
+TEST_CASE("item rows: every O1 row holds at the seeds", "[junction][topology]")
+{
+	CheckItemRowSeed(nullptr, nullptr);
+	CheckItemRowSeed("LL_RR", "L_R");
+}
+
+TEST_CASE("item rows: every O1 row holds at the seeds (L_R x LL_RR)", "[junction][topologysweep][.sweep]")
+{
+	CheckItemRowSeed("L_R", "LL_RR");
+}
+
+TEST_CASE("item rows follow the arrangement's row order", "[junction][topology]")
+{
+	for (const auto &[main, branch] : {std::pair<const char *, const char *>{nullptr, nullptr}, {"LL_RR", "L_R"}}) {
+		const ItemRowSeed seed = RecordItemRowSeed(main, branch);
+		const JunctionTrackGraph &graph = seed.seed.graph;
+		/* The split and merge node of each row, from its leg. */
+		std::vector<uint32_t> split(seed.order.rows.size(), UINT32_MAX), merge(seed.order.rows.size(), UINT32_MAX);
+		for (uint32_t e = 0; e < graph.edges.size(); e++) {
+			if (!JunctionIsLegEdge(graph, seed.order, e)) continue;
+			const size_t r = (seed.order.node_level[graph.edges[e].from.index] - 1) / 2;
+			split[r] = graph.edges[e].from.index;
+			merge[r] = graph.edges[e].to.index;
+		}
+		REQUIRE(seed.system.item_rows.size() == seed.seed.structure.stack.size());
+		int mapped = 0;
+		for (size_t i = 0; i < seed.system.item_rows.size(); i++) {
+			const uint32_t r = seed.seed.structure.stack[i].row;
+			/* Each occupant's item in the row, none when it has none. */
+			std::vector<std::optional<JunctionTrackRowItem>> items;
+			for (const JunctionItemRowOccupant &o : seed.system.item_rows[i]) {
+				std::optional<JunctionTrackRowItem> item;
+				if (o.kind == "node") {
+					item = JunctionTrackRowItem{true, o.node};
+				} else if (o.kind == "node band") {
+					const JunctionTrackEdge &edge = graph.edges[o.edge];
+					const bool at_split = (edge.from.node && edge.from.index == split[r]) || (edge.to.node && edge.to.index == split[r]);
+					item = JunctionTrackRowItem{true, at_split ? split[r] : merge[r]};
+				} else if (o.kind == "crosser") {
+					item = JunctionTrackRowItem{false, o.edge};
+				} else if (o.kind == "in") {
+					item = JunctionTrackRowItem{true, split[r]};
+				} else if (o.kind == "out") {
+					item = JunctionTrackRowItem{true, merge[r]};
+				}
+				items.push_back(item);
+				if (item) mapped++;
+			}
+			for (const JunctionTrackArrangement::RowPair &pair : seed.arrangement.row_pairs) {
+				if (pair.row != r) continue;
+				size_t last_west = 0, first_east = items.size();
+				bool any_west = false;
+				for (size_t a = 0; a < items.size(); a++) {
+					if (!items[a]) continue;
+					if (*items[a] == pair.west) { last_west = a; any_west = true; }
+					if (*items[a] == pair.east) first_east = std::min(first_east, a);
+				}
+				INFO(fmt::format("hub {} x {}, stack item {}, row {}: {} {} west of {} {}", main == nullptr ? "T" : main, main == nullptr ? "" : branch, i, r, pair.west.node ? "node" : "edge", pair.west.index, pair.east.node ? "node" : "edge", pair.east.index));
+				if (any_west) CHECK(last_west < first_east);
+			}
+		}
+		CHECK(mapped > 0);
+	}
+}
+
+TEST_CASE("item rows: the order needs no point", "[junction][topology]")
+{
+	const ItemRowSeed own = RecordItemRowSeed(nullptr, nullptr);
+	REQUIRE(!own.system.solved.x.empty());
+	JunctionSystemPoint shifted = own.system.solved;
+	for (int &x : shifted.x) x += 3;
+	const ItemRowSeed moved = RecordItemRowSeed(nullptr, nullptr, &shifted);
+	REQUIRE(!own.system.item_rows.empty());
+	REQUIRE(own.system.item_rows.size() == moved.system.item_rows.size());
+	auto key = [](const JunctionItemRowOccupant &o) { return std::make_tuple(o.kind, o.rank, o.west, o.east, o.edge, o.copy, o.node, o.footprint, o.step); };
+	for (size_t i = 0; i < own.system.item_rows.size(); i++) {
+		REQUIRE(own.system.item_rows[i].size() == moved.system.item_rows[i].size());
+		for (size_t j = 0; j < own.system.item_rows[i].size(); j++) CHECK(key(own.system.item_rows[i][j]) == key(moved.system.item_rows[i][j]));
+	}
+	REQUIRE(own.system.static_rows.size() == moved.system.static_rows.size());
+	for (size_t i = 0; i < own.system.static_rows.size(); i++) {
+		const JunctionStaticRow &a = own.system.static_rows[i], &b = moved.system.static_rows[i];
+		CHECK(std::make_tuple(a.v, a.u, a.gap, a.reason) == std::make_tuple(b.v, b.u, b.gap, b.reason));
+	}
 }

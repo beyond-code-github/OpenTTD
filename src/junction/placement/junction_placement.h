@@ -168,6 +168,28 @@ struct JunctionSystemOver {
 /** A crossing group (DESIGN-G4 §11.1): its edge, its first token (the first quadruple's S-bend), and its form at the recording (0 S-bend, 1 square). */
 struct JunctionSystemFormGroup { int edge; int tok; int form; };
 
+/** One occupant of a stack item row in the static model (DESIGN-G4 §1 A5): a piece of today's occupancy family on that row, with its travel rank. */
+struct JunctionItemRowOccupant {
+	JunctionSystemColumn west; ///< Its west column.
+	JunctionSystemColumn east; ///< Its east column (west - 1 for an empty run).
+	TrackBits bits; ///< The tracks of its tiles.
+	uint32_t edge; ///< The graph edge, UINT32_MAX for a node's tile or a prio footprint.
+	int copy; ///< 0 or 1, -1 for the part both copies share.
+	uint32_t node; ///< The node of a node's tile or of a prio footprint, else UINT32_MAX.
+	int footprint; ///< A prio footprint's travel sign, 0 for tracks.
+	int rank; ///< 100 times its travel position on its row (RECON-O1-item-rows §5).
+	int step; ///< Its index in the order the occupancy family adds the row's pieces; breaks ties of rank.
+	std::string kind; ///< "node", "node band", "in", "out", "leg run", "lane split", "lane merge", "heads", "prio" or "crosser".
+};
+
+/** A static row of the placement model (DESIGN-G4 §3): x[v.pt] + v.c0 + v.c1 L(v.bend) - (x[u.pt] + u.c0 + u.c1 L(u.bend)) >= gap. */
+struct JunctionStaticRow {
+	JunctionSystemColumn v;
+	JunctionSystemColumn u;
+	int gap;
+	std::string reason; ///< "O1 item <i>: <kind a> e<edge> / <kind b> e<edge>".
+};
+
 /** The relation system of the last X and the last Y round of one placement call, with each constant's dependence on a bend's length (DESIGN-G3 §G3.3). */
 struct JunctionPlacementSystem {
 	int pt_count = 0; ///< The number of placement points.
@@ -190,6 +212,10 @@ struct JunctionPlacementSystem {
 	std::vector<JunctionSystemOver> overs; ///< The single bridges over an S-bend, in the order of the last build.
 	std::vector<JunctionSystemFormGroup> form_groups; ///< The crossing groups, in the order of the last build.
 	std::vector<JunctionSystemClash> clashes; ///< The occupancy pairs of the last X round whose rows were known, as clash rows.
+	std::vector<std::vector<JunctionItemRowOccupant>> item_rows; ///< Per stack item, the occupants of its row west to east (DESIGN-G4 A5), from the last X round whose rows were known.
+	std::vector<JunctionStaticRow> static_rows; ///< The O1 rows of item_rows (DESIGN-G4 §3).
+	int item_row_skipped = 0; ///< Occupants of item rows left to 2b2a3 (another row's port fan, a tile whose row moves with its bend's length).
+	int item_row_share = 0; ///< O1 pairs that may share a tile and so have gap 0.
 	std::vector<std::array<int, 5>> route_curves; ///< For tests: per route curve (route, curve in travel order, xoff, yoff, seg) of the walk's curve forms.
 	JunctionSystemPoint solved; ///< The recording's own solution when its Y and X solves both succeed (least rows, then least columns with the D215 push); empty otherwise.
 	std::vector<std::string> failed; ///< The recording's failed solves and builds, in order, e.g. "Y solve: <error>", "X build: <error>".
