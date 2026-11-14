@@ -54,6 +54,16 @@ Why this should solve where today's search does not:
 
 Zones (D286, refined by the engineer): the through bundles cross each other in the middle of the core; the choice tracks split and swap lanes in the outer core around it, where the join blocks sit. So a join block is placed against the core's edge, between the middle crossing and the arm's port, not out on the arm. This matches PSG 227: bridge stacks in the middle (x 358-379, y 330-351), line splits and joins at the edges of the 27 x 36 core.
 
+### 4.1 Block shapes for two-lane arms (LL_RR)
+Within a bundle the two tracks are equal until the join block, so which one is "fixed" is a label the join block picks: the track on the inner side (next to the other bundle) is the choice track. Orders are across the arm, outer to inner to outer.
+- **Exit block** (per input arm, 2 destinations a, b): lanes [l0, l1] each split into (a, b): [l0a, l0b, l1a, l1b]; one crossing l0b x l1a regroups them to [l0a, l1a | l0b, l1b]. 2 splits, 1 crossing, no merges. Which bundle goes on which side is the side its destination leaves the core on.
+- **Join block, PSG 227 (D283)**, bundles A, B in: [fA, cA | cB, fB], lanes [L0, L1] out. cA splits (cA0, cA1), cB splits (cB0, cB1); one crossing cA1 x cB0; the choice legs bound for one lane merge first (cA0 + cB0, cA1 + cB1; REPRESENT change 2); then each meets its fixed track, which has the prio (D287): L0 = fA + (cA0 + cB0), L1 = fB + (cA1 + cB1). 2 splits, 1 crossing, 4 merges, 2 prio elements. This is mfb's two-stage join; reach: every input lane reaches its fixed lane, every choice track both lanes.
+- **Join block, keep**: [a0, a1 | b0, b1] -> L0 = a0 + b0, L1 = a1 + b1; one crossing a1 x b0; 2 merges; prio per D282 (keep: through over turning).
+- **Join block, balanced no prios**: every track splits to both lanes: 4 splits, crossings by interleave, 4 plain merges per lane pair, no prio.
+- So the exit block and the 227 join block are mirror shapes (2 nodes, 1 crossing, then pairs), and every block crossing is one single bridge over one track: a table, not a search. Lengths are the split spacing, the crossing's bridge length and the prio length.
+
+Core finding (probe, 2026-11-15, wt-choice-probe 896a975c0f): today's row core cannot be the bundle core. With merges moved out (out arms 4 lanes, 12 one-to-one paths) the graph refuses "a main slot without a through partner" (`junction_topology.cpp:194`): every main lane must be a row from W to E, each row "in, one leg, out". The bundle core is therefore the T (L_R x L_R, which places) with every edge two tracks wide; recon RECON-bundle-copies.md checks whether the doubled-bridge copy machinery is that base.
+
 Each block is testable alone: an exit block or a join block on a straight line, checked by `CheckJunctionRules` with its own ports and movements, buildable in game.
 
 ## 5. What changes in today's model
