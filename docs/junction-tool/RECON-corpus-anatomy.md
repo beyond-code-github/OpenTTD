@@ -123,3 +123,6 @@ Does not fit the pattern: psg231's ring and psg145's 48-tile tunnel merger (neit
 - Directions: signal votes per piece plus chain propagation (`LOCAL=2`, falls back to the review's parity system). Woven boxes (PSG186 box: 64 topology contradictions, 255/532 votes in conflict) are not resolved; reach figures there are lower bounds.
 - Block detection is by switch-tile clustering; adjacent unrelated lines add to in/out counts.
 - No screenshot of PSG186/197 was matched pixel by pixel to tiles; the matches rest on arm count, tunnel-only property and position.
+
+## Engineer's note (2026-11-14): Mark's PSG 173 BBH17
+Mark's BBH17 ("Swapped over", signs "BBH17 / Mark", "gaps and weirdness on purpose (probably)", "V453000 likes") is an LL_RR line with a 10-tile gap between the directions (LL__________RR): "very different to everything else we've been looking at as it has way more space inside it". Not yet exported or traced. Note: our notation parser refuses gaps over 3 (`ParseLineNotation`), while real gaps run 3-12 (RECON-corpus-census2).
