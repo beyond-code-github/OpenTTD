@@ -128,24 +128,24 @@ Graph, order, structure, programs (with D256), and the arrangement (ARR1, th:282
 
 ## 4. The square crossing (D256)
 
-**Programs.** At topo:1215-1217, `SBend(hand)` and `Under/Above(x)` become `Corner(hand)`, `Under/Above(x)`, `Corner(-hand)`. The hand is the same S-side slot rule. Edge ends and node shapes are unchanged: the Corners serve no node.
-- Topology CLAUDE.md: "the edge under a single bridge crosses square" replaces DESIGN-G1 §10.7 F2.
+**Programs.** At topo:1215-1217, `SBend(hand)` and `Under/Above(x)` become `Corner(hand)`, `Under/Above(x)`, `Corner(-hand)`. The hand is the same S-side slot rule. Edge ends and node shapes are unchanged: the Corners serve no node. (amended, D260: the programs emit both forms, `SBend, Corner, Under, Corner`, all role Cross; edge ends and node shapes stay unchanged only once topo:1266 and jp:282 stop reading position, §11.1.)
+- Topology CLAUDE.md: "the edge under a single bridge crosses square" replaces DESIGN-G1 §10.7 F2. (amended, D260: "by an S-bend or square, as chosen; consecutive same-hand square crossings share one run".)
 
-**Placement chain.** It already handles this: Corner elements of fixed k (jp:1734-1738), a horizontal run between them through `run()` (jp:1817), and the Under token adds no element (jp:294-296). The family "bridge over a horizontal run" is static and has no binary. For the Heads element of edge e over x, with x's Corner1 and Corner2 around its Under token, and the run eastward (mirrored for westward):
+**Placement chain.** It already handles this: Corner elements of fixed k (jp:1734-1738), a horizontal run between them through `run()` (jp:1817), and the Under token adds no element (jp:294-296). The family "bridge over a horizontal run" is static and has no binary (amended, D260: it is guarded by the form binary q, §11.2). For the Heads element of edge e over x, with x's Corner1 and Corner2 around its Under token, and the run eastward (mirrored for westward):
 - `x(Corner1.last) + 1 <= x(heads) <= x(Corner2.first) - 1`: the bridge's column is strictly inside the run, so the bridge passes over plain track.
 - `y(head_north) + 1 <= y_run <= y(head_south) - 1`, with `y_run = y(Corner1.last) = y(Corner2.first)`: the run's row is strictly between the heads.
 - The heads against the Corners' tiles use the gap table at this shared event (O3 iii).
 - The run's floor is the chain run (JunctionRunFloor default 2), which gives exactly one run tile under the bridge. The curve rules (JunctionCurveGaps, CL from the train, no 90-degree bend) reach both Corners through the counters, so the run takes whatever length they need (D256).
 - The level solve sees axis track under the deck (no new ramp rule). Render finds the run's tiles beneath the heads as today (jp:2669-2683).
 
-**What retires:**
+**What retires:** (amended, D260: nothing below retires except the "no crossed sbend" refusal; t, w, the over-S-bend rows and their record are the S-bend form, §11.6.)
 - G3.4a-2's t: `choices.over` (ph:41), `JunctionSystemOver` (ph:152-162), T (jj:237-255).
 - D248's before/after: `choices.over_after` (ph:42), w (jj:242, 246-252, 287-296).
 - The over-S-bend rows and the "no crossed sbend" refusal: jp:1820-1870.
 - The placement CLAUDE.md lines on a single bridge over an S-bend.
 - `JunctionSBendColumnForm` stays only as P3 for profile rows, generalised to Corners (test first).
 
-**Re-pins (D235, listed in 2a1):** T e3 under e6; LL_RR x L_R e23 under e3; L_R x LL_RR's three crossings. Without the over-S-bend rows, today's joint gives T 26050 and LL_RR x L_R 86200 (P5). The square form's numbers are measured, not predicted.
+**Re-pins (D235, listed in 2a1):** T e3 under e6; LL_RR x L_R e23 under e3; L_R x LL_RR's three crossings. (amended, D260: none; the square form does not seed at any of these five crossings and the S-bend form stays, §11.0.) Without the over-S-bend rows, today's joint gives T 26050 and LL_RR x L_R 86200 (P5). The square form's numbers are measured, not predicted.
 
 ## 5. Variables, binaries, tight M
 
@@ -205,14 +205,14 @@ Retired rulings: D236, D240's "pairs from the joint solution", D243, D246, D248,
 
 Identity today: the joint objective at the seed's recording is T 27300 and LL_RR x L_R 86350 (tests/junction/placement/junction_joint.cpp:55-98). D235: every change is listed with its rule.
 
-- **2a1, square crossing.**
+- **2a1, square crossing.** (amended, D260: 2a1 and 2a2 below are replaced by §11.6.)
   - Programs (topo:1215-1217) and the run family (§4), beside the old family for crossings that still have an S-bend: none after this step.
   - Red tests:
     - "a single-bridge band crossing is Corner, Under, Corner" (T, LL_RR x L_R, L_R x LL_RR);
     - "the bridge's column is strictly inside the run and the run's row strictly between the heads";
     - "LL² gets past 'no crossed sbend'" (the F5 probe).
   - Re-pins: T 1, LL_RR x L_R 1, L_R x LL_RR 3 crossings, each cell and objective listed. CheckJunctionRules clean.
-- **2a2, retire t, w and overs.** Identity equal to 2a1.
+- **2a2, retire t, w and overs.** Identity equal to 2a1. (amended, D260: t, w and overs stay; see §11.6.)
 - **2b1, ARR3** (A1-A6). Red tests:
   - "every unrelated row-sharing pair at the three seeds is a row pair, a band neighbour pair, or separated through an edge present on that row" (P1 as the oracle);
   - "LL_RR x L_R emits the extension-only pair (e4, e23)";
@@ -268,3 +268,156 @@ Identity today: the joint objective at the seed's recording is T 27300 and LL_RR
 - **O3's completeness rests on a proof sketch.** The guard is CheckJunctionRules on every solved layout plus 2b2b's necessity test; a breach names a missing row family.
 - **The canonical point may cost more than the MILP's point.** The least solution does not minimise runs in general. 2b3's cost test finds it. The remedy is more lengths as choices; the hover then keeps less freedom.
 - **The downset enumeration on LLL³.** The fallback is a 2-SAT pair test (A2).
+
+## 11. Amendment: the crossing form is a choice (D260)
+
+At c23bae8d69 plus the 2a1 WIP (ng1, wt-2a1). The probes ran on top of the WIP in Release and were reverted: ng1's `git diff` equals `scratchpad/2a1/wip-stopped.patch` again. The probe patch (`probe_full_on_wip.patch`) and the outputs (`p2_small.txt`, `p3_ll2_group.txt`, `p4_ll2_each.txt`, `p5_ll2_loop.txt`, `p6_counts.txt`, `p6_why.txt`) are in `/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/g4a/`. The probe chose the form per crossing (0 S-bend, 1 square) inside the programs and fixed the token-0 misread (§11.1) so that the square form could be measured at all.
+
+**Summary.**
+- Programs emit both forms per crossing: `SBend(h)`, `Corner(h)`, `Under/Above(x)`, `Corner(-h)`, all with a new role Cross. `choices.form` picks one form per D258 group; the other form's bends have size 0 (no bend).
+- Edge ends and joiner_div read token positions today. A square Corner at token 0 of a band split's straight leg is misread as the split's serving bend. Measured on L_R x LL_RR e11; LL² has three more such Corners (e5, e20, e26).
+- The square run's length r is data for the hover. Otherwise a run that heads against the route's rows gives the route two horizontal headings, and its curve gaps are no longer two-point rows (measured: LL² crossings 5 and 6).
+- **Measured.** T seeds with the S-bend form (27300, clean). No square choice seeds on T, LL_RR x L_R or L_R x LL_RR, so the seeds keep the S-bend form and their joint objectives (27300, 86350, 71050). LL² round 0 is infeasible all-S and all-square; with the choice it is Optimal at 268600 (form 100100000).
+- One binary per D258 group. Binaries: T 25, LL_RR x L_R 64, L_R x LL_RR 38, LL² about 125, LLL³ about 489.
+- Sub-steps: 2a1 both forms as data, then 2a2 the joint chooses. t, w and the over-S-bend family stay. No decision cards.
+
+### 11.0 Evidence
+- **Crossings, in emission order.** T: e4 under e8 (`JunctionTTopology`; e3 under e6 in the L_R x L_R hub). LL_RR x L_R: e23 under e3. L_R x LL_RR: e1 under e21, e11 under e10, e14 under e7. LL²: e1/e47, e3/e5, e3/e8 (the D258 group), e5/e9, e17/e14, e20/e23, e26/e25, e32/e31, e39/e43 (edge under bridge).
+- **T, both T topologies.** S-bend form: seeds 41x14, CheckJunctionRules clean, joint at the seed 27300. Square: no seed ("chain run (e10) <- chain run (e4) <- Corner size (e4) <- bridge over run (e8, node 4) <- chain run (e8) <- chain run (e1) <- S port spacing"), and the D250 loop is infeasible too. This is geometry: the WIP's rows put the bridge column at least k + 1 = 3 columns from e4's port column, on the run's side (k = 2), and e8's port is 1-2 columns away.
+- **LL_RR x L_R.** S-bend form: seeds 62x25, joint 86350. Square: no seed, and the round-0 joint is infeasible too ("S port spacing <- chain run (e2) <- chain run (e3) <- bridge over run (e3, node 23) <- chain run (e21) <- Corner size (e23)"): the T's geometry again.
+- **L_R x LL_RR.**
+  - 000: seeds 61x44, clean, joint 71050 (16 s).
+  - The 7 other forms: no seed. The fixed path fails with "occupancy (e6) [e6 and e12 on row 20 or 26]" or "bridge middle clearance (e13) [the head of e7]", and the loop is infeasible.
+  - The round-0 joint is feasible at all 8 forms, least 57400 at 100 against 63900 at 000. It is a relaxation, with occupancy only at its own flat point.
+- **LL² round 0** (all floors, default cut).
+  - All S: "S-bend size (e1) <- ... prio element (e19)". All square: infeasible (WIP red4).
+  - Group-level enumeration, 256 forms. 192 do not record: crossing 5 or 6 square gives "path 6 (12) has two horizontal headings" (jp:992-1001).
+  - Of the other 64, 24 are Optimal. Best 268600 at 100100000 (e1 and e5 square, the rest S-bend), 0.4-10 s per solve.
+  - Per crossing, 512 forms: 48 Optimal, the same best 268600. The best mixed group is 269950.
+  - The D250 loop from 100100000 is infeasible at round 1 ("X solve: ... bridge over S-bend").
+- **Counts** (`p6_counts.txt`). "Refused" is alone-square crossings refused for two horizontal headings; it is a lower bound, because a Y failure can come first.
+
+| hub | crossings | D258 groups | Corner at token 0 of a split's straight leg | S-bend after the Under (D248 w) | doubled Unders next to a crossing | refused |
+|---|---|---|---|---|---|---|
+| T | 1 | 1 | 0 | 0 | 2 | 0 |
+| LL_RR x L_R | 1 | 1 | 0 | 0 | 0 | 0 |
+| L_R x LL_RR | 3 | 3 | 1 | 1 | 2 | 0 |
+| LL² | 9 | 8 | 3 | 4 | 12 | 2 |
+| LLL_RRR x LL_RR | 14 | 12 | 5 | 7 | 18 | >= 4 |
+| LLL³ | 33 | 23 | 12 | 18 | 42 | >= 11 |
+
+- **A robustness bug found on the way.** When the X build refuses, the recording returns `pt_count` 0, measured on LL² at form 000001000. `SolveJunctionJoint` then crashed (SIGSEGV), INFERRED at `x[0]` (jj:187). The recording must fail loudly and name the refusal.
+
+### 11.1 Programs
+- **The tokens.** For each single-bridge crossing x of band edge e, with hand h from topo:1216's rule, the program emits `SBend(h, Cross)`, `Corner(h, Cross)`, `Under/Above(x)`, `Corner(-h, Cross)`. Cross is a new `Step::Role`, and it replaces role None on a crossing's S-bend.
+  - A D258 group is these quadruples in sequence. In its square form, the inner Corner pairs and the inner S-bends are zero-size at one point of the run.
+  - The inner Corners keep every S-bend on a vertical heading in both forms, so one chain with form-independent headings exists. An S-bend token on the run would be a horizontal S-bend, one row (jp:1765).
+- **What stays well defined.** The token count does not depend on the form, so every choice stays per token. Edge ends and node shapes are unchanged, because Cross tokens serve no node.
+  - That holds only once the readers stop using position. Today topo:1266 names `program.front()` as a split's end whenever it is a Corner, and jp:282 sets joiner_div for any Corner at t == 0 from a band split.
+  - Counterexample: L_R x LL_RR e11 leaves band split n2 by its straight leg. Square, it fails "a bridge over a run that is not a run" (measured). LL² has three more such Corners (e5, e20, e26, counted); their failure is INFERRED.
+  - Rule: an end token is a Diverge S-bend or a Corner that is not Cross, and joiner_div means "the start end names this Corner". This is the placement CLAUDE.md fact "infers none of them from token order".
+- **The arrangement (ARR1, ARR3).** In both forms, the Cross tokens are the bends of the crossing event, and their partner is x (A4).
+  - D255(3)'s "previous bend's tail" and "next bend's head" mean the previous or next *present* bend, so a doubled Under next to a crossing has one candidate per form.
+  - Counterexample: on L_R x LL_RR e11, the token before the two doubled Unders is `Corner(-h)`, which has size 0 at the S seed.
+- **Data.** These are read by the fixed path, the render, the route walk, the arrangement and the hover:
+  - `choices.form[e][tok]` at a group's first Cross token: 0 S-bend, 1 square; empty means all S-bend, today's layouts;
+  - `choices.run[e][tok]`: the square run's length r, read off the seed;
+  - t and w as today (`choices.over`, `over_after`).
+  - The render skips the Cross tokens of the unchosen form. Today it skips only an empty Fan (render:118).
+
+### 11.2 Placement families under the binary
+Each group g has one binary q_g (1 square). There is one chain over all tokens. The M values come from §5's helper.
+- **Sizes.**
+  - The S-bend uses the S fan's zero-size pattern (jj:205-211): `floor (1 - q) <= L_S <= L_max (1 - q)`, with the y link's z = 1 - q.
+  - The outer Corners of a group have L = k q, and its inner Corners L = 0 in both forms (§11.3). Their size rows `x(last) - x(first) = s k q` are exact without M.
+  - A bend of the unchosen form has length 0 and is no bend, so it adds no pieces, bits, occupancy or curves.
+- **Runs.**
+  - Same-line equalities are stated only between neighbours in the superset chain. They hold in both forms.
+  - Each floor is stated between consecutive *present* elements, as `along(b.first - a.last) >= floor(a, b) * ind`, with ind = q or 1 - q. This is exact without M, because bands are y-monotone: at ind = 0 the row is already implied.
+  - A run whose heading comes only from absent Corners is 0. That is the E/W run between zero Corners in the S-bend form (`|dx| <= X q`), and the vertical stubs between zero inner Corners of a shared run (`|dy| <= Y (1 - q)`).
+- **The S-bend family** (jp:1820-1870, unchanged rows): t, and D248's w where an S-bend follows the Under. Each row is relaxed by M q, which replaces BIG (jj:240-255, 289-296).
+  - "Before" and "after" mean the nearest S-bends of the S-bend form. jp:1830's `tok ± 1` test must skip the Cross Corners, which now sit between the S-bend and the Under.
+- **The square family** (the WIP's rows): `x(C.last) + 1 <= x(heads) <= x(C'.first) - 1` (mirrored for runs heading west) and `y(north) + 1 <= y(C.last) <= y(south) - 1`, each relaxed by M (1 - q). In a group, the bridges keep their token order along the run.
+- **Curve gaps, exact.**
+  - The counters (jj:91-175) take any heading, and a zero-size bend has 0 units (jj:99-106).
+  - JunctionCurveGaps depends on the number of curves between two curves. The S-bend form has 2 curves per crossing, the square 4 per group.
+  - So each pair gets one row per combination of the forms of the groups on or between its two curves, while `min(2TL - 1, (c + 1) CL)` still varies. Each row is relaxed by min_gap times the Hamming distance from q. M = min_gap is exact, because units never decrease along a route.
+  - At the test spec (TL 4, CL 5) only consecutive pairs vary. A pair spanning a crossing needs 7 in both forms.
+  - Today's relaxation (jj:162-171) still counts vanished curves in j - i. That is sound but loose, so it is not reused here.
+
+### 11.3 D258 runs under the choice
+- **Recommendation: one binary per group.** Either every crossing of the group S-bends, or one run passes under all of them.
+- **Why:**
+  - D258 makes the group's single run *the* square form.
+  - A mixed group is either a jog between two square crossings, which D258 rules out, or a square-plus-S-bend group, which no ruling covers.
+  - Per crossing needs a share term per adjacent pair (`s = q_i AND q_i+1`, inner Corners k (q_i - s)).
+  - Measured on LL² round 0: per crossing finds no better optimum (268600 both ways, best mixed 269950).
+- **Toggle candidate:** per crossing. The tokens are the same; only the model changes. Groups: LL² 8 from 9 crossings, LLL³ 23 from 33.
+
+### 11.4 The band model (§3)
+- **Events.** The crossing is one swap event of (e, x) in both forms. The band order (D255(2)), A2's neighbour pairs and A3's event-order binaries do not depend on the form: the sweep never reads it.
+- **Event y.** Each crossing has one integer variable rho. Square: rho = y(C.last), the run's row. S-bend form: rho = y(north head) + 1, the diagonal's north row at column t (the over rows put the heads one row beyond the diagonal, jp:1862-1866). These are two equalities with M = Y, and in both forms the north head < rho < the south head.
+- **Inside a bend (ARR2).** In the S-bend form, e's S-bend straddles rho.
+  - Above rho it approaches x, its partner.
+  - Below rho it moves toward e's new neighbour beyond x. It ends on e's next run column, which O3(i) bounds against that neighbour.
+  - At rho, O3(ii) already takes "the line through rho of every bend approaching a partner other than b", which is P3 at rho, affine in t and L.
+  - Segments are cut at rows, not at tokens. ARR2's per-token slices are not used.
+  - Square: the run is a horizontal piece on row rho, and its far end lies within e's next run column. O3(iii) gets one crossing shape per form, each guarded by q.
+- **Binary count.**
+  - Event order: unchanged.
+  - New: q per group; w per S-bend-form site; one more piece candidate per doubled Under next to a crossing (`pi <= q` or `pi <= 1 - q`).
+  - t, rho and r are integers.
+- **Totals** (§5's own parts as INFERRED there):
+
+| | §5 | + q | + w | + piece | total |
+|---|---|---|---|---|---|
+| T | 22 | 1 | 0 | 2 | 25 |
+| LL_RR x L_R | 63 | 1 | 0 | 0 | 64 |
+| L_R x LL_RR | 32 | 3 | 1 | 2 | 38 |
+| LL² | ~101 | 8 | 4 | 12 | ~125 |
+| LLL³ | ~406 | 23 | 18 | 42 | ~489 |
+
+### 11.5 Fixed path and hover
+- **Both read the form, t, w and r as data.** At a fixed form every guarded row is a constant row, and the zero-size elements are points tied by equalities.
+- **Why r is data.**
+  - The square run is an axis heading. When it heads against the route's rows, the route has two horizontal headings. jp:992-1001 refuses that (measured counts in §11.0), and a curve-gap pair across both stretches is a three-point row, which breaks §6's "two points of one axis".
+  - With r fixed, Corner + run + Corner is a fixed span, so the route keeps one horizontal sense. sym_routes counts the span's units as a constant, and a pair separated only by vertical runs and fixed spans falls in the Y phase.
+  - In the MILP r stays free, because the counters handle any heading.
+- **The rounds' default** (until 2b5) is the S-bend form everywhere, with r at the floor 2 when square is given. The joint chooses by cost. D260's toggle candidate ("square only where the S-bend form is infeasible") stays a toggle.
+- **Expansion (D257).** The form and r per crossing are small persisted data. A frozen crossing keeps its form, and a new crossing chooses one.
+
+### 11.6 Revised sub-steps (replace §8's 2a1 and 2a2)
+- **2a1, both forms in the programs; the form as data.**
+  - Changes:
+    - the tokens and role Cross (§11.1), and the end and joiner_div rule;
+    - `choices.form` and `choices.run`;
+    - the superset chain with zero-size unchosen bends, present-pair floors and zero runs (§11.2);
+    - both families: the WIP's run family, and the over-S-bend family with before/after skipping Cross Corners;
+    - render, route walk and ARR1 skip absent Cross tokens; sym_routes treats a square crossing as a fixed span;
+    - the joint holds an absent Cross S-bend at 0;
+    - the recording names an X-build refusal.
+  - Red tests:
+    - "programs: a single-bridge crossing carries both forms" (T, LL_RR x L_R, L_R x LL_RR, the LL² group);
+    - "edge ends and joiner_div never name a Cross token" (L_R x LL_RR e11; LL² e5, e20, e26);
+    - "LL² at form 100100000 records round 0 without failure and its joint is Optimal at 268600" (red, INFERRED: "a bridge over a run that is not a run" at e5);
+    - "LL² crossing 5 alone square records" (red: "path 6 has two horizontal headings");
+    - "ARR1 at the S seeds names no absent piece" (T e4, L_R x LL_RR e11).
+  - Re-pins: layouts, level hashes and objectives none (the default is the S-bend form). Recording sizes and digests grow by the zero-size Cross elements; re-pin them under that rule (D235).
+  - Restore the two over-S-bend tests that the WIP deleted.
+- **2a2, the joint chooses the form.**
+  - Changes: q per group; relations tagged (group, form) and guarded with the M helper, which also replaces BIG on the t and w rows; z = 1 - q and L = k q; the curve-gap combination rows; `choices.form` and `choices.run` out.
+  - Caveat: the recorded clashes cover only the recorded form's pieces. A flip is checked by the loop's next recording, until 2b2b gives both forms static occupancy.
+  - Why now: the per-form enumeration is an oracle for the guarded rows before 2b3 rebuilds the model.
+  - Red tests:
+    - "at every enumerated form with q fixed, the joint equals that form's recording" (exact rows);
+    - "LL² round 0 with q free is Optimal at no more than 268600" (red: infeasible today);
+    - "T and LL_RR x L_R keep the S-bend form at 27300 and 86350" (INFERRED: rules cut their square form, not occupancy).
+  - Re-pins: none expected. L_R x LL_RR's joint at its seed is not pinned. Its round 0 preferred e1 square (57400 against 63900), so list it if it moves.
+  - Retires: only the "no crossed sbend" refusal (jp:1833, unreachable once every crossing carries its S-bend) and BIG on the over rows. t, w, `JunctionSystemOver`, `choices.over` and `choices.over_after`, the over rows and `JunctionSBendColumnForm` stay. §7.1 is void, and §7.3 keeps the two over-S-bend tests.
+- **Order:** 2a1 -> 2a2 -> 2b1 (ARR3 gains Cross bends, rho and per-form piece candidates) -> 2b2a -> 2b2b (both crossing shapes guarded; "every O3 row holds at the seeds and at LL² 100100000") -> 2b3 (q, t, w and r in the static MILP; "LL² seeds or names an irreducible set") -> 2b4 (the hover reads form, t, w and r, with r pinned) -> 2b5.
+
+### 11.7 Decision cards
+None is the engineer's. Recommendations, reversible and toggle candidates under D227:
+- one form binary per D258 group (toggle: per crossing);
+- r as hover data (forced by §6's two-point rows);
+- the rounds default to the S-bend form.
