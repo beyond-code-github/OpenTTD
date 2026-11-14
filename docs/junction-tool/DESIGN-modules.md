@@ -52,6 +52,8 @@ Why this should solve where today's search does not:
 - The blocks meet the core at fixed ports, so lengths along each arm are difference constraints (longest path).
 - PSG 227 fits this INFERRED from the trace: direction splits first (d11-d39), line splits after the core crossings (d37-d73), joins last; its joins sit at the core's edge, not on the arms. Our join block may sit next to the core in the same way.
 
+Zones (D286, refined by the engineer): the through bundles cross each other in the middle of the core; the choice tracks split and swap lanes in the outer core around it, where the join blocks sit. So a join block is placed against the core's edge, between the middle crossing and the arm's port, not out on the arm. This matches PSG 227: bridge stacks in the middle (x 358-379, y 330-351), line splits and joins at the edges of the 27 x 36 core.
+
 Each block is testable alone: an exit block or a join block on a straight line, checked by `CheckJunctionRules` with its own ports and movements, buildable in game.
 
 ## 5. What changes in today's model
