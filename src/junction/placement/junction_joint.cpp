@@ -178,6 +178,13 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 {
 	JunctionJointResult result;
 	result.status = JunctionMilp::Status::Error;
+	if (system.pt_count == 0) {
+		/* The recording refused to build (its failure list names why): there is no system to solve. */
+		std::string failures;
+		for (const std::string &text : system.failed) failures += (failures.empty() ? "" : "; ") + text;
+		result.conflict.push_back("the recording has no points: " + (failures.empty() ? std::string("no failure named") : failures));
+		return result;
+	}
 	JointModel model;
 	const uint32_t npts = system.pt_count;
 	std::vector<uint32_t> x, y;
@@ -542,6 +549,8 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 			break;
 		}
 		result.choices = joint.choices;
+		result.choices.form = round_choices.form; // The form and the runs are data, not the joint's.
+		result.choices.run = round_choices.run;
 		/* The canonical point of this round's recording; the joint solution's when the recording's solves failed but had X relations; none otherwise. */
 		point_joint = system.solved.x.empty() && has_x;
 		if (!system.solved.x.empty()) {

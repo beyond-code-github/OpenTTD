@@ -839,23 +839,23 @@ TEST_CASE("rule source: detection at the flat solve is today's rulebook", "[junc
 	};
 	/* The digests printed by the unchanged code (R2 is a refactor), per case in the order the loop below produces them. */
 	const std::vector<Case> expected = {
-		{"L_R x L_R seed", 393, 640164135075738815ULL},
-		{"L_R x L_R bend 5 m+1", 396, 15574989440103210876ULL},
-		{"L_R x L_R bend 7 m+1", 396, 49917478393215249ULL},
-		{"L_R x L_R bend 8 m+1", 395, 6861077751002777490ULL},
-		{"L_R x L_R bend 9 m+1", 395, 10328024605206432383ULL},
-		{"L_R x L_R bend 12 m+1", 395, 11232606783720670483ULL},
-		{"LL_RR x L_R seed", 1109, 2683259685928647513ULL},
-		{"LL_RR x L_R bend 0 m+1", 1111, 17783139826289707174ULL},
-		{"LL_RR x L_R bend 1 m+1", 1112, 4109831045377491802ULL},
-		{"LL_RR x L_R bend 3 m+1", 1111, 2826417799457400576ULL},
-		{"LL_RR x L_R bend 4 m+1", 1111, 528841753813247845ULL},
-		{"LL_RR x L_R bend 8 m+1", 1114, 16306449433040433292ULL},
-		{"LL_RR x L_R bend 9 m+1", 1111, 15615666931685096934ULL},
+		{"L_R x L_R seed", 393, 12593365352372456175ULL},
+		{"L_R x L_R bend 7 m+1", 396, 7161232239015851176ULL},
+		{"L_R x L_R bend 9 m+1", 396, 6772236090452562597ULL},
+		{"L_R x L_R bend 10 m+1", 395, 14953054903077267274ULL},
+		{"L_R x L_R bend 11 m+1", 395, 10228565079292211459ULL},
+		{"L_R x L_R bend 14 m+1", 395, 9496484543853670047ULL},
+		{"LL_RR x L_R seed", 1109, 17590795737866479579ULL},
+		{"LL_RR x L_R bend 0 m+1", 1111, 673013653614789732ULL},
+		{"LL_RR x L_R bend 1 m+1", 1112, 13069048476017835560ULL},
+		{"LL_RR x L_R bend 3 m+1", 1111, 2717414608816164462ULL},
+		{"LL_RR x L_R bend 4 m+1", 1111, 9067418360352789611ULL},
+		{"LL_RR x L_R bend 8 m+1", 1114, 16247718060616939158ULL},
+		{"LL_RR x L_R bend 9 m+1", 1111, 998584284427742492ULL},
 		/* From the bridge over either S-bend, the recording also holds the other flanking S-bend's rows (the next three). */
-		{"L_R x L_RR all floors", 236, 14665511438918810305ULL},
-		{"L_R x LL_RR all floors", 594, 10034201909365135891ULL},
-		{"LL_RR x LL_RR all floors", 1542, 8612936502437310721ULL},
+		{"L_R x L_RR all floors", 236, 7003529623910360455ULL},
+		{"L_R x LL_RR all floors", 594, 4669301012756505503ULL},
+		{"LL_RR x LL_RR all floors", 1542, 4036389964231466841ULL},
 	};
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::vector<Case> got;
@@ -1030,7 +1030,7 @@ struct LoopStart {
 };
 
 /** The loop's start at a hub: the seed's choices when it has a seed, else the rounds-mode choices, else all floors (every free S-bend 1, S fan 0, joiner Corner k). */
-static LoopStart MakeLoopStart(const char *main, const char *branch, const JunctionSpec &spec)
+static LoopStart MakeLoopStartUncached(const char *main, const char *branch, const JunctionSpec &spec)
 {
 	const JointInputs in = MakeJointInputs(main, branch);
 	std::string error;
@@ -1060,6 +1060,16 @@ static LoopStart MakeLoopStart(const char *main, const char *branch, const Junct
 	return start;
 }
 
+/** The loop start of a hub, made once per hub for the whole run: the seed attempt is most of its cost, and every caller passes the test spec. */
+static LoopStart MakeLoopStart(const char *main, const char *branch, const JunctionSpec &spec)
+{
+	static std::map<std::string, LoopStart> made;
+	const std::string key = fmt::format("{} x {}", main, branch);
+	const auto found = made.find(key);
+	if (found != made.end()) return found->second;
+	return made.emplace(key, MakeLoopStartUncached(main, branch, spec)).first->second;
+}
+
 static JunctionPlacementSystem RecordAt(const LoopStart &s, const JunctionSpec &spec, const JunctionPlacementChoices &choices, const JunctionSystemPoint *at)
 {
 	return RecordJunctionPlacementSystem(s.topology, s.paths, s.graph, s.order, s.cut, s.programs, spec, choices, nullptr, at);
@@ -1074,7 +1084,7 @@ TEST_CASE("joint: a recording at a point detects there", "[junction][milp]")
 		size_t count;
 		uint64_t hash;
 	};
-	for (const Hub &hub : {Hub{"LL_RR", "L_R", 1083, 9031261406966711500ULL}, Hub{"L_R", "L_R", 393, 640164135075738815ULL}}) {
+	for (const Hub &hub : {Hub{"LL_RR", "L_R", 1083, 2315536734738658134ULL}, Hub{"L_R", "L_R", 393, 12593365352372456175ULL}}) {
 		const LoopStart s = MakeLoopStart(hub.main, hub.branch, spec);
 		REQUIRE(s.description == "the seed's choices");
 		INFO(fmt::format("{} x {}", hub.main, hub.branch));
@@ -1333,5 +1343,119 @@ TEST_CASE("placement: a band edge carries a series of single bridges", "[junctio
 				CHECK((span.first.x != span.second.x || span.first.y != span.second.y));
 			}
 		}
+	}
+}
+
+/** The single-bridge crossings of a hub's programs in emission order (edge, then token): the edge and the token of each one's S-bend. */
+static std::vector<std::pair<int, int>> CrossingsOf(const JunctionTrackPrograms &programs)
+{
+	std::vector<std::pair<int, int>> crossings;
+	for (size_t e = 0; e < programs.edges.size(); e++) {
+		for (size_t t = 0; t < programs.edges[e].size(); t++) {
+			const JunctionTrackStep &step = programs.edges[e][t];
+			if (step.kind == JunctionTrackStep::Kind::SBend && step.role == JunctionTrackStep::Role::Cross) crossings.emplace_back(static_cast<int>(e), static_cast<int>(t));
+		}
+	}
+	return crossings;
+}
+
+/**
+ * The choices with the crossings the string names square (one character per crossing in emission order, '1' square): the form is read at each group's first S-bend.
+ * @param run The run length of every square group, 0 for the floor.
+ */
+static JunctionPlacementChoices ChoicesWithForms(const LoopStart &s, const std::string &forms, int run)
+{
+	JunctionPlacementChoices choices = s.choices;
+	const std::vector<std::pair<int, int>> crossings = CrossingsOf(s.programs);
+	REQUIRE(crossings.size() == forms.size());
+	choices.form.resize(s.programs.edges.size());
+	choices.run.resize(s.programs.edges.size());
+	for (size_t e = 0; e < s.programs.edges.size(); e++) {
+		choices.form[e].assign(s.programs.edges[e].size(), 0);
+		choices.run[e].assign(s.programs.edges[e].size(), 0);
+	}
+	for (size_t i = 0; i < crossings.size(); i++) {
+		const auto [e, t] = crossings[i];
+		/* A group's crossings sit four tokens apart on one edge with one hand: the form is the first one's. */
+		size_t head = i;
+		while (head > 0 && crossings[head - 1].first == e && crossings[head - 1].second + 4 == crossings[head].second && s.programs.edges[e][crossings[head - 1].second].hand == s.programs.edges[e][crossings[head].second].hand) head--;
+		CHECK(forms[i] == forms[head]);
+		if (head != i) continue;
+		choices.form[e][t] = forms[i] == '1' ? 1 : 0;
+		choices.run[e][t] = forms[i] == '1' ? run : 0;
+	}
+	return choices;
+}
+
+/** The loop start of LL_RR x LL_RR, made once for the tests that record it at a form (the seed attempt is most of their time). */
+static const LoopStart &Ll2Start(const JunctionSpec &spec)
+{
+	static const LoopStart start = MakeLoopStart("LL_RR", "LL_RR", spec);
+	return start;
+}
+
+TEST_CASE("LL² at form 100100000 records round 0 without failure and its joint is Optimal at 268600", "[junction][milp][.sweep]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const LoopStart &s = Ll2Start(spec);
+	JunctionPlacementChoices choices = ChoicesWithForms(s, "100100000", 0);
+	/* The port rows' offset of this form's own flat state; JunctionFloorChoices reads no form, so its all-S offset (25) is not this round 0's (measured, DESIGN-G4 §11.0). */
+	choices.port_offset = 24;
+	const JunctionPlacementSystem system = RecordAt(s, spec, choices, nullptr);
+	std::string failed;
+	for (const std::string &line : system.failed) failed += (failed.empty() ? "" : "; ") + line;
+	INFO(failed);
+	CHECK(system.failed.empty());
+	REQUIRE(!system.relations.empty());
+	const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+	std::string conflict;
+	for (const std::string &reason : joint.conflict) conflict += (conflict.empty() ? "" : " <- ") + reason;
+	INFO(conflict);
+	REQUIRE(joint.status == JunctionMilp::Status::Optimal);
+	/* The flat build cost: the objective less its 0.001 per unit of length tie break. */
+	int sum = 0;
+	for (const int length : joint.length) sum += length;
+	CHECK(std::abs(joint.objective - 0.001 * sum - 268600.0) < 0.05);
+}
+
+TEST_CASE("LL² crossing 5 alone square records", "[junction][milp][.sweep]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const LoopStart &s = Ll2Start(spec);
+	const std::string forms = "000001000";
+	/* With the run free the route has two horizontal headings. */
+	{
+		const JunctionPlacementSystem system = RecordAt(s, spec, ChoicesWithForms(s, forms, 0), nullptr);
+		std::string failed;
+		for (const std::string &line : system.failed) failed += (failed.empty() ? "" : "; ") + line;
+		WARN("run free: " << failed);
+	}
+	/* With the run given, the span is fixed and the recording has no failure; the run is the given length: the chain run between the group's two Corners holds exactly r. */
+	const std::vector<std::pair<int, int>> crossings = CrossingsOf(s.programs);
+	const auto [edge, token] = crossings[5];
+	for (const int r : {2, 3, 5}) {
+		const JunctionPlacementSystem system = RecordAt(s, spec, ChoicesWithForms(s, forms, r), nullptr);
+		std::string failed;
+		for (const std::string &line : system.failed) failed += (failed.empty() ? "" : "; ") + line;
+		INFO(fmt::format("run {}: failures [{}]", r, failed));
+		CHECK(system.failed.empty());
+		REQUIRE(!system.relations.empty());
+		/* The group's two present Corners of edge e, and the exact run between them: v - u = r and u - v = -r. */
+		std::vector<const JunctionSystemElement *> corners;
+		for (const JunctionSystemElement &el : system.chains) {
+			if (el.edge != edge || el.copy != 0 || el.k != "Corner" || el.bend < 0 || system.bends[el.bend].m == 0 || system.bends[el.bend].tok < token) continue;
+			corners.push_back(&el);
+		}
+		REQUIRE(corners.size() == 2);
+		const std::string reason = fmt::format("chain run (edge {})", edge);
+		/* x(last Corner's first) - x(first Corner's last) is at least lo and at most hi. */
+		int lo = INT_MIN, hi = INT_MAX;
+		for (const JunctionSystemRelation &rel : system.relations) {
+			if (rel.axis != 0 || rel.reason != reason) continue;
+			if (rel.v == corners[1]->first && rel.u == corners[0]->last) lo = std::max(lo, rel.c);
+			if (rel.v == corners[0]->last && rel.u == corners[1]->first) hi = std::min(hi, -rel.c);
+		}
+		CHECK(std::abs(lo) == r);
+		CHECK(lo == hi);
 	}
 }

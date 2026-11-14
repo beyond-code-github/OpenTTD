@@ -35,6 +35,7 @@
 #include "../../../junction/terrain/junction_terraform.h"
 #include "../../../junction/topology/junction_topology.h"
 #include "../../../junction/placement/junction_placement.h"
+#include "../../../junction/placement/junction_joint.h"
 #include "../../../junction/placement/junction_render.h"
 #include "../../../junction/signals/junction_signals.h"
 #include "../../../junction/junction_pipeline.h"
@@ -526,7 +527,8 @@ using Programs = std::vector<Program>;
 static constexpr uint32_t NR = JunctionTrackStep::NO_ROW;
 static Step Fan(uint32_t i) { return {Step::Kind::Fan, 0, i, 0}; }
 static Step C(int h, uint32_t i) { return {Step::Kind::Corner, static_cast<int8_t>(h), i, 0}; }
-static Step S(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0}; }
+static Step XS(int h) { return {Step::Kind::SBend, static_cast<int8_t>(h), NR, 0, Step::Role::Cross}; }
+static Step XC(int h) { return {Step::Kind::Corner, static_cast<int8_t>(h), NR, 0, Step::Role::Cross}; }
 static Step SV(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0, Step::Role::Converge}; }
 static Step SD(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0, Step::Role::Diverge}; }
 static Step SM(int h, uint32_t i) { return {Step::Kind::SBend, static_cast<int8_t>(h), i, 0, Step::Role::LaneMerge}; }
@@ -690,7 +692,7 @@ TEST_CASE("topology: the T's track programs", "[junction][topology]")
 	REQUIRE(programs.copies.size() == 12);
 	const Programs edges = {
 		{Fan(1)}, {}, {Fan(3)}, {},
-		{C(+1, NR), U(5, 0), U(5, 1), S(-1, NR), U(8, 0)},
+		{C(+1, NR), U(5, 0), U(5, 1), XS(-1), XC(-1), U(8, 0), XC(+1)},
 		{O(8), O(4), SM(-1, 4)},
 		{C(-1, NR), SV(+1, NR)},
 		{C(-1, 5), SV(+1, 4)},
@@ -719,7 +721,7 @@ TEST_CASE("topology: LL_RR with an L_R sideline: track programs", "[junction][to
 		{C(+1, 5), SV(-1, 4)},
 		{U(10, 1), U(10, 0), C(-1, 8), SV(+1, 7)},
 		{C(-1, 11), SV(+1, 10)},
-		{Fan(7)}, {Fan(10)}, {}, {SV(+1, NR)}, {S(-1, NR), U(3, 0)}, {Fan(4)}, {Fan(1)},
+		{Fan(7)}, {Fan(10)}, {}, {SV(+1, NR)}, {XS(-1), XC(-1), U(3, 0), XC(+1)}, {Fan(4)}, {Fan(1)},
 	};
 	CHECK(programs.edges == edges);
 	Programs copies(26);
@@ -910,7 +912,7 @@ TEST_CASE("topology: the T's placement", "[junction][topology]")
 	CHECK(Of(placement.nodes) == std::vector<Tile>{T(23, 1), T(26, 11), T(33, 3), T(6, 4), T(28, 11), T(38, 1)});
 	const std::vector<Spans> edges = {
 		{Sp(0, 1, 0, 1)}, {}, {Sp(40, 3, 40, 3)}, {},
-		{Sp(23, 1, 25, 3), Sp(24, 3, 25, 3), Sp(25, 4, 25, 4), Sp(25, 7, 28, 9), Sp(26, 7, 26, 8)},
+		{Sp(23, 1, 25, 3), Sp(24, 3, 25, 3), Sp(25, 4, 25, 4), Sp(25, 7, 28, 9), Sp(28, 9, 28, 9), Sp(26, 7, 26, 8), Sp(28, 9, 28, 9)},
 		{Sp(28, 3, 27, 3), Sp(25, 3, 24, 3), Sp(22, 3, 22, 4)},
 		{Sp(33, 3, 31, 5), Sp(31, 9, 28, 11)},
 		{Sp(26, 11, 20, 5), Sp(6, 5, 6, 4)},
@@ -4984,11 +4986,11 @@ TEST_CASE("programs: a band edge's S-bends name the node they serve (DESIGN-G2 Â
 		for (size_t i = 0; i < program.size(); i++) {
 			if (program[i].kind != Step::Kind::SBend) continue;
 			if (program[i].role == Step::Role::LaneSplit || program[i].role == Step::Role::LaneMerge || program[i].role == Step::Role::Shift) continue; // A doubled leg's own bends.
-			const bool before_crossing = i + 1 < program.size() && (program[i + 1].kind == Step::Kind::Under || program[i + 1].kind == Step::Kind::Above);
+			const bool before_crossing = i + 2 < program.size() && program[i + 1].kind == Step::Kind::Corner && program[i + 1].role == Step::Role::Cross && (program[i + 2].kind == Step::Kind::Under || program[i + 2].kind == Step::Kind::Above);
 			if (i == 0 && edge.from.node && order.node_level[edge.from.index] % 2 == 0 && graph.nodes[edge.from.index].split && !(i + 1 == program.size() && edge.to.node)) {
 				CHECK(program[i].role == Step::Role::Diverge);
 			} else if (before_crossing) {
-				CHECK(program[i].role == Step::Role::None); // A crossing's S-bend serves no node.
+				CHECK(program[i].role == Step::Role::Cross); // A crossing's S-bend serves no node.
 			} else if (i + 1 == program.size() || program[i].index != Step::NO_ROW) {
 				CHECK(program[i].role == Step::Role::Converge);
 				converge++;
@@ -5552,4 +5554,159 @@ TEST_CASE("arrangement: one Under fact per doubled bridge Under token", "[juncti
 		for (const JunctionArrangementUnder &under : arrangement.unders) CHECK(!under.pieces.empty());
 		if (main == nullptr) CHECK(arrangement.unders.size() == 4);
 	}
+}
+
+/** True when the token is an Under or Above. */
+static bool IsOverhead(const JunctionTrackStep &step)
+{
+	return step.kind == JunctionTrackStep::Kind::Under || step.kind == JunctionTrackStep::Kind::Above;
+}
+
+/** The stages up to the programs of a hub (T when main is null), without a placement. */
+struct ProgramStages {
+	JunctionTopology topology;
+	std::vector<JunctionLanePath> paths;
+	JunctionTrackGraph graph;
+	JunctionTrackOrder order;
+	JunctionTrackStructure structure;
+	JunctionTrackPrograms programs;
+};
+
+static ProgramStages StagesOf(const char *main, const char *branch)
+{
+	ProgramStages s;
+	std::string error;
+	s.topology = ArrangementTopology(main, branch);
+	s.paths = ExpandJunctionLanes(s.topology, &error);
+	s.graph = BuildJunctionTrackGraph(s.topology, s.paths, &error);
+	s.order = OrderJunctionTrackGraph(s.topology, s.paths, s.graph, &error);
+	s.structure = StructureJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, &error);
+	s.programs = ProgramJunctionTrackGraph(s.topology, s.paths, s.graph, s.order, s.structure, &error);
+	return s;
+}
+
+TEST_CASE("programs: a single-bridge crossing carries both forms", "[junction][topology]")
+{
+	using StepKind = JunctionTrackStep::Kind;
+	using Role = JunctionTrackStep::Role;
+	size_t crossings = 0;
+	size_t grouped = 0;
+	for (const auto &[main, branch] : {std::pair<const char *, const char *>{nullptr, nullptr}, {"LL_RR", "L_R"}, {"L_R", "LL_RR"}, {"LL_RR", "LL_RR"}}) {
+		const JunctionTopology topology = ArrangementTopology(main, branch);
+		const JunctionTrackPrograms programs = ProgramsOf(topology);
+		REQUIRE(!programs.edges.empty());
+		INFO(fmt::format("{}", main == nullptr ? "T" : fmt::format("{} x {}", main, branch)));
+		for (size_t e = 0; e < programs.edges.size(); e++) {
+			const std::vector<JunctionTrackStep> &program = programs.edges[e];
+			INFO(fmt::format("edge {}", e));
+			int hand = 0;
+			for (size_t t = 0; t < program.size(); t++) {
+				const JunctionTrackStep &step = program[t];
+				/* Role Cross is the crossing's bends and nothing else. */
+				if (step.role == Role::Cross) {
+					CHECK((step.kind == StepKind::SBend || step.kind == StepKind::Corner));
+					CHECK(step.index == JunctionTrackStep::NO_ROW);
+				}
+				if (step.kind == StepKind::SBend && step.role == Role::Cross) {
+					/* The quadruple: S-bend, Corner, Under or Above, Corner back. */
+					REQUIRE(t + 3 < program.size());
+					CHECK(program[t + 1].kind == StepKind::Corner);
+					CHECK(program[t + 1].role == Role::Cross);
+					CHECK(program[t + 1].hand == step.hand);
+					CHECK(IsOverhead(program[t + 2]));
+					CHECK(program[t + 3].kind == StepKind::Corner);
+					CHECK(program[t + 3].role == Role::Cross);
+					CHECK(program[t + 3].hand == -step.hand);
+					crossings++;
+					if (hand == step.hand && t >= 4 && program[t - 4].kind == StepKind::SBend && program[t - 4].role == Role::Cross) grouped++;
+					hand = step.hand;
+				}
+				/* No crossing's S-bend is role None any more. */
+				if (step.kind == StepKind::SBend && t + 2 < program.size() && program[t + 1].kind == StepKind::Corner && program[t + 1].role == Role::Cross) CHECK(step.role == Role::Cross);
+			}
+		}
+	}
+	/* T 1, LL_RR x L_R 1, L_R x LL_RR 3, LL_RR x LL_RR 9. */
+	CHECK(crossings == 14);
+	/* LL_RR x LL_RR's group of two crossings on one edge is the one adjacent pair of one hand. */
+	CHECK(grouped == 1);
+}
+
+TEST_CASE("edge ends and joiner_div never name a Cross token", "[junction][topology]")
+{
+	using StepKind = JunctionTrackStep::Kind;
+	using Role = JunctionTrackStep::Role;
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	size_t named = 0;
+	for (const auto &[main, branch, edges] : {std::tuple<const char *, const char *, std::vector<uint32_t>>{"L_R", "LL_RR", {11}}, {"LL_RR", "LL_RR", {5, 20, 26}}}) {
+		const JunctionTopology topology = ArrangementTopology(main, branch);
+		const JunctionTrackPrograms programs = ProgramsOf(topology);
+		REQUIRE(!programs.edges.empty());
+		INFO(fmt::format("{} x {}", main, branch));
+		for (const uint32_t e : edges) {
+			INFO(fmt::format("edge {}", e));
+			const std::vector<JunctionTrackStep> &program = programs.edges[e];
+			REQUIRE(!program.empty());
+			/* The straight leg of a band split starts with a crossing's bend: that token is no end. */
+			CHECK(program.front().role == Role::Cross);
+			CHECK(programs.ends[e].first.token == JunctionTrackEdgeEnd::NO_TOKEN);
+		}
+		/* No edge names a Cross token as an end, anywhere. */
+		for (size_t e = 0; e < programs.edges.size(); e++) {
+			INFO(fmt::format("edge {}", e));
+			for (const JunctionTrackEdgeEnd *end : {&programs.ends[e].first, &programs.ends[e].second}) {
+				if (end->token == JunctionTrackEdgeEnd::NO_TOKEN) continue;
+				REQUIRE(end->token < programs.edges[e].size());
+				CHECK(programs.edges[e][end->token].role != Role::Cross);
+				CHECK((programs.edges[e][end->token].kind == StepKind::Corner || programs.edges[e][end->token].kind == StepKind::SBend || programs.edges[e][end->token].kind == StepKind::Fan));
+				named++;
+			}
+		}
+	}
+	CHECK(named > 0);
+	/* joiner_div: the square form of each of these edges' groups records without failing at the Corner (L_R x LL_RR e11 failed "a bridge over a run that is not a run"). */
+	for (const auto &[main, branch, edges] : {std::tuple<const char *, const char *, std::vector<uint32_t>>{"L_R", "LL_RR", {11}}, {"LL_RR", "LL_RR", {5, 20, 26}}}) {
+		const ProgramStages stages = StagesOf(main, branch);
+		const JunctionTopology &topology = stages.topology;
+		const JunctionTrackPrograms &programs = stages.programs;
+		REQUIRE(!programs.edges.empty());
+		JunctionPlacementChoices choices = JunctionFloorChoices(topology, stages.paths, stages.graph, stages.order, stages.structure, programs, spec);
+		REQUIRE(!choices.m.empty());
+		choices.form.resize(programs.edges.size());
+		for (size_t e = 0; e < programs.edges.size(); e++) choices.form[e].assign(programs.edges[e].size(), 0);
+		for (const uint32_t e : edges) choices.form[e][0] = 1;
+		const JunctionPlacementSystem system = RecordJunctionPlacementSystem(topology, stages.paths, stages.graph, stages.order, stages.structure, programs, spec, choices);
+		for (const std::string &failure : system.failed) {
+			INFO(fmt::format("{} x {}: {}", main, branch, failure));
+			CHECK(failure.find("a bridge over a run that is not a run") == std::string::npos);
+		}
+	}
+}
+
+TEST_CASE("ARR1 at the S seeds names no absent piece", "[junction][topology]")
+{
+	using StepKind = JunctionTrackStep::Kind;
+	size_t checked = 0;
+	for (const auto &[main, branch, edge] : {std::tuple<const char *, const char *, uint32_t>{nullptr, nullptr, 4}, {"L_R", "LL_RR", 11}}) {
+		const ProgramStages stages = StagesOf(main, branch);
+		REQUIRE(!stages.programs.edges.empty());
+		const JunctionTrackArrangement arrangement = ArrangeJunctionTrackGraph(stages.graph, stages.order, stages.programs);
+		/* The S seed's present bends: every bend token but a crossing's Corner. */
+		const auto present = [&](const JunctionTrackStep &token) { return token.kind == StepKind::Fan || token.kind == StepKind::SBend || (token.kind == StepKind::Corner && token.role != JunctionTrackStep::Role::Cross); };
+		INFO(fmt::format("{} edge {}", main == nullptr ? "T" : "L_R x LL_RR", edge));
+		const std::vector<JunctionTrackStep> &program = stages.programs.edges[edge];
+		for (const JunctionArrangementUnder &under : arrangement.unders) {
+			if (under.edge != edge) continue;
+			bool before = false, after = false;
+			for (size_t k = 0; k < program.size(); k++) {
+				if (k < under.token) before = before || present(program[k]);
+				if (k > under.token) after = after || present(program[k]);
+			}
+			const auto has = [&](JunctionUnderPiece piece) { return std::ranges::find(under.pieces, piece) != under.pieces.end(); };
+			CHECK(has(JunctionUnderPiece::PreviousBendTail) == before);
+			CHECK(has(JunctionUnderPiece::NextBendHead) == after);
+			checked++;
+		}
+	}
+	CHECK(checked > 0);
 }

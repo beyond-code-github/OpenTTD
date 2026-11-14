@@ -40,6 +40,8 @@ struct JunctionPlacementChoices {
 	std::vector<std::vector<int>> corner; ///< Per edge, per token: a joiner_div Corner's row span, 0 for other tokens.
 	std::vector<std::vector<int>> over; ///< Per edge, per token: for a single bridge's Over token over an S-bend, its sideways column t - 1 (DESIGN-G3 §G3.4a); empty means 0 everywhere.
 	std::vector<std::vector<int>> over_after; ///< Per edge, per token: for a single bridge's Over token, 1 when it passes over the crossed edge's S-bend after its Under (or Above) token, 0 the one before (DESIGN-G3 §G3.4b); empty means 0 everywhere.
+	std::vector<std::vector<int>> form; ///< Per edge, per token: at the first Cross token of a group of single-bridge crossings (the S-bend of its first quadruple), 0 when the group passes under its bridges by S-bends, 1 square (DESIGN-G4 §11.1); empty means 0 everywhere.
+	std::vector<std::vector<int>> run; ///< Per edge, per token: at the same token of a square group, the length of its run (the run's columns from the first Corner's last tile to the last Corner's first tile), 0 when the run is at its floor and free; empty means 0 everywhere.
 	int port_offset = 0; ///< The port rows' offset.
 	bool operator==(const JunctionPlacementChoices &) const = default;
 };

@@ -1213,8 +1213,12 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 				program.push_back(step(StepKind::Under, 0, x, heads_south ? 0 : 1));
 				program.push_back(step(StepKind::Under, 0, x, heads_south ? 1 : 0));
 			} else if (bridge_over(x, e)) {
-				program.push_back(step(StepKind::SBend, s_side_slot(e) < s_side_slot(x) ? +1 : -1, Step::NO_ROW));
+				/* The edge passes under the bridge by an S-bend or square: both forms' bends are tokens, the placement's choices say which are present (DESIGN-G4 §11.1). */
+				const int hand = s_side_slot(e) < s_side_slot(x) ? +1 : -1;
+				program.push_back(step(StepKind::SBend, hand, Step::NO_ROW, 0, Step::Role::Cross));
+				program.push_back(step(StepKind::Corner, hand, Step::NO_ROW, 0, Step::Role::Cross));
 				program.push_back(step(tunnel_over(x, e) ? StepKind::Above : StepKind::Under, 0, x));
+				program.push_back(step(StepKind::Corner, -hand, Step::NO_ROW, 0, Step::Role::Cross));
 			} else {
 				return fail("a crossing without a bridge is not ruled yet");
 			}
@@ -1263,7 +1267,7 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		if (program.empty()) continue;
 		if (edge.from.node) {
 			const bool split = graph.nodes[edge.from.index].split;
-			if (split && (program.front().kind == StepKind::Corner || (program.front().kind == StepKind::SBend && program.front().role == Step::Role::Diverge))) first.token = 0;
+			if (split && ((program.front().kind == StepKind::Corner && program.front().role != Step::Role::Cross) || (program.front().kind == StepKind::SBend && program.front().role == Step::Role::Diverge))) first.token = 0;
 		} else if (program.front().kind == StepKind::Fan) {
 			first.token = 0;
 		}
@@ -1366,7 +1370,8 @@ JunctionTrackArrangement ArrangeJunctionTrackGraph(const JunctionTrackGraph &gra
 	}
 
 	/* A doubled bridge's crossers carry two adjacent Under tokens of the same edge overhead, one per copy. */
-	auto is_bend = [](StepKind kind) { return kind == StepKind::Fan || kind == StepKind::Corner || kind == StepKind::SBend; };
+	/* A Corner of a crossing is absent at the S seeds, its S-bend present: the previous or next bend means the previous or next present one. */
+	auto is_bend = [](const JunctionTrackStep &token) { return token.kind == StepKind::Fan || (token.kind == StepKind::Corner && token.role != JunctionTrackStep::Role::Cross) || token.kind == StepKind::SBend; };
 	for (uint32_t e = 0; e < programs.edges.size(); e++) {
 		const std::vector<JunctionTrackStep> &program = programs.edges[e];
 		auto doubled_pair = [&](size_t a, size_t b) {
@@ -1377,9 +1382,9 @@ JunctionTrackArrangement ArrangeJunctionTrackGraph(const JunctionTrackGraph &gra
 			if (!((u + 1 < program.size() && doubled_pair(u, u + 1)) || (u > 0 && doubled_pair(u - 1, u)))) continue;
 			JunctionArrangementUnder under{e, u, program[u].index, program[u].copy, {JunctionUnderPiece::RunBefore, JunctionUnderPiece::RunAfter}};
 			bool before = false;
-			for (uint32_t k = 0; k < u; k++) before = before || is_bend(program[k].kind);
+			for (uint32_t k = 0; k < u; k++) before = before || is_bend(program[k]);
 			bool after = false;
-			for (size_t k = u + 1; k < program.size(); k++) after = after || is_bend(program[k].kind);
+			for (size_t k = u + 1; k < program.size(); k++) after = after || is_bend(program[k]);
 			if (before) under.pieces.push_back(JunctionUnderPiece::PreviousBendTail);
 			if (after) under.pieces.push_back(JunctionUnderPiece::NextBendHead);
 			arrangement.unders.push_back(std::move(under));

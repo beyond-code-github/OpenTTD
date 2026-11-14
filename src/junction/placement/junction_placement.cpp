@@ -99,7 +99,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		for (size_t e = 0; e < graph.edges.size(); e++) {
 			if (fixed->m[e].size() != programs.edges[e].size() || fixed->corner[e].size() != programs.edges[e].size()) return fail("the choices do not fit the programs of this track graph");
 		}
-		for (const std::vector<std::vector<int>> *shaped : {&fixed->over, &fixed->over_after}) {
+		for (const std::vector<std::vector<int>> *shaped : {&fixed->over, &fixed->over_after, &fixed->form, &fixed->run}) {
 			if (shaped->empty()) continue;
 			if (shaped->size() != graph.edges.size()) return fail("the choices do not fit the programs of this track graph");
 			for (size_t e = 0; e < graph.edges.size(); e++) {
@@ -222,6 +222,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		int hout = 0;
 		int hand = 0;
 		bool joiner_div = false; ///< A Corner from a band split: its size comes from the rows (F4).
+		bool absent = false; ///< A Cross bend of the form the choices do not give: size 0, no bend. It stands at the last point of the element before it and keeps that element's heading, so the chain's headings and runs are those of the present elements.
 		bool free_m = false; ///< A vertical S-bend: its size comes from the columns.
 		bool fan = false; ///< A band edge's fan at an S branch port (D230): a vertical S-bend sized from the columns that may be empty (m 0, no tiles).
 		int m = 1;
@@ -247,10 +248,31 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 		return elems.front();
 	};
+	/** The crossing groups of an edge's program (DESIGN-G4 §11.1): a Cross token's group is the run of consecutive quadruples (S-bend, Corner, Under or Above, Corner) of one hand it lies in. */
+	struct CrossGroups {
+		std::vector<int> first; ///< Per token, the S-bend token that starts its group, -1 for a token that is no Cross token.
+		std::vector<int> last; ///< Per token, the last token of its group, -1 for a token that is no Cross token.
+	};
+	auto cross_groups = [](const std::vector<Step> &program) {
+		CrossGroups groups{std::vector<int>(program.size(), -1), std::vector<int>(program.size(), -1)};
+		for (size_t t = 0; t + 3 < program.size(); t++) {
+			if (program[t].kind != StepKind::SBend || program[t].role != Step::Role::Cross) continue;
+			const bool joined = t >= 4 && program[t - 4].kind == StepKind::SBend && program[t - 4].role == Step::Role::Cross && program[t - 4].hand == program[t].hand;
+			const int head = joined ? groups.first[t - 4] : static_cast<int>(t);
+			for (size_t i = t; i < t + 4; i++) groups.first[i] = head;
+			for (size_t i = static_cast<size_t>(head); i < t + 4; i++) groups.last[i] = static_cast<int>(t + 3);
+		}
+		return groups;
+	};
+	/** The form of the crossing group that starts at token head of edge e: 0 S-bend, 1 square. */
+	auto cross_form = [&](uint32_t e, int head) { return fixed != nullptr && !fixed->form.empty() ? fixed->form[e][head] : 0; };
+	/** The square run's length of the group that starts at token head of edge e, 0 when free. */
+	auto cross_run = [&](uint32_t e, int head) { return fixed != nullptr && !fixed->run.empty() ? fixed->run[e][head] : 0; };
 	for (uint32_t e = 0; e < edge_count; e++) {
 		if (is_row_edge(e)) continue;
 		const JunctionTrackEdge &edge = graph.edges[e];
 		const std::vector<Step> &program = programs.edges[e];
+		const CrossGroups groups = cross_groups(program);
 		const int start = edge.from.node ? node_pt[edge.from.index] : port_pt[edge.from.index];
 		const int stop = edge.to.node ? node_pt[edge.to.index] : port_pt[edge.to.index];
 		/* A band edge carries exit paths or joiner paths, never both; its start heading comes from the programs' edge ends (a row's heading at a row node, else south for exit paths from the main line and north for joiner paths from the S side). */
@@ -269,6 +291,23 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			Elem el;
 			el.tok = static_cast<int>(t);
 			el.hin = cur;
+			if (step.role == Step::Role::Cross && (step.kind == StepKind::Corner || step.kind == StepKind::SBend)) {
+				/* Of a crossing's bends, the S-bend is present in the S-bend form; in the square form the group's first Corner and its last are (DESIGN-G4 §11.1). */
+				const int head = groups.first[t];
+				const bool square = cross_form(e, head) != 0;
+				const bool present = step.kind == StepKind::SBend ? !square : (square && (static_cast<int>(t) == head + 1 || static_cast<int>(t) == groups.last[t]));
+				if (!present) {
+					el.k = step.kind == StepKind::Corner ? Elem::K::Corner : Elem::K::SBend;
+					el.absent = true;
+					el.m = 0;
+					el.hand = step.hand;
+					el.index = step.index;
+					el.hout = cur;
+					el.first = el.last = elems.back().last;
+					elems.push_back(el);
+					continue;
+				}
+			}
 			if (step.kind == StepKind::Corner || step.kind == StepKind::SBend || step.kind == StepKind::Fan) {
 				el.k = step.kind == StepKind::Corner ? Elem::K::Corner : Elem::K::SBend;
 				el.fan = step.kind == StepKind::Fan;
@@ -279,7 +318,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				/* A bend is pinned to the node it serves when the programs' edge end names its token, never by its position (DESIGN-G2 §G2.6). */
 				el.first = edge.from.node && programs.ends[e].first.token == static_cast<uint32_t>(t) ? start : new_pt();
 				el.last = edge.to.node && programs.ends[e].second.token == static_cast<uint32_t>(t) ? stop : new_pt();
-				el.joiner_div = step.kind == StepKind::Corner && t == 0 && from_band_split;
+				el.joiner_div = step.kind == StepKind::Corner && step.role != Step::Role::Cross && t == 0 && from_band_split;
 				el.free_m = step.kind != StepKind::Corner && (cur == 0 || cur == 2);
 				cur = el.hout;
 			} else if (step.kind == StepKind::Over || step.kind == StepKind::Tunnel) {
@@ -456,9 +495,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						bend_id[&el] = id;
 						const char *kind = el.k == Elem::K::Corner ? "Corner" : el.k == Elem::K::Fan ? "Fan" : (el.fan ? "SFan" : "SBend");
 						const char *source = el.free_m ? "free" : el.k == Elem::K::Fan ? "port_rows" : el.k == Elem::K::Corner ? (el.joiner_div ? "corner_rows" : "fixed_k") : (el.index != NO_ROW ? "rows" : "one_row");
-						const int floor = el.free_m ? (el.fan ? 0 : 1) : el.k == Elem::K::Corner ? k : (el.k == Elem::K::Fan ? 0 : (el.index != NO_ROW ? 0 : 1));
+						const int floor = el.absent ? 0 : el.free_m ? (el.fan ? 0 : 1) : el.k == Elem::K::Corner ? k : (el.k == Elem::K::Fan ? 0 : (el.index != NO_ROW ? 0 : 1));
 						const bool span_known = el.joiner_div && rows_known && static_cast<size_t>(std::max(el.first, el.last)) < vy.size();
-						const int size = el.k == Elem::K::Corner ? (span_known ? std::abs(vy[el.first] - vy[el.last]) : k) : el.m;
+						const int size = el.absent ? 0 : el.k == Elem::K::Corner ? (span_known ? std::abs(vy[el.first] - vy[el.last]) : k) : el.m;
 						now.bends.push_back({id, static_cast<int>(e), c, el.tok, kind, source, el.hand, el.hin, el.first, el.last, el.index != NO_ROW ? item_pt[el.index] : -1, size, floor, el.k == Elem::K::Fan ? port_row[el.slot] : 0});
 					}
 					const char *kk = el.k == Elem::K::Tile ? "Tile" : el.k == Elem::K::Corner ? "Corner" : el.k == Elem::K::SBend ? "SBend" : el.k == Elem::K::Heads ? "Heads" : el.k == Elem::K::Fan ? "Fan" : el.k == Elem::K::HeadsPair ? "HeadsPair" : "Prio";
@@ -671,7 +710,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				for (Elem &el : *elems) {
 					if (el.k != Elem::K::Corner && el.k != Elem::K::SBend && el.k != Elem::K::Fan) continue;
 					const size_t bend = id++;
-					if (el.k == Elem::K::Fan) {
+					if (el.absent) {
+						el.offs.clear();
+					} else if (el.k == Elem::K::Fan) {
 						el.m = given.m[bend];
 						el.offs.clear();
 						if (el.m != 0) {
@@ -820,7 +861,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		if (!programs.copies[e].empty()) continue;
 		const std::vector<Step> &program = programs.edges[e];
 		for (const Elem &el : chain[e]) {
-			if (el.k != Elem::K::SBend || VX[el.hin] == 0) continue;
+			if (el.k != Elem::K::SBend || el.absent || VX[el.hin] == 0) continue;
 			/* Kind 4: toward the node at the end of the edge when no emitting token follows, toward the one at its start when none precedes. */
 			bool before = false, after = false;
 			for (size_t t = 0; t < program.size(); t++) {
@@ -996,8 +1037,16 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				route.start = port_pt[paths[p].from];
 				route.sign = 0;
 				auto note = [&](int heading) { return VX[heading] == 0 || (route.sign == 0 ? (route.sign = VX[heading]) != 0 : route.sign == VX[heading]); };
+				/* A square group whose run the choices fix is a fixed span: its Corners and run add constants to the units, so its horizontal heading is not the route's (DESIGN-G4 §11.5). The span's run r is the length of the run of the group's first Corner's bend, 0 for any other bend. */
+				std::vector<int> span_run(bends.size(), 0);
+				for (size_t i = 0; i < bends.size(); i++) {
+					const Elem &el = *bends[i].el;
+					if (el.k != Elem::K::Corner || el.tok < 0 || programs.edges[bends[i].edge][el.tok].role != Step::Role::Cross) continue;
+					const int head = cross_groups(programs.edges[bends[i].edge]).first[el.tok];
+					if (el.tok == head + 1 && cross_form(bends[i].edge, head) != 0) span_run[i] = cross_run(bends[i].edge, head);
+				}
 				bool one_heading = note(start_heading);
-				for (size_t i = 0; i + 1 < pieces.size(); i++) one_heading = one_heading && note(pieces[i].heading);
+				for (size_t i = 0; i + 1 < pieces.size(); i++) one_heading = one_heading && (span_run[i] > 0 || note(pieces[i].heading));
 				if (!one_heading) { build_why = "path " + str(static_cast<int>(p)) + " has two horizontal headings"; return false; }
 				if (route.sign == 0) route.sign = 1;
 
@@ -1042,6 +1091,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					const int ysign = seg_of[i] < 0 ? 0 : (route.seg_sign[seg_of[i]] != 0 ? route.seg_sign[seg_of[i]] : 1);
 					for (const auto &[units, hand] : q.curves) route.curves.push_back({b.pt, numeric_y ? w + 2 * route.sign * q.before_dx + units : 0, v + 2 * ysign * q.before_dy + units, seg_of[i], hand, b.edge, b.row});
 					w += 2 * route.sign * (q.before_dx - q.close_dx) + q.close_units;
+					if (span_run[i] > 0 && i + 1 < bends.size() && VX[q.heading] == -route.sign) {
+						/* The span runs against the route's sense: its units are 2 n for its n steps, the formula counts -2 n. n is the steps from the axis tile after this Corner to the one before the group's last Corner. */
+						const int n = (k + span_run[i]) + VX[q.heading] * (pieces[i + 1].before_dx - q.close_dx);
+						w += 4 * n;
+					}
 					v += 2 * ysign * (q.before_dy - q.close_dy) + q.close_units;
 					y = b.y + q.close_dy;
 					heading = q.heading;
@@ -1169,8 +1223,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				const uint32_t e_out = edges[i + 1];
 				const Elem *leaving = nullptr;
 				const Elem *joining = nullptr;
-				if (!is_row_edge(e_out) && chain[e_out].size() > 2 && chain[e_out][1].first == chain[e_out][0].first && chain[e_out][1].k != Elem::K::Heads) leaving = &chain[e_out][1];
-				if (!is_row_edge(e_in) && chain[e_in].size() > 2 && chain[e_in][chain[e_in].size() - 2].last == chain[e_in].back().first && chain[e_in][chain[e_in].size() - 2].k != Elem::K::Heads) joining = &chain[e_in][chain[e_in].size() - 2];
+				if (!is_row_edge(e_out) && chain[e_out].size() > 2 && chain[e_out][1].first == chain[e_out][0].first && chain[e_out][1].k != Elem::K::Heads && !chain[e_out][1].absent) leaving = &chain[e_out][1];
+				if (!is_row_edge(e_in) && chain[e_in].size() > 2 && chain[e_in][chain[e_in].size() - 2].last == chain[e_in].back().first && chain[e_in][chain[e_in].size() - 2].k != Elem::K::Heads && !chain[e_in][chain[e_in].size() - 2].absent) joining = &chain[e_in][chain[e_in].size() - 2];
 				if (leaving != nullptr) {
 					node_bits[node] = node_bits[node] | bend_half(*leaving, false);
 				} else if (joining != nullptr) {
@@ -1698,6 +1752,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			}
 			for (size_t i = 0; i < elems.size(); i++) {
 				const Elem &el = elems[i];
+				if (el.absent) continue; // No bend: it stands on the element before it, and the run is stated between the present elements.
 				if (el.k == Elem::K::Fan) {
 					/* The fan is its port row's S-bend: m - 1 columns across, first at the port row and last at its item row; empty, it lies on the port's column (R3). */
 					why("fan size", e, UINT32_MAX, (end_level(edge.from) - 1) / 2);
@@ -1770,8 +1825,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					why("bridge heads", e);
 					eq(VX[el.hin] != 0 ? 1 : 0, el.last, el.first, 0);
 				}
-				if (i + 1 >= elems.size()) continue;
-				const Elem &next = elems[i + 1];
+				size_t next_index = i + 1;
+				while (next_index < elems.size() && elems[next_index].absent) next_index++;
+				if (next_index >= elems.size()) continue;
+				const Elem &next = elems[next_index];
 				if (next.k == Elem::K::Prio) continue; // The prio element is no track of the chain: nothing runs to it from the end tile.
 				if (next.first == el.last) continue;
 				/* An empty fan joins its port tile; the run on its node side stays (D230). */
@@ -1796,7 +1853,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					return o.slot >= 0 ? FloorKind::Port : (edge.to.node ? FloorKind::Node : FloorKind::PrioNode);
 				};
 				/* The element before the end tile of a leg with a prio element: its run to the prio element's first tile is the floor, the run on to the merge only keeps the lane row (the element's span is exact). */
-				const bool before_prio = prio_el != nullptr && i + 3 == elems.size();
+				const bool before_prio = prio_el != nullptr && next_index + 2 == elems.size();
 				const int dist = before_prio ? 0 : JunctionRunFloor(floor_kind(el), floor_kind(next), spec);
 				if (before_prio) {
 					why("prio element", e, edge.to.index, (end_level(graph.edges[e].from) - 1) / 2); // The prio element's coverage is a floor on its first tile (D217).
@@ -1804,7 +1861,17 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				} else {
 					why("chain run", e);
 				}
-				if (next.k == Elem::K::Tile && i + 2 == elems.size() && !edge.to.node) exact = true;
+				if (next.k == Elem::K::Tile && next_index + 1 == elems.size() && !edge.to.node) exact = true;
+				int run_length = dist;
+				if (el.k == Elem::K::Corner && el.tok >= 0 && programs.edges[e][el.tok].role == Step::Role::Cross) {
+					/* A square group's run, from its first Corner to its last, is r when the choices give it. */
+					const CrossGroups run_groups = cross_groups(programs.edges[e]);
+					const int head = run_groups.first[el.tok];
+					if (el.tok == head + 1 && cross_run(e, head) > 0) {
+						run_length = cross_run(e, head);
+						exact = true;
+					}
+				}
 				if (el.k == Elem::K::Tile && i == 0 && !edge.from.node && !in_out) exact = true;
 				const auto port_tile = [](const Elem &o) { return o.k == Elem::K::Tile && o.slot >= 0; };
 				if (in_out && (port_tile(el) || port_tile(next))) {
@@ -1814,7 +1881,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					along(el.hout, next.first, el.last, dist, exact);
 					continue;
 				}
-				run(el.hout, next.first, el.last, dist, exact);
+				run(el.hout, next.first, el.last, run_length, exact);
 			}
 
 			/* A single bridge passes over an S-bend of the edge it crosses beside its Under (or Above) token, the one before it or the one after it as a choice (default before), in the column t of the S-bend, 1 unless a choice says otherwise (D113, F4, DESIGN-G3 §G3.4a, §G3.4b). */
@@ -1823,12 +1890,59 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				const std::vector<Elem> &other = chain[el.cross];
 				const std::vector<JunctionTrackStep> &crossed_program = programs.edges[el.cross];
 				const auto is_crossing = [&](int tok) { return tok >= 0 && static_cast<size_t>(tok) < crossed_program.size() && (crossed_program[tok].kind == StepKind::Under || crossed_program[tok].kind == StepKind::Above) && crossed_program[tok].index == e; };
+				/* The crossing's group on the crossed edge and its form (DESIGN-G4 §11.1). */
+				int token = -1;
+				for (size_t t = 0; t < crossed_program.size(); t++) {
+					if (is_crossing(static_cast<int>(t))) token = static_cast<int>(t);
+				}
+				const CrossGroups crossed_groups = cross_groups(crossed_program);
+				const int group_head = token >= 0 ? crossed_groups.first[token] : -1;
+				if (group_head >= 0 && cross_form(el.cross, group_head) != 0) {
+					/* The edge passes under the bridge on the run of its square group: the bridge's column lies strictly inside the run and the run's row strictly between the heads, and the group's bridges keep their token order along the run (DESIGN-G4 §11.2). */
+					const Elem *corner1 = nullptr;
+					const Elem *corner2 = nullptr;
+					for (const Elem &o : other) {
+						if (o.k != Elem::K::Corner || o.absent) continue;
+						if (o.tok == group_head + 1) corner1 = &o;
+						if (o.tok == crossed_groups.last[group_head]) corner2 = &o;
+					}
+					if (corner1 == nullptr || corner2 == nullptr || VX[corner1->hout] == 0 || VX[corner1->hout] != VX[corner2->hin]) { build_why = "a bridge over a run that is not a run"; return false; }
+					const int dir = VX[corner1->hout];
+					const int south_head = el.hin == 0 ? el.first : el.last;
+					const int north_head = el.hin == 0 ? el.last : el.first;
+					why("bridge over run", e, el.cross);
+					if (dir > 0) {
+						ge(0, el.first, corner1->last, 1);
+						ge(0, corner2->first, el.first, 1);
+					} else {
+						ge(0, corner1->last, el.first, 1);
+						ge(0, el.first, corner2->first, 1);
+					}
+					ge(1, corner1->last, north_head, 1);
+					ge(1, south_head, corner1->last, 1);
+					/* The bridge of the crossing before this one in the group lies before it along the run. */
+					for (int before_token = token - 1; before_token > group_head; before_token--) {
+						if (crossed_program[before_token].kind != StepKind::Under && crossed_program[before_token].kind != StepKind::Above) continue;
+						for (const Elem &previous : chain[crossed_program[before_token].index]) {
+							if (previous.k != Elem::K::Heads || previous.cross != el.cross) continue;
+							if (dir > 0) ge(0, el.first, previous.first, 1); else ge(0, previous.first, el.first, 1);
+						}
+						break;
+					}
+					continue;
+				}
 				const Elem *before = nullptr;
 				const Elem *after = nullptr;
+				/* The S-bends of the S-bend form next to the crossing: the Corners of the crossing sit between them and its Under token and are skipped. */
+				const auto is_cross_corner = [&](int tok) { return tok >= 0 && static_cast<size_t>(tok) < crossed_program.size() && crossed_program[tok].kind == StepKind::Corner && crossed_program[tok].role == Step::Role::Cross; };
 				for (const Elem &o : other) {
-					if (o.k != Elem::K::SBend || o.fan || o.tok < 0) continue;
-					if (is_crossing(o.tok + 1)) before = &o;
-					if (is_crossing(o.tok - 1)) after = &o;
+					if (o.k != Elem::K::SBend || o.fan || o.absent || o.tok < 0) continue;
+					int next_tok = o.tok + 1;
+					while (is_cross_corner(next_tok)) next_tok++;
+					int previous_tok = o.tok - 1;
+					while (is_cross_corner(previous_tok)) previous_tok--;
+					if (is_crossing(next_tok)) before = &o;
+					if (is_crossing(previous_tok)) after = &o;
 				}
 				if (before == nullptr && after == nullptr) { build_why = "no crossed sbend"; return false; }
 				const int chosen = fixed != nullptr && !fixed->over_after.empty() ? fixed->over_after[e][el.tok] : 0;
@@ -2196,7 +2310,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						const Axis axis = VX[el.hin] != 0 ? Axis::X : Axis::Y;
 						group(el.first, 0, vy[el.first], JunctionFactKind::Straight, axis, e, UINT32_MAX, -1);
 						group(el.last, 0, vy[el.last], JunctionFactKind::Straight, axis, e, UINT32_MAX, -1);
-					} else if (!(el.fan && el.m == 0)) {
+					} else if (!(el.fan && el.m == 0) && !el.absent) {
 						bend_heights(el.first, vy[el.first], el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, -1, node_of_pt[el.first], node_of_pt[el.last]);
 						for (size_t j = 0; j < el.offs.size(); j++) {
 							const TileIndexDiffC &o = el.offs[j];
@@ -2424,7 +2538,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				plan_clearance(fixed->port_offset);
 				phase = 1;
 				refresh(false, measure(false));
-				if (!build()) return build_failed();
+				if (!build()) {
+					if (system != nullptr) system->failed.push_back("Y build: " + build_why);
+					return build_failed();
+				}
 				if (!solve(vy)) return solve_failed();
 			}
 		}
@@ -2462,7 +2579,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			system->failed = at_failed;
 			if (y_solved) system->solved = {vx, vy};
 		} else {
-			if (!build()) return build_failed();
+			if (!build()) {
+				if (system != nullptr) system->failed.push_back("X build: " + build_why);
+				return build_failed();
+			}
 			if (record != nullptr) return JunctionTrackPlacement{};
 			if (!solve(vx)) return solve_failed();
 			if (system != nullptr) system->solved = {vx, vy};
@@ -2609,6 +2729,20 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				if (t.y > std::min(vy[heads.near], vy[heads.far]) && t.y < std::max(vy[heads.near], vy[heads.far])) found.push_back({static_cast<int16_t>(x), static_cast<int16_t>(t.y)});
 			}
 		}
+		if (!heads.row) {
+			/* The tiles of the edge's horizontal runs, which edge_tiles leaves out: a square crossing passes under a column's bridge on one. */
+			const std::vector<Elem> &elems = chain[edge];
+			for (size_t i = 0; i + 1 < elems.size(); i++) {
+				const Elem &el = elems[i];
+				const Elem &next = elems[i + 1];
+				if (next.first == el.last || VX[el.hout] == 0) continue;
+				const int y = vy[el.last];
+				if (y <= std::min(vy[heads.near], vy[heads.far]) || y >= std::max(vy[heads.near], vy[heads.far])) continue;
+				for (int x = vx[el.last] + VX[el.hout]; VX[el.hout] > 0 ? x < vx[next.first] : x > vx[next.first]; x += VX[el.hout]) {
+					if (x == line) found.push_back({static_cast<int16_t>(x), static_cast<int16_t>(y)});
+				}
+			}
+		}
 		return found;
 	};
 
@@ -2651,7 +2785,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				for (const Elem &el : elems) {
 					if (el.tok == static_cast<int>(t)) {
 						const TileIndexDiffC first = tile(el.first);
-						const TileIndexDiffC last = {static_cast<int16_t>(vx[el.first] + el.offs.back().x), static_cast<int16_t>(vy[el.first] + el.offs.back().y)};
+						/* An absent bend is no tile: its span is one tile, which the render skips. */
+						const TileIndexDiffC last = el.absent ? first : TileIndexDiffC{static_cast<int16_t>(vx[el.first] + el.offs.back().x), static_cast<int16_t>(vy[el.first] + el.offs.back().y)};
 						result.edges[e].push_back({first, last});
 					}
 				}
