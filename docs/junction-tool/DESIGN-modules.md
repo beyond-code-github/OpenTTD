@@ -91,7 +91,8 @@ Then:
 - H1. Composition: exits + bundle T + joins; LL² any (PSG 227 pattern) places, checker clean, hover under 100 ms.
 - H2. LLL_RRR x LL_RR and LLL_RRR x LLL_RRR (blocks by rule for 3 lanes).
 - H3. Every pattern as a toggle (D284): a test over every pattern x every line pair places with the checker clean.
-- Still open, independent: tunnels skip bridge-only rule families; notation gaps up to 12.
+- Notation gaps up to 12: DONE (45d62cac0d, painter unchanged, every heading and hand 0..12).
+- Tunnels and the bridge-only families: PARKED (2026-11-15, stop on wt-tunfam). Skipping the "bridge over S-bend" rows for a tunnel (one `continue` on `structure.bridges[..].tunnel` in the Heads loop, placement.cpp ~2489-2568) makes the T with a tunnel fail: "occupancy (edge 3) [edge 3 and edge 8 on row 1]". The family does two jobs: it keeps the crossed S-bend inside the span (which also keeps it off the crossing edge's tiles on that row) and it restricts the S-bend's diagonal to columns the deck allows. A tunnel needs the first, not the second; the fix is to split the family. WIP skip: scratchpad skip_wip.cpp (session 021af430).
 
 ## 7. Throughput (later, D279)
 A score per pattern so the tool can trade footprint against throughput: trains per hour through each movement under the benchmark train (D138/D280), from the existing train model and signal blocks. Needed before the tool chooses patterns itself; not needed for steps 1-6.
