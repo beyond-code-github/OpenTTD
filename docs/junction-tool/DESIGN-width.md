@@ -343,6 +343,8 @@ The largest step (about an hour and a half). Split if needed: 5a1 chains, transl
 - 5b.5 Stop if the occupancy refuses the nested Corners (report; Q-W1 option b is the fallback, not to be chosen by the agent).
 - 5b.6 Under an hour.
 
+**5b PARKED (2026-11-15, agent stop, nothing committed).** Dropping the refusal alone: "occupancy (edge 7) [edge 7 and edge 4 on row 6]". With all four (bridge chain, crosser chain) pairs: the rules contradict: chain run (8) <- block attach (8, node 1) <- block attach (1, node 1) <- chain run (1) <- S port spacing <- chain run (10) <- block attach (10, node 4) <- block attach (4, node 4) <- chain run (4) <- Corner size (4) <- bridge over run (8, node 4) x2 <- Corner size (4) <- ... The pair (track 1 bridge, track 1 crosser) is the contradicting one. Likely: track 1's heads at track 0's + (+1,+1) while track 1's run row moves by -eta, and edge 8's length between its fixed blocks cannot hold the strict-inside rows. Options for the engineer: relax which pairs relate, a different stagger for band bridge pairs, Q-W1 (b) tight Corners. The S-bend form places, so the T does not need 5b.
+
 ## Step 5c. The joint loop on the bundle T
 - 5c.1 Data: none expected.
 - 5c.2 Algorithm: none expected. The recording already walks both chains (`:536`). Lengths are per (bend, copy), tied by the recorded translation rows. A form is per group, shared by both tracks. `SolveJunctionJoint` reads choices from copy 0 (`junction_joint.cpp:503, :538, :669`) and counts signals per (path, track) (`:461-482`).
