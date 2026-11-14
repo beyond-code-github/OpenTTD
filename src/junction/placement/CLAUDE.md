@@ -36,6 +36,7 @@
 - In a bundle graph a band edge's track 1 is track 0 translated by D per present Corner, S-bend, Fan and bridge head pair, with no free variable of its own: D = R(h) for an S-bend or Fan, R(h) - eta V(h) for a Corner (the outer Corner is the inner one shifted, the same size: D292), R(h) - V(h) for heads (one line right, one tile upstream: D287); its free S-bends take track 0's size.
 - A band bridge pair stands on the column axis with the stagger; its heads hug both tracks of the crosser, the rows widening by the lean of the crosser's S-bend; a bridge pair over an S-bend that leans downstream is refused as not ruled (D293), and a square crossing of a bundle is refused as not ruled; the S-bend form is the only form at width 2.
 - The width-2 T places on flat ground.
+- At width 2 the render makes one route per (edge, track), from the track's start tile (port tile or block attach tile) to its end tile, each walking its own program (`programs.edges` for track 0, `programs.copies` for track 1) and bridge pair head; block interiors stay empty until the block templates exist (D295).
 - The junction footprint ends one tile beyond the outermost signal on each leg; every track of a leg ends flush at the footprint edge.
 - Planar signal windows and node footprints: a node has a footprint from the rules (the split or merge tile, required straight runs, prio coverage) and a window along its line.
 
