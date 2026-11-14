@@ -82,7 +82,8 @@ Core (graph/MILP, RECON-bundle-copies steps 2-12):
 - C6. Placement chains for parallel tracks (row and band). C7. Render, one route per path. C8. Signals and checker for parallel tracks.
 - C9. Series cut for bundle bridges. C10. Parallel tunnels.
 Blocks (template generator):
-- B1. Seam: what a template block hands render, signals, checker and build (recon first).
+- B1. Seam (RECON-template-seam): a template emits one route per lane track (move strings, rasterised by the route tools) plus a small graph and per-piece tags, so the signal pass, level solve, pricing and build run unchanged.
+- Valid by construction (D193): each template encodes its rules (signal spacing, TL, prio room and length, bridge-head clearance); the hover never runs the checker. Block tests assert the template's invariants directly (reach per pattern, spacing, prio length, every track signalled); `CheckJunctionRules` runs only as the test oracle on composed hubs with the hub topology, and a violation there is a missing template rule.
 - B2. Join block alone, per pattern (227 first, then keep, balanced no prios): two bundles in, two lanes out, flat ground, checker clean, reach as the pattern says.
 - B3. Exit block alone, the same way.
 Then:
