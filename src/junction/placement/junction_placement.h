@@ -280,6 +280,9 @@ struct JunctionTrackPlacement {
 	JunctionPlacementChoices choices; ///< The choices this placement was solved with.
 	std::vector<JunctionPlacementReason> why; ///< On failure: the explanation chain of the contradiction.
 	std::vector<int> columns; ///< The column of every placement point (x_floors refer to these ids).
+	std::vector<std::vector<TileIndexDiffC>> track_ports; ///< In a bundle graph, per port slot, per track: its boundary tile (track 0's is ports[s]); empty at width 1.
+	std::vector<std::array<std::vector<TileIndexDiffC>, 2>> attach; ///< In a bundle graph, per edge, per end (start, end), per track: its tile at a block node; empty at a port end and at width 1.
+	std::vector<TileIndexDiffC> block_ends; ///< In a bundle graph, per node, its footprint's downstream end on trunk track 0 (nodes[v] is the upstream end, the anchor); empty at width 1.
 	JunctionTerraform terraform; ///< The height solve's plan (D218), empty on flat ground.
 	Money height_cost = 0; ///< Terraform, foundations and clearing of the chosen levels.
 	std::vector<std::pair<TileIndexDiffC, int8_t>> track_levels; ///< The level solve's track level per track tile (placement frame), for the ghost and the build check.
