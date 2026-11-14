@@ -47,3 +47,6 @@ So his order (the two choice legs of different arms merge first, then the fixed 
 
 ## Code changes (patch)
 ChoicePerLine enum member; ExpandJunctionLanes branch (through movements follow it; the pairing case in the inner switch is a no-op `break` because that branch handles it first); JUNCTION_BRIDGE_MAX_CROSSERS 4; probe test `src/tests/junction/placement/junction_probe_choice.cpp` tagged `[.probe]`, registered in placement/CMakeLists.txt (the registration point for placement tests; src/tests/CMakeLists.txt only adds the subdirectory).
+
+## Variant: through lanes keep, turning movements choose (orchestrator, inline)
+`PROBE_THROUGH_KEEP=1` (probe toggle in `ExpandJunctionLanes`, WIP on wt-choice-probe): 16 paths, graph 20 nodes, 36 edges, 24 crossings. Passes ordering; placement fails in under 1 s (no timeout, D288): the placement rules contradict each other (chain run e17 <- bridge over S-bend e3 <- bridge heads e3 <- ... <- S-bend size e17), and the joint loop is infeasible (chain run e5 <- Corner size e10 <- prio element e14 node 17 row 1 <- series bridge heads e14 <- hug crossers e14 <- bridge over S-bend e18/e19 <- lane split run e21 node 9 row 2 <- hug e21 <- lane split run e33 node 17 <- ... S-bend size e34). Same families as LL² keep and any (PROBE-ll2-elastic): the threaded core does not place; the D286 block design is the way on.
