@@ -39,7 +39,7 @@ Reach: the choice crossing reaches every output lane from every input lane, so i
 
 Prios follow the pattern (D282): a prio is not added at every join by default. The pattern says which track at a join has priority and which yields, or that none does. Seen: PSG 227 gives the prio to the fixed lane and lets both choice lanes yield; in a choice crossing the choice is by the free bridge or tunnel, and whether its join needs a prio is part of that pattern; keep gives the through lane priority over the turning track (today's prio element).
 
-## 4. Placement under blocks (proposal, orchestrator)
+## 4. Placement under blocks (D286: split early, cross in the core, choose and merge late)
 A three-arm hub (our LL² is a T, like PSG 227) is three kinds of block. Bundle = the tracks of one (input arm, destination) pair, running side by side.
 
 1. **Exit block** (one per input arm). Each input lane splits by destination; the branches regroup into one bundle per destination, so the two lanes' branches for one destination end up adjacent. For two lanes and two destinations that is two splits and one crossing (lane 1's far branch over lane 2's near branch). Output: two bundles of two tracks, one per destination.
