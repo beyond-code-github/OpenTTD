@@ -93,11 +93,19 @@ struct JunctionTrackEnd {
 	bool operator==(const JunctionTrackEnd &) const = default;
 };
 
+/** What a track-graph node is built as (D289): a plain two-legged split or merge, or a block whose shape a template sets. */
+enum class JunctionBlockKind : uint8_t {
+	Plain, ///< A two-legged split or merge.
+	Exit, ///< An exit block: each lane of a bundle splits by destination and the branches regroup into one bundle per destination.
+	Join, ///< A join block: the bundles bound for one out group meet its lanes by the balancing pattern.
+};
+
 /** A switch of the track graph: where an in slot's paths split, or where an out slot's paths merge (DESIGN-G1 §7; D187, D204). */
 struct JunctionTrackNode {
 	bool split; ///< In an in slot's split tree; else in an out slot's merge tree.
 	uint16_t slot; ///< The port slot whose tree holds it.
 	int level; ///< 2r+1 on row r; 2b in band b (band b north of row b; band R south of the last row) (DESIGN-G1 §8, D204, D205).
+	JunctionBlockKind block = JunctionBlockKind::Plain; ///< Plain except in a bundle graph.
 	bool operator==(const JunctionTrackNode &) const = default;
 };
 
@@ -112,6 +120,7 @@ struct JunctionTrackEdge {
 	JunctionTrackEnd from;
 	JunctionTrackEnd to;
 	std::vector<uint16_t> paths; ///< Indices into the lane paths, ascending.
+	uint8_t width = 1; ///< Tracks side by side: 1, or the bundle's lane count in a bundle graph.
 	bool operator==(const JunctionTrackEdge &) const = default;
 };
 
@@ -129,6 +138,13 @@ struct JunctionTrackGraph {
  * @param error Receives the reason when the result is empty (no nodes, no edges).
  */
 JunctionTrackGraph BuildJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, std::string *error);
+
+/**
+ * The bundle graph of a topology (D289): the track graph of the topology with every group taken as one lane, so each movement is one bundle; every edge's width is the lane count, and with more than one lane each split node is an exit block and each merge node a join block. Paths are those of the one-lane topology.
+ * Every group must have the same lane count, else the error "a bundle graph needs equal lane counts".
+ * @param error Receives the reason when the result is empty.
+ */
+JunctionTrackGraph BuildJunctionBundleGraph(const JunctionTopology &topology, std::string *error);
 
 /** A node, or an edge crossing the lane, at its place along a main-lane row. */
 struct JunctionTrackRowItem {

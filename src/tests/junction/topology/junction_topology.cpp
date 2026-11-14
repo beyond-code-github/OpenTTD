@@ -209,6 +209,54 @@ TEST_CASE("topology: the T's track graph", "[junction][topology]")
 	CHECK(graph.crossings == Pairs{{4, 5}, {4, 8}, {5, 8}});
 }
 
+TEST_CASE("topology: LL_RR x LL_RR bundle graph is the T's graph two wide", "[junction][topology]")
+{
+	const JunctionLineSpec wide = ParseLineNotation("LL_RR").spec;
+	const JunctionLineSpec one = ParseLineNotation("L_R").spec;
+	std::string error;
+	const JunctionTrackGraph bundle = BuildJunctionBundleGraph(MakeJunctionHubTopology(wide, wide), &error);
+	REQUIRE(bundle.nodes.size() == 6);
+
+	const JunctionTopology t = MakeJunctionHubTopology(one, one);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, ExpandJunctionLanes(t, &error), &error);
+	REQUIRE(bundle.edges.size() == graph.edges.size());
+	for (size_t i = 0; i < graph.edges.size(); i++) {
+		CHECK(bundle.edges[i].kind == graph.edges[i].kind);
+		CHECK(bundle.edges[i].from == graph.edges[i].from);
+		CHECK(bundle.edges[i].to == graph.edges[i].to);
+		CHECK(bundle.edges[i].paths == graph.edges[i].paths);
+		CHECK(bundle.edges[i].width == 2);
+	}
+	CHECK(bundle.path_edges == graph.path_edges);
+	CHECK(bundle.crossings == graph.crossings);
+	CHECK(bundle.crossings.size() == 3);
+	for (const JunctionTrackNode &node : bundle.nodes) {
+		CHECK(node.block == (node.split ? JunctionBlockKind::Exit : JunctionBlockKind::Join));
+	}
+}
+
+TEST_CASE("topology: a one-lane bundle graph is the track graph", "[junction][topology]")
+{
+	const JunctionLineSpec one = ParseLineNotation("L_R").spec;
+	const JunctionTopology t = MakeJunctionHubTopology(one, one);
+	std::string error;
+	const JunctionTrackGraph bundle = BuildJunctionBundleGraph(t, &error);
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(t, ExpandJunctionLanes(t, &error), &error);
+	REQUIRE(!bundle.nodes.empty());
+	CHECK(bundle.nodes == graph.nodes);
+	CHECK(bundle.edges == graph.edges);
+	CHECK(bundle.path_edges == graph.path_edges);
+	CHECK(bundle.crossings == graph.crossings);
+}
+
+TEST_CASE("topology: a bundle graph needs equal lane counts", "[junction][topology]")
+{
+	std::string error;
+	const JunctionTrackGraph bundle = BuildJunctionBundleGraph(MakeJunctionHubTopology(ParseLineNotation("LLL_RRR").spec, ParseLineNotation("LL_RR").spec), &error);
+	CHECK(bundle.nodes.empty());
+	CHECK(error == "a bundle graph needs equal lane counts");
+}
+
 TEST_CASE("topology: LL_RR with an L_R sideline: track graph", "[junction][topology]")
 {
 	const JunctionTopology &t = JunctionLLRRSidelineTopology();

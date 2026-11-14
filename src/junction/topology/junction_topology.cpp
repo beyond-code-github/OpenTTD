@@ -493,6 +493,31 @@ JunctionTrackGraph BuildJunctionTrackGraph(const JunctionTopology &topology, con
 	return graph;
 }
 
+JunctionTrackGraph BuildJunctionBundleGraph(const JunctionTopology &topology, std::string *error)
+{
+	for (const JunctionLaneGroup &group : topology.groups) {
+		if (group.lanes != topology.groups.front().lanes) {
+			if (error != nullptr) *error = "a bundle graph needs equal lane counts";
+			return {};
+		}
+	}
+	if (topology.groups.empty()) return {};
+	const uint8_t lanes = topology.groups.front().lanes;
+
+	JunctionTopology bundles = topology;
+	for (JunctionLaneGroup &group : bundles.groups) group.lanes = 1;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(bundles, error);
+	if (paths.empty()) return {};
+	JunctionTrackGraph graph = BuildJunctionTrackGraph(bundles, paths, error);
+	if (graph.nodes.empty()) return graph;
+
+	for (JunctionTrackEdge &edge : graph.edges) edge.width = lanes;
+	if (lanes > 1) {
+		for (JunctionTrackNode &node : graph.nodes) node.block = node.split ? JunctionBlockKind::Exit : JunctionBlockKind::Join;
+	}
+	return graph;
+}
+
 JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, std::string *error)
 {
 	auto fail = [&](const char *reason) {

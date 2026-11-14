@@ -21,6 +21,7 @@
 - Every lane of a direction splits toward the branch; no shifters in LL_RR.
 - A split or merge node has two legs; a lane bound for more than two keys splits as a cascade of two-way nodes over contiguous halves of the ordered key list (1 + 2, 2 + 2, ...); merges mirror it.
 - The order sweep (from the branch side north) gathers a band node it reaches from its legs into one item: a merge's legs into its out edge, a split's legs into its in edge; the legs must be adjacent items, else the order fails.
+- A bundle graph (D289) is the track graph of the topology with every group as one lane: each movement is one bundle, every edge as wide as the lane count, split nodes exit blocks and merge nodes join blocks; all groups need the same lane count.
 - Crossings are counted per graph edge; two paths cross when their end ports interleave around the box; every chord pair is crossed exactly once.
 - Over and under: a crossed row edge (a lane along its own row) carries one doubled bridge over all its crossings.
 - A crossed out edge (the joiner merged before the crossing) carries its doubled bridge like the leg with the items swapped: copy 1 S-bends from the lane to the row's copy item before the bridge, copy 0 after it, and the fan leaves from the copy item.
