@@ -489,6 +489,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	std::vector<const Elem *> over_elems; ///< Per recorded over, the crossed S-bend's element before the crossing (nullptr when none).
 	std::vector<const Elem *> over_elems_after; ///< Per recorded over, the crossed S-bend's element after the crossing (nullptr when none).
 	std::vector<uint32_t> recorded_clash_reasons; ///< Per clash, its index into 'reasons'.
+	std::vector<std::vector<JunctionItemRowOccupant>> recorded_item_rows; ///< The item rows' occupants of the X build now (DESIGN-G4 A5), taken by the X record.
+	std::vector<JunctionStaticRow> recorded_static_rows; ///< The O1 rows of those occupants.
+	int recorded_item_row_skipped = 0; ///< The occupants of item rows left to 2b2a3.
+	int recorded_item_row_share = 0; ///< The O1 pairs that may share a tile.
 	auto record_system = [&]() {
 		pad_tags(false);
 		JunctionPlacementSystem &now = recorded[phase];
@@ -509,6 +513,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			now.routes = recorded_routes;
 			now.route_curves = recorded_route_curves;
 			now.clashes = recorded_clashes;
+			now.item_rows = recorded_item_rows;
+			now.static_rows = recorded_static_rows;
+			now.item_row_skipped = recorded_item_row_skipped;
+			now.item_row_share = recorded_item_row_share;
 		}
 		for (size_t p = 0; p < paths.size(); p++) now.paths.emplace_back(graph.path_edges[p].begin(), graph.path_edges[p].end());
 		std::map<const Elem *, int> bend_id;
@@ -1176,6 +1184,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		bool port; ///< A port's tile (it has no fact: the port's column is fixed).
 		bool fact; ///< A bridge head's tile (a straight tile fact).
 		const Elem *bend = nullptr; ///< Bend: its chain element.
+		int chain = 0; ///< The chain it was read from: 0 the edge's, 1 the copy.
+		int heads = 0; ///< The HeadsPair elements of its chain up to and including its element.
+		int head = 0; ///< A HeadsPair's tile: 1 the first in travel order, 2 the last.
+		Step::Role role = Step::Role::None; ///< An S-bend's role.
 	};
 	/* Row r's pieces in order: the in edge, the leg, the out edge, each read from its chain(s). */
 	auto row_pieces = [&](int r) {
@@ -1192,9 +1204,25 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			};
 			const Elem *split = n_chains == 2 ? find_role(1, Step::Role::LaneSplit) : nullptr;
 			const Elem *merge = n_chains == 2 ? find_role(0, Step::Role::LaneMerge) : nullptr;
+			/* Stamp the pieces of the element just walked with where they stand in their chain (the item rows' order reads it). */
+			size_t stamped = pieces.size();
+			int stamp_heads = 0;
+			const auto stamp = [&](int c, const Elem &el) {
+				if (el.k == Elem::K::HeadsPair) stamp_heads++;
+				int head = 0;
+				for (size_t q = stamped; q < pieces.size(); q++) {
+					pieces[q].chain = c;
+					pieces[q].heads = stamp_heads;
+					pieces[q].role = role_of(c, el);
+					if (pieces[q].fact) pieces[q].head = ++head;
+				}
+				stamped = pieces.size();
+			};
 			for (int c = 0; c < n_chains; c++) {
 				const std::vector<Elem> &elems = c == 0 ? chain[e] : chain_copy[e];
+				stamp_heads = 0;
 				for (size_t i = 0; i < elems.size(); i++) {
+					if (i > 0) stamp(c, elems[i - 1]);
 					const Elem &el = elems[i];
 					int y_end = vy[el.last];
 					if (el.k == Elem::K::Tile) {
@@ -1227,6 +1255,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					if ((el.k == Elem::K::Tile && el.slot >= 0 && next.k == Elem::K::Fan && next.m == 0) || (el.k == Elem::K::Fan && el.m == 0 && next.k == Elem::K::Tile && next.slot >= 0)) continue;
 					pieces.push_back({RowPiece::T::Run, a, b, y_end, copy, e, 0, 0, false, false});
 				}
+				if (!elems.empty()) stamp(c, elems.back());
 			}
 		};
 		walk(in_edge[r]);
@@ -1303,19 +1332,29 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		return bits;
 	};
 
+	/** One occupant of a row: the columns [left, right], each end a point and an offset, with the tracks of its tiles and what it belongs to. */
+	struct Occupant {
+		int row;
+		int lp, ldx, rp, rdx;
+		TrackBits bits;
+		uint32_t edge; ///< The graph edge, UINT32_MAX for a node's tile.
+		int copy; ///< 0 or 1, -1 for the part both copies share.
+		uint32_t node; ///< The node of a node's tile, else UINT32_MAX.
+		int footprint = 0; ///< A prio element's footprint: +1 when it lies downstream of its tile column (columns grow), -1 when downstream is lower; 0 for tracks.
+		JunctionSystemColumn left, right; ///< The ends as columns of the joint model, filled when recording.
+		int rank = 0; ///< When recording, the travel rank of a row edge's piece or a prio footprint on the row it belongs to (100 times its travel position).
+		std::string kind; ///< When recording, its kind in the item rows ("in", "out", "leg run", "lane split", "lane merge", "heads", "prio"), "moves" for a band edge's tile whose row moves with its bend's length, else empty.
+	};
+	/* Related occupants never constrain each other: the same edge and copy, a node's tile and an edge that starts or ends at the node. */
+	auto at_node = [&](uint32_t edge, uint32_t node) { return edge != UINT32_MAX && ((graph.edges[edge].from.node && graph.edges[edge].from.index == node) || (graph.edges[edge].to.node && graph.edges[edge].to.index == node)); };
+	auto related = [&](const Occupant &a, const Occupant &b) {
+		if (a.edge != UINT32_MAX && a.edge == b.edge) return a.copy == b.copy || a.copy < 0 || b.copy < 0;
+		if (a.edge == UINT32_MAX && b.edge == UINT32_MAX && a.node != UINT32_MAX && a.node == b.node) return true; // The two parts of one prio footprint.
+		return (a.node != UINT32_MAX && at_node(b.edge, a.node)) || (b.node != UINT32_MAX && at_node(a.edge, b.node));
+	};
+
 	/* The occupancy family (D217): unrelated tracks never share or touch a tile; two unrelated pieces on one tile are legal only as Upper|Lower or Left|Right (JunctionTracksMayShareTile). */
 	auto add_occupancy = [&](const std::vector<int> &flat, bool legality) -> bool {
-		/** One occupant of a row: the columns [left, right], each end a point and an offset, with the tracks of its tiles and what it belongs to. */
-		struct Occupant {
-			int row;
-			int lp, ldx, rp, rdx;
-			TrackBits bits;
-			uint32_t edge; ///< The graph edge, UINT32_MAX for a node's tile.
-			int copy; ///< 0 or 1, -1 for the part both copies share.
-			uint32_t node; ///< The node of a node's tile, else UINT32_MAX.
-			int footprint = 0; ///< A prio element's footprint: +1 when it lies downstream of its tile column (columns grow), -1 when downstream is lower; 0 for tracks.
-			JunctionSystemColumn left, right; ///< The ends as columns of the joint model, filled when recording.
-		};
 		const bool record = system != nullptr && !legality;
 		std::map<const Elem *, int> bend_ids; ///< The system's bend id of each chain bend (the order record_system gives them), when recording.
 		if (record) {
@@ -1328,6 +1367,33 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			}
 		}
 		std::map<int, std::vector<Occupant>> by_row;
+		int tag_rank = 0; ///< The rank and kind the occupants added now get (see Occupant).
+		std::string tag_kind;
+		/* The travel order of each row's order items (DESIGN-G4 A5): the row's order reversed when it travels west. */
+		std::vector<std::vector<JunctionTrackRowItem>> travel;
+		if (record) {
+			for (int r = 0; r < rows; r++) {
+				travel.push_back(order.rows[r]);
+				if (!east[r]) std::ranges::reverse(travel.back());
+			}
+		}
+		/** The travel position of an order item of row r, -1 when it is none of its items. */
+		auto travel_pos = [&](int r, bool node, uint32_t index) {
+			for (size_t i = 0; i < travel[r].size(); i++) {
+				if (travel[r][i].node == node && travel[r][i].index == index) return static_cast<int>(i);
+			}
+			return -1;
+		};
+		/** The first and last travel position of the crossers of bridge b (an index of structure.bridges). */
+		auto bridge_span = [&](int r, int b) {
+			std::pair<int, int> span{INT_MAX, INT_MIN};
+			for (uint32_t x : structure.bridges[b].crossed) {
+				const int pos = travel_pos(r, false, x);
+				assert(pos >= 0);
+				span = {std::min(span.first, pos), std::max(span.second, pos)};
+			}
+			return span;
+		};
 		auto flat_left = [&](const Occupant &o) { return flat[o.lp] + o.ldx; };
 		auto flat_right = [&](const Occupant &o) { return flat[o.rp] + o.rdx; };
 		auto add_tile = [&](int pt, int dx, int y, TrackBits bits, uint32_t edge, int copy, const JunctionSystemColumn *column = nullptr) {
@@ -1337,11 +1403,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				return;
 			}
 			const JunctionSystemColumn at = column != nullptr ? *column : JunctionSystemColumn{pt, dx};
-			row.push_back({y, pt, dx, pt, dx, bits, edge, copy, UINT32_MAX, 0, at, at});
+			row.push_back({y, pt, dx, pt, dx, bits, edge, copy, UINT32_MAX, 0, at, at, tag_rank, tag_kind});
 		};
 		/* The tiles strictly between points a and b on row y, a before b in the sense sgn; a run with none at the flat solve is an empty interval (right = left - 1), which keeps its place in the order for the solves with floors. */
 		auto add_run = [&](int a, int b, int y, int sgn, uint32_t edge, int copy) {
-			by_row[y].push_back({y, sgn > 0 ? a : b, 1, sgn > 0 ? b : a, -1, TrackBits{Track::X}, edge, copy, UINT32_MAX, 0, {sgn > 0 ? a : b, 1}, {sgn > 0 ? b : a, -1}});
+			by_row[y].push_back({y, sgn > 0 ? a : b, 1, sgn > 0 ? b : a, -1, TrackBits{Track::X}, edge, copy, UINT32_MAX, 0, {sgn > 0 ? a : b, 1}, {sgn > 0 ? b : a, -1}, tag_rank, tag_kind});
 		};
 		auto add_bend = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t edge, int copy, bool skip_first, bool skip_last, const Elem *bend) {
 			if (halves < 1) return; // A bend sized to 0 columns is no bend.
@@ -1362,7 +1428,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				if ((skip_first && j == 0) || (skip_last && j + 1 == offs.size())) continue;
 				if (record) {
 					const JunctionSystemColumn column{pt, forms[j].dx0, forms[j].dx1, forms[j].dx1 != 0 ? bend_id : -1};
+					const std::string saved = tag_kind;
+					if (forms[j].dy1 != 0 && saved.empty()) tag_kind = "moves";
 					add_tile(pt, offs[j].x, y + offs[j].y, bits[j], edge, copy, &column);
+					tag_kind = saved;
 				} else {
 					add_tile(pt, offs[j].x, y + offs[j].y, bits[j], edge, copy);
 				}
@@ -1404,11 +1473,53 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			const int sgn = east[r] ? 1 : -1;
 			const TrackBits axis{Track::X};
 			for (const RowPiece &piece : row_pieces(r)) {
+				if (record) {
+					/* The piece's kind and rank on its row, read from where it stands in its chain (RECON-O1-item-rows §5, times 100). */
+					const int last = static_cast<int>(travel[r].size()) - 1;
+					const std::vector<int> &leg_bridges = bridges_of[leg_edge[r]];
+					const int g = static_cast<int>(leg_bridges.size());
+					if (piece.edge == in_edge[r]) {
+						tag_kind = "in";
+						tag_rank = -100;
+					} else if (piece.edge == out_edge[r]) {
+						tag_kind = "out";
+						tag_rank = 100 * last + 100;
+					} else if (piece.fact) {
+						assert(piece.heads >= 1 && piece.heads <= g);
+						const auto [first, end] = bridge_span(r, leg_bridges[piece.heads - 1]);
+						tag_kind = "heads";
+						tag_rank = piece.head == 1 ? 100 * first - 40 : 100 * end + 40;
+					} else if (piece.t == RowPiece::T::Run) {
+						tag_kind = "leg run";
+						if (piece.copy < 0) {
+							tag_rank = piece.chain == 1 ? 5 : 100 * last - 40;
+						} else if (g == 0) {
+							tag_rank = 50;
+						} else if (piece.heads == 0) {
+							tag_rank = 100 * bridge_span(r, leg_bridges[0]).first - 50;
+						} else if (piece.heads < g) {
+							tag_rank = 100 * bridge_span(r, leg_bridges[piece.heads - 1]).second + 50;
+						} else {
+							tag_rank = 100 * last - 55;
+						}
+					} else if (piece.role == Step::Role::LaneSplit) {
+						tag_kind = "lane split";
+						tag_rank = 10;
+					} else if (piece.role == Step::Role::LaneMerge) {
+						tag_kind = "lane merge";
+						tag_rank = 100 * last - 50;
+					} else {
+						tag_kind = "other";
+						tag_rank = 0;
+					}
+				}
 				switch (piece.t) {
 					case RowPiece::T::Tile: add_tile(piece.a, 0, piece.y, axis, piece.edge, piece.copy); break;
 					case RowPiece::T::Run: add_run(piece.a, piece.b, piece.y, sgn, piece.edge, piece.copy); break;
 					case RowPiece::T::Bend: add_bend(piece.a, piece.y, east[r] ? 1 : 3, piece.hand, piece.halves, false, piece.edge, piece.copy, false, false, piece.bend); break;
 				}
+				tag_kind.clear();
+				tag_rank = 0;
 			}
 		}
 
@@ -1422,20 +1533,82 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			const int y_lane = vy[item_pt[row_items[r].lane]];
 			const DiagDirection side = prio_el.index < row_items[r].lane ? DiagDirection::NW : DiagDirection::SE;
 			const DiagDirection exit_edge = east[r] ? DiagDirection::SW : DiagDirection::NE;
+			const int prio_rank = record ? 100 * (static_cast<int>(travel[r].size()) - 1) - 25 : 0;
+			const std::string prio_kind = record ? "prio" : "";
 			for (int step = 0; step <= even_prio; step++) {
 				const auto [row_bits, lane_bits] = JunctionPrioStepBits(step, side, exit_edge);
-				by_row[y_row].push_back({y_row, prio_el.last, -step * sgn, prio_el.last, -step * sgn, row_bits, UINT32_MAX, 0, njm_node, sgn, {prio_el.last, -step * sgn}, {prio_el.last, -step * sgn}});
-				if (lane_bits.Any()) by_row[y_lane].push_back({y_lane, prio_el.last, -step * sgn, prio_el.last, -step * sgn, lane_bits, UINT32_MAX, 0, njm_node, sgn, {prio_el.last, -step * sgn}, {prio_el.last, -step * sgn}});
+				by_row[y_row].push_back({y_row, prio_el.last, -step * sgn, prio_el.last, -step * sgn, row_bits, UINT32_MAX, 0, njm_node, sgn, {prio_el.last, -step * sgn}, {prio_el.last, -step * sgn}, prio_rank, prio_kind});
+				if (lane_bits.Any()) by_row[y_lane].push_back({y_lane, prio_el.last, -step * sgn, prio_el.last, -step * sgn, lane_bits, UINT32_MAX, 0, njm_node, sgn, {prio_el.last, -step * sgn}, {prio_el.last, -step * sgn}, prio_rank, prio_kind});
 			}
 		}
 
-		/* Related occupants never constrain each other: the same edge and copy, a node's tile and an edge that starts or ends at the node. */
-		auto at_node = [&](uint32_t edge, uint32_t node) { return edge != UINT32_MAX && ((graph.edges[edge].from.node && graph.edges[edge].from.index == node) || (graph.edges[edge].to.node && graph.edges[edge].to.index == node)); };
-		auto related = [&](const Occupant &a, const Occupant &b) {
-			if (a.edge != UINT32_MAX && a.edge == b.edge) return a.copy == b.copy || a.copy < 0 || b.copy < 0;
-			if (a.edge == UINT32_MAX && b.edge == UINT32_MAX && a.node != UINT32_MAX && a.node == b.node) return true; // The two parts of one prio footprint.
-			return (a.node != UINT32_MAX && at_node(b.edge, a.node)) || (b.node != UINT32_MAX && at_node(a.edge, b.node));
-		};
+		/* The item rows' occupants in a static order and their O1 rows (DESIGN-G4 A5, §3): each stack item's row holds the pieces of the family above, ranked by travel position, one row per unrelated pair. */
+		if (record) {
+			std::map<int, int> item_of_row;
+			for (int i = 0; i < items; i++) {
+				[[maybe_unused]] const bool fresh = item_of_row.emplace(vy[item_pt[i]], i).second;
+				assert(fresh);
+			}
+			recorded_item_rows.resize(items);
+			for (auto &[y, occupants] : by_row) {
+				const auto found = item_of_row.find(y);
+				if (found == item_of_row.end()) continue;
+				const int i = found->second;
+				const int r = structure.stack[i].row;
+				const int last = static_cast<int>(travel[r].size()) - 1;
+				assert(last >= 1 && travel[r][0].node && travel[r][last].node);
+				const uint32_t split = travel[r][0].index, merge = travel[r][last].index;
+				std::vector<std::pair<std::pair<int, int>, Occupant>> ranked; ///< ((rank, step), occupant).
+				for (size_t step = 0; step < occupants.size(); step++) {
+					Occupant o = occupants[step];
+					if (o.kind == "moves" || o.kind == "other") {
+						recorded_item_row_skipped++;
+						continue;
+					}
+					if (o.kind == "in" || o.kind == "out") {
+						if (o.edge != (o.kind == "in" ? in_edge[r] : out_edge[r])) { // Another row's port fan.
+							recorded_item_row_skipped++;
+							continue;
+						}
+					} else if (o.kind == "prio") {
+						assert(o.node == graph.edges[out_edge[r]].from.index);
+					} else if (!o.kind.empty()) {
+						assert(o.edge == leg_edge[r]);
+					} else if (o.edge == UINT32_MAX) {
+						const int pos = travel_pos(r, true, o.node);
+						if (pos < 0) {
+							recorded_item_row_skipped++;
+							continue;
+						}
+						o.kind = "node";
+						o.rank = 100 * pos;
+					} else if (at_node(o.edge, split) || at_node(o.edge, merge)) {
+						o.kind = "node band";
+						o.rank = at_node(o.edge, split) ? 0 : 100 * last;
+					} else if (travel_pos(r, false, o.edge) >= 0) {
+						o.kind = "crosser";
+						o.rank = 100 * travel_pos(r, false, o.edge);
+					} else {
+						recorded_item_row_skipped++;
+						continue;
+					}
+					ranked.push_back({{o.rank, static_cast<int>(step)}, o});
+				}
+				std::ranges::stable_sort(ranked, [](const auto &a, const auto &b) { return a.first < b.first; });
+				if (!east[r]) std::ranges::reverse(ranked);
+				for (const auto &[key, o] : ranked) recorded_item_rows[i].push_back({o.left, o.right, o.bits, o.edge, o.copy, o.node, o.footprint, key.first, key.second, o.kind});
+				for (size_t b = 0; b < ranked.size(); b++) {
+					for (size_t a = 0; a < b; a++) {
+						const Occupant &oa = ranked[a].second, &ob = ranked[b].second;
+						if (related(oa, ob) || flat_right(oa) < flat_left(oa) || flat_right(ob) < flat_left(ob)) continue; // An empty run has no tile to separate.
+						const JunctionTileGap gap = JunctionUnrelatedTileGap(oa.bits, ob.bits);
+						if (gap.share) recorded_item_row_share++;
+						recorded_static_rows.push_back({ob.left, oa.right, gap.share ? 0 : gap.apart, fmt::format("O1 item {}: {} e{} / {} e{}", i, oa.kind, static_cast<int>(oa.edge), ob.kind, static_cast<int>(ob.edge))});
+					}
+				}
+			}
+		}
+
 		auto label = [&](const Occupant &o) { return o.node != UINT32_MAX ? fmt::format("node {}", o.node) : fmt::format("edge {}", o.edge); };
 		for (auto &[y, occupants] : by_row) {
 			/* On equal columns a footprint comes first in its travel direction: the unrelated track stands downstream of it. */
@@ -2130,6 +2303,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			recorded_route_curves.clear();
 			recorded_clashes.clear();
 			recorded_clash_reasons.clear();
+			recorded_item_rows.clear();
+			recorded_static_rows.clear();
+			recorded_item_row_skipped = 0;
+			recorded_item_row_share = 0;
 		}
 		if ((!x_phase || rows_known) && spec.curve_limit) {
 			/* The curve-gap family (D217): every pair JunctionCurveGaps returns for a route's curves. A pair in one segment (only vertical runs and fixed spans between the curves) is a difference of its anchors' rows in the Y phase; every other pair is a difference of its anchors' columns in the X phase. Pairs on one anchor are constants. */
