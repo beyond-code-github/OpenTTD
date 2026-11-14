@@ -1,0 +1,103 @@
+i4-keep-gap7-prio9 round 1: relations 415, clashes kept 29, recording failures []
+regular joint: status Optimal, 14 ms
+elastic: phase 1 status Optimal, 50 ms; phase 2 15 ms
+phase 1 total slack 0.0000
+phase 2 flat cost 23500.001 (objective 23500.024 less 0.001 sum L 23); regular flat cost 23500.001
+joint span (columns x rows of its points): 33 x 14
+placed, box 33 x 14; checker violations 75
+  Deadlock: 1
+  Footprint: 1
+  Prio: 4
+  Signals: 65
+  WaitingRoom: 4
+    [Signals] 18,1: no signal before a split
+    [Signals] 24,10: no signal before a merge
+    [Signals] 24,12: no signal after a merge
+    [Signals] 29,1: no signal before a merge
+    [Signals] 31,1: no signal after a merge
+    [Signals] 30,3: no signal before a split
+    [Signals] 28,3: no signal before a split
+    [Signals] 18,3: no signal before a merge
+    [Signals] 17,4: no signal after a merge
+    [Signals] 7,4: no signal before a merge
+    [Signals] 5,4: no signal after a merge
+    [Signals] 25,3: no signal before a bridge
+    [Signals] 19,3: no signal after a bridge
+    [Signals] 19,4: no signal before a merge
+    [Signals] 26,4: no signal before a bridge
+    [Signals] 20,4: no signal after a bridge
+    [Signals] 25,11: no signal before a merge
+    [Signals] 22,12: no signal before a split
+    [Signals] 30,2: no signal before a merge
+    [Signals] 22,9: no signal before a bridge
+    [Signals] 22,6: no signal after a bridge
+    [Signals] 6,5: no signal before a merge
+    [Signals] 2,1: signals too far apart
+    [Signals] 5,1: signals too far apart
+    [Signals] 8,1: signals too far apart
+    [Signals] 11,1: signals too far apart
+    [Signals] 14,1: signals too far apart
+    [Signals] 17,1: signals too far apart
+    [Signals] 19,2: signals too far apart
+    [Signals] 21,4: signals too far apart
+    [Signals] 21,7: signals too far apart
+    [Signals] 23,9: signals too far apart
+    [Signals] 24,12: signals too far apart
+    [Signals] 20,1: signals too far apart
+    [Signals] 23,1: signals too far apart
+    [Signals] 26,1: signals too far apart
+    [Signals] 29,1: signals too far apart
+    [Signals] 32,1: signals too far apart
+    [Signals] 30,3: signals too far apart
+    [Signals] 26,3: signals too far apart
+    [Signals] 18,3: signals too far apart
+    [Signals] 16,4: signals too far apart
+    [Signals] 13,4: signals too far apart
+    [Signals] 10,4: signals too far apart
+    [Signals] 7,4: signals too far apart
+    [Signals] 4,4: signals too far apart
+    [Signals] 2,3: signals too far apart
+    [Signals] 27,4: signals too far apart
+    [Signals] 19,4: signals too far apart
+    [Signals] 28,5: signals too far apart
+    [Signals] 27,7: signals too far apart
+    [Signals] 26,9: signals too far apart
+    [Signals] 22,10: signals too far apart
+    [Signals] 22,5: signals too far apart
+    [Signals] 24,3: signals too far apart
+    [Signals] 26,2: signals too far apart
+    [Signals] 29,2: signals too far apart
+    [Signals] 31,1: signals too far apart
+    [Signals] 21,11: signals too far apart
+    [Signals] 19,9: signals too far apart
+    [Signals] 17,7: signals too far apart
+    [Signals] 15,5: signals too far apart
+    [Signals] 12,5: signals too far apart
+    [Signals] 9,5: signals too far apart
+    [Signals] 6,5: signals too far apart
+    [WaitingRoom] 24,11: no signal between the split and the merge
+    [WaitingRoom] 24,11: no signal before the queue merge
+    [WaitingRoom] 30,1: no signal before the queue merge
+    [WaitingRoom] 6,4: no signal before the queue merge
+    [Deadlock] 6,4: a signal block holds both a split and a merge
+    [Prio] 30,1: no joiner signal before the ML merge
+    [Prio] 30,1: missing prio
+    [Prio] 6,4: no joiner signal before the ML merge
+    [Prio] 6,4: missing prio
+    [Footprint] 0,1: the minimum offsets must be 0
+layout (track only, no signals):
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
+- - - - - - - - - - - - - - - - - - - # - - - - - - - - - - # - - 
+. . . . . . . . . . . . . . . . . . . \ \ . . . / - - - - - / . . 
+- - \ . . . . . . . . . . . . . . . / H = = = = = H - # - # - - - 
+. . \ - - - # - - - - - - - - - - - # - H = = = = = H / / / . . . 
+. . . . . . \ - - - - - - - - - \ . . . . | | . . . . / / . . . . 
+. . . . . . . . . . . . . . . . \ \ . . . | H . . . . | . . . . . 
+. . . . . . . . . . . . . . . . . \ \ . . \ = . . . . | . . . . . 
+. . . . . . . . . . . . . . . . . . \ \ . . = \ . . . | . . . . . 
+. . . . . . . . . . . . . . . . . . . \ \ . H \ \ . / / . . . . . 
+. . . . . . . . . . . . . . . . . . . . \ \ | . | / / . . . . . . 
+. . . . . . . . . . . . . . . . . . . . . \ # . # / . . . . . . . 
+. . . . . . . . . . . . . . . . . . . . . . | . | . . . . . . . . 
+. . . . . . . . . . . . . . . . . . . . . . | . | . . . . . . . . 
+

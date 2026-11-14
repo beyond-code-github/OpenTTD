@@ -1,0 +1,10 @@
+i3-keep-gap7 | r0 | 0.000 | - | 41 x 14 | 82 violations, Deadlock 1, Footprint 1, Prio 4, Signals 72, WaitingRoom 4
+i3-keep-gap7 | r1 | 0.000 | - | 41 x 14 | 82 violations, Deadlock 1, Footprint 1, Prio 4, Signals 72, WaitingRoom 4
+i2-keep | r0 | 6.000 | bridge heads hug crossers (1 rows, sum 1.0); bridge over S-bend (1 rows, sum 5.0) | 54 x 29 | -
+i2-keep | r1 | 2.000 | bridge middle clearance (2 rows, sum 2.0) | 5 x 31 | -
+i1-any | r0 | 0.000 | - | 128 x 88 | does not place: the placement rules contradict each other: S-bend size (edge 4) <- chain run (edge 4) <- S port spacing <- chain run (edge 7) <- S-bend size (edge 7) <- chain run (edge 7) <- chain run (edge 8) <- bridge over S-bend (edge 8) <- bridge over S-bend (edge 5) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- chain run (edge 4) <- chain run (edge 4) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- bridge over S-bend (edge 5) <- bridge over S-bend (edge 8) <- chain run (edge 8) <- chain run (edge 7) <- S-bend size (edge 7) <- chain run (edge 7) <- S port spacing <- chain run (edge 4) <- S-bend size (edge 4)
+i1-any | r1 | 3.000 | lane split run (1 rows, sum 1.0); occupancy (2 rows, sum 2.0) | 128 x 93 | -
+i4-keep-gap7-prio9 | r0 | 0.000 | - | 33 x 14 | 75 violations, Deadlock 1, Footprint 1, Prio 4, Signals 65, WaitingRoom 4
+i4-keep-gap7-prio9 | r1 | 0.000 | - | 33 x 14 | 75 violations, Deadlock 1, Footprint 1, Prio 4, Signals 65, WaitingRoom 4
+i5-keep-gap7-tunnels | r0 | 0.000 | - | 41 x 14 | 82 violations, Deadlock 1, Footprint 1, Prio 4, Signals 72, WaitingRoom 4
+i5-keep-gap7-tunnels | r1 | 0.000 | - | 41 x 14 | 82 violations, Deadlock 1, Footprint 1, Prio 4, Signals 72, WaitingRoom 4

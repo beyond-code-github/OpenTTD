@@ -1,0 +1,11 @@
+i3-keep-gap7 round 0: relations 1144, clashes kept 0, recording failures []
+regular joint: status Infeasible, 47 ms
+regular joint conflict: bridge over S-bend (edge 13) <- lane split run (edge 15, node 4, row 3) <- lane split run (edge 15, node 4, row 3) <- bridge heads hug crossers (edge 15, row 3) <- bridge heads hug crossers (edge 15, row 3)
+elastic: phase 1 status Optimal, 363 ms; phase 2 12821 ms
+phase 1 total slack 6.0000
+  group "bridge heads hug crossers": 1 rows with slack, sum 1.000, max 1.000
+    1.000  bridge heads hug crossers (edge 15, row 3)
+  group "bridge over S-bend": 1 rows with slack, sum 5.000, max 5.000
+    5.000  bridge over S-bend (edge 13)
+phase 2 flat cost 89350.014 (objective 89350.077 less 0.001 sum L 63); regular flat cost -1.000
+joint span (columns x rows of its points): 54 x 29

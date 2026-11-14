@@ -1,0 +1,23 @@
+diff --git a/src/tests/junction/placement/junction_probe_ll2.cpp b/src/tests/junction/placement/junction_probe_ll2.cpp
+index 290664ed55..f3d9cb62d3 100644
+--- a/src/tests/junction/placement/junction_probe_ll2.cpp
++++ b/src/tests/junction/placement/junction_probe_ll2.cpp
+@@ -647,7 +647,17 @@ struct JointInputs {
+ JointInputs MakeInputs(const char *main, const char *branch, JunctionLanePairing pairing)
+ {
+ 	JointInputs in;
+-	in.topology = MakeJunctionHubTopology(ParseLineNotation(main).spec, ParseLineNotation(branch).spec, pairing);
++	/* ParseLineNotation refuses a gap over 3; the probe sets wider gaps on the parsed spec. */
++	auto line = [](std::string_view text) {
++		const size_t gap = std::ranges::count(text, '_');
++		std::string narrow(text);
++		if (gap > 1) narrow.erase(narrow.find('_'), gap - 1);
++		JunctionLineSpec spec = ParseLineNotation(narrow).spec;
++		REQUIRE(spec.tracks > 0);
++		spec.gap = static_cast<uint8_t>(gap);
++		return spec;
++	};
++	in.topology = MakeJunctionHubTopology(line(main), line(branch), pairing);
+ 	std::string why;
+ 	in.paths = ExpandJunctionLanes(in.topology, &why);
+ 	in.graph = BuildJunctionTrackGraph(in.topology, in.paths, &why);

@@ -1,0 +1,10 @@
+i4-keep-gap7-prio9 round 1: relations 598, clashes kept 0, recording failures [Y solve: the placement rules contradict each other: bridge middle clearance (edge 15) [edge 15 and the head of edge 13] <- stack rows (row 3) <- bridge middle clearance (edge 15) [edge 15 and the head of edge 13] <- bridge middle clearance (edge 15) [edge 15 and the head of edge 13] <- bridge middle clearance (edge 15) [edge 15 and the head of edge 13]; X build: a vertical run before edge 3 is negative]
+regular joint: status Infeasible, 10 ms
+regular joint conflict: bridge middle clearance (edge 15) <- bridge middle clearance (edge 15)
+elastic: phase 1 status Optimal, 105 ms; phase 2 1053 ms
+phase 1 total slack 2.0000
+  group "bridge middle clearance": 2 rows with slack, sum 2.000, max 1.000
+    1.000  bridge middle clearance (edge 15)
+    1.000  bridge middle clearance (edge 15)
+phase 2 flat cost 40600.004 (objective 40600.082 less 0.001 sum L 78); regular flat cost -1.000
+joint span (columns x rows of its points): 4 x 31

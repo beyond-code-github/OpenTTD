@@ -1,0 +1,7 @@
+i1-any round 0: relations 1977, clashes kept 0, recording failures []
+regular joint: status Optimal, 2232 ms
+elastic: phase 1 status Optimal, 1001 ms; phase 2 1976 ms
+phase 1 total slack 0.0000
+phase 2 flat cost 268600.024 (objective 268600.321 less 0.001 sum L 297); regular flat cost 268600.024
+joint span (columns x rows of its points): 128 x 88
+placement at the joint's choices failed: the placement rules contradict each other: S-bend size (edge 4) <- chain run (edge 4) <- S port spacing <- chain run (edge 7) <- S-bend size (edge 7) <- chain run (edge 7) <- chain run (edge 8) <- bridge over S-bend (edge 8) <- bridge over S-bend (edge 5) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- chain run (edge 4) <- chain run (edge 4) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- bridge over S-bend (edge 5) <- bridge over S-bend (edge 8) <- chain run (edge 8) <- chain run (edge 7) <- S-bend size (edge 7) <- chain run (edge 7) <- S port spacing <- chain run (edge 4) <- S-bend size (edge 4)

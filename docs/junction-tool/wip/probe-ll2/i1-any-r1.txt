@@ -1,0 +1,11 @@
+i1-any round 1: relations 2878, clashes kept 460, recording failures [X solve: the placement rules contradict each other: bridge over S-bend (edge 8) <- bridge over S-bend (edge 5) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- chain run (edge 4) <- S-bend size (edge 4) <- chain run (edge 4) <- S port spacing <- chain run (edge 7) <- S-bend size (edge 7) <- chain run (edge 7) <- chain run (edge 8) <- chain run (edge 8) <- chain run (edge 7) <- S-bend size (edge 7) <- chain run (edge 7) <- S port spacing <- chain run (edge 4) <- S-bend size (edge 4) <- chain run (edge 4) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- Corner size (edge 5) <- chain run (edge 5) <- bridge over S-bend (edge 5) <- bridge over S-bend (edge 8)]
+regular joint: status Infeasible, 67 ms
+elastic: phase 1 status Optimal, 13821 ms; phase 2 44270 ms
+phase 1 total slack 3.0000
+  group "lane split run": 1 rows with slack, sum 1.000, max 1.000
+    1.000  lane split run (edge 44, node 24, row 1)
+  group "occupancy": 2 rows with slack, sum 2.000, max 1.000
+    1.000  occupancy (edge 44)
+    1.000  occupancy (edge 44)
+phase 2 flat cost 275400.024 (objective 275400.331 less 0.001 sum L 307); regular flat cost -1.000
+joint span (columns x rows of its points): 128 x 93
