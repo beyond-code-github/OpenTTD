@@ -25,7 +25,7 @@ Status: DRAFT for the engineer's review. Nothing is briefed from this until he h
 A hub is: per input arm, exits (direction split); then line choice; then the core crossing; then per output arm the joins, with prios where the balancing pattern puts them (D282). Line choice always comes before the join it feeds (the join is where the choice is used: "joins require balancing"). Where exactly it sits (riding on the crossing, or just before the join) is the balancing pattern (§3).
 
 ## 3. Balancing patterns (D279)
-Each is a choice in the topology window, beside the lane pairing (D221). Throughput is scored later (§7).
+Each is a toggle in the topology window (D284), with its prio choice (D282); every pattern must place for every supported line pair, so no step may special-case one pattern. Throughput is scored later (§7).
 | pattern | how | core | extra blocks | real example |
 |---|---|---|---|---|
 | keep | lane k to lane k | keep | none | psg173_14, psg327_12 (46 x 30) |
@@ -58,6 +58,7 @@ Prios follow the pattern (D282): a prio is not added at every join by default. T
 4. Per-line choice alone (D283): one (input line, destination) pair: the choice lane splits by output lane, the fixed lane runs to its output lane, three-input joins with the prio on the fixed lane; generated, checked, placeable in game on its own. Check first: PSG 227's prio styles (path signals over a doubled bridge, two-way signals) and whether our rules allow its flat X at bridge ends.
 5. Composition: hub = exits + core + per-arm joins; LL² any = keep core with per-line choice. Test: LL² any places, reach as PSG 227's pattern, checker clean; hover under 100 ms.
 6. LLL_RRR x LL_RR and LLL_RRR x LLL_RRR the same way.
+6a. The other patterns as toggles (D284): keep, choice crossing (bridges and tunnels), full any. Acceptance: a test over every pattern x every line pair places with the checker clean.
 7. Later: per-line choice (PSG 227), tunnel bundle (PSG 197), throughput score (§7).
 
 ## 7. Throughput (later, D279)
