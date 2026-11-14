@@ -30,6 +30,7 @@ Each is a toggle in the topology window (D284), with its prio choice (D282); eve
 |---|---|---|---|---|
 | keep | lane k to lane k | keep | none | psg173_14, psg327_12 (46 x 30) |
 | choice crossing | per (input direction, destination) the track splits once per output lane before the crossing; the tracks pass side by side (one bridge or tunnel each) and come out at their joins; pre-signals send a train to the free one | keep core with each crossing widened to a parallel bundle | none | PSG 197 (tunnels), PSG 227's doubled-bridge choice split (bridges) |
+| balanced, no prios | every input lane splits by direction, then by output lane; joins are plain merges, nobody has priority | keep plus line splits | none | the base the prio patterns add to |
 | per-line choice, async prio (first "any", D283) | per (input line, destination): one lane fixed (has the prio), one lane re-splits by output lane; three-input joins | keep plus one split per pair | three-input join | PSG 227 |
 | tunnel bundle | split by output lane before the crossing; one tunnel per lane; choice by the free tunnel | bundle | none | PSG 197 |
 | full any (today's) | every lane split to every output lane inside the core | woven | none | none found in the corpus as one search; real woven boxes are 46-60 x 46-50 |
