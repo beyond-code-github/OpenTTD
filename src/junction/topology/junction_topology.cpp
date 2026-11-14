@@ -237,6 +237,33 @@ uint8_t JunctionEdgeTracks(const JunctionTrackGraph &graph, const JunctionTrackP
 	return graph.edges[e].width == 2 || JunctionIsDoubledEdge(programs, e) ? 2 : 1;
 }
 
+JunctionBlockFootprint JunctionBlockFootprintOf(JunctionBlockKind kind, uint8_t width, const JunctionSpec &spec)
+{
+	switch (kind) {
+		case JunctionBlockKind::Exit: return {spec.exit_block_along, static_cast<uint8_t>(2 * width)};
+		case JunctionBlockKind::Join: return {spec.join_block_along, static_cast<uint8_t>(2 * width)};
+		default: return {1, 1};
+	}
+}
+
+int8_t JunctionBlockSide(const JunctionTrackGraph &graph, const JunctionTrackOrder &, const JunctionTrackPrograms &programs, uint32_t node)
+{
+	const JunctionTrackNodeShape &shape = programs.nodes[node];
+	const bool band_merge = shape.item == JunctionTrackStep::NO_ROW && !graph.nodes[node].split;
+	return band_merge ? -shape.hand : shape.hand;
+}
+
+JunctionBlockAttach JunctionBlockAttachOf(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, uint32_t v, int8_t side, JunctionBlockFootprint footprint, uint32_t e, uint8_t track)
+{
+	const JunctionTrackNodeShape &shape = programs.nodes[v];
+	const bool split = graph.nodes[v].split;
+	const int width = graph.edges[e].width;
+	if (e == shape.trunk) return {split ? -1 : footprint.along, track};
+	const int along = split ? footprint.along : -1;
+	if (e == shape.straight) return {along, track};
+	return {along, side > 0 ? width + track : track - width};
+}
+
 /** Builds the split or merge trees of a track graph (DESIGN-G1 §7). */
 struct JunctionTreeBuilder {
 	const std::vector<JunctionPortSlot> &slots;

@@ -401,6 +401,29 @@ bool JunctionIsDoubledEdge(const JunctionTrackPrograms &programs, uint32_t e); /
 /** The tracks an edge's placement and render carry: 2 for every edge of a bundle graph (D291: track k is copy k), 2 for a doubled edge of a width-1 graph, else 1. */
 uint8_t JunctionEdgeTracks(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, uint32_t e);
 
+/** A block node's footprint (D289, D291): its length along its trunk's heading from its anchor (the upstream end, on the trunk's track 0), and its width in lines across it. */
+struct JunctionBlockFootprint {
+	uint8_t along; ///< Tiles along the trunk.
+	uint8_t across; ///< Lines across the trunk: the trunk's tracks and the diverging bundle's.
+	bool operator==(const JunctionBlockFootprint &) const = default;
+};
+
+/** Where one track of an edge meets a block (D291), from the block's anchor: along the trunk's travel and across it in lines to the right of travel. */
+struct JunctionBlockAttach {
+	int along; ///< -1: the tile just upstream of the footprint; footprint.along: just downstream.
+	int across; ///< 0..width-1 the trunk's and the straight leg's tracks; the diverging leg's on its side (JunctionBlockSide).
+	bool operator==(const JunctionBlockAttach &) const = default;
+};
+
+/** The footprint of a block kind: the placeholder until the templates; Plain is a 1 x 1 block (placement does not read it), Exit and Join are {spec's along, 2 x width}. */
+JunctionBlockFootprint JunctionBlockFootprintOf(JunctionBlockKind kind, uint8_t width, const JunctionSpec &spec);
+
+/** The side of a block node's diverging leg, seen along its trunk's travel: +1 right, -1 left. A row node's and a band split's is its shape's hand; a band merge's is the opposite (its converging leg's first curve turns toward the trunk). */
+int8_t JunctionBlockSide(const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackPrograms &programs, uint32_t node);
+
+/** The attach of track k of edge e at block node v (D291): a split's trunk at along -1, its legs at footprint.along; a merge's legs at -1, its trunk at footprint.along; across k on the trunk's lines, side > 0 ? width + k : k - width for the diverging leg. */
+JunctionBlockAttach JunctionBlockAttachOf(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, uint32_t v, int8_t side, JunctionBlockFootprint footprint, uint32_t e, uint8_t track);
+
 /** The T of today's node model (L_R main line, L_R branch on the S side), groups in slot order: W side EIn then WOut; S side NIn then SOut; E side WIn then EOut. Movements in JunctionTMovements order. */
 const JunctionTopology &JunctionTTopology();
 
