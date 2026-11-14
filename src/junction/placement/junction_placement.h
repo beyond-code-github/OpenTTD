@@ -59,6 +59,7 @@ struct JunctionSystemRelation {
 	int over = -1; ///< When >= 0: c also has + d * (t(over) - t at the recording).
 	int d = 0;
 	int alt = -1; ///< When >= 0: the relation holds only when its over entry's alternative is alt (0 the S-bend before the crossing, 1 after).
+	int form_group = -1; int form = -1; ///< When >= 0: the relation holds only when that crossing group's form is form (DESIGN-G4 §11.2).
 };
 
 /** One bend of the placement's chains (a Corner, an S-bend, an S fan or a fan), with how its size is known. */
@@ -78,6 +79,7 @@ struct JunctionSystemBend {
 	int m; ///< Its size at the recording (a Corner's: the row span when the rows are known, else k).
 	int floor; ///< The least size the placement allows it.
 	int port_row = 0; ///< For a "port_rows" fan, the row of its port at the recording; else 0.
+	int form_group = -1; ///< For a crossing's S-bend or outer Corner, its group: the bend has its size only in its group's form (the S-bend in 0, the Corners in 1).
 };
 
 /** The sizes the rule source is given instead of reading them from a solution (DESIGN-G3 §G3.6, R1), indexed by JunctionSystemBend::id. Only bends of source "rows" (a row S-bend) and "port_rows" (a W/E fan) read it; every other bend keeps its sizing from the choices and the rules. */
@@ -163,6 +165,9 @@ struct JunctionSystemOver {
 	int chosen = 0; ///< The alternative at the recording: 0 before, 1 after.
 };
 
+/** A crossing group (DESIGN-G4 §11.1): its edge, its first token (the first quadruple's S-bend), and its form at the recording (0 S-bend, 1 square). */
+struct JunctionSystemFormGroup { int edge; int tok; int form; };
+
 /** The relation system of the last X and the last Y round of one placement call, with each constant's dependence on a bend's length (DESIGN-G3 §G3.3). */
 struct JunctionPlacementSystem {
 	int pt_count = 0; ///< The number of placement points.
@@ -183,6 +188,7 @@ struct JunctionPlacementSystem {
 	std::vector<JunctionSystemRelation> relations; ///< The X relations, then the Y relations.
 	std::vector<JunctionSystemRoute> routes; ///< The routes of the last X round whose rows were known, for the curve-gap counters; empty when none.
 	std::vector<JunctionSystemOver> overs; ///< The single bridges over an S-bend, in the order of the last build.
+	std::vector<JunctionSystemFormGroup> form_groups; ///< The crossing groups, in the order of the last build.
 	std::vector<JunctionSystemClash> clashes; ///< The occupancy pairs of the last X round whose rows were known, as clash rows.
 	std::vector<std::array<int, 5>> route_curves; ///< For tests: per route curve (route, curve in travel order, xoff, yoff, seg) of the walk's curve forms.
 	JunctionSystemPoint solved; ///< The recording's own solution when its Y and X solves both succeed (least rows, then least columns with the D215 push); empty otherwise.

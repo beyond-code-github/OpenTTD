@@ -104,6 +104,7 @@ static std::vector<int> LeastPositions(const JunctionPlacementSystem &system, in
 	for (bool changed = true; changed;) {
 		changed = false;
 		for (const JunctionSystemRelation &r : system.relations) {
+			if (r.form_group >= 0 && r.form != system.form_groups[static_cast<size_t>(r.form_group)].form) continue; // Held in another form of its crossing group.
 			if (r.axis != axis || value[r.v] >= value[r.u] + r.c) continue;
 			value[r.v] = value[r.u] + r.c;
 			changed = true;
@@ -839,23 +840,23 @@ TEST_CASE("rule source: detection at the flat solve is today's rulebook", "[junc
 	};
 	/* The digests printed by the unchanged code (R2 is a refactor), per case in the order the loop below produces them. */
 	const std::vector<Case> expected = {
-		{"L_R x L_R seed", 393, 12593365352372456175ULL},
-		{"L_R x L_R bend 7 m+1", 396, 7161232239015851176ULL},
-		{"L_R x L_R bend 9 m+1", 396, 6772236090452562597ULL},
-		{"L_R x L_R bend 10 m+1", 395, 14953054903077267274ULL},
-		{"L_R x L_R bend 11 m+1", 395, 10228565079292211459ULL},
-		{"L_R x L_R bend 14 m+1", 395, 9496484543853670047ULL},
-		{"LL_RR x L_R seed", 1109, 17590795737866479579ULL},
-		{"LL_RR x L_R bend 0 m+1", 1111, 673013653614789732ULL},
-		{"LL_RR x L_R bend 1 m+1", 1112, 13069048476017835560ULL},
-		{"LL_RR x L_R bend 3 m+1", 1111, 2717414608816164462ULL},
-		{"LL_RR x L_R bend 4 m+1", 1111, 9067418360352789611ULL},
-		{"LL_RR x L_R bend 8 m+1", 1114, 16247718060616939158ULL},
-		{"LL_RR x L_R bend 9 m+1", 1111, 998584284427742492ULL},
+		{"L_R x L_R seed", 446, 14802777959651676388ULL},
+		{"L_R x L_R bend 7 m+1", 449, 7582544829627777912ULL},
+		{"L_R x L_R bend 9 m+1", 449, 13332447767454157400ULL},
+		{"L_R x L_R bend 10 m+1", 448, 17785871538389213835ULL},
+		{"L_R x L_R bend 11 m+1", 448, 3929186208261139349ULL},
+		{"L_R x L_R bend 14 m+1", 448, 7180079264614909077ULL},
+		{"LL_RR x L_R seed", 1162, 3829521513360354111ULL},
+		{"LL_RR x L_R bend 0 m+1", 1164, 9796855279250968608ULL},
+		{"LL_RR x L_R bend 1 m+1", 1165, 8898522546777363190ULL},
+		{"LL_RR x L_R bend 3 m+1", 1164, 17185678019932262768ULL},
+		{"LL_RR x L_R bend 4 m+1", 1164, 14520957331040999837ULL},
+		{"LL_RR x L_R bend 8 m+1", 1167, 2952351648646072964ULL},
+		{"LL_RR x L_R bend 9 m+1", 1164, 1180697935782198002ULL},
 		/* From the bridge over either S-bend, the recording also holds the other flanking S-bend's rows (the next three). */
-		{"L_R x L_RR all floors", 236, 7003529623910360455ULL},
-		{"L_R x LL_RR all floors", 594, 4669301012756505503ULL},
-		{"LL_RR x LL_RR all floors", 1542, 4036389964231466841ULL},
+		{"L_R x L_RR all floors", 288, 17935178021883995481ULL},
+		{"L_R x LL_RR all floors", 753, 2646054013010121244ULL},
+		{"LL_RR x LL_RR all floors", 1979, 3194431235379471599ULL},
 	};
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::vector<Case> got;
@@ -1084,7 +1085,7 @@ TEST_CASE("joint: a recording at a point detects there", "[junction][milp]")
 		size_t count;
 		uint64_t hash;
 	};
-	for (const Hub &hub : {Hub{"LL_RR", "L_R", 1083, 2315536734738658134ULL}, Hub{"L_R", "L_R", 393, 12593365352372456175ULL}}) {
+	for (const Hub &hub : {Hub{"LL_RR", "L_R", 1136, 16559509548753834260ULL}, Hub{"L_R", "L_R", 446, 14802777959651676388ULL}}) {
 		const LoopStart s = MakeLoopStart(hub.main, hub.branch, spec);
 		REQUIRE(s.description == "the seed's choices");
 		INFO(fmt::format("{} x {}", hub.main, hub.branch));
@@ -1096,6 +1097,7 @@ TEST_CASE("joint: a recording at a point detects there", "[junction][milp]")
 		CHECK(at.failed.empty());
 		int broken = 0;
 		for (const JunctionSystemRelation &r : at.relations) {
+			if (r.form_group >= 0 && r.form != at.form_groups[static_cast<size_t>(r.form_group)].form) continue; // Only recorded: it holds in another form of its crossing group.
 			const std::vector<int> &coord = r.axis == 0 ? plain.solved.x : plain.solved.y;
 			if (coord[r.v] - coord[r.u] < r.c && broken++ == 0) FAIL_CHECK(fmt::format("first relation that fails at the point: axis {} v {} u {} c {} (has {}) {}", r.axis, r.v, r.u, r.c, coord[r.v] - coord[r.u], r.reason));
 		}
@@ -1178,7 +1180,8 @@ TEST_CASE("joint: a port fan's size follows the rows", "[junction][milp]")
 	REQUIRE(!s.choices.m.empty());
 	const JunctionPlacementSystem first = RecordAt(s, spec, s.choices, nullptr);
 	REQUIRE(!first.relations.empty());
-	const JunctionJointResult joint = SolveJunctionJoint(first, spec);
+	const std::vector<int> recorded_forms(first.form_groups.size(), 0); // The fixed path's forms follow the rows only at the recording's forms.
+	const JunctionJointResult joint = SolveJunctionJoint(first, spec, false, &recorded_forms);
 	REQUIRE(joint.status == JunctionMilp::Status::Optimal);
 	const JunctionPlacementSystem second = RecordAt(s, spec, joint.choices, nullptr);
 	REQUIRE(!second.relations.empty());
@@ -1407,7 +1410,9 @@ TEST_CASE("LL² at form 100100000 records round 0 without failure and its joint 
 	INFO(failed);
 	CHECK(system.failed.empty());
 	REQUIRE(!system.relations.empty());
-	const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+	std::vector<int> recorded_forms; // This form's joint: the forms stay at the recording's.
+	for (const JunctionSystemFormGroup &group : system.form_groups) recorded_forms.push_back(group.form);
+	const JunctionJointResult joint = SolveJunctionJoint(system, spec, false, &recorded_forms);
 	std::string conflict;
 	for (const std::string &reason : joint.conflict) conflict += (conflict.empty() ? "" : " <- ") + reason;
 	INFO(conflict);
@@ -1457,5 +1462,89 @@ TEST_CASE("LL² crossing 5 alone square records", "[junction][milp][.sweep]")
 		}
 		CHECK(std::abs(lo) == r);
 		CHECK(lo == hi);
+	}
+}
+
+/** The flat build cost of a joint solution: its objective less the 0.001 per unit of length tie break. */
+static double FlatCost(const JunctionJointResult &joint)
+{
+	int sum = 0;
+	for (const int length : joint.length) sum += length;
+	return joint.objective - 0.001 * sum;
+}
+
+/** The forms of a joint solution as a string, one character per crossing group of the system in form_groups order ('1' square). */
+static std::string FormString(const JunctionPlacementSystem &system, const JunctionJointResult &joint)
+{
+	std::string forms;
+	for (const JunctionSystemFormGroup &group : system.form_groups) forms += !joint.choices.form.empty() && joint.choices.form[group.edge][group.tok] != 0 ? '1' : '0';
+	return forms;
+}
+
+TEST_CASE("joint: at each form, the recording solved at its own form equals the fixed-form joint", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const LoopStart s = MakeLoopStart("L_R", "LL_RR", spec);
+	REQUIRE(s.description == "the seed's choices");
+	/* Per form of the three groups: the run the form records with, and the flat cost of its joint before the form binary existed (-1: infeasible). Measured on 2a1b's code at the seed's choices. */
+	struct Expected {
+		const char *form;
+		int run;
+		double cost;
+	};
+	const Expected expected[] = {{"000", 0, 71050}, {"100", 2, -1}, {"010", 2, 70550}, {"110", 2, -1}, {"001", 2, 69550}, {"101", 2, -1}, {"011", 2, 72650}, {"111", 2, -1}};
+	for (const Expected &e : expected) {
+		INFO("form " << e.form);
+		const JunctionPlacementSystem system = RecordAt(s, spec, ChoicesWithForms(s, e.form, e.run), nullptr);
+		REQUIRE(system.form_groups.size() == 3);
+		CHECK(system.failed.empty());
+		std::vector<int> forms;
+		for (const JunctionSystemFormGroup &group : system.form_groups) forms.push_back(group.form);
+		/* The recording is at the form: its groups' recorded forms are the string. */
+		for (size_t g = 0; g < forms.size(); g++) CHECK(forms[g] == (e.form[g] == '1' ? 1 : 0));
+		const JunctionJointResult joint = SolveJunctionJoint(system, spec, false, &forms);
+		if (e.cost < 0) {
+			CHECK(joint.status == JunctionMilp::Status::Infeasible);
+		} else {
+			REQUIRE(joint.status == JunctionMilp::Status::Optimal);
+			CHECK(std::abs(FlatCost(joint) - e.cost) < 0.05);
+		}
+	}
+}
+
+TEST_CASE("joint: LL² round 0 with q free is Optimal at no more than 268600", "[junction][milp][.sweep]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const LoopStart &s = Ll2Start(spec);
+	const JunctionPlacementSystem system = RecordAt(s, spec, s.choices, nullptr);
+	std::string failed;
+	for (const std::string &line : system.failed) failed += (failed.empty() ? "" : "; ") + line;
+	INFO(failed);
+	REQUIRE(!system.relations.empty());
+	REQUIRE(!system.form_groups.empty());
+	const auto start = std::chrono::steady_clock::now();
+	const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+	const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+	std::string conflict;
+	for (const std::string &reason : joint.conflict) conflict += (conflict.empty() ? "" : " <- ") + reason;
+	INFO(fmt::format("status {}, conflict {}", static_cast<int>(joint.status), conflict));
+	REQUIRE(joint.status == JunctionMilp::Status::Optimal);
+	WARN(fmt::format("LL_RR x LL_RR round 0, q free: forms {}, flat cost {:.2f}, {:.1f} ms", FormString(system, joint), FlatCost(joint), ms));
+	CHECK(FlatCost(joint) <= 268600.05);
+}
+
+TEST_CASE("joint: T and LL_RR x L_R keep the S-bend form", "[junction][milp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[main, branch, objective] : {std::tuple{"L_R", "L_R", 27300.0}, std::tuple{"LL_RR", "L_R", 86350.0}}) {
+		INFO(main << " x " << branch);
+		const LoopStart s = MakeLoopStart(main, branch, spec);
+		REQUIRE(s.description == "the seed's choices");
+		const JunctionPlacementSystem system = RecordAt(s, spec, s.choices, nullptr);
+		REQUIRE(!system.form_groups.empty());
+		const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+		REQUIRE(joint.status == JunctionMilp::Status::Optimal);
+		CHECK(std::abs(FlatCost(joint) - objective) < 0.5);
+		CHECK(FormString(system, joint) == std::string(system.form_groups.size(), '0'));
 	}
 }

@@ -33,9 +33,10 @@ struct JunctionJointResult {
  * @param system The record of the last X and Y rounds of a placement.
  * @param spec The spec the system was recorded with.
  * @param relaxed Whether to add every variable as continuous (the LP relaxation; a scale probe).
- * @return The status, and for Optimal each bend's length and the objective.
+ * @param forms Per crossing group of the system's form_groups, -1 to leave its form free, else its form (0 S-bend, 1 square) fixed; nullptr leaves every group free.
+ * @return The status, and for Optimal each bend's length, the choices (the forms and the square runs among them) and the objective.
  */
-JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, const JunctionSpec &spec, bool relaxed = false);
+JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, const JunctionSpec &spec, bool relaxed = false, const std::vector<int> *forms = nullptr);
 
 /** The joint loop's result (DESIGN-G3 §G3.6, R3). */
 struct JunctionJointLoopResult {
