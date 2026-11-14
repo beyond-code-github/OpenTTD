@@ -43,6 +43,11 @@
 - A band edge crossed by a single bridge carries two forms of the crossing, an S-bend under the bridge and a square run (a Corner, the crossings, a Corner back); consecutive crossings of one hand share one run; the placement's choices pick the form; edge ends and node shapes never name a crossing's bends.
 - Exit lane legs of a direction merge in the outer band beside the branch port.
 
+- A bundle graph (`JunctionGraphWidth` 2) has, per row, the stack Lane, Copy and two BlockSide items (the order follows the row's heading, so track 1 lies to the right of travel), no Prio and no Approach; `RowItems::block_side` names the BlockSide item of each track.
+- At width 2 a row edge carries track 1 as its copy program, the same Fan and Over tokens as track 0, with no lane split or merge.
+- A band edge of a bundle graph names no token at a block node: its start from a band node and its end at a band node are empty, and its arrival on a row node is a Corner to the BlockSide item of track 0 without a Converge.
+- A block end never names a token; a bundle wider than two tracks, a plain node in a bundle graph, and a row block whose diverging leg goes north are refused as not ruled.
+
 ## Bridges and tunnels
 - Every main-line bridge is doubled, whatever it crosses.
 - A bridge carrying branch traffic is single.
