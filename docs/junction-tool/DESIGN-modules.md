@@ -29,8 +29,8 @@ Each is a choice in the topology window, beside the lane pairing (D221). Through
 | pattern | how | core | extra blocks | real example |
 |---|---|---|---|---|
 | keep | lane k to lane k | keep | none | psg173_14, psg327_12 (46 x 30) |
-| choice crossing (proposed first "any") | per (input direction, destination) the track splits once per output lane before the crossing; the tracks pass side by side (one bridge or tunnel each) and come out at their joins; pre-signals send a train to the free one | keep core with each crossing widened to a parallel bundle | none | PSG 197 (tunnels), PSG 227's doubled-bridge choice split (bridges) |
-| per-line choice | per (input line, destination): one lane fixed (has the prio), one lane re-splits by output lane; three-input joins | keep plus one split per pair | three-input join | PSG 227 |
+| choice crossing | per (input direction, destination) the track splits once per output lane before the crossing; the tracks pass side by side (one bridge or tunnel each) and come out at their joins; pre-signals send a train to the free one | keep core with each crossing widened to a parallel bundle | none | PSG 197 (tunnels), PSG 227's doubled-bridge choice split (bridges) |
+| per-line choice, async prio (first "any", D283) | per (input line, destination): one lane fixed (has the prio), one lane re-splits by output lane; three-input joins | keep plus one split per pair | three-input join | PSG 227 |
 | tunnel bundle | split by output lane before the crossing; one tunnel per lane; choice by the free tunnel | bundle | none | PSG 197 |
 | full any (today's) | every lane split to every output lane inside the core | woven | none | none found in the corpus as one search; real woven boxes are 46-60 x 46-50 |
 
@@ -55,8 +55,8 @@ Prios follow the pattern (D282): a prio is not added at every join by default. T
 1. Tunnels skip bridge-only rule families. Test: a tunnel crossing has no bridge-over-S-bend row.
 2. Notation gap up to 12. Test: `LL_______RR` parses with gap 7.
 3. Measure: does the LL² keep core place with step 1 (gap 1 and gap 7)? Seconds per run, inline. If not, the one remaining site is fixed in the core generator before going on.
-4. Choice crossing alone: one track split into 2 (or 3) parallel bridges or tunnels with pre-signals, crossing a line, ending at 2 (or 3) joins; generated, checked, placeable in game on its own. Check first: the pre-signal types at PSG 197's tunnel entrances, and whether our rules allow PSG 227's flat X at bridge ends.
-5. Composition: hub = exits + core + per-arm joins; LL² any = keep core with choice crossings. Test: LL² any places, reach is every lane to every lane, checker clean; hover under 100 ms.
+4. Per-line choice alone (D283): one (input line, destination) pair: the choice lane splits by output lane, the fixed lane runs to its output lane, three-input joins with the prio on the fixed lane; generated, checked, placeable in game on its own. Check first: PSG 227's prio styles (path signals over a doubled bridge, two-way signals) and whether our rules allow its flat X at bridge ends.
+5. Composition: hub = exits + core + per-arm joins; LL² any = keep core with per-line choice. Test: LL² any places, reach as PSG 227's pattern, checker clean; hover under 100 ms.
 6. LLL_RRR x LL_RR and LLL_RRR x LLL_RRR the same way.
 7. Later: per-line choice (PSG 227), tunnel bundle (PSG 197), throughput score (§7).
 
@@ -64,11 +64,7 @@ Prios follow the pattern (D282): a prio is not added at every join by default. T
 A score per pattern so the tool can trade footprint against throughput: trains per hour through each movement under the benchmark train (D138/D280), from the existing train model and signal blocks. Needed before the tool chooses patterns itself; not needed for steps 1-6.
 
 ## 8. Questions for the engineer
-**Q1. First "any": the choice crossing (V's tunnel bundle, mfb's doubled-bridge choice split)?**
-Context: today's any fails because each choice track is threaded through the core on its own. A choice crossing carries them as one parallel bundle, with pre-signals picking the free bridge or tunnel; the core sees keep with wider tracks.
-Options: (a) choice crossing first, bridges and tunnels both; (b) PSG 227's per-line choice with three-input joins first; (c) keep today's full any and fix the search.
-Recommendation: (a).
-Reversible: yes.
+**Q1. First "any".** Decided (D283): PSG 227's per-line choice with async prios. The choice crossing comes later.
 
 **Q2. HiGHS.**
 Context: with blocks, lengths are difference constraints (longest path, no MILP). The core may still need a small search over crossing forms.
