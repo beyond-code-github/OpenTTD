@@ -42,6 +42,18 @@ JunctionSBendColumns JunctionSBendColumnForm(int heading, int hand);
 /** The column form of the Corner of 2L + 1 halves starting on the given heading with the given hand, read from the rasters, as JunctionSBendColumnForm's. */
 JunctionSBendColumns JunctionCornerColumnForm(int heading, int hand);
 
+/** One tile column of a bend on a range of the rows it travels: at r rows from its first tile, the tile's column is c0 + slope r from the first tile's. */
+struct JunctionBendRowTile { int c0; int slope; TrackBits bits; };
+
+/** The rows r = lo0 + lo1 L .. hi0 + hi1 L travelled from a bend's first tile on which the bend has the same tile columns. */
+struct JunctionBendRowSegment { int lo0, lo1, hi0, hi1; std::vector<JunctionBendRowTile> tiles; };
+
+/** A bend's tiles by the rows it travels (DESIGN-G4 O1): row y = y_first + d r. */
+struct JunctionBendRows { int d; std::vector<JunctionBendRowSegment> segments; };
+
+/** The rows of the bend of length L (an S-bend: 2L halves; a Corner: 2L + 1) starting on the given heading with the given hand, read from the rasters. */
+JunctionBendRows JunctionBendRowForms(int heading, int hand, bool corner);
+
 /** Whether a track touches the given tile edge. */
 bool JunctionTrackTouches(Track track, DiagDirection edge);
 

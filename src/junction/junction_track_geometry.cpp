@@ -15,6 +15,7 @@
 #include "../track_func.h"
 #include "../direction_func.h"
 
+#include <algorithm>
 #include <climits>
 #include <map>
 #include <set>
@@ -123,6 +124,69 @@ JunctionSBendColumns JunctionSBendColumnForm(int heading, int hand)
 JunctionSBendColumns JunctionCornerColumnForm(int heading, int hand)
 {
 	return BendColumnForm(heading, hand, true);
+}
+
+/** The tracks on each tile of a bend's raster, by offset from its first tile. */
+static std::map<std::pair<int, int>, TrackBits> BendRasterTracks(int heading, int hand, int length, bool corner)
+{
+	const int halves = corner ? 2 * length + 1 : 2 * length;
+	const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, halves, corner)});
+	std::map<std::pair<int, int>, TrackBits> tiles;
+	if (!raster.error.empty() || static_cast<int>(raster.pieces.size()) != halves + 2) return tiles;
+	for (int i = 1; i <= halves; i++) {
+		TrackBits &bits = tiles[{raster.pieces[i].tile.x - raster.pieces[1].tile.x, raster.pieces[i].tile.y - raster.pieces[1].tile.y}];
+		bits = bits | TrackBits{TrackdirToTrack(raster.pieces[i].trackdir)};
+	}
+	return tiles;
+}
+
+/** The rows of the bend of length L (an S-bend: 2L halves; a Corner: 2L + 1) starting on the given heading with the given hand, read from the rasters. */
+JunctionBendRows JunctionBendRowForms(int heading, int hand, bool corner)
+{
+	static constexpr int VX[] = {0, 1, 0, -1};
+	static constexpr int VY[] = {-1, 0, 1, 0};
+	const int side = (heading + hand + 4) % 4;
+	const bool vertical = VX[heading] == 0;
+	const int d = vertical ? VY[heading] : VY[side];
+	const int slope = vertical ? VX[side] : VX[heading];
+
+	/** A run of consecutive rows with one set of tile keys. */
+	struct Segment {
+		int lo, hi;
+		std::vector<std::pair<int, TrackBits>> keys;
+	};
+	auto segments_at = [&](int length) {
+		std::map<int, std::vector<std::pair<int, TrackBits>>> by_row;
+		for (const auto &[offset, bits] : BendRasterTracks(heading, hand, length, corner)) {
+			const int r = d * offset.second;
+			by_row[r].emplace_back(offset.first - slope * r, bits);
+		}
+		std::vector<Segment> segments;
+		for (auto &[r, keys] : by_row) {
+			std::ranges::sort(keys, [](const auto &a, const auto &b) { return a.first < b.first; });
+			if (!segments.empty() && segments.back().hi + 1 == r && segments.back().keys == keys) {
+				segments.back().hi = r;
+			} else {
+				segments.push_back({r, r, keys});
+			}
+		}
+		return segments;
+	};
+	const std::vector<Segment> big = segments_at(64);
+	const std::vector<Segment> small = segments_at(63);
+	if (big.empty() || big.size() != small.size()) return {0, {}};
+	JunctionBendRows rows{d, {}};
+	for (size_t s = 0; s < big.size(); s++) {
+		if (big[s].keys != small[s].keys) return {0, {}};
+		JunctionBendRowSegment segment;
+		segment.lo1 = big[s].lo - small[s].lo;
+		segment.lo0 = big[s].lo - 64 * segment.lo1;
+		segment.hi1 = big[s].hi - small[s].hi;
+		segment.hi0 = big[s].hi - 64 * segment.hi1;
+		for (const auto &[c0, bits] : big[s].keys) segment.tiles.push_back({c0, slope, bits});
+		rows.segments.push_back(std::move(segment));
+	}
+	return rows;
 }
 
 /** Whether a track touches the given tile edge. */

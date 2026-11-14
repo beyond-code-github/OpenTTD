@@ -17,6 +17,7 @@ Rules of the junction tool as present-tense facts, split per folder: each fact l
 - `station/`: station generator, rules and window.
 - `legacy/`: superseded generator code, not extended; see its CLAUDE.md.
 - Root files: `junction_pipeline` (the driver: bridge cut, seed, detours, terraform entry), `junction_track_geometry` (axis and bend helpers shared by placement, render and signals), `junction_layout` (the output type), `junction_route` (route programs, rasteriser, ASCII, `JunctionTrackRoute`/`JunctionTrackPieceTag`), `junction_train_model`, `junction_rules` (the rule checker), `junction_spec` (shared spec, notation, prices, curve spacing, prio sizing).
+- A bend's tiles on the rows it travels are segments of rows, each tile's column moving by a fixed slope per row (`JunctionBendRowForms`).
 - Tests are in `src/tests/junction/`, mirroring these folders (see its CLAUDE.md).
 
 ## Terms

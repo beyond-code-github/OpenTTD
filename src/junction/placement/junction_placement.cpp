@@ -491,8 +491,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	std::vector<uint32_t> recorded_clash_reasons; ///< Per clash, its index into 'reasons'.
 	std::vector<std::vector<JunctionItemRowOccupant>> recorded_item_rows; ///< The item rows' occupants of the X build now (DESIGN-G4 A5), taken by the X record.
 	std::vector<JunctionStaticRow> recorded_static_rows; ///< The O1 rows of those occupants.
-	int recorded_item_row_skipped = 0; ///< The occupants of item rows left to 2b2a3.
+	int recorded_item_row_skipped = 0; ///< The occupants of item rows left to 2b2a3b (another row's port fan).
 	int recorded_item_row_share = 0; ///< The O1 pairs that may share a tile.
+	std::vector<JunctionCrosserPiece> recorded_crosser_pieces; ///< The crossers' candidate pieces at item rows of the X build now.
+	int recorded_crosser_overlap = 0; ///< The (edge, item) groups where more than one candidate covers the row.
+	int recorded_crosser_uncovered = 0; ///< The groups where none does.
 	auto record_system = [&]() {
 		pad_tags(false);
 		JunctionPlacementSystem &now = recorded[phase];
@@ -517,6 +520,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			now.static_rows = recorded_static_rows;
 			now.item_row_skipped = recorded_item_row_skipped;
 			now.item_row_share = recorded_item_row_share;
+			now.crosser_pieces = recorded_crosser_pieces;
+			now.crosser_overlap = recorded_crosser_overlap;
+			now.crosser_uncovered = recorded_crosser_uncovered;
 		}
 		for (size_t p = 0; p < paths.size(); p++) now.paths.emplace_back(graph.path_edges[p].begin(), graph.path_edges[p].end());
 		std::map<const Elem *, int> bend_id;
@@ -1344,6 +1350,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		JunctionSystemColumn left, right; ///< The ends as columns of the joint model, filled when recording.
 		int rank = 0; ///< When recording, the travel rank of a row edge's piece or a prio footprint on the row it belongs to (100 times its travel position).
 		std::string kind; ///< When recording, its kind in the item rows ("in", "out", "leg run", "lane split", "lane merge", "heads", "prio"), "moves" for a band edge's tile whose row moves with its bend's length, else empty.
+		int piece = -1; ///< A crosser's candidate piece, see JunctionItemRowOccupant.
+		int cy = 0;
+		int ya = -1, yb = -1;
 	};
 	/* Related occupants never constrain each other: the same edge and copy, a node's tile and an edge that starts or ends at the node. */
 	auto at_node = [&](uint32_t edge, uint32_t node) { return edge != UINT32_MAX && ((graph.edges[edge].from.node && graph.edges[edge].from.index == node) || (graph.edges[edge].to.node && graph.edges[edge].to.index == node)); };
@@ -1550,6 +1559,120 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				assert(fresh);
 			}
 			recorded_item_rows.resize(items);
+
+			/* The crossers' candidate pieces at each stack item row they cross (DESIGN-G4 A6): the pieces of the crosser's chain around its Under tokens of the row, each with its row conditions and its tiles' columns affine in a point's column and the rows. */
+			std::vector<std::vector<Occupant>> candidates(items);
+			std::map<std::tuple<int, int, bool>, JunctionBendRows> bend_rows;
+			auto bend_length = [&](const Elem &el) {
+				const bool span_known = el.joiner_div && rows_known && static_cast<size_t>(std::max(el.first, el.last)) < vy.size();
+				return el.absent ? 0 : el.k == Elem::K::Corner ? (span_known ? std::abs(vy[el.first] - vy[el.last]) : k) : el.m;
+			};
+			for (int i = 0; i < items; i++) {
+				const int r = structure.stack[i].row;
+				const int Y = item_pt[i];
+				const int last = static_cast<int>(travel[r].size()) - 1;
+				for (int pos = 1; pos < last; pos++) {
+					if (travel[r][pos].node) continue;
+					const uint32_t x = travel[r][pos].index;
+					const std::vector<Step> &program = programs.edges[x];
+					int first_under = -1, last_under = -1;
+					for (size_t t = 0; t < program.size(); t++) {
+						if (program[t].kind != StepKind::Under || program[t].index != leg_edge[r]) continue;
+						if (first_under < 0) first_under = static_cast<int>(t);
+						last_under = static_cast<int>(t);
+					}
+					if (first_under < 0) {
+						if (error != nullptr) *error = fmt::format("the crosser e{} of row {} has no Under token under its leg", x, r);
+						return false;
+					}
+					const std::vector<Elem> &elems = chain[x];
+					auto tok_of = [&](size_t n) { return elems[n].tok >= 0 ? elems[n].tok : (n == 0 ? -1 : INT_MAX); };
+					size_t ia = elems.size(), ib = elems.size();
+					for (size_t n = 0; n < elems.size(); n++) {
+						if (elems[n].absent) continue;
+						if (tok_of(n) < first_under) ia = n;
+						if (ib == elems.size() && tok_of(n) > last_under) ib = n;
+					}
+					bool between = ia >= ib;
+					for (size_t n = ia + 1; n < ib && n < elems.size(); n++) between = between || !elems[n].absent;
+					if (ia == elems.size() || ib == elems.size() || between) {
+						if (error != nullptr) *error = fmt::format("the crosser e{} of row {} has a present element between its pieces around the Under", x, r);
+						return false;
+					}
+					const Elem &a = elems[ia];
+					const Elem &b = elems[ib];
+					/** One candidate piece: its record, its row conditions' holding at the recording, and its occupants. */
+					struct Candidate {
+						JunctionCrosserPiece piece;
+						bool holds;
+						std::vector<Occupant> occupants;
+					};
+					std::vector<Candidate> group;
+					auto add_condition = [&](int n, const std::string &what, std::vector<std::pair<int, int>> y, int c1, int bend, int gap) {
+						recorded_static_rows.push_back({{-1, 0, c1, c1 != 0 ? bend : -1}, {-1}, gap, fmt::format("A6 e{} item {} piece {}: {}", x, i, n, what), std::move(y), {n}});
+					};
+					auto make_occupant = [&](int n, int pt, int c0, int cy, TrackBits bits) {
+						Occupant o{vy[Y], pt, c0, pt, c0, bits, x, 0, UINT32_MAX, 0, {pt, c0}, {pt, c0}, 100 * pos, "crosser"};
+						o.piece = n;
+						o.cy = cy;
+						o.ya = Y;
+						o.yb = pt;
+						return o;
+					};
+					auto add_bend_pieces = [&](const Elem &el) {
+						if (el.k != Elem::K::Corner && el.k != Elem::K::SBend && el.k != Elem::K::Fan) return true;
+						const bool corner = el.k == Elem::K::Corner;
+						auto found = bend_rows.find({el.hin, el.hand, corner});
+						if (found == bend_rows.end()) found = bend_rows.emplace(std::make_tuple(el.hin, el.hand, corner), JunctionBendRowForms(el.hin, el.hand, corner)).first;
+						const JunctionBendRows &forms = found->second;
+						if (forms.d == 0 || forms.segments.empty()) {
+							if (error != nullptr) *error = "a bend has no row forms";
+							return false;
+						}
+						const int id = bend_ids.at(&el);
+						const int length = bend_length(el);
+						const int dy = forms.d * (vy[Y] - vy[el.first]);
+						for (size_t sg = 0; sg < forms.segments.size(); sg++) {
+							const JunctionBendRowSegment &segment = forms.segments[sg];
+							const int n = static_cast<int>(recorded_crosser_pieces.size() + group.size());
+							const std::string what = fmt::format("bend {} seg {}", id, sg);
+							add_condition(n, what + " lo", {{Y, forms.d}, {el.first, -forms.d}}, -segment.lo1, id, segment.lo0);
+							add_condition(n, what + " hi", {{Y, -forms.d}, {el.first, forms.d}}, segment.hi1, id, -segment.hi0);
+							Candidate c{{x, i, id, static_cast<int>(sg), el.first, false}, dy >= segment.lo0 + segment.lo1 * length && dy <= segment.hi0 + segment.hi1 * length, {}};
+							for (const JunctionBendRowTile &tile : segment.tiles) c.occupants.push_back(make_occupant(n, el.first, tile.c0, tile.slope * forms.d, tile.bits));
+							group.push_back(std::move(c));
+						}
+						return true;
+					};
+					if (!add_bend_pieces(a)) return false;
+					if (VX[a.hout] != 0 && a.last != b.first) {
+						if (error != nullptr) *error = fmt::format("the crosser e{} of row {} has a horizontal run around the Under", x, r);
+						return false;
+					}
+					if (a.last != b.first) {
+						const int n = static_cast<int>(recorded_crosser_pieces.size() + group.size());
+						const int dy = VY[a.hout];
+						add_condition(n, "run lo", {{Y, dy}, {a.last, -dy}}, 0, -1, 1);
+						add_condition(n, "run hi", {{b.first, dy}, {Y, -dy}}, 0, -1, 1);
+						Candidate c{{x, i, -1, -1, a.last, false}, dy * (vy[Y] - vy[a.last]) >= 1 && dy * (vy[b.first] - vy[Y]) >= 1, {}};
+						c.occupants.push_back(make_occupant(n, a.last, 0, 0, TrackBits{Track::Y}));
+						group.push_back(std::move(c));
+					}
+					if (!add_bend_pieces(b)) return false;
+					int holding = 0;
+					for (Candidate &c : group) {
+						if (!c.holds) continue;
+						c.piece.chosen = holding == 0;
+						holding++;
+					}
+					if (holding > 1) recorded_crosser_overlap++;
+					if (holding == 0) recorded_crosser_uncovered++;
+					for (Candidate &c : group) {
+						recorded_crosser_pieces.push_back(c.piece);
+						for (Occupant &o : c.occupants) candidates[i].push_back(std::move(o));
+					}
+				}
+			}
 			for (auto &[y, occupants] : by_row) {
 				const auto found = item_of_row.find(y);
 				if (found == item_of_row.end()) continue;
@@ -1586,24 +1709,39 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						o.kind = "node band";
 						o.rank = at_node(o.edge, split) ? 0 : 100 * last;
 					} else if (travel_pos(r, false, o.edge) >= 0) {
-						o.kind = "crosser";
-						o.rank = 100 * travel_pos(r, false, o.edge);
+						continue; // A crosser's candidate pieces stand for its point-bound tiles.
 					} else {
 						recorded_item_row_skipped++;
 						continue;
 					}
 					ranked.push_back({{o.rank, static_cast<int>(step)}, o});
 				}
+				for (size_t n = 0; n < candidates[i].size(); n++) {
+					const int step = static_cast<int>(occupants.size() + n);
+					ranked.push_back({{candidates[i][n].rank, step}, candidates[i][n]});
+				}
 				std::ranges::stable_sort(ranked, [](const auto &a, const auto &b) { return a.first < b.first; });
 				if (!east[r]) std::ranges::reverse(ranked);
-				for (const auto &[key, o] : ranked) recorded_item_rows[i].push_back({o.left, o.right, o.bits, o.edge, o.copy, o.node, o.footprint, key.first, key.second, o.kind});
+				for (const auto &[key, o] : ranked) recorded_item_rows[i].push_back({o.left, o.right, o.bits, o.edge, o.copy, o.node, o.footprint, key.first, key.second, o.kind, o.piece, o.cy, o.ya, o.yb});
+				auto band = [](const Occupant &o) { return o.kind == "node band" || o.kind == "crosser"; };
 				for (size_t b = 0; b < ranked.size(); b++) {
 					for (size_t a = 0; a < b; a++) {
 						const Occupant &oa = ranked[a].second, &ob = ranked[b].second;
-						if (related(oa, ob) || flat_right(oa) < flat_left(oa) || flat_right(ob) < flat_left(ob)) continue; // An empty run has no tile to separate.
+						if (related(oa, ob)) continue;
+						if ((oa.piece < 0 && flat_right(oa) < flat_left(oa)) || (ob.piece < 0 && flat_right(ob) < flat_left(ob))) continue; // An empty run has no tile to separate.
 						const JunctionTileGap gap = JunctionUnrelatedTileGap(oa.bits, ob.bits);
-						if (gap.share) recorded_item_row_share++;
-						recorded_static_rows.push_back({ob.left, oa.right, gap.share ? 0 : gap.apart, fmt::format("O1 item {}: {} e{} / {} e{}", i, oa.kind, static_cast<int>(oa.edge), ob.kind, static_cast<int>(ob.edge))});
+						const bool share = gap.share && band(oa) && band(ob);
+						if (share) recorded_item_row_share++;
+						JunctionStaticRow row{ob.left, oa.right, share ? 0 : gap.apart, fmt::format("O1 item {}: {} e{} / {} e{}", i, oa.kind, static_cast<int>(oa.edge), ob.kind, static_cast<int>(ob.edge)), {}, {}};
+						std::map<int, int> terms;
+						if (ob.cy != 0) { terms[ob.ya] += ob.cy; terms[ob.yb] -= ob.cy; }
+						if (oa.cy != 0) { terms[oa.ya] -= oa.cy; terms[oa.yb] += oa.cy; }
+						for (const auto &[pt, coef] : terms) {
+							if (coef != 0) row.y.emplace_back(pt, coef);
+						}
+						if (oa.piece >= 0) row.pieces.push_back(oa.piece);
+						if (ob.piece >= 0) row.pieces.push_back(ob.piece);
+						recorded_static_rows.push_back(std::move(row));
 					}
 				}
 			}
@@ -2307,6 +2445,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			recorded_static_rows.clear();
 			recorded_item_row_skipped = 0;
 			recorded_item_row_share = 0;
+			recorded_crosser_pieces.clear();
+			recorded_crosser_overlap = 0;
+			recorded_crosser_uncovered = 0;
 		}
 		if ((!x_phase || rows_known) && spec.curve_limit) {
 			/* The curve-gap family (D217): every pair JunctionCurveGaps returns for a route's curves. A pair in one segment (only vertical runs and fixed spans between the curves) is a difference of its anchors' rows in the Y phase; every other pair is a difference of its anchors' columns in the X phase. Pairs on one anchor are constants. */
