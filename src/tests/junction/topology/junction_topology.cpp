@@ -5553,3 +5553,163 @@ TEST_CASE("arrangement: one Under fact per doubled bridge Under token", "[juncti
 		if (main == nullptr) CHECK(arrangement.unders.size() == 4);
 	}
 }
+
+/** The order and arrangement of a hub's seed (T when main is null). */
+struct BandHub {
+	JunctionTrackOrder order;
+	JunctionTrackArrangement arrangement;
+};
+
+static BandHub MakeBandHub(const char *main, const char *branch)
+{
+	const JunctionTopology topology = ArrangementTopology(main, branch);
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(topology, &error);
+	REQUIRE(!paths.empty());
+	const JunctionTrackGraph graph = BuildJunctionTrackGraph(topology, paths, &error);
+	BandHub hub;
+	hub.order = OrderJunctionTrackGraph(topology, paths, graph, &error);
+	INFO(error);
+	REQUIRE(!hub.order.rows.empty());
+	/* The band data needs no programs, and seeding L_R x LL_RR takes 16 s in Debug. */
+	hub.arrangement = ArrangeJunctionTrackGraph(graph, hub.order, JunctionTrackPrograms{});
+	return hub;
+}
+
+static const std::pair<const char *, const char *> BAND_HUBS[] = {{nullptr, nullptr}, {"LL_RR", "L_R"}, {"L_R", "LL_RR"}};
+
+/** Replace the block `removed` of `line` by `inserted`; false when the block is empty or absent. */
+static bool ReplaceBlock(std::vector<uint32_t> &line, const JunctionTrackArrangement::BandReplacement &replacement)
+{
+	const auto at = std::search(line.begin(), line.end(), replacement.removed.begin(), replacement.removed.end());
+	if (replacement.removed.empty() || at == line.end()) return false;
+	const size_t pos = at - line.begin();
+	line.erase(line.begin() + pos, line.begin() + pos + replacement.removed.size());
+	line.insert(line.begin() + pos, replacement.inserted.begin(), replacement.inserted.end());
+	return true;
+}
+
+TEST_CASE("arrangement: band replacements replay the sweep's lines", "[junction][topology]")
+{
+	for (const auto &[main, branch] : BAND_HUBS) {
+		const BandHub hub = MakeBandHub(main, branch);
+		REQUIRE(hub.order.band_lines.size() == hub.order.bands.size());
+		REQUIRE(hub.arrangement.band_replacements.size() == hub.order.bands.size());
+		for (size_t b = 0; b < hub.order.bands.size(); b++) {
+			INFO(fmt::format("{} band {}", main == nullptr ? "T" : main, b));
+			REQUIRE(hub.order.band_lines[b].size() == hub.order.bands[b].size() + 1);
+			REQUIRE(hub.arrangement.band_replacements[b].size() == hub.order.bands[b].size());
+			std::vector<uint32_t> line = hub.order.band_lines[b][0];
+			for (size_t k = 0; k < hub.order.bands[b].size(); k++) {
+				INFO(fmt::format("event {}", k));
+				REQUIRE(ReplaceBlock(line, hub.arrangement.band_replacements[b][k]));
+				CHECK(line == hub.order.band_lines[b][k + 1]);
+			}
+		}
+	}
+}
+
+TEST_CASE("arrangement: LL_RR x L_R has the extension-only neighbours of band 4", "[junction][topology]")
+{
+	const BandHub hub = MakeBandHub("LL_RR", "L_R");
+	std::set<std::pair<uint32_t, uint32_t>> extension;
+	for (const JunctionTrackArrangement::BandNeighbour &n : hub.arrangement.band_neighbours) {
+		if (n.band == 4 && n.extension_only) extension.insert({std::min(n.west, n.east), std::max(n.west, n.east)});
+	}
+	const std::set<std::pair<uint32_t, uint32_t>> expected = {{2, 23}, {4, 8}, {4, 23}, {17, 23}};
+	CHECK(extension == expected);
+}
+
+TEST_CASE("arrangement: downset enumeration equals every linear extension", "[junction][topology]")
+{
+	for (const auto &[main, branch] : BAND_HUBS) {
+		const BandHub hub = MakeBandHub(main, branch);
+		const JunctionTrackArrangement &arrangement = hub.arrangement;
+		for (uint32_t b = 0; b < hub.order.bands.size(); b++) {
+			INFO(fmt::format("{} band {}", main == nullptr ? "T" : main, b));
+			const size_t n = hub.order.bands[b].size();
+			std::vector<std::vector<bool>> before(n, std::vector<bool>(n, false));
+			for (const auto &pair : arrangement.band_pairs) if (pair.band == b) before[pair.south][pair.north] = true;
+			for (size_t k = 0; k < n; k++) for (size_t i = 0; i < n; i++) for (size_t j = 0; j < n; j++) if (before[i][k] && before[k][j]) before[i][j] = true;
+			std::set<std::pair<uint32_t, uint32_t>> neighbours;
+			std::set<std::pair<uint32_t, uint32_t>> event_pairs;
+			std::vector<bool> done(n, false);
+			std::vector<size_t> sequence;
+			std::function<void()> extend = [&]() {
+				if (sequence.size() == n) {
+					std::vector<uint32_t> line = hub.order.band_lines[b][0];
+					std::vector<std::vector<uint32_t>> lines{line};
+					for (size_t k : sequence) {
+						REQUIRE(ReplaceBlock(line, arrangement.band_replacements[b][k]));
+						lines.push_back(line);
+					}
+					for (const auto &l : lines) {
+						for (size_t q = 0; q + 1 < l.size(); q++) neighbours.insert({l[q], l[q + 1]});
+						for (size_t i = 0; i < n; i++) for (size_t j = i + 1; j < n; j++) {
+							if (before[i][j] || before[j][i]) continue;
+							std::set<uint32_t> ti(arrangement.band_replacements[b][i].removed.begin(), arrangement.band_replacements[b][i].removed.end());
+							ti.insert(arrangement.band_replacements[b][i].inserted.begin(), arrangement.band_replacements[b][i].inserted.end());
+							std::set<uint32_t> tj(arrangement.band_replacements[b][j].removed.begin(), arrangement.band_replacements[b][j].removed.end());
+							tj.insert(arrangement.band_replacements[b][j].inserted.begin(), arrangement.band_replacements[b][j].inserted.end());
+							for (size_t q = 0; q + 1 < l.size(); q++) {
+								if ((ti.count(l[q]) && tj.count(l[q + 1])) || (tj.count(l[q]) && ti.count(l[q + 1]))) event_pairs.insert({static_cast<uint32_t>(i), static_cast<uint32_t>(j)});
+							}
+						}
+					}
+					return;
+				}
+				for (size_t k = 0; k < n; k++) {
+					if (done[k]) continue;
+					bool ready = true;
+					for (size_t j = 0; j < n; j++) if (!done[j] && before[j][k]) ready = false;
+					if (!ready) continue;
+					done[k] = true;
+					sequence.push_back(k);
+					extend();
+					sequence.pop_back();
+					done[k] = false;
+				}
+			};
+			extend();
+			std::set<std::pair<uint32_t, uint32_t>> got_neighbours, got_event_pairs;
+			for (const auto &nb : arrangement.band_neighbours) if (nb.band == b) got_neighbours.insert({nb.west, nb.east});
+			for (const auto &ep : arrangement.band_event_pairs) if (ep.band == b) got_event_pairs.insert({ep.first, ep.second});
+			CHECK(got_neighbours == neighbours);
+			CHECK(got_event_pairs == event_pairs);
+			size_t count = 0;
+			for (const auto &nb : arrangement.band_neighbours) count += nb.band == b;
+			CHECK(count == neighbours.size());
+		}
+	}
+}
+
+TEST_CASE("arrangement: band counts on the large hubs", "[junction][topology][.arr3]")
+{
+	struct Hub { const char *main; const char *branch; size_t neighbours, extension, event_pairs; };
+	for (const Hub &hub : {Hub{"LL_RR", "LL_RR", 90, 14, 21}, Hub{"LLL_RRR", "LL_RR", 163, 26, 83}, Hub{"LLL_RRR", "LLL_RRR", 295, 49, 139}}) {
+		const JunctionTopology topology = ArrangementTopology(hub.main, hub.branch);
+		std::string error;
+		const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(topology, &error);
+		REQUIRE(!paths.empty());
+		const JunctionTrackGraph graph = BuildJunctionTrackGraph(topology, paths, &error);
+		const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, paths, graph, &error);
+		INFO(error);
+		REQUIRE(!order.rows.empty());
+		const auto start = std::chrono::steady_clock::now();
+		const JunctionTrackArrangement arrangement = ArrangeJunctionTrackGraph(graph, order, JunctionTrackPrograms{});
+		const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+		size_t events = 0, unordered = 0, extension = 0;
+		for (const auto &band : order.bands) events += band.size();
+		std::set<std::pair<uint32_t, uint32_t>> all, only;
+		for (const auto &nb : arrangement.band_neighbours) {
+			all.insert({nb.band, std::min(nb.west, nb.east) * 100000 + std::max(nb.west, nb.east)});
+			if (nb.extension_only) only.insert({nb.band, std::min(nb.west, nb.east) * 100000 + std::max(nb.west, nb.east)});
+		}
+		unordered = all.size();
+		extension = only.size();
+		WARN(fmt::format("{} x {}: events {}, neighbour pairs {}, extension-only {}, event pairs {}, arrangement {:.3f} s", hub.main, hub.branch, events, unordered, extension, arrangement.band_event_pairs.size(), seconds));
+		CHECK(unordered >= hub.neighbours);
+		CHECK(extension >= hub.extension);
+		CHECK(arrangement.band_event_pairs.size() >= hub.event_pairs);
+	}
+}

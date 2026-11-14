@@ -554,6 +554,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 	order.node_level = node_level;
 	order.rows.resize(rows);
 	order.bands.resize(rows + 1);
+	order.band_lines.resize(rows + 1);
 	std::vector<std::vector<uint32_t>> swept(edge_count);
 	std::vector<bool> south_is_to(edge_count, false); // The end the sweep entered the edge by.
 	auto north_end = [&](uint32_t e) { return south_is_to[e] ? graph.edges[e].from : graph.edges[e].to; };
@@ -581,6 +582,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 			std::vector<std::pair<uint32_t, uint32_t>> pending = carried;
 			pending.insert(pending.end(), band_crossings[level].begin(), band_crossings[level].end());
 			std::fill(layers.begin(), layers.end(), 0);
+			order.band_lines[level / 2].push_back(items);
 			for (;;) {
 				bool swapped = false;
 				for (auto p = pending.begin(); p != pending.end(); ++p) {
@@ -593,6 +595,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 					layer_i = layer_j = layer;
 					order.bands[level / 2].push_back({false, p->first, p->second, layer});
 					std::iter_swap(pi, pj);
+					order.band_lines[level / 2].push_back(items);
 					swept[p->first].push_back(p->second);
 					swept[p->second].push_back(p->first);
 					pending.erase(p);
@@ -687,6 +690,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 							layers.insert(layers.begin() + first, 1 + merged_layer);
 						}
 					}
+					order.band_lines[level / 2].push_back(items);
 					continue;
 				}
 				const int layer = 1 + layers[it - items.begin()];
@@ -718,6 +722,7 @@ JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, con
 					layers.insert(layers.begin() + pos, layer);
 					pos++;
 				}
+				order.band_lines[level / 2].push_back(items);
 			}
 			carried = pending;
 			if (level == 0 && !pending.empty()) return fail("a crossing between edges that are not adjacent is not ruled yet");
@@ -1363,6 +1368,91 @@ JunctionTrackArrangement ArrangeJunctionTrackGraph(const JunctionTrackGraph &gra
 				if (std::ranges::any_of(later, [&](uint32_t e) { return earlier.count(e) != 0; })) arrangement.band_pairs.push_back({band, i, j});
 			}
 		}
+	}
+
+	/* Per band: each event's replacement block, then the lines and event pairs of every order of the events the layers allow. */
+	arrangement.band_replacements.resize(order.bands.size());
+	for (uint32_t band = 0; band < order.bands.size(); band++) {
+		const std::vector<JunctionTrackBandEvent> &events = order.bands[band];
+		const std::vector<std::vector<uint32_t>> &lines = order.band_lines[band];
+		const size_t n = events.size();
+		std::vector<JunctionTrackArrangement::BandReplacement> &replacements = arrangement.band_replacements[band];
+		for (size_t k = 0; k < n; k++) {
+			const std::vector<uint32_t> &before_line = lines[k];
+			const std::vector<uint32_t> &after_line = lines[k + 1];
+			size_t prefix = 0;
+			while (prefix < before_line.size() && prefix < after_line.size() && before_line[prefix] == after_line[prefix]) prefix++;
+			size_t suffix = 0;
+			while (suffix < before_line.size() - prefix && suffix < after_line.size() - prefix && before_line[before_line.size() - 1 - suffix] == after_line[after_line.size() - 1 - suffix]) suffix++;
+			replacements.push_back({
+				std::vector<uint32_t>(before_line.begin() + prefix, before_line.end() - suffix),
+				std::vector<uint32_t>(after_line.begin() + prefix, after_line.end() - suffix),
+			});
+		}
+
+		std::vector<std::vector<bool>> precedes(n, std::vector<bool>(n, false));
+		for (const JunctionTrackArrangement::BandPair &pair : arrangement.band_pairs) {
+			if (pair.band == band) precedes[pair.south][pair.north] = true;
+		}
+		for (size_t k = 0; k < n; k++) {
+			for (size_t i = 0; i < n; i++) {
+				for (size_t j = 0; j < n; j++) {
+					if (precedes[i][k] && precedes[k][j]) precedes[i][j] = true;
+				}
+			}
+		}
+
+		/* Every downset of the events once; the line at a downset is the same whichever order reached it. */
+		std::set<std::pair<uint32_t, uint32_t>> neighbours;
+		std::set<std::pair<uint32_t, uint32_t>> event_pairs;
+		std::vector<std::set<uint32_t>> blocks(n);
+		for (size_t k = 0; k < n; k++) {
+			blocks[k].insert(replacements[k].removed.begin(), replacements[k].removed.end());
+			blocks[k].insert(replacements[k].inserted.begin(), replacements[k].inserted.end());
+		}
+		std::map<std::vector<bool>, std::vector<uint32_t>> visited;
+		std::vector<std::pair<std::vector<bool>, std::vector<uint32_t>>> pending{{std::vector<bool>(n, false), lines[0]}};
+		visited.emplace(pending[0]);
+		while (!pending.empty()) {
+			const auto [done, line] = std::move(pending.back());
+			pending.pop_back();
+			for (size_t q = 0; q + 1 < line.size(); q++) {
+				neighbours.insert({line[q], line[q + 1]});
+				for (size_t i = 0; i < n; i++) {
+					for (size_t j = i + 1; j < n; j++) {
+						if (precedes[i][j] || precedes[j][i]) continue;
+						if ((blocks[i].count(line[q]) && blocks[j].count(line[q + 1])) || (blocks[j].count(line[q]) && blocks[i].count(line[q + 1]))) event_pairs.insert({static_cast<uint32_t>(i), static_cast<uint32_t>(j)});
+					}
+				}
+			}
+			for (size_t k = 0; k < n; k++) {
+				if (done[k]) continue;
+				bool ready = true;
+				for (size_t j = 0; j < n; j++) ready = ready && (done[j] || !precedes[j][k]);
+				if (!ready) continue;
+				std::vector<uint32_t> next = line;
+				const JunctionTrackArrangement::BandReplacement &replacement = replacements[k];
+				const auto at = std::search(next.begin(), next.end(), replacement.removed.begin(), replacement.removed.end());
+				/* Every removed block is non-empty and in the line of every order that reaches the event. */
+				if (replacement.removed.empty() || at == next.end()) NOT_REACHED();
+				const size_t pos = at - next.begin();
+				next.erase(next.begin() + pos, next.begin() + pos + replacement.removed.size());
+				next.insert(next.begin() + pos, replacement.inserted.begin(), replacement.inserted.end());
+				std::vector<bool> next_done = done;
+				next_done[k] = true;
+				const auto [seen, fresh] = visited.try_emplace(next_done, next);
+				/* The line at a downset does not depend on the order that reached it. */
+				if (!fresh && seen->second != next) NOT_REACHED();
+				if (fresh) pending.emplace_back(std::move(next_done), std::move(next));
+			}
+		}
+
+		std::set<std::pair<uint32_t, uint32_t>> sweep_adjacent;
+		for (const std::vector<uint32_t> &line : lines) {
+			for (size_t q = 0; q + 1 < line.size(); q++) sweep_adjacent.insert({line[q], line[q + 1]});
+		}
+		for (const auto &[west, east] : neighbours) arrangement.band_neighbours.push_back({band, west, east, sweep_adjacent.count({west, east}) == 0});
+		for (const auto &[first, second] : event_pairs) arrangement.band_event_pairs.push_back({band, first, second});
 	}
 
 	/* A doubled bridge's crossers carry two adjacent Under tokens of the same edge overhead, one per copy. */
