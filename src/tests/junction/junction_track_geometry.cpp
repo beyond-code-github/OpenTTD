@@ -12,6 +12,7 @@
 #include "../../3rdparty/catch2/catch.hpp"
 
 #include "../../direction_func.h"
+#include "../../track_func.h"
 #include "../../junction/junction_route.h"
 #include "../../junction/junction_track_geometry.h"
 
@@ -289,4 +290,54 @@ TEST_CASE("a Corner's column at a row is affine", "[junction][geometry]")
 			CHECK(form.t1 == t1);
 		}
 	}
+}
+
+TEST_CASE("bend row forms reproduce every bend raster", "[junction][geometry]")
+{
+	for (bool corner : {false, true}) {
+		for (int heading = 0; heading < 4; heading++) {
+			for (int hand : {-1, 1}) {
+				const JunctionBendRows rows = JunctionBendRowForms(heading, hand, corner);
+				INFO("corner " << corner << " heading " << heading << " hand " << hand);
+				REQUIRE(!rows.segments.empty());
+				CHECK((rows.d == 1 || rows.d == -1));
+				for (int length = 1; length <= 9; length++) {
+					INFO("L " << length);
+					const int halves = corner ? 2 * length + 1 : 2 * length;
+					const JunctionRaster raster = RasterizeJunctionRoute({{0, 0}, JUNCTION_AXIS_TRACKDIR[heading], JunctionBendMoves(hand, halves, corner)});
+					REQUIRE(raster.error.empty());
+					std::map<std::pair<int, int>, uint32_t> from_raster;
+					for (int i = 1; i <= halves; i++) {
+						uint32_t &bits = from_raster[{raster.pieces[i].tile.x - raster.pieces[1].tile.x, raster.pieces[i].tile.y - raster.pieces[1].tile.y}];
+						bits |= 1U << static_cast<uint8_t>(TrackdirToTrack(raster.pieces[i].trackdir));
+					}
+					/* The tile offsets of the raster agree with the tile forms at this length. */
+					std::set<std::pair<int, int>> from_tile_forms, offsets;
+					for (const JunctionBendTileForm &form : JunctionBendTileForms(heading, hand, length, corner)) from_tile_forms.emplace(form.dx0 + form.dx1 * length, form.dy0 + form.dy1 * length);
+					for (const auto &[offset, bits] : from_raster) offsets.insert(offset);
+					CHECK(from_tile_forms == offsets);
+					std::map<std::pair<int, int>, uint32_t> from_forms;
+					for (const JunctionBendRowSegment &segment : rows.segments) {
+						for (int r = segment.lo0 + segment.lo1 * length; r <= segment.hi0 + segment.hi1 * length; r++) {
+							for (const JunctionBendRowTile &tile : segment.tiles) {
+								uint32_t &bits = from_forms[{tile.c0 + tile.slope * r, rows.d * r}];
+								for (Track t : tile.bits) bits |= 1U << static_cast<uint8_t>(t);
+							}
+						}
+					}
+					CHECK(from_forms == from_raster);
+				}
+			}
+		}
+	}
+	/* The vertical S-bend heading 2, hand -1 goes south and one tile column east per row. */
+	const JunctionBendRows south = JunctionBendRowForms(2, -1, false);
+	CHECK(south.d == 1);
+	REQUIRE(south.segments.size() == 1);
+	CHECK((south.segments[0].lo0 == 0 && south.segments[0].lo1 == 0 && south.segments[0].hi0 == -1 && south.segments[0].hi1 == 1));
+	REQUIRE(south.segments[0].tiles.size() == 2);
+	CHECK(south.segments[0].tiles[0].c0 == 0);
+	CHECK(south.segments[0].tiles[1].c0 == 1);
+	CHECK(south.segments[0].tiles[0].slope == 1);
+	CHECK(south.segments[0].tiles[1].slope == 1);
 }

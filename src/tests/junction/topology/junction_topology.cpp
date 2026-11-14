@@ -5898,10 +5898,24 @@ static ItemRowSeed RecordItemRowSeed(const char *main, const char *branch, const
 	return result;
 }
 
-/** The value of a column at a point of the recording. */
+/** The value of a column at a point of the recording, no x term for a column with no point. */
 static int ItemRowColumn(const JunctionPlacementSystem &system, const JunctionSystemColumn &column, const JunctionSystemPoint &point)
 {
-	return point.x[column.pt] + column.c0 + (column.bend >= 0 ? column.c1 * system.bends[column.bend].m : 0);
+	return (column.pt >= 0 ? point.x[column.pt] : 0) + column.c0 + (column.bend >= 0 ? column.c1 * system.bends[column.bend].m : 0);
+}
+
+/** The left side of a static row at a point of the recording. */
+static int StaticRowValue(const JunctionPlacementSystem &system, const JunctionStaticRow &row, const JunctionSystemPoint &point)
+{
+	int value = ItemRowColumn(system, row.v, point) - ItemRowColumn(system, row.u, point);
+	for (const auto &[pt, coef] : row.y) value += coef * point.y[pt];
+	return value;
+}
+
+/** Whether every crosser piece a static row holds under is the chosen one. */
+static bool StaticRowChosen(const JunctionPlacementSystem &system, const JunctionStaticRow &row)
+{
+	return std::ranges::all_of(row.pieces, [&](int piece) { return system.crosser_pieces[piece].chosen; });
 }
 
 static void CheckItemRowSeed(const char *main, const char *branch)
@@ -5914,19 +5928,24 @@ static void CheckItemRowSeed(const char *main, const char *branch)
 	for (size_t i = 0; i < system.item_rows.size(); i++) CHECK(!system.item_rows[i].empty());
 	int failed = 0;
 	int touching = 0;
+	int unchosen = 0;
 	for (const JunctionStaticRow &row : system.static_rows) {
-		const int v = ItemRowColumn(system, row.v, system.solved);
-		const int u = ItemRowColumn(system, row.u, system.solved);
-		INFO(fmt::format("{}: v {} u {} gap {}", row.reason, v, u, row.gap));
-		if (v - u < row.gap) failed++;
-		CHECK(v - u >= row.gap);
+		if (!StaticRowChosen(system, row)) {
+			unchosen++;
+			continue;
+		}
+		const int value = StaticRowValue(system, row, system.solved);
+		INFO(fmt::format("{}: value {} gap {}", row.reason, value, row.gap));
+		if (value < row.gap) failed++;
+		CHECK(value >= row.gap);
 		if (row.gap != 0) continue;
 		/* A share row whose pair would touch at gap 1: find a pair of the rows with the row's columns. */
 		bool touches = false;
 		for (const std::vector<JunctionItemRowOccupant> &occupants : system.item_rows) {
 			for (size_t a = 0; a < occupants.size(); a++) {
 				for (size_t b = a + 1; b < occupants.size(); b++) {
-					if (occupants[b].west != row.v || occupants[a].east != row.u) continue;
+					auto piece_ok = [&](const JunctionItemRowOccupant &o) { return o.piece < 0 || std::ranges::find(row.pieces, o.piece) != row.pieces.end(); };
+					if (occupants[b].west != row.v || occupants[a].east != row.u || !piece_ok(occupants[a]) || !piece_ok(occupants[b])) continue;
 					const JunctionTileGap gap = JunctionUnrelatedTileGap(occupants[a].bits, occupants[b].bits);
 					touches = touches || (gap.share && gap.apart == 2);
 				}
@@ -5936,7 +5955,7 @@ static void CheckItemRowSeed(const char *main, const char *branch)
 	}
 	size_t occupants = 0;
 	for (const std::vector<JunctionItemRowOccupant> &row : system.item_rows) occupants += row.size();
-	WARN(fmt::format("item rows {} x {}: occupants {}, static rows {} ({} failing), skipped {}, share {}, share at gap 1 {}", main == nullptr ? "T" : main, main == nullptr ? "" : branch, occupants, system.static_rows.size(), failed, system.item_row_skipped, system.item_row_share, touching));
+	WARN(fmt::format("item rows {} x {}: occupants {}, static rows {} ({} failing, {} unchosen), skipped {}, share {}, share at gap 1 {}, crosser pieces {}, overlap {}, uncovered {}", main == nullptr ? "T" : main, main == nullptr ? "" : branch, occupants, system.static_rows.size(), failed, unchosen, system.item_row_skipped, system.item_row_share, touching, system.crosser_pieces.size(), system.crosser_overlap, system.crosser_uncovered));
 }
 
 TEST_CASE("item rows: every O1 row holds at the seeds", "[junction][topology]")
@@ -5948,6 +5967,124 @@ TEST_CASE("item rows: every O1 row holds at the seeds", "[junction][topology]")
 TEST_CASE("item rows: every O1 row holds at the seeds (L_R x LL_RR)", "[junction][topologysweep][.sweep]")
 {
 	CheckItemRowSeed("L_R", "LL_RR");
+}
+
+/** The columns of a crosser's tiles on one row at the recording's solution, from its chain and bends (the oracle of the candidate pieces). */
+static std::set<int> CrosserTilesOnRow(const JunctionPlacementSystem &system, uint32_t edge, int row)
+{
+	const JunctionSystemPoint &at = system.solved;
+	std::vector<const JunctionSystemElement *> elems;
+	for (const JunctionSystemElement &el : system.chains) {
+		if (el.edge != static_cast<int>(edge) || el.copy != 0) continue;
+		const bool absent = el.bend >= 0 && system.bends[el.bend].m == 0 && system.bends[el.bend].kind != "SFan" && system.bends[el.bend].kind != "Fan";
+		if (!absent) elems.push_back(&el);
+	}
+	std::set<int> columns;
+	for (size_t n = 0; n < elems.size(); n++) {
+		const JunctionSystemElement &el = *elems[n];
+		if (el.bend >= 0 && system.bends[el.bend].m > 0) {
+			const JunctionSystemBend &bend = system.bends[el.bend];
+			for (const JunctionBendTileForm &form : JunctionBendTileForms(bend.hin, bend.hand, bend.m, el.k == "Corner")) {
+				const int dy = form.dy0 + form.dy1 * bend.m;
+				if (at.y[bend.first] + dy == row) columns.insert(at.x[bend.first] + form.dx0 + form.dx1 * bend.m);
+			}
+		} else if (el.k == "Tile" || el.k == "Heads") {
+			if (at.y[el.first] == row || at.y[el.last] == row) columns.insert(at.x[at.y[el.first] == row ? el.first : el.last]);
+		}
+		if (n + 1 >= elems.size() || elems[n + 1]->first == el.last) continue;
+		if (el.hout != 0 && el.hout != 2) continue;
+		const int lo = std::min(at.y[el.last], at.y[elems[n + 1]->first]);
+		const int hi = std::max(at.y[el.last], at.y[elems[n + 1]->first]);
+		if (row > lo && row < hi) columns.insert(at.x[el.last]);
+	}
+	return columns;
+}
+
+static void CheckCrosserPieces(const char *main, const char *branch, int groups_expected)
+{
+	const ItemRowSeed seed = RecordItemRowSeed(main, branch);
+	const JunctionPlacementSystem &system = seed.system;
+	REQUIRE(!system.solved.x.empty());
+	std::map<std::pair<uint32_t, int>, std::vector<int>> groups;
+	for (size_t n = 0; n < system.crosser_pieces.size(); n++) groups[{system.crosser_pieces[n].edge, system.crosser_pieces[n].item}].push_back(static_cast<int>(n));
+	CHECK(static_cast<int>(groups.size()) == groups_expected);
+	CHECK(system.crosser_overlap == 0);
+	CHECK(system.crosser_uncovered == 0);
+	/* Which pieces have both condition rows holding at the solution. */
+	std::map<int, std::pair<int, int>> conditions; ///< Per piece, (condition rows, holding).
+	for (const JunctionStaticRow &row : system.static_rows) {
+		if (!row.reason.starts_with("A6")) continue;
+		REQUIRE(row.pieces.size() == 1);
+		auto &[count, holding] = conditions[row.pieces[0]];
+		count++;
+		if (StaticRowValue(system, row, system.solved) >= row.gap) holding++;
+	}
+	for (const auto &[group, pieces] : groups) {
+		int chosen = 0, holding = 0;
+		for (int n : pieces) {
+			REQUIRE(conditions[n].first == 2);
+			const bool holds = conditions[n].second == 2;
+			holding += holds;
+			chosen += system.crosser_pieces[n].chosen;
+			CHECK(holds == system.crosser_pieces[n].chosen);
+		}
+		INFO(fmt::format("crosser e{} item {}", group.first, group.second));
+		CHECK(chosen == 1);
+		CHECK(holding == 1);
+		/* The chosen piece's columns are the crosser's tiles on the row. */
+		std::set<int> columns;
+		for (int n : pieces) {
+			if (!system.crosser_pieces[n].chosen) continue;
+			for (const JunctionItemRowOccupant &o : system.item_rows[group.second]) {
+				if (o.piece != n) continue;
+				columns.insert(o.west.c0 + system.solved.x[o.west.pt] + o.cy * (system.solved.y[o.ya] - system.solved.y[o.yb]));
+			}
+		}
+		CHECK(columns == CrosserTilesOnRow(system, group.first, system.solved.y[system.item_pt[group.second]]));
+	}
+}
+
+TEST_CASE("crossers: one piece covers each crossed item row at the seeds, and its columns are the crosser's tiles", "[junction][topology]")
+{
+	CheckCrosserPieces(nullptr, nullptr, 6);
+	CheckCrosserPieces("LL_RR", "L_R", 30);
+}
+
+TEST_CASE("crossers: one piece covers each crossed item row at the seeds (L_R x LL_RR)", "[junction][topologysweep][.sweep]")
+{
+	CheckCrosserPieces("L_R", "LL_RR", 12);
+}
+
+/** The kind of an occupant named in an "O1 item <i>: <kind a> e<edge> / <kind b> e<edge>" reason, a for 0 and b for 1. */
+static std::string ReasonKind(const std::string &reason, int which)
+{
+	const size_t colon = reason.find(": ");
+	const size_t slash = reason.find(" / ");
+	std::string part = which == 0 ? reason.substr(colon + 2, slash - colon - 2) : reason.substr(slash + 3);
+	return part.substr(0, part.rfind(" e"));
+}
+
+static void CheckGapZero(const char *main, const char *branch)
+{
+	const ItemRowSeed seed = RecordItemRowSeed(main, branch);
+	int zero = 0;
+	for (const JunctionStaticRow &row : seed.system.static_rows) {
+		if (!row.reason.starts_with("O1") || row.gap != 0) continue;
+		zero++;
+		INFO(row.reason);
+		for (int which : {0, 1}) {
+			const std::string kind = ReasonKind(row.reason, which);
+			CHECK((kind == "node band" || kind == "crosser"));
+		}
+	}
+	CHECK(zero == seed.system.item_row_share);
+	CHECK(zero >= 1);
+}
+
+TEST_CASE("item rows: gap 0 only between band-edge pieces", "[junction][topology]")
+{
+	CheckGapZero(nullptr, nullptr);
+	CheckGapZero("LL_RR", "L_R");
 }
 
 TEST_CASE("item rows follow the arrangement's row order", "[junction][topology]")
