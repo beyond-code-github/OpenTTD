@@ -1386,10 +1386,18 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		std::string tag_kind;
 		/* The travel order of each row's order items (DESIGN-G4 A5): the row's order reversed when it travels west. */
 		std::vector<std::vector<JunctionTrackRowItem>> travel;
+		/* The travel positions of each row's first and last node item: its split and merge (D273); a crosser before the first crosses the row's in edge, one after the last its out edge. */
+		std::vector<int> first_node(rows, -1), last_node(rows, -1);
 		if (record) {
 			for (int r = 0; r < rows; r++) {
 				travel.push_back(order.rows[r]);
 				if (!east[r]) std::ranges::reverse(travel.back());
+				for (int pos = 0; pos < static_cast<int>(travel[r].size()); pos++) {
+					if (!travel[r][pos].node) continue;
+					if (first_node[r] < 0) first_node[r] = pos;
+					last_node[r] = pos;
+				}
+				assert(first_node[r] >= 0);
 			}
 		}
 		/** The travel position of an order item of row r, -1 when it is none of its items. */
@@ -1491,6 +1499,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				if (record) {
 					/* The piece's kind and rank on its row, read from where it stands in its chain (RECON-O1-item-rows §5, times 100). */
 					const int last = static_cast<int>(travel[r].size()) - 1;
+					const int merge_pos = last_node[r];
 					const std::vector<int> &leg_bridges = bridges_of[leg_edge[r]];
 					const int g = static_cast<int>(leg_bridges.size());
 					if (piece.edge == in_edge[r]) {
@@ -1507,7 +1516,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					} else if (piece.t == RowPiece::T::Run) {
 						tag_kind = "leg run";
 						if (piece.copy < 0) {
-							tag_rank = piece.chain == 1 ? 5 : 100 * last - 40;
+							tag_rank = piece.chain == 1 ? 5 : 100 * merge_pos - 40;
 						} else if (g == 0) {
 							tag_rank = 50;
 						} else if (piece.heads == 0) {
@@ -1515,14 +1524,14 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						} else if (piece.heads < g) {
 							tag_rank = 100 * bridge_span(r, leg_bridges[piece.heads - 1]).second + 50;
 						} else {
-							tag_rank = 100 * last - 55;
+							tag_rank = 100 * merge_pos - 55;
 						}
 					} else if (piece.role == Step::Role::LaneSplit) {
 						tag_kind = "lane split";
 						tag_rank = 10;
 					} else if (piece.role == Step::Role::LaneMerge) {
 						tag_kind = "lane merge";
-						tag_rank = 100 * last - 50;
+						tag_rank = 100 * merge_pos - 50;
 					} else {
 						tag_kind = "other";
 						tag_rank = 0;
@@ -1548,7 +1557,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			const int y_lane = vy[item_pt[row_items[r].lane]];
 			const DiagDirection side = prio_el.index < row_items[r].lane ? DiagDirection::NW : DiagDirection::SE;
 			const DiagDirection exit_edge = east[r] ? DiagDirection::SW : DiagDirection::NE;
-			const int prio_rank = record ? 100 * (static_cast<int>(travel[r].size()) - 1) - 25 : 0;
+			const int prio_rank = record ? 100 * last_node[r] - 25 : 0;
 			const std::string prio_kind = record ? "prio" : "";
 			for (int step = 0; step <= even_prio; step++) {
 				const auto [row_bits, lane_bits] = JunctionPrioStepBits(step, side, exit_edge);
@@ -1576,14 +1585,14 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			for (int i = 0; i < items; i++) {
 				const int r = structure.stack[i].row;
 				const int Y = item_pt[i];
-				const int last = static_cast<int>(travel[r].size()) - 1;
-				for (int pos = 1; pos < last; pos++) {
+				for (int pos = 0; pos < static_cast<int>(travel[r].size()); pos++) {
 					if (travel[r][pos].node) continue;
 					const uint32_t x = travel[r][pos].index;
+					const uint32_t row_edge = pos < first_node[r] ? in_edge[r] : pos > last_node[r] ? out_edge[r] : leg_edge[r]; // The row edge the crosser passes under.
 					const std::vector<Step> &program = programs.edges[x];
 					int first_under = -1, last_under = -1;
 					for (size_t t = 0; t < program.size(); t++) {
-						if (program[t].kind != StepKind::Under || program[t].index != leg_edge[r]) continue;
+						if (program[t].kind != StepKind::Under || program[t].index != row_edge) continue;
 						if (first_under < 0) first_under = static_cast<int>(t);
 						last_under = static_cast<int>(t);
 					}
@@ -1676,9 +1685,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				if (found == item_of_row.end()) continue;
 				const int i = found->second;
 				const int r = structure.stack[i].row;
-				const int last = static_cast<int>(travel[r].size()) - 1;
-				assert(last >= 1 && travel[r][0].node && travel[r][last].node);
-				const uint32_t split = travel[r][0].index, merge = travel[r][last].index;
+				assert(first_node[r] < last_node[r]);
+				const uint32_t split = travel[r][first_node[r]].index, merge = travel[r][last_node[r]].index;
 				std::vector<std::pair<std::pair<int, int>, Occupant>> ranked; ///< ((rank, step), occupant).
 				for (size_t step = 0; step < occupants.size(); step++) {
 					Occupant o = occupants[step];
@@ -1705,7 +1713,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						o.rank = 100 * pos;
 					} else if (at_node(o.edge, split) || at_node(o.edge, merge)) {
 						o.kind = "node band";
-						o.rank = at_node(o.edge, split) ? 0 : 100 * last;
+						o.rank = at_node(o.edge, split) ? 100 * first_node[r] : 100 * last_node[r];
 					} else if (travel_pos(r, false, o.edge) >= 0) {
 						continue; // A crosser's candidate pieces stand for its point-bound tiles.
 					} else {
