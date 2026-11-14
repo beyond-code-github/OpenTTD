@@ -247,7 +247,7 @@ struct JunctionTrackStep {
 	Kind kind;
 	int8_t hand; ///< Corner: the turn, +1 right, -1 left (as JunctionTrackStructure::turns). SBend: its first curve. 0 otherwise.
 	uint32_t index; ///< Fan: the stack item at its inner end, or NO_ROW at an S branch port. Corner, SBend: the stack item it ends on, or NO_ROW. Over, Tunnel: the crossed edge. Under, Above: the edge overhead (Above: the edge in the tunnel).
-	uint8_t copy; ///< Under: which copy of a doubled bridge is overhead (0 or 1). 0 otherwise.
+	uint8_t copy; ///< Under: which copy (track) of a doubled bridge is overhead (0 or 1). 0 otherwise.
 	Role role = Role::None; ///< SBend: what it serves (D215 feature; R7 inserts Shift pairs).
 	bool operator==(const JunctionTrackStep &) const = default;
 };
@@ -274,7 +274,7 @@ struct JunctionTrackNodeShape {
 /** The programs of a structured track graph (DESIGN-G1 §10.7). */
 struct JunctionTrackPrograms {
 	std::vector<std::vector<JunctionTrackStep>> edges; ///< Per graph edge; for a doubled edge its copy 0 (keeps its upstream row through the bridge, bends onto the lane row after it).
-	std::vector<std::vector<JunctionTrackStep>> copies; ///< Per graph edge: a doubled edge's copy 1 (bends onto the lane row before the bridge); empty for the others.
+	std::vector<std::vector<JunctionTrackStep>> copies; ///< Per graph edge: a doubled edge's copy 1 (bends onto the lane row before the bridge), or track 1 of every edge of a bundle graph; empty for the others.
 	std::vector<JunctionTrackNodeShape> nodes; ///< Per graph node.
 	std::vector<std::pair<JunctionTrackEdgeEnd, JunctionTrackEdgeEnd>> ends; ///< Per graph edge: its start and its end (copy 0 for a doubled edge).
 };
@@ -344,7 +344,7 @@ struct JunctionBandEdge {
 	std::vector<JunctionBandBend> bends; ///< In token order.
 };
 
-/** The arrangement the order and programs fix (D255): placement's static rows read it. */
+/** The arrangement the order and programs fix (D255): placement's static rows read it. It reads track 0 of every edge; track 1 of a bundle graph is its translation (DESIGN-width step 5). */
 struct JunctionTrackArrangement {
 	struct RowPair { uint32_t row; JunctionTrackRowItem west; JunctionTrackRowItem east; };
 	struct BandPair { uint32_t band; uint32_t south; uint32_t north; }; ///< Indexes into order.bands[band]: north lies strictly north of south.
@@ -397,6 +397,9 @@ bool JunctionIsInEdge(const JunctionTrackGraph &graph, const JunctionTrackOrder 
 bool JunctionIsOutEdge(const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackPrograms &programs, uint32_t e); ///< An edge from a row node to a port whose program ends with a Fan.
 bool JunctionIsLegEdge(const JunctionTrackGraph &graph, const JunctionTrackOrder &order, uint32_t e); ///< An edge between two nodes of one row.
 bool JunctionIsDoubledEdge(const JunctionTrackPrograms &programs, uint32_t e); ///< An edge with a copy 1.
+
+/** The tracks an edge's placement and render carry: 2 for every edge of a bundle graph (D291: track k is copy k), 2 for a doubled edge of a width-1 graph, else 1. */
+uint8_t JunctionEdgeTracks(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, uint32_t e);
 
 /** The T of today's node model (L_R main line, L_R branch on the S side), groups in slot order: W side EIn then WOut; S side NIn then SOut; E side WIn then EOut. Movements in JunctionTMovements order. */
 const JunctionTopology &JunctionTTopology();

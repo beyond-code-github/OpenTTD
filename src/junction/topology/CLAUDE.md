@@ -46,6 +46,7 @@
 - A bundle graph (`JunctionGraphWidth` 2) has, per row, the stack Lane, Copy and two BlockSide items (the order follows the row's heading, so track 1 lies to the right of travel), no Prio and no Approach; `RowItems::block_side` names the BlockSide item of each track.
 - At width 2 a row edge carries track 1 as its copy program, the same Fan and Over tokens as track 0, with no lane split or merge.
 - A band edge of a bundle graph names no token at a block node: its start from a band node and its end at a band node are empty, and its arrival on a row node is a Corner to the BlockSide item of track 0 without a Converge.
+- A band edge of a bundle graph carries track 1 in `programs.copies[e]`: track 0's tokens, each arrival Corner on the row's BlockSide item of its own track (track 1's Corner names `block_side[1]`). `ArrangeJunctionTrackGraph` reads track 0 only (track 1 is its translation); a copy on a width-1 edge other than a doubled one stays `NOT_REACHED`. `JunctionEdgeTracks` gives 2 for every edge of a bundle graph and for a doubled edge, else 1.
 - A block end never names a token; a bundle wider than two tracks, a plain node in a bundle graph, and a row block whose diverging leg goes north are refused as not ruled.
 
 ## Bridges and tunnels

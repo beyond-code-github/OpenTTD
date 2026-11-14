@@ -232,6 +232,11 @@ bool JunctionIsDoubledEdge(const JunctionTrackPrograms &programs, uint32_t e)
 	return !programs.copies[e].empty();
 }
 
+uint8_t JunctionEdgeTracks(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, uint32_t e)
+{
+	return graph.edges[e].width == 2 || JunctionIsDoubledEdge(programs, e) ? 2 : 1;
+}
+
 /** Builds the split or merge trees of a track graph (DESIGN-G1 §7). */
 struct JunctionTreeBuilder {
 	const std::vector<JunctionPortSlot> &slots;
@@ -1260,89 +1265,93 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 			continue;
 		}
 
-		/* Heads south when its paths come from a main slot: exit paths, also after the Corner of an edge from a row node (G1 §10.2, REVIEW-port-fans F1). */
-		bool heads_south = false;
-		for (uint16_t p : edge.paths) {
-			if (group_of(paths[p].from).main != group_of(paths[edge.paths[0]].from).main) return fail("a band edge carrying exit and joiner paths is not ruled yet");
-		}
-		if (!edge.paths.empty()) heads_south = group_of(paths[edge.paths[0]].from).main;
-		bool corner_placed = false;
-		auto joiner_corner = [&]() {
-			const int r = (order.node_level[edge.to.index] - 1) / 2;
-			return step(StepKind::Corner, east[r] ? +1 : -1, row_items[r].approach);
-		};
+		/* Track 1 of a bundle graph's band edge is track 0's tokens with its own BlockSide item (DESIGN-width step 3). */
+		for (int track = 0; track < (bundle ? 2 : 1); track++) {
+			std::vector<Step> &out = track == 0 ? program : programs.copies[e];
+			/* Heads south when its paths come from a main slot: exit paths, also after the Corner of an edge from a row node (G1 §10.2, REVIEW-port-fans F1). */
+			bool heads_south = false;
+			for (uint16_t p : edge.paths) {
+				if (group_of(paths[p].from).main != group_of(paths[edge.paths[0]].from).main) return fail("a band edge carrying exit and joiner paths is not ruled yet");
+			}
+			if (!edge.paths.empty()) heads_south = group_of(paths[edge.paths[0]].from).main;
+			bool corner_placed = false;
+			auto joiner_corner = [&]() {
+				const int r = (order.node_level[edge.to.index] - 1) / 2;
+				return step(StepKind::Corner, east[r] ? +1 : -1, row_items[r].approach);
+			};
 
-		/* An S branch port of a group with several lanes opens its lane inside the box by a fan, west half west and east half east, and keeps the notation spacing at the port (D230, D203, D38). */
-		if (!edge.from.node && south_fan_hand(edge.from.index) != 0) program.push_back(step(StepKind::Fan, south_fan_hand(edge.from.index), Step::NO_ROW));
+			/* An S branch port of a group with several lanes opens its lane inside the box by a fan, west half west and east half east, and keeps the notation spacing at the port (D230, D203, D38). */
+			if (!edge.from.node && south_fan_hand(edge.from.index) != 0) out.push_back(step(StepKind::Fan, south_fan_hand(edge.from.index), Step::NO_ROW));
 
-		/* a. Start. */
-		int side_hand = 0;
-		if (bundle) {
-			if (is_row_node(edge.from)) {
+			/* a. Start. */
+			int side_hand = 0;
+			if (bundle) {
+				if (is_row_node(edge.from)) {
+					const int r = (order.node_level[edge.from.index] - 1) / 2;
+					out.push_back(step(StepKind::Corner, east[r] ? +1 : -1, Step::NO_ROW));
+				} else if (is_band_node(edge.from, true) && diverges(e, edge.from.index, side_hand) && is_row_node(edge.to) && crossings.empty()) {
+					const int r = (order.node_level[edge.to.index] - 1) / 2;
+					if (row_items[r].block_side[0] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+					if ((east[r] ? +1 : -1) != side_hand) return fail("a diverging corner on the wrong side is not ruled yet");
+				}
+			} else if (is_band_node(edge.from, true) && diverges(e, edge.from.index, side_hand)) {
+				if (is_row_node(edge.to) && crossings.empty()) {
+					const Step corner = joiner_corner();
+					if (corner.index == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+					if (corner.hand != side_hand) return fail("a diverging corner on the wrong side is not ruled yet");
+					out.push_back(corner);
+					corner_placed = true;
+				} else {
+					out.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW, 0, Step::Role::Diverge));
+				}
+			} else if (is_row_node(edge.from)) {
 				const int r = (order.node_level[edge.from.index] - 1) / 2;
-				program.push_back(step(StepKind::Corner, east[r] ? +1 : -1, Step::NO_ROW));
-			} else if (is_band_node(edge.from, true) && diverges(e, edge.from.index, side_hand) && is_row_node(edge.to) && crossings.empty()) {
+				out.push_back(step(StepKind::Corner, east[r] ? +1 : -1, Step::NO_ROW));
+			}
+
+			/* b. Crossings. */
+			for (uint32_t x : crossings) {
+				if (bridge_over(e, x)) {
+					out.push_back(step(tunnel_over(e, x) ? StepKind::Tunnel : StepKind::Over, 0, x));
+				} else if (doubled_bridge(x)) {
+					const int xr = (end_level(graph.edges[x].from) - 1) / 2;
+					const int north = bundle && is_row_edge(x) && !east[xr] ? 1 : 0;
+					out.push_back(step(StepKind::Under, 0, x, heads_south ? north : 1 - north));
+					out.push_back(step(StepKind::Under, 0, x, heads_south ? 1 - north : north));
+				} else if (bridge_over(x, e)) {
+					/* The edge passes under the bridge by an S-bend or square: both forms' bends are tokens, the placement's choices say which are present (DESIGN-G4 §11.1). */
+					const int hand = s_side_slot(e) < s_side_slot(x) ? +1 : -1;
+					out.push_back(step(StepKind::SBend, hand, Step::NO_ROW, 0, Step::Role::Cross));
+					out.push_back(step(StepKind::Corner, hand, Step::NO_ROW, 0, Step::Role::Cross));
+					out.push_back(step(tunnel_over(x, e) ? StepKind::Above : StepKind::Under, 0, x));
+					out.push_back(step(StepKind::Corner, -hand, Step::NO_ROW, 0, Step::Role::Cross));
+				} else {
+					return fail("a crossing without a bridge is not ruled yet");
+				}
+			}
+
+			/* c. Arrival on a row. */
+			if (bundle && is_row_node(edge.to)) {
 				const int r = (order.node_level[edge.to.index] - 1) / 2;
 				if (row_items[r].block_side[0] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
-				if ((east[r] ? +1 : -1) != side_hand) return fail("a diverging corner on the wrong side is not ruled yet");
+				out.push_back(step(StepKind::Corner, east[r] ? +1 : -1, row_items[r].block_side[track]));
+			} else if (is_row_node(edge.to)) {
+				const int r = (order.node_level[edge.to.index] - 1) / 2;
+				if (row_items[r].lane == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+				if (!corner_placed) {
+					const Step corner = joiner_corner();
+					if (corner.index == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+					out.push_back(corner);
+				}
+				out.push_back(step(StepKind::SBend, east[r] ? -1 : +1, row_items[r].lane, 0, Step::Role::Converge));
 			}
-		} else if (is_band_node(edge.from, true) && diverges(e, edge.from.index, side_hand)) {
-			if (is_row_node(edge.to) && crossings.empty()) {
-				const Step corner = joiner_corner();
-				if (corner.index == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
-				if (corner.hand != side_hand) return fail("a diverging corner on the wrong side is not ruled yet");
-				program.push_back(corner);
-				corner_placed = true;
-			} else {
-				program.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW, 0, Step::Role::Diverge));
-			}
-		} else if (is_row_node(edge.from)) {
-			const int r = (order.node_level[edge.from.index] - 1) / 2;
-			program.push_back(step(StepKind::Corner, east[r] ? +1 : -1, Step::NO_ROW));
-		}
 
-		/* b. Crossings. */
-		for (uint32_t x : crossings) {
-			if (bridge_over(e, x)) {
-				program.push_back(step(tunnel_over(e, x) ? StepKind::Tunnel : StepKind::Over, 0, x));
-			} else if (doubled_bridge(x)) {
-				const int xr = (end_level(graph.edges[x].from) - 1) / 2;
-				const int north = bundle && is_row_edge(x) && !east[xr] ? 1 : 0;
-				program.push_back(step(StepKind::Under, 0, x, heads_south ? north : 1 - north));
-				program.push_back(step(StepKind::Under, 0, x, heads_south ? 1 - north : north));
-			} else if (bridge_over(x, e)) {
-				/* The edge passes under the bridge by an S-bend or square: both forms' bends are tokens, the placement's choices say which are present (DESIGN-G4 §11.1). */
-				const int hand = s_side_slot(e) < s_side_slot(x) ? +1 : -1;
-				program.push_back(step(StepKind::SBend, hand, Step::NO_ROW, 0, Step::Role::Cross));
-				program.push_back(step(StepKind::Corner, hand, Step::NO_ROW, 0, Step::Role::Cross));
-				program.push_back(step(tunnel_over(x, e) ? StepKind::Above : StepKind::Under, 0, x));
-				program.push_back(step(StepKind::Corner, -hand, Step::NO_ROW, 0, Step::Role::Cross));
-			} else {
-				return fail("a crossing without a bridge is not ruled yet");
+			/* d. End. */
+			if (!bundle && is_band_node(edge.to, false) && diverges(e, edge.to.index, side_hand)) {
+				out.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW, 0, Step::Role::Converge));
 			}
+			if (!edge.to.node && south_fan_hand(edge.to.index) != 0) out.push_back(step(StepKind::Fan, south_fan_hand(edge.to.index), Step::NO_ROW));
 		}
-
-		/* c. Arrival on a row. */
-		if (bundle && is_row_node(edge.to)) {
-			const int r = (order.node_level[edge.to.index] - 1) / 2;
-			if (row_items[r].block_side[0] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
-			program.push_back(step(StepKind::Corner, east[r] ? +1 : -1, row_items[r].block_side[0]));
-		} else if (is_row_node(edge.to)) {
-			const int r = (order.node_level[edge.to.index] - 1) / 2;
-			if (row_items[r].lane == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
-			if (!corner_placed) {
-				const Step corner = joiner_corner();
-				if (corner.index == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
-				program.push_back(corner);
-			}
-			program.push_back(step(StepKind::SBend, east[r] ? -1 : +1, row_items[r].lane, 0, Step::Role::Converge));
-		}
-
-		/* d. End. */
-		if (!bundle && is_band_node(edge.to, false) && diverges(e, edge.to.index, side_hand)) {
-			program.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW, 0, Step::Role::Converge));
-		}
-		if (!edge.to.node && south_fan_hand(edge.to.index) != 0) program.push_back(step(StepKind::Fan, south_fan_hand(edge.to.index), Step::NO_ROW));
 	}
 
 	/* The edge ends (DESIGN-G3 §G3.1). A band edge starts on its row's heading at a row node, else south when it carries exit paths and north when it carries joiner paths; a row edge keeps its row's heading. */
@@ -1623,7 +1632,7 @@ JunctionTrackArrangement ArrangeJunctionTrackGraph(const JunctionTrackGraph &gra
 		const JunctionTrackEdge &edge = graph.edges[e];
 		const std::vector<JunctionTrackStep> &program = programs.edges[e];
 		const auto &[start_end, end_end] = programs.ends[e];
-		if (!programs.copies[e].empty()) NOT_REACHED();
+		if (!programs.copies[e].empty() && edge.width == 1) NOT_REACHED(); // a bundle band edge's track 1 is track 0's translation
 		if (!edge.from.node && !edge.to.node) NOT_REACHED();
 
 		JunctionBandEdge band_edge;
