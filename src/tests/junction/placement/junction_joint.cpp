@@ -1425,6 +1425,59 @@ TEST_CASE("LL² at form 100100000 records round 0 without failure and its joint 
 	CHECK(std::abs(joint.objective - 0.001 * sum - 268600.0) < 0.05);
 }
 
+TEST_CASE("LL² item rows reach past their end nodes", "[junction][milp][.sweep]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const LoopStart &s = Ll2Start(spec);
+	JunctionPlacementChoices choices = ChoicesWithForms(s, "100100000", 0);
+	choices.port_offset = 24;
+	const JunctionPlacementSystem first = RecordAt(s, spec, choices, nullptr);
+	REQUIRE(first.failed.empty());
+	std::vector<int> recorded_forms;
+	for (const JunctionSystemFormGroup &group : first.form_groups) recorded_forms.push_back(group.form);
+	const JunctionJointResult joint = SolveJunctionJoint(first, spec, false, &recorded_forms);
+	REQUIRE(joint.status == JunctionMilp::Status::Optimal);
+	JunctionSystemPoint at;
+	at.x = joint.x;
+	at.y = joint.y;
+	const JunctionPlacementSystem system = RecordAt(s, spec, joint.choices, &at);
+	std::string failed;
+	for (const std::string &line : system.failed) failed += (failed.empty() ? "" : "; ") + line;
+	/* The joint point is not a legal placement (D274), so the recording's X solve may fail there; the failure is shown, not required. */
+	WARN(failed);
+	/* The recorder does not name its uncovered groups: the 3 are e17's leg crossings of row 3 at items 9-11 at this non-legal point, none a past-end crosser (the per-edge checks below). */
+	CHECK(system.crosser_uncovered == 3);
+	int past_end = 0;
+	for (int r : {1, 2, 3}) {
+		const std::vector<JunctionTrackRowItem> &row = s.order.rows[r];
+		size_t first_node = row.size(), last_node = 0;
+		for (size_t n = 0; n < row.size(); n++) {
+			if (!row[n].node) continue;
+			first_node = std::min(first_node, n);
+			last_node = n;
+		}
+		REQUIRE(first_node < row.size());
+		/* The set of edges outside the nodes does not depend on the row's travel direction. */
+		for (size_t n = 0; n < row.size(); n++) {
+			if (row[n].node || (n > first_node && n < last_node)) continue;
+			for (size_t i = 0; i < s.cut.stack.size(); i++) {
+				if (s.cut.stack[i].row != r) continue;
+				int pieces = 0, chosen = 0;
+				for (const JunctionCrosserPiece &piece : system.crosser_pieces) {
+					if (piece.edge != row[n].index || piece.item != static_cast<int>(i)) continue;
+					pieces++;
+					chosen += piece.chosen;
+				}
+				INFO(fmt::format("row {} edge {} item {}", r, row[n].index, i));
+				CHECK(pieces > 0);
+				CHECK(chosen == 1);
+			}
+			past_end++;
+		}
+	}
+	CHECK(past_end > 0);
+}
+
 TEST_CASE("LL² crossing 5 alone square records", "[junction][milp][.sweep]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
