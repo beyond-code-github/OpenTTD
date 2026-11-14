@@ -1480,6 +1480,251 @@ JunctionTrackArrangement ArrangeJunctionTrackGraph(const JunctionTrackGraph &gra
 			arrangement.unders.push_back(std::move(under));
 		}
 	}
+
+	/* Per band edge: its cuts, the segments between them and the role of each bend (A4). */
+	if (programs.edges.empty()) return arrangement;
+	using Role = JunctionTrackStep::Role;
+	using CutKind = JunctionBandCut::Kind;
+	std::set<uint32_t> band_edge_set;
+	for (const std::vector<std::vector<uint32_t>> &lines : order.band_lines) {
+		for (const std::vector<uint32_t> &line : lines) band_edge_set.insert(line.begin(), line.end());
+	}
+	const uint32_t last_band = static_cast<uint32_t>(order.bands.size()) - 1;
+	/* The index in order.bands of a band node's event; the node's level is 2b. */
+	auto node_event = [&](uint32_t node) {
+		const std::vector<JunctionTrackBandEvent> &events = order.bands[graph.nodes[node].level / 2];
+		for (uint32_t i = 0; i < events.size(); i++) {
+			if (events[i].node && events[i].a == node) return i;
+		}
+		NOT_REACHED();
+	};
+	/* The band and index in order.bands of the crossing of two band edges. */
+	auto crossing_event = [&](uint32_t a, uint32_t b) {
+		for (uint32_t band = 0; band < order.bands.size(); band++) {
+			for (uint32_t i = 0; i < order.bands[band].size(); i++) {
+				const JunctionTrackBandEvent &event = order.bands[band][i];
+				if (!event.node && event.a == std::min(a, b) && event.b == std::max(a, b)) return std::pair<uint32_t, uint32_t>{band, i};
+			}
+		}
+		NOT_REACHED();
+	};
+	/* The row of the order whose nodes include one of the edge's. */
+	auto row_of_edge = [&](uint32_t edge_index) {
+		const JunctionTrackEdge &edge = graph.edges[edge_index];
+		if (!edge.from.node && !edge.to.node) NOT_REACHED();
+		const uint32_t node = edge.from.node ? edge.from.index : edge.to.index;
+		for (uint32_t row = 0; row < order.rows.size(); row++) {
+			for (const JunctionTrackRowItem &item : order.rows[row]) {
+				if (item.node && item.index == node) return row;
+			}
+		}
+		NOT_REACHED();
+	};
+
+	for (const uint32_t e : band_edge_set) {
+		const JunctionTrackEdge &edge = graph.edges[e];
+		const std::vector<JunctionTrackStep> &program = programs.edges[e];
+		const auto &[start_end, end_end] = programs.ends[e];
+		if (!programs.copies[e].empty()) NOT_REACHED();
+		if (!edge.from.node && !edge.to.node) NOT_REACHED();
+
+		JunctionBandEdge band_edge;
+		band_edge.edge = e;
+		if (!edge.from.node) {
+			band_edge.north = true;
+		} else if (!edge.to.node) {
+			band_edge.north = false;
+		} else {
+			band_edge.north = graph.nodes[edge.to.index].level < graph.nodes[edge.from.index].level;
+		}
+		const bool north = band_edge.north;
+
+		/* The cuts between the ends, with the other edge of each crossing cut. */
+		std::vector<JunctionBandCut> middle;
+		std::vector<uint32_t> middle_other;
+		std::vector<uint32_t> middle_band;
+		std::set<uint32_t> crossed;
+		for (uint32_t k = 0; k < program.size(); k++) {
+			const JunctionTrackStep &step = program[k];
+			if (step.kind != StepKind::Over && step.kind != StepKind::Under && step.kind != StepKind::Tunnel && step.kind != StepKind::Above) continue;
+			if (band_edge_set.count(step.index) == 0) {
+				if (step.kind != StepKind::Under) NOT_REACHED();
+				middle.push_back({CutKind::Row, k, JunctionBandCut::NO_EVENT, row_of_edge(step.index)});
+				middle_other.push_back(UINT32_MAX);
+				middle_band.push_back(JunctionBandSegment::NO_BAND);
+				continue;
+			}
+			if (!std::ranges::binary_search(graph.crossings, std::pair<uint32_t, uint32_t>{std::min(e, step.index), std::max(e, step.index)})) NOT_REACHED();
+			if (!crossed.insert(step.index).second) NOT_REACHED();
+			const auto [band, event] = crossing_event(e, step.index);
+			middle.push_back({CutKind::Crossing, k, event, 0});
+			middle_other.push_back(step.index);
+			middle_band.push_back(band);
+		}
+		size_t crossings_of_e = 0;
+		for (const auto &[a, b] : graph.crossings) {
+			if ((a == e && band_edge_set.count(b) != 0) || (b == e && band_edge_set.count(a) != 0)) crossings_of_e++;
+		}
+		if (crossed.size() != crossings_of_e) NOT_REACHED();
+
+		/* The roles of the bends; a free bend is a cut of its own. */
+		/* The cut of a crossing this edge passes beneath at the token; a bridge or run over the other edge has no bends of its own. */
+		auto crossing_at = [&](uint32_t token) {
+			for (uint32_t m = 0; m < middle.size(); m++) {
+				if (middle[m].kind != CutKind::Crossing || middle[m].token != token) continue;
+				return program[token].kind == StepKind::Under || program[token].kind == StepKind::Tunnel ? m : UINT32_MAX;
+			}
+			return UINT32_MAX;
+		};
+		struct BendRole { uint32_t token; CutKind kind; uint32_t middle; bool approaches; bool straddles; };
+		std::vector<BendRole> roles;
+		for (uint32_t k = 0; k < program.size(); k++) {
+			const JunctionTrackStep &step = program[k];
+			if (step.kind != StepKind::Fan && step.kind != StepKind::Corner && step.kind != StepKind::SBend) continue;
+			const bool serves_start = k == start_end.token || step.role == Role::Diverge || (step.kind == StepKind::Fan && !edge.from.node);
+			const bool serves_end = k == end_end.token || step.role == Role::Converge || (step.kind == StepKind::Fan && !edge.to.node);
+			const bool crosses = step.role == Role::Cross;
+			if (serves_start + serves_end + crosses > 1) NOT_REACHED();
+			const bool lane = step.role == Role::LaneSplit || step.role == Role::LaneMerge || step.role == Role::Shift;
+			if (serves_start) {
+				if (lane) NOT_REACHED();
+				roles.push_back({k, CutKind::Start, 0, false, false});
+			} else if (serves_end) {
+				if (lane) NOT_REACHED();
+				roles.push_back({k, CutKind::End, 0, true, false});
+			} else if (crosses) {
+				if (step.kind == StepKind::Fan) NOT_REACHED();
+				const uint32_t before = k > 0 ? crossing_at(k - 1) : UINT32_MAX;
+				const uint32_t after = crossing_at(k + 1);
+				if (step.kind == StepKind::Corner) {
+					if ((before == UINT32_MAX) == (after == UINT32_MAX)) NOT_REACHED();
+					roles.push_back({k, CutKind::Crossing, after != UINT32_MAX ? after : before, after != UINT32_MAX, false});
+				} else {
+					/* The S-bend form's S-bend, directly before its crossing's token or before the crossing's first Corner. */
+					uint32_t target = after;
+					if (target == UINT32_MAX && k + 2 < program.size() && program[k + 1].kind == StepKind::Corner && program[k + 1].role == Role::Cross) target = crossing_at(k + 2);
+					if (target == UINT32_MAX) NOT_REACHED();
+					roles.push_back({k, CutKind::Crossing, target, true, true});
+				}
+			} else {
+				middle.push_back({CutKind::Free, k, JunctionBandCut::NO_EVENT, 0});
+				middle_other.push_back(UINT32_MAX);
+				middle_band.push_back(JunctionBandSegment::NO_BAND);
+				roles.push_back({k, CutKind::Free, static_cast<uint32_t>(middle.size() - 1), false, false});
+			}
+		}
+
+		/* The cuts in travel order: the start, the middle cuts by token, the end. */
+		std::vector<uint32_t> sorted(middle.size());
+		for (uint32_t m = 0; m < sorted.size(); m++) sorted[m] = m;
+		std::ranges::sort(sorted, [&](uint32_t a, uint32_t b) { return middle[a].token < middle[b].token; });
+		std::vector<uint32_t> cut_of_middle(middle.size());
+		std::vector<uint32_t> other(1, UINT32_MAX);
+		std::vector<uint32_t> cut_band(1, JunctionBandSegment::NO_BAND);
+		const bool start_band_node = edge.from.node && graph.nodes[edge.from.index].level % 2 == 0;
+		const bool end_band_node = edge.to.node && graph.nodes[edge.to.index].level % 2 == 0;
+		band_edge.cuts.push_back({CutKind::Start, start_end.token, start_band_node ? node_event(edge.from.index) : JunctionBandCut::NO_EVENT, 0});
+		for (const uint32_t m : sorted) {
+			cut_of_middle[m] = static_cast<uint32_t>(band_edge.cuts.size());
+			band_edge.cuts.push_back(middle[m]);
+			other.push_back(middle_other[m]);
+			cut_band.push_back(middle_band[m]);
+		}
+		band_edge.cuts.push_back({CutKind::End, end_end.token, end_band_node ? node_event(edge.to.index) : JunctionBandCut::NO_EVENT, 0});
+		other.push_back(UINT32_MAX);
+		cut_band.push_back(JunctionBandSegment::NO_BAND);
+		for (size_t k = 1; k < band_edge.cuts.size(); k++) {
+			const uint32_t previous = band_edge.cuts[k - 1].token, token = band_edge.cuts[k].token;
+			if (previous != JunctionTrackEdgeEnd::NO_TOKEN && token != JunctionTrackEdgeEnd::NO_TOKEN && previous >= token) NOT_REACHED();
+		}
+
+		/* The band each cut leaves behind and enters (D273: A4's segments). */
+		const uint32_t last_cut = static_cast<uint32_t>(band_edge.cuts.size()) - 1;
+		auto end_band = [&](const JunctionTrackEnd &end, bool is_start) {
+			if (!end.node) return last_band;
+			const int level = graph.nodes[end.index].level;
+			if (level % 2 == 0) return static_cast<uint32_t>(level / 2);
+			const uint32_t row = static_cast<uint32_t>((level - 1) / 2);
+			return (north == is_start) ? row : row + 1;
+		};
+		std::vector<uint32_t> before_band(band_edge.cuts.size(), JunctionBandSegment::NO_BAND);
+		std::vector<uint32_t> after_band(band_edge.cuts.size(), JunctionBandSegment::NO_BAND);
+		after_band[0] = end_band(edge.from, true);
+		before_band[last_cut] = end_band(edge.to, false);
+		for (uint32_t c = 1; c < last_cut; c++) {
+			const JunctionBandCut &cut = band_edge.cuts[c];
+			if (cut.kind == CutKind::Crossing) {
+				before_band[c] = after_band[c] = cut_band[c];
+			} else if (cut.kind == CutKind::Row) {
+				before_band[c] = north ? cut.row + 1 : cut.row;
+				after_band[c] = north ? cut.row : cut.row + 1;
+			}
+		}
+		for (uint32_t c = 0; c < last_cut; c++) {
+			JunctionBandSegment segment{c, c + 1, JunctionBandSegment::NO_BAND};
+			bool inside_row = false;
+			for (uint32_t i = 0; i <= c; i++) {
+				if (band_edge.cuts[i].kind != CutKind::Row) continue;
+				for (uint32_t j = c + 1; j <= last_cut; j++) {
+					if (band_edge.cuts[j].kind == CutKind::Row && band_edge.cuts[j].row == band_edge.cuts[i].row) inside_row = true;
+				}
+			}
+			if (!inside_row) {
+				uint32_t leaving = JunctionBandSegment::NO_BAND, entering = JunctionBandSegment::NO_BAND;
+				for (uint32_t i = c + 1; i-- > 0;) {
+					if (after_band[i] != JunctionBandSegment::NO_BAND) {
+						leaving = after_band[i];
+						break;
+					}
+				}
+				for (uint32_t j = c + 1; j <= last_cut; j++) {
+					if (before_band[j] != JunctionBandSegment::NO_BAND) {
+						entering = before_band[j];
+						break;
+					}
+				}
+				if (leaving != entering) NOT_REACHED();
+				segment.band = leaving;
+			} else {
+				/* Between two Row cuts of one row: nothing but free bends may lie between them. */
+				if (band_edge.cuts[c].kind == CutKind::Crossing || band_edge.cuts[c + 1].kind == CutKind::Crossing) NOT_REACHED();
+			}
+			band_edge.segments.push_back(segment);
+		}
+
+		/* The bends, in token order, each with the cut it serves. */
+		auto node_partners = [&](const JunctionTrackEnd &end) {
+			std::vector<uint32_t> partners;
+			if (!end.node) return partners;
+			const JunctionTrackNodeShape &shape = programs.nodes[end.index];
+			for (const uint32_t other_edge : {shape.trunk, shape.straight, shape.diverging}) {
+				if (other_edge != e) partners.push_back(other_edge);
+			}
+			return partners;
+		};
+		for (const BendRole &role : roles) {
+			JunctionBandBend bend{role.token, 0, role.approaches, role.straddles, {}};
+			switch (role.kind) {
+				case CutKind::Start:
+					bend.cut = 0;
+					bend.partners = node_partners(edge.from);
+					break;
+				case CutKind::End:
+					bend.cut = last_cut;
+					bend.partners = node_partners(edge.to);
+					break;
+				case CutKind::Crossing:
+					bend.cut = cut_of_middle[role.middle];
+					bend.partners = {other[bend.cut]};
+					break;
+				default:
+					bend.cut = cut_of_middle[role.middle];
+					break;
+			}
+			band_edge.bends.push_back(std::move(bend));
+		}
+		arrangement.band_edges.push_back(std::move(band_edge));
+	}
 	return arrangement;
 }
 

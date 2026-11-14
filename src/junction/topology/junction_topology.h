@@ -281,6 +281,48 @@ struct JunctionArrangementUnder {
 	std::vector<JunctionUnderPiece> pieces; ///< The candidates that exist in the program, in enum order (a bend candidate exists only when such a bend token exists).
 };
 
+/** A place where a band edge's segments end, in the edge's travel order (DESIGN-G4 A4). */
+struct JunctionBandCut {
+	static constexpr uint32_t NO_EVENT = UINT32_MAX;
+	enum class Kind : uint8_t {
+		Start, ///< The edge's start (a node or a port).
+		End, ///< The edge's end.
+		Crossing, ///< A crossing with another band edge.
+		Row, ///< An Under token below a row edge's doubled bridge.
+		Free, ///< A bend that serves no event.
+	};
+	Kind kind;
+	uint32_t token; ///< Index into the edge's program; JunctionTrackEdgeEnd::NO_TOKEN for an end no token ends on.
+	uint32_t event; ///< Index into order.bands[band] for a band node end or a crossing, else NO_EVENT.
+	uint32_t row; ///< Row cuts: the order row overhead; 0 otherwise.
+};
+
+/** One segment of a band edge between two consecutive cuts (DESIGN-G4 A4). */
+struct JunctionBandSegment {
+	static constexpr uint32_t NO_BAND = UINT32_MAX;
+	uint32_t first_cut; ///< Index into the edge's cuts.
+	uint32_t last_cut; ///< first_cut + 1.
+	uint32_t band; ///< The band it lies in, or NO_BAND between two Row cuts of one row.
+};
+
+/** The role of one bend token of a band edge toward the cut it serves (DESIGN-G4 A4). */
+struct JunctionBandBend {
+	uint32_t token; ///< Index into the edge's program.
+	uint32_t cut; ///< Index into the edge's cuts of the cut it serves (its own cut when Free).
+	bool approaches; ///< It lies before that cut's token in travel order.
+	bool straddles; ///< The S-bend form's S-bend of a crossing: on both sides of it.
+	std::vector<uint32_t> partners; ///< The edges it moves toward or away from at its cut.
+};
+
+/** A band edge's cuts, segments and bends (DESIGN-G4 A4). */
+struct JunctionBandEdge {
+	uint32_t edge;
+	bool north; ///< Its travel direction.
+	std::vector<JunctionBandCut> cuts;
+	std::vector<JunctionBandSegment> segments;
+	std::vector<JunctionBandBend> bends; ///< In token order.
+};
+
 /** The arrangement the order and programs fix (D255): placement's static rows read it. */
 struct JunctionTrackArrangement {
 	struct RowPair { uint32_t row; JunctionTrackRowItem west; JunctionTrackRowItem east; };
@@ -294,6 +336,7 @@ struct JunctionTrackArrangement {
 	std::vector<BandNeighbour> band_neighbours; ///< Per band, sorted by (west, east), each directed pair once.
 	std::vector<BandEventPair> band_event_pairs; ///< Per band, sorted by (first, second).
 	std::vector<JunctionArrangementUnder> unders; ///< Per Under token of a doubled bridge (both copies), in edge then token order.
+	std::vector<JunctionBandEdge> band_edges; ///< Per band edge, by edge index (DESIGN-G4 A4).
 };
 
 /**

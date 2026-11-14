@@ -5717,6 +5717,136 @@ TEST_CASE("arrangement: band counts on the large hubs", "[junction][topology][.a
 	}
 }
 
+/** A hub's graph, order, programs and arrangement, without placement. */
+struct BandArrangementSeed {
+	JunctionTrackGraph graph;
+	JunctionTrackOrder order;
+	JunctionTrackPrograms programs;
+	JunctionTrackArrangement arrangement;
+};
+
+static BandArrangementSeed MakeBandArrangementSeed(const char *main, const char *branch)
+{
+	const JunctionTopology topology = ArrangementTopology(main, branch);
+	std::string error;
+	BandArrangementSeed seed;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(topology, &error);
+	REQUIRE(!paths.empty());
+	seed.graph = BuildJunctionTrackGraph(topology, paths, &error);
+	seed.order = OrderJunctionTrackGraph(topology, paths, seed.graph, &error);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(topology, paths, seed.graph, seed.order, &error);
+	seed.programs = ProgramJunctionTrackGraph(topology, paths, seed.graph, seed.order, structure, &error);
+	INFO(error);
+	REQUIRE(!seed.programs.edges.empty());
+	seed.arrangement = ArrangeJunctionTrackGraph(seed.graph, seed.order, seed.programs);
+	return seed;
+}
+
+/** The number of cuts of one kind over all band edges. */
+static size_t CountBandCuts(const JunctionTrackArrangement &arrangement, JunctionBandCut::Kind kind)
+{
+	size_t count = 0;
+	for (const JunctionBandEdge &band_edge : arrangement.band_edges) {
+		count += std::ranges::count_if(band_edge.cuts, [&](const JunctionBandCut &cut) { return cut.kind == kind; });
+	}
+	return count;
+}
+
+TEST_CASE("arrangement: band edges' cuts at the seeds", "[junction][topology]")
+{
+	using Kind = JunctionBandCut::Kind;
+	using StepKind = JunctionTrackStep::Kind;
+	struct Hub { const char *main; const char *branch; size_t band_edges, rows, crossings; };
+	for (const Hub &hub : {Hub{nullptr, nullptr, 6, 4, 2}, Hub{"LL_RR", "L_R", 14, 20, 2}, Hub{"L_R", "LL_RR", 16, 8, 6}}) {
+		const BandArrangementSeed seed = MakeBandArrangementSeed(hub.main, hub.branch);
+		const JunctionTrackArrangement &arrangement = seed.arrangement;
+		CHECK(arrangement.band_edges.size() == hub.band_edges);
+		CHECK(CountBandCuts(arrangement, Kind::Row) == hub.rows);
+		CHECK(CountBandCuts(arrangement, Kind::Crossing) == hub.crossings);
+		for (const JunctionBandEdge &band_edge : arrangement.band_edges) {
+			INFO(fmt::format("edge {}", band_edge.edge));
+			const std::vector<JunctionTrackStep> &program = seed.programs.edges[band_edge.edge];
+			REQUIRE(band_edge.cuts.size() >= 2);
+			CHECK(band_edge.cuts.front().kind == Kind::Start);
+			CHECK(band_edge.cuts.back().kind == Kind::End);
+			CHECK(std::ranges::count_if(band_edge.cuts, [](const JunctionBandCut &cut) { return cut.kind == Kind::Start || cut.kind == Kind::End; }) == 2);
+			for (size_t i = 1; i < band_edge.cuts.size(); i++) {
+				const uint32_t before = band_edge.cuts[i - 1].token, after = band_edge.cuts[i].token;
+				if (before != JunctionTrackEdgeEnd::NO_TOKEN && after != JunctionTrackEdgeEnd::NO_TOKEN) CHECK(before < after);
+			}
+			REQUIRE(band_edge.segments.size() == band_edge.cuts.size() - 1);
+			for (uint32_t i = 0; i < band_edge.segments.size(); i++) {
+				CHECK(band_edge.segments[i].first_cut == i);
+				CHECK(band_edge.segments[i].last_cut == i + 1);
+			}
+			std::vector<uint32_t> bend_tokens;
+			for (uint32_t k = 0; k < program.size(); k++) {
+				if (program[k].kind == StepKind::Fan || program[k].kind == StepKind::Corner || program[k].kind == StepKind::SBend) bend_tokens.push_back(k);
+			}
+			std::vector<uint32_t> roled;
+			for (const JunctionBandBend &bend : band_edge.bends) {
+				roled.push_back(bend.token);
+				CHECK(bend.cut < band_edge.cuts.size());
+			}
+			CHECK(roled == bend_tokens);
+		}
+	}
+}
+
+TEST_CASE("arrangement: T edge 4's cuts and bends", "[junction][topology]")
+{
+	using Kind = JunctionBandCut::Kind;
+	const BandArrangementSeed seed = MakeBandArrangementSeed(nullptr, nullptr);
+	const auto it = std::ranges::find_if(seed.arrangement.band_edges, [](const JunctionBandEdge &band_edge) { return band_edge.edge == 4; });
+	REQUIRE(it != seed.arrangement.band_edges.end());
+	const JunctionBandEdge &band_edge = *it;
+	CHECK(!band_edge.north);
+	REQUIRE(band_edge.cuts.size() == 5);
+	const Kind kinds[] = {Kind::Start, Kind::Row, Kind::Row, Kind::Crossing, Kind::End};
+	for (size_t i = 0; i < 5; i++) CHECK(band_edge.cuts[i].kind == kinds[i]);
+	REQUIRE(band_edge.bends.size() == 4);
+
+	/* The Corner after the start serves the start; its partners are the start node's other edges. */
+	const JunctionBandBend &corner = band_edge.bends[0];
+	CHECK(corner.token == 0);
+	CHECK(corner.cut == 0);
+	CHECK(!corner.approaches);
+	CHECK(!corner.straddles);
+	const JunctionTrackNodeShape &shape = seed.programs.nodes[seed.graph.edges[4].from.index];
+	std::vector<uint32_t> expected;
+	for (const uint32_t other : {shape.trunk, shape.straight, shape.diverging}) {
+		if (other != 4) expected.push_back(other);
+	}
+	CHECK(corner.partners == expected);
+
+	/* The crossing's S-bend straddles the crossing with edge 8. */
+	const JunctionBandBend &sbend = band_edge.bends[1];
+	CHECK(band_edge.bends[2].token == 4);
+	CHECK(band_edge.bends[3].token == 6);
+	CHECK(sbend.token == 3);
+	CHECK(band_edge.cuts[sbend.cut].kind == Kind::Crossing);
+	CHECK(sbend.approaches);
+	CHECK(sbend.straddles);
+	CHECK(sbend.partners == std::vector<uint32_t>{8});
+}
+
+TEST_CASE("arrangement: band edges on the large hubs", "[junction][topology][.arr3]")
+{
+	using Kind = JunctionBandCut::Kind;
+	struct Hub { const char *main; const char *branch; size_t band_edges, rows, crossings; };
+	for (const Hub &hub : {Hub{"LL_RR", "LL_RR", 36, 40, 18}, Hub{"LLL_RRR", "LL_RR", 0, 0, 0}, Hub{"LLL_RRR", "LLL_RRR", 0, 0, 0}}) {
+		const BandArrangementSeed seed = MakeBandArrangementSeed(hub.main, hub.branch);
+		const JunctionTrackArrangement &arrangement = seed.arrangement;
+		size_t segments = 0;
+		for (const JunctionBandEdge &band_edge : arrangement.band_edges) segments += band_edge.segments.size();
+		WARN(fmt::format("{} x {}: band edges {}, Row cuts {}, Crossing cuts {}, Free cuts {}, segments {}", hub.main, hub.branch, arrangement.band_edges.size(), CountBandCuts(arrangement, Kind::Row), CountBandCuts(arrangement, Kind::Crossing), CountBandCuts(arrangement, Kind::Free), segments));
+		if (hub.band_edges == 0) continue;
+		CHECK(arrangement.band_edges.size() == hub.band_edges);
+		CHECK(CountBandCuts(arrangement, Kind::Row) == hub.rows);
+		CHECK(CountBandCuts(arrangement, Kind::Crossing) == hub.crossings);
+	}
+}
+
 /** True when the token is an Under or Above. */
 static bool IsOverhead(const JunctionTrackStep &step)
 {
