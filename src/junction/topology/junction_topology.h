@@ -146,6 +146,9 @@ JunctionTrackGraph BuildJunctionTrackGraph(const JunctionTopology &topology, con
  */
 JunctionTrackGraph BuildJunctionBundleGraph(const JunctionTopology &topology, std::string *error);
 
+/** The widest edge of a track graph: 1 for every graph but a bundle graph of more than one lane (D289). */
+uint8_t JunctionGraphWidth(const JunctionTrackGraph &graph);
+
 /** A node, or an edge crossing the lane, at its place along a main-lane row. */
 struct JunctionTrackRowItem {
 	bool node; ///< index is into JunctionTrackGraph::nodes, else into its edges (an edge crossing this row).
@@ -187,9 +190,11 @@ struct JunctionTrackStackItem {
 		Copy, ///< Its doubling copy (D80).
 		PrioAndCopy, ///< Prio and doubling copy sharing one track (D108 keeps them apart along the lane).
 		Approach, ///< The joiner's last stretch beside the lane, on the joiner's side.
+		BlockSide, ///< A line of a block node's footprint beside the lanes (D291): where a track of the diverging bundle leaves an exit block or reaches a join block; south of the lanes.
 	};
 	uint8_t row; ///< The lane's row (JunctionTrackOrder::rows index).
 	Kind kind;
+	uint8_t track = 0; ///< In a bundle graph, the bundle track the item carries (Lane 0, Copy 1, BlockSide its diverging bundle's track); 0 otherwise.
 	bool operator==(const JunctionTrackStackItem &) const = default;
 };
 
@@ -366,6 +371,7 @@ struct RowItems {
 	size_t approach; ///< The joiner's approach item, or NONE.
 	size_t north; ///< The item before the lane unless that is the approach, or NONE.
 	size_t copy; ///< The row's Copy or PrioAndCopy item, on either side of the lane, or NONE.
+	std::array<size_t, 2> block_side = {NONE, NONE}; ///< In a bundle graph, the BlockSide item of each track of the diverging bundle; NONE otherwise.
 	static constexpr size_t NONE = JunctionTrackStep::NO_ROW; ///< Not in the stack.
 };
 

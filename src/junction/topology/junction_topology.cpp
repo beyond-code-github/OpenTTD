@@ -187,6 +187,7 @@ RowItems FindRowItems(const std::vector<JunctionTrackStackItem> &stack, int row)
 			items.approach = i;
 		}
 		if (stack[i].kind == JunctionTrackStackItem::Kind::Copy || stack[i].kind == JunctionTrackStackItem::Kind::PrioAndCopy) items.copy = i;
+		if (stack[i].kind == JunctionTrackStackItem::Kind::BlockSide) items.block_side[stack[i].track] = i;
 	}
 	return items;
 }
@@ -516,6 +517,13 @@ JunctionTrackGraph BuildJunctionBundleGraph(const JunctionTopology &topology, st
 		for (JunctionTrackNode &node : graph.nodes) node.block = node.split ? JunctionBlockKind::Exit : JunctionBlockKind::Join;
 	}
 	return graph;
+}
+
+uint8_t JunctionGraphWidth(const JunctionTrackGraph &graph)
+{
+	uint8_t width = 1;
+	for (const JunctionTrackEdge &edge : graph.edges) width = std::max(width, edge.width);
+	return width;
 }
 
 JunctionTrackOrder OrderJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, std::string *error)
@@ -884,6 +892,20 @@ JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topol
 		return level == end_level(graph.edges[e].to) && level % 2 == 1;
 	};
 
+	const uint8_t width = JunctionGraphWidth(graph);
+	if (width > 2) return fail("a bundle wider than two tracks is not ruled yet");
+	if (width == 2) {
+		for (const JunctionTrackNode &node : graph.nodes) {
+			if (node.block == JunctionBlockKind::Plain) return fail("a bundle edge at a plain node is not ruled yet");
+		}
+	}
+	std::vector<bool> east(rows, true);
+	if (width == 2) {
+		for (int s = 0; s < n; s++) {
+			if (group_of(s).main && group_of(s).in) east[row_of[s]] = group_of(s).side == JunctionSide::W;
+		}
+	}
+
 	/* Joiners, prio and copy. */
 	JunctionTrackStructure structure;
 	for (int r = 0; r < rows; r++) {
@@ -900,6 +922,27 @@ JunctionTrackStructure StructureJunctionTrackGraph(const JunctionTopology &topol
 			approach_south = end_level(at_from ? edge.to : edge.from) > level;
 		}
 		if (joiners > 1) return fail("more than one joiner on a lane is not ruled yet");
+		if (width == 2) {
+			/* A bundle row: lane, copy and the two block sides, the copy and the block side of track 1 on the side track 1 lies. */
+			for (uint32_t e = 0; e < edge_count; e++) {
+				if (is_row_edge(e)) continue;
+				const JunctionTrackEdge &edge = graph.edges[e];
+				for (const JunctionTrackEnd *end : {&edge.from, &edge.to}) {
+					if (!end->node || order.node_level[end->index] != level) continue;
+					if (end_level(end == &edge.from ? edge.to : edge.from) < level) return fail("a row block whose diverging leg goes north is not ruled yet");
+				}
+			}
+			using Kind = JunctionTrackStackItem::Kind;
+			const uint8_t row = static_cast<uint8_t>(r);
+			const JunctionTrackStackItem lanes[2] = {{row, Kind::Lane, 0}, {row, Kind::Copy, 1}};
+			const JunctionTrackStackItem sides[2] = {{row, Kind::BlockSide, 0}, {row, Kind::BlockSide, 1}};
+			const int first = east[r] ? 0 : 1;
+			structure.stack.push_back(lanes[first]);
+			structure.stack.push_back(lanes[1 - first]);
+			structure.stack.push_back(sides[first]);
+			structure.stack.push_back(sides[1 - first]);
+			continue;
+		}
 		bool crossed = false;
 		for (uint32_t e = 0; e < edge_count; e++) {
 			if (is_row_edge(e) && end_level(graph.edges[e].from) == level && !order.edge_crossings[e].empty()) crossed = true;
@@ -1034,6 +1077,8 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 	auto is_row_node = [&](const JunctionTrackEnd &end) { return end.node && order.node_level[end.index] % 2 == 1; };
 	auto is_band_node = [&](const JunctionTrackEnd &end, bool split) { return end.node && order.node_level[end.index] % 2 == 0 && graph.nodes[end.index].split == split; };
 
+	const bool bundle = JunctionGraphWidth(graph) == 2;
+
 	/* The heading of every row: east when its in slot is on the W side. */
 	std::vector<bool> east(rows, true);
 	for (int s = 0; s < n; s++) {
@@ -1157,6 +1202,18 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		const JunctionTrackEdge &edge = graph.edges[e];
 		std::vector<Step> &program = programs.edges[e];
 		const std::vector<uint32_t> &crossings = order.edge_crossings[e];
+		if (is_row_edge(e) && bundle) {
+			const int r = (end_level(edge.from) - 1) / 2;
+			const uint32_t item[2] = {static_cast<uint32_t>(row_items[r].lane), static_cast<uint32_t>(row_items[r].copy)};
+			if (item[0] == Step::NO_ROW || item[1] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+			for (int c = 0; c < 2; c++) {
+				std::vector<Step> &out = c == 0 ? program : programs.copies[e];
+				if (!edge.from.node) out.push_back(step(StepKind::Fan, 0, item[c]));
+				for (uint32_t x : crossings) out.push_back(step(StepKind::Over, 0, x));
+				if (!edge.to.node) out.push_back(step(StepKind::Fan, 0, item[c]));
+			}
+			continue;
+		}
 		if (is_row_edge(e)) {
 			const int r = (end_level(edge.from) - 1) / 2;
 			if (e == leg_of[r]) {
@@ -1220,7 +1277,16 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 
 		/* a. Start. */
 		int side_hand = 0;
-		if (is_band_node(edge.from, true) && diverges(e, edge.from.index, side_hand)) {
+		if (bundle) {
+			if (is_row_node(edge.from)) {
+				const int r = (order.node_level[edge.from.index] - 1) / 2;
+				program.push_back(step(StepKind::Corner, east[r] ? +1 : -1, Step::NO_ROW));
+			} else if (is_band_node(edge.from, true) && diverges(e, edge.from.index, side_hand) && is_row_node(edge.to) && crossings.empty()) {
+				const int r = (order.node_level[edge.to.index] - 1) / 2;
+				if (row_items[r].block_side[0] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+				if ((east[r] ? +1 : -1) != side_hand) return fail("a diverging corner on the wrong side is not ruled yet");
+			}
+		} else if (is_band_node(edge.from, true) && diverges(e, edge.from.index, side_hand)) {
 			if (is_row_node(edge.to) && crossings.empty()) {
 				const Step corner = joiner_corner();
 				if (corner.index == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
@@ -1240,8 +1306,10 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 			if (bridge_over(e, x)) {
 				program.push_back(step(tunnel_over(e, x) ? StepKind::Tunnel : StepKind::Over, 0, x));
 			} else if (doubled_bridge(x)) {
-				program.push_back(step(StepKind::Under, 0, x, heads_south ? 0 : 1));
-				program.push_back(step(StepKind::Under, 0, x, heads_south ? 1 : 0));
+				const int xr = (end_level(graph.edges[x].from) - 1) / 2;
+				const int north = bundle && is_row_edge(x) && !east[xr] ? 1 : 0;
+				program.push_back(step(StepKind::Under, 0, x, heads_south ? north : 1 - north));
+				program.push_back(step(StepKind::Under, 0, x, heads_south ? 1 - north : north));
 			} else if (bridge_over(x, e)) {
 				/* The edge passes under the bridge by an S-bend or square: both forms' bends are tokens, the placement's choices say which are present (DESIGN-G4 §11.1). */
 				const int hand = s_side_slot(e) < s_side_slot(x) ? +1 : -1;
@@ -1255,7 +1323,11 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		}
 
 		/* c. Arrival on a row. */
-		if (is_row_node(edge.to)) {
+		if (bundle && is_row_node(edge.to)) {
+			const int r = (order.node_level[edge.to.index] - 1) / 2;
+			if (row_items[r].block_side[0] == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
+			program.push_back(step(StepKind::Corner, east[r] ? +1 : -1, row_items[r].block_side[0]));
+		} else if (is_row_node(edge.to)) {
 			const int r = (order.node_level[edge.to.index] - 1) / 2;
 			if (row_items[r].lane == Step::NO_ROW) return fail("a row without its side tracks is not ruled yet");
 			if (!corner_placed) {
@@ -1267,7 +1339,7 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		}
 
 		/* d. End. */
-		if (is_band_node(edge.to, false) && diverges(e, edge.to.index, side_hand)) {
+		if (!bundle && is_band_node(edge.to, false) && diverges(e, edge.to.index, side_hand)) {
 			program.push_back(step(StepKind::SBend, side_hand, Step::NO_ROW, 0, Step::Role::Converge));
 		}
 		if (!edge.to.node && south_fan_hand(edge.to.index) != 0) program.push_back(step(StepKind::Fan, south_fan_hand(edge.to.index), Step::NO_ROW));
@@ -1297,13 +1369,13 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 		if (program.empty()) continue;
 		if (edge.from.node) {
 			const bool split = graph.nodes[edge.from.index].split;
-			if (split && ((program.front().kind == StepKind::Corner && program.front().role != Step::Role::Cross) || (program.front().kind == StepKind::SBend && program.front().role == Step::Role::Diverge))) first.token = 0;
+			if (split && graph.nodes[edge.from.index].block == JunctionBlockKind::Plain && ((program.front().kind == StepKind::Corner && program.front().role != Step::Role::Cross) || (program.front().kind == StepKind::SBend && program.front().role == Step::Role::Diverge))) first.token = 0;
 		} else if (program.front().kind == StepKind::Fan) {
 			first.token = 0;
 		}
 		if (edge.to.node) {
 			const bool merge = !graph.nodes[edge.to.index].split;
-			if (merge && program.back().kind == StepKind::SBend && program.back().role == Step::Role::Converge) last.token = static_cast<uint32_t>(program.size() - 1);
+			if (merge && graph.nodes[edge.to.index].block == JunctionBlockKind::Plain && program.back().kind == StepKind::SBend && program.back().role == Step::Role::Converge) last.token = static_cast<uint32_t>(program.size() - 1);
 		} else if (program.back().kind == StepKind::Fan) {
 			last.token = static_cast<uint32_t>(program.size() - 1);
 		}
@@ -1343,6 +1415,7 @@ JunctionTrackPrograms ProgramJunctionTrackGraph(const JunctionTopology &topology
 			/* The row's item: an edge that ends at the node names it by its last item token; a split's trunk wins, a merge's straight leg wins, and the other leg's stands when that names none. */
 			shape.item = split ? in_item(shape.trunk) : in_item(shape.straight);
 			if (!split && shape.item == Step::NO_ROW) shape.item = in_item(shape.diverging);
+			if (graph.nodes[v].block != JunctionBlockKind::Plain) shape.item = static_cast<uint32_t>(row_items[(order.node_level[v] - 1) / 2].lane);
 		} else {
 			int hand0 = 0, hand1 = 0;
 			if (diverges(legs[0], static_cast<uint16_t>(v), hand0)) {
