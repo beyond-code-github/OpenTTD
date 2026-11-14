@@ -185,7 +185,7 @@ struct JunctionItemRowOccupant {
 	int ya = -1, yb = -1;
 };
 
-/** A static row of the placement model (DESIGN-G4 §3): x[v.pt] + v.c0 + v.c1 L(v.bend) - (x[u.pt] + u.c0 + u.c1 L(u.bend)) + sum of y >= gap; a column with pt -1 has no x term. */
+/** A static row of the placement model (DESIGN-G4 §3): x[v.pt] + v.c0 + v.c1 L(v.bend) - (x[u.pt] + u.c0 + u.c1 L(u.bend)) + sum of y + o O >= gap; a column with pt -1 has no x term. */
 struct JunctionStaticRow {
 	JunctionSystemColumn v;
 	JunctionSystemColumn u;
@@ -193,6 +193,8 @@ struct JunctionStaticRow {
 	std::string reason; ///< "O1 item <i>: <kind a> e<edge> / <kind b> e<edge>".
 	std::vector<std::pair<int, int>> y; ///< (point, coefficient), each adding coefficient * y[point] to the left side; points unique, coefficients non-zero.
 	std::vector<int> pieces; ///< The crosser pieces it holds under (indexes of JunctionPlacementSystem::crosser_pieces), all chosen; empty: always.
+	int o = 0; ///< The coefficient of the port offset O on the left side.
+	std::vector<int> fan_pieces; ///< The fan pieces it holds under (indexes of fan_pieces), all chosen.
 };
 
 /** A candidate piece of a band-edge crosser at a stack item row it crosses (DESIGN-G4 A6): a piece of its chain around its Under tokens of that row; exactly one of each (edge, item) covers the row. */
@@ -203,6 +205,24 @@ struct JunctionCrosserPiece {
 	int segment; ///< The segment of JunctionBendRowForms, -1 for the run.
 	int pt; ///< The point its columns and rows are measured from: the bend's first point, or the last point of the element above the run.
 	bool chosen; ///< It covers the row at the recording.
+};
+
+/** Two adjacent W/E port fans of one side (DESIGN-G4 O2), west then east by the order rule. */
+struct JunctionFanPair {
+	uint32_t west, east; ///< The fans' edges.
+	bool east_side; ///< On the E side, else W.
+	bool south; ///< Both fans run south from their port rows (σ at the recording).
+};
+
+/** A piece of a fan of a pair that may stand on one of the pair's end rows (DESIGN-G4 O2): its port tile, its run to the fan, or one of its S-bend's row segments. */
+struct JunctionFanPiece {
+	int pair; ///< Its pair (index of fan_pairs).
+	int end; ///< The end row: 0 the west fan's port row, 1 its item row, 2 the east fan's port row, 3 its item row.
+	uint32_t edge; ///< The fan's edge.
+	std::string kind; ///< "port", "run" or "bend".
+	int bend; ///< The bend's id for "bend", else -1.
+	int segment; ///< The segment of JunctionBendRowForms for "bend", else -1.
+	bool chosen; ///< It stands on the end row at the recording.
 };
 
 /** The relation system of the last X and the last Y round of one placement call, with each constant's dependence on a bend's length (DESIGN-G3 §G3.3). */
@@ -234,6 +254,9 @@ struct JunctionPlacementSystem {
 	std::vector<JunctionCrosserPiece> crosser_pieces; ///< The crossers' candidate pieces at item rows, grouped by (edge, item) in order.
 	int crosser_overlap = 0; ///< (edge, item) groups where more than one candidate covers the row at the recording.
 	int crosser_uncovered = 0; ///< (edge, item) groups where none does, or that have no candidates (no Under token under the row's leg, an element between the pieces around it, or a horizontal run).
+	std::vector<JunctionFanPair> fan_pairs; ///< The adjacent W/E fan pairs whose rows are ordered.
+	std::vector<JunctionFanPiece> fan_pieces; ///< Their pieces at their end rows, by pair, end and fan.
+	int fan_pair_crossing = 0; ///< Adjacent pairs whose fans run toward each other (the upper south, the lower north): no rows.
 	std::vector<std::array<int, 5>> route_curves; ///< For tests: per route curve (route, curve in travel order, xoff, yoff, seg) of the walk's curve forms.
 	JunctionSystemPoint solved; ///< The recording's own solution when its Y and X solves both succeed (least rows, then least columns with the D215 push); empty otherwise.
 	std::vector<std::string> failed; ///< The recording's failed solves and builds, in order, e.g. "Y solve: <error>", "X build: <error>".

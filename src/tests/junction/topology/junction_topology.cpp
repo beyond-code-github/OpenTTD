@@ -5909,13 +5909,13 @@ static int StaticRowValue(const JunctionPlacementSystem &system, const JunctionS
 {
 	int value = ItemRowColumn(system, row.v, point) - ItemRowColumn(system, row.u, point);
 	for (const auto &[pt, coef] : row.y) value += coef * point.y[pt];
-	return value;
+	return value + row.o * system.port_offset;
 }
 
-/** Whether every crosser piece a static row holds under is the chosen one. */
+/** Whether every crosser piece and every fan piece a static row holds under is the chosen one. */
 static bool StaticRowChosen(const JunctionPlacementSystem &system, const JunctionStaticRow &row)
 {
-	return std::ranges::all_of(row.pieces, [&](int piece) { return system.crosser_pieces[piece].chosen; });
+	return std::ranges::all_of(row.pieces, [&](int piece) { return system.crosser_pieces[piece].chosen; }) && std::ranges::all_of(row.fan_pieces, [&](int piece) { return system.fan_pieces[piece].chosen; });
 }
 
 static void CheckItemRowSeed(const char *main, const char *branch)
@@ -6055,6 +6055,185 @@ TEST_CASE("crossers: one piece covers each crossed item row at the seeds (L_R x 
 	CheckCrosserPieces("L_R", "LL_RR", 12);
 }
 
+/** One tile of a fan on a row, the columns of its west and east ends (the oracle of the fan pieces). */
+struct FanOracleTile {
+	int west, east;
+};
+
+/** The bend of a W/E port fan's edge. */
+static const JunctionSystemBend &FanBend(const JunctionPlacementSystem &system, uint32_t edge)
+{
+	for (const JunctionSystemElement &el : system.chains) {
+		if (el.edge == static_cast<int>(edge) && el.copy == 0 && el.k == "Fan") return system.bends[el.bend];
+	}
+	FAIL("no Fan element of the edge");
+	return system.bends[0];
+}
+
+/** The four end rows of a pair at the recording's solution: its west fan's port row and item row, then its east fan's. */
+static std::array<int, 4> FanEndRows(const JunctionPlacementSystem &system, const JunctionFanPair &pair)
+{
+	std::array<int, 4> rows{};
+	size_t n = 0;
+	for (const uint32_t edge : {pair.west, pair.east}) {
+		const JunctionSystemBend &bend = FanBend(system, edge);
+		rows[n++] = bend.port_row;
+		rows[n++] = system.solved.y[bend.item_pt];
+	}
+	return rows;
+}
+
+/** The tiles of a W/E port fan on one row at the recording's solution, from its chain and bend: the port tile, the run to the fan, and the fan's own tiles. */
+static std::vector<FanOracleTile> FanTilesOnRow(const JunctionPlacementSystem &system, uint32_t edge, int row)
+{
+	const JunctionSystemPoint &at = system.solved;
+	std::vector<const JunctionSystemElement *> elems;
+	for (const JunctionSystemElement &el : system.chains) {
+		if (el.edge == static_cast<int>(edge) && el.copy == 0) elems.push_back(&el);
+	}
+	const JunctionSystemBend &bend = FanBend(system, edge);
+	/* The fan's hand is its sign against the port row (JunctionBendSizes): (the rows it travels from its first tile > 0) == (it starts on heading 1). */
+	const int item_row = at.y[bend.item_pt];
+	const bool south = item_row > bend.port_row;
+	const bool port_first = (((bend.hand == 1) == (bend.hin == 1)) == south);
+	const int first_row = port_first ? bend.port_row : item_row;
+	const JunctionSystemElement &tile = port_first ? *elems.front() : *elems.back();
+	REQUIRE(tile.k == "Tile");
+	std::vector<FanOracleTile> tiles;
+	if (row == bend.port_row) {
+		const int column = at.x[tile.first];
+		tiles.push_back({column, column});
+		const int near = at.x[port_first ? bend.first : bend.last];
+		const int low = std::min(column, near) + 1, high = std::max(column, near) - 1;
+		if (low <= high) tiles.push_back({low, high});
+	}
+	for (const JunctionBendTileForm &form : JunctionBendTileForms(bend.hin, bend.hand, bend.m, false)) {
+		if (first_row + form.dy0 + form.dy1 * bend.m != row) continue;
+		const int column = at.x[bend.first] + form.dx0 + form.dx1 * bend.m;
+		tiles.push_back({column, column});
+	}
+	return tiles;
+}
+
+/** Whether a static row is one of O2's separation rows, not a piece's condition row. */
+static bool IsFanRow(const JunctionStaticRow &row)
+{
+	return row.reason.starts_with("O2 pair") && row.reason.find(" piece ") == std::string::npos;
+}
+
+static void CheckFanRows(const char *main, const char *branch)
+{
+	const ItemRowSeed seed = RecordItemRowSeed(main, branch);
+	const JunctionPlacementSystem &system = seed.system;
+	REQUIRE(!system.solved.x.empty());
+	if (main != nullptr && std::string(main) == "LL_RR" && std::string(branch) == "L_R") {
+		CHECK(system.fan_pairs.size() == 4);
+		for (const auto &[west, east] : std::vector<std::pair<uint32_t, uint32_t>>{{0, 1}, {20, 19}, {6, 5}, {24, 25}}) {
+			INFO(fmt::format("pair e{} e{}", west, east));
+			CHECK(std::ranges::any_of(system.fan_pairs, [&](const JunctionFanPair &pair) { return pair.west == west && pair.east == east; }));
+		}
+	}
+	CHECK(system.fan_pair_crossing == 0);
+	int failed = 0, rows = 0, zero = 0;
+	for (const JunctionStaticRow &row : system.static_rows) {
+		if (!row.reason.starts_with("O2") || !StaticRowChosen(system, row)) continue;
+		const int value = StaticRowValue(system, row, system.solved);
+		INFO(fmt::format("{}: value {} gap {}", row.reason, value, row.gap));
+		if (value < row.gap) failed++;
+		CHECK(value >= row.gap);
+		if (!IsFanRow(row)) continue;
+		rows++;
+		if (row.gap == 0) zero++;
+	}
+	const int chosen = static_cast<int>(std::ranges::count_if(system.fan_pieces, [](const JunctionFanPiece &piece) { return piece.chosen; }));
+	WARN(fmt::format("fan rows {} x {}: pairs {}, pieces {}, chosen {}, rows {} ({} failing), gap 0 rows {}", main == nullptr ? "T" : main, main == nullptr ? "" : branch, system.fan_pairs.size(), system.fan_pieces.size(), chosen, rows, failed, zero));
+}
+
+TEST_CASE("O2: every fan row holds at the seeds", "[junction][topology]")
+{
+	CheckFanRows(nullptr, nullptr);
+	CheckFanRows("LL_RR", "L_R");
+}
+
+TEST_CASE("O2: every fan row holds at the seeds (L_R x LL_RR)", "[junction][topologysweep][.sweep]")
+{
+	CheckFanRows("L_R", "LL_RR");
+}
+
+static void CheckFanTiles(const char *main, const char *branch)
+{
+	const ItemRowSeed seed = RecordItemRowSeed(main, branch);
+	const JunctionPlacementSystem &system = seed.system;
+	REQUIRE(!system.solved.x.empty());
+	int compared = 0;
+	for (size_t p = 0; p < system.fan_pairs.size(); p++) {
+		const JunctionFanPair &pair = system.fan_pairs[p];
+		const std::array<int, 4> ends = FanEndRows(system, pair);
+		for (int end = 0; end < 4; end++) {
+			/* The rows of the chosen pieces: the differences of the tiles' columns, west fan's east end to east fan's west end. */
+			std::vector<int> rows;
+			const std::string prefix = fmt::format("O2 pair {} end {}: ", p, end);
+			for (const JunctionStaticRow &row : system.static_rows) {
+				if (IsFanRow(row) && row.reason.starts_with(prefix) && StaticRowChosen(system, row)) rows.push_back(StaticRowValue(system, row, system.solved));
+			}
+			std::vector<int> expected;
+			for (const FanOracleTile &a : FanTilesOnRow(system, pair.west, ends[end])) {
+				for (const FanOracleTile &b : FanTilesOnRow(system, pair.east, ends[end])) expected.push_back(b.west - a.east);
+			}
+			std::ranges::sort(rows);
+			std::ranges::sort(expected);
+			INFO(fmt::format("pair {} (e{}, e{}) end {} row {}", p, pair.west, pair.east, end, ends[end]));
+			CHECK(rows == expected);
+			compared += static_cast<int>(rows.size());
+		}
+	}
+	if (main != nullptr && std::string(main) == "LL_RR") CHECK(compared > 0);
+	WARN(fmt::format("fan tiles {} x {}: {} tile pairs compared", main == nullptr ? "T" : main, main == nullptr ? "" : branch, compared));
+}
+
+TEST_CASE("O2: a chosen fan piece's tiles are the fan's tiles", "[junction][topology]")
+{
+	CheckFanTiles(nullptr, nullptr);
+	CheckFanTiles("LL_RR", "L_R");
+}
+
+TEST_CASE("O2: a chosen fan piece's tiles are the fan's tiles (L_R x LL_RR)", "[junction][topologysweep][.sweep]")
+{
+	CheckFanTiles("L_R", "LL_RR");
+}
+
+TEST_CASE("O2: chosen fan pieces cover every shared row of the seeds' pairs", "[junction][topology]")
+{
+	const ItemRowSeed seed = RecordItemRowSeed("LL_RR", "L_R");
+	const JunctionPlacementSystem &system = seed.system;
+	REQUIRE(!system.solved.x.empty());
+	REQUIRE(!system.fan_pairs.empty());
+	int shared = 0;
+	for (size_t p = 0; p < system.fan_pairs.size(); p++) {
+		const JunctionFanPair &pair = system.fan_pairs[p];
+		const std::array<int, 4> ends = FanEndRows(system, pair);
+		const auto [low, high] = std::ranges::minmax(ends);
+		int pair_shared = 0;
+		for (int row = low; row <= high; row++) {
+			if (FanTilesOnRow(system, pair.west, row).empty() || FanTilesOnRow(system, pair.east, row).empty()) continue;
+			pair_shared++;
+			bool covered = false;
+			for (int end = 0; end < 4; end++) {
+				if (ends[end] != row) continue;
+				const auto has = [&](uint32_t edge) {
+					return std::ranges::any_of(system.fan_pieces, [&](const JunctionFanPiece &piece) { return piece.pair == static_cast<int>(p) && piece.end == end && piece.edge == edge && piece.chosen; });
+				};
+				covered = covered || (has(pair.west) && has(pair.east));
+			}
+			INFO(fmt::format("pair {} (e{}, e{}) shared row {}", p, pair.west, pair.east, row));
+			CHECK(covered);
+		}
+		CHECK(pair_shared >= 1);
+		shared += pair_shared;
+	}
+	WARN(fmt::format("fan cover: {} pairs, {} shared rows", system.fan_pairs.size(), shared));
+}
+
 /** The kind of an occupant named in an "O1 item <i>: <kind a> e<edge> / <kind b> e<edge>" reason, a for 0 and b for 1. */
 static std::string ReasonKind(const std::string &reason, int which)
 {
@@ -6079,6 +6258,15 @@ static void CheckGapZero(const char *main, const char *branch)
 	}
 	CHECK(zero == seed.system.item_row_share);
 	CHECK(zero >= 1);
+	/* O2 rows with gap 0 stand between two S-bend tiles: "O2 pair <p> end <e>: e<f> <kind> / e<g> <kind>". */
+	for (const JunctionStaticRow &row : seed.system.static_rows) {
+		if (!IsFanRow(row) || row.gap != 0) continue;
+		INFO(row.reason);
+		const size_t colon = row.reason.find(": ");
+		const size_t slash = row.reason.find(" / ");
+		CHECK(row.reason.substr(colon + 2, slash - colon - 2).ends_with(" bend"));
+		CHECK(row.reason.ends_with(" bend"));
+	}
 }
 
 TEST_CASE("item rows: gap 0 only between band-edge pieces", "[junction][topology]")

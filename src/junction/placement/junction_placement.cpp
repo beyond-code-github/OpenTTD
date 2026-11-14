@@ -496,6 +496,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	std::vector<JunctionCrosserPiece> recorded_crosser_pieces; ///< The crossers' candidate pieces at item rows of the X build now.
 	int recorded_crosser_overlap = 0; ///< The (edge, item) groups where more than one candidate covers the row.
 	int recorded_crosser_uncovered = 0; ///< The groups where none does.
+	std::vector<JunctionFanPair> recorded_fan_pairs; ///< The adjacent W/E fan pairs of the X build now.
+	std::vector<JunctionFanPiece> recorded_fan_pieces; ///< Their pieces at their end rows.
+	int recorded_fan_pair_crossing = 0; ///< The adjacent pairs whose fans run in different directions.
 	auto record_system = [&]() {
 		pad_tags(false);
 		JunctionPlacementSystem &now = recorded[phase];
@@ -523,6 +526,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			now.crosser_pieces = recorded_crosser_pieces;
 			now.crosser_overlap = recorded_crosser_overlap;
 			now.crosser_uncovered = recorded_crosser_uncovered;
+			now.fan_pairs = recorded_fan_pairs;
+			now.fan_pieces = recorded_fan_pieces;
+			now.fan_pair_crossing = recorded_fan_pair_crossing;
 		}
 		for (size_t p = 0; p < paths.size(); p++) now.paths.emplace_back(graph.path_edges[p].begin(), graph.path_edges[p].end());
 		std::map<const Elem *, int> bend_id;
@@ -1609,7 +1615,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					};
 					std::vector<Candidate> group;
 					auto add_condition = [&](int n, const std::string &what, std::vector<std::pair<int, int>> y, int c1, int bend, int gap) {
-						recorded_static_rows.push_back({{-1, 0, c1, c1 != 0 ? bend : -1}, {-1}, gap, fmt::format("A6 e{} item {} piece {}: {}", x, i, n, what), std::move(y), {n}});
+						recorded_static_rows.push_back({{-1, 0, c1, c1 != 0 ? bend : -1}, {-1}, gap, fmt::format("A6 e{} item {} piece {}: {}", x, i, n, what), std::move(y), {n}, 0, {}});
 					};
 					auto make_occupant = [&](int n, int pt, int c0, int cy, TrackBits bits) {
 						Occupant o{vy[Y], pt, c0, pt, c0, bits, x, 0, UINT32_MAX, 0, {pt, c0}, {pt, c0}, 100 * pos, "crosser"};
@@ -1724,7 +1730,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						const JunctionTileGap gap = JunctionUnrelatedTileGap(oa.bits, ob.bits);
 						const bool share = gap.share && band(oa) && band(ob);
 						if (share) recorded_item_row_share++;
-						JunctionStaticRow row{ob.left, oa.right, share ? 0 : gap.apart, fmt::format("O1 item {}: {} e{} / {} e{}", i, oa.kind, static_cast<int>(oa.edge), ob.kind, static_cast<int>(ob.edge)), {}, {}};
+						JunctionStaticRow row{ob.left, oa.right, share ? 0 : gap.apart, fmt::format("O1 item {}: {} e{} / {} e{}", i, oa.kind, static_cast<int>(oa.edge), ob.kind, static_cast<int>(ob.edge)), {}, {}, 0, {}};
 						std::map<int, int> terms;
 						if (ob.cy != 0) { terms[ob.ya] += ob.cy; terms[ob.yb] -= ob.cy; }
 						if (oa.cy != 0) { terms[oa.ya] -= oa.cy; terms[oa.yb] += oa.cy; }
@@ -1734,6 +1740,179 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						if (oa.piece >= 0) row.pieces.push_back(oa.piece);
 						if (ob.piece >= 0) row.pieces.push_back(ob.piece);
 						recorded_static_rows.push_back(std::move(row));
+					}
+				}
+			}
+
+			/* Adjacent W/E port fans of one side, ordered at the rows of their four ends (DESIGN-G4 O2, D271): each fan's port tile, run and S-bend segments are pieces that may stand on an end row, under row conditions. Nothing reads them yet. */
+			{
+				assert(recorded_fan_pairs.empty() && recorded_fan_pieces.empty());
+				using Row = std::array<int, 3>; ///< A row expression: (the point whose y it adds or -1, the coefficient of the port offset O, a constant).
+				/** One tile of a fan piece: its columns (the constant of its row terms is in their c0) and the y and O terms both columns add. */
+				struct FanTile {
+					JunctionSystemColumn west, east;
+					std::map<int, int> y;
+					int o = 0;
+					TrackBits bits;
+					bool empty = false; ///< A run with no tile at the recording.
+				};
+				struct FanInfo {
+					uint32_t edge;
+					const Elem *el;
+					const Elem *tile;
+					int row;
+					int n;
+					bool east_side;
+					bool south;
+					Row port, item, first;
+				};
+				const auto lin = [](const Row &e, int coef, std::map<int, int> &y, int &o, int &c) {
+					if (e[0] >= 0) y[e[0]] += coef;
+					o += coef * e[1];
+					c += coef * e[2];
+				};
+				const auto value = [&](const Row &e) { return (e[0] >= 0 ? vy[e[0]] : 0) + e[1] * port_offset + e[2]; };
+				std::vector<FanInfo> fans;
+				for (int r = 0; r < rows; r++) {
+					for (const uint32_t e : {in_edge[r], out_edge[r]}) {
+						const Elem *fan = nullptr, *port_tile = nullptr;
+						for (const Elem &el : chain[e]) {
+							if (el.k == Elem::K::Fan) fan = &el;
+						}
+						if (fan == nullptr || fan->slot < 0 || fan->m == 0) continue;
+						const JunctionSide side = group_of(fan->slot).side;
+						if (side != JunctionSide::W && side != JunctionSide::E) continue;
+						for (const Elem &el : chain[e]) {
+							if (el.k == Elem::K::Tile && el.slot == fan->slot) port_tile = &el;
+						}
+						assert(port_tile != nullptr);
+						FanInfo info{e, fan, port_tile, r, port_row[fan->slot] - port_offset, side == JunctionSide::E, vy[item_pt[fan->index]] > port_row[fan->slot], {}, {}, {}};
+						info.port = {-1, 1, info.n};
+						info.item = {item_pt[fan->index], 0, 0};
+						info.first = fan->port_first ? info.port : info.item;
+						fans.push_back(info);
+					}
+				}
+				std::vector<std::pair<const FanInfo *, const FanInfo *>> pair_fans; ///< Per pair, its west and east fan.
+				for (const bool east_side : {false, true}) {
+					std::vector<const FanInfo *> side_fans;
+					for (const FanInfo &fan : fans) {
+						if (fan.east_side == east_side) side_fans.push_back(&fan);
+					}
+					std::ranges::sort(side_fans, [](const FanInfo *a, const FanInfo *b) { return a->n < b->n; });
+					for (size_t i = 0; i + 1 < side_fans.size(); i++) {
+						const FanInfo &a = *side_fans[i], &b = *side_fans[i + 1]; // a has the smaller n.
+						if (a.row == b.row) continue;
+						if (a.south != b.south) {
+							if (a.south) recorded_fan_pair_crossing++; // Converging: the upper runs south, the lower north. Diverging fans share no row.
+							continue;
+						}
+						const bool b_west = east_side != a.south;
+						pair_fans.emplace_back(b_west ? &b : &a, b_west ? &a : &b);
+						recorded_fan_pairs.push_back({pair_fans.back().first->edge, pair_fans.back().second->edge, east_side, a.south});
+					}
+				}
+				std::vector<std::vector<FanTile>> piece_tiles; ///< Per recorded fan piece, its tiles.
+				for (size_t p = 0; p < pair_fans.size(); p++) {
+					const FanInfo *both[2] = {pair_fans[p].first, pair_fans[p].second};
+					for (int end = 0; end < 4; end++) {
+						const FanInfo &owner = *both[end / 2];
+						const Row ends = end % 2 == 0 ? owner.port : owner.item;
+						std::vector<int> mine[2]; ///< The pieces at this end row of the west and the east fan.
+						for (int w = 0; w < 2; w++) {
+							const FanInfo &fan = *both[w];
+							/* A condition row: its terms are as given, its constant moves to the gap. */
+							auto add_condition = [&](int n, const std::string &what, const std::map<int, int> &y, int o, int c, int c1, int bend, int gap) {
+								JunctionStaticRow row{{-1, 0, c1, c1 != 0 ? bend : -1}, {-1}, gap - c, fmt::format("O2 pair {} end {} e{} piece {}: {}", p, end, fan.edge, n, what), {}, {}, o, {n}};
+								for (const auto &[pt, coef] : y) {
+									if (coef != 0) row.y.emplace_back(pt, coef);
+								}
+								recorded_static_rows.push_back(std::move(row));
+							};
+							auto add_piece = [&](const std::string &kind, int bend, int segment, bool chosen, std::vector<FanTile> tiles) {
+								recorded_fan_pieces.push_back({static_cast<int>(p), end, fan.edge, kind, bend, segment, chosen});
+								piece_tiles.push_back(std::move(tiles));
+								mine[w].push_back(static_cast<int>(recorded_fan_pieces.size()) - 1);
+							};
+							/* The port tile and the run to the fan stand on the port row. */
+							{
+								const bool holds = value(ends) == value(fan.port);
+								const int n = static_cast<int>(recorded_fan_pieces.size());
+								for (const bool is_run : {false, true}) {
+									for (const bool lo : {true, false}) {
+										std::map<int, int> y;
+										int o = 0, c = 0;
+										lin(lo ? ends : fan.port, 1, y, o, c);
+										lin(lo ? fan.port : ends, -1, y, o, c);
+										add_condition(n + (is_run ? 1 : 0), fmt::format("{} {}", is_run ? "run" : "port", lo ? "lo" : "hi"), y, o, c, 0, -1, 0);
+									}
+								}
+								const int tile_pt = fan.tile->first;
+								add_piece("port", -1, -1, holds, {FanTile{{tile_pt, 0}, {tile_pt, 0}, {}, 0, TrackBits{Track::X}, false}});
+								const int near_pt = fan.el->port_first ? fan.el->first : fan.el->last;
+								const int west_pt = fan.east_side ? near_pt : tile_pt, east_pt = fan.east_side ? tile_pt : near_pt;
+								FanTile run{{west_pt, 1}, {east_pt, -1}, {}, 0, TrackBits{Track::X}, false};
+								run.empty = flat[east_pt] - 1 < flat[west_pt] + 1;
+								add_piece("run", -1, -1, holds, {run});
+							}
+							/* The S-bend's segments. */
+							{
+								const Elem &el = *fan.el;
+								auto found = bend_rows.find({el.hin, el.hand, false});
+								if (found == bend_rows.end()) found = bend_rows.emplace(std::make_tuple(el.hin, el.hand, false), JunctionBendRowForms(el.hin, el.hand, false)).first;
+								const JunctionBendRows &forms = found->second;
+								assert(forms.d != 0 && !forms.segments.empty());
+								const int d = forms.d;
+								const int id = bend_ids.at(&el);
+								const int length = bend_length(el);
+								const int travelled = d * (value(ends) - value(fan.first));
+								for (size_t sg = 0; sg < forms.segments.size(); sg++) {
+									const JunctionBendRowSegment &segment = forms.segments[sg];
+									const int n = static_cast<int>(recorded_fan_pieces.size());
+									const std::string what = fmt::format("bend {} seg {}", id, sg);
+									std::map<int, int> y;
+									int o = 0, c = 0;
+									lin(ends, d, y, o, c);
+									lin(fan.first, -d, y, o, c);
+									add_condition(n, what + " lo", y, o, c, -segment.lo1, id, segment.lo0);
+									y.clear();
+									o = c = 0;
+									lin(ends, -d, y, o, c);
+									lin(fan.first, d, y, o, c);
+									add_condition(n, what + " hi", y, o, c, segment.hi1, id, -segment.hi0);
+									std::vector<FanTile> tiles;
+									for (const JunctionBendRowTile &tile : segment.tiles) {
+										FanTile t{{el.first, tile.c0}, {el.first, tile.c0}, {}, 0, tile.bits, false};
+										int tc = 0;
+										lin(ends, tile.slope * d, t.y, t.o, tc);
+										lin(fan.first, -tile.slope * d, t.y, t.o, tc);
+										t.west.c0 += tc;
+										t.east.c0 += tc;
+										tiles.push_back(std::move(t));
+									}
+									add_piece("bend", id, static_cast<int>(sg), travelled >= segment.lo0 + segment.lo1 * length && travelled <= segment.hi0 + segment.hi1 * length, std::move(tiles));
+								}
+							}
+						}
+						/* The rows between the west fan's tiles and the east fan's at this end row. */
+						for (const int a : mine[0]) {
+							for (const int b : mine[1]) {
+								for (const FanTile &ta : piece_tiles[a]) {
+									for (const FanTile &tb : piece_tiles[b]) {
+										if (ta.empty || tb.empty) continue; // An empty run has no tile to separate.
+										const bool both_bend = recorded_fan_pieces[a].kind == "bend" && recorded_fan_pieces[b].kind == "bend";
+										const JunctionTileGap gap = JunctionUnrelatedTileGap(ta.bits, tb.bits);
+										JunctionStaticRow row{tb.west, ta.east, both_bend && gap.share ? 0 : gap.apart, fmt::format("O2 pair {} end {}: e{} {} / e{} {}", p, end, recorded_fan_pieces[a].edge, recorded_fan_pieces[a].kind, recorded_fan_pieces[b].edge, recorded_fan_pieces[b].kind), {}, {}, tb.o - ta.o, {a, b}};
+										std::map<int, int> terms = tb.y;
+										for (const auto &[pt, coef] : ta.y) terms[pt] -= coef;
+										for (const auto &[pt, coef] : terms) {
+											if (coef != 0) row.y.emplace_back(pt, coef);
+										}
+										recorded_static_rows.push_back(std::move(row));
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -2440,6 +2619,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			recorded_crosser_pieces.clear();
 			recorded_crosser_overlap = 0;
 			recorded_crosser_uncovered = 0;
+			recorded_fan_pairs.clear();
+			recorded_fan_pieces.clear();
+			recorded_fan_pair_crossing = 0;
 		}
 		if ((!x_phase || rows_known) && spec.curve_limit) {
 			/* The curve-gap family (D217): every pair JunctionCurveGaps returns for a route's curves. A pair in one segment (only vertical runs and fixed spans between the curves) is a difference of its anchors' rows in the Y phase; every other pair is a difference of its anchors' columns in the X phase. Pairs on one anchor are constants. */
