@@ -152,6 +152,7 @@ struct JunctionTrackOrder {
 	std::vector<std::vector<JunctionTrackRowItem>> rows; ///< Per row, north to south: its nodes and the edges crossing it, west to east.
 	std::vector<std::vector<uint32_t>> edge_crossings; ///< Per edge: the edges crossing it, in travel order.
 	std::vector<std::vector<JunctionTrackBandEvent>> bands; ///< Per band b (0 to R), its events in sweep order.
+	std::vector<std::vector<std::vector<uint32_t>>> band_lines; ///< Per band b, the sweep's line of edges west to east before its first event and after each event: order.bands[b].size() + 1 lines.
 };
 
 /**
@@ -285,6 +286,12 @@ struct JunctionTrackArrangement {
 	struct BandPair { uint32_t band; uint32_t south; uint32_t north; }; ///< Indexes into order.bands[band]: north lies strictly north of south.
 	std::vector<RowPair> row_pairs; ///< Per row, each consecutive pair of order.rows[row].
 	std::vector<BandPair> band_pairs; ///< Per band, each pair of events where the later has a higher layer and touches an item of the earlier.
+	struct BandReplacement { std::vector<uint32_t> removed; std::vector<uint32_t> inserted; }; ///< The contiguous block of edges an event takes out of the line and the block it puts in, west to east.
+	struct BandNeighbour { uint32_t band; uint32_t west; uint32_t east; bool extension_only; }; ///< Two edges adjacent in the line, west then east, in some order of the band's events; extension_only when the sweep's own order never makes them adjacent.
+	struct BandEventPair { uint32_t band; uint32_t first; uint32_t second; }; ///< Indexes into order.bands[band], first < second: neither is ordered before the other, and an edge one touches is adjacent to an edge the other touches in some line.
+	std::vector<std::vector<BandReplacement>> band_replacements; ///< Per band, per event (order.bands[band] index).
+	std::vector<BandNeighbour> band_neighbours; ///< Per band, sorted by (west, east), each directed pair once.
+	std::vector<BandEventPair> band_event_pairs; ///< Per band, sorted by (first, second).
 	std::vector<JunctionArrangementUnder> unders; ///< Per Under token of a doubled bridge (both copies), in edge then token order.
 };
 
