@@ -17,6 +17,8 @@
 #include <string_view>
 #include <vector>
 
+static constexpr uint8_t JUNCTION_MAX_LINE_GAP = 12; ///< The widest gap between the direction groups of a line notation, in tiles (coop hubs use 3 to 12).
+
 /**
  * A multi-track line: N parallel tracks in a left and a right direction group (D142).
  * Tracks of one group are adjacent; `gap` tiles lie only between the two groups (0 means adjacent).
@@ -34,7 +36,7 @@ struct JunctionLineNotation {
 };
 
 /**
- * Parse a line notation with direction groups (D142), such as "LL_RR": one or more L, zero to three underscores, one or more R.
+ * Parse a line notation with direction groups (D142), such as "LL_RR": one or more L, zero to JUNCTION_MAX_LINE_GAP underscores, one or more R.
  * @param text The notation.
  * @return The line (tracks = L + R, left_tracks = L, gap = underscores), or Invalid.
  */

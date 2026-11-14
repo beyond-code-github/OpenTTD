@@ -13,7 +13,7 @@ Rules of the junction tool as present-tense facts, split per folder: each fact l
 - `signals/`: signal resolution, drag signals, prio spans.
 - `tool/`: hover planning, the window, the ghost drawing.
 - `game/`: the game seam, pricing, build sequencer, map export.
-- `line/`: line painter and the router shared with the station tool; `junction_router` is live, not superseded.
+- `line/`: line painter and the router shared with the station tool; `junction_router` is live, not superseded. The line notation gap is 0 to 12 tiles (`JUNCTION_MAX_LINE_GAP`).
 - `station/`: station generator, rules and window.
 - `legacy/`: superseded generator code, not extended; see its CLAUDE.md.
 - Root files: `junction_pipeline` (the driver: bridge cut, seed, detours, terraform entry), `junction_track_geometry` (axis and bend helpers shared by placement, render and signals), `junction_layout` (the output type), `junction_route` (route programs, rasteriser, ASCII, `JunctionTrackRoute`/`JunctionTrackPieceTag`), `junction_train_model`, `junction_rules` (the rule checker), `junction_spec` (shared spec, notation, prices, curve spacing, prio sizing).
