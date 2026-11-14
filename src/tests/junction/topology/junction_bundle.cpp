@@ -12,6 +12,9 @@
 #include "../../../3rdparty/catch2/catch.hpp"
 
 #include <array>
+#include <cstdlib>
+#include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -20,6 +23,9 @@
 #include "../../../junction/junction_track_geometry.h"
 #include "../../../junction/placement/junction_placement.h"
 #include "../../../junction/placement/junction_joint.h"
+#include "../../../junction/placement/junction_render.h"
+#include "../../../junction/junction_route.h"
+#include "../../../track_func.h"
 
 using Item = JunctionTrackStackItem;
 using ItemKind = JunctionTrackStackItem::Kind;
@@ -330,6 +336,96 @@ TEST_CASE("bundle: the joint loop settles on the bundle T", "[junction][bundle]"
 	const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, programs, spec, loop.choices, &error);
 	INFO("error " << error);
 	CHECK(!placed.nodes.empty());
+}
+
+TEST_CASE("bundle: the T renders two wide", "[junction][bundle]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.exit_block_along = spec.join_block_along = 4;
+	BundleT t(2);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
+	REQUIRE(programs.nodes.size() == 6);
+	std::string error;
+	const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, programs, spec, &error);
+	REQUIRE(error.empty());
+
+	std::vector<JunctionTrackRoute> routes;
+	const JunctionLayout layout = RenderJunctionTrackPlacement(t.topology, t.paths, t.graph, structure, programs, placement, &error, &routes);
+	INFO("render error " << error);
+	REQUIRE(!layout.tracks.empty());
+	if (std::getenv("JUNCTION_DUMP_BUNDLE") != nullptr) {
+		std::ofstream("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/bundle-t.txt") << RenderJunctionAscii(layout);
+	}
+
+	/* One route per (edge, track), from the track's start tile to its end tile. */
+	REQUIRE(routes.size() == 24);
+	for (const JunctionTrackRoute &route : routes) {
+		REQUIRE(!route.pieces.empty());
+		const uint32_t e = route.tags.front().edge;
+		const JunctionTrackEdge &edge = t.graph.edges[e];
+		const TileIndexDiffC start = edge.from.node ? placement.attach[e][0][route.copy] : placement.track_ports[edge.from.index][route.copy];
+		const TileIndexDiffC end = edge.to.node ? placement.attach[e][1][route.copy] : placement.track_ports[edge.to.index][route.copy];
+		INFO("edge " << e << " track " << int(route.copy));
+		CHECK(Same(route.pieces.front().tile, start));
+		CHECK(Same(route.pieces.back().tile, end));
+	}
+
+	/* Two bridge pairs (the layout normalises a bridge's ends), each pair's track 1 heading one tile upstream of track 0's along the span. */
+	CHECK(layout.bridges.size() == 4);
+	REQUIRE(placement.bridges.size() == 2);
+	for (size_t b = 0; b < 2; b++) {
+		for (int c = 0; c < 2; c++) {
+			const JunctionBridge &heads = placement.bridges[b][c];
+			CHECK(std::ranges::any_of(layout.bridges, [&](const JunctionBridge &l) { return (Same(l.start, heads.start) && Same(l.end, heads.end)) || (Same(l.start, heads.end) && Same(l.end, heads.start)); }));
+		}
+		const JunctionBridge &a = placement.bridges[b][0];
+		const int dx = (a.end.x > a.start.x) - (a.end.x < a.start.x);
+		const int dy = (a.end.y > a.start.y) - (a.end.y < a.start.y);
+		CHECK((placement.bridges[b][1].start.x - a.start.x) * dx + (placement.bridges[b][1].start.y - a.start.y) * dy == -1);
+	}
+
+	/* A tile holds pieces of two routes only when their tracks may share it. */
+	std::map<std::pair<int, int>, std::vector<std::pair<size_t, Track>>> tiles;
+	for (size_t i = 0; i < routes.size(); i++) {
+		for (const JunctionPiece &piece : routes[i].pieces) {
+			if (piece.on_bridge) continue;
+			auto &here = tiles[{piece.tile.x, piece.tile.y}];
+			const Track track = TrackdirToTrack(piece.trackdir);
+			if (std::ranges::none_of(here, [&](const std::pair<size_t, Track> &o) { return o.first == i && o.second == track; })) here.push_back({i, track});
+		}
+	}
+	for (const auto &[tile, here] : tiles) {
+		for (size_t a = 0; a < here.size(); a++) {
+			for (size_t b = a + 1; b < here.size(); b++) {
+				if (here[a].first == here[b].first) continue;
+				INFO("tile " << tile.first << "," << tile.second << " routes " << here[a].first << " and " << here[b].first);
+				CHECK(here[a].second != here[b].second);
+				CHECK(JunctionTracksMayShareTile(TrackBits{here[a].second}, TrackBits{here[b].second}));
+			}
+		}
+	}
+
+	/* No piece lies inside a block footprint: its anchor to its downstream end along the heading, 4 lines across. */
+	static constexpr int DX[4] = {0, 1, 0, -1};
+	static constexpr int DY[4] = {-1, 0, 1, 0};
+	for (uint32_t v = 0; v < t.graph.nodes.size(); v++) {
+		const int h = programs.nodes[v].heading, r = (h + 1) % 4;
+		const int8_t side = JunctionBlockSide(t.graph, t.order, programs, v);
+		const TileIndexDiffC anchor = placement.nodes[v];
+		const int length = (placement.block_ends[v].x - anchor.x) * DX[h] + (placement.block_ends[v].y - anchor.y) * DY[h];
+		for (const JunctionTrackRoute &route : routes) {
+			for (const JunctionPiece &piece : route.pieces) {
+				if (piece.on_bridge) continue;
+				const int along = (piece.tile.x - anchor.x) * DX[h] + (piece.tile.y - anchor.y) * DY[h];
+				const int across = (piece.tile.x - anchor.x) * DX[r] + (piece.tile.y - anchor.y) * DY[r];
+				const bool inside = along >= 0 && along <= length && (side > 0 ? across >= 0 && across <= 3 : across >= -2 && across <= 1);
+				INFO("node " << v << " piece " << piece.tile.x << "," << piece.tile.y);
+				CHECK(!inside);
+			}
+		}
+	}
 }
 
 TEST_CASE("bundle: a block without its footprint is refused", "[junction][bundle]")

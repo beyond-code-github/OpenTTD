@@ -3524,10 +3524,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	}
 	/* A fan's two ends: the port row and its item's row. */
 	for (uint32_t e = 0; e < edge_count; e++) {
-		for (const Elem &el : chain[e]) {
-			if (el.k != Elem::K::Fan) continue;
-			vy[el.port_first ? el.first : el.last] = port_row_of(el);
-			vy[el.port_first ? el.last : el.first] = vy[item_pt[el.index]];
+		for (const std::vector<Elem> *elems : {&chain[e], &chain_copy[e]}) {
+			for (const Elem &el : *elems) {
+				if (el.k != Elem::K::Fan) continue;
+				vy[el.port_first ? el.first : el.last] = port_row_of(el);
+				vy[el.port_first ? el.last : el.first] = vy[item_pt[el.index]];
+			}
 		}
 	}
 	auto tile = [&](int pt) { return TileIndexDiffC{static_cast<int16_t>(vx[pt]), static_cast<int16_t>(vy[pt])}; };

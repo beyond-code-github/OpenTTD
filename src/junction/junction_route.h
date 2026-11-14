@@ -68,7 +68,7 @@ struct JunctionTrackPieceTag {
 /** One rendered route: a lane path's pieces from its in port to its out port, for one copy (DESIGN-G1 §11.10). */
 struct JunctionTrackRoute {
 	uint16_t path; ///< Index into the lane paths.
-	uint8_t copy; ///< 1 for the copy-1 route of a path through a doubled leg, else 0.
+	uint8_t copy; ///< The copy of a doubled leg, or the track of a bundle edge.
 	std::vector<JunctionPiece> pieces;
 	std::vector<JunctionTrackPieceTag> tags; ///< Per piece.
 };

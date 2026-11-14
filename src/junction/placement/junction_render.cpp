@@ -54,18 +54,37 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 		return -1;
 	};
 
+	/* At width 2 each (edge, track) is one route, from the track's start to its end tile (D295): block interiors stay empty until the block templates exist. */
+	const bool bundle = JunctionGraphWidth(graph) == 2;
+
 	JunctionLayout layout;
 	layout.size = placement.size;
 	if (routes != nullptr) routes->clear();
-	for (size_t p = 0; p < paths.size(); p++) {
-		const std::vector<uint32_t> &edges = graph.path_edges[p];
-		const bool has_doubled = std::ranges::any_of(edges, doubled_leg);
+	for (size_t p = 0; p < (bundle ? graph.edges.size() : paths.size()); p++) {
+		const std::vector<uint32_t> edges = bundle ? std::vector<uint32_t>{static_cast<uint32_t>(p)} : graph.path_edges[p];
+		const bool has_doubled = bundle || std::ranges::any_of(edges, doubled_leg);
 		for (int c = 0; c < (has_doubled ? 2 : 1); c++) {
+			/* Whether the edge is walked on its copy-1 program: a doubled leg's copy 1, or a bundle edge's track 1. */
+			auto copy1_of = [&](uint32_t e) { return c == 1 && (bundle || doubled_leg(e)); };
 			auto fail_at = [&](const std::string &where, const std::string &reason) { return fail(fmt::format("path {} copy {}{}: {}", p, c, where, reason)); };
-			const JunctionSide side = topology.groups[slots[paths[p].from].group].side;
-			if (side == JunctionSide::N) return fail_at("", "an N port is not ruled yet");
-			int h = side == JunctionSide::W ? 1 : side == JunctionSide::E ? 3 : 0;
-			TileIndexDiffC cur = placement.ports[paths[p].from];
+			const JunctionTrackEdge &bundle_edge = graph.edges[bundle ? p : 0];
+			int h = 0;
+			TileIndexDiffC cur{};
+			TileIndexDiffC out{};
+			if (bundle) {
+				if (programs.ends.size() <= p) return fail_at("", "a bundle render needs the edge ends");
+				h = programs.ends[p].first.heading;
+				if (bundle_edge.from.node ? placement.attach.size() <= p || placement.attach[p][0].size() < 2 : placement.track_ports.size() <= bundle_edge.from.index) return fail_at("", "the placement has no start tile");
+				if (bundle_edge.to.node ? placement.attach.size() <= p || placement.attach[p][1].size() < 2 : placement.track_ports.size() <= bundle_edge.to.index) return fail_at("", "the placement has no end tile");
+				cur = bundle_edge.from.node ? placement.attach[p][0][c] : placement.track_ports[bundle_edge.from.index][c];
+				out = bundle_edge.to.node ? placement.attach[p][1][c] : placement.track_ports[bundle_edge.to.index][c];
+			} else {
+				const JunctionSide side = topology.groups[slots[paths[p].from].group].side;
+				if (side == JunctionSide::N) return fail_at("", "an N port is not ruled yet");
+				h = side == JunctionSide::W ? 1 : side == JunctionSide::E ? 3 : 0;
+				cur = placement.ports[paths[p].from];
+				out = placement.ports[paths[p].to];
+			}
 			JunctionRoute route{cur, JUNCTION_AXIS_TRACKDIR[h], ""};
 			int last_over = -1;
 			/* One tag per piece the moves have made so far (piece 0 is the start piece). */
@@ -83,7 +102,7 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 			};
 
 			for (uint32_t e : edges) {
-				const bool copy1 = c == 1 && doubled_leg(e);
+				const bool copy1 = copy1_of(e);
 				const std::vector<JunctionTrackStep> &tokens = copy1 ? programs.copies[e] : programs.edges[e];
 				const std::vector<JunctionTrackSpan> &spans = copy1 ? placement.copies[e] : placement.edges[e];
 				if (spans.size() != tokens.size()) return fail_at(fmt::format(" edge {}", e), "the placement does not match the program");
@@ -96,7 +115,7 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 						if (b < 0) return fail_at(where, "an Over without a bridge");
 						if (b == last_over) continue;
 						last_over = b;
-						const JunctionBridge &heads = placement.bridges[b][doubled_leg(e) ? c : 0];
+						const JunctionBridge &heads = placement.bridges[b][copy1_of(e) ? c : 0];
 						if (!structure.bridges[b].tunnel && cur.x == heads.start.x && cur.y == heads.start.y && !route.moves.empty() && (route.moves.back() == 'L' || route.moves.back() == 'R')) {
 							/* D110: the bridge follows the bend directly and completes it; the near head stands where the closing axis piece would. */
 							route.moves.pop_back();
@@ -161,12 +180,11 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 					h = heading;
 				}
 			}
-			const TileIndexDiffC out = placement.ports[paths[p].to];
 			const int tail = run(out);
 			if (tail < 0) return fail_at("", "negative or off-line run to the out port");
 			route.moves.append(tail, 'F');
 			const uint32_t last_edge = edges.back();
-			tag_pieces(tail, last_edge, JunctionTrackPieceTag::RUN, (c == 1 && doubled_leg(last_edge) ? programs.copies : programs.edges)[last_edge].size());
+			tag_pieces(tail, last_edge, JunctionTrackPieceTag::RUN, (copy1_of(last_edge) ? programs.copies : programs.edges)[last_edge].size());
 
 			const JunctionRaster raster = RasterizeJunctionRoute(route);
 			if (!raster.error.empty()) return fail_at("", raster.error);
@@ -201,7 +219,7 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 			if (token_moved) return fail_at("", "a token piece lies outside its edge's block");
 			/* Copy 1 only on a doubled edge; run counts the edge's tokens before the piece, from its own token tags. */
 			for (size_t i = 0; i < tags.size(); i++) {
-				tags[i].copy = c == 1 && doubled_leg(tags[i].edge) ? 1 : 0;
+				tags[i].copy = copy1_of(tags[i].edge) ? 1 : 0;
 				if (tags[i].token != JunctionTrackPieceTag::RUN) {
 					tags[i].run = tags[i].token;
 					continue;
@@ -216,7 +234,7 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 				}
 			}
 			AddRasterToLayout(layout, raster);
-			if (routes != nullptr) routes->push_back({static_cast<uint16_t>(p), static_cast<uint8_t>(c), raster.pieces, std::move(tags)});
+			if (routes != nullptr) routes->push_back({static_cast<uint16_t>(bundle ? (bundle_edge.paths.empty() ? 0 : bundle_edge.paths.front()) : p), static_cast<uint8_t>(c), raster.pieces, std::move(tags)});
 		}
 	}
 	return layout;
