@@ -17,6 +17,7 @@
 
 #include "../../../junction/junction_spec.h"
 #include "../../../junction/topology/junction_topology.h"
+#include "../../../junction/placement/junction_placement.h"
 
 using Item = JunctionTrackStackItem;
 using ItemKind = JunctionTrackStackItem::Kind;
@@ -193,4 +194,32 @@ TEST_CASE("bundle: block geometry", "[junction][bundle]")
 			CHECK(JunctionBlockAttachOf(t.graph, programs, row.node, row.side, footprint, row.edge, k) == JunctionBlockAttach{row.along, row.across + k});
 		}
 	}
+}
+
+/** The width-2 T through placement with the given block lengths; the placement's error is in `error`. */
+static JunctionTrackPlacement PlaceBundleT(uint8_t along, std::string *error)
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.exit_block_along = spec.join_block_along = along;
+	BundleT t(2);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
+	REQUIRE(programs.nodes.size() == 6);
+	return PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, programs, spec, error);
+}
+
+TEST_CASE("bundle: the T places its blocks and track 0", "[junction][bundle]")
+{
+	std::string error;
+	const JunctionTrackPlacement placement = PlaceBundleT(4, &error);
+	INFO("why chain length " << placement.why.size());
+	CHECK(error == "the placement of a second track is not ruled yet");
+}
+
+TEST_CASE("bundle: a block without its footprint is refused", "[junction][bundle]")
+{
+	std::string error;
+	const JunctionTrackPlacement placement = PlaceBundleT(0, &error);
+	CHECK(error == "a block without its footprint is not ruled yet");
 }
