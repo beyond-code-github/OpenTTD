@@ -1,0 +1,202 @@
+diff --git a/src/junction/topology/junction_topology.cpp b/src/junction/topology/junction_topology.cpp
+index ece75d3415..a7acf57824 100644
+--- a/src/junction/topology/junction_topology.cpp
++++ b/src/junction/topology/junction_topology.cpp
+@@ -71,7 +71,17 @@ std::vector<JunctionLanePath> ExpandJunctionLanes(const JunctionTopology &topolo
+ 		const JunctionLaneGroup &out = topology.groups[topology.movements[m].second];
+ 		const uint8_t in_group = topology.movements[m].first;
+ 		const uint8_t out_group = topology.movements[m].second;
+-		if (in.main && out.main && in.line == out.line) {
++		if (topology.pairing == JunctionLanePairing::ChoicePerLine && in.lanes > 1 && out.lanes > 1) {
++			if (in.lanes != 2 || out.lanes != 2) return fail("choice per line needs two lanes");
++			/* The index of m among the movements into the same out group, in movement order. */
++			size_t i = 0;
++			for (size_t k = 0; k < m; k++) {
++				if (topology.movements[k].second == out_group) i++;
++			}
++			paths.push_back({slot_of(in_group, 0), slot_of(out_group, static_cast<uint8_t>(i)), static_cast<uint16_t>(m)});
++			paths.push_back({slot_of(in_group, 1), slot_of(out_group, 0), static_cast<uint16_t>(m)});
++			paths.push_back({slot_of(in_group, 1), slot_of(out_group, 1), static_cast<uint16_t>(m)});
++		} else if (in.main && out.main && in.line == out.line) {
+ 			if (in.lanes != out.lanes) return fail("a through movement needs equal lane counts");
+ 			for (uint8_t i = 0; i < in.lanes; i++) {
+ 				paths.push_back({slot_of(in_group, i), slot_of(out_group, i), static_cast<uint16_t>(m)});
+@@ -90,6 +100,9 @@ std::vector<JunctionLanePath> ExpandJunctionLanes(const JunctionTopology &topolo
+ 						for (uint8_t i = 0; i < in.lanes; i++) paths.push_back({slot_of(in_group, i), slot_of(out_group, i), static_cast<uint16_t>(m)});
+ 						continue;
+ 
++					case JunctionLanePairing::ChoicePerLine:
++						break;
++
+ 					case JunctionLanePairing::LanePerDirection: {
+ 						/* The lanes of a group that serve movement m: lane k serves the (k mod n)-th of the n turning movements of the group, in movement order. */
+ 						auto dealt = [&](uint8_t group, bool group_in, std::vector<uint8_t> &lanes) {
+diff --git a/src/junction/topology/junction_topology.h b/src/junction/topology/junction_topology.h
+index 49264a283b..fadaf75ce7 100644
+--- a/src/junction/topology/junction_topology.h
++++ b/src/junction/topology/junction_topology.h
+@@ -41,6 +41,7 @@ enum class JunctionLanePairing : uint8_t {
+ 	AnyToAny, ///< Every in lane to every out lane (D221 A, the default): each lane splits by direction, then by lane (D204, D187).
+ 	LaneKeepsLane, ///< In lane k to out lane k; needs equal lane counts (D221 B).
+ 	LanePerDirection, ///< A group's lanes are dealt round-robin to its turning movements, each fanning to the other group's lanes (D221 C).
++	ChoicePerLine, ///< Per (in group, out group) one lane is fixed to one out lane and one lane chooses either out lane (PSG 227, D283); needs two lanes on both groups; through movements follow it too.
+ };
+ 
+ /** A junction type: its lane groups and movements (D189). */
+@@ -178,7 +179,7 @@ struct JunctionTrackStackItem {
+ };
+ 
+ /** The most crossings one bridge passes over; a longer crossing set goes on further bridges in series (D209, provisional until the D208 rig experiment). */
+-static constexpr size_t JUNCTION_BRIDGE_MAX_CROSSERS = 2;
++static constexpr size_t JUNCTION_BRIDGE_MAX_CROSSERS = 4;
+ 
+ /** A bridge: one edge carried over a contiguous set of crossings (D203); CutJunctionTrackBridges cuts a lane's set into bridges of at most JUNCTION_BRIDGE_MAX_CROSSERS (D209). */
+ struct JunctionTrackBridge {
+diff --git a/src/tests/junction/placement/CMakeLists.txt b/src/tests/junction/placement/CMakeLists.txt
+index 7a7ce0b508..9db540b65c 100644
+--- a/src/tests/junction/placement/CMakeLists.txt
++++ b/src/tests/junction/placement/CMakeLists.txt
+@@ -2,4 +2,5 @@ add_test_files(
+     junction_joint.cpp
+     junction_milp.cpp
+     junction_positions.cpp
++    junction_probe_choice.cpp
+ )
+diff --git a/src/tests/junction/placement/junction_probe_choice.cpp b/src/tests/junction/placement/junction_probe_choice.cpp
+new file mode 100644
+index 0000000000..593e0d8978
+--- /dev/null
++++ b/src/tests/junction/placement/junction_probe_choice.cpp
+@@ -0,0 +1,132 @@
++/*
++ * This file is part of OpenTTD.
++ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
++ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
++ */
++
++/** @file junction_probe_choice.cpp Probe: LL_RR x LL_RR with PSG 227's choice pairing through the graph pipeline. */
++
++#include "../../../stdafx.h"
++
++#include "../../../3rdparty/catch2/catch.hpp"
++
++#include "../../../junction/junction_spec.h"
++#include "../../../junction/junction_rules.h"
++#include "../../../junction/line/junction_line.h"
++#include "../../../junction/topology/junction_topology.h"
++#include "../../../junction/placement/junction_render.h"
++#include "../../../junction/signals/junction_signals.h"
++#include "../../../junction/junction_pipeline.h"
++
++#include <fstream>
++#include <map>
++#include <set>
++#include <sstream>
++
++#include "../../../safeguards.h"
++
++static std::string Str(long v) { std::ostringstream s; s << v; return s.str(); }
++
++static const char *PROBE_DIR = "/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/choice-probe/";
++
++TEST_CASE("probe: choice pairing LL_RR x LL_RR through the seed", "[.probe]")
++{
++	const JunctionLineSpec line = ParseLineNotation("LL_RR").spec;
++	const JunctionTopology topology = MakeJunctionHubTopology(line, line, JunctionLanePairing::ChoicePerLine);
++	const JunctionSpec spec = MakeTestJunctionSpec();
++	std::ofstream out(std::string(PROBE_DIR) + "probe.txt");
++
++	std::string error;
++	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(topology);
++	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(topology, &error);
++	out << "expand error: " << error << "\n";
++	auto slot_name = [&](uint16_t s) { return "g" + Str(slots[s].group) + "l" + Str(slots[s].lane) + "(s" + Str(s) + ")"; };
++	out << "groups:\n";
++	for (size_t g = 0; g < topology.groups.size(); g++) {
++		const JunctionLaneGroup &gr = topology.groups[g];
++		out << " g" << g << " side " << int(to_underlying(gr.side)) << " main " << gr.main << " lanes " << int(gr.lanes) << " line " << int(gr.line) << " in " << gr.in << "\n";
++	}
++	out << "movements:";
++	for (size_t m = 0; m < topology.movements.size(); m++) out << " m" << m << "=(g" << int(topology.movements[m].first) << ",g" << int(topology.movements[m].second) << ")";
++	out << "\npaths " << paths.size() << ":\n";
++	for (size_t p = 0; p < paths.size(); p++) out << " p" << p << " " << slot_name(paths[p].from) << " -> " << slot_name(paths[p].to) << " m" << paths[p].movement << "\n";
++
++	std::map<uint16_t, int> per_out;
++	for (const JunctionLanePath &p : paths) per_out[p.to]++;
++	CHECK(paths.size() == 18);
++	for (const auto &[slot, count] : per_out) CHECK(count == 3);
++	CHECK(per_out.size() == 6);
++	REQUIRE(paths.size() == 18);
++
++	std::string graph_error;
++	const JunctionTrackGraph graph = BuildJunctionTrackGraph(topology, paths, &graph_error);
++	out << "\ngraph error: " << graph_error << "\nnodes " << graph.nodes.size() << " edges " << graph.edges.size() << " crossings " << graph.crossings.size() << "\n";
++	auto end_name = [&](const JunctionTrackEnd &e) { return e.node ? "n" + Str(e.index) : slot_name(e.index); };
++	for (size_t n = 0; n < graph.nodes.size(); n++) out << " n" << n << (graph.nodes[n].split ? " split" : " merge") << " slot " << slot_name(graph.nodes[n].slot) << " level " << graph.nodes[n].level << "\n";
++	static const char *KINDS[] = {"In", "Leg", "Out"};
++	for (size_t e = 0; e < graph.edges.size(); e++) {
++		const JunctionTrackEdge &edge = graph.edges[e];
++		out << " e" << e << " " << KINDS[to_underlying(edge.kind)] << " " << end_name(edge.from) << " -> " << end_name(edge.to) << " paths";
++		for (uint16_t p : edge.paths) out << " p" << p;
++		out << "\n";
++	}
++	out << "crossings:";
++	for (const auto &[a, b] : graph.crossings) out << " (e" << a << ",e" << b << ")";
++	out << "\n\nmerge cascades per out slot (merge nodes in tree order; each lists the paths of its incoming edges):\n";
++	for (size_t s = 0; s < slots.size(); s++) {
++		bool is_out = false;
++		for (const JunctionLanePath &p : paths) if (p.to == s) is_out = true;
++		if (!is_out) continue;
++		out << " out " << slot_name(static_cast<uint16_t>(s)) << ":\n";
++		for (size_t n = 0; n < graph.nodes.size(); n++) {
++			if (graph.nodes[n].split || graph.nodes[n].slot != s) continue;
++			out << "  n" << n << " level " << graph.nodes[n].level << " takes";
++			for (const JunctionTrackEdge &edge : graph.edges) {
++				if (!edge.to.node || edge.to.index != n) continue;
++				out << " [";
++				for (uint16_t p : edge.paths) out << slot_name(paths[p].from) << " ";
++				out << "]";
++			}
++			out << "\n";
++		}
++	}
++	out.flush();
++
++	out << "stage: seed (ExpandJunctionLanes and graph done)\n";
++	out.flush();
++	std::string seed_error;
++	const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &seed_error);
++	out << "\nseed routes " << seed.routes.size() << " placement nodes " << seed.placement.nodes.size() << " error: " << seed_error << "\n";
++	for (const JunctionPlacementReason &why : seed.placement.why) out << " why: " << (why.rule != nullptr ? why.rule : "?") << " edge " << int(why.edge) << " node " << int(why.node) << " row " << why.row << "\n";
++	out.flush();
++	if (seed.routes.empty()) return;
++
++	out << "stage: render\n";
++	out.flush();
++	std::string render_error;
++	std::vector<JunctionTrackRoute> routes;
++	JunctionLayout layout = RenderJunctionTrackPlacement(topology, seed.paths, seed.graph, seed.structure, seed.programs, seed.placement, &render_error, &routes);
++	out << "render error: " << render_error << " size " << layout.size.x << "x" << layout.size.y << "\n";
++	std::string signal_why;
++	SignalJunctionTrackRoutes(layout, routes, topology, seed.paths, seed.graph, seed.programs, spec, &signal_why, nullptr, &seed.placement.prio);
++	out << "signal why: " << signal_why << "\n";
++	std::map<int, int> by_rule;
++	std::string violations;
++	for (const RuleViolation &v : CheckJunctionRules(layout, spec, topology)) {
++		by_rule[to_underlying(v.rule)]++;
++		violations += " rule " + Str(to_underlying(v.rule)) + " at " + Str(v.tile.x) + "," + Str(v.tile.y) + ": " + v.message + "\n";
++	}
++	out << "violations by rule (JunctionRule value: count):";
++	for (const auto &[rule, count] : by_rule) out << " " << rule << ":" << count;
++	out << "\n" << violations;
++	out << "prio elements " << seed.placement.prio.size() << ":\n";
++	for (const JunctionPrioSpan &span : seed.placement.prio) {
++		int row = -1;
++		for (size_t i = 0; i < seed.placement.item_rows.size(); i++) if (seed.placement.item_rows[i] == span.merge.y) row = static_cast<int>(i);
++		out << " merge tile " << span.merge.x << "," << span.merge.y << " (stack item " << row << ", tile row " << span.merge.y << ") tiles " << span.tiles.size() << "\n";
++	}
++	out << "\nASCII:\n" << RenderJunctionAscii(layout);
++	std::ofstream json(std::string(PROBE_DIR) + "layout.json");
++	json << JunctionLayoutToJson(layout);
++}
