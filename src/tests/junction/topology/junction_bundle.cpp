@@ -263,23 +263,6 @@ TEST_CASE("bundle: the T places two wide on flat ground", "[junction][bundle]")
 	/* The size, pinned on the first green (step 5a). */
 	INFO("size " << p.size.x << " x " << p.size.y);
 	CHECK((p.size.x == 37 && p.size.y == 21));
-	/* Track 1 of every band edge bend is track 0's span moved by D (DESIGN-width 5a.2). */
-	struct Move { uint32_t edge; size_t token; int dx, dy; };
-	const Move moves[] = {{4, 0, -1, +1}, {4, 3, -1, 0}, {6, 0, -1, -1}, {7, 0, +1, -1}, {8, 3, +1, +1}};
-	for (const Move &m : moves) {
-		INFO("edge " << m.edge << " token " << m.token);
-		REQUIRE(p.edges[m.edge].size() > m.token);
-		REQUIRE(p.copies[m.edge].size() > m.token);
-		CHECK(Same(p.copies[m.edge][m.token].first, Moved(p.edges[m.edge][m.token].first, m.dx, m.dy)));
-		CHECK(Same(p.copies[m.edge][m.token].second, Moved(p.edges[m.edge][m.token].second, m.dx, m.dy)));
-	}
-	/* The bridge pairs: bridge 1 (edge 8 over edge 4) on the column axis, bridge 0 (row 1). */
-	REQUIRE(p.bridges.size() == 2);
-	CHECK(Same(p.bridges[1][1].start, Moved(p.bridges[1][0].start, +1, +1)));
-	CHECK(Same(p.bridges[1][1].end, Moved(p.bridges[1][0].end, +1, +1)));
-	CHECK(Same(p.bridges[0][1].start, Moved(p.bridges[0][0].start, +1, -1)));
-	CHECK(Same(p.bridges[0][1].end, Moved(p.bridges[0][0].end, +1, -1)));
-
 	/* The attach tiles are the anchor plus the 4a offsets, per track; the block ends follow the footprint. */
 	static constexpr int DX[4] = {0, 1, 0, -1};
 	static constexpr int DY[4] = {-1, 0, 1, 0};
@@ -311,11 +294,11 @@ TEST_CASE("bundle: the S-bend column form leans as derived", "[junction][bundle]
 	CHECK(JunctionSBendColumnForm(2, -1).s == 1);
 }
 
-TEST_CASE("bundle: a square crossing of a bundle is refused", "[junction][bundle]")
+TEST_CASE("bundle: a square crossing waits for stretching blocks", "[junction][bundle]")
 {
 	const PlacedBundleT placed = PlaceBundleTWithForms(4, 1);
 	INFO("why chain length " << placed.placement.why.size());
-	CHECK(placed.error == "a square crossing of a bundle is not ruled yet");
+	CHECK(placed.error == "a square crossing of a bundle is not ruled until blocks stretch");
 }
 
 TEST_CASE("bundle: the joint loop settles on the bundle T", "[junction][bundle]")
@@ -403,6 +386,25 @@ TEST_CASE("bundle: the T renders two wide", "[junction][bundle]")
 				INFO("tile " << tile.first << "," << tile.second << " routes " << here[a].first << " and " << here[b].first);
 				CHECK(here[a].second != here[b].second);
 				CHECK(JunctionTracksMayShareTile(TrackBits{here[a].second}, TrackBits{here[b].second}));
+			}
+		}
+	}
+
+	/* Track 1 never crosses track 0: where their tiles coincide they hold two parallel tracks, never X and Y. */
+	for (const JunctionTrackRoute &r0 : routes) {
+		if (r0.copy != 0) continue;
+		for (const JunctionTrackRoute &r1 : routes) {
+			if (r1.copy != 1 || r1.tags.front().edge != r0.tags.front().edge) continue;
+			for (const JunctionPiece &p1 : r1.pieces) {
+				if (p1.on_bridge) continue;
+				for (const JunctionPiece &p0 : r0.pieces) {
+					if (p0.on_bridge) continue;
+					INFO("edge " << r0.tags.front().edge << " tile " << p1.tile.x << "," << p1.tile.y);
+					if (!Same(p0.tile, p1.tile)) continue;
+					const Track k0 = TrackdirToTrack(p0.trackdir), k1 = TrackdirToTrack(p1.trackdir);
+					CHECK(k0 != k1);
+					CHECK(!((k0 == Track::X && k1 == Track::Y) || (k0 == Track::Y && k1 == Track::X)));
+				}
 			}
 		}
 	}

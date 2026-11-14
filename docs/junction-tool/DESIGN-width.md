@@ -290,6 +290,8 @@ Under an hour.
 
 ## Step 5a. Track 1 of band edges, S-bend form; the T places
 
+Superseded in part by REVIEW-width-overprescribed item 2 (D296): band track 1 is free, not a translation; the square crossing waits for stretching blocks (cycle through block attach and S port spacing).
+
 ### 5a.1 Data
 No new types. Reason strings: "track pair", "bridge pair stagger". Doc change: `JunctionPlacementSystem` bend and element `copy` "1: the copy of a doubled row edge, or track 1 of a bundle edge".
 

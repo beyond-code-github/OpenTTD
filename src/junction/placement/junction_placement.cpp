@@ -315,8 +315,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		/* A bundle edge builds track 1's chain after track 0's, from the copy's program. */
 		for (int c = 0; c < (bundle && !programs.copies[e].empty() ? 2 : 1); c++) {
 			const std::vector<Step> &program = c == 0 ? programs.edges[e] : programs.copies[e];
-			const int start = edge.from.node ? (bundle ? attach_pt[e][0][c] : node_pt[edge.from.index]) : port_pt[edge.from.index];
-			const int stop = edge.to.node ? (bundle ? attach_pt[e][1][c] : node_pt[edge.to.index]) : port_pt[edge.to.index];
+			const int start = edge.from.node ? (bundle ? attach_pt[e][0][c] : node_pt[edge.from.index]) : (bundle && c == 1 ? track_port_pt[edge.from.index] : port_pt[edge.from.index]);
+			const int stop = edge.to.node ? (bundle ? attach_pt[e][1][c] : node_pt[edge.to.index]) : (bundle && c == 1 ? track_port_pt[edge.to.index] : port_pt[edge.to.index]);
 			/* A band edge carries exit paths or joiner paths, never both; its start heading comes from the programs' edge ends (a row's heading at a row node, else south for exit paths from the main line and north for joiner paths from the S side). */
 			for (uint16_t p : edge.paths) {
 				if (group_of(paths[p].from).main != group_of(paths[edge.paths[0]].from).main) return fail("a band edge carrying exit and joiner paths is not ruled yet");
@@ -341,7 +341,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					const int recorded = cross_form(e, head);
 					if (static_cast<int>(t) == head) {
 						/* Track 1's crossing tokens join track 0's group. */
-						if (bundle && recorded != 0) return fail("a square crossing of a bundle is not ruled yet");
+						if (bundle && recorded != 0) return fail("a square crossing of a bundle is not ruled until blocks stretch");
 						if (c == 0) {
 							group_index[{e, head}] = static_cast<int>(recorded_form_groups.size());
 							recorded_form_groups.push_back({static_cast<int>(e), head, recorded});
@@ -968,19 +968,21 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			}
 			continue;
 		}
-		if (!bundle && !programs.copies[e].empty()) continue; // A bundle's track 0 keeps its push; track 1 follows by translation.
-		const std::vector<Step> &program = programs.edges[e];
-		for (const Elem &el : chain[e]) {
-			if (el.k != Elem::K::SBend || el.absent || VX[el.hin] == 0) continue;
-			/* Kind 4: toward the node at the end of the edge when no emitting token follows, toward the one at its start when none precedes. */
-			bool before = false, after = false;
-			for (size_t t = 0; t < program.size(); t++) {
-				if (program[t].kind == StepKind::Under || program[t].kind == StepKind::Above || static_cast<int>(t) == el.tok) continue;
-				(static_cast<int>(t) < el.tok ? before : after) = true;
+		if (!bundle && !programs.copies[e].empty()) continue;
+		for (int c = 0; c < (two_chains(e) ? 2 : 1); c++) {
+			const std::vector<Step> &program = c == 0 ? programs.edges[e] : programs.copies[e];
+			for (const Elem &el : c == 0 ? chain[e] : chain_copy[e]) {
+				if (el.k != Elem::K::SBend || el.absent || VX[el.hin] == 0) continue;
+				/* Kind 4: toward the node at the end of the edge when no emitting token follows, toward the one at its start when none precedes. */
+				bool before = false, after = false;
+				for (size_t t = 0; t < program.size(); t++) {
+					if (program[t].kind == StepKind::Under || program[t].kind == StepKind::Above || static_cast<int>(t) == el.tok) continue;
+					(static_cast<int>(t) < el.tok ? before : after) = true;
+				}
+				if (before == after) continue;
+				const JunctionTrackEnd &end = before ? graph.edges[e].to : graph.edges[e].from;
+				row_changes.push_back({el.first, end.node ? node_pt[end.index] : port_pt[end.index], VX[el.hin] * (before ? 1 : -1) > 0, UINT32_MAX, e, -1, el.tok, c});
 			}
-			if (before == after) continue;
-			const JunctionTrackEnd &end = before ? graph.edges[e].to : graph.edges[e].from;
-			row_changes.push_back({el.first, end.node ? node_pt[end.index] : port_pt[end.index], VX[el.hin] * (before ? 1 : -1) > 0, UINT32_MAX, e, -1, el.tok, 0});
 		}
 	}
 
@@ -2334,33 +2336,6 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				eq(0, prio_el->last, node_pt[edge.to.index], 0);
 				along(prio_el->hout, prio_el->last, prio_el->first, even_prio, true);
 			}
-			if (chain_no == 1 && !is_row_edge(e)) {
-				/* Track 1 of a band edge is track 0 moved by D, element by element, per present Corner, S-bend, Fan or Heads (DESIGN-width 5a.2): one line right of travel, a Corner's turn one tile later or earlier, a head pair one tile upstream (D287). */
-				for (size_t i = 0; i < elems.size(); i++) {
-					const Elem &el = elems[i];
-					const Elem &el0 = chain[e][i];
-					if (el.absent || (el.k != Elem::K::Corner && el.k != Elem::K::SBend && el.k != Elem::K::Fan && el.k != Elem::K::Heads)) continue;
-					const int h = el.form_group >= 0 ? el.fhin : el.hin;
-					int dx = VX[(h + 1) % 4], dy = VY[(h + 1) % 4];
-					if (el.k == Elem::K::Corner) {
-						dx -= el.hand * VX[h];
-						dy -= el.hand * VY[h];
-					} else if (el.k == Elem::K::Heads) {
-						dx -= VX[h];
-						dy -= VY[h];
-					}
-					why("track pair", e);
-					if (el.form_group >= 0) {
-						form_group_now = el.form_group;
-						form_now = el.form;
-					}
-					for (int axis = 0; axis < 2; axis++) {
-						eq(axis, el.first, el0.first, axis == 0 ? dx : dy);
-						eq(axis, el.last, el0.last, axis == 0 ? dx : dy);
-					}
-					form_group_now = form_now = -1;
-				}
-			}
 			if (is_row_edge(e) && doubled_edge(e) && !bundle) {
 				/* A doubled leg: copy 0's chain holds its HeadsPairs and its lane merge S-bend, copy 1's its lane split S-bend and its HeadsPairs, each between its two Tiles. The lane pair joins the two (copy 1's S-bend starts at the lane split, copy 0's ends at the lane merge) and the heads of copy 1 are copy 0's one tile upstream (D118). */
 				const int r = (end_level(edge.from) - 1) / 2;
@@ -2705,9 +2680,31 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			if (refused_groups) return false;
 
 			/* A single bridge passes over an S-bend of the edge it crosses beside its Under (or Above) token, the one before it or the one after it as a choice (default before), in the column t of the S-bend, 1 unless a choice says otherwise (D113, F4, DESIGN-G3 §G3.4a, §G3.4b). */
+			size_t head_ordinal = 0;
 			for (const Elem &el : elems) {
-				if (el.k != Elem::K::Heads || chain_no == 1) continue; // Track 1's heads are track 0's moved by D.
+				if (el.k != Elem::K::Heads) continue;
+				/* Track 1's deck is its own: it takes the choices of track 0's deck at the same place (the choices have one entry per token of track 0's program). */
+				const Elem *el0 = &el;
+				if (chain_no == 1) {
+					size_t skip = head_ordinal;
+					for (const Elem &h : chain[e]) {
+						if (h.k == Elem::K::Heads && skip-- == 0) {
+							el0 = &h;
+							break;
+						}
+					}
+				}
+				head_ordinal++;
 				const std::vector<Elem> &other = chain[el.cross];
+				if (chain_no == 1) {
+					/* The bridge pair stagger (D287): track 1's heads one tile upstream of track 0's. */
+					why("bridge pair stagger", e);
+					along(el.hin, el0->first, el.first, 1, true);
+					along(el.hin, el0->last, el.last, 1, true);
+				}
+				/* A deck crosses every track of the crosser (R17): the crosser's chains. */
+				std::vector<const std::vector<Elem> *> crossers{&other};
+				if (two_chains(el.cross)) crossers.push_back(&chain_copy[el.cross]);
 				const std::vector<JunctionTrackStep> &crossed_program = programs.edges[el.cross];
 				const auto is_crossing = [&](int tok) { return tok >= 0 && static_cast<size_t>(tok) < crossed_program.size() && (crossed_program[tok].kind == StepKind::Under || crossed_program[tok].kind == StepKind::Above) && crossed_program[tok].index == e; };
 				/* The crossing's group on the crossed edge and its form (DESIGN-G4 §11.1). */
@@ -2721,22 +2718,24 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				const int recorded = group >= 0 ? recorded_form_groups[static_cast<size_t>(group)].form : 0;
 				if (group_head >= 0 && (recorded != 0 || system != nullptr)) {
 					/* The edge passes under the bridge on the run of its square group: the bridge's column lies strictly inside the run and the run's row strictly between the heads, and the group's bridges keep their token order along the run (DESIGN-G4 §11.2). The rows hold in the square form; at another recording they are only recorded. */
-					const Elem *corner1 = nullptr;
-					const Elem *corner2 = nullptr;
-					for (const Elem &o : other) {
-						if (o.k != Elem::K::Corner || o.form_group != group) continue;
-						if (o.tok == group_head + 1) corner1 = &o;
-						if (o.tok == crossed_groups.last[group_head]) corner2 = &o;
-					}
-					const bool is_run = corner1 != nullptr && corner2 != nullptr && VX[corner1->fhout] != 0 && VX[corner1->fhout] == VX[corner2->fhin];
-					if (!is_run && recorded != 0) { build_why = "a bridge over a run that is not a run"; return false; }
 					form_group_now = group;
 					form_now = 1;
 					record_only_now = recorded != 1;
 					why("bridge over run", e, el.cross);
-					if (!is_run) {
-						ge(0, el.first, el.first, 1); // The group has no square form: a row no solution meets, held only when the group is square.
-					} else {
+					for (const std::vector<Elem> *crosser : crossers) {
+						const Elem *corner1 = nullptr;
+						const Elem *corner2 = nullptr;
+						for (const Elem &o : *crosser) {
+							if (o.k != Elem::K::Corner || o.form_group != group) continue;
+							if (o.tok == group_head + 1) corner1 = &o;
+							if (o.tok == crossed_groups.last[group_head]) corner2 = &o;
+						}
+						const bool is_run = corner1 != nullptr && corner2 != nullptr && VX[corner1->fhout] != 0 && VX[corner1->fhout] == VX[corner2->fhin];
+						if (!is_run && recorded != 0) { build_why = "a bridge over a run that is not a run"; return false; }
+						if (!is_run) {
+							ge(0, el.first, el.first, 1); // The group has no square form: a row no solution meets, held only when the group is square.
+							continue;
+						}
 						const int dir = VX[corner1->fhout];
 						const int south_head = el.hin == 0 ? el.first : el.last;
 						const int north_head = el.hin == 0 ? el.last : el.first;
@@ -2752,7 +2751,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						/* The bridge of the crossing before this one in the group lies before it along the run. */
 						for (int before_token = token - 1; before_token > group_head; before_token--) {
 							if (crossed_program[before_token].kind != StepKind::Under && crossed_program[before_token].kind != StepKind::Above) continue;
-							for (const Elem &previous : chain[crossed_program[before_token].index]) {
+							const uint32_t previous_edge = crossed_program[before_token].index;
+							for (const Elem &previous : chain_no == 1 && two_chains(previous_edge) ? chain_copy[previous_edge] : chain[previous_edge]) {
 								if (previous.k != Elem::K::Heads || previous.cross != el.cross) continue;
 								if (dir > 0) ge(0, el.first, previous.first, 1); else ge(0, previous.first, el.first, 1);
 							}
@@ -2777,18 +2777,29 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					if (is_crossing(previous_tok)) after = &o;
 				}
 				const bool s_bend_form = recorded == 0;
-				const int chosen = fixed != nullptr && !fixed->over_after.empty() ? fixed->over_after[e][el.tok] : 0;
+				const int chosen = fixed != nullptr && !fixed->over_after.empty() ? fixed->over_after[e][el0->tok] : 0;
 				const Elem *chosen_elem = chosen != 0 ? after : before;
 				if (s_bend_form && chosen_elem == nullptr) { build_why = "a bridge over an S-bend that is not there"; return false; }
 				if (before == nullptr && after == nullptr) continue;
 				/* The column t counted from the start: 1 + the choice, 1 when empty or when not fixed. */
-				const int t = 1 + (fixed != nullptr && !fixed->over.empty() ? fixed->over[e][el.tok] : 0);
+				const int t = 1 + (fixed != nullptr && !fixed->over.empty() ? fixed->over[e][el0->tok] : 0);
 				const bool both = before != nullptr && after != nullptr;
 				why("bridge over S-bend", e);
-				recorded_overs.push_back({static_cast<int>(e), el.tok, -1, t, 0, 0, -1, 0, 0, chosen});
-				over_elems.push_back(before);
-				over_elems_after.push_back(after);
-				const int over_index = static_cast<int>(recorded_overs.size()) - 1;
+				int over_index = -1;
+				if (chain_no == 0) {
+					recorded_overs.push_back({static_cast<int>(e), el.tok, -1, t, 0, 0, -1, 0, 0, chosen});
+					over_elems.push_back(before);
+					over_elems_after.push_back(after);
+					over_index = static_cast<int>(recorded_overs.size()) - 1;
+				} else {
+					/* Track 1's deck stands in the column of track 0's one line on: it shares track 0's choice. */
+					for (size_t o = 0; o < recorded_overs.size(); o++) {
+						if (recorded_overs[o].edge == static_cast<int>(e) && recorded_overs[o].tok == el0->tok) over_index = static_cast<int>(o);
+					}
+					if (over_index < 0) { build_why = "a bridge pair without its first deck"; return false; }
+				}
+				/* Track 1's deck lies one line to the right of travel: its column is one on, and so are the rows of the diagonal it hugs. */
+				const int lateral = chain_no == 1 ? VX[(el.hin + 1) % 4] : 0;
 				for (int alternative = 0; alternative < 2; alternative++) {
 					const Elem *crossed = alternative == 0 ? before : after;
 					if (crossed == nullptr) continue;
@@ -2800,8 +2811,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					(alternative == 0 ? recorded_overs.back().t0 : recorded_overs.back().t0_after) = form.t0;
 					(alternative == 0 ? recorded_overs.back().t1 : recorded_overs.back().t1_after) = form.t1;
 					if (is_chosen && t > form.t0 + form.t1 * std::max(crossed->m, 2)) { build_why = "a bridge over an S-bend beyond its diagonal"; return false; }
-					const int lo = form.lo + form.s * (t - 1);
-					const int hi = form.hi + form.s * (t - 1);
+					const int lo = form.lo + form.s * (t - 1 + lateral * VX[side]);
+					const int hi = form.hi + form.s * (t - 1 + lateral * VX[side]);
 					const bool north = el.hin == 0;
 					int first_extra = 0, last_extra = 0;
 					if (two_chains(el.cross)) {
@@ -2810,15 +2821,13 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						first_extra = north ? std::max(0, d) : std::min(0, d);
 						last_extra = north ? std::min(0, d) : std::max(0, d);
 					}
-					/* The second deck of a bridge pair is one tile upstream: over a diagonal that leans downstream it is not ruled (D293). */
-					if (is_chosen && two_chains(e) && form.s * VX[(el.hin + 1) % 4] * VX[side] != -VY[el.hin]) { build_why = "a bridge over an S-bend that leans downstream is not ruled yet"; return false; }
 					const int alt = both ? alternative : -1;
 					record_only_now = !is_chosen;
 					form_group_now = group;
 					form_now = group >= 0 ? 0 : -1;
 					/* The rows of column t follow the diagonal (premise P3): the relations are linear in t, so a recording tags them with it. */
 					tag = SystemTag{nullptr, 0, 0, false, false, false, over_index, VX[side], alt};
-					eq(0, el.first, crossed->first, VX[side] * t);
+					eq(0, el.first, crossed->first, VX[side] * t + lateral);
 					const int first_row = (north ? hi + 1 : lo - 1) + first_extra;
 					const int last_row = (north ? lo - 1 : hi + 1) + last_extra;
 					tag = SystemTag{crossed, 0, first_row, false, false, false, over_index, form.s, alt};
