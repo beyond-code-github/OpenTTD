@@ -19,6 +19,7 @@
 #include "../../../junction/topology/junction_topology.h"
 #include "../../../junction/junction_track_geometry.h"
 #include "../../../junction/placement/junction_placement.h"
+#include "../../../junction/placement/junction_joint.h"
 
 using Item = JunctionTrackStackItem;
 using ItemKind = JunctionTrackStackItem::Kind;
@@ -309,6 +310,26 @@ TEST_CASE("bundle: a square crossing of a bundle is refused", "[junction][bundle
 	const PlacedBundleT placed = PlaceBundleTWithForms(4, 1);
 	INFO("why chain length " << placed.placement.why.size());
 	CHECK(placed.error == "a square crossing of a bundle is not ruled yet");
+}
+
+TEST_CASE("bundle: the joint loop settles on the bundle T", "[junction][bundle]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.exit_block_along = spec.join_block_along = 4;
+	BundleT t(2);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
+	REQUIRE(programs.nodes.size() == 6);
+	std::string error;
+	const JunctionPlacementChoices start = PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, programs, spec, &error).choices;
+	REQUIRE(error.empty());
+	const JunctionJointLoopResult loop = SolveJunctionJointLoop(t.topology, t.paths, t.graph, t.order, structure, programs, spec, start);
+	INFO("outcome " << loop.outcome);
+	CHECK(loop.outcome == "settled");
+	const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, programs, spec, loop.choices, &error);
+	INFO("error " << error);
+	CHECK(!placed.nodes.empty());
 }
 
 TEST_CASE("bundle: a block without its footprint is refused", "[junction][bundle]")
