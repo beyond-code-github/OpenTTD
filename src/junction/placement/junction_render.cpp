@@ -115,6 +115,7 @@ JunctionLayout RenderJunctionTrackPlacement(const JunctionTopology &topology, co
 					}
 					const TileIndexDiffC first = spans[t].first;
 					const TileIndexDiffC last = spans[t].second;
+					if (token.role == JunctionTrackStep::Role::Cross && first.x == last.x && first.y == last.y) continue; // The form the placement did not choose: no bend.
 					if (token.kind == StepKind::Fan) {
 						if (first.x == last.x && first.y == last.y && first.x == cur.x && first.y == cur.y) continue;
 						const bool off_line = VX[h] != 0 ? (first.y != cur.y || last.y != cur.y) : (first.x != cur.x || last.x != cur.x);

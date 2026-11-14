@@ -221,6 +221,7 @@ struct JunctionTrackStep {
 		Shift, ///< SBend: a pair that moves a line sideways and back (R7 inserts them).
 		Diverge, ///< SBend: leaves the split the edge starts at; starts on its point (DESIGN-G2 §G2.6).
 		Converge, ///< SBend: joins the merge the edge ends at (a joiner's arrival included); ends on its point (DESIGN-G2 §G2.6).
+		Cross, ///< SBend, Corner: a bend of a single bridge's crossing, in one of its two forms (an S-bend under the bridge, or a Corner, the run, a Corner back); present or not as the placement's choices say.
 	};
 	Kind kind;
 	int8_t hand; ///< Corner: the turn, +1 right, -1 left (as JunctionTrackStructure::turns). SBend: its first curve. 0 otherwise.
