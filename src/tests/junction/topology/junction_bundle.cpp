@@ -17,6 +17,7 @@
 
 #include "../../../junction/junction_spec.h"
 #include "../../../junction/topology/junction_topology.h"
+#include "../../../junction/junction_track_geometry.h"
 #include "../../../junction/placement/junction_placement.h"
 
 using Item = JunctionTrackStackItem;
@@ -209,12 +210,105 @@ static JunctionTrackPlacement PlaceBundleT(uint8_t along, std::string *error)
 	return PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, programs, spec, error);
 }
 
-TEST_CASE("bundle: the T places its blocks and track 0", "[junction][bundle]")
-{
+/** A tile moved by (dx, dy). */
+static bool Same(TileIndexDiffC a, TileIndexDiffC b) { return a.x == b.x && a.y == b.y; }
+static TileIndexDiffC Moved(TileIndexDiffC tile, int dx, int dy) { return {static_cast<int16_t>(tile.x + dx), static_cast<int16_t>(tile.y + dy)}; }
+
+/** The width-2 T's choices of 5a: every form 0, placed through the programs with the given block length. */
+struct PlacedBundleT {
+	JunctionTrackPrograms programs;
+	JunctionTrackPlacement placement;
 	std::string error;
-	const JunctionTrackPlacement placement = PlaceBundleT(4, &error);
-	INFO("why chain length " << placement.why.size());
-	CHECK(error == "the placement of a band edge's second track is not ruled yet");
+};
+
+static PlacedBundleT PlaceBundleTWithForms(uint8_t along, int form_4_3)
+{
+	PlacedBundleT out;
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.exit_block_along = spec.join_block_along = along;
+	BundleT t(2);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
+	REQUIRE(!structure.stack.empty());
+	out.programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
+	REQUIRE(out.programs.nodes.size() == 6);
+	if (form_4_3 < 0) {
+		out.placement = PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, out.programs, spec, &out.error);
+		return out;
+	}
+	/* The choices of the first placement, with edge 4's token 3 given the square form. */
+	JunctionPlacementChoices choices = PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, out.programs, spec, &out.error).choices;
+	REQUIRE(out.error.empty());
+	choices.form.resize(12);
+	for (size_t e = 0; e < 12; e++) choices.form[e].assign(out.programs.edges[e].size(), 0);
+	choices.form[4][3] = form_4_3;
+	out.error.clear();
+	out.placement = PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, out.programs, spec, choices, &out.error);
+	return out;
+}
+
+TEST_CASE("bundle: the T places two wide on flat ground", "[junction][bundle]")
+{
+	const PlacedBundleT placed = PlaceBundleTWithForms(4, -1);
+	const JunctionTrackPlacement &p = placed.placement;
+	INFO("error " << placed.error << ", why chain length " << p.why.size());
+	REQUIRE(placed.error.empty());
+
+	/* The size, pinned on the first green (step 5a). */
+	INFO("size " << p.size.x << " x " << p.size.y);
+	CHECK((p.size.x == 37 && p.size.y == 21));
+	/* Track 1 of every band edge bend is track 0's span moved by D (DESIGN-width 5a.2). */
+	struct Move { uint32_t edge; size_t token; int dx, dy; };
+	const Move moves[] = {{4, 0, -1, +1}, {4, 3, -1, 0}, {6, 0, -1, -1}, {7, 0, +1, -1}, {8, 3, +1, +1}};
+	for (const Move &m : moves) {
+		INFO("edge " << m.edge << " token " << m.token);
+		REQUIRE(p.edges[m.edge].size() > m.token);
+		REQUIRE(p.copies[m.edge].size() > m.token);
+		CHECK(Same(p.copies[m.edge][m.token].first, Moved(p.edges[m.edge][m.token].first, m.dx, m.dy)));
+		CHECK(Same(p.copies[m.edge][m.token].second, Moved(p.edges[m.edge][m.token].second, m.dx, m.dy)));
+	}
+	/* The bridge pairs: bridge 1 (edge 8 over edge 4) on the column axis, bridge 0 (row 1). */
+	REQUIRE(p.bridges.size() == 2);
+	CHECK(Same(p.bridges[1][1].start, Moved(p.bridges[1][0].start, +1, +1)));
+	CHECK(Same(p.bridges[1][1].end, Moved(p.bridges[1][0].end, +1, +1)));
+	CHECK(Same(p.bridges[0][1].start, Moved(p.bridges[0][0].start, +1, -1)));
+	CHECK(Same(p.bridges[0][1].end, Moved(p.bridges[0][0].end, +1, -1)));
+
+	/* The attach tiles are the anchor plus the 4a offsets, per track; the block ends follow the footprint. */
+	static constexpr int DX[4] = {0, 1, 0, -1};
+	static constexpr int DY[4] = {-1, 0, 1, 0};
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.exit_block_along = spec.join_block_along = 4;
+	BundleT t(2);
+	REQUIRE(p.block_ends.size() == t.graph.nodes.size());
+	for (uint32_t v = 0; v < t.graph.nodes.size(); v++) {
+		const int h = placed.programs.nodes[v].heading, r = (h + 1) % 4;
+		const JunctionBlockFootprint footprint = JunctionBlockFootprintOf(t.graph.nodes[v].block, 2, spec);
+		const int8_t side = JunctionBlockSide(t.graph, t.order, placed.programs, v);
+		CHECK(Same(p.block_ends[v], Moved(p.nodes[v], (footprint.along - 1) * DX[h], (footprint.along - 1) * DY[h])));
+		for (uint32_t e = 0; e < t.graph.edges.size(); e++) {
+			for (int z = 0; z < 2; z++) {
+				const JunctionTrackEnd &end = z == 0 ? t.graph.edges[e].from : t.graph.edges[e].to;
+				if (!end.node || end.index != v) continue;
+				for (uint8_t k = 0; k < 2; k++) {
+					const JunctionBlockAttach a = JunctionBlockAttachOf(t.graph, placed.programs, v, side, footprint, e, k);
+					INFO("node " << v << " edge " << e << " track " << int(k));
+					CHECK(Same(p.attach[e][z][k], Moved(p.nodes[v], a.along * DX[h] + a.across * DX[r], a.along * DY[h] + a.across * DY[r])));
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("bundle: the S-bend column form leans as derived", "[junction][bundle]")
+{
+	CHECK(JunctionSBendColumnForm(2, -1).s == 1);
+}
+
+TEST_CASE("bundle: a square crossing of a bundle is refused", "[junction][bundle]")
+{
+	const PlacedBundleT placed = PlaceBundleTWithForms(4, 1);
+	INFO("why chain length " << placed.placement.why.size());
+	CHECK(placed.error == "a square crossing of a bundle is not ruled yet");
 }
 
 TEST_CASE("bundle: a block without its footprint is refused", "[junction][bundle]")
