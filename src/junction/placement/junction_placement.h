@@ -233,7 +233,7 @@ struct JunctionPlacementSystem {
 	int item_row_share = 0; ///< O1 pairs that may share a tile and so have gap 0.
 	std::vector<JunctionCrosserPiece> crosser_pieces; ///< The crossers' candidate pieces at item rows, grouped by (edge, item) in order.
 	int crosser_overlap = 0; ///< (edge, item) groups where more than one candidate covers the row at the recording.
-	int crosser_uncovered = 0; ///< (edge, item) groups where none does.
+	int crosser_uncovered = 0; ///< (edge, item) groups where none does, or that have no candidates (no Under token under the row's leg, an element between the pieces around it, or a horizontal run).
 	std::vector<std::array<int, 5>> route_curves; ///< For tests: per route curve (route, curve in travel order, xoff, yoff, seg) of the walk's curve forms.
 	JunctionSystemPoint solved; ///< The recording's own solution when its Y and X solves both succeed (least rows, then least columns with the D215 push); empty otherwise.
 	std::vector<std::string> failed; ///< The recording's failed solves and builds, in order, e.g. "Y solve: <error>", "X build: <error>".

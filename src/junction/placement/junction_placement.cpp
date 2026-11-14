@@ -1581,9 +1581,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						if (first_under < 0) first_under = static_cast<int>(t);
 						last_under = static_cast<int>(t);
 					}
-					if (first_under < 0) {
-						if (error != nullptr) *error = fmt::format("the crosser e{} of row {} has no Under token under its leg", x, r);
-						return false;
+					if (first_under < 0) { // Not met at the seeds: the static model has no piece for it.
+						recorded_crosser_uncovered++;
+						continue;
 					}
 					const std::vector<Elem> &elems = chain[x];
 					auto tok_of = [&](size_t n) { return elems[n].tok >= 0 ? elems[n].tok : (n == 0 ? -1 : INT_MAX); };
@@ -1595,9 +1595,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					}
 					bool between = ia >= ib;
 					for (size_t n = ia + 1; n < ib && n < elems.size(); n++) between = between || !elems[n].absent;
-					if (ia == elems.size() || ib == elems.size() || between) {
-						if (error != nullptr) *error = fmt::format("the crosser e{} of row {} has a present element between its pieces around the Under", x, r);
-						return false;
+					if (ia == elems.size() || ib == elems.size() || between || (VX[elems[ia].hout] != 0 && elems[ia].last != elems[ib].first)) { // Not met at the seeds (an element between the pieces, or a horizontal run): the static model has no piece for it.
+						recorded_crosser_uncovered++;
+						continue;
 					}
 					const Elem &a = elems[ia];
 					const Elem &b = elems[ib];
@@ -1620,15 +1620,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						return o;
 					};
 					auto add_bend_pieces = [&](const Elem &el) {
-						if (el.k != Elem::K::Corner && el.k != Elem::K::SBend && el.k != Elem::K::Fan) return true;
+						if (el.k != Elem::K::Corner && el.k != Elem::K::SBend && el.k != Elem::K::Fan) return;
 						const bool corner = el.k == Elem::K::Corner;
 						auto found = bend_rows.find({el.hin, el.hand, corner});
 						if (found == bend_rows.end()) found = bend_rows.emplace(std::make_tuple(el.hin, el.hand, corner), JunctionBendRowForms(el.hin, el.hand, corner)).first;
 						const JunctionBendRows &forms = found->second;
-						if (forms.d == 0 || forms.segments.empty()) {
-							if (error != nullptr) *error = "a bend has no row forms";
-							return false;
-						}
+						assert(forms.d != 0 && !forms.segments.empty()); // Every bend has row forms (the bend row forms test).
 						const int id = bend_ids.at(&el);
 						const int length = bend_length(el);
 						const int dy = forms.d * (vy[Y] - vy[el.first]);
@@ -1642,13 +1639,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 							for (const JunctionBendRowTile &tile : segment.tiles) c.occupants.push_back(make_occupant(n, el.first, tile.c0, tile.slope * forms.d, tile.bits));
 							group.push_back(std::move(c));
 						}
-						return true;
 					};
-					if (!add_bend_pieces(a)) return false;
-					if (VX[a.hout] != 0 && a.last != b.first) {
-						if (error != nullptr) *error = fmt::format("the crosser e{} of row {} has a horizontal run around the Under", x, r);
-						return false;
-					}
+					add_bend_pieces(a);
 					if (a.last != b.first) {
 						const int n = static_cast<int>(recorded_crosser_pieces.size() + group.size());
 						const int dy = VY[a.hout];
@@ -1658,7 +1650,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						c.occupants.push_back(make_occupant(n, a.last, 0, 0, TrackBits{Track::Y}));
 						group.push_back(std::move(c));
 					}
-					if (!add_bend_pieces(b)) return false;
+					add_bend_pieces(b);
 					int holding = 0;
 					for (Candidate &c : group) {
 						if (!c.holds) continue;
