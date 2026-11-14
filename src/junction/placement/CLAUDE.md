@@ -7,6 +7,7 @@
 - Every relation is a rule floor "at least N", scaling with train length and speed; each entry cites its rule.
 - Relations are rule families applied everywhere, never per site: every curve-gap pair on every route, and unrelated tracks never share or touch a tile.
 - Two unrelated pieces share a tile only as Upper|Lower or Left|Right (`JunctionTracksMayShareTile`).
+- The least column gap between two unrelated pieces on one row is 2 when they would touch across the tile edge between them, else 1 (`JunctionUnrelatedTileGap`).
 - Site floors and per-shape constants exist only as test oracles.
 - Every edge is one chain of elements; one floor table keyed by (previous kind, next kind) holds every run constant.
 - A band edge's chain starts on its row's heading when it leaves a row node, else south when it carries exit paths and north when it carries joiner paths.
