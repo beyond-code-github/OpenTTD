@@ -3,6 +3,7 @@
 Run tests through `tools/junction/jt`, never by typing tag filters:
 - `tools/junction/jt fast <build-dir> <tag> [budget-s]` runs `<tag>~[slow]~[.]` (no slow, no hidden tests; Catch2 runs a hidden `[.bench]` test whenever another of its tags is named) and fails with "OVER BUDGET" past the budget. Over budget is a stop condition in every brief.
 - `tools/junction/jt gate <build-dir>` runs the wide gate `[junction]~[slow]~[mapexport]~[.]`, Release builds only.
+- `jt` runs every test case in its own process, `JT_JOBS` at a time (default half the cores, 14): the wall time is about the slowest case. 2026-11-14 at 2b1a, Release: gate 533 cases 10.2 s (was 45.7 s), sweep 14 cases 39.4 s (was about 280 s), identity 4 cases 23.8 s (was 65.9 s). Budgets: gate 30 s, sweep 60 s, identity 45 s.
 - `tools/junction/jt sweep <build-dir>` runs the hidden `[.sweep]` cases, Release builds only. Every brief that touches `src/junction/placement/` or `src/junction/topology/` runs it with the gate.
 Every brief names its tag, build and budget from this table. Adding a test to a fast tag must keep it inside its budget; otherwise tag the test `[slow]`. Measure a tag with `jt` before naming it in a brief (engineer, 2026-11-10: "we've run into this problem a few times now how do we stop it happening").
 
