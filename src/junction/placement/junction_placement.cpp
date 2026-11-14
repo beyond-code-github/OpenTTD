@@ -858,7 +858,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		/* In a bundle graph an edge's end at a node is its tile at the block's attach point of the track. */
 		auto end_elem = [&](int z, int c) {
 			const JunctionTrackEnd &end = z == 0 ? edge.from : edge.to;
-			if (!end.node) return tile_elem(port_pt[end.index], end.index);
+			if (!end.node) {
+				Elem el = tile_elem(bundle && c == 1 ? track_port_pt[end.index] : port_pt[end.index], end.index);
+				el.track = bundle ? c : 0;
+				return el;
+			}
 			if (!bundle) return tile_elem(node_pt[end.index], -1);
 			Elem el = tile_elem(attach_pt[e][z][c], -1);
 			el.attach = true;
@@ -872,7 +876,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			};
 			if (!has_role(programs.edges[e], Step::Role::LaneMerge) || !has_role(programs.copies[e], Step::Role::LaneSplit)) return fail("a doubled leg without its lane split and merge is not ruled yet");
 		}
-		for (int c = 0; c < (doubled && !bundle ? 2 : 1); c++) {
+		for (int c = 0; c < (doubled ? 2 : 1); c++) {
 			const std::vector<Step> &program = c == 0 ? programs.edges[e] : programs.copies[e];
 			std::vector<Elem> &elems = c == 0 ? chain[e] : chain_copy[e];
 			elems.push_back(end_elem(0, c));
@@ -890,6 +894,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					el.k = Elem::K::Fan;
 					el.port_first = !edge.from.node;
 					el.slot = el.port_first ? edge.from.index : edge.to.index;
+					el.track = bundle ? c : 0;
 					el.first = new_pt();
 					el.last = new_pt();
 					row_item = step.index;
@@ -1300,13 +1305,13 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					if (el.k == Elem::K::Tile) {
 						if (el.slot >= 0 || el.attach) {
 							y_end = el.slot >= 0 ? port_row_of(el) : vy[el.first];
-							pieces.push_back({RowPiece::T::Tile, el.first, 0, y_end, 0, e, 0, 0, el.slot >= 0, false});
+							pieces.push_back({RowPiece::T::Tile, el.first, 0, y_end, bundle ? c : 0, e, 0, 0, el.slot >= 0, false});
 						}
 					} else if (el.k == Elem::K::Fan) {
 						const int y_item = vy[item_pt[el.index]];
 						const int y_port = port_row_of(el);
 						y_end = el.port_first ? y_item : y_port;
-						if (el.m != 0) pieces.push_back({RowPiece::T::Bend, el.first, 0, el.port_first ? y_port : y_item, 0, e, el.hand, static_cast<int>(el.offs.size()), false, false, &el});
+						if (el.m != 0) pieces.push_back({RowPiece::T::Bend, el.first, 0, el.port_first ? y_port : y_item, bundle ? c : 0, e, el.hand, static_cast<int>(el.offs.size()), false, false, &el});
 					} else if (el.k == Elem::K::SBend) {
 						if (!el.offs.empty()) pieces.push_back({RowPiece::T::Bend, el.first, 0, vy[el.first], c, e, el.hand, static_cast<int>(el.offs.size()), false, false, &el});
 					} else if (el.k == Elem::K::HeadsPair) {
@@ -2302,11 +2307,15 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 
 		/* The chains of the other edges. */
-		for (uint32_t e = 0; e < edge_count; e++) {
-			const std::vector<Elem> &elems = chain[e];
+		/* One pass per chain: a bundle row edge's track 1 runs the same relations as track 0 on its own chain. */
+		for (uint32_t pass_e = 0; pass_e < 2 * edge_count; pass_e++) {
+			const uint32_t e = pass_e / 2;
+			const int chain_no = static_cast<int>(pass_e % 2);
+			if (chain_no == 1 && !(bundle && is_row_edge(e) && two_chains(e))) continue;
+			const std::vector<Elem> &elems = chain_no == 0 ? chain[e] : chain_copy[e];
 			const JunctionTrackEdge &edge = graph.edges[e];
 			/* The prio element (RW6): on its Prio item's row, ending in the column of the joiner merge, even_prio steps long. Its run from the element before it is added with that element, below. */
-			const Elem *prio_el = !elems.empty() && elems.back().k == Elem::K::Prio ? &elems.back() : nullptr;
+			const Elem *prio_el = !elems.empty() && elems.back().k == Elem::K::Prio ? &elems.back() : nullptr; // Only chain 0 has one.
 			if (prio_el != nullptr) {
 				why("prio element", e, edge.to.index, (end_level(edge.from) - 1) / 2);
 				eq(1, prio_el->first, item_pt[prio_el->index], 0);
@@ -2396,7 +2405,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				}
 				continue;
 			}
-			if (bundle && is_row_edge(e) && x_phase && !bridges_of[e].empty()) {
+			if (bundle && is_row_edge(e) && chain_no == 0 && x_phase && !bridges_of[e].empty()) {
 				/* The bridges of a bundle's row edge hug their crossers' tiles on the row of each built chain, as a doubled leg's heads do (D80, D118, D145, D217). */
 				const int r = (end_level(edge.from) - 1) / 2;
 				const int s = east[r] ? 1 : -1;
@@ -2431,6 +2440,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						}
 					}
 					hugs.push_back(std::move(hug));
+					if (!two_chains(e)) continue;
+					/* Track 1's heads are track 0's one tile upstream: the parallelogram (D287, D118). */
+					why("bridge pair stagger", e, UINT32_MAX, r);
+					const Elem &second_heads = nth_heads(chain_copy[e], b);
+					along(east[r] ? 1 : 3, first_heads.first, second_heads.first, 1, true);
+					along(east[r] ? 1 : 3, first_heads.last, second_heads.last, 1, true);
 				}
 			}
 			/* The run from element i to element next_index, the next one present in the form it is built for: its floor, or its exact length. The elements of a crossing's bends carry their group and form (DESIGN-G4 §11.2); a run between two groups' bends depends on both and is not ruled yet. */
@@ -2538,6 +2553,13 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						}
 						tag = SystemTag{};
 						eq(1, el.port_first ? el.last : el.first, item_pt[el.index], 0);
+						if (chain_no == 1) {
+							/* The two tracks' fans are equal (their port rows and items keep the same order). */
+							const Elem &fan0 = *std::ranges::find(chain[e], Elem::K::Fan, &Elem::k);
+							why("track pair", e);
+							eq(0, el.first, fan0.first, 0);
+							eq(0, el.last, fan0.last, 0);
+						}
 					} else if (el.k == Elem::K::Corner) {
 						const int kk = k;
 						const int dx = kk * (VX[hin] + VX[hout]);
@@ -3472,7 +3494,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			}
 		}
 		for (uint32_t v = 0; v < graph.nodes.size(); v++) result.block_ends.push_back(tile(block_end_pt[v]));
-		return fail("the placement of a second track is not ruled yet");
+		return fail("the placement of a band edge's second track is not ruled yet");
 	}
 	/* The prio elements (RW6b): per element, its tiles and drawn bits, the one source of occupancy, the signal pass and the level solve. */
 	for (int r = 0; r < rows; r++) {
@@ -3559,7 +3581,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				const std::vector<Step> &tokens = copy == 0 ? program : programs.copies[e];
 				for (size_t t = 0; t < tokens.size(); t++) {
 					const Step &step = tokens[t];
-					if (step.kind == StepKind::SBend) {
+					if (step.kind == StepKind::Fan) {
+						const std::vector<Elem> &elems = copy == 0 ? chain[e] : chain_copy[e];
+						for (const Elem &el : elems) {
+							if (el.tok == static_cast<int>(t)) (copy == 0 ? result.edges[e] : result.copies[e]).push_back({tile(el.first), tile(el.last)});
+						}
+					} else if (step.kind == StepKind::SBend) {
 						const std::vector<Elem> &elems = copy == 0 ? chain[e] : chain_copy[e];
 						const Elem &bend = *std::ranges::find_if(elems, [&](const Elem &el) { return el.k == Elem::K::SBend && el.tok == static_cast<int>(t); });
 						(copy == 0 ? result.edges[e] : result.copies[e]).push_back({tile(bend.first), tile(bend.last)});

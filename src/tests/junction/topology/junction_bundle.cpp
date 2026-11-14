@@ -214,7 +214,7 @@ TEST_CASE("bundle: the T places its blocks and track 0", "[junction][bundle]")
 	std::string error;
 	const JunctionTrackPlacement placement = PlaceBundleT(4, &error);
 	INFO("why chain length " << placement.why.size());
-	CHECK(error == "the placement of a second track is not ruled yet");
+	CHECK(error == "the placement of a band edge's second track is not ruled yet");
 }
 
 TEST_CASE("bundle: a block without its footprint is refused", "[junction][bundle]")
