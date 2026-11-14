@@ -72,8 +72,8 @@ std::vector<JunctionBendTileForm> JunctionBendTileForms(int heading, int hand, i
 	return forms;
 }
 
-/** The column form of the S-bend of 2L halves starting on the given heading with the given hand, read from the rasters. */
-JunctionSBendColumns JunctionSBendColumnForm(int heading, int hand)
+/** The column form of the bend of 2L halves (an S-bend) or 2L + 1 (a Corner) starting on the given heading with the given hand, read from the rasters. */
+static JunctionSBendColumns BendColumnForm(int heading, int hand, bool corner)
 {
 	static constexpr int VX[] = {0, 1, 0, -1};
 	static constexpr int VY[] = {-1, 0, 1, 0};
@@ -86,7 +86,7 @@ JunctionSBendColumns JunctionSBendColumnForm(int heading, int hand)
 	};
 	auto columns_at = [&](int length) {
 		std::map<int, Column> columns;
-		for (const std::pair<int, int> &tile : BendRasterOffsets(heading, hand, length, false)) {
+		for (const std::pair<int, int> &tile : BendRasterOffsets(heading, hand, length, corner)) {
 			Column &column = columns[tile.first * VX[side] + tile.second * VY[side]];
 			column.lo = std::min(column.lo, tile.second);
 			column.hi = std::max(column.hi, tile.second);
@@ -111,6 +111,18 @@ JunctionSBendColumns JunctionSBendColumnForm(int heading, int hand)
 	form.t1 = reach(64) - reach(63);
 	form.t0 = reach(64) - 64 * form.t1;
 	return form;
+}
+
+/** The column form of the S-bend of 2L halves starting on the given heading with the given hand, read from the rasters. */
+JunctionSBendColumns JunctionSBendColumnForm(int heading, int hand)
+{
+	return BendColumnForm(heading, hand, false);
+}
+
+/** The column form of the Corner of 2L + 1 halves starting on the given heading with the given hand, read from the rasters, as JunctionSBendColumnForm's. */
+JunctionSBendColumns JunctionCornerColumnForm(int heading, int hand)
+{
+	return BendColumnForm(heading, hand, true);
 }
 
 /** Whether a track touches the given tile edge. */
@@ -139,4 +151,15 @@ bool JunctionTracksMayShareTile(TrackBits a, TrackBits b)
 {
 	const TrackBits both = a | b;
 	return (both == TRACK_BIT_HORZ || both == TRACK_BIT_VERT) && (a & b).None();
+}
+
+/**
+ * The gap between two unrelated pieces on one row.
+ * @param low The tracks of the piece on the lower column.
+ * @param high The tracks of the piece on the higher column.
+ * @return Whether they may share a tile, and their least column difference when they do not.
+ */
+JunctionTileGap JunctionUnrelatedTileGap(TrackBits low, TrackBits high)
+{
+	return {JunctionTracksMayShareTile(low, high), (low.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && high.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)))) ? 2 : 1};
 }

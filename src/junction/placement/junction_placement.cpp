@@ -1448,8 +1448,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				notes[reason] = fmt::format("[{} and {} on row {}]", label(a), label(b), y);
 				const int apart = flat_left(b) - flat_right(a);
 				if (record) {
-					const bool touch = !tie && a.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && b.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)));
-					const bool touch_reversed = !tie && b.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && a.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)));
+					const bool touch = !tie && JunctionUnrelatedTileGap(a.bits, b.bits).apart == 2;
+					const bool touch_reversed = !tie && JunctionUnrelatedTileGap(b.bits, a.bits).apart == 2;
 					auto occupant_key = [&](const Occupant &o) {
 						return fmt::format("{}/{}/{}/{},{},{},{}/{},{},{},{}", static_cast<int>(o.edge), o.copy, static_cast<int>(o.node), o.left.pt, o.left.c0, o.left.c1, o.left.bend, o.right.pt, o.right.c0, o.right.c1, o.right.bend);
 					};
@@ -1460,7 +1460,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					cons.push_back({b.lp, a.rp, apart - b.ldx + a.rdx, reason});
 					cons.push_back({a.rp, b.lp, -(apart - b.ldx + a.rdx), reason});
 				} else {
-					const bool touch = a.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && b.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)));
+					const bool touch = JunctionUnrelatedTileGap(a.bits, b.bits).apart == 2;
 					cons.push_back({b.lp, a.rp, (touch ? 2 : 1) - b.ldx + a.rdx, reason});
 				}
 				pad_tags(true); // The tile extents of the occupants' pieces (bend rasters of 2m halves, rows) and the pair order from the flat solve.

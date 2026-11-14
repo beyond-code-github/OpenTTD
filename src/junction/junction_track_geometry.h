@@ -39,6 +39,9 @@ struct JunctionSBendColumns {
 /** The column form of the S-bend of 2L halves starting on the given heading with the given hand, read from the rasters. */
 JunctionSBendColumns JunctionSBendColumnForm(int heading, int hand);
 
+/** The column form of the Corner of 2L + 1 halves starting on the given heading with the given hand, read from the rasters, as JunctionSBendColumnForm's. */
+JunctionSBendColumns JunctionCornerColumnForm(int heading, int hand);
+
 /** Whether a track touches the given tile edge. */
 bool JunctionTrackTouches(Track track, DiagDirection edge);
 
@@ -52,5 +55,19 @@ Track JunctionCornerTrack(DiagDirection a, DiagDirection b);
  * @return True when (a | b) is exactly TRACK_BIT_HORZ or TRACK_BIT_VERT and the two share no track.
  */
 bool JunctionTracksMayShareTile(TrackBits a, TrackBits b);
+
+/** The gap table of unrelated pieces on one row (DESIGN-G4 §3): share, whether they may stand on one tile; apart, the least column difference when they do not (2 when they would touch across the tile edge between them, else 1). */
+struct JunctionTileGap {
+	bool share;
+	int apart;
+};
+
+/**
+ * The gap between two unrelated pieces on one row.
+ * @param low The tracks of the piece on the lower column.
+ * @param high The tracks of the piece on the higher column.
+ * @return Whether they may share a tile, and their least column difference when they do not.
+ */
+JunctionTileGap JunctionUnrelatedTileGap(TrackBits low, TrackBits high);
 
 #endif /* JUNCTION_TRACK_GEOMETRY_H */
