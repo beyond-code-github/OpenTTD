@@ -66,7 +66,7 @@ struct JunctionSystemRelation {
 struct JunctionSystemBend {
 	int id; ///< The bend's index in JunctionPlacementSystem::bends; chain elements name it by this.
 	int edge; ///< The edge whose chain holds it.
-	int copy; ///< 0 the edge's chain, 1 the copy of a doubled row leg.
+	int copy; ///< 0 the edge's chain, 1 the copy of a doubled row leg, or track 1 of a bundle edge.
 	int tok; ///< The token of the edge's program it is.
 	std::string kind; ///< "Corner", "Fan", "SFan" or "SBend".
 	/** The size's source: free (read back from the columns), rows (from a Y difference), corner_rows (joiner Corner, from the rows), port_rows (a W/E fan, from the port rows), fixed_k (a Corner of k), one_row (an item-less horizontal S-bend). */
@@ -275,7 +275,7 @@ struct JunctionTrackPlacement {
 	std::vector<TileIndexDiffC> nodes; ///< Per graph node: a split's first diverging half piece, a merge's last joining half piece.
 	std::vector<std::vector<JunctionTrackSpan>> edges; ///< Per edge, per token of JunctionTrackPrograms::edges.
 	std::vector<std::vector<JunctionTrackSpan>> copies; ///< Per edge, per token of JunctionTrackPrograms::copies.
-	std::vector<std::array<JunctionBridge, 2>> bridges; ///< Per structure bridge: copy 0's and copy 1's heads, start = the head the carrier reaches first; a single bridge's copy 1 is {{0, 0}, {0, 0}}.
+	std::vector<std::array<JunctionBridge, 2>> bridges; ///< Per structure bridge: copy 0's and copy 1's heads, start = the head the carrier reaches first; a single bridge's copy 1 is {{0, 0}, {0, 0}} except on a bundle edge, where it is track 1's.
 	TileIndexDiffC size; ///< The box.
 	JunctionPlacementChoices choices; ///< The choices this placement was solved with.
 	std::vector<JunctionPlacementReason> why; ///< On failure: the explanation chain of the contradiction.
