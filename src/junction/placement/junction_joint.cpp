@@ -174,7 +174,7 @@ static void AddCurveGapCounters(JointModel &model, const JunctionPlacementSystem
 	}
 }
 
-JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, const JunctionSpec &spec, bool relaxed)
+JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, const JunctionSpec &spec, bool relaxed, const std::vector<int> *forms)
 {
 	JunctionJointResult result;
 	result.status = JunctionMilp::Status::Error;
@@ -208,9 +208,28 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 		}
 	}
 	std::map<int, uint32_t> L, Z, zero; ///< zero: z of every bend that may have size 0 (Z for S fans).
+	/* One binary per crossing group: 1 when it passes under its bridges on a square run (DESIGN-G4 §11.2), fixed when the caller gives its form. */
+	std::vector<uint32_t> Q;
+	for (size_t g = 0; g < system.form_groups.size(); g++) {
+		const int given = forms != nullptr && g < forms->size() ? (*forms)[g] : -1;
+		Q.push_back(given >= 0 ? model.Var(given, given) : model.Var(0, 1));
+	}
 	for (const JunctionSystemBend &b : system.bends) {
 		const std::string &src = b.source;
-		if (src == "free") {
+		if (b.form_group >= 0 && src == "free") {
+			/* A crossing's S-bend has its size only in the S-bend form: z = 1 - q, the S fan's pattern L >= floor z, L <= M z. */
+			L[b.id] = model.Var(0);
+			Z[b.id] = model.Var(0, 1);
+			model.AddRow({{Z[b.id], 1}, {Q[b.form_group], 1}}, 1, 1); // z + q = 1
+			model.AddRow({{L[b.id], 1}, {Z[b.id], -static_cast<double>(b.floor)}}, 0, JunctionMilp::INF);
+			model.AddRow({{L[b.id], 1}, {Z[b.id], -BIG}}, -JunctionMilp::INF, 0);
+			zero[b.id] = Z[b.id];
+		} else if (src == "cross_corner") {
+			/* A crossing group's outer Corner has size k only in the square form: L = k q, and it has no curves otherwise. */
+			L[b.id] = model.Var(0);
+			model.AddRow({{L[b.id], 1}, {Q[b.form_group], -static_cast<double>(system.k)}}, 0, 0);
+			zero[b.id] = Q[b.form_group];
+		} else if (src == "free") {
 			if (b.kind == "SFan") {
 				L[b.id] = model.Var(0);
 				Z[b.id] = model.Var(0, 1);
@@ -248,15 +267,26 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 		const bool both = over.bend >= 0 && over.bend_after >= 0;
 		W.push_back(both ? static_cast<int>(model.Var(0, 1)) : -1);
 		/* The fixed path allows t <= t0 + t1 max(m, 2); this row is stricter at L = 1, so every joint t is accepted by the fixed path. */
+		/* An S-bend of a crossing group that has no size (the group is square) is passed by no bridge: its bound on t is relaxed by BIG (1 - z). */
 		if (over.bend >= 0) {
 			Coefs coefs{{T.back(), 1}, {L[over.bend], -over.t1}};
+			double upper = over.t0;
 			if (both) coefs[W.back()] -= BIG;
-			model.AddRow(coefs, -JunctionMilp::INF, over.t0); // bridge over an S-bend: t <= t0 + t1 L (+ BIG w)
+			if (const auto z = zero.find(over.bend); z != zero.end()) {
+				coefs[z->second] += BIG;
+				upper += BIG;
+			}
+			model.AddRow(coefs, -JunctionMilp::INF, upper); // bridge over an S-bend: t <= t0 + t1 L (+ BIG w)
 		}
 		if (over.bend_after >= 0) {
 			Coefs coefs{{T.back(), 1}, {L[over.bend_after], -over.t1_after}};
+			double upper = over.t0_after + (both ? BIG : 0);
 			if (both) coefs[W.back()] += BIG;
-			model.AddRow(coefs, -JunctionMilp::INF, over.t0_after + (both ? BIG : 0)); // bridge over an S-bend: t <= t0_after + t1_after L (+ BIG (1 - w))
+			if (const auto z = zero.find(over.bend_after); z != zero.end()) {
+				coefs[z->second] += BIG;
+				upper += BIG;
+			}
+			model.AddRow(coefs, -JunctionMilp::INF, upper); // bridge over an S-bend: t <= t0_after + t1_after L (+ BIG (1 - w))
 		}
 		model.cost[T.back()] += EPS;
 	}
@@ -287,12 +317,21 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 			lower = relation.b + over_constant;
 			if (Z.count(bid) != 0) { // an S fan's sized branch: only when the fan is not empty
 				coefs[Z[bid]] = -BIG;
-				lower = relation.b - BIG;
+				lower -= BIG;
 			}
 			if (relation.axis == 1) tagged_y.insert(bid);
 		}
 		/* A relation of one alternative of a bridge over an S-bend (DESIGN-G3 §G3.4b) holds only when w says so:
 		 *   alt 0 (before): row + BIG w >= lower; alt 1 (after): row - BIG w >= lower - BIG. */
+		/* A relation of one form of a crossing group holds only when its binary says so: form 0 row + BIG q >= lower, form 1 row - BIG q >= lower - BIG. */
+		if (relation.form_group >= 0) {
+			if (relation.form == 0) {
+				coefs[Q[relation.form_group]] += BIG;
+			} else {
+				coefs[Q[relation.form_group]] -= BIG;
+				lower -= BIG;
+			}
+		}
 		if (relation.alt >= 0 && relation.over >= 0 && W[relation.over] >= 0) {
 			if (relation.alt == 0) {
 				coefs[W[relation.over]] += BIG;
@@ -404,12 +443,16 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 			if (j + 1 >= end) continue;
 			const JunctionSystemElement &nx = elements[j + 1];
 			if (nx.k == "Prio" || el.k == "Prio" || nx.first == el.last) continue;
-			const int axis = VX[el.hout] != 0 ? 0 : 1;
-			const uint32_t t = model.Var(0, JunctionMilp::INF, false);
-			const uint32_t next_first = (*coord[axis])[nx.first], last = (*coord[axis])[el.last];
-			model.AddRow({{t, 1}, {next_first, -1}, {last, 1}}, 0, JunctionMilp::INF); // cost: run
-			model.AddRow({{t, 1}, {next_first, 1}, {last, -1}}, 0, JunctionMilp::INF); // cost: run
-			expr[t] += 1;
+			/* A run beside a crossing's bend lies along the heading of the form it is in, and the other form's runs are zero: both axes count. */
+			const bool in_form = (el.bend >= 0 && system.bends[el.bend].form_group >= 0) || (nx.bend >= 0 && system.bends[nx.bend].form_group >= 0);
+			for (int axis = 0; axis < 2; axis++) {
+				if (!in_form && axis != (VX[el.hout] != 0 ? 0 : 1)) continue;
+				const uint32_t t = model.Var(0, JunctionMilp::INF, false);
+				const uint32_t next_first = (*coord[axis])[nx.first], last = (*coord[axis])[el.last];
+				model.AddRow({{t, 1}, {next_first, -1}, {last, 1}}, 0, JunctionMilp::INF); // cost: run
+				model.AddRow({{t, 1}, {next_first, 1}, {last, -1}}, 0, JunctionMilp::INF); // cost: run
+				expr[t] += 1;
+			}
 		}
 		chain_len[{edge, copy}] = expr;
 		model.AddCost(expr, rail);
@@ -477,6 +520,28 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 				}
 			}
 		}
+		/* The crossing groups' forms and runs (empty when every group is S-bend, as the fixed path reads it). */
+		bool any_square = false;
+		for (const uint32_t column : Q) any_square |= std::lround(milp.Value(column)) != 0;
+		if (any_square) {
+			for (const uint32_t tokens : system.tokens) {
+				result.choices.form.emplace_back(tokens, 0);
+				result.choices.run.emplace_back(tokens, 0);
+			}
+			for (size_t g = 0; g < system.form_groups.size(); g++) {
+				const JunctionSystemFormGroup &group = system.form_groups[g];
+				if (std::lround(milp.Value(Q[g])) == 0) continue;
+				result.choices.form[group.edge][group.tok] = 1;
+				/* The run: from the first Corner's last point to the last Corner's first. */
+				const JunctionSystemBend *first = nullptr, *last = nullptr;
+				for (const JunctionSystemBend &b : system.bends) {
+					if (b.form_group != static_cast<int>(g) || b.kind != "Corner" || b.copy != 0) continue;
+					if (first == nullptr || b.tok < first->tok) first = &b;
+					if (last == nullptr || b.tok > last->tok) last = &b;
+				}
+				if (first != nullptr && last != nullptr) result.choices.run[group.edge][group.tok] = std::abs(static_cast<int>(std::lround(milp.Value(x[last->first]) - milp.Value(x[first->last]))));
+			}
+		}
 		for (uint32_t p = 0; p < npts; p++) {
 			result.x.push_back(static_cast<int>(std::lround(milp.Value(x[p]))));
 			result.y.push_back(static_cast<int>(std::lround(milp.Value(y[p]))));
@@ -485,6 +550,12 @@ JunctionJointResult SolveJunctionJoint(const JunctionPlacementSystem &system, co
 		for (uint32_t row : milp.InfeasibleRows()) {
 			if (model.rows[row].relation >= 0) result.conflict.push_back(system.relations[model.rows[row].relation].reason);
 			if (model.rows[row].clash >= 0) result.conflict.push_back(system.clashes[model.rows[row].clash].reason);
+		}
+		if (result.conflict.empty() && forms == nullptr && !system.form_groups.empty()) {
+			/* Infeasible only by integrality of the forms: the relaxation has no infeasible set, so the conflict named is the recorded forms'. */
+			std::vector<int> recorded;
+			for (const JunctionSystemFormGroup &group : system.form_groups) recorded.push_back(group.form);
+			result.conflict = SolveJunctionJoint(system, spec, relaxed, &recorded).conflict;
 		}
 	}
 	return result;
@@ -520,7 +591,10 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 		added_in_round.push_back(added);
 		system.clashes.clear();
 		for (const auto &[key, clash] : kept) system.clashes.push_back(clash);
-		const JunctionJointResult joint = SolveJunctionJoint(system, spec);
+		/* The loop keeps the forms it was given: the joint is solved at them. */
+		std::vector<int> round_forms;
+		for (const JunctionSystemFormGroup &group : system.form_groups) round_forms.push_back(group.form);
+		const JunctionJointResult joint = SolveJunctionJoint(system, spec, false, &round_forms);
 		int sum = 0, changed = 0;
 		for (size_t i = 0; i < joint.length.size(); i++) {
 			sum += joint.length[i];
@@ -549,7 +623,7 @@ JunctionJointLoopResult SolveJunctionJointLoop(const JunctionTopology &topology,
 			break;
 		}
 		result.choices = joint.choices;
-		result.choices.form = round_choices.form; // The form and the runs are data, not the joint's.
+		result.choices.form = round_choices.form; // The loop keeps the forms and runs it was given; the joint reports its own choice in its result.
 		result.choices.run = round_choices.run;
 		/* The canonical point of this round's recording; the joint solution's when the recording's solves failed but had X relations; none otherwise. */
 		point_joint = system.solved.x.empty() && has_x;

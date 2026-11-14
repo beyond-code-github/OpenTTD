@@ -26,6 +26,8 @@
 - A row node lies on the stack item of its node shape (the last item token of its trunk for a split, of its straight leg for a merge); bridge tokens name edges, not items.
 - A Fan, Corner or S-bend sized to 0 columns is no bend: it adds no pieces, occupancy or bend bits.
 - A single bridge over a band edge crosses either the edge's S-bend (at a column its diagonal allows, the S-bend just before or just after) or its square run (the bridge column strictly inside the run, the run's row strictly between the heads); the form and the run length are choices; the unchosen form's bends are zero-size.
+- The joint model chooses each crossing group's form by one binary (1 square), reads the choice back in `choices.form` and the square run in `choices.run`, and takes the forms to fix when its caller gives them. The joint loop keeps the form and run it was given and solves at them; the joint reports its own choice in its result.
+- A recording carries both forms' rows of each crossing group: each row holds only in its form (tagged with its group and form), and the fixed path solves only the rows of the form it is given. A crossing's S-bend and its outer Corners have points of their own in both forms; the bend of the form not given is held at size 0 by rows. The recorded clashes, curve-gap routes and clearance sides are those of the recorded form.
 - The junction footprint ends one tile beyond the outermost signal on each leg; every track of a leg ends flush at the footprint edge.
 - Planar signal windows and node footprints: a node has a footprint from the rules (the split or merge tile, required straight runs, prio coverage) and a window along its line.
 

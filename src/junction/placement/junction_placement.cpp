@@ -222,7 +222,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		int hout = 0;
 		int hand = 0;
 		bool joiner_div = false; ///< A Corner from a band split: its size comes from the rows (F4).
-		bool absent = false; ///< A Cross bend of the form the choices do not give: size 0, no bend. It stands at the last point of the element before it and keeps that element's heading, so the chain's headings and runs are those of the present elements.
+		bool absent = false; ///< A Cross bend of the form the choices do not give (or an inner Corner of a group): size 0, no bend. It keeps the heading of the element before it, so the chain's headings and runs are those of the present elements. An inner Corner stands at the last point of the element before it; a form bend has points of its own, held there by rows.
+		int form_group = -1; ///< For a crossing's S-bend or outer Corner, its group's index in form_groups.
+		int form = -1; ///< For such a bend, the form in which it is present: 0 S-bend, 1 square.
+		int fhin = 0, fhout = 0; ///< For such a bend, the headings it has in its own form.
 		bool free_m = false; ///< A vertical S-bend: its size comes from the columns.
 		bool fan = false; ///< A band edge's fan at an S branch port (D230): a vertical S-bend sized from the columns that may be empty (m 0, no tiles).
 		int m = 1;
@@ -268,6 +271,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 	auto cross_form = [&](uint32_t e, int head) { return fixed != nullptr && !fixed->form.empty() ? fixed->form[e][head] : 0; };
 	/** The square run's length of the group that starts at token head of edge e, 0 when free. */
 	auto cross_run = [&](uint32_t e, int head) { return fixed != nullptr && !fixed->run.empty() ? fixed->run[e][head] : 0; };
+	std::map<std::pair<uint32_t, int>, int> group_index; ///< Per (edge, first token) of a crossing group, its index in recorded_form_groups.
+	std::vector<JunctionSystemFormGroup> recorded_form_groups; ///< The crossing groups in build order, with their form at the recording.
+	int group_entry = 0; ///< The heading a crossing group is entered on.
 	for (uint32_t e = 0; e < edge_count; e++) {
 		if (is_row_edge(e)) continue;
 		const JunctionTrackEdge &edge = graph.edges[e];
@@ -292,18 +298,33 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			el.tok = static_cast<int>(t);
 			el.hin = cur;
 			if (step.role == Step::Role::Cross && (step.kind == StepKind::Corner || step.kind == StepKind::SBend)) {
-				/* Of a crossing's bends, the S-bend is present in the S-bend form; in the square form the group's first Corner and its last are (DESIGN-G4 §11.1). */
+				/* Of a crossing's bends, the S-bend is present in the S-bend form; in the square form the group's first Corner and its last are (DESIGN-G4 §11.1). Those bends have points of their own in both forms; a group's inner Corners are present in neither. */
 				const int head = groups.first[t];
-				const bool square = cross_form(e, head) != 0;
-				const bool present = step.kind == StepKind::SBend ? !square : (square && (static_cast<int>(t) == head + 1 || static_cast<int>(t) == groups.last[t]));
-				if (!present) {
+				const int last_tok = groups.last[t];
+				const int recorded = cross_form(e, head);
+				if (static_cast<int>(t) == head) {
+					group_index[{e, head}] = static_cast<int>(recorded_form_groups.size());
+					recorded_form_groups.push_back({static_cast<int>(e), head, recorded});
+					group_entry = cur;
+				}
+				const bool outer = step.kind == StepKind::Corner && (static_cast<int>(t) == head + 1 || static_cast<int>(t) == last_tok);
+				if (step.kind == StepKind::SBend || outer) {
+					el.form_group = group_index.at({e, head});
+					el.form = step.kind == StepKind::SBend ? 0 : 1;
+					el.fhin = static_cast<int>(t) == head + 1 || step.kind == StepKind::SBend ? group_entry : (group_entry + program[head + 1].hand + 4) % 4;
+					el.fhout = step.kind == StepKind::SBend ? group_entry : (el.fhin + step.hand + 4) % 4;
+					el.first = new_pt();
+					el.last = new_pt();
+				}
+				if (el.form_group < 0 || el.form != recorded) {
 					el.k = step.kind == StepKind::Corner ? Elem::K::Corner : Elem::K::SBend;
 					el.absent = true;
 					el.m = 0;
 					el.hand = step.hand;
 					el.index = step.index;
 					el.hout = cur;
-					el.first = el.last = elems.back().last;
+					el.free_m = el.form_group >= 0 && el.k == Elem::K::SBend && (el.fhin == 0 || el.fhin == 2);
+					if (el.form_group < 0) el.first = el.last = elems.back().last;
 					elems.push_back(el);
 					continue;
 				}
@@ -316,8 +337,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				el.index = step.index;
 				el.hout = step.kind == StepKind::Corner ? (cur + step.hand + 4) % 4 : cur;
 				/* A bend is pinned to the node it serves when the programs' edge end names its token, never by its position (DESIGN-G2 §G2.6). */
-				el.first = edge.from.node && programs.ends[e].first.token == static_cast<uint32_t>(t) ? start : new_pt();
-				el.last = edge.to.node && programs.ends[e].second.token == static_cast<uint32_t>(t) ? stop : new_pt();
+				if (el.form_group < 0) {
+					el.first = edge.from.node && programs.ends[e].first.token == static_cast<uint32_t>(t) ? start : new_pt();
+					el.last = edge.to.node && programs.ends[e].second.token == static_cast<uint32_t>(t) ? stop : new_pt();
+				}
 				el.joiner_div = step.kind == StepKind::Corner && step.role != Step::Role::Cross && t == 0 && from_band_split;
 				el.free_m = step.kind != StepKind::Corner && (cur == 0 || cur == 2);
 				cur = el.hout;
@@ -375,10 +398,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		bool order_pin = false; ///< The hug's equalities: the joint model drops them.
 		int over = -1, d = 0; ///< When over >= 0: c also has + d * (t(over) - t at the recording) (DESIGN-G3 §G3.4a).
 		int alt = -1; ///< When >= 0: the relation holds only when its over entry's alternative is alt (DESIGN-G3 §G3.4b).
+		int form_group = -1; int form = -1; ///< When >= 0: the relation holds only when that crossing group's form is form (DESIGN-G4 §11.2).
 	};
 	SystemTag tag; ///< The tag of the relations added now.
 	bool tag_negated = false; ///< The second relation of an equality: its constant is the negation.
 	bool record_only_now = false; ///< The relations added now are recorded but never solved.
+	int form_group_now = -1, form_now = -1; ///< The crossing group and form the relations added now hold in, -1 for none.
 	std::vector<SystemTag> cons_tag; ///< Per relation of 'cons', its tag.
 	/* Relations pushed to 'cons' without ge() carry a tag of their own, given here. */
 	auto pad_tags = [&](bool nonlinear) {
@@ -391,6 +416,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		pad_tags(false);
 		cons.push_back({v, u, c, static_cast<uint32_t>(reasons.size() - 1), record_only_now});
 		SystemTag t = tag;
+		t.form_group = form_group_now;
+		t.form = form_now;
 		if (tag_negated) {
 			t.a = -t.a;
 			t.b = -t.b;
@@ -494,11 +521,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						id = static_cast<int>(bend_id.size());
 						bend_id[&el] = id;
 						const char *kind = el.k == Elem::K::Corner ? "Corner" : el.k == Elem::K::Fan ? "Fan" : (el.fan ? "SFan" : "SBend");
-						const char *source = el.free_m ? "free" : el.k == Elem::K::Fan ? "port_rows" : el.k == Elem::K::Corner ? (el.joiner_div ? "corner_rows" : "fixed_k") : (el.index != NO_ROW ? "rows" : "one_row");
-						const int floor = el.absent ? 0 : el.free_m ? (el.fan ? 0 : 1) : el.k == Elem::K::Corner ? k : (el.k == Elem::K::Fan ? 0 : (el.index != NO_ROW ? 0 : 1));
+						const char *source = el.free_m ? "free" : el.k == Elem::K::Fan ? "port_rows" : el.k == Elem::K::Corner ? (el.joiner_div ? "corner_rows" : el.form_group >= 0 ? "cross_corner" : "fixed_k") : (el.index != NO_ROW ? "rows" : "one_row");
+						const int floor = el.form_group >= 0 ? (el.k == Elem::K::Corner ? k : 1) : el.absent ? 0 : el.free_m ? (el.fan ? 0 : 1) : el.k == Elem::K::Corner ? k : (el.k == Elem::K::Fan ? 0 : (el.index != NO_ROW ? 0 : 1));
 						const bool span_known = el.joiner_div && rows_known && static_cast<size_t>(std::max(el.first, el.last)) < vy.size();
 						const int size = el.absent ? 0 : el.k == Elem::K::Corner ? (span_known ? std::abs(vy[el.first] - vy[el.last]) : k) : el.m;
-						now.bends.push_back({id, static_cast<int>(e), c, el.tok, kind, source, el.hand, el.hin, el.first, el.last, el.index != NO_ROW ? item_pt[el.index] : -1, size, floor, el.k == Elem::K::Fan ? port_row[el.slot] : 0});
+						now.bends.push_back({id, static_cast<int>(e), c, el.tok, kind, source, el.hand, el.form_group >= 0 ? el.fhin : el.hin, el.first, el.last, el.index != NO_ROW ? item_pt[el.index] : -1, size, floor, el.k == Elem::K::Fan ? port_row[el.slot] : 0, el.form_group});
 					}
 					const char *kk = el.k == Elem::K::Tile ? "Tile" : el.k == Elem::K::Corner ? "Corner" : el.k == Elem::K::SBend ? "SBend" : el.k == Elem::K::Heads ? "Heads" : el.k == Elem::K::Fan ? "Fan" : el.k == Elem::K::HeadsPair ? "HeadsPair" : "Prio";
 					const bool tunnel = !bridges_of[e].empty() && structure.bridges[bridges_of[e][0]].tunnel;
@@ -507,6 +534,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			}
 		}
 		now.overs = recorded_overs;
+		now.form_groups = recorded_form_groups;
 		for (size_t i = 0; i < now.overs.size(); i++) {
 			now.overs[i].bend = over_elems[i] != nullptr ? bend_id.at(over_elems[i]) : -1;
 			now.overs[i].bend_after = over_elems_after[i] != nullptr ? bend_id.at(over_elems_after[i]) : -1;
@@ -526,7 +554,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			for (const JunctionSystemColumn *column : {&clash.a_right, &clash.b_left}) {
 				if (column->c1 == 0) continue;
 				const std::string &source = now.bends[column->bend].source;
-				clash.held |= source != "free" && source != "corner_rows" && source != "rows";
+				clash.held |= source != "free" && source != "corner_rows" && source != "rows" && source != "cross_corner";
 			}
 		}
 		for (size_t i = 0; i < cons.size(); i++) {
@@ -536,6 +564,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			now.relations.back().over = t.over;
 			now.relations.back().d = t.d;
 			now.relations.back().alt = t.alt;
+			now.relations.back().form_group = t.form_group;
+			now.relations.back().form = t.form;
 		}
 		recorded_axis[phase] = true;
 
@@ -885,6 +915,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		int y;
 		bool bend = false; ///< Made by a bend's raster offsets (a Fan or another bend), so its dx depends on the bend's length and rows.
 	};
+	/* The next element after i that is a bend or tile of the form being built: a bend of the other form, or an inner Corner of a group, stands on the element before it. */
+	auto next_present = [](const std::vector<Elem> &elems, size_t i) {
+		size_t next = i + 1;
+		while (next < elems.size() && elems[next].absent) next++;
+		return next;
+	};
 	auto edge_tiles_of = [&](const std::vector<Elem> &elems) {
 		std::vector<SymTile> tiles;
 		for (size_t i = 0; i < elems.size(); i++) {
@@ -904,9 +940,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			} else {
 				for (const TileIndexDiffC &o : el.offs) tiles.push_back({el.first, o.x, vy[el.first] + o.y, true});
 			}
-			if (i + 1 < elems.size() && elems[i + 1].first != el.last && VX[el.hout] == 0) {
+			const size_t next = next_present(elems, i);
+			if (!el.absent && next < elems.size() && elems[next].first != el.last && VX[el.hout] == 0) {
 				const int d = VY[el.hout];
-				for (int y = vy[el.last] + d; d > 0 ? y < vy[elems[i + 1].first] : y > vy[elems[i + 1].first]; y += d) tiles.push_back({el.last, 0, y});
+				for (int y = vy[el.last] + d; d > 0 ? y < vy[elems[next].first] : y > vy[elems[next].first]; y += d) tiles.push_back({el.last, 0, y});
 			}
 		}
 		return tiles;
@@ -1350,8 +1387,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				} else {
 					add_bend(el.first, vy[el.first], el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, 0, node_of_pt[el.first] != UINT32_MAX, node_of_pt[el.last] != UINT32_MAX, &el);
 				}
-				if (i + 1 >= elems.size() || elems[i + 1].first == el.last) continue;
-				const Elem &next = elems[i + 1];
+				const size_t next_index = next_present(elems, i);
+				if (el.absent || next_index >= elems.size() || elems[next_index].first == el.last) continue;
+				const Elem &next = elems[next_index];
 				if (VX[el.hout] == 0) {
 					const int d = VY[el.hout];
 					for (int y = vy[el.last] + d; d > 0 ? y < vy[next.first] : y > vy[next.first]; y += d) add_tile(el.last, 0, y, TrackBits{Track::Y}, e, 0);
@@ -1750,87 +1788,26 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				}
 				continue;
 			}
-			for (size_t i = 0; i < elems.size(); i++) {
+			/* The run from element i to element next_index, the next one present in the form it is built for: its floor, or its exact length. The elements of a crossing's bends carry their group and form (DESIGN-G4 §11.2); a run between two groups' bends depends on both and is not ruled yet. */
+			bool refused_groups = false;
+			const auto emit_run_now = [&](size_t i, size_t next_index) {
 				const Elem &el = elems[i];
-				if (el.absent) continue; // No bend: it stands on the element before it, and the run is stated between the present elements.
-				if (el.k == Elem::K::Fan) {
-					/* The fan is its port row's S-bend: m - 1 columns across, first at the port row and last at its item row; empty, it lies on the port's column (R3). */
-					why("fan size", e, UINT32_MAX, (end_level(edge.from) - 1) / 2);
-					const int port = el.port_first ? elems[i - 1].first : elems[i + 1].first;
-					if (el.m == 0) {
-						tag = SystemTag{&el, 0, 0, false, true}; // An empty fan lies on its port.
-						eq(0, el.first, port, 0);
-						eq(0, el.last, port, 0);
-					} else {
-						tag = SystemTag{&el, 1, -1, false, false};
-						along(el.hin, el.last, el.first, el.m - 1, true);
-					}
-					tag = SystemTag{};
-					eq(1, el.port_first ? el.last : el.first, item_pt[el.index], 0);
-				} else if (el.k == Elem::K::Corner) {
-					const int kk = k;
-					const int dx = kk * (VX[el.hin] + VX[el.hout]);
-					const int dy = kk * (VY[el.hin] + VY[el.hout]);
-					if (el.joiner_div) {
-						why("joiner_div Corner floor", e);
-						ge(1, el.first, el.last, k);
-						if (fixed != nullptr) {
-							why("joiner_div Corner choice", e);
-							tag = SystemTag{&el, 1, 0, false, false};
-							eq(1, el.first, el.last, fixed->corner[e][el.tok]);
-							tag = SystemTag{};
-						}
-						if (x_phase) {
-							const int kp = fixed != nullptr ? fixed->corner[e][el.tok] : (rows_known ? std::abs(vy[el.first] - vy[el.last]) : k);
-							tag = SystemTag{&el, VX[el.hin] + VX[el.hout], 0, false, false};
-							eq(0, el.last, el.first, kp * (VX[el.hin] + VX[el.hout]));
-							tag = SystemTag{};
-						}
-					} else {
-						why("Corner size", e);
-						eq(0, el.last, el.first, dx);
-						eq(1, el.last, el.first, dy);
-					}
-					if (el.index != NO_ROW) eq(1, el.last, item_pt[el.index], 0);
-				} else if (el.k == Elem::K::SBend) {
-					const int side = (el.hin + el.hand + 4) % 4;
-					why("S-bend size", e);
-					if (el.fan && (el.hin == 0 || el.hin == 2)) {
-						/* A fan at an S branch port: any size toward its side, 0 allowed (D230). */
-						tag = el.m == 0 ? SystemTag{&el, 0, 0, false, true} : SystemTag{&el, VY[el.hin], -VY[el.hin], false, false}; // An empty S fan has no rows.
-						if (el.m == 0) eq(1, el.last, el.first, 0); else eq(1, el.last, el.first, VY[el.hin] * (el.m - 1));
-						tag = SystemTag{&el, 1, 0, false, false};
-						if (fixed != nullptr) {
-							if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
-						} else {
-							if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
-						}
-						tag = SystemTag{};
-					} else if (el.hin == 0 || el.hin == 2) {
-						tag = SystemTag{&el, VY[el.hin], -VY[el.hin], false, false};
-						eq(1, el.last, el.first, VY[el.hin] * (el.m - 1));
-						tag = SystemTag{&el, 1, 0, false, false};
-						if (fixed != nullptr) {
-							if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
-						} else {
-							if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
-						}
-						tag = SystemTag{};
-					} else {
-						if (el.index == NO_ROW) eq(1, el.last, el.first, VY[side]); // No item pins it: one row.
-						eq(0, el.last, el.first, VX[el.hin] * 0);
-					}
-					if (el.index != NO_ROW) eq(1, el.last, item_pt[el.index], 0);
-				} else if (el.k == Elem::K::Heads) {
-					why("bridge heads", e);
-					eq(VX[el.hin] != 0 ? 1 : 0, el.last, el.first, 0);
-				}
-				size_t next_index = i + 1;
-				while (next_index < elems.size() && elems[next_index].absent) next_index++;
-				if (next_index >= elems.size()) continue;
+				const int hout = el.form_group >= 0 ? el.fhout : el.hout;
 				const Elem &next = elems[next_index];
-				if (next.k == Elem::K::Prio) continue; // The prio element is no track of the chain: nothing runs to it from the end tile.
-				if (next.first == el.last) continue;
+				if (el.form_group >= 0 && next.form_group >= 0 && el.form_group != next.form_group) {
+					build_why = "a run between two crossing groups is not ruled yet";
+					refused_groups = true;
+					return;
+				}
+				const Elem *form_el = el.form_group >= 0 ? &el : next.form_group >= 0 ? &next : nullptr;
+				if (form_el != nullptr) {
+					form_group_now = form_el->form_group;
+					form_now = form_el->form;
+					record_only_now = form_el->form != recorded_form_groups[static_cast<size_t>(form_el->form_group)].form;
+					if (record_only_now && system == nullptr) return;
+				}
+				if (next.k == Elem::K::Prio) return; // The prio element is no track of the chain: nothing runs to it from the end tile.
+				if (next.first == el.last) return;
 				/* An empty fan joins its port tile; the run on its node side stays (D230). */
 				if ((i == 0 && !edge.from.node && next.fan && next.m == 0) || (el.fan && el.m == 0 && !edge.to.node && i + 2 == elems.size())) {
 					why("fan size", e);
@@ -1838,7 +1815,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					eq(0, next.first, el.last, 0);
 					eq(1, next.first, el.last, 0);
 					tag = SystemTag{};
-					continue;
+					return;
 				}
 				bool exact = false;
 				const bool in_out = IsInEdge(e) || IsOutEdge(e);
@@ -1857,7 +1834,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				const int dist = before_prio ? 0 : JunctionRunFloor(floor_kind(el), floor_kind(next), spec);
 				if (before_prio) {
 					why("prio element", e, edge.to.index, (end_level(graph.edges[e].from) - 1) / 2); // The prio element's coverage is a floor on its first tile (D217).
-					along(el.hout, prio_el->first, el.last, JunctionRunFloor(floor_kind(el), FloorKind::Prio, spec), false);
+					along(hout, prio_el->first, el.last, JunctionRunFloor(floor_kind(el), FloorKind::Prio, spec), false);
 				} else {
 					why("chain run", e);
 				}
@@ -1867,7 +1844,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					/* A square group's run, from its first Corner to its last, is r when the choices give it. */
 					const CrossGroups run_groups = cross_groups(programs.edges[e]);
 					const int head = run_groups.first[el.tok];
-					if (el.tok == head + 1 && cross_run(e, head) > 0) {
+					if (el.tok == head + 1 && cross_form(e, head) != 0 && cross_run(e, head) > 0) {
 						run_length = cross_run(e, head);
 						exact = true;
 					}
@@ -1877,12 +1854,146 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				if (in_out && (port_tile(el) || port_tile(next))) {
 					/* A run to a port is along the heading only: the port's row is a number, not a point (R3); an empty fan lies on its port already. */
 					const Elem &fan = el.k == Elem::K::Fan ? el : next;
-					if (fan.k == Elem::K::Fan && fan.m == 0) continue;
-					along(el.hout, next.first, el.last, dist, exact);
-					continue;
+					if (fan.k == Elem::K::Fan && fan.m == 0) return;
+					along(hout, next.first, el.last, dist, exact);
+					return;
 				}
-				run(el.hout, next.first, el.last, run_length, exact);
+				run(hout, next.first, el.last, run_length, exact);
+			};
+			const auto emit_run = [&](size_t i, size_t next_index) {
+				emit_run_now(i, next_index);
+				form_group_now = form_now = -1;
+				record_only_now = false;
+			};
+			for (size_t i = 0; i < elems.size(); i++) {
+				const Elem &el = elems[i];
+				if (el.absent && el.form_group < 0) continue; // An inner Corner: no bend, standing on the element before it.
+				const int hin = el.form_group >= 0 ? el.fhin : el.hin;
+				const int hout = el.form_group >= 0 ? el.fhout : el.hout;
+				const bool off = el.absent; // A bend of the form the choices do not give.
+				const int recorded = el.form_group >= 0 ? recorded_form_groups[static_cast<size_t>(el.form_group)].form : -1;
+				/* The size rows of a crossing's bend hold in its own form; those of the form not at the recording are only recorded. */
+				if (el.form_group >= 0) {
+					form_group_now = el.form_group;
+					form_now = el.form;
+					record_only_now = off;
+				}
+				if (!off || system != nullptr) {
+					if (el.k == Elem::K::Fan) {
+						/* The fan is its port row's S-bend: m - 1 columns across, first at the port row and last at its item row; empty, it lies on the port's column (R3). */
+						why("fan size", e, UINT32_MAX, (end_level(edge.from) - 1) / 2);
+						const int port = el.port_first ? elems[i - 1].first : elems[i + 1].first;
+						if (el.m == 0) {
+							tag = SystemTag{&el, 0, 0, false, true}; // An empty fan lies on its port.
+							eq(0, el.first, port, 0);
+							eq(0, el.last, port, 0);
+						} else {
+							tag = SystemTag{&el, 1, -1, false, false};
+							along(hin, el.last, el.first, el.m - 1, true);
+						}
+						tag = SystemTag{};
+						eq(1, el.port_first ? el.last : el.first, item_pt[el.index], 0);
+					} else if (el.k == Elem::K::Corner) {
+						const int kk = k;
+						const int dx = kk * (VX[hin] + VX[hout]);
+						const int dy = kk * (VY[hin] + VY[hout]);
+						if (el.joiner_div) {
+							why("joiner_div Corner floor", e);
+							ge(1, el.first, el.last, k);
+							if (fixed != nullptr) {
+								why("joiner_div Corner choice", e);
+								tag = SystemTag{&el, 1, 0, false, false};
+								eq(1, el.first, el.last, fixed->corner[e][el.tok]);
+								tag = SystemTag{};
+							}
+							if (x_phase) {
+								const int kp = fixed != nullptr ? fixed->corner[e][el.tok] : (rows_known ? std::abs(vy[el.first] - vy[el.last]) : k);
+								tag = SystemTag{&el, VX[hin] + VX[hout], 0, false, false};
+								eq(0, el.last, el.first, kp * (VX[hin] + VX[hout]));
+								tag = SystemTag{};
+							}
+						} else {
+							why("Corner size", e);
+							if (el.form_group >= 0) tag = SystemTag{&el, VX[hin] + VX[hout], 0, false, false}; // An outer Corner of a crossing group has size k only in the square form: c = a L.
+							eq(0, el.last, el.first, dx);
+							if (el.form_group >= 0) tag = SystemTag{&el, VY[hin] + VY[hout], 0, false, false};
+							eq(1, el.last, el.first, dy);
+							tag = SystemTag{};
+						}
+						if (el.index != NO_ROW) eq(1, el.last, item_pt[el.index], 0);
+					} else if (el.k == Elem::K::SBend) {
+						const int side = (hin + el.hand + 4) % 4;
+						why("S-bend size", e);
+						if (el.fan && (hin == 0 || hin == 2)) {
+							/* A fan at an S branch port: any size toward its side, 0 allowed (D230). */
+							tag = el.m == 0 ? SystemTag{&el, 0, 0, false, true} : SystemTag{&el, VY[hin], -VY[hin], false, false}; // An empty S fan has no rows.
+							if (el.m == 0) eq(1, el.last, el.first, 0); else eq(1, el.last, el.first, VY[hin] * (el.m - 1));
+							tag = SystemTag{&el, 1, 0, false, false};
+							if (fixed != nullptr) {
+								if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
+							} else {
+								if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
+							}
+							tag = SystemTag{};
+						} else if (hin == 0 || hin == 2) {
+							tag = SystemTag{&el, VY[hin], -VY[hin], false, false};
+							eq(1, el.last, el.first, VY[hin] * (el.m - 1));
+							tag = SystemTag{&el, 1, 0, false, false};
+							if (fixed != nullptr) {
+								if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
+							} else {
+								if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
+							}
+							tag = SystemTag{};
+						} else {
+							if (el.index == NO_ROW) eq(1, el.last, el.first, VY[side]); // No item pins it: one row.
+							eq(0, el.last, el.first, VX[hin] * 0);
+						}
+						if (el.index != NO_ROW) eq(1, el.last, item_pt[el.index], 0);
+					} else if (el.k == Elem::K::Heads) {
+						why("bridge heads", e);
+						eq(VX[hin] != 0 ? 1 : 0, el.last, el.first, 0);
+					}
+				}
+				if (el.form_group >= 0) {
+					/* In the other form the bend has size 0: it stands on the element before it. */
+					form_now = 1 - el.form;
+					record_only_now = el.form == recorded;
+					if (!record_only_now || system != nullptr) {
+						why("crossing bend of size 0", e);
+						eq(0, el.first, elems[i - 1].last, 0);
+						eq(1, el.first, elems[i - 1].last, 0);
+						eq(0, el.last, el.first, 0);
+						eq(1, el.last, el.first, 0);
+					}
+					form_group_now = form_now = -1;
+					record_only_now = false;
+				}
+				if (off) continue;
+				size_t next_index = i + 1;
+				while (next_index < elems.size() && elems[next_index].absent) next_index++;
+				if (next_index >= elems.size()) continue;
+				emit_run(i, next_index);
 			}
+			/* The runs of each crossing group's other form: between its bends and their neighbours there, recorded only. */
+			if (system != nullptr) {
+				std::set<int> chain_groups;
+				for (const Elem &el : elems) {
+					if (el.form_group >= 0) chain_groups.insert(el.form_group);
+				}
+				for (const int group : chain_groups) {
+					const int flipped = 1 - recorded_form_groups[static_cast<size_t>(group)].form;
+					std::vector<size_t> sequence;
+					for (size_t i = 0; i < elems.size(); i++) {
+						const Elem &el = elems[i];
+						if (el.form_group == group ? el.form == flipped : !el.absent) sequence.push_back(i);
+					}
+					for (size_t j = 0; j + 1 < sequence.size(); j++) {
+						if (elems[sequence[j]].form_group == group || elems[sequence[j + 1]].form_group == group) emit_run(sequence[j], sequence[j + 1]);
+					}
+				}
+			}
+			if (refused_groups) return false;
 
 			/* A single bridge passes over an S-bend of the edge it crosses beside its Under (or Above) token, the one before it or the one after it as a choice (default before), in the column t of the S-bend, 1 unless a choice says otherwise (D113, F4, DESIGN-G3 §G3.4a, §G3.4b). */
 			for (const Elem &el : elems) {
@@ -1897,46 +2008,58 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				}
 				const CrossGroups crossed_groups = cross_groups(crossed_program);
 				const int group_head = token >= 0 ? crossed_groups.first[token] : -1;
-				if (group_head >= 0 && cross_form(el.cross, group_head) != 0) {
-					/* The edge passes under the bridge on the run of its square group: the bridge's column lies strictly inside the run and the run's row strictly between the heads, and the group's bridges keep their token order along the run (DESIGN-G4 §11.2). */
+				const int group = group_head >= 0 ? group_index.at({el.cross, group_head}) : -1;
+				const int recorded = group >= 0 ? recorded_form_groups[static_cast<size_t>(group)].form : 0;
+				if (group_head >= 0 && (recorded != 0 || system != nullptr)) {
+					/* The edge passes under the bridge on the run of its square group: the bridge's column lies strictly inside the run and the run's row strictly between the heads, and the group's bridges keep their token order along the run (DESIGN-G4 §11.2). The rows hold in the square form; at another recording they are only recorded. */
 					const Elem *corner1 = nullptr;
 					const Elem *corner2 = nullptr;
 					for (const Elem &o : other) {
-						if (o.k != Elem::K::Corner || o.absent) continue;
+						if (o.k != Elem::K::Corner || o.form_group != group) continue;
 						if (o.tok == group_head + 1) corner1 = &o;
 						if (o.tok == crossed_groups.last[group_head]) corner2 = &o;
 					}
-					if (corner1 == nullptr || corner2 == nullptr || VX[corner1->hout] == 0 || VX[corner1->hout] != VX[corner2->hin]) { build_why = "a bridge over a run that is not a run"; return false; }
-					const int dir = VX[corner1->hout];
-					const int south_head = el.hin == 0 ? el.first : el.last;
-					const int north_head = el.hin == 0 ? el.last : el.first;
+					const bool is_run = corner1 != nullptr && corner2 != nullptr && VX[corner1->fhout] != 0 && VX[corner1->fhout] == VX[corner2->fhin];
+					if (!is_run && recorded != 0) { build_why = "a bridge over a run that is not a run"; return false; }
+					form_group_now = group;
+					form_now = 1;
+					record_only_now = recorded != 1;
 					why("bridge over run", e, el.cross);
-					if (dir > 0) {
-						ge(0, el.first, corner1->last, 1);
-						ge(0, corner2->first, el.first, 1);
+					if (!is_run) {
+						ge(0, el.first, el.first, 1); // The group has no square form: a row no solution meets, held only when the group is square.
 					} else {
-						ge(0, corner1->last, el.first, 1);
-						ge(0, el.first, corner2->first, 1);
-					}
-					ge(1, corner1->last, north_head, 1);
-					ge(1, south_head, corner1->last, 1);
-					/* The bridge of the crossing before this one in the group lies before it along the run. */
-					for (int before_token = token - 1; before_token > group_head; before_token--) {
-						if (crossed_program[before_token].kind != StepKind::Under && crossed_program[before_token].kind != StepKind::Above) continue;
-						for (const Elem &previous : chain[crossed_program[before_token].index]) {
-							if (previous.k != Elem::K::Heads || previous.cross != el.cross) continue;
-							if (dir > 0) ge(0, el.first, previous.first, 1); else ge(0, previous.first, el.first, 1);
+						const int dir = VX[corner1->fhout];
+						const int south_head = el.hin == 0 ? el.first : el.last;
+						const int north_head = el.hin == 0 ? el.last : el.first;
+						if (dir > 0) {
+							ge(0, el.first, corner1->last, 1);
+							ge(0, corner2->first, el.first, 1);
+						} else {
+							ge(0, corner1->last, el.first, 1);
+							ge(0, el.first, corner2->first, 1);
 						}
-						break;
+						ge(1, corner1->last, north_head, 1);
+						ge(1, south_head, corner1->last, 1);
+						/* The bridge of the crossing before this one in the group lies before it along the run. */
+						for (int before_token = token - 1; before_token > group_head; before_token--) {
+							if (crossed_program[before_token].kind != StepKind::Under && crossed_program[before_token].kind != StepKind::Above) continue;
+							for (const Elem &previous : chain[crossed_program[before_token].index]) {
+								if (previous.k != Elem::K::Heads || previous.cross != el.cross) continue;
+								if (dir > 0) ge(0, el.first, previous.first, 1); else ge(0, previous.first, el.first, 1);
+							}
+							break;
+						}
 					}
-					continue;
+					form_group_now = form_now = -1;
+					record_only_now = false;
+					if (recorded != 0) continue;
 				}
 				const Elem *before = nullptr;
 				const Elem *after = nullptr;
 				/* The S-bends of the S-bend form next to the crossing: the Corners of the crossing sit between them and its Under token and are skipped. */
 				const auto is_cross_corner = [&](int tok) { return tok >= 0 && static_cast<size_t>(tok) < crossed_program.size() && crossed_program[tok].kind == StepKind::Corner && crossed_program[tok].role == Step::Role::Cross; };
 				for (const Elem &o : other) {
-					if (o.k != Elem::K::SBend || o.fan || o.absent || o.tok < 0) continue;
+					if (o.k != Elem::K::SBend || o.fan || (o.absent && o.form_group < 0) || o.tok < 0) continue;
 					int next_tok = o.tok + 1;
 					while (is_cross_corner(next_tok)) next_tok++;
 					int previous_tok = o.tok - 1;
@@ -1944,10 +2067,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					if (is_crossing(next_tok)) before = &o;
 					if (is_crossing(previous_tok)) after = &o;
 				}
-				if (before == nullptr && after == nullptr) { build_why = "no crossed sbend"; return false; }
+				const bool s_bend_form = recorded == 0;
 				const int chosen = fixed != nullptr && !fixed->over_after.empty() ? fixed->over_after[e][el.tok] : 0;
 				const Elem *chosen_elem = chosen != 0 ? after : before;
-				if (chosen_elem == nullptr) { build_why = "a bridge over an S-bend that is not there"; return false; }
+				if (s_bend_form && chosen_elem == nullptr) { build_why = "a bridge over an S-bend that is not there"; return false; }
+				if (before == nullptr && after == nullptr) continue;
 				/* The column t counted from the start: 1 + the choice, 1 when empty or when not fixed. */
 				const int t = 1 + (fixed != nullptr && !fixed->over.empty() ? fixed->over[e][el.tok] : 0);
 				const bool both = before != nullptr && after != nullptr;
@@ -1959,10 +2083,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 				for (int alternative = 0; alternative < 2; alternative++) {
 					const Elem *crossed = alternative == 0 ? before : after;
 					if (crossed == nullptr) continue;
-					const bool is_chosen = crossed == chosen_elem;
+					const bool is_chosen = s_bend_form && crossed == chosen_elem;
 					if (!is_chosen && system == nullptr) continue;
-					const int side = (crossed->hin + crossed->hand + 4) % 4;
-					const JunctionSBendColumns form = JunctionSBendColumnForm(crossed->hin, crossed->hand);
+					const int crossed_hin = crossed->form_group >= 0 ? crossed->fhin : crossed->hin;
+					const int side = (crossed_hin + crossed->hand + 4) % 4;
+					const JunctionSBendColumns form = JunctionSBendColumnForm(crossed_hin, crossed->hand);
 					(alternative == 0 ? recorded_overs.back().t0 : recorded_overs.back().t0_after) = form.t0;
 					(alternative == 0 ? recorded_overs.back().t1 : recorded_overs.back().t1_after) = form.t1;
 					if (is_chosen && t > form.t0 + form.t1 * std::max(crossed->m, 2)) { build_why = "a bridge over an S-bend beyond its diagonal"; return false; }
@@ -1971,6 +2096,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					const bool north = el.hin == 0;
 					const int alt = both ? alternative : -1;
 					record_only_now = !is_chosen;
+					form_group_now = group;
+					form_now = group >= 0 ? 0 : -1;
 					/* The rows of column t follow the diagonal (premise P3): the relations are linear in t, so a recording tags them with it. */
 					tag = SystemTag{nullptr, 0, 0, false, false, false, over_index, VX[side], alt};
 					eq(0, el.first, crossed->first, VX[side] * t);
@@ -1980,6 +2107,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 					eq(1, el.last, crossed->first, north ? lo - 1 : hi + 1);
 					tag = SystemTag{};
 					record_only_now = false;
+					form_group_now = form_now = -1;
 				}
 			}
 		}
@@ -2320,8 +2448,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 							group(el.first, o.x, vy[el.first] + o.y, node != UINT32_MAX ? JunctionFactKind::Switch : JunctionFactKind::Half, Axis::X, e, node, -1);
 						}
 					}
-					if (i + 1 >= elems.size() || elems[i + 1].first == el.last) continue;
-					const Elem &next = elems[i + 1];
+					const size_t next_index = next_present(elems, i);
+					if (el.absent || next_index >= elems.size() || elems[next_index].first == el.last) continue;
+					const Elem &next = elems[next_index];
 					if (VX[el.hout] == 0) {
 						const int d = VY[el.hout];
 						for (int y = vy[el.last] + d; d > 0 ? y < vy[next.first] : y > vy[next.first]; y += d) group(el.last, 0, y, JunctionFactKind::Straight, Axis::Y, e, UINT32_MAX, -1);
