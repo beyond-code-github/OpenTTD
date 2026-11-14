@@ -75,12 +75,13 @@ Each block is testable alone: an exit block or a join block on a straight line, 
 
 ## 6. Order of work (D289: blocks by template, core by the generalised graph/MILP pipeline; each a small step with its own test)
 Two streams, run in parallel.
-Core (graph/MILP, RECON-bundle-copies steps 2-12):
-- C1. Graph data: a leg may end at a block port (third endpoint kind), and an edge has a width (tracks, each its own path). Width 1 and node ends everywhere reproduce today exactly (identity tests).
-- C2. The bundle T core graph: 6 legs, 3 crossings, ends at block ports. Graph test.
-- C3. Order and structure for a port-ended core. C4. Programs width 2 on row legs. C5. Programs width 2 on band legs.
-- C6. Placement chains for parallel tracks (row and band). C7. Render, one route per path. C8. Signals and checker for parallel tracks.
-- C9. Series cut for bundle bridges. C10. Parallel tunnels.
+Core (graph/MILP). Design (2026-11-15, from RECON-mfb-core: mfb's arm-forced core crossings are exactly our T's triangle, N>SW over {E>N, SW>E} = edge 5 over {8, 4}, E>N over SW>E = 8 over 4; his other 6 crossings sit one per exit and join block): **a node becomes a block, an edge gets a width.** The bundle core is today's T graph, unchanged in topology, order and row/band model; each arm's split node is its exit block and each merge node its join block; every edge is as wide as its bundle. Today's hubs are the same model at width 1 with plain nodes (a plain node is a 1 x 1 block), so they adapt with no change (D290).
+- C1. Data: `JunctionTrackNode` carries its block (kind: plain, exit, join per pattern; footprint along and across the trunk; the offsets where trunk and legs attach), `JunctionTrackEdge` carries its width and the path of each track. Width 1 and plain nodes everywhere reproduce today exactly (identity tests).
+- C2. Topology: a bundled pairing builds the graph at bundle level (each lane group one bundle per movement, like L_R x L_R) with width = lane count. Test: LL² bundled gives the T's 6 nodes, 12 edges, 3 crossings, every edge width 2.
+- C3. Order and structure: a width-2 row edge is the lane plus a second lane item for its other track (same rows the copy uses, but its own path end to end, no lane split or merge); nodes reserve their block footprint in the row stack and band.
+- C4. Programs and placement for width 2 on row legs; C5 on band legs (a parallel pair through Corner, S-bend, Over, Under: inner and outer tracks, bridges stacked side by side with heads staggered as the parallelogram).
+- C6. Render, one route per track's path; blocks rendered by their templates at the placed node position. C7. Signals per track; prio inside the join template.
+- C8. Series cut for stacked bridges; C9. Parallel tunnels.
 Blocks (template generator):
 - B1. Seam (RECON-template-seam): a template emits one route per lane track (move strings, rasterised by the route tools) plus a small graph and per-piece tags, so the signal pass, level solve, pricing and build run unchanged.
 - Valid by construction (D193): each template encodes its rules (signal spacing, TL, prio room and length, bridge-head clearance); the hover never runs the checker. Block tests assert the template's invariants directly (reach per pattern, spacing, prio length, every track signalled); `CheckJunctionRules` runs only as the test oracle on composed hubs with the hub topology, and a violation there is a missing template rule.
