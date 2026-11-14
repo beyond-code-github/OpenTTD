@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "../../../junction/junction_spec.h"
 #include "../../../junction/topology/junction_topology.h"
 
 using Item = JunctionTrackStackItem;
@@ -154,6 +155,42 @@ TEST_CASE("bundle: band track 1 is track 0 with its own items", "[junction][bund
 			Step a = programs.edges[e][i], b = programs.copies[e][i];
 			if (a.kind == Step::Kind::Corner) a.index = b.index = 0;
 			CHECK(a == b);
+		}
+	}
+}
+
+TEST_CASE("bundle: block geometry", "[junction][bundle]")
+{
+	JunctionSpec spec = MakeTestJunctionSpec();
+	spec.exit_block_along = spec.join_block_along = 4;
+	CHECK(JunctionBlockFootprintOf(JunctionBlockKind::Exit, 2, spec) == JunctionBlockFootprint{4, 4});
+	CHECK(JunctionBlockFootprintOf(JunctionBlockKind::Join, 2, spec) == JunctionBlockFootprint{4, 4});
+	CHECK(JunctionBlockFootprintOf(JunctionBlockKind::Plain, 2, spec) == JunctionBlockFootprint{1, 1});
+
+	BundleT t(2);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
+	REQUIRE(programs.nodes.size() == 6);
+	const int8_t sides[6] = {+1, -1, -1, -1, -1, +1};
+	for (uint32_t v = 0; v < 6; v++) CHECK(JunctionBlockSide(t.graph, t.order, programs, v) == sides[v]);
+
+	/* Per node, its three edges and their attach (along, across) at track 0; the across of track k adds k. */
+	struct Row { uint32_t node; int8_t side; uint32_t edge; int along; int across; };
+	const Row rows[] = {
+		{0, +1, 0, -1, 0}, {0, +1, 3, 4, 0}, {0, +1, 4, 4, 2},
+		{2, -1, 2, -1, 0}, {2, -1, 5, 4, 0}, {2, -1, 6, 4, -2},
+		{5, +1, 3, -1, 0}, {5, +1, 8, -1, 2}, {5, +1, 11, 4, 0},
+		{3, -1, 5, -1, 0}, {3, -1, 7, -1, -2}, {3, -1, 9, 4, 0},
+		{1, -1, 1, -1, 0}, {1, -1, 8, 4, 0}, {1, -1, 7, 4, -2},
+		{4, -1, 4, -1, 0}, {4, -1, 6, -1, -2}, {4, -1, 10, 4, 0},
+	};
+	for (const Row &row : rows) {
+		const JunctionBlockFootprint footprint = JunctionBlockFootprintOf(t.graph.nodes[row.node].block, 2, spec);
+		REQUIRE(footprint == JunctionBlockFootprint{4, 4});
+		for (uint8_t k = 0; k < 2; k++) {
+			INFO("node " << row.node << " edge " << row.edge << " track " << int(k));
+			CHECK(JunctionBlockAttachOf(t.graph, programs, row.node, row.side, footprint, row.edge, k) == JunctionBlockAttach{row.along, row.across + k});
 		}
 	}
 }

@@ -49,6 +49,8 @@ struct JunctionSpec {
 	uint16_t max_tunnel_length = 64; ///< The game's max_tunnel_length, in middle tiles.
 	JunctionTrainParams train{}; ///< The loaded design train (D101, D137); required.
 	bool prio_strict = true; ///< Reject layouts whose prio timing delays the ML (D119); false only for tests that pin geometry at a fixed coverage, and for rig comparisons (D137).
+	uint8_t exit_block_along = 0; ///< Placeholder until the block templates (D289, D291): every exit block's length along its trunk, in tiles; 0 refuses a bundle placement. Set by tests.
+	uint8_t join_block_along = 0; ///< Placeholder until the block templates (D289, D291): every join block's length along its trunk, in tiles; 0 refuses a bundle placement. Set by tests.
 };
 
 uint16_t CurveSpeedLimitForSpacing(uint spacing, uint8_t curve_speed);
