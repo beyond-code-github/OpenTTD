@@ -308,6 +308,102 @@ TEST_CASE("block: graph matches the routes", "[junction][block]")
 	CHECK(f.block.graph.crossings == expected);
 }
 
+/** The exit block, built and signalled. */
+struct ExitBlockFixture {
+	JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionBlockProgram program = JunctionExitBlockProgram();
+	JunctionTopology topology = JunctionExitBlockTopology();
+	JunctionBlock block;
+	std::string error;
+	std::string why;
+	std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> beside;
+	std::vector<JunctionTrackSignal> signals;
+
+	ExitBlockFixture()
+	{
+		const bool built = BuildJunctionBlock(program, spec, block, &error);
+		INFO(error);
+		REQUIRE(built);
+		signals = SignalJunctionTrackRoutes(block.layout, block.track_routes, block.topology, block.paths, block.graph, block.programs, spec, &why, &beside, &block.prio);
+	}
+};
+
+TEST_CASE("block: the exit block is checker clean", "[junction][block]")
+{
+	ExitBlockFixture f;
+	INFO(f.why);
+	CHECK(f.why.empty());
+	const std::vector<RuleViolation> violations = CheckJunctionRules(f.block.layout, f.spec, f.topology);
+	for (const RuleViolation &v : violations) UNSCOPED_INFO("rule " << static_cast<int>(v.rule) << " at " << v.tile.x << "," << v.tile.y << ": " << v.message);
+	CHECK(violations.empty());
+}
+
+TEST_CASE("block: the exit block reaches exactly its four movements", "[junction][block]")
+{
+	ExitBlockFixture f;
+	const std::vector<JunctionPort> ports = FindJunctionPorts(f.block.layout, f.topology);
+	CHECK(ports.size() == 6);
+	CHECK(std::ranges::count_if(ports, [&](const JunctionPort &p) { return p.tile.x == 0; }) == 2);
+	CHECK(std::ranges::count_if(ports, [&](const JunctionPort &p) { return p.tile.x == f.block.layout.size.x - 1; }) == 4);
+	const JunctionCheckContext ctx = MakeJunctionTopologyCheckContext(f.block.layout, f.spec, f.topology, ports);
+	CHECK(ctx.lanes.size() == 4);
+	CHECK(CheckConnectivity(ctx).empty());
+	CHECK(ctx.paths.size() == 5); // l0 to l0b has one path per copy.
+}
+
+TEST_CASE("block: a doubled edge's copies", "[junction][block]")
+{
+	ExitBlockFixture f;
+	REQUIRE(f.block.paths.size() == 4);
+	std::vector<size_t> copies; // The routes of l0 to l0b (path 1), copy 0 then copy 1.
+	for (size_t r = 0; r < f.block.track_routes.size(); r++) {
+		if (f.block.track_routes[r].path == 1) copies.push_back(r);
+	}
+	REQUIRE(copies.size() == 2);
+	CHECK(f.block.track_routes.size() == 5);
+	CHECK(f.block.track_routes[copies[0]].copy == 0);
+	CHECK(f.block.track_routes[copies[1]].copy == 1);
+
+	auto units = [&](size_t r) {
+		uint total = 0;
+		for (const JunctionPiece &piece : f.block.track_routes[r].pieces) total += piece.units;
+		return total;
+	};
+	CHECK(units(copies[0]) == units(copies[1]));
+
+	for (size_t r : copies) {
+		INFO("route " << r);
+		const std::vector<std::pair<bool, size_t>> events = JunctionRouteEvents(f.block.graph, f.block.programs, f.block.track_routes, r);
+		CHECK(std::ranges::count_if(events, [](const std::pair<bool, size_t> &e) { return e.first; }) == 2); // s0 and the lane split.
+		CHECK(std::ranges::count_if(events, [](const std::pair<bool, size_t> &e) { return !e.first; }) == 1); // The lane merge.
+	}
+
+	/* R4 per deck: the heads hug l1a's pieces on their own line. */
+	const uint32_t l1a = f.block.graph.path_edges[2].back();
+	const JunctionTrackRoute &l1a_route = f.block.track_routes[std::ranges::find_if(f.block.track_routes, [](const JunctionTrackRoute &r) { return r.path == 2; }) - f.block.track_routes.begin()];
+	const TrackBits axis{Track::X};
+	for (size_t r : copies) {
+		const std::vector<JunctionPiece> &pieces = f.block.track_routes[r].pieces;
+		const auto near_it = std::ranges::find_if(pieces, [](const JunctionPiece &p) { return p.on_bridge; });
+		const auto far_it = std::ranges::find_if(pieces.rbegin(), pieces.rend(), [](const JunctionPiece &p) { return p.on_bridge; });
+		REQUIRE(near_it != pieces.end());
+		REQUIRE(far_it != pieces.rend());
+		int hugged = 0;
+		for (size_t i = 0; i < l1a_route.pieces.size(); i++) {
+			const JunctionPiece &p = l1a_route.pieces[i];
+			if (l1a_route.tags[i].edge != l1a || p.on_bridge || p.tile.y != near_it->tile.y) continue;
+			hugged++;
+			TrackBits bits;
+			bits.Set(TrackdirToTrack(p.trackdir));
+			const JunctionTileGap near_gap = JunctionUnrelatedTileGap(axis, bits);
+			const JunctionTileGap far_gap = JunctionUnrelatedTileGap(bits, axis);
+			CHECK(p.tile.x - near_it->tile.x >= (near_gap.share ? 0 : near_gap.apart));
+			CHECK(far_it->tile.x - p.tile.x >= (far_gap.share ? 0 : far_gap.apart));
+		}
+		CHECK(hugged > 0);
+	}
+}
+
 TEST_CASE("block: dump", "[junction][block][.]")
 {
 	SignalledBlock f;
@@ -315,4 +411,10 @@ TEST_CASE("block: dump", "[junction][block][.]")
 	for (size_t i = 0; i < f.program.points.size(); i++) out << f.program.points[i] << "=" << f.block.columns[i] << " ";
 	out << "\nsize " << f.block.layout.size.x << " x " << f.block.layout.size.y << "\n";
 	out << RenderJunctionAscii(f.block.layout);
+
+	ExitBlockFixture exit_block;
+	std::ofstream exit_out("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/b3-exit.txt");
+	for (size_t i = 0; i < exit_block.program.points.size(); i++) exit_out << exit_block.program.points[i] << "=" << exit_block.block.columns[i] << " ";
+	exit_out << "\nsize " << exit_block.block.layout.size.x << " x " << exit_block.block.layout.size.y << "\nwhy: " << exit_block.why << "\n";
+	exit_out << RenderJunctionAscii(exit_block.block.layout);
 }
