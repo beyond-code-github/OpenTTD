@@ -192,6 +192,34 @@ def from_json(path, STUB=4):
                 for lb, (gb, xb) in cb:
                     if ga == gb and xa != xb: return gheading[ga], (1 if xb > xa else -1)
         return None
+    # Sides from the embedding: route endpoints on the ring (port lines clockwise from the NW corner).
+    ring = t['ring']; rpos = {li: k for k, li in enumerate(ring)}; NR = len(ring)
+    r_entry, r_exits = {}, {}
+    for pi, p in enumerate(ports):
+        for li in p['lines']:
+            for r in Ls[li]['routes']:
+                if p['in']: r_entry[r] = li
+                else: r_exits.setdefault(r, []).append(li)
+    def in_arc(a, b, x):  # x strictly inside the clockwise arc a -> b
+        a, b, x = rpos[a], rpos[b], rpos[x]
+        return 0 < (x - a) % NR < (b - a) % NR
+    def route_side(pn, qn):
+        """'L' or 'R': line q lies left/right of line p's travel, from a pair of non-interleaving routes; else None."""
+        ip, iq = nm.index(pn), nm.index(qn)
+        votes = set()
+        for rp in Ls[ip]['routes']:
+            for rq in Ls[iq]['routes']:
+                if rp == rq: continue
+                s_ = r_entry[rp]; c_ = r_entry[rq]
+                for t_ in r_exits[rp]:
+                    for d_ in r_exits[rq]:
+                        ends = {s_, t_}
+                        pts = [x for x in (c_, d_) if x not in ends]
+                        if not pts: continue
+                        if len(pts) == 2 and in_arc(s_, t_, c_) != in_arc(s_, t_, d_): continue  # interleave: they cross
+                        ins = {in_arc(s_, t_, x) for x in pts}
+                        if len(ins) == 1: votes.add('L' if ins.pop() else 'R')
+        return votes.pop() if len(votes) == 1 else None
     channels = []
     if CHANNELS:
         split_g = {('N', nd['group']) for nd in nodes if len(nd['out']) == 2}
@@ -200,7 +228,7 @@ def from_json(path, STUB=4):
             if g in split_g and len(v) >= 2: channels.append((gheading[g], [(nm[x], 'S') for x in v]))
         for g, v in gin.items():   # lines arriving at a merge group run together
             if g in merge_g and len(v) >= 2: channels.append((gheading[g], [(nm[x], 'E') for x in v]))
-    meta = dict(channels=channels, side_of=side_of, events=events, pgroup=pgroup, fray={c for c in cross if fray(*c)}, prio_lines={nm[i] for i, l in enumerate(Ls) if set(l['routes']) & prio_r},
+    meta = dict(route_side=route_side, channels=channels, side_of=side_of, events=events, pgroup=pgroup, fray={c for c in cross if fray(*c)}, prio_lines={nm[i] for i, l in enumerate(Ls) if set(l['routes']) & prio_r},
                 node_heading=nh, straight={n: nm[li] for n, li in straight.items()}, name=t['name'])
     return L, P, cross, meta
 

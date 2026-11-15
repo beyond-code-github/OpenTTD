@@ -92,6 +92,8 @@ JOGS = '--jogs' in sys.argv
 SPANCLEAR = '--spanclear' in sys.argv
 FREEFAN = '--channels' in sys.argv
 GROUPS = '--groups' in sys.argv
+RSIDE = '--rside' in sys.argv
+DIAG = '--diag' in sys.argv
 FREESTUB = '--freestub' in sys.argv  # bundled approach (port stub runs) is main line: no junction cost
 trace = []
 DPEN = float(next((a.split('=')[1] for a in sys.argv if a.startswith('--dpen=')), 0))
@@ -281,7 +283,8 @@ class Model:
             return (m.group(1), m.group(3)) if m else (n, '')
         self.fam = fam
         free = lambda ln, i: i in self.L[ln].get('free', set())
-        # Crossing options never use a free sideways S-bend piece.
+        all_opts = self.opts
+        # Crossing options of grouped units never use a free sideways S-bend piece; a single crossing may.
         self.opts = [[o for o in os_ if not free(p, o[0]) and not free(q, o[1])] for (p, q), os_ in zip(self.cross, self.opts)]
         by = {}
         for c, (p, q) in enumerate(self.cross):
@@ -295,6 +298,7 @@ class Model:
             uniform = len(cs) > 1 and key[0] != key[1] and all(
                 len({tuple(self.L[side_lines(c, f)]['dirs']) for c in cs}) == 1 for f in key)
             if not uniform:
+                for c in cs: self.opts[c] = all_opts[c]
                 units += [[c] for c in cs]; continue
             units.append(cs)
         self.units, self.gopts = [], []
@@ -556,6 +560,24 @@ class Model:
                 out.append((viol, (p, i, q, j, f, side, g)))
         out.sort(key=lambda t: t[0])
         res = [o for _, o in out]
+        if RSIDE:
+            base = lambda n: n.split('~')[0]
+            if base(p) != base(q):
+                sd = self.meta['route_side'](base(p), base(q))
+                if sd:
+                    def sector(seg_dir, side_):
+                        a, b = D[topo_turn(seg_dir, -2 if side_ == 'L' else 2)]
+                        if a == 0 or b == 0: return (abs(a), abs(b)), (a + b)
+                        if a == b: return (1, 1), a
+                        return (1, -1), a
+                    f, k = sector(sp[3], sd)                    # q beyond p's segment line, on q's side
+                    emb = [(p, i, q, j, f, k, SEP)]
+                    sdq = self.meta['route_side'](base(q), base(p))
+                    if sdq:
+                        f2_, k2_ = sector(sq[3], sdq)            # or p beyond q's segment line, on p's side
+                        emb.append((q, j, p, i, f2_, k2_, SEP))
+                    res = emb + [o for o in res if o not in emb]
+                    return res
         if EMBED:
             base = lambda n: n.split('~')[0]
             sd = self.meta['side_of'](base(p), base(q)) if base(p) != base(q) else None
@@ -602,11 +624,59 @@ def run(lanes):
         if LAZY_LEAF and not at_leaf[0]: return r, seps
         sp_opts = M.spacing()
         bad = M.clashes(r[1])
+        if DIAG and 'diag' not in stats and at_leaf[0]:
+            stats['diag'] = 1
+            sp_ = list(seps); rr_ = r
+            for rnd in range(6):
+                bad_ = M.clashes(rr_[1])
+                kn = 0; add = []
+                for pr in bad_:
+                    o = M.sep_options(rr_[1], pr)
+                    if getattr(M, '_last_rside', False): pass
+                    (p_, i_), (q_, j_) = pr
+                    base = lambda n: n.split('~')[0]
+                    sd = M.meta['route_side'](base(p_), base(q_)) if base(p_) != base(q_) else None
+                    if sd: kn += 1; add.append(o[0])
+                print(f'DIAG round {rnd}: clashes {len(bad_)} ({len({(a[0], b[0]) for a, b in bad_})} line pairs), side known {kn}, unknown pairs {sorted({(a[0], b[0]) for a, b in bad_ if not M.meta["route_side"](a[0].split("~")[0], b[0].split("~")[0])})[:8]}')
+                if not add: break
+                ok_sp = list(sp_)
+                add = []
+                for pr in bad_:
+                    o = M.sep_options(rr_[1], pr)
+                    for cand_ in o[:2]:
+                        if M.solve(fixed, spare, ok_sp + [cand_]) is not None: ok_sp.append(cand_); add.append(cand_); break
+                    else:
+                        print('DIAG neither normal works for', pr, rr_[1].get(pr[0]), rr_[1].get(pr[1]))
+                for a_ in []:
+                    if M.solve(fixed, spare, ok_sp + [a_]) is None:
+                        p_, i_, q_, j_, f_, k_, g_ = a_
+                        print('DIAG breaks:', (p_, i_, M.L.get(p_, {}).get('dirs', ['?'] * 99)[i_] if p_ in M.L else '', q_, j_, M.L[q_]['dirs'][j_] if q_ in M.L else ''), 'f', f_, 'k', k_, 'side', M.meta['route_side'](p_.split('~')[0], q_.split('~')[0]))
+                        print('   p seg', rr_[1].get((p_, i_)), ' q seg', rr_[1].get((q_, j_)))
+                    else: ok_sp.append(a_)
+                sp_ = ok_sp
+                rr2 = M.solve(fixed, spare, sp_)
+                if rr2 is None: print('DIAG infeasible after adding known sides'); break
+                rr_ = rr2
+            if rr_ is not None and not M.clashes(rr_[1]): print('DIAG clean', rr_[2])
         if 'leaf_dump' not in stats and at_leaf[0]:
             stats['leaf_dump'] = 1; print('FIRST LEAF clashes', bad, 'spacing', M.all_spacing()); print(render(M, r[1], r[2])); print({M.cross[c]: o[2:] for c, o in fixed.items()})
         if not bad and not sp_opts: return r, seps
         if time.perf_counter() - t0 > TIME_BUDGET: return None, seps
         stats['sep_rounds'] += 1
+        if RSIDE:  # deterministic pass: each fault takes the first of its sided options that stays feasible
+            sp2 = list(seps); rr_ = r
+            for rnd in range(8):
+                bad_ = M.clashes(rr_[1]); spc = M.all_spacing()
+                if not bad_ and not spc: return rr_, sp2
+                faults = [M.sep_options(rr_[1], pr)[:2] for pr in bad_] + [[x, ('ord', x[1], x[3], x[2], x[4])] for x in spc]
+                for opts_ in faults:
+                    for cand_ in opts_:
+                        stats['solves'] += 1
+                        if M.solve(fixed, spare, sp2 + [cand_]) is not None: sp2.append(cand_); break
+                    else: return None, seps
+                rr_ = M.solve(fixed, spare, sp2)
+                if rr_ is None: return None, seps
+            return None, seps
         if BATCH:  # every clash and spacing fault at once, each by push; no backtracking
             add = []
             seen = set()
@@ -616,7 +686,7 @@ def run(lanes):
             for sp in M.all_spacing(): add.append(sp)
             res, s2 = lazy(fixed, spare, seps + add)
             return res, s2
-        opts = sp_opts if sp_opts else M.sep_options(r[1], bad[0])[:(4 if EMBED else 3)]
+        opts = sp_opts if sp_opts else M.sep_options(r[1], bad[0])[:(2 if RSIDE else (4 if EMBED else 3))]
         for o in opts:
             res, s2 = lazy(fixed, spare, seps + [o])
             if res is not None: return res, s2
