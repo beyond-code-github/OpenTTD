@@ -11,6 +11,7 @@
 
 #include "junction_placement.h"
 
+#include "../block/junction_block.h"
 #include "../junction_spec.h"
 #include "../junction_track_geometry.h"
 #include "../junction_route.h"
@@ -213,13 +214,29 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 		if (bundle) track_port_pt[s] = new_pt();
 	}
-	std::vector<int> block_end_pt(graph.nodes.size(), -1); ///< Per block node: its footprint's downstream end on trunk track 0 (along - 1 from node_pt).
+	std::vector<int> block_end_pt(graph.nodes.size(), -1); ///< Per block node: its block's downstream end on trunk track 0 (the out-port column from node_pt).
 	std::vector<std::array<std::array<int, 2>, 2>> attach_pt(graph.edges.size(), {{{-1, -1}, {-1, -1}}}); ///< Per edge, per end (0 start, 1 end), per track: the point of its tile at a block node; -1 elsewhere.
+	std::vector<JunctionOrientedBlock> oriented(graph.nodes.size()); ///< Per block node, its template turned into the hub frame (DESIGN-blocks §7.1).
 	if (bundle) {
-		for (const JunctionTrackNode &node : graph.nodes) {
-			const JunctionBlockFootprint footprint = JunctionBlockFootprintOf(node.block, 2, spec);
-			if (footprint.along == 0) return fail("a block without its footprint is not ruled yet");
-			if (footprint.across != 4) return fail("a block other than two bundles across is not ruled yet");
+		JunctionBlock exit_block, join_block;
+		std::string block_error;
+		if (!BuildJunctionBlock(JunctionExitBlockProgram(), spec, exit_block, &block_error)) return fail("the exit block: " + block_error);
+		if (!BuildJunctionBlock(JunctionJoinBlock227Program(), spec, join_block, &block_error)) return fail("the join block: " + block_error);
+		for (uint32_t v = 0; v < graph.nodes.size(); v++) {
+			const JunctionBlockKind kind = graph.nodes[v].block;
+			if (kind != JunctionBlockKind::Exit && kind != JunctionBlockKind::Join) return fail("a block other than an exit or a join is not ruled yet");
+			oriented[v] = OrientJunctionBlock(kind == JunctionBlockKind::Exit ? exit_block : join_block, programs.nodes[v].heading, JunctionBlockSide(graph, order, programs, v) < 0);
+		}
+		for (uint32_t e = 0; e < graph.edges.size(); e++) {
+			for (int z = 0; z < 2; z++) {
+				const JunctionTrackEnd &end = z == 0 ? graph.edges[e].from : graph.edges[e].to;
+				if (!end.node) continue;
+				const JunctionTrackNodeShape &shape = programs.nodes[end.index];
+				const bool in_bundle = graph.nodes[end.index].split ? e == shape.trunk : e != shape.trunk;
+				const std::vector<std::vector<JunctionBlockPort>> &bundles = in_bundle ? oriented[end.index].in_bundles : oriented[end.index].out_bundles;
+				const size_t bundle_index = e == shape.trunk || e == shape.straight ? 0 : 1;
+				if (bundle_index >= bundles.size() || bundles[bundle_index].size() < JunctionEdgeTracks(graph, programs, e)) return fail("a block bundle narrower than its edge is not ruled yet");
+			}
 		}
 		for (int &p : block_end_pt) p = new_pt();
 		for (uint32_t e = 0; e < graph.edges.size(); e++) {
@@ -1532,23 +1549,31 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		for (uint32_t i = 0; i < node_pt.size(); i++) node_of_pt[node_pt[i]] = i;
 		for (uint32_t i = 0; i < node_pt.size(); i++) {
 			if (bundle) {
-				/* A block's footprint: its 4 lines over its length, one occupant per line on a row block, per row on a band block. Line c lies c tiles to the right of travel from the anchor: a right block's lines are 0..3, a left block's -2..1. */
+				/* A block's tiles (DESIGN-blocks §7.1): per hub row it covers, one occupant from its least to its largest x offset there, with the bits of the tiles at those two ends. */
 				const int h = programs.nodes[i].heading;
-				const JunctionBlockFootprint footprint = JunctionBlockFootprintOf(graph.nodes[i].block, 2, spec);
-				const int first_line = JunctionBlockSide(graph, order, programs, i) < 0 ? -width : 0;
-				const int RX = VX[(h + 1) % 4], RY = VY[(h + 1) % 4];
-				const int last_along = footprint.along - 1;
-				if (VX[h] != 0) {
-					for (int c = first_line; c < first_line + footprint.across; c++) {
-						const int dx = std::min(0, last_along * VX[h]), dx_end = std::max(0, last_along * VX[h]);
-						by_row[vy[node_pt[i]] + c * RY].push_back({vy[node_pt[i]] + c * RY, node_pt[i], dx, node_pt[i], dx_end, TrackBits{Track::X}, UINT32_MAX, 0, i, VX[h], {node_pt[i], dx}, {node_pt[i], dx_end}, 0, std::string()});
+				std::map<int, std::pair<int, int>> ends; ///< Per row offset: the least and the largest x offset of the block's tiles on it.
+				for (const auto *list : {&oriented[i].tiles, &oriented[i].prio_tiles}) {
+					for (const auto &[tile, tile_bits] : *list) {
+						auto [it, added] = ends.try_emplace(tile.y, std::make_pair<int, int>(tile.x, tile.x));
+						if (!added) {
+							it->second.first = std::min<int>(it->second.first, tile.x);
+							it->second.second = std::max<int>(it->second.second, tile.x);
+						}
 					}
-				} else {
-					const int lo = first_line * RX, hi = (first_line + footprint.across - 1) * RX;
-					for (int a = 0; a <= last_along; a++) {
-						const int y = vy[node_pt[i]] + a * VY[h];
-						by_row[y].push_back({y, node_pt[i], std::min(lo, hi), node_pt[i], std::max(lo, hi), TrackBits{Track::Y}, UINT32_MAX, 0, i, 1, {node_pt[i], std::min(lo, hi)}, {node_pt[i], std::max(lo, hi)}, 0, std::string()});
+				}
+				for (const auto &[row, range] : ends) {
+					TrackBits low_bits{}, high_bits{};
+					for (const auto *list : {&oriented[i].tiles, &oriented[i].prio_tiles}) {
+						for (const auto &[tile, tile_bits] : *list) {
+							if (tile.y != row) continue;
+							if (tile.x == range.first) for (Track track : tile_bits) low_bits.Set(track);
+							if (tile.x == range.second) for (Track track : tile_bits) high_bits.Set(track);
+						}
 					}
+					TrackBits bits = low_bits;
+					for (Track track : high_bits) bits.Set(track);
+					const int y = vy[node_pt[i]] + row;
+					by_row[y].push_back({y, node_pt[i], range.first, node_pt[i], range.second, bits, UINT32_MAX, 0, i, VX[h] != 0 ? VX[h] : 1, {node_pt[i], range.first}, {node_pt[i], range.second}, 0, std::string()});
 				}
 				continue;
 			}
@@ -2022,10 +2047,19 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		auto label = [&](const Occupant &o) { return o.node != UINT32_MAX ? fmt::format("node {}", o.node) : fmt::format("edge {}", o.edge); };
 		for (auto &[y, occupants] : by_row) {
 			/* On equal columns a footprint comes first in its travel direction: the unrelated track stands downstream of it. */
-			std::ranges::stable_sort(occupants, [&](const Occupant &a, const Occupant &b) { return std::make_tuple(flat_left(a), flat_right(a), -a.footprint) < std::make_tuple(flat_left(b), flat_right(b), -b.footprint); });
+			/* On equal columns the two tracks of one band edge keep their side: copy 1 is west when the edge heads south (it carries exit paths), east when it heads north (DESIGN-blocks §7.1). */
+			std::ranges::stable_sort(occupants, [&](const Occupant &a, const Occupant &b) {
+				const auto key_a = std::make_tuple(flat_left(a), flat_right(a), -a.footprint);
+				const auto key_b = std::make_tuple(flat_left(b), flat_right(b), -b.footprint);
+				if (key_a == key_b && a.edge != UINT32_MAX && a.edge == b.edge && a.footprint == 0 && b.footprint == 0 && a.copy >= 0 && b.copy >= 0 && a.copy != b.copy) {
+					const bool south = group_of(paths[graph.edges[a.edge].paths[0]].from).main;
+					return south ? a.copy > b.copy : a.copy < b.copy;
+				}
+				return key_a < key_b;
+			});
 			auto add_relation = [&](const Occupant &a, const Occupant &b, bool tie) -> bool {
-				/* At a given point, pieces that may not share a tile are separated, not tied (DESIGN-G3 §G3.6 F1). */
-				if (at_mode && tie && a.footprint == 0 && b.footprint == 0 && !JunctionTracksMayShareTile(a.bits, b.bits)) tie = false;
+				/* At a point, and in a bundle graph (DESIGN-blocks §7.1), pieces that may not share a tile are separated in their flat order, not tied (DESIGN-G3 §G3.6 F1); width 1's flat solve keeps such ties (open item). */
+				if ((at_mode || bundle) && tie && a.footprint == 0 && b.footprint == 0 && !JunctionTracksMayShareTile(a.bits, b.bits)) tie = false;
 				reasons.push_back(JunctionPlacementReason{"occupancy", b.edge, b.node, -1});
 				const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
 				notes[reason] = fmt::format("[{} and {} on row {}]", label(a), label(b), y);
@@ -2160,10 +2194,16 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			if (line.x_axis) continue;
 			const int top = std::min(vy[line.a], vy[line.b]);
 			const int bottom = std::max(vy[line.a], vy[line.b]);
-			for (const HeadRef &head : heads) {
+			for (size_t i = 0; i < heads.size(); i++) {
+				const HeadRef &head = heads[i];
 				if (head.bridge == line.bridge || vy[head.ypt] <= top || vy[head.ypt] >= bottom) continue;
-				const int side = flat[head.xpt] - flat[line.line];
-				if (side == 0) continue;
+				int side = flat[head.xpt] - flat[line.line];
+				/* A head on the bridge's line inside its span keeps the side of its own bridge's other head. */
+				if (side == 0) {
+					const HeadRef &partner = heads[i ^ 1];
+					assert(partner.bridge == head.bridge && partner.edge == head.edge);
+					side = flat[partner.xpt] > flat[line.line] ? 1 : -1;
+				}
 				reasons.push_back(JunctionPlacementReason{"bridge middle clearance", line.edge, UINT32_MAX, -1});
 				const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
 				notes[reason] = fmt::format("[edge {} and the head of edge {}]", line.edge, head.edge);
@@ -2199,10 +2239,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 
 		/* Stack rows. */
 		why("stack origin");
-		eq(1, item_pt[0], 0, 0);
+		if (bundle) ge(1, item_pt[0], 0, 0); else eq(1, item_pt[0], 0, 0);
 		for (int i = 1; i < items; i++) {
 			why("stack rows", UINT32_MAX, UINT32_MAX, static_cast<int>(structure.stack[i].row));
-			if (structure.stack[i].row == structure.stack[i - 1].row) eq(1, item_pt[i], item_pt[i - 1], 1); else ge(1, item_pt[i], item_pt[i - 1], 1);
+			const bool first_block_side = bundle && structure.stack[i].kind == JunctionTrackStackItem::Kind::BlockSide && structure.stack[i - 1].kind != JunctionTrackStackItem::Kind::BlockSide;
+			if (structure.stack[i].row == structure.stack[i - 1].row && !first_block_side) eq(1, item_pt[i], item_pt[i - 1], 1); else ge(1, item_pt[i], item_pt[i - 1], 1);
 		}
 		std::vector<int> layer1;
 		for (uint32_t i = 0; i < graph.nodes.size(); i++) {
@@ -2215,6 +2256,26 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			if (!bundle) continue;
 			if (b >= 1) ge(1, block_end_pt[i], item_pt[row_last[b - 1]], 1);
 			if (b < rows) ge(1, item_pt[row_first[b]], block_end_pt[i], 1);
+		}
+		if (bundle) {
+			/* Row block gap (DESIGN-blocks §7.1): a row block's box keeps clear of the rows next to its own. */
+			for (uint32_t v = 0; v < graph.nodes.size(); v++) {
+				const int level = order.node_level[v];
+				if (level % 2 == 0) continue;
+				const int r = (level - 1) / 2;
+				int min_y = 0, max_y = 0;
+				bool first_tile = true;
+				for (const auto *list : {&oriented[v].tiles, &oriented[v].prio_tiles}) {
+					for (const auto &[tile, bits] : *list) {
+						min_y = first_tile ? tile.y : std::min<int>(min_y, tile.y);
+						max_y = first_tile ? tile.y : std::max<int>(max_y, tile.y);
+						first_tile = false;
+					}
+				}
+				why("row block gap", UINT32_MAX, v);
+				if (r >= 1) ge(1, node_pt[v], item_pt[row_last[r - 1]], 1 - min_y);
+				if (r < rows - 1) ge(1, item_pt[row_first[r + 1]], node_pt[v], max_y + 1);
+			}
 		}
 		for (const JunctionTrackBandEvent &event : order.bands[rows]) {
 			if (event.node && event.layer == 1) layer1.push_back(static_cast<int>(event.a));
@@ -2262,26 +2323,47 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 
 		if (bundle) {
-			/* Every block: its footprint's downstream end on trunk track 0, and the attach point of each track of each edge end at it (D289, D291). */
+			/* Every block: its downstream end on trunk track 0, the attach point of each track of each edge end at its bundle's port, and its box (DESIGN-blocks §7.1). */
 			for (uint32_t v = 0; v < graph.nodes.size(); v++) {
 				const int h = programs.nodes[v].heading;
-				const int8_t side = JunctionBlockSide(graph, order, programs, v);
-				const JunctionBlockFootprint footprint = JunctionBlockFootprintOf(graph.nodes[v].block, 2, spec);
+				const JunctionTrackNodeShape &shape = programs.nodes[v];
+				const JunctionOrientedBlock &block = oriented[v];
+				const bool split = graph.nodes[v].split;
 				why("block footprint", UINT32_MAX, v);
-				eq(0, block_end_pt[v], node_pt[v], (footprint.along - 1) * VX[h]);
-				eq(1, block_end_pt[v], node_pt[v], (footprint.along - 1) * VY[h]);
+				eq(0, block_end_pt[v], node_pt[v], block.length * VX[h]);
+				eq(1, block_end_pt[v], node_pt[v], block.length * VY[h]);
 				for (uint32_t e = 0; e < edge_count; e++) {
 					for (int z = 0; z < 2; z++) {
 						const JunctionTrackEnd &end = z == 0 ? graph.edges[e].from : graph.edges[e].to;
 						if (!end.node || end.index != v) continue;
 						why("block attach", e, v);
+						const bool in_bundle = split ? e == shape.trunk : e != shape.trunk;
+						const std::vector<std::vector<JunctionBlockPort>> &bundles = in_bundle ? block.in_bundles : block.out_bundles;
+						const size_t bundle_index = e == shape.trunk || e == shape.straight ? 0 : 1;
 						for (uint8_t track = 0; track < 2; track++) {
-							const JunctionBlockAttach attach = JunctionBlockAttachOf(graph, programs, v, side, footprint, e, track);
-							eq(0, attach_pt[e][z][track], node_pt[v], attach.along * VX[h] + attach.across * VX[(h + 1) % 4]);
-							eq(1, attach_pt[e][z][track], node_pt[v], attach.along * VY[h] + attach.across * VY[(h + 1) % 4]);
+							const TileIndexDiffC tile = bundles[bundle_index][track].tile;
+							const int sign = in_bundle ? -1 : 1;
+							eq(0, attach_pt[e][z][track], node_pt[v], tile.x + sign * VX[h]);
+							eq(1, attach_pt[e][z][track], node_pt[v], tile.y + sign * VY[h]);
 						}
 					}
 				}
+				why("block box", UINT32_MAX, v);
+				int min_x = 0, min_y = 0, max_x = 0, max_y = 0;
+				bool first_tile = true;
+				for (const auto *list : {&block.tiles, &block.prio_tiles}) {
+					for (const auto &[tile, bits] : *list) {
+						min_x = first_tile ? tile.x : std::min<int>(min_x, tile.x);
+						min_y = first_tile ? tile.y : std::min<int>(min_y, tile.y);
+						max_x = first_tile ? tile.x : std::max<int>(max_x, tile.x);
+						max_y = first_tile ? tile.y : std::max<int>(max_y, tile.y);
+						first_tile = false;
+					}
+				}
+				ge(0, node_pt[v], 0, -min_x);
+				ge(1, node_pt[v], 0, -min_y);
+				ge(0, xe_pt, node_pt[v], max_x);
+				ge(1, se_pt, node_pt[v], max_y);
 			}
 		}
 
@@ -3297,7 +3379,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 	};
 
-	/* The Y-phase clearance of the X-axis bridges at a point (DESIGN-G3 §G3.6, R2): a head whose column lies strictly within an X-axis bridge keeps its side of the bridge's row by one; on the row itself, both sides (as today). */
+	/* The Y-phase clearance of the X-axis bridges at a point (DESIGN-G3 §G3.6, R2): a head whose column lies strictly within an X-axis bridge keeps its side of the bridge's row by one; on the row itself, the side of its own bridge's other head. */
 	auto detect_y = [&](const std::vector<int> &x, const std::vector<int> &y) {
 		clear_y.clear();
 		std::vector<BridgeLine> lines;
@@ -3307,14 +3389,15 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			if (!line.x_axis) continue;
 			const int left = std::min(x[line.a], x[line.b]);
 			const int right = std::max(x[line.a], x[line.b]);
-			for (const HeadRef &head : heads) {
+			for (size_t i = 0; i < heads.size(); i++) {
+				const HeadRef &head = heads[i];
 				if (head.bridge == line.bridge || x[head.xpt] <= left || x[head.xpt] >= right) continue;
-				const int side = y[head.ypt] - y[line.line];
-				/* Flat side 0: the head lies on the bridge's row inside its span, a contradiction of the family (both sides are demanded). */
+				int side = y[head.ypt] - y[line.line];
+				/* A head on the bridge's row inside its span keeps the side of its own bridge's other head. */
 				if (side == 0) {
-					clear_y.push_back({head.ypt, line.line, line.edge, head.edge});
-					clear_y.push_back({line.line, head.ypt, line.edge, head.edge});
-					continue;
+					const HeadRef &partner = heads[i ^ 1];
+					assert(partner.bridge == head.bridge && partner.edge == head.edge);
+					side = y[partner.ypt] > y[line.line] ? 1 : -1;
 				}
 				if (side > 0) clear_y.push_back({head.ypt, line.line, line.edge, head.edge}); else clear_y.push_back({line.line, head.ypt, line.edge, head.edge});
 			}

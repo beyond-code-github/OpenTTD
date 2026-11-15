@@ -27,7 +27,7 @@
 JunctionBlockProgram JunctionJoinBlock227Program()
 {
 	using Kind = JunctionBlockSegmentKind;
-	enum Point : uint16_t { W, sA, sB, hN, hF, d1, b0, mC0, mC1, e0, e1, mL0, mL1, E };
+	enum Point : uint16_t { W, sA, sB, hN, hF, d1, b0, mC0, mC1, e0, e1, mL0, mL1, f1, E };
 	enum Node : uint16_t { NsA, NsB, NmC0, NmC1, NmL0, NmL1 };
 	enum Edge : uint16_t { fA, L0, cAin, cA0, cA1, cBin, cB1, cB0, c0, c1, fB, L1 };
 
@@ -38,10 +38,10 @@ JunctionBlockProgram JunctionJoinBlock227Program()
 	constexpr bool NODE = true;
 
 	JunctionBlockProgram p;
-	p.points = {"W", "sA", "sB", "hN", "hF", "d1", "b0", "mC0", "mC1", "e0", "e1", "mL0", "mL1", "E"};
+	p.points = {"W", "sA", "sB", "hN", "hF", "d1", "b0", "mC0", "mC1", "e0", "e1", "mL0", "mL1", "f1", "E"};
 	p.east = E;
 	p.in_lines = {1, 2, 5, 6};
-	p.out_lines = {1, 6};
+	p.out_lines = {1, 2};
 	p.nodes = {{true, sA}, {true, sB}, {false, mC0}, {false, mC1}, {false, mL0}, {false, mL1}};
 	p.edges.resize(12);
 	p.edges[fA] = {{PORT, 0}, {NODE, NmL0}, 1, {run(mL0)}};
@@ -55,11 +55,13 @@ JunctionBlockProgram JunctionJoinBlock227Program()
 	p.edges[c0] = {{NODE, NmC0}, {NODE, NmL0}, 2, {run(e0), bend(-1)}};
 	p.edges[c1] = {{NODE, NmC1}, {NODE, NmL1}, 5, {run(e1), bend(+1)}};
 	p.edges[fB] = {{PORT, 3}, {NODE, NmL1}, 6, {run(mL1)}};
-	p.edges[L1] = {{NODE, NmL1}, {PORT, 1}, 6, {run(E)}};
+	p.edges[L1] = {{NODE, NmL1}, {PORT, 1}, 6, {run(f1), bend(-4), run(E)}};
 	p.paths = {{fA, L0}, {cAin, cA0, c0, L0}, {cAin, cA1, c1, L1}, {cBin, cB0, c0, L0}, {cBin, cB1, c1, L1}, {fB, L1}};
 	p.through = {true, false, false, false, false, true};
 	p.prios = {{NmL0, 0}, {NmL1, 7}};
 	p.topology = JunctionJoinBlock227Topology();
+	p.in_bundles = {{0, 1}, {2, 3}};
+	p.out_bundles = {{0, 1}};
 	return p;
 }
 
@@ -112,6 +114,8 @@ JunctionBlockProgram JunctionExitBlockProgram()
 	p.paths = {{l0, l0a}, {l0, l0b}, {l1, l1a}, {l1, l1b}};
 	p.through = {false, false, false, false};
 	p.topology = JunctionExitBlockTopology();
+	p.in_bundles = {{0, 1}};
+	p.out_bundles = {{0, 1}, {2, 3}};
 	return p;
 }
 
@@ -916,6 +920,8 @@ bool BlockGenerator::Run(JunctionBlock &block)
 
 	/* Emit. */
 	block = JunctionBlock{};
+	block.in_bundles = program.in_bundles;
+	block.out_bundles = program.out_bundles;
 	block.columns = columns;
 	std::vector<JunctionRaster> rasters;
 	std::vector<std::vector<std::pair<uint16_t, size_t>>> spans(program.paths.size());
@@ -1120,4 +1126,62 @@ bool BuildJunctionBlock(const JunctionBlockProgram &program, const JunctionSpec 
 	const bool built = generator.Run(block);
 	if (!built && error != nullptr) *error = generator.Error();
 	return built;
+}
+
+/**
+ * Turn a block into a hub frame (DESIGN-blocks §7.1).
+ * @param block The solved block, heading east.
+ * @param heading The hub heading: 0 N, 1 E, 2 S, 3 W.
+ * @param mirrored Whether the block is mirrored across its heading.
+ * @return The block with every offset from its anchor, the in port of track 0 of in bundle 0.
+ */
+JunctionOrientedBlock OrientJunctionBlock(const JunctionBlock &block, uint8_t heading, bool mirrored)
+{
+	const uint8_t rotation = static_cast<uint8_t>(((mirrored ? 3 : 1) - heading + 4) % 4);
+	auto vector = [&](TileIndexDiffC v) { return OrientJunctionVector(v, rotation, mirrored); };
+	auto trackdir = [&](Trackdir td) {
+		if (mirrored) td = TransformTrackdir(td, JunctionTransform::Mirror);
+		for (uint8_t i = 0; i < rotation; i++) td = TransformTrackdir(td, JunctionTransform::Rotate);
+		return td;
+	};
+	auto bits = [&](TrackBits in) {
+		TrackBits out{};
+		for (Track track : in) {
+			if (mirrored) track = TransformTrack(track, JunctionTransform::Mirror);
+			for (uint8_t i = 0; i < rotation; i++) track = TransformTrack(track, JunctionTransform::Rotate);
+			out.Set(track);
+		}
+		return out;
+	};
+
+	JunctionOrientedBlock result;
+	const std::vector<uint8_t> &first_bundle = block.in_bundles.front();
+	const TileIndexDiffC anchor = vector(block.in_ports[mirrored ? first_bundle.back() : first_bundle.front()].tile);
+	auto offset = [&](TileIndexDiffC frame) {
+		const TileIndexDiffC v = vector(frame);
+		return TileIndexDiffC{static_cast<int16_t>(v.x - anchor.x), static_cast<int16_t>(v.y - anchor.y)};
+	};
+	auto orient_bundles = [&](const std::vector<std::vector<uint8_t>> &bundles, const std::vector<JunctionBlockPort> &ports, std::vector<std::vector<JunctionBlockPort>> &out) {
+		for (const std::vector<uint8_t> &bundle : bundles) {
+			std::vector<JunctionBlockPort> tracks;
+			for (uint8_t port : bundle) tracks.push_back({offset(ports[port].tile), trackdir(ports[port].trackdir)});
+			if (mirrored) std::ranges::reverse(tracks);
+			out.push_back(std::move(tracks));
+		}
+	};
+	orient_bundles(block.in_bundles, block.in_ports, result.in_bundles);
+	orient_bundles(block.out_bundles, block.out_ports, result.out_bundles);
+	for (const JunctionTrack &jt : block.layout.tracks) result.tiles.emplace_back(offset(jt.offset), bits(jt.tracks));
+	for (const JunctionPrioSpan &span : block.prio) {
+		for (const auto &[tile, tile_bits] : span.tiles) result.prio_tiles.emplace_back(offset(tile), bits(tile_bits));
+	}
+	for (const JunctionRoute &route : block.routes) {
+		JunctionRoute oriented{offset(route.start), trackdir(route.start_trackdir), route.moves};
+		if (mirrored) {
+			for (char &move : oriented.moves) move = move == 'L' ? 'R' : move == 'R' ? 'L' : move;
+		}
+		result.routes.push_back(std::move(oriented));
+	}
+	result.length = block.out_ports.front().tile.x;
+	return result;
 }

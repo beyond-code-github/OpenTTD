@@ -74,6 +74,7 @@ struct JunctionBlockProgram {
 	std::vector<bool> through; ///< Per path: a through path (no queue bay, R5).
 	std::vector<JunctionBlockPrio> prios;
 	JunctionTopology topology; ///< The topology of the block's lane paths.
+	std::vector<std::vector<uint8_t>> in_bundles, out_bundles; ///< Port indices per bundle, each in ascending line order: bundle 0 on the trunk lines, bundle 1 the diverging bundle (DESIGN-blocks §7.1).
 };
 
 /** A port of the solved block, in layout coordinates. */
@@ -94,6 +95,16 @@ struct JunctionBlock {
 	JunctionTrackPrograms programs; ///< Edges and copies sized to the graph's edges; a doubled edge has one SBend token per copy, every other list is empty.
 	std::vector<JunctionTrackRoute> track_routes; ///< Per route (as `routes`), its pieces in the layout frame with the program edge that emitted each.
 	std::vector<JunctionPrioSpan> prio; ///< Per program prio, its tiles and drawn bits.
+	std::vector<std::vector<uint8_t>> in_bundles, out_bundles; ///< The program's bundles: port indices, each in ascending line order.
+};
+
+/** A block turned into a hub frame (DESIGN-blocks §7.1): every offset is from its anchor, the in port of track 0 of in bundle 0. */
+struct JunctionOrientedBlock {
+	std::vector<std::vector<JunctionBlockPort>> in_bundles, out_bundles; ///< Per bundle, per track (left to right of travel), its port tile offset and trackdir.
+	std::vector<std::pair<TileIndexDiffC, TrackBits>> tiles; ///< Every tile of the block's track pieces (bridge middles excluded), with its bits.
+	std::vector<std::pair<TileIndexDiffC, TrackBits>> prio_tiles; ///< Every tile of its prio spans, with the drawn bits.
+	std::vector<JunctionRoute> routes; ///< The block's routes, start offsets from the anchor.
+	int length; ///< The out-port column E: tiles from the anchor to the out ports along the heading.
 };
 
 JunctionBlockProgram JunctionJoinBlock227Program();
@@ -101,5 +112,7 @@ bool BuildJunctionBlock(const JunctionBlockProgram &program, const JunctionSpec 
 JunctionTopology JunctionJoinBlock227Topology();
 JunctionBlockProgram JunctionExitBlockProgram();
 JunctionTopology JunctionExitBlockTopology();
+/** The block heading 'heading' (0 N, 1 E, 2 S, 3 W), mirrored across its heading when 'mirrored': frame (a, c) lands at a V(h) + (mirrored ? -c : c) R(h), minus the anchor's. */
+JunctionOrientedBlock OrientJunctionBlock(const JunctionBlock &block, uint8_t heading, bool mirrored);
 
 #endif /* JUNCTION_BLOCK_H */
