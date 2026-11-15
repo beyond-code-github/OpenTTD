@@ -14,7 +14,7 @@
 #include "../junction_spec.h"
 #include "../placement/junction_placement.h"
 #include "../placement/junction_render.h"
-#include "../signals/junction_signals.h"
+#include "../placement/junction_signal_adapter.h"
 #include "../junction_pipeline.h"
 
 #include <algorithm>

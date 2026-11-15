@@ -23,7 +23,7 @@
 #include "../../../junction/junction_rules.h"
 #include "../../../junction/junction_spec.h"
 #include "../../../junction/junction_track_geometry.h"
-#include "../../../junction/signals/junction_signals.h"
+#include "../../../junction/placement/junction_signal_adapter.h"
 #include "../../../junction/topology/junction_chain.h"
 #include "../../../track_func.h"
 

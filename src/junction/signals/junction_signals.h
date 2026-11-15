@@ -10,10 +10,8 @@
 #ifndef JUNCTION_SIGNALS_H
 #define JUNCTION_SIGNALS_H
 
-#include "../placement/junction_placement.h"
 #include "../junction_layout.h"
 #include "../junction_route.h"
-#include "../topology/junction_topology.h"
 
 #include <cstdint>
 #include <string>
@@ -22,10 +20,25 @@
 
 struct JunctionSpec;
 
-/**
- * The switch events of routes[r] from the tags (DESIGN-G1 §13.8 item 4): at each boundary between consecutive edges, the node piece, a split when graph.nodes[node].split; on a doubled edge, the lane split and the lane merge. The lane split tile is the first piece of the copy-1 route's SBend token, the lane merge tile the last piece of the copy-0 route's SBend token (the sibling route of the same lane path and the other copy supplies the one routes[r] lacks); the event is routes[r]'s first non-bridge piece on that tile. Sorted by piece, a split before a merge on one piece.
- */
-std::vector<std::pair<bool, size_t>> JunctionRouteEvents(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const std::vector<JunctionTrackRoute> &routes, size_t r);
+/** One prio element as a placement fixes it (DESIGN-G1 12.4). */
+struct JunctionPrioSpan {
+	std::vector<std::pair<TileIndexDiffC, TrackBits>> tiles; ///< Its tiles in drawing order (per step upstream of the merge: the main-line tile's corner half on even steps, then the row tile) with the bits drawn on each.
+	TileIndexDiffC merge; ///< The joiner merge's tile (step 0 on the main line).
+};
+
+/** One route as the signal pass reads it, whatever model made it. */
+struct JunctionSignalRoute {
+	bool main = false; ///< A main line: its merges carry the prio element and it gets no waiting bays.
+	uint32_t group = 0; ///< A prio's joiner is a route of another group.
+	std::vector<std::pair<bool, size_t>> switches; ///< Its splits and merges: (split, the switch tile's piece index), sorted by piece, a split before a merge on one piece.
+	std::vector<std::pair<size_t, uint32_t>> merge_nodes; ///< For each merge switch where a joiner can arrive: (its piece index, the merge node).
+	std::vector<std::pair<uint32_t, size_t>> arrivals; ///< Per node the route enters: (node, the index of its last piece before the node).
+};
+
+/** The routes' switch structure, as the signal pass reads it (parallel to the track routes). */
+struct JunctionSignalNetwork {
+	std::vector<JunctionSignalRoute> routes;
+};
 
 /** Why a signal stands where it does (DESIGN-G1 §12.2, §12.3). */
 enum class JunctionSignalReason : uint8_t { BeforeSplit, AfterSplit, BeforeMerge, AfterMerge, BeforeBridge, AfterBridge, SeriesGap, Stub, Bay, Fill,
@@ -41,12 +54,12 @@ struct JunctionTrackSignal {
 };
 
 /**
- * Place the signal tokens of a rendered seed (DESIGN-G1 §12.2, §12.3): the anchor signals of every route's splits, merges, bridges and out port, then the whole-train bays before the merges of non-through paths, then drag fill; each drawn into layout.signals once.
+ * Place the signal tokens of rendered routes (DESIGN-G1 §12.2, §12.3): the anchor signals of every route's splits, merges, bridges and out port, then the whole-train bays before the merges of non-through paths, then drag fill; each drawn into layout.signals once.
  * @param why Receives the first prio element that does not fit (its merge tile), empty when every element was drawn.
  * @param prio_beside Receives, for every tile a prio element draws beside the main line (its side row, steps 0 to n_prio), that tile and the main-line tile next to it in the same column (H3, the level solve).
  * @param prio The placement's prio elements: when given, the pass draws exactly their tiles and bits; nullptr derives the elements from the routes (callers with no placement).
  * @return The tokens, in placement order; a signal shared by several routes or rules gives one token per route and rule that resolved to it.
  */
-std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why = nullptr, std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> *prio_beside = nullptr, const std::vector<JunctionPrioSpan> *prio = nullptr);
+std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionSignalNetwork &network, const JunctionSpec &spec, std::string *why = nullptr, std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> *prio_beside = nullptr, const std::vector<JunctionPrioSpan> *prio = nullptr);
 
 #endif /* JUNCTION_SIGNALS_H */

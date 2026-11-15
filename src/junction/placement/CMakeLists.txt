@@ -11,4 +11,6 @@ add_files(
     junction_positions.h
     junction_render.cpp
     junction_render.h
+    junction_signal_adapter.cpp
+    junction_signal_adapter.h
 )

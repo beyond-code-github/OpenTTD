@@ -1,6 +1,7 @@
 # Junction signals (src/junction/signals/)
 
 - `junction_signal_pass`: only `PlaceDragSignals`, called by `junction_signals.cpp`, is current; `PlaceJunctionSignals` is superseded and not extended.
+- `SignalJunctionTrackRoutes` reads the routes' switch structure through `JunctionSignalNetwork` (per route: main flag, group, switches, merge nodes, node arrivals), never a graph or programs; the old pipeline fills it with `MakeJunctionSignalNetwork` (`placement/junction_signal_adapter`), the planar model natively.
 
 ## Signals and prio
 - Default signal type is one-way block, a junction-only client setting separate from the signal toolbar's type.

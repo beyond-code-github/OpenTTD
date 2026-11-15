@@ -16,7 +16,7 @@
 #include "../../junction/junction_route.h"
 #include "../../junction/junction_rules.h"
 #include "../../junction/junction_rules_internal.h"
-#include "../../junction/signals/junction_signals.h"
+#include "../../junction/placement/junction_signal_adapter.h"
 #include "../../map_func.h"
 #include "../../track_func.h"
 

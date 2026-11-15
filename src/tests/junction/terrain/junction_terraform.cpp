@@ -18,7 +18,7 @@
 #include "../../../junction/topology/junction_topology.h"
 #include "../../../junction/placement/junction_placement.h"
 #include "../../../junction/placement/junction_render.h"
-#include "../../../junction/signals/junction_signals.h"
+#include "../../../junction/placement/junction_signal_adapter.h"
 #include "../../../rail.h"
 #include "../../../track_func.h"
 #include "../../../junction/terrain/junction_terraform.h"

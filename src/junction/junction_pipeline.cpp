@@ -17,7 +17,7 @@
 #include "placement/junction_joint.h"
 #include "placement/junction_levels.h"
 #include "placement/junction_render.h"
-#include "signals/junction_signals.h"
+#include "placement/junction_signal_adapter.h"
 #include "topology/junction_chain.h"
 
 #include "../direction_func.h"

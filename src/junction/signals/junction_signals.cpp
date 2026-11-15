@@ -32,59 +32,7 @@
 
 #include "../../safeguards.h"
 
-std::vector<std::pair<bool, size_t>> JunctionRouteEvents(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const std::vector<JunctionTrackRoute> &routes, size_t r)
-{
-	const JunctionTrackRoute &route = routes[r];
-	std::vector<std::pair<bool, size_t>> events;
-	/* The node piece at each boundary between consecutive edges: a split's belongs to the out-edge, a merge's to the in-edge. */
-	for (size_t i = 1; i < route.tags.size(); i++) {
-		if (route.tags[i].edge == route.tags[i - 1].edge) continue;
-		const JunctionTrackEdge &in = graph.edges[route.tags[i - 1].edge];
-		if (!in.to.node) continue;
-		const bool split = graph.nodes[in.to.index].split;
-		events.emplace_back(split, split ? i : i - 1);
-	}
-	/* The lane split and merge of each doubled edge: switches both copies pass, located by the copy that bends there. */
-	for (const uint32_t e : graph.path_edges[route.path]) {
-		if (programs.copies[e].empty()) continue;
-		size_t sibling = routes.size();
-		for (size_t s = 0; s < routes.size(); s++) {
-			if (routes[s].path == route.path && routes[s].copy != route.copy) sibling = s;
-		}
-		if (sibling == routes.size()) continue;
-		const JunctionTrackRoute &copy0 = route.copy == 0 ? route : routes[sibling];
-		const JunctionTrackRoute &copy1 = route.copy == 0 ? routes[sibling] : route;
-		const auto with_role = [](const std::vector<JunctionTrackStep> &program, JunctionTrackStep::Role role) {
-			for (size_t t = 0; t < program.size(); t++) {
-				if (program[t].kind == JunctionTrackStep::Kind::SBend && program[t].role == role) return t;
-			}
-			return program.size();
-		};
-		const size_t split_token = with_role(programs.copies[e], JunctionTrackStep::Role::LaneSplit);
-		const size_t merge_token = with_role(programs.edges[e], JunctionTrackStep::Role::LaneMerge);
-		const auto on_tile = [&](TileIndexDiffC tile) -> std::optional<size_t> {
-			for (size_t k = 0; k < route.pieces.size(); k++) {
-				if (!route.pieces[k].on_bridge && route.pieces[k].tile.x == tile.x && route.pieces[k].tile.y == tile.y) return k;
-			}
-			return std::nullopt;
-		};
-		for (size_t i = 0; i < copy1.tags.size(); i++) {
-			if (copy1.tags[i].edge != e || copy1.tags[i].copy != 1 || copy1.tags[i].token != split_token) continue;
-			if (const std::optional<size_t> k = on_tile(copy1.pieces[i].tile); k.has_value()) events.emplace_back(true, *k);
-			break;
-		}
-		for (size_t i = copy0.tags.size(); i-- > 0;) {
-			if (copy0.tags[i].edge != e || copy0.tags[i].copy != 0 || copy0.tags[i].token != merge_token) continue;
-			if (const std::optional<size_t> k = on_tile(copy0.pieces[i].tile); k.has_value()) events.emplace_back(false, *k);
-			break;
-		}
-	}
-	std::ranges::stable_sort(events, [](const std::pair<bool, size_t> &a, const std::pair<bool, size_t> &b) { return a.second != b.second ? a.second < b.second : a.first > b.first; });
-	events.erase(std::unique(events.begin(), events.end()), events.end());
-	return events;
-}
-
-std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why, std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> *prio_beside, const std::vector<JunctionPrioSpan> *prio)
+std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionSignalNetwork &network, const JunctionSpec &spec, std::string *why, std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> *prio_beside, const std::vector<JunctionPrioSpan> *prio)
 {
 	using Reason = JunctionSignalReason;
 	std::vector<JunctionTrackSignal> tokens;
@@ -137,10 +85,9 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 	const int n_prio = static_cast<int>(spec.prio_tiles + (spec.prio_tiles & 1));
 	std::vector<std::pair<size_t, size_t>> entries; // The joiner route and the index of its merge piece.
 	for (size_t r = 0; r < routes.size(); r++) {
-		const auto &movement = topology.movements[paths[routes[r].path].movement];
-		if (!topology.groups[movement.first].main || !topology.groups[movement.second].main) continue;
+		if (!network.routes[r].main) continue;
 		const std::vector<JunctionPiece> &P = routes[r].pieces;
-		const std::vector<SwitchEvent> switches = JunctionRouteEvents(graph, programs, routes, r);
+		const std::vector<SwitchEvent> &switches = network.routes[r].switches;
 		for (const SwitchEvent &merge : switches) {
 			if (merge.first) continue;
 			const size_t j = merge.second;
@@ -148,21 +95,16 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 			const TileIndexDiffC M = mp.tile;
 
 			/* 1. The joiner: the merge node n of the event (the last piece of an edge that ends at a node), and the first route of another movement whose lane path has an edge ending at n; k is that route's node piece. */
-			if (j + 1 >= P.size() || routes[r].tags[j].edge == routes[r].tags[j + 1].edge || !graph.edges[routes[r].tags[j].edge].to.node) continue;
-			const uint16_t node = graph.edges[routes[r].tags[j].edge].to.index;
+			const auto merge_node = std::ranges::find(network.routes[r].merge_nodes, j, &std::pair<size_t, uint32_t>::first);
+			if (merge_node == network.routes[r].merge_nodes.end()) continue;
+			const uint32_t node = merge_node->second;
 			std::optional<size_t> joiner, joiner_k;
 			for (size_t r2 = 0; r2 < routes.size() && !joiner.has_value(); r2++) {
-				if (paths[routes[r2].path].movement == paths[routes[r].path].movement) continue;
-				for (const uint32_t e : graph.path_edges[routes[r2].path]) {
-					if (!graph.edges[e].to.node || graph.edges[e].to.index != node) continue;
-					for (size_t k = routes[r2].tags.size(); k-- > 0;) {
-						if (routes[r2].tags[k].edge != e) continue;
-						joiner = r2;
-						joiner_k = k;
-						break;
-					}
-					break;
-				}
+				if (network.routes[r2].group == network.routes[r].group) continue;
+				const auto arrival = std::ranges::find(network.routes[r2].arrivals, node, &std::pair<uint32_t, size_t>::first);
+				if (arrival == network.routes[r2].arrivals.end()) continue;
+				joiner = r2;
+				joiner_k = arrival->second;
 			}
 			if (!joiner.has_value()) continue;
 			if (tracks_at(tracks, M) != tracks_at(used, M)) continue;
@@ -245,7 +187,7 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 	for (size_t r = 0; r < routes.size(); r++) {
 		const std::vector<JunctionPiece> &P = routes[r].pieces;
 		const int64_t n = static_cast<int64_t>(P.size());
-		const std::vector<SwitchEvent> switches = JunctionRouteEvents(graph, programs, routes, r);
+		const std::vector<SwitchEvent> &switches = network.routes[r].switches;
 		std::vector<Event> events;
 		for (const SwitchEvent &sw : switches) events.push_back({sw.second, sw.second, false, sw.first});
 		for (size_t i = 0; i < P.size(); i++) {
@@ -305,10 +247,9 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 	/* Phase 2: the whole-train bays before the merges of non-through paths, walked as PlaceBaySignals walks them. */
 	const uint bay = 2u * spec.tl;
 	for (size_t r = 0; r < routes.size(); r++) {
-		const auto &movement = topology.movements[paths[routes[r].path].movement];
-		if (topology.groups[movement.first].main && topology.groups[movement.second].main) continue;
+		if (network.routes[r].main) continue;
 		const std::vector<JunctionPiece> &P = routes[r].pieces;
-		const std::vector<SwitchEvent> events = JunctionRouteEvents(graph, programs, routes, r);
+		const std::vector<SwitchEvent> &events = network.routes[r].switches;
 		for (const SwitchEvent &event : events) {
 			if (event.first) continue;
 			const size_t m = event.second;
@@ -361,7 +302,7 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 	/* Phase 4: the joiner's last signal before each element's merge is an Entry. */
 	for (const auto &[r2, k] : entries) {
 		const std::vector<JunctionPiece> &P = routes[r2].pieces;
-		const std::vector<SwitchEvent> switches = JunctionRouteEvents(graph, programs, routes, r2);
+		const std::vector<SwitchEvent> &switches = network.routes[r2].switches;
 		for (size_t i = k; i-- > 0;) {
 			if (std::ranges::any_of(switches, [&](const SwitchEvent &sw) { return sw.second > i && sw.second < k; })) break;
 			if (!is_signalled(P[i])) continue;
