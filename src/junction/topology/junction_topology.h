@@ -48,6 +48,7 @@ struct JunctionTopology {
 	std::vector<JunctionLaneGroup> groups; ///< In slot order (JunctionPortSlots).
 	std::vector<std::pair<uint8_t, uint8_t>> movements; ///< (in group, out group), indices into groups.
 	JunctionLanePairing pairing = JunctionLanePairing::AnyToAny; ///< Lane pairing of multi-to-multi turning movements (D221).
+	std::vector<uint8_t> prio_movements; ///< D282, D298: when not empty, the movements whose paths hold priority at their merges; a merge of two paths of unlisted movements is plain, and an unlisted movement's bridges may be single (D299).
 };
 
 /** One lane of a group at the box: a port slot. */

@@ -11,13 +11,16 @@
 
 #include "../../3rdparty/catch2/catch.hpp"
 
+#include "../../junction/block/junction_block.h"
 #include "../../junction/legacy/junction_generator.h"
 #include "../../junction/junction_route.h"
 #include "../../junction/junction_rules.h"
 #include "../../junction/junction_rules_internal.h"
+#include "../../junction/signals/junction_signals.h"
 #include "../../map_func.h"
 #include "../../track_func.h"
 
+#include <algorithm>
 #include <optional>
 #include <set>
 
@@ -1560,4 +1563,69 @@ TEST_CASE("CheckConnectivity: a corner piece before a bridge head enters the bri
 	CHECK(ctx.paths.size() == 1);
 	for (const RuleViolation &v : CheckConnectivity(ctx)) CHECK(v.message.find("dead end") == std::string::npos);
 	CHECK(CheckConnectivity(ctx).empty());
+}
+
+/** The signalled 227 block, for the prio-list tests. */
+struct BlockRulesFixture {
+	JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionBlockProgram program = JunctionJoinBlock227Program();
+	JunctionTopology topology = JunctionJoinBlock227Topology();
+	JunctionBlock block;
+
+	BlockRulesFixture()
+	{
+		std::string error;
+		const bool built = BuildJunctionBlock(program, spec, block, &error);
+		INFO(error);
+		REQUIRE(built);
+		std::string why;
+		std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> beside;
+		SignalJunctionTrackRoutes(block.layout, block.track_routes, block.topology, block.paths, block.graph, block.programs, spec, &why, &beside, &block.prio);
+		INFO(why);
+		REQUIRE(why.empty());
+	}
+
+	std::vector<RuleViolation> Check(const JunctionTopology &with) const
+	{
+		return CheckJunctionRules(block.layout, spec, with);
+	}
+};
+
+static size_t CountMessages(const std::vector<RuleViolation> &violations, JunctionRule rule, std::string_view text)
+{
+	return std::ranges::count_if(violations, [&](const RuleViolation &v) { return v.rule == rule && v.message.find(text) != std::string::npos; });
+}
+
+TEST_CASE("CheckPrio: with a prio list a merge of two unlisted paths needs no prio", "[junction][rules]")
+{
+	BlockRulesFixture f;
+	REQUIRE(!f.topology.prio_movements.empty());
+	const int mc0_x = f.block.columns[std::ranges::find(f.program.points, "mC0") - f.program.points.begin()];
+	auto missing_at_mc0 = [&](const std::vector<RuleViolation> &violations) {
+		return std::ranges::count_if(violations, [&](const RuleViolation &v) { return v.rule == JunctionRule::Prio && v.message.find("missing prio") != std::string::npos && v.tile.x == mc0_x; });
+	};
+	CHECK(missing_at_mc0(f.Check(f.topology)) == 0);
+	JunctionTopology cleared = f.topology;
+	cleared.prio_movements.clear();
+	CHECK(missing_at_mc0(f.Check(cleared)) > 0);
+}
+
+TEST_CASE("Bridges: with a prio list an unlisted movement's bridge may be single", "[junction][rules]")
+{
+	BlockRulesFixture f;
+	CHECK(CountMessages(f.Check(f.topology), JunctionRule::Bridges, "ML bridge is not doubled") == 0);
+	JunctionTopology cleared = f.topology;
+	cleared.prio_movements.clear();
+	CHECK(CountMessages(f.Check(cleared), JunctionRule::Bridges, "ML bridge is not doubled") > 0);
+}
+
+TEST_CASE("Footprint: the boundary is the port sides", "[junction][rules]")
+{
+	BlockRulesFixture f;
+	CHECK(std::ranges::none_of(f.Check(f.topology), [](const RuleViolation &v) { return v.rule == JunctionRule::Footprint; }));
+
+	/* Without a topology the T's three sides stay the boundary: a signal on the bottom row is flagged. */
+	JunctionLayout layout = WaitingRoomLayout();
+	AddSignal(layout, 3, layout.size.y - 1, Trackdir::X_SW);
+	CHECK(CountMessages(CheckJunctionRules(layout, f.spec), JunctionRule::Footprint, "signal on the boundary") > 0);
 }

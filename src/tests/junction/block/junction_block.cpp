@@ -50,7 +50,7 @@ struct BlockFixture {
 		return block.columns[it - program.points.begin()];
 	}
 
-	/** A program line minus its layout row (the frame keeps one empty line above the prio row); route pieces are already in layout rows. */
+	/** A program line minus its layout row (zero: the frame starts at line 0); route pieces are already in layout rows. */
 	int Top() const { return program.in_lines[0] - block.in_ports[0].tile.y; }
 
 	/** The tile of a node in layout coordinates: its column, and the line it sits on. */
@@ -234,8 +234,8 @@ TEST_CASE("block: the floors hold", "[junction][block]")
 	/* R9: the prio rows hold no track, and the fixed tracks run straight through the prio's coverage. */
 	for (const JunctionRaster &raster : rasters) {
 		for (const JunctionPiece &p : raster.pieces) {
-			CHECK(p.tile.y >= 2);
-			CHECK(p.tile.y <= 7);
+			CHECK(p.tile.y >= 1);
+			CHECK(p.tile.y <= 6);
 		}
 	}
 	CHECK(f.block.routes[0].moves.find_first_not_of('F') == std::string::npos);
@@ -280,7 +280,7 @@ TEST_CASE("block: the 227 join block signals and prios", "[junction][block]")
 	}
 }
 
-TEST_CASE("block: the 227 join block is checker clean", "[junction][block][.]")
+TEST_CASE("block: the 227 join block is checker clean", "[junction][block]")
 {
 	SignalledBlock f;
 	const std::vector<RuleViolation> violations = CheckJunctionRules(f.block.layout, f.spec, f.topology);
