@@ -80,6 +80,56 @@ JunctionTopology JunctionJoinBlock227Topology()
 	return topology;
 }
 
+/** The exit block: one input arm of two lanes, two bundles out; l0 to l0b crosses l1 to l1a on a doubled bridge (DESIGN-blocks §2.2). */
+JunctionBlockProgram JunctionExitBlockProgram()
+{
+	using Kind = JunctionBlockSegmentKind;
+	using Role = JunctionTrackStep::Role;
+	enum Point : uint16_t { W, p1, s0, s1, ls, hN0, hF0, hN1, hF1, q0, E };
+	enum Node : uint16_t { Ns0, Ns1 };
+	enum Edge : uint16_t { l0, l0a, l0b, l1, l1a, l1b };
+
+	auto run = [](uint16_t point) { return JunctionBlockSegment{Kind::Run, 0, point}; };
+	auto bend = [](int lines, Role role = Role::None) { return JunctionBlockSegment{Kind::SBend, lines, 0, UINT16_MAX, role}; };
+	auto bridge = [](uint16_t point, uint16_t crosses) { return JunctionBlockSegment{Kind::Bridge, 0, point, crosses}; };
+	constexpr bool PORT = false;
+	constexpr bool NODE = true;
+
+	JunctionBlockProgram p;
+	p.points = {"W", "p1", "s0", "s1", "ls", "hN0", "hF0", "hN1", "hF1", "q0", "E"};
+	p.east = E;
+	p.in_lines = {0, 1};
+	p.out_lines = {0, 1, 3, 4};
+	p.nodes = {{true, s0}, {true, s1}};
+	p.edges.resize(6);
+	p.edges[l0] = {{PORT, 0}, {NODE, Ns0}, 0, {run(s0)}};
+	p.edges[l0a] = {{NODE, Ns0}, {PORT, 0}, 0, {run(E)}};
+	p.edges[l0b] = {{NODE, Ns0}, {PORT, 2}, 0, {bend(+2), run(ls), run(hN0), bridge(hF0, l1a), run(q0), bend(+1, Role::LaneMerge), run(E)},
+			{bend(+2), run(ls), bend(+1, Role::LaneSplit), run(hN1), bridge(hF1, l1a), run(E)}};
+	p.edges[l1] = {{PORT, 1}, {NODE, Ns1}, 1, {run(p1), bend(+3), run(s1)}};
+	p.edges[l1a] = {{NODE, Ns1}, {PORT, 1}, 4, {bend(-3), run(E)}};
+	p.edges[l1b] = {{NODE, Ns1}, {PORT, 3}, 4, {run(E)}};
+	p.paths = {{l0, l0a}, {l0, l0b}, {l1, l1a}, {l1, l1b}};
+	p.through = {false, false, false, false};
+	p.topology = JunctionExitBlockTopology();
+	return p;
+}
+
+/** The topology of the exit block: W l0, l1 and E l1b, l0b, l1a, l0a (south to north), one lane each, four movements and no prio. */
+JunctionTopology JunctionExitBlockTopology()
+{
+	JunctionTopology topology;
+	topology.groups = {
+		{JunctionSide::W, true, 1, 0, true}, // l0
+		{JunctionSide::W, true, 1, 1, true}, // l1
+		{JunctionSide::E, false, 1, 1, true}, // l1b
+		{JunctionSide::E, false, 1, 2, true}, // l0b
+		{JunctionSide::E, false, 1, 3, true}, // l1a
+		{JunctionSide::E, false, 1, 0, true}, // l0a
+	};
+	topology.movements = {{0, 5}, {0, 3}, {1, 4}, {1, 2}};
+	return topology;
+}
 
 namespace {
 
@@ -174,14 +224,17 @@ int GapNeed(TrackBits low, TrackBits high)
 
 class BlockGenerator {
 public:
-	BlockGenerator(const JunctionBlockProgram &program, const JunctionSpec &spec) : program(program), spec(spec) {}
+	BlockGenerator(const JunctionBlockProgram &source, const JunctionSpec &spec);
 
 	bool Run(JunctionBlock &block);
 	const std::string &Error() const { return error; }
 
 private:
-	const JunctionBlockProgram &program;
+	JunctionBlockProgram program; ///< The source with every doubled edge's copy 1 appended as an edge of its own, and a path per copy.
+	const JunctionBlockProgram &source;
 	const JunctionSpec &spec;
+	std::vector<uint16_t> edge_origin; ///< Per edge of `program`, the edge of `source` it comes from.
+	std::vector<std::pair<uint16_t, uint8_t>> path_origin; ///< Per path of `program`, the path of `source` and the copy.
 	std::string error;
 	std::string constant_failure;
 	std::vector<BendShape> shapes;
@@ -220,6 +273,42 @@ private:
 	std::vector<std::pair<Item, Item>> UnrelatedPairs(const std::map<int, std::vector<size_t>> &order, const std::vector<int> &columns, bool consecutive_only) const;
 };
 
+BlockGenerator::BlockGenerator(const JunctionBlockProgram &source, const JunctionSpec &spec) : program(source), source(source), spec(spec)
+{
+	const size_t edges = source.edges.size();
+	std::vector<uint16_t> twin(edges, UINT16_MAX);
+	for (size_t e = 0; e < edges; e++) edge_origin.push_back(static_cast<uint16_t>(e));
+	for (size_t e = 0; e < edges; e++) {
+		if (source.edges[e].copy.empty()) continue;
+		twin[e] = static_cast<uint16_t>(program.edges.size());
+		JunctionBlockEdge copy = source.edges[e];
+		copy.segments = source.edges[e].copy;
+		copy.copy.clear();
+		program.edges.push_back(std::move(copy));
+		edge_origin.push_back(static_cast<uint16_t>(e));
+	}
+	program.paths.clear();
+	program.through.clear();
+	for (size_t p = 0; p < source.paths.size(); p++) {
+		const bool through = p < source.through.size() && source.through[p];
+		program.paths.push_back(source.paths[p]);
+		program.through.push_back(through);
+		path_origin.emplace_back(static_cast<uint16_t>(p), 0);
+		std::vector<uint16_t> second = source.paths[p];
+		bool doubled = false;
+		for (uint16_t &e : second) {
+			if (e < edges && twin[e] != UINT16_MAX) {
+				e = twin[e];
+				doubled = true;
+			}
+		}
+		if (!doubled) continue;
+		program.paths.push_back(std::move(second));
+		program.through.push_back(through);
+		path_origin.emplace_back(static_cast<uint16_t>(p), 1);
+	}
+}
+
 void BlockGenerator::AddFloor(Col hi, Col lo, int k, Rule rule)
 {
 	const int need = k - hi.off + lo.off;
@@ -240,7 +329,7 @@ bool BlockGenerator::Validate()
 {
 	const size_t points = program.points.size();
 	if (points == 0 || program.east >= points) return Fail("block program has no points or a bad east point");
-	if (program.through.size() != program.paths.size()) return Fail("block program: through per path is missing");
+	if (source.through.size() != source.paths.size()) return Fail("block program: through per path is missing");
 	for (const JunctionBlockNode &node : program.nodes) {
 		if (node.point >= points) return Fail("block program: node point out of range");
 	}
@@ -254,6 +343,7 @@ bool BlockGenerator::Validate()
 		if (!edge.to.node && edge.to.index >= program.out_lines.size()) return Fail(fmt::format("block program: edge {} ends at a bad out port", e));
 		for (const JunctionBlockSegment &seg : edge.segments) {
 			if (seg.kind != JunctionBlockSegmentKind::SBend && seg.point >= points) return Fail(fmt::format("block program: edge {} has a segment to a bad point", e));
+			if (seg.role != JunctionTrackStep::Role::None && seg.kind != JunctionBlockSegmentKind::SBend) return Fail(fmt::format("block program: edge {} has a role on a segment that is not an S-bend", e));
 			if (seg.kind == JunctionBlockSegmentKind::SBend && seg.lines == 0) return Fail(fmt::format("block program: edge {} has an S-bend of no lines", e));
 			if (seg.kind == JunctionBlockSegmentKind::Bridge && seg.crosses >= program.edges.size()) return Fail(fmt::format("block program: edge {} has a bridge over no edge", e));
 		}
@@ -471,6 +561,31 @@ bool BlockGenerator::AddBridgeFloors()
 				AddFloor(far, {seg.start.point, seg.start.off + east_piece->dx}, GapNeed(east_piece->bits, axis), R4);
 			}
 			if (!found) return Fail(fmt::format("edge {}: its bridge has no bend of edge {} under it", e, crosses));
+
+			/* R2, R3 across the copies: the lane split tile of the other copy's bend counts as a split, its lane merge tile as a merge. */
+			for (size_t other = 0; other < program.edges.size(); other++) {
+				if (other == e || edge_origin[other] != edge_origin[e]) continue;
+				const EdgeGeom &twin = geoms[other];
+				size_t twin_bridge = twin.segs.size();
+				for (size_t c = 0; c < twin.segs.size() && twin_bridge == twin.segs.size(); c++) {
+					if (twin.segs[c].kind == Kind::Bridge) twin_bridge = c;
+				}
+				for (size_t c = 0; c < twin.segs.size(); c++) {
+					const Seg &seg = twin.segs[c];
+					const JunctionTrackStep::Role role = program.edges[other].segments[c].role;
+					const bool splits = role == JunctionTrackStep::Role::LaneSplit && c < twin_bridge;
+					const bool merges = role == JunctionTrackStep::Role::LaneMerge && c > twin_bridge;
+					if (seg.kind != Kind::SBend || (!splits && !merges)) continue;
+					std::optional<int> lowest, highest;
+					for (const BendPiece &piece : shapes[seg.shape].pieces) {
+						if (seg.line_before + piece.dy != bridge.line_before) continue;
+						lowest = lowest.has_value() ? std::min(*lowest, piece.dx) : piece.dx;
+						highest = highest.has_value() ? std::max(*highest, piece.dx) : piece.dx;
+					}
+					if (splits && highest.has_value()) AddFloor(near, {seg.start.point, seg.start.off + *highest}, 2, R2);
+					if (merges && lowest.has_value()) AddFloor({seg.start.point, seg.start.off + *lowest}, far, 2, R3);
+				}
+			}
 		}
 	}
 	return true;
@@ -623,8 +738,8 @@ bool BlockGenerator::EmitRoute(size_t path, const std::vector<int> &columns, Jun
 	if (spans != nullptr) spans->clear();
 	int last = 0;
 	for (uint16_t e : program.paths[path]) {
-		if (spans != nullptr) spans->emplace_back(e, route.moves.size());
 		for (const Seg &seg : geoms[e].segs) {
+			if (spans != nullptr) spans->emplace_back(e, route.moves.size());
 			switch (seg.kind) {
 				case Kind::Run: {
 					const int count = Val(seg.end, columns) - 1 - last;
@@ -681,6 +796,7 @@ bool BlockGenerator::Related(const Item &a, const Item &b, const std::vector<int
 	if (a.edge == b.edge) return true;
 	const int edges = static_cast<int>(program.edges.size());
 	if (a.edge >= edges || b.edge >= edges) return false;
+	if (edge_origin[a.edge] == edge_origin[b.edge]) return true; // The two copies of one doubled edge (D80).
 	for (size_t n = 0; n < program.nodes.size(); n++) {
 		if (node_line[n] != a.line) continue;
 		const bool has_a = std::ranges::find(node_edges[n], a.edge) != node_edges[n].end();
@@ -849,10 +965,10 @@ bool BlockGenerator::BuildOutputs(const JunctionSpec &spec, const std::vector<Ju
 		if (side == JunctionSide::W) in_slot.push_back(static_cast<uint16_t>(i));
 		if (side == JunctionSide::E) out_slot.insert(out_slot.begin(), static_cast<uint16_t>(i));
 	}
-	bool match = block.paths.size() == program.paths.size() && in_slot.size() == program.in_lines.size() && out_slot.size() == program.out_lines.size();
-	for (size_t p = 0; match && p < program.paths.size(); p++) {
-		const JunctionBlockEdge &first = program.edges[program.paths[p].front()];
-		const JunctionBlockEdge &last = program.edges[program.paths[p].back()];
+	bool match = block.paths.size() == source.paths.size() && in_slot.size() == program.in_lines.size() && out_slot.size() == program.out_lines.size();
+	for (size_t p = 0; match && p < source.paths.size(); p++) {
+		const JunctionBlockEdge &first = source.edges[source.paths[p].front()];
+		const JunctionBlockEdge &last = source.edges[source.paths[p].back()];
 		match = !first.from.node && !last.to.node && block.paths[p].from == in_slot[first.from.index] && block.paths[p].to == out_slot[last.to.index];
 	}
 	if (!match) return Fail("block paths do not match the topology");
@@ -862,14 +978,14 @@ bool BlockGenerator::BuildOutputs(const JunctionSpec &spec, const std::vector<Ju
 	for (size_t n = 0; n < program.nodes.size(); n++) {
 		JunctionTrackNode node{program.nodes[n].split, 0, 0, JunctionBlockKind::Plain};
 		if (node.split) {
-			for (const JunctionBlockEdge &edge : program.edges) {
+			for (const JunctionBlockEdge &edge : source.edges) {
 				if (edge.to.node && edge.to.index == n && !edge.from.node) node.slot = in_slot[edge.from.index];
 			}
 		} else {
 			uint16_t at = static_cast<uint16_t>(n);
-			for (size_t guard = 0; guard < program.edges.size(); guard++) {
-				const auto it = std::ranges::find_if(program.edges, [&](const JunctionBlockEdge &edge) { return edge.from.node && edge.from.index == at; });
-				if (it == program.edges.end()) return Fail("block merge feeds no out port");
+			for (size_t guard = 0; guard < source.edges.size(); guard++) {
+				const auto it = std::ranges::find_if(source.edges, [&](const JunctionBlockEdge &edge) { return edge.from.node && edge.from.index == at; });
+				if (it == source.edges.end()) return Fail("block merge feeds no out port");
 				if (!it->to.node) {
 					node.slot = out_slot[it->to.index];
 					break;
@@ -879,8 +995,8 @@ bool BlockGenerator::BuildOutputs(const JunctionSpec &spec, const std::vector<Ju
 		}
 		graph.nodes.push_back(node);
 	}
-	for (size_t e = 0; e < program.edges.size(); e++) {
-		const JunctionBlockEdge &edge = program.edges[e];
+	for (size_t e = 0; e < source.edges.size(); e++) {
+		const JunctionBlockEdge &edge = source.edges[e];
 		JunctionTrackEdge out;
 		if (!edge.from.node && edge.to.node && program.nodes[edge.to.index].split) {
 			out.kind = JunctionTrackEdge::Kind::In;
@@ -891,8 +1007,8 @@ bool BlockGenerator::BuildOutputs(const JunctionSpec &spec, const std::vector<Ju
 		}
 		out.from = {edge.from.node, edge.from.node ? edge.from.index : in_slot[edge.from.index]};
 		out.to = {edge.to.node, edge.to.node ? edge.to.index : out_slot[edge.to.index]};
-		for (size_t p = 0; p < program.paths.size(); p++) {
-			if (std::ranges::find(program.paths[p], static_cast<uint16_t>(e)) != program.paths[p].end()) out.paths.push_back(static_cast<uint16_t>(p));
+		for (size_t p = 0; p < source.paths.size(); p++) {
+			if (std::ranges::find(source.paths[p], static_cast<uint16_t>(e)) != source.paths[p].end()) out.paths.push_back(static_cast<uint16_t>(p));
 		}
 		graph.edges.push_back(std::move(out));
 		for (const JunctionBlockSegment &segment : edge.segments) {
@@ -900,20 +1016,47 @@ bool BlockGenerator::BuildOutputs(const JunctionSpec &spec, const std::vector<Ju
 		}
 	}
 	std::ranges::sort(graph.crossings);
-	for (const std::vector<uint16_t> &path : program.paths) graph.path_edges.emplace_back(path.begin(), path.end());
-	block.programs.edges.resize(program.edges.size());
-	block.programs.copies.resize(program.edges.size());
+	for (const std::vector<uint16_t> &path : source.paths) graph.path_edges.emplace_back(path.begin(), path.end());
+	block.programs.edges.resize(source.edges.size());
+	block.programs.copies.resize(source.edges.size());
 
-	/* The tagged routes: each piece belongs to the edge whose moves made it; the start piece to the first edge. */
+	/* A doubled edge has one SBend token per copy: copy 0's lane merge bend in `edges`, copy 1's lane split bend in `copies`. */
+	const auto role_bend = [&](size_t edge, JunctionTrackStep::Role role) -> const Seg * {
+		for (size_t s = 0; s < program.edges[edge].segments.size(); s++) {
+			if (program.edges[edge].segments[s].role == role) return &geoms[edge].segs[s];
+		}
+		return nullptr;
+	};
+	for (size_t twin = source.edges.size(); twin < program.edges.size(); twin++) {
+		const size_t e = edge_origin[twin];
+		const Seg *merge = role_bend(e, JunctionTrackStep::Role::LaneMerge);
+		const Seg *split = role_bend(twin, JunctionTrackStep::Role::LaneSplit);
+		if (merge == nullptr || split == nullptr) return Fail(fmt::format("doubled edge {} has no lane merge bend on copy 0 or no lane split bend on copy 1", e));
+		block.programs.edges[e] = {{JunctionTrackStep::Kind::SBend, static_cast<int8_t>(shapes[merge->shape].first_left ? -1 : 1), 0, 0, JunctionTrackStep::Role::LaneMerge}};
+		block.programs.copies[e] = {{JunctionTrackStep::Kind::SBend, static_cast<int8_t>(shapes[split->shape].first_left ? -1 : 1), 0, 0, JunctionTrackStep::Role::LaneSplit}};
+	}
+
+	/* The tagged routes: each piece belongs to the edge whose moves made it; the start piece to the first edge. The pieces of a lane split or lane merge bend are token 0, the others RUN. */
 	for (size_t p = 0; p < program.paths.size(); p++) {
 		JunctionTrackRoute route;
-		route.path = static_cast<uint16_t>(p);
-		route.copy = 0;
+		route.path = path_origin[p].first;
+		route.copy = path_origin[p].second;
 		route.pieces = rasters[p].pieces;
-		route.tags.push_back({spans[p].front().first, JunctionTrackPieceTag::RUN, 0, 0});
+		route.tags.push_back({edge_origin[spans[p].front().first], JunctionTrackPieceTag::RUN, 0, route.copy});
 		const std::string &moves = block.routes[p].moves;
+		uint16_t passed = 0; // The tokens of the current edge before the current segment.
+		size_t segment = 0;
 		for (size_t s = 0; s < spans[p].size(); s++) {
+			const uint16_t edge = spans[p][s].first;
+			if (s == 0 || spans[p][s - 1].first != edge) {
+				passed = 0;
+				segment = 0;
+			}
+			const JunctionBlockSegment &seg = program.edges[edge].segments[segment];
+			const bool token = seg.role != JunctionTrackStep::Role::None;
+			const size_t halves = token ? 2 * std::abs(seg.lines) : 0;
 			const size_t end = s + 1 < spans[p].size() ? spans[p][s + 1].second : moves.size();
+			size_t piece = 0;
 			for (size_t i = spans[p][s].second; i < end; i++) {
 				if (moves[i] >= '0' && moves[i] <= '9') continue;
 				size_t count = 1;
@@ -922,19 +1065,27 @@ bool BlockGenerator::BuildOutputs(const JunctionSpec &spec, const std::vector<Ju
 					for (size_t j = i + 1; j < end && moves[j] >= '0' && moves[j] <= '9'; j++) middle = middle * 10 + (moves[j] - '0');
 					count = middle + 2;
 				}
-				for (size_t k = 0; k < count; k++) route.tags.push_back({spans[p][s].first, JunctionTrackPieceTag::RUN, 0, 0});
+				for (size_t k = 0; k < count; k++, piece++) {
+					if (piece < halves) {
+						route.tags.push_back({edge_origin[edge], 0, passed, route.copy});
+					} else {
+						route.tags.push_back({edge_origin[edge], JunctionTrackPieceTag::RUN, static_cast<uint16_t>(passed + (token ? 1 : 0)), route.copy});
+					}
+				}
 			}
+			if (token) passed++;
+			segment++;
 		}
 		/* A merge's tile and every piece before it belong to the edge that ends at the merge node, the pieces after it to the edge that leaves (the convention of JunctionRouteEvents); a split's tile belongs to the edge that leaves, as the moves already make it. */
 		for (size_t t = 1; t < route.tags.size(); t++) {
 			const uint32_t in = route.tags[t - 1].edge, out = route.tags[t].edge;
-			if (in == out || !program.edges[in].to.node || program.nodes[program.edges[in].to.index].split) continue;
-			const JunctionBlockNode &node = program.nodes[program.edges[in].to.index];
+			if (in == out || !source.edges[in].to.node || program.nodes[source.edges[in].to.index].split) continue;
+			const JunctionBlockNode &node = program.nodes[source.edges[in].to.index];
 			const size_t from = t >= 3 ? t - 3 : 0;
 			const size_t to = std::min(t + 2, route.pieces.size());
 			size_t boundary = t;
 			for (size_t k = from; k < to; k++) {
-				if (!route.pieces[k].on_bridge && route.pieces[k].tile.x == block.columns[node.point] && route.pieces[k].tile.y == program.edges[out].line) boundary = k + 1;
+				if (!route.pieces[k].on_bridge && route.pieces[k].tile.x == block.columns[node.point] && route.pieces[k].tile.y == source.edges[out].line) boundary = k + 1;
 			}
 			for (size_t k = std::min(t, boundary); k < std::max(t, boundary); k++) route.tags[k].edge = boundary > t ? in : out;
 		}

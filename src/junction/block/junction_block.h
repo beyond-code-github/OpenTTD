@@ -32,6 +32,7 @@ struct JunctionBlockSegment {
 	int lines = 0; ///< SBend: signed lines, + is right of travel.
 	uint16_t point = 0; ///< Run, Bridge: the point it goes to (Bridge: the far head).
 	uint16_t crosses = UINT16_MAX; ///< Bridge: the edge whose S-bend passes under it.
+	JunctionTrackStep::Role role = JunctionTrackStep::Role::None; ///< SBend only: LaneSplit or LaneMerge of a doubled edge.
 };
 
 /** The end of an edge: a node, or an in port (from) or an out port (to). */
@@ -52,6 +53,7 @@ struct JunctionBlockEdge {
 	JunctionBlockEnd to;
 	int line; ///< The line the edge starts on.
 	std::vector<JunctionBlockSegment> segments;
+	std::vector<JunctionBlockSegment> copy; ///< Copy 1's segments of a doubled edge (D80); empty for a single edge.
 };
 
 /** The prio element at a merge node, on its row line. */
@@ -83,19 +85,21 @@ struct JunctionBlockPort {
 /** A solved block: routes, layout and ports share one frame, x the column and y the line. */
 struct JunctionBlock {
 	std::vector<int> columns; ///< Per point, its solved column.
-	std::vector<JunctionRoute> routes; ///< Per path, in block coordinates: x is the column, y the line.
+	std::vector<JunctionRoute> routes; ///< Per path, and per copy of a path through a doubled edge (copy 0 first), in block coordinates: x is the column, y the line.
 	JunctionLayout layout; ///< The routes rasterised and normalised.
 	std::vector<JunctionBlockPort> in_ports, out_ports;
 	JunctionTopology topology; ///< The program's topology.
 	std::vector<JunctionLanePath> paths; ///< ExpandJunctionLanes of the topology.
 	JunctionTrackGraph graph; ///< The program's nodes and edges as a track graph.
-	JunctionTrackPrograms programs; ///< Edges and copies sized to the graph's edges, every list empty.
-	std::vector<JunctionTrackRoute> track_routes; ///< Per path, its pieces in the layout frame with the program edge that emitted each.
+	JunctionTrackPrograms programs; ///< Edges and copies sized to the graph's edges; a doubled edge has one SBend token per copy, every other list is empty.
+	std::vector<JunctionTrackRoute> track_routes; ///< Per route (as `routes`), its pieces in the layout frame with the program edge that emitted each.
 	std::vector<JunctionPrioSpan> prio; ///< Per program prio, its tiles and drawn bits.
 };
 
 JunctionBlockProgram JunctionJoinBlock227Program();
 bool BuildJunctionBlock(const JunctionBlockProgram &program, const JunctionSpec &spec, JunctionBlock &block, std::string *error);
 JunctionTopology JunctionJoinBlock227Topology();
+JunctionBlockProgram JunctionExitBlockProgram();
+JunctionTopology JunctionExitBlockTopology();
 
 #endif /* JUNCTION_BLOCK_H */
