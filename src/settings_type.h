@@ -283,6 +283,7 @@ struct GUISettings {
 	std::string junction_train_engines; ///< Engine IDs of the parts of the junction design train, as a comma list.
 	uint8_t junction_prio; ///< Prio slider choice last used in the junction window; 0 = the strict maximum.
 	uint8_t junction_lane_pairing; ///< Lane pairing last used in the junction window (JunctionLanePairing, D221): 0 any, 1 keep, 2 per direction.
+	bool junction_planar; ///< The junction tool plans with the planar line/route model (DESIGN-planar) instead of the graph pipeline.
 	uint8_t junction_station_platforms; ///< Number of platforms last used in the junction station window.
 	TimerGameCalendar::Year semaphore_build_before; ///< build semaphore signals automatically before this year
 	uint8_t news_message_timeout; ///< how much longer than the news message "age" should we keep the message in the history
