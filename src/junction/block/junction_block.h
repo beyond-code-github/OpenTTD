@@ -104,6 +104,7 @@ struct JunctionOrientedBlock {
 	std::vector<std::pair<TileIndexDiffC, TrackBits>> tiles; ///< Every tile of the block's track pieces (bridge middles excluded), with its bits.
 	std::vector<std::pair<TileIndexDiffC, TrackBits>> prio_tiles; ///< Every tile of its prio spans, with the drawn bits.
 	std::vector<JunctionRoute> routes; ///< The block's routes, start offsets from the anchor.
+	std::vector<JunctionPrioSpan> prio; ///< The block's prio spans turned like its tiles: merge and tiles as offsets from the anchor, bits through the same track transform, drawing order kept.
 	int length; ///< The out-port column E: tiles from the anchor to the out ports along the heading.
 };
 

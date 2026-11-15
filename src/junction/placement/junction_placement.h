@@ -299,6 +299,9 @@ struct JunctionTrackPlacement {
 	std::vector<std::vector<std::pair<int8_t, int>>> curves; ///< Per lane path and copy (paths first, then copies in path order): each curve's hand (+1 right, -1 left) and unit position at the solved columns, from the curve family's walk (for tests).
 };
 
+/** The bundle of a block node's template that an edge end attaches to: its index (0 trunk or straight, 1 diverging), and in_bundle whether it is an in bundle (a split's trunk, a merge's legs). */
+int JunctionBlockBundleOf(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, uint32_t node, uint32_t edge, bool &in_bundle);
+
 /**
  * The seed placement (DESIGN-G1 §11.8): the least tiles that meet the rules, Y first then X.
  * @param error Receives the reason when the result is empty (no nodes), e.g. a bridge longer than spec.max_bridge_middle.
