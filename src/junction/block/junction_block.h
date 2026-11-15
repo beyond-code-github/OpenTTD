@@ -14,6 +14,7 @@
 #include "../../map_type.h"
 #include "../junction_layout.h"
 #include "../junction_route.h"
+#include "../placement/junction_placement.h"
 #include "../topology/junction_topology.h"
 
 #include <cstdint>
@@ -70,6 +71,7 @@ struct JunctionBlockProgram {
 	std::vector<std::vector<uint16_t>> paths; ///< Per lane path, its edges in travel order.
 	std::vector<bool> through; ///< Per path: a through path (no queue bay, R5).
 	std::vector<JunctionBlockPrio> prios;
+	JunctionTopology topology; ///< The topology of the block's lane paths.
 };
 
 /** A port of the solved block, in layout coordinates. */
@@ -78,12 +80,18 @@ struct JunctionBlockPort {
 	Trackdir trackdir;
 };
 
-/** A solved block. */
+/** A solved block: routes, layout and ports share one frame, x the column and y the line. */
 struct JunctionBlock {
 	std::vector<int> columns; ///< Per point, its solved column.
 	std::vector<JunctionRoute> routes; ///< Per path, in block coordinates: x is the column, y the line.
 	JunctionLayout layout; ///< The routes rasterised and normalised.
 	std::vector<JunctionBlockPort> in_ports, out_ports;
+	JunctionTopology topology; ///< The program's topology.
+	std::vector<JunctionLanePath> paths; ///< ExpandJunctionLanes of the topology.
+	JunctionTrackGraph graph; ///< The program's nodes and edges as a track graph.
+	JunctionTrackPrograms programs; ///< Edges and copies sized to the graph's edges, every list empty.
+	std::vector<JunctionTrackRoute> track_routes; ///< Per path, its pieces in the layout frame with the program edge that emitted each.
+	std::vector<JunctionPrioSpan> prio; ///< Per program prio, its tiles and drawn bits.
 };
 
 JunctionBlockProgram JunctionJoinBlock227Program();

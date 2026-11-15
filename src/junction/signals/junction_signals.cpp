@@ -187,6 +187,10 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 			const Track h1 = JunctionCornerTrack(*side, exit_edge);
 			const Track h2 = JunctionCornerTrack(ReverseDiagDir(*side), ReverseDiagDir(exit_edge));
 
+			/* The caller's spans decide which merges get a prio: a merge without one gets none. */
+			const auto span = prio == nullptr ? std::vector<JunctionPrioSpan>::const_iterator{} : std::ranges::find_if(*prio, [&](const JunctionPrioSpan &candidate) { return candidate.merge.x == M.x && candidate.merge.y == M.y; });
+			if (prio != nullptr && span == prio->end()) continue;
+
 			/* 3. The requirements, all before anything is written. */
 			const auto ml = [&](int s) { return TileIndexDiffC{static_cast<int16_t>(M.x - s * dir.x), static_cast<int16_t>(M.y - s * dir.y)}; };
 			const auto row = [&](int s) { const TileIndexDiffC t = ml(s); return TileIndexDiffC{static_cast<int16_t>(t.x + side_diff.x), static_cast<int16_t>(t.y + side_diff.y)}; };
@@ -210,8 +214,6 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 
 			/* 4. Write. */
 			if (prio != nullptr) {
-				const auto span = std::ranges::find_if(*prio, [&](const JunctionPrioSpan &candidate) { return candidate.merge.x == M.x && candidate.merge.y == M.y; });
-				if (span == prio->end()) continue;
 				for (const auto &[tile, bits] : span->tiles) {
 					draw(tile, bits);
 					if (prio_beside != nullptr && tile.y != M.y) prio_beside->emplace_back(tile, TileIndexDiffC{tile.x, M.y});

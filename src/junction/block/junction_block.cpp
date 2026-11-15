@@ -59,6 +59,7 @@ JunctionBlockProgram JunctionJoinBlock227Program()
 	p.paths = {{fA, L0}, {cAin, cA0, c0, L0}, {cAin, cA1, c1, L1}, {cBin, cB0, c0, L0}, {cBin, cB1, c1, L1}, {fB, L1}};
 	p.through = {true, false, false, false, false, true};
 	p.prios = {{NmL0, 0}, {NmL1, 7}};
+	p.topology = JunctionJoinBlock227Topology();
 	return p;
 }
 
@@ -82,6 +83,7 @@ JunctionTopology JunctionJoinBlock227Topology()
 namespace {
 
 constexpr int MAX_COLUMN = 255; ///< The largest column a point may take.
+constexpr int FRAME_MARGIN = 1; ///< Empty lines kept beyond the topmost and bottommost line of the block.
 
 /** The rule family a floor belongs to; the number is the reason handed to JunctionPositions. */
 enum Rule : uint32_t { R1 = 1, R2, R3, R4, R5, R6, R7, R8, R9, TIE };
@@ -210,7 +212,8 @@ private:
 	bool AddPrioFloors();
 	void BuildItems();
 	bool Solve(const std::vector<Floor> &all, std::vector<int> &columns);
-	bool EmitRoute(size_t path, const std::vector<int> &columns, JunctionRoute &route);
+	bool EmitRoute(size_t path, const std::vector<int> &columns, JunctionRoute &route, std::vector<std::pair<uint16_t, size_t>> *spans = nullptr);
+	bool BuildOutputs(const JunctionSpec &spec, const std::vector<JunctionRaster> &rasters, const std::vector<std::vector<std::pair<uint16_t, size_t>>> &spans, JunctionBlock &block);
 	bool AddBayFloors(const std::vector<int> &columns);
 	std::map<int, std::vector<size_t>> Order(const std::vector<int> &columns) const;
 	bool Related(const Item &a, const Item &b, const std::vector<int> &columns) const;
@@ -610,15 +613,17 @@ bool BlockGenerator::Solve(const std::vector<Floor> &all, std::vector<int> &colu
 }
 
 /** The route of a path at the given columns: from its west in-port tile to its east out-port tile. */
-bool BlockGenerator::EmitRoute(size_t path, const std::vector<int> &columns, JunctionRoute &route)
+bool BlockGenerator::EmitRoute(size_t path, const std::vector<int> &columns, JunctionRoute &route, std::vector<std::pair<uint16_t, size_t>> *spans)
 {
 	using Kind = JunctionBlockSegmentKind;
 	const JunctionBlockEdge &first = program.edges[program.paths[path].front()];
 	route.start = {0, static_cast<int16_t>(program.in_lines[first.from.index])};
 	route.start_trackdir = Trackdir::X_SW;
 	route.moves.clear();
+	if (spans != nullptr) spans->clear();
 	int last = 0;
 	for (uint16_t e : program.paths[path]) {
+		if (spans != nullptr) spans->emplace_back(e, route.moves.size());
 		for (const Seg &seg : geoms[e].segs) {
 			switch (seg.kind) {
 				case Kind::Run: {
@@ -796,22 +801,24 @@ bool BlockGenerator::Run(JunctionBlock &block)
 	/* Emit. */
 	block = JunctionBlock{};
 	block.columns = columns;
-	int top = INT16_MAX;
 	std::vector<JunctionRaster> rasters;
+	std::vector<std::vector<std::pair<uint16_t, size_t>>> spans(program.paths.size());
 	for (size_t p = 0; p < program.paths.size(); p++) {
 		JunctionRoute route;
-		if (!EmitRoute(p, columns, route)) return false;
+		if (!EmitRoute(p, columns, route, &spans[p])) return false;
+		route.start.y += FRAME_MARGIN;
 		rasters.push_back(RasterizeJunctionRoute(route));
 		if (!rasters.back().error.empty()) return Fail(fmt::format("path {}: {}", p, rasters.back().error));
 		const JunctionPiece &end = rasters.back().pieces.back();
 		const JunctionBlockEdge &last = program.edges[program.paths[p].back()];
-		if (end.tile.x != columns[program.east] || end.tile.y != program.out_lines[last.to.index] || end.trackdir != Trackdir::X_SW) return Fail(fmt::format("path {} does not end on its out port", p));
-		for (const JunctionPiece &piece : rasters.back().pieces) top = std::min<int>(top, piece.tile.y);
+		if (end.tile.x != columns[program.east] || end.tile.y != program.out_lines[last.to.index] + FRAME_MARGIN || end.trackdir != Trackdir::X_SW) return Fail(fmt::format("path {} does not end on its out port", p));
 		block.routes.push_back(std::move(route));
 	}
 	std::set<std::pair<int, int>> tiles;
+	int bottom = 0;
 	for (const Item &item : items) {
-		for (int x = Val(item.lo, columns); x <= Val(item.hi, columns); x++) tiles.insert({x, item.line});
+		bottom = std::max(bottom, item.line);
+		for (int x = Val(item.lo, columns); x <= Val(item.hi, columns); x++) tiles.insert({x, item.line + FRAME_MARGIN});
 	}
 	for (const JunctionRaster &raster : rasters) {
 		for (const JunctionPiece &piece : raster.pieces) {
@@ -819,9 +826,139 @@ bool BlockGenerator::Run(JunctionBlock &block)
 		}
 		AddRasterToLayout(block.layout, raster);
 	}
-	NormaliseJunctionLayout(block.layout);
-	for (int line : program.in_lines) block.in_ports.push_back({{0, static_cast<int16_t>(line - top)}, Trackdir::X_SW});
-	for (int line : program.out_lines) block.out_ports.push_back({{static_cast<int16_t>(columns[program.east]), static_cast<int16_t>(line - top)}, Trackdir::X_SW});
+	/* One frame: x the column, y the line plus the margin, so the prio rows lie inside the layout with one empty line beyond each (the box edge holds only ports); it is not normalised, which would shift the lines away. */
+	block.layout.size = {static_cast<int16_t>(columns[program.east] + 1), static_cast<int16_t>(bottom + 1 + 2 * FRAME_MARGIN)};
+	for (int line : program.in_lines) block.in_ports.push_back({{0, static_cast<int16_t>(line + FRAME_MARGIN)}, Trackdir::X_SW});
+	for (int line : program.out_lines) block.out_ports.push_back({{static_cast<int16_t>(columns[program.east]), static_cast<int16_t>(line + FRAME_MARGIN)}, Trackdir::X_SW});
+	return BuildOutputs(spec, rasters, spans, block);
+}
+
+/** The topology, lane paths, track graph, programs, tagged routes and prio spans of the solved block. */
+bool BlockGenerator::BuildOutputs(const JunctionSpec &spec, const std::vector<JunctionRaster> &rasters, const std::vector<std::vector<std::pair<uint16_t, size_t>>> &spans, JunctionBlock &block)
+{
+	using Kind = JunctionBlockSegmentKind;
+	block.topology = program.topology;
+	std::string why;
+	block.paths = ExpandJunctionLanes(block.topology, &why);
+	if (block.paths.empty()) return Fail("block topology: " + why);
+
+	/* The in port p is the p-th W slot; the E slots run south to north, so the out port p is the E slot p from the last. */
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(block.topology);
+	std::vector<uint16_t> in_slot, out_slot;
+	for (size_t i = 0; i < slots.size(); i++) {
+		const JunctionSide side = block.topology.groups[slots[i].group].side;
+		if (side == JunctionSide::W) in_slot.push_back(static_cast<uint16_t>(i));
+		if (side == JunctionSide::E) out_slot.insert(out_slot.begin(), static_cast<uint16_t>(i));
+	}
+	bool match = block.paths.size() == program.paths.size() && in_slot.size() == program.in_lines.size() && out_slot.size() == program.out_lines.size();
+	for (size_t p = 0; match && p < program.paths.size(); p++) {
+		const JunctionBlockEdge &first = program.edges[program.paths[p].front()];
+		const JunctionBlockEdge &last = program.edges[program.paths[p].back()];
+		match = !first.from.node && !last.to.node && block.paths[p].from == in_slot[first.from.index] && block.paths[p].to == out_slot[last.to.index];
+	}
+	if (!match) return Fail("block paths do not match the topology");
+
+	/* The graph: nodes and edges as the program has them. */
+	JunctionTrackGraph &graph = block.graph;
+	for (size_t n = 0; n < program.nodes.size(); n++) {
+		JunctionTrackNode node{program.nodes[n].split, 0, 0, JunctionBlockKind::Plain};
+		if (node.split) {
+			for (const JunctionBlockEdge &edge : program.edges) {
+				if (edge.to.node && edge.to.index == n && !edge.from.node) node.slot = in_slot[edge.from.index];
+			}
+		} else {
+			uint16_t at = static_cast<uint16_t>(n);
+			for (size_t guard = 0; guard < program.edges.size(); guard++) {
+				const auto it = std::ranges::find_if(program.edges, [&](const JunctionBlockEdge &edge) { return edge.from.node && edge.from.index == at; });
+				if (it == program.edges.end()) return Fail("block merge feeds no out port");
+				if (!it->to.node) {
+					node.slot = out_slot[it->to.index];
+					break;
+				}
+				at = it->to.index;
+			}
+		}
+		graph.nodes.push_back(node);
+	}
+	for (size_t e = 0; e < program.edges.size(); e++) {
+		const JunctionBlockEdge &edge = program.edges[e];
+		JunctionTrackEdge out;
+		if (!edge.from.node && edge.to.node && program.nodes[edge.to.index].split) {
+			out.kind = JunctionTrackEdge::Kind::In;
+		} else if (edge.from.node && !program.nodes[edge.from.index].split) {
+			out.kind = JunctionTrackEdge::Kind::Out;
+		} else {
+			out.kind = JunctionTrackEdge::Kind::Leg;
+		}
+		out.from = {edge.from.node, edge.from.node ? edge.from.index : in_slot[edge.from.index]};
+		out.to = {edge.to.node, edge.to.node ? edge.to.index : out_slot[edge.to.index]};
+		for (size_t p = 0; p < program.paths.size(); p++) {
+			if (std::ranges::find(program.paths[p], static_cast<uint16_t>(e)) != program.paths[p].end()) out.paths.push_back(static_cast<uint16_t>(p));
+		}
+		graph.edges.push_back(std::move(out));
+		for (const JunctionBlockSegment &segment : edge.segments) {
+			if (segment.kind == Kind::Bridge && segment.crosses != UINT16_MAX) graph.crossings.emplace_back(std::min<uint32_t>(e, segment.crosses), std::max<uint32_t>(e, segment.crosses));
+		}
+	}
+	std::ranges::sort(graph.crossings);
+	for (const std::vector<uint16_t> &path : program.paths) graph.path_edges.emplace_back(path.begin(), path.end());
+	block.programs.edges.resize(program.edges.size());
+	block.programs.copies.resize(program.edges.size());
+
+	/* The tagged routes: each piece belongs to the edge whose moves made it; the start piece to the first edge. */
+	for (size_t p = 0; p < program.paths.size(); p++) {
+		JunctionTrackRoute route;
+		route.path = static_cast<uint16_t>(p);
+		route.copy = 0;
+		route.pieces = rasters[p].pieces;
+		route.tags.push_back({spans[p].front().first, JunctionTrackPieceTag::RUN, 0, 0});
+		const std::string &moves = block.routes[p].moves;
+		for (size_t s = 0; s < spans[p].size(); s++) {
+			const size_t end = s + 1 < spans[p].size() ? spans[p][s + 1].second : moves.size();
+			for (size_t i = spans[p][s].second; i < end; i++) {
+				if (moves[i] >= '0' && moves[i] <= '9') continue;
+				size_t count = 1;
+				if (moves[i] == 'B') {
+					size_t middle = 0;
+					for (size_t j = i + 1; j < end && moves[j] >= '0' && moves[j] <= '9'; j++) middle = middle * 10 + (moves[j] - '0');
+					count = middle + 2;
+				}
+				for (size_t k = 0; k < count; k++) route.tags.push_back({spans[p][s].first, JunctionTrackPieceTag::RUN, 0, 0});
+			}
+		}
+		/* A merge's tile and every piece before it belong to the edge that ends at the merge node, the pieces after it to the edge that leaves (the convention of JunctionRouteEvents); a split's tile belongs to the edge that leaves, as the moves already make it. */
+		for (size_t t = 1; t < route.tags.size(); t++) {
+			const uint32_t in = route.tags[t - 1].edge, out = route.tags[t].edge;
+			if (in == out || !program.edges[in].to.node || program.nodes[program.edges[in].to.index].split) continue;
+			const JunctionBlockNode &node = program.nodes[program.edges[in].to.index];
+			const size_t from = t >= 3 ? t - 3 : 0;
+			const size_t to = std::min(t + 2, route.pieces.size());
+			size_t boundary = t;
+			for (size_t k = from; k < to; k++) {
+				if (!route.pieces[k].on_bridge && route.pieces[k].tile.x == block.columns[node.point] && route.pieces[k].tile.y == program.edges[out].line + FRAME_MARGIN) boundary = k + 1;
+			}
+			for (size_t k = std::min(t, boundary); k < std::max(t, boundary); k++) route.tags[k].edge = boundary > t ? in : out;
+		}
+		if (route.tags.size() != route.pieces.size()) return Fail(fmt::format("path {}: the tags do not cover the pieces", p));
+		block.track_routes.push_back(std::move(route));
+	}
+
+	/* The prio spans, in the step-bits pattern of the placement. */
+	const int even_prio = (spec.prio_tiles + 1) & ~1;
+	for (const JunctionBlockPrio &prio : program.prios) {
+		const auto fixed = std::ranges::find_if(program.edges, [&](const JunctionBlockEdge &edge) { return edge.to.node && edge.to.index == prio.node && !edge.from.node; });
+		if (fixed == program.edges.end()) return Fail("a block prio's merge has no fixed edge");
+		JunctionPrioSpan span;
+		span.merge = {static_cast<int16_t>(block.columns[program.nodes[prio.node].point]), static_cast<int16_t>(fixed->line + FRAME_MARGIN)};
+		const DiagDirection side = prio.line < fixed->line ? DiagDirection::NW : DiagDirection::SE;
+		for (int step = 0; step <= even_prio; step++) {
+			const auto [row_bits, lane_bits] = JunctionPrioStepBits(step, side, DiagDirection::SW);
+			const int16_t x = static_cast<int16_t>(span.merge.x - step);
+			if (lane_bits.Any()) span.tiles.emplace_back(TileIndexDiffC{x, span.merge.y}, lane_bits);
+			span.tiles.emplace_back(TileIndexDiffC{x, static_cast<int16_t>(prio.line + FRAME_MARGIN)}, row_bits);
+		}
+		block.prio.push_back(std::move(span));
+	}
 	return true;
 }
 

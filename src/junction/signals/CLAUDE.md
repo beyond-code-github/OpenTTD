@@ -24,3 +24,4 @@
 - Prio coverage is in whole tiles, sized by exact timing; coverage above 32 tiles is refused ("Prio coverage would exceed 32 tiles"); the prio element's joins sit at even offsets, so an odd length is built one tile longer.
 - Every main-line lane that has a joiner (a merge whose other edge is not a row edge) has a prio element; the throughput estimate does not decide it on the graph pipeline.
 - Main-line delay from the junction is strictly zero by default.
+- When the caller gives prio spans, the pass draws a prio element only at merges that have a span; other merges get none (D282, D298).

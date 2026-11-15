@@ -262,6 +262,15 @@ struct JunctionPlacementSystem {
 	std::vector<std::string> failed; ///< The recording's failed solves and builds, in order, e.g. "Y solve: <error>", "X build: <error>".
 };
 
+/**
+ * The tracks a prio element draws at one of its steps (DESIGN-G1 12.4), the one pattern occupancy and the placement's JunctionPrioSpan share.
+ * @param step The step upstream of the joiner merge (0 at the merge's column).
+ * @param side The side of the main line the element's row lies on.
+ * @param exit_edge The edge the main line leaves its tiles by (SW eastbound, NE westbound).
+ * @return The bits on the element's row and those on the main line (lane row) tile of the same column.
+ */
+std::pair<TrackBits, TrackBits> JunctionPrioStepBits(int step, DiagDirection side, DiagDirection exit_edge);
+
 /** One prio element as the placement fixes it (DESIGN-G1 12.4). */
 struct JunctionPrioSpan {
 	std::vector<std::pair<TileIndexDiffC, TrackBits>> tiles; ///< Its tiles in drawing order (per step upstream of the merge: the main-line tile's corner half on even steps, then the row tile) with the bits drawn on each.

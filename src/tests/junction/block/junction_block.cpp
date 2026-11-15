@@ -22,6 +22,7 @@
 #include "../../../junction/junction_rules.h"
 #include "../../../junction/junction_spec.h"
 #include "../../../junction/junction_track_geometry.h"
+#include "../../../junction/signals/junction_signals.h"
 #include "../../../junction/topology/junction_chain.h"
 #include "../../../track_func.h"
 
@@ -49,7 +50,7 @@ struct BlockFixture {
 		return block.columns[it - program.points.begin()];
 	}
 
-	/** The line of the block's topmost layout row. */
+	/** A program line minus its layout row (the frame keeps one empty line above the prio row); route pieces are already in layout rows. */
 	int Top() const { return program.in_lines[0] - block.in_ports[0].tile.y; }
 
 	/** The tile of a node in layout coordinates: its column, and the line it sits on. */
@@ -134,7 +135,7 @@ TEST_CASE("block: the floors hold", "[junction][block]")
 {
 	BlockFixture f;
 	const JunctionLayout &layout = f.block.layout;
-	const int top = f.Top();
+	const int top = 0; // The routes are in layout rows.
 	const int east = f.Column("E");
 	const TrackBits axis{Track::X};
 	std::vector<JunctionRaster> rasters;
@@ -233,8 +234,8 @@ TEST_CASE("block: the floors hold", "[junction][block]")
 	/* R9: the prio rows hold no track, and the fixed tracks run straight through the prio's coverage. */
 	for (const JunctionRaster &raster : rasters) {
 		for (const JunctionPiece &p : raster.pieces) {
-			CHECK(p.tile.y >= 1);
-			CHECK(p.tile.y <= 6);
+			CHECK(p.tile.y >= 2);
+			CHECK(p.tile.y <= 7);
 		}
 	}
 	CHECK(f.block.routes[0].moves.find_first_not_of('F') == std::string::npos);
@@ -242,14 +243,75 @@ TEST_CASE("block: the floors hold", "[junction][block]")
 	for (const auto &[name, line] : {std::pair<std::string_view, int>{"mL0", 1}, std::pair<std::string_view, int>{"mL1", 6}}) {
 		const int merge = f.Column(name);
 		CHECK(merge >= f.EvenPrio() + 2);
-		for (int x = merge - f.EvenPrio(); x < merge; x++) CHECK(CountBits(BitsAt(layout, x, line - top)) == 1);
+		for (int x = merge - f.EvenPrio(); x < merge; x++) CHECK(CountBits(BitsAt(layout, x, line - f.Top())) == 1);
 	}
+}
+
+/** The block with the signal pass run on it. */
+struct SignalledBlock : BlockFixture {
+	std::string why;
+	std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> beside;
+	std::vector<JunctionTrackSignal> signals;
+
+	SignalledBlock()
+	{
+		signals = SignalJunctionTrackRoutes(block.layout, block.track_routes, block.topology, block.paths, block.graph, block.programs, spec, &why, &beside, &block.prio);
+	}
+};
+
+TEST_CASE("block: the 227 join block signals and prios", "[junction][block]")
+{
+	SignalledBlock f;
+	INFO(f.why);
+	CHECK(f.why.empty());
+	REQUIRE(f.block.track_routes.size() == 6);
+	for (size_t r = 0; r < f.block.track_routes.size(); r++) {
+		INFO("route " << r);
+		CHECK(std::ranges::any_of(f.signals, [&](const JunctionTrackSignal &signal) { return signal.route == r; }));
+	}
+	REQUIRE(f.block.prio.size() == 2);
+	for (const JunctionPrioSpan &span : f.block.prio) {
+		CHECK(!span.tiles.empty());
+		for (const auto &[tile, bits] : span.tiles) {
+			INFO("tile " << tile.x << "," << tile.y);
+			CHECK(BitsAt(f.block.layout, tile.x, tile.y).Any());
+			CHECK((BitsAt(f.block.layout, tile.x, tile.y) & bits) == bits);
+		}
+	}
+}
+
+TEST_CASE("block: the 227 join block is checker clean", "[junction][block][.]")
+{
+	SignalledBlock f;
+	const std::vector<RuleViolation> violations = CheckJunctionRules(f.block.layout, f.spec, f.topology);
+	for (const RuleViolation &v : violations) UNSCOPED_INFO("rule " << static_cast<int>(v.rule) << " at " << v.tile.x << "," << v.tile.y << ": " << v.message);
+	CHECK(violations.empty());
+}
+
+TEST_CASE("block: graph matches the routes", "[junction][block]")
+{
+	BlockFixture f;
+	REQUIRE(f.block.track_routes.size() == f.block.paths.size());
+	for (const JunctionTrackRoute &route : f.block.track_routes) {
+		const std::vector<uint32_t> &path_edges = f.block.graph.path_edges[route.path];
+		REQUIRE(route.tags.size() == route.pieces.size());
+		size_t at = 0;
+		for (const JunctionTrackPieceTag &tag : route.tags) {
+			const auto it = std::ranges::find(path_edges.begin() + at, path_edges.end(), tag.edge);
+			INFO("path " << route.path << " edge " << tag.edge);
+			REQUIRE(it != path_edges.end());
+			at = it - path_edges.begin();
+		}
+		CHECK(at + 1 == path_edges.size());
+	}
+	const std::vector<std::pair<uint32_t, uint32_t>> expected{{4, 7}};
+	CHECK(f.block.graph.crossings == expected);
 }
 
 TEST_CASE("block: dump", "[junction][block][.]")
 {
-	BlockFixture f;
-	std::ofstream out("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/b2a-block.txt");
+	SignalledBlock f;
+	std::ofstream out("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/b2b-block.txt");
 	for (size_t i = 0; i < f.program.points.size(); i++) out << f.program.points[i] << "=" << f.block.columns[i] << " ";
 	out << "\nsize " << f.block.layout.size.x << " x " << f.block.layout.size.y << "\n";
 	out << RenderJunctionAscii(f.block.layout);

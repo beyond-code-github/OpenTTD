@@ -37,14 +37,7 @@
 /** The kinds of element a placement run lies between (D217, DESIGN-G1 §16.1). */
 enum class FloorKind : uint8_t { Port, Fan, Tile, Corner, SBend, Heads, Node, PrioNode, Prio, LaneSplit, LaneMerge };
 
-/**
- * The tracks a prio element draws at one of its steps (DESIGN-G1 12.4), the one pattern occupancy and the placement's JunctionPrioSpan share.
- * @param step The step upstream of the joiner merge (0 at the merge's column).
- * @param side The side of the main line the element's row lies on.
- * @param exit_edge The edge the main line leaves its tiles by (SW eastbound, NE westbound).
- * @return The bits on the element's row and those on the main line (lane row) tile of the same column.
- */
-static std::pair<TrackBits, TrackBits> JunctionPrioStepBits(int step, DiagDirection side, DiagDirection exit_edge)
+std::pair<TrackBits, TrackBits> JunctionPrioStepBits(int step, DiagDirection side, DiagDirection exit_edge)
 {
 	const Track h1 = JunctionCornerTrack(side, exit_edge);
 	const Track h2 = JunctionCornerTrack(ReverseDiagDir(side), ReverseDiagDir(exit_edge));
