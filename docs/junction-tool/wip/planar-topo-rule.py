@@ -127,7 +127,8 @@ def from_json(path, STUB=4):
     def fray(a, b):
         ra, rb = Ls[nm.index(a)]['routes'], Ls[nm.index(b)]['routes']
         return bool({entry[r] for r in ra} & {entry[r] for r in rb}) or bool(set().union(*(exits[r] for r in ra)) & set().union(*(exits[r] for r in rb)))
-    meta = dict(pgroup=pgroup, fray={c for c in cross if fray(*c)}, prio_lines={nm[i] for i, l in enumerate(Ls) if set(l['routes']) & prio_r},
+    events = {nm[li]: ev for li, ev in enumerate(t['events'])}
+    meta = dict(events=events, pgroup=pgroup, fray={c for c in cross if fray(*c)}, prio_lines={nm[i] for i, l in enumerate(Ls) if set(l['routes']) & prio_r},
                 node_heading=nh, straight={n: nm[li] for n, li in straight.items()}, name=t['name'])
     return L, P, cross, meta
 

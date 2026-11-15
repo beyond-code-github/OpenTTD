@@ -57,8 +57,10 @@ class Var(Ex):
 
 
 DIVE = '--dive' in sys.argv
+best_x = [None]
 DOUBLE = '--double' in sys.argv
 MERGED = '--merged' in sys.argv
+BATCH = '--batch' in sys.argv
 DPEN = float(next((a.split('=')[1] for a in sys.argv if a.startswith('--dpen=')), 0))
 from topo_rule import turn as topo_turn
 SCORE_ONLY = False
@@ -307,14 +309,25 @@ class Model:
                 if over == p: grp = ((p, i), (q, j, b, dq, u1, v1, Lq), a)
                 else: grp = ((q, j), (p, i, a, dp, u0, v0, Lp), b)
                 dgroups.setdefault(grp[0], []).append((c, opt[3], head, grp[1], grp[2]))
+        # Split each segment's doubled crossings into runs consecutive in the over line's event order (any other crossing breaks a run).
+        runs = {}
         for (over, oi), items in dgroups.items():
+            ev = self.meta['events'][over]
+            items.sort(key=lambda it: ev.index(it[0]))
+            run_, prev = [], None
+            for it in items:
+                if prev is not None and ev.index(it[0]) != ev.index(prev) + 1:
+                    runs[(over, oi, len(runs))] = run_; run_ = []
+                run_.append(it); prev = it[0]
+            runs[(over, oi, len(runs))] = run_
+        for (over, oi, rk), items in runs.items():
             ou, ov, OL, od, _, _ = self.seg[(over, oi)]
             ex, ey = D[od]
             side = items[0][1]
             s1, s2 = var(), var()
             B.add(s1 >= 2); B.add(OL - s2 >= 2)
             for c, _, head, _, oa in items: B.add(oa - s1 >= head + 2); B.add(s2 - oa >= head + 2)
-            cname = f'{over}~{oi}'
+            cname = f'{over}~{oi}.{rk}'
             pu, pv = var(lb=-INF), var(lb=-INF)
             B.add(pu - ou - ex * s1 == 0); B.add(pv - ov - ey * s1 == 0)
             dirs = [topo_turn(od, side), od, topo_turn(od, -side)]
@@ -361,6 +374,17 @@ class Model:
         SCORE_ONLY = True
         try: return self.solve(fixed, spare, seps)
         finally: SCORE_ONLY = False
+
+    def all_spacing(self):
+        out = []
+        by = {}
+        for (c, line), (l, i, a, hh) in self.last_cpar.items(): by.setdefault((l, i), []).append((a, c, hh))
+        for (l, i), lst in by.items():
+            lst.sort()
+            for (a1, c1, h1), (a2, c2, h2) in zip(lst, lst[1:]):
+                need = 2 if (MERGED and h1 > 1 and h2 > 1) else h1 + h2
+                if a2 - a1 < need: out.append(('ord', l, c1, c2, need))
+        return out
 
     def spacing(self):
         """Two crossings on one segment of a line closer than their needs (head if over, else 1, each): (line, c1, c2, gap) options."""
@@ -443,6 +467,7 @@ def run(lanes):
     if '--reverse' in sys.argv: order = list(reversed(order))
     stats = dict(solves=0, nodes=0, backtracks=0, sep_rounds=0, leaves=0)
     best = [None]
+    global best_x
     t0 = time.perf_counter()
     spare_all = [(n, i) for n, l in M.L.items() for i in l['spare'] if not l.get('fan')]
 
@@ -457,9 +482,20 @@ def run(lanes):
         if LAZY_LEAF and not at_leaf[0]: return r, seps
         sp_opts = M.spacing()
         bad = M.clashes(r[1])
+        if 'leaf_dump' not in stats and at_leaf[0]:
+            stats['leaf_dump'] = 1; print('FIRST LEAF clashes', bad, 'spacing', M.all_spacing()); print(render(M, r[1], r[2])); print({M.cross[c]: o[2:] for c, o in fixed.items()})
         if not bad and not sp_opts: return r, seps
         if time.perf_counter() - t0 > TIME_BUDGET: return None, seps
         stats['sep_rounds'] += 1
+        if BATCH:  # every clash and spacing fault at once, each by push; no backtracking
+            add = []
+            seen = set()
+            for pr in bad:
+                add.append(M.sep_options(r[1], pr)[0])
+            if sp_opts: add.append(sp_opts[0])
+            for sp in M.all_spacing(): add.append(sp)
+            res, s2 = lazy(fixed, spare, seps + add)
+            return res, s2
         opts = sp_opts if sp_opts else M.sep_options(r[1], bad[0])[:3]
         for o in opts:
             res, s2 = lazy(fixed, spare, seps + [o])
@@ -485,7 +521,7 @@ def run(lanes):
                 if ri is None: stats['int_fail'] = stats.get('int_fail', 0) + 1; return
                 r = ri
             if stats['leaves'] == 1: stats['first_leaf_s'] = round(time.perf_counter() - t0, 2); stats['first_size'] = (r[2][0] // 2 + 1, r[2][1] // 2 + 1)
-            best[0] = (r[0], r, dict(fixed), dict(spare), time.perf_counter() - t0, dict(stats))
+            best[0] = (r[0], r, dict(fixed), dict(spare), time.perf_counter() - t0, dict(stats)); best_x[0] = (set(M.xrel), set(M.xcross), M.clashes(r[1]))
             return
         c = order[k]
         # Try each option; order them by the cost after adding (push: cheapest first).
@@ -553,7 +589,8 @@ if __name__ == '__main__':
         print('NO LAYOUT within budget'); sys.exit(1)
     cost, (c, geo, XY), fixed, spare, t_first, st = best
     print(f'best: {XY[0] // 2 + 1} x {XY[1] // 2 + 1} tiles, found at {t_first:.2f} s; spare S-bends on: {sorted(k for k, v in spare.items() if v)}')
-    print(f'clash check on best: {M.clashes(geo)}')
+    M.xrel, M.xcross, at_leaf_bad = best_x[0]
+    print(f'clash check on best: {M.clashes(geo)} (at leaf: {at_leaf_bad})')
     print(render(M, geo, XY))
     print(f'backend {M.BACKEND}: {M.pstats}')
     po = [(M.cross[c], o[2]) for c, o in fixed.items() if o[2] in M.meta['prio_lines']]
