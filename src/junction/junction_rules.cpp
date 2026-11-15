@@ -549,6 +549,32 @@ std::vector<RuleViolation> CheckGeometry(const JunctionCheckContext &ctx)
 	return out;
 }
 
+/**
+ * D302: whether the merge at piece index k of the path is a rejoin. It is one when every other trackdir
+ * that enters the merge tile and leaves it on the same side carries exactly the same set of (from_slot, to_slot)
+ * pairs over all traced paths as the path's own trackdir, so no other traffic joins (a doubled lane's copies rejoining).
+ */
+static bool IsRejoinMerge(const JunctionCheckContext &ctx, const JunctionPath &path, size_t k)
+{
+	const JunctionPiece &cur = path.pieces[k];
+	const JunctionPiece &next = path.pieces[k + 1];
+	std::map<Trackdir, std::set<std::pair<uint16_t, uint16_t>>> slots;
+	for (const JunctionPath &other : ctx.paths) {
+		for (const JunctionPiece &piece : other.pieces) {
+			if (piece.on_bridge || !SameTile(piece.tile, cur.tile)) continue;
+			if (TrackdirToExitdir(piece.trackdir) != TrackdirToExitdir(cur.trackdir)) continue;
+			slots[piece.trackdir].emplace(other.from_slot, other.to_slot);
+		}
+	}
+	bool found_other = false;
+	for (const auto &[trackdir, pairs] : slots) {
+		if (trackdir == cur.trackdir || !TrackdirReachesTrackdirs(trackdir).Test(next.trackdir)) continue;
+		found_other = true;
+		if (pairs != slots[cur.trackdir]) return false;
+	}
+	return found_other;
+}
+
 /** G4: along a path, a merge must not be followed by a split. D110: two splits on adjacent tiles of a mainline path are wrong. */
 std::vector<RuleViolation> CheckOrder(const JunctionCheckContext &ctx)
 {
@@ -567,7 +593,7 @@ std::vector<RuleViolation> CheckOrder(const JunctionCheckContext &ctx)
 				previous = &event;
 			}
 		}
-		const auto first_merge = std::ranges::find_if(events, [](const SwitchEvent &e) { return !e.first; });
+		const auto first_merge = std::ranges::find_if(events, [&](const SwitchEvent &e) { return !e.first && !IsRejoinMerge(ctx, path, e.second); });
 		if (first_merge == events.end()) continue;
 		for (const SwitchEvent &event : events) {
 			if (!event.first || event.second <= first_merge->second) continue;
