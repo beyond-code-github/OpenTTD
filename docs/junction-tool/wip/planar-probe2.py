@@ -241,6 +241,8 @@ def run(lanes):
     # Search order: core crossings (B, D, F) first, then fray; spare S-bends start absent and are switched on
     # only when a node fails (cheapest first).
     order = sorted(range(len(M.cross)), key=lambda c: (0 if all(x[0] in 'BDF' for x in M.cross[c]) else 1, c))
+    if '--fray-first' in sys.argv: order = sorted(order, key=lambda c: (1 if all(x[0] in 'BDF' for x in M.cross[c]) else 0, c))
+    if '--reverse' in sys.argv: order = list(reversed(order))
     stats = dict(solves=0, nodes=0, backtracks=0, sep_rounds=0, leaves=0)
     best = [None]
     t0 = time.perf_counter()
