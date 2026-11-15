@@ -128,7 +128,42 @@ def from_json(path, STUB=4):
         ra, rb = Ls[nm.index(a)]['routes'], Ls[nm.index(b)]['routes']
         return bool({entry[r] for r in ra} & {entry[r] for r in rb}) or bool(set().union(*(exits[r] for r in ra)) & set().union(*(exits[r] for r in rb)))
     events = {nm[li]: ev for li, ev in enumerate(t['events'])}
-    meta = dict(events=events, pgroup=pgroup, fray={c for c in cross if fray(*c)}, prio_lines={nm[i] for i, l in enumerate(Ls) if set(l['routes']) & prio_r},
+    # Embedding sides: each line's place (group, index left to right across travel) at its start and end.
+    gin, gout = {}, {}  # group key -> ordered lines
+    for pi, p in enumerate(ports):
+        (gout if p['in'] else gin)[('P', pi)] = list(p['lines'])
+    for n, node in enumerate(nodes):
+        gout.setdefault(('N', node['group']), []).extend(node['out'])
+        gin.setdefault(('N', node['group']), []).extend(node['in'])
+    gheading = {('P', pi): HEAD[p['heading']] for pi, p in enumerate(ports)}
+    for n, node in enumerate(nodes): gheading[('N', node['group'])] = nh[n]
+    start_at = {li: (g, v.index(li)) for g, v in gout.items() for li in v}
+    end_at = {li: (g, v.index(li)) for g, v in gin.items() for li in v}
+    def parent(li):  # upstream through a split (its single in line)
+        e = Ls[li]['from']
+        if e['port']: return None
+        node = nodes[e['index']]
+        return node['in'][0] if len(node['in']) == 1 else None
+    def child(li):  # downstream through a merge (its single out line)
+        e = Ls[li]['to']
+        if e['port']: return None
+        node = nodes[e['index']]
+        return node['out'][0] if len(node['out']) == 1 else None
+    def chain(li, step, at):
+        out = []
+        while li is not None:
+            out.append((li, at[li])); li = step(li)
+        return out
+    def side_of(a, b):
+        """(heading, +1 when line b is right of line a across travel, -1 when left) at their nearest shared group, or None."""
+        ia, ib = nm.index(a), nm.index(b)
+        for step, at in ((parent, start_at), (child, end_at)):
+            ca, cb = chain(ia, step, at), chain(ib, step, at)
+            for la, (ga, xa) in ca:
+                for lb, (gb, xb) in cb:
+                    if ga == gb and xa != xb: return gheading[ga], (1 if xb > xa else -1)
+        return None
+    meta = dict(side_of=side_of, events=events, pgroup=pgroup, fray={c for c in cross if fray(*c)}, prio_lines={nm[i] for i, l in enumerate(Ls) if set(l['routes']) & prio_r},
                 node_heading=nh, straight={n: nm[li] for n, li in straight.items()}, name=t['name'])
     return L, P, cross, meta
 

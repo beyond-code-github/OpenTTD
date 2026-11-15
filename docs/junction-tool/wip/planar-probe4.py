@@ -62,6 +62,7 @@ DOUBLE = '--double' in sys.argv
 MERGED = '--merged' in sys.argv
 COST = '--cost' in sys.argv  # D114: footprint tiles first (W per tile), then money at game prices; box only as a tie-break
 W_TILE, RAIL = 1000.0, 100.0
+AREA = None  # (X0, Y0) half-tiles: box area linearised at the root solution (--area)
 
 
 def seg_cost(d):
@@ -85,6 +86,11 @@ def bridge_extra(head):
     n = 1 if head == 3 else 2
     return (bridge_len_factor(n + 2) * 275 * 240) / 256
 BATCH = '--batch' in sys.argv
+EMBED = '--embed' in sys.argv
+TRACE = '--trace' in sys.argv
+JOGS = '--jogs' in sys.argv
+SPANCLEAR = '--spanclear' in sys.argv
+trace = []
 DPEN = float(next((a.split('=')[1] for a in sys.argv if a.startswith('--dpen=')), 0))
 from topo_rule import turn as topo_turn
 SCORE_ONLY = False
@@ -273,7 +279,7 @@ class Model:
         """fixed: crossing index -> (i, j, over); spare: (line, seg) -> present; seps: list of (p, i, q, j, f, side, g)."""
         B = Builder()
         var = B.var
-        X, Y = var(c=1.0), var(c=1.0)
+        X, Y = (var(c=W_TILE * AREA[1] / 4), var(c=W_TILE * AREA[0] / 4)) if (COST and AREA) else (var(c=1.0), var(c=1.0))
         node = {}
         for l in self.L.values():
             for n in (l['start'], l['end']):
@@ -351,6 +357,15 @@ class Model:
             s1, s2 = var(), var()
             B.add(s1 >= 2); B.add(OL - s2 >= 2)
             for c, _, head, _, oa in items: B.add(oa - s1 >= head + 2); B.add(s2 - oa >= head + 2)
+            if SPANCLEAR:  # other crossings on this segment lie before the split or after the rejoin, by event order
+                ev = self.meta['events'][over]
+                rset = {it[0] for it in items}
+                e0, e1 = min(ev.index(x) for x in rset), max(ev.index(x) for x in rset)
+                for (c2, ln), (l2, i2, a2, h2) in cpar.items():
+                    if ln != over or i2 != oi or c2 >= 1000 or c2 in rset: continue
+                    e = ev.index(c2)
+                    if e < e0: B.add(s1 - a2 >= h2 + 2)
+                    elif e > e1: B.add(a2 - s2 >= h2 + 2)
             cname = f'{over}~{oi}.{rk}'
             pu, pv = var(lb=-INF), var(lb=-INF)
             B.add(pu - ou - ex * s1 == 0); B.add(pv - ov - ey * s1 == 0)
@@ -480,7 +495,20 @@ class Model:
                 viol = max(0, g - (min(fb) - max(fa))) if side == 1 else max(0, g - (min(fa) - max(fb)))
                 out.append((viol, (p, i, q, j, f, side, g)))
         out.sort(key=lambda t: t[0])
-        return [o for _, o in out]
+        res = [o for _, o in out]
+        if EMBED:
+            base = lambda n: n.split('~')[0]
+            sd = self.meta['side_of'](base(p), base(q)) if base(p) != base(q) else None
+            if sd:
+                h, sign = sd
+                a, b = D[topo_turn(h, 2)]  # right of travel
+                if a == 0 or b == 0: f, k = (abs(a), abs(b)), (a + b)
+                elif a == b: f, k = (1, 1), a
+                else: f, k = (1, -1), a
+                emb = (p, i, q, j, f, sign * k, SEP)
+                res = [emb] + [o for o in res if o != emb]
+                self.embed_hits = getattr(self, 'embed_hits', 0) + 1
+        return res
 
 
 def run(lanes):
@@ -499,6 +527,8 @@ def run(lanes):
     spare_all = [(n, i) for n, l in M.L.items() for i in l['spare'] if not l.get('fan')]
 
     at_leaf = [False]
+    global trace
+    trace = []
     LAZY_LEAF = '--lazy-leaf' in sys.argv
 
     def lazy(fixed, spare, seps):
@@ -523,7 +553,7 @@ def run(lanes):
             for sp in M.all_spacing(): add.append(sp)
             res, s2 = lazy(fixed, spare, seps + add)
             return res, s2
-        opts = sp_opts if sp_opts else M.sep_options(r[1], bad[0])[:3]
+        opts = sp_opts if sp_opts else M.sep_options(r[1], bad[0])[:(4 if EMBED else 3)]
         for o in opts:
             res, s2 = lazy(fixed, spare, seps + [o])
             if res is not None: return res, s2
@@ -540,6 +570,7 @@ def run(lanes):
         if time.perf_counter() - t0 > TIME_BUDGET: return
         r, seps = lazy(fixed, spare, seps)
         if r is None: return
+        if TRACE and stats.get('leaves', 0) == 0: trace.append((k, M.cross[order[k - 1]] if k else None, fixed.get(order[k - 1]) if k else None, r[2][0] // 2 + 1, r[2][1] // 2 + 1, sorted(kk for kk, v in spare.items() if v and not M.L[kk[0]].get('fan'))))
         if best[0] and r[0] >= best[0][0] - 1e-9: return  # cost only grows as constraints are added
         if k == len(order):
             stats['leaves'] += 1
@@ -548,11 +579,12 @@ def run(lanes):
                 if ri is None: stats['int_fail'] = stats.get('int_fail', 0) + 1; return
                 r = ri
             if stats['leaves'] == 1: stats['first_leaf_s'] = round(time.perf_counter() - t0, 2); stats['first_size'] = (r[2][0] // 2 + 1, r[2][1] // 2 + 1)
-            best[0] = (r[0], r, dict(fixed), dict(spare), time.perf_counter() - t0, dict(stats)); best_x[0] = (set(M.xrel), set(M.xcross), M.clashes(r[1]))
+            best[0] = (r[0], r, dict(fixed), dict(spare), time.perf_counter() - t0, dict(stats)); best_x[0] = (set(M.xrel), set(M.xcross), M.clashes(r[1]), dict(M.last_cpar))
             return
         c = order[k]
         # Try each option; order them by the cost after adding (push: cheapest first).
         cand = []
+        cand_s = []
         opts = M.opts[c]
         if '--policy' in sys.argv and '--noscore' not in sys.argv:  # main lines (prio B, E) stay on the ground when the other line may go over
             pol = [o for o in opts if o[2] not in M.meta['prio_lines']]
@@ -566,6 +598,16 @@ def run(lanes):
         for o in opts:
             f2 = dict(fixed); f2[c] = o
             stats['solves'] += 1
+            if JOGS:  # an option on a jog that is off competes with the jog on
+                p_, q_ = M.cross[c]
+                keys = [(p_, o[0]), (q_, o[1])]
+                need = [kk for kk in keys if kk[1] in M.L[kk[0]]['spare'] and not spare.get(kk) and not M.L[kk[0]].get('fan')]
+                if need:
+                    s2 = dict(spare)
+                    for kk in need: s2[kk] = True
+                    rr = M.solve(f2, s2, seps)
+                    if rr is not None: cand_s.append((rr[0] + (DPEN if len(o) == 4 else 0), o, s2))
+                    continue
             ts = time.perf_counter()
             if '--lpscore' in sys.argv:
                 global DIVE
@@ -575,7 +617,7 @@ def run(lanes):
                 rr = M.solve(f2, spare, seps)
             stats['score_ms'] = stats.get('score_ms', 0) + (time.perf_counter() - ts) * 1000
             if rr is not None: cand.append((rr[0] + (DPEN if len(o) == 4 else 0), o))
-        if not cand:
+        if not cand and not cand_s:
             # Switch a spare S-bend on (one level) and retry this crossing.
             p, q = M.cross[c]
             for key in spare_all:
@@ -584,14 +626,20 @@ def run(lanes):
                     stats['backtracks'] += 1
                     dfs(k, fixed, s2, seps)
             return
-        for _, o in sorted(cand, key=lambda t: t[0]):
+        allc = [(cst, o, spare) for cst, o in cand] + cand_s
+        for _, o, sp in sorted(allc, key=lambda t: t[0]):
             f2 = dict(fixed); f2[c] = o
-            dfs(k + 1, f2, spare, seps)
+            dfs(k + 1, f2, sp, seps)
 
     root = {}
     if M.solve({}, {}, []) is None:  # base geometry infeasible: open the port fans
         root = {(n, i): True for n, l in M.L.items() if l.get('fan') for i in l['spare']}
         print('root infeasible without fans; fans on:', len(root) // 2)
+    if '--area' in sys.argv:
+        r0 = M.solve({}, root, [])
+        global AREA
+        AREA = (r0[2][0], r0[2][1]); globals()['AREA'] = AREA
+        print('area linearised at', AREA)
     dfs(0, {}, root, [])
     dt = time.perf_counter() - t0
     return M, best[0], stats, dt
@@ -616,9 +664,60 @@ if __name__ == '__main__':
         print('NO LAYOUT within budget'); sys.exit(1)
     cost, (c, geo, XY), fixed, spare, t_first, st = best
     print(f'best: {XY[0] // 2 + 1} x {XY[1] // 2 + 1} tiles, found at {t_first:.2f} s; spare S-bends on: {sorted(k for k, v in spare.items() if v)}')
-    M.xrel, M.xcross, at_leaf_bad = best_x[0]
+    M.xrel, M.xcross, at_leaf_bad, best_cpar = best_x[0]
     print(f'clash check on best: {M.clashes(geo)} (at leaf: {at_leaf_bad})')
     print(render(M, geo, XY))
     print(f'backend {M.BACKEND}: {M.pstats}')
     po = [(M.cross[c], o[2]) for c, o in fixed.items() if o[2] in M.meta['prio_lines']]
     print(f'over lines that are prio (D80: need doubling): {len(po)} of {len(fixed)}: {po}')
+
+    exp = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--export=')), None)
+    if exp:
+        import json
+        BITS = {'X': 'X', 'Y': 'Y', 'NW': 'Upper', 'SE': 'Lower', 'NE': 'Left', 'SW': 'Right'}
+        def tpar(seg, p):
+            u0, v0, L, d = seg
+            return max(abs(p[0] - u0), abs(p[1] - v0))
+        # Bridge ranges per (line, seg): crossing param +- head on the over line (head > 1 marks the over entry).
+        ranges = {}
+        for (c, line), (l, i, a, hh) in best_cpar.items():
+            if hh > 1: ranges.setdefault((l, i), []).append([a - hh, a + hh])
+        removed, bridges = set(), []
+        for (l, i), rs in ranges.items():
+            rs.sort(); merged = []
+            for lo, hi in rs:
+                if merged and lo < merged[-1][1]: merged[-1][1] = max(merged[-1][1], hi)
+                else: merged.append([lo, hi])
+            seg = geo[(l, i)]
+            pcs = M.pieces(*seg)
+            for lo, hi in merged:
+                inside = [k for k, (tile, kind, (pa, pb)) in enumerate(pcs) if tpar(seg, pa) >= lo and tpar(seg, pb) <= hi]
+                if not inside: continue
+                for k in inside: removed.add((l, i, k))
+                t0, t1 = pcs[inside[0]][0], pcs[inside[-1]][0]
+                bridges.append({'start': list(t0), 'end': list(t1)})
+        tracks = {}
+        for (l, i), seg in geo.items():
+            for k, (tile, kind, _) in enumerate(M.pieces(*seg)):
+                if (l, i, k) in removed: continue
+                tracks.setdefault(tile, set()).add(BITS[kind])
+        out = {'size': [XY[0] // 2 + 1, XY[1] // 2 + 1],
+               'tracks': [{'x': t[0], 'y': t[1], 'bits': sorted(b)} for t, b in sorted(tracks.items())],
+               'bridges': bridges, 'signals': []}
+        json.dump(out, open(exp, 'w'))
+        print(f'exported {exp}: {len(out["tracks"])} track tiles, {len(bridges)} bridges')
+
+    # Measures of the best: track tiles, D153 surface + slivers, box.
+    surf = set()
+    for (l, i), seg in geo.items():
+        for tile, kind, _ in M.pieces(*seg): surf.add(tile)
+    Wt, Ht = XY[0] // 2 + 1, XY[1] // 2 + 1
+    free = lambda x, y: not (0 <= x < Wt and 0 <= y < Ht) or (x, y) not in surf
+    sliv = sum(1 for x in range(Wt) for y in range(Ht) if free(x, y) and not any(all(free(x + dx + ex, y + dy + ey) for ex in (0, 1) for ey in (0, 1)) for dx in (-1, 0) for dy in (-1, 0)))
+    print(f'MEASURES box {Wt}x{Ht}={Wt*Ht} surface {len(surf)} slivers {sliv} D153 {len(surf)+sliv}')
+
+    if TRACE:
+        last = {}
+        for row in trace:
+            last[row[0]] = row
+        for k_ in sorted(last): print('TRACE', last[k_])
