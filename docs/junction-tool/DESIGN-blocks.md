@@ -65,6 +65,36 @@ The bundle gap at the west ports is 2 lines (lines 3 and 4). That is a floor the
 - The topology lists the prio movements fA→L0 and fB→L1 (D298). With that list, the checker asks for a prio only at mL0 and mL1. It also lets the bridges of unlisted (choice) movements stay single.
 - The block's box keeps one empty line beyond each prio row, because the checker allows only ports on the box edge.
 
+### 2.2 The exit block (B3): one input arm, two bundles out
+Each input lane splits by destination, and the branches regroup into one bundle per destination (§4.1 of DESIGN-modules). The crossing is l0b over l1a. It carries main-line traffic that has no alternative track, so it is a doubled bridge (D80, D188). mfb's E exit block does the same ("D pair", RECON-mfb-core 9). D299 does not apply, because l0b and l1b are not alternatives to each other.
+
+The block heads east. Lines (0 is north) after normalising:
+
+| line | west (in) | east (out) |
+|---|---|---|
+| 0 | l0 | l0a (bundle A) |
+| 1 | l1 | l1a (bundle A) |
+| 2 | | copy 0 deck of l0b; free at the out edge |
+| 3 | | copy 1 deck of l0b, then l0b (bundle B) |
+| 4 | l1 after its sideways step | l1b (bundle B) |
+
+- **l1 In**: Run(p1), SBend(+3) (1 to 4), Run(s1).
+- **l0 In**: Run(s0).
+- **l0a**: Run(E).
+- **l1b**: Run(E) on line 4.
+- **l1a**: SBend(-3) from s1 (4 to 1), then Run(E). Its diagonal passes under both decks.
+- **l0b (doubled)**:
+  - copy 0: SBend(+2) from s0 (0 to 2), Run(ls), Run(hN0), Bridge(hF0, crosses l1a), Run(q0), SBend(+1, LaneMerge), Run(E);
+  - copy 1: SBend(+2), Run(ls), SBend(+1, LaneSplit) (2 to 3), Run(hN1), Bridge(hF1, crosses l1a), Run(E).
+  - The copies are equal in length, because each has the same bends (D80 line sync).
+- **Paths**: l0→l0a, l0→l0b (two routes, copy 0 and copy 1), l1→l1a, l1→l1b. There are no merges other than the lane merge, so the block has no prio list, and the doubled-bridge rule applies.
+- **Doubled-edge machinery**:
+  - `JunctionBlockEdge::copy` holds copy 1's segments, and an S-bend may carry a role (LaneSplit or LaneMerge).
+  - In programs, a doubled edge gets one SBend token per copy: copies[e] has role LaneSplit and edges[e] has role LaneMerge. Their bend pieces are tagged with token 0 and their copy number, so `JunctionRouteEvents` finds the lane split and lane merge exactly as it does for render's doubled legs.
+  - The two copies of one edge are related (R7), and R4 applies to each deck against the crossed segment on that deck's own line. The parallelogram comes from the hug.
+- **Topology**: the W groups are l0 and l1. The E groups in slot order are l1b, l0b, l1a, l0a (the E side runs south to north). All are single-lane and main. The movements are the four paths.
+- **Bundle ports**: A is lines 0-1 and B is lines 3-4, with one line between them. Composition (H1) reads them as per-track ports.
+
 ## 3. Rule families (the floors)
 Units are the rasteriser's piece units: an axis tile is 2 and a diagonal half piece is 1, as the checker counts them. TL is `spec.tl` and P is `spec.prio_tiles` rounded up to even.
 
