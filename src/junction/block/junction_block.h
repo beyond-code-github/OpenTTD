@@ -1,0 +1,93 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+/** @file junction_block.h Junction block programs: data tables for a block's tracks, and the generic generator that solves them (DESIGN-blocks). */
+
+#ifndef JUNCTION_BLOCK_H
+#define JUNCTION_BLOCK_H
+
+#include "../../direction_type.h"
+#include "../../map_type.h"
+#include "../junction_layout.h"
+#include "../junction_route.h"
+#include "../topology/junction_topology.h"
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+struct JunctionSpec;
+
+/** The kinds of segment of a block edge. */
+enum class JunctionBlockSegmentKind : uint8_t { Run, SBend, Bridge };
+
+/** One segment of an edge's track. */
+struct JunctionBlockSegment {
+	JunctionBlockSegmentKind kind;
+	int lines = 0; ///< SBend: signed lines, + is right of travel.
+	uint16_t point = 0; ///< Run, Bridge: the point it goes to (Bridge: the far head).
+	uint16_t crosses = UINT16_MAX; ///< Bridge: the edge whose S-bend passes under it.
+};
+
+/** The end of an edge: a node, or an in port (from) or an out port (to). */
+struct JunctionBlockEnd {
+	bool node;
+	uint16_t index;
+};
+
+/** A node of the block's graph. */
+struct JunctionBlockNode {
+	bool split;
+	uint16_t point;
+};
+
+/** One track of the block from one end to another. */
+struct JunctionBlockEdge {
+	JunctionBlockEnd from;
+	JunctionBlockEnd to;
+	int line; ///< The line the edge starts on.
+	std::vector<JunctionBlockSegment> segments;
+};
+
+/** The prio element at a merge node, on its row line. */
+struct JunctionBlockPrio {
+	uint16_t node;
+	int line;
+};
+
+/** A block program: points, lines, nodes, edges and paths. */
+struct JunctionBlockProgram {
+	std::vector<std::string> points; ///< Point names; points[0] is "W".
+	uint16_t east; ///< The point E.
+	std::vector<int> in_lines; ///< Per in port, its line, in across order.
+	std::vector<int> out_lines; ///< Per out port, its line.
+	std::vector<JunctionBlockNode> nodes;
+	std::vector<JunctionBlockEdge> edges;
+	std::vector<std::vector<uint16_t>> paths; ///< Per lane path, its edges in travel order.
+	std::vector<bool> through; ///< Per path: a through path (no queue bay, R5).
+	std::vector<JunctionBlockPrio> prios;
+};
+
+/** A port of the solved block, in layout coordinates. */
+struct JunctionBlockPort {
+	TileIndexDiffC tile;
+	Trackdir trackdir;
+};
+
+/** A solved block. */
+struct JunctionBlock {
+	std::vector<int> columns; ///< Per point, its solved column.
+	std::vector<JunctionRoute> routes; ///< Per path, in block coordinates: x is the column, y the line.
+	JunctionLayout layout; ///< The routes rasterised and normalised.
+	std::vector<JunctionBlockPort> in_ports, out_ports;
+};
+
+JunctionBlockProgram JunctionJoinBlock227Program();
+bool BuildJunctionBlock(const JunctionBlockProgram &program, const JunctionSpec &spec, JunctionBlock &block, std::string *error);
+JunctionTopology JunctionJoinBlock227Topology();
+
+#endif /* JUNCTION_BLOCK_H */

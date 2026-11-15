@@ -7,6 +7,7 @@ Rules of the junction tool as present-tense facts, split per folder: each fact l
 - It is core C++ in a fork; new code lives under `src/junction/` and edits to upstream files are minimal seams, each in its own `Codechange:` commit.
 - The fork never changes the savegame format: no new settings, map bits, pool objects, chunks or version bump; the tool's own state lives in client settings (`openttd.cfg`) only.
 - The fork links HiGHS (MIT), found by CMake's `find_package(highs)` and listed in `vcpkg.json`; only `JunctionMilp` includes it.
+- `block/`: block programs (data tables) and the generic block generator; the PSG 227 join block.
 - `terrain/`: terrain snapshot, terrain facts, terraform, foundation and slope rules.
 - `topology/`: topology, graph, order, structure, programs, curve gap constraints.
 - `placement/`: horizontal placement, render, positions solver, level solve.

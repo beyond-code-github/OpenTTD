@@ -1,0 +1,21 @@
+# Junction tool: block/ (block programs and the block generator)
+
+- A block program is data (`JunctionBlockProgram`): named points, lines, nodes, edges as segment lists (Run, SBend, Bridge), lane paths and prios. The generic generator `BuildJunctionBlock` turns any program into columns, one route per path, a layout and ports; a new block is a new table, not new code. `JunctionJoinBlock227Program` is the PSG 227 join block (two bundles in, two lanes out) and `JunctionJoinBlock227Topology` its topology.
+- The block heads east on Trackdir X_SW: x is the column, y the line (line 0 the northmost). In-port tiles are at column 0 and out-port tiles at column E; routes are in block coordinates, the layout and the ports are normalised (the topmost line is row 0).
+- A point is a column variable. Columns are the least solution (`JunctionPositions`) of difference floors, with W fixed at 0.
+- A point is the column of the first tile of the feature that starts there: a split node is its split tile (the trunk's axis piece and the diverging leg's first half piece), a merge node its merge tile (the through axis piece and the joining leg's last half piece), a bridge point its head tile, the point a Run goes to the column of the next segment's first tile, E the out-port tile. An edge that ends in an S-bend at a node ties the node's point to the column of the bend's last half piece.
+- An S-bend of k lines is `JunctionBendMoves(hand, 2|k|, false)`, with the hand whose raster closes k lines over (+ is south). Its width, its pieces by column and line, its piece units and its bends' unit positions are measured from that raster, never typed. A bend starts on an axis piece, which belongs to the run before it.
+- Along a path the unit position of any feature is 2 * column + c, where c is a constant built from measured shapes: an S-bend adds its units minus 2 * its width. So every unit floor is a difference floor between two points.
+- Rule families (DESIGN-blocks §3), each floor carries its family as its reason:
+  - R1: the first node or bend of an in edge is at least 2 columns from W, and E is at least 2 columns from the last node or bend end of an out edge.
+  - R2, R3: a plain axis tile between the S-bend before a bridge and its near head, and between its far head and the next S-bend.
+  - R4: the crossed edge's S-bend pieces on the bridge's line lie strictly between the heads, each head `JunctionUnrelatedTileGap` from the nearest one.
+  - R5: on a non-through path, the units from the piece after its last upstream split to the last piece before a merge whose tile holds no other edge are at least 2 TL.
+  - R6: a plain axis tile between a merge tile, or a split tile on its straight leg, and the next S-bend.
+  - R7: on each line, consecutive occupants of unrelated edges keep `JunctionUnrelatedTileGap`, or share a tile where `JunctionTracksMayShareTile` allows. Related is one edge, or two edges that meet at a node, at that node's tile. The occupants are runs, S-bend pieces, bridge heads and the prio rows, never a bridge's middle or the S-bend pieces a bridge passes over.
+  - R8: `JunctionCurveGaps` on every path's bends; a gap inside one S-bend must hold already, any other is a floor between points.
+  - R9: a prio's merge is at least P (the spec's `prio_tiles` rounded up to even) plus 2 columns from W, and its fixed track has no node and no bend within P columns.
+- R5 and R7 need the pieces: pass 1 solves every other family, the rasters of pass 1 give R5's end piece and R7's occupant order, and pass 2 solves with all floors. Pass 2 must keep every line's occupant order and leave no unrelated pair touching, or the build fails.
+- The block's pieces are checked against the program's own item list, so a measure error fails the build.
+- The prio rows (lines 0 and 7 of the 227 block) are occupants only; no track is drawn on them.
+- Errors are strings; no data error asserts.
