@@ -1,3 +1,4 @@
+add_subdirectory(block)
 add_subdirectory(game)
 add_subdirectory(legacy)
 add_subdirectory(line)
