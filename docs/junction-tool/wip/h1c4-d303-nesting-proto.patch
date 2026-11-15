@@ -1,0 +1,296 @@
+diff --git a/src/junction/placement/junction_placement.cpp b/src/junction/placement/junction_placement.cpp
+index 72e0bd50ce..dd5b09388f 100644
+--- a/src/junction/placement/junction_placement.cpp
++++ b/src/junction/placement/junction_placement.cpp
+@@ -8,6 +8,7 @@
+ /** @file junction_placement.cpp Horizontal placement of a programmed track graph (DESIGN-G1 §11.8, §14). */
+ 
+ #include "../../stdafx.h"
++#include <iostream>
+ 
+ #include "junction_placement.h"
+ 
+@@ -100,6 +101,15 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				if ((*shaped)[e].size() != programs.edges[e].size()) return fail("the choices do not fit the programs of this track graph");
+ 			}
+ 		}
++		if (!fixed->over_strand.empty()) {
++			if (fixed->over_strand.size() != graph.edges.size()) return fail("the choices do not fit the programs of this track graph");
++			for (size_t e = 0; e < graph.edges.size(); e++) {
++				if (fixed->over_strand[e].size() != programs.edges[e].size()) return fail("the choices do not fit the programs of this track graph");
++				for (const std::vector<int> &strands : fixed->over_strand[e]) {
++					if (strands.size() > static_cast<size_t>(JunctionGraphWidth(graph)) - 1) return fail("the choices do not fit the programs of this track graph");
++				}
++			}
++		}
+ 	}
+ 	/* A recording given a point detects the lazy families there, not at its flat solves (DESIGN-G3 §G3.6, R3). */
+ 	const bool at_mode = at != nullptr && fixed != nullptr && system != nullptr;
+@@ -752,6 +762,22 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				if (note == notes.end() && index < lazy_notes.size() && lazy_notes[index][0] == 2) note_text = fmt::format(" [height step ({},{}) to ({},{})]", lazy_notes[index][1], lazy_notes[index][2], lazy_notes[index][1] + 1, lazy_notes[index][2]);
+ 				chain_text += fmt::format("{}{}{}{}", chain_text.empty() ? "" : " <- ", reason.rule, parts.empty() ? "" : " (" + parts + ")", note_text);
+ 			}
++			{ /* DIAG */
++				std::map<int, std::string> pname;
++				for (uint32_t de = 0; de < edge_count; de++) for (size_t ds = 0; ds < chains[de].size(); ds++) for (const Elem &del : chains[de][ds]) {
++					const char *kn[] = {"Tile","Corner","SBend","Heads","Fan","HeadsPair","Prio"};
++					pname[del.first] += fmt::format("e{}s{} {} tok{} first m{} hin{} hand{}; ", de, ds, kn[(int)del.k], del.tok, del.m, del.hin, del.hand);
++					pname[del.last] += fmt::format("e{}s{} {} tok{} last; ", de, ds, kn[(int)del.k], del.tok);
++				}
++				std::set<uint32_t> rs;
++				for (uint32_t index : positions.Explain()) rs.insert(index);
++				std::cerr << fmt::format("DIAG phase {}\n", phase);
++				if (phase == 0) for (uint32_t de : {4u, 7u, 8u}) for (size_t ds = 0; ds < chains[de].size(); ds++) for (const Elem &del : chains[de][ds]) {
++					const char *kn[] = {"Tile","Corner","SBend","Heads","Fan","HeadsPair","Prio"};
++					std::cerr << fmt::format("DIAG4 e{} s{} {} tok{} hin{} hout{} hand{} m{} absent{} first p{} y{} last p{} y{}\n", de, ds, kn[(int)del.k], del.tok, del.hin, del.hout, del.hand, del.m, del.absent, del.first, del.first < (int)vy.size() ? vy[del.first] : -99, del.last, del.last < (int)vy.size() ? vy[del.last] : -99);
++				}
++				for (const Cons &c : cons) if (rs.count(c.reason) && !c.record_only) std::cerr << fmt::format("DIAG {}: p{} - p{} >= {} | v: {} | u: {} | {}\n", reasons[c.reason].rule, c.v, c.u, c.k, pname[c.v], pname[c.u], notes.count(c.reason) ? notes[c.reason] : std::string());
++			}
+ 			if (error != nullptr) *error = "the placement rules contradict each other: " + chain_text;
+ 			return false;
+ 		}
+@@ -2918,80 +2944,122 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 					record_only_now = false;
+ 					if (recorded != 0) continue;
+ 				}
+-				const Elem *before = nullptr;
+-				const Elem *after = nullptr;
+-				/* The S-bends of the S-bend form next to the crossing: the Corners of the crossing sit between them and its Under token and are skipped. */
++				/* The S-bends of the S-bend form next to the crossing, on each crossed track u (D303): the Corners of the crossing sit between them and its Under token and are skipped. Every track has its own (the copies' programs share the edge program's tokens at band edges, R17). */
+ 				const auto is_cross_corner = [&](int tok) { return tok >= 0 && static_cast<size_t>(tok) < crossed_program.size() && crossed_program[tok].kind == StepKind::Corner && crossed_program[tok].role == Step::Role::Cross; };
+-				for (const Elem &o : other) {
+-					if (o.k != Elem::K::SBend || o.fan || (o.absent && o.form_group < 0) || o.tok < 0) continue;
+-					int next_tok = o.tok + 1;
+-					while (is_cross_corner(next_tok)) next_tok++;
+-					int previous_tok = o.tok - 1;
+-					while (is_cross_corner(previous_tok)) previous_tok--;
+-					if (is_crossing(next_tok)) before = &o;
+-					if (is_crossing(previous_tok)) after = &o;
++				const size_t crossed_tracks = std::min<size_t>(crossers.size(), static_cast<size_t>(width));
++				std::vector<const Elem *> before(crossed_tracks, nullptr), after(crossed_tracks, nullptr);
++				for (size_t u = 0; u < crossed_tracks; u++) {
++					for (const Elem &o : *crossers[u]) {
++						if (o.k != Elem::K::SBend || o.fan || (o.absent && o.form_group < 0) || o.tok < 0) continue;
++						int next_tok = o.tok + 1;
++						while (is_cross_corner(next_tok)) next_tok++;
++						int previous_tok = o.tok - 1;
++						while (is_cross_corner(previous_tok)) previous_tok--;
++						if (is_crossing(next_tok)) before[u] = &o;
++						if (is_crossing(previous_tok)) after[u] = &o;
++					}
++				}
++				for (size_t u = 1; u < crossed_tracks; u++) {
++					if ((before[0] != nullptr && before[u] == nullptr) || (after[0] != nullptr && after[u] == nullptr)) { build_why = "a bridge over an S-bend that a track of the crossed edge lacks"; return false; }
+ 				}
+ 				const bool s_bend_form = recorded == 0;
+ 				const int chosen = fixed != nullptr && !fixed->over_after.empty() ? fixed->over_after[e][el0->tok] : 0;
+-				const Elem *chosen_elem = chosen != 0 ? after : before;
++				const Elem *chosen_elem = chosen != 0 ? after[0] : before[0];
+ 				if (s_bend_form && chosen_elem == nullptr) { build_why = "a bridge over an S-bend that is not there"; return false; }
+-				if (before == nullptr && after == nullptr) continue;
+-				/* The column t counted from the start: 1 + the choice, 1 when empty or when not fixed. */
+-				const int t = 1 + (fixed != nullptr && !fixed->over.empty() ? fixed->over[e][el0->tok] : 0);
+-				const bool both = before != nullptr && after != nullptr;
++				if (before[0] == nullptr && after[0] == nullptr) continue;
++				/* The column t of track 0 counted from the start: 1 + the choice, 1 when empty or when not fixed. Track u >= 1's column is track 0's plus its choice, the lean k of the chosen alternative when none is given (DESIGN-blocks §7.4). */
++				const int chosen_hin = chosen_elem->form_group >= 0 ? chosen_elem->fhin : chosen_elem->hin;
++				const int lean = -VX[(chosen_hin + 1) % 4] * VX[(chosen_hin + chosen_elem->hand + 4) % 4];
++				std::vector<int> t(crossed_tracks);
++				t[0] = 1 + (fixed != nullptr && !fixed->over.empty() ? fixed->over[e][el0->tok] : 0);
++				for (size_t u = 1; u < crossed_tracks; u++) {
++					const std::vector<int> *strand_choice = fixed != nullptr && !fixed->over_strand.empty() ? &fixed->over_strand[e][el0->tok] : nullptr;
++					t[u] = t[0] + (strand_choice != nullptr && !strand_choice->empty() ? (*strand_choice)[u - 1] : lean);
++					if (t[u] < 1) { build_why = "a bridge column of a crossed track before its S-bend"; return false; }
++				}
++				if (crossed_tracks == 2 && chain_no == 0) { /* PROTO nesting */
++					for (int alt2 = 0; alt2 < 2; alt2++) {
++						const Elem *a0 = alt2 == 0 ? before[0] : after[0];
++						const Elem *a1 = alt2 == 0 ? before[1] : after[1];
++						if (a0 == nullptr || a1 == nullptr || a0->absent || a1->absent) continue;
++						const int h = a0->form_group >= 0 ? a0->fhin : a0->hin;
++						const int sd = (h + a0->hand + 4) % 4;
++						const bool lead1 = VX[(h + 1) % 4] == VX[sd];
++						const Elem *L = lead1 ? a1 : a0;
++						const Elem *T = lead1 ? a0 : a1;
++						why("PROTO parallel S-bends nest", el.cross);
++						along(h, T->first, L->first, 0, false);
++						along(h, L->last, T->last, 0, false);
++					}
++				}
++				const bool both = before[0] != nullptr && after[0] != nullptr;
+ 				why("bridge over S-bend", e);
+-				int over_index = -1;
+-				if (chain_no == 0) {
+-					recorded_overs.push_back({static_cast<int>(e), el.tok, -1, t, 0, 0, -1, 0, 0, chosen});
+-					over_elems.push_back(before);
+-					over_elems_after.push_back(after);
+-					over_index = static_cast<int>(recorded_overs.size()) - 1;
+-				} else {
+-					/* Track 1's deck stands in the column of track 0's one line on: it shares track 0's choice. */
+-					for (size_t o = 0; o < recorded_overs.size(); o++) {
+-						if (recorded_overs[o].edge == static_cast<int>(e) && recorded_overs[o].tok == el0->tok) over_index = static_cast<int>(o);
++				std::vector<int> over_index(crossed_tracks, -1);
++				for (size_t u = 0; u < crossed_tracks; u++) {
++					if (chain_no == 0) {
++						recorded_overs.push_back({static_cast<int>(e), el.tok, -1, t[u], 0, 0, -1, 0, 0, chosen, static_cast<int>(u), u == 0 ? -1 : over_index[0]});
++						over_elems.push_back(before[u]);
++						over_elems_after.push_back(after[u]);
++						over_index[u] = static_cast<int>(recorded_overs.size()) - 1;
++					} else {
++						/* Track 1's deck stands in the column of track 0's one line on: it shares track 0's choice. */
++						for (size_t o = 0; o < recorded_overs.size(); o++) {
++							if (recorded_overs[o].edge == static_cast<int>(e) && recorded_overs[o].tok == el0->tok && recorded_overs[o].strand == static_cast<int>(u)) over_index[u] = static_cast<int>(o);
++						}
++						if (over_index[u] < 0) { build_why = "a bridge pair without its first deck"; return false; }
+ 					}
+-					if (over_index < 0) { build_why = "a bridge pair without its first deck"; return false; }
+ 				}
+ 				/* Track 1's deck lies one line to the right of travel: its column is one on, and so are the rows of the diagonal it hugs. */
+ 				const int lateral = chain_no == 1 ? VX[(el.hin + 1) % 4] : 0;
++				const bool north = el.hin == 0;
+ 				for (int alternative = 0; alternative < 2; alternative++) {
+-					const Elem *crossed = alternative == 0 ? before : after;
+-					if (crossed == nullptr) continue;
+-					const bool is_chosen = s_bend_form && crossed == chosen_elem;
++					const Elem *crossed0 = alternative == 0 ? before[0] : after[0];
++					if (crossed0 == nullptr) continue;
++					const bool is_chosen = s_bend_form && crossed0 == chosen_elem;
+ 					if (!is_chosen && system == nullptr) continue;
+-					const int crossed_hin = crossed->form_group >= 0 ? crossed->fhin : crossed->hin;
+-					const int side = (crossed_hin + crossed->hand + 4) % 4;
+-					const JunctionSBendColumns form = JunctionSBendColumnForm(crossed_hin, crossed->hand);
+-					(alternative == 0 ? recorded_overs.back().t0 : recorded_overs.back().t0_after) = form.t0;
+-					(alternative == 0 ? recorded_overs.back().t1 : recorded_overs.back().t1_after) = form.t1;
+-					if (is_chosen && t > form.t0 + form.t1 * std::max(crossed->m, 2)) { build_why = "a bridge over an S-bend beyond its diagonal"; return false; }
+-					const int lo = form.lo + form.s * (t - 1 + lateral * VX[side]);
+-					const int hi = form.hi + form.s * (t - 1 + lateral * VX[side]);
+-					const bool north = el.hin == 0;
+-					int first_extra = 0, last_extra = 0;
+-					if (two_chains(el.cross)) {
+-						/* The heads hug both tracks of the crosser: its second track's diagonal lies one column on, so the heads' rows widen by the lean d on the side it falls (DESIGN-width 5a.2). */
+-						const int d = form.s * -VX[(crossed_hin + 1) % 4] * VX[side];
+-						first_extra = north ? std::max(0, d) : std::min(0, d);
+-						last_extra = north ? std::min(0, d) : std::max(0, d);
+-					}
+ 					const int alt = both ? alternative : -1;
+-					record_only_now = !is_chosen;
+-					form_group_now = group;
+-					form_now = group >= 0 ? 0 : -1;
+-					/* The rows of column t follow the diagonal (premise P3): the relations are linear in t, so a recording tags them with it. */
+-					tag = SystemTag{nullptr, 0, 0, false, false, false, over_index, VX[side], alt};
+-					eq(0, el.first, crossed->first, VX[side] * t + lateral);
+-					const int first_row = (north ? hi + 1 : lo - 1) + first_extra;
+-					const int last_row = (north ? lo - 1 : hi + 1) + last_extra;
+-					tag = SystemTag{crossed, 0, first_row, false, false, false, over_index, form.s, alt};
+-					eq(1, el.first, crossed->first, first_row);
+-					tag.b = last_row;
+-					eq(1, el.last, crossed->first, last_row);
+-					tag = SystemTag{};
+-					record_only_now = false;
+-					form_group_now = form_now = -1;
++					/* The heads hug the outermost crossed track on each side: the second track's diagonal lies one column on by the lean d, so on the side it falls it is the outermost, else track 0 is (DESIGN-blocks §7.4). */
++					const int hin0 = crossed0->form_group >= 0 ? crossed0->fhin : crossed0->hin;
++					const int d = crossed_tracks > 1 ? JunctionSBendColumnForm(hin0, crossed0->hand).s * -VX[(hin0 + 1) % 4] * VX[(hin0 + crossed0->hand + 4) % 4] : 0;
++					if (crossed_tracks > 1 && d == 0) { build_why = "a bridge over two crossed tracks that lie on one line"; return false; }
++					const size_t hi_outer = d > 0 ? crossed_tracks - 1 : 0;
++					const size_t lo_outer = d > 0 ? 0 : crossed_tracks - 1;
++					for (size_t u = 0; u < crossed_tracks; u++) {
++						const Elem *crossed = alternative == 0 ? before[u] : after[u];
++						const int crossed_hin = crossed->form_group >= 0 ? crossed->fhin : crossed->hin;
++						const int side = (crossed_hin + crossed->hand + 4) % 4;
++						const JunctionSBendColumns form = JunctionSBendColumnForm(crossed_hin, crossed->hand);
++						(alternative == 0 ? recorded_overs[over_index[u]].t0 : recorded_overs[over_index[u]].t0_after) = form.t0;
++						(alternative == 0 ? recorded_overs[over_index[u]].t1 : recorded_overs[over_index[u]].t1_after) = form.t1;
++						if (is_chosen && rows_known && t[u] > form.t0 + form.t1 * std::max(crossed->m, 2)) { build_why = fmt::format("a bridge over an S-bend beyond its diagonal DBG rk{} e{} tok{} u{} t{} t0 {} t1 {} m {} lean {} d {} chain {}", rows_known, e, el0->tok, u, t[u], form.t0, form.t1, crossed->m, lean, d, chain_no); return false; }
++						const int lo = form.lo + form.s * (t[u] - 1 + lateral * VX[side]);
++						const int hi = form.hi + form.s * (t[u] - 1 + lateral * VX[side]);
++						record_only_now = !is_chosen;
++						form_group_now = group;
++						form_now = group >= 0 ? 0 : -1;
++						/* The rows of column t follow the diagonal (premise P3): the relations are linear in t, so a recording tags them with it. */
++						tag = SystemTag{nullptr, 0, 0, false, false, false, over_index[u], VX[side], alt};
++						eq(0, el.first, crossed->first, VX[side] * t[u] + lateral);
++						/* The head on the hi side lies at or beyond the track's hi row, the one on the lo side at or before its lo row: held exactly by the outermost track, bounded by the others. */
++						for (const bool head_is_first : {true, false}) {
++							const int head = head_is_first ? el.first : el.last;
++							const bool hi_side = head_is_first == north;
++							const int row = hi_side ? hi + 1 : lo - 1;
++							tag = SystemTag{crossed, 0, row, false, false, false, over_index[u], form.s, alt};
++							if (u == (hi_side ? hi_outer : lo_outer)) {
++								eq(1, head, crossed->first, row);
++							} else if (hi_side) {
++								ge(1, head, crossed->first, row);
++							} else {
++								tag.b = -row;
++								tag.d = -form.s;
++								ge(1, crossed->first, head, -row);
++							}
++						}
++						tag = SystemTag{};
++						record_only_now = false;
++						form_group_now = form_now = -1;
++					}
+ 				}
+ 			}
+ 		}
+diff --git a/src/junction/placement/junction_placement.h b/src/junction/placement/junction_placement.h
+index 172650eedc..9c24b3c66a 100644
+--- a/src/junction/placement/junction_placement.h
++++ b/src/junction/placement/junction_placement.h
+@@ -42,6 +42,7 @@ struct JunctionPlacementChoices {
+ 	std::vector<std::vector<int>> over_after; ///< Per edge, per token: for a single bridge's Over token, 1 when it passes over the crossed edge's S-bend after its Under (or Above) token, 0 the one before (DESIGN-G3 §G3.4b); empty means 0 everywhere.
+ 	std::vector<std::vector<int>> form; ///< Per edge, per token: at the first Cross token of a group of single-bridge crossings (the S-bend of its first quadruple), 0 when the group passes under its bridges by S-bends, 1 square (DESIGN-G4 §11.1); empty means 0 everywhere.
+ 	std::vector<std::vector<int>> run; ///< Per edge, per token: at the same token of a square group, the length of its run (the run's columns from the first Corner's last tile to the last Corner's first tile), 0 when the run is at its floor and free; empty means 0 everywhere.
++	std::vector<std::vector<std::vector<int>>> over_strand; ///< Per edge, per token, per crossed track u >= 1 (index u - 1): t_u - t_0 for a single bridge's Over token over an S-bend (D303); empty means the lean k (DESIGN-blocks §7.4).
+ 	int port_offset = 0; ///< The port rows' offset.
+ 	bool operator==(const JunctionPlacementChoices &) const = default;
+ };
+@@ -163,6 +164,8 @@ struct JunctionSystemOver {
+ 	int bend_after = -1; ///< The S-bend after the crossing's id, -1 when none; bend is the one before, -1 when none.
+ 	int t0_after = 0, t1_after = 0; ///< t <= t0_after + t1_after L(bend_after).
+ 	int chosen = 0; ///< The alternative at the recording: 0 before, 1 after.
++	int strand = 0; ///< The crossed edge's track whose S-bend this entry's t runs along (D303).
++	int base = -1; ///< For strand >= 1, the index of the same bridge's strand-0 entry, whose alternative w it shares; -1 for strand 0.
+ };
+ 
+ /** A crossing group (DESIGN-G4 §11.1): its edge, its first token (the first quadruple's S-bend), and its form at the recording (0 S-bend, 1 square). */
+diff --git a/src/tests/junction/topology/junction_bundle.cpp b/src/tests/junction/topology/junction_bundle.cpp
+index 92335da9ca..dfb5488794 100644
+--- a/src/tests/junction/topology/junction_bundle.cpp
++++ b/src/tests/junction/topology/junction_bundle.cpp
+@@ -569,3 +569,35 @@ TEST_CASE("bundle: dump the T with its block tiles", "[junction][bundle][.]")
+ 	for (const std::string &row : grid) text += row + "\n";
+ 	std::ofstream("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/h1a-t.txt") << text;
+ }
++
++TEST_CASE("bundle: a band bridge records one column per crossed track", "[junction][bundle]")
++{
++	JunctionSpec spec = MakeTestJunctionSpec();
++	BundleT t(2);
++	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
++	REQUIRE(!structure.stack.empty());
++	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
++	REQUIRE(programs.nodes.size() == 6);
++	JunctionPlacementChoices choices;
++	for (const Program &program : programs.edges) {
++		choices.m.emplace_back(program.size(), 0);
++		choices.corner.emplace_back(program.size(), 0);
++	}
++	const JunctionPlacementSystem system = RecordJunctionPlacementSystem(t.topology, t.paths, t.graph, t.order, structure, programs, spec, choices);
++	REQUIRE(!system.overs.empty());
++
++	/* Each band bridge over a crossed edge of two tracks has an entry per track: strand 0 and 1 of the same (edge, tok), each over its own S-bend, the second sharing the first's alternative. */
++	std::map<std::pair<int, int>, std::vector<size_t>> by_bridge;
++	for (size_t i = 0; i < system.overs.size(); i++) by_bridge[{system.overs[i].edge, system.overs[i].tok}].push_back(i);
++	for (const auto &[bridge, entries] : by_bridge) {
++		INFO("edge " << bridge.first << " token " << bridge.second);
++		REQUIRE(entries.size() == 2);
++		const JunctionSystemOver &first = system.overs[entries[0]];
++		const JunctionSystemOver &second = system.overs[entries[1]];
++		CHECK(first.strand == 0);
++		CHECK(second.strand == 1);
++		CHECK(first.base == -1);
++		CHECK(second.base == static_cast<int>(entries[0]));
++		CHECK(first.bend != second.bend);
++	}
++}
