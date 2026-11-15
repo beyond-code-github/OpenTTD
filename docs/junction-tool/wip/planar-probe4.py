@@ -60,6 +60,30 @@ DIVE = '--dive' in sys.argv
 best_x = [None]
 DOUBLE = '--double' in sys.argv
 MERGED = '--merged' in sys.argv
+COST = '--cost' in sys.argv  # D114: footprint tiles first (W per tile), then money at game prices; box only as a tie-break
+W_TILE, RAIL = 1000.0, 100.0
+
+
+def seg_cost(d):
+    if not COST: return 0.01
+    tiles_per_unit = 0.5 if 0 in D[d] else 1.0  # axis: 2 half-tiles per tile piece; diagonal: one half piece (one tile corner) per unit
+    return (W_TILE + RAIL) * tiles_per_unit
+
+
+def bridge_len_factor(n):
+    if n < 2: return n
+    n -= 2; s = 2; d = 1
+    while True:
+        for _ in range(d):
+            if n == 0: return s
+            s += d; n -= 1
+        d += 1
+
+
+def bridge_extra(head):
+    # Middle tiles: head 3 -> 1, head 4 -> 2 (heads at +-head half-tiles); price above the rail it replaces (tubular, price 240, base 275).
+    n = 1 if head == 3 else 2
+    return (bridge_len_factor(n + 2) * 275 * 240) / 256
 BATCH = '--batch' in sys.argv
 DPEN = float(next((a.split('=')[1] for a in sys.argv if a.startswith('--dpen=')), 0))
 from topo_rule import turn as topo_turn
@@ -274,9 +298,9 @@ class Model:
             for i, (d, m) in enumerate(zip(l['dirs'], l['mins'])):
                 if i in l['spare']:
                     present = spare.get((name, i), False)
-                    Lv = var(lb=G if present else 0, ub=INF if present else 0, c=0.01)
+                    Lv = var(lb=G if present else 0, ub=INF if present else 0, c=seg_cost(d))
                 else:
-                    Lv = var(lb=m, c=0.01)
+                    Lv = var(lb=m, c=seg_cost(d))
                 if axis(d):
                     B.parity(u, 0 if D[d][1] == 0 else 1); B.parity(Lv, 0)
                 if i == n - 1: ub, vb = node[l['end']]
@@ -331,7 +355,7 @@ class Model:
             pu, pv = var(lb=-INF), var(lb=-INF)
             B.add(pu - ou - ex * s1 == 0); B.add(pv - ov - ey * s1 == 0)
             dirs = [topo_turn(od, side), od, topo_turn(od, -side)]
-            lens = [var(lb=2, ub=2), var(lb=2), var(lb=2, ub=2)]
+            lens = [var(lb=2, ub=2, c=seg_cost(dirs[0])), var(lb=2, c=seg_cost(dirs[1])), var(lb=2, ub=2, c=seg_cost(dirs[2]))]
             cu, cv = pu, pv
             for k_, (d_, L_) in enumerate(zip(dirs, lens)):
                 if axis(d_): B.parity(cu, 0 if D[d_][1] == 0 else 1); B.parity(cv, 1 if D[d_][1] == 0 else 0); B.parity(L_, 0)
@@ -367,6 +391,9 @@ class Model:
         g_ = lambda x: round(val[x.i])
         geo = {k: (g_(s[0]), g_(s[1]), g_(s[2]), s[3]) for k, s in self.seg.items()}
         self.last_cpar = {k: (l, i, g_(a), hh) for k, (l, i, a, hh) in cpar.items()}
+        if COST:
+            bconst = sum(bridge_extra(3 if axis(self.L[self.cross[c][1] if o[2] == self.cross[c][0] else self.cross[c][0]]['dirs'][o[1] if o[2] == self.cross[c][0] else o[0]]) else 4) * (2 if len(o) == 4 else 1) for c, o in fixed.items())
+            return sum(B.obj[k] * val[k] for k in range(len(B.obj))) + bconst, geo, (g_(X), g_(Y))
         return val[X.i] + val[Y.i] + 0.01 * sum(s[2] for s in geo.values()), geo, (g_(X), g_(Y))
 
     def score(self, fixed, spare, seps):
