@@ -40,7 +40,7 @@
 - The width-2 T places on flat ground with its real blocks (size 86 x 63); the joint loop on it waits for stretching blocks.
 - At a point, and in a bundle graph, two non-footprint occupants on one flat tile whose bits `JunctionTracksMayShareTile` refuses are separated in their flat order, not tied.
 - On equal columns the two tracks of one band edge keep their side: copy 1 is west when the edge heads south (it carries exit paths), east when it heads north; a bundle's tracks never cross inside the core.
-- In a bundle row the first BlockSide stack item lies at least one row past the Copy item (the row block gap).
+- A row block lies between its neighbour rows (the row block gap): its anchor is at least 1 - its least row offset below the previous row's last stack item, and the next row's first item at least its largest row offset + 1 below its anchor.
 - The bundle stack origin floor: the stack origin is at least the least row its blocks need (width 1 exact).
 - Clearance is taken at flat side 0: a head on a crossing bridge's line inside its span keeps the side of its own bridge's other head.
 - At width 2 the render makes one route per (edge, track), from the track's start tile (port tile or block attach tile) to its end tile, each walking its own program (`programs.edges` for track 0, `programs.copies` for track 1) and bridge pair head; block interiors stay empty until the block templates exist (D295).
