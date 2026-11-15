@@ -155,6 +155,14 @@ bool IsThroughPath(const JunctionCheckContext &ctx, const JunctionPath &path)
 	return ctx.topology->groups[in].main && ctx.topology->groups[out].main;
 }
 
+/** Whether the path's movement holds priority at its merges: always when the topology has no prio list (D298), else only when listed. */
+static bool HoldsPrio(const JunctionCheckContext &ctx, const JunctionPath &path)
+{
+	const std::vector<uint8_t> &list = ctx.topology->prio_movements;
+	if (list.empty()) return true;
+	return path.movement != UINT16_MAX && std::ranges::find(list, path.movement) != list.end();
+}
+
 bool IsExitPath(const JunctionCheckContext &ctx, const JunctionPath &path)
 {
 	if (path.movement == UINT16_MAX) return false;
@@ -616,6 +624,8 @@ std::vector<RuleViolation> CheckBridges(const JunctionCheckContext &ctx)
 		auto on_bridge = [&](const JunctionPiece &piece) {
 			return piece.on_bridge && std::ranges::any_of(tile_sets[b], [&](TileIndexDiffC tile) { return SameTile(tile, piece.tile); });
 		};
+		/* D299: with a prio list, a bridge only unlisted movements run over may be single. */
+		if (!ctx.topology->prio_movements.empty() && std::ranges::none_of(ctx.paths, [&](const JunctionPath &path) { return HoldsPrio(ctx, path) && std::ranges::any_of(path.pieces, on_bridge); })) continue;
 		bool doubled = true;
 		for (const JunctionPath &ml : ctx.paths) {
 			const bool is_ml = IsThroughPath(ctx, ml);
@@ -1197,7 +1207,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 	std::set<size_t> matched;
 	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
 		const JunctionPath &ml = ctx.paths[pi];
-		const bool is_ml = IsThroughPath(ctx, ml);
+		const bool is_ml = IsThroughPath(ctx, ml) && HoldsPrio(ctx, ml);
 		if (!is_ml) continue;
 
 		for (const SwitchEvent &event : SwitchEventsOf(layout, used, ml)) {
@@ -1764,7 +1774,12 @@ std::vector<RuleViolation> CheckFootprint(const JunctionCheckContext &ctx)
 		AddViolation(out, JunctionRule::Footprint, {0, 0}, fmt::format("size {}x{} is not the bounding box {}x{}", layout.size.x, layout.size.y, max_x + 1, max_y + 1));
 	}
 
-	auto on_boundary = [&](TileIndexDiffC tile) { return tile.x == 0 || tile.x == layout.size.x - 1 || tile.y == layout.size.y - 1; };
+	/* D300: the boundary is the box edges that hold the topology's ports. */
+	auto has_side = [&](JunctionSide side) { return std::ranges::any_of(ctx.topology->groups, [&](const JunctionLaneGroup &group) { return group.side == side; }); };
+	const bool boundary_w = has_side(JunctionSide::W);
+	const bool boundary_e = has_side(JunctionSide::E);
+	const bool boundary_s = has_side(JunctionSide::S);
+	auto on_boundary = [&](TileIndexDiffC tile) { return (boundary_w && tile.x == 0) || (boundary_e && tile.x == layout.size.x - 1) || (boundary_s && tile.y == layout.size.y - 1); };
 	const auto used = UsedTracks(ctx);
 	const auto [splits, merges] = SwitchTiles(ctx);
 

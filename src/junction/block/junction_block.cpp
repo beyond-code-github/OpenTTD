@@ -76,6 +76,7 @@ JunctionTopology JunctionJoinBlock227Topology()
 		{JunctionSide::E, false, 1, 0, true}, // L0
 	};
 	topology.movements = {{0, 5}, {1, 5}, {1, 4}, {2, 5}, {2, 4}, {3, 4}};
+	topology.prio_movements = {0, 5}; // fA to L0 and fB to L1
 	return topology;
 }
 
@@ -83,7 +84,6 @@ JunctionTopology JunctionJoinBlock227Topology()
 namespace {
 
 constexpr int MAX_COLUMN = 255; ///< The largest column a point may take.
-constexpr int FRAME_MARGIN = 1; ///< Empty lines kept beyond the topmost and bottommost line of the block.
 
 /** The rule family a floor belongs to; the number is the reason handed to JunctionPositions. */
 enum Rule : uint32_t { R1 = 1, R2, R3, R4, R5, R6, R7, R8, R9, TIE };
@@ -806,19 +806,18 @@ bool BlockGenerator::Run(JunctionBlock &block)
 	for (size_t p = 0; p < program.paths.size(); p++) {
 		JunctionRoute route;
 		if (!EmitRoute(p, columns, route, &spans[p])) return false;
-		route.start.y += FRAME_MARGIN;
 		rasters.push_back(RasterizeJunctionRoute(route));
 		if (!rasters.back().error.empty()) return Fail(fmt::format("path {}: {}", p, rasters.back().error));
 		const JunctionPiece &end = rasters.back().pieces.back();
 		const JunctionBlockEdge &last = program.edges[program.paths[p].back()];
-		if (end.tile.x != columns[program.east] || end.tile.y != program.out_lines[last.to.index] + FRAME_MARGIN || end.trackdir != Trackdir::X_SW) return Fail(fmt::format("path {} does not end on its out port", p));
+		if (end.tile.x != columns[program.east] || end.tile.y != program.out_lines[last.to.index] || end.trackdir != Trackdir::X_SW) return Fail(fmt::format("path {} does not end on its out port", p));
 		block.routes.push_back(std::move(route));
 	}
 	std::set<std::pair<int, int>> tiles;
 	int bottom = 0;
 	for (const Item &item : items) {
 		bottom = std::max(bottom, item.line);
-		for (int x = Val(item.lo, columns); x <= Val(item.hi, columns); x++) tiles.insert({x, item.line + FRAME_MARGIN});
+		for (int x = Val(item.lo, columns); x <= Val(item.hi, columns); x++) tiles.insert({x, item.line});
 	}
 	for (const JunctionRaster &raster : rasters) {
 		for (const JunctionPiece &piece : raster.pieces) {
@@ -826,10 +825,10 @@ bool BlockGenerator::Run(JunctionBlock &block)
 		}
 		AddRasterToLayout(block.layout, raster);
 	}
-	/* One frame: x the column, y the line plus the margin, so the prio rows lie inside the layout with one empty line beyond each (the box edge holds only ports); it is not normalised, which would shift the lines away. */
-	block.layout.size = {static_cast<int16_t>(columns[program.east] + 1), static_cast<int16_t>(bottom + 1 + 2 * FRAME_MARGIN)};
-	for (int line : program.in_lines) block.in_ports.push_back({{0, static_cast<int16_t>(line + FRAME_MARGIN)}, Trackdir::X_SW});
-	for (int line : program.out_lines) block.out_ports.push_back({{static_cast<int16_t>(columns[program.east]), static_cast<int16_t>(line + FRAME_MARGIN)}, Trackdir::X_SW});
+	/* One frame: x the column, y the program line, so the prio rows are the first and last lines; the layout size is the tight bounding box. */
+	block.layout.size = {static_cast<int16_t>(columns[program.east] + 1), static_cast<int16_t>(bottom + 1)};
+	for (int line : program.in_lines) block.in_ports.push_back({{0, static_cast<int16_t>(line)}, Trackdir::X_SW});
+	for (int line : program.out_lines) block.out_ports.push_back({{static_cast<int16_t>(columns[program.east]), static_cast<int16_t>(line)}, Trackdir::X_SW});
 	return BuildOutputs(spec, rasters, spans, block);
 }
 
@@ -935,7 +934,7 @@ bool BlockGenerator::BuildOutputs(const JunctionSpec &spec, const std::vector<Ju
 			const size_t to = std::min(t + 2, route.pieces.size());
 			size_t boundary = t;
 			for (size_t k = from; k < to; k++) {
-				if (!route.pieces[k].on_bridge && route.pieces[k].tile.x == block.columns[node.point] && route.pieces[k].tile.y == program.edges[out].line + FRAME_MARGIN) boundary = k + 1;
+				if (!route.pieces[k].on_bridge && route.pieces[k].tile.x == block.columns[node.point] && route.pieces[k].tile.y == program.edges[out].line) boundary = k + 1;
 			}
 			for (size_t k = std::min(t, boundary); k < std::max(t, boundary); k++) route.tags[k].edge = boundary > t ? in : out;
 		}
@@ -949,13 +948,13 @@ bool BlockGenerator::BuildOutputs(const JunctionSpec &spec, const std::vector<Ju
 		const auto fixed = std::ranges::find_if(program.edges, [&](const JunctionBlockEdge &edge) { return edge.to.node && edge.to.index == prio.node && !edge.from.node; });
 		if (fixed == program.edges.end()) return Fail("a block prio's merge has no fixed edge");
 		JunctionPrioSpan span;
-		span.merge = {static_cast<int16_t>(block.columns[program.nodes[prio.node].point]), static_cast<int16_t>(fixed->line + FRAME_MARGIN)};
+		span.merge = {static_cast<int16_t>(block.columns[program.nodes[prio.node].point]), static_cast<int16_t>(fixed->line)};
 		const DiagDirection side = prio.line < fixed->line ? DiagDirection::NW : DiagDirection::SE;
 		for (int step = 0; step <= even_prio; step++) {
 			const auto [row_bits, lane_bits] = JunctionPrioStepBits(step, side, DiagDirection::SW);
 			const int16_t x = static_cast<int16_t>(span.merge.x - step);
 			if (lane_bits.Any()) span.tiles.emplace_back(TileIndexDiffC{x, span.merge.y}, lane_bits);
-			span.tiles.emplace_back(TileIndexDiffC{x, static_cast<int16_t>(prio.line + FRAME_MARGIN)}, row_bits);
+			span.tiles.emplace_back(TileIndexDiffC{x, static_cast<int16_t>(prio.line)}, row_bits);
 		}
 		block.prio.push_back(std::move(span));
 	}
