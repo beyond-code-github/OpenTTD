@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "../../../junction/block/junction_block.h"
 #include "../../../junction/junction_spec.h"
 #include "../../../junction/topology/junction_topology.h"
 #include "../../../junction/junction_track_geometry.h"
@@ -35,6 +36,8 @@ using Program = std::vector<Step>;
 using Programs = std::vector<Program>;
 static constexpr uint32_t NR = JunctionTrackStep::NO_ROW;
 static Step Fan(uint32_t i) { return {Step::Kind::Fan, 0, i, 0}; }
+/** The fan of an S branch port in a bundle graph: the bundle's half opens west (-1) or east (+1). */
+static Step SFan(int hand) { return {Step::Kind::Fan, static_cast<int8_t>(hand), NR, 0}; }
 static Step C(int h, uint32_t i) { return {Step::Kind::Corner, static_cast<int8_t>(h), i, 0}; }
 static Step XS(int h) { return {Step::Kind::SBend, static_cast<int8_t>(h), NR, 0, Step::Role::Cross}; }
 static Step XC(int h) { return {Step::Kind::Corner, static_cast<int8_t>(h), NR, 0, Step::Role::Cross}; }
@@ -90,17 +93,18 @@ TEST_CASE("bundle: the T's programs two wide", "[junction][bundle]")
 	REQUIRE(programs.edges.size() == 12);
 	REQUIRE(programs.copies.size() == 12);
 	const Programs edges = {
-		{Fan(0)}, {}, {Fan(5)}, {},
+		{Fan(0)}, {SFan(-1)}, {Fan(5)}, {},
 		{C(+1, NR), U(5, 1), U(5, 0), XS(-1), XC(-1), U(8, 0), XC(+1)},
 		{O(8), O(4)},
 		{C(-1, NR)},
 		{C(-1, 7)},
 		{O(4), U(5, 0), U(5, 1), C(+1, 2)},
-		{Fan(5)}, {}, {Fan(0)},
+		{Fan(5)}, {SFan(+1)}, {Fan(0)},
 	};
 	CHECK(programs.edges == edges);
 	Programs copies(12);
 	copies[0] = {Fan(1)};
+	copies[1] = {SFan(-1)};
 	copies[2] = {Fan(4)};
 	copies[4] = edges[4];
 	copies[5] = {O(8), O(4)};
@@ -108,6 +112,7 @@ TEST_CASE("bundle: the T's programs two wide", "[junction][bundle]")
 	copies[7] = {C(-1, 6)};
 	copies[8] = {O(4), U(5, 0), U(5, 1), C(+1, 3)};
 	copies[9] = {Fan(4)};
+	copies[10] = {SFan(+1)};
 	copies[11] = {Fan(1)};
 	CHECK(programs.copies == copies);
 	REQUIRE(programs.ends.size() == 12);
@@ -156,8 +161,8 @@ TEST_CASE("bundle: band track 1 is track 0 with its own items", "[junction][bund
 	CHECK(programs.copies[6] == Program{C(-1, NR)});
 	CHECK(programs.copies[7] == Program{C(-1, 6)});
 	CHECK(programs.copies[8] == Program{O(4), U(5, 0), U(5, 1), C(+1, 3)});
-	CHECK(programs.copies[1].empty());
-	CHECK(programs.copies[10].empty());
+	CHECK(programs.copies[1] == Program{SFan(-1)});
+	CHECK(programs.copies[10] == Program{SFan(+1)});
 	for (uint32_t e : {4, 6, 7, 8}) {
 		REQUIRE(programs.copies[e].size() == programs.edges[e].size());
 		for (size_t i = 0; i < programs.edges[e].size(); i++) {
@@ -170,12 +175,6 @@ TEST_CASE("bundle: band track 1 is track 0 with its own items", "[junction][bund
 
 TEST_CASE("bundle: block geometry", "[junction][bundle]")
 {
-	JunctionSpec spec = MakeTestJunctionSpec();
-	spec.exit_block_along = spec.join_block_along = 4;
-	CHECK(JunctionBlockFootprintOf(JunctionBlockKind::Exit, 2, spec) == JunctionBlockFootprint{4, 4});
-	CHECK(JunctionBlockFootprintOf(JunctionBlockKind::Join, 2, spec) == JunctionBlockFootprint{4, 4});
-	CHECK(JunctionBlockFootprintOf(JunctionBlockKind::Plain, 2, spec) == JunctionBlockFootprint{1, 1});
-
 	BundleT t(2);
 	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
 	REQUIRE(!structure.stack.empty());
@@ -183,56 +182,23 @@ TEST_CASE("bundle: block geometry", "[junction][bundle]")
 	REQUIRE(programs.nodes.size() == 6);
 	const int8_t sides[6] = {+1, -1, -1, -1, -1, +1};
 	for (uint32_t v = 0; v < 6; v++) CHECK(JunctionBlockSide(t.graph, t.order, programs, v) == sides[v]);
-
-	/* Per node, its three edges and their attach (along, across) at track 0; the across of track k adds k. */
-	struct Row { uint32_t node; int8_t side; uint32_t edge; int along; int across; };
-	const Row rows[] = {
-		{0, +1, 0, -1, 0}, {0, +1, 3, 4, 0}, {0, +1, 4, 4, 2},
-		{2, -1, 2, -1, 0}, {2, -1, 5, 4, 0}, {2, -1, 6, 4, -2},
-		{5, +1, 3, -1, 0}, {5, +1, 8, -1, 2}, {5, +1, 11, 4, 0},
-		{3, -1, 5, -1, 0}, {3, -1, 7, -1, -2}, {3, -1, 9, 4, 0},
-		{1, -1, 1, -1, 0}, {1, -1, 8, 4, 0}, {1, -1, 7, 4, -2},
-		{4, -1, 4, -1, 0}, {4, -1, 6, -1, -2}, {4, -1, 10, 4, 0},
-	};
-	for (const Row &row : rows) {
-		const JunctionBlockFootprint footprint = JunctionBlockFootprintOf(t.graph.nodes[row.node].block, 2, spec);
-		REQUIRE(footprint == JunctionBlockFootprint{4, 4});
-		for (uint8_t k = 0; k < 2; k++) {
-			INFO("node " << row.node << " edge " << row.edge << " track " << int(k));
-			CHECK(JunctionBlockAttachOf(t.graph, programs, row.node, row.side, footprint, row.edge, k) == JunctionBlockAttach{row.along, row.across + k});
-		}
-	}
-}
-
-/** The width-2 T through placement with the given block lengths; the placement's error is in `error`. */
-static JunctionTrackPlacement PlaceBundleT(uint8_t along, std::string *error)
-{
-	JunctionSpec spec = MakeTestJunctionSpec();
-	spec.exit_block_along = spec.join_block_along = along;
-	BundleT t(2);
-	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
-	REQUIRE(!structure.stack.empty());
-	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
-	REQUIRE(programs.nodes.size() == 6);
-	return PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, programs, spec, error);
 }
 
 /** A tile moved by (dx, dy). */
 static bool Same(TileIndexDiffC a, TileIndexDiffC b) { return a.x == b.x && a.y == b.y; }
 static TileIndexDiffC Moved(TileIndexDiffC tile, int dx, int dy) { return {static_cast<int16_t>(tile.x + dx), static_cast<int16_t>(tile.y + dy)}; }
 
-/** The width-2 T's choices of 5a: every form 0, placed through the programs with the given block length. */
+/** The width-2 T's choices of 5a: every form 0, placed through the programs. */
 struct PlacedBundleT {
 	JunctionTrackPrograms programs;
 	JunctionTrackPlacement placement;
 	std::string error;
 };
 
-static PlacedBundleT PlaceBundleTWithForms(uint8_t along, int form_4_3)
+static PlacedBundleT PlaceBundleTWithForms(int form_4_3)
 {
 	PlacedBundleT out;
 	JunctionSpec spec = MakeTestJunctionSpec();
-	spec.exit_block_along = spec.join_block_along = along;
 	BundleT t(2);
 	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
 	REQUIRE(!structure.stack.empty());
@@ -255,38 +221,14 @@ static PlacedBundleT PlaceBundleTWithForms(uint8_t along, int form_4_3)
 
 TEST_CASE("bundle: the T places two wide on flat ground", "[junction][bundle]")
 {
-	const PlacedBundleT placed = PlaceBundleTWithForms(4, -1);
+	const PlacedBundleT placed = PlaceBundleTWithForms(-1);
 	const JunctionTrackPlacement &p = placed.placement;
 	INFO("error " << placed.error << ", why chain length " << p.why.size());
 	REQUIRE(placed.error.empty());
 
 	/* The size, pinned on the first green (step 5a). */
 	INFO("size " << p.size.x << " x " << p.size.y);
-	CHECK((p.size.x == 37 && p.size.y == 21));
-	/* The attach tiles are the anchor plus the 4a offsets, per track; the block ends follow the footprint. */
-	static constexpr int DX[4] = {0, 1, 0, -1};
-	static constexpr int DY[4] = {-1, 0, 1, 0};
-	JunctionSpec spec = MakeTestJunctionSpec();
-	spec.exit_block_along = spec.join_block_along = 4;
-	BundleT t(2);
-	REQUIRE(p.block_ends.size() == t.graph.nodes.size());
-	for (uint32_t v = 0; v < t.graph.nodes.size(); v++) {
-		const int h = placed.programs.nodes[v].heading, r = (h + 1) % 4;
-		const JunctionBlockFootprint footprint = JunctionBlockFootprintOf(t.graph.nodes[v].block, 2, spec);
-		const int8_t side = JunctionBlockSide(t.graph, t.order, placed.programs, v);
-		CHECK(Same(p.block_ends[v], Moved(p.nodes[v], (footprint.along - 1) * DX[h], (footprint.along - 1) * DY[h])));
-		for (uint32_t e = 0; e < t.graph.edges.size(); e++) {
-			for (int z = 0; z < 2; z++) {
-				const JunctionTrackEnd &end = z == 0 ? t.graph.edges[e].from : t.graph.edges[e].to;
-				if (!end.node || end.index != v) continue;
-				for (uint8_t k = 0; k < 2; k++) {
-					const JunctionBlockAttach a = JunctionBlockAttachOf(t.graph, placed.programs, v, side, footprint, e, k);
-					INFO("node " << v << " edge " << e << " track " << int(k));
-					CHECK(Same(p.attach[e][z][k], Moved(p.nodes[v], a.along * DX[h] + a.across * DX[r], a.along * DY[h] + a.across * DY[r])));
-				}
-			}
-		}
-	}
+	CHECK((p.size.x == 86 && p.size.y == 63));
 }
 
 TEST_CASE("bundle: the S-bend column form leans as derived", "[junction][bundle]")
@@ -296,15 +238,15 @@ TEST_CASE("bundle: the S-bend column form leans as derived", "[junction][bundle]
 
 TEST_CASE("bundle: a square crossing waits for stretching blocks", "[junction][bundle]")
 {
-	const PlacedBundleT placed = PlaceBundleTWithForms(4, 1);
+	const PlacedBundleT placed = PlaceBundleTWithForms(1);
 	INFO("why chain length " << placed.placement.why.size());
 	CHECK(placed.error == "a square crossing of a bundle is not ruled until blocks stretch");
 }
 
-TEST_CASE("bundle: the joint loop settles on the bundle T", "[junction][bundle]")
+/* The cycle: block attach at nodes 1 and 4, S port spacing, fan and S-bend sizes of edges 1, 4 and 10, the bridge over edge 4's S-bend. */
+TEST_CASE("bundle: the joint loop on the bundle T waits for stretching blocks", "[junction][bundle]")
 {
 	JunctionSpec spec = MakeTestJunctionSpec();
-	spec.exit_block_along = spec.join_block_along = 4;
 	BundleT t(2);
 	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
 	REQUIRE(!structure.stack.empty());
@@ -315,16 +257,12 @@ TEST_CASE("bundle: the joint loop settles on the bundle T", "[junction][bundle]"
 	REQUIRE(error.empty());
 	const JunctionJointLoopResult loop = SolveJunctionJointLoop(t.topology, t.paths, t.graph, t.order, structure, programs, spec, start);
 	INFO("outcome " << loop.outcome);
-	CHECK(loop.outcome == "settled");
-	const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, programs, spec, loop.choices, &error);
-	INFO("error " << error);
-	CHECK(!placed.nodes.empty());
+	CHECK(loop.outcome.starts_with("infeasible"));
 }
 
 TEST_CASE("bundle: the T renders two wide", "[junction][bundle]")
 {
 	JunctionSpec spec = MakeTestJunctionSpec();
-	spec.exit_block_along = spec.join_block_along = 4;
 	BundleT t(2);
 	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
 	REQUIRE(!structure.stack.empty());
@@ -408,31 +346,140 @@ TEST_CASE("bundle: the T renders two wide", "[junction][bundle]")
 			}
 		}
 	}
+}
 
-	/* No piece lies inside a block footprint: its anchor to its downstream end along the heading, 4 lines across. */
+/** The exit block of a node, or the join block, oriented as the node places it. */
+struct HubBlocks {
+	JunctionBlock exit_block, join_block;
+	std::vector<JunctionOrientedBlock> oriented; ///< Per graph node.
+
+	HubBlocks(const BundleT &t, const JunctionTrackPrograms &programs, const JunctionSpec &spec)
+	{
+		std::string error;
+		REQUIRE(BuildJunctionBlock(JunctionExitBlockProgram(), spec, exit_block, &error));
+		REQUIRE(BuildJunctionBlock(JunctionJoinBlock227Program(), spec, join_block, &error));
+		for (uint32_t v = 0; v < t.graph.nodes.size(); v++) {
+			const JunctionBlock &block = t.graph.nodes[v].block == JunctionBlockKind::Exit ? exit_block : join_block;
+			REQUIRE((t.graph.nodes[v].block == JunctionBlockKind::Exit || t.graph.nodes[v].block == JunctionBlockKind::Join));
+			oriented.push_back(OrientJunctionBlock(block, programs.nodes[v].heading, JunctionBlockSide(t.graph, t.order, programs, v) < 0));
+		}
+	}
+};
+
+TEST_CASE("bundle: the T places with its block templates", "[junction][bundle]")
+{
+	const PlacedBundleT placed = PlaceBundleTWithForms(-1);
+	const JunctionTrackPlacement &p = placed.placement;
+	INFO("error " << placed.error << ", why chain length " << p.why.size());
+	REQUIRE(placed.error.empty());
+
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	BundleT t(2);
+	const HubBlocks blocks(t, placed.programs, spec);
 	static constexpr int DX[4] = {0, 1, 0, -1};
 	static constexpr int DY[4] = {-1, 0, 1, 0};
+	REQUIRE(p.block_ends.size() == t.graph.nodes.size());
 	for (uint32_t v = 0; v < t.graph.nodes.size(); v++) {
-		const int h = programs.nodes[v].heading, r = (h + 1) % 4;
-		const int8_t side = JunctionBlockSide(t.graph, t.order, programs, v);
-		const TileIndexDiffC anchor = placement.nodes[v];
-		const int length = (placement.block_ends[v].x - anchor.x) * DX[h] + (placement.block_ends[v].y - anchor.y) * DY[h];
-		for (const JunctionTrackRoute &route : routes) {
-			for (const JunctionPiece &piece : route.pieces) {
-				if (piece.on_bridge) continue;
-				const int along = (piece.tile.x - anchor.x) * DX[h] + (piece.tile.y - anchor.y) * DY[h];
-				const int across = (piece.tile.x - anchor.x) * DX[r] + (piece.tile.y - anchor.y) * DY[r];
-				const bool inside = along >= 0 && along <= length && (side > 0 ? across >= 0 && across <= 3 : across >= -2 && across <= 1);
-				INFO("node " << v << " piece " << piece.tile.x << "," << piece.tile.y);
-				CHECK(!inside);
+		const JunctionTrackNodeShape &shape = placed.programs.nodes[v];
+		const int h = shape.heading;
+		const JunctionOrientedBlock &oriented = blocks.oriented[v];
+		const bool split = t.graph.nodes[v].split;
+		CHECK(Same(p.block_ends[v], Moved(p.nodes[v], oriented.length * DX[h], oriented.length * DY[h])));
+		for (uint32_t e = 0; e < t.graph.edges.size(); e++) {
+			for (int z = 0; z < 2; z++) {
+				const JunctionTrackEnd &end = z == 0 ? t.graph.edges[e].from : t.graph.edges[e].to;
+				if (!end.node || end.index != v) continue;
+				const bool in_bundle = split ? e == shape.trunk : e != shape.trunk;
+				const std::vector<std::vector<JunctionBlockPort>> &bundles = in_bundle ? oriented.in_bundles : oriented.out_bundles;
+				const size_t bundle = e == shape.trunk || e == shape.straight ? 0 : 1;
+				REQUIRE(bundle < bundles.size());
+				for (uint8_t k = 0; k < 2; k++) {
+					const JunctionBlockPort &port = bundles[bundle][k];
+					const int sign = in_bundle ? -1 : 1;
+					INFO("node " << v << " edge " << e << " track " << int(k));
+					CHECK(Same(p.attach[e][z][k], Moved(p.nodes[v], port.tile.x + sign * DX[h], port.tile.y + sign * DY[h])));
+				}
 			}
 		}
 	}
 }
 
-TEST_CASE("bundle: a block without its footprint is refused", "[junction][bundle]")
+TEST_CASE("bundle: core tracks and block tiles do not clash", "[junction][bundle]")
 {
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	BundleT t(2);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
+	REQUIRE(programs.nodes.size() == 6);
 	std::string error;
-	const JunctionTrackPlacement placement = PlaceBundleT(0, &error);
-	CHECK(error == "a block without its footprint is not ruled yet");
+	const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, programs, spec, &error);
+	INFO("placement error " << error);
+	REQUIRE(error.empty());
+	const JunctionLayout layout = RenderJunctionTrackPlacement(t.topology, t.paths, t.graph, structure, programs, placement, &error);
+	REQUIRE(!layout.tracks.empty());
+	const HubBlocks blocks(t, programs, spec);
+
+	/* Per tile, its sources: the core (-1) and each block, with the union of their bits. */
+	std::map<std::pair<int, int>, std::map<int, TrackBits>> tiles;
+	for (const JunctionTrack &jt : layout.tracks) tiles[{jt.offset.x, jt.offset.y}][-1] = jt.tracks;
+	for (uint32_t v = 0; v < t.graph.nodes.size(); v++) {
+		const JunctionOrientedBlock &oriented = blocks.oriented[v];
+		for (const auto *list : {&oriented.tiles, &oriented.prio_tiles}) {
+			for (const auto &[offset, bits] : *list) {
+				TrackBits &here = tiles[{placement.nodes[v].x + offset.x, placement.nodes[v].y + offset.y}][static_cast<int>(v)];
+				for (Track track : bits) here.Set(track);
+			}
+		}
+	}
+	for (const auto &[tile, sources] : tiles) {
+		for (auto a = sources.begin(); a != sources.end(); ++a) {
+			for (auto b = std::next(a); b != sources.end(); ++b) {
+				INFO("tile " << tile.first << "," << tile.second << " sources " << a->first << " and " << b->first);
+				CHECK(JunctionTracksMayShareTile(a->second, b->second));
+			}
+		}
+	}
+
+	/* Every attach tile holds a core piece. */
+	for (uint32_t e = 0; e < t.graph.edges.size(); e++) {
+		for (int z = 0; z < 2; z++) {
+			for (const TileIndexDiffC &tile : placement.attach[e][z]) {
+				if (tile.x < 0) continue;
+				INFO("edge " << e << " end " << z << " attach " << tile.x << "," << tile.y);
+				CHECK(tiles.contains({tile.x, tile.y}));
+				CHECK(tiles[{tile.x, tile.y}].contains(-1));
+			}
+		}
+	}
+}
+
+TEST_CASE("bundle: dump the T with its block tiles", "[junction][bundle][.]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	BundleT t(2);
+	const JunctionTrackStructure structure = StructureJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, &t.error);
+	REQUIRE(!structure.stack.empty());
+	const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, &t.error);
+	std::string error;
+	const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(t.topology, t.paths, t.graph, t.order, structure, programs, spec, &error);
+	REQUIRE(error.empty());
+	JunctionLayout layout = RenderJunctionTrackPlacement(t.topology, t.paths, t.graph, structure, programs, placement, &error);
+	const HubBlocks blocks(t, programs, spec);
+	std::string text = RenderJunctionAscii(layout);
+	text += "size " + std::to_string(placement.size.x) + " x " + std::to_string(placement.size.y) + "\n";
+	/* The block tiles stamped on a second picture: core bits where the block adds none, the block's own tiles as a letter per node. */
+	std::vector<std::string> grid(placement.size.y, std::string(placement.size.x, '.'));
+	for (const JunctionTrack &jt : layout.tracks) grid[jt.offset.y][jt.offset.x] = '+';
+	for (uint32_t v = 0; v < t.graph.nodes.size(); v++) {
+		for (const auto *list : {&blocks.oriented[v].tiles, &blocks.oriented[v].prio_tiles}) {
+			for (const auto &[offset, bits] : *list) {
+				const int x = placement.nodes[v].x + offset.x, y = placement.nodes[v].y + offset.y;
+				if (x >= 0 && y >= 0 && x < placement.size.x && y < placement.size.y) grid[y][x] = static_cast<char>('a' + v);
+			}
+		}
+	}
+	text += "block tiles stamped on the core ('+' core, a-f the block of node 0-5):\n";
+	for (const std::string &row : grid) text += row + "\n";
+	std::ofstream("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/h1a-t.txt") << text;
 }
