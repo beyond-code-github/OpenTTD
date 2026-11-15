@@ -46,8 +46,8 @@ Rules of the junction tool as present-tense facts, split per folder: each fact l
 - The checker rejects a split of a main-line lane inside a prio's coverage; a split here means any divergence or join of main-line tracks.
 - The checker requires prio to hold under OpenTTD's real pre-signal logic: for every main-line (tile, track) within coverage plus the tile before the first upstream signal, a one-tile train there must settle the joiner's Entry red.
 - No adjacent signals on a main-line lane inside a prio's coverage; "signal, one plain tile, signal" is allowed when the pre-signal requirement above holds.
-- A topology may list its prio movements (D298): the G9 check treats a path as the main-line side of a merge only when its movement is listed, so a merge of two unlisted paths is plain; an empty list leaves every main-to-main path a main line.
-- With a prio list, a bridge that only unlisted movements run over may be single (D299); the "ML bridge is not doubled" rule is otherwise unchanged.
+- A topology may list its prio movements (D298): the G9 check treats a path as the main-line side of a merge only when its movement is listed, so a merge of two unlisted paths is plain; an empty list leaves every main-to-main path a main line. When the topology lists its lane paths (D301), the flag of the lane path with the traced path's slots decides instead (none found: no prio).
+- With a prio list (movements, or lane paths with flags, D301), a bridge that only unlisted movements or unflagged lane paths run over may be single (D299); the "ML bridge is not doubled" rule is otherwise unchanged.
 - The footprint boundary is the box edges that hold the topology's ports (D300): x = 0 with a W group, x = size.x - 1 with an E group, y = size.y - 1 with an S group; the T topology has all three.
 
 ## Game rules the model mirrors

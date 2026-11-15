@@ -65,6 +65,17 @@ std::vector<JunctionLanePath> ExpandJunctionLanes(const JunctionTopology &topolo
 		return 0;
 	};
 
+	if (!topology.lane_paths.empty()) {
+		for (const JunctionLanePath &lane_path : topology.lane_paths) {
+			bool valid = lane_path.from < slots.size() && lane_path.to < slots.size() && lane_path.movement < topology.movements.size();
+			if (valid) {
+				valid = slots[lane_path.from].group == topology.movements[lane_path.movement].first && slots[lane_path.to].group == topology.movements[lane_path.movement].second;
+			}
+			if (!valid) return fail("an explicit lane path does not match its movement");
+		}
+		return topology.lane_paths;
+	}
+
 	std::vector<JunctionLanePath> paths;
 	for (size_t m = 0; m < topology.movements.size(); m++) {
 		const JunctionLaneGroup &in = topology.groups[topology.movements[m].first];

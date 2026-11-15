@@ -10,6 +10,7 @@
 - A topology holds ports per side as lane groups (side, direction, lane count, line, gap to the next group) and movements (in group to out group).
 - Lanes are expanded by rule, not listed; unequal lane counts are allowed.
 - `prio_movements` (D282, D298) lists the movements whose paths hold priority at their merges; empty means every main-to-main path does. A pattern block lists only the movements its prio elements serve.
+- `lane_paths` (D301), when not empty, are the lane paths exactly, each with a `prio` flag; `ExpandJunctionLanes` returns them (refusing one whose slots are not its movement's groups) and the checker reads the flag instead of `prio_movements`.
 - Branch ports are on the S side only; N-side and both-side branches are refused as not ruled.
 - Lane pairing for multi-to-multi movements is a topology option: any (default), keep, or per direction; it applies only where both groups of a turning movement have more than one lane.
 - Driving side follows the game's road-side setting; Mirror flips a placement.

@@ -43,12 +43,21 @@ enum class JunctionLanePairing : uint8_t {
 	LanePerDirection, ///< A group's lanes are dealt round-robin to its turning movements, each fanning to the other group's lanes (D221 C).
 };
 
+/** One lane-level path (DESIGN-G1 R1): from an in slot to an out slot. */
+struct JunctionLanePath {
+	uint16_t from; ///< Index into JunctionPortSlots.
+	uint16_t to;
+	uint16_t movement; ///< Index into JunctionTopology::movements.
+	bool prio = false; ///< D301: holds priority at its merges; read only when the topology lists its lane paths.
+};
+
 /** A junction type: its lane groups and movements (D189). */
 struct JunctionTopology {
 	std::vector<JunctionLaneGroup> groups; ///< In slot order (JunctionPortSlots).
 	std::vector<std::pair<uint8_t, uint8_t>> movements; ///< (in group, out group), indices into groups.
 	JunctionLanePairing pairing = JunctionLanePairing::AnyToAny; ///< Lane pairing of multi-to-multi turning movements (D221).
 	std::vector<uint8_t> prio_movements; ///< D282, D298: when not empty, the movements whose paths hold priority at their merges; a merge of two paths of unlisted movements is plain, and an unlisted movement's bridges may be single (D299).
+	std::vector<JunctionLanePath> lane_paths; ///< D301: when not empty, the lane paths exactly, with their prio flags; ExpandJunctionLanes returns them instead of the pairing's expansion.
 };
 
 /** One lane of a group at the box: a port slot. */
@@ -60,15 +69,8 @@ struct JunctionPortSlot {
 /** The port slots counter-clockwise from the north-west corner: W side north to south, S side west to east, E side south to north, N side east to west; so on the E and N sides a group's lanes appear in reverse lane order. Groups must be listed in that order; otherwise empty. */
 std::vector<JunctionPortSlot> JunctionPortSlots(const JunctionTopology &topology);
 
-/** One lane-level path (DESIGN-G1 R1): from an in slot to an out slot. */
-struct JunctionLanePath {
-	uint16_t from; ///< Index into JunctionPortSlots.
-	uint16_t to;
-	uint16_t movement; ///< Index into JunctionTopology::movements.
-};
-
 /**
- * The lane-level paths of a topology (DESIGN-G1 R1; D186, D187): per movement in order, lanes ascending (from lane, then to lane).
+ * The lane-level paths of a topology (DESIGN-G1 R1; D186, D187). When the topology lists its lane_paths (D301), those exactly, each checked against its movement (from and to are port slots of the movement's in and out groups), else the error "an explicit lane path does not match its movement". Otherwise: per movement in order, lanes ascending (from lane, then to lane).
  * Through movement (both groups main, same line): lane i to lane i (equal lane counts, else error). Otherwise one side has one lane: every pair (an exit from every lane, D187; a fan onto every lane, D186).
  * Both sides with more than one lane and not a through movement: by the topology's pairing (D221). AnyToAny: every pair. LaneKeepsLane: lane k to lane k, unequal lane counts are the error "lane keeps lane needs equal lane counts". LanePerDirection: a group with several turning movements deals its lanes round-robin to them in movement order (lane k serves its (k mod n)-th turning movement), the dealt lanes of a movement connect to all lanes (or the dealt lanes) of the other group; a group with fewer lanes than turning movements is the error "lane per direction needs a lane for each direction".
  * @param error Receives the reason when the result is empty.
