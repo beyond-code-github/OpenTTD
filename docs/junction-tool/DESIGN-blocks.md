@@ -60,29 +60,10 @@ So each fixed track reaches its own lane, and each choice track reaches both lan
 
 The bundle gap at the west ports is 2 lines (lines 3 and 4). That is a floor the core must meet, by Q4 point 2. The out lanes sit on lines 1 and 6. Bringing them together for the arm is composition's fan (H1), not part of the block.
 
-### 2.1 Revision after B2b (D298, D299): a doubled crossing
-The B2b checker run found that cA1's bridge must be doubled: a choice leg carries main-line traffic (D80, D174, D188 → D299). The revised table:
-
-| line | west (in) | east (out) |
-|---|---|---|
-| 0 | | prio row of L0 |
-| 1 | fA | L0 |
-| 2 | cA | |
-| 3, 4 | cA1's two decks (copy 0 on 3, copy 1 on 4) | |
-| 5 | cB0's bay run | |
-| 6 | cB | |
-| 7 | fB | L1 |
-| 8 | | prio row of L1 |
-
-- **Doubled edge.** `JunctionBlockEdge::copy` holds copy 1's segments; it is empty for a single edge. An S-bend may carry a role, LaneSplit or LaneMerge, as `JunctionTrackStep::Role` does. In the graph's programs, a doubled edge gets one SBend token: on copy 1 with role LaneSplit, and on copy 0 with role LaneMerge. The bend pieces are tagged with that token, so `JunctionRouteEvents` finds the lane split and the lane merge exactly as it does for render's doubled legs. Every path through a doubled edge has two routes, copy 0 and copy 1, each running port to port.
-- **cA1** runs from sA to mC1.
-  - Copy 0: SBend(+1), Run(ls), Run(hN0), Bridge(hF0, crosses cB0), Run(lm'), SBend(+1, LaneMerge) ends at lm, Run(d1), SBend(+2) ends at mC1.
-  - Copy 1: SBend(+1), Run(ls), SBend(+1, LaneSplit), Run(hN1), Bridge(hF1, crosses cB0), Run(d1), SBend(+2) ends at mC1.
-  - Both copies have the same bends, so their lengths are equal (D80 line sync). A test asserts it.
-- **cB0**: SBend(-1) (6 to 5), Run(b0), SBend(-3) (5 to 2) ends at mC0. Its diagonal passes under both decks. Each deck's heads hug the diagonal on that deck's own line (R4, applied per deck), so the parallelogram comes from the hug and is not a separate rule.
-- **cA0**: Run(mC0) on line 2. **cB1**: Run(mC1) on line 6. **c0**: Run(e0), SBend(-1) to mL0 on line 1. **c1**: Run(e1), SBend(+1) to mL1 on line 7.
-- **R2 and R3, stated generally.** Between a split tile and the next near head on a track, there is at least one axis tile that no other track shares. The same holds between a far head and the next merge tile or bend. This covers the lane split and lane merge (placement's LaneSplit/Heads floors, D145).
-- **Topology.** It lists the prio movements fA→L0 and fB→L1 (D298). The checker then asks for a prio only at mL0 and mL1.
+### 2.1 After B2b (D298, D299)
+- The crossing stays a single bridge. The engineer ruled that choice legs are not doubled, because they are already alternatives to each other (D299). A doubled table was drafted here and then withdrawn.
+- The topology lists the prio movements fA→L0 and fB→L1 (D298). With that list, the checker asks for a prio only at mL0 and mL1. It also lets the bridges of unlisted (choice) movements stay single.
+- The block's box keeps one empty line beyond each prio row, because the checker allows only ports on the box edge.
 
 ## 3. Rule families (the floors)
 Units are the rasteriser's piece units: an axis tile is 2 and a diagonal half piece is 1, as the checker counts them. TL is `spec.tl` and P is `spec.prio_tiles` rounded up to even.
