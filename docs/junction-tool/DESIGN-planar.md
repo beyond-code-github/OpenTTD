@@ -87,6 +87,19 @@ Reference: Nöllenburg & Wolff, "Drawing and labeling high-quality metro maps by
 
 **Left out of the first build (review).** Tunnels: crossings are bridges only (the spec's tunnel prices may be unset; D155 tunnels are a later choice on o_c). Bridge type and span are the game's rules through bridge_span_ok and prices.
 
+**As built (2026-11-15): corrections and choices, with evidence.**
+- *Inside-first branching priority dropped*: HiGHS has no per-variable priority; a warm start (`JunctionMilp::SetStart`, HiGHS `setSolution`) is the only seam added.
+- *Port spacing (family 8), reading fixed*: a port's lines are adjacent (2 units, the notation's "tracks of one direction are adjacent"); the gap 2 (gap + 1) is between the two ports of one side. The text above put the gap between a port's own lines.
+- *Approach floor (family 11)*: the over line's segment into C is 2 units longer than the head floor (one axis piece before the near head), unless the deck merges from the crossing before: `RasterizeJunctionRoute`'s B starts from an axis piece (or closes an S-bend), so a head right after a same-hand curve does not render.
+- *Merged decks (family 12)*: one binary per pair of consecutive crossings on a line (merged only when the line is over at both and no curve lies between).
+- *Zero-length segments (family 5)*: u >= z added, so z = 1 means a real piece (otherwise a "length >= 1" segment of length 0 hides a turn); segments at a node, port or crossing vertex have u >= 1.
+- *Canonical spare bends*: a bend vertex with no curve starts a zero-length segment unless the next vertex is an event (no layout is lost; removes the symmetry of where a straight is cut).
+- *Family 6 lazy, like family 7*: written explicitly for pairs within seven turn points, round 0 of the T at one lane took 72 s against 20 s lazy; the rows are the same, added when violated.
+- *Prio element room (family 14)* uses the tile rule: the signal pass needs the element's row tiles free of track (`SignalJunctionTrackRoutes` phase 0), not the touch rule.
+- *Toggle candidates taken to meet time*: one spare bend per stretch instead of two (the cut §2a names first; two spare: round 0 of the T at one lane 21 s, one spare 11 s); heading windows (a line's segments keep to its routes' short turn arc plus one heading beyond each end).
+- *Not built*: doubling (D309); a crossing that needs a main line over is refused, and a prio line is never over. Tunnels (as decided).
+- *Measured, not met (D297)*: the zero-gap program on the T at one lane (1428 variables, 528 binaries) takes 11 to 71 s per lazy round and has not settled in 10 rounds (curve gaps keep reappearing as curves move between bend vertices); the seed budget is 5 s. No layout has been rendered yet, so the back end (render, signals, levels, checker) is wired but not exercised end to end.
+
 ## 3. Flat seed, terrain and hover
 - The seed: the MILP on flat ground, cached per (topology, spec), budget < 5 s (D297).
 - On terrain: the same model with the seed's binaries as the warm start; terrain facts as lazy constraints (a run over an unbuildable tile, a span too low, a head on a bad slope: add the separation/bound and resolve). Hover: the seed's binaries fixed, positions solved on the terrain at the cursor (an integer program with no free binaries: fast); budget < 100 ms, measured from the first in-game run (benchmark like the ridge bench).

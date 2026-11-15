@@ -27,6 +27,7 @@
 #include "../../../junction/placement/junction_render.h"
 #include "../../../junction/placement/junction_signal_adapter.h"
 #include "../../../junction/junction_pipeline.h"
+#include "../../../junction/planar/planar_plan.h"
 #include "../../../landscape.h"
 #include "../../../map_func.h"
 #include "../../../rail_map.h"
@@ -45,6 +46,8 @@
 #include "../../../water_map.h"
 #include "../../../tunnelbridge.h"
 #include "../../../tunnelbridge_cmd.h"
+#include "../../../rail_cmd.h"
+#include "../../../signal_func.h"
 #include "../../../tunnelbridge_map.h"
 #include "../../../terraform_cmd.h"
 #include "../../../table/strings.h"
@@ -1230,4 +1233,42 @@ TEST_CASE("a planned tunnel builds", "[junction][junctiongame]")
 	CHECK(_build_tunnel_endtile == end);
 	CHECK(IsTunnelTile(start));
 	CHECK(IsTunnelTile(end));
+}
+
+TEST_CASE("the planar T at one lane builds in game through the build steps", "[junction][planarbuild][.]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::shared_ptr<const PlanarSeed> seed = PlanarSeedFor(PlanarTText(1), spec);
+	INFO("seed: " << seed->why);
+	REQUIRE(seed->why.empty());
+	const PlanarPlan plan = PlanPlanarJunction(*seed, spec, nullptr, {0, 0}, false);
+	INFO("plan: " << plan.why);
+	REQUIRE(plan.layout.has_value());
+
+	JunctionGameWorld world;
+	MakeBareGrass(TileXY(8, 8), 128);
+	const TileIndex origin = TileXY(16, 16);
+	size_t rails = 0, bridges = 0, signals = 0;
+	for (const JunctionBuildStep &step : MakeJunctionBuildSteps(*plan.layout, origin)) {
+		CommandCost result;
+		if (const JunctionRailStep *rail = std::get_if<JunctionRailStep>(&step); rail != nullptr) {
+			result = Command<Commands::BuildRail>::Do(DoCommandFlag::Execute, rail->tile, RAILTYPE_RAIL, rail->track, false);
+			rails++;
+		} else if (const JunctionBridgeStep *bridge = std::get_if<JunctionBridgeStep>(&step); bridge != nullptr) {
+			const std::optional<BridgeType> type = ChooseJunctionBridgeType(RAILTYPE_RAIL, GetTunnelBridgeLength(bridge->start, bridge->end));
+			REQUIRE(type.has_value());
+			result = Command<Commands::BuildBridge>::Do(DoCommandFlag::Execute, bridge->end, bridge->start, TransportType::Rail, *type, RAILTYPE_RAIL, INVALID_ROADTYPE);
+			bridges++;
+		} else if (const JunctionSignalStep *signal = std::get_if<JunctionSignalStep>(&step); signal != nullptr) {
+			result = Command<Commands::BuildSignal>::Do(DoCommandFlag::Execute, signal->tile, TrackdirToTrack(signal->facing), signal->type, signal->variant, false, false, false, SignalType::Block, SignalType::Block, 0, SignalAlongTrackdir(signal->facing));
+			signals++;
+		} else {
+			continue;
+		}
+		INFO("step at tile " << TileX(std::visit([](const auto &s) { if constexpr (requires { s.tile; }) return s.tile; else return s.start; }, step)) << "," << TileY(std::visit([](const auto &s) { if constexpr (requires { s.tile; }) return s.tile; else return s.start; }, step)) << ": " << result.GetErrorMessage().base());
+		CHECK(result.Succeeded());
+	}
+	CHECK(rails > 0);
+	CHECK(bridges > 0);
+	CHECK(signals > 0);
 }
