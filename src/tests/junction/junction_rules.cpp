@@ -338,6 +338,29 @@ TEST_CASE("CheckOrder: split then merge passes, merge then split fails", "[junct
 	CHECK(Has(CheckOrder(ctx_bad), JunctionRule::Order, 6, 1, "split"));
 }
 
+TEST_CASE("CheckOrder: a doubled lane's rejoin before a split is not a merge (D302)", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<Movement> expected = {{Role::EIn, Role::EOut}, {Role::EIn, Role::SOut}};
+
+	/*
+	 * Rows are shifted up by one when normalised, so the ports are at y = 0 and 1.
+	 * One lane from EIn doubles into two copies at (2,1), they rejoin at (6,1), and after a plain stretch the lane splits to EOut and SOut.
+	 * Both copies carry the same two paths, so the rejoin is no merge. The real merge before a split stays reported by the test above.
+	 */
+	const JunctionLayout layout = Build({
+		{{0, 1}, Trackdir::X_SW, "FFFFFFFFFFFFFFFF"},
+		{{1, 1}, Trackdir::X_SW, "LFRFFFRFL"},
+		{{12, 1}, Trackdir::X_SW, "LFRFF"},
+	});
+	const std::vector<JunctionPort> ports = {
+		Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, 16, 0, Trackdir::X_SW), Port(Role::SOut, 16, 1, Trackdir::X_SW),
+	};
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, expected);
+	REQUIRE(ctx.paths.size() == 4);
+	CHECK(CheckOrder(ctx).empty());
+}
+
 /**
  * The main line runs along row 1 from x = 0 to 9. One branch leaves it towards row 2 at first_x, another towards row 0 at second_x.
  * @param first_x The tile where the row 2 branch leaves.
