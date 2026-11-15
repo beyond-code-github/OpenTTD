@@ -29,6 +29,7 @@ struct JunctionMilp::Impl {
 	std::vector<double> values; ///< Variable values of the last Optimal solve.
 	double objective = 0; ///< Objective of the last Optimal solve.
 	std::vector<uint32_t> infeasible_rows; ///< IIS rows of the last Infeasible solve.
+	std::vector<std::pair<uint32_t, double>> start; ///< The partial start solution.
 
 	/**
 	 * Build the HiGHS model.
@@ -98,6 +99,11 @@ uint32_t JunctionMilp::AddRow(std::span<const std::pair<uint32_t, double>> terms
 	return static_cast<uint32_t>(this->impl->row_lower.size() - 1);
 }
 
+void JunctionMilp::SetStart(std::vector<std::pair<uint32_t, double>> values)
+{
+	this->impl->start = std::move(values);
+}
+
 JunctionMilp::Status JunctionMilp::Solve()
 {
 	this->impl->values.clear();
@@ -106,6 +112,16 @@ JunctionMilp::Status JunctionMilp::Solve()
 
 	Highs highs;
 	if (!Impl::Setup(highs, this->impl->BuildLp(true))) return Status::Error;
+	if (!this->impl->start.empty()) {
+		std::vector<HighsInt> index;
+		std::vector<double> value;
+		for (const auto &[variable, v] : this->impl->start) {
+			if (variable >= this->impl->lower.size()) continue;
+			index.push_back(static_cast<HighsInt>(variable));
+			value.push_back(v);
+		}
+		if (highs.setSolution(static_cast<HighsInt>(index.size()), index.data(), value.data()) == HighsStatus::kError) return Status::Error;
+	}
 	if (highs.run() == HighsStatus::kError) return Status::Error;
 	switch (highs.getModelStatus()) {
 		case HighsModelStatus::kOptimal:
