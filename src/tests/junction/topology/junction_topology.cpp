@@ -46,6 +46,39 @@
 
 using Pairs = std::vector<std::pair<uint32_t, uint32_t>>;
 
+static JunctionTopology TwoLaneLanePathTopology()
+{
+	JunctionTopology t;
+	t.groups = {{JunctionSide::W, true, 2, 0, true}, {JunctionSide::E, false, 2, 1, true}};
+	t.movements = {{0, 1}};
+	/* Slots: W 0, 1; E 2 (lane 1), 3 (lane 0). */
+	t.lane_paths = {{0, 3, 0, true}, {1, 3, 0, false}, {1, 2, 0, false}};
+	return t;
+}
+
+TEST_CASE("topology: explicit lane paths are returned as given", "[junction][topology]")
+{
+	const JunctionTopology t = TwoLaneLanePathTopology();
+	std::string error;
+	const std::vector<JunctionLanePath> paths = ExpandJunctionLanes(t, &error);
+	REQUIRE(paths.size() == 3);
+	for (size_t i = 0; i < 3; i++) {
+		CHECK(paths[i].from == t.lane_paths[i].from);
+		CHECK(paths[i].to == t.lane_paths[i].to);
+		CHECK(paths[i].movement == 0);
+		CHECK(paths[i].prio == t.lane_paths[i].prio);
+	}
+}
+
+TEST_CASE("topology: an explicit lane path with a wrong movement is refused", "[junction][topology]")
+{
+	JunctionTopology t = TwoLaneLanePathTopology();
+	t.lane_paths[1].to = 0; // An in slot, not the movement's out group.
+	std::string error;
+	CHECK(ExpandJunctionLanes(t, &error).empty());
+	CHECK(error == "an explicit lane path does not match its movement");
+}
+
 TEST_CASE("topology: the T's lanes and crossings", "[junction][topology]")
 {
 	using Role = JunctionPortRole;

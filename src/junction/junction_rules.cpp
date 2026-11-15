@@ -155,9 +155,19 @@ bool IsThroughPath(const JunctionCheckContext &ctx, const JunctionPath &path)
 	return ctx.topology->groups[in].main && ctx.topology->groups[out].main;
 }
 
-/** Whether the path's movement holds priority at its merges: always when the topology has no prio list (D298), else only when listed. */
+/** Whether the topology says which paths hold priority: a movement list (D298) or lane paths with flags (D301). */
+static bool HasPrioList(const JunctionTopology &topology)
+{
+	return !topology.prio_movements.empty() || !topology.lane_paths.empty();
+}
+
+/** Whether the path holds priority at its merges: always when the topology has no prio list (D298), else the flag of its lane path (D301) or whether its movement is listed. */
 static bool HoldsPrio(const JunctionCheckContext &ctx, const JunctionPath &path)
 {
+	if (!ctx.topology->lane_paths.empty()) {
+		const auto lane = std::ranges::find_if(ctx.topology->lane_paths, [&](const JunctionLanePath &l) { return l.from == path.from_slot && l.to == path.to_slot; });
+		return lane != ctx.topology->lane_paths.end() && lane->prio;
+	}
 	const std::vector<uint8_t> &list = ctx.topology->prio_movements;
 	if (list.empty()) return true;
 	return path.movement != UINT16_MAX && std::ranges::find(list, path.movement) != list.end();
@@ -625,7 +635,7 @@ std::vector<RuleViolation> CheckBridges(const JunctionCheckContext &ctx)
 			return piece.on_bridge && std::ranges::any_of(tile_sets[b], [&](TileIndexDiffC tile) { return SameTile(tile, piece.tile); });
 		};
 		/* D299: with a prio list, a bridge only unlisted movements run over may be single. */
-		if (!ctx.topology->prio_movements.empty() && std::ranges::none_of(ctx.paths, [&](const JunctionPath &path) { return HoldsPrio(ctx, path) && std::ranges::any_of(path.pieces, on_bridge); })) continue;
+		if (HasPrioList(*ctx.topology) && std::ranges::none_of(ctx.paths, [&](const JunctionPath &path) { return HoldsPrio(ctx, path) && std::ranges::any_of(path.pieces, on_bridge); })) continue;
 		bool doubled = true;
 		for (const JunctionPath &ml : ctx.paths) {
 			const bool is_ml = IsThroughPath(ctx, ml);

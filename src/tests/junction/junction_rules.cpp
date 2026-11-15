@@ -1619,6 +1619,54 @@ TEST_CASE("Bridges: with a prio list an unlisted movement's bridge may be single
 	CHECK(CountMessages(f.Check(cleared), JunctionRule::Bridges, "ML bridge is not doubled") > 0);
 }
 
+/** The 227 block regrouped for D301: A = {fA, cA} and B = {cB, fB} in, L = {L0, L1} out, with the six lane paths and their prio flags (fA to L0 and fB to L1 hold priority unless @p flags says otherwise). */
+static JunctionTopology RegroupedJoinBlock227Topology(bool all_prio = false)
+{
+	JunctionTopology topology;
+	topology.groups = {
+		{JunctionSide::W, true, 2, 0, true}, // A: fA, cA
+		{JunctionSide::W, true, 2, 1, true}, // B: cB, fB
+		{JunctionSide::E, false, 2, 2, true}, // L: L1, L0 in slot order
+	};
+	topology.movements = {{0, 2}, {1, 2}};
+	/* Slots: W north to south fA 0, cA 1, cB 2, fB 3; E south to north L1 4, L0 5. */
+	topology.lane_paths = {
+		{0, 5, 0, true}, {1, 5, 0, all_prio}, {1, 4, 0, all_prio},
+		{2, 5, 1, all_prio}, {2, 4, 1, all_prio}, {3, 4, 1, true},
+	};
+	return topology;
+}
+
+TEST_CASE("CheckPrio reads the lane path's prio flag", "[junction][rules]")
+{
+	BlockRulesFixture f;
+	const JunctionTopology regrouped = RegroupedJoinBlock227Topology();
+	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(regrouped);
+	REQUIRE(slots.size() == 6);
+	CHECK(slots[4].group == 2);
+	CHECK(slots[4].lane == 1);
+	CHECK(slots[5].lane == 0);
+
+	const int mc0_x = f.block.columns[std::ranges::find(f.program.points, "mC0") - f.program.points.begin()];
+	auto missing_at_mc0 = [&](const std::vector<RuleViolation> &violations) {
+		return std::ranges::count_if(violations, [&](const RuleViolation &v) { return v.rule == JunctionRule::Prio && v.message.find("missing prio") != std::string::npos && v.tile.x == mc0_x; });
+	};
+	const std::vector<RuleViolation> violations = f.Check(regrouped);
+	CHECK(missing_at_mc0(violations) == 0);
+	CHECK(std::ranges::none_of(violations, [](const RuleViolation &v) { return v.rule == JunctionRule::Prio; }));
+	CHECK(std::ranges::none_of(violations, [](const RuleViolation &v) { return v.rule == JunctionRule::Connectivity; }));
+
+	/* Every path holding prio: the merge of cA and cB at mC0 needs a prio. */
+	CHECK(missing_at_mc0(f.Check(RegroupedJoinBlock227Topology(true))) > 0);
+}
+
+TEST_CASE("Bridges single when no path over them holds prio (lane paths)", "[junction][rules]")
+{
+	BlockRulesFixture f;
+	CHECK(CountMessages(f.Check(RegroupedJoinBlock227Topology()), JunctionRule::Bridges, "ML bridge is not doubled") == 0);
+	CHECK(CountMessages(f.Check(RegroupedJoinBlock227Topology(true)), JunctionRule::Bridges, "ML bridge is not doubled") > 0);
+}
+
 TEST_CASE("Footprint: the boundary is the port sides", "[junction][rules]")
 {
 	BlockRulesFixture f;
