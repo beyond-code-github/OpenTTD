@@ -284,7 +284,7 @@ struct JunctionTrackPlacement {
 	std::vector<TileIndexDiffC> nodes; ///< Per graph node: a split's first diverging half piece, a merge's last joining half piece.
 	std::vector<std::vector<JunctionTrackSpan>> edges; ///< Per edge, per token of JunctionTrackPrograms::edges.
 	std::vector<std::vector<JunctionTrackSpan>> copies; ///< Per edge, per token of JunctionTrackPrograms::copies.
-	std::vector<std::array<JunctionBridge, 2>> bridges; ///< Per structure bridge: copy 0's and copy 1's heads, start = the head the carrier reaches first; a single bridge's copy 1 is {{0, 0}, {0, 0}} except on a bundle edge, where it is track 1's.
+	std::vector<std::vector<JunctionBridge>> bridges; ///< Per structure bridge, per strand of its edge: copy 0's and copy 1's heads, start = the head the carrier reaches first; a single bridge's copy 1 is {{0, 0}, {0, 0}} except on a bundle edge, where it is track 1's.
 	TileIndexDiffC size; ///< The box.
 	JunctionPlacementChoices choices; ///< The choices this placement was solved with.
 	std::vector<JunctionPlacementReason> why; ///< On failure: the explanation chain of the contradiction.

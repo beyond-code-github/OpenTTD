@@ -792,7 +792,7 @@ JunctionNodeInput JunctionNodeInputOfGraph(const JunctionTopology &topology, con
 		}
 	}
 	std::vector<TileIndexDiffC> heads;
-	for (const std::array<JunctionBridge, 2> &copies : placement.bridges) {
+	for (const std::vector<JunctionBridge> &copies : placement.bridges) {
 		for (const JunctionBridge &bridge : copies) {
 			if (same(bridge.start, bridge.end)) continue;
 			heads.push_back(bridge.start);

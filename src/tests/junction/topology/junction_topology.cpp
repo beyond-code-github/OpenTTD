@@ -981,7 +981,7 @@ static std::vector<Spans> Of(const std::vector<std::vector<JunctionTrackSpan>> &
 	}
 	return r;
 }
-static Heads Of(const std::array<JunctionBridge, 2> &b) { return {b[0].start.x, b[0].start.y, b[0].end.x, b[0].end.y, b[1].start.x, b[1].start.y, b[1].end.x, b[1].end.y}; }
+static Heads Of(const std::vector<JunctionBridge> &b) { return {b[0].start.x, b[0].start.y, b[0].end.x, b[0].end.y, b[1].start.x, b[1].start.y, b[1].end.x, b[1].end.y}; }
 
 TEST_CASE("topology: the T's placement", "[junction][topology]")
 {
@@ -1104,7 +1104,7 @@ TEST_CASE("topology: LL_RR series bridges", "[junction][topology]")
 	/* 62: the prio element's n + 2 floor on both doubled sides (DESIGN-G1 §12.4). */
 	CHECK(placement.size.x == 62);
 	CHECK(placement.size.y == 25);
-	for (const std::array<JunctionBridge, 2> &heads : placement.bridges) {
+	for (const std::vector<JunctionBridge> &heads : placement.bridges) {
 		CHECK(std::abs(heads[0].start.x - heads[0].end.x) + std::abs(heads[0].start.y - heads[0].end.y) - 1 <= 5);
 	}
 
@@ -4335,7 +4335,7 @@ TEST_CASE("topology: run and group tiles match the render", "[junction][topoproj
 	const JunctionLayout render = RenderJunctionTrackPlacement(t, p.paths, p.graph, p.cut, p.programs, p.seed, &error, &routes);
 	REQUIRE(!render.tracks.empty());
 	std::set<std::pair<int, int>> heads;
-	for (const std::array<JunctionBridge, 2> &copies : p.seed.bridges) {
+	for (const std::vector<JunctionBridge> &copies : p.seed.bridges) {
 		for (const JunctionBridge &b : copies) {
 			if (b.start.x == b.end.x && b.start.y == b.end.y) continue;
 			heads.emplace(b.start.x, b.start.y);
@@ -4505,7 +4505,7 @@ TEST_CASE("topoproj: placement on facts around each of 20 houses", "[junction][t
 			CHECK(false);
 		}
 		std::set<std::pair<int, int>> heads;
-		for (const std::array<JunctionBridge, 2> &copies : q.bridges) {
+		for (const std::vector<JunctionBridge> &copies : q.bridges) {
 			for (const JunctionBridge &b : copies) {
 				heads.emplace(b.start.x, b.start.y);
 				heads.emplace(b.end.x, b.end.y);
