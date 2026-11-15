@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -239,7 +240,7 @@ TEST_CASE("block: the floors hold", "[junction][block]")
 		}
 	}
 	CHECK(f.block.routes[0].moves.find_first_not_of('F') == std::string::npos);
-	CHECK(f.block.routes[5].moves.find_first_not_of('F') == std::string::npos);
+	CHECK(f.block.routes[5].moves.substr(0, f.Column("mL1")).find_first_not_of('F') == std::string::npos); // fB runs straight to its merge; L1 then fans in to line 2.
 	for (const auto &[name, line] : {std::pair<std::string_view, int>{"mL0", 1}, std::pair<std::string_view, int>{"mL1", 6}}) {
 		const int merge = f.Column(name);
 		CHECK(merge >= f.EvenPrio() + 2);
@@ -402,6 +403,77 @@ TEST_CASE("block: a doubled edge's copies", "[junction][block]")
 		}
 		CHECK(hugged > 0);
 	}
+}
+
+TEST_CASE("block: an oriented block's routes rasterise to its oriented tiles", "[junction][block]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const JunctionBlockProgram &program : {JunctionJoinBlock227Program(), JunctionExitBlockProgram()}) {
+		JunctionBlock block;
+		std::string error;
+		REQUIRE(BuildJunctionBlock(program, spec, block, &error));
+		INFO(error);
+		for (uint8_t heading = 0; heading < 4; heading++) {
+			for (bool mirrored : {false, true}) {
+				INFO("heading " << static_cast<int>(heading) << " mirrored " << mirrored);
+				const JunctionOrientedBlock oriented = OrientJunctionBlock(block, heading, mirrored);
+				REQUIRE(oriented.routes.size() == block.routes.size());
+
+				std::map<std::pair<int, int>, int> from_routes;
+				for (const JunctionRoute &route : oriented.routes) {
+					const JunctionRaster raster = RasterizeJunctionRoute({{static_cast<int16_t>(route.start.x + 40), static_cast<int16_t>(route.start.y + 40)}, route.start_trackdir, route.moves});
+					REQUIRE(raster.error.empty());
+					for (const JunctionPiece &piece : raster.pieces) {
+						if (piece.on_bridge) continue;
+						from_routes[{piece.tile.x - 40, piece.tile.y - 40}] |= 1 << to_underlying(TrackdirToTrack(piece.trackdir));
+					}
+				}
+				std::map<std::pair<int, int>, int> from_tiles;
+				for (const auto &[tile, bits] : oriented.tiles) {
+					int mask = 0;
+					for (Track track : bits) mask |= 1 << to_underlying(track);
+					from_tiles[{tile.x, tile.y}] |= mask;
+				}
+				CHECK(from_routes == from_tiles);
+
+				if (heading == 1) {
+					const std::vector<uint8_t> &first = block.in_bundles.front();
+					const int16_t anchor_line = block.in_ports[mirrored ? first.back() : first.front()].tile.y;
+					std::map<std::pair<int, int>, int> expected;
+					for (const JunctionTrack &jt : block.layout.tracks) {
+						int mask = 0;
+						for (Track track : jt.tracks) mask |= 1 << to_underlying(mirrored ? TransformTrack(TransformTrack(TransformTrack(track, JunctionTransform::Mirror), JunctionTransform::Rotate), JunctionTransform::Rotate) : track);
+						const int dy = jt.offset.y - anchor_line;
+						expected[{jt.offset.x, mirrored ? -dy : dy}] |= mask;
+					}
+					CHECK(from_tiles == expected);
+				}
+
+				/* The ports of each bundle are in track order, left to right of travel. */
+				static const TileIndexDiffC rights[] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}}; // R(h): right of travel for N, E, S, W.
+				const TileIndexDiffC right = rights[heading];
+				for (const auto *bundles : {&oriented.in_bundles, &oriented.out_bundles}) {
+					for (const auto &bundle : *bundles) {
+						for (size_t k = 1; k < bundle.size(); k++) {
+							const int across = (bundle[k].tile.x - bundle[k - 1].tile.x) * right.x + (bundle[k].tile.y - bundle[k - 1].tile.y) * right.y;
+							CHECK(across > 0);
+						}
+					}
+				}
+				CHECK(oriented.in_bundles.front().front().tile.x == 0);
+				CHECK(oriented.in_bundles.front().front().tile.y == 0);
+				CHECK(oriented.length == block.out_ports.front().tile.x);
+			}
+		}
+	}
+}
+
+TEST_CASE("block: the 227 join block's lanes leave side by side", "[junction][block]")
+{
+	BlockFixture f;
+	REQUIRE(f.block.out_ports.size() == 2);
+	CHECK(f.block.out_ports[0].tile.y == 1);
+	CHECK(f.block.out_ports[1].tile.y == 2);
 }
 
 TEST_CASE("block: dump", "[junction][block][.]")
