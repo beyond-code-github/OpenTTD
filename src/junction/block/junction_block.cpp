@@ -1173,7 +1173,13 @@ JunctionOrientedBlock OrientJunctionBlock(const JunctionBlock &block, uint8_t he
 	orient_bundles(block.out_bundles, block.out_ports, result.out_bundles);
 	for (const JunctionTrack &jt : block.layout.tracks) result.tiles.emplace_back(offset(jt.offset), bits(jt.tracks));
 	for (const JunctionPrioSpan &span : block.prio) {
-		for (const auto &[tile, tile_bits] : span.tiles) result.prio_tiles.emplace_back(offset(tile), bits(tile_bits));
+		JunctionPrioSpan oriented_span;
+		oriented_span.merge = offset(span.merge);
+		for (const auto &[tile, tile_bits] : span.tiles) {
+			result.prio_tiles.emplace_back(offset(tile), bits(tile_bits));
+			oriented_span.tiles.emplace_back(offset(tile), bits(tile_bits));
+		}
+		result.prio.push_back(std::move(oriented_span));
 	}
 	for (const JunctionRoute &route : block.routes) {
 		JunctionRoute oriented{offset(route.start), trackdir(route.start_trackdir), route.moves};

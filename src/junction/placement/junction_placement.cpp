@@ -231,10 +231,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 			for (int z = 0; z < 2; z++) {
 				const JunctionTrackEnd &end = z == 0 ? graph.edges[e].from : graph.edges[e].to;
 				if (!end.node) continue;
-				const JunctionTrackNodeShape &shape = programs.nodes[end.index];
-				const bool in_bundle = graph.nodes[end.index].split ? e == shape.trunk : e != shape.trunk;
+				bool in_bundle;
+				const size_t bundle_index = JunctionBlockBundleOf(graph, programs, end.index, e, in_bundle);
 				const std::vector<std::vector<JunctionBlockPort>> &bundles = in_bundle ? oriented[end.index].in_bundles : oriented[end.index].out_bundles;
-				const size_t bundle_index = e == shape.trunk || e == shape.straight ? 0 : 1;
 				if (bundle_index >= bundles.size() || bundles[bundle_index].size() < JunctionEdgeTracks(graph, programs, e)) return fail("a block bundle narrower than its edge is not ruled yet");
 			}
 		}
@@ -2337,9 +2336,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 						const JunctionTrackEnd &end = z == 0 ? graph.edges[e].from : graph.edges[e].to;
 						if (!end.node || end.index != v) continue;
 						why("block attach", e, v);
-						const bool in_bundle = split ? e == shape.trunk : e != shape.trunk;
+						bool in_bundle;
+						const size_t bundle_index = JunctionBlockBundleOf(graph, programs, v, e, in_bundle);
 						const std::vector<std::vector<JunctionBlockPort>> &bundles = in_bundle ? block.in_bundles : block.out_bundles;
-						const size_t bundle_index = e == shape.trunk || e == shape.straight ? 0 : 1;
 						for (uint8_t track = 0; track < 2; track++) {
 							const TileIndexDiffC tile = bundles[bundle_index][track].tile;
 							const int sign = in_bundle ? -1 : 1;
@@ -3845,6 +3844,22 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
 		}
 	}
 	return result;
+}
+
+/**
+ * The bundle of a block node's template that an edge end attaches to (DESIGN-blocks §7.1).
+ * @param graph The bundle graph.
+ * @param programs Its programs (the node shapes).
+ * @param node The block node.
+ * @param edge An edge ending at the node.
+ * @param[out] in_bundle Whether the bundle is an in bundle (a split's trunk, a merge's legs) rather than an out bundle.
+ * @return The bundle index: 0 for the trunk and the straight leg, 1 for the diverging leg.
+ */
+int JunctionBlockBundleOf(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, uint32_t node, uint32_t edge, bool &in_bundle)
+{
+	const JunctionTrackNodeShape &shape = programs.nodes[node];
+	in_bundle = graph.nodes[node].split ? edge == shape.trunk : edge != shape.trunk;
+	return edge == shape.trunk || edge == shape.straight ? 0 : 1;
 }
 
 JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *error)

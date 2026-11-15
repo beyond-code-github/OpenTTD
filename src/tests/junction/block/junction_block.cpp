@@ -490,3 +490,53 @@ TEST_CASE("block: dump", "[junction][block][.]")
 	exit_out << "\nsize " << exit_block.block.layout.size.x << " x " << exit_block.block.layout.size.y << "\nwhy: " << exit_block.why << "\n";
 	exit_out << RenderJunctionAscii(exit_block.block.layout);
 }
+
+TEST_CASE("block: oriented prio spans", "[junction][block]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	JunctionBlock block;
+	std::string error;
+	REQUIRE(BuildJunctionBlock(JunctionJoinBlock227Program(), spec, block, &error));
+	REQUIRE(block.prio.size() == 2);
+	for (uint8_t heading = 0; heading < 4; heading++) {
+		for (bool mirrored : {false, true}) {
+			INFO("heading " << static_cast<int>(heading) << " mirrored " << mirrored);
+			const JunctionOrientedBlock oriented = OrientJunctionBlock(block, heading, mirrored);
+			REQUIRE(oriented.prio.size() == block.prio.size());
+			size_t tiles = 0;
+			std::map<std::pair<int, int>, int> in_prio_tiles;
+			for (const auto &[tile, bits] : oriented.prio_tiles) {
+				int mask = 0;
+				for (Track track : bits) mask |= 1 << to_underlying(track);
+				in_prio_tiles[{tile.x, tile.y}] |= mask;
+			}
+			for (size_t s = 0; s < block.prio.size(); s++) {
+				REQUIRE(oriented.prio[s].tiles.size() == block.prio[s].tiles.size());
+				tiles += oriented.prio[s].tiles.size();
+				for (const auto &[tile, bits] : oriented.prio[s].tiles) {
+					int mask = 0;
+					for (Track track : bits) mask |= 1 << to_underlying(track);
+					CHECK((in_prio_tiles[{tile.x, tile.y}] & mask) == mask);
+				}
+			}
+			size_t all = 0;
+			for (const JunctionPrioSpan &span : block.prio) all += span.tiles.size();
+			CHECK(tiles == all);
+			CHECK(oriented.prio_tiles.size() == all);
+
+			if (heading == 1 && !mirrored) {
+				const std::vector<uint8_t> &first = block.in_bundles.front();
+				const TileIndexDiffC anchor = block.in_ports[first.front()].tile;
+				for (size_t s = 0; s < block.prio.size(); s++) {
+					CHECK(oriented.prio[s].merge.x == block.prio[s].merge.x - anchor.x);
+					CHECK(oriented.prio[s].merge.y == block.prio[s].merge.y - anchor.y);
+					for (size_t i = 0; i < block.prio[s].tiles.size(); i++) {
+						CHECK(oriented.prio[s].tiles[i].first.x == block.prio[s].tiles[i].first.x - anchor.x);
+						CHECK(oriented.prio[s].tiles[i].first.y == block.prio[s].tiles[i].first.y - anchor.y);
+						CHECK(oriented.prio[s].tiles[i].second == block.prio[s].tiles[i].second);
+					}
+				}
+			}
+		}
+	}
+}
