@@ -18,6 +18,7 @@ STUB = 4
 TL, CL = 4, 5   # MakeTestJunctionSpec: tl 4; reference speed 160, curve speed 0 -> DeriveCurveSpacing 5
 G = min(2 * TL - 1, max(2, CL))
 P = int(next((a.split('=')[1] for a in sys.argv if a.startswith('--prio=')), 14))  # prio coverage, tiles (spec.prio_tiles)
+TUCK = float(next((a.split('=')[1] for a in sys.argv if a.startswith('--tuck=')), 4))  # cost per diagonal unit of a bundle turn (tuck in)
 FANW = 1.5      # cost per half-tile of a fanned (spread) stretch; the tight stub costs 1
 BUDGET = 15.0
 
@@ -101,7 +102,7 @@ class Model:
         return s[-1].b if s else M.start[name]
     def seg(M, name, d, lo=0, hi=None, cost=1.0):
         a = M.end(name)
-        L = M.var(lb=lo, ub=INF if hi is None else hi, c=cost)
+        L = M.var(lb=lo, ub=INF if hi is None else hi, c=cost * (1.0 if axis(d) else math.sqrt(2)))  # a diagonal unit is sqrt 2 long
         if axis(d):
             M.parity(a[0], 0 if D[d][1] == 0 else 1); M.parity(a[1], 1 if D[d][1] == 0 else 0); M.parity(L, 0)
         b = M.point()
@@ -317,7 +318,7 @@ def build_t2(fray_s, join_s, df_over, tri=0, stair=None):
             r = right(h)
             for l in lanes:
                 lo = 0
-                segs[l].append(M.seg(l, h, lo=lo))
+                segs[l].append(M.seg(l, h, lo=lo, cost=1.0 if axis(h) else TUCK))  # a turn's diagonal only as long as it must be
             for j, l in enumerate(lanes[1:], 1):
                 M.add(dot(r, segs[l][k].a) - dot(r, segs[lanes[0]][k].a) == 2 * j)
                 M.add(dot(r, segs[l][k].b) - dot(r, segs[lanes[0]][k].b) == 2 * j)
