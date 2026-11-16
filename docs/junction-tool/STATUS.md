@@ -9,7 +9,9 @@
   - All 16 variants: 3.4 s wall (thread contention).
   - Checker-clean.
 - Open:
-  1. `PLANAR_WIDTH` lost the 1941 layout that all-free switches found (best now 1956), so the width rules are not yet optimal by design. Find which forced switch excludes it.
+  1. DONE (7a14a431aa): the width rule wrongly forced a straight channel's jog off. In the 1941 layout B jogs south-west before its core, an alignment like the exit jogs, so it is now free. The full run with width rules finds 1942 (13 s wall); all-free finds 1941 (15 s).
+     - `PLANAR_CONT` is not exact: integer everywhere gives 1941, only switches integer gives 1960. Drop it.
+     - Deeper: one linearisation (or the full loop) linearises around the first solve, so with binaries the first solve's choices steer the result. o0t1f1 alone gives 1960 with width rules and 1941 all free. The area objective is local, not optimal by design. Engineer to decide: a better linearisation point (a skeleton estimate), several starts, or an exact formulation of the bilinear area.
   2. Over/under, tie sites and triangle flip: in-model binaries, or variants.
   3. The experiments to promote to defaults: lin1, CONT, WIDTH (once 1 is fixed), PERP.
   4. T2 and LL² from text to test all this beyond T3.
