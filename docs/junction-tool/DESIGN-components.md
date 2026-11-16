@@ -64,10 +64,11 @@ Variants seen in coop:
 
 ### C6 Doubling (an over track splits to two decks for a crossing)
 ```
-0 ===\        /===
-1     \=H==H=/        copy deck (adds a line over the span)
-2 ======H==H======    (heads staggered one tile, D287)
+0 ===+==H====H\            copy 0: straight through its bridge, S-bend after it
+1     \H====H==+===\       copy 1: S-bend before its bridge, heads one tile upstream; merge on line 1
+2                    \===  (shift back when safe)
 ```
+- **Form: the parallelogram** (D105, D118, D145, D287; engineer 2026-11-16 "make sure our doubled bridges are the parallelogram style"): no gap line between the decks, each copy bends once, the copies merge on the copy line and the track shifts back when safe.
 - **Lines:** +1 over the doubled span; equal lengths and bends on both copies (D80 line sync).
 - **When:** the over track carries a prio or through route (D80, D188); not for choice legs (D299).
 - **Topology:** none; a layout realisation of a crossing (D309).
