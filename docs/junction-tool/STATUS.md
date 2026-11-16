@@ -1,3 +1,9 @@
+## RESUME HERE (2026-11-16 night) — PROBE 9: T3 FROM COMPONENTS, CHECKER-CLEAN (1949 tiles, 129x42, 12.5 s)
+- wip/planar-probe9.py (imports planar-probe8.py as probe8): `build_tn(n, fray_s, join_s)` = the T2 branch generalised over lanes; the lanes come from n and the T naming (PlanarTText(n)), not yet from parsing the topology text.
+- n=2 reproduces T2 exactly (935, +1w-1, 89x33, 3.7 s), checker-clean. n=3: -1w-1 1949 (129x42) 12.5 s, +1w-1 1956 14.7 s; +1w1 and -1w1 run out of the 15 s budget (they converge at 20-36 s, 1956/1995). T3 checker-clean through the hidden hook (now takes any `T<n>`, ng1 9fdfa36dc7). Outputs wip/probe9-out/ (routes-t3.txt, checked-t3.json, render-t3.txt).
+- What n=3 needed (D324): join entry lines 0,1,3; B core copy sides to match; series doubled decks in prio joins (the joiners are >= P apart); bridge middle cap; optional-piece cap OPTMAX x (n-1); lazy loop reuses its separating solve (T2 also faster).
+- NEXT: Pete's eye on T3 (build it in the rig: export via the hook's JUNCTION_PROBE_OUT = wip/probe9-out/checked-t3.json); then LLL² (227 block generalised to 3 lanes) per D323; then port build_tn to C++ (compositions by topology family + n).
+
 ## RESUME HERE (2026-11-16 late night) — C++ TOOL NOW BUILDS T2 AND LL² FROM COMPONENTS (D321); PETE AWAY
 - Snapshot of Pete's "great hub" (probe 7, LL² 807): wip/probe7-snapshot/ (probe, layouts, rig save hub807.sav) + OneDrive .../OpenTTD-junction-tool/scratchpad-2026-11-16/.
 - D321 levers (probe 8, wip/planar-probe8.py): forms enumeration gone; LL² 800, T2 935, checker-clean. D322: G1 allows doubled stretches in series (reversible default).
