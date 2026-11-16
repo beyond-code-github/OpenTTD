@@ -186,6 +186,12 @@ def pieces(u, v, L, d):
 
 # ================= T2 composition =================
 
+LEAN = 2  # every doubled pair leans one way: the more northerly deck's heads one tile (2) further east
+
+
+def head_u(seg, n): return seg.a[0] + D[seg.d][0] * n  # u of a deck's near-head end
+
+
 def build_t2(fray_s, join_s, df_over, tri=0):
     """fray_s, join_s: +1 base (the diverging/joining bundle on the right of travel), -1 mirror; df_over: 'D' or 'F'."""
     M = Model()
@@ -245,7 +251,8 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             M.seg(S_near, h, lo=2)                      # merge signal room; now beside S_far, no shift back
             n0, f0 = M.deck(d0, [M.cross(d0, vf, 4)]); n1, f1 = M.deck(d1, [M.cross(d1, vf, 4)])
             M.add(f0 - n0 - (f1 - n1) == 0)  # D118: equal bridges
-            M.add(dot(D[h], d0.a) + n0 - dot(D[h], d1.a) - n1 == 2)  # copy 0's heads one tile downstream of copy 1's
+            south, north = ((d0, n0), (d1, n1)) if right(h)[1] * sigma > 0 else ((d1, n1), (d0, n0))
+            M.add(head_u(*north) - head_u(*south) == LEAN)
         else:
             d0 = M.seg(S_near, h, lo=2)
             M.deck(d0, [M.cross(d0, vf, 4)])
@@ -271,7 +278,8 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             M.seg(S_near, h, lo=2 * P + 2)               # R9: no bend in the prio coverage
             n0, f0 = M.deck(d0, [M.cross(d0, jf, 4)]); n1, f1 = M.deck(d1, [M.cross(d1, jf, 4)])
             M.add(f0 - n0 - (f1 - n1) == 0)  # D118: equal bridges
-            M.add(dot(D[h], d0.a) + n0 - dot(D[h], d1.a) - n1 == 2)  # copy 0's heads one tile downstream of copy 1's
+            south, north = ((d1, n1), (d0, n0)) if right(h)[1] * sigma > 0 else ((d0, n0), (d1, n1))
+            M.add(head_u(*north) - head_u(*south) == LEAN)
             M.seg(J_near, h, lo=2)
             M.seg(J_near, turn(h, -sigma), lo=4, hi=4)
         else:
@@ -348,6 +356,7 @@ def build_t2(fray_s, join_s, df_over, tri=0):
 
     # Core crossings: B over D (D's N segment) and F (F's S segment), every deck; D x F single.
     M.tag = 'coreB'
+    stack = {}
     for l in lanesB:
         spans = []
         for dk in decksB[l]:
@@ -355,14 +364,16 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             xs_D = [M.cross(dk, sD[d][0 if tri == 0 else 2], 3) for d in ('D1', 'D2')]
             nF, fF = M.deck(dk, xs_F)
             nD, fD = M.deck(dk, xs_D)
-            spans.append((fF - nF, fD - nD, dot(D['W'], dk.a) + nF, dot(D['W'], dk.a) + nD))
+            spans.append((fF - nF, fD - nD, head_u(dk, nF), head_u(dk, nD)))
             if tri == 0: M.add(nD - fF >= 2)  # heading W: F's deck first, one plain tile before D's
             else: M.add(nF - fD >= 2)         # flipped triangle: D's deck first
         M.add(spans[0][0] - spans[1][0] == 0); M.add(spans[0][1] - spans[1][1] == 0)  # D118: equal bridges per pair
-        # One lean across the whole stack: the more northerly deck is one tile further upstream (east). B2's copy
-        # (north) is upstream of its track's deck; B1's copy (south) is downstream of it.
-        st = 2 if l == 'B2' else -2
-        M.add(spans[0][2] - spans[1][2] == st); M.add(spans[0][3] - spans[1][3] == st)
+        stack[l] = spans
+    # One staircase across the four decks, north to south: B2's copy, B2, B1, B1's copy; each one tile further west.
+    seq = [stack['B2'][1], stack['B2'][0], stack['B1'][0], stack['B1'][1]]
+    for a_, b_ in zip(seq, seq[1:]):
+        M.add(a_[2] - b_[2] == LEAN); M.add(a_[3] - b_[3] == LEAN)
+        M.add(a_[0] - b_[0] == 0); M.add(a_[1] - b_[1] == 0)  # equal bridges across the stack
     M.tag = 'coreDF'
     if df_over == 'F':  # F's southbound run over D's NE diagonal (S-bend form)
         for f in ('F1', 'F2'): M.deck(sF[f][2], [M.cross(sF[f][2], sD[d][1], 4) for d in ('D1', 'D2')])
