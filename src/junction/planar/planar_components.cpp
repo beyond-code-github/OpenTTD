@@ -264,6 +264,7 @@ public:
 	std::string opt_group; ///< When set, optional segments share one binary per (group, heading): one switch per channel transition.
 	std::map<std::pair<std::string, int>, Var> group_z; ///< The shared binaries.
 	size_t jog_count = 0; ///< Spike: exit jog groups seen so far.
+	std::set<uint32_t> binaries; ///< The optional segments' switches.
 
 	/** Build the empty model with its box variables. */
 	Model()
@@ -398,12 +399,14 @@ public:
 					}
 				}
 				it = this->group_z.emplace(key, this->NewVar(lo_z, hi_z, OPTW)).first;
+				this->binaries.insert(it->second.index);
 			}
 			z = it->second;
 			this->Add(Ge(L - *z * lo, 0));
 			this->Add(Ge(*z * (hi.has_value() ? *hi : OPTMAX) - L, 0));
 		} else if (opt) {
 			z = this->NewVar(0, 1.0, OPTW);
+			this->binaries.insert(z->index);
 			this->Add(Ge(L - *z * lo, 0));
 			this->Add(Ge(*z * (hi.has_value() ? *hi : OPTMAX) - L, 0));
 		}
@@ -499,13 +502,25 @@ public:
 	 * @return Whether an optimal solution was found.
 	 */
 	bool Solve(const std::vector<Row> &extra, Solution &out)
-	{
+	{		const auto solve_t0 = std::chrono::steady_clock::now();
+		struct Report {
+			const std::chrono::steady_clock::time_point t0;
+			bool *ok;
+			~Report()
+			{
+				if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "solve {} ms {}\n", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - this->t0).count(), *this->ok ? "ok" : "no");
+			}
+		};
+		bool report_ok = false;
+		const bool cont_ = std::getenv("PLANAR_CONT") != nullptr; // experiment: only switches and parity auxiliaries integer
+		const Report report{solve_t0, &report_ok};
+
 		JunctionMilp milp;
 		milp.SetTimeLimit(SOLVE_LIMIT);
 		const size_t n0 = this->lb.size();
 		for (size_t i = 0; i < n0; i++) {
 			const auto it = this->obj_extra.find(static_cast<uint32_t>(i));
-			milp.AddVariable(this->lb[i], this->ub[i], this->cost[i] + (it == this->obj_extra.end() ? 0.0 : it->second), true);
+			milp.AddVariable(this->lb[i], this->ub[i], this->cost[i] + (it == this->obj_extra.end() ? 0.0 : it->second), cont_ ? this->binaries.contains(static_cast<uint32_t>(i)) : true);
 		}
 		for (size_t k = 0; k < this->parity.size(); k++) milp.AddVariable(-INF, INF, 0.0, true);
 		for (const Row &r : this->rows) milp.AddRow(r.terms, r.lower, r.upper);
@@ -528,6 +543,7 @@ public:
 			out.val[i] = std::llround(this->last[i]);
 		}
 		out.objective = milp.Objective();
+		report_ok = true;
 		return true;
 	}
 };
@@ -1321,6 +1337,8 @@ private:
 	std::vector<std::map<std::string, std::vector<Seg>>> piece_segs; ///< Per channel, per lane, its segment for each path piece (bundled channels).
 	RouteList routes; ///< Every route path as line names.
 	RouteList outline; ///< The outline routes.
+	std::map<size_t, uint32_t> cross_x; ///< Index into Model::crossings -> its channel crossing.
+	std::map<size_t, uint32_t> deck_x; ///< Index into Model::decks -> the first channel crossing it spans.
 
 	/** The names of a channel's lanes, left to right. */
 	std::vector<std::string> Lanes(uint32_t c) const
@@ -1695,7 +1713,9 @@ void MappedComposer::Build()
 						return;
 					}
 					x0.push_back(M.Cross(d0, this->piece_segs[u][ln][upiece], 3));
+					this->cross_x[M.crossings.size() - 1] = overs[k];
 					x1.push_back(M.Cross(d1, this->piece_segs[u][ln][upiece], 3));
+					this->cross_x[M.crossings.size() - 1] = overs[k];
 				}
 				const bool first_k = k == 0, last_k = k + 1 == overs.size();
 				const auto [n0, f0] = M.Deck(d0, x0, first_k ? std::optional<int>(4) : std::nullopt, last_k ? std::optional<int>(0) : std::nullopt);
@@ -1743,9 +1763,11 @@ void MappedComposer::Build()
 						return;
 					}
 					cr.push_back(M.Cross(over, this->piece_segs[u][un][upiece], 4));
+					this->cross_x[M.crossings.size() - 1] = x;
 				}
 			}
 			M.Deck(over, cr);
+			this->deck_x[M.decks.size() - 1] = xs.front();
 		}
 	}
 
@@ -1779,6 +1801,26 @@ void MappedComposer::Build()
 		M.opt_group = fmt::format("join{}j", s); // the exit's jog to its port: a real choice
 		this->Join(h, rs.side, S, J, O, rs.prio);
 		M.opt_group.clear();
+	}
+
+	/* An under track is at ground where it is crossed: a piece that is both over (its deck) and under (another channel's deck) keeps the crossing outside its own deck, on the side its channel's crossing order gives. */
+	if (std::getenv("PLANAR_NOUNDER") == nullptr) {
+		for (const auto &[ci, xu] : this->cross_x) {
+			const CrossRec &c = M.crossings[ci];
+			for (const auto &[di, xd] : this->deck_x) {
+				const DeckRec &d = M.decks[di];
+				if (d.over.strand != c.under.strand || d.over.i != c.under.i) continue;
+				const uint32_t line = PlanarLineByName(t, c.under.strand);
+				if (line == UINT32_MAX) continue;
+				const auto &list = ch.channels[ch.channel_of_line[line]].crossings;
+				const auto pu = std::ranges::find(list, xu) - list.begin(), pd = std::ranges::find(list, xd) - list.begin();
+				if (pu < pd) {
+					M.Add(Le(c.b, d.n - 3));
+				} else {
+					M.Add(Ge(c.b, d.f + 3));
+				}
+			}
+		}
 	}
 
 	/* Clash sides from the channel graph, given up front. */
@@ -2193,6 +2235,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 				}
 			}
 		}
+		if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "round {}: {} clashes, {} under-deck\n", rnd, bad.size(), under_bad.size());
 		if (bad.empty() && under_bad.empty()) {
 			out = LazyResult{r, g, seps};
 			return true;
@@ -2260,10 +2303,31 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, std::string &why)
 {
 	M.obj_extra.clear();
+	/* Experiment (PLANAR_OBJ): a linear score instead of the area loop: len (track only), box (width + height), routes (outline route length), lin1 (one linearisation). */
+	const char *obj_env = std::getenv("PLANAR_OBJ");
+	const std::string obj = obj_env != nullptr ? obj_env : "";
+	const double w = std::getenv("PLANAR_OBJW") != nullptr ? std::atof(std::getenv("PLANAR_OBJW")) : 10.0;
+	if (obj == "box") {
+		M.obj_extra[M.X.index] += w;
+		M.obj_extra[M.Y.index] += w;
+	} else if (obj == "routes") {
+		std::set<std::pair<std::string, uint32_t>> seen;
+		for (const auto &route : *M.outline_routes) {
+			for (const std::string &st : route) {
+				for (const Seg &sg : M.strands.at(st).segs) {
+					if (seen.insert({st, sg.i}).second) M.obj_extra[sg.L.index] += w;
+				}
+			}
+		}
+	}
 	if (!SolveLazy1(M, t0, {}, out, why)) return false;
 	double best = std::abs(AreaOf(out.sol.val, Outline(M)));
+	if (obj == "len" || obj == "box" || obj == "routes") {
+		area = best / 4;
+		return true;
+	}
 	std::vector<Row> seps = out.seps;
-	for (int it = 0; it < AREA_ROUNDS; it++) {
+	for (int it = 0; it < (obj == "lin1" ? 1 : AREA_ROUNDS); it++) {
 		LineariseArea(M, out.sol.val);
 		LazyResult r2;
 		std::string why2;
