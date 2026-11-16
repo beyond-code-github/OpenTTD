@@ -1,4 +1,4 @@
-# DESIGN-components: coop components inside bundles (DRAFT for the engineer)
+# DESIGN-components: coop components inside bundles (D310, D311)
 
 Orchestrator draft, 2026-11-16. It replaces DESIGN-planar §2a's free track placement (a departure I failed to flag) with the engineer's model: **bundles are the skeleton, and components run inside them** (engineer, 2026-11-16: "bundles/channels don't connect components, but the components run inside them"; "one component may be two tracks wide (i.e a prio) so the channel width at any given time can vary"). It builds on D305-D307 (channels, order not distance), D305's "blocks become named groups of these nodes (templates as presets)", and DESIGN-blocks (block programs, rule families R1-R9).
 
@@ -117,3 +117,5 @@ A  =====H=H=====      decks side by side, heads aligned (staggered when doubled)
 3. C5: is the prio row always on the side away from the joining track?
 4. C8: is the 2x2 diagonal cross a variant we want from the start, or bridge-over-neighbour first?
 5. C3/C4 internals: should a fray and a join be fixed block programs per lane count (like DESIGN-blocks), or composed from C2/C8/C5 inside a stretch?
+
+**Rulings (D311):** (1) C1-C9 stand. (2) One Join and one Fray type, composed inside their stretch from the primitives (C2 lane split/merge, C5 prio row, C8 order swap, C7 crossing stack), so width follows from the tracks (orchestrator default from the engineer's "fewer block types where possible especially where it affects width"; toggle candidate). (3) Prio row on the side away from the joining track. (4) C8 is bridge-over-neighbour only for now.
