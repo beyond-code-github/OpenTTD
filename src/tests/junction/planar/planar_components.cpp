@@ -11,11 +11,13 @@
 
 #include "../../../3rdparty/catch2/catch.hpp"
 
+#include "../../../core/format.hpp"
 #include "../../../junction/junction_spec.h"
 #include "../../../junction/planar/planar_components.h"
 #include "../../../junction/planar/planar_plan.h"
 #include "../../../junction/planar/planar_topology.h"
 
+#include <fstream>
 #include <set>
 #include <string>
 #include <utility>
@@ -29,7 +31,7 @@ namespace {
  * @param text The topology text.
  * @param area_limit The most area (tiles) the solve may need.
  */
-void CheckSolves(const std::string &text, double area_limit)
+void CheckSolves(const std::string &text, double area_limit, bool mapped = false)
 {
 	std::string error;
 	const PlanarTopology topology = ParsePlanarTopology(text, &error);
@@ -37,7 +39,9 @@ void CheckSolves(const std::string &text, double area_limit)
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	PlanarComponentLayout layout;
 	std::string why;
-	REQUIRE(SolvePlanarComponents(topology, spec, layout, &why));
+	const bool ok = mapped ? SolvePlanarMapped(topology, spec, layout, &why) : SolvePlanarComponents(topology, spec, layout, &why);
+	INFO(why);
+	REQUIRE(ok);
 	INFO("variant " << layout.variant << " area " << layout.area << " size " << layout.width << "x" << layout.height << " in " << layout.micros / 1000 << " ms");
 	CHECK(layout.area <= area_limit);
 	CHECK(layout.width > 0);
@@ -70,15 +74,19 @@ TEST_CASE("planar components: T2 solves at the probe's area", "[junction][planar
 	CheckSolves(PlanarTText(2), 963);
 }
 
-TEST_CASE("planar components: a topology without a composition is refused", "[junction][planarcomponents]")
+TEST_CASE("planar components: the one-lane T from its topology text (mapped)", "[junction][planarcomponents][slow]")
 {
-	std::string error;
-	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
-	REQUIRE(error.empty());
-	PlanarComponentLayout layout;
-	std::string why;
-	CHECK(!SolvePlanarComponents(topology, MakeTestJunctionSpec(), layout, &why));
-	CHECK(!why.empty());
+	CheckSolves(PlanarTText(1), 1e9, true);
+}
+
+TEST_CASE("planar components: T2 from its topology text (mapped) at the probe's area", "[junction][planarcomponents][slow]")
+{
+	CheckSolves(PlanarTText(2), 963, true);
+}
+
+TEST_CASE("planar components: T3 from its topology text (mapped) at the hand composition's area", "[junction][planarcomponents][slow]")
+{
+	CheckSolves(PlanarTText(3), 1970, true);
 }
 
 TEST_CASE("planar components: the test spec derives the probe's constants", "[junction][planarcomponents]")

@@ -10,6 +10,8 @@
 #include "../../stdafx.h"
 
 #include "planar_components.h"
+#include "planar_channels.h"
+#include "planar_paths.h"
 
 #include "../junction_spec.h"
 #include "../placement/junction_milp.h"
@@ -228,6 +230,7 @@ struct Params {
 	int cl; ///< Curve spacing.
 	int p; ///< Prio coverage in tiles.
 	int g; ///< The gap between same-hand curves.
+	int maxmid = 10; ///< The longest bridge middle in tiles (spec max_bridge_middle).
 };
 
 /** The integer program of one variant: variables, rows, strands, decks, crossings and copies. */
@@ -255,6 +258,7 @@ public:
 	const std::vector<std::vector<std::string>> *outline_routes = nullptr; ///< The routes of the outline.
 	std::string error; ///< The first failure of a construction check.
 	Params params{};
+	bool deck_parity = false; ///< Deck ends on whole pieces (even half-tiles along their segment), so every deck has its two head pieces.
 
 	/** Build the empty model with its box variables. */
 	Model()
@@ -392,6 +396,12 @@ public:
 	/** Mark strands as meeting at a node (clashes between them are allowed). */
 	void Node(std::initializer_list<std::string> names)
 	{
+		this->Node(std::vector<std::string>(names));
+	}
+
+	/** Mark strands as meeting at a node (clashes between them are allowed). */
+	void Node(const std::vector<std::string> &names)
+	{
 		for (auto i = names.begin(); i != names.end(); ++i) {
 			for (auto j = i + 1; j != names.end(); ++j) this->related.insert(*i < *j ? std::make_pair(*i, *j) : std::make_pair(*j, *i));
 		}
@@ -445,6 +455,10 @@ public:
 		for (const auto &[a, h] : xs) {
 			this->Add(Ge(a - n, h));
 			this->Add(Ge(f - a, h));
+		}
+		if (this->deck_parity) {
+			this->Parity(n, 0);
+			this->Parity(f, 0);
 		}
 		this->decks.push_back({over, n, f});
 		return {n, f};
@@ -1125,15 +1139,15 @@ private:
 		}
 		M.routes = t2 ? &T2Routes() : &LL2Routes();
 		M.outline_routes = t2 ? &T2Outline() : &LL2Outline();
-		this->RouteCurves(*M.routes, pr, tuck);
+		RouteCurves(M, *M.routes, pr, tuck);
 	}
 
+public:
 	/**
 	 * JunctionCurveGaps on every route: curves k apart at least min(2TL-1, k*CL), consecutive opposite hands 2, same hand G. A curve at an optional segment exists only with it (z); a row between two curves holds only when both exist, and the consecutive form tightens to the k=2 form when an optional curve between them exists.
 	 */
-	void RouteCurves(const RouteList &routes, const Params &pr, double)
+	static void RouteCurves(Model &M, const RouteList &routes, const Params &pr, double)
 	{
-		Model &M = this->M;
 		std::set<std::pair<std::vector<std::pair<uint32_t, double>>, double>> seen;
 		const int K2 = std::min(2 * pr.tl - 1, 2 * pr.cl);
 		const auto addrow = [&](const Ex &e) {
@@ -1240,6 +1254,611 @@ public:
 		return variants;
 	}
 };
+
+/** One variant of a mapped composition: which channel is over at each open crossing, and which channel is straight at each tie site. */
+struct MappedVariant {
+	uint64_t over = 0; ///< Bit i set: the i-th open crossing has its higher channel over.
+	uint64_t ties = 0; ///< Bit i set: the i-th site without a straight channel takes its second other channel as straight.
+};
+
+/**
+ * Builds the model of one variant from the topology's channel graph (D327): probe 9's n-lane fray, join, doubled core and
+ * bundles, placed by the channels, sites and paths instead of by a hand composition.
+ */
+class MappedComposer {
+public:
+	Model M;
+
+	/**
+	 * Build the model.
+	 * @param topology The topology.
+	 * @param channels Its channel graph.
+	 * @param params The spec facts.
+	 * @param variant The variant.
+	 */
+	MappedComposer(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant) : t(topology), ch(channels), P(params.p), variant(variant)
+	{
+		this->M.params = params;
+		this->M.deck_parity = true;
+		this->Build();
+	}
+
+private:
+	const PlanarTopology &t;
+	const PlanarChannels &ch;
+	int P;
+	MappedVariant variant;
+	PlanarPaths paths;
+	std::vector<std::map<std::string, std::vector<Seg>>> piece_segs; ///< Per channel, per lane, its segment for each path piece (bundled channels).
+	RouteList routes; ///< Every route path as line names.
+	RouteList outline; ///< The outline routes.
+
+	/** The names of a channel's lanes, left to right. */
+	std::vector<std::string> Lanes(uint32_t c) const
+	{
+		std::vector<std::string> out;
+		for (uint32_t l : this->ch.channels[c].lines) out.push_back(this->t.lines[l].name);
+		return out;
+	}
+
+	/** The heading of the single port in a set, or -1. */
+	int PortHeading(const std::set<uint32_t> &ports) const
+	{
+		return ports.size() == 1 ? static_cast<int>(this->t.ports[*ports.begin()].heading) : -1;
+	}
+
+	/** A turn in eighths, -4..3, positive clockwise. */
+	static int TurnOf(int from, int to)
+	{
+		return (to - from + 12) % 8 - 4;
+	}
+
+	/** A port line at the box boundary. */
+	void PortIn(const std::string &name, PlanarSide side)
+	{
+		this->M.NewStrand(name);
+		const Point u = this->M.strands.at(name).start;
+		if (side == PlanarSide::W) this->M.Add(Eq(u[0], 0));
+		if (side == PlanarSide::E) this->M.Add(Eq(u[0] - this->M.X, 0));
+		if (side == PlanarSide::S) this->M.Add(Eq(u[1] - this->M.Y, 0));
+		if (side == PlanarSide::N) this->M.Add(Eq(u[1], 1));
+	}
+
+	/** Start a copy strand of a lane at its end. */
+	std::string StartCopy(const std::string &lane, const std::string &mark)
+	{
+		const Point cs = this->M.End(lane);
+		const std::string c = lane + mark;
+		this->M.NewStrand(c, cs);
+		this->M.Node({lane, c});
+		return c;
+	}
+
+	/** The parallelogram on a lane (copy toward sg): lane deck, step sg; copy steps sg, deck; the lane ends on its copy's line. */
+	std::pair<Seg, Seg> Double(const std::string &l, int h, int sg, const std::string &suffix, int first)
+	{
+		Model &M = this->M;
+		M.AddSeg(l, h, first);
+		const std::string c = this->StartCopy(l, suffix);
+		const Seg d0 = M.AddSeg(l, h, 2);
+		M.AddSeg(l, Turn(h, sg), 2, 2);
+		M.AddSeg(c, Turn(h, sg), 2, 2);
+		const Seg d1 = M.AddSeg(c, h, 2);
+		M.Tie(M.End(c), M.End(l));
+		M.copies.push_back({c, l, d0.i, d0.i + 2});
+		return {d0, d1};
+	}
+
+	/** Copy 0 and copy 1 decks over the same crossers: tight heads, equal bridges, copy 1 one tile upstream (D118, D145). */
+	void PairDecks(const Seg &d0, const Seg &d1, const std::vector<Seg> &crossers, int h)
+	{
+		Model &M = this->M;
+		std::vector<std::pair<Var, int>> x0, x1;
+		for (const Seg &v : crossers) {
+			x0.push_back(M.Cross(d0, v, 4));
+			x1.push_back(M.Cross(d1, v, 4));
+		}
+		const auto [n0, f0] = M.Deck(d0, x0, 4, 0);
+		const auto [n1, f1] = M.Deck(d1, x1, 0, 4);
+		M.Add(Eq(f0 - n0 - (f1 - n1), 0));
+		M.Add(Eq(Dot(STEP[h], d0.a) + n0 - Dot(STEP[h], d1.a) - n1, 2));
+	}
+
+	/** n-lane fray (probe 9): lanes far..near; V_k crosses every nearer S_j; each crossed S_j decks over all farther V. */
+	void Fray(int h, int sigma, const std::vector<std::string> &ins, const std::vector<std::string> &S, const std::vector<std::string> &V, bool prio)
+	{
+		Model &M = this->M;
+		const int Lt = Turn(h, -1);
+		const auto &r = Right(h);
+		const size_t n = ins.size();
+		for (const std::string &x : ins) {
+			M.AddSeg(x, h, STUB);
+			M.AddSeg(x, Lt, 2, std::nullopt, 1.0, true);
+			M.AddSeg(x, h, 0, std::nullopt, FANW);
+		}
+		std::vector<Point> sp;
+		for (size_t k = 0; k < n; k++) {
+			sp.push_back(M.End(ins[k]));
+			M.NewStrand(S[k], sp.back());
+			M.NewStrand(V[k], sp.back());
+			M.Node({ins[k], S[k], V[k]});
+		}
+		for (size_t k = 1; k < n; k++) M.Add(Ge((Dot(r, sp[k]) - Dot(r, sp[k - 1])) * sigma, prio ? 4 : 2));
+		M.AddSeg(S[0], h, 2);
+		std::vector<Seg> vs;
+		for (const std::string &v : V) vs.push_back(M.AddSeg(v, Turn(h, sigma), 2));
+		for (size_t j = 1; j < n; j++) {
+			const std::vector<Seg> far_v(vs.begin(), vs.begin() + j);
+			if (prio) {
+				const auto [d0, d1] = this->Double(S[j], h, -sigma, "'", 4);
+				M.AddSeg(S[j], h, 2);
+				this->PairDecks(d0, d1, far_v, h);
+			} else {
+				M.AddSeg(S[j], h, 2);
+				M.AddSeg(S[j], Lt, 2, std::nullopt, 1.0, true);
+				const Seg d0 = M.AddSeg(S[j], h, 2);
+				std::vector<std::pair<Var, int>> xs;
+				for (const Seg &v : far_v) xs.push_back(M.Cross(d0, v, 4));
+				M.Deck(d0, xs, std::nullopt, std::nullopt, 2);
+			}
+		}
+	}
+
+	/** n-lane join (probe 9): J_k lands on S_k from side sigma, crossing every nearer S_j (lanes far..near). */
+	void Join(int h, int sigma, const std::vector<std::string> &S, const std::vector<std::string> &J, const std::vector<std::string> &O, bool prio)
+	{
+		Model &M = this->M;
+		const auto &r = Right(h);
+		const size_t n = S.size();
+		M.AddSeg(S[0], h, prio ? 2 * this->P + 2 : 2);
+		std::vector<Seg> js;
+		for (size_t k = 0; k < n; k++) {
+			M.AddSeg(J[k], h, 2);
+			const int lo = (prio && k > 0) ? 4 : 6;
+			js.push_back(M.AddSeg(J[k], Turn(h, -sigma), lo, n == 2 ? std::optional<int>(lo) : std::nullopt));
+		}
+		M.Tie(M.End(J[0]), M.End(S[0]));
+		for (size_t j = 1; j < n; j++) {
+			if (prio) {
+				/* Joiners far from the merge cross before this lane's coverage, each P tiles apart: one doubled stretch per crossed joiner in series (D322). */
+				for (size_t k = 0; k + 1 < j; k++) {
+					const auto [d0, d1] = this->Double(S[j], h, sigma, "''" + std::string(k + 1, '\''), 2);
+					M.AddSeg(S[j], h, 2);
+					M.AddSeg(S[j], Turn(h, -sigma), 2, 2);
+					this->PairDecks(d0, d1, {js[k]}, h);
+				}
+				const auto [d0, d1] = this->Double(S[j], h, sigma, "''", 2);
+				M.AddSeg(S[j], h, 2 * this->P + 2);
+				this->PairDecks(d0, d1, {js[j - 1]}, h);
+			} else {
+				const Seg d0 = M.AddSeg(S[j], h, 2);
+				std::vector<std::pair<Var, int>> xs;
+				for (size_t k = 0; k < j; k++) xs.push_back(M.Cross(d0, js[k], 4));
+				M.Deck(d0, xs, std::nullopt, std::nullopt, 2, 4);
+			}
+			M.Tie(M.End(J[j]), M.End(S[j]));
+		}
+		std::vector<Point> ms;
+		for (size_t k = 0; k < n; k++) ms.push_back(M.End(S[k]));
+		for (size_t k = 0; k < n; k++) {
+			M.NewStrand(O[k], ms[k]);
+			M.Node({S[k], J[k], O[k]});
+		}
+		if (prio) {
+			for (size_t k = 0; k < n; k++) M.prio_rows.push_back({S[k], ms[k], h, -sigma});
+			for (size_t j = 1; j < n; j++) {
+				M.AddSeg(O[j], h, 2);
+				M.AddSeg(O[j], Turn(h, -sigma), 2, 2 * static_cast<int>(j));
+			}
+		}
+		std::vector<Seg> st;
+		for (const std::string &o : O) {
+			M.AddSeg(o, h, 2, std::nullopt, FANW);
+			st.push_back(M.AddSeg(o, Turn(h, +1), 2, std::nullopt, 1.0, true));
+			M.AddSeg(o, h, STUB);
+		}
+		for (size_t k = 0; k + 1 < n; k++) {
+			const bool f_first = Turn(h, +1) == Turn(h, sigma);
+			const Seg &a = f_first ? st[k] : st[k + 1];
+			const Seg &b = f_first ? st[k + 1] : st[k];
+			M.Add(Ge(Dot(STEP[h], a.a) - Dot(STEP[h], b.a), 0));
+			M.Add(Eq(Dot(r, M.End(O[k + 1])) - Dot(r, M.End(O[k])), 2 * sigma));
+		}
+	}
+
+	/** A run with an optional S-bend either way (D320); offset-parallel on its last piece at the given lines. */
+	void Flex(const std::vector<std::string> &lanes, int h, const std::vector<int> &offs)
+	{
+		Model &M = this->M;
+		std::vector<Seg> last;
+		for (const std::string &l : lanes) {
+			M.AddSeg(l, h, 0);
+			M.AddSeg(l, Turn(h, -1), 2, std::nullopt, std::sqrt(2.0), true);
+			M.AddSeg(l, h, 0);
+			M.AddSeg(l, Turn(h, +1), 2, std::nullopt, std::sqrt(2.0), true);
+			last.push_back(M.AddSeg(l, h, 0));
+		}
+		const auto &r = Right(h);
+		for (size_t j = 1; j < lanes.size(); j++) {
+			M.Add(Eq(Dot(r, last[j].a) - Dot(r, last[0].a), 2 * offs[j]));
+			M.Add(Eq(Dot(r, last[j].b) - Dot(r, last[0].b), 2 * offs[j]));
+		}
+	}
+
+	/** A bundle on a channel's path: one segment per heading per lane, offset-parallel; the first piece optional when asked. */
+	void Bundle(uint32_t c, const std::vector<int> &heads, bool opt0)
+	{
+		Model &M = this->M;
+		const std::vector<std::string> lanes = this->Lanes(c);
+		const int n = static_cast<int>(lanes.size());
+		for (size_t k = 0; k < heads.size(); k++) {
+			const int h = heads[k];
+			const auto &r = Right(h);
+			const bool o = opt0 && k == 0;
+			for (const std::string &l : lanes) {
+				this->piece_segs[c][l].push_back(M.AddSeg(l, h, 0, o ? std::optional<int>(OPTMAX * std::max(1, n - 1)) : std::nullopt, IsAxis(h) ? 1.0 : std::sqrt(2.0), o));
+			}
+			for (int j = 1; j < n; j++) {
+				const Seg &sj = this->piece_segs[c][lanes[j]][k];
+				const Seg &s0 = this->piece_segs[c][lanes[0]][k];
+				M.Add(Eq(Dot(r, sj.a) - Dot(r, s0.a), 2 * j));
+				M.Add(Eq(Dot(r, sj.b) - Dot(r, s0.b), 2 * j));
+			}
+		}
+	}
+
+	/** A prio join's straight lanes arrive on these lines from its far lane: every crossed lane steps one line out (D324). */
+	static std::vector<int> JoinEntry(int n)
+	{
+		std::vector<int> e{0};
+		for (int j = 1; j < n; j++) e.push_back(2 * j - 1);
+		return e;
+	}
+
+	void Build();
+};
+
+/** Build the model of the variant. */
+void MappedComposer::Build()
+{
+	Model &M = this->M;
+	const PlanarTopology &t = this->t;
+	const PlanarChannels &ch = this->ch;
+	this->paths = BuildPlanarPaths(t, ch, this->variant.over);
+	if (!this->paths.why.empty()) {
+		M.Fail(this->paths.why);
+		return;
+	}
+	this->piece_segs.resize(ch.channels.size());
+
+	/* Sites: the straight channel and side, the tie sites taking theirs from the variant. */
+	struct Resolved {
+		uint32_t straight;
+		uint32_t other;
+		int side;
+		bool prio;
+	};
+	std::vector<Resolved> res(ch.sites.size());
+	int tie = 0;
+	for (size_t s = 0; s < ch.sites.size(); s++) {
+		const PlanarSite &site = ch.sites[s];
+		if (site.kind == PlanarSiteKind::LaneSplit || site.kind == PlanarSiteKind::LaneMerge || site.others.size() != 2) {
+			M.Fail("a site that is not a two-channel fray or join is not composed yet");
+			return;
+		}
+		uint32_t straight = site.straight;
+		if (straight == UINT32_MAX) straight = site.others[(this->variant.ties >> tie++ & 1) != 0 ? 1 : 0];
+		const uint32_t other = site.others[0] == straight ? site.others[1] : site.others[0];
+		const bool split = site.kind == PlanarSiteKind::Fray;
+		const PlanarChannel &key = ch.channels[site.channel];
+		const int from = split ? this->PortHeading(key.up) : this->PortHeading(ch.channels[other].up);
+		const int to = split ? this->PortHeading(ch.channels[other].down) : this->PortHeading(key.down);
+		if (from < 0 || to < 0) {
+			M.Fail("a site's channels have no single port heading");
+			return;
+		}
+		const int turn = TurnOf(from, to);
+		res[s] = {straight, other, turn > 0 ? 1 : -1, ch.channels[straight].prio};
+	}
+	const auto site_of = [&](uint32_t c, bool split) -> std::optional<size_t> {
+		for (size_t s = 0; s < ch.sites.size(); s++) {
+			const bool is_split = ch.sites[s].kind == PlanarSiteKind::Fray;
+			if (is_split == split && (res[s].straight == c || res[s].other == c)) return s;
+		}
+		return std::nullopt;
+	};
+
+	/* In ports. */
+	for (const PlanarPort &port : t.ports) {
+		if (!port.in) continue;
+		for (uint32_t l : port.lines) this->PortIn(t.lines[l].name, port.side);
+	}
+
+	/* Frays: lanes far..near (far away from the diverging side), each in line's legs matched by node. */
+	for (size_t s = 0; s < ch.sites.size(); s++) {
+		if (ch.sites[s].kind != PlanarSiteKind::Fray) continue;
+		const PlanarSite &site = ch.sites[s];
+		const Resolved &rs = res[s];
+		const int h = this->PortHeading(ch.channels[site.channel].up);
+		std::vector<uint32_t> ins = ch.channels[site.channel].lines;
+		if (rs.side < 0) std::ranges::reverse(ins);
+		std::vector<std::string> in_names, S, V;
+		for (uint32_t x : ins) {
+			const PlanarNode &node = t.nodes[t.lines[x].to.index];
+			const uint32_t a = node.out[0], b = node.out[1];
+			const bool a_straight = ch.channel_of_line[a] == rs.straight;
+			in_names.push_back(t.lines[x].name);
+			S.push_back(t.lines[a_straight ? a : b].name);
+			V.push_back(t.lines[a_straight ? b : a].name);
+		}
+		this->Fray(h, rs.side, in_names, S, V, rs.prio);
+	}
+
+	/* Movement channels: a bundle on their path (the diverging channel's first piece optional, unless a crossing sits on it). */
+	std::vector<uint32_t> cores;
+	for (uint32_t c = 0; c < ch.channels.size(); c++) {
+		const PlanarChannel &cc = ch.channels[c];
+		const uint32_t first = cc.lines.front();
+		if (t.lines[first].from.port || t.lines[first].to.port) continue;
+		const PlanarChannelPath &path = this->paths.paths[c];
+		if (path.headings.size() == 1) {
+			cores.push_back(c);
+			continue;
+		}
+		const std::optional<size_t> fray = site_of(c, true);
+		bool opt0 = fray.has_value() && res[*fray].other == c;
+		for (uint32_t piece : path.crossing_piece) opt0 &= piece != 0;
+		std::vector<int> heads;
+		for (PlanarHeading hd : path.headings) heads.push_back(static_cast<int>(hd));
+		this->Bundle(c, heads, opt0);
+	}
+
+	/* Straight channels: a run to the join-entry lines; a prio channel over crossings doubles each lane over them all (the core). */
+	for (uint32_t c : cores) {
+		const PlanarChannel &cc = ch.channels[c];
+		const std::vector<std::string> lanes = this->Lanes(c);
+		const int n = static_cast<int>(lanes.size());
+		const int h = static_cast<int>(this->paths.paths[c].headings.front());
+		const std::optional<size_t> join = site_of(c, false);
+		std::vector<int> offs(n);
+		for (int j = 0; j < n; j++) offs[j] = j;
+		bool far_left = true;
+		if (join.has_value() && res[*join].straight == c && res[*join].prio) {
+			far_left = res[*join].side > 0;
+			const std::vector<int> e = JoinEntry(n);
+			for (int j = 0; j < n; j++) offs[j] = far_left ? e[j] : e[n - 1] - e[n - 1 - j];
+		}
+		this->Flex(lanes, h, offs);
+		std::vector<uint32_t> overs;
+		for (uint32_t x : cc.crossings) {
+			if (this->paths.over[x] == c) overs.push_back(x);
+		}
+		if (overs.empty()) continue;
+		if (!cc.prio) {
+			M.Fail("a straight non-prio channel over a crossing is not composed yet");
+			return;
+		}
+		/* Copy sides (D312): the far lane copies outward, every other lane away from the far lane. */
+		const int away = far_left ? +1 : -1;
+		for (int j = 0; j < n; j++) {
+			const bool is_far = far_left ? j == 0 : j == n - 1;
+			const int sg = is_far ? -away : away;
+			const auto [d0, d1] = this->Double(lanes[j], h, sg, "\"", 2);
+			M.AddSeg(lanes[j], h, 2);
+			M.AddSeg(lanes[j], Turn(h, -sg), 2, 2);
+			/* One deck per crossing on each copy, in travel order: the first with its near head tight, the last with its tail tight. */
+			std::optional<Var> prev_f0, prev_f1;
+			for (size_t k = 0; k < overs.size(); k++) {
+				const PlanarChannelCrossing &xc = ch.crossings[overs[k]];
+				const uint32_t u = xc.a == c ? xc.b : xc.a;
+				const auto &ul = ch.channels[u].crossings;
+				const uint32_t upiece = this->paths.paths[u].crossing_piece[std::ranges::find(ul, overs[k]) - ul.begin()];
+				std::vector<std::pair<Var, int>> x0, x1;
+				for (const std::string &ln : this->Lanes(u)) {
+					if (this->piece_segs[u][ln].size() <= upiece) {
+						M.Fail("a crossing's under channel has no bundled piece there");
+						return;
+					}
+					x0.push_back(M.Cross(d0, this->piece_segs[u][ln][upiece], 3));
+					x1.push_back(M.Cross(d1, this->piece_segs[u][ln][upiece], 3));
+				}
+				const bool first_k = k == 0, last_k = k + 1 == overs.size();
+				const auto [n0, f0] = M.Deck(d0, x0, first_k ? std::optional<int>(4) : std::nullopt, last_k ? std::optional<int>(0) : std::nullopt);
+				const auto [n1, f1] = M.Deck(d1, x1, first_k ? std::optional<int>(0) : std::nullopt, last_k ? std::optional<int>(4) : std::nullopt);
+				if (prev_f0.has_value()) {
+					M.Add(Ge(n0 - *prev_f0, 2));
+					M.Add(Ge(n1 - *prev_f1, 2));
+				}
+				prev_f0 = f0;
+				prev_f1 = f1;
+				M.Add(Eq(f0 - n0 - (f1 - n1), 0));
+				M.Add(Eq(Dot(STEP[h], d0.a) + n0 - Dot(STEP[h], d1.a) - n1, 2));
+			}
+		}
+		std::vector<Seg> run;
+		for (const std::string &l : lanes) run.push_back(M.AddSeg(l, h, 0));
+		for (int j = 1; j < n; j++) M.Add(Eq(Dot(Right(h), run[j].a) - Dot(Right(h), run[0].a), 2 * offs[j]));
+	}
+
+	/* Crossings between bundled channels: the over lanes' piece decks over all the under lanes' piece. */
+	std::map<std::pair<uint32_t, uint32_t>, std::vector<uint32_t>> deck_groups;
+	for (uint32_t x = 0; x < ch.crossings.size(); x++) {
+		const uint32_t o = this->paths.over[x];
+		if (this->paths.paths[o].headings.size() == 1) continue;
+		const auto &ol = ch.channels[o].crossings;
+		deck_groups[{o, this->paths.paths[o].crossing_piece[std::ranges::find(ol, x) - ol.begin()]}].push_back(x);
+	}
+	for (const auto &[key, xs] : deck_groups) {
+		const auto [o, opiece] = key;
+		if (ch.channels[o].prio) {
+			M.Fail("a turning prio channel over a crossing is not composed yet");
+			return;
+		}
+		for (const std::string &ol : this->Lanes(o)) {
+			const Seg &over = this->piece_segs[o][ol][opiece];
+			std::vector<std::pair<Var, int>> cr;
+			for (uint32_t x : xs) {
+				const PlanarChannelCrossing &xc = ch.crossings[x];
+				const uint32_t u = xc.a == o ? xc.b : xc.a;
+				const auto &ul = ch.channels[u].crossings;
+				const uint32_t upiece = this->paths.paths[u].crossing_piece[std::ranges::find(ul, x) - ul.begin()];
+				for (const std::string &un : this->Lanes(u)) {
+					if (this->piece_segs[u][un].size() <= upiece) {
+						M.Fail("a crossing's under channel has no bundled piece there");
+						return;
+					}
+					cr.push_back(M.Cross(over, this->piece_segs[u][un][upiece], 4));
+				}
+			}
+			M.Deck(over, cr);
+		}
+	}
+
+	/* Joins: lanes far..near (far away from the joining side), each merge's legs matched by node. */
+	for (size_t s = 0; s < ch.sites.size(); s++) {
+		if (ch.sites[s].kind != PlanarSiteKind::Join) continue;
+		const PlanarSite &site = ch.sites[s];
+		const Resolved &rs = res[s];
+		const int h = this->PortHeading(ch.channels[site.channel].down);
+		if (static_cast<int>(this->paths.paths[rs.other].headings.back()) != h || static_cast<int>(this->paths.paths[rs.straight].headings.back()) != h) {
+			M.Fail("a join's channels do not arrive on its heading");
+			return;
+		}
+		std::vector<std::tuple<size_t, std::string, std::string, std::string>> legs;
+		const std::vector<uint32_t> &sl = ch.channels[rs.straight].lines;
+		for (uint32_t nidx : site.nodes) {
+			const PlanarNode &node = t.nodes[nidx];
+			const uint32_t a = node.in[0], b = node.in[1];
+			const bool a_straight = ch.channel_of_line[a] == rs.straight;
+			const uint32_t sline = a_straight ? a : b, jline = a_straight ? b : a;
+			const size_t pos = std::ranges::find(sl, sline) - sl.begin();
+			legs.emplace_back(rs.side > 0 ? pos : sl.size() - 1 - pos, t.lines[sline].name, t.lines[jline].name, t.lines[node.out[0]].name);
+		}
+		std::ranges::sort(legs);
+		std::vector<std::string> S, J, O;
+		for (const auto &[pos, sn, jn, on] : legs) {
+			S.push_back(sn);
+			J.push_back(jn);
+			O.push_back(on);
+		}
+		this->Join(h, rs.side, S, J, O, rs.prio);
+	}
+
+	/* Out ports on the boundary. */
+	for (const PlanarPort &port : t.ports) {
+		if (port.in) continue;
+		for (uint32_t l : port.lines) {
+			const Point u = M.End(t.lines[l].name);
+			if (port.side == PlanarSide::W) M.Add(Eq(u[0], 0));
+			if (port.side == PlanarSide::E) M.Add(Eq(u[0] - M.X, 0));
+			if (port.side == PlanarSide::S) M.Add(Eq(u[1] - M.Y, 0));
+			if (port.side == PlanarSide::N) M.Add(Eq(u[1], 1));
+		}
+	}
+	/* Port order per side in reading order: lanes of a port adjacent, one tile between ports. */
+	for (const PlanarSide side : {PlanarSide::N, PlanarSide::E, PlanarSide::S, PlanarSide::W}) {
+		const bool across_y = side == PlanarSide::W || side == PlanarSide::E;
+		const std::array<int, 2> read = across_y ? std::array<int, 2>{0, 1} : std::array<int, 2>{1, 0};
+		std::vector<std::pair<Point, bool>> seq; // point, first line of a new port
+		for (const PlanarPort &port : t.ports) {
+			if (port.side != side) continue;
+			std::vector<uint32_t> lines = port.lines;
+			const auto &r = Right(static_cast<int>(port.heading));
+			if (r[0] * read[0] + r[1] * read[1] < 0) std::ranges::reverse(lines);
+			bool first = true;
+			for (uint32_t l : lines) {
+				const std::string &nm = t.lines[l].name;
+				seq.emplace_back(port.in ? M.strands.at(nm).start : M.End(nm), first);
+				first = false;
+			}
+		}
+		const size_t k = across_y ? 1 : 0;
+		for (size_t i = 1; i < seq.size(); i++) M.Add(Eq(seq[i].first[k] - seq[i - 1].first[k], seq[i].second ? 4 : 2));
+	}
+	/* Box. */
+	for (const std::string &name : M.order) {
+		const Strand &st = M.strands.at(name);
+		std::vector<Point> pts{st.start};
+		for (const Seg &sg : st.segs) pts.push_back(sg.b);
+		for (const Point &p : pts) {
+			M.Add(Ge(p[0], 0));
+			M.Add(Ge(M.X - p[0], 0));
+			M.Add(Ge(p[1], 1));
+			M.Add(Ge(M.Y - p[1], 0));
+		}
+	}
+	/* Prio rows: inside the box, unrelated to all. */
+	for (const PrioRow &row : std::vector<PrioRow>(M.prio_rows)) {
+		const auto &r = Right(row.h);
+		const int dx = STEP[row.h][0], dy = STEP[row.h][1];
+		const std::array<Ex, 2> start = {row.m[0] - dx * 2 * this->P + row.side * r[0] * 2, row.m[1] - dy * 2 * this->P + row.side * r[1] * 2};
+		const std::string nm = "prio:" + row.strand;
+		M.NewStrand(nm, M.NewPoint());
+		M.Tie(M.strands.at(nm).start, start);
+		M.AddSeg(nm, row.h, 2 * this->P, 2 * this->P, 0);
+		for (const Point &p : {M.strands.at(nm).start, M.End(nm)}) {
+			M.Add(Ge(p[0], 0));
+			M.Add(Ge(M.X - p[0], 0));
+			M.Add(Ge(p[1], 1));
+			M.Add(Ge(M.Y - p[1], 0));
+		}
+	}
+	/* A deck is two heads and at most the longest middle. */
+	for (const DeckRec &d : std::vector<DeckRec>(M.decks)) M.Add(Le(d.f - d.n, 2 * (M.params.maxmid + 2)));
+
+	/* Routes: every route path; the outline: from each in port's left lane, the path turning furthest left. */
+	for (const PlanarRoute &route : t.routes) {
+		for (const auto &path : route.paths) {
+			std::vector<std::string> names;
+			for (uint32_t l : path) names.push_back(t.lines[l].name);
+			this->routes.push_back(std::move(names));
+		}
+	}
+	for (const PlanarPort &port : t.ports) {
+		if (!port.in) continue;
+		const uint32_t lane = port.lines.front();
+		const std::vector<std::string> *best = nullptr;
+		int best_turn = INT_MAX;
+		for (const auto &rp : this->routes) {
+			if (rp.front() != t.lines[lane].name) continue;
+			const PlanarLine &last = t.lines[PlanarLineByName(t, rp.back())];
+			const int turn = TurnOf(static_cast<int>(port.heading), static_cast<int>(t.ports[last.to.index].heading));
+			if (turn < best_turn) {
+				best_turn = turn;
+				best = &rp;
+			}
+		}
+		if (best != nullptr) this->outline.push_back(*best);
+	}
+	/* R5: a non-prio route runs at least 2 TL units from its last split (or its port) to each merge. */
+	const auto starts_at = [&](const std::string &name, size_t legs_in) {
+		const PlanarEnd &e = t.lines[PlanarLineByName(t, name)].from;
+		return !e.port && t.nodes[e.index].in.size() == legs_in;
+	};
+	std::set<std::vector<std::string>> bays;
+	for (const PlanarRoute &route : t.routes) {
+		if (route.prio) continue;
+		for (const auto &path : route.paths) {
+			std::vector<std::string> names;
+			for (uint32_t l : path) names.push_back(t.lines[l].name);
+			for (size_t i = 0; i + 1 < names.size(); i++) {
+				if (!starts_at(names[i + 1], 2)) continue;
+				size_t j = i;
+				while (j > 0 && !starts_at(names[j], 1)) j--;
+				std::vector<std::string> stretch(names.begin() + j, names.begin() + i + 1);
+				if (!bays.insert(stretch).second) continue;
+				Ex len;
+				for (const std::string &nm : stretch) {
+					for (const Seg &sg : M.strands.at(nm).segs) len = len + sg.L;
+				}
+				M.Add(Ge(len, 2 * M.params.tl + 4));
+			}
+		}
+	}
+	M.routes = &this->routes;
+	M.outline_routes = &this->outline;
+	Composer::RouteCurves(M, this->routes, M.params, std::sqrt(2.0));
+}
 
 /** One segment's geometry at a solution: start point, length, heading. */
 struct Geo {
@@ -1728,6 +2347,75 @@ VariantOutcome SolveVariant(const PlanarTopology &topology, const Params &params
 	return out;
 }
 
+/**
+ * Build, solve and export one variant of the mapped composition.
+ * @param topology The topology.
+ * @param channels Its channel graph.
+ * @param params The spec facts.
+ * @param variant The variant.
+ * @return The outcome.
+ */
+VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant)
+{
+	VariantOutcome out;
+	out.tag = fmt::format("o{}t{}", variant.over, variant.ties);
+	const Clock::time_point t0 = Clock::now();
+	MappedComposer composer(topology, channels, params, variant);
+	Model &M = composer.M;
+	if (!M.error.empty()) {
+		out.why = M.error;
+		return out;
+	}
+	LazyResult res;
+	if (!SolveLazy(M, t0, res, out.area, out.why)) return out;
+	out.width = static_cast<int>(std::llround(Ev(res.sol.val, M.X))) / 2 + 1;
+	out.height = static_cast<int>(std::llround(Ev(res.sol.val, M.Y))) / 2 + 1;
+	if (!M.error.empty()) {
+		out.why = M.error;
+		return out;
+	}
+	if (!ExportRoutes(M, res.geo, topology, out.routes, out.why)) return out;
+	out.ok = true;
+	return out;
+}
+
+/** The spec facts the model uses. */
+Params MakeParams(const JunctionSpec &spec)
+{
+	Params params;
+	params.tl = spec.tl;
+	params.cl = static_cast<int>(DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl));
+	params.p = spec.prio_tiles;
+	params.g = std::min(2 * params.tl - 1, std::max(2, params.cl));
+	params.maxmid = spec.max_bridge_middle;
+	return params;
+}
+
+/** The least-area outcome, or the reasons none solved. */
+bool PickBest(const std::vector<VariantOutcome> &outcomes, Clock::time_point t0, PlanarComponentLayout &layout, std::string *why)
+{
+	const VariantOutcome *best = nullptr;
+	std::string reasons;
+	for (const VariantOutcome &o : outcomes) {
+		if (!o.ok) {
+			reasons += " " + o.tag + ": " + o.why + ";";
+			continue;
+		}
+		if (best == nullptr || o.area < best->area) best = &o;
+	}
+	if (best == nullptr) {
+		if (why != nullptr) *why = "no variant solves:" + reasons;
+		return false;
+	}
+	layout.width = best->width;
+	layout.height = best->height;
+	layout.area = best->area;
+	layout.variant = best->tag;
+	layout.routes = best->routes;
+	layout.micros = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
+	return true;
+}
+
 } // namespace
 
 bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &spec, PlanarComponentLayout &layout, std::string *why)
@@ -1738,7 +2426,7 @@ bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &s
 		return false;
 	};
 	const bool t2 = topology.name == "T2";
-	if (!t2 && topology.name != "LL2") return fail("no component composition for topology " + topology.name);
+	if (!t2 && topology.name != "LL2") return SolvePlanarMapped(topology, spec, layout, why);
 	for (const auto &route : t2 ? T2Routes() : LL2Routes()) {
 		for (const std::string &line : route) {
 			if (PlanarLineByName(topology, line) == UINT32_MAX) return fail("line " + line + " is not in the topology");
@@ -1778,4 +2466,38 @@ bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &s
 	layout.routes = best->routes;
 	layout.micros = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
 	return true;
+}
+
+/**
+ * Solve a topology's component layout from its channel graph (D327): every variant of its open crossings and tie sites, each
+ * on its own thread; the least area inside the outline wins.
+ * @param topology The topology.
+ * @param spec The spec.
+ * @param layout The layout found.
+ * @param why The reason on failure.
+ * @return Whether a layout was found.
+ */
+bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec, PlanarComponentLayout &layout, std::string *why)
+{
+	const Clock::time_point t0 = Clock::now();
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	const Params params = MakeParams(spec);
+	const size_t open = PlanarOpenCrossings(channels).size();
+	size_t ties = 0;
+	for (const PlanarSite &site : channels.sites) ties += site.straight == UINT32_MAX ? 1 : 0;
+	if (open + ties > 6) {
+		if (why != nullptr) *why = fmt::format("{} open crossings and {} tie sites are too many variants", open, ties);
+		return false;
+	}
+	std::vector<MappedVariant> variants;
+	for (uint64_t o = 0; o < (uint64_t{1} << open); o++) {
+		for (uint64_t k = 0; k < (uint64_t{1} << ties); k++) variants.push_back({o, k});
+	}
+	std::vector<VariantOutcome> outcomes(variants.size());
+	std::vector<std::thread> threads;
+	for (size_t i = 0; i < variants.size(); i++) {
+		threads.emplace_back([&, i] { outcomes[i] = SolveMappedVariant(topology, channels, params, variants[i]); });
+	}
+	for (std::thread &thread : threads) thread.join();
+	return PickBest(outcomes, t0, layout, why);
 }

@@ -50,5 +50,6 @@ struct PlanarComponentLayout {
 
 /** Solve the component layout of a T2 or LL2 topology: every variant (in parallel), the least area wins. @return false with why set when the topology has no composition or no variant solves. */
 bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &spec, PlanarComponentLayout &layout, std::string *why);
+bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec, PlanarComponentLayout &layout, std::string *why);
 
 #endif /* PLANAR_COMPONENTS_H */

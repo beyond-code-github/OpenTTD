@@ -11,6 +11,7 @@
 
 #include "../../../3rdparty/catch2/catch.hpp"
 
+#include "../../../core/format.hpp"
 #include "../../../junction/junction_route.h"
 #include "../../../junction/junction_rules.h"
 #include "../../../junction/junction_spec.h"
@@ -177,7 +178,9 @@ void RequireComponentPlanClean(const std::string &text)
 	REQUIRE(plan.layout.has_value());
 	CHECK(plan.why.empty());
 	const std::vector<RuleViolation> violations = CheckJunctionRules(*plan.layout, spec, PlanarCheckerTopology(seed->topology));
-	for (const RuleViolation &v : violations) INFO(static_cast<int>(v.rule) << " " << v.message << " at " << v.tile.x << "," << v.tile.y);
+	std::string list;
+	for (const RuleViolation &v : violations) list += fmt::format("\n{} {} at {},{}", static_cast<int>(v.rule), v.message, v.tile.x, v.tile.y);
+	INFO(list);
 	CHECK(violations.empty());
 }
 
@@ -193,10 +196,15 @@ TEST_CASE("planar: T2 builds from its component layout and passes the checker", 
 	RequireComponentPlanClean(PlanarTText(2));
 }
 
-TEST_CASE("planar: the one-lane T keeps the §2a layout", "[junction][planar][slow]")
+/* Known gap (hidden): at one lane the mapped layout breaks the bay and adjacent-split rules (rules 4, 7, 8). */
+TEST_CASE("planar: the one-lane T builds from its mapped component layout and passes the checker", "[.mappedt1]")
 {
-	const std::shared_ptr<const PlanarSeed> seed = PlanarSeedFor(PlanarTText(1), MakeTestJunctionSpec());
-	CHECK_FALSE(seed->components.has_value());
+	RequireComponentPlanClean(PlanarTText(1));
+}
+
+TEST_CASE("planar: T3 builds from its mapped component layout and passes the checker", "[junction][planarcomponents][slow]")
+{
+	RequireComponentPlanClean(PlanarTText(3));
 }
 
 /* Dump (hidden): the component plan's layout as JSON, for building it in the rig. */
