@@ -15,8 +15,10 @@ INF = highspy.kHighsInf
 HEAD = 'N NE E SE S SW W NW'.split()
 D = {'E': (1, 0), 'W': (-1, 0), 'N': (0, -1), 'S': (0, 1), 'NE': (1, -1), 'NW': (-1, -1), 'SE': (1, 1), 'SW': (-1, 1)}
 STUB = 4
-G = 4
-P = int(next((a.split('=')[1] for a in sys.argv if a.startswith('--prio=')), 8))  # prio coverage, tiles
+TL, CL = 4, 5   # MakeTestJunctionSpec: tl 4; reference speed 160, curve speed 0 -> DeriveCurveSpacing 5
+G = min(2 * TL - 1, max(2, CL))
+P = int(next((a.split('=')[1] for a in sys.argv if a.startswith('--prio=')), 14))  # prio coverage, tiles (spec.prio_tiles)
+FANW = 1.5      # cost per half-tile of a fanned (spread) stretch; the tight stub costs 1
 BUDGET = 15.0
 
 
@@ -72,6 +74,7 @@ class Model:
         M.labels = {}
         M.pred = {}      # strand -> predecessor strand (path continues through a node)
         M.tags, M.tag = [], ''
+        M.copies = {}    # copy strand -> (strand, first replaced seg, resume seg)
 
     def var(M, lb=0.0, ub=INF, c=0.0):
         M.lb.append(lb); M.ub.append(ub); M.obj.append(c); return Var(len(M.lb) - 1)
@@ -188,10 +191,12 @@ def build_t2(fray_s, join_s, df_over, tri=0):
     M = Model()
     X, Y = M.var(c=3.0), M.var(c=3.0)
     M.X, M.Y = X, Y
+    M.fan_in = []
 
     def port_in(name, side):
         M.strand(name)
         u, v = M.start[name]
+        M.fan_in.append(name)
         if side == 'W': M.add(u == 0)
         if side == 'E': M.add(u - X == 0)
         if side == 'S': M.add(v - Y == 0)
@@ -209,10 +214,15 @@ def build_t2(fray_s, join_s, df_over, tri=0):
     bundles = {}  # name -> (lanes left->right, heading sequence)
 
     def fray(h, sigma, far, near, S_far, S_near, V_far, V_near, prio):
-        for x in (far, near): M.seg(x, h, lo=STUB)
+        fl = []
+        for x in (far, near):
+            M.seg(x, h, lo=STUB)                         # tight stub at the port
+            fl.append(M.seg(x, turn(h, -1), lo=2))       # fan to the left of travel, as late as possible
+            M.seg(x, h, lo=2, cost=FANW)
+        M.add(fl[0].L - fl[1].L == 0); M.add(dot(D[h], fl[0].a) - dot(D[h], fl[1].a) == 0)
         r = right(h)
         # far lane on line 0, near on line sigma*1 (adjacent)
-        M.add(dot(r, M.end(near)) - dot(r, M.start[far]) == 2 * sigma)
+        M.add(dot(r, M.end(near)) - dot(r, M.end(far)) == 2 * sigma)
         sf, sn = M.end(far), M.end(near)
         M.strand(S_far, sf); M.strand(V_far, sf); M.node(far, S_far, V_far); M.pred[S_far] = far; M.pred[V_far] = far
         M.strand(S_near, sn); M.strand(V_near, sn); M.node(near, S_near, V_near); M.pred[S_near] = near; M.pred[V_near] = near
@@ -230,7 +240,7 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             M.seg(S_near, turn(h, sigma), lo=2, hi=2)   # copy 0 bends after its bridge
             M.seg(c, turn(h, sigma), lo=2, hi=2)        # copy 1 bends before its bridge
             d1 = M.seg(c, h, lo=2)                      # copy 1 deck, runs to the merge
-            M.tie(M.end(c), M.end(S_near))
+            M.tie(M.end(c), M.end(S_near)); M.copies[c] = (S_near, d0.i, d0.i + 2)
             M.seg(S_near, h, lo=2)                      # merge signal room
             M.seg(S_near, turn(h, -sigma), lo=2, hi=2)  # shift back when safe
             M.seg(S_near, h, lo=2)
@@ -256,7 +266,7 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             M.seg(S_near, turn(h, sigma), lo=2, hi=2)
             M.seg(c, turn(h, sigma), lo=2, hi=2)
             d1 = M.seg(c, h, lo=2)
-            M.tie(M.end(c), M.end(S_near))
+            M.tie(M.end(c), M.end(S_near)); M.copies[c] = (S_near, d0.i, d0.i + 2)
             M.seg(S_near, h, lo=2 * P + 2)               # R9: no bend in the prio coverage
             M.deck(d0, [M.cross(d0, jf, 4)]); M.deck(d1, [M.cross(d1, jf, 4)])
             M.seg(J_near, h, lo=2)
@@ -274,7 +284,12 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             M.prio_rows.append((S_near, mn, h, -sigma))
             M.seg(O_near, h, lo=2)
             M.seg(O_near, turn(h, -sigma), lo=2, hi=2)
-        M.seg(O_far, h, lo=STUB); M.seg(O_near, h, lo=STUB)
+        fo = []
+        for o in (O_far, O_near):
+            M.seg(o, h, lo=2, cost=FANW)
+            fo.append(M.seg(o, turn(h, +1), lo=2))   # fan back toward the arm's other direction
+            M.seg(o, h, lo=STUB)
+        M.add(fo[0].L - fo[1].L == 0); M.add(dot(D[h], fo[0].a) - dot(D[h], fo[1].a) == 0)  # the bundle fans as one
         M.add(dot(r, M.end(O_near)) - dot(r, M.end(O_far)) == 2 * sigma)
 
     def bundle(name, lanes, heads):
@@ -320,7 +335,7 @@ def build_t2(fray_s, join_s, df_over, tri=0):
         M.seg(l, turn(h, sigma), lo=2, hi=2)
         M.seg(c, turn(h, sigma), lo=2, hi=2)
         d1 = M.seg(c, h, lo=2)
-        M.tie(M.end(c), M.end(l))
+        M.tie(M.end(c), M.end(l)); M.copies[c] = (l, d0.i, d0.i + 2)
         M.seg(l, h, lo=2)
         M.seg(l, turn(h, -sigma), lo=2, hi=2)
         decksB[l] = (d0, d1)
@@ -368,7 +383,7 @@ def build_t2(fray_s, join_s, df_over, tri=0):
     for side, seq in order.items():
         k = 0 if side == 'S' else 1
         for idx, ((a, sa), (b, sb)) in enumerate(zip(seq, seq[1:])):
-            M.add(vv(b, sb)[k] - vv(a, sa)[k] >= 2)
+            M.add(vv(b, sb)[k] - vv(a, sa)[k] == (4 if idx == 1 else 2))  # LL_RR: lanes adjacent, one tile between the directions
             if idx == 1:  # between the arm's two directions
                 g = M.var(c=GAPW); M.add(g - (vv(b, sb)[k] - vv(a, sa)[k]) == 0); M.gaps.append(g)
                 if GAPMAX is not None: M.add(g <= 2 * GAPMAX)
@@ -388,9 +403,55 @@ def build_t2(fray_s, join_s, df_over, tri=0):
         M.seg(nm, h, lo=2 * P, hi=2 * P, cost=0)
         for p in (M.start[nm], M.end(nm)):
             M.add(p[0] >= 0); M.add(X - p[0] >= 0); M.add(p[1] >= 1); M.add(Y - p[1] >= 0)
-    M.tag = 'curve'; curve_gaps(M)
+    M.tag = 'curve'; route_curves(M, T2_ROUTES)
     M.bundles = bundles
     return M
+
+
+T2_ROUTES = [(a + k, b + k, c + k) for k in '12' for a, b, c in
+             (('EF', 'E', 'ED'), ('EF', 'F', 'AF'), ('AB', 'B', 'CB'), ('AB', 'A', 'AF'), ('CD', 'C', 'CB'), ('CD', 'D', 'ED'))]
+
+
+def route_segs(M, route):
+    """Every segment sequence of a route: its strands in order, each doubled stretch by either copy."""
+    variants = [[]]
+    for st in route:
+        cps = sorted((k, r_, c) for c, (s_, k, r_) in M.copies.items() if s_ == st)
+        opts = []
+        for mask in range(1 << len(cps)):
+            seq, i = [], 0
+            segs = M.strands[st]
+            chosen = {cps[b][0]: cps[b] for b in range(len(cps)) if mask >> b & 1}
+            while i < len(segs):
+                if i in chosen:
+                    k, r_, c = chosen[i]
+                    seq += M.strands[c]; i = r_
+                else:
+                    seq.append(segs[i]); i += 1
+            opts.append(seq)
+        variants = [v + o for v in variants for o in opts]
+    return variants
+
+
+def route_curves(M, routes):
+    """JunctionCurveGaps on every route: curves k apart at least min(2TL-1, k*CL), consecutive opposite hands 2."""
+    seen = set()
+    for route in routes:
+        for seq in route_segs(M, route):
+            pos, curves, acc = [], [], Ex()
+            for a, b in zip(seq, seq[1:]):
+                acc = acc + a.L
+                if a.d != b.d:
+                    assert abs(rot(a.d, b.d)) == 1, (route, a.d, b.d)
+                    curves.append((acc, rot(a.d, b.d) > 0))
+            for i in range(len(curves)):
+                for j in range(i + 1, min(len(curves), i + 4)):
+                    if j == i + 1: gap = 2 if curves[i][1] != curves[j][1] else G
+                    else: gap = min(2 * TL - 1, (j - i) * CL)
+                    e = curves[j][0] - curves[i][0]
+                    key = (tuple(sorted(e.d.items())), e.c, gap)
+                    if key in seen: continue
+                    seen.add(key); M.add(e >= gap)
 
 
 def curve_gaps(M):
@@ -553,9 +614,8 @@ def export(M, geo, decks, val, path):
         nm = 'prio:' + main
         u, v, L, d = geo[(nm, 0)]
         r = right(h); dx, dy = D[h]
-        # entry join: main point 2 before the prio start, diagonal forward-to-side, length 2
-        mu, mv = u - dx * 2 - side * r[0] * 2, v - dy * 2 - side * r[1] * 2
-        for tile, kind, _, _ in pieces(mu, mv, 2, turn(h, side)): tracks.setdefault(tile, set()).add(BITS[kind])
+        # first join (trailing): from the prio row's start, diagonal forward onto the main track
+        for tile, kind, _, _ in pieces(u, v, 2, turn(h, -side)): tracks.setdefault(tile, set()).add(BITS[kind])
         # exit join: prio point 2 before its end, diagonal forward-to-main, length 2 (lands on the merge point)
         eu, ev_ = u + dx * (L - 2), v + dy * (L - 2)
         for tile, kind, _, _ in pieces(eu, ev_, 2, turn(h, -side)): tracks.setdefault(tile, set()).add(BITS[kind])
