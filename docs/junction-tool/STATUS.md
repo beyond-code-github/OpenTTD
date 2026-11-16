@@ -1,5 +1,13 @@
 ## RESUME HERE (2026-11-16, final) — D329: APPROXIMATE AREA ACCEPTED; NEXT T2 AND LL² FROM TEXT (ng1 wt-planar 7a14a431aa)
 
+RESUME 2026-11-17 later (ng1 wt-planar 46cbaeb78d):
+- D331 doubling by flow share done (`PlanarChannels::line_share`; D332: sideline movements, i.e. no prio route, count half, so the T is unchanged). Full-share lanes double on straight cores and on turning channels' crossing pieces; half-share cross single.
+- Paths: a channel starting at a node starts on its in channel's end heading; a straight fork leg jogs to its own side to cross; crossing pieces settle jointly (cycles compose, over pieces avoid running parallel to the under). Straight channels can pass under (their run before or after their decks).
+- T1/T2/T3 unchanged (325.25 / 917.25 / 1941.25).
+- LL²: 896 of 1024 variants build (`PLANAR_DRY=1` sweeps construction). The 128 left (F over B and D, D over B) need D to wiggle back north. Sample solve (t7/t3 across all over sets, 128 runs): none solve: 89 base infeasible (some proven fast, e.g. o49t0f0 in 0.3 s; others hit the 5 s limit), 29 out of budget with clashes, 10 clash not separable.
+- NEXT: find why the LL² base is infeasible: HiGHS getIis on the LP relaxation of o49t0f0 (needs row tags in Model). Then cut variants: LL²'s three exits are rotations (choice-leg crossings and tie merges decided once: 6 bits off); longer term over/under as in-model binaries (told Pete).
+- Pete (2026-11-17): every variant should work; a failing variant is a composer gap, not an impossible layout.
+
 RESUME 2026-11-17 (ng1 wt-planar ca8b87b08c; docs on feature/junction-tool):
 - Mapped defaults promoted (width-decided switches, right angles under prio, one area step, CONT dropped) + coordinate pull 0.001: T3 1941.25 in 10 s, T2 917.25 in 4.7 s (hand 935), T1 325 (still checker gaps, stays on §2a). Seed target is < 5 s (D297), not the 100 ms hover.
 - Semi-perimeter W+H measured: no effect over track length on T3 (box already tight); keep as user option / tie-break candidate.
