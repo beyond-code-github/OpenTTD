@@ -183,7 +183,7 @@ def pieces(u, v, L, d):
 
 # ================= T2 composition =================
 
-def build_t2(fray_s, join_s, df_over):
+def build_t2(fray_s, join_s, df_over, tri=0):
     """fray_s, join_s: +1 base (the diverging/joining bundle on the right of travel), -1 mirror; df_over: 'D' or 'F'."""
     M = Model()
     X, Y = M.var(c=3.0), M.var(c=3.0)
@@ -302,7 +302,7 @@ def build_t2(fray_s, join_s, df_over):
     M.tag = 'bundles'
     sE = bundle('E', ['E1', 'E2'], ['E'])
     sF = bundle('F', ['F1', 'F2'], ['E', 'SE', 'S'])
-    sD = bundle('D', ['D1', 'D2'], ['N', 'NE', 'E'])
+    sD = bundle('D', ['D1', 'D2'], ['N', 'NE', 'E'] if tri == 0 else ['N', 'NE', 'N', 'NE', 'E'])
     sC = bundle('C', ['C1', 'C2'], ['N', 'NW', 'W'])
     sA = bundle('A', ['A1', 'A2'], ['W', 'SW', 'S'])
     # B: run, doubled stretch per track (copy outward, the parallelogram), run.
@@ -333,10 +333,11 @@ def build_t2(fray_s, join_s, df_over):
     for l in lanesB:
         for dk in decksB[l]:
             xs_F = [M.cross(dk, sF[f][2], 3) for f in ('F1', 'F2')]
-            xs_D = [M.cross(dk, sD[d][0], 3) for d in ('D1', 'D2')]
+            xs_D = [M.cross(dk, sD[d][0 if tri == 0 else 2], 3) for d in ('D1', 'D2')]
             nF, fF = M.deck(dk, xs_F)
             nD, fD = M.deck(dk, xs_D)
-            M.add(nD - fF >= 2)  # heading W: F's deck first, one plain tile before D's
+            if tri == 0: M.add(nD - fF >= 2)  # heading W: F's deck first, one plain tile before D's
+            else: M.add(nF - fD >= 2)         # flipped triangle: D's deck first
     M.tag = 'coreDF'
     if df_over == 'F':  # F's southbound run over D's NE diagonal (S-bend form)
         for f in ('F1', 'F2'): M.deck(sF[f][2], [M.cross(sF[f][2], sD[d][1], 4) for d in ('D1', 'D2')])
@@ -361,10 +362,16 @@ def build_t2(fray_s, join_s, df_over):
     def vv(n, start): return (M.start[n] if start else M.end(n))
     order = {'W': [('EF1', 1), ('EF2', 1), ('CB2', 0), ('CB1', 0)], 'E': [('ED1', 0), ('ED2', 0), ('AB2', 1), ('AB1', 1)],
              'S': [('CD1', 1), ('CD2', 1), ('AF2', 0), ('AF1', 0)]}
+    GAPW = float(next((x.split('=')[1] for x in sys.argv if x.startswith('--gapw=')), 0))
+    GAPMAX = next((int(x.split('=')[1]) for x in sys.argv if x.startswith('--gapmax=')), None)
+    M.gaps = []
     for side, seq in order.items():
         k = 0 if side == 'S' else 1
-        for (a, sa), (b, sb) in zip(seq, seq[1:]):
+        for idx, ((a, sa), (b, sb)) in enumerate(zip(seq, seq[1:])):
             M.add(vv(b, sb)[k] - vv(a, sa)[k] >= 2)
+            if idx == 1:  # between the arm's two directions
+                g = M.var(c=GAPW); M.add(g - (vv(b, sb)[k] - vv(a, sa)[k]) == 0); M.gaps.append(g)
+                if GAPMAX is not None: M.add(g <= 2 * GAPMAX)
     # Box.
     M.tag = 'box'
     for name, segs in M.strands.items():
@@ -567,19 +574,19 @@ def export(M, geo, decks, val, path):
 if __name__ == '__main__':
     t0 = time.perf_counter()
     results = []
-    combos = [(fs, js, o) for fs in (1, -1) for js in (1, -1) for o in ('F', 'D')]
+    combos = [(fs, js, o, 0) for fs in (1, -1) for js in (1, -1) for o in ('F', 'D')] + [(fs, js, 'F', 1) for fs in (1, -1) for js in (1, -1)]
     only = next((a.split('=')[1] for a in sys.argv if a.startswith('--only=')), None)
-    if only: combos = [c for c in combos if f'{c[0]:+d}{c[1]:+d}{c[2]}' == only]
-    for fs, js, o in combos:
+    if only: combos = [c for c in combos if f'{c[0]:+d}{c[1]:+d}{c[2]}{c[3]}' == only]
+    for fs, js, o, tri in combos:
         ts = time.perf_counter()
-        M = build_t2(fs, js, o)
+        M = build_t2(fs, js, o, tri)
         res, why = solve_lazy(M, ts)
-        tag = f'{fs:+d}{js:+d}{o}'
+        tag = f'{fs:+d}{js:+d}{o}{tri}'
         if res is None:
             print(f'{tag}: NO ({why}) {time.perf_counter() - ts:.2f}s'); continue
         (val, obj), geo, decks, rnd = res
         W, H = round(ev(val, M.X)) // 2 + 1, round(ev(val, M.Y)) // 2 + 1
-        print(f'{tag}: {W}x{H} obj {obj:.0f} sep rounds {rnd} {time.perf_counter() - ts:.2f}s')
+        print(f'{tag}: {W}x{H} obj {obj:.0f} sep rounds {rnd} {time.perf_counter() - ts:.2f}s gaps(tiles) {[round(ev(val, g)) // 2 for g in M.gaps]}')
         results.append((obj, tag, M, val, geo, decks))
     print(f'total {time.perf_counter() - t0:.2f}s')
     if results:
