@@ -180,6 +180,7 @@ class JunctionTestGS extends GSController {
 		else if (cmd == "find_clear") this.CmdFindClear(id, msg);
 		else if (cmd == "raise_rect") this.CmdRaiseRect(id, msg);
 		else if (cmd == "demolish") this.CmdDemolish(id, msg);
+		else if (cmd == "demolish_area") this.CmdDemolishArea(id, msg);
 		else if (cmd == "remove_track") this.CmdRemoveTrack(id, msg);
 		else if (cmd == "sell") this.CmdSell(id, msg);
 		else if (cmd == "clear_orders") this.CmdClearOrders(id, msg);
@@ -344,6 +345,21 @@ class JunctionTestGS extends GSController {
 	}
 
 	/* Clear one tile (a depot, a waypoint, track). */
+	/* Bulldoze every non-clear tile of the rectangle x1,y1 .. x2,y2 (inclusive), in one message. */
+	function CmdDemolishArea(id, msg)
+	{
+		if (!this.Need(msg, ["x1", "y1", "x2", "y2"], id)) return;
+		local n = 0, failed = 0;
+		for (local y = msg.y1; y <= msg.y2; y++) {
+			for (local x = msg.x1; x <= msg.x2; x++) {
+				local t = GSMap.GetTileIndex(x, y);
+				if (GSTile.IsBuildable(t)) continue;
+				if (GSTile.DemolishTile(t)) n++; else failed++;
+			}
+		}
+		this.Reply(id, { ok = true, demolished = n, failed = failed });
+	}
+
 	function CmdDemolish(id, msg)
 	{
 		if (!this.Need(msg, ["x", "y"], id)) return;

@@ -176,6 +176,15 @@ def cmd_ridge_demo(a):
     cmd_build_layout(a)
 
 
+def cmd_clear_area(a):
+    adm = connect()
+    try:
+        r = gs(adm, {"cmd": "demolish_area", "x1": a.x1, "y1": a.y1, "x2": a.x2, "y2": a.y2}, timeout=600)
+    finally:
+        adm.close()
+    print("demolished=%d failed=%d" % (r["demolished"], r["failed"]))
+
+
 def cmd_build_layout(a):
     with open(a.file) as f:
         layout = json.load(f)
@@ -565,6 +574,7 @@ def main():
     add("gs", cmd_gs, ("json", {}))
     add("company", cmd_company, ("--id", i))
     add("build-layout", cmd_build_layout, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--railtype", {"default": None}))
+    add("clear-area", cmd_clear_area, ("x1", {"type": int}), ("y1", {"type": int}), ("x2", {"type": int}), ("y2", {"type": int}))
     add("ridge-demo", cmd_ridge_demo, ("file", {}), ("r0", i), ("r1", i), ("--railtype", {"default": None}))
     add("junction-check", cmd_junction_check, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 6}), ("--wagons", {"type": int, "default": 3}), ("--ticks", {"type": int, "default": 7400}))
     add("traffic", cmd_traffic, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 8}), ("--wagons", {"type": int, "default": 3}), ("--warmup", {"type": int, "default": 20}), ("--ticks", {"type": int, "default": 20000}), ("--every", {"type": int, "default": 4}), ("--mix", {"default": None}))
