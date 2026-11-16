@@ -1,3 +1,12 @@
+## RESUME HERE (2026-11-16, final) — D329: APPROXIMATE AREA ACCEPTED; NEXT T2 AND LL² FROM TEXT (ng1 wt-planar 7a14a431aa)
+- D329: the outline area is optimised approximately (linearised, all choices open; about 1% on T3). Later the user picks the score (most compact, cheapest, thinnest, most square); those three others are exact.
+- Next:
+  1. T2 and LL² through `SolvePlanarMapped`. LL² needs lane-split and lane-merge components (the 227 block).
+  2. Promote the experiments to defaults: lin1, WIDTH (jogs free), PERP and triangle flips as variants. Drop CONT (inexact).
+  3. Speed: the jog binaries make the full T3 run 13 s wall; each variant is 68 ms with everything fixed.
+  4. LLL² under each pairing.
+- Everything committed and pushed (feature/junction-tool, fork wt-planar).
+
 ## RESUME HERE (2026-11-16, end) — OBJECTIVE MEASURED; ONE T3 VARIANT IN 2 SOLVES (ng1 e31d755915)
 - Engineer: near ties are not ties; done right, the solve finds the optimal layout by design (no conventions). Asked to measure whether a linear score can stand in for the outline area.
 - Measured on T3 (all variants):
