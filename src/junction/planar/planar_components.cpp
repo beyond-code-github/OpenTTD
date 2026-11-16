@@ -332,8 +332,10 @@ public:
 	/** @return A free point. */
 	Point NewPoint()
 	{
-		const Var x = this->NewVar(-INF);
-		const Var y = this->NewVar(-INF);
+		/* A tiny weight on every coordinate pulls ties toward the north-west corner, so the solver has one best layout to prove, not many (PLANAR_PULL overrides it). */
+		static const double pull = std::getenv("PLANAR_PULL") != nullptr ? std::atof(std::getenv("PLANAR_PULL")) : 0.001;
+		const Var x = this->NewVar(-INF, INF, pull);
+		const Var y = this->NewVar(-INF, INF, pull);
 		return Point{x, y};
 	}
 
