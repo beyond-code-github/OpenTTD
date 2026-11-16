@@ -488,36 +488,36 @@ std::vector<RuleViolation> CheckConnectivity(const JunctionCheckContext &ctx)
 			for (const JunctionPath &path : ctx.paths) {
 				if (path.from_slot == from && path.to_slot == to) lanes.push_back(&path);
 			}
-			auto length_of = [](const JunctionPath &path) {
+			auto same_piece = [](const JunctionPiece &a, const JunctionPiece &b) { return SameTile(a.tile, b.tile) && a.trackdir == b.trackdir; };
+			auto units_of = [](const std::vector<JunctionPiece> &pieces, size_t first, size_t last) {
 				uint units = 0;
-				for (const JunctionPiece &piece : path.pieces) units += piece.units;
+				for (size_t i = first; i < last; i++) units += pieces[i].units;
 				return units;
 			};
-			auto same_piece = [](const JunctionPiece &a, const JunctionPiece &b) { return SameTile(a.tile, b.tile) && a.trackdir == b.trackdir; };
 
+			/* Two paths are copies when their shared pieces run in the same order, both start and end shared, and each stretch where they differ has equal length (D322). */
 			bool doubled = true;
 			bool equal_length = true;
 			for (size_t i = 0; i < lanes.size() && doubled; i++) {
 				for (size_t j = i + 1; j < lanes.size() && doubled; j++) {
 					const std::vector<JunctionPiece> &a = lanes[i]->pieces;
 					const std::vector<JunctionPiece> &b = lanes[j]->pieces;
-					size_t prefix = 0;
-					while (prefix < a.size() && prefix < b.size() && same_piece(a[prefix], b[prefix])) prefix++;
-					size_t suffix = 0;
-					while (suffix < a.size() && suffix < b.size() && same_piece(a[a.size() - 1 - suffix], b[b.size() - 1 - suffix])) suffix++;
-					if (prefix == 0 || suffix == 0 || prefix + suffix > a.size() || prefix + suffix > b.size()) {
+					std::vector<std::pair<size_t, size_t>> shared; // (index in a, index in b) of each shared piece, in a's order.
+					for (size_t x = 0; x < a.size(); x++) {
+						const auto it = std::ranges::find_if(b, [&](const JunctionPiece &piece) { return same_piece(a[x], piece); });
+						if (it != b.end()) shared.emplace_back(x, it - b.begin());
+					}
+					const bool ordered = std::ranges::adjacent_find(shared, [](const auto &p, const auto &q) { return q.second <= p.second; }) == shared.end();
+					if (shared.empty() || !ordered || shared.front() != std::pair<size_t, size_t>{0, 0} || shared.back() != std::pair<size_t, size_t>{a.size() - 1, b.size() - 1}) {
 						doubled = false;
 						break;
 					}
-					for (size_t x = prefix; x < a.size() - suffix && doubled; x++) {
-						for (size_t y = prefix; y < b.size() - suffix; y++) {
-							if (same_piece(a[x], b[y])) {
-								doubled = false;
-								break;
-							}
-						}
+					for (size_t k = 0; k + 1 < shared.size(); k++) {
+						const auto &[ai, bi] = shared[k];
+						const auto &[ai2, bi2] = shared[k + 1];
+						if (ai2 == ai + 1 && bi2 == bi + 1) continue;
+						if (units_of(a, ai + 1, ai2) != units_of(b, bi + 1, bi2)) equal_length = false;
 					}
-					if (length_of(*lanes[i]) != length_of(*lanes[j])) equal_length = false;
 				}
 			}
 			if (!doubled) {

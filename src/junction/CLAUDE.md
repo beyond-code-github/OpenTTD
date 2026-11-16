@@ -44,6 +44,7 @@ Rules of the junction tool as present-tense facts, split per folder: each fact l
 
 ## Rule checker
 - With lane paths (D301), a path is a main line (prio at merges, no bays, doubled bridges, order) when its lane path holds prio; without them, when it is a through path (D319).
+- G1: two paths of one movement are copies when their shared pieces appear in the same order in both, both start and end shared, and each stretch where they differ has equal length on both (D322); a lane may double at several crossings in series.
 - D24 does not count a rejoin as a merge (D302): a merge whose incoming tracks carry the same (from_slot, to_slot) paths, as a doubled lane's copies do; it may be followed by a split.
 - The checker rejects a split of a main-line lane inside a prio's coverage; a split here means any divergence or join of main-line tracks.
 - The checker requires prio to hold under OpenTTD's real pre-signal logic: for every main-line (tile, track) within coverage plus the tile before the first upstream signal, a one-tile train there must settle the joiner's Entry red.

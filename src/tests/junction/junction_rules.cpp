@@ -210,22 +210,6 @@ TEST_CASE("CheckConnectivity: cycle", "[junction][rules]")
 	CHECK(Has(violations, JunctionRule::Connectivity, 2, 0, "cycle"));
 }
 
-TEST_CASE("CheckConnectivity: ambiguous movement", "[junction][rules]")
-{
-	const JunctionSpec spec = MakeTestJunctionSpec();
-	/*
-	 * Ways from (0,0) to (14,0): straight, or a detour through row 1 at either of two places, so the paths
-	 * diverge and reconverge twice. (One detour alone is a doubled lane, which is allowed.)
-	 *   - - # - - # - - # - - # - - - -
-	 *   . . \ - - / . . \ - - / . . . .
-	 */
-	const JunctionLayout layout = Build({{{0, 0}, Trackdir::X_SW, "FFFFFFFFFFFFFF"}, {{1, 0}, Trackdir::X_SW, "LFRFRFL"}, {{7, 0}, Trackdir::X_SW, "LFRFRFL"}});
-	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec,
-			{Port(Role::EIn, 0, 0, Trackdir::X_SW), Port(Role::EOut, 14, 0, Trackdir::X_SW)}, {{Role::EIn, Role::EOut}});
-	REQUIRE(ctx.paths.size() == 4);
-	CHECK(Has(CheckConnectivity(ctx), JunctionRule::Connectivity, 0, 0, "ambiguous movement"));
-}
-
 TEST_CASE("CheckConnectivity: unexpected movement and missing port", "[junction][rules]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
@@ -1410,14 +1394,28 @@ TEST_CASE("CheckConnectivity: doubled lanes of unequal length", "[junction][rule
 	CHECK_FALSE(Has(violations, JunctionRule::Connectivity, 15, 0, "ambiguous movement"));
 }
 
-TEST_CASE("CheckConnectivity: two stretches are ambiguous", "[junction][rules]")
+TEST_CASE("CheckConnectivity: two doubled stretches in series (D322)", "[junction][rules]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	/* Lane B diverges and reconverges twice, with a shared stretch between. */
 	const JunctionLayout layout = Build({{{20, 0}, Trackdir::X_NE, "FFFFFFFFFFFFFFFFFFFF"}, {{20, 0}, Trackdir::X_NE, "FFRFLFFLFRFFRFLFFLFRFFFF"}});
 	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, DoubledPorts(0, 20), DOUBLED_MOVEMENTS);
 	REQUIRE(ctx.paths.size() == 4);
-	CHECK(Has(CheckConnectivity(ctx), JunctionRule::Connectivity, 20, 0, "ambiguous movement"));
+	const std::vector<RuleViolation> violations = CheckConnectivity(ctx);
+	CHECK_FALSE(Has(violations, JunctionRule::Connectivity, 20, 0, "ambiguous movement"));
+	CHECK_FALSE(Has(violations, JunctionRule::Connectivity, 20, 0, "doubled lanes differ in length"));
+}
+
+TEST_CASE("CheckConnectivity: doubled stretches in series of unequal length", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	/* As the series fixture, but the second stretch's copy leaves by RRLL, two rows deep and longer than its straight. */
+	const JunctionLayout layout = Build({{{20, 0}, Trackdir::X_NE, "FFFFFFFFFFFFFFFFFFFF"}, {{20, 0}, Trackdir::X_NE, "FFRFLFFLFRFFRRLLFFLLRRFFFF"}});
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, DoubledPorts(0, 20), DOUBLED_MOVEMENTS);
+	REQUIRE(ctx.paths.size() == 4);
+	const std::vector<RuleViolation> violations = CheckConnectivity(ctx);
+	CHECK(Has(violations, JunctionRule::Connectivity, 20, 0, "doubled lanes differ in length"));
+	CHECK_FALSE(Has(violations, JunctionRule::Connectivity, 20, 0, "ambiguous movement"));
 }
 
 TEST_CASE("CheckBridges: an undoubled ML bridge", "[junction][rules]")
