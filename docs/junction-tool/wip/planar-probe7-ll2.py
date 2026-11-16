@@ -273,14 +273,11 @@ def build_t2(fray_s, join_s, df_over, tri=0, stair=None):
         M.strand(L0, mL0); M.node(fA, c0, L0); M.pred[L0] = fA
         M.strand(L1, mL1); M.node(c1, fB, L1); M.pred[L1] = fB
         M.prio_rows.append((fA, mL0, h, -1)); M.prio_rows.append((fB, mL1, h, +1))
-        M.seg(L0, h, lo=2)                                   # merge signal room
-        M.seg(L1, h, lo=2); M.seg(L1, Lt, lo=2); M.seg(L1, h, lo=2)   # L1 closes up beside L0
-        fo = []
-        for o in (L0, L1):
-            M.seg(o, h, lo=2, cost=FANW)
-            fo.append(M.seg(o, R, lo=2))
-            M.seg(o, h, lo=STUB)
-        M.add(fo[0].L - fo[1].L == 0); M.add(dot(D[h], fo[0].a) - dot(D[h], fo[1].a) == 0)
+        # Out: the inside lane (L1, toward the arm's in port) runs straight to its port; the outside lane closes up beside it at the last responsible moment.
+        M.seg(L1, h, lo=2 + STUB)
+        M.seg(L0, h, lo=2)                                   # merge signal room, then the spread stretch
+        M.seg(L0, R, lo=2)
+        M.seg(L0, h, lo=STUB, cost=FANW)                     # short after the step: the step comes late
         M.add(dot(r, M.end(L1)) - dot(r, M.end(L0)) == 2)
 
     def fray(h, sigma, far, near, S_far, S_near, V_far, V_near, prio):
