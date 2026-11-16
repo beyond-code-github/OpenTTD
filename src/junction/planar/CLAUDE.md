@@ -35,3 +35,12 @@
 - `PlanarCheckerTopology` gives the checker the ports as lane groups in slot order and every route path as a lane path with its route's prio flag (D301).
 - `PlanarLL2Text` is the PSG 227 pattern at two lanes; its 18 lane paths equal the composed hub's (`ComposeJunctionHub` on the width-2 T).
 - `PlanarHubText` maps the window's hub type: one lane each way to the T, two with any pairing to LL², two otherwise to the two-lane T.
+
+## Component solver (`planar_components`, DESIGN-components §6)
+- `SolvePlanarComponents` has a composition per topology name, `T2` (`PlanarTText(2)`) and `LL2` (`PlanarLL2Text()`); any other topology is refused with a reason, and every route line of the composition must exist in the topology's lines.
+- Four variants per composition (LL²: S fray side x diagonal west fray; T2: S fray side x S join side), each built and solved on its own thread; the least area inside the outline wins, ties by variant order.
+- The model translates `wip/planar-probe8.py`: strands of segments in half-tile units, optional segments (binary z, length 0 or in [lo, hi]) between pieces of one heading (D321), decks, crossings, prio rows and doubled-lane copies; curve rows follow whole routes and lapse with the optional curves they span.
+- Each solve is a fresh `JunctionMilp` with every variable integer and parity auxiliaries, warm-started from the model's last solution, with a 5 s time limit (`JunctionMilp::SetTimeLimit`); a solve that reaches it counts as infeasible, and a variant gets a 15 s budget for its lazy clash loop.
+- Clashes are separated lazily (one pair per round, first of four sorted directions that stays feasible); the area inside the outline is then minimised by sequential linearisation around the clash-free solution.
+- The output is one `PlanarRouteProgram` per route path and copy choice: pieces (tile, heading 0 N .. 7 NW, Ground/Head/Middle, line index in the path) and copy switches; routes and paths are matched to the topology by route name and the comma-joined line names.
+- On the test spec the solver finds LL² at 800 tiles (variant `-1F1w1`, 64x47) and T2 at 935 tiles (`+1F1w-1`, 89x33).
