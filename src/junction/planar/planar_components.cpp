@@ -390,7 +390,7 @@ public:
 					const char kind = this->opt_group.back();
 					if (kind == '+') lo_z = 1.0;
 					if (kind == '-') hi_z = 0.0;
-					if (kind == 'j' && std::getenv("PLANAR_JOGS") != nullptr) { // spike: the exits' jogs fixed, one character per join site in order ('1' on)
+					if (kind == 'j' && std::getenv("PLANAR_JOGS") != nullptr) { // spike: the jogs fixed, one character per jog group in creation order ('1' on)
 						const std::string jogs = std::getenv("PLANAR_JOGS");
 						const size_t at = this->jog_count++;
 						const double v = at < jogs.size() && jogs[at] == '1' ? 1.0 : 0.0;
@@ -1679,7 +1679,7 @@ void MappedComposer::Build()
 			const std::vector<int> e = JoinEntry(n);
 			for (int j = 0; j < n; j++) offs[j] = far_left ? e[j] : e[n - 1] - e[n - 1 - j];
 		}
-		M.opt_group = fmt::format("flex{}-", c); // a straight channel's sideways jogs: no width change
+		M.opt_group = fmt::format("flex{}j", c); // a straight channel's sideways jog: lining up with its neighbours, a real choice (T3: B's jog before its core gives 1941)
 		this->Flex(lanes, h, offs);
 		M.opt_group.clear();
 		std::vector<uint32_t> overs;
@@ -2555,6 +2555,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 		}
 		std::ofstream f(fmt::format("{}/{}.txt", dir, out.tag));
 		f << "area " << out.area << "\n";
+		for (const auto &[key, z] : M.group_z) f << "switch " << key.first << " h" << key.second << " " << std::llround(Ev(res.sol.val, z)) << "\n";
 		for (const std::string &name : M.order) {
 			f << "seq " << name << ":";
 			for (const Seg &sg : M.strands.at(name).segs) {
