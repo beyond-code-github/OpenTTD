@@ -1,3 +1,17 @@
+## RESUME HERE (2026-11-16 late) — ARCHITECTURE STOCK-TAKE: CHANNELS WITH WIDTH PROFILES (D326, D327); LLL² PARKED
+- Engineer's bar (D326): solve whatever hub the user picks, at scale. Per-hub hand compositions (probes 6-10, C++ `SolvePlanarComponents` by name) are fixtures, not the product; my mistake was porting probe 8 by name and continuing by hand instead of doing DESIGN-components §3.
+- Probe 10 findings (DESIGN-components §8, scripts `wip/probe10/`):
+  - The time is yes/no choices. LL² 4.6 s today; 15 ms with clash sides and bend choices known.
+  - Every clash on LL² and T3 is between topology neighbours at the edge, on the topology's side; T3 with rules up front has 0 clash rounds and 1930 tiles, a new best.
+  - Per-lane optional steps as plain lengths: 5-11% bigger. One switch per channel transition, fixed: T3 1956 tiles at 0.22-0.38 s per variant (today 12-36 s).
+- LLL² (probe 10, D325) parked: semantics are the user's option (D326); D325's crossbar exists only as a parked attempt. The hidden checker hook reads a topology from `JUNCTION_PROBE_TOPOLOGY_FILE` (ng1 b0081e0a77).
+- NEXT (plan with the engineer first):
+  1. Channel builder from `PlanarTopology`: channels from ports and node groups, width profiles from track counts and component widths, transitions at width changes, lanes as fixed offsets.
+  2. Between-channel clash sides from topology order, with lazy rounds as a safety net; measure how many remain.
+  3. Variants for the few real choices (exit jog to port, edge absorbing a width change).
+  4. Acceptance: T2, LL², T3 from their topology texts alone at no more than 935 / 800 / 1930 tiles, under 1 s per variant; then LLL² under each pairing.
+- Rig unchanged: hubs256.sav (C++ T2 (6,6), Python T2 (110,6), T3 (6,110), LL² (172,4)).
+
 ## RESUME HERE (2026-11-16 night) — PROBE 9: T3 FROM COMPONENTS, CHECKER-CLEAN (1949 tiles, 129x42, 12.5 s)
 - wip/planar-probe9.py (imports planar-probe8.py as probe8): `build_tn(n, fray_s, join_s)` = the T2 branch generalised over lanes; the lanes come from n and the T naming (PlanarTText(n)), not yet from parsing the topology text.
 - n=2 reproduces T2 exactly (935, +1w-1, 89x33, 3.7 s), checker-clean. n=3: -1w-1 1949 (129x42) 12.5 s, +1w-1 1956 14.7 s; +1w1 and -1w1 run out of the 15 s budget (they converge at 20-36 s, 1956/1995). T3 checker-clean through the hidden hook (now takes any `T<n>`, ng1 9fdfa36dc7). Outputs wip/probe9-out/ (routes-t3.txt, checked-t3.json, render-t3.txt).

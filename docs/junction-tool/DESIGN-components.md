@@ -140,3 +140,54 @@ The T family at three lanes per direction on main and branch (the old pipeline's
   1. Which pairing first at three lanes (D221: any, lane keeps lane, lane per direction)? Recommendation: lane keeps lane (the T3 analogue of T2) first: fewest paths, proves the derived composition; then any (LLL²).
   2. The join at three lanes under pairing any: the 227 block generalised (each out lane: its fixed lane under prio, the choice legs from the other bundle merging first, D224), or another PSG pattern you'd rather copy? Recommendation: 227 generalised.
   3. Tunnels (D220, "desirable especially when getting towards LLL_RRR"): the component model has no tunnels yet. Leave them out of the first 3-lane probe and see how tall the decks get? Recommendation: yes, out at first.
+
+## 8. What the solve time is made of, and the channel direction (probe 10, 2026-11-16)
+The engineer's bar (D326): the tool solves whatever hub the user picks, at scale. Hand compositions per hub (probes 6-10, and `SolvePlanarComponents` keyed by topology name) don't meet it, and neither does the solve time at three lanes: T3 took 12-36 s per variant, and LLL² didn't converge. Probe 10 measured where the time goes. Scripts and logs: `wip/probe10/`.
+
+**The cost is yes/no choices, not constraints.** The program's continuous part (lengths and positions) solves in milliseconds. Branching on binaries, and re-solving for every clash found, is the cost.
+- LL² (-1F1w1, 800 tiles), measured with the clash sides and bend choices taken from its own finished solution:
+  - today, with the clash loop and area refinement: 4.6 s;
+  - clash sides given up front: 0.65 s;
+  - clash sides and optional-bend choices both given: **15 ms**;
+  - the same as a pure LP: 13 ms.
+- Integer lengths cost almost nothing once the choices are fixed. The parity rows are needed: without them the layout breaks.
+
+**Clash sides come from the topology's order.** Every pair the clash loop had to separate sat between topology neighbours at the hub's edge: 5 on LL², 9 on T3. These were lanes of one in-port as they fan, a fray leg beside the next port lane, and an exit's joiner run beside the neighbouring in-port. None was inside the core, and the side picked always matched the left-to-right order at the ports and nodes. On T3, four rule groups given up front left no clash at all:
+- in-port fan order (EF, AB, CD);
+- E-side port order (D's run into ED stays north of AB).
+
+Results per variant: 1930, 1949, 1956 and 1969 tiles at 7-14 s, with zero clash rounds. That beats the clash loop's best (1949), and all four variants fit the budget. A fifth rule I typed by hand for the S side was wrong, because F is the straight bundle there in that variant. Typed rules are fragile; they have to be read from the topology.
+
+**Optional bends: continuous steps lose area; channel switches don't.**
+- **Each optional step as a plain length ≥ 0, with no switch:** the curve-spacing rule must then hold for curves that may not exist, so a step's own two curves need an exemption. Result: 2142-2173 tiles at 0.4-2.5 s, 11% bigger. A second pass that drops the steps the first pass set to 0 gives 2036-2154 at 1-3 s, still 5% bigger.
+- The game's curve rule is genuinely discontinuous: a sideways step has two curves or none. The engineer rejected special-case rules for curves ("I didn't like that we had to come up with special rules for some of the curves").
+- **Width explains the steps.** In the best T3, 19 of the 41 optional steps are used. Each is a whole-channel jog plus the width change the lane order predicts:
+  - W in-port fan: 14, 12, 10 half-tiles, a 5-line jog plus 1 line of spread per lane (the prio fray's 2-line spacing);
+  - E in-port fan: 10, 8, 6;
+  - E exit: 8, 8, 6;
+  - the A, F and D bundle staircases: each farther lane crosses one more deck.
+
+  The bundle S-bends, and the W and S exits' optional steps, are unused.
+- **One switch per channel transition (13 on T3) instead of one per lane (41):** 1956-2002 tiles at 4-6.6 s. With those 13 switches fixed: 1956-2002 tiles at **0.22-0.38 s per variant** (including the area refinement), about 40x faster than today at the same area and 1% off the best found (1930).
+  - On, because the width changes: the prio frays and the crossing staircases.
+  - Off, because nothing changes width: the bundle S-bends and the non-prio S fray.
+  - About two per hub are real choices: an exit's jog to line up with its port (the E exit on; the S exit on or off by variant). These become variants.
+  - The switch states were read from the solved result and checked against the width reasoning, not yet derived from the topology.
+
+**Direction (D327, the engineer's idea): channels with width profiles.** "Is there no way we can have sideways steps emerge organically? Surely we always know how wide a channel needs to be at any given point."
+- A channel is an ordered set of lanes between topology events. At every point its track count and order come from the topology, and its components add known widths: a prio element 2, a doubled lane 2, deck heads.
+- Each lane is the channel's line plus a fixed offset from the order, so lanes inside a channel can't clash by construction. That replaces the in-port fan rule and the per-hub side rules.
+- A step exists exactly where the width changes, and the order says which lanes move and by how much. The solver only places each transition along its channel, as a continuous position and length. "Fan at the last responsible moment" then falls out of the area objective.
+- Clashes between different channels take their side from the topology's order. Whether that covers every clash is untested; a couple of lazy rounds remain the safety net.
+- Still discrete:
+  - which edge of a channel absorbs a width change (D317 suggests a convention: the edge facing the neighbouring channel stays straight);
+  - a whole channel's jog to line up with a port.
+
+  Both are a handful per hub, enumerated as variants and solved in parallel at about 0.3 s each.
+- This is §3's derived composition made concrete, with a solve that doesn't grow with the square of the track count. The component catalogue and the engineer's rulings on shapes (D310-D322) carry over as the transitions inside channels.
+
+**Open before building:**
+- the channel builder from `PlanarTopology` (channels from node groups and ports, width profiles, transitions);
+- whether topology order settles every between-channel clash;
+- the edge convention for width changes;
+- LL² and T2 as acceptance fixtures alongside T3.

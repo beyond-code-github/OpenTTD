@@ -1,0 +1,56 @@
+topology LLL3
+port W in E: EF1, EF2, EF3
+port W out W: CB1=B1+C1+C2+C3, CB2=B2+C1+C2+C3, CB3=B3+C1+C2+C3
+port E out E: ED1=E1+D1+D2+D3, ED2=E2+D1+D2+D3, ED3=E3+D1+D2+D3
+port E in W: AB1, AB2, AB3
+port S in N: CD1, CD2, CD3
+port S out S: AF1=A1+F1+F2+F3, AF2=A2+F1+F2+F3, AF3=A3+F1+F2+F3
+node AB1, AB2, AB3 -> A1, A2, A3, B1, B2, B3
+node CD1, CD2, CD3 -> C1, C2, C3, D1, D2, D3
+node EF1, EF2, EF3 -> E1, E2, E3, F1, F2, F3
+node D1 -> D1a, D1t
+node D2 -> D2a, D2t
+node D3 -> D3t, D3c
+node D1t -> D1b, D1c
+node D2t -> D2b, D2c
+node D3t -> D3a, D3b
+node D1a, D2a -> Dp1=D1+D2
+node Dp1, D3a -> Dm1=D1+D2+D3
+node D2b, D3b -> Dp2=D2+D3
+node D1b, Dp2 -> Dm2=D1+D2+D3
+node D1c, D2c -> Dp3=D1+D2
+node Dp3, D3c -> Dm3=D1+D2+D3
+node C1 -> C1a, C1t
+node C2 -> C2a, C2t
+node C3 -> C3t, C3c
+node C1t -> C1b, C1c
+node C2t -> C2b, C2c
+node C3t -> C3a, C3b
+node C1a, C2a -> Cp1=C1+C2
+node Cp1, C3a -> Cm1=C1+C2+C3
+node C2b, C3b -> Cp2=C2+C3
+node C1b, Cp2 -> Cm2=C1+C2+C3
+node C1c, C2c -> Cp3=C1+C2
+node Cp3, C3c -> Cm3=C1+C2+C3
+node F1 -> F1a, F1t
+node F2 -> F2a, F2t
+node F3 -> F3t, F3c
+node F1t -> F1b, F1c
+node F2t -> F2b, F2c
+node F3t -> F3a, F3b
+node F1a, F2a -> Fp1=F1+F2
+node Fp1, F3a -> Fm1=F1+F2+F3
+node F2b, F3b -> Fp2=F2+F3
+node F1b, Fp2 -> Fm2=F1+F2+F3
+node F1c, F2c -> Fp3=F1+F2
+node Fp3, F3c -> Fm3=F1+F2+F3
+node Cm1, B1 -> CB1
+node E1, Dm1 -> ED1
+node A1, Fm1 -> AF1
+node Cm2, B2 -> CB2
+node E2, Dm2 -> ED2
+node A2, Fm2 -> AF2
+node Cm3, B3 -> CB3
+node E3, Dm3 -> ED3
+node A3, Fm3 -> AF3
+prio B1, B2, B3, E1, E2, E3, A1, A2, A3
