@@ -926,6 +926,28 @@ TEST_CASE("CheckWaitingRoom", "[junction][rules]")
 	}
 }
 
+TEST_CASE("CheckWaitingRoom: with lane paths, a prio branch path is a main line (D319)", "[junction][rules]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const JunctionLayout layout = WaitingRoomLayout();
+	JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, WaitingRoomPorts(), WAITING_ROOM_MOVEMENTS);
+	REQUIRE(ctx.paths.size() == 3);
+
+	/* Every lane path holds prio, so the E to S branch and the joiner N to S are main lines although they are no through paths. */
+	JunctionTopology topology = JunctionTTopology();
+	const auto lane = [&](JunctionPortRole from, JunctionPortRole to, bool prio) {
+		const auto slot_of = [&](JunctionPortRole role) { return std::ranges::find_if(ctx.ports, [&](const JunctionPort &p) { return p.role == role; })->slot; };
+		const auto path = std::ranges::find_if(ctx.paths, [&](const JunctionPath &p) { return p.from == from && p.to == to; });
+		return JunctionLanePath{slot_of(from), slot_of(to), path->movement, prio};
+	};
+	topology.lane_paths = {lane(Role::EIn, Role::EOut, true), lane(Role::EIn, Role::SOut, true), lane(Role::NIn, Role::SOut, true)};
+	ctx.topology = &topology;
+
+	/* The prio paths get no whole-train bay rule. */
+	const std::vector<RuleViolation> violations = CheckWaitingRoom(ctx);
+	CHECK(std::ranges::count_if(violations, [](const RuleViolation &v) { return v.message.find("no signal before the queue merge") != std::string::npos; }) == 0);
+}
+
 TEST_CASE("CheckDeadlock", "[junction][rules]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
