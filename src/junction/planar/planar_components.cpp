@@ -1299,6 +1299,12 @@ public:
 	}
 };
 
+/** Whether a site is composed per node: a lane split or merge, or a site with other than two channels. */
+static bool PlanarSitePerNode(const PlanarSite &site)
+{
+	return site.kind == PlanarSiteKind::LaneSplit || site.kind == PlanarSiteKind::LaneMerge || site.others.size() != 2;
+}
+
 /** One variant of a mapped composition: which channel is over at each open crossing, and which channel is straight at each tie site. */
 struct MappedVariant {
 	uint64_t over = 0; ///< Bit i set: the i-th open crossing has its higher channel over.
@@ -1346,6 +1352,28 @@ private:
 		std::vector<std::string> out;
 		for (uint32_t l : this->ch.channels[c].lines) out.push_back(this->t.lines[l].name);
 		return out;
+	}
+
+	/** Whether a prio route runs on a line. */
+	bool LinePrio(uint32_t l) const
+	{
+		for (uint32_t r : this->t.lines[l].routes) {
+			if (this->t.routes[r].prio) return true;
+		}
+		return false;
+	}
+
+	/** A fork: a lane split's legs leave its in line's end, each with an optional outward diagonal, at least a line apart after it (which leg runs straight is the solver's). */
+	void Fork(int h, const std::string &in, const std::string &left, const std::string &right)
+	{
+		Model &M = this->M;
+		const Point p = M.End(in);
+		M.NewStrand(left, p);
+		M.NewStrand(right, p);
+		M.Node({in, left, right});
+		const Seg a = M.AddSeg(left, Turn(h, -1), 2, std::nullopt, 1.0, true);
+		const Seg b = M.AddSeg(right, Turn(h, +1), 2, std::nullopt, 1.0, true);
+		M.Add(Ge(Dot(Right(h), b.b) - Dot(Right(h), a.b), 2));
 	}
 
 	/** The heading of the single port in a set, or -1. */
@@ -1452,7 +1480,7 @@ private:
 	}
 
 	/** n-lane join (probe 9): J_k lands on S_k from side sigma, crossing every nearer S_j (lanes far..near). */
-	void Join(int h, int sigma, const std::vector<std::string> &S, const std::vector<std::string> &J, const std::vector<std::string> &O, bool prio)
+	void Join(int h, int sigma, const std::vector<std::string> &S, const std::vector<std::string> &J, const std::vector<std::string> &O, bool prio, int lo0 = 6)
 	{
 		Model &M = this->M;
 		const auto &r = Right(h);
@@ -1461,7 +1489,7 @@ private:
 		std::vector<Seg> js;
 		for (size_t k = 0; k < n; k++) {
 			M.AddSeg(J[k], h, 2);
-			const int lo = (prio && k > 0) ? 4 : 6;
+			const int lo = (prio && k > 0) ? 4 : (k == 0 ? lo0 : 6);
 			js.push_back(M.AddSeg(J[k], Turn(h, -sigma), lo, n == 2 ? std::optional<int>(lo) : std::nullopt));
 		}
 		M.Tie(M.End(J[0]), M.End(S[0]));
@@ -1585,14 +1613,11 @@ void MappedComposer::Build()
 		int side;
 		bool prio;
 	};
-	std::vector<Resolved> res(ch.sites.size());
+	std::vector<Resolved> res(ch.sites.size(), Resolved{UINT32_MAX, UINT32_MAX, 0, false});
 	int tie = 0;
 	for (size_t s = 0; s < ch.sites.size(); s++) {
 		const PlanarSite &site = ch.sites[s];
-		if (site.kind == PlanarSiteKind::LaneSplit || site.kind == PlanarSiteKind::LaneMerge || site.others.size() != 2) {
-			M.Fail("a site that is not a two-channel fray or join is not composed yet");
-			return;
-		}
+		if (PlanarSitePerNode(site)) continue;
 		uint32_t straight = site.straight;
 		if (straight == UINT32_MAX) straight = site.others[(this->variant.ties >> tie++ & 1) != 0 ? 1 : 0];
 		const uint32_t other = site.others[0] == straight ? site.others[1] : site.others[0];
@@ -1795,8 +1820,45 @@ void MappedComposer::Build()
 		return true;
 	};
 
+	/* Sites whose nodes do not share one straight and one other channel: per node, a fork (a lane split) or a one-lane join. */
+	const auto build_nodes = [&](size_t s) -> bool {
+		const PlanarSite &site = ch.sites[s];
+		for (uint32_t n : site.nodes) {
+			const PlanarNode &node = t.nodes[n];
+			if (node.IsSplit()) {
+				if (ch.node_legs[n].straight != UINT32_MAX) {
+					M.Fail("a split with a straight leg in a mixed site is not composed yet");
+					return false;
+				}
+				const PlanarChannelPath &kp = this->paths.paths[ch.channel_of_line[node.in.front()]];
+				this->Fork(static_cast<int>(kp.headings.back()), t.lines[node.in.front()].name, t.lines[node.out[0]].name, t.lines[node.out[1]].name);
+				continue;
+			}
+			uint32_t straight = ch.node_legs[n].straight;
+			int side = ch.node_legs[n].side;
+			if (straight == UINT32_MAX) {
+				straight = node.in[(this->variant.ties >> tie++ & 1) != 0 ? 1 : 0];
+				side = straight == node.in[0] ? 1 : -1;
+			}
+			const uint32_t joiner = node.in[0] == straight ? node.in[1] : node.in[0];
+			const int h = this->PortHeading(ch.channels[ch.channel_of_line[node.out.front()]].down);
+			if (h < 0 || static_cast<int>(this->paths.paths[ch.channel_of_line[straight]].headings.back()) != h || static_cast<int>(this->paths.paths[ch.channel_of_line[joiner]].headings.back()) != h) {
+				M.Fail("a merge's legs do not arrive on its heading");
+				return false;
+			}
+			M.opt_group = fmt::format("merge{}j", n);
+			this->Join(h, side, {t.lines[straight].name}, {t.lines[joiner].name}, {t.lines[node.out.front()].name}, this->LinePrio(straight), 2);
+			M.opt_group.clear();
+		}
+		return true;
+	};
+
 	for (int d = 1; d <= max_depth; d++) {
 		for (size_t s : sites_at[d]) {
+			if (PlanarSitePerNode(ch.sites[s])) {
+				if (!build_nodes(s)) return;
+				continue;
+			}
 			if (ch.sites[s].kind == PlanarSiteKind::Fray) build_fray(s);
 			if (ch.sites[s].kind == PlanarSiteKind::Join && !build_join(s)) return;
 		}
@@ -2724,9 +2786,15 @@ bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec,
 	const Params params = MakeParams(spec);
 	const size_t open = PlanarOpenCrossings(channels).size();
 	size_t ties = 0;
-	for (const PlanarSite &site : channels.sites) ties += site.straight == UINT32_MAX ? 1 : 0;
+	for (const PlanarSite &site : channels.sites) {
+		if (!PlanarSitePerNode(site)) {
+			ties += site.straight == UINT32_MAX ? 1 : 0;
+			continue;
+		}
+		for (uint32_t n : site.nodes) ties += !topology.nodes[n].IsSplit() && channels.node_legs[n].straight == UINT32_MAX ? 1 : 0;
+	}
 	const size_t triangles = PlanarTriangles(channels).size();
-	if (open + ties + triangles > 6) {
+	if (open + ties + triangles > 6 && std::getenv("PLANAR_ONLY") == nullptr) {
 		if (why != nullptr) *why = fmt::format("{} open crossings, {} tie sites and {} triangles are too many variants", open, ties, triangles);
 		return false;
 	}
