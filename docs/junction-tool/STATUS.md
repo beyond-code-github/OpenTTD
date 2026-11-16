@@ -1,3 +1,19 @@
+## RESUME HERE (2026-11-16 later) — TOPOLOGY MAPPER IN C++, SLICES 1-3 DONE (ng1 wt-planar)
+- Job (engineer): write code that takes the topology and produces output matching the hand-built target (probe 9 `build_tn`) or close to it, generically; in C++ with tests (`[planar]`).
+- Done, test-first, gate green after slice 1 (605/605, 28.6 s Release):
+  1. `planar_channels` (6d34dca910): `BuildPlanarChannels`, lines grouped by (in ports, out ports, depth, crossed channels, refined), ordered left to right. On T1-T3: 12 channels, B x D, B x F, D x F crossing whole. On LL²: E1 and E2 share a channel, and the 227 choice legs are their own.
+  2. Sites (1ff11775f0): the splits leaving or merges entering one channel, as fray, lane split, join or lane merge, with straight channel (prio first, then least turn, a tie is a variant), side and prio. On the T this matches build_tn exactly, and the ties are build_tn's fs and js variants.
+  3. `planar_paths` (c8a269f340, D328): over channel at each crossing (prio over, others open as variants), shortest-turn headings per channel, and crossings placed on suitable pieces. On the T: D N-NE-E (build_tn had N-NE-N-NE-E). The topology's event order puts F x D between the main lines, where build_tn had it south of B. Whether the crossing order is a variant is still open (D328).
+- NEXT, slice 4: the generic composer in `planar_components`. It replaces the T2- and LL²-specific `Composer::Build()` with one driven by channels, sites and paths:
+  - n-lane fray and join from probe 9;
+  - a bundle per channel on its path;
+  - decks at channel crossings, with the over channel's prio lanes doubled;
+  - width transitions as one switch per channel transition;
+  - clash sides from topology order;
+  - ports, prio rows and curves as now.
+
+  Outer test: T3 from `PlanarTText(3)` at about 1956 tiles in under 1 s per variant; then T2 (935) and LL² (800). LL² needs lane-split and lane-merge components (the 227 block).
+
 ## RESUME HERE (2026-11-16 late) — ARCHITECTURE STOCK-TAKE: CHANNELS WITH WIDTH PROFILES (D326, D327); LLL² PARKED
 - Engineer's bar (D326): solve whatever hub the user picks, at scale. Per-hub hand compositions (probes 6-10, C++ `SolvePlanarComponents` by name) are fixtures, not the product; my mistake was porting probe 8 by name and continuing by hand instead of doing DESIGN-components §3.
 - Probe 10 findings (DESIGN-components §8, scripts `wip/probe10/`):
