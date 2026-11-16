@@ -2426,6 +2426,7 @@ bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &s
 		return false;
 	};
 	const bool t2 = topology.name == "T2";
+	if (topology.name == "T1") return fail("the one-lane T keeps the §2a layout (its mapped layout breaks the bay rules)");
 	if (!t2 && topology.name != "LL2") return SolvePlanarMapped(topology, spec, layout, why);
 	for (const auto &route : t2 ? T2Routes() : LL2Routes()) {
 		for (const std::string &line : route) {
