@@ -169,3 +169,14 @@ TEST_CASE("planar channels: LL2's sites", "[planar]")
 	CHECK(SiteAt(topology, channels, "EO1").kind == PlanarSiteKind::Join);
 	CHECK(SiteAt(topology, channels, "EO1").nodes.size() == 2);
 }
+
+TEST_CASE("planar channels: of several prio channels the one turning least runs straight", "[planar]")
+{
+	const PlanarTopology topology = Parse(PlanarLL2Text());
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	/* EF's lanes fray into E (straight on, prio lane E1) and F (turning south, prio lane F2): both prio, E turns least. */
+	const PlanarSite &fray = SiteAt(topology, channels, "EF1");
+	CHECK(fray.straight == channels.channel_of_line[PlanarLineByName(topology, "E1")]);
+	CHECK(fray.side == 1);
+	CHECK(fray.prio);
+}

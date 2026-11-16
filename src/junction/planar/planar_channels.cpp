@@ -218,11 +218,12 @@ PlanarChannels BuildPlanarChannels(const PlanarTopology &topology)
 		for (uint32_t o : site.others) if (out.channels[o].prio) prio.push_back(o);
 		if (prio.size() == 1) {
 			site.straight = prio.front();
-		} else if (prio.empty()) {
+		} else {
+			/* Of the prio channels (or of all, with none), the one turning least. */
 			uint32_t best = UINT32_MAX;
 			int best_turn = INT_MAX;
 			bool tie = false;
-			for (uint32_t o : site.others) {
+			for (uint32_t o : prio.empty() ? site.others : prio) {
 				const std::optional<int> tr = turn(o);
 				if (!tr.has_value()) { tie = true; continue; }
 				if (std::abs(*tr) < best_turn) { best = o; best_turn = std::abs(*tr); tie = false; }
