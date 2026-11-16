@@ -1,3 +1,20 @@
+## RESUME HERE (2026-11-16, end) — OBJECTIVE MEASURED; ONE T3 VARIANT IN 2 SOLVES (ng1 e31d755915)
+- Engineer: near ties are not ties; done right, the solve finds the optimal layout by design (no conventions). Asked to measure whether a linear score can stand in for the outline area.
+- Measured on T3 (all variants):
+  - track length, box W+H and outline-route length pick 3-35% bigger layouts;
+  - **one linearisation of the outline area matches the full area loop on every variant**: 2 solves, not 6-15.
+- The real multiplier was the under-deck lazy rounds (9 on T3, 2 solves each). They are now given up front from the channel's crossing order (default on).
+- Now, per variant: 2 solves.
+  - o1t3f1: 82 ms with exit jogs fixed; 574 ms with the jogs as in-model binaries (exact over the jogs).
+  - All 16 variants: 3.4 s wall (thread contention).
+  - Checker-clean.
+- Open:
+  1. `PLANAR_WIDTH` lost the 1941 layout that all-free switches found (best now 1956), so the width rules are not yet optimal by design. Find which forced switch excludes it.
+  2. Over/under, tie sites and triangle flip: in-model binaries, or variants.
+  3. The experiments to promote to defaults: lin1, CONT, WIDTH (once 1 is fixed), PERP.
+  4. T2 and LL² from text to test all this beyond T3.
+  5. The hover target is < 100 ms; 82 ms with everything fixed is the first time it is within reach.
+
 ## RESUME HERE (2026-11-16 latest+) — MAPPED T3: MATCHES AND BEATS THE HAND BUILD; SPEED SPIKE AT 0.27 s (ng1 wt-planar)
 - ae016c1518:
   - clash sides from the channel graph: in-port fan order, and a joiner's last two segments beside the neighbouring in port;
