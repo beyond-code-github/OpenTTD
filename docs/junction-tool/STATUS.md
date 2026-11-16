@@ -1,3 +1,19 @@
+## RESUME HERE (2026-11-16 latest+) — MAPPED T3: MATCHES AND BEATS THE HAND BUILD; SPEED SPIKE AT 0.27 s (ng1 wt-planar)
+- ae016c1518:
+  - clash sides from the channel graph: in-port fan order, and a joiner's last two segments beside the neighbouring in port;
+  - one switch per channel transition.
+
+  Mapped T3, full run (16 variants), checker-clean: 1941.25 with `PLANAR_PERP` (16 s wall), 1955.25 without (10 s).
+- Spike (the commit after ae016c1518), with `PLANAR_WIDTH`: switches fixed by type (prio fray fan on, bundle staircase on, plain fray step off, straight-channel jogs off, exit jogs free).
+  - Full run: 1956 in 4.3 s wall.
+  - Adding `PLANAR_JOGS=001`: o1t3f1 is 1956 in 273 ms. Combinations with the S exit's jog off are infeasible within about 50 ms.
+- Engineer's stance: vary choices for now; become opinionated where one choice is consistently smaller across many topologies (triangle flip, right angles under prio, width switches).
+- Next, to decide with the engineer:
+  1. Jogs as variant bits with a thread pool (128 cheap variants on T3), or keep them as in-model binaries (4.3 s).
+  2. More topologies to test the opinions: T2 and LL² (LL² needs lane split and lane merge components), and LLL² under each pairing.
+  3. Turn the switches into defaults or variants.
+  4. The refactor to the channel model.
+
 ## RESUME HERE (2026-11-16 latest) — MAPPED COMPOSER: T3 FROM TOPOLOGY TEXT ALONE, CHECKER-CLEAN (ng1 wt-planar 1722ffef0e)
 - Engineer: build the composer as planned (probe 9's n-lane templates driven by channels, sites and paths), prove it, refactor to the channel model later (verdict talked through: the hand versions are expressible from topology data; composer-first proves it soonest).
 - `SolvePlanarMapped` / `MappedComposer` (planar_components.cpp, 1348d8e04f):
