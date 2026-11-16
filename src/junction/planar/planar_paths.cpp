@@ -195,8 +195,8 @@ PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannel
 			}
 			const auto suits = [&](PlanarHeading h) { return over ? static_cast<int>(h) % 2 == 0 : static_cast<int>(h) % 4 != *over_axis; };
 			bool placed = false;
-			/* Experiment (PLANAR_PERP): under a prio (doubled) channel, cross at right angles where a back-and-forth allows it. */
-			if (!over && channels.channels[out.over[x]].prio && std::getenv("PLANAR_PERP") != nullptr) {
+			/* Under a prio (doubled) channel, cross at right angles where a back-and-forth allows it (the hand T3's D path). */
+			if (!over && channels.channels[out.over[x]].prio) {
 				const auto perp = [&](PlanarHeading h) { return static_cast<int>(h) % 4 == (*over_axis + 2) % 4; };
 				for (int detour = 0; detour < 2 && !placed; detour++) {
 					for (uint32_t i = at; i < p.headings.size(); i++) {

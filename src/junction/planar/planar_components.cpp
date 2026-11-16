@@ -45,7 +45,7 @@ constexpr double AREA_W = 10; ///< Objective weight per tile of area inside the 
 constexpr double BUDGET = 15.0; ///< Seconds per variant for the lazy loop.
 constexpr double SOLVE_LIMIT = 5.0; ///< Seconds per solve.
 constexpr int LAZY_ROUNDS = 40; ///< Rounds of the lazy clash loop.
-constexpr int AREA_ROUNDS = 6; ///< Rounds of the area linearisation.
+constexpr int AREA_ROUNDS = 6; ///< Rounds of the area linearisation under PLANAR_OBJ=loop; by default one round (D329: the same areas as the loop on T3).
 
 /** Headings, clockwise from north (y down). */
 enum Head : int { HN, HNE, HE, HSE, HS, HSW, HW, HNW };
@@ -384,19 +384,17 @@ public:
 			const auto key = std::make_pair(this->opt_group, d);
 			auto it = this->group_z.find(key);
 			if (it == this->group_z.end()) {
-				/* Spike (PLANAR_WIDTH): a switch the width profile decides is fixed: on where the width changes, off where it does not; "jog" groups stay free. */
+				/* A switch the width profile decides is fixed: on where the width changes ('+'), off where it does not ('-'); jogs ('j') stay free. */
 				double lo_z = 0.0, hi_z = 1.0;
-				if (std::getenv("PLANAR_WIDTH") != nullptr) {
-					const char kind = this->opt_group.back();
-					if (kind == '+') lo_z = 1.0;
-					if (kind == '-') hi_z = 0.0;
-					if (kind == 'j' && std::getenv("PLANAR_JOGS") != nullptr) { // spike: the jogs fixed, one character per jog group in creation order ('1' on)
-						const std::string jogs = std::getenv("PLANAR_JOGS");
-						const size_t at = this->jog_count++;
-						const double v = at < jogs.size() && jogs[at] == '1' ? 1.0 : 0.0;
-						lo_z = v;
-						hi_z = v;
-					}
+				const char kind = this->opt_group.back();
+				if (kind == '+') lo_z = 1.0;
+				if (kind == '-') hi_z = 0.0;
+				if (kind == 'j' && std::getenv("PLANAR_JOGS") != nullptr) { // experiment: the jogs fixed, one character per jog group in creation order ('1' on)
+					const std::string jogs = std::getenv("PLANAR_JOGS");
+					const size_t at = this->jog_count++;
+					const double v = at < jogs.size() && jogs[at] == '1' ? 1.0 : 0.0;
+					lo_z = v;
+					hi_z = v;
 				}
 				it = this->group_z.emplace(key, this->NewVar(lo_z, hi_z, OPTW)).first;
 				this->binaries.insert(it->second.index);
@@ -512,7 +510,6 @@ public:
 			}
 		};
 		bool report_ok = false;
-		const bool cont_ = std::getenv("PLANAR_CONT") != nullptr; // experiment: only switches and parity auxiliaries integer
 		const Report report{solve_t0, &report_ok};
 
 		JunctionMilp milp;
@@ -520,7 +517,7 @@ public:
 		const size_t n0 = this->lb.size();
 		for (size_t i = 0; i < n0; i++) {
 			const auto it = this->obj_extra.find(static_cast<uint32_t>(i));
-			milp.AddVariable(this->lb[i], this->ub[i], this->cost[i] + (it == this->obj_extra.end() ? 0.0 : it->second), cont_ ? this->binaries.contains(static_cast<uint32_t>(i)) : true);
+			milp.AddVariable(this->lb[i], this->ub[i], this->cost[i] + (it == this->obj_extra.end() ? 0.0 : it->second), true);
 		}
 		for (size_t k = 0; k < this->parity.size(); k++) milp.AddVariable(-INF, INF, 0.0, true);
 		for (const Row &r : this->rows) milp.AddRow(r.terms, r.lower, r.upper);
@@ -2303,7 +2300,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, std::string &why)
 {
 	M.obj_extra.clear();
-	/* Experiment (PLANAR_OBJ): a linear score instead of the area loop: len (track only), box (width + height), routes (outline route length), lin1 (one linearisation). */
+	/* Experiment (PLANAR_OBJ): a linear score instead of the area step: len (track only), box (width + height), routes (outline route length), loop (AREA_ROUNDS linearisations). */
 	const char *obj_env = std::getenv("PLANAR_OBJ");
 	const std::string obj = obj_env != nullptr ? obj_env : "";
 	const double w = std::getenv("PLANAR_OBJW") != nullptr ? std::atof(std::getenv("PLANAR_OBJW")) : 10.0;
@@ -2327,7 +2324,7 @@ bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, st
 		return true;
 	}
 	std::vector<Row> seps = out.seps;
-	for (int it = 0; it < (obj == "lin1" ? 1 : AREA_ROUNDS); it++) {
+	for (int it = 0; it < (obj == "loop" ? AREA_ROUNDS : 1); it++) {
 		LineariseArea(M, out.sol.val);
 		LazyResult r2;
 		std::string why2;
