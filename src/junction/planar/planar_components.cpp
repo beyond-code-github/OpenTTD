@@ -261,6 +261,8 @@ public:
 	std::string error; ///< The first failure of a construction check.
 	Params params{};
 	bool deck_parity = false; ///< Deck ends on whole pieces (even half-tiles along their segment), so every deck has its two head pieces.
+	std::string opt_group; ///< When set, optional segments share one binary per (group, heading): one switch per channel transition.
+	std::map<std::pair<std::string, int>, Var> group_z; ///< The shared binaries.
 
 	/** Build the empty model with its box variables. */
 	Model()
@@ -376,7 +378,14 @@ public:
 		const Point a = this->End(name);
 		const Var L = this->NewVar(opt ? 0 : lo, hi.has_value() ? *hi : INF, c * (IsAxis(d) ? 1.0 : std::sqrt(2.0)));
 		std::optional<Var> z;
-		if (opt) {
+		if (opt && !this->opt_group.empty() && std::getenv("PLANAR_NOTIE") == nullptr) {
+			const auto key = std::make_pair(this->opt_group, d);
+			auto it = this->group_z.find(key);
+			if (it == this->group_z.end()) it = this->group_z.emplace(key, this->NewVar(0, 1.0, OPTW)).first;
+			z = it->second;
+			this->Add(Ge(L - *z * lo, 0));
+			this->Add(Ge(*z * (hi.has_value() ? *hi : OPTMAX) - L, 0));
+		} else if (opt) {
 			z = this->NewVar(0, 1.0, OPTW);
 			this->Add(Ge(L - *z * lo, 0));
 			this->Add(Ge(*z * (hi.has_value() ? *hi : OPTMAX) - L, 0));
@@ -1594,7 +1603,9 @@ void MappedComposer::Build()
 			S.push_back(t.lines[a_straight ? a : b].name);
 			V.push_back(t.lines[a_straight ? b : a].name);
 		}
+		M.opt_group = fmt::format("site{}", s);
 		this->Fray(h, rs.side, in_names, S, V, rs.prio);
+		M.opt_group.clear();
 	}
 
 	/* Movement channels: a bundle on their path (the diverging channel's first piece optional, unless a crossing sits on it). */
@@ -1613,7 +1624,9 @@ void MappedComposer::Build()
 		for (uint32_t piece : path.crossing_piece) opt0 &= piece != 0;
 		std::vector<int> heads;
 		for (PlanarHeading hd : path.headings) heads.push_back(static_cast<int>(hd));
+		M.opt_group = fmt::format("channel{}", c);
 		this->Bundle(c, heads, opt0);
+		M.opt_group.clear();
 	}
 
 	/* Straight channels: a run to the join-entry lines; a prio channel over crossings doubles each lane over them all (the core). */
@@ -1631,7 +1644,9 @@ void MappedComposer::Build()
 			const std::vector<int> e = JoinEntry(n);
 			for (int j = 0; j < n; j++) offs[j] = far_left ? e[j] : e[n - 1] - e[n - 1 - j];
 		}
+		M.opt_group = fmt::format("channel{}", c);
 		this->Flex(lanes, h, offs);
+		M.opt_group.clear();
 		std::vector<uint32_t> overs;
 		for (uint32_t x : cc.crossings) {
 			if (this->paths.over[x] == c) overs.push_back(x);
@@ -1744,7 +1759,74 @@ void MappedComposer::Build()
 			J.push_back(jn);
 			O.push_back(on);
 		}
+		M.opt_group = fmt::format("site{}", s);
 		this->Join(h, rs.side, S, J, O, rs.prio);
+		M.opt_group.clear();
+	}
+
+	/* Clash sides from the channel graph, given up front. */
+	const bool rules = std::getenv("PLANAR_NORULES") == nullptr;
+	const auto sep = [&](const Seg &sp, const Seg &sq, const std::array<int, 2> &f) { // sq lies at least 2 beyond sp along f
+		if (!rules) return;
+		for (const Point &a : {sp.a, sp.b}) {
+			for (const Point &b : {sq.a, sq.b}) M.Add(Ge(Dot(f, b) - Dot(f, a), 2));
+		}
+	};
+	const auto legs_of = [&](uint32_t line) {
+		std::vector<Seg> out;
+		const PlanarEnd &e = t.lines[line].to;
+		if (e.port) return out;
+		for (uint32_t o : t.nodes[e.index].out) {
+			const std::vector<Seg> &segs = M.strands.at(t.lines[o].name).segs;
+			for (size_t k = 0; k < std::min<size_t>(2, segs.size()); k++) out.push_back(segs[k]);
+		}
+		return out;
+	};
+	/* An in port's fan: a lane right of another keeps its fan and what follows right of and ahead of the other's stub and fan. */
+	for (const PlanarPort &port : t.ports) {
+		if (!port.in) continue;
+		const int h = static_cast<int>(port.heading);
+		const std::array<int, 2> f = {Right(h)[0] + STEP[h][0], Right(h)[1] + STEP[h][1]};
+		for (size_t i = 0; i < port.lines.size(); i++) {
+			const std::vector<Seg> &ps = M.strands.at(t.lines[port.lines[i]].name).segs;
+			for (size_t j = i + 1; j < port.lines.size(); j++) {
+				const std::vector<Seg> &qs = M.strands.at(t.lines[port.lines[j]].name).segs;
+				const std::vector<Seg> legs = legs_of(port.lines[j]);
+				for (size_t k = 1; k < qs.size(); k++) sep(ps[0], qs[k], f);
+				for (const Seg &sq : legs) sep(ps[0], sq, f);
+				for (size_t k = 2; k < qs.size(); k++) sep(ps[1], qs[k], f);
+				for (const Seg &sq : legs) sep(ps[1], sq, f);
+			}
+		}
+	}
+	/* Ports on one side: a joiner arriving from the side of the neighbouring in port keeps its last run on its own side of that port. */
+	for (size_t s = 0; s < ch.sites.size(); s++) {
+		if (ch.sites[s].kind != PlanarSiteKind::Join) continue;
+		const PlanarChannel &key = ch.channels[ch.sites[s].channel];
+		if (key.down.size() != 1) continue;
+		const uint32_t op = *key.down.begin();
+		const PlanarPort &out_port = t.ports[op];
+		const int h = static_cast<int>(out_port.heading);
+		const std::array<int, 2> toward = {Right(h)[0] * res[s].side, Right(h)[1] * res[s].side}; // where the joiner comes from
+		for (uint32_t ip = 0; ip < t.ports.size(); ip++) {
+			const PlanarPort &in_port = t.ports[ip];
+			if (!in_port.in || in_port.side != out_port.side) continue;
+			/* The in port lies on the joiner's side of the out port along the box edge (a side's ports are in reading order: N and S west to east, W and E north to south). */
+			const bool along_y = out_port.side == PlanarSide::W || out_port.side == PlanarSide::E;
+			const int dir = along_y ? toward[1] : toward[0];
+			if (dir == 0) continue;
+			const bool in_after = ip > op;
+			if ((dir > 0) != in_after) continue;
+			const std::array<int, 2> f = along_y ? std::array<int, 2>{0, dir} : std::array<int, 2>{dir, 0};
+			for (const std::string &jl : this->Lanes(res[s].other)) {
+				const std::vector<Seg> &js = M.strands.at(jl).segs; // its last two: the join's own approach
+				for (uint32_t l : in_port.lines) {
+					for (const Seg &sp : M.strands.at(t.lines[l].name).segs) {
+						for (size_t k = js.size() >= 2 ? js.size() - 2 : 0; k < js.size(); k++) sep(js[k], sp, f);
+					}
+				}
+			}
+		}
 	}
 
 	/* Out ports on the boundary. */
