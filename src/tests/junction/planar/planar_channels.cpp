@@ -111,3 +111,61 @@ TEST_CASE("planar channels: LL2's choice legs are their own channels", "[planar]
 	for (const auto &g : channels.group_crossings) covered += g.size();
 	CHECK(covered == topology.crossings.size());
 }
+
+/** The site splitting or merging into the channel holding the named line. */
+static const PlanarSite &SiteAt(const PlanarTopology &topology, const PlanarChannels &channels, std::string_view line)
+{
+	const uint32_t ch = channels.channel_of_line[PlanarLineByName(topology, line)];
+	for (const PlanarSite &s : channels.sites) {
+		if (s.channel == ch) return s;
+	}
+	FAIL("no site at " << line);
+	return channels.sites.front();
+}
+
+/** The first line's name of a site's straight channel, or "tie". */
+static std::string StraightName(const PlanarTopology &topology, const PlanarChannels &channels, const PlanarSite &site)
+{
+	if (site.straight == UINT32_MAX) return "tie";
+	return topology.lines[channels.channels[site.straight].lines.front()].name;
+}
+
+TEST_CASE("planar channels: the T's sites, straight channel and side from the topology", "[planar]")
+{
+	for (int n = 1; n <= 3; n++) {
+		INFO(n);
+		const PlanarTopology topology = Parse(PlanarTText(n));
+		const PlanarChannels channels = BuildPlanarChannels(topology);
+		CHECK(channels.sites.size() == 6);
+		struct Expect { const char *line; PlanarSiteKind kind; const char *straight; int side; bool prio; };
+		for (const Expect &e : {
+				Expect{"EF1", PlanarSiteKind::Fray, "E1", +1, true},   // F leaves right of E
+				Expect{"AB1", PlanarSiteKind::Fray, "B1", -1, true},   // A leaves left of B
+				Expect{"CD1", PlanarSiteKind::Fray, "tie", 0, false},  // C left 90, D right 90: the S fray side variant
+				Expect{"ED1", PlanarSiteKind::Join, "E1", +1, true},   // D joins from the right
+				Expect{"CB1", PlanarSiteKind::Join, "B1", -1, true},   // C joins from the left
+				Expect{"AF1", PlanarSiteKind::Join, "tie", 0, false}}) {  // A and F both turn 90: the S join side variant
+			INFO(e.line);
+			const PlanarSite &site = SiteAt(topology, channels, e.line);
+			CHECK(site.kind == e.kind);
+			CHECK(site.nodes.size() == static_cast<size_t>(n));
+			CHECK(site.others.size() == 2);
+			CHECK(StraightName(topology, channels, site) == e.straight);
+			CHECK(site.side == e.side);
+			CHECK(site.prio == e.prio);
+		}
+	}
+}
+
+TEST_CASE("planar channels: LL2's sites", "[planar]")
+{
+	const PlanarTopology topology = Parse(PlanarLL2Text());
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	/* Three frays; per exit the two choice lanes' splits, the choice legs' merges and the exit's merges. */
+	CHECK(channels.sites.size() == 15);
+	CHECK(SiteAt(topology, channels, "EF1").kind == PlanarSiteKind::Fray);
+	CHECK(SiteAt(topology, channels, "E1").kind == PlanarSiteKind::LaneSplit);
+	CHECK(SiteAt(topology, channels, "EDj1").kind == PlanarSiteKind::Join);
+	CHECK(SiteAt(topology, channels, "EO1").kind == PlanarSiteKind::Join);
+	CHECK(SiteAt(topology, channels, "EO1").nodes.size() == 2);
+}

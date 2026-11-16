@@ -12,6 +12,8 @@
 #include "planar_channels.h"
 
 #include <algorithm>
+#include <climits>
+#include <optional>
 #include <map>
 #include <set>
 
@@ -86,6 +88,12 @@ struct LineFacts {
 		}
 	}
 };
+
+/** A turn from one heading to another in eighths, -4..3; positive is clockwise (to the right). */
+int Turn(PlanarHeading from, PlanarHeading to)
+{
+	return (static_cast<int>(to) - static_cast<int>(from) + 12) % 8 - 4;
+}
 
 /** The node group at one end of a line, or UINT32_MAX at a port. */
 uint32_t GroupAt(const PlanarTopology &t, const PlanarEnd &e)
@@ -165,12 +173,70 @@ PlanarChannels BuildPlanarChannels(const PlanarTopology &topology)
 	}
 	for (uint32_t ci = 0; ci < out.channels.size(); ci++) {
 		PlanarChannel &ch = out.channels[ci];
+		ch.up = facts.up[ch.lines.front()];
+		ch.down = facts.down[ch.lines.front()];
+		for (uint32_t l : ch.lines) {
+			for (uint32_t r : t.lines[l].routes) ch.prio |= t.routes[r].prio;
+		}
 		for (uint32_t c : t.events[ch.lines.front()]) {
 			if (internal[c]) continue;
 			uint32_t a = cls[t.crossings[c].a], b = cls[t.crossings[c].b];
 			if (a > b) std::swap(a, b);
 			const uint32_t x = pair_index.at({a, b});
 			if (ch.crossings.empty() || ch.crossings.back() != x) ch.crossings.push_back(x);
+		}
+	}
+
+	/* Sites: the splits leaving one channel, the merges entering one channel. */
+	std::map<std::pair<bool, uint32_t>, uint32_t> site_index;
+	for (uint32_t n = 0; n < t.nodes.size(); n++) {
+		const PlanarNode &node = t.nodes[n];
+		const bool split = node.IsSplit();
+		const uint32_t key = cls[split ? node.in.front() : node.out.front()];
+		auto [it, added] = site_index.try_emplace({!split, key}, static_cast<uint32_t>(out.sites.size()));
+		if (added) out.sites.push_back({PlanarSiteKind::Fray, key, {}, {}});
+		PlanarSite &site = out.sites[it->second];
+		site.nodes.push_back(n);
+		for (uint32_t l : split ? node.out : node.in) {
+			if (std::ranges::find(site.others, cls[l]) == site.others.end()) site.others.push_back(cls[l]);
+		}
+	}
+	for (PlanarSite &site : out.sites) {
+		const bool split = t.nodes[site.nodes.front()].IsSplit();
+		const PlanarChannel &key = out.channels[site.channel];
+		bool differ = false;
+		for (uint32_t o : site.others) differ |= split ? out.channels[o].down != out.channels[site.others.front()].down : out.channels[o].up != out.channels[site.others.front()].up;
+		site.kind = split ? (differ ? PlanarSiteKind::Fray : PlanarSiteKind::LaneSplit) : (differ ? PlanarSiteKind::Join : PlanarSiteKind::LaneMerge);
+		/* The other channel's turn: from the key channel's in port heading to its out port heading (a split), or from its in port heading to the key channel's out port heading (a merge). */
+		const auto turn = [&](uint32_t o) -> std::optional<int> {
+			const std::set<uint32_t> &from = split ? key.up : out.channels[o].up;
+			const std::set<uint32_t> &to = split ? out.channels[o].down : key.down;
+			if (from.size() != 1 || to.size() != 1) return std::nullopt;
+			return Turn(t.ports[*from.begin()].heading, t.ports[*to.begin()].heading);
+		};
+		std::vector<uint32_t> prio;
+		for (uint32_t o : site.others) if (out.channels[o].prio) prio.push_back(o);
+		if (prio.size() == 1) {
+			site.straight = prio.front();
+		} else if (prio.empty()) {
+			uint32_t best = UINT32_MAX;
+			int best_turn = INT_MAX;
+			bool tie = false;
+			for (uint32_t o : site.others) {
+				const std::optional<int> tr = turn(o);
+				if (!tr.has_value()) { tie = true; continue; }
+				if (std::abs(*tr) < best_turn) { best = o; best_turn = std::abs(*tr); tie = false; }
+				else if (std::abs(*tr) == best_turn) tie = true;
+			}
+			if (!tie) site.straight = best;
+		}
+		if (site.straight != UINT32_MAX) {
+			site.prio = out.channels[site.straight].prio;
+			if (site.others.size() == 2) {
+				const uint32_t other = site.others[0] == site.straight ? site.others[1] : site.others[0];
+				const std::optional<int> tr = turn(other);
+				if (tr.has_value()) site.side = static_cast<int8_t>(*tr > 0 ? 1 : (*tr < 0 ? -1 : 0));
+			}
 		}
 	}
 	return out;

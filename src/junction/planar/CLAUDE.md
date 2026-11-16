@@ -21,6 +21,8 @@
 - A crossing whose two lines start or end at the same node group belongs to that group (a fray's or join's own crossings); every other crossing belongs to the pair of channels, and a channel's crossings follow its first line's event order.
 - The T at one, two and three lanes gives twelve channels (EF, AB, CD, ED, CB, AF and the six movements A to F) and three whole channel crossings (B x D, B x F, D x F); in LL², E1 and E2 share a channel and the crossing choice legs are channels of their own.
 
+- A site is the splits leaving one channel or the merges entering one channel (grouped by channel, not by node statement): a fray when its legs reach different out ports, a lane split when the same; a join when its legs come from different in ports, a lane merge when the same.
+- A site's straight channel is the one carrying a prio route when exactly one does, else the one turning least between its port headings; a tie (or two prio channels, as in LL²'s 227 exits) leaves it open as a variant. The side is the other channel's turn direction (+1 right). On the T this gives E and B straight with F leaving right and A left, D joining from the right and C from the left, and ties at the S fray and S join (the old `fray_s` and `join_s` variants).
 ## Layout program (`planar_layout`, DESIGN-planar §2a)
 - The layout is one integer program through `JunctionMilp` in half-tile units: per line a chain of vertices (start, one spare bend plus the route's least turn count per stretch, each crossing, end), per segment a heading in 8 and a length; a node is one vertex shared by its lines, a crossing one vertex shared by its two lines.
 - A line's segments keep to the short turn arc of its routes plus one heading beyond each end.
