@@ -202,6 +202,7 @@ def head_u(seg, n): return seg.a[0] + D[seg.d][0] * n  # u of a deck's near-head
 FCONT = '--fcont' in sys.argv
 FDIAG = '--fdiag' in sys.argv
 SFORM = 0
+EFORM = 0
 
 
 def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
@@ -285,7 +286,28 @@ def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
         M.seg(L0, h, lo=STUB, cost=FANW)                     # short after the step: the step comes late
         M.add(dot(r, M.end(L1)) - dot(r, M.end(L0)) == 2)
 
-    def fray(h, sigma, far, near, S_far, S_near, V_far, V_near, prio, cont=False, dform=False, nearfan=True, fan=True):
+    def fray(h, sigma, far, near, S_far, S_near, V_far, V_near, prio, cont=False, dform=False, nearfan=True, fan=True, nsplit=False):
+        if nsplit:
+            # The near lane splits before its fan (engineer's rig edit, 2026-11-16; the fan turns toward the diverging side):
+            # its straight leg takes one tile then the fan, its diverging leg stays on the fan's diagonal; the far lane fans late.
+            assert turn(h, -1) == turn(h, sigma) and not prio
+            Lt = turn(h, -1)
+            M.seg(far, h, lo=STUB); ff = M.seg(far, Lt, lo=2); M.seg(far, h, lo=2, cost=FANW)
+            M.seg(near, h, lo=STUB)
+            sf, sn = M.end(far), M.end(near)
+            M.strand(S_far, sf); M.strand(V_far, sf); M.node(far, S_far, V_far); M.pred[S_far] = far; M.pred[V_far] = far
+            M.strand(S_near, sn); M.strand(V_near, sn); M.node(near, S_near, V_near); M.pred[S_near] = near; M.pred[V_near] = near
+            M.seg(S_near, h, lo=2)
+            nf = M.seg(S_near, Lt, lo=2)
+            M.add(nf.L - ff.L == 0)
+            M.seg(S_far, h, lo=2)
+            vf = M.seg(V_far, turn(h, sigma), lo=6, hi=6)
+            if not cont: M.seg(V_far, h, lo=2)
+            M.seg(V_near, turn(h, sigma), lo=6)
+            if not cont: M.seg(V_near, h, lo=2)
+            d0 = M.seg(S_near, h, lo=2)
+            M.deck(d0, [M.cross(d0, vf, 4)])
+            return
         if dform:
             # The diagonal fray (engineer's rig edit, 2026-11-16): both lanes fan away from the diverging side; the near lane
             # splits at the top of its fan (S_near straight on), its diverging leg climbs one line more into the gap beside
@@ -416,7 +438,7 @@ def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
     M.tag = 'frayW'; fray('E', +1, 'EF1', 'EF2', 'E1', 'E2', 'F1', 'F2', False, FCONT or FDIAG, FDIAG)
     FRAYMIN = next((int(x.split('=')[1]) for x in sys.argv if x.startswith('--fraymin=')), None)
     if FRAYMIN is not None: M.add(M.start['EF1'][1] - M.start['E1'][1] <= 2 * FRAYMIN)  # experiment: the in-fan climbs at most this many rows
-    M.tag = 'frayE'; fray('W', -1, 'AB2', 'AB1', 'B2', 'B1', 'A2', 'A1', False)
+    M.tag = 'frayE'; fray('W', -1, 'AB2', 'AB1', 'B2', 'B1', 'A2', 'A1', False, EFORM == 2, nsplit=EFORM > 0)
     M.tag = 'frayS'
     dS = SFORM in (1, 2)
     if fray_s > 0: fray('N', +1, 'CD1', 'CD2', 'C1', 'C2', 'D1', 'D2', False, dS, dS, SFORM == 1, SFORM != 3)
@@ -441,7 +463,7 @@ def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
     if offD and tri == 0: raise ValueError('B crosses D on the N piece the diagonal fray removes')
     sD = bundle('D', ['D1', 'D2'], hD)
     sC = bundle('C', ['C1', 'C2'], hC)
-    sA = bundle('A', ['A1', 'A2'], ['W', 'SW', 'S'])
+    sA = bundle('A', ['A1', 'A2'], ['SW', 'S'] if EFORM == 2 else ['W', 'SW', 'S'])
     def first_seg(lane): return next(sg[lane][0] for ln, hs, sg in bundles.values() if lane in ln)
     for dn, va, vb in M.pending:
         M.deck(dn, [M.cross(dn, first_seg(v), 4) for v in (va, vb)], n_min=4)
@@ -881,14 +903,14 @@ if __name__ == '__main__':
     combos = [(fs, je, 'F', tri, jb) for fs in (1, -1) for tri in (0, 1) for je in (0, -1, 1) for jb in (0, -1, 1)]
     only = next((a.split('=')[1] for a in sys.argv if a.startswith('--only=')), None)
     if only: combos = [c for c in combos if f'{c[0]:+d}{c[1]:+d}{c[2]}{c[3]}{c[4]:+d}' == only]
-    combos = [c + (sf,) for c in combos for sf in (0, 1, 2, 3)]
-    for fs, js, o, tri, st, sf in combos:
+    combos = [c + (sf, ef) for c in combos for sf in (0, 3) for ef in (0, 1, 2)]
+    for fs, js, o, tri, st, sf, ef in combos:
         ts = time.perf_counter()
-        SFORM = sf
+        SFORM, EFORM = sf, ef
         try: M = build_t2(fs, js, o, tri, st)
         except ValueError as e: print('skip', e); continue
         res, why = solve_lazy(M, ts)
-        tag = f'{fs:+d}{js:+d}{o}{tri}{st:+d}s{sf}'
+        tag = f'{fs:+d}{js:+d}{o}{tri}{st:+d}s{sf}e{ef}'
         if res is None:
             print(f'{tag}: NO ({why}) {time.perf_counter() - ts:.2f}s'); continue
         (val, obj), geo, decks, rnd = res
