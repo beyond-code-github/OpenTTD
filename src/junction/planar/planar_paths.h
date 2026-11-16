@@ -12,6 +12,8 @@
 
 #include "planar_channels.h"
 
+#include <array>
+
 /** A channel's path: its pieces' headings in travel order, and the piece each of its crossings sits on. */
 struct PlanarChannelPath {
 	std::vector<PlanarHeading> headings; ///< One per piece; consecutive pieces differ by 45 degrees.
@@ -26,6 +28,8 @@ struct PlanarPaths {
 };
 
 std::vector<uint32_t> PlanarOpenCrossings(const PlanarChannels &channels);
+std::vector<std::array<uint32_t, 3>> PlanarTriangles(const PlanarChannels &channels);
+PlanarChannels FlipPlanarTriangles(const PlanarChannels &channels, uint64_t flips);
 PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannels &channels, uint64_t choice);
 
 #endif /* PLANAR_PATHS_H */

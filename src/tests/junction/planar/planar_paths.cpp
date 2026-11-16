@@ -14,6 +14,7 @@
 #include "../../../junction/planar/planar_paths.h"
 #include "../../../junction/planar/planar_plan.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -88,5 +89,31 @@ TEST_CASE("planar paths: the T", "[planar]")
 			CHECK(paths.paths[ChannelIndex(topology, channels, "A1")].headings == std::vector<PlanarHeading>{PlanarHeading::W, PlanarHeading::SW, PlanarHeading::S});
 		}
 		CHECK(BuildPlanarPaths(topology, channels, 0).over[open.front()] != BuildPlanarPaths(topology, channels, 1).over[open.front()]);
+	}
+}
+
+TEST_CASE("planar paths: the T's crossing triangle flips", "[planar]")
+{
+	for (int n = 1; n <= 3; n++) {
+		INFO(n);
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(PlanarTText(n), &error);
+		REQUIRE(error.empty());
+		const PlanarChannels channels = BuildPlanarChannels(topology);
+		/* B, D and F cross pairwise: one empty triangle. */
+		const auto triangles = PlanarTriangles(channels);
+		REQUIRE(triangles.size() == 1);
+		const PlanarChannels flipped = FlipPlanarTriangles(channels, 1);
+		for (const char *ln : {"B1", "D1", "F1"}) {
+			INFO(ln);
+			const uint32_t c = ChannelIndex(topology, channels, ln);
+			std::vector<uint32_t> before = channels.channels[c].crossings, after = flipped.channels[c].crossings;
+			REQUIRE(before.size() == 2);
+			std::ranges::reverse(before);
+			CHECK(after == before);
+		}
+		/* Unflipped is the topology's order; both give valid paths. */
+		CHECK(FlipPlanarTriangles(channels, 0).channels[ChannelIndex(topology, channels, "B1")].crossings == channels.channels[ChannelIndex(topology, channels, "B1")].crossings);
+		for (uint64_t choice = 0; choice < 2; choice++) CheckValid(flipped, BuildPlanarPaths(topology, flipped, choice));
 	}
 }

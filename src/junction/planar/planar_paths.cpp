@@ -13,7 +13,9 @@
 
 #include "../../3rdparty/fmt/format.h"
 
+#include <cstdlib>
 #include <functional>
+#include <map>
 #include <optional>
 
 #include "../../safeguards.h"
@@ -49,6 +51,62 @@ std::vector<uint32_t> PlanarOpenCrossings(const PlanarChannels &channels)
 		if (channels.channels[c.a].prio == channels.channels[c.b].prio) open.push_back(x);
 	}
 	return open;
+}
+
+/**
+ * The empty triangles of the channel graph: three channels crossing pairwise, each with its two crossings of the others next
+ * to each other along it. Each can sit either way round (both are planar and carry the same routes); the topology's event order
+ * gives one, a flip the other.
+ * @param channels The channel graph.
+ * @return Per triangle its three channel crossings.
+ */
+std::vector<std::array<uint32_t, 3>> PlanarTriangles(const PlanarChannels &channels)
+{
+	std::map<std::pair<uint32_t, uint32_t>, uint32_t> pair;
+	for (uint32_t x = 0; x < channels.crossings.size(); x++) pair[{channels.crossings[x].a, channels.crossings[x].b}] = x;
+	const auto adjacent = [&](uint32_t c, uint32_t x, uint32_t y) {
+		const auto &list = channels.channels[c].crossings;
+		const auto i = std::ranges::find(list, x) - list.begin(), j = std::ranges::find(list, y) - list.begin();
+		return std::abs(i - j) == 1;
+	};
+	std::vector<std::array<uint32_t, 3>> out;
+	const uint32_t n = static_cast<uint32_t>(channels.channels.size());
+	for (uint32_t a = 0; a < n; a++) {
+		for (uint32_t b = a + 1; b < n; b++) {
+			const auto ab = pair.find({a, b});
+			if (ab == pair.end()) continue;
+			for (uint32_t c = b + 1; c < n; c++) {
+				const auto ac = pair.find({a, c}), bc = pair.find({b, c});
+				if (ac == pair.end() || bc == pair.end()) continue;
+				if (adjacent(a, ab->second, ac->second) && adjacent(b, ab->second, bc->second) && adjacent(c, ac->second, bc->second)) out.push_back({ab->second, bc->second, ac->second});
+			}
+		}
+	}
+	return out;
+}
+
+/**
+ * The channel graph with some triangles flipped: on each of a flipped triangle's three channels its two crossings swap order.
+ * @param channels The channel graph.
+ * @param flips Bit i set: the i-th triangle of PlanarTriangles is flipped.
+ * @return The flipped copy.
+ */
+PlanarChannels FlipPlanarTriangles(const PlanarChannels &channels, uint64_t flips)
+{
+	PlanarChannels out = channels;
+	const std::vector<std::array<uint32_t, 3>> triangles = PlanarTriangles(channels);
+	for (size_t i = 0; i < triangles.size(); i++) {
+		if ((flips >> i & 1) == 0) continue;
+		const std::array<uint32_t, 3> &tri = triangles[i];
+		for (PlanarChannel &c : out.channels) {
+			std::vector<size_t> at;
+			for (size_t k = 0; k < c.crossings.size(); k++) {
+				if (std::ranges::find(tri, c.crossings[k]) != tri.end()) at.push_back(k);
+			}
+			if (at.size() == 2) std::swap(c.crossings[at[0]], c.crossings[at[1]]);
+		}
+	}
+	return out;
 }
 
 /**
@@ -137,6 +195,21 @@ PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannel
 			}
 			const auto suits = [&](PlanarHeading h) { return over ? static_cast<int>(h) % 2 == 0 : static_cast<int>(h) % 4 != *over_axis; };
 			bool placed = false;
+			/* Experiment (PLANAR_PERP): under a prio (doubled) channel, cross at right angles where a back-and-forth allows it. */
+			if (!over && channels.channels[out.over[x]].prio && std::getenv("PLANAR_PERP") != nullptr) {
+				const auto perp = [&](PlanarHeading h) { return static_cast<int>(h) % 4 == (*over_axis + 2) % 4; };
+				for (int detour = 0; detour < 2 && !placed; detour++) {
+					for (uint32_t i = at; i < p.headings.size(); i++) {
+						if (perp(p.headings[i])) {
+							at = i;
+							placed = true;
+							break;
+						}
+					}
+					if (placed || at == 0) break;
+					p.headings.insert(p.headings.begin() + at + 1, {p.headings[at - 1], p.headings[at]});
+				}
+			}
 			for (int detour = 0; detour < 3 && !placed; detour++) {
 				for (uint32_t i = at; i < p.headings.size(); i++) {
 					if (suits(p.headings[i])) {

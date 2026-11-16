@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdlib>
+#include <fstream>
 #include <cmath>
 #include <map>
 #include <optional>
@@ -1259,6 +1261,7 @@ public:
 struct MappedVariant {
 	uint64_t over = 0; ///< Bit i set: the i-th open crossing has its higher channel over.
 	uint64_t ties = 0; ///< Bit i set: the i-th site without a straight channel takes its second other channel as straight.
+	uint64_t flips = 0; ///< Bit i set: the i-th crossing triangle sits the other way round (FlipPlanarTriangles).
 };
 
 /**
@@ -2358,7 +2361,7 @@ VariantOutcome SolveVariant(const PlanarTopology &topology, const Params &params
 VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant)
 {
 	VariantOutcome out;
-	out.tag = fmt::format("o{}t{}", variant.over, variant.ties);
+	out.tag = fmt::format("o{}t{}f{}", variant.over, variant.ties, variant.flips);
 	const Clock::time_point t0 = Clock::now();
 	MappedComposer composer(topology, channels, params, variant);
 	Model &M = composer.M;
@@ -2375,6 +2378,35 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 		return out;
 	}
 	if (!ExportRoutes(M, res.geo, topology, out.routes, out.why)) return out;
+	if (const char *dir = std::getenv("PLANAR_MAPPED_DUMP"); dir != nullptr) {
+		/* Debug: each strand's crossings in travel order (the other strand and over or under), for diffing against a hand composition. */
+		std::map<std::string, std::vector<std::pair<double, std::string>>> along;
+		const auto offset = [&](const Seg &sg) {
+			double o = 0;
+			for (uint32_t i = 0; i < sg.i; i++) o += Ev(res.sol.val, M.strands.at(sg.strand).segs[i].L);
+			return o;
+		};
+		for (const CrossRec &c : M.crossings) {
+			along[c.over.strand].emplace_back(offset(c.over) + Ev(res.sol.val, c.a), "over " + c.under.strand);
+			along[c.under.strand].emplace_back(offset(c.under) + Ev(res.sol.val, c.b), "under " + c.over.strand);
+		}
+		std::ofstream f(fmt::format("{}/{}.txt", dir, out.tag));
+		f << "area " << out.area << "\n";
+		for (const std::string &name : M.order) {
+			f << "seq " << name << ":";
+			for (const Seg &sg : M.strands.at(name).segs) {
+				const int64_t len = std::llround(Ev(res.sol.val, sg.L));
+				if (len != 0) f << " " << sg.d << ":" << len;
+			}
+			f << "\n";
+		}
+		for (auto &[name, xs] : along) {
+			std::ranges::sort(xs);
+			f << name << ":";
+			for (const auto &[pos, what] : xs) f << " " << what;
+			f << "\n";
+		}
+	}
 	out.ok = true;
 	return out;
 }
@@ -2486,18 +2518,26 @@ bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec,
 	const size_t open = PlanarOpenCrossings(channels).size();
 	size_t ties = 0;
 	for (const PlanarSite &site : channels.sites) ties += site.straight == UINT32_MAX ? 1 : 0;
-	if (open + ties > 6) {
-		if (why != nullptr) *why = fmt::format("{} open crossings and {} tie sites are too many variants", open, ties);
+	const size_t triangles = PlanarTriangles(channels).size();
+	if (open + ties + triangles > 6) {
+		if (why != nullptr) *why = fmt::format("{} open crossings, {} tie sites and {} triangles are too many variants", open, ties, triangles);
 		return false;
 	}
+	std::vector<PlanarChannels> flipped;
+	for (uint64_t f = 0; f < (uint64_t{1} << triangles); f++) flipped.push_back(FlipPlanarTriangles(channels, f));
 	std::vector<MappedVariant> variants;
-	for (uint64_t o = 0; o < (uint64_t{1} << open); o++) {
-		for (uint64_t k = 0; k < (uint64_t{1} << ties); k++) variants.push_back({o, k});
+	for (uint64_t f = 0; f < (uint64_t{1} << triangles); f++) {
+		for (uint64_t o = 0; o < (uint64_t{1} << open); o++) {
+			for (uint64_t k = 0; k < (uint64_t{1} << ties); k++) variants.push_back({o, k, f});
+		}
+	}
+	if (const char *only = std::getenv("PLANAR_ONLY"); only != nullptr) { // debug: one variant by tag
+		std::erase_if(variants, [&](const MappedVariant &v) { return fmt::format("o{}t{}f{}", v.over, v.ties, v.flips) != only; });
 	}
 	std::vector<VariantOutcome> outcomes(variants.size());
 	std::vector<std::thread> threads;
 	for (size_t i = 0; i < variants.size(); i++) {
-		threads.emplace_back([&, i] { outcomes[i] = SolveMappedVariant(topology, channels, params, variants[i]); });
+		threads.emplace_back([&, i] { outcomes[i] = SolveMappedVariant(topology, flipped[variants[i].flips], params, variants[i]); });
 	}
 	for (std::thread &thread : threads) thread.join();
 	return PickBest(outcomes, t0, layout, why);
