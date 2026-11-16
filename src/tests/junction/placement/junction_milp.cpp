@@ -36,6 +36,18 @@ TEST_CASE("milp: integer optimum differs from the relaxation", "[junction][milp]
 	}
 }
 
+TEST_CASE("milp: a time limit that is not reached changes nothing", "[junction][milp]")
+{
+	JunctionMilp m;
+	m.SetTimeLimit(5.0);
+	uint32_t x = m.AddVariable(0, 10, 1, true);
+	uint32_t y = m.AddVariable(0, 10, 1, true);
+	Terms terms{{x, 1}, {y, 2}};
+	m.AddRow(terms, 3.5, JunctionMilp::INF);
+	REQUIRE(m.Solve() == JunctionMilp::Status::Optimal);
+	CHECK(m.Objective() == Approx(2));
+}
+
 TEST_CASE("milp: difference constraints solve to the least solution", "[junction][milp]")
 {
 	JunctionMilp m;
