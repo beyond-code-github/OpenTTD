@@ -191,3 +191,19 @@ Results per variant: 1930, 1949, 1956 and 1969 tiles at 7-14 s, with zero clash 
 - whether topology order settles every between-channel clash;
 - the edge convention for width changes;
 - LL² and T2 as acceptance fixtures alongside T3.
+
+## 9. Atomic primitives for LL² (D330; orchestrator draft, 2026-11-17)
+
+What LL²'s channel graph shows (dump: 27 channels, 15 sites): the generic composer treats a site as one channel's lanes all doing the same thing (an n-lane fray or join). LL² breaks that three ways:
+- a channel's lanes part ways: ch6 = {E1, E2}; E2 lane-splits while E1 runs on to the exit join;
+- an exit join takes three channels: ch2 <- E1 (ch6), EDj1/EDj2 (ch16), D2 (ch11); the straight lanes are outside, from two channels, the joiners inside;
+- the choice merge takes four one-lane channels: ch16 <- E2a, D1a, E2b, D1b, with one crossing (E2b x D1a).
+
+Design:
+1. **Primitives work per node, grouped where they agree.** A split node is a fray of one lane (straight leg, diverging leg on side sigma); a merge node is a join of one lane (straight leg, joiner from side sigma). A site whose nodes all share one straight channel and one other channel is today's n-lane fray or join (its lanes cross each other inside it); otherwise each node is its own one-lane primitive. A lane split is a one-lane fray whose legs go to the same port: sigma from the legs' order in the node (`node E2 -> E2a, E2b`: E2a left).
+2. **Prio per line, not per channel.** A line holds prio when a prio route runs on it. At a merge the prio leg runs straight and the joiner's side is where the joiner lies; a doubled stretch doubles only prio lanes (D299 lets an unflagged lane cross single).
+3. **Straight channel with several prio channels:** the least turn among the prio channels (today a tie). LL²'s entry frays stop being variants: E runs straight, F turns.
+4. **Out-lane order** comes from the out port's lane order, as today; one-lane joins into one channel keep their lanes 2 apart at the stub (the existing O-lane rule).
+5. **Ties left:** each lane split (which leg runs straight) and each plain merge (which leg runs straight): up to 9 bits in LL², over the 6-bit cap. Step one measures one variant (`PLANAR_ONLY`) against 807; the variant count is the next problem, as the jogs were on T3.
+
+Test (outside-in): "LL² from its topology text (mapped) at the probe's area": SolvePlanarMapped on PlanarLL2Text() covers every path at area <= 807. Inner: channel tests for rule 3 (LL²'s entry frays get a straight channel) and site grouping (LL²'s exit join decomposes into two one-lane joins); T1-T3 unchanged.
