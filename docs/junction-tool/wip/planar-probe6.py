@@ -18,7 +18,8 @@ STUB = 4
 TL, CL = 4, 5   # MakeTestJunctionSpec: tl 4; reference speed 160, curve speed 0 -> DeriveCurveSpacing 5
 G = min(2 * TL - 1, max(2, CL))
 P = int(next((a.split('=')[1] for a in sys.argv if a.startswith('--prio=')), 14))  # prio coverage, tiles (spec.prio_tiles)
-TUCK = float(next((a.split('=')[1] for a in sys.argv if a.startswith('--tuck=')), 4))  # cost per diagonal unit of a bundle turn (tuck in)
+TUCK = float(next((a.split('=')[1] for a in sys.argv if a.startswith('--tuck=')), math.sqrt(2)))  # cost per diagonal unit of a bundle turn (tuck in)
+AREA_W = float(next((a.split('=')[1] for a in sys.argv if a.startswith('--areaw=')), 10))  # objective weight per tile of area inside the outline
 FANW = 1.5      # cost per half-tile of a fanned (spread) stretch; the tight stub costs 1
 BUDGET = 15.0
 
@@ -135,6 +136,7 @@ class Model:
     # ---- solve ----
     def solve(M, extra=()):
         n = len(M.lb); lb, ub, obj, rows = list(M.lb), list(M.ub), list(M.obj), list(M.rows) + list(extra)
+        for k, v in getattr(M, 'obj_extra', {}).items(): obj[k] += v
         for x, p in M.par.items():
             lb.append(-INF); ub.append(INF); obj.append(0.0)
             rows.append(({x: 1, n: -2}, p, p)); n += 1
@@ -201,7 +203,7 @@ def build_t2(fray_s, join_s, df_over, tri=0, stair=None):
     if stair is None: stair = LEANMODE == 'all'
     """fray_s, join_s: +1 base (the diverging/joining bundle on the right of travel), -1 mirror; df_over: 'D' or 'F'."""
     M = Model()
-    X, Y = M.var(c=3.0), M.var(c=3.0)
+    X, Y = M.var(c=0.0 if AREA_W else 3.0), M.var(c=0.0 if AREA_W else 3.0)
     M.X, M.Y = X, Y
     M.fan_in = []
 
@@ -585,9 +587,61 @@ def sep_options(M, geo, pr):
     return out
 
 
+T2_OUTLINE = [('EF1', 'E1', 'ED1'), ('AB1', 'A1', 'AF1'), ('CD1', 'C1', 'CB1')]
+
+
+def outline(M):
+    """The junction's outline: the outer route between each pair of neighbouring arms, joined along the box edges."""
+    pts = []
+    for route in T2_OUTLINE:
+        seq = route_segs(M, route)[0]
+        pts.append(seq[0].a)
+        for sg in seq: pts.append(sg.b)
+    return pts
+
+
+def area_of(val, pts):
+    P_ = [(ev(val, p[0]), ev(val, p[1])) for p in pts]
+    return 0.5 * sum(P_[i][0] * P_[(i + 1) % len(P_)][1] - P_[(i + 1) % len(P_)][0] * P_[i][1] for i in range(len(P_)))
+
+
+def linearise_area(M, val):
+    """Objective coefficients of the area's gradient at val (tiles; shoelace, sign from the current orientation)."""
+    pts = outline(M)
+    P_ = [(ev(val, p[0]), ev(val, p[1])) for p in pts]
+    sgn = 1 if area_of(val, pts) >= 0 else -1
+    n = len(P_); coef = {}
+    for i in range(n):
+        gx = 0.5 * (P_[(i + 1) % n][1] - P_[i - 1][1]); gy = 0.5 * (P_[i - 1][0] - P_[(i + 1) % n][0])
+        for e, g in ((pts[i][0], gx), (pts[i][1], gy)):
+            for k, v in lift(e).d.items(): coef[k] = coef.get(k, 0) + sgn * g * v * AREA_W / 4
+    M.obj_extra = coef
+
+
 def solve_lazy(M, t0):
-    seps = []
-    r = M.solve()
+    """Area inside the outline by sequential linearisation around the lazy-separated solution."""
+    M.obj_extra = {}
+    res, why = solve_lazy1(M, t0, [])
+    if res is None: return res, why
+    if not AREA_W:
+        M.area = abs(area_of(res[0][0], outline(M))) / 4
+        return res[:4], why
+    best = (abs(area_of(res[0][0], outline(M))), res)
+    seps = res[4]
+    for it in range(6):
+        linearise_area(M, best[1][0][0])
+        r2, why2 = solve_lazy1(M, t0, seps)
+        if r2 is None: break
+        a2 = abs(area_of(r2[0][0], outline(M)))
+        if a2 >= best[0] - 1: break
+        best = (a2, r2); seps = r2[4]
+    M.area = best[0] / 4
+    return best[1][:4], None
+
+
+def solve_lazy1(M, t0, seps0):
+    seps = list(seps0)
+    r = M.solve(seps)
     if r is None: return None, 'base infeasible'
     for rnd in range(40):
         geo, decks = geometry(M, r[0])
@@ -599,7 +653,7 @@ def solve_lazy(M, t0):
             for dseg, n, f, xs in M.decks:
                 if dseg is under and ev(r[0], n) - 3 < bv < ev(r[0], f) + 3:
                     under_bad.append([M.row(bb <= n - 3), M.row(bb >= f + 3)])
-        if not bad and not under_bad: return (r, geo, decks, rnd), None
+        if not bad and not under_bad: return (r, geo, decks, rnd, seps), None
         if under_bad:
             for rows in under_bad[0]:
                 if M.solve(seps + [rows]) is not None: seps.append(rows); break
@@ -681,8 +735,8 @@ if __name__ == '__main__':
             print(f'{tag}: NO ({why}) {time.perf_counter() - ts:.2f}s'); continue
         (val, obj), geo, decks, rnd = res
         W, H = round(ev(val, M.X)) // 2 + 1, round(ev(val, M.Y)) // 2 + 1
-        print(f'{tag}: {W}x{H} obj {obj:.0f} sep rounds {rnd} {time.perf_counter() - ts:.2f}s gaps(tiles) {[round(ev(val, g)) // 2 for g in M.gaps]}')
-        results.append((obj, tag, M, val, geo, decks))
+        print(f'{tag}: area {getattr(M, "area", 0):.0f} {W}x{H} obj {obj:.0f} sep rounds {rnd} {time.perf_counter() - ts:.2f}s gaps(tiles) {[round(ev(val, g)) // 2 for g in M.gaps]}')
+        results.append((M.area, tag, M, val, geo, decks))
     print(f'total {time.perf_counter() - t0:.2f}s')
     if results:
         results.sort(key=lambda r: r[0])
