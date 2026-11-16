@@ -203,6 +203,7 @@ FCONT = '--fcont' in sys.argv
 FDIAG = '--fdiag' in sys.argv
 SFORM = 0
 EFORM = 0
+STEP2 = set()
 
 
 def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
@@ -279,11 +280,16 @@ def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
         M.strand(L0, mL0); M.node(fA, c0, L0); M.pred[L0] = fA
         M.strand(L1, mL1); M.node(c1, fB, L1); M.pred[L1] = fB
         M.prio_rows.append((fA, mL0, h, -1)); M.prio_rows.append((fB, mL1, h, +1))
-        # Out: the inside lane (L1, toward the arm's in port) runs straight to its port; the outside lane closes up beside it at the last responsible moment.
+        # Out: the inside lane (L1, toward the arm's in port) runs straight to its port; the outside lane closes up beside it straight after its merge.
         M.seg(L1, h, lo=2 + STUB)
-        M.seg(L0, h, lo=2)                                   # merge signal room, then the spread stretch
+        # The outside lane closes up early (D317 amended, engineer's rig edit): a big step straight after its merge to run
+        # beside the right bundle's joiner, then the last one-line step into the slot the joiner leaves at its merge.
+        M.seg(L0, h, lo=2, cost=FANW)                        # merge signal room; short: the step comes early
         M.seg(L0, R, lo=2)
-        M.seg(L0, h, lo=STUB, cost=FANW)                     # short after the step: the step comes late
+        if h in STEP2:                                       # per block: one step, or two (the last at the joiner's merge)
+            M.seg(L0, h, lo=0)
+            M.seg(L0, R, lo=2, hi=2)
+        M.seg(L0, h, lo=STUB)
         M.add(dot(r, M.end(L1)) - dot(r, M.end(L0)) == 2)
 
     def fray(h, sigma, far, near, S_far, S_near, V_far, V_near, prio, cont=False, dform=False, nearfan=True, fan=True, nsplit=False):
@@ -919,6 +925,19 @@ if __name__ == '__main__':
         results.append((M.area, tag, M, val, geo, decks))
     print(f'total {time.perf_counter() - t0:.2f}s')
     if results:
+        results.sort(key=lambda r: r[0])
+        best_tag = results[0][1]
+        c = next(c for c in combos if f'{c[0]:+d}{c[1]:+d}{c[2]}{c[3]}{c[4]:+d}s{c[5]}e{c[6]}' == best_tag)
+        for k in range(1, 8):
+            STEP2 = {h for i, h in enumerate('ESW') if k >> i & 1}
+            SFORM, EFORM = c[5], c[6]
+            ts = time.perf_counter()
+            M = build_t2(c[0], c[1], c[2], c[3], c[4])
+            res, why = solve_lazy(M, ts)
+            if res is None: print(best_tag, sorted(STEP2), 'NO'); continue
+            (val, obj), geo, decks, rnd = res
+            print(f'{best_tag} two-step {"".join(sorted(STEP2))}: area {M.area:.0f}')
+            results.append((M.area, best_tag + '/2' + ''.join(sorted(STEP2)), M, val, geo, decks))
         results.sort(key=lambda r: r[0])
         obj, tag, M, val, geo, decks = results[0]
         print('best', tag)
