@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <functional>
 #include <optional>
 #include <map>
 #include <set>
@@ -292,6 +293,44 @@ PlanarChannels BuildPlanarChannels(const PlanarTopology &topology)
 				legs.side = static_cast<int8_t>(other == two[1] ? 1 : -1); // the node lists its lines left to right across travel
 			}
 		}
+	}
+
+	/*
+	 * Line shares: an in port line carries a full lane; a fray's legs keep their in line's share, a lane split's k legs
+	 * take 1/k each (round robin), a merge's out line the larger of its in lines'. A line of a movement without a prio
+	 * route (sideline traffic, when the topology lists prio routes) counts half.
+	 */
+	std::vector<PlanarSiteKind> node_kind(t.nodes.size(), PlanarSiteKind::Fray);
+	for (const PlanarSite &site : out.sites) {
+		for (uint32_t n : site.nodes) node_kind[n] = site.kind;
+	}
+	std::set<char> main_letters;
+	bool any_prio = false;
+	for (const PlanarRoute &r : t.routes) {
+		if (r.prio && !r.name.empty()) main_letters.insert(r.name[0]);
+		any_prio |= r.prio;
+	}
+	out.line_share.assign(t.lines.size(), -1.0);
+	std::function<double(uint32_t)> flow = [&](uint32_t l) -> double {
+		if (out.line_share[l] >= 0) return out.line_share[l];
+		double s = 1.0;
+		if (!t.lines[l].from.port) {
+			const PlanarNode &node = t.nodes[t.lines[l].from.index];
+			if (node.IsSplit()) {
+				s = flow(node.in.front());
+				if (node_kind[t.lines[l].from.index] == PlanarSiteKind::LaneSplit) s /= static_cast<double>(node.out.size());
+			} else {
+				s = 0.0;
+				for (uint32_t i : node.in) s = std::max(s, flow(i));
+			}
+		}
+		return out.line_share[l] = s;
+	};
+	for (uint32_t l = 0; l < t.lines.size(); l++) flow(l);
+	for (uint32_t l = 0; l < t.lines.size(); l++) {
+		bool main = !any_prio;
+		for (uint32_t r : t.lines[l].routes) main |= !t.routes[r].name.empty() && main_letters.contains(t.routes[r].name[0]);
+		if (!main) out.line_share[l] /= 2.0;
 	}
 	return out;
 }

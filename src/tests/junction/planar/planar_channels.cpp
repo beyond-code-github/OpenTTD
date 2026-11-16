@@ -214,3 +214,41 @@ TEST_CASE("planar channels: LL2's legs per node, prio per line", "[planar]")
 	CHECK(LineName(topology, LegsAt(topology, channels, "EF2", true).straight) == "E2");
 	CHECK(LegsAt(topology, channels, "EF2", true).side == 1);
 }
+
+/** A line's share of a full lane's flow. */
+static double ShareOf(const PlanarTopology &topology, const PlanarChannels &channels, std::string_view line)
+{
+	return channels.line_share[PlanarLineByName(topology, line)];
+}
+
+TEST_CASE("planar channels: LL2's line shares, full after a fray, half after a lane choice", "[planar]")
+{
+	const PlanarTopology topology = Parse(PlanarLL2Text());
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	/* Every movement holds a prio lane, so all traffic is main: the fray keeps the full share, a fork halves it. */
+	for (const char *l : {"EF1", "E1", "E2", "F1", "F2", "B1", "B2", "D1", "D2", "EO1"}) {
+		INFO(l);
+		CHECK(ShareOf(topology, channels, l) == 1.0);
+	}
+	for (const char *l : {"E2a", "E2b", "D1a", "D1b", "F1a", "B1b"}) {
+		INFO(l);
+		CHECK(ShareOf(topology, channels, l) == 0.5);
+	}
+	/* The merged choice legs carry no more than their busiest feeder. */
+	CHECK(ShareOf(topology, channels, "EDj1") == 0.5);
+}
+
+TEST_CASE("planar channels: the T's line shares, sideline movements half", "[planar]")
+{
+	const PlanarTopology topology = Parse(PlanarTText(2));
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	/* The T is a sideline hub: B and E hold prio, the S port's movements (A, C, D, F) are sideline traffic and cross single. */
+	for (const char *l : {"EF1", "AB2", "B1", "E2", "ED1", "CB2"}) {
+		INFO(l);
+		CHECK(ShareOf(topology, channels, l) == 1.0);
+	}
+	for (const char *l : {"CD1", "D1", "F2", "A1", "C2", "AF1"}) {
+		INFO(l);
+		CHECK(ShareOf(topology, channels, l) == 0.5);
+	}
+}

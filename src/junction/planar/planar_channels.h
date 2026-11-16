@@ -67,6 +67,7 @@ struct PlanarChannels {
 	std::vector<std::vector<uint32_t>> group_crossings; ///< Per node group, the topology crossings inside it (its lines share that group as start or end).
 	std::vector<PlanarSite> sites; ///< In channel order of their key channel, splits before merges.
 	std::vector<PlanarNodeLegs> node_legs; ///< Per PlanarTopology node.
+	std::vector<double> line_share; ///< Per PlanarTopology line, its share of a full lane's flow: a bridge on a line with a full share is doubled.
 };
 
 PlanarChannels BuildPlanarChannels(const PlanarTopology &topology);

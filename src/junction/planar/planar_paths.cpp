@@ -138,24 +138,47 @@ PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannel
 		}
 	}
 
-	/* Headings: the short turn from start to end. */
-	for (uint32_t ch = 0; ch < n; ch++) {
+	/* Headings: the short turn from start to end; a channel starting at a node starts on the heading its in channel ends on. */
+	std::vector<bool> headed(n, false);
+	std::function<bool(uint32_t)> head = [&](uint32_t ch) -> bool {
+		if (headed[ch]) return true;
+		headed[ch] = true;
 		const PlanarChannel &c = channels.channels[ch];
-		const std::optional<PlanarHeading> up = PortHeading(t, c.up), down = PortHeading(t, c.down);
-		const std::optional<PlanarHeading> from = up.has_value() ? up : down, to = down.has_value() ? down : up;
+		const PlanarLine &first = t.lines[c.lines.front()];
+		std::optional<PlanarHeading> from = PortHeading(t, c.up), to = PortHeading(t, c.down);
+		if (!first.from.port) {
+			const uint32_t in = channels.channel_of_line[t.nodes[first.from.index].in.front()];
+			if (!head(in)) return false;
+			from = out.paths[in].headings.back();
+		}
+		if (!from.has_value()) from = to;
+		if (!to.has_value()) to = from;
 		if (!from.has_value()) {
-			out.why = fmt::format("channel of {} has no single port heading", t.lines[c.lines.front()].name);
-			return out;
+			out.why = fmt::format("channel of {} has no single port heading", first.name);
+			return false;
 		}
 		const int turn = (static_cast<int>(*to) - static_cast<int>(*from) + 12) % 8 - 4;
 		if (turn == -4) {
-			out.why = fmt::format("channel of {} turns back", t.lines[c.lines.front()].name);
-			return out;
+			out.why = fmt::format("channel of {} turns back", first.name);
+			return false;
 		}
 		const int step = turn > 0 ? 1 : -1;
 		out.paths[ch].headings.push_back(*from);
 		for (int k = 0; k != turn; k += step) out.paths[ch].headings.push_back(Turned(*from, k + step));
+		return true;
+	};
+	for (uint32_t ch = 0; ch < n; ch++) {
+		if (!head(ch)) return out;
 	}
+
+	/* A fork leg's side: -1 for the left leg, +1 for the right, 0 for a channel not starting at a fork. */
+	const auto fork_side = [&](const PlanarChannel &c) -> int {
+		const PlanarLine &first = t.lines[c.lines.front()];
+		if (first.from.port) return 0;
+		const PlanarNode &node = t.nodes[first.from.index];
+		if (!node.IsSplit() || channels.node_legs[first.from.index].straight != UINT32_MAX) return 0;
+		return node.out[0] == c.lines.front() ? -1 : +1;
+	};
 
 	/* Place over channels before the channels they cross. */
 	std::vector<uint32_t> order;
@@ -218,7 +241,14 @@ PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannel
 						break;
 					}
 				}
-				if (placed || at == 0) break;
+				if (placed) break;
+				if (at == 0) {
+					/* A straight fork leg jogs toward its own side to cross (the left leg left, the right leg right). */
+					const int side = fork_side(c);
+					if (side == 0 || p.headings.size() != 1) break;
+					p.headings = {p.headings[0], Turned(p.headings[0], side), p.headings[0]};
+					continue;
+				}
 				p.headings.insert(p.headings.begin() + at + 1, {p.headings[at - 1], p.headings[at]});
 			}
 			if (!placed) {
