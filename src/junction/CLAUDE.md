@@ -43,15 +43,15 @@ Rules of the junction tool as present-tense facts, split per folder: each fact l
 - The checker `CheckJunctionRules` is a test oracle; the search still keeps it in acceptance, because the template does not yet cover every rule.
 
 ## Rule checker
-- With lane paths (D301), a path is a main line (prio at merges, no bays, doubled bridges, order) when its lane path holds prio; without them, when it is a through path (D319).
-- G1: two paths of one movement are copies when their shared pieces appear in the same order in both, both start and end shared, and each stretch where they differ has equal length on both (D322); a lane may double at several crossings in series.
-- D24 does not count a rejoin as a merge (D302): a merge whose incoming tracks carry the same (from_slot, to_slot) paths, as a doubled lane's copies do; it may be followed by a split.
+- With lane paths, a path is a main line (prio at merges, no bays, doubled bridges, order) when its lane path holds prio; without them, when it is a through path.
+- G1: two paths of one movement are copies when their shared pieces appear in the same order in both, both start and end shared, and each stretch where they differ has equal length on both; a lane may double at several crossings in series.
+- D24 does not count a rejoin as a merge: a merge whose incoming tracks carry the same (from_slot, to_slot) paths, as a doubled lane's copies do; it may be followed by a split.
 - The checker rejects a split of a main-line lane inside a prio's coverage; a split here means any divergence or join of main-line tracks.
 - The checker requires prio to hold under OpenTTD's real pre-signal logic: for every main-line (tile, track) within coverage plus the tile before the first upstream signal, a one-tile train there must settle the joiner's Entry red.
 - No adjacent signals on a main-line lane inside a prio's coverage; "signal, one plain tile, signal" is allowed when the pre-signal requirement above holds.
-- A topology may list its prio movements (D298): the G9 check treats a path as the main-line side of a merge only when its movement is listed, so a merge of two unlisted paths is plain; an empty list leaves every main-to-main path a main line. When the topology lists its lane paths (D301), the flag of the lane path with the traced path's slots decides instead (none found: no prio).
-- With a prio list (movements, or lane paths with flags, D301), a bridge that only unlisted movements or unflagged lane paths run over may be single (D299); the "ML bridge is not doubled" rule is otherwise unchanged.
-- The footprint boundary is the box edges that hold the topology's ports (D300): x = 0 with a W group, x = size.x - 1 with an E group, y = size.y - 1 with an S group; the T topology has all three.
+- A topology may list its prio movements: the G9 check treats a path as the main-line side of a merge only when its movement is listed, so a merge of two unlisted paths is plain; an empty list leaves every main-to-main path a main line. When the topology lists its lane paths, the flag of the lane path with the traced path's slots decides instead (none found: no prio).
+- With a prio list (movements, or lane paths with flags), a bridge that only unlisted movements or unflagged lane paths run over may be single; the "ML bridge is not doubled" rule is otherwise unchanged.
+- The footprint boundary is the box edges that hold the topology's ports: x = 0 with a W group, x = size.x - 1 with an E group, y = size.y - 1 with an S group; the T topology has all three.
 
 ## Game rules the model mirrors
 - Bridge ends and span heights: `CheckBridgeSlope`, `CmdBuildBridge`, `BRIDGE_TOO_LOW_FOR_TERRAIN`; bridge type tables `table/bridge_land.h`.
