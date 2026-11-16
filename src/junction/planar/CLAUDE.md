@@ -23,6 +23,11 @@
 
 - A site is the splits leaving one channel or the merges entering one channel (grouped by channel, not by node statement): a fray when its legs reach different out ports, a lane split when the same; a join when its legs come from different in ports, a lane merge when the same.
 - A site's straight channel is the one carrying a prio route when exactly one does, else the one turning least between its port headings; a tie (or two prio channels, as in LL²'s 227 exits) leaves it open as a variant. The side is the other channel's turn direction (+1 right). On the T this gives E and B straight with F leaving right and A left, D joining from the right and C from the left, and ties at the S fray and S join (the old `fray_s` and `join_s` variants).
+## Channel paths (`planar_paths`, D327, D328)
+- At a channel crossing a prio channel is over a non-prio one (the main line stays straight, D328); between two prio or two non-prio channels the over channel is a choice (`PlanarOpenCrossings`, one bit each in `BuildPlanarPaths`).
+- A channel turns the short way from its single in port's heading to its single out port's (falling back to the one it has), 45 degrees a piece; its crossings sit in its event order on the first piece at or after the last that suits (axis when over, not parallel to the over piece when under), with a back-and-forth detour only when none suits; over channels are placed first, and a cycle of overs is refused.
+- On the T: B is over D and F, D x F is the one open crossing; B and E are straight, F E-SE-S, D N-NE-E, C N-NW-W, A W-SW-S; the topology's event order puts D's B crossing before its F crossing (F x D between the main lines), unlike probe 9's hand composition (F x D south of B).
+
 ## Layout program (`planar_layout`, DESIGN-planar §2a)
 - The layout is one integer program through `JunctionMilp` in half-tile units: per line a chain of vertices (start, one spare bend plus the route's least turn count per stretch, each crossing, end), per segment a heading in 8 and a length; a node is one vertex shared by its lines, a crossing one vertex shared by its two lines.
 - A line's segments keep to the short turn arc of its routes plus one heading beyond each end.

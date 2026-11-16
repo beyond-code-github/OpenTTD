@@ -5,6 +5,8 @@ add_files(
     planar_components.h
     planar_layout.cpp
     planar_layout.h
+    planar_paths.cpp
+    planar_paths.h
     planar_plan.cpp
     planar_plan.h
     planar_topology.cpp
