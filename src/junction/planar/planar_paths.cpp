@@ -114,7 +114,7 @@ PlanarChannels FlipPlanarTriangles(const PlanarChannels &channels, uint64_t flip
  * A channel turns the short way from its in port's heading to its out port's (a channel reaching several ports takes the
  * one it has a single one of), 45 degrees a piece. Its crossings sit, in its event order, on the first piece at or after the
  * last one that suits: axis where it is over, not parallel to the over piece where it is under; when none suits, the path
- * steps back and forth once (a detour) and tries again. Over channels are placed before the channels they cross.
+ * steps back and forth once (a detour) and tries again. The pieces settle jointly: a piece suits given the other channel's current piece, and passes repeat until none changes.
  * @param topology The topology.
  * @param channels Its channel graph.
  * @param choice Bit i set: the open crossing i has its higher channel over, else its lower.
@@ -180,16 +180,11 @@ PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannel
 		return node.out[0] == c.lines.front() ? -1 : +1;
 	};
 
-	/* Place over channels before the channels they cross. */
+	/* Visit over channels before the channels they cross where the overs have no cycle. */
 	std::vector<uint32_t> order;
 	std::vector<uint8_t> state(n, 0);
-	std::string cycle;
 	const std::function<void(uint32_t)> visit = [&](uint32_t ch) {
-		if (state[ch] == 2) return;
-		if (state[ch] == 1) {
-			cycle = t.lines[channels.channels[ch].lines.front()].name;
-			return;
-		}
+		if (state[ch] != 0) return;
 		state[ch] = 1;
 		for (uint32_t x : channels.channels[ch].crossings) {
 			if (out.over[x] != ch) visit(out.over[x]);
@@ -198,65 +193,105 @@ PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannel
 		order.push_back(ch);
 	};
 	for (uint32_t ch = 0; ch < n; ch++) visit(ch);
-	if (!cycle.empty()) {
-		out.why = fmt::format("channels cross over each other in a cycle at {}", cycle);
-		return out;
-	}
 
-	for (uint32_t ch : order) {
-		const PlanarChannel &c = channels.channels[ch];
-		PlanarChannelPath &p = out.paths[ch];
-		uint32_t at = 0;
-		for (uint32_t x : c.crossings) {
-			const bool over = out.over[x] == ch;
-			std::optional<int> over_axis;
-			if (!over) {
-				const uint32_t o = out.over[x];
-				const auto &list = channels.channels[o].crossings;
-				const size_t i = std::ranges::find(list, x) - list.begin();
-				over_axis = static_cast<int>(out.paths[o].headings[out.paths[o].crossing_piece[i]]) % 4;
-			}
-			const auto suits = [&](PlanarHeading h) { return over ? static_cast<int>(h) % 2 == 0 : static_cast<int>(h) % 4 != *over_axis; };
-			bool placed = false;
-			/* Under a prio (doubled) channel, cross at right angles where a back-and-forth allows it (the hand T3's D path). */
-			if (!over && channels.channels[out.over[x]].prio) {
-				const auto perp = [&](PlanarHeading h) { return static_cast<int>(h) % 4 == (*over_axis + 2) % 4; };
-				for (int detour = 0; detour < 2 && !placed; detour++) {
+	/*
+	 * Crossing pieces, settled jointly: each channel walks its crossings in event order and takes the first piece at or after
+	 * the last that suits, given the other channel's current piece; passes repeat until no piece changes.
+	 */
+	std::vector<std::vector<int>> piece(n);
+	for (uint32_t ch = 0; ch < n; ch++) piece[ch].assign(channels.channels[ch].crossings.size(), -1);
+	const auto partner_heading = [&](uint32_t x, uint32_t ch) -> std::optional<int> {
+		const PlanarChannelCrossing &xc = channels.crossings[x];
+		const uint32_t o = xc.a == ch ? xc.b : xc.a;
+		const auto &list = channels.channels[o].crossings;
+		const int pk = piece[o][std::ranges::find(list, x) - list.begin()];
+		if (pk < 0) return std::nullopt;
+		return static_cast<int>(out.paths[o].headings[pk]);
+	};
+	/* While the other channel's piece is not chosen, a piece suits only when one of the other's pieces could cross it. */
+	const auto partner_could = [&](uint32_t x, uint32_t ch, PlanarHeading h) {
+		const PlanarChannelCrossing &xc = channels.crossings[x];
+		const uint32_t o = xc.a == ch ? xc.b : xc.a;
+		const bool other_over = out.over[x] == o;
+		std::vector<PlanarHeading> could = out.paths[o].headings;
+		if (could.size() == 1 && fork_side(channels.channels[o]) != 0) could.push_back(Turned(could[0], fork_side(channels.channels[o]))); // its jog
+		for (PlanarHeading g : could) {
+			if (other_over && static_cast<int>(g) % 2 != 0) continue;
+			if (static_cast<int>(g) % 4 != static_cast<int>(h) % 4) return true;
+		}
+		return false;
+	};
+	bool settled = false;
+	for (int pass = 0; pass < 6 && !settled; pass++) {
+		settled = true;
+		for (uint32_t ch : order) {
+			const PlanarChannel &c = channels.channels[ch];
+			PlanarChannelPath &p = out.paths[ch];
+			uint32_t at = 0;
+			for (size_t k = 0; k < c.crossings.size(); k++) {
+				const uint32_t x = c.crossings[k];
+				const bool over = out.over[x] == ch;
+				const std::optional<int> other = partner_heading(x, ch);
+				bool lenient = false; // no piece the other channel could cross: the first piece that suits this channel alone
+				const auto suits = [&](PlanarHeading h) {
+					if (over && static_cast<int>(h) % 2 != 0) return false;
+					if (other.has_value()) return static_cast<int>(h) % 4 != *other % 4;
+					return lenient || partner_could(x, ch, h);
+				};
+				if (!other.has_value()) {
+					bool any = false;
+					for (uint32_t i = at; i < p.headings.size() && !any; i++) any = suits(p.headings[i]);
+					lenient = !any;
+				}
+				bool placed = false;
+				/* Under a prio (doubled) channel, cross at right angles where a back-and-forth allows it (the hand T3's D path). */
+				if (!over && other.has_value() && channels.channels[out.over[x]].prio) {
+					const auto perp = [&](PlanarHeading h) { return static_cast<int>(h) % 4 == (*other + 2) % 4; };
+					for (int detour = 0; detour < 2 && !placed; detour++) {
+						for (uint32_t i = at; i < p.headings.size(); i++) {
+							if (perp(p.headings[i])) {
+								at = i;
+								placed = true;
+								break;
+							}
+						}
+						if (placed || at == 0) break;
+						p.headings.insert(p.headings.begin() + at + 1, {p.headings[at - 1], p.headings[at]});
+					}
+				}
+				for (int detour = 0; detour < 3 && !placed; detour++) {
 					for (uint32_t i = at; i < p.headings.size(); i++) {
-						if (perp(p.headings[i])) {
+						if (suits(p.headings[i])) {
 							at = i;
 							placed = true;
 							break;
 						}
 					}
-					if (placed || at == 0) break;
+					if (placed) break;
+					if (at == 0) {
+						/* A straight fork leg jogs toward its own side to cross (the left leg left, the right leg right). */
+						const int side = fork_side(c);
+						if (side == 0 || p.headings.size() != 1) break;
+						p.headings = {p.headings[0], Turned(p.headings[0], side), p.headings[0]};
+						continue;
+					}
 					p.headings.insert(p.headings.begin() + at + 1, {p.headings[at - 1], p.headings[at]});
 				}
-			}
-			for (int detour = 0; detour < 3 && !placed; detour++) {
-				for (uint32_t i = at; i < p.headings.size(); i++) {
-					if (suits(p.headings[i])) {
-						at = i;
-						placed = true;
-						break;
-					}
+				if (!placed) {
+					out.why = fmt::format("no piece of the channel of {} suits its crossing", t.lines[c.lines.front()].name);
+					return out;
 				}
-				if (placed) break;
-				if (at == 0) {
-					/* A straight fork leg jogs toward its own side to cross (the left leg left, the right leg right). */
-					const int side = fork_side(c);
-					if (side == 0 || p.headings.size() != 1) break;
-					p.headings = {p.headings[0], Turned(p.headings[0], side), p.headings[0]};
-					continue;
-				}
-				p.headings.insert(p.headings.begin() + at + 1, {p.headings[at - 1], p.headings[at]});
+				if (piece[ch][k] != static_cast<int>(at)) settled = false;
+				piece[ch][k] = static_cast<int>(at);
 			}
-			if (!placed) {
-				out.why = fmt::format("no piece of the channel of {} suits its crossing", t.lines[c.lines.front()].name);
-				return out;
-			}
-			p.crossing_piece.push_back(at);
 		}
+	}
+	if (!settled) {
+		out.why = "the crossing pieces do not settle";
+		return out;
+	}
+	for (uint32_t ch = 0; ch < n; ch++) {
+		for (int pk : piece[ch]) out.paths[ch].crossing_piece.push_back(static_cast<uint32_t>(pk));
 	}
 	return out;
 }

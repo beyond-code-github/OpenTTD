@@ -1346,7 +1346,7 @@ private:
 	std::map<size_t, uint32_t> cross_x; ///< Index into Model::crossings -> its channel crossing.
 	std::map<size_t, uint32_t> deck_x; ///< Index into Model::decks -> the first channel crossing it spans.
 	std::map<std::pair<uint32_t, uint32_t>, std::map<std::string, std::pair<Seg, Seg>>> dbl_decks; ///< Per (bundled channel, piece) over a crossing with doubled lanes, per lane its copy-0 and copy-1 decks.
-	std::map<std::pair<uint32_t, uint32_t>, std::map<std::string, Seg>> dbl_tails; ///< Per doubled piece, per lane its run after the doubled stretch (the run before it is the piece's segment).
+	std::map<std::pair<uint32_t, uint32_t>, std::map<std::string, Seg>> piece_tails; ///< Per (channel, piece) holding its own decks, per lane its run after them (the run before them is the piece's segment).
 
 	/** The names of a channel's lanes, left to right. */
 	std::vector<std::string> Lanes(uint32_t c) const
@@ -1557,8 +1557,8 @@ private:
 		}
 	}
 
-	/** A run with an optional S-bend either way (D320); offset-parallel on its last piece at the given lines. */
-	void Flex(const std::vector<std::string> &lanes, int h, const std::vector<int> &offs)
+	/** A run with an optional S-bend either way (D320); offset-parallel on its last piece at the given lines, which it returns. */
+	std::vector<Seg> Flex(const std::vector<std::string> &lanes, int h, const std::vector<int> &offs)
 	{
 		Model &M = this->M;
 		std::vector<Seg> last;
@@ -1574,6 +1574,7 @@ private:
 			M.Add(Eq(Dot(r, last[j].a) - Dot(r, last[0].a), 2 * offs[j]));
 			M.Add(Eq(Dot(r, last[j].b) - Dot(r, last[0].b), 2 * offs[j]));
 		}
+		return last;
 	}
 
 	/**
@@ -1610,7 +1611,7 @@ private:
 				M.AddSeg(l, Turn(h, -sg), 2, 2);
 				tails.push_back(M.AddSeg(l, h, 0));
 				this->dbl_decks[{c, static_cast<uint32_t>(k)}].insert_or_assign(l, std::pair<Seg, Seg>{d0, d1});
-				this->dbl_tails[{c, static_cast<uint32_t>(k)}].insert_or_assign(l, tails.back());
+				this->piece_tails[{c, static_cast<uint32_t>(k)}].insert_or_assign(l, tails.back());
 			}
 			for (int j = 1; j < n; j++) {
 				M.Add(Eq(Dot(r, this->piece_segs[c][lanes[j]][k].a) - Dot(r, this->piece_segs[c][lanes[0]][k].a), 2 * j));
@@ -1621,7 +1622,7 @@ private:
 
 	/**
 	 * The under lanes' segments of a crossing on an under channel's piece; empty (after a failure) when that piece has none.
-	 * On a doubled piece the crossing is on its run before the doubled stretch when it comes before the piece's over crossings in travel order, else on its run after.
+	 * On a piece holding its own decks the crossing is on its run before them when it comes before the piece's first over crossing in travel order, else on its run after.
 	 */
 	std::vector<Seg> UnderSegs(uint32_t u, uint32_t x)
 	{
@@ -1629,8 +1630,8 @@ private:
 		const size_t at = std::ranges::find(ul, x) - ul.begin();
 		const uint32_t upiece = this->paths.paths[u].crossing_piece[at];
 		bool after = false;
-		const auto tails = this->dbl_tails.find({u, upiece});
-		if (tails != this->dbl_tails.end()) {
+		const auto tails = this->piece_tails.find({u, upiece});
+		if (tails != this->piece_tails.end()) {
 			for (size_t i = 0; i < ul.size(); i++) {
 				if (this->paths.over[ul[i]] == u && this->paths.paths[u].crossing_piece[i] == upiece) {
 					after = i < at;
@@ -1811,8 +1812,10 @@ void MappedComposer::Build()
 			for (int j = 0; j < n; j++) offs[j] = far_left ? e[j] : e[n - 1] - e[n - 1 - j];
 		}
 		M.opt_group = fmt::format("flex{}j", c); // a straight channel's sideways jog: lining up with its neighbours, a real choice (T3: B's jog before its core gives 1941)
-		this->Flex(lanes, h, offs);
+		const std::vector<Seg> lead = this->Flex(lanes, h, offs);
 		M.opt_group.clear();
+		/* Its one piece for crossings under it: the run before its decks. */
+		for (int j = 0; j < n; j++) this->piece_segs[c][lanes[j]].push_back(lead[j]);
 		std::vector<uint32_t> overs;
 		for (uint32_t x : cc.crossings) {
 			if (this->paths.over[x] == c) overs.push_back(x);
@@ -1879,6 +1882,7 @@ void MappedComposer::Build()
 		std::vector<Seg> run;
 		for (const std::string &l : lanes) run.push_back(M.AddSeg(l, h, 0));
 		for (int j = 1; j < n; j++) M.Add(Eq(Dot(Right(h), run[j].a) - Dot(Right(h), run[0].a), 2 * offs[j]));
+		for (int j = 0; j < n; j++) this->piece_tails[{c, 0}].insert_or_assign(lanes[j], run[j]);
 		return true;
 	};
 
@@ -2746,7 +2750,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 	if (std::getenv("PLANAR_DRY") != nullptr) { // debug: build every variant without solving; print its over choices and its construction failure
 		const PlanarPaths pp = BuildPlanarPaths(topology, channels, variant.over);
 		std::string overs;
-		for (uint32_t x = 0; x < channels.crossings.size() && pp.why.empty(); x++) {
+		for (uint32_t x = 0; x < channels.crossings.size() && x < pp.over.size(); x++) {
 			const auto nm = [&](uint32_t c) { return topology.lines[channels.channels[c].lines.front()].name; };
 			const uint32_t o = pp.over[x], u = channels.crossings[x].a == o ? channels.crossings[x].b : channels.crossings[x].a;
 			overs += " " + nm(o) + ">" + nm(u);
