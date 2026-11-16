@@ -4,6 +4,7 @@
 - ng1 wt-planar (pushed to fork as wt-planar, 7ea4d75647): C1 4fc292117f D319 + cc8a2a30df D322 (checker); C2 66f3c0bc57 JunctionMilp::SetTimeLimit + 25f2842780 planar_components (probe 8 ported; LL² 800.25 at -1F1w1 6.9 s, T2 935.25 at +1F1w-1 8.6 s, four variants on four threads); C3 7ea4d75647 PlanarSeedFor solves components for T2/LL² (else §2a), PlanPlanarJunction renders the programs (RenderPlanarRoutePrograms), both checker-clean in [planarcomponents] (10 s); hidden [.componentsdump] (env JUNCTION_COMPONENTS_TOPOLOGY, JUNCTION_COMPONENTS_OUT).
 - Rig: T2 (6,6) and LL² (6,50) rebuilt from the C++ dumps (wip/probe8-out/cpp-*.json; save wip/probe8-out/hub-cpp.sav); company #2 Orange.
 - Loose ends: [milp] takes ~19 s (no TESTS.md row; over a 10 s budget); the one-lane T §2a seed takes ~5 min ([planar][slow] test); component seed ~9 s runs wherever PlanarSeedFor runs (GUI seed on the main thread is an old loose end); terrain facts not in the component solve (levels after).
+- Speed lever parked (Pete: "chasing our tail"): fix the optional bends after one free solve, then clash/area rounds on the integral LP (wip/planar-probe8b-fixz.py): ~1 s per variant, but a different local search (T2 901 better, LL² 820 worse than 800); revisit when solve time matters (3 lanes, terrain in the solve).
 - NEXT: Pete's eye on the C++ hubs in the rig; then DESIGN-components §7 (LLL_RRR x LLL_RRR: derived composition, 3 questions for Pete).
 
 ## RESUME HERE (2026-11-16 late) — PROBE 7: LL² FROM COMPONENTS, CHECKER-CLEAN, PETE "pretty damn good"
