@@ -263,6 +263,7 @@ public:
 	bool deck_parity = false; ///< Deck ends on whole pieces (even half-tiles along their segment), so every deck has its two head pieces.
 	std::string opt_group; ///< When set, optional segments share one binary per (group, heading): one switch per channel transition.
 	std::map<std::pair<std::string, int>, Var> group_z; ///< The shared binaries.
+	size_t jog_count = 0; ///< Spike: exit jog groups seen so far.
 
 	/** Build the empty model with its box variables. */
 	Model()
@@ -381,7 +382,23 @@ public:
 		if (opt && !this->opt_group.empty() && std::getenv("PLANAR_NOTIE") == nullptr) {
 			const auto key = std::make_pair(this->opt_group, d);
 			auto it = this->group_z.find(key);
-			if (it == this->group_z.end()) it = this->group_z.emplace(key, this->NewVar(0, 1.0, OPTW)).first;
+			if (it == this->group_z.end()) {
+				/* Spike (PLANAR_WIDTH): a switch the width profile decides is fixed: on where the width changes, off where it does not; "jog" groups stay free. */
+				double lo_z = 0.0, hi_z = 1.0;
+				if (std::getenv("PLANAR_WIDTH") != nullptr) {
+					const char kind = this->opt_group.back();
+					if (kind == '+') lo_z = 1.0;
+					if (kind == '-') hi_z = 0.0;
+					if (kind == 'j' && std::getenv("PLANAR_JOGS") != nullptr) { // spike: the exits' jogs fixed, one character per join site in order ('1' on)
+						const std::string jogs = std::getenv("PLANAR_JOGS");
+						const size_t at = this->jog_count++;
+						const double v = at < jogs.size() && jogs[at] == '1' ? 1.0 : 0.0;
+						lo_z = v;
+						hi_z = v;
+					}
+				}
+				it = this->group_z.emplace(key, this->NewVar(lo_z, hi_z, OPTW)).first;
+			}
 			z = it->second;
 			this->Add(Ge(L - *z * lo, 0));
 			this->Add(Ge(*z * (hi.has_value() ? *hi : OPTMAX) - L, 0));
@@ -1603,7 +1620,7 @@ void MappedComposer::Build()
 			S.push_back(t.lines[a_straight ? a : b].name);
 			V.push_back(t.lines[a_straight ? b : a].name);
 		}
-		M.opt_group = fmt::format("site{}", s);
+		M.opt_group = fmt::format("fray{}{}", s, rs.prio ? '+' : '-'); // a prio fray spreads its lanes (width changes); a plain one does not
 		this->Fray(h, rs.side, in_names, S, V, rs.prio);
 		M.opt_group.clear();
 	}
@@ -1624,7 +1641,7 @@ void MappedComposer::Build()
 		for (uint32_t piece : path.crossing_piece) opt0 &= piece != 0;
 		std::vector<int> heads;
 		for (PlanarHeading hd : path.headings) heads.push_back(static_cast<int>(hd));
-		M.opt_group = fmt::format("channel{}", c);
+		M.opt_group = fmt::format("bundle{}+", c); // its first straight piece: the staircase of decks the farther lanes cross
 		this->Bundle(c, heads, opt0);
 		M.opt_group.clear();
 	}
@@ -1644,7 +1661,7 @@ void MappedComposer::Build()
 			const std::vector<int> e = JoinEntry(n);
 			for (int j = 0; j < n; j++) offs[j] = far_left ? e[j] : e[n - 1] - e[n - 1 - j];
 		}
-		M.opt_group = fmt::format("channel{}", c);
+		M.opt_group = fmt::format("flex{}-", c); // a straight channel's sideways jogs: no width change
 		this->Flex(lanes, h, offs);
 		M.opt_group.clear();
 		std::vector<uint32_t> overs;
@@ -1759,7 +1776,7 @@ void MappedComposer::Build()
 			J.push_back(jn);
 			O.push_back(on);
 		}
-		M.opt_group = fmt::format("site{}", s);
+		M.opt_group = fmt::format("join{}j", s); // the exit's jog to its port: a real choice
 		this->Join(h, rs.side, S, J, O, rs.prio);
 		M.opt_group.clear();
 	}
