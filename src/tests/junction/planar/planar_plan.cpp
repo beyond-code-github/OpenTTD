@@ -221,7 +221,8 @@ TEST_CASE("planar: probe routes, signals and checker", "[.probe]")
 	const char *file = std::getenv("JUNCTION_PROBE_ROUTES");
 	REQUIRE(file != nullptr);
 	const char *topo = std::getenv("JUNCTION_PROBE_TOPOLOGY");
-	const std::string text = topo != nullptr && std::string(topo) == "LL2" ? PlanarLL2Text() : PlanarTText(2);
+	const std::string name = topo != nullptr ? topo : "T2";
+	const std::string text = name == "LL2" ? PlanarLL2Text() : PlanarTText(name.size() == 2 && name[0] == 'T' ? name[1] - '0' : 2);
 	std::string error;
 	const PlanarTopology topology = ParsePlanarTopology(text, &error);
 	REQUIRE(error.empty());
