@@ -180,3 +180,37 @@ TEST_CASE("planar channels: of several prio channels the one turning least runs 
 	CHECK(fray.side == 1);
 	CHECK(fray.prio);
 }
+
+/** The legs at the node a line ends at (a split: its in line) or starts from (a merge: its out line). */
+static const PlanarNodeLegs &LegsAt(const PlanarTopology &topology, const PlanarChannels &channels, std::string_view line, bool split)
+{
+	const PlanarLine &l = topology.lines[PlanarLineByName(topology, line)];
+	const PlanarEnd &e = split ? l.to : l.from;
+	REQUIRE(!e.port);
+	return channels.node_legs[e.index];
+}
+
+/** A line's name, or "fork" for no straight line. */
+static std::string LineName(const PlanarTopology &topology, uint32_t line)
+{
+	return line == UINT32_MAX ? "fork" : topology.lines[line].name;
+}
+
+TEST_CASE("planar channels: LL2's legs per node, prio per line", "[planar]")
+{
+	const PlanarTopology topology = Parse(PlanarLL2Text());
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	/* The exit merges: the prio lane runs straight, the merged choice lane joins from inside. */
+	CHECK(LineName(topology, LegsAt(topology, channels, "EO1", false).straight) == "E1");
+	CHECK(LegsAt(topology, channels, "EO1", false).side == 1);
+	CHECK(LineName(topology, LegsAt(topology, channels, "EO2", false).straight) == "D2");
+	CHECK(LegsAt(topology, channels, "EO2", false).side == -1);
+	/* The choice merge: no prio, the leg turning least (E2a, straight on) runs straight; D1a comes up from the south, the right. */
+	CHECK(LineName(topology, LegsAt(topology, channels, "EDj1", false).straight) == "E2a");
+	CHECK(LegsAt(topology, channels, "EDj1", false).side == 1);
+	/* A lane split: both legs go to one port, a fork; E2a is the left leg. */
+	CHECK(LineName(topology, LegsAt(topology, channels, "E2", true).straight) == "fork");
+	/* The entry fray's lanes: E straight, F leaving right. */
+	CHECK(LineName(topology, LegsAt(topology, channels, "EF2", true).straight) == "E2");
+	CHECK(LegsAt(topology, channels, "EF2", true).side == 1);
+}

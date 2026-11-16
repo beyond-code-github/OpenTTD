@@ -89,6 +89,11 @@ TEST_CASE("planar components: T3 from its topology text (mapped) at the hand com
 	CheckSolves(PlanarTText(3), 1970, true);
 }
 
+TEST_CASE("planar components: LL² from its topology text (mapped) at the probe's area", "[junction][planarcomponents][slow]")
+{
+	CheckSolves(PlanarLL2Text(), 807, true);
+}
+
 TEST_CASE("planar components: the test spec derives the probe's constants", "[junction][planarcomponents]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();

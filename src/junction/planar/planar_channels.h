@@ -53,6 +53,12 @@ struct PlanarSite {
 	bool prio = false; ///< The straight channel carries a prio route.
 };
 
+/** One split or merge node's legs: which runs straight and where the other is. */
+struct PlanarNodeLegs {
+	uint32_t straight = UINT32_MAX; ///< The straight line (a split's out line, a merge's in line); UINT32_MAX when the legs tie (a fork).
+	int8_t side = 0; ///< Where the other leg leaves or arrives: +1 right of travel, -1 left, 0 at a fork.
+};
+
 /** The channel graph of a topology. */
 struct PlanarChannels {
 	std::vector<PlanarChannel> channels;
@@ -60,6 +66,7 @@ struct PlanarChannels {
 	std::vector<PlanarChannelCrossing> crossings; ///< Crossings between two channels.
 	std::vector<std::vector<uint32_t>> group_crossings; ///< Per node group, the topology crossings inside it (its lines share that group as start or end).
 	std::vector<PlanarSite> sites; ///< In channel order of their key channel, splits before merges.
+	std::vector<PlanarNodeLegs> node_legs; ///< Per PlanarTopology node.
 };
 
 PlanarChannels BuildPlanarChannels(const PlanarTopology &topology);

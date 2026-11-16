@@ -240,5 +240,58 @@ PlanarChannels BuildPlanarChannels(const PlanarTopology &topology)
 			}
 		}
 	}
+
+	/* Node legs: a split's straight leg is in its site's straight channel (legs to one port fork); a merge's is its prio line, else the line turning least. */
+	const auto line_prio = [&](uint32_t l) {
+		for (uint32_t r : t.lines[l].routes) {
+			if (t.routes[r].prio) return true;
+		}
+		return false;
+	};
+	const auto heading = [&](const std::set<uint32_t> &ports) -> std::optional<PlanarHeading> {
+		if (ports.size() != 1) return std::nullopt;
+		return t.ports[*ports.begin()].heading;
+	};
+	out.node_legs.resize(t.nodes.size());
+	for (const PlanarSite &site : out.sites) {
+		for (uint32_t n : site.nodes) {
+			const PlanarNode &node = t.nodes[n];
+			PlanarNodeLegs &legs = out.node_legs[n];
+			const bool split = node.IsSplit();
+			const std::vector<uint32_t> &two = split ? node.out : node.in;
+			if (two.size() != 2) continue;
+			const auto turn = [&](uint32_t l) -> std::optional<int> {
+				const std::optional<PlanarHeading> from = heading(split ? facts.up[node.in.front()] : facts.up[l]);
+				const std::optional<PlanarHeading> to = heading(split ? facts.down[l] : facts.down[node.out.front()]);
+				if (!from.has_value() || !to.has_value()) return std::nullopt;
+				return Turn(*from, *to);
+			};
+			if (split) {
+				if (site.straight != UINT32_MAX) {
+					legs.straight = cls[two[0]] == site.straight ? two[0] : two[1];
+					legs.side = site.side;
+				}
+				continue;
+			}
+			std::vector<uint32_t> prio;
+			for (uint32_t l : two) {
+				if (line_prio(l)) prio.push_back(l);
+			}
+			if (prio.size() == 1) {
+				legs.straight = prio.front();
+			} else {
+				const std::optional<int> t0 = turn(two[0]), t1 = turn(two[1]);
+				if (t0.has_value() && t1.has_value() && std::abs(*t0) != std::abs(*t1)) legs.straight = std::abs(*t0) < std::abs(*t1) ? two[0] : two[1];
+			}
+			if (legs.straight == UINT32_MAX) continue;
+			const uint32_t other = two[0] == legs.straight ? two[1] : two[0];
+			const std::optional<int> to = turn(other);
+			if (to.has_value() && *to != 0) {
+				legs.side = static_cast<int8_t>(*to > 0 ? 1 : -1);
+			} else {
+				legs.side = static_cast<int8_t>(other == two[1] ? 1 : -1); // the node lists its lines left to right across travel
+			}
+		}
+	}
 	return out;
 }
