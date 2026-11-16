@@ -1,4 +1,11 @@
 ## RESUME HERE (2026-11-16, final) — D329: APPROXIMATE AREA ACCEPTED; NEXT T2 AND LL² FROM TEXT (ng1 wt-planar 7a14a431aa)
+
+RESUME 2026-11-17 (ng1 wt-planar ca8b87b08c; docs on feature/junction-tool):
+- Mapped defaults promoted (width-decided switches, right angles under prio, one area step, CONT dropped) + coordinate pull 0.001: T3 1941.25 in 10 s, T2 917.25 in 4.7 s (hand 935), T1 325 (still checker gaps, stays on §2a). Seed target is < 5 s (D297), not the 100 ms hover.
+- Semi-perimeter W+H measured: no effect over track length on T3 (box already tight); keep as user option / tie-break candidate.
+- D330: generic composer composes atomic primitives only (no Block227). DESIGN-components §9.
+- Decision audit draft wip/AUDIT-decisions.md (185 live / 81 superseded / 15 unclear / 61 history); D232 applied (CLAUDE.md files carry no D-refs). Live-rulings index at top of DECISIONS: TODO after spot checks.
+- LL² mapped (test 'LL² from its topology text (mapped)', [slow], RED): done: rule 3 (least turn among prio channels), node_legs (prio per line at merges, forks), depth-order build, forks, one-lane joins. 10 variant bits (6 open crossings, 3 tie merges, 1 triangle); PLANAR_ONLY lifts the cap. NEXT: (a) over decks per lane: a straight or turning channel over a crossing doubles only its prio lanes, others single deck (old LL2: F2/B2 doubled, F1/B1 single); (b) reject cyclic-over variants quietly; (c) 'no piece of B suits its crossing' variants; then one variant <= 807, then variant count.
 - D329: the outline area is optimised approximately (linearised, all choices open; about 1% on T3). Later the user picks the score (most compact, cheapest, thinnest, most square); those three others are exact.
 - Next:
   1. T2 and LL² through `SolvePlanarMapped`. LL² needs lane-split and lane-merge components (the 227 block).
