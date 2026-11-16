@@ -181,6 +181,7 @@ class JunctionTestGS extends GSController {
 		else if (cmd == "raise_rect") this.CmdRaiseRect(id, msg);
 		else if (cmd == "demolish") this.CmdDemolish(id, msg);
 		else if (cmd == "demolish_area") this.CmdDemolishArea(id, msg);
+		else if (cmd == "rail_row") this.CmdRailRow(id, msg);
 		else if (cmd == "remove_track") this.CmdRemoveTrack(id, msg);
 		else if (cmd == "sell") this.CmdSell(id, msg);
 		else if (cmd == "clear_orders") this.CmdClearOrders(id, msg);
@@ -358,6 +359,26 @@ class JunctionTestGS extends GSController {
 			}
 		}
 		this.Reply(id, { ok = true, demolished = n, failed = failed });
+	}
+
+	/* One row of rail: per tile two hex digits of GSRail.GetRailTracks bits (00 none), "B" + other end for a bridge head. */
+	function CmdRailRow(id, msg)
+	{
+		if (!this.Need(msg, ["x1", "x2", "y"], id)) return;
+		local row = "";
+		local bridges = [];
+		for (local x = msg.x1; x <= msg.x2; x++) {
+			local t = GSMap.GetTileIndex(x, msg.y);
+			local bits = GSRail.IsRailTile(t) ? GSRail.GetRailTracks(t) : 0;
+			if (bits < 0 || bits == 255) bits = 0;
+			local hex = "0123456789abcdef";
+			row += hex.slice(bits / 16, bits / 16 + 1) + hex.slice(bits % 16, bits % 16 + 1);
+			if (GSBridge.IsBridgeTile(t)) {
+				local e = GSBridge.GetOtherBridgeEnd(t);
+				bridges.append([x, GSMap.GetTileX(e), GSMap.GetTileY(e)]);
+			}
+		}
+		this.Reply(id, { row = row, bridges = bridges });
 	}
 
 	function CmdDemolish(id, msg)
