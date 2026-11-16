@@ -5,7 +5,11 @@
 - Rig: T2 (6,6) and LL² (6,50) rebuilt from the C++ dumps (wip/probe8-out/cpp-*.json; save wip/probe8-out/hub-cpp.sav); company #2 Orange.
 - Loose ends: [milp] takes ~19 s (no TESTS.md row; over a 10 s budget); the one-lane T §2a seed takes ~5 min ([planar][slow] test); component seed ~9 s runs wherever PlanarSeedFor runs (GUI seed on the main thread is an old loose end); terrain facts not in the component solve (levels after).
 - Speed lever parked (Pete: "chasing our tail"): fix the optional bends after one free solve, then clash/area rounds on the integral LP (wip/planar-probe8b-fixz.py): ~1 s per variant, but a different local search (T2 901 better, LL² 820 worse than 800); revisit when solve time matters (3 lanes, terrain in the solve).
-- NEXT: Pete's eye on the C++ hubs in the rig; then DESIGN-components §7 (LLL_RRR x LLL_RRR: derived composition, 3 questions for Pete).
+- NEXT: Pete's eye on the C++ hubs in the rig (pending, he's away). LLL_RRR: D323 (lane keeps lane first = T3; 227 generalised for any; no tunnels). Probe 9 plan (scratchpad probe9.py from probe8.py):
+  (a) T family at n lanes, lane keeps lane, composition derived from the topology text (parse PlanarTText(n) in Python: ports, fray groups, merge groups, prio routes) instead of the hand-written build_t2 T2 branch;
+  (b) the n-lane fray = per lane a split (S_k straight, V_k diverging), V_k crossing every S_j nearer than it (a crossing stack inside the fray, C3/C7), prio S lanes doubled where they are over (D80/D188/D299), D321 levers inside; the n-lane join mirrors it (J_k crossing the S lanes before their merge, prio rows on fixed lanes);
+  (c) bundles and the core crossing stacks (B over D and F, F over D) loop over lanes; decks span the whole under bundle (C7 merged decks);
+  (d) acceptance: n=2 reproduces T2 <= 935 checker-clean (routes through the hidden hook), then n=3 solves within 15 s per variant; then LLL² (227 generalised).
 
 ## RESUME HERE (2026-11-16 late) — PROBE 7: LL² FROM COMPONENTS, CHECKER-CLEAN, PETE "pretty damn good"
 - Probe: `docs/junction-tool/wip/planar-probe7-ll2.py` (scratchpad probe/probe7.py; run `../venv/bin/python probe7.py --fdiag --routes=routes-ll2.txt --export=FILE`). Same frays/bundles/core as probe 6; 227 join block at every exit (fixed outside, choice inside, two-line gap, one single choice bridge, bay floors 2TL+4 on straight choice legs); prio lanes B2 (core) and F2 (D×F) doubled, frays single (D299). Best: area 807, 64×46 (was 1217 this morning), ~3 s for all variants.
