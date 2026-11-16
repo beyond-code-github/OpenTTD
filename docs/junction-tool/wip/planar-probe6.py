@@ -186,13 +186,15 @@ def pieces(u, v, L, d):
 
 # ================= T2 composition =================
 
+LEANMODE = next((a.split('=')[1] for a in sys.argv if a.startswith('--lean=')), 'auto')  # auto (pairs one way, stack form by cost) | all | none
 LEAN = 2  # every doubled pair leans one way: the more northerly deck's heads one tile (2) further east
 
 
 def head_u(seg, n): return seg.a[0] + D[seg.d][0] * n  # u of a deck's near-head end
 
 
-def build_t2(fray_s, join_s, df_over, tri=0):
+def build_t2(fray_s, join_s, df_over, tri=0, stair=None):
+    if stair is None: stair = LEANMODE == 'all'
     """fray_s, join_s: +1 base (the diverging/joining bundle on the right of travel), -1 mirror; df_over: 'D' or 'F'."""
     M = Model()
     X, Y = M.var(c=3.0), M.var(c=3.0)
@@ -252,7 +254,8 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             n0, f0 = M.deck(d0, [M.cross(d0, vf, 4)]); n1, f1 = M.deck(d1, [M.cross(d1, vf, 4)])
             M.add(f0 - n0 - (f1 - n1) == 0)  # D118: equal bridges
             south, north = ((d0, n0), (d1, n1)) if right(h)[1] * sigma > 0 else ((d1, n1), (d0, n0))
-            M.add(head_u(*north) - head_u(*south) == LEAN)
+            if LEANMODE != 'none': M.add(head_u(*north) - head_u(*south) == LEAN)
+            else: M.add(dot(D[h], d0.a) + n0 - dot(D[h], d1.a) - n1 == 2)  # natural D118 stagger
         else:
             d0 = M.seg(S_near, h, lo=2)
             M.deck(d0, [M.cross(d0, vf, 4)])
@@ -279,7 +282,8 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             n0, f0 = M.deck(d0, [M.cross(d0, jf, 4)]); n1, f1 = M.deck(d1, [M.cross(d1, jf, 4)])
             M.add(f0 - n0 - (f1 - n1) == 0)  # D118: equal bridges
             south, north = ((d1, n1), (d0, n0)) if right(h)[1] * sigma > 0 else ((d0, n0), (d1, n1))
-            M.add(head_u(*north) - head_u(*south) == LEAN)
+            if LEANMODE != 'none': M.add(head_u(*north) - head_u(*south) == LEAN)
+            else: M.add(dot(D[h], d0.a) + n0 - dot(D[h], d1.a) - n1 == 2)  # natural D118 stagger
             M.seg(J_near, h, lo=2)
             M.seg(J_near, turn(h, -sigma), lo=4, hi=4)
         else:
@@ -368,10 +372,13 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             if tri == 0: M.add(nD - fF >= 2)  # heading W: F's deck first, one plain tile before D's
             else: M.add(nF - fD >= 2)         # flipped triangle: D's deck first
         M.add(spans[0][0] - spans[1][0] == 0); M.add(spans[0][1] - spans[1][1] == 0)  # D118: equal bridges per pair
+        if not stair:  # per pair: copy 1 one tile upstream (the chevron)
+            st = 2 if l == 'B2' else -2
+            M.add(spans[0][2] - spans[1][2] == st); M.add(spans[0][3] - spans[1][3] == st)
         stack[l] = spans
     # One staircase across the four decks, north to south: B2's copy, B2, B1, B1's copy; each one tile further west.
     seq = [stack['B2'][1], stack['B2'][0], stack['B1'][0], stack['B1'][1]]
-    for a_, b_ in zip(seq, seq[1:]):
+    for a_, b_ in zip(seq, seq[1:]) if stair else []:
         M.add(a_[2] - b_[2] == LEAN); M.add(a_[3] - b_[3] == LEAN)
         M.add(a_[0] - b_[0] == 0); M.add(a_[1] - b_[1] == 0)  # equal bridges across the stack
     M.tag = 'coreDF'
@@ -655,14 +662,15 @@ def export(M, geo, decks, val, path):
 if __name__ == '__main__':
     t0 = time.perf_counter()
     results = []
-    combos = [(fs, js, o, 0) for fs in (1, -1) for js in (1, -1) for o in ('F', 'D')] + [(fs, js, 'F', 1) for fs in (1, -1) for js in (1, -1)]
+    stairs = (True, False) if LEANMODE == 'auto' else ((True,) if LEANMODE == 'all' else (False,))
+    combos = [(fs, js, o, 0, st) for fs in (1, -1) for js in (1, -1) for o in ('F', 'D') for st in stairs] + [(fs, js, 'F', 1, st) for fs in (1, -1) for js in (1, -1) for st in stairs]
     only = next((a.split('=')[1] for a in sys.argv if a.startswith('--only=')), None)
-    if only: combos = [c for c in combos if f'{c[0]:+d}{c[1]:+d}{c[2]}{c[3]}' == only]
-    for fs, js, o, tri in combos:
+    if only: combos = [c for c in combos if f'{c[0]:+d}{c[1]:+d}{c[2]}{c[3]}{"s" if c[4] else "c"}' == only]
+    for fs, js, o, tri, st in combos:
         ts = time.perf_counter()
-        M = build_t2(fs, js, o, tri)
+        M = build_t2(fs, js, o, tri, st)
         res, why = solve_lazy(M, ts)
-        tag = f'{fs:+d}{js:+d}{o}{tri}'
+        tag = f'{fs:+d}{js:+d}{o}{tri}{"s" if st else "c"}'
         if res is None:
             print(f'{tag}: NO ({why}) {time.perf_counter() - ts:.2f}s'); continue
         (val, obj), geo, decks, rnd = res
