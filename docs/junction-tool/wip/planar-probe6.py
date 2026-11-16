@@ -219,32 +219,33 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             M.seg(x, h, lo=STUB)                         # tight stub at the port
             fl.append(M.seg(x, turn(h, -1), lo=2))       # fan to the left of travel, as late as possible
             M.seg(x, h, lo=2, cost=FANW)
-        M.add(fl[0].L - fl[1].L == 0); M.add(dot(D[h], fl[0].a) - dot(D[h], fl[1].a) == 0)
+        M.add(dot(D[h], fl[0].a) - dot(D[h], fl[1].a) == 0)
+        if not prio: M.add(fl[0].L - fl[1].L == 0)
         r = right(h)
-        # far lane on line 0, near on line sigma*1 (adjacent)
-        M.add(dot(r, M.end(near)) - dot(r, M.end(far)) == 2 * sigma)
+        # far lane on line 0; near on line sigma*1, or sigma*2 when its parallelogram steps inward (the fan makes the room)
+        M.add(dot(r, M.end(near)) - dot(r, M.end(far)) == (4 if prio else 2) * sigma)
         sf, sn = M.end(far), M.end(near)
         M.strand(S_far, sf); M.strand(V_far, sf); M.node(far, S_far, V_far); M.pred[S_far] = far; M.pred[V_far] = far
         M.strand(S_near, sn); M.strand(V_near, sn); M.node(near, S_near, V_near); M.pred[S_near] = near; M.pred[V_near] = near
         M.seg(S_far, h, lo=2)
         vf = M.seg(V_far, turn(h, sigma), lo=6, hi=6)
         M.seg(V_far, h, lo=2)
-        M.seg(V_near, turn(h, sigma), lo=6, hi=6)
+        M.seg(V_near, turn(h, sigma), lo=4 if prio else 6, hi=4 if prio else 6)
         M.seg(V_near, h, lo=2)
-        if prio:
+        if prio:  # near lane on line 2: the parallelogram steps inward to line 1 (V_far's diagonal meets line 1 first, D118)
             M.seg(S_near, h, lo=2)                      # split to copy split: one signal tile
             cs = M.end(S_near)
             c = S_near + "'"
             M.strand(c, cs, label=S_near); M.node(S_near, c)
-            d0 = M.seg(S_near, h, lo=2)                 # copy 0 deck
-            M.seg(S_near, turn(h, sigma), lo=2, hi=2)   # copy 0 bends after its bridge
-            M.seg(c, turn(h, sigma), lo=2, hi=2)        # copy 1 bends before its bridge
-            d1 = M.seg(c, h, lo=2)                      # copy 1 deck, runs to the merge
+            d0 = M.seg(S_near, h, lo=2)                 # copy 0 deck (line 2)
+            M.seg(S_near, turn(h, -sigma), lo=2, hi=2)  # copy 0 bends after its bridge
+            M.seg(c, turn(h, -sigma), lo=2, hi=2)       # copy 1 bends before its bridge
+            d1 = M.seg(c, h, lo=2)                      # copy 1 deck (line 1), runs to the merge
             M.tie(M.end(c), M.end(S_near)); M.copies[c] = (S_near, d0.i, d0.i + 2)
-            M.seg(S_near, h, lo=2)                      # merge signal room
-            M.seg(S_near, turn(h, -sigma), lo=2, hi=2)  # shift back when safe
-            M.seg(S_near, h, lo=2)
-            M.deck(d0, [M.cross(d0, vf, 4)]); M.deck(d1, [M.cross(d1, vf, 4)])
+            M.seg(S_near, h, lo=2)                      # merge signal room; now beside S_far, no shift back
+            n0, f0 = M.deck(d0, [M.cross(d0, vf, 4)]); n1, f1 = M.deck(d1, [M.cross(d1, vf, 4)])
+            M.add(f0 - n0 - (f1 - n1) == 0)  # D118: equal bridges
+            M.add(dot(D[h], d0.a) + n0 - dot(D[h], d1.a) - n1 == 2)  # copy 0's heads one tile downstream of copy 1's
         else:
             d0 = M.seg(S_near, h, lo=2)
             M.deck(d0, [M.cross(d0, vf, 4)])
@@ -268,7 +269,9 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             d1 = M.seg(c, h, lo=2)
             M.tie(M.end(c), M.end(S_near)); M.copies[c] = (S_near, d0.i, d0.i + 2)
             M.seg(S_near, h, lo=2 * P + 2)               # R9: no bend in the prio coverage
-            M.deck(d0, [M.cross(d0, jf, 4)]); M.deck(d1, [M.cross(d1, jf, 4)])
+            n0, f0 = M.deck(d0, [M.cross(d0, jf, 4)]); n1, f1 = M.deck(d1, [M.cross(d1, jf, 4)])
+            M.add(f0 - n0 - (f1 - n1) == 0)  # D118: equal bridges
+            M.add(dot(D[h], d0.a) + n0 - dot(D[h], d1.a) - n1 == 2)  # copy 0's heads one tile downstream of copy 1's
             M.seg(J_near, h, lo=2)
             M.seg(J_near, turn(h, -sigma), lo=4, hi=4)
         else:
@@ -346,13 +349,17 @@ def build_t2(fray_s, join_s, df_over, tri=0):
     # Core crossings: B over D (D's N segment) and F (F's S segment), every deck; D x F single.
     M.tag = 'coreB'
     for l in lanesB:
+        spans = []
         for dk in decksB[l]:
             xs_F = [M.cross(dk, sF[f][2], 3) for f in ('F1', 'F2')]
             xs_D = [M.cross(dk, sD[d][0 if tri == 0 else 2], 3) for d in ('D1', 'D2')]
             nF, fF = M.deck(dk, xs_F)
             nD, fD = M.deck(dk, xs_D)
+            spans.append((fF - nF, fD - nD, dot(D['W'], dk.a) + nF, dot(D['W'], dk.a) + nD))
             if tri == 0: M.add(nD - fF >= 2)  # heading W: F's deck first, one plain tile before D's
             else: M.add(nF - fD >= 2)         # flipped triangle: D's deck first
+        M.add(spans[0][0] - spans[1][0] == 0); M.add(spans[0][1] - spans[1][1] == 0)  # D118: equal bridges per pair
+        M.add(spans[0][2] - spans[1][2] == 2); M.add(spans[0][3] - spans[1][3] == 2)  # copy 0 one tile downstream
     M.tag = 'coreDF'
     if df_over == 'F':  # F's southbound run over D's NE diagonal (S-bend form)
         for f in ('F1', 'F2'): M.deck(sF[f][2], [M.cross(sF[f][2], sD[d][1], 4) for d in ('D1', 'D2')])
