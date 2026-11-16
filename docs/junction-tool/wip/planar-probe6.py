@@ -123,11 +123,11 @@ class Model:
         M.add(over.a[0] + ex * a - under.a[0] - fx * b == 0); M.add(over.a[1] + ey * a - under.a[1] - fy * b == 0)
         M.crossings.append((over, under, a, b))
         return (a, head)
-    def deck(M, over, xs, n_exact=None, tail_exact=None):
+    def deck(M, over, xs, n_exact=None, tail_exact=None, n_min=2, tail_min=2):
         n, f = M.var(), M.var()
-        if n_exact is None: M.add(n >= 2)
+        if n_exact is None: M.add(n >= n_min)
         else: M.add(n == n_exact)
-        if tail_exact is None: M.add(over.L - f >= 2)
+        if tail_exact is None: M.add(over.L - f >= tail_min)
         else: M.add(over.L - f == tail_exact)
         for a, h in xs: M.add(a - n >= h); M.add(f - a >= h)
         M.decks.append((over, n, f, xs))
@@ -247,7 +247,7 @@ def build_t2(fray_s, join_s, df_over, tri=0, stair=None):
         M.seg(V_near, turn(h, sigma), lo=4 if prio else 6, hi=4 if prio else 6)
         M.seg(V_near, h, lo=2)
         if prio:  # near lane on line 2: the parallelogram steps inward to line 1 (V_far's diagonal meets line 1 first, D118)
-            M.seg(S_near, h, lo=2)                      # split to copy split: one signal tile
+            M.seg(S_near, h, lo=4)                      # split tile, one signal tile, then the copy split
             cs = M.end(S_near)
             c = S_near + "'"
             M.strand(c, cs, label=S_near); M.node(S_near, c)
@@ -264,7 +264,7 @@ def build_t2(fray_s, join_s, df_over, tri=0, stair=None):
             else: M.add(dot(D[h], d0.a) + n0 - dot(D[h], d1.a) - n1 == 2)  # natural D118 stagger
         else:
             d0 = M.seg(S_near, h, lo=2)
-            M.deck(d0, [M.cross(d0, vf, 4)])
+            M.deck(d0, [M.cross(d0, vf, 4)], n_min=4)  # split tile, one signal tile, then the head
 
     def join(h, sigma, S_far, S_near, J_far, J_near, O_far, O_near, prio):
         """Straight bundle S, joining bundle J from side sigma. Ends the in-strands; starts the out-strands."""
@@ -294,7 +294,7 @@ def build_t2(fray_s, join_s, df_over, tri=0, stair=None):
             M.seg(J_near, turn(h, -sigma), lo=4, hi=4)
         else:
             d0 = M.seg(S_near, h, lo=2)
-            M.deck(d0, [M.cross(d0, jf, 4)])
+            M.deck(d0, [M.cross(d0, jf, 4)], tail_min=4)  # the far head, one signal tile, then the merge tile
             M.seg(J_near, h, lo=2)
             M.seg(J_near, turn(h, -sigma), lo=6, hi=6)
         mn = M.end(S_near); M.tie(M.end(J_near), mn)
@@ -721,6 +721,58 @@ def export(M, geo, decks, val, path):
     return out
 
 
+def export_routes(M, geo, decks, val, path):
+    """Route programs for the C++ checker hook: per route variant (copies by mask) its pieces (x y heading kind line) and copy switches."""
+    deck_of = {}
+    for k, n, f in decks: deck_of.setdefault(k, []).append((n, f))
+    W, H = round(ev(val, M.X)) // 2 + 1, round(ev(val, M.Y)) // 2 + 1
+    out = [f'size {W} {H}']
+    for route in T2_ROUTES:
+        name = route[1]
+        # variants with region marks: per route line, the copy regions (strand, k, r_, c)
+        per_line = []
+        for li, st in enumerate(route):
+            cps = sorted((k, r_, c) for c, (s_, k, r_) in M.copies.items() if s_ == st)
+            opts = []
+            for mask in range(1 << len(cps)):
+                chosen = {cps[b][0]: cps[b] for b in range(len(cps)) if mask >> b & 1}
+                region_at = {k: (k, r_, c) for k, r_, c in cps}
+                seq, regions, i = [], [], 0
+                segs = M.strands[st]
+                while i < len(segs):
+                    if i in region_at:
+                        k, r_, c = region_at[i]
+                        part = M.strands[c] if i in chosen else segs[k:r_]
+                        regions.append((len(seq), len(seq) + len(part) - 1))
+                        seq += [(s, li) for s in part]; i = r_
+                    else:
+                        seq.append((segs[i], li)); i += 1
+                opts.append((seq, regions))
+            per_line.append(opts)
+        variants = [([], [])]
+        for opts in per_line:
+            variants = [(v[0] + o[0], v[1] + [(a + len(v[0]), b + len(v[0])) for a, b in o[1]]) for v in variants for o in opts]
+        for copy, (seq, regions) in enumerate(variants):
+            ps, seg_first, seg_last = [], [], []
+            for s, li in seq:
+                u, v, L, d = geo[(s.strand, s.i)]
+                dk = deck_of.get((s.strand, s.i))
+                seg_first.append(len(ps))
+                for tile, kind, _, t in pieces(u, v, L, d):
+                    k = 'P'
+                    for n_, f_ in dk or []:
+                        if n_ <= t and t + 2 <= f_:
+                            k = 'H' if (t == n_ or t + 2 == f_) else 'M'
+                    ps.append((tile[0], tile[1], HEAD.index(d), k, li))
+                seg_last.append(len(ps) - 1)
+            sw = []
+            for a, b in regions:
+                sw.append(f'S {seg_first[a]}'); sw.append(f'M {seg_last[b]}')
+            out.append(f'route {name} {copy} {len(ps)} ' + ' '.join(sw))
+            out += [f'{x} {y} {h} {k} {li}' for x, y, h, k, li in ps]
+    open(path, 'w').write('\n'.join(out) + '\n')
+
+
 if __name__ == '__main__':
     t0 = time.perf_counter()
     results = []
@@ -749,6 +801,9 @@ if __name__ == '__main__':
         if exp:
             out = export(M, geo, decks, val, exp)
             print(f'exported {exp}: {len(out["tracks"])} tiles, {len(out["bridges"])} bridges')
+        rexp = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--routes=')), None)
+        if rexp:
+            export_routes(M, geo, decks, val, rexp); print(f'routes {rexp}')
 
 
 def glyphs(M, geo, decks, val):

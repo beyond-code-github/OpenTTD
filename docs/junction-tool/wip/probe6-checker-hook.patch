@@ -1,0 +1,150 @@
+diff --git a/src/tests/junction/planar/planar_plan.cpp b/src/tests/junction/planar/planar_plan.cpp
+index 90fd85cbe1..d2a1978601 100644
+--- a/src/tests/junction/planar/planar_plan.cpp
++++ b/src/tests/junction/planar/planar_plan.cpp
+@@ -15,11 +15,17 @@
+ #include "../../../junction/junction_rules.h"
+ #include "../../../junction/junction_spec.h"
+ #include "../../../junction/planar/planar_plan.h"
++#include "../../../junction/planar/planar_topology.h"
++#include "../../../junction/signals/junction_signals.h"
++#include "../../../junction/junction_layout.h"
+ #include "../../../junction/terrain/junction_terrain.h"
+ 
+ #include "../../../slope_func.h"
+ 
+ #include <algorithm>
++#include <cstdlib>
++#include <fstream>
++#include <sstream>
+ #include <chrono>
+ #include <set>
+ #include <tuple>
+@@ -29,6 +35,17 @@
+ 
+ namespace {
+ 
++/** The axis trackdir of a probe heading (0 N, 2 E, 4 S, 6 W). */
++Trackdir AxisTrackdirForProbe(int heading)
++{
++	switch (heading) {
++		case 2: return Trackdir::X_SW;
++		case 4: return Trackdir::Y_SE;
++		case 6: return Trackdir::X_NE;
++		default: return Trackdir::Y_NW;
++	}
++}
++
+ /** A flat snapshot around a plan's box. */
+ JunctionTerrain FlatTerrain(int width, int height)
+ {
+@@ -156,3 +173,109 @@ TEST_CASE("planar: LL² any has the composed hub's lane paths, prio on the fixed
+ 	CHECK(checker.lane_paths.size() == 18);
+ 	CHECK(got == hub);
+ }
++
++/* Probe hook (wip, not for commit): route programs from probe 6 (JUNCTION_PROBE_ROUTES) through the planar back end's signal pass and the checker. */
++TEST_CASE("planar: probe routes, signals and checker", "[.probe]")
++{
++	const char *file = std::getenv("JUNCTION_PROBE_ROUTES");
++	REQUIRE(file != nullptr);
++	const char *topo = std::getenv("JUNCTION_PROBE_TOPOLOGY");
++	const std::string text = topo != nullptr && std::string(topo) == "LL2" ? PlanarLL2Text() : PlanarTText(2);
++	std::string error;
++	const PlanarTopology topology = ParsePlanarTopology(text, &error);
++	REQUIRE(error.empty());
++	const JunctionSpec spec = MakeTestJunctionSpec();
++	std::ifstream in(file);
++	std::string word;
++	JunctionLayout layout;
++	int w, h;
++	in >> word >> w >> h;
++	layout.size = {static_cast<int16_t>(w), static_cast<int16_t>(h)};
++	std::vector<JunctionTrackRoute> routes;
++	JunctionSignalNetwork network;
++	std::string line;
++	std::getline(in, line);
++	while (std::getline(in, line)) {
++		std::istringstream head(line);
++		std::string name;
++		int copy, count;
++		head >> word >> name >> copy >> count;
++		std::vector<std::pair<bool, size_t>> copy_switches;
++		std::string kind;
++		size_t at;
++		while (head >> kind >> at) copy_switches.emplace_back(kind == "S", at);
++		struct P { int x, y, h; char k; int li; };
++		std::vector<P> ps(count);
++		for (P &p : ps) {
++			std::getline(in, line);
++			std::istringstream s(line);
++			s >> p.x >> p.y >> p.h >> p.k >> p.li;
++		}
++		uint32_t r = 0;
++		while (r < topology.routes.size() && topology.routes[r].name != name) r++;
++		REQUIRE(r < topology.routes.size());
++		uint16_t index = 0;
++		for (uint32_t r2 = 0; r2 < r; r2++) index += static_cast<uint16_t>(topology.routes[r2].paths.size());
++		const std::vector<uint32_t> &path = topology.routes[r].paths[0];
++		JunctionRoute program{{static_cast<int16_t>(ps[0].x), static_cast<int16_t>(ps[0].y)}, AxisTrackdirForProbe(ps[0].h), {}};
++		for (size_t i = 1; i < ps.size(); i++) {
++			if (ps[i].k == 'H') {
++				size_t far = i + 1;
++				while (far < ps.size() && ps[far].k == 'M') far++;
++				REQUIRE(far < ps.size());
++				{ std::ostringstream b; b << "B" << (far - i - 1); program.moves += b.str(); }
++				i = far;
++				continue;
++			}
++			const int turn = (ps[i].h - ps[i - 1].h + 8) % 8;
++			program.moves += turn == 0 ? 'F' : turn == 1 ? 'L' : 'R'; // the rasteriser's L is +y of +x travel
++		}
++		const JunctionRaster raster = RasterizeJunctionRoute(program);
++		INFO(name << " copy " << copy << ": " << raster.error << " moves " << program.moves);
++		REQUIRE(raster.error.empty());
++		REQUIRE(raster.pieces.size() == ps.size());
++		for (size_t i = 0; i < ps.size(); i++) {
++			INFO("piece " << i << " renders " << raster.pieces[i].tile.x << "," << raster.pieces[i].tile.y << " planned " << ps[i].x << "," << ps[i].y);
++			REQUIRE((raster.pieces[i].tile.x == ps[i].x && raster.pieces[i].tile.y == ps[i].y));
++		}
++		JunctionTrackRoute track{index, static_cast<uint8_t>(copy), raster.pieces, {}};
++		for (const P &p : ps) track.tags.push_back({path[p.li], JunctionTrackPieceTag::RUN, 0, static_cast<uint8_t>(copy)});
++		AddRasterToLayout(layout, raster);
++		JunctionSignalRoute signal;
++		signal.main = topology.routes[r].prio;
++		signal.group = static_cast<uint32_t>(name.front());
++		for (size_t k = 0; k + 1 < path.size(); k++) {
++			const uint32_t node = topology.lines[path[k]].to.index;
++			size_t first = 0;
++			while (ps[first].li <= static_cast<int>(k)) first++;
++			signal.arrivals.emplace_back(node, first - 1);
++			if (topology.nodes[node].IsSplit()) {
++				signal.switches.emplace_back(true, first);
++			} else {
++				signal.switches.emplace_back(false, first - 1);
++				signal.merge_nodes.emplace_back(first - 1, node);
++			}
++		}
++		for (const auto &s : copy_switches) signal.switches.push_back(s);
++		std::ranges::sort(signal.switches, [](const auto &a, const auto &b) { return a.second != b.second ? a.second < b.second : a.first > b.first; });
++		network.routes.push_back(std::move(signal));
++		routes.push_back(std::move(track));
++	}
++
++	int16_t mx = 0, my = 0;
++	for (const JunctionTrack &t : layout.tracks) { mx = std::max(mx, t.offset.x); my = std::max(my, t.offset.y); }
++	layout.size = {static_cast<int16_t>(mx + 1), static_cast<int16_t>(my + 1)};
++	std::string why;
++	SignalJunctionTrackRoutes(layout, routes, network, spec, &why);
++	INFO("signals: " << why);
++	if (const char *out = std::getenv("JUNCTION_PROBE_OUT"); out != nullptr) {
++		std::ofstream(out) << JunctionLayoutToJson(layout);
++	}
++	const std::vector<RuleViolation> violations = CheckJunctionRules(layout, spec, PlanarCheckerTopology(topology));
++	if (const char *out = std::getenv("JUNCTION_PROBE_VIOLATIONS"); out != nullptr) {
++		std::ofstream o(out);
++		for (const RuleViolation &v : violations) o << static_cast<int>(v.rule) << " " << v.tile.x << "," << v.tile.y << " " << v.message << "\n";
++	}
++	CHECK(why.empty());
++	CHECK(violations.size() == 0);
++}
