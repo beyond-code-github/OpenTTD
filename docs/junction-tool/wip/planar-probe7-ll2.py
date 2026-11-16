@@ -201,6 +201,7 @@ def head_u(seg, n): return seg.a[0] + D[seg.d][0] * n  # u of a deck's near-head
 
 FCONT = '--fcont' in sys.argv
 FDIAG = '--fdiag' in sys.argv
+SFORM = 0
 
 
 def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
@@ -284,16 +285,20 @@ def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
         M.seg(L0, h, lo=STUB, cost=FANW)                     # short after the step: the step comes late
         M.add(dot(r, M.end(L1)) - dot(r, M.end(L0)) == 2)
 
-    def fray(h, sigma, far, near, S_far, S_near, V_far, V_near, prio, cont=False, dform=False):
+    def fray(h, sigma, far, near, S_far, S_near, V_far, V_near, prio, cont=False, dform=False, nearfan=True, fan=True):
         if dform:
             # The diagonal fray (engineer's rig edit, 2026-11-16): both lanes fan away from the diverging side; the near lane
             # splits at the top of its fan (S_near straight on), its diverging leg climbs one line more into the gap beside
             # S_far, and both diverging legs turn toward sigma side by side under one deck on S_near.
             r = right(h); Lt = turn(h, -sigma)
-            M.seg(far, h, lo=STUB); ff = M.seg(far, Lt, lo=4)
-            M.seg(near, h, lo=STUB); nf = M.seg(near, Lt, lo=2)
-            M.add(dot(D[h], ff.a) - dot(D[h], nf.a) == 0)
-            M.add(ff.L - nf.L == 2)                                # far climbs one line more: two lines between S_far and S_near
+            M.seg(far, h, lo=STUB); ff = M.seg(far, Lt, lo=4 if nearfan else 2)
+            if nearfan:
+                M.seg(near, h, lo=STUB); nf = M.seg(near, Lt, lo=2)
+                M.add(dot(D[h], ff.a) - dot(D[h], nf.a) == 0)
+                M.add(ff.L - nf.L == 2)                            # far climbs one line more: two lines between S_far and S_near
+            else:                                                  # the inside lane runs straight; only the outside lane steps out
+                M.seg(near, h, lo=STUB)
+                M.add(ff.L == 2)
             M.seg(far, h, lo=2)                                    # far lane on to its split
             sf, sn = M.end(far), M.end(near)
             M.strand(S_far, sf); M.strand(V_far, sf); M.node(far, S_far, V_far); M.pred[S_far] = far; M.pred[V_far] = far
@@ -308,10 +313,12 @@ def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
         fl = []
         for x in (far, near):
             M.seg(x, h, lo=STUB)                         # tight stub at the port
+            if not fan: continue                         # no fan: the lanes run straight from the port into the fray
             fl.append(M.seg(x, turn(h, -1), lo=2))       # fan to the left of travel, as late as possible
             M.seg(x, h, lo=2, cost=FANW)
-        M.add(dot(D[h], fl[0].a) - dot(D[h], fl[1].a) == 0)
-        if not prio: M.add(fl[0].L - fl[1].L == 0)
+        if fan:
+            M.add(dot(D[h], fl[0].a) - dot(D[h], fl[1].a) == 0)
+            if not prio: M.add(fl[0].L - fl[1].L == 0)
         r = right(h)
         # far lane on line 0; near on line sigma*1, or sigma*2 when its parallelogram steps inward (the fan makes the room)
         M.add(dot(r, M.end(near)) - dot(r, M.end(far)) == (4 if prio else 2) * sigma)
@@ -411,8 +418,9 @@ def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
     if FRAYMIN is not None: M.add(M.start['EF1'][1] - M.start['E1'][1] <= 2 * FRAYMIN)  # experiment: the in-fan climbs at most this many rows
     M.tag = 'frayE'; fray('W', -1, 'AB2', 'AB1', 'B2', 'B1', 'A2', 'A1', False)
     M.tag = 'frayS'
-    if fray_s > 0: fray('N', +1, 'CD1', 'CD2', 'C1', 'C2', 'D1', 'D2', False)
-    else: fray('N', -1, 'CD2', 'CD1', 'D2', 'D1', 'C2', 'C1', False)
+    dS = SFORM in (1, 2)
+    if fray_s > 0: fray('N', +1, 'CD1', 'CD2', 'C1', 'C2', 'D1', 'D2', False, dS, dS, SFORM == 1, SFORM != 3)
+    else: fray('N', -1, 'CD2', 'CD1', 'D2', 'D1', 'C2', 'C1', False, dS, dS, SFORM == 1, SFORM != 3)
 
     # Bundles (lanes left -> right of travel).
     M.tag = 'bundles'
@@ -425,17 +433,24 @@ def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
     else:
         sE = bundle('E', ['E1', 'E2'], ['E'] if jogE == 0 else ['E', turn('E', jogE), 'E'])  # optional S-bend (a step across) on the main-line bundle
     sF = bundle('F', ['F1', 'F2'], ['SE', 'S'] if (FCONT or FDIAG) else ['E', 'SE', 'S'])
-    for dn, va, vb in M.pending:
-        M.deck(dn, [M.cross(dn, sF[v][0], 4) for v in (va, vb)], n_min=4)
-    sD = bundle('D', ['D1', 'D2'], ['N', 'NE', 'E'] if tri == 0 else ['N', 'NE', 'N', 'NE', 'E'])
-    sC = bundle('C', ['C1', 'C2'], ['N', 'NW', 'W'])
+    hD = ['N', 'NE', 'E'] if tri == 0 else ['N', 'NE', 'N', 'NE', 'E']
+    hC = ['N', 'NW', 'W']
+    offD = 1 if (SFORM in (1, 2) and fray_s > 0) else 0
+    if offD: hD = hD[1:]
+    if SFORM in (1, 2) and fray_s < 0: hC = hC[1:]
+    if offD and tri == 0: raise ValueError('B crosses D on the N piece the diagonal fray removes')
+    sD = bundle('D', ['D1', 'D2'], hD)
+    sC = bundle('C', ['C1', 'C2'], hC)
     sA = bundle('A', ['A1', 'A2'], ['W', 'SW', 'S'])
+    def first_seg(lane): return next(sg[lane][0] for ln, hs, sg in bundles.values() if lane in ln)
+    for dn, va, vb in M.pending:
+        M.deck(dn, [M.cross(dn, first_seg(v), 4) for v in (va, vb)], n_min=4)
     # B: run; B2 (prio) doubled outward, B1 (choice) single (D299); run.
     M.tag = 'bundleB'
     lanesB = ['B1', 'B2']
     run1 = bundle('B', lanesB, ['W'] if jogB == 0 else ['W', turn('W', jogB), 'W'])
     def core_xs(dk):
-        return [M.cross(dk, sF[f][-1], 3) for f in ('F1', 'F2')], [M.cross(dk, sD[d][0 if tri == 0 else 2], 3) for d in ('D1', 'D2')]
+        return [M.cross(dk, sF[f][-1], 3) for f in ('F1', 'F2')], [M.cross(dk, sD[d][(0 if tri == 0 else 2) - offD], 3) for d in ('D1', 'D2')]
     def core_decks(dk, first, last):
         xs_F, xs_D = core_xs(dk)
         nF, fF = M.deck(dk, xs_F, None if tri == 1 else first, last if tri == 1 else None)
@@ -466,7 +481,7 @@ def build_t2(fray_s, jogE, df_over, tri=0, jogB=0):
 
     M.tag = 'coreDF'
     if df_over == 'F':  # F's southbound run over D's NE diagonal; F2 (prio) doubled outward
-        xs = lambda dk: [M.cross(dk, sD[d][1], 4) for d in ('D1', 'D2')]
+        xs = lambda dk: [M.cross(dk, sD[d][1 - offD], 4) for d in ('D1', 'D2')]
         f1 = M.seg('F1', 'S', lo=2); M.deck(f1, xs(f1))
         doubled('F2', 'S', +1, xs)
         fr = {f: M.seg(f, 'S', lo=0) for f in ('F1', 'F2')}
@@ -866,11 +881,14 @@ if __name__ == '__main__':
     combos = [(fs, je, 'F', tri, jb) for fs in (1, -1) for tri in (0, 1) for je in (0, -1, 1) for jb in (0, -1, 1)]
     only = next((a.split('=')[1] for a in sys.argv if a.startswith('--only=')), None)
     if only: combos = [c for c in combos if f'{c[0]:+d}{c[1]:+d}{c[2]}{c[3]}{c[4]:+d}' == only]
-    for fs, js, o, tri, st in combos:
+    combos = [c + (sf,) for c in combos for sf in (0, 1, 2, 3)]
+    for fs, js, o, tri, st, sf in combos:
         ts = time.perf_counter()
-        M = build_t2(fs, js, o, tri, st)
+        SFORM = sf
+        try: M = build_t2(fs, js, o, tri, st)
+        except ValueError as e: print('skip', e); continue
         res, why = solve_lazy(M, ts)
-        tag = f'{fs:+d}{js:+d}{o}{tri}{st:+d}'
+        tag = f'{fs:+d}{js:+d}{o}{tri}{st:+d}s{sf}'
         if res is None:
             print(f'{tag}: NO ({why}) {time.perf_counter() - ts:.2f}s'); continue
         (val, obj), geo, decks, rnd = res
