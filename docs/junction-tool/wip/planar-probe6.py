@@ -121,9 +121,11 @@ class Model:
         M.add(over.a[0] + ex * a - under.a[0] - fx * b == 0); M.add(over.a[1] + ey * a - under.a[1] - fy * b == 0)
         M.crossings.append((over, under, a, b))
         return (a, head)
-    def deck(M, over, xs):
+    def deck(M, over, xs, n_exact=None):
         n, f = M.var(), M.var()
-        M.add(n >= 2); M.add(over.L - f >= 2)
+        if n_exact is None: M.add(n >= 2)
+        else: M.add(n == n_exact)
+        M.add(over.L - f >= 2)
         for a, h in xs: M.add(a - n >= h); M.add(f - a >= h)
         M.decks.append((over, n, f, xs))
         return n, f
@@ -251,10 +253,10 @@ def build_t2(fray_s, join_s, df_over, tri=0, stair=None):
             d1 = M.seg(c, h, lo=2)                      # copy 1 deck (line 1), runs to the merge
             M.tie(M.end(c), M.end(S_near)); M.copies[c] = (S_near, d0.i, d0.i + 2)
             M.seg(S_near, h, lo=2)                      # merge signal room; now beside S_far, no shift back
-            n0, f0 = M.deck(d0, [M.cross(d0, vf, 4)]); n1, f1 = M.deck(d1, [M.cross(d1, vf, 4)])
+            n0, f0 = M.deck(d0, [M.cross(d0, vf, 4)], 4); n1, f1 = M.deck(d1, [M.cross(d1, vf, 4)], 0)  # D145 tight near heads
             M.add(f0 - n0 - (f1 - n1) == 0)  # D118: equal bridges
             south, north = ((d0, n0), (d1, n1)) if right(h)[1] * sigma > 0 else ((d1, n1), (d0, n0))
-            if LEANMODE != 'none': M.add(head_u(*north) - head_u(*south) == LEAN)
+            if LEANMODE == 'all': M.add(head_u(*north) - head_u(*south) == LEAN)
             else: M.add(dot(D[h], d0.a) + n0 - dot(D[h], d1.a) - n1 == 2)  # natural D118 stagger
         else:
             d0 = M.seg(S_near, h, lo=2)
@@ -279,10 +281,10 @@ def build_t2(fray_s, join_s, df_over, tri=0, stair=None):
             d1 = M.seg(c, h, lo=2)
             M.tie(M.end(c), M.end(S_near)); M.copies[c] = (S_near, d0.i, d0.i + 2)
             M.seg(S_near, h, lo=2 * P + 2)               # R9: no bend in the prio coverage
-            n0, f0 = M.deck(d0, [M.cross(d0, jf, 4)]); n1, f1 = M.deck(d1, [M.cross(d1, jf, 4)])
+            n0, f0 = M.deck(d0, [M.cross(d0, jf, 4)], 4); n1, f1 = M.deck(d1, [M.cross(d1, jf, 4)], 0)  # D145 tight near heads
             M.add(f0 - n0 - (f1 - n1) == 0)  # D118: equal bridges
             south, north = ((d1, n1), (d0, n0)) if right(h)[1] * sigma > 0 else ((d0, n0), (d1, n1))
-            if LEANMODE != 'none': M.add(head_u(*north) - head_u(*south) == LEAN)
+            if LEANMODE == 'all': M.add(head_u(*north) - head_u(*south) == LEAN)
             else: M.add(dot(D[h], d0.a) + n0 - dot(D[h], d1.a) - n1 == 2)  # natural D118 stagger
             M.seg(J_near, h, lo=2)
             M.seg(J_near, turn(h, -sigma), lo=4, hi=4)
@@ -366,14 +368,15 @@ def build_t2(fray_s, join_s, df_over, tri=0, stair=None):
         for dk in decksB[l]:
             xs_F = [M.cross(dk, sF[f][2], 3) for f in ('F1', 'F2')]
             xs_D = [M.cross(dk, sD[d][0 if tri == 0 else 2], 3) for d in ('D1', 'D2')]
-            nF, fF = M.deck(dk, xs_F)
-            nD, fD = M.deck(dk, xs_D)
+            first = 4 if dk is decksB[l][0] else 0   # the near deck in travel order sits tight on the split (D145)
+            nF, fF = M.deck(dk, xs_F, None if tri == 1 else first)
+            nD, fD = M.deck(dk, xs_D, first if tri == 1 else None)
             spans.append((fF - nF, fD - nD, head_u(dk, nF), head_u(dk, nD)))
             if tri == 0: M.add(nD - fF >= 2)  # heading W: F's deck first, one plain tile before D's
             else: M.add(nF - fD >= 2)         # flipped triangle: D's deck first
         M.add(spans[0][0] - spans[1][0] == 0); M.add(spans[0][1] - spans[1][1] == 0)  # D118: equal bridges per pair
-        if not stair:  # per pair: copy 1 one tile upstream (the chevron)
-            st = 2 if l == 'B2' else -2
+        if not stair:  # per pair: copy 1 one tile upstream (heading W: further east), the natural D118 form; mirrored pairs
+            st = -2
             M.add(spans[0][2] - spans[1][2] == st); M.add(spans[0][3] - spans[1][3] == st)
         stack[l] = spans
     # One staircase across the four decks, north to south: B2's copy, B2, B1, B1's copy; each one tile further west.
