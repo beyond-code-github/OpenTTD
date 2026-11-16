@@ -1,0 +1,177 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+/** @file planar_channels.cpp The channel graph of a planar topology (D305, D306). */
+
+#include "../../stdafx.h"
+
+#include "planar_channels.h"
+
+#include <algorithm>
+#include <map>
+#include <set>
+
+#include "../../safeguards.h"
+
+namespace {
+
+/** What a line is known by while channels are refined: the ports it comes from and goes to, its depth, its crossed channels in order. */
+struct LineKey {
+	std::set<uint32_t> up; ///< In ports whose trains reach the line.
+	std::set<uint32_t> down; ///< Out ports the line's trains reach.
+	uint32_t depth; ///< Lines on the longest path from an in port line (in port lines 0).
+	std::vector<uint32_t> crossed; ///< The current channel of each line crossed between channels, in travel order.
+
+	auto operator<=>(const LineKey &) const = default;
+};
+
+/** Per line facts derived from the node graph once. */
+struct LineFacts {
+	const PlanarTopology &t;
+	std::vector<std::set<uint32_t>> up, down;
+	std::vector<uint32_t> depth;
+	std::vector<std::vector<uint32_t>> rank; ///< Left to right order: the leftmost in leg's rank, then the leg position.
+	std::vector<bool> done_up, done_down;
+
+	explicit LineFacts(const PlanarTopology &t) : t(t), up(t.lines.size()), down(t.lines.size()), depth(t.lines.size()), rank(t.lines.size()), done_up(t.lines.size()), done_down(t.lines.size())
+	{
+		for (uint32_t l = 0; l < t.lines.size(); l++) {
+			this->Up(l);
+			this->Down(l);
+		}
+	}
+
+	/** The in ports reaching a line, its depth and its rank (memoised over the lines arriving at its start). */
+	void Up(uint32_t l)
+	{
+		if (this->done_up[l]) return;
+		this->done_up[l] = true;
+		const PlanarEnd &from = this->t.lines[l].from;
+		if (from.port) {
+			const PlanarPort &port = this->t.ports[from.index];
+			this->up[l] = {from.index};
+			this->depth[l] = 0;
+			this->rank[l] = {static_cast<uint32_t>(std::ranges::find(port.lines, l) - port.lines.begin())};
+			return;
+		}
+		const PlanarNode &node = this->t.nodes[from.index];
+		uint32_t d = 0;
+		for (uint32_t i : node.in) {
+			this->Up(i);
+			this->up[l].insert(this->up[i].begin(), this->up[i].end());
+			d = std::max(d, this->depth[i] + 1);
+		}
+		this->depth[l] = d;
+		this->rank[l] = this->rank[node.in.front()];
+		this->rank[l].push_back(static_cast<uint32_t>(std::ranges::find(node.out, l) - node.out.begin()));
+	}
+
+	/** The out ports a line reaches (memoised over the lines leaving its end). */
+	void Down(uint32_t l)
+	{
+		if (this->done_down[l]) return;
+		this->done_down[l] = true;
+		const PlanarEnd &to = this->t.lines[l].to;
+		if (to.port) {
+			this->down[l] = {to.index};
+			return;
+		}
+		for (uint32_t o : this->t.nodes[to.index].out) {
+			this->Down(o);
+			this->down[l].insert(this->down[o].begin(), this->down[o].end());
+		}
+	}
+};
+
+/** The node group at one end of a line, or UINT32_MAX at a port. */
+uint32_t GroupAt(const PlanarTopology &t, const PlanarEnd &e)
+{
+	return e.port ? UINT32_MAX : t.nodes[e.index].group;
+}
+
+} // namespace
+
+/**
+ * Group a topology's lines into channels (D305, D306).
+ * Lines start in one class per (in ports, out ports, depth); a class splits until its lines cross the same classes in the same
+ * order. A crossing whose two lines start or end at the same node group belongs to that group (a fray's or join's own crossings),
+ * every other crossing to the two channels.
+ * @param topology A parsed topology.
+ * @return Its channels, their order and the crossings between them.
+ */
+PlanarChannels BuildPlanarChannels(const PlanarTopology &topology)
+{
+	const PlanarTopology &t = topology;
+	PlanarChannels out;
+	const LineFacts facts(t);
+
+	uint32_t groups = 0;
+	for (const PlanarNode &n : t.nodes) groups = std::max(groups, n.group + 1);
+	out.group_crossings.resize(groups);
+	std::vector<bool> internal(t.crossings.size(), false);
+	for (uint32_t c = 0; c < t.crossings.size(); c++) {
+		const PlanarLine &a = t.lines[t.crossings[c].a];
+		const PlanarLine &b = t.lines[t.crossings[c].b];
+		uint32_t g = UINT32_MAX;
+		if (GroupAt(t, a.from) != UINT32_MAX && GroupAt(t, a.from) == GroupAt(t, b.from)) g = GroupAt(t, a.from);
+		else if (GroupAt(t, a.to) != UINT32_MAX && GroupAt(t, a.to) == GroupAt(t, b.to)) g = GroupAt(t, a.to);
+		if (g == UINT32_MAX) continue;
+		internal[c] = true;
+		out.group_crossings[g].push_back(c);
+	}
+
+	/* Refine classes until stable. */
+	std::vector<uint32_t> cls(t.lines.size(), 0);
+	size_t count = 0;
+	for (;;) {
+		std::map<LineKey, uint32_t> ids;
+		std::vector<uint32_t> next(t.lines.size());
+		for (uint32_t l = 0; l < t.lines.size(); l++) {
+			LineKey key{facts.up[l], facts.down[l], facts.depth[l], {}};
+			for (uint32_t c : t.events[l]) {
+				if (internal[c]) continue;
+				const uint32_t other = t.crossings[c].a == l ? t.crossings[c].b : t.crossings[c].a;
+				key.crossed.push_back(cls[other]);
+			}
+			auto it = ids.try_emplace(std::move(key), static_cast<uint32_t>(ids.size())).first;
+			next[l] = it->second;
+		}
+		const bool stable = ids.size() == count;
+		count = ids.size();
+		cls = std::move(next);
+		if (stable) break;
+	}
+
+	out.channels.resize(count);
+	out.channel_of_line = cls;
+	for (uint32_t l = 0; l < t.lines.size(); l++) out.channels[cls[l]].lines.push_back(l);
+	for (PlanarChannel &ch : out.channels) {
+		std::ranges::sort(ch.lines, [&](uint32_t a, uint32_t b) { return facts.rank[a] < facts.rank[b]; });
+	}
+
+	/* Channel crossings: the line crossings between each pair of channels, then each channel's in its first line's event order. */
+	std::map<std::pair<uint32_t, uint32_t>, uint32_t> pair_index;
+	for (uint32_t c = 0; c < t.crossings.size(); c++) {
+		if (internal[c]) continue;
+		uint32_t a = cls[t.crossings[c].a], b = cls[t.crossings[c].b];
+		if (a > b) std::swap(a, b);
+		auto [it, added] = pair_index.try_emplace({a, b}, static_cast<uint32_t>(out.crossings.size()));
+		if (added) out.crossings.push_back({a, b, {}});
+		out.crossings[it->second].line_crossings.push_back(c);
+	}
+	for (uint32_t ci = 0; ci < out.channels.size(); ci++) {
+		PlanarChannel &ch = out.channels[ci];
+		for (uint32_t c : t.events[ch.lines.front()]) {
+			if (internal[c]) continue;
+			uint32_t a = cls[t.crossings[c].a], b = cls[t.crossings[c].b];
+			if (a > b) std::swap(a, b);
+			const uint32_t x = pair_index.at({a, b});
+			if (ch.crossings.empty() || ch.crossings.back() != x) ch.crossings.push_back(x);
+		}
+	}
+	return out;
+}

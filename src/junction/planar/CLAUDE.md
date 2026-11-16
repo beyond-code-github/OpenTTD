@@ -15,6 +15,12 @@
 - The T is authored by `PlanarTText(lanes)`: the engineer's drawing turned half a turn into the canonical frame (main W-E, branch S): A E->S, B E->W, C S->W, D S->E, E W->E, F W->S; B and E hold prio.
 - At one lane the T has exactly three crossings (B×D, B×F, D×F); at two lanes 18: the 12 core crossings on single-route lines and one fray crossing at each of the six rings.
 
+## Channels (`planar_channels`, D305, D306, D327)
+- `BuildPlanarChannels` groups a topology's lines into channels: lines with the same in ports reaching them, the same out ports reached, the same depth from the in ports and the same crossed channels in order (refined until stable); a line may end inside its channel at a node of its own while the others carry on.
+- A channel's lines are ordered left to right across travel: port lines by the port's order, other lines by their leftmost in leg's order, then their leg position.
+- A crossing whose two lines start or end at the same node group belongs to that group (a fray's or join's own crossings); every other crossing belongs to the pair of channels, and a channel's crossings follow its first line's event order.
+- The T at one, two and three lanes gives twelve channels (EF, AB, CD, ED, CB, AF and the six movements A to F) and three whole channel crossings (B x D, B x F, D x F); in LL², E1 and E2 share a channel and the crossing choice legs are channels of their own.
+
 ## Layout program (`planar_layout`, DESIGN-planar §2a)
 - The layout is one integer program through `JunctionMilp` in half-tile units: per line a chain of vertices (start, one spare bend plus the route's least turn count per stretch, each crossing, end), per segment a heading in 8 and a length; a node is one vertex shared by its lines, a crossing one vertex shared by its two lines.
 - A line's segments keep to the short turn arc of its routes plus one heading beyond each end.

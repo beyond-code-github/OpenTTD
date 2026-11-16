@@ -1,4 +1,6 @@
 add_files(
+    planar_channels.cpp
+    planar_channels.h
     planar_components.cpp
     planar_components.h
     planar_layout.cpp
