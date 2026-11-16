@@ -1,0 +1,72 @@
+diff --git a/src/junction/junction_rules.cpp b/src/junction/junction_rules.cpp
+index cfc5222dd1..42c824e9f3 100644
+--- a/src/junction/junction_rules.cpp
++++ b/src/junction/junction_rules.cpp
+@@ -173,6 +173,13 @@ static bool HoldsPrio(const JunctionCheckContext &ctx, const JunctionPath &path)
+ 	return path.movement != UINT16_MAX && std::ranges::find(list, path.movement) != list.end();
+ }
+ 
++/** Whether the path is a main line (holds prio at its merges, gets no bays): with lane paths (D301) their flag, else a through path. */
++static bool IsMainLinePath(const JunctionCheckContext &ctx, const JunctionPath &path)
++{
++	if (!ctx.topology->lane_paths.empty()) return HoldsPrio(ctx, path);
++	return IsThroughPath(ctx, path);
++}
++
+ bool IsExitPath(const JunctionCheckContext &ctx, const JunctionPath &path)
+ {
+ 	if (path.movement == UINT16_MAX) return false;
+@@ -582,7 +589,7 @@ std::vector<RuleViolation> CheckOrder(const JunctionCheckContext &ctx)
+ 	std::vector<RuleViolation> out;
+ 	for (const JunctionPath &path : ctx.paths) {
+ 		const std::vector<SwitchEvent> events = SwitchEventsOf(ctx.layout, used, path);
+-		const bool is_ml = IsThroughPath(ctx, path);
++		const bool is_ml = IsMainLinePath(ctx, path);
+ 		if (is_ml) {
+ 			const SwitchEvent *previous = nullptr;
+ 			for (const SwitchEvent &event : events) {
+@@ -664,7 +671,7 @@ std::vector<RuleViolation> CheckBridges(const JunctionCheckContext &ctx)
+ 		if (HasPrioList(*ctx.topology) && std::ranges::none_of(ctx.paths, [&](const JunctionPath &path) { return HoldsPrio(ctx, path) && std::ranges::any_of(path.pieces, on_bridge); })) continue;
+ 		bool doubled = true;
+ 		for (const JunctionPath &ml : ctx.paths) {
+-			const bool is_ml = IsThroughPath(ctx, ml);
++			const bool is_ml = IsMainLinePath(ctx, ml);
+ 			if (!is_ml || std::ranges::none_of(ml.pieces, on_bridge)) continue;
+ 			const bool has_other = std::ranges::any_of(ctx.paths, [&](const JunctionPath &other) {
+ 				return &other != &ml && SameLanePath(other, ml) && std::ranges::none_of(other.pieces, on_bridge);
+@@ -844,7 +851,7 @@ std::vector<std::pair<TileIndexDiffC, Trackdir>> JoinerSignals(const JunctionChe
+ 	std::vector<std::pair<TileIndexDiffC, Trackdir>> result;
+ 	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
+ 		const JunctionPath &ml = ctx.paths[pi];
+-		const bool is_ml = IsThroughPath(ctx, ml);
++		const bool is_ml = IsMainLinePath(ctx, ml);
+ 		if (!is_ml) continue;
+ 		for (const SwitchEvent &event : SwitchEventsOf(ctx.layout, used, ml)) {
+ 			if (event.first) continue;
+@@ -1032,7 +1039,7 @@ std::vector<RuleViolation> CheckWaitingRoom(const JunctionCheckContext &ctx)
+ 	/* Whole-train bays (D83) before every queue merge. */
+ 	const uint bay = 2u * ctx.spec.tl;
+ 	for (const JunctionPath &path : ctx.paths) {
+-		const bool is_ml = IsThroughPath(ctx, path);
++		const bool is_ml = IsMainLinePath(ctx, path);
+ 		if (is_ml) continue;
+ 		const std::vector<SwitchEvent> events = SwitchEventsOf(ctx.layout, used, path);
+ 		for (const SwitchEvent &event : events) {
+@@ -1243,7 +1250,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
+ 	std::set<size_t> matched;
+ 	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
+ 		const JunctionPath &ml = ctx.paths[pi];
+-		const bool is_ml = IsThroughPath(ctx, ml) && HoldsPrio(ctx, ml);
++		const bool is_ml = IsMainLinePath(ctx, ml) && HoldsPrio(ctx, ml);
+ 		if (!is_ml) continue;
+ 
+ 		for (const SwitchEvent &event : SwitchEventsOf(layout, used, ml)) {
+@@ -1693,7 +1700,7 @@ std::vector<RuleViolation> CheckPrioReach(const JunctionCheckContext &ctx)
+ 
+ 	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
+ 		const JunctionPath &ml = ctx.paths[pi];
+-		const bool is_ml = IsThroughPath(ctx, ml);
++		const bool is_ml = IsMainLinePath(ctx, ml);
+ 		if (!is_ml) continue;
+ 
+ 		for (const SwitchEvent &event : SwitchEventsOf(layout, used, ml)) {

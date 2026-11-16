@@ -1,5 +1,5 @@
 diff --git a/src/tests/junction/planar/planar_plan.cpp b/src/tests/junction/planar/planar_plan.cpp
-index 90fd85cbe1..d2a1978601 100644
+index 90fd85cbe1..1fb63ab4cd 100644
 --- a/src/tests/junction/planar/planar_plan.cpp
 +++ b/src/tests/junction/planar/planar_plan.cpp
 @@ -15,11 +15,17 @@
@@ -38,7 +38,7 @@ index 90fd85cbe1..d2a1978601 100644
  /** A flat snapshot around a plan's box. */
  JunctionTerrain FlatTerrain(int width, int height)
  {
-@@ -156,3 +173,109 @@ TEST_CASE("planar: LL² any has the composed hub's lane paths, prio on the fixed
+@@ -156,3 +173,119 @@ TEST_CASE("planar: LL² any has the composed hub's lane paths, prio on the fixed
  	CHECK(checker.lane_paths.size() == 18);
  	CHECK(got == hub);
  }
@@ -68,7 +68,8 @@ index 90fd85cbe1..d2a1978601 100644
 +		std::istringstream head(line);
 +		std::string name;
 +		int copy, count;
-+		head >> word >> name >> copy >> count;
++		std::string line_names;
++		head >> word >> name >> copy >> count >> line_names;
 +		std::vector<std::pair<bool, size_t>> copy_switches;
 +		std::string kind;
 +		size_t at;
@@ -85,7 +86,16 @@ index 90fd85cbe1..d2a1978601 100644
 +		REQUIRE(r < topology.routes.size());
 +		uint16_t index = 0;
 +		for (uint32_t r2 = 0; r2 < r; r2++) index += static_cast<uint16_t>(topology.routes[r2].paths.size());
-+		const std::vector<uint32_t> &path = topology.routes[r].paths[0];
++		size_t pi = 0;
++		for (; pi < topology.routes[r].paths.size(); pi++) {
++			std::string joined;
++			for (uint32_t l : topology.routes[r].paths[pi]) joined += (joined.empty() ? "" : ",") + topology.lines[l].name;
++			if (joined == line_names) break;
++		}
++		INFO(name << " lines " << line_names);
++		REQUIRE(pi < topology.routes[r].paths.size());
++		index += static_cast<uint16_t>(pi);
++		const std::vector<uint32_t> &path = topology.routes[r].paths[pi];
 +		JunctionRoute program{{static_cast<int16_t>(ps[0].x), static_cast<int16_t>(ps[0].y)}, AxisTrackdirForProbe(ps[0].h), {}};
 +		for (size_t i = 1; i < ps.size(); i++) {
 +			if (ps[i].k == 'H') {
