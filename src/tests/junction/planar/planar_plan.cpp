@@ -35,17 +35,6 @@
 
 namespace {
 
-/** The axis trackdir of a probe heading (0 N, 2 E, 4 S, 6 W). */
-Trackdir AxisTrackdirForProbe(int heading)
-{
-	switch (heading) {
-		case 2: return Trackdir::X_SW;
-		case 4: return Trackdir::Y_SE;
-		case 6: return Trackdir::X_NE;
-		default: return Trackdir::Y_NW;
-	}
-}
-
 /** A flat snapshot around a plan's box. */
 JunctionTerrain FlatTerrain(int width, int height)
 {
@@ -110,11 +99,11 @@ TEST_CASE("planar: the T at one lane places on flat ground, checker clean, seed 
 	RequirePlacedClean(*seed, spec, nullptr, {0, 0});
 }
 
-TEST_CASE("planar: the T at two lanes places on flat ground, checker clean, seed under 5 s", "[junction][planar][slow]")
+TEST_CASE("planar: the T at two lanes places on flat ground, checker clean, seed under 15 s (component solve)", "[junction][planar][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::shared_ptr<const PlanarSeed> seed = Seed(PlanarTText(2), spec);
-	CHECK(seed->micros < 5'000'000);
+	CHECK(seed->micros < 15'000'000);
 	RequirePlacedClean(*seed, spec, nullptr, {0, 0});
 }
 
@@ -174,6 +163,58 @@ TEST_CASE("planar: LL² any has the composed hub's lane paths, prio on the fixed
 	CHECK(got == hub);
 }
 
+namespace {
+
+/** Plan a seed with components flat and require the layout and a clean checker. */
+void RequireComponentPlanClean(const std::string &text)
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::shared_ptr<const PlanarSeed> seed = PlanarSeedFor(text, spec);
+	INFO("seed: " << seed->why);
+	REQUIRE(seed->components.has_value());
+	const PlanarPlan plan = PlanPlanarJunction(*seed, spec, nullptr, {0, 0}, false);
+	INFO("plan: " << plan.why);
+	REQUIRE(plan.layout.has_value());
+	CHECK(plan.why.empty());
+	const std::vector<RuleViolation> violations = CheckJunctionRules(*plan.layout, spec, PlanarCheckerTopology(seed->topology));
+	for (const RuleViolation &v : violations) INFO(static_cast<int>(v.rule) << " " << v.message << " at " << v.tile.x << "," << v.tile.y);
+	CHECK(violations.empty());
+}
+
+}
+
+TEST_CASE("planar: LL² builds from its component layout and passes the checker", "[junction][planarcomponents]")
+{
+	RequireComponentPlanClean(PlanarLL2Text());
+}
+
+TEST_CASE("planar: T2 builds from its component layout and passes the checker", "[junction][planarcomponents]")
+{
+	RequireComponentPlanClean(PlanarTText(2));
+}
+
+TEST_CASE("planar: the one-lane T keeps the §2a layout", "[junction][planar][slow]")
+{
+	const std::shared_ptr<const PlanarSeed> seed = PlanarSeedFor(PlanarTText(1), MakeTestJunctionSpec());
+	CHECK_FALSE(seed->components.has_value());
+}
+
+/* Dump (hidden): the component plan's layout as JSON, for building it in the rig. */
+TEST_CASE("planar: dump a component layout", "[.componentsdump]")
+{
+	const char *topo = std::getenv("JUNCTION_COMPONENTS_TOPOLOGY");
+	const char *out = std::getenv("JUNCTION_COMPONENTS_OUT");
+	REQUIRE(topo != nullptr);
+	REQUIRE(out != nullptr);
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::shared_ptr<const PlanarSeed> seed = PlanarSeedFor(std::string(topo) == "LL2" ? PlanarLL2Text() : PlanarTText(2), spec);
+	REQUIRE(seed->components.has_value());
+	const PlanarPlan plan = PlanPlanarJunction(*seed, spec, nullptr, {0, 0}, false);
+	INFO(plan.why);
+	REQUIRE(plan.layout.has_value());
+	std::ofstream(out) << JunctionLayoutToJson(*plan.layout);
+}
+
 /* Probe hook (hidden): route programs exported by the Python probes (JUNCTION_PROBE_ROUTES; docs/junction-tool/wip/planar-probe8.py --routes) through the planar back end's signal pass and the checker. */
 TEST_CASE("planar: probe routes, signals and checker", "[.probe]")
 {
@@ -187,12 +228,11 @@ TEST_CASE("planar: probe routes, signals and checker", "[.probe]")
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::ifstream in(file);
 	std::string word;
-	JunctionLayout layout;
 	int w, h;
 	in >> word >> w >> h;
-	layout.size = {static_cast<int16_t>(w), static_cast<int16_t>(h)};
-	std::vector<JunctionTrackRoute> routes;
-	JunctionSignalNetwork network;
+	PlanarComponentLayout components;
+	components.width = w;
+	components.height = h;
 	std::string line;
 	std::getline(in, line);
 	while (std::getline(in, line)) {
@@ -201,23 +241,23 @@ TEST_CASE("planar: probe routes, signals and checker", "[.probe]")
 		int copy, count;
 		std::string line_names;
 		head >> word >> name >> copy >> count >> line_names;
-		std::vector<std::pair<bool, size_t>> copy_switches;
+		PlanarRouteProgram program;
+		program.copy = static_cast<uint8_t>(copy);
 		std::string kind;
-		size_t at;
-		while (head >> kind >> at) copy_switches.emplace_back(kind == "S", at);
-		struct P { int x, y, h; char k; int li; };
-		std::vector<P> ps(count);
-		for (P &p : ps) {
+		uint32_t at;
+		while (head >> kind >> at) program.copy_switches.emplace_back(kind == "S", at);
+		for (int i = 0; i < count; i++) {
 			std::getline(in, line);
 			std::istringstream s(line);
-			s >> p.x >> p.y >> p.h >> p.k >> p.li;
+			int x, y, heading, li;
+			char k;
+			s >> x >> y >> heading >> k >> li;
+			program.pieces.push_back({{static_cast<int16_t>(x), static_cast<int16_t>(y)}, static_cast<uint8_t>(heading), k == 'H' ? PlanarPiece::Kind::Head : k == 'M' ? PlanarPiece::Kind::Middle : PlanarPiece::Kind::Ground, static_cast<uint8_t>(li)});
 		}
 		uint32_t r = 0;
 		while (r < topology.routes.size() && topology.routes[r].name != name) r++;
 		REQUIRE(r < topology.routes.size());
-		uint16_t index = 0;
-		for (uint32_t r2 = 0; r2 < r; r2++) index += static_cast<uint16_t>(topology.routes[r2].paths.size());
-		size_t pi = 0;
+		uint32_t pi = 0;
 		for (; pi < topology.routes[r].paths.size(); pi++) {
 			std::string joined;
 			for (uint32_t l : topology.routes[r].paths[pi]) joined += (joined.empty() ? "" : ",") + topology.lines[l].name;
@@ -225,56 +265,16 @@ TEST_CASE("planar: probe routes, signals and checker", "[.probe]")
 		}
 		INFO(name << " lines " << line_names);
 		REQUIRE(pi < topology.routes[r].paths.size());
-		index += static_cast<uint16_t>(pi);
-		const std::vector<uint32_t> &path = topology.routes[r].paths[pi];
-		JunctionRoute program{{static_cast<int16_t>(ps[0].x), static_cast<int16_t>(ps[0].y)}, AxisTrackdirForProbe(ps[0].h), {}};
-		for (size_t i = 1; i < ps.size(); i++) {
-			if (ps[i].k == 'H') {
-				size_t far = i + 1;
-				while (far < ps.size() && ps[far].k == 'M') far++;
-				REQUIRE(far < ps.size());
-				{ std::ostringstream b; b << "B" << (far - i - 1); program.moves += b.str(); }
-				i = far;
-				continue;
-			}
-			const int turn = (ps[i].h - ps[i - 1].h + 8) % 8;
-			program.moves += turn == 0 ? 'F' : turn == 1 ? 'L' : 'R'; // the rasteriser's L is +y of +x travel
-		}
-		const JunctionRaster raster = RasterizeJunctionRoute(program);
-		INFO(name << " copy " << copy << ": " << raster.error << " moves " << program.moves);
-		REQUIRE(raster.error.empty());
-		REQUIRE(raster.pieces.size() == ps.size());
-		for (size_t i = 0; i < ps.size(); i++) {
-			INFO("piece " << i << " renders " << raster.pieces[i].tile.x << "," << raster.pieces[i].tile.y << " planned " << ps[i].x << "," << ps[i].y);
-			REQUIRE((raster.pieces[i].tile.x == ps[i].x && raster.pieces[i].tile.y == ps[i].y));
-		}
-		JunctionTrackRoute track{index, static_cast<uint8_t>(copy), raster.pieces, {}};
-		for (const P &p : ps) track.tags.push_back({path[p.li], JunctionTrackPieceTag::RUN, 0, static_cast<uint8_t>(copy)});
-		AddRasterToLayout(layout, raster);
-		JunctionSignalRoute signal;
-		signal.main = topology.routes[r].prio;
-		signal.group = static_cast<uint32_t>(name.front());
-		for (size_t k = 0; k + 1 < path.size(); k++) {
-			const uint32_t node = topology.lines[path[k]].to.index;
-			size_t first = 0;
-			while (ps[first].li <= static_cast<int>(k)) first++;
-			signal.arrivals.emplace_back(node, first - 1);
-			if (topology.nodes[node].IsSplit()) {
-				signal.switches.emplace_back(true, first);
-			} else {
-				signal.switches.emplace_back(false, first - 1);
-				signal.merge_nodes.emplace_back(first - 1, node);
-			}
-		}
-		for (const auto &s : copy_switches) signal.switches.push_back(s);
-		std::ranges::sort(signal.switches, [](const auto &a, const auto &b) { return a.second != b.second ? a.second < b.second : a.first > b.first; });
-		network.routes.push_back(std::move(signal));
-		routes.push_back(std::move(track));
+		program.route = r;
+		program.path = pi;
+		components.routes.push_back(std::move(program));
 	}
-
-	int16_t mx = 0, my = 0;
-	for (const JunctionTrack &t : layout.tracks) { mx = std::max(mx, t.offset.x); my = std::max(my, t.offset.y); }
-	layout.size = {static_cast<int16_t>(mx + 1), static_cast<int16_t>(my + 1)};
+	PlanarRender render = RenderPlanarRoutePrograms(topology, components);
+	INFO("render: " << render.why);
+	REQUIRE(render.why.empty());
+	JunctionLayout layout = std::move(render.layout);
+	const std::vector<JunctionTrackRoute> &routes = render.routes;
+	const JunctionSignalNetwork &network = render.network;
 	std::string why;
 	SignalJunctionTrackRoutes(layout, routes, network, spec, &why);
 	INFO("signals: " << why);

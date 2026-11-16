@@ -88,7 +88,9 @@ std::shared_ptr<const PlanarSeed> PlanarSeedFor(const std::string &text, const J
 	seed->text = text;
 	const auto start = std::chrono::steady_clock::now();
 	seed->topology = ParsePlanarTopology(text, &seed->why);
-	if (seed->why.empty()) {
+	PlanarComponentLayout components;
+	if (seed->why.empty() && SolvePlanarComponents(seed->topology, spec, components, nullptr)) seed->components = std::move(components);
+	if (seed->why.empty() && !seed->components.has_value()) {
 		/* The box bound S: the smallest of 64, 128 tiles that solves (the big-M values follow it). */
 		for (int bound : {64, 128}) {
 			PlanarSolveOptions options;
@@ -187,6 +189,113 @@ PlanarRender RenderPlanarGeometry(const PlanarTopology &topology, const PlanarGe
 	return out;
 }
 
+PlanarRender RenderPlanarRoutePrograms(const PlanarTopology &topology, const PlanarComponentLayout &layout)
+{
+	PlanarRender out;
+	const auto paths = RoutePaths(topology);
+	std::vector<uint16_t> first_index(topology.routes.size() + 1, 0); // per route, the running index of its first path
+	for (uint32_t r = 0; r < topology.routes.size(); r++) first_index[r + 1] = static_cast<uint16_t>(first_index[r] + topology.routes[r].paths.size());
+	std::vector<bool> node_done(topology.nodes.size(), false);
+	out.node_tiles.assign(topology.nodes.size(), TileIndexDiffC{0, 0});
+	std::vector<std::vector<std::optional<TileIndexDiffC>>> port_tile(topology.ports.size());
+	for (size_t p = 0; p < topology.ports.size(); p++) port_tile[p].assign(topology.ports[p].lines.size(), std::nullopt);
+	int16_t max_x = 0, max_y = 0;
+	for (const PlanarRouteProgram &program : layout.routes) {
+		const PlanarRoute &route = topology.routes[program.route];
+		const std::vector<uint32_t> &path = route.paths[program.path];
+		const std::vector<PlanarProgramPiece> &ps = program.pieces;
+		if (ps.empty() || ps.front().heading % 2 != 0) {
+			out.why = fmt::format("route {} does not start on an axis piece", route.name);
+			return out;
+		}
+		/* Moves: F, L or R per piece against the previous one; a deck from its near head to its far head is B<middle>. */
+		JunctionRoute rp{{static_cast<int16_t>(ps[0].tile.x), static_cast<int16_t>(ps[0].tile.y)}, AxisTrackdir(ps.front().heading), {}};
+		for (size_t i = 1; i < ps.size(); i++) {
+			if (ps[i].kind == PlanarPiece::Kind::Head) {
+				size_t far = i + 1;
+				while (far < ps.size() && ps[far].kind == PlanarPiece::Kind::Middle) far++;
+				if (far >= ps.size() || ps[far].kind != PlanarPiece::Kind::Head) {
+					out.why = fmt::format("route {} has a deck without a far head", route.name);
+					return out;
+				}
+				rp.moves += fmt::format("B{}", far - i - 1);
+				i = far;
+				continue;
+			}
+			const int turn = (ps[i].heading - ps[i - 1].heading + 8) % 8;
+			rp.moves += turn == 0 ? 'F' : turn == 1 ? 'L' : 'R'; // the rasteriser's L is +y of +x travel
+		}
+		const JunctionRaster rendered = RasterizeJunctionRoute(rp);
+		if (!rendered.error.empty() || rendered.pieces.size() != ps.size()) {
+			out.why = fmt::format("route {} does not rasterise: {}", route.name, rendered.error.empty() ? "piece count" : rendered.error);
+			return out;
+		}
+		const uint16_t index = static_cast<uint16_t>(first_index[program.route] + program.path);
+		JunctionTrackRoute track{index, program.copy, rendered.pieces, {}};
+		for (size_t i = 0; i < ps.size(); i++) {
+			if (rendered.pieces[i].tile.x != ps[i].tile.x || rendered.pieces[i].tile.y != ps[i].tile.y || ps[i].line >= path.size()) {
+				out.why = fmt::format("route {} piece {} renders at {},{}, planned {},{}", route.name, i, rendered.pieces[i].tile.x, rendered.pieces[i].tile.y, ps[i].tile.x, ps[i].tile.y);
+				return out;
+			}
+			track.tags.push_back({path[ps[i].line], JunctionTrackPieceTag::RUN, 0, program.copy});
+		}
+		AddRasterToLayout(out.layout, rendered);
+
+		/* The signal pass's view (D301: the fixed route holds prio; a joiner is a route of another letter). */
+		JunctionSignalRoute signal;
+		signal.main = route.prio;
+		signal.group = static_cast<uint32_t>(route.name.front());
+		for (size_t k = 0; k + 1 < path.size(); k++) {
+			const uint32_t node = topology.lines[path[k]].to.index;
+			size_t first = 0;
+			while (first < ps.size() && ps[first].line <= k) first++;
+			if (first == 0 || first >= ps.size()) {
+				out.why = fmt::format("route {} has no piece after line {}", route.name, topology.lines[path[k]].name);
+				return out;
+			}
+			signal.arrivals.emplace_back(node, first - 1);
+			if (topology.nodes[node].IsSplit()) {
+				signal.switches.emplace_back(true, first);
+			} else {
+				signal.switches.emplace_back(false, first - 1);
+				signal.merge_nodes.emplace_back(first - 1, node);
+			}
+			if (!node_done[node]) {
+				node_done[node] = true;
+				out.node_tiles[node] = topology.nodes[node].IsSplit() ? TileIndexDiffC{static_cast<int16_t>(ps[first].tile.x), static_cast<int16_t>(ps[first].tile.y)} : TileIndexDiffC{static_cast<int16_t>(ps[first - 1].tile.x), static_cast<int16_t>(ps[first - 1].tile.y)};
+			}
+		}
+		for (const auto &[is_split, at] : program.copy_switches) signal.switches.emplace_back(is_split, at);
+		std::ranges::sort(signal.switches, [](const auto &a, const auto &b) { return a.second != b.second ? a.second < b.second : a.first > b.first; });
+		/* Ports: the first piece of a program on its in port's line, the last on its out port's. */
+		for (const bool entry : {true, false}) {
+			const uint32_t line = entry ? path.front() : path.back();
+			const PlanarEnd end = entry ? topology.lines[line].from : topology.lines[line].to;
+			const PlanarProgramPiece &piece = entry ? ps.front() : ps.back();
+			const std::vector<uint32_t> &lines = topology.ports[end.index].lines;
+			const size_t at = std::ranges::find(lines, line) - lines.begin();
+			if (at < lines.size()) port_tile[end.index][at] = TileIndexDiffC{static_cast<int16_t>(piece.tile.x), static_cast<int16_t>(piece.tile.y)};
+		}
+		out.network.routes.push_back(std::move(signal));
+		out.routes.push_back(std::move(track));
+	}
+	for (size_t p = 0; p < topology.ports.size(); p++) {
+		for (const std::optional<TileIndexDiffC> &tile : port_tile[p]) {
+			if (!tile.has_value()) {
+				out.why = fmt::format("port {} has a line no program runs on", p);
+				return out;
+			}
+			out.port_tiles.push_back(*tile);
+		}
+	}
+	for (const JunctionTrack &t : out.layout.tracks) {
+		max_x = std::max(max_x, t.offset.x);
+		max_y = std::max(max_y, t.offset.y);
+	}
+	out.layout.size = {static_cast<int16_t>(max_x + 1), static_cast<int16_t>(max_y + 1)};
+	return out;
+}
+
 PlanarPlan PlanPlanarJunction(const PlanarSeed &seed, const JunctionSpec &spec, const JunctionTerrain *terrain, TileIndexDiffC offset, bool hover)
 {
 	PlanarPlan plan;
@@ -197,8 +306,8 @@ PlanarPlan PlanPlanarJunction(const PlanarSeed &seed, const JunctionSpec &spec, 
 	PlanarGeometry solved;
 	const PlanarGeometry *geometry = &seed.geometry;
 	std::optional<JunctionFacts> facts;
-	if (terrain != nullptr) {
-		facts.emplace(*terrain);
+	if (terrain != nullptr) facts.emplace(*terrain);
+	if (terrain != nullptr && !seed.components.has_value()) {
 		PlanarSolveOptions options;
 		options.bound = seed.bound;
 		options.facts = &*facts;
@@ -208,7 +317,7 @@ PlanarPlan PlanPlanarJunction(const PlanarSeed &seed, const JunctionSpec &spec, 
 		if (!SolvePlanarLayout(seed.topology, spec, options, &seed.state, state, solved, &plan.why)) return plan;
 		geometry = &solved;
 	}
-	PlanarRender render = RenderPlanarGeometry(seed.topology, *geometry);
+	PlanarRender render = seed.components.has_value() ? RenderPlanarRoutePrograms(seed.topology, *seed.components) : RenderPlanarGeometry(seed.topology, *geometry);
 	if (!render.why.empty()) {
 		plan.why = render.why;
 		return plan;

@@ -29,7 +29,9 @@
 - `PLANAR_DEBUG` set in the environment prints the lazy loop's rounds.
 
 ## Back end (`planar_plan`, DESIGN-planar §3, §4)
-- The flat seed is cached per topology text and the spec's rule fields, at box bound 64 tiles, then 128.
+- The flat seed is cached per topology text and the spec's rule fields. It solves the component layout (`SolvePlanarComponents`) for topologies with a composition (T2, LL², `seed.components`, `bound` 0) and the §2a program otherwise, at box bound 64 tiles, then 128; a topology with no composition behaves as before.
+- A component plan renders the cached programs through `RenderPlanarRoutePrograms` (flat placement even on terrain, levels solved after as for any plan); the hover reuses them.
+- `RenderPlanarRoutePrograms`: each program through `RasterizeJunctionRoute` (turn +1 is the rasteriser's L, a deck is B<middle>), tags edge = the path line and copy = the program's copy, `JunctionTrackRoute` index = the running index of (route, path), signal routes with arrivals, switches, merge nodes and the programs' copy switches sorted by piece, node tiles from the programs (a split's the first piece of its out leg, a merge's the last piece of its in leg), port tiles the first (in) or last (out) piece of a program on that line, layout size from the tracks' bounding box.
 - On terrain the program runs again with terrain facts lazy, warm-started from the seed; the hover fixes the seed's binaries.
 - Each route path renders to one `JunctionTrackRoute` through `RasterizeJunctionRoute` (F, L, R per piece, B<middle> per deck), tagged edge = line, copy 0; the signal pass reads a `JunctionSignalNetwork` filled natively (main = the route holds prio, group = its letter).
 - `PlanarCheckerTopology` gives the checker the ports as lane groups in slot order and every route path as a lane path with its route's prio flag (D301).

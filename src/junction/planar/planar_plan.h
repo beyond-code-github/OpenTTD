@@ -10,6 +10,7 @@
 #ifndef PLANAR_PLAN_H
 #define PLANAR_PLAN_H
 
+#include "planar_components.h"
 #include "planar_layout.h"
 #include "planar_topology.h"
 #include "../junction_layout.h"
@@ -36,6 +37,7 @@ struct PlanarSeed {
 	std::string why; ///< Empty when solved.
 	int bound = 0; ///< The box bound S it solved at.
 	int64_t micros = 0; ///< The seed's solve time.
+	std::optional<PlanarComponentLayout> components; ///< The component layout (DESIGN-components §6) when the topology has a composition and it solved.
 };
 
 /** The seed of a topology text and spec, solved once and cached (per text and the spec's rule fields). */
@@ -53,6 +55,9 @@ struct PlanarRender {
 
 /** Render a solved geometry: each route path to a JunctionTrackRoute through RasterizeJunctionRoute (DESIGN-planar §2a, route conversion). */
 PlanarRender RenderPlanarGeometry(const PlanarTopology &topology, const PlanarGeometry &geometry);
+
+/** Render a component layout's route programs (DESIGN-components §6): each through RasterizeJunctionRoute (turn +1 is the rasteriser's L, a deck B<middle>), tagged edge = its path line, copy = its copy; the signal routes as the probe hook builds them; node and port tiles from the programs. */
+PlanarRender RenderPlanarRoutePrograms(const PlanarTopology &topology, const PlanarComponentLayout &layout);
 
 /** A placed plan. */
 struct PlanarPlan {
