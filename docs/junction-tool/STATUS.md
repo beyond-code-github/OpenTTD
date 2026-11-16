@@ -1,3 +1,19 @@
+## RESUME HERE (2026-11-16 latest) — MAPPED COMPOSER: T3 FROM TOPOLOGY TEXT ALONE, CHECKER-CLEAN (ng1 wt-planar 1722ffef0e)
+- Engineer: build the composer as planned (probe 9's n-lane templates driven by channels, sites and paths), prove it, refactor to the channel model later (verdict talked through: the hand versions are expressible from topology data; composer-first proves it soonest).
+- `SolvePlanarMapped` / `MappedComposer` (planar_components.cpp, 1348d8e04f):
+  - variants = open crossings x tie sites;
+  - deck ends on whole pieces (`deck_parity`, mapped only);
+  - R5 bays along route paths;
+  - lane splits and lane merges refused, so LL² is not yet mapped.
+- Results (Release, 8 variants on threads):
+  - **T3: 2062 tiles (122x43), checker-clean**; the hand build was 1949;
+  - T2: 1003 (85x33); the hand build was 935;
+  - wall time 16-22 s, over the 15 s per-variant budget, with no speed work yet.
+- Gap to the hand layout: the topology's crossing order puts F x D between the main lines, where the hand build had it south of B (D N-NE-N-NE-E under one B deck). Next test: make the crossing order along a channel a variant where the topology allows both, and see whether one variant reaches about 1949 (D328's open question).
+- One-lane T: the mapped layout breaks the bay and adjacent-split rules, so T1 keeps the §2a layout (`SolvePlanarComponents` refuses it, 1722ffef0e); the game is unchanged.
+- Gate green 604/604 (28 s). New mapped tests are `[slow]` (they contend for CPU with the old T2/LL² solves in the gate).
+- Then: speed (clash sides from topology order, one switch per channel transition), LL² (lane split and merge components), and the refactor to the channel model.
+
 ## RESUME HERE (2026-11-16 later) — TOPOLOGY MAPPER IN C++, SLICES 1-3 DONE (ng1 wt-planar)
 - Job (engineer): write code that takes the topology and produces output matching the hand-built target (probe 9 `build_tn`) or close to it, generically; in C++ with tests (`[planar]`).
 - Done, test-first, gate green after slice 1 (605/605, 28.6 s Release):
