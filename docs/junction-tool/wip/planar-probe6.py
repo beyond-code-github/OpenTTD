@@ -423,6 +423,8 @@ def build_t2(fray_s, join_s, df_over, tri=0, stair=None):
             if idx == 1:  # between the arm's two directions
                 g = M.var(c=GAPW); M.add(g - (vv(b, sb)[k] - vv(a, sa)[k]) == 0); M.gaps.append(g)
                 if GAPMAX is not None: M.add(g <= 2 * GAPMAX)
+    if '--align' in sys.argv:  # the main line's ports on the same row at both ends
+        M.add(M.start['EF1'][1] - M.end('ED1')[1] == 0)
     # Box.
     M.tag = 'box'
     for name, segs in M.strands.items():
