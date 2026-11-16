@@ -9,7 +9,7 @@
   - **T3: 2062 tiles (122x43), checker-clean**; the hand build was 1949;
   - T2: 1003 (85x33); the hand build was 935;
   - wall time 16-22 s, over the 15 s per-variant budget, with no speed work yet.
-- Gap to the hand layout: the topology's crossing order puts F x D between the main lines, where the hand build had it south of B (D N-NE-N-NE-E under one B deck). Next test: make the crossing order along a channel a variant where the topology allows both, and see whether one variant reaches about 1949 (D328's open question).
+- **Gap closed (a913f9c89c):** the crossing triangle (B, D, F) is flipped relative to the parser's chord order, and D crosses under B's doubled decks at right angles (an N back-and-forth). With both, mapped T3 variant o1t3f1 = **1949.25, 129x42, identical to the hand build**: crossing orders diffed, and D's segments match to the half-tile. Triangle flips are variants. Right angles are an experiment switch (`PLANAR_PERP`). Engineer: vary for now, become opinionated if one choice is consistently smaller across many topologies. Proposed next, awaiting the engineer: right angles as a variant bit, then the speed work (all variants together starve the winner of its 15 s budget), then confirm the full run picks 1949.
 - One-lane T: the mapped layout breaks the bay and adjacent-split rules, so T1 keeps the §2a layout (`SolvePlanarComponents` refuses it, 1722ffef0e); the game is unchanged.
 - Gate green 604/604 (28 s). New mapped tests are `[slow]` (they contend for CPU with the old T2/LL² solves in the gate).
 - Then: speed (clash sides from topology order, one switch per channel transition), LL² (lane split and merge components), and the refactor to the channel model.
