@@ -29,8 +29,8 @@ vehicle_breakdowns = 0
 max_loan = 2000000000
 quantity_sea_lakes = %(lakes)d
 [game_creation]
-%(year)smap_x = 7
-map_y = 7
+%(year)smap_x = %(map)d
+map_y = %(map)d
 custom_town_number = 1
 custom_terrain_type = %(terrain)d
 custom_sea_level = 1
@@ -111,7 +111,7 @@ def start(save=None, scenario=None, timeout=60, hilly=False, nuts=False):
     _install(os.path.join(TOOLS, "ai", AI_NAME), os.path.join(USERDATA, "ai", AI_NAME))
     with open(_p("openttd.cfg"), "w") as f:
         terrain = dict(terrain=3, variety=2, smooth=1, lakes=2, towns=4) if hilly else dict(terrain=1, variety=0, smooth=0, lakes=4, towns=4)
-        f.write(CFG % dict(port=PORT, game_port=GAME_PORT, gs=GS_NAME, year=("starting_year = %d\n" % NUTS_YEAR) if nuts else "", **terrain))
+        f.write(CFG % dict(port=PORT, game_port=GAME_PORT, gs=GS_NAME, map=int(os.environ.get("OTTD_RIG_MAP", 7)), year=("starting_year = %d\n" % NUTS_YEAR) if nuts else "", **terrain))
         if nuts:
             f.write("[newgrf]\n" + nuts_newgrf_line())
     with open(_p("secrets.cfg"), "w") as f:
