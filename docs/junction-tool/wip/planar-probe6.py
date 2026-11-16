@@ -359,7 +359,10 @@ def build_t2(fray_s, join_s, df_over, tri=0):
             if tri == 0: M.add(nD - fF >= 2)  # heading W: F's deck first, one plain tile before D's
             else: M.add(nF - fD >= 2)         # flipped triangle: D's deck first
         M.add(spans[0][0] - spans[1][0] == 0); M.add(spans[0][1] - spans[1][1] == 0)  # D118: equal bridges per pair
-        M.add(spans[0][2] - spans[1][2] == 2); M.add(spans[0][3] - spans[1][3] == 2)  # copy 0 one tile downstream
+        # One lean across the whole stack: the more northerly deck is one tile further upstream (east). B2's copy
+        # (north) is upstream of its track's deck; B1's copy (south) is downstream of it.
+        st = 2 if l == 'B2' else -2
+        M.add(spans[0][2] - spans[1][2] == st); M.add(spans[0][3] - spans[1][3] == st)
     M.tag = 'coreDF'
     if df_over == 'F':  # F's southbound run over D's NE diagonal (S-bend form)
         for f in ('F1', 'F2'): M.deck(sF[f][2], [M.cross(sF[f][2], sD[d][1], 4) for d in ('D1', 'D2')])
