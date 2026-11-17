@@ -26,6 +26,12 @@ Engineer, 2026-11-17: "Should we just be keeping the channels, blocks etc concep
 - A crossing is two regions meeting at a bridge: the under line passes from one region side to the other; over/under stays a variant.
 - Widths are measured across the travel direction of the stretch; a stretch where the two lines turn differently is split at the turn.
 
+## 3a. The width profile (2026-11-17, after the merge-step fit)
+Engineer: "I can't shake the feeling that the mere concept of stepping merges is a smell. It should just figure it out without a special condition"; "doesn't that stop us building truly diagonal hubs? The diagonals are still a special case".
+- Steps are not per-block slots with conditions (fan, gap step, merge step). Before the solve, the topology and the variant give, per stretch, the lanes side by side and their spacing across the stretch's travel; a lane gets a sideways excursion exactly where its position across travel must change between stretches. Fans, gap steps and merge steps are all cases of this one rule.
+- Headings are first-class: a stretch has any of 8 headings; width is measured across its own travel; an excursion is a 45-degree turn away from the stretch heading and back (diagonal pieces on an axis stretch, axis pieces on a diagonal stretch). Diagonal hubs are blocked only by the box (axis ports on axis edges, D313), a separate constraint.
+- Evidence so far: the merge rule fitted to one LL² variant matched it exactly and lost area on 182 of 189 others (05e0159b09); wip/ANALYSIS-merge-steps.md tests whether the free solver's choices follow "the lane's position across travel had to change".
+
 ## 4. Plan (riskiest first)
 1. **Region check on T2 (no solver change):** build the region graph from the channel graph alone; for the best T2 layouts, compare its implied separations with every clash side the lazy loop chose and the gap steps. Pass: every chosen side is implied, none contradicted. Failure cases name what regions miss.
 2. Same on T3 and LL² (LL² o49t0f1s0: does the region graph imply the stack the probe found, or a flatter order?).
