@@ -9,6 +9,7 @@
 
 #include "../../stdafx.h"
 
+#include "planar_shape.h"
 #include "planar_components.h"
 #include "planar_model.h"
 #include "planar_channels.h"
@@ -2549,6 +2550,18 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 	VariantOutcome out;
 	out.tag = fmt::format("o{}t{}f{}s{}", variant.over, variant.ties, variant.flips, variant.steps);
 	const Clock::time_point t0 = Clock::now();
+	std::vector<PlanarChannelPath> program_shape;
+	if (shape == nullptr && [] { const char *e = std::getenv("PLANAR_SHAPE"); return e != nullptr && std::string(e) == "program"; }()) {
+		const PlanarPaths dflt = BuildPlanarPaths(topology, channels, variant.over);
+		std::string program_why;
+		if (dflt.why.empty()) program_shape = SolvePlanarShape(topology, channels, dflt.over, nullptr, &program_why);
+		else program_why = dflt.why;
+		if (program_shape.empty()) {
+			if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "variant {}: shape program failed ({}), solving with the default shape\n", out.tag, program_why);
+		} else {
+			shape = &program_shape;
+		}
+	}
 	MappedComposer composer(topology, channels, params, variant, shape);
 	Model &M = composer.M;
 	if (std::getenv("PLANAR_DRY") != nullptr) { // debug: build every variant without solving; print its over choices and its construction failure

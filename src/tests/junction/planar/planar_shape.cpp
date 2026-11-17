@@ -69,24 +69,32 @@ static ShapeLoop LoopVariants(const std::string &text)
 	return loop;
 }
 
-TEST_CASE("planar shape: every variant's program shape passes the shape check", "[planarshape]")
+TEST_CASE("planar shape: every variant's program shape passes the shape check", "[junction][planarshape]")
 {
-	for (const std::string &text : {PlanarTText(2), PlanarTText(3), PlanarLL2Text()}) {
+	for (const std::string &text : {PlanarTText(2), PlanarTText(3)}) {
 		const ShapeLoop loop = LoopVariants(text);
 		CHECK(loop.built > 0);
 	}
 }
 
-TEST_CASE("planar shape: the program never turns more than the default", "[planarshape]")
+TEST_CASE("planar shape: the program never turns more than the default", "[junction][planarshape]")
 {
-	for (const std::string &text : {PlanarTText(2), PlanarTText(3), PlanarLL2Text()}) {
+	for (const std::string &text : {PlanarTText(2), PlanarTText(3)}) {
 		const ShapeLoop loop = LoopVariants(text);
 		CHECK(loop.program_turns <= loop.default_turns);
 		WARN("variants " << loop.variants << " built " << loop.built << " default turns " << loop.default_turns << " program turns " << loop.program_turns << " max ms " << loop.max_ms);
 	}
 }
 
-TEST_CASE("planar shape: the program turns less than the default on T2", "[planarshape]")
+TEST_CASE("planar shape: LL2 program shapes pass the shape check and never turn more than the default", "[junction][planarshape][slow]")
+{
+	const ShapeLoop loop = LoopVariants(PlanarLL2Text());
+	CHECK(loop.built > 0);
+	CHECK(loop.program_turns <= loop.default_turns);
+	WARN("LL2 variants " << loop.variants << " built " << loop.built << " default turns " << loop.default_turns << " program turns " << loop.program_turns << " max ms " << loop.max_ms);
+}
+
+TEST_CASE("planar shape: the program turns less than the default on T2", "[junction][planarshape]")
 {
 	std::string error;
 	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
@@ -107,7 +115,7 @@ TEST_CASE("planar shape: the program turns less than the default on T2", "[plana
 	CHECK(turns < PlanarShapeTurns(def));
 }
 
-TEST_CASE("planar shape: the T2 loop takes under a second", "[planarshape]")
+TEST_CASE("planar shape: the T2 loop takes under a second", "[junction][planarshape]")
 {
 	const ShapeLoop loop = LoopVariants(PlanarTText(2));
 	WARN("T2 loop " << loop.total_ms << " ms over " << loop.built << " variants");
