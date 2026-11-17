@@ -59,3 +59,8 @@ Two lines that cross each other (a topology crossing between them) have no singl
 
 ## 10. Report (short)
 References read; commit; red evidence; types/functions added; `pv` diffs and times; LL² table; gates with count and time; stops; `git status --porcelain`, `git log -1 --oneline`. When you have reported, stop.
+
+## Revision (2026-11-17, after the agent's stop)
+- Antisymmetry dropped: Side(p, q) is relative to q's travel; antiparallel neighbours can each be left of the other.
+- Ring and leg-order sources dropped: a line carrying several routes has no single side against another line (EF1 vs CD1: F1|C1 by ring says right, E1|D1 by leg order says left). Faces only: Side(p, q) = the side of q where their common face lies; 0 when they share no face, cross, or share faces giving opposite sides.
+- Non-face clashes keep today's trial path in 3a; 3b pre-generates the face-neighbour separations so they are kept apart through the lines between.
