@@ -1,0 +1,494 @@
+diff --git a/src/junction/planar/planar_components.cpp b/src/junction/planar/planar_components.cpp
+index 88d3d6be88..5dba5278d6 100644
+--- a/src/junction/planar/planar_components.cpp
++++ b/src/junction/planar/planar_components.cpp
+@@ -774,6 +774,18 @@ private:
+ 	MappedVariant variant;
+ public:
+ 	PlanarLineSides sides; ///< Which side of each other two lines keep, from the topology.
++	std::vector<std::pair<Con, std::string>> corridor_rows; ///< Probe: R1 rows.
++	std::vector<std::string> corridor_skips; ///< Probe.
++	std::vector<std::string> corridor_notes; ///< Probe.
++	int corridor_faces = 0; ///< Probe.
++	int corridor_pairs = 0; ///< Probe.
++	struct CopyCand { bool left; std::string copy; std::string base; uint32_t first; bool starts_at = false; bool ends_at = false; }; ///< Probe: a copy strand that may join a wall.
++	struct CorrWall { std::string who; bool box = false; std::vector<std::pair<std::string, uint32_t>> L, R; std::vector<std::pair<bool, std::vector<std::pair<std::string, uint32_t>>>> runs; std::vector<CopyCand> cands; std::set<std::pair<std::pair<std::string, uint32_t>, int>> off; }; ///< Probe: a corridor's wall segments.
++	int corr_skip_box = 0; ///< Probe: box faces with one wall only.
++	int corr_multi_run = 0; ///< Probe: box faces with a wall in more than one run.
++	int corr_cand_out = 0; ///< Probe: copies not inside the stretch's segment range.
++	std::vector<CorrWall> corr_walls; ///< Probe.
++	int corr_unusable = 0; ///< Probe: stretches skipped.
+ 
+ private:
+ 	PlanarPaths paths;
+@@ -1592,6 +1604,122 @@ void MappedComposer::Build()
+ 		}
+ 	}
+ 
++	/* Probe (corridors): rule R1, rows kept in corridor_rows; PLANAR_CORRIDOR=1 adds them before the first solve. */
++	{
++		/* Probe (flipped map): a copy of the topology whose line events follow the (flipped) channel crossing order. */
++		PlanarTopology tf = this->t;
++		if (std::getenv("PLANAR_NOFLIPMAP") == nullptr) {
++			const PlanarChannels orig = BuildPlanarChannels(this->t);
++			std::vector<uint32_t> line_x(this->t.crossings.size(), UINT32_MAX); // line crossing -> channel crossing
++			for (uint32_t x = 0; x < orig.crossings.size(); x++) for (uint32_t lc : orig.crossings[x].line_crossings) line_x[lc] = x;
++			std::vector<int> pos_o(orig.crossings.size(), -1), pos_f(orig.crossings.size(), -1);
++			std::set<uint32_t> moved;
++			for (size_t c = 0; c < orig.channels.size(); c++) {
++				for (size_t k = 0; k < orig.channels[c].crossings.size(); k++) pos_o[orig.channels[c].crossings[k]] = static_cast<int>(k);
++				for (size_t k = 0; k < this->ch.channels[c].crossings.size(); k++) pos_f[this->ch.channels[c].crossings[k]] = static_cast<int>(k);
++			}
++			/* A crossing moved if its position on either of its channels changed; positions are per channel, so compare per channel. */
++			std::string note;
++			for (size_t c = 0; c < orig.channels.size(); c++) {
++				const auto &oc = orig.channels[c].crossings, &fc = this->ch.channels[c].crossings;
++				if (oc == fc) continue;
++				std::set<uint32_t> mv;
++				for (size_t k = 0; k < oc.size(); k++) if (oc[k] != fc[k]) { mv.insert(oc[k]); mv.insert(fc[k]); }
++				note += fmt::format(" ch{}:{}", c, mv.size());
++				std::map<uint32_t, int> fpos;
++				for (size_t k = 0; k < fc.size(); k++) fpos[fc[k]] = static_cast<int>(k);
++				for (uint32_t l : orig.channels[c].lines) {
++					std::vector<uint32_t> &ev = tf.events[l];
++					std::vector<size_t> slots;
++					for (size_t k = 0; k < ev.size(); k++) if (line_x[ev[k]] != UINT32_MAX && mv.contains(line_x[ev[k]])) slots.push_back(k);
++					for (size_t k = 1; k < slots.size(); k++) if (slots[k] != slots[k - 1] + 1) corridor_notes.push_back(fmt::format("FLIPMAP line {} moved events not contiguous", this->t.lines[l].name));
++					std::vector<uint32_t> vals;
++					for (size_t k : slots) vals.push_back(ev[k]);
++					std::ranges::stable_sort(vals, [&](uint32_t a, uint32_t b) { return fpos[line_x[a]] < fpos[line_x[b]]; });
++					for (size_t i = 0; i < slots.size(); i++) ev[slots[i]] = vals[i];
++				}
++			}
++			corridor_notes.push_back(fmt::format("FLIPMAP flips {} moved channels{}", this->variant.flips, note));
++		}
++		const PlanarTopology &t = tf;
++		const PlanarLineSides sd(tf, this->ch);
++		corridor_notes.push_back(fmt::format("FLIPMAP faces: unflipped-order map {} (why '{}'), used map {} (why '{}')", this->sides.corridors.size() + 1, this->sides.Why(), sd.corridors.size() + 1, sd.Why()));
++		const auto name_of = [&](int l) { return t.lines[l].name; };
++		const auto event_seg = [&](uint32_t line, size_t k) -> int {
++			const uint32_t c = t.events[line][k];
++			const std::string &a = t.lines[t.crossings[c].a].name, &b = t.lines[t.crossings[c].b].name;
++			const std::string &me = t.lines[line].name;
++			int found = -1;
++			for (const CrossRec &cr : M.crossings) {
++				const bool ab = cr.over.strand == a && cr.under.strand == b, ba = cr.over.strand == b && cr.under.strand == a;
++				if (!ab && !ba) continue;
++				const Seg &mine = cr.over.strand == me ? cr.over : cr.under;
++				if (found >= 0 && found != static_cast<int>(mine.i)) corridor_notes.push_back(fmt::format("crossing {}x{} has several records", a, b));
++				if (found < 0) found = static_cast<int>(mine.i);
++			}
++			if (found < 0) corridor_notes.push_back(fmt::format("crossing {}x{} has no record on strand {}", a, b, me));
++			return found;
++		};
++		std::set<std::pair<std::pair<std::string, uint32_t>, int>> off_pts;
++		const auto wall_segs = [&](const std::vector<std::pair<int, int>> &wall, std::vector<Seg> &out, bool left, std::vector<CopyCand> &cands) -> bool {
++			for (const auto &[l, k] : wall) {
++				const std::vector<Seg> &segs = M.strands.at(name_of(l)).segs;
++				const size_t ne = t.events[l].size();
++				int i0 = k == 0 ? 0 : event_seg(l, k - 1);
++				int i1 = static_cast<size_t>(k) == ne ? static_cast<int>(segs.size()) - 1 : event_seg(l, k);
++				if (i0 < 0 || i1 < 0 || i0 > i1) {
++					corridor_notes.push_back(fmt::format("stretch {}#{} segs {}..{} unusable", name_of(l), k, i0, i1));
++					corr_unusable++;
++					continue;
++				}
++				for (int i = i0; i <= i1; i++) out.push_back(segs[i]);
++				for (const CopyRec &cp : M.copies) {
++					if (cp.strand != name_of(l)) continue;
++					const bool inside = static_cast<int>(cp.first) >= i0 && static_cast<int>(cp.resume) - 1 <= i1;
++					const bool overlap = static_cast<int>(cp.first) <= i1 && static_cast<int>(cp.resume) - 1 >= i0;
++					const bool strict = std::getenv("PLANAR_COPYINSIDE") != nullptr;
++					if (strict ? inside : overlap) cands.push_back({left, cp.copy, cp.strand, cp.first, static_cast<int>(cp.first) == i0 && k > 0, static_cast<int>(cp.first) == i1 && static_cast<size_t>(k) < ne});
++					if (overlap && !inside) corr_cand_out++;
++				}
++				if (k > 0) off_pts.insert({{name_of(l), static_cast<uint32_t>(i0)}, 0});
++				if (static_cast<size_t>(k) < ne) off_pts.insert({{name_of(l), static_cast<uint32_t>(i1)}, 1});
++			}
++			return true;
++		};
++		for (const PlanarCorridor &cor : sd.corridors) {
++			if (cor.left.empty() || cor.right.empty()) { // the crossing triangle, or one wall plus box
++				if (cor.box) { corr_skip_box++; std::string w2 = fmt::format("SKIPPED one-wall box face {} {} L=", cor.face, cor.pattern); for (const auto &[l, k] : cor.left) w2 += fmt::format("{}#{} ", name_of(l), k); w2 += "R="; for (const auto &[l, k] : cor.right) w2 += fmt::format("{}#{} ", name_of(l), k); corridor_notes.push_back(w2); }
++				continue;
++			}
++			if (cor.box && (cor.fruns > 1 || cor.bruns > 1)) corr_multi_run++;
++			std::vector<std::pair<bool, std::vector<Seg>>> runsegs;
++			std::vector<CopyCand> cands;
++			for (const auto &[fwd, run] : cor.runs) {
++				runsegs.emplace_back(fwd, std::vector<Seg>{});
++				wall_segs(run, runsegs.back().second, !fwd, cands);
++			}
++			std::string who = fmt::format("face {} L=", cor.face);
++			for (const auto &[l, k] : cor.left) who += fmt::format("{}#{} ", name_of(l), k);
++			who += "R=";
++			for (const auto &[l, k] : cor.right) who += fmt::format("{}#{} ", name_of(l), k);
++			corridor_faces++;
++			CorrWall cw;
++			cw.who = who + (cor.box ? " BOX " + cor.pattern : std::string());
++			cw.box = cor.box;
++			cw.cands = std::move(cands);
++			for (const auto &[fwd, segs] : runsegs) {
++				cw.runs.emplace_back(fwd, std::vector<std::pair<std::string, uint32_t>>{});
++				for (const Seg &sg : segs) cw.runs.back().second.emplace_back(sg.strand, sg.i);
++			}
++			cw.off = off_pts;
++			corr_walls.push_back(std::move(cw));
++		}
++		if (const char *e = std::getenv("PLANAR_CORRIDOR"); e != nullptr && std::string(e) == "1") {
++			const TagScope ts("corridor");
++			for (const auto &[c, w] : corridor_rows) M.Add(c);
++		}
++	}
++
+ 	/* Out ports on the boundary. */
+ 	for (const PlanarPort &port : t.ports) {
+ 		if (port.in) continue;
+@@ -1973,6 +2101,9 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
+ 			}
+ 		}
+ 		if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "round {}: {} clashes, {} under-deck\n", rnd, bad.size(), under_bad.size());
++		if (std::getenv("PLANAR_CLASHES") != nullptr) {
++			for (const auto &c : bad) fmt::print(stderr, "CLASH r{} {}#{} {}#{}\n", rnd, c.first.first, c.first.second, c.second.first, c.second.second);
++		}
+ 		if (bad.empty() && under_bad.empty()) {
+ 			out = LazyResult{r, g, seps};
+ 			return true;
+@@ -2284,6 +2415,149 @@ VariantOutcome SolveVariant(const PlanarTopology &topology, const Params &params
+ 	return out;
+ }
+ 
++
++/** Probe (ladders): a rung, one wall's end point held beside the facing segment of the other wall. */
++struct RungSpec {
++	SegKey pt;
++	int end; ///< 0 the point a, 1 the point b.
++	SegKey tgt;
++	int sign; ///< +1: the point is on the left of the target (the target is a forward run, face on its left), -1: on the right.
++	int k = 2; ///< The row's constant, from RungSpacing.
++	std::string who;
++	bool box = false; ///< From a face with a box edge.
++	bool from_copy = false; ///< The point is on a copy strand.
++	bool to_copy = false; ///< The target is a copy segment.
++};
++
++struct RungStats {
++	std::map<std::string, int> counts;
++	std::vector<std::string> violated;
++};
++
++/**
++ * The distance a rung holds, in Dot(Right(target), .) units, from the lazy clash rule (DIAG-ladders Q2).
++ * The rule (same tile unless opposite corners, or a shared end point; brute force of it): parallel pairs
++ * (axis-axis, diag-diag) and any diagonal target need exactly 2 along Right(h); an axis target facing a
++ * perpendicular axis end or a diagonal piece leading away needs 1 (the next tile).
++ * @param target_d Direction of the target segment.
++ * @param own_d Direction of the segment of the point's own run that ends in the point.
++ * @return 1 when the target is axis and the own segment is diagonal or perpendicular to it, else 2.
++ */
++int RungSpacing(int target_d, int own_d)
++{
++	if (!IsAxis(target_d)) return 2;
++	if (!IsAxis(own_d)) return 1;
++	return own_d % 4 == target_d % 4 ? 2 : 1;
++}
++
++/** The row of a rung in a model. */
++Con RungCon(const Model &M, const RungSpec &r)
++{ // Row: the point is at least r.k along Right(h) of the target, on the side r.sign.
++	const Seg &ps = M.strands.at(r.pt.first).segs[r.pt.second];
++	const Seg &ts = M.strands.at(r.tgt.first).segs[r.tgt.second];
++	const Point &p = r.end == 0 ? ps.a : ps.b;
++	const int h = ts.d;
++	if (r.sign > 0) return Ge(Dot(Right(h), ts.a) - Dot(Right(h), p), r.k);
++	return Ge(Dot(Right(h), p) - Dot(Right(h), ts.a), r.k);
++}
++
++/** Rungs from a solved layout: every end point of each wall against the facing segment of the other wall that spans it. */
++std::vector<RungSpec> RungsFrom(const Model &M, const std::vector<MappedComposer::CorrWall> &walls, const std::vector<int64_t> &val, RungStats &st, bool drop_off)
++{
++	std::vector<RungSpec> out;
++	const auto pos = [&](const Point &p) { return std::array<double, 2>{Ev(val, p[0]), Ev(val, p[1])}; };
++	for (const auto &cw : walls) {
++		const std::set<std::pair<SegKey, int>> &offx = cw.off;
++		for (size_t xi = 0; xi < cw.runs.size(); xi++) for (size_t yi = 0; yi < cw.runs.size(); yi++) { // every ordered pair of distinct runs
++			if (xi == yi) continue;
++			const auto &mine = cw.runs[xi].second;
++			const auto &other = cw.runs[yi].second;
++			const int sign = cw.runs[yi].first ? 1 : -1; // Y's interior side: the face is left of a forward run, right of a reverse one
++			std::vector<std::array<double, 2>> other_pts;
++			for (const SegKey &k : other) {
++				const Seg &sg = M.strands.at(k.first).segs[k.second];
++				other_pts.push_back(pos(sg.a));
++				other_pts.push_back(pos(sg.b));
++			}
++			std::set<std::pair<SegKey, int>> seen;
++			std::map<std::pair<std::pair<int64_t, int64_t>, SegKey>, size_t> at; // (point, target) -> row in `out`: a shared end keeps the smaller constant
++			for (const SegKey &k : mine) {
++				const Seg &sg = M.strands.at(k.first).segs[k.second];
++				for (int e = 0; e < 2; e++) {
++					if (!seen.insert({k, e}).second) continue;
++					if (drop_off && offx.contains({k, e})) { st.counts["off-wall dropped"]++; continue; }
++					const auto pp = pos(e == 0 ? sg.a : sg.b);
++					st.counts["points"]++;
++					bool shared = false;
++					for (const auto &q : other_pts) shared = shared || (std::abs(q[0] - pp[0]) < 1e-6 && std::abs(q[1] - pp[1]) < 1e-6);
++					if (shared) { st.counts["shared dropped"]++; continue; }
++					const SegKey *best = nullptr;
++					double bd = 1e18;
++					for (const SegKey &o : other) {
++						const Seg &os = M.strands.at(o.first).segs[o.second];
++						const auto &sv = STEP[os.d];
++						const auto a = pos(os.a), b = pos(os.b);
++						const double pa = sv[0] * a[0] + sv[1] * a[1], pb = sv[0] * b[0] + sv[1] * b[1];
++						const double pr = sv[0] * pp[0] + sv[1] * pp[1];
++						if (pr < std::min(pa, pb) - 1e-9 || pr > std::max(pa, pb) + 1e-9) continue;
++						const auto &rt = Right(os.d);
++						const double d = std::abs(rt[0] * (pp[0] - a[0]) + rt[1] * (pp[1] - a[1])) / std::sqrt(static_cast<double>(rt[0] * rt[0] + rt[1] * rt[1]));
++						if (d < bd) { bd = d; best = &o; }
++					}
++					if (best == nullptr) { st.counts["skipped"]++; continue; }
++					const int kk = RungSpacing(M.strands.at(best->first).segs[best->second].d, sg.d);
++					const auto key = std::make_pair(std::make_pair(static_cast<int64_t>(std::llround(pp[0] * 4)), static_cast<int64_t>(std::llround(pp[1] * 4))), *best);
++					if (const auto it = at.find(key); it != at.end()) {
++						out[it->second].k = std::min(out[it->second].k, kk);
++						st.counts["shared ends merged"]++;
++						continue;
++					}
++					at[key] = out.size();
++					RungSpec rs;
++					rs.pt = k;
++					rs.end = e;
++					rs.tgt = *best;
++					rs.sign = sign;
++					rs.k = kk;
++					rs.who = cw.who;
++					rs.box = cw.box;
++					out.push_back(rs);
++				}
++			}
++		}
++	}
++	st.counts["rows"] = static_cast<int>(out.size());
++	for (const RungSpec &r : out) {
++		st.counts["rows box faces"] += r.box;
++		st.counts["rows from copies"] += r.from_copy;
++		st.counts["rows against copies"] += r.to_copy;
++		const Con c = RungCon(M, r);
++		const double v = Ev(val, c.e);
++		if (v < -1e-6) {
++			st.counts["violated on S"]++;
++			st.violated.push_back(fmt::format("slack {} {}#{}.{} vs {}#{} {} | {}", v, r.pt.first, r.pt.second, r.end, r.tgt.first, r.tgt.second, r.sign > 0 ? "L" : "R", r.who));
++		}
++	}
++	return out;
++}
++
++/** Whether every rung point still lies within its target segment's span in a solution (counts the others). */
++int RungsMoved(const Model &M, const std::vector<RungSpec> &rungs, const std::vector<int64_t> &val)
++{
++	int moved = 0;
++	for (const RungSpec &r : rungs) {
++		const Seg &ps = M.strands.at(r.pt.first).segs[r.pt.second];
++		const Seg &ts = M.strands.at(r.tgt.first).segs[r.tgt.second];
++		const Point &p = r.end == 0 ? ps.a : ps.b;
++		const auto &sv = STEP[ts.d];
++		const auto pr = sv[0] * Ev(val, p[0]) + sv[1] * Ev(val, p[1]);
++		const auto pa = sv[0] * Ev(val, ts.a[0]) + sv[1] * Ev(val, ts.a[1]);
++		const auto pb = sv[0] * Ev(val, ts.b[0]) + sv[1] * Ev(val, ts.b[1]);
++		if (pr < std::min(pa, pb) - 1e-9 || pr > std::max(pa, pb) + 1e-9) moved++;
++	}
++	return moved;
++}
++
+ /**
+  * Build, solve and export one variant of the mapped composition.
+  * @param topology The topology.
+@@ -2316,7 +2590,69 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
+ 		return out;
+ 	}
+ 	LazyResult res;
++	if (std::getenv("PLANAR_LADDER") != nullptr) {
++		const int mode = std::getenv("PLANAR_LADDER")[0] - 48;
++		const auto ms = [](Clock::time_point a) { return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - a).count(); };
++		fmt::print(stderr, "== RUN 1 rough {}\n", out.tag);
++		const bool ok1 = SolveLazy(M, t0, res, out.area, out.why, &composer.sides);
++		fmt::print(stderr, "LADDER rough {} ok {} area {} ms {} (unusable stretches {}, corridors {}, box corridors {}, one-wall box faces skipped {}, box faces with >1 wall run {}, copies partly outside stretch {})\n", out.tag, ok1, out.area, ms(t0), composer.corr_unusable, composer.corr_walls.size(), std::ranges::count_if(composer.corr_walls, [](const auto &w) { return w.box; }), composer.corr_skip_box, composer.corr_multi_run, composer.corr_cand_out);
++		if (!ok1) { fmt::print(stderr, "LADDER rough failed: {}\n", out.why); return out; }
++		for (const auto &w : composer.corr_walls) fmt::print(stderr, "LADDER FACE {} cands {}\n", w.who, w.cands.size());
++		for (const std::string &n : composer.corridor_notes) fmt::print(stderr, "LADDER NOTE {}\n", n);
++		std::vector<int64_t> val = res.sol.val;
++		const Model *Mprev = &M;
++		std::unique_ptr<MappedComposer> prevc;
++		const std::vector<MappedComposer::CorrWall> walls = composer.corr_walls;
++		std::vector<RungSpec> rungs;
++		for (int pass = 2; pass <= 3; pass++) {
++			RungStats st;
++			rungs = RungsFrom(*Mprev, walls, val, st, mode == 3);
++			std::string cs;
++			for (const auto &[k, v] : st.counts) cs += fmt::format(" {}={}", k, v);
++			fmt::print(stderr, "LADDER pass {} rungs from solution:{}\n", pass, cs);
++			for (const std::string &v : st.violated) fmt::print(stderr, "LADDER VIOLATED on S: {}\n", v);
++			if (mode == 2) {
++				std::vector<RungSpec> keep;
++				for (const RungSpec &r : rungs) if (Ev(val, RungCon(*Mprev, r).e) >= -1e-6) keep.push_back(r);
++				rungs = std::move(keep);
++			}
++			auto c2 = std::make_unique<MappedComposer>(topology, channels, params, variant);
++			if (!c2->M.error.empty()) { fmt::print(stderr, "LADDER rebuild error {}\n", c2->M.error); break; }
++			{
++				const TagScope ts("rung");
++				for (const RungSpec &r : rungs) c2->M.Add(RungCon(c2->M, r));
++			}
++			const Clock::time_point t1 = Clock::now();
++			LazyResult r2;
++			double area2 = 0;
++			std::string why2;
++			fmt::print(stderr, "== RUN {} ladder (rows {})\n", pass, rungs.size());
++			const bool ok2 = SolveLazy(c2->M, t1, r2, area2, why2, &c2->sides);
++			fmt::print(stderr, "LADDER pass {} ok {} area {} ms {} why '{}'\n", pass, ok2, area2, ms(t1), why2);
++			if (!ok2) break;
++			const int moved = RungsMoved(c2->M, rungs, r2.sol.val);
++			fmt::print(stderr, "LADDER pass {} rung points moved off their facing span: {}\n", pass, moved);
++			if (moved == 0) break;
++			val = r2.sol.val;
++			prevc = std::move(c2);
++			Mprev = &prevc->M;
++		}
++		return out;
++	}
+ 	if (!SolveLazy(M, t0, res, out.area, out.why, &composer.sides)) return out;
++	if (std::getenv("PLANAR_CORRIDORCHK") != nullptr) {
++		int bad = 0;
++		for (const auto &[c, w] : composer.corridor_rows) {
++			const double v = Ev(res.sol.val, c.e);
++			if (v < -1e-6) {
++				bad++;
++				fmt::print(stderr, "CORR VIOLATED {} slack {} : {}\n", out.tag, v, w);
++			}
++		}
++		fmt::print(stderr, "CORR {} faces {} pairs {} rows {} skipped {} violated {}\n", out.tag, composer.corridor_faces, composer.corridor_pairs, composer.corridor_rows.size(), composer.corridor_skips.size(), bad);
++		for (const std::string &sk : composer.corridor_skips) fmt::print(stderr, "CORR SKIP {}\n", sk);
++		for (const std::string &sk : composer.corridor_notes) fmt::print(stderr, "CORR NOTE {}\n", sk);
++	}
+ 	for (const auto &[key, geo] : res.geo.geo) out.track += geo.L * (IsAxis(geo.d) ? 0.5 : std::sqrt(2.0) / 2);
+ 	out.width = static_cast<int>(std::llround(Ev(res.sol.val, M.X))) / 2 + 1;
+ 	out.height = static_cast<int>(std::llround(Ev(res.sol.val, M.Y))) / 2 + 1;
+diff --git a/src/junction/planar/planar_regions.cpp b/src/junction/planar/planar_regions.cpp
+index 4f9322aa11..5783277041 100644
+--- a/src/junction/planar/planar_regions.cpp
++++ b/src/junction/planar/planar_regions.cpp
+@@ -34,6 +34,7 @@ struct MapEdge {
+ struct FaceEntry {
+ 	int line;
+ 	int8_t side; ///< -1 the face is left of the line's travel, +1 right.
++	int stretch; ///< The stretch of the line.
+ };
+ 
+ /** The clockwise arc from entry to exit of a path, as ring positions. */
+@@ -47,6 +48,8 @@ class PlanarMap {
+ public:
+ 	std::vector<std::vector<FaceEntry>> faces; ///< Every face's boundary, the outer face included.
+ 	int outer = -1; ///< The face holding only ring edges.
++	std::vector<bool> has_box; ///< Per face, whether a ring edge bounds it.
++	std::vector<std::string> pattern; ///< Probe: per face the walk as F (forward dart), B (reverse dart), R (ring edge).
+ 	std::string why; ///< Empty, or the validation failure.
+ 
+ 	PlanarMap(const PlanarTopology &t, const std::vector<int> &ring_pos, const std::vector<RingEnds> &ends);
+@@ -157,15 +160,19 @@ PlanarMap::PlanarMap(const PlanarTopology &t, const std::vector<int> &ring_pos,
+ 		std::set<int> tails;
+ 		bool only_boundary = true;
+ 		std::vector<FaceEntry> entries;
++		bool box = false;
++		std::string pat;
+ 		for (int d : walks[f]) {
+ 			const MapEdge &e = edges[d / 2];
+ 			if (!tails.insert(d % 2 == 0 ? e.u : e.v).second) {
+ 				this->why = fmt::format("face {} is not a simple walk", f);
+ 				return;
+ 			}
++			if (e.line < 0) box = true;
++			pat += e.line < 0 ? 'R' : (d % 2 == 0 ? 'F' : 'B');
+ 			if (e.line >= 0) {
+ 				only_boundary = false;
+-				entries.push_back({e.line, static_cast<int8_t>(d % 2 == 0 ? -1 : 1)});
++				entries.push_back({e.line, static_cast<int8_t>(d % 2 == 0 ? -1 : 1), e.stretch});
+ 			}
+ 		}
+ 		if (only_boundary) {
+@@ -173,6 +180,8 @@ PlanarMap::PlanarMap(const PlanarTopology &t, const std::vector<int> &ring_pos,
+ 			outers++;
+ 		}
+ 		this->faces.push_back(std::move(entries));
++		this->has_box.push_back(box);
++		this->pattern.push_back(pat);
+ 	}
+ 	if (outers != 1) this->why = fmt::format("the face map has {} outer faces", outers);
+ }
+@@ -245,6 +254,34 @@ PlanarLineSides::PlanarLineSides(const PlanarTopology &t, const PlanarChannels &
+ 		}
+ 	}
+ 	this->face_pairs.assign(pairs.begin(), pairs.end());
++	/* Probe: the walls of every face without a box edge. Dart direction: side -1 is a forward dart (the line is the face's right wall). */
++	for (size_t f = 0; f < map.faces.size(); f++) {
++		if (static_cast<int>(f) == map.outer) continue;
++		PlanarCorridor c;
++		c.face = static_cast<int>(f);
++		c.box = map.has_box[f];
++		{
++			const std::string &pt = map.pattern[f];
++			const size_t n = pt.size();
++			for (size_t i = 0; i < n; i++) {
++				if (pt[i] == 'F' && pt[(i + n - 1) % n] != 'F') c.fruns++;
++				if (pt[i] == 'B' && pt[(i + n - 1) % n] != 'B') c.bruns++;
++			}
++			c.pattern = pt;
++		}
++		for (const FaceEntry &e : map.faces[f]) {
++			if (c.runs.empty() || c.runs.back().first != (e.side == -1)) c.runs.emplace_back(e.side == -1, std::vector<std::pair<int, int>>{});
++			c.runs.back().second.emplace_back(e.line, e.stretch);
++			if (e.side == -1) c.right.emplace_back(e.line, e.stretch);
++			else c.left.emplace_back(e.line, e.stretch);
++		}
++		if (c.runs.size() > 2 && c.runs.front().first == c.runs.back().first) { // cyclic: the last run continues the first
++			c.runs.back().second.insert(c.runs.back().second.end(), c.runs.front().second.begin(), c.runs.front().second.end());
++			c.runs.erase(c.runs.begin());
++		}
++		std::ranges::reverse(c.left);
++		this->corridors.push_back(std::move(c));
++	}
+ }
+ 
+ std::vector<std::pair<uint32_t, uint32_t>> PlanarLineSides::FacePairs() const
+diff --git a/src/junction/planar/planar_regions.h b/src/junction/planar/planar_regions.h
+index 53c8ae2c2f..e38c8c2d19 100644
+--- a/src/junction/planar/planar_regions.h
++++ b/src/junction/planar/planar_regions.h
+@@ -16,6 +16,18 @@
+ #include <string>
+ #include <string_view>
+ 
++/** Probe: a face's two walls, each a list of (line, stretch) in travel order. */
++struct PlanarCorridor {
++	int face = 0;
++	std::vector<std::pair<int, int>> left;
++	std::vector<std::pair<int, int>> right;
++	bool box = false; ///< A ring edge bounds the face.
++	int fruns = 0; ///< Probe: cyclic runs of forward darts in the walk.
++	int bruns = 0; ///< Probe: cyclic runs of reverse darts.
++	std::string pattern; ///< Probe: the walk as F, B, R.
++	std::vector<std::pair<bool, std::vector<std::pair<int, int>>>> runs; ///< Probe: maximal runs of one dart direction in walk order (true: F, a right wall), ring edges ignored, cyclic.
++};
++
+ /** Which side of each other two lines keep, read from the topology alone (DESIGN-tracks §3). */
+ class PlanarLineSides {
+ public:
+@@ -39,6 +51,8 @@ public:
+ 	/** Every ordered pair of distinct lines (p, q) bounding a common face with Side(p, q) != 0, once each. */
+ 	std::vector<std::pair<uint32_t, uint32_t>> FacePairs() const;
+ 
++	std::vector<PlanarCorridor> corridors; ///< Probe: the faces without a box edge, walls in travel order.
++
+ 	/** @return Empty, or why the face map failed validation (V - E + F != 2, a face not a simple walk) or two sources disagreed. */
+ 	const std::string &Why() const { return this->why; }
+ 
