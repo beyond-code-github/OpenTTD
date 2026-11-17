@@ -12,6 +12,7 @@
 #include "planar_model.h"
 
 #include <algorithm>
+#include <set>
 
 #include "../../safeguards.h"
 
@@ -78,6 +79,50 @@ double Ev(const std::vector<int64_t> &val, const Ex &e)
 	double r = e.constant;
 	for (const auto &[k, v] : e.terms) r += static_cast<double>(val[k]) * v;
 	return r;
+}
+
+void Model::PieceCurves(const RouteList &routes)
+{
+	const Params &pr = this->params;
+	std::set<std::pair<std::vector<std::pair<uint32_t, double>>, double>> seen;
+	const auto addrow = [&](const Ex &e) {
+		std::vector<std::pair<uint32_t, double>> key(e.terms.begin(), e.terms.end());
+		if (seen.emplace(std::move(key), e.constant).second) this->Add(Ge(e, 0));
+	};
+	for (const auto &route : routes) {
+		for (const std::vector<Seg> &seq : RouteSegs(*this, route)) {
+			for (const Seg &seg : seq) {
+				if (seg.z.has_value()) this->Fail(fmt::format("an optional segment on a route of required pieces: {}#{}", seg.strand, seg.i));
+			}
+			struct Curve {
+				Ex at;
+				bool left_hand;
+			};
+			std::vector<Curve> curves;
+			Ex acc;
+			for (size_t k = 0; k + 1 < seq.size(); k++) {
+				const Seg &a = seq[k], &b = seq[k + 1];
+				acc = acc + a.L;
+				if (a.d != b.d) {
+					if (std::abs(Rot(a.d, b.d)) != 1) this->Fail(fmt::format("a route turns by more than one eighth {}#{} d{} -> {}#{} d{}", a.strand, a.i, a.d, b.strand, b.i, b.d));
+					curves.push_back({acc, Rot(a.d, b.d) > 0});
+				}
+			}
+			for (size_t i = 0; i < curves.size(); i++) {
+				int mand = 0;
+				for (size_t j = i + 1; j < curves.size(); j++) {
+					if (mand >= 3) break;
+					const Ex e = curves[j].at - curves[i].at;
+					if (mand >= 1) {
+						addrow(e - std::min(2 * pr.tl - 1, (mand + 1) * pr.cl));
+					} else {
+						addrow(e - (curves[i].left_hand != curves[j].left_hand ? 2 : pr.g));
+					}
+					mand++;
+				}
+			}
+		}
+	}
 }
 
 std::vector<std::vector<Seg>> RouteSegs(const Model &M, const std::vector<std::string> &route)

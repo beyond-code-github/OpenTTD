@@ -11,6 +11,7 @@
 #define PLANAR_MODEL_H
 
 #include "../placement/junction_milp.h"
+#include "../../3rdparty/fmt/format.h"
 
 #include <array>
 #include <chrono>
@@ -190,6 +191,9 @@ struct Params {
 	int g; ///< The gap between same-hand curves.
 	int maxmid = 10; ///< The longest bridge middle in tiles (spec max_bridge_middle).
 };
+
+/** The route list of a composition. */
+using RouteList = std::vector<std::vector<std::string>>;
 
 /** The integer program of one variant: variables, rows, strands, decks, crossings and copies. */
 class Model {
@@ -380,6 +384,36 @@ public:
 		return sg;
 	}
 
+	/**
+	 * Add a required piece to a strand: it never vanishes; its least length comes from a rule (an axis piece at least a tile, a diagonal at least one piece), it turns at most one eighth from the piece before it, and a strand starting on a diagonal starts on a tile-edge midpoint.
+	 * @param name The strand.
+	 * @param d The heading.
+	 * @param lo The least length (half-tiles).
+	 * @param hi The greatest length, or none.
+	 * @param c The cost per half-tile.
+	 * @return The segment.
+	 */
+	Seg AddPiece(const std::string &name, int d, int lo, std::optional<int> hi = std::nullopt, double c = 1.0)
+	{
+		if (lo < (IsAxis(d) ? 2 : 1)) this->Fail(fmt::format("a piece shorter than its heading allows: {} d{} lo {}", name, d, lo));
+		const Strand &s = this->strands.at(name);
+		if (!s.segs.empty() && std::abs(Rot(s.segs.back().d, d)) > 1) {
+			this->Fail(fmt::format("a strand turns by more than one eighth: {}#{} d{} -> d{}", name, s.segs.size(), s.segs.back().d, d));
+		}
+		if (s.segs.empty() && !IsAxis(d)) {
+			const Var w = this->NewVar(-INF, INF);
+			this->Add(Eq(w - s.start[0] - s.start[1], 0));
+			this->Parity(w, 1);
+		}
+		return this->AddSeg(name, d, lo, hi, c, false);
+	}
+
+	/**
+	 * The curve rows of every route over required pieces (DESIGN-pieces §4): between curves k apart along a route, the pieces between them sum to at least min(2 TL - 1, k CL); consecutive curves of opposite hands at least 2, of the same hand G. Every curve exists, so no row depends on a switch.
+	 * @param routes The routes' strand names.
+	 */
+	void PieceCurves(const RouteList &routes);
+
 	/** Mark strands as meeting at a node (clashes between them are allowed). */
 	void Node(std::initializer_list<std::string> names)
 	{
@@ -510,9 +544,6 @@ public:
  * @return Its value.
  */
 double Ev(const std::vector<int64_t> &val, const Ex &e);
-
-/** The route list of a composition. */
-using RouteList = std::vector<std::vector<std::string>>;
 
 /**
  * Every segment sequence of a route: its strands in order, each doubled stretch by either copy.
