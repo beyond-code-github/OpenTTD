@@ -1,5 +1,11 @@
 ## RESUME HERE (2026-11-16, final) — D329: APPROXIMATE AREA ACCEPTED; NEXT T2 AND LL² FROM TEXT (ng1 wt-planar 7a14a431aa)
 
+RESUME 2026-11-17 pieces (ng1 wt-planar 1abf2b91b1, clean; docs on feature/junction-tool):
+- DESIGN-pieces §8 answered: B's jog solved both ways as a variant bit listed by the builder (flip test: jog won on T3 and T2, T2 906.25 < the switch's 917.25); watch for always-jog. Diagonal lane spacing kept.
+- Experiments reverted and saved as wip/pieces-spike.patch (IIS strip-down, FIXSW, SEGDUMP, DRY_PATHS, cap removal); OPTMAX cap is back at HEAD until step 3 removes switches.
+- Step 1 done: 1a 50085c018b model core moved to planar_model.{h,cpp} (namespace PlanarModel); 1b 1abf2b91b1 Model::AddPiece (required pieces, rule minima, one-eighth turns, diagonal start on a tile-edge midpoint) and Model::PieceCurves (gap-sum curve rows, no switches); 7 tests [planarmodel].
+- NEXT: step 2, the heading-sequence builder (route turns, width changes, crossing pieces), tested against the T2 spike dumps.
+
 RESUME 2026-11-17 latest (ng1 wt-planar 46cbaeb78d + uncommitted experiments; docs ef0f88f7d0+):
 - LL² o49t0f0 "impossible" traced (constraint strip-down, 42 rows): the 8-tile OPTMAX cap on optional steps, not the doubled bridge or the grid. Pete: the cap "should never have been there"; a long detour is a smell.
 - Removing the cap: T1/T2/T3 same areas but T2 4.6 -> 15.4 s, T3 9.9 -> 20.9 s (the cap was a hidden search restriction).
