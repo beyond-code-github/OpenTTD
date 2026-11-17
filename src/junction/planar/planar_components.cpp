@@ -1605,6 +1605,22 @@ void MappedComposer::Build()
 		const size_t k = across_y ? 1 : 0;
 		for (size_t i = 1; i < seq.size(); i++) M.Add(Eq(seq[i].first[k] - seq[i - 1].first[k], seq[i].second ? 4 : 2));
 	}
+	/* Experiment (PLANAR_ALIGN): a prio route between opposite sides enters and leaves on the same row (D316). */
+	if (std::getenv("PLANAR_ALIGN") != nullptr) {
+		const TagScope ts("align");
+		for (const PlanarRoute &route : t.routes) {
+			if (!route.prio || route.paths.empty() || route.paths[0].empty()) continue;
+			const PlanarLine &first = t.lines[route.paths[0].front()], &last = t.lines[route.paths[0].back()];
+			if (!first.from.port || !last.to.port) continue;
+			const PlanarSide a = t.ports[first.from.index].side, b = t.ports[last.to.index].side;
+			const bool we = (a == PlanarSide::W && b == PlanarSide::E) || (a == PlanarSide::E && b == PlanarSide::W);
+			const bool ns = (a == PlanarSide::N && b == PlanarSide::S) || (a == PlanarSide::S && b == PlanarSide::N);
+			if (!we && !ns) continue;
+			if (std::string(std::getenv("PLANAR_ALIGN")) == "W" && a != PlanarSide::W) continue; // only routes entering from the west
+			const size_t k = we ? 1 : 0;
+			M.Add(Eq(M.End(last.name)[k] - M.strands.at(first.name).start[k], 0));
+		}
+	}
 	/* Box. */
 	for (const std::string &name : M.order) {
 		const TagScope ts("box");

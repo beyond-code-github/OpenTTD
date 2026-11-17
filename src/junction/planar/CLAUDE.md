@@ -43,6 +43,7 @@
 - Clashes (`JunctionTracksMayShareTile`, touching across a tile edge, heads exclusive, deck middles over ground allowed), curve gaps (`JunctionCurveGaps` on the solved hands), prio element room and terrain facts are added lazily as separations or floors, each holding while the headings it was found at hold, and the program is solved again until none is found.
 - `PLANAR_DEBUG` set in the environment prints the lazy loop's rounds.
 - `PLANAR_IIS` set in the environment: a mapped solve proven infeasible prints a minimal conflicting row set to stderr, `IIS <tag> : <row>` per row (tags: `seg <strand>#<i>`, `cross`, `deck`, `sep`, `fan rule`, `box`, ...), or `IIS integer-only (LP feasible)`.
+- `PLANAR_ALIGN` (experiment): a prio route between opposite sides enters and leaves on the same row; `PLANAR_ALIGN=W` only routes entering from the west. With today's steps it is infeasible on every T2/T3 variant and on all but one of 201 LL² variants (o49t0f1s0: 1738.25, 104x65), because no step brings a fanned main line back.
 
 ## Back end (`planar_plan`)
 - The flat seed is cached per topology text and the spec's rule fields. It solves the component layout (`SolvePlanarComponents`) for topologies with a composition (T2, LL², `seed.components`, `bound` 0) and the layout program (`planar_layout`) otherwise, at box bound 64 tiles, then 128; a topology with no composition behaves as before.
