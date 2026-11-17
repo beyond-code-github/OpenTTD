@@ -13,6 +13,7 @@
 
 #include "../../../junction/planar/planar_paths.h"
 #include "../../../junction/planar/planar_plan.h"
+#include "../../../junction/planar/planar_topology.h"
 
 #include <algorithm>
 #include <string>
@@ -115,5 +116,105 @@ TEST_CASE("planar paths: the T's crossing triangle flips", "[planar]")
 		/* Unflipped is the topology's order; both give valid paths. */
 		CHECK(FlipPlanarTriangles(channels, 0).channels[ChannelIndex(topology, channels, "B1")].crossings == channels.channels[ChannelIndex(topology, channels, "B1")].crossings);
 		for (uint64_t choice = 0; choice < 2; choice++) CheckValid(flipped, BuildPlanarPaths(topology, flipped, choice));
+	}
+}
+
+static bool SamePaths(const std::vector<PlanarChannelPath> &a, const std::vector<PlanarChannelPath> &b)
+{
+	if (a.size() != b.size()) return false;
+	for (size_t i = 0; i < a.size(); i++) {
+		if (a[i].headings != b[i].headings || a[i].crossing_piece != b[i].crossing_piece) return false;
+	}
+	return true;
+}
+
+TEST_CASE("planar paths: every variant's own shape passes the shape check", "[planar]")
+{
+	const std::vector<std::string> texts = {PlanarTText(2), PlanarTText(3), PlanarLL2Text()};
+	for (const std::string &text : texts) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarChannels channels = BuildPlanarChannels(topology);
+		const size_t open = PlanarOpenCrossings(channels).size();
+		const size_t triangles = PlanarTriangles(channels).size();
+		size_t built = 0;
+		for (uint64_t f = 0; f < (uint64_t{1} << triangles); f++) {
+			const PlanarChannels flipped = FlipPlanarTriangles(channels, f);
+			for (uint64_t o = 0; o < (uint64_t{1} << open); o++) {
+				INFO(topology.name << " o" << o << " f" << f);
+				const PlanarPaths p = BuildPlanarPaths(topology, flipped, o);
+				if (!p.why.empty()) continue;
+				built++;
+				CHECK(CheckPlanarShape(topology, flipped, p.over, p.paths).empty());
+				const PlanarPaths given = BuildPlanarPaths(topology, flipped, o, &p.paths);
+				CHECK(given.why.empty());
+				CHECK(given.over == p.over);
+				CHECK(SamePaths(given.paths, p.paths));
+			}
+		}
+		CHECK(built > 0);
+	}
+}
+
+TEST_CASE("planar paths: a shape breaking a rule is refused with its reason", "[planar]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	const PlanarPaths p = BuildPlanarPaths(topology, channels, 0);
+	REQUIRE(p.why.empty());
+	REQUIRE(CheckPlanarShape(topology, channels, p.over, p.paths).empty());
+
+	/* (a) An over crossing's piece on a diagonal heading. */
+	{
+		std::vector<PlanarChannelPath> paths = p.paths;
+		bool done = false;
+		for (uint32_t x = 0; x < channels.crossings.size() && !done; x++) {
+			const uint32_t o = p.over[x];
+			const auto &list = channels.channels[o].crossings;
+			const size_t i = std::ranges::find(list, x) - list.begin();
+			PlanarChannelPath &path = paths[o];
+			const uint32_t piece = path.crossing_piece[i];
+			/* A single-piece channel would break its port heading too; pick a path with a diagonal piece to move onto. */
+			for (uint32_t k = 0; k < path.headings.size() && !done; k++) {
+				if (IsAxisHeading(path.headings[k])) continue;
+				path.crossing_piece[i] = k;
+				done = true;
+			}
+			if (!done) path.crossing_piece[i] = piece;
+		}
+		REQUIRE(done);
+		const std::string why = CheckPlanarShape(topology, channels, p.over, paths);
+		CHECK(why.find("over") != std::string::npos);
+		CHECK(BuildPlanarPaths(topology, channels, 0, &paths).why == why);
+	}
+	/* (b) Two consecutive headings 90 degrees apart. */
+	{
+		std::vector<PlanarChannelPath> paths = p.paths;
+		bool done = false;
+		for (PlanarChannelPath &path : paths) {
+			if (path.headings.size() < 2) continue;
+			path.headings[1] = static_cast<PlanarHeading>((static_cast<int>(path.headings[0]) + 2) % 8);
+			done = true;
+			break;
+		}
+		REQUIRE(done);
+		CHECK(CheckPlanarShape(topology, channels, p.over, paths).find("45") != std::string::npos);
+	}
+	/* (c) A crossing piece index out of range. */
+	{
+		std::vector<PlanarChannelPath> paths = p.paths;
+		uint32_t named = UINT32_MAX;
+		for (uint32_t c = 0; c < paths.size(); c++) {
+			if (paths[c].crossing_piece.empty()) continue;
+			paths[c].crossing_piece[0] = static_cast<uint32_t>(paths[c].headings.size());
+			named = c;
+			break;
+		}
+		REQUIRE(named != UINT32_MAX);
+		const std::string line = topology.lines[channels.channels[named].lines.front()].name;
+		CHECK(CheckPlanarShape(topology, channels, p.over, paths).find(line) != std::string::npos);
 	}
 }

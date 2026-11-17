@@ -30,6 +30,7 @@ struct PlanarPaths {
 std::vector<uint32_t> PlanarOpenCrossings(const PlanarChannels &channels);
 std::vector<std::array<uint32_t, 3>> PlanarTriangles(const PlanarChannels &channels);
 PlanarChannels FlipPlanarTriangles(const PlanarChannels &channels, uint64_t flips);
-PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannels &channels, uint64_t choice);
+std::string CheckPlanarShape(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<uint32_t> &over, const std::vector<PlanarChannelPath> &paths);
+PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannels &channels, uint64_t choice, const std::vector<PlanarChannelPath> *shape = nullptr);
 
 #endif /* PLANAR_PATHS_H */

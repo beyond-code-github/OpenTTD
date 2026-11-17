@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -782,8 +783,9 @@ public:
 	 * @param channels Its channel graph.
 	 * @param params The spec facts.
 	 * @param variant The variant.
+	 * @param shape Null, or the channel paths to build on instead of the ones BuildPlanarPaths decides.
 	 */
-	MappedComposer(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant) : t(topology), ch(channels), P(params.p), variant(variant), sides(topology, channels)
+	MappedComposer(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant, const std::vector<PlanarChannelPath> *shape = nullptr) : t(topology), ch(channels), P(params.p), variant(variant), shape(shape), sides(topology, channels)
 	{
 		this->M.params = params;
 		this->M.deck_parity = true;
@@ -795,6 +797,7 @@ private:
 	const PlanarChannels &ch;
 	int P;
 	MappedVariant variant;
+	const std::vector<PlanarChannelPath> *shape;
 public:
 	PlanarLineSides sides; ///< Which side of each other two lines keep, from the topology.
 	std::vector<LadderFace> ladder_faces; ///< The faces' walls as segments, for the ladders.
@@ -1150,7 +1153,7 @@ void MappedComposer::Build()
 		M.Fail(this->sides.Why());
 		return;
 	}
-	this->paths = BuildPlanarPaths(t, ch, this->variant.over);
+	this->paths = BuildPlanarPaths(t, ch, this->variant.over, this->shape);
 	if (!this->paths.why.empty()) {
 		M.Fail(this->paths.why);
 		return;
@@ -2538,14 +2541,15 @@ int RungsMoved(const Model &M, const std::vector<RungSpec> &rungs, const std::ve
  * @param channels Its channel graph.
  * @param params The spec facts.
  * @param variant The variant.
+ * @param shape Null, or the channel paths to build on instead of the default ones.
  * @return The outcome.
  */
-VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant)
+VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant, const std::vector<PlanarChannelPath> *shape)
 {
 	VariantOutcome out;
 	out.tag = fmt::format("o{}t{}f{}s{}", variant.over, variant.ties, variant.flips, variant.steps);
 	const Clock::time_point t0 = Clock::now();
-	MappedComposer composer(topology, channels, params, variant);
+	MappedComposer composer(topology, channels, params, variant, shape);
 	Model &M = composer.M;
 	if (std::getenv("PLANAR_DRY") != nullptr) { // debug: build every variant without solving; print its over choices and its construction failure
 		const PlanarPaths pp = BuildPlanarPaths(topology, channels, variant.over);
@@ -2575,7 +2579,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 			int violated = 0;
 			const std::vector<RungSpec> rungs = LadderRungs(cur_model, composer.ladder_faces, composer.ladder_off, cur_val, violated);
 			out.rungs_violated += violated;
-			auto next = std::make_unique<MappedComposer>(topology, channels, params, variant);
+			auto next = std::make_unique<MappedComposer>(topology, channels, params, variant, shape);
 			if (!next->M.error.empty()) break;
 			{
 				const TagScope ts("rung");
@@ -2681,6 +2685,60 @@ bool PickBest(const std::vector<VariantOutcome> &outcomes, Clock::time_point t0,
 	return true;
 }
 
+/** How many bits each variant field of a mapped composition has. */
+struct MappedBits {
+	size_t open = 0;
+	size_t ties = 0;
+	size_t triangles = 0;
+	size_t steps = 0;
+};
+
+/** The variant bits of a mapped composition's channel graph. */
+MappedBits CountMappedBits(const PlanarTopology &topology, const PlanarChannels &channels)
+{
+	MappedBits bits;
+	bits.open = PlanarOpenCrossings(channels).size();
+	for (const PlanarSite &site : channels.sites) {
+		if (!PlanarSitePerNode(site)) {
+			bits.ties += site.straight == UINT32_MAX ? 1 : 0;
+			continue;
+		}
+		for (uint32_t n : site.nodes) bits.ties += !topology.nodes[n].IsSplit() && channels.node_legs[n].straight == UINT32_MAX ? 1 : 0;
+	}
+	bits.triangles = PlanarTriangles(channels).size();
+	bits.steps = PlanarCandidateSteps(topology, channels).size();
+	return bits;
+}
+
+/** The tag of a mapped variant, as the probe prints it. */
+std::string MappedTag(const MappedVariant &v)
+{
+	return fmt::format("o{}t{}f{}s{}", v.over, v.ties, v.flips, v.steps);
+}
+
+/** Parse a variant tag `o{over}t{ties}f{flips}s{steps}` that fits the composition's bits. @return false with why set when it does not. */
+bool ParseMappedTag(const std::string &tag, const MappedBits &bits, MappedVariant &variant, std::string *why)
+{
+	uint64_t field[4] = {0, 0, 0, 0};
+	const char *at = tag.data(), *end = tag.data() + tag.size();
+	bool parsed = true;
+	for (int i = 0; i < 4 && parsed; i++) {
+		if (at == end || *at != "otfs"[i]) {
+			parsed = false;
+			break;
+		}
+		const auto [next, ec] = std::from_chars(at + 1, end, field[i]);
+		parsed = ec == std::errc();
+		at = next;
+	}
+	if (parsed && at == end) {
+		variant = {field[0], field[1], field[2], field[3]};
+		if (MappedTag(variant) == tag && field[0] >> bits.open == 0 && field[1] >> bits.ties == 0 && field[2] >> bits.triangles == 0 && field[3] >> bits.steps == 0) return true;
+	}
+	if (why != nullptr) *why = fmt::format("{} is not a variant of this topology", tag);
+	return false;
+}
+
 } // namespace
 
 bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &spec, PlanarComponentLayout &layout, std::string *why)
@@ -2749,17 +2807,8 @@ bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec,
 	const Clock::time_point t0 = Clock::now();
 	const PlanarChannels channels = BuildPlanarChannels(topology);
 	const Params params = MakeParams(spec);
-	const size_t open = PlanarOpenCrossings(channels).size();
-	size_t ties = 0;
-	for (const PlanarSite &site : channels.sites) {
-		if (!PlanarSitePerNode(site)) {
-			ties += site.straight == UINT32_MAX ? 1 : 0;
-			continue;
-		}
-		for (uint32_t n : site.nodes) ties += !topology.nodes[n].IsSplit() && channels.node_legs[n].straight == UINT32_MAX ? 1 : 0;
-	}
-	const size_t triangles = PlanarTriangles(channels).size();
-	const size_t steps = PlanarCandidateSteps(topology, channels).size();
+	const MappedBits bits = CountMappedBits(topology, channels);
+	const size_t open = bits.open, ties = bits.ties, triangles = bits.triangles, steps = bits.steps;
 	if (open + ties + triangles + steps > 6 && std::getenv("PLANAR_ONLY") == nullptr && std::getenv("PLANAR_DRY") == nullptr) {
 		if (why != nullptr) *why = fmt::format("{} open crossings, {} tie sites, {} triangles and {} candidate steps are too many variants", open, ties, triangles, steps);
 		return false;
@@ -2775,13 +2824,55 @@ bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec,
 		}
 	}
 	if (const char *only = std::getenv("PLANAR_ONLY"); only != nullptr) { // debug: one variant by tag
-		std::erase_if(variants, [&](const MappedVariant &v) { return fmt::format("o{}t{}f{}s{}", v.over, v.ties, v.flips, v.steps) != only; });
+		std::erase_if(variants, [&](const MappedVariant &v) { return MappedTag(v) != only; });
 	}
 	std::vector<VariantOutcome> outcomes(variants.size());
 	std::vector<std::thread> threads;
 	for (size_t i = 0; i < variants.size(); i++) {
-		threads.emplace_back([&, i] { outcomes[i] = SolveMappedVariant(topology, flipped[variants[i].flips], params, variants[i]); });
+		threads.emplace_back([&, i] { outcomes[i] = SolveMappedVariant(topology, flipped[variants[i].flips], params, variants[i], nullptr); });
 	}
 	for (std::thread &thread : threads) thread.join();
+	return PickBest(outcomes, t0, layout, why);
+}
+
+/**
+ * The channel paths BuildPlanarPaths decides for one variant of a mapped composition: its over choices and its flipped channels.
+ * @param topology The topology.
+ * @param spec The spec.
+ * @param tag The variant's tag, `o{over}t{ties}f{flips}s{steps}`.
+ * @param why The reason on failure.
+ * @return The paths per channel of the variant's flipped channel graph; empty on failure.
+ */
+std::vector<PlanarChannelPath> PlanarDefaultShape(const PlanarTopology &topology, [[maybe_unused]] const JunctionSpec &spec, const std::string &tag, std::string *why)
+{
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	MappedVariant variant;
+	if (!ParseMappedTag(tag, CountMappedBits(topology, channels), variant, why)) return {};
+	const PlanarPaths paths = BuildPlanarPaths(topology, FlipPlanarTriangles(channels, variant.flips), variant.over);
+	if (!paths.why.empty()) {
+		if (why != nullptr) *why = paths.why;
+		return {};
+	}
+	return paths.paths;
+}
+
+/**
+ * Solve exactly one variant of a mapped composition, on the given channel paths or the default ones.
+ * @param topology The topology.
+ * @param spec The spec.
+ * @param tag The variant's tag, `o{over}t{ties}f{flips}s{steps}`.
+ * @param shape Null, or the channel paths to build on (checked by CheckPlanarShape).
+ * @param layout The layout found.
+ * @param why The reason on failure.
+ * @return Whether the variant solved.
+ */
+bool SolvePlanarMappedVariant(const PlanarTopology &topology, const JunctionSpec &spec, const std::string &tag, const std::vector<PlanarChannelPath> *shape, PlanarComponentLayout &layout, std::string *why)
+{
+	const Clock::time_point t0 = Clock::now();
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	MappedVariant variant;
+	if (!ParseMappedTag(tag, CountMappedBits(topology, channels), variant, why)) return false;
+	const PlanarChannels flipped = FlipPlanarTriangles(channels, variant.flips);
+	const std::vector<VariantOutcome> outcomes{SolveMappedVariant(topology, flipped, MakeParams(spec), variant, shape)};
 	return PickBest(outcomes, t0, layout, why);
 }

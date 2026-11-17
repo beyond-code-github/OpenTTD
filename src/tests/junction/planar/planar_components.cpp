@@ -106,3 +106,42 @@ TEST_CASE("planar components: the test spec derives the probe's constants", "[ju
 	CHECK(DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl) == 5);
 	CHECK(spec.prio_tiles == 14);
 }
+
+TEST_CASE("planar components: a variant solved with its own shape given back is identical", "[junction][planarcomponents]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::string tag = "o0t2f1s1";
+	std::string why;
+	const std::vector<PlanarChannelPath> shape = PlanarDefaultShape(topology, spec, tag, &why);
+	INFO(why);
+	REQUIRE(!shape.empty());
+	PlanarComponentLayout a, b;
+	why.clear();
+	REQUIRE(SolvePlanarMappedVariant(topology, spec, tag, nullptr, a, &why));
+	why.clear();
+	const bool given = SolvePlanarMappedVariant(topology, spec, tag, &shape, b, &why);
+	INFO(why);
+	REQUIRE(given);
+	CHECK(a.area == b.area);
+	CHECK(a.track == b.track);
+	CHECK(a.width == b.width);
+	CHECK(a.height == b.height);
+	REQUIRE(a.routes.size() == b.routes.size());
+	for (size_t i = 0; i < a.routes.size(); i++) {
+		const PlanarRouteProgram &x = a.routes[i], &y = b.routes[i];
+		CHECK(x.route == y.route);
+		CHECK(x.path == y.path);
+		CHECK(x.copy == y.copy);
+		CHECK(x.copy_switches == y.copy_switches);
+		REQUIRE(x.pieces.size() == y.pieces.size());
+		for (size_t k = 0; k < x.pieces.size(); k++) {
+			CHECK((x.pieces[k].tile.x == y.pieces[k].tile.x && x.pieces[k].tile.y == y.pieces[k].tile.y));
+			CHECK(x.pieces[k].heading == y.pieces[k].heading);
+			CHECK(x.pieces[k].kind == y.pieces[k].kind);
+			CHECK(x.pieces[k].line == y.pieces[k].line);
+		}
+	}
+}

@@ -11,6 +11,7 @@
 #define PLANAR_COMPONENTS_H
 
 #include "planar_layout.h"
+#include "planar_paths.h"
 #include "planar_topology.h"
 #include "../../map_type.h"
 
@@ -55,5 +56,7 @@ struct PlanarComponentLayout {
 /** Solve the component layout of a T2 or LL2 topology: every variant (in parallel), the least area wins. @return false with why set when the topology has no composition or no variant solves. */
 bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &spec, PlanarComponentLayout &layout, std::string *why);
 bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec, PlanarComponentLayout &layout, std::string *why);
+std::vector<PlanarChannelPath> PlanarDefaultShape(const PlanarTopology &topology, const JunctionSpec &spec, const std::string &tag, std::string *why);
+bool SolvePlanarMappedVariant(const PlanarTopology &topology, const JunctionSpec &spec, const std::string &tag, const std::vector<PlanarChannelPath> *shape, PlanarComponentLayout &layout, std::string *why);
 
 #endif /* PLANAR_COMPONENTS_H */

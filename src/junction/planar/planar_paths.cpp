@@ -110,6 +110,67 @@ PlanarChannels FlipPlanarTriangles(const PlanarChannels &channels, uint64_t flip
 }
 
 /**
+ * Check a shape against the rules BuildPlanarPaths builds to: one path per channel; every path has headings, and consecutive
+ * headings are 45 degrees apart; a channel's first heading is its up port's, or its in channel's last heading when it starts at
+ * a node (falling back to its down port's when it has neither); its last heading is its down port's when that is a single port
+ * (else its first), and the two are not opposite; every channel has one crossing piece per crossing entry, each on a piece of
+ * the path and in travel order; at each crossing the over channel's piece is on an axis heading and the under channel's piece
+ * is not parallel to it.
+ * @param topology The topology.
+ * @param channels The channel graph the paths are for (flipped as the variant is).
+ * @param over Per channel crossing, the channel that is over.
+ * @param paths The shape: one path per channel.
+ * @return Empty, or the first rule it breaks.
+ */
+std::string CheckPlanarShape(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<uint32_t> &over, const std::vector<PlanarChannelPath> &paths)
+{
+	const PlanarTopology &t = topology;
+	const size_t n = channels.channels.size();
+	if (paths.size() != n) return fmt::format("{} paths for {} channels", paths.size(), n);
+	if (over.size() != channels.crossings.size()) return fmt::format("{} over channels for {} crossings", over.size(), channels.crossings.size());
+	const auto name = [&](uint32_t ch) { return fmt::format("channel of {}", t.lines[channels.channels[ch].lines.front()].name); };
+	for (uint32_t ch = 0; ch < n; ch++) {
+		const PlanarChannelPath &p = paths[ch];
+		if (p.headings.empty()) return fmt::format("{} has no headings", name(ch));
+		for (size_t i = 1; i < p.headings.size(); i++) {
+			const int d = (static_cast<int>(p.headings[i]) - static_cast<int>(p.headings[i - 1]) + 8) % 8;
+			if (d != 1 && d != 7) return fmt::format("{} has consecutive headings not 45 degrees apart at piece {}", name(ch), i);
+		}
+	}
+	for (uint32_t ch = 0; ch < n; ch++) {
+		const PlanarChannel &c = channels.channels[ch];
+		const PlanarChannelPath &p = paths[ch];
+		const PlanarLine &first = t.lines[c.lines.front()];
+		std::optional<PlanarHeading> from = PortHeading(t, c.up), to = PortHeading(t, c.down);
+		if (!first.from.port) from = paths[channels.channel_of_line[t.nodes[first.from.index].in.front()]].headings.back();
+		if (!from.has_value()) from = to;
+		if (!to.has_value()) to = from;
+		if (!from.has_value()) return fmt::format("{} has no single port heading", name(ch));
+		if ((static_cast<int>(*to) - static_cast<int>(*from) + 8) % 8 == 4) return fmt::format("{} turns back", name(ch));
+		if (p.headings.front() != *from) return fmt::format("{} does not start on its start heading", name(ch));
+		if (p.headings.back() != *to) return fmt::format("{} does not end on its end heading", name(ch));
+		if (p.crossing_piece.size() != c.crossings.size()) return fmt::format("{} has {} crossing pieces for {} crossings", name(ch), p.crossing_piece.size(), c.crossings.size());
+		for (size_t k = 0; k < p.crossing_piece.size(); k++) {
+			if (p.crossing_piece[k] >= p.headings.size()) return fmt::format("{} has crossing piece {} out of range", name(ch), k);
+			if (k > 0 && p.crossing_piece[k] < p.crossing_piece[k - 1]) return fmt::format("{} has its crossing pieces out of travel order at {}", name(ch), k);
+		}
+	}
+	for (uint32_t x = 0; x < channels.crossings.size(); x++) {
+		const PlanarChannelCrossing &cr = channels.crossings[x];
+		if (over[x] != cr.a && over[x] != cr.b) return fmt::format("crossing {} has an over channel not on it", x);
+		const uint32_t under = over[x] == cr.a ? cr.b : cr.a;
+		const auto heading = [&](uint32_t ch) {
+			const auto &list = channels.channels[ch].crossings;
+			return static_cast<int>(paths[ch].headings[paths[ch].crossing_piece[std::ranges::find(list, x) - list.begin()]]);
+		};
+		const int ho = heading(over[x]), hu = heading(under);
+		if (ho % 2 != 0) return fmt::format("{} is over a crossing on a diagonal piece", name(over[x]));
+		if (ho % 4 == hu % 4) return fmt::format("{} crosses {} on a parallel piece", name(under), name(over[x]));
+	}
+	return {};
+}
+
+/**
  * Every channel's path for one choice of the open crossings.
  * A channel turns the short way from its in port's heading to its out port's (a channel reaching several ports takes the
  * one it has a single one of), 45 degrees a piece. Its crossings sit, in its event order, on the first piece at or after the
@@ -118,9 +179,10 @@ PlanarChannels FlipPlanarTriangles(const PlanarChannels &channels, uint64_t flip
  * @param topology The topology.
  * @param channels Its channel graph.
  * @param choice Bit i set: the open crossing i has its higher channel over, else its lower.
+ * @param shape Null, or the paths to use instead of deciding them: they are checked by CheckPlanarShape and returned as given.
  * @return The paths, or a reason in why.
  */
-PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannels &channels, uint64_t choice)
+PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannels &channels, uint64_t choice, const std::vector<PlanarChannelPath> *shape)
 {
 	const PlanarTopology &t = topology;
 	PlanarPaths out;
@@ -136,6 +198,12 @@ PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannel
 		} else {
 			out.over[x] = (choice >> (it - open.begin()) & 1) != 0 ? c.b : c.a;
 		}
+	}
+
+	if (shape != nullptr) {
+		out.paths = *shape;
+		out.why = CheckPlanarShape(t, channels, out.over, out.paths);
+		return out;
 	}
 
 	/* Headings: the short turn from start to end; a channel starting at a node starts on the heading its in channel ends on. */
