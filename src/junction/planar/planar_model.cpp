@@ -1,0 +1,127 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+/** @file planar_model.cpp The planar mapped composer's integer program: half-tile geometry, linear expressions, strands of segments, decks, crossings and the solve. */
+
+#include "../../stdafx.h"
+
+#include "planar_model.h"
+
+#include <algorithm>
+
+#include "../../safeguards.h"
+
+namespace PlanarModel {
+
+int Turn(int h, int k)
+{
+	return ((h + k) % 8 + 8) % 8;
+}
+
+int Rot(int a, int b)
+{
+	const int d = ((b - a) % 8 + 8) % 8;
+	return d > 4 ? d - 8 : d;
+}
+
+bool IsAxis(int d)
+{
+	return d % 2 == 0;
+}
+
+const std::array<int, 2> &Right(int h)
+{
+	return STEP[Turn(h, 2)];
+}
+
+Ex operator+(const Ex &a, const Ex &b)
+{
+	Ex r = a;
+	for (const auto &[k, v] : b.terms) r.terms[k] += v;
+	r.constant += b.constant;
+	return r;
+}
+
+Ex operator-(const Ex &a)
+{
+	Ex r;
+	for (const auto &[k, v] : a.terms) r.terms[k] = -v;
+	r.constant = -a.constant;
+	return r;
+}
+
+Ex operator-(const Ex &a, const Ex &b)
+{
+	return a + (-b);
+}
+
+Ex operator*(const Ex &a, double k)
+{
+	Ex r;
+	for (const auto &[i, v] : a.terms) r.terms[i] = v * k;
+	r.constant = a.constant * k;
+	return r;
+}
+
+Con Ge(const Ex &a, const Ex &b) { return {false, a - b}; }
+
+Con Le(const Ex &a, const Ex &b) { return {false, b - a}; }
+
+Con Eq(const Ex &a, const Ex &b) { return {true, a - b}; }
+
+double Ev(const std::vector<int64_t> &val, const Ex &e)
+{
+	double r = e.constant;
+	for (const auto &[k, v] : e.terms) r += static_cast<double>(val[k]) * v;
+	return r;
+}
+
+std::vector<std::vector<Seg>> RouteSegs(const Model &M, const std::vector<std::string> &route)
+{
+	std::vector<std::vector<Seg>> variants{{}};
+	for (const std::string &st : route) {
+		std::vector<const CopyRec *> cps;
+		for (const CopyRec &c : M.copies) {
+			if (c.strand == st) cps.push_back(&c);
+		}
+		std::ranges::sort(cps, [](const CopyRec *x, const CopyRec *y) { return std::tie(x->first, x->resume, x->copy) < std::tie(y->first, y->resume, y->copy); });
+		std::vector<std::vector<Seg>> opts;
+		const std::vector<Seg> &segs = M.strands.at(st).segs;
+		for (uint32_t mask = 0; mask < (1u << cps.size()); mask++) {
+			std::map<uint32_t, const CopyRec *> chosen;
+			for (size_t b = 0; b < cps.size(); b++) {
+				if (mask >> b & 1) chosen[cps[b]->first] = cps[b];
+			}
+			std::vector<Seg> seq;
+			size_t i = 0;
+			while (i < segs.size()) {
+				const auto it = chosen.find(static_cast<uint32_t>(i));
+				if (it != chosen.end()) {
+					const std::vector<Seg> &part = M.strands.at(it->second->copy).segs;
+					seq.insert(seq.end(), part.begin(), part.end());
+					i = it->second->resume;
+				} else {
+					seq.push_back(segs[i]);
+					i++;
+				}
+			}
+			opts.push_back(std::move(seq));
+		}
+		std::vector<std::vector<Seg>> next;
+		for (const auto &v : variants) {
+			for (const auto &o : opts) {
+				std::vector<Seg> joined = v;
+				joined.insert(joined.end(), o.begin(), o.end());
+				next.push_back(std::move(joined));
+			}
+		}
+		variants = std::move(next);
+	}
+	return variants;
+}
+
+} // namespace PlanarModel
