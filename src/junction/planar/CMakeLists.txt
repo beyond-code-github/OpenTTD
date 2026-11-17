@@ -13,6 +13,8 @@ add_files(
     planar_paths.h
     planar_plan.cpp
     planar_plan.h
+    planar_regions.cpp
+    planar_regions.h
     planar_topology.cpp
     planar_topology.h
 )

@@ -14,6 +14,7 @@
 #include "planar_channels.h"
 #include "planar_gaps.h"
 #include "planar_paths.h"
+#include "planar_regions.h"
 
 #include "../junction_spec.h"
 #include "../placement/junction_milp.h"
@@ -759,7 +760,7 @@ public:
 	 * @param params The spec facts.
 	 * @param variant The variant.
 	 */
-	MappedComposer(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant) : t(topology), ch(channels), P(params.p), variant(variant)
+	MappedComposer(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant) : t(topology), ch(channels), P(params.p), variant(variant), sides(topology, channels)
 	{
 		this->M.params = params;
 		this->M.deck_parity = true;
@@ -771,6 +772,10 @@ private:
 	const PlanarChannels &ch;
 	int P;
 	MappedVariant variant;
+public:
+	PlanarLineSides sides; ///< Which side of each other two lines keep, from the topology.
+
+private:
 	PlanarPaths paths;
 	std::vector<std::map<std::string, std::vector<Seg>>> piece_segs; ///< Per channel, per lane, its segment for each path piece (bundled channels).
 	RouteList routes; ///< Every route path as line names.
@@ -1115,6 +1120,10 @@ void MappedComposer::Build()
 	Model &M = this->M;
 	const PlanarTopology &t = this->t;
 	const PlanarChannels &ch = this->ch;
+	if (!this->sides.Why().empty()) {
+		M.Fail(this->sides.Why());
+		return;
+	}
 	this->paths = BuildPlanarPaths(t, ch, this->variant.over);
 	if (!this->paths.why.empty()) {
 		M.Fail(this->paths.why);
@@ -1807,7 +1816,7 @@ constexpr std::array<std::array<int, 2>, 8> DIRS8 = {{{1, 0}, {-1, 0}, {0, 1}, {
  * @param pr The clashing pair.
  * @return The (direction, rows) options in order.
  */
-std::vector<std::vector<Row>> SepOptions(const Model &M, const GeoSet &g, const std::pair<SegKey, SegKey> &pr)
+std::vector<std::pair<std::array<int, 2>, std::vector<Row>>> SepOptions(const Model &M, const GeoSet &g, const std::pair<SegKey, SegKey> &pr)
 {
 	const Seg &sp = M.strands.at(pr.first.first).segs[pr.first.second];
 	const Seg &sq = M.strands.at(pr.second.first).segs[pr.second.second];
@@ -1823,7 +1832,7 @@ std::vector<std::vector<Row>> SepOptions(const Model &M, const GeoSet &g, const 
 		opts.emplace_back(-cur, f[0], f[1]);
 	}
 	std::ranges::sort(opts);
-	std::vector<std::vector<Row>> out;
+	std::vector<std::pair<std::array<int, 2>, std::vector<Row>>> out;
 	for (const auto &[c, fx, fy] : opts) {
 		const std::array<int, 2> f{fx, fy};
 		std::vector<Row> rows;
@@ -1831,7 +1840,7 @@ std::vector<std::vector<Row>> SepOptions(const Model &M, const GeoSet &g, const 
 		for (const Point *a : {&sp.a, &sp.b}) {
 			for (const Point *b : {&sq.a, &sq.b}) rows.push_back(Model::MakeRow(Ge(Dot(f, *b) - Dot(f, *a), 2)));
 		}
-		out.push_back(std::move(rows));
+		out.emplace_back(f, std::move(rows));
 	}
 	return out;
 }
@@ -1896,9 +1905,10 @@ using Clock = std::chrono::steady_clock;
  * @param seps0 The separation rows found so far.
  * @param out The result.
  * @param why The reason on failure.
+ * @param sides The topology's line sides, or null (a hand composition).
  * @return Whether a clash-free solution was found.
  */
-bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, LazyResult &out, std::string &why)
+bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, LazyResult &out, std::string &why, const PlanarLineSides *sides)
 {
 	std::vector<Row> seps = seps0;
 	Solution r;
@@ -1960,11 +1970,37 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 			why = fmt::format("budget at round {}, {} clashes", rnd, bad.size());
 			return false;
 		}
-		const std::vector<std::vector<Row>> options = SepOptions(M, g, bad[0]);
+		/* A clash between two lines the topology orders is separated on the side it gives: q at least 2 beyond p along a direction with p on q's -f side. */
+		if (sides != nullptr) {
+			std::vector<Row> rows;
+			size_t decided = 0;
+			for (const auto &clash : bad) {
+				const uint32_t lp = sides->LineOfStrand(clash.first.first), lq = sides->LineOfStrand(clash.second.first);
+				if (lp == UINT32_MAX || lq == UINT32_MAX || lp == lq || sides->Side(lp, lq) == 0) continue;
+				const auto &right = Right(g.geo.at(clash.second).d);
+				for (auto &[f, opt_rows] : SepOptions(M, g, clash)) {
+					if ((f[0] * right[0] + f[1] * right[1]) * sides->Side(lp, lq) >= 0) continue;
+					rows.insert(rows.end(), opt_rows.begin(), opt_rows.end());
+					decided++;
+					break;
+				}
+			}
+			if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "round {}: {} decided by sides, {} by trial\n", rnd, decided, decided == 0 ? 1 : 0);
+			if (decided > 0) {
+				seps.insert(seps.end(), rows.begin(), rows.end());
+				if (!M.Solve(seps, r)) {
+					explain_last(seps);
+					why = "infeasible with topology sides";
+					return false;
+				}
+				continue;
+			}
+		}
+		const std::vector<std::pair<std::array<int, 2>, std::vector<Row>>> options = SepOptions(M, g, bad[0]);
 		bool separated = false;
 		for (size_t k = 0; k < 4; k++) {
 			std::vector<Row> trial = seps;
-			trial.insert(trial.end(), options[k].begin(), options[k].end());
+			trial.insert(trial.end(), options[k].second.begin(), options[k].second.end());
 			Solution probe;
 			if (M.Solve(trial, probe)) {
 				seps = std::move(trial);
@@ -1995,9 +2031,10 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
  * @param out The best result.
  * @param area The best area in tiles.
  * @param why The reason on failure.
+ * @param sides The topology's line sides, or null (a hand composition).
  * @return Whether a solution was found.
  */
-bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, std::string &why)
+bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, std::string &why, const PlanarLineSides *sides)
 {
 	M.obj_extra.clear();
 	/* Experiment (PLANAR_OBJ): a linear score instead of the area step: len (track only), box (width + height), routes (outline route length), loop (AREA_ROUNDS linearisations). */
@@ -2017,7 +2054,7 @@ bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, st
 			}
 		}
 	}
-	if (!SolveLazy1(M, t0, {}, out, why)) return false;
+	if (!SolveLazy1(M, t0, {}, out, why, sides)) return false;
 	double best = std::abs(AreaOf(out.sol.val, Outline(M)));
 	if (obj == "len" || obj == "box" || obj == "routes") {
 		area = best / 4;
@@ -2028,7 +2065,7 @@ bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, st
 		LineariseArea(M, out.sol.val);
 		LazyResult r2;
 		std::string why2;
-		if (!SolveLazy1(M, t0, seps, r2, why2)) break;
+		if (!SolveLazy1(M, t0, seps, r2, why2, sides)) break;
 		const double a2 = std::abs(AreaOf(r2.sol.val, Outline(M)));
 		if (a2 >= best - 1) break;
 		best = a2;
@@ -2198,7 +2235,7 @@ VariantOutcome SolveVariant(const PlanarTopology &topology, const Params &params
 		return out;
 	}
 	LazyResult res;
-	if (!SolveLazy(M, t0, res, out.area, out.why)) return out;
+	if (!SolveLazy(M, t0, res, out.area, out.why, nullptr)) return out;
 	out.width = static_cast<int>(std::llround(Ev(res.sol.val, M.X))) / 2 + 1;
 	out.height = static_cast<int>(std::llround(Ev(res.sol.val, M.Y))) / 2 + 1;
 	if (!M.error.empty()) {
@@ -2242,7 +2279,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 		return out;
 	}
 	LazyResult res;
-	if (!SolveLazy(M, t0, res, out.area, out.why)) return out;
+	if (!SolveLazy(M, t0, res, out.area, out.why, &composer.sides)) return out;
 	out.width = static_cast<int>(std::llround(Ev(res.sol.val, M.X))) / 2 + 1;
 	out.height = static_cast<int>(std::llround(Ev(res.sol.val, M.Y))) / 2 + 1;
 	if (!M.error.empty()) {

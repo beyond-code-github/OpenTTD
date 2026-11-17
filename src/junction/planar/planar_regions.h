@@ -1,0 +1,49 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+/** @file planar_regions.h Which side of each other line a line keeps, read from the topology alone: the planar map's faces, the ring and the legs' order. */
+
+#ifndef PLANAR_REGIONS_H
+#define PLANAR_REGIONS_H
+
+#include "planar_channels.h"
+
+#include <map>
+#include <string>
+#include <string_view>
+
+/** Which side of each other two lines keep, read from the topology alone (DESIGN-tracks §3). */
+class PlanarLineSides {
+public:
+	PlanarLineSides(const PlanarTopology &topology, const PlanarChannels &channels);
+
+	/**
+	 * Where line p lies relative to line q's travel.
+	 * @param p The line.
+	 * @param q The line it is seen from.
+	 * @return +1 right, -1 left, 0 undecided (or p == q, or the lines cross).
+	 */
+	int8_t Side(uint32_t p, uint32_t q) const;
+
+	/**
+	 * The line a composer strand belongs to: the strand's name without a trailing copy mark (' or " and any digits after it).
+	 * @param strand The strand name.
+	 * @return The line, or UINT32_MAX when no line has that name.
+	 */
+	uint32_t LineOfStrand(std::string_view strand) const;
+
+	/** @return Empty, or why the face map failed validation (V - E + F != 2, a face not a simple walk) or two sources disagreed. */
+	const std::string &Why() const { return this->why; }
+
+private:
+	size_t count = 0; ///< The number of lines.
+	std::vector<int8_t> table; ///< Side(p, q) at p * count + q.
+	std::string why;
+	std::map<std::string, uint32_t, std::less<>> by_name; ///< Line index by name.
+};
+
+#endif /* PLANAR_REGIONS_H */
