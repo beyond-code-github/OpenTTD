@@ -223,6 +223,34 @@ TEST_CASE("planar: dump a component layout", "[.componentsdump]")
 	std::ofstream(out) << JunctionLayoutToJson(*plan.layout);
 }
 
+/* Dump (hidden): the mapped composer's layout (SolvePlanarMapped, whatever the topology) as JSON, for building it in the rig. */
+TEST_CASE("planar: dump a mapped component layout", "[.mappeddump]")
+{
+	const char *topo = std::getenv("JUNCTION_COMPONENTS_TOPOLOGY");
+	const char *out = std::getenv("JUNCTION_COMPONENTS_OUT");
+	REQUIRE(topo != nullptr);
+	REQUIRE(out != nullptr);
+	const std::string name = topo;
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	PlanarSeed seed;
+	seed.text = name == "LL2" ? PlanarLL2Text() : PlanarTText(name == "T3" ? 3 : 2);
+	seed.topology = ParsePlanarTopology(seed.text, &seed.why);
+	REQUIRE(seed.why.empty());
+	PlanarComponentLayout components;
+	std::string why;
+	const bool ok = SolvePlanarMapped(seed.topology, spec, components, &why);
+	INFO(why);
+	REQUIRE(ok);
+	seed.components = std::move(components);
+	const PlanarPlan plan = PlanPlanarJunction(seed, spec, nullptr, {0, 0}, false);
+	INFO(plan.why);
+	REQUIRE(plan.layout.has_value());
+	const std::vector<RuleViolation> violations = CheckJunctionRules(*plan.layout, spec, PlanarCheckerTopology(seed.topology));
+	for (const RuleViolation &v : violations) fmt::print(stderr, "VIOLATION {} {} at {},{}\n", static_cast<int>(v.rule), v.message, v.tile.x, v.tile.y);
+	fmt::print(stderr, "MAPPED {} variant {} area {} size {}x{}\n", name, seed.components->variant, seed.components->area, plan.layout->size.x, plan.layout->size.y);
+	std::ofstream(out) << JunctionLayoutToJson(*plan.layout);
+}
+
 /* Probe hook (hidden): route programs exported by the Python probes (JUNCTION_PROBE_ROUTES; docs/junction-tool/wip/planar-probe8.py --routes) through the planar back end's signal pass and the checker. */
 TEST_CASE("planar: probe routes, signals and checker", "[.probe]")
 {
