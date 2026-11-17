@@ -1,0 +1,20 @@
+# Probe: ladders everywhere (box-edge faces, copies as wall pieces) (2026-11-17, HEAD 05e0159b09)
+
+Result: box faces and copies are in, but the surviving C-vs-F clashes did not go. T2 f1 variants still show 9 round-0 clashes (all C1/C2 against F1/F2 base strands) and the ladder area is +12..14 over rough. LL2 round-0 clashes stay 0 but area rises (o49 1654 to 1681..1700, o1t3 1992 to 2178). Literal brief rows are infeasible ("base infeasible", rows violated on the rough solve S) in every run.
+Code: wip/probe-ladders2.patch (on probe-ladders.patch; env PLANAR_LADDER=3, PLANAR_CLASHES=1, new PLANAR_COPYOFF=1, PLANAR_COPYINSIDE=1). Raw: scratchpad `ladders2/` (summary.txt, t2all-summary.txt).
+
+## Construction (and where it did not fit the brief)
+- Box faces: all faces but the outer one; walls F=right, B=left as before. Walk-order rotation not done (list order only). One-wall box faces skipped: T2 3, T3 3, LL2 3 (the corridor map has 3 corner faces like `FFFR`; they hold C1/E1/A1 lines alone against the box). Box faces with a wall in more than one run: 3 per hub (rows still built; set semantics).
+- Copies: a copy strand joins the wall of a stretch when its replaced base segs [first, first+1] overlap the stretch's seg range [i0,i1], and the copy's offset along Right(h) (d1.a vs d0.a, in S) is on the face's side. Brief says "every face where X is a wall" with no stretch scoping; scoping by the seg range was my reading. 23-59 copies per hub only partly overlap, because the crossing sits on d0 and the stretch ends or starts in it.
+- MISFIT: the base's off-wall drop covers the far end of the crossing segment, but a copy of that segment has the same off-wall points (copy turn points and d1.a when the stretch starts at the crossing, d1.b when it ends there). Left as "counts as on the wall" (the brief), rows are violated on S: T2 17 (rows 390), T3 34 (750), LL2 o49 13 (715), o1t3 37 (718); the ladder model is infeasible every time. I then dropped those copy points (PLANAR_COPYOFF, same rule as the base's, not the brief's): violated on S falls to T2 3, T3 5, o49 4, o1t3 10, all slack -1 (a base point right after a crossing, 1 half-tile from the copy deck d1 it crosses). Those models are feasible but tighter than S, which is where the area growth comes from. Rows from here on are COPYOFF.
+
+## Results (rough at HEAD vs ladder pass 2; ms is that one solve; "r0" = clashes in the ladder solve's first round)
+| variant | rows (box faces, from copies, against copies) | rough area, r0 | ladder area, ms, r0, rounds | passes |
+| T2 o0t2f1s1 | 355 (142, 21, 33) | 906.25, 8 | 919.25, 215, 9, 7 | 1 |
+| T3 o0t1f1s1 | 660 (252, 49, 64) | 1941.25, 0 (then 8 3 0) | 1957.25, 306, 0 then 15 8 3 0 | 1 |
+| LL2 o49t0f1s0 | 693 (227, 27, 39) | 1654.25, 18 | 1700.25, 3276, 0 then 8 3 0; pass 3 1681.25, 2191, 0 then 3 0 | 3 (2 points moved) |
+| LL2 o1t3f0s0 | 672 (277, 26, 40) | 1992.25, 21 | 2178.25, 1889, 0, no later clashes; pass 3 2178.25, 1563 | 3 (2 moved, then 1) |
+- T2 surviving pairs, round 0: C1#0/#2/#3 vs F1#4/F2#4, C2#1/#3/#4 vs F1#3/F1#4/F2#3/F2#4. C and F lines share no face with two walls in the map (C1's face is the skipped one-wall corner face 3, and C2 sits in faces with B1/D1/D2). So their separation runs only through chains of corridors, which the ladder does not tie together.
+- Full T2 set (32 variants, t2all-summary.txt): rough round-0 clashes 8 in 10 variants (all s1 f0; o0 f1 with s0 or t0/t2 s1); ladder removes them in the f0 ones (8 to 0, same area for o0, +136 for o1 f0 from 9-10 violated rows) and not in o0 f1 (8 to 9, area +13). All other variants had 0 round-0 clashes already; area +12..14 on every f1 variant, +0 on o0 f0, +130..136 on o1 f0. o0t3f0* and o1t3f0* fail in rough already (infeasible at HEAD, no ladder run).
+- No IIS taken (the infeasible runs are the known literal-row ones, cause traced above).
+- Not tested: row set that fixes the -1 slack rows (e.g. drop points within 1 of the crossing); a C-F corridor (one-wall box faces carry no row); repeat timings.
