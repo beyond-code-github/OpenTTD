@@ -176,6 +176,15 @@ def cmd_ridge_demo(a):
     cmd_build_layout(a)
 
 
+def cmd_sign(a):
+    adm = connect()
+    try:
+        r = gs(adm, {"cmd": "sign", "x": a.x, "y": a.y, "text": a.text})
+    finally:
+        adm.close()
+    print("sign=%d" % r["sign"])
+
+
 def cmd_clear_area(a):
     adm = connect()
     try:
@@ -574,6 +583,7 @@ def main():
     add("gs", cmd_gs, ("json", {}))
     add("company", cmd_company, ("--id", i))
     add("build-layout", cmd_build_layout, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--railtype", {"default": None}))
+    add("sign", cmd_sign, ("x", {"type": int}), ("y", {"type": int}), ("text", {}))
     add("clear-area", cmd_clear_area, ("x1", {"type": int}), ("y1", {"type": int}), ("x2", {"type": int}), ("y2", {"type": int}))
     add("ridge-demo", cmd_ridge_demo, ("file", {}), ("r0", i), ("r1", i), ("--railtype", {"default": None}))
     add("junction-check", cmd_junction_check, ("file", {}), ("x", {"type": int, "nargs": "?"}), ("y", {"type": int, "nargs": "?"}), ("--find-clear", {"action": "store_true"}), ("--trains", {"type": int, "default": 6}), ("--wagons", {"type": int, "default": 3}), ("--ticks", {"type": int, "default": 7400}))

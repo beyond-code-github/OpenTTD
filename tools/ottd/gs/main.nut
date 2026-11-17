@@ -181,6 +181,7 @@ class JunctionTestGS extends GSController {
 		else if (cmd == "raise_rect") this.CmdRaiseRect(id, msg);
 		else if (cmd == "demolish") this.CmdDemolish(id, msg);
 		else if (cmd == "demolish_area") this.CmdDemolishArea(id, msg);
+		else if (cmd == "sign") this.CmdSign(id, msg);
 		else if (cmd == "rail_row") this.CmdRailRow(id, msg);
 		else if (cmd == "remove_track") this.CmdRemoveTrack(id, msg);
 		else if (cmd == "sell") this.CmdSell(id, msg);
@@ -347,6 +348,14 @@ class JunctionTestGS extends GSController {
 
 	/* Clear one tile (a depot, a waypoint, track). */
 	/* Bulldoze every non-clear tile of the rectangle x1,y1 .. x2,y2 (inclusive), in one message. */
+	function CmdSign(id, msg)
+	{
+		if (!this.Need(msg, ["x", "y", "text"], id)) return;
+		local sign = GSSign.BuildSign(GSMap.GetTileIndex(msg.x, msg.y), msg.text);
+		if (!GSSign.IsValidSign(sign)) { this.Err(id, "sign failed: " + GSError.GetLastErrorString()); return; }
+		this.Reply(id, { ok = true, sign = sign });
+	}
+
 	function CmdDemolishArea(id, msg)
 	{
 		if (!this.Need(msg, ["x1", "y1", "x2", "y2"], id)) return;
