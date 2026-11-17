@@ -1,0 +1,62 @@
+area 917.25
+switch bundle11+ h2 1
+switch bundle6+ h6 1
+switch flex10j h1 0
+switch flex10j h3 0
+switch flex7j h5 0
+switch flex7j h7 0
+switch fray0+ h5 1
+switch fray1- h7 0
+switch fray2+ h1 1
+switch join3j h5 1
+switch join4j h7 0
+switch join5j h3 1
+seq EF1: 2:58 1:10 2:12
+seq EF2: 2:58 1:8 2:6
+seq AB1: 6:26 5:8 6:4
+seq AB2: 6:38 5:6 6:2
+seq CD1: 0:14 0:6
+seq CD2: 0:14
+seq B2: 6:14 6:2 6:26 7:2 6:6 5:2 6:30
+seq A2: 5:6 6:2 5:7 4:10 5:6
+seq B1: 6:4 6:12 7:2 6:4 6:2 6:26 5:2 6:20 7:2 6:4 6:2 6:12 5:2 6:30
+seq A1: 5:4 6:12 5:5 4:16 5:6
+seq B1': 7:2 6:12
+seq C1: 0:10 7:9 6:72 6:2 7:4
+seq D1: 1:4 0:26 1:7 2:2 1:6
+seq C2: 0:2 0:14 7:11 6:36 6:2 7:6
+seq D2: 1:4 0:32 1:5 2:38 1:4
+seq E1: 2:2 2:38
+seq F1: 3:6 2:2 3:7 4:8 3:16 4:14
+seq E2: 2:4 2:12 1:2 2:2 2:18 2:12 3:2 2:30
+seq F2: 3:4 2:12 3:5 4:8 3:16 4:8
+seq E2': 1:2 2:12
+seq B1": 5:2 6:26
+seq B2": 7:2 6:26
+seq AF2: 4:6 5:2 4:10
+seq AF1: 4:6 5:2 4:4
+seq B1'': 5:2 6:12
+seq CB2: 6:2 6:46
+seq CB1: 6:6 7:2 6:2 6:4
+seq E2'': 3:2 2:12
+seq ED1: 2:48 3:4 2:4
+seq ED2: 2:6 1:2 2:6 3:4 2:4
+seq prio:B2: 6:28
+seq prio:B1: 6:28
+seq prio:E1: 2:28
+seq prio:E2: 2:28
+A2: under B1' under B1 under F1
+B1: over A2 over D2 over D1 over F1 over F2 over C2
+B1": over D2 over D1 over F1 over F2
+B1': over A2
+B1'': over C2
+B2: over D2 over D1 over F1 over F2
+B2": over D2 over D1 over F1 over F2
+C2: over D1 under B1'' under B1
+D1: under C2 over F2 over F1 under B1" under B1 under B2 under B2" under E2'' under E2
+D2: over F2 over F1 under B1" under B1 under B2 under B2"
+E2: over F1 over D1
+E2': over F1
+E2'': over D1
+F1: under E2' under E2 under B2" under B2 under B1 under B1" under D1 under D2 over A2
+F2: under B2" under B2 under B1 under B1" under D1 under D2

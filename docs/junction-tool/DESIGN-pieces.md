@@ -17,10 +17,7 @@ Spike (2026-11-17), fixing every switch of T2's and T3's best layouts to the val
 | T2 o0t2f1 | 2.5 s solving | 0.2 s | 917.25 both |
 | T3 o0t1f1 | 5.6 s solving | 0.2 s | 1941.25 both |
 
-Of T3's 13 switch groups:
-- 7 are already fixed by the width profile.
-- 5 are exit jogs whose on/off follows from the joins' widths (a prio join is wider than its port).
-- 1 is a genuine choice: B's jog before its core, on in T3 and off in T2.
+Of T3's 13 switch groups, 6 are fixed by the width profile ('+'/'-') and 7 are jogs. The jogs follow from the gaps between neighbouring channels (D335, wip/REVIEW-channels.md): the S and E exits must close a gap a joiner sits in; the W exit's gap is already opened by EF's fan; B's jog before its core is a genuine choice; the other three jog sides are never useful. (An earlier draft said exit jogs follow from join widths; wrong: the W join is prio and needs none, the S join is plain and needs one.)
 
 The solver's time goes on deciding which pieces exist, and nearly all of that is knowable in advance.
 
@@ -39,10 +36,13 @@ The solver's time goes on deciding which pieces exist, and nearly all of that is
 
 ## 3. Heading sequences by construction
 
-A channel's heading sequence (shared by its lanes, lanes offset across it) is built before the solve from three sources only:
+A channel's heading sequence (shared by its lanes, lanes offset across it, so lanes always step together) is built before the solve from four sources only:
 1. **Route turns.** The channel's in and out port headings give its turn: F goes east to south, so east, south-east, south.
 2. **Width changes (D327).** A sideways step exists exactly where the channel's width changes: a fray opening, a prio row's spread, a join closing up, and a doubled bridge's copy entering and leaving its reserved line (D333). The width profile is known from the topology, the line shares (D331) and the components.
-3. **Crossing angles.** The path step gives each crossing a piece on each channel (over: an axis piece; non-parallel to the partner), built so that the sequence is correct by construction. When no sequence exists, the path step fails with the reason instead of emitting a contradictory model.
+3. **Gaps between neighbouring channels (D335).** Per side and stretch a channel knows its neighbour, the bands between, and whether the gap is pinned at the edge. A step exists exactly where a pinned gap must hold a band inside: required, on the channel whose split or merge the band belongs to (a fray leg: the in port's fan, length spread plus gap; a joiner: the out port's close-up after the merge). Directions come from where the neighbouring port lies, not from left or right of travel. Default: a plain fray's leg closes at the out port.
+4. **Crossing angles.** The path step gives each crossing a piece on each channel (over: an axis piece; non-parallel to the partner), built so that the sequence is correct by construction. When no sequence exists, the path step fails with the reason instead of emitting a contradictory model.
+
+5. **Candidate steps.** A straight channel over crossings gets one candidate step before its core, away from the space between the main lines (T3: B), solved both ways as a variant.
 
 Anything else is a genuine choice and becomes explicit (section 5), never a switchable piece.
 
@@ -73,8 +73,9 @@ LL²'s variant count is cut separately (rotational symmetry; later, over/under i
   - The copy's steps are the width change into and out of that line.
   - Fixed are only equal bridges, the one-tile stagger and tight heads at both ends.
 - **Fray and join:**
-  - Their fans and close-ups are width changes.
+  - A fan is the fray's own spread plus any gap step (D335); a join's close-up to its far lane is a width change; its exit close-up to the port exists only where a gap step says so.
   - The prio row's spread is part of the width profile.
+  - The up-front side rule for joiners near a neighbouring in port becomes redundant.
 - **Removed:**
   - `OPTMAX` and every step cap,
   - optional segments and their switches (`group_z`, the '+', '-' and 'j' opt groups),
@@ -87,7 +88,9 @@ LL²'s variant count is cut separately (rotational symmetry; later, over/under i
 1. **Geometry layer.**
    - Pieces with grid rules for all 8 headings, bends with their parity rule, gap-sum curve rows.
    - Unit tests per piece and bend: legal in, legal out.
-2. **Heading-sequence builder** for one channel from route turns, width changes and crossing pieces. Tests on T2's channels against the sequences the solver chose in the spike dumps.
+2. **Gap profile and heading-sequence builder.**
+   - First a unit test of the gap steps from topology alone: T3 o0t1f1 gives the W fan and the E and S close-ups; T2 o0t2f1 the S leg (closing at the exit); LL² per node as REVIEW-channels Q4.
+   - Then the builder for one channel from route turns, width changes, gap steps, crossing pieces and candidates. Target on T3 o0t1f1: 1941.25 with B's step, 1960.25 without, each near 0.25 s (the matching rows of the 128-combination spike).
 3. **T2 mapped** through the new geometry: area at most 917.25, each variant under 1 s.
 4. **T3 mapped:** at most 1941.25, with the B jog as an explicit choice.
 5. **LL²:** the variants build, and the failing ones fail with a stated reason, not "impossible".
@@ -98,5 +101,6 @@ LL²'s variant count is cut separately (rotational symmetry; later, over/under i
    - Cost, T3 o0t1f1 with every other switch fixed: jog fixed 0.27 s; jog as an in-model switch 3.7 s, same result. Two solves come to about 0.5 s.
    - Effect, flipping the jog with everything else fixed: T3 no jog 1960.25 against 1941.25 with it; T2 with the jog 906.25 against the 917.25 the free switch settled on. The jog won in both; the in-model switch missed T2's better shape.
    - The heading-sequence builder lists such genuine choices itself; nobody picks them per hub.
-   - **Watch:** if the jog wins on every hub, it becomes a construction rule (always jog) and the variant bit goes.
+   - **Watch:** if the jog wins on every hub, it becomes a construction rule (always jog) and the variant bit goes. Under D335 this reads: is the candidate step always taken.
+   - Note: with jogs fixed, T2's B step gave 918.25 in one run and 906.25 in another (all switches fixed); the lazy clash separation takes the first feasible of four directions, so results vary by about 1% with the path taken. Not exact; tracked separately.
 2. **Diagonal lanes:** "Nothing wrong with diagonals running close together." Today's spacing rule stays.
