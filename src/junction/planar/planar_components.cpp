@@ -1511,6 +1511,7 @@ void MappedComposer::Build()
 				const std::vector<Seg> legs = legs_of(port.lines[j]);
 				for (size_t k = 1; k < qs.size(); k++) sep(ps[0], qs[k], f);
 				for (const Seg &sq : legs) sep(ps[0], sq, f);
+				if (ps.size() < 2 || ps[1].d == ps[0].d) continue; // a plain fray's lane has no fan
 				for (size_t k = 2; k < qs.size(); k++) sep(ps[1], qs[k], f);
 				for (const Seg &sq : legs) sep(ps[1], sq, f);
 			}
