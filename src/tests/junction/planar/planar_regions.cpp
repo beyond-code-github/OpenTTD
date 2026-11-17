@@ -12,9 +12,12 @@
 
 #include "../../../3rdparty/catch2/catch.hpp"
 
+#include "../../../junction/planar/planar_paths.h"
 #include "../../../junction/planar/planar_plan.h"
 #include "../../../junction/planar/planar_regions.h"
 
+#include <algorithm>
+#include <map>
 #include <set>
 #include <string>
 #include <utility>
@@ -91,4 +94,53 @@ TEST_CASE("planar regions: known sides", "[junction][planarregions]")
 	CHECK(side(PlanarLL2Text(), "A1", "A2a") == -1);
 	CHECK(side(PlanarLL2Text(), "D1b", "D2") == -1);
 	CHECK(side(PlanarTText(2), "C1", "F2") == 0); // no common face
+}
+
+TEST_CASE("planar regions: the face map follows the variant's channels", "[junction][planarregions]")
+{
+	std::string error;
+	const PlanarTopology t = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarChannels ch = BuildPlanarChannels(t);
+	REQUIRE(!PlanarTriangles(ch).empty());
+	const auto max_runs = [](const PlanarLineSides &sides) {
+		size_t most = 0;
+		for (const PlanarFace &face : sides.Faces()) most = std::max(most, face.runs.size());
+		return most;
+	};
+	const PlanarLineSides plain(t, ch);
+	REQUIRE(plain.Why().empty());
+	CHECK(max_runs(plain) <= 2);
+	const PlanarChannels fl = FlipPlanarTriangles(ch, 1);
+	const PlanarLineSides flipped(t, fl);
+	INFO(flipped.Why());
+	CHECK(flipped.Why().empty());
+	CHECK(max_runs(flipped) == 4);
+}
+
+TEST_CASE("planar regions: every face is walls in runs", "[junction][planarregions]")
+{
+	for (const auto &[name, text] : Hubs()) {
+		std::string error;
+		const PlanarTopology t = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarChannels ch = BuildPlanarChannels(t);
+		const size_t triangles = PlanarTriangles(ch).size();
+		for (uint64_t f = 0; f < (uint64_t{1} << triangles); f++) {
+			const PlanarLineSides sides(t, FlipPlanarTriangles(ch, f));
+			INFO(name << " flips " << f << ": " << sides.Why());
+			REQUIRE(sides.Why().empty());
+			std::map<std::pair<uint32_t, uint32_t>, size_t> seen;
+			for (const PlanarFace &face : sides.Faces()) {
+				REQUIRE(!face.runs.empty());
+				if (face.runs.size() > 1) {
+					for (size_t i = 0; i < face.runs.size(); i++) CHECK(face.runs[i].forward != face.runs[(i + 1) % face.runs.size()].forward);
+				}
+				for (const PlanarWallRun &run : face.runs) {
+					for (const auto &stretch : run.stretches) seen[stretch]++;
+				}
+			}
+			for (const auto &[stretch, count] : seen) CHECK(count <= 2);
+		}
+	}
 }

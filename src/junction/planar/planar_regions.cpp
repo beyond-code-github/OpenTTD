@@ -34,6 +34,7 @@ struct MapEdge {
 struct FaceEntry {
 	int line;
 	int8_t side; ///< -1 the face is left of the line's travel, +1 right.
+	int stretch; ///< The index of the stretch along the line.
 };
 
 /** The clockwise arc from entry to exit of a path, as ring positions. */
@@ -46,6 +47,7 @@ using RingEnds = std::pair<int, int>;
 class PlanarMap {
 public:
 	std::vector<std::vector<FaceEntry>> faces; ///< Every face's boundary, the outer face included.
+	std::vector<bool> has_box; ///< Per face, whether a ring edge bounds it.
 	int outer = -1; ///< The face holding only ring edges.
 	std::string why; ///< Empty, or the validation failure.
 
@@ -156,6 +158,7 @@ PlanarMap::PlanarMap(const PlanarTopology &t, const std::vector<int> &ring_pos, 
 	for (int f = 0; f < F; f++) {
 		std::set<int> tails;
 		bool only_boundary = true;
+		bool box = false;
 		std::vector<FaceEntry> entries;
 		for (int d : walks[f]) {
 			const MapEdge &e = edges[d / 2];
@@ -163,9 +166,10 @@ PlanarMap::PlanarMap(const PlanarTopology &t, const std::vector<int> &ring_pos, 
 				this->why = fmt::format("face {} is not a simple walk", f);
 				return;
 			}
+			if (e.line < 0) box = true;
 			if (e.line >= 0) {
 				only_boundary = false;
-				entries.push_back({e.line, static_cast<int8_t>(d % 2 == 0 ? -1 : 1)});
+				entries.push_back({e.line, static_cast<int8_t>(d % 2 == 0 ? -1 : 1), e.stretch});
 			}
 		}
 		if (only_boundary) {
@@ -173,14 +177,73 @@ PlanarMap::PlanarMap(const PlanarTopology &t, const std::vector<int> &ring_pos, 
 			outers++;
 		}
 		this->faces.push_back(std::move(entries));
+		this->has_box.push_back(box);
 	}
 	if (outers != 1) this->why = fmt::format("the face map has {} outer faces", outers);
 }
 
+/**
+ * Reorder the line-level events of a topology to the crossing order of a variant's channels.
+ * @param t The topology, whose events follow the unflipped channels.
+ * @param channels The variant's channels.
+ * @param why Set when the reorder fails.
+ * @return The topology with the moved crossings' events in each channel's order.
+ */
+PlanarTopology EventsInChannelOrder(const PlanarTopology &t, const PlanarChannels &channels, std::string &why)
+{
+	PlanarTopology out = t;
+	const PlanarChannels orig = BuildPlanarChannels(t);
+	if (orig.channels.size() != channels.channels.size()) {
+		why = "the variant's channels are not the topology's channels";
+		return out;
+	}
+	std::vector<uint32_t> channel_crossing(t.crossings.size(), UINT32_MAX); // line crossing -> channel crossing
+	for (uint32_t x = 0; x < orig.crossings.size(); x++) {
+		for (uint32_t lc : orig.crossings[x].line_crossings) channel_crossing[lc] = x;
+	}
+	for (size_t c = 0; c < orig.channels.size(); c++) {
+		const std::vector<uint32_t> &before = orig.channels[c].crossings, &after = channels.channels[c].crossings;
+		if (before == after) continue;
+		if (before.size() != after.size()) {
+			why = fmt::format("channel {} has a different number of crossings in the variant", c);
+			return out;
+		}
+		std::set<uint32_t> moved;
+		for (size_t k = 0; k < before.size(); k++) {
+			if (before[k] != after[k]) {
+				moved.insert(before[k]);
+				moved.insert(after[k]);
+			}
+		}
+		std::map<uint32_t, size_t> position;
+		for (size_t k = 0; k < after.size(); k++) position[after[k]] = k;
+		for (uint32_t l : orig.channels[c].lines) {
+			std::vector<uint32_t> &events = out.events[l];
+			std::vector<size_t> slots;
+			for (size_t k = 0; k < events.size(); k++) {
+				if (channel_crossing[events[k]] != UINT32_MAX && moved.contains(channel_crossing[events[k]])) slots.push_back(k);
+			}
+			for (size_t k = 1; k < slots.size(); k++) {
+				if (slots[k] != slots[k - 1] + 1) {
+					why = fmt::format("line {}: the events of the moved crossings are not contiguous", t.lines[l].name);
+					return out;
+				}
+			}
+			std::vector<uint32_t> values;
+			for (size_t k : slots) values.push_back(events[k]);
+			std::ranges::stable_sort(values, [&](uint32_t a, uint32_t b) { return position[channel_crossing[a]] < position[channel_crossing[b]]; });
+			for (size_t i = 0; i < slots.size(); i++) events[slots[i]] = values[i];
+		}
+	}
+	return out;
+}
+
 } // namespace
 
-PlanarLineSides::PlanarLineSides(const PlanarTopology &t, const PlanarChannels &) : count(t.lines.size()), table(t.lines.size() * t.lines.size(), 0)
+PlanarLineSides::PlanarLineSides(const PlanarTopology &topology, const PlanarChannels &channels) : count(topology.lines.size()), table(topology.lines.size() * topology.lines.size(), 0)
 {
+	const PlanarTopology t = EventsInChannelOrder(topology, channels, this->why);
+	if (!this->why.empty()) return;
 	const size_t n = this->count;
 	for (uint32_t l = 0; l < n; l++) this->by_name.emplace(t.lines[l].name, l);
 	const int nring = static_cast<int>(t.ring.size());
@@ -207,6 +270,21 @@ PlanarLineSides::PlanarLineSides(const PlanarTopology &t, const PlanarChannels &
 	if (!map.why.empty()) {
 		this->why = map.why;
 		return;
+	}
+	for (size_t f = 0; f < map.faces.size(); f++) {
+		if (static_cast<int>(f) == map.outer) continue;
+		PlanarFace face{static_cast<int>(f), map.has_box[f], {}};
+		for (const FaceEntry &e : map.faces[f]) {
+			const bool forward = e.side < 0;
+			if (face.runs.empty() || face.runs.back().forward != forward) face.runs.push_back({forward, {}});
+			face.runs.back().stretches.emplace_back(e.line, e.stretch);
+		}
+		if (face.runs.size() > 1 && face.runs.front().forward == face.runs.back().forward) {
+			std::vector<std::pair<uint32_t, uint32_t>> &last = face.runs.back().stretches;
+			last.insert(last.end(), face.runs.front().stretches.begin(), face.runs.front().stretches.end());
+			face.runs.erase(face.runs.begin());
+		}
+		this->faces.push_back(std::move(face));
 	}
 	std::set<std::pair<uint32_t, uint32_t>> crossing;
 	std::set<size_t> conflict;
