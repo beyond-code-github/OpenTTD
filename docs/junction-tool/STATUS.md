@@ -1,5 +1,13 @@
 ## RESUME HERE (2026-11-16, final) — D329: APPROXIMATE AREA ACCEPTED; NEXT T2 AND LL² FROM TEXT (ng1 wt-planar 7a14a431aa)
 
+RESUME 2026-11-17 latest (ng1 wt-planar 46cbaeb78d + uncommitted experiments; docs ef0f88f7d0+):
+- LL² o49t0f0 "impossible" traced (constraint strip-down, 42 rows): the 8-tile OPTMAX cap on optional steps, not the doubled bridge or the grid. Pete: the cap "should never have been there"; a long detour is a smell.
+- Removing the cap: T1/T2/T3 same areas but T2 4.6 -> 15.4 s, T3 9.9 -> 20.9 s (the cap was a hidden search restriction).
+- Direction (Pete agreed, "much more confident"): DESIGN-pieces.md. Diagonals first-class; every piece required (no switches, no caps); heading sequences by construction from route turns, width changes and crossing angles; curve rules as gap sums; real shape choices explicit. Spike: T2/T3 best variants with switches fixed: 0.2 s, same area; 12 of T3's 13 switch groups derivable.
+- D333 (doubled lane reserves two lanes), D334 (grid lives in the geometry layer) recorded.
+- ng1 worktree is DIRTY with experiments (EXPERIMENT comments in planar_components.cpp): cap removed (OPTMAX = map size, env PLANAR_M), PLANAR_IIS strip-down with row labels, PLANAR_FIXSW, PLANAR_SEGDUMP, PLANAR_DRY_PATHS, many relax knobs. Keep IIS/FIXSW/SEGDUMP/DRY_PATHS as debug knobs, drop the rest, restore nothing of OPTMAX's cap.
+- NEXT: Pete reviews DESIGN-pieces.md (two questions in its section 8); then step 1 (geometry layer, test-first).
+
 RESUME 2026-11-17 later (ng1 wt-planar 46cbaeb78d):
 - D331 doubling by flow share done (`PlanarChannels::line_share`; D332: sideline movements, i.e. no prio route, count half, so the T is unchanged). Full-share lanes double on straight cores and on turning channels' crossing pieces; half-share cross single.
 - Paths: a channel starting at a node starts on its in channel's end heading; a straight fork leg jogs to its own side to cross; crossing pieces settle jointly (cycles compose, over pieces avoid running parallel to the under). Straight channels can pass under (their run before or after their decks).
