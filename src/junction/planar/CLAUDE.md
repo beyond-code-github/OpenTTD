@@ -42,6 +42,7 @@
 - A non-prio route runs at least 2 TL units from its last split or port to each merge.
 - Clashes (`JunctionTracksMayShareTile`, touching across a tile edge, heads exclusive, deck middles over ground allowed), curve gaps (`JunctionCurveGaps` on the solved hands), prio element room and terrain facts are added lazily as separations or floors, each holding while the headings it was found at hold, and the program is solved again until none is found.
 - `PLANAR_DEBUG` set in the environment prints the lazy loop's rounds.
+- `PLANAR_IIS` set in the environment: a mapped solve proven infeasible prints a minimal conflicting row set to stderr, `IIS <tag> : <row>` per row (tags: `seg <strand>#<i>`, `cross`, `deck`, `sep`, `fan rule`, `box`, ...), or `IIS integer-only (LP feasible)`.
 
 ## Back end (`planar_plan`)
 - The flat seed is cached per topology text and the spec's rule fields. It solves the component layout (`SolvePlanarComponents`) for topologies with a composition (T2, LL², `seed.components`, `bound` 0) and the layout program (`planar_layout`) otherwise, at box bound 64 tiles, then 128; a topology with no composition behaves as before.

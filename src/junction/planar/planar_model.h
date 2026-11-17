@@ -21,6 +21,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <source_location>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -108,7 +109,27 @@ struct Row {
 	std::vector<std::pair<uint32_t, double>> terms;
 	double lower;
 	double upper;
+	std::string tag; ///< Which construction site made the row, for the conflict printout.
 };
+
+/** The tag the rows made now carry. */
+inline std::string g_tag;
+
+/** Tag the rows made in this scope (the enclosing tag returns after it). */
+struct TagScope {
+	std::string old;
+
+	explicit TagScope(const std::string &tag) : old(g_tag) { g_tag = tag; }
+	~TagScope() { g_tag = this->old; }
+	TagScope(const TagScope &) = delete;
+	TagScope &operator=(const TagScope &) = delete;
+};
+
+/** The tag of a row made outside every scope: its construction line. */
+inline std::string Here(const std::source_location &l)
+{
+	return fmt::format("L{}", l.line());
+}
 
 /** A point of two variables. */
 struct Point {
@@ -212,6 +233,10 @@ public:
 	std::vector<PrioRow> prio_rows;
 	std::vector<CopyRec> copies;
 	std::vector<std::tuple<Seg, std::string, std::string>> pending; ///< Decks that wait for a later bundle: (segment, first strand, second strand).
+	bool last_infeasible = false; ///< Whether the last Solve proved the rows infeasible.
+	std::vector<uint32_t> iis_rows; ///< After a proven infeasible Solve: the LP relaxation's conflicting rows (model rows, then the extra rows).
+	bool relax = false; ///< Solve the LP relaxation (the conflict reduction).
+	std::set<size_t> skip; ///< Rows (model rows, then the extra rows) that Solve replaces by free rows (the conflict reduction).
 	std::vector<double> last; ///< The last Optimal solve, all columns.
 	std::map<uint32_t, double> obj_extra; ///< The area gradient.
 	Var X{0}; ///< Box width, half-tiles.
@@ -262,13 +287,15 @@ public:
 		}
 		row.lower = -con.e.constant;
 		row.upper = con.equal ? -con.e.constant : INF;
+		row.tag = g_tag;
 		return row;
 	}
 
 	/** Add a constraint; one without variables must hold. */
-	void Add(const Con &con)
+	void Add(const Con &con, std::source_location loc = std::source_location::current())
 	{
 		Row row = MakeRow(con);
+		if (row.tag.empty()) row.tag = Here(loc);
 		if (row.terms.empty()) {
 			if (con.equal ? con.e.constant != 0 : con.e.constant < 0) this->Fail("a constant constraint does not hold");
 			return;
@@ -300,8 +327,9 @@ public:
 
 	/** Make two points equal. */
 	template <class A, class B>
-	void Tie(const A &p, const B &q)
+	void Tie(const A &p, const B &q, std::source_location loc = std::source_location::current())
 	{
+		TagScope ts("tie@" + Here(loc));
 		this->Add(Eq(p[0], q[0]));
 		this->Add(Eq(p[1], q[1]));
 	}
@@ -338,6 +366,7 @@ public:
 	 */
 	Seg AddSeg(const std::string &name, int d, int lo = 0, std::optional<int> hi = std::nullopt, double c = 1.0, bool opt = false)
 	{
+		TagScope ts(fmt::format("seg {}#{}", name, this->strands.at(name).segs.size()));
 		const Point a = this->End(name);
 		const Var L = this->NewVar(opt ? 0 : lo, hi.has_value() ? *hi : INF, c * (IsAxis(d) ? 1.0 : std::sqrt(2.0)));
 		std::optional<Var> z;
@@ -427,8 +456,9 @@ public:
 	 * @param head The heads' length along the over segment.
 	 * @return The over parameter and the head length.
 	 */
-	std::pair<Var, int> Cross(const Seg &over, const Seg &under, int head)
+	std::pair<Var, int> Cross(const Seg &over, const Seg &under, int head, std::source_location loc = std::source_location::current())
 	{
+		TagScope ts(fmt::format("cross {}#{}>{}#{}@{}", over.strand, over.i, under.strand, under.i, Here(loc)));
 		const Var a = this->NewVar();
 		const Var b = this->NewVar();
 		this->Add(Ge(b, 1));
@@ -451,8 +481,9 @@ public:
 	 * @param tail_min The least length after the far head start.
 	 * @return The near head end n and the far head start f.
 	 */
-	std::pair<Var, Var> Deck(const Seg &over, const std::vector<std::pair<Var, int>> &xs, std::optional<int> n_exact = std::nullopt, std::optional<int> tail_exact = std::nullopt, int n_min = 2, int tail_min = 2)
+	std::pair<Var, Var> Deck(const Seg &over, const std::vector<std::pair<Var, int>> &xs, std::optional<int> n_exact = std::nullopt, std::optional<int> tail_exact = std::nullopt, int n_min = 2, int tail_min = 2, std::source_location loc = std::source_location::current())
 	{
+		TagScope ts(fmt::format("deck {}#{}@{}", over.strand, over.i, Here(loc)));
 		const Var n = this->NewVar();
 		const Var f = this->NewVar();
 		if (!n_exact.has_value()) {
@@ -478,13 +509,22 @@ public:
 	}
 
 	/**
+	 * After a Solve with these extra rows proved infeasible: print a minimal conflicting set of rows to stderr, one "IIS <tag> : <row>" line each.
+	 * The LP relaxation's conflict set is cut down by deleting rows one by one while the rest stays LP-infeasible, with every row outside it relaxed (a free row).
+	 * An infeasibility that is integer only prints "IIS integer-only (LP feasible)".
+	 * @param extra The extra rows of that Solve.
+	 */
+	void ExplainInfeasible(const std::vector<Row> &extra);
+
+	/**
 	 * Solve with extra rows, warm-started from the last solution.
 	 * @param extra Extra rows.
 	 * @param out The solution.
 	 * @return Whether an optimal solution was found.
 	 */
 	bool Solve(const std::vector<Row> &extra, Solution &out)
-	{		const auto solve_t0 = std::chrono::steady_clock::now();
+	{
+		const auto solve_t0 = std::chrono::steady_clock::now();
 		struct Report {
 			const std::chrono::steady_clock::time_point t0;
 			bool *ok;
@@ -501,11 +541,19 @@ public:
 		const size_t n0 = this->lb.size();
 		for (size_t i = 0; i < n0; i++) {
 			const auto it = this->obj_extra.find(static_cast<uint32_t>(i));
-			milp.AddVariable(this->lb[i], this->ub[i], this->cost[i] + (it == this->obj_extra.end() ? 0.0 : it->second), true);
+			milp.AddVariable(this->lb[i], this->ub[i], this->cost[i] + (it == this->obj_extra.end() ? 0.0 : it->second), !this->relax);
 		}
-		for (size_t k = 0; k < this->parity.size(); k++) milp.AddVariable(-INF, INF, 0.0, true);
-		for (const Row &r : this->rows) milp.AddRow(r.terms, r.lower, r.upper);
-		for (const Row &r : extra) milp.AddRow(r.terms, r.lower, r.upper);
+		for (size_t k = 0; k < this->parity.size(); k++) milp.AddVariable(-INF, INF, 0.0, !this->relax);
+		size_t gi = 0;
+		for (const std::vector<Row> *list : std::initializer_list<const std::vector<Row> *>{&this->rows, &extra}) {
+			for (const Row &r : *list) {
+				if (this->skip.contains(gi++)) {
+					milp.AddRow({}, -INF, INF);
+				} else {
+					milp.AddRow(r.terms, r.lower, r.upper);
+				}
+			}
+		}
 		for (size_t k = 0; k < this->parity.size(); k++) {
 			const std::vector<std::pair<uint32_t, double>> terms{{this->parity[k].first, 1.0}, {static_cast<uint32_t>(n0 + k), -2.0}};
 			milp.AddRow(terms, this->parity[k].second, this->parity[k].second);
@@ -516,7 +564,10 @@ public:
 			for (size_t i = 0; i < n; i++) start.emplace_back(static_cast<uint32_t>(i), this->last[i]);
 			milp.SetStart(std::move(start));
 		}
-		if (milp.Solve() != JunctionMilp::Status::Optimal) return false;
+		const auto st = milp.Solve();
+		this->last_infeasible = st == JunctionMilp::Status::Infeasible;
+		this->iis_rows = this->last_infeasible ? milp.InfeasibleRows() : std::vector<uint32_t>{};
+		if (st != JunctionMilp::Status::Optimal) return false;
 		this->last.resize(n);
 		out.val.resize(n);
 		for (size_t i = 0; i < n; i++) {

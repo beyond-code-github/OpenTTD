@@ -821,6 +821,7 @@ private:
 		M.Node({in, left, right});
 		const Seg a = M.AddSeg(left, Turn(h, -1), 2, std::nullopt, 1.0, true);
 		const Seg b = M.AddSeg(right, Turn(h, +1), 2, std::nullopt, 1.0, true);
+		const TagScope ts("fork gap");
 		M.Add(Ge(Dot(Right(h), b.b) - Dot(Right(h), a.b), 2));
 	}
 
@@ -840,6 +841,7 @@ private:
 	void PortIn(const std::string &name, PlanarSide side)
 	{
 		this->M.NewStrand(name);
+		const TagScope ts("port in");
 		const Point u = this->M.strands.at(name).start;
 		if (side == PlanarSide::W) this->M.Add(Eq(u[0], 0));
 		if (side == PlanarSide::E) this->M.Add(Eq(u[0] - this->M.X, 0));
@@ -876,6 +878,7 @@ private:
 	void PairDecks(const Seg &d0, const Seg &d1, const std::vector<Seg> &crossers, int h)
 	{
 		Model &M = this->M;
+		const TagScope ts("pair deck");
 		std::vector<std::pair<Var, int>> x0, x1;
 		for (const Seg &v : crossers) {
 			x0.push_back(M.Cross(d0, v, 4));
@@ -906,7 +909,10 @@ private:
 			M.NewStrand(V[k], sp.back());
 			M.Node({ins[k], S[k], V[k]});
 		}
-		for (size_t k = 1; k < n; k++) M.Add(Ge((Dot(r, sp[k]) - Dot(r, sp[k - 1])) * sigma, prio ? 4 : 2));
+		for (size_t k = 1; k < n; k++) {
+			const TagScope ts("fray gap");
+			M.Add(Ge((Dot(r, sp[k]) - Dot(r, sp[k - 1])) * sigma, prio ? 4 : 2));
+		}
 		M.AddSeg(S[0], h, 2);
 		std::vector<Seg> vs;
 		for (const std::string &v : V) vs.push_back(M.AddSeg(v, Turn(h, sigma), 2));
@@ -984,6 +990,7 @@ private:
 			M.AddSeg(o, h, STUB);
 		}
 		for (size_t k = 0; k + 1 < n; k++) {
+			const TagScope ts("join exit");
 			if (!st.empty()) {
 				const bool f_first = Turn(h, +1) == Turn(h, sigma);
 				const Seg &a = f_first ? st[k] : st[k + 1];
@@ -999,6 +1006,7 @@ private:
 	{
 		Model &M = this->M;
 		std::vector<Seg> last, diag;
+		const TagScope ts("flex");
 		for (const std::string &l : lanes) {
 			M.AddSeg(l, h, 0);
 			if (jog == 0) {
@@ -1053,6 +1061,7 @@ private:
 				this->piece_tails[{c, static_cast<uint32_t>(k)}].insert_or_assign(l, tails.back());
 			}
 			for (int j = 1; j < n; j++) {
+				const TagScope ts("bundle offset");
 				M.Add(Eq(Dot(r, this->piece_segs[c][lanes[j]][k].a) - Dot(r, this->piece_segs[c][lanes[0]][k].a), 2 * j));
 				M.Add(Eq(Dot(r, tails[j].b) - Dot(r, tails[0].b), 2 * j));
 			}
@@ -1254,6 +1263,7 @@ void MappedComposer::Build()
 		}
 		/* One deck per crossing on each deck segment, in travel order; with a copy, the first copy-0 deck has its near head tight and the last its tail, mirrored on copy 1, equal bridges, copy 1 one tile upstream. Wired once every under piece exists. */
 		const auto wire_decks = [this, &M, &ch, c, h, overs](const Seg &d0, std::optional<Seg> d1) -> bool {
+			const TagScope ts("deck chain");
 			std::optional<Var> prev_f0, prev_f1;
 			for (size_t k = 0; k < overs.size(); k++) {
 				const PlanarChannelCrossing &xc = ch.crossings[overs[k]];
@@ -1307,6 +1317,7 @@ void MappedComposer::Build()
 		}
 		std::vector<Seg> run;
 		for (const std::string &l : lanes) run.push_back(M.AddSeg(l, h, 0));
+		const TagScope ts("run offset");
 		for (int j = 1; j < n; j++) M.Add(Eq(Dot(Right(h), run[j].a) - Dot(Right(h), run[0].a), 2 * offs[j]));
 		for (int j = 0; j < n; j++) this->piece_tails[{c, 0}].insert_or_assign(lanes[j], run[j]);
 		return true;
@@ -1450,6 +1461,7 @@ void MappedComposer::Build()
 				continue;
 			}
 			/* A doubled lane: copy-0 deck near head tight, copy-1 tail tight, equal bridges, copy 1 one tile upstream (D118, D145). */
+			const TagScope ts("doubled deck");
 			const auto &[d0, d1] = dbl->second.at(ol);
 			const int h = d0.d;
 			const auto [n0, f0] = M.Deck(d0, cross_all(d0, 4), 4, 0);
@@ -1466,6 +1478,7 @@ void MappedComposer::Build()
 		for (const auto &[ci, xu] : this->cross_x) {
 			const CrossRec &c = M.crossings[ci];
 			for (const auto &[di, xd] : this->deck_x) {
+				const TagScope ts("under-deck");
 				const DeckRec &d = M.decks[di];
 				if (d.over.strand != c.under.strand || d.over.i != c.under.i) continue;
 				const uint32_t line = PlanarLineByName(t, c.under.strand);
@@ -1485,6 +1498,7 @@ void MappedComposer::Build()
 	const bool rules = std::getenv("PLANAR_NORULES") == nullptr;
 	const auto sep = [&](const Seg &sp, const Seg &sq, const std::array<int, 2> &f) { // sq lies at least 2 beyond sp along f
 		if (!rules) return;
+		const TagScope ts(fmt::format("{} {}#{} {}#{}", g_tag, sp.strand, sp.i, sq.strand, sq.i));
 		for (const Point &a : {sp.a, sp.b}) {
 			for (const Point &b : {sq.a, sq.b}) M.Add(Ge(Dot(f, b) - Dot(f, a), 2));
 		}
@@ -1501,6 +1515,7 @@ void MappedComposer::Build()
 	};
 	/* An in port's fan: a lane right of another keeps its fan and what follows right of and ahead of the other's stub and fan. */
 	for (const PlanarPort &port : t.ports) {
+		const TagScope ts("fan rule");
 		if (!port.in) continue;
 		const int h = static_cast<int>(port.heading);
 		const std::array<int, 2> f = {Right(h)[0] + STEP[h][0], Right(h)[1] + STEP[h][1]};
@@ -1519,6 +1534,7 @@ void MappedComposer::Build()
 	}
 	/* Ports on one side: a joiner arriving from the side of the neighbouring in port keeps its last run on its own side of that port. */
 	for (size_t s = 0; s < ch.sites.size(); s++) {
+		const TagScope ts("side rule");
 		if (ch.sites[s].kind != PlanarSiteKind::Join) continue;
 		const PlanarChannel &key = ch.channels[ch.sites[s].channel];
 		if (key.down.size() != 1) continue;
@@ -1551,6 +1567,7 @@ void MappedComposer::Build()
 	for (const PlanarPort &port : t.ports) {
 		if (port.in) continue;
 		for (uint32_t l : port.lines) {
+			const TagScope ts("port out");
 			const Point u = M.End(t.lines[l].name);
 			if (port.side == PlanarSide::W) M.Add(Eq(u[0], 0));
 			if (port.side == PlanarSide::E) M.Add(Eq(u[0] - M.X, 0));
@@ -1575,11 +1592,13 @@ void MappedComposer::Build()
 				first = false;
 			}
 		}
+		const TagScope ts("port order");
 		const size_t k = across_y ? 1 : 0;
 		for (size_t i = 1; i < seq.size(); i++) M.Add(Eq(seq[i].first[k] - seq[i - 1].first[k], seq[i].second ? 4 : 2));
 	}
 	/* Box. */
 	for (const std::string &name : M.order) {
+		const TagScope ts("box");
 		const Strand &st = M.strands.at(name);
 		std::vector<Point> pts{st.start};
 		for (const Seg &sg : st.segs) pts.push_back(sg.b);
@@ -1592,6 +1611,7 @@ void MappedComposer::Build()
 	}
 	/* Prio rows: inside the box, unrelated to all. */
 	for (const PrioRow &row : std::vector<PrioRow>(M.prio_rows)) {
+		const TagScope ts("prio row");
 		const auto &r = Right(row.h);
 		const int dx = STEP[row.h][0], dy = STEP[row.h][1];
 		const std::array<Ex, 2> start = {row.m[0] - dx * 2 * this->P + row.side * r[0] * 2, row.m[1] - dy * 2 * this->P + row.side * r[1] * 2};
@@ -1607,7 +1627,10 @@ void MappedComposer::Build()
 		}
 	}
 	/* A deck is two heads and at most the longest middle. */
-	for (const DeckRec &d : std::vector<DeckRec>(M.decks)) M.Add(Le(d.f - d.n, 2 * (M.params.maxmid + 2)));
+	for (const DeckRec &d : std::vector<DeckRec>(M.decks)) {
+		const TagScope ts("deck max");
+		M.Add(Le(d.f - d.n, 2 * (M.params.maxmid + 2)));
+	}
 
 	/* Routes: every route path; the outline: from each in port's left lane, the path turning furthest left. */
 	for (const PlanarRoute &route : t.routes) {
@@ -1650,6 +1673,7 @@ void MappedComposer::Build()
 				while (j > 0 && !starts_at(names[j], 1)) j--;
 				std::vector<std::string> stretch(names.begin() + j, names.begin() + i + 1);
 				if (!bays.insert(stretch).second) continue;
+				const TagScope ts("bay length");
 				Ex len;
 				for (const std::string &nm : stretch) {
 					for (const Seg &sg : M.strands.at(nm).segs) len = len + sg.L;
@@ -1803,6 +1827,7 @@ std::vector<std::vector<Row>> SepOptions(const Model &M, const GeoSet &g, const 
 	for (const auto &[c, fx, fy] : opts) {
 		const std::array<int, 2> f{fx, fy};
 		std::vector<Row> rows;
+		const TagScope ts(fmt::format("sep {}#{} {}#{} dir({},{})", pr.first.first, pr.first.second, pr.second.first, pr.second.second, fx, fy));
 		for (const Point *a : {&sp.a, &sp.b}) {
 			for (const Point *b : {&sq.a, &sq.b}) rows.push_back(Model::MakeRow(Ge(Dot(f, *b) - Dot(f, *a), 2)));
 		}
@@ -1877,7 +1902,14 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 {
 	std::vector<Row> seps = seps0;
 	Solution r;
+	/* PLANAR_IIS: a proven infeasible solve names its conflicting rows (the solve that has just failed must be the last one made). */
+	const bool explain = std::getenv("PLANAR_IIS") != nullptr;
+	std::vector<Row> tried; // the rows of the last failed trial, kept only to explain it
+	const auto explain_last = [&](const std::vector<Row> &extra) {
+		if (explain && M.last_infeasible) M.ExplainInfeasible(extra);
+	};
 	if (!M.Solve(seps, r)) {
+		explain_last(seps);
 		why = "base infeasible";
 		return false;
 	}
@@ -1910,12 +1942,15 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 					done = true;
 					break;
 				}
+				if (explain) tried = std::move(trial);
 			}
 			if (!done) {
+				explain_last(tried);
 				why = "under-deck conflict not separable";
 				return false;
 			}
 			if (!M.Solve(seps, r)) {
+				explain_last(seps);
 				why = "infeasible after separation";
 				return false;
 			}
@@ -1936,12 +1971,15 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 				separated = true;
 				break;
 			}
+			if (explain) tried = std::move(trial);
 		}
 		if (!separated) {
+			explain_last(tried);
 			why = "a clash is not separable";
 			return false;
 		}
 		if (!M.Solve(seps, r)) {
+			explain_last(seps);
 			why = "infeasible after separation";
 			return false;
 		}

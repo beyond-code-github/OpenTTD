@@ -84,6 +84,7 @@ double Ev(const std::vector<int64_t> &val, const Ex &e)
 void Model::PieceCurves(const RouteList &routes)
 {
 	const Params &pr = this->params;
+	TagScope ts_curve("curve");
 	std::set<std::pair<std::vector<std::pair<uint32_t, double>>, double>> seen;
 	const auto addrow = [&](const Ex &e) {
 		std::vector<std::pair<uint32_t, double>> key(e.terms.begin(), e.terms.end());
@@ -167,6 +168,82 @@ std::vector<std::vector<Seg>> RouteSegs(const Model &M, const std::vector<std::s
 		variants = std::move(next);
 	}
 	return variants;
+}
+
+void Model::ExplainInfeasible(const std::vector<Row> &extra)
+{
+	const size_t nr = this->rows.size();
+	const size_t total = nr + extra.size();
+	const auto row_at = [&](size_t r) -> const Row & { return r < nr ? this->rows[r] : extra[r - nr]; };
+	std::vector<size_t> core;
+	for (const uint32_t r : this->iis_rows) core.push_back(r);
+	if (core.empty()) {
+		fmt::print(stderr, "IIS integer-only (LP feasible)\n");
+		return;
+	}
+
+	/* Every row outside the set is relaxed, then the set is cut down: a row whose removal leaves the LP infeasible is dropped for good. */
+	const std::vector<double> keep_last = this->last;
+	std::set<size_t> dropped;
+	for (size_t r = 0; r < total; r++) {
+		if (std::ranges::find(core, r) == core.end()) dropped.insert(r);
+	}
+	this->relax = true;
+	for (size_t k = 0; k < core.size();) {
+		if (core[k] >= total) { // a parity row is not a row of the LP: it stays
+			k++;
+			continue;
+		}
+		this->skip = dropped;
+		this->skip.insert(core[k]);
+		Solution q;
+		if (!this->Solve(extra, q) && this->last_infeasible) {
+			dropped.insert(core[k]);
+			core.erase(core.begin() + k);
+		} else {
+			k++;
+		}
+	}
+	this->skip = dropped;
+	Solution q;
+	const bool alone = !this->Solve(extra, q) && this->last_infeasible;
+	this->relax = false;
+	this->skip.clear();
+	this->last = keep_last;
+	if (!alone) fmt::print(stderr, "IIS core is not LP-infeasible alone (a solver limit); the rows below are not a proven conflict\n");
+
+	std::map<uint32_t, std::string> names;
+	const auto name_var = [&](uint32_t index, const std::string &name) {
+		std::string &n = names[index];
+		n += (n.empty() ? "" : "=") + name;
+	};
+	for (const auto &[name, st] : this->strands) {
+		name_var(st.start[0].index, name + ".start.x");
+		name_var(st.start[1].index, name + ".start.y");
+		for (const Seg &sg : st.segs) {
+			name_var(sg.L.index, fmt::format("{}#{}.L", name, sg.i));
+			name_var(sg.b[0].index, fmt::format("{}#{}.end.x", name, sg.i));
+			name_var(sg.b[1].index, fmt::format("{}#{}.end.y", name, sg.i));
+		}
+	}
+	name_var(this->X.index, "X");
+	name_var(this->Y.index, "Y");
+	for (const size_t r : core) {
+		if (r >= total) {
+			fmt::print(stderr, "IIS parity\n");
+			continue;
+		}
+		const Row &row = row_at(r);
+		std::string text;
+		for (const auto &[index, coef] : row.terms) text += fmt::format(" {:+g}*{}", coef, names.contains(index) ? names[index] : fmt::format("v{}", index));
+		if (row.lower == row.upper) {
+			text += fmt::format(" = {:g}", row.lower + 0.0);
+		} else {
+			if (row.lower > -INF) text += fmt::format(" >= {:g}", row.lower + 0.0);
+			if (row.upper < INF) text += fmt::format(" <= {:g}", row.upper + 0.0);
+		}
+		fmt::print(stderr, "IIS {}{} :{}\n", r >= nr ? "(extra) " : "", row.tag, text);
+	}
 }
 
 } // namespace PlanarModel
