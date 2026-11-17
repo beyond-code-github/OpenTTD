@@ -94,3 +94,10 @@ The ladder build costs a second solve; these turn the rough solve into speed and
 
 ## 11. Clashes deferred to a grid layer (2026-11-18, engineer: "Can we defer the clashes until a point where we have a grid?")
 Layers, as terrain is deferred: topology -> shape and rough positions (continuous, linear) -> grid (tiles). The chip-routing split: global routing checks capacity only (each corridor wide enough for its lanes at the spacing: linear, from the topology and the width profile of D327/D333, no clash pairs), detailed routing puts tracks on tiles, where "one track per tile" is a plain linear rule on tile variables. The grid solve runs in windows around the sites where the rough layout clashes (everything outside fixed from the rough, so train-length and curve rules have fixed boundaries), not on the whole hub. Ladders are the halfway house: capacity rows with exact geometry. Risk: a window with no room sends a capacity raise back up (a coarse loop, rare if capacity is right). Probe after the bends probe: a windowed grid legaliser on the no-clash rough (LL² ~25 clashes per variant, wip/PROBE-noclash.md): do local windows clear them, at what size and time? D334 (grid owned by the geometry layer's pieces) still holds: the pieces are already tile-exact; the grid layer adds occupancy, not positions.
+
+## 12. Shape layer (D340, 2026-11-18)
+Spikes: wip/SPIKE-shapeflow{,2,3}.md, PROBE-flowturns.md. Steps (each checked against today's layouts):
+- S0 recon: every place the composer decides a heading (DESIGN-pieces' four sources), mapped to stretch end headings.
+- S1 shape input: the composer takes per-stretch end headings (a `PlanarShape`) and builds from them; today's rules produce the default `PlanarShape`; feeding it back reproduces today's layouts bit for bit (pv identical).
+- S2 shape program: the spike-3 MIP as a module, crossing rules on every line crossing (not only channel crossings), output a `PlanarShape`; tested: today's shape is feasible, objective <= today's.
+- S3 scored shapes: per variant the best few shapes plus today's, each solved by the length solve; pick by area. Measure on T2/T3/LL².
