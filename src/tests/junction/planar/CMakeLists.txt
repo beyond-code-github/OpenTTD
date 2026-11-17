@@ -6,5 +6,6 @@ add_test_files(
     planar_paths.cpp
     planar_plan.cpp
     planar_regions.cpp
+    planar_shape.cpp
     planar_topology.cpp
 )
