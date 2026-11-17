@@ -1,0 +1,229 @@
+diff --git a/src/junction/planar/planar_components.cpp b/src/junction/planar/planar_components.cpp
+index 88d3d6be88..f15a21454d 100644
+--- a/src/junction/planar/planar_components.cpp
++++ b/src/junction/planar/planar_components.cpp
+@@ -774,6 +774,11 @@ private:
+ 	MappedVariant variant;
+ public:
+ 	PlanarLineSides sides; ///< Which side of each other two lines keep, from the topology.
++	std::vector<std::pair<Con, std::string>> corridor_rows; ///< Probe: R1 rows.
++	std::vector<std::string> corridor_skips; ///< Probe.
++	std::vector<std::string> corridor_notes; ///< Probe.
++	int corridor_faces = 0; ///< Probe.
++	int corridor_pairs = 0; ///< Probe.
+ 
+ private:
+ 	PlanarPaths paths;
+@@ -1592,6 +1597,99 @@ void MappedComposer::Build()
+ 		}
+ 	}
+ 
++	/* Probe (corridors): rule R1, rows kept in corridor_rows; PLANAR_CORRIDOR=1 adds them before the first solve. */
++	{
++		const PlanarLineSides &sd = this->sides;
++		const auto name_of = [&](int l) { return t.lines[l].name; };
++		const auto event_seg = [&](uint32_t line, size_t k) -> int {
++			const uint32_t c = t.events[line][k];
++			const std::string &a = t.lines[t.crossings[c].a].name, &b = t.lines[t.crossings[c].b].name;
++			const std::string &me = t.lines[line].name;
++			int found = -1;
++			for (const CrossRec &cr : M.crossings) {
++				const bool ab = cr.over.strand == a && cr.under.strand == b, ba = cr.over.strand == b && cr.under.strand == a;
++				if (!ab && !ba) continue;
++				const Seg &mine = cr.over.strand == me ? cr.over : cr.under;
++				if (found >= 0 && found != static_cast<int>(mine.i)) corridor_notes.push_back(fmt::format("crossing {}x{} has several records", a, b));
++				if (found < 0) found = static_cast<int>(mine.i);
++			}
++			if (found < 0) corridor_notes.push_back(fmt::format("crossing {}x{} has no record on strand {}", a, b, me));
++			return found;
++		};
++		const auto wall_segs = [&](const std::vector<std::pair<int, int>> &wall, std::vector<Seg> &out) -> bool {
++			for (const auto &[l, k] : wall) {
++				const std::vector<Seg> &segs = M.strands.at(name_of(l)).segs;
++				const size_t ne = t.events[l].size();
++				int i0 = k == 0 ? 0 : event_seg(l, k - 1);
++				int i1 = static_cast<size_t>(k) == ne ? static_cast<int>(segs.size()) - 1 : event_seg(l, k);
++				if (i0 < 0 || i1 < 0 || i0 > i1) {
++					corridor_notes.push_back(fmt::format("stretch {}#{} segs {}..{} unusable", name_of(l), k, i0, i1));
++					return false;
++				}
++				for (int i = i0; i <= i1; i++) out.push_back(segs[i]);
++			}
++			return true;
++		};
++		using Run = std::vector<Seg>;
++		const auto runs_of = [](const std::vector<Seg> &segs) {
++			std::vector<Run> runs;
++			for (const Seg &sg : segs) {
++				if (!runs.empty() && runs.back().back().d == sg.d) runs.back().push_back(sg);
++				else runs.push_back({sg});
++			}
++			return runs;
++		};
++		for (const PlanarCorridor &cor : sd.corridors) {
++			if (cor.left.empty() || cor.right.empty()) continue; // the crossing triangle
++			std::vector<Seg> ls, rs;
++			if (!wall_segs(cor.left, ls) || !wall_segs(cor.right, rs)) {
++				corridor_skips.push_back(fmt::format("face {} unusable", cor.face));
++				continue;
++			}
++			std::string who = fmt::format("face {} L=", cor.face);
++			for (const auto &[l, k] : cor.left) who += fmt::format("{}#{} ", name_of(l), k);
++			who += "R=";
++			for (const auto &[l, k] : cor.right) who += fmt::format("{}#{} ", name_of(l), k);
++			corridor_faces++;
++			const std::vector<Run> lr = runs_of(ls), rr = runs_of(rs);
++			for (int h = 0; h < 8; h++) {
++				std::vector<const Run *> lh, rh;
++				for (const Run &r : lr) if (r.front().d == h) lh.push_back(&r);
++				for (const Run &r : rr) if (r.front().d == h) rh.push_back(&r);
++				if (lh.empty() || rh.empty()) continue;
++				std::vector<std::pair<const Run *, const Run *>> prs;
++				if (lh.size() == rh.size()) {
++					for (size_t k = 0; k < lh.size(); k++) prs.emplace_back(lh[k], rh[k]);
++				} else if (lh.size() == 1) {
++					for (const Run *b : rh) prs.emplace_back(lh[0], b);
++				} else if (rh.size() == 1) {
++					for (const Run *a : lh) prs.emplace_back(a, rh[0]);
++				} else {
++					corridor_skips.push_back(fmt::format("{} h{} nL={} nR={}", who, h, lh.size(), rh.size()));
++					continue;
++				}
++				for (const auto &[a, b] : prs) {
++					corridor_pairs++;
++					for (const Seg &sb : *b) {
++						for (const Seg &sa : *a) {
++							for (const Point &p : {sb.a, sb.b}) {
++								for (const Point &q : {sa.a, sa.b}) {
++									const Con c = Ge(Dot(Right(h), p) - Dot(Right(h), q), 2);
++									if (Model::MakeRow(c).terms.empty()) continue;
++									corridor_rows.push_back({c, fmt::format("{} h{} {}#{} vs {}#{}", who, h, sa.strand, sa.i, sb.strand, sb.i)});
++								}
++							}
++						}
++					}
++				}
++			}
++		}
++		if (const char *e = std::getenv("PLANAR_CORRIDOR"); e != nullptr && std::string(e) == "1") {
++			const TagScope ts("corridor");
++			for (const auto &[c, w] : corridor_rows) M.Add(c);
++		}
++	}
++
+ 	/* Out ports on the boundary. */
+ 	for (const PlanarPort &port : t.ports) {
+ 		if (port.in) continue;
+@@ -2317,6 +2415,19 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
+ 	}
+ 	LazyResult res;
+ 	if (!SolveLazy(M, t0, res, out.area, out.why, &composer.sides)) return out;
++	if (std::getenv("PLANAR_CORRIDORCHK") != nullptr) {
++		int bad = 0;
++		for (const auto &[c, w] : composer.corridor_rows) {
++			const double v = Ev(res.sol.val, c.e);
++			if (v < -1e-6) {
++				bad++;
++				fmt::print(stderr, "CORR VIOLATED {} slack {} : {}\n", out.tag, v, w);
++			}
++		}
++		fmt::print(stderr, "CORR {} faces {} pairs {} rows {} skipped {} violated {}\n", out.tag, composer.corridor_faces, composer.corridor_pairs, composer.corridor_rows.size(), composer.corridor_skips.size(), bad);
++		for (const std::string &sk : composer.corridor_skips) fmt::print(stderr, "CORR SKIP {}\n", sk);
++		for (const std::string &sk : composer.corridor_notes) fmt::print(stderr, "CORR NOTE {}\n", sk);
++	}
+ 	for (const auto &[key, geo] : res.geo.geo) out.track += geo.L * (IsAxis(geo.d) ? 0.5 : std::sqrt(2.0) / 2);
+ 	out.width = static_cast<int>(std::llround(Ev(res.sol.val, M.X))) / 2 + 1;
+ 	out.height = static_cast<int>(std::llround(Ev(res.sol.val, M.Y))) / 2 + 1;
+diff --git a/src/junction/planar/planar_regions.cpp b/src/junction/planar/planar_regions.cpp
+index 4f9322aa11..2feb247834 100644
+--- a/src/junction/planar/planar_regions.cpp
++++ b/src/junction/planar/planar_regions.cpp
+@@ -34,6 +34,7 @@ struct MapEdge {
+ struct FaceEntry {
+ 	int line;
+ 	int8_t side; ///< -1 the face is left of the line's travel, +1 right.
++	int stretch; ///< The stretch of the line.
+ };
+ 
+ /** The clockwise arc from entry to exit of a path, as ring positions. */
+@@ -47,6 +48,7 @@ class PlanarMap {
+ public:
+ 	std::vector<std::vector<FaceEntry>> faces; ///< Every face's boundary, the outer face included.
+ 	int outer = -1; ///< The face holding only ring edges.
++	std::vector<bool> has_box; ///< Per face, whether a ring edge bounds it.
+ 	std::string why; ///< Empty, or the validation failure.
+ 
+ 	PlanarMap(const PlanarTopology &t, const std::vector<int> &ring_pos, const std::vector<RingEnds> &ends);
+@@ -157,15 +159,17 @@ PlanarMap::PlanarMap(const PlanarTopology &t, const std::vector<int> &ring_pos,
+ 		std::set<int> tails;
+ 		bool only_boundary = true;
+ 		std::vector<FaceEntry> entries;
++		bool box = false;
+ 		for (int d : walks[f]) {
+ 			const MapEdge &e = edges[d / 2];
+ 			if (!tails.insert(d % 2 == 0 ? e.u : e.v).second) {
+ 				this->why = fmt::format("face {} is not a simple walk", f);
+ 				return;
+ 			}
++			if (e.line < 0) box = true;
+ 			if (e.line >= 0) {
+ 				only_boundary = false;
+-				entries.push_back({e.line, static_cast<int8_t>(d % 2 == 0 ? -1 : 1)});
++				entries.push_back({e.line, static_cast<int8_t>(d % 2 == 0 ? -1 : 1), e.stretch});
+ 			}
+ 		}
+ 		if (only_boundary) {
+@@ -173,6 +177,7 @@ PlanarMap::PlanarMap(const PlanarTopology &t, const std::vector<int> &ring_pos,
+ 			outers++;
+ 		}
+ 		this->faces.push_back(std::move(entries));
++		this->has_box.push_back(box);
+ 	}
+ 	if (outers != 1) this->why = fmt::format("the face map has {} outer faces", outers);
+ }
+@@ -245,6 +250,18 @@ PlanarLineSides::PlanarLineSides(const PlanarTopology &t, const PlanarChannels &
+ 		}
+ 	}
+ 	this->face_pairs.assign(pairs.begin(), pairs.end());
++	/* Probe: the walls of every face without a box edge. Dart direction: side -1 is a forward dart (the line is the face's right wall). */
++	for (size_t f = 0; f < map.faces.size(); f++) {
++		if (static_cast<int>(f) == map.outer || map.has_box[f]) continue;
++		PlanarCorridor c;
++		c.face = static_cast<int>(f);
++		for (const FaceEntry &e : map.faces[f]) {
++			if (e.side == -1) c.right.emplace_back(e.line, e.stretch);
++			else c.left.emplace_back(e.line, e.stretch);
++		}
++		std::ranges::reverse(c.left);
++		this->corridors.push_back(std::move(c));
++	}
+ }
+ 
+ std::vector<std::pair<uint32_t, uint32_t>> PlanarLineSides::FacePairs() const
+diff --git a/src/junction/planar/planar_regions.h b/src/junction/planar/planar_regions.h
+index 53c8ae2c2f..95d7322494 100644
+--- a/src/junction/planar/planar_regions.h
++++ b/src/junction/planar/planar_regions.h
+@@ -16,6 +16,13 @@
+ #include <string>
+ #include <string_view>
+ 
++/** Probe: a face's two walls, each a list of (line, stretch) in travel order. */
++struct PlanarCorridor {
++	int face = 0;
++	std::vector<std::pair<int, int>> left;
++	std::vector<std::pair<int, int>> right;
++};
++
+ /** Which side of each other two lines keep, read from the topology alone (DESIGN-tracks §3). */
+ class PlanarLineSides {
+ public:
+@@ -39,6 +46,8 @@ public:
+ 	/** Every ordered pair of distinct lines (p, q) bounding a common face with Side(p, q) != 0, once each. */
+ 	std::vector<std::pair<uint32_t, uint32_t>> FacePairs() const;
+ 
++	std::vector<PlanarCorridor> corridors; ///< Probe: the faces without a box edge, walls in travel order.
++
+ 	/** @return Empty, or why the face map failed validation (V - E + F != 2, a face not a simple walk) or two sources disagreed. */
+ 	const std::string &Why() const { return this->why; }
+ 
