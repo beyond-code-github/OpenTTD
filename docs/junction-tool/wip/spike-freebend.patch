@@ -1,0 +1,117 @@
+diff --git a/src/junction/planar/planar_components.cpp b/src/junction/planar/planar_components.cpp
+index 88d3d6be88..43309568a8 100644
+--- a/src/junction/planar/planar_components.cpp
++++ b/src/junction/planar/planar_components.cpp
+@@ -7,6 +7,7 @@
+ 
+ /** @file planar_components.cpp The planar component solver implementation (DESIGN-components §6, translated from wip/planar-probe8.py). */
+ 
++#include <cstdlib>
+ #include "../../stdafx.h"
+ 
+ #include "planar_components.h"
+@@ -937,10 +938,44 @@ private:
+ 		}
+ 	}
+ 
++	/** Spike: PLANAR_FREEBEND hi (half-tiles), or 0 when unset. */
++	static int FreeBendHi()
++	{
++		const char *e = std::getenv("PLANAR_FREEBEND");
++		int v = 0;
++		for (const char *q = e; q != nullptr && *q >= '0' && *q <= '9'; q++) v = v * 10 + (*q - '0');
++		return v;
++	}
++
++	static bool FbOn(char kind)
++	{
++		const char *o = std::getenv("FB_ONLY");
++		return FreeBendHi() > 0 && (o == nullptr || std::string(o).find(kind) != std::string::npos);
++	}
++
++	/** Spike: two optional sideways steps in series on lanes (one binary per slot, shared by the lanes), diagonals of equal length. */
++	void FreeBend(const std::vector<std::string> &lanes, int h, const std::string &key, bool tail_h)
++	{
++		Model &M = this->M;
++		const int hi = FreeBendHi();
++		for (int slot = 0; slot < 2; slot++) {
++			const int sg = slot == 0 ? +1 : -1;
++			M.opt_group = key + (slot == 0 ? "A" : "B") + "j";
++			std::vector<Seg> ds;
++			for (const std::string &l : lanes) {
++				ds.push_back(M.AddSeg(l, Turn(h, sg), 2, hi, 1.0, true));
++				if (slot == 0 || tail_h) M.AddSeg(l, h, 0);
++			}
++			for (size_t j = 1; j < ds.size(); j++) M.Add(Eq(ds[j].L - ds[0].L, 0));
++		}
++		M.opt_group.clear();
++	}
++
+ 	/** n-lane join (probe 9): J_k lands on S_k from side sigma, crossing every nearer S_j (lanes far..near). */
+ 	void Join(int h, int sigma, const std::vector<std::string> &S, const std::vector<std::string> &J, const std::vector<std::string> &O, bool prio, int exit_step, int lo0 = 6)
+ 	{
+ 		Model &M = this->M;
++		if (FbOn('J')) exit_step = 0;
+ 		if (exit_step == -1 && S.size() > 1) {
+ 			M.Fail("an exit step to the left is not composed");
+ 			return;
+@@ -989,10 +1024,16 @@ private:
+ 			}
+ 		}
+ 		std::vector<Seg> st;
+-		for (const std::string &o : O) {
+-			M.AddSeg(o, h, 2, std::nullopt, FANW);
+-			if (exit_step != 0) st.push_back(M.AddSeg(o, Turn(h, exit_step), 2, std::nullopt, 1.0));
+-			M.AddSeg(o, h, STUB);
++		if (FbOn('J')) {
++			for (const std::string &o : O) M.AddSeg(o, h, 2, std::nullopt, FANW);
++			this->FreeBend(O, h, "J" + O[0], false);
++			for (const std::string &o : O) M.AddSeg(o, h, STUB);
++		} else {
++			for (const std::string &o : O) {
++				M.AddSeg(o, h, 2, std::nullopt, FANW);
++				if (exit_step != 0) st.push_back(M.AddSeg(o, Turn(h, exit_step), 2, std::nullopt, 1.0));
++				M.AddSeg(o, h, STUB);
++			}
+ 		}
+ 		for (size_t k = 0; k + 1 < n; k++) {
+ 			const TagScope ts("join exit");
+@@ -1043,12 +1084,18 @@ private:
+ 			const int h = heads[k];
+ 			const auto &r = Right(h);
+ 			std::vector<Seg> tails;
++			std::vector<Seg> leads;
++			for (int j = 0; j < n; j++) {
++				const Seg lead = M.AddSeg(lanes[j], h, 0, std::nullopt, IsAxis(h) ? 1.0 : std::sqrt(2.0));
++				this->piece_segs[c][lanes[j]].push_back(lead);
++				leads.push_back(lead);
++			}
++			if (FbOn('B')) this->FreeBend(lanes, h, fmt::format("B{}_{}", c, k), true);
+ 			for (int j = 0; j < n; j++) {
+ 				const std::string &l = lanes[j];
+-				const Seg lead = M.AddSeg(l, h, 0, std::nullopt, IsAxis(h) ? 1.0 : std::sqrt(2.0));
+-				this->piece_segs[c][l].push_back(lead);
++				const Seg lead = leads[j];
+ 				if (!doubled.contains(static_cast<uint32_t>(k))) {
+-					tails.push_back(lead);
++					tails.push_back(FbOn('B') ? M.strands.at(l).segs.back() : lead);
+ 					continue;
+ 				}
+ 				const int sg = j == 0 ? -1 : +1;
+@@ -1954,6 +2001,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
+ 	const auto explain_last = [&](const std::vector<Row> &extra) {
+ 		if (explain && M.last_infeasible) M.ExplainInfeasible(extra);
+ 	};
++	if (std::getenv("FB_COUNT") != nullptr) fmt::print(stderr, "BINARIES {}\n", M.binaries.size());
+ 	if (!M.Solve(seps, r)) {
+ 		explain_last(seps);
+ 		why = "base infeasible";
+@@ -2007,7 +2055,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
+ 			return false;
+ 		}
+ 		/* A clash between two lines the topology orders is separated on the side it gives: q at least 2 beyond p along a direction with p on q's -f side. */
+-		if (sides != nullptr) {
++		if (sides != nullptr && std::getenv("PLANAR_NOSIDES") == nullptr) {
+ 			std::vector<Row> rows;
+ 			size_t decided = 0;
+ 			for (const auto &clash : bad) {
