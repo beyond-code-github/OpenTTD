@@ -92,3 +92,4 @@
 - Each ladder pass starts HiGHS from the accepted solution (rough, or the previous pass): the model's `last` is set from it when the column counts match.
 - Rules: every face run's end points against the facing segments of the other runs and of non-neighbouring stretches of its own run, points shared with the other wall and points off the wall (stretch ends that continue past an event) dropped; the spacing is 2 for a diagonal target or an axis target on the same axis as the own segment, else 1; bridge copies join the walls on the face side as wall segments, their deck middles exempt against ground.
 - `PlanarLineSides::Events()` is each line's events in the variant's channel order, which the stretch indices of `Faces()` count; the composer maps stretch k to the segments from event k - 1 to event k, with `ladder_faces` and `ladder_off` filled at the end of `Build`.
+- Row tags (`TagScope`) are per thread: variants build and solve on parallel threads.

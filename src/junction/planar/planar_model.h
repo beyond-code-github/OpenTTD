@@ -123,8 +123,8 @@ struct Row {
 	std::string tag; ///< Which construction site made the row, for the conflict printout.
 };
 
-/** The tag the rows made now carry. */
-inline std::string g_tag;
+/** The tag the rows made now carry; one per thread, since variants build on parallel threads. */
+inline thread_local std::string g_tag;
 
 /** Tag the rows made in this scope (the enclosing tag returns after it). */
 struct TagScope {
