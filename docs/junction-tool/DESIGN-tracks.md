@@ -53,3 +53,23 @@ Every face of T2 (32), T3 (65) and LL² (38) walked with the lines' travel direc
 - Corridor phase matching by heading runs fails on solved layouts (wip/PROBE-corridors.md): which parts of two walls face each other depends on where their bends fall.
 - Chord drawing vs solved layouts (wip/CHECK-rungorder.md): crossings across a corridor agree on 40 of 51 checkable corridors (every one a diamond: one crossing per wall, a binary order); the 11 disagreements are near-ties. The bends (81 on T2, 155 on T3, 106-138 on LL²) the chord drawing cannot order at all.
 - Direction (engineer: "starting with a cheap fuzzy approximate solve and then refining - I think there's legs in that"): (1) a rough solve (today's fixed-shape model) gives each corridor's rung order; (2) a refined solve keeps the walls apart by rungs (at every breakpoint of either wall, a point-to-facing-segment separation, linear), no clash loop, every free stretch may bend; (3) if a breakpoint moves past another, re-read the order and solve again.
+- Probe (wip/PROBE-ladders.md, fixed shapes, rungs from the rough solve added up front): area unchanged on T2, T3, LL² o49t0f1s0, o1t3f0s0. LL²: round-0 clashes 18 and 21 -> 0, no later rounds (o1t3 1370 -> 853 ms); a second pass moved two rung points, a third settled. T2/T3: rounds unchanged; every surviving clash is C against F, whose corridor touches the box edge (box faces carried no rungs yet). Rung points where a crossing's segment runs past the wall are dropped (the segment's far end is off the wall).
+
+## 8. Plan (2026-11-17, engineer: "Make sure we record everything we're planning, including the gemini optimisations")
+Ordered; each step a short probe first, then built.
+1. **Ladders everywhere:** rungs on box-edge corridors too (one wall against the box edge, or two walls with a box edge between them: the box edge is a fixed wall); bridge copies as walls in the corridor they stand in (the copy splits it). Pass: T2/T3/LL² best variants with zero clash rounds, same area.
+2. **Clash loop retired:** the refined solve is rows from the rough solve's corridors; a re-read when a rung point leaves its facing segment, at most a few passes. The lazy loop stays only as a test oracle.
+3. **Free bends on ladders:** every free stretch between components may bend (engineer: "Surely any free stretch of track between components should be able to bend"; "we just stop thinking about bends as choices"). The solver sets where and how far; the step rules (merge exits, gap steps, candidate step bits) go. The free-bend spike failed only through the clash loop (wip/SPIKE-freebend.md).
+4. **Optimisations (from the Gemini exchange):**
+   - tight per-piece bounds on optional lengths (big-M from the geometry: the most the piece could move given its corridor and the box), not a global cap;
+   - at most one side per bend slot (left + right <= 1);
+   - a hard anchor (one port coordinate fixed) instead of only the north-west pull, to remove the hub's sliding symmetry;
+   - keep rows local; if the outline linearisation (dense) slows solves, measure the box-plus-track score as an alternative (D336 keeps outline);
+   - shared switches per bundle stretch, not per lane;
+   - variant symmetry cut (mirror pairs, dead candidate bits).
+   Not adopted: a whole-hub tile-grid solve (multi-commodity routing with train-length rules is not network flow; D281's freer joint model did not finish in 18 min); a windowed grid pass stays an option for local refinement.
+5. **Shape as a flow (later):** each face's bends plus corner angles sum to one turn; where tracks turn solved jointly over faces (topology-shape-metrics) instead of channel by channel.
+6. **Prios that bend** (engineer: "Even Prios can bend actually, we just don't do that right now"): the prio element on a bending stretch, its rows beside the main line and signal spacing legal along the curve; today the prio leg is straight and axis for its coverage.
+7. **Organic hubs:** ports free along a boundary or on diagonal arms (lift D313's box), a score that does not favour rectangles (user options: most square, thinnest, cheapest, D329), terrain; the chord drawing (round) as a rough start.
+- Fix found on the way: the crossing triangle flip changes the composer's crossing order on F while `PlanarLineSides` is built from the unflipped topology, so face sides near the triangle are wrong on flipped variants (wip/PROBE-corridors.md). Build the face map from the flipped events.
+- Lane splits as variants and the variant cut stay queued behind 1-3.

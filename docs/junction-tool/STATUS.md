@@ -1,3 +1,9 @@
+## RESUME HERE (2026-11-17 late) — LADDERS: CORRIDOR NON-OVERLAP FROM A ROUGH SOLVE (D338, D339; plan DESIGN-tracks §8)
+- ng1 wt-planar 05e0159b09 clean (all probes reverted, patches in wip/). Docs on feature/junction-tool.
+- Path today: merge-step analysis (EO2/WO2 steps are area choices, not forced) -> zero-length probe (D335 forbids, stopped) -> free-bend spike FAILED via the clash loop (SPIKE-freebend.md) -> faces are two-walled corridors (DESIGN-tracks §6) -> phase-matched corridor rows FAIL (PROBE-corridors.md) -> chord drawing orders crossings in 40/51 corridors, not bends (CHECK-rungorder.md) -> LADDER PROBE PASSES on LL² (round-0 clashes 18/21 -> 0, same area), T2/T3 left only C/F clashes in box-edge corridors (PROBE-ladders.md).
+- NEXT: DESIGN-tracks §8 step 1: rungs on box-edge corridors + bridge copies as walls (probe, then build); step 2 retire the clash loop; step 3 free bends on ladders; Gemini optimisations (§8.4); fix the triangle-flip face map.
+- Push both branches to the fork at session end (not done yet this session).
+
 ## RESUME HERE (2026-11-16, final) — D329: APPROXIMATE AREA ACCEPTED; NEXT T2 AND LL² FROM TEXT (ng1 wt-planar 7a14a431aa)
 
 RESUME 2026-11-17 pieces (ng1 wt-planar 1abf2b91b1, clean; docs on feature/junction-tool):
