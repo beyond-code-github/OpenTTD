@@ -4,7 +4,10 @@ RESUME 2026-11-17 pieces (ng1 wt-planar 1abf2b91b1, clean; docs on feature/junct
 - DESIGN-pieces §8 answered: B's jog solved both ways as a variant bit listed by the builder (flip test: jog won on T3 and T2, T2 906.25 < the switch's 917.25); watch for always-jog. Diagonal lane spacing kept.
 - Experiments reverted and saved as wip/pieces-spike.patch (IIS strip-down, FIXSW, SEGDUMP, DRY_PATHS, cap removal); OPTMAX cap is back at HEAD until step 3 removes switches.
 - Step 1 done: 1a 50085c018b model core moved to planar_model.{h,cpp} (namespace PlanarModel); 1b 1abf2b91b1 Model::AddPiece (required pieces, rule minima, one-eighth turns, diagonal start on a tile-edge midpoint) and Model::PieceCurves (gap-sum curve rows, no switches); 7 tests [planarmodel].
-- NEXT: step 2, the heading-sequence builder (route turns, width changes, crossing pieces), tested against the T2 spike dumps.
+- Jogs investigated (spikes in wip/channel-jog-spike.patch; 128 jog combos in wip/review-channels/): zero-length jogs fail (lanes jog independently; curve rows count phantom bends); jogs are a yes/no. Independent review (wip/REVIEW-channels.md) found the cause blind: gaps between neighbouring channels are not modelled. D335 recorded; DESIGN-pieces §1/§3/§6/§7 revised (four heading sources + candidate steps).
+- Check 3 (T2, jogs fixed): plain fray leg closing at the exit 917-918 vs on the CD fan 934-935 -> default exit close-up (D335, toggle candidate).
+- Found: lazy clash separation is path-dependent (T2 B step 918.25 vs 906.25 under different fixings), ~1% noise; track separately.
+- NEXT: step 2a, design the gap profile (per side/stretch neighbour, bands, pinned) from planar_channels/planar_paths data, test-first on T3 o0t1f1 (W fan, E and S close-ups), T2 o0t2f1, LL² per REVIEW Q4. Then the heading builder; target T3 1941.25 / 1960.25 near 0.25 s per variant.
 
 RESUME 2026-11-17 latest (ng1 wt-planar 46cbaeb78d + uncommitted experiments; docs ef0f88f7d0+):
 - LL² o49t0f0 "impossible" traced (constraint strip-down, 42 rows): the 8-tile OPTMAX cap on optional steps, not the doubled bridge or the grid. Pete: the cap "should never have been there"; a long detour is a smell.
