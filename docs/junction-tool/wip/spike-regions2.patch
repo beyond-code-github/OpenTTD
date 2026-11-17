@@ -1,0 +1,140 @@
+diff --git a/src/junction/planar/planar_components.cpp b/src/junction/planar/planar_components.cpp
+index b90758eb97..1d3b56fdaf 100644
+--- a/src/junction/planar/planar_components.cpp
++++ b/src/junction/planar/planar_components.cpp
+@@ -27,6 +27,7 @@
+ #include <cmath>
+ #include <functional>
+ #include <map>
++#include <mutex>
+ #include <optional>
+ #include <set>
+ #include <string>
+@@ -35,6 +36,14 @@
+ 
+ #include "../../safeguards.h"
+ 
++/** SPIKE: one lazy separation: P and Q strands, their headings, the direction f (Q kept at +f of P). */
++struct SpikeSep { std::string p; uint32_t pi; int ph; std::string q; uint32_t qi; int qh; int fx; int fy; };
++std::map<std::string, std::vector<SpikeSep>> g_spike;
++std::mutex g_spike_mx;
++thread_local std::vector<SpikeSep> t_spike_prev;
++thread_local std::vector<SpikeSep> t_spike_up;
++std::map<std::string, std::vector<SpikeSep>> g_spike_up;
++
+ namespace {
+ 
+ using namespace PlanarModel;
+@@ -1485,6 +1494,7 @@ void MappedComposer::Build()
+ 	const bool rules = std::getenv("PLANAR_NORULES") == nullptr;
+ 	const auto sep = [&](const Seg &sp, const Seg &sq, const std::array<int, 2> &f) { // sq lies at least 2 beyond sp along f
+ 		if (!rules) return;
++		t_spike_up.push_back({sp.strand, sp.i, sp.d, sq.strand, sq.i, sq.d, f[0], f[1]});
+ 		for (const Point &a : {sp.a, sp.b}) {
+ 			for (const Point &b : {sq.a, sq.b}) M.Add(Ge(Dot(f, b) - Dot(f, a), 2));
+ 		}
+@@ -1783,7 +1793,7 @@ constexpr std::array<std::array<int, 2>, 8> DIRS8 = {{{1, 0}, {-1, 0}, {0, 1}, {
+  * @param pr The clashing pair.
+  * @return The (direction, rows) options in order.
+  */
+-std::vector<std::vector<Row>> SepOptions(const Model &M, const GeoSet &g, const std::pair<SegKey, SegKey> &pr)
++std::vector<std::vector<Row>> SepOptions(const Model &M, const GeoSet &g, const std::pair<SegKey, SegKey> &pr, std::vector<std::array<int, 2>> *fs = nullptr)
+ {
+ 	const Seg &sp = M.strands.at(pr.first.first).segs[pr.first.second];
+ 	const Seg &sq = M.strands.at(pr.second.first).segs[pr.second.second];
+@@ -1802,6 +1812,7 @@ std::vector<std::vector<Row>> SepOptions(const Model &M, const GeoSet &g, const
+ 	std::vector<std::vector<Row>> out;
+ 	for (const auto &[c, fx, fy] : opts) {
+ 		const std::array<int, 2> f{fx, fy};
++		if (fs != nullptr) fs->push_back(f);
+ 		std::vector<Row> rows;
+ 		for (const Point *a : {&sp.a, &sp.b}) {
+ 			for (const Point *b : {&sq.a, &sq.b}) rows.push_back(Model::MakeRow(Ge(Dot(f, *b) - Dot(f, *a), 2)));
+@@ -1857,6 +1868,7 @@ void LineariseArea(Model &M, const std::vector<int64_t> &val)
+ 
+ /** What one lazy solve finds. */
+ struct LazyResult {
++	std::vector<SpikeSep> spike;
+ 	Solution sol;
+ 	GeoSet geo;
+ 	std::vector<Row> seps;
+@@ -1876,6 +1888,7 @@ using Clock = std::chrono::steady_clock;
+ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, LazyResult &out, std::string &why)
+ {
+ 	std::vector<Row> seps = seps0;
++	std::vector<SpikeSep> spike = t_spike_prev;
+ 	Solution r;
+ 	if (!M.Solve(seps, r)) {
+ 		why = "base infeasible";
+@@ -1896,7 +1909,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
+ 		}
+ 		if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "round {}: {} clashes, {} under-deck\n", rnd, bad.size(), under_bad.size());
+ 		if (bad.empty() && under_bad.empty()) {
+-			out = LazyResult{r, g, seps};
++			out = LazyResult{spike, r, g, seps};
+ 			return true;
+ 		}
+ 		if (!under_bad.empty()) {
+@@ -1925,7 +1938,8 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
+ 			why = fmt::format("budget at round {}, {} clashes", rnd, bad.size());
+ 			return false;
+ 		}
+-		const std::vector<std::vector<Row>> options = SepOptions(M, g, bad[0]);
++		std::vector<std::array<int, 2>> fs;
++		const std::vector<std::vector<Row>> options = SepOptions(M, g, bad[0], &fs);
+ 		bool separated = false;
+ 		for (size_t k = 0; k < 4; k++) {
+ 			std::vector<Row> trial = seps;
+@@ -1933,6 +1947,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
+ 			Solution probe;
+ 			if (M.Solve(trial, probe)) {
+ 				seps = std::move(trial);
++				spike.push_back({bad[0].first.first, bad[0].first.second, g.geo.at(bad[0].first).d, bad[0].second.first, bad[0].second.second, g.geo.at(bad[0].second).d, fs[k][0], fs[k][1]});
+ 				separated = true;
+ 				break;
+ 			}
+@@ -1979,6 +1994,7 @@ bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, st
+ 			}
+ 		}
+ 	}
++	t_spike_prev.clear();
+ 	if (!SolveLazy1(M, t0, {}, out, why)) return false;
+ 	double best = std::abs(AreaOf(out.sol.val, Outline(M)));
+ 	if (obj == "len" || obj == "box" || obj == "routes") {
+@@ -1990,6 +2006,7 @@ bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, st
+ 		LineariseArea(M, out.sol.val);
+ 		LazyResult r2;
+ 		std::string why2;
++		t_spike_prev = out.spike;
+ 		if (!SolveLazy1(M, t0, seps, r2, why2)) break;
+ 		const double a2 = std::abs(AreaOf(r2.sol.val, Outline(M)));
+ 		if (a2 >= best - 1) break;
+@@ -2185,7 +2202,9 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
+ 	VariantOutcome out;
+ 	out.tag = fmt::format("o{}t{}f{}s{}", variant.over, variant.ties, variant.flips, variant.steps);
+ 	const Clock::time_point t0 = Clock::now();
++	t_spike_up.clear();
+ 	MappedComposer composer(topology, channels, params, variant);
++	{ std::lock_guard<std::mutex> lk(g_spike_mx); g_spike_up[out.tag] = t_spike_up; }
+ 	Model &M = composer.M;
+ 	if (std::getenv("PLANAR_DRY") != nullptr) { // debug: build every variant without solving; print its over choices and its construction failure
+ 		const PlanarPaths pp = BuildPlanarPaths(topology, channels, variant.over);
+@@ -2205,6 +2224,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
+ 	}
+ 	LazyResult res;
+ 	if (!SolveLazy(M, t0, res, out.area, out.why)) return out;
++	{ std::lock_guard<std::mutex> lk(g_spike_mx); g_spike[out.tag] = res.spike; }
+ 	out.width = static_cast<int>(std::llround(Ev(res.sol.val, M.X))) / 2 + 1;
+ 	out.height = static_cast<int>(std::llround(Ev(res.sol.val, M.Y))) / 2 + 1;
+ 	if (!M.error.empty()) {
+diff --git a/src/tests/junction/planar/CMakeLists.txt b/src/tests/junction/planar/CMakeLists.txt
+index 92d1617eaa..b3e2af0547 100644
+--- a/src/tests/junction/planar/CMakeLists.txt
++++ b/src/tests/junction/planar/CMakeLists.txt
+@@ -5,5 +5,6 @@ add_test_files(
+     planar_model.cpp
+     planar_paths.cpp
+     planar_plan.cpp
++    planar_regions.cpp
+     planar_topology.cpp
+ )
