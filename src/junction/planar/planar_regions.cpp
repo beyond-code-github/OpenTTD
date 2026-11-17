@@ -244,6 +244,7 @@ PlanarLineSides::PlanarLineSides(const PlanarTopology &topology, const PlanarCha
 {
 	const PlanarTopology t = EventsInChannelOrder(topology, channels, this->why);
 	if (!this->why.empty()) return;
+	this->events = t.events;
 	const size_t n = this->count;
 	for (uint32_t l = 0; l < n; l++) this->by_name.emplace(t.lines[l].name, l);
 	const int nring = static_cast<int>(t.ring.size());

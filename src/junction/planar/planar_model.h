@@ -65,6 +65,17 @@ bool IsAxis(int d);
 /** @return The step to the right of travel at a heading. */
 const std::array<int, 2> &Right(int h);
 
+/**
+ * The distance a rung holds, in Dot(Right(target), .) units, from the lazy clash rule.
+ * The rule (same tile unless opposite corners, or a shared end point; brute force of it): parallel pairs
+ * (axis-axis, diag-diag) and any diagonal target need exactly 2 along Right(h); an axis target facing a
+ * perpendicular axis end or a diagonal piece leading away needs 1 (the next tile).
+ * @param target_d Direction of the target segment.
+ * @param own_d Direction of the segment of the point's own run that ends in the point.
+ * @return 1 when the target is axis and the own segment is diagonal or perpendicular to it, else 2.
+ */
+int RungSpacing(int target_d, int own_d);
+
 /** A linear expression: a constant plus a coefficient per variable. Zero coefficients are kept, as the probe's dictionaries keep them. */
 struct Ex {
 	std::map<uint32_t, double> terms;

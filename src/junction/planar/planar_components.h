@@ -47,6 +47,9 @@ struct PlanarComponentLayout {
 	std::string variant; ///< The winning variant's tag, as the probe prints it.
 	int64_t micros = 0; ///< Wall time of the whole solve.
 	std::vector<PlanarRouteProgram> routes;
+	int first_round_clashes = 0; ///< Clashes the lazy loop found in its first round, winning variant.
+	size_t rungs = 0; ///< Corridor rungs added from the rough solve.
+	int rungs_violated = 0; ///< Rungs not holding on the solve they came from; always 0 unless a construction bug.
 };
 
 /** Solve the component layout of a T2 or LL2 topology: every variant (in parallel), the least area wins. @return false with why set when the topology has no composition or no variant solves. */

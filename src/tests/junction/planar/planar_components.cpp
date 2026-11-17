@@ -46,6 +46,11 @@ void CheckSolves(const std::string &text, double area_limit, bool mapped = false
 	CHECK(layout.area <= area_limit);
 	CHECK(layout.width > 0);
 	CHECK(layout.height > 0);
+	if (mapped) {
+		CHECK(layout.rungs > 0);
+		CHECK(layout.rungs_violated == 0);
+		CHECK(layout.first_round_clashes == 0);
+	}
 	std::set<std::pair<uint32_t, uint32_t>> covered;
 	for (const PlanarRouteProgram &program : layout.routes) {
 		REQUIRE(program.route < topology.routes.size());

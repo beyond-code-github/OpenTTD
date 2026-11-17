@@ -28,6 +28,7 @@
 #include <cmath>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -745,6 +746,28 @@ struct MappedVariant {
 	uint64_t steps = 0; ///< Bit i set: the i-th candidate step (PlanarCandidateSteps) is taken.
 };
 
+/** A segment's identity: strand name and index. */
+using SegKey = std::pair<std::string, uint32_t>;
+
+/** A bridge copy strand that may join a face's wall. */
+struct LadderCopy {
+	bool left; ///< The copy belongs to a wall on the left of the face's run (a reverse run).
+	std::string copy; ///< The copy strand.
+	std::string base; ///< The strand it copies.
+	uint32_t first; ///< The base segment it replaces from.
+	bool starts_at; ///< It starts at the stretch's first segment, which is an event.
+	bool ends_at; ///< It ends at the stretch's last segment, which is an event.
+	size_t run; ///< The face's run it belongs to.
+};
+
+/** A face of the planar map as the ladders see it: its wall runs as segments, and the copy strands that may join them. */
+struct LadderFace {
+	std::string who; ///< The face, for diagnostics.
+	bool box; ///< A ring edge bounds the face.
+	std::vector<std::pair<bool, std::vector<SegKey>>> runs; ///< Per run: whether it is forward (the face on its left), and its segments in walk order.
+	std::vector<LadderCopy> copies; ///< The copy candidates of all runs.
+};
+
 /**
  * Builds the model of one variant from the topology's channel graph (D327): probe 9's n-lane fray, join, doubled core and
  * bundles, placed by the channels, sites and paths instead of by a hand composition.
@@ -774,6 +797,9 @@ private:
 	MappedVariant variant;
 public:
 	PlanarLineSides sides; ///< Which side of each other two lines keep, from the topology.
+	std::vector<LadderFace> ladder_faces; ///< The faces' walls as segments, for the ladders.
+	std::set<std::pair<SegKey, int>> ladder_off; ///< The end points (segment, 0 the start or 1 the end) of stretches that continue past an event: off the wall.
+	int ladder_unusable = 0; ///< Stretches skipped because their segment range could not be found.
 
 private:
 	PlanarPaths paths;
@@ -1592,6 +1618,58 @@ void MappedComposer::Build()
 		}
 	}
 
+	/* Ladders: each face's walls as segments. A stretch k of line l runs from the segment of its event k - 1 to the segment of its event k (the line's ends at the ends). */
+	{
+		const std::vector<std::vector<uint32_t>> &events = this->sides.Events();
+		const auto name_of = [&](uint32_t l) -> const std::string & { return t.lines[l].name; };
+		const auto event_seg = [&](uint32_t line, size_t k) -> int {
+			const uint32_t c = events[line][k];
+			const std::string &a = t.lines[t.crossings[c].a].name, &b = t.lines[t.crossings[c].b].name;
+			const std::string &me = t.lines[line].name;
+			int found = -1;
+			for (const CrossRec &cr : M.crossings) {
+				const bool ab = cr.over.strand == a && cr.under.strand == b, ba = cr.over.strand == b && cr.under.strand == a;
+				if (!ab && !ba) continue;
+				const Seg &mine = cr.over.strand == me ? cr.over : cr.under;
+				if (found < 0) found = static_cast<int>(mine.i);
+			}
+			return found;
+		};
+		const auto wall_segs = [&](const std::vector<std::pair<uint32_t, uint32_t>> &wall, std::vector<SegKey> &out, bool left, std::vector<LadderCopy> &copies) {
+			for (const auto &[l, k] : wall) {
+				const std::vector<Seg> &segs = M.strands.at(name_of(l)).segs;
+				const size_t ne = events[l].size();
+				const int i0 = k == 0 ? 0 : event_seg(l, k - 1);
+				const int i1 = k == ne ? static_cast<int>(segs.size()) - 1 : event_seg(l, k);
+				if (i0 < 0 || i1 < 0 || i0 > i1) {
+					this->ladder_unusable++;
+					continue;
+				}
+				for (int i = i0; i <= i1; i++) out.emplace_back(segs[i].strand, segs[i].i);
+				for (const CopyRec &cp : M.copies) {
+					if (cp.strand != name_of(l)) continue;
+					const bool overlap = static_cast<int>(cp.first) <= i1 && static_cast<int>(cp.resume) - 1 >= i0;
+					if (overlap) copies.push_back({left, cp.copy, cp.strand, cp.first, static_cast<int>(cp.first) == i0 && k > 0, static_cast<int>(cp.first) == i1 && k < ne, 0});
+				}
+				if (k > 0) this->ladder_off.insert({{name_of(l), static_cast<uint32_t>(i0)}, 0});
+				if (k < ne) this->ladder_off.insert({{name_of(l), static_cast<uint32_t>(i1)}, 1});
+			}
+		};
+		for (const PlanarFace &face : this->sides.Faces()) {
+			if (face.runs.empty()) continue;
+			LadderFace lf;
+			lf.who = fmt::format("face {}", face.face);
+			lf.box = face.box;
+			for (const PlanarWallRun &run : face.runs) {
+				lf.runs.emplace_back(run.forward, std::vector<SegKey>{});
+				const size_t c0 = lf.copies.size();
+				wall_segs(run.stretches, lf.runs.back().second, !run.forward, lf.copies);
+				for (size_t ci = c0; ci < lf.copies.size(); ci++) lf.copies[ci].run = lf.runs.size() - 1;
+			}
+			this->ladder_faces.push_back(std::move(lf));
+		}
+	}
+
 	/* Out ports on the boundary. */
 	for (const PlanarPort &port : t.ports) {
 		if (port.in) continue;
@@ -1739,9 +1817,6 @@ struct Geo {
 	int L;
 	int d;
 };
-
-/** A segment's identity: strand name and index. */
-using SegKey = std::pair<std::string, uint32_t>;
 
 /** A deck at a solution: its segment, near head end and far head start. */
 struct DeckAt {
@@ -1930,6 +2005,7 @@ struct LazyResult {
 	Solution sol;
 	GeoSet geo;
 	std::vector<Row> seps;
+	int first_round_clashes = 0; ///< The clashes (and under-deck conflicts) found in round 0 of the lazy loop; SolveLazy sums it over its loops.
 };
 
 using Clock = std::chrono::steady_clock;
@@ -1948,6 +2024,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 {
 	std::vector<Row> seps = seps0;
 	Solution r;
+	int first_round = 0;
 	/* PLANAR_IIS: a proven infeasible solve names its conflicting rows (the solve that has just failed must be the last one made). */
 	const bool explain = std::getenv("PLANAR_IIS") != nullptr;
 	std::vector<Row> tried; // the rows of the last failed trial, kept only to explain it
@@ -1973,8 +2050,9 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 			}
 		}
 		if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "round {}: {} clashes, {} under-deck\n", rnd, bad.size(), under_bad.size());
+		if (rnd == 0) first_round = static_cast<int>(bad.size() + under_bad.size());
 		if (bad.empty() && under_bad.empty()) {
-			out = LazyResult{r, g, seps};
+			out = LazyResult{r, g, seps, first_round};
 			return true;
 		}
 		if (!under_bad.empty()) {
@@ -2097,17 +2175,20 @@ bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, st
 		return true;
 	}
 	std::vector<Row> seps = out.seps;
+	int first_round_clashes = out.first_round_clashes;
 	for (int it = 0; it < (obj == "loop" ? AREA_ROUNDS : 1); it++) {
 		LineariseArea(M, out.sol.val);
 		LazyResult r2;
 		std::string why2;
 		if (!SolveLazy1(M, t0, seps, r2, why2, sides)) break;
+		first_round_clashes += r2.first_round_clashes;
 		const double a2 = std::abs(AreaOf(r2.sol.val, Outline(M)));
 		if (a2 >= best - 1) break;
 		best = a2;
 		out = std::move(r2);
 		seps = out.seps;
 	}
+	out.first_round_clashes = first_round_clashes;
 	area = best / 4;
 	return true;
 }
@@ -2122,6 +2203,9 @@ struct VariantOutcome {
 	int width = 0;
 	int height = 0;
 	std::vector<PlanarRouteProgram> routes;
+	int first_round_clashes = 0; ///< Clashes the lazy loop found in its first round, summed over its loops.
+	size_t rungs = 0; ///< Corridor rungs added from the rough solve.
+	int rungs_violated = 0; ///< Rungs not holding on the solve they came from, summed over the passes.
 };
 
 /**
@@ -2284,6 +2368,170 @@ VariantOutcome SolveVariant(const PlanarTopology &topology, const Params &params
 	return out;
 }
 
+/** A rung: one wall's end point held beside the facing segment of another wall. */
+struct RungSpec {
+	SegKey pt; ///< The point's segment.
+	int end; ///< 0 the point a, 1 the point b.
+	SegKey tgt; ///< The facing segment.
+	int sign; ///< +1: the point is on the left of the target (the target is a forward run, face on its left), -1: on the right.
+	int k = 2; ///< The row's constant, from RungSpacing.
+};
+
+/** The row of a rung in a model. */
+Con RungCon(const Model &M, const RungSpec &r)
+{ // Row: the point is at least r.k along Right(h) of the target, on the side r.sign.
+	const Seg &ps = M.strands.at(r.pt.first).segs[r.pt.second];
+	const Seg &ts = M.strands.at(r.tgt.first).segs[r.tgt.second];
+	const Point &p = r.end == 0 ? ps.a : ps.b;
+	const int h = ts.d;
+	if (r.sign > 0) return Ge(Dot(Right(h), ts.a) - Dot(Right(h), p), r.k);
+	return Ge(Dot(Right(h), p) - Dot(Right(h), ts.a), r.k);
+}
+
+/**
+ * Rungs from a solved layout: every end point of each face's walls against the facing segment of the other walls that spans it.
+ * @param M The model the layout solves.
+ * @param faces The faces' walls.
+ * @param off The off-wall end points, which get no rung.
+ * @param val The solution.
+ * @param violated Set to the number of rows that do not hold on `val`.
+ * @return The rungs.
+ */
+std::vector<RungSpec> LadderRungs(const Model &M, const std::vector<LadderFace> &faces, const std::set<std::pair<SegKey, int>> &off, const std::vector<int64_t> &val, int &violated)
+{
+	std::vector<RungSpec> out;
+	const auto pos = [&](const Point &p) { return std::array<double, 2>{Ev(val, p[0]), Ev(val, p[1])}; };
+	std::set<std::string> copy_names;
+	std::set<SegKey> deck_segs; // segments with a DeckRec: their middle is free over ground, their heads are track
+	for (const DeckRec &d : M.decks) deck_segs.insert({d.over.strand, d.over.i});
+	for (const CopyRec &cp : M.copies) copy_names.insert(cp.copy);
+	const auto copy_deck = [&](const SegKey &k) { return copy_names.contains(k.first) && deck_segs.contains(k); };
+	for (const LadderFace &face : faces) {
+		std::set<std::pair<SegKey, int>> offx = off;
+		/* Per run: its groups (a stretch's segments in walk order, merged over consecutive stretches of one line) with the joined copies of the group's line. */
+		std::vector<std::vector<std::vector<SegKey>>> groups(face.runs.size());
+		for (size_t xi = 0; xi < face.runs.size(); xi++) {
+			for (const SegKey &k : face.runs[xi].second) {
+				if (groups[xi].empty() || groups[xi].back().front().first != k.first) groups[xi].emplace_back();
+				groups[xi].back().push_back(k);
+			}
+		}
+		std::vector<std::vector<SegKey>> run_copies(face.runs.size());
+		std::set<std::pair<size_t, std::string>> joined;
+		for (const LadderCopy &cc : face.copies) {
+			const Seg &b0 = M.strands.at(cc.base).segs[cc.first];
+			const std::vector<Seg> &cs = M.strands.at(cc.copy).segs;
+			const Seg &d1 = cs.back();
+			const int h = b0.d;
+			const double side = Ev(val, Dot(Right(h), d1.a)) - Ev(val, Dot(Right(h), b0.a));
+			const bool on_face_side = cc.left ? side > 1e-9 : side < -1e-9;
+			if (!on_face_side) continue;
+			if (!joined.insert({cc.run, cc.copy}).second) continue;
+			if (cc.starts_at) { offx.insert({{cc.copy, 0}, 0}); offx.insert({{cc.copy, 0}, 1}); offx.insert({{cc.copy, 1}, 0}); }
+			if (cc.ends_at) offx.insert({{cc.copy, static_cast<uint32_t>(cs.size() - 1)}, 1});
+			for (const Seg &sg : cs) run_copies[cc.run].emplace_back(sg.strand, sg.i);
+			/* Its group: the one holding the base segment it replaces from, else the first of the line. */
+			size_t gi = SIZE_MAX;
+			for (size_t g = 0; g < groups[cc.run].size() && gi == SIZE_MAX; g++) for (const SegKey &k : groups[cc.run][g]) if (k.first == cc.base && k.second == cc.first) { gi = g; break; }
+			for (size_t g = 0; g < groups[cc.run].size() && gi == SIZE_MAX; g++) if (groups[cc.run][g].front().first == cc.base) gi = g;
+			if (gi == SIZE_MAX) continue;
+			for (const Seg &sg : cs) groups[cc.run][gi].emplace_back(sg.strand, sg.i);
+		}
+		/** Rows of the points of `mine` against the facing segments of `other`. */
+		const auto emit = [&](const std::vector<SegKey> &mine, const std::vector<SegKey> &other, int sign) {
+			std::vector<std::array<double, 2>> other_pts;
+			for (const SegKey &k : other) {
+				const Seg &sg = M.strands.at(k.first).segs[k.second];
+				other_pts.push_back(pos(sg.a));
+				other_pts.push_back(pos(sg.b));
+			}
+			std::set<std::pair<SegKey, int>> seen;
+			std::map<std::pair<std::pair<int64_t, int64_t>, SegKey>, size_t> at; // (point, target) -> row in `out`: a shared end keeps the smaller constant
+			for (const SegKey &k : mine) {
+				const Seg &sg = M.strands.at(k.first).segs[k.second];
+				for (int e = 0; e < 2; e++) {
+					if (!seen.insert({k, e}).second) continue;
+					if (offx.contains({k, e})) continue;
+					const auto pp = pos(e == 0 ? sg.a : sg.b);
+					bool shared = false;
+					for (const auto &q : other_pts) shared = shared || (std::abs(q[0] - pp[0]) < 1e-6 && std::abs(q[1] - pp[1]) < 1e-6);
+					if (shared) continue;
+					const SegKey *best = nullptr;
+					double bd = 1e18;
+					for (const SegKey &o : other) {
+						if (copy_deck(k) && !deck_segs.contains(o)) continue; // a copy deck middle has no rows against ground
+						if (copy_deck(o) && !deck_segs.contains(k)) continue; // a copy deck middle is no facing segment for ground points
+						const Seg &os = M.strands.at(o.first).segs[o.second];
+						const auto &sv = STEP[os.d];
+						const auto a = pos(os.a), b = pos(os.b);
+						const double pa = sv[0] * a[0] + sv[1] * a[1], pb = sv[0] * b[0] + sv[1] * b[1];
+						const double pr = sv[0] * pp[0] + sv[1] * pp[1];
+						if (pr < std::min(pa, pb) - 1e-9 || pr > std::max(pa, pb) + 1e-9) continue;
+						const auto &rt = Right(os.d);
+						const double d = std::abs(rt[0] * (pp[0] - a[0]) + rt[1] * (pp[1] - a[1])) / std::sqrt(static_cast<double>(rt[0] * rt[0] + rt[1] * rt[1]));
+						if (d < bd) { bd = d; best = &o; }
+					}
+					if (best == nullptr) continue;
+					const int kk = RungSpacing(M.strands.at(best->first).segs[best->second].d, sg.d);
+					const auto key = std::make_pair(std::make_pair(static_cast<int64_t>(std::llround(pp[0] * 4)), static_cast<int64_t>(std::llround(pp[1] * 4))), *best);
+					if (const auto it = at.find(key); it != at.end()) {
+						out[it->second].k = std::min(out[it->second].k, kk);
+						continue;
+					}
+					at[key] = out.size();
+					RungSpec rs;
+					rs.pt = k;
+					rs.end = e;
+					rs.tgt = *best;
+					rs.sign = sign;
+					rs.k = kk;
+					out.push_back(rs);
+				}
+			}
+		};
+		const auto run_segs = [&](size_t xi) {
+			std::vector<SegKey> v = face.runs[xi].second;
+			v.insert(v.end(), run_copies[xi].begin(), run_copies[xi].end());
+			return v;
+		};
+		for (size_t xi = 0; xi < face.runs.size(); xi++) for (size_t yi = 0; yi < face.runs.size(); yi++) { // every ordered pair of distinct runs
+			if (xi == yi) continue;
+			emit(run_segs(xi), run_segs(yi), face.runs[yi].first ? 1 : -1); // Y's interior side: the face is left of a forward run, right of a reverse one
+		}
+		for (size_t ri = 0; ri < face.runs.size(); ri++) { // stretches of one run facing each other
+			const auto &gs = groups[ri];
+			const size_t n = gs.size();
+			for (size_t x = 0; x < n; x++) for (size_t y = 0; y < n; y++) {
+				const bool next = y == x + 1 || x == y + 1 || (face.runs.size() == 1 && ((x == 0 && y == n - 1) || (y == 0 && x == n - 1))); // consecutive in walk order, cyclic for a one-run face
+				if (x == y || next) continue;
+				emit(gs[x], gs[y], face.runs[ri].first ? 1 : -1);
+			}
+		}
+	}
+	violated = 0;
+	for (const RungSpec &r : out) {
+		if (Ev(val, RungCon(M, r).e) < -1e-6) violated++;
+	}
+	return out;
+}
+
+/** Whether every rung point still lies within its target segment's span in a solution (counts the others). */
+int RungsMoved(const Model &M, const std::vector<RungSpec> &rungs, const std::vector<int64_t> &val)
+{
+	int moved = 0;
+	for (const RungSpec &r : rungs) {
+		const Seg &ps = M.strands.at(r.pt.first).segs[r.pt.second];
+		const Seg &ts = M.strands.at(r.tgt.first).segs[r.tgt.second];
+		const Point &p = r.end == 0 ? ps.a : ps.b;
+		const auto &sv = STEP[ts.d];
+		const auto pr = sv[0] * Ev(val, p[0]) + sv[1] * Ev(val, p[1]);
+		const auto pa = sv[0] * Ev(val, ts.a[0]) + sv[1] * Ev(val, ts.a[1]);
+		const auto pb = sv[0] * Ev(val, ts.b[0]) + sv[1] * Ev(val, ts.b[1]);
+		if (pr < std::min(pa, pb) - 1e-9 || pr > std::max(pa, pb) + 1e-9) moved++;
+	}
+	return moved;
+}
+
 /**
  * Build, solve and export one variant of the mapped composition.
  * @param topology The topology.
@@ -2317,33 +2565,64 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 	}
 	LazyResult res;
 	if (!SolveLazy(M, t0, res, out.area, out.why, &composer.sides)) return out;
-	for (const auto &[key, geo] : res.geo.geo) out.track += geo.L * (IsAxis(geo.d) ? 0.5 : std::sqrt(2.0) / 2);
-	out.width = static_cast<int>(std::llround(Ev(res.sol.val, M.X))) / 2 + 1;
-	out.height = static_cast<int>(std::llround(Ev(res.sol.val, M.Y))) / 2 + 1;
-	if (!M.error.empty()) {
-		out.why = M.error;
+	/* Ladders: re-solve with rungs from the rough solution, at most twice (the second only when a rung point left its facing span). */
+	std::unique_ptr<MappedComposer> stand; // the composer of the last successful ladder solve
+	LazyResult stand_res;
+	if (std::getenv("PLANAR_NOLADDER") == nullptr) {
+		for (int pass = 0; pass < 2; pass++) {
+			const Model &cur_model = stand != nullptr ? stand->M : M;
+			const std::vector<int64_t> &cur_val = stand != nullptr ? stand_res.sol.val : res.sol.val;
+			int violated = 0;
+			const std::vector<RungSpec> rungs = LadderRungs(cur_model, composer.ladder_faces, composer.ladder_off, cur_val, violated);
+			out.rungs_violated += violated;
+			auto next = std::make_unique<MappedComposer>(topology, channels, params, variant);
+			if (!next->M.error.empty()) break;
+			{
+				const TagScope ts("rung");
+				for (const RungSpec &r : rungs) next->M.Add(RungCon(next->M, r));
+			}
+			LazyResult next_res;
+			double next_area = 0;
+			std::string next_why;
+			if (!SolveLazy(next->M, Clock::now(), next_res, next_area, next_why, &next->sides)) break;
+			out.area = next_area;
+			out.rungs = rungs.size();
+			const int moved = RungsMoved(next->M, rungs, next_res.sol.val);
+			stand_res = std::move(next_res);
+			stand = std::move(next);
+			if (moved == 0) break;
+		}
+	}
+	const Model &FM = stand != nullptr ? stand->M : M;
+	const LazyResult &FR = stand != nullptr ? stand_res : res;
+	out.first_round_clashes = FR.first_round_clashes;
+	for (const auto &[key, geo] : FR.geo.geo) out.track += geo.L * (IsAxis(geo.d) ? 0.5 : std::sqrt(2.0) / 2);
+	out.width = static_cast<int>(std::llround(Ev(FR.sol.val, FM.X))) / 2 + 1;
+	out.height = static_cast<int>(std::llround(Ev(FR.sol.val, FM.Y))) / 2 + 1;
+	if (!FM.error.empty()) {
+		out.why = FM.error;
 		return out;
 	}
-	if (!ExportRoutes(M, res.geo, topology, out.routes, out.why)) return out;
+	if (!ExportRoutes(FM, FR.geo, topology, out.routes, out.why)) return out;
 	if (const char *dir = std::getenv("PLANAR_MAPPED_DUMP"); dir != nullptr) {
 		/* Debug: each strand's crossings in travel order (the other strand and over or under), for diffing against a hand composition. */
 		std::map<std::string, std::vector<std::pair<double, std::string>>> along;
 		const auto offset = [&](const Seg &sg) {
 			double o = 0;
-			for (uint32_t i = 0; i < sg.i; i++) o += Ev(res.sol.val, M.strands.at(sg.strand).segs[i].L);
+			for (uint32_t i = 0; i < sg.i; i++) o += Ev(FR.sol.val, FM.strands.at(sg.strand).segs[i].L);
 			return o;
 		};
-		for (const CrossRec &c : M.crossings) {
-			along[c.over.strand].emplace_back(offset(c.over) + Ev(res.sol.val, c.a), "over " + c.under.strand);
-			along[c.under.strand].emplace_back(offset(c.under) + Ev(res.sol.val, c.b), "under " + c.over.strand);
+		for (const CrossRec &c : FM.crossings) {
+			along[c.over.strand].emplace_back(offset(c.over) + Ev(FR.sol.val, c.a), "over " + c.under.strand);
+			along[c.under.strand].emplace_back(offset(c.under) + Ev(FR.sol.val, c.b), "under " + c.over.strand);
 		}
 		std::ofstream f(fmt::format("{}/{}.txt", dir, out.tag));
 		f << "area " << out.area << "\n";
-		for (const auto &[key, z] : M.group_z) f << "switch " << key.first << " h" << key.second << " " << std::llround(Ev(res.sol.val, z)) << "\n";
-		for (const std::string &name : M.order) {
+		for (const auto &[key, z] : FM.group_z) f << "switch " << key.first << " h" << key.second << " " << std::llround(Ev(FR.sol.val, z)) << "\n";
+		for (const std::string &name : FM.order) {
 			f << "seq " << name << ":";
-			for (const Seg &sg : M.strands.at(name).segs) {
-				const int64_t len = std::llround(Ev(res.sol.val, sg.L));
+			for (const Seg &sg : FM.strands.at(name).segs) {
+				const int64_t len = std::llround(Ev(FR.sol.val, sg.L));
 				if (len != 0) f << " " << sg.d << ":" << len;
 			}
 			f << "\n";
@@ -2393,6 +2672,9 @@ bool PickBest(const std::vector<VariantOutcome> &outcomes, Clock::time_point t0,
 	layout.track = best->track;
 	layout.variant = best->tag;
 	layout.routes = best->routes;
+	layout.first_round_clashes = best->first_round_clashes;
+	layout.rungs = best->rungs;
+	layout.rungs_violated = best->rungs_violated;
 	layout.micros = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
 	return true;
 }

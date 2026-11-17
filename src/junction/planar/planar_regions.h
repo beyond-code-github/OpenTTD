@@ -57,6 +57,9 @@ public:
 	/** @return Every face except the outer one, with its walls as runs; the face map follows the variant's channel crossing order. */
 	const std::vector<PlanarFace> &Faces() const { return this->faces; }
 
+	/** @return Each line's crossing events in the variant's channel order; the stretch indices of `Faces()` count these. */
+	const std::vector<std::vector<uint32_t>> &Events() const { return this->events; }
+
 	/** @return Empty, or why the face map failed validation (V - E + F != 2, a face not a simple walk) or two sources disagreed. */
 	const std::string &Why() const { return this->why; }
 
@@ -65,6 +68,7 @@ private:
 	std::vector<int8_t> table; ///< Side(p, q) at p * count + q.
 	std::string why;
 	std::vector<PlanarFace> faces; ///< Every face but the outer, as runs of walls.
+	std::vector<std::vector<uint32_t>> events; ///< Each line's crossing events in the variant's channel order.
 	std::vector<std::pair<uint32_t, uint32_t>> face_pairs; ///< The ordered pairs sharing a face with a side.
 	std::map<std::string, uint32_t, std::less<>> by_name; ///< Line index by name.
 };

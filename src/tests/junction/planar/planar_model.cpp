@@ -161,3 +161,15 @@ TEST_CASE("planar model: an optional segment on a route of required pieces fails
 	REQUIRE(!M.error.empty());
 	CHECK(M.error.find("optional segment") != std::string::npos);
 }
+
+TEST_CASE("planar model: rung spacing follows the clash rule", "[junction][planarmodel]")
+{
+	for (int own = 0; own < 8; own++) {
+		for (int target = 0; target < 8; target++) {
+			INFO("target " << target << " own " << own);
+			const bool axis = target % 2 == 0;
+			const int expected = !axis ? 2 : (own % 2 == 0 && own % 4 == target % 4 ? 2 : 1);
+			CHECK(PlanarModel::RungSpacing(target, own) == expected);
+		}
+	}
+}

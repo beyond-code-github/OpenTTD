@@ -34,6 +34,13 @@ bool IsAxis(int d)
 	return d % 2 == 0;
 }
 
+int RungSpacing(int target_d, int own_d)
+{
+	if (!IsAxis(target_d)) return 2;
+	if (!IsAxis(own_d)) return 1;
+	return own_d % 4 == target_d % 4 ? 2 : 1;
+}
+
 const std::array<int, 2> &Right(int h)
 {
 	return STEP[Turn(h, 2)];
