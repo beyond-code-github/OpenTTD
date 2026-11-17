@@ -938,9 +938,13 @@ private:
 	}
 
 	/** n-lane join (probe 9): J_k lands on S_k from side sigma, crossing every nearer S_j (lanes far..near). */
-	void Join(int h, int sigma, const std::vector<std::string> &S, const std::vector<std::string> &J, const std::vector<std::string> &O, bool prio, std::optional<bool> exit_step, int lo0 = 6)
+	void Join(int h, int sigma, const std::vector<std::string> &S, const std::vector<std::string> &J, const std::vector<std::string> &O, bool prio, int exit_step, int lo0 = 6)
 	{
 		Model &M = this->M;
+		if (exit_step == -1 && S.size() > 1) {
+			M.Fail("an exit step to the left is not composed");
+			return;
+		}
 		const auto &r = Right(h);
 		const size_t n = S.size();
 		M.AddSeg(S[0], h, prio ? 2 * this->P + 2 : 2);
@@ -987,16 +991,12 @@ private:
 		std::vector<Seg> st;
 		for (const std::string &o : O) {
 			M.AddSeg(o, h, 2, std::nullopt, FANW);
-			if (!exit_step.has_value()) {
-				st.push_back(M.AddSeg(o, Turn(h, +1), 2, std::nullopt, 1.0, true));
-			} else if (*exit_step) {
-				st.push_back(M.AddSeg(o, Turn(h, +1), 2, std::nullopt, 1.0));
-			}
+			if (exit_step != 0) st.push_back(M.AddSeg(o, Turn(h, exit_step), 2, std::nullopt, 1.0));
 			M.AddSeg(o, h, STUB);
 		}
 		for (size_t k = 0; k + 1 < n; k++) {
 			const TagScope ts("join exit");
-			if (!st.empty()) {
+			if (exit_step != 0) {
 				const bool f_first = Turn(h, +1) == Turn(h, sigma);
 				const Seg &a = f_first ? st[k] : st[k + 1];
 				const Seg &b = f_first ? st[k + 1] : st[k];
@@ -1358,16 +1358,12 @@ void MappedComposer::Build()
 			J.push_back(jn);
 			O.push_back(on);
 		}
-		bool exit_step = false;
+		int exit_step = 0;
 		for (const PlanarGapStep &gs : gap_steps) {
-			if (gs.channel != site.channel || gs.fan) continue;
-			exit_step = true;
-			if (gs.toward != +1) {
-				M.Fail("an exit step to the left is not composed");
-				return false;
-			}
+			if (gs.channel == site.channel && !gs.fan) exit_step = gs.toward;
 		}
 		this->Join(h, rs.side, S, J, O, rs.prio, exit_step);
+		if (!M.error.empty()) return false;
 
 		return true;
 	};
@@ -1398,9 +1394,9 @@ void MappedComposer::Build()
 				M.Fail("a merge's legs do not arrive on its heading");
 				return false;
 			}
-			M.opt_group = fmt::format("merge{}j", n);
-			this->Join(h, side, {t.lines[straight].name}, {t.lines[joiner].name}, {t.lines[node.out.front()].name}, this->LinePrio(straight), std::nullopt, 2);
-			M.opt_group.clear();
+			const uint32_t out = node.out.front();
+			const int8_t step = t.lines[out].to.port ? PlanarMergeExitStep(t, out, static_cast<int8_t>(side)) : PlanarInnerMergeExitStep(t, ch, site, out);
+			this->Join(h, side, {t.lines[straight].name}, {t.lines[joiner].name}, {t.lines[out].name}, this->LinePrio(straight), step, 2);
 		}
 		return true;
 	};

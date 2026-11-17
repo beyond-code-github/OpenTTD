@@ -172,3 +172,40 @@ std::vector<PlanarCandidateStep> PlanarCandidateSteps(const PlanarTopology &topo
 	}
 	return out;
 }
+
+/**
+ * The exit step of a one-lane merge onto a port line: one close-up per pinned gap, owned by the out line before the gap in ring order.
+ * (An inner merge, whose out line is no port line, steps by width instead; the composer decides that from its channel's line order.)
+ * @param topology The topology.
+ * @param out_line The merge's out line, a port line.
+ * @param joiner_side Where the joiner arrives from: +1 right of travel, -1 left.
+ * @return +1 when the joiner arrives from the right and the out line's ring successor (no wrap) lies on the same box side, else 0.
+ */
+int8_t PlanarMergeExitStep(const PlanarTopology &topology, uint32_t out_line, int8_t joiner_side)
+{
+	if (joiner_side != +1) return 0;
+	const auto it = std::ranges::find(topology.ring, out_line);
+	if (it == topology.ring.end() || it + 1 == topology.ring.end()) return 0;
+	return SideOfLine(topology, *(it + 1)) == SideOfLine(topology, out_line) ? +1 : 0;
+}
+
+/**
+ * The exit step of an inner one-lane merge: the lane closing up after a lane split's spread.
+ * @param topology The topology.
+ * @param channels The channels.
+ * @param site The merge site holding the node.
+ * @param out_line The merge's out line, not a port line.
+ * @return +1 when another merge node of the site has its out line to the right of this one in the order of the out channel's lines (left to right across travel), else 0; the joiner's side does not matter.
+ */
+int8_t PlanarInnerMergeExitStep(const PlanarTopology &topology, const PlanarChannels &channels, const PlanarSite &site, uint32_t out_line)
+{
+	const std::vector<uint32_t> &lines = channels.channels[channels.channel_of_line[out_line]].lines;
+	const auto pos = std::ranges::find(lines, out_line);
+	for (uint32_t m : site.nodes) {
+		const PlanarNode &node = topology.nodes[m];
+		if (node.IsSplit() || node.out.front() == out_line) continue;
+		const auto other = std::ranges::find(lines, node.out.front());
+		if (other != lines.end() && other > pos) return +1;
+	}
+	return 0;
+}

@@ -13,6 +13,7 @@
 
 #include "../../../junction/planar/planar_gaps.h"
 #include "../../../junction/planar/planar_paths.h"
+#include "../../../junction/planar/planar_plan.h"
 
 #include <algorithm>
 #include <string>
@@ -117,4 +118,47 @@ TEST_CASE("planar gaps: resolved sites of the T", "[junction][planargaps]")
 	}
 	CHECK(saw_fray);
 	CHECK(saw_join);
+}
+
+TEST_CASE("planar gaps: one-lane merge exit steps", "[junction][planargaps]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarLL2Text(), &error);
+	REQUIRE(error.empty());
+	const auto step = [&](std::string_view line, int8_t side) {
+		return PlanarMergeExitStep(topology, PlanarLineByName(topology, line), side);
+	};
+
+	/* The step owner of a pinned gap is the out line before it in ring order: a joiner at +1 needs the step when the successor shares the box side. */
+	/* E side, north to south on the ring: EO1, EO2, AB2, AB1. */
+	CHECK(step("EO1", +1) == +1); // EO2 follows EO1 on the E side
+	CHECK(step("EO1", -1) == 0);
+	CHECK(step("EO2", -1) == 0);
+	CHECK(step("EO2", +1) == +1); // AB2's line follows EO2 on the E side
+	/* W side, south to north on the ring: WO1, WO2, EF2, EF1. */
+	CHECK(step("WO1", +1) == +1); // WO2 follows WO1
+	/* S side, east to west on the ring: SO1, SO2, CD2, CD1. */
+	CHECK(step("SO1", +1) == +1); // SO2 follows SO1
+	/* No out line of LL2 ends its box side (every one is followed by another line of its side), so the corner cases use the side's last in line: AB1 is followed by SO1 on the S side, EF1 ends the ring. */
+	CHECK(step("AB1", +1) == 0);
+	CHECK(step("EF1", +1) == 0);
+
+	/* Inner merges: a site's merges close up toward their right neighbour in the out channel's line order, whatever the joiner side. */
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	const auto inner = [&](std::string_view line) {
+		const uint32_t l = PlanarLineByName(topology, line);
+		for (const PlanarSite &site : channels.sites) {
+			if (site.kind != PlanarSiteKind::Join && site.kind != PlanarSiteKind::LaneMerge) continue;
+			for (uint32_t n : site.nodes) {
+				if (!topology.nodes[n].IsSplit() && topology.nodes[n].out.front() == l) return PlanarInnerMergeExitStep(topology, channels, site, l);
+			}
+		}
+		return static_cast<int8_t>(-9);
+	};
+	CHECK(inner("AFj1") == +1);
+	CHECK(inner("AFj2") == 0);
+	CHECK(inner("CBj1") == +1);
+	CHECK(inner("CBj2") == 0);
+	CHECK(inner("EDj1") == +1);
+	CHECK(inner("EDj2") == 0);
 }

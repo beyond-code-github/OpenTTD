@@ -38,4 +38,9 @@ std::vector<PlanarResolvedSite> ResolvePlanarSites(const PlanarTopology &topolog
 std::vector<PlanarGapStep> BuildPlanarGapSteps(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, std::string &why);
 std::vector<PlanarCandidateStep> PlanarCandidateSteps(const PlanarTopology &topology, const PlanarChannels &channels);
 
+/** The exit step of a one-lane merge onto a port line: +1 when the joiner arrives from the right and the out line's ring successor is on the same box side, else 0. */
+int8_t PlanarMergeExitStep(const PlanarTopology &topology, uint32_t out_line, int8_t joiner_side);
+/** The exit step of an inner one-lane merge (out line no port line): a width change, +1 when another merge of its site has its out line to the right in the out channel's line order, whatever the joiner side. */
+int8_t PlanarInnerMergeExitStep(const PlanarTopology &topology, const PlanarChannels &channels, const PlanarSite &site, uint32_t out_line);
+
 #endif /* PLANAR_GAPS_H */
