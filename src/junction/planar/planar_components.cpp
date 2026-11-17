@@ -2581,6 +2581,8 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 				const TagScope ts("rung");
 				for (const RungSpec &r : rungs) next->M.Add(RungCon(next->M, r));
 			}
+			/* Rows only are added (rungs), so the columns match index for index with the accepted solution; a mismatch leaves the model cold. */
+			if (next->M.lb.size() + next->M.parity.size() == cur_val.size()) next->M.last.assign(cur_val.begin(), cur_val.end());
 			LazyResult next_res;
 			double next_area = 0;
 			std::string next_why;
