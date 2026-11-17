@@ -70,3 +70,10 @@
 - Clashes are separated lazily (one pair per round, first of four sorted directions that stays feasible); the area inside the outline is then minimised by sequential linearisation around the clash-free solution.
 - The output is one `PlanarRouteProgram` per route path and copy choice: pieces (tile, heading 0 N .. 7 NW, Ground/Head/Middle, line index in the path) and copy switches; routes and paths are matched to the topology by route name and the comma-joined line names.
 - On the test spec the solver finds LL² at 800 tiles (variant `-1F1w1`, 64x47) and T2 at 935 tiles (`+1F1w-1`, 89x33).
+
+## Gap steps (`planar_gaps`)
+- `ResolvePlanarSites` decides each channel-graph site as the mapped composer does (same order; a per-node site keeps the defaults; tie bits consumed in site order): straight channel, other channel, side (the turn direction between the port headings) and the straight channel's prio; sites whose channels lack a single port heading refuse.
+- `BuildPlanarGapSteps` walks the ring: consecutive port lines (no wrap-around) on one side of the box with different channels are a pinned gap, looked at from each channel X with Y across it. Y lies to X's left for an in line's ring successor or an out line's predecessor, else right.
+- An in channel X whose resolved fray (not per node) has its other leg's side toward Y sends a leg into the gap: with a prio fray the step is X's fan (`fan` true, neighbour Y); otherwise, when Y's line is an out line, Y's close-up steps (`fan` false, neighbour X); otherwise the gap is refused (a plain fray's leg runs toward a neighbouring in port).
+- An out channel X whose resolved join has its joiner's side toward Y has a joiner landing in the gap: X's close-up steps (`fan` false, neighbour Y).
+- Steps are deduplicated by (channel, fan), the first kept, and sorted by channel then fan (false first). On the T2 and T3 (ties `o0t2f1` and `o0t1f1`) they are EF's fan toward CB (W), AF's close-up toward CD (S) and ED's close-up toward AB (E).
