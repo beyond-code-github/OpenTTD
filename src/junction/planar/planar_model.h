@@ -223,7 +223,6 @@ public:
 	bool deck_parity = false; ///< Deck ends on whole pieces (even half-tiles along their segment), so every deck has its two head pieces.
 	std::string opt_group; ///< When set, optional segments share one binary per (group, heading): one switch per channel transition.
 	std::map<std::pair<std::string, int>, Var> group_z; ///< The shared binaries.
-	size_t jog_count = 0; ///< Spike: exit jog groups seen so far.
 	std::set<uint32_t> binaries; ///< The optional segments' switches.
 
 	/** Build the empty model with its box variables. */
@@ -351,13 +350,6 @@ public:
 				const char kind = this->opt_group.back();
 				if (kind == '+') lo_z = 1.0;
 				if (kind == '-') hi_z = 0.0;
-				if (kind == 'j' && std::getenv("PLANAR_JOGS") != nullptr) { // experiment: the jogs fixed, one character per jog group in creation order ('1' on)
-					const std::string jogs = std::getenv("PLANAR_JOGS");
-					const size_t at = this->jog_count++;
-					const double v = at < jogs.size() && jogs[at] == '1' ? 1.0 : 0.0;
-					lo_z = v;
-					hi_z = v;
-				}
 				it = this->group_z.emplace(key, this->NewVar(lo_z, hi_z, OPTW)).first;
 				this->binaries.insert(it->second.index);
 			}

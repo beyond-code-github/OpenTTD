@@ -25,9 +25,17 @@ struct PlanarGapStep {
 	uint32_t channel; ///< The channel that steps.
 	bool fan; ///< True: on the in channel's fray fan; false: on the out channel's close-up after its join.
 	uint32_t neighbour; ///< The channel across the pinned gap.
+	int8_t toward = 0; ///< Where the step moves, +1 right of the stepping channel's travel, -1 left: a close-up toward its neighbour, a fan away from it.
+};
+
+/** A candidate sideways step (DESIGN-pieces §3 source 5): a straight channel over crossings may step once before its core, away from its in port's neighbour. */
+struct PlanarCandidateStep {
+	uint32_t channel;
+	int8_t toward; ///< +1 right of travel, -1 left.
 };
 
 std::vector<PlanarResolvedSite> ResolvePlanarSites(const PlanarTopology &topology, const PlanarChannels &channels, uint64_t ties, std::string &why);
 std::vector<PlanarGapStep> BuildPlanarGapSteps(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, std::string &why);
+std::vector<PlanarCandidateStep> PlanarCandidateSteps(const PlanarTopology &topology, const PlanarChannels &channels);
 
 #endif /* PLANAR_GAPS_H */

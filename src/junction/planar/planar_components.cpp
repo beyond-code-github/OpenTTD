@@ -12,6 +12,7 @@
 #include "planar_components.h"
 #include "planar_model.h"
 #include "planar_channels.h"
+#include "planar_gaps.h"
 #include "planar_paths.h"
 
 #include "../junction_spec.h"
@@ -740,6 +741,7 @@ struct MappedVariant {
 	uint64_t over = 0; ///< Bit i set: the i-th open crossing has its higher channel over.
 	uint64_t ties = 0; ///< Bit i set: the i-th site without a straight channel takes its second other channel as straight.
 	uint64_t flips = 0; ///< Bit i set: the i-th crossing triangle sits the other way round (FlipPlanarTriangles).
+	uint64_t steps = 0; ///< Bit i set: the i-th candidate step (PlanarCandidateSteps) is taken.
 };
 
 /**
@@ -926,7 +928,7 @@ private:
 	}
 
 	/** n-lane join (probe 9): J_k lands on S_k from side sigma, crossing every nearer S_j (lanes far..near). */
-	void Join(int h, int sigma, const std::vector<std::string> &S, const std::vector<std::string> &J, const std::vector<std::string> &O, bool prio, int lo0 = 6)
+	void Join(int h, int sigma, const std::vector<std::string> &S, const std::vector<std::string> &J, const std::vector<std::string> &O, bool prio, std::optional<bool> exit_step, int lo0 = 6)
 	{
 		Model &M = this->M;
 		const auto &r = Right(h);
@@ -975,30 +977,39 @@ private:
 		std::vector<Seg> st;
 		for (const std::string &o : O) {
 			M.AddSeg(o, h, 2, std::nullopt, FANW);
-			st.push_back(M.AddSeg(o, Turn(h, +1), 2, std::nullopt, 1.0, true));
+			if (!exit_step.has_value()) {
+				st.push_back(M.AddSeg(o, Turn(h, +1), 2, std::nullopt, 1.0, true));
+			} else if (*exit_step) {
+				st.push_back(M.AddSeg(o, Turn(h, +1), 2, std::nullopt, 1.0));
+			}
 			M.AddSeg(o, h, STUB);
 		}
 		for (size_t k = 0; k + 1 < n; k++) {
-			const bool f_first = Turn(h, +1) == Turn(h, sigma);
-			const Seg &a = f_first ? st[k] : st[k + 1];
-			const Seg &b = f_first ? st[k + 1] : st[k];
-			M.Add(Ge(Dot(STEP[h], a.a) - Dot(STEP[h], b.a), 0));
+			if (!st.empty()) {
+				const bool f_first = Turn(h, +1) == Turn(h, sigma);
+				const Seg &a = f_first ? st[k] : st[k + 1];
+				const Seg &b = f_first ? st[k + 1] : st[k];
+				M.Add(Ge(Dot(STEP[h], a.a) - Dot(STEP[h], b.a), 0));
+			}
 			M.Add(Eq(Dot(r, M.End(O[k + 1])) - Dot(r, M.End(O[k])), 2 * sigma));
 		}
 	}
 
-	/** A run with an optional S-bend either way (D320); offset-parallel on its last piece at the given lines, which it returns. */
-	std::vector<Seg> Flex(const std::vector<std::string> &lanes, int h, const std::vector<int> &offs)
+	/** A run with an optional sideways step (a required diagonal when jog is not 0); offset-parallel on its last piece at the given lines, which it returns. */
+	std::vector<Seg> Flex(const std::vector<std::string> &lanes, int h, const std::vector<int> &offs, int jog)
 	{
 		Model &M = this->M;
-		std::vector<Seg> last;
+		std::vector<Seg> last, diag;
 		for (const std::string &l : lanes) {
 			M.AddSeg(l, h, 0);
-			M.AddSeg(l, Turn(h, -1), 2, std::nullopt, std::sqrt(2.0), true);
-			M.AddSeg(l, h, 0);
-			M.AddSeg(l, Turn(h, +1), 2, std::nullopt, std::sqrt(2.0), true);
+			if (jog == 0) {
+				last.push_back(M.AddSeg(l, h, 0));
+				continue;
+			}
+			diag.push_back(M.AddSeg(l, Turn(h, jog), 2, std::nullopt, std::sqrt(2.0)));
 			last.push_back(M.AddSeg(l, h, 0));
 		}
+		for (size_t j = 1; j < diag.size(); j++) M.Add(Eq(diag[j].L - diag[0].L, 0));
 		const auto &r = Right(h);
 		for (size_t j = 1; j < lanes.size(); j++) {
 			M.Add(Eq(Dot(r, last[j].a) - Dot(r, last[0].a), 2 * offs[j]));
@@ -1104,32 +1115,24 @@ void MappedComposer::Build()
 	}
 	this->piece_segs.resize(ch.channels.size());
 
-	/* Sites: the straight channel and side, the tie sites taking theirs from the variant. */
-	struct Resolved {
-		uint32_t straight;
-		uint32_t other;
-		int side;
-		bool prio;
-	};
-	std::vector<Resolved> res(ch.sites.size(), Resolved{UINT32_MAX, UINT32_MAX, 0, false});
+	/* Sites: the straight channel and side, the tie sites taking theirs from the variant; then the gap steps they imply. */
+	std::string why;
+	const std::vector<PlanarResolvedSite> res = ResolvePlanarSites(t, ch, this->variant.ties, why);
+	if (!why.empty()) {
+		M.Fail(why);
+		return;
+	}
 	int tie = 0;
 	for (size_t s = 0; s < ch.sites.size(); s++) {
-		const PlanarSite &site = ch.sites[s];
-		if (PlanarSitePerNode(site)) continue;
-		uint32_t straight = site.straight;
-		if (straight == UINT32_MAX) straight = site.others[(this->variant.ties >> tie++ & 1) != 0 ? 1 : 0];
-		const uint32_t other = site.others[0] == straight ? site.others[1] : site.others[0];
-		const bool split = site.kind == PlanarSiteKind::Fray;
-		const PlanarChannel &key = ch.channels[site.channel];
-		const int from = split ? this->PortHeading(key.up) : this->PortHeading(ch.channels[other].up);
-		const int to = split ? this->PortHeading(ch.channels[other].down) : this->PortHeading(key.down);
-		if (from < 0 || to < 0) {
-			M.Fail("a site's channels have no single port heading");
-			return;
-		}
-		const int turn = TurnOf(from, to);
-		res[s] = {straight, other, turn > 0 ? 1 : -1, ch.channels[straight].prio};
+		if (!PlanarSitePerNode(ch.sites[s]) && ch.sites[s].straight == UINT32_MAX) tie++;
 	}
+	const std::vector<PlanarGapStep> gap_steps = BuildPlanarGapSteps(t, ch, res, why);
+	if (!why.empty()) {
+		M.Fail(why);
+		return;
+	}
+	const std::vector<PlanarCandidateStep> cand_steps = PlanarCandidateSteps(t, ch);
+	std::set<uint32_t> cores_built;
 	const auto site_of = [&](uint32_t c, bool split) -> std::optional<size_t> {
 		for (size_t s = 0; s < ch.sites.size(); s++) {
 			const bool is_split = ch.sites[s].kind == PlanarSiteKind::Fray;
@@ -1172,7 +1175,7 @@ void MappedComposer::Build()
 	/* Frays: lanes far..near (far away from the diverging side), each in line's legs matched by node. */
 	const auto build_fray = [&](size_t s) {
 		const PlanarSite &site = ch.sites[s];
-		const Resolved &rs = res[s];
+		const PlanarResolvedSite &rs = res[s];
 		const int h = this->PortHeading(ch.channels[site.channel].up);
 		std::vector<uint32_t> ins = ch.channels[site.channel].lines;
 		if (rs.side < 0) std::ranges::reverse(ins);
@@ -1241,9 +1244,12 @@ void MappedComposer::Build()
 			const std::vector<int> e = JoinEntry(n);
 			for (int j = 0; j < n; j++) offs[j] = far_left ? e[j] : e[n - 1] - e[n - 1 - j];
 		}
-		M.opt_group = fmt::format("flex{}j", c); // a straight channel's sideways jog: lining up with its neighbours, a real choice (T3: B's jog before its core gives 1941)
-		const std::vector<Seg> lead = this->Flex(lanes, h, offs);
-		M.opt_group.clear();
+		cores_built.insert(c);
+		int jog = 0;
+		for (size_t k = 0; k < cand_steps.size(); k++) {
+			if (cand_steps[k].channel == c && (this->variant.steps >> k & 1) != 0) jog = cand_steps[k].toward;
+		}
+		const std::vector<Seg> lead = this->Flex(lanes, h, offs, jog);
 		/* Its one piece for crossings under it: the run before its decks. */
 		for (int j = 0; j < n; j++) this->piece_segs[c][lanes[j]].push_back(lead[j]);
 		std::vector<uint32_t> overs;
@@ -1319,7 +1325,7 @@ void MappedComposer::Build()
 	/* Joins: lanes far..near (far away from the joining side), each merge's legs matched by node. */
 	const auto build_join = [&](size_t s) -> bool {
 		const PlanarSite &site = ch.sites[s];
-		const Resolved &rs = res[s];
+		const PlanarResolvedSite &rs = res[s];
 		const int h = this->PortHeading(ch.channels[site.channel].down);
 		if (static_cast<int>(this->paths.paths[rs.other].headings.back()) != h || static_cast<int>(this->paths.paths[rs.straight].headings.back()) != h) {
 			M.Fail("a join's channels do not arrive on its heading");
@@ -1342,9 +1348,16 @@ void MappedComposer::Build()
 			J.push_back(jn);
 			O.push_back(on);
 		}
-		M.opt_group = fmt::format("join{}j", s); // the exit's jog to its port: a real choice
-		this->Join(h, rs.side, S, J, O, rs.prio);
-		M.opt_group.clear();
+		bool exit_step = false;
+		for (const PlanarGapStep &gs : gap_steps) {
+			if (gs.channel != site.channel || gs.fan) continue;
+			exit_step = true;
+			if (gs.toward != +1) {
+				M.Fail("an exit step to the left is not composed");
+				return false;
+			}
+		}
+		this->Join(h, rs.side, S, J, O, rs.prio, exit_step);
 
 		return true;
 	};
@@ -1376,7 +1389,7 @@ void MappedComposer::Build()
 				return false;
 			}
 			M.opt_group = fmt::format("merge{}j", n);
-			this->Join(h, side, {t.lines[straight].name}, {t.lines[joiner].name}, {t.lines[node.out.front()].name}, this->LinePrio(straight), 2);
+			this->Join(h, side, {t.lines[straight].name}, {t.lines[joiner].name}, {t.lines[node.out.front()].name}, this->LinePrio(straight), std::nullopt, 2);
 			M.opt_group.clear();
 		}
 		return true;
@@ -1397,6 +1410,12 @@ void MappedComposer::Build()
 		}
 		for (uint32_t c : cores) {
 			if (!build_core(c)) return;
+		}
+	}
+	for (size_t k = 0; k < cand_steps.size(); k++) {
+		if ((this->variant.steps >> k & 1) != 0 && !cores_built.contains(cand_steps[k].channel)) {
+			M.Fail("a candidate step on a channel that is not a core");
+			return;
 		}
 	}
 	for (const auto &w : wire) {
@@ -2173,7 +2192,7 @@ VariantOutcome SolveVariant(const PlanarTopology &topology, const Params &params
 VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant)
 {
 	VariantOutcome out;
-	out.tag = fmt::format("o{}t{}f{}", variant.over, variant.ties, variant.flips);
+	out.tag = fmt::format("o{}t{}f{}s{}", variant.over, variant.ties, variant.flips, variant.steps);
 	const Clock::time_point t0 = Clock::now();
 	MappedComposer composer(topology, channels, params, variant);
 	Model &M = composer.M;
@@ -2350,8 +2369,9 @@ bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec,
 		for (uint32_t n : site.nodes) ties += !topology.nodes[n].IsSplit() && channels.node_legs[n].straight == UINT32_MAX ? 1 : 0;
 	}
 	const size_t triangles = PlanarTriangles(channels).size();
-	if (open + ties + triangles > 6 && std::getenv("PLANAR_ONLY") == nullptr && std::getenv("PLANAR_DRY") == nullptr) {
-		if (why != nullptr) *why = fmt::format("{} open crossings, {} tie sites and {} triangles are too many variants", open, ties, triangles);
+	const size_t steps = PlanarCandidateSteps(topology, channels).size();
+	if (open + ties + triangles + steps > 6 && std::getenv("PLANAR_ONLY") == nullptr && std::getenv("PLANAR_DRY") == nullptr) {
+		if (why != nullptr) *why = fmt::format("{} open crossings, {} tie sites, {} triangles and {} candidate steps are too many variants", open, ties, triangles, steps);
 		return false;
 	}
 	std::vector<PlanarChannels> flipped;
@@ -2359,11 +2379,13 @@ bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec,
 	std::vector<MappedVariant> variants;
 	for (uint64_t f = 0; f < (uint64_t{1} << triangles); f++) {
 		for (uint64_t o = 0; o < (uint64_t{1} << open); o++) {
-			for (uint64_t k = 0; k < (uint64_t{1} << ties); k++) variants.push_back({o, k, f});
+			for (uint64_t k = 0; k < (uint64_t{1} << ties); k++) {
+				for (uint64_t st = 0; st < (uint64_t{1} << steps); st++) variants.push_back({o, k, f, st});
+			}
 		}
 	}
 	if (const char *only = std::getenv("PLANAR_ONLY"); only != nullptr) { // debug: one variant by tag
-		std::erase_if(variants, [&](const MappedVariant &v) { return fmt::format("o{}t{}f{}", v.over, v.ties, v.flips) != only; });
+		std::erase_if(variants, [&](const MappedVariant &v) { return fmt::format("o{}t{}f{}s{}", v.over, v.ties, v.flips, v.steps) != only; });
 	}
 	std::vector<VariantOutcome> outcomes(variants.size());
 	std::vector<std::thread> threads;

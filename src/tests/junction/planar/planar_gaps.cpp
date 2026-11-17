@@ -40,9 +40,9 @@ static void CheckTSteps(int n, uint64_t ties)
 	REQUIRE(why.empty());
 
 	std::vector<PlanarGapStep> expected = {
-		{ChannelIndex(topology, channels, "EF1"), true, ChannelIndex(topology, channels, "CB1")},
-		{ChannelIndex(topology, channels, "AF1"), false, ChannelIndex(topology, channels, "CD1")},
-		{ChannelIndex(topology, channels, "ED1"), false, ChannelIndex(topology, channels, "AB1")},
+		{ChannelIndex(topology, channels, "EF1"), true, ChannelIndex(topology, channels, "CB1"), -1},
+		{ChannelIndex(topology, channels, "AF1"), false, ChannelIndex(topology, channels, "CD1"), +1},
+		{ChannelIndex(topology, channels, "ED1"), false, ChannelIndex(topology, channels, "AB1"), +1},
 	};
 	std::ranges::sort(expected, [](const PlanarGapStep &a, const PlanarGapStep &b) {
 		return a.channel != b.channel ? a.channel < b.channel : a.fan < b.fan;
@@ -53,6 +53,7 @@ static void CheckTSteps(int n, uint64_t ties)
 		CHECK(steps[i].channel == expected[i].channel);
 		CHECK(steps[i].fan == expected[i].fan);
 		CHECK(steps[i].neighbour == expected[i].neighbour);
+		CHECK(steps[i].toward == expected[i].toward);
 	}
 }
 
@@ -64,6 +65,24 @@ TEST_CASE("planar gaps: T3 o0t1f1 steps", "[junction][planargaps]")
 TEST_CASE("planar gaps: T2 o0t2f1 steps", "[junction][planargaps]")
 {
 	CheckTSteps(2, 2);
+}
+
+static void CheckTCandidates(int n)
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(n), &error);
+	REQUIRE(error.empty());
+	const PlanarChannels channels = FlipPlanarTriangles(BuildPlanarChannels(topology), 1);
+	const std::vector<PlanarCandidateStep> cands = PlanarCandidateSteps(topology, channels);
+	REQUIRE(cands.size() == 1);
+	CHECK(cands[0].channel == ChannelIndex(topology, channels, "B1"));
+	CHECK(cands[0].toward == -1);
+}
+
+TEST_CASE("planar gaps: the T's candidate step", "[junction][planargaps]")
+{
+	CheckTCandidates(3);
+	CheckTCandidates(2);
 }
 
 TEST_CASE("planar gaps: resolved sites of the T", "[junction][planargaps]")

@@ -100,20 +100,22 @@ std::vector<PlanarGapStep> BuildPlanarGapSteps(const PlanarTopology &topology, c
 		const bool x_in = IsInLine(topology, x_line);
 		const uint32_t x = channels.channel_of_line[x_line], y = channels.channel_of_line[y_line];
 		const int toward = (x_in == successor) ? -1 : +1;
+		/* Where x lies for y, whose view of the pair is the other way round. */
+		const int y_toward = (IsInLine(topology, y_line) == !successor) ? -1 : +1;
 		if (x_in) {
 			const PlanarResolvedSite *r = resolved(PlanarSiteKind::Fray, x);
 			if (r == nullptr || r->side != toward) return true;
 			if (r->prio) {
-				steps.push_back({x, true, y});
+				steps.push_back({x, true, y, static_cast<int8_t>(-toward)});
 			} else if (!IsInLine(topology, y_line)) {
-				steps.push_back({y, false, x});
+				steps.push_back({y, false, x, static_cast<int8_t>(y_toward)});
 			} else {
 				why = "a plain fray's leg runs toward a neighbouring in port";
 				return false;
 			}
 		} else {
 			const PlanarResolvedSite *r = resolved(PlanarSiteKind::Join, x);
-			if (r != nullptr && r->side == toward) steps.push_back({x, false, y});
+			if (r != nullptr && r->side == toward) steps.push_back({x, false, y, static_cast<int8_t>(toward)});
 		}
 		return true;
 	};
@@ -131,4 +133,42 @@ std::vector<PlanarGapStep> BuildPlanarGapSteps(const PlanarTopology &topology, c
 	const auto dup = std::ranges::unique(steps, [](const PlanarGapStep &p, const PlanarGapStep &q) { return p.channel == q.channel && p.fan == q.fan; });
 	steps.erase(dup.begin(), dup.end());
 	return steps;
+}
+
+/**
+ * The straight channels over crossings that may step once before their core (DESIGN-pieces section 3 source 5).
+ * @param topology The topology.
+ * @param channels Its channel graph.
+ * @return The candidates in channel order; a channel with one up port and one down port at equal headings and crossings, whose in port has exactly one neighbour across a gap on its side.
+ */
+std::vector<PlanarCandidateStep> PlanarCandidateSteps(const PlanarTopology &topology, const PlanarChannels &channels)
+{
+	std::vector<PlanarCandidateStep> out;
+	for (size_t c = 0; c < channels.channels.size(); c++) {
+		const PlanarChannel &channel = channels.channels[c];
+		if (channel.up.size() != 1 || channel.down.size() != 1 || channel.crossings.empty()) continue;
+		const uint32_t port = *channel.up.begin();
+		if (topology.ports[port].heading != topology.ports[*channel.down.begin()].heading) continue;
+
+		size_t first = SIZE_MAX, last = 0;
+		for (size_t i = 0; i < topology.ring.size(); i++) {
+			const PlanarLine &l = topology.lines[topology.ring[i]];
+			if ((l.from.port ? l.from.index : l.to.index) != port) continue;
+			if (first == SIZE_MAX) first = i;
+			last = i;
+		}
+		if (first == SIZE_MAX) continue;
+		int count = 0, lies = 0;
+		const auto consider = [&](size_t i, int value) {
+			const PlanarLine &l = topology.lines[topology.ring[i]];
+			if ((l.from.port ? l.from.index : l.to.index) == port) return;
+			if (SideOfLine(topology, topology.ring[i]) != topology.ports[port].side) return;
+			count++;
+			lies = value;
+		};
+		if (first > 0) consider(first - 1, +1);
+		if (last + 1 < topology.ring.size()) consider(last + 1, -1);
+		if (count == 1) out.push_back({static_cast<uint32_t>(c), static_cast<int8_t>(-lies)});
+	}
+	return out;
 }
