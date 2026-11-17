@@ -1,0 +1,43 @@
+diff --git a/src/junction/planar/planar_components.cpp b/src/junction/planar/planar_components.cpp
+index b2acc03362..29a6b0e273 100644
+--- a/src/junction/planar/planar_components.cpp
++++ b/src/junction/planar/planar_components.cpp
+@@ -2563,6 +2563,24 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
+ 		out.why = M.error;
+ 		return out;
+ 	}
++	if (const char *bf = std::getenv("PLANAR_BOUND"); bf != nullptr) { // probe: LP relaxation and rough first solve of the track objective, appended to the file named by the variable
++		M.obj_extra.clear();
++		Solution lp, ro;
++		const auto m0 = Clock::now();
++		M.relax = true;
++		const bool lp_ok = M.Solve({}, lp);
++		M.relax = false;
++		const auto m1 = Clock::now();
++		M.last.clear();
++		const bool ro_ok = M.Solve({}, ro);
++		const auto m2 = Clock::now();
++		M.last.clear();
++		std::ofstream f(bf, std::ios::app);
++		f << out.tag << " lp " << (lp_ok ? 1 : 0) << " " << lp.objective << " " << std::chrono::duration<double, std::milli>(m1 - m0).count()
++		  << " area " << (lp_ok ? std::abs(AreaOf(lp.val, Outline(M))) / 4 : -1) << " wh " << (lp_ok ? Ev(lp.val, M.X) / 2 + Ev(lp.val, M.Y) / 2 + 2 : -1)
++		  << " rough " << (ro_ok ? 1 : 0) << " " << ro.objective << " " << std::chrono::duration<double, std::milli>(m2 - m1).count()
++		  << " wh " << (ro_ok ? Ev(ro.val, M.X) / 2 + Ev(ro.val, M.Y) / 2 + 2 : -1) << "\n";
++	}
+ 	LazyResult res;
+ 	if (!SolveLazy(M, t0, res, out.area, out.why, &composer.sides)) return out;
+ 	/* Ladders: re-solve with rungs from the rough solution, at most twice (the second only when a rung point left its facing span). */
+@@ -2581,6 +2599,13 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
+ 				const TagScope ts("rung");
+ 				for (const RungSpec &r : rungs) next->M.Add(RungCon(next->M, r));
+ 			}
++			if (std::getenv("PLANAR_WARM") != nullptr) { // probe: start the ladder model from the accepted solution
++				if (next->M.lb.size() + next->M.parity.size() != cur_val.size()) {
++					fmt::print(stderr, "WARM column mismatch {} vs {}\n", next->M.lb.size() + next->M.parity.size(), cur_val.size());
++					std::abort();
++				}
++				next->M.last.assign(cur_val.begin(), cur_val.end());
++			}
+ 			LazyResult next_res;
+ 			double next_area = 0;
+ 			std::string next_why;
