@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Planar variant table: run every mapped variant of a hub singly and diff against a baseline (docs/junction-tool/TESTS.md).
+  pv run <build-dir> <hub> [--out FILE] [-j N] [--tags FILE] [--limit N]   hub is T2, T3 or LL2; one line per variant: <tag> <area|-> <WxH|-> <ms|-> <reason|ok>
+  pv diff <old> <new>                  variants whose area or reason changed; exit 1 if any
+  pv save <build-dir> <hub>            copy <build-dir>/pv-<hub>.txt to <build-dir>/pv-<hub>.baseline
+  pv check <build-dir> <hub> [...]     run, then diff against the baseline (run options pass through)
+Default out file is <build-dir>/pv-<hub>.txt. LL2 takes its tags from PLANAR_DRY=1 (built ones only): --tags FILE or the first --limit N (default 12)."""
+import os, re, shutil, subprocess, sys, time
+from concurrent.futures import ThreadPoolExecutor
+
+TESTS = {
+    "T2": "planar components: T2 from its topology text (mapped) at the probe's area",
+    "T3": "planar components: T3 from its topology text (mapped) at the hand composition's area",
+    "LL2": "planar components: LL² from its topology text (mapped) at the probe's area",
+}
+TIMEOUT = {"T2": 20, "T3": 20, "LL2": 60}
+INFO = re.compile(r"variant (\S+) area (\S+) size (\d+x\d+) in (\d+) ms")
+
+
+def usage():
+    print(__doc__, file=sys.stderr)
+    sys.exit(2)
+
+
+def binary(build):
+    exe = os.path.join(build, "openttd_test")
+    if not os.access(exe, os.X_OK):
+        print(f"pv: {exe} missing or not executable", file=sys.stderr)
+        sys.exit(2)
+    return exe
+
+
+def tags_for(exe, hub, tagfile, limit):
+    if hub != "LL2":
+        return [f"o{o}t{t}f{f}s{s}" for o in range(2) for t in range(4) for f in range(2) for s in range(2)]
+    if tagfile:
+        return [l.split()[0] for l in open(tagfile) if l.strip()]
+    r = subprocess.run([exe, TESTS[hub], "-s"], env=dict(os.environ, PLANAR_DRY="1"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    built = []
+    for l in r.stdout.splitlines():
+        p = l.split(" | ")
+        if l.startswith("DRY ") and p[-1].strip() == "built":
+            built.append(p[0][4:].strip())
+    return built[:limit]
+
+
+def run_one(exe, hub, tag):
+    try:
+        r = subprocess.run([exe, TESTS[hub], "-s"], env=dict(os.environ, PLANAR_ONLY=tag), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", timeout=TIMEOUT[hub])
+    except subprocess.TimeoutExpired:
+        return f"{tag} - - - timeout"
+    lines = r.stdout.splitlines()
+    m = None
+    for l in lines:
+        m = INFO.search(l) or m
+    reason = None
+    for l in lines:
+        if "no variant solves:" in l:
+            reason = re.sub(r"^.*no variant solves: \S+: ", "", l.strip())
+            break
+    if m and m.group(1) == tag:
+        return f"{tag} {m.group(2)} {m.group(3)} {m.group(4)} {reason or 'ok'}"
+    return f"{tag} - - - {reason or 'no-output'}"
+
+
+def cmd_run(args):
+    if len(args) < 2: usage()
+    build, hub = args[0], args[1]
+    out = os.path.join(build, f"pv-{hub}.txt"); jobs = 8; tagfile = None; limit = 12
+    rest = args[2:]
+    while rest:
+        o = rest.pop(0)
+        if o == "--out": out = rest.pop(0)
+        elif o == "-j": jobs = int(rest.pop(0))
+        elif o == "--tags": tagfile = rest.pop(0)
+        elif o == "--limit": limit = int(rest.pop(0))
+        else: usage()
+    if hub not in TESTS: usage()
+    exe = binary(build)
+    tags = tags_for(exe, hub, tagfile, limit)
+    start = time.time()
+    with ThreadPoolExecutor(jobs) as ex:
+        rows = list(ex.map(lambda t: run_one(exe, hub, t), tags))
+    rows.sort()
+    with open(out, "w") as f:
+        f.write("\n".join(rows) + "\n")
+    solved = [r for r in rows if r.split()[1] != "-"]
+    print(f"pv: {hub} {len(rows)} variants, {len(solved)} solve, {time.time() - start:.1f} s -> {out}")
+    return out
+
+
+def load(path):
+    d = {}
+    for l in open(path):
+        p = l.split(None, 4)
+        if len(p) >= 5: d[p[0]] = (p[1], p[4].strip(), l.strip())
+    return d
+
+
+def best(d):
+    a = [(float(v[0]), k) for k, v in d.items() if v[0] != "-"]
+    return min(a) if a else None
+
+
+def cmd_diff(old, new):
+    o, n = load(old), load(new)
+    changed = 0; failing = 0; solving = 0
+    for k in sorted(set(o) | set(n)):
+        a, b = o.get(k), n.get(k)
+        if a and b and a[:2] == b[:2]: continue
+        changed += 1
+        if (a is None or a[0] != "-") and b and b[0] == "-" : failing += 1
+        if (a is None or a[0] == "-") and b and b[0] != "-": solving += 1
+        print(f"- {a[2] if a else k + ' (absent)'}\n+ {b[2] if b else k + ' (absent)'}")
+    bo, bn = best(o), best(n)
+    fmt = lambda x: f"{x[0]} {x[1]}" if x else "none"
+    print(f"summary: {changed} changed, {failing} newly failing, {solving} newly solving, best area {fmt(bo)} -> {fmt(bn)}")
+    return 1 if changed else 0
+
+
+def main():
+    a = sys.argv[1:]
+    if not a: usage()
+    c = a[0]
+    if c == "run": cmd_run(a[1:])
+    elif c == "diff" and len(a) == 3: sys.exit(cmd_diff(a[1], a[2]))
+    elif c == "save" and len(a) == 3:
+        src = os.path.join(a[1], f"pv-{a[2]}.txt")
+        shutil.copy(src, os.path.join(a[1], f"pv-{a[2]}.baseline")); print(f"pv: saved {src}")
+    elif c == "check" and len(a) >= 3:
+        out = cmd_run(a[1:])
+        sys.exit(cmd_diff(os.path.join(a[1], f"pv-{a[2]}.baseline"), out))
+    else: usage()
+
+
+main()
