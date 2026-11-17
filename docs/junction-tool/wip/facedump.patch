@@ -1,0 +1,32 @@
+diff --git a/src/junction/planar/planar_regions.cpp b/src/junction/planar/planar_regions.cpp
+index 4f9322aa11..93c7bd0c3e 100644
+--- a/src/junction/planar/planar_regions.cpp
++++ b/src/junction/planar/planar_regions.cpp
+@@ -17,6 +17,9 @@
+ #include <map>
+ #include <set>
+ 
++#include <cstdlib>
++#include <iostream>
++
+ #include "../../safeguards.h"
+ 
+ namespace {
+@@ -175,6 +178,17 @@ PlanarMap::PlanarMap(const PlanarTopology &t, const std::vector<int> &ring_pos,
+ 		this->faces.push_back(std::move(entries));
+ 	}
+ 	if (outers != 1) this->why = fmt::format("the face map has {} outer faces", outers);
++	if (std::getenv("PLANAR_FACEDUMP") != nullptr) {
++		for (int f = 0; f < F; f++) {
++			std::string line = fmt::format("FACE {}", f);
++			for (int d : walks[f]) {
++				const MapEdge &e = edges[d / 2];
++				if (e.line < 0) line += " R";
++				else line += fmt::format(" {}#{}{}", t.lines[e.line].name, e.stretch, d % 2 == 0 ? 'F' : 'B');
++			}
++			std::cerr << line << "\n";
++		}
++	}
+ }
+ 
+ } // namespace

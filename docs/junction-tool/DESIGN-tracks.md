@@ -45,3 +45,6 @@ Engineer: "I can't shake the feeling that the mere concept of stepping merges is
 ## 5. Open
 - How regions meet at a doubled bridge (four tracks wide, D333).
 - Whether one-lane merges' stacking order (LL²: D's merges) is fixed by the graph or a variant.
+
+## 6. Faces are corridors (check 2026-11-17, wip/facedump.patch)
+Every face of T2 (32), T3 (65) and LL² (38) walked with the lines' travel directions: all but one per hub are two walls from one start vertex to one end vertex (or one wall against the box edge). The exception is the crossing triangle (B, D, F: three crossing lines bounding a cyclic face, `PlanarTriangles`), empty of lanes. So non-overlap can be written per corridor (left wall vs right wall), and a corridor's turning (bends plus vertex angles summing to one turn) is a flow over faces (topology-shape-metrics).
