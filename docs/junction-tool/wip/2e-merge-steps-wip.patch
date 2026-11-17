@@ -1,0 +1,147 @@
+diff --git a/src/junction/planar/planar_components.cpp b/src/junction/planar/planar_components.cpp
+index b90758eb97..cff00f2b39 100644
+--- a/src/junction/planar/planar_components.cpp
++++ b/src/junction/planar/planar_components.cpp
+@@ -927,9 +927,13 @@ private:
+ 	}
+ 
+ 	/** n-lane join (probe 9): J_k lands on S_k from side sigma, crossing every nearer S_j (lanes far..near). */
+-	void Join(int h, int sigma, const std::vector<std::string> &S, const std::vector<std::string> &J, const std::vector<std::string> &O, bool prio, std::optional<bool> exit_step, int lo0 = 6)
++	void Join(int h, int sigma, const std::vector<std::string> &S, const std::vector<std::string> &J, const std::vector<std::string> &O, bool prio, int exit_step, int lo0 = 6)
+ 	{
+ 		Model &M = this->M;
++		if (exit_step == -1 && S.size() > 1) {
++			M.Fail("an exit step to the left is not composed");
++			return;
++		}
+ 		const auto &r = Right(h);
+ 		const size_t n = S.size();
+ 		M.AddSeg(S[0], h, prio ? 2 * this->P + 2 : 2);
+@@ -976,15 +980,11 @@ private:
+ 		std::vector<Seg> st;
+ 		for (const std::string &o : O) {
+ 			M.AddSeg(o, h, 2, std::nullopt, FANW);
+-			if (!exit_step.has_value()) {
+-				st.push_back(M.AddSeg(o, Turn(h, +1), 2, std::nullopt, 1.0, true));
+-			} else if (*exit_step) {
+-				st.push_back(M.AddSeg(o, Turn(h, +1), 2, std::nullopt, 1.0));
+-			}
++			if (exit_step != 0) st.push_back(M.AddSeg(o, Turn(h, exit_step), 2, std::nullopt, 1.0));
+ 			M.AddSeg(o, h, STUB);
+ 		}
+ 		for (size_t k = 0; k + 1 < n; k++) {
+-			if (!st.empty()) {
++			if (exit_step != 0) {
+ 				const bool f_first = Turn(h, +1) == Turn(h, sigma);
+ 				const Seg &a = f_first ? st[k] : st[k + 1];
+ 				const Seg &b = f_first ? st[k + 1] : st[k];
+@@ -1338,16 +1338,12 @@ void MappedComposer::Build()
+ 			J.push_back(jn);
+ 			O.push_back(on);
+ 		}
+-		bool exit_step = false;
++		int exit_step = 0;
+ 		for (const PlanarGapStep &gs : gap_steps) {
+-			if (gs.channel != site.channel || gs.fan) continue;
+-			exit_step = true;
+-			if (gs.toward != +1) {
+-				M.Fail("an exit step to the left is not composed");
+-				return false;
+-			}
++			if (gs.channel == site.channel && !gs.fan) exit_step = gs.toward;
+ 		}
+ 		this->Join(h, rs.side, S, J, O, rs.prio, exit_step);
++		if (!M.error.empty()) return false;
+ 
+ 		return true;
+ 	};
+@@ -1378,9 +1374,9 @@ void MappedComposer::Build()
+ 				M.Fail("a merge's legs do not arrive on its heading");
+ 				return false;
+ 			}
+-			M.opt_group = fmt::format("merge{}j", n);
+-			this->Join(h, side, {t.lines[straight].name}, {t.lines[joiner].name}, {t.lines[node.out.front()].name}, this->LinePrio(straight), std::nullopt, 2);
+-			M.opt_group.clear();
++			const uint32_t out = node.out.front();
++			const int8_t step = t.lines[out].to.port ? PlanarMergeExitStep(t, out, static_cast<int8_t>(side)) : 0;
++			this->Join(h, side, {t.lines[straight].name}, {t.lines[joiner].name}, {t.lines[out].name}, this->LinePrio(straight), step, 2);
+ 		}
+ 		return true;
+ 	};
+diff --git a/src/junction/planar/planar_gaps.cpp b/src/junction/planar/planar_gaps.cpp
+index fba5464088..6976d1ec57 100644
+--- a/src/junction/planar/planar_gaps.cpp
++++ b/src/junction/planar/planar_gaps.cpp
+@@ -172,3 +172,21 @@ std::vector<PlanarCandidateStep> PlanarCandidateSteps(const PlanarTopology &topo
+ 	}
+ 	return out;
+ }
++
++/**
++ * The exit step of a one-lane merge onto a port line (DESIGN-pieces section 3 source 3).
++ * @param topology The topology.
++ * @param out_line The merge's out line, a port line.
++ * @param joiner_side Where the joiner arrives from: +1 right of travel, -1 left.
++ * @return The step toward the joiner's side when a ring neighbour of the out line on the same box side (any port, the line's own port included) lies there, else 0. An out line's predecessor lies left, its successor right.
++ */
++int8_t PlanarMergeExitStep(const PlanarTopology &topology, uint32_t out_line, int8_t joiner_side)
++{
++	const auto it = std::ranges::find(topology.ring, out_line);
++	if (it == topology.ring.end()) return 0;
++	const size_t i = static_cast<size_t>(it - topology.ring.begin());
++	const PlanarSide side = SideOfLine(topology, out_line);
++	const size_t neighbour = joiner_side < 0 ? i - 1 : i + 1; // wraps to a huge index for i == 0, which fails the bound test
++	if (neighbour >= topology.ring.size() || SideOfLine(topology, topology.ring[neighbour]) != side) return 0;
++	return joiner_side;
++}
+diff --git a/src/junction/planar/planar_gaps.h b/src/junction/planar/planar_gaps.h
+index 73bc8424a2..ba4a1b9efe 100644
+--- a/src/junction/planar/planar_gaps.h
++++ b/src/junction/planar/planar_gaps.h
+@@ -38,4 +38,7 @@ std::vector<PlanarResolvedSite> ResolvePlanarSites(const PlanarTopology &topolog
+ std::vector<PlanarGapStep> BuildPlanarGapSteps(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, std::string &why);
+ std::vector<PlanarCandidateStep> PlanarCandidateSteps(const PlanarTopology &topology, const PlanarChannels &channels);
+ 
++/** The exit step of a one-lane merge onto a port line (DESIGN-pieces §3 source 3): toward the joiner's side when a ring neighbour on the same box side lies there, else 0. */
++int8_t PlanarMergeExitStep(const PlanarTopology &topology, uint32_t out_line, int8_t joiner_side);
++
+ #endif /* PLANAR_GAPS_H */
+diff --git a/src/tests/junction/planar/planar_gaps.cpp b/src/tests/junction/planar/planar_gaps.cpp
+index 4a2c59d680..de55af55fa 100644
+--- a/src/tests/junction/planar/planar_gaps.cpp
++++ b/src/tests/junction/planar/planar_gaps.cpp
+@@ -13,6 +13,7 @@
+ 
+ #include "../../../junction/planar/planar_gaps.h"
+ #include "../../../junction/planar/planar_paths.h"
++#include "../../../junction/planar/planar_plan.h"
+ 
+ #include <algorithm>
+ #include <string>
+@@ -118,3 +119,26 @@ TEST_CASE("planar gaps: resolved sites of the T", "[junction][planargaps]")
+ 	CHECK(saw_fray);
+ 	CHECK(saw_join);
+ }
++
++TEST_CASE("planar gaps: one-lane merge exit steps", "[junction][planargaps]")
++{
++	std::string error;
++	const PlanarTopology topology = ParsePlanarTopology(PlanarLL2Text(), &error);
++	REQUIRE(error.empty());
++	const auto step = [&](std::string_view line, int8_t side) {
++		return PlanarMergeExitStep(topology, PlanarLineByName(topology, line), side);
++	};
++
++	/* E side, north to south on the ring: EO1, EO2, AB2, AB1. An out line's predecessor lies left of its travel, its successor right. */
++	CHECK(step("EO1", +1) == +1); // EO2 lies right of EO1
++	CHECK(step("EO1", -1) == 0); // nothing north of EO1 on the E side
++	CHECK(step("EO2", -1) == -1); // EO1 lies left of EO2
++	CHECK(step("EO2", +1) == +1); // the next lane on the ring (AB2's line) lies right of EO2
++
++	/* W side, south to north on the ring: WO1, WO2, EF2, EF1; WO1 has no predecessor on its side (the ring before it is the S side). */
++	CHECK(step("WO1", +1) == +1); // WO2 lies right of WO1
++	CHECK(step("WO1", -1) == 0);
++	/* S side, east to west on the ring: SO1, SO2, CD2, CD1; SO2 has SO1 before it and CD2 after it. */
++	CHECK(step("SO2", -1) == -1);
++	CHECK(step("SO2", +1) == +1);
++}
