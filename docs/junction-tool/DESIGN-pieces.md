@@ -102,5 +102,6 @@ LL²'s variant count is cut separately (rotational symmetry; later, over/under i
    - Effect, flipping the jog with everything else fixed: T3 no jog 1960.25 against 1941.25 with it; T2 with the jog 906.25 against the 917.25 the free switch settled on. The jog won in both; the in-model switch missed T2's better shape.
    - The heading-sequence builder lists such genuine choices itself; nobody picks them per hub.
    - **Watch:** if the jog wins on every hub, it becomes a construction rule (always jog) and the variant bit goes. Under D335 this reads: is the candidate step always taken.
+   - 2026-11-17 after 2b (jogs built, no switches): T3 o0t1f1 1941.25 with the step, 1960.25 without; T2 o0t2f1 918.25 with, 917.25 without (best T2 is s0). Not always taken so far.
    - Note: with jogs fixed, T2's B step gave 918.25 in one run and 906.25 in another (all switches fixed); the lazy clash separation takes the first feasible of four directions, so results vary by about 1% with the path taken. Not exact; tracked separately.
 2. **Diagonal lanes:** "Nothing wrong with diagonals running close together." Today's spacing rule stays.
