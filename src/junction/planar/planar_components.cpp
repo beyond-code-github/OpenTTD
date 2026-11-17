@@ -2210,6 +2210,7 @@ struct VariantOutcome {
 	int first_round_clashes = 0; ///< Clashes the lazy loop found in its first round, summed over its loops.
 	size_t rungs = 0; ///< Corridor rungs added from the rough solve.
 	int rungs_violated = 0; ///< Rungs not holding on the solve they came from, summed over the passes.
+	bool program_shape = false; ///< Whether the shape program's shape won.
 };
 
 /**
@@ -2551,15 +2552,36 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 	out.tag = fmt::format("o{}t{}f{}s{}", variant.over, variant.ties, variant.flips, variant.steps);
 	const Clock::time_point t0 = Clock::now();
 	std::vector<PlanarChannelPath> program_shape;
-	if (shape == nullptr && [] { const char *e = std::getenv("PLANAR_SHAPE"); return e != nullptr && std::string(e) == "program"; }()) {
-		const PlanarPaths dflt = BuildPlanarPaths(topology, channels, variant.over);
-		std::string program_why;
-		if (dflt.why.empty()) program_shape = SolvePlanarShape(topology, channels, dflt.over, nullptr, &program_why);
-		else program_why = dflt.why;
-		if (program_shape.empty()) {
-			if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "variant {}: shape program failed ({}), solving with the default shape\n", out.tag, program_why);
-		} else {
-			shape = &program_shape;
+	if (shape == nullptr) {
+		const char *e = std::getenv("PLANAR_SHAPE");
+		const std::string mode = e != nullptr ? e : "";
+		if (mode != "default") {
+			const PlanarPaths dflt = BuildPlanarPaths(topology, channels, variant.over);
+			std::string program_why;
+			if (dflt.why.empty()) program_shape = SolvePlanarShape(topology, channels, dflt.over, nullptr, &program_why);
+			else program_why = dflt.why;
+			if (program_shape.empty() && std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "variant {}: shape program failed ({}), solving with the default shape\n", out.tag, program_why);
+			if (mode == "program") {
+				if (!program_shape.empty()) shape = &program_shape;
+			} else {
+				/* Score both shapes: the default one, then the program's when it differs; the smaller area wins, a tie goes to the default. */
+				VariantOutcome best = SolveMappedVariant(topology, channels, params, variant, &dflt.paths);
+				const auto same = [&](const std::vector<PlanarChannelPath> &x, const std::vector<PlanarChannelPath> &y) {
+					if (x.size() != y.size()) return false;
+					for (size_t i = 0; i < x.size(); i++) {
+						if (x[i].headings != y[i].headings || x[i].crossing_piece != y[i].crossing_piece) return false;
+					}
+					return true;
+				};
+				if (dflt.why.empty() && !program_shape.empty() && !same(program_shape, dflt.paths)) {
+					VariantOutcome prog = SolveMappedVariant(topology, channels, params, variant, &program_shape);
+					if (prog.ok && (!best.ok || prog.area < best.area)) {
+						prog.program_shape = true;
+						best = std::move(prog);
+					}
+				}
+				return best;
+			}
 		}
 	}
 	MappedComposer composer(topology, channels, params, variant, shape);
@@ -2694,6 +2716,7 @@ bool PickBest(const std::vector<VariantOutcome> &outcomes, Clock::time_point t0,
 	layout.first_round_clashes = best->first_round_clashes;
 	layout.rungs = best->rungs;
 	layout.rungs_violated = best->rungs_violated;
+	layout.program_shape = best->program_shape;
 	layout.micros = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
 	return true;
 }

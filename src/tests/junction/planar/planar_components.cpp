@@ -145,3 +145,15 @@ TEST_CASE("planar components: a variant solved with its own shape given back is 
 		}
 	}
 }
+
+TEST_CASE("planar components: T2 takes the shape program's shape where it is smaller", "[junction][planarcomponents][slow]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	PlanarComponentLayout layout;
+	std::string why;
+	INFO(why);
+	REQUIRE(SolvePlanarMapped(topology, MakeTestJunctionSpec(), layout, &why));
+	CHECK(layout.area <= 862.25 + 0.01);
+}

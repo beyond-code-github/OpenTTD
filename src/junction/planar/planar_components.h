@@ -46,6 +46,7 @@ struct PlanarComponentLayout {
 	double area = 0; ///< Tiles inside the junction outline.
 	double track = 0; ///< Track length in tiles (diagonal pieces at sqrt 2), copies included.
 	std::string variant; ///< The winning variant's tag, as the probe prints it.
+	bool program_shape = false; ///< The winning variant used the shape program's shape.
 	int64_t micros = 0; ///< Wall time of the whole solve.
 	std::vector<PlanarRouteProgram> routes;
 	int first_round_clashes = 0; ///< Clashes the lazy loop found in its first round, winning variant.

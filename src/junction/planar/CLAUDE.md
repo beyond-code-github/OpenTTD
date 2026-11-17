@@ -97,4 +97,4 @@
 
 ## Shape program (`planar_shape`)
 - `SolvePlanarShape` finds the least-turning channel shape obeying the crossing rules, per variant (over choice and flips); nothing in the solve calls it yet. `PlanarShapeTurns` measures the same objective on any shape.
-- `PLANAR_SHAPE=program` makes `SolveMappedVariant` solve each variant on `SolvePlanarShape`'s shape (same channels and over as the default), falling back to the default shape when the program fails (stderr line under `PLANAR_TIMES`); unset, the default shape.
+- `SolveMappedVariant` with no shape given solves each variant on the default shape and on `SolvePlanarShape`'s shape (same channels and over) when that differs, and keeps the smaller area (a failed solve never wins; a tie goes to the default); `PlanarComponentLayout::program_shape` says which won. `PLANAR_SHAPE=default` forces the default shape only; `PLANAR_SHAPE=program` forces the program's shape, falling back to the default when the program fails (stderr line under `PLANAR_TIMES`).
