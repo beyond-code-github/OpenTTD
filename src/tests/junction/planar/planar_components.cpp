@@ -42,7 +42,7 @@ void CheckSolves(const std::string &text, double area_limit, bool mapped = false
 	const bool ok = mapped ? SolvePlanarMapped(topology, spec, layout, &why) : SolvePlanarComponents(topology, spec, layout, &why);
 	INFO(why);
 	REQUIRE(ok);
-	INFO("variant " << layout.variant << " area " << layout.area << " size " << layout.width << "x" << layout.height << " in " << layout.micros / 1000 << " ms");
+	INFO("variant " << layout.variant << " area " << layout.area << " size " << layout.width << "x" << layout.height << " in " << layout.micros / 1000 << " ms track " << layout.track);
 	CHECK(layout.area <= area_limit);
 	CHECK(layout.width > 0);
 	CHECK(layout.height > 0);

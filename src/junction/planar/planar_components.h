@@ -43,6 +43,7 @@ struct PlanarComponentLayout {
 	int width = 0; ///< Box width in tiles.
 	int height = 0; ///< Box height in tiles.
 	double area = 0; ///< Tiles inside the junction outline.
+	double track = 0; ///< Track length in tiles (diagonal pieces at sqrt 2), copies included.
 	std::string variant; ///< The winning variant's tag, as the probe prints it.
 	int64_t micros = 0; ///< Wall time of the whole solve.
 	std::vector<PlanarRouteProgram> routes;

@@ -2082,6 +2082,7 @@ struct VariantOutcome {
 	std::string why;
 	std::string tag;
 	double area = 0;
+	double track = 0;
 	int width = 0;
 	int height = 0;
 	std::vector<PlanarRouteProgram> routes;
@@ -2280,6 +2281,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 	}
 	LazyResult res;
 	if (!SolveLazy(M, t0, res, out.area, out.why, &composer.sides)) return out;
+	for (const auto &[key, geo] : res.geo.geo) out.track += geo.L * (IsAxis(geo.d) ? 0.5 : std::sqrt(2.0) / 2);
 	out.width = static_cast<int>(std::llround(Ev(res.sol.val, M.X))) / 2 + 1;
 	out.height = static_cast<int>(std::llround(Ev(res.sol.val, M.Y))) / 2 + 1;
 	if (!M.error.empty()) {
@@ -2352,6 +2354,7 @@ bool PickBest(const std::vector<VariantOutcome> &outcomes, Clock::time_point t0,
 	layout.width = best->width;
 	layout.height = best->height;
 	layout.area = best->area;
+	layout.track = best->track;
 	layout.variant = best->tag;
 	layout.routes = best->routes;
 	layout.micros = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
@@ -2405,6 +2408,7 @@ bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &s
 	layout.width = best->width;
 	layout.height = best->height;
 	layout.area = best->area;
+	layout.track = best->track;
 	layout.variant = best->tag;
 	layout.routes = best->routes;
 	layout.micros = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
