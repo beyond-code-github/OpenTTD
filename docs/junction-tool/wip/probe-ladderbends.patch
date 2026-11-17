@@ -1,0 +1,366 @@
+diff --git a/src/junction/planar/planar_components.cpp b/src/junction/planar/planar_components.cpp
+index cef5fef141..c4f4a0c282 100644
+--- a/src/junction/planar/planar_components.cpp
++++ b/src/junction/planar/planar_components.cpp
+@@ -7,6 +7,7 @@
+ 
+ /** @file planar_components.cpp The planar component solver implementation (DESIGN-components §6, translated from wip/planar-probe8.py). */
+ 
++#include <cstdlib>
+ #include "../../stdafx.h"
+ 
+ #include "planar_components.h"
+@@ -772,6 +773,9 @@ struct LadderFace {
+  * Builds the model of one variant from the topology's channel graph (D327): probe 9's n-lane fray, join, doubled core and
+  * bundles, placed by the channels, sites and paths instead of by a hand composition.
+  */
++thread_local int g_lb = 0; ///< Probe PLANAR_LADDERBEND: 0 off; 1 bundle and join slots; 2 bundle slots, for composers built now.
++thread_local bool g_noclash = false; ///< Probe: lazy loops leave clashes in.
++
+ class MappedComposer {
+ public:
+ 	Model M;
+@@ -963,10 +967,39 @@ private:
+ 		}
+ 	}
+ 
++	/** Probe: the big-M bound of a slot (half-tiles), or 0 with no slots. */
++	static int FreeBendHi() { return g_lb > 0 ? 16 : 0; }
++
++	static bool FbOn(char kind) { return g_lb > 0 && (kind == 'B' || g_lb == 1); }
++
++	/** Spike: two optional sideways steps in series on lanes (one binary per slot, shared by the lanes), diagonals of equal length. */
++	void FreeBend(const std::vector<std::string> &lanes, int h, const std::string &key, bool tail_h)
++	{
++		Model &M = this->M;
++		const int hi = FreeBendHi();
++		M.in_slot = true;
++		for (int slot = 0; slot < 2; slot++) {
++			const int sg = slot == 0 ? +1 : -1;
++			M.opt_group = key + (slot == 0 ? "A" : "B") + "j";
++			std::vector<Seg> ds;
++			for (const std::string &l : lanes) {
++				ds.push_back(M.AddSeg(l, Turn(h, sg), 2, hi, 1.0, true));
++				M.slot_b = ds.back().z;
++				if (slot == 0 || tail_h) M.AddSeg(l, h, 0);
++			}
++			for (size_t j = 1; j < ds.size(); j++) M.Add(Eq(ds[j].L - ds[0].L, 0));
++		}
++		M.opt_group.clear();
++		M.slot_b.reset();
++		M.in_slot = false;
++	}
++
+ 	/** n-lane join (probe 9): J_k lands on S_k from side sigma, crossing every nearer S_j (lanes far..near). */
+ 	void Join(int h, int sigma, const std::vector<std::string> &S, const std::vector<std::string> &J, const std::vector<std::string> &O, bool prio, int exit_step, int lo0 = 6)
+ 	{
+ 		Model &M = this->M;
++		const int orig_exit = exit_step;
++		if (FbOn('J')) exit_step = 0;
+ 		if (exit_step == -1 && S.size() > 1) {
+ 			M.Fail("an exit step to the left is not composed");
+ 			return;
+@@ -1015,10 +1048,17 @@ private:
+ 			}
+ 		}
+ 		std::vector<Seg> st;
+-		for (const std::string &o : O) {
+-			M.AddSeg(o, h, 2, std::nullopt, FANW);
+-			if (exit_step != 0) st.push_back(M.AddSeg(o, Turn(h, exit_step), 2, std::nullopt, 1.0));
+-			M.AddSeg(o, h, STUB);
++		if (FbOn('J')) {
++			for (const std::string &o : O) M.AddSeg(o, h, 2, std::nullopt, FANW);
++			this->FreeBend(O, h, "J" + O[0], false);
++			for (const std::string &o : O) M.strands.at(o).base_n += orig_exit != 0 ? 1 : 0; // the exit step the slots replace keeps its base index
++			for (const std::string &o : O) M.AddSeg(o, h, STUB);
++		} else {
++			for (const std::string &o : O) {
++				M.AddSeg(o, h, 2, std::nullopt, FANW);
++				if (exit_step != 0) st.push_back(M.AddSeg(o, Turn(h, exit_step), 2, std::nullopt, 1.0));
++				M.AddSeg(o, h, STUB);
++			}
+ 		}
+ 		for (size_t k = 0; k + 1 < n; k++) {
+ 			const TagScope ts("join exit");
+@@ -1069,12 +1109,18 @@ private:
+ 			const int h = heads[k];
+ 			const auto &r = Right(h);
+ 			std::vector<Seg> tails;
++			std::vector<Seg> leads;
++			for (int j = 0; j < n; j++) {
++				const Seg lead = M.AddSeg(lanes[j], h, 0, std::nullopt, IsAxis(h) ? 1.0 : std::sqrt(2.0));
++				this->piece_segs[c][lanes[j]].push_back(lead);
++				leads.push_back(lead);
++			}
++			if (FbOn('B')) this->FreeBend(lanes, h, fmt::format("B{}_{}", c, k), true);
+ 			for (int j = 0; j < n; j++) {
+ 				const std::string &l = lanes[j];
+-				const Seg lead = M.AddSeg(l, h, 0, std::nullopt, IsAxis(h) ? 1.0 : std::sqrt(2.0));
+-				this->piece_segs[c][l].push_back(lead);
++				const Seg lead = leads[j];
+ 				if (!doubled.contains(static_cast<uint32_t>(k))) {
+-					tails.push_back(lead);
++					tails.push_back(FbOn('B') ? M.strands.at(l).segs.back() : lead);
+ 					continue;
+ 				}
+ 				const int sg = j == 0 ? -1 : +1;
+@@ -2006,6 +2052,7 @@ struct LazyResult {
+ 	GeoSet geo;
+ 	std::vector<Row> seps;
+ 	int first_round_clashes = 0; ///< The clashes (and under-deck conflicts) found in round 0 of the lazy loop; SolveLazy sums it over its loops.
++	int final_clashes = 0; ///< Probe PLANAR_NOCLASH: the clashes the returned solution still has.
+ };
+ 
+ using Clock = std::chrono::steady_clock;
+@@ -2031,6 +2078,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
+ 	const auto explain_last = [&](const std::vector<Row> &extra) {
+ 		if (explain && M.last_infeasible) M.ExplainInfeasible(extra);
+ 	};
++	if (std::getenv("FB_COUNT") != nullptr) fmt::print(stderr, "BINARIES {}\n", M.binaries.size());
+ 	if (!M.Solve(seps, r)) {
+ 		explain_last(seps);
+ 		why = "base infeasible";
+@@ -2052,7 +2100,11 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
+ 		if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "round {}: {} clashes, {} under-deck\n", rnd, bad.size(), under_bad.size());
+ 		if (rnd == 0) first_round = static_cast<int>(bad.size() + under_bad.size());
+ 		if (bad.empty() && under_bad.empty()) {
+-			out = LazyResult{r, g, seps, first_round};
++			out = LazyResult{r, g, seps, first_round, 0};
++			return true;
++		}
++		if (g_noclash && under_bad.empty()) { // probe: leave the clashes in
++			out = LazyResult{r, g, seps, first_round, static_cast<int>(bad.size())};
+ 			return true;
+ 		}
+ 		if (!under_bad.empty()) {
+@@ -2085,7 +2137,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
+ 			return false;
+ 		}
+ 		/* A clash between two lines the topology orders is separated on the side it gives: q at least 2 beyond p along a direction with p on q's -f side. */
+-		if (sides != nullptr) {
++		if (sides != nullptr && std::getenv("PLANAR_NOSIDES") == nullptr) {
+ 			std::vector<Row> rows;
+ 			size_t decided = 0;
+ 			for (const auto &clash : bad) {
+@@ -2564,39 +2616,106 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
+ 		return out;
+ 	}
+ 	LazyResult res;
+-	if (!SolveLazy(M, t0, res, out.area, out.why, &composer.sides)) return out;
+-	/* Ladders: re-solve with rungs from the rough solution, at most twice (the second only when a rung point left its facing span). */
+-	std::unique_ptr<MappedComposer> stand; // the composer of the last successful ladder solve
+-	LazyResult stand_res;
++	const char *lb_env = std::getenv("PLANAR_LADDERBEND");
++	const int lbmode = lb_env != nullptr ? lb_env[0] - '0' : 0;
++	std::string nc_log; // probe: the per-pass counts
++	if (!SolveLazy(M, t0, res, out.area, out.why, &composer.sides)) {
++		if (lbmode > 0) fmt::print(stderr, "LADDERBEND {} rough-failed {}\n", out.tag, out.why);
++		return out;
++	}
++	const int nc_rough = res.final_clashes;
++	const double rough_area = out.area;
++	const double nc_rough_ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
++	std::string nc_infeasible;
++	int lb_infeasible = 0, lb_dropped = 0, lb_passes = 0, lb_slots = 0;
++	/* Ladders: re-solve with rungs from the latest solution. Probe: with slots, up to 6 passes, clashes left in; the last legal solution stands. */
++	std::shared_ptr<MappedComposer> stand; // the composer of the latest successful ladder solve
++	std::shared_ptr<LazyResult> stand_res;
++	std::shared_ptr<MappedComposer> legal; // the composer of the latest legal ladder solve
++	std::shared_ptr<LazyResult> legal_res;
++	double legal_area = 0;
++	size_t legal_rungs = 0;
++	bool last_legal = false;
+ 	if (std::getenv("PLANAR_NOLADDER") == nullptr) {
+-		for (int pass = 0; pass < 2; pass++) {
++		for (int pass = 0; pass < (lbmode > 0 ? 6 : 2); pass++) {
+ 			const Model &cur_model = stand != nullptr ? stand->M : M;
+-			const std::vector<int64_t> &cur_val = stand != nullptr ? stand_res.sol.val : res.sol.val;
++			const std::vector<int64_t> &cur_val = stand != nullptr ? stand_res->sol.val : res.sol.val;
++			const auto &cur_faces = stand != nullptr ? stand->ladder_faces : composer.ladder_faces;
++			const auto &cur_off = stand != nullptr ? stand->ladder_off : composer.ladder_off;
+ 			int violated = 0;
+-			const std::vector<RungSpec> rungs = LadderRungs(cur_model, composer.ladder_faces, composer.ladder_off, cur_val, violated);
++			std::vector<RungSpec> rungs = LadderRungs(cur_model, cur_faces, cur_off, cur_val, violated);
+ 			out.rungs_violated += violated;
+-			auto next = std::make_unique<MappedComposer>(topology, channels, params, variant);
++			g_lb = lbmode;
++			auto next = std::make_shared<MappedComposer>(topology, channels, params, variant);
++			g_lb = 0;
+ 			if (!next->M.error.empty()) break;
++			if (lbmode > 0 && stand == nullptr) { // pass 1: the rough's rungs, mapped by base index to the slot model
++				const auto map_key = [&](const SegKey &k, SegKey &to) {
++					for (const Seg &sg : next->M.strands.at(k.first).segs) {
++						if (sg.base_i == static_cast<int>(k.second)) {
++							to = {k.first, sg.i};
++							return true;
++						}
++					}
++					return false;
++				};
++				std::vector<RungSpec> mapped;
++				for (RungSpec r : rungs) {
++					if (map_key(r.pt, r.pt) && map_key(r.tgt, r.tgt)) mapped.push_back(r);
++					else lb_dropped++;
++				}
++				rungs = std::move(mapped);
++			}
+ 			{
+ 				const TagScope ts("rung");
+ 				for (const RungSpec &r : rungs) next->M.Add(RungCon(next->M, r));
+ 			}
+ 			/* Rows only are added (rungs), so the columns match index for index with the accepted solution; a mismatch leaves the model cold. */
+ 			if (next->M.lb.size() + next->M.parity.size() == cur_val.size()) next->M.last.assign(cur_val.begin(), cur_val.end());
+-			LazyResult next_res;
++			auto next_res = std::make_shared<LazyResult>();
+ 			double next_area = 0;
+ 			std::string next_why;
+-			if (!SolveLazy(next->M, Clock::now(), next_res, next_area, next_why, &next->sides)) break;
+-			out.area = next_area;
+-			out.rungs = rungs.size();
+-			const int moved = RungsMoved(next->M, rungs, next_res.sol.val);
+-			stand_res = std::move(next_res);
+-			stand = std::move(next);
+-			if (moved == 0) break;
++			const Clock::time_point pt = Clock::now();
++			g_noclash = lbmode > 0;
++			const bool solved = SolveLazy(next->M, pt, *next_res, next_area, next_why, &next->sides);
++			g_noclash = false;
++			if (!solved) {
++				nc_infeasible = next_why + fmt::format(" ms {:.0f}", std::chrono::duration<double, std::milli>(Clock::now() - pt).count());
++				lb_infeasible++;
++				break;
++			}
++			lb_passes++;
++			const int moved = RungsMoved(next->M, rungs, next_res->sol.val);
++			nc_log += fmt::format(" pass{}[clashes {} moved {} violated {} ms {:.0f}]", pass, next_res->final_clashes, moved, violated, std::chrono::duration<double, std::milli>(Clock::now() - pt).count());
++			const int nc_clashes = next_res->final_clashes;
++			stand_res = next_res;
++			stand = next;
++			last_legal = nc_clashes == 0;
++			if (last_legal) {
++				legal = next;
++				legal_res = next_res;
++				legal_area = next_area;
++				legal_rungs = rungs.size();
++			}
++			if (moved == 0 && nc_clashes == 0) break;
++		}
++	}
++	if (legal != nullptr) {
++		out.area = legal_area;
++		out.rungs = legal_rungs;
++	} else {
++		out.area = rough_area;
++	}
++	if (lbmode > 0) {
++		if (legal != nullptr) {
++			for (const auto &[key, z] : legal->M.group_z) {
++				if (!key.first.empty() && key.first.back() == 'j' && std::llround(Ev(legal_res->sol.val, z)) == 1) lb_slots++;
++			}
+ 		}
++		fmt::print(stderr, "LADDERBEND {} rough[clashes {} area {} ms {:.0f}]{} final[legal {} converged {} area {} passes {} slots {}] infeasible {} dropped {} violated {} [{}]\n", out.tag, nc_rough, rough_area, nc_rough_ms, nc_log, legal != nullptr, last_legal, out.area, lb_passes, lb_slots, lb_infeasible, lb_dropped, out.rungs_violated, nc_infeasible);
+ 	}
+-	const Model &FM = stand != nullptr ? stand->M : M;
+-	const LazyResult &FR = stand != nullptr ? stand_res : res;
++	const Model &FM = legal != nullptr ? legal->M : M;
++	const LazyResult &FR = legal != nullptr ? *legal_res : res;
+ 	out.first_round_clashes = FR.first_round_clashes;
+ 	for (const auto &[key, geo] : FR.geo.geo) out.track += geo.L * (IsAxis(geo.d) ? 0.5 : std::sqrt(2.0) / 2);
+ 	out.width = static_cast<int>(std::llround(Ev(FR.sol.val, FM.X))) / 2 + 1;
+diff --git a/src/junction/planar/planar_model.h b/src/junction/planar/planar_model.h
+index d6e285d30c..dcafaa318a 100644
+--- a/src/junction/planar/planar_model.h
++++ b/src/junction/planar/planar_model.h
+@@ -170,12 +170,14 @@ struct Seg {
+ 	Point a;
+ 	Point b;
+ 	std::optional<Var> z; ///< Present for an optional segment.
++	int base_i = -1; ///< Probe: the index the segment has without free-bend slots (-1 for a slot piece).
+ };
+ 
+ /** A strand: its start point and segments. */
+ struct Strand {
+ 	Point start;
+ 	std::vector<Seg> segs;
++	uint32_t base_n = 0; ///< Probe: the count of non-slot segments so far.
+ };
+ 
+ /** A deck on a segment: near head's end n and far head's start f, in half-tiles along the segment. */
+@@ -236,6 +238,8 @@ public:
+ 	std::vector<Row> rows; ///< Model rows.
+ 	std::vector<std::pair<uint32_t, int>> parity; ///< (variable, parity) in insertion order.
+ 	std::unordered_map<uint32_t, size_t> parity_at; ///< Position in parity.
++	std::vector<int64_t> parity_lapse; ///< Probe: per parity entry, the binary column that lapses it (b = 0 leaves x free), or -1.
++	std::optional<Var> slot_b; ///< Probe: the binary of the free-bend slot being built.
+ 	std::vector<std::string> order; ///< Strand names in insertion order.
+ 	std::map<std::string, Strand> strands;
+ 	std::set<std::pair<std::string, std::string>> related; ///< Name pairs (lower first) that meet at a node.
+@@ -314,16 +318,19 @@ public:
+ 		this->rows.push_back(std::move(row));
+ 	}
+ 
+-	/** Tie a variable to a parity (x = 2k + p). */
+-	void Parity(const Var &x, int p)
++	/** Tie a variable to a parity (x = 2k + p); with a lapse binary b the parity holds only when b = 1. */
++	void Parity(const Var &x, int p, const std::optional<Var> &b = std::nullopt)
+ 	{
++		const int64_t lapse = b.has_value() ? static_cast<int64_t>(b->index) : -1;
+ 		const auto it = this->parity_at.find(x.index);
+ 		if (it != this->parity_at.end()) {
+ 			this->parity[it->second].second = p;
++			if (lapse < 0) this->parity_lapse[it->second] = -1; // a hard parity stays hard
+ 			return;
+ 		}
+ 		this->parity_at[x.index] = this->parity.size();
+ 		this->parity.emplace_back(x.index, p);
++		this->parity_lapse.push_back(lapse);
+ 	}
+ 
+ 	/** @return A free point. */
+@@ -375,6 +382,7 @@ public:
+ 	 * @param opt Whether the segment may vanish (a binary z; length 0 or in [lo, hi]).
+ 	 * @return The segment.
+ 	 */
++	bool in_slot = false; ///< Probe: segments added now are free-bend slot pieces.
+ 	Seg AddSeg(const std::string &name, int d, int lo = 0, std::optional<int> hi = std::nullopt, double c = 1.0, bool opt = false)
+ 	{
+ 		TagScope ts(fmt::format("seg {}#{}", name, this->strands.at(name).segs.size()));
+@@ -403,15 +411,17 @@ public:
+ 			this->Add(Ge(*z * (hi.has_value() ? *hi : OPTMAX) - L, 0));
+ 		}
+ 		if (IsAxis(d)) {
+-			this->Parity(a[0], STEP[d][1] == 0 ? 0 : 1);
+-			this->Parity(a[1], STEP[d][1] == 0 ? 1 : 0);
+-			this->Parity(L, 0);
++			const std::optional<Var> pb = this->in_slot ? (z.has_value() ? z : this->slot_b) : std::nullopt;
++			this->Parity(a[0], STEP[d][1] == 0 ? 0 : 1, pb);
++			this->Parity(a[1], STEP[d][1] == 0 ? 1 : 0, pb);
++			this->Parity(L, 0, pb);
+ 		}
+ 		const Point b = this->NewPoint();
+ 		this->Add(Eq(b[0] - a[0] - L * STEP[d][0], 0));
+ 		this->Add(Eq(b[1] - a[1] - L * STEP[d][1], 0));
+ 		Strand &s = this->strands.at(name);
+ 		Seg sg{name, static_cast<uint32_t>(s.segs.size()), d, L, a, b, z};
++		sg.base_i = this->in_slot ? -1 : static_cast<int>(s.base_n++);
+ 		s.segs.push_back(sg);
+ 		return sg;
+ 	}
+@@ -567,7 +577,16 @@ public:
+ 		}
+ 		for (size_t k = 0; k < this->parity.size(); k++) {
+ 			const std::vector<std::pair<uint32_t, double>> terms{{this->parity[k].first, 1.0}, {static_cast<uint32_t>(n0 + k), -2.0}};
+-			milp.AddRow(terms, this->parity[k].second, this->parity[k].second);
++			if (this->parity_lapse[k] < 0) {
++				milp.AddRow(terms, this->parity[k].second, this->parity[k].second);
++			} else { // x - 2k in [p, p + 1], and at most p when the binary is 1 (the second row, below)
++				milp.AddRow(terms, this->parity[k].second, this->parity[k].second + 1);
++			}
++		}
++		for (size_t k = 0; k < this->parity.size(); k++) {
++			if (this->parity_lapse[k] < 0) continue;
++			const std::vector<std::pair<uint32_t, double>> terms{{this->parity[k].first, 1.0}, {static_cast<uint32_t>(n0 + k), -2.0}, {static_cast<uint32_t>(this->parity_lapse[k]), 1.0}};
++			milp.AddRow(terms, -INF, this->parity[k].second + 1);
+ 		}
+ 		const size_t n = n0 + this->parity.size();
+ 		if (this->last.size() == n) {
