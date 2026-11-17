@@ -1,3 +1,5 @@
+> WITHDRAWN 2026-11-17: contradicts D331 (doubling by flow share, not prio flag). Not run.
+
 # Brief 2d: a fray doubles and fans per lane (prio lanes only)
 
 You execute this brief and nothing else. Make exactly the changes listed. Do not add any type, member, file, abstraction or mechanism that the brief does not name, and do not widen or narrow its scope. If something is not covered, or you would have to choose between approaches, stop at a clean state and report the question. A workaround that avoids a stop condition is a breach, not a stop. Keep your context small: send command output to files and report only what failed.
