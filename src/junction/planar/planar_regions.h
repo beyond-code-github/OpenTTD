@@ -36,6 +36,9 @@ public:
 	 */
 	uint32_t LineOfStrand(std::string_view strand) const;
 
+	/** Every ordered pair of distinct lines (p, q) bounding a common face with Side(p, q) != 0, once each. */
+	std::vector<std::pair<uint32_t, uint32_t>> FacePairs() const;
+
 	/** @return Empty, or why the face map failed validation (V - E + F != 2, a face not a simple walk) or two sources disagreed. */
 	const std::string &Why() const { return this->why; }
 
@@ -43,6 +46,7 @@ private:
 	size_t count = 0; ///< The number of lines.
 	std::vector<int8_t> table; ///< Side(p, q) at p * count + q.
 	std::string why;
+	std::vector<std::pair<uint32_t, uint32_t>> face_pairs; ///< The ordered pairs sharing a face with a side.
 	std::map<std::string, uint32_t, std::less<>> by_name; ///< Line index by name.
 };
 

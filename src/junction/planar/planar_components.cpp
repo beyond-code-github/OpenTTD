@@ -1572,6 +1572,30 @@ void MappedComposer::Build()
 		}
 	}
 
+	/* Experiment (PLANAR_FACESEPS): every pair of lines bounding a common face keeps its side, segment against segment; a segment pair sharing an end point is left out (it meets there). */
+	if (std::getenv("PLANAR_FACESEPS") != nullptr) {
+		for (const auto &[lp, lq] : this->sides.FacePairs()) {
+			if (lp >= lq) continue;
+			const int8_t side = this->sides.Side(lp, lq);
+			for (const Seg &sp : M.strands.at(t.lines[lp].name).segs) {
+				for (const Seg &sq : M.strands.at(t.lines[lq].name).segs) {
+					const std::array<int, 2> f = {-Right(sq.d)[0] * side, -Right(sq.d)[1] * side};
+					std::vector<Con> cons;
+					bool shared = false;
+					for (const Point &x : {sp.a, sp.b}) {
+						for (const Point &y : {sq.a, sq.b}) {
+							cons.push_back(Ge(Dot(f, y) - Dot(f, x), 2));
+							if (Model::MakeRow(cons.back()).terms.empty()) shared = true;
+						}
+					}
+					if (shared) continue;
+					const TagScope ts(fmt::format("face sep {}#{} {}#{}", sp.strand, sp.i, sq.strand, sq.i));
+					for (const Con &c : cons) M.Add(c);
+				}
+			}
+		}
+	}
+
 	/* Out ports on the boundary. */
 	for (const PlanarPort &port : t.ports) {
 		if (port.in) continue;

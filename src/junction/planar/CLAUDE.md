@@ -43,6 +43,7 @@
 - Clashes (`JunctionTracksMayShareTile`, touching across a tile edge, heads exclusive, deck middles over ground allowed), curve gaps (`JunctionCurveGaps` on the solved hands), prio element room and terrain facts are added lazily as separations or floors, each holding while the headings it was found at hold, and the program is solved again until none is found.
 - `PLANAR_DEBUG` set in the environment prints the lazy loop's rounds.
 - `PLANAR_IIS` set in the environment: a mapped solve proven infeasible prints a minimal conflicting row set to stderr, `IIS <tag> : <row>` per row (tags: `seg <strand>#<i>`, `cross`, `deck`, `sep`, `fan rule`, `box`, ...), or `IIS integer-only (LP feasible)`.
+- `PLANAR_FACESEPS` (experiment): before the first solve, every pair of lines bounding a common face (`PlanarLineSides::FacePairs`) is separated segment against segment on the side `Side` gives, pairs sharing an end point left out; it makes every T2, T3 and LL² variant infeasible (IIS core on T2: the split node's incoming line and its two legs get opposite sides of the leg's far segment, because a side holds only where lines run alongside, not along the whole strand).
 - `PLANAR_ALIGN` (experiment): a prio route between opposite sides enters and leaves on the same row; `PLANAR_ALIGN=W` only routes entering from the west. With today's steps it is infeasible on every T2/T3 variant and on all but one of 201 LL² variants (o49t0f1s0: 1738.25, 104x65), because no step brings a fanned main line back.
 
 ## Back end (`planar_plan`)

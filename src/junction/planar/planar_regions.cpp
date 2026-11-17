@@ -234,6 +234,22 @@ PlanarLineSides::PlanarLineSides(const PlanarTopology &t, const PlanarChannels &
 		if (this->why.empty()) this->why = fmt::format("two faces give lines {} and {} opposite sides", t.lines[p].name, t.lines[q].name);
 	}
 	for (const auto &[p, q] : crossing) this->table[static_cast<size_t>(p) * n + q] = 0;
+
+	std::set<std::pair<uint32_t, uint32_t>> pairs;
+	for (size_t f = 0; f < map.faces.size(); f++) {
+		if (static_cast<int>(f) == map.outer) continue;
+		for (const FaceEntry &ep : map.faces[f]) {
+			for (const FaceEntry &eq : map.faces[f]) {
+				if (ep.line != eq.line && this->table[static_cast<size_t>(ep.line) * n + eq.line] != 0) pairs.emplace(ep.line, eq.line);
+			}
+		}
+	}
+	this->face_pairs.assign(pairs.begin(), pairs.end());
+}
+
+std::vector<std::pair<uint32_t, uint32_t>> PlanarLineSides::FacePairs() const
+{
+	return this->face_pairs;
 }
 
 uint32_t PlanarLineSides::LineOfStrand(std::string_view strand) const
