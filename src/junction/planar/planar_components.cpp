@@ -896,7 +896,7 @@ private:
 		const size_t n = ins.size();
 		for (const std::string &x : ins) {
 			M.AddSeg(x, h, STUB);
-			M.AddSeg(x, Lt, 2, std::nullopt, 1.0, true);
+			if (prio) M.AddSeg(x, Lt, 2, std::nullopt, 1.0);
 			M.AddSeg(x, h, 0, std::nullopt, FANW);
 		}
 		std::vector<Point> sp;
@@ -918,7 +918,6 @@ private:
 				this->PairDecks(d0, d1, far_v, h);
 			} else {
 				M.AddSeg(S[j], h, 2);
-				M.AddSeg(S[j], Lt, 2, std::nullopt, 1.0, true);
 				const Seg d0 = M.AddSeg(S[j], h, 2);
 				std::vector<std::pair<Var, int>> xs;
 				for (const Seg &v : far_v) xs.push_back(M.Cross(d0, v, 4));
@@ -1019,10 +1018,10 @@ private:
 	}
 
 	/**
-	 * A bundle on a channel's path: one segment per heading per lane, offset-parallel; the first piece optional when asked.
+	 * A bundle on a channel's path: one segment per heading per lane, offset-parallel.
 	 * On a doubled piece each lane runs, takes the parallelogram outward (the left lane's copy left, the right lane's right), steps back and runs on.
 	 */
-	void Bundle(uint32_t c, const std::vector<int> &heads, bool opt0, const std::set<uint32_t> &doubled)
+	void Bundle(uint32_t c, const std::vector<int> &heads, const std::set<uint32_t> &doubled)
 	{
 		Model &M = this->M;
 		const std::vector<std::string> lanes = this->Lanes(c);
@@ -1030,11 +1029,10 @@ private:
 		for (size_t k = 0; k < heads.size(); k++) {
 			const int h = heads[k];
 			const auto &r = Right(h);
-			const bool o = opt0 && k == 0;
 			std::vector<Seg> tails;
 			for (int j = 0; j < n; j++) {
 				const std::string &l = lanes[j];
-				const Seg lead = M.AddSeg(l, h, 0, o ? std::optional<int>(OPTMAX * std::max(1, n - 1)) : std::nullopt, IsAxis(h) ? 1.0 : std::sqrt(2.0), o);
+				const Seg lead = M.AddSeg(l, h, 0, std::nullopt, IsAxis(h) ? 1.0 : std::sqrt(2.0));
 				this->piece_segs[c][l].push_back(lead);
 				if (!doubled.contains(static_cast<uint32_t>(k))) {
 					tails.push_back(lead);
@@ -1188,13 +1186,10 @@ void MappedComposer::Build()
 			S.push_back(t.lines[a_straight ? a : b].name);
 			V.push_back(t.lines[a_straight ? b : a].name);
 		}
-		M.opt_group = fmt::format("fray{}{}", s, rs.prio ? '+' : '-'); // a prio fray spreads its lanes (width changes); a plain one does not
 		this->Fray(h, rs.side, in_names, S, V, rs.prio);
-		M.opt_group.clear();
-
 	};
 
-	/* Movement channels: a bundle on their path (the diverging channel's first piece optional, unless a crossing sits on it). */
+	/* Movement channels: a bundle on their path. */
 	std::vector<uint32_t> cores;
 	const auto build_bundle = [&](uint32_t c) -> bool {
 		const PlanarChannelPath &path = this->paths.paths[c];
@@ -1202,9 +1197,6 @@ void MappedComposer::Build()
 			cores.push_back(c);
 			return true;
 		}
-		const std::optional<size_t> fray = site_of(c, true);
-		bool opt0 = fray.has_value() && res[*fray].other == c;
-		for (uint32_t piece : path.crossing_piece) opt0 &= piece != 0;
 		std::vector<int> heads;
 		for (PlanarHeading hd : path.headings) heads.push_back(static_cast<int>(hd));
 		/* Its pieces over a crossing double every lane when the lanes carry a full share. */
@@ -1223,9 +1215,7 @@ void MappedComposer::Build()
 			}
 			doubled.insert(path.crossing_piece[i]);
 		}
-		M.opt_group = fmt::format("bundle{}+", c); // its first straight piece: the staircase of decks the farther lanes cross
-		this->Bundle(c, heads, opt0, doubled);
-		M.opt_group.clear();
+		this->Bundle(c, heads, doubled);
 		return true;
 	};
 
