@@ -92,7 +92,7 @@ LL²'s variant count is cut separately (rotational symmetry; later, over/under i
 4. **T3 mapped:** at most 1941.25, with the B jog as an explicit choice.
 5. **LL²:** the variants build, and the failing ones fail with a stated reason, not "impossible".
 
-## 8. Questions for the engineer
+## 8. Answers (2026-11-17)
 
-1. T3's B jog before its core: a variant (both shapes solved, best area wins), or a path-step rule (when it helps)? Recommendation: a variant for now. It is one bit, and a rule needs evidence across hubs.
-2. Diagonal lanes: two lanes running side by side on a diagonal sit closer together than on an axis piece (one tile across, as OpenTTD packs them). Keep today's spacing rule, which gives that, unchanged? Recommendation: yes.
+1. **B's jog: the solver decides.** "Surely a jog being useful or not comes out from the solver naturally now?" Measured on T3 o0t1f1 with every other switch fixed: jog fixed 0.27 s, jog left to the solver as an in-model switch 3.7 s (same result). A piece that may or may not exist is an either/or the solver can only settle by search, and it is the costly part. So the solver still decides, by solving both shapes and keeping the better (two solves, about 0.5 s). The heading-sequence builder lists such genuine choices itself; nobody picks them per hub. If the count of choices grows with hub size, revisit (an in-model switch bounded by a rule, not a cap).
+2. **Diagonal lanes:** "Nothing wrong with diagonals running close together." Today's spacing rule stays.
