@@ -94,5 +94,9 @@ LL²'s variant count is cut separately (rotational symmetry; later, over/under i
 
 ## 8. Answers (2026-11-17)
 
-1. **B's jog: the solver decides.** "Surely a jog being useful or not comes out from the solver naturally now?" Measured on T3 o0t1f1 with every other switch fixed: jog fixed 0.27 s, jog left to the solver as an in-model switch 3.7 s (same result). A piece that may or may not exist is an either/or the solver can only settle by search, and it is the costly part. So the solver still decides, by solving both shapes and keeping the better (two solves, about 0.5 s). The heading-sequence builder lists such genuine choices itself; nobody picks them per hub. If the count of choices grows with hub size, revisit (an in-model switch bounded by a rule, not a cap).
+1. **B's jog: solve both shapes, keep the better.** "Surely a jog being useful or not comes out from the solver naturally now?" then "lets run both for now but keep an eye out because I feel like the jog seems universally beneficial".
+   - Cost, T3 o0t1f1 with every other switch fixed: jog fixed 0.27 s; jog as an in-model switch 3.7 s, same result. Two solves come to about 0.5 s.
+   - Effect, flipping the jog with everything else fixed: T3 no jog 1960.25 against 1941.25 with it; T2 with the jog 906.25 against the 917.25 the free switch settled on. The jog won in both; the in-model switch missed T2's better shape.
+   - The heading-sequence builder lists such genuine choices itself; nobody picks them per hub.
+   - **Watch:** if the jog wins on every hub, it becomes a construction rule (always jog) and the variant bit goes.
 2. **Diagonal lanes:** "Nothing wrong with diagonals running close together." Today's spacing rule stays.
