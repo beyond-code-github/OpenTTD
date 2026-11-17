@@ -48,3 +48,8 @@ Engineer: "I can't shake the feeling that the mere concept of stepping merges is
 
 ## 6. Faces are corridors (check 2026-11-17, wip/facedump.patch)
 Every face of T2 (32), T3 (65) and LL² (38) walked with the lines' travel directions: all but one per hub are two walls from one start vertex to one end vertex (or one wall against the box edge). The exception is the crossing triangle (B, D, F: three crossing lines bounding a cyclic face, `PlanarTriangles`), empty of lanes. So non-overlap can be written per corridor (left wall vs right wall), and a corridor's turning (bends plus vertex angles summing to one turn) is a flow over faces (topology-shape-metrics).
+
+## 7. Ladders: rungs from a rough solve (2026-11-17)
+- Corridor phase matching by heading runs fails on solved layouts (wip/PROBE-corridors.md): which parts of two walls face each other depends on where their bends fall.
+- Chord drawing vs solved layouts (wip/CHECK-rungorder.md): crossings across a corridor agree on 40 of 51 checkable corridors (every one a diamond: one crossing per wall, a binary order); the 11 disagreements are near-ties. The bends (81 on T2, 155 on T3, 106-138 on LL²) the chord drawing cannot order at all.
+- Direction (engineer: "starting with a cheap fuzzy approximate solve and then refining - I think there's legs in that"): (1) a rough solve (today's fixed-shape model) gives each corridor's rung order; (2) a refined solve keeps the walls apart by rungs (at every breakpoint of either wall, a point-to-facing-segment separation, linear), no clash loop, every free stretch may bend; (3) if a breakpoint moves past another, re-read the order and solve again.
