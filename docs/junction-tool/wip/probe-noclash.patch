@@ -1,0 +1,83 @@
+diff --git a/src/junction/planar/planar_components.cpp b/src/junction/planar/planar_components.cpp
+index cef5fef141..a77ac6de69 100644
+--- a/src/junction/planar/planar_components.cpp
++++ b/src/junction/planar/planar_components.cpp
+@@ -2006,6 +2006,7 @@ struct LazyResult {
+ 	GeoSet geo;
+ 	std::vector<Row> seps;
+ 	int first_round_clashes = 0; ///< The clashes (and under-deck conflicts) found in round 0 of the lazy loop; SolveLazy sums it over its loops.
++	int final_clashes = 0; ///< Probe PLANAR_NOCLASH: the clashes the returned solution still has.
+ };
+ 
+ using Clock = std::chrono::steady_clock;
+@@ -2052,7 +2053,11 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
+ 		if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "round {}: {} clashes, {} under-deck\n", rnd, bad.size(), under_bad.size());
+ 		if (rnd == 0) first_round = static_cast<int>(bad.size() + under_bad.size());
+ 		if (bad.empty() && under_bad.empty()) {
+-			out = LazyResult{r, g, seps, first_round};
++			out = LazyResult{r, g, seps, first_round, 0};
++			return true;
++		}
++		if (std::getenv("PLANAR_NOCLASH") != nullptr && under_bad.empty()) { // probe: leave the clashes in
++			out = LazyResult{r, g, seps, first_round, static_cast<int>(bad.size())};
+ 			return true;
+ 		}
+ 		if (!under_bad.empty()) {
+@@ -2564,12 +2569,21 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
+ 		return out;
+ 	}
+ 	LazyResult res;
+-	if (!SolveLazy(M, t0, res, out.area, out.why, &composer.sides)) return out;
++	const bool noclash = std::getenv("PLANAR_NOCLASH") != nullptr;
++	std::string nc_log; // probe: the per-pass counts
++	if (!SolveLazy(M, t0, res, out.area, out.why, &composer.sides)) {
++		if (noclash) fmt::print(stderr, "NOCLASH {} rough-failed {}\n", out.tag, out.why);
++		return out;
++	}
++	const int nc_rough = res.final_clashes;
++	const double nc_rough_area = out.area;
++	const double nc_rough_ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
++	std::string nc_infeasible;
+ 	/* Ladders: re-solve with rungs from the rough solution, at most twice (the second only when a rung point left its facing span). */
+ 	std::unique_ptr<MappedComposer> stand; // the composer of the last successful ladder solve
+ 	LazyResult stand_res;
+ 	if (std::getenv("PLANAR_NOLADDER") == nullptr) {
+-		for (int pass = 0; pass < 2; pass++) {
++		for (int pass = 0; pass < (noclash ? 6 : 2); pass++) {
+ 			const Model &cur_model = stand != nullptr ? stand->M : M;
+ 			const std::vector<int64_t> &cur_val = stand != nullptr ? stand_res.sol.val : res.sol.val;
+ 			int violated = 0;
+@@ -2586,14 +2600,31 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
+ 			LazyResult next_res;
+ 			double next_area = 0;
+ 			std::string next_why;
+-			if (!SolveLazy(next->M, Clock::now(), next_res, next_area, next_why, &next->sides)) break;
++			const Clock::time_point pt = Clock::now();
++			if (!SolveLazy(next->M, pt, next_res, next_area, next_why, &next->sides)) {
++				nc_infeasible = next_why;
++				break;
++			}
+ 			out.area = next_area;
+ 			out.rungs = rungs.size();
+ 			const int moved = RungsMoved(next->M, rungs, next_res.sol.val);
++			nc_log += fmt::format(" pass{}[clashes {} moved {} violated {} ms {:.0f}]", pass, next_res.final_clashes, moved, violated, std::chrono::duration<double, std::milli>(Clock::now() - pt).count());
++			const int nc_clashes = next_res.final_clashes;
+ 			stand_res = std::move(next_res);
+ 			stand = std::move(next);
+-			if (moved == 0) break;
++			if (moved == 0 && !(noclash && nc_clashes != 0)) break;
++		}
++	}
++	if (noclash) {
++		const int fc = stand != nullptr ? stand_res.final_clashes : res.final_clashes;
++		if (fc != 0) {
++			const Model &cm = stand != nullptr ? stand->M : M;
++			const LazyResult &cr = stand != nullptr ? stand_res : res;
++			std::string pairs;
++			for (const auto &c : Clashes(cm, cr.geo)) pairs += fmt::format(" {}#{}~{}#{}", c.first.first, c.first.second, c.second.first, c.second.second);
++			fmt::print(stderr, "NOCLASHPAIRS {}{}\n", out.tag, pairs);
+ 		}
++		fmt::print(stderr, "NOCLASH {} rough[clashes {} area {} ms {:.0f}]{} final[clashes {} area {}] violated {} infeasible [{}]\n", out.tag, nc_rough, nc_rough_area, nc_rough_ms, nc_log, fc, out.area, out.rungs_violated, nc_infeasible);
+ 	}
+ 	const Model &FM = stand != nullptr ? stand->M : M;
+ 	const LazyResult &FR = stand != nullptr ? stand_res : res;
