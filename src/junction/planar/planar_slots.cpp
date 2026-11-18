@@ -59,7 +59,8 @@ static std::vector<std::vector<PlanarSlotInterval>> BuildIntervals(const PlanarC
 		if (const auto join = JoinOf(channels, sites, c); join.has_value() && sites[*join].straight == c && sites[*join].prio) far_left = sites[*join].side > 0;
 		for (size_t iv = 0; iv < intervals.size(); iv++) {
 			const bool crossing_iv = k != 0 && iv % 2 == 1;
-			const bool is_over = crossing_iv && over[cc.crossings[iv / 2]] == c;
+			bool is_over = crossing_iv && over[cc.crossings[iv / 2]] == c;
+			if (k != 0 && iv % 2 == 0 && iv >= 2 && iv + 1 < intervals.size()) is_over = over[cc.crossings[(iv - 1) / 2]] == c && over[cc.crossings[(iv + 1) / 2]] == c; // Between two doubled crossings the copy runs on.
 			const bool is_last = iv + 1 == intervals.size();
 			std::vector<PlanarSlotTrack> &out = intervals[iv].tracks;
 			for (int j = 0; j < n; j++) {
@@ -128,7 +129,14 @@ PlanarSlots BuildPlanarSlots(const PlanarTopology &topology, const PlanarChannel
 				const size_t li = i > 0 && list[i - 1].kind == PlanarSlotKind::Line && list[i - 1].line == list[i].line ? i - 1 : i + 1;
 				const double d = li < i ? 1 : -1; // s(copy) - s(line)
 				row({{sv(PlanarSlotKind::Copy, list[i].line, c, iv), 1}, {sv(PlanarSlotKind::Line, list[i].line, c, iv), -1}}, d, d);
-				if (iv + 1 < intervals[c].size()) row({{sv(PlanarSlotKind::Line, list[i].line, c, iv + 1), 1}, {sv(PlanarSlotKind::Copy, list[i].line, c, iv), -1}}, 0, 0); // The line carries on along its copy's track.
+				if (iv + 1 < intervals[c].size()) {
+					const bool next_copy = var.count({PlanarSlotKind::Copy, list[i].line, c, iv + 1}) != 0;
+					if (next_copy) {
+						row({{sv(PlanarSlotKind::Line, list[i].line, c, iv + 1), 1}, {sv(PlanarSlotKind::Line, list[i].line, c, iv), -1}}, 0, 0); // One parallelogram over consecutive doubled crossings.
+					} else {
+						row({{sv(PlanarSlotKind::Line, list[i].line, c, iv + 1), 1}, {sv(PlanarSlotKind::Copy, list[i].line, c, iv), -1}}, 0, 0); // The line carries on along its copy's track.
+					}
+				}
 			}
 		}
 		const PlanarChannel &cc = channels.channels[c];
