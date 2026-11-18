@@ -1,0 +1,268 @@
+diff --git a/src/junction/signals/junction_signals.cpp b/src/junction/signals/junction_signals.cpp
+index 031d964f5c..e7ecf6e86c 100644
+--- a/src/junction/signals/junction_signals.cpp
++++ b/src/junction/signals/junction_signals.cpp
+@@ -124,29 +124,98 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
+ 				if ((along_x ? diff.y : diff.x) == (offset < 0 ? 1 : -1)) side = edge;
+ 			}
+ 			if (!side.has_value()) continue;
+-			const TileIndexDiffC dir = TileIndexDiffCByDiagDir(exit_edge);
+-			const TileIndexDiffC side_diff = TileIndexDiffCByDiagDir(*side);
+-			const Track h1 = JunctionCornerTrack(*side, exit_edge);
+-			const Track h2 = JunctionCornerTrack(ReverseDiagDir(*side), ReverseDiagDir(exit_edge));
++			const DiagDirDiff turn = ChangeDiagDir(exit_edge, DiagDirDiff::Right90) == *side ? DiagDirDiff::Right90 : DiagDirDiff::Left90;
+ 
+ 			/* The caller's spans decide which merges get a prio: a merge without one gets none. */
+ 			const auto span = prio == nullptr ? std::vector<JunctionPrioSpan>::const_iterator{} : std::ranges::find_if(*prio, [&](const JunctionPrioSpan &candidate) { return candidate.merge.x == M.x && candidate.merge.y == M.y; });
+ 			if (prio != nullptr && span == prio->end()) continue;
+ 
+-			/* 3. The requirements, all before anything is written. */
+-			const auto ml = [&](int s) { return TileIndexDiffC{static_cast<int16_t>(M.x - s * dir.x), static_cast<int16_t>(M.y - s * dir.y)}; };
+-			const auto row = [&](int s) { const TileIndexDiffC t = ml(s); return TileIndexDiffC{static_cast<int16_t>(t.x + side_diff.x), static_cast<int16_t>(t.y + side_diff.y)}; };
+-			bool fits = static_cast<int>(j) >= n_prio;
+-			for (int s = 1; fits && s <= n_prio; s++) {
+-				const JunctionPiece &piece = P[j - s];
+-				const TileIndexDiffC t = ml(s);
+-				fits = !piece.on_bridge && piece.tile.x == t.x && piece.tile.y == t.y && piece.trackdir == mp.trackdir && std::ranges::none_of(switches, [&](const SwitchEvent &sw) { return sw.second == j - s; });
++			/*
++			 * 3. The walk along the main line, all before anything is written.
++			 * Step m is the piece m before the merge piece (m = 0); pos[m] is its distance from the merge in units, the coverage is 2 * n_prio units.
++			 * The row tile of an axis piece is the tile on its side (the merge's side, turned with the piece's heading); a 45 degree piece between two axis pieces
++			 * turning toward that side has the inner corner tile as its row tile, which its two neighbours share.
++			 * Joins are due every 4 units from the merge and signals 2 units after each, and move to the next axis piece upstream that has its own row tile; a signal stays before the last join.
++			 */
++			const int last_piece = static_cast<int>(j);
++			const auto at = [&](int m) -> const JunctionPiece * { return m < 0 || m > last_piece ? nullptr : &P[j - m]; };
++			const auto is_axis = [&](int m) { const JunctionPiece *piece = at(m); return piece != nullptr && !piece->on_bridge && IsDiagonalTrackdir(piece->trackdir); };
++			const auto side_of = [&](const JunctionPiece &piece) { return ChangeDiagDir(TrackdirToExitdir(piece.trackdir), turn); };
++			const auto corner = [&](int m) -> std::optional<TileIndexDiffC> {
++				const JunctionPiece *piece = at(m);
++				if (m < 1 || piece == nullptr || piece->on_bridge || IsDiagonalTrackdir(piece->trackdir) || !is_axis(m - 1) || !is_axis(m + 1)) return std::nullopt;
++				const DiagDirection in = TrackdirToExitdir(at(m + 1)->trackdir);
++				const DiagDirection out = TrackdirToExitdir(piece->trackdir);
++				if (ChangeDiagDir(in, turn) != out) return std::nullopt;
++				const TileIndexDiffC to = TileIndexDiffCByDiagDir(out);
++				const TileIndexDiffC from = TileIndexDiffCByDiagDir(in);
++				return TileIndexDiffC{static_cast<int16_t>(piece->tile.x + to.x - from.x), static_cast<int16_t>(piece->tile.y + to.y - from.y)};
++			};
++			const auto row_of = [&](int m) -> std::optional<TileIndexDiffC> {
++				const JunctionPiece *piece = at(m);
++				if (piece == nullptr) return std::nullopt;
++				if (!is_axis(m)) return corner(m);
++				const TileIndexDiffC diff = TileIndexDiffCByDiagDir(side_of(*piece));
++				const TileIndexDiffC tile{static_cast<int16_t>(piece->tile.x + diff.x), static_cast<int16_t>(piece->tile.y + diff.y)};
++				for (const int neighbour : {m - 1, m + 1}) {
++					const std::optional<TileIndexDiffC> c = corner(neighbour);
++					if (c.has_value() && (c->x != tile.x || c->y != tile.y)) return std::nullopt;
++				}
++				return tile;
++			};
++			/* An axis piece with a row tile of its own: not beside a bend. */
++			const auto plain = [&](int m) { return is_axis(m) && !corner(m - 1).has_value() && !corner(m + 1).has_value(); };
++
++			std::vector<int> pos(j + 1, 0);
++			for (int m = 1; m <= last_piece; m++) pos[m] = pos[m - 1] + P[j - (m - 1)].units;
++			int walk_end = -1;
++			for (int m = 0; m <= last_piece && walk_end < 0; m++) {
++				if (pos[m] >= 2 * n_prio) walk_end = m;
++			}
++			bool fits = walk_end >= 0;
++			std::vector<int> joins;
++			std::vector<int> prio_signals;
++			for (int due = 0; fits && due <= 2 * n_prio; due += 4) {
++				int m = joins.empty() ? 0 : joins.back() + 1;
++				while (m <= last_piece && (pos[m] < due || !plain(m))) m++;
++				fits = m <= last_piece;
++				if (fits) joins.push_back(m);
++			}
++			for (int due = 2; fits && due < 2 * n_prio; due += 4) {
++				int m = prio_signals.empty() ? 1 : prio_signals.back() + 1;
++				while (m < joins.back() && (pos[m] < due || !plain(m) || std::ranges::find(joins, m) != joins.end())) m++;
++				fits = m < joins.back();
++				if (fits) prio_signals.push_back(m);
+ 			}
+-			for (int s = 0; fits && s <= n_prio; s++) fits = tracks_at(tracks, row(s)) == TrackBits{};
+ 			if (fits) {
+-				const TrackBits beyond = tracks_at(tracks, row(n_prio + 1));
+-				for (Track t : beyond) {
+-					if (JunctionTrackTouches(t, exit_edge)) fits = false;
++				walk_end = std::max({walk_end, joins.back(), prio_signals.empty() ? 0 : prio_signals.back()});
++				if (corner(walk_end + 1).has_value()) walk_end++;
++			}
++			for (int m = 0; fits && m <= walk_end; m++) {
++				const JunctionPiece &piece = *at(m);
++				const std::optional<TileIndexDiffC> row_tile = row_of(m);
++				fits = !piece.on_bridge && row_tile.has_value() && tracks_at(tracks, *row_tile) == TrackBits{} && (m == 0 || std::ranges::none_of(switches, [&](const SwitchEvent &sw) { return sw.second == j - m; }));
++			}
++			if (fits) {
++				/* Nothing on the row tile beyond the walk may lead on toward the walk's exit edge. */
++				std::optional<TileIndexDiffC> beyond;
++				DiagDirection beyond_exit = exit_edge;
++				if (walk_end < last_piece) {
++					if (is_axis(walk_end + 1)) {
++						beyond = row_of(walk_end + 1);
++						beyond_exit = TrackdirToExitdir(at(walk_end + 1)->trackdir);
++					}
++				} else if (is_axis(walk_end)) {
++					const JunctionPiece &piece = *at(walk_end);
++					const TileIndexDiffC back = TileIndexDiffCByDiagDir(ReverseDiagDir(TrackdirToExitdir(piece.trackdir)));
++					const TileIndexDiffC diff = TileIndexDiffCByDiagDir(side_of(piece));
++					beyond = TileIndexDiffC{static_cast<int16_t>(piece.tile.x + back.x + diff.x), static_cast<int16_t>(piece.tile.y + back.y + diff.y)};
++					beyond_exit = TrackdirToExitdir(piece.trackdir);
++				}
++				if (beyond.has_value()) {
++					for (Track t : tracks_at(tracks, *beyond)) {
++						if (JunctionTrackTouches(t, beyond_exit)) fits = false;
++					}
+ 				}
+ 			}
+ 			if (!fits) {
+@@ -161,24 +230,34 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
+ 					if (prio_beside != nullptr && tile.y != M.y) prio_beside->emplace_back(tile, TileIndexDiffC{tile.x, M.y});
+ 				}
+ 			} else {
+-				for (int s = 0; s <= n_prio; s++) {
+-					if (s % 2 == 0) draw(ml(s), TrackBits{h1});
+-					if (prio_beside != nullptr) prio_beside->emplace_back(row(s), ml(s));
+-					if (s == 0) {
+-						draw(row(s), TrackBits{h2});
+-					} else if (s % 2 == 0) {
+-						draw(row(s), TrackBits{axis, h2});
+-					} else {
+-						draw(row(s), TrackBits{axis});
++				for (int m = 0; m <= walk_end; m++) {
++					const JunctionPiece &piece = *at(m);
++					const TileIndexDiffC row_tile = *row_of(m);
++					if (!is_axis(m)) {
++						draw(row_tile, TrackBits{TrackdirToTrack(piece.trackdir)});
++						continue;
++					}
++					const bool join = std::ranges::find(joins, m) != joins.end();
++					const Track piece_axis = TrackdirToTrack(piece.trackdir);
++					const DiagDirection piece_exit = TrackdirToExitdir(piece.trackdir);
++					if (join) draw(piece.tile, TrackBits{JunctionCornerTrack(side_of(piece), piece_exit)});
++					if (prio_beside != nullptr) prio_beside->emplace_back(row_tile, piece.tile);
++					if (join) {
++						const Track h2 = JunctionCornerTrack(ReverseDiagDir(side_of(piece)), ReverseDiagDir(piece_exit));
++						draw(row_tile, m == 0 ? TrackBits{h2} : TrackBits{piece_axis, h2});
++					} else if (plain(m)) {
++						draw(row_tile, TrackBits{piece_axis});
+ 					}
+ 				}
+ 			}
+-			for (int s = 1; s < n_prio; s += 2) {
+-				add_signal(ml(s), mp.trackdir, spec.signal_type);
+-				tokens.push_back({static_cast<uint16_t>(r), Reason::Prio, ml(s), mp.trackdir});
+-				const Trackdir back = ReverseTrackdir(mp.trackdir);
+-				add_signal(row(s), back, s == n_prio - 1 ? SignalType::Exit : SignalType::Combo);
+-				tokens.push_back({static_cast<uint16_t>(r), Reason::Prio, row(s), back});
++			for (size_t i = 0; i < prio_signals.size(); i++) {
++				const JunctionPiece &piece = *at(prio_signals[i]);
++				const TileIndexDiffC row_tile = *row_of(prio_signals[i]);
++				add_signal(piece.tile, piece.trackdir, spec.signal_type);
++				tokens.push_back({static_cast<uint16_t>(r), Reason::Prio, piece.tile, piece.trackdir});
++				const Trackdir back = ReverseTrackdir(piece.trackdir);
++				add_signal(row_tile, back, i + 1 == prio_signals.size() ? SignalType::Exit : SignalType::Combo);
++				tokens.push_back({static_cast<uint16_t>(r), Reason::Prio, row_tile, back});
+ 			}
+ 			entries.emplace_back(*joiner, *joiner_k);
+ 		}
+diff --git a/src/tests/junction/signals/junction_signal_pass.cpp b/src/tests/junction/signals/junction_signal_pass.cpp
+index 7b5a6741c8..c7ee26621e 100644
+--- a/src/tests/junction/signals/junction_signal_pass.cpp
++++ b/src/tests/junction/signals/junction_signal_pass.cpp
+@@ -17,6 +17,7 @@
+ #include "../../../junction/junction_rules_internal.h"
+ #include "../../../core/format.hpp"
+ #include "../../../junction/signals/junction_signal_pass.h"
++#include "../../../junction/signals/junction_signals.h"
+ #include "../../../track_func.h"
+ 
+ #include <algorithm>
+@@ -289,3 +290,86 @@ TEST_CASE("PlaceJunctionSignals: prio side and join pieces", "[junction][signals
+ 		CHECK(Bits(layout, 15, -1) == TrackBits{Track::Right});
+ 	}
+ }
++
++/**
++ * The prio violations of the mapped path's signal pass on a main line and its joiner: both rasterised into a layout, signalled by SignalJunctionTrackRoutes
++ * with the network the planar model builds (the main line's merge on its piece before the joiner's last), then checked.
++ */
++static std::vector<RuleViolation> PrioPassViolations(const JunctionRoute &ml, const JunctionRoute &joiner, std::string &report)
++{
++	const JunctionSpec spec = [] { JunctionSpec s = MakeTestJunctionSpec(); s.prio_tiles = s.tl; s.prio_strict = false; return s; }();
++	const JunctionRaster ml_raster = RasterizeJunctionRoute(ml);
++	const JunctionRaster joiner_raster = RasterizeJunctionRoute(joiner);
++	REQUIRE(ml_raster.error.empty());
++	REQUIRE(joiner_raster.error.empty());
++	JunctionLayout layout;
++	AddRasterToLayout(layout, ml_raster);
++	AddRasterToLayout(layout, joiner_raster);
++
++	/* The joiner's merge piece is its first on a tile of the main line; the main line's merge piece is its own piece on that tile. */
++	size_t k = 0;
++	size_t j = ml_raster.pieces.size();
++	for (; j == ml_raster.pieces.size() && k < joiner_raster.pieces.size(); k++) {
++		for (size_t i = 0; i < ml_raster.pieces.size(); i++) {
++			if (ml_raster.pieces[i].tile.x == joiner_raster.pieces[k].tile.x && ml_raster.pieces[i].tile.y == joiner_raster.pieces[k].tile.y) j = i;
++		}
++	}
++	REQUIRE(j < ml_raster.pieces.size());
++	k--;
++
++	std::vector<JunctionTrackRoute> routes;
++	for (const JunctionRaster *raster : {&ml_raster, &joiner_raster}) {
++		JunctionTrackRoute route{static_cast<uint16_t>(routes.size()), 0, raster->pieces, {}};
++		route.tags.assign(raster->pieces.size(), {0, JunctionTrackPieceTag::RUN, 0, 0});
++		routes.push_back(std::move(route));
++	}
++	JunctionSignalNetwork network;
++	JunctionSignalRoute ml_signal;
++	ml_signal.main = true;
++	ml_signal.group = 'A';
++	ml_signal.switches.emplace_back(false, j);
++	ml_signal.merge_nodes.emplace_back(j, 0);
++	JunctionSignalRoute joiner_signal;
++	joiner_signal.group = 'B';
++	joiner_signal.arrivals.emplace_back(0, k);
++	network.routes = {ml_signal, joiner_signal};
++
++	std::string why;
++	SignalJunctionTrackRoutes(layout, routes, network, spec, &why);
++	NormaliseJunctionLayout(layout);
++	int16_t min_x = INT16_MAX, min_y = INT16_MAX;
++	for (const JunctionRaster *raster : {&ml_raster, &joiner_raster}) {
++		for (const JunctionPiece &piece : raster->pieces) {
++			min_x = std::min(min_x, piece.tile.x);
++			min_y = std::min(min_y, piece.tile.y);
++		}
++	}
++	const auto port = [&](Role role, const JunctionPiece &piece) {
++		return JunctionPort{role, {static_cast<int16_t>(piece.tile.x - min_x), static_cast<int16_t>(piece.tile.y - min_y)}, piece.trackdir};
++	};
++	const std::vector<JunctionPort> ports = {port(Role::EIn, ml_raster.pieces.front()), port(Role::EOut, ml_raster.pieces.back()), port(Role::WIn, joiner_raster.pieces.front())};
++	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, {{Role::EIn, Role::EOut}, {Role::WIn, Role::EOut}});
++	REQUIRE(ctx.paths.size() == 2);
++	std::vector<RuleViolation> violations = CheckPrio(ctx);
++	for (const RuleViolation &v : CheckPrioReach(ctx)) violations.push_back(v);
++	report = fmt::format("{}\nwhy: {}", Report(layout, violations), why);
++	return violations;
++}
++
++TEST_CASE("PlaceJunctionSignals: prio signals follow a bent main line", "[junction][signals]")
++{
++	/* The bent main line of the prio-through-a-bend checker test with a leg B one tile longer, so an axis piece lies between the curve and the join due at the end of the coverage. */
++	std::string report;
++	const std::vector<RuleViolation> violations = PrioPassViolations(R(0, 5, Trackdir::X_SW, "FFRRFFFFFF"), R(4, 5, Trackdir::Y_NW, "FFFFRFL"), report);
++	INFO(report);
++	CHECK(violations.empty());
++}
++
++TEST_CASE("PlaceJunctionSignals: prio signals on the straight row-step layout", "[junction][signals]")
++{
++	/* The straight main line of the row-step checker test, with the joiner entering from above. */
++	std::string report;
++	const std::vector<RuleViolation> violations = PrioPassViolations(R(0, 1, Trackdir::X_SW, "FFFFFFFFFFFFF"), R(6, 0, Trackdir::X_SW, "LFR"), report);
++	INFO(report);
++	CHECK(violations.empty());
++}
