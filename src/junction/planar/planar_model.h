@@ -13,6 +13,7 @@
 #include "../placement/junction_milp.h"
 #include "../../3rdparty/fmt/format.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -531,9 +532,10 @@ public:
 	 * Solve with extra rows, warm-started from the last solution.
 	 * @param extra Extra rows.
 	 * @param out The solution.
+	 * @param deadline The time the solve must end by; its time limit is the time left, at most SOLVE_LIMIT.
 	 * @return Whether an optimal solution was found.
 	 */
-	bool Solve(const std::vector<Row> &extra, Solution &out)
+	bool Solve(const std::vector<Row> &extra, Solution &out, std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max())
 	{
 		const auto solve_t0 = std::chrono::steady_clock::now();
 		struct Report {
@@ -548,7 +550,7 @@ public:
 		const Report report{solve_t0, &report_ok};
 
 		JunctionMilp milp;
-		milp.SetTimeLimit(SOLVE_LIMIT);
+		milp.SetTimeLimit(std::clamp(std::chrono::duration<double>(deadline - solve_t0).count(), 0.001, SOLVE_LIMIT));
 		const size_t n0 = this->lb.size();
 		for (size_t i = 0; i < n0; i++) {
 			const auto it = this->obj_extra.find(static_cast<uint32_t>(i));

@@ -146,6 +146,18 @@ TEST_CASE("planar components: a variant solved with its own shape given back is 
 	}
 }
 
+TEST_CASE("planar components: a variant's solves share one 15 s deadline", "[junction][planarcomponents][slow]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarLL2Text(), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	PlanarComponentLayout layout;
+	std::string why;
+	REQUIRE(SolvePlanarMappedVariant(topology, spec, "o1t6f0s1", nullptr, layout, &why));
+	CHECK(layout.micros <= 16e6);
+}
+
 TEST_CASE("planar components: T2 takes the shape program's shape where it is smaller", "[junction][planarcomponents][slow]")
 {
 	std::string error;

@@ -2017,14 +2017,14 @@ using Clock = std::chrono::steady_clock;
 /**
  * Solve with clashes separated lazily.
  * @param M The model.
- * @param t0 The variant's start, for the budget.
+ * @param deadline The variant's deadline.
  * @param seps0 The separation rows found so far.
  * @param out The result.
  * @param why The reason on failure.
  * @param sides The topology's line sides, or null (a hand composition).
  * @return Whether a clash-free solution was found.
  */
-bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, LazyResult &out, std::string &why, const PlanarLineSides *sides)
+bool SolveLazy1(Model &M, Clock::time_point deadline, const std::vector<Row> &seps0, LazyResult &out, std::string &why, const PlanarLineSides *sides)
 {
 	std::vector<Row> seps = seps0;
 	Solution r;
@@ -2035,7 +2035,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 	const auto explain_last = [&](const std::vector<Row> &extra) {
 		if (explain && M.last_infeasible) M.ExplainInfeasible(extra);
 	};
-	if (!M.Solve(seps, r)) {
+	if (!M.Solve(seps, r, deadline)) {
 		explain_last(seps);
 		why = "base infeasible";
 		return false;
@@ -2065,7 +2065,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 				std::vector<Row> trial = seps;
 				trial.push_back(row);
 				Solution probe;
-				if (M.Solve(trial, probe)) {
+				if (M.Solve(trial, probe, deadline)) {
 					seps.push_back(row);
 					done = true;
 					break;
@@ -2077,14 +2077,14 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 				why = "under-deck conflict not separable";
 				return false;
 			}
-			if (!M.Solve(seps, r)) {
+			if (!M.Solve(seps, r, deadline)) {
 				explain_last(seps);
 				why = "infeasible after separation";
 				return false;
 			}
 			continue;
 		}
-		if (std::chrono::duration<double>(Clock::now() - t0).count() > BUDGET) {
+		if (Clock::now() > deadline) {
 			why = fmt::format("budget at round {}, {} clashes", rnd, bad.size());
 			return false;
 		}
@@ -2106,7 +2106,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 			if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "round {}: {} decided by sides, {} by trial\n", rnd, decided, decided == 0 ? 1 : 0);
 			if (decided > 0) {
 				seps.insert(seps.end(), rows.begin(), rows.end());
-				if (!M.Solve(seps, r)) {
+				if (!M.Solve(seps, r, deadline)) {
 					explain_last(seps);
 					why = "infeasible with topology sides";
 					return false;
@@ -2120,7 +2120,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 			std::vector<Row> trial = seps;
 			trial.insert(trial.end(), options[k].second.begin(), options[k].second.end());
 			Solution probe;
-			if (M.Solve(trial, probe)) {
+			if (M.Solve(trial, probe, deadline)) {
 				seps = std::move(trial);
 				separated = true;
 				break;
@@ -2132,7 +2132,7 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 			why = "a clash is not separable";
 			return false;
 		}
-		if (!M.Solve(seps, r)) {
+		if (!M.Solve(seps, r, deadline)) {
 			explain_last(seps);
 			why = "infeasible after separation";
 			return false;
@@ -2145,14 +2145,14 @@ bool SolveLazy1(Model &M, Clock::time_point t0, const std::vector<Row> &seps0, L
 /**
  * Area inside the outline by sequential linearisation around the lazy-separated solution.
  * @param M The model.
- * @param t0 The variant's start.
+ * @param deadline The variant's deadline.
  * @param out The best result.
  * @param area The best area in tiles.
  * @param why The reason on failure.
  * @param sides The topology's line sides, or null (a hand composition).
  * @return Whether a solution was found.
  */
-bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, std::string &why, const PlanarLineSides *sides)
+bool SolveLazy(Model &M, Clock::time_point deadline, LazyResult &out, double &area, std::string &why, const PlanarLineSides *sides)
 {
 	M.obj_extra.clear();
 	/* Experiment (PLANAR_OBJ): a linear score instead of the area step: len (track only), box (width + height), routes (outline route length), loop (AREA_ROUNDS linearisations). */
@@ -2172,7 +2172,7 @@ bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, st
 			}
 		}
 	}
-	if (!SolveLazy1(M, t0, {}, out, why, sides)) return false;
+	if (!SolveLazy1(M, deadline, {}, out, why, sides)) return false;
 	double best = std::abs(AreaOf(out.sol.val, Outline(M)));
 	if (obj == "len" || obj == "box" || obj == "routes") {
 		area = best / 4;
@@ -2184,7 +2184,7 @@ bool SolveLazy(Model &M, Clock::time_point t0, LazyResult &out, double &area, st
 		LineariseArea(M, out.sol.val);
 		LazyResult r2;
 		std::string why2;
-		if (!SolveLazy1(M, t0, seps, r2, why2, sides)) break;
+		if (!SolveLazy1(M, deadline, seps, r2, why2, sides)) break;
 		first_round_clashes += r2.first_round_clashes;
 		const double a2 = std::abs(AreaOf(r2.sol.val, Outline(M)));
 		if (a2 >= best - 1) break;
@@ -2353,7 +2353,7 @@ VariantOutcome SolveVariant(const PlanarTopology &topology, const Params &params
 {
 	VariantOutcome out;
 	out.tag = fmt::format("{:+d}F1w{}", variant.fray_s, variant.other);
-	const Clock::time_point t0 = Clock::now();
+	const Clock::time_point deadline = Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(BUDGET));
 	Composer composer(params, t2, variant);
 	Model &M = composer.M;
 	if (!M.error.empty()) {
@@ -2361,7 +2361,7 @@ VariantOutcome SolveVariant(const PlanarTopology &topology, const Params &params
 		return out;
 	}
 	LazyResult res;
-	if (!SolveLazy(M, t0, res, out.area, out.why, nullptr)) return out;
+	if (!SolveLazy(M, deadline, res, out.area, out.why, nullptr)) return out;
 	out.width = static_cast<int>(std::llround(Ev(res.sol.val, M.X))) / 2 + 1;
 	out.height = static_cast<int>(std::llround(Ev(res.sol.val, M.Y))) / 2 + 1;
 	if (!M.error.empty()) {
@@ -2544,13 +2544,13 @@ int RungsMoved(const Model &M, const std::vector<RungSpec> &rungs, const std::ve
  * @param params The spec facts.
  * @param variant The variant.
  * @param shape Null, or the channel paths to build on instead of the default ones.
+ * @param deadline The variant's deadline, shared by every solve in it (both shapes).
  * @return The outcome.
  */
-VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant, const std::vector<PlanarChannelPath> *shape)
+VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant, const std::vector<PlanarChannelPath> *shape, Clock::time_point deadline)
 {
 	VariantOutcome out;
 	out.tag = fmt::format("o{}t{}f{}s{}", variant.over, variant.ties, variant.flips, variant.steps);
-	const Clock::time_point t0 = Clock::now();
 	std::vector<PlanarChannelPath> program_shape;
 	if (shape == nullptr) {
 		const char *e = std::getenv("PLANAR_SHAPE");
@@ -2565,7 +2565,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 				if (!program_shape.empty()) shape = &program_shape;
 			} else {
 				/* Score both shapes: the default one, then the program's when it differs; the smaller area wins, a tie goes to the default. */
-				VariantOutcome best = SolveMappedVariant(topology, channels, params, variant, &dflt.paths);
+				VariantOutcome best = SolveMappedVariant(topology, channels, params, variant, &dflt.paths, deadline);
 				const auto same = [&](const std::vector<PlanarChannelPath> &x, const std::vector<PlanarChannelPath> &y) {
 					if (x.size() != y.size()) return false;
 					for (size_t i = 0; i < x.size(); i++) {
@@ -2574,7 +2574,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 					return true;
 				};
 				if (dflt.why.empty() && !program_shape.empty() && !same(program_shape, dflt.paths)) {
-					VariantOutcome prog = SolveMappedVariant(topology, channels, params, variant, &program_shape);
+					VariantOutcome prog = SolveMappedVariant(topology, channels, params, variant, &program_shape, deadline);
 					if (prog.ok && (!best.ok || prog.area < best.area)) {
 						prog.program_shape = true;
 						best = std::move(prog);
@@ -2603,7 +2603,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 		return out;
 	}
 	LazyResult res;
-	if (!SolveLazy(M, t0, res, out.area, out.why, &composer.sides)) return out;
+	if (!SolveLazy(M, deadline, res, out.area, out.why, &composer.sides)) return out;
 	/* Ladders: re-solve with rungs from the rough solution, at most twice (the second only when a rung point left its facing span). */
 	std::unique_ptr<MappedComposer> stand; // the composer of the last successful ladder solve
 	LazyResult stand_res;
@@ -2625,7 +2625,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 			LazyResult next_res;
 			double next_area = 0;
 			std::string next_why;
-			if (!SolveLazy(next->M, Clock::now(), next_res, next_area, next_why, &next->sides)) break;
+			if (!SolveLazy(next->M, deadline, next_res, next_area, next_why, &next->sides)) break;
 			out.area = next_area;
 			out.rungs = rungs.size();
 			const int moved = RungsMoved(next->M, rungs, next_res.sol.val);
@@ -2865,7 +2865,7 @@ bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec,
 	std::vector<VariantOutcome> outcomes(variants.size());
 	std::vector<std::thread> threads;
 	for (size_t i = 0; i < variants.size(); i++) {
-		threads.emplace_back([&, i] { outcomes[i] = SolveMappedVariant(topology, flipped[variants[i].flips], params, variants[i], nullptr); });
+		threads.emplace_back([&, i] { outcomes[i] = SolveMappedVariant(topology, flipped[variants[i].flips], params, variants[i], nullptr, Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(BUDGET))); });
 	}
 	for (std::thread &thread : threads) thread.join();
 	return PickBest(outcomes, t0, layout, why);
@@ -2909,6 +2909,6 @@ bool SolvePlanarMappedVariant(const PlanarTopology &topology, const JunctionSpec
 	MappedVariant variant;
 	if (!ParseMappedTag(tag, CountMappedBits(topology, channels), variant, why)) return false;
 	const PlanarChannels flipped = FlipPlanarTriangles(channels, variant.flips);
-	const std::vector<VariantOutcome> outcomes{SolveMappedVariant(topology, flipped, MakeParams(spec), variant, shape)};
+	const std::vector<VariantOutcome> outcomes{SolveMappedVariant(topology, flipped, MakeParams(spec), variant, shape, Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(BUDGET)))};
 	return PickBest(outcomes, t0, layout, why);
 }
