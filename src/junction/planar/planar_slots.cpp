@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <map>
 #include <optional>
 #include <tuple>
@@ -179,7 +180,8 @@ PlanarSlots BuildPlanarSlots(const PlanarTopology &topology, const PlanarChannel
 		for (uint32_t iv = 0; iv < intervals[c].size(); iv++) {
 			const std::vector<PlanarSlotTrack> &list = intervals[c][iv].tracks;
 			if (list.size() < 2) continue; // One track: width 0, and a row naming one variable twice is malformed.
-			const uint32_t w = milp.AddVariable(0, JunctionMilp::INF, 1, true);
+			static const double width_weight = std::getenv("PLANAR_S2W") != nullptr ? std::atof(std::getenv("PLANAR_S2W")) : 1.0; // Probe knob.
+			const uint32_t w = milp.AddVariable(0, JunctionMilp::INF, width_weight, true);
 			row({{w, 1}, {sv(list.back().kind, list.back().line, c, iv), -1}, {sv(list.front().kind, list.front().line, c, iv), 1}}, 0, 0);
 		}
 	}
