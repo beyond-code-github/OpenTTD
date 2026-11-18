@@ -7,5 +7,6 @@ add_test_files(
     planar_plan.cpp
     planar_regions.cpp
     planar_shape.cpp
+    planar_slots.cpp
     planar_topology.cpp
 )
