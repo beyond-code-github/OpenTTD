@@ -2,8 +2,8 @@
 Finding: T3's length is the prio stagger (wip/PROBE-prio-stagger.md): a multi-lane prio join chains its lanes' coverages behind the joiners' doubled bridges. Rulings D347 (coverage may contain a main-line bridge), D347a (corrected), D347b (prio crossing over/under is a searched choice; main line over is the start). Recons: wip/RECON-prio-bridge.md, wip/RECON-prio-bridge-rule.md.
 Queue (one ng1 writer at a time; light read-only work in parallel):
 1. DONE probe A (wip/PROBE-prio-bridge.md): 0 variants solve; the near lane's fixed prio-row reservation cannot clear the joiner crossing inside the coverage. DONE probe A2 (wip/PROBE-prio-bridge2.md): composer gains ~21% (T2 684.25, T3 1534.25) but the signal pass finds no row room; with the main line over, the row needs a gap at the joiner crossing or a third bridge (not designed). Joiner-over (probe B) avoids it and goes first.
-2. RUNNING recon (read-only): other line over a prio main line, ML S-bends under (wip/BRIEF-recon-prio-under.md) -> wip/RECON-prio-under.md.
-3. NEXT probe B (ng1 after A): the joiner-over form on T3/T2, designed from 2.
+2. DONE recon wip/RECON-prio-under.md (channel level: two lines in planar_paths + default shape cannot bend a straight channel + program shape skipped when default fails; join level: helpers suffice; bits: T3 +8..14, so local search is required).
+3. RUNNING probe B (wip/BRIEF-probe-joiner-over.md): n-lane prio join with joiners' axis decks over near lanes' S-bends, env PLANAR_JOINER_OVER.
 4. Then: design the landing step(s) from A and B (searched over bit per prio crossing; start = main line over), test-first; P3 (bendable ML) folds into B.
 5. Then: hard anchor probe (pin one port coordinate, §8.4); then variant local search in the solver (§14).
 
