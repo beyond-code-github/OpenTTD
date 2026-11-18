@@ -1,0 +1,6 @@
+# Probe: where T3's length goes (2026-11-18, orchestrator, throwaway, ng1 @ 0958786f36, reverted)
+- P override on o1t3f1s0 (measurement only; P is physics, never shipped): T3 P=14 1933.25 (138x39), P=7 1604.25 (107x39), P=2 1466.25 (94x39); T2 862.25 (94x29) / 722.25 (73x29) / 636.25 (60x29). About 4.4 tiles of width per tile of P on T3: coverages sit in series.
+- ASCII of T3 o1t3f1s0: each prio join staggers its lanes: lane j's full 2P+2 coverage starts only after joiner j-1's doubled bridge (n-lane Join, planar_components.cpp ~984-998; 2-lane ~383), so three coverages chain on the E join and on the B join. The prio channels are straight already, so P3 as planned (bendable ML) does not shorten T3.
+- Cause: G9c/D108 (no switch of the ML lane inside coverage + one segment) counts a doubled bridge's copy split and rejoin; the topology fixes joiner j-1 crossing lane j before lane j's merge (crossing O_j instead would cross two joiner routes that need not cross).
+- Naive overlap bound (near lanes' coverage cut to 2): no variant separable ("a clash is not separable"); not chased.
+- Lever: let a lane's coverage contain the doubled bridge where a joiner crosses it (row gapped at the joiner, joins on plain tiles either side, G9b judges). Needs an engineer ruling on D108 for copy switches.
