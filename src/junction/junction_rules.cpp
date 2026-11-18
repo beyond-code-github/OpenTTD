@@ -1334,7 +1334,6 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			const TrackBits cross_bits{axis, perp};
 			const bool along_x = axis == Track::X;
 			auto along = [&](Key key) { return along_x ? key.first : key.second; };
-			auto across = [&](Key key) { return along_x ? key.second : key.first; };
 
 			auto piece_index_of = [&](Key key) {
 				for (size_t i = 0; i < ml.pieces.size(); i++) {
@@ -1344,9 +1343,10 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			};
 
 			/*
-			 * 1. Shape: streamlined joins on p, and one row of tiles beside p.
-			 * A join links the ML tile T on p to the row tile T' across a side edge: T holds the axis and a half piece h1
-			 * touching that side and p's exit edge, T' holds the axis and a half piece h2 touching the ML side and p's entry edge.
+			 * 1. Shape: streamlined joins on p. The prio row has no shape rule: G9b judges that it holds, and between joins it may leave p.
+			 * A join links the ML tile T on p to the row tile T' across a side edge: T holds the axis of its piece and a half piece h1
+			 * touching that side and the piece's exit edge, T' holds that axis and a half piece h2 touching the ML side and the piece's entry edge.
+			 * Any axis piece of the coverage may carry a join, so the ML may bend inside the coverage. A coverage tile with prio track that is not a join is a violation.
 			 */
 			auto corner = [](DiagDirection a, DiagDirection b) {
 				for (Track track : {Track::Upper, Track::Lower, Track::Left, Track::Right}) {
@@ -1356,7 +1356,6 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			};
 			std::vector<Key> join_keys;
 			std::map<Key, std::pair<Track, DiagDirection>> join_info; // Per join tile: h1 and p's exit edge.
-			std::map<Key, TrackBits> join_rows; // Per row tile of a join: the tracks it must hold.
 			std::vector<Key> row;
 			for (const Key &key : c_tiles) {
 				if (!p_tiles.contains(key)) {
@@ -1365,27 +1364,27 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 				}
 				bool is_join = false;
 				const JunctionPiece &p_piece = ml.pieces[piece_index_of(key)];
-				if (TrackdirToTrack(p_piece.trackdir) == axis) {
+				if (IsDiagonalTrackdir(p_piece.trackdir)) {
+					const Track piece_axis = TrackdirToTrack(p_piece.trackdir);
 					const DiagDirection exit_edge = TrackdirToExitdir(p_piece.trackdir);
 					for (DiagDirection side = DiagDirection::Begin; side < DiagDirection::End && !is_join; side++) {
-						if (TrackTouches(axis, side)) continue;
+						if (TrackTouches(piece_axis, side)) continue;
 						const Track h1 = corner(side, exit_edge);
 						const Track h2 = corner(ReverseDiagDir(side), ReverseDiagDir(exit_edge));
 						const TileIndexDiffC other = AddTiles(to_tile(key), TileIndexDiffCByDiagDir(side));
 						/* On the merge tile the join also holds the joiner's half piece. */
-						TrackBits join_tracks{axis, h1};
+						TrackBits join_tracks{piece_axis, h1};
 						if (key == tile_key && joiner != nullptr) join_tracks.Set(TrackdirToTrack(joiner->pieces[joiner_index].trackdir));
 						if (TracksAt(layout, to_tile(key)) != join_tracks || unused[key] != TrackBits{h1}) continue;
 						/* On the merge tile nothing continues downstream, so the row tile holds h2 alone; the axis would be a stub. */
 						const bool merge_join = key == tile_key;
-						const TrackBits row_tracks = merge_join ? TrackBits{h2} : TrackBits{axis, h2};
+						const TrackBits row_tracks = merge_join ? TrackBits{h2} : TrackBits{piece_axis, h2};
 						const TrackBits other_tracks = TracksAt(layout, other);
-						if (!c_tiles.contains({other.x, other.y}) || !(other_tracks == row_tracks || (merge_join && other_tracks == TrackBits{axis, h2}))) continue;
+						if (!c_tiles.contains({other.x, other.y}) || !(other_tracks == row_tracks || (merge_join && other_tracks == TrackBits{piece_axis, h2}))) continue;
 						if (merge_join && other_tracks != row_tracks) AddViolation(out, JunctionRule::Prio, other, "stub on the merge-tile join");
 						is_join = true;
 						join_keys.push_back(key);
 						join_info[key] = {h1, exit_edge};
-						join_rows[{other.x, other.y}] = other_tracks;
 					}
 				}
 				if (is_join) continue;
@@ -1393,14 +1392,6 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio rung must be a streamlined join");
 				} else {
 					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio track on the ML is not a streamlined join");
-				}
-			}
-			for (const Key &key : row) {
-				const TrackBits tracks = TracksAt(layout, to_tile(key));
-				if (across(key) != across(row.front()) || std::abs(across(key) - across(tile_key)) != 1) {
-					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio tile is not in the single row beside the ML");
-				} else if (tracks != axis_bits && !(join_rows.contains(key) && tracks == join_rows[key])) {
-					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio tile holds tracks other than the axis and a join");
 				}
 			}
 

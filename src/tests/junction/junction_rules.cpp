@@ -1171,15 +1171,17 @@ TEST_CASE("CheckPrio: more than one component at the merge", "[junction][rules]"
 	CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 5, 1, "more than one"));
 }
 
-TEST_CASE("CheckPrio: clause 1, shape", "[junction][rules]")
+TEST_CASE("CheckPrioReach: a row tile leading outside the row fails G9b (D342)", "[junction][rules]")
 {
+	/* The row tile's Y leads to a tile outside the row. CheckPrio has no row shape rule since D342, so G9b is what rejects this layout. */
 	JunctionLayout layout = PrioLayout();
-	SetTracks(layout, 4, 2, TRACK_BIT_CROSS); // The row tile's Y leads to a tile outside the row.
+	SetTracks(layout, 4, 2, TRACK_BIT_CROSS);
 	SetTracks(layout, 4, 3, TrackBits{Track::Y});
 	layout.size.y = 4;
-	const std::vector<RuleViolation> violations = PrioViolations(layout);
-	CHECK(Has(violations, JunctionRule::Prio, 4, 3, "single row"));
-	CHECK(Has(violations, JunctionRule::Prio, 4, 2, "other than the axis and a join"));
+	const JunctionSpec spec = PinnedTestSpec();
+	std::vector<JunctionPort> ports = MergePorts();
+	ports[1].tile.x = 11;
+	CHECK_FALSE(CheckPrioReach(MakeJunctionCheckContext(layout, spec, ports, MERGE_MOVEMENTS)).empty());
 }
 
 TEST_CASE("CheckPrio: clause 2, touches nothing used", "[junction][rules]")
@@ -1260,6 +1262,87 @@ TEST_CASE("CheckPrio: clause 4, coverage", "[junction][rules]")
 		SetTracks(layout, 4, 2, JOIN_ROW);
 		CHECK(Has(PrioViolations(layout), JunctionRule::Prio, 5, 2, "exactly one join"));
 	}
+}
+
+/**
+ * The prio as the main line bends under it (D342): ML leg A along row 6 to the curve at (3,6), leg B up column 3 to the merge at (3,2).
+ * Joins sit on axis pieces of both legs, the row beside them on the inner side of the bend, turning the corner at (2,5).
+ *   . . . | . .       (3,0) and (3,1) after the merge
+ *   . . . # \ .       the merge (3,2) with the joiner's half pieces at (3,2) and (4,2)
+ *   . . + | | .       the row at (2,2), (2,3) Exit signal, (2,4)
+ *   . . + | | .
+ *   . + + | | .       the row turns the corner at (2,5) and joins at (1,5)
+ *   - # - / | .       ML signals at (0,6), (3,4); join on leg A at (1,6)
+ */
+static JunctionLayout BentPrioLayout()
+{
+	JunctionLayout layout = Build({{{0, 5}, Trackdir::X_SW, "FFRRFFFFF"}, {{4, 5}, Trackdir::Y_NW, "FFFRFL"}});
+	/* Normalisation moved the layout down one row. */
+	SetTracks(layout, 1, 6, TrackBits{Track::X, Track::Left});
+	SetTracks(layout, 1, 5, TrackBits{Track::X, Track::Right});
+	SetTracks(layout, 2, 5, TrackBits{Track::Upper});
+	SetTracks(layout, 2, 4, TrackBits{Track::Y});
+	SetTracks(layout, 2, 3, TrackBits{Track::Y});
+	SetTracks(layout, 2, 2, TrackBits{Track::Lower});
+	SetTracks(layout, 3, 2, TrackBits{Track::Y, Track::Left, Track::Upper});
+	AddSignal(layout, 0, 6, Trackdir::X_SW);
+	AddSignal(layout, 3, 4, Trackdir::Y_NW);
+	AddSignal(layout, 3, 0, Trackdir::Y_NW);
+	AddSignal(layout, 4, 3, Trackdir::Y_NW, SignalType::Entry);
+	AddSignal(layout, 2, 3, Trackdir::Y_SE, SignalType::Exit);
+	return layout;
+}
+
+static JunctionCheckContext BentPrioContext(const JunctionLayout &layout, const JunctionSpec &spec)
+{
+	const std::vector<JunctionPort> ports = {Port(Role::EIn, 0, 6, Trackdir::X_SW), Port(Role::EOut, 3, 0, Trackdir::Y_NW), Port(Role::WIn, 4, 6, Trackdir::Y_NW)};
+	return MakeJunctionCheckContext(layout, spec, ports, MERGE_MOVEMENTS);
+}
+
+TEST_CASE("prio: coverage through a bend passes when the prio reach holds", "[junction][rules]")
+{
+	const JunctionLayout layout = BentPrioLayout();
+	const JunctionSpec spec = PinnedTestSpec();
+	const JunctionCheckContext ctx = BentPrioContext(layout, spec);
+	REQUIRE(ctx.paths.size() == 2);
+	CHECK(CheckPrioReach(ctx).empty());
+	CHECK(CheckPrio(ctx).empty());
+}
+
+/** The straight prio with a row that steps one tile out between the joins and back: a gap a track could use. */
+static JunctionLayout SteppedRowLayout()
+{
+	JunctionLayout layout = Build({{{0, 1}, Trackdir::X_SW, "FFFFFFFFFFFFF"}, {{6, 0}, Trackdir::X_SW, "LFR"}});
+	layout.size.y = 4;
+	SetTracks(layout, 2, 1, JOIN_ML);
+	for (JunctionTrack &jt : layout.tracks) {
+		if (jt.offset.x == 7 && jt.offset.y == 1) jt.tracks.Set(Track::Lower);
+	}
+	SetTracks(layout, 2, 2, JOIN_ROW);
+	SetTracks(layout, 3, 2, TrackBits{Track::X});
+	SetTracks(layout, 4, 2, TrackBits{Track::Right});
+	SetTracks(layout, 4, 3, TrackBits{Track::Left});
+	SetTracks(layout, 5, 3, TrackBits{Track::Upper});
+	SetTracks(layout, 5, 2, TrackBits{Track::Lower});
+	SetTracks(layout, 6, 2, TrackBits{Track::X});
+	SetTracks(layout, 7, 2, JOIN_ROW_MERGE);
+	for (int x : {1, 3, 9}) AddSignal(layout, x, 1, Trackdir::X_SW);
+	AddSignal(layout, 7, 0, Trackdir::Right_S, SignalType::Entry);
+	AddSignal(layout, 3, 2, Trackdir::X_NE, SignalType::Exit);
+	return layout;
+}
+
+TEST_CASE("prio: the row may leave the main line between joins", "[junction][rules]")
+{
+	const JunctionLayout layout = SteppedRowLayout();
+	std::vector<JunctionPort> ports = MergePorts();
+	ports[1].tile.x = 13;
+	ports[2].tile.x = 6;
+	const JunctionSpec spec = PinnedTestSpec();
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, MERGE_MOVEMENTS);
+	REQUIRE(ctx.paths.size() == 2);
+	CHECK(CheckPrioReach(ctx).empty());
+	CHECK(CheckPrio(ctx).empty());
 }
 
 TEST_CASE("CheckPrio: clause 5, prio signals", "[junction][rules]")
