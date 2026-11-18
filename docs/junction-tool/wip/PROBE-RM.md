@@ -1,0 +1,6 @@
+# PROBE-RM (throwaway)
+Commit on probe-rm (see git log). Changes: PlanarRowSpec + 3-arg PlanarLineSides (planar_regions), expanded topology per spec (L2 = L~, row R = prio:L, node N, merge M); composer members row_sides/row_specs/row_mapped, specs pushed in the n-lane Join prio case for lanes k >= 1 (lane 0 has no joiner passing under it, so a spec would always fail "no join crossing"), row_sides built after Build under PLANAR_ROWMAP and passed to SolveLazy at both call sites.
+1. No env: o1t3f1s0 932.25 75x31, 3490 ms (unchanged).
+2. PLANAR_ROWMAP=1: no variant solves: "row map: two faces give lines C2 and B1 opposite sides". Specs built: B1 joiners {C2} side -1; E2 joiners {D1} side +1. No stop condition hit (the (L2,J) crossings and M.in checks passed); the failure is the map's sides oracle, before any solve, so no IIS.
+   Diagnosis (temp debug, not committed): the pair (B1, C2) is no longer a crossing pair (the crossing is now (B1~, C2)), so the "crossing pairs may disagree" exemption no longer covers it; B1's pre-split stretches 5 and 6 (meeting at its crossing with D1) lie on opposite sides of C2's stretch 1 (faces 22 and 24). Other new-looking conflicts: B1 vs D1, B1 vs D2.
+3-4. Not run (2 did not solve).
