@@ -26,7 +26,9 @@ History lives in git. The previous STATUS: `git show d18117a214:docs/junction-to
 ## Current focus: the slot layer (ROADMAP item 1)
 - The finding behind it: sideways position has no owner. Components hard-code S-bends, and anything unforeseen became an optional S-bend or a variant bit. Independent review: wip/REVIEW-sideways-modelling.md.
 - The spike passed (wip/SPIKE-slots.md; branch `spike-slots` f4d1ef0e49, test only). On LL² and T2, every gap change between neighbouring lanes matches the solver, except today's staggered prio-join exits and turn geometry.
-- NEXT: design the slot layer build (new DESIGN-tracks section: tracks per stretch from the topology, slots by a min-cost tension LP, components placed on slots, length solve with exact curves), test-first, landed in steps. D349 (prio rows as real tracks; neighbours bend round the prio; the prio may bend) lands through it.
+- S1 DONE ng1 a8b146d1ff: `BuildPlanarSlots` (planar_slots.{h,cpp}), T2 7 ms, LL² 5.5 ms, spike's gap changes exactly; not read by the composer. Gate 639/639 on a clean run, but ~30-31 s (over budget, slow joint tests) and CPU-instability SIGILL/SIGSEGV flakes under load (unrelated tests; S1 tests clean over 60 Release + 25 ASan runs).
+- RUNNING: recon of every sideways decision in the composer (wip/RECON-sideways-sites.md) to brief the S2 probe.
+- Design: DESIGN-tracks §15; was: design the slot layer build (new DESIGN-tracks section: tracks per stretch from the topology, slots by a min-cost tension LP, components placed on slots, length solve with exact curves), test-first, landed in steps. D349 (prio rows as real tracks; neighbours bend round the prio; the prio may bend) lands through it.
 
 ## Waiting on the engineer
 1. D193 vs D345: may the checker take part in acceptance (prio placement search), or is that a stopgap?
