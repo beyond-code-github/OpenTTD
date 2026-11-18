@@ -140,6 +140,20 @@ PlanarSlots BuildPlanarSlots(const PlanarTopology &topology, const PlanarChannel
 		}
 	}
 
+	/* Probe S4c: a prio join's straight channel keeps the composer's entry gaps in its last interval. */
+	for (size_t s = 0; s < channels.sites.size(); s++) {
+		if (channels.sites[s].kind != PlanarSiteKind::Join || !sites[s].prio || sites[s].straight == UINT32_MAX) continue;
+		const uint32_t c = sites[s].straight;
+		const PlanarChannel &cc = channels.channels[c];
+		const int n = static_cast<int>(cc.lines.size());
+		const bool far_left = sites[s].side > 0;
+		const auto e = [](int j) { return j == 0 ? 0 : 2 * j - 1; };
+		for (int j = 1; j < n; j++) {
+			const double d = far_left ? e(j) : e(n - 1) - e(n - 1 - j);
+			row({{sv(PlanarSlotKind::Line, cc.lines[j], c, last(c)), 1}, {sv(PlanarSlotKind::Line, cc.lines[0], c, last(c)), -1}}, d, d);
+		}
+	}
+
 	/* A straight line across a site is linked by a charged step. */
 	struct LinkStep {
 		uint32_t from, to, up, dn;
