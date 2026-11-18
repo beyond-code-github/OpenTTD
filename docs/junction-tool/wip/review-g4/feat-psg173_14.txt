@@ -1,0 +1,52 @@
+switch (83,98) Right+X
+switch (97,98) Lower+X
+switch (106,98) Lower+X
+switch (79,99) Right+X
+bridge (95,99)-(100,99) dir SW mid 4
+switch (80,100) Right+X
+tunnel (82,100)-(87,100) dir SW mid 4
+bridge (95,100)-(99,100) dir SW mid 3
+switch (101,100) Left+X
+tunnel (82,101)-(87,101) dir SW mid 4
+switch (93,103) Right+X
+bridge (95,103)-(98,103) dir SW mid 2
+bridge (95,104)-(98,104) dir SW mid 2
+switch (100,104) Left+X
+switch (106,104) Right+X
+switch (93,105) Right+X
+bridge (95,105)-(98,105) dir SW mid 2
+bridge (95,106)-(98,106) dir SW mid 2
+switch (100,106) Left+X
+switch (89,107) Right+X
+switch (93,107) Right+X
+bridge (95,107)-(98,107) dir SW mid 2
+switch (85,108) Right+X
+bridge (95,108)-(98,108) dir SW mid 2
+switch (100,108) Left+X
+switch (86,109) Right+X
+bridge (88,109)-(92,109) dir SW mid 3
+bridge (95,109)-(98,109) dir SW mid 2
+bridge (89,110)-(93,110) dir SW mid 3
+bridge (95,110)-(98,110) dir SW mid 2
+switch (101,110) Left+X
+switch (93,111) Right+X
+bridge (95,111)-(99,111) dir SW mid 3
+switch (109,111) Left+Y
+bridge (96,112)-(100,112) dir SW mid 3
+switch (102,112) Left+X
+bridge (113,112)-(113,117) dir SE mid 4
+bridge (114,112)-(114,117) dir SE mid 4
+bridge (109,113)-(109,117) dir SE mid 3
+bridge (110,113)-(110,117) dir SE mid 3
+switch (112,114) Lower+X
+switch (124,114) Lower+X
+switch (107,115) Right+X
+tunnel (110,115)-(115,115) dir SW mid 4
+switch (99,116) Right+Y
+tunnel (110,116)-(115,116) dir SW mid 4
+switch (118,116) Left+X
+switch (110,119) Right+Y
+switch (113,119) Lower+Y
+switch (111,123) Right+Y
+switch (100,127) Lower+Y
+switch (112,127) Lower+Y

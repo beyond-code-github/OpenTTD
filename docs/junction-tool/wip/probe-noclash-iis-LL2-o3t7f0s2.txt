@@ -1,0 +1,8 @@
+IIS flex : -1*E1#2.end.y +1*E2#5.end.y=E2a.start.y=E2b.start.y = 2
+IIS seg E2a#0 : -1*E2#5.end.x=E2a.start.x=E2b.start.x -1*E2a#0.L +1*E2a#0.end.x = 0
+IIS seg E2a#0 : -1*E2#5.end.y=E2a.start.y=E2b.start.y +1*E2a#0.L +1*E2a#0.end.y = 0
+IIS seg E2a#1 : -1*E2a#0.end.y +1*E2a#1.end.y = 0
+IIS seg E2a#2 : -1*E2a#1.end.y +1*E2a#2.end.y = 0
+IIS seg E2a#3 : -1*E2a#2.end.y +1*E2a#3.end.y=EDj1.start.y = 0
+IIS rung : -1*E1#2.end.y +1*E2a#3.end.y=EDj1.start.y >= 2
+IIS rung : -1*E2#5.end.x=E2a.start.x=E2b.start.x +1*E2#5.end.y=E2a.start.y=E2b.start.y +1*E2a#0.end.x -1*E2a#0.end.y >= 2

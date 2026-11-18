@@ -1,0 +1,56 @@
+switch (150,409) Left+Y
+switch (152,411) Left+Y
+switch (149,413) Left+Y
+bridge (152,413)-(152,417) dir SE mid 3
+bridge (153,414)-(153,418) dir SE mid 3
+switch (148,417) Left+Y
+switch (148,419) Left+Y
+switch (153,420) Right+Y
+bridge (148,421)-(148,424) dir SE mid 2
+switch (147,422) Left+Y
+bridge (149,422)-(149,425) dir SE mid 2
+switch (148,427) Left+Lower+Y
+switch (149,427) Right+Upper+Y
+bridge (167,428)-(170,428) dir SW mid 2
+bridge (149,429)-(149,433) dir SE mid 3
+tunnel (151,429)-(154,429) dir SW mid 2
+switch (156,429) Lower+Right
+bridge (158,429)-(162,429) dir SW mid 3
+bridge (168,429)-(171,429) dir SW mid 2
+switch (179,429) Lower+X
+bridge (148,430)-(148,434) dir SE mid 3
+switch (150,430) Upper+X
+tunnel (151,430)-(154,430) dir SW mid 2
+switch (156,430) Left+Upper
+bridge (158,430)-(162,430) dir SW mid 3
+switch (170,430) Left+X
+switch (173,430) Left+X
+tunnel (151,431)-(154,431) dir SW mid 2
+bridge (158,431)-(162,431) dir SW mid 3
+switch (165,431) Lower+X
+switch (147,432) Lower+Y
+switch (149,432) Upper+X
+tunnel (151,432)-(154,432) dir SW mid 2
+bridge (158,432)-(162,432) dir SW mid 3
+switch (159,434) Left+Y
+switch (153,435) Left+Y
+tunnel (159,436)-(159,440) dir SE mid 3
+tunnel (160,436)-(160,440) dir SE mid 3
+switch (144,437) Upper+X
+switch (146,437) Upper+X
+bridge (159,437)-(162,437) dir SW mid 2
+switch (145,438) Right+X
+bridge (148,438)-(151,438) dir SW mid 2
+bridge (158,438)-(161,438) dir SW mid 2
+switch (163,438) Left+X
+bridge (147,439)-(150,439) dir SW mid 2
+switch (152,439) Left+X
+switch (159,439) Upper+X
+switch (139,441) Upper+X
+bridge (147,441)-(150,441) dir SW mid 2
+switch (149,441) Right+Y
+switch (146,442) Upper+X
+bridge (148,442)-(151,442) dir SW mid 2
+switch (153,443) Left+X
+switch (157,443) Upper+X
+switch (172,443) Left+X

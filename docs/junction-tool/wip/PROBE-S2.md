@@ -1,4 +1,46 @@
+## Run 6 (S4c)
+
+Probe branch probe-s4c (4665a6f761, from probe-s4b d418d3fa5a): prio join entry gaps added as equality rows in the last interval of the join's straight channel (planar_slots.cpp only), PLANAR_S2W=0 unless noted.
+
+| hub | built / failed | best (baseline) | better / worse / equal | median change | median ms (baseline) |
+|---|---|---|---|---|---|
+| T2 W=0 | 28 / 4, "base infeasible" x4 (same 4 tags as baseline) | 862.25 (862.25) | 0 / 0 / 28 | 0 | 570.0 (583.5) |
+| T3 W=0 | 28 / 4, "base infeasible" x4 (same as baseline) | 1933.25 (1933.25) | 0 / 0 / 28 | 0 | 364.5 (370.5) |
+| LL2 W=0 | 12 / 0 | 2354.25 (2354.25) | 0 / 0 / 12 | 0 | 3954.0 (4074.5) |
+| T2 W=1 | 28 / 4, same | 862.25 (862.25) | 0 / 0 / 28 | 0 | 564.0 (583.5) |
+| LL2 W=1 | 12 / 0 | 2354.25 (2354.25) | 0 / 0 / 12 | 0 | 3959.5 (4074.5) |
+
+No variant that builds at baseline fails, so no IIS runs. T2 and T3 match baseline; LL2 gain (S2c, -135) is gone: equal to baseline in all 12.
+
+## Run 5 (S4b)
+
+Probe branch probe-s4b (from probe-s4a 0e4b747ffa): the carry-on row `s(L,iv+1) - s(copy,iv) = 0` becomes `... - up + dn = 0` with up, dn >= 0 integer, cost 1 each (planar_slots.cpp only). PLANAR_S2W=10 PLANAR_S2LOG=1.
+
+| hub | built / failed | best (baseline) | better / worse / equal | median change | median ms (baseline) |
+|---|---|---|---|---|---|
+| T2 | 28 / 4, "base infeasible" x4 (o0t3f0s0, o0t3f0s1, o1t3f0s0, o1t3f0s1: the same 4 that fail at baseline) | 862.25 (862.25) | 0 / 0 / 28 | 0 | 556.5 (583.5) |
+| T3 | 0 / 32, "base infeasible" x32 | - (1933.25) | - | - | - (370.5) |
+| LL2 | 12 / 0 | 2354.25 (2354.25) | 0 / 0 / 12 | 0 | 3978.5 (4074.5) |
+| LL2 W=1 | 12 / 0 | 2354.25 (2354.25) | 0 / 0 / 12 | 0 | 3945.0 (4074.5) |
+
+T2: the s4a failure is gone (28 of 32 build, all areas identical to baseline). T3: all 32 fail (28 built at baseline).
+IIS, T2 o0t3f0s0 (a baseline failure too): rows deck B2"#1@L1466, cross B2"#1>F2#3@L1455, cross B2#4>D2#1@L1452, deck B2#4@L1465, deck chain x2 (L1444), port order (L1863), seg CD2/D2/F2/AF2, flex (L1124), seg B1/B2 (second pass: cross B1"#1>F2#2@L1455). No S2DIFF lines. Not the B run offset.
 ## Run 3 (S2c)
+
+## Run 4 (S4a)
+
+Probe branch probe-s4a (0e4b747ffa, from probe-s2c e81145c17a): no Row tracks; a prio fray's straight leg off a non-far lane is fixed one slot toward the far lane, uncharged.
+
+| hub | built / failed | best (baseline) | better / worse / equal | median change | median ms (baseline) |
+|---|---|---|---|---|---|
+| T2 | 0 / 32, "base infeasible" x32 | - (862.25) | - | - | - (583.5) |
+| T3 | 0 / 32, "base infeasible" x32 | - (1933.25) | - | - | - (370.5) |
+| LL2 | 12 / 0 | 2230.25 (2354.25) | 12 / 0 / 0 | -135.0 | 4964.5 (4074.5) |
+
+T2 o0t0f0s0 IIS (first failing tag): rows seg B1#11, seg B2#10, run offset (B1#10.end.y - B2#9.end.y = 6), seg B2#11, seg C2#6, tie@L1063, seg B1#12, cross B1#13>C2#6 (v377 >= 1). Core is the B1/B2 run offset against the C2 crossing and tie, not the channel 10 flex row.
+S2DIFF (T2 o1t3f1s0, and the first tag): only "channel 7 core post lane 1 old 1 slot 3".
+jt fast [planar]: 4 test cases fail, all in planar_slots.cpp (T2 and LL2 gap changes, doubled-line parallelogram, tracks).
+
 Commits on probe-s2c: A 64ce475b60, B e81145c17a. Baseline = wt-planar 20f98229e0 (pv-*.baseline, tag lists match 32/32/12).
 - T2 and T3, A and B (W=3, W=10): all 32 variants of each fail with "base infeasible" (the composer's first solve), 0 built; "slot change inside one piece" is gone. With PLANAR_S2LOG on T2 o0t0f0s0 the composer's piece diffs remain (channel 7 core post lane 1 old 1 slot 3; channel 10 core pre/x/post lane 1 old 1 slot 2).
 - LL2 (12 variants, all built in A, B3, B10): best 2230.25 vs baseline 2354.25; 12 better, 0 worse, 0 equal; median change -135.0 in all three runs; median solve 4.87 s (A), 4.93 s (W=3), 4.98 s (W=10) vs baseline 4.07 s. The width weight changes nothing measurable.

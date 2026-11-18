@@ -1,0 +1,20 @@
+== PSG_173 73 92 130 133
+box 58x42 rail tiles axis 392 diag 204, parallel-diag tiles 37, switch tiles 30, X&Y 0
+bridges 18 middles [(2, 8), (3, 7), (4, 3)]
+bridge under-kinds [(('perp', 'perp'), 8), (('diag', 'diag', 'diag'), 4), (('diag', 'diag', 'diag', 'diag'), 2), (('perp', 'diag', 'diag'), 2), (('perp', 'perp', 'perp'), 1), (('perp',), 1)]
+tunnels 4 lengths [(4, 4)]
+== PublicServerGame_327_Final 133 403 185 449
+box 53x47 rail tiles axis 339 diag 269, parallel-diag tiles 42, switch tiles 32, X&Y 0
+bridges 18 middles [(2, 10), (3, 8)]
+bridge under-kinds [(('diag', 'diag'), 9), (('diag', 'diag', 'diag'), 4), (('perp', 'perp'), 4), (('perp',), 1)]
+tunnels 6 lengths [(2, 4), (3, 2)]
+== PublicServerGame_325_Final 121 124 163 180
+box 43x57 rail tiles axis 323 diag 309, parallel-diag tiles 42, switch tiles 39, X&Y 3
+bridges 15 middles [(2, 5), (3, 5), (4, 3), (5, 1), (6, 1)]
+bridge under-kinds [(('diag', 'diag', 'diag'), 3), (('diag', 'diag'), 3), (('perp', 'perp', 'perp', 'perp'), 2), (('perp', 'perp', 'perp'), 1), (('perp', 'perp', 'diag', 'diag'), 1), (('perp', 'perp'), 1), (('diag', 'diag', 'perp'), 1), (('diag', 'diag', 'diag', 'diag'), 1)]
+tunnels 6 lengths [(4, 6)]
+== PublicServerGame_41_Final 60 577 80 593
+box 21x17 rail tiles axis 84 diag 32, parallel-diag tiles 0, switch tiles 4, X&Y 0
+bridges 0 middles []
+bridge under-kinds []
+tunnels 3 lengths [(2, 2), (6, 1)]

@@ -1,0 +1,12 @@
+W98 1 -> E101 0: 63 tiles, switches [(83, 98), (97, 98)], heads 0, piece changes 12
+W98 1 -> S112 2: 71 tiles, switches [(83, 98), (93, 103), (100, 104), (106, 104), (113, 119), (112, 127)], heads 4, piece changes 33
+E114 3 -> S112 2: 38 tiles, switches [(124, 114), (112, 127)], heads 0, piece changes 6
+E114 3 -> W108 4: 59 tiles, switches [(124, 114), (118, 116), (107, 115), (101, 110), (86, 109), (85, 108)], heads 4, piece changes 24
+S99 5 -> E101 0: 78 tiles, switches [(99, 116), (97, 98)], heads 0, piece changes 22
+S99 5 -> W108 4: 52 tiles, switches [(99, 116), (85, 108)], heads 0, piece changes 19
+S100 6 -> W107 7: 61 tiles, switches [(100, 127), (102, 112), (93, 111), (89, 107)], heads 2, piece changes 29
+S100 6 -> E102 11: 76 tiles, switches [(100, 127), (106, 98)], heads 0, piece changes 22
+E113 8 -> W107 7: 64 tiles, switches [(112, 114), (100, 108), (93, 107), (89, 107)], heads 2, piece changes 18
+E113 8 -> S111 9: 40 tiles, switches [(112, 114), (111, 123)], heads 0, piece changes 6
+W99 10 -> S111 9: 68 tiles, switches [(79, 99), (93, 105), (100, 106), (109, 111), (110, 119), (111, 123)], heads 4, piece changes 31
+W99 10 -> E102 11: 60 tiles, switches [(79, 99), (80, 100), (101, 100), (106, 98)], heads 2, piece changes 22

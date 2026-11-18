@@ -1,0 +1,12 @@
+W436 1 -> N147 0: 48 tiles, switches [(147, 432), (147, 422)], heads 0, piece changes 8
+W436 1 -> E429 2: 57 tiles, switches [(147, 432), (150, 430), (156, 429), (156, 430), (173, 430), (179, 429)], heads 4, piece changes 27
+N150 3 -> E429 2: 62 tiles, switches [(150, 409), (179, 429)], heads 0, piece changes 35
+N150 3 -> W445 4: 79 tiles, switches [(150, 409), (152, 411), (153, 420), (159, 439), (152, 439), (145, 438)], heads 4, piece changes 43
+E437 5 -> W445 4: 69 tiles, switches [(172, 443), (159, 439), (152, 439), (145, 438)], heads 2, piece changes 40
+E437 5 -> N148 6: 82 tiles, switches [(172, 443), (163, 438), (153, 435), (148, 417)], heads 2, piece changes 45
+W437 7 -> N148 6: 47 tiles, switches [(144, 437), (146, 437), (148, 427), (149, 427), (148, 419), (148, 417)], heads 4, piece changes 12
+W437 7 -> E433 8: 58 tiles, switches [(144, 437), (149, 432), (165, 431), (170, 430)], heads 2, piece changes 23
+N149 9 -> E433 8: 67 tiles, switches [(149, 413), (170, 430)], heads 0, piece changes 43
+N149 9 -> W446 10: 83 tiles, switches [(149, 413), (159, 434), (157, 443), (153, 443), (146, 442), (139, 441)], heads 2, piece changes 48
+E439 11 -> N147 0: 93 tiles, switches [(149, 441), (147, 422)], heads 0, piece changes 40
+E439 11 -> W446 10: 70 tiles, switches [(149, 441), (139, 441)], heads 0, piece changes 38

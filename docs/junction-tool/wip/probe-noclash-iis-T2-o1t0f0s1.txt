@@ -1,0 +1,9 @@
+IIS seg F1#3 : -1*F1#2.end.x +1*F1#3.end.x = 0
+IIS seg F1#4 : -1*F1#3.end.x +1*F1#4.end.x = 0
+IIS seg F1#5 : -1*F1#4.end.x -1*F1#5.L +1*F1#5.end.x = 0
+IIS tie@L983 : -1*A1#4.end.x=AF1.start.x +1*F1#5.end.x = 0
+IIS cross B1#8>F1#3@L1309 : -1*F1#2.end.x +1*B1#7.end.x=B1".start.x -1*v465 = 0
+IIS deck B1#8@L1322 : +1*v465 -1*v473 >= 3
+IIS deck chain : -1*B1#7.end.x=B1".start.x +1*B1"#0.end.x +1*v473 -1*v475 = 2
+IIS rung : -1*A2#3.end.x +1*A1#4.end.x=AF1.start.x >= 2
+IIS rung : +1*A2#3.end.x -1*B1"#0.end.x >= 1
