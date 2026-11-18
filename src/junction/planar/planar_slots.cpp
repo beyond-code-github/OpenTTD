@@ -190,6 +190,7 @@ PlanarSlots BuildPlanarSlots(const PlanarTopology &topology, const PlanarChannel
 	for (uint32_t c = 0; c < channels.channels.size(); c++) {
 		for (uint32_t line : channels.channels[c].lines) {
 			for (uint32_t iv = 0; iv + 1 < intervals[c].size(); iv++) {
+				if (var.count({PlanarSlotKind::Copy, line, c, iv}) != 0) continue; // Probe S4e: the bridge's move onto the copy is not charged; the copy rows charge any step back.
 				const double late = 1 + 0.001 * (static_cast<double>(intervals[c].size()) - 1 - iv);
 				const uint32_t up = milp.AddVariable(0, JunctionMilp::INF, late, true), dn = milp.AddVariable(0, JunctionMilp::INF, late, true);
 				row({{sv(PlanarSlotKind::Line, line, c, iv + 1), 1}, {sv(PlanarSlotKind::Line, line, c, iv), -1}, {up, -1}, {dn, 1}}, 0, 0);
