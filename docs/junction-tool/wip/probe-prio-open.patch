@@ -1,0 +1,49 @@
+diff --git a/src/junction/planar/planar_components.cpp b/src/junction/planar/planar_components.cpp
+index 91bfe5c0c6..616ebf865e 100644
+--- a/src/junction/planar/planar_components.cpp
++++ b/src/junction/planar/planar_components.cpp
+@@ -2560,10 +2560,17 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
+ 		if (mode != "default") {
+ 			const PlanarPaths dflt = BuildPlanarPaths(topology, channels, variant.over);
+ 			std::string program_why;
+-			if (dflt.why.empty()) program_shape = SolvePlanarShape(topology, channels, PlanarLineSides(topology, channels), dflt.over, nullptr, &program_why);
++			const bool prio_open = std::getenv("PLANAR_PRIOOPEN") != nullptr;
++			if (dflt.why.empty() || prio_open) program_shape = SolvePlanarShape(topology, channels, PlanarLineSides(topology, channels), dflt.over, nullptr, &program_why);
+ 			else program_why = dflt.why;
+ 			if (program_shape.empty() && std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "variant {}: shape program failed ({}), solving with the default shape\n", out.tag, program_why);
+-			if (mode == "program") {
++			if (prio_open && !dflt.why.empty()) {
++				if (program_shape.empty()) {
++					out.why = "default shape: " + dflt.why + "; program shape: " + program_why;
++					return out;
++				}
++				shape = &program_shape;
++			} else if (mode == "program") {
+ 				if (!program_shape.empty()) shape = &program_shape;
+ 			} else {
+ 				/* Score both shapes: the default one, then the program's when it differs; the smaller area wins, a tie goes to the default. */
+diff --git a/src/junction/planar/planar_paths.cpp b/src/junction/planar/planar_paths.cpp
+index 98fd6729ec..1969d8c5dc 100644
+--- a/src/junction/planar/planar_paths.cpp
++++ b/src/junction/planar/planar_paths.cpp
+@@ -49,7 +49,7 @@ std::vector<uint32_t> PlanarOpenCrossings(const PlanarChannels &channels)
+ 	std::vector<uint32_t> open;
+ 	for (uint32_t x = 0; x < channels.crossings.size(); x++) {
+ 		const PlanarChannelCrossing &c = channels.crossings[x];
+-		if (channels.channels[c.a].prio == channels.channels[c.b].prio) open.push_back(x);
++		if (std::getenv("PLANAR_PRIOOPEN") != nullptr || channels.channels[c.a].prio == channels.channels[c.b].prio) open.push_back(x);
+ 	}
+ 	return open;
+ }
+@@ -213,7 +213,10 @@ PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannel
+ 		if (it == open.end()) {
+ 			out.over[x] = channels.channels[c.a].prio ? c.a : c.b;
+ 		} else {
+-			out.over[x] = (choice >> (it - open.begin()) & 1) != 0 ? c.b : c.a;
++			const bool bit = (choice >> (it - open.begin()) & 1) != 0;
++			if (channels.channels[c.a].prio == channels.channels[c.b].prio) out.over[x] = bit ? c.b : c.a;
++			else out.over[x] = (bit != channels.channels[c.a].prio) ? c.a : c.b; // bit 0: the prio channel over
++
+ 		}
+ 	}
+ 
