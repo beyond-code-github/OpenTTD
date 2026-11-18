@@ -16,6 +16,7 @@
 #include "planar_gaps.h"
 #include "planar_paths.h"
 #include "planar_regions.h"
+#include "planar_slots.h"
 
 #include "../junction_spec.h"
 #include "../placement/junction_milp.h"
@@ -849,6 +850,78 @@ private:
 		return n;
 	}
 
+	PlanarSlots slots; ///< The slot layer of the variant (probe S2).
+
+	/** The slot of a line in a channel's interval. */
+	int SlotOf(uint32_t c, const std::string &iv, uint32_t line)
+	{
+		for (const PlanarSlotInterval &in : this->slots.channels[c]) {
+			if (in.name != iv) continue;
+			for (const PlanarSlotTrack &tr : in.tracks) {
+				if (tr.kind == PlanarSlotKind::Line && tr.line == line) return tr.slot;
+			}
+		}
+		this->M.Fail("slot layer lacks a track");
+		return 0;
+	}
+
+	/** The name of the idx-th interval of a channel: pre, x0, mid0, x1, ..., post. */
+	std::string IvName(uint32_t c, size_t idx) const
+	{
+		const size_t m = this->ch.channels[c].crossings.size();
+		if (idx == 0) return "pre";
+		if (m == 0) return "post";
+		if (idx % 2 == 1) return fmt::format("x{}", (idx - 1) / 2);
+		const size_t i = idx / 2 - 1;
+		return i + 1 < m ? fmt::format("mid{}", i) : std::string("post");
+	}
+
+	/** The slot offsets of a channel's lanes from lane 0, which must agree over the given intervals (one segment spans them). */
+	std::vector<int> Offs(uint32_t c, const std::vector<std::string> &ivs)
+	{
+		const auto &lines = this->ch.channels[c].lines;
+		std::vector<int> out;
+		for (size_t k = 0; k < ivs.size(); k++) {
+			std::vector<int> o;
+			for (uint32_t l : lines) o.push_back(this->SlotOf(c, ivs[k], l) - this->SlotOf(c, ivs[k], lines[0]));
+			if (k == 0) {
+				out = o;
+			} else if (o != out) {
+				this->M.Fail("slot change inside one piece");
+				if (std::getenv("PLANAR_S2LOG") != nullptr) {
+					std::string txt;
+					for (size_t q = 0; q < k + 1; q++) {
+						txt += ivs[q] + "[";
+						for (uint32_t l : lines) txt += fmt::format("{} ", this->SlotOf(c, ivs[q], l));
+						txt += "] ";
+					}
+					fmt::print(stderr, "S2SPLIT {} channel {} {}\n", g_tag, c, txt);
+				}
+			}
+		}
+		return out;
+	}
+
+	/** Log a place where a slot offset differs from the old constant. */
+	void LogDiff(uint32_t c, const std::string &what, size_t lane, int old_off, int slot_off) const
+	{
+		if (old_off == slot_off || std::getenv("PLANAR_S2LOG") == nullptr) return;
+		fmt::print(stderr, "S2DIFF {} channel {} {} lane {} old {} slot {}\n", g_tag, c, what, lane, old_off, slot_off);
+	}
+
+	/** The S-bend of a lane by delta slots at the start of the segment on heading h that follows; false (a failure) on a diagonal. */
+	bool SlotBend(const std::string &l, int h, int delta)
+	{
+		if (delta == 0) return true;
+		if (!IsAxis(h)) {
+			this->M.Fail("a slot step on a diagonal piece is not composed");
+			return false;
+		}
+		this->M.AddSeg(l, h, 0);
+		this->M.AddSeg(l, Turn(h, delta > 0 ? +1 : -1), 2 * (delta < 0 ? -delta : delta), 2 * (delta < 0 ? -delta : delta));
+		return true;
+	}
+
 	/** A fork: a lane split's legs leave its in line's end, each with an optional outward diagonal, at least a line apart after it (which leg runs straight is the solver's). */
 	void Fork(int h, const std::string &in, const std::string &left, const std::string &right)
 	{
@@ -929,7 +1002,7 @@ private:
 	}
 
 	/** n-lane fray (probe 9): lanes far..near; V_k crosses every nearer S_j; each crossed S_j decks over all farther V. */
-	void Fray(int h, int sigma, const std::vector<std::string> &ins, const std::vector<std::string> &S, const std::vector<std::string> &V, bool prio)
+	void Fray(int h, int sigma, const std::vector<std::string> &ins, const std::vector<std::string> &S, const std::vector<std::string> &V, bool prio, const std::vector<int> &gaps)
 	{
 		Model &M = this->M;
 		const int Lt = Turn(h, -1);
@@ -949,7 +1022,7 @@ private:
 		}
 		for (size_t k = 1; k < n; k++) {
 			const TagScope ts("fray gap");
-			M.Add(Ge((Dot(r, sp[k]) - Dot(r, sp[k - 1])) * sigma, prio ? 4 : 2));
+			M.Add(Eq(Dot(r, sp[k]) - Dot(r, sp[k - 1]), gaps[k - 1]));
 		}
 		M.AddSeg(S[0], h, 2);
 		std::vector<Seg> vs;
@@ -1035,7 +1108,11 @@ private:
 				const Seg &b = f_first ? st[k + 1] : st[k];
 				M.Add(Ge(Dot(STEP[h], a.a) - Dot(STEP[h], b.a), 0));
 			}
-			M.Add(Eq(Dot(r, M.End(O[k + 1])) - Dot(r, M.End(O[k])), 2 * sigma));
+			const uint32_t lo = PlanarLineByName(this->t, O[k]), lo1 = PlanarLineByName(this->t, O[k + 1]);
+			const uint32_t oc = this->ch.channel_of_line[lo];
+			const int gap = this->SlotOf(oc, "pre", lo1) - this->SlotOf(oc, "pre", lo);
+			this->LogDiff(oc, "join out gap pre", k + 1, 1, gap * sigma);
+			M.Add(Eq(Dot(r, M.End(O[k + 1])) - Dot(r, M.End(O[k])), 2 * gap));
 		}
 	}
 
@@ -1072,37 +1149,68 @@ private:
 		Model &M = this->M;
 		const std::vector<std::string> lanes = this->Lanes(c);
 		const int n = static_cast<int>(lanes.size());
+		const std::vector<uint32_t> &cp = this->paths.paths[c].crossing_piece;
+		std::vector<int> prev(n, 0);
 		for (size_t k = 0; k < heads.size(); k++) {
 			const int h = heads[k];
 			const auto &r = Right(h);
+			/* The intervals this piece's lead spans, and where its run after its own decks lies. */
+			size_t first = SIZE_MAX, last = 0, before = 0;
+			for (size_t i = 0; i < cp.size(); i++) {
+				if (cp[i] == k) {
+					first = std::min(first, i);
+					last = i;
+				} else if (cp[i] < k) {
+					before++;
+				}
+			}
+			std::vector<std::string> ivs;
+			if (first != SIZE_MAX) {
+				for (size_t idx = 2 * first + 1; idx <= 2 * last + 1; idx++) ivs.push_back(this->IvName(c, idx));
+			} else if (cp.empty()) {
+				ivs.push_back(k + 1 == heads.size() ? "post" : "pre");
+			} else {
+				ivs.push_back(this->IvName(c, 2 * before));
+			}
+			const std::vector<int> cur = this->Offs(c, ivs);
+			const bool dbl = doubled.contains(static_cast<uint32_t>(k));
+			const std::vector<int> tail_off = dbl ? this->Offs(c, {this->IvName(c, 2 * last + 2)}) : cur;
+			if (!M.error.empty()) return;
+			for (int j = 1; j < n; j++) {
+				this->LogDiff(c, fmt::format("{} piece {}", ivs.front(), k), j, j, cur[j]);
+				if (dbl) this->LogDiff(c, fmt::format("tail of piece {}", k), j, j, tail_off[j]);
+			}
 			std::vector<Seg> tails;
 			for (int j = 0; j < n; j++) {
 				const std::string &l = lanes[j];
+				if (k > 0 && !this->SlotBend(l, h, cur[j] - prev[j])) return;
 				const Seg lead = M.AddSeg(l, h, 0, std::nullopt, IsAxis(h) ? 1.0 : std::sqrt(2.0));
 				this->piece_segs[c][l].push_back(lead);
-				if (!doubled.contains(static_cast<uint32_t>(k))) {
+				if (!dbl) {
 					tails.push_back(lead);
 					continue;
 				}
 				const int sg = j == 0 ? -1 : +1;
-				const std::string cp = this->StartCopy(l, fmt::format("\"{}", k));
+				const std::string cpn = this->StartCopy(l, fmt::format("\"{}", k));
 				const Seg d0 = M.AddSeg(l, h, 2);
 				M.AddSeg(l, Turn(h, sg), 2, 2);
-				M.AddSeg(cp, Turn(h, sg), 2, 2);
-				const Seg d1 = M.AddSeg(cp, h, 2);
-				M.Tie(M.End(cp), M.End(l));
-				M.copies.push_back({cp, l, d0.i, d0.i + 2});
+				M.AddSeg(cpn, Turn(h, sg), 2, 2);
+				const Seg d1 = M.AddSeg(cpn, h, 2);
+				M.Tie(M.End(cpn), M.End(l));
+				M.copies.push_back({cpn, l, d0.i, d0.i + 2});
 				M.AddSeg(l, h, 2);
 				M.AddSeg(l, Turn(h, -sg), 2, 2);
+				if (!this->SlotBend(l, h, tail_off[j] - cur[j])) return;
 				tails.push_back(M.AddSeg(l, h, 0));
 				this->dbl_decks[{c, static_cast<uint32_t>(k)}].insert_or_assign(l, std::pair<Seg, Seg>{d0, d1});
 				this->piece_tails[{c, static_cast<uint32_t>(k)}].insert_or_assign(l, tails.back());
 			}
 			for (int j = 1; j < n; j++) {
 				const TagScope ts("bundle offset");
-				M.Add(Eq(Dot(r, this->piece_segs[c][lanes[j]][k].a) - Dot(r, this->piece_segs[c][lanes[0]][k].a), 2 * j));
-				M.Add(Eq(Dot(r, tails[j].b) - Dot(r, tails[0].b), 2 * j));
+				M.Add(Eq(Dot(r, this->piece_segs[c][lanes[j]][k].a) - Dot(r, this->piece_segs[c][lanes[0]][k].a), 2 * cur[j]));
+				M.Add(Eq(Dot(r, tails[j].b) - Dot(r, tails[0].b), 2 * tail_off[j]));
 			}
+			prev = tail_off;
 		}
 	}
 
@@ -1173,6 +1281,11 @@ void MappedComposer::Build()
 		M.Fail(why);
 		return;
 	}
+	this->slots = BuildPlanarSlots(t, ch, res, this->paths.over);
+	if (!this->slots.why.empty()) {
+		M.Fail(this->slots.why);
+		return;
+	}
 	int tie = 0;
 	for (size_t s = 0; s < ch.sites.size(); s++) {
 		if (!PlanarSitePerNode(ch.sites[s]) && ch.sites[s].straight == UINT32_MAX) tie++;
@@ -1239,7 +1352,12 @@ void MappedComposer::Build()
 			S.push_back(t.lines[a_straight ? a : b].name);
 			V.push_back(t.lines[a_straight ? b : a].name);
 		}
-		this->Fray(h, rs.side, in_names, S, V, rs.prio);
+		std::vector<int> gaps;
+		for (size_t k = 1; k < ins.size(); k++) {
+			gaps.push_back(2 * (this->SlotOf(site.channel, "post", ins[k]) - this->SlotOf(site.channel, "post", ins[k - 1])));
+			this->LogDiff(site.channel, "fray gap post", k, rs.prio ? 2 : 1, gaps.back() / 2 * rs.side);
+		}
+		this->Fray(h, rs.side, in_names, S, V, rs.prio, gaps);
 	};
 
 	/* Movement channels: a bundle on their path. */
@@ -1269,7 +1387,7 @@ void MappedComposer::Build()
 			doubled.insert(path.crossing_piece[i]);
 		}
 		this->Bundle(c, heads, doubled);
-		return true;
+		return M.error.empty();
 	};
 
 	/* Straight channels: a run to the join-entry lines; a prio channel over crossings doubles each lane over them all (the core). */
@@ -1279,13 +1397,24 @@ void MappedComposer::Build()
 		const int n = static_cast<int>(lanes.size());
 		const int h = static_cast<int>(this->paths.paths[c].headings.front());
 		const std::optional<size_t> join = site_of(c, false);
-		std::vector<int> offs(n);
-		for (int j = 0; j < n; j++) offs[j] = j;
+		/* The lead spans pre (and every x and mid when no deck is built); the decks' segment every x and mid; the run after them post. */
+		std::vector<std::string> x_ivs;
+		for (size_t idx = 1; idx + 1 < 2 * cc.crossings.size() + 1; idx++) x_ivs.push_back(this->IvName(c, idx));
+		const bool has_overs = std::ranges::any_of(cc.crossings, [&](uint32_t x) { return this->paths.over[x] == c; });
+		std::vector<std::string> lead_ivs{"pre"};
+		if (!has_overs) lead_ivs.insert(lead_ivs.end(), x_ivs.begin(), x_ivs.end());
+		const std::vector<int> offs = this->Offs(c, lead_ivs);
+		const std::vector<int> x_offs = has_overs && !x_ivs.empty() ? this->Offs(c, x_ivs) : offs;
+		const std::vector<int> post_offs = this->Offs(c, {"post"});
+		if (!M.error.empty()) return false;
 		bool far_left = true;
-		if (join.has_value() && res[*join].straight == c && res[*join].prio) {
-			far_left = res[*join].side > 0;
-			const std::vector<int> e = JoinEntry(n);
-			for (int j = 0; j < n; j++) offs[j] = far_left ? e[j] : e[n - 1] - e[n - 1 - j];
+		if (join.has_value() && res[*join].straight == c && res[*join].prio) far_left = res[*join].side > 0;
+		for (int j = 1; j < n; j++) {
+			const std::vector<int> e = join.has_value() && res[*join].straight == c && res[*join].prio ? JoinEntry(n) : std::vector<int>();
+			const int old = e.empty() ? j : (far_left ? e[j] : e[n - 1] - e[n - 1 - j]);
+			this->LogDiff(c, "core pre", j, old, offs[j]);
+			this->LogDiff(c, "core x", j, old, x_offs[j]);
+			this->LogDiff(c, "core post", j, old, post_offs[j]);
 		}
 		cores_built.insert(c);
 		int jog = 0;
@@ -1299,7 +1428,12 @@ void MappedComposer::Build()
 		for (uint32_t x : cc.crossings) {
 			if (this->paths.over[x] == c) overs.push_back(x);
 		}
-		if (overs.empty()) return true;
+		if (overs.empty()) {
+			for (int j = 1; j < n; j++) {
+				if (!this->SlotBend(lanes[j], h, post_offs[j] - offs[j])) return false;
+			}
+			return true;
+		}
 		const int full = this->FullLanes(c);
 		if (full != 0 && full != n) {
 			M.Fail("a straight channel over a crossing with doubled and single lanes is not composed yet");
@@ -1341,6 +1475,9 @@ void MappedComposer::Build()
 			}
 			return true;
 		};
+		for (int j = 1; j < n; j++) {
+			if (!this->SlotBend(lanes[j], h, x_offs[j] - offs[j])) return false;
+		}
 		if (full == 0) {
 			/* Lanes carrying a half share or less cross single. */
 			for (int j = 0; j < n; j++) {
@@ -1359,10 +1496,13 @@ void MappedComposer::Build()
 				wire.push_back([wire_decks, d0, d1]() { return wire_decks(d0, d1); });
 			}
 		}
+		for (int j = 1; j < n; j++) {
+			if (!this->SlotBend(lanes[j], h, post_offs[j] - x_offs[j])) return false;
+		}
 		std::vector<Seg> run;
 		for (const std::string &l : lanes) run.push_back(M.AddSeg(l, h, 0));
 		const TagScope ts("run offset");
-		for (int j = 1; j < n; j++) M.Add(Eq(Dot(Right(h), run[j].a) - Dot(Right(h), run[0].a), 2 * offs[j]));
+		for (int j = 1; j < n; j++) M.Add(Eq(Dot(Right(h), run[j].a) - Dot(Right(h), run[0].a), 2 * post_offs[j]));
 		for (int j = 0; j < n; j++) this->piece_tails[{c, 0}].insert_or_assign(lanes[j], run[j]);
 		return true;
 	};
