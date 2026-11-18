@@ -104,17 +104,17 @@ static void CheckGapChanges(const SlotsVariant &v, double objective, const std::
 TEST_CASE("planar slots: T2 o1t3f1s0 gap changes", "[junction][planar]")
 {
 	const SlotsVariant v = BuildVariant(PlanarTText(2), 1, 3, 1);
-	CheckGapChanges(v, 59, {
-		{{"EF1", "EF2"}, +1}, {{"CB1", "CB2"}, -2}, {{"ED1", "ED2"}, -1}, {{"AB1", "AB2"}, +1},
-		{{"CD1", "CD2"}, 0}, {{"AF1", "AF2"}, 0}, {{"A1", "A2"}, 0}, {{"B1", "B2"}, +1},
-		{{"C1", "C2"}, 0}, {{"D1", "D2"}, 0}, {{"E1", "E2"}, 0}, {{"F1", "F2"}, 0},
+	CheckGapChanges(v, 4.0041, {
+		{{"EF1", "EF2"}, +1}, {{"CB1", "CB2"}, 0}, {{"ED1", "ED2"}, 0}, {{"AB1", "AB2"}, +1},
+		{{"CD1", "CD2"}, 0}, {{"AF1", "AF2"}, 0}, {{"A1", "A2"}, 0}, {{"B1", "B2"}, -1},
+		{{"C1", "C2"}, 0}, {{"D1", "D2"}, 0}, {{"E1", "E2"}, -1}, {{"F1", "F2"}, 0},
 	});
 }
 
 TEST_CASE("planar slots: LL² o17t0f1s0 gap changes", "[junction][planar]")
 {
 	const SlotsVariant v = BuildVariant(PlanarLL2Text(), 17, 0, 1);
-	CheckGapChanges(v, 67, {
+	CheckGapChanges(v, 3.0054, {
 		{{"EF1", "EF2"}, +1}, {{"WO1", "WO2"}, 0}, {{"EO1", "EO2"}, 0}, {{"AB1", "AB2"}, +1},
 		{{"CD1", "CD2"}, +1}, {{"SO1", "SO2"}, 0}, {{"E1", "E2"}, -1}, {{"F1", "F2"}, +2},
 		{{"A1", "A2"}, 0}, {{"B1", "B2"}, +1}, {{"C1", "C2"}, 0}, {{"D1", "D2"}, 0},
@@ -122,24 +122,96 @@ TEST_CASE("planar slots: LL² o17t0f1s0 gap changes", "[junction][planar]")
 	});
 }
 
-TEST_CASE("planar slots: a doubled line carries on along its copy's track", "[junction][planar]")
+TEST_CASE("planar slots: a doubled line keeps its slot over consecutive doubled crossings", "[junction][planar]")
 {
+	size_t pairs = 0;
 	for (const SlotsVariant &v : {BuildVariant(PlanarTText(2), 1, 3, 1), BuildVariant(PlanarLL2Text(), 17, 0, 1)}) {
 		INFO(v.topology.name);
 		REQUIRE(v.slots.why.empty());
-		size_t copies = 0;
 		for (const std::vector<PlanarSlotInterval> &intervals : v.slots.channels) {
 			for (size_t iv = 0; iv + 1 < intervals.size(); iv++) {
 				for (const PlanarSlotTrack &track : intervals[iv].tracks) {
 					if (track.kind != PlanarSlotKind::Copy) continue;
-					copies++;
+					bool next_copy = false;
+					for (const PlanarSlotTrack &next : intervals[iv + 1].tracks) next_copy = next_copy || (next.kind == PlanarSlotKind::Copy && next.line == track.line);
+					if (!next_copy) continue;
+					pairs++;
 					INFO(intervals[iv].name << " line " << track.line);
-					CHECK(LineSlot(intervals[iv + 1], track.line) == track.slot);
+					CHECK(LineSlot(intervals[iv + 1], track.line) == LineSlot(intervals[iv], track.line));
 				}
 			}
 		}
-		CHECK(copies > 0);
 	}
+	CHECK(pairs > 0);
+}
+
+TEST_CASE("planar slots: the copy runs on between consecutive doubled crossings", "[junction][planar]")
+{
+	size_t found = 0;
+	for (const SlotsVariant &v : {BuildVariant(PlanarTText(2), 1, 3, 1), BuildVariant(PlanarLL2Text(), 17, 0, 1)}) {
+		INFO(v.topology.name);
+		REQUIRE(v.slots.why.empty());
+		for (uint32_t c = 0; c < v.channels.channels.size(); c++) {
+			const PlanarChannel &cc = v.channels.channels[c];
+			const std::vector<PlanarSlotInterval> &intervals = v.slots.channels[c];
+			for (size_t iv = 2; iv + 1 < intervals.size(); iv += 2) {
+				if (v.over[cc.crossings[(iv - 1) / 2]] != c || v.over[cc.crossings[(iv + 1) / 2]] != c) continue;
+				found++;
+				for (uint32_t line : cc.lines) {
+					INFO(intervals[iv].name << " line " << line);
+					bool has_copy = false;
+					for (const PlanarSlotTrack &track : intervals[iv].tracks) has_copy = has_copy || (track.kind == PlanarSlotKind::Copy && track.line == line);
+					CHECK(has_copy);
+				}
+			}
+		}
+	}
+	REQUIRE(found > 0);
+}
+
+TEST_CASE("planar slots: a prio join's straight channel keeps the entry gaps", "[junction][planar]")
+{
+	size_t found = 0;
+	for (const SlotsVariant &v : {BuildVariant(PlanarTText(2), 1, 3, 1), BuildVariant(PlanarLL2Text(), 17, 0, 1)}) {
+		INFO(v.topology.name);
+		REQUIRE(v.slots.why.empty());
+		for (size_t s = 0; s < v.channels.sites.size(); s++) {
+			if (v.channels.sites[s].kind != PlanarSiteKind::Join || !v.sites[s].prio || v.sites[s].straight == UINT32_MAX) continue;
+			found++;
+			const uint32_t c = v.sites[s].straight;
+			const std::vector<uint32_t> &lines = v.channels.channels[c].lines;
+			const int n = static_cast<int>(lines.size());
+			const auto e = [](int j) { return j == 0 ? 0 : 2 * j - 1; };
+			const bool far_left = v.sites[s].side > 0;
+			const PlanarSlotInterval &last = v.slots.channels[c].back();
+			for (int j = 1; j < n; j++) {
+				INFO("site " << s << " lane " << j);
+				CHECK(LineSlot(last, lines[j]) - LineSlot(last, lines[0]) == (far_left ? e(j) : e(n - 1) - e(n - 1 - j)));
+			}
+		}
+	}
+	REQUIRE(found > 0);
+}
+
+TEST_CASE("planar slots: a prio fray's straight legs step one slot toward the far lane", "[junction][planar]")
+{
+	size_t found = 0;
+	for (const SlotsVariant &v : {BuildVariant(PlanarTText(2), 1, 3, 1), BuildVariant(PlanarLL2Text(), 17, 0, 1)}) {
+		INFO(v.topology.name);
+		REQUIRE(v.slots.why.empty());
+		for (size_t s = 0; s < v.channels.sites.size(); s++) {
+			if (v.channels.sites[s].kind != PlanarSiteKind::Fray || !v.sites[s].prio) continue;
+			const PlanarChannel &fc = v.channels.channels[v.channels.sites[s].channel];
+			const uint32_t far_line = v.sites[s].side > 0 ? fc.lines.front() : fc.lines.back();
+			for (const PlanarSlotLink &link : v.slots.links) {
+				if (std::ranges::find(fc.lines, link.from) == fc.lines.end() || link.from == far_line) continue;
+				found++;
+				INFO("site " << s << " from " << link.from);
+				CHECK(link.step == (v.sites[s].side > 0 ? -1 : +1));
+			}
+		}
+	}
+	REQUIRE(found > 0);
 }
 
 TEST_CASE("planar slots: tracks", "[junction][planar]")
@@ -160,28 +232,10 @@ TEST_CASE("planar slots: tracks", "[junction][planar]")
 		CHECK(least == 0);
 	}
 
-	/* A row beside each lane of a prio join's straight channel (B and E) in post, away from the joiners. */
-	for (const char *name : {"B1", "E1"}) {
-		INFO(name);
-		const uint32_t channel = v.channels.channel_of_line[PlanarLineByName(v.topology, name)];
-		const PlanarSlotInterval &post = v.slots.channels[channel].back();
-		CHECK(post.name == "post");
-		int8_t side = 0;
-		for (size_t s = 0; s < v.channels.sites.size(); s++) {
-			if (v.channels.sites[s].kind == PlanarSiteKind::Join && v.sites[s].prio && v.sites[s].straight == channel) side = v.sites[s].side;
-		}
-		REQUIRE(side != 0);
-		for (uint32_t line : v.channels.channels[channel].lines) {
-			size_t row = SIZE_MAX, own = SIZE_MAX;
-			for (size_t i = 0; i < post.tracks.size(); i++) {
-				if (post.tracks[i].line != line) continue;
-				if (post.tracks[i].kind == PlanarSlotKind::Row) row = i;
-				if (post.tracks[i].kind == PlanarSlotKind::Line) own = i;
-			}
-			REQUIRE(row != SIZE_MAX);
-			REQUIRE(own != SIZE_MAX);
-			CHECK((row < own) == (side > 0));
-			CHECK((row + 1 == own || own + 1 == row));
+	/* Rows are not tracks yet. */
+	for (const std::vector<PlanarSlotInterval> &intervals : v.slots.channels) {
+		for (const PlanarSlotInterval &interval : intervals) {
+			for (const PlanarSlotTrack &track : interval.tracks) CHECK(track.kind != PlanarSlotKind::Row);
 		}
 	}
 

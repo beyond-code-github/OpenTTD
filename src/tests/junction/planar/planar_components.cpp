@@ -112,6 +112,20 @@ TEST_CASE("planar components: the test spec derives the probe's constants", "[ju
 	CHECK(spec.prio_tiles == 14);
 }
 
+TEST_CASE("planar components: LL² o0t1f0s1 lanes stay on their copies' tracks", "[junction][planarcomponents][slow]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarLL2Text(), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	PlanarComponentLayout layout;
+	std::string why;
+	const bool ok = SolvePlanarMappedVariant(topology, spec, "o0t1f0s1", nullptr, layout, &why);
+	INFO(why);
+	REQUIRE(ok);
+	CHECK(layout.area == Approx(2230.25));
+}
+
 TEST_CASE("planar components: a variant solved with its own shape given back is identical", "[junction][planarcomponents]")
 {
 	std::string error;
