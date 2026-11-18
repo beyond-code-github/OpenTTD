@@ -5,7 +5,7 @@ Queue (one ng1 writer at a time; light read-only work in parallel):
 2. DONE recon wip/RECON-prio-under.md (channel level: two lines in planar_paths + default shape cannot bend a straight channel + program shape skipped when default fails; join level: helpers suffice; bits: T3 +8..14, so local search is required).
 3. DONE probe B (wip/PROBE-joiner-over.md): T3 none solve, T2 967.25 (worse), prio does not fit. Both forms fail on the fixed straight row: row model default written (DESIGN-tracks 13.1: offset copy of the lane, gapped at crossings).
 3a. RUNNING step: variant local search past the 6-bit cap (wip/BRIEF-variant-search.md, test-first, commits on wt-planar).
-3b. NEXT (ng1 after 3a): probe A3 row as gapped offset copy (wip/BRIEF-probe-prio-row.md; fill {HEAD} from git at launch); then B3 if A3 lands.
+3b. NEXT (ng1 after 3a): probe C prio channel crossings open, explored by the search (wip/BRIEF-probe-prio-open.md; fill {HEAD}). 3c. Then probe A3 row as gapped offset copy (wip/BRIEF-probe-prio-row.md; fill {HEAD} from git at launch); then B3 if A3 lands.
 4. Then: design the landing step(s) from A and B (searched over bit per prio crossing; start = main line over), test-first; P3 (bendable ML) folds into B.
 5. Then: hard anchor probe (pin one port coordinate, §8.4); then variant local search in the solver (§14).
 
