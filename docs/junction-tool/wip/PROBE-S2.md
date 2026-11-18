@@ -1,5 +1,13 @@
 # PROBE-S2 (throwaway) measurements
 
+## Run 2 (S1b, D351; probe-s2b = wt-planar 20f98229e0 + cherry-pick 37dc49d25d of a7e98b6ba1, clean)
+- Fresh baselines at 20f98229e0: T2 28 ok of 32 (4 infeasible), T3 28 of 32, LL2 12 of 12 (best 2354.25).
+- STOP CONDITION HIT: T2 and T3 all 32 variants fail with "slot change inside one piece" (no other reason; no "base infeasible", so the IIS step did not apply). Nothing reaches the solver.
+- The failing case is the same in every variant (S2SPLIT log, checked on 6 T2 variants spanning o0/o1, t0-t3): channel 7, intervals x0 and mid0 share one segment; slots of channel 7's lanes (lines in Lanes order): x0 [1 2], mid0 [0 3]. Lane-1-to-lane-0... offsets differ: x0 gives 1 slot, mid0 gives 3. So the five "first cases" are one case repeated.
+- LL2 (12 tags): 12 built and solved, but all 12 worse: best 2354.25 -> 3067.25 (o0t1f0s1); change +713 to +837, median +771.5; 0 better, 12 worse, 0 equal. Median solve 4074.5 ms baseline vs 4546.5 ms probe. 12 S2DIFF lines per variant (slot offsets differ from old constants on LL2, unlike run 1, where S1b's slots had agreed).
+- jt fast not re-run (stopped at the stop condition).
+
+
 Branch probe-s2 on a8b146d1ff (ng1 worktree). Baselines: pv run/save on wt-planar before the change (T2 28 ok of 32, T3 28 ok of 32, LL2 12 ok of 12 tags).
 
 ## Result
