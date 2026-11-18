@@ -3,7 +3,7 @@
 Throwaway probe: nothing committed in ng1. Time box: 75 minutes; at the box, report what you have. Never use git stash, never start a game client, never touch ports 4077/4079 or running openttd processes; build only `openttd_test` in `build-rel`, never `openttd`. One heavy job at a time (no parallel test runs). Outputs under `/tmp/claude-1000/-home-pete-OpenTTD/5aaa14e0-b8b8-4d2d-bc21-f25c3b5bedf1/scratchpad/probe-pr/`; read code with offset/limit; command output to files. If anything does not fit the code as described, stop and report; do not invent another rule. Do not start background work that outlives your report.
 
 ## State
-- Worktree `/home/pete/OpenTTD/.claude/ng1`, branch `wt-planar`, clean at `{HEAD}`. Apply `/home/pete/OpenTTD/docs/junction-tool/wip/probe-prio-bridge2.patch` (probe A + A2, behind `PLANAR_PRIOBRIDGE=1`: G9c exempts copy switches (`IsCopySplit`), the near lanes' coverage is summed along the strand, the near lanes' fixed prio row is not pushed). If it does not apply cleanly, stop and report.
+- Worktree `/home/pete/OpenTTD/.claude/ng1`, branch `wt-planar`, clean at `e4b50580e1`. Apply `/home/pete/OpenTTD/docs/junction-tool/wip/probe-prio-bridge2.patch` (probe A + A2, behind `PLANAR_PRIOBRIDGE=1`: G9c exempts copy switches (`IsCopySplit`), the near lanes' coverage is summed along the strand, the near lanes' fixed prio row is not pushed). If it does not apply cleanly, stop and report.
 - Read first: `docs/junction-tool/DESIGN-tracks.md` section 13.1; `wip/PROBE-prio-bridge2.md` (incl. the orchestrator reading); DECISIONS rows D342, D345, D347.
 
 ## Change (behind the same env)
