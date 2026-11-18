@@ -30,8 +30,11 @@ namespace {
  * Solve a topology's components and check what every hub must satisfy.
  * @param text The topology text.
  * @param area_limit The most area (tiles) the solve may need.
+ * @param mapped Whether to use the mapped composer.
+ * @param solved_min The fewest variants the solve may have solved.
+ * @param solved_max The most variants the solve may have solved.
  */
-void CheckSolves(const std::string &text, double area_limit, bool mapped = false)
+void CheckSolves(const std::string &text, double area_limit, bool mapped = false, size_t solved_min = 0, size_t solved_max = SIZE_MAX)
 {
 	std::string error;
 	const PlanarTopology topology = ParsePlanarTopology(text, &error);
@@ -44,6 +47,8 @@ void CheckSolves(const std::string &text, double area_limit, bool mapped = false
 	REQUIRE(ok);
 	INFO("variant " << layout.variant << " area " << layout.area << " size " << layout.width << "x" << layout.height << " in " << layout.micros / 1000 << " ms track " << layout.track);
 	CHECK(layout.area <= area_limit);
+	CHECK(layout.variants_solved >= solved_min);
+	CHECK(layout.variants_solved <= solved_max);
 	CHECK(layout.width > 0);
 	CHECK(layout.height > 0);
 	if (mapped) {
@@ -86,7 +91,7 @@ TEST_CASE("planar components: the one-lane T from its topology text (mapped)", "
 
 TEST_CASE("planar components: T2 from its topology text (mapped) at the probe's area", "[junction][planarcomponents][slow]")
 {
-	CheckSolves(PlanarTText(2), 963, true);
+	CheckSolves(PlanarTText(2), 963, true, 32, 32);
 }
 
 TEST_CASE("planar components: T3 from its topology text (mapped) at the hand composition's area", "[junction][planarcomponents][slow]")
@@ -96,7 +101,7 @@ TEST_CASE("planar components: T3 from its topology text (mapped) at the hand com
 
 TEST_CASE("planar components: LL² from its topology text (mapped) at the probe's area", "[junction][planarcomponents][slow]")
 {
-	CheckSolves(PlanarLL2Text(), 807, true);
+	CheckSolves(PlanarLL2Text(), 1347.25, true, 1, 199);
 }
 
 TEST_CASE("planar components: the test spec derives the probe's constants", "[junction][planarcomponents]")

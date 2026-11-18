@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cstdlib>
@@ -47,6 +48,7 @@ constexpr int STUB = 4; ///< Half-tiles of a port stub.
 constexpr double FANW = 1.5; ///< Cost per half-tile of a fanned (spread) stretch; the tight stub costs 1.
 constexpr double AREA_W = 10; ///< Objective weight per tile of area inside the outline.
 constexpr double BUDGET = 15.0; ///< Seconds per variant for the lazy loop.
+constexpr size_t SEARCH_THREADS = 4; ///< Variants the local search solves at once: the machine limit, one heavy job at a time.
 constexpr int LAZY_ROUNDS = 40; ///< Rounds of the lazy clash loop.
 constexpr int AREA_ROUNDS = 6; ///< Rounds of the area linearisation under PLANAR_OBJ=loop; by default one round (D329: the same areas as the loop on T3).
 
@@ -2845,12 +2847,67 @@ bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec,
 	const Params params = MakeParams(spec);
 	const MappedBits bits = CountMappedBits(topology, channels);
 	const size_t open = bits.open, ties = bits.ties, triangles = bits.triangles, steps = bits.steps;
-	if (open + ties + triangles + steps > 6 && std::getenv("PLANAR_ONLY") == nullptr && std::getenv("PLANAR_DRY") == nullptr) {
-		if (why != nullptr) *why = fmt::format("{} open crossings, {} tie sites, {} triangles and {} candidate steps are too many variants", open, ties, triangles, steps);
-		return false;
-	}
+	const bool search = open + ties + triangles + steps > 6 && std::getenv("PLANAR_ONLY") == nullptr && std::getenv("PLANAR_DRY") == nullptr;
 	std::vector<PlanarChannels> flipped;
 	for (uint64_t f = 0; f < (uint64_t{1} << triangles); f++) flipped.push_back(FlipPlanarTriangles(channels, f));
+	if (search) {
+		// Local search from the all-zero variant: one-bit flips, the best improving neighbour, every outcome cached by variant.
+		const auto key = [](const MappedVariant &v) { return std::array<uint64_t, 4>{v.flips, v.over, v.ties, v.steps}; };
+		std::map<std::array<uint64_t, 4>, size_t> solved; // Index into outcomes.
+		std::vector<VariantOutcome> outcomes;
+		const auto solve_all = [&](const std::vector<MappedVariant> &todo) {
+			const size_t first = outcomes.size();
+			outcomes.resize(first + todo.size());
+			std::atomic<size_t> next{0};
+			std::vector<std::thread> threads;
+			for (size_t t = 0; t < std::min(SEARCH_THREADS, todo.size()); t++) {
+				threads.emplace_back([&] {
+					for (size_t i = next++; i < todo.size(); i = next++) {
+						outcomes[first + i] = SolveMappedVariant(topology, flipped[todo[i].flips], params, todo[i], nullptr, Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(BUDGET)));
+					}
+				});
+			}
+			for (std::thread &thread : threads) thread.join();
+			for (size_t i = 0; i < todo.size(); i++) solved[key(todo[i])] = first + i;
+		};
+		MappedVariant current;
+		solve_all({current});
+		for (;;) {
+			std::vector<MappedVariant> neighbours, todo;
+			const auto flip = [&](uint64_t MappedVariant::*field, size_t count) {
+				for (size_t b = 0; b < count; b++) {
+					MappedVariant n = current;
+					n.*field ^= uint64_t{1} << b;
+					neighbours.push_back(n);
+				}
+			};
+			flip(&MappedVariant::over, open);
+			flip(&MappedVariant::ties, ties);
+			flip(&MappedVariant::flips, triangles);
+			flip(&MappedVariant::steps, steps);
+			std::sort(neighbours.begin(), neighbours.end(), [&](const MappedVariant &a, const MappedVariant &b) { return key(a) < key(b); });
+			for (const MappedVariant &n : neighbours) {
+				if (!solved.contains(key(n))) todo.push_back(n);
+			}
+			if (!todo.empty()) solve_all(todo);
+			const VariantOutcome &here = outcomes[solved[key(current)]];
+			const VariantOutcome *best = nullptr;
+			const MappedVariant *to = nullptr;
+			for (const MappedVariant &n : neighbours) {
+				const VariantOutcome &o = outcomes[solved[key(n)]];
+				if (!o.ok) continue;
+				if (here.ok ? o.area >= here.area - 0.01 : false) continue;
+				if (best == nullptr || o.area < best->area) {
+					best = &o;
+					to = &n;
+				}
+			}
+			if (to == nullptr) break;
+			current = *to;
+		}
+		layout.variants_solved = outcomes.size();
+		return PickBest(outcomes, t0, layout, why);
+	}
 	std::vector<MappedVariant> variants;
 	for (uint64_t f = 0; f < (uint64_t{1} << triangles); f++) {
 		for (uint64_t o = 0; o < (uint64_t{1} << open); o++) {
@@ -2868,6 +2925,7 @@ bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec,
 		threads.emplace_back([&, i] { outcomes[i] = SolveMappedVariant(topology, flipped[variants[i].flips], params, variants[i], nullptr, Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(BUDGET))); });
 	}
 	for (std::thread &thread : threads) thread.join();
+	layout.variants_solved = variants.size();
 	return PickBest(outcomes, t0, layout, why);
 }
 
