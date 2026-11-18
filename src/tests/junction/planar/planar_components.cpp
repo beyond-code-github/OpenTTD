@@ -74,7 +74,7 @@ void CheckSolves(const std::string &text, double area_limit, bool mapped = false
 
 } // namespace
 
-TEST_CASE("planar components: LL² solves at the probe's area", "[junction][planarcomponents]")
+TEST_CASE("planar components: LL² solves at the probe's area", "[junction][planarcomponents][slow]")
 {
 	CheckSolves(PlanarLL2Text(), 807);
 }
