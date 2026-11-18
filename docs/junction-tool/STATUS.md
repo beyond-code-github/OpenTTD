@@ -9,7 +9,7 @@ Queue (one ng1 writer at a time; light read-only work in parallel):
 4. Then: design the landing step(s) from A and B (searched over bit per prio crossing; start = main line over), test-first; P3 (bendable ML) folds into B.
 4b. DONE PLANAR_DRY segfault: does not repeat in Release or ASan (build-asan kept in ng1, ignored); likely the unstable CPU under DRY's one thread per variant (8192 at once on LL², interleaved output: 8667 lines). Low priority: DRY could use the search's bounded threads.
 4c. DONE gate trim: hand-composed LL² test to [slow] (mapped LL² covers it): gate 634/634 29.5 s. Remaining slowest: old-pipeline 'joint:' tests 16-23 s under load.
-4d. RUNNING probe: hard anchor (box low edges X0/Y0 free, first port point pinned; wip/BRIEF-probe-anchor.md). 4e. QUEUED: better search starts (no consumer until new bits land; design note only) (probe C finding); hard anchor probe.
+4d. DONE probe hard anchor (wip/PROBE-anchor.md): areas identical, ~20-38% faster; output shift defect. RUNNING landing step (wip/BRIEF-anchor.md, D348). 4e. QUEUED: better search starts (no consumer until new bits land; design note only) (probe C finding); hard anchor probe.
 5. Then: hard anchor probe (pin one port coordinate, §8.4); then variant local search in the solver (§14).
 
 ## RESUME HERE (2026-11-18 late afternoon) — SHAPE LAYER + PRIO FREEDOM + VARIANT SEARCH
