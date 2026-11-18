@@ -12,6 +12,7 @@
 #include "planar_paths.h"
 
 #include "../../3rdparty/fmt/format.h"
+#include "planar_regions.h"
 
 #include <cstdlib>
 #include <functional>
@@ -115,7 +116,7 @@ PlanarChannels FlipPlanarTriangles(const PlanarChannels &channels, uint64_t flip
  * a node (falling back to its down port's when it has neither); its last heading is its down port's when that is a single port
  * (else its first), and the two are not opposite; every channel has one crossing piece per crossing entry, each on a piece of
  * the path and in travel order; at each crossing the over channel's piece is on an axis heading and the under channel's piece
- * is not parallel to it.
+ * is not parallel to it, and it arrives from the side of the over channel the topology has it cross from.
  * @param topology The topology.
  * @param channels The channel graph the paths are for (flipped as the variant is).
  * @param over Per channel crossing, the channel that is over.
@@ -166,6 +167,22 @@ std::string CheckPlanarShape(const PlanarTopology &topology, const PlanarChannel
 		const int ho = heading(over[x]), hu = heading(under);
 		if (ho % 2 != 0) return fmt::format("{} is over a crossing on a diagonal piece", name(over[x]));
 		if (ho % 4 == hu % 4) return fmt::format("{} crosses {} on a parallel piece", name(under), name(over[x]));
+	}
+	const PlanarLineSides sides(t, channels);
+	if (!sides.Why().empty()) return sides.Why();
+	for (uint32_t x = 0; x < channels.crossings.size(); x++) {
+		const PlanarChannelCrossing &cr = channels.crossings[x];
+		const uint32_t under = over[x] == cr.a ? cr.b : cr.a;
+		const auto heading = [&](uint32_t ch) {
+			const auto &list = channels.channels[ch].crossings;
+			return static_cast<int>(paths[ch].headings[paths[ch].crossing_piece[std::ranges::find(list, x) - list.begin()]]);
+		};
+		const int d = (heading(under) - heading(over[x]) + 8) % 8;
+		const int shape_side = d >= 1 && d <= 3 ? +1 : -1;
+		for (uint32_t lc : cr.line_crossings) {
+			const PlanarCrossing &lx = t.crossings[lc];
+			if (sides.CrossingFrom(lc, channels.channel_of_line[lx.a] == under ? lx.a : lx.b) != shape_side) return fmt::format("{} crosses {} from the wrong side", name(under), name(over[x]));
+		}
 	}
 	return {};
 }

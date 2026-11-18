@@ -324,6 +324,41 @@ PlanarLineSides::PlanarLineSides(const PlanarTopology &topology, const PlanarCha
 		}
 	}
 	this->face_pairs.assign(pairs.begin(), pairs.end());
+
+	/*
+	 * Which side each line arrives at each crossing from. Stretch k of a line ends at its event k and stretch k + 1 starts there. The face
+	 * left of the other line's stretch ending at the crossing also holds the line's stretch ending there (it arrives from the left) or
+	 * the one starting there (it arrives from the right).
+	 */
+	for (uint32_t c = 0; c < t.crossings.size(); c++) {
+		for (int which = 0; which < 2; which++) {
+			const uint32_t line = which == 0 ? t.crossings[c].a : t.crossings[c].b, other = which == 0 ? t.crossings[c].b : t.crossings[c].a;
+			const auto index = [&](uint32_t l) { return static_cast<uint32_t>(std::ranges::find(this->events[l], c) - this->events[l].begin()); };
+			const uint32_t k_o = index(other), k_l = index(line);
+			const auto holds = [](const PlanarFace &face, uint32_t l, uint32_t k, bool forward_only) {
+				for (const PlanarWallRun &run : face.runs) {
+					if (forward_only && !run.forward) continue;
+					if (std::ranges::find(run.stretches, std::pair<uint32_t, uint32_t>{l, k}) != run.stretches.end()) return true;
+				}
+				return false;
+			};
+			int8_t side = 0;
+			for (const PlanarFace &face : this->faces) {
+				if (!holds(face, other, k_o, true)) continue;
+				const bool in = holds(face, line, k_l, false), out = holds(face, line, k_l + 1, false);
+				if (in != out) side = in ? +1 : -1;
+				break;
+			}
+			if (side == 0 && this->why.empty()) this->why = fmt::format("no face decides the side line {} crosses line {} from", t.lines[line].name, t.lines[other].name);
+			this->crossing_from[{c, line}] = side;
+		}
+	}
+}
+
+int8_t PlanarLineSides::CrossingFrom(uint32_t crossing, uint32_t line) const
+{
+	const auto it = this->crossing_from.find({crossing, line});
+	return it == this->crossing_from.end() ? 0 : it->second;
 }
 
 std::vector<std::pair<uint32_t, uint32_t>> PlanarLineSides::FacePairs() const

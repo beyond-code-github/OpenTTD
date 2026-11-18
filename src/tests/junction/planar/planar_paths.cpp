@@ -218,3 +218,53 @@ TEST_CASE("planar paths: a shape breaking a rule is refused with its reason", "[
 		CHECK(CheckPlanarShape(topology, channels, p.over, paths).find(line) != std::string::npos);
 	}
 }
+
+TEST_CASE("planar paths: a shape crossing from the wrong side is refused", "[planar]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarChannels base = BuildPlanarChannels(topology);
+	const size_t open = PlanarOpenCrossings(base).size(), triangles = PlanarTriangles(base).size();
+	/* Move an under channel's crossing onto a piece heading to the mirrored side of the over piece (still not parallel, still in travel order). */
+	bool done = false;
+	for (uint64_t f = 0; f < (uint64_t{1} << triangles) && !done; f++) {
+		const PlanarChannels channels = FlipPlanarTriangles(base, f);
+		for (uint64_t o = 0; o < (uint64_t{1} << open) && !done; o++) {
+			const PlanarPaths p = BuildPlanarPaths(topology, channels, o);
+			if (!p.why.empty()) continue;
+			REQUIRE(CheckPlanarShape(topology, channels, p.over, p.paths).empty());
+			for (uint32_t x = 0; x < channels.crossings.size() && !done; x++) {
+				const PlanarChannelCrossing &cr = channels.crossings[x];
+				const uint32_t over = p.over[x], under = over == cr.a ? cr.b : cr.a;
+				const auto index = [&](uint32_t ch) { return static_cast<size_t>(std::ranges::find(channels.channels[ch].crossings, x) - channels.channels[ch].crossings.begin()); };
+				const int ho = static_cast<int>(p.paths[over].headings[p.paths[over].crossing_piece[index(over)]]);
+				const PlanarChannelPath &up = p.paths[under];
+				const int hu = static_cast<int>(up.headings[up.crossing_piece[index(under)]]);
+				const int mirrored = ((2 * ho - hu) % 8 + 8) % 8;
+				if (index(under) + 1 != channels.channels[under].crossings.size() || mirrored % 4 == ho % 4) continue;
+				/* The path up to the previous crossing's piece, then walking to the mirrored heading and on to the end, 45 degrees a piece; the crossing sits on the mirrored piece. */
+				std::vector<PlanarChannelPath> paths = p.paths;
+				PlanarChannelPath &path = paths[under];
+				const int end = static_cast<int>(up.headings.back());
+				const size_t keep = index(under) > 0 ? up.crossing_piece[index(under) - 1] : 0;
+				path.headings.assign(up.headings.begin(), up.headings.begin() + keep + 1);
+				int cur = static_cast<int>(path.headings.back());
+				const auto walk = [&](int target) {
+					while (cur != target) {
+						cur = (cur + ((target - cur + 8) % 8 <= 4 ? 1 : 7)) % 8;
+						path.headings.push_back(static_cast<PlanarHeading>(cur));
+					}
+				};
+				walk(mirrored);
+				path.crossing_piece.back() = static_cast<uint32_t>(path.headings.size() - 1);
+				walk(end);
+				const std::string why = CheckPlanarShape(topology, channels, p.over, paths);
+				if (why.find("side") == std::string::npos) continue;
+				CHECK(BuildPlanarPaths(topology, channels, o, &paths).why == why);
+				done = true;
+			}
+		}
+	}
+	CHECK(done);
+}

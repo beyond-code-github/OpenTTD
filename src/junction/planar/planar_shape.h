@@ -11,11 +11,12 @@
 #define PLANAR_SHAPE_H
 
 #include "planar_paths.h"
+#include "planar_regions.h"
 
 #include <string>
 #include <vector>
 
-std::vector<PlanarChannelPath> SolvePlanarShape(const PlanarTopology &t, const PlanarChannels &channels, const std::vector<uint32_t> &over, int *turns, std::string *why);
+std::vector<PlanarChannelPath> SolvePlanarShape(const PlanarTopology &t, const PlanarChannels &channels, const PlanarLineSides &sides, const std::vector<uint32_t> &over, int *turns, std::string *why);
 int PlanarShapeTurns(const std::vector<PlanarChannelPath> &paths);
 
 #endif /* PLANAR_SHAPE_H */

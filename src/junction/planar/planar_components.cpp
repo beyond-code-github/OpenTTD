@@ -2558,7 +2558,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 		if (mode != "default") {
 			const PlanarPaths dflt = BuildPlanarPaths(topology, channels, variant.over);
 			std::string program_why;
-			if (dflt.why.empty()) program_shape = SolvePlanarShape(topology, channels, dflt.over, nullptr, &program_why);
+			if (dflt.why.empty()) program_shape = SolvePlanarShape(topology, channels, PlanarLineSides(topology, channels), dflt.over, nullptr, &program_why);
 			else program_why = dflt.why;
 			if (program_shape.empty() && std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "variant {}: shape program failed ({}), solving with the default shape\n", out.tag, program_why);
 			if (mode == "program") {

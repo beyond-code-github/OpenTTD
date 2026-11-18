@@ -18,6 +18,7 @@
 #include "../../../junction/planar/planar_shape.h"
 #include "../../../junction/planar/planar_topology.h"
 
+#include <algorithm>
 #include <chrono>
 #include <string>
 #include <vector>
@@ -30,9 +31,27 @@ struct ShapeLoop {
 	int built = 0;
 	int default_turns = 0;
 	int program_turns = 0;
+	int side_changes = 0; ///< Crossings whose under channel crosses from another side in the program's shape than in the default's.
 	double max_ms = 0;
 	double total_ms = 0;
 };
+
+/** Per channel crossing, the sign of (under heading - over heading) mod 8: +1 for 1..3, -1 for 5..7. */
+static std::vector<int> CrossingSigns(const PlanarChannels &channels, const std::vector<uint32_t> &over, const std::vector<PlanarChannelPath> &paths)
+{
+	std::vector<int> signs;
+	for (uint32_t x = 0; x < channels.crossings.size(); x++) {
+		const PlanarChannelCrossing &cr = channels.crossings[x];
+		const uint32_t under = over[x] == cr.a ? cr.b : cr.a;
+		const auto heading = [&](uint32_t ch) {
+			const auto &list = channels.channels[ch].crossings;
+			return static_cast<int>(paths[ch].headings[paths[ch].crossing_piece[std::ranges::find(list, x) - list.begin()]]);
+		};
+		const int d = (heading(under) - heading(over[x]) + 8) % 8;
+		signs.push_back(d >= 1 && d <= 3 ? +1 : -1);
+	}
+	return signs;
+}
 
 /** Run the program on every over choice and flip of a hub whose default paths build; check what the tests require of each. */
 static ShapeLoop LoopVariants(const std::string &text)
@@ -53,7 +72,7 @@ static ShapeLoop LoopVariants(const std::string &text)
 			int turns = -1;
 			std::string why;
 			const auto t0 = std::chrono::steady_clock::now();
-			const std::vector<PlanarChannelPath> shape = SolvePlanarShape(topology, channels, def.over, &turns, &why);
+			const std::vector<PlanarChannelPath> shape = SolvePlanarShape(topology, channels, PlanarLineSides(topology, channels), def.over, &turns, &why);
 			const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 			loop.max_ms = std::max(loop.max_ms, ms);
 			loop.total_ms += ms;
@@ -62,6 +81,7 @@ static ShapeLoop LoopVariants(const std::string &text)
 			CHECK(CheckPlanarShape(topology, channels, def.over, shape).empty());
 			CHECK(turns <= PlanarShapeTurns(def.paths));
 			CHECK(turns == PlanarShapeTurns(shape));
+			if (CrossingSigns(channels, def.over, shape) != CrossingSigns(channels, def.over, def.paths)) loop.side_changes++;
 			loop.default_turns += PlanarShapeTurns(def.paths);
 			loop.program_turns += turns;
 		}
@@ -74,6 +94,15 @@ TEST_CASE("planar shape: every variant's program shape passes the shape check", 
 	for (const std::string &text : {PlanarTText(2), PlanarTText(3)}) {
 		const ShapeLoop loop = LoopVariants(text);
 		CHECK(loop.built > 0);
+	}
+}
+
+TEST_CASE("planar shape: the program keeps every crossing's side", "[junction][planarshape]")
+{
+	for (const std::string &text : {PlanarTText(2), PlanarTText(3)}) {
+		const ShapeLoop loop = LoopVariants(text);
+		CHECK(loop.built > 0);
+		CHECK(loop.side_changes == 0);
 	}
 }
 
@@ -91,6 +120,7 @@ TEST_CASE("planar shape: LL2 program shapes pass the shape check and never turn 
 	const ShapeLoop loop = LoopVariants(PlanarLL2Text());
 	CHECK(loop.built > 0);
 	CHECK(loop.program_turns <= loop.default_turns);
+	CHECK(loop.side_changes == 0); // the program keeps every crossing's side
 	WARN("LL2 variants " << loop.variants << " built " << loop.built << " default turns " << loop.default_turns << " program turns " << loop.program_turns << " max ms " << loop.max_ms);
 }
 
@@ -108,7 +138,7 @@ TEST_CASE("planar shape: the program turns less than the default on T2", "[junct
 	const PlanarPaths built = BuildPlanarPaths(topology, channels, 0);
 	REQUIRE(built.why.empty());
 	int turns = -1;
-	const std::vector<PlanarChannelPath> shape = SolvePlanarShape(topology, channels, built.over, &turns, &why);
+	const std::vector<PlanarChannelPath> shape = SolvePlanarShape(topology, channels, PlanarLineSides(topology, channels), built.over, &turns, &why);
 	INFO(why);
 	REQUIRE(!shape.empty());
 	WARN("T2 o0t2f1s1 default turns " << PlanarShapeTurns(def) << " program turns " << turns);

@@ -144,3 +144,48 @@ TEST_CASE("planar regions: every face is walls in runs", "[junction][planarregio
 		}
 	}
 }
+
+TEST_CASE("planar regions: crossing sides agree with every variant's default shape", "[junction][planarregions]")
+{
+	size_t checked = 0, mismatches = 0;
+	for (const auto &[name, text] : Hubs()) {
+		std::string error;
+		const PlanarTopology t = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarChannels base = BuildPlanarChannels(t);
+		const size_t triangles = PlanarTriangles(base).size();
+		for (uint64_t f = 0; f < (uint64_t{1} << triangles); f++) {
+			const PlanarChannels ch = FlipPlanarTriangles(base, f);
+			const PlanarLineSides sides(t, ch);
+			REQUIRE(sides.Why().empty());
+			for (uint32_t c = 0; c < t.crossings.size(); c++) CHECK(sides.CrossingFrom(c, t.crossings[c].a) == -sides.CrossingFrom(c, t.crossings[c].b));
+			const size_t open = PlanarOpenCrossings(ch).size();
+			for (uint64_t choice = 0; choice < (uint64_t{1} << open); choice++) {
+				const PlanarPaths p = BuildPlanarPaths(t, ch, choice);
+				if (!p.why.empty()) continue;
+				for (uint32_t x = 0; x < ch.crossings.size(); x++) {
+					const PlanarChannelCrossing &cr = ch.crossings[x];
+					const uint32_t under = p.over[x] == cr.a ? cr.b : cr.a, over = p.over[x];
+					const auto heading = [&](uint32_t channel) {
+						const auto &list = ch.channels[channel].crossings;
+						return static_cast<int>(p.paths[channel].headings[p.paths[channel].crossing_piece[std::ranges::find(list, x) - list.begin()]]);
+					};
+					const int d = (heading(under) - heading(over) + 8) % 8;
+					const int8_t shape_side = d >= 1 && d <= 3 ? +1 : -1;
+					for (uint32_t lc : cr.line_crossings) {
+						const PlanarCrossing &lx = t.crossings[lc];
+						const uint32_t under_line = ch.channel_of_line[lx.a] == under ? lx.a : lx.b;
+						checked++;
+						if (sides.CrossingFrom(lc, under_line) != shape_side) {
+							mismatches++;
+							INFO(name << " flips " << f << " choice " << choice << " crossing " << x);
+							CHECK(sides.CrossingFrom(lc, under_line) == shape_side);
+						}
+					}
+				}
+			}
+		}
+	}
+	WARN("crossing sides checked " << checked << " mismatches " << mismatches);
+	CHECK(mismatches == 0);
+}

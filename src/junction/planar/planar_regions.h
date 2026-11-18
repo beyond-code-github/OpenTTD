@@ -45,6 +45,14 @@ public:
 	int8_t Side(uint32_t p, uint32_t q) const;
 
 	/**
+	 * Which side of `other` the line arrives at a crossing from.
+	 * @param crossing The line-level crossing, an index into PlanarTopology::crossings.
+	 * @param line One of the crossing's two lines; the other is `other`.
+	 * @return +1 when `line` arrives from the left of the other line's travel, -1 from its right, 0 when undecided (Why() says why).
+	 */
+	int8_t CrossingFrom(uint32_t crossing, uint32_t line) const;
+
+	/**
 	 * The line a composer strand belongs to: the strand's name without a trailing copy mark (' or " and any digits after it).
 	 * @param strand The strand name.
 	 * @return The line, or UINT32_MAX when no line has that name.
@@ -69,6 +77,7 @@ private:
 	std::string why;
 	std::vector<PlanarFace> faces; ///< Every face but the outer, as runs of walls.
 	std::vector<std::vector<uint32_t>> events; ///< Each line's crossing events in the variant's channel order.
+	std::map<std::pair<uint32_t, uint32_t>, int8_t> crossing_from; ///< CrossingFrom by (crossing, line).
 	std::vector<std::pair<uint32_t, uint32_t>> face_pairs; ///< The ordered pairs sharing a face with a side.
 	std::map<std::string, uint32_t, std::less<>> by_name; ///< Line index by name.
 };

@@ -56,15 +56,16 @@ int PlanarShapeTurns(const std::vector<PlanarChannelPath> &paths)
  * start, crossings and end are integers; the cost is the sum of the absolute turns between consecutive ones. A channel starts on
  * its up port's heading, or its in channel's end heading when it starts at a node, and ends on its down port's heading (else its
  * own start heading, mod 8), none turning back. At a channel crossing the over heading is even and the under heading differs
- * from it by a, in 1..3, plus a multiple of 4.
+ * from it by s * a, a in 1..3, plus a multiple of 8, where s is the side the topology has the under line cross from (a rule).
  * @param t The topology.
  * @param channels The channel graph of the variant (flipped as the variant is).
+ * @param sides The line sides of the topology in the variant's channel order.
  * @param over Per channel crossing, the channel that is over.
  * @param turns The objective, if not null.
  * @param why The reason on failure, if not null.
  * @return One path per channel; empty on failure.
  */
-std::vector<PlanarChannelPath> SolvePlanarShape(const PlanarTopology &t, const PlanarChannels &channels, const std::vector<uint32_t> &over, int *turns, std::string *why)
+std::vector<PlanarChannelPath> SolvePlanarShape(const PlanarTopology &t, const PlanarChannels &channels, const PlanarLineSides &sides, const std::vector<uint32_t> &over, int *turns, std::string *why)
 {
 	const auto fail = [&](const std::string &what) -> std::vector<PlanarChannelPath> {
 		if (why != nullptr) *why = what;
@@ -140,8 +141,16 @@ std::vector<PlanarChannelPath> SolvePlanarShape(const PlanarTopology &t, const P
 			return vars[ch].at[std::ranges::find(list, x) - list.begin()];
 		};
 		const uint32_t ho = at(over[x]), hu = at(under);
+		/* The side the under channel crosses from, the same for every line crossing of the pair. */
+		int side = 0;
+		for (uint32_t lc : cr.line_crossings) {
+			const PlanarCrossing &lx = t.crossings[lc];
+			const int s = sides.CrossingFrom(lc, channels.channel_of_line[lx.a] == under ? lx.a : lx.b);
+			if (s == 0 || (side != 0 && s != side)) return fail(fmt::format("crossing {} has no single side", x));
+			side = s;
+		}
 		row({{ho, 1}, {integer(-8, 11), -2}}, 0);
-		row({{hu, 1}, {ho, -1}, {integer(1, 3), -1}, {integer(-8, 8), -4}}, 0);
+		row({{hu, 1}, {ho, -1}, {integer(1, 3), -side}, {integer(-5, 5), -8}}, 0);
 	}
 
 	milp.SetTimeLimit(15);
