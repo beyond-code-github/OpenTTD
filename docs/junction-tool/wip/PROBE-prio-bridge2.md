@@ -15,3 +15,8 @@ Patch: wip/probe-prio-bridge2.patch (cumulative: probe A plus the change; env PL
 
 ## Reading
 - The composer-level coverage problem is solved by dropping the row; the open problem moved to the signal pass: the prio element placement search has no fitting site (53,3 and 82,3 are the first-lane start, near the merge side). Which variant/site constraints reject it was not examined (brief: no further rule).
+
+## Orchestrator reading (ASCII of T2 o1t3f1s0 with the A2 patch)
+- Without the reservation the near lane packs one tile from its neighbours on both sides (its copy and the joiner on the sigma side, the far lane on the other), so no piece in its coverage has a free row tile: "does not fit" is the missing row room, not the search.
+- A row beside the near lane cannot pass the joiner crossing on the ground (the joiner runs under the main-line deck there), so with the main line over, the row needs a gap at the crossing (two row pieces, joins either side) or its own bridge (coop "standard prio over a bridge", third bridge). Neither is designed yet.
+- The joiner-over form (D347b, probe B) avoids this: the joiner's deck spans the main-line lane and its row together, both on the ground. Probe B goes first; the gapped row is the fallback for the main-line-over choice.
