@@ -122,3 +122,20 @@ Comparison:
    - same sum but a different sequence.
 
    Also give the count of compared lines.
+
+## Run 4: LL² (apply on top of run 3; the model is unchanged)
+1. **Hub switch.** The spike test reads `SLOTS_HUB` with `std::getenv`: `T2` (default) uses `PlanarTText(2)`, and `LL2` uses `PlanarLL2Text()`. That is the only code change. No model change.
+2. **Observed layout for LL²:**
+   ```
+   PLANAR_MAPPED_DUMP=<dir> PLANAR_ONLY=<tag> build-rel/openttd_test "planar components: LL² from its topology text (mapped) at the probe's area"
+   ```
+   The test's own CHECKs may fail under PLANAR_ONLY; ignore that, since the dump is written regardless.
+3. **Variants:** `o17t0f1s0` (the best), plus up to five more with `s0` that build. Take them from `PLANAR_DRY=1` output lines ending in `built`, picking the first five with `s0` in the order printed. If a variant's solve fails, replace it with the next one.
+4. **Metric: gap change between neighbouring lines.** For each channel and each pair of neighbouring lines in `PlanarChannel::lines` order:
+   - predicted gap change = (predicted net signed step of the right line) − (that of the left line);
+   - observed gap change = the same, from the dump.
+
+   Net signed step is the sum of a line's signed steps, as in run 3. Skip a pair when either line is turning (run 3 definition), and count it under "skipped". Report per variant: matched, mismatched, skipped. List every mismatch with its channel and lines, and flag whether its channel carries a prio route (`PlanarChannel::prio`), a doubled line (a copy track in the model), or a prio row.
+5. **The T2 runs are not repeated.** Add the same gap-change metric to `cmp.py` and run it on the T2 files from run 3, so both hubs use one metric.
+6. **Commit** on `spike-slots`: `Change: Junction slot spike runs on LL²`.
+7. **Report:** add a "Run 4 (LL²)" section at the top of `/home/pete/OpenTTD/docs/junction-tool/wip/SPIKE-slots.md`, keeping the rest of the file.
