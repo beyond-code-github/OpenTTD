@@ -1,3 +1,14 @@
+## Run 7 (S4d)
+
+Probe branch probe-s4d (from probe-s4c 4665a6f761): every slot step pair costs 1 + 0.001 * (intervals - 1 - iv), so later steps are cheaper; site links keep 1 (planar_slots.cpp only). PLANAR_S2W=0 PLANAR_S2LOG=1.
+
+| hub | built / failed | best (baseline) | better / worse / equal | median change | median ms (baseline) |
+|---|---|---|---|---|---|
+| T2 | 28 / 4, "base infeasible" x4 (same as baseline) | 862.25 (862.25) | 0 / 0 / 28 | 0 | 566.5 (583.5) |
+| T3 | 28 / 4, "base infeasible" x4 (same as baseline) | 1933.25 (1933.25) | 0 / 0 / 28 | 0 | 366.5 (370.5) |
+| LL2 | 12 / 0 | 2354.25 (2354.25) | 0 / 0 / 12 | 0 | 3943.0 (4074.5) |
+
+No variant that builds at baseline fails, so no IIS. LL2 o0t1f0s1 is 2354.25, same as baseline; its run printed no S2DIFF lines. The late-step weight changed nothing: the S2c gain (2230.25) does not appear.
 ## Run 6 (S4c)
 
 Probe branch probe-s4c (4665a6f761, from probe-s4b d418d3fa5a): prio join entry gaps added as equality rows in the last interval of the join's straight channel (planar_slots.cpp only), PLANAR_S2W=0 unless noted.
