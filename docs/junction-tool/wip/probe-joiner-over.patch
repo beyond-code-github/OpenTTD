@@ -1,0 +1,54 @@
+diff --git a/src/junction/planar/planar_components.cpp b/src/junction/planar/planar_components.cpp
+index 5643855c41..c09fed51c3 100644
+--- a/src/junction/planar/planar_components.cpp
++++ b/src/junction/planar/planar_components.cpp
+@@ -979,13 +979,36 @@ private:
+ 		const size_t n = S.size();
+ 		M.AddSeg(S[0], h, prio ? 2 * this->P + 2 : 2);
+ 		std::vector<Seg> js;
++		const bool jover = prio && std::getenv("PLANAR_JOINER_OVER") != nullptr;
++		std::vector<Seg> jdeck;
+ 		for (size_t k = 0; k < n; k++) {
+ 			M.AddSeg(J[k], h, 2);
++			if (jover && k + 1 < n) {
++				jdeck.push_back(M.AddSeg(J[k], h, 2));
++				js.push_back(M.AddSeg(J[k], Turn(h, -sigma), 4));
++				continue;
++			}
+ 			const int lo = (prio && k > 0) ? 4 : (k == 0 ? lo0 : 6);
+ 			js.push_back(M.AddSeg(J[k], Turn(h, -sigma), lo, n == 2 ? std::optional<int>(lo) : std::nullopt));
+ 		}
+ 		M.Tie(M.End(J[0]), M.End(S[0]));
+-		for (size_t j = 1; j < n; j++) {
++		if (jover) {
++			std::vector<Seg> outs;
++			for (size_t j = 1; j < n; j++) {
++				M.AddSeg(S[j], h, 2);
++				outs.push_back(M.AddSeg(S[j], Turn(h, sigma), 2));
++				M.AddSeg(S[j], h, 2);
++				M.AddSeg(S[j], Turn(h, -sigma), 2, std::nullopt, 1.0, true);
++				M.AddSeg(S[j], h, 2 * this->P + 2);
++				M.Tie(M.End(J[j]), M.End(S[j]));
++			}
++			for (size_t k = 0; k + 1 < n; k++) {
++				std::vector<std::pair<Var, int>> xs;
++				for (size_t j = k + 1; j < n; j++) xs.push_back(M.Cross(jdeck[k], outs[j - 1], 4));
++				M.Deck(jdeck[k], xs);
++			}
++		}
++		for (size_t j = 1; j < n && !jover; j++) {
+ 			if (prio) {
+ 				/* Joiners far from the merge cross before this lane's coverage, each P tiles apart: one doubled stretch per crossed joiner in series (D322). */
+ 				for (size_t k = 0; k + 1 < j; k++) {
+@@ -1279,7 +1302,10 @@ void MappedComposer::Build()
+ 		bool far_left = true;
+ 		if (join.has_value() && res[*join].straight == c && res[*join].prio) {
+ 			far_left = res[*join].side > 0;
+-			const std::vector<int> e = JoinEntry(n);
++			std::vector<int> e = JoinEntry(n);
++			if (std::getenv("PLANAR_JOINER_OVER") != nullptr) {
++				for (int j = 0; j < n; j++) e[j] = 2 * j;
++			}
+ 			for (int j = 0; j < n; j++) offs[j] = far_left ? e[j] : e[n - 1] - e[n - 1 - j];
+ 		}
+ 		cores_built.insert(c);
