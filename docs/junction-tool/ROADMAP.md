@@ -1,9 +1,9 @@
-# ROADMAP draft: ideas designed, planned or agreed, and their state in the code (2026-11-18)
+# ROADMAP: every idea designed, planned or agreed, and its state in the code
 
-Read-only survey. Sources: DESIGN-tracks.md (all), DESIGN-planar/components/pieces, STATUS.md (queue, NEXT, Later, PARKED), DECISIONS D300-D349, wip PROBE/SPIKE/REVIEW/RECON/RESEARCH from 2026-11-17 on. Code: `.claude/ng1/src/junction/planar/` (wt-planar). `PC` = planar_components.cpp. Status words: built, partly built, not built, rejected, superseded, unknown. Evidence is file:line from grep, not from reading every path; "unknown" says why. DESIGN-width/blocks/modules and the G*/N3/O4 files were only skimmed by headings (legacy-era: old pipeline, listed in the last theme).
+The single list of planned work. Rules: every idea that is designed, ruled or agreed but not fully built lives here until it is built (then it leaves, its facts going to CLAUDE.md) or explicitly dropped (then it leaves with the deciding Dnnn). Check this file before designing anything. STATUS.md holds only the current state; DECISIONS.md holds rulings; DESIGN-tracks.md holds the current design. Status checked against wt-planar on 2026-11-18 (survey: grep evidence, file:line in ng1); `PC` = planar_components.cpp. Status words: built, partly built, not built, rejected, superseded, unknown.
 
 ## Top 10 load-bearing ideas not built or only partly built
-1. **Slot layer / width profile (DESIGN-tracks §3a, D327, D338).** Sideways steps fall out of per-piece lane slots instead of per-block step rules. Designed 2026-11-17, spiked 2026-11-18 (SPIKE-slots run 1 infeasible, run 2 feasible but predictions differ from the solver's steps on 18-20 of 24 lines), not in code. Everything about steps, jogs and merge steps hangs on it.
+1. **Slot layer / width profile (DESIGN-tracks §3a, D327, D349).** Sideways steps fall out of per-stretch track slots (lanes, copies, prio rows) instead of per-component step rules and optional S-bends. Designed 2026-11-17, re-found and spiked 2026-11-18: on LL² and T2 every neighbouring-lane gap change matches the solver except today's staggered prio-join exits and turn geometry (wip/SPIKE-slots.md, spike-slots f4d1ef0e49). NEXT: design the build (DESIGN-tracks section), land in steps.
 2. **Free bends on ladders (DESIGN-tracks §8.3, D338).** Every free stretch bends; step rules and candidate-step bits go. Not built; "stop thinking about bends as choices" is the stated direction.
 3. **Retire the lazy clash loop (§8.2, §9 step c).** Ladders are built and default on, but the loop is still the safety net (`SolveLazy`, PC:2044/2172).
 4. **Prio row as a real bundle line (D349, §13.1) plus P3 bendable ML.** The row is still a fixed straight 2P strand (PC:246 `AddSeg(...2*P+2)`, prio_rows PC:293/409). All four freed-join probes (A2, A3, A4, B) failed; T3's length depends on it. Also retires the prio reservation.
@@ -22,7 +22,7 @@ Read-only survey. Sources: DESIGN-tracks.md (all), DESIGN-planar/components/piec
 | Topology -> shape -> rough positions -> grid layering (chip-routing split) | DESIGN-tracks §11, 2026-11-18 | partly built: shape and rough positions exist, grid layer absent | shape: planar_shape.cpp:8, PC:2578; no grid code in planar/ | slots, ladders |
 | Windowed grid legaliser around clash sites | §11, §8 end ("windowed grid pass stays an option") | not built (probe queued "after the bends probe") | no hit; PROBE-noclash-* in wip are inputs only | rough layout with no clashes |
 | Capacity rows per corridor (global-routing check) | §11 | not built | no hit | face map, slots |
-| Slot layer: per-piece lane slots, steps from slot changes | §3a, D327; SPIKE-slots, REVIEW-sideways-modelling (2026-11-18) | not built (spike only; run 2 feasible, mismatch with solver steps) | wip/SPIKE-slots.md totals "equal(sequence)=2 solver-over=20" | topology/variant per-stretch lane lists |
+| Slot layer: per-stretch track slots, steps from slot changes | §3a, D327, D349; SPIKE-slots, REVIEW-sideways-modelling (2026-11-18) | spike passed; not built | wip/SPIKE-slots.md run 4: all gap changes match outside staggered prio-join exits and turn geometry | the variant's channels, sites, copies, rows |
 | Headings first-class, width measured across own travel, diagonal hubs | §3a | partly built: 8 headings in pieces; the box/axis-port limit stays (D313) | planar_model.cpp AddPiece (DESIGN-pieces step 1b); axis-only refusal PC:1250/1256 per DESIGN-tracks §12 | slots |
 | Track-assignment layer between shape and lengths (layered drawing / Brandes-Koepf) | REVIEW-sideways-modelling 2026-11-18 (advice, not a ruling) | not built; = the slot layer idea | wip/REVIEW-sideways-modelling.md | slots |
 | Regions/faces as corridors; non-overlap per corridor | §3, §6, D339 | built (as ladders) | L1 face map planar_regions.cpp; `PlanarLineSides::Faces`, planar_components.cpp:758-807 | - |
@@ -136,6 +136,8 @@ Read-only survey. Sources: DESIGN-tracks.md (all), DESIGN-planar/components/piec
 ## Terrain
 | idea | source | status | evidence | depends on |
 |---|---|---|---|---|
+| Terrain repairs ranked by cost: terraform the ramp tiles vs change the shape (ramp straight + S-bend), both generated from a named height failure | D196/D199 (removed 2026-11-18 as old-pipeline mechanisms; idea kept here) | not built on planar | - | terrain on planar |
+| User weight between organic (shape change) and artificial (terraform) | D199 (removed 2026-11-18; idea kept here) | not built | - | terrain repairs |
 | Seed on flat ground, then terrain facts as lazy constraints with the seed's binaries as start | DESIGN-planar §3 | partly built | planar_plan.cpp:299-335 | - |
 | Hover: seed binaries fixed, positions solved at the cursor | DESIGN-planar §3 | partly built (hover param); timing flakes | planar_plan.cpp:299 `hover`; STATUS | - |
 | Terrain in the grid layer (deferred like clashes) | §11 | not built | - | grid layer |
