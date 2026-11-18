@@ -1,95 +1,115 @@
-# Spike: slot layer on T2, run 2 (straight link charged)
+# Spike: slot layer on T2, run 3 (pre/post intervals, prio fray spacing)
 
-Model feasible for all three variants (objective 36 for o1t3f1s0). Tables below: predicted = signed slot steps per line (link steps across sites attached to both lines they join), observed = pieces of heading h+-1 between two pieces of heading h, in slots (length/2), from the PLANAR_MAPPED_DUMP seq lines. Script: /tmp/claude-1000/-home-pete-OpenTTD/5aaa14e0-b8b8-4d2d-bc21-f25c3b5bedf1/scratchpad/slot-spike/cmp.py, output /tmp/claude-1000/-home-pete-OpenTTD/5aaa14e0-b8b8-4d2d-bc21-f25c3b5bedf1/scratchpad/slot-spike/cmp.out. Observed step sizes of 6 or more slots are long diagonal runs (route geometry), not sideways steps in the brief's sense, but are reported as the brief defines them.
+Changes over run 2: every channel has `pre` and `post` (no-crossing channels have exactly those two); in/out ports pin `pre`/`post`; in the `post` of a channel split by a Fray site with `prio`, consecutive Line tracks need `s(right)-s(left) >= 2` (rows and copies keep 1; no Row sits between lines in this case). Model feasible for all three variants; objective 50 in each. Observed layouts are the run 2 dumps (solver unchanged). Script: /tmp/claude-1000/-home-pete-OpenTTD/5aaa14e0-b8b8-4d2d-bc21-f25c3b5bedf1/scratchpad/slot-spike/cmp.py, output .../cmp.out. Turning lines (first piece heading differs from last piece heading) are excluded from totals; doubled lines (with a copy track) compare net signed step; others compare the sequence. "Model over / solver over" for non-doubled lines compare sum |step|; for doubled lines |net|.
+
+Tables (pred = signed slot steps, link steps attached to both lines they join; obs = steps from the dump, length/2):
 
 ```
 == o1t3f1s0
 line  predicted  observed(turns)
-A1   pred [] sum=0 | obs [15, -8] sum=23.0 turns=1 | differ
-A2   pred [] sum=0 | obs [10, -5] sum=15.0 turns=1 | differ
-AB1  pred [] sum=0 | obs [-2] sum=2.0 turns=0 | differ
-AB2  pred [] sum=0 | obs [-1] sum=1.0 turns=0 | differ
-AF1  pred [] sum=0 | obs [] sum=0 turns=0 | equal
-AF2  pred [] sum=0 | obs [] sum=0 turns=0 | equal
-B1   pred [-1] sum=1.0 | obs [1, -1, 1, -1] sum=4.0 turns=3 | differ
-B2   pred [-1] sum=1.0 | obs [1, -1] sum=2.0 turns=1 | differ
-C1   pred [] sum=0 | obs [9, -34] sum=43.0 turns=1 | differ
-C2   pred [] sum=0 | obs [6, -16] sum=22.0 turns=1 | differ
-CB1  pred [] sum=0 | obs [1] sum=1.0 turns=0 | differ
-CB2  pred [-1] sum=1.0 | obs [] sum=0 turns=0 | differ
-CD1  pred [] sum=0 | obs [] sum=0 turns=0 | equal
-CD2  pred [] sum=0 | obs [] sum=0 turns=0 | equal
-D1   pred [] sum=0 | obs [1] sum=1.0 turns=1 | differ
-D2   pred [] sum=0 | obs [19] sum=19.0 turns=1 | differ
-E1   pred [1] sum=1.0 | obs [] sum=0 turns=0 | differ
-E2   pred [1] sum=1.0 | obs [-1, 1] sum=2.0 turns=1 | differ
-ED1  pred [1] sum=1.0 | obs [2] sum=2.0 turns=0 | differ
-ED2  pred [] sum=0 | obs [-1, 2] sum=3.0 turns=1 | differ
-EF1  pred [] sum=0 | obs [-3] sum=3.0 turns=0 | differ
-EF2  pred [1] sum=1.0 | obs [-2] sum=2.0 turns=0 | differ
-F1   pred [] sum=0 | obs [-1] sum=1.0 turns=1 | differ
-F2   pred [] sum=0 | obs [-6] sum=6.0 turns=1 | differ
-totals: equal(sequence)=4 model-over=2 solver-over=18 sameSum-diffSeq=0
+A1   pred [] | obs [15, -8] | solver-over
+A2   pred [] | obs [10, -5] | solver-over
+AB1  pred [1] | obs [-2] | solver-over
+AB2  pred [1] | obs [-1] | same-sum-diff-seq
+AF1  pred [] | obs [] | equal
+AF2  pred [] | obs [] | equal
+B1   [doubled] pred net 0.0 (seq [1, -1]) | obs net 0.0 (seq [1, -1, 1, -1]) | equal
+B2   [doubled] pred net -1.0 (seq [-1]) | obs net 0.0 (seq [1, -1]) | model-over
+C1   pred [] | obs [9, -34] | solver-over
+C2   pred [] | obs [6, -16] | solver-over
+CB1  pred [] | obs [1] | solver-over
+CB2  pred [-1] | obs [] | model-over
+CD1  pred [] | obs [] | equal
+CD2  pred [] | obs [] | equal
+D1   EXCLUDED (turning) pred [] | obs [1]
+D2   EXCLUDED (turning) pred [] | obs [19]
+E1   pred [] | obs [] | equal
+E2   pred [-1] | obs [-1, 1] | solver-over
+ED1  pred [] | obs [2] | solver-over
+ED2  pred [-1] | obs [-1, 2] | solver-over
+EF1  pred [-1] | obs [-3] | solver-over
+EF2  pred [] | obs [-2] | solver-over
+F1   EXCLUDED (turning) pred [] | obs [-1]
+F2   EXCLUDED (turning) pred [] | obs [-6]
+compared=20 excluded=['D1', 'D2', 'F1', 'F2']
+totals: equal=6 model-over=2 solver-over=11 same-sum-diff-seq=1
 == o1t2f1s0
 line  predicted  observed(turns)
-A1   pred [] sum=0 | obs [15, -8] sum=23.0 turns=1 | differ
-A2   pred [] sum=0 | obs [10, -5] sum=15.0 turns=1 | differ
-AB1  pred [] sum=0 | obs [-2] sum=2.0 turns=0 | differ
-AB2  pred [] sum=0 | obs [-1] sum=1.0 turns=0 | differ
-AF1  pred [] sum=0 | obs [1] sum=1.0 turns=0 | differ
-AF2  pred [] sum=0 | obs [1] sum=1.0 turns=0 | differ
-B1   pred [-1] sum=1.0 | obs [1, -1, 1, -1] sum=4.0 turns=3 | differ
-B2   pred [-1] sum=1.0 | obs [1, -1] sum=2.0 turns=1 | differ
-C1   pred [] sum=0 | obs [-35] sum=35.0 turns=1 | differ
-C2   pred [] sum=0 | obs [-17] sum=17.0 turns=1 | differ
-CB1  pred [] sum=0 | obs [1] sum=1.0 turns=0 | differ
-CB2  pred [-1] sum=1.0 | obs [] sum=0 turns=0 | differ
-CD1  pred [] sum=0 | obs [] sum=0 turns=0 | equal
-CD2  pred [] sum=0 | obs [] sum=0 turns=0 | equal
-D1   pred [] sum=0 | obs [-2, 1] sum=3.0 turns=1 | differ
-D2   pred [] sum=0 | obs [-5, 19] sum=24.0 turns=1 | differ
-E1   pred [1] sum=1.0 | obs [] sum=0 turns=0 | differ
-E2   pred [1] sum=1.0 | obs [-1, 1] sum=2.0 turns=1 | differ
-ED1  pred [1] sum=1.0 | obs [2] sum=2.0 turns=0 | differ
-ED2  pred [] sum=0 | obs [-1, 2] sum=3.0 turns=1 | differ
-EF1  pred [] sum=0 | obs [-3] sum=3.0 turns=0 | differ
-EF2  pred [1] sum=1.0 | obs [-2] sum=2.0 turns=0 | differ
-F1   pred [] sum=0 | obs [-1] sum=1.0 turns=1 | differ
-F2   pred [] sum=0 | obs [-6] sum=6.0 turns=1 | differ
-totals: equal(sequence)=2 model-over=2 solver-over=20 sameSum-diffSeq=0
+A1   pred [] | obs [15, -8] | solver-over
+A2   pred [] | obs [10, -5] | solver-over
+AB1  pred [1] | obs [-2] | solver-over
+AB2  pred [1] | obs [-1] | same-sum-diff-seq
+AF1  pred [] | obs [1] | solver-over
+AF2  pred [] | obs [1] | solver-over
+B1   [doubled] pred net 0.0 (seq [1, -1]) | obs net 0.0 (seq [1, -1, 1, -1]) | equal
+B2   [doubled] pred net -1.0 (seq [-1]) | obs net 0.0 (seq [1, -1]) | model-over
+C1   EXCLUDED (turning) pred [] | obs [-35]
+C2   EXCLUDED (turning) pred [] | obs [-17]
+CB1  pred [] | obs [1] | solver-over
+CB2  pred [-1] | obs [] | model-over
+CD1  pred [] | obs [] | equal
+CD2  pred [] | obs [] | equal
+D1   pred [] | obs [-2, 1] | solver-over
+D2   pred [] | obs [-5, 19] | solver-over
+E1   pred [] | obs [] | equal
+E2   pred [-1] | obs [-1, 1] | solver-over
+ED1  pred [] | obs [2] | solver-over
+ED2  pred [-1] | obs [-1, 2] | solver-over
+EF1  pred [-1] | obs [-3] | solver-over
+EF2  pred [] | obs [-2] | solver-over
+F1   EXCLUDED (turning) pred [] | obs [-1]
+F2   EXCLUDED (turning) pred [] | obs [-6]
+compared=20 excluded=['C1', 'C2', 'F1', 'F2']
+totals: equal=4 model-over=2 solver-over=13 same-sum-diff-seq=1
 == o0t2f1s1
 line  predicted  observed(turns)
-A1   pred [] sum=0 | obs [11, -9] sum=20.0 turns=1 | differ
-A2   pred [] sum=0 | obs [6, -6] sum=12.0 turns=1 | differ
-AB1  pred [] sum=0 | obs [-2] sum=2.0 turns=0 | differ
-AB2  pred [] sum=0 | obs [-1] sum=1.0 turns=0 | differ
-AF1  pred [] sum=0 | obs [1] sum=1.0 turns=0 | differ
-AF2  pred [] sum=0 | obs [1] sum=1.0 turns=0 | differ
-B1   pred [-1] sum=1.0 | obs [1, -2, 16, -1, 1, -1] sum=22.0 turns=3 | differ
-B2   pred [-1] sum=1.0 | obs [-2, 1, -1] sum=4.0 turns=2 | differ
-C1   pred [] sum=0 | obs [-41] sum=41.0 turns=1 | differ
-C2   pred [] sum=0 | obs [-23] sum=23.0 turns=1 | differ
-CB1  pred [] sum=0 | obs [1] sum=1.0 turns=0 | differ
-CB2  pred [-1] sum=1.0 | obs [] sum=0 turns=0 | differ
-CD1  pred [] sum=0 | obs [] sum=0 turns=0 | equal
-CD2  pred [] sum=0 | obs [] sum=0 turns=0 | equal
-D1   pred [] sum=0 | obs [-12, 1] sum=13.0 turns=1 | differ
-D2   pred [] sum=0 | obs [-15, 19] sum=34.0 turns=1 | differ
-E1   pred [1] sum=1.0 | obs [] sum=0 turns=0 | differ
-E2   pred [1] sum=1.0 | obs [-1, 1] sum=2.0 turns=1 | differ
-ED1  pred [1] sum=1.0 | obs [2] sum=2.0 turns=0 | differ
-ED2  pred [] sum=0 | obs [-1, 2] sum=3.0 turns=1 | differ
-EF1  pred [] sum=0 | obs [-5] sum=5.0 turns=0 | differ
-EF2  pred [1] sum=1.0 | obs [-4] sum=4.0 turns=0 | differ
-F1   pred [] sum=0 | obs [-1] sum=1.0 turns=1 | differ
-F2   pred [] sum=0 | obs [-6] sum=6.0 turns=1 | differ
-totals: equal(sequence)=2 model-over=2 solver-over=20 sameSum-diffSeq=0
+A1   pred [] | obs [11, -9] | solver-over
+A2   pred [] | obs [6, -6] | solver-over
+AB1  pred [1] | obs [-2] | solver-over
+AB2  pred [1] | obs [-1] | same-sum-diff-seq
+AF1  pred [] | obs [1] | solver-over
+AF2  pred [] | obs [1] | solver-over
+B1   [doubled] pred net 0.0 (seq [1, -1]) | obs net 14.0 (seq [1, -2, 16, -1, 1, -1]) | solver-over
+B2   [doubled] pred net -1.0 (seq [-1]) | obs net -2.0 (seq [-2, 1, -1]) | solver-over
+C1   EXCLUDED (turning) pred [] | obs [-41]
+C2   EXCLUDED (turning) pred [] | obs [-23]
+CB1  pred [] | obs [1] | solver-over
+CB2  pred [-1] | obs [] | model-over
+CD1  pred [] | obs [] | equal
+CD2  pred [] | obs [] | equal
+D1   pred [] | obs [-12, 1] | solver-over
+D2   pred [] | obs [-15, 19] | solver-over
+E1   pred [] | obs [] | equal
+E2   pred [-1] | obs [-1, 1] | solver-over
+ED1  pred [] | obs [2] | solver-over
+ED2  pred [-1] | obs [-1, 2] | solver-over
+EF1  pred [-1] | obs [-5] | solver-over
+EF2  pred [] | obs [-4] | solver-over
+F1   EXCLUDED (turning) pred [] | obs [-1]
+F2   EXCLUDED (turning) pred [] | obs [-6]
+compared=20 excluded=['C1', 'C2', 'F1', 'F2']
+totals: equal=3 model-over=1 solver-over=15 same-sum-diff-seq=1
 ```
 
-Forced/optional: only one nonzero interval step exists (B1 into post, -1): optional, objective change 0. Link steps are not pinned (brief item 6 covers line/interval pairs only).
+Totals per variant (compared lines only):
 
-Predicted link steps (o1t3f1s0): EF2->E2 +1, B2->CB2 -1, E1->ED1 +1; others 0. Offsets o(channel) hit the +-500 bounds (free translation), so only differences are meaningful.
+| variant | compared | equal | model over | solver over | same sum, different sequence | excluded (turning) |
+|---|---|---|---|---|---|---|
+| o1t3f1s0 | 20 | 6 | 2 | 11 | 1 | D1 D2 F1 F2 |
+| o1t2f1s0 | 20 | 4 | 2 | 13 | 1 | C1 C2 F1 F2 |
+| o0t2f1s1 | 20 | 3 | 1 | 15 | 1 | C1 C2 F1 F2 |
 
-Rules read from code: unchanged from run 1 (SPIKE-slots-run1.md). The only model change is the straight link: step variables up/dn, cost 1 each, no equality.
+Forced/optional: see the `slot` lines of the slots-*.txt files in the scratchpad dir (columns forced|optional and delta-objective); not re-tabulated here. Link steps are not pinned.
 
-Open questions: the comparison counts observed steps per whole strand while the model is per topology line; strands spanning several lines (A, C, D, F, B) accumulate steps the model assigns to other lines. Not resolved here.
+Rules read from code and open questions: unchanged from run 2 plus: the Fray `prio` spacing is applied only between consecutive Line tracks in `post` of `PlanarSite::channel` of a Fray site with `res.prio` (site.channel is the channel split); the composer's Fray gap is at planar_components.cpp:337 (`prio ? 4 : 2`). Open: the model still predicts almost no steps on the long strands (A, C, D, B1 in o0t2f1s1), where the solver's observed steps are route geometry; the AB/CB/E*/EF* predicted link steps have the right sign only sometimes (AB2 same sum, other sign).
+
+## Run 2 summary
+
+Run 2 added a charged (no equality) straight link across sites to run 1's model. T2 was feasible for all three variants (objective 36 for o1t3f1s0), but the model predicted nearly no steps: equal 4 / 2 / 2, model over 2 / 2 / 2, solver over 18 / 20 / 20 (o1t3f1s0 / o1t2f1s0 / o0t2f1s1) over all 24 lines, with the comparison counted per whole strand rather than per topology line.
+
+## Orchestrator reading (2026-11-18)
+- The per-line comparison counts channel-wide shifts and shape detours (for example C1 [9, -34], a heading wiggle 7-0-7-6-7) as steps. In the model, a channel's common offset is free by design, so those are not slot facts.
+- The slot fact is the change in the gap between neighbouring lanes. Recomputed from cmp.out: 5 of 8 channel gap changes match in each of o1t3f1s0, o1t2f1s0 and o0t2f1s1.
+  - The EF fray, the ED and CB join close-ups, CD and AF all match.
+  - The misses are AB (solver +1, model 0) and B and E (model -1, solver 0).
+- The misses all sit in the prio channels and their feeder. That is where today's solver uses the stagger with reserved rows, not D349's rows-as-tracks, so it cannot validate the prio part.
