@@ -4,8 +4,8 @@ Queue (one ng1 writer at a time; light read-only work in parallel):
 1. DONE probe A (wip/PROBE-prio-bridge.md): 0 variants solve; the near lane's fixed prio-row reservation cannot clear the joiner crossing inside the coverage. DONE probe A2 (wip/PROBE-prio-bridge2.md): composer gains ~21% (T2 684.25, T3 1534.25) but the signal pass finds no row room; with the main line over, the row needs a gap at the joiner crossing or a third bridge (not designed). Joiner-over (probe B) avoids it and goes first.
 2. DONE recon wip/RECON-prio-under.md (channel level: two lines in planar_paths + default shape cannot bend a straight channel + program shape skipped when default fails; join level: helpers suffice; bits: T3 +8..14, so local search is required).
 3. DONE probe B (wip/PROBE-joiner-over.md): T3 none solve, T2 967.25 (worse), prio does not fit. Both forms fail on the fixed straight row: row model default written (DESIGN-tracks 13.1: offset copy of the lane, gapped at crossings).
-3a. RUNNING step: variant local search past the 6-bit cap (wip/BRIEF-variant-search.md, test-first, commits on wt-planar).
-3b. NEXT (ng1 after 3a): probe C prio channel crossings open, explored by the search (wip/BRIEF-probe-prio-open.md; fill {HEAD}). 3c. Then probe A3 row as gapped offset copy (wip/BRIEF-probe-prio-row.md; fill {HEAD} from git at launch); then B3 if A3 lands.
+3a. DONE e4b50580e1 variant local search past the 6-bit cap (LL² full solve now runs: o17t0f1s0 1347.25, 48 solved, 92 s wall; T2 32 enumerated 2.8 s; T3 4.1 s; gate 635/635 at 30.1 s, still over its 30 s budget as before; one hover timing flake 107.9 ms under load in run 1).
+3b. RUNNING probe C prio channel crossings open, explored by the search (wip/BRIEF-probe-prio-open.md; fill {HEAD}). 3c. Then probe A3 row as gapped offset copy (wip/BRIEF-probe-prio-row.md; fill {HEAD} from git at launch); then B3 if A3 lands.
 4. Then: design the landing step(s) from A and B (searched over bit per prio crossing; start = main line over), test-first; P3 (bendable ML) folds into B.
 5. Then: hard anchor probe (pin one port coordinate, §8.4); then variant local search in the solver (§14).
 

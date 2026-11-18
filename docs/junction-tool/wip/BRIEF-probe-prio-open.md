@@ -3,7 +3,7 @@
 Throwaway probe: nothing committed in ng1. Time box: 75 minutes; at the box, report what you have. Never use git stash, never start a game client, never touch ports 4077/4079 or running openttd processes; build only `openttd_test` in `build-rel`, never `openttd`. One heavy job at a time (no parallel test runs). Outputs under `/tmp/claude-1000/-home-pete-OpenTTD/5aaa14e0-b8b8-4d2d-bc21-f25c3b5bedf1/scratchpad/probe-po/`; read code with offset/limit; command output to files. If anything does not fit the code as described, stop and report; do not invent another rule. Do not start background work that outlives your report.
 
 ## State
-- Worktree `/home/pete/OpenTTD/.claude/ng1`, branch `wt-planar`, clean at `{HEAD}` (includes the variant local search: above 6 variant bits `SolvePlanarMapped` hill-climbs from the all-zero variant; `PlanarComponentLayout::variants_solved`).
+- Worktree `/home/pete/OpenTTD/.claude/ng1`, branch `wt-planar`, clean at `e4b50580e1` (includes the variant local search: above 6 variant bits `SolvePlanarMapped` hill-climbs from the all-zero variant; `PlanarComponentLayout::variants_solved`).
 - Read first: `docs/junction-tool/wip/RECON-prio-under.md` section 1 and 4; DECISIONS rows D328, D347b; `src/junction/planar/CLAUDE.md` "Channel paths" and "Shape program".
 
 ## Change (all behind env `PLANAR_PRIOOPEN=1`; unset = today exactly)
