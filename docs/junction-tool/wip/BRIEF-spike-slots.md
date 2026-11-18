@@ -7,6 +7,9 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 - Build: `cmake --build build-rel --target openttd_test -j8` (Release), output to a file.
 - Time box: 2 hours. When it runs out, stop and report what you have.
 
+## Docs location
+The docs live only at `/home/pete/OpenTTD/docs/junction-tool/` (not in ng1). Read DECISIONS there.
+
 ## Why (read once)
 - `docs/junction-tool/wip/REVIEW-sideways-modelling.md` (Q1, Q2, Q4).
 - `docs/junction-tool/DESIGN-tracks.md` §3a.
@@ -47,8 +50,8 @@ Units: one slot is one lane spacing.
    - **Continuity:** a line present in consecutive intervals of its channel keeps its variables linked only through the objective (below); there is no equality.
    - **Ports:** a channel whose lines start at an in port has its `pre` interval (or its first interval) pinned to `s(line) = o(channel) + rank`. Here rank is 0, 1, ... in `lines` order. Do the same at the last interval for an out port.
    - **Copy:** in `x<k>`, a copy's `s` differs by exactly 1 from its line's `s`, on its side.
-   - **Straight continuation across a site.** When a resolved site has a `straight` channel, the lines the node legs mark as straight (`PlanarNodeLegs::straight`) link the last interval of the channel before the site to the first interval of the straight channel after it, with `s(after) - s(before) = 0`. Channels joined only through a turn (the `other` channel) are not linked; their `o` stays free.
-5. **Objective:** minimise `sum |s(t, i+1) - s(t, i)|` over every line and every consecutive pair of its channel's intervals, plus `sum width(i)` with `width(i) = s(rightmost) - s(leftmost)` in interval i. Write each `|.|` with two non-negative variables. Weight both terms 1.
+   - **Straight continuation across a site.** When a resolved site has a `straight` channel, the lines the node legs mark as straight (`PlanarNodeLegs::straight`) link the last interval of the channel before the site to the first interval of the straight channel after it, with no equality: the step `s(after) - s(before)` is charged in the objective exactly like a step between two intervals of one channel (amended after run 1, where a hard equality made T2 infeasible: the prio rows hold the lanes 2 apart before the join and the out ports pin them 1 apart, so the exit close-up must be able to appear). Channels joined only through a turn (the `other` channel) are not linked; their `o` stays free.
+5. **Objective:** minimise `sum |s(t, i+1) - s(t, i)|` over every line and every consecutive pair of its channel's intervals, plus `sum |s(after) - s(before)|` over every straight link across a site, plus `sum width(i)` with `width(i) = s(rightmost) - s(leftmost)` in interval i. Write each `|.|` with two non-negative variables. Weight both terms 1.
 6. **Forcedness.** For every (line, interval pair) whose solution step is non-zero, solve once more with that step pinned to 0. Report "forced" if the result is infeasible, else "optional", together with the objective change.
 
 Solve with `JunctionMilp` (`src/junction/placement/junction_milp.h`), the same as the solver does.
@@ -94,7 +97,7 @@ Solve with `JunctionMilp` (`src/junction/placement/junction_milp.h`), the same a
 - Commit on `spike-slots`: `Add: Junction slot layer spike on T2 (test only)`, ending with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Report
-Write `docs/junction-tool/wip/SPIKE-slots.md` (do not commit it) with:
+Write `/home/pete/OpenTTD/docs/junction-tool/wip/SPIKE-slots.md` (do not commit it) with:
 - the three comparison tables and totals;
 - the forced/optional list;
 - every rule you had to read from code, with file:line;
