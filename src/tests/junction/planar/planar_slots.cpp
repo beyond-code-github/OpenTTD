@@ -104,9 +104,9 @@ static void CheckGapChanges(const SlotsVariant &v, double objective, const std::
 TEST_CASE("planar slots: T2 o1t3f1s0 gap changes", "[junction][planar]")
 {
 	const SlotsVariant v = BuildVariant(PlanarTText(2), 1, 3, 1);
-	CheckGapChanges(v, 50, {
-		{{"EF1", "EF2"}, +1}, {{"CB1", "CB2"}, -1}, {{"ED1", "ED2"}, -1}, {{"AB1", "AB2"}, +1},
-		{{"CD1", "CD2"}, 0}, {{"AF1", "AF2"}, 0}, {{"A1", "A2"}, 0}, {{"B1", "B2"}, 0},
+	CheckGapChanges(v, 59, {
+		{{"EF1", "EF2"}, +1}, {{"CB1", "CB2"}, -2}, {{"ED1", "ED2"}, -1}, {{"AB1", "AB2"}, +1},
+		{{"CD1", "CD2"}, 0}, {{"AF1", "AF2"}, 0}, {{"A1", "A2"}, 0}, {{"B1", "B2"}, +1},
 		{{"C1", "C2"}, 0}, {{"D1", "D2"}, 0}, {{"E1", "E2"}, 0}, {{"F1", "F2"}, 0},
 	});
 }
@@ -114,12 +114,32 @@ TEST_CASE("planar slots: T2 o1t3f1s0 gap changes", "[junction][planar]")
 TEST_CASE("planar slots: LL² o17t0f1s0 gap changes", "[junction][planar]")
 {
 	const SlotsVariant v = BuildVariant(PlanarLL2Text(), 17, 0, 1);
-	CheckGapChanges(v, 53, {
+	CheckGapChanges(v, 67, {
 		{{"EF1", "EF2"}, +1}, {{"WO1", "WO2"}, 0}, {{"EO1", "EO2"}, 0}, {{"AB1", "AB2"}, +1},
-		{{"CD1", "CD2"}, +1}, {{"SO1", "SO2"}, 0}, {{"E1", "E2"}, -1}, {{"F1", "F2"}, 0},
-		{{"A1", "A2"}, 0}, {{"B1", "B2"}, -1}, {{"C1", "C2"}, 0}, {{"D1", "D2"}, 0},
+		{{"CD1", "CD2"}, +1}, {{"SO1", "SO2"}, 0}, {{"E1", "E2"}, -1}, {{"F1", "F2"}, +2},
+		{{"A1", "A2"}, 0}, {{"B1", "B2"}, +1}, {{"C1", "C2"}, 0}, {{"D1", "D2"}, 0},
 		{{"EDj1", "EDj2"}, 0}, {{"CBj1", "CBj2"}, 0}, {{"AFj1", "AFj2"}, 0},
 	});
+}
+
+TEST_CASE("planar slots: a doubled line carries on along its copy's track", "[junction][planar]")
+{
+	for (const SlotsVariant &v : {BuildVariant(PlanarTText(2), 1, 3, 1), BuildVariant(PlanarLL2Text(), 17, 0, 1)}) {
+		INFO(v.topology.name);
+		REQUIRE(v.slots.why.empty());
+		size_t copies = 0;
+		for (const std::vector<PlanarSlotInterval> &intervals : v.slots.channels) {
+			for (size_t iv = 0; iv + 1 < intervals.size(); iv++) {
+				for (const PlanarSlotTrack &track : intervals[iv].tracks) {
+					if (track.kind != PlanarSlotKind::Copy) continue;
+					copies++;
+					INFO(intervals[iv].name << " line " << track.line);
+					CHECK(LineSlot(intervals[iv + 1], track.line) == track.slot);
+				}
+			}
+		}
+		CHECK(copies > 0);
+	}
 }
 
 TEST_CASE("planar slots: tracks", "[junction][planar]")

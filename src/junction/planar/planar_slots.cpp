@@ -128,6 +128,7 @@ PlanarSlots BuildPlanarSlots(const PlanarTopology &topology, const PlanarChannel
 				const size_t li = i > 0 && list[i - 1].kind == PlanarSlotKind::Line && list[i - 1].line == list[i].line ? i - 1 : i + 1;
 				const double d = li < i ? 1 : -1; // s(copy) - s(line)
 				row({{sv(PlanarSlotKind::Copy, list[i].line, c, iv), 1}, {sv(PlanarSlotKind::Line, list[i].line, c, iv), -1}}, d, d);
+				if (iv + 1 < intervals[c].size()) row({{sv(PlanarSlotKind::Line, list[i].line, c, iv + 1), 1}, {sv(PlanarSlotKind::Copy, list[i].line, c, iv), -1}}, 0, 0); // The line carries on along its copy's track.
 			}
 		}
 		const PlanarChannel &cc = channels.channels[c];
