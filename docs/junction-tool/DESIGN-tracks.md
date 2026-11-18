@@ -166,4 +166,4 @@ The slot layer owns sideways position. Components keep their fixed coop cross-se
 
 ### 15.4 Open, decided at S2's measurement
 - Whether unit weights lose area against today's searched steps. If so, S6 moves before S4.
-- Whether the doubled bridge keeps today's parallelogram (the lane ends on the copy's line) or the copy returns to the lane. That is a coop convention question for the engineer if S2 shows that it matters.
+- DECIDED D351: the doubled bridge is a parallelogram only (balance); the line ends on its copy's track, so its slot after the crossing is its copy's slot.

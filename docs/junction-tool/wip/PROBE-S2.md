@@ -1,0 +1,27 @@
+# PROBE-S2 (throwaway) measurements
+
+Branch probe-s2 on a8b146d1ff (ng1 worktree). Baselines: pv run/save on wt-planar before the change (T2 28 ok of 32, T3 28 ok of 32, LL2 12 ok of 12 tags).
+
+## Result
+- T2: 0 of 32 variants solve (28 solved before). T3: 0 of 32 (28 before). All 32 build (PLANAR_DRY "built") and are reported "base infeasible" by the rough solve. No "slot change inside one piece" and no "a slot step on a diagonal piece is not composed" occurred anywhere.
+- LL2 (12 default tags): 12 ok, areas and track identical to baseline in all 12 (best 2354.25 both; 0 better, 0 worse, 12 equal, median change 0); median solve 4099 ms baseline, 4204 ms probe (noise). No slot differed from the old constants in these tags (no S2DIFF lines).
+- Best area: T2 baseline 862.25 vs none; T3 baseline 1933.25 vs none.
+- `jt fast build-rel '[planar]'`: 23 cases, all pass (0.07 s). No failures to list (the T2/T3 area-pinning tests are not in that filter).
+
+## Where slots differ from the old constants (every variant, both shapes)
+| hub | channel | interval | lane | old | slot |
+|---|---|---|---|---|---|
+| T2, T3 | 10 (E core, prio join straight) | pre, x, post | 1 | 1 | 2 |
+| T3 | 10 | pre, x, post | 2 | 3 | 4 |
+| T2 | 7 | post | 1 | 1 | 2 |
+| T3 | 7 | post | 2 | 3 | 4 |
+Join out gap and fray gap: no difference (join out gap 1 slot; fray gap 2 slots exact).
+
+## Cause (from PLANAR_IIS on T2 o1t3f1s0)
+IIS rows: fray gap (4 half-tiles, now Eq), the fray's S-leg segments E1#0, E2#0..#4, and the core's `flex` row (offset 4). The slot layer keeps the line stationary with a gap of 2 slots from the prio fray's last interval into the core's `pre`. The composer's prio fray (`Fray`, R11, left unchanged) takes each near S lane through `Double(S[j], h, -sigma)`: the lane ends on the copy's line, 1 slot toward the far lane, with no back step. So after the fray the lanes are 4 - 2 = 2 half-tiles (1 slot) apart, and the core wants 4. The slot layer sees the copy as a track beside a stationary line; the fray leg moves the lane onto it. This is the question in DESIGN-tracks 15.4 (does the lane end on the copy's line, or the copy return to the lane): it matters, and S2 as briefed cannot compose it because a step across a site (here fray to core) is not in scope. The same applies at the join entry (JoinEntry offsets 0,1,3 vs slots 0,2,4 on channel 7 post in T3/T2).
+
+## Failure cases
+Slot-change-inside-one-piece: 0. Diagonal slot step: 0. Other new reason: none. Reason for all T2/T3 failures: "base infeasible" (old reason "infeasible" on the 4 baseline failures per hub).
+
+## Probe code notes (deviations)
+`SlotOf`, `IvName`, `Offs`, `LogDiff`, `SlotBend` and the `slots` member are methods of MappedComposer, not locals, because Bundle/Fray/Join need them. `Fray` gained a `gaps` parameter. `JoinEntry` is only used for the diff log now. The join out gap uses `2 * (slot(O[k+1]) - slot(O[k]))` in the out channel's pre (equal to 2*sigma*diff when lines are in sigma order). Lane order: `Lanes(c)` is left to right, the slots are left to right across travel, so the mapping is the identity. Bundle: m=0 channels use pre for pieces before the last and post for the last; core with no decks puts the pre-to-post bend at the end of its lead. pv and docs are untracked in ng1's tree; pv run from /home/pete/OpenTTD/tools/junction/pv.
