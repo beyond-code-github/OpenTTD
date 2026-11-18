@@ -104,3 +104,21 @@ Write `/home/pete/OpenTTD/docs/junction-tool/wip/SPIKE-slots.md` (do not commit 
 - open questions.
 
 Reply with: the references read, the commit hash, the totals per variant, stops, and `git status --porcelain` plus `git log -1`. When you have reported, stop.
+
+## Run 3 amendments (apply these; everything else as above)
+Model:
+1. **Every channel has both a `pre` and a `post` interval,** even with no crossings. A channel with no crossings has exactly `pre` and `post` and nothing between. A channel with crossings keeps `pre`, `x<k>`, `mid<k>` and `post` as before. Line steps between consecutive intervals are charged as before.
+2. **Port pins:** an in port pins the channel's `pre`, and an out port pins its `post`, with rank spacing 1 as before.
+3. **Prio fray spacing (new):** in the `post` interval of a channel split by a Fray site whose resolved site has `prio` set, consecutive lanes satisfy `s(right) - s(left) >= 2` in place of `>= 1`. This mirrors the composer's fray gap (`planar_components.cpp` Fray, `prio ? 4 : 2` in half-tiles, where 2 half-tiles is one slot).
+4. Prio rows and copies are unchanged. Rows still sit in `post`.
+
+Comparison:
+5. **A line is "turning"** when the heading of its first piece differs from the heading of its last piece in the dump. Leave turning lines out of the totals, and list them separately as "excluded (turning)".
+6. **Doubled lines:** for every line that has a copy track in the model, compare the net signed step (the sum of the signed steps) instead of the sequence: predicted net against observed net. For every other line, compare the sequence as before.
+7. **Totals per variant, over the compared lines only:**
+   - equal;
+   - model over (the model predicts a step the solver did not take);
+   - solver over;
+   - same sum but a different sequence.
+
+   Also give the count of compared lines.
