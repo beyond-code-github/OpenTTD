@@ -1,3 +1,12 @@
+# Spike: slot layer (verdict 2026-11-18)
+
+## Run 4 (LL² and T2, one metric; spike-slots f4d1ef0e49; script wip/slot-spike/gap.py)
+Metric: for each pair of neighbouring lines in a channel, the gap change, predicted (net slot steps, with each link step across a site counted on the line after it) against observed (net sideways steps in the mapped dump). Pairs with a line whose first and last headings differ are skipped.
+- **LL²** (o17t0f1s0, o0t0f0s0, o0t1f0s0): 5 matched, 3 mismatched, 7 skipped in each. The three misses are WO, EO and SO (obs -5, pred 0). These are the out lanes after a prio join, closing up 5 slots from today's staggered join; the model has no stagger (D349 removes it).
+- **T2** (o1t3f1s0, o1t2f1s0): 8 matched, 2 mismatched. o0t2f1s1: 7 matched, 3 mismatched. The misses are A1/A2 (-2) and C or D (+15): long lines with a 45-degree detour, where the inner and outer lanes of a turn differ in length, so the metric counts curve geometry, not slots. o0t2f1s1 also misses B (-16), the long-run case.
+- Run 4's first LL² attempt failed with a HiGHS Error, which was a spike bug: the width row of a one-track interval named one variable twice. Fixed.
+- **Verdict:** outside today's staggered prio-join exits and turn geometry, every gap change matches on both hubs, in all six variants. That covers the fray fans, the join close-ups, and the doubled channel with rows (T2 B, now matching once link steps count).
+
 # Spike: slot layer on T2, run 3 (pre/post intervals, prio fray spacing)
 
 Changes over run 2: every channel has `pre` and `post` (no-crossing channels have exactly those two); in/out ports pin `pre`/`post`; in the `post` of a channel split by a Fray site with `prio`, consecutive Line tracks need `s(right)-s(left) >= 2` (rows and copies keep 1; no Row sits between lines in this case). Model feasible for all three variants; objective 50 in each. Observed layouts are the run 2 dumps (solver unchanged). Script: /tmp/claude-1000/-home-pete-OpenTTD/5aaa14e0-b8b8-4d2d-bc21-f25c3b5bedf1/scratchpad/slot-spike/cmp.py, output .../cmp.out. Turning lines (first piece heading differs from last piece heading) are excluded from totals; doubled lines (with a copy track) compare net signed step; others compare the sequence. "Model over / solver over" for non-doubled lines compare sum |step|; for doubled lines |net|.
