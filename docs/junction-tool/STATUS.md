@@ -1,7 +1,7 @@
 # QUEUE (2026-11-18 evening, Pete away): prio crossings and stagger
 Finding: T3's length is the prio stagger (wip/PROBE-prio-stagger.md): a multi-lane prio join chains its lanes' coverages behind the joiners' doubled bridges. Rulings D347 (coverage may contain a main-line bridge), D347a (corrected), D347b (prio crossing over/under is a searched choice; main line over is the start). Recons: wip/RECON-prio-bridge.md, wip/RECON-prio-bridge-rule.md.
 Queue (one ng1 writer at a time; light read-only work in parallel):
-1. RUNNING probe A: main line over, coverage counted along the lane through its doubled bridge, G9c exempts copy switches (wip/BRIEF-probe-prio-bridge.md) -> wip/PROBE-prio-bridge.md.
+1. DONE probe A (wip/PROBE-prio-bridge.md): 0 variants solve; the near lane's fixed prio-row reservation cannot clear the joiner crossing inside the coverage. RUNNING probe A2: same, near lanes' row reservation dropped, signal-pass search places the row (wip/BRIEF-probe-prio-bridge2.md).
 2. RUNNING recon (read-only): other line over a prio main line, ML S-bends under (wip/BRIEF-recon-prio-under.md) -> wip/RECON-prio-under.md.
 3. NEXT probe B (ng1 after A): the joiner-over form on T3/T2, designed from 2.
 4. Then: design the landing step(s) from A and B (searched over bit per prio crossing; start = main line over), test-first; P3 (bendable ML) folds into B.
