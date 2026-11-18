@@ -1,3 +1,12 @@
+# QUEUE (2026-11-18 evening, Pete away): prio crossings and stagger
+Finding: T3's length is the prio stagger (wip/PROBE-prio-stagger.md): a multi-lane prio join chains its lanes' coverages behind the joiners' doubled bridges. Rulings D347 (coverage may contain a main-line bridge), D347a (corrected), D347b (prio crossing over/under is a searched choice; main line over is the start). Recons: wip/RECON-prio-bridge.md, wip/RECON-prio-bridge-rule.md.
+Queue (one ng1 writer at a time; light read-only work in parallel):
+1. RUNNING probe A: main line over, coverage counted along the lane through its doubled bridge, G9c exempts copy switches (wip/BRIEF-probe-prio-bridge.md) -> wip/PROBE-prio-bridge.md.
+2. RUNNING recon (read-only): other line over a prio main line, ML S-bends under (wip/BRIEF-recon-prio-under.md) -> wip/RECON-prio-under.md.
+3. NEXT probe B (ng1 after A): the joiner-over form on T3/T2, designed from 2.
+4. Then: design the landing step(s) from A and B (searched over bit per prio crossing; start = main line over), test-first; P3 (bendable ML) folds into B.
+5. Then: hard anchor probe (pin one port coordinate, §8.4); then variant local search in the solver (§14).
+
 ## RESUME HERE (2026-11-18 late afternoon) — SHAPE LAYER + PRIO FREEDOM + VARIANT SEARCH
 - ng1 wt-planar 0958786f36 (pushed). Docs pushed. Rig up (4077/4079, scratchpad/ottd-planar, map 256): old/new T2, T3, LL2 signed; Pete's client joined.
 - Landed today: ladders (L1 39bcbf9255, L2 9cf540691c, warm start 7073aacd56), g_tag race fix 72c03f4196, shape layer S1 2e05ca776f / S2 54e000f748 / S3a 21cdedd3e6 / S3b d632dc357c (D341 score both) / S2b 174497786e (crossing side from face map), deadline d2ee981bcc, prio P1 2cb6129623 (check per piece) and P2s 0958786f36 (placement by search). Decisions D340-D346.
