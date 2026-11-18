@@ -1309,6 +1309,25 @@ TEST_CASE("prio: coverage through a bend passes when the prio reach holds", "[ju
 	CHECK(CheckPrio(ctx).empty());
 }
 
+TEST_CASE("prio: a row signal faces upstream along the main-line piece it sits beside", "[junction][rules]")
+{
+	const JunctionSpec spec = PinnedTestSpec();
+	/* A row signal beside the first leg (the row tile (1,5), beside the axis piece (1,6)) faces upstream along that leg, not along the merge piece. */
+	{
+		JunctionLayout layout = BentPrioLayout();
+		AddSignal(layout, 1, 5, Trackdir::X_NE, SignalType::Combo);
+		const JunctionCheckContext ctx = BentPrioContext(layout, spec);
+		CHECK(!Has(CheckPrio(ctx), JunctionRule::Prio, 1, 5, "prio signal does not face upstream"));
+	}
+	/* Facing along the leg the wrong way is still a violation. */
+	{
+		JunctionLayout layout = BentPrioLayout();
+		AddSignal(layout, 1, 5, Trackdir::X_SW, SignalType::Combo);
+		const JunctionCheckContext ctx = BentPrioContext(layout, spec);
+		CHECK(Has(CheckPrio(ctx), JunctionRule::Prio, 1, 5, "prio signal does not face upstream"));
+	}
+}
+
 /** The straight prio with a row that steps one tile out between the joins and back: a gap a track could use. */
 static JunctionLayout SteppedRowLayout()
 {

@@ -17,11 +17,14 @@
 #include "../../../junction/junction_rules_internal.h"
 #include "../../../core/format.hpp"
 #include "../../../junction/signals/junction_signal_pass.h"
+#include "../../../junction/signals/junction_signals.h"
+#include "../../../junction/junction_track_geometry.h"
 #include "../../../track_func.h"
 
 #include <algorithm>
 #include <span>
 #include <string>
+#include <tuple>
 
 #include "../../../safeguards.h"
 
@@ -287,5 +290,125 @@ TEST_CASE("PlaceJunctionSignals: prio side and join pieces", "[junction][signals
 		INFO(RenderJunctionAscii(layout));
 		CHECK(Bits(layout, 15, 0).Test(Track::Left));
 		CHECK(Bits(layout, 15, -1) == TrackBits{Track::Right});
+	}
+}
+
+/**
+ * The prio violations of the mapped path's signal pass on a main line and its joiner: both rasterised into a layout, signalled by SignalJunctionTrackRoutes
+ * with the network the planar model builds (the main line's merge on its piece before the joiner's last), then checked.
+ */
+static std::vector<RuleViolation> PrioPassViolations(const JunctionRoute &ml, const JunctionRoute &joiner, std::string &report, int prio_tiles = -1, JunctionLayout *passed = nullptr)
+{
+	const JunctionSpec spec = [&] { JunctionSpec s = MakeTestJunctionSpec(); s.prio_tiles = prio_tiles < 0 ? s.tl : prio_tiles; s.prio_strict = false; return s; }();
+	const JunctionRaster ml_raster = RasterizeJunctionRoute(ml);
+	const JunctionRaster joiner_raster = RasterizeJunctionRoute(joiner);
+	REQUIRE(ml_raster.error.empty());
+	REQUIRE(joiner_raster.error.empty());
+	JunctionLayout layout;
+	AddRasterToLayout(layout, ml_raster);
+	AddRasterToLayout(layout, joiner_raster);
+
+	/* The joiner's merge piece is its first on a tile of the main line; the main line's merge piece is its own piece on that tile. */
+	size_t k = 0;
+	size_t j = ml_raster.pieces.size();
+	for (; j == ml_raster.pieces.size() && k < joiner_raster.pieces.size(); k++) {
+		for (size_t i = 0; i < ml_raster.pieces.size(); i++) {
+			if (ml_raster.pieces[i].tile.x == joiner_raster.pieces[k].tile.x && ml_raster.pieces[i].tile.y == joiner_raster.pieces[k].tile.y) j = i;
+		}
+	}
+	REQUIRE(j < ml_raster.pieces.size());
+	k--;
+
+	std::vector<JunctionTrackRoute> routes;
+	for (const JunctionRaster *raster : {&ml_raster, &joiner_raster}) {
+		JunctionTrackRoute route{static_cast<uint16_t>(routes.size()), 0, raster->pieces, {}};
+		route.tags.assign(raster->pieces.size(), {0, JunctionTrackPieceTag::RUN, 0, 0});
+		routes.push_back(std::move(route));
+	}
+	JunctionSignalNetwork network;
+	JunctionSignalRoute ml_signal;
+	ml_signal.main = true;
+	ml_signal.group = 'A';
+	ml_signal.switches.emplace_back(false, j);
+	ml_signal.merge_nodes.emplace_back(j, 0);
+	JunctionSignalRoute joiner_signal;
+	joiner_signal.group = 'B';
+	joiner_signal.arrivals.emplace_back(0, k);
+	network.routes = {ml_signal, joiner_signal};
+
+	std::string why;
+	SignalJunctionTrackRoutes(layout, routes, network, spec, &why);
+	if (passed != nullptr) *passed = layout;
+	NormaliseJunctionLayout(layout);
+	int16_t min_x = INT16_MAX, min_y = INT16_MAX;
+	for (const JunctionRaster *raster : {&ml_raster, &joiner_raster}) {
+		for (const JunctionPiece &piece : raster->pieces) {
+			min_x = std::min(min_x, piece.tile.x);
+			min_y = std::min(min_y, piece.tile.y);
+		}
+	}
+	const auto port = [&](Role role, const JunctionPiece &piece) {
+		return JunctionPort{role, {static_cast<int16_t>(piece.tile.x - min_x), static_cast<int16_t>(piece.tile.y - min_y)}, piece.trackdir};
+	};
+	const std::vector<JunctionPort> ports = {port(Role::EIn, ml_raster.pieces.front()), port(Role::EOut, ml_raster.pieces.back()), port(Role::WIn, joiner_raster.pieces.front())};
+	const JunctionCheckContext ctx = MakeJunctionCheckContext(layout, spec, ports, {{Role::EIn, Role::EOut}, {Role::WIn, Role::EOut}});
+	REQUIRE(ctx.paths.size() == 2);
+	std::vector<RuleViolation> violations = CheckPrio(ctx);
+	for (const RuleViolation &v : CheckPrioReach(ctx)) violations.push_back(v);
+	report = fmt::format("{}\nwhy: {}", Report(layout, violations), why);
+	return violations;
+}
+
+TEST_CASE("PlaceJunctionSignals: prio signals follow a bent main line", "[junction][signals]")
+{
+	/* The bent main line of the prio-through-a-bend checker test, without its prio tracks and signals: the bend lies inside the coverage. */
+	std::string report;
+	const std::vector<RuleViolation> violations = PrioPassViolations(R(0, 5, Trackdir::X_SW, "FFRRFFFFF"), R(4, 5, Trackdir::Y_NW, "FFFRFL"), report);
+	INFO(report);
+	CHECK(violations.empty());
+}
+
+TEST_CASE("PlaceJunctionSignals: prio signals on the straight row-step layout", "[junction][signals]")
+{
+	/* The straight main line of the row-step checker test, with the joiner entering from above. */
+	std::string report;
+	const std::vector<RuleViolation> violations = PrioPassViolations(R(0, 1, Trackdir::X_SW, "FFFFFFFFFFFFF"), R(6, 0, Trackdir::X_SW, "LFR"), report);
+	INFO(report);
+	CHECK(violations.empty());
+}
+
+TEST_CASE("PlaceJunctionSignals: a straight prio is drawn as the pattern for every length", "[junction][signals]")
+{
+	/* Joins at even steps back from the merge, ML signals and reversed row signals at odd steps, the last row signal Exit; the row on the side away from the joiner. */
+	const int merge_x = 13;
+	for (int prio_tiles = 2; prio_tiles <= 8; prio_tiles++) {
+		const int n = prio_tiles + (prio_tiles & 1);
+		std::string report;
+		JunctionLayout layout;
+		PrioPassViolations(R(0, 1, Trackdir::X_SW, Repeat('F', 28)), R(merge_x - 1, 0, Trackdir::X_SW, "LFR"), report, prio_tiles, &layout);
+		INFO("prio_tiles " << prio_tiles << "\n" << report);
+		const Track h1 = JunctionCornerTrack(DiagDirection::SE, DiagDirection::SW);
+		const Track h2 = JunctionCornerTrack(DiagDirection::NW, DiagDirection::NE);
+		std::vector<std::tuple<int, int, Trackdir, SignalType>> row_signals;
+		for (int s = 0; s <= n; s++) {
+			const int x = merge_x - s;
+			const TrackBits ml = Bits(layout, x, 1);
+			const TrackBits row = Bits(layout, x, 2);
+			CHECK((s % 2 == 0) == ml.Test(h1));
+			if (s > 0) CHECK((s % 2 == 0 ? TrackBits{Track::X, h1} : TrackBits{Track::X}) == ml);
+			CHECK((s == 0 ? TrackBits{h2} : s % 2 == 0 ? TrackBits{Track::X, h2} : TrackBits{Track::X}) == row);
+			if (s % 2 == 1 && s < n) row_signals.emplace_back(x, 2, Trackdir::X_NE, s == n - 1 ? SignalType::Exit : SignalType::Combo);
+		}
+		CHECK(Bits(layout, merge_x - n - 1, 2) == TrackBits{});
+		std::vector<std::tuple<int, int, Trackdir, SignalType>> found;
+		for (const JunctionSignal &signal : layout.signals) {
+			if (signal.offset.y == 2) found.emplace_back(signal.offset.x, signal.offset.y, signal.facing, signal.type);
+		}
+		std::ranges::sort(found);
+		std::ranges::sort(row_signals);
+		CHECK(found == row_signals);
+		for (int s = 1; s < n; s += 2) {
+			CHECK(std::ranges::any_of(layout.signals, [&](const JunctionSignal &signal) { return signal.offset.x == merge_x - s && signal.offset.y == 1 && signal.facing == Trackdir::X_SW; }));
+		}
 	}
 }

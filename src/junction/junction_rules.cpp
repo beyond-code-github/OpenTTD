@@ -1471,7 +1471,6 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			}
 
 			/* 5. Prio signals face upstream, one between consecutive segments, Exit farthest, Combo elsewhere. */
-			const Trackdir upstream = ReverseTrackdir(merge_piece.trackdir);
 			std::vector<const JunctionSignal *> prio_signals;
 			for (const JunctionSignal &signal : layout.signals) {
 				if (std::ranges::find(row, Key{signal.offset.x, signal.offset.y}) != row.end()) prio_signals.push_back(&signal);
@@ -1483,7 +1482,11 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			for (const JunctionSignal *signal : prio_signals) farthest = std::max(farthest, std::abs(along({signal->offset.x, signal->offset.y}) - along(tile_key)));
 			for (const JunctionSignal *signal : prio_signals) {
 				const int pos = along({signal->offset.x, signal->offset.y});
-				if (signal->facing != upstream) AddViolation(out, JunctionRule::Prio, signal->offset, "prio signal does not face upstream");
+				/* Upstream along the main-line axis piece it sits beside (D342: the main line may bend inside the coverage). */
+				const bool faces_upstream = std::ranges::any_of(ml.pieces, [&](const JunctionPiece &piece) {
+					return !piece.on_bridge && IsDiagonalTrackdir(piece.trackdir) && std::abs(piece.tile.x - signal->offset.x) + std::abs(piece.tile.y - signal->offset.y) == 1 && ReverseTrackdir(piece.trackdir) == signal->facing;
+				});
+				if (!faces_upstream) AddViolation(out, JunctionRule::Prio, signal->offset, "prio signal does not face upstream");
 				const SignalType wanted = std::abs(pos - along(tile_key)) == farthest ? SignalType::Exit : SignalType::Combo;
 				if (signal->type != wanted) AddViolation(out, JunctionRule::Prio, signal->offset, "the farthest prio signal must be Exit and the others Combo");
 				const bool between = join_positions.size() > 1 && pos > join_positions.front() && pos < join_positions.back() &&
