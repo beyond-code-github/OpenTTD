@@ -1,0 +1,141 @@
+diff --git a/src/junction/junction_rules.cpp b/src/junction/junction_rules.cpp
+index f5dce89399..8aa46a525e 100644
+--- a/src/junction/junction_rules.cpp
++++ b/src/junction/junction_rules.cpp
+@@ -18,6 +18,7 @@
+ 
+ #include <algorithm>
+ #include <array>
++#include <cstdlib>
+ #include <map>
+ #include <optional>
+ #include <set>
+@@ -582,6 +583,28 @@ static bool IsRejoinMerge(const JunctionCheckContext &ctx, const JunctionPath &p
+ 	return found_other;
+ }
+ 
++/** Probe (PLANAR_PRIOBRIDGE): whether the split at piece k (cur = pieces[k - 1]) goes into doubled copies of this lane: every other trackdir the lane could take there carries exactly the same (from_slot, to_slot) pairs as the path's own. */
++static bool IsCopySplit(const JunctionCheckContext &ctx, const JunctionPath &path, size_t k)
++{
++	const JunctionPiece &cur = path.pieces[k - 1];
++	const JunctionPiece &next = path.pieces[k];
++	std::map<Trackdir, std::set<std::pair<uint16_t, uint16_t>>> slots;
++	for (const JunctionPath &other : ctx.paths) {
++		for (const JunctionPiece &piece : other.pieces) {
++			if (piece.on_bridge || !SameTile(piece.tile, next.tile)) continue;
++			slots[piece.trackdir].emplace(other.from_slot, other.to_slot);
++		}
++	}
++	const TrackdirBits candidates = TrackdirReachesTrackdirs(cur.trackdir) & TrackdirsOf(TracksAt(ctx.layout, next.tile));
++	bool found_other = false;
++	for (Trackdir td : candidates) {
++		if (td == next.trackdir || !slots.contains(td)) continue;
++		found_other = true;
++		if (slots[td] != slots[next.trackdir]) return false;
++	}
++	return found_other;
++}
++
+ /** G4: along a path, a merge must not be followed by a split. D110: two splits on adjacent tiles of a mainline path are wrong. */
+ std::vector<RuleViolation> CheckOrder(const JunctionCheckContext &ctx)
+ {
+@@ -1466,6 +1489,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
+ 				}
+ 				for (const SwitchEvent &other : SwitchEventsOf(layout, used, lane)) {
+ 					if (other.second < first || other.second >= merge_at) continue;
++					if (std::getenv("PLANAR_PRIOBRIDGE") != nullptr && (other.first ? IsCopySplit(ctx, lane, other.second) : IsRejoinMerge(ctx, lane, other.second))) continue;
+ 					AddViolation(out, JunctionRule::Prio, lane.pieces[other.second].tile, "split inside prio coverage");
+ 				}
+ 			}
+diff --git a/src/junction/planar/planar_components.cpp b/src/junction/planar/planar_components.cpp
+index 91bfe5c0c6..3b3e631a41 100644
+--- a/src/junction/planar/planar_components.cpp
++++ b/src/junction/planar/planar_components.cpp
+@@ -382,7 +382,14 @@ private:
+ 			const Seg d1 = M.AddSeg(c, h, 2);
+ 			M.Tie(M.End(c), M.End(S_near));
+ 			M.copies.push_back({c, S_near, d0.i, d0.i + 2});
+-			M.AddSeg(S_near, h, 2 * this->P + 2); // R9: no bend in the prio coverage
++			if (std::getenv("PLANAR_PRIOBRIDGE") != nullptr) {
++				M.AddSeg(S_near, h, 2);
++				Ex sum;
++				for (const Seg &sg : M.strands.at(S_near).segs) sum = sum + sg.L;
++				M.Add(Ge(sum, 2 * this->P + 2));
++			} else {
++				M.AddSeg(S_near, h, 2 * this->P + 2); // R9: no bend in the prio coverage
++			}
+ 			const auto x0 = M.Cross(d0, jf, 4);
+ 			const auto [n0, f0] = M.Deck(d0, {x0}, 4, 0); // D145 tight heads at both ends
+ 			const auto x1 = M.Cross(d1, jf, 4);
+@@ -406,7 +413,7 @@ private:
+ 		M.Node({S_near, J_near, O_near});
+ 		if (prio) {
+ 			M.prio_rows.push_back({S_far, mf, h, -sigma});
+-			M.prio_rows.push_back({S_near, mn, h, -sigma});
++			if (std::getenv("PLANAR_PRIOBRIDGE") == nullptr) M.prio_rows.push_back({S_near, mn, h, -sigma});
+ 			M.AddSeg(O_near, h, 2);
+ 			M.AddSeg(O_near, Turn(h, -sigma), 2, 2);
+ 		}
+@@ -989,16 +996,49 @@ private:
+ 		M.Tie(M.End(J[0]), M.End(S[0]));
+ 		for (size_t j = 1; j < n; j++) {
+ 			if (prio) {
++				const size_t row_from = M.strands.at(S[j]).segs.size();
++				std::set<uint32_t> row_gap;
+ 				/* Joiners far from the merge cross before this lane's coverage, each P tiles apart: one doubled stretch per crossed joiner in series (D322). */
+ 				for (size_t k = 0; k + 1 < j; k++) {
+ 					const auto [d0, d1] = this->Double(S[j], h, sigma, "''" + std::string(k + 1, '\''), 2);
++					row_gap.insert(d0.i);
+ 					M.AddSeg(S[j], h, 2);
+ 					M.AddSeg(S[j], Turn(h, -sigma), 2, 2);
+ 					this->PairDecks(d0, d1, {js[k]}, h);
+ 				}
+ 				const auto [d0, d1] = this->Double(S[j], h, sigma, "''", 2);
+-				M.AddSeg(S[j], h, 2 * this->P + 2);
++				row_gap.insert(d0.i);
++				if (std::getenv("PLANAR_PRIOBRIDGE") != nullptr) {
++					M.AddSeg(S[j], h, 2);
++					Ex sum;
++					for (const Seg &sg : M.strands.at(S[j]).segs) sum = sum + sg.L;
++					M.Add(Ge(sum, 2 * this->P + 2));
++				} else {
++					M.AddSeg(S[j], h, 2 * this->P + 2);
++				}
+ 				this->PairDecks(d0, d1, {js[j - 1]}, h);
++				if (std::getenv("PLANAR_PRIOBRIDGE") != nullptr) {
++					/* Probe A3: the row is a gapped offset copy of the lane's pieces, two half-units away from the joiner. */
++					const std::vector<Seg> segs(M.strands.at(S[j]).segs.begin() + row_from, M.strands.at(S[j]).segs.end());
++					const std::array<int, 2> T = {2 * -sigma * r[0], 2 * -sigma * r[1]};
++					int run = -1;
++					std::string nm;
++					bool open = false;
++					for (const Seg &sg : segs) {
++						if (row_gap.contains(sg.i)) {
++							open = false;
++							continue;
++						}
++						if (!open) {
++							nm = "prio:" + S[j] + "#" + fmt::format("{}", ++run);
++							M.NewStrand(nm, M.NewPoint());
++							M.Tie(M.strands.at(nm).start, std::array<Ex, 2>{sg.a[0] + T[0], sg.a[1] + T[1]});
++							open = true;
++						}
++						const Seg rs = M.AddSeg(nm, sg.d, 0);
++						M.Add(Eq(rs.L, sg.L));
++					}
++				}
+ 			} else {
+ 				const Seg d0 = M.AddSeg(S[j], h, 2);
+ 				std::vector<std::pair<Var, int>> xs;
+@@ -1014,7 +1054,10 @@ private:
+ 			M.Node({S[k], J[k], O[k]});
+ 		}
+ 		if (prio) {
+-			for (size_t k = 0; k < n; k++) M.prio_rows.push_back({S[k], ms[k], h, -sigma});
++			for (size_t k = 0; k < n; k++) {
++				if (k >= 1 && std::getenv("PLANAR_PRIOBRIDGE") != nullptr) continue;
++				M.prio_rows.push_back({S[k], ms[k], h, -sigma});
++			}
+ 			for (size_t j = 1; j < n; j++) {
+ 				M.AddSeg(O[j], h, 2);
+ 				M.AddSeg(O[j], Turn(h, -sigma), 2, 2 * static_cast<int>(j));
