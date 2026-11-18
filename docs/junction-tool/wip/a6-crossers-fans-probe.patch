@@ -1,0 +1,448 @@
+diff --git a/src/junction/placement/junction_placement.cpp b/src/junction/placement/junction_placement.cpp
+index 7f6b7b6fda..cc0abddac1 100644
+--- a/src/junction/placement/junction_placement.cpp
++++ b/src/junction/placement/junction_placement.cpp
+@@ -34,6 +34,10 @@
+ 
+ #include "../../safeguards.h"
+ 
++struct ProbeFan { int item, y, edge, copy, lp, ldx, rp, rdx, bits; std::string kind, ptype; }; // PROBE
++std::vector<ProbeFan> g_probe_fans; // PROBE
++std::string g_probe_ptype = "Tile"; // PROBE
++
+ /** The kinds of element a placement run lies between (D217, DESIGN-G1 §16.1). */
+ enum class FloorKind : uint8_t { Port, Fan, Tile, Corner, SBend, Heads, Node, PrioNode, Prio, LaneSplit, LaneMerge };
+ 
+@@ -1344,6 +1348,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 		JunctionSystemColumn left, right; ///< The ends as columns of the joint model, filled when recording.
+ 		int rank = 0; ///< When recording, the travel rank of a row edge's piece or a prio footprint on the row it belongs to (100 times its travel position).
+ 		std::string kind; ///< When recording, its kind in the item rows ("in", "out", "leg run", "lane split", "lane merge", "heads", "prio"), "moves" for a band edge's tile whose row moves with its bend's length, else empty.
++		std::string ptype; // PROBE
+ 	};
+ 	/* Related occupants never constrain each other: the same edge and copy, a node's tile and an edge that starts or ends at the node. */
+ 	auto at_node = [&](uint32_t edge, uint32_t node) { return edge != UINT32_MAX && ((graph.edges[edge].from.node && graph.edges[edge].from.index == node) || (graph.edges[edge].to.node && graph.edges[edge].to.index == node)); };
+@@ -1403,11 +1408,11 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				return;
+ 			}
+ 			const JunctionSystemColumn at = column != nullptr ? *column : JunctionSystemColumn{pt, dx};
+-			row.push_back({y, pt, dx, pt, dx, bits, edge, copy, UINT32_MAX, 0, at, at, tag_rank, tag_kind});
++			row.push_back({y, pt, dx, pt, dx, bits, edge, copy, UINT32_MAX, 0, at, at, tag_rank, tag_kind, g_probe_ptype});
+ 		};
+ 		/* The tiles strictly between points a and b on row y, a before b in the sense sgn; a run with none at the flat solve is an empty interval (right = left - 1), which keeps its place in the order for the solves with floors. */
+ 		auto add_run = [&](int a, int b, int y, int sgn, uint32_t edge, int copy) {
+-			by_row[y].push_back({y, sgn > 0 ? a : b, 1, sgn > 0 ? b : a, -1, TrackBits{Track::X}, edge, copy, UINT32_MAX, 0, {sgn > 0 ? a : b, 1}, {sgn > 0 ? b : a, -1}, tag_rank, tag_kind});
++			by_row[y].push_back({y, sgn > 0 ? a : b, 1, sgn > 0 ? b : a, -1, TrackBits{Track::X}, edge, copy, UINT32_MAX, 0, {sgn > 0 ? a : b, 1}, {sgn > 0 ? b : a, -1}, tag_rank, tag_kind, "Run"});
+ 		};
+ 		auto add_bend = [&](int pt, int y, int heading, int hand, int halves, bool corner, uint32_t edge, int copy, bool skip_first, bool skip_last, const Elem *bend) {
+ 			if (halves < 1) return; // A bend sized to 0 columns is no bend.
+@@ -1424,6 +1429,8 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				assert(bend_ids.count(bend) != 0);
+ 				bend_id = bend_ids.at(bend);
+ 			}
++			g_probe_ptype = "Bend";
++			struct PtypeReset { ~PtypeReset() { g_probe_ptype = "Tile"; } } ptype_reset;
+ 			for (size_t j = 0; j < offs.size(); j++) {
+ 				if ((skip_first && j == 0) || (skip_last && j + 1 == offs.size())) continue;
+ 				if (record) {
+@@ -1550,6 +1557,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				assert(fresh);
+ 			}
+ 			recorded_item_rows.resize(items);
++			g_probe_fans.clear(); // PROBE
+ 			for (auto &[y, occupants] : by_row) {
+ 				const auto found = item_of_row.find(y);
+ 				if (found == item_of_row.end()) continue;
+@@ -1567,6 +1575,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 					}
+ 					if (o.kind == "in" || o.kind == "out") {
+ 						if (o.edge != (o.kind == "in" ? in_edge[r] : out_edge[r])) { // Another row's port fan.
++							g_probe_fans.push_back({i, y, static_cast<int>(o.edge), o.copy, o.lp, o.ldx, o.rp, o.rdx, static_cast<int>(o.bits.base()), o.kind, o.ptype}); // PROBE
+ 							recorded_item_row_skipped++;
+ 							continue;
+ 						}
+diff --git a/src/tests/junction/topology/junction_topology.cpp b/src/tests/junction/topology/junction_topology.cpp
+index 7a392da74d..7a624bb744 100644
+--- a/src/tests/junction/topology/junction_topology.cpp
++++ b/src/tests/junction/topology/junction_topology.cpp
+@@ -6024,3 +6024,381 @@ TEST_CASE("item rows: the order needs no point", "[junction][topology]")
+ 		CHECK(std::make_tuple(a.v, a.u, a.gap, a.reason) == std::make_tuple(b.v, b.u, b.gap, b.reason));
+ 	}
+ }
++
++/* PROBE A6 */
++struct ProbeFan { int item, y, edge, copy, lp, ldx, rp, rdx, bits; std::string kind, ptype; };
++extern std::vector<ProbeFan> g_probe_fans;
++
++namespace {
++struct A6Tile { int e, k, j, x, y; std::string type; };
++}
++
++static void ProbeA6Seed(const char *main, const char *branch, const char *name, std::ostream &out)
++{
++	static constexpr int VX[] = {0, 1, 0, -1};
++	static constexpr int VY[] = {-1, 0, 1, 0};
++	const ItemRowSeed seed = RecordItemRowSeed(main, branch);
++	const JunctionPlacementSystem &sys = seed.system;
++	const JunctionSystemPoint &sol = sys.solved;
++	const JunctionTrackGraph &graph = seed.seed.graph;
++	const std::vector<ProbeFan> fans = g_probe_fans;
++	out << "=== SEED " << name << " items " << sys.item_rows.size() << "\n";
++	auto val = [&](const JunctionSystemColumn &c) { return sol.x[c.pt] + c.c0 + (c.bend >= 0 ? c.c1 * sys.bends[c.bend].m : 0); };
++	const size_t items = sys.item_rows.size();
++	std::vector<int> item_y(items), item_row(items);
++	std::map<int, int> item_of_y;
++	for (size_t i = 0; i < items; i++) {
++		item_y[i] = sol.y[sys.item_pt[i]];
++		item_row[i] = seed.seed.structure.stack[i].row;
++		item_of_y[item_y[i]] = static_cast<int>(i);
++		out << "ITEM " << i << " y " << item_y[i] << " row " << item_row[i] << " kind " << static_cast<int>(seed.seed.structure.stack[i].kind) << "\n";
++	}
++	/* Per edge, its chain (copy 0 and 1) elements in order. */
++	std::map<std::pair<int, int>, std::vector<const JunctionSystemElement *>> chains;
++	for (const JunctionSystemElement &el : sys.chains) chains[{el.edge, el.copy}].push_back(&el);
++	auto present = [&](const JunctionSystemElement &el) { return el.bend < 0 || sys.bends[el.bend].m > 0; };
++	auto bend_forms = [&](const JunctionSystemElement &el) {
++		const JunctionSystemBend &b = sys.bends[el.bend];
++		return JunctionBendTileForms(b.hin, b.hand, b.m, b.kind == "Corner");
++	};
++	auto first_y = [&](const JunctionSystemElement &el) {
++		/* y of the element's first tile: a Fan's from the port row or the item row, else its point's row. */
++		if (el.k == "Fan") {
++			const JunctionSystemBend &b = sys.bends[el.bend];
++			const int y_item = sol.y[b.item_pt];
++			const int y_port = b.port_row;
++			/* port_first iff the edge starts on a port. */
++			const bool port_first = !graph.edges[el.edge].from.node;
++			return port_first ? y_port : y_item;
++		}
++		return sol.y[el.first];
++	};
++	/* All tiles of edge e at the solved point. */
++	auto edge_tiles = [&](int e, int copy) {
++		std::vector<A6Tile> tiles;
++		const auto &elems = chains[{e, copy}];
++		for (size_t k = 0; k < elems.size(); k++) {
++			const JunctionSystemElement &el = *elems[k];
++			if (!present(el)) continue;
++			if (el.k == "Tile") tiles.push_back({e, static_cast<int>(k), 0, sol.x[el.first], sol.y[el.first], "Tile"});
++			else if (el.k == "Heads" || el.k == "HeadsPair") { tiles.push_back({e, static_cast<int>(k), 0, sol.x[el.first], sol.y[el.first], "Head1"}); tiles.push_back({e, static_cast<int>(k), 1, sol.x[el.last], sol.y[el.last], "Head2"}); }
++			else if (el.bend >= 0) {
++				const JunctionSystemBend &b = sys.bends[el.bend];
++				const auto forms = bend_forms(el);
++				for (size_t j = 0; j < forms.size(); j++) {
++					const auto &f = forms[j];
++					tiles.push_back({e, static_cast<int>(k), static_cast<int>(j), sol.x[el.first] + f.dx0 + f.dx1 * b.m, first_y(el) + f.dy0 + f.dy1 * b.m, (f.tail ? "T" : "H") + std::string(b.kind)});
++				}
++			}
++			/* vertical run to the next present element */
++			size_t nk = k + 1;
++			while (nk < elems.size() && !present(*elems[nk])) nk++;
++			if (nk < elems.size() && elems[nk]->first != el.last && el.k != "Prio" && elems[nk]->k != "Prio" && (el.hout % 2) == 0) {
++				const int d = el.hout == 0 ? -1 : 1;
++				const int y0 = sol.y[el.last], y1 = sol.y[elems[nk]->first];
++				for (int y = y0 + d; d > 0 ? y < y1 : y > y1; y += d) tiles.push_back({e, static_cast<int>(k), -1, sol.x[el.last], y, "VRun"});
++			}
++		}
++		return tiles;
++	};
++	/* Crosser edges per row: items of order.rows that are edges. */
++	std::set<int> crossers;
++	std::map<int, std::set<int>> crossers_of_row;
++	for (size_t r = 0; r < seed.order.rows.size(); r++) for (const auto &it : seed.order.rows[r]) if (!it.node) { crossers.insert(it.index); crossers_of_row[static_cast<int>(r)].insert(it.index); }
++	/* Recorded crosser occupants per (item, edge). */
++	std::map<std::pair<int, int>, int> recorded_count;
++	for (size_t i = 0; i < items; i++) {
++		for (const JunctionItemRowOccupant &o : sys.item_rows[i]) {
++			if (o.kind != "crosser") continue;
++			recorded_count[{static_cast<int>(i), static_cast<int>(o.edge)}]++;
++			const int wv = val(o.west), ev = val(o.east);
++			std::string id = "?";
++			/* identify the element */
++			const auto &elems = chains[{static_cast<int>(o.edge), 0}];
++			for (int pass = 0; pass < 2; pass++) for (size_t k = 0; k < elems.size() && id == "?"; k++) {
++				const JunctionSystemElement &el = *elems[k];
++				if (!present(el)) continue;
++				if (pass == 0 && el.bend >= 0 && o.west.pt == el.first) {
++					const JunctionSystemBend &b = sys.bends[el.bend];
++					const auto forms = bend_forms(el);
++					for (size_t j = 0; j < forms.size(); j++) {
++						const auto &f = forms[j];
++						const int tx = sol.x[el.first] + f.dx0 + f.dx1 * b.m, ty = first_y(el) + f.dy0 + f.dy1 * b.m;
++						if (tx == wv && ty == item_y[i] && f.dx0 == o.west.c0 && (f.dx1 != 0 ? o.west.bend == el.bend : true)) {
++							const bool corner = b.kind == "Corner";
++							const JunctionSBendColumns cf = corner ? JunctionCornerColumnForm(b.hin, b.hand) : JunctionSBendColumnForm(b.hin, b.hand);
++							const int side = (b.hin + b.hand + 4) % 4;
++							const int t = f.dx0 * VX[side] + f.dy0 * VY[side] + (f.dx1 * VX[side] + f.dy1 * VY[side]) * b.m;
++							const int dy = ty - first_y(el);
++							const int TL = cf.t0 + cf.t1 * b.m;
++							const bool diag = (b.hin % 2 == 0) && t >= 1 && t <= TL && dy >= cf.lo + cf.s * (t - 1) && dy <= cf.hi + cf.s * (t - 1);
++							id = fmt::format("{} k{} bend{} tok{} hin{} hand{} L{} j{}/{} (dx{},dy{}) {} t{} T{} {} form(lo{} hi{} s{} t0 {} t1 {})", b.kind, k, el.bend, b.tok, b.hin, b.hand, b.m, j, forms.size(), tx - sol.x[el.first], dy, f.tail ? "tail" : "head", t, TL, diag ? "DIAG" : "END", cf.lo, cf.hi, cf.s, cf.t0, cf.t1);
++							break;
++						}
++					}
++				}
++				if (pass == 1 && id == "?" && el.k == "Tile" && o.west.pt == el.first) id = fmt::format("Tile k{}", k);
++				if (pass == 1 && id == "?" && (el.k == "Heads") && ((o.west.pt == el.first && sol.y[el.first] == item_y[i]) || (o.west.pt == el.last && sol.y[el.last] == item_y[i]))) id = fmt::format("Heads k{}", k);
++				if (pass == 1 && id == "?" && o.west.pt == el.last && o.west.c0 == 0 && o.west.c1 == 0) {
++					size_t nk = k + 1;
++					while (nk < elems.size() && !present(*elems[nk])) nk++;
++					const int y0 = sol.y[el.last];
++					const int y1 = nk < elems.size() ? sol.y[elems[nk]->first] : y0;
++					if ((y0 < item_y[i] && item_y[i] < y1) || (y1 < item_y[i] && item_y[i] < y0)) id = fmt::format("VRun after k{} ({} {}) prev bend {} next {} y0 {} y1 {}", k, el.k, el.bend, el.bend, nk < elems.size() ? elems[nk]->bend : -9, y0, y1);
++				}
++			}
++			out << fmt::format("CROSSER item {} y {} row {} edge {} west ({},{},{},b{}) = {} east = {} :: {}\n", i, item_y[i], item_row[i], o.edge, o.west.pt, o.west.c0, o.west.c1, o.west.bend, wv, ev, id);
++		}
++	}
++	/* Independent enumeration: every tile of every crosser on an item row of a row it crosses. */
++	int total = 0, missing = 0;
++	for (int e : crossers) {
++		for (size_t i = 0; i < items; i++) {
++			if (!crossers_of_row[item_row[i]].count(e)) continue;
++			std::vector<A6Tile> hits;
++			for (const A6Tile &t : edge_tiles(e, 0)) if (t.y == item_y[i]) hits.push_back(t);
++			total += static_cast<int>(hits.size());
++			const int rec = recorded_count.count({static_cast<int>(i), e}) ? recorded_count[{static_cast<int>(i), e}] : 0;
++			std::string tt;
++			for (const A6Tile &t : hits) tt += fmt::format(" [{} k{} j{} x{}]", t.type, t.k, t.j, t.x);
++			if (rec != static_cast<int>(hits.size())) missing += static_cast<int>(hits.size()) - rec;
++			out << fmt::format("COVER item {} y {} row {} crosser {} tiles {} recorded {}{}\n", i, item_y[i], item_row[i], e, hits.size(), rec, tt);
++		}
++	}
++	out << fmt::format("COVERTOTAL tiles {} not recorded {}\n", total, missing);
++	/* The closed affine forms against the recording (per crosser, item row: the tiles' columns). */
++	{
++		int pairs = 0, same = 0, ntiles = 0, same_tiles = 0;
++		std::map<std::string, std::pair<int, int>> by_kind; ///< cover kind -> (pairs, reproduced)
++		for (int e : crossers) {
++			const auto &elems = chains[{e, 0}];
++			for (size_t i = 0; i < items; i++) {
++				if (!crossers_of_row[item_row[i]].count(e)) continue;
++				const int y = item_y[i];
++				std::multiset<int> pred;
++				std::string kind;
++				for (size_t k = 0; k < elems.size(); k++) {
++					const JunctionSystemElement &el = *elems[k];
++					if (!present(el)) continue;
++					if (el.k == "Tile") { if (sol.y[el.first] == y) { pred.insert(sol.x[el.first]); kind += "Tile "; } }
++					else if (el.k == "Heads" || el.k == "HeadsPair") { for (int pt : {el.first, el.last}) if (sol.y[pt] == y) { pred.insert(sol.x[pt]); kind += "Heads "; } }
++					else if (el.bend >= 0) {
++						const JunctionSystemBend &b = sys.bends[el.bend];
++						const bool corner = b.kind == "Corner";
++						const int L = b.m, x0 = sol.x[el.first], y0 = first_y(el);
++						std::vector<int> xs;
++						if (b.hin % 2 == 0) {
++							const int d = b.hin == 2 ? 1 : -1, ee = ((b.hin + b.hand + 4) % 4) == 1 ? 1 : -1, r = d * (y - y0);
++							if (r >= 0 && r <= L - 1) xs = {x0 + ee * r, x0 + ee * r + ee};
++							else if (corner && r == L) xs = {x0 + ee * L};
++						} else {
++							const int c = b.hin == 1 ? 1 : -1, d = b.hin == 1 ? b.hand : -b.hand, r = d * (y - y0);
++							if (r == 0) xs = {x0};
++							else if (r >= 1 && r <= L - 1) xs = {x0 + c * (r - 1), x0 + c * r};
++							else if (r == L) xs = corner ? std::vector<int>{x0 + c * (L - 1), x0 + c * L} : std::vector<int>{x0 + c * (L - 1)};
++						}
++						if (!xs.empty()) kind += fmt::format("{}h{}{} ", b.kind, b.hin, b.hand > 0 ? "+" : "-");
++						for (int x : xs) pred.insert(x);
++					}
++					size_t nk = k + 1;
++					while (nk < elems.size() && !present(*elems[nk])) nk++;
++					if (nk < elems.size() && elems[nk]->first != el.last && el.k != "Prio" && elems[nk]->k != "Prio" && (el.hout % 2) == 0) {
++						const int y0 = sol.y[el.last], y1 = sol.y[elems[nk]->first];
++						if ((y0 < y && y < y1) || (y1 < y && y < y0)) { pred.insert(sol.x[el.last]); kind += "VRun "; }
++					}
++				}
++				std::multiset<int> rec;
++				for (const JunctionItemRowOccupant &o : sys.item_rows[i]) if (o.kind == "crosser" && static_cast<int>(o.edge) == e) rec.insert(val(o.west));
++				pairs++; ntiles += static_cast<int>(rec.size());
++				auto &bk = by_kind[kind]; bk.first++;
++				if (pred == rec) { same++; same_tiles += static_cast<int>(rec.size()); bk.second++; }
++				else { std::string a, b; for (int x : pred) a += fmt::format("{} ", x); for (int x : rec) b += fmt::format("{} ", x); out << fmt::format("FORMMISMATCH crosser {} item {} y {} predicted {} recorded {}\n", e, i, y, a, b); }
++			}
++		}
++		std::string bk;
++		for (const auto &[kd, v] : by_kind) bk += fmt::format(" [{}: {} pairs, {} reproduced]", kd, v.first, v.second);
++		out << fmt::format("FORMCHECK pairs {} reproduced {} tiles {} (reproduced pairs' tiles {}) by cover:{}\n", pairs, same, ntiles, same_tiles, bk);
++	}
++	/* Unders and head rows. */
++	for (const JunctionArrangementUnder &u : seed.arrangement.unders) {
++		/* head row of the bridge in u.bridge_edge copy u.copy that this crosser crosses. */
++		int ordinal = -1, n = 0;
++		for (const JunctionTrackBridge &b : seed.seed.structure.bridges) {
++			if (b.edge != u.bridge_edge) continue;
++			if (std::find(b.crossed.begin(), b.crossed.end(), u.edge) != b.crossed.end()) ordinal = n;
++			n++;
++		}
++		int hy = -1, hw = -1, he = -1, cnt = 0;
++		for (const JunctionSystemElement *el : chains[{static_cast<int>(u.bridge_edge), u.copy}]) {
++			if (el->k == "HeadsPair" && cnt++ == ordinal) { hy = sol.y[el->first]; hw = sol.x[el->first]; he = sol.x[el->last]; }
++		}
++		std::string pieces;
++		for (JunctionUnderPiece p : u.pieces) pieces += fmt::format("{}", static_cast<int>(p)) + ",";
++		/* nearest bend tokens */
++		int prev_tok = -1, next_tok = INT_MAX, prev_b = -1, next_b = -1;
++		for (const JunctionSystemBend &b : sys.bends) {
++			if (b.edge != static_cast<int>(u.edge) || b.copy != 0) continue;
++			if (b.tok < static_cast<int>(u.token) && b.tok > prev_tok) { prev_tok = b.tok; prev_b = b.id; }
++			if (b.tok > static_cast<int>(u.token) && b.tok < next_tok) { next_tok = b.tok; next_b = b.id; }
++		}
++		std::string cover;
++		for (const A6Tile &t : edge_tiles(u.edge, 0)) {
++			if (t.y != hy) continue;
++			const JunctionSystemElement *el = chains[{static_cast<int>(u.edge), 0}][t.k];
++			cover += fmt::format(" [{} bend{} x{}{}]", t.type, el->bend, t.x, (t.x > std::min(hw, he) && t.x < std::max(hw, he)) ? " BETWEEN" : " OUTSIDE");
++		}
++		out << fmt::format("UNDER crosser {} tok {} bridge_edge {} copy {} ordinal {} headrow {} (item {}) heads x {}..{} pieces {} prev_bend {} (tok {}) next_bend {} (tok {}) covers:{}\n", u.edge, u.token, u.bridge_edge, u.copy, ordinal, hy, item_of_y.count(hy) ? item_of_y[hy] : -1, hw, he, pieces, prev_b, prev_tok, next_b, next_tok == INT_MAX ? -1 : next_tok, cover);
++	}
++	for (const JunctionSystemBend &b : sys.bends) {
++		if (crossers.count(b.edge) == 0) continue;
++		out << fmt::format("CBEND id {} edge {} copy {} tok {} {} source {} hin {} hand {} m {} floor {} first y {} last y {} item_pt {} form_group {}\n", b.id, b.edge, b.copy, b.tok, b.kind, b.source, b.hin, b.hand, b.m, b.floor, sol.y[b.first], sol.y[b.last], b.item_pt, b.form_group);
++	}
++	/* The forms of every bend kind of a crosser edge in this seed. */
++	{
++		std::set<std::tuple<std::string, int, int>> seen;
++		for (const JunctionSystemBend &b : sys.bends) {
++			if (crossers.count(b.edge) == 0 || b.m <= 0) continue;
++			if (!seen.insert({b.kind, b.hin, b.hand}).second) continue;
++			const bool corner = b.kind == "Corner";
++			const JunctionSBendColumns cf = corner ? JunctionCornerColumnForm(b.hin, b.hand) : JunctionSBendColumnForm(b.hin, b.hand);
++			out << fmt::format("FORM {} hin {} hand {} column form lo {} hi {} s {} t0 {} t1 {}\n", b.kind, b.hin, b.hand, cf.lo, cf.hi, cf.s, cf.t0, cf.t1);
++			for (int L : {2, 3, 4}) {
++				std::string tl;
++				for (const auto &f : JunctionBendTileForms(b.hin, b.hand, L, corner)) tl += fmt::format(" ({},{}{})", f.dx0 + f.dx1 * L, f.dy0 + f.dy1 * L, f.tail ? "T" : "H");
++				out << fmt::format("  L {} tiles:{}\n", L, tl);
++			}
++			const auto forms = JunctionBendTileForms(b.hin, b.hand, 3, corner);
++			std::string fs;
++			for (const auto &f : forms) fs += fmt::format(" [{}:{} {}L,{} {}L]", f.tail ? "T" : "H", f.dx0, f.dx1, f.dy0, f.dy1);
++			out << "  forms at L3:" << fs << "\n";
++		}
++	}
++	/* Fans. */
++	struct FanInfo { int e, slot, side, port_row, item_row_, sigma, hand, hin, m, copy; bool in; std::vector<A6Tile> tiles; int item_idx; int r; };
++	std::vector<FanInfo> fan_list;
++	const std::vector<JunctionPortSlot> slots = JunctionPortSlots(seed.topology);
++	for (const JunctionSystemElement &el : sys.chains) {
++		if (el.k != "Fan" || el.bend < 0) continue;
++		const JunctionSystemBend &b = sys.bends[el.bend];
++		const bool in = !graph.edges[el.edge].from.node;
++		const int slot = in ? graph.edges[el.edge].from.index : graph.edges[el.edge].to.index;
++		FanInfo f{el.edge, slot, static_cast<int>(seed.topology.groups[slots[slot].group].side), b.port_row, sol.y[b.item_pt], 0, b.hand, b.hin, b.m, el.copy, in, {}, -1, -1};
++		f.sigma = (f.port_row > f.item_row_) - (f.port_row < f.item_row_);
++		f.item_idx = item_of_y.count(f.item_row_) ? item_of_y[f.item_row_] : -1;
++		f.r = f.item_idx >= 0 ? item_row[f.item_idx] : -1;
++		if (b.m > 0) f.tiles = edge_tiles(el.edge, el.copy);
++		std::vector<A6Tile> only;
++		for (const A6Tile &t : f.tiles) if (t.k == [&] { int k = 0; for (const auto *p : chains[{el.edge, el.copy}]) { if (p == &el) return k; k++; } return -1; }()) only.push_back(t);
++		f.tiles = only;
++		fan_list.push_back(f);
++		std::string tl;
++		for (const A6Tile &t : f.tiles) tl += fmt::format(" ({},{})", t.x, t.y);
++		out << fmt::format("FAN edge {} {} slot {} side {} (0N 1E 2S 3W) port_row {} item_row {} (item {} of row {}) sigma {} hand {} hin {} L {} firstpt x {} tiles{}\n", f.e, f.in ? "in" : "out", f.slot, f.side, f.port_row, f.item_row_, f.item_idx, f.r, f.sigma, f.hand, f.hin, f.m, sol.x[el.first], tl);
++	}
++	/* Skipped fan occupants of item rows. */
++	for (const ProbeFan &p : fans) {
++		const int x0 = sol.x[p.lp] + p.ldx, x1 = sol.x[p.rp] + p.rdx;
++		int west_of = 0, east_of = 0, n = 0;
++		std::string over;
++		for (const JunctionItemRowOccupant &o : sys.item_rows[p.item]) {
++			if (val(o.east) < val(o.west)) continue;
++			n++;
++			if (val(o.east) < x0) west_of++;
++			else if (val(o.west) > x1) east_of++;
++			else over += fmt::format(" overlaps {} e{} cols {}..{};", o.kind, static_cast<int>(o.edge), val(o.west), val(o.east));
++		}
++		out << fmt::format("SKIPFAN item {} y {} (row {}) edge {} {} {} x {}..{} (ends pt{}{:+d} .. pt{}{:+d}, bits {}) : {} ranked occupants, {} entirely west of it, {} entirely east of it,{}\n", p.item, p.y, item_row[p.item], p.edge, p.kind, p.ptype, x0, x1, p.lp, p.ldx, p.rp, p.rdx, p.bits, n, west_of, east_of, over);
++	}
++	/* Fan-fan tile pairs of different edges on one row: share / touch. */
++	std::map<int, std::vector<std::pair<int, int>>> rowtiles;
++	for (const FanInfo &f : fan_list) for (const A6Tile &t : f.tiles) rowtiles[t.y].push_back({t.x, f.e});
++	for (const auto &[y, ts] : rowtiles) for (size_t a = 0; a < ts.size(); a++) for (size_t b = a + 1; b < ts.size(); b++) {
++		if (ts[a].second == ts[b].second) continue;
++		const int d = ts[a].first > ts[b].first ? ts[a].first - ts[b].first : ts[b].first - ts[a].first;
++		if (d <= 1) out << fmt::format("FANPAIR row {} edges {} (x{}) {} (x{}) {}\n", y, ts[a].second, ts[a].first, ts[b].second, ts[b].first, d == 0 ? "SHARE" : "TOUCH");
++	}
++	/* Per side: adjacent fan pairs sharing rows, and the four-end separation. */
++	for (int side : {1, 3}) {
++		std::vector<const FanInfo *> sf;
++		for (const FanInfo &f : fan_list) if (f.side == side && f.m > 0) sf.push_back(&f);
++		std::sort(sf.begin(), sf.end(), [](const FanInfo *a, const FanInfo *b) { return a->port_row < b->port_row; });
++		for (size_t a = 0; a < sf.size(); a++) for (size_t b = a + 1; b < sf.size(); b++) {
++			const FanInfo &A = *sf[a], &B = *sf[b];
++			const int alo = std::min(A.port_row, A.item_row_), ahi = std::max(A.port_row, A.item_row_);
++			const int blo = std::min(B.port_row, B.item_row_), bhi = std::max(B.port_row, B.item_row_);
++			const int lo = std::max(alo, blo), hi = std::min(ahi, bhi);
++			if (lo > hi) continue;
++			std::map<int, std::pair<int, int>> ca, cb; ///< row -> (min x, max x)
++			for (const A6Tile &t : A.tiles) { auto &c = ca.try_emplace(t.y, std::pair<int, int>{INT_MAX, INT_MIN}).first->second; c.first = std::min(c.first, t.x); c.second = std::max(c.second, t.x); }
++			for (const A6Tile &t : B.tiles) { auto &c = cb.try_emplace(t.y, std::pair<int, int>{INT_MAX, INT_MIN}).first->second; c.first = std::min(c.first, t.x); c.second = std::max(c.second, t.x); }
++			std::set<int> ends{A.port_row, A.item_row_, B.port_row, B.item_row_};
++			int a_west_ends = 0, b_west_ends = 0, ends_in = 0, rows_common = 0, unordered = 0, interior = 0, ties = 0;
++			std::string det;
++			for (int y = lo; y <= hi; y++) {
++				if (!ca.count(y) || !cb.count(y)) continue;
++				rows_common++;
++				const bool a_w = ca[y].second < cb[y].first, b_w = cb[y].second < ca[y].first;
++				if (ends.count(y)) { ends_in++; if (a_w) a_west_ends++; if (b_w) b_west_ends++; }
++			}
++			for (int y = lo; y <= hi; y++) {
++				if (!ca.count(y) || !cb.count(y)) continue;
++				const bool a_w = ca[y].second < cb[y].first, b_w = cb[y].second < ca[y].first;
++				if (!ends.count(y)) { interior++; const bool ok = (a_west_ends > 0 && b_west_ends == 0) ? a_w : (b_west_ends > 0 && a_west_ends == 0) ? b_w : false; if (!ok) unordered++; }
++				if (!a_w && !b_w) ties++;
++				det += fmt::format(" y{}:{}..{}|{}..{}", y, ca[y].first, ca[y].second, cb[y].first, cb[y].second);
++			}
++			out << fmt::format("SIDEPAIR side {} A edge {} (port {} item {} sigma {} slot {}) B edge {} (port {} item {} sigma {} slot {}) common rows {}..{} ({} with tiles) end rows in range {} A-west at ends {} B-west at ends {} interior rows {} interior not ordered-as-ends {} rows not separated {} ::{}\n", side, A.e, A.port_row, A.item_row_, A.sigma, A.slot, B.e, B.port_row, B.item_row_, B.sigma, B.slot, lo, hi, rows_common, ends_in, a_west_ends, b_west_ends, interior, unordered, ties, det);
++		}
++	}
++	out << "\n";
++}
++
++TEST_CASE("probe a6", "[probea6][.]")
++{
++	std::ofstream out("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/recon-a6/dump.txt");
++	ProbeA6Seed(nullptr, nullptr, "T", out);
++	ProbeA6Seed("LL_RR", "L_R", "LL_RR x L_R", out);
++	ProbeA6Seed("L_R", "LL_RR", "L_R x LL_RR", out);
++	{
++		int checked = 0, bad = 0;
++		for (int corner = 0; corner < 2; corner++) for (int hin = 0; hin < 4; hin++) for (int hand : {1, -1}) for (int L = 1; L <= 9; L++) {
++			const auto forms = JunctionBendTileForms(hin, hand, L, corner != 0);
++			std::multiset<std::pair<int, int>> got, want;
++			for (const auto &f : forms) got.insert({f.dx0 + f.dx1 * L, f.dy0 + f.dy1 * L});
++			for (int y = -12; y <= 12; y++) {
++				std::vector<int> xs;
++				if (hin % 2 == 0) {
++					const int d = hin == 2 ? 1 : -1, ee = ((hin + hand + 4) % 4) == 1 ? 1 : -1, r = d * y;
++					if (r >= 0 && r <= L - 1) xs = {ee * r, ee * r + ee};
++					else if (corner && r == L) xs = {ee * L};
++				} else {
++					const int c = hin == 1 ? 1 : -1, d = hin == 1 ? hand : -hand, r = d * y;
++					if (r == 0) xs = {0};
++					else if (r >= 1 && r <= L - 1) xs = {c * (r - 1), c * r};
++					else if (r == L) xs = corner ? std::vector<int>{c * (L - 1), c * L} : std::vector<int>{c * (L - 1)};
++				}
++				for (int x : xs) want.insert({x, y});
++			}
++			checked++;
++			if (got != want) { bad++; out << fmt::format("FORMALLBAD corner {} hin {} hand {} L {}\n", corner, hin, hand, L); }
++		}
++		out << fmt::format("FORMALLCHECK closed forms vs rasters: {} (kind, hin, hand, L) combos, {} differ\n", checked, bad);
++	}
++	for (int corner = 0; corner < 2; corner++) for (int hin = 0; hin < 4; hin++) for (int hand : {1, -1}) {
++		out << fmt::format("FORMALL {} hin {} hand {}\n", corner ? "Corner" : "SBend", hin, hand);
++		for (int L : {5, 6}) {
++			const auto forms = JunctionBendTileForms(hin, hand, L, corner != 0);
++			std::map<int, std::pair<int, int>> rows;
++			int tails = 0;
++			for (const auto &f : forms) {
++				tails += f.tail;
++				const int dx = f.dx0 + f.dx1 * L, dy = f.dy0 + f.dy1 * L;
++				auto &r = rows.try_emplace(dy, std::pair<int, int>{INT_MAX, INT_MIN}).first->second;
++				r.first = std::min(r.first, dx); r.second = std::max(r.second, dx);
++			}
++			std::string rs;
++			for (const auto &[dy, c] : rows) rs += fmt::format(" dy{}:{}..{}", dy, c.first, c.second);
++			out << fmt::format("  L {} tiles {} tails {} rows:{}\n", L, forms.size(), tails, rs);
++		}
++	}
++}

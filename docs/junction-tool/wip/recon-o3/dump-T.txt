@@ -1,0 +1,757 @@
+SOLVED 1 ptcount 57
+PT 0 0 0
+PT 1 0 0
+PT 2 0 1
+PT 3 0 2
+PT 4 0 3
+PT 5 0 4
+PT 6 0 5
+PT 7 23 1
+PT 8 26 11
+PT 9 33 3
+PT 10 6 4
+PT 11 28 11
+PT 12 38 1
+PT 13 0 0
+PT 14 0 0
+PT 15 26 13
+PT 16 28 13
+PT 17 40 0
+PT 18 40 0
+PT 19 40 0
+PT 20 0 13
+PT 21 25 3
+PT 22 25 7
+PT 23 28 9
+PT 24 28 9
+PT 25 28 9
+PT 26 28 9
+PT 27 28 9
+PT 28 31 5
+PT 29 31 9
+PT 30 20 5
+PT 31 6 5
+PT 32 26 9
+PT 33 26 6
+PT 34 26 4
+PT 35 28 2
+PT 36 38 2
+PT 37 0 0
+PT 38 0 1
+PT 39 40 0
+PT 40 40 3
+PT 41 24 0
+PT 42 38 0
+PT 43 29 3
+PT 44 23 3
+PT 45 22 3
+PT 46 22 4
+PT 47 20 3
+PT 48 6 3
+PT 49 31 3
+PT 50 31 4
+PT 51 30 4
+PT 52 24 4
+PT 53 2 4
+PT 54 2 0
+PT 55 40 1
+PT 56 40 0
+ITEMPT 0 1 kind 1 row 0
+ITEMPT 1 2 kind 0 row 0
+ITEMPT 2 3 kind 4 row 0
+ITEMPT 3 4 kind 3 row 1
+ITEMPT 4 5 kind 0 row 1
+ITEMPT 5 6 kind 4 row 1
+NODE 0 split 1 slot 0 level 1
+NODE 1 split 1 slot 2 level 4
+NODE 2 split 1 slot 4 level 3
+NODE 3 split 0 slot 1 level 3
+NODE 4 split 0 slot 3 level 4
+NODE 5 split 0 slot 5 level 1
+EDGE 0 kind 0 from p0 to n0 paths 0 1
+ENDS 0 start h1 tok0 end h1 tok-1
+PROG 0 0 0 kind 0 hand 0 index 1 copy 0 role 0
+EDGE 1 kind 0 from p2 to n1 paths 4 5
+ENDS 1 start h0 tok-1 end h0 tok-1
+EDGE 2 kind 0 from p4 to n2 paths 2 3
+ENDS 2 start h3 tok0 end h3 tok-1
+PROG 2 0 0 kind 0 hand 0 index 3 copy 0 role 0
+EDGE 3 kind 1 from n0 to n5 paths 0
+ENDS 3 start h1 tok-1 end h1 tok-1
+EDGE 4 kind 1 from n0 to n4 paths 1
+ENDS 4 start h1 tok0 end h2 tok-1
+PROG 4 0 0 kind 1 hand 1 index -1 copy 0 role 0
+PROG 4 0 1 kind 4 hand 0 index 5 copy 0 role 0
+PROG 4 0 2 kind 4 hand 0 index 5 copy 1 role 0
+PROG 4 0 3 kind 2 hand -1 index -1 copy 0 role 6
+PROG 4 0 4 kind 1 hand -1 index -1 copy 0 role 6
+PROG 4 0 5 kind 4 hand 0 index 8 copy 0 role 0
+PROG 4 0 6 kind 1 hand 1 index -1 copy 0 role 6
+EDGE 5 kind 1 from n2 to n3 paths 2
+ENDS 5 start h3 tok-1 end h3 tok-1
+PROG 5 0 0 kind 3 hand 0 index 8 copy 0 role 0
+PROG 5 0 1 kind 3 hand 0 index 4 copy 0 role 0
+PROG 5 0 2 kind 2 hand -1 index 4 copy 0 role 2
+PROG 5 1 0 kind 2 hand -1 index 4 copy 0 role 1
+PROG 5 1 1 kind 3 hand 0 index 8 copy 0 role 0
+PROG 5 1 2 kind 3 hand 0 index 4 copy 0 role 0
+EDGE 6 kind 1 from n2 to n4 paths 3
+ENDS 6 start h3 tok0 end h2 tok1
+PROG 6 0 0 kind 1 hand -1 index -1 copy 0 role 0
+PROG 6 0 1 kind 2 hand 1 index -1 copy 0 role 5
+EDGE 7 kind 1 from n1 to n3 paths 4
+ENDS 7 start h0 tok0 end h3 tok1
+PROG 7 0 0 kind 1 hand -1 index 5 copy 0 role 0
+PROG 7 0 1 kind 2 hand 1 index 4 copy 0 role 5
+EDGE 8 kind 1 from n1 to n5 paths 5
+ENDS 8 start h0 tok-1 end h1 tok4
+PROG 8 0 0 kind 3 hand 0 index 4 copy 0 role 0
+PROG 8 0 1 kind 4 hand 0 index 5 copy 1 role 0
+PROG 8 0 2 kind 4 hand 0 index 5 copy 0 role 0
+PROG 8 0 3 kind 1 hand 1 index 2 copy 0 role 0
+PROG 8 0 4 kind 2 hand -1 index 1 copy 0 role 5
+EDGE 9 kind 2 from n3 to p1 paths 2 4
+ENDS 9 start h3 tok-1 end h3 tok0
+PROG 9 0 0 kind 0 hand 0 index 4 copy 0 role 0
+EDGE 10 kind 2 from n4 to p3 paths 1 3
+ENDS 10 start h2 tok-1 end h2 tok-1
+EDGE 11 kind 2 from n5 to p5 paths 0 5
+ENDS 11 start h1 tok-1 end h1 tok0
+PROG 11 0 0 kind 0 hand 0 index 1 copy 0 role 0
+ROW 0: n0 n5
+ROW 1: n3 e4 e8 n2
+LINE 0 0:
+LINE 1 0: 4 8
+EVENT 2 0 node 1 0 layer 1
+EVENT 2 1 node 4 0 layer 1
+EVENT 2 2 cross 4 8 layer 2
+LINE 2 0: 1 10
+LINE 2 1: 7 8 10
+LINE 2 2: 7 8 4 6
+LINE 2 3: 7 4 8 6
+REPL 2 0 removed 1 inserted 7 8
+REPL 2 1 removed 10 inserted 4 6
+REPL 2 2 removed 8 4 inserted 4 8
+NEIGH 1 4 8 ext 0
+NEIGH 2 1 4 ext 1
+NEIGH 2 1 10 ext 0
+NEIGH 2 4 6 ext 0
+NEIGH 2 4 8 ext 0
+NEIGH 2 7 4 ext 0
+NEIGH 2 7 8 ext 0
+NEIGH 2 8 4 ext 0
+NEIGH 2 8 6 ext 0
+NEIGH 2 8 10 ext 0
+EVPAIR 2 0 1
+BANDPAIR 2 south 0 north 2
+BANDPAIR 2 south 1 north 2
+UNDER edge 4 tok 1 bridge 5 copy 0 pieces 0 1 2 3
+UNDER edge 4 tok 2 bridge 5 copy 1 pieces 0 1 2 3
+UNDER edge 8 tok 1 bridge 5 copy 1 pieces 0 1 3
+UNDER edge 8 tok 2 bridge 5 copy 0 pieces 0 1 3
+BRIDGE edge 5 doubled 1 tunnel 0 crossed 8 4
+BRIDGE edge 8 doubled 0 tunnel 0 crossed 4
+ELEM e 0 copy 0 k Tile first 13 last 13 hin 1 hout 1 bend -1
+ELEM e 0 copy 0 k Fan first 37 last 38 hin 1 hout 1 bend 0
+ELEM e 0 copy 0 k Tile first 7 last 7 hin 1 hout 1 bend -1
+ELEM e 1 copy 0 k Tile first 15 last 15 hin 0 hout 0 bend -1
+ELEM e 1 copy 0 k Tile first 8 last 8 hin 0 hout 0 bend -1
+ELEM e 2 copy 0 k Tile first 17 last 17 hin 3 hout 3 bend -1
+ELEM e 2 copy 0 k Fan first 39 last 40 hin 3 hout 3 bend 1
+ELEM e 2 copy 0 k Tile first 9 last 9 hin 3 hout 3 bend -1
+ELEM e 3 copy 0 k Tile first 7 last 7 hin 1 hout 1 bend -1
+ELEM e 3 copy 0 k Tile first 12 last 12 hin 1 hout 1 bend -1
+ELEM e 3 copy 0 k Prio first 41 last 42 hin 1 hout 1 bend -1
+ELEM e 4 copy 0 k Tile first 7 last 7 hin 1 hout 1 bend -1
+ELEM e 4 copy 0 k Corner first 7 last 21 hin 1 hout 2 bend 2
+ELEM e 4 copy 0 k SBend first 22 last 23 hin 2 hout 2 bend 3
+ELEM e 4 copy 0 k Corner first 24 last 25 hin 2 hout 2 bend 4
+ELEM e 4 copy 0 k Corner first 26 last 27 hin 2 hout 2 bend 5
+ELEM e 4 copy 0 k Tile first 11 last 11 hin 2 hout 2 bend -1
+ELEM e 5 copy 0 k Tile first 9 last 9 hin 3 hout 3 bend -1
+ELEM e 5 copy 0 k HeadsPair first 43 last 44 hin 3 hout 3 bend -1
+ELEM e 5 copy 0 k SBend first 45 last 46 hin 3 hout 3 bend 6
+ELEM e 5 copy 0 k Tile first 10 last 10 hin 3 hout 3 bend -1
+ELEM e 5 copy 0 k Prio first 47 last 48 hin 3 hout 3 bend -1
+ELEM e 5 copy 1 k Tile first 9 last 9 hin 3 hout 3 bend -1
+ELEM e 5 copy 1 k SBend first 49 last 50 hin 3 hout 3 bend 7
+ELEM e 5 copy 1 k HeadsPair first 51 last 52 hin 3 hout 3 bend -1
+ELEM e 5 copy 1 k Tile first 10 last 10 hin 3 hout 3 bend -1
+ELEM e 6 copy 0 k Tile first 9 last 9 hin 3 hout 3 bend -1
+ELEM e 6 copy 0 k Corner first 9 last 28 hin 3 hout 2 bend 8
+ELEM e 6 copy 0 k SBend first 29 last 11 hin 2 hout 2 bend 9
+ELEM e 6 copy 0 k Tile first 11 last 11 hin 2 hout 2 bend -1
+ELEM e 7 copy 0 k Tile first 8 last 8 hin 0 hout 0 bend -1
+ELEM e 7 copy 0 k Corner first 8 last 30 hin 0 hout 3 bend 10
+ELEM e 7 copy 0 k SBend first 31 last 10 hin 3 hout 3 bend 11
+ELEM e 7 copy 0 k Tile first 10 last 10 hin 3 hout 3 bend -1
+ELEM e 8 copy 0 k Tile first 8 last 8 hin 0 hout 0 bend -1
+ELEM e 8 copy 0 k Heads first 32 last 33 hin 0 hout 0 bend -1
+ELEM e 8 copy 0 k Corner first 34 last 35 hin 0 hout 1 bend 12
+ELEM e 8 copy 0 k SBend first 36 last 12 hin 1 hout 1 bend 13
+ELEM e 8 copy 0 k Tile first 12 last 12 hin 1 hout 1 bend -1
+ELEM e 9 copy 0 k Tile first 10 last 10 hin 3 hout 3 bend -1
+ELEM e 9 copy 0 k Fan first 53 last 54 hin 3 hout 3 bend 14
+ELEM e 9 copy 0 k Tile first 14 last 14 hin 3 hout 3 bend -1
+ELEM e 10 copy 0 k Tile first 11 last 11 hin 2 hout 2 bend -1
+ELEM e 10 copy 0 k Tile first 16 last 16 hin 2 hout 2 bend -1
+ELEM e 11 copy 0 k Tile first 12 last 12 hin 1 hout 1 bend -1
+ELEM e 11 copy 0 k Fan first 55 last 56 hin 1 hout 1 bend 15
+ELEM e 11 copy 0 k Tile first 18 last 18 hin 1 hout 1 bend -1
+BEND id 0 e 0 copy 0 tok 0 kind Fan src port_rows hand 0 hin 1 first 37 last 38 m 0 floor 0 group -1
+BEND id 1 e 2 copy 0 tok 0 kind Fan src port_rows hand 0 hin 3 first 39 last 40 m 0 floor 0 group -1
+BEND id 2 e 4 copy 0 tok 0 kind Corner src fixed_k hand 1 hin 1 first 7 last 21 m 2 floor 2 group -1
+BEND id 3 e 4 copy 0 tok 3 kind SBend src free hand -1 hin 2 first 22 last 23 m 3 floor 1 group 0
+BEND id 4 e 4 copy 0 tok 4 kind Corner src cross_corner hand -1 hin 2 first 24 last 25 m 0 floor 2 group 0
+BEND id 5 e 4 copy 0 tok 6 kind Corner src cross_corner hand 1 hin 1 first 26 last 27 m 0 floor 2 group 0
+BEND id 6 e 5 copy 0 tok 2 kind SBend src rows hand -1 hin 3 first 45 last 46 m 1 floor 0 group -1
+BEND id 7 e 5 copy 1 tok 0 kind SBend src rows hand -1 hin 3 first 49 last 50 m 1 floor 0 group -1
+BEND id 8 e 6 copy 0 tok 0 kind Corner src fixed_k hand -1 hin 3 first 9 last 28 m 2 floor 2 group -1
+BEND id 9 e 6 copy 0 tok 1 kind SBend src free hand 1 hin 2 first 29 last 11 m 3 floor 1 group -1
+BEND id 10 e 7 copy 0 tok 0 kind Corner src corner_rows hand -1 hin 0 first 8 last 30 m 6 floor 2 group -1
+BEND id 11 e 7 copy 0 tok 1 kind SBend src rows hand 1 hin 3 first 31 last 10 m 1 floor 0 group -1
+BEND id 12 e 8 copy 0 tok 3 kind Corner src fixed_k hand 1 hin 0 first 34 last 35 m 2 floor 2 group -1
+BEND id 13 e 8 copy 0 tok 4 kind SBend src rows hand -1 hin 1 first 36 last 12 m 1 floor 0 group -1
+BEND id 14 e 9 copy 0 tok 0 kind Fan src port_rows hand 1 hin 3 first 53 last 54 m 1 floor 0 group -1
+BEND id 15 e 11 copy 0 tok 0 kind Fan src port_rows hand 0 hin 1 first 55 last 56 m 0 floor 0 group -1
+FORMGROUP e 4 tok 3 form 0
+CLASH 0 gap 1 gaprev 2 tie 0 | y=1 -1,0,0,node,-,23,23,33,0,0/7/0/0/-1,7/0/0/-1 | -1,0,5,,prio,24,24,16,1,0/42/-14/0/-1,42/-14/0/-1
+CLASH 1 gap 1 gaprev 2 tie 0 | y=2 4,0,-1,Corner#1,-,24,24,32,0,0/7/1/0/-1,7/1/0/-1 | 8,0,-1,Corner#2,-,28,28,8,0,0/34/2/0/-1,34/2/0/-1
+CLASH 2 gap 1 gaprev 2 tie 0 | y=3 5,0,-1,row1/tile,heads,23,23,1,0,0/44/0/0/-1,44/0/0/-1 | 4,0,-1,Corner#1,-,24,24,16,0,0/7/1/0/-1,7/1/0/-1
+CLASH 3 gap 1 gaprev 2 tie 0 | y=3 4,0,-1,Corner#1,-,25,25,32,0,0/7/2/0/-1,7/2/0/-1 | 8,0,-1,Corner#2,-,27,27,8,0,0/34/1/0/-1,34/1/0/-1
+CLASH 4 gap 1 gaprev 2 tie 0 | y=3 8,0,-1,Corner#2,-,28,28,4,0,0/34/2/0/-1,34/2/0/-1 | 5,0,-1,row1/tile,heads,29,29,1,0,0/43/0/0/-1,43/0/0/-1
+CLASH 5 gap 1 gaprev 2 tie 0 | y=3 5,0,-1,row1/run,leg run,30,30,1,0,0/43/1/0/-1,49/-1/0/-1 | 5,1,-1,row1/bend,lane split,31,31,8,0,0/49/0/0/-1,49/0/0/-1
+CLASH 6 gap 1 gaprev 2 tie 0 | y=4 5,0,-1,row1/bend,lane merge,22,22,4,0,0/45/0/0/-1,45/0/0/-1 | 5,1,-1,row1/run,leg run,23,23,1,0,0/46/1/0/-1,52/-1/0/-1
+CLASH 7 gap 1 gaprev 1 tie 0 | y=4 5,1,-1,row1/tile,heads,24,24,1,0,0/52/0/0/-1,52/0/0/-1 | 4,0,-1,run#1,-,25,25,2,0,0/21/0/0/-1,21/0/0/-1
+CLASH 8 gap 1 gaprev 1 tie 0 | y=4 4,0,-1,run#1,-,25,25,2,0,0/21/0/0/-1,21/0/0/-1 | 8,0,-1,Corner#2,-,26,26,8,0,0/34/0/0/-1,34/0/0/-1
+CLASH 9 gap 1 gaprev 2 tie 0 | y=4 8,0,-1,Corner#2,-,27,27,4,0,0/34/1/0/-1,34/1/0/-1 | 5,1,-1,row1/tile,heads,30,30,1,0,0/51/0/0/-1,51/0/0/-1
+CLASH 10 gap 1 gaprev 2 tie 0 | y=4 5,1,-1,row1/bend,lane split,31,31,4,0,0/49/0/0/-1,49/0/0/-1 | 6,0,-1,Corner#1,-,32,32,8,0,0/9/-1/0/-1,9/-1/0/-1
+CLASH 11 gap 1 gaprev 1 tie 0 | y=5 7,0,-1,Corner#1,-,20,20,32,0,0/8/-6/0/-1,8/-6/0/-1 | 4,0,-1,run#1,-,25,25,2,0,0/21/0/0/-1,21/0/0/-1
+CLASH 12 gap 1 gaprev 1 tie 0 | y=5 4,0,-1,run#1,-,25,25,2,0,0/21/0/0/-1,21/0/0/-1 | 8,0,-1,run#1,-,26,26,2,0,0/33/0/0/-1,33/0/0/-1
+CLASH 13 gap 1 gaprev 1 tie 0 | y=5 8,0,-1,run#1,-,26,26,2,0,0/33/0/0/-1,33/0/0/-1 | 6,0,-1,Corner#1,-,31,31,8,0,0/9/-2/0/-1,9/-2/0/-1
+CLASH 14 gap 1 gaprev 1 tie 0 | y=6 7,0,-1,Corner#1,-,21,21,32,0,0/8/-5/0/-1,8/-5/0/-1 | 4,0,-1,run#1,-,25,25,2,0,0/21/0/0/-1,21/0/0/-1
+CLASH 15 gap 1 gaprev 1 tie 0 | y=6 4,0,-1,run#1,-,25,25,2,0,0/21/0/0/-1,21/0/0/-1 | 8,0,-1,Heads#1,-,26,26,2,0,0/33/0/0/-1,33/0/0/-1
+CLASH 16 gap 1 gaprev 1 tie 0 | y=6 8,0,-1,Heads#1,-,26,26,2,0,0/33/0/0/-1,33/0/0/-1 | 6,0,-1,run#1,-,31,31,2,0,0/28/0/0/-1,28/0/0/-1
+CLASH 17 gap 1 gaprev 2 tie 0 | y=7 7,0,-1,Corner#1,-,22,22,32,0,0/8/-4/0/-1,8/-4/0/-1 | 4,0,-1,SBend#2,-,25,25,16,0,0/22/0/0/-1,22/0/0/-1
+CLASH 18 gap 1 gaprev 1 tie 0 | y=7 4,0,-1,SBend#2,-,26,26,32,0,0/22/1/0/-1,22/1/0/-1 | 6,0,-1,run#1,-,31,31,2,0,0/28/0/0/-1,28/0/0/-1
+CLASH 19 gap 1 gaprev 2 tie 0 | y=8 7,0,-1,Corner#1,-,23,23,32,0,0/8/-3/0/-1,8/-3/0/-1 | 4,0,-1,SBend#2,-,26,26,16,0,0/22/1/0/-1,22/1/0/-1
+CLASH 20 gap 1 gaprev 1 tie 0 | y=8 4,0,-1,SBend#2,-,27,27,32,0,0/22/2/0/-1,22/2/0/-1 | 6,0,-1,run#1,-,31,31,2,0,0/28/0/0/-1,28/0/0/-1
+CLASH 21 gap 1 gaprev 1 tie 0 | y=9 7,0,-1,Corner#1,-,24,24,32,0,0/8/-2/0/-1,8/-2/0/-1 | 8,0,-1,Heads#1,-,26,26,2,0,0/32/0/0/-1,32/0/0/-1
+CLASH 22 gap 1 gaprev 1 tie 0 | y=9 8,0,-1,Heads#1,-,26,26,2,0,0/32/0/0/-1,32/0/0/-1 | 4,0,-1,SBend#2,-,27,27,16,0,0/22/2/0/-1,22/2/0/-1
+CLASH 23 gap 1 gaprev 2 tie 0 | y=9 4,0,-1,SBend#2,-,28,28,32,0,0/22/3/0/-1,22/3/0/-1 | 6,0,-1,SBend#2,-,30,30,8,0,0/29/-1/0/-1,29/-1/0/-1
+CLASH 24 gap 1 gaprev 1 tie 0 | y=10 7,0,-1,Corner#1,-,25,25,32,0,0/8/-1/0/-1,8/-1/0/-1 | 8,0,-1,run#0,-,26,26,2,0,0/8/0/0/-1,8/0/0/-1
+CLASH 25 gap 1 gaprev 1 tie 0 | y=10 8,0,-1,run#0,-,26,26,2,0,0/8/0/0/-1,8/0/0/-1 | 4,0,-1,run#2,-,28,28,2,0,0/23/0/0/-1,23/0/0/-1
+CLASH 26 gap 1 gaprev 1 tie 0 | y=10 4,0,-1,run#2,-,28,28,2,0,0/23/0/0/-1,23/0/0/-1 | 6,0,-1,SBend#2,-,29,29,8,0,0/29/-2/0/-1,29/-2/0/-1
+CLASH 27 gap 1 gaprev 2 tie 0 | y=11 -1,0,1,node,-,26,26,34,0,0/8/0/0/-1,8/0/0/-1 | -1,0,4,node,-,28,28,10,0,0/11/0/0/-1,11/0/0/-1
+CLASH 28 gap 1 gaprev 1 tie 0 | y=12 1,0,-1,run#0,-,26,26,2,0,0/15/0/0/-1,15/0/0/-1 | 10,0,-1,run#0,-,28,28,2,0,0/11/0/0/-1,11/0/0/-1
+CLASH 29 gap 1 gaprev 1 tie 0 | y=13 1,0,-1,Tile#0,-,26,26,2,0,0/15/0/0/-1,15/0/0/-1 | 10,0,-1,Tile#1,-,28,28,2,0,0/16/0/0/-1,16/0/0/-1
+OCC y=0 -1,0,5,,prio,24,24,33,1,0/42/-14/0/-1,42/-14/0/-1
+OCC y=0 -1,0,5,,prio,25,25,1,1,0/42/-13/0/-1,42/-13/0/-1
+OCC y=0 -1,0,5,,prio,26,26,33,1,0/42/-12/0/-1,42/-12/0/-1
+OCC y=0 -1,0,5,,prio,27,27,1,1,0/42/-11/0/-1,42/-11/0/-1
+OCC y=0 -1,0,5,,prio,28,28,33,1,0/42/-10/0/-1,42/-10/0/-1
+OCC y=0 -1,0,5,,prio,29,29,1,1,0/42/-9/0/-1,42/-9/0/-1
+OCC y=0 -1,0,5,,prio,30,30,33,1,0/42/-8/0/-1,42/-8/0/-1
+OCC y=0 -1,0,5,,prio,31,31,1,1,0/42/-7/0/-1,42/-7/0/-1
+OCC y=0 -1,0,5,,prio,32,32,33,1,0/42/-6/0/-1,42/-6/0/-1
+OCC y=0 -1,0,5,,prio,33,33,1,1,0/42/-5/0/-1,42/-5/0/-1
+OCC y=0 -1,0,5,,prio,34,34,33,1,0/42/-4/0/-1,42/-4/0/-1
+OCC y=0 -1,0,5,,prio,35,35,1,1,0/42/-3/0/-1,42/-3/0/-1
+OCC y=0 -1,0,5,,prio,36,36,33,1,0/42/-2/0/-1,42/-2/0/-1
+OCC y=0 -1,0,5,,prio,37,37,1,1,0/42/-1/0/-1,42/-1/0/-1
+OCC y=0 -1,0,5,,prio,38,38,32,1,0/42/0/0/-1,42/0/0/-1
+OCC y=1 0,0,-1,row0/tile,in,0,0,1,0,0/13/0/0/-1,13/0/0/-1
+OCC y=1 0,0,-1,row0/run,in,1,22,1,0,0/38/1/0/-1,7/-1/0/-1
+OCC y=1 -1,0,0,node,-,23,23,33,0,0/7/0/0/-1,7/0/0/-1
+OCC y=1 -1,0,5,,prio,24,24,16,1,0/42/-14/0/-1,42/-14/0/-1
+OCC y=1 3,0,-1,row0/run,leg run,24,37,1,0,0/7/1/0/-1,12/-1/0/-1
+OCC y=1 -1,0,5,,prio,26,26,16,1,0/42/-12/0/-1,42/-12/0/-1
+OCC y=1 -1,0,5,,prio,28,28,16,1,0/42/-10/0/-1,42/-10/0/-1
+OCC y=1 -1,0,5,,prio,30,30,16,1,0/42/-8/0/-1,42/-8/0/-1
+OCC y=1 -1,0,5,,prio,32,32,16,1,0/42/-6/0/-1,42/-6/0/-1
+OCC y=1 -1,0,5,,prio,34,34,16,1,0/42/-4/0/-1,42/-4/0/-1
+OCC y=1 -1,0,5,,prio,36,36,16,1,0/42/-2/0/-1,42/-2/0/-1
+OCC y=1 -1,0,5,,prio,38,38,16,1,0/42/0/0/-1,42/0/0/-1
+OCC y=1 -1,0,5,node,-,38,38,9,0,0/12/0/0/-1,12/0/0/-1
+OCC y=1 11,0,-1,row0/run,out,39,39,1,0,0/12/1/0/-1,55/-1/0/-1
+OCC y=1 11,0,-1,row0/tile,out,40,40,1,0,0/18/0/0/-1,18/0/0/-1
+OCC y=2 4,0,-1,Corner#1,-,23,23,16,0,0/7/0/0/-1,7/0/0/-1
+OCC y=2 4,0,-1,Corner#1,-,24,24,32,0,0/7/1/0/-1,7/1/0/-1
+OCC y=2 8,0,-1,Corner#2,-,28,28,8,0,0/34/2/0/-1,34/2/0/-1
+OCC y=2 8,0,-1,run#2,-,29,37,1,0,0/35/1/0/-1,36/-1/0/-1
+OCC y=2 8,0,-1,SBend#3,-,38,38,4,0,0/36/0/0/-1,36/0/0/-1
+OCC y=3 9,0,-1,row1/tile,out,0,0,1,0,0/14/0/0/-1,14/0/0/-1
+OCC y=3 9,0,-1,row1/run,out,1,1,1,0,0/14/1/0/-1,54/-1/0/-1
+OCC y=3 9,0,-1,row1/bend,out,2,2,32,0,0/53/0/0/-1,53/0/0/-1
+OCC y=3 -1,0,3,,prio,6,6,8,-1,0/48/0/0/-1,48/0/0/-1
+OCC y=3 -1,0,3,,prio,7,7,1,-1,0/48/1/0/-1,48/1/0/-1
+OCC y=3 -1,0,3,,prio,8,8,9,-1,0/48/2/0/-1,48/2/0/-1
+OCC y=3 -1,0,3,,prio,9,9,1,-1,0/48/3/0/-1,48/3/0/-1
+OCC y=3 -1,0,3,,prio,10,10,9,-1,0/48/4/0/-1,48/4/0/-1
+OCC y=3 -1,0,3,,prio,11,11,1,-1,0/48/5/0/-1,48/5/0/-1
+OCC y=3 -1,0,3,,prio,12,12,9,-1,0/48/6/0/-1,48/6/0/-1
+OCC y=3 -1,0,3,,prio,13,13,1,-1,0/48/7/0/-1,48/7/0/-1
+OCC y=3 -1,0,3,,prio,14,14,9,-1,0/48/8/0/-1,48/8/0/-1
+OCC y=3 -1,0,3,,prio,15,15,1,-1,0/48/9/0/-1,48/9/0/-1
+OCC y=3 -1,0,3,,prio,16,16,9,-1,0/48/10/0/-1,48/10/0/-1
+OCC y=3 -1,0,3,,prio,17,17,1,-1,0/48/11/0/-1,48/11/0/-1
+OCC y=3 -1,0,3,,prio,18,18,9,-1,0/48/12/0/-1,48/12/0/-1
+OCC y=3 -1,0,3,,prio,19,19,1,-1,0/48/13/0/-1,48/13/0/-1
+OCC y=3 -1,0,3,,prio,20,20,9,-1,0/48/14/0/-1,48/14/0/-1
+OCC y=3 5,0,-1,row1/bend,lane merge,22,22,8,0,0/45/0/0/-1,45/0/0/-1
+OCC y=3 5,0,-1,row1/run,leg run,23,22,1,0,0/45/1/0/-1,44/-1/0/-1
+OCC y=3 5,0,-1,row1/tile,heads,23,23,1,0,0/44/0/0/-1,44/0/0/-1
+OCC y=3 4,0,-1,Corner#1,-,24,24,16,0,0/7/1/0/-1,7/1/0/-1
+OCC y=3 4,0,-1,Corner#1,-,25,25,32,0,0/7/2/0/-1,7/2/0/-1
+OCC y=3 8,0,-1,Corner#2,-,27,27,8,0,0/34/1/0/-1,34/1/0/-1
+OCC y=3 8,0,-1,Corner#2,-,28,28,4,0,0/34/2/0/-1,34/2/0/-1
+OCC y=3 5,0,-1,row1/tile,heads,29,29,1,0,0/43/0/0/-1,43/0/0/-1
+OCC y=3 5,0,-1,row1/run,leg run,30,30,1,0,0/43/1/0/-1,49/-1/0/-1
+OCC y=3 5,1,-1,row1/bend,lane split,31,31,8,0,0/49/0/0/-1,49/0/0/-1
+OCC y=3 5,-1,-1,row1/run,leg run,32,32,1,0,0/49/1/0/-1,9/-1/0/-1
+OCC y=3 -1,0,2,node,-,33,33,9,0,0/9/0/0/-1,9/0/0/-1
+OCC y=3 2,0,-1,row1/run,in,34,39,1,0,0/9/1/0/-1,40/-1/0/-1
+OCC y=3 2,0,-1,row1/tile,in,40,40,1,0,0/17/0/0/-1,17/0/0/-1
+OCC y=4 9,0,-1,row1/bend,out,2,2,16,0,0/53/0/0/-1,53/0/0/-1
+OCC y=4 9,0,-1,row1/run,out,3,5,1,0,0/53/1/0/-1,10/-1/0/-1
+OCC y=4 -1,0,3,node,-,6,6,33,0,0/10/0/0/-1,10/0/0/-1
+OCC y=4 -1,0,3,,prio,6,6,4,-1,0/48/0/0/-1,48/0/0/-1
+OCC y=4 5,-1,-1,row1/run,leg run,7,21,1,0,0/10/1/0/-1,46/-1/0/-1
+OCC y=4 -1,0,3,,prio,8,8,4,-1,0/48/2/0/-1,48/2/0/-1
+OCC y=4 -1,0,3,,prio,10,10,4,-1,0/48/4/0/-1,48/4/0/-1
+OCC y=4 -1,0,3,,prio,12,12,4,-1,0/48/6/0/-1,48/6/0/-1
+OCC y=4 -1,0,3,,prio,14,14,4,-1,0/48/8/0/-1,48/8/0/-1
+OCC y=4 -1,0,3,,prio,16,16,4,-1,0/48/10/0/-1,48/10/0/-1
+OCC y=4 -1,0,3,,prio,18,18,4,-1,0/48/12/0/-1,48/12/0/-1
+OCC y=4 -1,0,3,,prio,20,20,4,-1,0/48/14/0/-1,48/14/0/-1
+OCC y=4 5,0,-1,row1/bend,lane merge,22,22,4,0,0/45/0/0/-1,45/0/0/-1
+OCC y=4 5,1,-1,row1/run,leg run,23,23,1,0,0/46/1/0/-1,52/-1/0/-1
+OCC y=4 5,1,-1,row1/tile,heads,24,24,1,0,0/52/0/0/-1,52/0/0/-1
+OCC y=4 4,0,-1,run#1,-,25,25,2,0,0/21/0/0/-1,21/0/0/-1
+OCC y=4 8,0,-1,Corner#2,-,26,26,8,0,0/34/0/0/-1,34/0/0/-1
+OCC y=4 8,0,-1,Corner#2,-,27,27,4,0,0/34/1/0/-1,34/1/0/-1
+OCC y=4 5,1,-1,row1/tile,heads,30,30,1,0,0/51/0/0/-1,51/0/0/-1
+OCC y=4 5,1,-1,row1/run,leg run,31,30,1,0,0/51/1/0/-1,50/-1/0/-1
+OCC y=4 5,1,-1,row1/bend,lane split,31,31,4,0,0/49/0/0/-1,49/0/0/-1
+OCC y=4 6,0,-1,Corner#1,-,32,32,8,0,0/9/-1/0/-1,9/-1/0/-1
+OCC y=4 6,0,-1,Corner#1,-,33,33,4,0,0/9/0/0/-1,9/0/0/-1
+OCC y=5 7,0,-1,SBend#2,-,6,6,16,0,0/31/0/0/-1,31/0/0/-1
+OCC y=5 7,0,-1,run#1,-,7,19,1,0,0/31/1/0/-1,30/-1/0/-1
+OCC y=5 7,0,-1,Corner#1,-,20,20,32,0,0/8/-6/0/-1,8/-6/0/-1
+OCC y=5 4,0,-1,run#1,-,25,25,2,0,0/21/0/0/-1,21/0/0/-1
+OCC y=5 8,0,-1,run#1,-,26,26,2,0,0/33/0/0/-1,33/0/0/-1
+OCC y=5 6,0,-1,Corner#1,-,31,31,8,0,0/9/-2/0/-1,9/-2/0/-1
+OCC y=5 6,0,-1,Corner#1,-,32,32,4,0,0/9/-1/0/-1,9/-1/0/-1
+OCC y=6 7,0,-1,Corner#1,-,20,20,16,0,0/8/-6/0/-1,8/-6/0/-1
+OCC y=6 7,0,-1,Corner#1,-,21,21,32,0,0/8/-5/0/-1,8/-5/0/-1
+OCC y=6 4,0,-1,run#1,-,25,25,2,0,0/21/0/0/-1,21/0/0/-1
+OCC y=6 8,0,-1,Heads#1,-,26,26,2,0,0/33/0/0/-1,33/0/0/-1
+OCC y=6 6,0,-1,run#1,-,31,31,2,0,0/28/0/0/-1,28/0/0/-1
+OCC y=7 7,0,-1,Corner#1,-,21,21,16,0,0/8/-5/0/-1,8/-5/0/-1
+OCC y=7 7,0,-1,Corner#1,-,22,22,32,0,0/8/-4/0/-1,8/-4/0/-1
+OCC y=7 4,0,-1,SBend#2,-,25,25,16,0,0/22/0/0/-1,22/0/0/-1
+OCC y=7 4,0,-1,SBend#2,-,26,26,32,0,0/22/1/0/-1,22/1/0/-1
+OCC y=7 6,0,-1,run#1,-,31,31,2,0,0/28/0/0/-1,28/0/0/-1
+OCC y=8 7,0,-1,Corner#1,-,22,22,16,0,0/8/-4/0/-1,8/-4/0/-1
+OCC y=8 7,0,-1,Corner#1,-,23,23,32,0,0/8/-3/0/-1,8/-3/0/-1
+OCC y=8 4,0,-1,SBend#2,-,26,26,16,0,0/22/1/0/-1,22/1/0/-1
+OCC y=8 4,0,-1,SBend#2,-,27,27,32,0,0/22/2/0/-1,22/2/0/-1
+OCC y=8 6,0,-1,run#1,-,31,31,2,0,0/28/0/0/-1,28/0/0/-1
+OCC y=9 7,0,-1,Corner#1,-,23,23,16,0,0/8/-3/0/-1,8/-3/0/-1
+OCC y=9 7,0,-1,Corner#1,-,24,24,32,0,0/8/-2/0/-1,8/-2/0/-1
+OCC y=9 8,0,-1,Heads#1,-,26,26,2,0,0/32/0/0/-1,32/0/0/-1
+OCC y=9 4,0,-1,SBend#2,-,27,27,16,0,0/22/2/0/-1,22/2/0/-1
+OCC y=9 4,0,-1,SBend#2,-,28,28,32,0,0/22/3/0/-1,22/3/0/-1
+OCC y=9 6,0,-1,SBend#2,-,30,30,8,0,0/29/-1/0/-1,29/-1/0/-1
+OCC y=9 6,0,-1,SBend#2,-,31,31,4,0,0/29/0/0/-1,29/0/0/-1
+OCC y=10 7,0,-1,Corner#1,-,24,24,16,0,0/8/-2/0/-1,8/-2/0/-1
+OCC y=10 7,0,-1,Corner#1,-,25,25,32,0,0/8/-1/0/-1,8/-1/0/-1
+OCC y=10 8,0,-1,run#0,-,26,26,2,0,0/8/0/0/-1,8/0/0/-1
+OCC y=10 4,0,-1,run#2,-,28,28,2,0,0/23/0/0/-1,23/0/0/-1
+OCC y=10 6,0,-1,SBend#2,-,29,29,8,0,0/29/-2/0/-1,29/-2/0/-1
+OCC y=10 6,0,-1,SBend#2,-,30,30,4,0,0/29/-1/0/-1,29/-1/0/-1
+OCC y=11 7,0,-1,Corner#1,-,25,25,16,0,0/8/-1/0/-1,8/-1/0/-1
+OCC y=11 -1,0,1,node,-,26,26,34,0,0/8/0/0/-1,8/0/0/-1
+OCC y=11 -1,0,4,node,-,28,28,10,0,0/11/0/0/-1,11/0/0/-1
+OCC y=11 6,0,-1,SBend#2,-,29,29,4,0,0/29/-2/0/-1,29/-2/0/-1
+OCC y=12 1,0,-1,run#0,-,26,26,2,0,0/15/0/0/-1,15/0/0/-1
+OCC y=12 10,0,-1,run#0,-,28,28,2,0,0/11/0/0/-1,11/0/0/-1
+OCC y=13 1,0,-1,Tile#0,-,26,26,2,0,0/15/0/0/-1,15/0/0/-1
+OCC y=13 10,0,-1,Tile#1,-,28,28,2,0,0/16/0/0/-1,16/0/0/-1
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 38 east 38 rank 75 piece -1 bits 32
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 37 east 37 rank 75 piece -1 bits 1
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 36 east 36 rank 75 piece -1 bits 33
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 35 east 35 rank 75 piece -1 bits 1
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 34 east 34 rank 75 piece -1 bits 33
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 33 east 33 rank 75 piece -1 bits 1
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 32 east 32 rank 75 piece -1 bits 33
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 31 east 31 rank 75 piece -1 bits 1
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 30 east 30 rank 75 piece -1 bits 33
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 29 east 29 rank 75 piece -1 bits 1
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 28 east 28 rank 75 piece -1 bits 33
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 27 east 27 rank 75 piece -1 bits 1
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 26 east 26 rank 75 piece -1 bits 33
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 25 east 25 rank 75 piece -1 bits 1
+ITEMOCC 0 kind prio edge -1 copy 0 node 5 west 24 east 24 rank 75 piece -1 bits 33
+ITEMOCC 1 kind in edge 0 copy 0 node -1 west 0 east 0 rank -100 piece -1 bits 1
+ITEMOCC 1 kind in edge 0 copy 0 node -1 west 1 east 22 rank -100 piece -1 bits 1
+ITEMOCC 1 kind node edge -1 copy 0 node 0 west 23 east 23 rank 0 piece -1 bits 33
+ITEMOCC 1 kind leg run edge 3 copy 0 node -1 west 24 east 37 rank 50 piece -1 bits 1
+ITEMOCC 1 kind prio edge -1 copy 0 node 5 west 38 east 38 rank 75 piece -1 bits 16
+ITEMOCC 1 kind prio edge -1 copy 0 node 5 west 36 east 36 rank 75 piece -1 bits 16
+ITEMOCC 1 kind prio edge -1 copy 0 node 5 west 34 east 34 rank 75 piece -1 bits 16
+ITEMOCC 1 kind prio edge -1 copy 0 node 5 west 32 east 32 rank 75 piece -1 bits 16
+ITEMOCC 1 kind prio edge -1 copy 0 node 5 west 30 east 30 rank 75 piece -1 bits 16
+ITEMOCC 1 kind prio edge -1 copy 0 node 5 west 28 east 28 rank 75 piece -1 bits 16
+ITEMOCC 1 kind prio edge -1 copy 0 node 5 west 26 east 26 rank 75 piece -1 bits 16
+ITEMOCC 1 kind prio edge -1 copy 0 node 5 west 24 east 24 rank 75 piece -1 bits 16
+ITEMOCC 1 kind node edge -1 copy 0 node 5 west 38 east 38 rank 100 piece -1 bits 9
+ITEMOCC 1 kind out edge 11 copy 0 node -1 west 39 east 39 rank 200 piece -1 bits 1
+ITEMOCC 1 kind out edge 11 copy 0 node -1 west 40 east 40 rank 200 piece -1 bits 1
+ITEMOCC 2 kind node band edge 4 copy 0 node -1 west 23 east 23 rank 0 piece -1 bits 16
+ITEMOCC 2 kind node band edge 4 copy 0 node -1 west 24 east 24 rank 0 piece -1 bits 32
+ITEMOCC 2 kind node band edge 8 copy 0 node -1 west 28 east 28 rank 100 piece -1 bits 8
+ITEMOCC 2 kind node band edge 8 copy 0 node -1 west 29 east 37 rank 100 piece -1 bits 1
+ITEMOCC 2 kind node band edge 8 copy 0 node -1 west 38 east 38 rank 100 piece -1 bits 4
+ITEMOCC 3 kind out edge 9 copy 0 node -1 west 0 east 0 rank 400 piece -1 bits 1
+ITEMOCC 3 kind out edge 9 copy 0 node -1 west 1 east 1 rank 400 piece -1 bits 1
+ITEMOCC 3 kind out edge 9 copy 0 node -1 west 2 east 2 rank 400 piece -1 bits 32
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 20 east 20 rank 275 piece -1 bits 9
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 19 east 19 rank 275 piece -1 bits 1
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 18 east 18 rank 275 piece -1 bits 9
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 17 east 17 rank 275 piece -1 bits 1
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 16 east 16 rank 275 piece -1 bits 9
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 15 east 15 rank 275 piece -1 bits 1
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 14 east 14 rank 275 piece -1 bits 9
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 13 east 13 rank 275 piece -1 bits 1
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 12 east 12 rank 275 piece -1 bits 9
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 11 east 11 rank 275 piece -1 bits 1
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 10 east 10 rank 275 piece -1 bits 9
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 9 east 9 rank 275 piece -1 bits 1
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 8 east 8 rank 275 piece -1 bits 9
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 7 east 7 rank 275 piece -1 bits 1
+ITEMOCC 3 kind prio edge -1 copy 0 node 3 west 6 east 6 rank 275 piece -1 bits 8
+ITEMOCC 3 kind lane merge edge 5 copy 0 node -1 west 22 east 22 rank 250 piece -1 bits 8
+ITEMOCC 3 kind leg run edge 5 copy 0 node -1 west 23 east 22 rank 245 piece -1 bits 1
+ITEMOCC 3 kind heads edge 5 copy 0 node -1 west 23 east 23 rank 240 piece -1 bits 1
+ITEMOCC 3 kind crosser edge 4 copy 0 node -1 west 22 east 22 rank 200 piece 6 bits 32
+ITEMOCC 3 kind crosser edge 4 copy 0 node -1 west 21 east 21 rank 200 piece 6 bits 16
+ITEMOCC 3 kind crosser edge 4 copy 0 node -1 west 25 east 25 rank 200 piece 5 bits 2
+ITEMOCC 3 kind crosser edge 4 copy 0 node -1 west 25 east 25 rank 200 piece 4 bits 32
+ITEMOCC 3 kind crosser edge 4 copy 0 node -1 west 24 east 24 rank 200 piece 4 bits 16
+ITEMOCC 3 kind crosser edge 4 copy 0 node -1 west 25 east 25 rank 200 piece 3 bits 32
+ITEMOCC 3 kind crosser edge 8 copy 0 node -1 west 27 east 27 rank 100 piece 2 bits 8
+ITEMOCC 3 kind crosser edge 8 copy 0 node -1 west 28 east 28 rank 100 piece 1 bits 4
+ITEMOCC 3 kind crosser edge 8 copy 0 node -1 west 27 east 27 rank 100 piece 1 bits 8
+ITEMOCC 3 kind crosser edge 8 copy 0 node -1 west 26 east 26 rank 100 piece 0 bits 2
+ITEMOCC 3 kind heads edge 5 copy 0 node -1 west 29 east 29 rank 60 piece -1 bits 1
+ITEMOCC 3 kind leg run edge 5 copy 0 node -1 west 30 east 30 rank 50 piece -1 bits 1
+ITEMOCC 3 kind lane split edge 5 copy 1 node -1 west 31 east 31 rank 10 piece -1 bits 8
+ITEMOCC 3 kind leg run edge 5 copy -1 node -1 west 32 east 32 rank 5 piece -1 bits 1
+ITEMOCC 3 kind node edge -1 copy 0 node 2 west 33 east 33 rank 0 piece -1 bits 9
+ITEMOCC 3 kind in edge 2 copy 0 node -1 west 34 east 39 rank -100 piece -1 bits 1
+ITEMOCC 3 kind in edge 2 copy 0 node -1 west 40 east 40 rank -100 piece -1 bits 1
+ITEMOCC 4 kind out edge 9 copy 0 node -1 west 2 east 2 rank 400 piece -1 bits 16
+ITEMOCC 4 kind out edge 9 copy 0 node -1 west 3 east 5 rank 400 piece -1 bits 1
+ITEMOCC 4 kind node edge -1 copy 0 node 3 west 6 east 6 rank 300 piece -1 bits 33
+ITEMOCC 4 kind prio edge -1 copy 0 node 3 west 20 east 20 rank 275 piece -1 bits 4
+ITEMOCC 4 kind prio edge -1 copy 0 node 3 west 18 east 18 rank 275 piece -1 bits 4
+ITEMOCC 4 kind prio edge -1 copy 0 node 3 west 16 east 16 rank 275 piece -1 bits 4
+ITEMOCC 4 kind prio edge -1 copy 0 node 3 west 14 east 14 rank 275 piece -1 bits 4
+ITEMOCC 4 kind prio edge -1 copy 0 node 3 west 12 east 12 rank 275 piece -1 bits 4
+ITEMOCC 4 kind prio edge -1 copy 0 node 3 west 10 east 10 rank 275 piece -1 bits 4
+ITEMOCC 4 kind prio edge -1 copy 0 node 3 west 8 east 8 rank 275 piece -1 bits 4
+ITEMOCC 4 kind prio edge -1 copy 0 node 3 west 6 east 6 rank 275 piece -1 bits 4
+ITEMOCC 4 kind leg run edge 5 copy -1 node -1 west 7 east 21 rank 260 piece -1 bits 1
+ITEMOCC 4 kind lane merge edge 5 copy 0 node -1 west 22 east 22 rank 250 piece -1 bits 4
+ITEMOCC 4 kind leg run edge 5 copy 1 node -1 west 23 east 23 rank 245 piece -1 bits 1
+ITEMOCC 4 kind heads edge 5 copy 1 node -1 west 24 east 24 rank 240 piece -1 bits 1
+ITEMOCC 4 kind crosser edge 4 copy 0 node -1 west 23 east 23 rank 200 piece 13 bits 32
+ITEMOCC 4 kind crosser edge 4 copy 0 node -1 west 22 east 22 rank 200 piece 13 bits 16
+ITEMOCC 4 kind crosser edge 4 copy 0 node -1 west 25 east 25 rank 200 piece 12 bits 2
+ITEMOCC 4 kind crosser edge 4 copy 0 node -1 west 26 east 26 rank 200 piece 11 bits 32
+ITEMOCC 4 kind crosser edge 4 copy 0 node -1 west 25 east 25 rank 200 piece 11 bits 16
+ITEMOCC 4 kind crosser edge 4 copy 0 node -1 west 26 east 26 rank 200 piece 10 bits 32
+ITEMOCC 4 kind crosser edge 8 copy 0 node -1 west 26 east 26 rank 100 piece 9 bits 8
+ITEMOCC 4 kind crosser edge 8 copy 0 node -1 west 27 east 27 rank 100 piece 8 bits 4
+ITEMOCC 4 kind crosser edge 8 copy 0 node -1 west 26 east 26 rank 100 piece 8 bits 8
+ITEMOCC 4 kind crosser edge 8 copy 0 node -1 west 26 east 26 rank 100 piece 7 bits 2
+ITEMOCC 4 kind heads edge 5 copy 1 node -1 west 30 east 30 rank 60 piece -1 bits 1
+ITEMOCC 4 kind leg run edge 5 copy 1 node -1 west 31 east 30 rank 50 piece -1 bits 1
+ITEMOCC 4 kind lane split edge 5 copy 1 node -1 west 31 east 31 rank 10 piece -1 bits 4
+ITEMOCC 4 kind node band edge 6 copy 0 node -1 west 32 east 32 rank 0 piece -1 bits 8
+ITEMOCC 4 kind node band edge 6 copy 0 node -1 west 33 east 33 rank 0 piece -1 bits 4
+ITEMOCC 5 kind node band edge 7 copy 0 node -1 west 6 east 6 rank 300 piece -1 bits 16
+ITEMOCC 5 kind node band edge 7 copy 0 node -1 west 7 east 19 rank 300 piece -1 bits 1
+ITEMOCC 5 kind node band edge 7 copy 0 node -1 west 20 east 20 rank 300 piece -1 bits 32
+ITEMOCC 5 kind crosser edge 4 copy 0 node -1 west 24 east 24 rank 200 piece 20 bits 32
+ITEMOCC 5 kind crosser edge 4 copy 0 node -1 west 23 east 23 rank 200 piece 20 bits 16
+ITEMOCC 5 kind crosser edge 4 copy 0 node -1 west 25 east 25 rank 200 piece 19 bits 2
+ITEMOCC 5 kind crosser edge 4 copy 0 node -1 west 27 east 27 rank 200 piece 18 bits 32
+ITEMOCC 5 kind crosser edge 4 copy 0 node -1 west 26 east 26 rank 200 piece 18 bits 16
+ITEMOCC 5 kind crosser edge 4 copy 0 node -1 west 27 east 27 rank 200 piece 17 bits 32
+ITEMOCC 5 kind crosser edge 8 copy 0 node -1 west 25 east 25 rank 100 piece 16 bits 8
+ITEMOCC 5 kind crosser edge 8 copy 0 node -1 west 26 east 26 rank 100 piece 15 bits 4
+ITEMOCC 5 kind crosser edge 8 copy 0 node -1 west 25 east 25 rank 100 piece 15 bits 8
+ITEMOCC 5 kind crosser edge 8 copy 0 node -1 west 26 east 26 rank 100 piece 14 bits 2
+ITEMOCC 5 kind node band edge 6 copy 0 node -1 west 31 east 31 rank 0 piece -1 bits 8
+ITEMOCC 5 kind node band edge 6 copy 0 node -1 west 32 east 32 rank 0 piece -1 bits 4
+CPIECE 0 edge 8 item 3 bend -1 seg -1 chosen 0
+CPIECE 1 edge 8 item 3 bend 12 seg 0 chosen 1
+CPIECE 2 edge 8 item 3 bend 12 seg 1 chosen 0
+CPIECE 3 edge 4 item 3 bend 2 seg 0 chosen 0
+CPIECE 4 edge 4 item 3 bend 2 seg 1 chosen 1
+CPIECE 5 edge 4 item 3 bend -1 seg -1 chosen 0
+CPIECE 6 edge 4 item 3 bend 3 seg 0 chosen 0
+CPIECE 7 edge 8 item 4 bend -1 seg -1 chosen 0
+CPIECE 8 edge 8 item 4 bend 12 seg 0 chosen 1
+CPIECE 9 edge 8 item 4 bend 12 seg 1 chosen 0
+CPIECE 10 edge 4 item 4 bend 2 seg 0 chosen 0
+CPIECE 11 edge 4 item 4 bend 2 seg 1 chosen 0
+CPIECE 12 edge 4 item 4 bend -1 seg -1 chosen 1
+CPIECE 13 edge 4 item 4 bend 3 seg 0 chosen 0
+CPIECE 14 edge 8 item 5 bend -1 seg -1 chosen 1
+CPIECE 15 edge 8 item 5 bend 12 seg 0 chosen 0
+CPIECE 16 edge 8 item 5 bend 12 seg 1 chosen 0
+CPIECE 17 edge 4 item 5 bend 2 seg 0 chosen 0
+CPIECE 18 edge 4 item 5 bend 2 seg 1 chosen 0
+CPIECE 19 edge 4 item 5 bend -1 seg -1 chosen 1
+CPIECE 20 edge 4 item 5 bend 3 seg 0 chosen 0
+STATICROWS 811 A6=42 O1=769
+PORTROW 1 3 0 0 3 1 offset 1
+YREL v 1 u 0 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason stack origin
+YREL v 0 u 1 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason stack origin
+YREL v 2 u 1 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason stack rows
+YREL v 1 u 2 c -1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason stack rows
+YREL v 3 u 2 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason stack rows
+YREL v 2 u 3 c -1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason stack rows
+YREL v 4 u 3 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason stack rows
+YREL v 5 u 4 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason stack rows
+YREL v 4 u 5 c -1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason stack rows
+YREL v 6 u 5 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason stack rows
+YREL v 5 u 6 c -1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason stack rows
+YREL v 8 u 6 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason band gap
+YREL v 11 u 6 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason band gap
+YREL v 20 u 8 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason S edge
+YREL v 20 u 11 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason S edge
+YREL v 15 u 20 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason S port row
+YREL v 20 u 15 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason S port row
+YREL v 16 u 20 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason S port row
+YREL v 20 u 16 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason S port row
+YREL v 7 u 2 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row nodes
+YREL v 2 u 7 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row nodes
+YREL v 12 u 2 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row nodes
+YREL v 2 u 12 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row nodes
+YREL v 9 u 4 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row nodes
+YREL v 4 u 9 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row nodes
+YREL v 10 u 5 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row nodes
+YREL v 5 u 10 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row nodes
+YREL v 11 u 7 c 5 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason waiting room
+YREL v 11 u 9 c 5 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason waiting room
+YREL v 38 u 2 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason fan size
+YREL v 2 u 38 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason fan size
+YREL v 7 u 38 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 38 u 7 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 15 u 8 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 8 u 15 c -2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 40 u 4 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason fan size
+YREL v 4 u 40 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason fan size
+YREL v 9 u 40 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 40 u 9 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 41 u 1 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason prio element
+YREL v 1 u 41 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason prio element
+YREL v 42 u 1 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason prio element
+YREL v 1 u 42 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason prio element
+YREL v 12 u 7 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason prio element
+YREL v 7 u 12 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason prio element
+YREL v 21 u 7 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason Corner size
+YREL v 7 u 21 c -2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason Corner size
+YREL v 22 u 21 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason chain run
+YREL v 23 u 22 c 2 bend 3 a 1 b -1 nl 0 zb 0 grp 0 alt -1 over -1 reason S-bend size
+YREL v 22 u 23 c -2 bend 3 a -1 b 1 nl 0 zb 0 grp 0 alt -1 over -1 reason S-bend size
+YREL v 22 u 21 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 21 u 22 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 23 u 22 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 22 u 23 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 11 u 23 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason chain run
+YREL v 25 u 24 c 2 bend 4 a 1 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason Corner size
+YREL v 24 u 25 c -2 bend 4 a -1 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason Corner size
+YREL v 24 u 23 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 23 u 24 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 25 u 24 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 24 u 25 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 27 u 26 c 2 bend 5 a 1 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason Corner size
+YREL v 26 u 27 c -2 bend 5 a -1 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason Corner size
+YREL v 26 u 25 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 25 u 26 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 27 u 26 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 26 u 27 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason crossing bend of size 0
+YREL v 24 u 21 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason chain run
+YREL v 26 u 25 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason chain run
+YREL v 25 u 26 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason chain run
+YREL v 11 u 27 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason chain run
+YREL v 47 u 4 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason prio element
+YREL v 4 u 47 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason prio element
+YREL v 48 u 4 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason prio element
+YREL v 4 u 48 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason prio element
+YREL v 49 u 4 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 4 u 49 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 50 u 5 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 5 u 50 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 43 u 4 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 4 u 43 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 44 u 4 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 4 u 44 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 51 u 5 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 5 u 51 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 52 u 5 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 5 u 52 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 45 u 4 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 4 u 45 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 46 u 5 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 5 u 46 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason row items
+YREL v 28 u 9 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason Corner size
+YREL v 9 u 28 c -2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason Corner size
+YREL v 29 u 28 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 11 u 29 c 2 bend 9 a 1 b -1 nl 0 zb 0 grp -1 alt -1 over -1 reason S-bend size
+YREL v 29 u 11 c -2 bend 9 a -1 b 1 nl 0 zb 0 grp -1 alt -1 over -1 reason S-bend size
+YREL v 8 u 30 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason joiner_div Corner floor
+YREL v 8 u 30 c 6 bend 10 a 1 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason joiner_div Corner choice
+YREL v 30 u 8 c -6 bend 10 a -1 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason joiner_div Corner choice
+YREL v 30 u 6 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason joiner_div Corner choice
+YREL v 6 u 30 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason joiner_div Corner choice
+YREL v 31 u 30 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 30 u 31 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 10 u 5 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason S-bend size
+YREL v 5 u 10 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason S-bend size
+YREL v 8 u 32 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 33 u 34 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 35 u 34 c -2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason Corner size
+YREL v 34 u 35 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason Corner size
+YREL v 35 u 3 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason Corner size
+YREL v 3 u 35 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason Corner size
+YREL v 36 u 35 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 35 u 36 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 12 u 2 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason S-bend size
+YREL v 2 u 12 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason S-bend size
+YREL v 25 u 33 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason bridge over run
+YREL v 32 u 25 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp 0 alt -1 over -1 reason bridge over run
+YREL v 32 u 22 c 2 bend 3 a 0 b 2 nl 0 zb 0 grp 0 alt -1 over 0 reason bridge over S-bend
+YREL v 22 u 32 c -2 bend 3 a 0 b -2 nl 0 zb 0 grp 0 alt -1 over 0 reason bridge over S-bend
+YREL v 33 u 22 c -1 bend 3 a 0 b -1 nl 0 zb 0 grp 0 alt -1 over 0 reason bridge over S-bend
+YREL v 22 u 33 c 1 bend 3 a 0 b 1 nl 0 zb 0 grp 0 alt -1 over 0 reason bridge over S-bend
+YREL v 53 u 10 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 10 u 53 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 53 u 5 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason fan size
+YREL v 5 u 53 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason fan size
+YREL v 16 u 11 c 2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 11 u 16 c -2 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 55 u 12 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 12 u 55 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason chain run
+YREL v 55 u 2 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason fan size
+YREL v 2 u 55 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason fan size
+YREL v 32 u 4 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason bridge middle clearance
+CLEAR axis 1 v 32 u 4 c 1 reason bridge middle clearance (edge 5)
+YREL v 33 u 4 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason bridge middle clearance
+CLEAR axis 1 v 33 u 4 c 1 reason bridge middle clearance (edge 5)
+YREL v 32 u 5 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason bridge middle clearance
+CLEAR axis 1 v 32 u 5 c 1 reason bridge middle clearance (edge 5)
+YREL v 33 u 5 c 1 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason bridge middle clearance
+CLEAR axis 1 v 33 u 5 c 1 reason bridge middle clearance (edge 5)
+YREL v 22 u 7 c 4 bend -1 a 0 b 0 nl 1 zb 0 grp -1 alt -1 over -1 reason curve gap
+YREL v 29 u 9 c 4 bend -1 a 0 b 0 nl 1 zb 0 grp -1 alt -1 over -1 reason curve gap
+YREL v 20 u 1 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 2 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 3 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 4 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 5 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 6 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 7 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 8 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 9 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 10 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 11 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 12 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 13 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 14 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 15 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 16 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 17 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 18 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 19 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 21 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 22 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 23 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 24 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 25 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 26 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 27 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 28 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 29 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 30 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 31 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 32 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 33 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 34 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 35 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 36 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 37 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 38 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 39 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 40 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 41 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 42 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 43 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 44 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 45 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 46 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 47 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 48 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 49 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 50 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 51 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 52 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 53 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 54 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 55 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+YREL v 20 u 56 c 0 bend -1 a 0 b 0 nl 0 zb 0 grp -1 alt -1 over -1 reason box bound
+RELREASON 0 Corner size = 10
+RELREASON 0 S port spacing = 2
+RELREASON 0 S-bend size = 8
+RELREASON 0 box bound = 55
+RELREASON 0 bridge heads = 2
+RELREASON 0 bridge heads hug crossers = 18
+RELREASON 0 bridge over S-bend = 2
+RELREASON 0 bridge over run = 2
+RELREASON 0 chain run = 27
+RELREASON 0 crossing bend of size 0 = 12
+RELREASON 0 curve gap = 6
+RELREASON 0 fan size = 14
+RELREASON 0 joiner_div Corner choice = 2
+RELREASON 0 lane split run = 10
+RELREASON 0 occupancy = 30
+RELREASON 0 port columns = 8
+RELREASON 0 prio element = 11
+RELREASON 0 series bridge heads = 4
+RELREASON 1 Corner size = 12
+RELREASON 1 S edge = 2
+RELREASON 1 S port row = 4
+RELREASON 1 S-bend size = 8
+RELREASON 1 band gap = 2
+RELREASON 1 box bound = 55
+RELREASON 1 bridge middle clearance = 4
+RELREASON 1 bridge over S-bend = 4
+RELREASON 1 bridge over run = 2
+RELREASON 1 chain run = 25
+RELREASON 1 crossing bend of size 0 = 12
+RELREASON 1 curve gap = 2
+RELREASON 1 fan size = 8
+RELREASON 1 joiner_div Corner choice = 4
+RELREASON 1 joiner_div Corner floor = 1
+RELREASON 1 prio element = 10
+RELREASON 1 row items = 16
+RELREASON 1 row nodes = 8
+RELREASON 1 stack origin = 2
+RELREASON 1 stack rows = 9
+RELREASON 1 waiting room = 2
+RELATIONS 415 CLASHES 30 OCCS 133

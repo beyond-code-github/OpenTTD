@@ -1,0 +1,882 @@
+diff --git a/src/junction_topology.cpp b/src/junction_topology.cpp
+index 688ca84bfd..ed4a732d81 100644
+--- a/src/junction_topology.cpp
++++ b/src/junction_topology.cpp
+@@ -33,6 +33,14 @@
+ 
+ #include "safeguards.h"
+ 
++/* N1 recon hooks (experiment only). */
++std::set<std::tuple<uint32_t, uint32_t, int>> g_n1_waive; ///< (edge, node, row) of fact items to ignore.
++bool g_n1_probe = false; ///< Record the X phase ranges of the node points.
++std::vector<std::array<int, 4>> g_n1_nodes; ///< Per node: lo, up (relations only, box in snapshot), row, node count marker.
++std::vector<std::array<int, 3>> g_n1_pts; ///< Per point: lo, up, y.
++std::vector<int> g_n1_node_pt; ///< Node point ids.
++std::vector<std::pair<int, int>> g_n1_xfloors, g_n1_yfloors; ///< Floors for the facts placement.
++
+ std::vector<JunctionPortSlot> JunctionPortSlots(const JunctionTopology &topology)
+ {
+ 	/* Counter-clockwise from the north-west corner: W, S, E, N. */
+@@ -1223,8 +1231,19 @@ static JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology,
+ 			if (!ok) break;
+ 			ok = positions.AddDifference(cn.v, cn.u, cn.k, cn.reason);
+ 		}
++		if (g_n1_probe && phase == 0 && facts != nullptr) {
++			JunctionPositions probe(pt_count, 0, bound);
++			reasons.push_back(JunctionPlacementReason{"n1 probe"});
++			bool pok = probe.RestrictRange(0, 0, 0, static_cast<uint32_t>(reasons.size() - 1));
++			for (const Cons &cn : cons) { if (pok) pok = probe.AddDifference(cn.v, cn.u, cn.k, cn.reason); }
++			if (pok) pok = probe.RestrictRange(xe_pt, 0, facts->MaxX() - offset.x, static_cast<uint32_t>(reasons.size() - 1));
++			g_n1_pts.clear();
++			g_n1_node_pt = node_pt;
++			if (pok) for (int p = 0; p < pt_count; p++) g_n1_pts.push_back({probe.Lo(p), probe.Up(p), p < static_cast<int>(vy.size()) ? vy[p] : -1});
++		}
+ 		for (const FactCons &fc : fact_cons) {
+ 			if (!ok) break;
++			{ const JunctionPlacementReason &rs = reasons[fc.reason]; if (g_n1_waive.contains({rs.edge, rs.node, rs.row})) continue; }
+ 			ok = fc.u < 0 ? positions.RestrictDomain(fc.v, fc.columns, fc.reason) : positions.AddAvoid(fc.v, fc.u, fc.columns[0], fc.columns[1], fc.reason);
+ 		}
+ 		if (ok && phase == 0 && rows_known) {
+@@ -3109,7 +3128,7 @@ JunctionTrackPlacement PlaceJunctionTrackGraph(const JunctionTopology &topology,
+ 		if (error != nullptr) *error = "terraform needs the terrain";
+ 		return {};
+ 	}
+-	JunctionTrackPlacement placement = PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, {}, {}, &facts, offset, heights && !terraform, terraform);
++	JunctionTrackPlacement placement = PlaceTrackGraph(topology, paths, graph, order, structure, programs, spec, &choices, error, g_n1_xfloors, g_n1_yfloors, &facts, offset, heights && !terraform, terraform);
+ 	if (!terraform || placement.nodes.empty()) return placement;
+ 
+ 	/* The height solve (DESIGN-G1 §15.3) on the render of the placement. */
+diff --git a/src/tests/junction_real_terrain.cpp b/src/tests/junction_real_terrain.cpp
+index b61232a201..1a6b517bfa 100644
+--- a/src/tests/junction_real_terrain.cpp
++++ b/src/tests/junction_real_terrain.cpp
+@@ -10,7 +10,9 @@
+ #include "../stdafx.h"
+ 
+ #include "../3rdparty/catch2/catch.hpp"
++#include "../junction_chain.h"
+ #include "../junction_facts.h"
++#include "../junction_route.h"
+ #include "../junction_generator.h"
+ #include "../junction_hover.h"
+ #include "../junction_nodes.h"
+@@ -327,3 +329,819 @@ TEST_CASE("hover plan on real terrain", "[junction][realterrainsweep]")
+ 	CHECK(planned >= 19);
+ 	REQUIRE(max < 100.0);
+ }
++
++/* ===== N1 recon (experiment; not committed) ===== */
++extern std::set<std::tuple<uint32_t, uint32_t, int>> g_n1_waive;
++extern bool g_n1_probe;
++extern std::vector<std::array<int, 3>> g_n1_pts;
++extern std::vector<int> g_n1_node_pt;
++extern std::vector<std::pair<int, int>> g_n1_xfloors, g_n1_yfloors;
++
++namespace {
++struct N1Fixture {
++	std::string name;
++	JunctionTerrain terrain;
++	TileIndexDiffC offset;
++};
++
++std::vector<N1Fixture> N1LoadFixtures(const JunctionLayout &seed_layout)
++{
++	namespace fs = std::filesystem;
++	std::vector<fs::path> files;
++	for (const fs::directory_entry &entry : fs::directory_iterator(JUNCTION_TERRAIN_DIR)) {
++		if (entry.path().extension() == ".json") files.push_back(entry.path());
++	}
++	std::ranges::sort(files);
++	std::vector<N1Fixture> result;
++	for (const fs::path &file : files) {
++		std::ifstream in(file);
++		std::stringstream text;
++		text << in.rdbuf();
++		std::string load_error;
++		auto terrain = JunctionTerrainFromJson(text.str(), &load_error);
++		REQUIRE(terrain.has_value());
++		N1Fixture f;
++		f.name = file.stem().string();
++		f.terrain = *terrain;
++		f.offset = {static_cast<int16_t>(terrain->origin.x + (terrain->width - seed_layout.size.x) / 2), static_cast<int16_t>(terrain->origin.y + (terrain->height - seed_layout.size.y) / 2)};
++		result.push_back(std::move(f));
++	}
++	return result;
++}
++
++struct N1Ctx {
++	JunctionSpec spec;
++	const JunctionTopology *t;
++	JunctionGraphSeed seed;
++	JunctionTrackOrder order;
++	JunctionLayout seed_layout;
++};
++
++/** The hover plan, stage by stage: returns "" when it plans, else the stage and message. */
++std::string N1Plan(const N1Ctx &c, const N1Fixture &f, const JunctionFacts &facts, JunctionTrackPlacement *out_placement = nullptr)
++{
++	std::string error;
++	const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(*c.t, c.seed.paths, c.seed.graph, c.order, c.seed.structure, c.seed.programs, c.spec, c.seed.placement.choices, facts, f.offset, &error, true, true, &f.terrain);
++	if (out_placement != nullptr) *out_placement = placement;
++	if (placement.nodes.empty()) return "placement: " + (error.empty() ? std::string("no placement") : error);
++	std::vector<JunctionTrackRoute> routes;
++	JunctionLayout layout = RenderJunctionTrackPlacement(*c.t, c.seed.paths, c.seed.graph, c.seed.structure, c.seed.programs, placement, &error, &routes);
++	if (layout.tracks.empty()) return "render: " + (error.empty() ? std::string("empty") : error);
++	std::string signal_why;
++	SignalJunctionTrackRoutes(layout, routes, *c.t, c.seed.paths, c.seed.graph, c.seed.programs, c.spec, &signal_why);
++	if (!signal_why.empty()) return "signals: " + signal_why;
++	return "";
++}
++
++std::string N1Str(int v) { std::ostringstream o; o << v; return o.str(); }
++
++std::string N1ChainText(const std::vector<JunctionPlacementReason> &why)
++{
++	std::string s;
++	for (const JunctionPlacementReason &r : why) {
++		s += std::string(s.empty() ? "" : " <- ") + (r.rule != nullptr ? r.rule : "?") + "(";
++		s += r.edge != UINT32_MAX ? "e" + N1Str(r.edge) : "";
++		s += r.node != UINT32_MAX ? "n" + N1Str(r.node) : "";
++		s += r.row >= 0 ? "r" + N1Str(r.row) : "";
++		s += ")";
++	}
++	return s;
++}
++
++N1Ctx N1Setup()
++{
++	N1Ctx c;
++	c.spec = MakeTestJunctionSpec();
++	std::string error;
++	c.t = &JunctionTTopology();
++	c.seed = MakeJunctionGraphSeed(*c.t, c.spec, &error);
++	REQUIRE(!c.seed.routes.empty());
++	c.order = OrderJunctionTrackGraph(*c.t, c.seed.paths, c.seed.graph, &error);
++	c.seed_layout = RenderJunctionTrackPlacement(*c.t, c.seed.paths, c.seed.graph, c.seed.structure, c.seed.programs, c.seed.placement, &error);
++	return c;
++}
++}
++
++TEST_CASE("n1 e1 failing items", "[.n1]")
++{
++	N1Ctx c = N1Setup();
++	const std::vector<N1Fixture> fixtures = N1LoadFixtures(c.seed_layout);
++	std::ofstream out("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/n1_e1.txt");
++	int planned = 0;
++	for (const N1Fixture &f : fixtures) {
++		const JunctionFacts facts(f.terrain);
++		g_n1_waive.clear();
++		JunctionTrackPlacement pl;
++		std::string r = N1Plan(c, f, facts, &pl);
++		if (r.empty()) { planned++; out << f.name << " PLANS\n"; continue; }
++		out << f.name << " FAIL " << r.substr(0, 300) << "\n    chain: " << N1ChainText(pl.why) << "\n";
++	}
++	out << "planned " << planned << " of " << fixtures.size() << "\n";
++}
++
++namespace {
++struct N1Item {
++	uint32_t edge, node;
++	int row;
++	bool operator<(const N1Item &o) const { return std::tie(edge, node, row) < std::tie(o.edge, o.node, o.row); }
++	bool operator==(const N1Item &) const = default;
++};
++std::string N1ItemText(const N1Item &i)
++{
++	std::string s = i.node != UINT32_MAX ? "NODE n" + N1Str(static_cast<int>(i.node)) : "EDGE e" + N1Str(static_cast<int>(i.edge));
++	if (i.node != UINT32_MAX && i.edge != UINT32_MAX) s += " (in e" + N1Str(static_cast<int>(i.edge)) + ")";
++	if (i.row >= 0) s += " r" + N1Str(i.row);
++	return s;
++}
++/** The facts of a chain, in order, distinct. */
++std::vector<N1Item> N1ChainFacts(const std::vector<JunctionPlacementReason> &why)
++{
++	std::vector<N1Item> r;
++	for (const JunctionPlacementReason &x : why) {
++		if (x.rule == nullptr || std::string(x.rule) != "blocked tile") continue;
++		const N1Item item{x.edge, x.node, x.row};
++		if (std::ranges::find(r, item) == r.end()) r.push_back(item);
++	}
++	return r;
++}
++/** Cheapest flat level cost of a tile (JunctionLevels' Evaluate, kind 0 with the foundation option; steep and non-buildable excluded). */
++bool N1NodeCost(const JunctionTerrain &t, int x, int y, Money &best)
++{
++	const JunctionTerrainTile *tile = t.At(x, y);
++	if (tile == nullptr || tile->cls != JunctionTileClass::Buildable) return false;
++	best = INT64_MAX;
++	const std::array<int, 4> current = JunctionTileCorners(*tile);
++	for (int level = tile->z_min - 1; level <= tile->z_max + 1; level++) {
++		Money cost;
++		int steps = 0;
++		for (int i = 0; i < 4; i++) steps += std::abs(level - current[i]);
++		if (steps == 0) { cost = tile->clear_cost; } else {
++			cost = tile->clear_cost + t.terraform_cost * steps;
++			if (!tile->steep && tile->z_min < tile->z_max && tile->z_max == level && t.build_on_slopes) cost = std::min(cost, tile->clear_cost + t.foundation_cost);
++		}
++		best = std::min(best, cost);
++	}
++	return true;
++}
++}
++
++TEST_CASE("n1 e1b e2 iterate and node spots", "[.n1]")
++{
++	N1Ctx c = N1Setup();
++	const std::vector<N1Fixture> fixtures = N1LoadFixtures(c.seed_layout);
++	const std::string dir = "/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/";
++	std::ofstream out(dir + "n1_e1b.txt");
++	out << "terraform_cost " << fixtures[0].terrain.terraform_cost << " foundation_cost " << fixtures[0].terrain.foundation_cost << "\n";
++	std::map<std::string, int> first_kind;
++	std::vector<int> rounds_to_x, items_count;
++	std::map<std::string, int> end_state;
++	for (const N1Fixture &f : fixtures) {
++		const JunctionFacts facts(f.terrain);
++		g_n1_waive.clear();
++		JunctionTrackPlacement pl;
++		std::string r = N1Plan(c, f, facts, &pl);
++		if (r.empty()) continue;
++		out << f.name << "\n";
++		std::vector<N1Item> waived;
++		std::set<uint32_t> nodes_named;
++		std::string end;
++		for (int round = 0; round < 6; round++) {
++			const std::vector<N1Item> cf = N1ChainFacts(pl.why);
++			if (round == 0) {
++				first_kind[cf.empty() ? "OTHER" : (cf[0].node != UINT32_MAX ? "NODE" : "EDGE")]++;
++				out << "  chain facts:";
++				for (const N1Item &i : cf) out << " [" << N1ItemText(i) << "]";
++				out << "\n";
++			}
++			if (cf.empty()) { end = "no fact in chain: " + r.substr(0, 120); break; }
++			if (round == 5) { end = "still failing after 5 waivers"; break; }
++			waived.push_back(cf[0]);
++			if (cf[0].node != UINT32_MAX) nodes_named.insert(cf[0].node);
++			g_n1_waive.insert({cf[0].edge, cf[0].node, cf[0].row});
++			r = N1Plan(c, f, facts, &pl);
++			if (r.empty()) { end = "plans"; break; }
++			if (pl.why.empty()) { end = "X solved, later: " + r.substr(0, 100); break; }
++		}
++		g_n1_waive.clear();
++		out << "  waived sequence (first fact each round):";
++		for (const N1Item &i : waived) out << " {" << N1ItemText(i) << "}";
++		out << "\n  end: " << end << "\n";
++		items_count.push_back(static_cast<int>(waived.size()));
++		end_state[end.substr(0, 14)]++;
++		(void)rounds_to_x;
++	}
++	out << "FIRST KIND:"; for (auto &[k, v] : first_kind) out << " " << k << "=" << v; out << "\n";
++	out << "WAIVER COUNT per failing fixture:"; for (int v : items_count) out << " " << v; out << "\n";
++	out << "END:"; for (auto &[k, v] : end_state) out << " [" << k << "]=" << v; out << "\n";
++}
++
++TEST_CASE("n1 dump graph", "[.n1]")
++{
++	N1Ctx c = N1Setup();
++	std::ofstream out("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/n1_graph.txt");
++	const JunctionTrackGraph &g = c.seed.graph;
++	for (size_t e = 0; e < g.edges.size(); e++) {
++		const auto &ed = g.edges[e];
++		out << "e" << e << " kind=" << static_cast<int>(ed.kind) << " from=" << (ed.from.node ? "n" : "p") << ed.from.index << " to=" << (ed.to.node ? "n" : "p") << ed.to.index << " prog:";
++		for (const auto &s : c.seed.programs.edges[e]) out << " " << static_cast<int>(s.kind) << "/" << static_cast<int>(s.hand) << "/" << static_cast<int>(s.role);
++		out << " copies:" << c.seed.programs.copies[e].size() << " tiles:";
++		out << "\n";
++	}
++	for (size_t n = 0; n < g.nodes.size(); n++) out << "n" << n << " split=" << g.nodes[n].split << " level=" << g.nodes[n].level << " at " << c.seed.placement.nodes[n].x << "," << c.seed.placement.nodes[n].y << "\n";
++	for (size_t p = 0; p < c.seed.placement.ports.size(); p++) out << "port" << p << " at " << c.seed.placement.ports[p].x << "," << c.seed.placement.ports[p].y << "\n";
++	out << "size " << c.seed_layout.size.x << "x" << c.seed_layout.size.y << "\n";
++	out << "item rows:"; for (int r : c.seed.placement.item_rows) out << " " << r; out << "\n";
++	out << "stack:"; for (auto &s : c.seed.structure.stack) out << " (" << int(s.row) << "," << int(s.kind) << ")"; out << "\n";
++	for (size_t e = 0; e < c.seed.placement.edges.size(); e++) {
++		out << "e" << e << " spans:";
++		for (auto &sp : c.seed.placement.edges[e]) out << " [" << sp.first.x << "," << sp.first.y << "-" << sp.second.x << "," << sp.second.y << "]";
++		out << "\n";
++	}
++	out << RenderJunctionAscii(c.seed_layout) << "\n";
++}
++
++TEST_CASE("n1 sbend geometry", "[.n1]")
++{
++	std::ofstream out("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/n1_sbend.txt");
++	for (const std::string moves : {"FLFRF", "FRFLF", "FLFFFRF", "FLFRFFRFLF", "FLFFRF"}) {
++		const JunctionRaster r = RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, moves});
++		out << moves << " err=" << r.error << "\n";
++		for (const JunctionPiece &p : r.pieces) out << "  tile " << p.tile.x << "," << p.tile.y << " td " << static_cast<int>(p.trackdir) << " units " << int(p.units) << "\n";
++	}
++}
++
++namespace {
++/** The waiver iteration of E1b as a function: the failing items in order (first chain fact per round), up to max_rounds; end text. */
++std::vector<N1Item> N1Items(const N1Ctx &c, const N1Fixture &f, const JunctionFacts &facts, int max_rounds, std::string &end, std::vector<std::string> *notes = nullptr)
++{
++	std::vector<N1Item> waived;
++	g_n1_waive.clear();
++	JunctionTrackPlacement pl;
++	std::string r = N1Plan(c, f, facts, &pl);
++	end = r.empty() ? "plans" : "";
++	for (int round = 0; !r.empty(); round++) {
++		const std::vector<N1Item> cf = N1ChainFacts(pl.why);
++		if (cf.empty()) { end = "no fact in chain"; break; }
++		if (round == max_rounds) { end = "still failing"; break; }
++		waived.push_back(cf[0]);
++		g_n1_waive.insert({cf[0].edge, cf[0].node, cf[0].row});
++		r = N1Plan(c, f, facts, &pl);
++		if (r.empty()) { end = "plans"; break; }
++		if (pl.why.empty()) { end = "X solved, later: " + r.substr(0, 60); break; }
++	}
++	g_n1_waive.clear();
++	(void)notes;
++	return waived;
++}
++
++struct N1Piece { TileIndexDiffC tile; Trackdir td; int units; bool bridge; };
++
++/** The curves of a piece list: unit position of each direction change and its hand. */
++void N1Curves(const std::vector<N1Piece> &pieces, std::vector<JunctionCurveHand> &hands, std::vector<int> &pos)
++{
++	int unit = 0;
++	for (size_t i = 0; i < pieces.size(); i++) {
++		if (i > 0) {
++			const Direction a = TrackdirToDirection(pieces[i - 1].td), b = TrackdirToDirection(pieces[i].td);
++			if (a != b) {
++				const int diff = (static_cast<int>(b) - static_cast<int>(a) + 8) % 8;
++				hands.push_back(diff == 1 ? JunctionCurveHand::Right : JunctionCurveHand::Left);
++				pos.push_back(unit);
++			}
++		}
++		unit += pieces[i].units;
++	}
++}
++
++/** The least middle run (axis tiles between the two S-bends of a shift) for which the shift's four curves keep the curve gaps; side 0 is 'L' first. */
++int N1ShiftKMin(const JunctionSpec &spec, int side)
++{
++	for (int k = 1; k < 30; k++) {
++		std::string moves = "FF";
++		moves += side == 0 ? "LFR" : "RFL";
++		moves.append(k, 'F');
++		moves += side == 0 ? "RFL" : "LFR";
++		moves += "FF";
++		const JunctionRaster r = RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, moves});
++		if (!r.error.empty()) continue;
++		std::vector<N1Piece> pieces;
++		for (const JunctionPiece &p : r.pieces) pieces.push_back({p.tile, p.trackdir, p.units, p.on_bridge});
++		std::vector<JunctionCurveHand> hands;
++		std::vector<int> pos;
++		N1Curves(pieces, hands, pos);
++		if (JunctionCurveGapsHold(JunctionCurveGaps(hands, spec.tl, spec.curve_speed, spec.reference_speed), pos)) return k;
++	}
++	return 30;
++}
++
++bool N1Axis(Trackdir td) { return td == Trackdir::X_SW || td == Trackdir::X_NE || td == Trackdir::Y_NW || td == Trackdir::Y_SE; }
++}
++
++TEST_CASE("n1 e2 e3 node spots and edge shapes", "[.n1]")
++{
++	N1Ctx c = N1Setup();
++	const std::vector<N1Fixture> fixtures = N1LoadFixtures(c.seed_layout);
++	const std::string dir = "/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/";
++	std::ofstream out2(dir + "n1_e2.txt");
++	std::ofstream out3(dir + "n1_e3.txt");
++	std::string error;
++	std::vector<JunctionTrackRoute> flat_routes;
++	const JunctionLayout flat = RenderJunctionTrackPlacement(*c.t, c.seed.paths, c.seed.graph, c.seed.structure, c.seed.programs, c.seed.placement, &error, &flat_routes);
++	REQUIRE(!flat.tracks.empty());
++	const size_t edge_count = c.seed.graph.edges.size();
++	/* Per edge, its pieces from the route that holds most of them. */
++	std::vector<std::vector<N1Piece>> geom(edge_count);
++	std::map<std::pair<int, int>, std::set<uint32_t>> tile_edges;
++	for (size_t e = 0; e < edge_count; e++) {
++		for (const JunctionTrackRoute &r : flat_routes) {
++			std::vector<N1Piece> ps;
++			for (size_t i = 0; i < r.pieces.size(); i++) {
++				if (r.tags[i].edge == e) ps.push_back({r.pieces[i].tile, r.pieces[i].trackdir, r.pieces[i].units, r.pieces[i].on_bridge});
++			}
++			if (ps.size() > geom[e].size()) geom[e] = ps;
++		}
++	}
++	for (const JunctionTrackRoute &r : flat_routes) {
++		for (size_t i = 0; i < r.pieces.size(); i++) tile_edges[{r.pieces[i].tile.x, r.pieces[i].tile.y}].insert(r.tags[i].edge);
++	}
++	const int kmin[2] = {N1ShiftKMin(c.spec, 0), N1ShiftKMin(c.spec, 1)};
++	out3 << "shift kmin (axis tiles between the two S-bends, from the curve gaps, spec tl=" << int(c.spec.tl) << "): " << kmin[0] << " " << kmin[1] << "\n";
++	for (size_t e = 0; e < edge_count; e++) {
++		out3 << "e" << e << " flat pieces " << geom[e].size() << ":";
++		for (const N1Piece &p : geom[e]) out3 << " " << p.tile.x << "," << p.tile.y << (N1Axis(p.td) ? "" : "*");
++		out3 << "\n";
++	}
++
++	/* Aggregates. */
++	std::vector<int> node_free_all, node_range_all;
++	std::vector<Money> best1_all;
++	int nodes_no_spot = 0, nodes_total = 0;
++	std::vector<int> item_free_counts;
++	std::vector<double> trace_us;
++	std::vector<int> shift_hard, shift_min, shift_free;
++	std::vector<int> sb_alt_all, sb_ok_all; int edge_class_blocked = 0, edge_blocked_shiftable = 0, edge_blocked_sbendable = 0, edge_blocked_any = 0, edge_blocked_shift_free = 0;
++	int edge_items = 0, edge_items_with_shift = 0, edge_items_with_free_shift = 0, edge_flat_blocked = 0;
++	std::map<std::string, int> edge_item_class;
++	for (const N1Fixture &f : fixtures) {
++		const JunctionFacts facts(f.terrain);
++		g_n1_waive.clear();
++		JunctionTrackPlacement pl;
++		g_n1_probe = true;
++		std::string r = N1Plan(c, f, facts, &pl);
++		g_n1_probe = false;
++		if (r.empty()) continue;
++		const std::vector<std::array<int, 3>> pts = g_n1_pts;
++		const std::vector<int> npt = g_n1_node_pt;
++		std::string end;
++		const std::vector<N1Item> items = N1Items(c, f, facts, 6, end);
++		std::set<uint32_t> failing_nodes;
++		std::set<uint32_t> failing_edges;
++		for (const N1Item &i : items) { if (i.node != UINT32_MAX) failing_nodes.insert(i.node); else failing_edges.insert(i.edge); }
++		out2 << f.name << " items=" << items.size() << " (" << end << ")\n";
++		/* E2. */
++		for (size_t n = 0; n < npt.size(); n++) {
++			if (pts.empty()) break;
++			const int lo = std::max(0, pts[npt[n]][0]), up = pts[npt[n]][1], y = pts[npt[n]][2];
++			std::vector<Money> costs;
++			int free_cols = 0;
++			for (int col = lo; col <= up; col++) {
++				Money cost;
++				if (facts.Buildable(col + f.offset.x, y + f.offset.y) && N1NodeCost(f.terrain, col + f.offset.x, y + f.offset.y, cost)) { free_cols++; costs.push_back(cost); }
++			}
++			std::ranges::sort(costs);
++			nodes_total++;
++			if (free_cols == 0) nodes_no_spot++;
++			node_free_all.push_back(free_cols);
++			node_range_all.push_back(up - lo + 1);
++			if (!costs.empty()) best1_all.push_back(costs[0]);
++			const bool failing = failing_nodes.contains(static_cast<uint32_t>(n));
++			if (failing) item_free_counts.push_back(free_cols);
++			out2 << "  n" << n << (failing ? " FAILING" : "") << " row " << y << " range " << lo << ".." << up << " (" << up - lo + 1 << ") free " << free_cols << " best3:";
++			for (size_t i = 0; i < std::min<size_t>(3, costs.size()); i++) out2 << " " << costs[i];
++			out2 << "\n";
++		}
++		/* E3: every edge item (and the other edges named in chains). */
++		for (uint32_t e : failing_edges) {
++			edge_items++;
++			const std::vector<N1Piece> &g = geom[e];
++			bool flat_blocked = false;
++			for (const N1Piece &p : g) flat_blocked |= !facts.Buildable(p.tile.x + f.offset.x, p.tile.y + f.offset.y);
++			if (flat_blocked) edge_flat_blocked++;
++			int runs = 0, hard = 0, minimal = 0, freeo = 0, sb_alts = 0, sb_ok = 0;
++			std::vector<int> blocked_idx;
++			for (size_t q = 0; q < g.size(); q++) { if (!facts.Buildable(g[q].tile.x + f.offset.x, g[q].tile.y + f.offset.y)) blocked_idx.push_back(static_cast<int>(q)); }
++			const auto t0 = std::chrono::steady_clock::now();
++			for (int rep = 0; rep < 20; rep++) {
++				runs = hard = minimal = freeo = sb_alts = sb_ok = 0;
++				size_t a = 1;
++				while (a + 1 < g.size()) {
++					if (!N1Axis(g[a].td) || g[a].bridge) { a++; continue; }
++					size_t b = a;
++					while (b + 1 < g.size() - 1 && g[b + 1].td == g[a].td && !g[b + 1].bridge) b++;
++					const int n = static_cast<int>(b - a + 1);
++					const bool horiz = g[a].td == Trackdir::X_SW || g[a].td == Trackdir::X_NE;
++					const int step = ((horiz ? g[b].tile.x - g[a].tile.x : g[b].tile.y - g[a].tile.y) >= 0) ? 1 : -1;
++					const int dx = horiz ? step : 0, dy = horiz ? 0 : step;
++					runs++;
++					for (int side = 0; side < 2; side++) {
++						const int lx = horiz ? 0 : (side == 0 ? 1 : -1), ly = horiz ? (side == 0 ? 1 : -1) : 0;
++						const int km = kmin[side];
++						std::vector<std::pair<int, int>> ok_hard, ok_free;
++						for (int c1 = 1; c1 <= n - 2; c1++) {
++							for (int c2 = c1 + 1 + km; c2 <= n - 2; c2++) {
++								const int x1 = g[a].tile.x + dx * c1, y1 = g[a].tile.y + dy * c1;
++								const int x2 = g[a].tile.x + dx * c2, y2 = g[a].tile.y + dy * c2;
++								bool covers = !blocked_idx.empty();
++								for (int q : blocked_idx) covers = covers && q > static_cast<int>(a) + c1 && q < static_cast<int>(a) + c2;
++								bool good = covers && facts.Buildable(x1 + f.offset.x, y1 + f.offset.y) && facts.Buildable(x1 + lx + f.offset.x, y1 + ly + f.offset.y) && facts.Buildable(x2 + lx + f.offset.x, y2 + ly + f.offset.y) && facts.Buildable(x2 + f.offset.x, y2 + f.offset.y);
++								bool freeok = good;
++								auto taken = [&](int x, int y) { const auto it = tile_edges.find({x, y}); return it != tile_edges.end() && (it->second.size() > 1 || !it->second.contains(e)); };
++								for (int t = c1; t <= c2 && good; t++) {
++									const int x = g[a].tile.x + dx * t + lx, y = g[a].tile.y + dy * t + ly;
++									good = facts.Buildable(x + f.offset.x, y + f.offset.y);
++									freeok = freeok && good && !taken(x, y);
++								}
++								if (good) ok_hard.push_back({c1, c2});
++								if (good && freeok) ok_free.push_back({c1, c2});
++							}
++						}
++						hard += static_cast<int>(ok_hard.size());
++						freeo += static_cast<int>(ok_free.size());
++						for (const auto &[c1, c2] : ok_hard) {
++							bool inner = false;
++							for (const auto &[d1, d2] : ok_hard) inner |= (d1 >= c1 && d2 <= c2 && (d1 != c1 || d2 != c2));
++							if (!inner) minimal++;
++						}
++					}
++					a = b + 1;
++				}
++			}
++			{
++				/* S-bend m +/- 1: decode the moves, resize each S-bend, re-trace. */
++				std::string moves;
++				for (size_t i = 1; i < g.size(); i++) {
++					const Direction da = TrackdirToDirection(g[i - 1].td), db = TrackdirToDirection(g[i].td);
++					moves += da == db ? 'F' : (((static_cast<int>(db) - static_cast<int>(da) + 8) % 8) == 1 ? 'R' : 'L');
++				}
++				for (size_t i = 0; i < moves.size(); i++) {
++					if (moves[i] == 'F') continue;
++					size_t j = i + 1;
++					while (j < moves.size() && moves[j] == 'F') j++;
++					if (j < moves.size() && moves[j] != moves[i] && (j - i - 1) % 2 == 1) {
++						for (const int d : {-2, 2}) {
++							const int k = static_cast<int>(j - i - 1) + d;
++							if (k < 1) continue;
++							std::string alt = moves.substr(0, i + 1) + std::string(static_cast<size_t>(k), 'F') + moves.substr(j);
++							const JunctionRaster ras = RasterizeJunctionRoute({g[0].tile, g[0].td, alt});
++							if (!ras.error.empty()) continue;
++							sb_alts++;
++							bool okk = true;
++							for (const JunctionPiece &pc : ras.pieces) okk = okk && facts.Buildable(pc.tile.x + f.offset.x, pc.tile.y + f.offset.y);
++							if (okk) sb_ok++;
++						}
++					}
++					i = j;
++				}
++			}
++			const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / 20.0;
++			trace_us.push_back(us);
++			shift_hard.push_back(hard);
++			shift_min.push_back(minimal);
++			shift_free.push_back(freeo);
++			if (hard > 0) edge_items_with_shift++;
++			if (freeo > 0) edge_items_with_free_shift++;
++			sb_alt_all.push_back(sb_alts);
++			sb_ok_all.push_back(sb_ok);
++			if (flat_blocked) { edge_class_blocked++; if (hard > 0) edge_blocked_shiftable++; if (sb_ok > 0) edge_blocked_sbendable++; if (hard > 0 || sb_ok > 0) edge_blocked_any++; if (freeo > 0) edge_blocked_shift_free++; }
++			out3 << f.name << " e" << e << " flat_blocked=" << flat_blocked << " runs=" << runs << " shifts hard=" << hard << " minimal=" << minimal << " free=" << freeo << " sbend alts=" << sb_alts << " ok=" << sb_ok << " us=" << us << "\n";
++		}
++	}
++	auto stat = [&](const char *name, std::vector<int> v) {
++		if (v.empty()) return;
++		std::ranges::sort(v);
++		out2 << name << " n=" << v.size() << " min=" << v.front() << " median=" << v[v.size() / 2] << " max=" << v.back() << "\n";
++	};
++	out2 << "ALL nodes of failing fixtures: " << nodes_total << ", with no hard-fact-free node tile in range: " << nodes_no_spot << "\n";
++	stat("range columns (all nodes)", node_range_all);
++	stat("free columns (all nodes)", node_free_all);
++	stat("free columns (failing NODE items)", item_free_counts);
++	out3 << "EDGE items " << edge_items << " flat-blocked " << edge_flat_blocked << " with any hard-surviving shift " << edge_items_with_shift << " with a shift free of other flat tracks " << edge_items_with_free_shift << "\n";
++	out3 << "flat-blocked edge items " << edge_class_blocked << ": a single shift clears them " << edge_blocked_shiftable << ", an S-bend m+-1 re-trace clears " << edge_blocked_sbendable << ", either " << edge_blocked_any << ", a shift also free of other flat tracks " << edge_blocked_shift_free << "\n";
++	stat("shifts hard-surviving per edge item", shift_hard);
++	stat("shifts minimal per edge item", shift_min);
++	stat("shifts hard and free per edge item", shift_free);
++	if (!trace_us.empty()) {
++		std::ranges::sort(trace_us);
++		out3 << "trace us per edge: median " << trace_us[trace_us.size() / 2] << " max " << trace_us.back() << " mean " << std::accumulate(trace_us.begin(), trace_us.end(), 0.0) / trace_us.size() << "\n";
++	}
++}
++
++TEST_CASE("n1 maps", "[.n1]")
++{
++	N1Ctx c = N1Setup();
++	const std::vector<N1Fixture> fixtures = N1LoadFixtures(c.seed_layout);
++	std::ofstream out("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/n1_maps.txt");
++	std::string error;
++	std::vector<JunctionTrackRoute> routes;
++	RenderJunctionTrackPlacement(*c.t, c.seed.paths, c.seed.graph, c.seed.structure, c.seed.programs, c.seed.placement, &error, &routes);
++	std::set<std::pair<int, int>> track;
++	for (auto &r : routes) for (auto &p : r.pieces) track.insert({p.tile.x, p.tile.y});
++	for (const N1Fixture &f : fixtures) {
++		if (f.name != "arctic-hilly-0" && f.name != "temperate-hilly-9" && f.name != "arctic-hilly-15" && f.name != "temperate-mountainous-0" && f.name != "arctic-hilly-1" && f.name != "temperate-hilly-14") continue;
++		const JunctionFacts facts(f.terrain);
++		out << f.name << " offset " << f.offset.x << "," << f.offset.y << " (# not buildable, o flat track on buildable, X flat track on blocked)\n";
++		for (int y = -3; y < 17; y++) {
++			for (int x = -4; x < 45; x++) {
++				const bool b = facts.Buildable(x + f.offset.x, y + f.offset.y);
++				const bool t = track.contains({x, y});
++				out << (t ? (b ? 'o' : 'X') : (b ? '.' : '#'));
++			}
++			out << "\n";
++		}
++	}
++}
++
++namespace {
++std::string N1Plan2(const N1Ctx &c, const N1Fixture &f, const JunctionFacts &facts, const JunctionPlacementChoices &choices, TileIndexDiffC offset, JunctionTrackPlacement *out_placement = nullptr)
++{
++	std::string error;
++	const JunctionTrackPlacement placement = PlaceJunctionTrackGraph(*c.t, c.seed.paths, c.seed.graph, c.order, c.seed.structure, c.seed.programs, c.spec, choices, facts, offset, &error, true, true, &f.terrain);
++	if (out_placement != nullptr) *out_placement = placement;
++	if (placement.nodes.empty()) return "placement: " + (error.empty() ? std::string("no placement") : error);
++	std::vector<JunctionTrackRoute> routes;
++	JunctionLayout layout = RenderJunctionTrackPlacement(*c.t, c.seed.paths, c.seed.graph, c.seed.structure, c.seed.programs, placement, &error, &routes);
++	if (layout.tracks.empty()) return "render: " + (error.empty() ? std::string("empty") : error);
++	std::string signal_why;
++	SignalJunctionTrackRoutes(layout, routes, *c.t, c.seed.paths, c.seed.graph, c.seed.programs, c.spec, &signal_why);
++	if (!signal_why.empty()) return "signals: " + signal_why;
++	return "";
++}
++
++/** The first blocked tile named in an error text, or false. */
++bool N1FirstTile(const std::string &text, int &x, int &y)
++{
++	const size_t at = text.find("[blocked tile (");
++	if (at == std::string::npos) return false;
++	std::istringstream in(text.substr(at + 15));
++	char comma = 0;
++	in >> x >> comma >> y;
++	return !in.fail() && comma == ',';
++}
++
++struct N1Edit {
++	int rank;
++	Money cost;
++	std::string name;
++	int kind; ///< 0 node spot, 1 m/corner/port, 2 row gap
++	int target;
++	std::vector<std::pair<int, int>> xf, yf;
++	std::function<void(JunctionPlacementChoices &)> choice;
++};
++}
++
++TEST_CASE("n1 e4 negotiation", "[.n1]")
++{
++	N1Ctx c = N1Setup();
++	const std::vector<N1Fixture> fixtures = N1LoadFixtures(c.seed_layout);
++	const std::string dir = "/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/";
++	std::ofstream out(dir + "n1_e4.txt");
++	int fixtures_failing = 0, passed = 0, ceiling_pass = 0;
++	std::vector<int> solves_pass, solves_all;
++	std::vector<double> wall_ms;
++	std::map<std::string, int> pass_kind, fail_first;
++	std::map<std::string, int> remaining;
++	for (const N1Fixture &f : fixtures) {
++		const JunctionFacts facts(f.terrain);
++		g_n1_xfloors.clear();
++		g_n1_yfloors.clear();
++		g_n1_waive.clear();
++		JunctionTrackPlacement pl;
++		g_n1_probe = true;
++		std::string r0 = N1Plan2(c, f, facts, c.seed.placement.choices, f.offset, &pl);
++		g_n1_probe = false;
++		if (r0.empty()) continue;
++		fixtures_failing++;
++		const std::vector<std::array<int, 3>> pts = g_n1_pts;
++		const std::vector<int> npt = g_n1_node_pt;
++		std::string end;
++		const std::vector<N1Item> items = N1Items(c, f, facts, 6, end);
++		std::set<uint32_t> fnodes, fedges;
++		for (const N1Item &i : items) { if (i.node != UINT32_MAX) { fnodes.insert(i.node); if (i.edge != UINT32_MAX) fedges.insert(i.edge); } else fedges.insert(i.edge); }
++		std::vector<N1Edit> pool;
++		const JunctionPlacementChoices &base = c.seed.placement.choices;
++		/* Node spots: best 3 columns by the node tile's own cost (ties: the least move) for each failing node. */
++		for (uint32_t n : fnodes) {
++			if (n >= npt.size() || pts.empty()) continue;
++			const int lo = std::max(0, pts[npt[n]][0]), up = pts[npt[n]][1], y = pts[npt[n]][2];
++			std::vector<std::pair<Money, int>> spots;
++			for (int col = lo; col <= up; col++) {
++				Money cost;
++				if (facts.Buildable(col + f.offset.x, y + f.offset.y) && N1NodeCost(f.terrain, col + f.offset.x, y + f.offset.y, cost)) spots.push_back({cost, col});
++			}
++			std::ranges::stable_sort(spots, [](auto &a, auto &b) { return a.first < b.first; });
++			for (size_t i = 0; i < std::min<size_t>(3, spots.size()); i++) {
++				N1Edit e{0, spots[i].first, "node n" + N1Str(static_cast<int>(n)) + "@" + N1Str(spots[i].second), 0, static_cast<int>(n), {{npt[n], spots[i].second}}, {}, nullptr};
++				pool.push_back(e);
++			}
++		}
++		/* S-bend sizes and corner spans of the failing edges, port offset. */
++		for (uint32_t e : fedges) {
++			for (size_t t = 0; t < base.m[e].size(); t++) {
++				if (base.m[e][t] > 0) {
++					for (int d : {1, -1}) {
++						if (base.m[e][t] + d < 1) continue;
++						pool.push_back({1, 1, "m e" + N1Str(static_cast<int>(e)) + "t" + N1Str(static_cast<int>(t)) + (d > 0 ? "+1" : "-1"), 1, static_cast<int>(e) * 100 + static_cast<int>(t), {}, {}, [e, t, d](JunctionPlacementChoices &ch) { ch.m[e][t] += d; }});
++					}
++				}
++				if (base.corner[e][t] > 0) {
++					for (int d : {1, -1}) {
++						if (base.corner[e][t] + d < 1) continue;
++						pool.push_back({1, 1, "corner e" + N1Str(static_cast<int>(e)) + "t" + N1Str(static_cast<int>(t)) + (d > 0 ? "+1" : "-1"), 1, 10000 + static_cast<int>(e) * 100 + static_cast<int>(t), {}, {}, [e, t, d](JunctionPlacementChoices &ch) { ch.corner[e][t] += d; }});
++					}
++				}
++			}
++		}
++		for (int d : {1, -1}) {
++			if (base.port_offset + d < 0) continue;
++			pool.push_back({1, 1, std::string("port offset") + (d > 0 ? "+1" : "-1"), 1, 20000, {}, {}, [d](JunctionPlacementChoices &ch) { ch.port_offset += d; }});
++		}
++		/* Row gap +1 at each stack boundary (the stack's items are the Y points 1 + i). */
++		for (size_t i = 1; i < c.seed.placement.item_rows.size(); i++) {
++			pool.push_back({2, 2, "row gap +1 before item " + N1Str(static_cast<int>(i)), 2, 30000 + static_cast<int>(i), {}, {{1 + static_cast<int>(i), c.seed.placement.item_rows[i] + 1}}, nullptr});
++		}
++		/* Wider tail for the ceiling: row gap +2, port offsets +-2, +-3. */
++		for (size_t i = 1; i < c.seed.placement.item_rows.size(); i++) {
++			pool.push_back({3, 3, "row gap +2 before item " + N1Str(static_cast<int>(i)), 2, 30000 + static_cast<int>(i), {}, {{1 + static_cast<int>(i), c.seed.placement.item_rows[i] + 2}}, nullptr});
++		}
++		for (int d : {2, -2, 3, -3}) {
++			if (base.port_offset + d < 0) continue;
++			pool.push_back({3, 3, std::string("port offset") + (d > 0 ? "+" : "") + N1Str(d), 1, 20000, {}, {}, [d](JunctionPlacementChoices &ch) { ch.port_offset += d; }});
++		}
++		/* Assignments: singles and pairs of different targets, cheapest first. */
++		struct Assign { std::vector<size_t> ids; int rank; Money cost; };
++		std::vector<Assign> assigns;
++		for (size_t i = 0; i < pool.size(); i++) assigns.push_back({{i}, pool[i].rank, pool[i].cost});
++		for (size_t i = 0; i < pool.size(); i++) {
++			for (size_t j = i + 1; j < pool.size(); j++) {
++				if (pool[i].target == pool[j].target) continue;
++				assigns.push_back({{i, j}, pool[i].rank + pool[j].rank + 1, pool[i].cost + pool[j].cost});
++			}
++		}
++		std::ranges::stable_sort(assigns, [](const Assign &a, const Assign &b) { return std::tie(a.rank, a.cost) < std::tie(b.rank, b.cost); });
++		const auto t0 = std::chrono::steady_clock::now();
++		int solves = 0;
++		bool ok = false;
++		std::string how;
++		std::map<std::string, int> reasons;
++		const bool ok_cap_done = true;
++		for (const Assign &a : assigns) {
++			if (solves >= 20 && ok_cap_done) break;
++			JunctionPlacementChoices ch = base;
++			g_n1_xfloors.clear();
++			g_n1_yfloors.clear();
++			for (size_t id : a.ids) {
++				const N1Edit &e = pool[id];
++				if (e.choice) e.choice(ch);
++				for (auto &p : e.xf) g_n1_xfloors.push_back(p);
++				for (auto &p : e.yf) g_n1_yfloors.push_back(p);
++			}
++			solves++;
++			const std::string r = N1Plan2(c, f, facts, ch, f.offset);
++			if (r.empty()) {
++				ok = true;
++				for (size_t id : a.ids) how += (how.empty() ? "" : " + ") + pool[id].name;
++				pass_kind[pool[a.ids[0]].kind == 0 ? "node spot" : pool[a.ids[0]].kind == 1 ? "m/corner/port" : "row gap"]++;
++				break;
++			}
++			reasons[r.substr(0, r.find(':') + 1 + (r.find("blocked tile") != std::string::npos ? 0 : 0))]++;
++		}
++		const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
++		/* The ceiling: every single and pair, uncapped. */
++		int all_solves = 0;
++		bool any_pass = false;
++		std::string any_how;
++		for (const Assign &a : assigns) {
++			JunctionPlacementChoices ch = base;
++			g_n1_xfloors.clear();
++			g_n1_yfloors.clear();
++			for (size_t id : a.ids) {
++				const N1Edit &e = pool[id];
++				if (e.choice) e.choice(ch);
++				for (auto &p : e.xf) g_n1_xfloors.push_back(p);
++				for (auto &p : e.yf) g_n1_yfloors.push_back(p);
++			}
++			all_solves++;
++			if (N1Plan2(c, f, facts, ch, f.offset).empty()) { any_pass = true; for (size_t id : a.ids) any_how += (any_how.empty() ? "" : " + ") + pool[id].name; break; }
++		}
++		g_n1_xfloors.clear();
++		g_n1_yfloors.clear();
++		if (any_pass) ceiling_pass++;
++		out << "  ceiling (all singles and pairs): " << (any_pass ? "passes by " + any_how + " after " + N1Str(all_solves) + " solves" : "none of " + N1Str(all_solves)) << "\n";
++		out << f.name << " items=" << items.size() << " pool=" << pool.size() << " assignments=" << assigns.size() << " solves=" << solves << " " << (ok ? "PLANS by " + how : std::string("no plan")) << " ms=" << ms << "\n";
++		if (ok) { passed++; solves_pass.push_back(solves); }
++		solves_all.push_back(solves);
++		wall_ms.push_back(ms);
++		(void)fail_first; (void)remaining;
++	}
++	out << "failing fixtures " << fixtures_failing << ", planned by negotiation " << passed << " (so " << 19 + passed << " of 48)\n";
++	out << "ceiling (all singles and pairs, uncapped): " << ceiling_pass << "\n";
++	out << "solves for the passing ones:"; for (int v : solves_pass) out << " " << v; out << "\n";
++	out << "pass by first edit kind:"; for (auto &[k, v] : pass_kind) out << " [" << k << "]=" << v; out << "\n";
++	if (!wall_ms.empty()) { std::ranges::sort(wall_ms); out << "wall ms per fixture: mean " << std::accumulate(wall_ms.begin(), wall_ms.end(), 0.0) / wall_ms.size() << " max " << wall_ms.back() << "\n"; }
++}
++
++TEST_CASE("n1 e5 what remains", "[.n1]")
++{
++	N1Ctx c = N1Setup();
++	const std::vector<N1Fixture> fixtures = N1LoadFixtures(c.seed_layout);
++	const std::string dir = "/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/";
++	std::ofstream out(dir + "n1_e5.txt");
++	std::map<std::string, int> groups;
++	int shift_bigger = 0, fail_n = 0, offset_ok = 0, shift_ok = 0, shift_offset_ok = 0, port_blocked = 0;
++	std::vector<int> radii, widths;
++	for (const N1Fixture &f : fixtures) {
++		const JunctionFacts facts(f.terrain);
++		g_n1_xfloors.clear(); g_n1_yfloors.clear(); g_n1_waive.clear();
++		JunctionTrackPlacement pl;
++		std::string r0 = N1Plan2(c, f, facts, c.seed.placement.choices, f.offset, &pl);
++		if (r0.empty()) continue;
++		fail_n++;
++		std::ostringstream line;
++		line << f.name << ":";
++		/* Port tiles blocked at the flat offset. */
++		bool port_hit = false;
++		for (const TileIndexDiffC &p : c.seed.placement.ports) port_hit |= !facts.Buildable(p.x + f.offset.x, p.y + f.offset.y);
++		if (port_hit) { port_blocked++; line << " PORT-TILE-BLOCKED"; }
++		/* The least frame shift (Chebyshev radius) that plans with the seed's choices. */
++		int best_r = -1;
++		for (int radius = 1; radius <= 8 && best_r < 0; radius++) {
++			for (int dy = -std::min(radius, 4); dy <= std::min(radius, 4) && best_r < 0; dy++) {
++				for (int dx = -radius; dx <= radius; dx++) {
++					if (std::max(std::abs(dx), std::abs(dy)) != radius) continue;
++					const TileIndexDiffC o = {static_cast<int16_t>(f.offset.x + dx), static_cast<int16_t>(f.offset.y + dy)};
++					if (N1Plan2(c, f, facts, c.seed.placement.choices, o).empty()) { best_r = radius; break; }
++				}
++			}
++		}
++		if (best_r > 0) { offset_ok++; radii.push_back(best_r); line << " frame-shift-plans r=" << best_r; }
++		/* The obstacles, round by round: the first blocked tile of each waived item, its stretch along the row and its lateral room. */
++		std::string end;
++		JunctionTrackPlacement pl2;
++		std::vector<N1Item> waived;
++		g_n1_waive.clear();
++		std::string r = N1Plan2(c, f, facts, c.seed.placement.choices, f.offset, &pl2);
++		bool all_shiftable = true, any_item = false;
++		for (int round = 0; round < 6 && !r.empty(); round++) {
++			const std::vector<N1Item> cf = N1ChainFacts(pl2.why);
++			if (cf.empty()) break;
++			any_item = true;
++			int x = 0, y = 0;
++			const bool have = N1FirstTile(r, x, y);
++			const N1Item it = cf[0];
++			const bool row_run = it.row >= 0 && it.node == UINT32_MAX; // a run on a row of the lane stack
++			bool shiftable = false;
++			int width = 0;
++			if (have && row_run) {
++				int s = x, e = x;
++				while (!facts.Buildable(s - 1, y) && s > x - 50) s--;
++				while (!facts.Buildable(e + 1, y) && e < x + 50) e++;
++				width = e - s + 1;
++				for (const int side : {1, -1}) {
++					bool ok = facts.Buildable(s - 2, y) && facts.Buildable(e + 2, y);
++					for (int t = s - 1; t <= e + 1; t++) ok = ok && facts.Buildable(t, y + side);
++					shiftable |= ok;
++					/* A shift of m rows: the stair of the S-bend halves, then the run on row y + m * side. */
++					for (int m = 2; m <= 3; m++) {
++						bool okm = facts.Buildable(s - 2, y) && facts.Buildable(e + 2, y);
++						for (int j = 0; j < m && okm; j++) {
++							okm = okm && facts.Buildable(s - 1 + j, y + side * j) && facts.Buildable(s - 1 + j, y + side * (j + 1)) && facts.Buildable(e + 1 - j, y + side * j) && facts.Buildable(e + 1 - j, y + side * (j + 1));
++						}
++						for (int t = s - 1 + (m - 1); t <= e + 1 - (m - 1) && okm; t++) okm = okm && facts.Buildable(t, y + side * m);
++						if (okm && !shiftable) { shift_bigger++; shiftable = true; }
++					}
++				}
++				widths.push_back(width);
++			}
++			line << " [" << N1ItemText(it) << " tile " << (have ? N1Str(x) + "," + N1Str(y) : std::string("?")) << (row_run ? " w=" + N1Str(width) + (shiftable ? " shiftable" : " no-lateral-room") : std::string(" not-a-row-run")) << "]";
++			if (!shiftable) all_shiftable = false;
++			g_n1_waive.insert({it.edge, it.node, it.row});
++			r = N1Plan2(c, f, facts, c.seed.placement.choices, f.offset, &pl2);
++			if (!r.empty() && pl2.why.empty()) break;
++		}
++		g_n1_waive.clear();
++		if (any_item && all_shiftable) { shift_ok++; line << " ALL-SHIFTABLE"; }
++		std::string cls;
++		if (best_r > 0) cls = "frame shift plans it";
++		else if (port_hit) cls = "port tile blocked (frame)";
++		else if (any_item && all_shiftable) cls = "shift candidates (row runs with lateral room)";
++		else cls = "no single edit: bend/node/column obstacle or no lateral room";
++		groups[cls]++;
++		out << line.str() << "\n";
++		(void)shift_offset_ok;
++	}
++	out << "failing " << fail_n << ", plan by a frame shift of the box (radius <= 8 x, <= 4 y; same choices) " << offset_ok << ", port tile blocked at flat offset " << port_blocked << ", every item a shiftable row run " << shift_ok << "\n";
++	out << "items made shiftable only by a shift of 2 or 3 rows: " << shift_bigger << "\n";
++	for (auto &[k, v] : groups) out << "GROUP [" << k << "] " << v << "\n";
++	std::ranges::sort(radii); out << "frame radius:"; for (int v : radii) out << " " << v; out << "\n";
++	std::ranges::sort(widths); out << "row-run obstacle widths:"; for (int v : widths) out << " " << v; out << "\n";
++}

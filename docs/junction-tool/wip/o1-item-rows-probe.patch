@@ -1,0 +1,392 @@
+diff --git a/src/junction/placement/junction_placement.cpp b/src/junction/placement/junction_placement.cpp
+index ca5e984519..94c9cb3755 100644
+--- a/src/junction/placement/junction_placement.cpp
++++ b/src/junction/placement/junction_placement.cpp
+@@ -34,6 +34,10 @@
+ 
+ #include "../../safeguards.h"
+ 
++struct ProbeOcc { int y; std::string kind; int tok, chain, eidx, erole, enh, edge, copy, node, lp, ldx, rp, rdx, fl, fr, footprint, bits; }; // PROBE
++struct ProbeHug { int edge, row, west, east, flat_west, flat_east, lowpt, lowdx, highpt, highdx, lowv, highv, ntiles; }; // PROBE
++std::vector<ProbeOcc> g_probe_occ; std::vector<int> g_probe_item_y; std::vector<ProbeHug> g_probe_hugs; // PROBE
++
+ /** The kinds of element a placement run lies between (D217, DESIGN-G1 §16.1). */
+ enum class FloorKind : uint8_t { Port, Fan, Tile, Corner, SBend, Heads, Node, PrioNode, Prio, LaneSplit, LaneMerge };
+ 
+@@ -1176,6 +1180,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 		bool port; ///< A port's tile (it has no fact: the port's column is fixed).
+ 		bool fact; ///< A bridge head's tile (a straight tile fact).
+ 		const Elem *bend = nullptr; ///< Bend: its chain element.
++		int chain = -1, eidx = -1, etok = -1, erole = 0, enh = 0; // PROBE
+ 	};
+ 	/* Row r's pieces in order: the in edge, the leg, the out edge, each read from its chain(s). */
+ 	auto row_pieces = [&](int r) {
+@@ -1192,9 +1197,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 			};
+ 			const Elem *split = n_chains == 2 ? find_role(1, Step::Role::LaneSplit) : nullptr;
+ 			const Elem *merge = n_chains == 2 ? find_role(0, Step::Role::LaneMerge) : nullptr;
++			size_t pmark = pieces.size(); int pc = -1; size_t pi = 0; const Elem *pel = nullptr; // PROBE
++			auto stamp = [&]() { if (pel == nullptr) return; for (size_t q = pmark; q < pieces.size(); q++) { pieces[q].chain = pc; pieces[q].eidx = static_cast<int>(pi); pieces[q].etok = pel->tok; pieces[q].erole = static_cast<int>(role_of(pc, *pel)); const std::vector<Elem> &ce = pc == 0 ? chain[e] : chain_copy[e]; int nh = 0; for (size_t z = 0; z <= pi; z++) nh += ce[z].k == Elem::K::HeadsPair; pieces[q].enh = nh; } }; // PROBE
+ 			for (int c = 0; c < n_chains; c++) {
+ 				const std::vector<Elem> &elems = c == 0 ? chain[e] : chain_copy[e];
+ 				for (size_t i = 0; i < elems.size(); i++) {
++					stamp(); pmark = pieces.size(); pc = c; pi = i; pel = &elems[i]; // PROBE
+ 					const Elem &el = elems[i];
+ 					int y_end = vy[el.last];
+ 					if (el.k == Elem::K::Tile) {
+@@ -1228,6 +1236,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 					pieces.push_back({RowPiece::T::Run, a, b, y_end, copy, e, 0, 0, false, false});
+ 				}
+ 			}
++			stamp(); // PROBE
+ 		};
+ 		walk(in_edge[r]);
+ 		walk(leg_edge[r]);
+@@ -1315,6 +1324,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 			uint32_t node; ///< The node of a node's tile, else UINT32_MAX.
+ 			int footprint = 0; ///< A prio element's footprint: +1 when it lies downstream of its tile column (columns grow), -1 when downstream is lower; 0 for tracks.
+ 			JunctionSystemColumn left, right; ///< The ends as columns of the joint model, filled when recording.
++			std::string kind; int tok = -1, chain = -1, eidx = -1, erole = 0, enh = 0; // PROBE
+ 		};
+ 		const bool record = system != nullptr && !legality;
+ 		std::map<const Elem *, int> bend_ids; ///< The system's bend id of each chain bend (the order record_system gives them), when recording.
+@@ -1328,6 +1338,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 			}
+ 		}
+ 		std::map<int, std::vector<Occupant>> by_row;
++		auto tag_new = [&](const std::string &k, int tok = -1, int ch = -1, int ei = -1, int ro = 0, int nh = 0) { for (auto &[yy, v] : by_row) for (Occupant &o : v) if (o.kind.empty()) { o.kind = k; o.tok = tok; o.chain = ch; o.eidx = ei; o.erole = ro; o.enh = nh; } }; // PROBE
+ 		auto flat_left = [&](const Occupant &o) { return flat[o.lp] + o.ldx; };
+ 		auto flat_right = [&](const Occupant &o) { return flat[o.rp] + o.rdx; };
+ 		auto add_tile = [&](int pt, int dx, int y, TrackBits bits, uint32_t edge, int copy, const JunctionSystemColumn *column = nullptr) {
+@@ -1371,6 +1382,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 		std::vector<uint32_t> node_of_pt(pt_count, UINT32_MAX);
+ 		for (uint32_t i = 0; i < node_pt.size(); i++) node_of_pt[node_pt[i]] = i;
+ 		for (uint32_t i = 0; i < node_pt.size(); i++) by_row[vy[node_pt[i]]].push_back({vy[node_pt[i]], node_pt[i], 0, node_pt[i], 0, node_bits[i], UINT32_MAX, 0, i, 0, {node_pt[i]}, {node_pt[i]}});
++		tag_new("NodeTile");
+ 
+ 		/* The chains of the edges that are not rows. */
+ 		for (uint32_t e = 0; e < edge_count; e++) {
+@@ -1380,12 +1392,15 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				const Elem &el = elems[i];
+ 				if (el.k == Elem::K::Tile) {
+ 					if (node_of_pt[el.first] == UINT32_MAX) add_tile(el.first, 0, vy[el.first], VX[el.hin] != 0 ? TrackBits{Track::X} : TrackBits{Track::Y}, e, 0);
++					tag_new("BE.Tile", el.tok);
+ 				} else if (el.k == Elem::K::Heads) {
+ 					const TrackBits head = VX[el.hin] != 0 ? TrackBits{Track::X} : TrackBits{Track::Y};
+ 					add_tile(el.first, 0, vy[el.first], head, e, 0);
+ 					add_tile(el.last, 0, vy[el.last], head, e, 0);
++					tag_new("BE.Heads", el.tok);
+ 				} else {
+ 					add_bend(el.first, vy[el.first], el.hin, el.hand, static_cast<int>(el.offs.size()), el.k == Elem::K::Corner, e, 0, node_of_pt[el.first] != UINT32_MAX, node_of_pt[el.last] != UINT32_MAX, &el);
++					tag_new(el.k == Elem::K::Corner ? "BE.Corner" : el.k == Elem::K::SBend ? "BE.SBend" : "BE.Fan", el.tok);
+ 				}
+ 				const size_t next_index = next_present(elems, i);
+ 				if (el.absent || next_index >= elems.size() || elems[next_index].first == el.last) continue;
+@@ -1393,8 +1408,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				if (VX[el.hout] == 0) {
+ 					const int d = VY[el.hout];
+ 					for (int y = vy[el.last] + d; d > 0 ? y < vy[next.first] : y > vy[next.first]; y += d) add_tile(el.last, 0, y, TrackBits{Track::Y}, e, 0);
++					tag_new("BE.VTile", el.tok);
+ 				} else {
+ 					add_run(el.last, next.first, vy[el.last], VX[el.hout], e, 0);
++					tag_new("BE.Run", el.tok);
+ 				}
+ 			}
+ 		}
+@@ -1409,6 +1426,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 					case RowPiece::T::Run: add_run(piece.a, piece.b, piece.y, sgn, piece.edge, piece.copy); break;
+ 					case RowPiece::T::Bend: add_bend(piece.a, piece.y, east[r] ? 1 : 3, piece.hand, piece.halves, false, piece.edge, piece.copy, false, false, piece.bend); break;
+ 				}
++				tag_new(piece.t == RowPiece::T::Tile ? (piece.port ? "RE.PortTile" : "RE.HeadTile") : piece.t == RowPiece::T::Run ? "RE.Run" : (piece.bend != nullptr && piece.bend->k == Elem::K::Fan ? "RE.Fan" : "RE.SBend"), piece.etok, piece.chain, piece.eidx, piece.erole, piece.enh);
+ 			}
+ 		}
+ 
+@@ -1427,6 +1445,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				by_row[y_row].push_back({y_row, prio_el.last, -step * sgn, prio_el.last, -step * sgn, row_bits, UINT32_MAX, 0, njm_node, sgn, {prio_el.last, -step * sgn}, {prio_el.last, -step * sgn}});
+ 				if (lane_bits.Any()) by_row[y_lane].push_back({y_lane, prio_el.last, -step * sgn, prio_el.last, -step * sgn, lane_bits, UINT32_MAX, 0, njm_node, sgn, {prio_el.last, -step * sgn}, {prio_el.last, -step * sgn}});
+ 			}
++			tag_new("Prio");
+ 		}
+ 
+ 		/* Related occupants never constrain each other: the same edge and copy, a node's tile and an edge that starts or ends at the node. */
+@@ -1437,6 +1456,12 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 			return (a.node != UINT32_MAX && at_node(b.edge, a.node)) || (b.node != UINT32_MAX && at_node(a.edge, b.node));
+ 		};
+ 		auto label = [&](const Occupant &o) { return o.node != UINT32_MAX ? fmt::format("node {}", o.node) : fmt::format("edge {}", o.edge); };
++		if (record) { // PROBE
++			g_probe_occ.clear();
++			for (auto &[yy, v] : by_row) for (const Occupant &o : v) g_probe_occ.push_back({yy, o.kind, o.tok, o.chain, o.eidx, o.erole, o.enh, static_cast<int>(o.edge), o.copy, static_cast<int>(o.node), o.lp, o.ldx, o.rp, o.rdx, flat_left(o), flat_right(o), o.footprint, static_cast<int>(o.bits.base())});
++			g_probe_hugs.clear(); g_probe_item_y.clear();
++			for (int p : item_pt) g_probe_item_y.push_back(vy[p]);
++		}
+ 		for (auto &[y, occupants] : by_row) {
+ 			/* On equal columns a footprint comes first in its travel direction: the unrelated track stands downstream of it. */
+ 			std::ranges::stable_sort(occupants, [&](const Occupant &a, const Occupant &b) { return std::make_tuple(flat_left(a), flat_right(a), -a.footprint) < std::make_tuple(flat_left(b), flat_right(b), -b.footprint); });
+@@ -1526,6 +1551,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				if (value(tile) < value(*low)) low = &tile;
+ 				if (value(tile) > value(*high)) high = &tile;
+ 			}
++			if (system != nullptr) g_probe_hugs.push_back({static_cast<int>(hug.edge), hug.row, hug.west, hug.east, flat[hug.west], flat[hug.east], low->first, low->second, high->first, high->second, value(*low), value(*high), static_cast<int>(hug.tiles.size())}); // PROBE
+ 			why("bridge heads hug crossers", hug.edge, UINT32_MAX, hug.row);
+ 			tag = SystemTag{nullptr, 0, 0, true, false, true}; // The crosser tile offset dx comes from the bend rasters of 2m halves and the rows; the outermost tile from the flat solve.
+ 			eq(0, hug.west, low->first, low->second - 1);
+diff --git a/src/tests/junction/topology/junction_topology.cpp b/src/tests/junction/topology/junction_topology.cpp
+index 849492c546..5ac30de952 100644
+--- a/src/tests/junction/topology/junction_topology.cpp
++++ b/src/tests/junction/topology/junction_topology.cpp
+@@ -5870,3 +5870,255 @@ TEST_CASE("ARR1 at the S seeds names no absent piece", "[junction][topology]")
+ 	}
+ 	CHECK(checked > 0);
+ }
++
++/* PROBE (recon O1) */
++struct ProbeOcc { int y; std::string kind; int tok, chain, eidx, erole, enh, edge, copy, node, lp, ldx, rp, rdx, fl, fr, footprint, bits; };
++struct ProbeHug { int edge, row, west, east, flat_west, flat_east, lowpt, lowdx, highpt, highdx, lowv, highv, ntiles; };
++extern std::vector<ProbeOcc> g_probe_occ; extern std::vector<int> g_probe_item_y; extern std::vector<ProbeHug> g_probe_hugs;
++
++static constexpr double NOR = -1e9;
++static void ProbeSeed(const char *main, const char *branch, std::ostream &out)
++{
++	using Item = JunctionTrackRowItem;
++	const JunctionSpec spec = MakeTestJunctionSpec();
++	const JunctionTopology topology = ArrangementTopology(main, branch);
++	std::string error;
++	const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &error);
++	REQUIRE(!seed.routes.empty());
++	const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, seed.paths, seed.graph, &error);
++	const JunctionTrackArrangement arrangement = ArrangeJunctionTrackGraph(seed.graph, order, seed.programs);
++	const JunctionTrackGraph &graph = seed.graph;
++	g_probe_occ.clear();
++	const JunctionPlacementSystem system = RecordJunctionPlacementSystem(topology, seed.paths, graph, order, seed.structure, seed.programs, spec, seed.placement.choices);
++	const std::vector<ProbeOcc> occ = g_probe_occ;
++	const std::vector<int> item_y = g_probe_item_y;
++	const size_t R = order.rows.size();
++	out << "=== HUB " << (main == nullptr ? "T" : main) << " x " << (main == nullptr ? "" : branch) << " ===\n";
++	auto nm = [](const Item &i) { return fmt::format("{}{}", i.node ? "n" : "e", i.index); };
++	/* row shape */
++	const auto slots = JunctionPortSlots(topology);
++	std::vector<bool> east(R, true);
++	std::vector<uint32_t> in_e(R, UINT32_MAX), leg_e(R, UINT32_MAX), out_e(R, UINT32_MAX);
++	for (uint32_t e = 0; e < graph.edges.size(); e++) {
++		const JunctionTrackEdge &ed = graph.edges[e];
++		if (JunctionIsInEdge(graph, order, seed.programs, e)) { const size_t r = (order.node_level[ed.to.index] - 1) / 2; in_e[r] = e; east[r] = topology.groups[slots[ed.from.index].group].side == JunctionSide::W; }
++		else if (JunctionIsOutEdge(graph, order, seed.programs, e)) out_e[(order.node_level[ed.from.index] - 1) / 2] = e;
++		else if (JunctionIsLegEdge(graph, order, e)) leg_e[(order.node_level[ed.from.index] - 1) / 2] = e;
++	}
++	for (size_t r = 0; r < R; r++) out << fmt::format("row {} east {} in e{} leg e{} out e{} items:", r, east[r] ? 1 : 0, in_e[r], leg_e[r], out_e[r]) << [&] { std::string s; for (const Item &i : order.rows[r]) s += " " + nm(i); return s; }() << "\n";
++	std::set<int> itemset(item_y.begin(), item_y.end());
++	out << fmt::format("distinct item rows {} of {} stack items; occupants {}; clashes {}\n", itemset.size(), item_y.size(), occ.size(), system.clashes.size());
++	/* Q2: rows with row-chain pieces that are not item rows */
++	{
++		std::map<int, std::map<std::string, int>> nonitem;
++		for (const ProbeOcc &o : occ) if (!itemset.count(o.y) && o.kind.rfind("RE.", 0) == 0) nonitem[o.y][fmt::format("{} e{}", o.kind, o.edge)]++;
++		for (const auto &[y, m] : nonitem) { out << fmt::format("NONITEM row y {} holds row-edge pieces:", y); for (const auto &[k, v] : m) out << fmt::format(" {}x{}", k, v); out << "\n"; }
++		std::map<int, std::map<std::string, int>> nonitem_other;
++		for (const ProbeOcc &o : occ) if (!itemset.count(o.y) && o.kind.rfind("RE.", 0) != 0) nonitem_other[o.y][o.kind]++;
++		for (const auto &[y, m] : nonitem_other) { out << fmt::format("NONITEM row y {} holds other occupants:", y); for (const auto &[k, v] : m) out << fmt::format(" {}x{}", k, v); out << "\n"; }
++	}
++	/* hugs */
++	for (const ProbeHug &h : g_probe_hugs) out << fmt::format("hug edge {} row {} west flat {} east flat {} low {} high {} tiles {}\n", h.edge, h.row, h.flat_west, h.flat_east, h.lowv, h.highv, h.ntiles);
++	{ int pins = 0, hug = 0; for (const JunctionSystemRelation &r : system.relations) { if (r.reason.find("hug") == std::string::npos) continue; (r.order_pin ? pins : hug)++; } out << fmt::format("hug relations non-pin {} pin {}\n", hug, pins); }
++
++	/* relatedness as the occupancy */
++	auto at_node = [&](int edge, int node) { return edge >= 0 && ((graph.edges[edge].from.node && graph.edges[edge].from.index == static_cast<uint32_t>(node)) || (graph.edges[edge].to.node && graph.edges[edge].to.index == static_cast<uint32_t>(node))); };
++	auto related = [&](const ProbeOcc &a, const ProbeOcc &b) {
++		if (a.edge >= 0 && a.edge == b.edge) return a.copy == b.copy || a.copy < 0 || b.copy < 0;
++		if (a.edge < 0 && b.edge < 0 && a.node >= 0 && a.node == b.node) return true;
++		return (a.node >= 0 && at_node(b.edge, a.node)) || (b.node >= 0 && at_node(a.edge, b.node));
++	};
++
++	int t_noitem = 0, t_pairs = 0, t_pairs_bad = 0, t_inv = 0, t_occ_pairs = 0, t_gap0 = 0;
++	std::map<std::string, int> noitem_kinds, gap0_kinds, crosser_kinds;
++	int rule_agree = 0, rule_disagree = 0, rule_tie = 0, rule_overlap = 0, rule_unranked_pairs = 0, rule_pairs = 0;
++	std::map<std::string, int> tie_kinds, dis_kinds, unranked_kinds;
++	int head_cross_adj = 0, head_other_adj = 0;
++	std::map<std::pair<int, int>, std::vector<ProbeOcc>> heads_by;
++	for (size_t i = 0; i < seed.structure.stack.size(); i++) {
++		const uint32_t r = seed.structure.stack[i].row;
++		const int y = item_y[i];
++		const int dir = east[r] ? 1 : -1;
++		std::vector<ProbeOcc> row;
++		for (const ProbeOcc &o : occ) if (o.y == y) row.push_back(o);
++		std::stable_sort(row.begin(), row.end(), [](const ProbeOcc &a, const ProbeOcc &b) { return std::make_tuple(a.fl, a.fr, -a.footprint) < std::make_tuple(b.fl, b.fr, -b.footprint); });
++		const auto &items = order.rows[r];
++		/* travel positions: travel order = row order when east, reversed when west */
++		auto tpos = [&](size_t k) { return east[r] ? static_cast<int>(k) : static_cast<int>(items.size() - 1 - k); };
++		const uint32_t s_node = graph.edges[leg_e[r]].from.index, m_node = graph.edges[leg_e[r]].to.index;
++		auto item_index = [&](bool node, uint32_t idx) { for (size_t k = 0; k < items.size(); k++) if (items[k].node == node && items[k].index == idx) return static_cast<int>(k); return -1; };
++		const int kmax = static_cast<int>(items.size()) - 1; // travel pos of m
++		/* the leg's bridges */
++		std::vector<const JunctionTrackBridge *> bridges;
++		for (const JunctionTrackBridge &b : seed.structure.bridges) if (b.edge == leg_e[r]) bridges.push_back(&b);
++		auto crosser_pos = [&](uint32_t x) { const int k = item_index(false, x); return k < 0 ? -1 : tpos(static_cast<size_t>(k)); };
++		/* heads of this row sorted in travel order */
++		std::vector<size_t> head_idx;
++		for (size_t k = 0; k < row.size(); k++) if (row[k].kind == "RE.HeadTile" && row[k].edge == static_cast<int>(leg_e[r])) head_idx.push_back(k);
++		std::stable_sort(head_idx.begin(), head_idx.end(), [&](size_t a, size_t b) { return dir * row[a].fl < dir * row[b].fl; });
++		std::map<size_t, double> head_rank;
++		for (size_t j = 0; j < head_idx.size(); j++) {
++			const size_t bi = j / 2;
++			if (bi >= bridges.size()) continue;
++			std::vector<int> ps; for (uint32_t x : bridges[bi]->crossed) ps.push_back(crosser_pos(x));
++			head_rank[head_idx[j]] = j % 2 == 0 ? *std::min_element(ps.begin(), ps.end()) - 0.4 : *std::max_element(ps.begin(), ps.end()) + 0.4;
++		}
++		/* bridge k's last crosser position */
++		auto bridge_last = [&](size_t bi) { int v = -1; for (uint32_t x : bridges[bi]->crossed) v = std::max(v, crosser_pos(x)); return v; };
++		auto bridge_first = [&](size_t bi) { int v = INT_MAX; for (uint32_t x : bridges[bi]->crossed) v = std::min(v, crosser_pos(x)); return v; };
++		/* rank (travel position q) of an occupant, NOR when the rule does not rank it; item index for (a) */
++		struct Info { int item = -1; double q = NOR; std::string cls; };
++		std::vector<Info> info(row.size());
++		for (size_t k = 0; k < row.size(); k++) {
++			const ProbeOcc &o = row[k];
++			Info &f = info[k];
++			const int my_leg = static_cast<int>(leg_e[r]);
++			if (o.kind == "NodeTile") {
++				const int ix = item_index(true, o.node);
++				if (ix >= 0) { f.item = ix; f.q = tpos(static_cast<size_t>(ix)); f.cls = "node tile"; } else f.cls = "node tile of another row";
++			} else if (o.kind.rfind("BE.", 0) == 0) {
++				const int ix = item_index(false, o.edge);
++				if (ix >= 0) { f.item = ix; f.q = tpos(static_cast<size_t>(ix)); f.cls = "crosser of row (item)"; }
++				else if (at_node(o.edge, s_node) || at_node(o.edge, m_node)) {
++					const bool at_s = at_node(o.edge, s_node);
++					f.item = item_index(true, at_s ? s_node : m_node); f.q = at_s ? 0 : kmax; f.cls = "band edge at node block";
++				} else f.cls = "band edge crosser, no item";
++			} else if (o.kind == "Prio") {
++				f.q = kmax - 0.25; f.cls = "prio footprint";
++			} else if (o.kind.rfind("RE.", 0) == 0) {
++				const int e = o.edge;
++				if (e == static_cast<int>(in_e[r])) { f.item = item_index(true, s_node); f.q = -1; f.cls = "in-edge piece (node block)"; }
++				else if (e == static_cast<int>(out_e[r])) { f.item = item_index(true, m_node); f.q = kmax + 1; f.cls = "out-edge piece (node block)"; }
++				else if (e == my_leg) {
++					const int g = static_cast<int>(bridges.size());
++					if (o.kind == "RE.HeadTile") { auto it = head_rank.find(k); if (it != head_rank.end()) { f.q = it->second; f.cls = "leg head"; } else f.cls = "leg head (unranked)"; }
++					else if (o.kind == "RE.SBend") {
++						if (o.erole == 1) { f.q = 0.1; f.cls = "leg lane-split S-bend"; }
++						else if (o.erole == 2) { f.q = kmax - 0.5; f.cls = "leg lane-merge S-bend"; }
++						else f.cls = "leg other S-bend";
++					} else if (o.kind == "RE.Run") {
++						if (o.copy < 0) { if (o.chain == 1) { f.q = 0.05; f.cls = "leg shared run before split"; } else { f.q = kmax - 0.4; f.cls = "leg shared run after merge"; } }
++						else if (g == 0) { f.q = 0.5; f.cls = "leg run (no bridges)"; }
++						else if (o.enh == 0) { f.q = bridge_first(0) - 0.5; f.cls = "leg run before first bridge"; }
++						else if (o.enh < g) { f.q = bridge_last(static_cast<size_t>(o.enh) - 1) + 0.5; f.cls = "leg run between bridges"; }
++						else { f.q = kmax - 0.55; f.cls = "leg run after last bridge"; }
++					} else f.cls = "leg other " + o.kind;
++				} else f.cls = "row edge of another row (" + o.kind + ")";
++			}
++			if (f.item < 0) { t_noitem++; noitem_kinds[o.kind + " / " + f.cls]++; }
++			if (o.kind.rfind("BE.", 0) == 0 && f.cls == "crosser of row (item)") crosser_kinds[o.kind]++;
++			if (o.kind.rfind("BE.", 0) == 0 && f.cls == "band edge crosser, no item") crosser_kinds["NOITEM " + o.kind]++;
++		}
++		out << fmt::format("-- ITEM ROW stack {} (row {} kind {}) y {} dir {}\n", i, r, static_cast<int>(seed.structure.stack[i].kind), y, east[r] ? "E" : "W");
++		for (size_t k = 0; k < row.size(); k++) {
++			const ProbeOcc &o = row[k];
++			out << fmt::format("  [{:3}..{:3}] {:11} e{} c{} n{} ch{} i{} tok{} item {} q {} | {}\n", o.fl, o.fr, o.kind, o.edge, o.copy, o.node, o.chain, o.eidx, o.tok, info[k].item >= 0 ? nm(items[static_cast<size_t>(info[k].item)]) : "-", info[k].q == NOR ? std::string("-") : fmt::format("{:.2f}", info[k].q), info[k].cls);
++		}
++		/* (a) occupant pairs with items: item order vs column order */
++		for (size_t a = 0; a < row.size(); a++) for (size_t b = 0; b < row.size(); b++) {
++			if (a == b || info[a].item < 0 || info[b].item < 0 || info[a].item >= info[b].item) continue;
++			if (row[a].fl > row[a].fr || row[b].fl > row[b].fr) continue;
++			t_occ_pairs++;
++			if (row[a].fl > row[b].fr) { t_inv++; out << fmt::format("  INVERSION item {} west of item {} but occupant {} [{}..{}] is east of {} [{}..{}]\n", nm(items[static_cast<size_t>(info[a].item)]), nm(items[static_cast<size_t>(info[b].item)]), row[a].kind, row[a].fl, row[a].fr, row[b].kind, row[b].fl, row[b].fr); }
++		}
++		/* (a) the consecutive-items extents, as ARR1 checks: extents of mapped occupants */
++		std::map<int, std::pair<int, int>> ext;
++		for (size_t k = 0; k < row.size(); k++) if (info[k].item >= 0 && row[k].fl <= row[k].fr) {
++			auto it = ext.find(info[k].item);
++			if (it == ext.end()) ext[info[k].item] = {row[k].fl, row[k].fr}; else { it->second.first = std::min(it->second.first, row[k].fl); it->second.second = std::max(it->second.second, row[k].fr); }
++		}
++		for (const JunctionTrackArrangement::RowPair &rp : arrangement.row_pairs) {
++			if (rp.row != r) continue;
++			const int wk = item_index(rp.west.node, rp.west.index), ek = item_index(rp.east.node, rp.east.index);
++			if (!ext.count(wk) || !ext.count(ek)) continue;
++			t_pairs++;
++			if (!(ext[wk].second < ext[ek].first)) { t_pairs_bad++; out << fmt::format("  ROWPAIR {} west of {}: [{}..{}] vs [{}..{}] not strictly ordered\n", nm(rp.west), nm(rp.east), ext[wk].first, ext[wk].second, ext[ek].first, ext[ek].second); }
++		}
++		/* (d) and (5) over all unrelated pairs of non-empty occupants */
++		for (size_t a = 0; a < row.size(); a++) for (size_t b = a + 1; b < row.size(); b++) {
++			const ProbeOcc &p = row[a], &q = row[b];
++			if (p.fl > p.fr || q.fl > q.fr || related(p, q)) continue;
++			const bool overlap = q.fl <= p.fr;
++			if (overlap && p.footprint == 0 && q.footprint == 0) { t_gap0++; gap0_kinds[p.kind + " & " + q.kind]++; out << fmt::format("  GAP0 unrelated share tile: {} e{} c{} [{}..{}] & {} e{} c{} [{}..{}]\n", p.kind, p.edge, p.copy, p.fl, p.fr, q.kind, q.edge, q.copy, q.fl, q.fr); }
++			/* heads vs crossers adjacency */
++			if (b == a + 1 && ((p.kind == "RE.HeadTile") != (q.kind == "RE.HeadTile"))) { if (p.kind.rfind("BE.", 0) == 0 || q.kind.rfind("BE.", 0) == 0) head_cross_adj++; else head_other_adj++; }
++			rule_pairs++;
++			if (info[a].q == NOR || info[b].q == NOR) { rule_unranked_pairs++; unranked_kinds[(info[a].q == NOR ? info[a].cls : std::string("ranked")) + " | " + (info[b].q == NOR ? info[b].cls : std::string("ranked"))]++; continue; }
++			if (info[a].q == info[b].q) { rule_tie++; tie_kinds[info[a].cls + " | " + info[b].cls]++; continue; }
++			/* seed order a before b in column order; rule order in travel order mapped to columns */
++			const bool rule_a_first_in_columns = (info[a].q < info[b].q) == (dir > 0);
++			if (overlap) { rule_overlap++; continue; }
++			if (rule_a_first_in_columns) rule_agree++;
++			else { rule_disagree++; dis_kinds[info[a].cls + " | " + info[b].cls]++; out << fmt::format("  RULEDIS {} [{}..{}] q{:.2f} vs {} [{}..{}] q{:.2f}\n", info[a].cls, p.fl, p.fr, info[a].q, info[b].cls, q.fl, q.fr, info[b].q); }
++		}
++	}
++	out << fmt::format("SUMMARY (a) row-pair extents checked {} not strictly ordered {}; occupant pairs with items {} inverted {}\n", t_pairs, t_pairs_bad, t_occ_pairs, t_inv);
++	out << fmt::format("SUMMARY (b) occupants without item on item rows {}\n", t_noitem);
++	for (const auto &[k, v] : noitem_kinds) out << fmt::format("   {} : {}\n", k, v);
++	out << "SUMMARY (c) crosser (band edge with an item of the row) tiles by chain element kind\n";
++	for (const auto &[k, v] : crosser_kinds) out << fmt::format("   {} : {}\n", k, v);
++	out << fmt::format("SUMMARY (d) unrelated pairs sharing a tile on item rows {}\n", t_gap0);
++	for (const auto &[k, v] : gap0_kinds) out << fmt::format("   {} : {}\n", k, v);
++	out << fmt::format("SUMMARY (4) adjacent head/crosser pairs {} head/other pairs {}\n", head_cross_adj, head_other_adj);
++	out << fmt::format("SUMMARY (5) rule: unrelated nonempty pairs {} agree {} DISAGREE {} tie {} overlap {} unranked {}\n", rule_pairs, rule_agree, rule_disagree, rule_tie, rule_overlap, rule_unranked_pairs);
++	for (const auto &[k, v] : dis_kinds) out << fmt::format("   disagree {} : {}\n", k, v);
++	for (const auto &[k, v] : tie_kinds) out << fmt::format("   tie {} : {}\n", k, v);
++	for (const auto &[k, v] : unranked_kinds) out << fmt::format("   unranked {} : {}\n", k, v);
++
++	/* (c) unders */
++	out << "-- unders: the crosser's tiles between the copy's heads on its head row\n";
++	int u_tiles = 0, u_bad = 0;
++	std::map<std::string, int> u_kinds;
++	for (const JunctionArrangementUnder &under : arrangement.unders) {
++		size_t index = seed.structure.bridges.size();
++		for (size_t b = 0; b < seed.structure.bridges.size(); b++) if (seed.structure.bridges[b].edge == under.bridge_edge && seed.structure.bridges[b].doubled && std::ranges::count(seed.structure.bridges[b].crossed, under.edge) > 0) index = b;
++		const int hy = seed.placement.bridges[index][under.copy].start.y;
++		/* the bridge's rank among the edge's bridges */
++		size_t rank = 0;
++		for (size_t b = 0; b < index; b++) if (seed.structure.bridges[b].edge == under.bridge_edge) rank++;
++		std::vector<ProbeOcc> heads;
++		for (const ProbeOcc &o : occ) if (o.y == hy && o.edge == static_cast<int>(under.bridge_edge) && o.kind == "RE.HeadTile") heads.push_back(o);
++		std::sort(heads.begin(), heads.end(), [](const ProbeOcc &a, const ProbeOcc &b) { return a.fl < b.fl; });
++		if (heads.size() < 2 * (rank + 1)) { out << "  (heads not found)\n"; continue; }
++		/* sorted by column: bridges in series are in travel order, which can be either direction; pairs by column */
++		const size_t g = heads.size() / 2;
++		size_t pair_idx = seed.placement.choices.m.empty() ? rank : rank;
++		size_t leg_row = 0; for (size_t r = 0; r < R; r++) if (leg_e[r] == under.bridge_edge) leg_row = r;
++		const bool eastv = east[leg_row];
++		const size_t ci = eastv ? pair_idx : g - 1 - pair_idx;
++		const int lo = heads[2 * ci].fl, hi = heads[2 * ci + 1].fl;
++		const std::vector<JunctionTrackStep> &program = seed.programs.edges[under.edge];
++		auto is_bend = [&](uint32_t t) { return program[t].kind == JunctionTrackStep::Kind::Fan || program[t].kind == JunctionTrackStep::Kind::Corner || program[t].kind == JunctionTrackStep::Kind::SBend; };
++		int previous = -1, next = -1;
++		for (uint32_t t = 0; t < under.token; t++) if (is_bend(t)) previous = static_cast<int>(t);
++		for (uint32_t t = static_cast<uint32_t>(program.size()); t-- > under.token + 1;) if (is_bend(t)) next = static_cast<int>(t);
++		auto allowed = [&](JunctionUnderPiece pc) { return std::ranges::count(under.pieces, pc) > 0; };
++		std::string line = fmt::format("under e{} tok{} under e{} copy {} y {} heads [{}..{}] prev {} next {} cands", under.edge, under.token, under.bridge_edge, under.copy, hy, lo, hi, previous, next);
++		for (JunctionUnderPiece pc : under.pieces) line += fmt::format(" {}", static_cast<int>(pc));
++		out << line << "\n";
++		for (const ProbeOcc &o : occ) {
++			if (o.y != hy || o.edge != static_cast<int>(under.edge) || o.fl <= lo || o.fr >= hi) continue;
++			u_tiles++;
++			std::string cls; bool held;
++			if (o.kind == "BE.Run" || o.kind == "BE.VTile") { cls = "run"; held = allowed(JunctionUnderPiece::RunBefore) || allowed(JunctionUnderPiece::RunAfter); }
++			else if (o.tok == previous) { cls = "bend " + o.kind + " = previous bend tail"; held = allowed(JunctionUnderPiece::PreviousBendTail); }
++			else if (o.tok == next) { cls = "bend " + o.kind + " = next bend head"; held = allowed(JunctionUnderPiece::NextBendHead); }
++			else { cls = "bend " + o.kind + " tok" + fmt::format("{}", o.tok) + " neither prev nor next"; held = false; }
++			if (o.kind == "BE.VTile" || o.kind == "BE.Run") { if (o.tok != previous) { cls += " (preceding element tok " + fmt::format("{}", o.tok) + " is not the previous bend)"; } }
++			u_kinds[cls + (held ? "" : " NOT-IN-CANDIDATES")]++;
++			if (!held) u_bad++;
++			out << fmt::format("    tile {} c{} tok{} [{}..{}] -> {} {}\n", o.kind, o.copy, o.tok, o.fl, o.fr, cls, held ? "ok" : "NOT IN CANDIDATES");
++		}
++	}
++	out << fmt::format("SUMMARY (c) under tiles {} not in candidates {}\n", u_tiles, u_bad);
++	for (const auto &[k, v] : u_kinds) out << fmt::format("   {} : {}\n", k, v);
++	out << "\n";
++}
++
++TEST_CASE("probe O1", "[probeo1][.]")
++{
++	std::ofstream out("/tmp/claude-1000/-home-pete-OpenTTD/021af430-3972-438e-9e4b-c282ea3899fd/scratchpad/recon-o1/dump2.txt");
++	ProbeSeed(nullptr, nullptr, out);
++	ProbeSeed("LL_RR", "L_R", out);
++	ProbeSeed("L_R", "LL_RR", out);
++}

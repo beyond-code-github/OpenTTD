@@ -1,0 +1,452 @@
+diff --git a/src/junction/placement/junction_placement.cpp b/src/junction/placement/junction_placement.cpp
+index 75209f2df1..7b5e773183 100644
+--- a/src/junction/placement/junction_placement.cpp
++++ b/src/junction/placement/junction_placement.cpp
+@@ -84,6 +84,23 @@ static int JunctionRunFloor(FloorKind before, FloorKind after, const JunctionSpe
+ 	return 2; // The chain run: a signal tile and a boundary tile between elements (D217).
+ }
+ 
++/* G3P dump hook (temporary, never committed): the last Y and X system of one placement call. */
++struct G3Dump {
++	int calls_left = 0;
++	bool taken = false;
++	std::string capture[2]; ///< Per axis (0 X, 1 Y): the last solve's system as JSON.
++	JunctionTrackStructure structure;
++};
++static G3Dump _g3_dump;
++void G3DumpArm(int calls)
++{
++	_g3_dump = G3Dump{};
++	_g3_dump.calls_left = calls;
++}
++bool G3DumpTaken() { return _g3_dump.taken; }
++const JunctionTrackStructure &G3DumpStructure() { return _g3_dump.structure; }
++std::string G3DumpCapture(int axis) { return _g3_dump.capture[axis]; }
++
+ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackOrder &order, const JunctionTrackStructure &structure, const JunctionTrackPrograms &programs, const JunctionSpec &spec, const JunctionPlacementChoices *fixed, std::string *error, const std::vector<std::pair<int, int>> &x_floors, const std::vector<std::pair<int, int>> &y_floors, const JunctionFacts *facts, TileIndexDiffC offset, bool heights, bool classes_only, const JunctionPlacementShared *shared, JunctionPlacementShared *make_shared, JunctionPlacementShared *record)
+ {
+ 	auto str = [](int v) { return fmt::format("{}", v); };
+@@ -93,6 +110,15 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 		if (error != nullptr) *error = reason;
+ 		return JunctionTrackPlacement{};
+ 	};
++	const bool g3_on = _g3_dump.calls_left > 0 && fixed == nullptr && facts == nullptr && make_shared == nullptr && record == nullptr;
++	if (g3_on) {
++		_g3_dump.calls_left--;
++		_g3_dump.taken = true;
++		_g3_dump.structure = structure;
++		_g3_dump.capture[0].clear();
++		_g3_dump.capture[1].clear();
++	}
++	int g3_round = -1;
+ 	if (graph.edges.empty() || programs.edges.size() != graph.edges.size() || programs.copies.size() != graph.edges.size()) return fail("a placement needs the programs of a track graph");
+ 	if (fixed != nullptr) {
+ 		if (fixed->m.size() != graph.edges.size() || fixed->corner.size() != graph.edges.size()) return fail("the choices do not fit the programs of this track graph");
+@@ -319,13 +345,38 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 	JunctionPlacementReason why_now; ///< The reason of the relations added now (DESIGN-G1 §14.4).
+ 	auto why = [&](const char *rule, uint32_t edge = UINT32_MAX, uint32_t node = UINT32_MAX, int row = -1) { why_now = JunctionPlacementReason{rule, edge, node, static_cast<int32_t>(row)}; };
+ 	int phase = 0; // 0: X, 1: Y.
++	/* G3P: the m dependency of the relations added now: c = a * m + b of bend 'bend', or a non-linear site 'nl'. */
++	struct G3Tag {
++		const Elem *bend = nullptr;
++		int a = 0;
++		int b = 0;
++		const char *nl = nullptr;
++	};
++	G3Tag g3_tag;
++	bool g3_neg = false;
++	std::vector<G3Tag> cons_tag;
++	auto g3_pad = [&](const char *nl) {
++		while (cons_tag.size() < cons.size()) cons_tag.push_back(G3Tag{nullptr, 0, 0, nl});
++	};
+ 	auto ge = [&](int axis, int v, int u, int c) {
+ 		if (axis != phase) return;
+ 		assert(why_now.rule != nullptr);
+ 		if (reasons.empty() || reasons.back().rule != why_now.rule || reasons.back().edge != why_now.edge || reasons.back().node != why_now.node || reasons.back().row != why_now.row) reasons.push_back(why_now);
++		g3_pad("direct");
+ 		cons.push_back({v, u, c, static_cast<uint32_t>(reasons.size() - 1)});
++		G3Tag t = g3_tag;
++		if (g3_neg) {
++			t.a = -t.a;
++			t.b = -t.b;
++		}
++		cons_tag.push_back(t);
++	};
++	auto eq = [&](int axis, int v, int u, int c) {
++		ge(axis, v, u, c);
++		g3_neg = !g3_neg;
++		ge(axis, u, v, -c);
++		g3_neg = !g3_neg;
+ 	};
+-	auto eq = [&](int axis, int v, int u, int c) { ge(axis, v, u, c); ge(axis, u, v, -c); };
+ 	std::vector<int> vx, vy;
+ 	std::string build_why;
+ 	bool rows_known = false; // False in the first pass, which only gives the S-bends' first sizes.
+@@ -373,7 +424,67 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 		int copy;
+ 	};
+ 	std::vector<RowChange> row_changes;
++	/* G3P: the system of this solve as JSON (bends, chains, relations with their m tags); 'tail' is added by the solve's end. */
++	auto g3_esc = [](const std::string &t) {
++		std::string o;
++		for (char ch : t) {
++			if (ch == '"' || ch == '\\') o += '\\';
++			o += ch;
++		}
++		return o;
++	};
++	auto g3_capture = [&]() {
++		g3_pad("direct");
++		std::map<const Elem *, int> bend_id;
++		std::string bends, chains;
++		for (uint32_t e = 0; e < edge_count; e++) {
++			for (int c = 0; c < 2; c++) {
++				const std::vector<Elem> &elems = c == 0 ? chain[e] : chain_copy[e];
++				if (elems.empty()) continue;
++				std::string els;
++				for (size_t i = 0; i < elems.size(); i++) {
++					const Elem &el = elems[i];
++					int id = -1;
++					if (el.k == Elem::K::Corner || el.k == Elem::K::SBend || el.k == Elem::K::Fan) {
++						id = static_cast<int>(bend_id.size());
++						bend_id[&el] = id;
++						const char *kind = el.k == Elem::K::Corner ? "Corner" : el.k == Elem::K::Fan ? "Fan" : (el.fan ? "SFan" : "SBend");
++						/* The size's source: free (read back from the columns), rows (from a Y difference), corner_rows (joiner Corner, from the rows), port_rows (a W/E fan, from the port rows), fixed_k (a Corner of k), one_row (an item-less horizontal S-bend). */
++						const char *source = el.free_m ? "free" : el.k == Elem::K::Fan ? "port_rows" : el.k == Elem::K::Corner ? (el.joiner_div ? "corner_rows" : "fixed_k") : (el.index != NO_ROW ? "rows" : "one_row");
++						const int floor = el.free_m ? (el.fan ? 0 : 1) : el.k == Elem::K::Corner ? k : (el.k == Elem::K::Fan ? 0 : (el.index != NO_ROW ? 0 : 1));
++						const int size = el.k == Elem::K::Corner ? (el.joiner_div && rows_known ? std::abs(vy[el.first] - vy[el.last]) : k) : el.m;
++						bends += fmt::format("{}{{\"id\":{},\"edge\":{},\"copy\":{},\"index\":{},\"tok\":{},\"kind\":\"{}\",\"source\":\"{}\",\"row_edge\":{},\"hand\":{},\"hin\":{},\"hout\":{},\"first\":{},\"last\":{},\"item_pt\":{},\"slot\":{},\"port_first\":{},\"port_row\":{},\"m\":{},\"floor\":{},\"halves\":{}}}",
++							bends.empty() ? "" : ",", id, e, c, i, el.tok, kind, source, is_row_edge(e) ? "true" : "false", el.hand, el.hin, el.hout, el.first, el.last, el.index != NO_ROW ? item_pt[el.index] : -1, el.slot, el.port_first ? "true" : "false", el.slot >= 0 ? port_row[el.slot] : -1, size, floor, el.offs.size());
++					}
++					const char *kk = el.k == Elem::K::Tile ? "Tile" : el.k == Elem::K::Corner ? "Corner" : el.k == Elem::K::SBend ? "SBend" : el.k == Elem::K::Heads ? "Heads" : el.k == Elem::K::Fan ? "Fan" : el.k == Elem::K::HeadsPair ? "HeadsPair" : "Prio";
++					els += fmt::format("{}{{\"k\":\"{}\",\"first\":{},\"last\":{},\"hin\":{},\"hout\":{},\"bend\":{},\"slot\":{},\"tok\":{}}}", els.empty() ? "" : ",", kk, el.first, el.last, el.hin, el.hout, id, el.slot, el.tok);
++				}
++				chains += fmt::format("{}{{\"edge\":{},\"copy\":{},\"row_edge\":{},\"doubled\":{},\"bridges\":{},\"tunnel\":{},\"elems\":[{}]}}", chains.empty() ? "" : ",", e, c, is_row_edge(e) ? "true" : "false", IsDoubledEdge(e) ? "true" : "false", bridges_of[e].size(), !bridges_of[e].empty() && structure.bridges[bridges_of[e][0]].tunnel ? "true" : "false", els);
++			}
++		}
++		std::string rels;
++		for (size_t i = 0; i < cons.size(); i++) {
++			const Cons &cn = cons[i];
++			const JunctionPlacementReason &r = reasons[cn.reason];
++			const G3Tag &t = cons_tag[i];
++			const int bid = t.bend != nullptr && bend_id.count(t.bend) ? bend_id[t.bend] : -1;
++			rels += fmt::format("{}{{\"v\":{},\"u\":{},\"c\":{},\"rule\":\"{}\",\"edge\":{},\"node\":{},\"row\":{},\"reason\":{},\"bend\":{},\"a\":{},\"b\":{},\"nl\":{}}}", rels.empty() ? "" : ",", cn.v, cn.u, cn.k, g3_esc(r.rule != nullptr ? r.rule : "?"), r.edge == UINT32_MAX ? -1 : static_cast<int>(r.edge), r.node == UINT32_MAX ? -1 : static_cast<int>(r.node), r.row, cn.reason, bid, t.a, t.b, t.nl != nullptr ? "\"" + g3_esc(t.nl) + "\"" : std::string("null"));
++		}
++		auto ints = [](const std::vector<int> &v) {
++			std::string o;
++			for (int x : v) o += fmt::format("{}{}", o.empty() ? "" : ",", x);
++			return "[" + o + "]";
++		};
++		std::string paths_json;
++		for (size_t p = 0; p < paths.size(); p++) {
++			std::vector<int> es(graph.path_edges[p].begin(), graph.path_edges[p].end());
++			paths_json += fmt::format("{}{{\"from\":{},\"to\":{},\"side\":{},\"edges\":{}}}", paths_json.empty() ? "" : ",", paths[p].from, paths[p].to, static_cast<int>(group_of(paths[p].from).side), ints(es));
++		}
++		_g3_dump.capture[phase] = fmt::format("{{\"axis\":{},\"round\":{},\"rows_known\":{},\"pt_count\":{},\"xe_pt\":{},\"se_pt\":{},\"item_pt\":{},\"node_pt\":{},\"port_pt\":{},\"port_row\":{},\"fan_m\":{},\"k\":{},\"prices\":{{\"rail_piece\":{},\"signal\":{},\"bridge0\":{},\"bridge1\":{},\"sd\":{}}},\"paths\":[{}],\"bends\":[{}],\"chains\":[{}],\"relations\":[{}]",
++			phase, g3_round, rows_known ? "true" : "false", pt_count, xe_pt, se_pt, ints(item_pt), ints(node_pt), ints(port_pt), ints(port_row), ints(fan_m), k, spec.prices.rail_piece.base(), spec.prices.signal.base(), spec.prices.bridge ? spec.prices.bridge(0).base() : 0, spec.prices.bridge ? spec.prices.bridge(1).base() : 0, spec.sd, paths_json, bends, chains, rels);
++	};
+ 	auto solve = [&](std::vector<int> &val) {
++		if (g3_on) g3_capture();
+ 		/* A least solution is a longest path, so no point lies beyond the sum of the positive constants; a larger lo is a positive cycle. */
+ 		int bound = 1;
+ 		for (const Cons &cn : cons) bound += std::max(cn.k, 0);
+@@ -462,10 +573,16 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				chain_text += fmt::format("{}{}{}{}", chain_text.empty() ? "" : " <- ", reason.rule, parts.empty() ? "" : " (" + parts + ")", note_text);
+ 			}
+ 			if (error != nullptr) *error = "the placement rules contradict each other: " + chain_text;
++			if (g3_on) _g3_dump.capture[phase] += ",\"status\":\"infeasible\",\"error\":\"" + g3_esc(chain_text) + "\"}";
+ 			return false;
+ 		}
+ 		val.resize(pt_count);
+ 		for (int i = 0; i < pt_count; i++) val[i] = positions.Lo(i);
++		if (g3_on) {
++			std::string o;
++			for (int x : val) o += fmt::format("{}{}", o.empty() ? "" : ",", x);
++			_g3_dump.capture[phase] += ",\"status\":\"ok\",\"values\":[" + o + "]}";
++		}
+ 		return true;
+ 	};
+ 	auto solve_failed = [&]() {
+@@ -1147,6 +1264,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 					const bool touch = a.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::SW))) && b.bits.Any(DiagdirReachesTracks(ReverseDiagDir(DiagDirection::NE)));
+ 					cons.push_back({b.lp, a.rp, (touch ? 2 : 1) - b.ldx + a.rdx, reason});
+ 				}
++				g3_pad("occupancy: tile extents ldx/rdx of the occupants' pieces (bend rasters of 2m halves, rows) and the pair order from the flat solve");
+ 				return true;
+ 			};
+ 			/* Legality per pair of occupants: two on one tile are legal when the graph relates them, or when they stand as Upper|Lower or Left|Right (D182, D217; a footprint is not a track: its pairs are ordered below); checked once, on the settled placement. */
+@@ -1210,8 +1328,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				if (value(tile) > value(*high)) high = &tile;
+ 			}
+ 			why("bridge heads hug crossers", hug.edge, UINT32_MAX, hug.row);
++			g3_tag = G3Tag{nullptr, 0, 0, "hug: crosser tile offset dx from bend rasters of 2m halves and the rows; outermost tile by the flat solve"};
+ 			eq(0, hug.west, low->first, low->second - 1);
+ 			eq(0, hug.east, high->first, high->second + 1);
++			g3_tag = G3Tag{};
+ 		}
+ 	};
+ 
+@@ -1264,6 +1384,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				const uint32_t reason = static_cast<uint32_t>(reasons.size() - 1);
+ 				notes[reason] = fmt::format("[edge {} and the head of edge {}]", line.edge, head.edge);
+ 				if (side > 0) cons.push_back({head.xpt, line.line, 1, reason}); else cons.push_back({line.line, head.xpt, 1, reason});
++				g3_pad("order: bridge middle clearance side from the flat solve (constant 1, no m)");
+ 			}
+ 		}
+ 	};
+@@ -1271,6 +1392,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 	/* One round: the constraints of a phase. */
+ 	auto build = [&]() {
+ 		cons.clear();
++		cons_tag.clear();
+ 		reasons.clear();
+ 		fact_cons.clear();
+ 		notes.clear();
+@@ -1435,6 +1557,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 							const Elem &near_far = pass == 0 ? heads0(b) : heads1(b);
+ 							const int y = vy[near_far.first];
+ 							bool any = false;
++							g3_tag = G3Tag{nullptr, 0, 0, "hug: crosser tile offset dx from bend rasters of 2m halves and the rows"};
+ 							for (const SymTile &z : tiles) {
+ 								if (z.y != y) continue;
+ 								any = true;
+@@ -1447,6 +1570,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 								}
+ 								hug.tiles.emplace_back(z.pt, pass == 0 ? z.dx : z.dx - u);
+ 							}
++							g3_tag = G3Tag{};
+ 							if (!any) { build_why = "Z row " + str(y) + " edge " + str(x) + " row " + str(r); return false; }
+ 						}
+ 					}
+@@ -1461,11 +1585,14 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 					why("fan size", e, UINT32_MAX, (end_level(edge.from) - 1) / 2);
+ 					const int port = el.port_first ? elems[i - 1].first : elems[i + 1].first;
+ 					if (el.m == 0) {
++						g3_tag = G3Tag{&el, 0, 0, "zero-size branch (structural): an empty fan lies on its port"};
+ 						eq(0, el.first, port, 0);
+ 						eq(0, el.last, port, 0);
+ 					} else {
++						g3_tag = G3Tag{&el, 1, -1, nullptr};
+ 						along(el.hin, el.last, el.first, el.m - 1, true);
+ 					}
++					g3_tag = G3Tag{};
+ 					eq(1, el.port_first ? el.last : el.first, item_pt[el.index], 0);
+ 				} else if (el.k == Elem::K::Corner) {
+ 					const int kk = k;
+@@ -1480,7 +1607,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 						}
+ 						if (x_phase) {
+ 							const int kp = fixed != nullptr ? fixed->corner[e][el.tok] : (rows_known ? std::abs(vy[el.first] - vy[el.last]) : k);
++							g3_tag = G3Tag{&el, VX[el.hin] + VX[el.hout], 0, nullptr};
+ 							eq(0, el.last, el.first, kp * (VX[el.hin] + VX[el.hout]));
++							g3_tag = G3Tag{};
+ 						}
+ 					} else {
+ 						why("Corner size", e);
+@@ -1493,19 +1622,25 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 					why("S-bend size", e);
+ 					if (el.fan && (el.hin == 0 || el.hin == 2)) {
+ 						/* A fan at an S branch port: any size toward its side, 0 allowed (D230). */
++						g3_tag = el.m == 0 ? G3Tag{&el, 0, 0, "zero-size branch (structural): an empty S fan has no rows"} : G3Tag{&el, VY[el.hin], -VY[el.hin], nullptr};
+ 						if (el.m == 0) eq(1, el.last, el.first, 0); else eq(1, el.last, el.first, VY[el.hin] * (el.m - 1));
++						g3_tag = G3Tag{&el, 1, 0, nullptr};
+ 						if (fixed != nullptr) {
+ 							if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
+ 						} else {
+ 							if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
+ 						}
++						g3_tag = G3Tag{};
+ 					} else if (el.hin == 0 || el.hin == 2) {
++						g3_tag = G3Tag{&el, VY[el.hin], -VY[el.hin], nullptr};
+ 						eq(1, el.last, el.first, VY[el.hin] * (el.m - 1));
++						g3_tag = G3Tag{&el, 1, 0, nullptr};
+ 						if (fixed != nullptr) {
+ 							if (VX[side] > 0) eq(0, el.last, el.first, el.m); else eq(0, el.first, el.last, el.m);
+ 						} else {
+ 							if (VX[side] > 0) ge(0, el.last, el.first, el.m); else ge(0, el.first, el.last, el.m);
+ 						}
++						g3_tag = G3Tag{};
+ 					} else {
+ 						if (el.index == NO_ROW) eq(1, el.last, el.first, VY[side]); // No item pins it: one row.
+ 						eq(0, el.last, el.first, VX[el.hin] * 0);
+@@ -1522,8 +1657,10 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				/* An empty fan joins its port tile; the run on its node side stays (D230). */
+ 				if ((i == 0 && !edge.from.node && next.fan && next.m == 0) || (el.fan && el.m == 0 && !edge.to.node && i + 2 == elems.size())) {
+ 					why("fan size", e);
++					g3_tag = G3Tag{next.fan ? &next : &el, 0, 0, "zero-size branch (structural): an empty S fan joins its port tile"};
+ 					eq(0, next.first, el.last, 0);
+ 					eq(1, next.first, el.last, 0);
++					g3_tag = G3Tag{};
+ 					continue;
+ 				}
+ 				bool exact = false;
+@@ -1581,8 +1718,22 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				if (lo > hi) { build_why = "no column tile"; return false; }
+ 				eq(0, el.first, crossed->first, VX[side]);
+ 				const bool north = el.hin == 0;
++				/* G3P: lo and hi come from the raster of max(m, 2); check whether they change with m over 2..64. */
++				bool g3_const = true;
++				for (int mm = 2; mm <= 64 && g3_const; mm++) {
++					int l2 = 1000, h2 = -1000;
++					for (const TileIndexDiffC &t : bend_tiles(crossed->hin, crossed->hand, 2 * mm, false)) {
++						if (t.x * VX[side] + t.y * VY[side] != 1) continue;
++						l2 = std::min<int>(l2, t.y);
++						h2 = std::max<int>(h2, t.y);
++					}
++					g3_const = l2 == lo && h2 == hi;
++				}
++				g3_tag = g3_const ? G3Tag{crossed, 0, north ? hi + 1 : lo - 1, nullptr} : G3Tag{crossed, 0, 0, "bridge over S-bend: rows of the bend's first column from the raster of max(m, 2), changes with m"};
+ 				eq(1, el.first, crossed->first, north ? hi + 1 : lo - 1);
++				g3_tag.b = north ? lo - 1 : hi + 1;
+ 				eq(1, el.last, crossed->first, north ? lo - 1 : hi + 1);
++				g3_tag = G3Tag{};
+ 			}
+ 		}
+ 
+@@ -1595,6 +1746,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 				reasons.push_back(JunctionPlacementReason{"bridge middle clearance", c.edge_b, UINT32_MAX, -1});
+ 				notes[static_cast<uint32_t>(reasons.size() - 1)] = fmt::format("[edge {} and the head of edge {}]", c.edge_b, c.edge_h);
+ 				cons.push_back({c.v, c.u, 1, static_cast<uint32_t>(reasons.size() - 1)});
++				g3_pad("order: bridge middle clearance side from the flat state (constant 1, no m)");
+ 			}
+ 		}
+ 
+@@ -1639,7 +1791,9 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 			}
+ 			for (const Relation &relation : relations) {
+ 				why("curve gap", relation.edge, UINT32_MAX, relation.row);
++				g3_tag = G3Tag{nullptr, 0, 0, x_phase ? "curve gap (X form): unit offsets from bend rasters of 2m halves and the rows, ceil(need / 2), largest pair per (v, u)" : "curve gap (Y form): unit offsets from bend rasters of 2m halves, ceil(need / 2), largest pair per (v, u)"};
+ 				ge(x_phase ? 0 : 1, relation.v, relation.u, relation.least);
++				g3_tag = G3Tag{};
+ 			}
+ 		}
+ 
+@@ -2111,6 +2265,7 @@ JunctionTrackPlacement PlaceTrackGraph(const JunctionTopology &topology, const s
+ 		}
+ 		rows_known = true;
+ 		for (int round = 0; round < 5; round++) {
++			g3_round = round;
+ 			plan_clearance(-1);
+ 			phase = 1;
+ 			refresh(false);
+diff --git a/src/tests/junction/topology/junction_topology.cpp b/src/tests/junction/topology/junction_topology.cpp
+index 3ec367350b..209e05fe23 100644
+--- a/src/tests/junction/topology/junction_topology.cpp
++++ b/src/tests/junction/topology/junction_topology.cpp
+@@ -4983,3 +4983,116 @@ TEST_CASE("bridge cut: the reported failure is the default cut's", "[junction][t
+ 	INFO(error);
+ 	CHECK(error.find("bridge heads hug crossers") == std::string::npos);
+ }
++
++/* G3P dump hook (temporary, never committed). */
++void G3DumpArm(int calls);
++bool G3DumpTaken();
++const JunctionTrackStructure &G3DumpStructure();
++std::string G3DumpCapture(int axis);
++
++static const std::vector<std::tuple<const char *, const char *, const char *>> G3_TOPOLOGIES = {
++	{"T", "L_R", "L_R"}, {"LLRR_x_LR", "LL_RR", "L_R"}, {"LR_x_LRR", "L_R", "L_RR"}, {"LR_x_LLRR", "L_R", "LL_RR"}, {"LLRR_x_LLRR", "LL_RR", "LL_RR"},
++};
++
++/** The structure the dump uses: the seed's cut when the seed places, else the default cut (the first placement call of the cut search). */
++static JunctionTrackStructure G3Structure(const JunctionTopology &topology, const JunctionGraphSeed &seed)
++{
++	if (!seed.routes.empty()) return seed.structure;
++	std::string error;
++	G3DumpArm(1);
++	MakeJunctionGraphSeed(topology, MakeTestJunctionSpec(), &error);
++	return G3DumpStructure();
++}
++
++TEST_CASE("G3P: dump the placement systems", "[.g3dump]")
++{
++	const char *dir = std::getenv("G3_DIR");
++	REQUIRE(dir != nullptr);
++	for (const auto &[name, main, branch] : G3_TOPOLOGIES) {
++		const JunctionTopology topology = MakeJunctionHubTopology(ParseLineNotation(main).spec, ParseLineNotation(branch).spec, JunctionLanePairing::AnyToAny);
++		const JunctionSpec spec = MakeTestJunctionSpec();
++		std::string seed_error;
++		G3DumpArm(0);
++		const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &seed_error);
++		std::string error;
++		std::string choices = "null";
++		std::string size = "null";
++		if (!seed.routes.empty()) {
++			std::string why;
++			const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, seed.paths, seed.graph, &why);
++			G3DumpArm(1);
++			const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(topology, seed.paths, seed.graph, order, seed.structure, seed.programs, spec, &error);
++			CHECK(placed.choices == seed.placement.choices);
++			const JunctionPlacementChoices &c = placed.choices;
++			std::string m, corner;
++			for (size_t e = 0; e < c.m.size(); e++) {
++				for (size_t t = 0; t < c.m[e].size(); t++) {
++					m += fmt::format("{}[{},{},{}]", m.empty() ? "" : ",", e, t, c.m[e][t]);
++					corner += fmt::format("{}[{},{},{}]", corner.empty() ? "" : ",", e, t, c.corner[e][t]);
++				}
++			}
++			choices = fmt::format("{{\"port_offset\":{},\"m\":[{}],\"corner\":[{}]}}", c.port_offset, m, corner);
++			size = fmt::format("[{},{}]", placed.size.x, placed.size.y);
++		} else {
++			G3DumpArm(1);
++			MakeJunctionGraphSeed(topology, spec, &error);
++		}
++		REQUIRE(G3DumpTaken());
++		std::string escaped;
++		for (char ch : error) {
++			if (ch == '"' || ch == '\\') escaped += '\\';
++			escaped += ch;
++		}
++		const std::string x = G3DumpCapture(0), y = G3DumpCapture(1);
++		std::ofstream out(fmt::format("{}/{}.json", dir, name));
++		out << fmt::format("{{\"name\":\"{}\",\"main\":\"{}\",\"branch\":\"{}\",\"seed_places\":{},\"error\":\"{}\",\"choices\":{},\"size\":{},\"X\":{},\"Y\":{}}}\n", name, main, branch, seed.routes.empty() ? "false" : "true", escaped, choices, size, x.empty() ? "null" : x, y.empty() ? "null" : y);
++	}
++}
++
++TEST_CASE("G3P: place with the prototype's choices", "[.g3apply]")
++{
++	const char *dir = std::getenv("G3_DIR");
++	REQUIRE(dir != nullptr);
++	for (const auto &[name, main, branch] : G3_TOPOLOGIES) {
++		std::ifstream in(fmt::format("{}/{}.choices", dir, name));
++		if (!in) continue;
++		const JunctionTopology topology = MakeJunctionHubTopology(ParseLineNotation(main).spec, ParseLineNotation(branch).spec, JunctionLanePairing::AnyToAny);
++		const JunctionSpec spec = MakeTestJunctionSpec();
++		std::string seed_error;
++		G3DumpArm(0);
++		const JunctionGraphSeed seed = MakeJunctionGraphSeed(topology, spec, &seed_error);
++		std::string why;
++		const auto paths = ExpandJunctionLanes(topology, &why);
++		const JunctionTrackGraph graph = BuildJunctionTrackGraph(topology, paths, &why);
++		const JunctionTrackOrder order = OrderJunctionTrackGraph(topology, paths, graph, &why);
++		const JunctionTrackStructure uncut = StructureJunctionTrackGraph(topology, paths, graph, order, &why);
++		const JunctionTrackPrograms programs = ProgramJunctionTrackGraph(topology, paths, graph, order, uncut, &why);
++		const JunctionTrackStructure structure = G3Structure(topology, seed);
++		JunctionPlacementChoices choices;
++		choices.m.resize(graph.edges.size());
++		choices.corner.resize(graph.edges.size());
++		for (size_t e = 0; e < graph.edges.size(); e++) {
++			choices.m[e].assign(programs.edges[e].size(), 0);
++			choices.corner[e].assign(programs.edges[e].size(), 0);
++		}
++		std::string kind;
++		in >> choices.port_offset;
++		while (in >> kind) {
++			size_t e, t;
++			int v;
++			in >> e >> t >> v;
++			(kind == "m" ? choices.m : choices.corner)[e][t] = v;
++		}
++		std::string error;
++		const JunctionTrackPlacement placed = PlaceJunctionTrackGraph(topology, paths, graph, order, structure, programs, spec, choices, &error);
++		std::ofstream out(fmt::format("{}/{}.apply.txt", dir, name));
++		if (placed.nodes.empty()) {
++			out << "fails: " << error << "\n";
++		} else {
++			std::string render_error;
++			std::vector<JunctionTrackRoute> routes;
++			RenderJunctionTrackPlacement(topology, paths, graph, structure, programs, placed, &render_error, &routes);
++			out << "places: box " << placed.size.x << " x " << placed.size.y << "; render " << (routes.empty() ? "fails: " + render_error : std::string("ok")) << "\n";
++		}
++	}
++}

@@ -1,0 +1,367 @@
+=== SEED T items 6
+ITEM 0 y 0 row 0 kind 1
+ITEM 1 y 1 row 0 kind 0
+ITEM 2 y 2 row 0 kind 4
+ITEM 3 y 3 row 1 kind 3
+ITEM 4 y 4 row 1 kind 0
+ITEM 5 y 5 row 1 kind 4
+CROSSER item 3 y 3 row 1 edge 4 west (7,2,0,b-1) = 25 east = 25 :: Corner k1 bend2 tok0 hin1 hand1 L2 j4/5 (dx2,dy2) head t2 T2 END form(lo1 hi1 s1 t0 0 t1 1)
+CROSSER item 3 y 3 row 1 edge 4 west (7,1,0,b-1) = 24 east = 24 :: Corner k1 bend2 tok0 hin1 hand1 L2 j3/5 (dx1,dy2) head t2 T2 END form(lo1 hi1 s1 t0 0 t1 1)
+CROSSER item 3 y 3 row 1 edge 8 west (34,2,0,b-1) = 28 east = 28 :: Corner k2 bend12 tok3 hin0 hand1 L2 j3/5 (dx2,dy-1) head t2 T2 DIAG form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 3 y 3 row 1 edge 8 west (34,1,0,b-1) = 27 east = 27 :: Corner k2 bend12 tok3 hin0 hand1 L2 j2/5 (dx1,dy-1) head t1 T2 DIAG form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 4 y 4 row 1 edge 4 west (21,0,0,b-1) = 25 east = 25 :: VRun after k1 (Corner 2) prev bend 2 next 3 y0 3 y1 7
+CROSSER item 4 y 4 row 1 edge 8 west (34,1,0,b-1) = 27 east = 27 :: Corner k2 bend12 tok3 hin0 hand1 L2 j1/5 (dx1,dy0) head t1 T2 DIAG form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 4 y 4 row 1 edge 8 west (34,0,0,b-1) = 26 east = 26 :: Corner k2 bend12 tok3 hin0 hand1 L2 j0/5 (dx0,dy0) head t0 T2 END form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 5 y 5 row 1 edge 4 west (21,0,0,b-1) = 25 east = 25 :: VRun after k1 (Corner 2) prev bend 2 next 3 y0 3 y1 7
+CROSSER item 5 y 5 row 1 edge 8 west (33,0,0,b-1) = 26 east = 26 :: VRun after k1 (Heads -1) prev bend -1 next 12 y0 6 y1 4
+COVER item 3 y 3 row 1 crosser 4 tiles 2 recorded 2 [HCorner k1 j3 x24] [HCorner k1 j4 x25]
+COVER item 4 y 4 row 1 crosser 4 tiles 1 recorded 1 [VRun k1 j-1 x25]
+COVER item 5 y 5 row 1 crosser 4 tiles 1 recorded 1 [VRun k1 j-1 x25]
+COVER item 3 y 3 row 1 crosser 8 tiles 2 recorded 2 [HCorner k2 j2 x27] [HCorner k2 j3 x28]
+COVER item 4 y 4 row 1 crosser 8 tiles 2 recorded 2 [HCorner k2 j0 x26] [HCorner k2 j1 x27]
+COVER item 5 y 5 row 1 crosser 8 tiles 1 recorded 1 [VRun k1 j-1 x26]
+COVERTOTAL tiles 9 not recorded 0
+FORMCHECK pairs 6 reproduced 6 tiles 9 (reproduced pairs' tiles 9) by cover: [Cornerh0+ : 2 pairs, 2 reproduced] [Cornerh1+ : 1 pairs, 1 reproduced] [VRun : 3 pairs, 3 reproduced]
+UNDER crosser 4 tok 1 bridge_edge 5 copy 0 ordinal 0 headrow 3 (item 3) heads x 29..23 pieces 0,1,2,3, prev_bend 2 (tok 0) next_bend 3 (tok 3) covers: [HCorner bend2 x24 BETWEEN] [HCorner bend2 x25 BETWEEN]
+UNDER crosser 4 tok 2 bridge_edge 5 copy 1 ordinal 0 headrow 4 (item 4) heads x 30..24 pieces 0,1,2,3, prev_bend 2 (tok 0) next_bend 3 (tok 3) covers: [VRun bend2 x25 BETWEEN]
+UNDER crosser 8 tok 1 bridge_edge 5 copy 1 ordinal 0 headrow 4 (item 4) heads x 30..24 pieces 0,1,3, prev_bend -1 (tok -1) next_bend 12 (tok 3) covers: [HCorner bend12 x26 BETWEEN] [HCorner bend12 x27 BETWEEN]
+UNDER crosser 8 tok 2 bridge_edge 5 copy 0 ordinal 0 headrow 3 (item 3) heads x 29..23 pieces 0,1,3, prev_bend -1 (tok -1) next_bend 12 (tok 3) covers: [HCorner bend12 x27 BETWEEN] [HCorner bend12 x28 BETWEEN]
+CBEND id 2 edge 4 copy 0 tok 0 Corner source fixed_k hin 1 hand 1 m 2 floor 2 first y 1 last y 3 item_pt -1 form_group -1
+CBEND id 3 edge 4 copy 0 tok 3 SBend source free hin 2 hand -1 m 3 floor 1 first y 7 last y 9 item_pt -1 form_group 0
+CBEND id 4 edge 4 copy 0 tok 4 Corner source cross_corner hin 2 hand -1 m 0 floor 2 first y 9 last y 9 item_pt -1 form_group 0
+CBEND id 5 edge 4 copy 0 tok 6 Corner source cross_corner hin 1 hand 1 m 0 floor 2 first y 9 last y 9 item_pt -1 form_group 0
+CBEND id 12 edge 8 copy 0 tok 3 Corner source fixed_k hin 0 hand 1 m 2 floor 2 first y 4 last y 2 item_pt 3 form_group -1
+CBEND id 13 edge 8 copy 0 tok 4 SBend source rows hin 1 hand -1 m 1 floor 0 first y 2 last y 1 item_pt 2 form_group -1
+FORM Corner hin 1 hand 1 column form lo 1 hi 1 s 1 t0 0 t1 1
+  L 2 tiles: (0,0H) (0,1H) (1,1H) (1,2H) (2,2H)
+  L 3 tiles: (0,0H) (0,1H) (1,1H) (1,2H) (2,2H) (2,3H) (3,3H)
+  L 4 tiles: (0,0H) (0,1H) (1,1H) (1,2H) (2,2H) (2,3H) (3,3H) (3,4H) (4,4H)
+  forms at L3: [H:0 0L,0 0L] [H:0 0L,1 0L] [H:1 0L,1 0L] [H:1 0L,2 0L] [H:2 0L,2 0L] [H:2 0L,3 0L] [H:3 0L,3 0L]
+FORM SBend hin 2 hand -1 column form lo 0 hi 1 s 1 t0 -1 t1 1
+  L 2 tiles: (0,0H) (1,0H) (1,1H) (2,1H)
+  L 3 tiles: (0,0H) (1,0H) (1,1H) (2,1H) (2,2H) (3,2H)
+  L 4 tiles: (0,0H) (1,0H) (1,1H) (2,1H) (2,2H) (3,2H) (3,3H) (4,3H)
+  forms at L3: [H:0 0L,0 0L] [H:1 0L,0 0L] [H:1 0L,1 0L] [H:2 0L,1 0L] [H:2 0L,2 0L] [H:3 0L,2 0L]
+FORM Corner hin 0 hand 1 column form lo -1 hi 0 s -1 t0 0 t1 1
+  L 2 tiles: (0,0H) (1,0H) (1,-1H) (2,-1H) (2,-2H)
+  L 3 tiles: (0,0H) (1,0H) (1,-1H) (2,-1H) (2,-2H) (3,-2H) (3,-3H)
+  L 4 tiles: (0,0H) (1,0H) (1,-1H) (2,-1H) (2,-2H) (3,-2H) (3,-3H) (4,-3H) (4,-4H)
+  forms at L3: [H:0 0L,0 0L] [H:1 0L,0 0L] [H:1 0L,-1 0L] [H:2 0L,-1 0L] [H:2 0L,-2 0L] [H:3 0L,-2 0L] [H:3 0L,-3 0L]
+FORM SBend hin 1 hand -1 column form lo -1 hi -1 s -1 t0 0 t1 1
+  L 2 tiles: (0,0H) (0,-1H) (1,-1H) (1,-2H)
+  L 3 tiles: (0,0H) (0,-1H) (1,-1H) (1,-2H) (2,-2H) (2,-3H)
+  L 4 tiles: (0,0H) (0,-1H) (1,-1H) (1,-2H) (2,-2H) (2,-3H) (3,-3H) (3,-4H)
+  forms at L3: [H:0 0L,0 0L] [H:0 0L,-1 0L] [H:1 0L,-1 0L] [H:1 0L,-2 0L] [H:2 0L,-2 0L] [H:2 0L,-3 0L]
+FAN edge 0 in slot 0 side 3 (0N 1E 2S 3W) port_row 1 item_row 1 (item 1 of row 0) sigma 0 hand 0 hin 1 L 0 firstpt x 0 tiles
+FAN edge 2 in slot 4 side 1 (0N 1E 2S 3W) port_row 3 item_row 3 (item 3 of row 1) sigma 0 hand 0 hin 3 L 0 firstpt x 40 tiles
+FAN edge 9 out slot 1 side 3 (0N 1E 2S 3W) port_row 3 item_row 4 (item 4 of row 1) sigma -1 hand 1 hin 3 L 1 firstpt x 2 tiles (2,4) (2,3)
+FAN edge 11 out slot 5 side 1 (0N 1E 2S 3W) port_row 1 item_row 1 (item 1 of row 0) sigma 0 hand 0 hin 1 L 0 firstpt x 40 tiles
+
+=== SEED LL_RR x L_R items 12
+ITEM 0 y 0 row 0 kind 1
+ITEM 1 y 1 row 0 kind 0
+ITEM 2 y 2 row 0 kind 4
+ITEM 3 y 3 row 1 kind 3
+ITEM 4 y 4 row 1 kind 0
+ITEM 5 y 5 row 1 kind 4
+ITEM 6 y 8 row 2 kind 3
+ITEM 7 y 9 row 2 kind 0
+ITEM 8 y 10 row 2 kind 4
+ITEM 9 y 11 row 3 kind 3
+ITEM 10 y 12 row 3 kind 0
+ITEM 11 y 13 row 3 kind 4
+CROSSER item 3 y 3 row 1 edge 7 west (13,1,0,b-1) = 33 east = 33 :: Corner k1 bend5 tok0 hin1 hand1 L2 j3/5 (dx1,dy2) head t2 T2 END form(lo1 hi1 s1 t0 0 t1 1)
+CROSSER item 3 y 3 row 1 edge 7 west (13,2,0,b-1) = 34 east = 34 :: Corner k1 bend5 tok0 hin1 hand1 L2 j4/5 (dx2,dy2) head t2 T2 END form(lo1 hi1 s1 t0 0 t1 1)
+CROSSER item 3 y 3 row 1 edge 13 west (50,1,0,b-1) = 36 east = 36 :: Corner k1 bend14 tok2 hin0 hand1 L2 j2/5 (dx1,dy-1) head t1 T2 DIAG form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 3 y 3 row 1 edge 13 west (50,2,0,b-1) = 37 east = 37 :: Corner k1 bend14 tok2 hin0 hand1 L2 j3/5 (dx2,dy-1) head t2 T2 DIAG form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 4 y 4 row 1 edge 7 west (42,0,0,b-1) = 34 east = 34 :: VRun after k1 (Corner 5) prev bend 5 next -1 y0 3 y1 16
+CROSSER item 4 y 4 row 1 edge 13 west (50,0,0,b-1) = 35 east = 35 :: Corner k1 bend14 tok2 hin0 hand1 L2 j0/5 (dx0,dy0) head t0 T2 END form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 4 y 4 row 1 edge 13 west (50,1,0,b-1) = 36 east = 36 :: Corner k1 bend14 tok2 hin0 hand1 L2 j1/5 (dx1,dy0) head t1 T2 DIAG form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 5 y 5 row 1 edge 7 west (42,0,0,b-1) = 34 east = 34 :: VRun after k1 (Corner 5) prev bend 5 next -1 y0 3 y1 16
+CROSSER item 5 y 5 row 1 edge 13 west (16,0,0,b-1) = 35 east = 35 :: Tile k0
+CROSSER item 6 y 8 row 2 edge 8 west (44,2,0,b-1) = 26 east = 26 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j3/20 (dx2,dy1) head t2 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 6 y 8 row 2 edge 8 west (44,1,0,b-1) = 25 east = 25 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j2/20 (dx1,dy1) head t1 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 6 y 8 row 2 edge 7 west (42,0,0,b-1) = 34 east = 34 :: VRun after k1 (Corner 5) prev bend 5 next -1 y0 3 y1 16
+CROSSER item 6 y 8 row 2 edge 3 west (40,0,0,b-1) = 35 east = 35 :: VRun after k1 (Heads -1) prev bend -1 next -1 y0 17 y1 7
+CROSSER item 7 y 9 row 2 edge 8 west (44,3,0,b-1) = 27 east = 27 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j5/20 (dx3,dy2) head t3 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 7 y 9 row 2 edge 8 west (44,2,0,b-1) = 26 east = 26 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j4/20 (dx2,dy2) head t2 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 7 y 9 row 2 edge 7 west (42,0,0,b-1) = 34 east = 34 :: VRun after k1 (Corner 5) prev bend 5 next -1 y0 3 y1 16
+CROSSER item 7 y 9 row 2 edge 3 west (40,0,0,b-1) = 35 east = 35 :: VRun after k1 (Heads -1) prev bend -1 next -1 y0 17 y1 7
+CROSSER item 8 y 10 row 2 edge 8 west (44,4,0,b-1) = 28 east = 28 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j7/20 (dx4,dy3) head t4 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 8 y 10 row 2 edge 8 west (44,3,0,b-1) = 27 east = 27 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j6/20 (dx3,dy3) head t3 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 8 y 10 row 2 edge 7 west (42,0,0,b-1) = 34 east = 34 :: VRun after k1 (Corner 5) prev bend 5 next -1 y0 3 y1 16
+CROSSER item 8 y 10 row 2 edge 3 west (40,0,0,b-1) = 35 east = 35 :: VRun after k1 (Heads -1) prev bend -1 next -1 y0 17 y1 7
+CROSSER item 9 y 11 row 3 edge 11 west (45,-2,0,b-1) = 27 east = 27 :: Corner k1 bend10 tok2 hin0 hand-1 L2 j3/5 (dx-2,dy-1) head t2 T2 DIAG form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 9 y 11 row 3 edge 11 west (45,-1,0,b-1) = 28 east = 28 :: Corner k1 bend10 tok2 hin0 hand-1 L2 j2/5 (dx-1,dy-1) head t1 T2 DIAG form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 9 y 11 row 3 edge 8 west (44,5,0,b-1) = 29 east = 29 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j9/20 (dx5,dy4) head t5 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 9 y 11 row 3 edge 8 west (44,4,0,b-1) = 28 east = 28 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j8/20 (dx4,dy4) head t4 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 9 y 11 row 3 edge 7 west (42,0,0,b-1) = 34 east = 34 :: VRun after k1 (Corner 5) prev bend 5 next -1 y0 3 y1 16
+CROSSER item 9 y 11 row 3 edge 3 west (40,0,0,b-1) = 35 east = 35 :: VRun after k1 (Heads -1) prev bend -1 next -1 y0 17 y1 7
+CROSSER item 9 y 11 row 3 edge 17 west (55,0,0,b-1) = 40 east = 40 :: VRun after k1 (Corner 22) prev bend 22 next -1 y0 10 y1 17
+CROSSER item 10 y 12 row 3 edge 11 west (45,-1,0,b-1) = 28 east = 28 :: Corner k1 bend10 tok2 hin0 hand-1 L2 j1/5 (dx-1,dy0) head t1 T2 DIAG form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 10 y 12 row 3 edge 11 west (45,0,0,b-1) = 29 east = 29 :: Corner k1 bend10 tok2 hin0 hand-1 L2 j0/5 (dx0,dy0) head t0 T2 END form(lo-1 hi0 s-1 t0 0 t1 1)
+CROSSER item 10 y 12 row 3 edge 8 west (44,6,0,b-1) = 30 east = 30 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j11/20 (dx6,dy5) head t6 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 10 y 12 row 3 edge 8 west (44,5,0,b-1) = 29 east = 29 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j10/20 (dx5,dy5) head t5 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 10 y 12 row 3 edge 7 west (42,0,0,b-1) = 34 east = 34 :: VRun after k1 (Corner 5) prev bend 5 next -1 y0 3 y1 16
+CROSSER item 10 y 12 row 3 edge 3 west (40,0,0,b-1) = 35 east = 35 :: VRun after k1 (Heads -1) prev bend -1 next -1 y0 17 y1 7
+CROSSER item 10 y 12 row 3 edge 17 west (55,0,0,b-1) = 40 east = 40 :: VRun after k1 (Corner 22) prev bend 22 next -1 y0 10 y1 17
+CROSSER item 11 y 13 row 3 edge 11 west (17,0,0,b-1) = 29 east = 29 :: Tile k0
+CROSSER item 11 y 13 row 3 edge 8 west (44,7,0,b-1) = 31 east = 31 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j13/20 (dx7,dy6) head t7 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 11 y 13 row 3 edge 8 west (44,6,0,b-1) = 30 east = 30 :: SBend k2 bend7 tok5 hin2 hand-1 L10 j12/20 (dx6,dy6) head t6 T9 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 11 y 13 row 3 edge 7 west (42,0,0,b-1) = 34 east = 34 :: VRun after k1 (Corner 5) prev bend 5 next -1 y0 3 y1 16
+CROSSER item 11 y 13 row 3 edge 3 west (40,0,0,b-1) = 35 east = 35 :: VRun after k1 (Heads -1) prev bend -1 next -1 y0 17 y1 7
+CROSSER item 11 y 13 row 3 edge 17 west (55,0,0,b-1) = 40 east = 40 :: VRun after k1 (Corner 22) prev bend 22 next -1 y0 10 y1 17
+COVER item 6 y 8 row 2 crosser 3 tiles 1 recorded 1 [VRun k1 j-1 x35]
+COVER item 7 y 9 row 2 crosser 3 tiles 1 recorded 1 [VRun k1 j-1 x35]
+COVER item 8 y 10 row 2 crosser 3 tiles 1 recorded 1 [VRun k1 j-1 x35]
+COVER item 9 y 11 row 3 crosser 3 tiles 1 recorded 1 [VRun k1 j-1 x35]
+COVER item 10 y 12 row 3 crosser 3 tiles 1 recorded 1 [VRun k1 j-1 x35]
+COVER item 11 y 13 row 3 crosser 3 tiles 1 recorded 1 [VRun k1 j-1 x35]
+COVER item 3 y 3 row 1 crosser 7 tiles 2 recorded 2 [HCorner k1 j3 x33] [HCorner k1 j4 x34]
+COVER item 4 y 4 row 1 crosser 7 tiles 1 recorded 1 [VRun k1 j-1 x34]
+COVER item 5 y 5 row 1 crosser 7 tiles 1 recorded 1 [VRun k1 j-1 x34]
+COVER item 6 y 8 row 2 crosser 7 tiles 1 recorded 1 [VRun k1 j-1 x34]
+COVER item 7 y 9 row 2 crosser 7 tiles 1 recorded 1 [VRun k1 j-1 x34]
+COVER item 8 y 10 row 2 crosser 7 tiles 1 recorded 1 [VRun k1 j-1 x34]
+COVER item 9 y 11 row 3 crosser 7 tiles 1 recorded 1 [VRun k1 j-1 x34]
+COVER item 10 y 12 row 3 crosser 7 tiles 1 recorded 1 [VRun k1 j-1 x34]
+COVER item 11 y 13 row 3 crosser 7 tiles 1 recorded 1 [VRun k1 j-1 x34]
+COVER item 6 y 8 row 2 crosser 8 tiles 2 recorded 2 [HSBend k2 j2 x25] [HSBend k2 j3 x26]
+COVER item 7 y 9 row 2 crosser 8 tiles 2 recorded 2 [HSBend k2 j4 x26] [HSBend k2 j5 x27]
+COVER item 8 y 10 row 2 crosser 8 tiles 2 recorded 2 [HSBend k2 j6 x27] [HSBend k2 j7 x28]
+COVER item 9 y 11 row 3 crosser 8 tiles 2 recorded 2 [HSBend k2 j8 x28] [HSBend k2 j9 x29]
+COVER item 10 y 12 row 3 crosser 8 tiles 2 recorded 2 [HSBend k2 j10 x29] [HSBend k2 j11 x30]
+COVER item 11 y 13 row 3 crosser 8 tiles 2 recorded 2 [HSBend k2 j12 x30] [HSBend k2 j13 x31]
+COVER item 9 y 11 row 3 crosser 11 tiles 2 recorded 2 [HCorner k1 j2 x28] [HCorner k1 j3 x27]
+COVER item 10 y 12 row 3 crosser 11 tiles 2 recorded 2 [HCorner k1 j0 x29] [HCorner k1 j1 x28]
+COVER item 11 y 13 row 3 crosser 11 tiles 1 recorded 1 [VRun k0 j-1 x29]
+COVER item 3 y 3 row 1 crosser 13 tiles 2 recorded 2 [HCorner k1 j2 x36] [HCorner k1 j3 x37]
+COVER item 4 y 4 row 1 crosser 13 tiles 2 recorded 2 [HCorner k1 j0 x35] [HCorner k1 j1 x36]
+COVER item 5 y 5 row 1 crosser 13 tiles 1 recorded 1 [VRun k0 j-1 x35]
+COVER item 9 y 11 row 3 crosser 17 tiles 1 recorded 1 [VRun k1 j-1 x40]
+COVER item 10 y 12 row 3 crosser 17 tiles 1 recorded 1 [VRun k1 j-1 x40]
+COVER item 11 y 13 row 3 crosser 17 tiles 1 recorded 1 [VRun k1 j-1 x40]
+COVERTOTAL tiles 41 not recorded 0
+FORMCHECK pairs 30 reproduced 30 tiles 41 (reproduced pairs' tiles 41) by cover: [Cornerh0+ : 2 pairs, 2 reproduced] [Cornerh0- : 2 pairs, 2 reproduced] [Cornerh1+ : 1 pairs, 1 reproduced] [SBendh2- : 6 pairs, 6 reproduced] [VRun : 19 pairs, 19 reproduced]
+UNDER crosser 3 tok 1 bridge_edge 16 copy 1 ordinal 1 headrow 12 (item 10) heads x 37..33 pieces 0,1, prev_bend -1 (tok -1) next_bend -1 (tok -1) covers: [VRun bend-1 x35 BETWEEN]
+UNDER crosser 3 tok 2 bridge_edge 16 copy 0 ordinal 1 headrow 11 (item 9) heads x 36..32 pieces 0,1, prev_bend -1 (tok -1) next_bend -1 (tok -1) covers: [VRun bend-1 x35 BETWEEN]
+UNDER crosser 3 tok 3 bridge_edge 15 copy 1 ordinal 0 headrow 9 (item 7) heads x 37..33 pieces 0,1, prev_bend -1 (tok -1) next_bend -1 (tok -1) covers: [VRun bend-1 x35 BETWEEN]
+UNDER crosser 3 tok 4 bridge_edge 15 copy 0 ordinal 0 headrow 8 (item 6) heads x 36..32 pieces 0,1, prev_bend -1 (tok -1) next_bend -1 (tok -1) covers: [VRun bend-1 x35 BETWEEN]
+UNDER crosser 7 tok 1 bridge_edge 10 copy 0 ordinal 0 headrow 3 (item 3) heads x 32..38 pieces 0,1,2, prev_bend 5 (tok 0) next_bend -1 (tok -1) covers: [HCorner bend5 x33 BETWEEN] [HCorner bend5 x34 BETWEEN]
+UNDER crosser 7 tok 2 bridge_edge 10 copy 1 ordinal 0 headrow 4 (item 4) heads x 31..37 pieces 0,1,2, prev_bend 5 (tok 0) next_bend -1 (tok -1) covers: [VRun bend5 x34 BETWEEN]
+UNDER crosser 7 tok 3 bridge_edge 15 copy 0 ordinal 0 headrow 8 (item 6) heads x 36..32 pieces 0,1,2, prev_bend 5 (tok 0) next_bend -1 (tok -1) covers: [VRun bend5 x34 BETWEEN]
+UNDER crosser 7 tok 4 bridge_edge 15 copy 1 ordinal 0 headrow 9 (item 7) heads x 37..33 pieces 0,1,2, prev_bend 5 (tok 0) next_bend -1 (tok -1) covers: [VRun bend5 x34 BETWEEN]
+UNDER crosser 7 tok 5 bridge_edge 16 copy 0 ordinal 1 headrow 11 (item 9) heads x 36..32 pieces 0,1,2, prev_bend 5 (tok 0) next_bend -1 (tok -1) covers: [VRun bend5 x34 BETWEEN]
+UNDER crosser 7 tok 6 bridge_edge 16 copy 1 ordinal 1 headrow 12 (item 10) heads x 37..33 pieces 0,1,2, prev_bend 5 (tok 0) next_bend -1 (tok -1) covers: [VRun bend5 x34 BETWEEN]
+UNDER crosser 8 tok 1 bridge_edge 15 copy 0 ordinal 1 headrow 8 (item 6) heads x 27..24 pieces 0,1,2,3, prev_bend 6 (tok 0) next_bend 7 (tok 5) covers: [HSBend bend7 x25 BETWEEN] [HSBend bend7 x26 BETWEEN]
+UNDER crosser 8 tok 2 bridge_edge 15 copy 1 ordinal 1 headrow 9 (item 7) heads x 28..25 pieces 0,1,2,3, prev_bend 6 (tok 0) next_bend 7 (tok 5) covers: [HSBend bend7 x26 BETWEEN] [HSBend bend7 x27 BETWEEN]
+UNDER crosser 8 tok 3 bridge_edge 16 copy 0 ordinal 2 headrow 11 (item 9) heads x 30..26 pieces 0,1,2,3, prev_bend 6 (tok 0) next_bend 7 (tok 5) covers: [HSBend bend7 x28 BETWEEN] [HSBend bend7 x29 BETWEEN]
+UNDER crosser 8 tok 4 bridge_edge 16 copy 1 ordinal 2 headrow 12 (item 10) heads x 31..27 pieces 0,1,2,3, prev_bend 6 (tok 0) next_bend 7 (tok 5) covers: [HSBend bend7 x29 BETWEEN] [HSBend bend7 x30 BETWEEN]
+UNDER crosser 11 tok 0 bridge_edge 16 copy 1 ordinal 2 headrow 12 (item 10) heads x 31..27 pieces 0,1,3, prev_bend -1 (tok -1) next_bend 10 (tok 2) covers: [HCorner bend10 x29 BETWEEN] [HCorner bend10 x28 BETWEEN]
+UNDER crosser 11 tok 1 bridge_edge 16 copy 0 ordinal 2 headrow 11 (item 9) heads x 30..26 pieces 0,1,3, prev_bend -1 (tok -1) next_bend 10 (tok 2) covers: [HCorner bend10 x28 BETWEEN] [HCorner bend10 x27 BETWEEN]
+UNDER crosser 13 tok 0 bridge_edge 10 copy 1 ordinal 0 headrow 4 (item 4) heads x 31..37 pieces 0,1,3, prev_bend -1 (tok -1) next_bend 14 (tok 2) covers: [HCorner bend14 x35 BETWEEN] [HCorner bend14 x36 BETWEEN]
+UNDER crosser 13 tok 1 bridge_edge 10 copy 0 ordinal 0 headrow 3 (item 3) heads x 32..38 pieces 0,1,3, prev_bend -1 (tok -1) next_bend 14 (tok 2) covers: [HCorner bend14 x36 BETWEEN] [HCorner bend14 x37 BETWEEN]
+UNDER crosser 17 tok 1 bridge_edge 16 copy 0 ordinal 0 headrow 11 (item 9) heads x 41..38 pieces 0,1,2, prev_bend 22 (tok 0) next_bend -1 (tok -1) covers: [VRun bend22 x40 BETWEEN]
+UNDER crosser 17 tok 2 bridge_edge 16 copy 1 ordinal 0 headrow 12 (item 10) heads x 42..39 pieces 0,1,2, prev_bend 22 (tok 0) next_bend -1 (tok -1) covers: [VRun bend22 x40 BETWEEN]
+CBEND id 5 edge 7 copy 0 tok 0 Corner source fixed_k hin 1 hand 1 m 2 floor 2 first y 1 last y 3 item_pt -1 form_group -1
+CBEND id 6 edge 8 copy 0 tok 0 Corner source fixed_k hin 1 hand 1 m 2 floor 2 first y 3 last y 5 item_pt -1 form_group -1
+CBEND id 7 edge 8 copy 0 tok 5 SBend source free hin 2 hand -1 m 10 floor 1 first y 7 last y 16 item_pt -1 form_group -1
+CBEND id 10 edge 11 copy 0 tok 2 Corner source fixed_k hin 0 hand -1 m 2 floor 2 first y 12 last y 10 item_pt 9 form_group -1
+CBEND id 11 edge 11 copy 0 tok 3 SBend source rows hin 3 hand 1 m 1 floor 0 first y 10 last y 9 item_pt 8 form_group -1
+CBEND id 14 edge 13 copy 0 tok 2 Corner source fixed_k hin 0 hand 1 m 2 floor 2 first y 4 last y 2 item_pt 3 form_group -1
+CBEND id 15 edge 13 copy 0 tok 3 SBend source rows hin 1 hand -1 m 1 floor 0 first y 2 last y 1 item_pt 2 form_group -1
+CBEND id 22 edge 17 copy 0 tok 0 Corner source fixed_k hin 3 hand -1 m 2 floor 2 first y 8 last y 10 item_pt -1 form_group -1
+FORM Corner hin 1 hand 1 column form lo 1 hi 1 s 1 t0 0 t1 1
+  L 2 tiles: (0,0H) (0,1H) (1,1H) (1,2H) (2,2H)
+  L 3 tiles: (0,0H) (0,1H) (1,1H) (1,2H) (2,2H) (2,3H) (3,3H)
+  L 4 tiles: (0,0H) (0,1H) (1,1H) (1,2H) (2,2H) (2,3H) (3,3H) (3,4H) (4,4H)
+  forms at L3: [H:0 0L,0 0L] [H:0 0L,1 0L] [H:1 0L,1 0L] [H:1 0L,2 0L] [H:2 0L,2 0L] [H:2 0L,3 0L] [H:3 0L,3 0L]
+FORM SBend hin 2 hand -1 column form lo 0 hi 1 s 1 t0 -1 t1 1
+  L 2 tiles: (0,0H) (1,0H) (1,1H) (2,1H)
+  L 3 tiles: (0,0H) (1,0H) (1,1H) (2,1H) (2,2H) (3,2H)
+  L 4 tiles: (0,0H) (1,0H) (1,1H) (2,1H) (2,2H) (3,2H) (3,3H) (4,3H)
+  forms at L3: [H:0 0L,0 0L] [H:1 0L,0 0L] [H:1 0L,1 0L] [H:2 0L,1 0L] [H:2 0L,2 0L] [H:3 0L,2 0L]
+FORM Corner hin 0 hand -1 column form lo -1 hi 0 s -1 t0 0 t1 1
+  L 2 tiles: (0,0H) (-1,0H) (-1,-1H) (-2,-1H) (-2,-2H)
+  L 3 tiles: (0,0H) (-1,0H) (-1,-1H) (-2,-1H) (-2,-2H) (-3,-2H) (-3,-3H)
+  L 4 tiles: (0,0H) (-1,0H) (-1,-1H) (-2,-1H) (-2,-2H) (-3,-2H) (-3,-3H) (-4,-3H) (-4,-4H)
+  forms at L3: [H:0 0L,0 0L] [H:-1 0L,0 0L] [H:-1 0L,-1 0L] [H:-2 0L,-1 0L] [H:-2 0L,-2 0L] [H:-3 0L,-2 0L] [H:-3 0L,-3 0L]
+FORM SBend hin 3 hand 1 column form lo -1 hi -1 s -1 t0 0 t1 1
+  L 2 tiles: (0,0H) (0,-1H) (-1,-1H) (-1,-2H)
+  L 3 tiles: (0,0H) (0,-1H) (-1,-1H) (-1,-2H) (-2,-2H) (-2,-3H)
+  L 4 tiles: (0,0H) (0,-1H) (-1,-1H) (-1,-2H) (-2,-2H) (-2,-3H) (-3,-3H) (-3,-4H)
+  forms at L3: [H:0 0L,0 0L] [H:0 0L,-1 0L] [H:-1 0L,-1 0L] [H:-1 0L,-2 0L] [H:-2 0L,-2 0L] [H:-2 0L,-3 0L]
+FORM Corner hin 0 hand 1 column form lo -1 hi 0 s -1 t0 0 t1 1
+  L 2 tiles: (0,0H) (1,0H) (1,-1H) (2,-1H) (2,-2H)
+  L 3 tiles: (0,0H) (1,0H) (1,-1H) (2,-1H) (2,-2H) (3,-2H) (3,-3H)
+  L 4 tiles: (0,0H) (1,0H) (1,-1H) (2,-1H) (2,-2H) (3,-2H) (3,-3H) (4,-3H) (4,-4H)
+  forms at L3: [H:0 0L,0 0L] [H:1 0L,0 0L] [H:1 0L,-1 0L] [H:2 0L,-1 0L] [H:2 0L,-2 0L] [H:3 0L,-2 0L] [H:3 0L,-3 0L]
+FORM SBend hin 1 hand -1 column form lo -1 hi -1 s -1 t0 0 t1 1
+  L 2 tiles: (0,0H) (0,-1H) (1,-1H) (1,-2H)
+  L 3 tiles: (0,0H) (0,-1H) (1,-1H) (1,-2H) (2,-2H) (2,-3H)
+  L 4 tiles: (0,0H) (0,-1H) (1,-1H) (1,-2H) (2,-2H) (2,-3H) (3,-3H) (3,-4H)
+  forms at L3: [H:0 0L,0 0L] [H:0 0L,-1 0L] [H:1 0L,-1 0L] [H:1 0L,-2 0L] [H:2 0L,-2 0L] [H:2 0L,-3 0L]
+FORM Corner hin 3 hand -1 column form lo 1 hi 1 s 1 t0 0 t1 1
+  L 2 tiles: (0,0H) (0,1H) (-1,1H) (-1,2H) (-2,2H)
+  L 3 tiles: (0,0H) (0,1H) (-1,1H) (-1,2H) (-2,2H) (-2,3H) (-3,3H)
+  L 4 tiles: (0,0H) (0,1H) (-1,1H) (-1,2H) (-2,2H) (-2,3H) (-3,3H) (-3,4H) (-4,4H)
+  forms at L3: [H:0 0L,0 0L] [H:0 0L,1 0L] [H:-1 0L,1 0L] [H:-1 0L,2 0L] [H:-2 0L,2 0L] [H:-2 0L,3 0L] [H:-3 0L,3 0L]
+FAN edge 0 in slot 0 side 3 (0N 1E 2S 3W) port_row 4 item_row 1 (item 1 of row 0) sigma 1 hand -1 hin 1 L 3 firstpt x 17 tiles (17,4) (17,3) (18,3) (18,2) (19,2) (19,1)
+FAN edge 1 in slot 1 side 3 (0N 1E 2S 3W) port_row 5 item_row 3 (item 3 of row 1) sigma 1 hand -1 hin 1 L 2 firstpt x 17 tiles (17,5) (17,4) (18,4) (18,3)
+FAN edge 5 in slot 6 side 1 (0N 1E 2S 3W) port_row 8 item_row 11 (item 9 of row 3) sigma -1 hand -1 hin 3 L 3 firstpt x 49 tiles (49,8) (49,9) (48,9) (48,10) (47,10) (47,11)
+FAN edge 6 in slot 7 side 1 (0N 1E 2S 3W) port_row 7 item_row 8 (item 6 of row 2) sigma -1 hand -1 hin 3 L 1 firstpt x 46 tiles (46,7) (46,8)
+FAN edge 19 out slot 2 side 3 (0N 1E 2S 3W) port_row 7 item_row 9 (item 7 of row 2) sigma -1 hand 1 hin 3 L 2 firstpt x 3 tiles (3,9) (3,8) (2,8) (2,7)
+FAN edge 20 out slot 3 side 3 (0N 1E 2S 3W) port_row 8 item_row 12 (item 10 of row 3) sigma -1 hand 1 hin 3 L 4 firstpt x 5 tiles (5,12) (5,11) (4,11) (4,10) (3,10) (3,9) (2,9) (2,8)
+FAN edge 24 out slot 8 side 1 (0N 1E 2S 3W) port_row 5 item_row 4 (item 4 of row 1) sigma 1 hand 1 hin 1 L 1 firstpt x 59 tiles (59,4) (59,5)
+FAN edge 25 out slot 9 side 1 (0N 1E 2S 3W) port_row 4 item_row 1 (item 1 of row 0) sigma 1 hand 1 hin 1 L 3 firstpt x 57 tiles (57,1) (57,2) (58,2) (58,3) (59,3) (59,4)
+SKIPFAN item 3 y 3 (row 1) edge 0 in Bend x 17..17 (ends pt65+0 .. pt65+0, bits 8) : 28 ranked occupants, 0 entirely west of it, 28 entirely east of it,
+SKIPFAN item 3 y 3 (row 1) edge 0 in Bend x 18..18 (ends pt65+1 .. pt65+1, bits 4) : 28 ranked occupants, 0 entirely west of it, 27 entirely east of it, overlaps in e1 cols 18..18;
+SKIPFAN item 3 y 3 (row 1) edge 25 out Bend x 58..58 (ends pt123+1 .. pt123+1, bits 16) : 28 ranked occupants, 28 entirely west of it, 0 entirely east of it,
+SKIPFAN item 3 y 3 (row 1) edge 25 out Bend x 59..59 (ends pt123+2 .. pt123+2, bits 32) : 28 ranked occupants, 28 entirely west of it, 0 entirely east of it,
+SKIPFAN item 4 y 4 (row 1) edge 0 in Tile x 0..0 (ends pt27+0 .. pt27+0, bits 1) : 24 ranked occupants, 0 entirely west of it, 24 entirely east of it,
+SKIPFAN item 4 y 4 (row 1) edge 0 in Run x 1..16 (ends pt27+1 .. pt65-1, bits 1) : 24 ranked occupants, 0 entirely west of it, 24 entirely east of it,
+SKIPFAN item 4 y 4 (row 1) edge 0 in Bend x 17..17 (ends pt65+0 .. pt65+0, bits 4) : 24 ranked occupants, 0 entirely west of it, 23 entirely east of it, overlaps in e1 cols 17..17;
+SKIPFAN item 4 y 4 (row 1) edge 25 out Bend x 59..59 (ends pt123+2 .. pt123+2, bits 16) : 24 ranked occupants, 23 entirely west of it, 0 entirely east of it, overlaps out e24 cols 59..59;
+SKIPFAN item 4 y 4 (row 1) edge 25 out Run x 60..60 (ends pt124+1 .. pt36-1, bits 1) : 24 ranked occupants, 24 entirely west of it, 0 entirely east of it,
+SKIPFAN item 4 y 4 (row 1) edge 25 out Tile x 61..61 (ends pt36+0 .. pt36+0, bits 1) : 24 ranked occupants, 24 entirely west of it, 0 entirely east of it,
+SKIPFAN item 6 y 8 (row 2) edge 5 in Tile x 61..61 (ends pt33+0 .. pt33+0, bits 1) : 33 ranked occupants, 33 entirely west of it, 0 entirely east of it,
+SKIPFAN item 6 y 8 (row 2) edge 5 in Run x 50..60 (ends pt69+1 .. pt33-1, bits 1) : 33 ranked occupants, 33 entirely west of it, 0 entirely east of it,
+SKIPFAN item 6 y 8 (row 2) edge 5 in Bend x 49..49 (ends pt69+0 .. pt69+0, bits 8) : 33 ranked occupants, 33 entirely west of it, 0 entirely east of it,
+SKIPFAN item 6 y 8 (row 2) edge 20 out Bend x 2..2 (ends pt119-3 .. pt119-3, bits 32) : 33 ranked occupants, 0 entirely west of it, 32 entirely east of it, overlaps out e19 cols 2..2;
+SKIPFAN item 6 y 8 (row 2) edge 20 out Run x 1..1 (ends pt30+1 .. pt120-1, bits 1) : 33 ranked occupants, 0 entirely west of it, 33 entirely east of it,
+SKIPFAN item 6 y 8 (row 2) edge 20 out Tile x 0..0 (ends pt30+0 .. pt30+0, bits 1) : 33 ranked occupants, 0 entirely west of it, 33 entirely east of it,
+SKIPFAN item 7 y 9 (row 2) edge 5 in Bend x 49..49 (ends pt69+0 .. pt69+0, bits 4) : 26 ranked occupants, 26 entirely west of it, 0 entirely east of it,
+SKIPFAN item 7 y 9 (row 2) edge 5 in Bend x 48..48 (ends pt69-1 .. pt69-1, bits 8) : 26 ranked occupants, 26 entirely west of it, 0 entirely east of it,
+SKIPFAN item 7 y 9 (row 2) edge 20 out Bend x 3..3 (ends pt119-2 .. pt119-2, bits 32) : 26 ranked occupants, 0 entirely west of it, 25 entirely east of it, overlaps out e19 cols 3..3;
+SKIPFAN item 7 y 9 (row 2) edge 20 out Bend x 2..2 (ends pt119-3 .. pt119-3, bits 16) : 26 ranked occupants, 0 entirely west of it, 26 entirely east of it,
+SKIPFAN item 8 y 10 (row 2) edge 5 in Bend x 48..48 (ends pt69-1 .. pt69-1, bits 4) : 9 ranked occupants, 9 entirely west of it, 0 entirely east of it,
+SKIPFAN item 8 y 10 (row 2) edge 5 in Bend x 47..47 (ends pt69-2 .. pt69-2, bits 8) : 9 ranked occupants, 9 entirely west of it, 0 entirely east of it,
+SKIPFAN item 8 y 10 (row 2) edge 20 out Bend x 4..4 (ends pt119-1 .. pt119-1, bits 32) : 9 ranked occupants, 0 entirely west of it, 9 entirely east of it,
+SKIPFAN item 8 y 10 (row 2) edge 20 out Bend x 3..3 (ends pt119-2 .. pt119-2, bits 16) : 9 ranked occupants, 0 entirely west of it, 9 entirely east of it,
+FANPAIR row 3 edges 0 (x17) 1 (x18) TOUCH
+FANPAIR row 3 edges 0 (x18) 1 (x18) SHARE
+FANPAIR row 4 edges 0 (x17) 1 (x17) SHARE
+FANPAIR row 4 edges 0 (x17) 1 (x18) TOUCH
+FANPAIR row 4 edges 24 (x59) 25 (x59) SHARE
+FANPAIR row 8 edges 19 (x3) 20 (x2) TOUCH
+FANPAIR row 8 edges 19 (x2) 20 (x2) SHARE
+FANPAIR row 9 edges 19 (x3) 20 (x3) SHARE
+FANPAIR row 9 edges 19 (x3) 20 (x2) TOUCH
+SIDEPAIR side 1 A edge 25 (port 4 item 1 sigma 1 slot 9) B edge 24 (port 5 item 4 sigma 1 slot 8) common rows 4..4 (1 with tiles) end rows in range 1 A-west at ends 0 B-west at ends 0 interior rows 0 interior not ordered-as-ends 0 rows not separated 1 :: y4:59..59|59..59
+SIDEPAIR side 1 A edge 6 (port 7 item 8 sigma -1 slot 7) B edge 5 (port 8 item 11 sigma -1 slot 6) common rows 8..8 (1 with tiles) end rows in range 1 A-west at ends 1 B-west at ends 0 interior rows 0 interior not ordered-as-ends 0 rows not separated 0 :: y8:46..46|49..49
+SIDEPAIR side 3 A edge 0 (port 4 item 1 sigma 1 slot 0) B edge 1 (port 5 item 3 sigma 1 slot 1) common rows 3..4 (2 with tiles) end rows in range 2 A-west at ends 0 B-west at ends 0 interior rows 0 interior not ordered-as-ends 0 rows not separated 2 :: y3:17..18|18..18 y4:17..17|17..18
+SIDEPAIR side 3 A edge 19 (port 7 item 9 sigma -1 slot 2) B edge 20 (port 8 item 12 sigma -1 slot 3) common rows 8..9 (2 with tiles) end rows in range 2 A-west at ends 0 B-west at ends 0 interior rows 0 interior not ordered-as-ends 0 rows not separated 2 :: y8:2..3|2..2 y9:3..3|2..3
+
+=== SEED L_R x LL_RR items 6
+ITEM 0 y 0 row 0 kind 1
+ITEM 1 y 1 row 0 kind 0
+ITEM 2 y 2 row 0 kind 4
+ITEM 3 y 20 row 1 kind 3
+ITEM 4 y 21 row 1 kind 0
+ITEM 5 y 22 row 1 kind 4
+CROSSER item 3 y 20 row 1 edge 11 west (50,0,0,b-1) = 33 east = 33 :: VRun after k1 (SBend 13) prev bend 13 next 16 y0 31 y1 11
+CROSSER item 3 y 20 row 1 edge 12 west (10,0,0,b-1) = 34 east = 34 :: Tile k0
+CROSSER item 3 y 20 row 1 edge 6 west (8,-2,0,b-1) = 40 east = 40 :: SBend k1 bend9 tok0 hin2 hand1 L6 j3/12 (dx-2,dy1) head t2 T5 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 3 y 20 row 1 edge 6 west (8,-1,0,b-1) = 41 east = 41 :: SBend k1 bend9 tok0 hin2 hand1 L6 j2/12 (dx-1,dy1) head t1 T5 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 3 y 20 row 1 edge 7 west (8,0,0,b-1) = 42 east = 42 :: Tile k0
+CROSSER item 4 y 21 row 1 edge 11 west (50,0,0,b-1) = 33 east = 33 :: VRun after k1 (SBend 13) prev bend 13 next 16 y0 31 y1 11
+CROSSER item 4 y 21 row 1 edge 12 west (10,0,0,b-1) = 34 east = 34 :: Tile k0
+CROSSER item 4 y 21 row 1 edge 6 west (8,-3,0,b-1) = 39 east = 39 :: SBend k1 bend9 tok0 hin2 hand1 L6 j5/12 (dx-3,dy2) head t3 T5 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 4 y 21 row 1 edge 6 west (8,-2,0,b-1) = 40 east = 40 :: SBend k1 bend9 tok0 hin2 hand1 L6 j4/12 (dx-2,dy2) head t2 T5 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 4 y 21 row 1 edge 7 west (8,0,0,b-1) = 42 east = 42 :: Tile k0
+CROSSER item 5 y 22 row 1 edge 11 west (50,0,0,b-1) = 33 east = 33 :: VRun after k1 (SBend 13) prev bend 13 next 16 y0 31 y1 11
+CROSSER item 5 y 22 row 1 edge 12 west (10,0,0,b-1) = 34 east = 34 :: Tile k0
+CROSSER item 5 y 22 row 1 edge 6 west (8,-4,0,b-1) = 38 east = 38 :: SBend k1 bend9 tok0 hin2 hand1 L6 j7/12 (dx-4,dy3) head t4 T5 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 5 y 22 row 1 edge 6 west (8,-3,0,b-1) = 39 east = 39 :: SBend k1 bend9 tok0 hin2 hand1 L6 j6/12 (dx-3,dy3) head t3 T5 DIAG form(lo0 hi1 s1 t0 -1 t1 1)
+CROSSER item 5 y 22 row 1 edge 7 west (8,0,0,b-1) = 42 east = 42 :: Tile k0
+COVER item 3 y 20 row 1 crosser 6 tiles 2 recorded 2 [HSBend k1 j2 x41] [HSBend k1 j3 x40]
+COVER item 4 y 21 row 1 crosser 6 tiles 2 recorded 2 [HSBend k1 j4 x40] [HSBend k1 j5 x39]
+COVER item 5 y 22 row 1 crosser 6 tiles 2 recorded 2 [HSBend k1 j6 x39] [HSBend k1 j7 x38]
+COVER item 3 y 20 row 1 crosser 7 tiles 1 recorded 1 [VRun k0 j-1 x42]
+COVER item 4 y 21 row 1 crosser 7 tiles 1 recorded 1 [VRun k0 j-1 x42]
+COVER item 5 y 22 row 1 crosser 7 tiles 1 recorded 1 [VRun k0 j-1 x42]
+COVER item 3 y 20 row 1 crosser 11 tiles 1 recorded 1 [VRun k1 j-1 x33]
+COVER item 4 y 21 row 1 crosser 11 tiles 1 recorded 1 [VRun k1 j-1 x33]
+COVER item 5 y 22 row 1 crosser 11 tiles 1 recorded 1 [VRun k1 j-1 x33]
+COVER item 3 y 20 row 1 crosser 12 tiles 1 recorded 1 [VRun k0 j-1 x34]
+COVER item 4 y 21 row 1 crosser 12 tiles 1 recorded 1 [VRun k0 j-1 x34]
+COVER item 5 y 22 row 1 crosser 12 tiles 1 recorded 1 [VRun k0 j-1 x34]
+COVERTOTAL tiles 15 not recorded 0
+FORMCHECK pairs 12 reproduced 12 tiles 15 (reproduced pairs' tiles 15) by cover: [SBendh2+ : 3 pairs, 3 reproduced] [VRun : 9 pairs, 9 reproduced]
+UNDER crosser 6 tok 1 bridge_edge 13 copy 0 ordinal 0 headrow 20 (item 3) heads x 43..37 pieces 0,1,2, prev_bend 9 (tok 0) next_bend -1 (tok -1) covers: [HSBend bend9 x41 BETWEEN] [HSBend bend9 x40 BETWEEN]
+UNDER crosser 6 tok 2 bridge_edge 13 copy 1 ordinal 0 headrow 21 (item 4) heads x 44..38 pieces 0,1,2, prev_bend 9 (tok 0) next_bend -1 (tok -1) covers: [HSBend bend9 x40 BETWEEN] [HSBend bend9 x39 BETWEEN]
+UNDER crosser 7 tok 0 bridge_edge 13 copy 0 ordinal 0 headrow 20 (item 3) heads x 43..37 pieces 0,1, prev_bend -1 (tok -1) next_bend -1 (tok -1) covers: [VRun bend-1 x42 BETWEEN]
+UNDER crosser 7 tok 1 bridge_edge 13 copy 1 ordinal 0 headrow 21 (item 4) heads x 44..38 pieces 0,1, prev_bend -1 (tok -1) next_bend -1 (tok -1) covers: [VRun bend-1 x42 BETWEEN]
+UNDER crosser 11 tok 4 bridge_edge 13 copy 1 ordinal 1 headrow 21 (item 4) heads x 36..32 pieces 0,1,2,3, prev_bend 15 (tok 3) next_bend 16 (tok 6) covers: [VRun bend13 x33 BETWEEN]
+UNDER crosser 11 tok 5 bridge_edge 13 copy 0 ordinal 1 headrow 20 (item 3) heads x 35..31 pieces 0,1,2,3, prev_bend 15 (tok 3) next_bend 16 (tok 6) covers: [VRun bend13 x33 BETWEEN]
+UNDER crosser 12 tok 0 bridge_edge 13 copy 1 ordinal 1 headrow 21 (item 4) heads x 36..32 pieces 0,1, prev_bend -1 (tok -1) next_bend -1 (tok -1) covers: [VRun bend-1 x34 BETWEEN]
+UNDER crosser 12 tok 1 bridge_edge 13 copy 0 ordinal 1 headrow 20 (item 3) heads x 35..31 pieces 0,1, prev_bend -1 (tok -1) next_bend -1 (tok -1) covers: [VRun bend-1 x34 BETWEEN]
+CBEND id 9 edge 6 copy 0 tok 0 SBend source free hin 2 hand 1 m 6 floor 1 first y 19 last y 24 item_pt -1 form_group -1
+CBEND id 13 edge 11 copy 0 tok 0 SBend source free hin 0 hand 1 m 2 floor 1 first y 32 last y 31 item_pt -1 form_group 1
+CBEND id 14 edge 11 copy 0 tok 1 Corner source cross_corner hin 0 hand 1 m 0 floor 2 first y 31 last y 31 item_pt -1 form_group 1
+CBEND id 15 edge 11 copy 0 tok 3 Corner source cross_corner hin 1 hand -1 m 0 floor 2 first y 31 last y 31 item_pt -1 form_group 1
+CBEND id 16 edge 11 copy 0 tok 6 SBend source free hin 0 hand 1 m 1 floor 1 first y 11 last y 11 item_pt -1 form_group -1
+FORM SBend hin 2 hand 1 column form lo 0 hi 1 s 1 t0 -1 t1 1
+  L 2 tiles: (0,0H) (-1,0H) (-1,1H) (-2,1H)
+  L 3 tiles: (0,0H) (-1,0H) (-1,1H) (-2,1H) (-2,2H) (-3,2H)
+  L 4 tiles: (0,0H) (-1,0H) (-1,1H) (-2,1H) (-2,2H) (-3,2H) (-3,3H) (-4,3H)
+  forms at L3: [H:0 0L,0 0L] [H:-1 0L,0 0L] [H:-1 0L,1 0L] [H:-2 0L,1 0L] [H:-2 0L,2 0L] [H:-3 0L,2 0L]
+FORM SBend hin 0 hand 1 column form lo -1 hi 0 s -1 t0 -1 t1 1
+  L 2 tiles: (0,0H) (1,0H) (1,-1H) (2,-1H)
+  L 3 tiles: (0,0H) (1,0H) (1,-1H) (2,-1H) (2,-2H) (3,-2H)
+  L 4 tiles: (0,0H) (1,0H) (1,-1H) (2,-1H) (2,-2H) (3,-2H) (3,-3H) (4,-3H)
+  forms at L3: [H:0 0L,0 0L] [H:1 0L,0 0L] [H:1 0L,-1 0L] [H:2 0L,-1 0L] [H:2 0L,-2 0L] [H:3 0L,-2 0L]
+FAN edge 0 in slot 0 side 3 (0N 1E 2S 3W) port_row 10 item_row 1 (item 1 of row 0) sigma 1 hand -1 hin 1 L 9 firstpt x 17 tiles (17,10) (17,9) (18,9) (18,8) (19,8) (19,7) (20,7) (20,6) (21,6) (21,5) (22,5) (22,4) (23,4) (23,3) (24,3) (24,2) (25,2) (25,1)
+FAN edge 4 in slot 6 side 1 (0N 1E 2S 3W) port_row 12 item_row 20 (item 3 of row 1) sigma -1 hand -1 hin 3 L 8 firstpt x 58 tiles (58,12) (58,13) (57,13) (57,14) (56,14) (56,15) (55,15) (55,16) (54,16) (54,17) (53,17) (53,18) (52,18) (52,19) (51,19) (51,20)
+FAN edge 16 out slot 1 side 3 (0N 1E 2S 3W) port_row 12 item_row 21 (item 4 of row 1) sigma -1 hand 1 hin 3 L 9 firstpt x 10 tiles (10,21) (10,20) (9,20) (9,19) (8,19) (8,18) (7,18) (7,17) (6,17) (6,16) (5,16) (5,15) (4,15) (4,14) (3,14) (3,13) (2,13) (2,12)
+FAN edge 20 out slot 7 side 1 (0N 1E 2S 3W) port_row 10 item_row 1 (item 1 of row 0) sigma 1 hand 1 hin 1 L 9 firstpt x 50 tiles (50,1) (50,2) (51,2) (51,3) (52,3) (52,4) (53,4) (53,5) (54,5) (54,6) (55,6) (55,7) (56,7) (56,8) (57,8) (57,9) (58,9) (58,10)
+
+FORMALLCHECK closed forms vs rasters: 144 (kind, hin, hand, L) combos, 0 differ
+FORMALL SBend hin 0 hand 1
+  L 5 tiles 10 tails 0 rows: dy-4:4..5 dy-3:3..4 dy-2:2..3 dy-1:1..2 dy0:0..1
+  L 6 tiles 12 tails 0 rows: dy-5:5..6 dy-4:4..5 dy-3:3..4 dy-2:2..3 dy-1:1..2 dy0:0..1
+FORMALL SBend hin 0 hand -1
+  L 5 tiles 10 tails 0 rows: dy-4:-5..-4 dy-3:-4..-3 dy-2:-3..-2 dy-1:-2..-1 dy0:-1..0
+  L 6 tiles 12 tails 0 rows: dy-5:-6..-5 dy-4:-5..-4 dy-3:-4..-3 dy-2:-3..-2 dy-1:-2..-1 dy0:-1..0
+FORMALL SBend hin 1 hand 1
+  L 5 tiles 10 tails 0 rows: dy0:0..0 dy1:0..1 dy2:1..2 dy3:2..3 dy4:3..4 dy5:4..4
+  L 6 tiles 12 tails 0 rows: dy0:0..0 dy1:0..1 dy2:1..2 dy3:2..3 dy4:3..4 dy5:4..5 dy6:5..5
+FORMALL SBend hin 1 hand -1
+  L 5 tiles 10 tails 0 rows: dy-5:4..4 dy-4:3..4 dy-3:2..3 dy-2:1..2 dy-1:0..1 dy0:0..0
+  L 6 tiles 12 tails 0 rows: dy-6:5..5 dy-5:4..5 dy-4:3..4 dy-3:2..3 dy-2:1..2 dy-1:0..1 dy0:0..0
+FORMALL SBend hin 2 hand 1
+  L 5 tiles 10 tails 0 rows: dy0:-1..0 dy1:-2..-1 dy2:-3..-2 dy3:-4..-3 dy4:-5..-4
+  L 6 tiles 12 tails 0 rows: dy0:-1..0 dy1:-2..-1 dy2:-3..-2 dy3:-4..-3 dy4:-5..-4 dy5:-6..-5
+FORMALL SBend hin 2 hand -1
+  L 5 tiles 10 tails 0 rows: dy0:0..1 dy1:1..2 dy2:2..3 dy3:3..4 dy4:4..5
+  L 6 tiles 12 tails 0 rows: dy0:0..1 dy1:1..2 dy2:2..3 dy3:3..4 dy4:4..5 dy5:5..6
+FORMALL SBend hin 3 hand 1
+  L 5 tiles 10 tails 0 rows: dy-5:-4..-4 dy-4:-4..-3 dy-3:-3..-2 dy-2:-2..-1 dy-1:-1..0 dy0:0..0
+  L 6 tiles 12 tails 0 rows: dy-6:-5..-5 dy-5:-5..-4 dy-4:-4..-3 dy-3:-3..-2 dy-2:-2..-1 dy-1:-1..0 dy0:0..0
+FORMALL SBend hin 3 hand -1
+  L 5 tiles 10 tails 0 rows: dy0:0..0 dy1:-1..0 dy2:-2..-1 dy3:-3..-2 dy4:-4..-3 dy5:-4..-4
+  L 6 tiles 12 tails 0 rows: dy0:0..0 dy1:-1..0 dy2:-2..-1 dy3:-3..-2 dy4:-4..-3 dy5:-5..-4 dy6:-5..-5
+FORMALL Corner hin 0 hand 1
+  L 5 tiles 11 tails 0 rows: dy-5:5..5 dy-4:4..5 dy-3:3..4 dy-2:2..3 dy-1:1..2 dy0:0..1
+  L 6 tiles 13 tails 0 rows: dy-6:6..6 dy-5:5..6 dy-4:4..5 dy-3:3..4 dy-2:2..3 dy-1:1..2 dy0:0..1
+FORMALL Corner hin 0 hand -1
+  L 5 tiles 11 tails 0 rows: dy-5:-5..-5 dy-4:-5..-4 dy-3:-4..-3 dy-2:-3..-2 dy-1:-2..-1 dy0:-1..0
+  L 6 tiles 13 tails 0 rows: dy-6:-6..-6 dy-5:-6..-5 dy-4:-5..-4 dy-3:-4..-3 dy-2:-3..-2 dy-1:-2..-1 dy0:-1..0
+FORMALL Corner hin 1 hand 1
+  L 5 tiles 11 tails 0 rows: dy0:0..0 dy1:0..1 dy2:1..2 dy3:2..3 dy4:3..4 dy5:4..5
+  L 6 tiles 13 tails 0 rows: dy0:0..0 dy1:0..1 dy2:1..2 dy3:2..3 dy4:3..4 dy5:4..5 dy6:5..6
+FORMALL Corner hin 1 hand -1
+  L 5 tiles 11 tails 0 rows: dy-5:4..5 dy-4:3..4 dy-3:2..3 dy-2:1..2 dy-1:0..1 dy0:0..0
+  L 6 tiles 13 tails 0 rows: dy-6:5..6 dy-5:4..5 dy-4:3..4 dy-3:2..3 dy-2:1..2 dy-1:0..1 dy0:0..0
+FORMALL Corner hin 2 hand 1
+  L 5 tiles 11 tails 0 rows: dy0:-1..0 dy1:-2..-1 dy2:-3..-2 dy3:-4..-3 dy4:-5..-4 dy5:-5..-5
+  L 6 tiles 13 tails 0 rows: dy0:-1..0 dy1:-2..-1 dy2:-3..-2 dy3:-4..-3 dy4:-5..-4 dy5:-6..-5 dy6:-6..-6
+FORMALL Corner hin 2 hand -1
+  L 5 tiles 11 tails 0 rows: dy0:0..1 dy1:1..2 dy2:2..3 dy3:3..4 dy4:4..5 dy5:5..5
+  L 6 tiles 13 tails 0 rows: dy0:0..1 dy1:1..2 dy2:2..3 dy3:3..4 dy4:4..5 dy5:5..6 dy6:6..6
+FORMALL Corner hin 3 hand 1
+  L 5 tiles 11 tails 0 rows: dy-5:-5..-4 dy-4:-4..-3 dy-3:-3..-2 dy-2:-2..-1 dy-1:-1..0 dy0:0..0
+  L 6 tiles 13 tails 0 rows: dy-6:-6..-5 dy-5:-5..-4 dy-4:-4..-3 dy-3:-3..-2 dy-2:-2..-1 dy-1:-1..0 dy0:0..0
+FORMALL Corner hin 3 hand -1
+  L 5 tiles 11 tails 0 rows: dy0:0..0 dy1:-1..0 dy2:-2..-1 dy3:-3..-2 dy4:-4..-3 dy5:-5..-4
+  L 6 tiles 13 tails 0 rows: dy0:0..0 dy1:-1..0 dy2:-2..-1 dy3:-3..-2 dy4:-4..-3 dy5:-5..-4 dy6:-6..-5
