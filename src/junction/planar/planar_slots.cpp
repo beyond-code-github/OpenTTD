@@ -126,7 +126,7 @@ PlanarSlots BuildPlanarSlots(const PlanarTopology &topology, const PlanarChannel
 					if (next_copy) {
 						row({{sv(PlanarSlotKind::Line, list[i].line, c, iv + 1), 1}, {sv(PlanarSlotKind::Line, list[i].line, c, iv), -1}}, 0, 0); // One parallelogram over consecutive doubled crossings.
 					} else {
-						const uint32_t up = milp.AddVariable(0, JunctionMilp::INF, 1, true), dn = milp.AddVariable(0, JunctionMilp::INF, 1, true); // Probe S4b: a charged step back from the copy's slot.
+						const double late = 1 + 0.001 * (static_cast<double>(intervals[c].size()) - 1 - iv); const uint32_t up = milp.AddVariable(0, JunctionMilp::INF, late, true), dn = milp.AddVariable(0, JunctionMilp::INF, late, true); // Probe S4b: a charged step back from the copy's slot.
 						row({{sv(PlanarSlotKind::Line, list[i].line, c, iv + 1), 1}, {sv(PlanarSlotKind::Copy, list[i].line, c, iv), -1}, {up, -1}, {dn, 1}}, 0, 0);
 					}
 				}
@@ -190,7 +190,8 @@ PlanarSlots BuildPlanarSlots(const PlanarTopology &topology, const PlanarChannel
 	for (uint32_t c = 0; c < channels.channels.size(); c++) {
 		for (uint32_t line : channels.channels[c].lines) {
 			for (uint32_t iv = 0; iv + 1 < intervals[c].size(); iv++) {
-				const uint32_t up = milp.AddVariable(0, JunctionMilp::INF, 1, true), dn = milp.AddVariable(0, JunctionMilp::INF, 1, true);
+				const double late = 1 + 0.001 * (static_cast<double>(intervals[c].size()) - 1 - iv);
+				const uint32_t up = milp.AddVariable(0, JunctionMilp::INF, late, true), dn = milp.AddVariable(0, JunctionMilp::INF, late, true);
 				row({{sv(PlanarSlotKind::Line, line, c, iv + 1), 1}, {sv(PlanarSlotKind::Line, line, c, iv), -1}, {up, -1}, {dn, 1}}, 0, 0);
 			}
 		}
