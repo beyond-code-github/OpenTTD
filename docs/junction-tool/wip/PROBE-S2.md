@@ -1,3 +1,8 @@
+## Run 3 (S2c)
+Commits on probe-s2c: A 64ce475b60, B e81145c17a. Baseline = wt-planar 20f98229e0 (pv-*.baseline, tag lists match 32/32/12).
+- T2 and T3, A and B (W=3, W=10): all 32 variants of each fail with "base infeasible" (the composer's first solve), 0 built; "slot change inside one piece" is gone. With PLANAR_S2LOG on T2 o0t0f0s0 the composer's piece diffs remain (channel 7 core post lane 1 old 1 slot 3; channel 10 core pre/x/post lane 1 old 1 slot 2).
+- LL2 (12 variants, all built in A, B3, B10): best 2230.25 vs baseline 2354.25; 12 better, 0 worse, 0 equal; median change -135.0 in all three runs; median solve 4.87 s (A), 4.93 s (W=3), 4.98 s (W=10) vs baseline 4.07 s. The width weight changes nothing measurable.
+
 # PROBE-S2 (throwaway) measurements
 
 ## Run 2 (S1b, D351; probe-s2b = wt-planar 20f98229e0 + cherry-pick 37dc49d25d of a7e98b6ba1, clean)
@@ -33,3 +38,10 @@ Slot-change-inside-one-piece: 0. Diagonal slot step: 0. Other new reason: none. 
 
 ## Probe code notes (deviations)
 `SlotOf`, `IvName`, `Offs`, `LogDiff`, `SlotBend` and the `slots` member are methods of MappedComposer, not locals, because Bundle/Fray/Join need them. `Fray` gained a `gaps` parameter. `JoinEntry` is only used for the diff log now. The join out gap uses `2 * (slot(O[k+1]) - slot(O[k]))` in the out channel's pre (equal to 2*sigma*diff when lines are in sigma order). Lane order: `Lanes(c)` is left to right, the slots are left to right across travel, so the mapping is the identity. Bundle: m=0 channels use pre for pieces before the last and post for the last; core with no decks puts the pre-to-post bend at the end of its lead. pv and docs are untracked in ng1's tree; pv run from /home/pete/OpenTTD/tools/junction/pv.
+
+## Run 3 IIS (probe-s2c e81145c17a, T2, PLANAR_ONLY=<tag> PLANAR_IIS=1 PLANAR_S2LOG=1, W unset)
+Each variant solves two shapes (default, then program); each prints an IIS. S2DIFF lines are the same in every solve: channel 7 core post lane 1 old 1 slot 3; channel 10 core pre/x/post lane 1 old 1 slot 2.
+- o0t0f0s0 (both shapes, same IIS, no fray in this variant): flex (E1#2.y vs E2#5.y = 4), seg E1#3, seg D1#5, tie@L1063 (E1#3 end = D1#5 end, the join's M.Tie), seg E2#6, seg E2''#0, cross E2''#1>D1#5 (x2 rows, v>=1). Class (c): the prio Join (planar_components.cpp:1046-1076; Double "''" at :1068/:1073, tie :1063, cross from the Double/Join) at E/D, against channel 10's core flex (Flex :1124, called from build_bundle :1424, offset 4 half-tiles = slot 2). D1#4 appears only as a free end y, no row of its own; no channel 7 SlotBend or deck row. Not fray, not channel 7 post.
+- o1t3f1s0, default shape: fray gap (Eq 4 half-tiles, :1024, gaps from slots at :1356), seg E1#0, E2#0..#4, E1#1, flex (E1#1.y vs E2#4.y = 4). Class (a): prio Fray feeding channel 10's core, as in Run 1 (Fray's Double(S, h, -sigma, "'") :1033 ends the lane 1 slot toward the far lane, gap 4 then flex 4 leave nothing for the 2 half-tile move).
+- o1t3f1s0, program shape: identical to the o0t0f0s0 IIS (flex, E1#3, D1#6, tie@L1063, E2#6, E2''#0, cross E2''#1>D1#6 x2): class (c), same as above.
+So T2 is infeasible for two separate reasons: the Fray (default shape, f1 variants) and the prio Join with channel 10's core flex (program shape, and both shapes in o0). Both include channel 10's offset-4 flex row.
