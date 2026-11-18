@@ -62,7 +62,6 @@ static std::vector<std::vector<PlanarSlotInterval>> BuildIntervals(const PlanarC
 			const bool crossing_iv = k != 0 && iv % 2 == 1;
 			bool is_over = crossing_iv && over[cc.crossings[iv / 2]] == c;
 			if (k != 0 && iv % 2 == 0 && iv >= 2 && iv + 1 < intervals.size()) is_over = over[cc.crossings[(iv - 1) / 2]] == c && over[cc.crossings[(iv + 1) / 2]] == c; // Between two doubled crossings the copy runs on.
-			const bool is_last = iv + 1 == intervals.size();
 			std::vector<PlanarSlotTrack> &out = intervals[iv].tracks;
 			for (int j = 0; j < n; j++) {
 				const uint32_t line = cc.lines[j];
@@ -72,16 +71,8 @@ static std::vector<std::vector<PlanarSlotInterval>> BuildIntervals(const PlanarC
 					const bool is_far = far_left ? j == 0 : j == n - 1;
 					copy = is_far ? -away : away;
 				}
-				int row = 0;
-				if (is_last) {
-					for (size_t s = 0; s < channels.sites.size(); s++) {
-						if (channels.sites[s].kind == PlanarSiteKind::Join && sites[s].prio && sites[s].straight == c) row = -sites[s].side;
-					}
-				}
 				if (copy < 0) out.push_back({PlanarSlotKind::Copy, line, 0});
-				if (row < 0) out.push_back({PlanarSlotKind::Row, line, 0});
 				out.push_back({PlanarSlotKind::Line, line, 0});
-				if (row > 0) out.push_back({PlanarSlotKind::Row, line, 0});
 				if (copy > 0) out.push_back({PlanarSlotKind::Copy, line, 0});
 			}
 		}
@@ -151,6 +142,7 @@ PlanarSlots BuildPlanarSlots(const PlanarTopology &topology, const PlanarChannel
 	/* A straight line across a site is linked by a charged step. */
 	struct LinkStep {
 		uint32_t from, to, up, dn;
+		int fixed = 0; ///< Probe S4a: the step of a fixed link.
 	};
 	std::vector<LinkStep> link_steps;
 	for (size_t si = 0; si < channels.sites.size(); si++) {
@@ -163,9 +155,19 @@ PlanarSlots BuildPlanarSlots(const PlanarTopology &topology, const PlanarChannel
 			const uint32_t from = split ? topology.nodes[n].in[0] : sl;
 			const uint32_t to = split ? sl : topology.nodes[n].out[0];
 			const uint32_t cf = channels.channel_of_line[from], ct = channels.channel_of_line[to];
+				if (site.kind == PlanarSiteKind::Fray && sites[si].prio) { // Probe S4a: a prio fray's straight leg off a non-far lane doubles one slot toward the far lane.
+					const PlanarChannel &fc = channels.channels[site.channel];
+					const uint32_t far_line = sites[si].side > 0 ? fc.lines.front() : fc.lines.back();
+					if (from != far_line) {
+						const double d = sites[si].side > 0 ? -1 : 1;
+						row({{sv(PlanarSlotKind::Line, to, ct, 0), 1}, {sv(PlanarSlotKind::Line, from, cf, last(cf)), -1}}, d, d);
+						link_steps.push_back({from, to, UINT32_MAX, UINT32_MAX, static_cast<int>(d)});
+						continue;
+					}
+				}
 			const uint32_t up = milp.AddVariable(0, JunctionMilp::INF, 1, true), dn = milp.AddVariable(0, JunctionMilp::INF, 1, true);
 			row({{sv(PlanarSlotKind::Line, to, ct, 0), 1}, {sv(PlanarSlotKind::Line, from, cf, last(cf)), -1}, {up, -1}, {dn, 1}}, 0, 0);
-			link_steps.push_back({from, to, up, dn});
+			link_steps.push_back({from, to, up, dn, 0});
 		}
 	}
 
@@ -206,6 +208,6 @@ PlanarSlots BuildPlanarSlots(const PlanarTopology &topology, const PlanarChannel
 			for (PlanarSlotTrack &tr : interval.tracks) tr.slot -= least;
 		}
 	}
-	for (const LinkStep &l : link_steps) result.links.push_back({l.from, l.to, static_cast<int>(std::lround(milp.Value(l.up) - milp.Value(l.dn)))});
+	for (const LinkStep &l : link_steps) result.links.push_back({l.from, l.to, l.up == UINT32_MAX ? l.fixed : static_cast<int>(std::lround(milp.Value(l.up) - milp.Value(l.dn)))});
 	return result;
 }
