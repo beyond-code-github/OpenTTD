@@ -1,3 +1,13 @@
+# FOR PETE ON RETURN (2026-11-18 night): prio join decision
+Landed while away (wt-planar, pushed): e4b50580e1 variant local search past the 6-bit cap (LL² full solve 1347.25); 95fe3d99c7 gate trim; 4887288d92 hard anchor (D348: same areas, T2 2.8->1.75 s, T3 4.1->3.3 s, LL² 92->74 s).
+Prio findings: T3's length is the prio stagger (lanes' coverages chained behind the joiners' doubled bridges, ~4.4 tiles of width per tile of P). Channel-level prio-under never wins (probe C): through line over confirmed. Freeing the join (coverage over the main line's own doubled bridge, D347) shrinks the composer area ~21% (A2: T2 684, T3 1534) but the join then has no room for the prio row: the line between two prio lanes holds both the outer lane's row and the inner lane's bridge copy, and today only the stagger keeps them apart (wip/PROBE-prio-row.md, ascii in wip/ascii-T3-o1t3f1s0-*.txt). Tried and failed: gapped row beside the lane's own deck (A3), lanes spread a line wider at join entry (A4: the lanes come straight from the port at port spacing, so a spread needs a fan before the join), joiner-over with lanes S-bending under (B).
+Decision (yours, by eye): how should a freed multi-lane prio join look?
+ (a) the row also gaps alongside the neighbouring lane's bridge copy (joins either side; G9b decides);
+ (b) the lanes fan out one line wider before the join (row line and copy line separate; wider, still shorter);
+ (c) the inner lane's bridge copy steps toward the joiner instead of toward the far lane;
+ (d) keep the stagger (today) and look elsewhere for T3.
+My lean: (c) if coop accepts it (no new gaps, no extra width), else (b). Then the row becomes real track in the composer (DESIGN-tracks 13.1).
+
 # QUEUE (2026-11-18 evening, Pete away): prio crossings and stagger
 Finding: T3's length is the prio stagger (wip/PROBE-prio-stagger.md): a multi-lane prio join chains its lanes' coverages behind the joiners' doubled bridges. Rulings D347 (coverage may contain a main-line bridge), D347a (corrected), D347b (prio crossing over/under is a searched choice; main line over is the start). Recons: wip/RECON-prio-bridge.md, wip/RECON-prio-bridge-rule.md.
 Queue (one ng1 writer at a time; light read-only work in parallel):
