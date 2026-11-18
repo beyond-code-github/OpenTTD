@@ -131,3 +131,39 @@ Open: the lift mapping when the narrow and wide topologies differ in crossings (
 - Later (engineer, 2026-11-18: "lets put that on the list for later"): main line first as an ordering opinion: higher turn cost for main lines in the shape program; main-line crossing bits first in the variant local search; bits ranked by measured impact. Test against area and main-line straightness once the local search reports.
 - Local search on LL² (2026-11-18, scratch driver ls/ls.py, binary at 0958786f36, default mode): one-bit-flip descent over all 8192 variants (o6 t3 f1 s3), 4 starts (default, default flipped, 2 random): ALL four converge to o17t0f1s0 at 1347.25 (better than the best known 1374.25 o49t0f1s0), after 2-4 moves each; 101 distinct variants solved of 8192 (1.2%), 17 of them unbuildable/failing. Global optimum unproven (no full sweep), but every start agrees. Evidence for searching variants instead of enumerating.
 - Engineer (2026-11-18): "We can absolutely do some offline work later to help steer us right": offline full sweeps for ground truth, measured bit interactions (which bits only help together), tuning starts (LP ranking, narrow-hub winner, defaults) and moves (two-bit, perturbation).
+
+## 15. Slot layer build (2026-11-18; engineer: "Lets crack on with designing the slot layer build"; spike wip/SPIKE-slots.md, review wip/REVIEW-sideways-modelling.md)
+The slot layer owns sideways position. Components keep their fixed coop cross-sections but no longer make sideways steps, and nothing else creates an S-bend. This is §3a, built.
+
+### 15.1 The layer (pure, before the composer)
+- **Input:** the topology, the variant's channels (flipped), the resolved sites, `PlanarPaths::over`, `line_share`.
+- **Intervals:** each channel is cut at its crossings in travel order into `pre`, `x<k>`, `mid<k>` and `post` intervals. Every channel has both `pre` and `post`.
+- **Tracks:** each interval holds an ordered list of tracks, left to right:
+  - the channel's lines;
+  - a **copy** beside each full-share line in an `x<k>` where the channel is over, on the D312 side;
+  - a **row** (D349) beside each lane of a prio join's straight channel in `post`, on the side away from the joiners.
+- **Slots:** an integer slot per track per interval, one slot being one lane spacing (2 half-tiles). The rules:
+  - consecutive tracks satisfy `s(right) - s(left) >= 1`; between lanes in the last interval of a prio fray's channel the gap is `>= 2` (the fray gap);
+  - a copy is exactly 1 from its line;
+  - port pins: `s = o(channel) + rank` in `pre` for an in port and in `post` for an out port;
+  - a straight line across a site is linked by a step.
+- **Objective:** minimise Σ|step| over consecutive intervals of a line and over site links, plus Σ width per interval (weights 1; §15.4 replaces the width weight). With the order fixed, this is a min-cost tension problem; HiGHS solves it in milliseconds.
+- **Output** (`PlanarSlots`): per channel and interval, its tracks with their slots, each channel normalised so that its least slot is 0; per site link, its step. There are no yes/no variables.
+
+### 15.2 How the composer uses it
+- **Offsets:** in each interval, the lanes' sideways offsets are fixed relative to the channel's first lane: `Dot(Right(h), p_j) - Dot(Right(h), p_0) = 2 (s_j - s_0)` at the interval's pieces. These are difference rows. This replaces `JoinEntry` offsets, the `Flex` offsets and its candidate-step jog, the fray fan widths, and the gap steps.
+- **S-bends:** a slot change of a line between two intervals (or across a site link) of Δ ≠ 0 is a fixed S-bend: an axis piece of free length, a 45-degree piece of length exactly 2|Δ| toward the sign, then an axis piece. Its position along travel is free, and the ladders keep it clear.
+- **Components** (fray, join, doubled bridge, prio row) take pin slots from the layer: a doubled bridge's lane and copy sit on the slots of `x<k>`, and a join's lanes on those of the straight channel's `post`. They make no step of their own.
+- **Diagonal intervals:** an S-bend required on a diagonal interval is refused in v1 ("a slot step on a diagonal piece is not composed") and counted. A later step makes it an axis-piece excursion (§3a).
+
+### 15.3 Steps (riskiest first; each test-first, with pv on T2, T3 and LL² and the checker on the bests)
+1. **S1, the layer:** `src/junction/planar/planar_slots.{h,cpp}`, `BuildPlanarSlots`. Tests: on T2 o1t3f1s0 and LL² o17t0f1s0 the gap changes equal the spike's (wip/SPIKE-slots.md run 4); one-track intervals work; the solve takes under 20 ms. No composer change.
+2. **S2, probe (time-boxed, throwaway):** cores and bundles take their offsets and S-bends from slots, with candidate steps off. Measure T2, T3 and LL² areas, failures, checker results, solve time and variant count. This is the risky part: does the length solve keep the areas when slots, not search, place the steps?
+3. **S3, land S2** per component: cores and bundles, then fray fans, then join exits, then the doubled bridge's lane step. Gap steps and candidate steps retire. Each lands with its pv diff.
+4. **S4, D349:** prio rows become real strands on their slots; the stagger is removed (each lane's coverage may run over its own doubled bridge, D347); the reserved `prio_rows` retire. Measure T3.
+5. **S5:** diagonal intervals (axis-piece excursions); n-lane bundles (the two-lane refusal goes, as the layer is n-lane by construction), then LL³ (ROADMAP items 5 and 6).
+6. **S6:** the width weight per interval comes from the rough solve's corridor lengths (re-read loop), so area steps the room does not force are traded against corridor length (review Q2).
+
+### 15.4 Open, decided at S2's measurement
+- Whether unit weights lose area against today's searched steps. If so, S6 moves before S4.
+- Whether the doubled bridge keeps today's parallelogram (the lane ends on the copy's line) or the copy returns to the lane. That is a coop convention question for the engineer if S2 shows that it matters.
