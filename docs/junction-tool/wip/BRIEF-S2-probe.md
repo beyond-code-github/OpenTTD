@@ -60,3 +60,9 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 - Commit on `probe-s2`: `Probe: Junction S2 lane offsets from slots (throwaway)`, ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Write `/home/pete/OpenTTD/docs/junction-tool/wip/PROBE-S2.md` (do not commit it) with the measurements, every place where slots differed from the old constant (channel, interval, old offset, slot offset), and the failure cases.
 - Reply with the per-hub summary, the commit hash and `git status`. When you have reported, stop.
+
+## Run 2 (after S1b, D351): re-measure; no new design
+- Create `probe-s2b` from `wt-planar` at {HEAD2} (it contains S1b, 20f98229e0) and cherry-pick the run 1 probe commit a7e98b6ba1. If the cherry-pick conflicts, resolve it only to keep run 1's change on top of S1b. Any semantic choice is a stop.
+- Make fresh pv baselines on `wt-planar` at {HEAD2} first (T2, T3, LL2), then measure on `probe-s2b` exactly as in run 1. Use `PLANAR_S2LOG` for the slot-versus-constant differences.
+- If T2 or T3 still fail with "base infeasible", run `PLANAR_IIS` on T2 o1t3f1s0. Report the IIS rows and the slot-versus-constant differences of the channels involved, and stop.
+- Commit nothing new beyond the cherry-pick. Add a "Run 2" section at the top of `wip/PROBE-S2.md` (under /home/pete/OpenTTD/docs/junction-tool/).
