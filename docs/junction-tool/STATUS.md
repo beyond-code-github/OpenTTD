@@ -1,6 +1,6 @@
 # STATUS (current state only; rewritten 2026-11-18)
 
-History lives in git. The previous STATUS: `git show d18117a214:docs/junction-tool/STATUS.md`. Planned work: ROADMAP.md. Rulings: DECISIONS.md, where later rows win and dead rows were removed on 2026-11-18. Current design: DESIGN-tracks.md.
+History lives in git. The previous STATUS: `git show d18117a214:docs/junction-tool/STATUS.md`. Planned work: ROADMAP.md. Rulings: DECISIONS.md, where later rows win and dead rows were removed on 2026-11-18. Current design: DESIGN-tracks.md. Docs culled 2026-11-18 (695 legacy or finished files removed; every file and why: wip/CULL-docs-proposal.md; all of them in git at a7f10e9af0). 84 files the cull was unsure of are still here, awaiting review.
 
 ## Where things are
 - **Architecture:** the planar solver in `.claude/ng1`, branch `wt-planar` at c829db7742, pushed to fork. The old pipeline (topology, graph, placement, joint loop) is legacy: its code is in the tree, but it gets no new work.
