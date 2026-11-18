@@ -2571,7 +2571,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 	std::vector<PlanarChannelPath> program_shape;
 	if (shape == nullptr) {
 		const char *e = std::getenv("PLANAR_SHAPE");
-		const std::string mode = e != nullptr ? e : "";
+		const std::string mode = std::getenv("PLANAR_DRY") != nullptr ? "default" : e != nullptr ? e : "";
 		if (mode != "default") {
 			const PlanarPaths dflt = BuildPlanarPaths(topology, channels, variant.over);
 			std::string program_why;
@@ -2611,8 +2611,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 			const uint32_t o = pp.over[x], u = channels.crossings[x].a == o ? channels.crossings[x].b : channels.crossings[x].a;
 			overs += " " + nm(o) + ">" + nm(u);
 		}
-		fmt::print(stderr, "DRY {} |{} | {}\n", out.tag, overs, M.error.empty() ? std::string("built") : M.error);
-		out.why = "dry";
+		out.why = fmt::format("dry: |{} | {}", overs, M.error.empty() ? std::string("built") : M.error);
 		return out;
 	}
 	if (!M.error.empty()) {
@@ -2957,11 +2956,25 @@ bool SolvePlanarMapped(const PlanarTopology &topology, const JunctionSpec &spec,
 		std::erase_if(variants, [&](const MappedVariant &v) { return MappedTag(v) != only; });
 	}
 	std::vector<VariantOutcome> outcomes(variants.size());
+	const bool dry = std::getenv("PLANAR_DRY") != nullptr;
+	const auto deadline = [] { return Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(BUDGET)); };
 	std::vector<std::thread> threads;
-	for (size_t i = 0; i < variants.size(); i++) {
-		threads.emplace_back([&, i] { outcomes[i] = SolveMappedVariant(topology, flipped[variants[i].flips], params, variants[i], nullptr, Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(BUDGET))); });
+	if (dry) { // debug: SEARCH_THREADS at a time
+		std::atomic<size_t> next{0};
+		for (size_t t = 0; t < std::min(SEARCH_THREADS, variants.size()); t++) {
+			threads.emplace_back([&] {
+				for (size_t i = next++; i < variants.size(); i = next++) outcomes[i] = SolveMappedVariant(topology, flipped[variants[i].flips], params, variants[i], nullptr, deadline());
+			});
+		}
+	} else {
+		for (size_t i = 0; i < variants.size(); i++) {
+			threads.emplace_back([&, i] { outcomes[i] = SolveMappedVariant(topology, flipped[variants[i].flips], params, variants[i], nullptr, deadline()); });
+		}
 	}
 	for (std::thread &thread : threads) thread.join();
+	if (dry) {
+		for (size_t i = 0; i < variants.size(); i++) fmt::print(stderr, "DRY {} {}\n", outcomes[i].tag, outcomes[i].why.substr(std::string("dry: ").size()));
+	}
 	layout.variants_solved = variants.size();
 	return PickBest(outcomes, t0, layout, why);
 }
