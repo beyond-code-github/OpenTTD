@@ -126,7 +126,8 @@ PlanarSlots BuildPlanarSlots(const PlanarTopology &topology, const PlanarChannel
 					if (next_copy) {
 						row({{sv(PlanarSlotKind::Line, list[i].line, c, iv + 1), 1}, {sv(PlanarSlotKind::Line, list[i].line, c, iv), -1}}, 0, 0); // One parallelogram over consecutive doubled crossings.
 					} else {
-						row({{sv(PlanarSlotKind::Line, list[i].line, c, iv + 1), 1}, {sv(PlanarSlotKind::Copy, list[i].line, c, iv), -1}}, 0, 0); // The line carries on along its copy's track.
+						const uint32_t up = milp.AddVariable(0, JunctionMilp::INF, 1, true), dn = milp.AddVariable(0, JunctionMilp::INF, 1, true); // Probe S4b: a charged step back from the copy's slot.
+						row({{sv(PlanarSlotKind::Line, list[i].line, c, iv + 1), 1}, {sv(PlanarSlotKind::Copy, list[i].line, c, iv), -1}, {up, -1}, {dn, 1}}, 0, 0);
 					}
 				}
 			}
