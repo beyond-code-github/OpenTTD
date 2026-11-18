@@ -26,6 +26,7 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
+#include <climits>
 #include <cstdlib>
 #include <fstream>
 #include <cmath>
@@ -880,10 +881,10 @@ private:
 		this->M.NewStrand(name);
 		const TagScope ts("port in");
 		const Point u = this->M.strands.at(name).start;
-		if (side == PlanarSide::W) this->M.Add(Eq(u[0], 0));
+		if (side == PlanarSide::W) this->M.Add(Eq(u[0] - this->M.X0, 0));
 		if (side == PlanarSide::E) this->M.Add(Eq(u[0] - this->M.X, 0));
 		if (side == PlanarSide::S) this->M.Add(Eq(u[1] - this->M.Y, 0));
-		if (side == PlanarSide::N) this->M.Add(Eq(u[1], 1));
+		if (side == PlanarSide::N) this->M.Add(Eq(u[1] - this->M.Y0, 1));
 	}
 
 	/** Start a copy strand of a lane at its end. */
@@ -1162,6 +1163,8 @@ void MappedComposer::Build()
 		return;
 	}
 	this->piece_segs.resize(ch.channels.size());
+	M.X0 = M.NewVar() * 2; /* The box low edges: even, so they keep the edge parity classes, and whole tiles, so translation is by tiles. */
+	M.Y0 = M.NewVar() * 2;
 
 	/* Sites: the straight channel and side, the tie sites taking theirs from the variant; then the gap steps they imply. */
 	std::string why;
@@ -1682,10 +1685,22 @@ void MappedComposer::Build()
 		for (uint32_t l : port.lines) {
 			const TagScope ts("port out");
 			const Point u = M.End(t.lines[l].name);
-			if (port.side == PlanarSide::W) M.Add(Eq(u[0], 0));
+			if (port.side == PlanarSide::W) M.Add(Eq(u[0] - M.X0, 0));
 			if (port.side == PlanarSide::E) M.Add(Eq(u[0] - M.X, 0));
 			if (port.side == PlanarSide::S) M.Add(Eq(u[1] - M.Y, 0));
-			if (port.side == PlanarSide::N) M.Add(Eq(u[1], 1));
+			if (port.side == PlanarSide::N) M.Add(Eq(u[1] - M.Y0, 1));
+		}
+	}
+	if (!t.ports.empty() && !t.ports[0].lines.empty()) {
+		/* Hard anchor: pin the first port's first line's port end point. */
+		const TagScope ts("anchor");
+		const PlanarPort &p0 = t.ports[0];
+		const std::string &nm = t.lines[p0.lines[0]].name;
+		const Point u = p0.in ? M.strands.at(nm).start : M.End(nm);
+		constexpr int P0 = 4096; // anchor, far from the lower bound 0 of X0/Y0
+		for (size_t k = 0; k < 2; k++) {
+			M.Add(Ge(u[k], P0));
+			M.Add(Ge(P0 + 1 - u[k], 0));
 		}
 	}
 	/* Port order per side in reading order: lanes of a port adjacent, one tile between ports. */
@@ -1732,9 +1747,9 @@ void MappedComposer::Build()
 		std::vector<Point> pts{st.start};
 		for (const Seg &sg : st.segs) pts.push_back(sg.b);
 		for (const Point &p : pts) {
-			M.Add(Ge(p[0], 0));
+			M.Add(Ge(p[0] - M.X0, 0));
 			M.Add(Ge(M.X - p[0], 0));
-			M.Add(Ge(p[1], 1));
+			M.Add(Ge(p[1] - M.Y0, 1));
 			M.Add(Ge(M.Y - p[1], 0));
 		}
 	}
@@ -1749,9 +1764,9 @@ void MappedComposer::Build()
 		M.Tie(M.strands.at(nm).start, start);
 		M.AddSeg(nm, row.h, 2 * this->P, 2 * this->P, 0);
 		for (const Point &p : {M.strands.at(nm).start, M.End(nm)}) {
-			M.Add(Ge(p[0], 0));
+			M.Add(Ge(p[0] - M.X0, 0));
 			M.Add(Ge(M.X - p[0], 0));
-			M.Add(Ge(p[1], 1));
+			M.Add(Ge(p[1] - M.Y0, 1));
 			M.Add(Ge(M.Y - p[1], 0));
 		}
 	}
@@ -2640,13 +2655,35 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 	const LazyResult &FR = stand != nullptr ? stand_res : res;
 	out.first_round_clashes = FR.first_round_clashes;
 	for (const auto &[key, geo] : FR.geo.geo) out.track += geo.L * (IsAxis(geo.d) ? 0.5 : std::sqrt(2.0) / 2);
-	out.width = static_cast<int>(std::llround(Ev(FR.sol.val, FM.X))) / 2 + 1;
-	out.height = static_cast<int>(std::llround(Ev(FR.sol.val, FM.Y))) / 2 + 1;
 	if (!FM.error.empty()) {
 		out.why = FM.error;
 		return out;
 	}
-	if (!ExportRoutes(FM, FR.geo, topology, out.routes, out.why)) return out;
+	/* The anchor pins the layout far from the origin: shift by whole tiles to the low corner, from the solution alone. */
+	int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
+	for (const std::string &name : FM.order) {
+		const Strand &st = FM.strands.at(name);
+		std::vector<Point> pts{st.start};
+		for (const Seg &sg : st.segs) pts.push_back(sg.b);
+		for (const Point &p : pts) {
+			const int x = static_cast<int>(std::llround(Ev(FR.sol.val, p[0])));
+			const int y = static_cast<int>(std::llround(Ev(FR.sol.val, p[1])));
+			min_x = std::min(min_x, x);
+			min_y = std::min(min_y, y);
+			max_x = std::max(max_x, x);
+			max_y = std::max(max_y, y);
+		}
+	}
+	const auto even_floor = [](int v) { return v - (((v % 2) + 2) % 2); };
+	const int sx = even_floor(min_x), sy = even_floor(min_y - 1);
+	out.width = (max_x - sx) / 2 + 1;
+	out.height = (max_y - sy) / 2 + 1;
+	GeoSet shifted = FR.geo;
+	for (auto &[key, geo] : shifted.geo) {
+		geo.u -= sx;
+		geo.v -= sy;
+	}
+	if (!ExportRoutes(FM, shifted, topology, out.routes, out.why)) return out;
 	if (const char *dir = std::getenv("PLANAR_MAPPED_DUMP"); dir != nullptr) {
 		/* Debug: each strand's crossings in travel order (the other strand and over or under), for diffing against a hand composition. */
 		std::map<std::string, std::vector<std::pair<double, std::string>>> along;

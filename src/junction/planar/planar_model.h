@@ -253,6 +253,8 @@ public:
 	std::map<uint32_t, double> obj_extra; ///< The area gradient.
 	Var X{0}; ///< Box width, half-tiles.
 	Var Y{0}; ///< Box height, half-tiles.
+	Ex X0; ///< Box low edge in x (the mapped composer; the constant 0 otherwise).
+	Ex Y0; ///< Box low edge in y; the first row is Y0 + 1 (zero otherwise).
 	const std::vector<std::vector<std::string>> *routes = nullptr; ///< Route strand lists.
 	const std::vector<std::vector<std::string>> *outline_routes = nullptr; ///< The routes of the outline.
 	std::string error; ///< The first failure of a construction check.

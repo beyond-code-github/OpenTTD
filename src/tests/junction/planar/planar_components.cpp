@@ -174,3 +174,26 @@ TEST_CASE("planar components: T2 takes the shape program's shape where it is sma
 	REQUIRE(SolvePlanarMapped(topology, MakeTestJunctionSpec(), layout, &why));
 	CHECK(layout.area <= 862.25 + 0.01);
 }
+
+TEST_CASE("planar components: T2 mapped lands in its box at the anchor", "[junction][planarcomponents]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	PlanarComponentLayout layout;
+	std::string why;
+	const bool ok = SolvePlanarMapped(topology, MakeTestJunctionSpec(), layout, &why);
+	INFO(why);
+	REQUIRE(ok);
+	CHECK(layout.area == 862.25);
+	CHECK(layout.width == 94);
+	CHECK(layout.height == 29);
+	for (const PlanarRouteProgram &program : layout.routes) {
+		for (const auto &piece : program.pieces) {
+			CHECK(piece.tile.x >= 0);
+			CHECK(piece.tile.y >= 0);
+			CHECK(piece.tile.x < layout.width);
+			CHECK(piece.tile.y < layout.height);
+		}
+	}
+}
