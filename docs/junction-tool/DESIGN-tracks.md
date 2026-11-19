@@ -280,7 +280,8 @@ The layers and their promises are stated in src/junction/planar/CLAUDE.md "Archi
 - Heights after Lengths on the fixed footprint (always feasible with terraform, D218; hard facts fail by tile before any solve). The hover runs Heights only on the flat seed's footprint and picks kind only within Structure's allowed set (D366); it retires the lazy terrain loop (DESIGN-planar §3). Built after 17.6 step 4.
 - Signals: a walk over the built tracks placing drag signals and joins on known row/lane pairs (TM5). The checker is an oracle (D193, D363); D345's checker-judged prio search retires.
 
-### 17.6 Order (riskiest first; each step a brief naming its subsection)
+### 17.6 Order (outside-in by layer, D368; riskiest first only within a layer; each step a brief naming its subsection)
+0. **Hand-off specs, in stack order (D368):** Structure (17.1), then Shape (17.2), then Slots (17.3), each with its output model, promise and tests at its own output (D367), settled with the engineer before the next starts. The steps below wait for the specs they read. FX1 stage 1 (wip/PROBE-FX1.md) stands as evidence; stage 2 waits for Slots' spec.
 1. **Frame experiment** (17.3; review §7): throwaway branch from probe-g3e; G2 cut to channel-path headings plus 45° node legs; D359 and the masks off; slot steps by `PLANAR_SLOTBEND`; count variants whose first solve (no clash rows) is infeasible on T2, T3, LL². Then add node-group frames, then port-side frames. Pass: every variant Structure and Slots accept is base feasible; each remaining IIS names a relation across frames. Prediction to falsify: node groups fix LL², port-side frames fix T2's W side, f0 needs 17.2's capacity rows.
 2. Shape capacity rows and deck groups; G2 cut to node geometry (17.2).
 3. Lengths with no lazy rows: first-round clashes 0 on every base-feasible variant, the lazy loop an assertion (17.4).
