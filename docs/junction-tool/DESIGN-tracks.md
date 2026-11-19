@@ -215,6 +215,7 @@ The question: can a length solve with no recipes and no bundle structure find co
 - Measure per variant on T2, T3 and LL²: built/failed with reason, area, track, wasted, ms; end to end on the T2 and T3 bests (violations by rule).
 - **Pass:** T2's best area at most 862.25 (the main line at 2b49a2b6c0) and every built variant under 15 s; T3 against 1907.25, LL² against 2162.25. Then the track map's sides and faces replace the line sides (per stretch).
 - **Kill:** most variants infeasible with an IIS that names a 16.1 rule (that rule is wrong, or something is missing from the map), or solves over 15 s.
+- **Result (2026-11-19, probe-st 703a0c97cf, STATUS):** neither pass nor kill. Strip with coverage kept: T2 914 (vs 862), T3 1875 (11 variants over 15 s), LL² 2138 (vs 2162, track -12%). Rows needed sides (they map to no line); coverage summed over the lane's pieces with the row following it: T3 1863, T2 867, LL² 2162, but the signal pass places only straight prios when given spans (TM5 first). Length freedom alone is not the compaction lever.
 
 ### 16.5 TM5 signals and checker
 The export carries track ids and kinds per piece (a row names its lane piece beside it). The signal pass places touch points and signals on known row/lane pairs by search (D345); its tile re-derivation of rows goes. The checker stays an independent judge on tiles (D193). Built after TM4 passes its gate.
