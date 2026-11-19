@@ -211,10 +211,10 @@ The shape program (§12, `SolvePlanarShape`) runs over the map's stretches inste
 
 ### 16.4 Riskiest first: GL probe (time-boxed, throwaway, from feature/junction-tool)
 The question: can a length solve with no recipes and no bundle structure find compact layouts within 15 s per variant?
-- Build T2 (all variants, form A) from the track map with today's headings (16.2), the 16.1 rules only, the lazy loop sided by the map, ladders off at first.
-- Measure per variant: built/failed with reason, area, track, wasted, ms, and the count of single-axis stretches where a step was needed.
-- **Pass:** T2's best area at most 862.25 (S3 on the main line) and every built variant under 15 s. Then the same run on T3 and LL², then ladders from the map's faces.
-- **Kill:** most variants infeasible with an IIS that names a 16.1 rule (that rule is wrong, or something is missing from the map), or solves over 15 s with ladders off and then on.
+- Method (cheapest test of the same question): today's mapped composer with its headings kept (they are TM3's to replace) and every row family and segment bound the rules audit (wip/AUDIT-rules.md) traces to no ruling stripped: the row families `fork gap`, `fray gap`, `flex`, `bundle offset`, `run offset`, `fan rule`, `side rule`; each segment's least length cut to the piece minimum (axis 2, diagonal 1 half-tile) and its greatest removed, except the D351 parallelogram diagonals. What stays is what 16.1 lists (pieces, curves, nodes, decks and crossings, ports, prio rows, bay length, deck rules, box, ladders, the lazy loop with line sides). Brief: wip/BRIEF-ST-probe.md.
+- Measure per variant on T2, T3 and LL²: built/failed with reason, area, track, wasted, ms; end to end on the T2 and T3 bests (violations by rule).
+- **Pass:** T2's best area at most 862.25 (the main line at 2b49a2b6c0) and every built variant under 15 s; T3 against 1907.25, LL² against 2162.25. Then the track map's sides and faces replace the line sides (per stretch).
+- **Kill:** most variants infeasible with an IIS that names a 16.1 rule (that rule is wrong, or something is missing from the map), or solves over 15 s.
 
 ### 16.5 TM5 signals and checker
 The export carries track ids and kinds per piece (a row names its lane piece beside it). The signal pass places touch points and signals on known row/lane pairs by search (D345); its tile re-derivation of rows goes. The checker stays an independent judge on tiles (D193). Built after TM4 passes its gate.
