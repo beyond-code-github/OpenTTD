@@ -380,3 +380,210 @@ PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannel
 	}
 	return out;
 }
+
+/**
+ * The headings of every line of a variant, sites included (DESIGN-tracks §16.7).
+ * A line's base list is its channel's path with its channel crossings on that path's crossing pieces. A leg leaving a split
+ * node (the other leg of a node with a straight leg; both legs of a fork, the left with side -1, the right +1) starts with one
+ * piece, the turn of the in line's last heading by its side, dropping its own first piece when its second is that turn; a leg
+ * entering a merge node mirrors this at its end with the turn of the out line's first heading by minus its side, the straight
+ * leg keeping its base list. A crossing inside a site's group (both lines starting, or both ending, at the group) has the
+ * straight leg's line over, and sits on the first piece of each line that suits counting from the start at a split group,
+ * on the last counting back from the end at a merge group: the over line's piece on an axis, the under line's not parallel to it.
+ * Each line's event pieces must not decrease. A copy or row track runs beside the parent's pieces of the first and last event
+ * it mirrors (a row from its first event, or the parent's last piece with none, to the parent's last piece).
+ * @param topology The topology.
+ * @param channels Its channel graph, flipped as the variant is.
+ * @param paths The variant's channel paths.
+ * @param sites The resolved sites.
+ * @param events Each line's crossing events in travel order (PlanarLineSides::Events).
+ * @param map The variant's track map.
+ * @return The lists and the parent ranges, or the first rule that failed in why.
+ */
+PlanarLineHeadings BuildPlanarLineHeadings(const PlanarTopology &topology, const PlanarChannels &channels, const PlanarPaths &paths, const std::vector<PlanarResolvedSite> &sites, const std::vector<std::vector<uint32_t>> &events, const PlanarTrackMap &map)
+{
+	const PlanarTopology &t = topology;
+	PlanarLineHeadings out;
+	out.lines.resize(t.lines.size());
+	out.beside.assign(map.tracks.size(), {UINT32_MAX, 0, 0});
+	const auto fail = [&](const std::string &why) {
+		if (out.why.empty()) out.why = why;
+	};
+
+	/* The channel crossing and the group each topology crossing belongs to. */
+	std::map<uint32_t, std::pair<uint32_t, uint32_t>> channel_crossing; // crossing -> (channel crossing, line crossing index unused)
+	for (uint32_t x = 0; x < channels.crossings.size(); x++) {
+		for (const uint32_t c : channels.crossings[x].line_crossings) channel_crossing[c] = {x, 0};
+	}
+	std::map<uint32_t, uint32_t> group_of;
+	for (uint32_t g = 0; g < channels.group_crossings.size(); g++) {
+		for (const uint32_t c : channels.group_crossings[g]) group_of[c] = g;
+	}
+
+	/* Rule 0: a node's straight leg and the side of the other leg. A site composed per node keeps the node's own legs; any other site has its resolved straight channel and side. */
+	struct NodeLegs {
+		uint32_t straight;
+		int side;
+	};
+	const auto legs_of = [&](uint32_t n) -> NodeLegs {
+		const PlanarNode &node = t.nodes[n];
+		for (uint32_t s = 0; s < channels.sites.size(); s++) {
+			const PlanarSite &site = channels.sites[s];
+			if (std::ranges::find(site.nodes, n) == site.nodes.end()) continue;
+			const bool per_node = site.kind == PlanarSiteKind::LaneSplit || site.kind == PlanarSiteKind::LaneMerge || site.others.size() != 2;
+			if (per_node) break;
+			uint32_t straight = UINT32_MAX;
+			for (const uint32_t l : node.IsSplit() ? node.out : node.in) {
+				if (channels.channel_of_line[l] == sites[s].straight) straight = l;
+			}
+			if (straight == UINT32_MAX) fail(fmt::format("node {} has no leg in its site's straight channel", n));
+			return {straight, sites[s].side};
+		}
+		return {channels.node_legs[n].straight, channels.node_legs[n].side};
+	};
+
+	/* Rules 1 to 3: each line's list, with the pieces its channel crossings sit on. */
+	constexpr uint32_t UNPLACED = UINT32_MAX;
+	for (uint32_t l = 0; l < t.lines.size(); l++) {
+		const PlanarLine &line = t.lines[l];
+		const uint32_t ch = channels.channel_of_line[l];
+		std::vector<PlanarHeading> list = paths.paths[ch].headings;
+		const uint32_t base_last = static_cast<uint32_t>(list.size()) - 1;
+
+		/* The base piece each channel crossing of the line sits on. */
+		std::vector<uint32_t> base_piece;
+		for (const uint32_t c : events[l]) {
+			const auto it = channel_crossing.find(c);
+			if (it == channel_crossing.end()) {
+				base_piece.push_back(UNPLACED);
+				continue;
+			}
+			const std::vector<uint32_t> &list_x = channels.channels[ch].crossings;
+			const auto k = std::ranges::find(list_x, it->second.first);
+			if (k == list_x.end()) {
+				fail(fmt::format("crossing of {} is not on its channel", line.name));
+				base_piece.push_back(UNPLACED);
+				continue;
+			}
+			base_piece.push_back(paths.paths[ch].crossing_piece[k - list_x.begin()]);
+		}
+		const auto has_event_on = [&](uint32_t piece) { return std::ranges::find(base_piece, piece) != base_piece.end(); };
+
+		int shift = 0; // list piece = base piece + shift
+		if (!line.from.port && t.nodes[line.from.index].IsSplit()) {
+			const PlanarNode &node = t.nodes[line.from.index];
+			const NodeLegs legs = legs_of(line.from.index);
+			if (legs.straight != l) {
+				const int side = legs.straight != UINT32_MAX ? legs.side : (node.out[0] == l ? -1 : +1);
+				const PlanarHeading h0 = paths.paths[channels.channel_of_line[node.in[0]]].headings.back();
+				const PlanarHeading turn = Turned(h0, side);
+				if (list.size() >= 2 && list[1] == turn && !has_event_on(0)) {
+					list.erase(list.begin());
+					shift = -1;
+				} else {
+					list.insert(list.begin(), turn);
+					shift = 1;
+				}
+			}
+		}
+		if (!line.to.port && t.nodes[line.to.index].in.size() == 2) {
+			const PlanarNode &node = t.nodes[line.to.index];
+			const NodeLegs legs = legs_of(line.to.index);
+			if (legs.straight != l) {
+				const int side = legs.straight != UINT32_MAX ? legs.side : (node.in[0] == l ? -1 : +1);
+				const PlanarHeading h1 = paths.paths[channels.channel_of_line[node.out[0]]].headings.front();
+				const PlanarHeading turn = Turned(h1, -side);
+				if (list.size() >= 2 && list[list.size() - 2] == turn && !has_event_on(base_last)) {
+					list.pop_back();
+				} else {
+					list.push_back(turn);
+				}
+			}
+		}
+		out.lines[l].headings = list;
+		for (const uint32_t bp : base_piece) {
+			if (bp == UNPLACED) {
+				out.lines[l].crossing_piece.push_back(UNPLACED);
+				continue;
+			}
+			out.lines[l].crossing_piece.push_back(static_cast<uint32_t>(static_cast<int>(bp) + shift));
+		}
+	}
+
+	/* Rule 4: the crossings inside a site's group. */
+	for (const auto &[c, g] : group_of) {
+		const uint32_t a = t.crossings[c].a, b = t.crossings[c].b;
+		const PlanarLine &la = t.lines[a], &lb = t.lines[b];
+		const bool split = !la.from.port && !lb.from.port && t.nodes[la.from.index].group == g && t.nodes[lb.from.index].group == g;
+		const uint32_t na = (split ? la.from : la.to).index, nb = (split ? lb.from : lb.to).index;
+		const auto text = [&](const char *what) { return fmt::format("{}: {} x {}", what, la.name, lb.name); };
+		uint32_t site = UINT32_MAX;
+		for (uint32_t s = 0; s < channels.sites.size() && site == UINT32_MAX; s++) {
+			if (std::ranges::find(channels.sites[s].nodes, na) != channels.sites[s].nodes.end()) site = s;
+		}
+		uint32_t over = UINT32_MAX;
+		if (site != UINT32_MAX && sites[site].straight != UINT32_MAX) {
+			if (channels.channel_of_line[a] == sites[site].straight) over = a;
+			else if (channels.channel_of_line[b] == sites[site].straight) over = b;
+		} else if (site != UINT32_MAX) {
+			if (legs_of(na).straight == a) over = a;
+			else if (legs_of(nb).straight == b) over = b;
+		}
+		if (over == UINT32_MAX) {
+			fail("a site crossing with no straight leg: " + la.name + " x " + lb.name);
+			continue;
+		}
+		const uint32_t under = over == a ? b : a;
+		const std::vector<PlanarHeading> &ho = out.lines[over].headings, &hu = out.lines[under].headings;
+		const auto first = [&](const std::vector<PlanarHeading> &list, const auto &suits) -> uint32_t {
+			for (uint32_t i = 0; i < list.size(); i++) {
+				const uint32_t p = split ? i : static_cast<uint32_t>(list.size()) - 1 - i;
+				if (suits(list[p])) return p;
+			}
+			return UNPLACED;
+		};
+		const uint32_t po = first(ho, [](PlanarHeading h) { return static_cast<int>(h) % 2 == 0; });
+		const uint32_t pu = po == UNPLACED ? UNPLACED : first(hu, [&](PlanarHeading h) { return static_cast<int>(h) % 4 != static_cast<int>(ho[po]) % 4; });
+		if (po == UNPLACED || pu == UNPLACED) {
+			fail(text("no piece suits site crossing"));
+			continue;
+		}
+		for (const auto &[line, piece] : {std::pair{over, po}, std::pair{under, pu}}) {
+			const auto k = std::ranges::find(events[line], c);
+			if (k != events[line].end()) out.lines[line].crossing_piece[k - events[line].begin()] = piece;
+		}
+	}
+
+	/* Rule 5: the event pieces do not decrease. */
+	for (uint32_t l = 0; l < t.lines.size(); l++) {
+		const std::vector<uint32_t> &pieces = out.lines[l].crossing_piece;
+		for (size_t k = 1; k < pieces.size(); k++) {
+			if (pieces[k] < pieces[k - 1]) {
+				fail("events out of order on " + t.lines[l].name);
+				break;
+			}
+		}
+	}
+
+	/* Rule 6: where each copy and row runs beside its parent. */
+	for (uint32_t i = 0; i < map.tracks.size(); i++) {
+		if (map.tracks[i].kind == PlanarTrack::Kind::Line) continue;
+		const uint32_t parent = map.tracks[i].line;
+		const uint32_t last_piece = static_cast<uint32_t>(out.lines[parent].headings.size()) - 1;
+		const auto piece_of = [&](uint32_t crossing) {
+			const PlanarCrossing &x = map.crossings[crossing];
+			const uint32_t partner = map.tracks[x.a == i ? x.b : x.a].line;
+			for (size_t k = 0; k < events[parent].size(); k++) {
+				const PlanarCrossing &px = t.crossings[events[parent][k]];
+				if ((px.a == parent ? px.b : px.a) == partner) return out.lines[parent].crossing_piece[k];
+			}
+			fail(fmt::format("{} mirrors no event of {}", map.tracks[i].name, t.lines[parent].name));
+			return last_piece;
+		};
+		const std::vector<uint32_t> &own = map.events[i];
+		const uint32_t first = own.empty() ? last_piece : piece_of(own.front());
+		const uint32_t last = map.tracks[i].kind == PlanarTrack::Kind::Row || own.empty() ? last_piece : piece_of(own.back());
+		out.beside[i] = {parent, first, last};
+	}
+	return out;
+}

@@ -11,6 +11,8 @@
 #define PLANAR_PATHS_H
 
 #include "planar_channels.h"
+#include "planar_gaps.h"
+#include "planar_regions.h"
 
 #include <array>
 
@@ -32,5 +34,14 @@ std::vector<std::array<uint32_t, 3>> PlanarTriangles(const PlanarChannels &chann
 PlanarChannels FlipPlanarTriangles(const PlanarChannels &channels, uint64_t flips);
 std::string CheckPlanarShape(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<uint32_t> &over, const std::vector<PlanarChannelPath> &paths);
 PlanarPaths BuildPlanarPaths(const PlanarTopology &topology, const PlanarChannels &channels, uint64_t choice, const std::vector<PlanarChannelPath> *shape = nullptr);
+
+/** The headings of every line of a variant, sites included (DESIGN-tracks §16.7), and the parent range of each copy and row track. */
+struct PlanarLineHeadings {
+	std::vector<PlanarChannelPath> lines; ///< Per topology line: its headings and, per entry of its events (PlanarLineSides::Events order), the piece the crossing sits on (crossing_piece).
+	std::vector<std::array<uint32_t, 3>> beside; ///< Per track of the map: {parent line, first piece, last piece} for a copy or row; {UINT32_MAX, 0, 0} otherwise.
+	std::string why; ///< Empty, or the first rule that failed.
+};
+
+PlanarLineHeadings BuildPlanarLineHeadings(const PlanarTopology &topology, const PlanarChannels &channels, const PlanarPaths &paths, const std::vector<PlanarResolvedSite> &sites, const std::vector<std::vector<uint32_t>> &events, const PlanarTrackMap &map);
 
 #endif /* PLANAR_PATHS_H */
