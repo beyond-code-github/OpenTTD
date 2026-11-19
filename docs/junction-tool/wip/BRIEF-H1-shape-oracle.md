@@ -27,31 +27,31 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 ## The oracle: one message per breach, each starting with its id ("H3: ...")
 - **H1:** for every track, `pieces` is non-empty, consecutive pieces differ by exactly 1 in absolute value, `event_piece` has one entry per `events[t]` entry and is non-decreasing and within range; within every stretch the pieces are monotone (never both a +1 and a -1 step).
 - **H2:** a track whose start is a port end: pieces.front() ≡ the port's heading (mod 8); whose end is a port end: pieces.back() ≡ the port's heading (mod 8).
-- **H3:** for every site s of `v.structure.sites`: with h the in track's last piece at a split (the out track's first piece at a merge, mirrored): the straight leg's first piece ≡ h (merge: its last piece ≡ h); the other leg's first piece ≡ h + d with d in {0, s.side} (merge: last piece ≡ h - d). At a fork (straight UINT32_MAX) each leg ≡ h + d with d in {0, its own side}, its own side being `map.Side(leg, 0, other_leg, 0)` (+1 right of the other leg). All mod 8.
+- **H3:** for every site s of `v.structure.sites`, with the node's in and out tracks from `map.expanded`: at a split, h = the in track's last piece; every out leg L: its first piece ≡ h + d·σ(L) (mod 8) with d in {0, 1}, and d = 0 for the straight leg. At a merge, h = the out track's first piece; every in leg L: its last piece ≡ h - d·σ(L), d = 0 for the straight leg. σ(L) = `map.Side(L, its stretch at the node, S, S's stretch at the node)` with S the straight leg (stretch 0 at a split, the last stretch at a merge), or `s.side` when that is 0. At a fork (straight UINT32_MAX, two legs) σ(L) = `map.Side(L, ., other leg, .)` at the node.
 - **H4:** for every crossing c with separator p and crosser q (each the other's, for a separator x separator crossing): k = index of c in events[q], j = index of c in events[p]; s = -map.Side(q, k, p, j), or -map.Side(q, k, p, j+1) when that is 0 (s = +1: q arrives from p's left); a = ((H_q - H_p) * s) mod 8 into 0..7; breach unless a in 1..3 and `v.angles[c] == a`; for a separator x separator crossing also a == 2. (If both Sides are 0, that is a breach naming "no side".)
 - **H5:** every structure: all its crossings sit on the same piece of its separator (same pieces index), and that piece's heading is even (an axis). `end_run` is {1, -1} for kinds bridge, {-1, 2} for tunnel, {1, 2} for either.
-- **H6:** every structure: walk its crossers in order with each crossing's angle; split into runs of consecutive equal angle; a run of k crossers takes k tiles at angle 2, k + 1 tiles at angle 1 or 3; the sum is the least middles; breach unless `middles[kind]` equals it for each allowed kind (and is -1 for a kind not allowed), and it fits: bridge `<= spec.max_bridge_middle`, tunnel `<= spec.max_tunnel_length`, and with a copy `middles + 2 <= 2 * spec.sd + spec.tl` (the same limits as P5).
+- **H6:** every structure: walk its crossers in order with each crossing's angle a as H4 computes it from the headings (not `v.angles`, so a wrong stored angle is H4's alone); split into runs of consecutive equal angle; a run of k crossers takes k tiles at angle 2, k + 1 tiles at angle 1 or 3; the sum is the least middles; breach unless `middles[kind]` equals it for each allowed kind (and is -1 for a kind not allowed), and it fits: bridge `<= spec.max_bridge_middle`, tunnel `<= spec.max_tunnel_length`, and with a copy `middles + 2 <= 2 * spec.sd + spec.tl` (the same limits as P5).
 - **H7 (faces):** for every face of `map.faces` (every face but the outer; the walk keeps the face on its left): walk its runs in order; a forward run walks its stretches along travel (walked headings = pieces), a backward run against it (walked headings = pieces + 4, stretches in reverse, pieces within each stretch reversed). Total = sum of the walked turns inside stretches + norm(next walked start heading - previous walked end heading) at every vertex between consecutive stretches (cyclically). Where the walk leaves the box at a port end on side A and re-enters at a port end on side B, insert the box: walked box heading for side N, E, S, W is 6, 0, 2, 4; add norm(box(A) - arriving heading), then -2 for each box corner passed, (index(A) - index(B)) mod 4 corners with N, E, S, W = 0, 1, 2, 3, then norm(leaving heading - box(B)). Breach unless the total is -8.
 - **H7 (no U-turn):** walk every route path of `map.expanded` (as P7 walks route paths); cumulative turn = sum of consecutive piece differences within tracks plus norm(next track's first piece - previous track's last piece) at each node; breach when it leaves [-3, 3].
 - **H8:** for each Copy or Row track b: its parent is the straight leg of b's split node's site; b's pieces equal the parent's pieces and b's event_piece equals the parent's event_piece (entry by entry); for the k-th crossings of b and of the parent, the crosser is the same track x, and x's event_piece at both crossings is equal.
 - **H9:** each message of `CheckPlanarStructurePromise(topology, spec, v.structure)`, prefixed "H9: ".
 
 ## Tests, in this order (red before green: write all tests against a stub returning {"not implemented"}, record the failures, then implement)
-Hand cases, each built by `ParsePlanarTopology` then `BuildPlanarStructure(topology, MakeTestJunctionSpec(), 1)`, taking variant 0 as `v.structure`:
-- **cross:** `"topology cross\nport W in E: A1\nport E out E: A1\nport N in S: B1\nport S out S: B1\n"`. Valid shape: every track carrying route A1 (line, parts, copy) has pieces {2}; every track carrying B1 has pieces {4}; every event_piece 0; angles all 2; per structure axis = the separator's heading, middles and end_run as H5/H6 give for bridge.
-- **fray:** `"topology fray\nport W in E: AB1\nport E out E: A1\nport S out S: B1\nnode AB1 -> A1, B1\n"`. Valid shape: AB1 {2}, A1 {2}, B1 {3, 4} (adjust which leg is {2} to the site's straight leg if the variant makes B1 straight, and say so).
+Hand cases, each `BuildPlanarStructure(topology, MakeTestJunctionSpec(), 1)` variant 0 as `v.structure`; assert its tag before using it.
+- **t1:** `PlanarTText(1)`, tag `o3t0f0m0` (dump: /tmp/claude-1000/-home-pete-OpenTTD/315c4ccd-306d-453c-be89-5dda9a8e71c5/scratchpad/h1/t1-dump.txt). Valid shape, by track index (pieces; event_piece): 0 {2}; 1 {6}; 2 {2}; 3 {6}; 4 {0}; 5 {4}; 6 {5, 4}; 7 {6}, [0, 0]; 8 {0, -1}; 9 {0, 1}, [0, 0]; 10 {2}; 11 {3, 4}, [0, 1]; 12 {6}; 13 {2}; 14 {6}; 15 {2}. Angles: crossing 0 → 2, 1 → 2, 2 → 3. Structures (in `v.structure.structures` order): separator 9: axis 0, middles {3, -1}, end_run {1, -1}; separator 11: axis 4, middles {1, -1}, end_run {1, -1}. (Orchestrator's hand check: every face winds -8; every route stays within ±2.)
+- **fray:** `"topology fray\nport W in E: AB1\nport E out E: A1\nport S out S: B1\nnode AB1 -> A1, B1\n"`, tag `o0t0f0m0`. Valid shape: AB1 {2}, A1 {2}, B1 {3, 4}.
 Tests:
 1. Both valid cases: the oracle returns empty.
 2. One mutation per promise, each asserting every message carries that one id (as `RequireOnly`):
    - H1 (fray): B1 pieces {3, 4, 3, 4}.
    - H2 (fray): A1 pieces {2, 1}.
-   - H3 (fray): B1 pieces {1, 2, 3, 4}.
-   - H4 (cross): the crossing's angle 1.
-   - H5 (cross): the separator track's pieces {h, h+1, h} with the crossing on piece 1 (and its mirrored crossings on the copy too, copy pieces likewise), angles and middles set to what H4 and H6 then give, so only H5 breaks.
-   - H6 (cross): middles[0] = 5.
+   - H3 (fray): B1 pieces {4}.
+   - H4 (t1): angle of crossing 1 set to 1.
+   - H5 (t1): track 9 event_piece [0, 1] (crossing 2 on its diagonal piece), with angle of crossing 2 set to 2 and separator 9's middles {2, -1}, so only H5 breaks.
+   - H6 (t1): separator 9's middles {5, -1}.
    - H7 (fray): A1 pieces {2, 3, 4, 5, 6, 7, 8, 9, 10} (winding and U-turn both break; all messages H7).
-   - H8 (cross): the copy's pieces {h, h+1} where its parent has {h} (copy event_piece unchanged). If the cross variant has no copy, report it and skip this one test.
-   - H9 (cross): `v.structure.structures[0].kinds = 0`.
+   - H8 (t1): row 15 pieces {2, 3}.
+   - H9 (t1): push one entry into `v.structure.map.conflicts` (P2).
 Check with `jt` timings: the tag stays inside the `[planar]` fast budget.
 
 ## Do not
@@ -60,7 +60,7 @@ Check with `jt` timings: the tag stays inside the `[planar]` fast budget.
 - Do not make any check lenient so a valid case passes: if a valid case breaches, that is a stop.
 
 ## Stop conditions
-- A topology text does not parse or `BuildPlanarStructure` returns no variant (give `why`).
+- A case does not build or its variant 0 has another tag (give `why` or the tag).
 - A valid case breaches a promise (give the message): the derivation above or the spec is wrong, which is the orchestrator's to fix.
 - A mutation breaks more than one promise.
 - A check cannot be written from the fields named (say which).
@@ -76,9 +76,8 @@ Check with `jt` timings: the tag stays inside the `[planar]` fast budget.
 - Commit hash and subject
 - Red evidence per test (the failure line before the code)
 - Types and functions added (names only)
-- The two hand variants as built: tracks (name, kind), structures (separator, crossers, copy), sites
 - Gate results and times
-- Stops, and what was left unchecked (rows in H8 at least)
+- Stops, and what was left unchecked (copies in H8 at least: no T1 variant within keep 16 has one)
 - State: `git status --porcelain`, `git log -1 --oneline`
 
 When you have reported, stop.
