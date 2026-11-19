@@ -11,9 +11,13 @@
 #include "planar_shape_layer.h"
 
 #include "../../core/format.hpp"
+#include "../placement/junction_milp.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "../../safeguards.h"
@@ -40,6 +44,79 @@ size_t EventIndex(const std::vector<uint32_t> &events, uint32_t crossing)
 {
 	const auto it = std::ranges::find(events, crossing);
 	return it == events.end() ? SIZE_MAX : static_cast<size_t>(it - events.begin());
+}
+
+/** The heading each box side is walked along when a face follows the box edge, per side (as the side index counts). */
+constexpr int BOX_HEADING[4] = {6, 0, 2, 4};
+
+/** One stretch of a face walk, with the ends it is walked from and to. */
+struct WalkedStretch {
+	uint32_t track; ///< The track.
+	uint32_t stretch; ///< The stretch of the track.
+	bool forward; ///< Walked along the track's travel, else against it.
+	bool start_port, end_port; ///< Whether the walked start (end) is a port end.
+	uint32_t start_side, end_side; ///< The box side of that port end.
+};
+
+/** One term of a face's winding sum, between the stretches of a walk. */
+struct FaceTerm {
+	enum class Kind : uint8_t { Stretch, Vertex, Box };
+	Kind kind;
+	size_t from; ///< The stretch (Stretch), or the stretch walked before the term (Vertex, Box).
+	size_t to; ///< The stretch walked after the term (Vertex, Box).
+	uint32_t side_a, side_b; ///< Box: the box sides the face leaves and re-enters by.
+	bool lopsided; ///< Vertex: exactly one of the two stretch ends is a port end.
+};
+
+/** A face as its stretches in walk order and the terms of its winding sum. */
+struct FaceWalk {
+	std::vector<WalkedStretch> stretches; ///< In walk order.
+	std::vector<FaceTerm> terms; ///< Per stretch: the stretch term, then the vertex or box term to the next stretch.
+	bool usable = true; ///< False when a stretch names a track or stretch the map lacks.
+};
+
+/**
+ * List a face's winding terms (H7).
+ * @param map The track map.
+ * @param face The face.
+ * @return The walk.
+ */
+FaceWalk WalkFace(const PlanarTrackMap &map, const PlanarFace &face)
+{
+	FaceWalk walk;
+	for (const PlanarWallRun &run : face.runs) {
+		for (const auto &[t, k] : run.stretches) {
+			if (t >= map.tracks.size() || k > map.events[t].size()) {
+				walk.usable = false;
+				continue;
+			}
+			const PlanarLine &line = map.expanded.lines[t];
+			const bool at_start = k == 0, at_end = k == map.events[t].size();
+			WalkedStretch w;
+			if (run.forward) {
+				w = {t, k, true, at_start && line.from.port, at_end && line.to.port, 0, 0};
+				if (w.start_port) w.start_side = static_cast<uint32_t>(map.expanded.ports[line.from.index].side);
+				if (w.end_port) w.end_side = static_cast<uint32_t>(map.expanded.ports[line.to.index].side);
+			} else {
+				w = {t, k, false, at_end && line.to.port, at_start && line.from.port, 0, 0};
+				if (w.start_port) w.start_side = static_cast<uint32_t>(map.expanded.ports[line.to.index].side);
+				if (w.end_port) w.end_side = static_cast<uint32_t>(map.expanded.ports[line.from.index].side);
+			}
+			walk.stretches.push_back(w);
+		}
+	}
+	for (size_t i = 0; i < walk.stretches.size(); i++) {
+		const WalkedStretch &w = walk.stretches[i];
+		const size_t next = (i + 1) % walk.stretches.size();
+		const WalkedStretch &n = walk.stretches[next];
+		walk.terms.push_back({FaceTerm::Kind::Stretch, i, i, 0, 0, false});
+		if (w.end_port && n.start_port) {
+			walk.terms.push_back({FaceTerm::Kind::Box, i, next, w.end_side, n.start_side, false});
+		} else {
+			walk.terms.push_back({FaceTerm::Kind::Vertex, i, next, 0, 0, w.end_port || n.start_port});
+		}
+	}
+	return walk;
 }
 
 /** The oracle's view of one variant: the map, the shape and the stretch arithmetic. */
@@ -73,6 +150,23 @@ struct Oracle {
 	}
 
 	/**
+	 * The arrival side of crosser q at the crossing c of separator p (H4).
+	 * @param c The crossing.
+	 * @param p The separator track.
+	 * @param q The crosser track.
+	 * @param s Receives the side, +1 or -1.
+	 * @return False when the map's sides give no arrival side.
+	 */
+	bool Arrival(uint32_t c, uint32_t p, uint32_t q, int &s) const
+	{
+		const size_t k = EventIndex(this->map.events[q], c), j = EventIndex(this->map.events[p], c);
+		if (k == SIZE_MAX || j == SIZE_MAX) return false;
+		s = -this->map.Side(q, static_cast<uint32_t>(k), p, static_cast<uint32_t>(j));
+		if (s == 0) s = -this->map.Side(q, static_cast<uint32_t>(k), p, static_cast<uint32_t>(j + 1));
+		return s != 0;
+	}
+
+	/**
 	 * The arrival angle of crosser q at the crossing c of separator p (H4).
 	 * @param c The crossing.
 	 * @param p The separator track.
@@ -82,13 +176,65 @@ struct Oracle {
 	 */
 	bool Angle(uint32_t c, uint32_t p, uint32_t q, int &a) const
 	{
+		int s;
+		if (!this->Arrival(c, p, q, s)) return false;
 		const size_t k = EventIndex(this->map.events[q], c), j = EventIndex(this->map.events[p], c);
-		if (k == SIZE_MAX || j == SIZE_MAX) return false;
-		int s = -this->map.Side(q, static_cast<uint32_t>(k), p, static_cast<uint32_t>(j));
-		if (s == 0) s = -this->map.Side(q, static_cast<uint32_t>(k), p, static_cast<uint32_t>(j + 1));
-		if (s == 0) return false;
 		a = (((this->EventHeading(q, k) - this->EventHeading(p, j)) * s) % 8 + 8) % 8;
 		return true;
+	}
+
+	/**
+	 * The least middles of a structure at the angles of its crossings, run by run (H6).
+	 * @param s The structure.
+	 * @param least Receives the least middles.
+	 * @return False when a crossing has no angle in 1..3.
+	 */
+	bool Least(const PlanarStructure &s, int &least) const
+	{
+		int run = 0, run_angle = -1;
+		least = 0;
+		const auto flush = [&]() { if (run > 0) least += run_angle == 2 ? run : run + 1; run = 0; };
+		for (size_t k = 0; k < s.crossings.size(); k++) {
+			int a;
+			if (!this->Angle(s.crossings[k], s.separator, s.crossers[k], a) || a < 1 || a > 3) return false;
+			if (a != run_angle) flush();
+			run_angle = a;
+			run++;
+		}
+		flush();
+		return true;
+	}
+
+	/** @return The parent of a beside track (the straight leg of its split node's site), or UINT32_MAX. */
+	uint32_t Parent(uint32_t b) const
+	{
+		const PlanarEnd &from = this->map.expanded.lines[b].from;
+		uint32_t parent = UINT32_MAX;
+		if (!from.port) {
+			for (const PlanarStructureSite &site : this->v.structure.sites) {
+				if (site.split && site.node == from.index) parent = site.straight;
+			}
+		}
+		return parent < this->map.tracks.size() ? parent : UINT32_MAX;
+	}
+
+	/**
+	 * The crossing a crossing mirrors: for a crossing of a beside track b and a track x, the parent's crossing at the same place in its events, when it is with the same x.
+	 * @param c The crossing.
+	 * @return The original crossing, or UINT32_MAX when c mirrors none.
+	 */
+	uint32_t MirrorOf(uint32_t c) const
+	{
+		for (const uint32_t b : {this->map.crossings[c].a, this->map.crossings[c].b}) {
+			if (this->map.tracks[b].kind == PlanarTrack::Kind::Line) continue;
+			const uint32_t parent = this->Parent(b), x = this->map.crossings[c].a == b ? this->map.crossings[c].b : this->map.crossings[c].a;
+			const size_t k = EventIndex(this->map.events[b], c);
+			if (parent == UINT32_MAX || k == SIZE_MAX || k >= this->map.events[parent].size()) continue;
+			const uint32_t original = this->map.events[parent][k];
+			const PlanarCrossing &o = this->map.crossings[original];
+			if ((o.a == parent ? o.b : o.a) == x) return original;
+		}
+		return UINT32_MAX;
 	}
 
 	/** H1: pieces, event pieces and monotone stretches. */
@@ -194,7 +340,12 @@ struct Oracle {
 		for (uint32_t c = 0; c < this->map.crossings.size(); c++) {
 			const PlanarStructure *first = this->StructureOf(c, nullptr);
 			if (first == nullptr) {
-				this->out.push_back(fmt::format("H4: crossing {} is in no structure, so it has no separator", c));
+				const uint32_t original = this->MirrorOf(c);
+				if (original == UINT32_MAX) {
+					this->out.push_back(fmt::format("H4: crossing {} is in no structure and mirrors no crossing", c));
+				} else if (c >= this->v.angles.size() || original >= this->v.angles.size() || this->v.angles[c] != this->v.angles[original]) {
+					this->out.push_back(fmt::format("H4: mirrored crossing {} has another angle than the crossing {} it mirrors", c, original));
+				}
 				continue;
 			}
 			const PlanarStructure *second = this->StructureOf(c, first);
@@ -241,21 +392,8 @@ struct Oracle {
 			if (shape.end_run != end_run) this->out.push_back(fmt::format("H5: structure {} has end runs {}, {}; its kinds give {}, {}", i, shape.end_run[0], shape.end_run[1], end_run[0], end_run[1]));
 
 			/* H6: the least middles from the headings, run by run. */
-			int least = 0, run = 0, run_angle = -1;
-			bool known = true;
-			const auto flush = [&]() { if (run > 0) least += run_angle == 2 ? run : run + 1; run = 0; };
-			for (size_t k = 0; k < s.crossings.size() && known; k++) {
-				int a;
-				if (!this->Angle(s.crossings[k], s.separator, s.crossers[k], a) || a < 1 || a > 3) {
-					known = false;
-					break;
-				}
-				if (a != run_angle) flush();
-				run_angle = a;
-				run++;
-			}
-			flush();
-			if (!known) continue;
+			int least;
+			if (!this->Least(s, least)) continue;
 			for (int kind = 0; kind < 2; kind++) {
 				const bool allowed = (s.kinds & (1 << kind)) != 0;
 				if (!allowed) {
@@ -271,60 +409,47 @@ struct Oracle {
 		}
 	}
 
+	/** @return The walked start heading of a stretch of a face walk. */
+	int WalkedStart(const WalkedStretch &w) const
+	{
+		return w.forward ? this->v.tracks[w.track].pieces[this->First(w.track, w.stretch)] : this->v.tracks[w.track].pieces[this->Last(w.track, w.stretch)] + 4;
+	}
+
+	/** @return The walked end heading of a stretch of a face walk. */
+	int WalkedEnd(const WalkedStretch &w) const
+	{
+		return w.forward ? this->v.tracks[w.track].pieces[this->Last(w.track, w.stretch)] : this->v.tracks[w.track].pieces[this->First(w.track, w.stretch)] + 4;
+	}
+
 	/** H7: every face winds once (-8 eighths). */
 	void CheckH7Faces()
 	{
-		static const int BOX_HEADING[4] = {6, 0, 2, 4};
 		for (const PlanarFace &face : this->map.faces) {
-			/* The walked stretches in order, each with its walked start and end heading and its walked ends. */
-			struct Walked {
-				int start, end;
-				bool start_port, end_port;
-				uint32_t start_side, end_side;
-			};
-			std::vector<Walked> walk;
-			bool usable = true;
-			for (const PlanarWallRun &run : face.runs) {
-				for (const auto &[t, k] : run.stretches) {
-					if (t >= this->map.tracks.size() || k > this->v.tracks[t].event_piece.size()) {
-						usable = false;
-						continue;
-					}
-					const PlanarShapeTrack &s = this->v.tracks[t];
-					const PlanarLine &line = this->map.expanded.lines[t];
-					const int first = s.pieces[this->First(t, k)], last = s.pieces[this->Last(t, k)];
-					const bool at_start = k == 0, at_end = k == s.event_piece.size();
-					Walked w;
-					if (run.forward) {
-						w = {first, last, at_start && line.from.port, at_end && line.to.port, 0, 0};
-						if (w.start_port) w.start_side = static_cast<uint32_t>(this->map.expanded.ports[line.from.index].side);
-						if (w.end_port) w.end_side = static_cast<uint32_t>(this->map.expanded.ports[line.to.index].side);
-					} else {
-						w = {last + 4, first + 4, at_end && line.to.port, at_start && line.from.port, 0, 0};
-						if (w.start_port) w.start_side = static_cast<uint32_t>(this->map.expanded.ports[line.to.index].side);
-						if (w.end_port) w.end_side = static_cast<uint32_t>(this->map.expanded.ports[line.from.index].side);
-					}
-					walk.push_back(w);
-				}
-			}
-			if (!usable || walk.empty()) {
+			const FaceWalk walk = WalkFace(this->map, face);
+			if (!walk.usable || walk.stretches.empty()) {
 				this->out.push_back(fmt::format("H7: face {} has a stretch the shape lacks", face.face));
 				continue;
 			}
 			int total = 0;
-			for (size_t i = 0; i < walk.size(); i++) {
-				const Walked &w = walk[i], &next = walk[(i + 1) % walk.size()];
-				total += w.end - w.start;
-				if (w.end_port && next.start_port) {
-					const int a = static_cast<int>(w.end_side), b = static_cast<int>(next.start_side);
-					total += Norm(BOX_HEADING[a] - w.end);
-					total += -2 * (((a - b) % 4 + 4) % 4);
-					total += Norm(next.start - BOX_HEADING[b]);
-				} else if (w.end_port || next.start_port) {
-					this->out.push_back(fmt::format("H7: face {} leaves or enters the box at a port end only on one side of a vertex", face.face));
-					total += Norm(next.start - w.end);
-				} else {
-					total += Norm(next.start - w.end);
+			for (const FaceTerm &term : walk.terms) {
+				const WalkedStretch &w = walk.stretches[term.from];
+				switch (term.kind) {
+					case FaceTerm::Kind::Stretch:
+						total += this->WalkedEnd(w) - this->WalkedStart(w);
+						break;
+
+					case FaceTerm::Kind::Box: {
+						const WalkedStretch &next = walk.stretches[term.to];
+						total += Norm(BOX_HEADING[term.side_a] - this->WalkedEnd(w));
+						total += -2 * (((static_cast<int>(term.side_a) - static_cast<int>(term.side_b)) % 4 + 4) % 4);
+						total += Norm(this->WalkedStart(next) - BOX_HEADING[term.side_b]);
+						break;
+					}
+
+					case FaceTerm::Kind::Vertex:
+						if (term.lopsided) this->out.push_back(fmt::format("H7: face {} leaves or enters the box at a port end only on one side of a vertex", face.face));
+						total += Norm(this->WalkedStart(walk.stretches[term.to]) - this->WalkedEnd(w));
+						break;
 				}
 			}
 			if (total != -8) this->out.push_back(fmt::format("H7: face {} winds {} eighths, not -8", face.face, total));
@@ -359,14 +484,8 @@ struct Oracle {
 		for (uint32_t b = 0; b < this->map.tracks.size(); b++) {
 			if (this->map.tracks[b].kind == PlanarTrack::Kind::Line) continue;
 			const std::string &name = this->map.tracks[b].name;
-			const PlanarEnd &from = this->map.expanded.lines[b].from;
-			uint32_t parent = UINT32_MAX;
-			if (!from.port) {
-				for (const PlanarStructureSite &site : this->v.structure.sites) {
-					if (site.split && site.node == from.index) parent = site.straight;
-				}
-			}
-			if (parent == UINT32_MAX || parent >= this->map.tracks.size()) {
+			const uint32_t parent = this->Parent(b);
+			if (parent == UINT32_MAX) {
 				this->out.push_back(fmt::format("H8: beside track {} has no parent: its split node has no straight leg", name));
 				continue;
 			}
@@ -424,4 +543,277 @@ std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology,
 	o.CheckH8();
 	h9();
 	return o.out;
+}
+
+bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVariant &out, std::string &why)
+{
+	using Terms = std::vector<std::pair<uint32_t, double>>;
+	constexpr uint32_t NONE = UINT32_MAX;
+	PlanarShapeVariant sv;
+	sv.structure = v;
+	sv.cost = 0;
+	Oracle o(sv);
+	const PlanarTrackMap &map = sv.structure.map;
+	const size_t nt = map.tracks.size();
+	const auto fail = [&](const std::string &reason) {
+		why = "no shape: " + reason;
+		return false;
+	};
+
+	JunctionMilp milp;
+	std::vector<std::string> tags; ///< Per row, its kind and object.
+	const auto var = [&](double lower, double upper, double cost, bool integer) { return milp.AddVariable(lower, upper, cost, integer); };
+	const auto row = [&](Terms terms, double lower, double upper, const std::string &tag) {
+		std::ranges::sort(terms);
+		Terms merged;
+		for (const auto &[variable, coefficient] : terms) {
+			if (!merged.empty() && merged.back().first == variable) {
+				merged.back().second += coefficient;
+			} else {
+				merged.emplace_back(variable, coefficient);
+			}
+		}
+		std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
+		milp.AddRow(merged, lower, upper);
+		tags.push_back(tag);
+	};
+	const auto eq = [&](Terms terms, double rhs, const std::string &tag) { row(std::move(terms), rhs, rhs, tag); };
+
+	/* The lifted heading at every point: point 0 the start, point i the event i - 1, point n + 1 the end. */
+	std::vector<std::vector<uint32_t>> H(nt);
+	for (size_t t = 0; t < nt; t++) {
+		if (map.events.size() != nt || map.expanded.lines.size() != nt) return fail("the map's tracks, events and lines disagree");
+		for (size_t i = 0; i < map.events[t].size() + 2; i++) H[t].push_back(var(-24, 32, 0, true));
+	}
+
+	/* Ports. */
+	for (uint32_t t = 0; t < nt; t++) {
+		const PlanarLine &line = map.expanded.lines[t];
+		if (line.from.port) eq({{H[t].front(), 1}}, static_cast<int>(map.expanded.ports[line.from.index].heading), fmt::format("port {}", t));
+		if (line.to.port) eq({{H[t].back(), 1}, {var(-8, 8, 0, true), -8}}, static_cast<int>(map.expanded.ports[line.to.index].heading), fmt::format("port {}", t));
+	}
+
+	/* Nodes: the d binary and sigma of each non-straight leg, at the split at its start and at the merge at its end. */
+	std::vector<std::pair<uint32_t, int>> split_leg(nt, {NONE, 0}), merge_leg(nt, {NONE, 0});
+	for (const PlanarStructureSite &site : sv.structure.sites) {
+		if (site.node >= map.expanded.nodes.size()) return fail(fmt::format("a site names node {}, which the map lacks", site.node));
+		const PlanarNode &node = map.expanded.nodes[site.node];
+		const std::vector<uint32_t> &legs = site.split ? node.out : node.in;
+		const std::vector<uint32_t> &single = site.split ? node.in : node.out;
+		if (single.size() != 1 || (site.straight == NONE && legs.size() != 2)) return fail(fmt::format("node {} is not a split or merge of the site's shape", site.node));
+		const uint32_t one = single[0];
+		const std::string tag = fmt::format("{} node {}", site.split ? "split" : "merge", site.node);
+		const auto stretch = [&](uint32_t t) { return static_cast<uint32_t>(site.split ? 0 : map.events[t].size()); };
+		for (const uint32_t leg : legs) {
+			if (leg == site.straight) {
+				if (site.split) {
+					eq({{H[leg].front(), 1}, {H[one].back(), -1}}, 0, tag);
+				} else {
+					eq({{H[leg].back(), 1}, {H[one].front(), -1}}, 0, tag);
+				}
+				continue;
+			}
+			int sigma;
+			if (site.straight == NONE) {
+				const uint32_t other = legs[0] == leg ? legs[1] : legs[0];
+				sigma = map.Side(leg, stretch(leg), other, stretch(other));
+			} else {
+				sigma = map.Side(leg, stretch(leg), site.straight, stretch(site.straight));
+				if (sigma == 0) sigma = site.side;
+			}
+			const uint32_t d = var(0, 1, 0, true);
+			if (site.split) {
+				split_leg[leg] = {d, sigma};
+				eq({{H[leg].front(), 1}, {H[one].back(), -1}, {d, -sigma}}, 0, tag);
+			} else {
+				merge_leg[leg] = {d, sigma};
+				eq({{H[leg].back(), 1}, {d, sigma}, {H[one].front(), -1}, {var(-8, 8, 0, true), -8}}, 0, tag);
+			}
+		}
+	}
+
+	/* Crossings: the rule for the separator and, in a stack, for the other separator too. A mirrored crossing of a beside track has no row of its own: it takes its original's angle and keeps its crosser on one piece across both. */
+	std::vector<uint32_t> angle(map.crossings.size(), NONE);
+	for (uint32_t c = 0; c < map.crossings.size(); c++) {
+		const PlanarStructure *first = o.StructureOf(c, nullptr);
+		if (first == nullptr) continue;
+		const PlanarStructure *second = o.StructureOf(c, first);
+		angle[c] = var(1, 3, 0, true);
+		const uint32_t w = var(0, JunctionMilp::INF, 1, false);
+		row({{w, 1}, {angle[c], -1}}, -2, JunctionMilp::INF, fmt::format("cross {}", c));
+		row({{w, 1}, {angle[c], 1}}, 2, JunctionMilp::INF, fmt::format("cross {}", c));
+		for (const PlanarStructure *s : {first, second}) {
+			if (s == nullptr) continue;
+			const uint32_t p = s->separator;
+			const uint32_t q = map.crossings[c].a == p ? map.crossings[c].b : map.crossings[c].a;
+			int side;
+			if (!o.Arrival(c, p, q, side)) return fail(fmt::format("crossing {} has no arrival side", c));
+			const uint32_t hp = H[p][EventIndex(map.events[p], c) + 1], hq = H[q][EventIndex(map.events[q], c) + 1];
+			eq({{hq, 1}, {hp, -1}, {angle[c], -side}, {var(-8, 8, 0, true), -8}}, 0, fmt::format("cross {}", c));
+			eq({{hp, 1}, {var(-12, 16, 0, true), -2}}, 0, fmt::format("axis {}", c));
+		}
+	}
+	for (uint32_t c = 0; c < map.crossings.size(); c++) {
+		if (angle[c] != NONE) continue;
+		const uint32_t original = o.MirrorOf(c);
+		if (original == UINT32_MAX || angle[original] == NONE) return fail(fmt::format("crossing {} is in no structure and mirrors no crossing", c));
+		angle[c] = angle[original];
+		/* The crosser is the track the two crossings share. */
+		const PlanarCrossing &m = map.crossings[c], &r = map.crossings[original];
+		const uint32_t crosser = (m.a == r.a || m.a == r.b) ? m.a : m.b;
+		eq({{H[crosser][EventIndex(map.events[crosser], c) + 1], 1}, {H[crosser][EventIndex(map.events[crosser], original) + 1], -1}}, 0, fmt::format("mirror {}", c));
+	}
+
+	/* Structures: one axis across the span. */
+	for (size_t i = 0; i < sv.structure.structures.size(); i++) {
+		const PlanarStructure &s = sv.structure.structures[i];
+		for (size_t k = 1; k < s.crossings.size(); k++) {
+			const size_t a = EventIndex(map.events[s.separator], s.crossings[k - 1]), b = EventIndex(map.events[s.separator], s.crossings[k]);
+			if (a == SIZE_MAX || b == SIZE_MAX) return fail(fmt::format("structure {} lists a crossing its separator lacks", i));
+			eq({{H[s.separator][a + 1], 1}, {H[s.separator][b + 1], -1}}, 0, fmt::format("struct {}", i));
+		}
+	}
+
+	/* Beside tracks follow the straight leg of their split node's site. */
+	for (uint32_t b = 0; b < nt; b++) {
+		if (map.tracks[b].kind == PlanarTrack::Kind::Line) continue;
+		const uint32_t parent = o.Parent(b);
+		if (parent == NONE) return fail(fmt::format("beside track {} has no parent", b));
+		if (H[b].size() != H[parent].size()) return fail(fmt::format("beside track {} has other events than its parent", b));
+		for (size_t i = 0; i < H[b].size(); i++) eq({{H[b][i], 1}, {H[parent][i], -1}}, 0, fmt::format("beside {}", b));
+	}
+
+	/* Faces. */
+	for (const PlanarFace &face : map.faces) {
+		const FaceWalk walk = WalkFace(map, face);
+		if (!walk.usable || walk.stretches.empty()) return fail(fmt::format("face {} has a stretch the map lacks", face.face));
+		const std::string tag = fmt::format("face {}", face.face);
+		/* A walked heading is a variable plus a constant: a backward stretch walks the heading + 4 from its far end. */
+		const auto head = [&](const WalkedStretch &w, bool at_end) -> std::pair<uint32_t, double> {
+			if (w.forward) return {H[w.track][at_end ? w.stretch + 1 : w.stretch], 0};
+			return {H[w.track][at_end ? w.stretch : w.stretch + 1], 4};
+		};
+		Terms sum;
+		double rhs = -8;
+		for (const FaceTerm &term : walk.terms) {
+			const WalkedStretch &w = walk.stretches[term.from];
+			switch (term.kind) {
+				case FaceTerm::Kind::Stretch:
+					sum.emplace_back(head(w, true).first, 1);
+					sum.emplace_back(head(w, false).first, -1);
+					break;
+
+				case FaceTerm::Kind::Vertex: {
+					const auto [next_var, next_c] = head(walk.stretches[term.to], false);
+					const auto [prev_var, prev_c] = head(w, true);
+					const uint32_t vertex = var(-4, 3, 0, true);
+					eq({{next_var, 1}, {prev_var, -1}, {vertex, -1}, {var(-8, 8, 0, true), -8}}, prev_c - next_c, tag);
+					sum.emplace_back(vertex, 1);
+					break;
+				}
+
+				case FaceTerm::Kind::Box: {
+					const auto [arrive_var, arrive_c] = head(w, true);
+					const auto [leave_var, leave_c] = head(walk.stretches[term.to], false);
+					const uint32_t v1 = var(-4, 3, 0, true), v2 = var(-4, 3, 0, true);
+					eq({{v1, 1}, {arrive_var, 1}, {var(-8, 8, 0, true), 8}}, BOX_HEADING[term.side_a] - arrive_c, tag);
+					eq({{v2, 1}, {leave_var, -1}, {var(-8, 8, 0, true), 8}}, leave_c - BOX_HEADING[term.side_b], tag);
+					sum.emplace_back(v1, 1);
+					sum.emplace_back(v2, 1);
+					rhs += 2 * (((static_cast<int>(term.side_a) - static_cast<int>(term.side_b)) % 4 + 4) % 4);
+					break;
+				}
+			}
+		}
+		eq(sum, rhs, tag);
+	}
+
+	/* No U-turn: the cumulative turn along every route path stays within 3 eighths of the entry heading. */
+	bool broken = false;
+	for (size_t r = 0; r < map.expanded.routes.size() && !broken; r++) {
+		const auto carries = [&](uint32_t t) { return std::ranges::find(map.expanded.lines[t].routes, static_cast<uint32_t>(r)) != map.expanded.lines[t].routes.end(); };
+		const std::string tag = fmt::format("uturn route {}", r);
+		const auto walk = [&](const auto &self, uint32_t t, Terms prefix, size_t depth) -> void {
+			if (depth > nt) {
+				broken = true;
+				return;
+			}
+			for (size_t i = 0; i < H[t].size(); i++) {
+				if (prefix.empty() && i == 0) continue;
+				Terms cum = prefix;
+				cum.emplace_back(H[t][i], 1);
+				cum.emplace_back(H[t].front(), -1);
+				row(cum, -3, 3, tag);
+			}
+			const PlanarEnd &to = map.expanded.lines[t].to;
+			if (to.port) return;
+			Terms next = prefix;
+			next.emplace_back(H[t].back(), 1);
+			next.emplace_back(H[t].front(), -1);
+			const PlanarNode &node = map.expanded.nodes[to.index];
+			for (const uint32_t g : node.out) {
+				if (!carries(g)) continue;
+				Terms through = next;
+				const auto &[d, sigma] = node.out.size() > 1 ? split_leg[g] : merge_leg[t];
+				if (d != NONE) through.emplace_back(d, sigma);
+				self(self, g, std::move(through), depth + 1);
+			}
+		};
+		for (uint32_t t = 0; t < nt; t++) {
+			if (map.expanded.lines[t].from.port && carries(t)) walk(walk, t, {}, 0);
+		}
+	}
+	if (broken) return fail("a route path loops");
+
+	/* The turning of the Line tracks. */
+	for (uint32_t t = 0; t < nt; t++) {
+		if (map.tracks[t].kind != PlanarTrack::Kind::Line) continue;
+		for (size_t k = 0; k + 1 < H[t].size(); k++) {
+			const uint32_t u = var(0, JunctionMilp::INF, 1000, false);
+			row({{u, 1}, {H[t][k + 1], -1}, {H[t][k], 1}}, 0, JunctionMilp::INF, "obj");
+			row({{u, 1}, {H[t][k + 1], 1}, {H[t][k], -1}}, 0, JunctionMilp::INF, "obj");
+		}
+	}
+
+	milp.SetTimeLimit(5.0);
+	const JunctionMilp::Status status = milp.Solve();
+	if (status != JunctionMilp::Status::Optimal) {
+		std::string reason = status == JunctionMilp::Status::Infeasible ? "Infeasible" : "Error";
+		if (status == JunctionMilp::Status::Infeasible) {
+			std::string last;
+			for (const uint32_t r : milp.InfeasibleRows()) {
+				if (r >= tags.size() || tags[r] == last) continue;
+				last = tags[r];
+				reason += (reason == "Infeasible" ? ": " : ", ") + last;
+			}
+		}
+		return fail(reason);
+	}
+
+	/* The pieces: each stretch walks one eighth at a time from its start heading to its end heading. */
+	sv.tracks.resize(nt);
+	for (uint32_t t = 0; t < nt; t++) {
+		PlanarShapeTrack &track = sv.tracks[t];
+		const auto heading = [&](size_t i) { return static_cast<int>(std::llround(milp.Value(H[t][i]))); };
+		track.pieces.push_back(heading(0));
+		for (size_t k = 0; k + 1 < H[t].size(); k++) {
+			const int to = heading(k + 1);
+			while (track.pieces.back() != to) track.pieces.push_back(track.pieces.back() + (to > track.pieces.back() ? 1 : -1));
+			if (k + 2 < H[t].size()) track.event_piece.push_back(static_cast<uint32_t>(track.pieces.size() - 1));
+			if (map.tracks[t].kind == PlanarTrack::Kind::Line) sv.cost += std::abs(to - heading(k));
+		}
+	}
+	for (const uint32_t a : angle) sv.angles.push_back(static_cast<uint8_t>(std::llround(milp.Value(a))));
+	for (const PlanarStructure &s : sv.structure.structures) {
+		PlanarShapeStructure shape{0, {-1, -1}, {(s.kinds & 1) != 0 ? 1 : -1, (s.kinds & 2) != 0 ? 2 : -1}};
+		if (!s.crossings.empty()) shape.axis = static_cast<uint8_t>((o.EventHeading(s.separator, EventIndex(map.events[s.separator], s.crossings.front())) % 8 + 8) % 8);
+		int least;
+		if (!o.Least(s, least)) return fail("a crossing's angle is not in 1..3");
+		for (int kind = 0; kind < 2; kind++) {
+			if ((s.kinds & (1 << kind)) != 0) shape.middles[kind] = least;
+		}
+		sv.structures.push_back(shape);
+	}
+	out = std::move(sv);
+	return true;
 }
