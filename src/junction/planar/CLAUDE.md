@@ -2,25 +2,31 @@
 
 - The planar model stands beside the old pipeline and shares none of its graph, order, structure, programs or placement concepts.
 
-## Architecture: SSS, then lengths, then signals (D361, D362)
+## Architecture: SSS, then lengths, heights and signals (D361, D362, D365)
 - The planar solver is a stack of layers. Each layer makes only its own decisions. Its output meets every constraint it owns by construction, and it hands the next layer a stated promise. No later layer repairs, retries or discovers infeasibility in an earlier layer's decisions. New work follows this stack; a generate-and-check mechanism is a defect to design out.
 - **Structure** (topology, channels, sites, track map):
-  - Decides what tracks exist and their planar order: over or under at each crossing, which leg runs straight at each split and merge, triangle flips, copies, rows.
+  - Decides what tracks exist and their planar order: the separator and the kind (bridge or tunnel) of each structure, per joiner at a join (D364); which leg runs straight at each split and merge; triangle flips, copies, rows.
   - Variants live here and nowhere else.
   - Promise: a valid planar map of every physical track, with sides per stretch; for each bridge, the tracks it must span.
 - **Shape:**
   - Decides every track's headings and the piece each crossing sits on, without lengths.
   - It makes no sideways moves.
-  - Promise: legal headings, and every bridge spans its crossers within the longest bridge.
+  - The separator runs straight on an axis across its span; a tunnel's separator dives, with one ramp tile at each end on flat ground (D365).
+  - Promise: legal headings, and every structure spans its crossers within its kind's limit (bridge: the longest bridge; tunnel: max_tunnel_length; a main line's: also the D228a flow bound).
 - **Slots:**
   - Decides every track's sideways position in every stretch, hence every S-bend, including which fork or merge leg stays straight and every close-up at a pinned port.
   - It is the one owner of sideways moves.
   - Frames cover channels, node groups and port-side corridors.
+  - No step lies inside a deck, a tunnel or its ramp tiles.
   - Promise: positions agree around every loop a pin closes, and every step can be built.
 - **Lengths:**
   - Decides every piece's length, as one solve with only lower bounds left.
   - Every upper bound or exact length (port pins, the longest bridge, equal parallelograms, S-bend sizes) is an earlier layer's promise, so stretching always succeeds.
   - Promise: a compact, clash-free layout with room for its signals.
+- **Heights** (D365; built after T2, T3 and LL² are end to end checker clean):
+  - Decides every tile's track level and the terraform on the fixed footprint: ramps on axis pieces only, portals, bridge clearance, cuttings.
+  - Promise: always feasible with terraform allowed (D218); only hard facts (houses under track or a span, water, map edge, unpurchasable) fail, named by tile, before any solve.
+  - The hover runs Heights only, on the flat seed's footprint, and may flip a structure's kind, never its separator.
 - **Signals:** places signals and prio joins by a walk over the built tracks. The checker is a test oracle.
 - Headings need no lengths: a shape is angles only, as on a metro map drawn with fixed angles, and the length layer only stretches pieces.
 - Variants are ranked on cheap scores (structure, shape and slot costs, plus a lower bound from the length program). Only the best few get the full length solve.
@@ -32,7 +38,7 @@
   - **Fray:** a split whose legs reach different ports. **Lane split:** a split whose legs reach the same port.
   - **Join:** a merge from different entries. **Lane merge:** a merge from the same entry.
   - **Fork:** a split with no straight leg.
-- **Crossing:** two lines that must cross. One is **over** (on a bridge, its **deck**), the other **under**.
+- **Crossing:** two lines that must cross. One is the **separator**: it carries the **structure** and runs straight across its span, on a bridge (its **deck**) or in a tunnel. The structure's **kind** is bridge or tunnel. **Over/under** is the height that follows: a bridge's separator is over, a tunnel's under.
 - **Topology:** ports, lines, splits, merges, crossings and their order along each line. No positions.
 - **Channel:** lines that travel together, with the same start, the same destination and the same crossings.
 - **Site:** where channels split or merge. Its **straight** channel continues straight; the other leaves or arrives on a **side**.

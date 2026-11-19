@@ -2,19 +2,19 @@
 
 The single list of planned work. Rules: every idea that is designed, ruled or agreed but not fully built lives here until it is built (then it leaves, its facts going to CLAUDE.md) or explicitly dropped (then it leaves with the deciding Dnnn). Check this file before designing anything. STATUS.md holds only the current state; DECISIONS.md holds rulings; DESIGN-tracks.md holds the current design. Status checked against wt-planar on 2026-11-18 (survey: grep evidence, file:line in ng1); `PC` = planar_components.cpp. Sources named here that were removed in the 2026-11-18 docs cull (DESIGN-G1, DESIGN-width and other legacy files) are in git at a7f10e9af0. Status words: built, partly built, not built, rejected, superseded, unknown.
 
-## Top 10 load-bearing ideas not built or only partly built
-1. **Slot layer / width profile (DESIGN-tracks §3a, D327, D349).** Sideways steps fall out of per-stretch track slots (lanes, copies, prio rows) instead of per-component step rules and optional S-bends. Designed 2026-11-17, re-found and spiked 2026-11-18: on LL² and T2 every neighbouring-lane gap change matches the solver except today's staggered prio-join exits and turn geometry (wip/SPIKE-slots.md, spike-slots f4d1ef0e49). NEXT: design the build (DESIGN-tracks section), land in steps.
-2. **Free bends on ladders (DESIGN-tracks §8.3, D338).** Every free stretch bends; step rules and candidate-step bits go. Not built; "stop thinking about bends as choices" is the stated direction.
-3. **Retire the lazy clash loop (§8.2, §9 step c).** Ladders are built and default on, but the loop is still the safety net (`SolveLazy`, PC:2044/2172).
-4. **Prio row as a real bundle line (D349, §13.1) plus P3 bendable ML.** The row is still a fixed straight 2P strand (PC:246 `AddSeg(...2*P+2)`, prio_rows PC:293/409). All four freed-join probes (A2, A3, A4, B) failed; T3's length depends on it. Also retires the prio reservation.
-5. **n-lane composer / LL³ as a true widening of LL² (§14, SPIKE-LL3).** Composer refuses anything but two lanes (PC:1261); no LL³ variant builds. Blocks scaling and the any-hub bar (D326).
-6. **Multilevel lift (§14).** Solve narrow, lift the best decisions to the wide hub (T2/T3 rank correlation 0.945). Needs topology families and item 5. Nothing in code.
-7. **Variant pruning by bound, rough ranking, better search starts (§10.1, §14, STATUS 4e).** Local search exists (PC:2886-2940) but starts at all-zero and misses the enumeration best on T3 (1941.25 vs 1933.25); no LP bound, no ranking; two solves per variant cost 435 ms vs 66 ms on T2 (STATUS timing correction).
-8. **Topology as a complete artefact with pinnable crossing order (D343/D344) and a builder UI / shippable topologies.** No code hit for pinning in planar_topology; no builder UI; topologies are text only. Required by "any hub".
-9. **Bridge-length rule: break-up or tripling past a threshold (D346, RESEARCH-bridge-length).** Rule found (N=2: TL+6, N=3: 2TL+10) but break-up vs triple is unsourced; nothing in code. Wide hubs hit it before game limits.
-10. **Grid layer: clashes deferred to a windowed tile-grid legaliser (§11, D334).** Capacity-only rows up top, tiles below; only the probe was queued. No code. The ladders are its "halfway house"; the grid is where terrain and exact tile legality finally land.
+## Top 10: the SSS critical path (D362, DESIGN-tracks §17.6; reordered 2026-11-20)
+1. **Frame experiment (§17.3, §17.6 step 1).** Slots frames over channels, node groups and port-side corridors; count base-infeasible variants on T2, T3, LL². Absorbs the old slot layer item (§3a, §15, D327) and replaces D359 (D363). Not started.
+2. **Shape capacity rows and deck groups (§17.2).** Every structure spans its crossers within its kind's limit; G2 cut to node geometry (D360); D346's break-up rule lands here. Kills f0.
+3. **Lengths with no lazy rows (§17.4).** One solve, ladders from a one-shot phase read, optional segments gone, `SolveLazy` an assertion. Absorbs "retire the lazy clash loop" and "free bends" (D338: bends come from Slots).
+4. **Rows as tracks and the Signals walk (§17.5, D349, TM5).** End to end checker clean on T2, T3, LL² (D357); `MappedComposer` retires; D345's search retires (D363).
+5. **Variant ranking on cheap scores (§17.1).** Turning + step cost + LP bound; full solve for the top few; seed under 5 s (D297).
+6. **Remove the by-name branch:** T2 now, LL² with SSS (engineer, 2026-11-19).
+7. **Heights and tunnels (§17.5, D365, D364).** After item 4. Separator and kind per structure; Heights after Lengths; the hover runs Heights only.
+8. **n-lane / LL³ and the multilevel lift (§14).** Same Structure decisions, wider Slots.
+9. **Topology as a complete artefact, pinnable crossing order, builder UI (D343/D344).** Required by "any hub".
+10. **Corpus growth (§17, D270):** a hub = topology + Structure decisions (separator and kind per joiner, D364) + cross-sections.
 
-(Near misses: prio over/under as a searched choice D347b is partly built; terrain on planar is partly built; shape-as-flow §8.5; organic hubs.)
+(Parked under SSS: the grid layer (§11, D334), revisit only if Lengths' integrality fails; shape-as-flow §8.5; organic terrain repairs (D365 deferral). The G3 track composer is stopped, §16.7.)
 
 ## Architecture layers (shape, slots/width, ladders, grid)
 | idea | source | status | evidence | depends on |

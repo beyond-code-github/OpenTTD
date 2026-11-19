@@ -228,7 +228,7 @@ The export carries track ids and kinds per piece (a row names its lane piece bes
 5. TM5.
 Corpus pass 2 of the rules audit (wip/AUDIT-rules.md) checks the 16.1 list before TM4 lands.
 
-### 16.7 The track composer (engineer, 2026-11-19: "Yep lets do it!"; D357, D358)
+### 16.7 The track composer (engineer, 2026-11-19: "Yep lets do it!"; D357, D358). SUPERSEDED by §17 (D362); kept as the record of the G3 line (stopped, probe-g3e evidence only)
 A new composer that builds every variant from the track map, beside `MappedComposer` behind a switch (`PLANAR_COMPOSER=tracks`), both scored on the D357 scorecard over T2, T3 and LL². `MappedComposer` and its recipes retire when the track composer passes the D357 gates on all three. No per-hub path (D326).
 - **Input per variant:** the topology, the flipped channels, the resolved sites, `PlanarPaths::over`, the D347b form (form A first), and the track map with its expanded topology exposed (`PlanarTrackMap::expanded`: tracks as lines with their ends, nodes including the copy and row splits and merges, crossings, events in travel order).
 - **Headings per stretch** (a stretch is a track between two consecutive events or ends). Until TM3 (16.2) gives them, one plain rule, the default shape's rule carried to tracks:
@@ -242,10 +242,49 @@ A new composer that builds every variant from the track map, beside `MappedCompo
 - **Separation:** the lazy loop's sides per stretch from the map (`PlanarTrackMap::Side(p, ps, q, qs)`), every strand mapped to its track and stretch, rows and copies included; then ladders from the map's faces (D339).
 - **Output:** the same `PlanarComponentLayout` (routes, rows, area, track, wasted, empty), so pv, the plan, the signal pass and the rig read it unchanged.
 
-### 16.8 Build steps (test-first, outside-in; each a brief)
+### 16.8 Build steps (SUPERSEDED by §17.6)
 1. **G1 (pure):** `PlanarTrackMap::expanded`. Test: on T2 o1t3f1s0 every track is a line of `expanded` with ends, and each copy's and row's ends are nodes on its parent.
 2. **G2 (pure):** `PlanarTrackHeadings(map, paths, sites, over, form)`: headings per stretch by the 16.7 rule. Tests: on every T2, T3 and LL² variant, each stretch's headings are 45 degrees apart, continuous across events and nodes, over pieces axis, under pieces not parallel to their over piece, and every site crossing's over track is the straight channel's leg.
 3. **G3 (the risky one):** the track composer solves T2 o1t3f1s0. Outer test first: it builds and solves within 15 s and reports the scorecard. Inner tests: every route path's strands exist and connect; each strand's (track, stretch) ranges cover its segments.
 4. **G4:** sides per stretch in the lazy loop. Measure T2, T3 and LL², all variants, against `MappedComposer` on the scorecard and time.
 5. **G5:** rows to the signal pass (TM5p's given-row path, landed), end to end on all three hubs, checker clean.
 6. **G6:** ladders from the map's faces; then retire `MappedComposer` once the D357 gates pass.
+
+## 17. SSS: the plan of record (2026-11-20; D361, D362, D363, D364, D365; source wip/REVIEW-architecture-holistic.md §5-§7, wip/PROPOSAL-tunnels-sss.md)
+The layers and their promises are stated in src/junction/planar/CLAUDE.md "Architecture"; this section holds the design behind them and the order of work. A mechanism that generates, then checks and patches, is a defect to design out (D361).
+
+### 17.1 Structure (L0 topology, L1 skeleton and track map)
+- Keeps: planar_topology, planar_channels (channels, sites, node legs, shares), the track map (TM1, planar_regions) as the single source; `PlanarLineSides` folds into it; `ResolvePlanarSites` moves here.
+- Decides, per structure (a crossing set sharing one bridge or tunnel, D203(2)): the separator and the kind (D365); at a join, one separator bit and one kind bit per joiner (D364); straight legs at splits and merges; triangle flips; copies (D351, D322); rows (D349).
+- New hand-on: for each structure, the crossers it must span; for each corridor, its band count.
+- The variant search lives here only and ranks on cheap scores (Shape turning + Slots step cost + an LP bound from Lengths); the full length solve runs for the best one to three (review §5; D297's 5 s seed).
+- Separator against separator: bridge × tunnel only; bridge × bridge is impossible; tunnel × tunnel (two depths) is deferred (D365).
+
+### 17.2 Shape (L2)
+- `SolvePlanarShape` over track stretches (TM3): absolute headings, crossing rules, node rules (one leg keeps the heading, the other moves one eighth), ports, no U-turn. No sideways moves (D340, D360). `BuildPlanarLineHeadings` (G2) cut to node geometry; `BuildPlanarPaths` keeps its crossing rules, loses detours and fork jogs.
+- Each separator is straight on an axis across its span; a tunnel's adds one ramp tile at each end on flat ground (it dives; crossers at grade, D365).
+- Capacity rows: a structure's crossers fit within its kind's limit at the chosen angle (bridge: the longest bridge, D346's break-up rule when it lands; tunnel: max_tunnel_length; a main line's: D228a). Width per crosser from the existing `Cross`/`Deck` head rows (planar_model.h). This retires the f0 deck-max failures before any solve.
+
+### 17.3 Slots (L3)
+- The one owner of sideways moves: each track's integer slot per interval of its frame, hence every S-bend, every straight leg's position, every close-up and fan at a pin. Model: the min-cost tension LP (network matrix, integral, always feasible).
+- Frames: channels (today), node groups (§15.5, generalised past two-channel sites), port-side corridors (replaces D359's gap steps, D363).
+- Hard rows: neighbours at least 1 apart; a copy exactly 1 from its line; a node's legs on its slot at the node; port pins, including the gap between ports on one side. No step inside a deck, a tunnel or its ramps, or a parallelogram's exact pieces.
+- Drops: `BuildPlanarGapSteps`, `PlanarMergeExitStep`, candidate steps, the hand slot facts (kept as test oracles).
+
+### 17.4 Lengths (L4 phase folded in, L5)
+- One builder reading Shape and Slots; one MILP with no binaries and no lazy rows; area linearised (D329). Ladder rungs from a one-shot read of the face phase (D339's re-read kept only as that one shot). The optional-segment machinery (`opt_group`, `OPTMAX`) goes. `SolveLazy` becomes an assertion: no clashes on L5's solution.
+- Hands Signals: every row's coverage (2P+4 summed along its lane) and its plain axis touch spots as rows of the program; doubled lanes equal.
+- Integrality time at LL³ is the one unmeasured risk (`PLANAR_IIS` "integer-only").
+
+### 17.5 Heights (D365) and Signals
+- Heights after Lengths on the fixed footprint (always feasible with terraform, D218; hard facts fail by tile before any solve). The hover runs Heights only on the flat seed's footprint and may flip kind, never separator; it retires the lazy terrain loop (DESIGN-planar §3). Built after 17.6 step 4.
+- Signals: a walk over the built tracks placing drag signals and joins on known row/lane pairs (TM5). The checker is an oracle (D193, D363); D345's checker-judged prio search retires.
+
+### 17.6 Order (riskiest first; each step a brief naming its subsection)
+1. **Frame experiment** (17.3; review §7): throwaway branch from probe-g3e; G2 cut to channel-path headings plus 45° node legs; D359 and the masks off; slot steps by `PLANAR_SLOTBEND`; count variants whose first solve (no clash rows) is infeasible on T2, T3, LL². Then add node-group frames, then port-side frames. Pass: every variant Structure and Slots accept is base feasible; each remaining IIS names a relation across frames. Prediction to falsify: node groups fix LL², port-side frames fix T2's W side, f0 needs 17.2's capacity rows.
+2. Shape capacity rows and deck groups; G2 cut to node geometry (17.2).
+3. Lengths with no lazy rows: first-round clashes 0 on every base-feasible variant, the lazy loop an assertion (17.4).
+4. Rows as tracks and the Signals walk; end to end checker clean on T2, T3, LL² (D357 gates); `MappedComposer` retires.
+5. Variant ranking on cheap scores; seed time against D297.
+6. Heights and tunnels (17.5, D365).
+- Independent, now: remove the by-name branch for T2 from the product path (engineer: "T2 now, LL² with SSS"); LL² follows step 4.
