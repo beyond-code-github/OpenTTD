@@ -21,7 +21,6 @@
 #include "../../../junction/planar/planar_structure.h"
 
 #include <algorithm>
-#include <iostream>
 #include <map>
 #include <set>
 #include <string>
@@ -361,8 +360,8 @@ static void Print(const std::string &hub, bool joiner_over, const Tally &tally)
 		line += fmt::format(", {}:{}", id, it == tally.breaching.end() ? 0 : it->second);
 	}
 	line += fmt::format(" | left out of structures: {} copy/row crossings, {} without separator", tally.notes.copy_row_crossings, tally.notes.no_separator);
-	std::cout << line << "\n";
-	for (const auto &[id, message] : tally.first) std::cout << "  first " << message << "\n";
+	WARN(line);
+	for (const auto &[id, message] : tally.first) WARN("  first " << message);
 }
 
 TEST_CASE("planar structure: today's variants of T2, T3 and LL2 against the promise", "[junction][planar][planarstructure]")
