@@ -33,7 +33,7 @@ Variants pass down as a list, ranked by Structure cost; later layers add their o
 - P7 Split before merge on every route path (D24).
 
 ## 5. Settled (D371)
-Q1 cheap counts; Q2 maximal runs plus forced splits; Q3 a copy per structure whatever the kind; Q4 band counts read from the track map (Structure's output).
+Q1 cheap counts: structures plus copies (D371a); Q2 maximal runs plus forced splits; Q3 a copy per structure whatever the kind; Q4 band counts read from the track map (Structure's output).
 
 ## 6. Output types (target; code is mapped onto these, D368)
 New header src/junction/planar/planar_structure.h:
