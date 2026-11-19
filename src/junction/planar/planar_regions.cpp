@@ -624,6 +624,36 @@ std::vector<uint32_t> PlanarCrossingSeparators(const PlanarTopology &topology, c
 	return out;
 }
 
+size_t PlanarTracksBeside(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<PlanarStructureRun> &runs, const std::vector<std::vector<uint32_t>> &line_events, uint32_t line, size_t event)
+{
+	const std::vector<uint32_t> &events = line_events[line];
+	size_t tracks = 0;
+	/* A row of a prio join's lane starts at the lane's first crossing with a joiner and runs to its end (the rule BuildPlanarTrackMap uses). */
+	for (size_t s = 0; s < channels.sites.size(); s++) {
+		if (channels.sites[s].kind != PlanarSiteKind::Join || !sites[s].prio || sites[s].straight == UINT32_MAX) continue;
+		std::vector<uint32_t> lanes, joiners;
+		JoinLanes(topology, channels, sites, s, lanes, joiners);
+		if (std::ranges::find(lanes, line) == lanes.end()) continue;
+		for (size_t i = 0; i < events.size(); i++) {
+			const uint32_t other = topology.crossings[events[i]].a == line ? topology.crossings[events[i]].b : topology.crossings[events[i]].a;
+			if (std::ranges::find(joiners, other) == joiners.end()) continue;
+			if (i <= event) tracks++;
+			break;
+		}
+	}
+	/* A copy beside a run of the line that has one, over the run's first to last crossing. */
+	for (const PlanarStructureRun &run : runs) {
+		if (run.line != line || !run.copy || run.crossings.empty()) continue;
+		const size_t first = static_cast<size_t>(std::ranges::find(events, run.crossings.front()) - events.begin());
+		const size_t last = static_cast<size_t>(std::ranges::find(events, run.crossings.back()) - events.begin());
+		if (first <= event && event <= last) {
+			tracks++;
+			break;
+		}
+	}
+	return tracks;
+}
+
 std::vector<PlanarStructureRun> PlanarGroupStructures(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const PlanarLineSides &sides, const std::vector<uint32_t> &separator, const JunctionSpec &spec)
 {
 	std::vector<PlanarStructureRun> out;
@@ -661,31 +691,15 @@ std::vector<PlanarStructureRun> PlanarGroupStructures(const PlanarTopology &topo
 		}
 		close();
 	}
-	/* Per line with a copy, the event index ranges its maximal runs cover (its pieces together cover the same range). */
-	const auto index_in = [&](uint32_t line, uint32_t k) { return static_cast<size_t>(std::ranges::find(sides.Events()[line], k) - sides.Events()[line].begin()); };
-	std::vector<std::vector<std::pair<size_t, size_t>>> copy_cover(topology.lines.size());
+	/* A bridge spans every track at the crossing (D371(2); copies and rows are tracks, S2c1 ruling): a crossing's width is 1 plus the tracks Structure places beside its crosser there. */
+	std::vector<PlanarStructureRun> maximal_runs;
 	for (uint32_t line = 0; line < topology.lines.size(); line++) {
-		if (channels.line_share[line] < 1.0) continue;
-		for (const std::vector<uint32_t> &run : maximal[line]) copy_cover[line].push_back({index_in(line, run.front()), index_in(line, run.back())});
+		for (const std::vector<uint32_t> &run : maximal[line]) maximal_runs.push_back({line, run, channels.line_share[line] >= 1.0});
 	}
-	/* The width of a crossing on a separator: the tracks the structure spans there. The crosser itself, plus its row when it is a prio lane whose row covers the crossing, plus its copy when a run of it with a copy covers the crossing (D371(2); copies and rows are crossers, S2c1 ruling). */
 	const auto width = [&](uint32_t line, uint32_t k) {
 		const uint32_t crosser = topology.crossings[k].a == line ? topology.crossings[k].b : topology.crossings[k].a;
-		const size_t at = index_in(crosser, k);
-		size_t w = 1;
-		for (const uint32_t first : sides.Events()[crosser]) {
-			if (row_starts.contains({crosser, first})) {
-				if (index_in(crosser, first) <= at) w++;
-				break;
-			}
-		}
-		for (const auto &[lo, hi] : copy_cover[crosser]) {
-			if (lo <= at && at <= hi) {
-				w++;
-				break;
-			}
-		}
-		return w;
+		const size_t at = static_cast<size_t>(std::ranges::find(sides.Events()[crosser], k) - sides.Events()[crosser].begin());
+		return 1 + PlanarTracksBeside(topology, channels, sites, maximal_runs, sides.Events(), crosser, at);
 	};
 	for (uint32_t line = 0; line < topology.lines.size(); line++) {
 		const bool copy = channels.line_share[line] >= 1.0;
