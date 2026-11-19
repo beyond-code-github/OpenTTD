@@ -774,6 +774,24 @@ struct LadderFace {
 	std::vector<LadderCopy> copies; ///< The copy candidates of all runs.
 };
 
+/** A turn in eighths, -4..3, positive clockwise. */
+static int TurnOf(int from, int to)
+{
+	return (to - from + 12) % 8 - 4;
+}
+
+/** A port line at the box boundary. */
+static void PlanarPortIn(Model &M, const std::string &name, PlanarSide side)
+{
+	M.NewStrand(name);
+	const TagScope ts("port in");
+	const Point u = M.strands.at(name).start;
+	if (side == PlanarSide::W) M.Add(Eq(u[0] - M.X0, 0));
+	if (side == PlanarSide::E) M.Add(Eq(u[0] - M.X, 0));
+	if (side == PlanarSide::S) M.Add(Eq(u[1] - M.Y, 0));
+	if (side == PlanarSide::N) M.Add(Eq(u[1] - M.Y0, 1));
+}
+
 /**
  * Builds the model of one variant from the topology's channel graph (D327): probe 9's n-lane fray, join, doubled core and
  * bundles, placed by the channels, sites and paths instead of by a hand composition.
@@ -952,24 +970,6 @@ private:
 	int PortHeading(const std::set<uint32_t> &ports) const
 	{
 		return ports.size() == 1 ? static_cast<int>(this->t.ports[*ports.begin()].heading) : -1;
-	}
-
-	/** A turn in eighths, -4..3, positive clockwise. */
-	static int TurnOf(int from, int to)
-	{
-		return (to - from + 12) % 8 - 4;
-	}
-
-	/** A port line at the box boundary. */
-	void PortIn(const std::string &name, PlanarSide side)
-	{
-		this->M.NewStrand(name);
-		const TagScope ts("port in");
-		const Point u = this->M.strands.at(name).start;
-		if (side == PlanarSide::W) this->M.Add(Eq(u[0] - this->M.X0, 0));
-		if (side == PlanarSide::E) this->M.Add(Eq(u[0] - this->M.X, 0));
-		if (side == PlanarSide::S) this->M.Add(Eq(u[1] - this->M.Y, 0));
-		if (side == PlanarSide::N) this->M.Add(Eq(u[1] - this->M.Y0, 1));
 	}
 
 	/** Start a copy strand of a lane at its end. */
@@ -1257,6 +1257,168 @@ private:
 	void Build();
 };
 
+/**
+ * Finish a planar model: out ports on the boundary, the anchor, routes, bay length and curves.
+ * @param M The model, with every strand built.
+ * @param t The topology.
+ * @param P The prio length.
+ * @param routes Receives the routes.
+ * @param outline Receives the outline routes.
+ */
+static void FinishPlanarModel(Model &M, const PlanarTopology &t, int P, RouteList &routes, RouteList &outline)
+{
+	/* Out ports on the boundary. */
+	for (const PlanarPort &port : t.ports) {
+		if (port.in) continue;
+		for (uint32_t l : port.lines) {
+			const TagScope ts("port out");
+			const Point u = M.End(t.lines[l].name);
+			if (port.side == PlanarSide::W) M.Add(Eq(u[0] - M.X0, 0));
+			if (port.side == PlanarSide::E) M.Add(Eq(u[0] - M.X, 0));
+			if (port.side == PlanarSide::S) M.Add(Eq(u[1] - M.Y, 0));
+			if (port.side == PlanarSide::N) M.Add(Eq(u[1] - M.Y0, 1));
+		}
+	}
+	if (!t.ports.empty() && !t.ports[0].lines.empty()) {
+		/* Hard anchor: pin the first port's first line's port end point. */
+		const TagScope ts("anchor");
+		const PlanarPort &p0 = t.ports[0];
+		const std::string &nm = t.lines[p0.lines[0]].name;
+		const Point u = p0.in ? M.strands.at(nm).start : M.End(nm);
+		constexpr int P0 = 4096; // anchor, far from the lower bound 0 of X0/Y0
+		for (size_t k = 0; k < 2; k++) {
+			M.Add(Ge(u[k], P0));
+			M.Add(Ge(P0 + 1 - u[k], 0));
+		}
+	}
+	/* Port order per side in reading order: lanes of a port adjacent, one tile between ports. */
+	for (const PlanarSide side : {PlanarSide::N, PlanarSide::E, PlanarSide::S, PlanarSide::W}) {
+		const bool across_y = side == PlanarSide::W || side == PlanarSide::E;
+		const std::array<int, 2> read = across_y ? std::array<int, 2>{0, 1} : std::array<int, 2>{1, 0};
+		std::vector<std::pair<Point, bool>> seq; // point, first line of a new port
+		for (const PlanarPort &port : t.ports) {
+			if (port.side != side) continue;
+			std::vector<uint32_t> lines = port.lines;
+			const auto &r = Right(static_cast<int>(port.heading));
+			if (r[0] * read[0] + r[1] * read[1] < 0) std::ranges::reverse(lines);
+			bool first = true;
+			for (uint32_t l : lines) {
+				const std::string &nm = t.lines[l].name;
+				seq.emplace_back(port.in ? M.strands.at(nm).start : M.End(nm), first);
+				first = false;
+			}
+		}
+		const TagScope ts("port order");
+		const size_t k = across_y ? 1 : 0;
+		for (size_t i = 1; i < seq.size(); i++) M.Add(Eq(seq[i].first[k] - seq[i - 1].first[k], seq[i].second ? 4 : 2));
+	}
+	/* Experiment (PLANAR_ALIGN): a prio route between opposite sides enters and leaves on the same row (D316). */
+	if (std::getenv("PLANAR_ALIGN") != nullptr) {
+		const TagScope ts("align");
+		for (const PlanarRoute &route : t.routes) {
+			if (!route.prio || route.paths.empty() || route.paths[0].empty()) continue;
+			const PlanarLine &first = t.lines[route.paths[0].front()], &last = t.lines[route.paths[0].back()];
+			if (!first.from.port || !last.to.port) continue;
+			const PlanarSide a = t.ports[first.from.index].side, b = t.ports[last.to.index].side;
+			const bool we = (a == PlanarSide::W && b == PlanarSide::E) || (a == PlanarSide::E && b == PlanarSide::W);
+			const bool ns = (a == PlanarSide::N && b == PlanarSide::S) || (a == PlanarSide::S && b == PlanarSide::N);
+			if (!we && !ns) continue;
+			if (std::string(std::getenv("PLANAR_ALIGN")) == "W" && a != PlanarSide::W) continue; // only routes entering from the west
+			const size_t k = we ? 1 : 0;
+			M.Add(Eq(M.End(last.name)[k] - M.strands.at(first.name).start[k], 0));
+		}
+	}
+	/* Box. */
+	for (const std::string &name : M.order) {
+		const TagScope ts("box");
+		const Strand &st = M.strands.at(name);
+		std::vector<Point> pts{st.start};
+		for (const Seg &sg : st.segs) pts.push_back(sg.b);
+		for (const Point &p : pts) {
+			M.Add(Ge(p[0] - M.X0, 0));
+			M.Add(Ge(M.X - p[0], 0));
+			M.Add(Ge(p[1] - M.Y0, 1));
+			M.Add(Ge(M.Y - p[1], 0));
+		}
+	}
+	/* Prio rows: inside the box, unrelated to all. */
+	for (const PrioRow &row : std::vector<PrioRow>(M.prio_rows)) {
+		const TagScope ts("prio row");
+		const auto &r = Right(row.h);
+		const int dx = STEP[row.h][0], dy = STEP[row.h][1];
+		const std::array<Ex, 2> start = {row.m[0] - dx * 2 * P + row.side * r[0] * 2, row.m[1] - dy * 2 * P + row.side * r[1] * 2};
+		const std::string nm = "prio:" + row.strand;
+		M.NewStrand(nm, M.NewPoint());
+		M.Tie(M.strands.at(nm).start, start);
+		M.AddSeg(nm, row.h, 2 * P, 2 * P, 0);
+		for (const Point &p : {M.strands.at(nm).start, M.End(nm)}) {
+			M.Add(Ge(p[0] - M.X0, 0));
+			M.Add(Ge(M.X - p[0], 0));
+			M.Add(Ge(p[1] - M.Y0, 1));
+			M.Add(Ge(M.Y - p[1], 0));
+		}
+	}
+	/* A deck is two heads and at most the longest middle. */
+	for (const DeckRec &d : std::vector<DeckRec>(M.decks)) {
+		const TagScope ts("deck max");
+		M.Add(Le(d.f - d.n, 2 * (M.params.maxmid + 2)));
+	}
+
+	/* Routes: every route path; the outline: from each in port's left lane, the path turning furthest left. */
+	for (const PlanarRoute &route : t.routes) {
+		for (const auto &path : route.paths) {
+			std::vector<std::string> names;
+			for (uint32_t l : path) names.push_back(t.lines[l].name);
+			routes.push_back(std::move(names));
+		}
+	}
+	for (const PlanarPort &port : t.ports) {
+		if (!port.in) continue;
+		const uint32_t lane = port.lines.front();
+		const std::vector<std::string> *best = nullptr;
+		int best_turn = INT_MAX;
+		for (const auto &rp : routes) {
+			if (rp.front() != t.lines[lane].name) continue;
+			const PlanarLine &last = t.lines[PlanarLineByName(t, rp.back())];
+			const int turn = TurnOf(static_cast<int>(port.heading), static_cast<int>(t.ports[last.to.index].heading));
+			if (turn < best_turn) {
+				best_turn = turn;
+				best = &rp;
+			}
+		}
+		if (best != nullptr) outline.push_back(*best);
+	}
+	/* R5: a non-prio route runs at least 2 TL units from its last split (or its port) to each merge. */
+	const auto starts_at = [&](const std::string &name, size_t legs_in) {
+		const PlanarEnd &e = t.lines[PlanarLineByName(t, name)].from;
+		return !e.port && t.nodes[e.index].in.size() == legs_in;
+	};
+	std::set<std::vector<std::string>> bays;
+	for (const PlanarRoute &route : t.routes) {
+		if (route.prio) continue;
+		for (const auto &path : route.paths) {
+			std::vector<std::string> names;
+			for (uint32_t l : path) names.push_back(t.lines[l].name);
+			for (size_t i = 0; i + 1 < names.size(); i++) {
+				if (!starts_at(names[i + 1], 2)) continue;
+				size_t j = i;
+				while (j > 0 && !starts_at(names[j], 1)) j--;
+				std::vector<std::string> stretch(names.begin() + j, names.begin() + i + 1);
+				if (!bays.insert(stretch).second) continue;
+				const TagScope ts("bay length");
+				Ex len;
+				for (const std::string &nm : stretch) {
+					for (const Seg &sg : M.strands.at(nm).segs) len = len + sg.L;
+				}
+				M.Add(Ge(len, 2 * M.params.tl + 4));
+			}
+		}
+	}
+	M.routes = &routes;
+	M.outline_routes = &outline;
+	Composer::RouteCurves(M, routes, M.params, std::sqrt(2.0));
+}
+
 /** Build the model of the variant. */
 void MappedComposer::Build()
 {
@@ -1310,7 +1472,7 @@ void MappedComposer::Build()
 	/* In ports. */
 	for (const PlanarPort &port : t.ports) {
 		if (!port.in) continue;
-		for (uint32_t l : port.lines) this->PortIn(t.lines[l].name, port.side);
+		for (uint32_t l : port.lines) PlanarPortIn(this->M, t.lines[l].name, port.side);
 	}
 
 	/* Depth order: a site is built once its in lines exist and starts the lines one deeper; a channel is built after the site that starts it. Crossings are wired at the end. */
@@ -1813,156 +1975,7 @@ void MappedComposer::Build()
 		}
 	}
 
-	/* Out ports on the boundary. */
-	for (const PlanarPort &port : t.ports) {
-		if (port.in) continue;
-		for (uint32_t l : port.lines) {
-			const TagScope ts("port out");
-			const Point u = M.End(t.lines[l].name);
-			if (port.side == PlanarSide::W) M.Add(Eq(u[0] - M.X0, 0));
-			if (port.side == PlanarSide::E) M.Add(Eq(u[0] - M.X, 0));
-			if (port.side == PlanarSide::S) M.Add(Eq(u[1] - M.Y, 0));
-			if (port.side == PlanarSide::N) M.Add(Eq(u[1] - M.Y0, 1));
-		}
-	}
-	if (!t.ports.empty() && !t.ports[0].lines.empty()) {
-		/* Hard anchor: pin the first port's first line's port end point. */
-		const TagScope ts("anchor");
-		const PlanarPort &p0 = t.ports[0];
-		const std::string &nm = t.lines[p0.lines[0]].name;
-		const Point u = p0.in ? M.strands.at(nm).start : M.End(nm);
-		constexpr int P0 = 4096; // anchor, far from the lower bound 0 of X0/Y0
-		for (size_t k = 0; k < 2; k++) {
-			M.Add(Ge(u[k], P0));
-			M.Add(Ge(P0 + 1 - u[k], 0));
-		}
-	}
-	/* Port order per side in reading order: lanes of a port adjacent, one tile between ports. */
-	for (const PlanarSide side : {PlanarSide::N, PlanarSide::E, PlanarSide::S, PlanarSide::W}) {
-		const bool across_y = side == PlanarSide::W || side == PlanarSide::E;
-		const std::array<int, 2> read = across_y ? std::array<int, 2>{0, 1} : std::array<int, 2>{1, 0};
-		std::vector<std::pair<Point, bool>> seq; // point, first line of a new port
-		for (const PlanarPort &port : t.ports) {
-			if (port.side != side) continue;
-			std::vector<uint32_t> lines = port.lines;
-			const auto &r = Right(static_cast<int>(port.heading));
-			if (r[0] * read[0] + r[1] * read[1] < 0) std::ranges::reverse(lines);
-			bool first = true;
-			for (uint32_t l : lines) {
-				const std::string &nm = t.lines[l].name;
-				seq.emplace_back(port.in ? M.strands.at(nm).start : M.End(nm), first);
-				first = false;
-			}
-		}
-		const TagScope ts("port order");
-		const size_t k = across_y ? 1 : 0;
-		for (size_t i = 1; i < seq.size(); i++) M.Add(Eq(seq[i].first[k] - seq[i - 1].first[k], seq[i].second ? 4 : 2));
-	}
-	/* Experiment (PLANAR_ALIGN): a prio route between opposite sides enters and leaves on the same row (D316). */
-	if (std::getenv("PLANAR_ALIGN") != nullptr) {
-		const TagScope ts("align");
-		for (const PlanarRoute &route : t.routes) {
-			if (!route.prio || route.paths.empty() || route.paths[0].empty()) continue;
-			const PlanarLine &first = t.lines[route.paths[0].front()], &last = t.lines[route.paths[0].back()];
-			if (!first.from.port || !last.to.port) continue;
-			const PlanarSide a = t.ports[first.from.index].side, b = t.ports[last.to.index].side;
-			const bool we = (a == PlanarSide::W && b == PlanarSide::E) || (a == PlanarSide::E && b == PlanarSide::W);
-			const bool ns = (a == PlanarSide::N && b == PlanarSide::S) || (a == PlanarSide::S && b == PlanarSide::N);
-			if (!we && !ns) continue;
-			if (std::string(std::getenv("PLANAR_ALIGN")) == "W" && a != PlanarSide::W) continue; // only routes entering from the west
-			const size_t k = we ? 1 : 0;
-			M.Add(Eq(M.End(last.name)[k] - M.strands.at(first.name).start[k], 0));
-		}
-	}
-	/* Box. */
-	for (const std::string &name : M.order) {
-		const TagScope ts("box");
-		const Strand &st = M.strands.at(name);
-		std::vector<Point> pts{st.start};
-		for (const Seg &sg : st.segs) pts.push_back(sg.b);
-		for (const Point &p : pts) {
-			M.Add(Ge(p[0] - M.X0, 0));
-			M.Add(Ge(M.X - p[0], 0));
-			M.Add(Ge(p[1] - M.Y0, 1));
-			M.Add(Ge(M.Y - p[1], 0));
-		}
-	}
-	/* Prio rows: inside the box, unrelated to all. */
-	for (const PrioRow &row : std::vector<PrioRow>(M.prio_rows)) {
-		const TagScope ts("prio row");
-		const auto &r = Right(row.h);
-		const int dx = STEP[row.h][0], dy = STEP[row.h][1];
-		const std::array<Ex, 2> start = {row.m[0] - dx * 2 * this->P + row.side * r[0] * 2, row.m[1] - dy * 2 * this->P + row.side * r[1] * 2};
-		const std::string nm = "prio:" + row.strand;
-		M.NewStrand(nm, M.NewPoint());
-		M.Tie(M.strands.at(nm).start, start);
-		M.AddSeg(nm, row.h, 2 * this->P, 2 * this->P, 0);
-		for (const Point &p : {M.strands.at(nm).start, M.End(nm)}) {
-			M.Add(Ge(p[0] - M.X0, 0));
-			M.Add(Ge(M.X - p[0], 0));
-			M.Add(Ge(p[1] - M.Y0, 1));
-			M.Add(Ge(M.Y - p[1], 0));
-		}
-	}
-	/* A deck is two heads and at most the longest middle. */
-	for (const DeckRec &d : std::vector<DeckRec>(M.decks)) {
-		const TagScope ts("deck max");
-		M.Add(Le(d.f - d.n, 2 * (M.params.maxmid + 2)));
-	}
-
-	/* Routes: every route path; the outline: from each in port's left lane, the path turning furthest left. */
-	for (const PlanarRoute &route : t.routes) {
-		for (const auto &path : route.paths) {
-			std::vector<std::string> names;
-			for (uint32_t l : path) names.push_back(t.lines[l].name);
-			this->routes.push_back(std::move(names));
-		}
-	}
-	for (const PlanarPort &port : t.ports) {
-		if (!port.in) continue;
-		const uint32_t lane = port.lines.front();
-		const std::vector<std::string> *best = nullptr;
-		int best_turn = INT_MAX;
-		for (const auto &rp : this->routes) {
-			if (rp.front() != t.lines[lane].name) continue;
-			const PlanarLine &last = t.lines[PlanarLineByName(t, rp.back())];
-			const int turn = TurnOf(static_cast<int>(port.heading), static_cast<int>(t.ports[last.to.index].heading));
-			if (turn < best_turn) {
-				best_turn = turn;
-				best = &rp;
-			}
-		}
-		if (best != nullptr) this->outline.push_back(*best);
-	}
-	/* R5: a non-prio route runs at least 2 TL units from its last split (or its port) to each merge. */
-	const auto starts_at = [&](const std::string &name, size_t legs_in) {
-		const PlanarEnd &e = t.lines[PlanarLineByName(t, name)].from;
-		return !e.port && t.nodes[e.index].in.size() == legs_in;
-	};
-	std::set<std::vector<std::string>> bays;
-	for (const PlanarRoute &route : t.routes) {
-		if (route.prio) continue;
-		for (const auto &path : route.paths) {
-			std::vector<std::string> names;
-			for (uint32_t l : path) names.push_back(t.lines[l].name);
-			for (size_t i = 0; i + 1 < names.size(); i++) {
-				if (!starts_at(names[i + 1], 2)) continue;
-				size_t j = i;
-				while (j > 0 && !starts_at(names[j], 1)) j--;
-				std::vector<std::string> stretch(names.begin() + j, names.begin() + i + 1);
-				if (!bays.insert(stretch).second) continue;
-				const TagScope ts("bay length");
-				Ex len;
-				for (const std::string &nm : stretch) {
-					for (const Seg &sg : M.strands.at(nm).segs) len = len + sg.L;
-				}
-				M.Add(Ge(len, 2 * M.params.tl + 4));
-			}
-		}
-	}
-	M.routes = &this->routes;
-	M.outline_routes = &this->outline;
-	Composer::RouteCurves(M, this->routes, M.params, std::sqrt(2.0));
+	FinishPlanarModel(M, t, this->P, this->routes, this->outline);
 }
 
 /** One segment's geometry at a solution: start point, length, heading. */
@@ -2712,53 +2725,21 @@ int RungsMoved(const Model &M, const std::vector<RungSpec> &rungs, const std::ve
 }
 
 /**
- * Build, solve and export one variant of the mapped composition.
+ * Build, solve and export one variant with a composer; the part of SolveMappedVariant shared by every composer.
+ * @tparam C The composer: constructed from (topology, channels, params, variant, shape), with members M, sides, ladder_faces and ladder_off.
  * @param topology The topology.
  * @param channels Its channel graph.
  * @param params The spec facts.
  * @param variant The variant.
  * @param shape Null, or the channel paths to build on instead of the default ones.
- * @param deadline The variant's deadline, shared by every solve in it (both shapes).
+ * @param deadline The variant's deadline.
+ * @param out The outcome so far (its tag).
  * @return The outcome.
  */
-VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant, const std::vector<PlanarChannelPath> *shape, Clock::time_point deadline)
+template <class C>
+static VariantOutcome SolveComposedVariant(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant, const std::vector<PlanarChannelPath> *shape, Clock::time_point deadline, VariantOutcome out)
 {
-	VariantOutcome out;
-	out.tag = fmt::format("o{}t{}f{}s{}", variant.over, variant.ties, variant.flips, variant.steps);
-	std::vector<PlanarChannelPath> program_shape;
-	if (shape == nullptr) {
-		const char *e = std::getenv("PLANAR_SHAPE");
-		const std::string mode = std::getenv("PLANAR_DRY") != nullptr ? "default" : e != nullptr ? e : "";
-		if (mode != "default") {
-			const PlanarPaths dflt = BuildPlanarPaths(topology, channels, variant.over);
-			std::string program_why;
-			if (dflt.why.empty()) program_shape = SolvePlanarShape(topology, channels, PlanarLineSides(topology, channels), dflt.over, nullptr, &program_why);
-			else program_why = dflt.why;
-			if (program_shape.empty() && std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "variant {}: shape program failed ({}), solving with the default shape\n", out.tag, program_why);
-			if (mode == "program") {
-				if (!program_shape.empty()) shape = &program_shape;
-			} else {
-				/* Score both shapes: the default one, then the program's when it differs; the smaller area wins, a tie goes to the default. */
-				VariantOutcome best = SolveMappedVariant(topology, channels, params, variant, &dflt.paths, deadline);
-				const auto same = [&](const std::vector<PlanarChannelPath> &x, const std::vector<PlanarChannelPath> &y) {
-					if (x.size() != y.size()) return false;
-					for (size_t i = 0; i < x.size(); i++) {
-						if (x[i].headings != y[i].headings || x[i].crossing_piece != y[i].crossing_piece) return false;
-					}
-					return true;
-				};
-				if (dflt.why.empty() && !program_shape.empty() && !same(program_shape, dflt.paths)) {
-					VariantOutcome prog = SolveMappedVariant(topology, channels, params, variant, &program_shape, deadline);
-					if (prog.ok && (!best.ok || prog.area < best.area)) {
-						prog.program_shape = true;
-						best = std::move(prog);
-					}
-				}
-				return best;
-			}
-		}
-	}
-	MappedComposer composer(topology, channels, params, variant, shape);
+	C composer(topology, channels, params, variant, shape);
 	Model &M = composer.M;
 	if (std::getenv("PLANAR_DRY") != nullptr) { // debug: build every variant without solving; print its over choices and its construction failure
 		const PlanarPaths pp = BuildPlanarPaths(topology, channels, variant.over);
@@ -2778,7 +2759,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 	LazyResult res;
 	if (!SolveLazy(M, deadline, res, out.area, out.why, &composer.sides)) return out;
 	/* Ladders: re-solve with rungs from the rough solution, at most twice (the second only when a rung point left its facing span). */
-	std::unique_ptr<MappedComposer> stand; // the composer of the last successful ladder solve
+	std::unique_ptr<C> stand; // the composer of the last successful ladder solve
 	LazyResult stand_res;
 	if (std::getenv("PLANAR_NOLADDER") == nullptr) {
 		for (int pass = 0; pass < 2; pass++) {
@@ -2787,7 +2768,7 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 			int violated = 0;
 			const std::vector<RungSpec> rungs = LadderRungs(cur_model, composer.ladder_faces, composer.ladder_off, cur_val, violated);
 			out.rungs_violated += violated;
-			auto next = std::make_unique<MappedComposer>(topology, channels, params, variant, shape);
+			auto next = std::make_unique<C>(topology, channels, params, variant, shape);
 			if (!next->M.error.empty()) break;
 			{
 				const TagScope ts("rung");
@@ -2872,6 +2853,56 @@ VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarCh
 	}
 	out.ok = true;
 	return out;
+}
+
+/**
+ * Build, solve and export one variant of the mapped composition.
+ * @param topology The topology.
+ * @param channels Its channel graph.
+ * @param params The spec facts.
+ * @param variant The variant.
+ * @param shape Null, or the channel paths to build on instead of the default ones.
+ * @param deadline The variant's deadline, shared by every solve in it (both shapes).
+ * @return The outcome.
+ */
+VariantOutcome SolveMappedVariant(const PlanarTopology &topology, const PlanarChannels &channels, const Params &params, const MappedVariant &variant, const std::vector<PlanarChannelPath> *shape, Clock::time_point deadline)
+{
+	VariantOutcome out;
+	out.tag = fmt::format("o{}t{}f{}s{}", variant.over, variant.ties, variant.flips, variant.steps);
+	std::vector<PlanarChannelPath> program_shape;
+	if (shape == nullptr) {
+		const char *e = std::getenv("PLANAR_SHAPE");
+		const std::string mode = std::getenv("PLANAR_DRY") != nullptr ? "default" : e != nullptr ? e : "";
+		if (mode != "default") {
+			const PlanarPaths dflt = BuildPlanarPaths(topology, channels, variant.over);
+			std::string program_why;
+			if (dflt.why.empty()) program_shape = SolvePlanarShape(topology, channels, PlanarLineSides(topology, channels), dflt.over, nullptr, &program_why);
+			else program_why = dflt.why;
+			if (program_shape.empty() && std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "variant {}: shape program failed ({}), solving with the default shape\n", out.tag, program_why);
+			if (mode == "program") {
+				if (!program_shape.empty()) shape = &program_shape;
+			} else {
+				/* Score both shapes: the default one, then the program's when it differs; the smaller area wins, a tie goes to the default. */
+				VariantOutcome best = SolveMappedVariant(topology, channels, params, variant, &dflt.paths, deadline);
+				const auto same = [&](const std::vector<PlanarChannelPath> &x, const std::vector<PlanarChannelPath> &y) {
+					if (x.size() != y.size()) return false;
+					for (size_t i = 0; i < x.size(); i++) {
+						if (x[i].headings != y[i].headings || x[i].crossing_piece != y[i].crossing_piece) return false;
+					}
+					return true;
+				};
+				if (dflt.why.empty() && !program_shape.empty() && !same(program_shape, dflt.paths)) {
+					VariantOutcome prog = SolveMappedVariant(topology, channels, params, variant, &program_shape, deadline);
+					if (prog.ok && (!best.ok || prog.area < best.area)) {
+						prog.program_shape = true;
+						best = std::move(prog);
+					}
+				}
+				return best;
+			}
+		}
+	}
+	return SolveComposedVariant<MappedComposer>(topology, channels, params, variant, shape, deadline, out);
 }
 
 /** The spec facts the model uses. */
