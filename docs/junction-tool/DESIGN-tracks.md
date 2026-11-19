@@ -251,13 +251,13 @@ A new composer that builds every variant from the track map, beside `MappedCompo
 6. **G6:** ladders from the map's faces; then retire `MappedComposer` once the D357 gates pass.
 
 ## 17. SSS: the plan of record (2026-11-20; D361, D362, D363, D364, D365; source wip/REVIEW-architecture-holistic.md §5-§7, wip/PROPOSAL-tunnels-sss.md)
-The layers and their promises are stated in src/junction/planar/CLAUDE.md "Architecture"; this section holds the design behind them and the order of work. A mechanism that generates, then checks and patches, is a defect to design out (D361).
+The layers and their promises are stated in src/junction/planar/CLAUDE.md "Architecture"; this section holds the design behind them and the order of work. A mechanism that generates, then checks and patches, is a defect to design out (D361). Each layer depends only on the model before it; information that spans layers flows down, never rediscovered or re-litigated (D366).
 
 ### 17.1 Structure (L0 topology, L1 skeleton and track map)
 - Keeps: planar_topology, planar_channels (channels, sites, node legs, shares), the track map (TM1, planar_regions) as the single source; `PlanarLineSides` folds into it; `ResolvePlanarSites` moves here.
-- Decides, per structure (a crossing set sharing one bridge or tunnel, D203(2)): the separator and the kind (D365); at a join, one separator bit and one kind bit per joiner (D364); straight legs at splits and merges; triangle flips; copies (D351, D322); rows (D349).
+- Decides, per structure (a crossing set sharing one bridge or tunnel, D203(2)): the separator and the allowed kind set (bridge, tunnel or either; D365, D366); at a join, one separator bit and one kind bit per joiner (D364); straight legs at splits and merges; triangle flips; copies (D351, D322); rows (D349).
 - New hand-on: for each structure, the crossers it must span; for each corridor, its band count.
-- The variant search lives here only and ranks on cheap scores (Shape turning + Slots step cost + an LP bound from Lengths); the full length solve runs for the best one to three (review §5; D297's 5 s seed).
+- The variant search lives here only. Variants pass down ranked on cheap scores (Structure's own, then Shape turning and Slots step cost as each layer adds them); Lengths solves the best one to three and picks by its own model, with no score flowing back up (D366; review §5; D297's 5 s seed).
 - Separator against separator: bridge × tunnel only; bridge × bridge is impossible; tunnel × tunnel (two depths) is deferred (D365).
 
 ### 17.2 Shape (L2)
@@ -277,7 +277,7 @@ The layers and their promises are stated in src/junction/planar/CLAUDE.md "Archi
 - Integrality time at LL³ is the one unmeasured risk (`PLANAR_IIS` "integer-only").
 
 ### 17.5 Heights (D365) and Signals
-- Heights after Lengths on the fixed footprint (always feasible with terraform, D218; hard facts fail by tile before any solve). The hover runs Heights only on the flat seed's footprint and may flip kind, never separator; it retires the lazy terrain loop (DESIGN-planar §3). Built after 17.6 step 4.
+- Heights after Lengths on the fixed footprint (always feasible with terraform, D218; hard facts fail by tile before any solve). The hover runs Heights only on the flat seed's footprint and picks kind only within Structure's allowed set (D366); it retires the lazy terrain loop (DESIGN-planar §3). Built after 17.6 step 4.
 - Signals: a walk over the built tracks placing drag signals and joins on known row/lane pairs (TM5). The checker is an oracle (D193, D363); D345's checker-judged prio search retires.
 
 ### 17.6 Order (riskiest first; each step a brief naming its subsection)

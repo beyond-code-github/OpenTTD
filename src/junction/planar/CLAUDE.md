@@ -26,10 +26,11 @@
 - **Heights** (D365; built after T2, T3 and LL² are end to end checker clean):
   - Decides every tile's track level and the terraform on the fixed footprint: ramps on axis pieces only, portals, bridge clearance, cuttings.
   - Promise: always feasible with terraform allowed (D218); only hard facts (houses under track or a span, water, map edge, unpurchasable) fail, named by tile, before any solve.
-  - The hover runs Heights only, on the flat seed's footprint, and may flip a structure's kind, never its separator.
+  - The hover runs Heights only, on the flat seed's footprint; it picks a structure's kind only within the set Structure handed down (D366).
 - **Signals:** places signals and prio joins by a walk over the built tracks. The checker is a test oracle.
+- Each layer depends only on the model of the layer before it; information that spans layers flows down in the hand-offs, never rediscovered or re-litigated (D366).
 - Headings need no lengths: a shape is angles only, as on a metro map drawn with fixed angles, and the length layer only stretches pieces.
-- Variants are ranked on cheap scores (structure, shape and slot costs, plus a lower bound from the length program). Only the best few get the full length solve.
+- Variants are ranked on cheap scores (structure, shape and slot costs) as they pass down; Lengths solves the best few and picks by its own model (D366).
 
 ## Terms
 - **Hub:** a generated junction. **Port:** where track enters or leaves the hub's box, on one side, with one or more lines side by side.
