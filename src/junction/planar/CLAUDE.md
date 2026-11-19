@@ -2,6 +2,50 @@
 
 - The planar model stands beside the old pipeline and shares none of its graph, order, structure, programs or placement concepts.
 
+## Architecture: SSS, then lengths, then signals (D361, D362)
+- The planar solver is a stack of layers. Each layer makes only its own decisions. Its output meets every constraint it owns by construction, and it hands the next layer a stated promise. No later layer repairs, retries or discovers infeasibility in an earlier layer's decisions. New work follows this stack; a generate-and-check mechanism is a defect to design out.
+- **Structure** (topology, channels, sites, track map):
+  - Decides what tracks exist and their planar order: over or under at each crossing, which leg runs straight at each split and merge, triangle flips, copies, rows.
+  - Variants live here and nowhere else.
+  - Promise: a valid planar map of every physical track, with sides per stretch; for each bridge, the tracks it must span.
+- **Shape:**
+  - Decides every track's headings and the piece each crossing sits on, without lengths.
+  - It makes no sideways moves.
+  - Promise: legal headings, and every bridge spans its crossers within the longest bridge.
+- **Slots:**
+  - Decides every track's sideways position in every stretch, hence every S-bend, including which fork or merge leg stays straight and every close-up at a pinned port.
+  - It is the one owner of sideways moves.
+  - Frames cover channels, node groups and port-side corridors.
+  - Promise: positions agree around every loop a pin closes, and every step can be built.
+- **Lengths:**
+  - Decides every piece's length, as one solve with only lower bounds left.
+  - Every upper bound or exact length (port pins, the longest bridge, equal parallelograms, S-bend sizes) is an earlier layer's promise, so stretching always succeeds.
+  - Promise: a compact, clash-free layout with room for its signals.
+- **Signals:** places signals and prio joins by a walk over the built tracks. The checker is a test oracle.
+- Headings need no lengths: a shape is angles only, as on a metro map drawn with fixed angles, and the length layer only stretches pieces.
+- Variants are ranked on cheap scores (structure, shape and slot costs, plus a lower bound from the length program). Only the best few get the full length solve.
+
+## Terms
+- **Hub:** a generated junction. **Port:** where track enters or leaves the hub's box, on one side, with one or more lines side by side.
+- **Route:** where a train goes, from an entry port to an exit port. **Line:** one strand of track between two events; routes share a line until they split.
+- **Split / merge:** one line becoming two, or two becoming one.
+  - **Fray:** a split whose legs reach different ports. **Lane split:** a split whose legs reach the same port.
+  - **Join:** a merge from different entries. **Lane merge:** a merge from the same entry.
+  - **Fork:** a split with no straight leg.
+- **Crossing:** two lines that must cross. One is **over** (on a bridge, its **deck**), the other **under**.
+- **Topology:** ports, lines, splits, merges, crossings and their order along each line. No positions.
+- **Channel:** lines that travel together, with the same start, the same destination and the same crossings.
+- **Site:** where channels split or merge. Its **straight** channel continues straight; the other leaves or arrives on a **side**.
+- **Tie:** a site, or a split or merge, whose straight leg the rules cannot pick; the choice is a variant bit.
+- **Track map:** the topology with every physical track added:
+  - **copies:** a full-share lane doubled over a bridge (D351);
+  - **prio rows:** the track beside a lane at a prio join (D349).
+- **Variant:** one combination of the structure's choices (over bits, ties, triangle flips), tagged `o..t..f..s..`.
+- **Heading:** one of 8 directions; a track turns at most 45 degrees at a time. **Piece:** a straight run at one heading.
+- **Shape:** per track, its heading list and the piece each crossing sits on.
+- **Slot:** a track's sideways position in its bundle, in lane spacings. **S-bend:** the sideways move a slot change makes (turn 45 degrees, run diagonally, turn back). **Frame:** tracks whose slots share one zero.
+- **Lengths / the length program:** the integer program choosing every piece's length for the least area.
+
 ## Topology (`planar_topology`)
 - A topology is text in the engineer's notation: `port <side> <in|out> <heading>: lines` (lines left to right across travel; a side's ports in reading order, N and S west to east, W and E north to south), `node in -> out`, `prio routes`.
 - A line name is capital letters, a lane number and an optional lower-case suffix; `CB1` carries routes C1 and B1; `name=R1+R2` names its routes explicitly.
