@@ -57,4 +57,14 @@ struct PlanarShapeResult {
  */
 std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v);
 
+/**
+ * Shape one Structure variant: the heading program of SPEC-shape §2 and §2.1 (every rule except Capacity).
+ * One integer program over the lifted heading at every point of every track (its ends and its events): port headings; the node rule at every site; the crossing rule with the arrival side, the separator on an axis and the crossing angle in 1..3 eighths; one axis across each structure; beside tracks equal to their parent; every face winding once; no route turning more than 3 eighths from its entry heading. A stretch is generated monotone from its end headings. It minimises the turning of the Line tracks, then the crossing angles' distance from 90 degrees.
+ * @param v Structure's variant.
+ * @param out Receives the shaped variant when the result is true: the pieces, event pieces, crossing angles, structure axes, least middles and end runs, and the turning cost.
+ * @param why Receives "no shape: <status>" when the program has no optimal solution, with the tags of the infeasible rows for an infeasible one.
+ * @return Whether the variant was shaped.
+ */
+bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVariant &out, std::string &why);
+
 #endif /* PLANAR_SHAPE_LAYER_H */
