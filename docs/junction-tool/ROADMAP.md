@@ -130,7 +130,7 @@ The single list of planned work. Rules: every idea that is designed, ruled or ag
 | Interactive port moves: last layout's rungs as rough start | §10.6 | not built | no hit | rough start API |
 | Organic hubs: ports free along a boundary or diagonal arms, non-rectangular score, chord drawing as rough start | §8.7, STATUS Later 2026-11-17, D313 | not built | axis-only/box refusals PC:1250/1256 | shape layer, grid layer |
 | User score options (square, thin, cheapest) | D329, §8.7 | not built | PLANAR_OBJ experiment env only (PC:2176) | - |
-| Corpus growth: represent more PSG hubs | D270 (memory: "next phase after G4") | not built in planar | - | n-lane composer |
+| Corpus growth: represent more PSG hubs. Goal (engineer, 2026-11-19): "recreate any old hub from first principles - or at least build a hub 'in the style of mfb'". Under SSS (D362) a hub is its topology plus its Structure decisions (bridge or tunnel per crossing, form per joiner, straight legs) plus component cross-sections (227 three-input joins, 197 split-then-tunnel bundles, MFB bridge stacks); a style is a preset over those. Recreation test: read a save's topology and Structure decisions (mapx exports, piece graphs, REPRESENT-psg227), run Shape/Slots/Lengths, compare with the original; a gap names a missing layer promise | D270, D362 | not built in planar | - | SSS layers, n-lane, tunnels as an under form |
 | PSG 193 hub (V453000), mfb 227 | STATUS 2026-11-15 queue | 227 built (LL²); 193 unknown | - | - |
 
 ## Terrain
