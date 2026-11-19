@@ -227,3 +227,25 @@ The export carries track ids and kinds per piece (a row names its lane piece bes
 4. TM2, only if the probe's step count says so.
 5. TM5.
 Corpus pass 2 of the rules audit (wip/AUDIT-rules.md) checks the 16.1 list before TM4 lands.
+
+### 16.7 The track composer (engineer, 2026-11-19: "Yep lets do it!"; D357, D358)
+A new composer that builds every variant from the track map, beside `MappedComposer` behind a switch (`PLANAR_COMPOSER=tracks`), both scored on the D357 scorecard over T2, T3 and LL². `MappedComposer` and its recipes retire when the track composer passes the D357 gates on all three. No per-hub path (D326).
+- **Input per variant:** the topology, the flipped channels, the resolved sites, `PlanarPaths::over`, the D347b form (form A first), and the track map with its expanded topology exposed (`PlanarTrackMap::expanded`: tracks as lines with their ends, nodes including the copy and row splits and merges, crossings, events in travel order).
+- **Headings per stretch** (a stretch is a track between two consecutive events or ends). Until TM3 (16.2) gives them, one plain rule, the default shape's rule carried to tracks:
+  - inside a channel, a line part takes its channel path's pieces between its events (`PlanarPaths`);
+  - a leg inside a site starts on its node's heading (the straight leg keeps it, the other leg is one eighth off toward its side: switch geometry), then turns the short way, one eighth a piece, to its channel's first heading; a merge's legs mirror this;
+  - a site's own crossing (`group_crossings`) sits on the first piece of each leg that suits (over axis, under not parallel), as `BuildPlanarPaths` places channel crossings;
+  - over at a site's own crossing: the straight channel's leg (it carries the prio when there is one: D328's rule carried inside the site); at a prio join the D347b form decides (form A: the lanes over the joiners).
+  - copies and rows take their parent's headings over their range.
+- **Building:** one strand per topology line (its parts' segments in order, so routes and the export stay as today), one segment per heading per stretch with free length (piece minimum), a copy as a `CopyRec` over its range on the map's copy track with the D351/D312 parallelogram and paired decks (rulings), a row `prio:<lane>` following its lane piece by piece over its coverage (D349, §13.1, with the coverage sum from the lane's last switch at least 2 n_prio + 4: merge tile, coverage walk and the upstream element, from the reach rule). Each strand records which segments belong to which (track, stretch).
+- **Rules kept (16.1 only):** pieces and curve rows (game), node ties, decks and crossings (game, D208, D334), ports (D38, D58, D313), anchor (D348), box, bay length (D88), prio coverage (D108), copies (D351, D312), rows (D349). Nothing else: no fray gap, stub, fan, joiner spread, entry gaps, bundle offsets, side or fan rules.
+- **Separation:** the lazy loop's sides per stretch from the map (`PlanarTrackMap::Side(p, ps, q, qs)`), every strand mapped to its track and stretch, rows and copies included; then ladders from the map's faces (D339).
+- **Output:** the same `PlanarComponentLayout` (routes, rows, area, track, wasted, empty), so pv, the plan, the signal pass and the rig read it unchanged.
+
+### 16.8 Build steps (test-first, outside-in; each a brief)
+1. **G1 (pure):** `PlanarTrackMap::expanded`. Test: on T2 o1t3f1s0 every track is a line of `expanded` with ends, and each copy's and row's ends are nodes on its parent.
+2. **G2 (pure):** `PlanarTrackHeadings(map, paths, sites, over, form)`: headings per stretch by the 16.7 rule. Tests: on every T2, T3 and LL² variant, each stretch's headings are 45 degrees apart, continuous across events and nodes, over pieces axis, under pieces not parallel to their over piece, and every site crossing's over track is the straight channel's leg.
+3. **G3 (the risky one):** the track composer solves T2 o1t3f1s0. Outer test first: it builds and solves within 15 s and reports the scorecard. Inner tests: every route path's strands exist and connect; each strand's (track, stretch) ranges cover its segments.
+4. **G4:** sides per stretch in the lazy loop. Measure T2, T3 and LL², all variants, against `MappedComposer` on the scorecard and time.
+5. **G5:** rows to the signal pass (TM5p's given-row path, landed), end to end on all three hubs, checker clean.
+6. **G6:** ladders from the map's faces; then retire `MappedComposer` once the D357 gates pass.
