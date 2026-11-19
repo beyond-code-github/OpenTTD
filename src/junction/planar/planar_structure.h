@@ -53,7 +53,9 @@ struct PlanarStructureResult {
 /**
  * The promise P1 to P7 of SPEC-structure §4 as a test oracle (D367).
  * Copy and row tracks are the map's own additions: their crossings follow by rule from their parent structure, so P3 counts only crossings between two line tracks.
- * P5 checks the bridge and tunnel length limits; the D228a flow bound is not checked.
+ * P3 allows a crossing in two structures exactly when each of its two tracks is the separator of one of them.
+ * P5 checks the bridge and tunnel length limits and, for a structure with a copy, the D228a flow bound (crossers + 2 <= 2 * sd + tl).
+ * P6 also requires each copy track to be the copy of exactly one structure.
  * @param topology The topology the variant was made from.
  * @param spec The spec: the bridge and tunnel limits.
  * @param v The variant.

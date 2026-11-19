@@ -14,6 +14,7 @@
 #include "../../core/format.hpp"
 
 #include <algorithm>
+#include <map>
 #include <set>
 
 #include "../../safeguards.h"
@@ -84,7 +85,7 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 	if (!map.conflicts.empty()) out.push_back(fmt::format("P2: {} stretch pairs have conflicting sides", map.conflicts.size()));
 
 	/* P3: every crossing between two line tracks is in exactly one structure; a structure's crossings are consecutive events of its separator. */
-	std::vector<size_t> owners(map.crossings.size(), 0);
+	std::vector<std::vector<uint32_t>> owners(map.crossings.size()); ///< Per crossing, the separator of each structure holding it.
 	for (size_t i = 0; i < v.structures.size(); i++) {
 		const PlanarStructure &s = v.structures[i];
 		if (s.separator >= map.tracks.size() || s.crossings.size() != s.crossers.size()) {
@@ -98,7 +99,7 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 				out.push_back(fmt::format("P3: structure {} lists crossing {} which the map lacks", i, j));
 				continue;
 			}
-			owners[j]++;
+			owners[j].push_back(s.separator);
 			const uint32_t a = map.crossings[j].a, b = map.crossings[j].b;
 			if (!plain(a) || !plain(b)) out.push_back(fmt::format("P3: structure {} holds crossing {} of a copy or row track", i, j));
 			if (a != s.separator && b != s.separator) {
@@ -117,7 +118,10 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 	}
 	for (uint32_t j = 0; j < map.crossings.size(); j++) {
 		if (!plain(map.crossings[j].a) || !plain(map.crossings[j].b)) continue;
-		if (owners[j] != 1) out.push_back(fmt::format("P3: crossing {} ({} x {}) is in {} structures", j, map.tracks[map.crossings[j].a].name, map.tracks[map.crossings[j].b].name, owners[j]));
+		/* Exactly one structure, or two when each of the crossing's tracks is the separator of one of them. */
+		const uint32_t a = map.crossings[j].a, b = map.crossings[j].b;
+		const bool two_ok = owners[j].size() == 2 && ((owners[j][0] == a && owners[j][1] == b) || (owners[j][0] == b && owners[j][1] == a));
+		if (owners[j].size() != 1 && !two_ok) out.push_back(fmt::format("P3: crossing {} ({} x {}) is in {} structures", j, map.tracks[a].name, map.tracks[b].name, owners[j].size()));
 	}
 
 	/* P4: a crossing within the span of its crosser's own structure needs one bridge and one tunnel. */
@@ -145,11 +149,12 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 		if ((s.kinds & 3) == 0) out.push_back(fmt::format("P5: structure {} allows no kind", i));
 		if ((s.kinds & 1) != 0 && s.crossers.size() > spec.max_bridge_middle) out.push_back(fmt::format("P5: structure {} spans {} tracks, over the bridge limit {}", i, s.crossers.size(), spec.max_bridge_middle));
 		if ((s.kinds & 2) != 0 && s.crossers.size() > spec.max_tunnel_length) out.push_back(fmt::format("P5: structure {} spans {} tracks, over the tunnel limit {}", i, s.crossers.size(), spec.max_tunnel_length));
+		if (s.copy != UINT32_MAX && s.crossers.size() + 2 > 2u * spec.sd + spec.tl) out.push_back(fmt::format("P5: structure {} has a copy and spans {} tracks, over the D228a flow bound 2*sd+tl-2 = {}", i, s.crossers.size(), 2 * spec.sd + spec.tl - 2));
 	}
 
 	/* P6: copies follow the share, rows follow the prio joins. */
 	const PlanarChannels channels = BuildPlanarChannels(topology);
-	std::set<uint32_t> used_copies;
+	std::map<uint32_t, size_t> used_copies; ///< Per copy track, the structures naming it.
 	for (size_t i = 0; i < v.structures.size(); i++) {
 		const PlanarStructure &s = v.structures[i];
 		if (s.separator >= map.tracks.size()) continue;
@@ -166,11 +171,17 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 				copy_line->from.port != sep_line.from.port || copy_line->from.index != sep_line.from.index || copy_line->to.port != sep_line.to.port || copy_line->to.index != sep_line.to.index) {
 			out.push_back(fmt::format("P6: the copy of structure {} is not a copy track beside its separator {}", i, map.tracks[s.separator].name));
 		} else {
-			used_copies.insert(s.copy);
+			used_copies[s.copy]++;
 		}
 	}
 	for (uint32_t t = 0; t < map.tracks.size(); t++) {
-		if (map.tracks[t].kind == PlanarTrack::Kind::Copy && !used_copies.contains(t)) out.push_back(fmt::format("P6: copy track {} is no structure's copy", map.tracks[t].name));
+		if (map.tracks[t].kind != PlanarTrack::Kind::Copy) continue;
+		const auto it = used_copies.find(t);
+		if (it == used_copies.end()) {
+			out.push_back(fmt::format("P6: copy track {} is no structure's copy", map.tracks[t].name));
+		} else if (it->second > 1) {
+			out.push_back(fmt::format("P6: copy track {} is the copy of {} structures", map.tracks[t].name, it->second));
+		}
 	}
 	std::set<uint32_t> join_nodes, lanes;
 	for (const PlanarSite &site : channels.sites) {

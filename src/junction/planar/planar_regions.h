@@ -14,6 +14,7 @@
 #include "planar_gaps.h"
 
 #include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -107,7 +108,13 @@ struct PlanarTrackMap {
 	std::vector<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>> conflicts; ///< Stretch pairs two faces give opposite sides.
 };
 
-/** Build the track map of a variant. @param joiner_over Inside prio joins: false, the crossed lanes double over the joiners; true, a full-share joiner doubles over the lanes. */
-PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, bool joiner_over);
+/** Every joiner line of every prio join, in site order then nearest first. */
+std::vector<uint32_t> PlanarPrioJoiners(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites);
+
+/**
+ * Build the track map of a variant.
+ * @param separator_joiners Inside prio joins, per joiner (D364): the topology lines of the joiners that are separators. A crossing of lane i and joiner j (i > j) has joiner j as separator when it is in the set, else lane i. A separator doubles over its crossings only when its line has a full share.
+ */
+PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, const std::set<uint32_t> &separator_joiners);
 
 #endif /* PLANAR_REGIONS_H */

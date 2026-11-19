@@ -543,7 +543,19 @@ int8_t PlanarTrackMap::Side(uint32_t p, uint32_t ps, uint32_t q, uint32_t qs) co
 	return it == this->side.end() ? 0 : it->second;
 }
 
-PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, bool joiner_over)
+std::vector<uint32_t> PlanarPrioJoiners(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites)
+{
+	std::vector<uint32_t> out;
+	for (size_t s = 0; s < channels.sites.size(); s++) {
+		if (channels.sites[s].kind != PlanarSiteKind::Join || !sites[s].prio || sites[s].straight == UINT32_MAX) continue;
+		std::vector<uint32_t> lanes, joiners;
+		JoinLanes(topology, channels, sites, s, lanes, joiners);
+		out.insert(out.end(), joiners.begin(), joiners.end());
+	}
+	return out;
+}
+
+PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, const std::set<uint32_t> &separator_joiners)
 {
 	PlanarTrackMap result;
 	TrackExpander x;
@@ -632,17 +644,19 @@ PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarC
 	}
 	for (const Join &join : joins) {
 		for (size_t k = 0; k < join.lanes.size(); k++) {
-			std::vector<uint32_t> crossed;
-			if (!joiner_over) {
-				for (size_t m = 0; m < k; m++) {
-					if (const uint32_t c = crossing_of(join.lanes[k], join.joiners[m]); c != UINT32_MAX) crossed.push_back(c);
-				}
-				copy_over(join.lanes[k], crossed, join.sigma);
-			} else if (channels.line_share[join.joiners[k]] >= 1.0) {
+			/* Each crossing (lane k, joiner m), k > m, has one separator: the joiner when it is in the set, else the lane. */
+			std::vector<uint32_t> lane_crossed;
+			for (size_t m = 0; m < k; m++) {
+				if (separator_joiners.contains(join.joiners[m])) continue;
+				if (const uint32_t c = crossing_of(join.lanes[k], join.joiners[m]); c != UINT32_MAX) lane_crossed.push_back(c);
+			}
+			if (channels.line_share[join.lanes[k]] >= 1.0) copy_over(join.lanes[k], lane_crossed, join.sigma);
+			if (separator_joiners.contains(join.joiners[k]) && channels.line_share[join.joiners[k]] >= 1.0) {
+				std::vector<uint32_t> joiner_crossed;
 				for (size_t m = k + 1; m < join.lanes.size(); m++) {
-					if (const uint32_t c = crossing_of(join.joiners[k], join.lanes[m]); c != UINT32_MAX) crossed.push_back(c);
+					if (const uint32_t c = crossing_of(join.joiners[k], join.lanes[m]); c != UINT32_MAX) joiner_crossed.push_back(c);
 				}
-				copy_over(join.joiners[k], crossed, join.sigma);
+				copy_over(join.joiners[k], joiner_crossed, join.sigma);
 			}
 		}
 	}

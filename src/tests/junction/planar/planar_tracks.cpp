@@ -61,7 +61,8 @@ static bool CheckVariant(const TracksVariant &v, const std::string &tag, int &re
 {
 	bool good = true;
 	for (const bool joiner_over : {false, true}) {
-		const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, joiner_over);
+		const std::vector<uint32_t> pj = PlanarPrioJoiners(v.topology, v.channels, v.sites);
+		const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, joiner_over ? std::set<uint32_t>(pj.begin(), pj.end()) : std::set<uint32_t>{});
 		if (map.why.empty() && map.conflicts.empty()) continue;
 		good = false;
 		if (reported++ < 3) {
@@ -146,7 +147,7 @@ TEST_CASE("planar track map: the expanded topology holds every track with its en
 {
 	const TracksVariant v = BuildTracksVariant(PlanarTText(2), 1, 3, 1);
 	REQUIRE(v.ok);
-	const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, false);
+	const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, {});
 	REQUIRE(map.why.empty());
 	const PlanarTopology &e = map.expanded;
 
@@ -200,7 +201,8 @@ TEST_CASE("planar track map: tracks", "[junction][planar]")
 	REQUIRE(slot_runs > 0);
 	for (const bool joiner_over : {true, false}) {
 		INFO("joiner_over " << joiner_over);
-		const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, joiner_over);
+		const std::vector<uint32_t> pj = PlanarPrioJoiners(v.topology, v.channels, v.sites);
+		const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, joiner_over ? std::set<uint32_t>(pj.begin(), pj.end()) : std::set<uint32_t>{});
 		REQUIRE(map.why.empty());
 		const std::vector<uint32_t> rows = TracksOfKind(map, PlanarTrack::Kind::Row);
 		CHECK(rows.size() == 4);
@@ -234,7 +236,8 @@ TEST_CASE("planar track map: joiner over at T2's E join gives J0, row, S1, J1", 
 {
 	const TracksVariant v = BuildTracksVariant(PlanarTText(2), 1, 3, 1);
 	REQUIRE(v.ok);
-	const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, true);
+	const std::vector<uint32_t> pj = PlanarPrioJoiners(v.topology, v.channels, v.sites);
+	const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, std::set<uint32_t>(pj.begin(), pj.end()));
 	REQUIRE(map.why.empty());
 	const auto track_of = [&](const std::string &name, uint32_t holding_with) {
 		for (uint32_t i = 0; i < map.tracks.size(); i++) {
@@ -273,7 +276,7 @@ TEST_CASE("planar track map: fast", "[junction][planar]")
 		const TracksVariant v = ll2 ? BuildTracksVariant(PlanarLL2Text(), 17, 0, 1) : BuildTracksVariant(PlanarTText(2), 1, 3, 1);
 		REQUIRE(v.ok);
 		const auto start = std::chrono::steady_clock::now();
-		const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, false);
+		const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, {});
 		const auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 		INFO(v.topology.name << " " << ms << " ms");
 		REQUIRE(map.why.empty());
@@ -301,7 +304,7 @@ static HeadingsVariant BuildHeadingsVariant(const std::string &text, uint64_t ov
 	const TracksVariant &v = h.base;
 	h.paths = BuildPlanarPaths(v.topology, v.channels, over_bits);
 	h.events = PlanarLineSides(v.topology, v.channels).Events();
-	h.map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, false);
+	h.map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, {});
 	if (!h.map.why.empty()) return h;
 	h.built = true;
 	h.headings = BuildPlanarLineHeadings(v.topology, v.channels, h.paths, v.sites, h.events, h.map);
