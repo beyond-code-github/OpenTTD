@@ -32,8 +32,5 @@ Variants pass down as a list, ranked by Structure cost; later layers add their o
 - P6 Copies and rows follow their rulings: a copy exactly where its separator's share needs doubling, beside it over the structure's span; a row beside each prio lane over its coverage, away from the joiners.
 - P7 Split before merge on every route path (D24).
 
-## 5. Open questions for the engineer
-- Q1 **Structure cost.** Proposal: count of structures, plus copies, plus crossings carried by the main line's separators (D156's lift preference shows up later in Shape and Slots costs, so not here). Alternative: no Structure cost; rank only on Shape and Slots costs.
-- Q2 **Grouping choice.** One structure per crossing run is the maximal grouping; splitting a run into structures in series is the D228 cost choice. Proposal: enumerate only maximal runs plus the splits P5 forces, to keep the variant count down (review: bits at channel level, §14). Alternative: every split of a run is a variant bit.
-- Q3 **Copies over a tunnel.** D228a applies to a main line in a tunnel (one block). Proposal: a copy per structure whatever the kind, so the kind can stay open (D366's "either") without changing the track map.
-- Q4 **The corridor band count** the review asked Structure to hand down: it follows from the map's faces and track order, so the proposal is not to hand it separately (the map is in the model every later layer receives, D367).
+## 5. Settled (D371)
+Q1 cheap counts; Q2 maximal runs plus forced splits; Q3 a copy per structure whatever the kind; Q4 band counts read from the track map (Structure's output).
