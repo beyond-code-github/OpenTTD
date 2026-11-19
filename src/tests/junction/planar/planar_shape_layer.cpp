@@ -23,6 +23,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -411,12 +412,12 @@ TEST_CASE("planar shape layer: t3 first variant shapes", "[junction][planar][pla
 	const bool ok = ShapePlanarStructureVariant(r.variants[0], shaped, why);
 	INFO("why: " << why);
 	REQUIRE(ok);
-	/* Capacity (H6) is the capacity rows' job, which the heading program does not have yet (H3 of the roadmap): only H6 messages may remain. */
 	const std::vector<std::string> messages = CheckPlanarShapePromise(topology, spec, shaped);
 	for (const std::string &message : messages) {
 		INFO(message);
-		CHECK(message.starts_with("H6"));
+		CHECK(message.empty());
 	}
+	CHECK(messages.empty());
 }
 
 TEST_CASE("planar shape layer: probe, the heading program and the closure LP on T2, T3 and LL2", "[junction][planar][planarshape][slow]")
@@ -469,5 +470,36 @@ TEST_CASE("planar shape layer: probe, the heading program and the closure LP on 
 				name, n, shaped, unshaped, breach_text.empty() ? " none" : breach_text, closed, open, shaped > 0 ? cost_min : -1, shaped > 0 ? cost_max : -1,
 				program_max / 1000, n > 0 ? program_sum / 1000 / static_cast<double>(n) : 0.0, lp_max / 1000, shaped > 0 ? lp_sum / 1000 / static_cast<double>(shaped) : 0.0);
 		CHECK(shaped + unshaped == n);
+	}
+}
+
+TEST_CASE("planar shape: BuildPlanarShape on T2, T3 and LL2", "[junction][planar][planarshape][slow]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const auto start = std::chrono::steady_clock::now();
+		const PlanarShapeResult result = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		const double millis = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count()) / 1000;
+		std::string line = fmt::format("SHAPE {} variants={} unshaped={} {:.1f} ms:", name, result.variants.size(), result.unshaped.size(), millis);
+		for (const PlanarShapeVariant &v : result.variants) line += fmt::format(" {}({},{})", v.structure.tag, v.structure.cost, v.cost);
+		std::cout << line << "\n";
+		for (const auto &[tag, why] : result.unshaped) std::cout << fmt::format("SHAPE {} {} UNSHAPED {}\n", name, tag, why);
+		INFO(name << " why: " << result.why);
+		REQUIRE(result.variants.size() == 16);
+		REQUIRE(result.unshaped.empty());
+		for (size_t i = 0; i < result.variants.size(); i++) {
+			const PlanarShapeVariant &v = result.variants[i];
+			for (const std::string &m : CheckPlanarShapePromise(topology, spec, v)) {
+				INFO(name << " " << v.structure.tag << " " << m);
+				CHECK(m.empty());
+			}
+			if (i == 0) continue;
+			const PlanarShapeVariant &before = result.variants[i - 1];
+			CHECK(std::tie(before.structure.cost, before.cost, before.structure.tag) <= std::tie(v.structure.cost, v.cost, v.structure.tag));
+		}
 	}
 }
