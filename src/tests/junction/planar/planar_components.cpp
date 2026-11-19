@@ -79,9 +79,18 @@ TEST_CASE("planar components: LL² solves at the probe's area", "[junction][plan
 	CheckSolves(PlanarLL2Text(), 807);
 }
 
-TEST_CASE("planar components: T2 solves at the probe's area", "[junction][planarcomponents][slow]")
+TEST_CASE("planar components: T2 by name reaches the generic solver", "[junction][planarcomponents][slow]")
 {
-	CheckSolves(PlanarTText(2), 963);
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	PlanarComponentLayout layout;
+	std::string why;
+	const bool ok = SolvePlanarComponents(topology, MakeTestJunctionSpec(), layout, &why);
+	INFO(why);
+	REQUIRE(ok);
+	CHECK(layout.variant.rfind("o", 0) == 0);
+	CHECK(layout.rungs > 0);
 }
 
 TEST_CASE("planar components: the one-lane T from its topology text (mapped)", "[junction][planarcomponents][slow]")

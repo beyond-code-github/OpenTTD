@@ -124,29 +124,6 @@ const RouteList &LL2Outline()
 	return routes;
 }
 
-/** The routes of T2. */
-const RouteList &T2Routes()
-{
-	static const RouteList routes = [] {
-		RouteList r;
-		for (const char k : {'1', '2'}) {
-			const std::string lane(1, k);
-			for (const auto &[a, b, c] : {std::array<const char *, 3>{"EF", "E", "ED"}, {"EF", "F", "AF"}, {"AB", "B", "CB"}, {"AB", "A", "AF"}, {"CD", "C", "CB"}, {"CD", "D", "ED"}}) {
-				r.push_back({a + lane, b + lane, c + lane});
-			}
-		}
-		return r;
-	}();
-	return routes;
-}
-
-/** The outline routes of T2. */
-const RouteList &T2Outline()
-{
-	static const RouteList routes = {{"EF1", "E1", "ED1"}, {"AB1", "A1", "AF1"}, {"CD1", "C1", "CB1"}};
-	return routes;
-}
-
 /** A bundle: lanes left to right, a heading list, and per lane its segments. */
 struct Bundle {
 	std::vector<std::string> lanes;
@@ -156,10 +133,10 @@ struct Bundle {
 /** One variant of a composition. */
 struct Variant {
 	int fray_s; ///< The S fray's side.
-	int other; ///< LL²: the diagonal west fray (0 or 1); T2: the S join's side (+1 or -1).
+	int other; ///< The diagonal west fray (0 or 1).
 };
 
-/** Builds the model of one variant of T2 or LL² (the probe's build_t2 with F over D and the flipped crossing triangle). */
+/** Builds the model of one variant of LL² (the probe's build_t2 with F over D and the flipped crossing triangle). */
 class Composer {
 public:
 	Model M;
@@ -167,22 +144,19 @@ public:
 	/**
 	 * Build the model.
 	 * @param params The spec facts.
-	 * @param t2 Whether the topology is T2, else LL².
 	 * @param variant The variant.
 	 */
-	Composer(const Params &params, bool t2, const Variant &variant) : t2(t2), P(params.p), TL(params.tl), fray_s(variant.fray_s), wdiag(t2 ? 0 : variant.other), join_s(t2 ? variant.other : 1)
+	Composer(const Params &params, const Variant &variant) : P(params.p), TL(params.tl), fray_s(variant.fray_s), wdiag(variant.other)
 	{
 		this->M.params = params;
 		this->Build();
 	}
 
 private:
-	bool t2;
 	int P;
 	int TL;
 	int fray_s;
 	int wdiag;
-	int join_s;
 	std::vector<std::pair<std::string, Bundle>> bundles; ///< In insertion order.
 
 	/** @return The 'u' of a deck's near head end. */
@@ -536,21 +510,20 @@ private:
 	{
 		Model &M = this->M;
 		const Params &pr = M.params;
-		const bool t2 = this->t2;
 		const double tuck = std::sqrt(2.0);
 
 		for (const char *n : {"EF1", "EF2"}) this->PortIn(n, 'W');
 		for (const char *n : {"AB1", "AB2"}) this->PortIn(n, 'E');
 		for (const char *n : {"CD1", "CD2"}) this->PortIn(n, 'S');
-		const std::map<char, std::string> ON = t2 ? std::map<char, std::string>{{'E', "ED"}, {'W', "CB"}, {'S', "AF"}} : std::map<char, std::string>{{'E', "EO"}, {'W', "WO"}, {'S', "SO"}};
+		const std::map<char, std::string> ON = std::map<char, std::string>{{'E', "EO"}, {'W', "WO"}, {'S', "SO"}};
 		std::vector<std::pair<std::string, char>> outs;
 		for (const char k : {'E', 'W', 'S'}) {
 			for (const char n : {'1', '2'}) outs.emplace_back(ON.at(k) + n, k);
 		}
 
 		/* Frays. */
-		this->Fray(HE, +1, "EF1", "EF2", "E1", "E2", "F1", "F2", t2, this->wdiag != 0);
-		this->Fray(HW, -1, "AB2", "AB1", "B2", "B1", "A2", "A1", t2);
+		this->Fray(HE, +1, "EF1", "EF2", "E1", "E2", "F1", "F2", false, this->wdiag != 0);
+		this->Fray(HW, -1, "AB2", "AB1", "B2", "B1", "A2", "A1", false);
 		if (this->fray_s > 0) {
 			this->Fray(HN, +1, "CD1", "CD2", "C1", "C2", "D1", "D2", false);
 		} else {
@@ -570,51 +543,29 @@ private:
 		}
 		/* B: run; B2 (prio) doubled outward, B1 (choice) single (D299); run. */
 		this->Flex("B", {"B1", "B2"}, HW);
-		if (t2) { // B: both lanes carry the prio route B, each doubled (copy outward, the parallelogram); mirrored pairs (D312)
-			this->DoubledB("B1", -1, sF, sD);
-			this->DoubledB("B2", +1, sF, sD);
-			const Seg r1 = M.AddSeg("B1", HW, 0);
-			const Seg r2 = M.AddSeg("B2", HW, 0);
-			M.Add(Eq(Dot(Right(HW), r2.a) - Dot(Right(HW), r1.a), 2));
-			/* F's southbound run over D's NE diagonal (S-bend form). */
-			for (const char *f : {"F1", "F2"}) {
-				const Seg &over = sF.at(f).back();
-				std::vector<std::pair<Var, int>> xs;
-				for (const char *d : {"D1", "D2"}) xs.push_back(M.Cross(over, sD.at(d)[1], 4));
-				M.Deck(over, xs);
-			}
-			this->Join(HE, +1, "E1", "E2", "D1", "D2", "ED1", "ED2", true);
-			this->Join(HW, -1, "B2", "B1", "C2", "C1", "CB2", "CB1", true);
-			if (this->join_s > 0) {
-				this->Join(HS, +1, "A1", "A2", "F1", "F2", "AF1", "AF2", false);
-			} else {
-				this->Join(HS, -1, "F2", "F1", "A2", "A1", "AF2", "AF1", false);
-			}
-		} else {
-			const Seg b1 = M.AddSeg("B1", HW, 2);
-			this->CoreDecks(b1, std::nullopt, std::nullopt, sF, sD);
-			this->DoubledB("B2", +1, sF, sD);
-			const Seg r1 = M.AddSeg("B1", HW, 0);
-			const Seg r2 = M.AddSeg("B2", HW, 0);
-			M.Add(Eq(Dot(Right(HW), r2.a) - Dot(Right(HW), r1.a), 2));
-			/* F's southbound run over D's NE diagonal; F2 (prio) doubled outward. */
-			const auto xs_of = [&](const Seg &dk) {
-				std::vector<std::pair<Var, int>> xs;
-				for (const char *d : {"D1", "D2"}) xs.push_back(M.Cross(dk, sD.at(d)[1], 4));
-				return xs;
-			};
-			const Seg f1 = M.AddSeg("F1", HS, 2);
-			const auto xf1 = xs_of(f1);
-			M.Deck(f1, xf1);
-			this->Doubled("F2", HS, +1, xs_of);
-			const Seg fr1 = M.AddSeg("F1", HS, 0);
-			const Seg fr2 = M.AddSeg("F2", HS, 0);
-			M.Add(Eq(Dot(Right(HS), fr2.a) - Dot(Right(HS), fr1.a), 2));
-			/* Joins: the 227 block at every exit (fixed lanes outside, choice lanes inside). */
-			this->Block227(HE, "E1", "E2", "D1", "D2", "E2a", "E2b", "D1a", "D1b", "EDj1", "EDj2", "EO1", "EO2");
-			this->Block227(HW, "C1", "C2", "B1", "B2", "C2a", "C2b", "B1a", "B1b", "CBj1", "CBj2", "WO1", "WO2");
-			this->Block227(HS, "A1", "A2", "F1", "F2", "A2a", "A2b", "F1a", "F1b", "AFj1", "AFj2", "SO1", "SO2");
-		}
+		const Seg b1 = M.AddSeg("B1", HW, 2);
+		this->CoreDecks(b1, std::nullopt, std::nullopt, sF, sD);
+		this->DoubledB("B2", +1, sF, sD);
+		const Seg r1 = M.AddSeg("B1", HW, 0);
+		const Seg r2 = M.AddSeg("B2", HW, 0);
+		M.Add(Eq(Dot(Right(HW), r2.a) - Dot(Right(HW), r1.a), 2));
+		/* F's southbound run over D's NE diagonal; F2 (prio) doubled outward. */
+		const auto xs_of = [&](const Seg &dk) {
+			std::vector<std::pair<Var, int>> xs;
+			for (const char *d : {"D1", "D2"}) xs.push_back(M.Cross(dk, sD.at(d)[1], 4));
+			return xs;
+		};
+		const Seg f1 = M.AddSeg("F1", HS, 2);
+		const auto xf1 = xs_of(f1);
+		M.Deck(f1, xf1);
+		this->Doubled("F2", HS, +1, xs_of);
+		const Seg fr1 = M.AddSeg("F1", HS, 0);
+		const Seg fr2 = M.AddSeg("F2", HS, 0);
+		M.Add(Eq(Dot(Right(HS), fr2.a) - Dot(Right(HS), fr1.a), 2));
+		/* Joins: the 227 block at every exit (fixed lanes outside, choice lanes inside). */
+		this->Block227(HE, "E1", "E2", "D1", "D2", "E2a", "E2b", "D1a", "D1b", "EDj1", "EDj2", "EO1", "EO2");
+		this->Block227(HW, "C1", "C2", "B1", "B2", "C2a", "C2b", "B1a", "B1b", "CBj1", "CBj2", "WO1", "WO2");
+		this->Block227(HS, "A1", "A2", "F1", "F2", "A2a", "A2b", "F1a", "F1b", "AFj1", "AFj2", "SO1", "SO2");
 
 		/* Out ports on the boundary. */
 		for (const auto &[n, side] : outs) {
@@ -671,8 +622,8 @@ private:
 				M.Add(Ge(M.Y - p[1], 0));
 			}
 		}
-		M.routes = t2 ? &T2Routes() : &LL2Routes();
-		M.outline_routes = t2 ? &T2Outline() : &LL2Outline();
+		M.routes = &LL2Routes();
+		M.outline_routes = &LL2Outline();
 		RouteCurves(M, *M.routes, pr, tuck);
 	}
 
@@ -2532,16 +2483,15 @@ bool ExportRoutes(const Model &M, const GeoSet &g, const PlanarTopology &topolog
  * Build, solve and export one variant.
  * @param topology The topology.
  * @param params The spec facts.
- * @param t2 Whether T2, else LL².
  * @param variant The variant.
  * @return The outcome.
  */
-VariantOutcome SolveVariant(const PlanarTopology &topology, const Params &params, bool t2, const Variant &variant)
+VariantOutcome SolveVariant(const PlanarTopology &topology, const Params &params, const Variant &variant)
 {
 	VariantOutcome out;
 	out.tag = fmt::format("{:+d}F1w{}", variant.fray_s, variant.other);
 	const Clock::time_point deadline = Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(BUDGET));
-	Composer composer(params, t2, variant);
+	Composer composer(params, variant);
 	Model &M = composer.M;
 	if (!M.error.empty()) {
 		out.why = M.error;
@@ -3039,10 +2989,9 @@ bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &s
 		if (why != nullptr) *why = what;
 		return false;
 	};
-	const bool t2 = topology.name == "T2";
 	if (topology.name == "T1") return fail("the one-lane T keeps the §2a layout (its mapped layout breaks the bay rules)");
-	if (!t2 && topology.name != "LL2") return SolvePlanarMapped(topology, spec, layout, why);
-	for (const auto &route : t2 ? T2Routes() : LL2Routes()) {
+	if (topology.name != "LL2") return SolvePlanarMapped(topology, spec, layout, why);
+	for (const auto &route : LL2Routes()) {
 		for (const std::string &line : route) {
 			if (PlanarLineByName(topology, line) == UINT32_MAX) return fail("line " + line + " is not in the topology");
 		}
@@ -3052,16 +3001,11 @@ bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &s
 	params.cl = static_cast<int>(DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl));
 	params.p = spec.prio_tiles;
 	params.g = std::min(2 * params.tl - 1, std::max(2, params.cl));
-	std::vector<Variant> variants;
-	if (t2) {
-		variants = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
-	} else {
-		variants = {{1, 0}, {1, 1}, {-1, 0}, {-1, 1}};
-	}
+	const std::vector<Variant> variants = {{1, 0}, {1, 1}, {-1, 0}, {-1, 1}};
 	std::vector<VariantOutcome> outcomes(variants.size());
 	std::vector<std::thread> threads;
 	for (size_t i = 0; i < variants.size(); i++) {
-		threads.emplace_back([&, i] { outcomes[i] = SolveVariant(topology, params, t2, variants[i]); });
+		threads.emplace_back([&, i] { outcomes[i] = SolveVariant(topology, params, variants[i]); });
 	}
 	for (std::thread &thread : threads) thread.join();
 	const VariantOutcome *best = nullptr;
