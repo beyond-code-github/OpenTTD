@@ -893,6 +893,34 @@ private:
 		return out;
 	}
 
+	/** The least offset of each lane from the one before it (index j: lane j from lane j-1; entry 0 unused) over the intervals: 2 x their distance in the interval's track list, copies counted; fails on a lane order that is not increasing. */
+	std::vector<int> MinGap(uint32_t c, const std::vector<std::string> &ivs)
+	{
+		const auto &lines = this->ch.channels[c].lines;
+		std::vector<int> out(lines.size(), 0);
+		for (const std::string &iv : ivs) {
+			for (const PlanarSlotInterval &in : this->slots.channels[c]) {
+				if (in.name != iv) continue;
+				std::vector<int> pos;
+				for (uint32_t l : lines) {
+					int p = -1;
+					for (size_t i = 0; i < in.tracks.size(); i++) {
+						if (in.tracks[i].kind == PlanarSlotKind::Line && in.tracks[i].line == l) p = static_cast<int>(i);
+					}
+					pos.push_back(p);
+				}
+				for (size_t j = 1; j < lines.size(); j++) {
+					if (pos[j] <= pos[j - 1]) {
+						this->M.Fail(fmt::format("lane order not increasing: channel {} interval {} lane {}", c, iv, j));
+						return out;
+					}
+					out[j] = std::max(out[j], 2 * (pos[j] - pos[j - 1]));
+				}
+			}
+		}
+		return out;
+	}
+
 	/** The S-bend of a lane by delta slots at the start of the segment on heading h that follows; false (a failure) on a diagonal. */
 	bool SlotBend(const std::string &l, int h, int delta)
 	{
@@ -1099,8 +1127,8 @@ private:
 		}
 	}
 
-	/** A run with an optional sideways step (a required diagonal when jog is not 0); offset-parallel on its last piece at the given lines, which it returns. */
-	std::vector<Seg> Flex(const std::vector<std::string> &lanes, int h, const std::vector<int> &offs, int jog)
+	/** A run with an optional sideways step (a required diagonal when jog is not 0); on its last piece each lane at least the given offset (mins, from MinGap) from the lane before, which it returns. */
+	std::vector<Seg> Flex(const std::vector<std::string> &lanes, int h, const std::vector<int> &mins, int jog)
 	{
 		Model &M = this->M;
 		std::vector<Seg> last, diag;
@@ -1117,8 +1145,8 @@ private:
 		for (size_t j = 1; j < diag.size(); j++) M.Add(Eq(diag[j].L - diag[0].L, 0));
 		const auto &r = Right(h);
 		for (size_t j = 1; j < lanes.size(); j++) {
-			M.Add(Eq(Dot(r, last[j].a) - Dot(r, last[0].a), 2 * offs[j]));
-			M.Add(Eq(Dot(r, last[j].b) - Dot(r, last[0].b), 2 * offs[j]));
+			M.Add(Ge(Dot(r, last[j].a) - Dot(r, last[j - 1].a), mins[j]));
+			M.Add(Ge(Dot(r, last[j].b) - Dot(r, last[j - 1].b), mins[j]));
 		}
 		return last;
 	}
@@ -1184,10 +1212,13 @@ private:
 				this->dbl_decks[{c, static_cast<uint32_t>(k)}].insert_or_assign(l, std::pair<Seg, Seg>{d0, d1});
 				this->piece_tails[{c, static_cast<uint32_t>(k)}].insert_or_assign(l, tails.back());
 			}
+			const std::vector<int> mg_lead = this->MinGap(c, ivs);
+			const std::vector<int> mg_tail = this->MinGap(c, dbl ? std::vector<std::string>{this->IvName(c, 2 * last + 2)} : ivs);
+			if (!M.error.empty()) return;
 			for (int j = 1; j < n; j++) {
 				const TagScope ts("bundle offset");
-				M.Add(Eq(Dot(r, this->piece_segs[c][lanes[j]][k].a) - Dot(r, this->piece_segs[c][lanes[0]][k].a), 2 * cur[j]));
-				M.Add(Eq(Dot(r, tails[j].b) - Dot(r, tails[0].b), 2 * tail_off[j]));
+				M.Add(Ge(Dot(r, this->piece_segs[c][lanes[j]][k].a) - Dot(r, this->piece_segs[c][lanes[j - 1]][k].a), mg_lead[j]));
+				M.Add(Ge(Dot(r, tails[j].b) - Dot(r, tails[j - 1].b), mg_tail[j]));
 			}
 			prev = tail_off;
 		}
@@ -1384,7 +1415,7 @@ void MappedComposer::Build()
 		for (size_t k = 0; k < cand_steps.size(); k++) {
 			if (cand_steps[k].channel == c && (this->variant.steps >> k & 1) != 0) jog = cand_steps[k].toward;
 		}
-		const std::vector<Seg> lead = this->Flex(lanes, h, offs, jog);
+		const std::vector<Seg> lead = this->Flex(lanes, h, this->MinGap(c, lead_ivs), jog);
 		/* Its one piece for crossings under it: the run before its decks. */
 		for (int j = 0; j < n; j++) this->piece_segs[c][lanes[j]].push_back(lead[j]);
 		std::vector<uint32_t> overs;
@@ -2225,9 +2256,32 @@ bool SolveLazy1(Model &M, Clock::time_point deadline, const std::vector<Row> &se
 			}
 			if (std::getenv("PLANAR_TIMES") != nullptr) fmt::print(stderr, "round {}: {} decided by sides, {} by trial\n", rnd, decided, decided == 0 ? 1 : 0);
 			if (decided > 0) {
-				seps.insert(seps.end(), rows.begin(), rows.end());
-				if (!M.Solve(seps, r, deadline)) {
-					explain_last(seps);
+				std::vector<Row> batch = seps;
+				batch.insert(batch.end(), rows.begin(), rows.end());
+				if (M.Solve(batch, r, deadline)) {
+					seps = std::move(batch);
+					continue;
+				}
+				/* The batch is infeasible: each side-decided clash on its own, keeping the first direction its side allows that stays feasible. */
+				explain_last(batch);
+				size_t kept = 0;
+				for (const auto &clash : bad) {
+					const uint32_t lp = sides->LineOfStrand(clash.first.first), lq = sides->LineOfStrand(clash.second.first);
+					if (lp == UINT32_MAX || lq == UINT32_MAX || lp == lq || sides->Side(lp, lq) == 0) continue;
+					const auto &right = Right(g.geo.at(clash.second).d);
+					for (auto &[f, opt_rows] : SepOptions(M, g, clash)) {
+						if ((f[0] * right[0] + f[1] * right[1]) * sides->Side(lp, lq) >= 0) continue;
+						std::vector<Row> trial = seps;
+						trial.insert(trial.end(), opt_rows.begin(), opt_rows.end());
+						Solution probe;
+						if (M.Solve(trial, probe, deadline)) {
+							seps = std::move(trial);
+							kept++;
+							break;
+						}
+					}
+				}
+				if (kept == 0 || !M.Solve(seps, r, deadline)) {
 					why = "infeasible with topology sides";
 					return false;
 				}
