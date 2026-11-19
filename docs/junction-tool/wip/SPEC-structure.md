@@ -10,7 +10,7 @@ Nothing else. No headings, positions or lengths exist yet.
 ## 2. What Structure decides (and nothing else)
 Per variant:
 1. **Ties:** at every split and merge the rules cannot settle, which leg runs straight (Terms: tie).
-2. **Triangle flips:** the order of three mutually crossing lines, where the topology leaves it open.
+2. **Triangles:** for three mutually crossing lines whose order the topology leaves open, one of: flip 0, flip 1, or a **stack** (engineer, 2026-11-20: with tunnels three lines can cross at one point): one line bridges over, one tunnels under, one stays at grade, so the three crossings share one point and the triangle face disappears. A stack's level assignment (which line is over, under, at grade; up to 6) is part of the variant; its kind sets are single (bridge, tunnel), so the hover does not change them within a seed. The hover may still show another assignment by picking another cached seed (D370), which is how a different level order reaches the hover. Prior art: PSG 227 E port, bridge 372,334-339 over the tunnel tile 372,338. Three levels only: a fourth line needs a second tunnel depth (deferred, D365). Built with tunnels (D365); until then only the two flips.
 3. **Structures (D369):** the crossings grouped into structures: a structure is a run of consecutive crossings on one line, its **separator**, with no node and no other crossing between them on that line. Every crossing belongs to exactly one structure.
 4. Per structure: the **separator** (which of the crossing lines carries it; per joiner at a prio join, D364) and its **allowed kinds** (bridge, tunnel, or either; D365, D366).
 5. **Tracks:** every physical track: the topology's lines; a **copy** beside the separator over a structure where its share needs doubling (D351, D322, D228a; one copy per structure, in series); a **row** beside each lane of a prio join over its coverage (D349).
@@ -31,6 +31,7 @@ Variants pass down as a list, ranked by Structure cost; later layers add their o
 - P5 Each structure's crossers fit its kind's limit at the most compact crossing angle (longest bridge / max tunnel length; D228a for a main line), for every kind in its allowed set.
 - P6 Copies and rows follow their rulings: a copy exactly where its separator's share needs doubling, beside it over the structure's span; a row beside each prio lane over its coverage, away from the joiners.
 - P7 Split before merge on every route path (D24).
+- P8 A stack is offered only where its bridge and tunnel separators can both run straight on an axis through one point, i.e. perpendicular (Shape keeps it: the line at grade may cross at any angle).
 
 ## 5. Open questions for the engineer
 - Q1 **Structure cost.** Proposal: count of structures, plus copies, plus crossings carried by the main line's separators (D156's lift preference shows up later in Shape and Slots costs, so not here). Alternative: no Structure cost; rank only on Shape and Slots costs.
