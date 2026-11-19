@@ -48,10 +48,10 @@ Derived, not decided: beside tracks' headings; per structure the least middle ti
 - H9 Refinement: Structure's output is unchanged, and P1-P7 still hold on it.
 - H10 Every variant handed down is shaped. A variant with no shape is a bug: either in Shape, or a condition missing from Structure's promise, which is then added there (never a skip, D361).
 
-## 5. Open (orchestrator defaults unless the engineer rules otherwise; reversible, toggle candidates per D227)
-- Q1 **Does the face rule suffice for closure?** Tamassia's theorem (angles valid, therefore a drawing exists) is for orthogonal drawings only; for 8 directions with positive lengths it is not guaranteed. Shape owns winding (H7); whether a winding-valid shape always closes once Slots opens the cusps is the uncertain core, so it is probed first (§7 H2) with a lengths-only LP oracle (lower bounds 1, no clash rows). If it fails, the missing condition goes into Shape's model, not into a later layer.
-- Q2 **Ranking:** Structure cost first, Shape cost breaking ties (lexicographic), since the two scores are in different units and Lengths picks among the top few anyway. Alternative: a weighted sum.
-- Q3 **Rows leaving their lane between joins** (D342's freedom) is not modelled: D349 has the row follow its lane. A later toggle if prio T3 needs it.
+## 5. Settled (D373)
+- Q1 **Closure:** Tamassia's theorem (valid angles imply a drawing) covers orthogonal drawings only; for 8 directions with positive lengths it is not guaranteed. Shape owns winding (H7); whether a winding-valid shape always closes once Slots opens the cusps is probed first (§7 H2) with a lengths-only LP oracle (lower bounds 1, no clash rows). A missing condition goes into Shape's model, not a later layer.
+- Q2 **Ranking:** Structure cost, then Shape cost (lexicographic).
+- Q3 **Rows:** a row takes its lane's headings over its whole range. D342's other freedoms are not Shape's: a gap between row and lane is for Slots' spec; a row through a tunnel or over a bridge is Structure's. Toggle candidate: row headings of its own between joins.
 
 ## 6. Output types (target; code is mapped onto these, D368)
 New header src/junction/planar/planar_shape_layer.h (name to settle against today's planar_shape.h when mapping):
@@ -59,7 +59,7 @@ New header src/junction/planar/planar_shape_layer.h (name to settle against toda
 - `PlanarShapeTrack { std::vector<int> headings; }`: lifted heading at each point of the track (start end, each event in the map's order, end end).
 - `PlanarShapeStructure { uint8_t axis; std::array<int, 2> middles; std::array<int, 2> end_run; }`: least middles and end run tiles per kind (-1 not allowed).
 - `PlanarShapeVariant { PlanarStructureVariant structure; std::vector<PlanarShapeTrack> tracks; std::vector<uint8_t> angles; std::vector<PlanarShapeStructure> structures; int cost; }` (angles per map crossing).
-- `PlanarShapeResult { std::vector<PlanarShapeVariant> variants; std::string why; }`, ranked per Q2.
+- `PlanarShapeResult { std::vector<PlanarShapeVariant> variants; std::string why; }`, ranked per D373(2).
 - `PlanarShapeResult BuildPlanarShape(PlanarStructureResult structure)`.
 - `std::vector<std::string> CheckPlanarShapePromise(const PlanarShapeVariant &v)`: H1-H10 as a test oracle, one message per breach.
 Until tunnels are built (D365): kinds always bridge; the tunnel rows and end runs have hand-structure tests written when D365's build starts.
