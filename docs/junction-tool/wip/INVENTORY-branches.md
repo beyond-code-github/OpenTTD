@@ -18,3 +18,9 @@ Measured with `git cherry feature/junction-tool <branch>` (patch id) and subject
 
 ## Worktrees
 - ng1 (wt-tracks, active); crash, play, prof (detached); nodes (wt-choice-probe), nodes2 (wt-before), o4b2, o4c2 (old WIP).
+
+## Clean-up done (engineer, 2026-11-19: merge now; archive-tag then delete)
+- feature/junction-tool 41575a7909 merges wt-tracks (source identical to aef8174b23). Rules audit pass 1 committed 3c5a4152af.
+- 305 branches tagged `archive/<name>` and deleted (probe, dbg, spike, stopped legacy WIP incl. wt-2b2b1b and wt2-f1, and every wt-* whose commits are on feature/junction-tool by ancestry or subject). Local branches left: feature/junction-tool, master, wt-tracks (ng1).
+- Worktrees removed: crash, nodes, nodes2, o4b2, o4c2, play, prof. Untracked files of crash and nodes saved to /home/pete/OpenTTD-archive/worktrees-2026-11-19/*.tgz (the others had none).
+- From now on: landings branch from feature/junction-tool; probes branch from it too, never from another probe.
