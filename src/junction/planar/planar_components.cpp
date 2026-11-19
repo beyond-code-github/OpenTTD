@@ -2854,6 +2854,7 @@ bool PickBest(const std::vector<VariantOutcome> &outcomes, Clock::time_point t0,
 	layout.track = best->track;
 	layout.variant = best->tag;
 	layout.routes = best->routes;
+	layout.wasted = PlanarWastedSideways(layout.routes);
 	layout.first_round_clashes = best->first_round_clashes;
 	layout.rungs = best->rungs;
 	layout.rungs_violated = best->rungs_violated;
@@ -2918,6 +2919,24 @@ bool ParseMappedTag(const std::string &tag, const MappedBits &bits, MappedVarian
 
 } // namespace
 
+int PlanarWastedSideways(const std::vector<PlanarRouteProgram> &routes)
+{
+	int total = 0;
+	for (const PlanarRouteProgram &program : routes) {
+		if (program.copy != 0 || program.path != 0 || program.pieces.size() < 2) continue;
+		const TileIndexDiffC first = program.pieces.front().tile;
+		const TileIndexDiffC last = program.pieces.back().tile;
+		const bool lateral_y = std::abs(last.x - first.x) >= std::abs(last.y - first.y);
+		auto lateral = [&](const TileIndexDiffC &tile) { return lateral_y ? tile.y : tile.x; };
+		int travelled = 0;
+		for (size_t i = 0; i + 1 < program.pieces.size(); i++) {
+			travelled += std::abs(lateral(program.pieces[i + 1].tile) - lateral(program.pieces[i].tile));
+		}
+		total += travelled - std::abs(lateral(last) - lateral(first));
+	}
+	return total;
+}
+
 bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &spec, PlanarComponentLayout &layout, std::string *why)
 {
 	const Clock::time_point t0 = Clock::now();
@@ -2966,6 +2985,7 @@ bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &s
 	layout.track = best->track;
 	layout.variant = best->tag;
 	layout.routes = best->routes;
+	layout.wasted = PlanarWastedSideways(layout.routes);
 	layout.micros = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
 	return true;
 }

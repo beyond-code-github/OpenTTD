@@ -58,6 +58,7 @@
 - `PlanarHubText` maps the window's hub type: one lane each way to the T, two with any pairing to LL², two otherwise to the two-lane T.
 
 ## Component solver (`planar_components`)
+- `PlanarComponentLayout::wasted` is the wasted sideways travel of one program per route (copy 0, path 0): per program the sum of sideways tile steps minus the net sideways move, sideways being the axis across the program's net displacement; pv prints it after the track.
 - The integer program (half-tile geometry, expressions, strands, decks, crossings, the solve) lives in `planar_model` (namespace `PlanarModel`); the composers build on it.
 - `Model::AddPiece` adds a required piece: an axis piece at least a tile, a diagonal at least one piece, at most an eighth's turn from the piece before, a strand starting on a diagonal starts on a tile-edge midpoint. `Model::PieceCurves` writes every route's curve rows over required pieces as sums of the pieces between curves, with no switches; it refuses an optional segment.
 - `SolvePlanarComponents` has a hand composition per topology name, `T2` (`PlanarTText(2)`) and `LL2` (`PlanarLL2Text()`); every route line of the composition must exist in the topology's lines; the one-lane T is refused (it keeps the layout program), and any other topology goes to `SolvePlanarMapped`.

@@ -45,6 +45,7 @@ struct PlanarComponentLayout {
 	int height = 0; ///< Box height in tiles.
 	double area = 0; ///< Tiles inside the junction outline.
 	double track = 0; ///< Track length in tiles (diagonal pieces at sqrt 2), copies included.
+	int wasted = 0; ///< Wasted sideways travel in tiles (PlanarWastedSideways over the routes).
 	std::string variant; ///< The winning variant's tag, as the probe prints it.
 	bool program_shape = false; ///< The winning variant used the shape program's shape.
 	int64_t micros = 0; ///< Wall time of the whole solve.
@@ -54,6 +55,14 @@ struct PlanarComponentLayout {
 	int rungs_violated = 0; ///< Rungs not holding on the solve they came from; always 0 unless a construction bug.
 	size_t variants_solved = 0; ///< Variants solved by the search or the enumeration.
 };
+
+/**
+ * The wasted sideways travel of a layout's routes, in tiles. For one route program (copy 0, path 0 only; one per route): the pieces' tiles in order p_0..p_m,
+ * net displacement (dx, dy) = p_m - p_0, lateral axis y when |dx| >= |dy| else x; waste = sum over i of |lat(p_{i+1}) - lat(p_i)| - |lat(p_m) - lat(p_0)|, never negative.
+ * @param routes The route programs.
+ * @return The sum of the wastes of the programs with copy 0 and path 0.
+ */
+int PlanarWastedSideways(const std::vector<PlanarRouteProgram> &routes);
 
 /** Solve the component layout of a T2 or LL2 topology: every variant (in parallel), the least area wins. @return false with why set when the topology has no composition or no variant solves. */
 bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &spec, PlanarComponentLayout &layout, std::string *why);

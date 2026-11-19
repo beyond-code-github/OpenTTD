@@ -45,7 +45,7 @@ void CheckSolves(const std::string &text, double area_limit, bool mapped = false
 	const bool ok = mapped ? SolvePlanarMapped(topology, spec, layout, &why) : SolvePlanarComponents(topology, spec, layout, &why);
 	INFO(why);
 	REQUIRE(ok);
-	INFO("variant " << layout.variant << " area " << layout.area << " size " << layout.width << "x" << layout.height << " in " << layout.micros / 1000 << " ms track " << layout.track);
+	INFO("variant " << layout.variant << " area " << layout.area << " size " << layout.width << "x" << layout.height << " in " << layout.micros / 1000 << " ms track " << layout.track << " wasted " << layout.wasted);
 	CHECK(layout.area <= area_limit);
 	CHECK(layout.variants_solved >= solved_min);
 	CHECK(layout.variants_solved <= solved_max);
@@ -210,4 +210,41 @@ TEST_CASE("planar components: T2 mapped lands in its box at the anchor", "[junct
 			CHECK(piece.tile.y < layout.height);
 		}
 	}
+}
+
+/**
+ * Make a route program from tiles.
+ * @param route The route index.
+ * @param copy The copy choice.
+ * @param tiles The pieces' tiles in order.
+ * @return The program.
+ */
+static PlanarRouteProgram MakeWasteProgram(uint32_t route, uint8_t copy, const std::vector<std::pair<int, int>> &tiles)
+{
+	PlanarRouteProgram program;
+	program.route = route;
+	program.path = 0;
+	program.copy = copy;
+	for (const auto &[x, y] : tiles) {
+		program.pieces.push_back({{static_cast<int16_t>(x), static_cast<int16_t>(y)}, 2, PlanarPiece::Kind::Ground, 0});
+	}
+	return program;
+}
+
+TEST_CASE("planar wasted sideways: straight, a step and an up-and-back", "[junction][planarcomponents]")
+{
+	std::vector<std::pair<int, int>> straight, step, updown;
+	for (int x = 0; x <= 9; x++) straight.emplace_back(x, 5);
+	step = {{0, 5}, {1, 5}, {2, 5}, {3, 5}, {4, 5}, {5, 4}, {6, 3}, {7, 3}, {8, 3}, {9, 3}};
+	updown = {{0, 5}, {1, 5}, {2, 5}, {3, 5}, {4, 4}, {5, 3}, {6, 3}, {7, 4}, {8, 5}, {9, 5}};
+	const PlanarRouteProgram a = MakeWasteProgram(0, 0, straight);
+	const PlanarRouteProgram b = MakeWasteProgram(1, 0, step);
+	const PlanarRouteProgram c = MakeWasteProgram(2, 0, updown);
+	CHECK(PlanarWastedSideways({a}) == 0);
+	CHECK(PlanarWastedSideways({b}) == 0);
+	CHECK(PlanarWastedSideways({c}) == 4);
+	CHECK(PlanarWastedSideways({a, b, c}) == 4);
+	PlanarRouteProgram copy = c;
+	copy.copy = 1;
+	CHECK(PlanarWastedSideways({a, b, copy}) == 0);
 }
