@@ -223,7 +223,7 @@ The export carries track ids and kinds per piece (a row names its lane piece bes
 ### 16.6 Order
 1. GL probe (16.4).
 2. On pass: TM3 (headings over the map).
-3. TM4 landing per hub, pv diff each.
+3. TM4 lands once for every topology (no per-hub path: D326), judged on T2, T3 and LL² together; any staging is by rule removed, never by hub.
 4. TM2, only if the probe's step count says so.
 5. TM5.
 Corpus pass 2 of the rules audit (wip/AUDIT-rules.md) checks the 16.1 list before TM4 lands.
