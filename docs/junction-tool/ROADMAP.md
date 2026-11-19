@@ -8,7 +8,7 @@ The single list of planned work. Rules: every idea that is designed, ruled or ag
 3. **Lengths with no lazy rows (§17.4).** One solve, ladders from a one-shot phase read, optional segments gone, `SolveLazy` an assertion. Absorbs "retire the lazy clash loop" and "free bends" (D338: bends come from Slots).
 4. **Rows as tracks and the Signals walk (§17.5, D349, TM5).** End to end checker clean on T2, T3, LL² (D357); `MappedComposer` retires; D345's search retires (D363).
 5. **Variant ranking on cheap scores (§17.1).** Turning + step cost + LP bound; full solve for the top few; seed under 5 s (D297).
-6. **Remove the by-name branch:** T2 now, LL² with SSS (engineer, 2026-11-19).
+6. **Remove the by-name branch:** T2 DONE (97d664dc1a, 2026-11-20: T2 goes to `SolvePlanarMapped`, 862.25 o1t3f1s0, checker clean end to end); LL² with SSS (engineer, 2026-11-19). The hand `Composer` keeps T2-only helpers (`Fray`'s t2 parameter always false; `Join`, `Doubled`, `DoubledB` callers unchecked): they go with LL²'s branch.
 7. **Heights and tunnels (§17.5, D365, D364).** After item 4. Separator and kind per structure; Heights after Lengths; the hover runs Heights only.
 8. **n-lane / LL³ and the multilevel lift (§14).** Same Structure decisions, wider Slots.
 9. **Topology as a complete artefact, pinnable crossing order, builder UI (D343/D344).** Required by "any hub".
