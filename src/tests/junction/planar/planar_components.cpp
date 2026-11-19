@@ -45,7 +45,7 @@ void CheckSolves(const std::string &text, double area_limit, bool mapped = false
 	const bool ok = mapped ? SolvePlanarMapped(topology, spec, layout, &why) : SolvePlanarComponents(topology, spec, layout, &why);
 	INFO(why);
 	REQUIRE(ok);
-	INFO("variant " << layout.variant << " area " << layout.area << " size " << layout.width << "x" << layout.height << " in " << layout.micros / 1000 << " ms track " << layout.track << " wasted " << layout.wasted);
+	INFO("variant " << layout.variant << " area " << layout.area << " size " << layout.width << "x" << layout.height << " in " << layout.micros / 1000 << " ms track " << layout.track << " wasted " << layout.wasted << " empty " << fmt::format("{:.2f}", layout.empty));
 	CHECK(layout.area <= area_limit);
 	CHECK(layout.variants_solved >= solved_min);
 	CHECK(layout.variants_solved <= solved_max);
@@ -247,4 +247,15 @@ TEST_CASE("planar wasted sideways: straight, a step and an up-and-back", "[junct
 	PlanarRouteProgram copy = c;
 	copy.copy = 1;
 	CHECK(PlanarWastedSideways({a, b, copy}) == 0);
+}
+
+TEST_CASE("planar occupied tiles: distinct tiles over every program", "[junction][planarcomponents]")
+{
+	std::vector<std::pair<int, int>> straight, detour;
+	for (int x = 0; x <= 9; x++) straight.emplace_back(x, 5);
+	detour = {{0, 5}, {1, 5}, {2, 5}, {3, 5}, {4, 4}, {5, 4}, {6, 4}, {7, 5}, {8, 5}, {9, 5}};
+	const PlanarRouteProgram a = MakeWasteProgram(0, 0, straight);
+	const PlanarRouteProgram b = MakeWasteProgram(0, 1, detour);
+	CHECK(PlanarOccupiedTiles({a}) == 10);
+	CHECK(PlanarOccupiedTiles({a, b}) == 13);
 }

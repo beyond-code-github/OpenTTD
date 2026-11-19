@@ -2909,6 +2909,7 @@ bool PickBest(const std::vector<VariantOutcome> &outcomes, Clock::time_point t0,
 	layout.variant = best->tag;
 	layout.routes = best->routes;
 	layout.wasted = PlanarWastedSideways(layout.routes);
+	layout.empty = layout.area - PlanarOccupiedTiles(layout.routes);
 	layout.first_round_clashes = best->first_round_clashes;
 	layout.rungs = best->rungs;
 	layout.rungs_violated = best->rungs_violated;
@@ -2991,6 +2992,15 @@ int PlanarWastedSideways(const std::vector<PlanarRouteProgram> &routes)
 	return total;
 }
 
+int PlanarOccupiedTiles(const std::vector<PlanarRouteProgram> &routes)
+{
+	std::set<std::pair<int, int>> tiles;
+	for (const PlanarRouteProgram &program : routes) {
+		for (const PlanarProgramPiece &piece : program.pieces) tiles.emplace(piece.tile.x, piece.tile.y);
+	}
+	return static_cast<int>(tiles.size());
+}
+
 bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &spec, PlanarComponentLayout &layout, std::string *why)
 {
 	const Clock::time_point t0 = Clock::now();
@@ -3040,6 +3050,7 @@ bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &s
 	layout.variant = best->tag;
 	layout.routes = best->routes;
 	layout.wasted = PlanarWastedSideways(layout.routes);
+	layout.empty = layout.area - PlanarOccupiedTiles(layout.routes);
 	layout.micros = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
 	return true;
 }

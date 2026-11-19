@@ -46,6 +46,7 @@ struct PlanarComponentLayout {
 	double area = 0; ///< Tiles inside the junction outline.
 	double track = 0; ///< Track length in tiles (diagonal pieces at sqrt 2), copies included.
 	int wasted = 0; ///< Wasted sideways travel in tiles (PlanarWastedSideways over the routes).
+	double empty = 0; ///< Empty tiles inside the outline: area minus PlanarOccupiedTiles over the routes.
 	std::string variant; ///< The winning variant's tag, as the probe prints it.
 	bool program_shape = false; ///< The winning variant used the shape program's shape.
 	int64_t micros = 0; ///< Wall time of the whole solve.
@@ -63,6 +64,13 @@ struct PlanarComponentLayout {
  * @return The sum of the wastes of the programs with copy 0 and path 0.
  */
 int PlanarWastedSideways(const std::vector<PlanarRouteProgram> &routes);
+
+/**
+ * The occupied tiles of a layout's routes: the number of distinct tiles (x, y) over every piece of every route program (every route, path and copy; every piece kind).
+ * @param routes The route programs.
+ * @return The number of distinct tiles.
+ */
+int PlanarOccupiedTiles(const std::vector<PlanarRouteProgram> &routes);
 
 /** Solve the component layout of a T2 or LL2 topology: every variant (in parallel), the least area wins. @return false with why set when the topology has no composition or no variant solves. */
 bool SolvePlanarComponents(const PlanarTopology &topology, const JunctionSpec &spec, PlanarComponentLayout &layout, std::string *why);
