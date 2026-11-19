@@ -703,6 +703,7 @@ PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarC
 	for (size_t i = 0; i < t.ring.size(); i++) ring_pos[t.ring[i]] = static_cast<int>(i);
 	result.events = t.events;
 	result.crossings = t.crossings;
+	result.expanded = t;
 
 	const PlanarMap map(t, ring_pos, ends);
 	if (!map.why.empty()) {

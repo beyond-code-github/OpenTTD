@@ -139,6 +139,43 @@ static std::vector<uint32_t> TracksOfKind(const PlanarTrackMap &map, PlanarTrack
 	return out;
 }
 
+TEST_CASE("planar track map: the expanded topology holds every track with its ends", "[junction][planar]")
+{
+	const TracksVariant v = BuildTracksVariant(PlanarTText(2), 1, 3, 1);
+	REQUIRE(v.ok);
+	const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, false);
+	REQUIRE(map.why.empty());
+	const PlanarTopology &e = map.expanded;
+
+	REQUIRE(e.lines.size() == map.tracks.size());
+	for (size_t i = 0; i < map.tracks.size(); i++) CHECK(e.lines[i].name == v.topology.lines[map.tracks[i].line].name); // An expanded line keeps its topology line's name (a copy or row too).
+	CHECK(e.events == map.events);
+	CHECK(e.crossings.size() == map.crossings.size());
+
+	/* Whether a node's list holds a track that is a part of the given line. */
+	const auto holds_part = [&](const std::vector<uint32_t> &tracks, uint32_t line) {
+		for (const uint32_t t : tracks) {
+			if (map.part_of[t] == line) return true;
+		}
+		return false;
+	};
+	for (uint32_t i = 0; i < map.tracks.size(); i++) {
+		const PlanarTrack &track = map.tracks[i];
+		const PlanarLine &l = e.lines[i];
+		INFO("track " << i << " " << track.name);
+		if (track.kind == PlanarTrack::Kind::Copy) {
+			REQUIRE(!l.from.port);
+			REQUIRE(!l.to.port);
+			CHECK(holds_part(e.nodes[l.from.index].in, track.line));
+			CHECK(holds_part(e.nodes[l.to.index].out, track.line));
+		} else if (track.kind == PlanarTrack::Kind::Row) {
+			REQUIRE(!l.from.port);
+			CHECK(holds_part(e.nodes[l.from.index].in, track.line));
+			CHECK(!l.to.port);
+		}
+	}
+}
+
 TEST_CASE("planar track map: tracks", "[junction][planar]")
 {
 	const TracksVariant v = BuildTracksVariant(PlanarTText(2), 1, 3, 1);

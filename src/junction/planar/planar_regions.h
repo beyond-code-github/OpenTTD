@@ -96,6 +96,7 @@ struct PlanarTrack {
 struct PlanarTrackMap {
 	std::vector<PlanarTrack> tracks; ///< Lines first (same index as the topology's lines), then the parts lines are split into, then copies and rows.
 	std::vector<uint32_t> part_of; ///< Per track, the topology line whose part it is (a line part), or UINT32_MAX for copies and rows.
+	PlanarTopology expanded; ///< The expanded topology: its lines are the tracks (same order), with their ends, the nodes between them (copy and row splits and merges included), crossings and events.
 	std::vector<std::vector<uint32_t>> events; ///< Per track, its crossings (indices into crossings) in travel order.
 	std::vector<PlanarCrossing> crossings; ///< The expanded map's crossings (track indices).
 	std::vector<PlanarFace> faces; ///< As PlanarLineSides::Faces, over tracks.
