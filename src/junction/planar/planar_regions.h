@@ -10,6 +10,7 @@
 #ifndef PLANAR_REGIONS_H
 #define PLANAR_REGIONS_H
 
+#include "../junction_spec.h"
 #include "planar_channels.h"
 #include "planar_gaps.h"
 
@@ -112,9 +113,36 @@ struct PlanarTrackMap {
 std::vector<uint32_t> PlanarMovers(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites);
 
 /**
- * Build the track map of a variant.
- * @param separator_movers Per mover (D364, D372): the topology lines of the movers that are separators. In a join or fray, a crossing of a mover and a keeper (a lane or straight leg) has the mover as separator when it is in the set, else the keeper (inside a prio join, a crossing of lane i and joiner j with i > j). A separator doubles over its crossings at a site only when its line has a full share.
+ * A structure as a run of topology crossings on its separator line, in travel order; copy when the line's share is full.
  */
-PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, const std::set<uint32_t> &separator_movers);
+struct PlanarStructureRun {
+	uint32_t line; ///< The separator: a topology line.
+	std::vector<uint32_t> crossings; ///< Indices into PlanarTopology::crossings, in travel order along the line.
+	bool copy; ///< The line's share is full: the run has a copy beside it.
+};
+
+/**
+ * The line that carries each topology crossing's structure (D369, D372, D364).
+ * A crossing of a channel crossing has its line on the over channel; a crossing in a node group has the mover when it is in the set, else the keeper (a prio join's lane or joiner included).
+ * @param over Per channel crossing, the channel that is over.
+ * @param separator_movers Per mover (D364, D372): the topology lines of the movers that are separators.
+ * @param why Set when a crossing has no rule or two (naming it).
+ * @return Per topology crossing, its separator line (UINT32_MAX where why is set).
+ */
+std::vector<uint32_t> PlanarCrossingSeparators(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, const std::set<uint32_t> &separator_movers, std::string &why);
+
+/**
+ * The structures of a variant (D369, D371(2)): on each line, the maximal runs of consecutive crossings whose separator is that line, each split greedily from its start only where the bridge limit or, with a copy, the D228a flow bound forces it.
+ * A run is also cut before a prio lane's row start (its first crossing with a joiner): the row's split node lies there, and a bridge cannot hold a node. The limits count line crossings only.
+ * @param separator Per topology crossing, its separator line (PlanarCrossingSeparators).
+ * @return The runs, line by line, in travel order.
+ */
+std::vector<PlanarStructureRun> PlanarGroupStructures(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const PlanarLineSides &sides, const std::vector<uint32_t> &separator, const JunctionSpec &spec);
+
+/**
+ * Build the track map of a variant.
+ * @param runs The structures (PlanarGroupStructures): each run with a copy gets exactly one copy track beside its line over its crossings, and nothing else makes copies.
+ */
+PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<PlanarStructureRun> &runs);
 
 #endif /* PLANAR_REGIONS_H */

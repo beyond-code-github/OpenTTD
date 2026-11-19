@@ -73,88 +73,30 @@ static uint32_t CopyBeside(const PlanarTrackMap &map, uint32_t track)
 	return UINT32_MAX;
 }
 
-/** What wrapping a variant left out. */
+/** What wrapping a variant left out or found. */
 struct WrapNotes {
 	size_t copy_row_crossings = 0; ///< Crossings the map adds for copies and rows, left out of the structures.
-	size_t no_separator = 0; ///< Crossings with no separator: not in a prio join, and whose over channel is neither track's.
-	/** Per (site kind, role of one line, role of the other), the crossings still without a separator and one example. */
-	std::map<std::string, std::pair<size_t, std::string>> unseparated;
-	size_t bad_pair = 0; ///< Prio join crossings that are not (lane i, joiner j) with i > j: S2a stops on any.
+	size_t runs = 0; ///< The runs (structures).
+	size_t merged = 0; ///< Runs holding both crossings of a channel crossing and crossings in a node group.
+	size_t split = 0; ///< Cuts the bridge limit or D228a forced inside a maximal run.
+	size_t disagreements = 0; ///< Variants whose map failed with "copy sides disagree".
+	size_t other_failures = 0; ///< Variants whose separators or map failed otherwise.
+	std::string disagreement_example; ///< The first disagreement, by line name.
+	std::string failure_example;
 };
 
-/** The lanes and joiners of a prio join site as JoinLanes finds them (the composer's order, nearest first). */
-static void TestJoinLanes(const TracksVariant &v, size_t s, std::vector<uint32_t> &lanes, std::vector<uint32_t> &joiners)
+/** The track map of a variant, the library's calls in sequence: separators, the sides, the runs, the map. */
+static PlanarTrackMap BuildMapOf(const TracksVariant &v, const std::set<uint32_t> &separator_movers)
 {
-	const std::vector<uint32_t> &sl = v.channels.channels[v.sites[s].straight].lines;
-	std::vector<std::tuple<size_t, uint32_t, uint32_t>> legs;
-	for (const uint32_t nidx : v.channels.sites[s].nodes) {
-		const PlanarNode &node = v.topology.nodes[nidx];
-		const bool a_straight = v.channels.channel_of_line[node.in[0]] == v.sites[s].straight;
-		const uint32_t sline = a_straight ? node.in[0] : node.in[1], jline = a_straight ? node.in[1] : node.in[0];
-		const size_t pos = std::ranges::find(sl, sline) - sl.begin();
-		legs.emplace_back(v.sites[s].side > 0 ? pos : sl.size() - 1 - pos, sline, jline);
-	}
-	std::ranges::sort(legs);
-	for (const auto &[pos, sline, jline] : legs) {
-		lanes.push_back(sline);
-		joiners.push_back(jline);
-	}
-}
-
-/** @return The name of a line's role at a site: in (the site's channel line), straight leg, other leg, lane, joiner, or none. */
-static std::string RoleAt(const TracksVariant &v, size_t s, uint32_t line)
-{
-	const PlanarSite &site = v.channels.sites[s];
-	const bool merge = site.kind == PlanarSiteKind::Join || site.kind == PlanarSiteKind::LaneMerge;
-	for (const uint32_t nidx : site.nodes) {
-		const PlanarNode &node = v.topology.nodes[nidx];
-		const std::vector<uint32_t> &legs = merge ? node.in : node.out;
-		const std::vector<uint32_t> &single = merge ? node.out : node.in;
-		if (std::ranges::find(single, line) != single.end()) return "in";
-		if (std::ranges::find(legs, line) == legs.end()) continue;
-		const bool is_straight = v.sites[s].straight != UINT32_MAX && v.channels.channel_of_line[line] == v.sites[s].straight;
-		if (merge) return is_straight ? "lane" : "joiner";
-		return is_straight ? "straight leg" : "other leg";
-	}
-	return "none";
-}
-
-/** @return The first site of the node group holding the crossing of two lines, or SIZE_MAX when no group holds it. */
-static size_t GroupSite(const TracksVariant &v, uint32_t la, uint32_t lb)
-{
-	uint32_t crossing = UINT32_MAX;
-	for (uint32_t k = 0; k < v.topology.crossings.size(); k++) {
-		const PlanarCrossing &c = v.topology.crossings[k];
-		if ((c.a == la && c.b == lb) || (c.a == lb && c.b == la)) crossing = k;
-	}
-	size_t site_index = SIZE_MAX;
-	for (uint32_t g = 0; g < v.channels.group_crossings.size() && site_index == SIZE_MAX; g++) {
-		if (std::ranges::find(v.channels.group_crossings[g], crossing) == v.channels.group_crossings[g].end()) continue;
-		for (size_t s = 0; s < v.channels.sites.size() && site_index == SIZE_MAX; s++) {
-			if (v.topology.nodes[v.channels.sites[s].nodes[0]].group == g) site_index = s;
-		}
-	}
-	return site_index;
-}
-
-/** Record a crossing without a separator: the kind of the node group holding it and the roles of its two lines there. */
-static void Classify(const TracksVariant &v, uint32_t la, uint32_t lb, WrapNotes &notes)
-{
-	std::string key = "kind none";
-	const size_t site_index = GroupSite(v, la, lb);
-	if (site_index != SIZE_MAX) {
-		static const char *const kinds[] = {"Fray", "LaneSplit", "Join", "LaneMerge"};
-		std::string r1 = RoleAt(v, site_index, la), r2 = RoleAt(v, site_index, lb);
-		if (r2 < r1) std::swap(r1, r2);
-		key = fmt::format("{} ({}, {})", kinds[static_cast<size_t>(v.channels.sites[site_index].kind)], r1, r2);
-	}
-	auto &entry = notes.unseparated[key];
-	if (entry.first++ == 0) entry.second = fmt::format("{} x {}", v.topology.lines[la].name, v.topology.lines[lb].name);
+	PlanarTrackMap map;
+	const std::vector<uint32_t> separator = PlanarCrossingSeparators(v.topology, v.channels, v.sites, v.over, separator_movers, map.why);
+	if (!map.why.empty()) return map;
+	const PlanarLineSides sides(v.topology, v.channels);
+	return BuildPlanarTrackMap(v.topology, v.channels, v.sites, PlanarGroupStructures(v.topology, v.channels, v.sites, sides, separator, MakeTestJunctionSpec()));
 }
 
 /**
- * Wrap a variant with today's implicit grouping: one structure per crossing between two line tracks, kinds bridge, the map's copy beside the separator.
- * Inside a prio join a crossing's separator is the joiner when it is in the set, else the lane; in any other join or fray, the mover when it is in the set, else the keeper (D372); any other crossing's separator is the track on the over channel.
+ * Wrap a variant with its structures: one per run of the library's grouping, kinds bridge, the map's copy beside the separator when the run has one.
  * Sites are the map's splits and merges.
  */
 static PlanarStructureVariant WrapToday(const TracksVariant &v, const std::set<uint32_t> &separator_movers, const std::string &tag, WrapNotes &notes)
@@ -162,101 +104,75 @@ static PlanarStructureVariant WrapToday(const TracksVariant &v, const std::set<u
 	PlanarStructureVariant out;
 	out.tag = tag;
 	out.cost = 0;
-	out.map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, separator_movers);
+	std::string why;
+	const std::vector<uint32_t> separator = PlanarCrossingSeparators(v.topology, v.channels, v.sites, v.over, separator_movers, why);
+	const PlanarLineSides sides(v.topology, v.channels);
+	std::vector<PlanarStructureRun> runs;
+	if (why.empty()) runs = PlanarGroupStructures(v.topology, v.channels, v.sites, sides, separator, MakeTestJunctionSpec());
+	if (why.empty()) {
+		out.map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, runs);
+	} else {
+		out.map.why = why;
+	}
 	const PlanarTrackMap &map = out.map;
-	if (!map.why.empty()) return out;
+	if (!map.why.empty()) {
+		if (map.why.starts_with("copy sides disagree")) {
+			if (notes.disagreements++ == 0) notes.disagreement_example = tag + " " + map.why;
+		} else if (notes.other_failures++ == 0) {
+			notes.failure_example = tag + " " + map.why;
+		}
+		return out;
+	}
 	const auto plain = [&](uint32_t t) { return map.tracks[t].kind == PlanarTrack::Kind::Line; };
-	/* The (lane, joiner) pairs of the prio joins. */
-	std::map<std::pair<uint32_t, uint32_t>, bool> join_pairs; ///< (lane line, joiner line) -> lane index > joiner index.
-	for (size_t s = 0; s < v.channels.sites.size(); s++) {
-		if (v.channels.sites[s].kind != PlanarSiteKind::Join || !v.sites[s].prio || v.sites[s].straight == UINT32_MAX) continue;
-		std::vector<uint32_t> lanes, joiners;
-		TestJoinLanes(v, s, lanes, joiners);
-		for (size_t i = 0; i < lanes.size(); i++) {
-			for (size_t j = 0; j < joiners.size(); j++) join_pairs[{lanes[i], joiners[j]}] = i > j;
+	/* The map's crossing between two line tracks that is the topology crossing k. */
+	const auto map_crossing = [&](uint32_t k) {
+		const PlanarCrossing &c = v.topology.crossings[k];
+		for (uint32_t j = 0; j < map.crossings.size(); j++) {
+			const uint32_t a = map.crossings[j].a, b = map.crossings[j].b;
+			if (!plain(a) || !plain(b)) continue;
+			if ((map.part_of[a] == c.a && map.part_of[b] == c.b) || (map.part_of[a] == c.b && map.part_of[b] == c.a)) return j;
 		}
-	}
+		return UINT32_MAX;
+	};
 	for (uint32_t j = 0; j < map.crossings.size(); j++) {
-		const uint32_t a = map.crossings[j].a, b = map.crossings[j].b;
-		if (!plain(a) || !plain(b)) {
-			notes.copy_row_crossings++;
-			continue;
-		}
-		const uint32_t la = map.part_of[a], lb = map.part_of[b];
-		uint32_t separator = UINT32_MAX, crosser = UINT32_MAX;
-		const bool a_lane = join_pairs.contains({la, lb}), b_lane = join_pairs.contains({lb, la});
-		if (a_lane || b_lane) {
-			if (!join_pairs[a_lane ? std::pair{la, lb} : std::pair{lb, la}]) notes.bad_pair++;
-			/* a is the lane and b the joiner, or the other way round. */
-			const uint32_t joiner_line = a_lane ? lb : la;
-			const bool joiner_separates = separator_movers.contains(joiner_line);
-			const bool a_separates = a_lane != joiner_separates;
-			separator = a_separates ? a : b;
-			crosser = a_separates ? b : a;
-		} else {
-			const size_t site = GroupSite(v, la, lb);
-			const std::string ra = site == SIZE_MAX ? "" : RoleAt(v, site, la), rb = site == SIZE_MAX ? "" : RoleAt(v, site, lb);
-			const bool a_mover = ra == "joiner" || ra == "other leg", b_mover = rb == "joiner" || rb == "other leg";
-			const bool a_keeper = ra == "lane" || ra == "straight leg", b_keeper = rb == "lane" || rb == "straight leg";
-			uint32_t over_channel = UINT32_MAX;
-			if ((a_mover && b_keeper) || (b_mover && a_keeper)) {
-				const bool a_separates = separator_movers.contains(a_mover ? la : lb) == a_mover;
-				separator = a_separates ? a : b;
-				crosser = a_separates ? b : a;
-				out.structures.push_back({separator, {j}, {crosser}, 1, CopyBeside(map, separator)});
-				continue;
-			}
-			for (uint32_t k = 0; k < v.topology.crossings.size() && over_channel == UINT32_MAX; k++) {
-				const PlanarCrossing &c = v.topology.crossings[k];
-				if (!((c.a == la && c.b == lb) || (c.a == lb && c.b == la))) continue;
-				for (uint32_t ch = 0; ch < v.channels.crossings.size(); ch++) {
-					if (std::ranges::find(v.channels.crossings[ch].line_crossings, k) != v.channels.crossings[ch].line_crossings.end()) over_channel = v.over[ch];
-				}
-			}
-			if (v.channels.channel_of_line[la] == over_channel) {
-				separator = a;
-				crosser = b;
-			} else if (v.channels.channel_of_line[lb] == over_channel) {
-				separator = b;
-				crosser = a;
-			} else {
-				notes.no_separator++;
-				Classify(v, la, lb, notes);
-				continue;
-			}
-		}
-		out.structures.push_back({separator, {j}, {crosser}, 1, CopyBeside(map, separator)});
+		if (!plain(map.crossings[j].a) || !plain(map.crossings[j].b)) notes.copy_row_crossings++;
 	}
-	/* The crossings of a separator that one copy track runs beside form one structure (the map's copy range), in travel order along the separator. */
-	std::vector<PlanarStructure> grouped;
-	for (const PlanarStructure &st : out.structures) {
-		PlanarStructure *into = nullptr;
-		if (st.copy != UINT32_MAX) {
-			for (PlanarStructure &g : grouped) {
-				if (g.copy == st.copy && g.separator == st.separator) into = &g;
+	std::set<uint32_t> channel_crossings;
+	for (const PlanarChannelCrossing &cc : v.channels.crossings) channel_crossings.insert(cc.line_crossings.begin(), cc.line_crossings.end());
+	for (size_t r = 0; r < runs.size(); r++) {
+		const PlanarStructureRun &run = runs[r];
+		notes.runs++;
+		const size_t in_channel = std::ranges::count_if(run.crossings, [&](uint32_t k) { return channel_crossings.contains(k); });
+		if (in_channel != 0 && in_channel != run.crossings.size()) notes.merged++;
+		if (r > 0 && runs[r - 1].line == run.line) {
+			const std::vector<uint32_t> &events = sides.Events()[run.line];
+			if (std::ranges::find(events, runs[r - 1].crossings.back()) + 1 == std::ranges::find(events, run.crossings.front())) notes.split++;
+		}
+		PlanarStructure st{UINT32_MAX, {}, {}, 1, UINT32_MAX};
+		uint32_t first = UINT32_MAX, last = UINT32_MAX;
+		for (const uint32_t k : run.crossings) {
+			const uint32_t j = map_crossing(k);
+			if (j == UINT32_MAX) continue;
+			const uint32_t a = map.crossings[j].a, b = map.crossings[j].b;
+			if (st.separator == UINT32_MAX) {
+				st.separator = map.part_of[a] == run.line ? a : b;
+				first = j;
+			}
+			last = j;
+		}
+		/* Every crossing of the separator's events from the run's first to its last belongs to the structure: line crossings and crossings with a row or another structure's copy. Its own copy's crossings follow it. */
+		if (st.separator != UINT32_MAX) {
+			const std::vector<uint32_t> &events = map.events[st.separator];
+			const auto lo = std::ranges::find(events, first), hi = std::ranges::find(events, last);
+			for (auto it = lo; it != events.end() && it <= hi; ++it) {
+				st.crossings.push_back(*it);
+				st.crossers.push_back(map.crossings[*it].a == st.separator ? map.crossings[*it].b : map.crossings[*it].a);
 			}
 		}
-		if (into == nullptr) {
-			grouped.push_back(st);
-			continue;
-		}
-		into->crossings.push_back(st.crossings[0]);
-		into->crossers.push_back(st.crossers[0]);
+		if (st.separator == UINT32_MAX) continue;
+		if (run.copy) st.copy = CopyBeside(map, st.separator);
+		out.structures.push_back(st);
 	}
-	for (PlanarStructure &g : grouped) {
-		if (g.crossings.size() < 2) continue;
-		const std::vector<uint32_t> &events = map.events[g.separator];
-		std::vector<std::pair<size_t, size_t>> order; ///< (event position, index into g)
-		for (size_t i = 0; i < g.crossings.size(); i++) order.emplace_back(std::ranges::find(events, g.crossings[i]) - events.begin(), i);
-		std::ranges::sort(order);
-		PlanarStructure sorted = g;
-		for (size_t i = 0; i < order.size(); i++) {
-			sorted.crossings[i] = g.crossings[order[i].second];
-			sorted.crossers[i] = g.crossers[order[i].second];
-		}
-		g = sorted;
-	}
-	out.structures = std::move(grouped);
 	out.cost = static_cast<int>(out.structures.size());
 
 	const PlanarTopology &e = map.expanded;
@@ -483,6 +399,9 @@ struct Tally {
 	WrapNotes notes;
 	size_t non_consecutive = 0; ///< Variants with a structure whose crossings are not consecutive events of its separator.
 	std::string non_consecutive_example;
+	size_t not_maximal_variants = 0; ///< Variants with a "P3: not maximal" message.
+	size_t not_maximal_messages = 0; ///< The "P3: not maximal" messages in all variants.
+	std::string not_maximal_example;
 };
 
 static void Add(Tally &tally, const TracksVariant &tv, const std::set<uint32_t> &separators, const std::string &tag)
@@ -493,6 +412,10 @@ static void Add(Tally &tally, const TracksVariant &tv, const std::set<uint32_t> 
 	std::set<std::string> seen;
 	for (const std::string &m : CheckPlanarStructurePromise(tv.topology, spec, v)) {
 		const std::string id = m.substr(0, m.find(':'));
+		if (m.find("not maximal") != std::string::npos) {
+			if (tally.not_maximal_messages++ == 0) tally.not_maximal_example = tag + " " + m;
+			if (seen.insert("P3 not maximal").second) tally.not_maximal_variants++;
+		}
 		if (m.find("not consecutive") != std::string::npos && seen.insert("P3 non-consecutive").second) {
 			tally.non_consecutive++;
 			if (tally.non_consecutive_example.empty()) tally.non_consecutive_example = tag + " " + m;
@@ -511,11 +434,13 @@ static void Print(const std::string &hub, const std::string &form, const Tally &
 		const auto it = tally.breaching.find(id);
 		line += fmt::format(", {}:{}", id, it == tally.breaching.end() ? 0 : it->second);
 	}
-	line += fmt::format(" | left out of structures: {} copy/row crossings, {} without separator", tally.notes.copy_row_crossings, tally.notes.no_separator);
+	line += fmt::format(" | {} runs ({} merged across a channel and a site group, {} P5 cuts), {} copy/row crossings left out, {} copy-side disagreements, {} other map failures", tally.notes.runs, tally.notes.merged, tally.notes.split, tally.notes.copy_row_crossings, tally.notes.disagreements, tally.notes.other_failures);
 	WARN(line);
 	for (const auto &[id, message] : tally.first) WARN("  first " << message);
+	WARN("  P3 not maximal: " << tally.not_maximal_messages << " messages in " << tally.not_maximal_variants << " variants" << (tally.not_maximal_example.empty() ? "" : ", e.g. " + tally.not_maximal_example));
 	WARN("  P3 non-consecutive: " << tally.non_consecutive << " variants" << (tally.non_consecutive_example.empty() ? "" : ", e.g. " + tally.non_consecutive_example));
-	for (const auto &[key, entry] : tally.notes.unseparated) WARN("  no separator: " << key << " x" << entry.first << ", e.g. " << entry.second);
+	if (!tally.notes.disagreement_example.empty()) WARN("  copy-side disagreement, e.g. " << tally.notes.disagreement_example);
+	if (!tally.notes.failure_example.empty()) WARN("  map failure, e.g. " << tally.notes.failure_example);
 }
 
 /** The movers of a variant as a set. */
@@ -582,8 +507,10 @@ TEST_CASE("planar structure: today's variants of T2, T3 and LL2 against the prom
 		Print(hub, "separators all movers", all);
 		Print(hub, "first variant, every subset of its movers", subsets);
 		for (const Tally *t : {&none, &all, &subsets}) {
-			CHECK(t->notes.bad_pair == 0);
-			CHECK(t->notes.no_separator == 0);
+			CHECK(t->notes.disagreements == 0);
+			CHECK(t->notes.other_failures == 0);
+			CHECK(t->breaching.find("P1") == t->breaching.end());
+			CHECK(t->not_maximal_messages == 0);
 			CHECK(t->breaching.find("P3") == t->breaching.end());
 			CHECK(t->breaching.find("P6") == t->breaching.end());
 		}
@@ -595,7 +522,7 @@ TEST_CASE("planar structure: with no separator movers every copy's line has a fu
 	for (const int lanes : {2, 3, 0}) {
 		size_t copies = 0;
 		ForEachVariant(lanes, [&](const TracksVariant &tv, const std::string &tag) {
-			const PlanarTrackMap map = BuildPlanarTrackMap(tv.topology, tv.channels, tv.sites, tv.over, {});
+			const PlanarTrackMap map = BuildMapOf(tv, {});
 			REQUIRE(map.why.empty());
 			for (const PlanarTrack &track : map.tracks) {
 				if (track.kind != PlanarTrack::Kind::Copy) continue;
@@ -665,4 +592,38 @@ TEST_CASE("planar structure: P6 each copy track is the copy of exactly one struc
 	v.structures.push_back(twin);
 	const std::vector<std::string> ids = Ids(CheckPlanarStructurePromise(h.tv.topology, h.spec, v));
 	CHECK(std::ranges::count(ids, "P6") == 1);
+}
+
+/** @return How many of the oracle's messages say a structure is not maximal. */
+static size_t NotMaximal(const HandCase &h, const PlanarStructureVariant &v)
+{
+	size_t n = 0;
+	for (const std::string &m : CheckPlanarStructurePromise(h.tv.topology, h.spec, v)) n += m.find("not maximal") != std::string::npos ? 1 : 0;
+	return n;
+}
+
+TEST_CASE("planar structure: P3 two adjacent structures on one separator are not maximal", "[junction][planar][planarstructure]")
+{
+	/* The first structure of two or more crossings of the hand case is cut into two adjacent ones (they share its copy, a P6 message of its own). */
+	const HandCase h = MakeHandCase();
+	size_t pick = SIZE_MAX;
+	for (size_t i = 0; i < h.v.structures.size() && pick == SIZE_MAX; i++) {
+		if (h.v.structures[i].crossings.size() >= 2) pick = i;
+	}
+	REQUIRE(pick != SIZE_MAX);
+	CHECK(NotMaximal(h, h.v) == 0);
+	PlanarStructureVariant v = h.v;
+	PlanarStructure tail = v.structures[pick];
+	PlanarStructure &head = v.structures[pick];
+	tail.crossings.assign(head.crossings.begin() + 1, head.crossings.end());
+	tail.crossers.assign(head.crossers.begin() + 1, head.crossers.end());
+	head.crossings.resize(1);
+	head.crossers.resize(1);
+	v.structures.push_back(tail);
+	CHECK(NotMaximal(h, v) == 1);
+
+	/* Merging would breach the bridge limit: no message. */
+	HandCase tight = h;
+	tight.spec.max_bridge_middle = static_cast<uint16_t>(h.v.structures[pick].crossings.size() - 1);
+	CHECK(NotMaximal(tight, v) == 0);
 }

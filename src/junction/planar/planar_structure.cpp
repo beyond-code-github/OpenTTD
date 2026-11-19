@@ -101,7 +101,6 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 			}
 			owners[j].push_back(s.separator);
 			const uint32_t a = map.crossings[j].a, b = map.crossings[j].b;
-			if (!plain(a) || !plain(b)) out.push_back(fmt::format("P3: structure {} holds crossing {} of a copy or row track", i, j));
 			if (a != s.separator && b != s.separator) {
 				out.push_back(fmt::format("P3: crossing {} of structure {} does not involve its separator {}", j, i, map.tracks[s.separator].name));
 				continue;
@@ -122,6 +121,24 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 		const uint32_t a = map.crossings[j].a, b = map.crossings[j].b;
 		const bool two_ok = owners[j].size() == 2 && ((owners[j][0] == a && owners[j][1] == b) || (owners[j][0] == b && owners[j][1] == a));
 		if (owners[j].size() != 1 && !two_ok) out.push_back(fmt::format("P3: crossing {} ({} x {}) is in {} structures", j, map.tracks[a].name, map.tracks[b].name, owners[j].size()));
+	}
+
+	/* P3 maximal: two structures on one separator whose crossings are adjacent events of it would be one, unless merging breaches P5. */
+	for (size_t i = 0; i < v.structures.size(); i++) {
+		const PlanarStructure &s = v.structures[i];
+		if (s.separator >= map.tracks.size() || s.crossings.empty()) continue;
+		for (size_t m = i + 1; m < v.structures.size(); m++) {
+			const PlanarStructure &t = v.structures[m];
+			if (t.separator != s.separator || t.crossings.empty()) continue;
+			const size_t s_first = EventIndex(map.events[s.separator], s.crossings.front()), s_last = EventIndex(map.events[s.separator], s.crossings.back());
+			const size_t t_first = EventIndex(map.events[s.separator], t.crossings.front()), t_last = EventIndex(map.events[s.separator], t.crossings.back());
+			if (s_first == SIZE_MAX || s_last == SIZE_MAX || t_first == SIZE_MAX || t_last == SIZE_MAX) continue;
+			if (s_last + 1 != t_first && t_last + 1 != s_first) continue;
+			const size_t merged = s.crossings.size() + t.crossings.size();
+			if (((s.kinds | t.kinds) & 1) != 0 && merged > spec.max_bridge_middle) continue;
+			if ((s.copy != UINT32_MAX || t.copy != UINT32_MAX) && merged + 2 > 2u * spec.sd + spec.tl) continue;
+			out.push_back(fmt::format("P3: not maximal: structures {} and {} on {} are adjacent events and could be one", i, m, map.tracks[s.separator].name));
+		}
 	}
 
 	/* P4: a crossing within the span of its crosser's own structure needs one bridge and one tunnel. */
