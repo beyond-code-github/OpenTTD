@@ -266,7 +266,7 @@ struct ClosureResult {
 
 /**
  * Ask whether the headings of a shaped variant can close with positive lengths (the lengths-only LP of H2).
- * Per point (x, y); per piece a length of at least 1, split into one part per stretch the piece lies on, so a piece that holds events is cut at them (the reading the orchestrator ruled intended, not the literal sum over a shared piece); the box is [0, W] x [0, Hb].
+ * Per point (x, y); a parallel leg of a node is offset sideways from the node point by a free w >= 0 (the cusp opening Slots owns, SPEC-shape section 3 hand-on (1)); per piece a length of at least 1, split into one part per stretch the piece lies on, so a piece that holds events is cut at them (the reading the orchestrator ruled intended, not the literal sum over a shared piece); the box is [0, W] x [0, Hb].
  * @param v The shaped variant.
  * @return The answer.
  */
@@ -325,12 +325,43 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v)
 		row({{a.first, 1}, {b.first, -1}}, 0, 0, tag);
 		row({{a.second, 1}, {b.second, -1}}, 0, 0, tag);
 	};
+	/* A parallel leg of a node (not the site's straight leg, at the trunk's heading mod 8) is offset from the node point sideways by w >= 0 lane steps: the cusp opening Slots owns. */
 	for (size_t n = 0; n < map.expanded.nodes.size(); n++) {
 		const PlanarNode &node = map.expanded.nodes[n];
 		const std::string tag = fmt::format("node {}", n);
-		const auto reference = point[node.in[0]].back();
-		for (const uint32_t t : node.in) tie(reference, point[t].back(), tag);
-		for (const uint32_t t : node.out) tie(reference, point[t].front(), tag);
+		const PlanarStructureSite *site = nullptr;
+		for (const PlanarStructureSite &candidate : v.structure.sites) {
+			if (candidate.node == n) site = &candidate;
+		}
+		const bool split = node.in.size() == 1 && (node.out.size() != 1 || (site != nullptr && site->split));
+		const std::vector<uint32_t> &trunks = split ? node.in : node.out, &legs = split ? node.out : node.in;
+		const uint32_t trunk = trunks[0];
+		const auto reference = split ? point[trunk].back() : point[trunk].front();
+		const int h = (((split ? v.tracks[trunk].pieces.back() : v.tracks[trunk].pieces.front()) % 8) + 8) % 8;
+		for (const uint32_t t : trunks) tie(reference, split ? point[t].back() : point[t].front(), tag);
+		for (const uint32_t leg : legs) {
+			const auto leg_point = split ? point[leg].front() : point[leg].back();
+			const int heading = (((split ? v.tracks[leg].pieces.front() : v.tracks[leg].pieces.back()) % 8) + 8) % 8;
+			const bool fork = site != nullptr && site->straight == UINT32_MAX && legs.size() == 2;
+			const bool straight = site != nullptr && leg == site->straight;
+			if (straight || heading != h || site == nullptr) {
+				tie(reference, leg_point, tag);
+				continue;
+			}
+			const uint32_t stretch = split ? 0 : static_cast<uint32_t>(map.events[leg].size());
+			int sigma;
+			if (fork) {
+				const uint32_t other = legs[0] == leg ? legs[1] : legs[0];
+				sigma = map.Side(leg, stretch, other, split ? 0 : static_cast<uint32_t>(map.events[other].size()));
+			} else {
+				sigma = map.Side(leg, stretch, site->straight, split ? 0 : static_cast<uint32_t>(map.events[site->straight].size()));
+				if (sigma == 0) sigma = site->side;
+			}
+			const uint32_t w = lp.AddVariable(0, JunctionMilp::INF, 0, false);
+			const auto &step = PlanarModel::STEP[(h + 2) % 8];
+			row({{leg_point.first, 1}, {reference.first, -1}, {w, -sigma * step[0]}}, 0, 0, tag);
+			row({{leg_point.second, 1}, {reference.second, -1}, {w, -sigma * step[1]}}, 0, 0, tag);
+		}
 	}
 	for (uint32_t c = 0; c < map.crossings.size(); c++) {
 		const uint32_t a = map.crossings[c].a, b = map.crossings[c].b;
@@ -365,6 +396,27 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v)
 		for (const std::string &t : unique) r.why += " " + t + ";";
 	}
 	return r;
+}
+
+TEST_CASE("planar shape layer: t3 first variant shapes", "[junction][planar][planarshape]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(3), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult r = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!r.variants.empty());
+	PlanarShapeVariant shaped;
+	std::string why;
+	const bool ok = ShapePlanarStructureVariant(r.variants[0], shaped, why);
+	INFO("why: " << why);
+	REQUIRE(ok);
+	/* Capacity (H6) is the capacity rows' job, which the heading program does not have yet (H3 of the roadmap): only H6 messages may remain. */
+	const std::vector<std::string> messages = CheckPlanarShapePromise(topology, spec, shaped);
+	for (const std::string &message : messages) {
+		INFO(message);
+		CHECK(message.starts_with("H6"));
+	}
 }
 
 TEST_CASE("planar shape layer: probe, the heading program and the closure LP on T2, T3 and LL2", "[junction][planar][planarshape][slow]")
