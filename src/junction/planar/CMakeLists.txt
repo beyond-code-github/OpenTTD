@@ -17,6 +17,8 @@ add_files(
     planar_regions.h
     planar_shape.cpp
     planar_shape.h
+    planar_shape_layer.cpp
+    planar_shape_layer.h
     planar_slots.cpp
     planar_slots.h
     planar_structure.cpp
