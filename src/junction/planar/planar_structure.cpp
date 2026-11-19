@@ -62,7 +62,22 @@ std::vector<uint32_t> PlanarChannelOver(const PlanarChannels &channels, uint64_t
 	return over;
 }
 
-std::vector<PlanarStructure> PlanarBuildStructures(const PlanarTopology &topology, const std::vector<PlanarStructureRun> &runs, const PlanarTrackMap &map)
+/**
+ * The most middle tiles a structure may span per kind.
+ * @param spec The spec.
+ * @param s The structure: its kinds and whether it has a copy.
+ * @return Bridge then tunnel, -1 for a kind not allowed.
+ */
+static std::array<int, 2> StructureLimit(const JunctionSpec &spec, const PlanarStructure &s)
+{
+	const int flow = 2 * spec.sd + spec.tl - 2;
+	std::array<int, 2> limit{-1, -1};
+	if ((s.kinds & 1) != 0) limit[0] = s.copy != UINT32_MAX ? std::min<int>(spec.max_bridge_middle, flow) : spec.max_bridge_middle;
+	if ((s.kinds & 2) != 0) limit[1] = s.copy != UINT32_MAX ? std::min<int>(spec.max_tunnel_length, flow) : spec.max_tunnel_length;
+	return limit;
+}
+
+std::vector<PlanarStructure> PlanarBuildStructures(const PlanarTopology &topology, const std::vector<PlanarStructureRun> &runs, const PlanarTrackMap &map, const JunctionSpec &spec)
 {
 	std::vector<PlanarStructure> out;
 	const auto plain = [&](uint32_t t) { return map.tracks[t].kind == PlanarTrack::Kind::Line; };
@@ -77,7 +92,7 @@ std::vector<PlanarStructure> PlanarBuildStructures(const PlanarTopology &topolog
 		return UINT32_MAX;
 	};
 	for (const PlanarStructureRun &run : runs) {
-		PlanarStructure st{UINT32_MAX, {}, {}, 1, UINT32_MAX};
+		PlanarStructure st{UINT32_MAX, {}, {}, 1, UINT32_MAX, {-1, -1}};
 		uint32_t first = UINT32_MAX, last = UINT32_MAX;
 		for (const uint32_t k : run.crossings) {
 			const uint32_t j = map_crossing(k);
@@ -100,6 +115,7 @@ std::vector<PlanarStructure> PlanarBuildStructures(const PlanarTopology &topolog
 		}
 		if (st.separator == UINT32_MAX) continue;
 		if (run.copy) st.copy = CopyBeside(map, st.separator);
+		st.limit = StructureLimit(spec, st);
 		out.push_back(st);
 	}
 	return out;
@@ -300,7 +316,7 @@ PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const
 			result.skipped["map: " + v.map.why]++;
 			continue;
 		}
-		v.structures = PlanarBuildStructures(topology, e.runs, v.map);
+		v.structures = PlanarBuildStructures(topology, e.runs, v.map, spec);
 		v.sites = PlanarBuildStructureSites(topology, c.channels, c.sites, v.map);
 		result.variants.push_back(std::move(v));
 	}
@@ -442,9 +458,13 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 	for (size_t i = 0; i < v.structures.size(); i++) {
 		const PlanarStructure &s = v.structures[i];
 		if ((s.kinds & 3) == 0) out.push_back(fmt::format("P5: structure {} allows no kind", i));
-		if ((s.kinds & 1) != 0 && s.crossers.size() > spec.max_bridge_middle) out.push_back(fmt::format("P5: structure {} spans {} tracks, over the bridge limit {}", i, s.crossers.size(), spec.max_bridge_middle));
-		if ((s.kinds & 2) != 0 && s.crossers.size() > spec.max_tunnel_length) out.push_back(fmt::format("P5: structure {} spans {} tracks, over the tunnel limit {}", i, s.crossers.size(), spec.max_tunnel_length));
-		if (s.copy != UINT32_MAX && s.crossers.size() + 2 > 2u * spec.sd + spec.tl) out.push_back(fmt::format("P5: structure {} has a copy and spans {} tracks, over the D228a flow bound 2*sd+tl-2 = {}", i, s.crossers.size(), 2 * spec.sd + spec.tl - 2));
+		if (s.limit != StructureLimit(spec, s)) {
+			const std::array<int, 2> want = StructureLimit(spec, s);
+			out.push_back(fmt::format("P5: structure {} has limit {}/{}, the spec gives {}/{}", i, s.limit[0], s.limit[1], want[0], want[1]));
+		}
+		const std::string flow = s.copy != UINT32_MAX ? " (with the D228a flow bound 2*sd+tl-2)" : "";
+		if ((s.kinds & 1) != 0 && static_cast<int>(s.crossers.size()) > s.limit[0]) out.push_back(fmt::format("P5: structure {} spans {} tracks, over the bridge limit {}{}", i, s.crossers.size(), s.limit[0], flow));
+		if ((s.kinds & 2) != 0 && static_cast<int>(s.crossers.size()) > s.limit[1]) out.push_back(fmt::format("P5: structure {} spans {} tracks, over the tunnel limit {}{}", i, s.crossers.size(), s.limit[1], flow));
 	}
 
 	/* P6: copies follow the share, rows follow the prio joins. */

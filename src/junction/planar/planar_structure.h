@@ -15,6 +15,7 @@
 #include "planar_regions.h"
 #include "planar_topology.h"
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -35,6 +36,7 @@ struct PlanarStructure {
 	std::vector<uint32_t> crossers; ///< The tracks the separator spans, in the same order as the crossings.
 	uint8_t kinds; ///< The allowed kinds as a bit set: 1 bridge, 2 tunnel.
 	uint32_t copy; ///< The copy track beside the separator over the span, or UINT32_MAX.
+	std::array<int, 2> limit; ///< The most middle tiles each kind may span (0 bridge, 1 tunnel), -1 for a kind not allowed: bridge min(max_bridge_middle, and with a copy 2 * sd + tl - 2 (D228a)); tunnel min(max_tunnel_length, and with a copy the same D228a bound).
 };
 
 /** One variant of Structure's choices with its track map. */
@@ -70,9 +72,10 @@ std::vector<uint32_t> PlanarChannelOver(const PlanarChannels &channels, uint64_t
  * @param topology The topology.
  * @param runs The runs the map was built from.
  * @param map The track map built from them.
+ * @param spec The spec: the bridge and tunnel limits and the flow bound, which fill each structure's limit.
  * @return The structures, in run order; a run whose crossings the map lacks gives none.
  */
-std::vector<PlanarStructure> PlanarBuildStructures(const PlanarTopology &topology, const std::vector<PlanarStructureRun> &runs, const PlanarTrackMap &map);
+std::vector<PlanarStructure> PlanarBuildStructures(const PlanarTopology &topology, const std::vector<PlanarStructureRun> &runs, const PlanarTrackMap &map, const JunctionSpec &spec);
 
 /**
  * Every split and merge of a built track map with its straight leg and side: a copy or row node's straight leg is the line track, a topology node's follows the resolved site.

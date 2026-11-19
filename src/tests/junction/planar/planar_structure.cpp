@@ -124,7 +124,7 @@ static PlanarStructureVariant WrapToday(const TracksVariant &v, const std::set<u
 			if (std::ranges::find(events, runs[r - 1].crossings.back()) + 1 == std::ranges::find(events, run.crossings.front())) notes.split++;
 		}
 	}
-	out.structures = PlanarBuildStructures(v.topology, runs, map);
+	out.structures = PlanarBuildStructures(v.topology, runs, map, MakeTestJunctionSpec());
 	out.cost = static_cast<int>(out.structures.size());
 	out.sites = PlanarBuildStructureSites(v.topology, v.channels, v.sites, map);
 	return out;
@@ -174,6 +174,22 @@ static void RequireOnly(const HandCase &h, const PlanarStructureVariant &v, cons
 	INFO(messages.size() << " messages, first: " << (messages.empty() ? "" : messages[0]));
 	REQUIRE(messages.size() == 1);
 	CHECK(messages[0].starts_with(id + ":"));
+}
+
+/** @return The limits of a structure for the spec, by the formula of the limit's doc (a hand mutation of its kinds or copy changes them). */
+static std::array<int, 2> LimitFor(const JunctionSpec &spec, const PlanarStructure &s)
+{
+	const int flow = 2 * spec.sd + spec.tl - 2;
+	std::array<int, 2> limit{-1, -1};
+	if ((s.kinds & 1) != 0) limit[0] = s.copy != UINT32_MAX ? std::min<int>(spec.max_bridge_middle, flow) : spec.max_bridge_middle;
+	if ((s.kinds & 2) != 0) limit[1] = s.copy != UINT32_MAX ? std::min<int>(spec.max_tunnel_length, flow) : spec.max_tunnel_length;
+	return limit;
+}
+
+/** Rebuild a hand case's structures' limits for its (changed) spec. */
+static void RefreshLimits(HandCase &h)
+{
+	for (PlanarStructure &s : h.v.structures) s.limit = LimitFor(h.spec, s);
 }
 
 TEST_CASE("planar structure: the oracle accepts a valid hand variant", "[junction][planar][planarstructure]")
@@ -258,14 +274,25 @@ TEST_CASE("planar structure: P5 no kind, and a span over the limit", "[junction]
 	const HandCase h = MakeHandCase();
 	PlanarStructureVariant v = h.v;
 	v.structures.front().kinds = 0;
+	v.structures.front().limit = LimitFor(h.spec, v.structures.front());
 	RequireOnly(h, v, "P5");
 
 	HandCase low = h;
 	low.spec.max_bridge_middle = 0;
+	RefreshLimits(low);
 	const std::vector<std::string> messages = CheckPlanarStructurePromise(low.tv.topology, low.spec, low.v);
 	REQUIRE(!messages.empty());
 	CHECK(std::ranges::all_of(Ids(messages), [](const std::string &id) { return id == "P5"; }));
 	CHECK(messages.size() == low.v.structures.size());
+}
+
+TEST_CASE("planar structure: P5 a structure's limit that is not the spec's", "[junction][planar][planarstructure]")
+{
+	const HandCase h = MakeHandCase();
+	PlanarStructureVariant v = h.v;
+	v.structures.front().limit[0] += 1;
+	RequireOnly(h, v, "P5");
+	CHECK(CheckPlanarStructurePromise(h.tv.topology, h.spec, v)[0].find("limit") != std::string::npos);
 }
 
 TEST_CASE("planar structure: P6 a copy where the share is not full, and a copy missing", "[junction][planar][planarstructure]")
@@ -287,11 +314,13 @@ TEST_CASE("planar structure: P6 a copy where the share is not full, and a copy m
 	REQUIRE(without != SIZE_MAX);
 	PlanarStructureVariant v = h.v;
 	v.structures[without].copy = some_copy;
+	v.structures[without].limit = LimitFor(h.spec, v.structures[without]);
 	RequireOnly(h, v, "P6");
 
 	REQUIRE(with != SIZE_MAX);
 	v = h.v;
 	v.structures[with].copy = UINT32_MAX;
+	v.structures[with].limit = LimitFor(h.spec, v.structures[with]);
 	/* The structure lacks its copy, and the copy track is nobody's: two P6 messages. */
 	const std::vector<std::string> ids = Ids(CheckPlanarStructurePromise(h.tv.topology, h.spec, v));
 	CHECK(ids == std::vector<std::string>{"P6", "P6"});
@@ -493,6 +522,7 @@ TEST_CASE("planar structure: P5 D228a flow bound on a structure with a copy", "[
 	REQUIRE(as_wide == 1);
 	h.spec.sd = 1;
 	h.spec.tl = static_cast<uint8_t>(n - 1);
+	RefreshLimits(h);
 	const std::vector<std::string> messages = CheckPlanarStructurePromise(h.tv.topology, h.spec, h.v);
 	size_t d228a = 0;
 	for (const std::string &m : messages) {

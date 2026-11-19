@@ -398,7 +398,7 @@ struct Oracle {
 	}
 
 	/** H5 and H6: each structure's axis piece, end runs and least middles. */
-	void CheckH5H6(const JunctionSpec &spec)
+	void CheckH5H6()
 	{
 		const std::vector<PlanarStructure> &structures = this->v.structure.structures;
 		for (size_t i = 0; i < structures.size(); i++) {
@@ -434,9 +434,8 @@ struct Oracle {
 				}
 				const char *name = kind == 0 ? "bridge" : "tunnel";
 				if (shape.middles[kind] != least) this->out.push_back(fmt::format("H6: structure {} has {} middles {}, the least at its angles is {}", i, name, shape.middles[kind], least));
-				const int limit = kind == 0 ? spec.max_bridge_middle : spec.max_tunnel_length;
+				const int limit = s.limit[kind];
 				if (least > limit) this->out.push_back(fmt::format("H6: structure {} needs {} {} middles, over the limit {}", i, least, name, limit));
-				if (s.copy != UINT32_MAX && least + 2 > 2 * spec.sd + spec.tl) this->out.push_back(fmt::format("H6: structure {} has a copy and needs {} {} middles, over the flow bound 2*sd+tl-2 = {}", i, least, name, 2 * spec.sd + spec.tl - 2));
 			}
 		}
 	}
@@ -586,7 +585,7 @@ std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology,
 	o.CheckH2();
 	o.CheckH3();
 	o.CheckH4();
-	o.CheckH5H6(spec);
+	o.CheckH5H6();
 	o.CheckH7Faces();
 	o.CheckH7Routes();
 	o.CheckH8();
@@ -688,9 +687,6 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 		if (first == nullptr) continue;
 		const PlanarStructure *second = o.StructureOf(c, first);
 		angle[c] = var(1, 3, 0, true);
-		const uint32_t w = var(0, JunctionMilp::INF, 1, false);
-		row({{w, 1}, {angle[c], -1}}, -2, JunctionMilp::INF, fmt::format("cross {}", c));
-		row({{w, 1}, {angle[c], 1}}, 2, JunctionMilp::INF, fmt::format("cross {}", c));
 		for (const PlanarStructure *s : {first, second}) {
 			if (s == nullptr) continue;
 			const uint32_t p = s->separator;
@@ -711,6 +707,32 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 		const PlanarCrossing &m = map.crossings[c], &r = map.crossings[original];
 		const uint32_t crosser = (m.a == r.a || m.a == r.b) ? m.a : m.b;
 		eq({{H[crosser][EventIndex(map.events[crosser], c) + 1], 1}, {H[crosser][EventIndex(map.events[crosser], original) + 1], -1}}, 0, fmt::format("mirror {}", c));
+	}
+
+	/* Capacity: per structure and kind, the middles at the chosen angles fit the limit Structure handed down. Crosser k has the angle a_k = b1 + 2 b2 + 3 b3 (one binary set); a run of diagonal crossers at one angle starts at r_k (run starts: r_k >= b1_k - b1_{k-1}, r_k >= b3_k - b3_{k-1}), and n + sum r_k <= limit (H6's width). The binaries serve every kind of the structure. */
+	for (size_t i = 0; i < sv.structure.structures.size(); i++) {
+		const PlanarStructure &s = sv.structure.structures[i];
+		const size_t n = s.crossings.size();
+		if (n == 0 || (s.limit[0] < 0 && s.limit[1] < 0)) continue;
+		const std::string tag = fmt::format("cap {}", i);
+		Terms starts;
+		std::vector<uint32_t> prev(2, NONE);
+		for (size_t k = 0; k < n; k++) {
+			const uint32_t b1 = var(0, 1, 0, true), b2 = var(0, 1, 0, true), b3 = var(0, 1, 0, true), r = var(0, JunctionMilp::INF, 0, false);
+			eq({{b1, 1}, {b2, 1}, {b3, 1}}, 1, tag);
+			eq({{angle[s.crossings[k]], 1}, {b1, -1}, {b2, -2}, {b3, -3}}, 0, tag);
+			if (k == 0) {
+				row({{r, 1}, {b1, -1}, {b3, -1}}, 0, JunctionMilp::INF, tag);
+			} else {
+				row({{r, 1}, {b1, -1}, {prev[0], 1}}, 0, JunctionMilp::INF, tag);
+				row({{r, 1}, {b3, -1}, {prev[1], 1}}, 0, JunctionMilp::INF, tag);
+			}
+			prev = {b1, b3};
+			starts.emplace_back(r, 1);
+		}
+		for (int kind = 0; kind < 2; kind++) {
+			if (s.limit[kind] >= 0) row(starts, -JunctionMilp::INF, s.limit[kind] - static_cast<double>(n), tag);
+		}
 	}
 
 	/* Structures: one axis across the span. */
@@ -884,4 +906,23 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 	}
 	out = std::move(sv);
 	return true;
+}
+
+PlanarShapeResult BuildPlanarShape(PlanarStructureResult structure)
+{
+	PlanarShapeResult result;
+	for (PlanarStructureVariant &v : structure.variants) {
+		PlanarShapeVariant shaped;
+		std::string why;
+		if (ShapePlanarStructureVariant(v, shaped, why)) {
+			result.variants.push_back(std::move(shaped));
+		} else {
+			result.unshaped.emplace_back(v.tag, why);
+		}
+	}
+	std::ranges::stable_sort(result.variants, [](const PlanarShapeVariant &a, const PlanarShapeVariant &b) {
+		return std::tie(a.structure.cost, a.cost, a.structure.tag) < std::tie(b.structure.cost, b.cost, b.structure.tag);
+	});
+	if (result.variants.empty()) result.why = structure.why.empty() ? "no variant shaped" : structure.why;
+	return result;
 }
