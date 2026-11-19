@@ -21,6 +21,7 @@
 #include "../../../junction/planar/planar_structure.h"
 
 #include <algorithm>
+#include <chrono>
 #include <map>
 #include <set>
 #include <string>
@@ -57,22 +58,6 @@ static TracksVariant BuildTracksVariant(const std::string &text, uint64_t over_b
 	return v;
 }
 
-/** The two ends of a track in the expanded topology are the same as another's. */
-static bool SameEnds(const PlanarTrackMap &map, uint32_t a, uint32_t b)
-{
-	const PlanarLine &x = map.expanded.lines[a], &y = map.expanded.lines[b];
-	return x.from.port == y.from.port && x.from.index == y.from.index && x.to.port == y.to.port && x.to.index == y.to.index;
-}
-
-/** @return The Copy track beside a track (same line, same ends), or UINT32_MAX. */
-static uint32_t CopyBeside(const PlanarTrackMap &map, uint32_t track)
-{
-	for (uint32_t i = 0; i < map.tracks.size(); i++) {
-		if (map.tracks[i].kind == PlanarTrack::Kind::Copy && map.tracks[i].line == map.tracks[track].line && SameEnds(map, i, track)) return i;
-	}
-	return UINT32_MAX;
-}
-
 /** What wrapping a variant left out or found. */
 struct WrapNotes {
 	size_t copy_row_crossings = 0; ///< Crossings the map adds for copies and rows, left out of the structures.
@@ -97,7 +82,7 @@ static PlanarTrackMap BuildMapOf(const TracksVariant &v, const std::set<uint32_t
 
 /**
  * Wrap a variant with its structures: one per run of the library's grouping, kinds bridge, the map's copy beside the separator when the run has one.
- * Sites are the map's splits and merges.
+ * Sites are the map's splits and merges. The notes count what the wrap left out or found.
  */
 static PlanarStructureVariant WrapToday(const TracksVariant &v, const std::set<uint32_t> &separator_movers, const std::string &tag, WrapNotes &notes)
 {
@@ -124,16 +109,6 @@ static PlanarStructureVariant WrapToday(const TracksVariant &v, const std::set<u
 		return out;
 	}
 	const auto plain = [&](uint32_t t) { return map.tracks[t].kind == PlanarTrack::Kind::Line; };
-	/* The map's crossing between two line tracks that is the topology crossing k. */
-	const auto map_crossing = [&](uint32_t k) {
-		const PlanarCrossing &c = v.topology.crossings[k];
-		for (uint32_t j = 0; j < map.crossings.size(); j++) {
-			const uint32_t a = map.crossings[j].a, b = map.crossings[j].b;
-			if (!plain(a) || !plain(b)) continue;
-			if ((map.part_of[a] == c.a && map.part_of[b] == c.b) || (map.part_of[a] == c.b && map.part_of[b] == c.a)) return j;
-		}
-		return UINT32_MAX;
-	};
 	for (uint32_t j = 0; j < map.crossings.size(); j++) {
 		if (!plain(map.crossings[j].a) || !plain(map.crossings[j].b)) notes.copy_row_crossings++;
 	}
@@ -148,58 +123,10 @@ static PlanarStructureVariant WrapToday(const TracksVariant &v, const std::set<u
 			const std::vector<uint32_t> &events = sides.Events()[run.line];
 			if (std::ranges::find(events, runs[r - 1].crossings.back()) + 1 == std::ranges::find(events, run.crossings.front())) notes.split++;
 		}
-		PlanarStructure st{UINT32_MAX, {}, {}, 1, UINT32_MAX};
-		uint32_t first = UINT32_MAX, last = UINT32_MAX;
-		for (const uint32_t k : run.crossings) {
-			const uint32_t j = map_crossing(k);
-			if (j == UINT32_MAX) continue;
-			const uint32_t a = map.crossings[j].a, b = map.crossings[j].b;
-			if (st.separator == UINT32_MAX) {
-				st.separator = map.part_of[a] == run.line ? a : b;
-				first = j;
-			}
-			last = j;
-		}
-		/* Every crossing of the separator's events from the run's first to its last belongs to the structure: line crossings and crossings with a row or another structure's copy. Its own copy's crossings follow it. */
-		if (st.separator != UINT32_MAX) {
-			const std::vector<uint32_t> &events = map.events[st.separator];
-			const auto lo = std::ranges::find(events, first), hi = std::ranges::find(events, last);
-			for (auto it = lo; it != events.end() && it <= hi; ++it) {
-				st.crossings.push_back(*it);
-				st.crossers.push_back(map.crossings[*it].a == st.separator ? map.crossings[*it].b : map.crossings[*it].a);
-			}
-		}
-		if (st.separator == UINT32_MAX) continue;
-		if (run.copy) st.copy = CopyBeside(map, st.separator);
-		out.structures.push_back(st);
 	}
+	out.structures = PlanarBuildStructures(v.topology, runs, map);
 	out.cost = static_cast<int>(out.structures.size());
-
-	const PlanarTopology &e = map.expanded;
-	for (uint32_t n = 0; n < e.nodes.size(); n++) {
-		const PlanarNode &node = e.nodes[n];
-		const bool split = node.IsSplit();
-		const std::vector<uint32_t> &legs = split ? node.out : node.in;
-		PlanarStructureSite site{n, split, UINT32_MAX, 0};
-		if (n >= v.topology.nodes.size()) {
-			/* A copy or row node: the line track continues straight, the other leg is on its side. */
-			for (size_t i = 0; i < legs.size(); i++) {
-				if (plain(legs[i])) {
-					site.straight = legs[i];
-					site.side = i == 0 ? +1 : -1;
-				}
-			}
-		} else {
-			for (size_t s = 0; s < v.channels.sites.size(); s++) {
-				if (std::ranges::find(v.channels.sites[s].nodes, n) == v.channels.sites[s].nodes.end() || v.sites[s].straight == UINT32_MAX) continue;
-				for (const uint32_t l : legs) {
-					if (v.channels.channel_of_line[map.tracks[l].line] == v.sites[s].straight) site.straight = l;
-				}
-				site.side = v.sites[s].side;
-			}
-		}
-		out.sites.push_back(site);
-	}
+	out.sites = PlanarBuildStructureSites(v.topology, v.channels, v.sites, map);
 	return out;
 }
 
@@ -626,4 +553,106 @@ TEST_CASE("planar structure: P3 two adjacent structures on one separator are not
 	HandCase tight = h;
 	tight.spec.max_bridge_middle = static_cast<uint16_t>(h.v.structures[pick].crossings.size() - 1);
 	CHECK(NotMaximal(tight, v) == 0);
+}
+
+/** @return The tags of a hub's variants, for messages. */
+static std::string Describe(const PlanarStructureResult &r)
+{
+	std::string out;
+	for (const auto &[reason, n] : r.skipped) out += fmt::format("[{} x {}] ", n, reason);
+	return out.empty() ? "none" : out;
+}
+
+TEST_CASE("planar structure: BuildPlanarStructure on T2, T3 and LL2 hands down ranked variants that keep the promise", "[junction][planar][planarstructure]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const int lanes : {2, 3, 0}) {
+		const std::string hub = lanes == 0 ? "LL2" : fmt::format("T{}", lanes);
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(lanes == 0 ? PlanarLL2Text() : PlanarTText(lanes), &error);
+		REQUIRE(error.empty());
+		const PlanarChannels channels = BuildPlanarChannels(topology);
+		const auto t0 = std::chrono::steady_clock::now();
+		const PlanarStructureResult result = BuildPlanarStructure(topology, spec, 16);
+		const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
+		INFO(hub << " why: " << result.why);
+		REQUIRE(!result.variants.empty());
+		size_t breaches = 0;
+		std::string first_breach;
+		for (size_t i = 0; i < result.variants.size(); i++) {
+			const PlanarStructureVariant &v = result.variants[i];
+			const std::vector<std::string> messages = CheckPlanarStructurePromise(topology, spec, v);
+			breaches += messages.size();
+			if (!messages.empty() && first_breach.empty()) first_breach = v.tag + " " + messages[0];
+			if (i > 0) CHECK(result.variants[i - 1].cost <= v.cost);
+		}
+		INFO(first_breach);
+		CHECK(breaches == 0);
+		size_t ties = 0;
+		for (const PlanarSite &site : channels.sites) {
+			if (site.kind != PlanarSiteKind::LaneSplit && site.kind != PlanarSiteKind::LaneMerge && site.others.size() == 2) {
+				ties += site.straight == UINT32_MAX ? 1 : 0;
+				continue;
+			}
+			for (const uint32_t n : site.nodes) ties += !topology.nodes[n].IsSplit() && channels.node_legs[n].straight == UINT32_MAX ? 1 : 0;
+		}
+		std::string tie_why;
+		const std::vector<PlanarResolvedSite> sites0 = ResolvePlanarSites(topology, channels, 0, tie_why);
+		const size_t movers0 = tie_why.empty() ? PlanarMovers(topology, channels, sites0).size() : 0;
+		WARN(hub << ": bits over " << channels.crossings.size() << " ties " << ties << " flips " << PlanarTriangles(channels).size() << " movers(t0f0) " << movers0 << ", " << (result.exhaustive ? "exhaustive" : "best-improvement") << ", evaluated " << result.evaluated << ", skipped " << Describe(result) << ", kept " << result.variants.size() << ", best cost " << result.variants.front().cost << " (" << result.variants.front().tag << "), worst cost " << result.variants.back().cost << ", " << micros << " us");
+		CHECK(micros < 5'000'000);
+	}
+}
+
+TEST_CASE("planar structure: PlanarChannelOver bit 0 is today's default, a set bit flips exactly its crossing", "[junction][planar][planarstructure]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	REQUIRE(!channels.crossings.empty());
+	/* The oracle of today's default, in the test only. */
+	CHECK(PlanarChannelOver(channels, 0) == BuildPlanarPaths(topology, channels, 0).over);
+	const std::vector<uint32_t> base = PlanarChannelOver(channels, 0);
+	for (uint32_t x = 0; x < channels.crossings.size(); x++) {
+		const std::vector<uint32_t> one = PlanarChannelOver(channels, uint64_t{1} << x);
+		for (uint32_t y = 0; y < channels.crossings.size(); y++) CHECK((one[y] != base[y]) == (x == y));
+	}
+}
+
+TEST_CASE("planar structure: the cost of T2 o0t0f0m0 is its runs plus its copies", "[junction][planar][planarstructure]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult result = BuildPlanarStructure(topology, MakeTestJunctionSpec(), 100000);
+	const PlanarStructureVariant *found = nullptr;
+	for (const PlanarStructureVariant &v : result.variants) {
+		if (v.tag == "o0t0f0m0") found = &v;
+	}
+	REQUIRE(found != nullptr);
+	int copies = 0;
+	for (const PlanarStructure &s : found->structures) copies += s.copy != UINT32_MAX ? 1 : 0;
+	CHECK(found->cost == static_cast<int>(found->structures.size()) + copies);
+}
+
+TEST_CASE("planar structure: T3 o3t0f0m3294 splits the structure on D1 so every piece keeps P5", "[junction][planar][planarstructure]")
+{
+	TracksVariant tv = BuildTracksVariant(PlanarTText(3), 0, 0, 0);
+	REQUIRE(tv.ok);
+	tv.over = PlanarChannelOver(tv.channels, 3);
+	const std::vector<uint32_t> movers = PlanarMovers(tv.topology, tv.channels, tv.sites);
+	std::set<uint32_t> separators;
+	for (size_t i = 0; i < movers.size(); i++) {
+		if ((3294 >> i & 1) != 0) separators.insert(movers[i]);
+	}
+	WrapNotes notes;
+	const PlanarStructureVariant v = WrapToday(tv, separators, "T3o3t0f0m3294", notes);
+	REQUIRE(v.map.why.empty());
+	size_t on_d1 = 0;
+	for (const PlanarStructure &s : v.structures) on_d1 += v.map.tracks[s.separator].name == "D1" ? 1 : 0;
+	CHECK(on_d1 >= 2);
+	const std::vector<std::string> messages = CheckPlanarStructurePromise(tv.topology, MakeTestJunctionSpec(), v);
+	INFO(messages.size() << " messages, first: " << (messages.empty() ? std::string() : messages[0]));
+	CHECK(messages.empty());
 }

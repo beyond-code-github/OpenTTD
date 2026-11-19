@@ -627,8 +627,6 @@ std::vector<uint32_t> PlanarCrossingSeparators(const PlanarTopology &topology, c
 std::vector<PlanarStructureRun> PlanarGroupStructures(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const PlanarLineSides &sides, const std::vector<uint32_t> &separator, const JunctionSpec &spec)
 {
 	std::vector<PlanarStructureRun> out;
-	const size_t plain_limit = std::max<size_t>(1, spec.max_bridge_middle);
-	const size_t copy_limit = std::max<size_t>(1, std::min<size_t>(plain_limit, 2u * spec.sd + spec.tl > 2 ? 2u * spec.sd + spec.tl - 2 : 0));
 	/* A prio join's row starts at its lane's first crossing with a joiner. The row's split node lies there, and a bridge cannot hold a node, so a run is cut before that crossing. */
 	std::set<std::pair<uint32_t, uint32_t>> row_starts; ///< (lane, crossing).
 	for (size_t s = 0; s < channels.sites.size(); s++) {
@@ -645,16 +643,12 @@ std::vector<PlanarStructureRun> PlanarGroupStructures(const PlanarTopology &topo
 			}
 		}
 	}
+	/* The maximal runs of each line. */
+	std::vector<std::vector<std::vector<uint32_t>>> maximal(topology.lines.size());
 	for (uint32_t line = 0; line < topology.lines.size(); line++) {
-		const bool copy = channels.line_share[line] >= 1.0;
-		const size_t limit = copy ? copy_limit : plain_limit;
 		std::vector<uint32_t> run;
 		const auto close = [&]() {
-			/* Greedy from the start: the fewest pieces within the limit. */
-			for (size_t at = 0; at < run.size(); at += limit) {
-				const size_t end = std::min(run.size(), at + limit);
-				out.push_back({line, std::vector<uint32_t>(run.begin() + at, run.begin() + end), copy});
-			}
+			if (!run.empty()) maximal[line].push_back(run);
 			run.clear();
 		};
 		for (const uint32_t k : sides.Events()[line]) {
@@ -666,6 +660,51 @@ std::vector<PlanarStructureRun> PlanarGroupStructures(const PlanarTopology &topo
 			}
 		}
 		close();
+	}
+	/* Per line with a copy, the event index ranges its maximal runs cover (its pieces together cover the same range). */
+	const auto index_in = [&](uint32_t line, uint32_t k) { return static_cast<size_t>(std::ranges::find(sides.Events()[line], k) - sides.Events()[line].begin()); };
+	std::vector<std::vector<std::pair<size_t, size_t>>> copy_cover(topology.lines.size());
+	for (uint32_t line = 0; line < topology.lines.size(); line++) {
+		if (channels.line_share[line] < 1.0) continue;
+		for (const std::vector<uint32_t> &run : maximal[line]) copy_cover[line].push_back({index_in(line, run.front()), index_in(line, run.back())});
+	}
+	/* The width of a crossing on a separator: the tracks the structure spans there. The crosser itself, plus its row when it is a prio lane whose row covers the crossing, plus its copy when a run of it with a copy covers the crossing (D371(2); copies and rows are crossers, S2c1 ruling). */
+	const auto width = [&](uint32_t line, uint32_t k) {
+		const uint32_t crosser = topology.crossings[k].a == line ? topology.crossings[k].b : topology.crossings[k].a;
+		const size_t at = index_in(crosser, k);
+		size_t w = 1;
+		for (const uint32_t first : sides.Events()[crosser]) {
+			if (row_starts.contains({crosser, first})) {
+				if (index_in(crosser, first) <= at) w++;
+				break;
+			}
+		}
+		for (const auto &[lo, hi] : copy_cover[crosser]) {
+			if (lo <= at && at <= hi) {
+				w++;
+				break;
+			}
+		}
+		return w;
+	};
+	for (uint32_t line = 0; line < topology.lines.size(); line++) {
+		const bool copy = channels.line_share[line] >= 1.0;
+		for (const std::vector<uint32_t> &run : maximal[line]) {
+			/* Greedy from the start: the fewest pieces whose widths fit the bridge limit and, with a copy, the D228a bound. */
+			std::vector<uint32_t> piece;
+			size_t sum = 0;
+			for (const uint32_t k : run) {
+				const size_t w = width(line, k);
+				if (!piece.empty() && (sum + w > spec.max_bridge_middle || (copy && sum + w + 2 > 2u * spec.sd + spec.tl))) {
+					out.push_back({line, piece, copy});
+					piece.clear();
+					sum = 0;
+				}
+				piece.push_back(k);
+				sum += w;
+			}
+			if (!piece.empty()) out.push_back({line, piece, copy});
+		}
 	}
 	return out;
 }

@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file planar_structure.cpp The Structure layer's promise oracle. */
+/** @file planar_structure.cpp The Structure layer: the ranked variant list and the promise oracle. */
 
 #include "../../stdafx.h"
 
@@ -14,8 +14,11 @@
 #include "../../core/format.hpp"
 
 #include <algorithm>
+#include <array>
 #include <map>
+#include <memory>
 #include <set>
+#include <tuple>
 
 #include "../../safeguards.h"
 
@@ -28,7 +31,282 @@ size_t EventIndex(const std::vector<uint32_t> &events, uint32_t crossing)
 	return it == events.end() ? SIZE_MAX : static_cast<size_t>(it - events.begin());
 }
 
+/** @return Whether two tracks of the expanded topology have the same two ends. */
+bool SameEnds(const PlanarTrackMap &map, uint32_t a, uint32_t b)
+{
+	const PlanarLine &x = map.expanded.lines[a], &y = map.expanded.lines[b];
+	return x.from.port == y.from.port && x.from.index == y.from.index && x.to.port == y.to.port && x.to.index == y.to.index;
+}
+
+/** @return The Copy track beside a track (same line, same ends), or UINT32_MAX. */
+uint32_t CopyBeside(const PlanarTrackMap &map, uint32_t track)
+{
+	for (uint32_t i = 0; i < map.tracks.size(); i++) {
+		if (map.tracks[i].kind == PlanarTrack::Kind::Copy && map.tracks[i].line == map.tracks[track].line && SameEnds(map, i, track)) return i;
+	}
+	return UINT32_MAX;
+}
+
 } // namespace
+
+std::vector<uint32_t> PlanarChannelOver(const PlanarChannels &channels, uint64_t bits)
+{
+	std::vector<uint32_t> over(channels.crossings.size());
+	for (uint32_t x = 0; x < channels.crossings.size(); x++) {
+		const PlanarChannelCrossing &c = channels.crossings[x];
+		const bool a_prio = channels.channels[c.a].prio, b_prio = channels.channels[c.b].prio;
+		const uint32_t first = a_prio != b_prio ? (a_prio ? c.a : c.b) : c.a;
+		const uint32_t other = first == c.a ? c.b : c.a;
+		over[x] = (bits >> x & 1) != 0 ? other : first;
+	}
+	return over;
+}
+
+std::vector<PlanarStructure> PlanarBuildStructures(const PlanarTopology &topology, const std::vector<PlanarStructureRun> &runs, const PlanarTrackMap &map)
+{
+	std::vector<PlanarStructure> out;
+	const auto plain = [&](uint32_t t) { return map.tracks[t].kind == PlanarTrack::Kind::Line; };
+	/* The map's crossing between two line tracks that is the topology crossing k. */
+	const auto map_crossing = [&](uint32_t k) {
+		const PlanarCrossing &c = topology.crossings[k];
+		for (uint32_t j = 0; j < map.crossings.size(); j++) {
+			const uint32_t a = map.crossings[j].a, b = map.crossings[j].b;
+			if (!plain(a) || !plain(b)) continue;
+			if ((map.part_of[a] == c.a && map.part_of[b] == c.b) || (map.part_of[a] == c.b && map.part_of[b] == c.a)) return j;
+		}
+		return UINT32_MAX;
+	};
+	for (const PlanarStructureRun &run : runs) {
+		PlanarStructure st{UINT32_MAX, {}, {}, 1, UINT32_MAX};
+		uint32_t first = UINT32_MAX, last = UINT32_MAX;
+		for (const uint32_t k : run.crossings) {
+			const uint32_t j = map_crossing(k);
+			if (j == UINT32_MAX) continue;
+			const uint32_t a = map.crossings[j].a, b = map.crossings[j].b;
+			if (st.separator == UINT32_MAX) {
+				st.separator = map.part_of[a] == run.line ? a : b;
+				first = j;
+			}
+			last = j;
+		}
+		/* Every crossing of the separator's events from the run's first to its last belongs to the structure: line crossings and crossings with a row or another structure's copy. Its own copy's crossings follow it. */
+		if (st.separator != UINT32_MAX) {
+			const std::vector<uint32_t> &events = map.events[st.separator];
+			const auto lo = std::ranges::find(events, first), hi = std::ranges::find(events, last);
+			for (auto it = lo; it != events.end() && it <= hi; ++it) {
+				st.crossings.push_back(*it);
+				st.crossers.push_back(map.crossings[*it].a == st.separator ? map.crossings[*it].b : map.crossings[*it].a);
+			}
+		}
+		if (st.separator == UINT32_MAX) continue;
+		if (run.copy) st.copy = CopyBeside(map, st.separator);
+		out.push_back(st);
+	}
+	return out;
+}
+
+std::vector<PlanarStructureSite> PlanarBuildStructureSites(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const PlanarTrackMap &map)
+{
+	std::vector<PlanarStructureSite> out;
+	const PlanarTopology &e = map.expanded;
+	for (uint32_t n = 0; n < e.nodes.size(); n++) {
+		const PlanarNode &node = e.nodes[n];
+		const bool split = node.IsSplit();
+		const std::vector<uint32_t> &legs = split ? node.out : node.in;
+		PlanarStructureSite site{n, split, UINT32_MAX, 0};
+		if (n >= topology.nodes.size()) {
+			/* A copy or row node: the line track continues straight, the other leg is on its side. */
+			for (size_t i = 0; i < legs.size(); i++) {
+				if (map.tracks[legs[i]].kind == PlanarTrack::Kind::Line) {
+					site.straight = legs[i];
+					site.side = i == 0 ? +1 : -1;
+				}
+			}
+		} else {
+			for (size_t s = 0; s < channels.sites.size(); s++) {
+				if (std::ranges::find(channels.sites[s].nodes, n) == channels.sites[s].nodes.end() || sites[s].straight == UINT32_MAX) continue;
+				for (const uint32_t l : legs) {
+					if (channels.channel_of_line[map.tracks[l].line] == sites[s].straight) site.straight = l;
+				}
+				site.side = sites[s].side;
+			}
+		}
+		out.push_back(site);
+	}
+	return out;
+}
+
+namespace {
+
+/** @return How many tie bits a channel graph has (a duplicate of CountMappedBits' tie rule in planar_components.cpp, which is the composer's and not Structure's to call, D366): a site whose straight channel is open, counted per node for the lane and odd sites and per site for the rest (as the mapped composer counts them). */
+size_t CountTieBits(const PlanarTopology &topology, const PlanarChannels &channels)
+{
+	size_t ties = 0;
+	for (const PlanarSite &site : channels.sites) {
+		const bool per_node = site.kind == PlanarSiteKind::LaneSplit || site.kind == PlanarSiteKind::LaneMerge || site.others.size() != 2;
+		if (!per_node) {
+			ties += site.straight == UINT32_MAX ? 1 : 0;
+			continue;
+		}
+		for (const uint32_t n : site.nodes) ties += !topology.nodes[n].IsSplit() && channels.node_legs[n].straight == UINT32_MAX ? 1 : 0;
+	}
+	return ties;
+}
+
+/** What one (flip, ties) combination fixes: its channels, the sides, the resolved sites and the movers. */
+struct FlipTies {
+	PlanarChannels channels;
+	std::vector<PlanarResolvedSite> sites;
+	std::vector<uint32_t> movers;
+	bool ok = false; ///< The sites resolved.
+};
+
+/** One evaluated variant. */
+struct Evaluated {
+	std::vector<PlanarStructureRun> runs;
+	int cost = 0;
+	std::string tag;
+	bool ok = false; ///< The separators were found.
+};
+
+using Key = std::tuple<uint64_t, uint64_t, uint64_t, uint64_t>; ///< (over, ties, flips, movers).
+
+} // namespace
+
+PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const JunctionSpec &spec, size_t keep)
+{
+	PlanarStructureResult result;
+	const PlanarChannels base = BuildPlanarChannels(topology);
+	const size_t over_bits = base.crossings.size(), tie_bits = CountTieBits(topology, base), flip_bits = PlanarTriangles(base).size();
+	if (over_bits > 62 || tie_bits > 62 || flip_bits > 62) {
+		result.why = "more variant bits than a 64-bit mask holds";
+		return result;
+	}
+
+	/* Per flip, the flipped channels and the sides; per (flip, ties), the resolved sites and movers; each built once. */
+	std::map<uint64_t, PlanarChannels> flipped;
+	std::map<uint64_t, std::unique_ptr<PlanarLineSides>> sides;
+	std::map<std::pair<uint64_t, uint64_t>, FlipTies> combos;
+	const auto flip_of = [&](uint64_t f) -> const PlanarChannels & {
+		auto it = flipped.find(f);
+		if (it == flipped.end()) {
+			it = flipped.emplace(f, FlipPlanarTriangles(base, f)).first;
+			sides.emplace(f, std::make_unique<PlanarLineSides>(topology, it->second));
+		}
+		return it->second;
+	};
+	const auto combo_of = [&](uint64_t f, uint64_t t) -> FlipTies & {
+		const auto found = combos.find({f, t});
+		if (found != combos.end()) return found->second;
+		FlipTies &c = combos[{f, t}];
+		c.channels = flip_of(f);
+		std::string why;
+		c.sites = ResolvePlanarSites(topology, c.channels, t, why);
+		c.ok = why.empty();
+		if (c.ok) {
+			c.movers = PlanarMovers(topology, c.channels, c.sites);
+		} else {
+			result.skipped["sites: " + why]++;
+		}
+		return c;
+	};
+
+	std::map<Key, Evaluated> pool;
+	const auto evaluate = [&](const Key &key) -> const Evaluated & {
+		const auto found = pool.find(key);
+		if (found != pool.end()) return found->second;
+		const auto [o, t, f, m] = key;
+		Evaluated &e = pool[key];
+		e.tag = fmt::format("o{}t{}f{}m{}", o, t, f, m);
+		FlipTies &c = combo_of(f, t);
+		if (!c.ok) return e;
+		result.evaluated++;
+		std::set<uint32_t> separator_movers;
+		for (size_t i = 0; i < c.movers.size(); i++) {
+			if ((m >> i & 1) != 0) separator_movers.insert(c.movers[i]);
+		}
+		std::string why;
+		const std::vector<uint32_t> separator = PlanarCrossingSeparators(topology, c.channels, c.sites, PlanarChannelOver(c.channels, o), separator_movers, why);
+		if (!why.empty()) {
+			result.skipped[why]++;
+			return e;
+		}
+		e.runs = PlanarGroupStructures(topology, c.channels, c.sites, *sides.at(f), separator, spec);
+		e.cost = static_cast<int>(e.runs.size() + std::ranges::count_if(e.runs, [](const PlanarStructureRun &r) { return r.copy; }));
+		e.ok = true;
+		return e;
+	};
+
+	/* Exhaustive when the four kinds' bits fit in 16, the movers counted at their largest over the tie combinations of flip 0. */
+	size_t max_movers = 0;
+	bool small = over_bits + tie_bits + flip_bits <= 16;
+	for (uint64_t t = 0; small && t < (uint64_t{1} << tie_bits); t++) {
+		const FlipTies &c = combo_of(0, t);
+		if (c.ok) max_movers = std::max(max_movers, c.movers.size());
+	}
+	result.exhaustive = small && over_bits + tie_bits + flip_bits + max_movers <= 16;
+	if (result.exhaustive) {
+		for (uint64_t f = 0; f < (uint64_t{1} << flip_bits); f++) {
+			for (uint64_t t = 0; t < (uint64_t{1} << tie_bits); t++) {
+				const FlipTies &c = combo_of(f, t);
+				if (!c.ok) continue;
+				for (uint64_t m = 0; m < (uint64_t{1} << c.movers.size()); m++) {
+					for (uint64_t o = 0; o < (uint64_t{1} << over_bits); o++) evaluate({o, t, f, m});
+				}
+			}
+		}
+	} else {
+		Key current{0, 0, 0, 0};
+		const Evaluated *best = &evaluate(current);
+		for (;;) {
+			const auto [o, t, f, m] = current;
+			const FlipTies &c = combo_of(f, t);
+			std::vector<Key> neighbours;
+			for (size_t i = 0; i < over_bits; i++) neighbours.push_back({o ^ (uint64_t{1} << i), t, f, m});
+			for (size_t i = 0; i < tie_bits; i++) neighbours.push_back({o, t ^ (uint64_t{1} << i), f, m});
+			for (size_t i = 0; i < flip_bits; i++) neighbours.push_back({o, t, f ^ (uint64_t{1} << i), m});
+			for (size_t i = 0; c.ok && i < c.movers.size(); i++) neighbours.push_back({o, t, f, m ^ (uint64_t{1} << i)});
+			const Key *next = nullptr;
+			const Evaluated *next_eval = nullptr;
+			for (const Key &k : neighbours) {
+				const Evaluated &e = evaluate(k);
+				if (!e.ok || (best->ok && e.cost >= best->cost)) continue;
+				if (next_eval == nullptr || std::tie(e.cost, e.tag) < std::tie(next_eval->cost, next_eval->tag)) {
+					next = &k;
+					next_eval = &e;
+				}
+			}
+			if (next == nullptr) break;
+			current = *next;
+			best = next_eval;
+		}
+	}
+
+	std::vector<std::pair<std::pair<int, std::string>, Key>> ranked;
+	for (const auto &[key, e] : pool) {
+		if (e.ok) ranked.push_back({{e.cost, e.tag}, key});
+	}
+	std::ranges::sort(ranked);
+	for (const auto &[rank, key] : ranked) {
+		if (result.variants.size() >= keep) break;
+		const auto &[o, t, f, m] = key;
+		const Evaluated &e = pool.at(key);
+		const FlipTies &c = combos.at({f, t});
+		PlanarStructureVariant v;
+		v.tag = e.tag;
+		v.cost = e.cost;
+		v.map = BuildPlanarTrackMap(topology, c.channels, c.sites, e.runs);
+		if (!v.map.why.empty()) {
+			result.skipped["map: " + v.map.why]++;
+			continue;
+		}
+		v.structures = PlanarBuildStructures(topology, e.runs, v.map);
+		v.sites = PlanarBuildStructureSites(topology, c.channels, c.sites, v.map);
+		result.variants.push_back(std::move(v));
+	}
+	if (result.variants.empty()) result.why = "no variant survives";
+	return result;
+}
 
 std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarStructureVariant &v)
 {
