@@ -251,7 +251,7 @@ A new composer that builds every variant from the track map, beside `MappedCompo
 6. **G6:** ladders from the map's faces; then retire `MappedComposer` once the D357 gates pass.
 
 ## 17. SSS: the plan of record (2026-11-20; D361, D362, D363, D364, D365; source wip/REVIEW-architecture-holistic.md §5-§7, wip/PROPOSAL-tunnels-sss.md)
-The layers and their promises are stated in src/junction/planar/CLAUDE.md "Architecture"; this section holds the design behind them and the order of work. A mechanism that generates, then checks and patches, is a defect to design out (D361). Each layer depends only on the model before it; information that spans layers flows down, never rediscovered or re-litigated (D366).
+The layers and their promises are stated in src/junction/planar/CLAUDE.md "Architecture"; this section holds the design behind them and the order of work. A mechanism that generates, then checks and patches, is a defect to design out (D361). Each layer depends only on the model before it; information that spans layers flows down, never rediscovered or re-litigated (D366). Each layer refines the model it receives and owns its invariants, tested at its own output; a broken invariant is the owning layer's bug (D367). Every brief's tests therefore include the owning layer's promise as a test at that layer's output.
 
 ### 17.1 Structure (L0 topology, L1 skeleton and track map)
 - Keeps: planar_topology, planar_channels (channels, sites, node legs, shares), the track map (TM1, planar_regions) as the single source; `PlanarLineSides` folds into it; `ResolvePlanarSites` moves here.

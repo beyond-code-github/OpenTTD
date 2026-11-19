@@ -29,6 +29,7 @@
   - The hover runs Heights only, on the flat seed's footprint; it picks a structure's kind only within the set Structure handed down (D366).
 - **Signals:** places signals and prio joins by a walk over the built tracks. The checker is a test oracle.
 - Each layer depends only on the model of the layer before it; information that spans layers flows down in the hand-offs, never rediscovered or re-litigated (D366).
+- Each layer refines the model it receives, never undoing an earlier decision, and owns its invariants: it establishes and tests them at its own output; later layers rely on them unchecked, and a broken invariant is the owning layer's bug (D367).
 - Headings need no lengths: a shape is angles only, as on a metro map drawn with fixed angles, and the length layer only stretches pieces.
 - Variants are ranked on cheap scores (structure, shape and slot costs) as they pass down; Lengths solves the best few and picks by its own model (D366).
 
