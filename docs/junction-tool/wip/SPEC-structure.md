@@ -34,3 +34,18 @@ Variants pass down as a list, ranked by Structure cost; later layers add their o
 
 ## 5. Settled (D371)
 Q1 cheap counts; Q2 maximal runs plus forced splits; Q3 a copy per structure whatever the kind; Q4 band counts read from the track map (Structure's output).
+
+## 6. Output types (target; code is mapped onto these, D368)
+New header src/junction/planar/planar_structure.h:
+- `PlanarStructureSite { uint32_t node; bool split; uint32_t straight; int8_t side; }`: a split or merge of the track map, its straight leg (a track) and the side the other leg leaves or arrives on.
+- `PlanarStructure { uint32_t separator; std::vector<uint32_t> crossings; std::vector<uint32_t> crossers; uint8_t kinds; uint32_t copy; }`: crossings are indices into the map's crossings in travel order along the separator; crossers the tracks it spans in the same order; kinds a bit set (1 bridge, 2 tunnel); copy a track or UINT32_MAX.
+- `PlanarStructureVariant { std::string tag; PlanarTrackMap map; std::vector<PlanarStructureSite> sites; std::vector<PlanarStructure> structures; int cost; }`.
+- `PlanarStructureResult { std::vector<PlanarStructureVariant> variants; std::string why; }`, variants ranked by cost, ties by tag.
+- `PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const JunctionSpec &spec)`.
+- `std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarStructureVariant &v)`: the promise P1-P7 as a test oracle (D367): one message per breach, empty when kept.
+Until tunnels are built (D365): kinds is always bridge, no stacks.
+
+## 7. Build order (each step one brief, test-first at Structure's output)
+- S1 **The promise oracle, then the gap:** `CheckPlanarStructurePromise` driven by hand topologies, one failing test per promise (each input breaks only that promise). Then, characterisation only: wrap today's variants (channels, resolved sites, track map) into `PlanarStructureVariant` and run the oracle over every T2, T3 and LL2 variant; report breaches by promise. No change to existing code.
+- S2 **Close the gaps S1 names,** one promise at a time, in the new module: structures (grouping, separator per joiner D364, forced splits), copies per structure, sites, cost, ranking. Today's code is reused only where S1 shows it already keeps the promise.
+- S3 **Outer test:** `BuildPlanarStructure` on T2, T3, LL2: every variant keeps the promise; ranking order; time (Structure in milliseconds, review §5).
