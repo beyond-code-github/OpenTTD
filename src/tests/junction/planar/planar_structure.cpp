@@ -119,15 +119,14 @@ static std::string RoleAt(const TracksVariant &v, size_t s, uint32_t line)
 	return "none";
 }
 
-/** Record a crossing without a separator: the kind of the node group holding it and the roles of its two lines there. */
-static void Classify(const TracksVariant &v, uint32_t la, uint32_t lb, WrapNotes &notes)
+/** @return The first site of the node group holding the crossing of two lines, or SIZE_MAX when no group holds it. */
+static size_t GroupSite(const TracksVariant &v, uint32_t la, uint32_t lb)
 {
 	uint32_t crossing = UINT32_MAX;
 	for (uint32_t k = 0; k < v.topology.crossings.size(); k++) {
 		const PlanarCrossing &c = v.topology.crossings[k];
 		if ((c.a == la && c.b == lb) || (c.a == lb && c.b == la)) crossing = k;
 	}
-	std::string key = "kind none";
 	size_t site_index = SIZE_MAX;
 	for (uint32_t g = 0; g < v.channels.group_crossings.size() && site_index == SIZE_MAX; g++) {
 		if (std::ranges::find(v.channels.group_crossings[g], crossing) == v.channels.group_crossings[g].end()) continue;
@@ -135,6 +134,14 @@ static void Classify(const TracksVariant &v, uint32_t la, uint32_t lb, WrapNotes
 			if (v.topology.nodes[v.channels.sites[s].nodes[0]].group == g) site_index = s;
 		}
 	}
+	return site_index;
+}
+
+/** Record a crossing without a separator: the kind of the node group holding it and the roles of its two lines there. */
+static void Classify(const TracksVariant &v, uint32_t la, uint32_t lb, WrapNotes &notes)
+{
+	std::string key = "kind none";
+	const size_t site_index = GroupSite(v, la, lb);
 	if (site_index != SIZE_MAX) {
 		static const char *const kinds[] = {"Fray", "LaneSplit", "Join", "LaneMerge"};
 		std::string r1 = RoleAt(v, site_index, la), r2 = RoleAt(v, site_index, lb);
@@ -147,15 +154,15 @@ static void Classify(const TracksVariant &v, uint32_t la, uint32_t lb, WrapNotes
 
 /**
  * Wrap a variant with today's implicit grouping: one structure per crossing between two line tracks, kinds bridge, the map's copy beside the separator.
- * Inside a prio join a crossing's separator is the joiner when it is in the set, else the lane; any other crossing's separator is the track on the over channel.
+ * Inside a prio join a crossing's separator is the joiner when it is in the set, else the lane; in any other join or fray, the mover when it is in the set, else the keeper (D372); any other crossing's separator is the track on the over channel.
  * Sites are the map's splits and merges.
  */
-static PlanarStructureVariant WrapToday(const TracksVariant &v, const std::set<uint32_t> &separator_joiners, const std::string &tag, WrapNotes &notes)
+static PlanarStructureVariant WrapToday(const TracksVariant &v, const std::set<uint32_t> &separator_movers, const std::string &tag, WrapNotes &notes)
 {
 	PlanarStructureVariant out;
 	out.tag = tag;
 	out.cost = 0;
-	out.map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, separator_joiners);
+	out.map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, separator_movers);
 	const PlanarTrackMap &map = out.map;
 	if (!map.why.empty()) return out;
 	const auto plain = [&](uint32_t t) { return map.tracks[t].kind == PlanarTrack::Kind::Line; };
@@ -182,12 +189,23 @@ static PlanarStructureVariant WrapToday(const TracksVariant &v, const std::set<u
 			if (!join_pairs[a_lane ? std::pair{la, lb} : std::pair{lb, la}]) notes.bad_pair++;
 			/* a is the lane and b the joiner, or the other way round. */
 			const uint32_t joiner_line = a_lane ? lb : la;
-			const bool joiner_separates = separator_joiners.contains(joiner_line);
+			const bool joiner_separates = separator_movers.contains(joiner_line);
 			const bool a_separates = a_lane != joiner_separates;
 			separator = a_separates ? a : b;
 			crosser = a_separates ? b : a;
 		} else {
+			const size_t site = GroupSite(v, la, lb);
+			const std::string ra = site == SIZE_MAX ? "" : RoleAt(v, site, la), rb = site == SIZE_MAX ? "" : RoleAt(v, site, lb);
+			const bool a_mover = ra == "joiner" || ra == "other leg", b_mover = rb == "joiner" || rb == "other leg";
+			const bool a_keeper = ra == "lane" || ra == "straight leg", b_keeper = rb == "lane" || rb == "straight leg";
 			uint32_t over_channel = UINT32_MAX;
+			if ((a_mover && b_keeper) || (b_mover && a_keeper)) {
+				const bool a_separates = separator_movers.contains(a_mover ? la : lb) == a_mover;
+				separator = a_separates ? a : b;
+				crosser = a_separates ? b : a;
+				out.structures.push_back({separator, {j}, {crosser}, 1, CopyBeside(map, separator)});
+				continue;
+			}
 			for (uint32_t k = 0; k < v.topology.crossings.size() && over_channel == UINT32_MAX; k++) {
 				const PlanarCrossing &c = v.topology.crossings[k];
 				if (!((c.a == la && c.b == lb) || (c.a == lb && c.b == la))) continue;
@@ -500,10 +518,10 @@ static void Print(const std::string &hub, const std::string &form, const Tally &
 	for (const auto &[key, entry] : tally.notes.unseparated) WARN("  no separator: " << key << " x" << entry.first << ", e.g. " << entry.second);
 }
 
-/** The joiners of a variant as a set. */
-static std::set<uint32_t> JoinerSet(const TracksVariant &tv)
+/** The movers of a variant as a set. */
+static std::set<uint32_t> MoverSet(const TracksVariant &tv)
 {
-	const std::vector<uint32_t> joiners = PlanarPrioJoiners(tv.topology, tv.channels, tv.sites);
+	const std::vector<uint32_t> joiners = PlanarMovers(tv.topology, tv.channels, tv.sites);
 	return std::set<uint32_t>(joiners.begin(), joiners.end());
 }
 
@@ -540,14 +558,14 @@ TEST_CASE("planar structure: today's variants of T2, T3 and LL2 against the prom
 		Tally none, all, subsets;
 		bool first = true;
 		ForEachVariant(lanes, [&](const TracksVariant &tv, const std::string &tag) {
-			const std::set<uint32_t> joiners = JoinerSet(tv);
+			const std::set<uint32_t> joiners = MoverSet(tv);
 			Add(none, tv, {}, tag);
 			Add(all, tv, joiners, tag);
 			if (first) {
 				first = false;
 				const std::vector<uint32_t> list(joiners.begin(), joiners.end());
-				if (list.size() > 6) {
-					WARN(hub << ": first variant " << tag << " has " << list.size() << " joiners, over 6: subsets not enumerated");
+				if (list.size() > 8) {
+					WARN(hub << ": first variant " << tag << " has " << list.size() << " movers, over 8: subsets not enumerated");
 				} else {
 					for (uint32_t mask = 0; mask < (1u << list.size()); mask++) {
 						std::set<uint32_t> subset;
@@ -561,16 +579,18 @@ TEST_CASE("planar structure: today's variants of T2, T3 and LL2 against the prom
 		});
 		REQUIRE(none.variants > 0);
 		Print(hub, "separators {}", none);
-		Print(hub, "separators all joiners", all);
-		Print(hub, "first variant, every subset of its joiners", subsets);
+		Print(hub, "separators all movers", all);
+		Print(hub, "first variant, every subset of its movers", subsets);
 		for (const Tally *t : {&none, &all, &subsets}) {
 			CHECK(t->notes.bad_pair == 0);
+			CHECK(t->notes.no_separator == 0);
+			CHECK(t->breaching.find("P3") == t->breaching.end());
 			CHECK(t->breaching.find("P6") == t->breaching.end());
 		}
 	}
 }
 
-TEST_CASE("planar structure: with no separator joiners every copy's line has a full share", "[junction][planar][planarstructure]")
+TEST_CASE("planar structure: with no separator movers every copy's line has a full share", "[junction][planar][planarstructure]")
 {
 	for (const int lanes : {2, 3, 0}) {
 		size_t copies = 0;

@@ -108,13 +108,13 @@ struct PlanarTrackMap {
 	std::vector<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>> conflicts; ///< Stretch pairs two faces give opposite sides.
 };
 
-/** Every joiner line of every prio join, in site order then nearest first. */
-std::vector<uint32_t> PlanarPrioJoiners(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites);
+/** Every mover line (D372): every joiner of every join (prio or not) and every other leg of every fray, in site order. */
+std::vector<uint32_t> PlanarMovers(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites);
 
 /**
  * Build the track map of a variant.
- * @param separator_joiners Inside prio joins, per joiner (D364): the topology lines of the joiners that are separators. A crossing of lane i and joiner j (i > j) has joiner j as separator when it is in the set, else lane i. A separator doubles over its crossings only when its line has a full share.
+ * @param separator_movers Per mover (D364, D372): the topology lines of the movers that are separators. In a join or fray, a crossing of a mover and a keeper (a lane or straight leg) has the mover as separator when it is in the set, else the keeper (inside a prio join, a crossing of lane i and joiner j with i > j). A separator doubles over its crossings at a site only when its line has a full share.
  */
-PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, const std::set<uint32_t> &separator_joiners);
+PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, const std::set<uint32_t> &separator_movers);
 
 #endif /* PLANAR_REGIONS_H */

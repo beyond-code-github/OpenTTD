@@ -61,7 +61,7 @@ static bool CheckVariant(const TracksVariant &v, const std::string &tag, int &re
 {
 	bool good = true;
 	for (const bool joiner_over : {false, true}) {
-		const std::vector<uint32_t> pj = PlanarPrioJoiners(v.topology, v.channels, v.sites);
+		const std::vector<uint32_t> pj = PlanarMovers(v.topology, v.channels, v.sites);
 		const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, joiner_over ? std::set<uint32_t>(pj.begin(), pj.end()) : std::set<uint32_t>{});
 		if (map.why.empty() && map.conflicts.empty()) continue;
 		good = false;
@@ -201,13 +201,14 @@ TEST_CASE("planar track map: tracks", "[junction][planar]")
 	REQUIRE(slot_runs > 0);
 	for (const bool joiner_over : {true, false}) {
 		INFO("joiner_over " << joiner_over);
-		const std::vector<uint32_t> pj = PlanarPrioJoiners(v.topology, v.channels, v.sites);
+		const std::vector<uint32_t> pj = PlanarMovers(v.topology, v.channels, v.sites);
 		const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, joiner_over ? std::set<uint32_t>(pj.begin(), pj.end()) : std::set<uint32_t>{});
 		REQUIRE(map.why.empty());
 		const std::vector<uint32_t> rows = TracksOfKind(map, PlanarTrack::Kind::Row);
 		CHECK(rows.size() == 4);
 		/* The two join forms differ on T2 only by the crossed lane's copy at each prio join (form A: S1 doubles over J0). */
-		CHECK(TracksOfKind(map, PlanarTrack::Kind::Copy).size() == slot_runs + (joiner_over ? 0 : 2));
+		/* D372, D331: with no separator movers the full-share keepers carry the structure at the frays and plain joins and get a copy each (2 more). */
+		CHECK(TracksOfKind(map, PlanarTrack::Kind::Copy).size() == slot_runs + (joiner_over ? 0 : 4));
 		size_t crossed = 0;
 		for (const uint32_t row : rows) {
 			CHECK(map.events[row].size() <= 1); // A far lane has no crossing with a joiner, so its row has none.
@@ -236,7 +237,7 @@ TEST_CASE("planar track map: joiner over at T2's E join gives J0, row, S1, J1", 
 {
 	const TracksVariant v = BuildTracksVariant(PlanarTText(2), 1, 3, 1);
 	REQUIRE(v.ok);
-	const std::vector<uint32_t> pj = PlanarPrioJoiners(v.topology, v.channels, v.sites);
+	const std::vector<uint32_t> pj = PlanarMovers(v.topology, v.channels, v.sites);
 	const PlanarTrackMap map = BuildPlanarTrackMap(v.topology, v.channels, v.sites, v.over, std::set<uint32_t>(pj.begin(), pj.end()));
 	REQUIRE(map.why.empty());
 	const auto track_of = [&](const std::string &name, uint32_t holding_with) {
