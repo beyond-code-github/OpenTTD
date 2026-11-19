@@ -3,7 +3,7 @@
 You execute this brief and nothing else. Make exactly the changes listed. Do not add any type, member, file, abstraction or mechanism that the brief does not name, and do not widen or narrow its scope. If something is not covered, or you would have to choose between approaches, stop at a clean state and report the question. A workaround that avoids a stop condition is a breach, not a stop. Keep your context small: send command output to files and report only what failed.
 
 ## State
-- Worktree `/home/pete/OpenTTD/.claude/ng1` (on `wt-tracks`). Run `git switch -c wt-wasted feature/junction-tool` (feature/junction-tool is at f42b8e75c4; its source equals wt-tracks). Commit only there; the orchestrator merges it. Build dir `build-rel` (target `openttd_test` only).
+- Worktree `/home/pete/OpenTTD/.claude/ng1` (on `wt-tracks`). Run `git switch -c wt-wasted feature/junction-tool` (feature/junction-tool is at 7866c2e913; its source equals wt-tracks). Commit only there; the orchestrator merges it. Build dir `build-rel` (target `openttd_test` only).
 - Time box: 60 minutes. One heavy job at a time. Run tests via `tools/junction/jt` with the budgets in `docs/junction-tool/TESTS.md`.
 
 ## Why
