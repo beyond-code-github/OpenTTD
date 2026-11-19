@@ -3,24 +3,19 @@
 You execute this brief and nothing else. Make exactly the changes listed. Do not add any type, member, file, abstraction or mechanism that the brief does not name, and do not widen or narrow its scope. If something is not covered, or you would have to choose between approaches, stop at a clean state and report the question. A workaround that avoids a stop condition is a breach, not a stop. Keep your context small: send command output to files and report only what failed.
 
 ## State
-- Worktree `/home/pete/OpenTTD/.claude/ng1`, on `wt-tracks`. Run `git switch -c probe-js probe-lj` (probe-lj is at ea0f45d018: `PLANAR_LATE` letters incl. r, g, o; `PLANAR_SIDETRIAL`; `PLANAR_JOG`; `PLANAR_JOINLOW`); commit only there. Finish with `git switch wt-tracks` and rebuild `openttd_test` in build-rel.
+- Worktree `/home/pete/OpenTTD/.claude/ng1`, on `wt-tracks`. Run `git switch -c probe-js probe-lj` (probe-lj is at ea0f45d018: `PLANAR_LATE` letters incl. r, g, o; `PLANAR_SIDETRIAL`; `PLANAR_JOG`; `PLANAR_JOINLOW`. A previous attempt created and deleted `probe-js`; create it fresh); commit only there. Finish with `git switch wt-tracks` and rebuild `openttd_test` in build-rel.
 - Time box: 90 minutes. Single-variant runs `timeout -s KILL 30`; pv `timeout -s KILL 600`; end to end `timeout -s KILL 60`. One run at a time. No `PLANAR_IIS`.
 - S = `/tmp/claude-1000/-home-pete-OpenTTD/5aaa14e0-b8b8-4d2d-bc21-f25c3b5bedf1/scratchpad`.
 
 ## Why
-D356 (DECISIONS.md): in `Join` (prio case) each joiner `J[k]` is one diagonal segment `js[k]` that crosses every nearer lane `S[j]` (j > k) on that lane's doubled stretch before landing on `S[k]`. Those crossings sit about a prio length apart along the main line, so a single 45-degree diagonal forces the main lanes that far apart sideways (T3 o1t3f1s0: E1/E2/E3 at rows 1/8/11 at the join, ports 10/11/12, ED1 falls 9 tiles: the engineer's "hump"). This is construction, not a rule. The probe lets the joiner run along the main line between crossings.
+D356 (DECISIONS.md, corrected): on this probe base the prio join (`Join`, prio case, ~1100-1190 on probe-lj) lets each near lane `S[j]` (j >= 1) step out toward the joiners (`AddSeg(S[j], h, 2)`, `outs[j] = AddSeg(S[j], Turn(h, sigma), 2)`, `AddSeg(S[j], h, 2)`) under the far joiners' straight decks (`jdeck[k]`), and each far joiner turns in onto its lane (`js[k]`, at least 2, no greatest). The far lane `S[0]` alone is built straight (`M.AddSeg(S[0], h, 2)`). On T3 o1t3f1s0 the merges sit at rows 1/8/11 with ports 10/11/12, so D1 climbs up to E1 and ED1 falls 9 tiles after the merge (the engineer's "hump": "Blue should just come down to meet yellow"). The probe removes the far lane's special case.
 
 ## Read first (probe-lj, `src/junction/planar/planar_components.cpp`)
-- `Join` (~1060-1100): the `js` loop (`M.AddSeg(J[k], h, 2)`, then `M.AddSeg(J[k], Turn(h, -sigma), lo, n == 2 ? lo : nullopt)`), the prio loops that call `PairDecks(d0, d1, {js[k]}, h)` and `PairDecks(d0, d1, {js[j - 1]}, h)`, the `Tie`s.
-- `Model::Cross`, `Model::Deck`, `PairDecks` (how a crossing names the under segment).
-- `src/junction/planar/CLAUDE.md`, "Component solver" (joins) and `PieceCurves` in `planar_model.cpp` (every heading change is a curve with spacing rows).
+- `Join` (prio case, ~1080-1200): `first_seg`/`row_first`, `M.AddSeg(S[0], h, 2)`, the `jdeck`/`js` loop, the `outs` loop, `prio coverage`, the rows (`prio row offset`, built piece by piece from `row_first`), the `jdeck` crossings with `outs[j]` and rows.
+- `src/junction/planar/CLAUDE.md`, "Component solver".
 
 ## Change (behind a new letter `j` of `PLANAR_LATE`, prio joins only)
-For each joiner `J[k]` that crosses at least one nearer lane (k + 1 < n), build instead of the one diagonal:
-- `AddSeg(J[k], h, 2)` (as today);
-- for each crossed lane in the order the joiner meets them (nearest to the joiner's side first: j = n-1 down to k+1): a crossing diagonal `x[k][j] = AddSeg(J[k], Turn(h, -sigma), 2)` then an axis run `AddSeg(J[k], h, 0)`;
-- the landing diagonal `js[k] = AddSeg(J[k], Turn(h, -sigma), lo, n == 2 ? lo : nullopt)` (lo as today).
-Each crossing of lane `S[j]` with joiner `J[k]` (the `PairDecks` calls) uses `x[k][j]` instead of `js[k]`. Everything else in `Join` is unchanged (the `Tie`s, prio rows, the exit). Without `j` the code is exactly today's. If the crossing loop does not let you identify which lane j a `PairDecks` call is for, stop and report.
+Replace the far lane's `M.AddSeg(S[0], h, 2)` by the same three segments the near lanes get: `AddSeg(S[0], h, 2)`, `AddSeg(S[0], Turn(h, sigma), 2)`, `AddSeg(S[0], h, 2)`. Nothing else changes (no joiner crosses the far lane's step; `outs[0]` stays as it is). Without `j` the code is exactly today's. If the rows or coverage loops then fail (a failure text), record it and stop.
 
 ## Measure (T3 test `"planar components: T3 from its topology text (mapped) at the hand composition's area"`, T2 test `"planar components: T2 from its topology text (mapped) at the probe's area"`, all with `PLANAR_SIDETRIAL=1 PLANAR_TIMES=1`)
 1. `PLANAR_ONLY=o1t3f1s0` on T3 with: `PLANAR_LATE=rgo` (baseline 1715.25), `rgoj`; and both again with `PLANAR_JOG=E1:2,1,2:0` (baseline 1612.25): area, size, track, ms or failure text.
