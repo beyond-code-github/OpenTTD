@@ -367,6 +367,27 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v)
 	return r;
 }
 
+TEST_CASE("planar shape layer: t3 first variant shapes", "[junction][planar][planarshape]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(3), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult r = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!r.variants.empty());
+	PlanarShapeVariant shaped;
+	std::string why;
+	const bool ok = ShapePlanarStructureVariant(r.variants[0], shaped, why);
+	INFO("why: " << why);
+	REQUIRE(ok);
+	/* Capacity (H6) is the capacity rows' job, which the heading program does not have yet (H3 of the roadmap): only H6 messages may remain. */
+	const std::vector<std::string> messages = CheckPlanarShapePromise(topology, spec, shaped);
+	for (const std::string &message : messages) {
+		INFO(message);
+		CHECK(message.starts_with("H6"));
+	}
+}
+
 TEST_CASE("planar shape layer: probe, the heading program and the closure LP on T2, T3 and LL2", "[junction][planar][planarshape][slow]")
 {
 	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};

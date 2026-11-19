@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -119,6 +120,39 @@ FaceWalk WalkFace(const PlanarTrackMap &map, const PlanarFace &face)
 	return walk;
 }
 
+/**
+ * The parent chain of a beside track (H8): from the straight leg of its start node's site, at each end node the out track that is a part of its line, to the track ending where it ends.
+ * @param map The track map.
+ * @param sites The variant's sites.
+ * @param b The Copy or Row track.
+ * @param chain Receives the tracks in order.
+ * @return False when there is no (unique) chain.
+ */
+bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSite> &sites, uint32_t b, std::vector<uint32_t> &chain)
+{
+	chain.clear();
+	const PlanarEnd &from = map.expanded.lines[b].from, &end = map.expanded.lines[b].to;
+	if (from.port) return false;
+	uint32_t current = UINT32_MAX;
+	for (const PlanarStructureSite &site : sites) {
+		if (site.split && site.node == from.index) current = site.straight;
+	}
+	while (current < map.tracks.size()) {
+		chain.push_back(current);
+		const PlanarEnd &to = map.expanded.lines[current].to;
+		if (to.port == end.port && to.index == end.index) return true;
+		if (to.port || chain.size() > map.tracks.size()) return false;
+		uint32_t next = UINT32_MAX;
+		for (const uint32_t g : map.expanded.nodes[to.index].out) {
+			if (g >= map.part_of.size() || map.part_of[g] != map.tracks[b].line) continue;
+			if (next != UINT32_MAX) return false;
+			next = g;
+		}
+		current = next;
+	}
+	return false;
+}
+
 /** The oracle's view of one variant: the map, the shape and the stretch arithmetic. */
 struct Oracle {
 	const PlanarShapeVariant &v;
@@ -205,17 +239,14 @@ struct Oracle {
 		return true;
 	}
 
-	/** @return The parent of a beside track (the straight leg of its split node's site), or UINT32_MAX. */
-	uint32_t Parent(uint32_t b) const
+	/** @return The crossings of a beside track's parent chain, concatenated in order; false when it has no chain. */
+	bool ChainEvents(uint32_t b, std::vector<uint32_t> &events) const
 	{
-		const PlanarEnd &from = this->map.expanded.lines[b].from;
-		uint32_t parent = UINT32_MAX;
-		if (!from.port) {
-			for (const PlanarStructureSite &site : this->v.structure.sites) {
-				if (site.split && site.node == from.index) parent = site.straight;
-			}
-		}
-		return parent < this->map.tracks.size() ? parent : UINT32_MAX;
+		std::vector<uint32_t> chain;
+		events.clear();
+		if (!ParentChain(this->map, this->v.structure.sites, b, chain)) return false;
+		for (const uint32_t t : chain) events.insert(events.end(), this->map.events[t].begin(), this->map.events[t].end());
+		return true;
 	}
 
 	/**
@@ -227,12 +258,13 @@ struct Oracle {
 	{
 		for (const uint32_t b : {this->map.crossings[c].a, this->map.crossings[c].b}) {
 			if (this->map.tracks[b].kind == PlanarTrack::Kind::Line) continue;
-			const uint32_t parent = this->Parent(b), x = this->map.crossings[c].a == b ? this->map.crossings[c].b : this->map.crossings[c].a;
+			const uint32_t x = this->map.crossings[c].a == b ? this->map.crossings[c].b : this->map.crossings[c].a;
 			const size_t k = EventIndex(this->map.events[b], c);
-			if (parent == UINT32_MAX || k == SIZE_MAX || k >= this->map.events[parent].size()) continue;
-			const uint32_t original = this->map.events[parent][k];
+			std::vector<uint32_t> chain_events;
+			if (k == SIZE_MAX || !this->ChainEvents(b, chain_events) || k >= chain_events.size()) continue;
+			const uint32_t original = chain_events[k];
 			const PlanarCrossing &o = this->map.crossings[original];
-			if ((o.a == parent ? o.b : o.a) == x) return original;
+			if (o.a != b && o.b != b && (o.a == x || o.b == x)) return original;
 		}
 		return UINT32_MAX;
 	}
@@ -478,35 +510,52 @@ struct Oracle {
 		}
 	}
 
-	/** H8: beside tracks follow their parent. */
+	/** H8: beside tracks follow their parent chain. */
 	void CheckH8()
 	{
 		for (uint32_t b = 0; b < this->map.tracks.size(); b++) {
 			if (this->map.tracks[b].kind == PlanarTrack::Kind::Line) continue;
 			const std::string &name = this->map.tracks[b].name;
-			const uint32_t parent = this->Parent(b);
-			if (parent == UINT32_MAX) {
-				this->out.push_back(fmt::format("H8: beside track {} has no parent: its split node has no straight leg", name));
+			std::vector<uint32_t> chain;
+			if (!ParentChain(this->map, this->v.structure.sites, b, chain)) {
+				this->out.push_back(fmt::format("H8: no parent chain for {}", name));
 				continue;
 			}
-			const PlanarShapeTrack &sb = this->v.tracks[b], &sp = this->v.tracks[parent];
-			if (sb.pieces != sp.pieces) this->out.push_back(fmt::format("H8: beside track {} has other pieces than its parent {}", name, this->map.tracks[parent].name));
-			if (sb.event_piece != sp.event_piece) this->out.push_back(fmt::format("H8: beside track {} has other event pieces than its parent {}", name, this->map.tracks[parent].name));
-			const std::vector<uint32_t> &eb = this->map.events[b], &ep = this->map.events[parent];
+			/* The chain's pieces concatenated (a node's piece counted once) and its event pieces in that list. */
+			std::vector<int> pieces;
+			std::vector<uint32_t> event_piece, ep;
+			for (size_t i = 0; i < chain.size(); i++) {
+				const PlanarShapeTrack &sc = this->v.tracks[chain[i]];
+				if (sc.pieces.empty()) break;
+				size_t base = pieces.size();
+				if (i > 0) {
+					base--;
+					if (pieces.back() != sc.pieces.front()) this->out.push_back(fmt::format("H8: the parent chain of {} turns at the node before {}", name, this->map.tracks[chain[i]].name));
+					pieces.insert(pieces.end(), sc.pieces.begin() + 1, sc.pieces.end());
+				} else {
+					pieces = sc.pieces;
+				}
+				for (const uint32_t e : sc.event_piece) event_piece.push_back(static_cast<uint32_t>(base + e));
+				ep.insert(ep.end(), this->map.events[chain[i]].begin(), this->map.events[chain[i]].end());
+			}
+			const PlanarShapeTrack &sb = this->v.tracks[b];
+			if (sb.pieces != pieces) this->out.push_back(fmt::format("H8: beside track {} has other pieces than its parent chain", name));
+			if (sb.event_piece != event_piece) this->out.push_back(fmt::format("H8: beside track {} has other event pieces than its parent chain", name));
+			const std::vector<uint32_t> &eb = this->map.events[b];
 			if (eb.size() != ep.size()) {
-				this->out.push_back(fmt::format("H8: beside track {} has {} crossings, its parent {} has {}", name, eb.size(), this->map.tracks[parent].name, ep.size()));
+				this->out.push_back(fmt::format("H8: beside track {} has {} crossings, its parent chain has {}", name, eb.size(), ep.size()));
 				continue;
 			}
 			for (size_t k = 0; k < eb.size(); k++) {
 				const PlanarCrossing &cb = this->map.crossings[eb[k]], &cp = this->map.crossings[ep[k]];
-				const uint32_t xb = cb.a == b ? cb.b : cb.a, xp = cp.a == parent ? cp.b : cp.a;
+				const uint32_t xb = cb.a == b ? cb.b : cb.a, xp = std::ranges::find(chain, cp.a) != chain.end() ? cp.b : cp.a;
 				if (xb != xp) {
-					this->out.push_back(fmt::format("H8: crossing {} of beside track {} is with track {}, its parent's is with {}", k, name, this->map.tracks[xb].name, this->map.tracks[xp].name));
+					this->out.push_back(fmt::format("H8: crossing {} of beside track {} is with track {}, its parent chain's is with {}", k, name, this->map.tracks[xb].name, this->map.tracks[xp].name));
 					continue;
 				}
 				const size_t ib = EventIndex(this->map.events[xb], eb[k]), ip = EventIndex(this->map.events[xb], ep[k]);
 				if (ib == SIZE_MAX || ip == SIZE_MAX || this->v.tracks[xb].event_piece[ib] != this->v.tracks[xb].event_piece[ip]) {
-					this->out.push_back(fmt::format("H8: crossing {} of beside track {} sits on another piece of {} than its parent's", k, name, this->map.tracks[xb].name));
+					this->out.push_back(fmt::format("H8: crossing {} of beside track {} sits on another piece of {} than its parent chain's", k, name, this->map.tracks[xb].name));
 				}
 			}
 		}
@@ -674,13 +723,32 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 		}
 	}
 
-	/* Beside tracks follow the straight leg of their split node's site. */
+	/* Beside tracks follow their parent chain: equal headings at the corresponding points, and the chain turns one way across each stretch of the beside track, as the beside track does. */
 	for (uint32_t b = 0; b < nt; b++) {
 		if (map.tracks[b].kind == PlanarTrack::Kind::Line) continue;
-		const uint32_t parent = o.Parent(b);
-		if (parent == NONE) return fail(fmt::format("beside track {} has no parent", b));
-		if (H[b].size() != H[parent].size()) return fail(fmt::format("beside track {} has other events than its parent", b));
-		for (size_t i = 0; i < H[b].size(); i++) eq({{H[b][i], 1}, {H[parent][i], -1}}, 0, fmt::format("beside {}", b));
+		const std::string tag = fmt::format("beside {}", b);
+		std::vector<uint32_t> chain;
+		if (!ParentChain(map, sv.structure.sites, b, chain)) return fail(fmt::format("H8: no parent chain for {}", map.tracks[b].name));
+		/* The chain's points (start, each event, end) and its stretches with the number of events before each. */
+		std::vector<uint32_t> points{H[chain.front()].front()};
+		std::vector<std::tuple<uint32_t, uint32_t, size_t>> stretches; ///< From heading, to heading, events before.
+		for (const uint32_t t : chain) {
+			const size_t before = points.size() - 1;
+			for (size_t i = 0; i + 1 < H[t].size(); i++) stretches.emplace_back(H[t][i], H[t][i + 1], before + i);
+			for (size_t i = 1; i + 1 < H[t].size(); i++) points.push_back(H[t][i]);
+		}
+		points.push_back(H[chain.back()].back());
+		if (H[b].size() != points.size()) return fail(fmt::format("beside track {} has other events than its parent chain", b));
+		for (size_t i = 0; i < H[b].size(); i++) eq({{H[b][i], 1}, {points[i], -1}}, 0, tag);
+		constexpr double M = 64;
+		for (size_t m = 0; m + 1 < H[b].size(); m++) {
+			const uint32_t u = var(0, 1, 0, true);
+			for (const auto &[from, to, before] : stretches) {
+				if (before != m) continue;
+				row({{to, 1}, {from, -1}, {u, -M}}, -M, JunctionMilp::INF, tag);
+				row({{to, 1}, {from, -1}, {u, -M}}, -JunctionMilp::INF, 0, tag);
+			}
+		}
 	}
 
 	/* Faces. */
