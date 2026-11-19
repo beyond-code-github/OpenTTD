@@ -7,9 +7,10 @@
 - **Structure** (topology, channels, sites, track map):
   - Decides what tracks exist and their planar order: the separator and the kind (bridge or tunnel) of each structure, per joiner at a join (D364); which leg runs straight at each split and merge; triangle flips, copies, rows.
   - Variants live here and nowhere else.
-  - Promise: a valid planar map of every physical track, with sides per stretch; for each bridge, the tracks it must span.
+  - Groups crossings into structures (the crossings sharing one bridge or tunnel), each with its separator and allowed kinds (D369).
+  - Promise: a valid planar map of every physical track, with sides per stretch; for each structure, the tracks it must span, which fit its kind's limit at the most compact crossing angle.
 - **Shape:**
-  - Decides every track's headings and the piece each crossing sits on, without lengths.
+  - Decides every track's headings and the piece each crossing sits on, without lengths; a structure's crossings sit on one axis piece of its separator, at angles within its kind's limit; it never regroups (D369).
   - It makes no sideways moves.
   - The separator runs straight on an axis across its span; a tunnel's separator dives, with one ramp tile at each end on flat ground (D365).
   - Promise: legal headings, and every structure spans its crossers within its kind's limit (bridge: the longest bridge; tunnel: max_tunnel_length; a main line's: also the D228a flow bound).

@@ -263,7 +263,7 @@ The layers and their promises are stated in src/junction/planar/CLAUDE.md "Archi
 ### 17.2 Shape (L2)
 - `SolvePlanarShape` over track stretches (TM3): absolute headings, crossing rules, node rules (one leg keeps the heading, the other moves one eighth), ports, no U-turn. No sideways moves (D340, D360). `BuildPlanarLineHeadings` (G2) cut to node geometry; `BuildPlanarPaths` keeps its crossing rules, loses detours and fork jogs.
 - Each separator is straight on an axis across its span; a tunnel's adds one ramp tile at each end on flat ground (it dives; crossers at grade, D365).
-- Capacity rows: a structure's crossers fit within its kind's limit at the chosen angle (bridge: the longest bridge, D346's break-up rule when it lands; tunnel: max_tunnel_length; a main line's: D228a). Width per crosser from the existing `Cross`/`Deck` head rows (planar_model.h). This retires the f0 deck-max failures before any solve.
+- Structures come grouped from Structure (D369); Shape never regroups. Capacity rows: a structure's crossers fit within its kind's limit at the chosen angle (bridge: the longest bridge, D346's break-up rule when it lands; tunnel: max_tunnel_length; a main line's: D228a). Width per crosser from the existing `Cross`/`Deck` head rows (planar_model.h). This retires the f0 deck-max failures before any solve.
 
 ### 17.3 Slots (L3)
 - The one owner of sideways moves: each track's integer slot per interval of its frame, hence every S-bend, every straight leg's position, every close-up and fan at a pin. Model: the min-cost tension LP (network matrix, integral, always feasible).
