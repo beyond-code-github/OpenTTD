@@ -50,13 +50,15 @@ ai_in_multiplayer = true
 """
 NUTS_TAR = os.path.join(USERDATA, "content_download", "newgrf", "48410101-NUTS_Unrealistic_Train_Set-0.8.4.tar")
 NUTS_YEAR = 2057
+PURR_TAR = os.path.join(USERDATA, "newgrf", "psg", "56420202-PURR_Universal_Rainbow_Rails-0.0.7.tar")
 
 
-def nuts_newgrf_line():
+def nuts_newgrf_line(tar_path=None):
     """`grfid|md5|filename =` line for [newgrf], as OpenTTD writes it. The md5 covers the header and
     the data section of the container-v2 grf (14 bytes plus the data size at offset 10), as CalcGRFMD5Sum does."""
-    grfid = os.path.basename(NUTS_TAR).split("-")[0]
-    with tarfile.open(NUTS_TAR) as t:
+    tar_path = tar_path or NUTS_TAR
+    grfid = os.path.basename(tar_path).split("-")[0]
+    with tarfile.open(tar_path) as t:
         m = next(x for x in t.getmembers() if x.name.endswith(".grf"))
         data = t.extractfile(m).read()
     size = 14 + int.from_bytes(data[10:14], "little")
@@ -103,7 +105,7 @@ def _install(src, dst):
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__"))
 
 
-def start(save=None, scenario=None, timeout=60, hilly=False, nuts=False):
+def start(save=None, scenario=None, timeout=60, hilly=False, nuts=False, purr=False):
     if pid():
         raise RuntimeError("server already running (pid %d)" % pid())
     os.makedirs(RUNDIR, exist_ok=True)
@@ -112,8 +114,12 @@ def start(save=None, scenario=None, timeout=60, hilly=False, nuts=False):
     with open(_p("openttd.cfg"), "w") as f:
         terrain = dict(terrain=3, variety=2, smooth=1, lakes=2, towns=4) if hilly else dict(terrain=1, variety=0, smooth=0, lakes=4, towns=4)
         f.write(CFG % dict(port=PORT, game_port=GAME_PORT, gs=GS_NAME, map=int(os.environ.get("OTTD_RIG_MAP", 7)), year=("starting_year = %d\n" % NUTS_YEAR) if nuts else "", **terrain))
-        if nuts:
-            f.write("[newgrf]\n" + nuts_newgrf_line())
+        if nuts or purr:
+            f.write("[newgrf]\n")
+            if nuts:
+                f.write(nuts_newgrf_line())
+            if purr:
+                f.write(nuts_newgrf_line(PURR_TAR))
     with open(_p("secrets.cfg"), "w") as f:
         f.write(SECRETS % PASSWORD)
     args = [BINARY, "-D", "127.0.0.1", "-c", _p("openttd.cfg"), "-g"]

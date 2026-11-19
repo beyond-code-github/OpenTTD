@@ -14,7 +14,8 @@ $O watch 0 --seconds 20; $O stop
 
 | Command | Example | Notes |
 |---|---|---|
-| `start [--save PATH] [--hilly] [--nuts]` | `ottd start --save /x/junction.sav` | new 64x64 flat game (fixed seed 3, env `OTTD_RIG_SEED`), or load a save; waits for the admin port. `--nuts` loads the NUTS 0.8.4 newgrf (grfid and md5 computed from the tar in `~/.local/share/openttd/content_download/newgrf/`) and starts in 2057. Env `OTTD_RIG_PORT` (admin, default 3977) and `OTTD_RIG_GAME_PORT` (game, default 3979) pick the ports |
+| `start [--save PATH] [--hilly] [--nuts] [--purr]` | `ottd start --save /x/junction.sav` | new 64x64 flat game (fixed seed 3, env `OTTD_RIG_SEED`), or load a save; waits for the admin port. `--nuts` loads the NUTS 0.8.4 newgrf (grfid and md5 computed from the tar in `~/.local/share/openttd/content_download/newgrf/`) and starts in 2057. `--purr` loads PURR Universal Rainbow Rails 0.0.7 (tar in `~/.local/share/openttd/newgrf/psg/`; same grfid/md5 mechanism; combinable with `--nuts`). Env `OTTD_RIG_PORT` (admin, default 3977) and `OTTD_RIG_GAME_PORT` (game, default 3979) pick the ports |
+| `rail-types` | `ottd rail-types` | the available rail types in `ScriptRailTypeList` order, `id name` per line |
 | `stop` | `ottd stop` | SIGTERM via `server.pid` |
 | `status` | `ottd status` | date, companies, money |
 | `rcon "<cmd>"` | `ottd rcon "getdate"` | prints the console output |
@@ -48,6 +49,7 @@ Mirrors `JunctionLayout` in `src/junction/junction_layout.h`. Coordinates are re
  "signals":[{"x":1,"y":2,"facing":"X_SW","type":"block"}]}
 ```
 
+- Optional `"rail_type"` (integer rail type id, see `ottd rail-types`) on a `tracks` entry or a `bridges` entry: `build-layout` builds that entry with that rail type (the GS restores the default afterwards). Entries without it use the first available rail type. `tools/ottd/colour-lines.py LAYOUT.json LINES.txt OUT.json [--types ID,ID,...]` fills it per line (LINES.txt: `x y heading kind line` per row; each line base gets a type in order of first appearance; copies `'`, `"`, `"N` share their line's type; `prio:` rows take their lane's type; a tile takes the first listed line's type, a bridge that of its start tile) and prints a legend and the count of mixed-type tiles.
 - Track names: `X`, `Y`, `Upper`, `Lower`, `Left`, `Right`.
 - `facing`: an OpenTTD trackdir, `X_NE`, `Y_SE`, `Upper_E`, `Lower_E`, `Left_S`, `Right_S`, `X_SW`, `Y_NW`, `Upper_W`, `Lower_W`, `Left_N`, `Right_N`. A train travelling along `facing` sees the signal (`SignalAlongTrackdir`). Every signal is one-way, in that direction.
 - `type`: `block`, `entry`, `exit`, `combo`, `path`, `path_oneway`.

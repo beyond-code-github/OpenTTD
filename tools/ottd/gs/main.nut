@@ -166,6 +166,14 @@ class JunctionTestGS extends GSController {
 		if (this.company < 0) { this.Err(id, "no company set (company_set first)"); return; }
 		local mode = GSCompanyMode(this.company);
 		if (cmd == "build_rail") this.CmdBuildRail(id, msg);
+		else if (cmd == "rail_types") {
+			/* availability is per company, so this runs in company mode */
+			local types = [];
+			foreach (rt, _ in GSRailTypeList()) {
+				if (GSRail.IsRailTypeAvailable(rt)) types.append({ id = rt, name = GSRail.GetName(rt) });
+			}
+			this.Reply(id, { types = types });
+		}
 		else if (cmd == "build_depot") this.CmdBuildDepot(id, msg);
 		else if (cmd == "build_train") this.CmdBuildTrain(id, msg);
 		else if (cmd == "orders_depots") this.CmdOrders(id, msg);
@@ -526,6 +534,7 @@ class JunctionTestGS extends GSController {
 			}
 			if (!found) { this.Err(id, "no available rail type named " + msg.railtype + ": " + names); return; }
 		} else if (this.SetRailType() == null) { this.Err(id, "no rail type available"); return; }
+		local default_rt = GSRail.GetCurrentRailType();
 		local built = 0, failed = [];
 		if ("stations" in lay) {
 			foreach (st in lay.stations) {
@@ -546,12 +555,14 @@ class JunctionTestGS extends GSController {
 					}
 				}
 				if (in_station) continue;
+				if ("rail_type" in t) GSRail.SetCurrentRailType(t.rail_type);
 				foreach (name in t.bits) {
 					local rt = this.TrackByName(name);
 					if (rt == null) { failed.append({ what = "track " + name, x = t.x, y = t.y, error = "unknown track name" }); continue; }
 					if (GSRail.BuildRailTrack(this.Tile(ox + t.x, oy + t.y), rt)) built++;
 					else failed.append({ what = "track " + name, x = t.x, y = t.y, error = GSError.GetLastErrorString() });
 				}
+				if ("rail_type" in t) GSRail.SetCurrentRailType(default_rt);
 			}
 		}
 		if ("bridges" in lay) {
@@ -565,8 +576,10 @@ class JunctionTestGS extends GSController {
 				local len = abs(ex - sx) + abs(ey - sy) + 1;
 				local bt = this.FastestRailBridge(len);
 				if (bt == null) { failed.append({ what = "bridge", x = sx, y = sy, error = "no rail bridge type for length " + len }); continue; }
+				if ("rail_type" in b) GSRail.SetCurrentRailType(b.rail_type);
 				if (GSBridge.BuildBridge(GSVehicle.VT_RAIL, bt, this.Tile(ox + sx, oy + sy), this.Tile(ox + ex, oy + ey))) built++;
 				else failed.append({ what = "bridge", x = sx, y = sy, error = GSError.GetLastErrorString() });
+				if ("rail_type" in b) GSRail.SetCurrentRailType(default_rt);
 			}
 		}
 		if ("signals" in lay) {

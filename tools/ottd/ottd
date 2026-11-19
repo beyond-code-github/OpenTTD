@@ -42,9 +42,18 @@ def companies(adm):
 
 
 def cmd_start(a):
-    n = S.start(save=a.save, scenario=a.scenario, hilly=a.hilly, nuts=a.nuts)
+    n = S.start(save=a.save, scenario=a.scenario, hilly=a.hilly, nuts=a.nuts, purr=a.purr)
     print("started pid=%d rundir=%s" % (n, S.RUNDIR))
     print("join: build/openttd -n 127.0.0.1")
+
+
+def cmd_rail_types(a):
+    adm = connect()
+    try:
+        for t in gs(adm, {"cmd": "rail_types"})["types"]:
+            print("%d %s" % (t["id"], t["name"]))
+    finally:
+        adm.close()
 
 
 def cmd_stop(a):
@@ -576,8 +585,9 @@ def main():
         p.set_defaults(fn=fn)
 
     i = {"type": int}
-    add("start", cmd_start, ("--save", {}), ("--scenario", {}), ("--hilly", {"action": "store_true"}), ("--nuts", {"action": "store_true"}))
+    add("start", cmd_start, ("--save", {}), ("--scenario", {}), ("--hilly", {"action": "store_true"}), ("--nuts", {"action": "store_true"}), ("--purr", {"action": "store_true"}))
     add("stop", cmd_stop)
+    add("rail-types", cmd_rail_types)
     add("status", cmd_status)
     add("rcon", cmd_rcon, ("command", {}))
     add("gs", cmd_gs, ("json", {}))
