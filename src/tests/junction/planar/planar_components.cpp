@@ -79,7 +79,7 @@ TEST_CASE("planar components: LL² solves at the probe's area", "[junction][plan
 	CheckSolves(PlanarLL2Text(), 807);
 }
 
-TEST_CASE("planar components: T2 solves at the probe's area", "[junction][planarcomponents]")
+TEST_CASE("planar components: T2 solves at the probe's area", "[junction][planarcomponents][slow]")
 {
 	CheckSolves(PlanarTText(2), 963);
 }

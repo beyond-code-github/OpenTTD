@@ -186,12 +186,12 @@ void RequireComponentPlanClean(const std::string &text)
 
 }
 
-TEST_CASE("planar: LL² builds from its component layout and passes the checker", "[junction][planarcomponents]")
+TEST_CASE("planar: LL² builds from its component layout and passes the checker", "[junction][planarcomponents][slow]")
 {
 	RequireComponentPlanClean(PlanarLL2Text());
 }
 
-TEST_CASE("planar: T2 builds from its component layout and passes the checker", "[junction][planarcomponents]")
+TEST_CASE("planar: T2 builds from its component layout and passes the checker", "[junction][planarcomponents][slow]")
 {
 	RequireComponentPlanClean(PlanarTText(2));
 }
