@@ -19,6 +19,8 @@ add_files(
     planar_shape.h
     planar_slots.cpp
     planar_slots.h
+    planar_structure.cpp
+    planar_structure.h
     planar_topology.cpp
     planar_topology.h
 )

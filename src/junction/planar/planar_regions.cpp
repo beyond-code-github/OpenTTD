@@ -395,6 +395,24 @@ void JoinLanes(const PlanarTopology &t, const PlanarChannels &channels, const st
 	}
 }
 
+/** A line's role at a join or fray site: a mover (joiner, a fray's other leg), a keeper (lane, straight leg), the single line in, or none. */
+enum class PlanarRole : uint8_t { None, In, Keeper, Mover };
+
+PlanarRole RoleAt(const PlanarTopology &t, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, size_t s, uint32_t line)
+{
+	if (sites[s].straight == UINT32_MAX) return PlanarRole::None;
+	const bool merge = channels.sites[s].kind == PlanarSiteKind::Join || channels.sites[s].kind == PlanarSiteKind::LaneMerge;
+	for (const uint32_t nidx : channels.sites[s].nodes) {
+		const PlanarNode &node = t.nodes[nidx];
+		const std::vector<uint32_t> &legs = merge ? node.in : node.out;
+		const std::vector<uint32_t> &single = merge ? node.out : node.in;
+		if (std::ranges::find(single, line) != single.end()) return PlanarRole::In;
+		if (std::ranges::find(legs, line) == legs.end()) continue;
+		return channels.channel_of_line[line] == sites[s].straight ? PlanarRole::Keeper : PlanarRole::Mover;
+	}
+	return PlanarRole::None;
+}
+
 /** The side a copy of a line of channel c lies on, as the slot layer's copy rule: the far line's on its outer side, every other line's away from the far line. */
 int CopySide(const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, uint32_t c, size_t j)
 {
@@ -543,7 +561,169 @@ int8_t PlanarTrackMap::Side(uint32_t p, uint32_t ps, uint32_t q, uint32_t qs) co
 	return it == this->side.end() ? 0 : it->second;
 }
 
-PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, bool joiner_over)
+std::vector<uint32_t> PlanarMovers(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites)
+{
+	std::vector<uint32_t> out;
+	for (size_t s = 0; s < channels.sites.size(); s++) {
+		const PlanarSiteKind kind = channels.sites[s].kind;
+		if ((kind != PlanarSiteKind::Join && kind != PlanarSiteKind::Fray) || sites[s].straight == UINT32_MAX) continue;
+		for (const uint32_t nidx : channels.sites[s].nodes) {
+			const PlanarNode &node = topology.nodes[nidx];
+			for (const uint32_t line : kind == PlanarSiteKind::Join ? node.in : node.out) {
+				if (RoleAt(topology, channels, sites, s, line) == PlanarRole::Mover && std::ranges::find(out, line) == out.end()) out.push_back(line);
+			}
+		}
+	}
+	return out;
+}
+
+std::vector<uint32_t> PlanarCrossingSeparators(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, const std::set<uint32_t> &separator_movers, std::string &why)
+{
+	std::vector<uint32_t> out(topology.crossings.size(), UINT32_MAX);
+	std::vector<uint32_t> rules(topology.crossings.size(), 0); ///< Per crossing, how many rules name it.
+	const auto name = [&](uint32_t k) { return fmt::format("{} x {}", topology.lines[topology.crossings[k].a].name, topology.lines[topology.crossings[k].b].name); };
+	for (size_t i = 0; i < channels.crossings.size() && why.empty(); i++) {
+		for (const uint32_t k : channels.crossings[i].line_crossings) {
+			const PlanarCrossing &c = topology.crossings[k];
+			rules[k]++;
+			if (channels.channel_of_line[c.a] == over[i]) {
+				out[k] = c.a;
+			} else if (channels.channel_of_line[c.b] == over[i]) {
+				out[k] = c.b;
+			} else {
+				why = fmt::format("crossing {} lies on channels neither of which is the over channel", name(k));
+				break;
+			}
+		}
+	}
+	for (uint32_t g = 0; g < channels.group_crossings.size() && why.empty(); g++) {
+		for (const uint32_t k : channels.group_crossings[g]) {
+			rules[k]++;
+			size_t site = SIZE_MAX;
+			for (size_t s = 0; s < channels.sites.size() && site == SIZE_MAX; s++) {
+				const PlanarSiteKind kind = channels.sites[s].kind;
+				if ((kind == PlanarSiteKind::Join || kind == PlanarSiteKind::Fray) && sites[s].straight != UINT32_MAX && topology.nodes[channels.sites[s].nodes[0]].group == g) site = s;
+			}
+			if (site == SIZE_MAX) {
+				why = fmt::format("crossing {} in node group {} has no join or fray site", name(k), g);
+				break;
+			}
+			const uint32_t la = topology.crossings[k].a, lb = topology.crossings[k].b;
+			const PlanarRole ra = RoleAt(topology, channels, sites, site, la), rb = RoleAt(topology, channels, sites, site, lb);
+			if (!((ra == PlanarRole::Mover && rb == PlanarRole::Keeper) || (ra == PlanarRole::Keeper && rb == PlanarRole::Mover))) {
+				why = fmt::format("crossing {} in the group of site {} is not a mover and a keeper", name(k), site);
+				break;
+			}
+			const uint32_t mover = ra == PlanarRole::Mover ? la : lb, keeper = ra == PlanarRole::Mover ? lb : la;
+			out[k] = separator_movers.contains(mover) ? mover : keeper;
+		}
+	}
+	for (uint32_t k = 0; k < rules.size() && why.empty(); k++) {
+		if (rules[k] != 1) why = fmt::format("crossing {} is in {} separator rules", name(k), rules[k]);
+	}
+	return out;
+}
+
+size_t PlanarTracksBeside(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<PlanarStructureRun> &runs, const std::vector<std::vector<uint32_t>> &line_events, uint32_t line, size_t event)
+{
+	const std::vector<uint32_t> &events = line_events[line];
+	size_t tracks = 0;
+	/* A row of a prio join's lane starts at the lane's first crossing with a joiner and runs to its end (the rule BuildPlanarTrackMap uses). */
+	for (size_t s = 0; s < channels.sites.size(); s++) {
+		if (channels.sites[s].kind != PlanarSiteKind::Join || !sites[s].prio || sites[s].straight == UINT32_MAX) continue;
+		std::vector<uint32_t> lanes, joiners;
+		JoinLanes(topology, channels, sites, s, lanes, joiners);
+		if (std::ranges::find(lanes, line) == lanes.end()) continue;
+		for (size_t i = 0; i < events.size(); i++) {
+			const uint32_t other = topology.crossings[events[i]].a == line ? topology.crossings[events[i]].b : topology.crossings[events[i]].a;
+			if (std::ranges::find(joiners, other) == joiners.end()) continue;
+			if (i <= event) tracks++;
+			break;
+		}
+	}
+	/* A copy beside a run of the line that has one, over the run's first to last crossing. */
+	for (const PlanarStructureRun &run : runs) {
+		if (run.line != line || !run.copy || run.crossings.empty()) continue;
+		const size_t first = static_cast<size_t>(std::ranges::find(events, run.crossings.front()) - events.begin());
+		const size_t last = static_cast<size_t>(std::ranges::find(events, run.crossings.back()) - events.begin());
+		if (first <= event && event <= last) {
+			tracks++;
+			break;
+		}
+	}
+	return tracks;
+}
+
+std::vector<PlanarStructureRun> PlanarGroupStructures(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const PlanarLineSides &sides, const std::vector<uint32_t> &separator, const JunctionSpec &spec)
+{
+	std::vector<PlanarStructureRun> out;
+	/* A prio join's row starts at its lane's first crossing with a joiner. The row's split node lies there, and a bridge cannot hold a node, so a run is cut before that crossing. */
+	std::set<std::pair<uint32_t, uint32_t>> row_starts; ///< (lane, crossing).
+	for (size_t s = 0; s < channels.sites.size(); s++) {
+		if (channels.sites[s].kind != PlanarSiteKind::Join || !sites[s].prio || sites[s].straight == UINT32_MAX) continue;
+		std::vector<uint32_t> lanes, joiners;
+		JoinLanes(topology, channels, sites, s, lanes, joiners);
+		for (const uint32_t lane : lanes) {
+			for (const uint32_t k : sides.Events()[lane]) {
+				const uint32_t other = topology.crossings[k].a == lane ? topology.crossings[k].b : topology.crossings[k].a;
+				if (std::ranges::find(joiners, other) != joiners.end()) {
+					row_starts.insert({lane, k});
+					break;
+				}
+			}
+		}
+	}
+	/* The maximal runs of each line. */
+	std::vector<std::vector<std::vector<uint32_t>>> maximal(topology.lines.size());
+	for (uint32_t line = 0; line < topology.lines.size(); line++) {
+		std::vector<uint32_t> run;
+		const auto close = [&]() {
+			if (!run.empty()) maximal[line].push_back(run);
+			run.clear();
+		};
+		for (const uint32_t k : sides.Events()[line]) {
+			if (row_starts.contains({line, k})) close();
+			if (separator[k] == line) {
+				run.push_back(k);
+			} else {
+				close();
+			}
+		}
+		close();
+	}
+	/* A bridge spans every track at the crossing (D371(2); copies and rows are tracks, S2c1 ruling): a crossing's width is 1 plus the tracks Structure places beside its crosser there. */
+	std::vector<PlanarStructureRun> maximal_runs;
+	for (uint32_t line = 0; line < topology.lines.size(); line++) {
+		for (const std::vector<uint32_t> &run : maximal[line]) maximal_runs.push_back({line, run, channels.line_share[line] >= 1.0});
+	}
+	const auto width = [&](uint32_t line, uint32_t k) {
+		const uint32_t crosser = topology.crossings[k].a == line ? topology.crossings[k].b : topology.crossings[k].a;
+		const size_t at = static_cast<size_t>(std::ranges::find(sides.Events()[crosser], k) - sides.Events()[crosser].begin());
+		return 1 + PlanarTracksBeside(topology, channels, sites, maximal_runs, sides.Events(), crosser, at);
+	};
+	for (uint32_t line = 0; line < topology.lines.size(); line++) {
+		const bool copy = channels.line_share[line] >= 1.0;
+		for (const std::vector<uint32_t> &run : maximal[line]) {
+			/* Greedy from the start: the fewest pieces whose widths fit the bridge limit and, with a copy, the D228a bound. */
+			std::vector<uint32_t> piece;
+			size_t sum = 0;
+			for (const uint32_t k : run) {
+				const size_t w = width(line, k);
+				if (!piece.empty() && (sum + w > spec.max_bridge_middle || (copy && sum + w + 2 > 2u * spec.sd + spec.tl))) {
+					out.push_back({line, piece, copy});
+					piece.clear();
+					sum = 0;
+				}
+				piece.push_back(k);
+				sum += w;
+			}
+			if (!piece.empty()) out.push_back({line, piece, copy});
+		}
+	}
+	return out;
+}
+
+PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<PlanarStructureRun> &runs)
 {
 	PlanarTrackMap result;
 	TrackExpander x;
@@ -580,12 +760,6 @@ PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarC
 		x.part_of.push_back(l);
 	}
 
-	const auto crossing_of = [&](uint32_t a, uint32_t b) {
-		for (uint32_t c = 0; c < topology.crossings.size(); c++) {
-			if ((topology.crossings[c].a == a && topology.crossings[c].b == b) || (topology.crossings[c].a == b && topology.crossings[c].b == a)) return c;
-		}
-		return UINT32_MAX;
-	};
 	/* A copy of a line over the given crossings, which one part of it must hold. */
 	const auto copy_over = [&](uint32_t line, const std::vector<uint32_t> &crossings, int side) {
 		if (crossings.empty() || !x.why.empty()) return;
@@ -630,41 +804,46 @@ PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarC
 			if (x.why.empty()) x.Parallel(lane, first, SIZE_MAX, -join.sigma, PlanarTrack::Kind::Row, "prio:" + topology.lines[lane].name);
 		}
 	}
-	for (const Join &join : joins) {
-		for (size_t k = 0; k < join.lanes.size(); k++) {
-			std::vector<uint32_t> crossed;
-			if (!joiner_over) {
-				for (size_t m = 0; m < k; m++) {
-					if (const uint32_t c = crossing_of(join.lanes[k], join.joiners[m]); c != UINT32_MAX) crossed.push_back(c);
-				}
-				copy_over(join.lanes[k], crossed, join.sigma);
-			} else if (channels.line_share[join.joiners[k]] >= 1.0) {
-				for (size_t m = k + 1; m < join.lanes.size(); m++) {
-					if (const uint32_t c = crossing_of(join.joiners[k], join.lanes[m]); c != UINT32_MAX) crossed.push_back(c);
-				}
-				copy_over(join.joiners[k], crossed, join.sigma);
+	/* The side a copy of a run's line lies on at a crossing: the channel's copy side at a channel crossing; in a node group the site's own side, or at a fray the line's channel's copy side. */
+	const auto crossing_side = [&](uint32_t k, uint32_t line, int &side) {
+		const uint32_t ch = channels.channel_of_line[line];
+		const size_t j = static_cast<size_t>(std::ranges::find(channels.channels[ch].lines, line) - channels.channels[ch].lines.begin());
+		for (const PlanarChannelCrossing &cc : channels.crossings) {
+			if (std::ranges::find(cc.line_crossings, k) != cc.line_crossings.end()) {
+				side = CopySide(channels, sites, ch, j);
+				return true;
 			}
 		}
-	}
-	for (uint32_t c = 0; c < channels.channels.size(); c++) {
-		const PlanarChannel &cc = channels.channels[c];
-		for (size_t k = 0; k < cc.crossings.size(); k++) {
-			if (over[cc.crossings[k]] != c) continue;
-			size_t e = k;
-			while (e + 1 < cc.crossings.size() && over[cc.crossings[e + 1]] == c) e++;
-			for (size_t j = 0; j < cc.lines.size(); j++) {
-				const uint32_t line = cc.lines[j];
-				if (channels.line_share[line] < 1.0) continue;
-				std::vector<uint32_t> crossed;
-				for (size_t i = k; i <= e; i++) {
-					for (uint32_t lc : channels.crossings[cc.crossings[i]].line_crossings) {
-						if (topology.crossings[lc].a == line || topology.crossings[lc].b == line) crossed.push_back(lc);
-					}
-				}
-				copy_over(line, crossed, CopySide(channels, sites, c, j));
+		for (uint32_t g = 0; g < channels.group_crossings.size(); g++) {
+			if (std::ranges::find(channels.group_crossings[g], k) == channels.group_crossings[g].end()) continue;
+			for (size_t s = 0; s < channels.sites.size(); s++) {
+				const PlanarSiteKind kind = channels.sites[s].kind;
+				if ((kind != PlanarSiteKind::Join && kind != PlanarSiteKind::Fray) || sites[s].straight == UINT32_MAX || topology.nodes[channels.sites[s].nodes[0]].group != g) continue;
+				side = kind == PlanarSiteKind::Fray ? CopySide(channels, sites, ch, j) : sites[s].side;
+				return true;
 			}
-			k = e;
 		}
+		return false;
+	};
+	/* One copy per run with a copy, over the run's crossings. */
+	for (const PlanarStructureRun &run : runs) {
+		if (!run.copy || !x.why.empty()) continue;
+		int side = 0;
+		bool have = false;
+		for (const uint32_t k : run.crossings) {
+			int here = 0;
+			if (!crossing_side(k, run.line, here)) {
+				x.why = fmt::format("no copy side for crossing {} on {}", k, topology.lines[run.line].name);
+				break;
+			}
+			if (have && here != side) {
+				x.why = fmt::format("copy sides disagree on {}", topology.lines[run.line].name);
+				break;
+			}
+			side = here;
+			have = true;
+		}
+		if (x.why.empty()) copy_over(run.line, run.crossings, side);
 	}
 	if (!x.why.empty()) {
 		result.why = x.why;
