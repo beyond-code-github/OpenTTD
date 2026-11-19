@@ -11,10 +11,12 @@
 #define PLANAR_REGIONS_H
 
 #include "planar_channels.h"
+#include "planar_gaps.h"
 
 #include <map>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -81,5 +83,30 @@ private:
 	std::vector<std::pair<uint32_t, uint32_t>> face_pairs; ///< The ordered pairs sharing a face with a side.
 	std::map<std::string, uint32_t, std::less<>> by_name; ///< Line index by name.
 };
+
+/** One track of the track map: a topology line, a copy or a prio row. */
+struct PlanarTrack {
+	enum class Kind : uint8_t { Line, Copy, Row };
+	Kind kind;
+	uint32_t line; ///< The topology line it is, or runs beside.
+	std::string name; ///< The line's name; a copy "<line>\"" plus its first crossing's index; a row "prio:<line>".
+};
+
+/** The hub's tracks as one planar map (DESIGN-tracks §16): the skeleton expanded with copies and rows, with sides per stretch. */
+struct PlanarTrackMap {
+	std::vector<PlanarTrack> tracks; ///< Lines first (same index as the topology's lines), then the parts lines are split into, then copies and rows.
+	std::vector<uint32_t> part_of; ///< Per track, the topology line whose part it is (a line part), or UINT32_MAX for copies and rows.
+	std::vector<std::vector<uint32_t>> events; ///< Per track, its crossings (indices into crossings) in travel order.
+	std::vector<PlanarCrossing> crossings; ///< The expanded map's crossings (track indices).
+	std::vector<PlanarFace> faces; ///< As PlanarLineSides::Faces, over tracks.
+	std::string why; ///< Empty, or the expansion or validation failure.
+	/** Side of track p's stretch ps relative to track q's stretch qs: +1 right of q's travel, -1 left, 0 when they share no face. */
+	int8_t Side(uint32_t p, uint32_t ps, uint32_t q, uint32_t qs) const;
+	std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>, int8_t> side; ///< (p, ps, q, qs) -> side, filled from the faces.
+	std::vector<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>> conflicts; ///< Stretch pairs two faces give opposite sides.
+};
+
+/** Build the track map of a variant. @param joiner_over Inside prio joins: false, the crossed lanes double over the joiners; true, a full-share joiner doubles over the lanes. */
+PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, bool joiner_over);
 
 #endif /* PLANAR_REGIONS_H */

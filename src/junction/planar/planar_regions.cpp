@@ -14,8 +14,10 @@
 #include "../../3rdparty/fmt/format.h"
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <set>
+#include <tuple>
 
 #include "../../safeguards.h"
 
@@ -238,6 +240,176 @@ PlanarTopology EventsInChannelOrder(const PlanarTopology &t, const PlanarChannel
 	return out;
 }
 
+/**
+ * The faces of a planar map except the outer one, as runs of walls.
+ * @param map The map.
+ * @return The faces, each with its index in the map.
+ */
+std::vector<PlanarFace> FacesOf(const PlanarMap &map)
+{
+	std::vector<PlanarFace> faces;
+	for (size_t f = 0; f < map.faces.size(); f++) {
+		if (static_cast<int>(f) == map.outer) continue;
+		PlanarFace face{static_cast<int>(f), map.has_box[f], {}};
+		for (const FaceEntry &e : map.faces[f]) {
+			const bool forward = e.side < 0;
+			if (face.runs.empty() || face.runs.back().forward != forward) face.runs.push_back({forward, {}});
+			face.runs.back().stretches.emplace_back(e.line, e.stretch);
+		}
+		if (face.runs.size() > 1 && face.runs.front().forward == face.runs.back().forward) {
+			std::vector<std::pair<uint32_t, uint32_t>> &last = face.runs.back().stretches;
+			last.insert(last.end(), face.runs.front().stretches.begin(), face.runs.front().stretches.end());
+			face.runs.erase(face.runs.begin());
+		}
+		faces.push_back(std::move(face));
+	}
+	return faces;
+}
+
+
+/** A topology expanded into tracks (DESIGN-tracks §16): its lines split into parts, with parallel tracks beside them. */
+class TrackExpander {
+public:
+	PlanarTopology t; ///< The tracks are its lines.
+	std::vector<PlanarTrack> tracks;
+	std::vector<uint32_t> part_of; ///< As PlanarTrackMap::part_of.
+	std::vector<RingEnds> ends; ///< Per track, the ring ends it takes for the crossing validation.
+	std::vector<std::array<int8_t, 2>> from; ///< Per crossing, the side its a and its b arrive from relative to the other's travel: +1 left, -1 right.
+	std::string why;
+
+	/** @return The track that is the line or one of its parts and holds the crossing in its events, or UINT32_MAX. */
+	uint32_t Holder(uint32_t line, uint32_t crossing) const
+	{
+		for (uint32_t i = 0; i < this->tracks.size(); i++) {
+			if (this->tracks[i].kind == PlanarTrack::Kind::Line && this->part_of[i] == line && std::ranges::find(this->t.events[i], crossing) != this->t.events[i].end()) return i;
+		}
+		return UINT32_MAX;
+	}
+
+	/**
+	 * Add a track beside a track over a range of its events (the one expansion op).
+	 * @param p The track.
+	 * @param first The index of its first event in the range (its event count for a range with none).
+	 * @param last The index of its last event in the range, or SIZE_MAX for a range running to the track's end node.
+	 * @param side Where the new track lies: +1 right of p's travel.
+	 * @param kind The new track's kind.
+	 * @param name The new track's name.
+	 * @return The new track, or UINT32_MAX with why set.
+	 */
+	uint32_t Parallel(uint32_t p, size_t first, size_t last, int side, PlanarTrack::Kind kind, const std::string &name);
+};
+
+uint32_t TrackExpander::Parallel(uint32_t p, size_t first, size_t last, int side, PlanarTrack::Kind kind, const std::string &name)
+{
+	const bool to_end = last == SIZE_MAX;
+	const std::vector<uint32_t> old_events = this->t.events[p];
+	const size_t stop = to_end ? old_events.size() : last + 1;
+	const PlanarEnd old_to = this->t.lines[p].to;
+	if (first > stop || stop > old_events.size()) {
+		this->why = fmt::format("a range of track {} is outside its events", this->tracks[p].name);
+		return UINT32_MAX;
+	}
+	if ((to_end || this->t.lines[p].from.port) && old_to.port) {
+		this->why = fmt::format("a range of track {} ends at a port", this->tracks[p].name);
+		return UINT32_MAX;
+	}
+	if (to_end && this->t.nodes[old_to.index].IsSplit()) {
+		this->why = fmt::format("track {} ends at a split node", this->tracks[p].name);
+		return UINT32_MAX;
+	}
+	const uint32_t n = static_cast<uint32_t>(this->t.nodes.size()), n2 = n + 1;
+	const uint32_t q = static_cast<uint32_t>(this->t.lines.size()), tr = q + 1, r = q + 2;
+	const PlanarEnd leg_end = to_end ? old_to : PlanarEnd{false, n2};
+	const auto add = [&](PlanarTrack::Kind k, PlanarEnd start, PlanarEnd end) {
+		const PlanarTrack source = this->tracks[p];
+		this->t.lines.push_back({source.name, this->t.lines[p].routes, start, end});
+		this->tracks.push_back({k, source.line, k == PlanarTrack::Kind::Line ? source.name : name});
+		this->part_of.push_back(k == PlanarTrack::Kind::Line ? this->part_of[p] : UINT32_MAX);
+		this->ends.push_back(this->ends[p]);
+		this->t.events.emplace_back();
+	};
+	add(PlanarTrack::Kind::Line, {false, n}, leg_end);
+	add(kind, {false, n}, leg_end);
+	if (!to_end) add(PlanarTrack::Kind::Line, {false, n2}, old_to);
+	this->t.lines[p].to = {false, n};
+	this->t.events[p].assign(old_events.begin(), old_events.begin() + static_cast<std::ptrdiff_t>(first));
+	this->t.events[q].assign(old_events.begin() + static_cast<std::ptrdiff_t>(first), old_events.begin() + static_cast<std::ptrdiff_t>(stop));
+	if (!to_end) {
+		this->t.events[r].assign(old_events.begin() + static_cast<std::ptrdiff_t>(stop), old_events.end());
+		for (uint32_t c : this->t.events[r]) {
+			PlanarCrossing &x = this->t.crossings[c];
+			(x.a == p ? x.a : x.b) = r;
+		}
+	}
+
+	/* The new track mirrors the range's crossings; the crosser meets first whichever of the two lies on the side it comes from. */
+	for (uint32_t c : this->t.events[q]) {
+		PlanarCrossing &x = this->t.crossings[c];
+		const size_t which = x.a == p ? 0 : 1;
+		(which == 0 ? x.a : x.b) = q;
+		const uint32_t other = which == 0 ? x.b : x.a;
+		const uint32_t nc = static_cast<uint32_t>(this->t.crossings.size());
+		this->t.crossings.push_back({tr, other});
+		this->from.push_back({this->from[c][which], this->from[c][1 - which]});
+		this->t.events[tr].push_back(nc);
+		std::vector<uint32_t> &other_events = this->t.events[other];
+		const bool meets_first = this->from[c][1 - which] == -side;
+		other_events.insert(std::ranges::find(other_events, c) + (meets_first ? 0 : 1), nc);
+	}
+
+	const std::vector<uint32_t> legs = side > 0 ? std::vector<uint32_t>{q, tr} : std::vector<uint32_t>{tr, q};
+	this->t.nodes.push_back({{p}, legs, UINT32_MAX});
+	if (!to_end) this->t.nodes.push_back({legs, {r}, UINT32_MAX});
+	if (to_end || !old_to.port) {
+		std::vector<uint32_t> &in = this->t.nodes[old_to.index].in;
+		const auto at = std::ranges::find(in, p);
+		if (to_end) {
+			*at = q;
+			in.insert(side > 0 ? at + 1 : at, tr);
+		} else {
+			*at = r;
+		}
+	} else {
+		*std::ranges::find(this->t.ring, p) = r;
+	}
+	return tr;
+}
+
+/** The lanes S (far to near) and joiners J of a prio join site, as the composer's Join orders them. */
+void JoinLanes(const PlanarTopology &t, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, size_t s, std::vector<uint32_t> &lanes, std::vector<uint32_t> &joiners)
+{
+	const PlanarResolvedSite &rs = sites[s];
+	const std::vector<uint32_t> &sl = channels.channels[rs.straight].lines;
+	std::vector<std::tuple<size_t, uint32_t, uint32_t>> legs;
+	for (uint32_t nidx : channels.sites[s].nodes) {
+		const PlanarNode &node = t.nodes[nidx];
+		const bool a_straight = channels.channel_of_line[node.in[0]] == rs.straight;
+		const uint32_t sline = a_straight ? node.in[0] : node.in[1], jline = a_straight ? node.in[1] : node.in[0];
+		const size_t pos = std::ranges::find(sl, sline) - sl.begin();
+		legs.emplace_back(rs.side > 0 ? pos : sl.size() - 1 - pos, sline, jline);
+	}
+	std::ranges::sort(legs);
+	for (const auto &[pos, sline, jline] : legs) {
+		lanes.push_back(sline);
+		joiners.push_back(jline);
+	}
+}
+
+/** The side a copy of a line of channel c lies on, as the slot layer's copy rule: the far line's on its outer side, every other line's away from the far line. */
+int CopySide(const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, uint32_t c, size_t j)
+{
+	bool far_left = true;
+	for (size_t s = 0; s < channels.sites.size(); s++) {
+		if (channels.sites[s].kind != PlanarSiteKind::Fray && (sites[s].straight == c || sites[s].other == c)) {
+			if (sites[s].straight == c && sites[s].prio) far_left = sites[s].side > 0;
+			break;
+		}
+	}
+	const int away = far_left ? +1 : -1;
+	const bool is_far = far_left ? j == 0 : j == channels.channels[c].lines.size() - 1;
+	return is_far ? -away : away;
+}
+
 } // namespace
 
 PlanarLineSides::PlanarLineSides(const PlanarTopology &topology, const PlanarChannels &channels) : count(topology.lines.size()), table(topology.lines.size() * topology.lines.size(), 0)
@@ -272,21 +444,7 @@ PlanarLineSides::PlanarLineSides(const PlanarTopology &topology, const PlanarCha
 		this->why = map.why;
 		return;
 	}
-	for (size_t f = 0; f < map.faces.size(); f++) {
-		if (static_cast<int>(f) == map.outer) continue;
-		PlanarFace face{static_cast<int>(f), map.has_box[f], {}};
-		for (const FaceEntry &e : map.faces[f]) {
-			const bool forward = e.side < 0;
-			if (face.runs.empty() || face.runs.back().forward != forward) face.runs.push_back({forward, {}});
-			face.runs.back().stretches.emplace_back(e.line, e.stretch);
-		}
-		if (face.runs.size() > 1 && face.runs.front().forward == face.runs.back().forward) {
-			std::vector<std::pair<uint32_t, uint32_t>> &last = face.runs.back().stretches;
-			last.insert(last.end(), face.runs.front().stretches.begin(), face.runs.front().stretches.end());
-			face.runs.erase(face.runs.begin());
-		}
-		this->faces.push_back(std::move(face));
-	}
+	this->faces = FacesOf(map);
 	std::set<std::pair<uint32_t, uint32_t>> crossing;
 	std::set<size_t> conflict;
 	for (const PlanarCrossing &c : t.crossings) {
@@ -377,4 +535,209 @@ uint32_t PlanarLineSides::LineOfStrand(std::string_view strand) const
 int8_t PlanarLineSides::Side(uint32_t p, uint32_t q) const
 {
 	return this->table[p * this->count + q];
+}
+
+int8_t PlanarTrackMap::Side(uint32_t p, uint32_t ps, uint32_t q, uint32_t qs) const
+{
+	const auto it = this->side.find({p, ps, q, qs});
+	return it == this->side.end() ? 0 : it->second;
+}
+
+PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarChannels &channels, const std::vector<PlanarResolvedSite> &sites, const std::vector<uint32_t> &over, bool joiner_over)
+{
+	PlanarTrackMap result;
+	TrackExpander x;
+	x.t = EventsInChannelOrder(topology, channels, result.why);
+	if (!result.why.empty()) return result;
+	const size_t base = x.t.lines.size();
+
+	/* The side each line arrives from at each crossing, and the ring ends of each line's first path. */
+	const PlanarLineSides line_sides(topology, channels);
+	for (uint32_t c = 0; c < x.t.crossings.size(); c++) {
+		const std::array<int8_t, 2> arrive{line_sides.CrossingFrom(c, x.t.crossings[c].a), line_sides.CrossingFrom(c, x.t.crossings[c].b)};
+		if (arrive[0] == 0 || arrive[1] == 0) {
+			result.why = fmt::format("no face decides the sides at crossing {}: {}", c, line_sides.Why());
+			return result;
+		}
+		x.from.push_back(arrive);
+	}
+	std::vector<int> ring_pos(base, -1);
+	for (size_t i = 0; i < x.t.ring.size(); i++) ring_pos[x.t.ring[i]] = static_cast<int>(i);
+	x.ends.assign(base, {-1, -1});
+	for (const PlanarRoute &r : x.t.routes) {
+		for (const std::vector<uint32_t> &path : r.paths) {
+			for (uint32_t l : path) {
+				if (x.ends[l].first < 0) x.ends[l] = {ring_pos[path.front()], ring_pos[path.back()]};
+			}
+		}
+	}
+	for (uint32_t l = 0; l < base; l++) {
+		if (x.ends[l].first < 0) {
+			result.why = fmt::format("no route path runs through line {}", topology.lines[l].name);
+			return result;
+		}
+		x.tracks.push_back({PlanarTrack::Kind::Line, l, topology.lines[l].name});
+		x.part_of.push_back(l);
+	}
+
+	const auto crossing_of = [&](uint32_t a, uint32_t b) {
+		for (uint32_t c = 0; c < topology.crossings.size(); c++) {
+			if ((topology.crossings[c].a == a && topology.crossings[c].b == b) || (topology.crossings[c].a == b && topology.crossings[c].b == a)) return c;
+		}
+		return UINT32_MAX;
+	};
+	/* A copy of a line over the given crossings, which one part of it must hold. */
+	const auto copy_over = [&](uint32_t line, const std::vector<uint32_t> &crossings, int side) {
+		if (crossings.empty() || !x.why.empty()) return;
+		const uint32_t holder = x.Holder(line, crossings.front());
+		size_t lo = SIZE_MAX, hi = 0;
+		for (uint32_t c : crossings) {
+			if (x.Holder(line, c) != holder || holder == UINT32_MAX) {
+				x.why = fmt::format("the crossings a copy of {} runs over lie in different parts", topology.lines[line].name);
+				return;
+			}
+			const size_t at = std::ranges::find(x.t.events[holder], c) - x.t.events[holder].begin();
+			lo = std::min(lo, at);
+			hi = std::max(hi, at);
+		}
+		x.Parallel(holder, lo, hi, side, PlanarTrack::Kind::Copy, fmt::format("{}\"{}", topology.lines[line].name, x.t.events[holder][lo]));
+	};
+
+	/* The prio joins' lanes and joiners. */
+	struct Join {
+		std::vector<uint32_t> lanes, joiners;
+		int sigma;
+	};
+	std::vector<Join> joins;
+	for (size_t s = 0; s < channels.sites.size(); s++) {
+		if (channels.sites[s].kind != PlanarSiteKind::Join || !sites[s].prio || sites[s].straight == UINT32_MAX) continue;
+		Join join{{}, {}, sites[s].side};
+		JoinLanes(topology, channels, sites, s, join.lanes, join.joiners);
+		joins.push_back(std::move(join));
+	}
+
+	/* Rows first, then the join copies, then the channel copies. */
+	for (const Join &join : joins) {
+		for (uint32_t lane : join.lanes) {
+			size_t first = x.t.events[lane].size();
+			for (size_t i = 0; i < x.t.events[lane].size() && x.why.empty(); i++) {
+				const PlanarCrossing &c = x.t.crossings[x.t.events[lane][i]];
+				if (std::ranges::find(join.joiners, c.a == lane ? c.b : c.a) != join.joiners.end()) {
+					first = i;
+					break;
+				}
+			}
+			if (x.why.empty()) x.Parallel(lane, first, SIZE_MAX, -join.sigma, PlanarTrack::Kind::Row, "prio:" + topology.lines[lane].name);
+		}
+	}
+	for (const Join &join : joins) {
+		for (size_t k = 0; k < join.lanes.size(); k++) {
+			std::vector<uint32_t> crossed;
+			if (!joiner_over) {
+				for (size_t m = 0; m < k; m++) {
+					if (const uint32_t c = crossing_of(join.lanes[k], join.joiners[m]); c != UINT32_MAX) crossed.push_back(c);
+				}
+				copy_over(join.lanes[k], crossed, join.sigma);
+			} else if (channels.line_share[join.joiners[k]] >= 1.0) {
+				for (size_t m = k + 1; m < join.lanes.size(); m++) {
+					if (const uint32_t c = crossing_of(join.joiners[k], join.lanes[m]); c != UINT32_MAX) crossed.push_back(c);
+				}
+				copy_over(join.joiners[k], crossed, join.sigma);
+			}
+		}
+	}
+	for (uint32_t c = 0; c < channels.channels.size(); c++) {
+		const PlanarChannel &cc = channels.channels[c];
+		for (size_t k = 0; k < cc.crossings.size(); k++) {
+			if (over[cc.crossings[k]] != c) continue;
+			size_t e = k;
+			while (e + 1 < cc.crossings.size() && over[cc.crossings[e + 1]] == c) e++;
+			for (size_t j = 0; j < cc.lines.size(); j++) {
+				const uint32_t line = cc.lines[j];
+				if (channels.line_share[line] < 1.0) continue;
+				std::vector<uint32_t> crossed;
+				for (size_t i = k; i <= e; i++) {
+					for (uint32_t lc : channels.crossings[cc.crossings[i]].line_crossings) {
+						if (topology.crossings[lc].a == line || topology.crossings[lc].b == line) crossed.push_back(lc);
+					}
+				}
+				copy_over(line, crossed, CopySide(channels, sites, c, j));
+			}
+			k = e;
+		}
+	}
+	if (!x.why.empty()) {
+		result.why = x.why;
+		return result;
+	}
+
+	/* Order the tracks: lines, then the parts, then copies and rows; then build the map. */
+	std::vector<uint32_t> order(base);
+	for (uint32_t i = 0; i < base; i++) order[i] = i;
+	for (const bool lines : {true, false}) {
+		for (uint32_t i = static_cast<uint32_t>(base); i < x.tracks.size(); i++) {
+			if ((x.tracks[i].kind == PlanarTrack::Kind::Line) == lines) order.push_back(i);
+		}
+	}
+	std::vector<uint32_t> index(order.size());
+	for (uint32_t i = 0; i < order.size(); i++) index[order[i]] = i;
+	PlanarTopology t = x.t;
+	std::vector<RingEnds> ends(order.size());
+	for (uint32_t i = 0; i < order.size(); i++) {
+		t.lines[i] = x.t.lines[order[i]];
+		t.events[i] = x.t.events[order[i]];
+		ends[i] = x.ends[order[i]];
+		result.tracks.push_back(x.tracks[order[i]]);
+		result.part_of.push_back(x.part_of[order[i]]);
+	}
+	for (PlanarNode &node : t.nodes) {
+		for (uint32_t &l : node.in) l = index[l];
+		for (uint32_t &l : node.out) l = index[l];
+	}
+	for (PlanarCrossing &c : t.crossings) {
+		c.a = index[c.a];
+		c.b = index[c.b];
+	}
+	for (uint32_t &l : t.ring) l = index[l];
+	ring_pos.assign(order.size(), -1);
+	for (size_t i = 0; i < t.ring.size(); i++) ring_pos[t.ring[i]] = static_cast<int>(i);
+	result.events = t.events;
+	result.crossings = t.crossings;
+
+	const PlanarMap map(t, ring_pos, ends);
+	if (!map.why.empty()) {
+		result.why = map.why;
+		return result;
+	}
+	result.faces = FacesOf(map);
+
+	/* Sides per stretch: where two stretches bound a common face, the one lies on the side of the other that face lies on. */
+	std::set<std::pair<uint32_t, uint32_t>> crossing, line_crossing;
+	for (const PlanarCrossing &c : t.crossings) {
+		crossing.insert({c.a, c.b});
+		crossing.insert({c.b, c.a});
+	}
+	for (const PlanarCrossing &c : topology.crossings) {
+		line_crossing.insert({c.a, c.b});
+		line_crossing.insert({c.b, c.a});
+	}
+	std::set<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>> opposite;
+	for (size_t f = 0; f < map.faces.size(); f++) {
+		if (static_cast<int>(f) == map.outer) continue;
+		for (const FaceEntry &ep : map.faces[f]) {
+			for (const FaceEntry &eq : map.faces[f]) {
+				if (ep.line == eq.line) continue;
+				const std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> key{ep.line, ep.stretch, eq.line, eq.stretch};
+				const auto [it, added] = result.side.emplace(key, eq.side);
+				if (!added && it->second != eq.side) opposite.insert(key);
+			}
+		}
+	}
+	for (const auto &key : opposite) {
+		result.side.erase(key);
+		const uint32_t p = std::get<0>(key), q = std::get<2>(key);
+		if (crossing.contains({p, q}) || line_crossing.contains({result.tracks[p].line, result.tracks[q].line})) continue;
+		result.conflicts.push_back(key);
+	}
+	return result;
 }
