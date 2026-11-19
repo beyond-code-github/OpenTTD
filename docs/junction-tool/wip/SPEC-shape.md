@@ -56,16 +56,16 @@ Derived, not decided: beside tracks' headings; per structure the least middle ti
 ## 6. Output types (target; code is mapped onto these, D368)
 New header src/junction/planar/planar_shape_layer.h (name to settle against today's planar_shape.h when mapping):
 - `PlanarStructure` gains `std::array<int, 2> limit;` (max middle tiles, index 0 bridge, 1 tunnel; -1 when that kind is not allowed). A Structure step, briefed against SPEC-structure §3.
-- `PlanarShapeTrack { std::vector<int> headings; }`: lifted heading at each point of the track (start end, each event in the map's order, end end).
+- `PlanarShapeTrack { std::vector<int> pieces; std::vector<uint32_t> event_piece; }`: the track's heading list (one lifted heading per piece, eighths clockwise from north, consecutive pieces one eighth apart) and, per entry of the map's `events[track]`, the piece that crossing sits on (CLAUDE Terms: Shape = heading list + crossing pieces). The heading at a point is the heading of the piece it sits on; stretch k runs from piece event_piece[k-1] (0 for k = 0) to event_piece[k] (the last piece for the last stretch).
 - `PlanarShapeStructure { uint8_t axis; std::array<int, 2> middles; std::array<int, 2> end_run; }`: least middles and end run tiles per kind (-1 not allowed).
 - `PlanarShapeVariant { PlanarStructureVariant structure; std::vector<PlanarShapeTrack> tracks; std::vector<uint8_t> angles; std::vector<PlanarShapeStructure> structures; int cost; }` (angles per map crossing).
 - `PlanarShapeResult { std::vector<PlanarShapeVariant> variants; std::string why; }`, ranked per D373(2).
 - `PlanarShapeResult BuildPlanarShape(PlanarStructureResult structure)`.
-- `std::vector<std::string> CheckPlanarShapePromise(const PlanarShapeVariant &v)`: H1-H10 as a test oracle, one message per breach.
+- `std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v)`: H1-H9 as a test oracle, one message per breach (topology and spec only for H9's P1-P7 and H6's limits; the oracle is a test tool, not a layer). H10 is a property of `BuildPlanarShape`, tested in H4.
 Until tunnels are built (D365): kinds always bridge; the tunnel rows and end runs have hand-structure tests written when D365's build starts.
 
 ## 7. Build order (each step one brief, test-first at Shape's output)
-- H1 **Oracle, then the gap:** `CheckPlanarShapePromise` driven by hand variants, one failing test per promise (each input breaks only that promise). Then characterisation only: map today's headings (`BuildPlanarLineHeadings` over the track map, `SolvePlanarShape`) onto `PlanarShapeVariant` for the variants `BuildPlanarStructure` hands down (keep 16) on T2, T3, LL2; tally breaches by promise. No change to existing code.
+- H1 **Oracle:** `CheckPlanarShapePromise` driven by two hand variants (two lines crossing; one fray), one failing test per promise (each mutation breaks only that promise). No characterisation of today's code: `BuildPlanarLineHeadings` needs channel paths (`BuildPlanarPaths`), which Structure's variants do not carry (D366), so it cannot run on them; H2's ILP is judged by the oracle instead, and today's `SolvePlanarShape` is mapped onto H2 as its starting code.
 - H2 **Riskiest first (Q1), time-boxed:** the heading ILP of §2.1 without capacity on every handed-down variant: count shaped, unshaped (H10), and closure under the lengths-only LP with cusps opened by one slot; time per variant.
 - H3 Capacity rows and end runs, Structure's `limit`, cost and ranking; `BuildPlanarShape`.
 - H4 **Outer test:** `BuildPlanarShape` on T2, T3, LL2 (keep 16): every variant shaped, H1-H10 kept, ranking order, time (milliseconds per variant; the seed budget is 5 s, D297).
