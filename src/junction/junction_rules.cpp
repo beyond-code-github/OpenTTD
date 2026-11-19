@@ -173,6 +173,13 @@ static bool HoldsPrio(const JunctionCheckContext &ctx, const JunctionPath &path)
 	return path.movement != UINT16_MAX && std::ranges::find(list, path.movement) != list.end();
 }
 
+/** Whether the path is a main line (holds prio at its merges, gets no bays): with lane paths (D301) their flag, else a through path. */
+static bool IsMainLinePath(const JunctionCheckContext &ctx, const JunctionPath &path)
+{
+	if (!ctx.topology->lane_paths.empty()) return HoldsPrio(ctx, path);
+	return IsThroughPath(ctx, path);
+}
+
 bool IsExitPath(const JunctionCheckContext &ctx, const JunctionPath &path)
 {
 	if (path.movement == UINT16_MAX) return false;
@@ -481,36 +488,36 @@ std::vector<RuleViolation> CheckConnectivity(const JunctionCheckContext &ctx)
 			for (const JunctionPath &path : ctx.paths) {
 				if (path.from_slot == from && path.to_slot == to) lanes.push_back(&path);
 			}
-			auto length_of = [](const JunctionPath &path) {
+			auto same_piece = [](const JunctionPiece &a, const JunctionPiece &b) { return SameTile(a.tile, b.tile) && a.trackdir == b.trackdir; };
+			auto units_of = [](const std::vector<JunctionPiece> &pieces, size_t first, size_t last) {
 				uint units = 0;
-				for (const JunctionPiece &piece : path.pieces) units += piece.units;
+				for (size_t i = first; i < last; i++) units += pieces[i].units;
 				return units;
 			};
-			auto same_piece = [](const JunctionPiece &a, const JunctionPiece &b) { return SameTile(a.tile, b.tile) && a.trackdir == b.trackdir; };
 
+			/* Two paths are copies when their shared pieces run in the same order, both start and end shared, and each stretch where they differ has equal length (D322). */
 			bool doubled = true;
 			bool equal_length = true;
 			for (size_t i = 0; i < lanes.size() && doubled; i++) {
 				for (size_t j = i + 1; j < lanes.size() && doubled; j++) {
 					const std::vector<JunctionPiece> &a = lanes[i]->pieces;
 					const std::vector<JunctionPiece> &b = lanes[j]->pieces;
-					size_t prefix = 0;
-					while (prefix < a.size() && prefix < b.size() && same_piece(a[prefix], b[prefix])) prefix++;
-					size_t suffix = 0;
-					while (suffix < a.size() && suffix < b.size() && same_piece(a[a.size() - 1 - suffix], b[b.size() - 1 - suffix])) suffix++;
-					if (prefix == 0 || suffix == 0 || prefix + suffix > a.size() || prefix + suffix > b.size()) {
+					std::vector<std::pair<size_t, size_t>> shared; // (index in a, index in b) of each shared piece, in a's order.
+					for (size_t x = 0; x < a.size(); x++) {
+						const auto it = std::ranges::find_if(b, [&](const JunctionPiece &piece) { return same_piece(a[x], piece); });
+						if (it != b.end()) shared.emplace_back(x, it - b.begin());
+					}
+					const bool ordered = std::ranges::adjacent_find(shared, [](const auto &p, const auto &q) { return q.second <= p.second; }) == shared.end();
+					if (shared.empty() || !ordered || shared.front() != std::pair<size_t, size_t>{0, 0} || shared.back() != std::pair<size_t, size_t>{a.size() - 1, b.size() - 1}) {
 						doubled = false;
 						break;
 					}
-					for (size_t x = prefix; x < a.size() - suffix && doubled; x++) {
-						for (size_t y = prefix; y < b.size() - suffix; y++) {
-							if (same_piece(a[x], b[y])) {
-								doubled = false;
-								break;
-							}
-						}
+					for (size_t k = 0; k + 1 < shared.size(); k++) {
+						const auto &[ai, bi] = shared[k];
+						const auto &[ai2, bi2] = shared[k + 1];
+						if (ai2 == ai + 1 && bi2 == bi + 1) continue;
+						if (units_of(a, ai + 1, ai2) != units_of(b, bi + 1, bi2)) equal_length = false;
 					}
-					if (length_of(*lanes[i]) != length_of(*lanes[j])) equal_length = false;
 				}
 			}
 			if (!doubled) {
@@ -582,7 +589,7 @@ std::vector<RuleViolation> CheckOrder(const JunctionCheckContext &ctx)
 	std::vector<RuleViolation> out;
 	for (const JunctionPath &path : ctx.paths) {
 		const std::vector<SwitchEvent> events = SwitchEventsOf(ctx.layout, used, path);
-		const bool is_ml = IsThroughPath(ctx, path);
+		const bool is_ml = IsMainLinePath(ctx, path);
 		if (is_ml) {
 			const SwitchEvent *previous = nullptr;
 			for (const SwitchEvent &event : events) {
@@ -664,7 +671,7 @@ std::vector<RuleViolation> CheckBridges(const JunctionCheckContext &ctx)
 		if (HasPrioList(*ctx.topology) && std::ranges::none_of(ctx.paths, [&](const JunctionPath &path) { return HoldsPrio(ctx, path) && std::ranges::any_of(path.pieces, on_bridge); })) continue;
 		bool doubled = true;
 		for (const JunctionPath &ml : ctx.paths) {
-			const bool is_ml = IsThroughPath(ctx, ml);
+			const bool is_ml = IsMainLinePath(ctx, ml);
 			if (!is_ml || std::ranges::none_of(ml.pieces, on_bridge)) continue;
 			const bool has_other = std::ranges::any_of(ctx.paths, [&](const JunctionPath &other) {
 				return &other != &ml && SameLanePath(other, ml) && std::ranges::none_of(other.pieces, on_bridge);
@@ -844,7 +851,7 @@ std::vector<std::pair<TileIndexDiffC, Trackdir>> JoinerSignals(const JunctionChe
 	std::vector<std::pair<TileIndexDiffC, Trackdir>> result;
 	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
 		const JunctionPath &ml = ctx.paths[pi];
-		const bool is_ml = IsThroughPath(ctx, ml);
+		const bool is_ml = IsMainLinePath(ctx, ml);
 		if (!is_ml) continue;
 		for (const SwitchEvent &event : SwitchEventsOf(ctx.layout, used, ml)) {
 			if (event.first) continue;
@@ -1032,7 +1039,7 @@ std::vector<RuleViolation> CheckWaitingRoom(const JunctionCheckContext &ctx)
 	/* Whole-train bays (D83) before every queue merge. */
 	const uint bay = 2u * ctx.spec.tl;
 	for (const JunctionPath &path : ctx.paths) {
-		const bool is_ml = IsThroughPath(ctx, path);
+		const bool is_ml = IsMainLinePath(ctx, path);
 		if (is_ml) continue;
 		const std::vector<SwitchEvent> events = SwitchEventsOf(ctx.layout, used, path);
 		for (const SwitchEvent &event : events) {
@@ -1243,7 +1250,7 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 	std::set<size_t> matched;
 	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
 		const JunctionPath &ml = ctx.paths[pi];
-		const bool is_ml = IsThroughPath(ctx, ml) && HoldsPrio(ctx, ml);
+		const bool is_ml = IsMainLinePath(ctx, ml) && HoldsPrio(ctx, ml);
 		if (!is_ml) continue;
 
 		for (const SwitchEvent &event : SwitchEventsOf(layout, used, ml)) {
@@ -1327,7 +1334,6 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			const TrackBits cross_bits{axis, perp};
 			const bool along_x = axis == Track::X;
 			auto along = [&](Key key) { return along_x ? key.first : key.second; };
-			auto across = [&](Key key) { return along_x ? key.second : key.first; };
 
 			auto piece_index_of = [&](Key key) {
 				for (size_t i = 0; i < ml.pieces.size(); i++) {
@@ -1337,9 +1343,10 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			};
 
 			/*
-			 * 1. Shape: streamlined joins on p, and one row of tiles beside p.
-			 * A join links the ML tile T on p to the row tile T' across a side edge: T holds the axis and a half piece h1
-			 * touching that side and p's exit edge, T' holds the axis and a half piece h2 touching the ML side and p's entry edge.
+			 * 1. Shape: streamlined joins on p. The prio row has no shape rule: G9b judges that it holds, and between joins it may leave p.
+			 * A join links the ML tile T on p to the row tile T' across a side edge: T holds the axis of its piece and a half piece h1
+			 * touching that side and the piece's exit edge, T' holds that axis and a half piece h2 touching the ML side and the piece's entry edge.
+			 * Any axis piece of the coverage may carry a join, so the ML may bend inside the coverage. A coverage tile with prio track that is not a join is a violation.
 			 */
 			auto corner = [](DiagDirection a, DiagDirection b) {
 				for (Track track : {Track::Upper, Track::Lower, Track::Left, Track::Right}) {
@@ -1349,7 +1356,6 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			};
 			std::vector<Key> join_keys;
 			std::map<Key, std::pair<Track, DiagDirection>> join_info; // Per join tile: h1 and p's exit edge.
-			std::map<Key, TrackBits> join_rows; // Per row tile of a join: the tracks it must hold.
 			std::vector<Key> row;
 			for (const Key &key : c_tiles) {
 				if (!p_tiles.contains(key)) {
@@ -1358,27 +1364,27 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 				}
 				bool is_join = false;
 				const JunctionPiece &p_piece = ml.pieces[piece_index_of(key)];
-				if (TrackdirToTrack(p_piece.trackdir) == axis) {
+				if (IsDiagonalTrackdir(p_piece.trackdir)) {
+					const Track piece_axis = TrackdirToTrack(p_piece.trackdir);
 					const DiagDirection exit_edge = TrackdirToExitdir(p_piece.trackdir);
 					for (DiagDirection side = DiagDirection::Begin; side < DiagDirection::End && !is_join; side++) {
-						if (TrackTouches(axis, side)) continue;
+						if (TrackTouches(piece_axis, side)) continue;
 						const Track h1 = corner(side, exit_edge);
 						const Track h2 = corner(ReverseDiagDir(side), ReverseDiagDir(exit_edge));
 						const TileIndexDiffC other = AddTiles(to_tile(key), TileIndexDiffCByDiagDir(side));
 						/* On the merge tile the join also holds the joiner's half piece. */
-						TrackBits join_tracks{axis, h1};
+						TrackBits join_tracks{piece_axis, h1};
 						if (key == tile_key && joiner != nullptr) join_tracks.Set(TrackdirToTrack(joiner->pieces[joiner_index].trackdir));
 						if (TracksAt(layout, to_tile(key)) != join_tracks || unused[key] != TrackBits{h1}) continue;
 						/* On the merge tile nothing continues downstream, so the row tile holds h2 alone; the axis would be a stub. */
 						const bool merge_join = key == tile_key;
-						const TrackBits row_tracks = merge_join ? TrackBits{h2} : TrackBits{axis, h2};
+						const TrackBits row_tracks = merge_join ? TrackBits{h2} : TrackBits{piece_axis, h2};
 						const TrackBits other_tracks = TracksAt(layout, other);
-						if (!c_tiles.contains({other.x, other.y}) || !(other_tracks == row_tracks || (merge_join && other_tracks == TrackBits{axis, h2}))) continue;
+						if (!c_tiles.contains({other.x, other.y}) || !(other_tracks == row_tracks || (merge_join && other_tracks == TrackBits{piece_axis, h2}))) continue;
 						if (merge_join && other_tracks != row_tracks) AddViolation(out, JunctionRule::Prio, other, "stub on the merge-tile join");
 						is_join = true;
 						join_keys.push_back(key);
 						join_info[key] = {h1, exit_edge};
-						join_rows[{other.x, other.y}] = other_tracks;
 					}
 				}
 				if (is_join) continue;
@@ -1386,14 +1392,6 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio rung must be a streamlined join");
 				} else {
 					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio track on the ML is not a streamlined join");
-				}
-			}
-			for (const Key &key : row) {
-				const TrackBits tracks = TracksAt(layout, to_tile(key));
-				if (across(key) != across(row.front()) || std::abs(across(key) - across(tile_key)) != 1) {
-					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio tile is not in the single row beside the ML");
-				} else if (tracks != axis_bits && !(join_rows.contains(key) && tracks == join_rows[key])) {
-					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio tile holds tracks other than the axis and a join");
 				}
 			}
 
@@ -1473,7 +1471,6 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			}
 
 			/* 5. Prio signals face upstream, one between consecutive segments, Exit farthest, Combo elsewhere. */
-			const Trackdir upstream = ReverseTrackdir(merge_piece.trackdir);
 			std::vector<const JunctionSignal *> prio_signals;
 			for (const JunctionSignal &signal : layout.signals) {
 				if (std::ranges::find(row, Key{signal.offset.x, signal.offset.y}) != row.end()) prio_signals.push_back(&signal);
@@ -1485,7 +1482,11 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 			for (const JunctionSignal *signal : prio_signals) farthest = std::max(farthest, std::abs(along({signal->offset.x, signal->offset.y}) - along(tile_key)));
 			for (const JunctionSignal *signal : prio_signals) {
 				const int pos = along({signal->offset.x, signal->offset.y});
-				if (signal->facing != upstream) AddViolation(out, JunctionRule::Prio, signal->offset, "prio signal does not face upstream");
+				/* Upstream along the main-line axis piece it sits beside (D342: the main line may bend inside the coverage). */
+				const bool faces_upstream = std::ranges::any_of(ml.pieces, [&](const JunctionPiece &piece) {
+					return !piece.on_bridge && IsDiagonalTrackdir(piece.trackdir) && std::abs(piece.tile.x - signal->offset.x) + std::abs(piece.tile.y - signal->offset.y) == 1 && ReverseTrackdir(piece.trackdir) == signal->facing;
+				});
+				if (!faces_upstream) AddViolation(out, JunctionRule::Prio, signal->offset, "prio signal does not face upstream");
 				const SignalType wanted = std::abs(pos - along(tile_key)) == farthest ? SignalType::Exit : SignalType::Combo;
 				if (signal->type != wanted) AddViolation(out, JunctionRule::Prio, signal->offset, "the farthest prio signal must be Exit and the others Combo");
 				const bool between = join_positions.size() > 1 && pos > join_positions.front() && pos < join_positions.back() &&
@@ -1693,7 +1694,7 @@ std::vector<RuleViolation> CheckPrioReach(const JunctionCheckContext &ctx)
 
 	for (size_t pi = 0; pi < ctx.paths.size(); pi++) {
 		const JunctionPath &ml = ctx.paths[pi];
-		const bool is_ml = IsThroughPath(ctx, ml);
+		const bool is_ml = IsMainLinePath(ctx, ml);
 		if (!is_ml) continue;
 
 		for (const SwitchEvent &event : SwitchEventsOf(layout, used, ml)) {

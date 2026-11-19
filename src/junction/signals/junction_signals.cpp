@@ -32,59 +32,30 @@
 
 #include "../../safeguards.h"
 
-std::vector<std::pair<bool, size_t>> JunctionRouteEvents(const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const std::vector<JunctionTrackRoute> &routes, size_t r)
+/**
+ * The check context of a layout and the routes drawn in it, built by hand: the pass has no topology, ports or movements, so the routes' pieces are the paths,
+ * a route's group is both its slots, and a local topology flags the main groups as prio, which is all CheckPrio and CheckPrioReach read of it.
+ * @param topology Receives the local topology; the context points to it, so it must outlive the context.
+ */
+static JunctionCheckContext MakePassCheckContext(const JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionSignalNetwork &network, const JunctionSpec &spec, JunctionTopology &topology)
 {
-	const JunctionTrackRoute &route = routes[r];
-	std::vector<std::pair<bool, size_t>> events;
-	/* The node piece at each boundary between consecutive edges: a split's belongs to the out-edge, a merge's to the in-edge. */
-	for (size_t i = 1; i < route.tags.size(); i++) {
-		if (route.tags[i].edge == route.tags[i - 1].edge) continue;
-		const JunctionTrackEdge &in = graph.edges[route.tags[i - 1].edge];
-		if (!in.to.node) continue;
-		const bool split = graph.nodes[in.to.index].split;
-		events.emplace_back(split, split ? i : i - 1);
+	std::vector<JunctionPath> paths;
+	for (size_t r = 0; r < routes.size(); r++) {
+		const uint16_t slot = static_cast<uint16_t>(network.routes[r].group);
+		JunctionPath path;
+		path.from = JunctionPortRole::EIn;
+		path.to = JunctionPortRole::EOut;
+		path.pieces = routes[r].pieces;
+		path.from_slot = slot;
+		path.to_slot = slot;
+		paths.push_back(std::move(path));
+		const bool known = std::ranges::any_of(topology.lane_paths, [&](const JunctionLanePath &lane) { return lane.from == slot; });
+		if (!known) topology.lane_paths.push_back({slot, slot, 0, network.routes[r].main});
 	}
-	/* The lane split and merge of each doubled edge: switches both copies pass, located by the copy that bends there. */
-	for (const uint32_t e : graph.path_edges[route.path]) {
-		if (programs.copies[e].empty()) continue;
-		size_t sibling = routes.size();
-		for (size_t s = 0; s < routes.size(); s++) {
-			if (routes[s].path == route.path && routes[s].copy != route.copy) sibling = s;
-		}
-		if (sibling == routes.size()) continue;
-		const JunctionTrackRoute &copy0 = route.copy == 0 ? route : routes[sibling];
-		const JunctionTrackRoute &copy1 = route.copy == 0 ? routes[sibling] : route;
-		const auto with_role = [](const std::vector<JunctionTrackStep> &program, JunctionTrackStep::Role role) {
-			for (size_t t = 0; t < program.size(); t++) {
-				if (program[t].kind == JunctionTrackStep::Kind::SBend && program[t].role == role) return t;
-			}
-			return program.size();
-		};
-		const size_t split_token = with_role(programs.copies[e], JunctionTrackStep::Role::LaneSplit);
-		const size_t merge_token = with_role(programs.edges[e], JunctionTrackStep::Role::LaneMerge);
-		const auto on_tile = [&](TileIndexDiffC tile) -> std::optional<size_t> {
-			for (size_t k = 0; k < route.pieces.size(); k++) {
-				if (!route.pieces[k].on_bridge && route.pieces[k].tile.x == tile.x && route.pieces[k].tile.y == tile.y) return k;
-			}
-			return std::nullopt;
-		};
-		for (size_t i = 0; i < copy1.tags.size(); i++) {
-			if (copy1.tags[i].edge != e || copy1.tags[i].copy != 1 || copy1.tags[i].token != split_token) continue;
-			if (const std::optional<size_t> k = on_tile(copy1.pieces[i].tile); k.has_value()) events.emplace_back(true, *k);
-			break;
-		}
-		for (size_t i = copy0.tags.size(); i-- > 0;) {
-			if (copy0.tags[i].edge != e || copy0.tags[i].copy != 0 || copy0.tags[i].token != merge_token) continue;
-			if (const std::optional<size_t> k = on_tile(copy0.pieces[i].tile); k.has_value()) events.emplace_back(false, *k);
-			break;
-		}
-	}
-	std::ranges::stable_sort(events, [](const std::pair<bool, size_t> &a, const std::pair<bool, size_t> &b) { return a.second != b.second ? a.second < b.second : a.first > b.first; });
-	events.erase(std::unique(events.begin(), events.end()), events.end());
-	return events;
+	return JunctionCheckContext{layout, spec, &topology, {}, {}, {}, std::move(paths), {}};
 }
 
-std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionTopology &topology, const std::vector<JunctionLanePath> &paths, const JunctionTrackGraph &graph, const JunctionTrackPrograms &programs, const JunctionSpec &spec, std::string *why, std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> *prio_beside, const std::vector<JunctionPrioSpan> *prio)
+std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layout, const std::vector<JunctionTrackRoute> &routes, const JunctionSignalNetwork &network, const JunctionSpec &spec, std::string *why, std::vector<std::pair<TileIndexDiffC, TileIndexDiffC>> *prio_beside, const std::vector<JunctionPrioSpan> *prio)
 {
 	using Reason = JunctionSignalReason;
 	std::vector<JunctionTrackSignal> tokens;
@@ -136,11 +107,11 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 	/* Phase 0: the prio elements (DESIGN-G1 §12.4). Each draws its own joins, row, row signals and the ML signals inside its coverage; the joiner's Entry follows in phase 4. */
 	const int n_prio = static_cast<int>(spec.prio_tiles + (spec.prio_tiles & 1));
 	std::vector<std::pair<size_t, size_t>> entries; // The joiner route and the index of its merge piece.
+	std::vector<std::tuple<size_t, size_t, size_t, size_t, DiagDirection>> deferred; // Prios the pattern did not fit, searched last: the main route, its merge piece, the joiner route, its merge piece, the row side.
 	for (size_t r = 0; r < routes.size(); r++) {
-		const auto &movement = topology.movements[paths[routes[r].path].movement];
-		if (!topology.groups[movement.first].main || !topology.groups[movement.second].main) continue;
+		if (!network.routes[r].main) continue;
 		const std::vector<JunctionPiece> &P = routes[r].pieces;
-		const std::vector<SwitchEvent> switches = JunctionRouteEvents(graph, programs, routes, r);
+		const std::vector<SwitchEvent> &switches = network.routes[r].switches;
 		for (const SwitchEvent &merge : switches) {
 			if (merge.first) continue;
 			const size_t j = merge.second;
@@ -148,21 +119,16 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 			const TileIndexDiffC M = mp.tile;
 
 			/* 1. The joiner: the merge node n of the event (the last piece of an edge that ends at a node), and the first route of another movement whose lane path has an edge ending at n; k is that route's node piece. */
-			if (j + 1 >= P.size() || routes[r].tags[j].edge == routes[r].tags[j + 1].edge || !graph.edges[routes[r].tags[j].edge].to.node) continue;
-			const uint16_t node = graph.edges[routes[r].tags[j].edge].to.index;
+			const auto merge_node = std::ranges::find(network.routes[r].merge_nodes, j, &std::pair<size_t, uint32_t>::first);
+			if (merge_node == network.routes[r].merge_nodes.end()) continue;
+			const uint32_t node = merge_node->second;
 			std::optional<size_t> joiner, joiner_k;
 			for (size_t r2 = 0; r2 < routes.size() && !joiner.has_value(); r2++) {
-				if (paths[routes[r2].path].movement == paths[routes[r].path].movement) continue;
-				for (const uint32_t e : graph.path_edges[routes[r2].path]) {
-					if (!graph.edges[e].to.node || graph.edges[e].to.index != node) continue;
-					for (size_t k = routes[r2].tags.size(); k-- > 0;) {
-						if (routes[r2].tags[k].edge != e) continue;
-						joiner = r2;
-						joiner_k = k;
-						break;
-					}
-					break;
-				}
+				if (network.routes[r2].group == network.routes[r].group) continue;
+				const auto arrival = std::ranges::find(network.routes[r2].arrivals, node, &std::pair<uint32_t, size_t>::first);
+				if (arrival == network.routes[r2].arrivals.end()) continue;
+				joiner = r2;
+				joiner_k = arrival->second;
 			}
 			if (!joiner.has_value()) continue;
 			if (tracks_at(tracks, M) != tracks_at(used, M)) continue;
@@ -208,7 +174,11 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 				}
 			}
 			if (!fits) {
-				if (why != nullptr && why->empty()) *why = fmt::format("the prio element at {},{} does not fit", M.x, M.y);
+				if (prio == nullptr) {
+					deferred.emplace_back(r, j, *joiner, *joiner_k, *side);
+				} else if (why != nullptr && why->empty()) {
+					*why = fmt::format("the prio element at {},{} does not fit", M.x, M.y);
+				}
 				continue;
 			}
 
@@ -245,7 +215,7 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 	for (size_t r = 0; r < routes.size(); r++) {
 		const std::vector<JunctionPiece> &P = routes[r].pieces;
 		const int64_t n = static_cast<int64_t>(P.size());
-		const std::vector<SwitchEvent> switches = JunctionRouteEvents(graph, programs, routes, r);
+		const std::vector<SwitchEvent> &switches = network.routes[r].switches;
 		std::vector<Event> events;
 		for (const SwitchEvent &sw : switches) events.push_back({sw.second, sw.second, false, sw.first});
 		for (size_t i = 0; i < P.size(); i++) {
@@ -305,10 +275,9 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 	/* Phase 2: the whole-train bays before the merges of non-through paths, walked as PlaceBaySignals walks them. */
 	const uint bay = 2u * spec.tl;
 	for (size_t r = 0; r < routes.size(); r++) {
-		const auto &movement = topology.movements[paths[routes[r].path].movement];
-		if (topology.groups[movement.first].main && topology.groups[movement.second].main) continue;
+		if (network.routes[r].main) continue;
 		const std::vector<JunctionPiece> &P = routes[r].pieces;
-		const std::vector<SwitchEvent> events = JunctionRouteEvents(graph, programs, routes, r);
+		const std::vector<SwitchEvent> &events = network.routes[r].switches;
 		for (const SwitchEvent &event : events) {
 			if (event.first) continue;
 			const size_t m = event.second;
@@ -359,19 +328,185 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 		});
 	}
 	/* Phase 4: the joiner's last signal before each element's merge is an Entry. */
-	for (const auto &[r2, k] : entries) {
+	const auto mark_entry = [&](std::vector<JunctionSignal> &list, size_t r2, size_t k) {
 		const std::vector<JunctionPiece> &P = routes[r2].pieces;
-		const std::vector<SwitchEvent> switches = JunctionRouteEvents(graph, programs, routes, r2);
+		const std::vector<SwitchEvent> &switches = network.routes[r2].switches;
+		const auto signalled = [&](const JunctionPiece &piece) {
+			return !piece.on_bridge && std::ranges::any_of(list, [&](const JunctionSignal &signal) { return signal.offset.x == piece.tile.x && signal.offset.y == piece.tile.y && signal.facing == piece.trackdir; });
+		};
 		for (size_t i = k; i-- > 0;) {
 			if (std::ranges::any_of(switches, [&](const SwitchEvent &sw) { return sw.second > i && sw.second < k; })) break;
-			if (!is_signalled(P[i])) continue;
-			for (JunctionSignal &signal : signals) {
+			if (!signalled(P[i])) continue;
+			for (JunctionSignal &signal : list) {
 				if (signal.offset.x == P[i].tile.x && signal.offset.y == P[i].tile.y && TrackdirToTrack(signal.facing) == TrackdirToTrack(P[i].trackdir)) signal.type = SignalType::Entry;
 			}
 			break;
 		}
-	}
+	};
+	for (const auto &[r2, k] : entries) mark_entry(signals, r2, k);
 	for (const auto &[tile, bits] : drawn) AddJunctionTracks(layout, tile, bits);
 	layout.signals.insert(layout.signals.end(), signals.begin(), signals.end());
+
+	/*
+	 * Phase 5: the prios the pattern did not fit, by search over the finished tracks and signals.
+	 * Elements along the main line upstream of the merge, in walk order: the merge-tile join, then pairs of a signal (ML signal and reversed row signal) and a join, ending with a join.
+	 * Depth first, fewest elements first, each element on a later piece than the previous, the first candidate at each depth being the pattern's own position.
+	 * A leaf is drawn into a scratch copy of the layout and judged by CheckPrio and CheckPrioReach: it is taken when no violation names a tile of this prio.
+	 */
+	constexpr uint MAX_PRIO_LEAVES = 20000;
+	for (const auto &[r, j, joiner, joiner_k, side] : deferred) {
+		const std::vector<JunctionPiece> &P = routes[r].pieces;
+		const std::vector<SwitchEvent> &switches = network.routes[r].switches;
+		const JunctionPiece &mp = P[j];
+		const TileIndexDiffC M = mp.tile;
+		const DiagDirection exit_edge = TrackdirToExitdir(mp.trackdir);
+		const DiagDirDiff turn = ChangeDiagDir(exit_edge, DiagDirDiff::Right90) == side ? DiagDirDiff::Right90 : DiagDirDiff::Left90;
+
+		/* The walk: step m is the piece m before the merge piece. The row tile of an axis piece is the tile on its side; a 45 degree piece between two axis pieces turning toward that side has the inner corner tile, which its two neighbours share. */
+		const int last_piece = static_cast<int>(j);
+		const auto at = [&](int m) -> const JunctionPiece * { return m < 0 || m > last_piece ? nullptr : &P[j - m]; };
+		const auto is_axis = [&](int m) { const JunctionPiece *piece = at(m); return piece != nullptr && !piece->on_bridge && IsDiagonalTrackdir(piece->trackdir); };
+		const auto side_of = [&](const JunctionPiece &piece) { return ChangeDiagDir(TrackdirToExitdir(piece.trackdir), turn); };
+		const auto corner = [&](int m) -> std::optional<TileIndexDiffC> {
+			const JunctionPiece *piece = at(m);
+			if (m < 1 || piece == nullptr || piece->on_bridge || IsDiagonalTrackdir(piece->trackdir) || !is_axis(m - 1) || !is_axis(m + 1)) return std::nullopt;
+			const DiagDirection in = TrackdirToExitdir(at(m + 1)->trackdir);
+			const DiagDirection out = TrackdirToExitdir(piece->trackdir);
+			if (ChangeDiagDir(in, turn) != out) return std::nullopt;
+			const TileIndexDiffC to = TileIndexDiffCByDiagDir(out);
+			const TileIndexDiffC from = TileIndexDiffCByDiagDir(in);
+			return TileIndexDiffC{static_cast<int16_t>(piece->tile.x + to.x - from.x), static_cast<int16_t>(piece->tile.y + to.y - from.y)};
+		};
+		const auto row_of = [&](int m) -> std::optional<TileIndexDiffC> {
+			const JunctionPiece *piece = at(m);
+			if (piece == nullptr) return std::nullopt;
+			if (!is_axis(m)) return corner(m);
+			const TileIndexDiffC diff = TileIndexDiffCByDiagDir(side_of(*piece));
+			const TileIndexDiffC tile{static_cast<int16_t>(piece->tile.x + diff.x), static_cast<int16_t>(piece->tile.y + diff.y)};
+			for (const int neighbour : {m - 1, m + 1}) {
+				const std::optional<TileIndexDiffC> c = corner(neighbour);
+				if (c.has_value() && (c->x != tile.x || c->y != tile.y)) return std::nullopt;
+			}
+			return tile;
+		};
+		/* An axis piece with a row tile of its own: not beside a bend. */
+		const auto plain = [&](int m) { return is_axis(m) && !corner(m - 1).has_value() && !corner(m + 1).has_value(); };
+		const auto row_free = [&](int m) {
+			const std::optional<TileIndexDiffC> tile = row_of(m);
+			return tile.has_value() && tracks_at(tracks, *tile) == TrackBits{} && (m == 0 || std::ranges::none_of(switches, [&](const SwitchEvent &sw) { return sw.second == j - m; }));
+		};
+		const auto signals_on = [&](const JunctionPiece &piece) {
+			std::vector<const JunctionSignal *> found;
+			for (const JunctionSignal &signal : layout.signals) {
+				if (signal.offset.x == piece.tile.x && signal.offset.y == piece.tile.y && TrackdirToTrack(signal.facing) == TrackdirToTrack(piece.trackdir)) found.push_back(&signal);
+			}
+			return found;
+		};
+		const auto is_fill = [&](const JunctionSignal &signal) {
+			return std::ranges::any_of(tokens, [&](const JunctionTrackSignal &token) { return token.reason == Reason::Fill && token.tile.x == signal.offset.x && token.tile.y == signal.offset.y && token.facing == signal.facing; });
+		};
+		const auto candidate = [&](int m, bool join) {
+			const JunctionPiece &piece = *at(m);
+			if (!plain(m) || !row_free(m) || heads.contains({piece.tile.x, piece.tile.y})) return false;
+			if (m > 0 && tracks_at(tracks, piece.tile) != TrackBits{TrackdirToTrack(piece.trackdir)}) return false;
+			for (const JunctionSignal *signal : signals_on(piece)) {
+				if (join ? !is_fill(*signal) : signal->facing != piece.trackdir) return false;
+			}
+			return true;
+		};
+
+		/* The ML pieces and row tiles this prio owns: the checker's coverage walk, or as far as the last element. */
+		int coverage = 0;
+		for (int units = 0; coverage < last_piece && units < 2 * n_prio;) units += at(++coverage)->units;
+
+		std::vector<int> pos; // The pieces of the elements in walk order.
+		uint leaves = 0;
+		int pairs = 0;
+		const auto try_leaf = [&]() {
+			leaves++;
+			JunctionLayout scratch = layout;
+			std::vector<std::pair<TileIndexDiffC, TrackBits>> drawn_here;
+			std::vector<std::tuple<int, int, Trackdir>> removed;
+			/* The search owns the range from the merge to the farther of the coverage and its last element: the fill signals there go. */
+			for (int m = 0; m <= std::max(coverage, pos.back()); m++) {
+				for (const JunctionSignal *signal : signals_on(*at(m))) {
+					if (is_fill(*signal)) removed.emplace_back(signal->offset.x, signal->offset.y, signal->facing);
+				}
+			}
+			std::erase_if(scratch.signals, [&](const JunctionSignal &signal) { return std::ranges::find(removed, std::tuple{static_cast<int>(signal.offset.x), static_cast<int>(signal.offset.y), signal.facing}) != removed.end(); });
+			for (int m = 0; m <= pos.back(); m++) {
+				const JunctionPiece &piece = *at(m);
+				const TileIndexDiffC row_tile = *row_of(m);
+				if (!is_axis(m)) {
+					drawn_here.emplace_back(row_tile, TrackBits{TrackdirToTrack(piece.trackdir)});
+					continue;
+				}
+				const size_t e = std::ranges::find(pos, m) - pos.begin();
+				const Track piece_axis = TrackdirToTrack(piece.trackdir);
+				const DiagDirection piece_exit = TrackdirToExitdir(piece.trackdir);
+				if (e < pos.size() && e % 2 == 0) {
+					drawn_here.emplace_back(piece.tile, TrackBits{JunctionCornerTrack(side_of(piece), piece_exit)});
+					const Track h2 = JunctionCornerTrack(ReverseDiagDir(side_of(piece)), ReverseDiagDir(piece_exit));
+					drawn_here.emplace_back(row_tile, m == 0 ? TrackBits{h2} : TrackBits{piece_axis, h2});
+				} else if (plain(m)) {
+					drawn_here.emplace_back(row_tile, TrackBits{piece_axis});
+				}
+			}
+			for (const auto &[tile, bits] : drawn_here) AddJunctionTracks(scratch, tile, bits);
+			for (size_t e = 1; e < pos.size(); e += 2) {
+				const JunctionPiece &piece = *at(pos[e]);
+				if (std::ranges::none_of(scratch.signals, [&](const JunctionSignal &signal) { return signal.offset.x == piece.tile.x && signal.offset.y == piece.tile.y && signal.facing == piece.trackdir; })) {
+					scratch.signals.push_back({piece.tile, piece.trackdir, spec.signal_type, SignalVariant::Electric});
+				}
+				scratch.signals.push_back({*row_of(pos[e]), ReverseTrackdir(piece.trackdir), e + 2 == pos.size() ? SignalType::Exit : SignalType::Combo, SignalVariant::Electric});
+			}
+			mark_entry(scratch.signals, joiner, joiner_k);
+
+			JunctionTopology topology;
+			const JunctionCheckContext ctx = MakePassCheckContext(scratch, routes, network, spec, topology);
+			std::vector<RuleViolation> violations = CheckPrio(ctx);
+			for (RuleViolation &violation : CheckPrioReach(ctx)) violations.push_back(std::move(violation));
+			for (const RuleViolation &violation : violations) {
+				for (int m = 0; m <= std::max(coverage, pos.back()); m++) {
+					const std::optional<TileIndexDiffC> row_tile = row_of(m);
+					if ((violation.tile.x == at(m)->tile.x && violation.tile.y == at(m)->tile.y) || (row_tile.has_value() && violation.tile.x == row_tile->x && violation.tile.y == row_tile->y)) return false;
+				}
+			}
+
+			/* Taken: the scratch becomes the layout. */
+			for (const auto &[tile, bits] : drawn_here) tracks[{tile.x, tile.y}] |= bits;
+			std::erase_if(tokens, [&](const JunctionTrackSignal &token) { return token.reason == Reason::Fill && std::ranges::find(removed, std::tuple{static_cast<int>(token.tile.x), static_cast<int>(token.tile.y), token.facing}) != removed.end(); });
+			for (size_t e = 1; e < pos.size(); e += 2) {
+				const JunctionPiece &piece = *at(pos[e]);
+				tokens.push_back({static_cast<uint16_t>(r), Reason::Prio, piece.tile, piece.trackdir});
+				tokens.push_back({static_cast<uint16_t>(r), Reason::Prio, *row_of(pos[e]), ReverseTrackdir(piece.trackdir)});
+			}
+			for (int m = 0; m <= pos.back(); m++) {
+				if (prio_beside != nullptr && is_axis(m)) prio_beside->emplace_back(*row_of(m), at(m)->tile);
+			}
+			layout = std::move(scratch);
+			return true;
+		};
+		const std::function<bool(size_t)> search = [&](size_t i) {
+			if (i == static_cast<size_t>(2 * pairs + 1)) return try_leaf();
+			for (int m = pos.back() + 1; m + static_cast<int>(2 * pairs - i) <= last_piece && row_free(m); m++) {
+				if (!candidate(m, i % 2 == 0)) continue;
+				pos.push_back(m);
+				if (search(i + 1)) return true;
+				pos.pop_back();
+				if (leaves >= MAX_PRIO_LEAVES) return false;
+			}
+			return false;
+		};
+
+		bool placed = false;
+		if (plain(0) && row_free(0)) {
+			for (pairs = std::max(n_prio / 2 - 1, 0); pairs < std::max(n_prio, 1) && !placed && leaves < MAX_PRIO_LEAVES; pairs++) {
+				pos = {0};
+				placed = search(1);
+			}
+		}
+		if (!placed && why != nullptr && why->empty()) *why = fmt::format("the prio element at {},{} does not fit", M.x, M.y);
+	}
 	return tokens;
 }

@@ -1,0 +1,13 @@
+add_test_files(
+    planar_channels.cpp
+    planar_components.cpp
+    planar_gaps.cpp
+    planar_model.cpp
+    planar_paths.cpp
+    planar_plan.cpp
+    planar_regions.cpp
+    planar_shape.cpp
+    planar_slots.cpp
+    planar_topology.cpp
+    planar_tracks.cpp
+)

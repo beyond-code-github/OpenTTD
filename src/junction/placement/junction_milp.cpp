@@ -29,6 +29,8 @@ struct JunctionMilp::Impl {
 	std::vector<double> values; ///< Variable values of the last Optimal solve.
 	double objective = 0; ///< Objective of the last Optimal solve.
 	std::vector<uint32_t> infeasible_rows; ///< IIS rows of the last Infeasible solve.
+	std::vector<std::pair<uint32_t, double>> start; ///< The partial start solution.
+	double time_limit = 0; ///< The time limit in seconds, 0 for none.
 
 	/**
 	 * Build the HiGHS model.
@@ -67,12 +69,13 @@ struct JunctionMilp::Impl {
 	 * @param highs The solver.
 	 * @return Whether the model was accepted.
 	 */
-	static bool Setup(Highs &highs, HighsLp lp)
+	bool Setup(Highs &highs, HighsLp lp) const
 	{
 		if (highs.setOptionValue("output_flag", false) != HighsStatus::kOk) return false;
 		if (highs.setOptionValue("mip_rel_gap", 0.0) != HighsStatus::kOk) return false;
 		if (highs.setOptionValue("random_seed", 0) != HighsStatus::kOk) return false;
 		if (highs.setOptionValue("threads", 1) != HighsStatus::kOk) return false;
+		if (this->time_limit > 0 && highs.setOptionValue("time_limit", this->time_limit) != HighsStatus::kOk) return false;
 		return highs.passModel(std::move(lp)) == HighsStatus::kOk;
 	}
 };
@@ -98,6 +101,16 @@ uint32_t JunctionMilp::AddRow(std::span<const std::pair<uint32_t, double>> terms
 	return static_cast<uint32_t>(this->impl->row_lower.size() - 1);
 }
 
+void JunctionMilp::SetStart(std::vector<std::pair<uint32_t, double>> values)
+{
+	this->impl->start = std::move(values);
+}
+
+void JunctionMilp::SetTimeLimit(double seconds)
+{
+	this->impl->time_limit = seconds;
+}
+
 JunctionMilp::Status JunctionMilp::Solve()
 {
 	this->impl->values.clear();
@@ -105,7 +118,17 @@ JunctionMilp::Status JunctionMilp::Solve()
 	this->impl->infeasible_rows.clear();
 
 	Highs highs;
-	if (!Impl::Setup(highs, this->impl->BuildLp(true))) return Status::Error;
+	if (!this->impl->Setup(highs, this->impl->BuildLp(true))) return Status::Error;
+	if (!this->impl->start.empty()) {
+		std::vector<HighsInt> index;
+		std::vector<double> value;
+		for (const auto &[variable, v] : this->impl->start) {
+			if (variable >= this->impl->lower.size()) continue;
+			index.push_back(static_cast<HighsInt>(variable));
+			value.push_back(v);
+		}
+		if (highs.setSolution(static_cast<HighsInt>(index.size()), index.data(), value.data()) == HighsStatus::kError) return Status::Error;
+	}
 	if (highs.run() == HighsStatus::kError) return Status::Error;
 	switch (highs.getModelStatus()) {
 		case HighsModelStatus::kOptimal:
@@ -115,7 +138,7 @@ JunctionMilp::Status JunctionMilp::Solve()
 
 		case HighsModelStatus::kInfeasible: {
 			Highs relaxation;
-			if (!Impl::Setup(relaxation, this->impl->BuildLp(false))) return Status::Error;
+			if (!this->impl->Setup(relaxation, this->impl->BuildLp(false))) return Status::Error;
 			if (relaxation.setOptionValue("iis_strategy", 2) != HighsStatus::kOk) return Status::Error;
 			HighsIis iis;
 			if (relaxation.getIis(iis) == HighsStatus::kError) return Status::Error;

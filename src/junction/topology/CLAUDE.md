@@ -9,8 +9,8 @@
 - Main line and branch each take their own notation.
 - A topology holds ports per side as lane groups (side, direction, lane count, line, gap to the next group) and movements (in group to out group).
 - Lanes are expanded by rule, not listed; unequal lane counts are allowed.
-- `prio_movements` (D282, D298) lists the movements whose paths hold priority at their merges; empty means every main-to-main path does. A pattern block lists only the movements its prio elements serve.
-- `lane_paths` (D301), when not empty, are the lane paths exactly, each with a `prio` flag; `ExpandJunctionLanes` returns them (refusing one whose slots are not its movement's groups) and the checker reads the flag instead of `prio_movements`.
+- `prio_movements` lists the movements whose paths hold priority at their merges; empty means every main-to-main path does. A pattern block lists only the movements its prio elements serve.
+- `lane_paths`, when not empty, are the lane paths exactly, each with a `prio` flag; `ExpandJunctionLanes` returns them (refusing one whose slots are not its movement's groups) and the checker reads the flag instead of `prio_movements`.
 - Branch ports are on the S side only; N-side and both-side branches are refused as not ruled.
 - Lane pairing for multi-to-multi movements is a topology option: any (default), keep, or per direction; it applies only where both groups of a turning movement have more than one lane.
 - Driving side follows the game's road-side setting; Mirror flips a placement.
@@ -23,7 +23,7 @@
 - Every lane of a direction splits toward the branch; no shifters in LL_RR.
 - A split or merge node has two legs; a lane bound for more than two keys splits as a cascade of two-way nodes over contiguous halves of the ordered key list (1 + 2, 2 + 2, ...); merges mirror it.
 - The order sweep (from the branch side north) gathers a band node it reaches from its legs into one item: a merge's legs into its out edge, a split's legs into its in edge; the legs must be adjacent items, else the order fails.
-- A bundle graph (D289) is the track graph of the topology with every group as one lane: each movement is one bundle, every edge as wide as the lane count, split nodes exit blocks and merge nodes join blocks; all groups need the same lane count.
+- A bundle graph is the track graph of the topology with every group as one lane: each movement is one bundle, every edge as wide as the lane count, split nodes exit blocks and merge nodes join blocks; all groups need the same lane count.
 - Crossings are counted per graph edge; two paths cross when their end ports interleave around the box; every chord pair is crossed exactly once.
 - Over and under: a crossed row edge (a lane along its own row) carries one doubled bridge over all its crossings.
 - A crossed out edge (the joiner merged before the crossing) carries its doubled bridge like the leg with the items swapped: copy 1 S-bends from the lane to the row's copy item before the bridge, copy 0 after it, and the fan leaves from the copy item.
@@ -38,7 +38,7 @@
 - The sweep records each band's line of edges before and after every event. The arrangement lists each event's replacement block (the contiguous edges it takes out of the line and the ones it puts in), every pair of edges that are neighbours in some order of the band's events the layers allow (marked when only another order than the sweep's makes them neighbours), and every unordered pair of events whose edges can be neighbours.
 - The arrangement cuts each band edge at its ends, its crossings with band edges, its passes under a row's doubled bridge and its free bends (bends serving no end or crossing); the segments between cuts lie in one band or on a row's item rows; each bend names the cut it serves, whether it approaches it, and the edges it moves toward.
 - Rows: lanes spread inside the box by S-bends to open rows for prio rows, doubling copies and joiner approaches, and return to the notation spacing at the ports.
-- An S branch port edge starts (in) or ends (out) with a Fan token, on in and out ports alike: the west half of its group opens west, the east half east, the middle lane of an odd group (a one-lane group) has none, so the port block lies between its lanes' inside ends. In a bundle graph the halves are counted over the S side's non-main groups, not the group's lanes (DESIGN-blocks §7.1), so the bundles open apart.
+- An S branch port edge starts (in) or ends (out) with a Fan token, on in and out ports alike: the west half of its group opens west, the east half east, the middle lane of an odd group (a one-lane group) has none, so the port block lies between its lanes' inside ends. In a bundle graph the halves are counted over the S side's non-main groups, not the group's lanes, so the bundles open apart.
 - A prio sits opposite the joiner; the approach is on the joiner's side; a crossed lane's doubling copy shares the prio's row or sits away from the branch.
 - A row change sits next to the feature it serves, and the free run lies on its other side.
 - A band edge's S-bend names the node it serves: Diverge (the split it leaves), Converge (the merge it joins, a joiner's arrival included).

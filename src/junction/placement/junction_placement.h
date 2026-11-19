@@ -12,6 +12,7 @@
 
 #include "../terrain/junction_facts.h"
 #include "../junction_layout.h"
+#include "../signals/junction_signals.h"
 #include "../terrain/junction_terraform.h"
 #include "../topology/junction_topology.h"
 
@@ -270,12 +271,6 @@ struct JunctionPlacementSystem {
  * @return The bits on the element's row and those on the main line (lane row) tile of the same column.
  */
 std::pair<TrackBits, TrackBits> JunctionPrioStepBits(int step, DiagDirection side, DiagDirection exit_edge);
-
-/** One prio element as the placement fixes it (DESIGN-G1 12.4). */
-struct JunctionPrioSpan {
-	std::vector<std::pair<TileIndexDiffC, TrackBits>> tiles; ///< Its tiles in drawing order (per step upstream of the merge: the main-line tile's corner half on even steps, then the row tile) with the bits drawn on each.
-	TileIndexDiffC merge; ///< The joiner merge's tile (step 0 on the main line).
-};
 
 /** The seed placement of a programmed track graph (DESIGN-G1 §11.8): tiles only, x east, y south, (0, 0) the box's north-west corner. */
 struct JunctionTrackPlacement {

@@ -49,6 +49,7 @@
 #include "../../debug.h"
 #include "../../widgets/junction_widget.h"
 #include "../../map_func.h"
+#include "../planar/planar_plan.h"
 #include "../../slope_func.h"
 #include "../../slider_func.h"
 #include "../../tile_cmd.h"
@@ -673,6 +674,7 @@ struct JunctionGenerateJob {
 	std::shared_ptr<const std::vector<JunctionLibraryEntry>> library; ///< Library for the spec, or null if not built yet.
 	bool projection = false; ///< The job runs the projection pipeline: seed in, projection_result out.
 	std::shared_ptr<const JunctionGraphSeed> seed; ///< The T graph seed of the spec, for the projection pipeline.
+	std::shared_ptr<const PlanarSeed> planar; ///< The planar seed, when the client setting selects the planar model.
 	JunctionProjectionResult projection_result; ///< Written by the worker of a projection job.
 };
 
@@ -1186,6 +1188,53 @@ struct BuildJunctionWindow : public PickerWindowBase {
 		this->pending_key = key;
 	}
 
+	/** The hover job on the planar model (DESIGN-planar §4): the window's hub type as an authored topology, its cached flat seed, and PlanPlanarHoverNear on a snapshot of the seed's box. */
+	void StartPlanarJob(std::shared_ptr<JunctionGenerateJob> job, const JunctionGenerateKey &key)
+	{
+		job->projection = true;
+		this->pending_key = key;
+		const std::string text = PlanarHubText(this->ml_line.left_tracks, this->branch_line.left_tracks, static_cast<JunctionLanePairing>(key.lane_pairing));
+		if (text.empty()) {
+			job->projection_result.why = "no planar topology for this hub type";
+			job->done = true;
+			this->pending_job = std::move(job);
+			return;
+		}
+		job->planar = PlanarSeedFor(text, job->spec);
+		if (!job->planar->why.empty()) {
+			job->projection_result.why = job->planar->why;
+			job->done = true;
+			this->pending_job = std::move(job);
+			return;
+		}
+		JunctionFrame frame;
+		frame.hub_x = job->planar->geometry.width / 2;
+		frame.width = job->planar->geometry.width;
+		frame.terrain_origin_y = 0;
+		frame.terrain_height = job->planar->geometry.height;
+		const int margin = 8 + std::max(JUNCTION_HOVER_NEAR_COLUMNS, JUNCTION_HOVER_NEAR_ROWS);
+		job->terrain = MakeJunctionTerrain(key.anchor, key.rotation, key.mirrored, frame, margin);
+		const int hub_x = frame.hub_x;
+		if (!StartNewThread(&this->pending_thread, "ottd:junctionproj", [job, key, hub_x]() {
+			JunctionHoverPlan plan = PlanPlanarHoverNear(*job->planar, job->spec, job->terrain, {0, 0}, &job->cancel);
+			JunctionProjectionResult &result = job->projection_result;
+			result.why = plan.why;
+			result.height_cost = plan.height_cost;
+			result.track_levels = plan.track_levels;
+			result.hub = {static_cast<int16_t>(hub_x - plan.moved.x), static_cast<int16_t>(-plan.moved.y)};
+			result.distance = std::max(std::abs(plan.moved.x), std::abs(plan.moved.y));
+			if (plan.layout.has_value()) {
+				result.steps = MakeJunctionTerraformSteps(plan.terraform, job->terrain, key.anchor, key.rotation, key.mirrored, hub_x);
+				result.layout = std::move(plan.layout);
+			}
+			job->done = true;
+		})) {
+			job->projection_result.why = "no thread";
+			job->done = true;
+		}
+		this->pending_job = std::move(job);
+	}
+
 	/**
 	 * Start a projection job: the seed is made here on the main thread, once per spec; the worker plans on the snapshot and makes the terraform steps.
 	 * @param job The job, with its spec set.
@@ -1194,6 +1243,10 @@ struct BuildJunctionWindow : public PickerWindowBase {
 	void StartProjectionJob(std::shared_ptr<JunctionGenerateJob> job, const JunctionGenerateKey &key)
 	{
 		if (this->ml_gap == 0) return;
+		if (_settings_client.gui.junction_planar) {
+			this->StartPlanarJob(std::move(job), key);
+			return;
+		}
 		JunctionGenerateKey spec_key = key;
 		spec_key.anchor = INVALID_TILE;
 		spec_key.rotation = 0;

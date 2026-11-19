@@ -30,6 +30,8 @@ public:
 	~JunctionMilp();
 	uint32_t AddVariable(double lower, double upper, double cost, bool integer); ///< Returns the variable's index.
 	uint32_t AddRow(std::span<const std::pair<uint32_t, double>> terms, double lower, double upper); ///< lower <= sum(coef * x) <= upper; returns the row's index.
+	void SetStart(std::vector<std::pair<uint32_t, double>> values); ///< A partial start solution (variable, value) the next solves try first (HiGHS setSolution); it changes no result, only the search.
+	void SetTimeLimit(double seconds); ///< A time limit in seconds for the next solves; a solve that reaches it returns Error.
 	Status Solve(); ///< Minimises the objective.
 	double Value(uint32_t variable) const; ///< After Optimal.
 	double Objective() const; ///< After Optimal.

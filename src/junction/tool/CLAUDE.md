@@ -16,6 +16,7 @@
 - The picked train, the prio slider, notations, TL, signal type and lane pairing persist across sessions in the client config.
 - Design speed is `min(train, rail type)`.
 - Persistent values are client settings (`openttd.cfg`, `gui.junction_*`), never the savegame.
+- `gui.junction_planar` (openttd.cfg only) makes the hover plan on the planar model: the window's hub type through `PlanarHubText`, its cached seed, and `PlanPlanarHoverNear`.
 - The window shows a persistent cost line (`Cost: {YELLOW}{CURRENCY_LONG}`), red when unaffordable or invalid.
 - Shift-click shows the estimated cost of the whole junction at the clicked tile and never starts building.
 - Invalid-placement text is generic ("tiles shown in red can't be used"); only "too close to edge of map" stays specific.

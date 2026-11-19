@@ -1,0 +1,24 @@
+add_files(
+    planar_channels.cpp
+    planar_channels.h
+    planar_components.cpp
+    planar_components.h
+    planar_gaps.cpp
+    planar_gaps.h
+    planar_layout.cpp
+    planar_layout.h
+    planar_model.cpp
+    planar_model.h
+    planar_paths.cpp
+    planar_paths.h
+    planar_plan.cpp
+    planar_plan.h
+    planar_regions.cpp
+    planar_regions.h
+    planar_shape.cpp
+    planar_shape.h
+    planar_slots.cpp
+    planar_slots.h
+    planar_topology.cpp
+    planar_topology.h
+)
