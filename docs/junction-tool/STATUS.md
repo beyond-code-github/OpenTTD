@@ -3,6 +3,7 @@
 History lives in git. The previous STATUS: `git show d18117a214:docs/junction-tool/STATUS.md`. Planned work: ROADMAP.md. Rulings: DECISIONS.md, where later rows win and dead rows were removed on 2026-11-18. Current design: DESIGN-tracks.md. Docs culled 2026-11-18 (695 legacy or finished files removed; every file and why: wip/CULL-docs-proposal.md; all of them in git at a7f10e9af0). 84 files the cull was unsure of are still here, awaiting review.
 
 ## Where things are
+- **PLAN (engineer agreed 2026-11-19):** probing frozen. Land only what survives the track-map redesign: (1) wasted sideways measure (WS running, wip/BRIEF-WS-measure.md), (2) lane offsets at least (o), (3) side-trial clash fallback; then resume DESIGN-tracks 16 at step 2 (headings from the shape program over the track map, slots from track order, generic lines: rules only, no recipes). Bendy prio (D347b), far-lane step, E jog become generic rules / searched choices there, not recipe patches. Every probe and landing branches from feature/junction-tool.
 - **Architecture:** the planar solver, merged into feature/junction-tool at 41575a7909 (2026-11-19); worktree `.claude/ng1` on wt-tracks for builds. Branch clean-up and the landing plan: wip/INVENTORY-branches.md. The old pipeline (topology, graph, placement, joint loop) is legacy: its code is in the tree, but it gets no new work.
 - **Docs:** `feature/junction-tool`, pushed at session end.
 - **Bests:**
