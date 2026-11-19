@@ -186,3 +186,43 @@ The skeleton (topology, over/under per crossing, ties, flips) expanded mechanica
 - **Sides per stretch, not per line:** two stretches that bound a common face get the side that face gives; a pair whose stretches lie on both sides of each other is not a conflict when the lines cross or their parts do (no line-level exemptions).
 - **Readers (later steps):** the slot layer (order across per interval, sites as intervals), the clash loop (sides of every strand, rows included), ladders, the export's track identities, the signal pass and checker (rows and touch points).
 - **Step 1 (pure, test-first):** `BuildPlanarTrackMap` for T2, T3 and LL² over all variants, both D347b forms: the map validates (V - E + F = 2, simple faces), no per-stretch side conflict, and on T2 o1t3f1s0 joiner-over the E join's order after the crossing is J0, row(S1), S1, J1 (the paper derivation). Gate after it: generic lines on T2 within 15 s per variant and at least as compact as S3.
+
+### 16.1 After TM1: the pipeline (orchestrator, 2026-11-19 evening; engineer agreed the plan: "Yes I think so")
+skeleton -> track map (TM1, done) -> headings (TM3) -> lengths of generic lines (TM4) -> signals and checker read the map (TM5). Slots (TM2) are kept only if TM4 needs them (see 16.3).
+- **No lane is special, no recipe.** Each track of the map is built the same way, as pieces between its events. `Fray`, `Join`, `Double`, `PairDecks`, `Bundle`, `Flex`, `SlotBend`, the hand slot rules and the `prio_rows` reservation all retire. What stays is only what a ruling or the game states:
+  - pieces and curves (game: `AddPiece`, curve rows);
+  - a split or merge node: one leg keeps the heading and the other leaves it by one eighth (game: switch geometry);
+  - a crossing: the over track has a deck (bridge: axis, heads), and the under track crosses it at an angle the shape gives (game; D340 crossing rules);
+  - a copy is the D351 parallelogram one lane spacing from its line over its range;
+  - a row is its lane's pieces offset by one lane spacing, coverage at least 2P + 2 (D349);
+  - port pins (D313);
+  - separation: two stretches that bound a common face of the map are at least the clash spacing apart, on the side the map gives (per stretch, TM1).
+- **Jogs are not shapes.** D340: "Jogs stay with the construction rules that make them". The shape layer gives net turns and crossing headings only. A sideways step on a straight stretch is not a searched shape (engineer, 2026-11-19); it exists when separation or ports need it (16.3).
+
+### 16.2 TM3 headings over the track map
+The shape program (§12, `SolvePlanarShape`) runs over the map's stretches instead of channel pieces. Each track stretch gets its headings, and copies and rows get their parent's headings over their range. A leg inside a site runs from its node heading (the in track's heading, or one eighth off it for the diverging leg) to its first crossing or channel heading, turning by at most one eighth per piece, the shorter way. Every face turns once and the crossing rules hold, as today. Until TM3 lands, the probe (16.4) takes today's channel headings (`PlanarPaths`) and the leg rule above.
+
+### 16.3 TM4 generic lines
+- A track's stretch between two events is a run of required pieces, one per heading the shape gives, each of free length (at least the piece minimum). Under D340 the headings are fixed, so nothing is optional.
+- **Sideways steps:** where two neighbouring tracks must change spacing (a port pin, a node, a copy rejoin), the step lies in the pieces the shape already gives: a diagonal piece absorbs it (a parallel track's diagonal may be longer or shorter than its neighbour's). On a stretch with one axis heading there is nowhere for a step to go. The probe counts such stretches. If they block layouts, TM2 adds the step as a slot change there (§15.2's S-bend, its position free). That is the only reason TM2 would come back.
+- **Separation:** the lazy clash loop and the ladders take their sides and faces from the track map, per stretch. Rows and copies are ordinary tracks in it, so the row reservation and the greedy fallback for unsided clashes go.
+- **Prio join:** its lanes, joiners, rows and decks are tracks and crossings of the map in the chosen D347b form. Bendy prio is that choice, searched as a variant bit (2 values).
+- **Objective:** unchanged (area inside the outline, then track). `wasted` is reported beside them.
+
+### 16.4 Riskiest first: GL probe (time-boxed, throwaway, from feature/junction-tool)
+The question: can a length solve with no recipes and no bundle structure find compact layouts within 15 s per variant?
+- Build T2 (all variants, form A) from the track map with today's headings (16.2), the 16.1 rules only, the lazy loop sided by the map, ladders off at first.
+- Measure per variant: built/failed with reason, area, track, wasted, ms, and the count of single-axis stretches where a step was needed.
+- **Pass:** T2's best area at most 862.25 (S3 on the main line) and every built variant under 15 s. Then the same run on T3 and LL², then ladders from the map's faces.
+- **Kill:** most variants infeasible with an IIS that names a 16.1 rule (that rule is wrong, or something is missing from the map), or solves over 15 s with ladders off and then on.
+
+### 16.5 TM5 signals and checker
+The export carries track ids and kinds per piece (a row names its lane piece beside it). The signal pass places touch points and signals on known row/lane pairs by search (D345); its tile re-derivation of rows goes. The checker stays an independent judge on tiles (D193). Built after TM4 passes its gate.
+
+### 16.6 Order
+1. GL probe (16.4).
+2. On pass: TM3 (headings over the map).
+3. TM4 landing per hub, pv diff each.
+4. TM2, only if the probe's step count says so.
+5. TM5.
+Corpus pass 2 of the rules audit (wip/AUDIT-rules.md) checks the 16.1 list before TM4 lands.
