@@ -3,14 +3,14 @@
 First of the SSS hand-off specs (D368). Implements src/junction/planar/CLAUDE.md "Architecture" (Structure) and DESIGN-tracks §17.1. Written from the contracts and rulings, not from the code (D368: code is mapped onto it afterwards). Rulings it rests on: D343/D344 (topology), D362, D364, D365, D366, D367, D369, D349 (rows), D351/D322 (copies), D203(2)/D228/D228a (shared structures, flow bound), D347/D347b (prio over a bridge), D24 (split before merge).
 
 ## 1. Input
-- The topology (authored, D343): ports with their lines in ring order, lines, splits, merges, crossings and their order along each line, routes.
+- The topology (authored, D343): ports with their lines in ring order, lines, splits, merges, crossings and their order along each line, routes. Each crossing order is pinned or open (D343/D344); Structure decides only the open ones (triangle flips) and never re-decides a pinned one (D367).
 - The spec's rule fields: train length, prio length, lane shares and flows (for doubling and D228a), game limits (longest bridge, max tunnel length).
 Nothing else. No headings, positions or lengths exist yet.
 
 ## 2. What Structure decides (and nothing else)
 Per variant:
 1. **Ties:** at every split and merge the rules cannot settle, which leg runs straight (Terms: tie).
-2. **Triangle flips:** the order of three mutually crossing lines.
+2. **Triangle flips:** the order of three mutually crossing lines, where the topology leaves it open.
 3. **Structures (D369):** the crossings grouped into structures: a structure is a run of consecutive crossings on one line, its **separator**, with no node and no other crossing between them on that line. Every crossing belongs to exactly one structure.
 4. Per structure: the **separator** (which of the crossing lines carries it; per joiner at a prio join, D364) and its **allowed kinds** (bridge, tunnel, or either; D365, D366).
 5. **Tracks:** every physical track: the topology's lines; a **copy** beside the separator over a structure where its share needs doubling (D351, D322, D228a; one copy per structure, in series); a **row** beside each lane of a prio join over its coverage (D349).
