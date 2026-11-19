@@ -47,10 +47,13 @@
 - **Channel:** lines that travel together, with the same start, the same destination and the same crossings.
 - **Site:** where channels split or merge. Its **straight** channel continues straight; the other leaves or arrives on a **side**.
 - **Tie:** a site, or a split or merge, whose straight leg the rules cannot pick; the choice is a variant bit.
-- **Track map:** the topology with every physical track added:
-  - **copies:** a full-share lane doubled over a bridge (D351);
-  - **prio rows:** the track beside a lane at a prio join (D349).
-- **Variant:** one combination of the structure's choices (over bits, ties, triangle flips), tagged `o..t..f..s..`.
+- **Track map:** Structure's output and the Structure-to-Shape contract, one per variant: the topology with Structure's decisions and every physical track added:
+  - **copies:** a full-share separator doubled over its structure, bridge or tunnel (D351, D371);
+  - **prio rows:** the track beside a lane at a prio join (D349);
+  - **sites:** each split and merge with its straight leg; **structures:** each with its separator, span, crossers, allowed kinds and copy (D369).
+- **Event:** something that happens to a track along its length, kept in travel order: a **crossing** (with which track, and which of the two is the separator) or a **node** (the track starts or ends at a split or merge, including the copy and row splits and merges the map adds). A track's events cut it into **stretches**; sides, faces, headings and slots are given per stretch.
+- **What Shape reads from the track map that the topology lacks:** (1) the straight leg at every split and merge (its node rule: one leg keeps the heading, the other turns one eighth); (2) the structures: which crossings share one bridge or tunnel, the separator that runs straight on an axis across the span with every crossing of the structure on that piece, and the allowed kinds (the limit its span must fit; ramp tiles where a tunnel is allowed); (3) the settled crossing order (open triangles decided: flip or stack); (4) copies as tracks, with their own split, merge and legs to head.
+- **Variant:** one combination of Structure's choices (separator and kind bits, ties, triangles, groupings), each giving one track map; today's code tags them `o..t..f..s..`.
 - **Heading:** one of 8 directions; a track turns at most 45 degrees at a time. **Piece:** a straight run at one heading.
 - **Shape:** per track, its heading list and the piece each crossing sits on.
 - **Slot:** a track's sideways position in its bundle, in lane spacings. **S-bend:** the sideways move a slot change makes (turn 45 degrees, run diagonally, turn back). **Frame:** tracks whose slots share one zero.
