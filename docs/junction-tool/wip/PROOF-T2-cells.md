@@ -1,4 +1,6 @@
-# T2 hand proof of SPEC-shape §8 (D385): faces at Shape-piece level
+# T2 faces at Shape-piece level: PROBE EVIDENCE (not the proof)
+
+Role (engineer, 2026-11-21: drive everything through the real code; probes have not matched reality): this list came from the probe's copy of the face walk. It is replaced by the real Shape oracle H12 (wip/BRIEF-H12a-cells-oracle.md), whose outer test reports the same list from `CheckPlanarShapePromise`; any difference is a probe-vs-reality finding. The general argument lives in SPEC-shape §8.3.
 
 Variant o3t2f1m150 (T2 top). Source: probe env JUNCTION_G2_FACES=1, ng1 1a287ead1c. Walls walked with the face on the left; <t> is the corner turn in eighths (negative convex, positive reflex); the closing corner is computed (total -8).
 
