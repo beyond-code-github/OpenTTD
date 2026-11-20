@@ -109,3 +109,20 @@ Every Slots row above is homogeneous (closure, landing, clearance as ">= c" with
 - Shape gains a decision (dummy edges and their landing walls) and a promise (H12, convex cells).
 - 8.4: steps and flex inserts as Slots-only bends inside corridors (i), or as Shape-placed bend pairs (ii).
 - Order: prove 8.3's open points and 8.5 on paper (T2 by hand, then the corpus) before any Slots code.
+
+### 8.7 H12b: how Shape chooses dummies, and why realizability is the test (DRAFT, orchestrator, 2026-11-21 night)
+**Correction to 8.1's framing.** A dummy edge need not "land on its wall for all lengths". As in TSM, it is a refinement that the next layer enforces (Slots writes its landing rows, which restrict lengths). What must hold is that the refined representation can still be drawn, with Slots' exact quantities: that is G-feasible (8.5), and it is a property of Shape's choice.
+
+**Facts (geometry, not probe).**
+- A convex cell with fixed headings and k walls is drawable on its own and has k - 2 degrees of freedom (scale included).
+- Triangles (k = 3) are rigid: their side ratios are fixed by the headings. In orthogonal TSM every cell is a rectangle (2 degrees), and a rectangular subdivision is always drawable. In eight directions a cycle of glued triangles (or other low-freedom cells) can force contradictory scales, so convex cells alone do NOT imply G-feasible.
+- Whether a refinement is drawable is decided exactly by a linear system: per cell closure (sum of lengths times headings = 0), every wall length >= 1 (homogeneous rows scale, so >= 1 loses nothing), each dummy's landing point within its wall, plus the exact quantities Structure and Shape already know (port pins and side gaps, deck gaps and spans, beside offsets of one lane, D384's exact prio length, node and join shapes).
+
+**Proposal (H12b, H13).**
+- **H12b rule:** at each reflex bend (in heading h, out h + 1, face on the left), candidates are d in {h, h-1, h-2, h-3} (the four headings that split 225 degrees into two convex angles), each with the walls its ray can face in the cell (c = wall heading - d in [-3, -1], walked); a dummy that lands on a box edge or on a wall of a longer free run is preferred, triangles avoided where a candidate gives a cell of 4+ walls. Shape picks the first candidate in that order.
+- **H13 (new promise, its test): the refined representation is realizable** by the linear system above. Shape checks it with one LP per variant (no lengths are handed down; the LP is Shape's certificate of its own decision, tested at its output per D367). If it fails, Shape tries the next candidate at the vertices the infeasible rows name (a finite search inside Shape's own decision); if none certifies, the variant is refused with the named rows, which is a missing Structure promise (D361, never a skip).
+- Open: (a) integrality and grid parity (D382) of a realization: the LP is over the reals; scaling makes it rational and integral, but parity needs its own argument (likely: scale by 2 then shift odd as D382's forced parities allow); (b) clearance (8.3 c, d) is a separate per-cell condition.
+
+**Card for the engineer.**
+1. May Shape run an LP to certify its own refinement (H13)? It hands no lengths down; Slots still decides every length. Reading of D366/D367: a layer testing its own promise. Alternative: no LP, only combinatorial rules (avoid rigid cells by rule), with no proof of G-feasible.
+2. The fallback search (try other dummy candidates where the LP names rows) is a search inside Shape's own decision; acceptable under D361, or must the first rule be proved sufficient?
