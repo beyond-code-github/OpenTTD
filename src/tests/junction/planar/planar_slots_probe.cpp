@@ -793,8 +793,10 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 			const size_t first = k == 0 ? 0 : s.event_piece[k - 1], last = k == ne ? np - 1 : s.event_piece[k];
 			const bool has_cusp = (k == 0 && cusp_start.contains(t)) || (k == ne && cusp_end.contains(t));
 			int place_piece = -1;
-			const bool every_piece = (off & 2048) != 0 && !has_cusp && !in_span.contains({t, k});
-			if (!has_cusp && !in_span.contains({t, k})) {
+			/* G1r: a cusp only steps to the map's side, so a cusp stretch keeps its optional place too (off 262144: the old rule, none). */
+			const bool place_blocked = has_cusp && (off & 262144) != 0;
+			const bool every_piece = (off & 2048) != 0 && !place_blocked && !in_span.contains({t, k});
+			if (!place_blocked && !in_span.contains({t, k})) {
 				const bool ends_split = k == ne && !line.to.port && is_split(line.to.index);
 				place_piece = static_cast<int>(ends_split ? last : first);
 			}
@@ -2008,8 +2010,63 @@ TEST_CASE("planar probe: G1m the base with forced parities as cuts", "[junction]
 			const G1Result r = SolveG1(topology, spec, v, off);
 			std::cout << fmt::format("G1M {} {} off={} cuts={} solved={} timeout={} ms={:.0f} steps={} W={} H={} clashes={} audit={} why={}\n", name, v.structure.tag, off, r.forced.size(), r.solved ? 1 : 0, g1_timeouts != t0 ? 1 : 0, r.ms, r.step_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.audit.size(), r.why.substr(0, 120));
 			for (const std::string &line : r.audit) std::cout << fmt::format("G1M AUDIT {} {} {}\n", name, v.structure.tag, line);
-			if (i == 0) for (const std::string &line : r.iis) std::cout << fmt::format("G1M IIS {} {} {}\n", name, v.structure.tag, line);
+			if (i == 0 && !r.solved && r.iis.size() <= 40) for (const std::string &line : r.iis) std::cout << fmt::format("G1M IIS {} {} {}\n", name, v.structure.tag, line);
 			}
 		}
 	}
+}
+
+/** G1p: nodes of the expanded map with one track both in and out (a node in the middle of a track). */
+TEST_CASE("planar probe: G1p nodes in the middle of a track", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		for (size_t i = 0; i < 3 && i < shape.variants.size(); i++) {
+			const PlanarTrackMap &map = shape.variants[i].structure.map;
+			for (size_t n = 0; n < map.expanded.nodes.size(); n++) {
+				const PlanarNode &node = map.expanded.nodes[n];
+				std::string ins, outs;
+				bool both = false;
+				for (const uint32_t t : node.in) { ins += " " + map.tracks[t].name; both = both || std::ranges::find(node.out, t) != node.out.end(); }
+				for (const uint32_t t : node.out) outs += " " + map.tracks[t].name;
+				if (both) std::cout << fmt::format("G1P {} {} node {} in{} out{}\n", name, shape.variants[i].structure.tag, n, ins, outs);
+			}
+		}
+	}
+}
+
+/** G1q: the deletion filter over the lower-bound families at off=0, now that infeasibility proofs are fast (G1m-G1o); 5 s per solve, a timeout keeps the family. Then the conflict at the kept families. */
+TEST_CASE("planar probe: G1q the lower-bound families that conflict", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::tuple<std::string, std::string, size_t>> cases = {{"T3", PlanarTText(3), 1}, {"LL2", PlanarLL2Text(), 0}};
+	const char *family_names[] = {"beside", "span clear", "deck gap and limit", "landing", "crossers", "node legs", "coverage", "bays", "curves"};
+	const double limit = g1_time_limit;
+	g1_time_limit = 5.0;
+	for (const auto &[name, text, index] : cases) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		const PlanarShapeVariant &v = shape.variants[index];
+		uint32_t off = 0;
+		for (uint32_t b = 0; b < G1_FAMILIES; b++) {
+			const size_t t0 = g1_timeouts;
+			const G1Result r = SolveG1(topology, spec, v, off | (1U << b));
+			const bool proved = !r.solved && g1_timeouts == t0;
+			if (proved) off |= 1U << b;
+			std::cout << fmt::format("G1Q {} {} drop {} -> {} ms={:.0f}\n", name, v.structure.tag, family_names[b], r.solved ? "solved (needed)" : (proved ? "infeasible (dropped)" : "timeout (kept)"), r.ms);
+		}
+		std::string kept;
+		for (uint32_t b = 0; b < G1_FAMILIES; b++) if ((off & (1U << b)) == 0) kept += std::string(" [") + family_names[b] + "]";
+		const G1Result r = SolveG1(topology, spec, v, off);
+		std::cout << fmt::format("G1Q {} {} KEPT{} off={} solved={} rows={}\n", name, v.structure.tag, kept, off, r.solved ? 1 : 0, r.iis.size());
+		for (const std::string &line : r.iis) std::cout << fmt::format("G1Q IIS {} {} {}\n", name, v.structure.tag, line);
+	}
+	g1_time_limit = limit;
 }
