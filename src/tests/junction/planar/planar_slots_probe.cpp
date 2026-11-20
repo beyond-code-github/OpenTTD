@@ -71,6 +71,7 @@ struct G1Result {
 	std::vector<std::string> iis; ///< G1k: when tightened and infeasible, the conflicting rows with their terms and the tightened variables in them.
 	size_t chords = 0, conditional = 0, front_missing = 0, flex_skipped = 0; ///< G2: the chords written, those from step bends, the faces whose front search failed, the reflex vertices of flex inserts skipped.
 	size_t exempt = 0, between_reflex = 0; ///< G2: chords left out by section 9.6 (leg to leg within their node-end pieces), reflex vertices between stretches (section 9.2 says none).
+	size_t rigid_pieces_no_step = 0, rigid_pieces_no_flex = 0; ///< G2e: step places and flex inserts removed from rigid beside pieces.
 	size_t nbr_pairs = 0, nbr_rows = 0, nbr_exempt = 0, frame_open = 0; ///< G2d: neighbour row pairs written, rows written, rows exempt, group pairs that stopped at a non-antiparallel pair.
 	std::vector<std::string> chord_audit; ///< G2: the oracle's breaches of the chords on the geometry, one line each.
 };
@@ -481,6 +482,7 @@ static std::vector<std::string> Mod2Check(const std::vector<Mod2Row> &rows, cons
 
 /** The solve's time limit in seconds, and the count of solves that ended neither optimal nor infeasible (the G1h filter reads both). */
 static double g1_time_limit = 15.0;
+static bool g2_rigid_beside = false; ///< G2e: beside tracks and their parents take no sideways moves and are held a lane apart at both ends of each piece.
 static size_t g1_timeouts = 0;
 
 /** One node stub (D380): the leg, its node's trunk, whether the leg starts at the node (a split), the trunk's heading and the stub variable. */
@@ -906,6 +908,25 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 	std::vector<std::pair<uint32_t, uint32_t>> cusp_vars; ///< Unused marker, kept empty.
 	std::set<uint32_t> step_vars; ///< Every p, m and cusp variable, for the lane count.
 	std::set<uint32_t> insert_vars; ///< G1u: the lane variables of diagonal inserts.
+	std::set<std::pair<uint32_t, size_t>> rigid_piece; ///< G2e: pieces of beside tracks and of their parent chains.
+	if (g2_rigid_beside) {
+		for (uint32_t b = 0; b < nt; b++) {
+			if (map.part_of[b] != UINT32_MAX) continue;
+			std::vector<uint32_t> chain;
+			if (!ParentChain(map, v.structure.sites, b, chain)) continue;
+			std::vector<std::pair<uint32_t, size_t>> chain_piece;
+			for (size_t i = 0; i < chain.size(); i++) {
+				const PlanarShapeTrack &sc = v.tracks[chain[i]];
+				for (size_t jj = i > 0 ? 1 : 0; jj < sc.pieces.size(); jj++) chain_piece.emplace_back(chain[i], jj);
+			}
+			const PlanarShapeTrack &sb = v.tracks[b];
+			if (sb.pieces.size() != chain_piece.size()) continue;
+			for (size_t j = 0; j < sb.pieces.size(); j++) {
+				rigid_piece.emplace(b, j);
+				rigid_piece.insert(chain_piece[j]);
+			}
+		}
+	}
 	for (uint32_t t = 0; t < nt; t++) {
 		const PlanarShapeTrack &s = v.tracks[t];
 		const size_t ne = map.events[t].size(), np = s.pieces.size();
@@ -983,9 +1004,14 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 				/* G1w: nor on a crosser's stretch between two crossings on decks (the crossing lattice is rigid: a bundle's lanes and their copies
 				 * and rows are separate spans, exactly a lane apart, so the crosser climbs exactly a lane between them). */
 				const bool lattice = k >= 1 && k < map.events[t].size() && ((off & 16777216) != 0 || (span_of_crossing.contains(map.events[t][k - 1]) && span_of_crossing.contains(map.events[t][k])));
-				const bool flex_place = (off & 2097152) != 0 && h % 2 != 0 && !in_span.contains({t, k}) && !lattice;
+				const bool rigid = g2_rigid_beside && rigid_piece.contains({t, j});
+				const bool flex_wanted = (off & 2097152) != 0 && h % 2 != 0 && !in_span.contains({t, k}) && !lattice;
+				const bool flex_place = flex_wanted && !rigid;
+				if (flex_wanted && rigid) r.rigid_pieces_no_flex++;
 				const bool insert_place = insert && !place_blocked && !in_span.contains({t, k});
-				if (place_piece == static_cast<int>(j) || every_piece || insert_place) {
+				const bool place_wanted = place_piece == static_cast<int>(j) || every_piece || insert_place;
+				if (place_wanted && rigid) r.rigid_pieces_no_step++;
+				if (place_wanted && !rigid) {
 					const uint32_t before = var(0, INF, 1), after = var(0, INF, 1);
 					const int cap = insert ? 32 : 8;
 					const double lane_cost = insert ? 2 : 1000, use_cost = insert ? 20 : 0;
@@ -1237,6 +1263,42 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 			continue;
 		}
 		const TrackElems &eb = te[b];
+		if (g2_rigid_beside) {
+			if (sb.pieces.size() == 1) {
+				r.no_chain++;
+				continue;
+			}
+			for (size_t j = 0; j < sb.pieces.size(); j++) {
+				const int h = ((sb.pieces[j] % 8) + 8) % 8;
+				const auto [pt, jj] = chain_piece[j];
+				for (const bool at_start : {true, false}) {
+					if (at_start ? j == 0 : j + 1 == sb.pieces.size()) continue;
+					const size_t bi = at_start ? eb.piece_begin[j] : eb.piece_end[j], pi = at_start ? te[pt].piece_begin[jj] : te[pt].piece_end[jj];
+					const std::array<Lin, 2> beside = position(b, bi), parent = position(pt, pi);
+					/* The stretch of the element at each point, as the one-row code takes it. */
+					const size_t beside_stretch = static_cast<size_t>(eb.elems[at_start ? bi : bi - 1].stretch);
+					const size_t parent_stretch = static_cast<size_t>(te[pt].elems[at_start ? pi : pi - 1].stretch);
+					const int s = map.Side(b, static_cast<uint32_t>(beside_stretch), pt, static_cast<uint32_t>(parent_stretch));
+					if (s == 0) throw std::runtime_error(fmt::format("STOP beside track {} piece {} shares no face with its chain track {}", map.tracks[b].name, j, map.tracks[pt].name));
+					const auto &normal = PlanarModel::STEP[(h + 2) % 8];
+					Lin dot;
+					for (size_t axis = 0; axis < 2; axis++) {
+						dot.Add(beside[axis], normal[axis]);
+						dot.Add(parent[axis], -normal[axis]);
+					}
+					const std::string tag = fmt::format("beside {} piece {} {}", map.tracks[b].name, j, at_start ? "start" : "end");
+					if ((off & 32768) != 0 && map.tracks[b].name.starts_with("prio:")) {
+						Lin sided;
+						sided.Add(dot, s);
+						row(sided, 2, INF, tag);
+					} else {
+						beside_rows.emplace_back(map.tracks[b].name, j, 2 * s, dot);
+						row(dot, 2.0 * s, 2.0 * s, tag);
+					}
+				}
+			}
+			continue;
+		}
 		for (size_t j = 0; j < sb.pieces.size(); j++) {
 			const int h = ((sb.pieces[j] % 8) + 8) % 8;
 			/* The beside point: an event on the piece, else its end if not the last piece, else its start. */
@@ -2836,15 +2898,19 @@ TEST_CASE("planar probe: G2 chords on T2", "[junction][planar][planarshape][.pro
 	REQUIRE(shape.variants.size() >= 3);
 	const uint32_t base = 2097152U | 16777216U;
 	const std::pair<const char *, uint32_t> runs[] = {{"chain+allkinds", 268435456U | 1073741824U}, {"chain+allkinds+nbr", 268435456U | 1073741824U | 2147483648U}, {"nbr only", 33554432U | 2147483648U}};
+	for (const bool rigid : {false, true}) {
+	g2_rigid_beside = rigid;
 	for (size_t i = 0; i < 1; i++) {
 		const PlanarShapeVariant &v = shape.variants[i];
 		const std::string &tag = v.structure.tag;
 		for (const auto &[run, extra] : runs) {
 			const G1Result r = SolveG1(topology, spec, v, base | extra);
-			std::cout << fmt::format("G2 T2 {} run={} solved={} ms={:.1f} steps={} W={} H={} clashes={} same_channel={} face={} noface={} curve={} consistency={} no_chain={} chords={} conditional={} front_missing={} flex_skipped={} exempt={} between_reflex={} nbr_pairs={} nbr_rows={} nbr_exempt={} frame_open={} why={}\n", tag, run, r.solved ? 1 : 0, r.ms, r.step_lanes, r.width_tiles, r.height_tiles,
-					r.clashes.size(), r.same_channel, r.face, r.noface, r.curve_breaches.size(), r.consistency, r.no_chain, r.chords, r.conditional, r.front_missing, r.flex_skipped, r.exempt, r.between_reflex, r.nbr_pairs, r.nbr_rows, r.nbr_exempt, r.frame_open, r.why.substr(0, 300));
-			for (const std::string &line : r.clashes) std::cout << fmt::format("G2C T2 {} run={} {}\n", tag, run, line);
+			std::cout << fmt::format("G2 T2 {} run={} rigid={} solved={} ms={:.1f} steps={} W={} H={} clashes={} same_channel={} face={} noface={} curve={} consistency={} no_chain={} chords={} conditional={} front_missing={} flex_skipped={} exempt={} between_reflex={} nbr_pairs={} nbr_rows={} nbr_exempt={} frame_open={} rigid_no_step={} rigid_no_flex={} why={}\n", tag, run, rigid ? 1 : 0, r.solved ? 1 : 0, r.ms, r.step_lanes, r.width_tiles, r.height_tiles,
+					r.clashes.size(), r.same_channel, r.face, r.noface, r.curve_breaches.size(), r.consistency, r.no_chain, r.chords, r.conditional, r.front_missing, r.flex_skipped, r.exempt, r.between_reflex, r.nbr_pairs, r.nbr_rows, r.nbr_exempt, r.frame_open, r.rigid_pieces_no_step, r.rigid_pieces_no_flex, r.why.substr(0, 300));
+			for (const std::string &line : r.clashes) std::cout << fmt::format("G2C T2 {} run={} rigid={} {}\n", tag, run, rigid ? 1 : 0, line);
 			for (const std::string &line : r.chord_audit) std::cout << fmt::format("G2 AUDIT T2 {} run={} {}\n", tag, run, line);
 		}
 	}
+	}
+	g2_rigid_beside = false;
 }
