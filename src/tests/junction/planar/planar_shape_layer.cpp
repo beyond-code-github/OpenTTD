@@ -75,20 +75,20 @@ static void SetTracks(ShapeCase &c, const std::vector<std::pair<std::vector<int>
 	for (const auto &[pieces, event_piece] : tracks) c.v.tracks.push_back({pieces, event_piece});
 }
 
-/** The one-lane T: the program's shape under H11 (D376); the earlier hand shape crossed structure 0 at headings 6 and 3. */
+/** The one-lane T: the program's shape under H11 and D404 (every topology node turns its legs). */
 static ShapeCase MakeT1()
 {
 	ShapeCase c = MakeCase(PlanarTText(1), "o3t0f0m0");
 	SetTracks(c, {
-		{{2}, {}}, {{6}, {}}, {{2}, {}}, {{6, 5}, {}}, {{0, -1}, {}}, {{4}, {}},
-		{{4}, {}}, {{5, 6}, {0, 1}}, {{-1}, {}}, {{0, 1}, {0, 0}},
-		{{2}, {}}, {{2, 3}, {0, 0}}, {{6}, {}}, {{2}, {}}, {{6}, {}}, {{2}, {}},
+		{{2}, {}}, {{6}, {}}, {{2}, {}}, {{6}, {}}, {{0, -1}, {}}, {{5, 4}, {}},
+		{{5}, {}}, {{6}, {0, 0}}, {{-1}, {}}, {{0, 1}, {0, 0}},
+		{{2}, {}}, {{3, 4}, {0, 1}}, {{6}, {}}, {{2}, {}}, {{6}, {}}, {{2}, {}},
 	});
-	c.v.angles = {2, 3, 2};
+	c.v.angles = {2, 2, 3};
 	REQUIRE(c.v.structure.structures.size() == 2);
 	REQUIRE(c.v.structure.structures[0].separator == 9);
 	REQUIRE(c.v.structure.structures[1].separator == 11);
-	c.v.structures = {{0, {2, -1}, {1, -1}, {-1, -1}}, {2, {2, -1}, {1, -1}, {-1, -1}}};
+	c.v.structures = {{0, {3, -1}, {1, -1}, {-1, -1}}, {4, {1, -1}, {1, -1}, {-1, -1}}};
 	return c;
 }
 
@@ -292,6 +292,40 @@ TEST_CASE("planar shape layer: H3 a leg that turns two eighths at a node", "[jun
 	RequireAllOf(c, c.v, "H3");
 }
 
+TEST_CASE("planar shape layer: H3 a cusp leg at a node (D404)", "[junction][planar][planarshape]")
+{
+	ShapeCase c = MakeT1();
+	const PlanarTrackMap &map = c.v.structure.map;
+	bool done = false;
+	for (const PlanarStructureSite &site : c.v.structure.sites) {
+		if (site.split || done) continue;
+		const PlanarNode &node = map.expanded.nodes[site.node];
+		bool topology_node = true;
+		for (const std::vector<uint32_t> *side : {&node.in, &node.out}) {
+			for (const uint32_t t : *side) topology_node = topology_node && map.tracks[t].kind == PlanarTrack::Kind::Line;
+		}
+		if (!topology_node) continue;
+		for (const uint32_t leg : node.in) {
+			/* A joining leg that arrives at the trunk heading is a cusp; its two pieces stay one eighth apart, so H1 holds and the later rules still run. */
+			if (leg == site.straight || c.v.tracks[leg].pieces.size() != 2) continue;
+			const int trunk = c.v.tracks[node.out[0]].pieces.front();
+			c.v.tracks[leg].pieces = {trunk - 1, trunk};
+			done = true;
+			break;
+		}
+	}
+	REQUIRE(done);
+	std::string why;
+	REQUIRE(RefinePlanarShapeCells(c.v, why));
+	const std::vector<std::string> messages = CheckPlanarShapePromise(c.topology, c.spec, c.v);
+	bool cusp = false;
+	for (const std::string &m : messages) {
+		INFO(m);
+		if (m.find("a cusp, D404") != std::string::npos) cusp = true;
+	}
+	CHECK(cusp);
+}
+
 TEST_CASE("planar shape layer: H4 a stored angle that the headings do not give", "[junction][planar][planarshape]")
 {
 	ShapeCase c = MakeT1();
@@ -305,8 +339,8 @@ TEST_CASE("planar shape layer: H5 a crossing on a diagonal piece of its separato
 {
 	ShapeCase c = MakeT1();
 	c.v.tracks[9].event_piece = {0, 1};
-	c.v.angles[2] = 1;
-	c.v.structures[0].middles = {3, -1};
+	c.v.angles[2] = 2;
+	c.v.structures[0].middles = {2, -1};
 	std::string why;
 	REQUIRE(RefinePlanarShapeCells(c.v, why));
 	RequireAllOf(c, c.v, "H5");

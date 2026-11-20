@@ -537,7 +537,14 @@ struct Oracle {
 					if (sigma == 0) sigma = site.side;
 				}
 				const int turned = site.split ? h + sigma : h - sigma;
-				if (!SameHeading(heading, h) && !SameHeading(heading, turned)) {
+				/* A topology node (every track at it a Line) turns its leg always (no cusps, D404); a copy's or row's node may keep the trunk heading (H8). */
+				bool topology = true;
+				for (const std::vector<uint32_t> *side : {&node.in, &node.out}) {
+					for (const uint32_t t : *side) topology = topology && this->map.tracks[t].kind == PlanarTrack::Kind::Line;
+				}
+				if (topology && SameHeading(heading, h)) {
+					this->out.push_back(fmt::format("H3: leg {} at node {} is at the trunk heading (a cusp, D404)", this->map.tracks[leg].name, site.node));
+				} else if (!SameHeading(heading, h) && !SameHeading(heading, turned)) {
 					this->out.push_back(fmt::format("H3: leg {} at node {} is at heading {}, expected {} or {}", this->map.tracks[leg].name, site.node, heading, h, turned));
 				}
 			}
@@ -1191,7 +1198,7 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 		if (line.to.port) eq({{H[t].back(), 1}, {var(-8, 8, 0, true), -8}}, static_cast<int>(map.expanded.ports[line.to.index].heading), fmt::format("port {}", t));
 	}
 
-	/* Nodes: the d binary and sigma of each non-straight leg, at the split at its start and at the merge at its end. */
+	/* Nodes: the turn (d = 1 at a topology node, else a binary d) and sigma of each non-straight leg, at the split at its start and at the merge at its end. */
 	std::vector<std::pair<uint32_t, int>> split_leg(nt, {NONE, 0}), merge_leg(nt, {NONE, 0});
 	for (const PlanarStructureSite &site : sv.structure.sites) {
 		if (site.node >= map.expanded.nodes.size()) return fail(fmt::format("a site names node {}, which the map lacks", site.node));
@@ -1219,13 +1226,26 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 				sigma = map.Side(leg, stretch(leg), site.straight, stretch(site.straight));
 				if (sigma == 0) sigma = site.side;
 			}
-			const uint32_t d = var(0, 1, 0, true);
+			/* A topology node turns its leg always (d = 1, no cusps, D404); a copy's or row's node keeps the binary d (its beside track sits on its parent's headings, H8). */
+			bool topology = true;
+			for (const std::vector<uint32_t> *side : {&node.in, &node.out}) {
+				for (const uint32_t t : *side) topology = topology && map.tracks[t].kind == PlanarTrack::Kind::Line;
+			}
+			const uint32_t d = topology ? NONE : var(0, 1, 0, true);
 			if (site.split) {
 				split_leg[leg] = {d, sigma};
-				eq({{H[leg].front(), 1}, {H[one].back(), -1}, {d, -sigma}}, 0, tag);
+				if (d == NONE) {
+					eq({{H[leg].front(), 1}, {H[one].back(), -1}}, sigma, tag);
+				} else {
+					eq({{H[leg].front(), 1}, {H[one].back(), -1}, {d, -sigma}}, 0, tag);
+				}
 			} else {
 				merge_leg[leg] = {d, sigma};
-				eq({{H[leg].back(), 1}, {d, sigma}, {H[one].front(), -1}, {var(-8, 8, 0, true), -8}}, 0, tag);
+				if (d == NONE) {
+					eq({{H[leg].back(), 1}, {H[one].front(), -1}, {var(-8, 8, 0, true), -8}}, -sigma, tag);
+				} else {
+					eq({{H[leg].back(), 1}, {d, sigma}, {H[one].front(), -1}, {var(-8, 8, 0, true), -8}}, 0, tag);
+				}
 			}
 		}
 	}
@@ -1394,7 +1414,7 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 	for (size_t r = 0; r < map.expanded.routes.size() && !broken; r++) {
 		const auto carries = [&](uint32_t t) { return std::ranges::find(map.expanded.lines[t].routes, static_cast<uint32_t>(r)) != map.expanded.lines[t].routes.end(); };
 		const std::string tag = fmt::format("uturn route {}", r);
-		const auto walk = [&](const auto &self, uint32_t t, Terms prefix, size_t depth) -> void {
+		const auto walk = [&](const auto &self, uint32_t t, Terms prefix, int turn, size_t depth) -> void {
 			if (depth > nt) {
 				broken = true;
 				return;
@@ -1404,7 +1424,7 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 				Terms cum = prefix;
 				cum.emplace_back(H[t][i], 1);
 				cum.emplace_back(H[t].front(), -1);
-				row(cum, -3, 3, tag);
+				row(cum, -3 - turn, 3 - turn, tag);
 			}
 			const PlanarEnd &to = map.expanded.lines[t].to;
 			if (to.port) return;
@@ -1417,11 +1437,11 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 				Terms through = next;
 				const auto &[d, sigma] = node.out.size() > 1 ? split_leg[g] : merge_leg[t];
 				if (d != NONE) through.emplace_back(d, sigma);
-				self(self, g, std::move(through), depth + 1);
+				self(self, g, std::move(through), d == NONE ? turn + sigma : turn, depth + 1);
 			}
 		};
 		for (uint32_t t = 0; t < nt; t++) {
-			if (map.expanded.lines[t].from.port && carries(t)) walk(walk, t, {}, 0);
+			if (map.expanded.lines[t].from.port && carries(t)) walk(walk, t, {}, 0, 0);
 		}
 	}
 	if (broken) return fail("a route path loops");
