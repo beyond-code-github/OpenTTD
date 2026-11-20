@@ -1,0 +1,210 @@
+offroute 73 ambiguous 0 rounds 3
+core pieces 1152 free restricted by LOCAL 708 undefined (both ways) 0 ; undefined in core 0
+undefined tiles in core: 
+lines 109 nodes (pieces) 68 inconsistent-route-set lines []
+node kinds: {('cross', 'lane/lane', '2->2'): 1, ('merge', 'join', '2->1'): 30, ('merge', 'lane', '2->1'): 4, ('split', 'fray', '0->2'): 1, ('split', 'fray', '1->2'): 7, ('split', 'lane', '1->2'): 24, ('split', 'lane', '1->3'): 1}
+node-piece clusters (adjacent node pieces joined): 67 sizes [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2]
+3-way pieces: [('92,158Y', ('split', 'lane', (1, 3)))]
+2-cycles in core: 0 pieces in them 0
+
+NODES (piece, kind, fray/lane, arity, routes in->out)
+78,173Y ('split', 'fray', (1, 2)) in ['E1+F1'] out ['E1', 'F1']
+81,168Lo ('split', 'lane', (1, 2)) in ['E1'] out ['E1', 'E1']
+81,174Y ('split', 'lane', (1, 2)) in ['E2'] out ['E2', 'E2']
+81,176Y ('split', 'fray', (1, 2)) in ['E2+F2'] out ['E2', 'F2']
+82,178Y ('split', 'lane', (1, 2)) in ['F3'] out ['F3', 'F3']
+83,160Lo ('merge', 'join', (2, 1)) in ['E2', 'E1'] out ['E1+E2']
+84,155Lo ('merge', 'join', (2, 1)) in ['E2', 'E3'] out ['E2+E3']
+84,182Y ('split', 'lane', (1, 2)) in ['E3'] out ['E3', 'E3']
+84,184Y ('split', 'fray', (1, 2)) in ['E3+F3'] out ['E3', 'F3']
+85,146Y ('merge', 'join', (2, 1)) in ['C1+C2+C3+E1', 'E2+E3'] out ['C1+C2+C3+E1+E2+E3']
+86,151Ri ('merge', 'join', (2, 1)) in ['C2+C3', 'C1+C2+E1+E2+E3'] out ['C1+C2+C3+E1+E2+E3']
+86,157Y ('merge', 'join', (2, 1)) in ['C1+C2+E3', 'E1+E2'] out ['C1+C2+E1+E2+E3']
+86,159Y ('merge', 'join', (2, 1)) in ['C1+C2', 'E3'] out ['C1+C2+E3']
+87,164Lo ('split', 'lane', (1, 2)) in ['F1'] out ['F1', 'F1']
+88,149Ri ('merge', 'join', (2, 1)) in ['C2+C3+E1', 'C1+C2'] out ['C1+C2+C3+E1']
+88,170Le ('split', 'lane', (1, 2)) in ['C1+C2'] out ['C1+C2', 'C1+C2']
+88,182Y ('merge', 'join', (2, 1)) in ['D2+D3', 'A2'] out ['A2+D2+D3']
+88,185Up ('merge', 'join', (2, 1)) in ['D1+D2+D3', 'A2+D2+D3'] out ['A2+D1+D2+D3']
+89,150Ri ('merge', 'join', (2, 1)) in ['C2+C3', 'E1'] out ['C2+C3+E1']
+90,159Y ('split', 'lane', (1, 2)) in ['C2+C3'] out ['C2+C3', 'C2+C3']
+90,166X ('split', 'lane', (1, 2)) in ['F2'] out ['F2', 'F2']
+91,147Ri ('split', 'fray', (1, 2)) in ['A2+B2'] out ['A2', 'B2']
+92,158Y ('split', 'lane', (1, 3)) in ['A2'] out ['A2', 'A2', 'A2']
+92,186Y ('merge', 'join', (2, 1)) in ['D2+D3', 'A2'] out ['A2+D2+D3']
+92,193Up ('merge', 'join', (2, 1)) in ['A1+D1+D2', 'A2+D2+D3'] out ['A1+A2+D1+D2+D3']
+93,148Ri ('split', 'fray', (1, 2)) in ['A1+B1'] out ['A1', 'B1']
+94,158Y ('split', 'lane', (1, 2)) in ['B2'] out ['B2', 'B2']
+94,195Up ('merge', 'join', (2, 1)) in ['A1+D1+D2', 'A2'] out ['A1+A2+D1+D2']
+95,154Ri ('split', 'lane', (1, 2)) in ['A1'] out ['A1', 'A1']
+95,180Lo ('merge', 'join', (2, 1)) in ['D1+D2', 'D2+D3'] out ['D1+D2+D3']
+96,155Ri ('split', 'lane', (1, 2)) in ['A1'] out ['A1', 'A1']
+96,187Up ('merge', 'join', (2, 1)) in ['D1+D2', 'A1'] out ['A1+D1+D2']
+97,177Up ('split', 'lane', (1, 2)) in ['D2+D3'] out ['D2+D3', 'D2+D3']
+97,185Lo ('merge', 'lane', (2, 1)) in ['D1+D2', 'D1+D2'] out ['D1+D2']
+97,192Up ('merge', 'join', (2, 1)) in ['A1', 'A1+D1+D2'] out ['A1+D1+D2']
+98,155Ri ('split', 'lane', (1, 2)) in ['B1'] out ['B1', 'B1']
+98,165X ('merge', 'join', (2, 1)) in ['F2', 'F1'] out ['F1+F2']
+98,171Le ('merge', 'join', (2, 1)) in ['C2', 'C3'] out ['C2+C3']
+98,191Up ('merge', 'join', (2, 1)) in ['D1+D2', 'A1'] out ['A1+D1+D2']
+99,175X ('merge', 'join', (2, 1)) in ['C1+C2', 'C1'] out ['C1+C2']
+100,165Le ('merge', 'join', (2, 1)) in ['F1', 'B1'] out ['B1+F1']
+100,174Lo ('merge', 'join', (2, 1)) in ['C2', 'C1'] out ['C1+C2']
+100,182Up ('split', 'lane', (1, 2)) in ['D1+D2'] out ['D1+D2', 'D1+D2']
+101,181Up ('merge', 'lane', (2, 1)) in ['D1+D2', 'D1+D2'] out ['D1+D2']
+101,183Up ('split', 'lane', (1, 2)) in ['D1+D2'] out ['D1+D2', 'D1+D2']
+102,166Ri ('merge', 'join', (2, 1)) in ['B1+F1', 'F2'] out ['B1+F1+F2']
+102,182Up ('merge', 'lane', (2, 1)) in ['D1+D2', 'D1+D2'] out ['D1+D2']
+102,183Lo ('split', 'lane', (1, 2)) in ['D1+D2'] out ['D1+D2', 'D1+D2']
+103,165X ('split', 'lane', (1, 2)) in ['F1+F2'] out ['F1+F2', 'F1+F2']
+103,182Lo ('merge', 'lane', (2, 1)) in ['D1+D2', 'D1+D2'] out ['D1+D2']
+104,162X ('merge', 'join', (2, 1)) in ['B1', 'B2'] out ['B1+B2']
+104,176Up ('split', 'lane', (1, 2)) in ['D2+D3'] out ['D2+D3', 'D2+D3']
+104,179Lo ('split', 'lane', (1, 2)) in ['D1+D2'] out ['D1+D2', 'D1+D2']
+105,169X ('merge', 'join', (2, 1)) in ['F3', 'B1+F1+F2'] out ['B1+F1+F2+F3']
+105,179Up ('split', 'lane', (1, 2)) in ['D1+D2'] out ['D1+D2', 'D1+D2']
+106,178Up ('split', 'lane', (1, 2)) in ['D1+D2'] out ['D1+D2', 'D1+D2']
+107,173X ('merge', 'join', (2, 1)) in ['D3', 'D2'] out ['D2+D3']
+109,171Lo ('cross', 'lane/lane', (2, 2)) in ['D3', 'D3'] out ['D3', 'D3']
+110,176X ('merge', 'join', (2, 1)) in ['D2', 'D1'] out ['D1+D2']
+111,164X ('merge', 'join', (2, 1)) in ['B1+B2', 'F1+F2'] out ['B1+B2+F1+F2']
+112,166Ri ('merge', 'join', (2, 1)) in ['B2', 'F1+F2'] out ['B2+F1+F2']
+113,167X ('merge', 'join', (2, 1)) in ['F3', 'B2+F1+F2'] out ['B2+F1+F2+F3']
+114,172X ('split', 'lane', (1, 2)) in ['C2'] out ['C2', 'C2']
+117,173X ('split', 'lane', (1, 2)) in ['D2'] out ['D2', 'D2']
+118,170Ri ('split', 'fray', (1, 2)) in ['C3+D3'] out ['D3', 'C3']
+120,174X ('split', 'lane', (1, 2)) in ['C1'] out ['C1', 'C1']
+123,174X ('split', 'fray', (1, 2)) in ['C1+D1'] out ['C1', 'D1']
+128,173X ('split', 'fray', (0, 2)) in [] out ['D2', 'C2']
+
+LINES: id from-> to routes npieces
+L0 78,172 -> 81,169 E1 7
+L1 78,172 -> 87,165 F1 17
+L2 port S81 -> 78,174 E1+F1 30
+L3 81,173 -> 83,161 E2 11
+L4 81,173 -> 84,156 E2 15
+L5 81,175 -> 81,175 E2 1
+L6 81,175 -> 89,166 F2 18
+L7 port S82 -> 81,177 E2+F2 25
+L8 82,168 -> 83,161 E1 9
+L9 82,168 -> 89,151 E1 22
+L10 82,177 -> 112,167 F3 33
+L11 82,177 -> 104,169 F3 25
+L12 84,183 -> 82,179 F3 7
+L13 port S83 -> 84,185 E3+F3 15
+L14 85,151 -> port N84 C1+C2+C3+E1+E2+E3 16
+L15 84,181 -> 84,156 E3 15
+L16 84,160 -> 86,158 E1+E2 5
+L17 84,181 -> 86,160 E3 15
+L18 84,183 -> 84,183 E3 1
+L19 85,145 -> port N85 C1+C2+C3+E1+E2+E3 9
+L20 85,155 -> 85,147 E2+E3 7
+L21 87,149 -> 85,147 C1+C2+C3+E1 5
+L22 86,156 -> 86,152 C1+C2+E1+E2+E3 5
+L23 90,158 -> 86,152 C2+C3 11
+L24 86,158 -> 86,158 C1+C2+E3 1
+L25 88,169 -> 86,160 C1+C2 7
+L26 87,185 -> port S88 A2+D1+D2+D3 17
+L27 88,169 -> 88,150 C1+C2 12
+L28 88,150 -> 88,150 C2+C3+E1 1
+L29 88,164 -> 100,164 F1 12
+L30 88,164 -> 97,165 F1 8
+L31 92,159 -> 88,181 A2 15
+L32 96,177 -> 88,181 D2+D3 13
+L33 88,183 -> 88,184 A2+D2+D3 2
+L34 95,181 -> 88,184 D1+D2+D3 11
+L35 90,158 -> 89,151 C2+C3 9
+L36 98,175 -> 89,170 C1+C2 15
+L37 91,193 -> port S89 A1+A2+D1+D2+D3 8
+L38 port N90 -> 90,147 A2+B2 11
+L39 98,170 -> 90,160 C2+C3 19
+L40 93,195 -> port S90 A1+A2+D1+D2 7
+L41 port N91 -> 92,148 A1+B1 13
+L42 91,148 -> 92,157 A2 11
+L43 91,148 -> 94,157 B2 13
+L44 91,166 -> 97,165 F2 6
+L45 91,166 -> 101,166 F2 11
+L46 92,159 -> 92,185 A2 12
+L47 92,159 -> 94,194 A2 17
+L48 96,177 -> 92,185 D2+D3 12
+L49 92,187 -> 92,192 A2+D2+D3 6
+L50 95,187 -> 92,192 A1+D1+D2 9
+L51 93,149 -> 94,154 A1 7
+L52 93,149 -> 97,155 B1 11
+L53 94,159 -> 111,166 B2 24
+L54 94,159 -> 103,162 B2 12
+L55 96,192 -> 94,194 A1+D1+D2 5
+L56 95,155 -> 96,186 A1 14
+L57 95,155 -> 95,155 A1 1
+L58 96,156 -> 97,191 A1 15
+L59 96,156 -> 98,190 A1 15
+L60 105,178 -> 96,180 D1+D2 10
+L61 103,176 -> 96,180 D2+D3 12
+L62 97,186 -> 96,186 D1+D2 2
+L63 103,176 -> 97,176 D2+D3 7
+L64 97,191 -> 97,191 A1+D1+D2 1
+L65 98,156 -> 100,164 B1 11
+L66 98,156 -> 103,162 B1 12
+L67 99,182 -> 98,185 D1+D2 5
+L68 102,184 -> 98,185 D1+D2 6
+L69 100,183 -> 98,190 D1+D2 9
+L70 99,165 -> 102,165 F1+F2 2
+L71 117,170 -> 99,171 C3 22
+L72 113,172 -> 99,171 C2 15
+L73 99,182 -> 101,180 D1+D2 5
+L74 119,174 -> 100,175 C1 12
+L75 100,175 -> 100,175 C1+C2 1
+L76 100,181 -> 100,181 D1+D2 1
+L77 100,183 -> 102,181 D1+D2 5
+L78 101,165 -> 101,166 B1+F1 2
+L79 113,172 -> 101,174 C2 12
+L80 119,174 -> 101,174 C1 10
+L81 104,179 -> 101,180 D1+D2 5
+L82 101,182 -> 101,182 D1+D2 1
+L83 102,167 -> 104,169 B1+F1+F2 5
+L84 104,180 -> 102,181 D1+D2 4
+L85 102,184 -> 104,182 D1+D2 5
+L86 103,183 -> 103,183 D1+D2 1
+L87 104,165 -> 110,164 F1+F2 6
+L88 104,165 -> 111,166 F1+F2 9
+L89 106,173 -> 104,175 D2+D3 5
+L90 104,180 -> 104,182 D1+D2 3
+L91 105,162 -> 110,164 B1+B2 8
+L92 105,178 -> 105,178 D1+D2 1
+L93 106,169 -> port E167 B1+F1+F2+F3 27
+L94 109,176 -> 106,177 D1+D2 5
+L95 109,172 -> 108,173 D3 3
+L96 116,173 -> 108,173 D2 9
+L97 109,172 -> 110,171 D3 3
+L98 117,170 -> 110,171 D3 9
+L99 116,173 -> 111,176 D2 9
+L100 122,174 -> 111,176 D1 14
+L101 112,164 -> port E164 B1+B2+F1+F2 19
+L102 112,167 -> 112,167 B2+F1+F2 1
+L103 114,167 -> port E166 B2+F1+F2+F3 20
+L104 127,173 -> 115,172 C2 14
+L105 port E169 -> 118,171 C3+D3 13
+L106 127,173 -> 118,173 D2 10
+L107 122,174 -> 121,174 C1 2
+L108 port E174 -> 124,174 C1+D1 5
+
+hand lines 100
+hand lines: one-to-one 89 ; exactly one cand but ext line shared 2 ; several cands 4 ; none 5
+  none: ['CD2', 'D12d', 'D12e', 'D12f', 'D3']
+  several: {'A1d': [58, 59], 'A1e': [58, 59], 'C1': [74, 80], 'C1b': [74, 80]}
+  shared ext lines: {58: ['A1d', 'A1e'], 59: ['A1d', 'A1e'], 74: ['C1', 'C1b'], 80: ['C1', 'C1b'], 92: ['D12b', 'D12g']}
+ext lines matched by no hand line: [67, 68, 69, 73, 76, 77, 81, 82, 84, 85, 86, 90, 95, 97, 98]
+hand nodes 62 {('merge', 'join', '2->1'): 30, ('merge', 'lane', '2->1'): 1, ('split', 'fray', '1->2'): 8, ('split', 'lane', '1->2'): 23}
+hand nodes matched by tile(<=1)+kind+fray/lane: 62 ; tile+kind but fray/lane differs: 0 ; none: 0
+extractor node pieces matching no hand node: 7
+   100,182Up ('split', 'lane', (1, 2)) in ['D1+D2'] out ['D1+D2', 'D1+D2']
+   101,181Up ('merge', 'lane', (2, 1)) in ['D1+D2', 'D1+D2'] out ['D1+D2']
+   101,183Up ('split', 'lane', (1, 2)) in ['D1+D2'] out ['D1+D2', 'D1+D2']
+   102,182Up ('merge', 'lane', (2, 1)) in ['D1+D2', 'D1+D2'] out ['D1+D2']
+   102,183Lo ('split', 'lane', (1, 2)) in ['D1+D2'] out ['D1+D2', 'D1+D2']
+   103,182Lo ('merge', 'lane', (2, 1)) in ['D1+D2', 'D1+D2'] out ['D1+D2']
+   109,171Lo ('cross', 'lane/lane', (2, 2)) in ['D3', 'D3'] out ['D3', 'D3']
+N90 three-way: A2m from None A2 from ('91,147', '92,158')
+ext split/cross pieces within 2 tiles of 91,147 [('88,149Ri', ('merge', 'join', (2, 1))), ('91,147Ri', ('split', 'fray', (1, 2))), ('89,150Ri', ('merge', 'join', (2, 1))), ('93,148Ri', ('split', 'fray', (1, 2)))]
+
+2-cycle pairs (tiles): []
