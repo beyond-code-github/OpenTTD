@@ -302,7 +302,7 @@ struct ClosureResult {
  * Ask whether the headings of a shaped variant can close with positive lengths (the lengths-only LP of H2).
  * Per point (x, y); a parallel leg of a node is offset sideways from the node point by a free w >= 0 (the cusp opening Slots owns, SPEC-shape section 3 hand-on (1)); per piece a length of at least 1, split into one part per stretch the piece lies on, so a piece that holds events is cut at them (the reading the orchestrator ruled intended, not the literal sum over a shared piece); the box is [0, W] x [0, Hb].
  * @param v The shaped variant.
- * @param families Which quantities of Slots' least answer to fix: bit 1 one lane at each cusp, bit 2 one tile per deck step, bit 4 the pinned gaps at the ports, bit 8 a free sideways step in every stretch.
+ * @param families Which quantities of Slots' least answer to fix: bit 1 one lane at each cusp, bit 2 one tile per deck step, bit 4 the pinned gaps at the ports, bit 8 a free sideways step in every stretch, bit 16 (with 8) whole-lane steps and none inside a deck.
  * @return The answer.
  */
 static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
@@ -334,6 +334,17 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 			row({{y, 1}, {height, -1}}, -JunctionMilp::INF, 0, "box");
 		}
 	}
+	std::set<std::pair<uint32_t, size_t>> in_deck; ///< The (track, stretch) pairs strictly between two crossings of one structure's deck.
+	for (const PlanarStructure &st : v.structure.structures) {
+		const auto event_of = [&](uint32_t t, uint32_t c) { return static_cast<size_t>(std::ranges::find(map.events[t], c) - map.events[t].begin()); };
+		if (!st.crossings.empty()) {
+			const size_t first = event_of(st.separator, st.crossings.front()), last = event_of(st.separator, st.crossings.back());
+			for (size_t k = 1; k <= last; k++) if (k > first) in_deck.emplace(st.separator, k);
+		}
+		if (st.copy != UINT32_MAX) {
+			for (size_t k = 1; k < map.events[st.copy].size(); k++) in_deck.emplace(st.copy, k);
+		}
+	}
 	for (uint32_t t = 0; t < nt; t++) {
 		const PlanarShapeTrack &s = v.tracks[t];
 		std::vector<std::vector<uint32_t>> parts(s.pieces.size());
@@ -347,11 +358,14 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 				dx.emplace_back(part, -step[0]);
 				dy.emplace_back(part, -step[1]);
 			}
-			if (families & 8) {
-				const uint32_t side = lp.AddVariable(-JunctionMilp::INF, JunctionMilp::INF, 0, false);
-				const auto &right = PlanarModel::Right(((s.pieces[first] % 8) + 8) % 8);
-				dx.emplace_back(side, -right[0]);
-				dy.emplace_back(side, -right[1]);
+			if ((families & 8) && !((families & 16) && in_deck.contains({t, k}))) {
+				const int heading = ((s.pieces[first] % 8) + 8) % 8;
+				const bool whole = (families & 16) != 0;
+				const uint32_t side = whole ? lp.AddVariable(-64, 64, 0, true) : lp.AddVariable(-JunctionMilp::INF, JunctionMilp::INF, 0, false);
+				const double lane = whole ? (heading % 2 == 0 ? 2 : 1) : 1;
+				const auto &right = PlanarModel::Right(heading);
+				dx.emplace_back(side, -right[0] * lane);
+				dy.emplace_back(side, -right[1] * lane);
 			}
 			row(dx, 0, 0, fmt::format("stretch {} {} x {}", t, k, map.tracks[t].name));
 			row(dy, 0, 0, fmt::format("stretch {} {} y {}", t, k, map.tracks[t].name));
@@ -766,6 +780,22 @@ TEST_CASE("planar probe: closure with Slots' least exact answer on T1-T3 and LL2
 				}
 			}
 			std::cout << fmt::format("X2D {} mask={} closes={}/{}\n", name, mask, closes, shape.variants.size());
+			std::cout << why;
+		}
+		for (const int mask : {24, 31}) {
+			size_t closes = 0;
+			double ms_max_e = 0;
+			std::string why;
+			for (const PlanarShapeVariant &v : shape.variants) {
+				const ClosureResult c = ClosureLp(v, mask);
+				ms_max_e = std::max(ms_max_e, c.micros / 1000);
+				if (c.closes) {
+					closes++;
+				} else if (mask == 31 && why.empty()) {
+					why = fmt::format("X2E {} {} mask=31 WHY {}\n", name, v.structure.tag, c.why);
+				}
+			}
+			std::cout << fmt::format("X2E {} mask={} closes={}/{} ms_max={:.1f}\n", name, mask, closes, shape.variants.size(), ms_max_e);
 			std::cout << why;
 		}
 		if (name == "T1" && !shape.variants.empty()) {
