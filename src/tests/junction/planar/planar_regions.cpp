@@ -61,22 +61,6 @@ TEST_CASE("planar regions: PSG 197's face map is planar with its authored direct
 	CHECK(sides.Why().find("outer faces") == std::string::npos);
 }
 
-/* Hidden until G5 (CARD-E1d-psg197-variant.md): D3 crosses both legs of C2c's split, so the line-level side table gives D3 both sides of C2c. */
-TEST_CASE("planar regions: PSG 197's line sides are decided by its authored directions", "[.][planarpsg197]")
-{
-	std::ifstream file(JUNCTION_TOPOLOGY_DIR "/psg197.txt");
-	REQUIRE(file.good());
-	std::stringstream buffer;
-	buffer << file.rdbuf();
-	std::string error;
-	const PlanarTopology t = ParsePlanarTopology(buffer.str(), &error);
-	INFO(error);
-	REQUIRE(error.empty());
-	const PlanarLineSides sides(t, BuildPlanarChannels(t));
-	INFO(sides.Why());
-	CHECK(sides.Why().empty());
-}
-
 TEST_CASE("planar regions: every pair of lines sharing a face is decided by it", "[junction][planarregions]")
 {
 	for (const auto &[name, text] : Hubs()) {

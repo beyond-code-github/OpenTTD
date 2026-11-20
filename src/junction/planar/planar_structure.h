@@ -131,6 +131,7 @@ PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology
  * P5 checks the bridge and tunnel length limits and, for a structure with a copy, the D228a flow bound (crossers + 2 <= 2 * sd + tl).
  * P6 also requires each copy track to be the copy of exactly one structure.
  * P8 checks the variant's side gaps equal the spec's (D377).
+ * P4 also allows two tunnel structures to cross (at different levels, D390 (2)). On a written-down hub (authored crossings, D394) P3's maximality is not checked and P7 accepts a choice split (legs carrying the same routes) after a merge (D391).
  * @param topology The topology the variant was made from.
  * @param spec The spec: the bridge and tunnel limits.
  * @param v The variant.

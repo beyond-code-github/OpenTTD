@@ -588,16 +588,17 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 	std::vector<std::string> out;
 	const PlanarTrackMap &map = v.map;
 
-	/* P7 reads the topology alone: on a route path no split node follows a merge node. */
+	/* P7 reads the topology alone: on a route path no split node follows a merge node; a written-down hub may have a choice split (legs carrying the same routes) after a merge (D391, D394). */
 	for (const PlanarRoute &route : topology.routes) {
 		for (const std::vector<uint32_t> &path : route.paths) {
 			bool merged = false;
 			for (const uint32_t line : path) {
 				const PlanarEnd &to = topology.lines[line].to;
 				if (to.port) continue;
-				if (!topology.nodes[to.index].IsSplit()) {
+				const PlanarNode &node = topology.nodes[to.index];
+				if (!node.IsSplit()) {
 					merged = true;
-				} else if (merged) {
+				} else if (merged && !(topology.crossings_authored && topology.lines[node.out[0]].routes == topology.lines[node.out[1]].routes)) {
 					out.push_back(fmt::format("P7: route {} splits at the end of line {} after a merge", route.name, topology.lines[line].name));
 					break;
 				}
@@ -677,7 +678,7 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 	}
 
 	/* P3 maximal: two structures on one separator whose crossings are adjacent events of it would be one, unless merging breaches P5. */
-	for (size_t i = 0; i < v.structures.size(); i++) {
+	for (size_t i = 0; i < v.structures.size() && !topology.crossings_authored; i++) { // Maximality is Structure's own rule; a written-down hub keeps its structures (D394).
 		const PlanarStructure &s = v.structures[i];
 		if (s.separator >= map.tracks.size() || s.crossings.empty()) continue;
 		for (size_t m = i + 1; m < v.structures.size(); m++) {
@@ -694,7 +695,7 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 		}
 	}
 
-	/* P4: a crossing within the span of its crosser's own structure needs one bridge and one tunnel. */
+	/* P4: a crossing within the span of its crosser's own structure needs one bridge and one tunnel, or two tunnels (D390 (2)). */
 	for (size_t i = 0; i < v.structures.size(); i++) {
 		const PlanarStructure &s = v.structures[i];
 		if (s.separator >= map.tracks.size() || s.crossings.size() != s.crossers.size()) continue;
@@ -708,7 +709,8 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 				const size_t first = EventIndex(map.events[y], t.crossings.front()), last = EventIndex(map.events[y], t.crossings.back());
 				if (at == SIZE_MAX || first == SIZE_MAX || last == SIZE_MAX || at < std::min(first, last) || at > std::max(first, last)) continue;
 				const bool one_each = ((s.kinds & 1) != 0 && (t.kinds & 2) != 0) || ((s.kinds & 2) != 0 && (t.kinds & 1) != 0);
-				if (!one_each) out.push_back(fmt::format("P4: crossing {} of structure {} lies within the span of structure {} on its crosser, and they cannot be a bridge and a tunnel", s.crossings[k], i, m));
+				const bool two_tunnels = (s.kinds & 2) != 0 && (t.kinds & 2) != 0; // At different levels (D390 (2)); Heights picks which is deeper.
+				if (!one_each && !two_tunnels) out.push_back(fmt::format("P4: crossing {} of structure {} lies within the span of structure {} on its crosser, and they cannot be a bridge and a tunnel or two tunnels", s.crossings[k], i, m));
 			}
 		}
 	}

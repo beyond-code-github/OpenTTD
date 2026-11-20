@@ -272,6 +272,23 @@ TEST_CASE("planar structure: P4 a bridge over a tunnel is allowed", "[junction][
 	CHECK(std::ranges::count(ids, "P4") == 0);
 }
 
+TEST_CASE("planar structure: P4 a tunnel under a tunnel is allowed (D390)", "[junction][planar][planarstructure]")
+{
+	const HandCase h = MakeHandCase();
+	PlanarStructureVariant v = h.v;
+	const auto one = std::ranges::find_if(v.structures, [](const PlanarStructure &x) { return x.crossings.size() == 1; });
+	REQUIRE(one != v.structures.end());
+	one->kinds = 2;
+	const PlanarStructure s = *one;
+	PlanarStructure t = s;
+	t.separator = s.crossers[0];
+	t.crossers = {s.separator};
+	t.copy = UINT32_MAX;
+	v.structures.push_back(t);
+	const std::vector<std::string> ids = Ids(CheckPlanarStructurePromise(h.tv.topology, h.spec, v));
+	CHECK(std::ranges::count(ids, "P4") == 0);
+}
+
 TEST_CASE("planar structure: P5 no kind, and a span over the limit", "[junction][planar][planarstructure]")
 {
 	const HandCase h = MakeHandCase();
