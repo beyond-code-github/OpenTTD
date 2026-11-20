@@ -347,13 +347,13 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 				dx.emplace_back(part, -step[0]);
 				dy.emplace_back(part, -step[1]);
 			}
-			row(dx, 0, 0, fmt::format("stretch {} {} x", t, k));
-			row(dy, 0, 0, fmt::format("stretch {} {} y", t, k));
+			row(dx, 0, 0, fmt::format("stretch {} {} x {}", t, k, map.tracks[t].name));
+			row(dy, 0, 0, fmt::format("stretch {} {} y {}", t, k, map.tracks[t].name));
 		}
 		for (size_t j = 0; j < parts.size(); j++) {
 			std::vector<std::pair<uint32_t, double>> total;
 			for (const uint32_t part : parts[j]) total.emplace_back(part, 1);
-			row(total, 1, JunctionMilp::INF, fmt::format("piece {} {}", t, j));
+			row(total, 1, JunctionMilp::INF, fmt::format("piece {} {} {}", t, j, map.tracks[t].name));
 		}
 	}
 	const auto tie = [&](std::pair<uint32_t, uint32_t> a, std::pair<uint32_t, uint32_t> b, const std::string &tag) {
@@ -363,7 +363,6 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 	/* A parallel leg of a node (not the site's straight leg, at the trunk's heading mod 8) is offset from the node point sideways by w >= 0 lane steps: the cusp opening Slots owns. */
 	for (size_t n = 0; n < map.expanded.nodes.size(); n++) {
 		const PlanarNode &node = map.expanded.nodes[n];
-		const std::string tag = fmt::format("node {}", n);
 		const PlanarStructureSite *site = nullptr;
 		for (const PlanarStructureSite &candidate : v.structure.sites) {
 			if (candidate.node == n) site = &candidate;
@@ -371,6 +370,10 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 		const bool split = node.in.size() == 1 && (node.out.size() != 1 || (site != nullptr && site->split));
 		const std::vector<uint32_t> &trunks = split ? node.in : node.out, &legs = split ? node.out : node.in;
 		const uint32_t trunk = trunks[0];
+		std::string tag = fmt::format("node {} trunk", n);
+		for (const uint32_t t : trunks) tag += " " + map.tracks[t].name;
+		tag += " legs";
+		for (const uint32_t t : legs) tag += " " + map.tracks[t].name;
 		const auto reference = split ? point[trunk].back() : point[trunk].front();
 		const int h = (((split ? v.tracks[trunk].pieces.back() : v.tracks[trunk].pieces.front()) % 8) + 8) % 8;
 		for (const uint32_t t : trunks) tie(reference, split ? point[t].back() : point[t].front(), tag);
@@ -393,7 +396,7 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 				if (sigma == 0) sigma = site->side;
 			}
 			const uint32_t w = lp.AddVariable(0, JunctionMilp::INF, 0, false);
-			if (families & 1) row({{w, 1}}, h % 2 == 0 ? 2 : 1, h % 2 == 0 ? 2 : 1, fmt::format("cusp {}", n));
+			if (families & 1) row({{w, 1}}, h % 2 == 0 ? 2 : 1, h % 2 == 0 ? 2 : 1, fmt::format("cusp {} trunk {} leg {}", n, map.tracks[trunk].name, map.tracks[leg].name));
 			const auto &step = PlanarModel::STEP[(h + 2) % 8];
 			row({{leg_point.first, 1}, {reference.first, -1}, {w, -sigma * step[0]}}, 0, 0, tag);
 			row({{leg_point.second, 1}, {reference.second, -1}, {w, -sigma * step[1]}}, 0, 0, tag);
@@ -402,7 +405,7 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 	for (uint32_t c = 0; c < map.crossings.size(); c++) {
 		const uint32_t a = map.crossings[c].a, b = map.crossings[c].b;
 		const auto at = [&](uint32_t t) { return point[t][static_cast<size_t>(std::ranges::find(map.events[t], c) - map.events[t].begin()) + 1]; };
-		tie(at(a), at(b), fmt::format("cross {}", c));
+		tie(at(a), at(b), fmt::format("cross {} {} {}", c, map.tracks[a].name, map.tracks[b].name));
 	}
 	for (uint32_t t = 0; t < nt; t++) {
 		const PlanarLine &line = map.expanded.lines[t];
@@ -410,7 +413,7 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 			const PlanarEnd &e = end ? line.to : line.from;
 			if (!e.port) continue;
 			const auto [x, y] = end ? point[t].back() : point[t].front();
-			const std::string tag = fmt::format("port {}", t);
+			const std::string tag = fmt::format("port {} {}", t, map.tracks[t].name);
 			switch (map.expanded.ports[e.index].side) {
 				case PlanarSide::W: row({{x, 1}}, 0, 0, tag); break;
 				case PlanarSide::E: row({{x, 1}, {width, -1}}, 0, 0, tag); break;
@@ -451,7 +454,7 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 			if (side != map.expanded.ports[e2.index].side) continue;
 			const auto p1 = l1.from.port ? point[t1].front() : point[t1].back(), p2 = l2.from.port ? point[t2].front() : point[t2].back();
 			const double d = e1.index == e2.index ? 2 : 2.0 * v.structure.side_gap[static_cast<size_t>(side)];
-			const std::string tag = fmt::format("pin {}", static_cast<int>(side));
+			const std::string tag = fmt::format("pin {} {} {} d={}", static_cast<int>(side), map.tracks[t1].name, map.tracks[t2].name, d);
 			switch (side) {
 				case PlanarSide::N: row({{p2.first, 1}, {p1.first, -1}}, d, d, tag); break;
 				case PlanarSide::E: row({{p2.second, 1}, {p1.second, -1}}, d, d, tag); break;
@@ -723,6 +726,27 @@ TEST_CASE("planar probe: closure with Slots' least exact answer on T1-T3 and LL2
 			size_t closes = 0;
 			for (const PlanarShapeVariant &v : shape.variants) if (ClosureLp(v, mask).closes) closes++;
 			std::cout << fmt::format("X2B {} mask={} closes={}/{}\n", name, mask, closes, shape.variants.size());
+		}
+		if (name != "T1" && name != "LL2" && !shape.variants.empty()) {
+			const PlanarShapeVariant &v = shape.variants.front();
+			const PlanarTrackMap &map = v.structure.map;
+			const ClosureResult c = ClosureLp(v, 4);
+			if (!c.closes) std::cout << fmt::format("X2C {} {} mask=4 WHY {}\n", name, v.structure.tag, c.why);
+			const char *const side_name = "NESW";
+			const char *const heading_name[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+			for (size_t i = 0; i < map.expanded.ring.size(); i++) {
+				const uint32_t t = map.expanded.ring[i];
+				const PlanarLine &line = map.expanded.lines[t];
+				const PlanarEnd e = line.from.port ? line.from : line.to;
+				const PlanarPort &port = map.expanded.ports[e.index];
+				std::cout << fmt::format("X2C {} RING {} {} side={} port={} {} heading={}\n", name, i, map.tracks[t].name, side_name[static_cast<int>(port.side)], e.index, port.in ? "in" : "out", heading_name[static_cast<int>(port.heading)]);
+			}
+			for (size_t i = 0; i < map.expanded.ring.size(); i++) {
+				const uint32_t t = map.expanded.ring[i];
+				std::string pieces;
+				for (const int piece : v.tracks[t].pieces) pieces += fmt::format("{},", ((piece % 8) + 8) % 8);
+				std::cout << fmt::format("X2C {} TRACK {} pieces={} events={}\n", name, map.tracks[t].name, pieces, map.events[t].size());
+			}
 		}
 		if (name == "T1" && !shape.variants.empty()) {
 			const PlanarShapeVariant &v = shape.variants.front();
