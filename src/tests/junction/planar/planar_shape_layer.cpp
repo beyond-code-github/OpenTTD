@@ -175,6 +175,58 @@ TEST_CASE("planar shape layer: the oracle accepts the two valid hand variants", 
 	}
 }
 
+TEST_CASE("planar shape layer: H12 a reflex bend without a dummy", "[junction][planar][planarshape]")
+{
+	const ShapeCase c = MakeFray();
+	const std::vector<std::string> messages = CheckPlanarShapeCells(c.v);
+	INFO(messages.size() << " messages, first: " << (messages.empty() ? "" : messages[0]));
+	REQUIRE(messages.size() == 1);
+	CHECK(messages[0] == "H12: face 2 cell 0 turns both ways at B1 piece 0 and B1 piece 1");
+}
+
+TEST_CASE("planar shape layer: H12 a dummy makes the fray's face convex", "[junction][planar][planarshape]")
+{
+	ShapeCase c = MakeFray();
+	c.v.dummies.push_back({2, static_cast<uint32_t>(FrayTrack(c, "B1")), 0, 2, UINT32_MAX, static_cast<uint32_t>(PlanarSide::E)});
+	const std::vector<std::string> messages = CheckPlanarShapeCells(c.v);
+	INFO(messages.size() << " messages, first: " << (messages.empty() ? "" : messages[0]));
+	CHECK(messages.empty());
+}
+
+TEST_CASE("planar shape layer: H12 a dummy that lands on another cell's wall", "[junction][planar][planarshape]")
+{
+	ShapeCase c = MakeFray();
+	c.v.dummies.push_back({2, static_cast<uint32_t>(FrayTrack(c, "B1")), 0, 2, static_cast<uint32_t>(FrayTrack(c, "AB1")), 0});
+	const std::vector<std::string> messages = CheckPlanarShapeCells(c.v);
+	INFO(messages.size() << " messages, first: " << (messages.empty() ? "" : messages[0]));
+	/* The refused dummy splits nothing, so the face's reflex bend is reported after it. */
+	REQUIRE(messages.size() == 2);
+	CHECK(messages[0] == "H12: face 2 dummy at B1 piece 0 lands on a wall not in its cell");
+	CHECK(messages[1] == "H12: face 2 cell 0 turns both ways at B1 piece 0 and B1 piece 1");
+}
+
+TEST_CASE("planar shape layer: H12 outer every variant's cells are convex on T2 T3 LL2", "[junction][planar][planarshape][.h12]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult result = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		REQUIRE(result.variants.size() == 16);
+		for (const PlanarShapeVariant &v : result.variants) {
+			size_t count = 0;
+			for (const std::string &m : CheckPlanarShapeCells(v)) {
+				count++;
+				std::cout << fmt::format("H12 {} {}: {}\n", name, v.structure.tag, m);
+			}
+			INFO(name << " " << v.structure.tag << ": " << count << " H12 messages");
+			CHECK(count == 0);
+		}
+	}
+}
+
 TEST_CASE("planar shape layer: H1 a stretch that turns and turns back", "[junction][planar][planarshape]")
 {
 	ShapeCase c = MakeFray();
