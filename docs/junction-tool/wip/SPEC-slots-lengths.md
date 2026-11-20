@@ -116,3 +116,12 @@ A node is a topology node when no track at it is a copy or row (`part_of` = UINT
 
 **10.4 Measured (G1v-G1x, ng1 e9c24e3e49).** Full model, 15 s: T2 3/3 2.8 s 54 step lanes; T3 o7t0f1m3270 8.8 s 62, o7t0f0m3270 4.2 s 106, o7t2f0m3270 infeasible (lattice inside spans: a Structure promise gap). The remaining steps are sideways offsets of straight port and node legs (fan-outs, long diagonal approaches), not stretch.
 
+## 11. Beside tracks as offset curves (orchestrator design, 2026-11-21 night; from G2e/G2f, ng1 708d5e3629)
+
+**Why.** One beside equality per piece (§8.2) lets a copy or prio row and its parent each take their own steps and flex inserts, so they drift into each other (the B bundle's same-channel clashes, G2d). Rigid pairs (no sideways moves on shared pieces, equality at both ends) remove them (T2 without coverage: same-channel 25 -> 3, 25x29 tiles) but cannot stretch, so coverage makes T2 infeasible; rigid pairs with their own flex drift again (78 clashes).
+
+**Model.** On the shared run (after the beside track's opening cusp, before its closing cusp), the beside track is the parent chain's offset curve at one lane on the map's side: it has the parent's element sequence (parts, steps, flex inserts, same headings), its own length variables, and every vertex row `beside vertex = parent vertex + m(a, b, s)`, where m is the miter: the intersection of the two offset lines of the headings a (before) and b (after) at one lane on side s. m depends on headings and side only (Shape's and the insert's fixed headings), so every row is written before the solve: valid by construction. The beside track takes no own step places or flex inserts there; it follows the parent's.
+- m is symmetric in (a, b), so a zero-length parent insert gives a zero-length beside insert; part lengths differ from the parent's by constants (lower bounds where negative).
+- Check before use: every m on the grid and of the right parity for the beside track's pieces; name any heading pair where it is not (do not fake).
+- Coverage then stretches the pair together through the parent's flex.
+
