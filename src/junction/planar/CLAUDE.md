@@ -2,7 +2,7 @@
 
 - The planar model stands beside the old pipeline and shares none of its graph, order, structure, programs or placement concepts.
 
-## Architecture: SSS, then lengths, heights and signals (D361, D362, D365)
+## Architecture: SSS, then heights and signals (D361, D362, D365, D379)
 - The planar solver is a stack of layers. Each layer makes only its own decisions. Its output meets every constraint it owns by construction, and it hands the next layer a stated promise. No later layer repairs, retries or discovers infeasibility in an earlier layer's decisions. New work follows this stack; a generate-and-check mechanism is a defect to design out.
 - **Structure** (topology, channels, sites, track map):
   - Decides what tracks exist and their planar order: the separator and the kind (bridge or tunnel) of each structure, per joiner at a join (D364); which leg runs straight at each split and merge; triangle flips, copies, rows.
@@ -14,16 +14,13 @@
   - It makes no sideways moves.
   - The separator runs straight on an axis across its span; a tunnel's separator dives, with one ramp tile at each end on flat ground (D365).
   - Promise: legal headings, and every structure spans its crossers within its kind's limit (bridge: the longest bridge; tunnel: max_tunnel_length; a main line's: also the D228a flow bound).
-- **Slots:**
-  - Decides every track's sideways position in every stretch, hence every S-bend, including which fork or merge leg stays straight and every close-up at a pinned port.
-  - It is the one owner of sideways moves.
-  - Frames cover channels, node groups and port-side corridors.
+- **Slots** (D379: Slots owns lengths; spec wip/SPEC-slots-lengths.md):
+  - Decides every track's sideways position in every stretch, hence every step (S-bend), including which fork or merge leg stays straight and every fan and close-up at a pinned port; every piece's length; each crosser's place along its deck.
+  - One solve on Shape's fixed headings, run on the top 1-3 variants (D366).
+  - Frames cover channels, node groups, port-side corridors and deck strips.
   - No step lies inside a deck, a tunnel or its ramp tiles.
-  - Promise: positions agree around every loop a pin closes, and every step can be built.
-- **Lengths:**
-  - Decides every piece's length, as one solve with only lower bounds left.
-  - Every upper bound or exact length (port pins, the longest bridge, equal parallelograms, S-bend sizes) is an earlier layer's promise, so stretching always succeeds.
-  - Promise: a compact, clash-free layout with room for its signals.
+  - Overlap-freedom is by construction: no clash rows; the clash check is an oracle.
+  - Promise: a closed, compact, clash-free layout with its exact rules (pins, copies, rows, cusps, deck spans within `limit`) and lower bounds (curve spacing, legs, landings, coverage) kept.
 - **Heights** (D365; built after T2, T3 and LL² are end to end checker clean):
   - Decides every tile's track level and the terraform on the fixed footprint: ramps on axis pieces only, portals, bridge clearance, cuttings.
   - Promise: always feasible with terraform allowed (D218); only hard facts (houses under track or a span, water, map edge, unpurchasable) fail, named by tile, before any solve.
@@ -32,8 +29,8 @@
 - Each layer depends only on the model of the layer before it; information that spans layers flows down in the hand-offs, never rediscovered or re-litigated (D366).
 - Layers are designed outside-in, in stack order: a layer's design starts only when the layer before it has a settled hand-off spec; nothing is designed, probed or built on guessed inputs (D368).
 - Each layer refines the model it receives, never undoing an earlier decision, and owns its invariants: it establishes and tests them at its own output; later layers rely on them unchecked, and a broken invariant is the owning layer's bug (D367).
-- Headings need no lengths: a shape is angles only, as on a metro map drawn with fixed angles, and the length layer only stretches pieces.
-- Variants are ranked on cheap scores (structure, shape and slot costs) as they pass down; Lengths solves the best few and picks by its own model (D366).
+- Headings need no lengths: a shape is angles only, as on a metro map drawn with fixed angles; Slots sets the lengths.
+- Variants are ranked on cheap scores (structure and shape costs) as they pass down; Slots solves the best few and picks by its own model (D366, D379).
 
 ## Terms
 - **Hub:** a generated junction. **Port:** where track enters or leaves the hub's box, on one side, with one or more lines side by side.
@@ -57,7 +54,7 @@
 - **Heading:** one of 8 directions; a track turns at most 45 degrees at a time. **Piece:** a straight run at one heading.
 - **Shape:** per track, its heading list and the piece each crossing sits on.
 - **Slot:** a track's sideways position in its bundle, in lane spacings. **S-bend / step:** the sideways move a slot change makes (turn 45 degrees, run diagonally, turn back), keeping the track's heading; its size is the lanes moved. A **fan** is a step that spreads a port's lanes apart before a fray; a **close-up** brings lanes back together after a join, before the out port (D313, D378); other steps sit in node groups, on landings (D375) or under a span. Never "shift" (the coop shifter only). **Frame:** tracks whose slots share one zero.
-- **Lengths / the length program:** the integer program choosing every piece's length for the least area.
+- **Lengths:** every piece's length, decided by Slots together with the slots (D379).
 
 ## Topology (`planar_topology`)
 - A topology is text in the engineer's notation: `port <side> <in|out> <heading>: lines` (lines left to right across travel; a side's ports in reading order, N and S west to east, W and E north to south), `node in -> out`, `prio routes`.
