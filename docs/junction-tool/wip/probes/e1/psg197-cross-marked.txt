@@ -1,0 +1,53 @@
+cross A1c: B2b<, B2c<, F1b<, F1<, F2b<, C23c>, F2<, F3<, F3b<, C12d>, D23d>, D23e>, D12c>, D23c>
+cross A1d: B2b<, B2c<, F1b<, F1<, F2b<, F2<, C23c>, F3<, F3b<, C12d>, D23b>, D12c>, D23c>, D12h>
+cross A1e: B2b<, B2c<, F1b<, F1<, F2b<, F2<, F3<, C23c>, F3b<, C12d>, D23b>, D12c>, D23c>, D12e>, D12f>
+cross A2b: F1b<, C23c>, F1<, F2b<, F2<, F3<, F3b<, C12d>, D23d>, D123>
+cross A2c: F1b<, F1<, C23c>, F2b<, F2<, F3<, F3b<, C12d>, D23d>, D23e>, D123>, AD12>
+cross A2d: C23c>, F1b<, F1<, F2b<, F2<, F3<, F3b<, C12d>
+cross AD12: A2c<
+cross B1b: B2b<, B2c<
+cross B2b: A1c>, A1d>, A1e>, B1b>
+cross B2c: A1c>, A1d>, A1e>, B1b>, F12b<
+cross BF1: F12<
+cross BF12: F3<
+cross C1: D2<, D23<
+cross C12: F2c>, F1>, F1b>, E1b>, C23<
+cross C12b: F2c>, F1c>, E1b>
+cross C12d: A1e<, A1d<, A1c<, A2c<, A2b<, A2d<, F3b>, F3>
+cross C1b: D2<, D23<
+cross C2: D3<
+cross C23: E1b>, C12>
+cross C23c: F3b>, A1e<, F3>, A1d<, F2>, A1c<, F2b>, A2c<, F1>, A2b<, F1b>, A2d<
+cross C2b: D3<
+cross D123: A2c<, D23e<, A2b<
+cross D12c: D23c<, A1e<, A1d<, A1c<
+cross D12e: A1e<
+cross D12f: A1e<
+cross D12h: A1d<
+cross D2: C1b>, C1>
+cross D23: C1b>, C1>
+cross D23b: A1e<, A1d<
+cross D23c: D12c>, A1e<, A1d<, A1c<
+cross D23d: A1c<, A2c<, A2b<
+cross D23e: A1c<, A2c<, D123>
+cross D3: C2b>, C2>
+cross E1: E2<
+cross E12: E3b<
+cross E1b: E2<, E3b<, E3<, C12b<, C12<, C23<
+cross E1c: E2b<
+cross E2: F1c>, E1b>, E1>, E2b>
+cross E23: NO1<
+cross E2b: F1c>, E1c>, E2<
+cross E3: F3b>, F3>, F2c>, F1c>, E1b>
+cross E3b: F3b>, F3>, F2c>, F1c>, E1b>, E12>
+cross F1: C12<, A2d>, A2b>, C23c<, A2c>, A1c>, A1d>, A1e>
+cross F12: BF1>
+cross F12b: B2c>
+cross F1b: C12<, A2d>, C23c<, A2b>, A2c>, A1c>, A1d>, A1e>
+cross F1c: E2b<, E2<, E3b<, E3<, C12b<
+cross F2: A2d>, A2b>, A2c>, A1c>, C23c<, A1d>, A1e>
+cross F2b: A2d>, A2b>, A2c>, C23c<, A1c>, A1d>, A1e>
+cross F2c: E3b<, E3<, C12b<, C12<
+cross F3: E3b<, E3<, C12d<, A2d>, A2b>, A2c>, A1c>, A1d>, C23c<, A1e>, BF12>
+cross F3b: E3b<, E3<, C12d<, A2d>, A2b>, A2c>, A1c>, A1d>, A1e>, C23c<
+cross NO1: E23>
