@@ -1090,6 +1090,99 @@ TEST_CASE("planar probe: closure with Slots' least exact answer on T1-T3 and LL2
 			}
 			std::cout << fmt::format("X2I {} variants={} rigid_min={} rigid_max={} (X2h had {}, X2g had {})\n", name, runs, runs == 0 ? 0 : rigid_min, rigid_max, x2h_max, x2g_max);
 		}
+		{
+			size_t places_min = SIZE_MAX, places_max = 0, lps_max = 0;
+			double ms_max_j = 0;
+			std::map<std::string, size_t> tally;
+			bool first = true;
+			for (const PlanarShapeVariant &v : shape.variants) {
+				const auto start = std::chrono::steady_clock::now();
+				const PlanarTrackMap &map = v.structure.map;
+				std::set<std::pair<uint32_t, size_t>> deck;
+				for (const PlanarStructure &st : v.structure.structures) {
+					const auto event_of = [&](uint32_t t, uint32_t cr) { return static_cast<size_t>(std::ranges::find(map.events[t], cr) - map.events[t].begin()); };
+					if (!st.crossings.empty()) {
+						const size_t f = event_of(st.separator, st.crossings.front()), l = event_of(st.separator, st.crossings.back());
+						for (size_t k = f + 1; k <= l; k++) deck.emplace(st.separator, k);
+					}
+					if (st.copy != UINT32_MAX) for (size_t k = 1; k < map.events[st.copy].size(); k++) deck.emplace(st.copy, k);
+				}
+				std::vector<std::tuple<uint32_t, uint32_t, int>> columns;
+				for (uint32_t t = 0; t < map.tracks.size(); t++) {
+					for (uint32_t k = 0; k <= map.events[t].size(); k++) {
+						if (deck.contains({t, k})) continue;
+						columns.emplace_back(t, k, -1);
+						columns.emplace_back(t, k, 1);
+					}
+				}
+				size_t lps = 0;
+				for (size_t i = 0; i < columns.size();) {
+					std::vector<std::tuple<uint32_t, uint32_t, int>> trial = columns;
+					trial.erase(trial.begin() + static_cast<std::ptrdiff_t>(i));
+					lps++;
+					if (ClosureLp(v, 71, nullptr, nullptr, &trial).rigid.empty()) {
+						columns = trial;
+					} else {
+						i++;
+					}
+				}
+				ms_max_j = std::max(ms_max_j, static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count()) / 1000);
+				lps_max = std::max(lps_max, lps);
+				places_min = std::min(places_min, columns.size());
+				places_max = std::max(places_max, columns.size());
+				const auto node_kind = [&](uint32_t n) {
+					const PlanarNode &node = map.expanded.nodes[n];
+					const PlanarStructureSite *site = nullptr;
+					for (const PlanarStructureSite &candidate : v.structure.sites) {
+						if (candidate.node == n) site = &candidate;
+					}
+					const bool split = node.in.size() == 1 && (node.out.size() != 1 || (site != nullptr && site->split));
+					return fmt::format("node {} {}", n, split ? "split" : "merge");
+				};
+				const auto end_text = [&](uint32_t t, bool end) {
+					const PlanarEnd &e = end ? map.expanded.lines[t].to : map.expanded.lines[t].from;
+					return e.port ? fmt::format("port {}", "NESW"[static_cast<int>(map.expanded.ports[e.index].side)]) : node_kind(e.index);
+				};
+				const auto cross_text = [&](uint32_t t, uint32_t c) {
+					bool sep = false;
+					for (const PlanarStructure &st : v.structure.structures) {
+						if (st.copy == t || (st.separator == t && std::ranges::find(st.crossings, c) != st.crossings.end())) sep = true;
+					}
+					const uint32_t other = map.crossings[c].a == t ? map.crossings[c].b : map.crossings[c].a;
+					return fmt::format("cross {} {}", map.tracks[other].name, sep ? "sep" : "crosser");
+				};
+				const auto structure_crossing = [&](uint32_t c) {
+					for (const PlanarStructure &st : v.structure.structures) {
+						if (st.copy == map.crossings[c].a || st.copy == map.crossings[c].b || std::ranges::find(st.crossings, c) != st.crossings.end()) return true;
+					}
+					return false;
+				};
+				for (const auto &[t, k, sign] : columns) {
+					const size_t events = map.events[t].size();
+					const bool from_end = k == 0, to_end = k == events;
+					const std::string from = from_end ? end_text(t, false) : cross_text(t, map.events[t][k - 1]);
+					const std::string to = to_end ? end_text(t, true) : cross_text(t, map.events[t][k]);
+					std::string context;
+					if ((from_end && from.starts_with("port")) || (to_end && to.starts_with("port"))) {
+						context = "port";
+					} else if (from_end || to_end) {
+						context = "node";
+					} else if (structure_crossing(map.events[t][k - 1]) || structure_crossing(map.events[t][k])) {
+						context = "deck-adjacent";
+					} else {
+						context = "crossing";
+					}
+					tally[context]++;
+					if (first && (name == "T1" || name == "T2" || name == "LL2")) {
+						const int heading = ((v.tracks[t].pieces[k == 0 ? 0 : v.tracks[t].event_piece[k - 1]] % 8) + 8) % 8;
+						std::cout << fmt::format("X2J {} {} PLACE {} stretch={} sign={} heading={} from={} to={}\n", name, v.structure.tag, map.tracks[t].name, k, sign, heading, from, to);
+					}
+				}
+				first = false;
+			}
+			std::cout << fmt::format("X2J {} places_min={} places_max={} lps_max={} ms_max={:.1f}\n", name, shape.variants.empty() ? 0 : places_min, places_max, lps_max, ms_max_j);
+			for (const auto &[context, count] : tally) std::cout << fmt::format("X2J {} TALLY {} {}\n", name, context, count);
+		}
 		if (name == "T1" && !shape.variants.empty()) {
 			const PlanarShapeVariant &v = shape.variants.front();
 			for (const int mask : {1, 2, 4}) {
