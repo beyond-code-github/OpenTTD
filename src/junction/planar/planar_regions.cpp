@@ -883,6 +883,14 @@ PlanarTrackMap BuildPlanarTrackMap(const PlanarTopology &topology, const PlanarC
 	result.events = t.events;
 	result.crossings = t.crossings;
 	result.expanded = t;
+	for (uint32_t r = 0; r < result.expanded.routes.size(); r++) {
+		result.expanded.routes[r].paths.clear();
+		std::string path_error;
+		if (!PlanarRoutePaths(result.expanded, r, result.expanded.routes[r].paths, path_error)) {
+			result.why = path_error;
+			return result;
+		}
+	}
 
 	const PlanarMap map(t, ring_pos, ends);
 	if (!map.why.empty()) {

@@ -1228,3 +1228,38 @@ TEST_CASE("planar probe: closure with Slots' least exact answer on T1-T3 and LL2
 		}
 	}
 }
+
+TEST_CASE("planar track map: expanded route paths run over the tracks", "[junction][planar][planarshape]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const auto &[name, text] : {std::pair<std::string, std::string>{"T2", PlanarTText(2)}, {"LL2", PlanarLL2Text()}}) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarStructureResult s = BuildPlanarStructure(topology, spec, 16);
+		REQUIRE(!s.variants.empty());
+		const PlanarTopology &e = s.variants.front().map.expanded;
+		for (uint32_t r = 0; r < e.routes.size(); r++) {
+			std::set<uint32_t> on_path;
+			for (const std::vector<uint32_t> &path : e.routes[r].paths) {
+				INFO(name << " route " << e.routes[r].name);
+				REQUIRE(!path.empty());
+				CHECK(e.lines[path.front()].from.port);
+				CHECK(e.lines[path.back()].to.port);
+				for (size_t i = 0; i < path.size(); i++) {
+					CHECK(std::ranges::binary_search(e.lines[path[i]].routes, r));
+					on_path.insert(path[i]);
+					if (i + 1 == path.size()) continue;
+					const PlanarEnd to = e.lines[path[i]].to;
+					REQUIRE(!to.port);
+					CHECK(std::ranges::find(e.nodes[to.index].out, path[i + 1]) != e.nodes[to.index].out.end());
+				}
+			}
+			for (uint32_t t = 0; t < e.lines.size(); t++) {
+				if (!std::ranges::binary_search(e.lines[t].routes, r)) continue;
+				INFO(name << " route " << e.routes[r].name << " track " << t << " " << e.lines[t].name);
+				CHECK(on_path.count(t) == 1);
+			}
+		}
+	}
+}

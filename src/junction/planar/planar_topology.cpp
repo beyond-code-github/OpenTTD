@@ -248,39 +248,7 @@ void PlanarBuilder::Derive()
 	struct Path { uint32_t route; std::vector<uint32_t> lines; };
 	std::vector<Path> paths;
 	for (uint32_t r = 0; r < t.routes.size(); r++) {
-		const auto carries = [&](uint32_t l) { return std::ranges::binary_search(t.lines[l].routes, r); };
-		std::vector<std::vector<uint32_t>> stack;
-		for (uint32_t l = 0; l < t.lines.size(); l++) {
-			if (carries(l) && t.lines[l].from.port) stack.push_back({l});
-		}
-		if (stack.size() != 1) {
-			this->error = fmt::format("route {} has {} entry lines, not one", t.routes[r].name, stack.size());
-			return;
-		}
-		while (!stack.empty()) {
-			std::vector<uint32_t> walk = std::move(stack.back());
-			stack.pop_back();
-			const PlanarEnd to = t.lines[walk.back()].to;
-			if (to.port) {
-				if (t.ports[to.index].in) {
-					this->error = fmt::format("line {} leaves through an in port", t.lines[walk.back()].name);
-					return;
-				}
-				t.routes[r].paths.push_back(walk);
-				continue;
-			}
-			std::vector<uint32_t> next;
-			for (uint32_t l : t.nodes[to.index].out) if (carries(l)) next.push_back(l);
-			if (next.empty()) {
-				this->error = fmt::format("route {} ends at a node after {}", t.routes[r].name, t.lines[walk.back()].name);
-				return;
-			}
-			for (auto it = next.rbegin(); it != next.rend(); ++it) {
-				std::vector<uint32_t> w = walk;
-				w.push_back(*it);
-				stack.push_back(std::move(w));
-			}
-		}
+		if (!PlanarRoutePaths(t, r, t.routes[r].paths, this->error)) return;
 		for (const std::vector<uint32_t> &w : t.routes[r].paths) paths.push_back({r, w});
 	}
 
@@ -381,6 +349,44 @@ void PlanarBuilder::Derive()
 		std::ranges::sort(along);
 		for (const auto &[_, c] : along) t.events[l].push_back(c);
 	}
+}
+
+bool PlanarRoutePaths(const PlanarTopology &t, uint32_t r, std::vector<std::vector<uint32_t>> &paths, std::string &error)
+{
+	const auto carries = [&](uint32_t l) { return std::ranges::binary_search(t.lines[l].routes, r); };
+	std::vector<std::vector<uint32_t>> stack;
+	for (uint32_t l = 0; l < t.lines.size(); l++) {
+		if (carries(l) && t.lines[l].from.port) stack.push_back({l});
+	}
+	if (stack.size() != 1) {
+		error = fmt::format("route {} has {} entry lines, not one", t.routes[r].name, stack.size());
+		return false;
+	}
+	while (!stack.empty()) {
+		std::vector<uint32_t> walk = std::move(stack.back());
+		stack.pop_back();
+		const PlanarEnd to = t.lines[walk.back()].to;
+		if (to.port) {
+			if (t.ports[to.index].in) {
+				error = fmt::format("line {} leaves through an in port", t.lines[walk.back()].name);
+				return false;
+			}
+			paths.push_back(walk);
+			continue;
+		}
+		std::vector<uint32_t> next;
+		for (uint32_t l : t.nodes[to.index].out) if (carries(l)) next.push_back(l);
+		if (next.empty()) {
+			error = fmt::format("route {} ends at a node after {}", t.routes[r].name, t.lines[walk.back()].name);
+			return false;
+		}
+		for (auto it = next.rbegin(); it != next.rend(); ++it) {
+			std::vector<uint32_t> w = walk;
+			w.push_back(*it);
+			stack.push_back(std::move(w));
+		}
+	}
+	return true;
 }
 
 PlanarTopology ParsePlanarTopology(std::string_view text, std::string *error)

@@ -91,6 +91,16 @@ struct PlanarTopology {
  */
 PlanarTopology ParsePlanarTopology(std::string_view text, std::string *error);
 
+/**
+ * Every walk over the lines carrying route r, from its one entry port line to an exit port line.
+ * @param t The topology.
+ * @param r The route (index into t.routes).
+ * @param paths Receives the walks (appended), each a list of line indices.
+ * @param error Receives the reason on failure: the route has not exactly one entry line, a line leaves through an in port, or the route ends at a node.
+ * @return False with error set on those failures.
+ */
+bool PlanarRoutePaths(const PlanarTopology &t, uint32_t r, std::vector<std::vector<uint32_t>> &paths, std::string &error);
+
 /** The T (main line W-E, branch S, the engineer's drawing turned to the canonical frame) at the given lane count, as topology text. */
 std::string PlanarTText(int lanes);
 
