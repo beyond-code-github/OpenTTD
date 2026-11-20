@@ -19,7 +19,7 @@ Corpus growth (ROADMAP §17 row; D270, D362): a hub = its topology + its Structu
 6. **Structure decisions (sidecar).** For every pair of lines that cross in the hub (read from the tile evidence: a tunnel under another line, a bridge, or a level crossing): which line is the separator (the line IN the tunnel or ON the bridge), the kind, the tunnel's length in middle tiles, which parallel tunnels form one group (side by side, same crossers), and whether a line is doubled (copy) over it.
 
 ## Output
-- /home/pete/OpenTTD/docs/junction-tool/wip/topologies/psg197.txt: the topology in the notation (a `#` comment header: source, frame, and anything simplified).
+- /home/pete/OpenTTD/docs/junction-tool/tools/junction/topologies/psg197.txt: the topology in the notation (a `#` comment header: source, frame, and anything simplified).
 - /home/pete/OpenTTD/docs/junction-tool/wip/topologies/psg197-decisions.md: the sidecar table (crossing line pair, separator, kind, length, group, copy, tile of the entrance) and a count summary.
 - /home/pete/OpenTTD/docs/junction-tool/wip/topologies/psg197-gaps.md: every feature of the hub the topology + decisions cannot express or that you had to simplify, each with the tile evidence and what the model would need (e.g. choice by tunnel availability; lanes 3 -> 2 -> 3; tunnels of different lengths landing at their joins; two tunnels feeding one lane; levels where tunnels pass under each other). Also any reading you were unsure of, with both readings.
 

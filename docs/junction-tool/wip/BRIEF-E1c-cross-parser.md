@@ -16,8 +16,8 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 - docs/junction-tool/TESTS.md lines 1-8 (how to run `jt`).
 
 ## The data file
-- `git mv docs/junction-tool/wip/topologies/psg197.txt tools/junction/topologies/psg197.txt` (the canonical copy from now on; it already holds the `cross` statements from E1b).
-- Replace every reference to `wip/topologies/psg197.txt` in docs/junction-tool/**/*.md and src/junction/**/CLAUDE.md with `tools/junction/topologies/psg197.txt` (`grep -rl` then `sed -i`; list the files touched in the report).
+- `git mv docs/junction-tool/tools/junction/topologies/psg197.txt tools/junction/topologies/psg197.txt` (the canonical copy from now on; it already holds the `cross` statements from E1b).
+- Replace every reference to `tools/junction/topologies/psg197.txt` in docs/junction-tool/**/*.md and src/junction/**/CLAUDE.md with `tools/junction/topologies/psg197.txt` (`grep -rl` then `sed -i`; list the files touched in the report).
 - src/tests/CMakeLists.txt: below the `JUNCTION_TERRAIN_DIR` definition add the comment `# The authored topology files (tools/junction/topologies).` and `target_compile_definitions(openttd_test PRIVATE JUNCTION_TOPOLOGY_DIR="${CMAKE_SOURCE_DIR}/tools/junction/topologies")`.
 
 ## Tests (src/tests/junction/planar/planar_topology.cpp, tags `[junction][planar]`), outermost first

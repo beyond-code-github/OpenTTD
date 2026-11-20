@@ -26,3 +26,5 @@ add_subdirectory(junction)
 
 # The terrain fixtures dumped from generated maps (tools/junction/terrain).
 target_compile_definitions(openttd_test PRIVATE JUNCTION_TERRAIN_DIR="${CMAKE_SOURCE_DIR}/tools/junction/terrain")
+# The authored topology files (tools/junction/topologies).
+target_compile_definitions(openttd_test PRIVATE JUNCTION_TOPOLOGY_DIR="${CMAKE_SOURCE_DIR}/tools/junction/topologies")

@@ -10,7 +10,7 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 ## Read first (once each, with offset/limit or grep)
 - docs/junction-tool/DECISIONS.md: rows D389, D390 only (`grep -n '^| D389\|^| D390'`).
 - docs/junction-tool/wip/CARD-E1-crossings.md (short).
-- docs/junction-tool/wip/topologies/psg197.txt (78 lines): the topology the statements go into.
+- docs/junction-tool/tools/junction/topologies/psg197.txt (78 lines): the topology the statements go into.
 - docs/junction-tool/wip/topologies/psg197-decisions.md: the tunnel table and the "Line index" table (each line's routes, from tile, to tile in travel order, tunnels in series). Do not read the 112-row crossing table; use the resolved file below instead.
 - docs/junction-tool/wip/probes/e1/psg197-crossings-resolved.md: the 122 crossing pairs (rows `| L | M | tunnel |`; the first 300 lines are a copy of the decisions file, the crossing rows are what counts), and wip/probes/e1/tunnel-tunnel.txt (the 14 tunnel-under-tunnel crossings with their shared tile).
 - The trace, OD = /mnt/c/Users/micro/OneDrive/Documents/OpenTTD-junction-tool/scratchpad/psg/anatomy/psg197/trace/: `core.py` (`build()` gives the piece graph: pieces `pc = (tile, piece)`, successors `N.S[pc]`), `net.py` only as far as `core.build` needs. Run trace code with `python3 -I`, importing it by `importlib` as core.py does. Do not modify any file under OD.
@@ -21,7 +21,7 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
    b. for each of the 122 pairs (L, M), finds the tiles in both L's and M's sequences. The crossing's position on L is the index on L of the first shared tile in L's order; likewise on M.
    c. per line, orders its crossings by position; writes the result.
    d. checks, and prints one line per breach: every one of the 122 pairs has at least one shared tile; no line's walk is ambiguous (two different walks between its ends, or none); the pair set it emits equals the 122 exactly; each pair appears in both its lines' lists; no two crossings of one line share a position (a tie). It also prints per pair the number of shared tiles when more than 1 (information only).
-2. **Statements** appended to docs/junction-tool/wip/topologies/psg197.txt after the `prio` line: a comment line `# Crossings (D389): authored from the save, each line's crossings in travel order (wip/probes/e1/order.py).`, then one `cross L: M1, M2, ...` per line that has crossings, lines in the order of the Line index table. Change nothing else in psg197.txt.
+2. **Statements** appended to docs/junction-tool/tools/junction/topologies/psg197.txt after the `prio` line: a comment line `# Crossings (D389): authored from the save, each line's crossings in travel order (wip/probes/e1/order.py).`, then one `cross L: M1, M2, ...` per line that has crossings, lines in the order of the Line index table. Change nothing else in psg197.txt.
 3. **Output file** docs/junction-tool/wip/probes/e1/order-out.txt: the script's full output (per line: its crossings with tile and position; then the check lines).
 
 ## Do not
@@ -36,7 +36,7 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 
 ## Gate and commit
 - Run `python3 -I docs/junction-tool/wip/probes/e1/order.py > docs/junction-tool/wip/probes/e1/order-out.txt 2>&1`; it must report zero breaches.
-- Rerun the parity probe on the unchanged pair file: `python3 docs/junction-tool/wip/probes/e1/parity.py docs/junction-tool/wip/topologies/psg197.txt docs/junction-tool/wip/probes/e1/psg197-crossings-resolved.md` must still print `bad 0` (it ignores `cross` lines; this proves the statements did not break the file's node parsing). If parity.py fails on the new `cross` lines, make it skip lines starting with `cross` (this one-line change is allowed) and say so.
+- Rerun the parity probe on the unchanged pair file: `python3 docs/junction-tool/wip/probes/e1/parity.py docs/junction-tool/tools/junction/topologies/psg197.txt docs/junction-tool/wip/probes/e1/psg197-crossings-resolved.md` must still print `bad 0` (it ignores `cross` lines; this proves the statements did not break the file's node parsing). If parity.py fails on the new `cross` lines, make it skip lines starting with `cross` (this one-line change is allowed) and say so.
 - One commit: `Doc: Junction E1b: PSG 197 crossings in travel order (cross statements, D389)`, ending with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Do not push.
 
 ## Report (short, this format)

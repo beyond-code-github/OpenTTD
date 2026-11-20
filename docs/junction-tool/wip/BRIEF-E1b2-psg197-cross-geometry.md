@@ -26,7 +26,7 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 - Consistency: each crossing point is computed once per pair and its s_L and s_M are read from that same point, so the orders on all lines come from one drawing. Assert it: the point recomputed from L's segment at s_L and from M's segment at s_M agree within 1e-9. Any mismatch is a stop.
 
 ## Deliverables (E1b's, unchanged)
-- order.py updated; order-out.txt regenerated; `cross` statements appended to docs/junction-tool/wip/topologies/psg197.txt exactly as E1b's brief says; parity probe rerun (`bad 0`).
+- order.py updated; order-out.txt regenerated; `cross` statements appended to docs/junction-tool/tools/junction/topologies/psg197.txt exactly as E1b's brief says; parity probe rerun (`bad 0`).
 - One commit: `Doc: Junction E1b: PSG 197 crossings in travel order by geometry (cross statements, D389)`, ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Do not push.
 
 ## Report: E1b's format, plus: pairs with more than one intersection (count each), ambiguous lines and whether order-invariant.
