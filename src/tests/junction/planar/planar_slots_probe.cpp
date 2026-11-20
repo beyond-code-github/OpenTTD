@@ -61,6 +61,7 @@ struct G1Result {
 	std::vector<std::string> mod2; ///< G1i: the mod-2 check's report, when g1_mod2 is set.
 	std::vector<std::string> forbidden_text; ///< G1k: the step places the grid forbids, one line each.
 	std::set<uint32_t> forbidden; ///< G1k: their binaries.
+	std::vector<std::string> parity_breaks; ///< G1l: the parity rows the solution breaks, one line each.
 	std::map<uint32_t, int> forced; ///< G1k: the variables whose parity the mod-2 system forces.
 	std::vector<std::string> iis; ///< G1k: when tightened and infeasible, the conflicting rows with their terms and the tightened variables in them.
 };
@@ -184,6 +185,12 @@ static std::map<uint32_t, int> g1_tighten;
 
 /** G1k: variables whose upper bound SolveG1 sets to 0 (step binaries of places the grid forbids). */
 static std::set<uint32_t> g1_zero;
+
+/** G1l: when set, SolveG1 records its rows and, once solved, lists the parity and even rows the solution breaks (aux variables ignored, conditional rows only when their step is on). */
+static bool g1_parity_report = false;
+
+/** G1l: the last parity-report solve's values of every variable that appears in a written row (so not the skipped rows' aux variables), and a start the next SolveG1 hands to the solver. */
+static std::vector<std::pair<uint32_t, double>> g1_export, g1_start;
 
 /** G1k: the variable names of the last mod-2 run. */
 static std::map<uint32_t, std::string> g1_names;
@@ -596,7 +603,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		}
 		lp.AddRow(terms, lower - e.constant, upper - e.constant);
 		tags.push_back(tag);
-		if (!g1_tighten.empty()) all_rows.push_back({terms, lower - e.constant, upper - e.constant, tag});
+		if (!g1_tighten.empty() || g1_parity_report || !g1_start.empty()) all_rows.push_back({terms, lower - e.constant, upper - e.constant, tag});
 		if (g1_mod2) {
 			mod2_rows.push_back({terms, lower - e.constant, upper - e.constant, tag});
 			g1_kinds_seen.insert(G1Kind(tag));
@@ -793,7 +800,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 					el.piece = static_cast<int>(j);
 					el.stretch = static_cast<int>(k);
 					el.fixed = fixed;
-					if (g1_mod2) mod2_names[variable] = fmt::format("{}({} s{} p{} h{})", kind == Kind::Part ? "len" : (kind == Kind::StepP ? "stepP" : "stepM"), map.tracks[t].name, k, j, h);
+					mod2_names[variable] = fmt::format("{}({} s{} p{} h{})", kind == Kind::Part ? "len" : (kind == Kind::StepP ? "stepP" : "stepM"), map.tracks[t].name, k, j, h);
 					if (kind == Kind::Part) {
 						el.disp = PlanarModel::STEP[h];
 						el.length = 1;
@@ -1289,6 +1296,55 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		return r;
 	}
 
+	if ((off & 512) == 0 && !g1_mod2) {
+		/* G1m: per forced variable, v = 2 h + parity with h integer (added after the model so indices match the mod-2 run). */
+		const uint32_t n = var_count;
+		for (const auto &[fv, parity] : g1_tighten) {
+			if (fv >= n) continue;
+			const uint32_t half = lp.AddVariable(-INF, INF, 0, true);
+			const std::vector<std::pair<uint32_t, double>> pair_terms = {{fv, 1.0}, {half, -2.0}};
+			lp.AddRow(pair_terms, parity, parity);
+			tags.push_back(fmt::format("forced parity {}", fv));
+			all_rows.push_back({pair_terms, static_cast<double>(parity), static_cast<double>(parity), tags.back()});
+		}
+	}
+	if (!g1_start.empty()) {
+		/* G1l: the start in every written row; an unknown with coefficient +-2 (an aux) takes the value that fits, any other unknown makes the row unjudged. */
+		std::map<uint32_t, double> known(g1_start.begin(), g1_start.end());
+		size_t unjudged = 0;
+		for (const Mod2Row &row_rec : all_rows) {
+			double sum = 0;
+			std::vector<std::pair<uint32_t, double>> unknown;
+			for (const auto &[v, c] : row_rec.terms) {
+				auto it = known.find(v);
+				if (it != known.end()) sum += c * it->second; else unknown.emplace_back(v, c);
+			}
+			bool ok;
+			if (unknown.empty()) {
+				ok = sum >= row_rec.lower - 1e-6 && sum <= row_rec.upper + 1e-6;
+			} else if (unknown.size() == 1 && std::abs(std::abs(unknown[0].second) - 2) < 1e-9) {
+				/* sum + c * a in [lower, upper] for some integer a >= 0. */
+				ok = false;
+				for (long long a = 0; a < 100000 && !ok; a++) {
+					const double val = sum + unknown[0].second * static_cast<double>(a);
+					ok = val >= row_rec.lower - 1e-6 && val <= row_rec.upper + 1e-6;
+				}
+			} else {
+				unjudged++;
+				continue;
+			}
+			if (ok) continue;
+			std::string text = row_rec.tag + ":";
+			for (const auto &[v, c] : row_rec.terms) {
+				auto n = mod2_names.find(v);
+				auto it = known.find(v);
+				text += fmt::format(" {:+g}*{}={}", c, n != mod2_names.end() ? n->second : fmt::format("v{}", v), it != known.end() ? fmt::format("{:g}", it->second) : "?");
+			}
+			r.audit.push_back(fmt::format("START BREAKS {} in [{:g},{:g}]", text, row_rec.lower, row_rec.upper));
+		}
+		r.audit.push_back(fmt::format("START unjudged rows {}", unjudged));
+		lp.SetStart(g1_start);
+	}
 	lp.SetTimeLimit(g1_time_limit);
 	const auto start = std::chrono::steady_clock::now();
 	const JunctionMilp::Status status = lp.Solve();
@@ -1317,6 +1373,38 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 
 	/* The solution. */
 	const auto value = [&](uint32_t variable) { return static_cast<int>(std::lround(lp.Value(variable))); };
+	if (g1_parity_report) {
+		for (const Mod2Row &row_rec : all_rows) {
+			const bool even = row_rec.tag.starts_with("even ");
+			if (!even && !row_rec.tag.starts_with("parity ")) continue;
+			bool conditional = false, active = true;
+			long long sum = 0;
+			std::string text = row_rec.tag + ":";
+			for (const auto &[v, c] : row_rec.terms) {
+				if (std::abs(c) >= 1000) {
+					if (!conditional) active = false;
+					conditional = true;
+					if (value(v) != 0) active = true;
+					continue;
+				}
+				const long long ci = std::llround(c);
+				if (ci % 2 == 0) continue;
+				sum += ci * value(v);
+				auto n = mod2_names.find(v);
+				text += fmt::format(" {:+d}*{}={}", ci, n != mod2_names.end() ? n->second : fmt::format("v{}", v), value(v));
+			}
+			if (!active) continue;
+			const int want = even ? 0 : 1;
+			const double shift = even ? 0 : (row_rec.lower == row_rec.upper ? row_rec.lower - 1 : 0);
+			if ((((sum - std::llround(shift)) % 2) + 2) % 2 != want) r.parity_breaks.push_back(text);
+		}
+		std::set<uint32_t> used;
+		for (const Mod2Row &row_rec : all_rows) for (const auto &[v, c] : row_rec.terms) used.insert(v);
+		g1_export.clear();
+		for (const uint32_t v : used) g1_export.emplace_back(v, lp.Value(v));
+		std::sort(r.parity_breaks.begin(), r.parity_breaks.end());
+		r.parity_breaks.erase(std::unique(r.parity_breaks.begin(), r.parity_breaks.end()), r.parity_breaks.end());
+	}
 	for (const uint32_t sv : step_vars) r.step_lanes += value(sv);
 	r.width_tiles = value(width) / 2;
 	r.height_tiles = value(height) / 2;
@@ -1796,6 +1884,69 @@ TEST_CASE("planar probe: G1k parity-tightened LP names the conflict", "[junction
 			for (const std::string &line : m.forbidden_text) std::cout << fmt::format("G1K FORBID {} {} {}\n", name, vt, line.substr(0, 600));
 			std::cout << fmt::format("G1K {} {} forced={} lp_plain={} lp_tight={} ms={:.0f}\n", name, vt, m.forced.size(), plain.solved ? 1 : 0, r.solved ? 1 : 0, r.ms);
 			for (const std::string &line : r.iis) std::cout << fmt::format("G1K {} {}   {}\n", name, vt, line);
+		}
+	}
+}
+
+/** G1l: is the base at off=511 infeasible or slow? One 60 s solve each of LL2 o0t0f1m1 and T3 o7t2f0m3270 (engineer OK'd 2026-11-21), then the parity rows broken by the solution without parity rows (off=1535). */
+TEST_CASE("planar probe: G1l long base solves and the parity breaks without parity", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::tuple<std::string, std::string, std::string>> cases = {{"LL2", PlanarLL2Text(), "o0t0f1m1"}, {"T3", PlanarTText(3), "o7t2f0m3270"}};
+	const double limit = g1_time_limit;
+	const bool long_run = false; /* The 60 s runs (2026-11-21): both timed out. */
+	for (const auto &[name, text, want] : cases) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		for (size_t i = 0; i < 3 && i < shape.variants.size(); i++) {
+			const PlanarShapeVariant &v = shape.variants[i];
+			if (v.structure.tag != want) continue;
+			g1_parity_report = true;
+			g1_time_limit = 15.0;
+			const G1Result np = SolveG1(topology, spec, v, 511U | 1024U);
+			std::cout << fmt::format("G1L {} {} off=1535 solved={} ms={:.0f} steps={} parity_breaks={}\n", name, want, np.solved ? 1 : 0, np.ms, np.step_lanes, np.parity_breaks.size());
+			for (const std::string &line : np.parity_breaks) std::cout << fmt::format("G1L BREAK {} {} {}\n", name, want, line);
+			g1_parity_report = false;
+			g1_time_limit = 15.0;
+			g1_start = g1_export;
+			const size_t t0 = g1_timeouts;
+			const G1Result st = SolveG1(topology, spec, v, 511U);
+			g1_start.clear();
+			std::cout << fmt::format("G1L {} {} off=511 with the off=1535 drawing as start ({} values): solved={} timeout={} ms={:.0f} steps={} W={} H={} audit={} why={}\n", name, want, g1_export.size(), st.solved ? 1 : 0, g1_timeouts != t0 ? 1 : 0, st.ms, st.step_lanes, st.width_tiles, st.height_tiles, st.audit.size(), st.why.substr(0, 200));
+			for (const std::string &line : st.audit) std::cout << fmt::format("G1L AUDIT {} {} {}\n", name, want, line);
+			if (long_run) {
+			g1_time_limit = 60.0;
+			const size_t timeouts = g1_timeouts;
+			const G1Result r = SolveG1(topology, spec, v, 511U);
+			std::cout << fmt::format("G1L {} {} off=511 limit=60 solved={} timeout={} ms={:.0f} steps={} W={} H={} audit={} why={}\n", name, want, r.solved ? 1 : 0, g1_timeouts != timeouts ? 1 : 0, r.ms, r.step_lanes, r.width_tiles, r.height_tiles, r.audit.size(), r.why.substr(0, 200));
+			}
+		}
+	}
+	g1_time_limit = limit;
+}
+
+/** G1m: the off=511 MILP with G1i's forced parities as bounds (valid cuts) and, per forced variable, v = 2 h + parity with h integer: is the base slow or infeasible? 15 s each. */
+TEST_CASE("planar probe: G1m the base with forced parities as cuts", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		for (size_t i = 0; i < 3 && i < shape.variants.size(); i++) {
+			const PlanarShapeVariant &v = shape.variants[i];
+			g1_mod2 = true;
+			const G1Result m = SolveG1(topology, spec, v, 511U);
+			g1_mod2 = false;
+			g1_tighten = m.forced;
+			const size_t t0 = g1_timeouts;
+			const G1Result r = SolveG1(topology, spec, v, 511U);
+			g1_tighten.clear();
+			std::cout << fmt::format("G1M {} {} off=511 cuts={} solved={} timeout={} ms={:.0f} steps={} W={} H={} clashes={} audit={} why={}\n", name, v.structure.tag, m.forced.size(), r.solved ? 1 : 0, g1_timeouts != t0 ? 1 : 0, r.ms, r.step_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.audit.size(), r.why.substr(0, 120));
 		}
 	}
 }
