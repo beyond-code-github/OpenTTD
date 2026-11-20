@@ -735,6 +735,20 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 		}
 	}
 
+	/* Probe (SPEC-slots Q1, PLANAR_H11): a structure's crossers are parallel at their crossings (headings equal mod 4). */
+	if (std::getenv("PLANAR_H11") != nullptr) {
+		for (size_t i = 0; i < sv.structure.structures.size(); i++) {
+			const PlanarStructure &s = sv.structure.structures[i];
+			for (size_t k = 1; k < s.crossings.size(); k++) {
+				const size_t e0 = EventIndex(map.events[s.crossers[0]], s.crossings[0]), ek = EventIndex(map.events[s.crossers[k]], s.crossings[k]);
+				if (e0 == SIZE_MAX || ek == SIZE_MAX) return fail(fmt::format("structure {} lists a crossing its crosser lacks", i));
+				const uint32_t h0 = H[s.crossers[0]][e0 + 1];
+				const uint32_t hk = H[s.crossers[k]][ek + 1];
+				eq({{hk, 1}, {h0, -1}, {var(-16, 16, 0, true), -4}}, 0, fmt::format("h11 {}", i));
+			}
+		}
+	}
+
 	/* Structures: one axis across the span. */
 	for (size_t i = 0; i < sv.structure.structures.size(); i++) {
 		const PlanarStructure &s = sv.structure.structures[i];

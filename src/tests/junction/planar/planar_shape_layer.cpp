@@ -503,3 +503,122 @@ TEST_CASE("planar shape: BuildPlanarShape on T2, T3 and LL2", "[junction][planar
 		}
 	}
 }
+
+TEST_CASE("planar sweep: Structure and Shape over T1-T3, LL2 and LL3a", "[junction][planar][planarshape][.probe]")
+{
+	static const std::string ll3a = R"(topology LL3a
+port W in E: EF1, EF2, EF3
+port W out W: WO1=C1+B1, WO2=C2+B2, WO3=C3+B3
+port E out E: EO1=E1+D1, EO2=E2+D2, EO3=E3+D3
+port E in W: AB1, AB2, AB3
+port S in N: CD1, CD2, CD3
+port S out S: SO1=A1+F1, SO2=A2+F2, SO3=A3+F3
+node EF1, EF2, EF3 -> E1, F1, E2, F2, E3, F3
+node AB1, AB2, AB3 -> A1, B1, A2, B2, A3, B3
+node CD1, CD2, CD3 -> C1, D1, C2, D2, C3, D3
+node E1, D1 -> EO1
+node E2, D2 -> EO2
+node E3, D3 -> EO3
+node C1, B1 -> WO1
+node C2, B2 -> WO2
+node C3, B3 -> WO3
+node A1, F1 -> SO1
+node A2, F2 -> SO2
+node A3, F3 -> SO3
+prio E1, E2, E3, B1, B2, B3, A1, F2, A3
+)";
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T1", PlanarTText(1)}, {"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}, {"LL3a", ll3a}};
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const auto millis = [](std::chrono::steady_clock::time_point from) { return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - from).count()) / 1000; };
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		if (!error.empty()) {
+			std::cout << fmt::format("SWEEP {} PARSE {}\n", name, error);
+			CHECK(name == "LL3a");
+			continue;
+		}
+		const PlanarChannels channels = BuildPlanarChannels(topology);
+		auto start = std::chrono::steady_clock::now();
+		PlanarStructureResult structure = BuildPlanarStructure(topology, spec, 16);
+		const double struct_ms = millis(start);
+		const size_t variants = structure.variants.size();
+		size_t struct_breaches = 0;
+		std::map<std::string, size_t> printed;
+		const auto breach = [&](const std::string &tag, const std::string &m, const std::string &oracle) {
+			if (printed[oracle]++ < 3) std::cout << fmt::format("SWEEP {} BREACH {} {}\n", name, tag, m);
+		};
+		for (const PlanarStructureVariant &v : structure.variants) {
+			for (const std::string &m : CheckPlanarStructurePromise(topology, spec, v)) {
+				struct_breaches++;
+				breach(v.tag, m, "structure");
+			}
+		}
+		if (structure.variants.empty()) {
+			std::cout << fmt::format("SWEEP {} STRUCTURE_WHY {}\n", name, structure.why);
+			for (const auto &[reason, count] : structure.skipped) std::cout << fmt::format("SWEEP {} SKIPPED {} {}\n", name, count, reason);
+			std::cout << fmt::format("SWEEP {} evaluated={}\n", name, structure.evaluated);
+		}
+		start = std::chrono::steady_clock::now();
+		const PlanarShapeResult shape = BuildPlanarShape(std::move(structure));
+		const double shape_ms = millis(start);
+		size_t shape_breaches = 0, closes = 0, c1_bad = 0, c1_pairs = 0, c2_bad = 0, c2_structures = 0;
+		size_t c1_printed = 0, c2_printed = 0;
+		for (const auto &[tag, why] : shape.unshaped) std::cout << fmt::format("SWEEP {} UNSHAPED {} {}\n", name, tag, why);
+		for (const PlanarShapeVariant &v : shape.variants) {
+			const std::string &tag = v.structure.tag;
+			for (const std::string &m : CheckPlanarShapePromise(topology, spec, v)) {
+				shape_breaches++;
+				breach(tag, m, "shape");
+			}
+			if (ClosureLp(v).closes) closes++;
+			const PlanarTrackMap &map = v.structure.map;
+			/* The heading of track t at crossing c, in eighths. */
+			const auto heading = [&](uint32_t t, uint32_t c) {
+				const size_t k = static_cast<size_t>(std::ranges::find(map.events[t], c) - map.events[t].begin());
+				return ((v.tracks[t].pieces[v.tracks[t].event_piece[k]] % 8) + 8) % 8;
+			};
+			const auto line_of = [&](uint32_t t) { return t < topology.lines.size() ? t : map.part_of[t]; };
+			std::map<std::pair<uint32_t, uint32_t>, std::set<int>> keys;
+			for (uint32_t c = 0; c < map.crossings.size(); c++) {
+				const std::array<uint32_t, 2> tracks = {map.crossings[c].a, map.crossings[c].b};
+				for (size_t i = 0; i < 2; i++) {
+					const uint32_t t = tracks[i], other = tracks[1 - i];
+					const uint32_t line = line_of(t), other_line = line_of(other);
+					if (line == UINT32_MAX || other_line == UINT32_MAX) continue;
+					keys[{channels.channel_of_line[line], channels.channel_of_line[other_line]}].insert(heading(t, c));
+				}
+			}
+			for (const auto &[key, headings] : keys) {
+				c1_pairs++;
+				if (headings.size() <= 1) continue;
+				c1_bad++;
+				if (c1_printed++ < 5) {
+					std::string list;
+					for (const int h : headings) list += fmt::format("{} ", h);
+					std::cout << fmt::format("SWEEP {} C1 {} ch{} x ch{} headings={}\n", name, tag, key.first, key.second, list);
+				}
+			}
+			for (size_t i = 0; i < v.structure.structures.size(); i++) {
+				const PlanarStructure &s = v.structure.structures[i];
+				if (s.crossers.size() < 2) continue;
+				c2_structures++;
+				std::set<int> lines;
+				std::string list;
+				for (size_t k = 0; k < s.crossers.size(); k++) {
+					const int h = heading(s.crossers[k], s.crossings[k]);
+					lines.insert(h % 4);
+					list += fmt::format("{} ", h);
+				}
+				if (lines.size() <= 1) continue;
+				c2_bad++;
+				if (c2_printed++ < 5) std::cout << fmt::format("SWEEP {} C2 {} structure {} sep {} headings={}\n", name, tag, i, s.separator, list);
+			}
+		}
+		std::cout << fmt::format("SWEEP {} variants={} struct_ms={:.1f} struct_breaches={} shaped={} unshaped={} shape_ms={:.1f} shape_breaches={} closes={} c1_bad={} c1_pairs={} c2_bad={} c2_structures={}\n",
+				name, variants, struct_ms, struct_breaches, shape.variants.size(), shape.unshaped.size(), shape_ms, shape_breaches, closes, c1_bad, c1_pairs, c2_bad, c2_structures);
+		double shape_cost_sum = 0;
+		for (const PlanarShapeVariant &v : shape.variants) shape_cost_sum += v.cost;
+		std::cout << fmt::format("SWEEP {} shape_cost_sum={}\n", name, shape_cost_sum);
+	}
+}
