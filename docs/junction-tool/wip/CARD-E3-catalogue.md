@@ -25,7 +25,7 @@ Today each primitive is a code path in `MappedComposer` writing rows into one pe
 4. n-lane fray and join with their internal order swaps (T2, T3), prio row (D384 exact, follows its lane, D349), doubling (C6 parallelogram).
 5. Stand-alone order swap (C8; 197 has up to 13 candidate same-channel crossings, to confirm with the channel builder).
 
-## The decision for Pete
+## The decision for Pete (RULED D398: option B, per node)
 - **Context:** a site where several lanes of one bundle split (T2's fray: two lanes, each splitting, the straight lanes bridging the diverging ones) can be one gadget per node or one gadget per site.
 - **Options:**
   - A. **One gadget per site, generated per lane count** (recommended): the n splits and the order swaps between them are one verified shape, so their tight tile sharing is checked together; the catalogue is per type x n (n = 1..4).
