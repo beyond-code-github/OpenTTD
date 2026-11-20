@@ -1042,6 +1042,54 @@ TEST_CASE("planar probe: closure with Slots' least exact answer on T1-T3 and LL2
 			}
 			std::cout << fmt::format("X2H {} variants={} rigid_min={} rigid_max={} (X2g had {})\n", name, runs, runs == 0 ? 0 : rigid_min, rigid_max, x2g_max);
 		}
+		{
+			size_t runs = 0, rigid_min = SIZE_MAX, rigid_max = 0, x2g_max = 0, x2h_max = 0;
+			bool first = true;
+			for (const PlanarShapeVariant &v : shape.variants) {
+				const PlanarTrackMap &map = v.structure.map;
+				std::set<std::pair<uint32_t, size_t>> deck;
+				for (const PlanarStructure &st : v.structure.structures) {
+					const auto event_of = [&](uint32_t t, uint32_t cr) { return static_cast<size_t>(std::ranges::find(map.events[t], cr) - map.events[t].begin()); };
+					if (!st.crossings.empty()) {
+						const size_t f = event_of(st.separator, st.crossings.front()), l = event_of(st.separator, st.crossings.back());
+						for (size_t k = f + 1; k <= l; k++) deck.emplace(st.separator, k);
+					}
+					if (st.copy != UINT32_MAX) for (size_t k = 1; k < map.events[st.copy].size(); k++) deck.emplace(st.copy, k);
+				}
+				std::vector<std::tuple<uint32_t, uint32_t, int>> columns;
+				for (uint32_t t = 0; t < map.tracks.size(); t++) {
+					for (uint32_t k = 0; k <= map.events[t].size(); k++) {
+						if (deck.contains({t, k})) continue;
+						columns.emplace_back(t, k, 1);
+						columns.emplace_back(t, k, -1);
+					}
+				}
+				const ClosureResult c = ClosureLp(v, 71, nullptr, nullptr, &columns);
+				x2g_max = std::max(x2g_max, ClosureLp(v, 71).rigid.size());
+				const ClosureResult places = ClosureLp(v, 63);
+				if (places.closes) {
+					std::vector<std::tuple<uint32_t, uint32_t, int>> placed;
+					for (const auto &[track, stretch, n] : places.step_places) placed.emplace_back(track, stretch, n < 0 ? -1 : 1);
+					x2h_max = std::max(x2h_max, ClosureLp(v, 71, nullptr, nullptr, &placed).rigid.size());
+				}
+				runs++;
+				rigid_min = std::min(rigid_min, c.rigid.size());
+				rigid_max = std::max(rigid_max, c.rigid.size());
+				if (first && (name == "T1" || name == "T2" || name == "LL2")) {
+					size_t step_count = 0;
+					for (const std::string &entry : c.rigid) {
+						if (entry.starts_with("step ")) {
+							step_count++;
+						} else {
+							std::cout << fmt::format("X2I {} {} RIGID {}\n", name, v.structure.tag, entry);
+						}
+					}
+					std::cout << fmt::format("X2I {} {} rigid_steps={}\n", name, v.structure.tag, step_count);
+				}
+				first = false;
+			}
+			std::cout << fmt::format("X2I {} variants={} rigid_min={} rigid_max={} (X2h had {}, X2g had {})\n", name, runs, runs == 0 ? 0 : rigid_min, rigid_max, x2h_max, x2g_max);
+		}
 		if (name == "T1" && !shape.variants.empty()) {
 			const PlanarShapeVariant &v = shape.variants.front();
 			for (const int mask : {1, 2, 4}) {
