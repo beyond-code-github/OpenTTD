@@ -64,6 +64,7 @@ struct G1Result {
 	std::vector<std::string> forbidden_text; ///< G1k: the step places the grid forbids, one line each.
 	std::set<uint32_t> forbidden; ///< G1k: their binaries.
 	std::vector<std::string> parity_breaks; ///< G1l: the parity rows the solution breaks, one line each.
+	std::vector<std::string> steps_text; ///< G1x: each used step place: track, stretch, piece, heading, lanes, what bounds the stretch.
 	std::map<uint32_t, int> forced; ///< G1k: the variables whose parity the mod-2 system forces.
 	std::vector<std::string> iis; ///< G1k: when tightened and infeasible, the conflicting rows with their terms and the tightened variables in them.
 };
@@ -92,6 +93,7 @@ struct Elem {
 	int piece, stretch; ///< The piece and stretch it belongs to.
 	bool fixed; ///< A part or a cusp step (a bend of the route's fixed curves), not an optional step.
 	uint32_t zp = UINT32_MAX, zm = UINT32_MAX; ///< For an optional step, its two binaries.
+	bool flex = false; ///< G1v: a flex point's axis insert (always present, length >= 0, no binaries, no curve rows).
 };
 
 /** One optional step place. */
@@ -486,17 +488,17 @@ static std::vector<std::string> AuditG1(const AuditIn &in)
 			const Elem &el = e.elems[i];
 			if (el.kind == Kind::Part) continue;
 			const int n = in.value(el.var);
-			const int sigma = el.fixed && cusp_index < cusp_sigma.size() ? cusp_sigma[cusp_index++] : 0;
+			const int sigma = el.fixed && !el.flex && cusp_index < cusp_sigma.size() ? cusp_sigma[cusp_index++] : 0;
 			if (n == 0) continue;
 			const int ph = ((in.v.tracks[t].pieces[static_cast<size_t>(el.piece)] % 8) + 8) % 8;
 			const int expect = el.kind == Kind::StepP ? (ph + 1) % 8 : (ph + 7) % 8;
 			const std::array<int, 2> d = {in.elem_pos[t][i + 1][0] - in.elem_pos[t][i][0], in.elem_pos[t][i + 1][1] - in.elem_pos[t][i][1]};
 			const int len = std::max(std::abs(d[0]), std::abs(d[1]));
 			const size_t vi = vertex_at(t, in.elem_pos[t][i]);
-			const char *what = el.fixed ? "cusp step" : "step";
+			const char *what = el.flex ? "flex insert" : (el.fixed ? "cusp step" : "step");
 			if (d[0] != len * PlanarModel::STEP[expect][0] || d[1] != len * PlanarModel::STEP[expect][1]) breach("steps", map.tracks[t].name, vi, fmt::format("{} displacement ({},{}) is not heading {} (piece heading {})", what, d[0], d[1], expect, ph));
 			if (len != 2 * n) breach("steps", map.tracks[t].name, vi, fmt::format("{} length {} is not 2*{}", what, len, n));
-			if (el.fixed) {
+			if (el.fixed && !el.flex) {
 				if (len < 2) breach("steps", map.tracks[t].name, vi, fmt::format("cusp step length {} below 2", len));
 				if (sigma != 0) {
 					const int dot = d[0] * PlanarModel::STEP[(ph + 2) % 8][0] + d[1] * PlanarModel::STEP[(ph + 2) % 8][1];
@@ -668,6 +670,7 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 	/* The spans and the stretches inside them. */
 	std::set<std::pair<uint32_t, size_t>> in_span;
 	std::vector<Span> spans;
+	std::map<uint32_t, size_t> span_of_crossing; ///< G1v: each crossing on a span's deck, and that span.
 	const auto angle_odd = [&](uint32_t crossing) { return (v.angles[crossing] & 1) != 0; };
 	for (size_t i = 0; i < v.structure.structures.size(); i++) {
 		const PlanarStructure &st = v.structure.structures[i];
@@ -683,6 +686,7 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 			s.clear = (s.diag ? 2 : 1) + 2 * run;
 			spans.push_back(s);
 			for (size_t k = first + 1; k <= last; k++) in_span.emplace(track, k);
+			for (size_t k = first; k <= last; k++) span_of_crossing[map.events[track][k]] = spans.size() - 1;
 		};
 		if (!st.crossings.empty()) {
 			const auto event_of = [&](uint32_t c) { return static_cast<size_t>(std::ranges::find(map.events[st.separator], c) - map.events[st.separator].begin()); };
@@ -855,7 +859,13 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 				uint32_t first_part, last_part;
 				/* G1u (off bit 1048576): on a diagonal piece a step is an axis insert, the octilinear stretch primitive: one on every diagonal piece
 				 * outside spans, priced as its length (2 per lane) plus a bend pair (20 per use), up to 32 lanes. On axis pieces steps stay as they were. */
-				const bool insert = (off & 1048576) != 0 && h % 2 != 0;
+				const bool insert = (off & 1048576) != 0 && (off & 2097152) == 0 && h % 2 != 0;
+				/* G1v (off bit 2097152): a flex point on every diagonal piece outside spans: two fixed axis inserts (h + 1, then h - 1) of >= 0 lanes
+				 * with a diagonal part between (odd by the grid rows), priced as length; no binaries and no curve rows (the curve oracle counts breaches). */
+				/* G1w: nor on a crosser's stretch between two crossings on decks (the crossing lattice is rigid: a bundle's lanes and their copies
+				 * and rows are separate spans, exactly a lane apart, so the crosser climbs exactly a lane between them). */
+				const bool lattice = k >= 1 && k < map.events[t].size() && ((off & 16777216) != 0 || (span_of_crossing.contains(map.events[t][k - 1]) && span_of_crossing.contains(map.events[t][k])));
+				const bool flex_place = (off & 2097152) != 0 && h % 2 != 0 && !in_span.contains({t, k}) && !lattice;
 				const bool insert_place = insert && !place_blocked && !in_span.contains({t, k});
 				if (place_piece == static_cast<int>(j) || every_piece || insert_place) {
 					const uint32_t before = var(0, INF, 1), after = var(0, INF, 1);
@@ -883,6 +893,20 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 					const uint32_t part = var(0, INF, 1);
 					add(Kind::Part, part, true);
 					first_part = last_part = part;
+				}
+				if (flex_place) {
+					const uint32_t fp = var(0, 32, 2), mid = var(0, INF, 1), fm = var(0, 32, 2), tail = var(0, INF, 1);
+					insert_vars.insert(fp);
+					insert_vars.insert(fm);
+					/* G1x: one-sided (off 4194304 P only, 8388608 M only): a single insert, no odd middle part. */
+					const bool only_m = (off & 8388608) != 0, only_p = (off & 4194304) != 0;
+					if (!only_m) e.elems[add(Kind::StepP, fp, true)].flex = true;
+					if (!only_m && !only_p) add(Kind::Part, mid, true);
+					if (!only_p) e.elems[add(Kind::StepM, fm, true)].flex = true;
+					add(Kind::Part, tail, true);
+					mod2_names[fp] = fmt::format("flexP({} s{} p{} h{})", map.tracks[t].name, k, j, h);
+					mod2_names[fm] = fmt::format("flexM({} s{} p{} h{})", map.tracks[t].name, k, j, h);
+					last_part = tail;
 				}
 				if (k == ne && j == np - 1 && cusp_end.contains(t)) cusp(cusp_end.at(t), false);
 				e.cell[{static_cast<uint32_t>(k), static_cast<uint32_t>(j)}] = {first_part, last_part};
@@ -1240,6 +1264,10 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 			int last_heading = -1;
 			for (const uint32_t t : path) {
 				for (const Elem &el : te[t].elems) {
+					if (el.flex) {
+						acc.Add(el.var, el.length);
+						continue;
+					}
 					if (!el.fixed) {
 						if (el.kind == Kind::StepP) {
 							markers.push_back({acc, el.var, UINT32_MAX, el.zp, el.zm, bends.size()});
@@ -1476,6 +1504,25 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 	}
 	r.width_tiles = value(width) / 2;
 	r.height_tiles = value(height) / 2;
+	for (uint32_t t = 0; t < nt; t++) {
+		for (const Place &pl : track_places[t]) {
+			const int lanes = value(pl.p) - value(pl.m);
+			if (lanes == 0) continue;
+			const std::vector<uint32_t> &ev = map.events[t];
+			const auto end_text = [&](bool from) {
+				const size_t k = pl.stretch;
+				if (from ? k == 0 : k == ev.size()) {
+					const PlanarEnd &pe = from ? map.expanded.lines[t].from : map.expanded.lines[t].to;
+					return std::string(pe.port ? "port" : "node");
+				}
+				const uint32_t c = ev[from ? k - 1 : k];
+				const PlanarCrossing &cr = map.crossings[c];
+				return fmt::format("x{}{}", map.tracks[cr.a == t ? cr.b : cr.a].name, span_of_crossing.contains(c) ? "(deck)" : "");
+			};
+			const int h = ((v.tracks[t].pieces[pl.piece] % 8) + 8) % 8;
+			r.steps_text.push_back(fmt::format("{} s{}/{} p{}/{} h{} lanes {:+} [{} .. {}]", map.tracks[t].name, pl.stretch, ev.size(), pl.piece, v.tracks[t].pieces.size(), h, lanes, end_text(true), end_text(false)));
+		}
+	}
 
 	/* Consistency: walk every track's parts into a vertex list. */
 	std::vector<SolvedTrack> solved(nt);
@@ -2136,6 +2183,79 @@ TEST_CASE("planar probe: G1u diagonal inserts as the stretch primitive", "[junct
 			std::cout << fmt::format("G1U {} {} solved={} timeout={} ms={:.0f} step_lanes={} inserts={} insert_lanes={} W={} H={} clashes={} audit={} why={}\n", name, v.structure.tag, r.solved ? 1 : 0, g1_timeouts != t0 ? 1 : 0, r.ms, r.step_lanes, r.inserts_used, r.insert_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.audit.size(), r.why.substr(0, 160));
 			for (const std::string &line : r.audit) std::cout << fmt::format("G1U AUDIT {} {} {}\n", name, v.structure.tag, line);
 			}
+		}
+	}
+}
+
+/** G1v: flex points (off 2097152): a fixed axis insert pair on every diagonal piece outside spans, no binaries, no curve rows; full model on T2 and T3 top 3, 15 s each. */
+TEST_CASE("planar probe: G1v flex points on diagonals", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}};
+	/* G1x: modes: pair; pair, no flex between any two crossings; P only; M only (both with the wider lattice rule). */
+	for (const uint32_t mode : {2097152U, 2097152U | 16777216U, 2097152U | 16777216U | 4194304U, 2097152U | 16777216U | 8388608U}) {
+	std::cout << fmt::format("G1V MODE {}\n", mode);
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		for (size_t i = 0; i < 3 && i < shape.variants.size(); i++) {
+			const PlanarShapeVariant &v = shape.variants[i];
+			const G1Result lp = SolveG1(topology, spec, v, mode | 512U);
+			std::cout << fmt::format("G1V LP {} {} solved={} step_lanes={:.1f} flex_lanes={} why={}\n", name, v.structure.tag, lp.solved ? 1 : 0, lp.lanes_exact, lp.insert_lanes, lp.why.substr(0, 160));
+			const size_t t0 = g1_timeouts;
+			const G1Result r = SolveG1(topology, spec, v, mode);
+			std::cout << fmt::format("G1V {} {} solved={} timeout={} ms={:.0f} step_lanes={} flex_used={} flex_lanes={} W={} H={} clashes={} curve_breaches={} audit={} why={}\n", name, v.structure.tag, r.solved ? 1 : 0, g1_timeouts != t0 ? 1 : 0, r.ms, r.step_lanes, r.inserts_used, r.insert_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.curve_breaches.size(), r.audit.size(), r.why.substr(0, 160));
+			for (const std::string &line : r.audit) std::cout << fmt::format("G1V AUDIT {} {} {}\n", name, v.structure.tag, line);
+		}
+	}
+	}
+}
+
+/** G1w: G1q's family filter with flex points on (off 2097152), T3 top variant: why the integer model is infeasible while its LP is not. */
+TEST_CASE("planar probe: G1w flex points family filter on T3", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const char *family_names[] = {"beside", "span clear", "deck gap and limit", "landing", "crossers", "node legs", "coverage", "bays", "curves"};
+	const double limit = g1_time_limit;
+	g1_time_limit = 5.0;
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(3), &error);
+	REQUIRE(error.empty());
+	const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+	const PlanarShapeVariant &v = shape.variants[0];
+	uint32_t off = 2097152U;
+	for (uint32_t b = 0; b < G1_FAMILIES; b++) {
+		const size_t t0 = g1_timeouts;
+		const G1Result r = SolveG1(topology, spec, v, off | (1U << b));
+		const bool proved = !r.solved && g1_timeouts == t0;
+		if (proved) off |= 1U << b;
+		std::cout << fmt::format("G1W {} drop {} -> {} ms={:.0f}\n", v.structure.tag, family_names[b], r.solved ? "solved (needed)" : (proved ? "infeasible (dropped)" : "timeout (kept)"), r.ms);
+	}
+	const G1Result r = SolveG1(topology, spec, v, off);
+	std::cout << fmt::format("G1W {} off={} solved={} rows={}\n", v.structure.tag, off, r.solved ? 1 : 0, r.iis.size());
+	for (const std::string &line : r.iis) std::cout << fmt::format("G1W IIS {} {}\n", v.structure.tag, line);
+	g1_time_limit = limit;
+}
+
+/** G1x: where the steps sit with flex points on (pair, no flex between two crossings), T2 and T3 top variant. */
+TEST_CASE("planar probe: G1x where steps sit with flex points", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}};
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		const PlanarShapeVariant &v = shape.variants[0];
+		/* Drop none, then each lower-bound family (beside 1 ... curves 256). */
+		for (const uint32_t drop : {0U, 1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U, 256U}) {
+			if (name == "T3" && drop != 0) break;
+			const G1Result r = SolveG1(topology, spec, v, 2097152U | 16777216U | drop);
+			std::cout << fmt::format("G1X {} {} drop={} solved={} ms={:.0f} step_lanes={} places_used={}\n", name, v.structure.tag, drop, r.solved ? 1 : 0, r.ms, r.step_lanes, r.steps_text.size());
+			if (drop == 0) for (const std::string &line : r.steps_text) std::cout << fmt::format("G1X STEP {} {}\n", name, line);
 		}
 	}
 }
