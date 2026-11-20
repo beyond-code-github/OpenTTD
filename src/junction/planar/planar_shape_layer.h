@@ -31,6 +31,7 @@ struct PlanarShapeStructure {
 	uint8_t axis; ///< The axis heading (eighths, even) its separator holds from the first to the last crossing.
 	std::array<int, 2> middles; ///< The least middle tiles per kind at the chosen angles (index 0 bridge, 1 tunnel; -1 for a kind the structure does not allow).
 	std::array<int, 2> end_run; ///< The straight end-run tiles per kind (bridge: the head; tunnel: portal and ramp; -1 for a kind the structure does not allow).
+	std::array<int, 2> copy_middles = {-1, -1}; ///< The least middle tiles of the copy's deck per kind at its chosen angles (-1 for a kind not allowed, or no copy).
 };
 
 /** One variant of Shape's output: Structure's variant refined with headings. */
@@ -50,8 +51,8 @@ struct PlanarShapeResult {
 };
 
 /**
- * The promise H1 to H9 of SPEC-shape §4 as a test oracle (D367).
- * The topology and spec serve H9 (P1 to P7) and H6's limits; the oracle is a test tool, not a layer.
+ * The promise H1 to H9 and H11 of SPEC-shape §4 as a test oracle (D367).
+ * The topology and spec serve H9 (P1 to P8) and H6's limits; the oracle is a test tool, not a layer.
  * @param topology The topology the variant was made from.
  * @param spec The spec: the bridge and tunnel limits and the flow bound.
  * @param v The variant.

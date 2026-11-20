@@ -125,6 +125,7 @@ static PlanarStructureVariant WrapToday(const TracksVariant &v, const std::set<u
 		}
 	}
 	out.structures = PlanarBuildStructures(v.topology, runs, map, MakeTestJunctionSpec());
+	out.side_gap = PlanarSideGaps(MakeTestJunctionSpec());
 	out.cost = static_cast<int>(out.structures.size());
 	out.sites = PlanarBuildStructureSites(v.topology, v.channels, v.sites, map);
 	return out;
@@ -295,6 +296,15 @@ TEST_CASE("planar structure: P5 a structure's limit that is not the spec's", "[j
 	CHECK(CheckPlanarStructurePromise(h.tv.topology, h.spec, v)[0].find("limit") != std::string::npos);
 }
 
+TEST_CASE("planar structure: P8 a side gap that is not the spec's", "[junction][planar][planarstructure]")
+{
+	const HandCase h = MakeHandCase();
+	PlanarStructureVariant v = h.v;
+	v.side_gap[static_cast<size_t>(PlanarSide::E)] += 1;
+	RequireOnly(h, v, "P8");
+	CHECK(CheckPlanarStructurePromise(h.tv.topology, h.spec, v)[0].find("side gap") != std::string::npos);
+}
+
 TEST_CASE("planar structure: P6 a copy where the share is not full, and a copy missing", "[junction][planar][planarstructure]")
 {
 	const HandCase h = MakeHandCase();
@@ -342,6 +352,7 @@ TEST_CASE("planar structure: P7 a split after a merge on a route path", "[juncti
 	h.tv.topology = ParsePlanarTopology(text, &error);
 	REQUIRE(error.empty());
 	REQUIRE(h.tv.topology.crossings.empty());
+	h.v.side_gap = PlanarSideGaps(h.spec);
 	/* One message per route path: both routes run through the merged line and split after it. */
 	const std::vector<std::string> ids = Ids(CheckPlanarStructurePromise(h.tv.topology, h.spec, h.v));
 	CHECK(ids == std::vector<std::string>{"P7", "P7"});

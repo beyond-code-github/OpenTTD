@@ -218,25 +218,44 @@ struct Oracle {
 	}
 
 	/**
-	 * The least middles of a structure at the angles of its crossings, run by run (H6).
-	 * @param s The structure.
+	 * The least middles of one span at the angles of its crossings (H6): its width, n + d, where d is 1 when any crossing is diagonal.
+	 * @param deck The deck track (the separator or the copy).
+	 * @param crossings The span's crossings.
+	 * @param crossers The crossers, one per crossing.
 	 * @param least Receives the least middles.
 	 * @return False when a crossing has no angle in 1..3.
 	 */
-	bool Least(const PlanarStructure &s, int &least) const
+	bool Least(uint32_t deck, const std::vector<uint32_t> &crossings, const std::vector<uint32_t> &crossers, int &least) const
 	{
-		int run = 0, run_angle = -1;
-		least = 0;
-		const auto flush = [&]() { if (run > 0) least += run_angle == 2 ? run : run + 1; run = 0; };
-		for (size_t k = 0; k < s.crossings.size(); k++) {
+		int diagonal = 0;
+		for (size_t k = 0; k < crossings.size(); k++) {
 			int a;
-			if (!this->Angle(s.crossings[k], s.separator, s.crossers[k], a) || a < 1 || a > 3) return false;
-			if (a != run_angle) flush();
-			run_angle = a;
-			run++;
+			if (!this->Angle(crossings[k], deck, crossers[k], a) || a < 1 || a > 3) return false;
+			if (a != 2) diagonal = 1;
 		}
-		flush();
+		least = static_cast<int>(crossings.size()) + diagonal;
 		return true;
+	}
+
+	/** @return The crossings of the structure's copy span (those of its copy that mirror one of its crossings) in the copy's travel order; empty without a copy. */
+	std::vector<uint32_t> CopyCrossings(const PlanarStructure &s) const
+	{
+		std::vector<uint32_t> crossings;
+		if (s.copy == UINT32_MAX) return crossings;
+		for (const uint32_t c : this->map.events[s.copy]) {
+			if (std::ranges::find(s.crossings, this->MirrorOf(c)) != s.crossings.end()) crossings.push_back(c);
+		}
+		return crossings;
+	}
+
+	/** @return The structure whose copy span holds the crossing, or nullptr. */
+	const PlanarStructure *CopyDeckOf(uint32_t c) const
+	{
+		for (const PlanarStructure &s : this->v.structure.structures) {
+			const std::vector<uint32_t> crossings = this->CopyCrossings(s);
+			if (std::ranges::find(crossings, c) != crossings.end()) return &s;
+		}
+		return nullptr;
 	}
 
 	/** @return The crossings of a beside track's parent chain, concatenated in order; false when it has no chain. */
@@ -371,7 +390,8 @@ struct Oracle {
 	{
 		for (uint32_t c = 0; c < this->map.crossings.size(); c++) {
 			const PlanarStructure *first = this->StructureOf(c, nullptr);
-			if (first == nullptr) {
+			const PlanarStructure *copy_deck = first == nullptr ? this->CopyDeckOf(c) : nullptr;
+			if (first == nullptr && copy_deck == nullptr) {
 				const uint32_t original = this->MirrorOf(c);
 				if (original == UINT32_MAX) {
 					this->out.push_back(fmt::format("H4: crossing {} is in no structure and mirrors no crossing", c));
@@ -380,8 +400,8 @@ struct Oracle {
 				}
 				continue;
 			}
-			const PlanarStructure *second = this->StructureOf(c, first);
-			const uint32_t p = first->separator;
+			const PlanarStructure *second = copy_deck != nullptr ? nullptr : this->StructureOf(c, first);
+			const uint32_t p = copy_deck != nullptr ? copy_deck->copy : first->separator;
 			const uint32_t q = this->map.crossings[c].a == p ? this->map.crossings[c].b : this->map.crossings[c].a;
 			int a;
 			if (!this->Angle(c, p, q, a)) {
@@ -424,18 +444,53 @@ struct Oracle {
 			if (shape.end_run != end_run) this->out.push_back(fmt::format("H5: structure {} has end runs {}, {}; its kinds give {}, {}", i, shape.end_run[0], shape.end_run[1], end_run[0], end_run[1]));
 
 			/* H6: the least middles from the headings, run by run. */
-			int least;
-			if (!this->Least(s, least)) continue;
-			for (int kind = 0; kind < 2; kind++) {
-				const bool allowed = (s.kinds & (1 << kind)) != 0;
-				if (!allowed) {
-					if (shape.middles[kind] != -1) this->out.push_back(fmt::format("H6: structure {} has middles {} for a kind it does not allow", i, shape.middles[kind]));
-					continue;
+			const std::vector<uint32_t> copy_crossings = this->CopyCrossings(s);
+			std::vector<uint32_t> copy_crossers;
+			for (const uint32_t c : copy_crossings) copy_crossers.push_back(this->map.crossings[c].a == s.copy ? this->map.crossings[c].b : this->map.crossings[c].a);
+			for (const bool copy : {false, true}) {
+				int least = -1;
+				const bool has = !copy || s.copy != UINT32_MAX;
+				if (has && !(copy ? this->Least(s.copy, copy_crossings, copy_crossers, least) : this->Least(s.separator, s.crossings, s.crossers, least))) continue;
+				const std::array<int, 2> &middles = copy ? shape.copy_middles : shape.middles;
+				for (int kind = 0; kind < 2; kind++) {
+					const bool allowed = has && (s.kinds & (1 << kind)) != 0;
+					const char *deck = copy ? "copy " : "";
+					if (!allowed) {
+						if (middles[kind] != -1) this->out.push_back(fmt::format("H6: structure {} has {}middles {} for a kind it does not allow", i, deck, middles[kind]));
+						continue;
+					}
+					const char *name = kind == 0 ? "bridge" : "tunnel";
+					if (middles[kind] != least) this->out.push_back(fmt::format("H6: structure {} has {}{} middles {}, the least at its angles is {}", i, deck, name, middles[kind], least));
+					const int limit = s.limit[kind];
+					if (least > limit) this->out.push_back(fmt::format("H6: structure {} needs {} {}{} middles, over the limit {}", i, least, deck, name, limit));
 				}
-				const char *name = kind == 0 ? "bridge" : "tunnel";
-				if (shape.middles[kind] != least) this->out.push_back(fmt::format("H6: structure {} has {} middles {}, the least at its angles is {}", i, name, shape.middles[kind], least));
-				const int limit = s.limit[kind];
-				if (least > limit) this->out.push_back(fmt::format("H6: structure {} needs {} {} middles, over the limit {}", i, least, name, limit));
+			}
+		}
+	}
+
+	/** H11: the crossers of one span cross it parallel (D376). */
+	void CheckH11()
+	{
+		const std::vector<PlanarStructure> &structures = this->v.structure.structures;
+		for (size_t i = 0; i < structures.size(); i++) {
+			const PlanarStructure &s = structures[i];
+			std::vector<uint32_t> copy_crossings = this->CopyCrossings(s), copy_crossers;
+			for (const uint32_t c : copy_crossings) copy_crossers.push_back(this->map.crossings[c].a == s.copy ? this->map.crossings[c].b : this->map.crossings[c].a);
+			for (const bool copy : {false, true}) {
+				const std::vector<uint32_t> &crossings = copy ? copy_crossings : s.crossings, &crossers = copy ? copy_crossers : s.crossers;
+				if (crossings.size() < 2) continue;
+				std::vector<int> headings;
+				bool parallel = true;
+				for (size_t k = 0; k < crossings.size(); k++) {
+					const size_t e = EventIndex(this->map.events[crossers[k]], crossings[k]);
+					if (e == SIZE_MAX) continue;
+					headings.push_back(this->EventHeading(crossers[k], e));
+					if (((headings.back() - headings.front()) % 4 + 4) % 4 != 0) parallel = false;
+				}
+				if (parallel) continue;
+				std::string list;
+				for (const int h : headings) list += fmt::format("{}{}", list.empty() ? "" : ", ", h);
+				this->out.push_back(fmt::format("H11: structure {} {} span crosses at headings {}", i, copy ? "copy" : "separator", list));
 			}
 		}
 	}
@@ -552,6 +607,7 @@ struct Oracle {
 					this->out.push_back(fmt::format("H8: crossing {} of beside track {} is with track {}, its parent chain's is with {}", k, name, this->map.tracks[xb].name, this->map.tracks[xp].name));
 					continue;
 				}
+				if (this->CopyDeckOf(eb[k]) != nullptr) continue;
 				const size_t ib = EventIndex(this->map.events[xb], eb[k]), ip = EventIndex(this->map.events[xb], ep[k]);
 				if (ib == SIZE_MAX || ip == SIZE_MAX || this->v.tracks[xb].event_piece[ib] != this->v.tracks[xb].event_piece[ip]) {
 					this->out.push_back(fmt::format("H8: crossing {} of beside track {} sits on another piece of {} than its parent chain's", k, name, this->map.tracks[xb].name));
@@ -589,6 +645,7 @@ std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology,
 	o.CheckH7Faces();
 	o.CheckH7Routes();
 	o.CheckH8();
+	o.CheckH11();
 	h9();
 	return o.out;
 }
@@ -680,22 +737,23 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 		}
 	}
 
-	/* Crossings: the rule for the separator and, in a stack, for the other separator too. A mirrored crossing of a beside track has no row of its own: it takes its original's angle and keeps its crosser on one piece across both. */
+	/* Crossings: the rule for the separator and, in a stack, for the other separator too. A copy-deck crossing has its own angle and the crossing row against the copy (D376); any other mirrored crossing of a beside track has no row of its own: it takes its original's angle and keeps its crosser on one piece across both. */
 	std::vector<uint32_t> angle(map.crossings.size(), NONE);
 	for (uint32_t c = 0; c < map.crossings.size(); c++) {
 		const PlanarStructure *first = o.StructureOf(c, nullptr);
-		if (first == nullptr) continue;
-		const PlanarStructure *second = o.StructureOf(c, first);
+		const PlanarStructure *copy_deck = first == nullptr ? o.CopyDeckOf(c) : nullptr;
+		if (first == nullptr && copy_deck == nullptr) continue;
+		const PlanarStructure *second = copy_deck != nullptr ? nullptr : o.StructureOf(c, first);
 		angle[c] = var(1, 3, 0, true);
-		for (const PlanarStructure *s : {first, second}) {
+		for (const PlanarStructure *s : {first, second, copy_deck}) {
 			if (s == nullptr) continue;
-			const uint32_t p = s->separator;
+			const uint32_t p = s == copy_deck ? s->copy : s->separator;
 			const uint32_t q = map.crossings[c].a == p ? map.crossings[c].b : map.crossings[c].a;
 			int side;
 			if (!o.Arrival(c, p, q, side)) return fail(fmt::format("crossing {} has no arrival side", c));
 			const uint32_t hp = H[p][EventIndex(map.events[p], c) + 1], hq = H[q][EventIndex(map.events[q], c) + 1];
 			eq({{hq, 1}, {hp, -1}, {angle[c], -side}, {var(-8, 8, 0, true), -8}}, 0, fmt::format("cross {}", c));
-			eq({{hp, 1}, {var(-12, 16, 0, true), -2}}, 0, fmt::format("axis {}", c));
+			if (s != copy_deck) eq({{hp, 1}, {var(-12, 16, 0, true), -2}}, 0, fmt::format("axis {}", c));
 		}
 	}
 	for (uint32_t c = 0; c < map.crossings.size(); c++) {
@@ -709,42 +767,31 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 		eq({{H[crosser][EventIndex(map.events[crosser], c) + 1], 1}, {H[crosser][EventIndex(map.events[crosser], original) + 1], -1}}, 0, fmt::format("mirror {}", c));
 	}
 
-	/* Capacity: per structure and kind, the middles at the chosen angles fit the limit Structure handed down. Crosser k has the angle a_k = b1 + 2 b2 + 3 b3 (one binary set); a run of diagonal crossers at one angle starts at r_k (run starts: r_k >= b1_k - b1_{k-1}, r_k >= b3_k - b3_{k-1}), and n + sum r_k <= limit (H6's width). The binaries serve every kind of the structure. */
+	/* Capacity and H11, per span (the separator's deck; the copy's deck when there is a copy): one binary d >= |a_k - 2| per crossing, n + d <= limit per kind (H6's width), and the crossers' headings at their crossings equal mod 4 (H11, D376). */
 	for (size_t i = 0; i < sv.structure.structures.size(); i++) {
 		const PlanarStructure &s = sv.structure.structures[i];
-		const size_t n = s.crossings.size();
-		if (n == 0 || (s.limit[0] < 0 && s.limit[1] < 0)) continue;
-		const std::string tag = fmt::format("cap {}", i);
-		Terms starts;
-		std::vector<uint32_t> prev(2, NONE);
-		for (size_t k = 0; k < n; k++) {
-			const uint32_t b1 = var(0, 1, 0, true), b2 = var(0, 1, 0, true), b3 = var(0, 1, 0, true), r = var(0, JunctionMilp::INF, 0, false);
-			eq({{b1, 1}, {b2, 1}, {b3, 1}}, 1, tag);
-			eq({{angle[s.crossings[k]], 1}, {b1, -1}, {b2, -2}, {b3, -3}}, 0, tag);
-			if (k == 0) {
-				row({{r, 1}, {b1, -1}, {b3, -1}}, 0, JunctionMilp::INF, tag);
-			} else {
-				row({{r, 1}, {b1, -1}, {prev[0], 1}}, 0, JunctionMilp::INF, tag);
-				row({{r, 1}, {b3, -1}, {prev[1], 1}}, 0, JunctionMilp::INF, tag);
+		const std::vector<uint32_t> copy_crossings = o.CopyCrossings(s);
+		std::vector<uint32_t> copy_crossers;
+		for (const uint32_t c : copy_crossings) copy_crossers.push_back(map.crossings[c].a == s.copy ? map.crossings[c].b : map.crossings[c].a);
+		for (const bool copy : {false, true}) {
+			const std::vector<uint32_t> &crossings = copy ? copy_crossings : s.crossings, &crossers = copy ? copy_crossers : s.crossers;
+			const size_t n = crossings.size();
+			if (n == 0) continue;
+			if (s.limit[0] >= 0 || s.limit[1] >= 0) {
+				const std::string tag = fmt::format("cap {}", i);
+				const uint32_t d = var(0, 1, 0, true);
+				for (size_t k = 0; k < n; k++) {
+					row({{angle[crossings[k]], 1}, {d, -1}}, -JunctionMilp::INF, 2, tag);
+					row({{angle[crossings[k]], -1}, {d, -1}}, -JunctionMilp::INF, -2, tag);
+				}
+				for (int kind = 0; kind < 2; kind++) {
+					if (s.limit[kind] >= 0) row({{d, 1}}, -JunctionMilp::INF, s.limit[kind] - static_cast<double>(n), tag);
+				}
 			}
-			prev = {b1, b3};
-			starts.emplace_back(r, 1);
-		}
-		for (int kind = 0; kind < 2; kind++) {
-			if (s.limit[kind] >= 0) row(starts, -JunctionMilp::INF, s.limit[kind] - static_cast<double>(n), tag);
-		}
-	}
-
-	/* Probe (SPEC-slots Q1, PLANAR_H11): a structure's crossers are parallel at their crossings (headings equal mod 4). */
-	if (std::getenv("PLANAR_H11") != nullptr) {
-		for (size_t i = 0; i < sv.structure.structures.size(); i++) {
-			const PlanarStructure &s = sv.structure.structures[i];
-			for (size_t k = 1; k < s.crossings.size(); k++) {
-				const size_t e0 = EventIndex(map.events[s.crossers[0]], s.crossings[0]), ek = EventIndex(map.events[s.crossers[k]], s.crossings[k]);
+			for (size_t k = 1; k < n; k++) {
+				const size_t e0 = EventIndex(map.events[crossers[0]], crossings[0]), ek = EventIndex(map.events[crossers[k]], crossings[k]);
 				if (e0 == SIZE_MAX || ek == SIZE_MAX) return fail(fmt::format("structure {} lists a crossing its crosser lacks", i));
-				const uint32_t h0 = H[s.crossers[0]][e0 + 1];
-				const uint32_t hk = H[s.crossers[k]][ek + 1];
-				eq({{hk, 1}, {h0, -1}, {var(-16, 16, 0, true), -4}}, 0, fmt::format("h11 {}", i));
+				eq({{H[crossers[k]][ek + 1], 1}, {H[crossers[0]][e0 + 1], -1}, {var(-16, 16, 0, true), -4}}, 0, fmt::format("h11 {}", i));
 			}
 		}
 	}
@@ -912,9 +959,18 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 		PlanarShapeStructure shape{0, {-1, -1}, {(s.kinds & 1) != 0 ? 1 : -1, (s.kinds & 2) != 0 ? 2 : -1}};
 		if (!s.crossings.empty()) shape.axis = static_cast<uint8_t>((o.EventHeading(s.separator, EventIndex(map.events[s.separator], s.crossings.front())) % 8 + 8) % 8);
 		int least;
-		if (!o.Least(s, least)) return fail("a crossing's angle is not in 1..3");
+		if (!o.Least(s.separator, s.crossings, s.crossers, least)) return fail("a crossing's angle is not in 1..3");
 		for (int kind = 0; kind < 2; kind++) {
 			if ((s.kinds & (1 << kind)) != 0) shape.middles[kind] = least;
+		}
+		if (s.copy != UINT32_MAX) {
+			const std::vector<uint32_t> copy_crossings = o.CopyCrossings(s);
+			std::vector<uint32_t> copy_crossers;
+			for (const uint32_t c : copy_crossings) copy_crossers.push_back(map.crossings[c].a == s.copy ? map.crossings[c].b : map.crossings[c].a);
+			if (!o.Least(s.copy, copy_crossings, copy_crossers, least)) return fail("a copy crossing's angle is not in 1..3");
+			for (int kind = 0; kind < 2; kind++) {
+				if ((s.kinds & (1 << kind)) != 0) shape.copy_middles[kind] = least;
+			}
 		}
 		sv.structures.push_back(shape);
 	}

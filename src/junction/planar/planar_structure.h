@@ -45,6 +45,7 @@ struct PlanarStructureVariant {
 	PlanarTrackMap map; ///< The variant's track map.
 	std::vector<PlanarStructureSite> sites; ///< Every split and merge of the map with its straight leg.
 	std::vector<PlanarStructure> structures; ///< The crossings grouped into structures.
+	std::array<int, 4> side_gap{}; ///< Per box side (index PlanarSide: N, E, S, W), the slot distance between the last line of one port and the first line of the next port on that side: gap + 1 (ml_gap on E and W, branch_gap on N and S; D377). Slots reads it, never the spec.
 	int cost; ///< The cheap score for ranking: structures plus copies (D371a).
 };
 
@@ -56,6 +57,13 @@ struct PlanarStructureResult {
 	std::map<std::string, size_t> skipped; ///< How many (flip, ties) combinations, variants or track maps were skipped, by reason text.
 	bool exhaustive = false; ///< Every variant of the search space was evaluated, else the search was best-improvement over one-bit neighbours.
 };
+
+/**
+ * The slot distance between consecutive ports on each box side: gap + 1, ml_gap on E and W, branch_gap on N and S (D377).
+ * @param spec The spec.
+ * @return Per side in PlanarSide order (N, E, S, W), the slot distance.
+ */
+std::array<int, 4> PlanarSideGaps(const JunctionSpec &spec);
 
 /**
  * The channel that is over at each channel crossing, one bit per crossing in crossing order (D347b: every channel crossing is a choice).
@@ -100,11 +108,12 @@ std::vector<PlanarStructureSite> PlanarBuildStructureSites(const PlanarTopology 
 PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const JunctionSpec &spec, size_t keep);
 
 /**
- * The promise P1 to P7 of SPEC-structure §4 as a test oracle (D367).
+ * The promise P1 to P8 of SPEC-structure §4 as a test oracle (D367).
  * Copy and row tracks are the map's own additions: their crossings follow by rule from their parent structure, so P3 counts only crossings between two line tracks.
  * P3 allows a crossing in two structures exactly when each of its two tracks is the separator of one of them.
  * P5 checks the bridge and tunnel length limits and, for a structure with a copy, the D228a flow bound (crossers + 2 <= 2 * sd + tl).
  * P6 also requires each copy track to be the copy of exactly one structure.
+ * P8 checks the variant's side gaps equal the spec's (D377).
  * @param topology The topology the variant was made from.
  * @param spec The spec: the bridge and tunnel limits.
  * @param v The variant.
