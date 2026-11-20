@@ -554,6 +554,11 @@ prio E1, E2, E3, B1, B2, B3, A1, F2, A3
 				breach(v.tag, m, "structure");
 			}
 		}
+		if (structure.variants.empty()) {
+			std::cout << fmt::format("SWEEP {} STRUCTURE_WHY {}\n", name, structure.why);
+			for (const auto &[reason, count] : structure.skipped) std::cout << fmt::format("SWEEP {} SKIPPED {} {}\n", name, count, reason);
+			std::cout << fmt::format("SWEEP {} evaluated={}\n", name, structure.evaluated);
+		}
 		start = std::chrono::steady_clock::now();
 		const PlanarShapeResult shape = BuildPlanarShape(std::move(structure));
 		const double shape_ms = millis(start);
@@ -612,5 +617,8 @@ prio E1, E2, E3, B1, B2, B3, A1, F2, A3
 		}
 		std::cout << fmt::format("SWEEP {} variants={} struct_ms={:.1f} struct_breaches={} shaped={} unshaped={} shape_ms={:.1f} shape_breaches={} closes={} c1_bad={} c1_pairs={} c2_bad={} c2_structures={}\n",
 				name, variants, struct_ms, struct_breaches, shape.variants.size(), shape.unshaped.size(), shape_ms, shape_breaches, closes, c1_bad, c1_pairs, c2_bad, c2_structures);
+		double shape_cost_sum = 0;
+		for (const PlanarShapeVariant &v : shape.variants) shape_cost_sum += v.cost;
+		std::cout << fmt::format("SWEEP {} shape_cost_sum={}\n", name, shape_cost_sum);
 	}
 }
