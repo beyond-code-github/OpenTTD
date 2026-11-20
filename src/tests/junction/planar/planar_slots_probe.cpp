@@ -140,6 +140,10 @@ static uint32_t G1Family(const std::string &tag)
 	return 0;
 }
 
+/** The solve's time limit in seconds, and the count of solves that ended neither optimal nor infeasible (the G1h filter reads both). */
+static double g1_time_limit = 15.0;
+static size_t g1_timeouts = 0;
+
 /** One node stub (D380): the leg, its node's trunk, whether the leg starts at the node (a split), the trunk's heading and the stub variable. */
 struct StubRec {
 	uint32_t leg, trunk;
@@ -1006,11 +1010,12 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		}
 	}
 
-	lp.SetTimeLimit(15.0);
+	lp.SetTimeLimit(g1_time_limit);
 	const auto start = std::chrono::steady_clock::now();
 	const JunctionMilp::Status status = lp.Solve();
 	r.ms = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count()) / 1000.0;
 	r.solved = status == JunctionMilp::Status::Optimal;
+	if (status != JunctionMilp::Status::Optimal && status != JunctionMilp::Status::Infeasible) g1_timeouts++;
 	r.why = r.solved ? "Optimal" : (status == JunctionMilp::Status::Infeasible ? "Infeasible" : "Error");
 	if (status == JunctionMilp::Status::Infeasible) {
 		std::set<std::string> unique;
@@ -1071,13 +1076,13 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 			current = -1;
 		}
 	}
+	std::set<uint32_t> shown;
 	if (print_geometry) {
 		for (const auto &[name, piece, need, dot] : beside_rows) {
 			double got = dot.constant;
 			for (const auto &[variable, coefficient] : dot.terms) got += coefficient * lp.Value(variable);
 			std::cout << fmt::format("G1E BESIDE {} piece={} need={} got={}\n", name, piece, need, std::lround(got));
 		}
-		std::set<uint32_t> shown;
 		std::set<uint32_t> seeds;
 		for (uint32_t t = 0; t < nt; t++) {
 			const std::string &nm = map.tracks[t].name;
@@ -1117,22 +1122,6 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 				const std::string next = i + 1 < nv ? fmt::format("next_heading={} next_len={}", st.headings[i], len[i]) : std::string("next_heading=- next_len=-");
 				std::cout << fmt::format("G1E {} v{} kind={} x={} y={} x%2={} y%2={} (x+y)%2={} {}{}\n", nm, i, kind, x, y, x & 1, y & 1, (x + y) & 1, next, extra);
 			}
-			/* The rules at the start of each run of one heading. */
-			if (nv > 0 && ((st.vertices[0][0] + st.vertices[0][1]) & 1) == 0) std::cout << fmt::format("G1E BREAK {} v0 rule=start x+y odd\n", nm);
-			int prev_heading = -1;
-			for (size_t i = 0; i + 1 < nv; i++) {
-				if (len[i] == 0) continue;
-				const int h = st.headings[i];
-				if (h == prev_heading) continue;
-				prev_heading = h;
-				if (h % 2 != 0) continue;
-				size_t j = i;
-				int total = 0;
-				for (; j + 1 < nv && (len[j] == 0 || st.headings[j] == h); j++) total += len[j];
-				const int cross = st.vertices[i][h % 4 == 0 ? 0 : 1];
-				if ((cross & 1) == 0) std::cout << fmt::format("G1E BREAK {} v{} rule=axis cross-coordinate odd\n", nm, i);
-				if ((total & 1) != 0) std::cout << fmt::format("G1E BREAK {} v{} rule=axis even\n", nm, i);
-			}
 		}
 	}
 	for (const PlanarCrossing &c : map.crossings) {
@@ -1166,6 +1155,12 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		}
 		const std::function<int(uint32_t)> value_fn = value;
 		r.audit = AuditG1({map, v, off, grid_tracks, solved, vertex_kind, elem_pos, te, spans, stub_recs, cusp_start, cusp_end, beside_got, node_split, value_fn, rules.node_leg, rules.cross});
+		if (print_geometry) {
+			/* The audit's grid checks on the shown tracks, with the grid rows' own bit back on. */
+			for (const std::string &line : AuditG1({map, v, off & ~1024U, &shown, solved, vertex_kind, elem_pos, te, spans, stub_recs, cusp_start, cusp_end, beside_got, node_split, value_fn, rules.node_leg, rules.cross})) {
+				if (line.find(" family=grid ") != std::string::npos) std::cout << fmt::format("G1E BREAK {}\n", line);
+			}
+		}
 	}
 
 	/* The geometry over the expanded topology. */
@@ -1304,31 +1299,33 @@ TEST_CASE("planar probe: G1 joint slots and lengths on T2 T3 LL2", "[junction][p
 	}
 }
 
-TEST_CASE("planar probe: G1d the grid rows that block LL2", "[junction][planar][planarshape][.probe]")
+/** G1h: the deletion filter over the grid rows per track of one variant at off=511, then one solve at off=511|1024 that prints the set's geometry and every grid break on it. */
+static void G1hHub(const char *hub, const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v)
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
-	std::string error;
-	const PlanarTopology topology = ParsePlanarTopology(PlanarLL2Text(), &error);
-	REQUIRE(error.empty());
-	const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
-	REQUIRE(!shape.variants.empty());
-	const PlanarShapeVariant &v = shape.variants[0];
 	const std::string &tag = v.structure.tag;
 	const PlanarTrackMap &map = v.structure.map;
 	const uint32_t off = 511;
 	const size_t nt = map.tracks.size();
 	std::set<uint32_t> all;
 	for (uint32_t t = 0; t < nt; t++) all.insert(t);
-	REQUIRE(!SolveG1(topology, spec, v, off, &all).solved);
+	if (SolveG1(topology, spec, v, off, &all).solved) {
+		std::cout << fmt::format("G1D {} {} full set feasible\n", hub, tag);
+		return;
+	}
 	std::set<uint32_t> keep = all;
+	/* Each filter solve has 1 s: a track leaves the set only when its removal is proven infeasible within that. */
+	g1_time_limit = 1.0;
+	g1_timeouts = 0;
 	for (uint32_t t = 0; t < nt; t++) {
 		std::set<uint32_t> without = keep;
 		without.erase(t);
-		if (!SolveG1(topology, spec, v, off, &without).solved) keep = without;
+		if (SolveG1(topology, spec, v, off, &without).why.starts_with("Infeasible")) keep = without;
 	}
+	g1_time_limit = 15.0;
+	std::cout << fmt::format("G1D {} {} filter_timeouts={}\n", hub, tag, g1_timeouts);
 	std::string names;
 	for (const uint32_t t : keep) names += " " + map.tracks[t].name;
-	std::cout << fmt::format("G1D LL2 {} minimal={} tracks={}\n", tag, keep.size(), names);
+	std::cout << fmt::format("G1D {} {} minimal={} tracks={}\n", hub, tag, keep.size(), names);
 	const auto end_text = [&](const PlanarEnd &e) {
 		return e.port ? fmt::format("port {}", static_cast<int>(map.expanded.ports[e.index].side)) : fmt::format("node {}", e.index);
 	};
@@ -1339,20 +1336,46 @@ TEST_CASE("planar probe: G1d the grid rows that block LL2", "[junction][planar][
 		const PlanarLine &line = map.expanded.lines[t];
 		std::cout << fmt::format("G1D TRACK {} part_of={} pieces={} events={} from={} to={}\n", map.tracks[t].name, part, pieces, map.events[t].size(), end_text(line.from), end_text(line.to));
 	}
-	/* The pin rows, by the tag SolveG1 gives them. */
-	const std::vector<uint32_t> &ring = map.expanded.ring;
-	for (size_t i = 1; i < ring.size(); i++) {
-		const uint32_t t1 = ring[i - 1], t2 = ring[i];
-		const auto port_end = [&](uint32_t t) {
-			const PlanarLine &line = map.expanded.lines[t];
-			return line.from.port ? line.from : line.to;
-		};
-		const PlanarEnd e1 = port_end(t1), e2 = port_end(t2);
-		const PlanarSide side = map.expanded.ports[e1.index].side;
-		if (side != map.expanded.ports[e2.index].side) continue;
-		const double d = e1.index == e2.index ? 2 : 2.0 * v.structure.side_gap[static_cast<size_t>(side)];
-		const std::string pin = fmt::format("pin {} {} {} d={}", static_cast<int>(side), map.tracks[t1].name, map.tracks[t2].name, d);
-		if (SolveG1(topology, spec, v, off, &keep, &pin).solved) std::cout << fmt::format("G1D PIN {} solved=1\n", pin);
+	/* The set plus every track sharing a node or a crossing with it. */
+	std::set<uint32_t> shown = keep;
+	for (const uint32_t s : keep) {
+		for (uint32_t t = 0; t < nt; t++) {
+			for (const PlanarEnd &a : {map.expanded.lines[s].from, map.expanded.lines[s].to}) {
+				if (a.port) continue;
+				for (const PlanarEnd &b : {map.expanded.lines[t].from, map.expanded.lines[t].to}) {
+					if (!b.port && b.index == a.index) shown.insert(t);
+				}
+			}
+		}
+		for (const PlanarCrossing &c : map.crossings) {
+			if (c.a == s) shown.insert(c.b);
+			if (c.b == s) shown.insert(c.a);
+		}
+	}
+	std::set<std::string> show;
+	for (const uint32_t t : shown) show.insert(map.tracks[t].name);
+	std::cout << fmt::format("G1E BLOCK {} {} off=1535\n", hub, tag);
+	SolveG1(topology, spec, v, off | 1024U, nullptr, nullptr, &show);
+}
+
+TEST_CASE("planar probe: G1d the grid rows that block LL2", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology ll2 = ParsePlanarTopology(PlanarLL2Text(), &error);
+	REQUIRE(error.empty());
+	const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(ll2, spec, 16));
+	REQUIRE(!shape.variants.empty());
+	G1hHub("LL2", ll2, spec, shape.variants[0]);
+	const PlanarTopology t3 = ParsePlanarTopology(PlanarTText(3), &error);
+	REQUIRE(error.empty());
+	const PlanarShapeResult shape3 = BuildPlanarShape(BuildPlanarStructure(t3, spec, 16));
+	REQUIRE(shape3.variants.size() >= 3);
+	for (size_t i = 0; i < 3; i++) {
+		const PlanarShapeVariant &v = shape3.variants[i];
+		std::set<uint32_t> all;
+		for (uint32_t t = 0; t < v.structure.map.tracks.size(); t++) all.insert(t);
+		if (!SolveG1(t3, spec, v, 511U, &all).solved) G1hHub("T3", t3, spec, v);
 	}
 }
 
