@@ -1484,8 +1484,23 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 				node_end_piece[{leg, split ? 0 : static_cast<int>(v.tracks[leg].pieces.size()) - 1}] = n;
 			}
 		}
+		/* G2b: a one-piece leg between two nodes has two node ends; the element's half of the track says which (the map above keeps one). */
+		std::map<uint32_t, size_t> leg_start_node, leg_end_node;
+		for (size_t n = 0; n < map.expanded.nodes.size(); n++) {
+			const bool split = is_split(n);
+			for (const uint32_t leg : split ? map.expanded.nodes[n].out : map.expanded.nodes[n].in) (split ? leg_start_node : leg_end_node)[leg] = n;
+		}
 		const auto node_of = [&](const WallPiece &p) -> size_t {
 			if (p.track == UINT32_MAX) return SIZE_MAX;
+			if ((off & 268435456U) != 0) {
+				const int piece = te[p.track].elems[p.elem].piece, last = static_cast<int>(v.tracks[p.track].pieces.size()) - 1;
+				const bool at_start = piece == 0 && p.stretch == 0 && leg_start_node.contains(p.track);
+				const bool at_end = piece == last && p.stretch == map.events[p.track].size() && leg_end_node.contains(p.track);
+				if (at_start && at_end) return p.elem * 2 < te[p.track].elems.size() ? leg_start_node.at(p.track) : leg_end_node.at(p.track);
+				if (at_start) return leg_start_node.at(p.track);
+				if (at_end) return leg_end_node.at(p.track);
+				return SIZE_MAX;
+			}
 			auto it = node_end_piece.find({p.track, te[p.track].elems[p.elem].piece});
 			return it == node_end_piece.end() ? SIZE_MAX : it->second;
 		};
@@ -1589,6 +1604,66 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 					if (g2_diag) std::cout << fmt::format("G2 DIAG MISSING face {} vertex before {} hin={} cond={} seq {}\n", face.face, piece_text(from), hin, z == UINT32_MAX ? 0 : 1, face_seq[face.face]);
 					return;
 				}
+				if ((off & 268435456U) != 0) {
+					/* G2b (off 268435456): the front chain, not the first wall. From the first wall in [-3, -1], every track part or box edge while c stays
+					 * in the window and never rises (a chain convex towards v). The ray clears the chain by the gap iff P = v + gap * dir lies on the inner
+					 * (left) side of every chain piece's line: one half-plane row per piece, no landing variables. */
+					const int h = ((hin % 8) + 8) % 8;
+					size_t first = SIZE_MAX;
+					for (size_t s = 0; s < nw; s++) {
+						const int c = lifted(from + s) - hin;
+						const bool kind_ok = (off & 1073741824U) != 0 || wall[(from + s) % nw].kind == WK::Part || wall[(from + s) % nw].kind == WK::Box;
+						if (kind_ok && c >= -3 && c <= -1) { first = s; break; }
+					}
+					int last_c = 0;
+					size_t written = 0;
+					for (size_t s = first; s < nw; s++) {
+						const WallPiece &p = wall[(from + s) % nw];
+						const int c = lifted(from + s) - hin;
+						if (c < -3 || c > -1 || (s != first && c > last_c)) break;
+						/* G2c: the chain ends at a node corner (two legs of one node meet there; their parting is the node's rules). */
+						if ((off & 1073741824U) != 0 && s != first) {
+							const WallPiece &q = wall[(from + s - 1) % nw];
+							if (q.track != p.track && node_of(p) != SIZE_MAX && node_of(p) == node_of(q)) break;
+						}
+						last_c = c;
+						/* G2c (off 1073741824): every wall kind is in the chain (a zero-length piece in a convex chain adds a row its neighbours imply). */
+						if ((off & 1073741824U) == 0 && p.kind != WK::Part && p.kind != WK::Box) continue;
+						if (vnode != SIZE_MAX && node_of(p) == vnode) {
+							r.exempt++;
+							continue;
+						}
+						/* G2b: two legs of one node in their node-end stretches: their parting is the node's rules (stubs, cusps, steps, legs), not chords. */
+						bool other_leg = false;
+						if (vnode != SIZE_MAX && p.track != UINT32_MAX && (p.stretch == 0 || p.stretch == map.events[p.track].size())) {
+							if (p.stretch == 0 && leg_start_node.contains(p.track) && leg_start_node.at(p.track) == vnode) other_leg = true;
+							if (p.stretch == map.events[p.track].size() && leg_end_node.contains(p.track) && leg_end_node.at(p.track) == vnode) other_leg = true;
+						}
+						if (other_leg) {
+							r.exempt++;
+							continue;
+						}
+						const int he = ((p.heading % 8) + 8) % 8;
+						const int gap = PlanarModel::RungSpacing(he, h);
+						const auto &n = PlanarModel::STEP[(he + 6) % 8];
+						Lin side;
+						for (size_t axis = 0; axis < 2; axis++) {
+							side.Add(at[axis], n[axis]);
+							side.Add(p.start[axis], -n[axis]);
+						}
+						side.constant += gap * (PlanarModel::STEP[h][0] * n[0] + PlanarModel::STEP[h][1] * n[1]);
+						const double big = z == UINT32_MAX ? 0 : 1000;
+						if (big != 0) side.Add(z, big);
+						row(side, -big, INF, fmt::format("chord f{} {} half", face.face, r.chords));
+						written++;
+					}
+					if (g2_diag && written > 0) chord_desc.push_back(fmt::format("face {} vertex before {} hin={} cond={} chain from {} rows {} vnode {} front_node {}", face.face, piece_text(from), hin, z == UINT32_MAX ? 0 : 1, piece_text(front), written, vnode == SIZE_MAX ? -1 : static_cast<int>(vnode), node_of(wall[front]) == SIZE_MAX ? -1 : static_cast<int>(node_of(wall[front]))));
+					if (written > 0) {
+						r.chords++;
+						if (z != UINT32_MAX) r.conditional++;
+					}
+					return;
+				}
 				if (g2_diag) chord_desc.push_back(fmt::format("face {} vertex before {} hin={} cond={} front {}", face.face, piece_text(from), hin, z == UINT32_MAX ? 0 : 1, piece_text(front)));
 				const WallPiece &fp = wall[front];
 				if (vnode != SIZE_MAX && node_of(fp) == vnode) {
@@ -1636,7 +1711,9 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 				}
 				if (in.kind == WK::Step) continue;
 				/* 9.6: the vertex's node when it lies within a leg's node-end piece. */
-				const size_t vnode = node_of(in) == node_of(out) ? node_of(in) : SIZE_MAX;
+				size_t vnode = node_of(in) == node_of(out) ? node_of(in) : SIZE_MAX;
+				/* G2c: a vertex where a node-end piece begins is at that node too (9.6 counts its first piece from the vertex on). */
+				if ((off & 1073741824U) != 0 && vnode == SIZE_MAX) vnode = node_of(out) != SIZE_MAX ? node_of(out) : node_of(in);
 				if (out.kind == WK::Step) {
 					/* An optional step: before part X, the step pieces S1 and S2 as walked, after part Y; each step piece with its own binary gives two conditional bends. */
 					const size_t s1 = n + 1, s2 = n + 2, y = n + 3;
@@ -1649,7 +1726,7 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 					continue;
 				}
 				if (turn <= 0) continue;
-				if (in.kind == WK::Flex || out.kind == WK::Flex) {
+				if ((in.kind == WK::Flex || out.kind == WK::Flex) && (off & 536870912U) == 0) {
 					r.flex_skipped++;
 					continue;
 				}
@@ -1780,8 +1857,10 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 				if (!t.starts_with("chord f")) continue;
 				size_t ci = 0;
 				for (size_t at = t.find(' ', 7) + 1; at < t.size() && std::isdigit(static_cast<unsigned char>(t[at])); at++) ci = ci * 10 + static_cast<size_t>(t[at] - '0');
-				std::cout << fmt::format("G2 DIAG IIS {} : {}\n", t, chord_desc[ci]);
-				faces.insert(chords[ci].face);
+				std::cout << fmt::format("G2 DIAG IIS {} : {}\n", t, ci < chord_desc.size() ? chord_desc[ci] : std::string("?"));
+				int fc = 0;
+				for (size_t at = 7; at < t.size() && t[at] >= '0' && t[at] <= '9'; at++) fc = fc * 10 + (t[at] - '0');
+				faces.insert(fc);
 			}
 			for (const int f : faces) std::cout << fmt::format("G2 DIAG FACE {} {}\n", f, face_seq[f]);
 		}
@@ -2659,8 +2738,8 @@ TEST_CASE("planar probe: G2 chords on T2", "[junction][planar][planarshape][.pro
 	const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
 	REQUIRE(shape.variants.size() >= 3);
 	const uint32_t base = 2097152U | 16777216U;
-	const std::pair<const char *, uint32_t> runs[] = {{"chords", 0U}, {"none", 33554432U}, {"chords+rowfree", 32768U}, {"none+rowfree", 33554432U | 32768U}};
-	for (size_t i = 0; i < 3; i++) {
+	const std::pair<const char *, uint32_t> runs[] = {{"chain+allkinds", 268435456U | 1073741824U}, {"chain+allkinds+flexchords", 268435456U | 536870912U | 1073741824U}};
+	for (size_t i = 0; i < 1; i++) {
 		const PlanarShapeVariant &v = shape.variants[i];
 		const std::string &tag = v.structure.tag;
 		for (const auto &[run, extra] : runs) {
