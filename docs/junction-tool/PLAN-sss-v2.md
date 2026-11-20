@@ -27,11 +27,11 @@ Each epic: goal, scope, exit criteria (tests at the layer's output, D367), and i
 - Scope: the fields of SPEC-slots-lengths §8.1 per variant, coverage exact (D384), from the spec and Structure's own model; tests per field.
 - Exit: fields on `PlanarStructureVariant` with tests; values agree with the spec's helpers (`DeriveCurveSpacing`, `JunctionPrioTiles`, ...).
 
-## E3 Shape v2 (bundles, gadgets, cells between bundles)
-- Goal: Shape decides spines, gadgets, flex marks and free-face cells, with H1-H16.
-- Scope: H14 spines (one heading list per channel); the gadget catalogue as data (C2-C9 per lane count, internal tile geometry, ports, parameters) with its own verification test against the real tile clash rule; H15 gadget instances; H11 per run; flex marks on spine diagonals; H12/H16 cells on free faces only (reuse `RefinePlanarShapeCells`).
-- Exit: T2, T3, LL2 and 197 shaped, H1-H16 green; Gate A numbers recorded.
-- First step: design the gadget catalogue's data form and its verification (DESIGN-components C2-C9; D342, D353, D110, D355, D374), card to the engineer.
+## E3 Shape v2 (spines, node rules, corridors, cells between bundles; D401)
+- Goal: Shape decides spines, flex marks and free-face cells; every local shape is a layer rule with one proof test (no gadget catalogue, D401; the sort in wip/CARD-E3-sort.md).
+- Scope: H14 spines (one heading list per channel); node-rule proofs (the node tile and the cusp per heading class and arity, at 0 and at the signal tile: D400's trident as Slots' node_leg choice); corridors for rows and copies (offset curves, D349, D384); H12/H16 cells on free faces only (turn-regularity candidate); H11 per run and flex by rule are done (D396, D397).
+- Exit: T2, T3, LL2 and 197 shaped, H1-H14, H16 green; Gate A numbers recorded.
+- First step: the cusp proof harness (a node's legs on the tile grid against the real tile rule) and the spines card.
 
 ## E4 Shape speed
 - Goal: Shape within budget at 197's size (LL2 is 8.8 s today, D297 seed 5 s).
