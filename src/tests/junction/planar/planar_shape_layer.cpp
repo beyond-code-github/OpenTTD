@@ -1674,16 +1674,22 @@ TEST_CASE("planar shape layer: H14 every channel's lanes follow one spine (measu
 		REQUIRE(error.empty());
 		const PlanarStructureResult structure = BuildPlanarStructure(topology, spec, 16);
 		size_t channels = 0, skipped = 0, different = 0, differ = 0, variants = 0;
+		double turning = 0;
 		std::vector<std::string> examples;
 		for (const PlanarStructureVariant &sv : structure.variants) {
 			PlanarShapeVariant shaped;
 			std::string why;
-			if (!ShapePlanarStructureVariant(sv, shaped, why)) continue;
+			if (!ShapePlanarStructureVariant(sv, shaped, why)) {
+				WARN("H14 " + name + " " + sv.tag + " does not shape: " + why);
+				continue;
+			}
 			variants++;
+			turning += shaped.cost;
 			MeasureSpines(name, shaped, channels, skipped, different, differ, examples);
 		}
-		WARN(fmt::format("H14 {} variants {} channels with 2+ lines {} lines skipped for parts {} different-channels {} differ-between {}", name, variants, channels, skipped, different, differ));
+		WARN(fmt::format("H14 {} variants {} turning {} channels with 2+ lines {} lines skipped for parts {} different-channels {} differ-between {}", name, variants, turning, channels, skipped, different, differ));
 		for (const std::string &m : examples) WARN("H14 " + name + " " + m);
+		CHECK(different + differ == 0);
 	}
 }
 
@@ -1699,8 +1705,9 @@ TEST_CASE("planar shape: H14 on PSG 197 (measured)", "[.][planarpsg197]")
 	PlanarShapeVariant saved, shaped;
 	std::string why;
 	REQUIRE(LoadPlanarShapeVariant(topology, v, ReadTopologyFileForShape("psg197.shape.txt"), saved, why));
+	const auto started = std::chrono::steady_clock::now();
 	const bool ok = ShapePlanarStructureVariant(v, shaped, why);
-	WARN(fmt::format("H14 197 Shape's shaped {} {}", ok, why));
+	WARN(fmt::format("H14 197 Shape's shaped {} {} turning {} in {:.2f} s", ok, why, shaped.cost, std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count()));
 	for (const auto &[label, variant] : {std::pair<std::string, const PlanarShapeVariant &>{"V", saved}, {"Shape", shaped}}) {
 		if (variant.tracks.empty()) continue;
 		size_t channels = 0, skipped = 0, different = 0, differ = 0;
@@ -1708,7 +1715,47 @@ TEST_CASE("planar shape: H14 on PSG 197 (measured)", "[.][planarpsg197]")
 		MeasureSpines("", variant, channels, skipped, different, differ, examples);
 		WARN(fmt::format("H14 197 {} channels with 2+ lines {} lines skipped for parts {} different-channels {} differ-between {}", label, channels, skipped, different, differ));
 		for (const std::string &m : examples) WARN("H14 197 " + label + " " + m);
+		if (label == "Shape") CHECK(different + differ == 0);
 	}
+	/* V's channel 61 in full: per lane its pieces and its channel-crossing events (partner, piece). */
+	const PlanarTrackMap &map = saved.structure.map;
+	const std::vector<std::array<uint32_t, 2>> &groups = saved.structure.line_groups;
+	for (uint32_t t = 0; t < map.tracks.size(); t++) {
+		const PlanarTrack &track = map.tracks[t];
+		if (track.kind != PlanarTrack::Kind::Line || track.line != t || saved.structure.channel_of_line[t] != 61) continue;
+		std::string pieces, events;
+		for (const int piece : saved.tracks[t].pieces) pieces += fmt::format(" {}", piece);
+		for (size_t k = 0; k < map.events[t].size(); k++) {
+			const PlanarCrossing &x = map.crossings[map.events[t][k]];
+			const uint32_t other = x.a == t ? x.b : x.a, la = track.line, lb = map.tracks[other].line;
+			bool node_group = false;
+			for (size_t end = 0; end < 2; end++) node_group = node_group || (groups[la][end] != UINT32_MAX && groups[la][end] == groups[lb][end]);
+			if (!node_group) events += fmt::format(" {}@{}", map.tracks[other].name, saved.tracks[t].event_piece[k]);
+		}
+		WARN(fmt::format("H14 197 V channel 61 lane {}: pieces{} | channel crossings{}", track.name, pieces, events));
+	}
+}
+
+TEST_CASE("planar shape layer: H14 holds on Shape's own T3 first variants", "[junction][planar][planarshape]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(3), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult structure = BuildPlanarStructure(topology, spec, 16);
+	/* The one variant whose measurement showed "channel 9 lines D1 and D3 differ between crossings 0 and 1" before the spine rows. */
+	size_t tested = 0;
+	for (const PlanarStructureVariant &sv : structure.variants) {
+		if (sv.tag != "o7t0f1m3270") continue;
+		PlanarShapeVariant shaped;
+		std::string why;
+		REQUIRE(ShapePlanarStructureVariant(sv, shaped, why));
+		const std::vector<std::string> messages = CheckPlanarShapeSpines(shaped);
+		INFO(sv.tag << ": " << (messages.empty() ? std::string() : messages.front()));
+		CHECK(messages.empty());
+		tested++;
+	}
+	CHECK(tested == 1);
 }
 
 TEST_CASE("planar shape layer: H14 a lane that turns off its spine", "[junction][planar][planarshape]")
