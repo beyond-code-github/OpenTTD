@@ -1,0 +1,78 @@
+topology PSG197
+# PSG 197 BBH01 "Tunnel only" (V453000), a balanced 3-way of LL_RR (N) and two LLL_RRR (E, S).
+# Source: trace files OD/psg/anatomy/psg197/trace (reach.txt, paths_all.txt, per_lane_events.txt, events.txt, tunnels2.txt), the save's piece graph through the trace's own scripts (core.py, clusters.py), oriented by the one-way signals and the shortest-step direction of each in lane; see psg197-decisions.md and psg197-gaps.md.
+# Frame: the save's sides kept (N arm at y=137, E arm at x=128, S arm at y=198), no rotation; the picture names (anatomy "Arms and lanes"), not the engineer's inferred names.
+# Lanes number left to right across travel: N in N91=1, N90=2; N out N84=1, N85=2; E in E174=1, E173=2, E169=3; E out E164=1, E166=2, E167=3; S in S81=1, S82=2, S83=3; S out S90=1, S89=2, S88=3.
+# Routes: one per (in lane, out arm), named movement letter + in lane. A: N->S, B: N->E, C: E->N, D: E->S, E: S->N, F: S->E. Each is a choice route over the out lanes of its arm that the trace reaches (reach.txt, 37 lane pairs of 42); a route's paths differ by the tunnel track taken.
+# Simplified (details in psg197-gaps.md): short parallel pairs of 1-3 tiles that fork and rejoin on one lane are not nodes; 3-way splits are two 1->2 splits in an order the tile does not show; prio is a per-route flag, the hub's entry-gated inputs are per merge.
+# Prio: a route holds prio when it is on the ungated leg of a merge whose other leg carries an entry signal in its last 8 pieces (6 such merges: 86,151 98,171 107,173 100,174 110,176 94,195) and is never on a gated leg; C2, C3 and D2 are on both and stay plain (gaps).
+# Line names are movement letters, in lane digits and a suffix; the line index in psg197-decisions.md gives each line's start and end tile.
+port N out N: NO1=C1+C2+C3+E1+E2+E3, NO2=C1+C2+C3+E1+E2+E3
+port N in S: AB1, AB2
+port E out E: EO1=B1+B2+F1+F2, EO2=B2+F1+F2+F3, EO3=B1+F1+F2+F3
+port E in W: CD1, CD2, CD3
+port S in N: EF1, EF2, EF3
+port S out S: SO1=A1+A2+D1+D2, SO2=A1+A2+D1+D2+D3, SO3=A2+D1+D2+D3
+node AB2=A2+B2 -> A2=A2, B2=B2
+node AB1=A1+B1 -> A1=A1, B1=B1
+node CD3=C3+D3 -> C3=C3, D3=D3
+node EF1=E1+F1 -> F1c=F1, E1c=E1
+node CD2=C2+D2 -> C2c=C2, D2c=D2
+node CD1=C1+D1 -> C1c=C1, D1=D1
+node EF2=E2+F2 -> F2c=F2, E2c=E2
+node EF3=E3+F3 -> E3c=E3, F3c=F3
+node A1 -> A1c=A1, A1b=A1
+node B1 -> B1b=B1, B1c=B1
+node A2 -> A2d=A2, A2m=A2
+node A2m -> A2b=A2, A2c=A2
+node B2 -> B2c=B2, B2b=B2
+node F1c -> F1=F1, F1b=F1
+node F2c -> F2=F2, F2b=F2
+node E1c -> E1b=E1, E1=E1
+node C2c -> C2b=C2, C2=C2
+node D2c -> D2b=D2, D2=D2
+node E2c -> E2=E2, E2b=E2
+node C1c -> C1b=C1, C1=C1
+node F3c -> F3b=F3, F3=F3
+node E3c -> E3=E3, E3b=E3
+node E3b, E2 -> E23=E2+E3
+node A1b -> A1d=A1, A1e=A1
+node E1, E2b -> E12=E1+E2
+node B2b, B1c -> B12=B1+B2
+node F2b, F1 -> F12=F1+F2
+node F1b, B1b -> BF1=B1+F1
+node C3, C2b -> C23c=C2+C3
+node D3, D2b -> D23=D2+D3
+node C2, C1b -> C12c=C1+C2
+node D2, D1 -> D12=D1+D2
+node C23c -> C23b=C2+C3, C23=C2+C3
+node F12 -> F12c=F1+F2, F12b=F1+F2
+node F2, BF1 -> BF12=B1+F1+F2
+node C12c, C1 -> C12d=C1+C2
+node D23 -> D23b=D2+D3, D23c=D2+D3
+node D12 -> D12c=D1+D2, D12b=D1+D2
+node C23b, E1b -> CE123b=C2+C3+E1
+node F12b, B12 -> EO1
+node F12c, B2c -> BF12b=B2+F1+F2
+node F3b, BF12 -> EO3
+node C12d -> C12=C1+C2, C12b=C1+C2
+node D23b -> D23d=D2+D3, D23e=D2+D3
+node D12b -> D12f=D1+D2, D12g=D1+D2
+node D12c, D23c -> D123=D1+D2+D3
+node CE123b, C12 -> CE123=C1+C2+C3+E1
+node C12b, E3 -> CE123d=C1+C2+E3
+node F3, BF12b -> EO2
+node D12g -> D12d=D1+D2, D12e=D1+D2
+node A2d, D23d -> AD23=A2+D2+D3
+node A2b, D23e -> AD23b=A2+D2+D3
+node CE123, E23 -> NO2
+node CE123d, E12 -> CE123c=C1+C2+E1+E2+E3
+node AD23, D123 -> SO3
+node D12f, D12e -> D12h=D1+D2
+node A1e, D12d -> AD12b=A1+D1+D2
+node C23, CE123c -> NO1
+node A1c, D12h -> AD12=A1+D1+D2
+node A1d, AD12b -> AD12c=A1+D1+D2
+node AD23b, AD12 -> SO2
+node A2c, AD12c -> SO1
+prio C1, D1, D3, A1, E1, E2, E3
