@@ -302,9 +302,10 @@ struct ClosureResult {
  * Ask whether the headings of a shaped variant can close with positive lengths (the lengths-only LP of H2).
  * Per point (x, y); a parallel leg of a node is offset sideways from the node point by a free w >= 0 (the cusp opening Slots owns, SPEC-shape section 3 hand-on (1)); per piece a length of at least 1, split into one part per stretch the piece lies on, so a piece that holds events is cut at them (the reading the orchestrator ruled intended, not the literal sum over a shared piece); the box is [0, W] x [0, Hb].
  * @param v The shaped variant.
+ * @param exact Also fix the quantities of Slots' least answer: one lane at each cusp, one tile per deck step, the pinned gaps at the ports.
  * @return The answer.
  */
-static ClosureResult ClosureLp(const PlanarShapeVariant &v)
+static ClosureResult ClosureLp(const PlanarShapeVariant &v, bool exact = false)
 {
 	const PlanarTrackMap &map = v.structure.map;
 	const size_t nt = map.tracks.size();
@@ -392,6 +393,7 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v)
 				if (sigma == 0) sigma = site->side;
 			}
 			const uint32_t w = lp.AddVariable(0, JunctionMilp::INF, 0, false);
+			if (exact) row({{w, 1}}, h % 2 == 0 ? 2 : 1, h % 2 == 0 ? 2 : 1, fmt::format("cusp {}", n));
 			const auto &step = PlanarModel::STEP[(h + 2) % 8];
 			row({{leg_point.first, 1}, {reference.first, -1}, {w, -sigma * step[0]}}, 0, 0, tag);
 			row({{leg_point.second, 1}, {reference.second, -1}, {w, -sigma * step[1]}}, 0, 0, tag);
@@ -414,6 +416,47 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v)
 				case PlanarSide::E: row({{x, 1}, {width, -1}}, 0, 0, tag); break;
 				case PlanarSide::N: row({{y, 1}}, 0, 0, tag); break;
 				case PlanarSide::S: row({{y, 1}, {height, -1}}, 0, 0, tag); break;
+			}
+		}
+	}
+	if (exact) {
+		const auto event_index = [&](uint32_t t, uint32_t c) { return static_cast<size_t>(std::ranges::find(map.events[t], c) - map.events[t].begin()); };
+		const auto deck_step = [&](uint32_t deck, size_t index, std::pair<uint32_t, uint32_t> from, std::pair<uint32_t, uint32_t> to, const std::string &tag) {
+			const int h = ((v.tracks[deck].pieces[v.tracks[deck].event_piece[index]] % 8) + 8) % 8;
+			const auto &step = PlanarModel::STEP[h];
+			row({{to.first, 1}, {from.first, -1}}, 2.0 * step[0], 2.0 * step[0], tag);
+			row({{to.second, 1}, {from.second, -1}}, 2.0 * step[1], 2.0 * step[1], tag);
+		};
+		for (size_t i = 0; i < v.structure.structures.size(); i++) {
+			const PlanarStructure &s = v.structure.structures[i];
+			const std::string tag = fmt::format("deck {}", i);
+			for (size_t k = 1; k < s.crossings.size(); k++) {
+				const size_t a = event_index(s.separator, s.crossings[k - 1]), b = event_index(s.separator, s.crossings[k]);
+				deck_step(s.separator, b, point[s.separator][a + 1], point[s.separator][b + 1], tag);
+			}
+			if (s.copy != UINT32_MAX) {
+				for (size_t k = 1; k < map.events[s.copy].size(); k++) deck_step(s.copy, k, point[s.copy][k], point[s.copy][k + 1], tag);
+			}
+		}
+		const std::vector<uint32_t> &ring = map.expanded.ring;
+		const auto port_end = [&](uint32_t t) {
+			const PlanarLine &line = map.expanded.lines[t];
+			return line.from.port ? line.from : line.to;
+		};
+		for (size_t i = 1; i < ring.size(); i++) {
+			const uint32_t t1 = ring[i - 1], t2 = ring[i];
+			const PlanarLine &l1 = map.expanded.lines[t1], &l2 = map.expanded.lines[t2];
+			const PlanarEnd e1 = port_end(t1), e2 = port_end(t2);
+			const PlanarSide side = map.expanded.ports[e1.index].side;
+			if (side != map.expanded.ports[e2.index].side) continue;
+			const auto p1 = l1.from.port ? point[t1].front() : point[t1].back(), p2 = l2.from.port ? point[t2].front() : point[t2].back();
+			const double d = e1.index == e2.index ? 2 : 2.0 * v.structure.side_gap[static_cast<size_t>(side)];
+			const std::string tag = fmt::format("pin {}", static_cast<int>(side));
+			switch (side) {
+				case PlanarSide::N: row({{p2.first, 1}, {p1.first, -1}}, d, d, tag); break;
+				case PlanarSide::E: row({{p2.second, 1}, {p1.second, -1}}, d, d, tag); break;
+				case PlanarSide::S: row({{p2.first, 1}, {p1.first, -1}}, -d, -d, tag); break;
+				case PlanarSide::W: row({{p2.second, 1}, {p1.second, -1}}, -d, -d, tag); break;
 			}
 		}
 	}
@@ -653,5 +696,28 @@ prio E1, E2, E3, B1, B2, B3, A1, F2, A3
 		double shape_cost_sum = 0;
 		for (const PlanarShapeVariant &v : shape.variants) shape_cost_sum += v.cost;
 		std::cout << fmt::format("SWEEP {} shape_cost_sum={}\n", name, shape_cost_sum);
+	}
+}
+
+TEST_CASE("planar probe: closure with Slots' least exact answer on T1-T3 and LL2", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T1", PlanarTText(1)}, {"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		size_t closes_free = 0, closes_exact = 0;
+		double ms_max = 0;
+		std::vector<std::string> open;
+		for (const PlanarShapeVariant &v : shape.variants) {
+			const ClosureResult free = ClosureLp(v, false), exact = ClosureLp(v, true);
+			if (free.closes) closes_free++;
+			if (exact.closes) closes_exact++; else open.push_back(fmt::format("X2A {} {} OPEN {}\n", name, v.structure.tag, exact.why));
+			ms_max = std::max({ms_max, free.micros / 1000, exact.micros / 1000});
+		}
+		std::cout << fmt::format("X2A {} shaped={} closes_free={} closes_exact={} lp_ms_max={:.1f}\n", name, shape.variants.size(), closes_free, closes_exact, ms_max);
+		for (const std::string &line : open) std::cout << line;
 	}
 }
