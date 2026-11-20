@@ -11,10 +11,13 @@
 
 #include "../../../3rdparty/catch2/catch.hpp"
 
+#include "../../../junction/planar/planar_plan.h"
 #include "../../../junction/planar/planar_topology.h"
 
 #include <algorithm>
+#include <fstream>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -149,4 +152,168 @@ TEST_CASE("planar: malformed topologies are refused with a reason", "[junction][
 	error.clear();
 	CHECK(ParsePlanarTopology("topology x\nport Q in E: A1\n", &error).lines.empty());
 	CHECK(!error.empty());
+}
+
+/** The `cross` statements of a text: line name and its partners in travel order. */
+static std::vector<std::pair<std::string, std::vector<std::string>>> CrossStatements(const std::string &text)
+{
+	const auto trim = [](std::string s) {
+		const size_t a = s.find_first_not_of(" \t\r");
+		const size_t b = s.find_last_not_of(" \t\r");
+		return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
+	};
+	std::vector<std::pair<std::string, std::vector<std::string>>> out;
+	std::istringstream in(text);
+	std::string line;
+	while (std::getline(in, line)) {
+		line = trim(line.substr(0, line.find('#')));
+		if (line.rfind("cross ", 0) != 0) continue;
+		const size_t colon = line.find(':');
+		REQUIRE(colon != std::string::npos);
+		std::pair<std::string, std::vector<std::string>> statement{trim(line.substr(6, colon - 6)), {}};
+		std::istringstream rest(line.substr(colon + 1));
+		std::string name;
+		while (std::getline(rest, name, ',')) statement.second.push_back(trim(name));
+		out.push_back(std::move(statement));
+	}
+	return out;
+}
+
+/** The text with the given `cross` statements appended. */
+static std::string WithCross(const std::string &text, const std::vector<std::pair<std::string, std::vector<std::string>>> &statements)
+{
+	std::string out = text + "\n";
+	for (const auto &[name, partners] : statements) {
+		out += "cross " + name + ":";
+		for (size_t i = 0; i < partners.size(); i++) out += (i == 0 ? " " : ", ") + partners[i];
+		out += "\n";
+	}
+	return out;
+}
+
+/** The text plus, for every line with crossings, the `cross` statement of its derived event order. */
+static std::string AuthoredText(const std::string &text)
+{
+	const PlanarTopology t = Parse(text);
+	std::vector<std::pair<std::string, std::vector<std::string>>> statements;
+	for (uint32_t l = 0; l < t.lines.size(); l++) {
+		if (t.events[l].empty()) continue;
+		std::vector<std::string> partners;
+		for (uint32_t c : t.events[l]) partners.push_back(t.lines[t.crossings[c].a == l ? t.crossings[c].b : t.crossings[c].a].name);
+		statements.push_back({t.lines[l].name, std::move(partners)});
+	}
+	return WithCross(text, statements);
+}
+
+TEST_CASE("planar: PSG 197 parses with its authored crossings", "[junction][planar]")
+{
+	std::ifstream file(JUNCTION_TOPOLOGY_DIR "/psg197.txt");
+	REQUIRE(file.good());
+	std::stringstream buffer;
+	buffer << file.rdbuf();
+	const std::string text = buffer.str();
+	const PlanarTopology t = Parse(text);
+	CHECK(t.crossings_authored);
+	CHECK(t.lines.size() == 101);
+	CHECK(t.crossings.size() == 121);
+	for (const auto &[name, partners] : CrossStatements(text)) {
+		const uint32_t l = PlanarLineByName(t, name);
+		REQUIRE(l != UINT32_MAX);
+		std::vector<std::string> along;
+		for (uint32_t c : t.events[l]) along.push_back(t.lines[t.crossings[c].a == l ? t.crossings[c].b : t.crossings[c].a].name);
+		CHECK(along == partners);
+	}
+}
+
+TEST_CASE("planar: authored crossings equal to the derived ones parse to the same topology", "[junction][planar]")
+{
+	for (int lanes : {1, 2}) {
+		const PlanarTopology derived = Parse(PlanarTText(lanes));
+		const PlanarTopology authored = Parse(AuthoredText(PlanarTText(lanes)));
+		CHECK(authored.crossings_authored);
+		CHECK(!derived.crossings_authored);
+		REQUIRE(authored.crossings.size() == derived.crossings.size());
+		for (size_t i = 0; i < derived.crossings.size(); i++) {
+			CHECK(authored.crossings[i].a == derived.crossings[i].a);
+			CHECK(authored.crossings[i].b == derived.crossings[i].b);
+		}
+		CHECK(authored.events == derived.events);
+	}
+}
+
+TEST_CASE("planar: authored crossings are refused with a reason", "[junction][planar]")
+{
+	const std::string base = PlanarTText(1);
+	const PlanarTopology derived = Parse(base);
+	const auto statements = CrossStatements(AuthoredText(base));
+	REQUIRE(statements.size() >= 2);
+	const auto error_of = [&](const std::vector<std::pair<std::string, std::vector<std::string>>> &s) {
+		std::string error;
+		ParsePlanarTopology(WithCross(base, s), &error);
+		return error;
+	};
+	SECTION("a name that is no line") {
+		auto s = statements;
+		s[0].first = "Nope";
+		CHECK(error_of(s).find("cross names unknown line Nope") != std::string::npos);
+	}
+	SECTION("a second statement for a line") {
+		auto s = statements;
+		s.push_back(s[0]);
+		CHECK(error_of(s).find("has two cross statements") != std::string::npos);
+	}
+	SECTION("a line listing itself") {
+		auto s = statements;
+		s[0].second.push_back(s[0].first);
+		CHECK(error_of(s).find("crosses itself") != std::string::npos);
+	}
+	SECTION("a line listing one partner twice") {
+		auto s = statements;
+		s[0].second.push_back(s[0].second[0]);
+		CHECK(error_of(s).find("twice") != std::string::npos);
+	}
+	SECTION("one partner removed from one line's list only") {
+		auto s = statements;
+		s[0].second.erase(s[0].second.begin());
+		CHECK(error_of(s).find("is listed by") != std::string::npos);
+	}
+	SECTION("one pair removed from both lines' lists") {
+		auto s = statements;
+		const std::string a = s[0].first, b = s[0].second[0];
+		s[0].second.erase(s[0].second.begin());
+		for (auto &[name, partners] : s) {
+			if (name == b) partners.erase(std::ranges::find(partners, a));
+		}
+		CHECK(error_of(s).find("times but their ends interleave") != std::string::npos);
+	}
+	SECTION("one pair added to both lists where the derived topology has no crossing") {
+		const auto port_line = [&](uint32_t l) { return derived.lines[l].from.port || derived.lines[l].to.port; };
+		bool found = false;
+		for (uint32_t a = 0; a < derived.lines.size() && !found; a++) {
+			for (uint32_t b = a + 1; b < derived.lines.size() && !found; b++) {
+				if (port_line(a) || port_line(b)) continue;
+				const bool crossed = std::ranges::any_of(derived.crossings, [&](const PlanarCrossing &c) { return c.a == a && c.b == b; });
+				if (crossed) continue;
+				auto s = statements;
+				for (const auto &[x, y] : {std::pair(a, b), std::pair(b, a)}) {
+					const std::string &name = derived.lines[x].name;
+					auto it = std::ranges::find_if(s, [&](const auto &st) { return st.first == name; });
+					if (it == s.end()) {
+						s.push_back({name, {}});
+						it = s.end() - 1;
+					}
+					it->second.push_back(derived.lines[y].name);
+				}
+				found = error_of(s).find("do not interleave") != std::string::npos;
+			}
+		}
+		CHECK(found);
+	}
+}
+
+TEST_CASE("planar: a topology without cross statements is not authored", "[junction][planar]")
+{
+	const PlanarTopology t = Parse(PlanarLL2Text());
+	CHECK(!t.crossings_authored);
+	CHECK(t.crossings.size() == 18);
 }

@@ -123,6 +123,8 @@ struct PlanarBuilder {
 		e = end;
 	}
 
+	std::vector<std::pair<std::string, std::vector<std::string>>> cross; ///< The `cross` statements as authored: line name, partners in travel order.
+
 	void ParsePort(std::string_view rest);
 	void ParseNode(std::string_view rest);
 	void Derive();
@@ -264,6 +266,79 @@ void PlanarBuilder::Derive()
 	std::set<std::pair<size_t, size_t>> must;
 	for (size_t i = 0; i < paths.size(); i++) {
 		for (size_t j = i + 1; j < paths.size(); j++) if (interleave(paths[i], paths[j])) must.insert({i, j});
+	}
+
+	if (!this->cross.empty()) {
+		/* Authored crossings (D389): every crossing and its place along each line comes from the `cross` statements. */
+		std::vector<std::vector<uint32_t>> listed(t.lines.size());
+		std::vector<bool> has_statement(t.lines.size(), false);
+		const auto resolve = [&](const std::string &name) {
+			auto it = this->line_index.find(name);
+			if (it == this->line_index.end()) this->error = fmt::format("cross names unknown line {}", name);
+			return it == this->line_index.end() ? UINT32_MAX : it->second;
+		};
+		for (const auto &[name, partners] : this->cross) {
+			const uint32_t l = resolve(name);
+			if (l == UINT32_MAX) return;
+			for (const std::string &m : partners) if (resolve(m) == UINT32_MAX) return;
+		}
+		for (const auto &[name, partners] : this->cross) {
+			const uint32_t l = this->line_index.find(name)->second;
+			if (has_statement[l]) {
+				this->error = fmt::format("line {} has two cross statements", name);
+				return;
+			}
+			has_statement[l] = true;
+			for (const std::string &m : partners) listed[l].push_back(this->line_index.find(m)->second);
+			for (size_t i = 0; i < partners.size(); i++) {
+				if (listed[l][i] == l) {
+					this->error = fmt::format("line {} crosses itself", name);
+					return;
+				}
+				if (std::ranges::find(listed[l].begin(), listed[l].begin() + i, listed[l][i]) != listed[l].begin() + i) {
+					this->error = fmt::format("line {} crosses {} twice", name, partners[i]);
+					return;
+				}
+			}
+		}
+		for (uint32_t l = 0; l < t.lines.size(); l++) {
+			for (uint32_t m : listed[l]) {
+				if (std::ranges::find(listed[m], l) == listed[m].end()) {
+					this->error = fmt::format("crossing {} x {} is listed by {} but not by {}", t.lines[l].name, t.lines[m].name, t.lines[l].name, t.lines[m].name);
+					return;
+				}
+				if (l < m) t.crossings.push_back({l, m});
+			}
+		}
+		std::ranges::sort(t.crossings, [](const PlanarCrossing &x, const PlanarCrossing &y) { return std::pair(x.a, x.b) < std::pair(y.a, y.b); });
+		const auto crossing_index = [&](uint32_t x, uint32_t y) {
+			const PlanarCrossing key{std::min(x, y), std::max(x, y)};
+			return static_cast<uint32_t>(std::ranges::lower_bound(t.crossings, key, [](const PlanarCrossing &p, const PlanarCrossing &q) { return std::pair(p.a, p.b) < std::pair(q.a, q.b); }) - t.crossings.begin());
+		};
+		/* Parity: two paths of different routes sharing no line cross an odd number of times exactly when their ends interleave. */
+		for (size_t i = 0; i < paths.size(); i++) {
+			for (size_t j = i + 1; j < paths.size(); j++) {
+				const Path &p = paths[i], &q = paths[j];
+				if (p.route == q.route) continue;
+				if (std::ranges::any_of(p.lines, [&](uint32_t l) { return std::ranges::find(q.lines, l) != q.lines.end(); })) continue;
+				size_t k = 0;
+				for (const PlanarCrossing &c : t.crossings) {
+					const auto on = [&](const Path &path, uint32_t l) { return std::ranges::find(path.lines, l) != path.lines.end(); };
+					if ((on(p, c.a) && on(q, c.b)) || (on(p, c.b) && on(q, c.a))) k++;
+				}
+				const bool need = must.contains({i, j});
+				if ((k % 2 == 1) != need) {
+					this->error = fmt::format("paths {}..{} of {} and {}..{} of {} cross {} times but their ends {} on the ring", t.lines[p.lines.front()].name, t.lines[p.lines.back()].name, t.routes[p.route].name, t.lines[q.lines.front()].name, t.lines[q.lines.back()].name, t.routes[q.route].name, k, need ? "interleave" : "do not interleave");
+					return;
+				}
+			}
+		}
+		t.events.assign(t.lines.size(), {});
+		for (uint32_t l = 0; l < t.lines.size(); l++) {
+			for (uint32_t m : listed[l]) t.events[l].push_back(crossing_index(l, m));
+		}
+		t.crossings_authored = true;
+		return;
 	}
 
 	/* Line pairs: a crossing crosses every path through one line with every path through the other, so it is admissible when all those pairs interleave. Port lines are the stubs at the box edge and never cross. */
@@ -410,6 +485,13 @@ PlanarTopology ParsePlanarTopology(std::string_view text, std::string *error)
 			b.ParsePort(rest);
 		} else if (word == "node") {
 			b.ParseNode(rest);
+		} else if (word == "cross") {
+			const size_t colon = rest.find(':');
+			if (colon == std::string_view::npos) {
+				b.error = "cross statement without ':'";
+			} else {
+				b.cross.emplace_back(std::string(Trim(rest.substr(0, colon))), SplitList(rest.substr(colon + 1)));
+			}
 		} else if (word == "prio") {
 			for (const std::string &r : SplitList(rest)) prio.push_back(r);
 		} else {

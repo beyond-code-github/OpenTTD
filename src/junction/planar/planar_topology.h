@@ -72,8 +72,9 @@ struct PlanarTopology {
 	std::vector<PlanarLine> lines;
 	std::vector<PlanarRoute> routes;
 	std::vector<PlanarNode> nodes;
-	std::vector<PlanarCrossing> crossings; ///< Derived: sorted by (a, b).
-	std::vector<std::vector<uint32_t>> events; ///< Derived: per line, its crossings (indices) in travel order.
+	std::vector<PlanarCrossing> crossings; ///< Derived, or authored (D389): sorted by (a, b).
+	std::vector<std::vector<uint32_t>> events; ///< Derived, or authored (D389): per line, its crossings (indices) in travel order.
+	bool crossings_authored = false; ///< D389: crossings and event order come from `cross` statements; every order is pinned.
 	std::vector<uint32_t> ring; ///< Derived: the port lines clockwise around the box from the north-west corner.
 };
 
@@ -84,6 +85,7 @@ struct PlanarTopology {
  * - `port <N|E|S|W> <in|out> <heading>: <line>, <line>, ...` the lines left to right across travel; a side's ports in reading order (N and S west to east, W and E north to south).
  * - `node <line>, ... -> <line>, ...` a group of 1 -> 2 splits (fewer in than out) or 2 -> 1 merges (more in than out); legs keep their order.
  * - `prio <route>, ...` the routes that hold priority at their merges (D301).
+ * - `cross <line>: <line>, ...` every crossing of the line in travel order (D389); with any `cross` statement every crossing is authored, each pair listed by both its lines, and the set must keep parity: two paths of different routes sharing no line cross an odd number of times exactly when their ends interleave on the ring.
  * A line's name is capital letters, a lane number and an optional lower-case suffix: `CB1` carries routes C1 and B1, `C1a` carries C1.
  * @param text The topology text.
  * @param error Receives the reason when the result is empty (no lines).

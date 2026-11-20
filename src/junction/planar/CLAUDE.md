@@ -61,7 +61,7 @@
 - **Lengths:** every piece's length, decided by Slots together with the slots (D379).
 
 ## Topology (`planar_topology`)
-- A topology is text in the engineer's notation: `port <side> <in|out> <heading>: lines` (lines left to right across travel; a side's ports in reading order, N and S west to east, W and E north to south), `node in -> out`, `prio routes`.
+- A topology is text in the engineer's notation: `port <side> <in|out> <heading>: lines` (lines left to right across travel; a side's ports in reading order, N and S west to east, W and E north to south), `node in -> out`, `prio routes`, `cross <line>: <line>, ...`.
 - A line name is capital letters, a lane number and an optional lower-case suffix; `CB1` carries routes C1 and B1; `name=R1+R2` names its routes explicitly.
 - A node statement is a group of 1 -> 2 splits (fewer in than out) or 2 -> 1 merges (more in than out); a split's legs are the out lines whose routes lie in its in line's, in authored order; a merge's legs are the in lines whose routes lie in its out line's.
 - A route is a lane path; its paths are every walk over lines carrying it from its one entry port line to an exit port line (`PlanarRoutePaths`, which the parser calls per route); a choice route has several.
@@ -70,6 +70,7 @@
 - A crossing is a pair of lines; it crosses every path through one with every path through the other, so a line pair is admissible only when all those pairs must cross. Port lines (a port at either end) never cross.
 - Crossings are chosen greedily: admissible pairs covering the most path pairs first, then by line index, each path pair covered once; a must-cross pair left uncovered refuses the topology.
 - Event order: each line's crossings in the order a straight chord of its first path meets the other lines' chords, ports on a circle at uneven angles and each port's lines packed together, so bundles cross whole and the orders agree.
+- Authored crossings (D389): a `cross L: M1, M2, ...` statement lists every crossing of L in travel order; with any such statement derivation is off, each pair is listed by both lines, every order is pinned (`crossings_authored`), same-route and port-line crossings are allowed, and the parser refuses a set that breaks parity (two paths of different routes sharing no line cross an odd number of times iff their ends interleave). PSG 197 is authored this way (tools/junction/topologies/psg197.txt, 121 crossings).
 - The T is authored by `PlanarTText(lanes)`: the engineer's drawing turned half a turn into the canonical frame (main W-E, branch S): A E->S, B E->W, C S->W, D S->E, E W->E, F W->S; B and E hold prio.
 - At one lane the T has exactly three crossings (B×D, B×F, D×F); at two lanes 18: the 12 core crossings on single-route lines and one fray crossing at each of the six rings.
 
