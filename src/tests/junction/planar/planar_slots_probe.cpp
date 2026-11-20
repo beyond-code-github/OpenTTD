@@ -153,6 +153,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 	std::vector<std::string> tags;
 	const auto row = [&](const Lin &e, double lower, double upper, const std::string &tag) {
 		if ((G1Family(tag) & off) != 0) return;
+		if ((off & 1024) != 0 && (tag.starts_with("parity ") || tag.starts_with("even "))) return;
 		std::vector<std::pair<uint32_t, double>> terms;
 		for (const auto &[variable, coefficient] : e.terms) {
 			if (coefficient != 0) terms.emplace_back(variable, coefficient);
@@ -160,7 +161,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		lp.AddRow(terms, lower - e.constant, upper - e.constant);
 		tags.push_back(tag);
 	};
-	const auto var = [&](double lower, double upper, double cost, bool integer = true) { return lp.AddVariable(lower, upper, cost, integer); };
+	const auto var = [&](double lower, double upper, double cost, bool integer = true) { return lp.AddVariable(lower, upper, cost, integer && (off & 512) == 0); };
 	const auto lin = [](std::initializer_list<std::pair<uint32_t, double>> terms) {
 		Lin e;
 		for (const auto &[variable, coefficient] : terms) e.Add(variable, coefficient);
@@ -292,6 +293,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 			const size_t first = k == 0 ? 0 : s.event_piece[k - 1], last = k == ne ? np - 1 : s.event_piece[k];
 			const bool has_cusp = (k == 0 && cusp_start.contains(t)) || (k == ne && cusp_end.contains(t));
 			int place_piece = -1;
+			const bool every_piece = (off & 2048) != 0 && !has_cusp && !in_span.contains({t, k});
 			if (!has_cusp && !in_span.contains({t, k})) {
 				const bool ends_split = k == ne && !line.to.port && is_split(line.to.index);
 				place_piece = static_cast<int>(ends_split ? last : first);
@@ -315,6 +317,10 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 						el.heading = kind == Kind::StepP ? (h + 1) % 8 : (h + 7) % 8;
 						el.disp = {2 * PlanarModel::STEP[el.heading][0], 2 * PlanarModel::STEP[el.heading][1]};
 						el.length = 2;
+						if ((off & 4096) != 0 && !fixed) {
+							const int lane = h % 2 == 0 ? 2 : 1, sign = kind == Kind::StepP ? 1 : -1;
+							el.disp = {sign * lane * PlanarModel::Right(h)[0], sign * lane * PlanarModel::Right(h)[1]};
+						}
 					}
 					e.elems.push_back(el);
 					return e.elems.size() - 1;
@@ -328,7 +334,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 				};
 				if (k == 0 && j == 0 && cusp_start.contains(t)) cusp(cusp_start.at(t), true);
 				uint32_t first_part, last_part;
-				if (place_piece == static_cast<int>(j)) {
+				if (place_piece == static_cast<int>(j) || every_piece) {
 					const uint32_t before = var(0, INF, 1), after = var(0, INF, 1);
 					const uint32_t p = var(0, 8, 1000), m = var(0, 8, 1000), zp = var(0, 1, 0), zm = var(0, 1, 0);
 					step_vars.insert(p);
@@ -896,13 +902,27 @@ TEST_CASE("planar probe: G1 joint slots and lengths on T2 T3 LL2", "[junction][p
 					r.clashes.size(), r.same_channel, r.face, r.noface, r.curve_breaches.size(), r.consistency, r.no_chain, r.why);
 			for (const std::string &line : r.clashes) std::cout << fmt::format("G1C {} {} {}\n", name, tag, line);
 			for (const std::string &line : r.curve_breaches) std::cout << fmt::format("G1V {} {} {}\n", name, tag, line);
+			const auto print_a = [&](uint32_t off, const G1Result &a) {
+				std::cout << fmt::format("G1A {} {} off={} solved={} ms={:.1f} clashes={} same_channel={} face={} noface={} curve={} why={}\n", name, tag, off, a.solved ? 1 : 0, a.ms, a.clashes.size(), a.same_channel, a.face, a.noface, a.curve_breaches.size(), a.why.substr(0, 300));
+				size_t shown[3] = {0, 0, 0};
+				for (const std::string &line : a.clashes) {
+					const size_t kind = line.ends_with("same_channel=1") ? 0 : (line.find("face=none") != std::string::npos ? 2 : 1);
+					if (shown[kind]++ < 3) std::cout << fmt::format("G1C {} {} off={} {}\n", name, tag, off, line);
+				}
+			};
+			if (name == "LL2") {
+				const uint32_t base = (1U << G1_FAMILIES) - 1;
+				for (const uint32_t extra : {0U, 512U, 1024U, 2048U, 4096U, 1024U | 2048U | 4096U, 512U | 1024U | 2048U | 4096U}) print_a(base | extra, SolveG1(topology, spec, v, base | extra));
+			}
+			if (name == "T2" && i == 0) {
+				for (const uint32_t off : {1U, 2U, (1U << G1_FAMILIES) - 1}) print_a(off, SolveG1(topology, spec, v, off));
+			}
 			if (r.solved) continue;
 			std::vector<uint32_t> offs;
 			for (uint32_t b = 0; b < G1_FAMILIES; b++) offs.push_back(1U << b);
 			offs.push_back((1U << G1_FAMILIES) - 1);
 			for (const uint32_t off : offs) {
-				const G1Result a = SolveG1(topology, spec, v, off);
-				std::cout << fmt::format("G1A {} {} off={} solved={} ms={:.1f} clashes={} curve={} why={}\n", name, tag, off, a.solved ? 1 : 0, a.ms, a.clashes.size(), a.curve_breaches.size(), a.why.substr(0, 300));
+				print_a(off, SolveG1(topology, spec, v, off));
 			}
 		}
 		std::cout << fmt::format("G1 {} SUMMARY solved={}/3 ms_max={:.1f} clashes_total={} curve_total={}\n", name, solved, ms_max, clashes_total, curve_total);
