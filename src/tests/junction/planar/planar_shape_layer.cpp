@@ -299,6 +299,7 @@ struct ClosureResult {
 	double micros; ///< The time of the solve.
 	std::vector<std::string> steps; ///< With bits 8 and 16, one entry per whole-lane step with n != 0 after an optimal solve.
 	std::vector<std::string> rigid; ///< With bit 64, one entry per non-exempt part that cannot be stretched (t < 0.5) after an optimal solve.
+	std::vector<std::tuple<uint32_t, uint32_t, int>> step_places; ///< With bits 8 and 16, per nonzero step: (track index, stretch, n).
 };
 
 /**
@@ -308,9 +309,10 @@ struct ClosureResult {
  * @param families Which quantities of Slots' least answer to fix: bit 1 one lane at each cusp, bit 2 one tile per deck step, bit 4 the pinned gaps at the ports, bit 8 a free sideways step in every stretch, bit 16 (with 8) whole-lane steps and none inside a deck, bit 32 (with 8 and 16) each step n = p - m with 1000 per unit of p and m, bit 64 (with 1, 2, 4) the homogeneous closure: every constant 0, every part may be 0, and a max-support LP finds the parts that cannot be stretched.
  * @param equalities If not nullptr, receives every row added with lower == upper.
  * @param columns If not nullptr, receives the variable count.
+ * @param step_columns With bit 64, one free column s >= 0 per (track, stretch, sign), a step of free size and fixed side whose support is maximised like a part.
  * @return The answer.
  */
-static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0, std::vector<std::vector<std::pair<uint32_t, double>>> *equalities = nullptr, uint32_t *columns = nullptr)
+static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0, std::vector<std::vector<std::pair<uint32_t, double>>> *equalities = nullptr, uint32_t *columns = nullptr, const std::vector<std::tuple<uint32_t, uint32_t, int>> *step_columns = nullptr)
 {
 	const PlanarTrackMap &map = v.structure.map;
 	const size_t nt = map.tracks.size();
@@ -365,6 +367,7 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0, st
 		uint32_t track, stretch, piece, part, t;
 	};
 	std::vector<SupportPart> support; ///< With bit 64, one per non-exempt part.
+	std::vector<std::tuple<uint32_t, uint32_t, int, uint32_t>> step_support; ///< With bit 64 and step_columns, per step its (track, stretch, sign, t).
 	for (uint32_t t = 0; t < nt; t++) {
 		const PlanarShapeTrack &s = v.tracks[t];
 		std::vector<std::vector<uint32_t>> parts(s.pieces.size());
@@ -382,6 +385,18 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0, st
 				const auto &step = PlanarModel::STEP[((s.pieces[j] % 8) + 8) % 8];
 				dx.emplace_back(part, -step[0]);
 				dy.emplace_back(part, -step[1]);
+			}
+			if (homogeneous && step_columns != nullptr) {
+				for (const auto &[st, sk, sign] : *step_columns) {
+					if (st != t || sk != k) continue;
+					const uint32_t s_col = lp.AddVariable(0, JunctionMilp::INF, 0, false);
+					const uint32_t support_t = lp.AddVariable(0, 1, -1, false);
+					row({{support_t, 1}, {s_col, -1}}, -JunctionMilp::INF, 0, "support");
+					step_support.emplace_back(t, static_cast<uint32_t>(k), sign, support_t);
+					const auto &right = PlanarModel::Right(((s.pieces[first] % 8) + 8) % 8);
+					dx.emplace_back(s_col, -sign * right[0]);
+					dy.emplace_back(s_col, -sign * right[1]);
+				}
 			}
 			if ((families & 8) && !((families & 16) && in_deck.contains({t, k}))) {
 				const int heading = ((s.pieces[first] % 8) + 8) % 8;
@@ -558,7 +573,12 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0, st
 			const size_t events = map.events[sv.track].size();
 			const std::string from = sv.stretch == 0 ? end_text(sv.track, false) : cross_text(sv.track, map.events[sv.track][sv.stretch - 1]);
 			const std::string to = sv.stretch == events ? end_text(sv.track, true) : cross_text(sv.track, map.events[sv.track][sv.stretch]);
+			r.step_places.emplace_back(sv.track, sv.stretch, n);
 			r.steps.push_back(fmt::format("{} stretch={} n={} heading={} from={} to={}", map.tracks[sv.track].name, sv.stretch, n, sv.heading, from, to));
+		}
+		for (const auto &[st, sk, sign, support_t] : step_support) {
+			if (lp.Value(support_t) >= 0.5) continue;
+			r.rigid.push_back(fmt::format("step {} stretch={} sign={}", map.tracks[st].name, sk, sign));
 		}
 		for (const SupportPart &sp : support) {
 			if (lp.Value(sp.t) >= 0.5) continue;
@@ -1003,6 +1023,24 @@ TEST_CASE("planar probe: closure with Slots' least exact answer on T1-T3 and LL2
 			size_t mask64_max = 0;
 			for (const PlanarShapeVariant &v : shape.variants) mask64_max = std::max(mask64_max, ClosureLp(v, 64).rigid.size());
 			std::cout << fmt::format("X2G {} mask=64 rigid_max={}\n", name, mask64_max);
+		}
+		{
+			size_t runs = 0, rigid_min = SIZE_MAX, rigid_max = 0, x2g_max = 0;
+			bool first = true;
+			for (const PlanarShapeVariant &v : shape.variants) {
+				const ClosureResult places = ClosureLp(v, 63);
+				if (!places.closes) continue;
+				std::vector<std::tuple<uint32_t, uint32_t, int>> columns;
+				for (const auto &[track, stretch, n] : places.step_places) columns.emplace_back(track, stretch, n < 0 ? -1 : 1);
+				const ClosureResult c = ClosureLp(v, 71, nullptr, nullptr, &columns);
+				x2g_max = std::max(x2g_max, ClosureLp(v, 71).rigid.size());
+				runs++;
+				rigid_min = std::min(rigid_min, c.rigid.size());
+				rigid_max = std::max(rigid_max, c.rigid.size());
+				if (first && (name == "T1" || name == "T2")) for (const std::string &entry : c.rigid) std::cout << fmt::format("X2H {} {} RIGID {}\n", name, v.structure.tag, entry);
+				first = false;
+			}
+			std::cout << fmt::format("X2H {} variants={} rigid_min={} rigid_max={} (X2g had {})\n", name, runs, runs == 0 ? 0 : rigid_min, rigid_max, x2g_max);
 		}
 		if (name == "T1" && !shape.variants.empty()) {
 			const PlanarShapeVariant &v = shape.variants.front();
