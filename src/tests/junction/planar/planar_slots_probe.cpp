@@ -1264,16 +1264,16 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 		}
 		const TrackElems &eb = te[b];
 		if (g2_rigid_beside) {
-			if (sb.pieces.size() == 1) {
-				r.no_chain++;
-				continue;
-			}
+			const bool one_piece = sb.pieces.size() == 1;
 			for (size_t j = 0; j < sb.pieces.size(); j++) {
 				const int h = ((sb.pieces[j] % 8) + 8) % 8;
 				const auto [pt, jj] = chain_piece[j];
 				for (const bool at_start : {true, false}) {
-					if (at_start ? j == 0 : j + 1 == sb.pieces.size()) continue;
-					const size_t bi = at_start ? eb.piece_begin[j] : eb.piece_end[j], pi = at_start ? te[pt].piece_begin[jj] : te[pt].piece_end[jj];
+					/* A one-piece beside track: one row, just after its opening cusp (both ends are cusps). */
+					if (one_piece ? !at_start : (at_start ? j == 0 : j + 1 == sb.pieces.size())) continue;
+					size_t bi = at_start ? eb.piece_begin[j] : eb.piece_end[j];
+					const size_t pi = at_start ? te[pt].piece_begin[jj] : te[pt].piece_end[jj];
+					if (one_piece && eb.elems[bi].kind != Elem::Kind::Part && eb.elems[bi].fixed && !eb.elems[bi].flex) bi++;
 					const std::array<Lin, 2> beside = position(b, bi), parent = position(pt, pi);
 					/* The stretch of the element at each point, as the one-row code takes it. */
 					const size_t beside_stretch = static_cast<size_t>(eb.elems[at_start ? bi : bi - 1].stretch);
@@ -2913,4 +2913,33 @@ TEST_CASE("planar probe: G2 chords on T2", "[junction][planar][planarshape][.pro
 	}
 	}
 	g2_rigid_beside = false;
+}
+
+/** G2f: why rigid beside bundles (g2_rigid_beside) make T2 infeasible: G1q's family filter with chords off, flex base. */
+TEST_CASE("planar probe: G2f rigid beside family filter on T2", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const char *family_names[] = {"beside", "span clear", "deck gap and limit", "landing", "crossers", "node legs", "coverage", "bays", "curves"};
+	const double limit = g1_time_limit;
+	g1_time_limit = 5.0;
+	g2_rigid_beside = true;
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+	const PlanarShapeVariant &v = shape.variants[0];
+	uint32_t off = 2097152U | 16777216U | 33554432U;
+	for (uint32_t b = 0; b < G1_FAMILIES && false; b++) {
+		const size_t t0 = g1_timeouts;
+		const G1Result r = SolveG1(topology, spec, v, off | (1U << b));
+		const bool proved = !r.solved && g1_timeouts == t0;
+		if (proved) off |= 1U << b;
+		std::cout << fmt::format("G2F {} drop {} -> {} ms={:.0f}\n", v.structure.tag, family_names[b], r.solved ? "solved (needed)" : (proved ? "infeasible (dropped)" : "timeout (kept)"), r.ms);
+	}
+	const G1Result r = SolveG1(topology, spec, v, off);
+	std::cout << fmt::format("G2F {} off={} solved={} rows={} ms={:.0f} steps={} W={} H={} clashes={} same_channel={} face={} noface={} curve={} why={}\n", v.structure.tag, off, r.solved ? 1 : 0, r.iis.size(), r.ms, r.step_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.same_channel, r.face, r.noface, r.curve_breaches.size(), r.why.substr(0, 300));
+	for (const std::string &line : r.clashes) std::cout << fmt::format("G2F CLASH {}\n", line);
+	for (const std::string &line : r.iis) std::cout << fmt::format("G2F IIS {}\n", line);
+	g2_rigid_beside = false;
+	g1_time_limit = limit;
 }
