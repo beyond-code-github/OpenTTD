@@ -330,6 +330,259 @@ PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const
 	return result;
 }
 
+PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology, std::string_view text, const JunctionSpec &spec, std::vector<std::string> &report, std::string *error)
+{
+	if (!topology.crossings_authored) {
+		*error = "the topology's crossings are not authored";
+		return {};
+	}
+	const auto trim = [](std::string_view s) {
+		const size_t a = s.find_first_not_of(" \t\r");
+		const size_t b = s.find_last_not_of(" \t\r");
+		return a == std::string_view::npos ? std::string() : std::string(s.substr(a, b - a + 1));
+	};
+	const auto split_commas = [&](std::string_view s) {
+		std::vector<std::string> out;
+		size_t at = 0;
+		while (true) {
+			const size_t comma = s.find(',', at);
+			out.push_back(trim(s.substr(at, comma == std::string_view::npos ? comma : comma - at)));
+			if (comma == std::string_view::npos) break;
+			at = comma + 1;
+		}
+		return out;
+	};
+
+	/* Step 2: parse every statement. */
+	std::vector<PlanarStructureRun> runs;
+	std::map<std::string, size_t> tunnel_ids; ///< Tunnel id to its run.
+	std::vector<std::pair<std::string, std::vector<std::string>>> groups; ///< Statement, tunnel ids.
+	std::vector<std::tuple<std::string, std::string, std::vector<std::string>>> copies; ///< Statement, copy line, tunnel ids.
+	std::vector<std::tuple<std::string, std::string, std::string>> straights; ///< Statement, trunk, leg.
+	size_t at = 0;
+	while (at <= text.size()) {
+		const size_t end = std::min(text.find('\n', at), text.size());
+		std::string statement = trim(text.substr(at, end - at).substr(0, text.substr(at, end - at).find('#')));
+		at = end + 1;
+		if (statement.empty()) continue;
+		const size_t space = statement.find(' ');
+		const std::string word = statement.substr(0, space);
+		const std::string rest = space == std::string::npos ? std::string() : trim(statement.substr(space + 1));
+		const size_t colon = rest.find(':');
+		if (word == "tunnel") {
+			const size_t id_end = rest.find(' ');
+			if (colon == std::string::npos || id_end == std::string::npos || id_end > colon) {
+				*error = fmt::format("malformed statement: {}", statement);
+				return {};
+			}
+			const std::string id = rest.substr(0, id_end);
+			const std::string separator = trim(std::string_view(rest).substr(id_end, colon - id_end));
+			if (tunnel_ids.contains(id)) {
+				*error = fmt::format("tunnel id {} given twice: {}", id, statement);
+				return {};
+			}
+			const uint32_t sep = PlanarLineByName(topology, separator);
+			if (sep == UINT32_MAX) {
+				*error = fmt::format("unknown line {}: {}", separator, statement);
+				return {};
+			}
+			PlanarStructureRun run{sep, {}, false};
+			for (const std::string &crosser : split_commas(std::string_view(rest).substr(colon + 1))) {
+				const uint32_t other = PlanarLineByName(topology, crosser);
+				if (other == UINT32_MAX) {
+					*error = fmt::format("unknown line {}: {}", crosser, statement);
+					return {};
+				}
+				const auto it = std::ranges::find_if(topology.crossings, [&](const PlanarCrossing &c) { return (c.a == sep && c.b == other) || (c.a == other && c.b == sep); });
+				if (it == topology.crossings.end()) {
+					*error = fmt::format("tunnel {}: {} does not cross {}", id, separator, crosser);
+					return {};
+				}
+				run.crossings.push_back(static_cast<uint32_t>(it - topology.crossings.begin()));
+			}
+			tunnel_ids[id] = runs.size();
+			runs.push_back(std::move(run));
+		} else if (word == "group") {
+			if (colon == std::string::npos) {
+				*error = fmt::format("malformed statement: {}", statement);
+				return {};
+			}
+			groups.push_back({statement, split_commas(std::string_view(rest).substr(colon + 1))});
+		} else if (word == "copy") {
+			const size_t over = rest.find(" over ");
+			if (over == std::string::npos) {
+				*error = fmt::format("malformed statement: {}", statement);
+				return {};
+			}
+			const std::string line = trim(std::string_view(rest).substr(0, over));
+			if (PlanarLineByName(topology, line) == UINT32_MAX) {
+				*error = fmt::format("unknown line {}: {}", line, statement);
+				return {};
+			}
+			copies.push_back({statement, line, split_commas(std::string_view(rest).substr(over + 6))});
+		} else if (word == "straight") {
+			if (colon == std::string::npos) {
+				*error = fmt::format("malformed statement: {}", statement);
+				return {};
+			}
+			const std::string trunk = trim(std::string_view(rest).substr(0, colon)), leg = trim(std::string_view(rest).substr(colon + 1));
+			if (PlanarLineByName(topology, trunk) == UINT32_MAX || (leg != "none" && PlanarLineByName(topology, leg) == UINT32_MAX)) {
+				*error = fmt::format("unknown line: {}", statement);
+				return {};
+			}
+			straights.push_back({statement, trunk, leg});
+		} else {
+			*error = fmt::format("unknown statement word {}: {}", word, statement);
+			return {};
+		}
+	}
+	for (const auto &[statement, ids] : groups) {
+		for (const std::string &id : ids) {
+			if (!tunnel_ids.contains(id)) {
+				*error = fmt::format("unknown tunnel {}: {}", id, statement);
+				return {};
+			}
+		}
+	}
+	for (const auto &[statement, line, ids] : copies) {
+		for (const std::string &id : ids) {
+			if (!tunnel_ids.contains(id)) {
+				*error = fmt::format("unknown tunnel {}: {}", id, statement);
+				return {};
+			}
+		}
+	}
+	/* The node each straight statement pins: the node whose trunk is the line and one of whose legs is the pinned leg. */
+	const auto trunk_of = [&](uint32_t n) { return topology.nodes[n].IsSplit() ? topology.nodes[n].in[0] : topology.nodes[n].out[0]; };
+	const auto legs_of = [&](uint32_t n) -> const std::vector<uint32_t> & { return topology.nodes[n].IsSplit() ? topology.nodes[n].out : topology.nodes[n].in; };
+	std::vector<std::string> pinned(topology.nodes.size());
+	for (const auto &[statement, trunk, leg] : straights) {
+		const uint32_t trunk_line = PlanarLineByName(topology, trunk), leg_line = leg == "none" ? UINT32_MAX : PlanarLineByName(topology, leg);
+		uint32_t found = UINT32_MAX;
+		bool has_trunk = false;
+		for (uint32_t n = 0; n < topology.nodes.size(); n++) {
+			if (trunk_of(n) != trunk_line) continue;
+			has_trunk = true;
+			if (leg_line != UINT32_MAX && std::ranges::find(legs_of(n), leg_line) == legs_of(n).end()) continue;
+			if (found == UINT32_MAX || (pinned[found].empty() ? false : pinned[n].empty())) found = n;
+		}
+		if (!has_trunk) {
+			*error = fmt::format("the trunk is the trunk of no node: {}", statement);
+			return {};
+		}
+		if (found == UINT32_MAX) {
+			*error = fmt::format("the leg is not a leg of the node: {}", statement);
+			return {};
+		}
+		pinned[found] = leg;
+	}
+	for (uint32_t n = 0; n < topology.nodes.size(); n++) {
+		if (pinned[n].empty()) {
+			*error = fmt::format("node with trunk {} has no straight statement", topology.lines[trunk_of(n)].name);
+			return {};
+		}
+	}
+
+	/* Step 3: the copies. */
+	for (const auto &[statement, line, ids] : copies) {
+		for (const std::string &id : ids) {
+			PlanarStructureRun &run = runs[tunnel_ids.at(id)];
+			if (topology.lines[run.line].name == line) {
+				run.copy = true;
+			} else {
+				report.push_back(fmt::format("gap: copy {} over {}: the model copies only a structure's separator (D351)", line, id));
+			}
+		}
+	}
+
+	/* Steps 4 to 8: the same builders BuildPlanarStructure uses. */
+	PlanarStructureVariant v{};
+	v.tag = topology.name;
+	v.side_gap = PlanarSideGaps(spec);
+	const PlanarChannels channels = BuildPlanarChannels(topology);
+	const auto pinned_line = [&](uint32_t n) { return pinned[n] == "none" ? UINT32_MAX : PlanarLineByName(topology, pinned[n]); };
+	const auto line_text = [&](uint32_t line) { return line == UINT32_MAX ? std::string("none") : topology.lines[line].name; };
+	const auto channel_text = [&](uint32_t line) { return line == UINT32_MAX ? UINT32_MAX : channels.channel_of_line[line]; };
+	std::vector<PlanarResolvedSite> sites(channels.sites.size());
+	for (size_t si = 0; si < channels.sites.size(); si++) {
+		const PlanarSite &site = channels.sites[si];
+		PlanarResolvedSite &r = sites[si];
+		const std::string trunk = topology.lines[trunk_of(site.nodes[0])].name;
+		bool none = false;
+		uint32_t decider = UINT32_MAX;
+		for (const uint32_t n : site.nodes) {
+			if (pinned_line(n) != UINT32_MAX) {
+				decider = n;
+				break;
+			}
+		}
+		if (decider == UINT32_MAX) {
+			none = true;
+		} else if (site.others.size() != 2) {
+			report.push_back(fmt::format("gap: site of trunk {}: {} channels", trunk, site.others.size()));
+			none = true;
+		} else if (std::ranges::find(site.others, channel_text(pinned_line(decider))) == site.others.end()) {
+			report.push_back(fmt::format("gap: site of trunk {}: pinned leg {} is not one of the site's channels", trunk, pinned[decider]));
+			none = true;
+		}
+		if (none) {
+			r = PlanarResolvedSite{UINT32_MAX, UINT32_MAX, 0, false};
+		} else {
+			r.straight = channel_text(pinned_line(decider));
+			r.other = site.others[0] == r.straight ? site.others[1] : site.others[0];
+			const PlanarNode &tn = topology.nodes[decider];
+			r.side = pinned_line(decider) == (tn.IsSplit() ? tn.out[0] : tn.in[0]) ? +1 : -1;
+			r.prio = channels.channels[r.straight].prio;
+			for (const uint32_t n : site.nodes) {
+				if (channel_text(pinned_line(n)) != r.straight) report.push_back(fmt::format("gap: site of trunk {}: its nodes pin different straight legs ({} and {})", trunk, pinned[decider], pinned[n]));
+			}
+		}
+		if (site.straight != UINT32_MAX && site.straight != r.straight) {
+			const uint32_t n0 = site.nodes[0];
+			uint32_t rule_line = UINT32_MAX;
+			for (const uint32_t l : legs_of(n0)) {
+				if (channels.channel_of_line[l] == site.straight) rule_line = l;
+			}
+			report.push_back(fmt::format("differs: straight {}: rule {}, pinned {}", topology.lines[trunk_of(n0)].name, line_text(rule_line), pinned[n0]));
+		}
+	}
+	v.map = BuildPlanarTrackMap(topology, channels, sites, runs);
+	if (!v.map.why.empty()) {
+		report.push_back("gap: track map: " + v.map.why);
+		return v;
+	}
+	v.structures = PlanarBuildStructures(topology, runs, v.map, spec);
+	for (PlanarStructure &st : v.structures) {
+		st.kinds = 2;
+		st.limit = StructureLimit(spec, st);
+	}
+	if (v.structures.size() != runs.size()) report.push_back(fmt::format("gap: {} tunnels gave {} structures", runs.size(), v.structures.size()));
+	v.sites = PlanarBuildStructureSites(topology, channels, sites, v.map);
+	for (uint32_t n = 0; n < topology.nodes.size(); n++) {
+		const PlanarNode &node = v.map.expanded.nodes[n];
+		const std::vector<uint32_t> &legs = node.IsSplit() ? node.out : node.in;
+		const uint32_t line = pinned_line(n);
+		if (line == UINT32_MAX) {
+			v.sites[n].straight = UINT32_MAX;
+			v.sites[n].side = 0;
+			continue;
+		}
+		uint32_t straight = UINT32_MAX;
+		for (const uint32_t l : legs) {
+			if (v.map.tracks[l].line == line) straight = l; // As PlanarBuildStructureSites: the last leg on the line, so a prio row beside it wins.
+		}
+		if (straight == UINT32_MAX) {
+			report.push_back(fmt::format("gap: straight {}: leg {} has no track at the node", topology.lines[trunk_of(n)].name, pinned[n]));
+			continue;
+		}
+		const PlanarNode &tn = topology.nodes[n];
+		v.sites[n].straight = straight;
+		v.sites[n].side = line == (tn.IsSplit() ? tn.out[0] : tn.in[0]) ? +1 : -1;
+	}
+	v.cost = static_cast<int>(runs.size() + std::ranges::count_if(runs, [](const PlanarStructureRun &r) { return r.copy; }));
+	return v;
+}
+
 std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarStructureVariant &v)
 {
 	std::vector<std::string> out;

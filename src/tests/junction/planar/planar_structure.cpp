@@ -22,8 +22,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <fstream>
 #include <map>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -696,4 +698,166 @@ TEST_CASE("planar structure: T3 o3t0f0m3294 splits the structure on D1 so every 
 	const std::vector<std::string> messages = CheckPlanarStructurePromise(tv.topology, MakeTestJunctionSpec(), v);
 	INFO(messages.size() << " messages, first: " << (messages.empty() ? std::string() : messages[0]));
 	CHECK(messages.empty());
+}
+
+/** Parse and require success. */
+static PlanarTopology Parse(const std::string &text)
+{
+	std::string error;
+	PlanarTopology topology = ParsePlanarTopology(text, &error);
+	INFO(error);
+	REQUIRE(error.empty());
+	REQUIRE(!topology.lines.empty());
+	return topology;
+}
+
+/** The text with the given `cross` statements appended. */
+static std::string WithCross(const std::string &text, const std::vector<std::pair<std::string, std::vector<std::string>>> &statements)
+{
+	std::string out = text + "\n";
+	for (const auto &[name, partners] : statements) {
+		out += "cross " + name + ":";
+		for (size_t i = 0; i < partners.size(); i++) out += (i == 0 ? " " : ", ") + partners[i];
+		out += "\n";
+	}
+	return out;
+}
+
+/** The text plus, for every line with crossings, the `cross` statement of its derived event order. */
+static std::string AuthoredText(const std::string &text)
+{
+	const PlanarTopology t = Parse(text);
+	std::vector<std::pair<std::string, std::vector<std::string>>> statements;
+	for (uint32_t l = 0; l < t.lines.size(); l++) {
+		if (t.events[l].empty()) continue;
+		std::vector<std::string> partners;
+		for (uint32_t c : t.events[l]) partners.push_back(t.lines[t.crossings[c].a == l ? t.crossings[c].b : t.crossings[c].a].name);
+		statements.push_back({t.lines[l].name, std::move(partners)});
+	}
+	return WithCross(text, statements);
+}
+
+/** @return The whole text of a file of the topologies directory. */
+static std::string ReadTopologyFile(const std::string &name)
+{
+	std::ifstream file(std::string(JUNCTION_TOPOLOGY_DIR "/") + name);
+	REQUIRE(file.good());
+	std::stringstream buffer;
+	buffer << file.rdbuf();
+	return buffer.str();
+}
+
+TEST_CASE("planar structure: PSG 197's pinned variant, gaps and promise", "[junction][planar][planarstructure]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(ReadTopologyFile("psg197.txt"), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant v = LoadPlanarStructureVariant(topology, ReadTopologyFile("psg197.structure.txt"), spec, report, &error);
+	INFO(error);
+	REQUIRE(error.empty());
+	size_t gaps = 0, differs = 0;
+	for (const std::string &line : report) {
+		WARN(line);
+		(line.starts_with("gap:") ? gaps : differs)++;
+	}
+	const std::vector<std::string> promise = CheckPlanarStructurePromise(topology, spec, v);
+	for (const std::string &line : promise) WARN(line);
+	WARN("tracks " << v.map.tracks.size() << ", structures " << v.structures.size() << ", sites " << v.sites.size() << ", gap lines " << gaps << ", differs lines " << differs << ", promise breaches " << promise.size());
+}
+
+TEST_CASE("planar structure: PSG 197's pinned variant keeps the promise", "[.][planarpsg197]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(ReadTopologyFile("psg197.txt"), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant v = LoadPlanarStructureVariant(topology, ReadTopologyFile("psg197.structure.txt"), spec, report, &error);
+	REQUIRE(error.empty());
+	for (const std::string &line : report) CHECK(!line.starts_with("gap:"));
+	const std::vector<std::string> promise = CheckPlanarStructurePromise(topology, spec, v);
+	INFO(promise.size() << " breaches, first: " << (promise.empty() ? std::string() : promise[0]));
+	CHECK(promise.empty());
+}
+
+/** @return A variant's decisions as text: a tunnel per structure, a straight per topology node. */
+static std::string DecisionsText(const PlanarTopology &topology, const PlanarStructureVariant &v)
+{
+	const auto name = [&](uint32_t track) { return topology.lines[v.map.tracks[track].line].name; };
+	std::string out;
+	for (size_t i = 0; i < v.structures.size(); i++) {
+		const PlanarStructure &st = v.structures[i];
+		out += fmt::format("tunnel T{} {}:", i + 1, name(st.separator));
+		for (size_t k = 0; k < st.crossers.size(); k++) out += fmt::format("{} {}", k == 0 ? "" : ",", name(st.crossers[k]));
+		out += "\n";
+		if (st.copy != UINT32_MAX) out += fmt::format("copy {} over T{}\n", name(st.separator), i + 1);
+	}
+	for (uint32_t n = 0; n < topology.nodes.size(); n++) {
+		const PlanarNode &node = topology.nodes[n];
+		out += fmt::format("straight {}: {}\n", topology.lines[node.IsSplit() ? node.in[0] : node.out[0]].name, v.sites[n].straight == UINT32_MAX ? std::string("none") : name(v.sites[n].straight));
+	}
+	return out;
+}
+
+TEST_CASE("planar structure: a pinned variant equal to Structure's own gives its structures and sites", "[junction][planar][planarstructure]")
+{
+	const PlanarTopology topology = Parse(AuthoredText(PlanarTText(1)));
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const PlanarStructureResult result = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!result.variants.empty());
+	const PlanarStructureVariant &v0 = result.variants[0];
+	std::vector<std::string> report;
+	std::string error;
+	const PlanarStructureVariant v = LoadPlanarStructureVariant(topology, DecisionsText(topology, v0), spec, report, &error);
+	INFO(error);
+	REQUIRE(error.empty());
+	INFO("report: " << (report.empty() ? std::string() : report[0]));
+	CHECK(report.empty());
+	REQUIRE(v.structures.size() == v0.structures.size());
+	const auto line = [&](const PlanarStructureVariant &x, uint32_t track) { return x.map.tracks[track].line; };
+	for (size_t i = 0; i < v0.structures.size(); i++) {
+		const PlanarStructure &a = v0.structures[i], &b = v.structures[i];
+		CHECK(line(v0, a.separator) == line(v, b.separator));
+		REQUIRE(a.crossers.size() == b.crossers.size());
+		for (size_t k = 0; k < a.crossers.size(); k++) CHECK(line(v0, a.crossers[k]) == line(v, b.crossers[k]));
+		CHECK((a.copy != UINT32_MAX) == (b.copy != UINT32_MAX));
+		CHECK(b.kinds == 2);
+	}
+	REQUIRE(v.sites.size() == v0.sites.size());
+	for (size_t n = 0; n < v0.sites.size(); n++) {
+		CHECK(v.sites[n].straight == v0.sites[n].straight);
+		CHECK(v.sites[n].side == v0.sites[n].side);
+	}
+}
+
+TEST_CASE("planar structure: pinned decisions are refused with a reason", "[junction][planar][planarstructure]")
+{
+	const PlanarTopology topology = Parse(AuthoredText(PlanarTText(1)));
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const PlanarStructureResult result = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!result.variants.empty());
+	const std::string text = DecisionsText(topology, result.variants[0]);
+	const auto error_of = [&](const PlanarTopology &t, const std::string &decisions) {
+		std::vector<std::string> report;
+		std::string error;
+		LoadPlanarStructureVariant(t, decisions, spec, report, &error);
+		return error;
+	};
+	SECTION("the topology is not authored") {
+		CHECK(error_of(Parse(PlanarTText(1)), text).find("not authored") != std::string::npos);
+	}
+	SECTION("an unknown statement") {
+		CHECK(error_of(topology, text + "bridge B1 A1\n").find("unknown") != std::string::npos);
+	}
+	SECTION("a tunnel naming a non-crossing pair") {
+		REQUIRE(!topology.lines.empty());
+		CHECK(error_of(topology, text + "tunnel T99 " + topology.lines[0].name + ": " + topology.lines[0].name + "\n").find("does not cross") != std::string::npos);
+	}
+	SECTION("a straight statement removed") {
+		const size_t at = text.rfind("straight ");
+		REQUIRE(at != std::string::npos);
+		CHECK(error_of(topology, text.substr(0, at)).find("has no straight statement") != std::string::npos);
+	}
 }

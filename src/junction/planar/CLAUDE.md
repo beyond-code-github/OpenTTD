@@ -180,6 +180,7 @@
 - Each `PlanarStructure` carries `limit` (index 0 bridge, 1 tunnel; -1 for a kind not allowed): the most middle tiles it may span, bridge min(`max_bridge_middle`, with a copy 2*sd+tl-2 (D228a)), tunnel min(`max_tunnel_length`, with a copy the same bound). `PlanarBuildStructures` fills it from the spec; P5 checks it equals that formula and checks the crosser count against it. Shape reads the limit, never the spec's rule fields (SPEC-shape §1).
 - Each variant carries `side_gap` (index `PlanarSide`): the slot distance between consecutive ports on that side, gap + 1 (`ml_gap` on E and W, `branch_gap` on N and S; D377), from `PlanarSideGaps(spec)`; P8 checks it. Slots reads it, never the spec.
 - `CheckPlanarStructurePromise` is the test oracle for P1-P8 at Structure's output (D367); every variant handed down keeps it on T2, T3 and LL2 (T2 16384 variants exhaustive, LL2 65536 exhaustive, T3 by search; all under 0.2 s Release).
+- A Structure output can be written down (D389): `LoadPlanarStructureVariant` loads pinned tunnels, copies and straight legs through the same builders into one variant (sites from the pins, not from `ResolvePlanarSites`), reporting each decision the model cannot take ("gap:") and each straight leg that differs from the rule ("differs:"); PSG 197's is tools/junction/topologies/psg197.structure.txt.
 
 ## Shape layer (`planar_shape_layer`) (spec wip/SPEC-shape.md)
 - `ParentChain(map, sites, b, chain)` is public: the parent chain of a beside track (H8), used by the oracle and by Slots' probes.

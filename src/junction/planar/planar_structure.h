@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 /** A split or merge of the track map, its straight leg (a track) and the side the other leg leaves or arrives on. */
@@ -106,6 +107,22 @@ std::vector<PlanarStructureSite> PlanarBuildStructureSites(const PlanarTopology 
  * @return The variants, ranked; why is set only when none survives.
  */
 PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const JunctionSpec &spec, size_t keep);
+
+/**
+ * A Structure output written down (D389): load pinned decisions into one variant, through the same builders BuildPlanarStructure uses.
+ * The text has one statement per line, `#` starts a comment:
+ * - `tunnel T<n> <separator line>: <crosser line>, ...`: one structure of kind tunnel; its crossers in travel order along the separator.
+ * - `group G<nn>: T<n>, ...`: parallel tunnels (information for Shape v2; parsed, ids checked, not stored).
+ * - `copy <line> over T<n>, ...`: a copy of `<line>` over those tunnels.
+ * - `straight <trunk line>: <leg line>` or `straight <trunk line>: none`: at the node whose trunk (a split's in line, a merge's out line) is that line, the straight leg, or none (a fork).
+ * @param topology The topology; its crossings must be authored (`crossings_authored`).
+ * @param text The decisions.
+ * @param spec The spec: the tunnel and flow limits, the side gaps.
+ * @param report Receives one line per decision the model cannot take ("gap: ...") and one per straight leg that differs from Structure's own rule ("differs: ...").
+ * @param error Receives why the text is malformed; the result is then empty.
+ * @return The variant, tagged with the topology's name.
+ */
+PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology, std::string_view text, const JunctionSpec &spec, std::vector<std::string> &report, std::string *error);
 
 /**
  * The promise P1 to P8 of SPEC-structure §4 as a test oracle (D367).
