@@ -17,6 +17,7 @@
 #include "../../../junction/planar/planar_topology.h"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <iostream>
@@ -296,13 +297,14 @@ struct ClosureResult {
 	bool closes; ///< The headings close with positive lengths.
 	std::string why; ///< The status and, when infeasible, the tags of the conflicting rows.
 	double micros; ///< The time of the solve.
+	std::vector<std::string> steps; ///< With bits 8 and 16, one entry per whole-lane step with n != 0 after an optimal solve.
 };
 
 /**
  * Ask whether the headings of a shaped variant can close with positive lengths (the lengths-only LP of H2).
  * Per point (x, y); a parallel leg of a node is offset sideways from the node point by a free w >= 0 (the cusp opening Slots owns, SPEC-shape section 3 hand-on (1)); per piece a length of at least 1, split into one part per stretch the piece lies on, so a piece that holds events is cut at them (the reading the orchestrator ruled intended, not the literal sum over a shared piece); the box is [0, W] x [0, Hb].
  * @param v The shaped variant.
- * @param families Which quantities of Slots' least answer to fix: bit 1 one lane at each cusp, bit 2 one tile per deck step, bit 4 the pinned gaps at the ports, bit 8 a free sideways step in every stretch, bit 16 (with 8) whole-lane steps and none inside a deck.
+ * @param families Which quantities of Slots' least answer to fix: bit 1 one lane at each cusp, bit 2 one tile per deck step, bit 4 the pinned gaps at the ports, bit 8 a free sideways step in every stretch, bit 16 (with 8) whole-lane steps and none inside a deck, bit 32 (with 8 and 16) each step n = p - m with 1000 per unit of p and m.
  * @return The answer.
  */
 static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
@@ -334,6 +336,11 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 			row({{y, 1}, {height, -1}}, -JunctionMilp::INF, 0, "box");
 		}
 	}
+	struct StepVar {
+		uint32_t track, stretch, side, p, m;
+		int heading;
+	};
+	std::vector<StepVar> step_vars; ///< One per whole-lane step variable.
 	std::set<std::pair<uint32_t, size_t>> in_deck; ///< The (track, stretch) pairs strictly between two crossings of one structure's deck.
 	for (const PlanarStructure &st : v.structure.structures) {
 		const auto event_of = [&](uint32_t t, uint32_t c) { return static_cast<size_t>(std::ranges::find(map.events[t], c) - map.events[t].begin()); };
@@ -361,11 +368,21 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 			if ((families & 8) && !((families & 16) && in_deck.contains({t, k}))) {
 				const int heading = ((s.pieces[first] % 8) + 8) % 8;
 				const bool whole = (families & 16) != 0;
-				const uint32_t side = whole ? lp.AddVariable(-64, 64, 0, true) : lp.AddVariable(-JunctionMilp::INF, JunctionMilp::INF, 0, false);
+					const bool split_pm = whole && (families & 32) != 0;
+				const uint32_t side = split_pm ? UINT32_MAX : (whole ? lp.AddVariable(-64, 64, 0, true) : lp.AddVariable(-JunctionMilp::INF, JunctionMilp::INF, 0, false));
+				const uint32_t p = split_pm ? lp.AddVariable(0, 64, 1000, true) : UINT32_MAX, m = split_pm ? lp.AddVariable(0, 64, 1000, true) : UINT32_MAX;
 				const double lane = whole ? (heading % 2 == 0 ? 2 : 1) : 1;
 				const auto &right = PlanarModel::Right(heading);
-				dx.emplace_back(side, -right[0] * lane);
-				dy.emplace_back(side, -right[1] * lane);
+				if (split_pm) {
+					dx.emplace_back(p, -right[0] * lane);
+					dx.emplace_back(m, right[0] * lane);
+					dy.emplace_back(p, -right[1] * lane);
+					dy.emplace_back(m, right[1] * lane);
+				} else {
+					dx.emplace_back(side, -right[0] * lane);
+					dy.emplace_back(side, -right[1] * lane);
+				}
+				if (whole) step_vars.push_back({t, static_cast<uint32_t>(k), side, p, m, heading});
 			}
 			row(dx, 0, 0, fmt::format("stretch {} {} x {}", t, k, map.tracks[t].name));
 			row(dy, 0, 0, fmt::format("stretch {} {} y {}", t, k, map.tracks[t].name));
@@ -494,6 +511,37 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 		std::set<std::string> unique;
 		for (const uint32_t i : lp.InfeasibleRows()) unique.insert(tags[i]);
 		for (const std::string &t : unique) r.why += " " + t + ";";
+	}
+	if (r.closes) {
+		const auto node_kind = [&](uint32_t n) {
+			const PlanarNode &node = map.expanded.nodes[n];
+			const PlanarStructureSite *site = nullptr;
+			for (const PlanarStructureSite &candidate : v.structure.sites) {
+				if (candidate.node == n) site = &candidate;
+			}
+			const bool split = node.in.size() == 1 && (node.out.size() != 1 || (site != nullptr && site->split));
+			return fmt::format("node {} {}", n, split ? "split" : "merge");
+		};
+		const auto end_text = [&](uint32_t t, bool end) {
+			const PlanarEnd &e = end ? map.expanded.lines[t].to : map.expanded.lines[t].from;
+			return e.port ? fmt::format("port {}", "NESW"[static_cast<int>(map.expanded.ports[e.index].side)]) : node_kind(e.index);
+		};
+		const auto cross_text = [&](uint32_t t, uint32_t c) {
+			bool sep = false;
+			for (const PlanarStructure &st : v.structure.structures) {
+				if (st.copy == t || (st.separator == t && std::ranges::find(st.crossings, c) != st.crossings.end())) sep = true;
+			}
+			const uint32_t other = map.crossings[c].a == t ? map.crossings[c].b : map.crossings[c].a;
+			return fmt::format("cross {} {}", map.tracks[other].name, sep ? "sep" : "crosser");
+		};
+		for (const StepVar &sv : step_vars) {
+			const int n = static_cast<int>(std::lround(sv.side != UINT32_MAX ? lp.Value(sv.side) : lp.Value(sv.p) - lp.Value(sv.m)));
+			if (n == 0) continue;
+			const size_t events = map.events[sv.track].size();
+			const std::string from = sv.stretch == 0 ? end_text(sv.track, false) : cross_text(sv.track, map.events[sv.track][sv.stretch - 1]);
+			const std::string to = sv.stretch == events ? end_text(sv.track, true) : cross_text(sv.track, map.events[sv.track][sv.stretch]);
+			r.steps.push_back(fmt::format("{} stretch={} n={} heading={} from={} to={}", map.tracks[sv.track].name, sv.stretch, n, sv.heading, from, to));
+		}
 	}
 	return r;
 }
@@ -797,6 +845,40 @@ TEST_CASE("planar probe: closure with Slots' least exact answer on T1-T3 and LL2
 			}
 			std::cout << fmt::format("X2E {} mask={} closes={}/{} ms_max={:.1f}\n", name, mask, closes, shape.variants.size(), ms_max_e);
 			std::cout << why;
+		}
+			{
+			size_t closes = 0, steps_min = SIZE_MAX, steps_max = 0, lanes_min = SIZE_MAX;
+			double ms_max_f = 0;
+			std::map<std::string, size_t> tally;
+			const auto number_of = [](const std::string &entry, const std::string &key) { const size_t at = entry.find(key) + key.size(); return entry.substr(at, entry.find(' ', at) - at); };
+			const auto kind_of = [](const std::string &text) {
+				if (text.starts_with("port")) return std::string("port");
+				if (text.starts_with("node")) return text.substr(text.rfind(' ') + 1);
+				return std::string("cross-") + text.substr(text.rfind(' ') + 1);
+			};
+			bool first = true;
+			for (const PlanarShapeVariant &v : shape.variants) {
+				const ClosureResult c = ClosureLp(v, 63);
+				ms_max_f = std::max(ms_max_f, c.micros / 1000);
+				if (!c.closes) continue;
+				closes++;
+				size_t lanes = 0;
+				for (const std::string &entry : c.steps) {
+						const std::string n_text = number_of(entry, "n=");
+						int n_value = 0;
+						std::from_chars(n_text.data(), n_text.data() + n_text.size(), n_value);
+						lanes += static_cast<size_t>(n_value < 0 ? -n_value : n_value);
+					const size_t f = entry.find(" from=") + 6, t = entry.find(" to=");
+					tally[kind_of(entry.substr(f, t - f)) + "->" + kind_of(entry.substr(t + 4))]++;
+					if (first) std::cout << fmt::format("X2F {} {} STEP {}\n", name, v.structure.tag, entry);
+				}
+				first = false;
+				steps_min = std::min(steps_min, c.steps.size());
+				steps_max = std::max(steps_max, c.steps.size());
+				lanes_min = std::min(lanes_min, lanes);
+			}
+			std::cout << fmt::format("X2F {} closes={}/{} steps_min={} steps_max={} lanes_sum_min={} ms_max={:.1f}\n", name, closes, shape.variants.size(), closes == 0 ? 0 : steps_min, steps_max, closes == 0 ? 0 : lanes_min, ms_max_f);
+			for (const auto &[pair, count] : tally) std::cout << fmt::format("X2F {} TALLY {} {}\n", name, pair, count);
 		}
 		if (name == "T1" && !shape.variants.empty()) {
 			const PlanarShapeVariant &v = shape.variants.front();
