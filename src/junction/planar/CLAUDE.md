@@ -19,7 +19,7 @@
   - One solve on Shape's fixed headings, run on the top 1-3 variants (D366).
   - Frames cover channels, node groups, port-side corridors and deck strips.
   - No step lies inside a deck, a tunnel or its ramp tiles.
-  - Overlap-freedom is by construction: no clash rows; the clash check is an oracle.
+  - Overlap-freedom is by construction (D381): Slots writes keep-apart rows read from the track map and Shape's headings before the solve (parallel neighbours one lane apart through bends, each face's opposite walls apart); no clash rows from a solution and no lazy loop; the clash check is an oracle.
   - Promise: a closed, compact, clash-free layout with its exact rules (pins, copies, rows, cusps, deck spans within `limit`) and lower bounds (curve spacing, legs, landings, coverage) kept.
 - **Heights** (D365; built after T2, T3 and LL² are end to end checker clean):
   - Decides every tile's track level and the terraform on the fixed footprint: ramps on axis pieces only, portals, bridge clearance, cuttings.
