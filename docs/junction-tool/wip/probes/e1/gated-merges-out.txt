@@ -1,0 +1,75 @@
+TABLE: merge | exit/combo signals facing out of the entry signal's block, by place | holding leg pre-signals (entry/exit/combo, last 8 pieces)
+86,151r   | none | 86,152y: 86,153y [com>NW, two-way]; 86,155y [exi>NW, two-way]
+98,171l   | none | 99,171x: 100,171x [com>NE, two-way]; 104,170x [com>NE, two-way]; 102,170x [com>SW]
+107,173x  | none | 108,173u: 108,172d [com>SE, two-way]; 110,172u [com>NW]
+100,174d  | none | 101,174x: 102,174x [com>NE, two-way]
+110,176x  | none | 111,176x: none | 111,176r: none
+94,195u   | none | 94,194d: 95,194u [com>NE, two-way]
+
+====================================================================================================
+MERGE 86,151r  piece ((86, 151), 0) signals [blo>NE]
+legs (preds): 86,152y, 86,152l
+entry signals in the last 8 pieces of a leg: leg 86,152l: 87,152r dist 2 facing NE
+-- ENTRY SIGNAL on leg 86,152l: tile 87,152 piece Right (87,152r), signals [ent>NE]
+   1. type entry, faces exit edge NE (travelling toward merge 86,151r, 2 pieces before it)
+   3. bound 87,152r tile 87,152 type entry exit edge NE faces INTO block (the entry signal itself)
+   2. block: 1 pieces (+ 1 bounding signal pieces): 86,152l
+   3. bound 86,151r tile 86,151 type block exit edge NE faces OUT of block; past merge
+   4. exit/combo facing out: none
+   5. holding leg 86,152y: pre-signals (entry/exit/combo) in last 8 pieces: 86,153y dist 2 [com>NW, two-way]; 86,155y dist 4 [exi>NW, two-way]
+====================================================================================================
+MERGE 98,171l  piece ((98, 171), 0) signals [blo>NW]
+legs (preds): 99,171x, 99,171r
+entry signals in the last 8 pieces of a leg: leg 99,171r: 99,172l dist 2 facing NW
+-- ENTRY SIGNAL on leg 99,171r: tile 99,172 piece Left (99,172l), signals [ent>NW]
+   1. type entry, faces exit edge NW (travelling toward merge 98,171l, 2 pieces before it)
+   3. bound 99,172l tile 99,172 type entry exit edge NW faces INTO block (the entry signal itself)
+   2. block: 1 pieces (+ 1 bounding signal pieces): 99,171r
+   3. bound 98,171l tile 98,171 type block exit edge NW faces OUT of block; past merge
+   4. exit/combo facing out: none
+   5. holding leg 99,171x: pre-signals (entry/exit/combo) in last 8 pieces: 100,171x dist 2 [com>NE, two-way]; 104,170x dist 7 [com>NE, two-way]; 102,170x dist 7 [com>SW]
+====================================================================================================
+MERGE 107,173x  piece ((107, 173), 0) signals [blo>NE]
+legs (preds): 108,173x, 108,173u
+entry signals in the last 8 pieces of a leg: leg 108,173x: 109,173x dist 2 facing NE
+-- ENTRY SIGNAL on leg 108,173x: tile 109,173 piece X (109,173x), signals [ent>NE]
+   1. type entry, faces exit edge NE (travelling toward merge 107,173x, 2 pieces before it)
+   3. bound 109,173x tile 109,173 type entry exit edge NE faces INTO block (the entry signal itself)
+   2. block: 1 pieces (+ 1 bounding signal pieces): 108,173x
+   3. bound 107,173x tile 107,173 type block exit edge NE faces OUT of block; past merge
+   4. exit/combo facing out: none
+   5. holding leg 108,173u: pre-signals (entry/exit/combo) in last 8 pieces: 108,172d dist 2 [com>SE, two-way]; 110,172u dist 6 [com>NW]
+====================================================================================================
+MERGE 100,174d  piece ((100, 174), 0) signals [blo>SE]
+legs (preds): 101,174x, 101,174u
+entry signals in the last 8 pieces of a leg: leg 101,174u: 101,173d dist 2 facing SE
+-- ENTRY SIGNAL on leg 101,174u: tile 101,173 piece Lower (101,173d), signals [ent>SE]
+   1. type entry, faces exit edge SE (travelling toward merge 100,174d, 2 pieces before it)
+   3. bound 101,173d tile 101,173 type entry exit edge SE faces INTO block (the entry signal itself)
+   2. block: 1 pieces (+ 1 bounding signal pieces): 101,174u
+   3. bound 100,174d tile 100,174 type block exit edge SE faces OUT of block; past merge
+   4. exit/combo facing out: none
+   5. holding leg 101,174x: pre-signals (entry/exit/combo) in last 8 pieces: 102,174x dist 2 [com>NE, two-way]
+====================================================================================================
+MERGE 110,176x  piece ((110, 176), 0) signals [blo>NE]
+legs (preds): 111,176x, 111,176u, 111,176r
+entry signals in the last 8 pieces of a leg: leg 111,176u: 111,175d dist 2 facing SE
+-- ENTRY SIGNAL on leg 111,176u: tile 111,175 piece Lower (111,175d), signals [ent>SE]
+   1. type entry, faces exit edge SE (travelling toward merge 110,176x, 2 pieces before it)
+   3. bound 111,175d tile 111,175 type entry exit edge SE faces INTO block (the entry signal itself)
+   2. block: 1 pieces (+ 1 bounding signal pieces): 111,176u
+   3. bound 110,176x tile 110,176 type block exit edge NE faces OUT of block; past merge
+   4. exit/combo facing out: none
+   5. holding leg 111,176x: pre-signals (entry/exit/combo) in last 8 pieces: none
+   5. holding leg 111,176r: pre-signals (entry/exit/combo) in last 8 pieces: none
+====================================================================================================
+MERGE 94,195u  piece ((94, 195), 0) signals [blo>NE]
+legs (preds): 94,194y, 94,194d
+entry signals in the last 8 pieces of a leg: leg 94,194y: 94,193y dist 2 facing SE
+-- ENTRY SIGNAL on leg 94,194y: tile 94,193 piece Y (94,193y), signals [ent>SE]
+   1. type entry, faces exit edge SE (travelling toward merge 94,195u, 2 pieces before it)
+   3. bound 94,193y tile 94,193 type entry exit edge SE faces INTO block (the entry signal itself)
+   2. block: 1 pieces (+ 1 bounding signal pieces): 94,194y
+   3. bound 94,195u tile 94,195 type block exit edge NE faces OUT of block; past merge
+   4. exit/combo facing out: none
+   5. holding leg 94,194d: pre-signals (entry/exit/combo) in last 8 pieces: 95,194u dist 2 [com>NE, two-way]
