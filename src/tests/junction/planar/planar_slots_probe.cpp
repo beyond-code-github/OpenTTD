@@ -142,7 +142,7 @@ static uint32_t G1Family(const std::string &tag)
  * Solve the joint slots and lengths of one variant, then run the oracles.
  * @param off A bit set leaves that family's rows out (G1Family).
  */
-static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v, uint32_t off = 0)
+static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v, uint32_t off = 0, const std::set<uint32_t> *grid_tracks = nullptr, const std::string *skip_pin = nullptr)
 {
 	using Kind = Elem::Kind;
 	const PlanarTrackMap &map = v.structure.map;
@@ -153,6 +153,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 	std::vector<std::string> tags;
 	const auto row = [&](const Lin &e, double lower, double upper, const std::string &tag) {
 		if ((G1Family(tag) & off) != 0) return;
+		if (skip_pin != nullptr && tag == *skip_pin) return;
 		if ((off & 1024) != 0 && (tag.starts_with("parity ") || tag.starts_with("even "))) return;
 		std::vector<std::pair<uint32_t, double>> terms;
 		for (const auto &[variable, coefficient] : e.terms) {
@@ -412,7 +413,8 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 			row(dy, 0, 0, fmt::format("stretch {} {} y {}", t, k, map.tracks[t].name));
 		}
 		const uint32_t start_aux = var(0, INF, 0);
-		row(lin({{point[t][0].first, 1}, {point[t][0].second, 1}, {start_aux, -2}}), 1, 1, fmt::format("parity start {}", map.tracks[t].name));
+		const bool grid = grid_tracks == nullptr || grid_tracks->contains(t);
+		if (grid) row(lin({{point[t][0].first, 1}, {point[t][0].second, 1}, {start_aux, -2}}), 1, 1, fmt::format("parity start {}", map.tracks[t].name));
 		for (size_t j = 0; j < s.pieces.size(); j++) {
 			Lin total;
 			for (size_t i = e.piece_begin[j]; i < e.piece_end[j]; i++) {
@@ -425,14 +427,14 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 				for (size_t i = e.piece_begin[j]; i < e.piece_end[j]; i++) even.Add(e.elems[i].var, e.elems[i].length);
 				const uint32_t even_aux = var(0, INF, 0);
 				even.Add(even_aux, -2);
-				row(even, 0, 0, fmt::format("even {} {}", t, j));
+				if (grid) row(even, 0, 0, fmt::format("even {} {}", t, j));
 			}
 			if (h % 2 != 0) continue;
 			std::array<Lin, 2> at = position(t, e.piece_begin[j]);
 			Lin cross = at[h % 4 == 0 ? 0 : 1];
 			const uint32_t aux = var(0, INF, 0);
 			cross.Add(aux, -2);
-			row(cross, 1, 1, fmt::format("parity piece {} {} {}", t, j, map.tracks[t].name));
+			if (grid) row(cross, 1, 1, fmt::format("parity piece {} {} {}", t, j, map.tracks[t].name));
 		}
 	}
 
@@ -926,5 +928,57 @@ TEST_CASE("planar probe: G1 joint slots and lengths on T2 T3 LL2", "[junction][p
 			}
 		}
 		std::cout << fmt::format("G1 {} SUMMARY solved={}/3 ms_max={:.1f} clashes_total={} curve_total={}\n", name, solved, ms_max, clashes_total, curve_total);
+	}
+}
+
+TEST_CASE("planar probe: G1d the grid rows that block LL2", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarLL2Text(), &error);
+	REQUIRE(error.empty());
+	const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+	REQUIRE(!shape.variants.empty());
+	const PlanarShapeVariant &v = shape.variants[0];
+	const std::string &tag = v.structure.tag;
+	const PlanarTrackMap &map = v.structure.map;
+	const uint32_t off = 511;
+	const size_t nt = map.tracks.size();
+	std::set<uint32_t> all;
+	for (uint32_t t = 0; t < nt; t++) all.insert(t);
+	REQUIRE(!SolveG1(topology, spec, v, off, &all).solved);
+	std::set<uint32_t> keep = all;
+	for (uint32_t t = 0; t < nt; t++) {
+		std::set<uint32_t> without = keep;
+		without.erase(t);
+		if (!SolveG1(topology, spec, v, off, &without).solved) keep = without;
+	}
+	std::string names;
+	for (const uint32_t t : keep) names += " " + map.tracks[t].name;
+	std::cout << fmt::format("G1D LL2 {} minimal={} tracks={}\n", tag, keep.size(), names);
+	const auto end_text = [&](const PlanarEnd &e) {
+		return e.port ? fmt::format("port {}", static_cast<int>(map.expanded.ports[e.index].side)) : fmt::format("node {}", e.index);
+	};
+	for (const uint32_t t : keep) {
+		std::string pieces;
+		for (const int p : v.tracks[t].pieces) pieces += fmt::format("{}", ((p % 8) + 8) % 8);
+		const std::string part = map.part_of[t] == UINT32_MAX ? std::string("copy/row") : fmt::format("{}", topology.lines[map.part_of[t]].name);
+		const PlanarLine &line = map.expanded.lines[t];
+		std::cout << fmt::format("G1D TRACK {} part_of={} pieces={} events={} from={} to={}\n", map.tracks[t].name, part, pieces, map.events[t].size(), end_text(line.from), end_text(line.to));
+	}
+	/* The pin rows, by the tag SolveG1 gives them. */
+	const std::vector<uint32_t> &ring = map.expanded.ring;
+	for (size_t i = 1; i < ring.size(); i++) {
+		const uint32_t t1 = ring[i - 1], t2 = ring[i];
+		const auto port_end = [&](uint32_t t) {
+			const PlanarLine &line = map.expanded.lines[t];
+			return line.from.port ? line.from : line.to;
+		};
+		const PlanarEnd e1 = port_end(t1), e2 = port_end(t2);
+		const PlanarSide side = map.expanded.ports[e1.index].side;
+		if (side != map.expanded.ports[e2.index].side) continue;
+		const double d = e1.index == e2.index ? 2 : 2.0 * v.structure.side_gap[static_cast<size_t>(side)];
+		const std::string pin = fmt::format("pin {} {} {} d={}", static_cast<int>(side), map.tracks[t1].name, map.tracks[t2].name, d);
+		if (SolveG1(topology, spec, v, off, &keep, &pin).solved) std::cout << fmt::format("G1D PIN {} solved=1\n", pin);
 	}
 }
