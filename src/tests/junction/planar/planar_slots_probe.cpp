@@ -118,7 +118,31 @@ struct G1Rules {
 	int tl, cl, g, bay, coverage, node_leg, cross;
 };
 
-static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v)
+/** The row families the ablation can leave out (SolveG1's `off` bits). */
+static const uint32_t G1_FAMILIES = 9;
+
+/** The family bit of a row tag: 1 beside, 2 span clear, 4 deck gap and limit, 8 landing, 16 crossers, 32 node legs, 64 coverage, 128 bays, 256 curves; 0 for every other row. */
+static uint32_t G1Family(const std::string &tag)
+{
+	if (tag.starts_with("beside")) return 1;
+	if (tag.starts_with("span ")) {
+		if (tag.ends_with(" clear")) return 2;
+		if (tag.ends_with(" gap") || tag.ends_with(" middle")) return 4;
+		if (tag.ends_with(" cross")) return 16;
+	}
+	if (tag.starts_with("landing")) return 8;
+	if (tag.starts_with("leg ")) return 32;
+	if (tag.starts_with("coverage")) return 64;
+	if (tag.starts_with("bay ")) return 128;
+	if (tag.starts_with("curve")) return 256;
+	return 0;
+}
+
+/**
+ * Solve the joint slots and lengths of one variant, then run the oracles.
+ * @param off A bit set leaves that family's rows out (G1Family).
+ */
+static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v, uint32_t off = 0)
 {
 	using Kind = Elem::Kind;
 	const PlanarTrackMap &map = v.structure.map;
@@ -128,6 +152,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 	const double INF = JunctionMilp::INF;
 	std::vector<std::string> tags;
 	const auto row = [&](const Lin &e, double lower, double upper, const std::string &tag) {
+		if ((G1Family(tag) & off) != 0) return;
 		std::vector<std::pair<uint32_t, double>> terms;
 		for (const auto &[variable, coefficient] : e.terms) {
 			if (coefficient != 0) terms.emplace_back(variable, coefficient);
@@ -389,6 +414,13 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 			}
 			const int h = ((s.pieces[j] % 8) + 8) % 8;
 			row(total, h % 2 == 0 ? 2 : 1, INF, fmt::format("piece {} {} {}", t, j, map.tracks[t].name));
+			if (h % 2 == 0) {
+				Lin even;
+				for (size_t i = e.piece_begin[j]; i < e.piece_end[j]; i++) even.Add(e.elems[i].var, e.elems[i].length);
+				const uint32_t even_aux = var(0, INF, 0);
+				even.Add(even_aux, -2);
+				row(even, 0, 0, fmt::format("even {} {}", t, j));
+			}
 			if (h % 2 != 0) continue;
 			std::array<Lin, 2> at = position(t, e.piece_begin[j]);
 			Lin cross = at[h % 4 == 0 ? 0 : 1];
@@ -840,7 +872,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 
 } // namespace
 
-TEST_CASE("planar probe: G1 joint slots and lengths on T2, T3 and LL2", "[junction][planar][planarshape][.probe]")
+TEST_CASE("planar probe: G1 joint slots and lengths on T2 T3 LL2", "[junction][planar][planarshape][.probe]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
@@ -864,6 +896,14 @@ TEST_CASE("planar probe: G1 joint slots and lengths on T2, T3 and LL2", "[juncti
 					r.clashes.size(), r.same_channel, r.face, r.noface, r.curve_breaches.size(), r.consistency, r.no_chain, r.why);
 			for (const std::string &line : r.clashes) std::cout << fmt::format("G1C {} {} {}\n", name, tag, line);
 			for (const std::string &line : r.curve_breaches) std::cout << fmt::format("G1V {} {} {}\n", name, tag, line);
+			if (r.solved) continue;
+			std::vector<uint32_t> offs;
+			for (uint32_t b = 0; b < G1_FAMILIES; b++) offs.push_back(1U << b);
+			offs.push_back((1U << G1_FAMILIES) - 1);
+			for (const uint32_t off : offs) {
+				const G1Result a = SolveG1(topology, spec, v, off);
+				std::cout << fmt::format("G1A {} {} off={} solved={} ms={:.1f} clashes={} curve={} why={}\n", name, tag, off, a.solved ? 1 : 0, a.ms, a.clashes.size(), a.curve_breaches.size(), a.why.substr(0, 300));
+			}
 		}
 		std::cout << fmt::format("G1 {} SUMMARY solved={}/3 ms_max={:.1f} clashes_total={} curve_total={}\n", name, solved, ms_max, clashes_total, curve_total);
 	}
