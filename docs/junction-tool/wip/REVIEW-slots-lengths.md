@@ -144,3 +144,64 @@ I favour an option D. Slots finds the parts its exact set leaves non-stretchable
    - at g = 2 tiles, L8a and L8b pass;
    - each failing alone gives one message.
 4. **L8c on X2f's answers.** An integer solve of the equalities with parity. Count variants where the LP closes but the integer solve does not.
+
+## Follow-up: X2g (2026-11-20)
+Read: wip/BRIEF-X2g-max-support.md; commit 64922b062d (`ClosureLp` bit 64, the planar_shape_layer.cpp diff); .claude/ng1/build-rel/x2g.txt (351 lines).
+
+**Verdict.** X2g is a valid test of (b), and it falsifies D as I framed it: on a dense hub most parts cannot be stretched, so "Slots owns N's lengths" is option B. The orchestrator's causal reading holds on T1, where it can be shown by hand. A face closed by a pinned box segment, with Shape's monotone headings, has no free part going back along that side. The root is in the spec, not in Slots' rules: exact step sizes add no free direction, so no Slots answer under U5 can make those faces stretchable. Before the merge is ruled, test option E (Slots fixes each step's existence, side and order; Lengths sizes it). E keeps Lengths binary-free with lower bounds only, and it can be proven by L8a/b. One homogeneous run (X2h) decides it.
+
+**G1 [validity] X2g tests (b) correctly for the spec's exact set; if anything it undercounts N (confidence: high).**
+- *Pins at d = 0:* a stretch must keep every pinned difference, so a side's port ends move together. Collapsing them is the correct homogeneous form, not an artefact.
+- *Piece totals >= 0:* redundant with parts >= 0, harmless.
+- *t:* the system is a cone, so supports add and rescale. At the optimum t is exactly 0 or 1, and the 0.5 threshold is exact.
+- *Exemptions:* deck interiors only, which is right: they are the only parts the spec makes exact (U1).
+- *Steps:* an exact step splits a part of heading h into two parts of heading h plus a constant. It adds no free direction, so under U5 steps cannot shrink N.
+- *Undercount:* U6's exact rows (copy and prio row exactly 1 from the parent) are missing. They are tied only at nodes (diff at :436), so the spec's true N contains X2g's.
+- *Calibration:* mask 64 alone gives 0 everywhere, which reproduces X2a's `closes_free`.
+
+**G2 [wrong] D's premise fails (confidence: high).**
+- Non-exempt parts that cannot be stretched, on every variant: T1 8/26, T2 60/77, T3 71-125/149, LL2 71-91/111 (x2g.txt summary lines).
+- Owning N in Slots means solving most lengths there. That is B with extra steps, the falsifying outcome I named in Q3.
+
+**G3 [cause] Pins alone explain T1's set (confidence: high for T1; medium elsewhere until the ablation).**
+- *The T1 face:* for T1 o3t0f0m0, the RIGID lines B1 stretch=1 (SW) and F1 stretch=2 pieces 0, 1 (E, SE) are exactly the eastward parts of one face.
+  - That face is closed by the pinned S segment from CD1 to AF1 and walks: CD1 N, D1 stretch 0 N, B1 stretch 1 backward (NE), F1 stretch 2 E then SE, AF1 S.
+  - No free part goes west, so the x-closure reads: B1's and F1's eastward parts = the pinned gap (gap + 1 lanes) + any exact steps.
+  - No deck and no cusp lies on that face.
+- *General form:* a face closed by a pinned box segment, whose free walls' components along that side all have one sign. Least-turning monotone headings make this the norm. T2's RIGID list is mostly diagonal main-line parts (B at heading 7, E2 at 3, F at 3 or 4), so any stretch cut must cross a pinned segment or a part not parallel to it.
+- *Sharpened reading:* the driver is the gap between an in-port and an out-port on one side (the face between those ports). A port's own lanes form a frame and are harmless. Decks and cusps add rigidity but are not needed for it.
+- *Ablation, with my predictions:*
+  - families 68 (pins only): about equal to 71 on T1, and most of T2;
+  - families 66 (decks only): small;
+  - families 65 (cusps only): about 0 on T1;
+  - the coordinator's 70, 69 and 67: 70 and 69 about equal to 71, and 67 much smaller.
+  - If 67 (no pins) is not far below 71, the sharpening is wrong.
+
+**G4 [missing] Making such a face stretchable needs a sideways move of free size inside it, and U5 forbids that (confidence: high, from G1 and G3).**
+- A face between two ports becomes stretchable only if some free part in it can go back along the side, that is, a step whose size is free.
+- U5 and CLAUDE:25 make S-bend sizes an earlier layer's exact promise. Q7's "step sizes depend on lower bounds" therefore comes from that rule itself, not from any choice of Slots' rules.
+- The step and the parts it trades against are one degree of freedom: an n-lane step on an axis is 2n units of diagonal.
+
+### Answers
+1. **Valid (G1).** Should steps be free columns? Under the spec as written, no (G1). As a test of a different split of duties (E below), yes, and that is the next run.
+2. **It falsifies D (G2).** The orchestrator's reading holds on T1 by hand (G3): pins suffice there, and decks and cusps add. The ablation confirms per hub.
+3. **The options**, judged on D361, D362, D366, D367 and the 5 s seed (D297):
+   - **B is dominated.** It solves the same coupling twice: Slots' relaxed MILP, then Lengths. Lengths can still fail on clashes and parity (generate-and-check across layers, D361). It took 2.8-10.9 s per LL2 variant (X2f, X2e) at lower bound 1, with no clash rows.
+   - **Loosening pins contradicts D313/D378** (ports at notation spacing; fans as far from the ports as possible) and the corpus (52% of steps are port fans, RECON-corpus-steps). It would only move the fan outside the box. Reject, unless the engineer rules otherwise.
+   - **The merge is the honest answer if E fails.**
+     - One layer owns steps and lengths: D362 changes and needs a ruling; D366 and D367 are fine.
+     - Its integer solve carries each step's existence and sign (n = p - m), and curve rows that apply only when a step exists, which makes them disjunctions.
+     - X2e/X2f's joint MILPs already take up to 5.0 s (T3) and 10.9 s (LL2) per variant without clash, curve or parity rows. So "1-3 variants under 5 s" is not shown for LL2.
+     - It also inherits F4: without rungs defined from faces it falls back to lazy rounds (D361).
+   - **E is better, if X2h passes.**
+     - Slots keeps the sideways structure: frames and order; exact pins, decks within the limit, copies, rows and cusps; and per step its existence, side and order along the stretch (D313/D378 rules at ports, and a node-group rule from X2f's tally).
+     - Lengths sizes each step (integer lanes, at least 1) with every length. Neighbour order adds difference rows, which stretching satisfies.
+     - A step that stays in N even with free sizes is exact and sized by L8a.
+     - Slots promises L8a, plus L8b computed with the step columns free. Lengths then closes for every lower bound, by proof, with no binaries and no upper bounds.
+     - E is Q7's option C without C's two costs. Slots keeps ownership of which sideways moves exist, which is D362's intent.
+     - Ruling needed: S-bend sizes move to Lengths (CLAUDE:25, U5).
+     - Cost: rules plus one homogeneous LP per variant in Slots (milliseconds); a few integer columns added to Lengths' own solve.
+   - **X2h, E's falsifier:** under bit 64, add sign-fixed free step columns (sign from X2f's n) at X2f's step places only, and include them in the max-support objective. Report N.
+     - If N is empty, or holds only step columns, on T1-LL2: E stands.
+     - If N stays near X2g's counts: free-size steps at coop places do not loosen the hub, and the merge remains.
+     - A companion run with free-sign steps on every stretch (bit 8 under bit 64) bounds what any step pattern can achieve.
