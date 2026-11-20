@@ -36,14 +36,17 @@ struct PlanarShapeStructure {
 	std::array<int, 2> copy_middles = {-1, -1}; ///< The least middle tiles of the copy's deck per kind at its chosen angles (-1 for a kind not allowed, or no copy).
 };
 
+/** The land_track of a dummy that lands on another dummy: its land_piece is that dummy's index; also the track of a dummy wall of a cell. */
+constexpr uint32_t PLANAR_DUMMY_TRACK = UINT32_MAX - 1;
+
 /** A dummy edge that refines a face into convex cells (SPEC-shape §8.1, D385, H12). */
 struct PlanarShapeDummy {
 	uint32_t face; ///< The face it lies in (index into the map's faces).
 	uint32_t track; ///< The track whose bend it starts at.
 	uint32_t piece; ///< The bend: the vertex between this piece and the next of the track.
 	int heading; ///< Its heading, 0..7.
-	uint32_t land_track; ///< The track of the wall it ends on, or UINT32_MAX for a box edge.
-	uint32_t land_piece; ///< The piece of that track it ends on, or the PlanarSide of the box edge.
+	uint32_t land_track; ///< The track of the wall it ends on, UINT32_MAX for a box edge, or PLANAR_DUMMY_TRACK for a dummy (then land_piece is that dummy's index).
+	uint32_t land_piece; ///< The piece of that track it ends on, the PlanarSide of the box edge, or the index of the dummy it ends on.
 };
 
 /** One variant of Shape's output: Structure's variant refined with headings. */

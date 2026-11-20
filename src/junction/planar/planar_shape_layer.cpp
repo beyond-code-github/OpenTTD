@@ -207,8 +207,8 @@ namespace {
 
 /** One wall of a cell with the turn at its end corner. */
 struct Wall {
-	uint32_t track; ///< The track, or UINT32_MAX for a box edge.
-	uint32_t piece; ///< The piece of the track, or the box side.
+	uint32_t track; ///< The track, PLANAR_DUMMY_TRACK for a dummy, or UINT32_MAX for a box edge.
+	uint32_t piece; ///< The piece of the track, the dummy's index in the variant's dummies, or the box side.
 	int heading; ///< The walked heading.
 	int turn; ///< The turn at the corner after this wall.
 };
@@ -230,10 +230,11 @@ bool CellWalls(const Oracle &o, const FaceWalk &walk, std::vector<Wall> &walls, 
  * Split one cell of a list at a dummy: the cell holding the dummy's corner and landing wall becomes the cell walked from the corner's outgoing wall to the landing wall and the dummy, and the cell from the landing wall to the corner and the dummy is appended.
  * @param cells The cells of one face.
  * @param d The dummy.
+ * @param index The dummy's index in the variant's dummies.
  * @param why Receives the oracle's reason when no cell holds the corner and the landing wall.
  * @return False on failure.
  */
-bool SplitCell(std::vector<std::vector<Wall>> &cells, const PlanarShapeDummy &d, std::string &why)
+bool SplitCell(std::vector<std::vector<Wall>> &cells, const PlanarShapeDummy &d, uint32_t index, std::string &why)
 {
 	size_t cell = SIZE_MAX, s = 0, l = 0;
 	bool has_corner = false;
@@ -265,11 +266,11 @@ bool SplitCell(std::vector<std::vector<Wall>> &cells, const PlanarShapeDummy &d,
 	std::vector<Wall> a, b;
 	for (size_t k = 1; k <= count; k++) a.push_back(parent[(s + k) % n]);
 	a.back().turn = Norm(d.heading + 4 - a.back().heading);
-	a.push_back({UINT32_MAX, UINT32_MAX, d.heading + 4, Norm(parent[(s + 1) % n].heading - (d.heading + 4))});
+	a.push_back({PLANAR_DUMMY_TRACK, index, d.heading + 4, Norm(parent[(s + 1) % n].heading - (d.heading + 4))});
 	for (size_t k = 0; k <= n - count; k++) b.push_back(parent[(l + k) % n]);
 	b.front().turn = parent[l].turn;
 	b.back().turn = Norm(d.heading - b.back().heading);
-	b.push_back({UINT32_MAX, UINT32_MAX, d.heading, Norm(b.front().heading - d.heading)});
+	b.push_back({PLANAR_DUMMY_TRACK, index, d.heading, Norm(b.front().heading - d.heading)});
 	cells[cell] = a;
 	cells.push_back(b);
 	return true;
@@ -678,7 +679,8 @@ struct Oracle {
 	{
 		const auto text = [&](const Wall &w) {
 			static const char *const SIDES[4] = {"N", "E", "S", "W"};
-			if (w.track == UINT32_MAX) return w.piece == UINT32_MAX ? std::string("dummy") : fmt::format("box {}", SIDES[w.piece % 4]);
+			if (w.track == PLANAR_DUMMY_TRACK) return fmt::format("dummy {}", w.piece);
+			if (w.track == UINT32_MAX) return fmt::format("box {}", SIDES[w.piece % 4]);
 			return fmt::format("{} piece {}", w.track < this->map.tracks.size() ? this->map.tracks[w.track].name : fmt::format("{}", w.track), w.piece);
 		};
 		for (const PlanarFace &face : this->map.faces) {
@@ -693,10 +695,11 @@ struct Oracle {
 			if (piece_total != -8) continue; // H7 reports a face that does not wind once.
 
 			std::vector<std::vector<Wall>> cells = {first};
-			for (const PlanarShapeDummy &d : this->v.dummies) {
+			for (size_t di = 0; di < this->v.dummies.size(); di++) {
+				const PlanarShapeDummy &d = this->v.dummies[di];
 				if (d.face != static_cast<uint32_t>(face.face)) continue;
 				std::string reason;
-				if (!SplitCell(cells, d, reason)) {
+				if (!SplitCell(cells, d, static_cast<uint32_t>(di), reason)) {
 					const std::string start_text = d.track < this->map.tracks.size() ? this->map.tracks[d.track].name : fmt::format("{}", d.track);
 					this->out.push_back(fmt::format("H12: face {} dummy at {} piece {} {}", face.face, start_text, d.piece, reason));
 				}
@@ -1021,7 +1024,8 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 	const Oracle o(v);
 	const auto text = [&](const Wall &w) {
 		static const char *const SIDES[4] = {"N", "E", "S", "W"};
-		if (w.track == UINT32_MAX) return w.piece == UINT32_MAX ? std::string("dummy") : fmt::format("box {}", SIDES[w.piece % 4]);
+		if (w.track == PLANAR_DUMMY_TRACK) return fmt::format("dummy {}", w.piece);
+			if (w.track == UINT32_MAX) return fmt::format("box {}", SIDES[w.piece % 4]);
 		return fmt::format("{} piece {}", w.track < o.map.tracks.size() ? o.map.tracks[w.track].name : fmt::format("{}", w.track), w.piece);
 	};
 	for (const PlanarFace &face : o.map.faces) {
@@ -1047,7 +1051,7 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 			const std::vector<Wall> &w = cells[ci];
 			const size_t n = w.size();
 			const Wall &in = w[s], &out = w[(s + 1) % n];
-			if (in.track == UINT32_MAX || in.track != out.track || (in.piece + 1 != out.piece && out.piece + 1 != in.piece)) {
+			if (in.track >= PLANAR_DUMMY_TRACK || in.track != out.track || (in.piece + 1 != out.piece && out.piece + 1 != in.piece)) {
 				why = fmt::format("no cells: face {} reflex corner at {} -> {} is not a bend", face.face, text(in), text(out));
 				return false;
 			}
@@ -1066,7 +1070,7 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 				const PlanarShapeDummy dummy{static_cast<uint32_t>(face.face), in.track, std::min(in.piece, out.piece), ((d % 8) + 8) % 8, land->track, land->piece};
 				std::vector<std::vector<Wall>> trial = {w};
 				std::string reason;
-				if (!SplitCell(trial, dummy, reason)) continue;
+				if (!SplitCell(trial, dummy, static_cast<uint32_t>(v.dummies.size()), reason)) continue;
 				/* The corner is the end of the incoming wall in the second cell and the dummy's end in the first. */
 				if (trial[0].back().turn > 0 || trial[1][trial[1].size() - 2].turn > 0) continue;
 				/* Every corner at a dummy end, the landing included, must be convex: a reflex corner there is no bend, so no later dummy could resolve it (D397). */
@@ -1074,7 +1078,7 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 				for (const std::vector<Wall> &cell : trial) {
 					for (size_t i = 0; i < cell.size(); i++) {
 						const Wall &a = cell[i], &b = cell[(i + 1) % cell.size()];
-						const bool at_dummy = (a.track == UINT32_MAX && a.piece == UINT32_MAX) || (b.track == UINT32_MAX && b.piece == UINT32_MAX);
+						const bool at_dummy = a.track == PLANAR_DUMMY_TRACK || b.track == PLANAR_DUMMY_TRACK;
 						if (at_dummy && a.turn > 0) reflex = true;
 					}
 				}

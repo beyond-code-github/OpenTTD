@@ -239,7 +239,7 @@ TEST_CASE("planar shape layer: H12b the rule refines T1", "[junction][planar][pl
 	INFO("why: " << why);
 	REQUIRE(ok);
 	for (const PlanarShapeDummy &d : c.v.dummies) {
-		std::cout << fmt::format("H12B T1 face {} track {} piece {} heading {} land {} {}\n", d.face, c.v.structure.map.tracks[d.track].name, d.piece, d.heading, d.land_track == UINT32_MAX ? std::string("box") : c.v.structure.map.tracks[d.land_track].name, d.land_piece);
+		std::cout << fmt::format("H12B T1 face {} track {} piece {} heading {} land {} {}\n", d.face, c.v.structure.map.tracks[d.track].name, d.piece, d.heading, d.land_track == UINT32_MAX ? std::string("box") : d.land_track == PLANAR_DUMMY_TRACK ? std::string("dummy") : c.v.structure.map.tracks[d.land_track].name, d.land_piece);
 	}
 	const std::vector<std::string> messages = CheckPlanarShapeCells(c.v);
 	INFO(messages.size() << " messages, first: " << (messages.empty() ? "" : messages[0]));
