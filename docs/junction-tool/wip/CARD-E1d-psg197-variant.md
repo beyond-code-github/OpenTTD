@@ -41,3 +41,9 @@ Loader test "PSG 197's pinned variant, gaps and promise" (17 gap lines, 10 diffe
 - G4 D24 (split before merge): 28 P7 lines, routes C1, C2, C3, F1, F2, D1, D2, D3 merge and then split into parallel tunnels (C12c -> C12d -> C12/C12b; the choice by free tunnel, gaps §3). Engineer's call: D24 as a hard rule vs a split after a merge into a tunnel choice.
 - differs (information for E7): AB2, C2c, C23c, C12c, CE123b, D123, CE123, SO3, NO1, AD12: the save's straight leg is not Structure's rule's (or the rule leaves it open).
 - Loader rule settled inline: at a prio join the straight track is the prio row, as PlanarBuildStructureSites picks (last leg on the pinned line).
+
+## G3 design (orchestrator, 2026-11-20; D389 extended, D343: the topology owns the face map)
+- With authored crossings the crossing direction is authored too: in `cross L: ...` each partner carries a mark, `M>` (M arrives from L's left, travelling to L's right) or `M<` (from L's right). Marks are mandatory when crossings are authored; the pair's two marks are opposite (if M arrives from L's left, L arrives from M's right). Derived topologies keep today's ring-interleave rule.
+- PSG 197's marks come from the geometry (order.py's intersection points): with headings dL, dM at the point (frame x east, y south), M arrives from L's left iff dot(dM, left(dL)) < 0, left(d) = (d.y, -d.x).
+- Consumed by PlanarLineSides (planar_regions.cpp:112-125) in place of the interleave when `crossings_authored`. Validated by: an identity test (the authored T with marks from its own derived sides gives the same faces), then P1 on 197 (a mirrored frame or a bad mark fails the face map).
+- Steps: E1f-1 marks into psg197.txt (data); E1f-2 parser and PlanarLineSides (code); then rerun the loader characterisation.
