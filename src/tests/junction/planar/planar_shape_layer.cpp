@@ -1640,3 +1640,115 @@ TEST_CASE("planar shape: V's 197 open steps sit on Shape's flex points (E1x-3)",
 	}
 	CHECK(listed == 7);
 }
+
+/** Measure H14 on one variant: count the channels with two or more lines and the lines skipped for parts, count and print the messages. */
+static void MeasureSpines(const std::string &hub, const PlanarShapeVariant &v, size_t &channels, size_t &skipped, size_t &different, size_t &differ, std::vector<std::string> &examples)
+{
+	const PlanarTrackMap &map = v.structure.map;
+	std::map<uint32_t, size_t> lines;
+	for (uint32_t t = 0; t < map.tracks.size(); t++) {
+		const PlanarTrack &track = map.tracks[t];
+		if (track.kind != PlanarTrack::Kind::Line || track.line != t || track.line >= v.structure.channel_of_line.size()) continue;
+		bool has_parts = false;
+		for (uint32_t u = 0; u < map.tracks.size(); u++) has_parts = has_parts || (u != t && map.tracks[u].kind == PlanarTrack::Kind::Line && map.part_of[u] == t);
+		if (has_parts) {
+			skipped++;
+			continue;
+		}
+		lines[v.structure.channel_of_line[track.line]]++;
+	}
+	for (const auto &[c, n] : lines) channels += n >= 2 ? 1 : 0;
+	for (const std::string &m : CheckPlanarShapeSpines(v)) {
+		(m.find("cross different channels") != std::string::npos ? different : differ)++;
+		if (examples.size() < 3 || hub.empty()) examples.push_back(m);
+	}
+}
+
+TEST_CASE("planar shape layer: H14 every channel's lanes follow one spine (measured)", "[junction][planar][planarshape][slow]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarStructureResult structure = BuildPlanarStructure(topology, spec, 16);
+		size_t channels = 0, skipped = 0, different = 0, differ = 0, variants = 0;
+		std::vector<std::string> examples;
+		for (const PlanarStructureVariant &sv : structure.variants) {
+			PlanarShapeVariant shaped;
+			std::string why;
+			if (!ShapePlanarStructureVariant(sv, shaped, why)) continue;
+			variants++;
+			MeasureSpines(name, shaped, channels, skipped, different, differ, examples);
+		}
+		WARN(fmt::format("H14 {} variants {} channels with 2+ lines {} lines skipped for parts {} different-channels {} differ-between {}", name, variants, channels, skipped, different, differ));
+		for (const std::string &m : examples) WARN("H14 " + name + " " + m);
+	}
+}
+
+TEST_CASE("planar shape: H14 on PSG 197 (measured)", "[.][planarpsg197]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(ReadTopologyFileForShape("psg197.txt"), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant v = LoadPlanarStructureVariant(topology, ReadTopologyFileForShape("psg197.structure.txt"), spec, report, &error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant saved, shaped;
+	std::string why;
+	REQUIRE(LoadPlanarShapeVariant(topology, v, ReadTopologyFileForShape("psg197.shape.txt"), saved, why));
+	const bool ok = ShapePlanarStructureVariant(v, shaped, why);
+	WARN(fmt::format("H14 197 Shape's shaped {} {}", ok, why));
+	for (const auto &[label, variant] : {std::pair<std::string, const PlanarShapeVariant &>{"V", saved}, {"Shape", shaped}}) {
+		if (variant.tracks.empty()) continue;
+		size_t channels = 0, skipped = 0, different = 0, differ = 0;
+		std::vector<std::string> examples;
+		MeasureSpines("", variant, channels, skipped, different, differ, examples);
+		WARN(fmt::format("H14 197 {} channels with 2+ lines {} lines skipped for parts {} different-channels {} differ-between {}", label, channels, skipped, different, differ));
+		for (const std::string &m : examples) WARN("H14 197 " + label + " " + m);
+	}
+}
+
+TEST_CASE("planar shape layer: H14 a lane that turns off its spine", "[junction][planar][planarshape]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult structure = BuildPlanarStructure(topology, spec, 16);
+	for (const PlanarStructureVariant &sv : structure.variants) {
+		const PlanarTrackMap &map = sv.map;
+		/* The first channel of two whole Line tracks (no parts) with at least two crossings each. */
+		std::map<uint32_t, std::vector<uint32_t>> channels;
+		for (uint32_t t = 0; t < map.tracks.size(); t++) {
+			bool has_parts = false;
+			for (uint32_t u = 0; u < map.tracks.size(); u++) has_parts = has_parts || (u != t && map.tracks[u].kind == PlanarTrack::Kind::Line && map.part_of[u] == t);
+			if (!has_parts && map.tracks[t].kind == PlanarTrack::Kind::Line && map.tracks[t].line == t && map.events[t].size() >= 2) channels[sv.channel_of_line[t]].push_back(t);
+		}
+		for (const auto &[c, members] : channels) {
+			if (members.size() < 2) continue;
+			PlanarShapeVariant shaped;
+			std::string why;
+			REQUIRE(ShapePlanarStructureVariant(sv, shaped, why));
+			const uint32_t b = members[1];
+			/* Turn the lane's pieces after its first crossing by one eighth, where H1 still holds; else keep the shape (T2's lanes cross different channels already, so the message is among others). */
+			PlanarShapeVariant bent = shaped;
+			for (const int d : {-1, 1}) {
+				PlanarShapeVariant tried = shaped;
+				for (uint32_t j = tried.tracks[b].event_piece[0] + 1; j < tried.tracks[b].pieces.size(); j++) tried.tracks[b].pieces[j] += d;
+				if (!std::ranges::any_of(CheckPlanarShapePromise(topology, spec, tried), [](const std::string &m) { return m.starts_with("H1:"); })) {
+					bent = tried;
+					break;
+				}
+			}
+			const std::vector<std::string> messages = CheckPlanarShapeSpines(bent);
+			const std::string wanted = fmt::format("H14: channel {} ", c);
+			INFO(sv.tag << " channel " << c << ", " << messages.size() << " messages");
+			CHECK(std::ranges::any_of(messages, [&](const std::string &m) { return m.starts_with(wanted); }));
+			return;
+		}
+	}
+	FAIL("no T2 variant has a channel of two Line tracks with two crossings each");
+}

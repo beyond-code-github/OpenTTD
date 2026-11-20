@@ -93,6 +93,13 @@ std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology,
 std::vector<std::string> CheckPlanarShapeCells(const PlanarShapeVariant &v);
 
 /**
+ * H14 (DESIGN-sss-v2 §3.2, D388 (a)): every channel's lines cross the same channels in order and follow one heading list between their first and last crossing (flex pairs removed); measured, not yet in the promise.
+ * @param v The variant; its tracks must pass H1.
+ * @return One message per channel and line pair that differs.
+ */
+std::vector<std::string> CheckPlanarShapeSpines(const PlanarShapeVariant &v);
+
+/**
  * H12b (SPEC-shape 8.7, D385, D386): refine every inner face into convex cells by dummy edges from each reflex bend, by rule.
  * Candidate headings h, h - 3, h - 1, h - 2 (h the incoming wall's lifted heading), the landing the first facing wall after the corner; the first candidate whose two cells both have 4 or more walls, else the first valid one.
  * Faces that do not wind once are skipped (H7 reports them).

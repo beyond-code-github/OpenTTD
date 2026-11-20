@@ -739,6 +739,63 @@ struct Oracle {
 			}
 		}
 	}
+
+	/** @return The pieces of stretch k of a track, flex pairs removed (H1's helper). */
+	std::vector<int> StretchPieces(uint32_t t, size_t k) const
+	{
+		std::vector<int> list;
+		for (uint32_t i = this->First(t, k); i <= this->Last(t, k); i++) {
+			if (!this->FlexRemoved(t, k, i)) list.push_back(this->v.tracks[t].pieces[i]);
+		}
+		return list;
+	}
+
+	/** H14 (DESIGN-sss-v2 §3.2, D388 (a)): the lines of one channel cross the same channels in order and follow one heading list between their first and last crossing; measured, not yet in the promise. */
+	void CheckH14()
+	{
+		const std::vector<uint32_t> &channel = this->v.structure.channel_of_line;
+		std::map<uint32_t, std::vector<uint32_t>> lines;
+		for (uint32_t t = 0; t < this->map.tracks.size(); t++) {
+			const PlanarTrack &track = this->map.tracks[t];
+			if (track.kind != PlanarTrack::Kind::Line || track.line != t || track.line >= channel.size()) continue;
+			bool has_parts = false;
+			for (uint32_t u = 0; u < this->map.tracks.size(); u++) {
+				has_parts = has_parts || (u != t && this->map.tracks[u].kind == PlanarTrack::Kind::Line && this->map.part_of[u] == t);
+			}
+			if (has_parts) continue;
+			lines[channel[track.line]].push_back(t);
+		}
+		for (const auto &[c, members] : lines) {
+			for (size_t m = 1; m < members.size(); m++) {
+				const uint32_t a = members[0], b = members[m];
+				const std::vector<uint32_t> &ea = this->map.events[a], &eb = this->map.events[b];
+				const auto partner_channel = [&](uint32_t t, uint32_t crossing) {
+					const PlanarCrossing &x = this->map.crossings[crossing];
+					return channel[this->map.tracks[x.a == t ? x.b : x.a].line];
+				};
+				bool same = ea.size() == eb.size() && this->v.tracks[a].event_piece.size() == ea.size() && this->v.tracks[b].event_piece.size() == eb.size();
+				for (size_t k = 0; same && k < ea.size(); k++) same = partner_channel(a, ea[k]) == partner_channel(b, eb[k]);
+				if (!same) {
+					const auto sequence = [&](uint32_t t) {
+						std::string text;
+						for (const uint32_t crossing : this->map.events[t]) {
+							const PlanarCrossing &x = this->map.crossings[crossing];
+							const uint32_t other = x.a == t ? x.b : x.a;
+							text += fmt::format("{}{}/{}", text.empty() ? "" : ", ", this->map.tracks[other].name, channel[this->map.tracks[other].line]);
+						}
+						return text;
+					};
+					this->out.push_back(fmt::format("H14: channel {} lines {} and {} cross different channels: {}: [{}] vs {}: [{}]", c, this->map.tracks[a].name, this->map.tracks[b].name, this->map.tracks[a].name, sequence(a), this->map.tracks[b].name, sequence(b)));
+					continue;
+				}
+				for (size_t k = 1; k < ea.size(); k++) {
+					if (this->StretchPieces(a, k) != this->StretchPieces(b, k) || this->EventHeading(a, k - 1) != this->EventHeading(b, k - 1) || this->EventHeading(a, k) != this->EventHeading(b, k)) {
+						this->out.push_back(fmt::format("H14: channel {} lines {} and {} differ between crossings {} and {}", c, this->map.tracks[a].name, this->map.tracks[b].name, k - 1, k));
+					}
+				}
+			}
+		}
+	}
 };
 
 bool CellWalls(const Oracle &o, const FaceWalk &walk, std::vector<Wall> &first, int &piece_total, int &h7)
@@ -781,6 +838,9 @@ bool CellWalls(const Oracle &o, const FaceWalk &walk, std::vector<Wall> &first, 
 }
 
 } // namespace
+
+/** Whether CheckPlanarShapePromise runs H14; off until the program rows that make it hold (E3-S2). */
+static constexpr bool H14_IN_PROMISE = false;
 
 /**
  * Whether stretch k of track t is a free stretch (D397): a Line track between two crossings that are not both of one structure (or its copy span), not with tracks of one channel, the track in no beside track's parent chain. The one-piece condition is the caller's.
@@ -891,6 +951,7 @@ std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology,
 	o.CheckH7Routes();
 	o.CheckH12();
 	o.CheckH8();
+	if constexpr (H14_IN_PROMISE) o.CheckH14();
 	h9();
 	return o.out;
 }
@@ -899,6 +960,13 @@ std::vector<std::string> CheckPlanarShapeCells(const PlanarShapeVariant &v)
 {
 	Oracle o(v);
 	o.CheckH12();
+	return o.out;
+}
+
+std::vector<std::string> CheckPlanarShapeSpines(const PlanarShapeVariant &v)
+{
+	Oracle o(v);
+	o.CheckH14();
 	return o.out;
 }
 
