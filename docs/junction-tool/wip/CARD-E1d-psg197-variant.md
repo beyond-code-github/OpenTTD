@@ -32,3 +32,12 @@ Prio per merge (D390 (4)) is topology, so it goes into psg197.txt with its own s
 
 ## Load
 Every build and test run at -j 4 and JT_JOBS=4 (two crashes at 14 jobs, 2026-11-20).
+
+## Measured (E1d-2, 32f3f1aeb7, 2026-11-20): what 197 needs from the model
+Loader test "PSG 197's pinned variant, gaps and promise" (17 gap lines, 10 differs lines, 29 promise lines); the track map is not built yet, so later promises are unmeasured.
+- G1 Copy of a crosser: D3 doubled over T30/T32; the model doubles only a structure's separator (D351). Engineer's call.
+- G2 Channel sites of 3-6 channels (CD3, EF1, A1, B1, A2m, E2c, EO1, CE123, AD23, NO2, SO3, SO2; D123 1; C2c's nodes pin different legs): Structure groups splits and merges per channel, and 197's cascades make many-way sites. Direction: a site per node (each node a gadget in v2, DESIGN-sss-v2 §3.2); touches T2/T3/LL2 (identity).
+- G3 Crossing orientation from ring interleave (planar_regions.cpp:118-122, PlanarLineSides): valid only for minimal crossings; 197's tracks cross and cross back (first: E1b x E2). Direction: with authored crossings the orientation is authored too (from order.py's geometry), D389's pin; derived topologies keep today's rule.
+- G4 D24 (split before merge): 28 P7 lines, routes C1, C2, C3, F1, F2, D1, D2, D3 merge and then split into parallel tunnels (C12c -> C12d -> C12/C12b; the choice by free tunnel, gaps §3). Engineer's call: D24 as a hard rule vs a split after a merge into a tunnel choice.
+- differs (information for E7): AB2, C2c, C23c, C12c, CE123b, D123, CE123, SO3, NO1, AD12: the save's straight leg is not Structure's rule's (or the rule leaves it open).
+- Loader rule settled inline: at a prio join the straight track is the prio row, as PlanarBuildStructureSites picks (last leg on the pinned line).
