@@ -2,6 +2,13 @@
 
 Third SSS hand-off spec (D368). Implements src/junction/planar/CLAUDE.md "Architecture" (Slots) and DESIGN-tracks §17.3. Written from Shape's output model and hand-on (wip/SPEC-shape.md §3 (1)-(6), §6), not from `planar_slots` code; code is mapped onto it afterwards (D368). Rulings it rests on: D313 (ports at the notation spacing, fans as late as possible), D349 (rows), D351 (parallelogram), D360 (Slots owns every sideways move, which leg stays straight), D362, D363 (port-side frames), D365 (no step in a deck, tunnel or ramp), D366, D367, D373(3), D375 (steps on landings). Corpus: RECON-corpus-crossings §3, RECON-corpus-sbend-crossings (of diagonal pass-unders: 42% true S-bends, 45% a corner's diagonal, 13% a doubled pair).
 
+## Probe terms (working vocabulary; promoted to planar CLAUDE "Terms" once ruled)
+- **Exact set:** the quantities fixed before lengths: port pins (lanes one apart, ports `side_gap` apart), deck crossers at Shape's width, cusps (legs on one point), copy and row offsets (one lane), step sizes when Slots fixes them.
+- **Part:** a piece's share of one stretch (a piece holding events is cut at them); Lengths' variable.
+- **Rigid part (N):** a part that is 0 in every solution of the homogeneous closure (every exact quantity 0): its length is fixed by the exact set, so Lengths cannot stretch it. Found by the max-support LP (review, X2g). Lengths closes for every lower bound iff N is empty (Stiemke).
+- **Step place:** a stretch where a step may exist, with its side (option E: Slots places, Lengths sizes).
+- **Frame strip:** a face strip between two exact sections (pinned port side, deck strip, node point).
+
 ## 0. Two architecture checks, on paper, before any design
 
 Lengths "decides every piece's length, as one solve with only lower bounds left" (CLAUDE). Two questions follow: where does every upper bound go, and can the layer that takes them always meet them?
