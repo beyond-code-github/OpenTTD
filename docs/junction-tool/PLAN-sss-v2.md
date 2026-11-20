@@ -13,9 +13,13 @@ Each epic: goal, scope, exit criteria (tests at the layer's output, D367), and i
 
 ## E1 PSG 197's Structure output, handed to Shape (D388 c, amended by D389)
 - Goal: Shape receives a valid `PlanarStructureVariant` for 197, written down as pinned decisions (D389); Structure's own search on 197 moves to E7.
-- Done: E1a-E1c (authored crossings: `cross` statements, parity check, 121 crossings; wip/CARD-E1-crossings.md, wip/probes/e1).
-- Scope: wip/CARD-E1d-psg197-variant.md: the decisions file (tunnels, groups, straight legs, copy), the loader on the existing builders, the promise oracle on it, the gaps it names closed one at a time; prio per merge in the topology (D390 (4)).
-- Exit: the 197 variant loads and keeps P1-P8 (every gap closed or ruled); today's Shape run on it and measured (E1e); T2/T3/LL2 unchanged.
+- DONE (2026-11-20): authored crossings with direction marks (parser, line sides), LoadPlanarStructureVariant, the oracle on a written-down hub (D390, D391, D394), the 197 data (tools/junction/topologies: psg197.txt, .structure.txt, .shape.txt), today's Shape on it (114 ms, clean), V's real shape through Shape's checker (LoadPlanarShapeVariant). Findings and the steps card: wip/CARD-E1d-psg197-variant.md.
+- Exit met: the 197 variant keeps P1-P8; Shape measured; T2/T3/LL2 unchanged (gate 702).
+
+## E1x Shape rules from 197 (next, before E3's gadget work)
+- H11 per run (D388 c): crossers parallel within a run of adjacent crossers, not across a whole long span; test: V's 197 shape passes H11 (20 structures today).
+- Steps on spines (card in wip/CARD-E1d-psg197-variant.md, for the engineer's ruling): bend pairs on free-face spine stretches, sized by Slots; test: V's 197 shape at Shape's level keeps its 9 open-face steps and passes H1.
+- Data tidy: psg197.shape.txt split into the Shape-level projection and the steps (as V's pinned Slots data for E5); the 3 H2 box-edge artefacts (the trace box cuts ports mid-diagonal) and the D12 tail's H3.
 
 ## E2 Rule fields from Structure
 - Goal: no stand-ins: Structure hands down every lower bound and exact value Slots needs (DESIGN-sss-v2 §3.1 "Hands down").
@@ -50,4 +54,4 @@ Each epic: goal, scope, exit criteria (tests at the layer's output, D367), and i
 - Exit: agreed with the engineer at Gate B.
 
 ## Order
-E0 -> E1 -> E2 -> E3 (Gate A) -> E4 -> E5 (Gate B) -> E6 -> E7. E2 may start once the 197 variant loads; E4 may overlap E3's later steps.
+E0 -> E1 (done) -> E1x -> E2 -> E3 (Gate A) -> E4 -> E5 (Gate B) -> E6 -> E7. The next major milestone is E5's feasibility oracle on 197 (Shape's shape; V's lengths as a known solution for V's shape): it answers drawability (G-feasible), the one big open question for solving a given hub. Compactness (Shape's turning-only objective vs V's footprint) is measured there. E2 may start once the 197 variant loads; E4 may overlap E3's later steps.

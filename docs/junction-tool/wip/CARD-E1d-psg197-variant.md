@@ -47,3 +47,20 @@ Loader test "PSG 197's pinned variant, gaps and promise" (17 gap lines, 10 diffe
 - PSG 197's marks come from the geometry (order.py's intersection points): with headings dL, dM at the point (frame x east, y south), M arrives from L's left iff dot(dM, left(dL)) < 0, left(d) = (d.y, -d.x).
 - Consumed by PlanarLineSides (planar_regions.cpp:112-125) in place of the interleave when `crossings_authored`. Validated by: an identity test (the authored T with marks from its own derived sides gives the same faces), then P1 on 197 (a mirrored frame or a bad mark fails the face map).
 - Steps: E1f-1 marks into psg197.txt (data); E1f-2 parser and PlanarLineSides (code); then rerun the loader characterisation.
+
+## Shape on 197 (2026-11-20, late)
+- Today's Shape on the written-down variant (101 tracks, 50 structures, no prio): 114 ms, H1-H11 clean, cells refine (48 dummies), turning 48.
+- V's real shape (tools/junction/topologies/psg197.shape.txt, LoadPlanarShapeVariant, hidden test E1h): raw turning 222, 50 stretches carry sideways steps; at Shape's level (steps projected out) turning 104 and only one real rule breach, H11 in 20 long tunnel spans (crossers at mixed angles under one 12-13 tile tunnel); 4 data artefacts (3 H2 at the trace box edge, 1 H3 in the D12 tail); faces refine into convex cells (104 dummies).
+- Where V's 50 steps sit: 9 at ports (fans, close-ups), 11 on short lines between two nodes (split cascades), 20 within 0.5-3 tiles of a split or merge, 9 in the open between structures (4-17 tiles from any node; A1c/A1d/A1e step together, [4, 3, 4], between their tunnel series; F3/F3b, A2c, C12d, D2). About 4 in 5 are component territory (D388); the 9 in the open are not.
+
+## Card: steps on spines are Shape's (for the engineer's ruling)
+- Context: under v2 lanes are offset curves of their bundle's spine and flex inserts add no bend, so a bundle stepping sideways between structures can only be a wiggle in the spine's heading list (h, h±1, h), which H1 forbids. If Slots added such steps it would add reflex corners to faces Shape certified convex (H12).
+- Proposal: D385 (ii) bend pairs return at bundle level: Shape may give a spine's stretch on a free face a step (bend pair h -> h±1 -> h, side chosen by Shape), Slots sizes it (length >= 0, so a step may come out zero). Steps at ports and next to nodes stay inside components and are never Shape's.
+- Consequence: cells are computed with the step's bends, so Slots never adds a bend Shape did not see; cost is more choice points and dummies on free faces only (197: 9 places), no yes/no step variables in Slots.
+- Evidence: V's 197 needs it in 9 places, one a whole three-lane bundle.
+- Reversible: yes (a Shape rule and its search; components unaffected).
+
+## What it means for solving hubs (orchestrator, 2026-11-20)
+- Solving a given hub looks within reach: Structure represents 197 with named, local gaps; Shape is fast and nearly right (two local rule changes: H11 per run, steps on spines). The big open question is drawability (G-feasible): E5's feasibility oracle on Shape's 197 shape, with V's lengths as a known solution for V's shape.
+- Compactness: Shape minimises turning only; V's shape turns twice as much (104 vs 48), so generated hubs may be valid but more sprawling; V's footprint is the yardstick for a footprint term in the objective.
+- Generating a 197-class hub from a plain topology is a separate, later problem (E7): Structure's defaults do not produce it (D389).
