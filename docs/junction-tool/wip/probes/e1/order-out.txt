@@ -1,0 +1,462 @@
+A1c (35 tiles, (95, 154) -> (96, 187)):
+    pos   5 tile (95, 159)  x B2b
+    pos   6 tile (95, 160)  x B2c
+    pos   9 tile (95, 163)  x F1b
+    pos  10 tile (95, 164)  x F1
+    pos  12 tile (95, 166)  x C23c
+    pos  12 tile (95, 166)  x F2b
+    pos  13 tile (95, 167)  x F2
+    pos  15 tile (95, 169)  x F3
+    pos  16 tile (95, 170)  x F3b
+    pos  22 tile (96, 175)  x C12d
+    pos  24 tile (96, 177)  x D23d
+    pos  24 tile (96, 177)  x D23e
+    pos  26 tile (96, 179)  x D12c
+    pos  27 tile (96, 180)  x D23c
+A1d (39 tiles, (96, 155) -> (97, 192)):
+    pos   5 tile (96, 160)  x B2b
+    pos   6 tile (96, 161)  x B2c
+    pos   8 tile (96, 163)  x F1b
+    pos   9 tile (96, 164)  x F1
+    pos  11 tile (96, 166)  x F2b
+    pos  12 tile (96, 167)  x F2
+    pos  13 tile (96, 168)  x C23c
+    pos  14 tile (96, 169)  x F3
+    pos  15 tile (96, 170)  x F3b
+    pos  21 tile (97, 175)  x C12d
+    pos  22 tile (97, 176)  x D23b
+    pos  24 tile (97, 178)  x D12c
+    pos  26 tile (97, 180)  x D23c
+    pos  31 tile (97, 185)  x D12h
+A1e (39 tiles, (96, 155) -> (98, 191)):
+    pos   7 tile (97, 161)  x B2b
+    pos   8 tile (97, 162)  x B2c
+    pos  10 tile (97, 164)  x F1b
+    pos  11 tile (97, 165)  x F1
+    pos  11 tile (97, 165)  x F2b
+    pos  12 tile (97, 166)  x F2
+    pos  15 tile (97, 169)  x C23c
+    pos  15 tile (97, 169)  x F3
+    pos  16 tile (97, 170)  x F3b
+    pos  22 tile (98, 175)  x C12d
+    pos  23 tile (98, 176)  x D23b
+    pos  25 tile (98, 178)  x D12c
+    pos  27 tile (98, 180)  x D23c
+    pos  31 tile (98, 184)  x D12e
+    pos  31 tile (98, 184)  x D12f
+A2b (29 tiles, (92, 158) -> (92, 186)):
+    pos   5 tile (92, 163)  x C23c
+    pos   5 tile (92, 163)  x F1b
+    pos   6 tile (92, 164)  x F1
+    pos   8 tile (92, 166)  x F2b
+    pos   9 tile (92, 167)  x F2
+    pos  13 tile (92, 171)  x F3
+    pos  14 tile (92, 172)  x F3b
+    pos  15 tile (92, 173)  x C12d
+    pos  19 tile (92, 177)  x D23d
+    pos  24 tile (92, 182)  x D123
+A2c (40 tiles, (92, 158) -> (94, 195)):
+    pos   6 tile (93, 163)  x F1b
+    pos   7 tile (93, 164)  x C23c
+    pos   7 tile (93, 164)  x F1
+    pos   9 tile (93, 166)  x F2b
+    pos  10 tile (93, 167)  x F2
+    pos  13 tile (93, 170)  x F3
+    pos  14 tile (93, 171)  x F3b
+    pos  16 tile (93, 173)  x C12d
+    pos  21 tile (94, 177)  x D23d
+    pos  23 tile (94, 179)  x D23e
+    pos  25 tile (94, 181)  x D123
+    pos  32 tile (94, 188)  x AD12
+A2d (29 tiles, (92, 158) -> (88, 182)):
+    pos   5 tile (91, 162)  x C23c
+    pos   6 tile (91, 163)  x F1b
+    pos   7 tile (91, 164)  x F1
+    pos   9 tile (91, 166)  x F2
+    pos   9 tile (91, 166)  x F2b
+    pos  14 tile (91, 171)  x F3
+    pos  15 tile (91, 172)  x C12d
+    pos  15 tile (91, 172)  x F3b
+AD12 (11 tiles, (96, 187) -> (92, 193)):
+    pos   3 tile (94, 188)  x A2c
+B1b (13 tiles, (98, 155) -> (100, 165)):
+    pos   9 tile (100, 162)  x B2b
+    pos  10 tile (100, 163)  x B2c
+B2b (15 tiles, (94, 158) -> (104, 162)):
+    pos   2 tile (95, 159)  x A1c
+    pos   4 tile (96, 160)  x A1d
+    pos   6 tile (97, 161)  x A1e
+    pos  10 tile (100, 162)  x B1b
+B2c (27 tiles, (94, 158) -> (112, 166)):
+    pos   3 tile (95, 160)  x A1c
+    pos   5 tile (96, 161)  x A1d
+    pos   7 tile (97, 162)  x A1e
+    pos  11 tile (100, 163)  x B1b
+    pos  18 tile (106, 164)  x F12b
+BF1 (4 tiles, (100, 165) -> (102, 166)):
+    pos   0 tile (100, 165)  x F12
+BF12 (7 tiles, (102, 166) -> (105, 169)):
+    pos   3 tile (103, 168)  x F3
+C1 (23 tiles, (120, 174) -> (99, 175)):
+    pos   6 tile (115, 175)  x D2
+    pos  16 tile (105, 175)  x D23
+C12 (22 tiles, (88, 170) -> (88, 149)):
+    pos   4 tile (88, 166)  x F2c
+    pos   6 tile (88, 164)  x F1
+    pos   6 tile (88, 164)  x F1b
+    pos   7 tile (88, 163)  x E1b
+    pos  13 tile (88, 157)  x C23
+C12b (14 tiles, (88, 170) -> (86, 159)):
+    pos   5 tile (87, 166)  x F2c
+    pos   7 tile (87, 164)  x E1b
+    pos   7 tile (87, 164)  x F1c
+C12d (17 tiles, (99, 175) -> (88, 170)):
+    pos   1 tile (98, 175)  x A1e
+    pos   2 tile (97, 175)  x A1d
+    pos   3 tile (96, 175)  x A1c
+    pos   8 tile (93, 173)  x A2c
+    pos   9 tile (92, 173)  x A2b
+    pos  10 tile (91, 173)  x A2d
+    pos  11 tile (91, 172)  x F3b
+    pos  13 tile (90, 171)  x F3
+C1b (21 tiles, (120, 174) -> (100, 174)):
+    pos   4 tile (116, 174)  x D2
+    pos  14 tile (106, 174)  x D23
+C2 (17 tiles, (114, 172) -> (100, 174)):
+    pos   5 tile (109, 172)  x D3
+C23 (13 tiles, (90, 159) -> (86, 151)):
+    pos   2 tile (89, 158)  x E1b
+    pos   4 tile (88, 157)  x C12
+C23c (21 tiles, (98, 171) -> (90, 159)):
+    pos   1 tile (98, 170)  x F3b
+    pos   2 tile (97, 170)  x A1e
+    pos   3 tile (97, 169)  x F3
+    pos   4 tile (96, 169)  x A1d
+    pos   6 tile (95, 168)  x A1c
+    pos   7 tile (95, 167)  x F2
+    pos   8 tile (95, 166)  x F2b
+    pos  11 tile (93, 165)  x A2c
+    pos  12 tile (93, 164)  x F1
+    pos  13 tile (92, 164)  x A2b
+    pos  14 tile (92, 163)  x F1b
+    pos  15 tile (91, 163)  x A2d
+C2b (20 tiles, (114, 172) -> (98, 171)):
+    pos   5 tile (110, 171)  x D3
+D123 (13 tiles, (95, 180) -> (88, 185)):
+    pos   2 tile (94, 181)  x A2c
+    pos   4 tile (93, 182)  x D23e
+    pos   5 tile (92, 182)  x A2b
+D12c (14 tiles, (106, 178) -> (95, 180)):
+    pos   4 tile (102, 178)  x D23c
+    pos   8 tile (98, 178)  x A1e
+    pos   9 tile (97, 178)  x A1d
+    pos  11 tile (96, 179)  x A1c
+D12d (19 tiles, (104, 179) -> (98, 191)):
+    pos   0 tile (104, 179)  x D12e
+D12e (14 tiles, (104, 179) -> (97, 185)):
+    pos   0 tile (104, 179)  x D12d
+    pos  11 tile (98, 184)  x A1e
+D12f (15 tiles, (105, 179) -> (97, 185)):
+    pos  12 tile (98, 184)  x A1e
+D12h (4 tiles, (97, 185) -> (96, 187)):
+    pos   0 tile (97, 185)  x A1d
+D2 (11 tiles, (117, 173) -> (110, 176)):
+    pos   2 tile (116, 174)  x C1b
+    pos   4 tile (115, 175)  x C1
+D23 (7 tiles, (107, 173) -> (104, 176)):
+    pos   2 tile (106, 174)  x C1b
+    pos   4 tile (105, 175)  x C1
+D23b (9 tiles, (104, 176) -> (97, 177)):
+    pos   6 tile (98, 176)  x A1e
+    pos   7 tile (97, 176)  x A1d
+D23c (14 tiles, (104, 176) -> (95, 180)):
+    pos   4 tile (102, 178)  x D12c
+    pos  10 tile (98, 180)  x A1e
+    pos  11 tile (97, 180)  x A1d
+    pos  12 tile (96, 180)  x A1c
+D23d (15 tiles, (97, 177) -> (88, 182)):
+    pos   1 tile (96, 177)  x A1c
+    pos   3 tile (94, 177)  x A2c
+    pos   5 tile (92, 177)  x A2b
+D23e (15 tiles, (97, 177) -> (92, 186)):
+    pos   1 tile (96, 177)  x A1c
+    pos   5 tile (94, 179)  x A2c
+    pos   9 tile (93, 182)  x D123
+D3 (15 tiles, (118, 170) -> (107, 173)):
+    pos   9 tile (110, 171)  x C2b
+    pos  11 tile (109, 172)  x C2
+E1 (11 tiles, (81, 168) -> (83, 160)):
+    pos   1 tile (82, 168)  x E2
+E12 (7 tiles, (83, 160) -> (86, 157)):
+    pos   1 tile (84, 160)  x E3b
+E1b (27 tiles, (81, 168) -> (89, 150)):
+    pos   1 tile (82, 168)  x E2
+    pos   4 tile (84, 167)  x E3b
+    pos   6 tile (85, 166)  x E3
+    pos  10 tile (87, 164)  x C12b
+    pos  12 tile (88, 163)  x C12
+    pos  18 tile (89, 158)  x C23
+E1c (9 tiles, (78, 173) -> (81, 168)):
+    pos   7 tile (81, 169)  x E2b
+E2 (23 tiles, (81, 174) -> (84, 155)):
+    pos   0 tile (81, 174)  x E2b
+    pos   7 tile (82, 168)  x E1
+    pos   7 tile (82, 168)  x E1b
+    pos   7 tile (82, 168)  x F1c
+E23 (11 tiles, (84, 155) -> (85, 146)):
+    pos   5 tile (85, 151)  x NO1
+E2b (17 tiles, (81, 174) -> (83, 160)):
+    pos   0 tile (81, 174)  x E2
+    pos   5 tile (81, 169)  x E1c
+    pos   5 tile (81, 169)  x F1c
+E3 (26 tiles, (84, 182) -> (86, 159)):
+    pos   8 tile (85, 175)  x F3b
+    pos   9 tile (85, 174)  x F3
+    pos  15 tile (85, 168)  x F2c
+    pos  17 tile (85, 166)  x E1b
+    pos  17 tile (85, 166)  x F1c
+E3b (28 tiles, (84, 182) -> (84, 155)):
+    pos   6 tile (84, 176)  x F3b
+    pos   7 tile (84, 175)  x F3
+    pos  13 tile (84, 169)  x F2c
+    pos  15 tile (84, 167)  x E1b
+    pos  15 tile (84, 167)  x F1c
+    pos  22 tile (84, 160)  x E12
+F1 (13 tiles, (87, 164) -> (98, 165)):
+    pos   1 tile (88, 164)  x C12
+    pos   4 tile (91, 164)  x A2d
+    pos   5 tile (92, 164)  x A2b
+    pos   5 tile (92, 164)  x C23c
+    pos   6 tile (93, 164)  x A2c
+    pos   8 tile (95, 164)  x A1c
+    pos   9 tile (96, 164)  x A1d
+    pos  11 tile (97, 165)  x A1e
+F12 (6 tiles, (98, 165) -> (103, 165)):
+    pos   2 tile (100, 165)  x BF1
+F12b (10 tiles, (103, 165) -> (111, 164)):
+    pos   4 tile (106, 164)  x B2c
+F1b (17 tiles, (87, 164) -> (100, 165)):
+    pos   1 tile (88, 164)  x C12
+    pos   5 tile (91, 163)  x A2d
+    pos   5 tile (91, 163)  x C23c
+    pos   6 tile (92, 163)  x A2b
+    pos   7 tile (93, 163)  x A2c
+    pos   9 tile (95, 163)  x A1c
+    pos  10 tile (96, 163)  x A1d
+    pos  12 tile (97, 164)  x A1e
+F1c (19 tiles, (78, 173) -> (87, 164)):
+    pos   7 tile (81, 169)  x E2b
+    pos   9 tile (82, 168)  x E2
+    pos  12 tile (84, 167)  x E3b
+    pos  14 tile (85, 166)  x E3
+    pos  18 tile (87, 164)  x C12b
+F2 (15 tiles, (90, 166) -> (102, 166)):
+    pos   1 tile (91, 166)  x A2d
+    pos   3 tile (92, 167)  x A2b
+    pos   4 tile (93, 167)  x A2c
+    pos   6 tile (95, 167)  x A1c
+    pos   6 tile (95, 167)  x C23c
+    pos   7 tile (96, 167)  x A1d
+    pos   8 tile (97, 167)  x A1e
+F2b (10 tiles, (90, 166) -> (98, 165)):
+    pos   1 tile (91, 166)  x A2d
+    pos   2 tile (92, 166)  x A2b
+    pos   3 tile (93, 166)  x A2c
+    pos   4 tile (94, 166)  x C23c
+    pos   5 tile (95, 166)  x A1c
+    pos   6 tile (96, 166)  x A1d
+    pos   7 tile (97, 166)  x A1e
+F2c (20 tiles, (81, 176) -> (90, 166)):
+    pos  10 tile (84, 169)  x E3b
+    pos  12 tile (85, 168)  x E3
+    pos  16 tile (87, 166)  x C12b
+    pos  17 tile (88, 166)  x C12
+F3 (43 tiles, (82, 178) -> (113, 167)):
+    pos   5 tile (84, 175)  x E3b
+    pos   7 tile (85, 174)  x E3
+    pos  14 tile (89, 171)  x C12d
+    pos  16 tile (91, 171)  x A2d
+    pos  17 tile (92, 171)  x A2b
+    pos  18 tile (93, 171)  x A2c
+    pos  22 tile (95, 169)  x A1c
+    pos  23 tile (96, 169)  x A1d
+    pos  23 tile (96, 169)  x C23c
+    pos  24 tile (97, 169)  x A1e
+    pos  31 tile (103, 168)  x BF12
+F3b (33 tiles, (82, 178) -> (105, 169)):
+    pos   4 tile (84, 176)  x E3b
+    pos   6 tile (85, 175)  x E3
+    pos  14 tile (90, 172)  x C12d
+    pos  15 tile (91, 172)  x A2d
+    pos  16 tile (92, 172)  x A2b
+    pos  17 tile (93, 172)  x A2c
+    pos  21 tile (95, 170)  x A1c
+    pos  22 tile (96, 170)  x A1d
+    pos  23 tile (97, 170)  x A1e
+    pos  23 tile (97, 170)  x C23c
+NO1 (17 tiles, (86, 151) -> (84, 137)):
+    pos   1 tile (85, 151)  x E23
+
+STATEMENTS
+cross A1c: B2b, B2c, F1b, F1, C23c, F2b, F2, F3, F3b, C12d, D23d, D23e, D12c, D23c
+cross A1d: B2b, B2c, F1b, F1, F2b, F2, C23c, F3, F3b, C12d, D23b, D12c, D23c, D12h
+cross A1e: B2b, B2c, F1b, F1, F2b, F2, C23c, F3, F3b, C12d, D23b, D12c, D23c, D12e, D12f
+cross A2b: C23c, F1b, F1, F2b, F2, F3, F3b, C12d, D23d, D123
+cross A2c: F1b, C23c, F1, F2b, F2, F3, F3b, C12d, D23d, D23e, D123, AD12
+cross A2d: C23c, F1b, F1, F2, F2b, F3, C12d, F3b
+cross AD12: A2c
+cross B1b: B2b, B2c
+cross B2b: A1c, A1d, A1e, B1b
+cross B2c: A1c, A1d, A1e, B1b, F12b
+cross BF1: F12
+cross BF12: F3
+cross C1: D2, D23
+cross C12: F2c, F1, F1b, E1b, C23
+cross C12b: F2c, E1b, F1c
+cross C12d: A1e, A1d, A1c, A2c, A2b, A2d, F3b, F3
+cross C1b: D2, D23
+cross C2: D3
+cross C23: E1b, C12
+cross C23c: F3b, A1e, F3, A1d, A1c, F2, F2b, A2c, F1, A2b, F1b, A2d
+cross C2b: D3
+cross D123: A2c, D23e, A2b
+cross D12c: D23c, A1e, A1d, A1c
+cross D12d: D12e
+cross D12e: D12d, A1e
+cross D12f: A1e
+cross D12h: A1d
+cross D2: C1b, C1
+cross D23: C1b, C1
+cross D23b: A1e, A1d
+cross D23c: D12c, A1e, A1d, A1c
+cross D23d: A1c, A2c, A2b
+cross D23e: A1c, A2c, D123
+cross D3: C2b, C2
+cross E1: E2
+cross E12: E3b
+cross E1b: E2, E3b, E3, C12b, C12, C23
+cross E1c: E2b
+cross E2: E2b, E1, E1b, F1c
+cross E23: NO1
+cross E2b: E2, E1c, F1c
+cross E3: F3b, F3, F2c, E1b, F1c
+cross E3b: F3b, F3, F2c, E1b, F1c, E12
+cross F1: C12, A2d, A2b, C23c, A2c, A1c, A1d, A1e
+cross F12: BF1
+cross F12b: B2c
+cross F1b: C12, A2d, C23c, A2b, A2c, A1c, A1d, A1e
+cross F1c: E2b, E2, E3b, E3, C12b
+cross F2: A2d, A2b, A2c, A1c, C23c, A1d, A1e
+cross F2b: A2d, A2b, A2c, C23c, A1c, A1d, A1e
+cross F2c: E3b, E3, C12b, C12
+cross F3: E3b, E3, C12d, A2d, A2b, A2c, A1c, A1d, C23c, A1e, BF12
+cross F3b: E3b, E3, C12d, A2d, A2b, A2c, A1c, A1d, A1e, C23c
+cross NO1: E23
+
+INFO pair A1c x B2b: 2 shared tiles [(95, 159), (95, 160)]
+INFO pair A1c x B2c: 2 shared tiles [(95, 160), (95, 161)]
+INFO pair A1c x C23c: 3 shared tiles [(95, 166), (95, 167), (95, 168)]
+INFO pair A1c x D12c: 2 shared tiles [(96, 179), (96, 180)]
+INFO pair A1c x D23e: 2 shared tiles [(96, 177), (96, 178)]
+INFO pair A1d x B2b: 2 shared tiles [(96, 160), (96, 161)]
+INFO pair A1d x B2c: 2 shared tiles [(96, 161), (96, 162)]
+INFO pair A1d x C23c: 2 shared tiles [(96, 168), (96, 169)]
+INFO pair A1d x D12c: 2 shared tiles [(97, 178), (97, 179)]
+INFO pair A1d x D12h: 2 shared tiles [(97, 185), (97, 186)]
+INFO pair A1d x D23b: 2 shared tiles [(97, 176), (97, 177)]
+INFO pair A1d x F1: 2 shared tiles [(96, 164), (96, 165)]
+INFO pair A1d x F1b: 2 shared tiles [(96, 163), (96, 164)]
+INFO pair A1e x B2b: 2 shared tiles [(97, 161), (97, 162)]
+INFO pair A1e x B2c: 2 shared tiles [(97, 162), (97, 163)]
+INFO pair A1e x C23c: 2 shared tiles [(97, 169), (97, 170)]
+INFO pair A1e x D12e: 2 shared tiles [(98, 184), (98, 185)]
+INFO pair A1e x D12f: 2 shared tiles [(98, 184), (98, 185)]
+INFO pair A1e x F2: 2 shared tiles [(97, 166), (97, 167)]
+INFO pair A1e x F2b: 2 shared tiles [(97, 165), (97, 166)]
+INFO pair A2b x C23c: 2 shared tiles [(92, 163), (92, 164)]
+INFO pair A2b x D23d: 2 shared tiles [(92, 177), (92, 178)]
+INFO pair A2c x AD12: 2 shared tiles [(94, 188), (94, 189)]
+INFO pair A2c x C23c: 2 shared tiles [(93, 164), (93, 165)]
+INFO pair A2c x D123: 2 shared tiles [(94, 181), (94, 182)]
+INFO pair A2c x D23e: 2 shared tiles [(94, 179), (94, 180)]
+INFO pair A2c x F3: 2 shared tiles [(93, 170), (93, 171)]
+INFO pair A2c x F3b: 2 shared tiles [(93, 171), (93, 172)]
+INFO pair A2d x C12d: 2 shared tiles [(91, 172), (91, 173)]
+INFO pair A2d x C23c: 2 shared tiles [(91, 162), (91, 163)]
+INFO pair A2d x F2: 2 shared tiles [(91, 166), (91, 167)]
+INFO pair C1 x D2: 5 shared tiles [(111, 175), (112, 175), (113, 175), (114, 175), (115, 175)]
+INFO pair C1 x D23: 2 shared tiles [(104, 175), (105, 175)]
+INFO pair C12 x C23: 2 shared tiles [(88, 156), (88, 157)]
+INFO pair C12 x E1b: 2 shared tiles [(88, 162), (88, 163)]
+INFO pair C12 x F1b: 2 shared tiles [(88, 163), (88, 164)]
+INFO pair C12b x E1b: 2 shared tiles [(87, 163), (87, 164)]
+INFO pair C1b x D2: 2 shared tiles [(115, 174), (116, 174)]
+INFO pair C1b x D23: 2 shared tiles [(105, 174), (106, 174)]
+INFO pair C2 x D3: 2 shared tiles [(108, 172), (109, 172)]
+INFO pair C2b x D3: 2 shared tiles [(109, 171), (110, 171)]
+INFO pair D12c x D23c: 4 shared tiles [(95, 180), (96, 180), (101, 178), (102, 178)]
+INFO pair E1b x C23: 2 shared tiles [(89, 157), (89, 158)]
+INFO pair E2 x E1: 2 shared tiles [(82, 167), (82, 168)]
+INFO pair E2 x E2b: 4 shared tiles [(81, 173), (81, 174), (82, 161), (82, 162)]
+INFO pair E23 x NO1: 2 shared tiles [(85, 150), (85, 151)]
+INFO pair E2b x E1c: 2 shared tiles [(81, 168), (81, 169)]
+INFO pair E2b x F1c: 2 shared tiles [(81, 168), (81, 169)]
+INFO pair E3 x E1b: 2 shared tiles [(85, 165), (85, 166)]
+INFO pair E3 x F1c: 2 shared tiles [(85, 165), (85, 166)]
+INFO pair E3 x F2c: 2 shared tiles [(85, 167), (85, 168)]
+INFO pair E3 x F3: 2 shared tiles [(85, 173), (85, 174)]
+INFO pair E3 x F3b: 2 shared tiles [(85, 174), (85, 175)]
+INFO pair E3b x E12: 2 shared tiles [(84, 159), (84, 160)]
+INFO pair E3b x E1b: 2 shared tiles [(84, 166), (84, 167)]
+INFO pair E3b x F1c: 2 shared tiles [(84, 166), (84, 167)]
+INFO pair E3b x F2c: 2 shared tiles [(84, 168), (84, 169)]
+INFO pair E3b x F3: 2 shared tiles [(84, 174), (84, 175)]
+INFO pair E3b x F3b: 2 shared tiles [(84, 175), (84, 176)]
+INFO pair F1 x C23c: 2 shared tiles [(92, 164), (93, 164)]
+INFO pair F12 x BF1: 2 shared tiles [(100, 165), (101, 165)]
+INFO pair F12b x B2c: 2 shared tiles [(106, 164), (107, 164)]
+INFO pair F1b x C23c: 2 shared tiles [(91, 163), (92, 163)]
+INFO pair F2b x C23c: 2 shared tiles [(94, 166), (95, 166)]
+INFO pair F3 x BF12: 2 shared tiles [(103, 168), (104, 168)]
+INFO pair F3 x C12d: 2 shared tiles [(89, 171), (90, 171)]
+INFO pair F3 x C23c: 2 shared tiles [(96, 169), (97, 169)]
+INFO pair F3b x C12d: 2 shared tiles [(90, 172), (91, 172)]
+INFO pair F3b x C23c: 2 shared tiles [(97, 170), (98, 170)]
+lines walked 54, cross statements 54, pairs 122
+BREACH walk of D12d: 2 distinct walks 104,179->98,191 tunnels [(100, 184)]
+    ((104, 179), (104, 180), (103, 180), (103, 181), (102, 181), (102, 182), (101, 182), (101, 183), (100, 183), (100, 184), (100, 185), (100, 186), (100, 187), (100, 188), (100, 189), (99, 189), (99, 190), (98, 190), (98, 191))
+    ((104, 179), (104, 180), (103, 180), (103, 181), (102, 181), (102, 182), (102, 181), (101, 181), (101, 182), (100, 182), (100, 183), (101, 183), (100, 183), (100, 184), (100, 185), (100, 186), (100, 187), (100, 188), (100, 189), (99, 189), (99, 190), (98, 190), (98, 191))
+BREACH walk of D12e: 4 distinct walks 104,179->97,185 tunnels []
+    ((104, 179), (103, 179), (102, 179), (102, 180), (101, 180), (101, 181), (100, 181), (100, 182), (99, 182), (99, 183), (99, 184), (98, 184), (98, 185), (97, 185))
+    ((104, 179), (103, 179), (102, 179), (102, 180), (101, 180), (101, 181), (101, 180), (100, 180), (100, 181), (99, 181), (99, 182), (100, 182), (99, 182), (99, 183), (99, 184), (98, 184), (98, 185), (97, 185))
+    ((104, 179), (104, 180), (104, 181), (104, 182), (103, 182), (103, 183), (102, 183), (102, 184), (101, 184), (101, 185), (100, 185), (99, 185), (98, 185), (97, 185))
+    ((104, 179), (104, 180), (104, 181), (104, 182), (103, 182), (104, 182), (104, 183), (103, 183), (103, 184), (102, 184), (102, 183), (102, 184), (101, 184), (101, 185), (100, 185), (99, 185), (98, 185), (97, 185))
+BREACH walk of D12f: 4 distinct walks 105,179->97,185 tunnels []
+    ((105, 179), (104, 179), (103, 179), (102, 179), (102, 180), (101, 180), (101, 181), (100, 181), (100, 182), (99, 182), (99, 183), (99, 184), (98, 184), (98, 185), (97, 185))
+    ((105, 179), (104, 179), (103, 179), (102, 179), (102, 180), (101, 180), (101, 181), (101, 180), (100, 180), (100, 181), (99, 181), (99, 182), (100, 182), (99, 182), (99, 183), (99, 184), (98, 184), (98, 185), (97, 185))
+    ((105, 179), (104, 179), (104, 180), (104, 181), (104, 182), (103, 182), (103, 183), (102, 183), (102, 184), (101, 184), (101, 185), (100, 185), (99, 185), (98, 185), (97, 185))
+    ((105, 179), (104, 179), (104, 180), (104, 181), (104, 182), (103, 182), (104, 182), (104, 183), (103, 183), (103, 184), (102, 184), (102, 183), (102, 184), (101, 184), (101, 185), (100, 185), (99, 185), (98, 185), (97, 185))
+BREACH walk of F1c: 2 distinct walks 78,173->87,164 tunnels []
+    ((78, 173), (78, 172), (78, 171), (79, 171), (79, 170), (80, 170), (80, 169), (81, 169), (81, 168), (82, 168), (83, 168), (83, 167), (84, 167), (84, 166), (85, 166), (85, 165), (86, 165), (86, 164), (87, 164))
+    ((78, 173), (78, 172), (79, 172), (79, 171), (80, 171), (80, 170), (81, 170), (81, 169), (82, 169), (83, 169), (83, 168), (84, 168), (84, 167), (85, 167), (85, 166), (86, 166), (86, 165), (87, 165), (87, 164))
+BREACH tie on A1c at position 12 tile (95, 166): ['C23c', 'F2b']
+BREACH tie on A1c at position 24 tile (96, 177): ['D23d', 'D23e']
+BREACH tie on A1e at position 11 tile (97, 165): ['F1', 'F2b']
+BREACH tie on A1e at position 15 tile (97, 169): ['C23c', 'F3']
+BREACH tie on A1e at position 31 tile (98, 184): ['D12e', 'D12f']
+BREACH tie on A2b at position 5 tile (92, 163): ['C23c', 'F1b']
+BREACH tie on A2c at position 7 tile (93, 164): ['C23c', 'F1']
+BREACH tie on A2d at position 9 tile (91, 166): ['F2', 'F2b']
+BREACH tie on A2d at position 15 tile (91, 172): ['C12d', 'F3b']
+BREACH tie on C12 at position 6 tile (88, 164): ['F1', 'F1b']
+BREACH tie on C12b at position 7 tile (87, 164): ['E1b', 'F1c']
+BREACH tie on E2 at position 7 tile (82, 168): ['E1', 'E1b', 'F1c']
+BREACH tie on E2b at position 5 tile (81, 169): ['E1c', 'F1c']
+BREACH tie on E3 at position 17 tile (85, 166): ['E1b', 'F1c']
+BREACH tie on E3b at position 15 tile (84, 167): ['E1b', 'F1c']
+BREACH tie on F1 at position 5 tile (92, 164): ['A2b', 'C23c']
+BREACH tie on F1b at position 5 tile (91, 163): ['A2d', 'C23c']
+BREACH tie on F2 at position 6 tile (95, 167): ['A1c', 'C23c']
+BREACH tie on F3 at position 23 tile (96, 169): ['A1d', 'C23c']
+BREACH tie on F3b at position 23 tile (97, 170): ['A1e', 'C23c']
+breaches: 24
