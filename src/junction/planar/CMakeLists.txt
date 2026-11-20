@@ -3,6 +3,8 @@ add_files(
     planar_channels.h
     planar_components.cpp
     planar_components.h
+    planar_draw.cpp
+    planar_draw.h
     planar_gaps.cpp
     planar_gaps.h
     planar_layout.cpp
