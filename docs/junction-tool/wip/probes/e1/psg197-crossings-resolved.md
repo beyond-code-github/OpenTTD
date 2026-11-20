@@ -158,7 +158,6 @@ Separator is the first line, the crosser the second; "notation" says whether `Pa
 | E2 | E2b | tunnel | 2 | 82,163 | G07 | none | no |
 | E2 | F1c | tunnel | 4 | 82,171 | G16 | none | no |
 | E23 | NO1 | tunnel | 2 | 85,152 | G01 | none | no |
-| E2b | E1 | tunnel | 4 | 81,171 | G16 | none | no |
 | E2b | E1c | tunnel | 4 | 81,171 | G16 | none | no |
 | E2b | F1c | tunnel | 4 | 81,171 | G16 | none | no |
 | E3 | E1b | tunnel | 5 | 85,170 | G15 | none | no |
