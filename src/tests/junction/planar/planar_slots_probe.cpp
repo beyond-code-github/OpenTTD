@@ -142,11 +142,12 @@ static uint32_t G1Family(const std::string &tag)
  * Solve the joint slots and lengths of one variant, then run the oracles.
  * @param off A bit set leaves that family's rows out (G1Family).
  */
-static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v, uint32_t off = 0, const std::set<uint32_t> *grid_tracks = nullptr, const std::string *skip_pin = nullptr, bool print_geometry = false)
+static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v, uint32_t off = 0, const std::set<uint32_t> *grid_tracks = nullptr, const std::string *skip_pin = nullptr, const std::set<std::string> *show_names = nullptr, const std::set<std::string> *seed_names = nullptr)
 {
 	using Kind = Elem::Kind;
 	const PlanarTrackMap &map = v.structure.map;
 	const size_t nt = map.tracks.size();
+	const bool print_geometry = show_names != nullptr;
 	G1Result r{};
 	JunctionMilp lp;
 	const double INF = JunctionMilp::INF;
@@ -239,6 +240,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		row(lin({{a.first, 1}, {b.first, -1}}), 0, 0, tag);
 		row(lin({{a.second, 1}, {b.second, -1}}), 0, 0, tag);
 	};
+	std::map<uint32_t, std::pair<uint32_t, int>> stub_start, stub_end; ///< Per leg track, its stub variable and the trunk heading at the node (D380).
 	std::map<uint32_t, int> cusp_start, cusp_end; ///< Per leg track, the sigma of its cusp at a split (stretch 0) or a merge (last stretch).
 	for (size_t n = 0; n < map.expanded.nodes.size(); n++) {
 		const PlanarNode &node = map.expanded.nodes[n];
@@ -252,8 +254,15 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		for (const uint32_t t : legs) tag += " " + map.tracks[t].name;
 		const auto reference = split ? point[trunk].back() : point[trunk].front();
 		const int h = (((split ? v.tracks[trunk].pieces.back() : v.tracks[trunk].pieces.front()) % 8) + 8) % 8;
+		for (const uint32_t t : trunks) {
+			const int ht = (((split ? v.tracks[t].pieces.back() : v.tracks[t].pieces.front()) % 8) + 8) % 8;
+			if (ht != h) throw std::runtime_error(fmt::format("STOP node {} has trunks of different headings ({} and {})", n, h, ht));
+		}
 		for (const uint32_t t : trunks) tie(reference, split ? point[t].back() : point[t].front(), tag);
 		for (const uint32_t leg : legs) {
+			const uint32_t stub = var(0, 1, 1);
+			row(lin({{stub, 1}}), 0, (off & 8192) != 0 ? 0 : 1, fmt::format("stub {} {}", n, map.tracks[leg].name));
+			(split ? stub_start : stub_end)[leg] = {stub, h};
 			tie(reference, split ? point[leg].front() : point[leg].back(), tag);
 			const int heading = (((split ? v.tracks[leg].pieces.front() : v.tracks[leg].pieces.back()) % 8) + 8) % 8;
 			const bool straight = site != nullptr && leg == site->straight;
@@ -300,6 +309,19 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 				place_piece = static_cast<int>(ends_split ? last : first);
 			}
 			e.stretch_begin.push_back(e.elems.size());
+			const auto add_stub = [&](const std::pair<uint32_t, int> &stub, size_t piece) {
+				Elem el{};
+				el.kind = Kind::Part;
+				el.var = stub.first;
+				el.disp = PlanarModel::STEP[stub.second];
+				el.length = 1;
+				el.heading = stub.second;
+				el.piece = static_cast<int>(piece);
+				el.stretch = static_cast<int>(k);
+				el.fixed = true;
+				e.elems.push_back(el);
+			};
+			if (k == 0 && stub_start.contains(t)) add_stub(stub_start.at(t), 0);
 			for (size_t j = first; j <= last; j++) {
 				const size_t cell_begin = e.elems.size();
 				const int h = heading_of(j);
@@ -365,6 +387,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 				if (e.piece_begin[j] == SIZE_MAX) e.piece_begin[j] = cell_begin;
 				e.piece_end[j] = e.elems.size();
 			}
+			if (k == ne && stub_end.contains(t)) add_stub(stub_end.at(t), np - 1);
 			e.stretch_end.push_back(e.elems.size());
 		}
 	}
@@ -414,7 +437,9 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		}
 		const uint32_t start_aux = var(0, INF, 0);
 		const bool grid = grid_tracks == nullptr || grid_tracks->contains(t);
-		if (grid) row(lin({{point[t][0].first, 1}, {point[t][0].second, 1}, {start_aux, -2}}), 1, 1, fmt::format("parity start {}", map.tracks[t].name));
+		Lin start_parity = lin({{point[t][0].first, 1}, {point[t][0].second, 1}, {start_aux, -2}});
+		if (stub_start.contains(t)) start_parity.Add(stub_start.at(t).first, PlanarModel::STEP[stub_start.at(t).second][0] + PlanarModel::STEP[stub_start.at(t).second][1]);
+		if (grid) row(start_parity, 1, 1, fmt::format("parity start {}", map.tracks[t].name));
 		for (size_t j = 0; j < s.pieces.size(); j++) {
 			Lin total;
 			for (size_t i = e.piece_begin[j]; i < e.piece_end[j]; i++) {
@@ -484,6 +509,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 	}
 
 	/* 6. Beside tracks follow their parent chain one lane away. */
+	std::vector<std::tuple<std::string, size_t, int, Lin>> beside_rows; ///< Every beside row family 1 would write, for the residual print.
 	for (uint32_t b = 0; b < nt; b++) {
 		if (map.part_of[b] != UINT32_MAX) continue;
 		std::vector<uint32_t> chain;
@@ -548,6 +574,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 				dot.Add(beside[axis], normal[axis]);
 				dot.Add(parent[axis], -normal[axis]);
 			}
+			if (print_geometry) beside_rows.emplace_back(map.tracks[b].name, j, 2 * s, dot);
 			row(dot, 2.0 * s, 2.0 * s, fmt::format("beside {} piece {}", map.tracks[b].name, j));
 		}
 	}
@@ -785,12 +812,17 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		}
 	}
 	if (print_geometry) {
+		for (const auto &[name, piece, need, dot] : beside_rows) {
+			double got = dot.constant;
+			for (const auto &[variable, coefficient] : dot.terms) got += coefficient * lp.Value(variable);
+			std::cout << fmt::format("G1E BESIDE {} piece={} need={} got={}\n", name, piece, need, std::lround(got));
+		}
 		std::set<uint32_t> shown;
 		std::set<uint32_t> seeds;
 		for (uint32_t t = 0; t < nt; t++) {
 			const std::string &nm = map.tracks[t].name;
-			if (nm == "EO1" || nm == "EO2" || nm == "AB1" || nm == "AB2") shown.insert(t);
-			if (nm == "A2a" || nm == "B2\"13") {
+			if (show_names->contains(nm)) shown.insert(t);
+			if (seed_names != nullptr && seed_names->contains(nm)) {
 				shown.insert(t);
 				seeds.insert(t);
 			}
@@ -1056,6 +1088,16 @@ TEST_CASE("planar probe: G1e the geometry around LL2's grid conflict", "[junctio
 	REQUIRE(error.empty());
 	const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
 	REQUIRE(!shape.variants.empty());
-	const G1Result r = SolveG1(topology, spec, shape.variants[0], 511U | 1024U, nullptr, nullptr, true);
-	REQUIRE(r.solved);
+	const std::set<std::string> show = {"EO1", "EO2", "AB1", "AB2"}, seed = {"A2a", "B2\"13"};
+	std::cout << "G1E BLOCK LL2 off=1536\n";
+	const G1Result r = SolveG1(topology, spec, shape.variants[0], 511U | 1024U, nullptr, nullptr, &show, &seed);
+	CHECK(r.solved);
+	const PlanarTopology t2 = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarShapeResult shape2 = BuildPlanarShape(BuildPlanarStructure(t2, spec, 16));
+	REQUIRE(!shape2.variants.empty());
+	const std::set<std::string> show2 = {"B1", "prio:B1", "C2", "E2", "prio:E2", "D1"}, seed2 = {"prio:B1", "prio:E2"};
+	std::cout << "G1E BLOCK T2 off=1\n";
+	const G1Result r2 = SolveG1(t2, spec, shape2.variants[0], 1U, nullptr, nullptr, &show2, &seed2);
+	CHECK(r2.solved);
 }
