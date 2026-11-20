@@ -11,11 +11,11 @@ Each epic: goal, scope, exit criteria (tests at the layer's output, D367), and i
 - Scope: merge wt-slots and wt-cells into feature/junction-tool (resolve the planar CLAUDE.md conflict: D383's flex bullet vs H12b's cells bullet, rewritten for v2's Shape); planar CLAUDE "Architecture" names v2 and D388; SPEC-shape §8 scoped to free faces; mark SPEC-slots-lengths §8-§11 as v1 evidence pending E5's rewrite; the probe stays hidden (diagnosis only).
 - Exit: feature/junction-tool gate green; CLAUDE.md files state only decided facts; pushed to the fork.
 
-## E1 Structure for PSG 197 (D388 c)
-- Goal: psg197.txt enters the pipeline; Structure produces variants with its promises.
-- Scope: DESIGN-sss-v2 §3.1 items 1-6: authored crossings (notation and Structure), tunnel over tunnel, portal on a tunnel's middle tile, prio per merge, partial crossings of a bundle (per-lane crosser sets), lane-count changes (verify).
-- Exit: `ParsePlanarTopology(psg197)` accepts the hub (psg197-gaps §1-2 closed); `BuildPlanarStructure` gives variants with P1-P8 and the new promises as tests; numbers recorded (tracks, channels, sites, crossings, structures, variants, time). T2/T3/LL2 unchanged (identity of their Structure output, or each change listed).
-- First step: design card for the notation of authored crossings and per-lane crosser sets (reread D343, D344, psg197-gaps, psg197-decisions).
+## E1 PSG 197's Structure output, handed to Shape (D388 c, amended by D389)
+- Goal: Shape receives a valid `PlanarStructureVariant` for 197, written down as pinned decisions (D389); Structure's own search on 197 moves to E7.
+- Done: E1a-E1c (authored crossings: `cross` statements, parity check, 121 crossings; wip/CARD-E1-crossings.md, wip/probes/e1).
+- Scope: wip/CARD-E1d-psg197-variant.md: the decisions file (tunnels, groups, straight legs, copy), the loader on the existing builders, the promise oracle on it, the gaps it names closed one at a time; prio per merge in the topology (D390 (4)).
+- Exit: the 197 variant loads and keeps P1-P8 (every gap closed or ruled); today's Shape run on it and measured (E1e); T2/T3/LL2 unchanged.
 
 ## E2 Rule fields from Structure
 - Goal: no stand-ins: Structure hands down every lower bound and exact value Slots needs (DESIGN-sss-v2 §3.1 "Hands down").
@@ -50,4 +50,4 @@ Each epic: goal, scope, exit criteria (tests at the layer's output, D367), and i
 - Exit: agreed with the engineer at Gate B.
 
 ## Order
-E0 -> E1 -> E2 -> E3 (Gate A) -> E4 -> E5 (Gate B) -> E6 -> E7. E2 may start once E1's Structure model is settled; E4 may overlap E3's later steps.
+E0 -> E1 -> E2 -> E3 (Gate A) -> E4 -> E5 (Gate B) -> E6 -> E7. E2 may start once the 197 variant loads; E4 may overlap E3's later steps.
