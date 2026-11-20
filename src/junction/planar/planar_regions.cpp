@@ -118,11 +118,11 @@ PlanarMap::PlanarMap(const PlanarTopology &t, const std::vector<int> &ring_pos, 
 		/* The arc clockwise from a's entry to its exit lies to a's left; b enters from the left when its entry end is on it. */
 		const int a0 = ends[a].first, a1 = ends[a].second;
 		const auto in_left = [&](int x) { return ((x - a0 + nring) % nring) < ((a1 - a0 + nring) % nring); };
-		if (in_left(ends[b].first) == in_left(ends[b].second)) {
+		if (!t.crossings_authored && in_left(ends[b].first) == in_left(ends[b].second)) {
 			this->why = fmt::format("lines {} and {} cross but their ends do not interleave", t.lines[a].name, t.lines[b].name);
 			return;
 		}
-		const bool b_in_left = in_left(ends[b].first);
+		const bool b_in_left = t.crossings_authored ? t.b_from_left[c] : in_left(ends[b].first);
 		rot[cross0 + c] = {a_in, b_in_left ? b_in : b_out, a_out, b_in_left ? b_out : b_in};
 	}
 

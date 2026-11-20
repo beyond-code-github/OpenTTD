@@ -12,6 +12,7 @@
 #include "../../../3rdparty/catch2/catch.hpp"
 
 #include "../../../junction/planar/planar_plan.h"
+#include "../../../junction/planar/planar_regions.h"
 #include "../../../junction/planar/planar_topology.h"
 
 #include <algorithm>
@@ -19,6 +20,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "../../../safeguards.h"
@@ -195,11 +197,15 @@ static std::string WithCross(const std::string &text, const std::vector<std::pai
 static std::string AuthoredText(const std::string &text)
 {
 	const PlanarTopology t = Parse(text);
+	const PlanarLineSides sides(t, BuildPlanarChannels(t));
 	std::vector<std::pair<std::string, std::vector<std::string>>> statements;
 	for (uint32_t l = 0; l < t.lines.size(); l++) {
 		if (t.events[l].empty()) continue;
 		std::vector<std::string> partners;
-		for (uint32_t c : t.events[l]) partners.push_back(t.lines[t.crossings[c].a == l ? t.crossings[c].b : t.crossings[c].a].name);
+		for (uint32_t c : t.events[l]) {
+			const uint32_t m = t.crossings[c].a == l ? t.crossings[c].b : t.crossings[c].a;
+			partners.push_back(t.lines[m].name + (sides.CrossingFrom(c, m) == +1 ? ">" : "<"));
+		}
 		statements.push_back({t.lines[l].name, std::move(partners)});
 	}
 	return WithCross(text, statements);
@@ -221,15 +227,17 @@ TEST_CASE("planar: PSG 197 parses with its authored crossings", "[junction][plan
 		REQUIRE(l != UINT32_MAX);
 		std::vector<std::string> along;
 		for (uint32_t c : t.events[l]) along.push_back(t.lines[t.crossings[c].a == l ? t.crossings[c].b : t.crossings[c].a].name);
-		CHECK(along == partners);
+		std::vector<std::string> bare = partners;
+		for (std::string &m : bare) m.pop_back();
+		CHECK(along == bare);
 	}
 }
 
 TEST_CASE("planar: authored crossings equal to the derived ones parse to the same topology", "[junction][planar]")
 {
-	for (int lanes : {1, 2}) {
-		const PlanarTopology derived = Parse(PlanarTText(lanes));
-		const PlanarTopology authored = Parse(AuthoredText(PlanarTText(lanes)));
+	for (const std::string text : {PlanarTText(1), PlanarTText(2), PlanarLL2Text()}) {
+		const PlanarTopology derived = Parse(text);
+		const PlanarTopology authored = Parse(AuthoredText(text));
 		CHECK(authored.crossings_authored);
 		CHECK(!derived.crossings_authored);
 		REQUIRE(authored.crossings.size() == derived.crossings.size());
@@ -238,6 +246,16 @@ TEST_CASE("planar: authored crossings equal to the derived ones parse to the sam
 			CHECK(authored.crossings[i].b == derived.crossings[i].b);
 		}
 		CHECK(authored.events == derived.events);
+		const PlanarLineSides derived_sides(derived, BuildPlanarChannels(derived));
+		const PlanarLineSides authored_sides(authored, BuildPlanarChannels(authored));
+		REQUIRE(authored.b_from_left.size() == authored.crossings.size());
+		for (uint32_t c = 0; c < derived.crossings.size(); c++) {
+			CHECK(authored.b_from_left[c] == (derived_sides.CrossingFrom(c, derived.crossings[c].b) == +1));
+			for (uint32_t line : {derived.crossings[c].a, derived.crossings[c].b}) {
+				CHECK(authored_sides.CrossingFrom(c, line) == derived_sides.CrossingFrom(c, line));
+			}
+		}
+		CHECK(authored_sides.Faces().size() == derived_sides.Faces().size());
 	}
 }
 
@@ -264,7 +282,7 @@ TEST_CASE("planar: authored crossings are refused with a reason", "[junction][pl
 	}
 	SECTION("a line listing itself") {
 		auto s = statements;
-		s[0].second.push_back(s[0].first);
+		s[0].second.push_back(s[0].first + ">");
 		CHECK(error_of(s).find("crosses itself") != std::string::npos);
 	}
 	SECTION("a line listing one partner twice") {
@@ -277,12 +295,27 @@ TEST_CASE("planar: authored crossings are refused with a reason", "[junction][pl
 		s[0].second.erase(s[0].second.begin());
 		CHECK(error_of(s).find("is listed by") != std::string::npos);
 	}
+	SECTION("a partner without a mark") {
+		auto s = statements;
+		s[0].second[0].pop_back();
+		CHECK(error_of(s).find("no direction mark") != std::string::npos);
+	}
+	SECTION("a pair with the same mark on both sides") {
+		auto s = statements;
+		const std::string a = s[0].first, b = s[0].second[0].substr(0, s[0].second[0].size() - 1);
+		const char mark = s[0].second[0].back();
+		for (auto &[name, partners] : s) {
+			if (name != b) continue;
+			for (std::string &m : partners) if (m.substr(0, m.size() - 1) == a) m.back() = mark;
+		}
+		CHECK(error_of(s).find("same direction") != std::string::npos);
+	}
 	SECTION("one pair removed from both lines' lists") {
 		auto s = statements;
-		const std::string a = s[0].first, b = s[0].second[0];
+		const std::string a = s[0].first, b = s[0].second[0]; // b keeps its mark
 		s[0].second.erase(s[0].second.begin());
 		for (auto &[name, partners] : s) {
-			if (name == b) partners.erase(std::ranges::find(partners, a));
+			if (name == b.substr(0, b.size() - 1)) partners.erase(std::ranges::find_if(partners, [&](const std::string &m) { return m.substr(0, m.size() - 1) == a; }));
 		}
 		CHECK(error_of(s).find("times but their ends interleave") != std::string::npos);
 	}
@@ -295,14 +328,14 @@ TEST_CASE("planar: authored crossings are refused with a reason", "[junction][pl
 				const bool crossed = std::ranges::any_of(derived.crossings, [&](const PlanarCrossing &c) { return c.a == a && c.b == b; });
 				if (crossed) continue;
 				auto s = statements;
-				for (const auto &[x, y] : {std::pair(a, b), std::pair(b, a)}) {
+				for (const auto &[x, y, mark] : {std::tuple(a, b, ">"), std::tuple(b, a, "<")}) {
 					const std::string &name = derived.lines[x].name;
 					auto it = std::ranges::find_if(s, [&](const auto &st) { return st.first == name; });
 					if (it == s.end()) {
 						s.push_back({name, {}});
 						it = s.end() - 1;
 					}
-					it->second.push_back(derived.lines[y].name);
+					it->second.push_back(derived.lines[y].name + mark);
 				}
 				found = error_of(s).find("do not interleave") != std::string::npos;
 			}

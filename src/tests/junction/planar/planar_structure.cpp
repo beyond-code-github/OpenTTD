@@ -727,11 +727,15 @@ static std::string WithCross(const std::string &text, const std::vector<std::pai
 static std::string AuthoredText(const std::string &text)
 {
 	const PlanarTopology t = Parse(text);
+	const PlanarLineSides sides(t, BuildPlanarChannels(t));
 	std::vector<std::pair<std::string, std::vector<std::string>>> statements;
 	for (uint32_t l = 0; l < t.lines.size(); l++) {
 		if (t.events[l].empty()) continue;
 		std::vector<std::string> partners;
-		for (uint32_t c : t.events[l]) partners.push_back(t.lines[t.crossings[c].a == l ? t.crossings[c].b : t.crossings[c].a].name);
+		for (uint32_t c : t.events[l]) {
+			const uint32_t m = t.crossings[c].a == l ? t.crossings[c].b : t.crossings[c].a;
+			partners.push_back(t.lines[m].name + (sides.CrossingFrom(c, m) == +1 ? ">" : "<"));
+		}
 		statements.push_back({t.lines[l].name, std::move(partners)});
 	}
 	return WithCross(text, statements);

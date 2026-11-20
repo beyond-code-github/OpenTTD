@@ -277,18 +277,35 @@ void PlanarBuilder::Derive()
 			if (it == this->line_index.end()) this->error = fmt::format("cross names unknown line {}", name);
 			return it == this->line_index.end() ? UINT32_MAX : it->second;
 		};
-		for (const auto &[name, partners] : this->cross) {
-			const uint32_t l = resolve(name);
-			if (l == UINT32_MAX) return;
-			for (const std::string &m : partners) if (resolve(m) == UINT32_MAX) return;
+		/* Each partner carries a direction mark: `M>` arrives from the line's left, `M<` from its right. */
+		std::vector<std::vector<std::string>> bare(this->cross.size());
+		std::vector<std::vector<bool>> from_left(this->cross.size());
+		for (size_t k = 0; k < this->cross.size(); k++) {
+			for (const std::string &m : this->cross[k].second) {
+				if (m.empty() || (m.back() != '>' && m.back() != '<')) {
+					this->error = fmt::format("cross {}: partner {} has no direction mark (> or <)", this->cross[k].first, m);
+					return;
+				}
+				bare[k].push_back(m.substr(0, m.size() - 1));
+				from_left[k].push_back(m.back() == '>');
+			}
 		}
-		for (const auto &[name, partners] : this->cross) {
+		for (size_t k = 0; k < this->cross.size(); k++) {
+			const uint32_t l = resolve(this->cross[k].first);
+			if (l == UINT32_MAX) return;
+			for (const std::string &m : bare[k]) if (resolve(m) == UINT32_MAX) return;
+		}
+		std::vector<std::vector<bool>> mark(t.lines.size()); ///< Per line, the marks of its partners in `listed` order.
+		for (size_t k = 0; k < this->cross.size(); k++) {
+			const std::string &name = this->cross[k].first;
+			const std::vector<std::string> &partners = bare[k];
 			const uint32_t l = this->line_index.find(name)->second;
 			if (has_statement[l]) {
 				this->error = fmt::format("line {} has two cross statements", name);
 				return;
 			}
 			has_statement[l] = true;
+			mark[l] = from_left[k];
 			for (const std::string &m : partners) listed[l].push_back(this->line_index.find(m)->second);
 			for (size_t i = 0; i < partners.size(); i++) {
 				if (listed[l][i] == l) {
@@ -305,6 +322,11 @@ void PlanarBuilder::Derive()
 			for (uint32_t m : listed[l]) {
 				if (std::ranges::find(listed[m], l) == listed[m].end()) {
 					this->error = fmt::format("crossing {} x {} is listed by {} but not by {}", t.lines[l].name, t.lines[m].name, t.lines[l].name, t.lines[m].name);
+					return;
+				}
+				const size_t i = std::ranges::find(listed[l], m) - listed[l].begin(), j = std::ranges::find(listed[m], l) - listed[m].begin();
+				if (mark[l][i] == mark[m][j]) {
+					this->error = fmt::format("crossing {} x {}: both lines give the same direction", t.lines[std::min(l, m)].name, t.lines[std::max(l, m)].name);
 					return;
 				}
 				if (l < m) t.crossings.push_back({l, m});
@@ -336,6 +358,11 @@ void PlanarBuilder::Derive()
 		t.events.assign(t.lines.size(), {});
 		for (uint32_t l = 0; l < t.lines.size(); l++) {
 			for (uint32_t m : listed[l]) t.events[l].push_back(crossing_index(l, m));
+		}
+		t.b_from_left.assign(t.crossings.size(), false);
+		for (uint32_t c = 0; c < t.crossings.size(); c++) {
+			const uint32_t a = t.crossings[c].a, b = t.crossings[c].b;
+			t.b_from_left[c] = mark[a][std::ranges::find(listed[a], b) - listed[a].begin()];
 		}
 		t.crossings_authored = true;
 		return;

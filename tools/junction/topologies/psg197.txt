@@ -5,6 +5,7 @@ topology PSG197
 # Lanes number left to right across travel: N in N91=1, N90=2; N out N84=1, N85=2; E in E174=1, E173=2, E169=3; E out E164=1, E166=2, E167=3; S in S81=1, S82=2, S83=3; S out S90=1, S89=2, S88=3.
 # Routes: one per (in lane, out arm), named movement letter + in lane. A: N->S, B: N->E, C: E->N, D: E->S, E: S->N, F: S->E. Each is a choice route over the out lanes of its arm that the trace reaches (reach.txt, 37 lane pairs of 42); a route's paths differ by the tunnel track taken.
 # Simplified (details in psg197-gaps.md): short parallel pairs of 1-3 tiles that fork and rejoin on one lane are not nodes; 3-way splits are two 1->2 splits in an order the tile does not show; prio is a per-route flag, the hub's entry-gated inputs are per merge.
+# Leg order at each node is left to right across travel in the x east, y south frame of the save's coordinates (the same frame as the ports and the cross marks; corrected 2026-11-20 from a mirrored first reading, wip/probes/e1/NOTES.md).
 # Prio: a route holds prio when it is on the ungated leg of a merge whose other leg carries an entry signal in its last 8 pieces (6 such merges: 86,151 98,171 107,173 100,174 110,176 94,195) and is never on a gated leg; C2, C3 and D2 are on both and stay plain (gaps).
 # Line names are movement letters, in lane digits and a suffix; the line index in psg197-decisions.md gives each line's start and end tile.
 port N out N: NO1=C1+C2+C3+E1+E2+E3, NO2=C1+C2+C3+E1+E2+E3
@@ -13,120 +14,120 @@ port E out E: EO1=B1+B2+F1+F2, EO2=B2+F1+F2+F3, EO3=B1+F1+F2+F3
 port E in W: CD1, CD2, CD3
 port S in N: EF1, EF2, EF3
 port S out S: SO1=A1+A2+D1+D2, SO2=A1+A2+D1+D2+D3, SO3=A2+D1+D2+D3
-node AB2=A2+B2 -> A2=A2, B2=B2
-node AB1=A1+B1 -> A1=A1, B1=B1
-node CD3=C3+D3 -> C3=C3, D3=D3
-node EF1=E1+F1 -> F1c=F1, E1c=E1
-node CD2=C2+D2 -> C2c=C2, D2c=D2
-node CD1=C1+D1 -> C1c=C1, D1=D1
-node EF2=E2+F2 -> F2c=F2, E2c=E2
-node EF3=E3+F3 -> E3c=E3, F3c=F3
-node A1 -> A1c=A1, A1b=A1
-node B1 -> B1b=B1, B1c=B1
-node A2 -> A2d=A2, A2m=A2
-node A2m -> A2b=A2, A2c=A2
-node B2 -> B2c=B2, B2b=B2
-node F1c -> F1=F1, F1b=F1
-node F2c -> F2=F2, F2b=F2
-node E1c -> E1b=E1, E1=E1
-node C2c -> C2b=C2, C2=C2
-node D2c -> D2b=D2, D2=D2
-node E2c -> E2=E2, E2b=E2
-node C1c -> C1b=C1, C1=C1
-node F3c -> F3b=F3, F3=F3
-node E3c -> E3=E3, E3b=E3
-node E3b, E2 -> E23=E2+E3
-node A1b -> A1d=A1, A1e=A1
-node E1, E2b -> E12=E1+E2
-node B2b, B1c -> B12=B1+B2
-node F2b, F1 -> F12=F1+F2
-node F1b, B1b -> BF1=B1+F1
-node C3, C2b -> C23c=C2+C3
-node D3, D2b -> D23=D2+D3
-node C2, C1b -> C12c=C1+C2
-node D2, D1 -> D12=D1+D2
-node C23c -> C23b=C2+C3, C23=C2+C3
-node F12 -> F12c=F1+F2, F12b=F1+F2
-node F2, BF1 -> BF12=B1+F1+F2
-node C12c, C1 -> C12d=C1+C2
-node D23 -> D23b=D2+D3, D23c=D2+D3
-node D12 -> D12c=D1+D2, D12b=D1+D2
-node C23b, E1b -> CE123b=C2+C3+E1
-node F12b, B12 -> EO1
-node F12c, B2c -> BF12b=B2+F1+F2
-node F3b, BF12 -> EO3
-node C12d -> C12=C1+C2, C12b=C1+C2
-node D23b -> D23d=D2+D3, D23e=D2+D3
-node D12b -> D12f=D1+D2, D12g=D1+D2
-node D12c, D23c -> D123=D1+D2+D3
-node CE123b, C12 -> CE123=C1+C2+C3+E1
-node C12b, E3 -> CE123d=C1+C2+E3
-node F3, BF12b -> EO2
+node AB2=A2+B2 -> B2=B2, A2=A2
+node AB1=A1+B1 -> B1=B1, A1=A1
+node CD3=C3+D3 -> D3=D3, C3=C3
+node EF1=E1+F1 -> E1c=E1, F1c=F1
+node CD2=C2+D2 -> D2c=D2, C2c=C2
+node CD1=C1+D1 -> D1=D1, C1c=C1
+node EF2=E2+F2 -> E2c=E2, F2c=F2
+node EF3=E3+F3 -> F3c=F3, E3c=E3
+node A1 -> A1b=A1, A1c=A1
+node B1 -> B1c=B1, B1b=B1
+node A2 -> A2m=A2, A2d=A2
+node A2m -> A2c=A2, A2b=A2
+node B2 -> B2b=B2, B2c=B2
+node F1c -> F1b=F1, F1=F1
+node F2c -> F2b=F2, F2=F2
+node E1c -> E1=E1, E1b=E1
+node C2c -> C2=C2, C2b=C2
+node D2c -> D2=D2, D2b=D2
+node E2c -> E2b=E2, E2=E2
+node C1c -> C1=C1, C1b=C1
+node F3c -> F3=F3, F3b=F3
+node E3c -> E3b=E3, E3=E3
+node E2, E3b -> E23=E2+E3
+node A1b -> A1e=A1, A1d=A1
+node E2b, E1 -> E12=E1+E2
+node B1c, B2b -> B12=B1+B2
+node F1, F2b -> F12=F1+F2
+node B1b, F1b -> BF1=B1+F1
+node C2b, C3 -> C23c=C2+C3
+node D2b, D3 -> D23=D2+D3
+node C1b, C2 -> C12c=C1+C2
+node D1, D2 -> D12=D1+D2
+node C23c -> C23=C2+C3, C23b=C2+C3
+node F12 -> F12b=F1+F2, F12c=F1+F2
+node BF1, F2 -> BF12=B1+F1+F2
+node C1, C12c -> C12d=C1+C2
+node D23 -> D23c=D2+D3, D23b=D2+D3
+node D12 -> D12b=D1+D2, D12c=D1+D2
+node E1b, C23b -> CE123b=C2+C3+E1
+node B12, F12b -> EO1
+node B2c, F12c -> BF12b=B2+F1+F2
+node BF12, F3b -> EO3
+node C12d -> C12b=C1+C2, C12=C1+C2
+node D23b -> D23e=D2+D3, D23d=D2+D3
+node D12b -> D12g=D1+D2, D12f=D1+D2
+node D23c, D12c -> D123=D1+D2+D3
+node C12, CE123b -> CE123=C1+C2+C3+E1
+node E3, C12b -> CE123d=C1+C2+E3
+node BF12b, F3 -> EO2
 node D12g -> D12d=D1+D2, D12e=D1+D2
-node A2d, D23d -> AD23=A2+D2+D3
-node A2b, D23e -> AD23b=A2+D2+D3
-node CE123, E23 -> NO2
-node CE123d, E12 -> CE123c=C1+C2+E1+E2+E3
-node AD23, D123 -> SO3
-node D12f, D12e -> D12h=D1+D2
-node A1e, D12d -> AD12b=A1+D1+D2
-node C23, CE123c -> NO1
-node A1c, D12h -> AD12=A1+D1+D2
-node A1d, AD12b -> AD12c=A1+D1+D2
-node AD23b, AD12 -> SO2
-node A2c, AD12c -> SO1
+node D23d, A2d -> AD23=A2+D2+D3
+node D23e, A2b -> AD23b=A2+D2+D3
+node E23, CE123 -> NO2
+node E12, CE123d -> CE123c=C1+C2+E1+E2+E3
+node D123, AD23 -> SO3
+node D12e, D12f -> D12h=D1+D2
+node D12d, A1e -> AD12b=A1+D1+D2
+node CE123c, C23 -> NO1
+node D12h, A1c -> AD12=A1+D1+D2
+node AD12b, A1d -> AD12c=A1+D1+D2
+node AD12, AD23b -> SO2
+node AD12c, A2c -> SO1
 prio C1, D1, D3, A1, E1, E2, E3
 # Crossings (D389): authored from the save, each line's crossings in travel order (wip/probes/e1/order.py, then three fixes in wip/probes/e1/NOTES.md).
-cross A1c: B2b, B2c, F1b, F1, F2b, C23c, F2, F3, F3b, C12d, D23d, D23e, D12c, D23c
-cross A1d: B2b, B2c, F1b, F1, F2b, F2, C23c, F3, F3b, C12d, D23b, D12c, D23c, D12h
-cross A1e: B2b, B2c, F1b, F1, F2b, F2, F3, C23c, F3b, C12d, D23b, D12c, D23c, D12e, D12f
-cross A2b: F1b, C23c, F1, F2b, F2, F3, F3b, C12d, D23d, D123
-cross A2c: F1b, F1, C23c, F2b, F2, F3, F3b, C12d, D23d, D23e, D123, AD12
-cross A2d: C23c, F1b, F1, F2b, F2, F3, F3b, C12d
-cross AD12: A2c
-cross B1b: B2b, B2c
-cross B2b: A1c, A1d, A1e, B1b
-cross B2c: A1c, A1d, A1e, B1b, F12b
-cross BF1: F12
-cross BF12: F3
-cross C1: D2, D23
-cross C12: F2c, F1, F1b, E1b, C23
-cross C12b: F2c, F1c, E1b
-cross C12d: A1e, A1d, A1c, A2c, A2b, A2d, F3b, F3
-cross C1b: D2, D23
-cross C2: D3
-cross C23: E1b, C12
-cross C23c: F3b, A1e, F3, A1d, F2, A1c, F2b, A2c, F1, A2b, F1b, A2d
-cross C2b: D3
-cross D123: A2c, D23e, A2b
-cross D12c: D23c, A1e, A1d, A1c
-cross D12e: A1e
-cross D12f: A1e
-cross D12h: A1d
-cross D2: C1b, C1
-cross D23: C1b, C1
-cross D23b: A1e, A1d
-cross D23c: D12c, A1e, A1d, A1c
-cross D23d: A1c, A2c, A2b
-cross D23e: A1c, A2c, D123
-cross D3: C2b, C2
-cross E1: E2
-cross E12: E3b
-cross E1b: E2, E3b, E3, C12b, C12, C23
-cross E1c: E2b
-cross E2: F1c, E1b, E1, E2b
-cross E23: NO1
-cross E2b: F1c, E1c, E2
-cross E3: F3b, F3, F2c, F1c, E1b
-cross E3b: F3b, F3, F2c, F1c, E1b, E12
-cross F1: C12, A2d, A2b, C23c, A2c, A1c, A1d, A1e
-cross F12: BF1
-cross F12b: B2c
-cross F1b: C12, A2d, C23c, A2b, A2c, A1c, A1d, A1e
-cross F1c: E2b, E2, E3b, E3, C12b
-cross F2: A2d, A2b, A2c, A1c, C23c, A1d, A1e
-cross F2b: A2d, A2b, A2c, C23c, A1c, A1d, A1e
-cross F2c: E3b, E3, C12b, C12
-cross F3: E3b, E3, C12d, A2d, A2b, A2c, A1c, A1d, C23c, A1e, BF12
-cross F3b: E3b, E3, C12d, A2d, A2b, A2c, A1c, A1d, A1e, C23c
-cross NO1: E23
+cross A1c: B2b<, B2c<, F1b<, F1<, F2b<, C23c>, F2<, F3<, F3b<, C12d>, D23d>, D23e>, D12c>, D23c>
+cross A1d: B2b<, B2c<, F1b<, F1<, F2b<, F2<, C23c>, F3<, F3b<, C12d>, D23b>, D12c>, D23c>, D12h>
+cross A1e: B2b<, B2c<, F1b<, F1<, F2b<, F2<, F3<, C23c>, F3b<, C12d>, D23b>, D12c>, D23c>, D12f>, D12e>
+cross A2b: F1b<, C23c>, F1<, F2b<, F2<, F3<, F3b<, C12d>, D23d>, D123>
+cross A2c: F1b<, F1<, C23c>, F2b<, F2<, F3<, F3b<, C12d>, D23d>, D23e>, D123>, AD12>
+cross A2d: C23c>, F1b<, F1<, F2b<, F2<, F3<, F3b<, C12d>
+cross AD12: A2c<
+cross B1b: B2b<, B2c<
+cross B2b: A1c>, A1d>, A1e>, B1b>
+cross B2c: A1c>, A1d>, A1e>, B1b>, F12b<
+cross BF1: F12<
+cross BF12: F3<
+cross C1: D2<, D23<
+cross C12: F2c>, F1>, F1b>, E1b>, C23<
+cross C12b: F2c>, F1c>, E1b>
+cross C12d: A1e<, A1d<, A1c<, A2c<, A2b<, A2d<, F3b>, F3>
+cross C1b: D2<, D23<
+cross C2: D3<
+cross C23: E1b>, C12>
+cross C23c: F3b>, A1e<, F3>, A1d<, F2>, A1c<, F2b>, A2c<, F1>, A2b<, F1b>, A2d<
+cross C2b: D3<
+cross D123: A2c<, D23e<, A2b<
+cross D12c: D23c<, A1e<, A1d<, A1c<
+cross D12e: A1e<
+cross D12f: A1e<
+cross D12h: A1d<
+cross D2: C1b>, C1>
+cross D23: C1b>, C1>
+cross D23b: A1e<, A1d<
+cross D23c: D12c>, A1e<, A1d<, A1c<
+cross D23d: A1c<, A2c<, A2b<
+cross D23e: A1c<, A2c<, D123>
+cross D3: C2b>, C2>
+cross E1: E2<
+cross E12: E3b<
+cross E1b: E2<, E3b<, E3<, C12b<, C12<, C23<
+cross E1c: E2b<
+cross E2: F1c>, E1b>, E1>, E2b>
+cross E23: NO1<
+cross E2b: F1c>, E1c>, E2<
+cross E3: F3b>, F3>, F2c>, F1c>, E1b>
+cross E3b: F3b>, F3>, F2c>, F1c>, E1b>, E12>
+cross F1: C12<, A2d>, A2b>, C23c<, A2c>, A1c>, A1d>, A1e>
+cross F12: BF1>
+cross F12b: B2c>
+cross F1b: C12<, A2d>, C23c<, A2b>, A2c>, A1c>, A1d>, A1e>
+cross F1c: E2b<, E2<, E3b<, E3<, C12b<
+cross F2: A2d>, A2b>, A2c>, A1c>, C23c<, A1d>, A1e>
+cross F2b: A2d>, A2b>, A2c>, C23c<, A1c>, A1d>, A1e>
+cross F2c: E3b<, E3<, C12b<, C12<
+cross F3: E3b<, E3<, C12d<, A2d>, A2b>, A2c>, A1c>, A1d>, C23c<, A1e>, BF12>
+cross F3b: E3b<, E3<, C12d<, A2d>, A2b>, A2c>, A1c>, A1d>, A1e>, C23c<
+cross NO1: E23>
