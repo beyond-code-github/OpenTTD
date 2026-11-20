@@ -71,6 +71,7 @@ struct G1Result {
 	std::vector<std::string> iis; ///< G1k: when tightened and infeasible, the conflicting rows with their terms and the tightened variables in them.
 	size_t chords = 0, conditional = 0, front_missing = 0, flex_skipped = 0; ///< G2: the chords written, those from step bends, the faces whose front search failed, the reflex vertices of flex inserts skipped.
 	size_t exempt = 0, between_reflex = 0; ///< G2: chords left out by section 9.6 (leg to leg within their node-end pieces), reflex vertices between stretches (section 9.2 says none).
+	size_t nbr_pairs = 0, nbr_rows = 0, nbr_exempt = 0, frame_open = 0; ///< G2d: neighbour row pairs written, rows written, rows exempt, group pairs that stopped at a non-antiparallel pair.
 	std::vector<std::string> chord_audit; ///< G2: the oracle's breaches of the chords on the geometry, one line each.
 };
 
@@ -1471,7 +1472,7 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 	std::vector<std::string> chord_desc; ///< G2 diagnostics (env JUNCTION_G2_DIAG): per chord, its vertex and front.
 	std::map<int, std::string> face_seq; ///< G2 diagnostics: per face, its walk at piece level.
 	const bool g2_diag = std::getenv("JUNCTION_G2_DIAG") != nullptr;
-	if ((off & 33554432) == 0) {
+	if ((off & 33554432) == 0 || (off & 2147483648U) != 0) {
 		using WK = WallPiece::Kind;
 		std::set<uint32_t> stub_vars;
 		for (const auto &[leg, sv] : stub_start) stub_vars.insert(sv.first);
@@ -1701,7 +1702,7 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 				if (z != UINT32_MAX) r.conditional++;
 				chords.push_back(std::move(ch));
 			};
-			for (size_t n = 0; n < nw; n++) {
+			for (size_t n = 0; n < nw && (off & 33554432) == 0; n++) {
 				const WallPiece &in = wall[n], &out = wall[(n + 1) % nw];
 				const int turn = lifted(n + 1) - lifted(n);
 				if (in.kind == WK::Box || out.kind == WK::Box || in.track != out.track || in.stretch != out.stretch) {
@@ -1731,6 +1732,96 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 					continue;
 				}
 				add_chord(out.start, vnode, lifted(n), n + 1, UINT32_MAX);
+			}
+			if ((off & 2147483648U) != 0) {
+				/* G2d (off 2147483648, D381 first half): neighbour rows in frames. Parallel tracks either side of a section (a box edge, or a deck's Part between two crossing corners) are one lane apart or more, group by group outward, read from the map and the headings only. */
+				const auto has_crossing = [&](uint32_t x, uint32_t y) {
+					for (const PlanarCrossing &c : map.crossings) if ((c.a == x && c.b == y) || (c.a == y && c.b == x)) return true;
+					return false;
+				};
+				const auto piece_of = [&](size_t idx) { return te[wall[idx % nw].track].elems[wall[idx % nw].elem].piece; };
+				const auto end_of = [&](size_t idx) {
+					const WallPiece &p = wall[idx % nw];
+					const bool forward = ((p.heading - te[p.track].elems[p.elem].heading) % 8 + 8) % 8 == 0;
+					return position(p.track, forward ? p.elem + 1 : p.elem);
+				};
+				for (size_t i = 0; i < nw; i++) {
+					size_t a_idx, b_idx, nsec = 1;
+					if (wall[i].kind == WK::Box) {
+						if (wall[(i + nw - 1) % nw].kind == WK::Box) continue;
+						size_t last = i;
+						while (wall[(last + 1) % nw].kind == WK::Box && nsec < nw) { last++; nsec++; }
+						if (nsec >= nw) continue;
+						a_idx = (i + nw - 1) % nw;
+						b_idx = (last + 1) % nw;
+					} else if (wall[i].kind == WK::Part) {
+						a_idx = (i + nw - 1) % nw;
+						b_idx = (i + 1) % nw;
+						const uint32_t sa = wall[a_idx].track, sb = wall[b_idx].track, ss = wall[i].track;
+						if (sa == UINT32_MAX || sb == UINT32_MAX || sa == ss || sb == ss || sa == sb) continue;
+						if (!has_crossing(sa, ss) || !has_crossing(sb, ss)) continue;
+					} else {
+						continue;
+					}
+					const uint32_t ta = wall[a_idx].track, tb = wall[b_idx].track;
+					if (ta == UINT32_MAX || tb == UINT32_MAX || ta == tb) continue;
+					/* Groups outward: A backwards (lo..hi in wall order), B forwards. */
+					struct Group {
+						size_t lo, hi; ///< Wall indices in walk order (lo may be hi - n + 1 across the cycle start: taken mod nw).
+						int heading;
+					};
+					const auto heading_of = [&](size_t lo, size_t count) {
+						for (size_t q = 0; q < count; q++) if (wall[(lo + q) % nw].kind == WK::Part) return wall[(lo + q) % nw].heading;
+						throw std::runtime_error(fmt::format("STOP G2d face {} a group has no Part element: {}", face.face, face_seq.contains(face.face) ? face_seq[face.face] : std::string("(set JUNCTION_G2_DIAG)")));
+					};
+					std::vector<Group> ga, gb;
+					size_t used = 0;
+					for (size_t cur = a_idx, left = nw - nsec; left > 0;) {
+						if (wall[cur].track != ta) break;
+						size_t count = 1;
+						while (count < left && wall[(cur + nw - count) % nw].track == ta && piece_of((cur + nw - count) % nw) == piece_of(cur)) count++;
+						const size_t lo = (cur + nw - (count - 1)) % nw;
+						ga.push_back({lo, cur, heading_of(lo, count)});
+						left -= count;
+						used += count;
+						cur = (lo + nw - 1) % nw;
+					}
+					for (size_t cur = b_idx, left = nw - nsec - used; left > 0;) {
+						if (wall[cur].track != tb) break;
+						size_t count = 1;
+						while (count < left && wall[(cur + count) % nw].track == tb && piece_of((cur + count) % nw) == piece_of(cur)) count++;
+						gb.push_back({cur, (cur + count - 1) % nw, heading_of(cur, count)});
+						left -= count;
+						cur = (cur + count) % nw;
+					}
+					for (size_t k = 0; k < ga.size() && k < gb.size(); k++) {
+						if (((gb[k].heading - ga[k].heading) % 8 + 8) % 8 != 4) {
+							r.frame_open++;
+							break;
+						}
+						const int h = ((ga[k].heading % 8) + 8) % 8;
+						const auto &nrm = PlanarModel::STEP[(h + 6) % 8];
+						const std::array<Lin, 2> a_near = end_of(ga[k].hi), a_far = wall[ga[k].lo].start;
+						const std::array<Lin, 2> b_near = wall[gb[k].lo].start, b_far = end_of(gb[k].hi);
+						bool wrote = false;
+						for (const bool near : {true, false}) {
+							if (ta == tb) { r.nbr_exempt++; continue; }
+							if (!near && node_of(wall[ga[k].lo]) != SIZE_MAX && node_of(wall[ga[k].lo]) == node_of(wall[gb[k].hi])) {
+								r.nbr_exempt++;
+								continue;
+							}
+							Lin side;
+							for (size_t axis = 0; axis < 2; axis++) {
+								side.Add(near ? b_near[axis] : b_far[axis], nrm[axis]);
+								side.Add(near ? a_near[axis] : a_far[axis], -nrm[axis]);
+							}
+							row(side, 2, INF, fmt::format("nbr f{} {} {}", face.face, r.nbr_pairs, near ? "near" : "far"));
+							r.nbr_rows++;
+							wrote = true;
+						}
+						if (wrote) r.nbr_pairs++;
+					}
+				}
 			}
 			if (missing) r.front_missing++;
 		}
@@ -1854,6 +1945,12 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 		if (g2_diag) {
 			std::set<int> faces;
 			for (const std::string &t : unique) {
+				if (t.starts_with("nbr f")) {
+					int fc = 0;
+					for (size_t at = 5; at < t.size() && t[at] >= '0' && t[at] <= '9'; at++) fc = fc * 10 + (t[at] - '0');
+					faces.insert(fc);
+					continue;
+				}
 				if (!t.starts_with("chord f")) continue;
 				size_t ci = 0;
 				for (size_t at = t.find(' ', 7) + 1; at < t.size() && std::isdigit(static_cast<unsigned char>(t[at])); at++) ci = ci * 10 + static_cast<size_t>(t[at] - '0');
@@ -2738,14 +2835,14 @@ TEST_CASE("planar probe: G2 chords on T2", "[junction][planar][planarshape][.pro
 	const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
 	REQUIRE(shape.variants.size() >= 3);
 	const uint32_t base = 2097152U | 16777216U;
-	const std::pair<const char *, uint32_t> runs[] = {{"chain+allkinds", 268435456U | 1073741824U}, {"chain+allkinds+flexchords", 268435456U | 536870912U | 1073741824U}};
+	const std::pair<const char *, uint32_t> runs[] = {{"chain+allkinds", 268435456U | 1073741824U}, {"chain+allkinds+nbr", 268435456U | 1073741824U | 2147483648U}, {"nbr only", 33554432U | 2147483648U}};
 	for (size_t i = 0; i < 1; i++) {
 		const PlanarShapeVariant &v = shape.variants[i];
 		const std::string &tag = v.structure.tag;
 		for (const auto &[run, extra] : runs) {
 			const G1Result r = SolveG1(topology, spec, v, base | extra);
-			std::cout << fmt::format("G2 T2 {} run={} solved={} ms={:.1f} steps={} W={} H={} clashes={} same_channel={} face={} noface={} curve={} consistency={} no_chain={} chords={} conditional={} front_missing={} flex_skipped={} exempt={} between_reflex={} why={}\n", tag, run, r.solved ? 1 : 0, r.ms, r.step_lanes, r.width_tiles, r.height_tiles,
-					r.clashes.size(), r.same_channel, r.face, r.noface, r.curve_breaches.size(), r.consistency, r.no_chain, r.chords, r.conditional, r.front_missing, r.flex_skipped, r.exempt, r.between_reflex, r.why.substr(0, 300));
+			std::cout << fmt::format("G2 T2 {} run={} solved={} ms={:.1f} steps={} W={} H={} clashes={} same_channel={} face={} noface={} curve={} consistency={} no_chain={} chords={} conditional={} front_missing={} flex_skipped={} exempt={} between_reflex={} nbr_pairs={} nbr_rows={} nbr_exempt={} frame_open={} why={}\n", tag, run, r.solved ? 1 : 0, r.ms, r.step_lanes, r.width_tiles, r.height_tiles,
+					r.clashes.size(), r.same_channel, r.face, r.noface, r.curve_breaches.size(), r.consistency, r.no_chain, r.chords, r.conditional, r.front_missing, r.flex_skipped, r.exempt, r.between_reflex, r.nbr_pairs, r.nbr_rows, r.nbr_exempt, r.frame_open, r.why.substr(0, 300));
 			for (const std::string &line : r.clashes) std::cout << fmt::format("G2C T2 {} run={} {}\n", tag, run, line);
 			for (const std::string &line : r.chord_audit) std::cout << fmt::format("G2 AUDIT T2 {} run={} {}\n", tag, run, line);
 		}
