@@ -46,7 +46,7 @@ tunnel T44 D12c: D23c
 tunnel T45 A2b: D123
 tunnel T46 D23e: D123
 tunnel T47 A1d: D12h
-tunnel T48 A1e: D12e, D12f
+tunnel T48 A1e: D12f, D12e
 tunnel T50 A2c: AD12
 group G02: T2, T3, T4
 group G03: T5, T6
@@ -66,7 +66,7 @@ group G21: T37, T39
 group G24: T42, T43
 group G26: T45, T46
 group G27: T47, T48
-copy D3 over T30, T32
+# copy D3 over T30, T32 (left out, D392)
 straight AB2: B2
 straight AB1: B1
 straight CD3: C3
