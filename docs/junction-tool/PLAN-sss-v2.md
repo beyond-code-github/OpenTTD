@@ -16,7 +16,7 @@ Each epic: goal, scope, exit criteria (tests at the layer's output, D367), and i
 - DONE (2026-11-20): authored crossings with direction marks (parser, line sides), LoadPlanarStructureVariant, the oracle on a written-down hub (D390, D391, D394), the 197 data (tools/junction/topologies: psg197.txt, .structure.txt, .shape.txt), today's Shape on it (114 ms, clean), V's real shape through Shape's checker (LoadPlanarShapeVariant). Findings and the steps card: wip/CARD-E1d-psg197-variant.md.
 - Exit met: the 197 variant keeps P1-P8; Shape measured; T2/T3/LL2 unchanged (gate 702).
 
-## E1x Shape rules from 197 (next, before E3's gadget work)
+## E1x Shape rules from 197 (DONE 2026-11-21: D396, D397)
 - Card: wip/CARD-E1x.md (steps E1x-1..3, defaults D396).
 - H11 per run (D388 c): crossers parallel within a run of adjacent crossers, not across a whole long span; test: V's 197 shape passes H11 (20 structures today).
 - Steps on spines (D395, tried as an experiment): bend pairs on free-face spine stretches, sized by Slots; test: V's 197 shape at Shape's level keeps its 9 open-face steps and passes H1.
