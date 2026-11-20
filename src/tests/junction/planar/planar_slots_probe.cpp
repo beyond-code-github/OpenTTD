@@ -69,6 +69,7 @@ struct G1Result {
 	std::vector<std::string> steps_text; ///< G1x: each used step place: track, stretch, piece, heading, lanes, what bounds the stretch.
 	std::map<uint32_t, int> forced; ///< G1k: the variables whose parity the mod-2 system forces.
 	std::vector<std::string> iis; ///< G1k: when tightened and infeasible, the conflicting rows with their terms and the tightened variables in them.
+	size_t sync_flex = 0, sync_forced_zero = 0; ///< SPEC-slots 11: beside pieces whose flex follows the parent's, and those whose flex was forced to 0.
 	size_t chords = 0, conditional = 0, front_missing = 0, flex_skipped = 0; ///< G2: the chords written, those from step bends, the faces whose front search failed, the reflex vertices of flex inserts skipped.
 	size_t exempt = 0, between_reflex = 0; ///< G2: chords left out by section 9.6 (leg to leg within their node-end pieces), reflex vertices between stretches (section 9.2 says none).
 	size_t rigid_pieces_no_step = 0, rigid_pieces_no_flex = 0; ///< G2e: step places and flex inserts removed from rigid beside pieces.
@@ -482,6 +483,8 @@ static std::vector<std::string> Mod2Check(const std::vector<Mod2Row> &rows, cons
 
 /** The solve's time limit in seconds, and the count of solves that ended neither optimal nor infeasible (the G1h filter reads both). */
 static double g1_time_limit = 15.0;
+static bool g2_sync_flex = false; ///< SPEC-slots 11 first cut: on rigid pieces a beside track's flex inserts follow its parent's (same lengths, insert vertices one lane apart on both headings).
+static bool g2_exact_coverage = false; ///< D384: a prio row is exactly its coverage long.
 static bool g2_rigid_keep_flex = false; ///< G2f: rigid beside pieces keep their flex inserts (steps still removed).
 static bool g2_rigid_beside = false; ///< G2e: beside tracks and their parents take no sideways moves and are held a lane apart at both ends of each piece.
 static size_t g1_timeouts = 0;
@@ -906,6 +909,7 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 	int cost_steps = 0;
 	(void)cost_steps;
 	std::vector<std::vector<Place>> track_places(nt);
+	std::set<std::pair<uint32_t, size_t>> sync_flexed; ///< SPEC-slots 11: shared pieces that have their one flex pair.
 	std::vector<std::pair<uint32_t, uint32_t>> cusp_vars; ///< Unused marker, kept empty.
 	std::set<uint32_t> step_vars; ///< Every p, m and cusp variable, for the lane count.
 	std::set<uint32_t> insert_vars; ///< G1u: the lane variables of diagonal inserts.
@@ -1007,7 +1011,9 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 				const bool lattice = k >= 1 && k < map.events[t].size() && ((off & 16777216) != 0 || (span_of_crossing.contains(map.events[t][k - 1]) && span_of_crossing.contains(map.events[t][k])));
 				const bool rigid = g2_rigid_beside && rigid_piece.contains({t, j});
 				const bool flex_wanted = (off & 2097152) != 0 && h % 2 != 0 && !in_span.contains({t, k}) && !lattice;
-				const bool flex_place = flex_wanted && (!rigid || g2_rigid_keep_flex);
+				/* SPEC-slots 11 first cut: one flex pair per shared piece (its first cell that allows one), so a beside piece and its parent piece pair up. */
+				const bool flex_place = flex_wanted && (!rigid || g2_rigid_keep_flex || (g2_sync_flex && !sync_flexed.contains({t, j})));
+				if (flex_place && rigid && g2_sync_flex) sync_flexed.insert({t, j});
 				if (flex_wanted && rigid) r.rigid_pieces_no_flex++;
 				const bool insert_place = insert && !place_blocked && !in_span.contains({t, k});
 				const bool place_wanted = place_piece == static_cast<int>(j) || every_piece || insert_place;
@@ -1297,6 +1303,38 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 						row(dot, 2.0 * s, 2.0 * s, tag);
 					}
 				}
+				if (g2_sync_flex) {
+					/* SPEC-slots 11: the beside piece's flex inserts follow the parent piece's: equal lengths, each insert's first vertex one lane from the parent's on both headings that meet there. */
+					const auto flex_of = [&](uint32_t t, size_t piece) {
+						std::vector<size_t> idx;
+						for (size_t i = te[t].piece_begin[piece]; i < te[t].piece_end[piece]; i++) if (te[t].elems[i].flex) idx.push_back(i);
+						return idx;
+					};
+					const std::vector<size_t> fb = flex_of(b, j), fpar = flex_of(pt, jj);
+					const size_t si = eb.piece_end[j] - 1, spi = te[pt].piece_end[jj] - 1;
+					const int s = map.Side(b, static_cast<uint32_t>(eb.elems[si].stretch), pt, static_cast<uint32_t>(te[pt].elems[spi].stretch));
+					if (fb.size() == 2 && fpar.size() == 2 && s != 0) {
+						for (size_t q = 0; q < 2; q++) {
+							const Elem &ebq = eb.elems[fb[q]], &epq = te[pt].elems[fpar[q]];
+							row(lin({{ebq.var, 1}, {epq.var, -1}}), 0, 0, fmt::format("beside {} piece {} flex len", map.tracks[b].name, j));
+							const std::array<Lin, 2> bv = position(b, fb[q]), pv = position(pt, fpar[q]);
+							for (const int hh : {h, ebq.heading}) {
+								const auto &nrm = PlanarModel::STEP[(hh + 2) % 8];
+								Lin d;
+								for (size_t axis = 0; axis < 2; axis++) {
+									d.Add(bv[axis], nrm[axis]);
+									d.Add(pv[axis], -nrm[axis]);
+								}
+								row(d, 2.0 * s, 2.0 * s, fmt::format("beside {} piece {} flex vertex", map.tracks[b].name, j));
+							}
+						}
+						r.sync_flex++;
+					} else {
+						for (const size_t i : fb) row(lin({{eb.elems[i].var, 1}}), 0, 0, fmt::format("beside {} piece {} flex off", map.tracks[b].name, j));
+						for (const size_t i : fpar) row(lin({{te[pt].elems[i].var, 1}}), 0, 0, fmt::format("beside {} piece {} flex off", map.tracks[b].name, j));
+						if (!fb.empty() || !fpar.empty()) r.sync_forced_zero++;
+					}
+				}
 			}
 			continue;
 		}
@@ -1397,7 +1435,7 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 
 	/* 10. Coverage of the prio rows. */
 	for (uint32_t t = 0; t < nt; t++) {
-		if (map.tracks[t].name.starts_with("prio:")) row(travel(t, 0, te[t].elems.size()), rules.coverage, INF, fmt::format("coverage {}", map.tracks[t].name));
+		if (map.tracks[t].name.starts_with("prio:")) row(travel(t, 0, te[t].elems.size()), rules.coverage, g2_exact_coverage ? rules.coverage : INF, fmt::format("coverage {}", map.tracks[t].name));
 	}
 
 	/* 11. Bays: a non-prio route from its last topology split or port to each topology merge. */
@@ -2937,15 +2975,19 @@ TEST_CASE("planar probe: G2f rigid beside family filter on T2", "[junction][plan
 		if (proved) off |= 1U << b;
 		std::cout << fmt::format("G2F {} drop {} -> {} ms={:.0f}\n", v.structure.tag, family_names[b], r.solved ? "solved (needed)" : (proved ? "infeasible (dropped)" : "timeout (kept)"), r.ms);
 	}
-	for (const int probe : {0, 1, 2}) {
-	g2_rigid_keep_flex = probe == 2;
+	for (const int probe : {3, 4, 5, 6}) {
+	g2_rigid_keep_flex = probe == 2 || probe == 4;
+	g2_exact_coverage = probe >= 3 && probe != 6;
+	g2_sync_flex = probe >= 5;
 	const G1Result r = SolveG1(topology, spec, v, off | (probe == 1 ? 64U : 0U));
-	std::cout << fmt::format("G2F probe={} ", probe);
+	std::cout << fmt::format("G2F probe={} sync={} forced0={} ", probe, r.sync_flex, r.sync_forced_zero);
 	std::cout << fmt::format("G2F {} off={} solved={} rows={} ms={:.0f} steps={} W={} H={} clashes={} same_channel={} face={} noface={} curve={} why={}\n", v.structure.tag, off, r.solved ? 1 : 0, r.iis.size(), r.ms, r.step_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.same_channel, r.face, r.noface, r.curve_breaches.size(), r.why.substr(0, 300));
 	for (const std::string &line : r.clashes) std::cout << fmt::format("G2F CLASH p{} {}\n", probe, line);
 	if (probe == 0) for (const std::string &line : r.iis) std::cout << fmt::format("G2F IIS {}\n", line);
 	}
 	g2_rigid_keep_flex = false;
+	g2_exact_coverage = false;
+	g2_sync_flex = false;
 	g2_rigid_beside = false;
 	g1_time_limit = limit;
 }
