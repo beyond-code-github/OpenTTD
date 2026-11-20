@@ -302,7 +302,7 @@ struct ClosureResult {
  * Ask whether the headings of a shaped variant can close with positive lengths (the lengths-only LP of H2).
  * Per point (x, y); a parallel leg of a node is offset sideways from the node point by a free w >= 0 (the cusp opening Slots owns, SPEC-shape section 3 hand-on (1)); per piece a length of at least 1, split into one part per stretch the piece lies on, so a piece that holds events is cut at them (the reading the orchestrator ruled intended, not the literal sum over a shared piece); the box is [0, W] x [0, Hb].
  * @param v The shaped variant.
- * @param families Which quantities of Slots' least answer to fix: bit 1 one lane at each cusp, bit 2 one tile per deck step, bit 4 the pinned gaps at the ports.
+ * @param families Which quantities of Slots' least answer to fix: bit 1 one lane at each cusp, bit 2 one tile per deck step, bit 4 the pinned gaps at the ports, bit 8 a free sideways step in every stretch.
  * @return The answer.
  */
 static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
@@ -346,6 +346,12 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 				const auto &step = PlanarModel::STEP[((s.pieces[j] % 8) + 8) % 8];
 				dx.emplace_back(part, -step[0]);
 				dy.emplace_back(part, -step[1]);
+			}
+			if (families & 8) {
+				const uint32_t side = lp.AddVariable(-JunctionMilp::INF, JunctionMilp::INF, 0, false);
+				const auto &right = PlanarModel::Right(((s.pieces[first] % 8) + 8) % 8);
+				dx.emplace_back(side, -right[0]);
+				dy.emplace_back(side, -right[1]);
 			}
 			row(dx, 0, 0, fmt::format("stretch {} {} x {}", t, k, map.tracks[t].name));
 			row(dy, 0, 0, fmt::format("stretch {} {} y {}", t, k, map.tracks[t].name));
@@ -747,6 +753,20 @@ TEST_CASE("planar probe: closure with Slots' least exact answer on T1-T3 and LL2
 				for (const int piece : v.tracks[t].pieces) pieces += fmt::format("{},", ((piece % 8) + 8) % 8);
 				std::cout << fmt::format("X2C {} TRACK {} pieces={} events={}\n", name, map.tracks[t].name, pieces, map.events[t].size());
 			}
+		}
+		for (const int mask : {8, 12, 9, 10, 15}) {
+			size_t closes = 0;
+			std::string why;
+			for (const PlanarShapeVariant &v : shape.variants) {
+				const ClosureResult c = ClosureLp(v, mask);
+				if (c.closes) {
+					closes++;
+				} else if (mask == 15 && why.empty() && (name == "T2" || name == "T3")) {
+					why = fmt::format("X2D {} {} mask=15 WHY {}\n", name, v.structure.tag, c.why);
+				}
+			}
+			std::cout << fmt::format("X2D {} mask={} closes={}/{}\n", name, mask, closes, shape.variants.size());
+			std::cout << why;
 		}
 		if (name == "T1" && !shape.variants.empty()) {
 			const PlanarShapeVariant &v = shape.variants.front();
