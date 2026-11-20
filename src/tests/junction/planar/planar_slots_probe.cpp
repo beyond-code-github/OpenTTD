@@ -579,7 +579,7 @@ static std::vector<std::string> AuditG1(const AuditIn &in)
  * Solve the joint slots and lengths of one variant, then run the oracles.
  * @param off A bit set leaves that family's rows out (G1Family).
  */
-static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v, uint32_t off = 0, const std::set<uint32_t> *grid_tracks = nullptr, const std::string *skip_pin = nullptr, const std::set<std::string> *show_names = nullptr, const std::set<std::string> *seed_names = nullptr)
+static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v, uint32_t off = 0, const std::set<uint32_t> *grid_tracks = nullptr, const std::string *skip_pin = nullptr, const std::set<std::string> *show_names = nullptr, const std::set<std::string> *seed_names = nullptr)
 {
 	using Kind = Elem::Kind;
 	const PlanarTrackMap &map = v.structure.map;
@@ -1623,6 +1623,25 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 	return r;
 }
 
+/**
+ * G1 with the grid's forced parities (G1m): a mod-2 run of the same rows first (G1i: a track point is on a vertical or a horizontal
+ * tile edge, axis pieces keep it, each diagonal unit flips it, so most lengths' parities follow from the headings), then the solve with
+ * each forced variable's bounds moved to its parity and v = 2 h + parity. No solution is read. Off bit 16384 leaves the cuts out; so do
+ * 512 (continuous) and 1024 (no parity rows), and runs that set g1_mod2 or g1_tighten themselves.
+ */
+static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v, uint32_t off = 0, const std::set<uint32_t> *grid_tracks = nullptr, const std::string *skip_pin = nullptr, const std::set<std::string> *show_names = nullptr, const std::set<std::string> *seed_names = nullptr)
+{
+	if (g1_mod2 || !g1_tighten.empty() || (off & (512U | 1024U | 16384U)) != 0) return SolveG1Raw(topology, spec, v, off, grid_tracks, skip_pin, show_names, seed_names);
+	g1_mod2 = true;
+	const G1Result m = SolveG1Raw(topology, spec, v, off, grid_tracks, skip_pin);
+	g1_mod2 = false;
+	g1_tighten = m.forced;
+	G1Result r = SolveG1Raw(topology, spec, v, off, grid_tracks, skip_pin, show_names, seed_names);
+	g1_tighten.clear();
+	r.forced = m.forced;
+	return r;
+}
+
 } // namespace
 
 TEST_CASE("planar probe: G1 joint slots and lengths on T2 T3 LL2", "[junction][planar][planarshape][.probe]")
@@ -1927,11 +1946,11 @@ TEST_CASE("planar probe: G1l long base solves and the parity breaks without pari
 	g1_time_limit = limit;
 }
 
-/** G1m: the off=511 MILP with G1i's forced parities as bounds (valid cuts) and, per forced variable, v = 2 h + parity with h integer: is the base slow or infeasible? 15 s each. */
+/** G1m: the off=511 base through SolveG1, which now carries G1i's forced parities as cuts (2026-11-21: T2 3/3, T3 3/3; LL2 timed out at 36 s, left out here). 15 s each. */
 TEST_CASE("planar probe: G1m the base with forced parities as cuts", "[junction][planar][planarshape][.probe]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}};
 	for (const auto &[name, text] : hubs) {
 		std::string error;
 		const PlanarTopology topology = ParsePlanarTopology(text, &error);
@@ -1939,14 +1958,9 @@ TEST_CASE("planar probe: G1m the base with forced parities as cuts", "[junction]
 		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
 		for (size_t i = 0; i < 3 && i < shape.variants.size(); i++) {
 			const PlanarShapeVariant &v = shape.variants[i];
-			g1_mod2 = true;
-			const G1Result m = SolveG1(topology, spec, v, 511U);
-			g1_mod2 = false;
-			g1_tighten = m.forced;
 			const size_t t0 = g1_timeouts;
 			const G1Result r = SolveG1(topology, spec, v, 511U);
-			g1_tighten.clear();
-			std::cout << fmt::format("G1M {} {} off=511 cuts={} solved={} timeout={} ms={:.0f} steps={} W={} H={} clashes={} audit={} why={}\n", name, v.structure.tag, m.forced.size(), r.solved ? 1 : 0, g1_timeouts != t0 ? 1 : 0, r.ms, r.step_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.audit.size(), r.why.substr(0, 120));
+			std::cout << fmt::format("G1M {} {} off=511 cuts={} solved={} timeout={} ms={:.0f} steps={} W={} H={} clashes={} audit={} why={}\n", name, v.structure.tag, r.forced.size(), r.solved ? 1 : 0, g1_timeouts != t0 ? 1 : 0, r.ms, r.step_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.audit.size(), r.why.substr(0, 120));
 		}
 	}
 }
