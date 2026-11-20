@@ -221,7 +221,7 @@ TEST_CASE("planar: PSG 197 parses with its authored crossings", "[junction][plan
 	const PlanarTopology t = Parse(text);
 	CHECK(t.crossings_authored);
 	CHECK(t.lines.size() == 101);
-	CHECK(t.crossings.size() == 121);
+	CHECK(t.crossings.size() == 122);
 	for (const auto &[name, partners] : CrossStatements(text)) {
 		const uint32_t l = PlanarLineByName(t, name);
 		REQUIRE(l != UINT32_MAX);
