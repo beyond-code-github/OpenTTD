@@ -59,6 +59,10 @@ struct G1Result {
 	int width_tiles, height_tiles; ///< The box in tiles.
 	std::vector<std::string> audit; ///< AuditG1's breaches, one line each.
 	std::vector<std::string> mod2; ///< G1i: the mod-2 check's report, when g1_mod2 is set.
+	std::vector<std::string> forbidden_text; ///< G1k: the step places the grid forbids, one line each.
+	std::set<uint32_t> forbidden; ///< G1k: their binaries.
+	std::map<uint32_t, int> forced; ///< G1k: the variables whose parity the mod-2 system forces.
+	std::vector<std::string> iis; ///< G1k: when tightened and infeasible, the conflicting rows with their terms and the tightened variables in them.
 };
 
 /** A linear expression. */
@@ -175,6 +179,15 @@ static std::string G1Kind(const std::string &tag)
 /** G1i: the row kinds SolveG1 leaves out (the kind filter). */
 static std::set<std::string> g1_skip_kinds;
 
+/** G1k: variable -> forced parity; when set, SolveG1 moves each such variable's integer bounds inward to that parity. */
+static std::map<uint32_t, int> g1_tighten;
+
+/** G1k: variables whose upper bound SolveG1 sets to 0 (step binaries of places the grid forbids). */
+static std::set<uint32_t> g1_zero;
+
+/** G1k: the variable names of the last mod-2 run. */
+static std::map<uint32_t, std::string> g1_names;
+
 /** G1i: the row kinds a mod-2 run saw. */
 static std::set<std::string> g1_kinds_seen;
 
@@ -189,7 +202,7 @@ static bool g1_mod2 = false;
  * contradiction; each contradiction is shrunk by a deletion filter to a minimal set of rows, reported, removed, and the
  * elimination is run again, up to `max_certificates`.
  */
-static std::vector<std::string> Mod2Check(const std::vector<Mod2Row> &rows, const std::vector<Mod2Var> &vars, const std::map<uint32_t, int> &fixed, const std::map<uint32_t, std::string> &names, size_t max_certificates)
+static std::vector<std::string> Mod2Check(const std::vector<Mod2Row> &rows, const std::vector<Mod2Var> &vars, const std::map<uint32_t, int> &fixed, const std::map<uint32_t, std::string> &names, size_t max_certificates, std::map<uint32_t, int> *forced = nullptr)
 {
 	std::vector<std::string> out;
 	const auto is_int = [](double d) { return std::abs(d - std::round(d)) < 1e-9; };
@@ -285,6 +298,42 @@ static std::vector<std::string> Mod2Check(const std::vector<Mod2Row> &rows, cons
 		std::vector<size_t> cert = contradiction(live);
 		if (cert.empty()) {
 			out.push_back(fmt::format("consistent after {} certificates", n));
+			if (forced != nullptr && n == 0) {
+				/* The variables whose parity is the same in every solution: their unit vector lies in the row space. Pivot c's lowest bit is c. */
+				std::vector<std::vector<uint64_t>> piv(column.size());
+				std::vector<int> piv_rhs(column.size(), -1);
+				for (const Eq &e : eqs) {
+					std::vector<uint64_t> bits(nw, 0);
+					for (const uint32_t v : e.odd) { const uint32_t c = column.at(v); bits[c / 64] ^= 1ULL << (c % 64); }
+					int rhs = e.rhs;
+					for (size_t w = 0; w < nw; w++) {
+						bool placed = false;
+						while (bits[w] != 0) {
+							const uint32_t c = static_cast<uint32_t>(w * 64 + std::countr_zero(bits[w]));
+							if (piv_rhs[c] < 0) { piv[c] = bits; piv_rhs[c] = rhs; placed = true; break; }
+							for (size_t i = 0; i < nw; i++) bits[i] ^= piv[c][i];
+							rhs ^= piv_rhs[c];
+						}
+						if (placed) break;
+					}
+				}
+				for (const auto &[v, c0] : column) {
+					std::vector<uint64_t> bits(nw, 0);
+					bits[c0 / 64] = 1ULL << (c0 % 64);
+					int rhs = 0;
+					bool in_span = true;
+					for (size_t w = 0; w < nw && in_span; w++) {
+						while (bits[w] != 0) {
+							const uint32_t c = static_cast<uint32_t>(w * 64 + std::countr_zero(bits[w]));
+							if (piv_rhs[c] < 0) { in_span = false; break; }
+							for (size_t i = 0; i < nw; i++) bits[i] ^= piv[c][i];
+							rhs ^= piv_rhs[c];
+						}
+					}
+					if (in_span) (*forced)[v] = rhs;
+				}
+				out.push_back(fmt::format("forced parities: {} of {} unknowns", forced->size(), column.size()));
+			}
 			break;
 		}
 		/* Deletion filter: drop each row whose removal keeps the set contradictory. */
@@ -533,7 +582,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 	JunctionMilp lp;
 	const double INF = JunctionMilp::INF;
 	std::vector<std::string> tags;
-	std::vector<Mod2Row> mod2_rows;
+	std::vector<Mod2Row> mod2_rows, all_rows;
 	std::vector<Mod2Var> mod2_vars;
 	std::map<uint32_t, std::string> mod2_names;
 	const auto row = [&](const Lin &e, double lower, double upper, const std::string &tag) {
@@ -547,12 +596,24 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		}
 		lp.AddRow(terms, lower - e.constant, upper - e.constant);
 		tags.push_back(tag);
+		if (!g1_tighten.empty()) all_rows.push_back({terms, lower - e.constant, upper - e.constant, tag});
 		if (g1_mod2) {
 			mod2_rows.push_back({terms, lower - e.constant, upper - e.constant, tag});
 			g1_kinds_seen.insert(G1Kind(tag));
 		}
 	};
+	uint32_t var_count = 0;
+	std::vector<std::pair<uint32_t, std::string>> tightened;
 	const auto var = [&](double lower, double upper, double cost, bool integer = true) {
+		if (auto it = g1_tighten.find(var_count); it != g1_tighten.end()) {
+			const auto odd = [](double d) { return static_cast<int>(((std::llround(d) % 2) + 2) % 2); };
+			const double lo = lower, hi = upper;
+			if (lower != -INF && odd(lower) != it->second) lower += 1;
+			if (upper != INF && odd(upper) != it->second) upper -= 1;
+			if (lo != lower || hi != upper) tightened.emplace_back(var_count, fmt::format("[{:g},{:g}]->[{:g},{:g}]", lo, hi, lower, upper));
+		}
+		if (g1_zero.contains(var_count)) upper = 0;
+		var_count++;
 		const uint32_t v = lp.AddVariable(lower, upper, cost, integer && (off & 512) == 0);
 		if (g1_mod2) {
 			if (mod2_vars.size() <= v) mod2_vars.resize(v + 1);
@@ -1198,7 +1259,31 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 			}
 		}
 		const auto start = std::chrono::steady_clock::now();
-		r.mod2 = Mod2Check(mod2_rows, mod2_vars, fixed, mod2_names, 8);
+		std::map<uint32_t, int> forced;
+		r.mod2 = Mod2Check(mod2_rows, mod2_vars, fixed, mod2_names, 8, &forced);
+		for (const auto &[v, value] : fixed) forced.erase(v);
+		r.forced = forced;
+		g1_names = mod2_names;
+		/* Per place and side: the grid with only that step on. A certificate means the grid forbids it there. */
+		for (uint32_t t = 0; t < nt; t++) {
+			for (const Place &pl : track_places[t]) {
+				for (int side = 0; side < 2; side++) {
+					std::map<uint32_t, int> one = fixed;
+					const uint32_t z = side == 0 ? pl.zp : pl.zm, lanes = side == 0 ? pl.p : pl.m;
+					one[z] = 1;
+					one.erase(lanes);
+					const std::vector<std::string> rep = Mod2Check(mod2_rows, mod2_vars, one, mod2_names, 1);
+					if (rep.size() < 2 || !rep[1].starts_with("certificate")) continue;
+					r.forbidden.insert(z);
+					std::string line = fmt::format("{} stretch {} piece {} {}:", map.tracks[t].name, pl.stretch, pl.piece, side == 0 ? "P" : "M");
+					for (size_t i = 2; i < rep.size(); i++) line += " |" + rep[i];
+					r.forbidden_text.push_back(line);
+				}
+			}
+		}
+		size_t places = 0;
+		for (const auto &pls : track_places) places += pls.size();
+		r.mod2.push_back(fmt::format("step places {} sides {}, forbidden by the grid {}", places, 2 * places, r.forbidden.size()));
 		r.ms = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count()) / 1000.0;
 		r.why = "mod2";
 		return r;
@@ -1213,7 +1298,19 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 	r.why = r.solved ? "Optimal" : (status == JunctionMilp::Status::Infeasible ? "Infeasible" : "Error");
 	if (status == JunctionMilp::Status::Infeasible) {
 		std::set<std::string> unique;
-		for (const uint32_t i : lp.InfeasibleRows()) unique.insert(tags[i]);
+		for (const uint32_t i : lp.InfeasibleRows()) {
+			unique.insert(tags[i]);
+			if (g1_tighten.empty()) continue;
+			const Mod2Row &row_rec = all_rows[i];
+			std::string text = row_rec.tag + ":";
+			for (const auto &[v, c] : row_rec.terms) {
+				auto n = g1_names.find(v);
+				std::string mark;
+				for (const auto &[tv, what] : tightened) if (tv == v) mark = " TIGHT" + what;
+				text += fmt::format(" {:+g}*{}{}", c, n != g1_names.end() ? n->second : fmt::format("v{}", v), mark);
+			}
+			r.iis.push_back(text + fmt::format(" in [{:g},{:g}]", row_rec.lower, row_rec.upper));
+		}
 		for (const std::string &t : unique) r.why += " " + t + ";";
 	}
 	if (!r.solved) return r;
@@ -1670,4 +1767,35 @@ TEST_CASE("planar probe: G1j the row kinds that make the base infeasible", "[jun
 		}
 	}
 	g1_time_limit = limit;
+}
+
+/** G1k: parity-implied bounds (from G1i's forced parities) on the LP relaxation at off=511; an infeasible LP names the conflict exactly. */
+TEST_CASE("planar probe: G1k parity-tightened LP names the conflict", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		REQUIRE(shape.variants.size() >= 3);
+		for (size_t i = 0; i < 3; i++) {
+			const PlanarShapeVariant &v = shape.variants[i];
+			const std::string &vt = v.structure.tag;
+			g1_mod2 = true;
+			const G1Result m = SolveG1(topology, spec, v, 511U);
+			g1_mod2 = false;
+			const G1Result plain = SolveG1(topology, spec, v, 511U | 512U);
+			g1_tighten = m.forced;
+			g1_zero = m.forbidden;
+			const G1Result r = SolveG1(topology, spec, v, 511U | 512U);
+			g1_tighten.clear();
+			g1_zero.clear();
+			for (const std::string &line : m.mod2) if (line.starts_with("step places")) std::cout << fmt::format("G1K {} {} {}\n", name, vt, line);
+			for (const std::string &line : m.forbidden_text) std::cout << fmt::format("G1K FORBID {} {} {}\n", name, vt, line.substr(0, 600));
+			std::cout << fmt::format("G1K {} {} forced={} lp_plain={} lp_tight={} ms={:.0f}\n", name, vt, m.forced.size(), plain.solved ? 1 : 0, r.solved ? 1 : 0, r.ms);
+			for (const std::string &line : r.iis) std::cout << fmt::format("G1K {} {}   {}\n", name, vt, line);
+		}
+	}
 }
