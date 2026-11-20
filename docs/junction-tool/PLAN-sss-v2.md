@@ -18,7 +18,7 @@ Each epic: goal, scope, exit criteria (tests at the layer's output, D367), and i
 
 ## E1x Shape rules from 197 (next, before E3's gadget work)
 - H11 per run (D388 c): crossers parallel within a run of adjacent crossers, not across a whole long span; test: V's 197 shape passes H11 (20 structures today).
-- Steps on spines (card in wip/CARD-E1d-psg197-variant.md, for the engineer's ruling): bend pairs on free-face spine stretches, sized by Slots; test: V's 197 shape at Shape's level keeps its 9 open-face steps and passes H1.
+- Steps on spines (D395, tried as an experiment): bend pairs on free-face spine stretches, sized by Slots; test: V's 197 shape at Shape's level keeps its 9 open-face steps and passes H1.
 - Data tidy: psg197.shape.txt split into the Shape-level projection and the steps (as V's pinned Slots data for E5); the 3 H2 box-edge artefacts (the trace box cuts ports mid-diagonal) and the D12 tail's H3.
 
 ## E2 Rule fields from Structure
