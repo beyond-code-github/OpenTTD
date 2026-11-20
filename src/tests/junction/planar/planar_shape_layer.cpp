@@ -1718,37 +1718,49 @@ TEST_CASE("planar shape layer: H14 a lane that turns off its spine", "[junction]
 	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
 	REQUIRE(error.empty());
 	const PlanarStructureResult structure = BuildPlanarStructure(topology, spec, 16);
+	bool tested = false;
 	for (const PlanarStructureVariant &sv : structure.variants) {
 		const PlanarTrackMap &map = sv.map;
-		/* The first channel of two whole Line tracks (no parts) with at least two crossings each. */
+		/* The events of a track that cross another channel (a node group's own crossings left out), as CheckH14 reads them. */
+		const auto channel_events = [&](uint32_t t) {
+			std::vector<size_t> list;
+			for (size_t k = 0; k < map.events[t].size(); k++) {
+				const PlanarCrossing &x = map.crossings[map.events[t][k]];
+				const uint32_t la = map.tracks[t].line, lb = map.tracks[x.a == t ? x.b : x.a].line;
+				bool node_group = false;
+				for (size_t end = 0; end < 2; end++) node_group = node_group || (sv.line_groups[la][end] != UINT32_MAX && sv.line_groups[la][end] == sv.line_groups[lb][end]);
+				if (!node_group) list.push_back(k);
+			}
+			return list;
+		};
+		/* A channel of two whole Line tracks (no parts) with at least two channel crossings each. */
 		std::map<uint32_t, std::vector<uint32_t>> channels;
 		for (uint32_t t = 0; t < map.tracks.size(); t++) {
 			bool has_parts = false;
 			for (uint32_t u = 0; u < map.tracks.size(); u++) has_parts = has_parts || (u != t && map.tracks[u].kind == PlanarTrack::Kind::Line && map.part_of[u] == t);
-			if (!has_parts && map.tracks[t].kind == PlanarTrack::Kind::Line && map.tracks[t].line == t && map.events[t].size() >= 2) channels[sv.channel_of_line[t]].push_back(t);
+			if (!has_parts && map.tracks[t].kind == PlanarTrack::Kind::Line && map.tracks[t].line == t && channel_events(t).size() >= 2) channels[sv.channel_of_line[t]].push_back(t);
 		}
 		for (const auto &[c, members] : channels) {
 			if (members.size() < 2) continue;
 			PlanarShapeVariant shaped;
 			std::string why;
 			REQUIRE(ShapePlanarStructureVariant(sv, shaped, why));
-			const uint32_t b = members[1];
-			/* Turn the lane's pieces after its first crossing by one eighth, where H1 still holds; else keep the shape (T2's lanes cross different channels already, so the message is among others). */
-			PlanarShapeVariant bent = shaped;
-			for (const int d : {-1, 1}) {
-				PlanarShapeVariant tried = shaped;
-				for (uint32_t j = tried.tracks[b].event_piece[0] + 1; j < tried.tracks[b].pieces.size(); j++) tried.tracks[b].pieces[j] += d;
-				if (!std::ranges::any_of(CheckPlanarShapePromise(topology, spec, tried), [](const std::string &m) { return m.starts_with("H1:"); })) {
-					bent = tried;
-					break;
-				}
-			}
-			const std::vector<std::string> messages = CheckPlanarShapeSpines(bent);
 			const std::string wanted = fmt::format("H14: channel {} ", c);
-			INFO(sv.tag << " channel " << c << ", " << messages.size() << " messages");
-			CHECK(std::ranges::any_of(messages, [&](const std::string &m) { return m.starts_with(wanted); }));
-			return;
+			const auto has_message = [&](const PlanarShapeVariant &variant, const std::string &kind) {
+				return std::ranges::any_of(CheckPlanarShapeSpines(variant), [&](const std::string &m) { return m.starts_with(wanted) && m.find(kind) != std::string::npos; });
+			};
+			if (has_message(shaped, "")) continue;
+			CHECK(!has_message(shaped, ""));
+			tested = true;
+			/* Turn the piece the second channel crossing of one lane sits on by one eighth. */
+			PlanarShapeVariant bent = shaped;
+			const uint32_t lane = members[1];
+			bent.tracks[lane].pieces[bent.tracks[lane].event_piece[channel_events(lane)[1]]] += 1;
+			INFO(sv.tag << " channel " << c);
+			CHECK(has_message(bent, "differ between crossings"));
+			break;
 		}
+		if (tested) break;
 	}
-	FAIL("no T2 variant has a channel of two Line tracks with two crossings each");
+	CHECK(tested);
 }

@@ -740,20 +740,23 @@ struct Oracle {
 		}
 	}
 
-	/** @return The pieces of stretch k of a track, flex pairs removed (H1's helper). */
-	std::vector<int> StretchPieces(uint32_t t, size_t k) const
+	/** @return The pieces from piece `first` to piece `last` of a track, flex pairs removed (H1's helper); a flex middle strictly inside is removed with its return piece. */
+	std::vector<int> StretchPieces(uint32_t t, uint32_t first, uint32_t last) const
 	{
 		std::vector<int> list;
-		for (uint32_t i = this->First(t, k); i <= this->Last(t, k); i++) {
-			if (!this->FlexRemoved(t, k, i)) list.push_back(this->v.tracks[t].pieces[i]);
+		for (uint32_t i = first; i <= last; i++) {
+			bool removed = false;
+			for (const uint32_t m : this->v.tracks[t].flex) removed = removed || (first < m && m < last && (i == m || i == m + 1));
+			if (!removed) list.push_back(this->v.tracks[t].pieces[i]);
 		}
 		return list;
 	}
 
-	/** H14 (DESIGN-sss-v2 §3.2, D388 (a)): the lines of one channel cross the same channels in order and follow one heading list between their first and last crossing; measured, not yet in the promise. */
+	/** H14 (DESIGN-sss-v2 §3.2, D388 (a)): the lines of one channel cross the same channels in order and follow one heading list between their first and last channel crossing; a node group's own crossings are node territory and left out; measured, not yet in the promise. */
 	void CheckH14()
 	{
 		const std::vector<uint32_t> &channel = this->v.structure.channel_of_line;
+		const std::vector<std::array<uint32_t, 2>> &groups = this->v.structure.line_groups;
 		std::map<uint32_t, std::vector<uint32_t>> lines;
 		for (uint32_t t = 0; t < this->map.tracks.size(); t++) {
 			const PlanarTrack &track = this->map.tracks[t];
@@ -765,31 +768,43 @@ struct Oracle {
 			if (has_parts) continue;
 			lines[channel[track.line]].push_back(t);
 		}
+		/* The events of track t that cross another channel: not a crossing of two lines sharing a start group or an end group. */
+		const auto channel_events = [&](uint32_t t) {
+			std::vector<size_t> list;
+			for (size_t k = 0; k < this->map.events[t].size(); k++) {
+				const PlanarCrossing &x = this->map.crossings[this->map.events[t][k]];
+				const uint32_t la = this->map.tracks[t].line, lb = this->map.tracks[x.a == t ? x.b : x.a].line;
+				bool node_group = false;
+				for (size_t end = 0; end < 2; end++) node_group = node_group || (groups[la][end] != UINT32_MAX && groups[la][end] == groups[lb][end]);
+				if (!node_group) list.push_back(k);
+			}
+			return list;
+		};
 		for (const auto &[c, members] : lines) {
 			for (size_t m = 1; m < members.size(); m++) {
 				const uint32_t a = members[0], b = members[m];
-				const std::vector<uint32_t> &ea = this->map.events[a], &eb = this->map.events[b];
-				const auto partner_channel = [&](uint32_t t, uint32_t crossing) {
-					const PlanarCrossing &x = this->map.crossings[crossing];
-					return channel[this->map.tracks[x.a == t ? x.b : x.a].line];
+				const std::vector<size_t> fa = channel_events(a), fb = channel_events(b);
+				const auto partner_of = [&](uint32_t t, size_t k) {
+					const PlanarCrossing &x = this->map.crossings[this->map.events[t][k]];
+					return x.a == t ? x.b : x.a;
 				};
-				bool same = ea.size() == eb.size() && this->v.tracks[a].event_piece.size() == ea.size() && this->v.tracks[b].event_piece.size() == eb.size();
-				for (size_t k = 0; same && k < ea.size(); k++) same = partner_channel(a, ea[k]) == partner_channel(b, eb[k]);
+				bool same = fa.size() == fb.size() && this->v.tracks[a].event_piece.size() == this->map.events[a].size() && this->v.tracks[b].event_piece.size() == this->map.events[b].size();
+				for (size_t k = 0; same && k < fa.size(); k++) same = channel[this->map.tracks[partner_of(a, fa[k])].line] == channel[this->map.tracks[partner_of(b, fb[k])].line];
 				if (!same) {
-					const auto sequence = [&](uint32_t t) {
+					const auto sequence = [&](uint32_t t, const std::vector<size_t> &f) {
 						std::string text;
-						for (const uint32_t crossing : this->map.events[t]) {
-							const PlanarCrossing &x = this->map.crossings[crossing];
-							const uint32_t other = x.a == t ? x.b : x.a;
+						for (const size_t k : f) {
+							const uint32_t other = partner_of(t, k);
 							text += fmt::format("{}{}/{}", text.empty() ? "" : ", ", this->map.tracks[other].name, channel[this->map.tracks[other].line]);
 						}
 						return text;
 					};
-					this->out.push_back(fmt::format("H14: channel {} lines {} and {} cross different channels: {}: [{}] vs {}: [{}]", c, this->map.tracks[a].name, this->map.tracks[b].name, this->map.tracks[a].name, sequence(a), this->map.tracks[b].name, sequence(b)));
+					this->out.push_back(fmt::format("H14: channel {} lines {} and {} cross different channels: {}: [{}] vs {}: [{}]", c, this->map.tracks[a].name, this->map.tracks[b].name, this->map.tracks[a].name, sequence(a, fa), this->map.tracks[b].name, sequence(b, fb)));
 					continue;
 				}
-				for (size_t k = 1; k < ea.size(); k++) {
-					if (this->StretchPieces(a, k) != this->StretchPieces(b, k) || this->EventHeading(a, k - 1) != this->EventHeading(b, k - 1) || this->EventHeading(a, k) != this->EventHeading(b, k)) {
+				for (size_t k = 1; k < fa.size(); k++) {
+					const auto &pa = this->v.tracks[a].event_piece, &pb = this->v.tracks[b].event_piece;
+					if (this->StretchPieces(a, pa[fa[k - 1]], pa[fa[k]]) != this->StretchPieces(b, pb[fb[k - 1]], pb[fb[k]]) || this->EventHeading(a, fa[k - 1]) != this->EventHeading(b, fb[k - 1]) || this->EventHeading(a, fa[k]) != this->EventHeading(b, fb[k])) {
 						this->out.push_back(fmt::format("H14: channel {} lines {} and {} differ between crossings {} and {}", c, this->map.tracks[a].name, this->map.tracks[b].name, k - 1, k));
 					}
 				}

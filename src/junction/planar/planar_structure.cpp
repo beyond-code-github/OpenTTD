@@ -345,6 +345,9 @@ PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const
 		v.side_gap = PlanarSideGaps(spec);
 		v.rules = PlanarRuleFieldsOf(spec);
 		v.channel_of_line = c.channels.channel_of_line;
+		for (const PlanarLine &line : topology.lines) {
+			v.line_groups.push_back({line.from.port ? UINT32_MAX : topology.nodes[line.from.index].group, line.to.port ? UINT32_MAX : topology.nodes[line.to.index].group});
+		}
 		result.variants.push_back(std::move(v));
 	}
 	if (result.variants.empty()) result.why = "no variant survives";
@@ -523,6 +526,9 @@ PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology
 	v.rules = PlanarRuleFieldsOf(spec);
 	const PlanarChannels channels = BuildPlanarChannels(topology);
 	v.channel_of_line = channels.channel_of_line;
+	for (const PlanarLine &line : topology.lines) {
+		v.line_groups.push_back({line.from.port ? UINT32_MAX : topology.nodes[line.from.index].group, line.to.port ? UINT32_MAX : topology.nodes[line.to.index].group});
+	}
 	const auto pinned_line = [&](uint32_t n) { return pinned[n] == "none" ? UINT32_MAX : PlanarLineByName(topology, pinned[n]); };
 	const auto line_text = [&](uint32_t line) { return line == UINT32_MAX ? std::string("none") : topology.lines[line].name; };
 	const auto channel_text = [&](uint32_t line) { return line == UINT32_MAX ? UINT32_MAX : channels.channel_of_line[line]; };

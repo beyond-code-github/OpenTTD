@@ -66,6 +66,7 @@ struct PlanarStructureVariant {
 	std::array<int, 4> side_gap{}; ///< Per box side (index PlanarSide: N, E, S, W), the slot distance between the last line of one port and the first line of the next port on that side: gap + 1 (ml_gap on E and W, branch_gap on N and S; D377). Slots reads it, never the spec.
 	PlanarRuleFields rules{}; ///< The spec's rule fields for Slots (PlanarRuleFieldsOf); P9 checks them.
 	std::vector<uint32_t> channel_of_line; ///< Per topology line, its channel (BuildPlanarChannels): Shape's lattice rule reads it (D397).
+	std::vector<std::array<uint32_t, 2>> line_groups; ///< Per topology line, the node group at its start and at its end (UINT32_MAX at a port): Shape's H14 reads it to set a node group's own crossings apart (E3-S1b).
 	int cost; ///< The cheap score for ranking: structures plus copies (D371a).
 };
 
