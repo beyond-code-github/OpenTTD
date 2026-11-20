@@ -927,13 +927,21 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 					odd.Add(vertex[1], 1);
 					const uint32_t odd_aux = var(0, INF, 0);
 					odd.Add(odd_aux, -2);
-					Lin upper = odd, lower = odd;
-					for (const uint32_t z : {pl.zp, pl.zm}) {
-						upper.Add(z, 1000);
-						lower.Add(z, -1000);
+					if ((off & 65536) == 0) {
+						/* G1n: a unit switch, not big-M: odd + w = 1 mod 2, with w binary and w + zp + zm <= 1, so a used step's vertex is on a tile edge and an unused one is free. */
+						const uint32_t w = var(0, 1, 0);
+						odd.Add(w, 1);
+						if (grid) row(odd, 1, 1, fmt::format("parity step vertex {} {}", t, j));
+						if (grid) row(lin({{w, 1}, {pl.zp, 1}, {pl.zm, 1}}), -INF, 1, fmt::format("parity step free {} {}", t, j));
+					} else {
+						Lin upper = odd, lower = odd;
+						for (const uint32_t z : {pl.zp, pl.zm}) {
+							upper.Add(z, 1000);
+							lower.Add(z, -1000);
+						}
+						if (grid) row(upper, -INF, 1001, fmt::format("parity step vertex {} {}", t, j));
+						if (grid) row(lower, -999, INF, fmt::format("parity step vertex {} {}", t, j));
 					}
-					if (grid) row(upper, -INF, 1001, fmt::format("parity step vertex {} {}", t, j));
-					if (grid) row(lower, -999, INF, fmt::format("parity step vertex {} {}", t, j));
 				}
 				Lin even;
 				for (size_t i = e.piece_begin[j]; i < e.piece_end[j]; i++) even.Add(e.elems[i].var, e.elems[i].length);
@@ -959,6 +967,17 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 			const std::string tag = fmt::format("parity step {} {} {}", t, i, map.tracks[t].name);
 			if (el.fixed) {
 				if (grid) row(cross, 1, 1, tag);
+				continue;
+			}
+			if ((off & 65536) == 0) {
+				/* G1n: a diagonal piece's points have x + y odd, so the M step's cross coordinate is odd exactly when the P step's is even:
+				 * one row, P's cross + zm + w odd, covers both; w binary with w + zp + zm <= 1 frees the row when no step is used. */
+				if (el.kind == Kind::StepM) continue;
+				const uint32_t w = var(0, 1, 0);
+				cross.Add(el.zm, 1);
+				cross.Add(w, 1);
+				if (grid) row(cross, 1, 1, tag);
+				if (grid) row(lin({{w, 1}, {el.zp, 1}, {el.zm, 1}}), -INF, 1, tag + " free");
 				continue;
 			}
 			const uint32_t z = el.kind == Kind::StepP ? el.zp : el.zm;
@@ -1262,7 +1281,11 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 		std::map<uint32_t, int> fixed;
 		for (const auto &places : track_places) {
 			for (const Place &pl : places) {
-				for (const uint32_t z : {pl.zp, pl.zm, pl.p, pl.m}) fixed[z] = 0;
+				for (const uint32_t z : {pl.zp, pl.zm, pl.p, pl.m}) {
+					/* G1n: with linear step rows the binaries are unknowns mod 2 (fixing them off would make cuts that assume no steps). */
+					if ((off & 65536) == 0 && (z == pl.zp || z == pl.zm)) continue;
+					fixed[z] = 0;
+				}
 			}
 		}
 		const auto start = std::chrono::steady_clock::now();
@@ -1946,11 +1969,11 @@ TEST_CASE("planar probe: G1l long base solves and the parity breaks without pari
 	g1_time_limit = limit;
 }
 
-/** G1m: the off=511 base through SolveG1, which now carries G1i's forced parities as cuts (2026-11-21: T2 3/3, T3 3/3; LL2 timed out at 36 s, left out here). 15 s each. */
+/** G1m: the off=511 base through SolveG1, which carries G1i's forced parities as cuts and G1n's linear step parity rows. 15 s each. */
 TEST_CASE("planar probe: G1m the base with forced parities as cuts", "[junction][planar][planarshape][.probe]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}};
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"LL2", PlanarLL2Text()}, {"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}};
 	for (const auto &[name, text] : hubs) {
 		std::string error;
 		const PlanarTopology topology = ParsePlanarTopology(text, &error);
