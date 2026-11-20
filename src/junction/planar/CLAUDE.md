@@ -56,7 +56,7 @@
 - **Variant:** one combination of Structure's choices (separator and kind bits, ties, triangles, groupings), each giving one track map; today's code tags them `o..t..f..s..`.
 - **Heading:** one of 8 directions; a track turns at most 45 degrees at a time. **Piece:** a straight run at one heading.
 - **Shape:** per track, its heading list and the piece each crossing sits on.
-- **Slot:** a track's sideways position in its bundle, in lane spacings. **S-bend:** the sideways move a slot change makes (turn 45 degrees, run diagonally, turn back). **Frame:** tracks whose slots share one zero.
+- **Slot:** a track's sideways position in its bundle, in lane spacings. **S-bend / step:** the sideways move a slot change makes (turn 45 degrees, run diagonally, turn back), keeping the track's heading; its size is the lanes moved. A **fan** is a step that spreads a port's lanes apart before a fray; a **close-up** brings lanes back together after a join, before the out port (D313, D378); other steps sit in node groups, on landings (D375) or under a span. Never "shift" (the coop shifter only). **Frame:** tracks whose slots share one zero.
 - **Lengths / the length program:** the integer program choosing every piece's length for the least area.
 
 ## Topology (`planar_topology`)
