@@ -52,6 +52,7 @@ struct G1Result {
 	double ms; ///< The time of the solve.
 	int step_lanes; ///< The lanes of all steps, cusps included.
 	double lanes_exact = 0; ///< G1t: the same, unrounded (for LP runs).
+	int insert_lanes = 0, inserts_used = 0; ///< G1u: diagonal inserts' lanes and count.
 	std::vector<std::string> clashes; ///< The clash oracle's hits, one line each.
 	size_t same_channel, face, noface; ///< The hits by kind.
 	std::vector<std::string> curve_breaches; ///< The curve oracle's breaches, one line each.
@@ -782,6 +783,7 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 	std::vector<std::vector<Place>> track_places(nt);
 	std::vector<std::pair<uint32_t, uint32_t>> cusp_vars; ///< Unused marker, kept empty.
 	std::set<uint32_t> step_vars; ///< Every p, m and cusp variable, for the lane count.
+	std::set<uint32_t> insert_vars; ///< G1u: the lane variables of diagonal inserts.
 	for (uint32_t t = 0; t < nt; t++) {
 		const PlanarShapeTrack &s = v.tracks[t];
 		const size_t ne = map.events[t].size(), np = s.pieces.size();
@@ -851,14 +853,20 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 				};
 				if (k == 0 && j == 0 && cusp_start.contains(t)) cusp(cusp_start.at(t), true);
 				uint32_t first_part, last_part;
-				if (place_piece == static_cast<int>(j) || every_piece) {
+				/* G1u (off bit 1048576): on a diagonal piece a step is an axis insert, the octilinear stretch primitive: one on every diagonal piece
+				 * outside spans, priced as its length (2 per lane) plus a bend pair (20 per use), up to 32 lanes. On axis pieces steps stay as they were. */
+				const bool insert = (off & 1048576) != 0 && h % 2 != 0;
+				const bool insert_place = insert && !place_blocked && !in_span.contains({t, k});
+				if (place_piece == static_cast<int>(j) || every_piece || insert_place) {
 					const uint32_t before = var(0, INF, 1), after = var(0, INF, 1);
-					const uint32_t p = var(0, 8, 1000), m = var(0, 8, 1000), zp = var(0, 1, 0), zm = var(0, 1, 0);
-					step_vars.insert(p);
-					step_vars.insert(m);
-					row(lin({{p, 1}, {zp, -8}}), -INF, 0, "step");
+					const int cap = insert ? 32 : 8;
+					const double lane_cost = insert ? 2 : 1000, use_cost = insert ? 20 : 0;
+					const uint32_t p = var(0, cap, lane_cost), m = var(0, cap, lane_cost), zp = var(0, 1, use_cost), zm = var(0, 1, use_cost);
+					(insert ? insert_vars : step_vars).insert(p);
+					(insert ? insert_vars : step_vars).insert(m);
+					row(lin({{p, 1}, {zp, -cap}}), -INF, 0, "step");
 					row(lin({{p, 1}, {zp, -1}}), 0, INF, "step");
-					row(lin({{m, 1}, {zm, -8}}), -INF, 0, "step");
+					row(lin({{m, 1}, {zm, -cap}}), -INF, 0, "step");
 					row(lin({{m, 1}, {zm, -1}}), 0, INF, "step");
 					row(lin({{zp, 1}, {zm, 1}}), -INF, 1, "step");
 					add(Kind::Part, before, true);
@@ -1461,6 +1469,10 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 	for (const uint32_t sv : step_vars) {
 		r.step_lanes += value(sv);
 		r.lanes_exact += lp.Value(sv);
+	}
+	for (const uint32_t iv : insert_vars) {
+		r.insert_lanes += value(iv);
+		if (value(iv) > 0) r.inserts_used++;
 	}
 	r.width_tiles = value(width) / 2;
 	r.height_tiles = value(height) / 2;
@@ -2100,5 +2112,30 @@ TEST_CASE("planar probe: G1t the families that force steps in the LP", "[junctio
 		}
 		const G1Result none = SolveG1(topology, spec, v, 512U | 511U);
 		std::cout << fmt::format("G1T {} {} LP no lower bounds: solved={} lanes={:.1f}\n", name, v.structure.tag, none.solved ? 1 : 0, none.lanes_exact);
+	}
+}
+
+/** G1u: the full model with diagonal inserts as the stretch primitive (off 1048576), top 3 of T2, T3, LL2, 15 s each. */
+TEST_CASE("planar probe: G1u diagonal inserts as the stretch primitive", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const bool long_run_u = false; /* 2026-11-21: T2 3/3 and T3 2/3 timed out, T3 o7t2f0m3270 and LL2 3/3 infeasible. */
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		for (size_t i = 0; i < 3 && i < shape.variants.size(); i++) {
+			const PlanarShapeVariant &v = shape.variants[i];
+			const G1Result lp = SolveG1(topology, spec, v, 1048576U | 512U);
+			std::cout << fmt::format("G1U LP {} {} solved={} step_lanes={:.1f} insert_lanes={}\n", name, v.structure.tag, lp.solved ? 1 : 0, lp.lanes_exact, lp.insert_lanes);
+			if (long_run_u) {
+			const size_t t0 = g1_timeouts;
+			const G1Result r = SolveG1(topology, spec, v, 1048576U);
+			std::cout << fmt::format("G1U {} {} solved={} timeout={} ms={:.0f} step_lanes={} inserts={} insert_lanes={} W={} H={} clashes={} audit={} why={}\n", name, v.structure.tag, r.solved ? 1 : 0, g1_timeouts != t0 ? 1 : 0, r.ms, r.step_lanes, r.inserts_used, r.insert_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.audit.size(), r.why.substr(0, 160));
+			for (const std::string &line : r.audit) std::cout << fmt::format("G1U AUDIT {} {} {}\n", name, v.structure.tag, line);
+			}
+		}
 	}
 }
