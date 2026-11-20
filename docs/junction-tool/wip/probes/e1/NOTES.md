@@ -1,0 +1,7 @@
+# E1 probe notes (orchestrator, 2026-11-20)
+- parity.py: the ring-parity test over disjoint path pairs. 112 tile pairs: 30 bad; + 14 tunnel-under-tunnel (tunnel-tunnel.txt): 12 bad; trunk rule on 5 nodes over tunnel middles (D390 (1)): 0 bad, 122 pairs (psg197-crossings-resolved.md).
+- order.py (E1b2, 619776cc1a): crossing positions by real geometry (pieces as sub-tile segments, tunnels as centrelines, 1e-6 sideways offsets). It stopped on three cases, fixed by hand when writing the `cross` statements:
+  1. E2 x E2b: two hits, one at their shared split tile 81,174 (not a crossing); the crossing is E2's tunnel (82,163) at y 162, after E2's F1c, E1b, E1 crossings: `cross E2: F1c, E1b, E1, E2b`, `cross E2b: F1c, E1c, E2`. D12c x D23c: its first hit (102, 178.5) is the crossing (the second is their shared merge at 95,180); kept as emitted.
+  2. A1e x D12e and A1e x D12f at the same point: the walks share pieces in the E-to-S tail that psg197.txt simplifies (gaps §8). Order from the merge's leg order (D12f left = south, travel west): A1e meets D12e, then D12f.
+  3. D12d x D12e dropped: no walk of D12e crosses D12d's tunnel (100,184); the tile evidence's piece on 100,185 belongs to a dropped short parallel pair (gaps §8). Tunnel #49 crosses nothing in the topology (a gap like the terraced portals). Same route, so parity is unaffected.
+- Result: 53 `cross` statements, 121 crossings, parity 0 bad of 847 (cross-pairs.md).
