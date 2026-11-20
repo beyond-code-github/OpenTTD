@@ -5,7 +5,7 @@ Sorts wip/INVENTORY-gadgets.md (43 entries) by D400 (nodes are rules) into the l
 ## The sort
 | Owner | Entries | What it is |
 |---|---|---|
-| **Node rule** (Shape H3 headings; the node tile's sharing and the cusp proven once per heading class and arity; Structure merges consecutive nodes) | A1 split, A2 merge, A3 diagonal-trunk stub, A4 trident, A5 trident into a doubled bridge, A6 three-input join on one tile (a 3->1 node), A7 2+2 cascade, A8 peel splits, A9 n-lane fray/join, C5 rejoin then split (D302) | nodes of arity 2 or 3 and cascades of them |
+| **Node rule** (Shape H3 headings; the node tile's sharing and the cusp proven once per heading class and arity; Slots sets the distance between consecutive splits: 0 is the trident, D400) | A1 split, A2 merge, A3 diagonal-trunk stub, A4 trident, A5 trident into a doubled bridge, A6 three-input join on one tile (a 3->1 node), A7 2+2 cascade, A8 peel splits, A9 n-lane fray/join, C5 rejoin then split (D302) | nodes of arity 2 or 3 and cascades of them |
 | **Structure rule** (Structure's structures and copies; Shape's span rules H5, H6, H11; tile rules of a span proven once) | C1 bridge crossing stack, C2 tunnel, C3 parallel tunnel group, C4 doubling (copy tracks, exact offsets), C6 series with landing, C7 crosser shapes under a span (Corner, S-bend, doubled pair: angle per run, D376 and D396), C8 order swap (a crossing inside one channel), C10 tunnel over tunnel, node on a tunnel, C11 three levels | spans, copies and their crossers |
 | **Corridor rule** (offset curves inside a bundle: SPEC-slots §11, D349, D384) | B1 prio row, B2 bendy prio and diagonal halves, B3 rows of n lanes | the row as an exact-length beside track |
 | **Signals** | B1's joins and signal pattern (placed by `PlacePrio` today), B6 entry-gated merge (D390 (4)), F5 choice by pre-signal | signal-level, after Slots |
@@ -16,7 +16,7 @@ Sorts wip/INVENTORY-gadgets.md (43 entries) by D400 (nodes are rules) into the l
 
 ## What it means
 - No catalogue data structure is needed now. Every shape T2, T3, LL2 and PSG 197 need is a rule of the layer that already owns it; "verified once" becomes **one proof test per rule** (a node's cusp per heading class and arity; a span's tile rules per kind and angle mix; a corridor's offsets per bend), not per gadget instance.
-- E3 shrinks to: spines (H14), the node-rule proofs (cusp; Structure's node merging for tridents), corridors for rows and copies, free-face cells (H12/H16, turn-regularity candidate). Gadgets return only when a shape no rule expresses is needed (the 2x2 direction cross first).
+- E3 shrinks to: spines (H14), the node-rule proofs (cusp at 0 and at the signal tile; the trident is Slots' node_leg choice), corridors for rows and copies, free-face cells (H12/H16, turn-regularity candidate). Gadgets return only when a shape no rule expresses is needed (the 2x2 direction cross first).
 - Doc conflicts the sort settles (mine to fix in the promoting commits): DESIGN-sss-v2 §2/§3.2 "gadget per lane count" and H15; CARD-E3-catalogue's data form; D110's checker clause (G4) for 0-tile pairs once Structure merges nodes; D355 split gaps (a Slots lower bound, not a gadget parameter).
 
 ## Decision for Pete
