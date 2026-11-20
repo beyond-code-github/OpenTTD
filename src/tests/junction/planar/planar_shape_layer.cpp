@@ -70,20 +70,20 @@ static void SetTracks(ShapeCase &c, const std::vector<std::pair<std::vector<int>
 	for (const auto &[pieces, event_piece] : tracks) c.v.tracks.push_back({pieces, event_piece});
 }
 
-/** The one-lane T: its tracks are the dump's, track by track. */
+/** The one-lane T: the program's shape under H11 (D376); the earlier hand shape crossed structure 0 at headings 6 and 3. */
 static ShapeCase MakeT1()
 {
 	ShapeCase c = MakeCase(PlanarTText(1), "o3t0f0m0");
 	SetTracks(c, {
-		{{2}, {}}, {{6}, {}}, {{2}, {}}, {{6}, {}}, {{0}, {}}, {{4}, {}},
-		{{5, 4}, {}}, {{6}, {0, 0}}, {{0, -1}, {}}, {{0, 1}, {0, 0}},
-		{{2}, {}}, {{3, 4}, {0, 1}}, {{6}, {}}, {{2}, {}}, {{6}, {}}, {{2}, {}},
+		{{2}, {}}, {{6}, {}}, {{2}, {}}, {{6, 5}, {}}, {{0, -1}, {}}, {{4}, {}},
+		{{4}, {}}, {{5, 6}, {0, 1}}, {{-1}, {}}, {{0, 1}, {0, 0}},
+		{{2}, {}}, {{2, 3}, {0, 0}}, {{6}, {}}, {{2}, {}}, {{6}, {}}, {{2}, {}},
 	});
-	c.v.angles = {2, 2, 3};
+	c.v.angles = {2, 3, 2};
 	REQUIRE(c.v.structure.structures.size() == 2);
 	REQUIRE(c.v.structure.structures[0].separator == 9);
 	REQUIRE(c.v.structure.structures[1].separator == 11);
-	c.v.structures = {{0, {3, -1}, {1, -1}}, {4, {1, -1}, {1, -1}}};
+	c.v.structures = {{0, {2, -1}, {1, -1}, {-1, -1}}, {2, {2, -1}, {1, -1}, {-1, -1}}};
 	return c;
 }
 
@@ -170,8 +170,8 @@ TEST_CASE("planar shape layer: H5 a crossing on a diagonal piece of its separato
 {
 	ShapeCase c = MakeT1();
 	c.v.tracks[9].event_piece = {0, 1};
-	c.v.angles[2] = 2;
-	c.v.structures[0].middles = {2, -1};
+	c.v.angles[2] = 1;
+	c.v.structures[0].middles = {3, -1};
 	RequireAllOf(c, c.v, "H5");
 }
 
@@ -219,7 +219,7 @@ static void RequireShaped(const ShapeCase &c, int cost)
 
 TEST_CASE("planar shape layer: the one-lane T is shaped at the least turning", "[junction][planar][planarshape]")
 {
-	RequireShaped(MakeT1(), 4);
+	RequireShaped(MakeT1(), 5);
 }
 
 TEST_CASE("planar shape layer: the fray is shaped at the least turning", "[junction][planar][planarshape]")
@@ -256,6 +256,39 @@ TEST_CASE("planar shape layer: H4 a mirrored crossing with another angle than it
 		INFO(m);
 		CHECK(m.starts_with("H4:"));
 	}
+}
+
+TEST_CASE("planar shape layer: H11 a span whose crossers are not parallel", "[junction][planar][planarshape]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult r = BuildPlanarStructure(topology, spec, 16);
+	REQUIRE(!r.variants.empty());
+	bool broken = false;
+	for (const PlanarStructureVariant &variant : r.variants) {
+		PlanarShapeVariant shaped;
+		std::string why;
+		const bool ok = ShapePlanarStructureVariant(variant, shaped, why);
+		INFO(variant.tag << " why: " << why);
+		REQUIRE(ok);
+		CHECK(CheckPlanarShapePromise(topology, spec, shaped).empty());
+		if (broken) continue;
+		for (const PlanarStructure &s : shaped.structure.structures) {
+			if (broken || s.crossers.size() < 2) continue;
+			const PlanarTrackMap &map = shaped.structure.map;
+			const std::vector<uint32_t> &events = map.events[s.crossers[1]];
+			const size_t k = static_cast<size_t>(std::ranges::find(events, s.crossings[1]) - events.begin());
+			REQUIRE(k < events.size());
+			shaped.tracks[s.crossers[1]].pieces[shaped.tracks[s.crossers[1]].event_piece[k]] += 2;
+			bool found = false;
+			for (const std::string &m : CheckPlanarShapePromise(topology, spec, shaped)) found = found || m.starts_with("H11:");
+			CHECK(found);
+			broken = true;
+		}
+	}
+	CHECK(broken);
 }
 
 /** The closure probe's answer for one shaped variant. */
