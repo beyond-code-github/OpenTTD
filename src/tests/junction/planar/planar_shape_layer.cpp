@@ -21,9 +21,11 @@
 #include <charconv>
 #include <chrono>
 #include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -1370,3 +1372,39 @@ TEST_CASE("planar track map: expanded route paths run over the tracks", "[juncti
 		}
 	}
 }
+
+/** Read a file of tools/junction/topologies. */
+static std::string ReadTopologyFileForShape(const std::string &name)
+{
+	std::ifstream file(std::string(JUNCTION_TOPOLOGY_DIR) + "/" + name);
+	std::stringstream buffer;
+	buffer << file.rdbuf();
+	return buffer.str();
+}
+
+TEST_CASE("planar shape: PSG 197's pinned variant, measured (E1e)", "[.][planarpsg197]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(ReadTopologyFileForShape("psg197.txt"), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant v = LoadPlanarStructureVariant(topology, ReadTopologyFileForShape("psg197.structure.txt"), spec, report, &error);
+	REQUIRE(error.empty());
+	const auto start = std::chrono::steady_clock::now();
+	PlanarShapeVariant shaped;
+	std::string why;
+	const bool ok = ShapePlanarStructureVariant(v, shaped, why);
+	const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+	WARN(fmt::format("E1E shaped {} in {:.0f} ms, tracks {}, structures {}, why: {}", ok, ms, v.map.tracks.size(), v.structures.size(), why));
+	if (!ok) return;
+	WARN(fmt::format("E1E turning cost {}", shaped.cost));
+	for (const std::string &m : CheckPlanarShapePromise(topology, spec, shaped)) WARN("E1E promise: " + m);
+	std::string cells_why;
+	const bool refined = RefinePlanarShapeCells(shaped, cells_why);
+	WARN(fmt::format("E1E cells refined {}: {}, dummies {}", refined, cells_why, shaped.dummies.size()));
+	if (refined) {
+		for (const std::string &m : CheckPlanarShapeCells(shaped)) WARN("E1E cells: " + m);
+	}
+}
+
