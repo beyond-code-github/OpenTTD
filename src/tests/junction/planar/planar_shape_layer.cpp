@@ -1584,7 +1584,7 @@ TEST_CASE("planar shape layer: flex respects the route cone", "[junction][planar
 	CHECK(marks > 0);
 }
 
-TEST_CASE("planar shape: V's 197 open steps sit on Shape's flex points (E1x-3)", "[.][planarpsg197]")
+TEST_CASE("planar shape: V's 197 steps sit on Shape's flex points (D402)", "[.][planarpsg197]")
 {
 	std::string error;
 	const PlanarTopology topology = ParsePlanarTopology(ReadTopologyFileForShape("psg197.txt"), &error);
@@ -1610,8 +1610,10 @@ TEST_CASE("planar shape: V's 197 open steps sit on Shape's flex points (E1x-3)",
 	std::istringstream steps(ReadTopologyFileForShape("psg197.steps.txt"));
 	std::string line;
 	size_t listed = 0;
+	std::map<std::string, std::pair<size_t, size_t>> classes;
 	while (std::getline(steps, line)) {
-		if (!line.starts_with("step ") || line.find("# crossing-crossing") == std::string::npos) continue;
+		if (!line.starts_with("step ") || line.find(" # ") == std::string::npos) continue;
+		const std::string bounds = line.substr(line.find(" # ") + 3);
 		std::istringstream in(line.substr(5));
 		std::string name, colon;
 		size_t k;
@@ -1628,17 +1630,23 @@ TEST_CASE("planar shape: V's 197 open steps sit on Shape's flex points (E1x-3)",
 		REQUIRE(t != UINT32_MAX);
 		const PlanarShapeTrack &track = saved.tracks[t];
 		bool found = false;
-		if (k >= 1 && k <= track.event_piece.size()) {
-			const uint32_t first = track.event_piece[k - 1], last = k == track.event_piece.size() ? static_cast<uint32_t>(track.pieces.size() - 1) : track.event_piece[k];
+		if (k <= track.event_piece.size()) {
+			const int64_t first = k == 0 ? -1 : static_cast<int64_t>(track.event_piece[k - 1]);
+			const int64_t last = k == track.event_piece.size() ? static_cast<int64_t>(track.pieces.size() - 1) : static_cast<int64_t>(track.event_piece[k]);
 			for (const uint32_t m : track.flex) {
 				if (m > first && m < last && track.pieces[m] - track.pieces[m - 1] == side && ((track.pieces[m - 1] - a) % 8 + 8) % 8 == 0) found = true;
 			}
 		}
-		WARN(fmt::format("E1X3 step {} {} side {}: {}{}", name, k, side, found ? "found" : "not found", found ? "" : fmt::format(" (FreeOnePieceStretch: not exposed; one piece in the unflexed shape {})", k >= 1 && k < unflexed.tracks[t].event_piece.size() && unflexed.tracks[t].event_piece[k - 1] == unflexed.tracks[t].event_piece[k])));
+		const PlanarShapeTrack &plain_track = unflexed.tracks[t];
+		const size_t first_piece = k == 0 ? 0 : plain_track.event_piece[k - 1], last_piece = k == plain_track.event_piece.size() ? plain_track.pieces.size() - 1 : plain_track.event_piece[k];
+		WARN(fmt::format("E1X3 step {} {} side {}: {}{}", name, k, side, found ? "found" : "not found", found ? "" : fmt::format(" ({}; the stretch has {} pieces in the unflexed shape)", bounds, last_piece - first_piece + 1)));
+		classes[bounds].second++;
+		if (found) classes[bounds].first++;
 		/* D2's step lies between C1b and C1, two lanes of one channel: D383's lattice, the crossing-stack gadget's under v2, never a flex point (D397). */
 		CHECK(found == (name != "D2"));
 	}
-	CHECK(listed == 7);
+	for (const auto &[bounds, count] : classes) WARN(fmt::format("E1X3 steps {}: found {}/{}", bounds, count.first, count.second));
+	CHECK(listed == 50);
 }
 
 /** Measure H14 on one variant: count the channels with two or more lines and the lines skipped for parts, count and print the messages. */

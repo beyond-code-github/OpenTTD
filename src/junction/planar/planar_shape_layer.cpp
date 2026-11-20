@@ -882,27 +882,29 @@ bool CellWalls(const Oracle &o, const FaceWalk &walk, std::vector<Wall> &first, 
 static constexpr bool H14_IN_PROMISE = false;
 
 /**
- * Whether stretch k of track t is a free stretch (D397): a Line track between two crossings that are not both of one structure (or its copy span), not with tracks of one channel, the track in no beside track's parent chain. The one-piece condition is the caller's.
+ * Whether stretch k of track t is a free stretch (D397, D402): a stretch of a Line track, bounded by crossings, nodes or ports, where the two bounding crossings (if both are crossings) are not both of one structure (or its copy span) and not with tracks of one channel, and the track is in no beside track's parent chain.
  * @param v The variant.
  * @param t The track.
- * @param k The stretch, 1 <= k < the track's event count.
+ * @param k The stretch, 0 <= k <= the track's event count (0 from the track's start, the last to its end).
  * @return Whether it is free.
  */
 static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t k)
 {
 	const PlanarTrackMap &map = v.structure.map;
-	if (t >= map.tracks.size() || map.tracks[t].kind != PlanarTrack::Kind::Line || k < 1 || k >= map.events[t].size()) return false;
-	const uint32_t c0 = map.events[t][k - 1], c1 = map.events[t][k];
-	const auto partner = [&](uint32_t c) { return map.crossings[c].a == t ? map.crossings[c].b : map.crossings[c].a; };
-	const Oracle o(v);
-	for (const PlanarStructure &s : v.structure.structures) {
-		if (std::ranges::find(s.crossings, c0) != s.crossings.end() && std::ranges::find(s.crossings, c1) != s.crossings.end()) return false;
-		const std::vector<uint32_t> copy_crossings = o.CopyCrossings(s);
-		if (std::ranges::find(copy_crossings, c0) != copy_crossings.end() && std::ranges::find(copy_crossings, c1) != copy_crossings.end()) return false;
+	if (t >= map.tracks.size() || map.tracks[t].kind != PlanarTrack::Kind::Line || k > map.events[t].size()) return false;
+	if (k >= 1 && k < map.events[t].size()) {
+		const uint32_t c0 = map.events[t][k - 1], c1 = map.events[t][k];
+		const auto partner = [&](uint32_t c) { return map.crossings[c].a == t ? map.crossings[c].b : map.crossings[c].a; };
+		const Oracle o(v);
+		for (const PlanarStructure &s : v.structure.structures) {
+			if (std::ranges::find(s.crossings, c0) != s.crossings.end() && std::ranges::find(s.crossings, c1) != s.crossings.end()) return false;
+			const std::vector<uint32_t> copy_crossings = o.CopyCrossings(s);
+			if (std::ranges::find(copy_crossings, c0) != copy_crossings.end() && std::ranges::find(copy_crossings, c1) != copy_crossings.end()) return false;
+		}
+		const std::vector<uint32_t> &channel = v.structure.channel_of_line;
+		const uint32_t p = map.tracks[partner(c0)].line, q = map.tracks[partner(c1)].line;
+		if (p >= channel.size() || q >= channel.size() || channel[p] == channel[q]) return false;
 	}
-	const std::vector<uint32_t> &channel = v.structure.channel_of_line;
-	const uint32_t p = map.tracks[partner(c0)].line, q = map.tracks[partner(c1)].line;
-	if (p >= channel.size() || q >= channel.size() || channel[p] == channel[q]) return false;
 	for (uint32_t b = 0; b < map.tracks.size(); b++) {
 		if (map.tracks[b].kind == PlanarTrack::Kind::Line) continue;
 		std::vector<uint32_t> chain;
@@ -921,14 +923,18 @@ bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why)
 	for (PlanarShapeTrack &track : v.tracks) track.flex.clear();
 	for (uint32_t t = 0; t < map.tracks.size(); t++) {
 		PlanarShapeTrack &track = v.tracks[t];
-		if (map.tracks[t].kind != PlanarTrack::Kind::Line || track.event_piece.size() != map.events[t].size()) continue;
-		for (size_t k = track.event_piece.size(); k-- > 1;) {
-			if (track.event_piece[k] >= track.pieces.size() || track.event_piece[k - 1] > track.event_piece[k]) {
+		if (map.tracks[t].kind != PlanarTrack::Kind::Line || track.event_piece.size() != map.events[t].size() || track.pieces.empty()) continue;
+		for (size_t k = track.event_piece.size() + 1; k-- > 0;) {
+			const size_t events = track.event_piece.size();
+			if ((k < events && track.event_piece[k] >= track.pieces.size()) || (k >= 1 && k < events && track.event_piece[k - 1] > track.event_piece[k])) {
 				why = fmt::format("no flex: track {} event piece {} is out of range", map.tracks[t].name, k);
 				return false;
 			}
-			if (track.event_piece[k - 1] != track.event_piece[k] || !FreeOnePieceStretch(v, t, k)) continue;
-			const uint32_t p = track.event_piece[k];
+			/* One piece: the stretch's first and last pieces are the same piece. */
+			const size_t first_piece = k == 0 ? 0 : track.event_piece[k - 1];
+			const size_t last_piece = k == events ? track.pieces.size() - 1 : track.event_piece[k];
+			if (first_piece != last_piece || !FreeOnePieceStretch(v, t, k)) continue;
+			const uint32_t p = static_cast<uint32_t>(last_piece);
 			const int h = track.pieces[p];
 			/* The route cone: the cumulative turning at piece p plus the side, on every path through the track. */
 			bool allowed[2] = {true, true};
