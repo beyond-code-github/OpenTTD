@@ -1,0 +1,32 @@
+X6 tunnels: ext jumps 50 with >=1 crosser 50 crossing memberships 141 ties in order 0
+hand: tunnel statements 50 memberships 136
+X6 tunnels matched (separator, crossers, order all equal): 42 of 50 ; separator equal 49 ; crosser set equal 42
+  CLASS crosser set differs 7 ["T18 F2b: hand-only [], ext-only ['A1d']", "T21 F2: hand-only [], ext-only ['A1d']", "T29 F3: hand-only [], ext-only ['A2b']", "T30 C2b: hand-only ['D3'], ext-only ['L98']", "T31 F3b: hand-only [], ext-only ['A2b']", "T32 C2: hand-only ['D3'], ext-only ['L97', 'L95']"]
+  CLASS separator differs 1 ['T49 hand D12d ext L69']
+  ext tunnels with crossers but no hand statement: 0 []
+X6 groups: ext 18 hand 18 identical 18
+X6 ext nodes 68 {'straight': 65, 'und': 2, 'skip': 1}
+X6 hand nodes 61 (60 two-leg + the 3-way A2)
+X6 straight: hand nodes matched to an ext node 55 of 61 ; straight leg equal 55
+  CLASS hand node with no ext node (lines unmatched or other wiring) 6 ["split CD3 -> ['D3', 'C3']", "merge D23 -> ['D2b', 'D3']", "split D12b -> ['D12f', 'D12g']", "split D12g -> ['D12d', 'D12e']", "merge D12h -> ['D12f', 'D12e']", "merge AD12b -> ['D12d', 'A1e']"]
+  ext nodes unused: [((97, 185), 'merge', ('straight', 67)), ((98, 191), 'merge', ('straight', 69)), ((100, 182), 'split', ('straight', 67)), ((101, 181), 'merge', ('straight', 81)), ((101, 183), 'split', ('straight', 69)), ((102, 182), 'merge', ('straight', 84)), ((102, 183), 'split', ('straight', 68)), ((103, 182), 'merge', ('straight', 90)), ((104, 179), 'split', ('und', 'trunk/leg is a node piece')), ((105, 179), 'split', ('und', 'trunk/leg is a node piece')), ((107, 173), 'merge', ('straight', 95)), ((109, 171), 'cross', ('skip', 'cross node')), ((118, 170), 'split', ('straight', 71))]
+X7 ext lines shaped 109 notes []
+  ext pieces total 351 steps 51 crossings 246
+hand: lines 100 steps 49 crossing entries 244
+X7 lines with a match 95 of 100 ; identical projection 94 ; identical steps 90 ; both 89
+X7 crossing pieces equal on common pairs 234 of 234
+  CLASS steps differ 5
+      C2 (L79) hand {1: [6, 5, 6, 5]} ext {2: [6, 5, 6, 5]}
+      C23 (L23) hand {} ext {2: [-1, 0, -1]}
+      EF1 (L2) hand {0: [0, 1, 0]} ext {0: [0, 1, 0, -1, 0, -1, 0]}
+      EF2 (L7) hand {0: [0, 1, 0]} ext {0: [0, 1, 0, -1, 0]}
+      F3c (L12) hand {0: [0]} ext {0: [0, -1, 0]}
+  CLASS hand line with no ext line 5
+      CD2
+      D12d
+      D12e
+      D12f
+      D3
+  CLASS projection differs 1
+      D12g (L92) hand [6] ext [5]
+  hand names sharing one ext line: {92: ['D12b', 'D12g']}
