@@ -70,7 +70,7 @@ copy D3 over T30, T32
 straight AB2: B2
 straight AB1: B1
 straight CD3: C3
-# straight EF1: undetermined (more than one leg keeps the trunk heading: F1c, E1c)
+straight EF1: E1c
 straight CD2: D2c
 straight CD1: C1c
 straight EF2: E2c
@@ -78,7 +78,7 @@ straight EF3: E3c
 straight A1: A1b
 straight B1: B1c
 straight B2: B2c
-# straight F1c: undetermined (more than one leg keeps the trunk heading: F1, F1b)
+straight F1c: F1b
 straight F2c: F2b
 straight E1c: E1
 straight C2c: C2
@@ -120,7 +120,7 @@ straight AD23b: A2b
 straight NO2: E23
 straight CE123c: CE123d
 straight SO3: D123
-# straight D12h: undetermined (more than one leg keeps the trunk heading: D12f, D12e)
+straight D12h: D12e
 straight AD12b: D12d
 straight NO1: C23
 straight AD12: D12h
