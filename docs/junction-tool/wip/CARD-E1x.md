@@ -1,0 +1,26 @@
+# CARD E1x: Shape rules from 197 (orchestrator, 2026-11-21)
+
+Implements PLAN-sss-v2 E1x; DESIGN-sss-v2 §3 item 3 (H11 per run) and D395 (steps on spines). Baseline (Release, a32ea0802d, `[planarpsg197]`): V's 197 shape at Shape's level breaks H11 x20, H2 x3, H3 x1; H12 clean (104 dummies); Shape's own 197 shape 112 ms, turning 48, 48 dummies.
+
+Order: E1x-1 data tidy, E1x-2 H11 per run, E1x-3 steps (after Pete's answer on the question below). One worktree (ng1, wt-e1), one writer.
+
+## E1x-1 Data tidy (settled; D396)
+- `psg197.shape.txt` becomes the Shape-level projection: per stretch the monotone path from its start heading to its end heading (the projection E1h does in the test today, moved into the data). `psg197.steps.txt` holds V's steps: one line per stretch that is not monotone, `step <line> <stretch>: <raw headings of the stretch>  # <from>-<to>` (bounds: port, node or crossing). Projection plus steps gives V's raw shape back; V's raw shape moves to `wip/probes/e1/psg197.shape-raw.txt` (shape.py's output).
+- Box-edge H2 (EO1, SO1, SO2): the trace box cut the line mid-turn; a port line ends at its port's heading (topology), so the raw list gets the port heading appended before projecting. The stretch with the turn back is a step at a port (component territory, D395).
+- D12-tail H3: at node D12g (trunk heading 6) V's legs start D12d 5, D12e 6, so the straight leg is D12e: `straight D12g: D12e` (was D12d; the tail's strand assignment was ambiguous, NOTES item 3).
+- Test: E1h loads the projection directly (no in-test projection) and asserts every breach is H11.
+
+## E1x-2 H11 per run (settled by D388 (c) and review F8; form D396)
+- A span's **runs** are its maximal groups of consecutive crossers (in the separator's travel order; the copy deck's own order for a copy span) whose headings at their crossings are equal mod 4. Width on the deck row: k tiles for a run at 90 degrees, k + 1 for a diagonal run; runs never share a tile (two different-angle crossers on one tile would be a crossing of their own, and a straight piece shares a tile with no corner piece). So **least = n + (number of diagonal runs)**, exact on the deck row; the gap between runs is a Slots length (F8).
+- Oracle: `Least` counts diagonal runs; `CheckH11` and the "H11:" message go (a maximal run is parallel by definition); H6 holds the width.
+- Program: the h11 equality rows go. Per crossing a binary d_k >= |a_k - 2| (today one per span); per consecutive pair a binary p_k that forces H_k - H_{k-1} = 4 q_k when 1 (big-M 64, q_k integer in [-16, 16]); e_k >= d_k - p_k, e_k >= 0; per allowed kind n + d_0 + sum e_k <= limit. Proof: p_k = 1 only when k is parallel to k - 1, hence same diagonal status, so a counted run start is never missed; the bound is >= the true count, and the solver sets p_k = 1 where it helps, so the row admits exactly the shapes whose true least fits.
+- Tests: (outer) E1h: V's 197 breaks nothing; (inner, red today) on V's 197 every span's least middles = n + its diagonal runs counted in the test from the headings; the old "H11 a span whose crossers are not parallel" becomes "no H11 message for non-parallel crossers". T2, T3, LL2: every variant still shapes and passes the oracle; turning may only drop (a relaxation), each change listed.
+
+## E1x-3 Steps on spines (D395): one question for Pete
+- Where they may sit (by rule): a Line track's stretch between two crossings, not two crossings of one structure. On 197: 190 such stretches, 66 inside one structure, **124 eligible**; V's 7 crossing-to-crossing steps all sit on eligible ones (A1c, A1d, A1e st9; A2c st8; C12d st3; D2 st1; F3 st10; D2's is between two tunnels of one group, rigid under v2's crossing-stack gadget). V's other two "open" steps (F3 st11, F3b st10) end at a node 4-5 tiles away: at Shape's level a leg with no lengths, so they are the node gadget's, like the other 20 near-node steps.
+- The problem: nothing in Shape's model asks for a step. A step changes no face's winding and no crossing; it costs 2 turning and can only tighten the route cone. Shape minimising turning never picks one, and choosing a side per stretch is 3^124 on 197; the need is geometric (Slots' lengths).
+- Options:
+  - **A. One-sided, side chosen by Shape (D395 as worded):** needs a criterion Shape lacks; the choice waits for E5's feasibility oracle. E1x would build only the representation and checks, with V's 7 pinned from data.
+  - **B. Two-sided by rule (recommended):** every eligible stretch that is one piece (no bend) carries one flex point: the bend pairs h -> h+1 -> h and h -> h-1 -> h, each sized >= 0 by Slots, the sides limited by the route cone. It is D383's flex point (diagonal pieces) applied to axis pieces, which D383 lists as a toggle candidate ("the same on axis legs"); stretches that already turn have a diagonal and D383's flex there. No search, no choice in Shape or Slots (no yes/no variables); cells (H12) see both pairs' bends, so Slots adds no bend Shape did not see. Cost: up to 4 bends and 2 more dummies per eligible stretch (197: at most 124 stretches), measured in E1x-3.
+- Test (either option): V's 7 steps sit on stretches whose flex point allows V's side; V's shape with them passes H1 and H12.
+- Reversible: yes (a Shape rule; components unaffected).
