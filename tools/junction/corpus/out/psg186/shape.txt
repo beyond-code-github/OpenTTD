@@ -1,0 +1,72 @@
+# Brainmelter shape at Shape's level (D396): each stretch monotone from its start to its end heading; sideways steps are in steps.txt; extracted by tools/junction/corpus/extract.py.
+shape L1: 5 6 7 8
+shape L2: 0
+shape L3: 7 6 7 8
+at L3: L15@1, L17@1, L11@1, L9@1, L8@1, L5@1
+shape L4: 0
+shape L5: 5 6 7 8
+at L5: L3@3
+shape L6: 0 -1 0
+at L6: L9@1, L8@1
+shape L7: 7 8
+at L7: L9@0, L8@0
+shape L8: 0
+at L8: L3@0, L7@0, L6@0
+shape L9: 0
+at L9: L3@0, L7@0, L6@0
+shape L10: 6 7 8
+shape L11: 7 8
+at L11: L3@1, L17@1, L16@1
+shape L12: 5 6 7 8
+at L12: L37@1, L34@1, L32@1, L15@2
+shape L13: 0
+shape L14: 5 6 7 8
+at L14: L37@1, L34@1, L32@1, L15@2
+shape L15: 0 1 0
+at L15: L3@1, L16@2, L12@2, L14@2
+shape L16: 5 6 7
+at L16: L37@1, L34@1, L32@1, L15@1, L11@1
+shape L17: 0 -1
+at L17: L3@0, L11@1
+shape L18: 7 8
+shape L19: 6 5
+shape L20: 5 6 7
+shape L21: 6
+shape L22: 7 6
+at L22: L32@1
+shape L23: 7 6
+shape L24: 6 5
+shape L25: 7 6 5
+at L25: L32@1
+shape L26: 6 7
+shape L27: 6
+shape L28: 6 7
+shape L29: 6
+shape L30: 7 6
+at L30: L34@1, L32@1
+shape L31: 7 6
+at L31: L34@1, L32@1
+shape L32: 7 8 9
+at L32: L22@0, L25@0, L31@0, L30@1, L16@1, L12@2, L14@2
+shape L33: 6 7
+shape L34: 6 7 8 9
+at L34: L30@2, L31@2, L16@2, L12@2, L14@2
+shape L35: 1
+shape L36: 6 7
+shape L37: 6 7 8 9
+at L37: L16@2, L12@2, L14@2
+shape L38: 1 0
+shape L39: 6 7
+shape L40: 7 6
+shape L41: 6
+shape L42: 6
+shape L43: 5
+shape L44: 7 6
+shape L45: 4 5
+shape L46: 4
+shape L47: 4
+shape L48: 0 -1 -2
+shape L49: 3
+shape L50: 3 2 1 0 -1 -2 -3 -4 -5
+shape L51: 3
+shape L52: 3 4

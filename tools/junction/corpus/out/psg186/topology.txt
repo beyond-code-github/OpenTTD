@@ -1,0 +1,64 @@
+topology Brainmelter
+# Extracted by tools/junction/corpus/extract.py (X-B1) from PSG 186, box 163,243,228,274; lanes from derived.
+# Ports: per side in reading order (N and S west to east, E and W north to south); each port lists its lines left to right across travel.
+# Lane numbers are 1-based in reading order on each port: N-out1 N170=1 N171=2 N172=3 N173=4 N174=5 N176=6 N177=7 N178=8; N-in1 N198=1 N201=2 N205=3 N206=4; N-out2 N199=1 N203=2 N204=3 N207=4 N208=5 N210=6 N211=7 N212=8 N214=9 N215=10; N-in2 N213=1; S-in S215=1 S217=2 S218=3 S221=4 S223=5 S225=6; S-out S220=1.
+# Routes: a movement letter per (in port, out port) pair, A, B, ... in the order of the in ports then the out ports as listed in the ports section, plus the in lane's number on its port.
+# Movements: A: N-in1 -> N-out1; B: N-in2 -> S-out; C: S-in -> N-out1; D: S-in -> N-out2.
+# Lines L1.. are named by index: lines with track first (by their first piece), then empty lines (no track: a lane that is itself a node piece, an edge between two node pieces, a cascade or cross middle line). Leg order at a node is left to right across travel in the x east, y south frame.
+port N out N: L2=C1+C2+C3, L4=A3+A4+C1+C2+C3, L6=A3+A4+C2+C3, L8=C1+C2, L53=A3+A4+C1+C2+C3, ?, ?, ?
+port N in S: L47=A4, L46=A3, ?, ?
+port N out N: L38=D1+D2+D3, ?, ?, ?, ?, ?, ?, ?, ?, ?
+port N in S: L49=B1
+port S in N: L48=C1+D1, L40=C2+D2, L44=C3+D3, ?, ?, ?
+port S out S: L52=B1
+node L1=C1+C2, L3=C3 -> L2
+node L5=C1+C2, L7=A3+A4+C2+C3 -> L4
+node L10=C1+C2 -> L8, L9=C1+C2
+node L11=C2+C3, L12=A3+A4 -> L6
+node L17=C2+C3, L16=A3+A4 -> L7
+node L9, L13=A3+A4+C2+C3 -> L53
+node L14=A3+A4, L15=C2+C3 -> L13
+node L18=C2+C3 -> L17, L15
+node L20=C2+C3 -> L11, L18
+node L19=C1+C2 -> L1, L5
+node L21=C1+C2 -> L19, L10
+node L23=C1, L22=C2 -> L21
+node L25=C2, L24=C3 -> L20
+node L28=C3, L26=C3 -> L3
+node L29=C3, L27=C3 -> L24
+node L30=C3 -> L27, L26
+node L31=C3 -> L29, L28
+node L33=C1+D1 -> L23, L32=D1
+node L32, L34=D2 -> L35=D1+D2
+node L36=C2 -> L22, L25
+node L35, L37=D3 -> L38
+node L40 -> L36, L34
+node L39=C3 -> L30, L31
+node L42=C1+D1, L41=C1+D1 -> L33
+node L44 -> L39, L37
+node L43=A3+A4 -> L16, L12
+node L45=A3+A4 -> L43, L14
+node L47, L46 -> L45
+node L48 -> L42, L41
+node L50=B1, L49 -> L51=B1
+node L51 -> L50, L52
+# Crossings (D389): each line's crossings in travel order, mark > = the partner arrives from the line's left (marks.py).
+cross L3: L15>, L17>, L11>, L9>, L8>, L5>
+cross L5: L3<
+cross L6: L9>, L8>
+cross L7: L9>, L8>
+cross L8: L3<, L7<, L6<
+cross L9: L3<, L7<, L6<
+cross L11: L3<, L17<, L16<
+cross L12: L37>, L34>, L32>, L15>
+cross L14: L37>, L34>, L32>, L15>
+cross L15: L3<, L16<, L12<, L14<
+cross L16: L37>, L34>, L32>, L15>, L11>
+cross L17: L3<, L11>
+cross L22: L32>
+cross L25: L32>
+cross L30: L34>, L32>
+cross L31: L34>, L32>
+cross L32: L22<, L25<, L31<, L30<, L16<, L12<, L14<
+cross L34: L30<, L31<, L16<, L12<, L14<
+cross L37: L16<, L12<, L14<

@@ -1,0 +1,28 @@
+# Brainmelter: sideways steps per stretch (D396), the raw headings of each stretch that is not monotone; with shape.txt it gives the raw shape.
+step L1 0: 5 6 7 8 7 8 9 8  # node-node
+step L2 0: 0 1 0 1 0  # node-node
+step L3 0: 7 8 7 6  # node-crossing
+step L4 0: 0 -1 0 1 0  # node-node
+step L5 1: 8 9 8  # crossing-node
+step L6 2: -1 0 1 0  # crossing-node
+step L8 0: 0 -1 0  # node-crossing
+step L8 3: 0 1 0  # crossing-node
+step L9 3: 0 1 0  # crossing-node
+step L11 3: 8 7 8  # crossing-node
+step L12 3: 6 7 6 7  # crossing-crossing
+step L14 3: 6 7 6 7 6 7  # crossing-crossing
+step L15 4: 0 -1 0  # crossing-node
+step L16 3: 6 7 6 7 6  # crossing-crossing
+step L22 1: 6 5 6  # crossing-node
+step L27 0: 6 5 6  # node-node
+step L30 1: 6 7 6  # crossing-crossing
+step L31 1: 6 5 6  # crossing-crossing
+step L32 7: 9 10 9  # crossing-node
+step L38 0: 1 0 1 0  # node-node
+step L40 0: 7 8 7 6  # port-node
+step L41 0: 6 7 6  # node-node
+step L42 0: 6 7 6  # node-node
+step L44 0: 7 8 7 6  # port-node
+step L47 0: 4 5 4  # port-node
+step L48 0: 0 -1 -2 -1 -2  # port-node
+step L49 0: 3 4 3 4 3 4 3  # port-node

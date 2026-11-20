@@ -1,0 +1,52 @@
+# Brainmelter: structure decisions (D389) extracted by tools/junction/corpus/extract.py; tunnel numbers by entrance tile (y, x).
+# T1 199,256 -> 187,256
+# T2 199,257 -> 187,257
+# T3 199,258 -> 187,258
+# T4 177,259 -> 169,259
+# T5 181,259 -> 178,259
+# T6 217,260 -> 217,264
+# T7 217,266 -> 217,269
+# T8 204,268 -> 201,268
+# T9 204,269 -> 201,269
+tunnel T1 L14: L37, L34, L32
+tunnel T2 L12: L37, L34, L32
+tunnel T3 L16: L37, L34, L32
+tunnel T4 L3: L15, L17, L11, L9, L8, L5
+tunnel T5 L3: 
+tunnel T6 L49: 
+tunnel T7 L49: 
+tunnel T8 L41: 
+tunnel T9 L42: 
+group G01: T1, T2, T3
+# 20 bridge spans (and their groups) are not written: this notation has no bridge statement yet (gap, report.txt)
+straight L2: L3
+straight L4: L5
+straight L10: L9
+straight L6: L12
+straight L7: L17
+straight L53: L13
+straight L13: L14
+straight L18: L17
+straight L20: L11
+straight L19: L1
+straight L21: L10
+straight L21: L23
+straight L20: L24
+straight L3: L28
+straight L24: L29
+straight L30: L26
+straight L31: L29
+straight L33: L32
+straight L35: L32
+straight L36: L25
+straight L38: L35
+straight L40: L36
+straight L39: L31
+straight L33: L41
+straight L44: L39
+straight L43: L16
+straight L45: L43
+straight L45: L46
+straight L48: L42
+straight L51: none
+straight L51: L52

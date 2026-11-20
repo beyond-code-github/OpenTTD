@@ -1,0 +1,53 @@
+# Brainmelter: per line the length of each piece of its RAW heading list (before projection), in half tiles: an axis tile 2, a diagonal piece 1, a tunnel or bridge 2 per tile; a port-end heading appended to meet the port has length 0.
+lengths L1: 3 6 5 8 6 6 2 2
+lengths L2: 6 2 12 6 0
+lengths L3: 5 2 1 26 5 4
+lengths L4: 8 2 6 4 0
+lengths L5: 1 6 5 20 2 6
+lengths L6: 2 6 6 4 0
+lengths L7: 7 2
+lengths L8: 2 2 34 4 0
+lengths L9: 36 4 2
+lengths L10: 4 5 4
+lengths L11: 3 18 2 4
+lengths L12: 1 32 2 14 9 2
+lengths L13: 8
+lengths L14: 1 34 4 6 4 4 5 8
+lengths L15: 2 2 20 4 2
+lengths L16: 3 30 2 14 2 6 1
+lengths L17: 6 4
+lengths L18: 1 8
+lengths L19: 2 2
+lengths L20: 2 6 5
+lengths L21: 10
+lengths L22: 1 26 2 2
+lengths L23: 1 24
+lengths L24: 4 3
+lengths L25: 3 24 1
+lengths L26: 4 1
+lengths L27: 2 2 2
+lengths L28: 2 3
+lengths L29: 6
+lengths L30: 1 12 2 10
+lengths L31: 3 10 2 10
+lengths L32: 8 12 5 2 6
+lengths L33: 12 2
+lengths L34: 2 5 24 1
+lengths L35: 7
+lengths L36: 4 2
+lengths L37: 2 7 26 1
+lengths L38: 2 6 2 4
+lengths L39: 4 4
+lengths L40: 4 2 9 28
+lengths L41: 2 2 16
+lengths L42: 16 2 2
+lengths L43: 3
+lengths L44: 4 2 11 20
+lengths L45: 4 5
+lengths L46: 20
+lengths L47: 16 2 2
+lengths L48: 2 5 4 4 4
+lengths L49: 4 18 2 4 2 28 1
+lengths L50: 1 1 3 1 1
+lengths L51: 3
+lengths L52: 4 0

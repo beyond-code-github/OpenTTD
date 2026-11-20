@@ -1,0 +1,189 @@
+# BBH01: structure decisions (D389) extracted by tools/junction/corpus/extract.py; tunnel numbers by entrance tile (y, x).
+# T1 85,152 -> 85,149
+# T2 95,158 -> 95,172
+# T3 96,158 -> 96,172
+# T4 97,158 -> 97,172
+# T5 88,159 -> 88,155
+# T6 89,159 -> 89,155
+# T7 84,161 -> 84,158
+# T8 91,161 -> 91,174
+# T9 92,161 -> 92,174
+# T10 93,161 -> 93,174
+# T11 99,162 -> 101,162
+# T12 82,163 -> 82,160
+# T13 90,163 -> 94,163
+# T14 99,163 -> 101,163
+# T15 90,164 -> 94,164
+# T16 105,164 -> 108,164
+# T17 99,165 -> 102,165
+# T18 93,166 -> 96,166
+# T19 87,167 -> 87,161
+# T20 88,167 -> 88,161
+# T21 93,167 -> 96,167
+# T22 102,168 -> 105,168
+# T23 95,169 -> 99,169
+# T24 84,170 -> 84,164
+# T25 85,170 -> 85,164
+# T26 95,170 -> 99,170
+# T27 81,171 -> 81,166
+# T28 82,171 -> 82,166
+# T29 88,171 -> 92,171
+# T30 111,171 -> 107,171
+# T31 88,172 -> 92,172
+# T32 111,172 -> 107,172
+# T33 96,174 -> 96,181
+# T34 97,174 -> 97,181
+# T35 98,174 -> 98,181
+# T36 107,174 -> 103,174
+# T37 117,174 -> 110,174
+# T38 107,175 -> 103,175
+# T39 117,175 -> 110,175
+# T40 92,176 -> 92,179
+# T41 94,176 -> 94,184
+# T42 84,177 -> 84,172
+# T43 85,177 -> 85,172
+# T44 103,178 -> 100,178
+# T45 92,181 -> 92,183
+# T46 93,181 -> 93,183
+# T47 97,183 -> 97,187
+# T48 98,183 -> 98,187
+# T49 100,184 -> 100,186
+# T50 94,187 -> 94,190
+tunnel T1 L21: L15
+tunnel T2 L57: L55, L54, L30, L31, L45, L40, L46, L11, L12
+tunnel T3 L59: L55, L54, L30, L31, L45, L46, L40, L11, L12
+tunnel T4 L60: L55, L54, L30, L31, L45, L46, L11, L40, L12
+tunnel T5 L28: L24
+tunnel T6 L10: L24
+tunnel T7 L16: L17
+tunnel T8 L32: L40, L30, L31, L45, L46, L11, L12, L37
+tunnel T9 L47: L30, L40, L31, L45, L46, L11, L12, L37
+tunnel T10 L48: L30, L31, L40, L45, L46, L11, L12, L37
+tunnel T11 L55: L66
+tunnel T12 L5: L4
+tunnel T13 L30: L32, L40, L47, L48
+tunnel T14 L54: L66
+tunnel T15 L31: L32, L47, L40, L48
+tunnel T16 L88: L54
+tunnel T17 L71: L79
+tunnel T18 L45: L40, L57, L59
+tunnel T19 L26: L7, L2, L10
+tunnel T20 L28: L7, L31, L30, L10
+tunnel T21 L46: L57, L40, L59
+tunnel T22 L11: L84
+tunnel T23 L11: L59, L40, L60
+tunnel T24 L16: L7, L2, L10
+tunnel T25 L18: L7, L2, L10
+tunnel T26 L12: L59, L60, L40
+tunnel T27 L4: L2, L1
+tunnel T28 L5: L2, L10, L9
+tunnel T29 L11: L37, L32, L47
+tunnel T30 L73: L99
+tunnel T31 L12: L37, L32, L47
+tunnel T32 L80: L98, L96
+tunnel T33 L57: L37, L33, L49, L61, L62
+tunnel T34 L59: L37, L64, L61, L62
+tunnel T35 L60: L37, L64, L61, L62
+tunnel T36 L81: L90
+tunnel T37 L81: L100
+tunnel T38 L75: L90
+tunnel T39 L75: L100
+tunnel T40 L47: L33
+tunnel T41 L48: L33, L49, L35
+tunnel T42 L16: L12, L11
+tunnel T43 L18: L12, L11
+tunnel T44 L61: L62
+tunnel T45 L47: L35
+tunnel T46 L49: L35
+tunnel T47 L59: L63
+tunnel T48 L60: L68, L69
+tunnel T49 L70: L69
+tunnel T50 L48: L51
+group G01: T2, T3, T4
+group G02: T5, T6
+group G03: T8, T9, T10
+group G04: T11, T14
+group G05: T13, T15
+group G06: T18, T21
+group G07: T19, T20
+group G08: T23, T26
+group G09: T24, T25
+group G10: T27, T28
+group G11: T29, T31
+group G12: T30, T32
+group G13: T33, T34, T35
+group G14: T36, T38
+group G15: T37, T39
+group G16: T42, T43
+group G17: T45, T46
+group G18: T47, T48
+straight L3: L1
+straight L1: L9
+straight L6: L4
+straight L8: L6
+straight L13: L11
+straight L17: L4
+straight L21: L5
+straight L19: L16
+straight L14: L19
+straight L20: L21
+straight L15: L24
+straight L23: L25
+straight L25: L18
+straight L2: L30
+straight L22: L29
+straight L37: L26
+straight L34: L32
+straight L27: L35
+straight L29: L36
+straight L40: L36
+straight L7: L45
+straight L39: L44
+straight L43: L111
+straight L111: L47
+straight L50: L47
+straight L38: L51
+straight L42: L53
+straight L44: L54
+straight L41: L56
+straight L52: L58
+straight L35: L61
+straight L58: L60
+straight L51: L63
+straight L64: L49
+straight L63: L68
+straight L56: L65
+straight L53: L67
+straight L71: L31
+straight L40: L73
+straight L65: L70
+straight L37: L75
+straight L79: L30
+straight L76: L80
+straight L77: L68
+straight L77: L82
+straight L83: L70
+straight L84: L79
+straight L83: L85
+straight L87: L69
+straight L71: L89
+straight L87: L91
+straight L92: L55
+straight L90: L62
+# straight L112: undetermined (trunk/leg is a node piece)
+straight L94: L12
+# straight L93: undetermined (trunk/leg is a node piece)
+straight L95: L93
+straight L90: L96
+# straight L113: undetermined (cross node)
+# straight L113: undetermined (cross node)
+straight L95: L101
+straight L102: L88
+straight L103: L54
+straight L104: L11
+straight L105: L80
+straight L107: L97
+straight L106: L72
+straight L108: L81
+straight L109: L108
+straight L110: L107
