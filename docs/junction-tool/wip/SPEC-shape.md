@@ -75,6 +75,8 @@ Until tunnels are built (D365): kinds always bridge; the tunnel rows and end run
 
 ## 8. Faces Slots can draw: the guarantee behind D361 (DRAFT, orchestrator, 2026-11-21 night; for the engineer)
 
+**Scope under SSS v2 (D388):** this section now applies to free faces only (faces between bundles: spines' outer lanes, gadget hulls, the box). Faces inside bundles and gadgets are rigid (lanes as offset curves, catalogue gadgets) and get no cells; a dummy lands only on a physical wall, never on another dummy (DESIGN-sss-v2 §3.2, H16). §8.7's runtime certificate (D386 (1)) is superseded: the feasibility program is a test oracle (D388 b).
+
 **Why this section.** Slots (D379) decides every length on Shape's headings, and D361 asks that its output be valid by construction. That needs two statements, proved before Slots' rows are built (D368):
 - **G-planar:** any lengths that satisfy Slots' rows give a planar drawing of Structure's map with tile clearances (no clash).
 - **G-feasible:** Slots' rows always have a solution on a variant Shape hands down (Slots never discovers infeasibility, D361).

@@ -34,12 +34,23 @@ struct PlanarShapeStructure {
 	std::array<int, 2> copy_middles = {-1, -1}; ///< The least middle tiles of the copy's deck per kind at its chosen angles (-1 for a kind not allowed, or no copy).
 };
 
+/** A dummy edge that refines a face into convex cells (SPEC-shape §8.1, D385, H12). */
+struct PlanarShapeDummy {
+	uint32_t face; ///< The face it lies in (index into the map's faces).
+	uint32_t track; ///< The track whose bend it starts at.
+	uint32_t piece; ///< The bend: the vertex between this piece and the next of the track.
+	int heading; ///< Its heading, 0..7.
+	uint32_t land_track; ///< The track of the wall it ends on, or UINT32_MAX for a box edge.
+	uint32_t land_piece; ///< The piece of that track it ends on, or the PlanarSide of the box edge.
+};
+
 /** One variant of Shape's output: Structure's variant refined with headings. */
 struct PlanarShapeVariant {
 	PlanarStructureVariant structure; ///< Structure's variant, unchanged (map, sites, structures, kinds, cost).
 	std::vector<PlanarShapeTrack> tracks; ///< Per track of the map, beside tracks included, its shape.
 	std::vector<uint8_t> angles; ///< Per crossing of the map, its angle in eighths (1 to 3).
 	std::vector<PlanarShapeStructure> structures; ///< Per structure of Structure's variant, in the same order.
+	std::vector<PlanarShapeDummy> dummies; ///< The dummy edges that make every face's cells convex (H12).
 	int cost; ///< Shape's cost: the turning (sum of |turn| over stretches, D340).
 };
 
@@ -51,6 +62,16 @@ struct PlanarShapeResult {
 };
 
 /**
+ * The parent chain of a beside track (H8): from the straight leg of its start node's site, at each end node the out track that is a part of its line, to the track ending where it ends.
+ * @param map The track map.
+ * @param sites The variant's sites.
+ * @param b The Copy or Row track.
+ * @param chain Receives the tracks in order.
+ * @return False when there is no (unique) chain.
+ */
+bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSite> &sites, uint32_t b, std::vector<uint32_t> &chain);
+
+/**
  * The promise H1 to H9 and H11 of SPEC-shape §4 as a test oracle (D367).
  * The topology and spec serve H9 (P1 to P8) and H6's limits; the oracle is a test tool, not a layer.
  * @param topology The topology the variant was made from.
@@ -59,6 +80,24 @@ struct PlanarShapeResult {
  * @return One message per breach, each starting with its promise id ("H3: ..."); empty when the promise is kept.
  */
 std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v);
+
+/**
+ * H12 (SPEC-shape 8.1, D385): every inner face's cells, split by v.dummies, turn one way and wind once; part of CheckPlanarShapePromise.
+ * Faces that do not wind once are skipped (H7 reports them).
+ * @param v The variant; its tracks must pass H1.
+ * @return One message per breach, each starting with "H12:"; empty when every cell is convex.
+ */
+std::vector<std::string> CheckPlanarShapeCells(const PlanarShapeVariant &v);
+
+/**
+ * H12b (SPEC-shape 8.7, D385, D386): refine every inner face into convex cells by dummy edges from each reflex bend, by rule.
+ * Candidate headings h, h - 3, h - 1, h - 2 (h the incoming wall's lifted heading), the landing the first facing wall after the corner; the first candidate whose two cells both have 4 or more walls, else the first valid one.
+ * Faces that do not wind once are skipped (H7 reports them).
+ * @param v The variant; its tracks must pass H1. Its dummies are replaced.
+ * @param why Receives the reason on failure ("no cells: ...").
+ * @return False when a reflex corner is not a bend inside one track, or no candidate resolves it.
+ */
+bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why);
 
 /**
  * Shape one Structure variant: the heading program of SPEC-shape §2 and §2.1 (every rule of SPEC-shape §2.1).

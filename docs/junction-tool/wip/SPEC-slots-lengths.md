@@ -51,6 +51,8 @@ Not decided here: headings (Shape), structures and kinds (Structure), levels and
 - G3 Area (one linearisation or a fixed-box sweep) against MappedComposer's areas (T2 906.25, T3 1941.25, LL2 1347.25).
 - G4 Oracle `CheckPlanarSlotsPromise` (S-P1..S-P5) with hand variants; outer test on T2, T3, LL2.
 
+**§8-§11 are v1 evidence (D388).** They were designed for track-level Slots; SSS v2 rewrites Slots' rows by family in E5 (PLAN-sss-v2.md, DESIGN-sss-v2 §3.3). Read them for the rule fields (§8.1) and the offset-curve and flex mechanisms, not as the plan.
+
 ## 8. G1 design (orchestrator, 2026-11-21)
 
 Units: half tiles, as `PlanarModel` (`STEP`: an axis unit moves 1 half tile, a diagonal unit 1 half tile on each axis). A lane is 2 units sideways on an axis, one `Right(h)` unit (1, 1) on a diagonal; in both cases `Dot(offset, N(h)) = 2` per lane with `N(h) = STEP[(h + 2) % 8]`.

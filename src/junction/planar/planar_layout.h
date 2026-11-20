@@ -57,6 +57,22 @@ struct PlanarPiece {
 /** Rasterise every line of a geometry: per line, its pieces in travel order, deck pieces marked. */
 std::vector<std::vector<PlanarPiece>> RasterPlanarLines(const PlanarGeometry &geometry);
 
+/** One clash the layout program's tile scan finds between two lines of a geometry. */
+struct PlanarClashHit {
+	uint32_t line_a, segment_a; ///< The first line and its segment (index in its chain).
+	uint32_t line_b, segment_b; ///< The other line (line_b > line_a) and its segment.
+	TileIndexDiffC tile; ///< The first piece's tile.
+	uint8_t rule; ///< The clash rule kind (ground, exclusive, tile).
+};
+
+/**
+ * The layout program's clash scan (family 13) on a given geometry: pieces from `RasterPlanarLines`, every pair of pieces of different lines on one tile or on edge-neighbouring tiles judged by `KindOf` and `PiecesClash`, pairs where both pieces touch the point of a node both lines are incident to left out; one hit per (line, segment) pair.
+ * @param topology The topology the geometry belongs to.
+ * @param geometry The geometry.
+ * @return The hits.
+ */
+std::vector<PlanarClashHit> PlanarGeometryClashes(const PlanarTopology &topology, const PlanarGeometry &geometry);
+
 /** A lazily added row family, kept so later solves of the same (topology, spec) replay it in order. */
 struct PlanarLazyRow {
 	enum class Kind : uint8_t { Clash, Curve, Obstacle, Prio } kind;
