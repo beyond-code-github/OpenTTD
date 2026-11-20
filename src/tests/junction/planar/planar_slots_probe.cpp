@@ -142,7 +142,7 @@ static uint32_t G1Family(const std::string &tag)
  * Solve the joint slots and lengths of one variant, then run the oracles.
  * @param off A bit set leaves that family's rows out (G1Family).
  */
-static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v, uint32_t off = 0, const std::set<uint32_t> *grid_tracks = nullptr, const std::string *skip_pin = nullptr)
+static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v, uint32_t off = 0, const std::set<uint32_t> *grid_tracks = nullptr, const std::string *skip_pin = nullptr, bool print_geometry = false)
 {
 	using Kind = Elem::Kind;
 	const PlanarTrackMap &map = v.structure.map;
@@ -744,10 +744,13 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 
 	/* Consistency: walk every track's parts into a vertex list. */
 	std::vector<SolvedTrack> solved(nt);
+	std::vector<std::vector<std::string>> vertex_kind(nt);
 	for (uint32_t t = 0; t < nt; t++) {
 		SolvedTrack &st = solved[t];
 		std::array<int, 2> at = {value(point[t][0].first), value(point[t][0].second)};
 		st.vertices.push_back(at);
+		vertex_kind[t].push_back("start");
+		bool last_part = true;
 		int current = -1, previous = ((v.tracks[t].pieces.front() % 8) + 8) % 8;
 		for (size_t k = 0; k <= map.events[t].size(); k++) {
 			for (size_t i = te[t].stretch_begin[k]; i < te[t].stretch_end[k]; i++) {
@@ -756,9 +759,11 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 				if (n == 0) continue;
 				if (current != -1 && current != el.heading) {
 					st.vertices.push_back(at);
+					vertex_kind[t].push_back(el.kind != Kind::Part || !last_part ? "step" : "bend");
 					st.headings.push_back(current);
 					st.segment_stretch.push_back(static_cast<uint32_t>(k));
 				}
+				last_part = el.kind == Kind::Part;
 				current = el.heading;
 				at = {at[0] + n * el.disp[0], at[1] + n * el.disp[1]};
 				const int length = n * el.length;
@@ -771,11 +776,71 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 			const std::array<int, 2> expected = {value(point[t][k + 1].first), value(point[t][k + 1].second)};
 			if (at != expected) r.consistency++;
 			st.vertices.push_back(at);
+			vertex_kind[t].push_back(k < map.events[t].size() ? "event" : "end");
 			st.headings.push_back(current != -1 ? current : previous);
 			st.segment_stretch.push_back(static_cast<uint32_t>(k));
 			st.event_vertex.push_back(st.vertices.size() - 1);
 			previous = st.headings.back();
 			current = -1;
+		}
+	}
+	if (print_geometry) {
+		std::set<uint32_t> shown;
+		std::set<uint32_t> seeds;
+		for (uint32_t t = 0; t < nt; t++) {
+			const std::string &nm = map.tracks[t].name;
+			if (nm == "EO1" || nm == "EO2" || nm == "AB1" || nm == "AB2") shown.insert(t);
+			if (nm == "A2a" || nm == "B2\"13") {
+				shown.insert(t);
+				seeds.insert(t);
+			}
+		}
+		for (const uint32_t s : seeds) {
+			for (uint32_t t = 0; t < nt; t++) {
+				for (const PlanarEnd &a : {map.expanded.lines[s].from, map.expanded.lines[s].to}) {
+					if (a.port) continue;
+					for (const PlanarEnd &b : {map.expanded.lines[t].from, map.expanded.lines[t].to}) {
+						if (!b.port && b.index == a.index) shown.insert(t);
+					}
+				}
+			}
+		}
+		for (const uint32_t t : shown) {
+			const SolvedTrack &st = solved[t];
+			const std::string &nm = map.tracks[t].name;
+			const size_t nv = st.vertices.size();
+			std::vector<int> len(nv, 0);
+			for (size_t i = 0; i + 1 < nv; i++) len[i] = std::max(std::abs(st.vertices[i + 1][0] - st.vertices[i][0]), std::abs(st.vertices[i + 1][1] - st.vertices[i][1]));
+			for (size_t i = 0; i < nv; i++) {
+				const int x = st.vertices[i][0], y = st.vertices[i][1];
+				std::string extra;
+				const std::string &kind = vertex_kind[t][i];
+				if (kind == "start" || kind == "end") {
+					const PlanarEnd &e = kind == "start" ? map.expanded.lines[t].from : map.expanded.lines[t].to;
+					extra = fmt::format(" {}={}", e.port ? "port" : "node", e.index);
+				} else if (kind == "event") {
+					const uint32_t c = map.events[t][st.event_vertex.empty() ? 0 : static_cast<size_t>(std::ranges::find(st.event_vertex, i) - st.event_vertex.begin())];
+					extra = fmt::format(" cross={}", map.tracks[map.crossings[c].a == t ? map.crossings[c].b : map.crossings[c].a].name);
+				}
+				const std::string next = i + 1 < nv ? fmt::format("next_heading={} next_len={}", st.headings[i], len[i]) : std::string("next_heading=- next_len=-");
+				std::cout << fmt::format("G1E {} v{} kind={} x={} y={} x%2={} y%2={} (x+y)%2={} {}{}\n", nm, i, kind, x, y, x & 1, y & 1, (x + y) & 1, next, extra);
+			}
+			/* The rules at the start of each run of one heading. */
+			if (nv > 0 && ((st.vertices[0][0] + st.vertices[0][1]) & 1) == 0) std::cout << fmt::format("G1E BREAK {} v0 rule=start x+y odd\n", nm);
+			int prev_heading = -1;
+			for (size_t i = 0; i + 1 < nv; i++) {
+				if (len[i] == 0) continue;
+				const int h = st.headings[i];
+				if (h == prev_heading) continue;
+				prev_heading = h;
+				if (h % 2 != 0) continue;
+				size_t j = i;
+				int total = 0;
+				for (; j + 1 < nv && (len[j] == 0 || st.headings[j] == h); j++) total += len[j];
+				const int cross = st.vertices[i][h % 4 == 0 ? 0 : 1];
+				if ((cross & 1) == 0) std::cout << fmt::format("G1E BREAK {} v{} rule=axis cross-coordinate odd\n", nm, i);
+				if ((total & 1) != 0) std::cout << fmt::format("G1E BREAK {} v{} rule=axis even\n", nm, i);
+			}
 		}
 	}
 	for (const PlanarCrossing &c : map.crossings) {
@@ -981,4 +1046,16 @@ TEST_CASE("planar probe: G1d the grid rows that block LL2", "[junction][planar][
 		const std::string pin = fmt::format("pin {} {} {} d={}", static_cast<int>(side), map.tracks[t1].name, map.tracks[t2].name, d);
 		if (SolveG1(topology, spec, v, off, &keep, &pin).solved) std::cout << fmt::format("G1D PIN {} solved=1\n", pin);
 	}
+}
+
+TEST_CASE("planar probe: G1e the geometry around LL2's grid conflict", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarLL2Text(), &error);
+	REQUIRE(error.empty());
+	const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+	REQUIRE(!shape.variants.empty());
+	const G1Result r = SolveG1(topology, spec, shape.variants[0], 511U | 1024U, nullptr, nullptr, true);
+	REQUIRE(r.solved);
 }
