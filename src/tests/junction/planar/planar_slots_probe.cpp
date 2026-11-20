@@ -38,6 +38,8 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+#include <fstream>
+#include <cstdlib>
 
 #include "../../../3rdparty/fmt/format.h"
 
@@ -1568,6 +1570,16 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 			st.event_vertex.push_back(st.vertices.size() - 1);
 			previous = st.headings.back();
 			current = -1;
+		}
+	}
+	/* G1x: env JUNCTION_G1_DUMP=<file>: the solved drawing, one track per line: name, part_of (or -), vertices x,y:kind ... (half-tile units). */
+	if (const char *dump = std::getenv("JUNCTION_G1_DUMP"); dump != nullptr) {
+		std::ofstream out(dump, std::ios::app);
+		out << "# " << v.structure.tag << " W " << value(width) << " H " << value(height) << "\n";
+		for (uint32_t t = 0; t < nt; t++) {
+			out << map.tracks[t].name << " " << (map.part_of[t] == UINT32_MAX ? std::string("-") : map.tracks[map.part_of[t]].name);
+			for (size_t i = 0; i < solved[t].vertices.size(); i++) out << " " << solved[t].vertices[i][0] << "," << solved[t].vertices[i][1] << ":" << vertex_kind[t][i];
+			out << "\n";
 		}
 	}
 	std::set<uint32_t> shown;
