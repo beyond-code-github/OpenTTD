@@ -51,6 +51,7 @@ struct G1Result {
 	std::string why; ///< The status and, when infeasible, the tags of the conflicting rows.
 	double ms; ///< The time of the solve.
 	int step_lanes; ///< The lanes of all steps, cusps included.
+	double lanes_exact = 0; ///< G1t: the same, unrounded (for LP runs).
 	std::vector<std::string> clashes; ///< The clash oracle's hits, one line each.
 	size_t same_channel, face, noface; ///< The hits by kind.
 	std::vector<std::string> curve_breaches; ///< The curve oracle's breaches, one line each.
@@ -1285,15 +1286,20 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 						const Bend &prev = bends[mk.bends_before - 1];
 						Lin d = first;
 						d.Add(prev.at, -1);
-						d.Add(z, -1000);
-						once_row(d, (prev.right != first_right ? 2 : rules.g) - 1000, INF, fmt::format("curve step {}", route.name));
+						/* G1s: d >= 0 always (travel order), so d >= gap z is the tight form of d >= gap - M (1 - z) (off 524288: M = 1000). */
+						const int gap = prev.right != first_right ? 2 : rules.g;
+						const int big = (off & 524288) != 0 ? 1000 : gap;
+						d.Add(z, -big);
+						once_row(d, gap - big, INF, fmt::format("curve step {}", route.name));
 					}
 					if (mk.bends_before < bends.size()) {
 						const Bend &next = bends[mk.bends_before];
 						Lin d = next.at;
 						d.Add(second, -1);
-						d.Add(z, -1000);
-						once_row(d, (next.right != !first_right ? 2 : rules.g) - 1000, INF, fmt::format("curve step {}", route.name));
+						const int gap = next.right != !first_right ? 2 : rules.g;
+						const int big = (off & 524288) != 0 ? 1000 : gap;
+						d.Add(z, -big);
+						once_row(d, gap - big, INF, fmt::format("curve step {}", route.name));
 					}
 				}
 			}
@@ -1452,7 +1458,10 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 		std::sort(r.parity_breaks.begin(), r.parity_breaks.end());
 		r.parity_breaks.erase(std::unique(r.parity_breaks.begin(), r.parity_breaks.end()), r.parity_breaks.end());
 	}
-	for (const uint32_t sv : step_vars) r.step_lanes += value(sv);
+	for (const uint32_t sv : step_vars) {
+		r.step_lanes += value(sv);
+		r.lanes_exact += lp.Value(sv);
+	}
 	r.width_tiles = value(width) / 2;
 	r.height_tiles = value(height) / 2;
 
@@ -1997,7 +2006,7 @@ TEST_CASE("planar probe: G1l long base solves and the parity breaks without pari
 TEST_CASE("planar probe: G1m the base with forced parities as cuts", "[junction][planar][planarshape][.probe]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	const std::vector<std::pair<std::string, std::string>> hubs = {{"LL2", PlanarLL2Text()}, {"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}};
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
 	for (const auto &[name, text] : hubs) {
 		std::string error;
 		const PlanarTopology topology = ParsePlanarTopology(text, &error);
@@ -2069,4 +2078,27 @@ TEST_CASE("planar probe: G1q the lower-bound families that conflict", "[junction
 		for (const std::string &line : r.iis) std::cout << fmt::format("G1Q IIS {} {} {}\n", name, v.structure.tag, line);
 	}
 	g1_time_limit = limit;
+}
+
+/** G1t: the LP relaxation's step lanes at off=0 and with each lower-bound family dropped: which rules force T2's ~100 lanes? */
+TEST_CASE("planar probe: G1t the families that force steps in the LP", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const char *family_names[] = {"beside", "span clear", "deck gap and limit", "landing", "crossers", "node legs", "coverage", "bays", "curves"};
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		const PlanarShapeVariant &v = shape.variants[0];
+		const G1Result all = SolveG1(topology, spec, v, 512U);
+		std::cout << fmt::format("G1T {} {} LP all families: solved={} lanes={:.1f}\n", name, v.structure.tag, all.solved ? 1 : 0, all.lanes_exact);
+		for (uint32_t b = 0; b < G1_FAMILIES; b++) {
+			const G1Result r = SolveG1(topology, spec, v, 512U | (1U << b));
+			std::cout << fmt::format("G1T {} {} LP without {}: solved={} lanes={:.1f}\n", name, v.structure.tag, family_names[b], r.solved ? 1 : 0, r.lanes_exact);
+		}
+		const G1Result none = SolveG1(topology, spec, v, 512U | 511U);
+		std::cout << fmt::format("G1T {} {} LP no lower bounds: solved={} lanes={:.1f}\n", name, v.structure.tag, none.solved ? 1 : 0, none.lanes_exact);
+	}
 }

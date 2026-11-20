@@ -11,6 +11,7 @@
 
 #include "junction_milp.h"
 
+#include <cstdlib>
 #include <Highs.h>
 
 #include <algorithm>
@@ -72,7 +73,10 @@ struct JunctionMilp::Impl {
 	bool Setup(Highs &highs, HighsLp lp) const
 	{
 		if (highs.setOptionValue("output_flag", false) != HighsStatus::kOk) return false;
-		if (highs.setOptionValue("mip_rel_gap", 0.0) != HighsStatus::kOk) return false;
+		/* Probe knobs (unset: unchanged): JUNCTION_MILP_GAP sets mip_rel_gap, JUNCTION_MILP_LOG turns the solver log on. */
+		const char *gap = std::getenv("JUNCTION_MILP_GAP");
+		if (highs.setOptionValue("mip_rel_gap", gap != nullptr ? std::atof(gap) : 0.0) != HighsStatus::kOk) return false;
+		if (std::getenv("JUNCTION_MILP_LOG") != nullptr && highs.setOptionValue("output_flag", true) != HighsStatus::kOk) return false;
 		if (highs.setOptionValue("random_seed", 0) != HighsStatus::kOk) return false;
 		if (highs.setOptionValue("threads", 1) != HighsStatus::kOk) return false;
 		if (this->time_limit > 0 && highs.setOptionValue("time_limit", this->time_limit) != HighsStatus::kOk) return false;
