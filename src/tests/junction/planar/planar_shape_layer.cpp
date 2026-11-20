@@ -306,9 +306,11 @@ struct ClosureResult {
  * Per point (x, y); a parallel leg of a node is offset sideways from the node point by a free w >= 0 (the cusp opening Slots owns, SPEC-shape section 3 hand-on (1)); per piece a length of at least 1, split into one part per stretch the piece lies on, so a piece that holds events is cut at them (the reading the orchestrator ruled intended, not the literal sum over a shared piece); the box is [0, W] x [0, Hb].
  * @param v The shaped variant.
  * @param families Which quantities of Slots' least answer to fix: bit 1 one lane at each cusp, bit 2 one tile per deck step, bit 4 the pinned gaps at the ports, bit 8 a free sideways step in every stretch, bit 16 (with 8) whole-lane steps and none inside a deck, bit 32 (with 8 and 16) each step n = p - m with 1000 per unit of p and m, bit 64 (with 1, 2, 4) the homogeneous closure: every constant 0, every part may be 0, and a max-support LP finds the parts that cannot be stretched.
+ * @param equalities If not nullptr, receives every row added with lower == upper.
+ * @param columns If not nullptr, receives the variable count.
  * @return The answer.
  */
-static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
+static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0, std::vector<std::vector<std::pair<uint32_t, double>>> *equalities = nullptr, uint32_t *columns = nullptr)
 {
 	const PlanarTrackMap &map = v.structure.map;
 	const size_t nt = map.tracks.size();
@@ -326,7 +328,12 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 		}
 		lp.AddRow(merged, lower, upper);
 		tags.push_back(tag);
+		if (equalities != nullptr && lower == upper) equalities->push_back(merged);
+		if (columns != nullptr) {
+			for (const auto &[variable, coefficient] : merged) *columns = std::max(*columns, variable + 1);
+		}
 	};
+	if (columns != nullptr) *columns = 0;
 	const bool homogeneous = (families & 64) != 0;
 	const uint32_t width = lp.AddVariable(homogeneous ? 0 : 1, JunctionMilp::INF, homogeneous ? 0 : 1, false), height = lp.AddVariable(homogeneous ? 0 : 1, JunctionMilp::INF, homogeneous ? 0 : 1, false);
 	std::vector<std::vector<std::pair<uint32_t, uint32_t>>> point(nt); ///< Per track and point, its (x, y).
@@ -562,6 +569,37 @@ static ClosureResult ClosureLp(const PlanarShapeVariant &v, int families = 0)
 		}
 	}
 	return r;
+}
+
+/**
+ * The rank of the equality rows ClosureLp builds for the families, by Gaussian elimination in double with partial pivoting.
+ * @param v The shaped variant.
+ * @param families The families as for ClosureLp.
+ * @param columns Receives the variable count.
+ * @return The rank.
+ */
+static int ClosureRank(const PlanarShapeVariant &v, int families, uint32_t *columns)
+{
+	std::vector<std::vector<std::pair<uint32_t, double>>> equalities;
+	ClosureLp(v, families, &equalities, columns);
+	std::vector<std::vector<double>> a(equalities.size(), std::vector<double>(*columns, 0.0));
+	for (size_t i = 0; i < equalities.size(); i++) {
+		for (const auto &[variable, coefficient] : equalities[i]) a[i][variable] = coefficient;
+	}
+	int rank = 0;
+	for (uint32_t c = 0; c < *columns && static_cast<size_t>(rank) < a.size(); c++) {
+		size_t best = static_cast<size_t>(rank);
+		for (size_t i = best + 1; i < a.size(); i++) if (std::abs(a[i][c]) > std::abs(a[best][c])) best = i;
+		if (std::abs(a[best][c]) < 1e-9) continue;
+		std::swap(a[best], a[static_cast<size_t>(rank)]);
+		for (size_t i = static_cast<size_t>(rank) + 1; i < a.size(); i++) {
+			const double f = a[i][c] / a[static_cast<size_t>(rank)][c];
+			if (f == 0) continue;
+			for (uint32_t k = c; k < *columns; k++) a[i][k] -= f * a[static_cast<size_t>(rank)][k];
+		}
+		rank++;
+	}
+	return rank;
 }
 
 TEST_CASE("planar shape layer: t3 first variant shapes", "[junction][planar][planarshape]")
@@ -812,6 +850,33 @@ TEST_CASE("planar probe: closure with Slots' least exact answer on T1-T3 and LL2
 			size_t closes = 0;
 			for (const PlanarShapeVariant &v : shape.variants) if (ClosureLp(v, mask).closes) closes++;
 			std::cout << fmt::format("X2B {} mask={} closes={}/{}\n", name, mask, closes, shape.variants.size());
+		}
+		{
+			uint32_t steps_vars = 0;
+			for (const int fam : {0, 7, 31}) {
+				uint32_t cmin = UINT32_MAX, cmax = 0;
+				int rmin = INT_MAX, rmax = 0, fmin = INT_MAX, fmax = 0;
+				for (const PlanarShapeVariant &v : shape.variants) {
+					uint32_t columns;
+					const int rank = ClosureRank(v, fam, &columns);
+					const int free = static_cast<int>(columns) - rank;
+					cmin = std::min(cmin, columns); cmax = std::max(cmax, columns);
+					rmin = std::min(rmin, rank); rmax = std::max(rmax, rank);
+					fmin = std::min(fmin, free); fmax = std::max(fmax, free);
+					if (fam == 31) {
+						uint32_t base;
+						ClosureRank(v, 7, &base);
+						steps_vars = std::max(steps_vars, columns - base);
+					}
+				}
+				if (shape.variants.empty()) continue;
+				std::cout << fmt::format("G0 {} fam={} columns={}..{} rank={}..{} free={}..{} steps_vars={}\n", name, fam, cmin, cmax, rmin, rmax, fmin, fmax, fam == 31 ? fmt::format("{}", steps_vars) : std::string("-"));
+				if ((name == "T2" || name == "LL2")) {
+					uint32_t columns;
+					const int rank = ClosureRank(shape.variants.front(), fam, &columns);
+					std::cout << fmt::format("G0 {} first fam={} columns={} rank={} free={}\n", name, fam, columns, rank, static_cast<int>(columns) - rank);
+				}
+			}
 		}
 		if (name != "T1" && name != "LL2" && !shape.variants.empty()) {
 			const PlanarShapeVariant &v = shape.variants.front();
