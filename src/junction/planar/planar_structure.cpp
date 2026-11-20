@@ -77,6 +77,11 @@ static std::array<int, 2> StructureLimit(const JunctionSpec &spec, const PlanarS
 	return limit;
 }
 
+std::array<int, 4> PlanarSideGaps(const JunctionSpec &spec)
+{
+	return {spec.branch_gap + 1, spec.ml_gap + 1, spec.branch_gap + 1, spec.ml_gap + 1};
+}
+
 std::vector<PlanarStructure> PlanarBuildStructures(const PlanarTopology &topology, const std::vector<PlanarStructureRun> &runs, const PlanarTrackMap &map, const JunctionSpec &spec)
 {
 	std::vector<PlanarStructure> out;
@@ -318,6 +323,7 @@ PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const
 		}
 		v.structures = PlanarBuildStructures(topology, e.runs, v.map, spec);
 		v.sites = PlanarBuildStructureSites(topology, c.channels, c.sites, v.map);
+		v.side_gap = PlanarSideGaps(spec);
 		result.variants.push_back(std::move(v));
 	}
 	if (result.variants.empty()) result.why = "no variant survives";
@@ -466,6 +472,10 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 		if ((s.kinds & 1) != 0 && static_cast<int>(s.crossers.size()) > s.limit[0]) out.push_back(fmt::format("P5: structure {} spans {} tracks, over the bridge limit {}{}", i, s.crossers.size(), s.limit[0], flow));
 		if ((s.kinds & 2) != 0 && static_cast<int>(s.crossers.size()) > s.limit[1]) out.push_back(fmt::format("P5: structure {} spans {} tracks, over the tunnel limit {}{}", i, s.crossers.size(), s.limit[1], flow));
 	}
+
+	/* P8: the side gaps are the spec's. */
+	const std::array<int, 4> gaps = PlanarSideGaps(spec);
+	if (v.side_gap != gaps) out.push_back(fmt::format("P8: side gaps {}/{}/{}/{} (N/E/S/W), the spec gives {}/{}/{}/{}", v.side_gap[0], v.side_gap[1], v.side_gap[2], v.side_gap[3], gaps[0], gaps[1], gaps[2], gaps[3]));
 
 	/* P6: copies follow the share, rows follow the prio joins. */
 	const PlanarChannels channels = BuildPlanarChannels(topology);
