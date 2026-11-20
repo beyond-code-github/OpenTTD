@@ -67,65 +67,65 @@ group G24: T42, T43
 group G26: T45, T46
 group G27: T47, T48
 copy D3 over T30, T32
-# straight AB2: undetermined (both legs keep the trunk heading)
-# straight AB1: undetermined (both legs keep the trunk heading)
-# straight CD3: undetermined (both legs keep the trunk heading)
-# straight EF1: undetermined (both legs keep the trunk heading)
-straight CD2: none
-# straight CD1: undetermined (both legs keep the trunk heading)
-# straight EF2: undetermined (both legs keep the trunk heading)
-# straight EF3: undetermined (both legs keep the trunk heading)
-# straight A1: undetermined (both legs keep the trunk heading)
-# straight B1: undetermined (both legs keep the trunk heading)
-# straight A2: undetermined (A2m: not in line index)
-# straight A2m: undetermined (A2m: not in line index)
-# straight B2: undetermined (both legs keep the trunk heading)
-# straight F1c: undetermined (both legs keep the trunk heading)
-# straight F2c: undetermined (both legs keep the trunk heading)
-# straight E1c: undetermined (both legs keep the trunk heading)
-# straight C2c: undetermined (both legs keep the trunk heading)
-# straight D2c: undetermined (both legs keep the trunk heading)
-# straight E2c: undetermined (both legs keep the trunk heading)
-# straight C1c: undetermined (both legs keep the trunk heading)
-# straight F3c: undetermined (both legs keep the trunk heading)
-# straight E3c: undetermined (both legs keep the trunk heading)
-# straight E23: undetermined (both legs keep the trunk heading)
-# straight A1b: undetermined (both legs keep the trunk heading)
-# straight E12: undetermined (both legs keep the trunk heading)
-# straight B12: undetermined (both legs keep the trunk heading)
-# straight F12: undetermined (both legs keep the trunk heading)
-# straight BF1: undetermined (both legs keep the trunk heading)
-# straight C23c: undetermined (both legs keep the trunk heading)
-# straight D23: undetermined (both legs keep the trunk heading)
-# straight C12c: undetermined (both legs keep the trunk heading)
-# straight D12: undetermined (both legs keep the trunk heading)
-# straight C23c: undetermined (both legs keep the trunk heading)
-# straight F12: undetermined (both legs keep the trunk heading)
-# straight BF12: undetermined (both legs keep the trunk heading)
-# straight C12d: undetermined (both legs keep the trunk heading)
-# straight D23: undetermined (both legs keep the trunk heading)
-# straight D12: undetermined (both legs keep the trunk heading)
-# straight CE123b: undetermined (both legs keep the trunk heading)
-# straight EO1: undetermined (both legs keep the trunk heading)
-# straight BF12b: undetermined (both legs keep the trunk heading)
-# straight EO3: undetermined (both legs keep the trunk heading)
-# straight C12d: undetermined (both legs keep the trunk heading)
-# straight D23b: undetermined (both legs keep the trunk heading)
-# straight D12b: undetermined (both legs keep the trunk heading)
-# straight D123: undetermined (both legs keep the trunk heading)
-# straight CE123: undetermined (both legs keep the trunk heading)
-# straight CE123d: undetermined (both legs keep the trunk heading)
-# straight EO2: undetermined (both legs keep the trunk heading)
-straight D12g: D12e
-# straight AD23: undetermined (both legs keep the trunk heading)
-# straight AD23b: undetermined (both legs keep the trunk heading)
-# straight NO2: undetermined (both legs keep the trunk heading)
-# straight CE123c: undetermined (both legs keep the trunk heading)
-# straight SO3: undetermined (both legs keep the trunk heading)
-# straight D12h: undetermined (both legs keep the trunk heading)
-# straight AD12b: undetermined (both legs keep the trunk heading)
-# straight NO1: undetermined (both legs keep the trunk heading)
-# straight AD12: undetermined (both legs keep the trunk heading)
-# straight AD12c: undetermined (both legs keep the trunk heading)
-# straight SO2: undetermined (both legs keep the trunk heading)
-# straight SO1: undetermined (both legs keep the trunk heading)
+straight AB2: B2
+straight AB1: B1
+straight CD3: C3
+# straight EF1: undetermined (more than one leg keeps the trunk heading: F1c, E1c)
+straight CD2: D2c
+straight CD1: C1c
+straight EF2: E2c
+straight EF3: E3c
+straight A1: A1b
+straight B1: B1c
+straight B2: B2c
+# straight F1c: undetermined (more than one leg keeps the trunk heading: F1, F1b)
+straight F2c: F2b
+straight E1c: E1
+straight C2c: C2
+straight D2c: D2b
+straight E2c: E2b
+straight C1c: C1b
+straight F3c: F3
+straight E3c: E3b
+straight E23: E2
+straight A1b: A1e
+straight E12: E2b
+straight B12: B2b
+straight F12: F1
+straight BF1: F1b
+straight C23c: C2b
+straight D23: D3
+straight C12c: C2
+straight D12: D1
+straight C23c: C23b
+straight F12: F12c
+straight BF12: BF1
+straight C12d: C1
+straight D23: D23c
+straight D12: D12b
+straight CE123b: C23b
+straight EO1: F12b
+straight BF12b: B2c
+straight EO3: F3b
+straight C12d: C12b
+straight D23b: D23e
+straight D12b: none
+straight D123: D12c
+straight CE123: CE123b
+straight CE123d: E3
+straight EO2: F3
+straight D12g: D12d
+straight AD23: A2d
+straight AD23b: A2b
+straight NO2: E23
+straight CE123c: CE123d
+straight SO3: D123
+# straight D12h: undetermined (more than one leg keeps the trunk heading: D12f, D12e)
+straight AD12b: D12d
+straight NO1: C23
+straight AD12: D12h
+straight AD12c: AD12b
+straight SO2: AD12
+straight SO1: AD12c
+straight A2: A2m
+straight A2m: A2b

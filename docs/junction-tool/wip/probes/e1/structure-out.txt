@@ -54,128 +54,70 @@ T50 A2c ((94, 187)) crossers: AD12
 tunnels with a statement: 49 (expected 49)
 total memberships: 135 (expected 135)
 group statements: 18
-node split trunk AB2 heading (0.707107, 0.707107) legs A2 (0.707107, 0.707107); B2 (0.707107, 0.707107) -> ['A2', 'B2']
-node split trunk AB1 heading (0.707107, 0.707107) legs A1 (0.707107, 0.707107); B1 (0.707107, 0.707107) -> ['A1', 'B1']
-node split trunk CD3 heading (-0.707107, -0.707107) legs C3 (-0.707107, -0.707107); D3 (-0.707107, -0.707107) -> ['C3', 'D3']
-node split trunk EF1 heading (0.0, -1.0) legs F1c (0.0, -1.0); E1c (0.0, -1.0) -> ['F1c', 'E1c']
-node split trunk CD2 heading (1.0, 0.0) legs C2c (-1.0, 0.0); D2c (-1.0, 0.0) -> fork
-node split trunk CD1 heading (-1.0, 0.0) legs C1c (-1.0, 0.0); D1 (-1.0, 0.0) -> ['C1c', 'D1']
-node split trunk EF2 heading (0.0, -1.0) legs F2c (0.0, -1.0); E2c (0.0, -1.0) -> ['F2c', 'E2c']
-node split trunk EF3 heading (0.0, -1.0) legs E3c (0.0, -1.0); F3c (0.0, -1.0) -> ['E3c', 'F3c']
-node split trunk A1 heading (0.707107, 0.707107) legs A1c (0.707107, 0.707107); A1b (0.707107, 0.707107) -> ['A1c', 'A1b']
-node split trunk B1 heading (0.707107, 0.707107) legs B1b (0.707107, 0.707107); B1c (0.707107, 0.707107) -> ['B1b', 'B1c']
-node split A2 trunk A2 legs ['A2d', 'A2m']: UNDETERMINED A2m: not in line index
-node split A2m trunk A2m legs ['A2b', 'A2c']: UNDETERMINED A2m: not in line index
-node split trunk B2 heading (0.0, 1.0) legs B2c (0.0, 1.0); B2b (0.0, 1.0) -> ['B2c', 'B2b']
-node split trunk F1c heading (0.707107, -0.707107) legs F1 (0.707107, -0.707107); F1b (0.707107, -0.707107) -> ['F1', 'F1b']
-node split trunk F2c heading (1.0, 0.0) legs F2 (1.0, 0.0); F2b (1.0, 0.0) -> ['F2', 'F2b']
-node split trunk E1c heading (0.707107, -0.707107) legs E1b (0.707107, -0.707107); E1 (0.707107, -0.707107) -> ['E1b', 'E1']
-node split trunk C2c heading (-1.0, 0.0) legs C2b (-1.0, 0.0); C2 (-1.0, 0.0) -> ['C2b', 'C2']
-node split trunk D2c heading (-1.0, 0.0) legs D2b (-1.0, 0.0); D2 (-1.0, 0.0) -> ['D2b', 'D2']
-node split trunk E2c heading (0.0, -1.0) legs E2 (0.0, -1.0); E2b (0.0, -1.0) -> ['E2', 'E2b']
-node split trunk C1c heading (-1.0, 0.0) legs C1b (-1.0, 0.0); C1 (-1.0, 0.0) -> ['C1b', 'C1']
-node split trunk F3c heading (0.0, -1.0) legs F3b (0.0, -1.0); F3 (0.0, -1.0) -> ['F3b', 'F3']
-node split trunk E3c heading (0.0, -1.0) legs E3 (0.0, -1.0); E3b (0.0, -1.0) -> ['E3', 'E3b']
-node merge trunk E23 heading (0.707107, -0.707107) legs E3b (0.707107, -0.707107); E2 (0.707107, -0.707107) -> ['E3b', 'E2']
-node split trunk A1b heading (0.707107, 0.707107) legs A1d (0.707107, 0.707107); A1e (0.707107, 0.707107) -> ['A1d', 'A1e']
-node merge trunk E12 heading (0.707107, -0.707107) legs E1 (0.707107, -0.707107); E2b (0.707107, -0.707107) -> ['E1', 'E2b']
-node merge trunk B12 heading (1.0, 0.0) legs B2b (1.0, 0.0); B1c (1.0, 0.0) -> ['B2b', 'B1c']
-node merge trunk F12 heading (1.0, 0.0) legs F2b (1.0, 0.0); F1 (1.0, 0.0) -> ['F2b', 'F1']
-node merge trunk BF1 heading (0.707107, 0.707107) legs F1b (0.707107, 0.707107); B1b (0.707107, 0.707107) -> ['F1b', 'B1b']
-node merge trunk C23c heading (-0.707107, -0.707107) legs C3 (-0.707107, -0.707107); C2b (-0.707107, -0.707107) -> ['C3', 'C2b']
-node merge trunk D23 heading (-1.0, 0.0) legs D3 (-1.0, 0.0); D2b (-1.0, 0.0) -> ['D3', 'D2b']
-node merge trunk C12c heading (-0.707107, 0.707107) legs C2 (-0.707107, 0.707107); C1b (-0.707107, 0.707107) -> ['C2', 'C1b']
-node merge trunk D12 heading (-1.0, 0.0) legs D2 (-1.0, 0.0); D1 (-1.0, 0.0) -> ['D2', 'D1']
-node split trunk C23c heading (0.0, -1.0) legs C23b (0.0, -1.0); C23 (0.0, -1.0) -> ['C23b', 'C23']
-node split trunk F12 heading (1.0, 0.0) legs F12c (1.0, 0.0); F12b (1.0, 0.0) -> ['F12c', 'F12b']
-node merge trunk BF12 heading (0.707107, 0.707107) legs F2 (0.707107, 0.707107); BF1 (0.707107, 0.707107) -> ['F2', 'BF1']
-node merge trunk C12d heading (-1.0, 0.0) legs C12c (-1.0, 0.0); C1 (-1.0, 0.0) -> ['C12c', 'C1']
-node split trunk D23 heading (-0.707107, 0.707107) legs D23b (-0.707107, 0.707107); D23c (-0.707107, 0.707107) -> ['D23b', 'D23c']
-node split trunk D12 heading (-0.707107, 0.707107) legs D12c (-0.707107, 0.707107); D12b (-0.707107, 0.707107) -> ['D12c', 'D12b']
-node merge trunk CE123b heading (-0.707107, -0.707107) legs C23b (-0.707107, -0.707107); E1b (-0.707107, -0.707107) -> ['C23b', 'E1b']
-node merge trunk EO1 heading (1.0, 0.0) legs F12b (1.0, 0.0); B12 (1.0, 0.0) -> ['F12b', 'B12']
-node merge trunk BF12b heading (0.707107, 0.707107) legs F12c (0.707107, 0.707107); B2c (0.707107, 0.707107) -> ['F12c', 'B2c']
-node merge trunk EO3 heading (1.0, 0.0) legs F3b (1.0, 0.0); BF12 (1.0, 0.0) -> ['F3b', 'BF12']
-node split trunk C12d heading (-0.707107, -0.707107) legs C12 (-0.707107, -0.707107); C12b (-0.707107, -0.707107) -> ['C12', 'C12b']
-node split trunk D23b heading (-0.707107, 0.707107) legs D23d (-0.707107, 0.707107); D23e (-0.707107, 0.707107) -> ['D23d', 'D23e']
-node split trunk D12b heading (-0.707107, 0.707107) legs D12f (-0.707107, 0.707107); D12g (-0.707107, 0.707107) -> ['D12f', 'D12g']
-node merge trunk D123 heading (-0.707107, 0.707107) legs D12c (-0.707107, 0.707107); D23c (-0.707107, 0.707107) -> ['D12c', 'D23c']
-node merge trunk CE123 heading (-0.707107, -0.707107) legs CE123b (-0.707107, -0.707107); C12 (-0.707107, -0.707107) -> ['CE123b', 'C12']
-node merge trunk CE123d heading (0.0, -1.0) legs C12b (0.0, -1.0); E3 (0.0, -1.0) -> ['C12b', 'E3']
-node merge trunk EO2 heading (1.0, 0.0) legs F3 (1.0, 0.0); BF12b (1.0, 0.0) -> ['F3', 'BF12b']
-node split trunk D12g heading (-1.0, 0.0) legs D12d (-0.707107, 0.707107); D12e (-1.0, 0.0) -> ['D12e']
-node merge trunk AD23 heading (0.0, 1.0) legs A2d (0.0, 1.0); D23d (0.0, 1.0) -> ['A2d', 'D23d']
-node merge trunk AD23b heading (0.0, 1.0) legs A2b (0.0, 1.0); D23e (0.0, 1.0) -> ['A2b', 'D23e']
-node merge trunk NO2 heading (0.0, -1.0) legs CE123 (0.0, -1.0); E23 (0.0, -1.0) -> ['CE123', 'E23']
-node merge trunk CE123c heading (0.0, -1.0) legs CE123d (0.0, -1.0); E12 (0.0, -1.0) -> ['CE123d', 'E12']
-node merge trunk SO3 heading (-0.707107, 0.707107) legs AD23 (-0.707107, 0.707107); D123 (-0.707107, 0.707107) -> ['AD23', 'D123']
-node merge trunk D12h heading (-0.707107, 0.707107) legs D12f (-0.707107, 0.707107); D12e (-0.707107, 0.707107) -> ['D12f', 'D12e']
-node merge trunk AD12b heading (-0.707107, 0.707107) legs A1e (-0.707107, 0.707107); D12d (-0.707107, 0.707107) -> ['A1e', 'D12d']
-node merge trunk NO1 heading (-0.707107, -0.707107) legs C23 (-0.707107, -0.707107); CE123c (-0.707107, -0.707107) -> ['C23', 'CE123c']
-node merge trunk AD12 heading (-0.707107, 0.707107) legs A1c (-0.707107, 0.707107); D12h (-0.707107, 0.707107) -> ['A1c', 'D12h']
-node merge trunk AD12c heading (-0.707107, 0.707107) legs A1d (-0.707107, 0.707107); AD12b (-0.707107, 0.707107) -> ['A1d', 'AD12b']
-node merge trunk SO2 heading (-0.707107, 0.707107) legs AD23b (-0.707107, 0.707107); AD12 (-0.707107, 0.707107) -> ['AD23b', 'AD12']
-node merge trunk SO1 heading (-0.707107, 0.707107) legs A2c (-0.707107, 0.707107); AD12c (-0.707107, 0.707107) -> ['A2c', 'AD12c']
-nodes 62: straight 1, forks 1, undetermined 60
-UNDETERMINED AB2: both legs keep the trunk heading
-UNDETERMINED AB1: both legs keep the trunk heading
-UNDETERMINED CD3: both legs keep the trunk heading
-UNDETERMINED EF1: both legs keep the trunk heading
-UNDETERMINED CD1: both legs keep the trunk heading
-UNDETERMINED EF2: both legs keep the trunk heading
-UNDETERMINED EF3: both legs keep the trunk heading
-UNDETERMINED A1: both legs keep the trunk heading
-UNDETERMINED B1: both legs keep the trunk heading
-UNDETERMINED A2: A2m: not in line index
-UNDETERMINED A2m: A2m: not in line index
-UNDETERMINED B2: both legs keep the trunk heading
-UNDETERMINED F1c: both legs keep the trunk heading
-UNDETERMINED F2c: both legs keep the trunk heading
-UNDETERMINED E1c: both legs keep the trunk heading
-UNDETERMINED C2c: both legs keep the trunk heading
-UNDETERMINED D2c: both legs keep the trunk heading
-UNDETERMINED E2c: both legs keep the trunk heading
-UNDETERMINED C1c: both legs keep the trunk heading
-UNDETERMINED F3c: both legs keep the trunk heading
-UNDETERMINED E3c: both legs keep the trunk heading
-UNDETERMINED E23: both legs keep the trunk heading
-UNDETERMINED A1b: both legs keep the trunk heading
-UNDETERMINED E12: both legs keep the trunk heading
-UNDETERMINED B12: both legs keep the trunk heading
-UNDETERMINED F12: both legs keep the trunk heading
-UNDETERMINED BF1: both legs keep the trunk heading
-UNDETERMINED C23c: both legs keep the trunk heading
-UNDETERMINED D23: both legs keep the trunk heading
-UNDETERMINED C12c: both legs keep the trunk heading
-UNDETERMINED D12: both legs keep the trunk heading
-UNDETERMINED C23c: both legs keep the trunk heading
-UNDETERMINED F12: both legs keep the trunk heading
-UNDETERMINED BF12: both legs keep the trunk heading
-UNDETERMINED C12d: both legs keep the trunk heading
-UNDETERMINED D23: both legs keep the trunk heading
-UNDETERMINED D12: both legs keep the trunk heading
-UNDETERMINED CE123b: both legs keep the trunk heading
-UNDETERMINED EO1: both legs keep the trunk heading
-UNDETERMINED BF12b: both legs keep the trunk heading
-UNDETERMINED EO3: both legs keep the trunk heading
-UNDETERMINED C12d: both legs keep the trunk heading
-UNDETERMINED D23b: both legs keep the trunk heading
-UNDETERMINED D12b: both legs keep the trunk heading
-UNDETERMINED D123: both legs keep the trunk heading
-UNDETERMINED CE123: both legs keep the trunk heading
-UNDETERMINED CE123d: both legs keep the trunk heading
-UNDETERMINED EO2: both legs keep the trunk heading
-UNDETERMINED AD23: both legs keep the trunk heading
-UNDETERMINED AD23b: both legs keep the trunk heading
-UNDETERMINED NO2: both legs keep the trunk heading
-UNDETERMINED CE123c: both legs keep the trunk heading
-UNDETERMINED SO3: both legs keep the trunk heading
-UNDETERMINED D12h: both legs keep the trunk heading
-UNDETERMINED AD12b: both legs keep the trunk heading
-UNDETERMINED NO1: both legs keep the trunk heading
-UNDETERMINED AD12: both legs keep the trunk heading
-UNDETERMINED AD12c: both legs keep the trunk heading
-UNDETERMINED SO2: both legs keep the trunk heading
-UNDETERMINED SO1: both legs keep the trunk heading
+node split trunk AB2 heading (0.707107, 0.707107) from segment 90,147 Left (0.707107, 0.707107); legs A2 91,148 Y (0, 1); B2 91,148 Left (0.707107, 0.707107) -> ['B2']
+node split trunk AB1 heading (0.707107, 0.707107) from segment 92,148 Left (0.707107, 0.707107); legs A1 93,149 Y (0, 1); B1 93,149 Left (0.707107, 0.707107) -> ['B1']
+node split trunk CD3 heading (-0.707107, -0.707107) from segment 118,171 Left (-0.707107, -0.707107); legs C3 117,170 Left (-0.707107, -0.707107); D3 117,170 X (-1, 0) -> ['C3']
+node split trunk EF1 heading (0, -1) from segment 78,174 Y (0, -1); legs F1c 78,172 Y (0, -1); E1c 78,172 Y (0, -1) -> ['F1c', 'E1c']
+node split trunk CD2 heading (-1, 0) from port E in; legs C2c 127,173 Left (-0.707107, -0.707107); D2c 127,173 X (-1, 0) -> ['D2c']
+node split trunk CD1 heading (-1, 0) from segment 124,174 X (-1, 0); legs C1c 122,174 X (-1, 0); D1 122,174 Lower (-0.707107, 0.707107) -> ['C1c']
+node split trunk EF2 heading (0, -1) from segment 81,177 Y (0, -1); legs F2c 81,175 Lower (0.707107, -0.707107); E2c 81,175 Y (0, -1) -> ['E2c']
+node split trunk EF3 heading (0, -1) from segment 84,185 Y (0, -1); legs E3c 84,183 Y (0, -1); F3c 84,183 Right (-0.707107, -0.707107) -> ['E3c']
+node split trunk A1 heading (0.707107, 0.707107) from segment 94,154 Left (0.707107, 0.707107); legs A1c 95,155 Y (0, 1); A1b 95,155 Left (0.707107, 0.707107) -> ['A1b']
+node split trunk B1 heading (0.707107, 0.707107) from segment 97,155 Left (0.707107, 0.707107); legs B1b 98,156 Y (0, 1); B1c 98,156 Left (0.707107, 0.707107) -> ['B1c']
+node split trunk B2 heading (0, 1) from segment 94,157 Y (0, 1); legs B2c 94,159 Y (0, 1); B2b 94,159 Left (0.707107, 0.707107) -> ['B2c']
+node split trunk F1c heading (0.707107, -0.707107) from segment 86,164 Lower (0.707107, -0.707107); legs F1 87,164 Lower (0.707107, -0.707107); F1b 87,164 Lower (0.707107, -0.707107) -> ['F1', 'F1b']
+node split trunk F2c heading (1, 0) from segment 89,166 X (1, 0); legs F2 91,166 Right (0.707107, 0.707107); F2b 91,166 X (1, 0) -> ['F2b']
+node split trunk E1c heading (0.707107, -0.707107) from segment 81,169 Upper (0.707107, -0.707107); legs E1b 82,168 X (1, 0); E1 82,168 Upper (0.707107, -0.707107) -> ['E1']
+node split trunk C2c heading (-1, 0) from segment 115,172 X (-1, 0); legs C2b 113,172 Left (-0.707107, -0.707107); C2 113,172 X (-1, 0) -> ['C2']
+node split trunk D2c heading (-1, 0) from segment 118,173 X (-1, 0); legs D2b 116,173 X (-1, 0); D2 116,173 Lower (-0.707107, 0.707107) -> ['D2b']
+node split trunk E2c heading (0, -1) from segment 81,175 Y (0, -1); legs E2 81,173 Lower (0.707107, -0.707107); E2b 81,173 Y (0, -1) -> ['E2b']
+node split trunk C1c heading (-1, 0) from segment 121,174 X (-1, 0); legs C1b 119,174 X (-1, 0); C1 119,174 Lower (-0.707107, 0.707107) -> ['C1b']
+node split trunk F3c heading (0, -1) from segment 82,179 Y (0, -1); legs F3b 82,177 Lower (0.707107, -0.707107); F3 82,177 Y (0, -1) -> ['F3']
+node split trunk E3c heading (0, -1) from segment 84,183 Y (0, -1); legs E3 84,181 Lower (0.707107, -0.707107); E3b 84,181 Y (0, -1) -> ['E3b']
+node merge trunk E23 heading (0.707107, -0.707107) from segment 85,155 Upper (0.707107, -0.707107); legs E3b 84,156 Y (0, -1); E2 84,156 Upper (0.707107, -0.707107) -> ['E2']
+node split trunk A1b heading (0.707107, 0.707107) from segment 95,155 Left (0.707107, 0.707107); legs A1d 96,156 Y (0, 1); A1e 96,156 Left (0.707107, 0.707107) -> ['A1e']
+node merge trunk E12 heading (0.707107, -0.707107) from segment 84,160 Upper (0.707107, -0.707107); legs E1 83,161 Y (0, -1); E2b 83,161 Upper (0.707107, -0.707107) -> ['E2b']
+node merge trunk B12 heading (1, 0) from segment 105,162 X (1, 0); legs B2b 103,162 X (1, 0); B1c 103,162 Left (0.707107, 0.707107) -> ['B2b']
+node merge trunk F12 heading (1, 0) from segment 99,165 X (1, 0); legs F2b 97,165 Lower (0.707107, -0.707107); F1 97,165 X (1, 0) -> ['F1']
+node merge trunk BF1 heading (0.707107, 0.707107) from segment 101,165 Right (0.707107, 0.707107); legs F1b 100,164 Right (0.707107, 0.707107); B1b 100,164 Y (0, 1) -> ['F1b']
+node merge trunk C23c heading (-0.707107, -0.707107) from segment 98,170 Right (-0.707107, -0.707107); legs C3 99,171 X (-1, 0); C2b 99,171 Right (-0.707107, -0.707107) -> ['C2b']
+node merge trunk D23 heading (-0.707107, 0.707107) from segment 106,173 Lower (-0.707107, 0.707107); legs D3 108,173 Upper (-0.707107, 0.707107); D2b 108,173 X (-1, 0) -> ['D3']
+node merge trunk C12c heading (-0.707107, 0.707107) from segment 100,175 Upper (-0.707107, 0.707107); legs C2 101,174 Upper (-0.707107, 0.707107); C1b 101,174 X (-1, 0) -> ['C2']
+node merge trunk D12 heading (-1, 0) from segment 109,176 X (-1, 0); legs D2 111,176 Upper (-0.707107, 0.707107); D1 111,176 X (-1, 0) -> ['D1']
+node split trunk C23c heading (0, -1) from segment 90,160 Y (0, -1); legs C23b 90,158 Y (0, -1); C23 90,158 Right (-0.707107, -0.707107) -> ['C23b']
+node split trunk F12 heading (1, 0) from segment 102,165 X (1, 0); legs F12c 104,165 X (1, 0); F12b 104,165 Upper (0.707107, -0.707107) -> ['F12c']
+node merge trunk BF12 heading (0.707107, 0.707107) from segment 102,167 Left (0.707107, 0.707107); legs F2 101,166 X (1, 0); BF1 101,166 Left (0.707107, 0.707107) -> ['BF1']
+node merge trunk C12d heading (-1, 0) from segment 98,175 X (-1, 0); legs C12c 100,175 Upper (-0.707107, 0.707107); C1 100,175 X (-1, 0) -> ['C1']
+node split trunk D23 heading (-0.707107, 0.707107) from segment 104,175 Lower (-0.707107, 0.707107); legs D23b 103,176 X (-1, 0); D23c 103,176 Lower (-0.707107, 0.707107) -> ['D23c']
+node split trunk D12 heading (-0.707107, 0.707107) from segment 106,177 Lower (-0.707107, 0.707107); legs D12c 105,178 X (-1, 0); D12b 105,178 Lower (-0.707107, 0.707107) -> ['D12b']
+node merge trunk CE123b heading (-0.707107, -0.707107) from segment 88,150 Left (-0.707107, -0.707107); legs C23b 89,151 Left (-0.707107, -0.707107); E1b 89,151 Y (0, -1) -> ['C23b']
+node merge trunk EO1 heading (1, 0) from segment 112,164 X (1, 0); legs F12b 110,164 X (1, 0); B12 110,164 Left (0.707107, 0.707107) -> ['F12b']
+node merge trunk BF12b heading (0.707107, 0.707107) from segment 112,167 Left (0.707107, 0.707107); legs F12c 111,166 X (1, 0); B2c 111,166 Left (0.707107, 0.707107) -> ['B2c']
+node merge trunk EO3 heading (1, 0) from segment 106,169 X (1, 0); legs F3b 104,169 X (1, 0); BF12 104,169 Left (0.707107, 0.707107) -> ['F3b']
+node split trunk C12d heading (-0.707107, -0.707107) from segment 89,170 Right (-0.707107, -0.707107); legs C12 88,169 Y (0, -1); C12b 88,169 Right (-0.707107, -0.707107) -> ['C12b']
+node split trunk D23b heading (-0.707107, 0.707107) from segment 97,176 Lower (-0.707107, 0.707107); legs D23d 96,177 X (-1, 0); D23e 96,177 Lower (-0.707107, 0.707107) -> ['D23e']
+node split trunk D12b heading (-0.707107, 0.707107) from segment 105,178 Lower (-0.707107, 0.707107); legs D12f 104,179 X (-1, 0); D12g 104,179 X (-1, 0) -> none
+node merge trunk D123 heading (-0.707107, 0.707107) from segment 95,181 Upper (-0.707107, 0.707107); legs D12c 96,180 Upper (-0.707107, 0.707107); D23c 96,180 X (-1, 0) -> ['D12c']
+node merge trunk CE123 heading (-0.707107, -0.707107) from segment 87,149 Left (-0.707107, -0.707107); legs CE123b 88,150 Left (-0.707107, -0.707107); C12 88,150 Y (0, -1) -> ['CE123b']
+node merge trunk CE123d heading (0, -1) from segment 86,158 Y (0, -1); legs C12b 86,160 Left (-0.707107, -0.707107); E3 86,160 Y (0, -1) -> ['E3']
+node merge trunk EO2 heading (1, 0) from segment 114,167 X (1, 0); legs F3 112,167 X (1, 0); BF12b 112,167 Left (0.707107, 0.707107) -> ['F3']
+node split trunk D12g heading (-0.707107, 0.707107) from segment 105,179 Upper (-0.707107, 0.707107); legs D12d 104,179 Lower (-0.707107, 0.707107); D12e 103,179 X (-1, 0) -> ['D12d']
+node merge trunk AD23 heading (0, 1) from segment 88,183 Y (0, 1); legs A2d 88,181 Y (0, 1); D23d 88,181 Lower (-0.707107, 0.707107) -> ['A2d']
+node merge trunk AD23b heading (0, 1) from segment 92,187 Y (0, 1); legs A2b 92,185 Y (0, 1); D23e 92,185 Lower (-0.707107, 0.707107) -> ['A2b']
+node merge trunk NO2 heading (0, -1) from segment 85,145 Y (0, -1); legs CE123 85,147 Left (-0.707107, -0.707107); E23 85,147 Y (0, -1) -> ['E23']
+node merge trunk CE123c heading (0, -1) from segment 86,156 Y (0, -1); legs CE123d 86,158 Y (0, -1); E12 86,158 Upper (0.707107, -0.707107) -> ['CE123d']
+node merge trunk SO3 heading (-0.707107, 0.707107) from segment 87,185 Lower (-0.707107, 0.707107); legs AD23 88,184 Y (0, 1); D123 88,184 Lower (-0.707107, 0.707107) -> ['D123']
+node merge trunk D12h heading (-0.707107, 0.707107) from segment 97,186 Upper (-0.707107, 0.707107); legs D12f 98,185 Upper (-0.707107, 0.707107); D12e 98,185 Upper (-0.707107, 0.707107) -> ['D12f', 'D12e']
+node merge trunk AD12b heading (-0.707107, 0.707107) from segment 97,191 Lower (-0.707107, 0.707107); legs A1e 98,190 Y (0, 1); D12d 98,190 Lower (-0.707107, 0.707107) -> ['D12d']
+node merge trunk NO1 heading (-0.707107, -0.707107) from segment 85,151 Left (-0.707107, -0.707107); legs C23 86,152 Left (-0.707107, -0.707107); CE123c 86,152 Y (0, -1) -> ['C23']
+node merge trunk AD12 heading (-0.707107, 0.707107) from segment 95,187 Lower (-0.707107, 0.707107); legs A1c 96,186 Y (0, 1); D12h 96,186 Lower (-0.707107, 0.707107) -> ['D12h']
+node merge trunk AD12c heading (-0.707107, 0.707107) from segment 96,192 Lower (-0.707107, 0.707107); legs A1d 97,191 Y (0, 1); AD12b 97,191 Lower (-0.707107, 0.707107) -> ['AD12b']
+node merge trunk SO2 heading (-0.707107, 0.707107) from segment 91,193 Lower (-0.707107, 0.707107); legs AD23b 92,192 Y (0, 1); AD12 92,192 Lower (-0.707107, 0.707107) -> ['AD12']
+node merge trunk SO1 heading (-0.707107, 0.707107) from segment 93,195 Lower (-0.707107, 0.707107); legs A2c 94,194 Y (0, 1); AD12c 94,194 Lower (-0.707107, 0.707107) -> ['AD12c']
+node split trunk A2 (3-way A2b, A2c, A2d) heading (0, 1) from segment 92,157 Y (0, 1); legs A2b 92,159 Y (0, 1); A2c 92,159 Left (0.707107, 0.707107); A2d 92,159 Upper (-0.707107, 0.707107) -> ['A2b']
+nodes 62: straight 58, none 1, undetermined 3
+UNDETERMINED EF1: more than one leg keeps the trunk heading: F1c, E1c
+UNDETERMINED F1c: more than one leg keeps the trunk heading: F1, F1b
+UNDETERMINED D12h: more than one leg keeps the trunk heading: D12f, D12e
 wrote /home/pete/OpenTTD/tools/junction/topologies/psg197.structure.txt
 breaches: 0

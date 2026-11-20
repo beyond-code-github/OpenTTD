@@ -98,7 +98,7 @@ def ends(pc):
     n = N.W.pname(pc); pnames.add(n)
     if n not in SIX: raise SystemExit('STOP: piece name %s not one of the six' % n)
     return [mid(pc[0], e) for e in SIX[n]]
-def polyline(path):
+def polyline(path, rec=None):
     n = len(path); inj = [i > 0 and isjump(path[i-1], path[i]) for i in range(n)]
     outj = [i + 1 < n and isjump(path[i], path[i+1]) for i in range(n)]
     pts = []; prev_exit = None
@@ -122,6 +122,7 @@ def polyline(path):
         s = c if inj[i] else entry
         e = c if outj[i] else exit_
         if inj[i] and not outj[i] and i + 1 < n: pass
+        if rec is not None: rec.append((pc, s, e))
         for p in (s, e):
             if not pts or dist(pts[-1], p) > 1e-12: pts.append(p)
         prev_exit = exit_
@@ -252,37 +253,92 @@ for n in need:
     if capped: walkerr[n] = 'walk capped'; continue
     if not w: walkerr[n] = 'no walk'; continue
     walk0[n] = sorted(w)[0]
-def headings(n):
-    d = polyline(walk0[n]); out = []
-    for a, b in zip(d, d[1:]):
-        L = dist(a, b); out.append((round((b[0]-a[0])/L, 6) + 0.0, round((b[1]-a[1])/L, 6) + 0.0))
+def segs(n):
+    """per-piece segments of n's first walk: [(tile, piece, heading)], zero-length segments dropped"""
+    rec = []; polyline(walk0[n], rec); out = []
+    for pc, a, b in rec:
+        L = dist(a, b)
+        if L > 1e-12: out.append((pc[0], pc, (round((b[0]-a[0])/L, 6) + 0.0, round((b[1]-a[1])/L, 6) + 0.0)))
     return out
-hcache = {}
-def H(n):
-    if n not in hcache:
-        try: hcache[n] = headings(n)
-        except SystemExit as e: hcache[n] = 'polyline stop: %s' % e
-    return hcache[n]
+scache = {}
+def S(n):
+    if n not in scache:
+        try: scache[n] = segs(n)
+        except SystemExit as e: scache[n] = 'polyline stop: %s' % e
+    return scache[n]
+PORTDIR = {'N': (0, -1), 'S': (0, 1), 'E': (1, 0), 'W': (-1, 0)}
+portstmt = {}   # (side, 'in'/'out') -> travel heading
+for l in topo:
+    m = re.match(r'port (\w) (in|out) (\w):', l)
+    if m: portstmt[(m.group(1), m.group(2))] = PORTDIR[m.group(3)]
+def fh(h): return '(%g, %g)' % (h[0] + 0.0, h[1] + 0.0)
+def fs(sg): return '%s,%s %s' % (sg[0][0], sg[0][1], fh(sg[2])) if False else '%d,%d %s %s' % (sg[0][0], sg[0][1], N.W.pname(sg[1]), fh(sg[2]))
+
+def trunk_heading(kind, trunk):
+    """heading of the trunk's last (split) / first (merge) segment off the node tile; port heading if none"""
+    sg = S(trunk); w = walk0[trunk]
+    nt = w[-1][0] if kind == 'split' else w[0][0]
+    off = [x for x in sg if x[0] != nt]
+    if off:
+        x = off[-1] if kind == 'split' else off[0]
+        return x[2], 'segment ' + fs(x)
+    ep = idx[trunk][1] if kind == 'split' else idx[trunk][2]
+    if not ep.startswith('port '): raise SystemExit('trunk %s has no off-node segment and no port end' % trunk)
+    side = ep[5]; d = portstmt[(side, 'in' if kind == 'split' else 'out')]
+    return d, 'port %s %s' % (side, 'in' if kind == 'split' else 'out')
+
+def leg_segment(kind, trunk, leg):
+    tw = {x[1] for x in S(trunk)}
+    own = [x for x in S(leg) if x[1] not in tw]
+    if not own: raise SystemExit('leg %s has no segment outside trunk %s' % (leg, trunk))
+    return own[0] if kind == 'split' else own[-1]
+
+def bad_walks(names):
+    out = []
+    for x in names:
+        if x in walkerr: out.append('%s: %s' % (x, walkerr[x]))
+        elif not isinstance(S(x), list): out.append('%s: %s' % (x, S(x)))
+    return out
+
 stmts_s = []; nstraight = nfork = nund = 0; und = []
-for kind, trunk, legs in nodes:
-    bad = [x for x in [trunk] + legs if x in walkerr or not isinstance(H(x), list) or not H(x)]
+def decide(label, kind, trunk, legs):
+    """returns (kind_of_result, leg) after printing; kind_of_result in straight/none/und"""
+    global nstraight, nfork, nund
+    bad = bad_walks([trunk] + legs)
+    if not bad:
+        try:
+            h, src = trunk_heading(kind, trunk)
+            lsg = [(lg, leg_segment(kind, trunk, lg)) for lg in legs]
+        except SystemExit as e:
+            bad = [str(e)]
     if bad:
-        why = '; '.join('%s: %s' % (x, walkerr.get(x) or H(x) if x in walkerr or not isinstance(H(x), list) else 'no segments') for x in bad)
-        stmts_s.append('# straight %s: undetermined (%s)' % (trunk, why)); und.append((trunk, why)); nund += 1
-        print('node %s %s trunk %s legs %s: UNDETERMINED %s' % (kind, trunk, trunk, legs, why)); continue
-    th = H(trunk)[-1] if kind == 'split' else H(trunk)[0]
-    ok = []; info = []
-    for lg in legs:
-        lh = H(lg)[0] if kind == 'split' else H(lg)[-1]
-        info.append('%s %s' % (lg, lh)); 
-        if lh == th: ok.append(lg)
-    print('node %s trunk %s heading %s legs %s -> %s' % (kind, trunk, th, '; '.join(info), ok if ok else 'fork'))
-    if len(ok) == 1: stmts_s.append('straight %s: %s' % (trunk, ok[0])); nstraight += 1
-    elif not ok: stmts_s.append('straight %s: none' % trunk); nfork += 1
-    else:
-        why = 'both legs keep the trunk heading'
-        stmts_s.append('# straight %s: undetermined (%s)' % (trunk, why)); und.append((trunk, why)); nund += 1
-print('nodes %d: straight %d, forks %d, undetermined %d' % (len(nodes), nstraight, nfork, nund))
+        why = '; '.join(bad)
+        print('node %s %s: UNDETERMINED %s' % (kind, label, why)); return 'und', why
+    ok = [lg for lg, sg in lsg if sg[2] == h]
+    print('node %s trunk %s heading %s from %s; legs %s -> %s' % (kind, label, fh(h), src,
+          '; '.join('%s %s' % (lg, fs(sg)) for lg, sg in lsg), ok if ok else 'none'))
+    if len(ok) == 1: return 'straight', ok[0]
+    if not ok: return 'none', None
+    return 'und', 'more than one leg keeps the trunk heading: ' + ', '.join(ok)
+
+def emit(trunk, r, v):
+    global nstraight, nfork, nund
+    if r == 'straight': stmts_s.append('straight %s: %s' % (trunk, v)); nstraight += 1
+    elif r == 'none': stmts_s.append('straight %s: none' % trunk); nfork += 1
+    else: stmts_s.append('# straight %s: undetermined (%s)' % (trunk, v)); und.append((trunk, v)); nund += 1
+
+skip = set()
+for i, (kind, trunk, legs) in enumerate(nodes):
+    if trunk == 'A2m' or (trunk == 'A2' and legs == ['A2d', 'A2m']): continue
+    r, v = decide(trunk, kind, trunk, legs); emit(trunk, r, v)
+# the 3-way split at 92,158 (A2 -> A2d, A2m; A2m -> A2b, A2c), in place of its two nodes
+r, v = decide('A2 (3-way A2b, A2c, A2d)', 'split', 'A2', ['A2b', 'A2c', 'A2d'])
+if r == 'straight' and v == 'A2d': emit('A2', 'straight', 'A2d'); emit('A2m', 'none', None)
+elif r == 'straight': emit('A2', 'straight', 'A2m'); emit('A2m', 'straight', v)
+else:
+    w = v if r == 'und' else 'no leg keeps the trunk heading'
+    emit('A2', 'und', w); emit('A2m', 'und', w)
+print('nodes %d: straight %d, none %d, undetermined %d' % (len(nodes), nstraight, nfork, nund))
 for t, w in und: print('UNDETERMINED %s: %s' % (t, w))
 if len(nodes) != nstraight + nfork + nund: breach('node count mismatch')
 
