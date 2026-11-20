@@ -684,7 +684,29 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 		};
 		if (!st.crossings.empty()) {
 			const auto event_of = [&](uint32_t c) { return static_cast<size_t>(std::ranges::find(map.events[st.separator], c) - map.events[st.separator].begin()); };
-			add_span(st.separator, event_of(st.crossings.front()), event_of(st.crossings.back()), st.crossings.front());
+			size_t first = event_of(st.crossings.front()), last = event_of(st.crossings.back());
+			if ((off & 131072) == 0) {
+				/* G1o: Structure does not list the crossings of copies and rows (an open edge); a copy or row beside a track that crosses inside the span crosses on the same deck, so the span takes in such crossings next to its ends. */
+				const std::vector<uint32_t> &ev = map.events[st.separator];
+				const auto other = [&](size_t e) { const PlanarCrossing &c = map.crossings[ev[e]]; return c.a == st.separator ? c.b : c.a; };
+				const auto beside_of_inside = [&](size_t e) {
+					const uint32_t b = other(e);
+					if (map.part_of[b] != UINT32_MAX) return false;
+					std::vector<uint32_t> chain;
+					if (!ParentChain(map, v.structure.sites, b, chain)) return false;
+					for (size_t k = first; k <= last; k++) {
+						if (std::ranges::find(chain, other(k)) != chain.end()) return true;
+					}
+					return false;
+				};
+				bool grew = true;
+				while (grew) {
+					grew = false;
+					if (first > 0 && beside_of_inside(first - 1)) { first--; grew = true; }
+					if (last + 1 < ev.size() && beside_of_inside(last + 1)) { last++; grew = true; }
+				}
+			}
+			add_span(st.separator, first, last, st.crossings.front());
 		}
 		if (st.copy != UINT32_MAX && !map.events[st.copy].empty()) add_span(st.copy, 0, map.events[st.copy].size() - 1, map.events[st.copy].front());
 	}
@@ -1969,7 +1991,7 @@ TEST_CASE("planar probe: G1l long base solves and the parity breaks without pari
 	g1_time_limit = limit;
 }
 
-/** G1m: the off=511 base through SolveG1, which carries G1i's forced parities as cuts and G1n's linear step parity rows. 15 s each. */
+/** G1m: the full model (off=0; the off=511 bases solved 2026-11-21: LL2 5.5 s, T2 1.0 s, T3 0.6-3.4 s) through SolveG1, which carries G1i's forced parities as cuts and G1n's linear step parity rows. 15 s each. */
 TEST_CASE("planar probe: G1m the base with forced parities as cuts", "[junction][planar][planarshape][.probe]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
@@ -1981,9 +2003,13 @@ TEST_CASE("planar probe: G1m the base with forced parities as cuts", "[junction]
 		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
 		for (size_t i = 0; i < 3 && i < shape.variants.size(); i++) {
 			const PlanarShapeVariant &v = shape.variants[i];
+			for (const uint32_t off : {0U}) {
 			const size_t t0 = g1_timeouts;
-			const G1Result r = SolveG1(topology, spec, v, 511U);
-			std::cout << fmt::format("G1M {} {} off=511 cuts={} solved={} timeout={} ms={:.0f} steps={} W={} H={} clashes={} audit={} why={}\n", name, v.structure.tag, r.forced.size(), r.solved ? 1 : 0, g1_timeouts != t0 ? 1 : 0, r.ms, r.step_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.audit.size(), r.why.substr(0, 120));
+			const G1Result r = SolveG1(topology, spec, v, off);
+			std::cout << fmt::format("G1M {} {} off={} cuts={} solved={} timeout={} ms={:.0f} steps={} W={} H={} clashes={} audit={} why={}\n", name, v.structure.tag, off, r.forced.size(), r.solved ? 1 : 0, g1_timeouts != t0 ? 1 : 0, r.ms, r.step_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.audit.size(), r.why.substr(0, 120));
+			for (const std::string &line : r.audit) std::cout << fmt::format("G1M AUDIT {} {} {}\n", name, v.structure.tag, line);
+			if (i == 0) for (const std::string &line : r.iis) std::cout << fmt::format("G1M IIS {} {} {}\n", name, v.structure.tag, line);
+			}
 		}
 	}
 }
