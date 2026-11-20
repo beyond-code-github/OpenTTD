@@ -1688,6 +1688,26 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 				for (size_t idx = 0; idx < nw; idx++) seq += piece_text(idx);
 				face_seq[face.face] = seq;
 			}
+			if (std::getenv("JUNCTION_G2_FACES") != nullptr) {
+				/* D385 hand proof: the face at Shape-piece level: consecutive walls of one (track, stretch, piece) merged, Part headings only, with each corner's turn. */
+				std::string line;
+				int last_h = INT32_MIN;
+				std::string last_key;
+				for (size_t idx = 0; idx < nw; idx++) {
+					const WallPiece &p = wall[idx];
+					std::string key;
+					if (p.track == UINT32_MAX) key = fmt::format("box{}", p.heading);
+					else key = fmt::format("{} s{} p{}", map.tracks[p.track].name, p.stretch, te[p.track].elems[p.elem].piece);
+					if (p.kind != WK::Part && p.kind != WK::Box) continue;
+					const int hl = lifted(idx);
+					if (key == last_key && hl == last_h) continue;
+					if (last_h != INT32_MIN) line += fmt::format(" <{:+}> ", hl - last_h);
+					line += fmt::format("[{} H{}]", key, hl);
+					last_h = hl;
+					last_key = key;
+				}
+				std::cout << fmt::format("FACE {} {}\n", face.face, line);
+			}
 			bool missing = false;
 			/* 9.3, 9.4: a chord from the vertex `at`, entered at lifted heading `hin`, its front the first track part or box edge from `from` on whose c is in [-3, -1]. */
 			const auto add_chord = [&](const std::array<Lin, 2> &at, size_t vnode, int hin, size_t from, uint32_t z) {
