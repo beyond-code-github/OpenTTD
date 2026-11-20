@@ -366,7 +366,7 @@ static void RequireShaped(const ShapeCase &c, int cost)
 
 TEST_CASE("planar shape layer: the one-lane T is shaped at the least turning", "[junction][planar][planarshape]")
 {
-	RequireShaped(MakeT1(), 5);
+	RequireShaped(MakeT1(), 4);
 }
 
 TEST_CASE("planar shape layer: the fray is shaped at the least turning", "[junction][planar][planarshape]")
@@ -405,7 +405,7 @@ TEST_CASE("planar shape layer: H4 a mirrored crossing with another angle than it
 	}
 }
 
-TEST_CASE("planar shape layer: H11 a span whose crossers are not parallel", "[junction][planar][planarshape]")
+TEST_CASE("planar shape layer: H11 per run: non-parallel crossers are no breach", "[junction][planar][planarshape]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::string error;
@@ -431,7 +431,7 @@ TEST_CASE("planar shape layer: H11 a span whose crossers are not parallel", "[ju
 			shaped.tracks[s.crossers[1]].pieces[shaped.tracks[s.crossers[1]].event_piece[k]] += 2;
 			bool found = false;
 			for (const std::string &m : CheckPlanarShapePromise(topology, spec, shaped)) found = found || m.starts_with("H11:");
-			CHECK(found);
+			CHECK(!found);
 			broken = true;
 		}
 	}
@@ -1437,5 +1437,43 @@ TEST_CASE("planar shape: V's shape of PSG 197 through Shape's checker (E1h)", "[
 	for (const auto &[id, n] : by_id) WARN(fmt::format("E1H {} x{}", id, n));
 	for (const std::string &m : breaches) WARN("E1H " + m);
 	WARN(fmt::format("E1H V's turning {}, breaches {}", saved.cost, breaches.size()));
-	for (const std::string &m : breaches) CHECK(m.starts_with("H11:"));
+	CHECK(breaches.empty());
+}
+
+TEST_CASE("planar shape: V's 197 spans, least middles per diagonal run (E1x-2)", "[.][planarpsg197]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(ReadTopologyFileForShape("psg197.txt"), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant v = LoadPlanarStructureVariant(topology, ReadTopologyFileForShape("psg197.structure.txt"), spec, report, &error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant saved;
+	std::string why;
+	REQUIRE(LoadPlanarShapeVariant(topology, v, ReadTopologyFileForShape("psg197.shape.txt"), saved, why));
+	const PlanarTrackMap &map = saved.structure.map;
+	for (size_t i = 0; i < saved.structure.structures.size(); i++) {
+		const PlanarStructure &s = saved.structure.structures[i];
+		REQUIRE(s.copy == UINT32_MAX);
+		if (s.crossings.empty()) continue;
+		int runs = 0, previous = 0;
+		bool run_diagonal = false;
+		for (size_t k = 0; k < s.crossings.size(); k++) {
+			const uint32_t x = s.crossers[k];
+			const size_t e = static_cast<size_t>(std::ranges::find(map.events[x], s.crossings[k]) - map.events[x].begin());
+			REQUIRE(e < map.events[x].size());
+			const int heading = saved.tracks[x].pieces[saved.tracks[x].event_piece[e]];
+			if (k == 0 || ((heading - previous) % 4 + 4) % 4 != 0) {
+				runs += run_diagonal ? 1 : 0;
+				run_diagonal = false;
+			}
+			if (saved.angles[s.crossings[k]] != 2) run_diagonal = true;
+			previous = heading;
+		}
+		runs += run_diagonal ? 1 : 0;
+		for (int kind = 0; kind < 2; kind++) {
+			if (saved.structures[i].middles[kind] >= 0) CHECK(saved.structures[i].middles[kind] == static_cast<int>(s.crossings.size()) + runs);
+		}
+	}
 }

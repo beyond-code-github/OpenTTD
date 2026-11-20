@@ -73,7 +73,7 @@ struct PlanarShapeResult {
 bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSite> &sites, uint32_t b, std::vector<uint32_t> &chain);
 
 /**
- * The promise H1 to H9 and H11 of SPEC-shape §4 as a test oracle (D367).
+ * The promise H1 to H9 (H11, per run since D396, is held by H6's least middles) of SPEC-shape §4 as a test oracle (D367).
  * The topology and spec serve H9 (P1 to P8) and H6's limits; the oracle is a test tool, not a layer.
  * @param topology The topology the variant was made from.
  * @param spec The spec: the bridge and tunnel limits and the flow bound.

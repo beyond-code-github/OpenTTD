@@ -47,7 +47,7 @@ Derived, not decided: beside tracks' headings; per structure the least middle ti
 - H7 Faces wind once; no U-turn bound on every route path.
 - H8 Beside tracks: a copy's or row's headings equal its parent's over its range; mirrored crossings on the crosser's same piece.
 - H9 Refinement: Structure's output is unchanged, and P1-P8 still hold on it.
-- H11 (D376, added 2026-11-20 from SPEC-slots §0.1): the crossers under one span (a separator's deck; its copy's deck) are parallel at their crossings (headings equal mod 4), so a span's width is k at 90 degrees or k + 1 on one diagonal.
+- H11 (D376, per run since D396): a span's runs are its maximal groups of consecutive crossers (in deck order) with headings equal mod 4; a run of k crossers is k tiles wide at 90 degrees and k + 1 on a diagonal; a span's least middles are n plus one per diagonal run (H6); the gap between runs is a Slots length.
 - H10 Every variant handed down is shaped. A variant with no shape is a bug: either in Shape, or a condition missing from Structure's promise, which is then added there (never a skip, D361).
 
 ## 5. Settled (D373)

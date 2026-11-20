@@ -287,7 +287,7 @@ struct Oracle {
 	}
 
 	/**
-	 * The least middles of one span at the angles of its crossings (H6): its width, n + d, where d is 1 when any crossing is diagonal.
+	 * The least middles of one span at the angles of its crossings (H6, D396): its width, n + r, where r is the number of runs (maximal groups of consecutive crossers whose headings at their crossings are equal mod 4) with a crosser that crosses at an angle other than 2.
 	 * @param deck The deck track (the separator or the copy).
 	 * @param crossings The span's crossings.
 	 * @param crossers The crossers, one per crossing.
@@ -296,13 +296,21 @@ struct Oracle {
 	 */
 	bool Least(uint32_t deck, const std::vector<uint32_t> &crossings, const std::vector<uint32_t> &crossers, int &least) const
 	{
-		int diagonal = 0;
+		int diagonal_runs = 0, previous = 0;
+		bool run_diagonal = false;
 		for (size_t k = 0; k < crossings.size(); k++) {
 			int a;
 			if (!this->Angle(crossings[k], deck, crossers[k], a) || a < 1 || a > 3) return false;
-			if (a != 2) diagonal = 1;
+			const int heading = this->EventHeading(crossers[k], EventIndex(this->map.events[crossers[k]], crossings[k]));
+			if (k == 0 || ((heading - previous) % 4 + 4) % 4 != 0) {
+				diagonal_runs += run_diagonal ? 1 : 0;
+				run_diagonal = false;
+			}
+			if (a != 2) run_diagonal = true;
+			previous = heading;
 		}
-		least = static_cast<int>(crossings.size()) + diagonal;
+		diagonal_runs += run_diagonal ? 1 : 0;
+		least = static_cast<int>(crossings.size()) + diagonal_runs;
 		return true;
 	}
 
@@ -533,33 +541,6 @@ struct Oracle {
 					const int limit = s.limit[kind];
 					if (least > limit) this->out.push_back(fmt::format("H6: structure {} needs {} {}{} middles, over the limit {}", i, least, deck, name, limit));
 				}
-			}
-		}
-	}
-
-	/** H11: the crossers of one span cross it parallel (D376). */
-	void CheckH11()
-	{
-		const std::vector<PlanarStructure> &structures = this->v.structure.structures;
-		for (size_t i = 0; i < structures.size(); i++) {
-			const PlanarStructure &s = structures[i];
-			std::vector<uint32_t> copy_crossings = this->CopyCrossings(s), copy_crossers;
-			for (const uint32_t c : copy_crossings) copy_crossers.push_back(this->map.crossings[c].a == s.copy ? this->map.crossings[c].b : this->map.crossings[c].a);
-			for (const bool copy : {false, true}) {
-				const std::vector<uint32_t> &crossings = copy ? copy_crossings : s.crossings, &crossers = copy ? copy_crossers : s.crossers;
-				if (crossings.size() < 2) continue;
-				std::vector<int> headings;
-				bool parallel = true;
-				for (size_t k = 0; k < crossings.size(); k++) {
-					const size_t e = EventIndex(this->map.events[crossers[k]], crossings[k]);
-					if (e == SIZE_MAX) continue;
-					headings.push_back(this->EventHeading(crossers[k], e));
-					if (((headings.back() - headings.front()) % 4 + 4) % 4 != 0) parallel = false;
-				}
-				if (parallel) continue;
-				std::string list;
-				for (const int h : headings) list += fmt::format("{}{}", list.empty() ? "" : ", ", h);
-				this->out.push_back(fmt::format("H11: structure {} {} span crosses at headings {}", i, copy ? "copy" : "separator", list));
 			}
 		}
 	}
@@ -798,7 +779,6 @@ std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology,
 	o.CheckH7Routes();
 	o.CheckH12();
 	o.CheckH8();
-	o.CheckH11();
 	h9();
 	return o.out;
 }
@@ -1041,7 +1021,7 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 		eq({{H[crosser][EventIndex(map.events[crosser], c) + 1], 1}, {H[crosser][EventIndex(map.events[crosser], original) + 1], -1}}, 0, fmt::format("mirror {}", c));
 	}
 
-	/* Capacity and H11, per span (the separator's deck; the copy's deck when there is a copy): one binary d >= |a_k - 2| per crossing, n + d <= limit per kind (H6's width), and the crossers' headings at their crossings equal mod 4 (H11, D376). */
+	/* Capacity, per span (the separator's deck; the copy's deck when there is a copy): runs per D396, least = n + diagonal runs. Per crossing a binary d >= |a_k - 2|; per neighbour pair a binary p, which forces the two headings equal mod 4 when 1, and e_k >= d_k - p_k, so p_k = 1 only for parallel neighbours and the count is never below the true one. */
 	for (size_t i = 0; i < sv.structure.structures.size(); i++) {
 		const PlanarStructure &s = sv.structure.structures[i];
 		const std::vector<uint32_t> copy_crossings = o.CopyCrossings(s);
@@ -1051,21 +1031,32 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 			const std::vector<uint32_t> &crossings = copy ? copy_crossings : s.crossings, &crossers = copy ? copy_crossers : s.crossers;
 			const size_t n = crossings.size();
 			if (n == 0) continue;
-			if (s.limit[0] >= 0 || s.limit[1] >= 0) {
-				const std::string tag = fmt::format("cap {}", i);
-				const uint32_t d = var(0, 1, 0, true);
-				for (size_t k = 0; k < n; k++) {
-					row({{angle[crossings[k]], 1}, {d, -1}}, -JunctionMilp::INF, 2, tag);
-					row({{angle[crossings[k]], -1}, {d, -1}}, -JunctionMilp::INF, -2, tag);
-				}
-				for (int kind = 0; kind < 2; kind++) {
-					if (s.limit[kind] >= 0) row({{d, 1}}, -JunctionMilp::INF, s.limit[kind] - static_cast<double>(n), tag);
-				}
+			std::vector<size_t> at(n);
+			for (size_t k = 0; k < n; k++) {
+				at[k] = EventIndex(map.events[crossers[k]], crossings[k]);
+				if (at[k] == SIZE_MAX) return fail(fmt::format("structure {} lists a crossing its crosser lacks", i));
 			}
-			for (size_t k = 1; k < n; k++) {
-				const size_t e0 = EventIndex(map.events[crossers[0]], crossings[0]), ek = EventIndex(map.events[crossers[k]], crossings[k]);
-				if (e0 == SIZE_MAX || ek == SIZE_MAX) return fail(fmt::format("structure {} lists a crossing its crosser lacks", i));
-				eq({{H[crossers[k]][ek + 1], 1}, {H[crossers[0]][e0 + 1], -1}, {var(-16, 16, 0, true), -4}}, 0, fmt::format("h11 {}", i));
+			if (s.limit[0] < 0 && s.limit[1] < 0) continue;
+			const std::string cap = fmt::format("cap {}", i), run = fmt::format("run {}", i);
+			constexpr double M = 64;
+			std::vector<std::pair<uint32_t, double>> total;
+			for (size_t k = 0; k < n; k++) {
+				const uint32_t d = var(0, 1, 0, true);
+				row({{angle[crossings[k]], 1}, {d, -1}}, -JunctionMilp::INF, 2, cap);
+				row({{angle[crossings[k]], -1}, {d, -1}}, -JunctionMilp::INF, -2, cap);
+				if (k == 0) {
+					total.push_back({d, 1});
+					continue;
+				}
+				const uint32_t p = var(0, 1, 0, true), q = var(-16, 16, 0, true), e = var(0, 1, 0, false);
+				const uint32_t hk = H[crossers[k]][at[k] + 1], hprev = H[crossers[k - 1]][at[k - 1] + 1];
+				row({{hk, 1}, {hprev, -1}, {q, -4}, {p, M}}, -JunctionMilp::INF, M, run);
+				row({{hk, 1}, {hprev, -1}, {q, -4}, {p, -M}}, -M, JunctionMilp::INF, run);
+				row({{d, 1}, {p, -1}, {e, -1}}, -JunctionMilp::INF, 0, cap);
+				total.push_back({e, 1});
+			}
+			for (int kind = 0; kind < 2; kind++) {
+				if (s.limit[kind] >= 0) row(total, -JunctionMilp::INF, s.limit[kind] - static_cast<double>(n), cap);
 			}
 		}
 	}
