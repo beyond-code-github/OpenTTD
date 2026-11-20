@@ -14,8 +14,11 @@
 #include "../placement/junction_milp.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdlib>
+#include <map>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -882,6 +885,45 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 	return true;
 }
 
+/**
+ * Fill a shaped variant's structures from its headings: per structure its axis (its separator's heading at its first crossing), end runs by kind and least middles at its crossings' angles (H5, H6).
+ * @param sv The variant, with its tracks set.
+ * @param why Receives the reason when a crossing's angle is not in 1..3.
+ * @return Whether every structure was filled.
+ */
+static bool ShapeStructures(PlanarShapeVariant &sv, std::string &why)
+{
+	const PlanarTrackMap &map = sv.structure.map;
+	const Oracle o(sv);
+	sv.structures.clear();
+	for (const PlanarStructure &s : sv.structure.structures) {
+		PlanarShapeStructure shape{0, {-1, -1}, {(s.kinds & 1) != 0 ? 1 : -1, (s.kinds & 2) != 0 ? 2 : -1}};
+		if (!s.crossings.empty()) shape.axis = static_cast<uint8_t>((o.EventHeading(s.separator, EventIndex(map.events[s.separator], s.crossings.front())) % 8 + 8) % 8);
+		int least;
+		if (!o.Least(s.separator, s.crossings, s.crossers, least)) {
+			why = "no shape: a crossing's angle is not in 1..3";
+			return false;
+		}
+		for (int kind = 0; kind < 2; kind++) {
+			if ((s.kinds & (1 << kind)) != 0) shape.middles[kind] = least;
+		}
+		if (s.copy != UINT32_MAX) {
+			const std::vector<uint32_t> copy_crossings = o.CopyCrossings(s);
+			std::vector<uint32_t> copy_crossers;
+			for (const uint32_t c : copy_crossings) copy_crossers.push_back(map.crossings[c].a == s.copy ? map.crossings[c].b : map.crossings[c].a);
+			if (!o.Least(s.copy, copy_crossings, copy_crossers, least)) {
+				why = "no shape: a copy crossing's angle is not in 1..3";
+				return false;
+			}
+			for (int kind = 0; kind < 2; kind++) {
+				if ((s.kinds & (1 << kind)) != 0) shape.copy_middles[kind] = least;
+			}
+		}
+		sv.structures.push_back(shape);
+	}
+	return true;
+}
+
 bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVariant &out, std::string &why)
 {
 	using Terms = std::vector<std::pair<uint32_t, double>>;
@@ -1187,27 +1229,135 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 		}
 	}
 	for (const uint32_t a : angle) sv.angles.push_back(static_cast<uint8_t>(std::llround(milp.Value(a))));
-	for (const PlanarStructure &s : sv.structure.structures) {
-		PlanarShapeStructure shape{0, {-1, -1}, {(s.kinds & 1) != 0 ? 1 : -1, (s.kinds & 2) != 0 ? 2 : -1}};
-		if (!s.crossings.empty()) shape.axis = static_cast<uint8_t>((o.EventHeading(s.separator, EventIndex(map.events[s.separator], s.crossings.front())) % 8 + 8) % 8);
-		int least;
-		if (!o.Least(s.separator, s.crossings, s.crossers, least)) return fail("a crossing's angle is not in 1..3");
-		for (int kind = 0; kind < 2; kind++) {
-			if ((s.kinds & (1 << kind)) != 0) shape.middles[kind] = least;
-		}
-		if (s.copy != UINT32_MAX) {
-			const std::vector<uint32_t> copy_crossings = o.CopyCrossings(s);
-			std::vector<uint32_t> copy_crossers;
-			for (const uint32_t c : copy_crossings) copy_crossers.push_back(map.crossings[c].a == s.copy ? map.crossings[c].b : map.crossings[c].a);
-			if (!o.Least(s.copy, copy_crossings, copy_crossers, least)) return fail("a copy crossing's angle is not in 1..3");
-			for (int kind = 0; kind < 2; kind++) {
-				if ((s.kinds & (1 << kind)) != 0) shape.copy_middles[kind] = least;
-			}
-		}
-		sv.structures.push_back(shape);
-	}
+	if (!ShapeStructures(sv, why)) return false;
 	out = std::move(sv);
 	if (!RefinePlanarShapeCells(out, why)) return false;
+	return true;
+}
+
+bool LoadPlanarShapeVariant(const PlanarTopology &topology, const PlanarStructureVariant &v, std::string_view text, PlanarShapeVariant &out, std::string &why)
+{
+	const PlanarTrackMap &map = v.map;
+	if (map.tracks.size() != topology.lines.size()) {
+		why = "the map has tracks beside its lines (copies, rows or parts)";
+		return false;
+	}
+	std::map<std::string, std::vector<int>, std::less<>> headings;
+	std::map<std::string, std::map<std::string, uint32_t, std::less<>>, std::less<>> at;
+	while (!text.empty()) {
+		const size_t nl = text.find('\n');
+		std::string_view line = text.substr(0, nl);
+		text.remove_prefix(nl == std::string_view::npos ? text.size() : nl + 1);
+		const bool shape = line.starts_with("shape "), place = line.starts_with("at ");
+		if (!shape && !place) continue;
+		const size_t colon = line.find(':');
+		if (colon == std::string_view::npos) {
+			why = fmt::format("no ':' in '{}'", line);
+			return false;
+		}
+		const size_t start = shape ? 6 : 3;
+		const std::string name(line.substr(start, colon - start));
+		if (PlanarLineByName(topology, name) == UINT32_MAX) {
+			why = fmt::format("unknown line {}", name);
+			return false;
+		}
+		std::string_view rest = line.substr(colon + 1);
+		while (!rest.empty()) {
+			const size_t sep = rest.find(shape ? ' ' : ',');
+			std::string_view item = rest.substr(0, sep);
+			rest.remove_prefix(sep == std::string_view::npos ? rest.size() : sep + 1);
+			while (!item.empty() && item.front() == ' ') item.remove_prefix(1);
+			while (!item.empty() && item.back() == ' ') item.remove_suffix(1);
+			if (item.empty()) continue;
+			if (shape) {
+				int h = 0;
+				std::from_chars(item.data(), item.data() + item.size(), h);
+				headings[name].push_back(h);
+			} else {
+				const size_t atpos = item.find('@');
+				uint32_t piece = 0;
+				if (atpos == std::string_view::npos || std::from_chars(item.data() + atpos + 1, item.data() + item.size(), piece).ec != std::errc{}) {
+					why = fmt::format("bad crossing piece '{}' on {}", item, name);
+					return false;
+				}
+				at[name][std::string(item.substr(0, atpos))] = piece;
+			}
+		}
+	}
+	PlanarShapeVariant sv;
+	sv.structure = v;
+	sv.cost = 0;
+	sv.tracks.resize(map.tracks.size());
+	/* Lift along each route from the ports: a line from a port keeps its first heading in 0..7; a line from a node starts nearest its node's first in line's last heading. A line without headings (a zero-length line) is one piece at that heading. */
+	std::vector<bool> done(topology.lines.size(), false);
+	for (size_t pass = 0; pass <= topology.lines.size(); pass++) {
+		for (uint32_t l = 0; l < topology.lines.size(); l++) {
+			if (done[l]) continue;
+			const PlanarLine &line = topology.lines[l];
+			std::optional<int> base;
+			if (!line.from.port) {
+				const uint32_t in = topology.nodes[line.from.index].in[0];
+				if (!done[in]) continue;
+				base = sv.tracks[in].pieces.back();
+			}
+			const auto it = headings.find(line.name);
+			std::vector<int> h = it != headings.end() ? it->second : std::vector<int>{};
+			if (h.empty()) {
+				if (!base.has_value()) {
+					why = fmt::format("port line {} has no headings", line.name);
+					return false;
+				}
+				h = {*base};
+			}
+			int first = (h[0] % 8 + 8) % 8;
+			if (base.has_value()) {
+				while (first - *base > 4) first -= 8;
+				while (*base - first > 4) first += 8;
+			}
+			std::vector<int> &pieces = sv.tracks[l].pieces;
+			pieces.push_back(first);
+			for (size_t i = 1; i < h.size(); i++) {
+				int d = ((h[i] - h[i - 1]) % 8 + 8) % 8;
+				if (d > 4) d -= 8;
+				pieces.push_back(pieces.back() + d);
+				sv.cost += std::abs(d);
+			}
+			done[l] = true;
+		}
+	}
+	for (uint32_t t = 0; t < map.tracks.size(); t++) {
+		if (!done[t]) {
+			why = fmt::format("line {} is reached from no port", map.tracks[t].name);
+			return false;
+		}
+		for (const uint32_t c : map.events[t]) {
+			const uint32_t other = map.crossings[c].a == t ? map.crossings[c].b : map.crossings[c].a;
+			const auto line_at = at.find(map.tracks[t].name);
+			const auto it = line_at == at.end() ? decltype(line_at->second.end()){} : line_at->second.find(map.tracks[other].name);
+			if (line_at == at.end() || it == line_at->second.end()) {
+				why = fmt::format("no piece for crossing {} x {}", map.tracks[t].name, map.tracks[other].name);
+				return false;
+			}
+			if (it->second >= sv.tracks[t].pieces.size()) {
+				why = fmt::format("crossing {} x {} on piece {} of {}", map.tracks[t].name, map.tracks[other].name, it->second, sv.tracks[t].pieces.size());
+				return false;
+			}
+			sv.tracks[t].event_piece.push_back(it->second);
+		}
+	}
+	/* Angles from the headings, as the oracle derives them, each at a structure's separator. */
+	sv.angles.assign(map.crossings.size(), 0);
+	{
+		const Oracle o(sv);
+		for (const PlanarStructure &s : v.structures) {
+			for (size_t k = 0; k < s.crossings.size(); k++) {
+				int a;
+				if (o.Angle(s.crossings[k], s.separator, s.crossers[k], a) && a >= 1 && a <= 3) sv.angles[s.crossings[k]] = static_cast<uint8_t>(a);
+			}
+		}
+	}
+	if (!ShapeStructures(sv, why)) return false;
+	out = std::move(sv);
 	return true;
 }
 

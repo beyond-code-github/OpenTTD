@@ -21,6 +21,7 @@
 #include <charconv>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -1411,3 +1412,56 @@ TEST_CASE("planar shape: PSG 197's pinned variant, measured (E1e)", "[.][planarp
 	}
 }
 
+
+TEST_CASE("planar shape: V's shape of PSG 197 through Shape's checker (E1h)", "[.][planarpsg197]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(ReadTopologyFileForShape("psg197.txt"), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant v = LoadPlanarStructureVariant(topology, ReadTopologyFileForShape("psg197.structure.txt"), spec, report, &error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant saved;
+	std::string why;
+	const bool loaded = LoadPlanarShapeVariant(topology, v, ReadTopologyFileForShape("psg197.shape.txt"), saved, why);
+	INFO(why);
+	REQUIRE(loaded);
+	{
+		/* Shape makes no sideways moves (steps are Slots', D379): project each stretch onto the monotone path from its start heading to its end heading, counting what the steps turned. */
+		const int raw_turning = saved.cost;
+		int steps = 0;
+		saved.cost = 0;
+		for (size_t tr = 0; tr < saved.tracks.size(); tr++) {
+			PlanarShapeTrack &track = saved.tracks[tr];
+			std::vector<uint32_t> ends = track.event_piece;
+			ends.push_back(static_cast<uint32_t>(track.pieces.size() - 1));
+			std::vector<int> pieces{track.pieces[0]};
+			std::vector<uint32_t> event_piece;
+			uint32_t from = 0;
+			for (size_t k = 0; k < ends.size(); k++) {
+				const int to = track.pieces[ends[k]];
+				int wiggle = 0;
+				for (uint32_t i = from; i < ends[k]; i++) wiggle += std::abs(track.pieces[i + 1] - track.pieces[i]);
+				wiggle -= std::abs(to - track.pieces[from]);
+				if (wiggle > 0) steps++;
+				while (pieces.back() != to) pieces.push_back(pieces.back() + (to > pieces.back() ? 1 : -1));
+				if (k + 1 < ends.size()) event_piece.push_back(static_cast<uint32_t>(pieces.size() - 1));
+				saved.cost += std::abs(to - track.pieces[from]);
+				from = ends[k];
+			}
+			track.pieces = std::move(pieces);
+			track.event_piece = std::move(event_piece);
+		}
+		WARN(fmt::format("E1H raw turning {}, stretches with steps {}, turning at Shape's level {}", raw_turning, steps, saved.cost));
+	}
+	std::string cells_why;
+	const bool refined = RefinePlanarShapeCells(saved, cells_why);
+	WARN(fmt::format("E1H cells refined {}: {}, dummies {}", refined, cells_why, saved.dummies.size()));
+	const std::vector<std::string> breaches = CheckPlanarShapePromise(topology, spec, saved);
+	std::map<std::string, int> by_id;
+	for (const std::string &m : breaches) by_id[m.substr(0, m.find(':'))]++;
+	for (const auto &[id, n] : by_id) WARN(fmt::format("E1H {} x{}", id, n));
+	for (const std::string &m : breaches) WARN("E1H " + m);
+	WARN(fmt::format("E1H V's turning {}, breaches {}", saved.cost, breaches.size()));
+}

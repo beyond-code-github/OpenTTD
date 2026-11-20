@@ -17,6 +17,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -108,6 +109,18 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why);
  * @return Whether the variant was shaped.
  */
 bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVariant &out, std::string &why);
+
+/**
+ * A Shape output written down (D389): per-line headings and crossing pieces loaded into a shaped variant of a Structure variant, with the crossing angles, structure axes, end runs and least middles derived from the headings as ShapePlanarStructureVariant derives them; no dummies.
+ * Text, one statement per line: `shape <line>: <h0> <h1> ...` (headings in eighths clockwise from north; lifted here along each route from the ports: a line from a port keeps its first heading in 0..7, a line from a node starts nearest its node's first in line's last heading, a line with no headings is one piece at that heading) and `at <line>: <other line>@<piece>, ...` (the piece each crossing sits on). Other lines are ignored.
+ * @param topology The topology.
+ * @param v The Structure variant; its map's tracks must be the topology's lines (no copies, rows or parts).
+ * @param text The shape.
+ * @param out Receives the variant when the result is true.
+ * @param why Receives the reason otherwise.
+ * @return Whether the shape loaded.
+ */
+bool LoadPlanarShapeVariant(const PlanarTopology &topology, const PlanarStructureVariant &v, std::string_view text, PlanarShapeVariant &out, std::string &why);
 
 /**
  * Shape every variant Structure handed down (SPEC-shape §6).
