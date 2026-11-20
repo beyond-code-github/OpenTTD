@@ -103,3 +103,16 @@ A node is a topology node when no track at it is a copy or row (`part_of` = UINT
 **9.6 Exempt:** decks (a crosser under a deck middle is not a wall of the deck's faces at the crossing: corners there are crossing vertices), and the two legs of one node within their first piece (they meet at the node by definition).
 
 **9.7 Probe G2 (riskiest first, time-boxed):** chords on every face of T2's top 3 variants with G1's model as fixed by G1g; count clashes by group, chords whose front search failed, solve time. Pass: zero clashes; then T3, LL2.
+
+## 10. Flex points (D383): how the drawing stretches
+
+**Why.** In orthogonal TSM any shape can stretch along a cut: every piece crossing the cut is perpendicular and lengthens. In eight directions a diagonal crossing an x-cut also moves in y, so stretching needs an axis piece inserted in the diagonal. With steps as the only insert, coverage alone forced ~100 S-bend lanes on T2 (G1s/G1t) and the MILP found no point in 15 s.
+
+**10.1 The promise (Shape).** Shape marks a flex point on every diagonal piece outside spans and outside crossing lattices (a crosser's stretch between two crossings). Today the probe marks every such piece; Shape's own rule for where (a cut per long lower bound crossed only by stretchable pieces) is a later refinement measured against this.
+
+**10.2 The model (Slots).** A flex point on a piece of heading h (odd) is: part a, an axis insert of heading h+1 (2 per lane, 0..32 lanes), part b (diagonal; odd by the grid rows), an axis insert of heading h-1, part c. No binaries. Each insert is an axis piece for the grid (its cross coordinate odd along it, unconditional rows, D382's elimination covers them). Priced as length (2 per lane). The piece's least total applies to a + b + c.
+
+**10.3 Not modelled (oracles).** No curve rows on the inserts' bends (unconditional rows would force every insert to the curve gap); the curve oracle counts breaches. Keep-apart rows (§9) must treat a used insert's bends as conditional reflex vertices, like a step's; until G2 measures it, chords from flex bends are not written.
+
+**10.4 Measured (G1v-G1x, ng1 e9c24e3e49).** Full model, 15 s: T2 3/3 2.8 s 54 step lanes; T3 o7t0f1m3270 8.8 s 62, o7t0f0m3270 4.2 s 106, o7t2f0m3270 infeasible (lattice inside spans: a Structure promise gap). The remaining steps are sideways offsets of straight port and node legs (fan-outs, long diagonal approaches), not stretch.
+

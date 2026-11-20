@@ -12,6 +12,7 @@
 - **Shape:**
   - Decides every track's headings and the piece each crossing sits on, without lengths; a structure's crossings sit on one axis piece of its separator, at angles within its kind's limit; it never regroups (D369).
   - It makes no sideways moves.
+  - It marks flex points: on each diagonal piece outside spans and crossing lattices, a pair of axis inserts (h+1, h-1) whose lengths (>= 0) Slots decides (D383).
   - The separator runs straight on an axis across its span; a tunnel's separator dives, with one ramp tile at each end on flat ground (D365).
   - Promise: legal headings, and every structure spans its crossers within its kind's limit (bridge: the longest bridge; tunnel: max_tunnel_length; a main line's: also the D228a flow bound).
 - **Slots** (D379: Slots owns lengths; spec wip/SPEC-slots-lengths.md):
@@ -19,6 +20,7 @@
   - One solve on Shape's fixed headings, run on the top 1-3 variants (D366).
   - Frames cover channels, node groups, port-side corridors and deck strips.
   - No step lies inside a deck, a tunnel or its ramp tiles.
+  - Stretch comes from flex points (D383): inserts priced as length, no yes/no variables, no curve rows on them; steps are sideways moves only.
   - Overlap-freedom is by construction (D381): Slots writes keep-apart rows read from the track map and Shape's headings before the solve (parallel neighbours one lane apart through bends, each face's opposite walls apart); no clash rows from a solution and no lazy loop; the clash check is an oracle.
   - Promise: a closed, compact, clash-free layout with its exact rules (pins, copies, rows, cusps, deck spans within `limit`) and lower bounds (curve spacing, legs, landings, coverage) kept.
 - **Heights** (D365; built after T2, T3 and LL² are end to end checker clean):
