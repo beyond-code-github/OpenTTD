@@ -24,6 +24,8 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -56,6 +58,7 @@ struct G1Result {
 	size_t no_chain; ///< Beside tracks and pieces the beside rows skipped.
 	int width_tiles, height_tiles; ///< The box in tiles.
 	std::vector<std::string> audit; ///< AuditG1's breaches, one line each.
+	std::vector<std::string> mod2; ///< G1i: the mod-2 check's report, when g1_mod2 is set.
 };
 
 /** A linear expression. */
@@ -138,6 +141,164 @@ static uint32_t G1Family(const std::string &tag)
 	if (tag.starts_with("bay ")) return 128;
 	if (tag.starts_with("curve")) return 256;
 	return 0;
+}
+
+/** G1i: one row as SolveG1 wrote it, for the mod-2 check. */
+struct Mod2Row {
+	std::vector<std::pair<uint32_t, double>> terms;
+	double lower, upper;
+	std::string tag;
+};
+
+/** G1i: one variable's bounds and kind. */
+struct Mod2Var {
+	double lower, upper;
+	bool integer;
+};
+
+/** G1i: a row tag's kind, its words up to the first that starts with a digit ("parity step vertex 3 4" -> "parity step vertex"). */
+static std::string G1Kind(const std::string &tag)
+{
+	std::string kind;
+	size_t at = 0;
+	while (at < tag.size()) {
+		size_t end = tag.find(' ', at);
+		if (end == std::string::npos) end = tag.size();
+		if (std::isdigit(static_cast<unsigned char>(tag[at]))) break;
+		if (!kind.empty()) kind += ' ';
+		kind += tag.substr(at, end - at);
+		at = end + 1;
+	}
+	return kind;
+}
+
+/** G1i: the row kinds SolveG1 leaves out (the kind filter). */
+static std::set<std::string> g1_skip_kinds;
+
+/** G1i: the row kinds a mod-2 run saw. */
+static std::set<std::string> g1_kinds_seen;
+
+/** When set, SolveG1 runs the mod-2 check instead of the solve and puts its report in G1Result::mod2. */
+static bool g1_mod2 = false;
+
+/**
+ * G1i (review F6, L8c): the equality and parity rows over the integers mod 2.
+ * Variables with `fixed` values (step binaries) or equal bounds are substituted; rows with the same tag and terms are intersected,
+ * and every row (or pair) that pins its expression to one value is an equation mod 2. Rows with a continuous variable or a
+ * non-integer coefficient are left out (they can absorb any parity). Gaussian elimination over GF(2) gives a solution or a
+ * contradiction; each contradiction is shrunk by a deletion filter to a minimal set of rows, reported, removed, and the
+ * elimination is run again, up to `max_certificates`.
+ */
+static std::vector<std::string> Mod2Check(const std::vector<Mod2Row> &rows, const std::vector<Mod2Var> &vars, const std::map<uint32_t, int> &fixed, const std::map<uint32_t, std::string> &names, size_t max_certificates)
+{
+	std::vector<std::string> out;
+	const auto is_int = [](double d) { return std::abs(d - std::round(d)) < 1e-9; };
+	const auto fixed_value = [&](uint32_t v, double &value) {
+		auto it = fixed.find(v);
+		if (it != fixed.end()) { value = it->second; return true; }
+		if (vars[v].lower == vars[v].upper) { value = vars[v].lower; return true; }
+		return false;
+	};
+	/* Substitute and group by (tag, residual terms). */
+	struct Group { std::vector<std::pair<uint32_t, double>> terms; double lower, upper; std::string tag; };
+	std::map<std::string, Group> groups;
+	for (const Mod2Row &r : rows) {
+		Group g{{}, r.lower, r.upper, r.tag};
+		double shift = 0;
+		for (const auto &[v, c] : r.terms) {
+			double value;
+			if (fixed_value(v, value)) shift += c * value; else g.terms.emplace_back(v, c);
+		}
+		g.lower -= shift;
+		g.upper -= shift;
+		std::sort(g.terms.begin(), g.terms.end());
+		std::string key = r.tag;
+		for (const auto &[v, c] : g.terms) key += fmt::format("|{}:{}", v, c);
+		auto [it, fresh] = groups.try_emplace(key, g);
+		if (!fresh) {
+			it->second.lower = std::max(it->second.lower, g.lower);
+			it->second.upper = std::min(it->second.upper, g.upper);
+		}
+	}
+	/* The equations mod 2. */
+	struct Eq { std::vector<uint32_t> odd; int rhs; std::string text; };
+	std::vector<Eq> eqs;
+	size_t skipped = 0, empty_bad = 0;
+	std::map<uint32_t, uint32_t> column;
+	for (const auto &[key, g] : groups) {
+		if (std::abs(g.upper - g.lower) > 1e-9) continue;
+		bool ok = is_int(g.lower);
+		for (const auto &[v, c] : g.terms) ok = ok && vars[v].integer && is_int(c);
+		if (!ok) { skipped++; continue; }
+		Eq e{{}, static_cast<int>(((std::llround(g.lower) % 2) + 2) % 2), ""};
+		std::string text = g.tag + ":";
+		for (const auto &[v, c] : g.terms) {
+			if ((std::llabs(std::llround(c)) % 2) == 1) {
+				e.odd.push_back(v);
+				column.try_emplace(v, static_cast<uint32_t>(column.size()));
+			}
+			auto n = names.find(v);
+			text += fmt::format(" {:+g}*{}", c, n != names.end() ? n->second : fmt::format("v{}", v));
+		}
+		e.text = text + fmt::format(" = {:g}", g.lower);
+		if (e.odd.empty() && e.rhs == 0) continue;
+		if (e.odd.empty()) empty_bad++;
+		eqs.push_back(std::move(e));
+	}
+	out.push_back(fmt::format("rows={} groups={} equations={} skipped={} unknowns={} constant_contradictions={}", rows.size(), groups.size(), eqs.size(), skipped, column.size(), empty_bad));
+	/* Elimination over a subset of the equations; returns the history (equation indices) of the first contradiction, or empty. */
+	const size_t nw = (column.size() + 63) / 64;
+	const auto contradiction = [&](const std::vector<size_t> &subset) -> std::vector<size_t> {
+		const size_t hw = (subset.size() + 63) / 64;
+		std::vector<std::vector<uint64_t>> piv_bits(column.size()), piv_hist(column.size());
+		std::vector<int> piv_rhs(column.size(), -1);
+		for (size_t s = 0; s < subset.size(); s++) {
+			const Eq &e = eqs[subset[s]];
+			std::vector<uint64_t> bits(nw, 0), hist(hw, 0);
+			for (const uint32_t v : e.odd) { const uint32_t c = column.at(v); bits[c / 64] ^= 1ULL << (c % 64); }
+			hist[s / 64] |= 1ULL << (s % 64);
+			int rhs = e.rhs;
+			bool placed = false;
+			for (size_t w = 0; w < nw && !placed; w++) {
+				while (bits[w] != 0) {
+					const uint32_t c = static_cast<uint32_t>(w * 64 + std::countr_zero(bits[w]));
+					if (piv_rhs[c] < 0) {
+						piv_bits[c] = bits; piv_hist[c] = hist; piv_rhs[c] = rhs; placed = true;
+						break;
+					}
+					for (size_t i = 0; i < nw; i++) bits[i] ^= piv_bits[c][i];
+					for (size_t i = 0; i < hw; i++) hist[i] ^= piv_hist[c][i];
+					rhs ^= piv_rhs[c];
+				}
+			}
+			if (!placed && rhs == 1) {
+				std::vector<size_t> h;
+				for (size_t i = 0; i < subset.size(); i++) if ((hist[i / 64] >> (i % 64)) & 1) h.push_back(subset[i]);
+				return h;
+			}
+		}
+		return {};
+	};
+	std::vector<size_t> live(eqs.size());
+	for (size_t i = 0; i < eqs.size(); i++) live[i] = i;
+	for (size_t n = 0; n < max_certificates; n++) {
+		std::vector<size_t> cert = contradiction(live);
+		if (cert.empty()) {
+			out.push_back(fmt::format("consistent after {} certificates", n));
+			break;
+		}
+		/* Deletion filter: drop each row whose removal keeps the set contradictory. */
+		for (size_t i = 0; i < cert.size();) {
+			std::vector<size_t> without = cert;
+			without.erase(without.begin() + static_cast<std::ptrdiff_t>(i));
+			if (!contradiction(without).empty()) cert = without; else i++;
+		}
+		out.push_back(fmt::format("certificate {}: {} rows", n, cert.size()));
+		for (const size_t i : cert) out.push_back(fmt::format("  {}", eqs[i].text));
+		std::set<size_t> drop(cert.begin(), cert.end());
+		std::erase_if(live, [&](size_t i) { return drop.contains(i); });
+	}
+	return out;
 }
 
 /** The solve's time limit in seconds, and the count of solves that ended neither optimal nor infeasible (the G1h filter reads both). */
@@ -372,9 +533,13 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 	JunctionMilp lp;
 	const double INF = JunctionMilp::INF;
 	std::vector<std::string> tags;
+	std::vector<Mod2Row> mod2_rows;
+	std::vector<Mod2Var> mod2_vars;
+	std::map<uint32_t, std::string> mod2_names;
 	const auto row = [&](const Lin &e, double lower, double upper, const std::string &tag) {
 		if ((G1Family(tag) & off) != 0) return;
 		if (skip_pin != nullptr && tag == *skip_pin) return;
+		if (!g1_skip_kinds.empty() && g1_skip_kinds.contains(G1Kind(tag))) return;
 		if ((off & 1024) != 0 && (tag.starts_with("parity ") || tag.starts_with("even "))) return;
 		std::vector<std::pair<uint32_t, double>> terms;
 		for (const auto &[variable, coefficient] : e.terms) {
@@ -382,8 +547,19 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		}
 		lp.AddRow(terms, lower - e.constant, upper - e.constant);
 		tags.push_back(tag);
+		if (g1_mod2) {
+			mod2_rows.push_back({terms, lower - e.constant, upper - e.constant, tag});
+			g1_kinds_seen.insert(G1Kind(tag));
+		}
 	};
-	const auto var = [&](double lower, double upper, double cost, bool integer = true) { return lp.AddVariable(lower, upper, cost, integer && (off & 512) == 0); };
+	const auto var = [&](double lower, double upper, double cost, bool integer = true) {
+		const uint32_t v = lp.AddVariable(lower, upper, cost, integer && (off & 512) == 0);
+		if (g1_mod2) {
+			if (mod2_vars.size() <= v) mod2_vars.resize(v + 1);
+			mod2_vars[v] = {lower, upper, integer && (off & 512) == 0};
+		}
+		return v;
+	};
 	const auto lin = [](std::initializer_list<std::pair<uint32_t, double>> terms) {
 		Lin e;
 		for (const auto &[variable, coefficient] : terms) e.Add(variable, coefficient);
@@ -412,6 +588,8 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		for (size_t i = 0; i < map.events[t].size() + 2; i++) {
 			const uint32_t x = var(0, INF, 0), y = var(0, INF, 0);
 			point[t].emplace_back(x, y);
+			mod2_names[x] = fmt::format("x({} {})", map.tracks[t].name, i);
+			mod2_names[y] = fmt::format("y({} {})", map.tracks[t].name, i);
 			row(lin({{x, 1}, {width, -1}}), -INF, 0, "box");
 			row(lin({{y, 1}, {height, -1}}), -INF, 0, "box");
 		}
@@ -554,6 +732,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 					el.piece = static_cast<int>(j);
 					el.stretch = static_cast<int>(k);
 					el.fixed = fixed;
+					if (g1_mod2) mod2_names[variable] = fmt::format("{}({} s{} p{} h{})", kind == Kind::Part ? "len" : (kind == Kind::StepP ? "stepP" : "stepM"), map.tracks[t].name, k, j, h);
 					if (kind == Kind::Part) {
 						el.disp = PlanarModel::STEP[h];
 						el.length = 1;
@@ -1010,6 +1189,21 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		}
 	}
 
+	if (g1_mod2) {
+		/* Step existence fixed off: a step's travel is even (2 per lane), so this is the weakest case mod 2; cusps stay (they are fixed). */
+		std::map<uint32_t, int> fixed;
+		for (const auto &places : track_places) {
+			for (const Place &pl : places) {
+				for (const uint32_t z : {pl.zp, pl.zm, pl.p, pl.m}) fixed[z] = 0;
+			}
+		}
+		const auto start = std::chrono::steady_clock::now();
+		r.mod2 = Mod2Check(mod2_rows, mod2_vars, fixed, mod2_names, 8);
+		r.ms = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count()) / 1000.0;
+		r.why = "mod2";
+		return r;
+	}
+
 	lp.SetTimeLimit(g1_time_limit);
 	const auto start = std::chrono::steady_clock::now();
 	const JunctionMilp::Status status = lp.Solve();
@@ -1401,4 +1595,79 @@ TEST_CASE("planar probe: G1e the geometry around LL2's grid conflict", "[junctio
 	const G1Result r2 = SolveG1(t2, spec, shape2.variants[0], 1U, nullptr, nullptr, &show2, &seed2);
 	CHECK(r2.solved);
 	for (const std::string &line : r2.audit) std::cout << fmt::format("G1G AUDIT T2 {} {}\n", shape2.variants[0].structure.tag, line);
+}
+
+TEST_CASE("planar probe: G1i the grid as a mod-2 system", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	g1_mod2 = true;
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		REQUIRE(shape.variants.size() >= 3);
+		for (size_t i = 0; i < 3; i++) {
+			const PlanarShapeVariant &v = shape.variants[i];
+			const G1Result r = SolveG1(topology, spec, v, 511U);
+			std::cout << fmt::format("G1I {} {} off=511 ms={:.1f}\n", name, v.structure.tag, r.ms);
+			for (const std::string &line : r.mod2) std::cout << fmt::format("G1I {} {} {}\n", name, v.structure.tag, line);
+			if (name == "LL2" && i == 0) {
+				/* The control: stubs off (8192) brings back G1e's node 18 conflict (D380), which the check must name. */
+				const G1Result c = SolveG1(topology, spec, v, 511U | 8192U);
+				for (const std::string &line : c.mod2) std::cout << fmt::format("G1I CONTROL {} {} off=8703 {}\n", name, v.structure.tag, line);
+			}
+		}
+	}
+	g1_mod2 = false;
+}
+
+/** G1j: the deletion filter over row kinds at off=511 (5 s per solve; a timeout keeps the kind), on LL2 o0t0f1m1 and T3's failing variant. */
+TEST_CASE("planar probe: G1j the row kinds that make the base infeasible", "[junction][planar][planarshape][.probe]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"LL2", PlanarLL2Text()}, {"T3", PlanarTText(3)}};
+	const double limit = g1_time_limit;
+	g1_time_limit = 5.0;
+	for (const auto &[name, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+		REQUIRE(shape.variants.size() >= 3);
+		for (size_t i = 0; i < 3; i++) {
+			const PlanarShapeVariant &v = shape.variants[i];
+			const std::string &vt = v.structure.tag;
+			if (vt != "o0t0f1m1" && vt != "o7t2f0m3270") continue;
+			/* The kinds present: a mod-2 run records every row. */
+			g1_mod2 = true;
+			std::set<std::string> kinds;
+			{
+				const G1Result probe = SolveG1(topology, spec, v, 511U);
+				(void)probe;
+			}
+			g1_mod2 = false;
+			kinds = g1_kinds_seen;
+			const G1Result base = SolveG1(topology, spec, v, 511U);
+			std::cout << fmt::format("G1J {} {} base solved={} ms={:.0f} kinds={}\n", name, vt, base.solved ? 1 : 0, base.ms, kinds.size());
+			g1_skip_kinds.clear();
+			for (const std::string &k : kinds) {
+				g1_skip_kinds.insert(k);
+				const size_t timeouts = g1_timeouts;
+				const G1Result r = SolveG1(topology, spec, v, 511U);
+				const bool timed_out = g1_timeouts != timeouts;
+				const bool still = !r.solved && !timed_out;
+				if (!still) g1_skip_kinds.erase(k);
+				std::cout << fmt::format("G1J {} {} drop [{}] -> {} ms={:.0f}\n", name, vt, k, r.solved ? "solved (needed)" : (timed_out ? "timeout (kept)" : "infeasible (dropped)"), r.ms);
+			}
+			std::string needed;
+			for (const std::string &k : kinds) {
+				if (!g1_skip_kinds.contains(k)) needed += " [" + k + "]";
+			}
+			std::cout << fmt::format("G1J {} {} KEPT{}\n", name, vt, needed);
+			g1_skip_kinds.clear();
+		}
+	}
+	g1_time_limit = limit;
 }
