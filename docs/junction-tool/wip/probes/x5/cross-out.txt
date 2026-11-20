@@ -1,0 +1,23 @@
+lines 109 with a simple chain 109 without []
+segments: lines 109 tunnel jumps 50 (psg197-decisions: 50 tunnels, 0 bridges)
+raw segment crossings: a ground x ground (level) 0 ; a at a trunk node piece 0 ; b ground x tunnel 103 ; n trunk node piece x tunnel 3 ; c tunnel x tunnel 18 ; spurious near shared endpoints dropped 32
+node piece crossing a ground piece of a line or another node piece (level): 0 []
+level crossings (a) among lines: 0 []
+trunk rule (D390 (1)): node-piece-over-tunnel hits recorded on the trunk line only: see n count above; trunk lines extended by their node piece: 57
+pairs with >1 hit (first hit along the lower-numbered line kept): 1 [(79, 97, 2)]
+extractor crossing pairs 123 {'n': 3, 'b': 102, 'c': 18} (n = node over tunnel via trunk rule)
+hand pairs 122 statements 54
+ambiguous hand lines {'A1d': [58, 59], 'A1e': [58, 59], 'C1': [74, 80], 'C1b': [74, 80]} -> assigned {'A1d': 58, 'A1e': 59, 'C1': 74, 'C1b': 80}
+hand pairs found by extractor (common): 117 ; only in hand file (missing): 5 ; only in extractor: 6
+  MISSING 1 hand line without ext line: D12e [['A1e', 'D12e']]
+  MISSING 1 hand line without ext line: D12f [['A1e', 'D12f']]
+  MISSING 2 hand line without ext line: D3 [['C2', 'D3'], ['C2b', 'D3']]
+  MISSING 1 hand line without ext line: D12d,D12f [['D12d', 'D12f']]
+  EXTRA 1 ext line matches no hand line: L67 [((59, 67), 'b', [['A1e'], ['-']], '98.5,185.0')]
+  EXTRA 1 ext line matches no hand line: L68 [((59, 68), 'b', [['A1e'], ['-']], '98.5,185.5')]
+  EXTRA 1 ext line matches no hand line: L68,69 [((68, 69), 'b', [['-'], ['-']], '100.5,185.5')]
+  EXTRA 1 ext line matches no hand line: L98 [((72, 98), 'b', [['C2b'], ['-']], '110.0,171.5')]
+  EXTRA 1 ext line matches no hand line: L95 [((79, 95), 'b', [['C2'], ['-']], '109.0,172.5')]
+  EXTRA 1 ext line matches no hand line: L97 [((79, 97), 'b', [['C2'], ['-']], '110.0,172.5')]
+mark agreement on common pairs: equal 117 differ 0
+order agreement per hand line (>=2 common pairs): 37 identical 0 differ; lines with <2 common pairs 13 ; hand lines with no ext line ['D12d', 'D12e', 'D12f', 'D3']
