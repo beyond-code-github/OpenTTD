@@ -4,8 +4,9 @@ History lives in git. The previous STATUS: `git show d18117a214:docs/junction-to
 
 ## Where things are
 - **NOW (2026-11-21): SSS v2 E1x running. Resume here after /clear.** Card wip/CARD-E1x.md (E1x-1 data tidy, E1x-2 H11 per run, E1x-3 steps); defaults D396. Baseline a32ea0802d: V's 197 at Shape's level breaks H11 x20, H2 x3, H3 x1, H12 clean (104 dummies); Shape's own 197 shape 112 ms, turning 48.
-  - E1x-1 (data tidy, Sonnet, ng1 wt-e1): launched. Then E1x-2 (H11 per run, Sonnet).
-  - WAITING ON PETE: E1x-3 steps, option A (one-sided, Shape picks the side: no criterion in Shape, 3^124 on 197) vs B (two-sided flex by rule on one-piece eligible stretches, D383 on axis pieces; recommended).
+  - E1x-1 DONE (e391d1ecee): psg197.shape.txt is the Shape-level projection, psg197.steps.txt V's 50 steps (7 crossing-crossing); port ends at port heading; straight D12g: D12e. V's 197: H11 x20 only, turning 105.
+  - E1x-2 DONE (c9c2bbff4c): H11 per run (least = n + diagonal runs; CheckH11 retired into H6; program counts runs with a parallel binary per pair). V's 197 keeps the whole promise. Shape's own 197: turning 47 -> 19, dummies 19, 120 ms. T2/T3/LL2: all shape, oracle empty, turning sums 256->160, 405->364, 104->64; times 0.72, 3.9, 3.1 s (T2/T3 slower, LL2 faster). T1 pin 5 -> 4. Gate 702/702 in 31.0 s at JT_JOBS=4 (budget set at 14 jobs). Known red: 14 `gap:` CHECKs in the 197 structure test (G1-G4, by design).
+  - WAITING ON PETE: E1x-3 steps, option A (one-sided, Shape picks the side: no criterion in Shape, 3^124 on 197) vs B (two-sided flex by rule on one-piece eligible stretches, D383 on axis pieces; recommended; Pete: turning is the wrong compactness goal, which B leaves to Slots' footprint objective).
   - Then E5's feasibility oracle on 197 is the next major milestone.
   - Load: builds -j 4, JT_JOBS=4; `git fsck --connectivity-only` after any crash. Worktree /home/pete/OpenTTD/.claude/ng1 on wt-e1 (tracks feature), builds build, build-rel.
 - WAS NOW (2026-11-20, night): E1 done; details in wip/CARD-E1d-psg197-variant.md, rulings D389-D395.
