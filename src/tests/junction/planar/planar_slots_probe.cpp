@@ -482,6 +482,7 @@ static std::vector<std::string> Mod2Check(const std::vector<Mod2Row> &rows, cons
 
 /** The solve's time limit in seconds, and the count of solves that ended neither optimal nor infeasible (the G1h filter reads both). */
 static double g1_time_limit = 15.0;
+static bool g2_rigid_keep_flex = false; ///< G2f: rigid beside pieces keep their flex inserts (steps still removed).
 static bool g2_rigid_beside = false; ///< G2e: beside tracks and their parents take no sideways moves and are held a lane apart at both ends of each piece.
 static size_t g1_timeouts = 0;
 
@@ -1006,7 +1007,7 @@ static G1Result SolveG1Raw(const PlanarTopology &topology, const JunctionSpec &s
 				const bool lattice = k >= 1 && k < map.events[t].size() && ((off & 16777216) != 0 || (span_of_crossing.contains(map.events[t][k - 1]) && span_of_crossing.contains(map.events[t][k])));
 				const bool rigid = g2_rigid_beside && rigid_piece.contains({t, j});
 				const bool flex_wanted = (off & 2097152) != 0 && h % 2 != 0 && !in_span.contains({t, k}) && !lattice;
-				const bool flex_place = flex_wanted && !rigid;
+				const bool flex_place = flex_wanted && (!rigid || g2_rigid_keep_flex);
 				if (flex_wanted && rigid) r.rigid_pieces_no_flex++;
 				const bool insert_place = insert && !place_blocked && !in_span.contains({t, k});
 				const bool place_wanted = place_piece == static_cast<int>(j) || every_piece || insert_place;
@@ -2936,10 +2937,15 @@ TEST_CASE("planar probe: G2f rigid beside family filter on T2", "[junction][plan
 		if (proved) off |= 1U << b;
 		std::cout << fmt::format("G2F {} drop {} -> {} ms={:.0f}\n", v.structure.tag, family_names[b], r.solved ? "solved (needed)" : (proved ? "infeasible (dropped)" : "timeout (kept)"), r.ms);
 	}
-	const G1Result r = SolveG1(topology, spec, v, off);
+	for (const int probe : {0, 1, 2}) {
+	g2_rigid_keep_flex = probe == 2;
+	const G1Result r = SolveG1(topology, spec, v, off | (probe == 1 ? 64U : 0U));
+	std::cout << fmt::format("G2F probe={} ", probe);
 	std::cout << fmt::format("G2F {} off={} solved={} rows={} ms={:.0f} steps={} W={} H={} clashes={} same_channel={} face={} noface={} curve={} why={}\n", v.structure.tag, off, r.solved ? 1 : 0, r.iis.size(), r.ms, r.step_lanes, r.width_tiles, r.height_tiles, r.clashes.size(), r.same_channel, r.face, r.noface, r.curve_breaches.size(), r.why.substr(0, 300));
-	for (const std::string &line : r.clashes) std::cout << fmt::format("G2F CLASH {}\n", line);
-	for (const std::string &line : r.iis) std::cout << fmt::format("G2F IIS {}\n", line);
+	for (const std::string &line : r.clashes) std::cout << fmt::format("G2F CLASH p{} {}\n", probe, line);
+	if (probe == 0) for (const std::string &line : r.iis) std::cout << fmt::format("G2F IIS {}\n", line);
+	}
+	g2_rigid_keep_flex = false;
 	g2_rigid_beside = false;
 	g1_time_limit = limit;
 }
