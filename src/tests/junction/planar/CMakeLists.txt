@@ -3,6 +3,7 @@ add_test_files(
     planar_components.cpp
     planar_gaps.cpp
     planar_model.cpp
+    planar_node_rules.cpp
     planar_paths.cpp
     planar_plan.cpp
     planar_regions.cpp

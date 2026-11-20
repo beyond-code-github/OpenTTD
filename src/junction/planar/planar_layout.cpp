@@ -1110,6 +1110,12 @@ bool Model::Run(const PlanarSolveState *base, PlanarSolveState &state, PlanarGeo
 
 } // namespace
 
+bool PlanarPiecesClash(const PlanarPiece &p, const PlanarPiece &q)
+{
+	const ClashKind k = KindOf(p, q);
+	return k != CLASH_KINDS && PiecesClash(p, q, k);
+}
+
 std::vector<PlanarClashHit> PlanarGeometryClashes(const PlanarTopology &topology, const PlanarGeometry &geometry)
 {
 	std::vector<PlanarClashHit> out;

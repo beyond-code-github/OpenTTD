@@ -54,6 +54,9 @@ struct PlanarPiece {
 	enum class Kind : uint8_t { Ground, Head, Middle } kind = Kind::Ground;
 };
 
+/** Whether two pieces of unrelated tracks clash under the layout's tile rule (KindOf, then PiecesClash; a ground piece under a deck middle never clashes). */
+bool PlanarPiecesClash(const PlanarPiece &p, const PlanarPiece &q);
+
 /** Rasterise every line of a geometry: per line, its pieces in travel order, deck pieces marked. */
 std::vector<std::vector<PlanarPiece>> RasterPlanarLines(const PlanarGeometry &geometry);
 
