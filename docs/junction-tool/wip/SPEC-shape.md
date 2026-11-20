@@ -72,3 +72,39 @@ Until tunnels are built (D365): kinds always bridge; the tunnel rows and end run
 - H3 Capacity rows and end runs, Structure's `limit`, cost and ranking; `BuildPlanarShape`.
 - H4 **Outer test:** `BuildPlanarShape` on T2, T3, LL2 (keep 16): every variant shaped, H1-H10 kept, ranking order, time (milliseconds per variant; the seed budget is 5 s, D297).
 - **Built (2026-11-20):** H1 oracle (c1f326dfd8, 38c46d9d21); H2 heading program and closure probe (7b0e4255d5); H2b parent chain, probe opens cusps (bdff7e9913, b69d8e57cf); H3 Structure `limit` (8e194c4c5b), capacity rows and `BuildPlanarShape` with the outer test (cb19e03bd5). Findings on the way: the parser needs nodes for any crossing (no port-to-port line); a row's parent is its lane's part chain; the first closure LP failed only because it put parallel legs on one point (Slots' cusp). Result: every T2, T3, LL2 variant (keep 16) shapes, keeps H1-H9 and closes.
+
+## 8. Faces Slots can draw: the guarantee behind D361 (DRAFT, orchestrator, 2026-11-21 night; for the engineer)
+
+**Why this section.** Slots (D379) decides every length on Shape's headings, and D361 asks that its output be valid by construction. That needs two statements, proved before Slots' rows are built (D368):
+- **G-planar:** any lengths that satisfy Slots' rows give a planar drawing of Structure's map with tile clearances (no clash).
+- **G-feasible:** Slots' rows always have a solution on a variant Shape hands down (Slots never discovers infeasibility, D361).
+
+H7 (each face winds once) is TSM's validity condition. In orthogonal drawing it is enough: every valid orthogonal representation refines into rectangles and compacts (Tamassia). In eight directions it is not: G2 showed a ray's landing wall depends on lengths, and faces with fixed headings can fold or collapse. Slots G1-G2 tried to close the gap from below with row families read off clash counts; that is the generate-and-check D361 rules out. This section closes it from above.
+
+### 8.1 Proposed promise: convex cells (H12)
+Shape refines every inner face into **convex cells** by dummy edges and hands them down:
+- A **dummy edge** runs from a reflex vertex into the face along a heading Shape chooses (one of the headings that splits the reflex angle into two convex ones) and ends on a wall **Shape names**. Choosing the landing wall is a combinatorial decision on headings only, the analogue of TSM's rectangularization, so it is Shape's (it owns headings and decides without lengths). Step and flex bends are Slots' and are not reflex in Shape's model (they live inside a piece); see 8.4.
+- **H12:** every cell's walk turns one way only (each corner turns <= 0 with the cell on the left) and winds once.
+
+### 8.2 Slots' rows per cell (complete, no choice left)
+- **Closure** of each cell (its walls' lengths times their headings sum to zero), the dummy edge's landing point on its named wall (0 <= u <= the wall's length).
+- **Clearance:** for each track wall e of the cell and each track wall f whose heading faces e (3 to 5 eighths from e's, walked), the distance between their lines along e's normal is the sum of the lengths of the walls between them times their normal components: linear, with no choice, because in a convex cell the order of walls fixes which faces which. Row: that distance >= the clearance for the pair's headings (`RungSpacing`). Exempt: e and f adjacent through a corner where they legitimately meet (a node, a crossing).
+
+### 8.3 Proof sketch of G-planar
+1. A closed walk whose heading turns monotonically through exactly one turn, with lengths >= 0, is a convex polygon (possibly with zero-length walls): it cannot self-intersect.
+2. The cells of a face tile it: every dummy edge is a segment inside the face from a vertex to a point on a named wall (its landing rows), so the cells' union is the face and their interiors are disjoint.
+3. Faces tile the box (the map is planar and every face winds once, H7, with the outer face the other way).
+4. Clearance rows keep facing walls of each cell apart; walls of different cells are separated by the cells between them. Hence no two track pieces share a tile except where the map says they meet.
+- **Open in the proof:** (a) whether "facing walls" (3-5 eighths) covers every pair the tile clash rule cares about, including pairs meeting at 45 degrees across a short wall; (b) degenerate cells (a wall of length 0 making two cells touch).
+
+### 8.4 What this does to steps, flex and beside tracks
+- A Slots step or flex insert adds bends inside one of Shape's pieces. With Shape's cells fixed, such bends make the cell non-convex. Two readings to decide: (i) steps and flex inserts stay inside frames whose cells are synchronized corridors (beside offset curves, SPEC-slots-lengths §11), where the corridor is a pair of parallel walls whose convexity holds piecewise; (ii) Shape places the bends (a flex point or a step is a pair of Shape headings with length >= 0, D383's "Shape marks flex points" read literally), so every bend is in Shape's model and convexity covers it.
+- Beside tracks: SPEC-slots-lengths §11 (offset curves) is a clearance construction for the thin cell between a track and its row or copy; it fits 8.2 as the corridor case.
+
+### 8.5 G-feasible (the harder half, open)
+Every Slots row above is homogeneous (closure, landing, clearance as ">= c" with c > 0 scales away), except the **exact quantities**: port pins and side gaps, deck gaps and spans, beside offsets (one lane), exact prio length (D384), node and join shapes. Scaling all lengths of a drawing up keeps every homogeneous row and every lower bound, so G-feasible reduces to SPEC-slots §0.3's question: **the exact quantities sit in rigid zones, and every cut between two rigid zones crosses pieces that can stretch** (axis pieces along the cut's normal, flex points on diagonals). That is a statement about Shape's cells and Structure's zones; to be written as a promise once 8.1-8.4 are settled.
+
+### 8.6 Decisions for the engineer (card)
+- Shape gains a decision (dummy edges and their landing walls) and a promise (H12, convex cells).
+- 8.4: steps and flex inserts as Slots-only bends inside corridors (i), or as Shape-placed bend pairs (ii).
+- Order: prove 8.3's open points and 8.5 on paper (T2 by hand, then the corpus) before any Slots code.
