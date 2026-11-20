@@ -40,6 +40,23 @@ struct PlanarStructure {
 	std::array<int, 2> limit; ///< The most middle tiles each kind may span (0 bridge, 1 tunnel), -1 for a kind not allowed: bridge min(max_bridge_middle, and with a copy 2 * sd + tl - 2 (D228a)); tunnel min(max_tunnel_length, and with a copy the same D228a bound).
 };
 
+/** The lower bounds and exact values Slots reads, handed down by Structure (D366, SPEC-slots-lengths §8.1, E2); half tiles unless noted. */
+struct PlanarRuleFields {
+	int tl = 0; ///< The train length in tiles (spec.tl).
+	int cl = 0; ///< The curve spacing in half tiles, DeriveCurveSpacing(reference_speed, curve_speed, tl).
+	int curve_same = 0; ///< The least distance between consecutive curves of the same hand: min(2 tl - 1, max(2, cl)).
+	int curve_opposite = 0; ///< The least distance between consecutive curves of opposite hands: 2.
+	std::array<int, 2> curve_window{}; ///< The least distance between curves k = 2 and k = 3 apart: min(2 tl - 1, 2 cl) and min(2 tl - 1, 3 cl).
+	int bay = 0; ///< The bay length: 2 tl + 4.
+	int coverage = 0; ///< The exact prio coverage: 2 prio_tiles + 4 (D384).
+	int node_leg = 0; ///< The least node leg: 2.
+	int cross = 0; ///< The crossing length: 1.
+	int deck_gap = 0; ///< The least gap between decks: 2.
+	int sd = 0; ///< The signal spacing in tiles (spec.sd), from which Lengths derives the landing (D375).
+
+	bool operator==(const PlanarRuleFields &) const = default;
+};
+
 /** One variant of Structure's choices with its track map. */
 struct PlanarStructureVariant {
 	std::string tag; ///< The variant's name.
@@ -47,6 +64,7 @@ struct PlanarStructureVariant {
 	std::vector<PlanarStructureSite> sites; ///< Every split and merge of the map with its straight leg.
 	std::vector<PlanarStructure> structures; ///< The crossings grouped into structures.
 	std::array<int, 4> side_gap{}; ///< Per box side (index PlanarSide: N, E, S, W), the slot distance between the last line of one port and the first line of the next port on that side: gap + 1 (ml_gap on E and W, branch_gap on N and S; D377). Slots reads it, never the spec.
+	PlanarRuleFields rules{}; ///< The spec's rule fields for Slots (PlanarRuleFieldsOf); P9 checks them.
 	std::vector<uint32_t> channel_of_line; ///< Per topology line, its channel (BuildPlanarChannels): Shape's lattice rule reads it (D397).
 	int cost; ///< The cheap score for ranking: structures plus copies (D371a).
 };
@@ -66,6 +84,13 @@ struct PlanarStructureResult {
  * @return Per side in PlanarSide order (N, E, S, W), the slot distance.
  */
 std::array<int, 4> PlanarSideGaps(const JunctionSpec &spec);
+
+/**
+ * The rule fields Slots reads instead of the spec (D366, SPEC-slots-lengths §8.1).
+ * @param spec The spec.
+ * @return The fields, by the formulas of PlanarRuleFields.
+ */
+PlanarRuleFields PlanarRuleFieldsOf(const JunctionSpec &spec);
 
 /**
  * The channel that is over at each channel crossing, one bit per crossing in crossing order (D347b: every channel crossing is a choice).
@@ -126,12 +151,13 @@ PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const
 PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology, std::string_view text, const JunctionSpec &spec, std::vector<std::string> &report, std::string *error);
 
 /**
- * The promise P1 to P8 of SPEC-structure §4 as a test oracle (D367).
+ * The promise P1 to P9 of SPEC-structure §4 as a test oracle (D367).
  * Copy and row tracks are the map's own additions: their crossings follow by rule from their parent structure, so P3 counts only crossings between two line tracks.
  * P3 allows a crossing in two structures exactly when each of its two tracks is the separator of one of them.
  * P5 checks the bridge and tunnel length limits and, for a structure with a copy, the D228a flow bound (crossers + 2 <= 2 * sd + tl).
  * P6 also requires each copy track to be the copy of exactly one structure.
  * P8 checks the variant's side gaps equal the spec's (D377).
+ * P9 the rule fields (E2).
  * P4 also allows two tunnel structures to cross (at different levels, D390 (2)). On a written-down hub (authored crossings, D394) P3's maximality is not checked and P7 accepts a choice split (legs carrying the same routes) after a merge (D391).
  * @param topology The topology the variant was made from.
  * @param spec The spec: the bridge and tunnel limits.

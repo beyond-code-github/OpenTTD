@@ -82,6 +82,25 @@ std::array<int, 4> PlanarSideGaps(const JunctionSpec &spec)
 	return {spec.branch_gap + 1, spec.ml_gap + 1, spec.branch_gap + 1, spec.ml_gap + 1};
 }
 
+PlanarRuleFields PlanarRuleFieldsOf(const JunctionSpec &spec)
+{
+	const int tl = spec.tl;
+	const int cl = static_cast<int>(DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl));
+	PlanarRuleFields r;
+	r.tl = tl;
+	r.cl = cl;
+	r.curve_same = std::min(2 * tl - 1, std::max(2, cl));
+	r.curve_opposite = 2;
+	r.curve_window = {std::min(2 * tl - 1, 2 * cl), std::min(2 * tl - 1, 3 * cl)};
+	r.bay = 2 * tl + 4;
+	r.coverage = 2 * spec.prio_tiles + 4;
+	r.node_leg = 2;
+	r.cross = 1;
+	r.deck_gap = 2;
+	r.sd = spec.sd;
+	return r;
+}
+
 std::vector<PlanarStructure> PlanarBuildStructures(const PlanarTopology &topology, const std::vector<PlanarStructureRun> &runs, const PlanarTrackMap &map, const JunctionSpec &spec)
 {
 	std::vector<PlanarStructure> out;
@@ -324,6 +343,7 @@ PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const
 		v.structures = PlanarBuildStructures(topology, e.runs, v.map, spec);
 		v.sites = PlanarBuildStructureSites(topology, c.channels, c.sites, v.map);
 		v.side_gap = PlanarSideGaps(spec);
+		v.rules = PlanarRuleFieldsOf(spec);
 		v.channel_of_line = c.channels.channel_of_line;
 		result.variants.push_back(std::move(v));
 	}
@@ -500,6 +520,7 @@ PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology
 	PlanarStructureVariant v{};
 	v.tag = topology.name;
 	v.side_gap = PlanarSideGaps(spec);
+	v.rules = PlanarRuleFieldsOf(spec);
 	const PlanarChannels channels = BuildPlanarChannels(topology);
 	v.channel_of_line = channels.channel_of_line;
 	const auto pinned_line = [&](uint32_t n) { return pinned[n] == "none" ? UINT32_MAX : PlanarLineByName(topology, pinned[n]); };
@@ -733,6 +754,25 @@ std::vector<std::string> CheckPlanarStructurePromise(const PlanarTopology &topol
 	/* P8: the side gaps are the spec's. */
 	const std::array<int, 4> gaps = PlanarSideGaps(spec);
 	if (v.side_gap != gaps) out.push_back(fmt::format("P8: side gaps {}/{}/{}/{} (N/E/S/W), the spec gives {}/{}/{}/{}", v.side_gap[0], v.side_gap[1], v.side_gap[2], v.side_gap[3], gaps[0], gaps[1], gaps[2], gaps[3]));
+
+	/* P9: the rule fields are the spec's. */
+	const PlanarRuleFields want_rules = PlanarRuleFieldsOf(spec);
+	if (v.rules != want_rules) {
+		const PlanarRuleFields &g = v.rules;
+		const PlanarRuleFields &w = want_rules;
+		const auto differ = [&](std::string_view name, int have, int want) { out.push_back(fmt::format("P9: rule field {} is {}, the spec gives {}", name, have, want)); };
+		if (g.tl != w.tl) differ("tl", g.tl, w.tl);
+		else if (g.cl != w.cl) differ("cl", g.cl, w.cl);
+		else if (g.curve_same != w.curve_same) differ("curve_same", g.curve_same, w.curve_same);
+		else if (g.curve_opposite != w.curve_opposite) differ("curve_opposite", g.curve_opposite, w.curve_opposite);
+		else if (g.curve_window != w.curve_window) out.push_back(fmt::format("P9: rule field curve_window is {}/{}, the spec gives {}/{}", g.curve_window[0], g.curve_window[1], w.curve_window[0], w.curve_window[1]));
+		else if (g.bay != w.bay) differ("bay", g.bay, w.bay);
+		else if (g.coverage != w.coverage) differ("coverage", g.coverage, w.coverage);
+		else if (g.node_leg != w.node_leg) differ("node_leg", g.node_leg, w.node_leg);
+		else if (g.cross != w.cross) differ("cross", g.cross, w.cross);
+		else if (g.deck_gap != w.deck_gap) differ("deck_gap", g.deck_gap, w.deck_gap);
+		else differ("sd", g.sd, w.sd);
+	}
 
 	/* P6: copies follow the share, rows follow the prio joins. */
 	const PlanarChannels channels = BuildPlanarChannels(topology);

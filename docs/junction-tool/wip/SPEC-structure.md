@@ -31,6 +31,7 @@ Variants pass down as a list, ranked by Structure cost; later layers add their o
 - P5 Each structure's crossers fit its kind's limit at the most compact crossing angle (longest bridge / max tunnel length; D228a for a main line), for every kind in its allowed set.
 - P6 Copies and rows follow their rulings: a copy exactly where its separator's share needs doubling, beside it over the structure's span; a row beside each prio lane over its coverage, away from the joiners.
 - P7 Split before merge on every route path (D24).
+- P9 (E2): the variant's rule fields equal the spec's (`PlanarRuleFieldsOf`); Slots reads them, never the spec.
 
 ## 5. Settled (D371)
 Q1 cheap counts: structures plus copies (D371a); Q2 maximal runs plus forced splits; Q3 a copy per structure whatever the kind; Q4 band counts read from the track map (Structure's output).

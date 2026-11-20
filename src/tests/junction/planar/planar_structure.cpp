@@ -128,6 +128,7 @@ static PlanarStructureVariant WrapToday(const TracksVariant &v, const std::set<u
 	}
 	out.structures = PlanarBuildStructures(v.topology, runs, map, MakeTestJunctionSpec());
 	out.side_gap = PlanarSideGaps(MakeTestJunctionSpec());
+	out.rules = PlanarRuleFieldsOf(MakeTestJunctionSpec());
 	out.cost = static_cast<int>(out.structures.size());
 	out.sites = PlanarBuildStructureSites(v.topology, v.channels, v.sites, map);
 	return out;
@@ -193,6 +194,7 @@ static std::array<int, 2> LimitFor(const JunctionSpec &spec, const PlanarStructu
 static void RefreshLimits(HandCase &h)
 {
 	for (PlanarStructure &s : h.v.structures) s.limit = LimitFor(h.spec, s);
+	h.v.rules = PlanarRuleFieldsOf(h.spec);
 }
 
 TEST_CASE("planar structure: the oracle accepts a valid hand variant", "[junction][planar][planarstructure]")
@@ -372,6 +374,7 @@ TEST_CASE("planar structure: P7 a split after a merge on a route path", "[juncti
 	REQUIRE(error.empty());
 	REQUIRE(h.tv.topology.crossings.empty());
 	h.v.side_gap = PlanarSideGaps(h.spec);
+	h.v.rules = PlanarRuleFieldsOf(h.spec);
 	/* One message per route path: both routes run through the merged line and split after it. */
 	const std::vector<std::string> ids = Ids(CheckPlanarStructurePromise(h.tv.topology, h.spec, h.v));
 	CHECK(ids == std::vector<std::string>{"P7", "P7"});
@@ -768,6 +771,33 @@ static std::string ReadTopologyFile(const std::string &name)
 	return buffer.str();
 }
 
+TEST_CASE("planar structure: P9 a rule field that is not the spec's", "[junction][planar][planarstructure]")
+{
+	const HandCase h = MakeHandCase();
+	PlanarStructureVariant v = h.v;
+	v.rules.bay += 1;
+	RequireOnly(h, v, "P9");
+	CHECK(CheckPlanarStructurePromise(h.tv.topology, h.spec, v)[0].find("bay") != std::string::npos);
+}
+
+TEST_CASE("planar structure: Structure hands down the spec's rule fields", "[junction][planar][planarstructure]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult r = BuildPlanarStructure(topology, spec, 16);
+	REQUIRE(!r.variants.empty());
+	const int cl = static_cast<int>(DeriveCurveSpacing(spec.reference_speed, spec.curve_speed, spec.tl));
+	for (const PlanarStructureVariant &v : r.variants) {
+		CHECK(v.rules == PlanarRuleFieldsOf(spec));
+		CHECK(v.rules.tl == 4);
+		CHECK(v.rules.bay == 12);
+		CHECK(v.rules.coverage == 32);
+		CHECK(v.rules.curve_same == std::min(7, std::max(2, cl)));
+	}
+}
+
 TEST_CASE("planar structure: PSG 197's pinned variant, gaps and promise", "[junction][planar][planarstructure]")
 {
 	std::string error;
@@ -798,6 +828,7 @@ TEST_CASE("planar structure: PSG 197's pinned variant keeps the promise", "[.][p
 	const PlanarStructureVariant v = LoadPlanarStructureVariant(topology, ReadTopologyFile("psg197.structure.txt"), spec, report, &error);
 	REQUIRE(error.empty());
 	for (const std::string &line : report) CHECK(!line.starts_with("gap:"));
+	CHECK(v.rules == PlanarRuleFieldsOf(spec));
 	const std::vector<std::string> promise = CheckPlanarStructurePromise(topology, spec, v);
 	INFO(promise.size() << " breaches, first: " << (promise.empty() ? std::string() : promise[0]));
 	CHECK(promise.empty());
