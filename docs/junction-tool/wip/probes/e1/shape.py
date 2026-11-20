@@ -1,5 +1,5 @@
 """E1h-1: PSG 197's shape from the save: per line its lifted headings and the piece of each crossing.
-Run: python3 -I shape.py > shape-out.txt   (writes tools/junction/topologies/psg197.shape.txt)
+Run: python3 -I shape.py > shape-out.txt   (writes docs/junction-tool/wip/probes/e1/psg197.shape-raw.txt)
 Walks, polylines and crossing points are order.py's and marks.py's (imported by executing order.py; marks.py's point rule copied)."""
 import sys, io, re, contextlib, itertools
 HERE = '/home/pete/OpenTTD/docs/junction-tool/wip/probes/e1'
@@ -9,7 +9,7 @@ with contextlib.redirect_stdout(io.StringIO()):
     exec(compile(src, HERE + '/order.py', 'exec'), g)
 G, inter, index, walks, polyline, rowk, N = g['G'], g['inter'], g['index'], g['walks'], g['polyline'], g['rowk'], g['N']
 TOP = '/home/pete/OpenTTD/tools/junction/topologies/psg197.txt'
-OUT = '/home/pete/OpenTTD/tools/junction/topologies/psg197.shape.txt'
+OUT = '/home/pete/OpenTTD/docs/junction-tool/wip/probes/e1/psg197.shape-raw.txt'
 tl = [l.rstrip('\n') for l in open(TOP)]
 stm = []
 for l in tl:

@@ -115,7 +115,7 @@ straight D123: D12c
 straight CE123: CE123b
 straight CE123d: E3
 straight EO2: F3
-straight D12g: D12d
+straight D12g: D12e
 straight AD23: A2d
 straight AD23b: A2b
 straight NO2: E23
