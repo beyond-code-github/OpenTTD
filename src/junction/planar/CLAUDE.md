@@ -3,6 +3,7 @@
 - The planar model stands beside the old pipeline and shares none of its graph, order, structure, programs or placement concepts.
 
 ## Architecture: SSS, then heights and signals (D361, D362, D365, D379)
+- Plan of record: SSS v2 at bundle level (D388): channels share one spine heading list, nodes and crossing blocks are catalogue gadgets, convex cells only between bundles; design docs/junction-tool/DESIGN-sss-v2.md. The bullets below describe the v1 code as built until each v2 epic replaces them.
 - The planar solver is a stack of layers. Each layer makes only its own decisions. Its output meets every constraint it owns by construction, and it hands the next layer a stated promise. No later layer repairs, retries or discovers infeasibility in an earlier layer's decisions. New work follows this stack; a generate-and-check mechanism is a defect to design out.
 - **Structure** (topology, channels, sites, track map):
   - Decides what tracks exist and their planar order: the separator and the kind (bridge or tunnel) of each structure, per joiner at a join (D364); which leg runs straight at each split and merge; triangle flips, copies, rows.

@@ -1,5 +1,7 @@
 # ROADMAP: every idea designed, planned or agreed, and its state in the code
 
+> 2026-11-21: plan of record is SSS v2 (D388): DESIGN-sss-v2.md and PLAN-sss-v2.md supersede the planar-solver items below where they differ; PSG 197 is the litmus test (D387).
+
 The single list of planned work. Rules: every idea that is designed, ruled or agreed but not fully built lives here until it is built (then it leaves, its facts going to CLAUDE.md) or explicitly dropped (then it leaves with the deciding Dnnn). Check this file before designing anything. STATUS.md holds only the current state; DECISIONS.md holds rulings; DESIGN-tracks.md holds the current design. Status checked against wt-planar on 2026-11-18 (survey: grep evidence, file:line in ng1); `PC` = planar_components.cpp. Sources named here that were removed in the 2026-11-18 docs cull (DESIGN-G1, DESIGN-width and other legacy files) are in git at a7f10e9af0. Status words: built, partly built, not built, rejected, superseded, unknown.
 
 ## Top 10: the SSS critical path (D362, DESIGN-tracks §17.6; reordered 2026-11-20)
