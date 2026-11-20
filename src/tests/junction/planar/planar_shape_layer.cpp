@@ -12,6 +12,7 @@
 #include "../../../3rdparty/catch2/catch.hpp"
 
 #include "../../../junction/junction_spec.h"
+#include "../../../junction/planar/planar_layout.h"
 #include "../../../junction/planar/planar_shape_layer.h"
 #include "../../../junction/planar/planar_structure.h"
 #include "../../../junction/planar/planar_topology.h"
@@ -127,6 +128,41 @@ static void RequireAllOf(const ShapeCase &c, const PlanarShapeVariant &v, const 
 	for (const std::string &m : messages) {
 		INFO(m);
 		CHECK(m.starts_with(id + ":"));
+	}
+}
+
+TEST_CASE("planar geometry clashes: a ground crossing clashes, a deck crossing does not", "[junction][planar][planarshape]")
+{
+	PlanarTopology t;
+	t.lines.resize(2);
+	PlanarGeometry g;
+	g.points = {{0, 1}, {3, 1}, {8, 1}, {3, -2}, {3, 1}, {3, 4}};
+	g.chains = {{0, 1, 2}, {3, 4, 5}};
+	g.headings = {{2, 2}, {4, 4}};
+	const std::vector<PlanarClashHit> hits = PlanarGeometryClashes(t, g);
+	REQUIRE(hits.size() == 1);
+	CHECK(hits[0].line_a == 0);
+	CHECK(hits[0].line_b == 1);
+	CHECK(hits[0].tile.x == 1);
+	CHECK(hits[0].tile.y == 0);
+	g.decks.push_back({0, 1, 1, 3, 3});
+	CHECK(PlanarGeometryClashes(t, g).empty());
+}
+
+TEST_CASE("planar parent chain: a copy's chain on T2", "[junction][planar][planarshape]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarShapeResult shape = BuildPlanarShape(BuildPlanarStructure(topology, spec, 16));
+	REQUIRE(!shape.variants.empty());
+	const PlanarStructureVariant &v = shape.variants.front().structure;
+	for (uint32_t b = 0; b < v.map.tracks.size(); b++) {
+		if (v.map.part_of[b] != UINT32_MAX) continue;
+		std::vector<uint32_t> chain;
+		CHECK(ParentChain(v.map, v.sites, b, chain));
+		CHECK(!chain.empty());
 	}
 }
 

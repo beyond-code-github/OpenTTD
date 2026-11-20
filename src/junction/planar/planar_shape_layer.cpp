@@ -120,14 +120,8 @@ FaceWalk WalkFace(const PlanarTrackMap &map, const PlanarFace &face)
 	return walk;
 }
 
-/**
- * The parent chain of a beside track (H8): from the straight leg of its start node's site, at each end node the out track that is a part of its line, to the track ending where it ends.
- * @param map The track map.
- * @param sites The variant's sites.
- * @param b The Copy or Row track.
- * @param chain Receives the tracks in order.
- * @return False when there is no (unique) chain.
- */
+} // namespace
+
 bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSite> &sites, uint32_t b, std::vector<uint32_t> &chain)
 {
 	chain.clear();
@@ -152,6 +146,8 @@ bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSit
 	}
 	return false;
 }
+
+namespace {
 
 /** The oracle's view of one variant: the map, the shape and the stretch arithmetic. */
 struct Oracle {

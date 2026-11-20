@@ -51,6 +51,16 @@ struct PlanarShapeResult {
 };
 
 /**
+ * The parent chain of a beside track (H8): from the straight leg of its start node's site, at each end node the out track that is a part of its line, to the track ending where it ends.
+ * @param map The track map.
+ * @param sites The variant's sites.
+ * @param b The Copy or Row track.
+ * @param chain Receives the tracks in order.
+ * @return False when there is no (unique) chain.
+ */
+bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSite> &sites, uint32_t b, std::vector<uint32_t> &chain);
+
+/**
  * The promise H1 to H9 and H11 of SPEC-shape §4 as a test oracle (D367).
  * The topology and spec serve H9 (P1 to P8) and H6's limits; the oracle is a test tool, not a layer.
  * @param topology The topology the variant was made from.

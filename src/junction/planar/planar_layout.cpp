@@ -1110,6 +1110,46 @@ bool Model::Run(const PlanarSolveState *base, PlanarSolveState &state, PlanarGeo
 
 } // namespace
 
+std::vector<PlanarClashHit> PlanarGeometryClashes(const PlanarTopology &topology, const PlanarGeometry &geometry)
+{
+	std::vector<PlanarClashHit> out;
+	const std::vector<std::vector<PlanarPiece>> raster = RasterPlanarLines(geometry);
+	std::map<std::pair<int, int>, std::vector<std::pair<uint32_t, uint32_t>>> by_tile;
+	for (uint32_t l = 0; l < raster.size(); l++) {
+		for (uint32_t i = 0; i < raster[l].size(); i++) by_tile[{raster[l][i].tile.x, raster[l][i].tile.y}].emplace_back(l, i);
+	}
+	const auto at_shared_node = [&](uint32_t la, const PlanarPiece &p, uint32_t lb, const PlanarPiece &q) {
+		for (uint32_t n = 0; n < topology.nodes.size(); n++) {
+			const auto &pt = geometry.points[geometry.node_vertex[n]];
+			const auto incident = [&](uint32_t l) { return (!topology.lines[l].from.port && topology.lines[l].from.index == n) || (!topology.lines[l].to.port && topology.lines[l].to.index == n); };
+			if (!incident(la) || !incident(lb)) continue;
+			if ((p.from == pt || p.to == pt) && (q.from == pt || q.to == pt)) return true;
+		}
+		return false;
+	};
+	std::set<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>> pairs;
+	for (const auto &[tile, list] : by_tile) {
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dy = -1; dy <= 1; dy++) {
+				if (std::abs(dx) + std::abs(dy) > 1) continue;
+				const auto it = by_tile.find({tile.first + dx, tile.second + dy});
+				if (it == by_tile.end()) continue;
+				for (const auto &[la, ia] : list) {
+					for (const auto &[lb, ib] : it->second) {
+						if (la >= lb) continue;
+						const PlanarPiece &p = raster[la][ia], &q = raster[lb][ib];
+						const ClashKind kind = KindOf(p, q);
+						if (kind == CLASH_KINDS || !PiecesClash(p, q, kind) || at_shared_node(la, p, lb, q)) continue;
+						if (!pairs.insert({la, p.segment, lb, q.segment}).second) continue;
+						out.push_back({la, p.segment, lb, q.segment, p.tile, static_cast<uint8_t>(kind)});
+					}
+				}
+			}
+		}
+	}
+	return out;
+}
+
 std::vector<std::vector<PlanarPiece>> RasterPlanarLines(const PlanarGeometry &geometry)
 {
 	std::vector<std::vector<PlanarPiece>> out(geometry.chains.size());
