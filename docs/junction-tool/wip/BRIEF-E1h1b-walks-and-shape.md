@@ -22,3 +22,10 @@ As E1h-1's Output 1 and 2, on the walks of the ruling above and the crossing poi
 
 ## Report (short)
 References read; commit; the walk chosen per ambiguous line (and why the other was excluded: which line's pieces it shares); the changed `cross` lines (old -> new); counts and findings of the shape file; stops; `git status --porcelain`, `git log -1 --oneline`. When you have reported, stop.
+
+## Amendment (orchestrator, 2026-11-20, after the first E1h-1b stop: D12g only node tiles; D12e/D12f mutually ambiguous)
+Replaces the ruling's per-line test:
+- Pieces on node tiles (any node's tile, not only the line's own ends) are never counted as shared.
+- Choose the walks of all ambiguous lines (D12e, D12f, D12g, F1c) jointly: over every combination (one walk per ambiguous line), count the pieces each chosen walk shares with any other line's walk (single-walk lines and the other chosen walks), node-tile pieces excepted; take the combination with the least total. A unique minimum: use it. A tie: stop and report the tied combinations and their counts. Report the count of the chosen combination and the next best.
+- A line whose walk has no piece off node tiles (D12g): its shape is one piece, the heading of the chord from its start node tile's centre to its end node tile's centre; it has no crossings.
+Steps 1 and 2, the commit and the report stand. Start from your scratchpad excl.py.
