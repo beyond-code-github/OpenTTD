@@ -4,7 +4,7 @@ History lives in git. The previous STATUS: `git show d18117a214:docs/junction-to
 
 ## Where things are
 - **NOW (2026-11-20, late night): D379 RULED: SSS with Slots owning lengths (one solve: sideways positions, steps, lengths, deck places). Spec: wip/SPEC-slots-lengths.md. Next: G1 (riskiest first): the joint solve with no clash rows on the top 3 variants of T2, T3, LL2, the clash check as oracle; count solved, clashes (face, corners), time.**
-  - **Built on wt-slots (.claude/ng1, not merged):** X0a 7c077f7661 (Structure `side_gap`, P8); X0b d95eb6bd18 (Shape H11 per span, D376; Shape slower: LL2 8.8 s, T3 2.3 s at keep 16, a speed step owed); probes X2a-X2j, G0 (to 4b26c4162c) in planar_shape_layer.cpp tests.
+  - **Merged (49c824e679, gate 685/685 27.1 s; pushed to fork):** X0a 7c077f7661 (Structure `side_gap`, P8); X0b d95eb6bd18 (Shape H11 per span, D376; Shape slower: LL2 8.8 s, T3 2.3 s at keep 16, a speed step owed); probes X2a-X2j, G0 (to 4b26c4162c) in planar_shape_layer.cpp tests.
   - **Evidence for D379 (SPEC-slots §7):** exact set + no steps: closure fails (X2a-c); joint steps close everything (X2d-e), fewest steps T2 3, LL2 16-24 (X2f); most parts rigid (X2g); free-size steps at X2f places still rigid (X2h); steps everywhere free everything (X2i) but needs T2 33 places, none at ports (X2j). G0: 20-40 free degrees per variant. Review: wip/REVIEW-slots-lengths.md.
   - **Rulings tonight:** D376 (H11 per span), D377 (Q2-Q6), D378 (fans far from ports), D379 (Slots owns lengths).
   - **Corpus:** RECON-corpus-steps (S3: 52% of steps at ports); PSG 197 transcribed (wip/topologies/psg197*): the notation refuses it; needs authored crossings (D343/D344), queued after Slots.
