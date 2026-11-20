@@ -58,7 +58,7 @@ node B2c, F12c -> BF12b=B2+F1+F2
 node BF12, F3b -> EO3
 node C12d -> C12b=C1+C2, C12=C1+C2
 node D23b -> D23e=D2+D3, D23d=D2+D3
-node D12b -> D12g=D1+D2, D12f=D1+D2
+node D12b -> D12f=D1+D2, D12g=D1+D2
 node D23c, D12c -> D123=D1+D2+D3
 node C12, CE123b -> CE123=C1+C2+C3+E1
 node E3, C12b -> CE123d=C1+C2+E3
@@ -69,7 +69,7 @@ node D23e, A2b -> AD23b=A2+D2+D3
 node E23, CE123 -> NO2
 node E12, CE123d -> CE123c=C1+C2+E1+E2+E3
 node D123, AD23 -> SO3
-node D12e, D12f -> D12h=D1+D2
+node D12f, D12e -> D12h=D1+D2
 node D12d, A1e -> AD12b=A1+D1+D2
 node CE123c, C23 -> NO1
 node D12h, A1c -> AD12=A1+D1+D2
@@ -80,7 +80,7 @@ prio C1, D1, D3, A1, E1, E2, E3
 # Crossings (D389): authored from the save, each line's crossings in travel order (wip/probes/e1/order.py, then three fixes in wip/probes/e1/NOTES.md).
 cross A1c: B2b<, B2c<, F1b<, F1<, F2b<, C23c>, F2<, F3<, F3b<, C12d>, D23d>, D23e>, D12c>, D23c>
 cross A1d: B2b<, B2c<, F1b<, F1<, F2b<, F2<, C23c>, F3<, F3b<, C12d>, D23b>, D12c>, D23c>, D12h>
-cross A1e: B2b<, B2c<, F1b<, F1<, F2b<, F2<, F3<, C23c>, F3b<, C12d>, D23b>, D12c>, D23c>, D12f>, D12e>
+cross A1e: B2b<, B2c<, F1b<, F1<, F2b<, F2<, F3<, C23c>, F3b<, C12d>, D23b>, D12c>, D23c>, D12e>, D12f>
 cross A2b: F1b<, C23c>, F1<, F2b<, F2<, F3<, F3b<, C12d>, D23d>, D123>
 cross A2c: F1b<, F1<, C23c>, F2b<, F2<, F3<, F3b<, C12d>, D23d>, D23e>, D123>, AD12>
 cross A2d: C23c>, F1b<, F1<, F2b<, F2<, F3<, F3b<, C12d>
@@ -101,8 +101,9 @@ cross C23c: F3b>, A1e<, F3>, A1d<, F2>, A1c<, F2b>, A2c<, F1>, A2b<, F1b>, A2d<
 cross C2b: D3<
 cross D123: A2c<, D23e<, A2b<
 cross D12c: D23c<, A1e<, A1d<, A1c<
+cross D12d: D12f>
 cross D12e: A1e<
-cross D12f: A1e<
+cross D12f: D12d<, A1e<
 cross D12h: A1d<
 cross D2: C1b>, C1>
 cross D23: C1b>, C1>
