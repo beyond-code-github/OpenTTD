@@ -41,7 +41,7 @@ Not decided here: headings (Shape), structures and kinds (Structure), levels and
 
 ## 6. Open questions (for the engineer)
 - Q1 The merge itself (SPEC-slots §7 decision card): Slots and Lengths become one Slots layer; D362's list and planar CLAUDE "Architecture" change; Slots' frames and rows carry over as Slots' sideways part.
-- Q2 The rule fields handed down (§1): settle the list against the rule checker before G1.
+- Q2 SETTLED (orchestrator, 2026-11-21, from the rules as the composer and layout program already apply them; reversible, toggle candidates noted): see §8.1.
 - Q3 k (variants solved per seed): 1, 2 or 3, from G1's time.
 
 ## 7. Build order (each a brief, test-first at Slots' output)
@@ -50,3 +50,37 @@ Not decided here: headings (Shape), structures and kinds (Structure), levels and
 - G2 Reduced formulation if G1's time needs it: solve in the closure's free directions (G0) instead of all lengths.
 - G3 Area (one linearisation or a fixed-box sweep) against MappedComposer's areas (T2 906.25, T3 1941.25, LL2 1347.25).
 - G4 Oracle `CheckPlanarSlotsPromise` (S-P1..S-P5) with hand variants; outer test on T2, T3, LL2.
+
+## 8. G1 design (orchestrator, 2026-11-21)
+
+Units: half tiles, as `PlanarModel` (`STEP`: an axis unit moves 1 half tile, a diagonal unit 1 half tile on each axis). A lane is 2 units sideways on an axis, one `Right(h)` unit (1, 1) on a diagonal; in both cases `Dot(offset, N(h)) = 2` per lane with `N(h) = STEP[(h + 2) % 8]`.
+
+### 8.1 Q2: the lower bounds and their rule fields
+Structure will hand these down as it hands down `limit` and `side_gap` (D366); G1 builds them in the probe from the test spec (a stand-in, named as such; moving them into Structure is a later step).
+| Field | Value (units) | Applies to | Source |
+|---|---|---|---|
+| piece | axis 2 and even, diagonal 1 | every piece's total | `Model::AddPiece`, game geometry |
+| parity | every bend and end point on a tile-edge midpoint (x + y odd); an axis piece's points on its axis' parity | every point but crossings | `Model::AddSeg` |
+| `clear` | (1 at 90 degrees, 2 diagonal crossers) + 2 `end_run[k]`, max over allowed kinds | separator: the part from its first (last) crossing back (on) to the nearest bend or step; same on a copy's deck | tile geometry; Shape's `end_run` |
+| `cross` | 1 | a crosser's parts on each side of a crossing | a crossing never on a bend |
+| deck gap | >= 2 between consecutive crossings along a span; span middles `(last - first) / 2 + 1 (+1 diagonal) <= min limit[k]` over allowed kinds | each span (separator deck, copy deck) | SPEC-slots §2.2, D376 |
+| landing | >= `clear` + `clear` + 2 between two spans on one separator piece | structures in series | D375 (odd preference left to G3's cost) |
+| `node_leg` | 2 | a node's leg: its travel from the node to its next event or end | layout program rule |
+| curve | consecutive same hand >= g, opposite >= 2; k apart >= min(2 tl - 1, k cl), k = 2, 3; g = min(2 tl - 1, max(2, cl)), cl = `DeriveCurveSpacing` | along every route path, through nodes and copies (D313) | `Model::PieceCurves`, `MakeParams` |
+| `bay` | 2 tl + 4 | a non-prio route path: from its last topology split or port to each topology merge | D83, composer |
+| `coverage` | 2 prio_tiles + 4 | each prio row track's length | D349, TM5p |
+A node is a topology node when no track at it is a copy or row (`part_of` = UINT32_MAX).
+
+### 8.2 Steps
+- A **step place** is a (track, stretch) with one piece of it named: the last piece when the stretch ends at a split node, the first when it starts at a merge node, else the first (D378's anchoring; position along the piece stays free). None on a separator's or copy's stretch inside its span.
+- A step of n = p - m lanes (p, m integers in 0..8, binaries zp, zm with p <= 8 zp, m <= 8 zm, p >= zp, m >= zm, zp + zm <= 1) on heading h is an exact piece of heading h + 1 (p) or h - 1 (m), length 2p or 2m, splitting its piece into a before part and an after part (each >= 0; the piece's total minimum applies to before + after). It moves sideways and along: travel included (review F3).
+- A **cusp** (a non-straight leg at the trunk's heading) is a step anchored at the node: before part 0, size >= 1 lane on the map's side.
+- **Copies and rows** keep exactly one lane from their parent chain (`ParentChain`, H8): per piece j of the beside track, at one point on it outside its opening and closing cusp steps (an event if it has one, else a bend end), `Dot(point - parent point on chain piece j, N(h_j)) = 2 s`, s the beside side (+1 right).
+- **Curve rows:** Shape's bends per route path as `PieceCurves` (unconditional, k counted over Shape's bends); a step's two bends against the nearest Shape bend on each side, k = 1, relaxed by M (1 - z). Window rows through steps are not written: the curve oracle measures what this misses.
+- No neighbour (frame) rows in G1 besides pins, decks, cusps, copies and rows: the clash oracle splits hits into same-channel neighbours (the frame rows planned in SPEC-slots §2.1) and across faces (unknown: a missing promise).
+- **Objective:** 1000 per step lane (p + m), plus every part's length, plus width + height. Area is G3.
+
+### 8.3 Oracles (S-P5 and the curve rule, at G1's output)
+- **Clash:** the solved points to a `PlanarGeometry` over the expanded topology (one deck per span, `back`/`front` = `clear`), `RasterPlanarLines`, and the layout program's own tile scan, exported unchanged as `PlanarGeometryClashes`. Each hit: tracks, stretches, pieces, headings, tile, the faces both stretches bound (or none), same channel or not.
+- **Curve:** per route path, the solved curves (hands, positions) through `JunctionCurveGaps` and `JunctionCurveGapsHold`; count breaches.
+- Time per variant, 15 s limit; a timeout counts as unsolved.
