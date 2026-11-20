@@ -150,6 +150,8 @@ bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSit
 	return false;
 }
 
+static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t k);
+
 namespace {
 
 /** One wall of a cell with the turn at its end corner. */
@@ -365,7 +367,16 @@ struct Oracle {
 		return UINT32_MAX;
 	}
 
-	/** H1: pieces, event pieces and monotone stretches. */
+	/** @return Whether piece i of stretch k of track t is a flex pair's middle or its return piece, where the middle lies strictly inside the stretch. */
+	bool FlexRemoved(uint32_t t, size_t k, uint32_t i) const
+	{
+		for (const uint32_t m : this->v.tracks[t].flex) {
+			if (this->First(t, k) < m && m < this->Last(t, k) && (i == m || i == m + 1)) return true;
+		}
+		return false;
+	}
+
+	/** H1: pieces, event pieces and monotone stretches; a flex pair is a bend pair on a free stretch and does not count as a turn (D397). */
 	void CheckH1()
 	{
 		for (uint32_t t = 0; t < this->map.tracks.size(); t++) {
@@ -390,11 +401,30 @@ struct Oracle {
 				}
 			}
 			if (!usable) continue;
+			for (const uint32_t i : s.flex) {
+				if (i < 1 || i + 2 > s.pieces.size() || s.pieces[i - 1] != s.pieces[i + 1] || std::abs(s.pieces[i] - s.pieces[i - 1]) != 1) {
+					this->out.push_back(fmt::format("H1: track {} flex at piece {} is not a bend pair", name, i));
+					continue;
+				}
+				if (std::ranges::find(s.event_piece, i) != s.event_piece.end()) this->out.push_back(fmt::format("H1: track {} flex at piece {} carries a crossing", name, i));
+				bool free = false;
+				for (size_t k = 0; k <= s.event_piece.size(); k++) {
+					if (this->First(t, k) >= i || i >= this->Last(t, k)) continue;
+					size_t kept = 0;
+					for (uint32_t j = this->First(t, k); j <= this->Last(t, k); j++) kept += this->FlexRemoved(t, k, j) ? 0 : 1;
+					free = kept == 1 && FreeOnePieceStretch(this->v, t, k);
+				}
+				if (!free) this->out.push_back(fmt::format("H1: track {} flex at piece {} is not on a free stretch", name, i));
+			}
 			for (size_t k = 0; k <= s.event_piece.size(); k++) {
 				bool up = false, down = false;
-				for (uint32_t i = this->First(t, k); i < this->Last(t, k); i++) {
-					if (s.pieces[i + 1] > s.pieces[i]) up = true;
-					if (s.pieces[i + 1] < s.pieces[i]) down = true;
+				std::vector<int> list;
+				for (uint32_t i = this->First(t, k); i <= this->Last(t, k); i++) {
+					if (!this->FlexRemoved(t, k, i)) list.push_back(s.pieces[i]);
+				}
+				for (size_t i = 0; i + 1 < list.size(); i++) {
+					if (list[i + 1] > list[i]) up = true;
+					if (list[i + 1] < list[i]) down = true;
 				}
 				if (up && down) this->out.push_back(fmt::format("H1: track {} stretch {} turns both ways", name, k));
 			}
@@ -752,6 +782,88 @@ bool CellWalls(const Oracle &o, const FaceWalk &walk, std::vector<Wall> &first, 
 
 } // namespace
 
+/**
+ * Whether stretch k of track t is a free stretch (D397): a Line track between two crossings that are not both of one structure (or its copy span), not with tracks of one channel, the track in no beside track's parent chain. The one-piece condition is the caller's.
+ * @param v The variant.
+ * @param t The track.
+ * @param k The stretch, 1 <= k < the track's event count.
+ * @return Whether it is free.
+ */
+static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t k)
+{
+	const PlanarTrackMap &map = v.structure.map;
+	if (t >= map.tracks.size() || map.tracks[t].kind != PlanarTrack::Kind::Line || k < 1 || k >= map.events[t].size()) return false;
+	const uint32_t c0 = map.events[t][k - 1], c1 = map.events[t][k];
+	const auto partner = [&](uint32_t c) { return map.crossings[c].a == t ? map.crossings[c].b : map.crossings[c].a; };
+	const Oracle o(v);
+	for (const PlanarStructure &s : v.structure.structures) {
+		if (std::ranges::find(s.crossings, c0) != s.crossings.end() && std::ranges::find(s.crossings, c1) != s.crossings.end()) return false;
+		const std::vector<uint32_t> copy_crossings = o.CopyCrossings(s);
+		if (std::ranges::find(copy_crossings, c0) != copy_crossings.end() && std::ranges::find(copy_crossings, c1) != copy_crossings.end()) return false;
+	}
+	const std::vector<uint32_t> &channel = v.structure.channel_of_line;
+	const uint32_t p = map.tracks[partner(c0)].line, q = map.tracks[partner(c1)].line;
+	if (p >= channel.size() || q >= channel.size() || channel[p] == channel[q]) return false;
+	for (uint32_t b = 0; b < map.tracks.size(); b++) {
+		if (map.tracks[b].kind == PlanarTrack::Kind::Line) continue;
+		std::vector<uint32_t> chain;
+		if (ParentChain(map, v.structure.sites, b, chain) && std::ranges::find(chain, t) != chain.end()) return false;
+	}
+	return true;
+}
+
+bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why)
+{
+	const PlanarTrackMap &map = v.structure.map;
+	if (v.tracks.size() != map.tracks.size()) {
+		why = "no flex: the shape's tracks differ from the map's";
+		return false;
+	}
+	for (PlanarShapeTrack &track : v.tracks) track.flex.clear();
+	for (uint32_t t = 0; t < map.tracks.size(); t++) {
+		PlanarShapeTrack &track = v.tracks[t];
+		if (map.tracks[t].kind != PlanarTrack::Kind::Line || track.event_piece.size() != map.events[t].size()) continue;
+		for (size_t k = track.event_piece.size(); k-- > 1;) {
+			if (track.event_piece[k] >= track.pieces.size() || track.event_piece[k - 1] > track.event_piece[k]) {
+				why = fmt::format("no flex: track {} event piece {} is out of range", map.tracks[t].name, k);
+				return false;
+			}
+			if (track.event_piece[k - 1] != track.event_piece[k] || !FreeOnePieceStretch(v, t, k)) continue;
+			const uint32_t p = track.event_piece[k];
+			const int h = track.pieces[p];
+			/* The route cone: the cumulative turning at piece p plus the side, on every path through the track. */
+			bool allowed[2] = {true, true};
+			for (const PlanarRoute &route : map.expanded.routes) {
+				for (const std::vector<uint32_t> &path : route.paths) {
+					int cumulative = 0;
+					for (size_t n = 0; n < path.size(); n++) {
+						const std::vector<int> &pieces = v.tracks[path[n]].pieces;
+						if (pieces.empty()) break;
+						if (n > 0) cumulative += Norm(pieces.front() - v.tracks[path[n - 1]].pieces.back());
+						if (path[n] == t) {
+							const int at = cumulative + pieces[p] - pieces.front();
+							if (at - 1 < -3) allowed[0] = false;
+							if (at + 1 > 3) allowed[1] = false;
+						}
+						cumulative += pieces.back() - pieces.front();
+					}
+				}
+			}
+			std::vector<int> insert;
+			if (allowed[0]) insert.insert(insert.end(), {h - 1, h});
+			if (allowed[1]) insert.insert(insert.end(), {h + 1, h});
+			if (insert.empty()) continue;
+			const uint32_t count = static_cast<uint32_t>(insert.size());
+			track.pieces.insert(track.pieces.begin() + p + 1, insert.begin(), insert.end());
+			for (uint32_t &m : track.flex) m += count;
+			for (size_t j = 0; j < insert.size(); j += 2) track.flex.push_back(p + 1 + static_cast<uint32_t>(j));
+			for (size_t j = k; j < track.event_piece.size(); j++) track.event_piece[j] += count;
+		}
+		std::ranges::sort(track.flex);
+	}
+	return true;
+}
+
 std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v)
 {
 	Oracle o(v);
@@ -844,6 +956,16 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 				if (!SplitCell(trial, dummy, reason)) continue;
 				/* The corner is the end of the incoming wall in the second cell and the dummy's end in the first. */
 				if (trial[0].back().turn > 0 || trial[1][trial[1].size() - 2].turn > 0) continue;
+				/* Every corner at a dummy end, the landing included, must be convex: a reflex corner there is no bend, so no later dummy could resolve it (D397). */
+				bool reflex = false;
+				for (const std::vector<Wall> &cell : trial) {
+					for (size_t i = 0; i < cell.size(); i++) {
+						const Wall &a = cell[i], &b = cell[(i + 1) % cell.size()];
+						const bool at_dummy = (a.track == UINT32_MAX && a.piece == UINT32_MAX) || (b.track == UINT32_MAX && b.piece == UINT32_MAX);
+						if (at_dummy && a.turn > 0) reflex = true;
+					}
+				}
+				if (reflex) continue;
 				const bool is_wide = trial[0].size() >= 4 && trial[1].size() >= 4;
 				if (!found || (is_wide && !wide)) {
 					found = true;
@@ -1222,6 +1344,7 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 	for (const uint32_t a : angle) sv.angles.push_back(static_cast<uint8_t>(std::llround(milp.Value(a))));
 	if (!ShapeStructures(sv, why)) return false;
 	out = std::move(sv);
+	if (!PlacePlanarShapeFlex(out, why)) return false;
 	if (!RefinePlanarShapeCells(out, why)) return false;
 	return true;
 }

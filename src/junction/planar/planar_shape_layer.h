@@ -25,6 +25,7 @@
 struct PlanarShapeTrack {
 	std::vector<int> pieces; ///< One lifted heading per piece (eighths clockwise from north, not reduced mod 8); consecutive pieces are one eighth apart. The heading at a point is the heading of the piece it sits on.
 	std::vector<uint32_t> event_piece; ///< Per entry of the map's events of this track, the piece that crossing sits on. Stretch k runs from piece event_piece[k-1] (0 for k = 0) to event_piece[k] (the last piece for the last stretch).
+	std::vector<uint32_t> flex; ///< The middle piece of each flex pair (h, h +- 1, h), ascending; Slots sizes each pair >= 0, 0 being no step (D397).
 };
 
 /** What Shape derives for one structure. */
@@ -85,6 +86,7 @@ std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology,
 /**
  * H12 (SPEC-shape 8.1, D385): every inner face's cells, split by v.dummies, turn one way and wind once; part of CheckPlanarShapePromise.
  * Faces that do not wind once are skipped (H7 reports them).
+ * A dummy is accepted only when every corner at a dummy end, its landing included, is convex (D397).
  * @param v The variant; its tracks must pass H1.
  * @return One message per breach, each starting with "H12:"; empty when every cell is convex.
  */
@@ -101,8 +103,19 @@ std::vector<std::string> CheckPlanarShapeCells(const PlanarShapeVariant &v);
 bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why);
 
 /**
+ * Flex points on free one-piece stretches (D397, steps on spines): on every free one-piece stretch (a Line track's stretch between two crossings that are not of one structure and not with two tracks of one channel, the track in no beside track's parent chain) on piece p at heading h, insert after p the left pair h-1, h then the right pair h+1, h, each side only where every route through it stays within 3 eighths of its entry heading (H7's cone).
+ * Stretches are processed last to first; later event pieces shift; PlanarShapeTrack::flex lists the middles.
+ * Its dummies are not touched: refine after.
+ * @param v The shaped variant; every track's flex is replaced.
+ * @param why Receives "no flex: ..." on an internal inconsistency.
+ * @return False only on an internal inconsistency; the rule has no failure.
+ */
+bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why);
+
+/**
  * Shape one Structure variant: the heading program of SPEC-shape §2 and §2.1 (every rule of SPEC-shape §2.1).
  * One integer program over the lifted heading at every point of every track (its ends and its events): port headings; the node rule at every site; the crossing rule with the arrival side, the separator on an axis and the crossing angle in 1..3 eighths; one axis across each structure; beside tracks equal to their parent; every face winding once; no route turning more than 3 eighths from its entry heading; per structure and kind the capacity rows (n crossers plus one tile per run of diagonal crossers at one angle, at most the structure's limit). A stretch is generated monotone from its end headings. It minimises the turning of the Line tracks (no angle preference).
+ * Flex points are placed by rule (PlacePlanarShapeFlex, D397) before the cells are refined.
  * @param v Structure's variant.
  * @param out Receives the shaped variant when the result is true: the pieces, event pieces, crossing angles, structure axes, least middles and end runs, and the turning cost.
  * @param why Receives "no shape: <status>" when the program has no optimal solution, with the tags of the infeasible rows for an infeasible one.

@@ -855,6 +855,12 @@ TEST_CASE("planar shape: BuildPlanarShape on T2, T3 and LL2", "[junction][planar
 		const double millis = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count()) / 1000;
 		std::string line = fmt::format("SHAPE {} variants={} unshaped={} {:.1f} ms:", name, result.variants.size(), result.unshaped.size(), millis);
 		for (const PlanarShapeVariant &v : result.variants) line += fmt::format(" {}({},{})", v.structure.tag, v.structure.cost, v.cost);
+		size_t flex_marks = 0, dummy_total = 0;
+		for (const PlanarShapeVariant &v : result.variants) {
+			for (const PlanarShapeTrack &track : v.tracks) flex_marks += track.flex.size();
+			dummy_total += v.dummies.size();
+		}
+		WARN(fmt::format("E1X3 {} flex marks {}, dummies {}, {:.0f} ms", name, flex_marks, dummy_total, millis));
 		std::cout << line << "\n";
 		for (const auto &[tag, why] : result.unshaped) std::cout << fmt::format("SHAPE {} {} UNSHAPED {}\n", name, tag, why);
 		INFO(name << " why: " << result.why);
@@ -1476,4 +1482,161 @@ TEST_CASE("planar shape: V's 197 spans, least middles per diagonal run (E1x-2)",
 			if (saved.structures[i].middles[kind] >= 0) CHECK(saved.structures[i].middles[kind] == static_cast<int>(s.crossings.size()) + runs);
 		}
 	}
+}
+
+/**
+ * Shape the first variant of a hub's Structure output that has a flex mark.
+ * @param name Receives the hub's name.
+ * @param topology Receives its topology.
+ * @param spec Receives the spec.
+ * @param shaped Receives the shaped variant.
+ * @param track Receives a track with a flex mark.
+ * @return Whether one was found.
+ */
+static bool ShapedWithFlex(std::string &name, PlanarTopology &topology, JunctionSpec &spec, PlanarShapeVariant &shaped, uint32_t &track)
+{
+	spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[hub, text] : hubs) {
+		std::string error;
+		topology = ParsePlanarTopology(text, &error);
+		if (!error.empty()) return false;
+		const PlanarStructureResult structure = BuildPlanarStructure(topology, spec, 16);
+		for (const PlanarStructureVariant &variant : structure.variants) {
+			std::string why;
+			PlanarShapeVariant candidate;
+			if (!ShapePlanarStructureVariant(variant, candidate, why)) continue;
+			for (uint32_t t = 0; t < candidate.tracks.size(); t++) {
+				if (candidate.tracks[t].flex.empty()) continue;
+				name = hub;
+				shaped = std::move(candidate);
+				track = t;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+TEST_CASE("planar shape layer: H1 a flex pair on a free stretch", "[junction][planar][planarshape]")
+{
+	std::string name;
+	PlanarTopology topology;
+	JunctionSpec spec;
+	PlanarShapeVariant shaped;
+	uint32_t track = 0;
+	REQUIRE(ShapedWithFlex(name, topology, spec, shaped, track));
+	INFO(name);
+	CHECK(CheckPlanarShapePromise(topology, spec, shaped).empty());
+
+	const auto has = [](const std::vector<std::string> &messages, const std::string &part) {
+		return std::ranges::any_of(messages, [&](const std::string &m) { return m.starts_with("H1:") && m.find(part) != std::string::npos; });
+	};
+	PlanarShapeVariant cleared = shaped;
+	cleared.tracks[track].flex.clear();
+	CHECK(has(CheckPlanarShapePromise(topology, spec, cleared), "turns both ways"));
+
+	PlanarShapeVariant moved = shaped;
+	const std::vector<int> &pieces = moved.tracks[track].pieces;
+	uint32_t other = 0;
+	for (uint32_t i = 1; other == 0 && i + 1 < pieces.size(); i++) {
+		if (pieces[i - 1] != pieces[i + 1]) other = i;
+	}
+	REQUIRE(other != 0);
+	moved.tracks[track].flex[0] = other;
+	CHECK(has(CheckPlanarShapePromise(topology, spec, moved), "is not a bend pair"));
+}
+
+TEST_CASE("planar shape layer: flex respects the route cone", "[junction][planar][planarshape]")
+{
+	std::string name;
+	PlanarTopology topology;
+	JunctionSpec spec;
+	PlanarShapeVariant shaped;
+	uint32_t track = 0;
+	REQUIRE(ShapedWithFlex(name, topology, spec, shaped, track));
+	const PlanarTrackMap &map = shaped.structure.map;
+	size_t marks = 0;
+	for (uint32_t t = 0; t < shaped.tracks.size(); t++) {
+		for (const uint32_t mark : shaped.tracks[t].flex) {
+			marks++;
+			for (const PlanarRoute &route : map.expanded.routes) {
+				for (const std::vector<uint32_t> &path : route.paths) {
+					if (std::ranges::find(path, t) == path.end()) continue;
+					int cumulative = 0;
+					for (size_t n = 0; n < path.size(); n++) {
+						const std::vector<int> &pieces = shaped.tracks[path[n]].pieces;
+						if (n > 0) {
+							const int turn = ((pieces.front() - shaped.tracks[path[n - 1]].pieces.back()) % 8 + 12) % 8 - 4;
+							cumulative += turn;
+						}
+						for (size_t i = 0; i < pieces.size(); i++) {
+							if (i > 0) cumulative += pieces[i] - pieces[i - 1];
+							if (path[n] == t && i == mark) INFO(name << " " << map.tracks[t].name << " mark " << mark << " route " << route.name);
+							CHECK(cumulative >= -3);
+							CHECK(cumulative <= 3);
+						}
+					}
+				}
+			}
+		}
+	}
+	CHECK(marks > 0);
+}
+
+TEST_CASE("planar shape: V's 197 open steps sit on Shape's flex points (E1x-3)", "[.][planarpsg197]")
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(ReadTopologyFileForShape("psg197.txt"), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant v = LoadPlanarStructureVariant(topology, ReadTopologyFileForShape("psg197.structure.txt"), spec, report, &error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant saved;
+	std::string why;
+	REQUIRE(LoadPlanarShapeVariant(topology, v, ReadTopologyFileForShape("psg197.shape.txt"), saved, why));
+	PlanarShapeVariant plain = saved;
+	REQUIRE(RefinePlanarShapeCells(plain, why));
+	const PlanarShapeVariant unflexed = saved;
+	REQUIRE(PlacePlanarShapeFlex(saved, why));
+	REQUIRE(RefinePlanarShapeCells(saved, why));
+	CHECK(CheckPlanarShapePromise(topology, spec, saved).empty());
+	size_t marks = 0;
+	for (const PlanarShapeTrack &t : saved.tracks) marks += t.flex.size();
+	WARN(fmt::format("E1X3 flex marks {}, dummies before {}, after {}", marks, plain.dummies.size(), saved.dummies.size()));
+
+	const PlanarTrackMap &map = saved.structure.map;
+	std::istringstream steps(ReadTopologyFileForShape("psg197.steps.txt"));
+	std::string line;
+	size_t listed = 0;
+	while (std::getline(steps, line)) {
+		if (!line.starts_with("step ") || line.find("# crossing-crossing") == std::string::npos) continue;
+		std::istringstream in(line.substr(5));
+		std::string name, colon;
+		size_t k;
+		int a, b;
+		in >> name >> k;
+		char c;
+		in >> c >> a >> b;
+		const int side = b > a ? 1 : -1;
+		listed++;
+		uint32_t t = UINT32_MAX;
+		for (uint32_t i = 0; i < map.tracks.size() && t == UINT32_MAX; i++) {
+			if (map.tracks[i].kind == PlanarTrack::Kind::Line && map.tracks[i].name == name) t = i;
+		}
+		REQUIRE(t != UINT32_MAX);
+		const PlanarShapeTrack &track = saved.tracks[t];
+		bool found = false;
+		if (k >= 1 && k <= track.event_piece.size()) {
+			const uint32_t first = track.event_piece[k - 1], last = k == track.event_piece.size() ? static_cast<uint32_t>(track.pieces.size() - 1) : track.event_piece[k];
+			for (const uint32_t m : track.flex) {
+				if (m > first && m < last && track.pieces[m] - track.pieces[m - 1] == side && ((track.pieces[m - 1] - a) % 8 + 8) % 8 == 0) found = true;
+			}
+		}
+		WARN(fmt::format("E1X3 step {} {} side {}: {}{}", name, k, side, found ? "found" : "not found", found ? "" : fmt::format(" (FreeOnePieceStretch: not exposed; one piece in the unflexed shape {})", k >= 1 && k < unflexed.tracks[t].event_piece.size() && unflexed.tracks[t].event_piece[k - 1] == unflexed.tracks[t].event_piece[k])));
+		/* D2's step lies between C1b and C1, two lanes of one channel: D383's lattice, the crossing-stack gadget's under v2, never a flex point (D397). */
+		CHECK(found == (name != "D2"));
+	}
+	CHECK(listed == 7);
 }

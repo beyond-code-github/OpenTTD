@@ -47,6 +47,7 @@ struct PlanarStructureVariant {
 	std::vector<PlanarStructureSite> sites; ///< Every split and merge of the map with its straight leg.
 	std::vector<PlanarStructure> structures; ///< The crossings grouped into structures.
 	std::array<int, 4> side_gap{}; ///< Per box side (index PlanarSide: N, E, S, W), the slot distance between the last line of one port and the first line of the next port on that side: gap + 1 (ml_gap on E and W, branch_gap on N and S; D377). Slots reads it, never the spec.
+	std::vector<uint32_t> channel_of_line; ///< Per topology line, its channel (BuildPlanarChannels): Shape's lattice rule reads it (D397).
 	int cost; ///< The cheap score for ranking: structures plus copies (D371a).
 };
 

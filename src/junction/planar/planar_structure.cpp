@@ -324,6 +324,7 @@ PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const
 		v.structures = PlanarBuildStructures(topology, e.runs, v.map, spec);
 		v.sites = PlanarBuildStructureSites(topology, c.channels, c.sites, v.map);
 		v.side_gap = PlanarSideGaps(spec);
+		v.channel_of_line = c.channels.channel_of_line;
 		result.variants.push_back(std::move(v));
 	}
 	if (result.variants.empty()) result.why = "no variant survives";
@@ -500,6 +501,7 @@ PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology
 	v.tag = topology.name;
 	v.side_gap = PlanarSideGaps(spec);
 	const PlanarChannels channels = BuildPlanarChannels(topology);
+	v.channel_of_line = channels.channel_of_line;
 	const auto pinned_line = [&](uint32_t n) { return pinned[n] == "none" ? UINT32_MAX : PlanarLineByName(topology, pinned[n]); };
 	const auto line_text = [&](uint32_t line) { return line == UINT32_MAX ? std::string("none") : topology.lines[line].name; };
 	const auto channel_text = [&](uint32_t line) { return line == UINT32_MAX ? UINT32_MAX : channels.channel_of_line[line]; };
