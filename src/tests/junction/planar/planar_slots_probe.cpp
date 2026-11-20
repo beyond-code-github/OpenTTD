@@ -27,6 +27,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <set>
@@ -54,6 +55,7 @@ struct G1Result {
 	size_t consistency; ///< Crossings and nodes whose vertices differ after the walk.
 	size_t no_chain; ///< Beside tracks and pieces the beside rows skipped.
 	int width_tiles, height_tiles; ///< The box in tiles.
+	std::vector<std::string> audit; ///< AuditG1's breaches, one line each.
 };
 
 /** A linear expression. */
@@ -136,6 +138,220 @@ static uint32_t G1Family(const std::string &tag)
 	if (tag.starts_with("bay ")) return 128;
 	if (tag.starts_with("curve")) return 256;
 	return 0;
+}
+
+/** One node stub (D380): the leg, its node's trunk, whether the leg starts at the node (a split), the trunk's heading and the stub variable. */
+struct StubRec {
+	uint32_t leg, trunk;
+	bool split;
+	int heading;
+	uint32_t var;
+};
+
+/** What AuditG1 reads of a solved run. */
+struct AuditIn {
+	const PlanarTrackMap &map;
+	const PlanarShapeVariant &v;
+	uint32_t off; ///< The run's ablation bits.
+	const std::set<uint32_t> *grid_tracks;
+	const std::vector<struct SolvedTrack> &solved;
+	const std::vector<std::vector<std::string>> &vertex_kind;
+	const std::vector<std::vector<std::array<int, 2>>> &elem_pos; ///< Per track, the walked position before each element (and after the last).
+	const std::vector<struct TrackElems> &te;
+	const std::vector<struct Span> &spans;
+	const std::vector<StubRec> &stubs;
+	const std::map<uint32_t, int> &cusp_start, &cusp_end;
+	const std::vector<std::tuple<std::string, size_t, int, long>> &beside; ///< Per beside row: track name, piece, need, got.
+	const std::vector<bool> &node_split;
+	const std::function<int(uint32_t)> &value;
+	int node_leg, cross;
+};
+
+/**
+ * Audit the walked geometry of a solved run against the rows' families that are on in its `off` (BRIEF-G1-joint items 2-9, BRIEF-G1f item 1).
+ * @return One line per breach: `off=<bits> family=<name> <track> v<i> <detail>`.
+ */
+static std::vector<std::string> AuditG1(const AuditIn &in)
+{
+	using Kind = Elem::Kind;
+	const PlanarTrackMap &map = in.map;
+	const size_t nt = map.tracks.size();
+	std::vector<std::string> out;
+	/* Continuous variables (512) and sideways steps (4096) are ablations that rewrite the model itself: there is no geometry to audit against the brief. */
+	if ((in.off & (512 | 4096)) != 0) return out;
+	const auto breach = [&](const char *family, const std::string &track, size_t vi, const std::string &detail) {
+		out.push_back(fmt::format("off={} family={} {} v{} {}", in.off, family, track, vi, detail));
+	};
+	const auto seg_len = [&](uint32_t t, size_t i) {
+		const auto &a = in.solved[t].vertices[i], &b = in.solved[t].vertices[i + 1];
+		return std::max(std::abs(b[0] - a[0]), std::abs(b[1] - a[1]));
+	};
+	const auto path_len = [&](uint32_t t, size_t a, size_t b) {
+		int sum = 0;
+		for (size_t i = a; i < b; i++) sum += seg_len(t, i);
+		return sum;
+	};
+	const auto stub_of = [&](uint32_t t, bool split) -> const StubRec * {
+		for (const StubRec &s : in.stubs) {
+			if (s.leg == t && s.split == split) return &s;
+		}
+		return nullptr;
+	};
+	const auto vertex_at = [&](uint32_t t, const std::array<int, 2> &pt) -> size_t {
+		const auto &vs = in.solved[t].vertices;
+		const auto it = std::ranges::find(vs, pt);
+		return it == vs.end() ? 0 : static_cast<size_t>(it - vs.begin());
+	};
+
+	/* Grid. */
+	if ((in.off & 1024) == 0) {
+		for (uint32_t t = 0; t < nt; t++) {
+			if (in.grid_tracks != nullptr && !in.grid_tracks->contains(t)) continue;
+			const SolvedTrack &st = in.solved[t];
+			const size_t nv = st.vertices.size();
+			const StubRec *ss = stub_of(t, true), *es = stub_of(t, false);
+			const int s_stub = ss != nullptr ? in.value(ss->var) : 0, s_h = ss != nullptr ? ss->heading : 0;
+			const int e_stub = es != nullptr ? in.value(es->var) : 0, e_h = es != nullptr ? es->heading : 0;
+			for (size_t i = 0; i < nv; i++) {
+				const std::string &kind = in.vertex_kind[t][i];
+				std::array<int, 2> pt = st.vertices[i];
+				if (kind == "start") {
+					pt = {pt[0] + s_stub * PlanarModel::STEP[s_h][0], pt[1] + s_stub * PlanarModel::STEP[s_h][1]};
+				} else if (kind == "end") {
+					pt = {pt[0] - e_stub * PlanarModel::STEP[e_h][0], pt[1] - e_stub * PlanarModel::STEP[e_h][1]};
+				} else if (kind != "bend" && kind != "step") {
+					continue;
+				}
+				if (((pt[0] + pt[1]) & 1) == 0) breach("grid", map.tracks[t].name, i, fmt::format("x+y even at ({},{}) kind={}", pt[0], pt[1], kind));
+			}
+			std::vector<size_t> nz;
+			for (size_t i = 0; i + 1 < nv; i++) {
+				if (seg_len(t, i) > 0) nz.push_back(i);
+			}
+			for (size_t a = 0; a < nz.size(); a++) {
+				const size_t i = nz[a];
+				const int h = st.headings[i], len = seg_len(t, i);
+				if (h % 2 != 0) continue;
+				if ((a == 0 && s_stub != 0 && h == s_h && len == 1) || (a + 1 == nz.size() && e_stub != 0 && h == e_h && len == 1)) continue;
+				const int cross_coord = st.vertices[i][h % 4 == 0 ? 0 : 1];
+				if ((cross_coord & 1) == 0) breach("grid", map.tracks[t].name, i, fmt::format("axis heading {} cross coordinate {} even", h, cross_coord));
+			}
+			for (size_t a = 0; a < nz.size();) {
+				size_t b = a;
+				int len = 0;
+				const int h = st.headings[nz[a]];
+				while (b < nz.size() && st.headings[nz[b]] == h) len += seg_len(t, nz[b++]);
+				if (h % 2 == 0) {
+					int adj = len;
+					if (a == 0 && s_stub != 0 && h == s_h) adj -= 1;
+					if (b == nz.size() && e_stub != 0 && h == e_h) adj -= 1;
+					if (adj > 0 && (adj & 1) != 0) breach("grid", map.tracks[t].name, nz[a], fmt::format("axis heading {} run length {} odd", h, adj));
+				}
+				a = b;
+			}
+		}
+	}
+
+	/* Steps: heading and length of every step segment; cusp length and side. */
+	for (uint32_t t = 0; t < nt; t++) {
+		const TrackElems &e = in.te[t];
+		std::vector<int> cusp_sigma;
+		if (in.cusp_start.contains(t)) cusp_sigma.push_back(in.cusp_start.at(t));
+		if (in.cusp_end.contains(t)) cusp_sigma.push_back(-in.cusp_end.at(t));
+		size_t cusp_index = 0;
+		for (size_t i = 0; i < e.elems.size(); i++) {
+			const Elem &el = e.elems[i];
+			if (el.kind == Kind::Part) continue;
+			const int n = in.value(el.var);
+			const int sigma = el.fixed && cusp_index < cusp_sigma.size() ? cusp_sigma[cusp_index++] : 0;
+			if (n == 0) continue;
+			const int ph = ((in.v.tracks[t].pieces[static_cast<size_t>(el.piece)] % 8) + 8) % 8;
+			const int expect = el.kind == Kind::StepP ? (ph + 1) % 8 : (ph + 7) % 8;
+			const std::array<int, 2> d = {in.elem_pos[t][i + 1][0] - in.elem_pos[t][i][0], in.elem_pos[t][i + 1][1] - in.elem_pos[t][i][1]};
+			const int len = std::max(std::abs(d[0]), std::abs(d[1]));
+			const size_t vi = vertex_at(t, in.elem_pos[t][i]);
+			const char *what = el.fixed ? "cusp step" : "step";
+			if (d[0] != len * PlanarModel::STEP[expect][0] || d[1] != len * PlanarModel::STEP[expect][1]) breach("steps", map.tracks[t].name, vi, fmt::format("{} displacement ({},{}) is not heading {} (piece heading {})", what, d[0], d[1], expect, ph));
+			if (len != 2 * n) breach("steps", map.tracks[t].name, vi, fmt::format("{} length {} is not 2*{}", what, len, n));
+			if (el.fixed) {
+				if (len < 2) breach("steps", map.tracks[t].name, vi, fmt::format("cusp step length {} below 2", len));
+				if (sigma != 0) {
+					const int dot = d[0] * PlanarModel::STEP[(ph + 2) % 8][0] + d[1] * PlanarModel::STEP[(ph + 2) % 8][1];
+					if ((dot > 0 ? 1 : -1) != sigma) breach("steps", map.tracks[t].name, vi, fmt::format("cusp step on side {} but the map's side is {}", dot > 0 ? 1 : -1, sigma));
+				}
+			}
+		}
+	}
+
+	/* Stubs. */
+	for (const StubRec &s : in.stubs) {
+		const int stub = in.value(s.var);
+		const std::array<int, 2> node_pt = s.split ? in.solved[s.trunk].vertices.back() : in.solved[s.trunk].vertices.front();
+		const std::vector<std::array<int, 2>> &ep = in.elem_pos[s.leg];
+		const auto &step = PlanarModel::STEP[s.heading];
+		const std::array<int, 2> want = {node_pt[0] + (s.split ? 1 : -1) * stub * step[0], node_pt[1] + (s.split ? 1 : -1) * stub * step[1]};
+		const std::array<int, 2> have_node = s.split ? ep.front() : ep.back();
+		const std::array<int, 2> have = s.split ? ep[1] : ep[ep.size() - 2];
+		const size_t vi = s.split ? 0 : in.solved[s.leg].vertices.size() - 1;
+		if (have_node != node_pt || have != want) {
+			breach("stubs", map.tracks[s.leg].name, vi, fmt::format("{} stub={} node ({},{}) leg's node end ({},{}) leg's stub end ({},{}) expected ({},{})", s.split ? "start" : "end", stub, node_pt[0], node_pt[1], have_node[0], have_node[1], have[0], have[1], want[0], want[1]));
+		}
+	}
+
+	/* Beside. */
+	if ((in.off & 1) == 0) {
+		for (const auto &[name, piece, need, got] : in.beside) {
+			if (got != need) breach("beside", name, 0, fmt::format("piece {} dot {} need {}", piece, got, need));
+		}
+	}
+
+	/* Spans, crossers, node legs. */
+	for (const Span &sp : in.spans) {
+		const uint32_t t = sp.track;
+		const SolvedTrack &st = in.solved[t];
+		const size_t vf = st.event_vertex[sp.first], vl = st.event_vertex[sp.last];
+		if ((in.off & 2) == 0) {
+			const int before = vf > 0 ? seg_len(t, vf - 1) : 0, after = vl + 1 < st.vertices.size() ? seg_len(t, vl) : 0;
+			if (before < sp.clear) breach("span-clear", map.tracks[t].name, vf, fmt::format("part before the first event {} below clear {}", before, sp.clear));
+			if (after < sp.clear) breach("span-clear", map.tracks[t].name, vl, fmt::format("part after the last event {} below clear {}", after, sp.clear));
+		}
+		if ((in.off & 4) == 0) {
+			for (size_t k = sp.first + 1; k <= sp.last; k++) {
+				const int gap = path_len(t, st.event_vertex[k - 1], st.event_vertex[k]);
+				if (gap < 2) breach("deck-gap", map.tracks[t].name, st.event_vertex[k], fmt::format("gap {} below 2", gap));
+			}
+			if (sp.lim != INT32_MAX) {
+				const long middle = path_len(t, vf, vl), most = 2L * (sp.lim - 1 - (sp.diag ? 1 : 0));
+				if (middle > most) breach("deck-gap", map.tracks[t].name, vf, fmt::format("middle {} above {}", middle, most));
+			}
+		}
+		if ((in.off & 16) == 0) {
+			for (size_t ev = sp.first; ev <= sp.last; ev++) {
+				const uint32_t c = map.events[t][ev];
+				const uint32_t x = map.crossings[c].a == t ? map.crossings[c].b : map.crossings[c].a;
+				const size_t ec = static_cast<size_t>(std::ranges::find(map.events[x], c) - map.events[x].begin());
+				const SolvedTrack &sx = in.solved[x];
+				const size_t vi = sx.event_vertex[ec];
+				const int before = vi > 0 ? seg_len(x, vi - 1) : 0, after = vi + 1 < sx.vertices.size() ? seg_len(x, vi) : 0;
+				if (before < in.cross) breach("crossers", map.tracks[x].name, vi, fmt::format("crosser part before the crossing with {} is {}", map.tracks[t].name, before));
+				if (after < in.cross) breach("crossers", map.tracks[x].name, vi, fmt::format("crosser part after the crossing with {} is {}", map.tracks[t].name, after));
+			}
+		}
+	}
+	if ((in.off & 32) == 0) {
+		for (size_t n = 0; n < map.expanded.nodes.size(); n++) {
+			const PlanarNode &node = map.expanded.nodes[n];
+			const bool split = in.node_split[n];
+			for (const uint32_t leg : split ? node.out : node.in) {
+				const SolvedTrack &st = in.solved[leg];
+				const size_t ne = map.events[leg].size();
+				const size_t a = split ? 0 : (ne > 0 ? st.event_vertex[ne - 1] : 0), b = split ? st.event_vertex[0] : st.event_vertex[ne];
+				const int len = path_len(leg, a, b);
+				if (len < in.node_leg) breach("node-legs", map.tracks[leg].name, split ? a : b, fmt::format("leg at node {} travels {} below {}", n, len, in.node_leg));
+			}
+		}
+	}
+	return out;
 }
 
 /**
@@ -241,6 +457,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		row(lin({{a.second, 1}, {b.second, -1}}), 0, 0, tag);
 	};
 	std::map<uint32_t, std::pair<uint32_t, int>> stub_start, stub_end; ///< Per leg track, its stub variable and the trunk heading at the node (D380).
+	std::vector<StubRec> stub_recs;
 	std::map<uint32_t, int> cusp_start, cusp_end; ///< Per leg track, the sigma of its cusp at a split (stretch 0) or a merge (last stretch).
 	for (size_t n = 0; n < map.expanded.nodes.size(); n++) {
 		const PlanarNode &node = map.expanded.nodes[n];
@@ -263,6 +480,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 			const uint32_t stub = var(0, 1, 1);
 			row(lin({{stub, 1}}), 0, (off & 8192) != 0 ? 0 : 1, fmt::format("stub {} {}", n, map.tracks[leg].name));
 			(split ? stub_start : stub_end)[leg] = {stub, h};
+			stub_recs.push_back({leg, trunk, split, h, stub});
 			tie(reference, split ? point[leg].front() : point[leg].back(), tag);
 			const int heading = (((split ? v.tracks[leg].pieces.front() : v.tracks[leg].pieces.back()) % 8) + 8) % 8;
 			const bool straight = site != nullptr && leg == site->straight;
@@ -448,6 +666,24 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 			const int h = ((s.pieces[j] % 8) + 8) % 8;
 			row(total, h % 2 == 0 ? 2 : 1, INF, fmt::format("piece {} {} {}", t, j, map.tracks[t].name));
 			if (h % 2 == 0) {
+				/* A step place on this piece: the step's first vertex (the end of its before part) has x + y odd when the step is used. */
+				for (const Place &pl : track_places[t]) {
+					if (pl.piece != j) continue;
+					size_t index = 0;
+					while (e.elems[index].kind != Kind::StepP || e.elems[index].var != pl.p) index++;
+					const std::array<Lin, 2> vertex = position(t, index);
+					Lin odd = vertex[0];
+					odd.Add(vertex[1], 1);
+					const uint32_t odd_aux = var(0, INF, 0);
+					odd.Add(odd_aux, -2);
+					Lin upper = odd, lower = odd;
+					for (const uint32_t z : {pl.zp, pl.zm}) {
+						upper.Add(z, 1000);
+						lower.Add(z, -1000);
+					}
+					if (grid) row(upper, -INF, 1001, fmt::format("parity step vertex {} {}", t, j));
+					if (grid) row(lower, -999, INF, fmt::format("parity step vertex {} {}", t, j));
+				}
 				Lin even;
 				for (size_t i = e.piece_begin[j]; i < e.piece_end[j]; i++) even.Add(e.elems[i].var, e.elems[i].length);
 				const uint32_t even_aux = var(0, INF, 0);
@@ -460,6 +696,26 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 			const uint32_t aux = var(0, INF, 0);
 			cross.Add(aux, -2);
 			if (grid) row(cross, 1, 1, fmt::format("parity piece {} {} {}", t, j, map.tracks[t].name));
+		}
+		/* A step or cusp step of an axis heading (on a diagonal piece) is an axis piece too: its cross coordinate is odd along it. */
+		for (size_t i = 0; i < e.elems.size(); i++) {
+			const Elem &el = e.elems[i];
+			if (el.kind == Kind::Part || el.heading % 2 != 0) continue;
+			const std::array<Lin, 2> at = position(t, i);
+			Lin cross = at[el.heading % 4 == 0 ? 0 : 1];
+			const uint32_t aux = var(0, INF, 0);
+			cross.Add(aux, -2);
+			const std::string tag = fmt::format("parity step {} {} {}", t, i, map.tracks[t].name);
+			if (el.fixed) {
+				if (grid) row(cross, 1, 1, tag);
+				continue;
+			}
+			const uint32_t z = el.kind == Kind::StepP ? el.zp : el.zm;
+			Lin upper = cross, lower = cross;
+			upper.Add(z, 1000);
+			lower.Add(z, -1000);
+			if (grid) row(upper, -INF, 1001, tag);
+			if (grid) row(lower, -999, INF, tag);
 		}
 	}
 
@@ -574,7 +830,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 				dot.Add(beside[axis], normal[axis]);
 				dot.Add(parent[axis], -normal[axis]);
 			}
-			if (print_geometry) beside_rows.emplace_back(map.tracks[b].name, j, 2 * s, dot);
+			beside_rows.emplace_back(map.tracks[b].name, j, 2 * s, dot);
 			row(dot, 2.0 * s, 2.0 * s, fmt::format("beside {} piece {}", map.tracks[b].name, j));
 		}
 	}
@@ -772,17 +1028,20 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 	/* Consistency: walk every track's parts into a vertex list. */
 	std::vector<SolvedTrack> solved(nt);
 	std::vector<std::vector<std::string>> vertex_kind(nt);
+	std::vector<std::vector<std::array<int, 2>>> elem_pos(nt);
 	for (uint32_t t = 0; t < nt; t++) {
 		SolvedTrack &st = solved[t];
 		std::array<int, 2> at = {value(point[t][0].first), value(point[t][0].second)};
 		st.vertices.push_back(at);
 		vertex_kind[t].push_back("start");
 		bool last_part = true;
+		elem_pos[t].assign(te[t].elems.size() + 1, at);
 		int current = -1, previous = ((v.tracks[t].pieces.front() % 8) + 8) % 8;
 		for (size_t k = 0; k <= map.events[t].size(); k++) {
 			for (size_t i = te[t].stretch_begin[k]; i < te[t].stretch_end[k]; i++) {
 				const Elem &el = te[t].elems[i];
 				const int n = value(el.var);
+				elem_pos[t][i] = at;
 				if (n == 0) continue;
 				if (current != -1 && current != el.heading) {
 					st.vertices.push_back(at);
@@ -800,6 +1059,7 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 					st.runs.emplace_back(el.heading, length);
 				}
 			}
+			for (size_t i = te[t].stretch_end[k]; i <= te[t].elems.size(); i++) elem_pos[t][i] = at;
 			const std::array<int, 2> expected = {value(point[t][k + 1].first), value(point[t][k + 1].second)};
 			if (at != expected) r.consistency++;
 			st.vertices.push_back(at);
@@ -892,6 +1152,20 @@ static G1Result SolveG1(const PlanarTopology &topology, const JunctionSpec &spec
 		for (const uint32_t t : node.in) ends.push_back(solved[t].vertices.back());
 		for (const uint32_t t : node.out) ends.push_back(solved[t].vertices.front());
 		for (const auto &end : ends) if (end != ends.front()) { r.consistency++; break; }
+	}
+
+	/* The audit. */
+	{
+		std::vector<bool> node_split;
+		for (size_t n = 0; n < map.expanded.nodes.size(); n++) node_split.push_back(is_split(n));
+		std::vector<std::tuple<std::string, size_t, int, long>> beside_got;
+		for (const auto &[name, piece, need, dot] : beside_rows) {
+			double got = dot.constant;
+			for (const auto &[variable, coefficient] : dot.terms) got += coefficient * lp.Value(variable);
+			beside_got.emplace_back(name, piece, need, std::lround(got));
+		}
+		const std::function<int(uint32_t)> value_fn = value;
+		r.audit = AuditG1({map, v, off, grid_tracks, solved, vertex_kind, elem_pos, te, spans, stub_recs, cusp_start, cusp_end, beside_got, node_split, value_fn, rules.node_leg, rules.cross});
 	}
 
 	/* The geometry over the expanded topology. */
@@ -1001,7 +1275,9 @@ TEST_CASE("planar probe: G1 joint slots and lengths on T2 T3 LL2", "[junction][p
 					r.clashes.size(), r.same_channel, r.face, r.noface, r.curve_breaches.size(), r.consistency, r.no_chain, r.why);
 			for (const std::string &line : r.clashes) std::cout << fmt::format("G1C {} {} {}\n", name, tag, line);
 			for (const std::string &line : r.curve_breaches) std::cout << fmt::format("G1V {} {} {}\n", name, tag, line);
+			for (const std::string &line : r.audit) std::cout << fmt::format("G1G AUDIT {} {} {}\n", name, tag, line);
 			const auto print_a = [&](uint32_t off, const G1Result &a) {
+				for (const std::string &line : a.audit) std::cout << fmt::format("G1G AUDIT {} {} {}\n", name, tag, line);
 				std::cout << fmt::format("G1A {} {} off={} solved={} ms={:.1f} clashes={} same_channel={} face={} noface={} curve={} why={}\n", name, tag, off, a.solved ? 1 : 0, a.ms, a.clashes.size(), a.same_channel, a.face, a.noface, a.curve_breaches.size(), a.why.substr(0, 300));
 				size_t shown[3] = {0, 0, 0};
 				for (const std::string &line : a.clashes) {
@@ -1092,6 +1368,7 @@ TEST_CASE("planar probe: G1e the geometry around LL2's grid conflict", "[junctio
 	std::cout << "G1E BLOCK LL2 off=1536\n";
 	const G1Result r = SolveG1(topology, spec, shape.variants[0], 511U | 1024U, nullptr, nullptr, &show, &seed);
 	CHECK(r.solved);
+	for (const std::string &line : r.audit) std::cout << fmt::format("G1G AUDIT LL2 {} {}\n", shape.variants[0].structure.tag, line);
 	const PlanarTopology t2 = ParsePlanarTopology(PlanarTText(2), &error);
 	REQUIRE(error.empty());
 	const PlanarShapeResult shape2 = BuildPlanarShape(BuildPlanarStructure(t2, spec, 16));
@@ -1100,4 +1377,5 @@ TEST_CASE("planar probe: G1e the geometry around LL2's grid conflict", "[junctio
 	std::cout << "G1E BLOCK T2 off=1\n";
 	const G1Result r2 = SolveG1(t2, spec, shape2.variants[0], 1U, nullptr, nullptr, &show2, &seed2);
 	CHECK(r2.solved);
+	for (const std::string &line : r2.audit) std::cout << fmt::format("G1G AUDIT T2 {} {}\n", shape2.variants[0].structure.tag, line);
 }
