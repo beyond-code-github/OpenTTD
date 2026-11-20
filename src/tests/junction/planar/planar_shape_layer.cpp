@@ -1391,6 +1391,9 @@ TEST_CASE("planar shape: PSG 197's pinned variant, measured (E1e)", "[.][planarp
 	std::vector<std::string> report;
 	const PlanarStructureVariant v = LoadPlanarStructureVariant(topology, ReadTopologyFileForShape("psg197.structure.txt"), spec, report, &error);
 	REQUIRE(error.empty());
+	for (const PlanarTrack &track : v.map.tracks) {
+		if (track.kind != PlanarTrack::Kind::Line) WARN(fmt::format("E1E extra track {} kind {}", track.name, static_cast<int>(track.kind)));
+	}
 	const auto start = std::chrono::steady_clock::now();
 	PlanarShapeVariant shaped;
 	std::string why;
