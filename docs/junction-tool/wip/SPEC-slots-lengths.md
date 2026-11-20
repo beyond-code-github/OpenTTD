@@ -65,7 +65,7 @@ Structure will hand these down as it hands down `limit` and `side_gap` (D366); G
 | `cross` | 1 | a crosser's parts on each side of a crossing | a crossing never on a bend |
 | deck gap | >= 2 between consecutive crossings along a span; span middles `(last - first) / 2 + 1 (+1 diagonal) <= min limit[k]` over allowed kinds | each span (separator deck, copy deck) | SPEC-slots §2.2, D376 |
 | landing | >= `clear` + `clear` + 2 between two spans on one separator piece | structures in series | D375 (odd preference left to G3's cost) |
-| `node_leg` | 2 | a node's leg: its travel from the node to its next event or end | layout program rule |
+| `node_leg` | 2 | a node's leg: its travel from the node to its next event or end; EXCEPT between two consecutive splits (merges) on one trunk: 0 (a trident on one tile: axis trunk, legs straight plus both diagonals, D110 a) or at least the signal tile (D110 b), one binary per pair (not yet in the probe; G1 had a plain >= 2, which forbids D110 a) | layout program rule, D110 |
 | curve | consecutive same hand >= g, opposite >= 2; k apart >= min(2 tl - 1, k cl), k = 2, 3; g = min(2 tl - 1, max(2, cl)), cl = `DeriveCurveSpacing` | along every route path, through nodes and copies (D313) | `Model::PieceCurves`, `MakeParams` |
 | `bay` | 2 tl + 4 | a non-prio route path: from its last topology split or port to each topology merge | D83, composer |
 | `coverage` | 2 prio_tiles + 4 | each prio row track's length | D349, TM5p |
