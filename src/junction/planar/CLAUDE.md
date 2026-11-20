@@ -12,8 +12,9 @@
 - **Shape:**
   - Decides every track's headings and the piece each crossing sits on, without lengths; a structure's crossings sit on one axis piece of its separator, at angles within its kind's limit; it never regroups (D369).
   - It makes no sideways moves.
+  - It refines every inner face into convex cells by dummy edges from each reflex bend, by rule (heading order h, h-3, h-1, h-2; landing on the first facing wall; two cells of 4+ walls preferred), D385; the dummies are part of its output.
   - The separator runs straight on an axis across its span; a tunnel's separator dives, with one ramp tile at each end on flat ground (D365).
-  - Promise: legal headings, and every structure spans its crossers within its kind's limit (bridge: the longest bridge; tunnel: max_tunnel_length; a main line's: also the D228a flow bound).
+  - Promise: legal headings, and every structure spans its crossers within its kind's limit (bridge: the longest bridge; tunnel: max_tunnel_length; a main line's: also the D228a flow bound); every face's cells, split by its dummies, turn one way and wind once (H12).
 - **Slots** (D379: Slots owns lengths; spec wip/SPEC-slots-lengths.md):
   - Decides every track's sideways position in every stretch, hence every step (S-bend), including which fork or merge leg stays straight and every fan and close-up at a pinned port; every piece's length; each crosser's place along its deck.
   - One solve on Shape's fixed headings, run on the top 1-3 variants (D366).

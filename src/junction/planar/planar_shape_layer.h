@@ -82,11 +82,22 @@ bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSit
 std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v);
 
 /**
- * H12 (SPEC-shape 8.1, D385): every inner face's cells, split by v.dummies, turn one way and wind once; folded into CheckPlanarShapePromise when Shape builds dummies (H12b).
+ * H12 (SPEC-shape 8.1, D385): every inner face's cells, split by v.dummies, turn one way and wind once; part of CheckPlanarShapePromise.
+ * Faces that do not wind once are skipped (H7 reports them).
  * @param v The variant; its tracks must pass H1.
  * @return One message per breach, each starting with "H12:"; empty when every cell is convex.
  */
 std::vector<std::string> CheckPlanarShapeCells(const PlanarShapeVariant &v);
+
+/**
+ * H12b (SPEC-shape 8.7, D385, D386): refine every inner face into convex cells by dummy edges from each reflex bend, by rule.
+ * Candidate headings h, h - 3, h - 1, h - 2 (h the incoming wall's lifted heading), the landing the first facing wall after the corner; the first candidate whose two cells both have 4 or more walls, else the first valid one.
+ * Faces that do not wind once are skipped (H7 reports them).
+ * @param v The variant; its tracks must pass H1. Its dummies are replaced.
+ * @param why Receives the reason on failure ("no cells: ...").
+ * @return False when a reflex corner is not a bend inside one track, or no candidate resolves it.
+ */
+bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why);
 
 /**
  * Shape one Structure variant: the heading program of SPEC-shape §2 and §2.1 (every rule of SPEC-shape §2.1).

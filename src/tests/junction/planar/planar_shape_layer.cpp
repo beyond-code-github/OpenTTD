@@ -168,7 +168,10 @@ TEST_CASE("planar parent chain: a copy's chain on T2", "[junction][planar][plana
 
 TEST_CASE("planar shape layer: the oracle accepts the two valid hand variants", "[junction][planar][planarshape]")
 {
-	for (const ShapeCase &c : {MakeT1(), MakeFray()}) {
+	for (ShapeCase c : {MakeT1(), MakeFray()}) {
+		std::string why;
+		INFO("why: " << why);
+		REQUIRE(RefinePlanarShapeCells(c.v, why));
 		const std::vector<std::string> messages = CheckPlanarShapePromise(c.topology, c.spec, c.v);
 		INFO(c.v.structure.tag << ": " << messages.size() << " messages, first: " << (messages.empty() ? "" : messages[0]));
 		CHECK(messages.empty());
@@ -205,7 +208,42 @@ TEST_CASE("planar shape layer: H12 a dummy that lands on another cell's wall", "
 	CHECK(messages[1] == "H12: face 2 cell 0 turns both ways at B1 piece 0 and B1 piece 1");
 }
 
-TEST_CASE("planar shape layer: H12 outer every variant's cells are convex on T2 T3 LL2", "[junction][planar][planarshape][.h12]")
+TEST_CASE("planar shape layer: H12b the rule refines the fray", "[junction][planar][planarshape]")
+{
+	ShapeCase c = MakeFray();
+	std::string why;
+	const bool ok = RefinePlanarShapeCells(c.v, why);
+	INFO("why: " << why);
+	REQUIRE(ok);
+	REQUIRE(c.v.dummies.size() == 1);
+	const PlanarShapeDummy &d = c.v.dummies[0];
+	CHECK(d.face == 2);
+	CHECK(d.track == FrayTrack(c, "B1"));
+	CHECK(d.piece == 0);
+	CHECK(d.heading == 2);
+	CHECK(d.land_track == UINT32_MAX);
+	CHECK(d.land_piece == static_cast<uint32_t>(PlanarSide::E));
+	const std::vector<std::string> messages = CheckPlanarShapeCells(c.v);
+	INFO(messages.size() << " messages, first: " << (messages.empty() ? "" : messages[0]));
+	CHECK(messages.empty());
+}
+
+TEST_CASE("planar shape layer: H12b the rule refines T1", "[junction][planar][planarshape]")
+{
+	ShapeCase c = MakeT1();
+	std::string why;
+	const bool ok = RefinePlanarShapeCells(c.v, why);
+	INFO("why: " << why);
+	REQUIRE(ok);
+	for (const PlanarShapeDummy &d : c.v.dummies) {
+		std::cout << fmt::format("H12B T1 face {} track {} piece {} heading {} land {} {}\n", d.face, c.v.structure.map.tracks[d.track].name, d.piece, d.heading, d.land_track == UINT32_MAX ? std::string("box") : c.v.structure.map.tracks[d.land_track].name, d.land_piece);
+	}
+	const std::vector<std::string> messages = CheckPlanarShapeCells(c.v);
+	INFO(messages.size() << " messages, first: " << (messages.empty() ? "" : messages[0]));
+	CHECK(messages.empty());
+}
+
+TEST_CASE("planar shape layer: H12 outer every variant's cells are convex on T2 T3 LL2", "[junction][planar][planarshape][slow]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
@@ -217,6 +255,7 @@ TEST_CASE("planar shape layer: H12 outer every variant's cells are convex on T2 
 		REQUIRE(result.variants.size() == 16);
 		for (const PlanarShapeVariant &v : result.variants) {
 			size_t count = 0;
+			if (name == "T2" && v.structure.tag == "o3t2f1m150") std::cout << fmt::format("H12B T2 {} dummies={}\n", v.structure.tag, v.dummies.size());
 			for (const std::string &m : CheckPlanarShapeCells(v)) {
 				count++;
 				std::cout << fmt::format("H12 {} {}: {}\n", name, v.structure.tag, m);
@@ -238,6 +277,8 @@ TEST_CASE("planar shape layer: H2 a port end off its port's heading", "[junction
 {
 	ShapeCase c = MakeFray();
 	c.v.tracks[FrayTrack(c, "A1")].pieces = {2, 1};
+	std::string why;
+	REQUIRE(RefinePlanarShapeCells(c.v, why));
 	RequireAllOf(c, c.v, "H2");
 }
 
@@ -251,6 +292,8 @@ TEST_CASE("planar shape layer: H3 a leg that turns two eighths at a node", "[jun
 TEST_CASE("planar shape layer: H4 a stored angle that the headings do not give", "[junction][planar][planarshape]")
 {
 	ShapeCase c = MakeT1();
+	std::string why;
+	REQUIRE(RefinePlanarShapeCells(c.v, why));
 	c.v.angles[1] = 1;
 	RequireAllOf(c, c.v, "H4");
 }
@@ -261,12 +304,16 @@ TEST_CASE("planar shape layer: H5 a crossing on a diagonal piece of its separato
 	c.v.tracks[9].event_piece = {0, 1};
 	c.v.angles[2] = 1;
 	c.v.structures[0].middles = {3, -1};
+	std::string why;
+	REQUIRE(RefinePlanarShapeCells(c.v, why));
 	RequireAllOf(c, c.v, "H5");
 }
 
 TEST_CASE("planar shape layer: H6 middles that are not the least at the angles", "[junction][planar][planarshape]")
 {
 	ShapeCase c = MakeT1();
+	std::string why;
+	REQUIRE(RefinePlanarShapeCells(c.v, why));
 	c.v.structures[0].middles = {5, -1};
 	RequireAllOf(c, c.v, "H6");
 }
@@ -275,6 +322,10 @@ TEST_CASE("planar shape layer: H7 a face that winds twice and a U-turn", "[junct
 {
 	ShapeCase c = MakeFray();
 	c.v.tracks[FrayTrack(c, "A1")].pieces = {2, 3, 4, 5, 6, 7, 8, 9, 10};
+	std::string why;
+	const bool refined = RefinePlanarShapeCells(c.v, why);
+	INFO("why: " << why);
+	REQUIRE(refined);
 	RequireAllOf(c, c.v, "H7");
 }
 
@@ -282,6 +333,8 @@ TEST_CASE("planar shape layer: H8 a row whose pieces differ from its lane's", "[
 {
 	ShapeCase c = MakeT1();
 	c.v.tracks[15].pieces = {2, 3};
+	std::string why;
+	REQUIRE(RefinePlanarShapeCells(c.v, why));
 	RequireAllOf(c, c.v, "H8");
 }
 
@@ -289,6 +342,8 @@ TEST_CASE("planar shape layer: H9 Structure's promise broken under the shape", "
 {
 	ShapeCase c = MakeT1();
 	c.v.structure.map.conflicts.push_back({0, 0, 0, 0});
+	std::string why;
+	REQUIRE(RefinePlanarShapeCells(c.v, why));
 	RequireAllOf(c, c.v, "H9");
 }
 

@@ -149,6 +149,76 @@ bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSit
 
 namespace {
 
+/** One wall of a cell with the turn at its end corner. */
+struct Wall {
+	uint32_t track; ///< The track, or UINT32_MAX for a box edge.
+	uint32_t piece; ///< The piece of the track, or the box side.
+	int heading; ///< The walked heading.
+	int turn; ///< The turn at the corner after this wall.
+};
+
+struct Oracle;
+
+/**
+ * A face's piece-level walk: its walls in walk order with the turn at each end corner.
+ * @param o The oracle (the shape and map it reads).
+ * @param walk The face's walk.
+ * @param walls Receives the walls.
+ * @param piece_total Receives the sum of the turns of the walls.
+ * @param h7 Receives the winding the stretch walk gives (H7's sum).
+ * @return False when the two totals differ.
+ */
+bool CellWalls(const Oracle &o, const FaceWalk &walk, std::vector<Wall> &walls, int &piece_total, int &h7);
+
+/**
+ * Split one cell of a list at a dummy: the cell holding the dummy's corner and landing wall becomes the cell walked from the corner's outgoing wall to the landing wall and the dummy, and the cell from the landing wall to the corner and the dummy is appended.
+ * @param cells The cells of one face.
+ * @param d The dummy.
+ * @param why Receives the oracle's reason when no cell holds the corner and the landing wall.
+ * @return False on failure.
+ */
+bool SplitCell(std::vector<std::vector<Wall>> &cells, const PlanarShapeDummy &d, std::string &why)
+{
+	size_t cell = SIZE_MAX, s = 0, l = 0;
+	bool has_corner = false;
+	for (size_t c = 0; c < cells.size() && cell == SIZE_MAX; c++) {
+		const std::vector<Wall> &w = cells[c];
+		size_t found_s = SIZE_MAX, found_l = SIZE_MAX;
+		for (size_t i = 0; i < w.size() && found_s == SIZE_MAX; i++) {
+			const Wall &a = w[i], &b = w[(i + 1) % w.size()];
+			if (a.track == d.track && b.track == d.track && ((a.piece == d.piece && b.piece == d.piece + 1) || (a.piece == d.piece + 1 && b.piece == d.piece))) found_s = i;
+		}
+		if (found_s == SIZE_MAX) continue;
+		has_corner = true;
+		for (size_t i = 0; i < w.size() && found_l == SIZE_MAX; i++) {
+			if (w[i].track == d.land_track && w[i].piece == d.land_piece) found_l = i;
+		}
+		if (found_l != SIZE_MAX) {
+			cell = c;
+			s = found_s;
+			l = found_l;
+		}
+	}
+	if (cell == SIZE_MAX) {
+		why = has_corner ? "lands on a wall not in its cell" : "does not start at a corner of its cell";
+		return false;
+	}
+	const std::vector<Wall> parent = cells[cell];
+	const size_t n = parent.size();
+	const size_t count = (l + n - s - 1) % n + 1;
+	std::vector<Wall> a, b;
+	for (size_t k = 1; k <= count; k++) a.push_back(parent[(s + k) % n]);
+	a.back().turn = Norm(d.heading + 4 - a.back().heading);
+	a.push_back({UINT32_MAX, UINT32_MAX, d.heading + 4, Norm(parent[(s + 1) % n].heading - (d.heading + 4))});
+	for (size_t k = 0; k <= n - count; k++) b.push_back(parent[(l + k) % n]);
+	b.front().turn = parent[l].turn;
+	b.back().turn = Norm(d.heading - b.back().heading);
+	b.push_back({UINT32_MAX, UINT32_MAX, d.heading, Norm(b.front().heading - d.heading)});
+	cells[cell] = a;
+	cells.push_back(b);
+	return true;
+}
+
 /** The oracle's view of one variant: the map, the shape and the stretch arithmetic. */
 struct Oracle {
 	const PlanarShapeVariant &v;
@@ -541,13 +611,6 @@ struct Oracle {
 	/** H12: every cell of every face turns one way and winds once (SPEC-shape §8.1, D385). */
 	void CheckH12()
 	{
-		/** One wall of a cell with the turn at its end corner. */
-		struct Wall {
-			uint32_t track; ///< The track, or UINT32_MAX for a box edge.
-			uint32_t piece; ///< The piece of the track, or the box side.
-			int heading; ///< The walked heading.
-			int turn; ///< The turn at the corner after this wall.
-		};
 		const auto text = [&](const Wall &w) {
 			static const char *const SIDES[4] = {"N", "E", "S", "W"};
 			if (w.track == UINT32_MAX) return w.piece == UINT32_MAX ? std::string("dummy") : fmt::format("box {}", SIDES[w.piece % 4]);
@@ -557,85 +620,21 @@ struct Oracle {
 			const FaceWalk walk = WalkFace(this->map, face);
 			if (!walk.usable || walk.stretches.empty()) continue;
 			std::vector<Wall> first;
-			int h7 = 0;
-			for (const FaceTerm &term : walk.terms) {
-				const WalkedStretch &w = walk.stretches[term.from];
-				if (term.kind == FaceTerm::Kind::Stretch) {
-					const uint32_t a = this->First(w.track, w.stretch), b = this->Last(w.track, w.stretch);
-					const std::vector<int> &pieces = this->v.tracks[w.track].pieces;
-					for (uint32_t k = 0; k <= b - a; k++) {
-						const uint32_t p = w.forward ? a + k : b - k;
-						first.push_back({w.track, p, w.forward ? pieces[p] : pieces[p] + 4, 0});
-						if (k > 0) first[first.size() - 2].turn = first.back().heading - first[first.size() - 2].heading;
-					}
-					h7 += this->WalkedEnd(w) - this->WalkedStart(w);
-					continue;
-				}
-				const WalkedStretch &next = walk.stretches[term.to];
-				if (term.kind == FaceTerm::Kind::Vertex) {
-					first.back().turn = Norm(this->WalkedStart(next) - this->WalkedEnd(w));
-					h7 += first.back().turn;
-					continue;
-				}
-				first.back().turn = Norm(BOX_HEADING[term.side_a] - this->WalkedEnd(w));
-				h7 += first.back().turn;
-				const uint32_t count = ((term.side_a + 4 - term.side_b) % 4) + 1;
-				for (uint32_t k = 0; k < count; k++) {
-					const uint32_t side = (term.side_a + 4 - k) % 4;
-					first.push_back({UINT32_MAX, side, BOX_HEADING[side], -2});
-					h7 += -2;
-				}
-				first.back().turn = Norm(this->WalkedStart(next) - BOX_HEADING[term.side_b]);
-				h7 += first.back().turn + 2;
-			}
-			int piece_total = 0;
-			for (const Wall &w : first) piece_total += w.turn;
-			if (piece_total != h7) {
+			int piece_total, h7;
+			if (!CellWalls(*this, walk, first, piece_total, h7)) {
 				this->out.push_back(fmt::format("H12: face {} piece walk total {} differs from H7's {}", face.face, piece_total, h7));
 				continue;
 			}
+			if (piece_total != -8) continue; // H7 reports a face that does not wind once.
 
 			std::vector<std::vector<Wall>> cells = {first};
 			for (const PlanarShapeDummy &d : this->v.dummies) {
 				if (d.face != static_cast<uint32_t>(face.face)) continue;
-				const std::string start_text = d.track < this->map.tracks.size() ? this->map.tracks[d.track].name : fmt::format("{}", d.track);
-				size_t cell = SIZE_MAX, s = 0, l = 0;
-				bool has_corner = false;
-				for (size_t c = 0; c < cells.size() && cell == SIZE_MAX; c++) {
-					const std::vector<Wall> &w = cells[c];
-					size_t found_s = SIZE_MAX, found_l = SIZE_MAX;
-					for (size_t i = 0; i < w.size() && found_s == SIZE_MAX; i++) {
-						const Wall &a = w[i], &b = w[(i + 1) % w.size()];
-						if (a.track == d.track && b.track == d.track && ((a.piece == d.piece && b.piece == d.piece + 1) || (a.piece == d.piece + 1 && b.piece == d.piece))) found_s = i;
-					}
-					if (found_s == SIZE_MAX) continue;
-					has_corner = true;
-					for (size_t i = 0; i < w.size() && found_l == SIZE_MAX; i++) {
-						if (w[i].track == d.land_track && w[i].piece == d.land_piece) found_l = i;
-					}
-					if (found_l != SIZE_MAX) {
-						cell = c;
-						s = found_s;
-						l = found_l;
-					}
+				std::string reason;
+				if (!SplitCell(cells, d, reason)) {
+					const std::string start_text = d.track < this->map.tracks.size() ? this->map.tracks[d.track].name : fmt::format("{}", d.track);
+					this->out.push_back(fmt::format("H12: face {} dummy at {} piece {} {}", face.face, start_text, d.piece, reason));
 				}
-				if (cell == SIZE_MAX) {
-					this->out.push_back(fmt::format("H12: face {} dummy at {} piece {} {}", face.face, start_text, d.piece, has_corner ? "lands on a wall not in its cell" : "does not start at a corner of its cell"));
-					continue;
-				}
-				const std::vector<Wall> parent = cells[cell];
-				const size_t n = parent.size();
-				const size_t count = (l + n - s - 1) % n + 1;
-				std::vector<Wall> a, b;
-				for (size_t k = 1; k <= count; k++) a.push_back(parent[(s + k) % n]);
-				a.back().turn = Norm(d.heading + 4 - a.back().heading);
-				a.push_back({UINT32_MAX, UINT32_MAX, d.heading + 4, Norm(parent[(s + 1) % n].heading - (d.heading + 4))});
-				for (size_t k = 0; k <= n - count; k++) b.push_back(parent[(l + k) % n]);
-				b.front().turn = parent[l].turn;
-				b.back().turn = Norm(d.heading - b.back().heading);
-				b.push_back({UINT32_MAX, UINT32_MAX, d.heading, Norm(b.front().heading - d.heading)});
-				cells[cell] = a;
-				cells.push_back(b);
 			}
 
 			for (size_t c = 0; c < cells.size(); c++) {
@@ -728,6 +727,45 @@ struct Oracle {
 	}
 };
 
+bool CellWalls(const Oracle &o, const FaceWalk &walk, std::vector<Wall> &first, int &piece_total, int &h7)
+{
+	first.clear();
+	h7 = 0;
+	for (const FaceTerm &term : walk.terms) {
+		const WalkedStretch &w = walk.stretches[term.from];
+		if (term.kind == FaceTerm::Kind::Stretch) {
+			const uint32_t a = o.First(w.track, w.stretch), b = o.Last(w.track, w.stretch);
+			const std::vector<int> &pieces = o.v.tracks[w.track].pieces;
+			for (uint32_t k = 0; k <= b - a; k++) {
+				const uint32_t p = w.forward ? a + k : b - k;
+				first.push_back({w.track, p, w.forward ? pieces[p] : pieces[p] + 4, 0});
+				if (k > 0) first[first.size() - 2].turn = first.back().heading - first[first.size() - 2].heading;
+			}
+			h7 += o.WalkedEnd(w) - o.WalkedStart(w);
+			continue;
+		}
+		const WalkedStretch &next = walk.stretches[term.to];
+		if (term.kind == FaceTerm::Kind::Vertex) {
+			first.back().turn = Norm(o.WalkedStart(next) - o.WalkedEnd(w));
+			h7 += first.back().turn;
+			continue;
+		}
+		first.back().turn = Norm(BOX_HEADING[term.side_a] - o.WalkedEnd(w));
+		h7 += first.back().turn;
+		const uint32_t count = ((term.side_a + 4 - term.side_b) % 4) + 1;
+		for (uint32_t k = 0; k < count; k++) {
+			const uint32_t side = (term.side_a + 4 - k) % 4;
+			first.push_back({UINT32_MAX, side, BOX_HEADING[side], -2});
+			h7 += -2;
+		}
+		first.back().turn = Norm(o.WalkedStart(next) - BOX_HEADING[term.side_b]);
+		h7 += first.back().turn + 2;
+	}
+	piece_total = 0;
+	for (const Wall &w : first) piece_total += w.turn;
+	return piece_total == h7;
+}
+
 } // namespace
 
 std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v)
@@ -755,6 +793,7 @@ std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology,
 	o.CheckH5H6();
 	o.CheckH7Faces();
 	o.CheckH7Routes();
+	o.CheckH12();
 	o.CheckH8();
 	o.CheckH11();
 	h9();
@@ -766,6 +805,81 @@ std::vector<std::string> CheckPlanarShapeCells(const PlanarShapeVariant &v)
 	Oracle o(v);
 	o.CheckH12();
 	return o.out;
+}
+
+bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
+{
+	v.dummies.clear();
+	const Oracle o(v);
+	const auto text = [&](const Wall &w) {
+		static const char *const SIDES[4] = {"N", "E", "S", "W"};
+		if (w.track == UINT32_MAX) return w.piece == UINT32_MAX ? std::string("dummy") : fmt::format("box {}", SIDES[w.piece % 4]);
+		return fmt::format("{} piece {}", w.track < o.map.tracks.size() ? o.map.tracks[w.track].name : fmt::format("{}", w.track), w.piece);
+	};
+	for (const PlanarFace &face : o.map.faces) {
+		const FaceWalk walk = WalkFace(o.map, face);
+		if (!walk.usable || walk.stretches.empty()) continue;
+		std::vector<Wall> first;
+		int piece_total, h7;
+		if (!CellWalls(o, walk, first, piece_total, h7)) continue;
+		if (piece_total != -8) continue; // H7 reports a face that does not wind once.
+		std::vector<std::vector<Wall>> cells = {first};
+		for (;;) {
+			size_t ci = SIZE_MAX, s = 0;
+			for (size_t c = 0; c < cells.size() && ci == SIZE_MAX; c++) {
+				for (size_t i = 0; i < cells[c].size(); i++) {
+					if (cells[c][i].turn > 0) {
+						ci = c;
+						s = i;
+						break;
+					}
+				}
+			}
+			if (ci == SIZE_MAX) break;
+			const std::vector<Wall> &w = cells[ci];
+			const size_t n = w.size();
+			const Wall &in = w[s], &out = w[(s + 1) % n];
+			if (in.track == UINT32_MAX || in.track != out.track || (in.piece + 1 != out.piece && out.piece + 1 != in.piece)) {
+				why = fmt::format("no cells: face {} reflex corner at {} -> {} is not a bend", face.face, text(in), text(out));
+				return false;
+			}
+			const int h = in.heading;
+			bool found = false, wide = false;
+			PlanarShapeDummy best{};
+			std::vector<std::vector<Wall>> best_cells;
+			for (const int d : {h, h - 3, h - 1, h - 2}) {
+				const Wall *land = nullptr;
+				for (size_t k = 2; k < n && land == nullptr; k++) {
+					const Wall &x = w[(s + k) % n];
+					const int c = Norm(x.heading - d);
+					if (c >= -3 && c <= -1) land = &x;
+				}
+				if (land == nullptr) continue;
+				const PlanarShapeDummy dummy{static_cast<uint32_t>(face.face), in.track, std::min(in.piece, out.piece), ((d % 8) + 8) % 8, land->track, land->piece};
+				std::vector<std::vector<Wall>> trial = {w};
+				std::string reason;
+				if (!SplitCell(trial, dummy, reason)) continue;
+				/* The corner is the end of the incoming wall in the second cell and the dummy's end in the first. */
+				if (trial[0].back().turn > 0 || trial[1][trial[1].size() - 2].turn > 0) continue;
+				const bool is_wide = trial[0].size() >= 4 && trial[1].size() >= 4;
+				if (!found || (is_wide && !wide)) {
+					found = true;
+					wide = is_wide;
+					best = dummy;
+					best_cells = std::move(trial);
+				}
+				if (wide) break;
+			}
+			if (!found) {
+				why = fmt::format("no cells: face {} no dummy resolves {} -> {}", face.face, text(in), text(out));
+				return false;
+			}
+			v.dummies.push_back(best);
+			cells[ci] = std::move(best_cells[0]);
+			cells.push_back(std::move(best_cells[1]));
+		}
+	}
+	return true;
 }
 
 bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVariant &out, std::string &why)
@@ -1093,6 +1207,7 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 		sv.structures.push_back(shape);
 	}
 	out = std::move(sv);
+	if (!RefinePlanarShapeCells(out, why)) return false;
 	return true;
 }
 
