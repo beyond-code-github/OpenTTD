@@ -118,6 +118,80 @@ TEST_CASE("planar draw: the one-lane T is drawable", "[junction][planar][planard
 	}
 }
 
+/**
+ * Every bay of a drawing (SPEC-slots-lengths §8.1): per non-prio route path, the travel from its last topology split or port to each topology merge.
+ * @param c The case.
+ * @param r Its drawing.
+ * @return The bays, in half-tile units.
+ */
+static std::vector<double> DrawnBays(const DrawCase &c, const PlanarDrawResult &r)
+{
+	const PlanarTrackMap &map = c.v.structure.map;
+	const auto site_of = [&](size_t n) -> const PlanarStructureSite * {
+		const PlanarStructureSite *site = nullptr;
+		for (const PlanarStructureSite &candidate : c.v.structure.sites) {
+			if (candidate.node == n) site = &candidate;
+		}
+		return site;
+	};
+	const auto is_split = [&](size_t n) {
+		const PlanarNode &node = map.expanded.nodes[n];
+		const PlanarStructureSite *site = site_of(n);
+		return node.in.size() == 1 && (node.out.size() != 1 || (site != nullptr && site->split));
+	};
+	const auto topology_node = [&](size_t n) {
+		const PlanarNode &node = map.expanded.nodes[n];
+		for (const uint32_t t : node.in) if (map.part_of[t] == UINT32_MAX) return false;
+		for (const uint32_t t : node.out) if (map.part_of[t] == UINT32_MAX) return false;
+		return true;
+	};
+	std::vector<double> bays;
+	for (const PlanarRoute &route : map.expanded.routes) {
+		if (route.prio) continue;
+		for (const std::vector<uint32_t> &path : route.paths) {
+			double acc = 0;
+			double from_split = 0;
+			for (const uint32_t t : path) {
+				for (const double piece : r.lengths[t]) acc += piece;
+				const PlanarEnd &to = map.expanded.lines[t].to;
+				if (to.port || !topology_node(to.index)) continue;
+				if (is_split(to.index)) {
+					from_split = acc;
+				} else {
+					bays.push_back(acc - from_split);
+				}
+			}
+		}
+	}
+	return bays;
+}
+
+TEST_CASE("planar draw: bays hold the route from a split or port to a merge", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult plain = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .bays = false});
+	const PlanarDrawResult bayed = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .bays = true});
+	REQUIRE(plain.feasible);
+	REQUIRE(bayed.feasible);
+	const std::vector<double> without = DrawnBays(c, plain);
+	const std::vector<double> with = DrawnBays(c, bayed);
+	const double bay = c.v.structure.rules.bay;
+	REQUIRE(!without.empty());
+	REQUIRE(without.size() == with.size());
+	INFO("rules.bay " << bay);
+	CHECK(std::ranges::any_of(without, [&](double b) { return b < bay; }));
+	for (const double b : with) CHECK(b >= bay);
+}
+
+TEST_CASE("planar draw: elastic mode names a short bay", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult plain = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .bays = false});
+	REQUIRE(plain.feasible);
+	const PlanarDrawResult result = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .bays = true, .elastic = true, .elastic_families = {"bay"}, .fix_points = &plain.points, .fix_window = 0});
+	CHECK(std::ranges::any_of(result.stretched, [](const auto &s) { return s.first.starts_with("bay "); }));
+}
+
 TEST_CASE("planar draw: the two-lane T's best variant is drawable", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(2), 16);

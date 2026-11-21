@@ -6,8 +6,8 @@
  */
 
 /**
- * @file planar_draw.cpp The drawing program: points and pieces, box, ports, nodes, crossings, spans, dummies with their landings and clearance per convex cell (E5-1, E5-2).
- * Not in it yet: grid parity (D382), beside tracks as offset curves, node legs and the trident binary, bays, coverage, curve spacing.
+ * @file planar_draw.cpp The drawing program: points and pieces, box, ports, nodes, crossings, spans, dummies with their landings and clearance per convex cell (E5-1, E5-2), bays (option).
+ * Not in it yet: grid parity (D382), beside tracks as offset curves, node legs and the trident binary, coverage, curve spacing.
  */
 
 #include "../../stdafx.h"
@@ -486,6 +486,60 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (int axis = 0; axis < 2; axis++) {
 			cross_point[c][axis] = var(0, COORD_MAX, 0, "cross");
 			eq({{cross_point[c][axis], 1}, {point[t][piece_of[c][0]][axis], -1}, {param[c][0], -step[axis]}}, 0, fmt::format("cross {}", c));
+		}
+	}
+	/* Bays (D420): a non-prio route path's travel from its last topology split or port to each topology merge is at least rules.bay. */
+	if (options.bays) {
+		const auto site_of = [&](size_t n) -> const PlanarStructureSite * {
+			const PlanarStructureSite *site = nullptr;
+			for (const PlanarStructureSite &candidate : v.structure.sites) {
+				if (candidate.node == n) site = &candidate;
+			}
+			return site;
+		};
+		const auto is_split = [&](size_t n) {
+			const PlanarNode &node = map.expanded.nodes[n];
+			const PlanarStructureSite *site = site_of(n);
+			return node.in.size() == 1 && (node.out.size() != 1 || (site != nullptr && site->split));
+		};
+		const auto topology_node = [&](size_t n) {
+			const PlanarNode &node = map.expanded.nodes[n];
+			for (const uint32_t t : node.in) if (map.part_of[t] == UINT32_MAX) return false;
+			for (const uint32_t t : node.out) if (map.part_of[t] == UINT32_MAX) return false;
+			return true;
+		};
+		std::set<std::pair<Terms, double>> seen;
+		const auto once_row = [&](Terms terms, double lower, const std::string &tag) {
+			std::ranges::sort(terms);
+			Terms merged;
+			for (const auto &[variable, coefficient] : terms) {
+				if (!merged.empty() && merged.back().first == variable) {
+					merged.back().second += coefficient;
+				} else {
+					merged.emplace_back(variable, coefficient);
+				}
+			}
+			std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
+			if (seen.emplace(merged, lower).second) row(std::move(merged), lower, JunctionMilp::INF, tag);
+		};
+		for (const PlanarRoute &route : map.expanded.routes) {
+			if (route.prio) continue;
+			for (const std::vector<uint32_t> &path : route.paths) {
+				Terms acc;
+				Terms from_split;
+				for (const uint32_t t : path) {
+					for (const Length &len : length[t]) acc.emplace_back(len.variable, len.coefficient);
+					const PlanarEnd &to = map.expanded.lines[t].to;
+					if (to.port || !topology_node(to.index)) continue;
+					if (is_split(to.index)) {
+						from_split = acc;
+					} else {
+						Terms d = acc;
+						for (const auto &[variable, coefficient] : from_split) d.emplace_back(variable, -coefficient);
+						once_row(std::move(d), rules.bay, fmt::format("bay {} {}", route.name, to.index));
+					}
+				}
+			}
 		}
 	}
 	/* Pins (D393): every pinned point is within the window of its position plus one common shift. */
