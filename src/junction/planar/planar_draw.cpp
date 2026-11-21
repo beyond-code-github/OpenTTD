@@ -264,13 +264,25 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		const int along = along_x ? 0 : 1;
 		bool first = true;
 		uint32_t previous = 0;
+		size_t on_side = 0, positioned = 0;
+		for (const PlanarPort &port : map.expanded.ports) {
+			if (static_cast<uint32_t>(port.side) != side) continue;
+			on_side++;
+			if (!port.at.empty()) positioned++;
+		}
+		if (positioned != 0 && positioned != on_side) return unsupported(fmt::format("port positions on side {} are partial", SIDE_NAME[side]));
+		int previous_at = 0;
 		for (uint32_t p = 0; p < map.expanded.ports.size(); p++) {
 			const PlanarPort &port = map.expanded.ports[p];
 			if (static_cast<uint32_t>(port.side) != side) continue;
 			/* Lines enter in reading order when right of travel points along it, else reversed. */
 			const int right = PlanarModel::STEP[(static_cast<int>(port.heading) + 2) % 8][along];
 			std::vector<uint32_t> lines = port.lines;
-			if (right < 0) std::ranges::reverse(lines);
+			std::vector<int> positions = port.at;
+			if (right < 0) {
+				std::ranges::reverse(lines);
+				std::ranges::reverse(positions);
+			}
 			for (size_t k = 0; k < lines.size(); k++) {
 				const uint32_t line = lines[k];
 				const PlanarEnd &from = map.expanded.lines[line].from;
@@ -298,11 +310,16 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						break;
 				}
 				if (!first) {
-					const int gap = k == 0 ? 2 * v.structure.side_gap[side] : 2;
+					int gap = k == 0 ? 2 * v.structure.side_gap[side] : 2;
+					if (positioned != 0) {
+						gap = 2 * (positions[k] - previous_at);
+						if (gap < 2) return unsupported(fmt::format("port positions out of reading order on side {}", SIDE_NAME[side]));
+					}
 					eq({{at, 1}, {previous, -1}}, gap, tag);
 				}
 				first = false;
 				previous = at;
+				if (positioned != 0) previous_at = positions[k];
 			}
 		}
 	}

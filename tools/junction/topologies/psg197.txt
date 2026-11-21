@@ -8,12 +8,12 @@ topology PSG197
 # Leg order at each node is left to right across travel in the x east, y south frame of the save's coordinates (the same frame as the ports and the cross marks; corrected 2026-11-20 from a mirrored first reading, wip/probes/e1/NOTES.md).
 # Prio: none. The six merges gaps §9 read as entry-gated are plain merges: each entry signal guards a one-piece block ending at the merge's block signal, with no exit or combo facing out, so it acts as a block signal (wip/probes/e1/gated-merges-out.txt, 2026-11-20).
 # Line names are movement letters, in lane digits and a suffix; the line index in psg197-decisions.md gives each line's start and end tile.
-port N out N: NO1=C1+C2+C3+E1+E2+E3, NO2=C1+C2+C3+E1+E2+E3
-port N in S: AB1, AB2
-port E out E: EO1=B1+B2+F1+F2, EO2=B2+F1+F2+F3, EO3=B1+F1+F2+F3
-port E in W: CD1, CD2, CD3
-port S in N: EF1, EF2, EF3
-port S out S: SO1=A1+A2+D1+D2, SO2=A1+A2+D1+D2+D3, SO3=A2+D1+D2+D3
+port N out N @ 84 85: NO1=C1+C2+C3+E1+E2+E3, NO2=C1+C2+C3+E1+E2+E3
+port N in S @ 91 90: AB1, AB2
+port E out E @ 164 166 167: EO1=B1+B2+F1+F2, EO2=B2+F1+F2+F3, EO3=B1+F1+F2+F3
+port E in W @ 174 173 169: CD1, CD2, CD3
+port S in N @ 81 82 83: EF1, EF2, EF3
+port S out S @ 90 89 88: SO1=A1+A2+D1+D2, SO2=A1+A2+D1+D2+D3, SO3=A2+D1+D2+D3
 node AB2=A2+B2 -> B2=B2, A2=A2
 node AB1=A1+B1 -> B1=B1, A1=A1
 node CD3=C3+D3 -> D3=D3, C3=C3

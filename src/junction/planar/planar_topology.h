@@ -42,6 +42,7 @@ struct PlanarPort {
 	bool in; ///< Trains enter the box here.
 	PlanarHeading heading; ///< The indicative travel direction at the port.
 	std::vector<uint32_t> lines; ///< Left to right across travel.
+	std::vector<int> at; ///< Optional (D410): per line, in `lines` order, its position along the side in tiles (N and S: x, W and E: y); empty: uniform spacing (2 half tiles within a port, 2 x side_gap between ports).
 };
 
 /** A node: a 1 -> 2 split or a 2 -> 1 merge; legs left to right across travel. */
