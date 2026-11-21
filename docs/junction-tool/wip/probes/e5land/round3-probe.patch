@@ -1,0 +1,166 @@
+diff --git a/src/junction/planar/planar_draw.cpp b/src/junction/planar/planar_draw.cpp
+index b2ae64e15d..07419e5c90 100644
+--- a/src/junction/planar/planar_draw.cpp
++++ b/src/junction/planar/planar_draw.cpp
+@@ -18,6 +18,7 @@
+ #include "planar_model.h"
+ 
+ #include <algorithm>
++#include <cstdlib>
+ #include <chrono>
+ #include <functional>
+ #include <map>
+@@ -81,8 +82,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
+ 	};
+ 	const auto eq = [&](Terms terms, double rhs, const std::string &tag) { row(std::move(terms), rhs, rhs, tag); };
+ 
+-	const uint32_t width = var(1, COORD_MAX, 0);
+-	const uint32_t height = var(1, COORD_MAX, 0);
++	const double probe_box = std::getenv("PLANAR_DRAW_BOX") != nullptr ? std::atof(std::getenv("PLANAR_DRAW_BOX")) : COORD_MAX; /* TEMP probe */
++	const uint32_t width = var(1, probe_box, 0);
++	const uint32_t height = var(1, probe_box, 0);
+ 
+ 	/* Points: per track its start and the end of each piece. */
+ 	std::vector<std::vector<std::array<uint32_t, 2>>> point(nt);
+@@ -270,11 +272,31 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
+ 	}
+ 
+ 	/* Dummies: from the bend's vertex along the heading for a length D >= 1 to the landing E. */
++	std::set<uint32_t> hybrid; /* TEMP probe: faces drawn pairwise, the rest by cells */
++	if (const char *e = std::getenv("PLANAR_DRAW_HYBRID"); e != nullptr) {
++		uint32_t x = 0;
++		bool any = false;
++		for (const char *q = e;; q++) {
++			if (*q >= '0' && *q <= '9') {
++				x = x * 10 + (*q - '0');
++				any = true;
++			} else {
++				if (any) hybrid.insert(x);
++				x = 0;
++				any = false;
++				if (*q == 0) break;
++			}
++		}
++	}
++	const bool probe_only = std::getenv("PLANAR_DRAW_ONLY") != nullptr; /* TEMP probe */
++	const uint32_t probe_face = probe_only ? static_cast<uint32_t>(std::atof(std::getenv("PLANAR_DRAW_ONLY"))) : 0; /* TEMP probe */
++	const auto probe_skip = [&](uint32_t face) { return hybrid.contains(face) || (probe_only && face != probe_face); }; /* TEMP probe */
+ 	const size_t nd = options.clearance && !options.pairwise ? v.dummies.size() : 0;
+ 	std::vector<std::array<uint32_t, 2>> dummy_start(nd), dummy_end(nd);
+ 	std::vector<uint32_t> dummy_length(nd);
+ 	for (size_t d = 0; d < nd; d++) {
+ 		const PlanarShapeDummy &dummy = v.dummies[d];
++		if (probe_skip(dummy.face)) continue; /* TEMP probe */
+ 		if (dummy.track >= nt || dummy.piece + 1 >= point[dummy.track].size()) return unsupported(fmt::format("dummy {} starts at a vertex that is not a track's", d));
+ 		dummy_start[d] = point[dummy.track][dummy.piece + 1];
+ 		dummy_length[d] = var(1, COORD_MAX, 0);
+@@ -287,6 +309,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
+ 	}
+ 	for (size_t d = 0; d < nd; d++) {
+ 		const PlanarShapeDummy &dummy = v.dummies[d];
++		if (probe_skip(dummy.face)) continue; /* TEMP probe */
+ 		const std::string tag = fmt::format("land {}", d);
+ 		if (dummy.land_track == UINT32_MAX) {
+ 			if (dummy.land_piece >= 4) return unsupported(fmt::format("dummy {} lands on box side {}", d, dummy.land_piece));
+@@ -396,6 +419,18 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
+ 			if (before.track == PLANAR_DUMMY_TRACK && before.heading == ((v.dummies[before.piece].heading % 8) + 8) % 8) part[i].a = dummy_end[before.piece];
+ 			if (after.track == PLANAR_DUMMY_TRACK && after.heading != ((v.dummies[after.piece].heading % 8) + 8) % 8) part[i].b = dummy_end[after.piece];
+ 		}
++		/* TEMP probe: walls joined at a straight corner (same walked heading) are one side. */
++		std::vector<size_t> side(n);
++		{
++			size_t start = 0;
++			while (start < n && cell[start].heading == cell[(start + n - 1) % n].heading) start++;
++			size_t id = 0;
++			for (size_t m = 0; m < n; m++) {
++				const size_t w = (start + m) % n;
++				if (m > 0 && cell[w].heading != cell[(w + n - 1) % n].heading) id++;
++				side[w] = id;
++			}
++		}
+ 		for (size_t k = 0; k < n; k++) {
+ 			const size_t next = (k + 1) % n;
+ 			std::array<uint32_t, 2> vertex;
+@@ -409,8 +444,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
+ 			/* A vertex inside a span piece (a dummy's landing on it, or between two parts of it) has no clearance against ground track. */
+ 			const auto walked_forward = [&](const PlanarCellWall &w) { return w.heading == ((v.dummies[w.piece].heading % 8) + 8) % 8; };
+ 			if ((is_span(cell[k]) && is_span(cell[next])) || (lands_on_span(cell[k]) && walked_forward(cell[k]) && is_span(cell[next])) || (is_span(cell[k]) && lands_on_span(cell[next]) && !walked_forward(cell[next]))) continue;
++			if (std::getenv("PLANAR_DRAW_XSKIP") != nullptr && cell[k].track < nt && cell[next].track < nt && cell[k].track != cell[next].track && part[k].valid && part[next].valid && find(part[k].b[0]) != find(part[next].a[0])) continue; /* TEMP probe: crossing corner */
++			if (std::getenv("PLANAR_DRAW_VIRTUALV") == nullptr && cell[k].track >= nt && cell[next].track >= nt) continue; /* TEMP probe: a point between two virtual walls is no track */
+ 			for (size_t e = 0; e < n; e++) {
+ 				if (e == k || e == next || !part[e].valid || is_span(cell[e])) continue;
++				if (std::getenv("PLANAR_DRAW_NOSIDES") == nullptr && (side[e] == side[k] || side[e] == side[next])) continue; /* TEMP probe */
++				if (std::getenv("PLANAR_DRAW_DUMMYTARGET") == nullptr && cell[e].track == PLANAR_DUMMY_TRACK) continue; /* TEMP probe */
+ 				if (find(vertex[0]) == find(part[e].a[0]) || find(vertex[0]) == find(part[e].b[0])) continue;
+ 				const int h = cell[e].heading;
+ 				const std::array<int, 2> normal = PlanarModel::STEP[(h + 6) % 8];
+@@ -426,15 +465,22 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
+ 		return true;
+ 	};
+ 	for (size_t c = 0; c < cells.size(); c++) {
++		if (std::ranges::any_of(cells[c], [&](const PlanarCellWall &w) { return w.track == PLANAR_DUMMY_TRACK && w.piece < v.dummies.size() && probe_skip(v.dummies[w.piece].face); })) continue; /* TEMP probe */
++		if (probe_only && std::ranges::none_of(cells[c], [&](const PlanarCellWall &w) { return w.track == PLANAR_DUMMY_TRACK; })) continue; /* TEMP probe */
+ 		if (!clear_walls(cells[c], c)) return unsupported(fmt::format("cell {} names a wall the variant lacks", c));
+ 	}
+ 
+ 	/* Pairwise mode (D406 probe): a face convex without dummies keeps the clearance rows, every other face separates its non-incident wall pairs. */
+-	if (options.clearance && options.pairwise) {
+-		constexpr double M = 4 * COORD_MAX;
++	if (options.clearance && (options.pairwise || !hybrid.empty())) {
++		const double M = 2 * probe_box + 4; /* TEMP probe */
++
+ 		const auto norm = [](int x) { return ((x % 8) + 12) % 8 - 4; };
+ 		for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(v)) {
+ 			if (!options.only_faces.empty() && std::ranges::find(options.only_faces, f.face) == options.only_faces.end()) continue;
++			if (!hybrid.empty() && !hybrid.contains(f.face)) continue; /* TEMP probe */
++			if (std::getenv("PLANAR_DRAW_FACEMAX") != nullptr && f.face >= static_cast<uint32_t>(std::atof(std::getenv("PLANAR_DRAW_FACEMAX")))) continue; /* TEMP probe */
++			if (std::getenv("PLANAR_DRAW_NOBESIDE") != nullptr && std::ranges::any_of(f.walls, [&](const PlanarCellWall &w) { return w.track < nt && map.tracks[w.track].kind != PlanarTrack::Kind::Line; })) continue; /* TEMP probe */
++
+ 			const std::vector<PlanarCellWall> &w = f.walls;
+ 			const size_t n = w.size();
+ 			bool convex = true;
+@@ -513,7 +559,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
+ 
+ 	result.rows = static_cast<uint32_t>(tags.size());
+ 	result.columns = columns;
+-	milp.SetTimeLimit(seconds);
++	milp.SetTimeLimit(std::getenv("PLANAR_DRAW_SECONDS") != nullptr ? std::atof(std::getenv("PLANAR_DRAW_SECONDS")) : seconds); /* TEMP probe */
+ 	const JunctionMilp::Status status = milp.Solve();
+ 	if (status == JunctionMilp::Status::Optimal) {
+ 		result.feasible = true;
+diff --git a/src/tests/junction/planar/planar_draw.cpp b/src/tests/junction/planar/planar_draw.cpp
+index 2a9796d216..efa8d801fe 100644
+--- a/src/tests/junction/planar/planar_draw.cpp
++++ b/src/tests/junction/planar/planar_draw.cpp
+@@ -321,3 +321,31 @@ TEST_CASE("planar draw: PSG 197 pairwise, whole", "[.][planarkeepapart]")
+ 		WarnKa(fmt::format("whole {:.0f} s", seconds), r);
+ 	}
+ }
++
++TEST_CASE("TEMP probe: one cell of 197", "[.][kaprobe]")
++{
++	std::string error;
++	const PlanarTopology topology = ParsePlanarTopology(ReadTopologyFileForDraw("psg197.txt"), &error);
++	const JunctionSpec spec = MakeTestJunctionSpec();
++	std::vector<std::string> report;
++	const PlanarStructureVariant structure = LoadPlanarStructureVariant(topology, ReadTopologyFileForDraw("psg197.structure.txt"), spec, report, &error);
++	PlanarShapeVariant shaped;
++	std::string why;
++	REQUIRE(ShapePlanarStructureVariant(structure, shaped, why));
++	const auto cells = PlanarShapeCellWalls(shaped);
++	for (const size_t c : {44, 45}) {
++		std::string text;
++		for (size_t k = 0; k < cells[c].size(); k++) {
++			const PlanarCellWall &w = cells[c][k];
++			if (w.track == PLANAR_DUMMY_TRACK) {
++				const PlanarShapeDummy &d = shaped.dummies[w.piece];
++				text += fmt::format(" [{}] dummy{} h{} (from {}.{} land {}.{})", k, w.piece, w.heading, shaped.structure.map.tracks[d.track].name, d.piece, d.land_track < shaped.structure.map.tracks.size() ? shaped.structure.map.tracks[d.land_track].name : "box/dummy", d.land_piece);
++			} else if (w.track == UINT32_MAX) {
++				text += fmt::format(" [{}] box{} h{}", k, w.piece, w.heading);
++			} else {
++				text += fmt::format(" [{}] {}.{} h{} (piece h{})", k, shaped.structure.map.tracks[w.track].name, w.piece, w.heading, shaped.tracks[w.track].pieces[w.piece]);
++			}
++		}
++		WARN("cell " << c << ":" << text);
++	}
++}
