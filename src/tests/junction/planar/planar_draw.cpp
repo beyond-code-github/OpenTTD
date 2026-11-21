@@ -145,12 +145,15 @@ TEST_CASE("planar draw: PSG 197 (Shape's own shape)", "[.][planarpsg197]")
 	PlanarShapeVariant shaped;
 	std::string why;
 	REQUIRE(ShapePlanarStructureVariant(structure, shaped, why));
-	const PlanarDrawResult r = CheckPlanarDrawable(shaped, 15.0);
-	WARN(fmt::format("197 draw: feasible {}, status {}, rows {}, columns {}, {:.0f} ms", r.feasible, r.status, r.rows, r.columns, r.ms));
-	std::map<std::string, size_t> families;
-	for (const std::string &tag : r.conflict) families[tag.substr(0, tag.find(' '))]++;
-	for (const auto &[family, count] : families) WARN(fmt::format("197 draw conflicts: {} {}", family, count));
-	for (size_t i = 0; i < std::min<size_t>(20, r.conflict.size()); i++) WARN(fmt::format("197 draw conflict {}: {}", i, r.conflict[i]));
+	for (const bool clear_rows : {true, false}) {
+		const std::string label = clear_rows ? "197 draw" : "197 draw (landings, no clearance rows)";
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 15.0, {.clearance = true, .clear_rows = clear_rows});
+		WARN(fmt::format("{}: feasible {}, status {}, rows {}, columns {}, {:.0f} ms", label, r.feasible, r.status, r.rows, r.columns, r.ms));
+		std::map<std::string, size_t> families;
+		for (const std::string &tag : r.conflict) families[tag.substr(0, tag.find(' '))]++;
+		for (const auto &[family, count] : families) WARN(fmt::format("{} conflicts: {} {}", label, family, count));
+		for (size_t i = 0; i < std::min<size_t>(20, r.conflict.size()); i++) WARN(fmt::format("{} conflict {}: {}", label, i, r.conflict[i]));
+	}
 	size_t on_dummy = 0, on_track = 0, on_box = 0;
 	for (const PlanarShapeDummy &d : shaped.dummies) {
 		if (d.land_track == PLANAR_DUMMY_TRACK) {

@@ -31,13 +31,14 @@ struct PlanarDrawResult {
 /** What the drawing program writes. */
 struct PlanarDrawOptions {
 	bool clearance = true; ///< Write the dummies, their landings and the clearance rows; false leaves them out (a variant with prio rows or copies needs the corridor family first, CARD-E5).
+	bool clear_rows = true; ///< With clearance: write the clearance rows; false keeps the dummies and their landings but leaves the clearance rows out (a measurement of the landings alone).
 };
 
 /**
  * Draw Shape's shape on the half-tile grid with every Slots rule of the families below kept, as one integer program (E5-1).
  * A test oracle (D388 (b)): an infeasible result names the conflicting rows, which names a missing upstream promise.
  * Units are half tiles; a heading h moves STEP[h mod 8] per unit (an axis unit (0, 1) or (1, 0), a diagonal unit (1, 1)). Every row has a tag kept beside the program.
- * Families: points and pieces (`piece`, `flex`), the box (`box`), ports (`port <side>`), nodes (`node`), crossings (`cross`, `order`), spans (`deck`, `end`, `span`), dummies with their landings (`land <dummy>`) and clearance per convex cell (`clear <cell> <vertex> <wall>`; a structure's span pieces are no wall, and a vertex inside one has no row), the last three only with `options.clearance`.
+ * Families: points and pieces (`piece`, `flex`), the box (`box`), ports (`port <side>`), nodes (`node`), crossings (`cross`, `order`), spans (`deck`, `end`, `span`), dummies with their landings (`land <dummy>`) and clearance per convex cell (`clear <cell> <vertex> <wall>`; a structure's span pieces are no wall, and a vertex inside one has no row), the last three only with `options.clearance` (the clearance rows also only with `options.clear_rows`).
  * Not in this step: grid parity (D382), beside tracks as offset curves, node legs and the trident binary, bays, coverage, curve spacing; no clearance against a box edge.
  * @param v The shaped variant.
  * @param seconds The solver's time limit.

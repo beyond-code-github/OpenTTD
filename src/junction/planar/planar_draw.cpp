@@ -353,7 +353,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		const PlanarShapeDummy &d = v.dummies[w.piece];
 		return d.land_track < nt && span_piece.contains({d.land_track, d.land_piece});
 	};
-	const std::vector<std::vector<PlanarCellWall>> cells = options.clearance ? PlanarShapeCellWalls(v) : std::vector<std::vector<PlanarCellWall>>();
+	const std::vector<std::vector<PlanarCellWall>> cells = options.clearance && options.clear_rows ? PlanarShapeCellWalls(v) : std::vector<std::vector<PlanarCellWall>>();
 	for (size_t c = 0; c < cells.size(); c++) {
 		const std::vector<PlanarCellWall> &cell = cells[c];
 		const size_t n = cell.size();

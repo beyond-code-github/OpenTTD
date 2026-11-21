@@ -18,6 +18,7 @@
 #include "../../../junction/planar/planar_topology.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -266,6 +267,71 @@ TEST_CASE("planar shape layer: H12 outer every variant's cells are convex on T2 
 			INFO(name << " " << v.structure.tag << ": " << count << " H12 messages");
 			CHECK(count == 0);
 		}
+	}
+}
+
+static std::string ReadTopologyFileForShape(const std::string &name);
+
+/**
+ * The monotone rule (D405) on a cell holding a dummy's far wall: the cell's non-dummy walls are some of the walls from the corner's outgoing wall to the landing wall (a later dummy may have split the others off), so a breach here is a breach of the rule.
+ * @param cell The cell, with the dummy's wall of heading d + 4 in it.
+ * @param d The dummy.
+ * @param walls Receives the number of walls checked.
+ * @return Whether every one has a non-negative dot product with the dummy's ray.
+ */
+static bool LandingIsMonotone(const std::vector<PlanarCellWall> &cell, const PlanarShapeDummy &d, size_t &walls)
+{
+	const std::array<std::array<int, 2>, 8> step = {{{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}}};
+	walls = 0;
+	bool monotone = true;
+	for (const PlanarCellWall &w : cell) {
+		if (w.track == PLANAR_DUMMY_TRACK) continue;
+		walls++;
+		const auto &a = step[w.heading % 8], &b = step[d.heading % 8];
+		if (a[0] * b[0] + a[1] * b[1] < 0) monotone = false;
+	}
+	return monotone;
+}
+
+TEST_CASE("planar shape layer: H12b prefers a monotone landing (D405)", "[junction][planar][planarshape]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const uint32_t t : {2U, 3U}) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(PlanarTText(t), &error);
+		REQUIRE(error.empty());
+		const PlanarStructureResult r = BuildPlanarStructure(topology, spec, 1);
+		REQUIRE(!r.variants.empty());
+		PlanarShapeVariant shaped;
+		std::string why;
+		REQUIRE(ShapePlanarStructureVariant(r.variants[0], shaped, why));
+		CHECK(shaped.nonmonotone_dummies <= shaped.dummies.size());
+		WARN(fmt::format("D405 T{} first variant: dummies {}, nonmonotone {}", t, shaped.dummies.size(), shaped.nonmonotone_dummies));
+	}
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(ReadTopologyFileForShape("psg197.txt"), &error);
+	REQUIRE(error.empty());
+	std::vector<std::string> report;
+	const PlanarStructureVariant structure = LoadPlanarStructureVariant(topology, ReadTopologyFileForShape("psg197.structure.txt"), spec, report, &error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant shaped;
+	std::string why;
+	REQUIRE(ShapePlanarStructureVariant(structure, shaped, why));
+	WARN(fmt::format("D405 197: dummies {}, nonmonotone {}", shaped.dummies.size(), shaped.nonmonotone_dummies));
+	const std::vector<std::vector<PlanarCellWall>> cells = PlanarShapeCellWalls(shaped);
+	for (size_t i = 0; i < shaped.dummies.size(); i++) {
+		const PlanarShapeDummy &d = shaped.dummies[i];
+		if (d.face != 16 && d.face != 17) continue;
+		bool checked = false;
+		for (const std::vector<PlanarCellWall> &cell : cells) {
+			if (!std::ranges::any_of(cell, [&](const PlanarCellWall &w) { return w.track == PLANAR_DUMMY_TRACK && w.piece == i && w.heading % 8 == (d.heading + 4) % 8; })) continue;
+			size_t walls;
+			const bool monotone = LandingIsMonotone(cell, d, walls);
+			WARN(fmt::format("D405 197 face {} dummy {}: monotone {} over {} walls", d.face, i, monotone, walls));
+			CHECK(monotone);
+			checked = true;
+		}
+		CHECK(checked);
 	}
 }
 

@@ -12,8 +12,10 @@
 
 #include "../../core/format.hpp"
 #include "../placement/junction_milp.h"
+#include "planar_model.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
@@ -1029,6 +1031,7 @@ std::vector<std::string> CheckPlanarShapeSpines(const PlanarShapeVariant &v)
 bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 {
 	v.dummies.clear();
+	v.nonmonotone_dummies = 0;
 	const Oracle o(v);
 	const auto text = [&](const Wall &w) {
 		static const char *const SIDES[4] = {"N", "E", "S", "W"};
@@ -1064,17 +1067,27 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 				return false;
 			}
 			const int h = in.heading;
-			bool found = false, wide = false;
+			bool found = false, wide = false, monotone = false;
 			PlanarShapeDummy best{};
 			std::vector<std::vector<Wall>> best_cells;
 			for (const int d : {h, h - 3, h - 1, h - 2}) {
 				const Wall *land = nullptr;
+				size_t land_k = 0;
 				for (size_t k = 2; k < n && land == nullptr; k++) {
 					const Wall &x = w[(s + k) % n];
 					const int c = Norm(x.heading - d);
-					if (c >= -3 && c <= -1) land = &x;
+					if (c >= -3 && c <= -1) {
+						land = &x;
+						land_k = k;
+					}
 				}
 				if (land == nullptr) continue;
+				/* Monotone (D405): no wall from the corner's outgoing wall to the landing wall moves back along the ray, so the landing is ahead of the corner for every choice of lengths. */
+				bool is_monotone = true;
+				for (size_t j = 1; j <= land_k; j++) {
+					const std::array<int, 2> &a = PlanarModel::STEP[((w[(s + j) % n].heading % 8) + 8) % 8], &b = PlanarModel::STEP[((d % 8) + 8) % 8];
+					if (a[0] * b[0] + a[1] * b[1] < 0) is_monotone = false;
+				}
 				const PlanarShapeDummy dummy{static_cast<uint32_t>(face.face), in.track, std::min(in.piece, out.piece), ((d % 8) + 8) % 8, land->track, land->piece};
 				std::vector<std::vector<Wall>> trial = {w};
 				std::string reason;
@@ -1092,18 +1105,20 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 				}
 				if (reflex) continue;
 				const bool is_wide = trial[0].size() >= 4 && trial[1].size() >= 4;
-				if (!found || (is_wide && !wide)) {
+				if (!found || (is_monotone && !monotone) || (is_monotone == monotone && is_wide && !wide)) {
 					found = true;
+					monotone = is_monotone;
 					wide = is_wide;
 					best = dummy;
 					best_cells = std::move(trial);
 				}
-				if (wide) break;
+				if (monotone && wide) break;
 			}
 			if (!found) {
 				why = fmt::format("no cells: face {} no dummy resolves {} -> {}", face.face, text(in), text(out));
 				return false;
 			}
+			if (!monotone) v.nonmonotone_dummies++;
 			v.dummies.push_back(best);
 			cells[ci] = std::move(best_cells[0]);
 			cells.push_back(std::move(best_cells[1]));

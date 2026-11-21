@@ -57,6 +57,7 @@ struct PlanarShapeVariant {
 	std::vector<PlanarShapeStructure> structures; ///< Per structure of Structure's variant, in the same order.
 	std::vector<PlanarShapeDummy> dummies; ///< The dummy edges that make every face's cells convex (H12).
 	int cost; ///< Shape's cost: the turning (sum of |turn| over stretches, D340).
+	uint32_t nonmonotone_dummies = 0; ///< The dummies H12b placed with no monotone candidate: their landing may need lengths the drawing program must meet (D405).
 };
 
 /** Shape's output: the variants ranked by Structure cost, then Shape cost (D373). */
@@ -104,7 +105,8 @@ std::vector<std::string> CheckPlanarShapeSpines(const PlanarShapeVariant &v);
 
 /**
  * H12b (SPEC-shape 8.7, D385, D386): refine every inner face into convex cells by dummy edges from each reflex bend, by rule.
- * Candidate headings h, h - 3, h - 1, h - 2 (h the incoming wall's lifted heading), the landing the first facing wall after the corner; the first candidate whose two cells both have 4 or more walls, else the first valid one.
+ * Candidate headings h, h - 3, h - 1, h - 2 (h the incoming wall's lifted heading), the landing the first facing wall after the corner; a monotone landing first (every wall from the corner's outgoing wall to the landing wall has a non-negative dot product with the ray, D405), then the first candidate whose two cells both have 4 or more walls, else the first valid one.
+ * Dummies placed with no monotone candidate are counted in v.nonmonotone_dummies.
  * Faces that do not wind once are skipped (H7 reports them).
  * @param v The variant; its tracks must pass H1. Its dummies are replaced.
  * @param why Receives the reason on failure ("no cells: ...").
