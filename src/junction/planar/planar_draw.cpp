@@ -282,11 +282,28 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (const std::vector<uint32_t> &g : groups) {
 			for (const uint32_t i : g) free_piece[i] = true;
 		}
+		/* Option A probe: the flanks of each used step may be 0 like a flex group's, the insert keeps its lower bound. */
+		const size_t flex_groups = groups.size();
+		std::vector<bool> flex_piece = free_piece;
+		const std::vector<uint32_t> &steps = v.tracks[t].steps;
+		for (size_t f = 0; f < steps.size(); f++) {
+			const uint32_t m = steps[f];
+			if (m == 0 || m + 1 >= pieces.size()) return unsupported("a step middle of track " + map.tracks[t].name + " is out of range");
+			if (flex_piece[m - 1] || flex_piece[m] || flex_piece[m + 1]) return unsupported("a step of track " + map.tracks[t].name + " overlaps a flex group");
+			if (f == 0 || steps[f - 1] + 2 != m) groups.push_back({m - 1});
+			groups.back().push_back(m);
+			groups.back().push_back(m + 1);
+		}
+		for (size_t g = flex_groups; g < groups.size(); g++) {
+			for (const uint32_t i : groups[g]) free_piece[i] = true;
+		}
+		for (const uint32_t m : steps) free_piece[m] = false;
 		/* D412: a port line with no event before its node is that stretch whole, and its length may be 0 (the node point on the box edge): its pieces are free, and no flex group of it keeps a least length. */
 		const bool port_stretch = map.expanded.lines[t].from.port != map.expanded.lines[t].to.port && map.events[t].empty();
 		if (port_stretch) free_piece.assign(pieces.size(), true);
 		may_zero[t] = free_piece;
 		std::set<uint32_t> middles(flex.begin(), flex.end());
+		middles.insert(steps.begin(), steps.end());
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const bool axis = (pieces[i] % 2) == 0;
 			const double lower = free_piece[i] ? 0 : 1;

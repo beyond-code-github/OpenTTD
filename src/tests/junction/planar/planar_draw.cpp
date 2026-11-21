@@ -1190,7 +1190,7 @@ struct UsedStepA {
 	bool operator<(const UsedStepA &o) const { return std::tie(line, stretch, base, side) < std::tie(o.line, o.stretch, o.base, o.side); }
 };
 
-/** Option A (D417 probe): the flex middles in `used` per track become ordinary pieces, every other flex pair is erased, then the cells are refined. */
+/** Option A (D417 probe): the flex middles in `used` per track become ordinary pieces listed in `steps`, every other flex pair is erased, then the cells are refined. */
 static void ApplyStepsAsBends(PlanarShapeVariant &v, const std::vector<std::set<uint32_t>> &used)
 {
 	for (size_t t = 0; t < v.tracks.size(); t++) {
@@ -1202,6 +1202,16 @@ static void ApplyStepsAsBends(PlanarShapeVariant &v, const std::vector<std::set<
 			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
 			for (uint32_t &e : track.event_piece) {
 				if (e > m) e -= 2;
+			}
+		}
+		std::ranges::sort(middles);
+		track.steps.clear();
+		uint32_t removed = 0;
+		for (const uint32_t m : middles) {
+			if (used[t].contains(m)) {
+				track.steps.push_back(m - 2 * removed);
+			} else {
+				removed++;
 			}
 		}
 		track.flex.clear();
@@ -1329,6 +1339,37 @@ TEST_CASE("planar draw: PSG 197 option A, V's steps as bends", "[.][planarkeepap
 		}
 		for (const auto &[family, f] : families) WARN(fmt::format("A cells W{} family {}: count {}, sum {:.3f}", window, family, f.first, f.second));
 		for (size_t i = 0; i < cells.stretched.size() && i < 20; i++) WARN(fmt::format("A cells W{} top {}: {} {:.3f}", window, i + 1, cells.stretched[i].first, cells.stretched[i].second));
+		if (window == 8) {
+			/* Whether dummy d starts at a step bend: its piece is the flank before the insert or the insert itself. */
+			const auto step_dummy = [&](uint32_t d) {
+				const PlanarShapeDummy &dm = shaped.dummies[d];
+				return dm.track < shaped.tracks.size() && std::ranges::any_of(shaped.tracks[dm.track].steps, [&](uint32_t m) { return dm.piece + 1 == m || dm.piece == m; });
+			};
+			const std::vector<std::vector<PlanarCellWall>> cell_walls = PlanarShapeCellWalls(shaped);
+			std::map<std::string, std::pair<size_t, double>> classes;
+			for (const auto &[tag, slack] : cells.stretched) {
+				const bool clear = tag.starts_with("clear ");
+				if (!clear && !tag.starts_with("land ")) continue;
+				bool step = false;
+				if (clear) {
+					size_t cell = 0;
+					std::from_chars(tag.data() + 6, tag.data() + tag.size(), cell);
+					if (cell < cell_walls.size()) {
+						for (const PlanarCellWall &w : cell_walls[cell]) {
+							if (w.track == PLANAR_DUMMY_TRACK && w.piece < shaped.dummies.size() && step_dummy(w.piece)) step = true;
+						}
+					}
+				} else {
+					size_t d = 0;
+					std::from_chars(tag.data() + 5, tag.data() + tag.size(), d);
+					step = d < shaped.dummies.size() && step_dummy(static_cast<uint32_t>(d));
+				}
+				auto &c = classes[std::string(clear ? "clear" : "land") + (step ? " step-dummy cell" : " other")];
+				c.first++;
+				c.second += slack;
+			}
+			for (const auto &[name, c] : classes) WARN(fmt::format("A cells W8 class {}: count {}, sum {:.3f}", name, c.first, c.second));
+		}
 		if (window == 8) {
 			const PlanarDrawResult ip = CheckPlanarDrawable(shaped, 60.0, {.pins = &pw});
 			WARN(fmt::format("A cells W8 integer: status {}, {:.0f} ms", ip.status, ip.ms));

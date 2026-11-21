@@ -26,6 +26,7 @@ struct PlanarShapeTrack {
 	std::vector<int> pieces; ///< One lifted heading per piece (eighths clockwise from north, not reduced mod 8); consecutive pieces are one eighth apart. The heading at a point is the heading of the piece it sits on.
 	std::vector<uint32_t> event_piece; ///< Per entry of the map's events of this track, the piece that crossing sits on. Stretch k runs from piece event_piece[k-1] (0 for k = 0) to event_piece[k] (the last piece for the last stretch).
 	std::vector<uint32_t> flex; ///< The middle piece of each flex pair (h, h +- 1, h), ascending; Slots sizes each pair >= 0, 0 being no step (D397).
+	std::vector<uint32_t> steps; ///< Option A probe: middles of bend pairs decided as used steps. Not flex: refinement keeps them as bends. The drawing program gives the insert (the middle) at least its least length and lets the flanking pieces (middle - 1, middle + 1) be 0, keeping the original piece's least length in their sum as a flex group does.
 };
 
 /** What Shape derives for one structure. */
