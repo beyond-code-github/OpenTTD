@@ -27,3 +27,12 @@ Is Shape's shape drawable on the tile grid with every Slots rule kept? On PSG 19
 
 ## Also pending (asked the same day)
 - Channel 61 (D23c, D12c): the legs of merge D123 converging under the A tunnels; proposed: legs of one node are exempt from the spine (H14), then H14 joins the promise.
+
+## Measured items added (2026-11-21)
+- **Shape's objective vs compactness:** Shape minimises turning only because it has no lengths; V spends turning for compactness (V's 197 turning 80 at Shape's level vs Shape's own 49). Once 197 draws: compare Shape's drawn footprint with V's; then decide (orchestrator recommendation: Shape hands down several differing shapes and Slots picks by footprint).
+
+## Progress
+- E5-1 bdd26426f2: points, pieces, flex, box, ports, nodes, crossings, spans: T1, T2, Shape's 197 drawable.
+- E5-2 1ba107d8b5 (Fix: dummy landing on a dummy split at the wrong wall), 157d544ff1 (dummies, landings, clearance per cell, span middles exempt; `PlanarDrawOptions`).
+- D404 6485ea8c56 + 312c19aa48 (no cusps at topology nodes; V's switch-tile curves recorded on the legs).
+- Open: T1/T2 with clearance wait for the corridor family (a prio row's split is an offset-curve cusp); 197 infeasible already with landings alone (no clearance): the H12b landing rule (first facing wall, from headings only) may name walls no lengths can reach: per-face diagnosis running (wip/probes/e5land).
