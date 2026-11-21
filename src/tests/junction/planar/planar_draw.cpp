@@ -1688,6 +1688,13 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 			for (size_t i = 0; i < worst.size() && i < 25; i++) WARN(fmt::format("{} worst {}: {}", label, i + 1, worst[i].second));
 		}
 	};
+	/* PLANAR_PROBE_BAYS_ON_V (a measurement aid, D420): the bay rows on V's drawing (points held to vref, window 1), every family elastic, bay rows reported; then stop. */
+	if (std::getenv("PLANAR_PROBE_BAYS_ON_V") != nullptr) {
+		const PlanarDrawResult b = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .bays = true, .elastic = true, .pins = &p8, .fix_points = &vref, .fix_window = 1, .export_path = std::getenv("PLANAR_PROBE_BAYS_ON_V")});
+		WARN(fmt::format("bays on V: status {}, total slack {:.3f}, rules.bay {}", b.status, b.slack, shaped.structure.rules.bay));
+		for (const auto &[row, slack] : b.stretched) WARN(fmt::format("bays on V stretched {}: {:.3f}", row, slack));
+		return;
+	}
 	evaluate(shaped, "A real");
 
 	/* Geo: the cells refined again with landings that agree with V's geometry (a base-rows drawing with V's points held where fixed). */
