@@ -155,7 +155,7 @@ bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSit
 static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t k);
 
 /**
- * The pairs of lines H14 compares: per channel, its whole Line tracks without parts, each later one paired with the first (D388 (a)).
+ * The pairs of lines H14 compares: per channel, its whole Line tracks without parts, each later one paired with the first earlier one it is not a leg of one node with, none when every earlier one is such a leg (D388 (a), D403).
  * @param map The track map.
  * @param structure The structure variant (channel of each line, line groups).
  * @return Per pair: channel, first track, other track, the first's and the other's channel-crossing event indices (a node group's own crossings left out), and whether the two cross the same channels in order.
@@ -192,10 +192,24 @@ static auto SpinePairs(const PlanarTrackMap &map, const PlanarStructureVariant &
 		const PlanarCrossing &x = map.crossings[map.events[t][k]];
 		return x.a == t ? x.b : x.a;
 	};
+	/* Two tracks are legs of one node when a node has both among its arriving lines or both among its leaving lines. */
+	const auto legs_of_one_node = [&](uint32_t x, uint32_t y) {
+		for (const PlanarNode &node : map.expanded.nodes) {
+			for (const std::vector<uint32_t> *side : {&node.in, &node.out}) {
+				if (std::ranges::find(*side, x) != side->end() && std::ranges::find(*side, y) != side->end()) return true;
+			}
+		}
+		return false;
+	};
 	std::vector<Pair> pairs;
 	for (const auto &[c, members] : lines) {
 		for (size_t m = 1; m < members.size(); m++) {
-			const uint32_t a = members[0], b = members[m];
+			const uint32_t b = members[m];
+			uint32_t a = UINT32_MAX;
+			for (size_t u = 0; u < m && a == UINT32_MAX; u++) {
+				if (!legs_of_one_node(members[u], b)) a = members[u];
+			}
+			if (a == UINT32_MAX) continue;
 			std::vector<size_t> fa = channel_events(a), fb = channel_events(b);
 			bool same = fa.size() == fb.size();
 			for (size_t k = 0; same && k < fa.size(); k++) same = channel[map.tracks[partner_of(a, fa[k])].line] == channel[map.tracks[partner_of(b, fb[k])].line];
@@ -815,7 +829,7 @@ struct Oracle {
 		return list;
 	}
 
-	/** H14 (DESIGN-sss-v2 §3.2, D388 (a)): the lines of one channel cross the same channels in order and follow one heading list between their first and last channel crossing; a node group's own crossings are node territory and left out; measured, not yet in the promise. */
+	/** H14 (DESIGN-sss-v2 §3.2, D388 (a)): the lines of one channel cross the same channels in order and follow one heading list between their first and last channel crossing; a node group's own crossings are node territory and left out; lines that are legs of one node are exempt (D403). */
 	void CheckH14()
 	{
 		const std::vector<uint32_t> &channel = this->v.structure.channel_of_line;
@@ -891,8 +905,8 @@ bool CellWalls(const Oracle &o, const FaceWalk &walk, std::vector<Wall> &first, 
 
 } // namespace
 
-/** Whether CheckPlanarShapePromise runs H14; off until the program rows that make it hold (E3-S2). */
-static constexpr bool H14_IN_PROMISE = false;
+/** Whether CheckPlanarShapePromise runs H14 (on since D403 exempted the legs of one node, E3-S2). */
+static constexpr bool H14_IN_PROMISE = true;
 
 /**
  * Whether stretch k of track t is a free stretch (D397, D402): a stretch of a Line track, bounded by crossings, nodes or ports, where the two bounding crossings (if both are crossings) are not both of one structure (or its copy span) and not with tracks of one channel, and the track is in no beside track's parent chain.
