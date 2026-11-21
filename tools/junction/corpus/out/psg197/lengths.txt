@@ -1,101 +1,101 @@
 # BBH01: per line the length of each piece of its RAW heading list (before projection), in half tiles: an axis tile 2, a diagonal piece 1, a tunnel or bridge 2 per tile; a port-end heading appended to meet the port has length 0.
-lengths L1: 4 7
-lengths L2: 2 7 2 10
+lengths L1: 2 7
+lengths L2: 7 2 10
 lengths L3: 14 2 14 4 6 4 8
-lengths L4: 24 5
-lengths L5: 2 2 30 5
-lengths L6: 6
-lengths L7: 2 4 8 7 8
+lengths L4: 22 4
+lengths L5: 2 30 4
+lengths L6: 4
+lengths L7: 4 8 7 8
 lengths L8: 14 2 14 4 12
-lengths L9: 4 12 1
-lengths L10: 1 2 13 22 1
-lengths L11: 4 11 10 4 10 2 14 2 10
-lengths L12: 2 11 10 4 12 2 8
-lengths L13: 2 4 8
+lengths L9: 3 12
+lengths L10: 2 13 22
+lengths L11: 2 11 10 4 10 2 14 2 8
+lengths L12: 11 10 4 12 2 6
+lengths L13: 4 8
 lengths L14: 14 2 14
 lengths L15: 4 26
-lengths L16: 54 1
-lengths L17: 6 2
-lengths L18: 2 2 38 2 4
-lengths L19: 6
+lengths L16: 52
+lengths L17: 6
+lengths L18: 2 38 2 2
+lengths L19: 4
 lengths L20: 20
-lengths L21: 2 18
-lengths L22: 6 2
-lengths L23: 12 1
-lengths L24: 2 6 6 3
-lengths L25: 6
-lengths L26: 3 16 2 2
+lengths L21: 2 16
+lengths L22: 6
+lengths L23: 12
+lengths L24: 6 6 2
+lengths L25: 4
+lengths L26: 2 16 2
 lengths L27: 2 8 4 10 2 2
-lengths L28: 1 40 1
-lengths L29: 3
-lengths L30: 3 14 2 6 2
-lengths L31: 1 16 2 4
-lengths L32: 2 2 34 6 6
-lengths L33: 1 8 9 2
-lengths L34: 6 1
-lengths L35: 4 6 6
-lengths L36: 16 3
+lengths L28: 40
+lengths L29: 2
+lengths L30: 2 14 2 6 1
+lengths L31: 16 2 2
+lengths L32: 2 34 6 4
+lengths L33: 8 9
+lengths L34: 6
+lengths L35: 4 6 5
+lengths L36: 14 2
 lengths L37: 8 4 4 7
 lengths L38: 4 6 2 0
 lengths L39: 20 2
 lengths L40: 7 2 10 6
 lengths L41: 8 0
 lengths L42: 20 4
-lengths L43: 1 12 2 8
-lengths L44: 3 10 4 6
-lengths L45: 14 2 2
-lengths L46: 2 2 10 2 8 1
-lengths L47: 58
-lengths L48: 2 2 30 2 38 1
-lengths L49: 8 8 2 2
-lengths L50: 14 1
-lengths L51: 6 4 3
-lengths L52: 1 8 4
-lengths L53: 3 4 8
-lengths L54: 4 7 16 4 6 3
-lengths L55: 2 7 14
-lengths L56: 7
-lengths L57: 1 36 2 26 1
-lengths L58: 3
-lengths L59: 1 34 2 36 1
-lengths L60: 3 32 2 34 1
-lengths L61: 1 16 5
-lengths L62: 9 8 1
-lengths L63: 4
-lengths L64: 1 12 2
-lengths L65: 3
-lengths L66: 1 8 4 6 1
-lengths L67: 3 2 9 2
-lengths L68: 1 4 7 2 4
-lengths L69: 1 4 7 6 1
-lengths L70: 9 10 5
+lengths L43: 12 2 8
+lengths L44: 2 10 4 6
+lengths L45: 12 2
+lengths L46: 2 10 2 8
+lengths L47: 54
+lengths L48: 2 30 2 38
+lengths L49: 7 8 2
+lengths L50: 14
+lengths L51: 6 4 2
+lengths L52: 8 4
+lengths L53: 2 4 8
+lengths L54: 2 7 16 4 6 2
+lengths L55: 7 12
+lengths L56: 6
+lengths L57: 36 2 26
+lengths L58: 2
+lengths L59: 34 2 36
+lengths L60: 2 32 2 34
+lengths L61: 16 4
+lengths L62: 8 8
+lengths L63: 3
+lengths L64: 12 2
+lengths L65: 2
+lengths L66: 8 4 6
+lengths L67: 2 2 9
+lengths L68: 4 7 2 3
+lengths L69: 4 7 6
+lengths L70: 8 10 4
 lengths L71: 12
-lengths L72: 3 12 2 12 2 8 1
-lengths L73: 2 2 14 2 10 3
-lengths L74: 2 2 40
-lengths L75: 2 2
-lengths L76: 4
-lengths L77: 18 2 6 3
-lengths L78: 40 1
-lengths L79: 6 2
-lengths L80: 2 2 14
-lengths L81: 6 2 10 1
+lengths L72: 2 12 2 12 2 8
+lengths L73: 2 14 2 10 2
+lengths L74: 2 38
+lengths L75: 2
+lengths L76: 3
+lengths L77: 16 2 6 2
+lengths L78: 38
+lengths L79: 6
+lengths L80: 2 12
+lengths L81: 4 2 10
 lengths L82: 2 6
-lengths L83: 10 4 2
-lengths L84: 3
+lengths L83: 10 4
+lengths L84: 2
 lengths L85: 8 2 14 4 14 2 4
 lengths L86: 6 4
-lengths L87: 1 14 6 2
-lengths L88: 22
-lengths L89: 2 4 6 2 2
-lengths L90: 2 4 22
+lengths L87: 14 6
+lengths L88: 18
+lengths L89: 4 6 2
+lengths L90: 4 20
 lengths L91: 12 2 20 2 0
-lengths L92: 2 2
+lengths L92: 2
 lengths L93: 8 6 12 4 2
-lengths L94: 2 2 26
+lengths L94: 2 26
 lengths L95: 6 4 10 2
-lengths L96: 24
-lengths L97: 8
+lengths L96: 22
+lengths L97: 6
 lengths L98: 12
 lengths L99: 0
 lengths L100: 0

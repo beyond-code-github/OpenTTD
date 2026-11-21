@@ -3,211 +3,211 @@ shape L1: 0 -1 -2
 shape L2: 0 -1 -2
 shape L3: 7 6
 shape L4: 0 -1 -2
-shape L5: 0
-shape L6: 0
-shape L7: 1 0
-shape L8: 5 6 7 8
+shape L5: 0 1
+shape L6: 7 8
+shape L7: 1
+shape L8: 5 6 7 8 7
 at L8: L12@3
 shape L9: 5 6
 shape L10: 7 8 7 6 7 8
 at L10: L39@1, L38@3, L33@3, L37@3, L29@3, L23@3, L21@3, L22@3, L20@3, L14@3
-shape L11: 7 6 7 8
+shape L11: 7 6 7
 at L11: L33@1, L37@1, L29@1, L26@1, L24@1, L23@1, L22@1, L20@1, L14@1
-shape L12: 0 1 0
-at L12: L8@1, L14@1
+shape L12: 1 0
+at L12: L8@0, L14@0
 shape L13: 6 7 8
-shape L14: 5 6 7 8
-at L14: L12@3, L10@3, L11@3
-shape L15: 7 8
+shape L14: 6 7 8 9
+at L14: L12@2, L10@2, L11@2
+shape L15: 7 8 9
 at L15: L22@0
-shape L16: 0 -1
-shape L17: 0 -1 -2 -1
-at L17: L36@1, L30@1, L33@2, L29@2, L26@3, L24@3, L23@3, L22@3
+shape L16: 0
+shape L17: 7 6 7
+at L17: L36@0, L30@0, L33@1, L29@1, L26@2, L24@2, L23@2, L22@2
 shape L18: 0
-shape L19: 7 8
+shape L19: 7
 at L19: L26@0, L24@0, L23@0, L22@0
 shape L20: 0
 at L20: L10@0, L11@0
-shape L21: 0 1
-at L21: L22@1, L10@1
-shape L22: 0
-at L22: L21@0, L10@0, L11@0, L19@0, L17@0, L15@0
-shape L23: 0
+shape L21: 1
+at L21: L22@0, L10@0
+shape L22: 7 8
+at L22: L21@1, L10@1, L11@1, L19@1, L17@1, L15@1
+shape L23: 0 1
 at L23: L10@0, L26@0, L11@0, L19@0, L17@0, L25@0
-shape L24: 1 0 -1
-at L24: L11@1, L19@1, L17@1
+shape L24: 0
+at L24: L11@0, L19@0, L17@0
 shape L25: 7
 at L25: L23@0
-shape L26: 1 0
+shape L26: 1 0 1
 at L26: L23@0, L11@0, L19@1, L17@1, L30@1, L28@1
 shape L27: 6 7 8
-shape L28: 7
-at L28: L33@0, L26@0
+shape L28: 6 7
+at L28: L33@1, L26@1
 shape L29: 7 8
 at L29: L10@1, L11@1, L37@1, L36@1, L17@1
-shape L30: 5 6 7 8
-at L30: L75@1, L74@1, L71@1, L67@1, L66@1, L63@1, L61@1, L59@1, L58@1, L44@1, L17@1, L33@2, L26@2
+shape L30: 6 7
+at L30: L75@0, L74@0, L71@0, L67@0, L66@0, L63@0, L61@0, L59@0, L58@0, L44@0, L17@0, L33@1, L26@1
 shape L31: 0
 shape L32: 0
-shape L33: 0 1 0
-at L33: L10@1, L11@2, L36@2, L17@2, L30@2, L28@2, L34@2, L35@2
+shape L33: 1 0 -1
+at L33: L10@0, L11@1, L36@1, L17@1, L30@1, L28@1, L34@1, L35@1
 shape L34: 7 8
 at L34: L33@0
-shape L35: 5 6 7 8
-at L35: L75@1, L74@1, L71@1, L67@1, L61@1, L66@1, L63@1, L59@1, L58@1, L33@2
-shape L36: 5 6 7
+shape L35: 6 7
+at L35: L75@0, L74@0, L71@0, L67@0, L61@0, L66@0, L63@0, L59@0, L58@0, L33@1
+shape L36: 5 6
 at L36: L75@1, L74@1, L71@1, L67@1, L66@1, L63@1, L61@1, L60@1, L44@1, L17@1, L33@1, L29@1
 shape L37: 0 -1
 at L37: L10@0, L11@0, L29@1
-shape L38: 5 6 5 4 5 6
-at L38: L76@1, L67@1, L66@1, L63@1, L61@1, L60@1, L10@2, L42@3
+shape L38: 6 5 4 5
+at L38: L76@0, L67@0, L66@0, L63@0, L61@0, L60@0, L10@1, L42@2
 shape L39: 5 6 5 4 5 6
 at L39: L76@1, L67@1, L66@1, L63@1, L62@1, L49@1, L10@1, L42@3, L43@3
-shape L40: 7 8
-shape L41: 6 5
+shape L40: 0
+shape L41: 5
 shape L42: 5 6 7
 at L42: L39@2, L38@2
 shape L43: 6
 at L43: L39@0
 shape L44: 0 -1
 at L44: L36@0, L30@1
-shape L45: 7 6
-at L45: L62@1
-shape L46: 7 6
+shape L45: 6 5
+at L45: L62@0
+shape L46: 6
 shape L47: 6 5
-shape L48: 7 6 5
+shape L48: 7 6
 at L48: L62@1
 shape L49: 7
 at L49: L39@0
-shape L50: 4 5 6 7
-at L50: L80@0, L89@0, L83@0, L76@2, L67@2, L66@2, L63@2, L62@2
+shape L50: 5 4 5 6
+at L50: L80@1, L89@1, L83@1, L76@3, L67@3, L66@3, L63@3, L62@3
 shape L51: 4 5 6 7
 at L51: L89@0, L83@0, L76@2, L68@2, L62@2
-shape L52: 6 7
-shape L53: 6
-shape L54: 6 7
+shape L52: 6
+shape L53: 5
+shape L54: 7
 shape L55: 6
-shape L56: 7 6
-at L56: L68@1, L62@1
+shape L56: 6
+at L56: L68@0, L62@0
 shape L57: 7 6
 at L57: L68@1, L62@1
 shape L58: 0 1
 at L58: L30@0, L35@0
-shape L59: 0 1
-at L59: L30@1, L35@1, L63@1
+shape L59: 1
+at L59: L30@0, L35@0, L63@0
 shape L60: 0
 at L60: L38@0, L36@0
-shape L61: 0 1 2 1
-at L61: L38@1, L36@1, L30@1, L63@2, L66@2, L35@3
+shape L61: 1 2 1
+at L61: L38@0, L36@0, L30@0, L63@1, L66@1, L35@2
 shape L62: 7 8
 at L62: L45@0, L48@0, L57@0, L56@1, L51@1, L50@1, L39@1
-shape L63: 0 -1 0 -1 0 1
-at L63: L50@1, L39@2, L38@2, L36@3, L30@4, L61@4, L35@4, L59@4
+shape L63: 7 8 7 8
+at L63: L50@0, L39@1, L38@1, L36@2, L30@3, L61@3, L35@3, L59@3
 shape L64: 6 7
 shape L65: 1
-shape L66: 0 1
+shape L66: 0
 at L66: L50@0, L39@0, L38@0, L36@0, L30@0, L61@0, L35@0
-shape L67: 0 1 0 1
-at L67: L50@1, L39@2, L38@2, L36@2, L30@2, L35@2
-shape L68: 6 7 8
-at L68: L56@2, L57@2, L51@2
+shape L67: 1 0
+at L67: L50@0, L39@1, L38@1, L36@1, L30@1, L35@1
+shape L68: 7 8
+at L68: L56@1, L57@1, L51@1
 shape L69: 1
 at L69: L71@0
 shape L70: 6 7
-shape L71: 0 -1 0 1
-at L71: L36@1, L30@2, L35@2, L72@2, L69@2
+shape L71: 7 8
+at L71: L36@0, L30@1, L35@1, L72@1, L69@1
 shape L72: 1
 at L72: L71@0, L74@0
 shape L73: 1 0
-shape L74: 0 1
+shape L74: 0
 at L74: L36@0, L30@0, L35@0, L72@0
-shape L75: 0 1 0 1
-at L75: L36@1, L30@2, L35@2
-shape L76: 6 7 8
-at L76: L51@2, L50@2, L39@2, L38@2
+shape L75: 1 0
+at L75: L36@0, L30@1, L35@1
+shape L76: 7 8
+at L76: L51@1, L50@1, L39@1, L38@1
 shape L77: 1 0
 shape L78: 6 7
 shape L79: 6
 at L79: L88@0, L86@0
 shape L80: 1 0 -1 0
 at L80: L50@2
-shape L81: 6
-at L81: L88@0, L86@0
-shape L82: 6
+shape L81: 7 6
+at L81: L88@1, L86@1
+shape L82: 6 7
 at L82: L88@0, L86@0
 shape L83: 5
 at L83: L51@0, L50@0
 shape L84: 4
 shape L85: 5
-shape L86: 5 4 5
+shape L86: 5 4
 at L86: L87@1, L79@1, L81@1, L82@1
 shape L87: 6
 at L87: L88@0, L86@0
-shape L88: 5 4 5
-at L88: L87@1, L79@1, L81@1, L82@1
+shape L88: 4 5
+at L88: L87@0, L79@0, L81@0, L82@0
 shape L89: 4 5
 at L89: L51@1, L50@1
 shape L90: 4
 shape L91: 4
-shape L92: 4 3 2 3 4
-at L92: L95@1, L96@1, L101@2, L102@2, L104@2, L105@3
+shape L92: 3 2 3 4
+at L92: L95@0, L96@0, L101@1, L102@1, L104@1, L105@2
 shape L93: 5
 shape L94: 4 3
-shape L95: 4
-at L95: L92@0
-shape L96: 4
+shape L95: 5 4
+at L95: L92@1
+shape L96: 4 5
 at L96: L92@0
 shape L97: 4 3
-shape L98: 4 3 4
-at L98: L101@1, L102@1, L104@1, L105@1
-shape L99: 3 4
+shape L98: 3 4
+at L98: L101@0, L102@0, L104@0, L105@0
+shape L99: 4
 shape L100: 3 4
 at L100: L104@0, L105@0
-shape L101: 4 5
+shape L101: 4
 at L101: L98@0, L92@0
-shape L102: 4 5
-at L102: L98@0, L92@0
+shape L102: 3 4 5
+at L102: L98@1, L92@1
 shape L103: 6
-shape L104: 4 5
+shape L104: 4
 at L104: L100@0, L98@0, L92@0
-shape L105: 4 5
-at L105: L100@0, L98@0, L92@0
-shape L106: 3 4
+shape L105: 3 4 5
+at L105: L100@1, L98@1, L92@1
+shape L106: 4
 shape L107: 3 4
-shape L108: 4 3
-at L108: L109@1
+shape L108: 5 4 3
+at L108: L109@2
 shape L109: 4 3
 at L109: L108@0
-shape L110: 4 3
-at L110: L111@1, L113@1
-shape L111: 4 3
+shape L110: 3
+at L110: L111@0, L113@0
+shape L111: 4
 at L111: L110@0
-shape L112: 4 3
-shape L113: 3 4 3
-at L113: L110@1, L115@1
-shape L114: 3
+shape L112: 3
+shape L113: 4
+at L113: L110@0, L115@0
+shape L114: 3 4
 shape L115: 3
 at L115: L113@0
 shape L116: 3
-shape L117: 4 3
+shape L117: 4
 at L117: L119@0
-shape L118: 4 3
+shape L118: 3
 shape L119: 3
 at L119: L117@0, L120@0, L123@0
-shape L120: 3 4 3
-at L120: L119@1, L122@1
-shape L121: 3
+shape L120: 4
+at L120: L119@0, L122@0
+shape L121: 3 4
 at L121: L123@0
-shape L122: 3 4
+shape L122: 3
 at L122: L120@0, L123@0
-shape L123: 4 3 2
+shape L123: 4 3
 at L123: L121@0, L119@0, L122@0
-shape L124: 4 3
+shape L124: 3
 shape L125: 3 2
-shape L126: 3 4
-at L126: L128@1
+shape L126: 4
+at L126: L128@0
 shape L127: 3 4
-shape L128: 3 4
+shape L128: 3
 at L128: L126@0
 shape L129: 4 3 2
 shape L130: 4 3 2
