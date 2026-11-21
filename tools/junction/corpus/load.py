@@ -66,7 +66,11 @@ class World:
         self.nodes = {}; self.heads = {}; self.sw = set(); self.bh = set(); self.stations = []; self.depots = []
         for (x, y), t in tiles.items():
             tt = t['tile_type']
-            if tt == 'station': self.stations.append((x, y)); continue
+            if tt == 'station':
+                if t.get('station_type') in ('rail', 'rail_waypoint') and t.get('axis') in ('X', 'Y'):
+                    n = t['axis']; self.nodes[(x, y)] = [(n, TEDGES[n])]   # waypoint / pass-through station tile: one straight piece
+                else: self.stations.append((x, y))
+                continue
             if tt == 'rail' and t['kind'] in ('track', 'signals'):
                 tr = t['tracks']
                 self.nodes[(x, y)] = [(n, TEDGES[n]) for n in tr]
