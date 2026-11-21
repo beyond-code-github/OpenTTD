@@ -5,6 +5,8 @@ Each epic: goal, scope, exit criteria (tests at the layer's output, D367), and i
 ## Gates and kill criteria
 - **Gate A (end of E3):** PSG 197 shaped at bundle level. Measure: channels, gadgets by type, free faces, cells, dummies, rigid cells, Shape time. Continue only if Shape shapes every handed-down 197 variant (H10) within 2 s per variant and every free face refines (H12, H16). Otherwise stop and rethink with the engineer, with the numbers.
 - **Gate B (end of E5):** the feasibility oracle passes on T2, T3, LL2 and 197, and Slots solves 197's top variant within the seed budget (D297: 5 s) with zero clashes from the oracle. Otherwise stop and rethink with the engineer.
+- **Kill criterion K-E5 (oracle on 197, D409, 2026-11-22):** free-face clearance is closed by the rules proved so far (SPEC-shape §8.8 sides, §8.9 pocket) plus **at most one binary per corner** for choices that depend on lengths (a dummy's landing wall, pocket or strip at a corner), counted and reported per run. If whole 197 is still not drawable with clearance under that budget (faces alone and whole, 15 s per face, 60 s whole), stop patching rules and rethink E5's approach with the engineer, with the numbers.
+- **Readable failures first (D409):** before more rule work on whole 197, the drawing program gets an elastic mode: a slack >= 0 per row family (clearance, landing, closure, crossing, node, deck, port) with weights, minimised, reporting which rows stretched and by how much (faces, corners, families). It replaces temporary diagnostic tests; the LP-relaxation IIS tags are not used for diagnosis.
 
 ## E0 Consolidate (housekeeping, first)
 - Goal: one branch with every live piece; the docs say v2.
