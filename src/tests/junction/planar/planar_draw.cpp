@@ -2252,29 +2252,43 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 			}
 			const PlanarDrawPins *p = pinned ? &p8 : nullptr;
 			const std::string label = fmt::format("{} {}", name, pinned ? "W8" : "no pins");
-			PlanarDrawResult previous = CheckPlanarDrawable(*variant, 30.0, {.clearance = false, .continuous = all, .pins = p});
-			WARN(fmt::format("{} seed: {}", label, describe(previous)));
-			if (previous.status != "Optimal") continue;
-			PlanarDrawResult last_optimal = previous;
-			for (int k = 1; k <= 6; k++) {
+			const PlanarDrawResult seed = CheckPlanarDrawable(*variant, 30.0, {.elastic = true, .pins = p});
+			WARN(fmt::format("{} seed: {}, total slack {:.3f}", label, describe(seed), seed.slack));
+			if (!seed.feasible) continue;
+			const PlanarDrawResult *previous = &seed;
+			std::vector<PlanarDrawResult> rounds;
+			rounds.reserve(8);
+			const PlanarDrawResult *last_optimal = nullptr;
+			for (int k = 1; k <= 8; k++) {
 				if (over_cap()) {
 					WARN("total cap of 15 minutes passed; stopped");
 					return;
 				}
-				const PlanarDrawResult r = CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &previous.points, .continuous = all});
-				WARN(fmt::format("{} round {}: {}", label, k, describe(r)));
+				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points}));
+				const PlanarDrawResult &r = rounds.back();
+				WARN(fmt::format("{} round {}: {}, total slack {:.3f}", label, k, describe(r), r.slack));
 				if (r.status != "Optimal") {
-					const PlanarDrawResult e = CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .pins = p, .sides_from = &previous.points, .continuous = all});
-					std::string families;
-					for (size_t i = 0; i < e.stretched.size(); i++) families += fmt::format(" [{} {:.2f}]", e.stretched[i].first, e.stretched[i].second);
-					WARN(fmt::format("{} round {} elastic: {}, total slack {:.2f}, per row tag:{}", label, k, describe(e), e.slack, families));
+					std::string conflicts;
+					for (const std::string &c : r.conflict) conflicts += c + "; ";
+					WARN(fmt::format("{} round {} conflict: {}", label, k, conflicts));
 					break;
 				}
-				previous = r;
-				last_optimal = r;
+				const bool stalled = k > 1 && previous->slack - r.slack <= 0.5;
+				last_optimal = &r;
+				previous = &r;
+				if (r.slack < 1e-6 || stalled) break;
 			}
-			const PlanarDrawResult f = CheckPlanarDrawable(*variant, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &last_optimal.points});
+			if (last_optimal == nullptr) {
+				WARN(fmt::format("{} no Optimal round; no final", label));
+				continue;
+			}
+			const PlanarDrawResult f = CheckPlanarDrawable(*variant, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &last_optimal->points});
 			WARN(fmt::format("{} final (integer, 15 s): {}", label, describe(f)));
+			if (f.status == "Infeasible") {
+				std::string conflicts;
+				for (size_t i = 0; i < std::min<size_t>(30, f.conflict.size()); i++) conflicts += f.conflict[i] + "; ";
+				WARN(fmt::format("{} final conflict: {}", label, conflicts));
+			}
 		}
 	}
 }
