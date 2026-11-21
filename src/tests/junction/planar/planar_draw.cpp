@@ -2358,8 +2358,23 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				}
 				continue;
 			}
+			/* PLANAR_PROBE_CONTINUOUS (a measurement aid): comma-separated variable groups the integer finals leave continuous, e.g. "axis". */
+			std::vector<std::string> final_continuous;
+			if (const char *groups = std::getenv("PLANAR_PROBE_CONTINUOUS"); groups != nullptr) {
+				std::istringstream gs(groups);
+				std::string g;
+				while (std::getline(gs, g, ',')) final_continuous.push_back(g);
+				WARN(fmt::format("{} finals leave continuous: {}", label, groups));
+			}
+			/* PLANAR_PROBE_FINAL_SIDES=input (a measurement aid): the finals read their sides from the last Optimal round's own input drawing, i.e. the directions that round proved LP-feasible, not re-read from its rounded output. */
+			const std::vector<std::vector<std::array<int, 2>>> *final_sides = &last_optimal->points;
+			if (const char *fs = std::getenv("PLANAR_PROBE_FINAL_SIDES"); fs != nullptr && std::string_view(fs) == "input") {
+				const size_t at = static_cast<size_t>(last_optimal - rounds.data());
+				final_sides = at > 0 ? &rounds[at - 1].points : &seed.points;
+				WARN(fmt::format("{} finals take the sides of round {} (its input drawing)", label, at + 1));
+			}
 			for (const double budget : {15.0, 60.0}) {
-				const PlanarDrawResult f = CheckPlanarDrawable(*variant, budget, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &last_optimal->points});
+				const PlanarDrawResult f = CheckPlanarDrawable(*variant, budget, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = final_sides, .continuous = final_continuous});
 				WARN(fmt::format("{} final (integer, {:.0f} s): {}", label, budget, describe(f)));
 				if (f.status == "Infeasible" && plateau_probe && !conflict_shown) {
 					conflict_shown = true;
