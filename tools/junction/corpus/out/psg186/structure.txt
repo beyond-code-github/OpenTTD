@@ -33,21 +33,21 @@ tunnel T3 L72: L80, L83
 tunnel T4 L72: L94, L95, L98
 tunnel T5 L69: L80, L83
 tunnel T6 L61: L75
-tunnel T7 L61: L83, L86, L89
+tunnel T7 L61: L86, L89
 tunnel T8 L62: L75
 tunnel T9 L20: L36
 tunnel T10 L27: L22, L20
 tunnel T11 L38: L99, L98, L94, L90, L78, L89, L83, L76, L75
 tunnel T12 L33: L99, L98, L94, L90, L89, L83, L78, L76, L75
-tunnel T13 L14: L36, L40, L32, L29, L27, L26, L25, L23, L17
+tunnel T13 L14: L36, L40, L32, L29, L27, L26, L25, L23
 tunnel T14 L39: L99, L98, L94, L90, L89, L83, L78, L77
-tunnel T15 L13: L36, L40, L32, L26, L24, L25, L23, L17
+tunnel T15 L13: L36, L40, L32, L26, L24, L25, L23
 tunnel T16 L13: L41
 tunnel T17 L150: L152, L131
 tunnel T18 L153: L152, L131
 tunnel T19 L41: L47
 tunnel T20 L42: L47, L50
-tunnel T21 L145: L131, L147, L125
+tunnel T21 L145: L147, L125
 tunnel T22 L157: L159
 tunnel T23 L160: L159
 tunnel T24 L125: L126, L141
