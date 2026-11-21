@@ -112,6 +112,21 @@ std::vector<std::string> CheckPlanarShapeSpines(const PlanarShapeVariant &v);
  */
 bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why);
 
+/** One wall of a convex cell, walked with the cell on its left. */
+struct PlanarCellWall {
+	uint32_t track; ///< A track of the map, PLANAR_DUMMY_TRACK for a dummy, or UINT32_MAX for a box edge.
+	uint32_t piece; ///< The piece of the track, the dummy's index in the variant's dummies, or the PlanarSide of the box edge.
+	int heading; ///< The walked heading, 0..7.
+};
+
+/**
+ * The convex cells of every inner face as RefinePlanarShapeCells splits them: each face's walk split by the stored dummies in order (D385).
+ * Faces that H12 skips (not usable, not winding once) have no cells; a dummy that does not split its face's cells (H12 reports it) is ignored.
+ * @param v The variant; its tracks must pass H1.
+ * @return One list of walls per cell, in walk order with the cell on the left; a face's cells together, faces in the map's order.
+ */
+std::vector<std::vector<PlanarCellWall>> PlanarShapeCellWalls(const PlanarShapeVariant &v);
+
 /**
  * Flex points on free one-piece stretches (D397, steps on spines): on every free one-piece stretch (a Line track's stretch between two crossings that are not of one structure and not with two tracks of one channel, the track in no beside track's parent chain) on piece p at heading h, insert after p the left pair h-1, h then the right pair h+1, h, each side only where every route through it stays within 3 eighths of its entry heading (H7's cone).
  * Stretches are processed last to first; later event pieces shift; PlanarShapeTrack::flex lists the middles.

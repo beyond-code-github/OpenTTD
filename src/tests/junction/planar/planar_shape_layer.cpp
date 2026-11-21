@@ -1676,12 +1676,14 @@ TEST_CASE("planar shape: V's 197 steps sit on Shape's flex points (D402)", "[.][
 		WARN(fmt::format("E1X3 step {} {} side {}: {}{}", name, k, side, found ? "found" : "not found", found ? "" : fmt::format(" ({}; the stretch has {} pieces in the unflexed shape)", bounds, last_piece - first_piece + 1)));
 		classes[bounds].second++;
 		if (found) classes[bounds].first++;
-		/* D2's step lies between C1b and C1, two lanes of one channel: D383's lattice, never a flex point (D397). A step on a stretch of two or more pieces is not flexed yet (D402 flexes one-piece stretches; 13 of V's steps, decided after E5 measures the cost). */
+		/* The stretch between the crossings with C1b and C1 (D2's only): two lanes of one channel, D383's lattice, never a flex point (D397). A step on a stretch of two or more pieces is not flexed yet (D402 flexes one-piece stretches, decided after E5 measures the cost). */
 		const bool multi = last_piece > first_piece;
-		CHECK(found == (name != "D2" && !multi));
+		const auto crosser = [&](uint32_t c) { return map.tracks[map.crossings[c].a == t ? map.crossings[c].b : map.crossings[c].a].name; };
+		const bool lattice = k >= 1 && k < map.events[t].size() && crosser(map.events[t][k - 1]) == "C1b" && crosser(map.events[t][k]) == "C1";
+		CHECK(found == (!lattice && !multi));
 	}
 	for (const auto &[bounds, count] : classes) WARN(fmt::format("E1X3 steps {}: found {}/{}", bounds, count.first, count.second));
-	CHECK(listed == 50);
+	CHECK(listed == 88);
 }
 
 /** Measure H14 on one variant: count the channels with two or more lines and the lines skipped for parts, count and print the messages. */

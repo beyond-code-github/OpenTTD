@@ -6,8 +6,8 @@
  */
 
 /**
- * @file planar_draw.cpp The drawing program: points and pieces, box, ports, nodes, crossings and spans (E5-1).
- * Not in it yet: grid parity (D382), beside tracks as offset curves, node legs and the trident binary, bays, coverage, curve spacing, cells, dummies, clearance.
+ * @file planar_draw.cpp The drawing program: points and pieces, box, ports, nodes, crossings, spans, dummies with their landings and clearance per convex cell (E5-1, E5-2).
+ * Not in it yet: grid parity (D382), beside tracks as offset curves, node legs and the trident binary, bays, coverage, curve spacing.
  */
 
 #include "../../stdafx.h"
@@ -19,6 +19,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <functional>
+#include <map>
 #include <set>
 #include <utility>
 
@@ -42,7 +44,7 @@ struct Length {
 
 } // namespace
 
-PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds)
+PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds, const PlanarDrawOptions &options)
 {
 	const auto start = std::chrono::steady_clock::now();
 	PlanarDrawResult result;
@@ -263,6 +265,162 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			row({{len.variable, len.coefficient}, {u.back(), -1}}, 2 * least_run, JunctionMilp::INF, fmt::format("end {}", s));
 		}
 		if (most_limit >= 0) row({{u.back(), 1}, {u.front(), -1}}, -JunctionMilp::INF, 2 * (most_limit - 1), fmt::format("span {}", s));
+	}
+
+	/* Dummies: from the bend's vertex along the heading for a length D >= 1 to the landing E. */
+	const size_t nd = options.clearance ? v.dummies.size() : 0;
+	std::vector<std::array<uint32_t, 2>> dummy_start(nd), dummy_end(nd);
+	std::vector<uint32_t> dummy_length(nd);
+	for (size_t d = 0; d < nd; d++) {
+		const PlanarShapeDummy &dummy = v.dummies[d];
+		if (dummy.track >= nt || dummy.piece + 1 >= point[dummy.track].size()) return unsupported(fmt::format("dummy {} starts at a vertex that is not a track's", d));
+		dummy_start[d] = point[dummy.track][dummy.piece + 1];
+		dummy_length[d] = var(1, COORD_MAX, 0);
+		dummy_end[d] = {var(0, COORD_MAX, 0), var(0, COORD_MAX, 0)};
+		const std::string tag = fmt::format("land {}", d);
+		row({{dummy_end[d][0], 1}, {width, -1}}, -JunctionMilp::INF, 0, tag);
+		row({{dummy_end[d][1], 1}, {height, -1}}, -JunctionMilp::INF, 0, tag);
+		const std::array<int, 2> step = PlanarModel::STEP[((dummy.heading % 8) + 8) % 8];
+		for (int axis = 0; axis < 2; axis++) eq({{dummy_end[d][axis], 1}, {dummy_start[d][axis], -1}, {dummy_length[d], -step[axis]}}, 0, tag);
+	}
+	for (size_t d = 0; d < nd; d++) {
+		const PlanarShapeDummy &dummy = v.dummies[d];
+		const std::string tag = fmt::format("land {}", d);
+		if (dummy.land_track == UINT32_MAX) {
+			if (dummy.land_piece >= 4) return unsupported(fmt::format("dummy {} lands on box side {}", d, dummy.land_piece));
+			switch (static_cast<PlanarSide>(dummy.land_piece)) {
+				case PlanarSide::N: eq({{dummy_end[d][1], 1}}, 0, tag); break;
+				case PlanarSide::S: eq({{dummy_end[d][1], 1}, {height, -1}}, 0, tag); break;
+				case PlanarSide::W: eq({{dummy_end[d][0], 1}}, 0, tag); break;
+				case PlanarSide::E: eq({{dummy_end[d][0], 1}, {width, -1}}, 0, tag); break;
+			}
+			continue;
+		}
+		/* Along a piece or another dummy: E = P + w STEP[h] with 0 <= w <= its length. */
+		std::array<uint32_t, 2> from;
+		int heading;
+		Terms most;
+		if (dummy.land_track == PLANAR_DUMMY_TRACK) {
+			if (dummy.land_piece >= nd) return unsupported(fmt::format("dummy {} lands on dummy {}", d, dummy.land_piece));
+			from = dummy_start[dummy.land_piece];
+			heading = v.dummies[dummy.land_piece].heading;
+			most = {{dummy_length[dummy.land_piece], -1}};
+		} else {
+			if (dummy.land_track >= nt || dummy.land_piece >= v.tracks[dummy.land_track].pieces.size()) return unsupported(fmt::format("dummy {} lands on a piece that does not exist", d));
+			from = point[dummy.land_track][dummy.land_piece];
+			heading = v.tracks[dummy.land_track].pieces[dummy.land_piece];
+			const Length &len = length[dummy.land_track][dummy.land_piece];
+			most = {{len.variable, -len.coefficient}};
+		}
+		const uint32_t w = var(0, COORD_MAX, 0);
+		most.emplace_back(w, 1);
+		row(most, -JunctionMilp::INF, 0, tag);
+		const std::array<int, 2> step = PlanarModel::STEP[((heading % 8) + 8) % 8];
+		for (int axis = 0; axis < 2; axis++) eq({{dummy_end[d][axis], 1}, {from[axis], -1}, {w, -step[axis]}}, 0, tag);
+	}
+
+	/* Clearance: in every convex cell, each vertex keeps its spacing from the line of every other wall. */
+	std::map<uint32_t, uint32_t> same_point; // Union-find over the x variable of points that nodes make equal.
+	const std::function<uint32_t(uint32_t)> find = [&](uint32_t x) {
+		const auto it = same_point.find(x);
+		if (it == same_point.end() || it->second == x) return x;
+		const uint32_t root = find(it->second);
+		same_point[x] = root;
+		return root;
+	};
+	for (const PlanarNode &node : map.expanded.nodes) {
+		std::vector<uint32_t> xs;
+		for (const uint32_t line : node.in) xs.push_back(point[line].back()[0]);
+		for (const uint32_t line : node.out) xs.push_back(point[line].front()[0]);
+		for (size_t k = 1; k < xs.size(); k++) same_point[find(xs[k])] = find(xs[0]);
+	}
+	/* The span pieces: a structure's separator piece at its crossings, and its copy's at the copy's crossings (H5). Their middles are underground or elevated, so ground track lies over or under them anywhere: they are no wall for clearance. */
+	std::set<std::pair<uint32_t, uint32_t>> span_piece;
+	for (const PlanarStructure &structure : v.structure.structures) {
+		if (structure.crossings.empty()) continue;
+		for (const uint32_t track : {structure.separator, structure.copy}) {
+			if (track >= nt || v.tracks[track].event_piece.size() != map.events[track].size()) continue;
+			for (size_t k = 0; k < map.events[track].size(); k++) {
+				const uint32_t c = map.events[track][k];
+				const bool crosser = std::ranges::find(structure.crossings, c) != structure.crossings.end();
+				if (track == structure.separator ? crosser : true) span_piece.emplace(track, v.tracks[track].event_piece[k]);
+			}
+		}
+	}
+	const auto is_span = [&](const PlanarCellWall &w) { return w.track < nt && span_piece.contains({w.track, w.piece}); };
+	const auto lands_on_span = [&](const PlanarCellWall &w) {
+		if (w.track != PLANAR_DUMMY_TRACK || w.piece >= nd) return false;
+		const PlanarShapeDummy &d = v.dummies[w.piece];
+		return d.land_track < nt && span_piece.contains({d.land_track, d.land_piece});
+	};
+	const std::vector<std::vector<PlanarCellWall>> cells = options.clearance ? PlanarShapeCellWalls(v) : std::vector<std::vector<PlanarCellWall>>();
+	for (size_t c = 0; c < cells.size(); c++) {
+		const std::vector<PlanarCellWall> &cell = cells[c];
+		const size_t n = cell.size();
+		/* Each wall's end points in the walk; a wall a dummy lands on is held only in part. */
+		struct Part {
+			bool valid = false;
+			std::array<uint32_t, 2> a{}, b{};
+		};
+		std::vector<Part> part(n);
+		bool usable = true;
+		for (size_t i = 0; i < n && usable; i++) {
+			const PlanarCellWall &w = cell[i];
+			if (w.track == UINT32_MAX) continue;
+			bool forward;
+			if (w.track == PLANAR_DUMMY_TRACK) {
+				if (w.piece >= nd) {
+					usable = false;
+					break;
+				}
+				forward = w.heading == ((v.dummies[w.piece].heading % 8) + 8) % 8;
+				part[i] = {true, dummy_start[w.piece], dummy_end[w.piece]};
+			} else {
+				if (w.track >= nt || w.piece >= v.tracks[w.track].pieces.size()) {
+					usable = false;
+					break;
+				}
+				forward = w.heading == ((v.tracks[w.track].pieces[w.piece] % 8) + 8) % 8;
+				part[i] = {true, point[w.track][w.piece], point[w.track][w.piece + 1]};
+			}
+			if (!forward) std::swap(part[i].a, part[i].b);
+		}
+		if (!usable) return unsupported(fmt::format("cell {} names a wall the variant lacks", c));
+		for (size_t i = 0; i < n; i++) {
+			if (!part[i].valid) continue;
+			const PlanarCellWall &before = cell[(i + n - 1) % n];
+			const PlanarCellWall &after = cell[(i + 1) % n];
+			/* A dummy walked from its corner ends on the wall that follows it; one walked back to its corner starts on the wall that precedes it. */
+			if (before.track == PLANAR_DUMMY_TRACK && before.heading == ((v.dummies[before.piece].heading % 8) + 8) % 8) part[i].a = dummy_end[before.piece];
+			if (after.track == PLANAR_DUMMY_TRACK && after.heading != ((v.dummies[after.piece].heading % 8) + 8) % 8) part[i].b = dummy_end[after.piece];
+		}
+		for (size_t k = 0; k < n; k++) {
+			const size_t next = (k + 1) % n;
+			std::array<uint32_t, 2> vertex;
+			if (part[k].valid) {
+				vertex = part[k].b;
+			} else if (part[next].valid) {
+				vertex = part[next].a;
+			} else {
+				continue;
+			}
+			/* A vertex inside a span piece (a dummy's landing on it, or between two parts of it) has no clearance against ground track. */
+			const auto walked_forward = [&](const PlanarCellWall &w) { return w.heading == ((v.dummies[w.piece].heading % 8) + 8) % 8; };
+			if ((is_span(cell[k]) && is_span(cell[next])) || (lands_on_span(cell[k]) && walked_forward(cell[k]) && is_span(cell[next])) || (is_span(cell[k]) && lands_on_span(cell[next]) && !walked_forward(cell[next]))) continue;
+			for (size_t e = 0; e < n; e++) {
+				if (e == k || e == next || !part[e].valid || is_span(cell[e])) continue;
+				if (find(vertex[0]) == find(part[e].a[0]) || find(vertex[0]) == find(part[e].b[0])) continue;
+				const int h = cell[e].heading;
+				const std::array<int, 2> normal = PlanarModel::STEP[(h + 6) % 8];
+				const int spacing = std::max(PlanarModel::RungSpacing(h, cell[k].heading), PlanarModel::RungSpacing(h, cell[next].heading));
+				Terms terms;
+				for (int axis = 0; axis < 2; axis++) {
+					terms.emplace_back(vertex[axis], normal[axis]);
+					terms.emplace_back(part[e].a[axis], -normal[axis]);
+				}
+				row(std::move(terms), spacing, JunctionMilp::INF, fmt::format("clear {} {} {}", c, k, e));
+			}
+		}
 	}
 
 	result.rows = static_cast<uint32_t>(tags.size());

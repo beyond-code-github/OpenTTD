@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -66,7 +67,8 @@ static bool HasFamily(const PlanarDrawResult &r, std::string_view family)
 TEST_CASE("planar draw: the one-lane T is drawable", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
-	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0);
+	/* Without clearance: rows and copies need the corridor family (CARD-E5). */
+	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0, {.clearance = false});
 	std::string conflicts;
 	for (const std::string &tag : r.conflict) conflicts += tag + "; ";
 	INFO("status " << r.status << " conflict " << conflicts);
@@ -113,7 +115,8 @@ TEST_CASE("planar draw: the one-lane T is drawable", "[junction][planar][planard
 TEST_CASE("planar draw: the two-lane T's best variant is drawable", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(2), 16);
-	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0);
+	/* Without clearance: rows and copies need the corridor family (CARD-E5). */
+	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0, {.clearance = false});
 	std::string conflicts;
 	for (const std::string &tag : r.conflict) conflicts += tag + "; ";
 	INFO("status " << r.status << " conflict " << conflicts);
@@ -144,7 +147,21 @@ TEST_CASE("planar draw: PSG 197 (Shape's own shape)", "[.][planarpsg197]")
 	REQUIRE(ShapePlanarStructureVariant(structure, shaped, why));
 	const PlanarDrawResult r = CheckPlanarDrawable(shaped, 15.0);
 	WARN(fmt::format("197 draw: feasible {}, status {}, rows {}, columns {}, {:.0f} ms", r.feasible, r.status, r.rows, r.columns, r.ms));
-	for (const std::string &tag : r.conflict) WARN("197 draw conflict: " + tag);
+	std::map<std::string, size_t> families;
+	for (const std::string &tag : r.conflict) families[tag.substr(0, tag.find(' '))]++;
+	for (const auto &[family, count] : families) WARN(fmt::format("197 draw conflicts: {} {}", family, count));
+	for (size_t i = 0; i < std::min<size_t>(20, r.conflict.size()); i++) WARN(fmt::format("197 draw conflict {}: {}", i, r.conflict[i]));
+	size_t on_dummy = 0, on_track = 0, on_box = 0;
+	for (const PlanarShapeDummy &d : shaped.dummies) {
+		if (d.land_track == PLANAR_DUMMY_TRACK) {
+			on_dummy++;
+		} else if (d.land_track == UINT32_MAX) {
+			on_box++;
+		} else {
+			on_track++;
+		}
+	}
+	WARN(fmt::format("197 dummies {}: on dummies {}, on tracks {}, on the box {}; cells {}", shaped.dummies.size(), on_dummy, on_track, on_box, PlanarShapeCellWalls(shaped).size()));
 }
 
 TEST_CASE("planar draw: a crossing moved to a piece it cannot meet is a cross conflict", "[junction][planar][planardraw]")
@@ -165,4 +182,40 @@ TEST_CASE("planar draw: a crossing moved to a piece it cannot meet is a cross co
 	CHECK(!r.feasible);
 	CHECK(r.status == "Infeasible");
 	CHECK(HasFamily(r, "cross "));
+}
+
+TEST_CASE("planar draw: two ports on a side with no gap are a clearance conflict", "[junction][planar][planardraw]")
+{
+	DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	c.v.structure.side_gap = {0, 0, 0, 0};
+	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0);
+	std::string conflicts;
+	for (const std::string &tag : r.conflict) conflicts += tag + "; ";
+	INFO("status " << r.status << " conflict " << conflicts);
+	CHECK(!r.feasible);
+	CHECK((HasFamily(r, "clear ") || HasFamily(r, "port ") || HasFamily(r, "box")));
+}
+
+TEST_CASE("planar draw: a dummy that cannot reach its landing piece is a land conflict", "[junction][planar][planardraw]")
+{
+	DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult base = CheckPlanarDrawable(c.v, 5.0, {.clearance = false});
+	REQUIRE(base.feasible);
+	bool found = false;
+	for (size_t di = 0; di < c.v.dummies.size() && !found; di++) {
+		const uint32_t land_track = c.v.dummies[di].land_track;
+		if (land_track == UINT32_MAX || land_track == PLANAR_DUMMY_TRACK) continue;
+		const uint32_t original = c.v.dummies[di].land_piece;
+		for (uint32_t piece = 0; piece < c.v.tracks[land_track].pieces.size() && !found; piece++) {
+			if (piece == original) continue;
+			c.v.dummies[di].land_piece = piece;
+			const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0);
+			if (!r.feasible && HasFamily(r, "land ")) {
+				found = true;
+				WARN(fmt::format("land test: dummy {} landing piece {} -> {} is infeasible", di, original, piece));
+			}
+		}
+		c.v.dummies[di].land_piece = original;
+	}
+	CHECK(found);
 }

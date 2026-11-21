@@ -856,6 +856,7 @@ bool CellWalls(const Oracle &o, const FaceWalk &walk, std::vector<Wall> &first, 
 		if (term.kind == FaceTerm::Kind::Stretch) {
 			const uint32_t a = o.First(w.track, w.stretch), b = o.Last(w.track, w.stretch);
 			const std::vector<int> &pieces = o.v.tracks[w.track].pieces;
+			if (b < a || b >= pieces.size()) return false; // Event pieces out of order: the tracks fail H1, there is no cell to walk.
 			for (uint32_t k = 0; k <= b - a; k++) {
 				const uint32_t p = w.forward ? a + k : b - k;
 				first.push_back({w.track, p, w.forward ? pieces[p] : pieces[p] + 4, 0});
@@ -1109,6 +1110,32 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 		}
 	}
 	return true;
+}
+
+std::vector<std::vector<PlanarCellWall>> PlanarShapeCellWalls(const PlanarShapeVariant &v)
+{
+	std::vector<std::vector<PlanarCellWall>> result;
+	const Oracle o(v);
+	for (const PlanarFace &face : o.map.faces) {
+		const FaceWalk walk = WalkFace(o.map, face);
+		if (!walk.usable || walk.stretches.empty()) continue;
+		std::vector<Wall> first;
+		int piece_total, h7;
+		if (!CellWalls(o, walk, first, piece_total, h7)) continue;
+		if (piece_total != -8) continue;
+		std::vector<std::vector<Wall>> cells = {first};
+		for (size_t i = 0; i < v.dummies.size(); i++) {
+			if (v.dummies[i].face != static_cast<uint32_t>(face.face)) continue;
+			std::string reason;
+			SplitCell(cells, v.dummies[i], static_cast<uint32_t>(i), reason);
+		}
+		for (const std::vector<Wall> &cell : cells) {
+			std::vector<PlanarCellWall> walls;
+			for (const Wall &w : cell) walls.push_back({w.track, w.piece, ((w.heading % 8) + 8) % 8});
+			result.push_back(std::move(walls));
+		}
+	}
+	return result;
 }
 
 /**
