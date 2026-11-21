@@ -37,6 +37,7 @@ struct PlanarDrawResult {
 	uint32_t walk_differs = 0; ///< With sides_by_walk: fixed pairs where the rule's candidate is not sides_from's best.
 	double ms = 0; ///< Build and solve time in milliseconds.
 	std::vector<std::vector<std::array<int, 2>>> points; ///< When feasible, per track its points (start, then the end of each piece), half tiles, x east and y south.
+	std::vector<std::vector<double>> lengths; ///< When feasible, per track each piece's length in half-tile units along its heading (unrounded, so an LP's fractional lengths show).
 };
 
 /** Points of an answer key (D393): positions the drawing must keep within `window` half tiles, up to one common shift. */
@@ -73,6 +74,8 @@ struct PlanarDrawOptions {
 	const std::vector<std::vector<std::array<int, 2>>> *sides_from = nullptr; ///< With pairwise: a drawing of this variant (`PlanarDrawResult::points`); each separated pair takes the axis side these points keep best as a plain row, with no binary and no `sepdir` (an LP when every other variable is continuous).
 	double sides_free_below = -1e30; ///< With sides_from: a pair whose best candidate's margin on the reference is below this keeps its binaries (all candidates, one sepdir row) instead of a fixed direction.
 	int sides_pad = 0; ///< With pairwise: every separation's spacing is raised by this many half tiles (a direction-finding round, D418; never a rule).
+	const std::vector<std::vector<double>> *flex_zero_from = nullptr; ///< A measurement (D418): a flex insert whose length in this reference (`PlanarDrawResult::lengths`) is below flex_zero_below is held at 0.
+	double flex_zero_below = 0; ///< With flex_zero_from.
 	bool sides_by_walk = false; ///< With pairwise and sides_from (a measurement): a pair whose face walk is monotone towards one wall's inward normal takes that candidate (the rule); other pairs take sides_from's choice.
 	bool walk_strict = false; ///< With sides_by_walk (D417): the rule fixes a pair only when the walk's guaranteed projection onto the wall's inward normal (the walls strictly between, each at its least length) is at least the pair's spacing.
 	std::vector<std::string> continuous; ///< A measurement (D409 diagnosis): variable groups written continuous in an integer drawing: "point" (track points), "axis" (axis piece lengths), "diagonal" (diagonal piece lengths), "param" (crossing parameters), "cross" (crossing points), "other" (every other variable: box, pin shift, dummies, binaries).

@@ -336,7 +336,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const bool axis = (pieces[i] % 2) == 0;
 			const double lower = free_piece[i] ? 0 : 1;
-			length[t].push_back({var(lower, COORD_MAX, options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
+			const bool zero = options.flex_zero_from != nullptr && free_piece[i] && std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end() && t < options.flex_zero_from->size() && i < (*options.flex_zero_from)[t].size() && (*options.flex_zero_from)[t][i] < options.flex_zero_below;
+			length[t].push_back({var(lower, zero ? 0 : COORD_MAX, options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
 			if (port_stretch) break;
@@ -1024,7 +1025,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			std::ranges::sort(result.stretched, [](const auto &a, const auto &b) { return a.second != b.second ? a.second > b.second : a.first < b.first; });
 		}
 		result.points.resize(nt);
+		result.lengths.resize(nt);
 		for (size_t t = 0; t < nt; t++) {
+			for (const Length &len : length[t]) result.lengths[t].push_back(milp.Value(len.variable) * len.coefficient);
 			for (const std::array<uint32_t, 2> &p : point[t]) result.points[t].push_back({static_cast<int>(std::lround(milp.Value(p[0]))), static_cast<int>(std::lround(milp.Value(p[1])))});
 		}
 	} else if (status == JunctionMilp::Status::Infeasible) {
