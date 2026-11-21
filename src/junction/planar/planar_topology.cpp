@@ -14,6 +14,7 @@
 #include "../../3rdparty/fmt/format.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <map>
 #include <numbers>
@@ -147,16 +148,30 @@ void PlanarBuilder::ParsePort(std::string_view rest)
 	}
 	static const std::map<std::string, PlanarSide, std::less<>> sides = {{"N", PlanarSide::N}, {"E", PlanarSide::E}, {"S", PlanarSide::S}, {"W", PlanarSide::W}};
 	static const std::map<std::string, PlanarHeading, std::less<>> headings = {{"N", PlanarHeading::N}, {"NE", PlanarHeading::NE}, {"E", PlanarHeading::E}, {"SE", PlanarHeading::SE}, {"S", PlanarHeading::S}, {"SW", PlanarHeading::SW}, {"W", PlanarHeading::W}, {"NW", PlanarHeading::NW}};
-	if (words.size() != 3 || !sides.contains(words[0]) || (words[1] != "in" && words[1] != "out") || !headings.contains(words[2])) {
+	const bool positioned = words.size() > 3 && words[3] == "@";
+	if ((words.size() != 3 && !positioned) || !sides.contains(words[0]) || (words[1] != "in" && words[1] != "out") || !headings.contains(words[2])) {
 		this->error = fmt::format("a port is 'port <N|E|S|W> <in|out> <heading>: lines', not '{}'", rest);
 		return;
 	}
 	PlanarPort port{sides.find(words[0])->second, words[1] == "in", headings.find(words[2])->second, {}};
+	for (size_t i = 4; positioned && i < words.size(); i++) {
+		int value = 0;
+		const auto [end, ec] = std::from_chars(words[i].data(), words[i].data() + words[i].size(), value);
+		if (ec != std::errc() || end != words[i].data() + words[i].size()) {
+			this->error = fmt::format("a port's position must be an integer, not '{}'", words[i]);
+			return;
+		}
+		port.at.push_back(value);
+	}
 	const uint32_t p = static_cast<uint32_t>(this->t.ports.size());
 	for (const std::string &name : SplitList(rest.substr(colon + 1))) {
 		const uint32_t l = this->Line(name);
 		port.lines.push_back(l);
 		this->SetEnd(l, port.in, {true, p});
+	}
+	if (positioned && port.at.size() != port.lines.size() && this->error.empty()) {
+		this->error = "a port's positions must give one per line";
+		return;
 	}
 	if (port.lines.empty() && this->error.empty()) this->error = "a port has no lines";
 	this->t.ports.push_back(std::move(port));

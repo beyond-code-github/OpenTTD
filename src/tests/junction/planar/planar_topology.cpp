@@ -156,6 +156,38 @@ TEST_CASE("planar: malformed topologies are refused with a reason", "[junction][
 	CHECK(!error.empty());
 }
 
+TEST_CASE("planar topology: port positions", "[junction][planar][topology]")
+{
+	const std::string t1 = PlanarTText(1);
+	const size_t at = t1.find("port E out E:");
+	REQUIRE(at != std::string::npos);
+	std::string positioned = t1;
+	positioned.replace(at, 13, "port E out E @ 164:");
+	const PlanarTopology t = Parse(positioned);
+	REQUIRE(t.ports.size() == 6);
+	CHECK(t.ports[2].at == std::vector<int>{164});
+	CHECK(t.ports[0].at.empty());
+	std::string mismatched = t1;
+	mismatched.replace(at, 13, "port E out E @ 1 2:");
+	std::string error;
+	CHECK(ParsePlanarTopology(mismatched, &error).lines.empty());
+	CHECK(error.find("positions") != std::string::npos);
+
+	std::ifstream file(JUNCTION_TOPOLOGY_DIR "/psg197.txt");
+	REQUIRE(file.good());
+	std::stringstream buffer;
+	buffer << file.rdbuf();
+	const PlanarTopology t197 = Parse(buffer.str());
+	bool found = false;
+	for (const PlanarPort &port : t197.ports) {
+		if (port.side == PlanarSide::E && !port.in) {
+			CHECK(port.at == std::vector<int>{164, 166, 167});
+			found = true;
+		}
+	}
+	CHECK(found);
+}
+
 /** The `cross` statements of a text: line name and its partners in travel order. */
 static std::vector<std::pair<std::string, std::vector<std::string>>> CrossStatements(const std::string &text)
 {

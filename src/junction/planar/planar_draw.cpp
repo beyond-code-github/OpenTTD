@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <functional>
 #include <map>
 #include <set>
@@ -26,7 +27,7 @@
 
 #include "../../safeguards.h"
 
-std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall> &cell, const std::vector<bool> &insert)
+std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall> &cell, const std::vector<bool> &insert, bool pocket, std::vector<PlanarAlongRow> *along)
 {
 	const size_t n = cell.size();
 	const auto no_track = [&](size_t i) { return cell[i].track == PLANAR_DUMMY_TRACK || cell[i].track == UINT32_MAX; };
@@ -48,9 +49,84 @@ std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall
 			if (e == k || e == next || insert[e] || cell[e].track == UINT32_MAX) continue;
 			if (side[e] == side[k] || side[e] == side[next]) continue;
 			const int h = cell[e].heading;
-			const int spacing = cell[e].track == PLANAR_DUMMY_TRACK ? 0 : std::max(PlanarModel::RungSpacing(h, cell[k].heading), PlanarModel::RungSpacing(h, cell[next].heading));
-			rows.push_back({static_cast<uint32_t>(k), static_cast<uint32_t>(e), spacing});
+			int spacing = 0;
+			uint32_t room = UINT32_MAX;
+			if (cell[e].track != PLANAR_DUMMY_TRACK) {
+				if (insert[k] != insert[next]) {
+					/* A step of length 0 imposes no spacing (SPEC-shape section 8.10): the insert's heading counts only through the room row. */
+					const size_t flex = insert[k] ? k : next, other = insert[k] ? next : k;
+					spacing = PlanarModel::RungSpacing(h, cell[other].heading);
+					if (PlanarModel::RungSpacing(h, cell[flex].heading) > spacing) room = static_cast<uint32_t>(flex);
+				} else {
+					spacing = std::max(PlanarModel::RungSpacing(h, cell[k].heading), PlanarModel::RungSpacing(h, cell[next].heading));
+				}
+			}
+			rows.push_back({static_cast<uint32_t>(k), static_cast<uint32_t>(e), spacing, room});
 		}
+	}
+	if (pocket) {
+		/* The pocket rule (SPEC-shape section 8.9). */
+		const std::set<size_t> distinct(side.begin(), side.end());
+		const size_t sides = distinct.size();
+		std::set<std::pair<size_t, size_t>> dropped;
+		const auto all_track = [&](size_t s) {
+			for (size_t i = 0; i < n; i++) {
+				if (side[i] == s && no_track(i)) return false;
+			}
+			return true;
+		};
+		const auto has_wall = [&](size_t k, size_t s) { return side[k] == s || side[(k + 1) % n] == s; };
+		const auto both_walls = [&](size_t k, size_t s) { return side[k] == s && side[(k + 1) % n] == s; };
+		for (const size_t s : distinct) {
+			if (sides < 3) break;
+			/* The side's walls in walk order, from its wall whose predecessor is in another side. */
+			size_t begin = n;
+			for (size_t i = 0; i < n; i++) {
+				if (side[i] == s && side[(i + n - 1) % n] != s) begin = i;
+			}
+			if (begin == n) continue;
+			std::vector<size_t> walls;
+			for (size_t i = begin; side[i % n] == s && walls.size() < n; i++) walls.push_back(i % n);
+			size_t first_insert = n, last_insert = n, first_plain = n;
+			size_t last_position = 0, first_position = 0;
+			for (size_t i = 0; i < walls.size(); i++) {
+				if (insert[walls[i]]) {
+					if (first_insert == n) {
+						first_insert = walls[i];
+						first_position = i;
+					}
+					last_insert = walls[i];
+					last_position = i;
+				} else if (first_plain == n) {
+					first_plain = walls[i];
+				}
+			}
+			if (first_insert == n || first_plain == n) continue;
+			const int h = cell[first_plain].heading;
+			const int m = h % 2 == 0 ? 0 : 2;
+			const size_t last_wall = walls.back(), first_wall = walls.front();
+			const size_t r = side[(last_wall + 1) % n], p = side[(first_wall + n - 1) % n];
+			if (all_track(r)) {
+				for (size_t k = 0; k < n; k++) {
+					if (!has_wall(k, r) || k == last_wall || (no_track(k) && no_track((k + 1) % n))) continue;
+					if (along != nullptr) along->push_back({static_cast<uint32_t>(k), static_cast<uint32_t>(last_insert), h, m});
+					if (both_walls(k, r)) {
+						for (size_t i = 0; i < last_position; i++) dropped.emplace(k, walls[i]);
+					}
+				}
+			}
+			if (all_track(p)) {
+				const size_t corner = (first_wall + n - 1) % n;
+				for (size_t k = 0; k < n; k++) {
+					if (!has_wall(k, p) || k == corner || (no_track(k) && no_track((k + 1) % n))) continue;
+					if (along != nullptr) along->push_back({static_cast<uint32_t>(k), static_cast<uint32_t>((first_insert + n - 1) % n), (h + 4) % 8, m});
+					if (both_walls(k, p)) {
+						for (size_t i = first_position + 1; i < walls.size(); i++) dropped.emplace(k, walls[i]);
+					}
+				}
+			}
+		}
+		std::erase_if(rows, [&](const PlanarClearRow &row) { return dropped.contains({row.vertex, row.wall}); });
 	}
 	return rows;
 }
@@ -90,9 +166,11 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	JunctionMilp milp;
 	std::vector<std::string> tags;
 	uint32_t columns = 0;
+	std::vector<std::string> slack_tag; ///< Elastic: per slack variable its row's tag.
+	std::vector<uint32_t> slack_var; ///< Elastic: the slack variables.
 	const auto var = [&](double lower, double upper, double cost) {
 		columns++;
-		return milp.AddVariable(lower, upper, cost, true);
+		return milp.AddVariable(lower, upper, cost, !options.elastic);
 	};
 	const auto row = [&](Terms terms, double lower, double upper, const std::string &tag) {
 		std::ranges::sort(terms);
@@ -105,6 +183,21 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			}
 		}
 		std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
+		if (options.elastic) {
+			const std::string family = tag.substr(0, tag.find(' '));
+			if (family != "piece" && family != "box") {
+				if (std::isfinite(lower)) {
+					merged.emplace_back(milp.AddVariable(0, JunctionMilp::INF, 1, false), 1.0);
+					slack_tag.push_back(tag);
+					slack_var.push_back(merged.back().first);
+				}
+				if (std::isfinite(upper)) {
+					merged.emplace_back(milp.AddVariable(0, JunctionMilp::INF, 1, false), -1.0);
+					slack_tag.push_back(tag);
+					slack_var.push_back(merged.back().first);
+				}
+			}
+		}
 		milp.AddRow(merged, lower, upper);
 		tags.push_back(tag);
 	};
@@ -145,7 +238,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const bool axis = (pieces[i] % 2) == 0;
 			const double lower = free_piece[i] ? 0 : 1;
-			length[t].push_back({var(lower, COORD_MAX, options.tidy ? 1 : 0), axis ? AXIS_LEAST : 1});
+			length[t].push_back({var(lower, COORD_MAX, options.tidy && !options.elastic ? 1 : 0), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
 			Terms sum;
@@ -171,13 +264,25 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		const int along = along_x ? 0 : 1;
 		bool first = true;
 		uint32_t previous = 0;
+		size_t on_side = 0, positioned = 0;
+		for (const PlanarPort &port : map.expanded.ports) {
+			if (static_cast<uint32_t>(port.side) != side) continue;
+			on_side++;
+			if (!port.at.empty()) positioned++;
+		}
+		if (positioned != 0 && positioned != on_side) return unsupported(fmt::format("port positions on side {} are partial", SIDE_NAME[side]));
+		int previous_at = 0;
 		for (uint32_t p = 0; p < map.expanded.ports.size(); p++) {
 			const PlanarPort &port = map.expanded.ports[p];
 			if (static_cast<uint32_t>(port.side) != side) continue;
 			/* Lines enter in reading order when right of travel points along it, else reversed. */
 			const int right = PlanarModel::STEP[(static_cast<int>(port.heading) + 2) % 8][along];
 			std::vector<uint32_t> lines = port.lines;
-			if (right < 0) std::ranges::reverse(lines);
+			std::vector<int> positions = port.at;
+			if (right < 0) {
+				std::ranges::reverse(lines);
+				std::ranges::reverse(positions);
+			}
 			for (size_t k = 0; k < lines.size(); k++) {
 				const uint32_t line = lines[k];
 				const PlanarEnd &from = map.expanded.lines[line].from;
@@ -195,21 +300,26 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				switch (static_cast<PlanarSide>(side)) {
 					case PlanarSide::N:
 					case PlanarSide::W:
-						eq({{edge_var, 1}}, 0, tag);
+						eq({{edge_var, 1}}, 0, tag + " edge " + map.tracks[line].name);
 						break;
 					case PlanarSide::S:
-						eq({{edge_var, 1}, {height, -1}}, 0, tag);
+						eq({{edge_var, 1}, {height, -1}}, 0, tag + " edge " + map.tracks[line].name);
 						break;
 					case PlanarSide::E:
-						eq({{edge_var, 1}, {width, -1}}, 0, tag);
+						eq({{edge_var, 1}, {width, -1}}, 0, tag + " edge " + map.tracks[line].name);
 						break;
 				}
 				if (!first) {
-					const int gap = k == 0 ? 2 * v.structure.side_gap[side] : 2;
-					eq({{at, 1}, {previous, -1}}, gap, tag);
+					int gap = k == 0 ? 2 * v.structure.side_gap[side] : 2;
+					if (positioned != 0) {
+						gap = 2 * (positions[k] - previous_at);
+						if (gap < 2) return unsupported(fmt::format("port positions out of reading order on side {}", SIDE_NAME[side]));
+					}
+					eq({{at, 1}, {previous, -1}}, gap, tag + " gap " + map.tracks[line].name);
 				}
 				first = false;
 				previous = at;
+				if (positioned != 0) previous_at = positions[k];
 			}
 		}
 	}
@@ -459,18 +569,28 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			if (options.flex_sides && cell[i].track < nt) insert[i] = std::ranges::find(v.tracks[cell[i].track].flex, cell[i].piece) != v.tracks[cell[i].track].flex.end();
 		}
 		const auto walked_forward = [&](const PlanarCellWall &w) { return w.heading == ((v.dummies[w.piece].heading % 8) + 8) % 8; };
-		for (const PlanarClearRow &r : PlanarCellClearRows(cell, insert)) {
-			const size_t k = r.vertex, next = (k + 1) % n, e = r.wall;
-			std::array<uint32_t, 2> vertex;
+		/* A vertex's point: the end of its wall, else the start of the next; false when it has none. */
+		const auto vertex_point = [&](size_t k, std::array<uint32_t, 2> &vertex) {
 			if (part[k].valid) {
 				vertex = part[k].b;
-			} else if (part[next].valid) {
-				vertex = part[next].a;
+			} else if (part[(k + 1) % n].valid) {
+				vertex = part[(k + 1) % n].a;
 			} else {
-				continue;
+				return false;
 			}
-			/* A vertex inside a span piece (a dummy's landing on it, or between two parts of it) has no clearance against ground track. */
-			if ((is_span(cell[k]) && is_span(cell[next])) || (lands_on_span(cell[k]) && walked_forward(cell[k]) && is_span(cell[next])) || (is_span(cell[k]) && lands_on_span(cell[next]) && !walked_forward(cell[next]))) continue;
+			return true;
+		};
+		/* A vertex inside a span piece (a dummy's landing on it, or between two parts of it) has no clearance against ground track. */
+		const auto inside_span = [&](size_t k) {
+			const size_t next = (k + 1) % n;
+			return (is_span(cell[k]) && is_span(cell[next])) || (lands_on_span(cell[k]) && walked_forward(cell[k]) && is_span(cell[next])) || (is_span(cell[k]) && lands_on_span(cell[next]) && !walked_forward(cell[next]));
+		};
+		std::vector<PlanarAlongRow> along;
+		for (const PlanarClearRow &r : PlanarCellClearRows(cell, insert, options.pocket && options.flex_sides, &along)) {
+			const size_t k = r.vertex, e = r.wall;
+			std::array<uint32_t, 2> vertex;
+			if (!vertex_point(k, vertex)) continue;
+			if (inside_span(k)) continue;
 			if (!part[e].valid || is_span(cell[e])) continue;
 			if (!options.flex_sides && cell[e].track == PLANAR_DUMMY_TRACK) continue;
 			if (find(vertex[0]) == find(part[e].a[0]) || find(vertex[0]) == find(part[e].b[0])) continue;
@@ -481,7 +601,28 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				terms.emplace_back(vertex[axis], normal[axis]);
 				terms.emplace_back(part[e].a[axis], -normal[axis]);
 			}
+			Terms room_terms;
+			if (r.room != UINT32_MAX) {
+				/* The room row: M * (d - spacing) - length >= 0, so the insert has length only when the vertex keeps more than its base spacing. */
+				room_terms = terms;
+				for (auto &term : room_terms) term.second *= COORD_MAX;
+				const PlanarCellWall &flex = cell[r.room];
+				const Length &len = length[flex.track][flex.piece];
+				room_terms.emplace_back(len.variable, -len.coefficient);
+			}
 			row(std::move(terms), r.spacing, JunctionMilp::INF, fmt::format("clear {} {} {}", c, k, e));
+			if (r.room != UINT32_MAX) row(std::move(room_terms), COORD_MAX * r.spacing, JunctionMilp::INF, fmt::format("room {} {} {}", c, k, e));
+		}
+		for (const PlanarAlongRow &r : along) {
+			std::array<uint32_t, 2> vertex, anchor;
+			if (!vertex_point(r.vertex, vertex) || !vertex_point(r.anchor, anchor) || inside_span(r.vertex)) continue;
+			const std::array<int, 2> step = PlanarModel::STEP[r.heading];
+			Terms terms;
+			for (int axis = 0; axis < 2; axis++) {
+				terms.emplace_back(vertex[axis], step[axis]);
+				terms.emplace_back(anchor[axis], -step[axis]);
+			}
+			row(std::move(terms), r.spacing, JunctionMilp::INF, fmt::format("along {} {} {}", c, r.vertex, r.anchor));
 		}
 		return true;
 	};
@@ -581,6 +722,18 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	if (status == JunctionMilp::Status::Optimal) {
 		result.feasible = true;
 		result.status = "Optimal";
+		if (options.elastic) {
+			std::map<std::string, double> per_tag;
+			for (size_t i = 0; i < slack_var.size(); i++) {
+				const double value = milp.Value(slack_var[i]);
+				result.slack += value;
+				per_tag[slack_tag[i]] += value;
+			}
+			for (const auto &[tag, amount] : per_tag) {
+				if (amount > 1e-6) result.stretched.emplace_back(tag, amount);
+			}
+			std::ranges::sort(result.stretched, [](const auto &a, const auto &b) { return a.second != b.second ? a.second > b.second : a.first < b.first; });
+		}
 		result.points.resize(nt);
 		for (size_t t = 0; t < nt; t++) {
 			for (const std::array<uint32_t, 2> &p : point[t]) result.points[t].push_back({static_cast<int>(std::lround(milp.Value(p[0]))), static_cast<int>(std::lround(milp.Value(p[1])))});
