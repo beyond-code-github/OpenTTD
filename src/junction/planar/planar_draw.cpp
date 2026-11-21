@@ -817,6 +817,54 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					} else {
 						axes.push_back({PlanarModel::STEP[w[i].heading % 8], 2});
 					}
+					int forced_axis = -1, forced_side = 0;
+					if (options.sides_by_walk) {
+						const auto monotone = [&](size_t from, size_t to, const std::array<int, 2> &normal) {
+							for (size_t k = (from + 1) % n;; k = (k + 1) % n) {
+								const std::array<int, 2> step = PlanarModel::STEP[w[k].heading % 8];
+								if (step[0] * normal[0] + step[1] * normal[1] < 0) return false;
+								if (k == to) return true;
+							}
+						};
+						/* D417: the guaranteed projection of the walls strictly between, each at its least length, onto the normal. */
+						const auto guaranteed = [&](size_t from, size_t to, const std::array<int, 2> &normal) {
+							int sum = 0;
+							for (size_t k = (from + 1) % n; k != to; k = (k + 1) % n) {
+								if (w[k].track >= nt || w[k].piece >= may_zero[w[k].track].size() || may_zero[w[k].track][w[k].piece]) continue;
+								const std::array<int, 2> step = PlanarModel::STEP[w[k].heading % 8];
+								sum += static_cast<int>(length[w[k].track][w[k].piece].coefficient) * (step[0] * normal[0] + step[1] * normal[1]);
+							}
+							return sum;
+						};
+						const std::array<int, 2> nj = PlanarModel::STEP[(w[j].heading + 6) % 8];
+						if (monotone(i, j, axes[0].s) && (!options.walk_strict || guaranteed(i, j, axes[0].s) >= axes[0].spacing)) {
+							forced_axis = 0;
+							forced_side = 0;
+						} else if (w[i].heading % 4 != w[j].heading % 4) {
+							if (monotone(j, i, nj) && (!options.walk_strict || guaranteed(j, i, nj) >= axes[1].spacing)) {
+								forced_axis = 1;
+								forced_side = 1;
+							}
+						} else if (monotone(j, i, nj) && (!options.walk_strict || guaranteed(j, i, nj) >= axes[0].spacing)) {
+							forced_axis = 0;
+							forced_side = w[i].heading % 8 == w[j].heading % 8 ? 1 : 0;
+						}
+					}
+					if (options.sides_from == nullptr && forced_axis >= 0) {
+						result.walk_fixed++;
+						const Axis &axis = axes[forced_axis];
+						for (const auto &pp : forced_side == 0 ? pi : pj) {
+							for (const auto &q : forced_side == 0 ? pj : pi) {
+								Terms t;
+								for (int d = 0; d < 2; d++) {
+									t.emplace_back(q[d], axis.s[d]);
+									t.emplace_back(pp[d], -axis.s[d]);
+								}
+								row(std::move(t), axis.spacing, JunctionMilp::INF, fmt::format("sep {} {} {}", f.face, i, j));
+							}
+						}
+						continue;
+					}
 					if (options.sides_from != nullptr) {
 						const auto ref = [&](uint32_t track, uint32_t k) { return (*options.sides_from)[track][k]; };
 						const std::array<std::array<uint32_t, 2>, 2> *best_from = nullptr, *best_to = nullptr;
@@ -825,31 +873,6 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						const std::array<std::array<uint32_t, 2>, 2> *const ends[2] = {&pi, &pj};
 						const std::array<uint32_t, 2> tracks = {w[i].track, w[j].track};
 						const std::array<uint32_t, 2> pieces = {w[i].piece, w[j].piece};
-						int forced_axis = -1, forced_side = 0;
-						if (options.sides_by_walk) {
-							const auto monotone = [&](size_t from, size_t to, const std::array<int, 2> &normal) {
-								for (size_t k = (from + 1) % n;; k = (k + 1) % n) {
-									const std::array<int, 2> step = PlanarModel::STEP[w[k].heading % 8];
-									if (step[0] * normal[0] + step[1] * normal[1] < 0) return false;
-									if (k == to) return true;
-								}
-							};
-							if (monotone(i, j, axes[0].s)) {
-								forced_axis = 0;
-								forced_side = 0;
-							} else {
-								const std::array<int, 2> nj = PlanarModel::STEP[(w[j].heading + 6) % 8];
-								if (monotone(j, i, nj)) {
-									if (w[i].heading % 4 != w[j].heading % 4) {
-										forced_axis = 1;
-										forced_side = 1;
-									} else {
-										forced_axis = 0;
-										forced_side = w[i].heading % 8 == w[j].heading % 8 ? 1 : 0;
-									}
-								}
-							}
-						}
 						int forced_margin = 0;
 						bool have_forced = false;
 						const std::array<std::array<uint32_t, 2>, 2> *forced_from = nullptr, *forced_to = nullptr;

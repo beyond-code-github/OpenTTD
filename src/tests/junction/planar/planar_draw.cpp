@@ -1663,6 +1663,24 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 			for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
 		}
 	}
+	/* The same, the walk rule fixes a pair only when its guaranteed projection keeps the spacing (D417). */
+	{
+		const std::string label = "sepV walk strict W1";
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .elastic = true, .elastic_families = {"sep", "clear", "deck", "end", "node", "cross"}, .pins = &p8, .sides_from = &full.points, .sides_by_walk = true, .walk_strict = true, .fix_points = &vref, .fix_window = 1});
+		WARN(fmt::format("{}: status {}, total slack {:.3f}, pairs {}, walk_fixed {}, walk_short {}, walk_differs {}", label, r.status, r.slack, r.pairs, r.walk_fixed, r.walk_short, r.walk_differs));
+		if (r.status == "Optimal") {
+			std::map<std::string, std::pair<size_t, double>> families;
+			for (const auto &[tag, slack] : r.stretched) {
+				auto &f = families[tag.substr(0, tag.find(' '))];
+				f.first++;
+				f.second += slack;
+			}
+			for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: rows {}, slack {:.3f}", label, family, f.first, f.second));
+			WarnSepWalls(shaped, r, label, 20);
+		} else {
+			for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
+		}
+	}
 	PlanarShapeVariant geo = shaped;
 	const std::vector<PlanarShapeDummy> rule_dummies = shaped.dummies;
 	std::string why;
@@ -2027,22 +2045,17 @@ TEST_CASE("planar draw: PSG 197 option A pairwise integer", "[.][planarkeepapart
 	PlanarDrawPins pins;
 	if (!LoadPinned197(shaped, pins, true)) return;
 	if (!BuildOptionA(shaped)) return;
-	const auto start = std::chrono::steady_clock::now();
 	for (const int window : {8, 4}) {
-		if (std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() > 600.0) {
-			WARN("total cap 600 s passed; stopped");
-			break;
+		for (const double seconds : {15.0, 60.0}) {
+			PlanarDrawPins pW = pins;
+			pW.window = window;
+			const PlanarDrawResult r = CheckPlanarDrawable(shaped, seconds, {.clearance = true, .clear_rows = true, .pairwise = true, .sides_by_walk = true, .walk_strict = true, .pins = &pW});
+			WARN(fmt::format("A pairwise integer strict W{} limit {:.0f} s: status {}, ms {:.0f}, pairs {}, walk_fixed {}, binaries {}", window, seconds, r.status, r.ms, r.pairs, r.walk_fixed, r.binaries));
+			if (r.status == "Infeasible") {
+				std::string tags;
+				for (size_t i = 0; i < r.conflict.size() && i < 30; i++) tags += " " + r.conflict[i];
+				WARN(fmt::format("A pairwise integer strict W{} limit {:.0f} s conflict:{}", window, seconds, tags));
+			}
 		}
-		PlanarDrawPins pw = pins;
-		pw.window = window;
-		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 120.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pins = &pw});
-		WARN(fmt::format("A pairwise integer W{} tidy: status {}, ms {:.0f}, pairs {}, binaries {}", window, r.status, r.ms, r.pairs, r.binaries));
-		if (r.status == "Infeasible") {
-			std::string tags;
-			for (size_t i = 0; i < r.conflict.size() && i < 30; i++) tags += " " + r.conflict[i];
-			WARN(fmt::format("A pairwise integer W{} conflict:{}", window, tags));
-		}
-		const PlanarDrawResult f = CheckPlanarDrawable(shaped, 120.0, {.clearance = true, .clear_rows = true, .pairwise = true, .tidy = false, .pins = &pw});
-		WARN(fmt::format("A pairwise integer W{} feasibility: status {}, ms {:.0f}", window, f.status, f.ms));
 	}
 }
