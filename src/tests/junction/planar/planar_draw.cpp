@@ -1514,103 +1514,129 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 
 	PlanarDrawPins p8 = pins;
 	p8.window = 8;
-	const std::vector<std::vector<PlanarCellWall>> cells = PlanarShapeCellWalls(shaped);
-	const auto is_insert = [&](const PlanarCellWall &w) {
-		if (w.track >= shaped.tracks.size()) return false;
-		const PlanarShapeTrack &t = shaped.tracks[w.track];
-		return std::ranges::find(t.flex, w.piece) != t.flex.end() || std::ranges::find(t.steps, w.piece) != t.steps.end();
+	const auto evaluate = [&](const PlanarShapeVariant &sv, const std::string &name) {
+		const std::vector<std::vector<PlanarCellWall>> cells = PlanarShapeCellWalls(sv);
+		const auto is_insert = [&](const PlanarCellWall &w) {
+			if (w.track >= sv.tracks.size()) return false;
+			const PlanarShapeTrack &t = sv.tracks[w.track];
+			return std::ranges::find(t.flex, w.piece) != t.flex.end() || std::ranges::find(t.steps, w.piece) != t.steps.end();
+		};
+		const auto wall_text = [&](const PlanarCellWall &w) {
+			if (w.track == PLANAR_DUMMY_TRACK) return fmt::format("dummy p{} h{}", w.piece, w.heading);
+			if (w.track >= map.tracks.size()) return fmt::format("edge p{} h{}", w.piece, w.heading);
+			return fmt::format("{} p{} h{}{}", map.tracks[w.track].name, w.piece, w.heading, is_insert(w) ? " ins" : "");
+		};
+		for (const int window : {1, 0}) {
+			const std::string label = fmt::format("{} W{}", name, window);
+			const PlanarDrawResult r = CheckPlanarDrawable(sv, 60.0, {.elastic = true, .elastic_families = {"clear", "land", "room", "deck", "end", "node", "cross"}, .pins = &p8, .fix_points = &vref, .fix_window = window});
+			WARN(fmt::format("{}: status {}, total slack {:.3f}, stretched rows {}", label, r.status, r.slack, r.stretched.size()));
+			if (r.status != "Optimal") {
+				for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
+				continue;
+			}
+			std::map<std::string, std::pair<size_t, double>> families;
+			for (const auto &[tag, slack] : r.stretched) {
+				auto &f = families[tag.substr(0, tag.find(' '))];
+				f.first++;
+				f.second += slack;
+			}
+			for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: rows {}, slack {:.3f}", label, family, f.first, f.second));
+			if (window != 1) continue;
+			for (const auto &[tag, slack] : r.stretched) {
+				uint32_t n = UINT32_MAX;
+				if (tag.starts_with("cross ")) {
+					std::from_chars(tag.data() + 6, tag.data() + tag.size(), n);
+					if (n < map.crossings.size()) WARN(fmt::format("{} stretched {} {:.3f}: crossing {} x {}", label, tag, slack, map.tracks[map.crossings[n].a].name, map.tracks[map.crossings[n].b].name));
+				} else if (tag.starts_with("deck ") || tag.starts_with("end ")) {
+					std::from_chars(tag.data() + tag.find(' ') + 1, tag.data() + tag.size(), n);
+					if (n < sv.structure.structures.size()) {
+						const PlanarStructure &st = sv.structure.structures[n];
+						std::string crossings;
+						for (const uint32_t c : st.crossings) crossings += fmt::format(" [{} x {}]", map.tracks[map.crossings[c].a].name, map.tracks[map.crossings[c].b].name);
+						WARN(fmt::format("{} stretched {} {:.3f}: structure separator {}, crossings{}", label, tag, slack, map.tracks[st.separator].name, crossings));
+					}
+				} else if (tag.starts_with("node ")) {
+					std::from_chars(tag.data() + 5, tag.data() + tag.size(), n);
+					if (n < map.expanded.nodes.size()) {
+						std::string lines;
+						for (const uint32_t line : map.expanded.nodes[n].in) lines += " in " + map.tracks[line].name;
+						for (const uint32_t line : map.expanded.nodes[n].out) lines += " out " + map.tracks[line].name;
+						WARN(fmt::format("{} stretched {} {:.3f}: node{}", label, tag, slack, lines));
+					}
+				}
+			}
+			if (window != 1) continue;
+			std::map<std::string, std::pair<size_t, double>> groups;
+			double land = 0, room = 0;
+			size_t lands = 0, rooms = 0, unmapped = 0;
+			std::vector<std::pair<double, std::string>> worst;
+			for (const auto &[tag, slack] : r.stretched) {
+				if (tag.starts_with("land ")) {
+					lands++;
+					land += slack;
+					continue;
+				}
+				if (tag.starts_with("room ")) {
+					rooms++;
+					room += slack;
+					continue;
+				}
+				if (!tag.starts_with("clear ")) continue;
+				unsigned idx[3] = {0, 0, 0};
+				bool parsed = true;
+				const char *p = tag.data() + 6, *end = tag.data() + tag.size();
+				for (int i = 0; i < 3 && parsed; i++) {
+					const auto res = std::from_chars(p, end, idx[i]);
+					parsed = res.ec == std::errc();
+					p = res.ptr;
+					if (i < 2 && p < end && *p == ' ') p++;
+				}
+				const unsigned c = idx[0], k = idx[1], e = idx[2];
+				if (!parsed || c >= cells.size() || k >= cells[c].size() || e >= cells[c].size()) {
+					unmapped++;
+					continue;
+				}
+				const auto &cell = cells[c];
+				const size_t n = cell.size();
+				const PlanarCellWall &in = cell[k], &out = cell[(k + 1) % n], &target = cell[e];
+				const bool dummy = std::ranges::any_of(cell, [](const PlanarCellWall &w) { return w.track == PLANAR_DUMMY_TRACK; });
+				auto &g = groups[fmt::format("target h{} in h{} out h{} insert-vertex {} dummy-cell {}", target.heading % 8, in.heading % 8, out.heading % 8, is_insert(in) || is_insert(out) ? "Y" : "N", dummy ? "Y" : "N")];
+				g.first++;
+				g.second += slack;
+				worst.emplace_back(slack, fmt::format("{} slack {:.3f}: in [{}] out [{}] target [{}]", tag, slack, wall_text(in), wall_text(out), wall_text(target)));
+			}
+			WARN(fmt::format("{} land rows {} sum {:.3f}, room rows {} sum {:.3f}, clear rows {}, unmapped clear tags {}", label, lands, land, rooms, room, worst.size(), unmapped));
+			std::vector<std::pair<std::string, std::pair<size_t, double>>> ordered(groups.begin(), groups.end());
+			std::ranges::sort(ordered, [](const auto &x, const auto &y) { return x.second.second > y.second.second; });
+			for (size_t i = 0; i < ordered.size() && i < 30; i++) WARN(fmt::format("{} group {}: count {}, sum {:.3f}", label, ordered[i].first, ordered[i].second.first, ordered[i].second.second));
+			std::ranges::sort(worst, [](const auto &x, const auto &y) { return x.first > y.first; });
+			for (size_t i = 0; i < worst.size() && i < 25; i++) WARN(fmt::format("{} worst {}: {}", label, i + 1, worst[i].second));
+		}
 	};
-	const auto wall_text = [&](const PlanarCellWall &w) {
-		if (w.track == PLANAR_DUMMY_TRACK) return fmt::format("dummy p{} h{}", w.piece, w.heading);
-		if (w.track >= map.tracks.size()) return fmt::format("edge p{} h{}", w.piece, w.heading);
-		return fmt::format("{} p{} h{}{}", map.tracks[w.track].name, w.piece, w.heading, is_insert(w) ? " ins" : "");
-	};
-	for (const int window : {1, 0}) {
-		const std::string label = fmt::format("A real W{}", window);
-		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .elastic_families = {"clear", "land", "room", "deck", "end", "node", "cross"}, .pins = &p8, .fix_points = &vref, .fix_window = window});
-		WARN(fmt::format("{}: status {}, total slack {:.3f}, stretched rows {}", label, r.status, r.slack, r.stretched.size()));
-		if (r.status != "Optimal") {
-			for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
+	evaluate(shaped, "A real");
+
+	/* Geo: the cells refined again with landings that agree with V's geometry (a base-rows drawing with V's points held where fixed). */
+	const PlanarDrawResult full = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &p8, .fix_points = &vref, .fix_window = 1});
+	WARN(fmt::format("geo reference: status {}, total slack {:.3f}", full.status, full.slack));
+	PlanarShapeVariant geo = shaped;
+	const std::vector<PlanarShapeDummy> rule_dummies = shaped.dummies;
+	std::string why;
+	if (!RefinePlanarShapeCells(geo, why, &full.points)) {
+		WARN(fmt::format("geo refinement failed: {}", why));
+		return;
+	}
+	size_t differ = 0;
+	for (size_t i = 0; i < geo.dummies.size(); i++) {
+		if (i >= rule_dummies.size()) {
+			differ++;
 			continue;
 		}
-		std::map<std::string, std::pair<size_t, double>> families;
-		for (const auto &[tag, slack] : r.stretched) {
-			auto &f = families[tag.substr(0, tag.find(' '))];
-			f.first++;
-			f.second += slack;
-		}
-		for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: rows {}, slack {:.3f}", label, family, f.first, f.second));
-		if (window != 1) continue;
-		for (const auto &[tag, slack] : r.stretched) {
-			uint32_t n = UINT32_MAX;
-			if (tag.starts_with("cross ")) {
-				std::from_chars(tag.data() + 6, tag.data() + tag.size(), n);
-				if (n < map.crossings.size()) WARN(fmt::format("{} stretched {} {:.3f}: crossing {} x {}", label, tag, slack, map.tracks[map.crossings[n].a].name, map.tracks[map.crossings[n].b].name));
-			} else if (tag.starts_with("deck ") || tag.starts_with("end ")) {
-				std::from_chars(tag.data() + tag.find(' ') + 1, tag.data() + tag.size(), n);
-				if (n < shaped.structure.structures.size()) {
-					const PlanarStructure &st = shaped.structure.structures[n];
-					std::string crossings;
-					for (const uint32_t c : st.crossings) crossings += fmt::format(" [{} x {}]", map.tracks[map.crossings[c].a].name, map.tracks[map.crossings[c].b].name);
-					WARN(fmt::format("{} stretched {} {:.3f}: structure separator {}, crossings{}", label, tag, slack, map.tracks[st.separator].name, crossings));
-				}
-			} else if (tag.starts_with("node ")) {
-				std::from_chars(tag.data() + 5, tag.data() + tag.size(), n);
-				if (n < map.expanded.nodes.size()) {
-					std::string lines;
-					for (const uint32_t line : map.expanded.nodes[n].in) lines += " in " + map.tracks[line].name;
-					for (const uint32_t line : map.expanded.nodes[n].out) lines += " out " + map.tracks[line].name;
-					WARN(fmt::format("{} stretched {} {:.3f}: node{}", label, tag, slack, lines));
-				}
-			}
-		}
-		if (window != 1) continue;
-		std::map<std::string, std::pair<size_t, double>> groups;
-		double land = 0, room = 0;
-		size_t lands = 0, rooms = 0, unmapped = 0;
-		std::vector<std::pair<double, std::string>> worst;
-		for (const auto &[tag, slack] : r.stretched) {
-			if (tag.starts_with("land ")) {
-				lands++;
-				land += slack;
-				continue;
-			}
-			if (tag.starts_with("room ")) {
-				rooms++;
-				room += slack;
-				continue;
-			}
-			if (!tag.starts_with("clear ")) continue;
-			unsigned idx[3] = {0, 0, 0};
-			bool parsed = true;
-			const char *p = tag.data() + 6, *end = tag.data() + tag.size();
-			for (int i = 0; i < 3 && parsed; i++) {
-				const auto res = std::from_chars(p, end, idx[i]);
-				parsed = res.ec == std::errc();
-				p = res.ptr;
-				if (i < 2 && p < end && *p == ' ') p++;
-			}
-			const unsigned c = idx[0], k = idx[1], e = idx[2];
-			if (!parsed || c >= cells.size() || k >= cells[c].size() || e >= cells[c].size()) {
-				unmapped++;
-				continue;
-			}
-			const auto &cell = cells[c];
-			const size_t n = cell.size();
-			const PlanarCellWall &in = cell[k], &out = cell[(k + 1) % n], &target = cell[e];
-			const bool dummy = std::ranges::any_of(cell, [](const PlanarCellWall &w) { return w.track == PLANAR_DUMMY_TRACK; });
-			auto &g = groups[fmt::format("target h{} in h{} out h{} insert-vertex {} dummy-cell {}", target.heading % 8, in.heading % 8, out.heading % 8, is_insert(in) || is_insert(out) ? "Y" : "N", dummy ? "Y" : "N")];
-			g.first++;
-			g.second += slack;
-			worst.emplace_back(slack, fmt::format("{} slack {:.3f}: in [{}] out [{}] target [{}]", tag, slack, wall_text(in), wall_text(out), wall_text(target)));
-		}
-		WARN(fmt::format("{} land rows {} sum {:.3f}, room rows {} sum {:.3f}, clear rows {}, unmapped clear tags {}", label, lands, land, rooms, room, worst.size(), unmapped));
-		std::vector<std::pair<std::string, std::pair<size_t, double>>> ordered(groups.begin(), groups.end());
-		std::ranges::sort(ordered, [](const auto &x, const auto &y) { return x.second.second > y.second.second; });
-		for (size_t i = 0; i < ordered.size() && i < 30; i++) WARN(fmt::format("{} group {}: count {}, sum {:.3f}", label, ordered[i].first, ordered[i].second.first, ordered[i].second.second));
-		std::ranges::sort(worst, [](const auto &x, const auto &y) { return x.first > y.first; });
-		for (size_t i = 0; i < worst.size() && i < 25; i++) WARN(fmt::format("{} worst {}: {}", label, i + 1, worst[i].second));
+		const PlanarShapeDummy &x = geo.dummies[i], &y = rule_dummies[i];
+		if (x.face != y.face || x.track != y.track || x.piece != y.piece || x.heading != y.heading || x.land_track != y.land_track || x.land_piece != y.land_piece) differ++;
 	}
+	if (rule_dummies.size() != geo.dummies.size()) differ += rule_dummies.size() > geo.dummies.size() ? rule_dummies.size() - geo.dummies.size() : 0;
+	WARN(fmt::format("geo refinement: dummies {} (rule {}), nonmonotone {}, landing fallbacks {}, differing from the rule's {}", geo.dummies.size(), rule_dummies.size(), geo.nonmonotone_dummies, geo.landing_fallbacks, differ));
+	evaluate(geo, "geo");
 }
 
 TEST_CASE("planar draw: PSG 197 elastic, whole", "[.][planarkeepapart]")
