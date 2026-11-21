@@ -95,3 +95,17 @@ Drawing expert rail hubs: a layered octilinear layout model checked against expe
   - Elastic drawings need a length tie-break, or unpinned points drift (3f9ca7a809).
   - With optional flex (flex C: 28.5k pairs) the LP rounds reach slack 0 in 2 rounds. The final must take the directions the last round proved (that round's input drawing), not re-read them from its rounded, tidy-packed output: re-read, even the all-continuous final is Infeasible (an artefact, earlier read as integrality). With the proved directions: LP 6.4 s, integer points with continuous axis lengths 40 s, fully integer (whole-tile axis pieces) no incumbent in 60 s. So on optional flex the integer step is slow, not infeasible (`PLANAR_PROBE_FINAL_SIDES`, `PLANAR_PROBE_CONTINUOUS`, 38fa75019a).
 - **Contrast:** offline CP-SAT (ortools 9.15, native disjunctions or big-M, 2 workers, 60 s) finds no solution on the same program, including the case (1) draws in seconds; HiGHS with 6140 direction binaries finds none in 120 s. Directions read from geometry beat generic MIP/CP on this problem.
+
+### C9. Optional steps decided by discover, commit and prune give a curve-legal whole expert hub (method, D422 probe)
+- **Claim:** optional sideways steps make curve spacing conditional, which no LP can express (Gemini; metro-map MIPs and VLSI jog insertion use binaries). Deciding step use inside the lengths layer instead keeps every program binary-free:
+  - discovery LP rounds with iteratively reweighted L1 insert prices and a box price;
+  - commit the used inserts (curve rows on their bends, the rest held at 0);
+  - re-pick keep-apart directions;
+  - at most one prune.
+  With these, PSG 197 draws with keep-apart, bays and curve spacing on every bend, and the whole-tile integer final solves in 17 s. Without IRL1 and the box price, no integer drawing was found in 60 s.
+- **Evidence:** card CARD-E5-flexstep, last bullets (5578e8c9bd); probe "planar draw: PSG 197 option (1), directions from earlier drawings" with PLANAR_PROBE_RATCHET, PLANAR_PROBE_IRL1=0.1, PLANAR_PROBE_BOX=0.01.
+- **Caveats:**
+  - 10 steps and a 121x188 box against the expert's ~50 steps and 101x124: the trade between steps and length is set by the prices.
+  - Bays are in, but coverage, node legs and the full corridor family (copies with decks) are not yet on 197.
+  - 17 s is over the 15 s solve gate.
+  - Unpriced discovery commits 173 jogs and grows 2.4x.
