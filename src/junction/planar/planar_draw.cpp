@@ -764,7 +764,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			for (size_t k = 0; k < n; k++) {
 				if (norm(w[(k + 1) % n].heading - w[k].heading) > 0) convex = false;
 			}
-			if (convex) {
+			if (convex && !options.pairwise_all_faces) {
 				if (!clear_walls(w, f.face)) return unsupported(fmt::format("cell {} names a wall the variant lacks", f.face));
 				continue;
 			}
