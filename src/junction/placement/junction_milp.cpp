@@ -77,6 +77,19 @@ struct JunctionMilp::Impl {
 		const char *gap = std::getenv("JUNCTION_MILP_GAP");
 		if (highs.setOptionValue("mip_rel_gap", gap != nullptr ? std::atof(gap) : 0.0) != HighsStatus::kOk) return false;
 		if (std::getenv("JUNCTION_MILP_LOG") != nullptr && highs.setOptionValue("output_flag", true) != HighsStatus::kOk) return false;
+		/* Probe knob (unset: unchanged): JUNCTION_MILP_OPTS sets HiGHS options, "name=value,name=value" (bool true/false, int, double or string, as HiGHS parses them). */
+		if (const char *opts = std::getenv("JUNCTION_MILP_OPTS"); opts != nullptr) {
+			std::string all(opts);
+			size_t start = 0;
+			while (start < all.size()) {
+				const size_t comma = all.find(',', start);
+				const std::string item = all.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+				const size_t eq = item.find('=');
+				if (eq != std::string::npos && highs.setOptionValue(item.substr(0, eq), item.substr(eq + 1)) != HighsStatus::kOk) return false;
+				if (comma == std::string::npos) break;
+				start = comma + 1;
+			}
+		}
 		/* Probe knob (unset: unchanged): JUNCTION_MILP_HEUR sets mip_heuristic_effort. */
 		if (const char *heur = std::getenv("JUNCTION_MILP_HEUR"); heur != nullptr && highs.setOptionValue("mip_heuristic_effort", std::atof(heur)) != HighsStatus::kOk) return false;
 		if (highs.setOptionValue("random_seed", 0) != HighsStatus::kOk) return false;
