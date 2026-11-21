@@ -1618,6 +1618,33 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 	/* Geo: the cells refined again with landings that agree with V's geometry (a base-rows drawing with V's points held where fixed). */
 	const PlanarDrawResult full = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &p8, .fix_points = &vref, .fix_window = 1});
 	WARN(fmt::format("geo reference: status {}, total slack {:.3f}", full.status, full.slack));
+
+	/* Pairwise separation rows on V's geometry, each pair's side taken from the base-rows reference. */
+	for (const int window : {1, 0}) {
+		const std::string label = fmt::format("sepV W{}", window);
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .elastic = true, .elastic_families = {"sep", "clear", "deck", "end", "node", "cross"}, .pins = &p8, .sides_from = &full.points, .fix_points = &vref, .fix_window = window});
+		WARN(fmt::format("{}: status {}, total slack {:.3f}, pairs {}, short_sides {}", label, r.status, r.slack, r.pairs, r.short_sides));
+		if (r.status != "Optimal") {
+			for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
+			continue;
+		}
+		std::map<std::string, std::pair<size_t, double>> families;
+		for (const auto &[tag, slack] : r.stretched) {
+			auto &f = families[tag.substr(0, tag.find(' '))];
+			f.first++;
+			f.second += slack;
+		}
+		for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: rows {}, slack {:.3f}", label, family, f.first, f.second));
+		if (window != 1) continue;
+		WarnSepWalls(shaped, r, label, 40);
+		WarnSepGroups(shaped, r, label);
+		size_t shown = 0;
+		for (const auto &[tag, slack] : r.stretched) {
+			if (!tag.starts_with("clear ") || shown >= 15) continue;
+			shown++;
+			WARN(fmt::format("{} clear {}: {} {:.3f}", label, shown, tag, slack));
+		}
+	}
 	PlanarShapeVariant geo = shaped;
 	const std::vector<PlanarShapeDummy> rule_dummies = shaped.dummies;
 	std::string why;
