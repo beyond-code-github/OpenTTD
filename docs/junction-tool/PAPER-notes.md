@@ -86,3 +86,12 @@ Drawing expert rail hubs: a layered octilinear layout model checked against expe
 - **Evidence:** 6d6de658d9, ea261847a4, c3f316f1d0 (probe "planar draw: PSG 197 clearance rows evaluated on V's drawing"); vref built from tools/junction/corpus/out/psg197/lengths.txt.
 - **Further (9781bccf5d, pairwise integer probe):** a monotone face-walk rule fixes 616 of 1449 pair directions but 66 are short of spacing in the expert's drawing (it fixes the half-plane, not the spacing); letting the MIP choose all directions (5796 binaries) does not solve in 120 s. So the direction choice is the remaining hard core.
 - **Method note:** an elastic drawing is not a stand-in for the expert's geometry (no objective between pins): only the save's piece lengths are (CORRECTION 045429a251).
+
+### C8. Directions from earlier drawings give a whole expert hub in seconds (method, D418)
+- **Claim:** pairwise keep-apart with each pair's direction re-picked from the previous drawing (an LP per round, slack only on separation rows, a small length tie-break), then one integer solve with directions fixed, draws the whole PSG 197 (1535 pairs) in 2 rounds plus 6.4 s, all in HiGHS (MIT), where the same program with direction binaries (6140) does not solve in 120 s.
+- **Evidence:** cdca61376f (probe "planar draw: PSG 197 option (1), directions from earlier drawings"), variant A (the expert's steps as bends), no pins.
+- **Caveats:**
+  - The seed must be separated: a tidy drawing with no keep-apart gives noise (246422c311).
+  - Elastic drawings need a length tie-break, or unpinned points drift (3f9ca7a809).
+  - With optional flex (D402) the rounds plateau at slack 8: open.
+- **Contrast for the paper:** an offline CP-SAT run with native disjunctions (pending).
