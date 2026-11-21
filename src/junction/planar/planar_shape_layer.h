@@ -151,9 +151,10 @@ std::vector<PlanarFaceWalls> PlanarShapeFaceWalls(const PlanarShapeVariant &v);
  * Its dummies are not touched: refine after.
  * @param v The shaped variant; every track's flex is replaced.
  * @param why Receives "no flex: ..." on an internal inconsistency.
+ * @param end_pieces A probe of D413's option C, default off: a free stretch of two or more pieces also gets the pairs, on its first and its last piece only.
  * @return False only on an internal inconsistency; the rule has no failure.
  */
-bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why);
+bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why, bool end_pieces = false);
 
 /**
  * Shape one Structure variant: the heading program of SPEC-shape §2 and §2.1 (every rule of SPEC-shape §2.1).

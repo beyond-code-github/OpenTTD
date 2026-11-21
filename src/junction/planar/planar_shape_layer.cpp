@@ -969,7 +969,7 @@ static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t 
 	return true;
 }
 
-bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why)
+bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why, bool end_pieces)
 {
 	const PlanarTrackMap &map = v.structure.map;
 	if (v.tracks.size() != map.tracks.size()) {
@@ -989,36 +989,40 @@ bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why)
 			/* One piece: the stretch's first and last pieces are the same piece. */
 			const size_t first_piece = k == 0 ? 0 : track.event_piece[k - 1];
 			const size_t last_piece = k == events ? track.pieces.size() - 1 : track.event_piece[k];
-			if (first_piece != last_piece || !FreeOnePieceStretch(v, t, k)) continue;
-			const uint32_t p = static_cast<uint32_t>(last_piece);
-			const int h = track.pieces[p];
-			/* The route cone: the cumulative turning at piece p plus the side, on every path through the track. */
-			bool allowed[2] = {true, true};
-			for (const PlanarRoute &route : map.expanded.routes) {
-				for (const std::vector<uint32_t> &path : route.paths) {
-					int cumulative = 0;
-					for (size_t n = 0; n < path.size(); n++) {
-						const std::vector<int> &pieces = v.tracks[path[n]].pieces;
-						if (pieces.empty()) break;
-						if (n > 0) cumulative += Norm(pieces.front() - v.tracks[path[n - 1]].pieces.back());
-						if (path[n] == t) {
-							const int at = cumulative + pieces[p] - pieces.front();
-							if (at - 1 < -3) allowed[0] = false;
-							if (at + 1 > 3) allowed[1] = false;
+			if (!(first_piece == last_piece || end_pieces) || !FreeOnePieceStretch(v, t, k)) continue;
+			/* Insert the pairs after piece p of stretch k. */
+			const auto place_at = [&](uint32_t p) {
+				const int h = track.pieces[p];
+				/* The route cone: the cumulative turning at piece p plus the side, on every path through the track. */
+				bool allowed[2] = {true, true};
+				for (const PlanarRoute &route : map.expanded.routes) {
+					for (const std::vector<uint32_t> &path : route.paths) {
+						int cumulative = 0;
+						for (size_t n = 0; n < path.size(); n++) {
+							const std::vector<int> &pieces = v.tracks[path[n]].pieces;
+							if (pieces.empty()) break;
+							if (n > 0) cumulative += Norm(pieces.front() - v.tracks[path[n - 1]].pieces.back());
+							if (path[n] == t) {
+								const int at = cumulative + pieces[p] - pieces.front();
+								if (at - 1 < -3) allowed[0] = false;
+								if (at + 1 > 3) allowed[1] = false;
+							}
+							cumulative += pieces.back() - pieces.front();
 						}
-						cumulative += pieces.back() - pieces.front();
 					}
 				}
-			}
-			std::vector<int> insert;
-			if (allowed[0]) insert.insert(insert.end(), {h - 1, h});
-			if (allowed[1]) insert.insert(insert.end(), {h + 1, h});
-			if (insert.empty()) continue;
-			const uint32_t count = static_cast<uint32_t>(insert.size());
-			track.pieces.insert(track.pieces.begin() + p + 1, insert.begin(), insert.end());
-			for (uint32_t &m : track.flex) m += count;
-			for (size_t j = 0; j < insert.size(); j += 2) track.flex.push_back(p + 1 + static_cast<uint32_t>(j));
-			for (size_t j = k; j < track.event_piece.size(); j++) track.event_piece[j] += count;
+				std::vector<int> insert;
+				if (allowed[0]) insert.insert(insert.end(), {h - 1, h});
+				if (allowed[1]) insert.insert(insert.end(), {h + 1, h});
+				if (insert.empty()) return;
+				const uint32_t count = static_cast<uint32_t>(insert.size());
+				track.pieces.insert(track.pieces.begin() + p + 1, insert.begin(), insert.end());
+				for (uint32_t &m : track.flex) m += count;
+				for (size_t j = 0; j < insert.size(); j += 2) track.flex.push_back(p + 1 + static_cast<uint32_t>(j));
+				for (size_t j = k; j < track.event_piece.size(); j++) track.event_piece[j] += count;
+			};
+			place_at(static_cast<uint32_t>(last_piece));
+			if (first_piece != last_piece) place_at(static_cast<uint32_t>(first_piece));
 		}
 		std::ranges::sort(track.flex);
 	}

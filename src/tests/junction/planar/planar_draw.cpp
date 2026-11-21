@@ -784,7 +784,7 @@ TEST_CASE("planar draw: a port lane may be 0 long before its first node (D412)",
 }
 
 /** The extractor's PSG 197, shaped and flexed, and V's pins; false when pins.txt is missing. */
-static bool LoadPinned197(PlanarShapeVariant &shaped, PlanarDrawPins &pins)
+static bool LoadPinned197(PlanarShapeVariant &shaped, PlanarDrawPins &pins, bool flex_ends = false)
 {
 	std::ifstream file(std::string(JUNCTION_TOPOLOGY_DIR) + "/../corpus/out/psg197/pins.txt");
 	if (!file) {
@@ -802,8 +802,11 @@ static bool LoadPinned197(PlanarShapeVariant &shaped, PlanarDrawPins &pins)
 	REQUIRE(error.empty());
 	std::string why;
 	REQUIRE(LoadPlanarShapeVariant(topology, structure, ReadExtractorFileForDraw("shape.txt"), shaped, why));
-	REQUIRE(PlacePlanarShapeFlex(shaped, why));
-	REQUIRE(RefinePlanarShapeCells(shaped, why));
+	REQUIRE(PlacePlanarShapeFlex(shaped, why, flex_ends));
+	if (!RefinePlanarShapeCells(shaped, why)) {
+		WARN(fmt::format("cells not refined: {}", why));
+		return false;
+	}
 	pins = ParsePlanarDrawPins(shaped, buffer.str());
 	return true;
 }
@@ -972,68 +975,123 @@ TEST_CASE("planar draw: PSG 197 pairwise, sides from the pinned drawing", "[.][p
 	}
 }
 
+/** WARN the stretched `sep` rows of a run summed per pair of tracks, the 30 largest. */
+static void WarnSepGroups(const PlanarShapeVariant &shaped, const PlanarDrawResult &run, const std::string &tag)
+{
+	const PlanarTrackMap &map = shaped.structure.map;
+	const std::vector<PlanarFaceWalls> faces = PlanarShapeFaceWalls(shaped);
+	std::map<std::pair<std::string, std::string>, std::pair<size_t, double>> groups;
+	for (const auto &[row, slack] : run.stretched) {
+		if (!row.starts_with("sep ")) continue;
+		std::istringstream in(row.substr(4));
+		uint32_t face = 0;
+		size_t a = 0, b = 0;
+		in >> face >> a >> b;
+		for (const PlanarFaceWalls &f : faces) {
+			if (f.face != face || a >= f.walls.size() || b >= f.walls.size()) continue;
+			auto &g = groups[{map.tracks[f.walls[a].track].name, map.tracks[f.walls[b].track].name}];
+			g.first++;
+			g.second += slack;
+		}
+	}
+	std::vector<std::pair<std::pair<std::string, std::string>, std::pair<size_t, double>>> sorted(groups.begin(), groups.end());
+	std::ranges::stable_sort(sorted, [](const auto &x, const auto &y) { return x.second.second > y.second.second; });
+	for (size_t i = 0; i < std::min<size_t>(30, sorted.size()); i++) {
+		WARN(fmt::format("{} tracks {} / {}: count {}, sum {:.3f}", tag, sorted[i].first.first, sorted[i].first.second, sorted[i].second.first, sorted[i].second.second));
+	}
+}
+
+/** WARN a run's largest stretched `sep` rows with their walls, then its track-pair groups. */
+static void WarnSepDetails(const PlanarShapeVariant &shaped, const PlanarDrawResult &run, const std::string &tag)
+{
+	WarnSepWalls(shaped, run, tag, 40);
+	WarnSepGroups(shaped, run, tag);
+}
+
+/**
+ * The sep-only probe's re-pick loop: sides from the cell-mode elastic drawing at window 8, then each sep-only run re-picks the sides from the run before, to a fixed point (at most 8 runs at window 8, else 2).
+ * @return The last Optimal run, or the failing run when none was Optimal.
+ */
+static PlanarDrawResult SepOnlyFixedPoint(const PlanarShapeVariant &shaped, const PlanarDrawPins &pins, int window, const std::string &label)
+{
+	PlanarDrawPins p8 = pins;
+	p8.window = 8;
+	PlanarDrawPins pw = pins;
+	pw.window = window;
+	const PlanarDrawResult ref0 = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &p8});
+	WARN(fmt::format("{} reference 0 (cells, W8): {}, slack {:.3f}, {:.0f} ms", label, ref0.status, ref0.slack, ref0.ms));
+	if (!ref0.feasible) return ref0;
+	const std::vector<std::vector<std::array<int, 2>>> *sides = &ref0.points;
+	const int max_runs = window == 8 ? 8 : 2;
+	std::vector<PlanarDrawResult> runs;
+	runs.reserve(max_runs);
+	for (int n = 1; n <= max_runs; n++) {
+		runs.push_back(CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .elastic = true, .elastic_families = {"sep"}, .pins = &pw, .sides_from = sides}));
+		const PlanarDrawResult &run = runs.back();
+		const std::string tag = fmt::format("{} W{} run {}", label, window, n);
+		WARN(fmt::format("{}: status {}, total slack {:.3f}, stretched rows {}, short_sides {}, {:.0f} ms", tag, run.status, run.slack, run.stretched.size(), run.short_sides, run.ms));
+		if (run.status != "Optimal") {
+			std::string conflicts;
+			for (const std::string &c : run.conflict) conflicts += c + "; ";
+			WARN(fmt::format("{} conflict: {}", tag, conflicts));
+		}
+		if (window != 8) WarnSepDetails(shaped, run, tag);
+		if (!run.feasible) break;
+		if (n > 1 && runs[n - 2].slack - run.slack <= 0.5) break;
+		sides = &run.points;
+	}
+	for (size_t i = runs.size(); i-- > 0;) {
+		if (runs[i].status == "Optimal") return runs[i];
+	}
+	return runs.back();
+}
+
 TEST_CASE("planar draw: PSG 197 sep-only slack, sides from the pinned drawing", "[.][planarkeepapart]")
 {
 	PlanarShapeVariant shaped;
 	PlanarDrawPins pins;
 	if (!LoadPinned197(shaped, pins)) return;
-	PlanarDrawPins p8 = pins;
-	p8.window = 8;
-	PlanarDrawPins p4 = pins;
-	p4.window = 4;
-	const PlanarTrackMap &map = shaped.structure.map;
-	const std::vector<PlanarFaceWalls> faces = PlanarShapeFaceWalls(shaped);
-	const PlanarDrawResult ref0 = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &p8});
-	WARN(fmt::format("reference 0 (cells, W8): {}, slack {:.3f}, {:.0f} ms", ref0.status, ref0.slack, ref0.ms));
-	if (!ref0.feasible) return;
-	const auto details = [&](const PlanarDrawResult &run, const std::string &tag) {
-		WarnSepWalls(shaped, run, tag, 40);
-		std::map<std::pair<std::string, std::string>, std::pair<size_t, double>> groups;
-		for (const auto &[row, slack] : run.stretched) {
-			if (!row.starts_with("sep ")) continue;
-			std::istringstream in(row.substr(4));
-			uint32_t face = 0;
-			size_t a = 0, b = 0;
-			in >> face >> a >> b;
-			for (const PlanarFaceWalls &f : faces) {
-				if (f.face != face || a >= f.walls.size() || b >= f.walls.size()) continue;
-				auto &g = groups[{map.tracks[f.walls[a].track].name, map.tracks[f.walls[b].track].name}];
-				g.first++;
-				g.second += slack;
-			}
+	for (const int window : {8, 4}) {
+		const PlanarDrawResult last = SepOnlyFixedPoint(shaped, pins, window, "sep-only");
+		if (window == 8 && last.status == "Optimal") WarnSepDetails(shaped, last, "sep-only W8 run");
+	}
+}
+
+TEST_CASE("planar draw: PSG 197 flex on end pieces (option C)", "[.][planarkeepapart]")
+{
+	const std::vector<std::string> all = {"point", "axis", "diagonal", "param", "cross", "other"};
+	for (const bool flex_ends : {false, true}) {
+		const std::string label = flex_ends ? "C" : "D402";
+		PlanarShapeVariant shaped;
+		PlanarDrawPins pins;
+		const bool loaded = LoadPinned197(shaped, pins, flex_ends);
+		size_t flex = 0;
+		for (const PlanarShapeTrack &t : shaped.tracks) flex += t.flex.size();
+		WARN(fmt::format("{} flex marks {}, dummies {}, nonmonotone dummies {}", label, flex, shaped.dummies.size(), shaped.nonmonotone_dummies));
+		if (!loaded) continue;
+		PlanarDrawPins p8 = pins;
+		p8.window = 8;
+		PlanarDrawPins p4 = pins;
+		p4.window = 4;
+		for (const PlanarDrawPins *pw : {&p8, &p4}) {
+			const PlanarDrawResult lp = CheckPlanarDrawable(shaped, 30.0, {.clearance = false, .pins = pw, .continuous = all});
+			WARN(fmt::format("{} base W{} LP: status {}", label, pw->window, lp.status));
+			const PlanarDrawResult ip = CheckPlanarDrawable(shaped, 30.0, {.clearance = false, .pins = pw});
+			WARN(fmt::format("{} base W{} integer: status {}, {:.0f} ms", label, pw->window, ip.status, ip.ms));
 		}
-		std::vector<std::pair<std::pair<std::string, std::string>, std::pair<size_t, double>>> sorted(groups.begin(), groups.end());
-		std::ranges::stable_sort(sorted, [](const auto &x, const auto &y) { return x.second.second > y.second.second; });
-		for (size_t i = 0; i < std::min<size_t>(30, sorted.size()); i++) {
-			WARN(fmt::format("{} tracks {} / {}: count {}, sum {:.3f}", tag, sorted[i].first.first, sorted[i].first.second, sorted[i].second.first, sorted[i].second.second));
+		const PlanarDrawResult cells = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &p8});
+		WARN(fmt::format("{} cells elastic W8: status {}, total slack {:.3f}, stretched {}", label, cells.status, cells.slack, cells.stretched.size()));
+		std::map<std::string, std::pair<size_t, double>> families;
+		for (const auto &[tag, slack] : cells.stretched) {
+			auto &f = families[tag.substr(0, tag.find(' '))];
+			f.first++;
+			f.second += slack;
 		}
-	};
-	for (const PlanarDrawPins *pw : {&p8, &p4}) {
-		const std::vector<std::vector<std::array<int, 2>>> *sides = &ref0.points;
-		const int max_runs = pw->window == 8 ? 8 : 2;
-		std::vector<PlanarDrawResult> runs;
-		runs.reserve(max_runs);
-		for (int n = 1; n <= max_runs; n++) {
-			runs.push_back(CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .elastic = true, .elastic_families = {"sep"}, .pins = pw, .sides_from = sides}));
-			const PlanarDrawResult &run = runs.back();
-			const std::string tag = fmt::format("sep-only W{} run {}", pw->window, n);
-			WARN(fmt::format("{}: status {}, total slack {:.3f}, stretched rows {}, short_sides {}, {:.0f} ms", tag, run.status, run.slack, run.stretched.size(), run.short_sides, run.ms));
-			if (run.status != "Optimal") {
-				std::string conflicts;
-				for (const std::string &c : run.conflict) conflicts += c + "; ";
-				WARN(fmt::format("{} conflict: {}", tag, conflicts));
-			}
-			if (pw->window != 8) details(run, tag);
-			if (!run.feasible) break;
-			if (n > 1 && runs[n - 2].slack - run.slack <= 0.5) break;
-			sides = &run.points;
-		}
-		if (pw->window == 8) {
-			for (size_t i = runs.size(); i-- > 0;) {
-				if (runs[i].status != "Optimal") continue;
-				details(runs[i], fmt::format("sep-only W8 run {}", i + 1));
-				break;
-			}
+		for (const auto &[family, f] : families) WARN(fmt::format("{} cells elastic W8 family {}: count {}, sum {:.3f}", label, family, f.first, f.second));
+		for (const int window : {8, 4}) {
+			const PlanarDrawResult last = SepOnlyFixedPoint(shaped, pins, window, label);
+			WARN(fmt::format("{} last W{}: status {}, total slack {:.3f}, stretched rows {}", label, window, last.status, last.slack, last.stretched.size()));
+			WarnSepGroups(shaped, last, fmt::format("{} last W{}", label, window));
 		}
 	}
 }
@@ -1354,7 +1412,11 @@ TEST_CASE("planar draw: PSG 197 base LP, its conflict", "[.][planarkeepapart]")
 	none.pins.clear();
 	PlanarDrawPins p8 = pins;
 	p8.window = 8;
-	for (const auto &[name, p] : std::vector<std::pair<std::string, const PlanarDrawPins *>>{{"no pins", &none}, {"pins W8", &p8}}) {
+	PlanarDrawPins p4 = pins;
+	p4.window = 4;
+	PlanarDrawPins p2 = pins;
+	p2.window = 2;
+	for (const auto &[name, p] : std::vector<std::pair<std::string, const PlanarDrawPins *>>{{"no pins", &none}, {"pins W8", &p8}, {"pins W4", &p4}, {"pins W2", &p2}}) {
 		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 30.0, {.clearance = false, .pins = p, .continuous = all});
 		WARN(fmt::format("base LP {}: status {}, {:.0f} ms", name, r.status, r.ms));
 		for (const std::string &tag : r.conflict) WARN(fmt::format("base LP {} conflict: {}", name, tag));
