@@ -341,6 +341,24 @@ TEST_CASE("planar draw: pairwise mode writes separations and no landings", "[jun
 	CHECK(r.binaries <= 4 * r.pairs);
 }
 
+TEST_CASE("planar draw: pairwise sides from a drawing are plain rows", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult free = CheckPlanarDrawable(c.v, 0.1, {.pairwise = true});
+	const PlanarDrawResult loose = CheckPlanarDrawable(c.v, 5.0, {.clearance = false});
+	REQUIRE(loose.feasible);
+	const PlanarDrawResult fixed = CheckPlanarDrawable(c.v, 5.0, {.pairwise = true, .sides_from = &loose.points});
+	CHECK(fixed.binaries == 0);
+	CHECK(fixed.pairs == free.pairs);
+	/* A drawing without clearance keeps fewer sides. */
+	CHECK(fixed.short_sides > 0);
+	/* A reference that is not a drawing of this variant is refused. */
+	std::vector<std::vector<std::array<int, 2>>> wrong = loose.points;
+	wrong.front().pop_back();
+	const PlanarDrawResult refused = CheckPlanarDrawable(c.v, 5.0, {.pairwise = true, .sides_from = &wrong});
+	CHECK(refused.status.starts_with("unsupported"));
+}
+
 /** The port lines of a side in reading order with the index into their port's `lines`, as the drawing program reads them. */
 static std::vector<std::pair<uint32_t, size_t>> SideReadingOrder(const PlanarTopology &t, PlanarSide side, uint32_t &first_port)
 {
@@ -640,6 +658,41 @@ static std::string EndPinLine(const PlanarTrackMap &map, uint32_t track, bool st
 	return fmt::format("end {} {} {} {}\n", map.tracks[track].name, start ? "start" : "end", at[0], at[1]);
 }
 
+TEST_CASE("planar draw: a crosser may cross at its piece end (D414)", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarTrackMap &map = c.v.structure.map;
+	const PlanarDrawResult base = CheckPlanarDrawable(c.v, 5.0, {.clearance = false});
+	REQUIRE(base.feasible);
+
+	/* A crossing of a structure, its crosser's piece start. */
+	uint32_t crossing = UINT32_MAX;
+	for (const PlanarStructure &structure : c.v.structure.structures) {
+		if (!structure.crossings.empty()) crossing = structure.crossings.front();
+		if (crossing != UINT32_MAX) {
+			const uint32_t separator = structure.separator;
+			const uint32_t crosser = map.crossings[crossing].a == separator ? map.crossings[crossing].b : map.crossings[crossing].a;
+			const auto at = std::ranges::find(map.events[crosser], crossing);
+			REQUIRE(at != map.events[crosser].end());
+			const uint32_t piece = c.v.tracks[crosser].event_piece[at - map.events[crosser].begin()];
+			const std::array<int, 2> start = base.points[crosser][piece];
+			/* The answer key's end points hold the drawing in place, so the crossing pin is no free shift. */
+			std::string text = fmt::format("cross {} {} {} {}\n", map.tracks[map.crossings[crossing].a].name, map.tracks[map.crossings[crossing].b].name, start[0], start[1]);
+			for (const uint32_t t : {map.crossings[crossing].a, map.crossings[crossing].b}) {
+				text += EndPinLine(map, t, true, base.points[t].front());
+				text += EndPinLine(map, t, false, base.points[t].back());
+			}
+			PlanarDrawPins pins = ParsePlanarDrawPins(c.v, text);
+			pins.window = 0;
+			REQUIRE(pins.unmatched.empty());
+			const PlanarDrawResult held = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .pins = &pins});
+			CHECK(held.feasible);
+			return;
+		}
+	}
+	FAIL("T1 has no structured crossing");
+}
+
 TEST_CASE("planar draw: pins hold points to an answer key", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
@@ -730,12 +783,13 @@ TEST_CASE("planar draw: a port lane may be 0 long before its first node (D412)",
 	CHECK(found > 0);
 }
 
-TEST_CASE("planar draw: the extractor's PSG 197 with pins", "[.][planarkeepapart]")
+/** The extractor's PSG 197, shaped and flexed, and V's pins; false when pins.txt is missing. */
+static bool LoadPinned197(PlanarShapeVariant &shaped, PlanarDrawPins &pins)
 {
 	std::ifstream file(std::string(JUNCTION_TOPOLOGY_DIR) + "/../corpus/out/psg197/pins.txt");
 	if (!file) {
 		WARN("no pins yet");
-		return;
+		return false;
 	}
 	std::stringstream buffer;
 	buffer << file.rdbuf();
@@ -746,13 +800,19 @@ TEST_CASE("planar draw: the extractor's PSG 197 with pins", "[.][planarkeepapart
 	std::vector<std::string> report;
 	const PlanarStructureVariant structure = LoadPlanarStructureVariant(topology, ReadExtractorFileForDraw("structure.txt"), spec, report, &error);
 	REQUIRE(error.empty());
-	PlanarShapeVariant shaped;
 	std::string why;
 	REQUIRE(LoadPlanarShapeVariant(topology, structure, ReadExtractorFileForDraw("shape.txt"), shaped, why));
 	REQUIRE(PlacePlanarShapeFlex(shaped, why));
 	REQUIRE(RefinePlanarShapeCells(shaped, why));
+	pins = ParsePlanarDrawPins(shaped, buffer.str());
+	return true;
+}
 
-	const PlanarDrawPins pins = ParsePlanarDrawPins(shaped, buffer.str());
+TEST_CASE("planar draw: the extractor's PSG 197 with pins", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
 	WARN(fmt::format("pins {}, unmatched {}", pins.pins.size(), pins.unmatched.size()));
 	for (size_t i = 0; i < std::min<size_t>(10, pins.unmatched.size()); i++) WARN(fmt::format("unmatched {}: {}", i, pins.unmatched[i]));
 	const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &pins});
@@ -765,6 +825,145 @@ TEST_CASE("planar draw: the extractor's PSG 197 with pins", "[.][planarkeepapart
 	WARN(fmt::format("pins 197: status {}, total slack {:.3f}, stretched {}, {:.0f} ms", r.status, r.slack, r.stretched.size(), r.ms));
 	for (const auto &[family, f] : families) WARN(fmt::format("pins 197 family {}: count {}, sum {:.3f}", family, f.first, f.second));
 	for (size_t i = 0; i < std::min<size_t>(40, r.stretched.size()); i++) WARN(fmt::format("pins 197 stretched {}: {} {:.3f}", i, r.stretched[i].first, r.stretched[i].second));
+}
+
+TEST_CASE("planar draw: PSG 197 integer base with pins", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
+	for (const int window : {2, 8}) {
+		PlanarDrawPins pw = pins;
+		pw.window = window;
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .pins = &pw});
+		WARN(fmt::format("integer base W{}: status {}, {:.0f} ms", window, r.status, r.ms));
+		for (const std::string &tag : r.conflict) WARN(fmt::format("integer base W{} conflict: {}", window, tag));
+	}
+}
+
+TEST_CASE("planar draw: PSG 197 integer base, minimal pin core", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
+	const PlanarTrackMap &map = shaped.structure.map;
+	const auto solve = [&](const PlanarDrawPins &p) { return CheckPlanarDrawable(shaped, 10.0, {.clearance = false, .pins = &p}); };
+	PlanarDrawPins none = pins;
+	none.pins.clear();
+	const PlanarDrawResult a = solve(none);
+	WARN(fmt::format("core step A (no pins): status {}, {:.0f} ms", a.status, a.ms));
+	for (const int window : {2, 8}) {
+		PlanarDrawPins pw = pins;
+		pw.window = window;
+		const PlanarDrawResult b = solve(pw);
+		WARN(fmt::format("core step B W{}: status {}, {:.0f} ms, {} pins", window, b.status, b.ms, pw.pins.size()));
+		if (b.status != "Infeasible") {
+			WARN(fmt::format("core W{}: not Infeasible, filter skipped", window));
+			continue;
+		}
+		PlanarDrawPins core = pw;
+		uint32_t solves = 0;
+		double total_ms = 0;
+		for (size_t i = 0; i < pw.pins.size(); i++) {
+			PlanarDrawPins trial = core;
+			const auto it = std::ranges::find_if(trial.pins, [&](const PlanarDrawPins::Pin &q) {
+				return q.track == pw.pins[i].track && q.cross == pw.pins[i].cross && q.start == pw.pins[i].start && q.at == pw.pins[i].at;
+			});
+			if (it == trial.pins.end()) continue;
+			trial.pins.erase(it);
+			const PlanarDrawResult r = solve(trial);
+			solves++;
+			total_ms += r.ms;
+			if (r.status == "Infeasible") core = trial;
+		}
+		WARN(fmt::format("core W{}: {} solves, {:.0f} ms, core {} pins", window, solves, total_ms, core.pins.size()));
+		for (const PlanarDrawPins::Pin &pin : core.pins) {
+			if (pin.cross) {
+				WARN(fmt::format("core W{} pin: cross {} {} at {} {}", window, map.tracks[map.crossings[pin.track].a].name, map.tracks[map.crossings[pin.track].b].name, pin.at[0], pin.at[1]));
+			} else {
+				WARN(fmt::format("core W{} pin: end {} {} at {} {}", window, map.tracks[pin.track].name, pin.start ? "start" : "end", pin.at[0], pin.at[1]));
+			}
+		}
+		const PlanarDrawResult c = solve(core);
+		WARN(fmt::format("core W{} re-solve: status {}", window, c.status));
+		for (const std::string &tag : c.conflict) WARN(fmt::format("core W{} conflict: {}", window, tag));
+	}
+}
+
+TEST_CASE("planar draw: PSG 197 integer base, which integrality", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
+	pins.window = 8;
+	const std::vector<std::string> groups = {"point", "axis", "diagonal", "param", "cross", "other"};
+	std::vector<std::vector<std::string>> trials = {{}};
+	for (const std::string &g : groups) trials.push_back({g});
+	for (const std::string &g : groups) {
+		std::vector<std::string> rest;
+		for (const std::string &o : groups) {
+			if (o != g) rest.push_back(o);
+		}
+		trials.push_back(rest);
+	}
+	for (const std::vector<std::string> &x : trials) {
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 30.0, {.clearance = false, .pins = &pins, .continuous = x});
+		std::string list;
+		for (const std::string &g : x) list += (list.empty() ? "" : ",") + g;
+		WARN(fmt::format("continuous {{{}}}: status {}, {:.0f} ms", list, r.status, r.ms));
+	}
+}
+
+TEST_CASE("planar draw: PSG 197 pairwise, sides from the pinned drawing", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
+	PlanarDrawPins p8 = pins;
+	p8.window = 8;
+	PlanarDrawPins p2 = pins;
+	p2.window = 2;
+	const PlanarTrackMap &map = shaped.structure.map;
+	const std::vector<PlanarFaceWalls> faces = PlanarShapeFaceWalls(shaped);
+	const PlanarDrawResult cells = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &p8});
+	const PlanarDrawResult base = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &p8});
+	WARN(fmt::format("reference cells: {}, slack {:.3f}, {:.0f} ms; base: {}, slack {:.3f}, {:.0f} ms", cells.status, cells.slack, cells.ms, base.status, base.slack, base.ms));
+	const std::array<std::pair<const char *, const PlanarDrawResult *>, 2> refs = {{{"cells", &cells}, {"base", &base}}};
+	for (const auto &[name, ref] : refs) {
+		if (!ref->feasible) continue;
+		for (const PlanarDrawPins *pw : {&p2, &p8}) {
+			const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .elastic = true, .pins = pw, .sides_from = &ref->points});
+			const std::string tag = fmt::format("sides {} W{}", name, pw->window);
+			WARN(fmt::format("{}: status {}, total slack {:.3f}, pairs {}, binaries {}, short_sides {}, {:.0f} ms", tag, r.status, r.slack, r.pairs, r.binaries, r.short_sides, r.ms));
+			std::map<std::string, std::pair<size_t, double>> families;
+			for (const auto &[row, slack] : r.stretched) {
+				auto &f = families[row.substr(0, row.find(' '))];
+				f.first++;
+				f.second += slack;
+			}
+			for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: count {}, sum {:.3f}", tag, family, f.first, f.second));
+			for (size_t i = 0; i < std::min<size_t>(40, r.stretched.size()); i++) WARN(fmt::format("{} stretched {}: {} {:.3f}", tag, i, r.stretched[i].first, r.stretched[i].second));
+			size_t shown = 0;
+			for (size_t i = 0; i < r.stretched.size() && shown < 20; i++) {
+				const std::string &row = r.stretched[i].first;
+				if (!row.starts_with("sep ")) continue;
+				shown++;
+				std::istringstream in(row.substr(4));
+				uint32_t face = 0;
+				size_t a = 0, b = 0;
+				in >> face >> a >> b;
+				std::string text;
+				for (const PlanarFaceWalls &f : faces) {
+					if (f.face != face || a >= f.walls.size() || b >= f.walls.size()) continue;
+					for (const size_t k : {a, b}) {
+						const PlanarCellWall &w = f.walls[k];
+						text += fmt::format(" [{} piece {} heading {}]", map.tracks[w.track].name, w.piece, w.heading);
+					}
+				}
+				WARN(fmt::format("{} sep row {} ({:.3f}):{}", tag, row, r.stretched[i].second, text));
+			}
+		}
+	}
 }
 
 TEST_CASE("planar draw: PSG 197 elastic, whole", "[.][planarkeepapart]")
@@ -1071,4 +1270,31 @@ TEST_CASE("planar draw: PSG 197 with landings from a drawing", "[.][planarkeepap
 	const PlanarDrawResult r2 = CheckPlanarDrawable(relanded, 60.0, {.clearance = true, .clear_rows = false});
 	WarnLd("LD 197 landings only", r2, changed, kept, nohit);
 	WARN(fmt::format("LD 197 cells: relanded {}, shaped {}", PlanarShapeCellWalls(relanded).size(), PlanarShapeCellWalls(shaped).size()));
+}
+
+TEST_CASE("planar draw: PSG 197 base LP, its conflict", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
+	const std::vector<std::string> all = {"point", "axis", "diagonal", "param", "cross", "other"};
+	PlanarDrawPins none = pins;
+	none.pins.clear();
+	PlanarDrawPins p8 = pins;
+	p8.window = 8;
+	for (const auto &[name, p] : std::vector<std::pair<std::string, const PlanarDrawPins *>>{{"no pins", &none}, {"pins W8", &p8}}) {
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 30.0, {.clearance = false, .pins = p, .continuous = all});
+		WARN(fmt::format("base LP {}: status {}, {:.0f} ms", name, r.status, r.ms));
+		for (const std::string &tag : r.conflict) WARN(fmt::format("base LP {} conflict: {}", name, tag));
+		const PlanarDrawResult e = CheckPlanarDrawable(shaped, 30.0, {.clearance = false, .elastic = true, .pins = p});
+		WARN(fmt::format("base elastic {}: status {}, slack {:.3f}", name, e.status, e.slack));
+		for (const auto &[tag, amount] : e.stretched) WARN(fmt::format("base elastic {} stretched: {} {:.3f}", name, tag, amount));
+		const PlanarTrackMap &map = shaped.structure.map;
+		for (const auto &[tag, amount] : e.stretched) {
+			if (!tag.starts_with("cross ")) continue;
+			uint32_t c = UINT32_MAX;
+			std::from_chars(tag.data() + 6, tag.data() + tag.size(), c);
+			if (c < map.crossings.size()) WARN(fmt::format("base elastic {} crossing {}: {} x {}", name, c, map.tracks[map.crossings[c].a].name, map.tracks[map.crossings[c].b].name));
+		}
+	}
 }

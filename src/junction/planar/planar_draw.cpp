@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <climits>
 #include <chrono>
 #include <cmath>
 #include <functional>
@@ -26,6 +27,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "../../safeguards.h"
@@ -215,9 +217,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	uint32_t columns = 0;
 	std::vector<std::string> slack_tag; ///< Elastic: per slack variable its row's tag.
 	std::vector<uint32_t> slack_var; ///< Elastic: the slack variables.
-	const auto var = [&](double lower, double upper, double cost) {
+	const auto var = [&](double lower, double upper, double cost, std::string_view group) {
 		columns++;
-		return milp.AddVariable(lower, upper, cost, !options.elastic);
+		return milp.AddVariable(lower, upper, cost, !options.elastic && std::ranges::find(options.continuous, group) == options.continuous.end());
 	};
 	const auto row = [&](Terms terms, double lower, double upper, const std::string &tag) {
 		std::ranges::sort(terms);
@@ -250,8 +252,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	};
 	const auto eq = [&](Terms terms, double rhs, const std::string &tag) { row(std::move(terms), rhs, rhs, tag); };
 
-	const uint32_t width = var(1, COORD_MAX, 0);
-	const uint32_t height = var(1, COORD_MAX, 0);
+	const uint32_t width = var(1, COORD_MAX, 0, "other");
+	const uint32_t height = var(1, COORD_MAX, 0, "other");
 
 	/* Points: per track its start and the end of each piece. */
 	std::vector<std::vector<std::array<uint32_t, 2>>> point(nt);
@@ -261,7 +263,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		const std::vector<int> &pieces = v.tracks[t].pieces;
 		if (pieces.empty()) return unsupported("track " + map.tracks[t].name + " has no piece");
 		for (size_t i = 0; i <= pieces.size(); i++) {
-			point[t].push_back({var(0, COORD_MAX, 0), var(0, COORD_MAX, 0)});
+			point[t].push_back({var(0, COORD_MAX, 0, "point"), var(0, COORD_MAX, 0, "point")});
 			row({{point[t][i][0], 1}, {width, -1}}, -JunctionMilp::INF, 0, "box");
 			row({{point[t][i][1], 1}, {height, -1}}, -JunctionMilp::INF, 0, "box");
 		}
@@ -288,7 +290,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const bool axis = (pieces[i] % 2) == 0;
 			const double lower = free_piece[i] ? 0 : 1;
-			length[t].push_back({var(lower, COORD_MAX, options.tidy && !options.elastic ? 1 : 0), axis ? AXIS_LEAST : 1});
+			length[t].push_back({var(lower, COORD_MAX, options.tidy && !options.elastic ? 1 : 0, axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
 			if (port_stretch) break;
@@ -390,6 +392,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	const size_t nc = map.crossings.size();
 	std::vector<std::array<uint32_t, 2>> param(nc);
 	std::vector<std::array<uint32_t, 2>> piece_of(nc);
+	std::vector<uint32_t> separator_of(nc, UINT32_MAX); // The separator of the structure a crossing belongs to (D414).
+	for (const PlanarStructure &structure : v.structure.structures) {
+		for (const uint32_t c : structure.crossings) {
+			if (c < nc) separator_of[c] = structure.separator;
+		}
+	}
 	for (size_t c = 0; c < nc; c++) {
 		const std::array<uint32_t, 2> tracks = {map.crossings[c].a, map.crossings[c].b};
 		for (int side = 0; side < 2; side++) {
@@ -399,11 +407,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const uint32_t piece = v.tracks[t].event_piece[at - map.events[t].begin()];
 			if (piece >= v.tracks[t].pieces.size()) return unsupported(fmt::format("crossing {} sits on piece {} of track {}, which has {}", c, piece, map.tracks[t].name, v.tracks[t].pieces.size()));
 			piece_of[c][side] = piece;
-			param[c][side] = var(0, COORD_MAX, 0);
+			param[c][side] = var(0, COORD_MAX, 0, "param");
 			const Length &len = length[t][piece];
 			const std::string tag = fmt::format("cross {}", c);
-			row({{param[c][side], 1}, {len.variable, -len.coefficient}}, -JunctionMilp::INF, -rules.cross, tag);
-			row({{param[c][side], 1}}, rules.cross, JunctionMilp::INF, tag);
+			/* A structure's crosser may cross at its piece's ends (D414); the separator and every other crossing keep rules.cross. */
+			const bool crosser = separator_of[c] != UINT32_MAX && t != separator_of[c];
+			row({{param[c][side], 1}, {len.variable, -len.coefficient}}, -JunctionMilp::INF, crosser ? 0 : -rules.cross, tag);
+			if (!crosser) row({{param[c][side], 1}}, rules.cross, JunctionMilp::INF, tag);
 		}
 		for (int axis = 0; axis < 2; axis++) {
 			Terms terms;
@@ -423,13 +433,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		const uint32_t t = map.crossings[c].a;
 		const std::array<int, 2> step = PlanarModel::STEP[((v.tracks[t].pieces[piece_of[c][0]] % 8) + 8) % 8];
 		for (int axis = 0; axis < 2; axis++) {
-			cross_point[c][axis] = var(0, COORD_MAX, 0);
+			cross_point[c][axis] = var(0, COORD_MAX, 0, "cross");
 			eq({{cross_point[c][axis], 1}, {point[t][piece_of[c][0]][axis], -1}, {param[c][0], -step[axis]}}, 0, fmt::format("cross {}", c));
 		}
 	}
 	/* Pins (D393): every pinned point is within the window of its position plus one common shift. */
 	if (options.pins != nullptr && !options.pins->pins.empty()) {
-		const std::array<uint32_t, 2> shift = {var(-COORD_MAX, COORD_MAX, 0), var(-COORD_MAX, COORD_MAX, 0)};
+		const std::array<uint32_t, 2> shift = {var(-COORD_MAX, COORD_MAX, 0, "other"), var(-COORD_MAX, COORD_MAX, 0, "other")};
 		for (const PlanarDrawPins::Pin &pin : options.pins->pins) {
 			std::array<uint32_t, 2> p;
 			std::string tag;
@@ -497,8 +507,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		if (!face_listed(dummy.face)) continue;
 		if (dummy.track >= nt || dummy.piece + 1 >= point[dummy.track].size()) return unsupported(fmt::format("dummy {} starts at a vertex that is not a track's", d));
 		dummy_start[d] = point[dummy.track][dummy.piece + 1];
-		dummy_length[d] = var(1, COORD_MAX, 0);
-		dummy_end[d] = {var(0, COORD_MAX, 0), var(0, COORD_MAX, 0)};
+		dummy_length[d] = var(1, COORD_MAX, 0, "other");
+		dummy_end[d] = {var(0, COORD_MAX, 0, "other"), var(0, COORD_MAX, 0, "other")};
 		const std::string tag = fmt::format("land {}", d);
 		row({{dummy_end[d][0], 1}, {width, -1}}, -JunctionMilp::INF, 0, tag);
 		row({{dummy_end[d][1], 1}, {height, -1}}, -JunctionMilp::INF, 0, tag);
@@ -535,7 +545,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const Length &len = length[dummy.land_track][dummy.land_piece];
 			most = {{len.variable, -len.coefficient}};
 		}
-		const uint32_t w = var(0, COORD_MAX, 0);
+		const uint32_t w = var(0, COORD_MAX, 0, "other");
 		most.emplace_back(w, 1);
 		row(most, -JunctionMilp::INF, 0, tag);
 		const std::array<int, 2> step = PlanarModel::STEP[((heading % 8) + 8) % 8];
@@ -706,6 +716,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	if (options.clearance && options.pairwise) {
 		constexpr double M = 4 * COORD_MAX;
 		const auto norm = [](int x) { return ((x % 8) + 12) % 8 - 4; };
+		if (options.sides_from != nullptr) {
+			if (options.sides_from->size() != nt) return unsupported("sides_from does not match the variant");
+			for (size_t t = 0; t < nt; t++) {
+				if ((*options.sides_from)[t].size() != point[t].size()) return unsupported("sides_from does not match the variant");
+			}
+		}
 		for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(v)) {
 			if (!face_listed(f.face)) continue;
 			const std::vector<PlanarCellWall> &w = f.walls;
@@ -758,12 +774,53 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					} else {
 						axes.push_back({PlanarModel::STEP[w[i].heading % 8], 2});
 					}
+					if (options.sides_from != nullptr) {
+						const auto ref = [&](uint32_t track, uint32_t k) { return (*options.sides_from)[track][k]; };
+						const std::array<std::array<uint32_t, 2>, 2> *best_from = nullptr, *best_to = nullptr;
+						const Axis *best_axis = nullptr;
+						int best_margin = 0;
+						const std::array<std::array<uint32_t, 2>, 2> *const ends[2] = {&pi, &pj};
+						const std::array<uint32_t, 2> tracks = {w[i].track, w[j].track};
+						const std::array<uint32_t, 2> pieces = {w[i].piece, w[j].piece};
+						for (const Axis &axis : axes) {
+							for (int side = 0; side < 2; side++) {
+								const auto *from = ends[side];
+								const auto *to = ends[1 - side];
+								int margin = INT_MAX;
+								for (uint32_t kp = 0; kp < 2; kp++) {
+									for (uint32_t kq = 0; kq < 2; kq++) {
+										const std::array<int, 2> rp = ref(tracks[side], pieces[side] + kp);
+										const std::array<int, 2> rq = ref(tracks[1 - side], pieces[1 - side] + kq);
+										margin = std::min(margin, (rq[0] - rp[0]) * axis.s[0] + (rq[1] - rp[1]) * axis.s[1] - axis.spacing);
+									}
+								}
+								if (best_axis == nullptr || margin > best_margin) {
+									best_axis = &axis;
+									best_from = from;
+									best_to = to;
+									best_margin = margin;
+								}
+							}
+						}
+						if (best_margin < 0) result.short_sides++;
+						for (const auto &p : *best_from) {
+							for (const auto &q : *best_to) {
+								Terms t;
+								for (int d = 0; d < 2; d++) {
+									t.emplace_back(q[d], best_axis->s[d]);
+									t.emplace_back(p[d], -best_axis->s[d]);
+								}
+								row(std::move(t), best_axis->spacing, JunctionMilp::INF, fmt::format("sep {} {} {}", f.face, i, j));
+							}
+						}
+						continue;
+					}
 					Terms bs;
 					for (const Axis &axis : axes) {
 						for (int side = 0; side < 2; side++) {
 							const auto &from = side == 0 ? pi : pj;
 							const auto &to = side == 0 ? pj : pi;
-							const uint32_t b = var(0, 1, 0);
+							const uint32_t b = var(0, 1, 0, "other");
 							result.binaries++;
 							bs.emplace_back(b, 1);
 							for (const auto &p : from) {
