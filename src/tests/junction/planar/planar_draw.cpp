@@ -2383,6 +2383,12 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				final_sides = at > 0 ? &rounds[at - 1].points : &seed.points;
 				WARN(fmt::format("{} finals take the sides of round {} (its input drawing)", label, at + 1));
 			}
+			/* PLANAR_PROBE_FINAL_FLEXZERO (a measurement aid): the finals hold every flex insert the last Optimal round left below this at 0 (that round's drawing keeps them 0, so the final stays LP-feasible). */
+			double final_zero_below = 0;
+			if (const char *fz = std::getenv("PLANAR_PROBE_FINAL_FLEXZERO"); fz != nullptr) {
+				std::from_chars(fz, fz + std::strlen(fz), final_zero_below);
+				WARN(fmt::format("{} finals hold inserts below {} at 0", label, final_zero_below));
+			}
 			/* PLANAR_PROBE_START=lengths|points (a measurement aid): the finals get a MIP start from the last Optimal round's drawing: its whole lengths (partial) or its rounded points. */
 			const std::vector<std::vector<double>> *start_lengths = nullptr;
 			const std::vector<std::vector<std::array<int, 2>>> *start_points = nullptr;
@@ -2392,7 +2398,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				WARN(fmt::format("{} finals start from the last round's {}", label, st));
 			}
 			for (const double budget : {15.0, 60.0}) {
-				const PlanarDrawResult f = CheckPlanarDrawable(*variant, budget, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .pins = p, .sides_from = final_sides, .continuous = final_continuous, .start_lengths = start_lengths, .start_points = start_points});
+				const PlanarDrawResult f = CheckPlanarDrawable(*variant, budget, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .pins = p, .sides_from = final_sides, .flex_zero_from = final_zero_below > 0 ? &last_optimal->lengths : nullptr, .flex_zero_below = final_zero_below, .continuous = final_continuous, .start_lengths = start_lengths, .start_points = start_points});
 				WARN(fmt::format("{} final (integer, {:.0f} s): {}, start values {}", label, budget, describe(f), f.start_values));
 				if (f.status == "Infeasible" && plateau_probe && !conflict_shown) {
 					conflict_shown = true;
