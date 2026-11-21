@@ -840,6 +840,93 @@ def write_shape(path_shape, path_steps, path_len, hub, Ln, Sh, T, P):
     open(path_shape, 'w').write('\n'.join(so) + '\n'); open(path_steps, 'w').write('\n'.join(st) + '\n'); open(path_len, 'w').write('\n'.join(ln) + '\n')
 
 
+def half(p):
+    return (int(round(2 * p[0])), int(round(2 * p[1])))
+
+
+def pins(box, G, Ln, lanes, X5, T):
+    """Answer-key points in half tiles, map frame: per line its first and last point, per crossing its point.  Returns
+    (lines, crossings, nopoint): lines = [(name, start, end)], crossings = [(nameA, nameB, point)]."""
+    CS, CP, isnode, names = G.CS, G.CP, Ln.isnode, T.names
+    ends, shared = X5.ends, X5.shared
+    x0, y0, x1, y1 = box
+    def onbox(side, pt):
+        return {'W': pt[0] == 2 * x0, 'E': pt[0] == 2 * x1 + 2, 'N': pt[1] == 2 * y0, 'S': pt[1] == 2 * y1 + 2}[side]
+    def port_end(pc, side):
+        c = [half(q) for q in ends(pc) if onbox(side, half(q))]
+        return c[0] if len(c) == 1 else None
+    def src_pt(n):          # a merge piece's source-side end (the node point)
+        out = [shared(n, b) for b in CS[n]]
+        if out and out[0] is not None: return half([q for q in ends(n) if q != out[0]][0])
+        lane = Ln.lane_out.get(n)
+        if lane:
+            pe = port_end(n, lane['side'])
+            return half([q for q in ends(n) if half(q) != pe][0]) if pe else None
+        return None
+    def leg_pt(n):          # a split piece's leg-side end (the node point)
+        sh = [shared(n, b) for b in CS[n]]
+        return half(sh[0]) if sh and sh[0] is not None else None
+    def node_pt(n): return leg_pt(n) if len(CS[n]) >= 2 else src_pt(n)
+    P = {}; nop = []
+    for k, ch in enumerate(Ln.chains):
+        nm = names[('r', k)]
+        if not ch: continue
+        li = Ln.lane_in.get(ch[0]); lo = Ln.lane_out.get(ch[-1])
+        pre = CP[ch[0]]; nxt = CS[ch[-1]]
+        if li: st = port_end(ch[0], li['side'])
+        elif pre and len(CP[pre[0]]) >= 2 and len(CS[pre[0]]) < 2: st = src_pt(pre[0])       # first piece of the out line is the merge piece
+        elif pre:
+            sh = shared(pre[0], ch[0]); st = half(sh) if sh is not None else None
+        else: st = None
+        if lo: en = port_end(ch[-1], lo['side'])
+        elif nxt and len(CS[nxt[0]]) >= 2: en = leg_pt(nxt[0])                                  # last piece of the trunk is the split piece
+        elif nxt:
+            sh = shared(ch[-1], nxt[0]); en = half(sh) if sh is not None else None
+        else: en = None
+        P[nm] = (st, en)
+    for k, ch in enumerate(Ln.chains):
+        if not ch: nop.append('line %s: no simple chain' % names[('r', k)])
+    for key in T.empty:
+        nm = names[key]
+        try:
+            if key[0] == 'pi':
+                n = key[1]; lane = Ln.lane_in[n]; P[nm] = (port_end(n, lane['side']), node_pt(n))
+            elif key[0] == 'po':
+                n = key[1]; lane = Ln.lane_out[n]; P[nm] = (node_pt(n), port_end(n, lane['side']))
+            elif key[0] == 'e':
+                a, b = key[1], key[2]; sh = half(shared(a, b))
+                st = src_pt(a) if len(CP[a]) >= 2 else sh
+                en = leg_pt(b) if len(CS[b]) >= 2 else sh
+                P[nm] = (st, en)
+            elif key[0] == 'c':
+                p = node_pt(key[1]); P[nm] = (p, p)
+            else: nop.append('line %s: empty line kind %s' % (nm, key[0]))
+        except (KeyError, TypeError, IndexError) as e: nop.append('line %s: empty line %s: %r' % (nm, key[0], e))
+    lines_out = []
+    for nm in sorted(P, key=lambda s: int(s[1:])):
+        st, en = P[nm]
+        if st is None or en is None: nop.append('line %s: end point not found' % nm); continue
+        lines_out.append((nm, st, en))
+    cr = []
+    for ks, h in sorted(X5.X.items(), key=lambda kv: tuple(sorted(kv[0]))):
+        a, b = sorted(ks); pt = h[4]
+        if abs(2 * pt[0] - round(2 * pt[0])) > 1e-2 or abs(2 * pt[1] - round(2 * pt[1])) > 1e-2:
+            nop.append('crossing %s x %s: %.4f,%.4f is not a half-tile point' % (names[('r', a)], names[('r', b)], pt[0], pt[1])); continue
+        cr.append((names[('r', a)], names[('r', b)], half(pt)))
+    return lines_out, cr, nop
+
+
+def write_pins(path, box, G, Ln, lanes, X5, T):
+    ls, cr, nop = pins(box, G, Ln, lanes, X5, T)
+    out = ['# Answer-key points (extracted by tools/junction/corpus/extract.py).',
+           '# Half tiles, map frame (x east, y south): tile (x, y) spans [2x, 2x+2] x [2y, 2y+2].']
+    for n, a, b in ls:
+        out.append('end %s start %d %d' % (n, a[0], a[1])); out.append('end %s end %d %d' % (n, b[0], b[1]))
+    for a, b, p in cr: out.append('cross %s %s %d %d' % (a, b, p[0], p[1]))
+    for w in nop: out.append('# no point: ' + w)
+    open(path, 'w').write('\n'.join(out) + '\n')
+
+
 def write_report(path, hub, N, G, Ln, P, lanes, lane_notes, X5, S6, Sh, T):
     out = []; w = out.append; names = T.names
     kinds = defaultdict(int)
@@ -914,6 +1001,7 @@ def write_all(Rr, out):
     else: write_topology(tp, hub, Rr.N, Rr.G, Rr.Ln, Rr.P, Rr.lanes, Rr.T, Rr.X5)
     write_structure(os.path.join(out, 'structure.txt'), hub, Rr.G, Rr.Ln, Rr.S6, Rr.T)
     write_shape(os.path.join(out, 'shape.txt'), os.path.join(out, 'steps.txt'), os.path.join(out, 'lengths.txt'), hub, Rr.Ln, Rr.Sh, Rr.T, Rr.P)
+    write_pins(os.path.join(out, 'pins.txt'), Rr.box, Rr.G, Rr.Ln, Rr.lanes, Rr.X5, Rr.T)
     write_report(os.path.join(out, 'report.txt'), hub, Rr.N, Rr.G, Rr.Ln, Rr.P, Rr.lanes, Rr.lane_notes, Rr.X5, Rr.S6, Rr.Sh, Rr.T)
 
 
