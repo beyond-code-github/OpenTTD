@@ -12,6 +12,8 @@ Drawing expert rail hubs: a layered octilinear layout model checked against expe
   - Klau & Mutzel, "Optimal compaction of orthogonal grid drawings";
   - Eiglsperger & Kaufmann, fast compaction with visibility representations (constraint-graph compaction).
 
+- Hardness and tractability (verify): Patrignani 2001 (orthogonal compaction NP-complete); Bridgeman et al. 2000 (turn-regular faces: polynomial). No octilinear analogue known (per Gemini, verify).
+
 ## Claims
 
 ### C1. Expert builds as an answer key find over-strict rules (method)
@@ -74,3 +76,7 @@ Drawing expert rail hubs: a layered octilinear layout model checked against expe
   Collect their before/after numbers from git and the cards.
 - The pocket rule (§8.9): a negative result, the "longitudinal" exemption measured and rejected (FS-d).
 - The hand T2/T3/LL² numbers from the v1 component solver, as a baseline for solve time and area.
+
+### C6. Optional steps are the hard core; deciding them upstream makes lengths exact (open)
+- **Claim:** keep-apart with optional steps is a disjunction per wall pair (C2, D416 gate: 38k-113k binaries, no solve), in line with Patrignani. With the used steps fixed upstream and cells refined around them, the lengths solve is exact and binary-free (convex cells, fixed landings).
+- **Evidence:** pending, the (A) probe on PSG 197 with the expert's 50 steps as the used steps.
