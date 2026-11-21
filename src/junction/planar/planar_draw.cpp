@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <functional>
 #include <map>
 #include <set>
@@ -154,6 +155,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	JunctionMilp milp;
 	std::vector<std::string> tags;
 	uint32_t columns = 0;
+	std::vector<std::string> slack_tag; ///< Elastic: per slack variable its row's tag.
+	std::vector<uint32_t> slack_var; ///< Elastic: the slack variables.
 	const auto var = [&](double lower, double upper, double cost) {
 		columns++;
 		return milp.AddVariable(lower, upper, cost, true);
@@ -169,6 +172,21 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			}
 		}
 		std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
+		if (options.elastic) {
+			const std::string family = tag.substr(0, tag.find(' '));
+			if (family != "piece" && family != "box") {
+				if (std::isfinite(lower)) {
+					merged.emplace_back(milp.AddVariable(0, JunctionMilp::INF, 1, false), 1.0);
+					slack_tag.push_back(tag);
+					slack_var.push_back(merged.back().first);
+				}
+				if (std::isfinite(upper)) {
+					merged.emplace_back(milp.AddVariable(0, JunctionMilp::INF, 1, false), -1.0);
+					slack_tag.push_back(tag);
+					slack_var.push_back(merged.back().first);
+				}
+			}
+		}
 		milp.AddRow(merged, lower, upper);
 		tags.push_back(tag);
 	};
@@ -209,7 +227,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const bool axis = (pieces[i] % 2) == 0;
 			const double lower = free_piece[i] ? 0 : 1;
-			length[t].push_back({var(lower, COORD_MAX, options.tidy ? 1 : 0), axis ? AXIS_LEAST : 1});
+			length[t].push_back({var(lower, COORD_MAX, options.tidy && !options.elastic ? 1 : 0), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
 			Terms sum;
@@ -666,6 +684,18 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	if (status == JunctionMilp::Status::Optimal) {
 		result.feasible = true;
 		result.status = "Optimal";
+		if (options.elastic) {
+			std::map<std::string, double> per_tag;
+			for (size_t i = 0; i < slack_var.size(); i++) {
+				const double value = milp.Value(slack_var[i]);
+				result.slack += value;
+				per_tag[slack_tag[i]] += value;
+			}
+			for (const auto &[tag, amount] : per_tag) {
+				if (amount > 1e-6) result.stretched.emplace_back(tag, amount);
+			}
+			std::ranges::sort(result.stretched, [](const auto &a, const auto &b) { return a.second != b.second ? a.second > b.second : a.first < b.first; });
+		}
 		result.points.resize(nt);
 		for (size_t t = 0; t < nt; t++) {
 			for (const std::array<uint32_t, 2> &p : point[t]) result.points[t].push_back({static_cast<int>(std::lround(milp.Value(p[0]))), static_cast<int>(std::lround(milp.Value(p[1])))});

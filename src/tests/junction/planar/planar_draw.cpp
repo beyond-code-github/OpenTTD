@@ -19,7 +19,9 @@
 #include "../../../junction/planar/planar_topology.h"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <map>
 #include <set>
@@ -352,6 +354,57 @@ TEST_CASE("planar draw: PSG 197 by sides, every face alone and whole", "[.][plan
 	for (const auto &[family, count] : families) WARN(fmt::format("FS whole conflicts: {} {}", family, count));
 	for (size_t i = 0; i < std::min<size_t>(20, whole.conflict.size()); i++) WARN(fmt::format("FS whole conflict {}: {}", i, whole.conflict[i]));
 	WARN(fmt::format("FS 197 faces: feasible {}, infeasible {}, undecided {}, skipped {}; whole: {} in {:.0f} ms", feasible, infeasible, undecided, skipped, whole.status, whole.ms));
+}
+
+TEST_CASE("planar draw: elastic mode names the stretched rows", "[junction][planar][planardraw]")
+{
+	DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	c.v.structure.side_gap = {0, 0, 0, 0};
+	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0, {.elastic = true});
+	std::string stretched;
+	for (const auto &[tag, amount] : r.stretched) stretched += fmt::format("{} {}; ", tag, amount);
+	INFO("status " << r.status << " slack " << r.slack << " stretched " << stretched);
+	CHECK(r.feasible);
+	CHECK(r.slack > 0);
+	CHECK(std::ranges::any_of(r.stretched, [](const auto &s) { return s.first.starts_with("clear ") || s.first.starts_with("port ") || s.first.starts_with("box"); }));
+
+	const DrawCase t1 = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult ok = CheckPlanarDrawable(t1.v, 5.0, {.clearance = false, .elastic = true});
+	CHECK(ok.feasible);
+	CHECK(std::abs(ok.slack) < 1e-6);
+	CHECK(ok.stretched.empty());
+}
+
+TEST_CASE("planar draw: PSG 197 elastic, whole", "[.][planarkeepapart]")
+{
+	const PlanarShapeVariant shaped = Shaped197();
+	const PlanarDrawResult r = CheckPlanarDrawable(shaped, 120.0, {.elastic = true});
+	WARN(fmt::format("FSE status {}, {:.0f} ms, total slack {}, stretched rows {}", r.status, r.ms, r.slack, r.stretched.size()));
+	std::map<std::string, std::pair<size_t, double>> families;
+	std::map<uint32_t, std::pair<size_t, double>> faces;
+	const std::vector<uint32_t> cell_face = PlanarShapeCellFaces(shaped);
+	for (const auto &[tag, amount] : r.stretched) {
+		auto &f = families[tag.substr(0, tag.find(' '))];
+		f.first++;
+		f.second += amount;
+		if (tag.starts_with("clear ") || tag.starts_with("along ")) {
+			const size_t a = tag.find(' ') + 1;
+			size_t cell = 0;
+			std::from_chars(tag.data() + a, tag.data() + tag.size(), cell);
+			if (cell < cell_face.size()) {
+				auto &g = faces[cell_face[cell]];
+				g.first++;
+				g.second += amount;
+			}
+		}
+	}
+	std::vector<std::pair<std::string, std::pair<size_t, double>>> fs(families.begin(), families.end());
+	std::ranges::sort(fs, [](const auto &a, const auto &b) { return a.second.second > b.second.second; });
+	for (const auto &[family, cs] : fs) WARN(fmt::format("FSE family {}: {} rows, slack {}", family, cs.first, cs.second));
+	for (size_t i = 0; i < std::min<size_t>(40, r.stretched.size()); i++) WARN(fmt::format("FSE stretched {}: {} {}", i, r.stretched[i].first, r.stretched[i].second));
+	std::vector<std::pair<uint32_t, std::pair<size_t, double>>> fc(faces.begin(), faces.end());
+	std::ranges::sort(fc, [](const auto &a, const auto &b) { return a.second.second > b.second.second; });
+	for (size_t i = 0; i < std::min<size_t>(30, fc.size()); i++) WARN(fmt::format("FSE face {}: {} rows, slack {}", fc[i].first, fc[i].second.first, fc[i].second.second));
 }
 
 TEST_CASE("planar draw: PSG 197 pocket rule, faces and whole", "[.][planarkeepapart]")
