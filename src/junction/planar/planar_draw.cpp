@@ -832,11 +832,11 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						std::array<int, 2> s;
 						int spacing;
 					};
-					std::vector<Axis> axes = {{PlanarModel::STEP[(w[i].heading + 6) % 8], PlanarModel::RungSpacing(w[i].heading, w[j].heading)}};
+					std::vector<Axis> axes = {{PlanarModel::STEP[(w[i].heading + 6) % 8], PlanarModel::RungSpacing(w[i].heading, w[j].heading) + options.sides_pad}};
 					if (w[i].heading % 4 != w[j].heading % 4) {
-						axes.push_back({PlanarModel::STEP[(w[j].heading + 6) % 8], PlanarModel::RungSpacing(w[j].heading, w[i].heading)});
+						axes.push_back({PlanarModel::STEP[(w[j].heading + 6) % 8], PlanarModel::RungSpacing(w[j].heading, w[i].heading) + options.sides_pad});
 					} else {
-						axes.push_back({PlanarModel::STEP[w[i].heading % 8], 2});
+						axes.push_back({PlanarModel::STEP[w[i].heading % 8], 2 + options.sides_pad});
 					}
 					int forced_axis = -1, forced_side = 0;
 					if (options.sides_by_walk) {
@@ -933,6 +933,31 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							best_from = forced_from;
 							best_to = forced_to;
 							best_margin = forced_margin;
+						}
+						if (best_margin < options.sides_free_below) {
+							result.sides_free++;
+							Terms bs;
+							for (const Axis &axis : axes) {
+								for (int side = 0; side < 2; side++) {
+									const auto &from = side == 0 ? pi : pj;
+									const auto &to = side == 0 ? pj : pi;
+									const uint32_t b = var(0, 1, 0, "other");
+									result.binaries++;
+									bs.emplace_back(b, 1);
+									for (const auto &p : from) {
+										for (const auto &q : to) {
+											Terms t{{b, -M}};
+											for (int d = 0; d < 2; d++) {
+												t.emplace_back(q[d], axis.s[d]);
+												t.emplace_back(p[d], -axis.s[d]);
+											}
+											row(std::move(t), axis.spacing - M, JunctionMilp::INF, fmt::format("sep {} {} {}", f.face, i, j));
+										}
+									}
+								}
+							}
+							row(std::move(bs), 1, 1, fmt::format("sepdir {} {} {}", f.face, i, j));
+							continue;
 						}
 						if (best_margin < 0) result.short_sides++;
 						for (const auto &p : *best_from) {
