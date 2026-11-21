@@ -63,6 +63,7 @@ struct PlanarDrawOptions {
 	bool elastic = false; ///< Diagnosis (D409): every row except the piece, box and pin rows gets a slack >= 0 per finite bound with cost 1, the objective is the total slack (piece lengths cost 0), every variable is continuous (the LP relaxation, which an infeasible drawing already fails when it has IIS rows), and the result lists the rows that stretched.
 	const PlanarDrawPins *pins = nullptr; ///< Answer-key pins (D393): every pinned point is within window of its position plus one common shift (two free integer variables).
 	const std::vector<std::vector<std::array<int, 2>>> *sides_from = nullptr; ///< With pairwise: a drawing of this variant (`PlanarDrawResult::points`); each separated pair takes the axis side these points keep best as a plain row, with no binary and no `sepdir` (an LP when every other variable is continuous).
+	std::vector<std::string> continuous; ///< A measurement (D409 diagnosis): variable groups written continuous in an integer drawing: "point" (track points), "axis" (axis piece lengths), "diagonal" (diagonal piece lengths), "param" (crossing parameters), "cross" (crossing points), "other" (every other variable: box, pin shift, dummies, binaries).
 };
 
 /** One clearance row of a cell (SPEC-shape §8.8): the vertex after wall `vertex` keeps `spacing` from the line of wall `wall`, on the cell's side. */

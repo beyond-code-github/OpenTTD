@@ -855,6 +855,30 @@ TEST_CASE("planar draw: PSG 197 integer base, minimal pin core", "[.][planarkeep
 	}
 }
 
+TEST_CASE("planar draw: PSG 197 integer base, which integrality", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
+	pins.window = 8;
+	const std::vector<std::string> groups = {"point", "axis", "diagonal", "param", "cross", "other"};
+	std::vector<std::vector<std::string>> trials = {{}};
+	for (const std::string &g : groups) trials.push_back({g});
+	for (const std::string &g : groups) {
+		std::vector<std::string> rest;
+		for (const std::string &o : groups) {
+			if (o != g) rest.push_back(o);
+		}
+		trials.push_back(rest);
+	}
+	for (const std::vector<std::string> &x : trials) {
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 30.0, {.clearance = false, .pins = &pins, .continuous = x});
+		std::string list;
+		for (const std::string &g : x) list += (list.empty() ? "" : ",") + g;
+		WARN(fmt::format("continuous {{{}}}: status {}, {:.0f} ms", list, r.status, r.ms));
+	}
+}
+
 TEST_CASE("planar draw: PSG 197 pairwise, sides from the pinned drawing", "[.][planarkeepapart]")
 {
 	PlanarShapeVariant shaped;
