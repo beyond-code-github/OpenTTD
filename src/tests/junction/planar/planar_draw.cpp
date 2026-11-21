@@ -1428,8 +1428,22 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 		p2.window = 2;
 		const PlanarDrawResult ref = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &p2});
 		WARN(fmt::format("{} reference W2: status {}, total slack {:.3f}", label, ref.status, ref.slack));
-		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .elastic_families = {"clear", "land", "room"}, .pins = &p2, .fix_points = &ref.points});
-		WARN(fmt::format("{} on V's drawing: status {}, total slack {:.3f}, stretched rows {}", label, r.status, r.slack, r.stretched.size()));
+		/* The tolerance's own absorption: totals only. */
+		{
+			const PlanarDrawResult r2 = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .elastic_families = {"clear", "land", "room"}, .pins = &p2, .fix_points = &ref.points, .fix_window = 2});
+			std::map<std::string, std::pair<size_t, double>> fam;
+			for (const auto &[tag, slack] : r2.stretched) {
+				auto &f = fam[tag.substr(0, tag.find(' '))];
+				f.first++;
+				f.second += slack;
+			}
+			WARN(fmt::format("{} window 2: status {}, total slack {:.3f}, clear {} sum {:.3f}, land {} sum {:.3f}, room {} sum {:.3f}", label, r2.status, r2.slack, fam["clear"].first, fam["clear"].second, fam["land"].first, fam["land"].second, fam["room"].first, fam["room"].second));
+			if (r2.status != "Optimal") {
+				for (const std::string &tag : r2.conflict) WARN(fmt::format("{} window 2 conflict {}", label, tag));
+			}
+		}
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .elastic_families = {"clear", "land", "room"}, .pins = &p2, .fix_points = &ref.points, .fix_window = 1});
+		WARN(fmt::format("{} window 1: status {}, total slack {:.3f}, stretched rows {}", label, r.status, r.slack, r.stretched.size()));
 		if (r.status != "Optimal") {
 			for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
 			continue;

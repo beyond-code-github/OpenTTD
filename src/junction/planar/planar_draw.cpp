@@ -273,7 +273,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			row({{point[t][i][0], 1}, {width, -1}}, -JunctionMilp::INF, 0, "box");
 			row({{point[t][i][1], 1}, {height, -1}}, -JunctionMilp::INF, 0, "box");
 			if (options.fix_points != nullptr) {
-				for (int axis = 0; axis < 2; axis++) eq({{point[t][i][axis], 1}}, (*options.fix_points)[t][i][axis], "fix");
+				for (int axis = 0; axis < 2; axis++) row({{point[t][i][axis], 1}}, (*options.fix_points)[t][i][axis] - options.fix_window, (*options.fix_points)[t][i][axis] + options.fix_window, "fix");
 			}
 		}
 
