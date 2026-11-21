@@ -192,6 +192,72 @@ TEST_CASE("planar draw: elastic mode names a short bay", "[junction][planar][pla
 	CHECK(std::ranges::any_of(result.stretched, [](const auto &s) { return s.first.starts_with("bay "); }));
 }
 
+/**
+ * Every gap between a route path's bends and each of the next three (SPEC-slots-lengths §8.2, Curve rows).
+ * @param c The case.
+ * @param r Its drawing.
+ * @return Per gap, its travel in half tiles and the least the rules ask.
+ */
+static std::vector<std::pair<double, int>> DrawnCurveGaps(const DrawCase &c, const PlanarDrawResult &r)
+{
+	const PlanarTrackMap &map = c.v.structure.map;
+	const PlanarRuleFields &rules = c.v.structure.rules;
+	std::vector<std::pair<double, int>> gaps;
+	for (const PlanarRoute &route : map.expanded.routes) {
+		for (const std::vector<uint32_t> &path : route.paths) {
+			std::vector<std::pair<double, bool>> bends;
+			double acc = 0;
+			int last = -1;
+			for (const uint32_t t : path) {
+				const std::vector<uint32_t> &flex = c.v.tracks[t].flex;
+				const std::vector<uint32_t> &steps = c.v.tracks[t].steps;
+				for (size_t i = 0; i < c.v.tracks[t].pieces.size(); i++) {
+					const bool middle = std::ranges::find(flex, i) != flex.end() || std::ranges::find(steps, i) != steps.end();
+					const int heading = c.v.tracks[t].pieces[i];
+					if (!middle) {
+						if (last != -1 && last != heading) bends.emplace_back(acc, PlanarModel::Rot(last, heading) > 0);
+						last = heading;
+					}
+					acc += r.lengths[t][i];
+				}
+			}
+			for (size_t i = 0; i < bends.size(); i++) {
+				for (size_t k = 1; k <= 3 && i + k < bends.size(); k++) {
+					const int least = k == 1 ? (bends[i].second != bends[i + k].second ? rules.curve_opposite : rules.curve_same) : rules.curve_window[k - 2];
+					gaps.emplace_back(bends[i + k].first - bends[i].first, least);
+				}
+			}
+		}
+	}
+	return gaps;
+}
+
+TEST_CASE("planar draw: curves keep their spacing along a route", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult plain = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .curves = false});
+	const PlanarDrawResult curved = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .curves = true});
+	REQUIRE(plain.feasible);
+	REQUIRE(curved.feasible);
+	const auto without = DrawnCurveGaps(c, plain);
+	const auto with = DrawnCurveGaps(c, curved);
+	REQUIRE(!without.empty());
+	CHECK(std::ranges::any_of(without, [](const auto &g) { return g.first < g.second; }));
+	for (const auto &[gap, least] : with) {
+		INFO("gap " << gap << " least " << least);
+		CHECK(gap >= least);
+	}
+}
+
+TEST_CASE("planar draw: elastic mode names a short curve", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult plain = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .curves = false});
+	REQUIRE(plain.feasible);
+	const PlanarDrawResult result = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .curves = true, .elastic = true, .elastic_families = {"curve"}, .fix_points = &plain.points, .fix_window = 0});
+	CHECK(std::ranges::any_of(result.stretched, [](const auto &s) { return s.first.starts_with("curve "); }));
+}
+
 TEST_CASE("planar draw: the two-lane T's best variant is drawable", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(2), 16);

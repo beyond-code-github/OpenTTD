@@ -6,8 +6,8 @@
  */
 
 /**
- * @file planar_draw.cpp The drawing program: points and pieces, box, ports, nodes, crossings, spans, dummies with their landings and clearance per convex cell (E5-1, E5-2), bays (option).
- * Not in it yet: grid parity (D382), beside tracks as offset curves, node legs and the trident binary, coverage, curve spacing.
+ * @file planar_draw.cpp The drawing program: points and pieces, box, ports, nodes, crossings, spans, dummies with their landings and clearance per convex cell (E5-1, E5-2), bays (option), curve spacing (option).
+ * Not in it yet: grid parity (D382), beside tracks as offset curves, node legs and the trident binary, coverage.
  */
 
 #include "../../stdafx.h"
@@ -488,6 +488,21 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			eq({{cross_point[c][axis], 1}, {point[t][piece_of[c][0]][axis], -1}, {param[c][0], -step[axis]}}, 0, fmt::format("cross {}", c));
 		}
 	}
+	/* Rows that two route paths share are written once. */
+	std::set<std::pair<Terms, double>> seen;
+	const auto once_row = [&](Terms terms, double lower, const std::string &tag) {
+		std::ranges::sort(terms);
+		Terms merged;
+		for (const auto &[variable, coefficient] : terms) {
+			if (!merged.empty() && merged.back().first == variable) {
+				merged.back().second += coefficient;
+			} else {
+				merged.emplace_back(variable, coefficient);
+			}
+		}
+		std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
+		if (seen.emplace(merged, lower).second) row(std::move(merged), lower, JunctionMilp::INF, tag);
+	};
 	/* Bays (D420): a non-prio route path's travel from its last topology split or port to each topology merge is at least rules.bay. */
 	if (options.bays) {
 		const auto site_of = [&](size_t n) -> const PlanarStructureSite * {
@@ -508,20 +523,6 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			for (const uint32_t t : node.out) if (map.part_of[t] == UINT32_MAX) return false;
 			return true;
 		};
-		std::set<std::pair<Terms, double>> seen;
-		const auto once_row = [&](Terms terms, double lower, const std::string &tag) {
-			std::ranges::sort(terms);
-			Terms merged;
-			for (const auto &[variable, coefficient] : terms) {
-				if (!merged.empty() && merged.back().first == variable) {
-					merged.back().second += coefficient;
-				} else {
-					merged.emplace_back(variable, coefficient);
-				}
-			}
-			std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
-			if (seen.emplace(merged, lower).second) row(std::move(merged), lower, JunctionMilp::INF, tag);
-		};
 		for (const PlanarRoute &route : map.expanded.routes) {
 			if (route.prio) continue;
 			for (const std::vector<uint32_t> &path : route.paths) {
@@ -537,6 +538,48 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						Terms d = acc;
 						for (const auto &[variable, coefficient] : from_split) d.emplace_back(variable, -coefficient);
 						once_row(std::move(d), rules.bay, fmt::format("bay {} {}", route.name, to.index));
+					}
+				}
+			}
+		}
+	}
+	/* Curve spacing (D420, SPEC-slots-lengths §8.2): Shape's bends along every route path; flex and step middles count as travel only (§10.3). */
+	if (options.curves) {
+		struct Bend {
+			Terms at;
+			bool right;
+		};
+		for (const PlanarRoute &route : map.expanded.routes) {
+			for (const std::vector<uint32_t> &path : route.paths) {
+				std::vector<Bend> bends;
+				Terms acc;
+				int last_heading = -1;
+				for (const uint32_t t : path) {
+					const std::vector<uint32_t> &flex = v.tracks[t].flex;
+					const std::vector<uint32_t> &steps = v.tracks[t].steps;
+					for (size_t i = 0; i < v.tracks[t].pieces.size(); i++) {
+						const Length &len = length[t][i];
+						if (std::ranges::find(flex, i) == flex.end() && std::ranges::find(steps, i) == steps.end()) {
+							const int heading = v.tracks[t].pieces[i];
+							if (last_heading != -1 && last_heading != heading) {
+								const int turn = PlanarModel::Rot(last_heading, heading);
+								if (std::abs(turn) != 1) return unsupported(fmt::format("route {} turns by {} eighths at track {}", route.name, turn, map.tracks[t].name));
+								bends.push_back({acc, turn > 0});
+							}
+							last_heading = heading;
+						}
+						acc.emplace_back(len.variable, len.coefficient);
+					}
+				}
+				for (size_t i = 0; i < bends.size(); i++) {
+					int mand = 0;
+					for (size_t j = i + 1; j < bends.size(); j++) {
+						if (mand >= 3) break;
+						Terms d = bends[j].at;
+						for (const auto &[variable, coefficient] : bends[i].at) d.emplace_back(variable, -coefficient);
+						const double least = mand >= 1 ? rules.curve_window[mand - 1] : (bends[i].right != bends[j].right ? rules.curve_opposite : rules.curve_same);
+						once_row(std::move(d), least, fmt::format("curve {}", route.name));
+						mand++;
 					}
 				}
 			}
