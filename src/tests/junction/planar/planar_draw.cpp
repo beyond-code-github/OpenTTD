@@ -2284,6 +2284,8 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 			}
 			const PlanarDrawPins *p = pinned ? &p8 : nullptr;
 			const std::string label = fmt::format("{} {}", name, pinned ? "W8" : "no pins");
+			/* PLANAR_PROBE_CASE (a measurement aid) runs only the case with that label, e.g. "C no pins". */
+			if (const char *only = std::getenv("PLANAR_PROBE_CASE"); only != nullptr && label != only) continue;
 			const PlanarDrawResult seed = CheckPlanarDrawable(*variant, 30.0, {.elastic = true, .elastic_tidy = 0.001, .pins = p});
 			WARN(fmt::format("{} seed: {}, total slack {:.3f}", label, describe(seed), seed.slack));
 			if (!seed.feasible) continue;
@@ -2334,6 +2336,17 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 					std::string conflicts;
 					for (size_t i = 0; i < std::min<size_t>(30, f.conflict.size()); i++) conflicts += f.conflict[i] + "; ";
 					WARN(fmt::format("{} final conflict: {}", label, conflicts));
+				}
+			}
+			for (const double below : {2.0, 4.0}) {
+				for (const double budget : {15.0}) {
+					const PlanarDrawResult f = CheckPlanarDrawable(*variant, budget, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &last_optimal->points, .sides_free_below = below});
+					WARN(fmt::format("{} final free below {:.0f} (integer, {:.0f} s): {}, sides_free {}, binaries {}", label, below, budget, describe(f), f.sides_free, f.binaries));
+					if (f.status == "Infeasible") {
+						std::string conflicts;
+						for (size_t i = 0; i < std::min<size_t>(30, f.conflict.size()); i++) conflicts += f.conflict[i] + "; ";
+						WARN(fmt::format("{} free below {:.0f} conflict: {}", label, below, conflicts));
+					}
 				}
 			}
 			if (plateau_probe) {
