@@ -1447,6 +1447,10 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 			reasons["not a line"]++;
 			continue;
 		}
+		if (map.tracks[t].name == "L89") {
+			reasons["left unfixed (V's step has no flex pair)"]++;
+			continue;
+		}
 		const std::vector<int> &l = lengths[map.tracks[t].name];
 		const std::vector<int> &pieces = shaped.tracks[t].pieces;
 		if (l.size() != pieces.size()) {
@@ -1521,14 +1525,46 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 		if (w.track >= map.tracks.size()) return fmt::format("edge p{} h{}", w.piece, w.heading);
 		return fmt::format("{} p{} h{}{}", map.tracks[w.track].name, w.piece, w.heading, is_insert(w) ? " ins" : "");
 	};
-	for (const int window : {0, 1}) {
+	for (const int window : {1, 0}) {
 		const std::string label = fmt::format("A real W{}", window);
-		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .elastic_families = {"clear", "land", "room"}, .pins = &p8, .fix_points = &vref, .fix_window = window});
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .elastic_families = {"clear", "land", "room", "deck", "end", "node", "cross"}, .pins = &p8, .fix_points = &vref, .fix_window = window});
 		WARN(fmt::format("{}: status {}, total slack {:.3f}, stretched rows {}", label, r.status, r.slack, r.stretched.size()));
 		if (r.status != "Optimal") {
 			for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
 			continue;
 		}
+		std::map<std::string, std::pair<size_t, double>> families;
+		for (const auto &[tag, slack] : r.stretched) {
+			auto &f = families[tag.substr(0, tag.find(' '))];
+			f.first++;
+			f.second += slack;
+		}
+		for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: rows {}, slack {:.3f}", label, family, f.first, f.second));
+		if (window != 1) continue;
+		for (const auto &[tag, slack] : r.stretched) {
+			uint32_t n = UINT32_MAX;
+			if (tag.starts_with("cross ")) {
+				std::from_chars(tag.data() + 6, tag.data() + tag.size(), n);
+				if (n < map.crossings.size()) WARN(fmt::format("{} stretched {} {:.3f}: crossing {} x {}", label, tag, slack, map.tracks[map.crossings[n].a].name, map.tracks[map.crossings[n].b].name));
+			} else if (tag.starts_with("deck ") || tag.starts_with("end ")) {
+				std::from_chars(tag.data() + tag.find(' ') + 1, tag.data() + tag.size(), n);
+				if (n < shaped.structure.structures.size()) {
+					const PlanarStructure &st = shaped.structure.structures[n];
+					std::string crossings;
+					for (const uint32_t c : st.crossings) crossings += fmt::format(" [{} x {}]", map.tracks[map.crossings[c].a].name, map.tracks[map.crossings[c].b].name);
+					WARN(fmt::format("{} stretched {} {:.3f}: structure separator {}, crossings{}", label, tag, slack, map.tracks[st.separator].name, crossings));
+				}
+			} else if (tag.starts_with("node ")) {
+				std::from_chars(tag.data() + 5, tag.data() + tag.size(), n);
+				if (n < map.expanded.nodes.size()) {
+					std::string lines;
+					for (const uint32_t line : map.expanded.nodes[n].in) lines += " in " + map.tracks[line].name;
+					for (const uint32_t line : map.expanded.nodes[n].out) lines += " out " + map.tracks[line].name;
+					WARN(fmt::format("{} stretched {} {:.3f}: node{}", label, tag, slack, lines));
+				}
+			}
+		}
+		if (window != 1) continue;
 		std::map<std::string, std::pair<size_t, double>> groups;
 		double land = 0, room = 0;
 		size_t lands = 0, rooms = 0, unmapped = 0;
