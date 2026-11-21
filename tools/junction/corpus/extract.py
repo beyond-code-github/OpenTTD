@@ -464,21 +464,34 @@ def structure(N, G, Ln, X5, lanes):
         if kd == 'cross': nodes.append((p, kd, None, (), ('skip', 'cross node'))); continue
         tr_p, lg_p = (CP[p], CS[p]) if kd == 'split' else (CS[p], CP[p])
         trs = {LID.get(a) for a in tr_p}; lgs = tuple(sorted(LID.get(b, -1) for b in lg_p))
-        if -1 in lgs or len(trs) > 1 or (None in trs and tr_p):
-            nodes.append((p, kd, None, lgs, ('und', 'trunk/leg is a node piece'))); continue
+        if len(trs) > 1 or len(tr_p) > 1 and None in trs:
+            nodes.append((p, kd, None, lgs, ('und', 'several trunk pieces'))); continue
         tk = trs.pop() if trs else None
+        ends_, shared_ = X5.ends, X5.shared
+        def nodehead(q, toward_n):
+            """Heading of node piece q in its travel direction, next to node piece p (q precedes p when toward_n)."""
+            sh = shared_(q, p)
+            if sh is None: raise ValueError('node piece %s has no single shared end with %s' % (tl(q), tl(p)))
+            other = [e for e in ends_(q) if e != sh][0]
+            return head(other, sh) if toward_n else head(sh, other)
         try:
             if tk is not None:
                 if tk not in SEG: nodes.append((p, kd, tk, lgs, ('und', 'trunk line has no geometry'))); continue
                 sg = offnode(tk)
                 if not sg: nodes.append((p, kd, tk, lgs, ('und', 'trunk has no off-node piece'))); continue
                 h = hd0(sg[-1] if kd == 'split' else sg[0])
+            elif tr_p:
+                tk = -1; h = nodehead(tr_p[0], kd == 'split')
             else:
                 if kd == 'split' and p in ports_in: h = HEAD_IN[ports_in[p]]
                 elif kd == 'merge' and p in ports_out: h = HEAD_PORT[ports_out[p]]
                 else: nodes.append((p, kd, None, lgs, ('und', 'no trunk'))); continue
             ok = []; bad = None
-            for lk in lgs:
+            for b in lg_p:
+                if b in isnode:
+                    if nodehead(b, kd == 'merge') == h: ok.append(('e', p, b) if kd == 'split' else ('e', b, p))
+                    continue
+                lk = LID[b]
                 if lk not in SEG: bad = 'leg line has no geometry'; break
                 sg = offnode(lk)
                 if not sg: bad = 'leg has no off-node piece'; break
@@ -685,7 +698,7 @@ def build_text_model(N, G, Ln, P, lanes, S6, X5):
     for n in sorted(isnode, key=lambda p: p[0]):
         kd = Ln.ninfo[n][0]
         res = sres[n][4]
-        def legkey(k): return ('r', k)
+        def legkey(k): return k if isinstance(k, tuple) else ('r', k)
         if kd == 'split':
             trunk = line_of_in(CP[n][0], n) if CP[n] else port_in_line.get(next((x['label'] for x in lanes if x['pc'] == n and x['dir'] == 'in'), None))
             legs_p, tie = split_order(n, list(CS[n]))
