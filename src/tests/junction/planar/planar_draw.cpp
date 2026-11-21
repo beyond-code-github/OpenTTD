@@ -1412,7 +1412,11 @@ TEST_CASE("planar draw: PSG 197 base LP, its conflict", "[.][planarkeepapart]")
 	none.pins.clear();
 	PlanarDrawPins p8 = pins;
 	p8.window = 8;
-	for (const auto &[name, p] : std::vector<std::pair<std::string, const PlanarDrawPins *>>{{"no pins", &none}, {"pins W8", &p8}}) {
+	PlanarDrawPins p4 = pins;
+	p4.window = 4;
+	PlanarDrawPins p2 = pins;
+	p2.window = 2;
+	for (const auto &[name, p] : std::vector<std::pair<std::string, const PlanarDrawPins *>>{{"no pins", &none}, {"pins W8", &p8}, {"pins W4", &p4}, {"pins W2", &p2}}) {
 		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 30.0, {.clearance = false, .pins = p, .continuous = all});
 		WARN(fmt::format("base LP {}: status {}, {:.0f} ms", name, r.status, r.ms));
 		for (const std::string &tag : r.conflict) WARN(fmt::format("base LP {} conflict: {}", name, tag));
