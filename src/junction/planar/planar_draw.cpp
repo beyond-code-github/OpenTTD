@@ -159,7 +159,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	std::vector<uint32_t> slack_var; ///< Elastic: the slack variables.
 	const auto var = [&](double lower, double upper, double cost) {
 		columns++;
-		return milp.AddVariable(lower, upper, cost, true);
+		return milp.AddVariable(lower, upper, cost, !options.elastic);
 	};
 	const auto row = [&](Terms terms, double lower, double upper, const std::string &tag) {
 		std::ranges::sort(terms);
