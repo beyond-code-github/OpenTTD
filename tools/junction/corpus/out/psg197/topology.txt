@@ -5,12 +5,12 @@ topology BBH01
 # Routes: a movement letter per (in port, out port) pair, A, B, ... in the order of the in ports then the out ports as listed in the ports section, plus the in lane's number on its port.
 # Movements: A: N-in -> E-out; B: N-in -> S-out; C: E-in -> N-out; D: E-in -> S-out; E: S-in -> N-out; F: S-in -> E-out.
 # Lines L1.. are named by index: lines with track first (by their first piece), then empty lines (no track: a lane that is itself a node piece, an edge between two node pieces, a cascade or cross middle line). Leg order at a node is left to right across travel in the x east, y south frame.
-port N out N: L15=C1+C2+C3+E1+E2+E3, L20=C1+C2+C3+E1+E2+E3
-port N in S: L42=A2+B2, L39=A1+B1
-port E out E: L91=A1+A2+F1+F2, L93=A1+F1+F2+F3, L85=A2+F1+F2+F3
-port E in W: L98=C3+D3, L99=C2+D2, L95=C1+D1
-port S in N: L3=E1+F1, L8=E2+F2, L14=E3+F3
-port S out S: L41=B1+B2+D2+D3, L38=B1+B2+D1+D2+D3, L27=B1+D1+D2+D3
+port N out N @ 84 85: L15=C1+C2+C3+E1+E2+E3, L20=C1+C2+C3+E1+E2+E3
+port N in S @ 91 90: L42=A2+B2, L39=A1+B1
+port E out E @ 164 166 167: L91=A1+A2+F1+F2, L93=A1+F1+F2+F3, L85=A2+F1+F2+F3
+port E in W @ 174 173 169: L98=C3+D3, L99=C2+D2, L95=C1+D1
+port S in N @ 81 82 83: L3=E1+F1, L8=E2+F2, L14=E3+F3
+port S out S @ 90 89 88: L41=B1+B2+D2+D3, L38=B1+B2+D1+D2+D3, L27=B1+D1+D2+D3
 node L3 -> L1=E1, L2=F1
 node L1 -> L9=E1, L10=E1
 node L6=E2 -> L4=E2, L5=E2

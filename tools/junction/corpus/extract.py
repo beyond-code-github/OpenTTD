@@ -767,7 +767,7 @@ def build_text_model(N, G, Ln, P, lanes, S6, X5):
     return T
 
 
-def write_topology(path, hub, N, G, Ln, P, lanes, T, X5):
+def write_topology(path, hub, N, G, Ln, P, lanes, T, X5, box):
     names, routes = T.names, T.routes
     out = []; w = out.append
     w('topology %s' % hub['name'].replace(' ', ''))
@@ -788,9 +788,14 @@ def write_topology(path, hub, N, G, Ln, P, lanes, T, X5):
         return (s[:i], int(s[i:]))
     def port_line(x):
         return (T.port_in_line if x['dir'] == 'in' else T.port_out_line).get(x['label'])
+    pinned = {n: (st, en) for n, st, en in pins(box, G, Ln, lanes, X5, T)[0]}     # port positions (D410) from the pins' box-edge points
+    def port_pos(p, k):
+        if not k or names[k] not in pinned: return '?'
+        pt = pinned[names[k]][0 if p['dir'] == 'in' else 1]
+        return str(pt[0 if p['side'] in 'NS' else 1] // 2)
     for p in P:
         keys = [port_line(x) for x in p['across']]
-        w('port %s %s %s: %s' % (p['side'], p['dir'], p['heading'], ', '.join(nm(k) if k else '?' for k in keys)))
+        w('port %s %s %s @ %s: %s' % (p['side'], p['dir'], p['heading'], ' '.join(port_pos(p, k) for k in keys), ', '.join(nm(k) if k else '?' for k in keys)))
     for kd, ins, outs, piece in T.stm:
         w('node %s -> %s' % (', '.join(nm(k) for k in ins), ', '.join(nm(k) for k in outs)))
     w('# Crossings (D389): each line\'s crossings in travel order, mark > = the partner arrives from the line\'s left (marks.py).')
@@ -1001,7 +1006,7 @@ def write_all(Rr, out):
     tp = os.path.join(out, 'topology.txt')
     if Rr.T.cycle:
         if os.path.exists(tp): os.remove(tp)      # a stale topology from an earlier run must not outlive the refusal
-    else: write_topology(tp, hub, Rr.N, Rr.G, Rr.Ln, Rr.P, Rr.lanes, Rr.T, Rr.X5)
+    else: write_topology(tp, hub, Rr.N, Rr.G, Rr.Ln, Rr.P, Rr.lanes, Rr.T, Rr.X5, Rr.box)
     write_structure(os.path.join(out, 'structure.txt'), hub, Rr.G, Rr.Ln, Rr.S6, Rr.T)
     write_shape(os.path.join(out, 'shape.txt'), os.path.join(out, 'steps.txt'), os.path.join(out, 'lengths.txt'), hub, Rr.Ln, Rr.Sh, Rr.T, Rr.P)
     write_pins(os.path.join(out, 'pins.txt'), Rr.box, Rr.G, Rr.Ln, Rr.lanes, Rr.X5, Rr.T)
