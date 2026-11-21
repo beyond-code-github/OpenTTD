@@ -26,6 +26,6 @@ same-channel crossings (two lines with equal route sets): 2 L4 x L5 at 82.5,162.
 tied leg order at nodes (written in encounter order): none
 ## Gaps (D393)
 cascades written for pieces with more than 2 legs or a cross: 3-way split at 92,158
-empty lines (no track between two events): 3; they have no crossings, shape or lengths
+empty lines (no track between two events): 3; they have no crossings, their shape is one heading of length 0
 bridge spans not written to structure.txt (no bridge statement in the notation yet): 0
 node pieces adjacent to node pieces: 1

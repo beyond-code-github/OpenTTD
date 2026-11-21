@@ -97,3 +97,6 @@ lengths L95: 6 4 10 2
 lengths L96: 24
 lengths L97: 8
 lengths L98: 12
+lengths L99: 0
+lengths L100: 0
+lengths L101: 0
