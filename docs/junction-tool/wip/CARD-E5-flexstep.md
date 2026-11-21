@@ -34,3 +34,8 @@
 ## Decision for Pete
 - **Recommendation:** adopt (amends D385 (1) and H12b: flex bends are not refined; side groups in the clearance rows). A parked, kept as the fallback for the remaining non-flex dummies.
 - **Reversible:** yes. Behind a flag in Shape (H12b skips flex bends) and in the drawing program (side groups).
+
+## Progress (2026-11-22)
+- Proof written: SPEC-shape §8.8 (Lemma 1 strip, Lemma 2 tile separation across a grid line, theorem steps 1-5, end caps step 3). Units check: no extra row for diagonal inserts beside axis sides or axis inserts beside diagonal sides (Lemma 2; the diagonal case uses the tile rule's opposite corners).
+- Added while proving: D408 (vertices keep >= 0 from their cell's dummy lines). Open, pre-existing: no spacing across a dummy (§8.8 Open).
+- Steps: FS-a Shape (H12/H12b on the reduced walk, flag), FS-b drawing program (side rows, flag), then 197 per face and whole.

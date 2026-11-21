@@ -130,3 +130,44 @@ Every Slots row above is homogeneous (closure, landing, clearance as ">= c" with
 **Card for the engineer.**
 1. May Shape run an LP to certify its own refinement (H13)? It hands no lengths down; Slots still decides every length. Reading of D366/D367: a layer testing its own promise. Alternative: no LP, only combinatorial rules (avoid rigid cells by rule), with no proof of G-feasible.
 2. The fallback search (try other dummy candidates where the LP names rows) is a search inside Shape's own decision; acceptable under D361, or must the first rule be proved sufficient?
+
+### 8.8 A flex step needs no dummy: the proof (D407, orchestrator, 2026-11-22)
+Amends 8.1-8.4 for flex pairs; settles 8.4 as reading (ii) for flex: the bends are Shape's (D397), and they are no corners of a cell.
+
+**Setting.** A free one-piece stretch at heading h carries its flex pairs as pieces h, h-1, h, h+1, h (`PlanarShapeTrack::flex` lists the middles, the *inserts*). Slots sizes each insert >= 0. Every insert is a wall of the cell it bounds.
+
+**Definitions (per cell, walked with the cell on the left).**
+- *Reduced walk:* the cell's walls with every insert removed and its turn added to the wall before it. A wall before an insert and the wall after it have equal headings, so they meet with turn 0.
+- *Side:* a maximal run of walls joined at turn-0 corners of the reduced walk, with the inserts between them. So a side is a, insert, b, insert, c (one stretch's pairs), plus today's straight-corner joining (two walls of equal walked heading meeting at a corner).
+- *Lines of a side* at heading h: the lines of its non-insert walls (a, b, c). An insert has no line of its own for clearance.
+- *Inner line* of side S: the line of S nearest the cell's interior. The *strip* of S: the band between its innermost and outermost lines.
+- A dummy is a side of one wall and one line, and it is no track.
+
+**The rule.**
+- **H12 (amended):** every cell's *reduced* walk turns one way and winds once. Shape refines on the reduced walk, so a flex bend is no corner and gets no dummy; a dummy never starts at a flex bend and never lands on an insert (8.3 (c)).
+- **Rows:** every vertex k of a cell (the corner after wall k) keeps `max(RungSpacing(h_e, h_k), RungSpacing(h_e, h_k+1))` from the line of every non-insert track wall e of every other side, except the sides of walls k and k+1; and keeps 0 from the line of every dummy of the cell except a dummy whose end it is. A vertex between two walls that are no track has no rows (as today). Insert vertices are vertices like any other.
+
+**Lemma 1 (strip).** Every point of S lies in its strip, so on the outer side of its inner line (closed).
+*Proof.* a's and b's lines are parallel at heading h; an insert of length s >= 0 runs from a's end to b's start, so every point of it is a convex combination of points on a's line and b's line. Every non-insert wall of S lies on one of S's lines. All lie between the innermost and outermost lines.
+
+**Lemma 2 (tile separation across a grid line).** Let L be a line of heading h on the tile grid (an axis line on tile middles, a diagonal line through tile-edge midpoints), A a set of pieces with every point on one closed side of L, and J a piece of heading g whose two end points lie at least `RungSpacing(h, g)` from L on the other side (in `Dot(Right(h), .)` units). Then J shares no tile with a piece of A, except opposite corners, which the tile rule allows.
+*Proof (half tiles; tiles are [2i, 2i+2] x [2j, 2j+2]; axis pieces run on middles between edges, diagonal pieces between edge midpoints of one tile, a corner each).*
+- h axis, say north, L at x = X (X odd), A at x <= X. Every piece of A lies in a tile column whose middle is <= X. J: a north-south piece needs 2 (x >= X + 2, odd, so column X + 2 or more); an east-west or diagonal piece needs 1 (x >= X + 1, so its tile is column X + 2 or more: an east-west piece runs between even x, a diagonal piece spans x in [X + 1, X + 2]). Disjoint columns.
+- h diagonal, say north-east, normal (1, 1), L at x + y = C (C odd), A at x + y <= C, J at x + y >= C + 2 (`RungSpacing` is 2 for a diagonal target). A tile with middle (m, n) holds points up to x + y = m + n + 2. Its axis pieces and its north-east, south-west and south-east corners reach x + y = m + n + 1; if one of them is A's, m + n + 1 <= C, so the tile holds no point at x + y >= C + 2 and no piece of J. Its north-west corner reaches only m + n - 1; the only piece of that tile lying wholly at x + y >= m + n + 1 is the south-east corner, the opposite corner. Disjoint, or opposite corners.
+- The other headings are these two turned. The spacing used is the same quantity today's rows use (`RungSpacing(h, own)` on L's normal), whatever the heading of A's pieces: **a diagonal insert beside an axis side, or an axis insert beside a diagonal side, needs no extra row** (the units check of CARD-E5-flexstep). Lemma 2 assumes the grid (D334); the drawing program does not yet hold grid parity (D382), as for every row today.
+
+**Theorem (G-planar with flex, per cell).** In a drawing that keeps the rows, the closure of each cell and every length >= 0, no two non-adjacent sides of a cell share a tile (opposite corners aside), and no vertex of a cell lies beyond one of its dummies.
+*Proof.*
+1. Take sides S and T, not adjacent. Every vertex of T keeps the spacing from every line of S, hence from S's inner line, on the interior side. Each piece of T has both end points there with its own heading among the two at each end, so each piece meets Lemma 2's condition for J. Every point of S lies on the outer side of S's inner line (Lemma 1). Lemma 2 with L = S's inner line, A = S: no shared tile. Inserts are covered without a row of their own, because they lie in the strip.
+2. Adjacent sides S and R share one corner vertex c. Every other vertex of S keeps rows against every line of R and every other vertex of R against every line of S; only c is exempt. So step 1 holds for S minus its last wall against R minus its first, and the two walls at c meet at c as today (D400's node proof, crossing corners at the crossing point).
+3. **End caps.** A step's inner vertices (a/insert and insert/b) are vertices of their side S, not of the corner, so they keep rows against every line of both adjacent sides. A step whose b would reach or cross the next side's line (q at or beyond R's line, e.g. b of length 0 before a turning corner) breaks q's row, and a vertex of the adjacent side inside S's pocket (between a's and b's lines) breaks its row against S's inner line. Both are refused by rows, with no extra family.
+4. Dummies: a vertex keeps 0 from each dummy line of its cell, so each cell stays on its side of its dummies and the cells tile the face (8.3 step 2) even when an inward step points at a dummy. Rows give no spacing across a dummy (8.3 step 4 is unproved across a dummy, see Open).
+5. Convexity: the reduced walk turns one way and closes (H12 amended), so the sides' headings are a convex sequence; with every vertex inside every other side's lines, the inner lines' half-planes contain every other side, and no side folds back over another.
+
+**Cost, stated.**
+- Conservative: no track may enter the pocket an outward step leaves (between a's and b's lines on the outer side is S's own; the inner pocket is closed to other sides by their rows against the outer line too). Toggle candidate if a hub needs it.
+- b (and a) before a turning corner must be long enough for q's row: at least one tile on an axis side before a 135 degree corner (q's distance to R's line is b's length times a positive dot product). A track bending from the insert straight into the next side's heading would turn 90 degrees or more, which no track does, so this refuses nothing buildable.
+
+**Open (not D407's).**
+- Spacing across a dummy: two cells' walls on either side of a dummy have no row between them (8.3 step 4 assumed "separated by the cells between them"; no margin holds it). Pre-existing; relevant to the ~48 non-flex dummies left on 197. Candidate: by Lemma 2 a dummy line on the tile grid separates with spacing on one side only, so rows `>= RungSpacing` on one side and `>= 0` on the other suffice; to be written as its own ruling if 197 shows it.
+- 8.3 (a), (d) are answered by Lemma 2 for walls facing a side's inner line; pairs at 45 degrees across a short wall remain the adjacent-side case of step 2.
