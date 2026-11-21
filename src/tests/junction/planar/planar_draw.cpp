@@ -196,9 +196,11 @@ TEST_CASE("planar draw: elastic mode names a short bay", "[junction][planar][pla
  * Every gap between a route path's bends and each of the next three (SPEC-slots-lengths §8.2, Curve rows).
  * @param c The case.
  * @param r Its drawing.
+ * @param corridor Whether a beside track's opening and closing steps are bend-generating virtual pieces of length 2.
+ * @param committed When given, a flex middle whose length in this reference is at least 0.25 is a real piece for the bends.
  * @return Per gap, its travel in half tiles and the least the rules ask.
  */
-static std::vector<std::pair<double, int>> DrawnCurveGaps(const DrawCase &c, const PlanarDrawResult &r)
+static std::vector<std::pair<double, int>> DrawnCurveGaps(const DrawCase &c, const PlanarDrawResult &r, bool corridor = false, const std::vector<std::vector<double>> *committed = nullptr)
 {
 	const PlanarTrackMap &map = c.v.structure.map;
 	const PlanarRuleFields &rules = c.v.structure.rules;
@@ -208,18 +210,33 @@ static std::vector<std::pair<double, int>> DrawnCurveGaps(const DrawCase &c, con
 			std::vector<std::pair<double, bool>> bends;
 			double acc = 0;
 			int last = -1;
+			const auto virtual_piece = [&](int heading) {
+				if (last != -1 && last != heading) bends.emplace_back(acc, PlanarModel::Rot(last, heading) > 0);
+				last = heading;
+				acc += 2;
+			};
 			for (const uint32_t t : path) {
 				const std::vector<uint32_t> &flex = c.v.tracks[t].flex;
 				const std::vector<uint32_t> &steps = c.v.tracks[t].steps;
-				for (size_t i = 0; i < c.v.tracks[t].pieces.size(); i++) {
-					const bool middle = std::ranges::find(flex, i) != flex.end() || std::ranges::find(steps, i) != steps.end();
-					const int heading = ((c.v.tracks[t].pieces[i] % 8) + 8) % 8;
+				const std::vector<int> &pieces = c.v.tracks[t].pieces;
+				int side = 0;
+				if (corridor && map.part_of[t] == UINT32_MAX) {
+					std::vector<uint32_t> chain;
+					REQUIRE(ParentChain(map, c.v.structure.sites, t, chain));
+					side = map.Side(t, 0, chain[0], 0);
+					virtual_piece((((pieces.front() + side) % 8) + 8) % 8);
+				}
+				for (size_t i = 0; i < pieces.size(); i++) {
+					const bool real_flex = committed != nullptr && std::ranges::find(flex, i) != flex.end() && t < committed->size() && i < (*committed)[t].size() && (*committed)[t][i] >= 0.25;
+					const bool middle = (std::ranges::find(flex, i) != flex.end() && !real_flex) || std::ranges::find(steps, i) != steps.end();
+					const int heading = ((pieces[i] % 8) + 8) % 8;
 					if (!middle) {
 						if (last != -1 && last != heading) bends.emplace_back(acc, PlanarModel::Rot(last, heading) > 0);
 						last = heading;
 					}
 					acc += r.lengths[t][i];
 				}
+				if (side != 0) virtual_piece((((pieces.back() - side) % 8) + 8) % 8);
 			}
 			for (size_t i = 0; i < bends.size(); i++) {
 				for (size_t k = 1; k <= 3 && i + k < bends.size(); k++) {
@@ -247,6 +264,59 @@ TEST_CASE("planar draw: curves keep their spacing along a route", "[junction][pl
 		INFO("gap " << gap << " least " << least);
 		CHECK(gap >= least);
 	}
+}
+
+TEST_CASE("planar draw: a prio row's corridor steps keep curve spacing", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .curves = true, .corridor = true});
+	REQUIRE(r.feasible);
+	const auto gaps = DrawnCurveGaps(c, r, true);
+	REQUIRE(!gaps.empty());
+	for (const auto &[gap, least] : gaps) {
+		INFO("gap " << gap << " least " << least);
+		CHECK(gap >= least);
+	}
+}
+
+TEST_CASE("planar draw: a committed flex insert keeps curve spacing", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult first = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .curves = true});
+	REQUIRE(first.feasible);
+	/* The T needs several inserts for its base geometry: every flex middle is committed at 2 half tiles. */
+	std::vector<std::vector<double>> reference = first.lengths;
+	size_t middles = 0;
+	for (size_t t = 0; t < c.v.tracks.size(); t++) {
+		for (const uint32_t m : c.v.tracks[t].flex) {
+			reference[t][m] = 2;
+			middles++;
+		}
+	}
+	REQUIRE(middles > 0);
+	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .curves = true, .curve_flex_from = &reference});
+	std::string conflicts;
+	for (const std::string &tag : r.conflict) conflicts += tag + "; ";
+	INFO("status " << r.status << " conflict " << conflicts);
+	REQUIRE(r.feasible);
+	for (size_t t = 0; t < c.v.tracks.size(); t++) {
+		for (const uint32_t m : c.v.tracks[t].flex) {
+			INFO("flex middle " << t << " " << m);
+			CHECK(r.lengths[t][m] >= 2);
+		}
+	}
+	for (const auto &[gap, least] : DrawnCurveGaps(c, r, false, &reference)) {
+		INFO("gap " << gap << " least " << least);
+		CHECK(gap >= least);
+	}
+
+	/* A recorded measurement: the free drawing's own lengths as the commitment. */
+	size_t committed = 0;
+	for (size_t t = 0; t < c.v.tracks.size(); t++) {
+		for (const uint32_t m : c.v.tracks[t].flex) committed += first.lengths[t][m] >= 0.25;
+	}
+	const PlanarDrawResult own = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .curves = true, .curve_flex_from = &first.lengths});
+	WARN("own-lengths commitment: status " << own.status << ", feasible " << own.feasible << ", committed " << committed << " of " << middles);
 }
 
 TEST_CASE("planar draw: elastic mode names a short curve", "[junction][planar][planardraw]")
@@ -2662,5 +2732,27 @@ TEST_CASE("planar draw: beside tracks and their parent chains (corridor recon)",
 			}
 			WARN(text);
 		}
+	}
+}
+
+TEST_CASE("planar draw: T1 curves with every flex at 0 (diagnosis)", "[.][planarcorridor]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	std::vector<std::vector<double>> zero(c.v.tracks.size());
+	for (size_t t = 0; t < c.v.tracks.size(); t++) zero[t].assign(c.v.tracks[t].pieces.size(), 0.0);
+	for (const bool curves : {false, true}) {
+		const PlanarDrawResult r = CheckPlanarDrawable(c.v, 10.0, {.clearance = false, .curves = curves, .flex_zero_from = &zero, .flex_zero_below = 1.0});
+		std::string conflicts;
+		for (const std::string &tag : r.conflict) conflicts += tag + "; ";
+		WARN(fmt::format("T1 flex 0 curves {}: status {}, conflict {}", curves, r.status, conflicts));
+		const PlanarDrawResult e = CheckPlanarDrawable(c.v, 10.0, {.clearance = false, .curves = curves, .elastic = true, .flex_zero_from = &zero, .flex_zero_below = 1.0});
+		for (const auto &[row, slack] : e.stretched) WARN(fmt::format("T1 flex 0 curves {} stretched {}: {:.2f}", curves, row, slack));
+	}
+	for (size_t t = 0; t < c.v.tracks.size(); t++) {
+		std::string text = fmt::format("{} pieces", c.v.structure.map.tracks[t].name);
+		for (const int h : c.v.tracks[t].pieces) text += fmt::format(" {}", ((h % 8) + 8) % 8);
+		text += " flex";
+		for (const uint32_t m : c.v.tracks[t].flex) text += fmt::format(" {}", m);
+		WARN(text);
 	}
 }
