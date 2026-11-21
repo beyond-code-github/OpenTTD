@@ -1,0 +1,52 @@
+# BBH01: sideways steps per stretch (D396), the raw headings of each stretch that is not monotone; with shape.txt it gives the raw shape.
+step L3 0: 0 1 0 -1 0 -1 0  # port-node
+step L5 0: 0 1 0  # node-crossing
+step L7 0: 0 1 0 1  # node-crossing
+step L8 0: 0 1 0 -1 0  # port-node
+step L9 1: 1 0 1  # crossing-node
+step L11 10: 2 1 2  # crossing-crossing
+step L11 11: 2 1 2  # crossing-node
+step L12 10: 2 1 2  # crossing-node
+step L13 0: 0 -1 0  # node-node
+step L14 0: 0 1 0  # port-node
+step L18 0: 0 1 0  # node-crossing
+step L18 5: 0 1 0  # crossing-node
+step L24 2: -1 0 -1  # crossing-node
+step L26 3: 8 7 8  # crossing-node
+step L27 0: 5 4 3 4 5 4  # node-node
+step L32 0: 4 5 4  # node-crossing
+step L32 8: 4 5 4  # crossing-node
+step L37 3: 6 7 6  # crossing-crossing
+step L38 0: 5 4 5 4  # node-node
+step L43 0: 3 4 3 4  # node-node
+step L44 0: 3 4 3 4  # node-node
+step L48 0: 4 3 4  # node-crossing
+step L48 8: 4 3 4  # crossing-crossing
+step L49 3: 4 5 4  # crossing-node
+step L51 1: 5 4 5  # crossing-node
+step L52 0: 3 4 3  # node-node
+step L53 0: 3 4 3  # node-node
+step L54 5: 3 2 3  # crossing-node
+step L57 9: 4 3 4  # crossing-crossing
+step L59 9: 4 3 4  # crossing-crossing
+step L60 9: 4 3 4  # crossing-crossing
+step L66 0: 3 4 3 4  # node-crossing
+step L67 0: 3 4 3 2  # node-node
+step L68 0: 5 4 5  # node-crossing
+step L72 0: 7 6 5 6 5 6 7  # node-node
+step L73 0: 6 7 6  # node-crossing
+step L73 1: 6 5 6 7  # crossing-node
+step L75 0: 6 5 6  # node-crossing
+step L80 2: 6 5 6 5  # crossing-node
+step L82 0: 5 6 5  # node-node
+step L88 0: 2 1 2  # node-crossing
+step L89 0: 2 3 2 3  # node-node
+step L91 0: 5 4 5  # node-node
+step L92 0: 2 3 2  # node-node
+step L94 0: 2 1 2 1 2 3 2  # node-node
+step L100 1: 5 6 5  # crossing-crossing
+step L101 0: 6 5 6  # node-node
+step L102 0: 2 1 2 3 2  # node-node
+step L104 0: 2 1 2 3 2  # node-node
+step L105 0: 6 7 6  # node-node
+step L106 0: 6 5 6 7  # port-node

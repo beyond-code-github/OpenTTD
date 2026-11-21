@@ -1,0 +1,140 @@
+topology BBH01
+# Extracted by tools/junction/corpus/extract.py (X-B1) from PSG 197, box 76,137,128,198; lanes from hubs.tsv.
+# Ports: per side in reading order (N and S west to east, E and W north to south); each port lists its lines left to right across travel.
+# Lane numbers are 1-based in reading order on each port: N-out N84=1 N85=2; N-in N90=1 N91=2; E-out E164=1 E166=2 E167=3; E-in E169=1 E173=2 E174=3; S-in S81=1 S82=2 S83=3; S-out S88=1 S89=2 S90=3.
+# Routes: a movement letter per (in port, out port) pair, A, B, ... in the order of the in ports then the out ports as listed in the ports section, plus the in lane's number on its port.
+# Movements: A: N-in -> E-out; B: N-in -> S-out; C: E-in -> N-out; D: E-in -> S-out; E: S-in -> N-out; F: S-in -> E-out.
+# Lines L1.. are named by index: lines with track first (by their first piece), then empty lines (no track: a lane that is itself a node piece, an edge between two node pieces, a cascade or cross middle line). Leg order at a node is left to right across travel in the x east, y south frame.
+port N out N: L15=C1+C2+C3+E1+E2+E3, L20=C1+C2+C3+E1+E2+E3
+port N in S: L42=A2+B2, L39=A1+B1
+port E out E: L102=A1+A2+F1+F2, L104=A1+F1+F2+F3, L94=A2+F1+F2+F3
+port E in W: L109=C3+D3, L110=C2+D2, L106=C1+D1
+port S in N: L3=E1+F1, L8=E2+F2, L14=E3+F3
+port S out S: L41=B1+B2+D2+D3, L38=B1+B2+D1+D2+D3, L27=B1+D1+D2+D3
+node L3 -> L1=E1, L2=F1
+node L1 -> L9=E1, L10=E1
+node L6=E2 -> L4=E2, L5=E2
+node L8 -> L6, L7=F2
+node L13=F3 -> L11=F3, L12=F3
+node L4, L9 -> L17=E1+E2
+node L5, L16=E3 -> L21=E2+E3
+node L19=E3 -> L16, L18=E3
+node L14 -> L13, L19
+node L21, L22=C1+C2+C3+E1 -> L20
+node L23=C2+C3+E1+E2+E3, L24=C1+C2 -> L15
+node L17, L25=C2+C3+E3 -> L23
+node L18, L26=C2+C3 -> L25
+node L2 -> L30=F1, L31=F1
+node L28=C2+C3, L29=C1+C2+E1 -> L22
+node L37=C2+C3 -> L26, L28
+node L33=D1+D2, L32=B1 -> L34=B1+D1+D2
+node L35=D1+D2+D3, L34 -> L27
+node L10, L36=C1+C2 -> L29
+node L40=C1+C2 -> L24, L36
+node L7 -> L45=F2, L46=F2
+node L39 -> L44=A1, L43=B1
+node L43 -> L111=B1, L32
+node L111 -> L48=B1, L47=B1
+node L49=D1+D2, L47 -> L50=B1+D1+D2
+node L51=B2+D2+D3, L50 -> L38
+node L42 -> L53=A2, L52=B2
+node L44 -> L55=A1, L54=A1
+node L56=B2+D2+D3, L48 -> L41
+node L52 -> L58=B2, L57=B2
+node L62=D1+D2, L61=D2+D3 -> L35
+node L58 -> L60=B2, L59=B2
+node L63=D2+D3, L57 -> L51
+node L64=D1+D2 -> L49, L33
+node L69=D2+D3, L68=D2+D3 -> L63
+node L65=B2+D2+D3, L59 -> L56
+node L53 -> L67=A2, L66=A2
+node L31, L45 -> L71=F1+F2
+node L73=C2, L72=C1 -> L40
+node L70=D2+D3, L60 -> L65
+node L75=C3, L76=C2+C3 -> L37
+node L66, L30 -> L79=A2+F1
+node L81=C3, L80=C2 -> L76
+node L77=D2+D3 -> L68, L74=D2+D3
+node L82=D2+D3, L74 -> L77
+node L83=D2+D3 -> L70, L78=D2+D3
+node L79, L46 -> L84=A2+F1+F2
+node L85=D2+D3, L78 -> L83
+node L87=D2+D3 -> L86=D2+D3, L69
+node L71 -> L88=F1+F2, L89=F1+F2
+node L86, L91=D2+D3 -> L87
+node L67, L55 -> L92=A1+A2
+node L90=D1+D2 -> L62, L64
+node L112=D2+D3 -> L91, L85
+node L84, L12 -> L94
+node L93=D2+D3 -> L112, L82
+node L95=D2+D3 -> L93, L61
+node L97=D2, L96=D1 -> L90
+node L98=D1, L99=D1 -> L113=D1
+node L113 -> L98, L96
+node L101=D3, L100=D2 -> L95
+node L92, L88 -> L102
+node L54, L89 -> L103=A1+F1+F2
+node L103, L11 -> L104
+node L105=C2 -> L80, L73
+node L107=D2 -> L100, L97
+node L106 -> L99, L72
+node L108=C3 -> L75, L81
+node L109 -> L101, L108
+node L110 -> L107, L105
+# Crossings (D389): each line's crossings in travel order, mark > = the partner arrives from the line's left (marks.py).
+cross L1: L4<
+cross L2: L4<, L5<, L16<, L18<, L26<
+cross L4: L2>, L1>, L5<
+cross L5: L2>, L10>, L9>, L4>
+cross L7: L16<, L18<, L26<, L28<
+cross L9: L5<
+cross L10: L5<, L16<, L18<, L26<, L28<, L24<
+cross L11: L16<, L18<, L37<, L32>, L47>, L48>, L57>, L59>, L40<, L60>, L84>
+cross L12: L16<, L18<, L37<, L32>, L47>, L48>, L57>, L59>, L60>, L40<
+cross L15: L21>
+cross L16: L12>, L11>, L7>, L2>, L10>, L17>
+cross L17: L16<
+cross L18: L12>, L11>, L7>, L2>, L10>
+cross L21: L15<
+cross L24: L10>, L28>
+cross L26: L7>, L2>, L10>
+cross L28: L7>, L31>, L30>, L10>, L24<
+cross L30: L28<, L32>, L40<, L47>, L48>, L57>, L59>, L60>
+cross L31: L28<, L32>, L47>, L40<, L48>, L57>, L59>, L60>
+cross L32: L40>, L30<, L31<, L45<, L46<, L11<, L12<, L37>
+cross L33: L57<, L48<, L47<
+cross L35: L48<, L49<, L47<
+cross L37: L60<, L59<, L57<, L48<, L47<, L32<, L12>, L11>
+cross L40: L12>, L60<, L11>, L59<, L46>, L57<, L45>, L48<, L31>, L47<, L30>, L32<
+cross L45: L32>, L47>, L48>, L40<, L57>, L59>, L60>
+cross L46: L32>, L47>, L48>, L57>, L40<, L59>, L60>
+cross L47: L30<, L40>, L31<, L45<, L46<, L11<, L12<, L37>, L33>, L35>
+cross L48: L30<, L31<, L40>, L45<, L46<, L11<, L12<, L37>, L33>, L49>, L35>, L51>
+cross L49: L57<, L48<, L35>
+cross L51: L48<
+cross L54: L57>, L59>, L60>, L66>, L88<
+cross L55: L57>, L59>, L60>, L66>
+cross L57: L55<, L54<, L30<, L31<, L45<, L40>, L46<, L11<, L12<, L37>, L33>, L49>, L61>, L62>
+cross L59: L55<, L54<, L30<, L31<, L45<, L46<, L40>, L11<, L12<, L37>, L64>, L61>, L62>, L63>
+cross L60: L55<, L54<, L30<, L31<, L45<, L46<, L11<, L40>, L12<, L37>, L64>, L61>, L62>, L68>, L69>
+cross L61: L62<, L60<, L59<, L57<
+cross L62: L61>, L60<, L59<, L57<
+cross L63: L59<
+cross L64: L60<, L59<
+cross L66: L55<, L54<
+cross L68: L60<
+cross L69: L70<, L60<
+cross L70: L69>
+cross L71: L79>
+cross L73: L99<
+cross L75: L100<, L90<
+cross L79: L71<
+cross L80: L98>, L96<
+cross L81: L100<, L90<
+cross L84: L11<
+cross L88: L54>
+cross L90: L81>, L75>
+cross L96: L80>
+cross L98: L80<
+cross L99: L73>
+cross L100: L81>, L75>
