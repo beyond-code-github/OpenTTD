@@ -32,21 +32,20 @@ step L59 9: 4 3 4  # crossing-crossing
 step L60 9: 4 3 4  # crossing-crossing
 step L66 0: 3 4 3 4  # node-crossing
 step L67 0: 3 4 3 2  # node-node
-step L68 0: 5 4 5  # node-crossing
+step L68 0: 5 6 5 4 5  # node-crossing
+step L69 0: 5 4 5 6  # node-crossing
 step L72 0: 7 6 5 6 5 6 7  # node-node
 step L73 0: 6 7 6  # node-crossing
 step L73 1: 6 5 6 7  # crossing-node
-step L75 0: 6 5 6  # node-crossing
-step L80 2: 6 5 6 5  # crossing-node
-step L82 0: 5 6 5  # node-node
-step L88 0: 2 1 2  # node-crossing
-step L89 0: 2 3 2 3  # node-node
-step L91 0: 5 4 5  # node-node
-step L92 0: 2 3 2  # node-node
-step L94 0: 2 1 2 1 2 3 2  # node-node
-step L100 1: 5 6 5  # crossing-crossing
-step L101 0: 6 5 6  # node-node
-step L102 0: 2 1 2 3 2  # node-node
-step L104 0: 2 1 2 3 2  # node-node
-step L105 0: 6 7 6  # node-node
-step L106 0: 6 5 6 7  # port-node
+step L74 0: 6 5 6  # node-crossing
+step L77 1: 6 5 6 5  # crossing-node
+step L80 0: 2 1 2  # node-crossing
+step L81 0: 2 3 2 3  # node-node
+step L83 0: 2 3 2  # node-node
+step L85 0: 2 1 2 1 2 3 2  # node-node
+step L89 1: 5 6 5  # crossing-crossing
+step L90 0: 6 5 6  # node-node
+step L91 0: 2 1 2 3 2  # node-node
+step L93 0: 2 1 2 3 2  # node-node
+step L94 0: 6 7 6  # node-node
+step L95 0: 6 5 6 7  # port-node

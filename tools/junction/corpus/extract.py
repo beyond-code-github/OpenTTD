@@ -583,6 +583,29 @@ def line_names(Ln):
     return {('r', k): 'L%d' % (k + 1) for k in range(len(Ln.lines))}
 
 
+def find_cycle(stm, names):
+    """The line graph (each node statement: every in line -> every out line) must be acyclic.  Returns the names of one cycle
+    as a list that starts and ends with the same line, or None."""
+    nxt = defaultdict(list)
+    for kd, ins, outs, p in stm:
+        for a in ins:
+            for b in outs: nxt[a].append(b)
+    state = {}; path = []
+    def dfs(a):
+        state[a] = 1; path.append(a)
+        for b in nxt[a]:
+            if state.get(b) == 1: return [names[x] for x in path[path.index(b):]] + [names[b]]
+            if b not in state:
+                c = dfs(b)
+                if c: return c
+        state[a] = 2; path.pop(); return None
+    for a in list(nxt):
+        if a not in state:
+            c = dfs(a)
+            if c: return c
+    return None
+
+
 def build_text_model(N, G, Ln, P, lanes, S6, X5):
     """Lines (real and empty), node statements (a 3-way or cross piece becomes a cascade) and straight statements.
     Empty lines carry no track: an in/out lane that is itself a node piece, an edge between two node pieces, a cascade's
@@ -715,6 +738,7 @@ def build_text_model(N, G, Ln, P, lanes, S6, X5):
             add_stm('merge', ins, [m], n); T.straight.append((m, ('und', 'cross node')))
             add_stm('split', [m], legs, n); T.straight.append((m, ('und', 'cross node')))
             T.cascades.append(('cross node written as a merge then a split', tl(n)))
+    T.cycle = find_cycle(stm, names)
     T.routes = routes; T.stm = stm; T.port_in_line = port_in_line; T.port_out_line = port_out_line
     return T
 
@@ -823,6 +847,7 @@ def write_report(path, hub, N, G, Ln, P, lanes, lane_notes, X5, S6, Sh, T):
     w('lines skipped by crossings: %s' % ('; '.join('%s: %s' % (names[('r', k)], why) for k, why in X5.skipped) or 'none'))
     w('lines skipped by shape: %s' % ('; '.join('%s: %s' % (names[('r', k)], why) for k, why in Sh.notes) or 'none'))
     w('undetermined straight legs: %s' % ('; '.join('%s %s (%s)' % (tl(e[0]), e[1], e[4][1]) for e in und) or 'none'))
+    w('cycle: %s' % (' -> '.join(T.cycle) + ' (topology.txt not written)' if T.cycle else 'none'))
     w('level crossings among lines (a): %d %s' % (len(X5.level_lines), ' '.join('%s x %s at %.1f,%.1f' % (names[('r', a)], names[('r', b)], p[0], p[1]) for a, b, p in X5.level_lines[:12])))
     w('node pieces crossing a ground piece (level): %d %s' % (len(X5.level_nodes), ' '.join('%s/%s' % t for t in X5.level_nodes[:12])))
     w('lattice-like: line pairs with several hits (first hit kept): %d %s' % (len(X5.multi), ' '.join('%s x %s at %s' % (names[('r', a)], names[('r', b)], ','.join('%.1f,%.1f' % q for q in pts)) for a, b, pts in X5.multi[:12])))
@@ -860,7 +885,10 @@ def run(hub_id, root=None, hubs_path=None):
 def write_all(Rr, out):
     os.makedirs(out, exist_ok=True)
     hub = Rr.hub
-    write_topology(os.path.join(out, 'topology.txt'), hub, Rr.N, Rr.G, Rr.Ln, Rr.P, Rr.lanes, Rr.T, Rr.X5)
+    tp = os.path.join(out, 'topology.txt')
+    if Rr.T.cycle:
+        if os.path.exists(tp): os.remove(tp)      # a stale topology from an earlier run must not outlive the refusal
+    else: write_topology(tp, hub, Rr.N, Rr.G, Rr.Ln, Rr.P, Rr.lanes, Rr.T, Rr.X5)
     write_structure(os.path.join(out, 'structure.txt'), hub, Rr.G, Rr.Ln, Rr.S6, Rr.T)
     write_shape(os.path.join(out, 'shape.txt'), os.path.join(out, 'steps.txt'), os.path.join(out, 'lengths.txt'), hub, Rr.Ln, Rr.Sh, Rr.T, Rr.P)
     write_report(os.path.join(out, 'report.txt'), hub, Rr.N, Rr.G, Rr.Ln, Rr.P, Rr.lanes, Rr.lane_notes, Rr.X5, Rr.S6, Rr.Sh, Rr.T)

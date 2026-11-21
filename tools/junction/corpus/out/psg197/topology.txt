@@ -7,8 +7,8 @@ topology BBH01
 # Lines L1.. are named by index: lines with track first (by their first piece), then empty lines (no track: a lane that is itself a node piece, an edge between two node pieces, a cascade or cross middle line). Leg order at a node is left to right across travel in the x east, y south frame.
 port N out N: L15=C1+C2+C3+E1+E2+E3, L20=C1+C2+C3+E1+E2+E3
 port N in S: L42=A2+B2, L39=A1+B1
-port E out E: L102=A1+A2+F1+F2, L104=A1+F1+F2+F3, L94=A2+F1+F2+F3
-port E in W: L109=C3+D3, L110=C2+D2, L106=C1+D1
+port E out E: L91=A1+A2+F1+F2, L93=A1+F1+F2+F3, L85=A2+F1+F2+F3
+port E in W: L98=C3+D3, L99=C2+D2, L95=C1+D1
 port S in N: L3=E1+F1, L8=E2+F2, L14=E3+F3
 port S out S: L41=B1+B2+D2+D3, L38=B1+B2+D1+D2+D3, L27=B1+D1+D2+D3
 node L3 -> L1=E1, L2=F1
@@ -33,8 +33,8 @@ node L10, L36=C1+C2 -> L29
 node L40=C1+C2 -> L24, L36
 node L7 -> L45=F2, L46=F2
 node L39 -> L44=A1, L43=B1
-node L43 -> L111=B1, L32
-node L111 -> L48=B1, L47=B1
+node L43 -> L100=B1, L32
+node L100 -> L48=B1, L47=B1
 node L49=D1+D2, L47 -> L50=B1+D1+D2
 node L51=B2+D2+D3, L50 -> L38
 node L42 -> L53=A2, L52=B2
@@ -51,36 +51,28 @@ node L53 -> L67=A2, L66=A2
 node L31, L45 -> L71=F1+F2
 node L73=C2, L72=C1 -> L40
 node L70=D2+D3, L60 -> L65
-node L75=C3, L76=C2+C3 -> L37
-node L66, L30 -> L79=A2+F1
-node L81=C3, L80=C2 -> L76
-node L77=D2+D3 -> L68, L74=D2+D3
-node L82=D2+D3, L74 -> L77
-node L83=D2+D3 -> L70, L78=D2+D3
-node L79, L46 -> L84=A2+F1+F2
-node L85=D2+D3, L78 -> L83
-node L87=D2+D3 -> L86=D2+D3, L69
-node L71 -> L88=F1+F2, L89=F1+F2
-node L86, L91=D2+D3 -> L87
-node L67, L55 -> L92=A1+A2
-node L90=D1+D2 -> L62, L64
-node L112=D2+D3 -> L91, L85
-node L84, L12 -> L94
-node L93=D2+D3 -> L112, L82
-node L95=D2+D3 -> L93, L61
-node L97=D2, L96=D1 -> L90
-node L98=D1, L99=D1 -> L113=D1
-node L113 -> L98, L96
-node L101=D3, L100=D2 -> L95
-node L92, L88 -> L102
-node L54, L89 -> L103=A1+F1+F2
-node L103, L11 -> L104
-node L105=C2 -> L80, L73
-node L107=D2 -> L100, L97
-node L106 -> L99, L72
-node L108=C3 -> L75, L81
-node L109 -> L101, L108
-node L110 -> L107, L105
+node L74=C3, L75=C2+C3 -> L37
+node L66, L30 -> L76=A2+F1
+node L78=C3, L77=C2 -> L75
+node L76, L46 -> L79=A2+F1+F2
+node L71 -> L80=F1+F2, L81=F1+F2
+node L67, L55 -> L83=A1+A2
+node L82=D1+D2 -> L62, L64
+node L101=D2+D3 -> L69, L70
+node L79, L12 -> L85
+node L84=D2+D3 -> L101, L68
+node L86=D2+D3 -> L84, L61
+node L88=D2, L87=D1 -> L82
+node L90=D3, L89=D2 -> L86
+node L83, L80 -> L91
+node L54, L81 -> L92=A1+F1+F2
+node L92, L11 -> L93
+node L94=C2 -> L77, L73
+node L96=D2 -> L89, L88
+node L95 -> L87, L72
+node L97=C3 -> L74, L78
+node L98 -> L90, L97
+node L99 -> L96, L94
 # Crossings (D389): each line's crossings in travel order, mark > = the partner arrives from the line's left (marks.py).
 cross L1: L4<
 cross L2: L4<, L5<, L16<, L18<, L26<
@@ -89,7 +81,7 @@ cross L5: L2>, L10>, L9>, L4>
 cross L7: L16<, L18<, L26<, L28<
 cross L9: L5<
 cross L10: L5<, L16<, L18<, L26<, L28<, L24<
-cross L11: L16<, L18<, L37<, L32>, L47>, L48>, L57>, L59>, L40<, L60>, L84>
+cross L11: L16<, L18<, L37<, L32>, L47>, L48>, L57>, L59>, L40<, L60>, L79>
 cross L12: L16<, L18<, L37<, L32>, L47>, L48>, L57>, L59>, L60>, L40<
 cross L15: L21>
 cross L16: L12>, L11>, L7>, L2>, L10>, L17>
@@ -112,7 +104,7 @@ cross L47: L30<, L40>, L31<, L45<, L46<, L11<, L12<, L37>, L33>, L35>
 cross L48: L30<, L31<, L40>, L45<, L46<, L11<, L12<, L37>, L33>, L49>, L35>, L51>
 cross L49: L57<, L48<, L35>
 cross L51: L48<
-cross L54: L57>, L59>, L60>, L66>, L88<
+cross L54: L57>, L59>, L60>, L66>, L80<
 cross L55: L57>, L59>, L60>, L66>
 cross L57: L55<, L54<, L30<, L31<, L45<, L40>, L46<, L11<, L12<, L37>, L33>, L49>, L61>, L62>
 cross L59: L55<, L54<, L30<, L31<, L45<, L46<, L40>, L11<, L12<, L37>, L64>, L61>, L62>, L63>
@@ -125,16 +117,14 @@ cross L66: L55<, L54<
 cross L68: L60<
 cross L69: L70<, L60<
 cross L70: L69>
-cross L71: L79>
-cross L73: L99<
-cross L75: L100<, L90<
-cross L79: L71<
-cross L80: L98>, L96<
-cross L81: L100<, L90<
-cross L84: L11<
-cross L88: L54>
-cross L90: L81>, L75>
-cross L96: L80>
-cross L98: L80<
-cross L99: L73>
-cross L100: L81>, L75>
+cross L71: L76>
+cross L73: L87<
+cross L74: L89<, L82<
+cross L76: L71<
+cross L77: L87<
+cross L78: L89<, L82<
+cross L79: L11<
+cross L80: L54>
+cross L82: L78>, L74>
+cross L87: L73>, L77>
+cross L89: L78>, L74>

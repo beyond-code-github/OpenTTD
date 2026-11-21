@@ -14,6 +14,8 @@ OPP = {'NE': 'SW', 'SW': 'NE', 'NW': 'SE', 'SE': 'NW'}
 TEDGES = {'X': ('NE', 'SW'), 'Y': ('NW', 'SE'), 'Upper': ('NE', 'NW'), 'Lower': ('SE', 'SW'),
           'Left': ('NW', 'SW'), 'Right': ('NE', 'SE')}
 PARALLEL = ({'Upper', 'Lower'}, {'Left', 'Right'})
+FORBID_90_DEG = True    # forbid_90_deg assumed: the save export carries no game settings (keys: box, map_size, orientation, tiles)
+DIAG = PARALLEL[0] | PARALLEL[1]
 SIDE = {'NE': 'W', 'SW': 'E', 'NW': 'N', 'SE': 'S'}
 
 
@@ -96,8 +98,12 @@ class World:
         q = (pos[0] + D[e][0], pos[1] + D[e][1])
         res = []
         qh = self.heads.get(q)
+        mine = self.pname(pc)
         for i, (nm, es) in enumerate(self.nodes.get(q, [])):
-            if OPP[e] in es and not (qh and qh[0] == OPP[e]): res.append(((q, i), OPP[e]))
+            if OPP[e] in es and not (qh and qh[0] == OPP[e]):
+                # a diagonal meeting a diagonal of the other orientation is a 90-degree turn
+                if FORBID_90_DEG and mine in DIAG and nm in DIAG and (mine in PARALLEL[0]) != (nm in PARALLEL[0]): continue
+                res.append(((q, i), OPP[e]))
         return res
 
     def build_dirs(self):
