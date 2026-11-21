@@ -1181,6 +1181,168 @@ TEST_CASE("planar draw: PSG 197 cell slack by flex role", "[.][planarkeepapart]"
 	}
 }
 
+/** Per used step of the extractor's steps.txt: its line, stretch, unflexed base heading (mod 8) and side. */
+struct UsedStepA {
+	std::string line;
+	size_t stretch;
+	int base;
+	int side;
+	bool operator<(const UsedStepA &o) const { return std::tie(line, stretch, base, side) < std::tie(o.line, o.stretch, o.base, o.side); }
+};
+
+/** Option A (D417 probe): the flex middles in `used` per track become ordinary pieces, every other flex pair is erased, then the cells are refined. */
+static void ApplyStepsAsBends(PlanarShapeVariant &v, const std::vector<std::set<uint32_t>> &used)
+{
+	for (size_t t = 0; t < v.tracks.size(); t++) {
+		PlanarShapeTrack &track = v.tracks[t];
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles, std::greater<>());
+		for (const uint32_t m : middles) {
+			if (used[t].contains(m)) continue;
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+}
+
+TEST_CASE("planar draw: PSG 197 option A, V's steps as bends", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant d402;
+	PlanarDrawPins d402_pins;
+	if (!LoadPinned197(d402, d402_pins, false)) return;
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins, true)) return;
+	const PlanarTrackMap &map = shaped.structure.map;
+
+	/* The unflexed shape from shape.txt: per line the headings and the event pieces. */
+	std::map<std::string, std::vector<int>> raw_headings;
+	std::map<std::string, std::vector<uint32_t>> raw_events;
+	{
+		std::istringstream in(ReadExtractorFileForDraw("shape.txt"));
+		std::string text;
+		while (std::getline(in, text)) {
+			if (text.starts_with("shape ")) {
+				const size_t colon = text.find(':');
+				std::istringstream hs(text.substr(colon + 1));
+				int h;
+				while (hs >> h) raw_headings[text.substr(6, colon - 6)].push_back(h);
+			} else if (text.starts_with("at ")) {
+				const size_t colon = text.find(':');
+				std::string rest = text.substr(colon + 1);
+				std::vector<uint32_t> &events = raw_events[text.substr(3, colon - 3)];
+				for (size_t at = rest.find('@'); at != std::string::npos; at = rest.find('@', at + 1)) { uint32_t piece = 0; std::from_chars(rest.data() + at + 1, rest.data() + rest.size(), piece); events.push_back(piece); }
+			}
+		}
+	}
+	const auto base_headings = [&](const std::string &line, size_t k) {
+		std::set<int> bases;
+		const std::vector<int> &h = raw_headings[line];
+		const std::vector<uint32_t> &ev = raw_events[line];
+		if (h.empty() || k > ev.size()) return bases;
+		const size_t first = k == 0 ? 0 : ev[k - 1], last = k == ev.size() ? h.size() - 1 : ev[k];
+		for (size_t i = first; i <= last && i < h.size(); i++) bases.insert(((h[i] % 8) + 8) % 8);
+		return bases;
+	};
+
+	std::set<UsedStepA> steps;
+	size_t parsed = 0;
+	{
+		std::istringstream in(ReadExtractorFileForDraw("steps.txt"));
+		std::string text;
+		while (std::getline(in, text)) {
+			if (!text.starts_with("step ")) continue;
+			parsed++;
+			const size_t hash = text.find(" # ");
+			std::istringstream ls(text.substr(5, hash == std::string::npos ? std::string::npos : hash - 5));
+			std::string name;
+			size_t k;
+			char colon;
+			ls >> name >> k >> colon;
+			std::vector<int> h;
+			int x;
+			while (ls >> x) h.push_back(x);
+			const std::set<int> bases = base_headings(name, k);
+			for (size_t i = 1; i + 1 < h.size(); i++) {
+				if (h[i - 1] != h[i + 1]) continue;
+				const int d = (((h[i] - h[i - 1]) % 8) + 8) % 8;
+				if (d != 1 && d != 7) continue;
+				const int a = ((h[i - 1] % 8) + 8) % 8;
+				if (!bases.contains(a)) continue;
+				steps.insert({name, k, a, d == 1 ? 1 : -1});
+			}
+		}
+	}
+	std::vector<std::set<uint32_t>> used(shaped.tracks.size());
+	size_t matched = 0, unmatched = 0;
+	for (const UsedStepA &s : steps) {
+		uint32_t t = UINT32_MAX;
+		for (uint32_t i = 0; i < map.tracks.size() && t == UINT32_MAX; i++) {
+			if (map.tracks[i].kind == PlanarTrack::Kind::Line && map.tracks[i].name == s.line) t = i;
+		}
+		bool found = false;
+		if (t != UINT32_MAX && s.stretch <= shaped.tracks[t].event_piece.size()) {
+			const PlanarShapeTrack &track = shaped.tracks[t];
+			const int64_t first = s.stretch == 0 ? -1 : static_cast<int64_t>(track.event_piece[s.stretch - 1]);
+			const int64_t last = s.stretch == track.event_piece.size() ? static_cast<int64_t>(track.pieces.size() - 1) : static_cast<int64_t>(track.event_piece[s.stretch]);
+			for (const uint32_t m : track.flex) {
+				if (static_cast<int64_t>(m) > first && static_cast<int64_t>(m) < last && ((track.pieces[m - 1] % 8) + 8) % 8 == s.base && track.pieces[m] - track.pieces[m - 1] == s.side) {
+					used[t].insert(m);
+					found = true;
+					break;
+				}
+			}
+		}
+		if (found) {
+			matched++;
+		} else {
+			unmatched++;
+			WARN(fmt::format("A unmatched step {} {} base {} side {}", s.line, s.stretch, s.base, s.side));
+		}
+	}
+	WARN(fmt::format("A used steps found {}, matched {}, unmatched {}, total steps parsed {}, pieces added by used steps {}", steps.size(), matched, unmatched, parsed, matched * 2));
+	WARN(fmt::format("A dummies D402 {}, nonmonotone {}", d402.dummies.size(), d402.nonmonotone_dummies));
+	ApplyStepsAsBends(shaped, used);
+	std::string why;
+	if (!RefinePlanarShapeCells(shaped, why)) {
+		WARN(fmt::format("A cells not refined: {}", why));
+		return;
+	}
+	WARN(fmt::format("A dummies after {}, nonmonotone {}", shaped.dummies.size(), shaped.nonmonotone_dummies));
+
+	for (const int window : {8, 4, 2}) {
+		PlanarDrawPins pw = pins;
+		pw.window = window;
+		const PlanarDrawResult base = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &pw});
+		WARN(fmt::format("A base W{} elastic: status {}, total slack {:.3f}, stretched rows {}", window, base.status, base.slack, base.stretched.size()));
+		for (const auto &[tag, slack] : base.stretched) WARN(fmt::format("A base W{} row {}: {:.3f}", window, tag, slack));
+		const PlanarDrawResult cells = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &pw});
+		WARN(fmt::format("A cells W{} elastic: status {}, total slack {:.3f}, {:.0f} ms, stretched rows {}", window, cells.status, cells.slack, cells.ms, cells.stretched.size()));
+		std::map<std::string, std::pair<size_t, double>> families;
+		for (const auto &[tag, slack] : cells.stretched) {
+			auto &f = families[tag.substr(0, tag.find(' '))];
+			f.first++;
+			f.second += slack;
+		}
+		for (const auto &[family, f] : families) WARN(fmt::format("A cells W{} family {}: count {}, sum {:.3f}", window, family, f.first, f.second));
+		for (size_t i = 0; i < cells.stretched.size() && i < 20; i++) WARN(fmt::format("A cells W{} top {}: {} {:.3f}", window, i + 1, cells.stretched[i].first, cells.stretched[i].second));
+		if (window == 8) {
+			const PlanarDrawResult ip = CheckPlanarDrawable(shaped, 60.0, {.pins = &pw});
+			WARN(fmt::format("A cells W8 integer: status {}, {:.0f} ms", ip.status, ip.ms));
+			if (ip.status == "Infeasible") {
+				for (size_t i = 0; i < ip.conflict.size() && i < 30; i++) WARN(fmt::format("A cells W8 conflict {}: {}", i + 1, ip.conflict[i]));
+			}
+		}
+	}
+	PlanarDrawPins p8 = d402_pins;
+	p8.window = 8;
+	const PlanarDrawResult plain = CheckPlanarDrawable(d402, 60.0, {.elastic = true, .pins = &p8});
+	WARN(fmt::format("A D402 cells W8 elastic: status {}, total slack {:.3f}", plain.status, plain.slack));
+}
+
 TEST_CASE("planar draw: PSG 197 elastic, whole", "[.][planarkeepapart]")
 {
 	const PlanarShapeVariant shaped = Shaped197();
