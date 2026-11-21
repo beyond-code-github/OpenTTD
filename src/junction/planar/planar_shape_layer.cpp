@@ -506,9 +506,11 @@ struct Oracle {
 				bool free = false;
 				for (size_t k = 0; k <= s.event_piece.size(); k++) {
 					if (this->First(t, k) >= i || i >= this->Last(t, k)) continue;
-					size_t kept = 0;
-					for (uint32_t j = this->First(t, k); j <= this->Last(t, k); j++) kept += this->FlexRemoved(t, k, j) ? 0 : 1;
-					free = kept == 1 && FreeOnePieceStretch(this->v, t, k);
+					/* Flex C (D420): the pair is on the stretch's first kept piece (a group's kept piece precedes its middles) or on its last. */
+					size_t before = 0, after = 0;
+					for (uint32_t j = this->First(t, k); j < i; j++) before += this->FlexRemoved(t, k, j) ? 0 : 1;
+					for (uint32_t j = i + 1; j <= this->Last(t, k); j++) after += this->FlexRemoved(t, k, j) ? 0 : 1;
+					free = FreeOnePieceStretch(this->v, t, k) && (before == 1 || after == 0);
 				}
 				if (!free) this->out.push_back(fmt::format("H1: track {} flex at piece {} is not on a free stretch", name, i));
 			}
