@@ -171,3 +171,24 @@ Amends 8.1-8.4 for flex pairs; settles 8.4 as reading (ii) for flex: the bends a
 **Open (not D407's).**
 - Spacing across a dummy: two cells' walls on either side of a dummy have no row between them (8.3 step 4 assumed "separated by the cells between them"; no margin holds it). Pre-existing; relevant to the ~48 non-flex dummies left on 197. Candidate: by Lemma 2 a dummy line on the tile grid separates with spacing on one side only, so rows `>= RungSpacing` on one side and `>= 0` on the other suffice; to be written as its own ruling if 197 shows it.
 - 8.3 (a), (d) are answered by Lemma 2 for walls facing a side's inner line; pairs at 45 degrees across a short wall remain the adjacent-side case of step 2.
+
+### 8.9 The pocket rule: an adjacent side may use an outward step's room (DRAFT probe, orchestrator, 2026-11-22; Gemini Q1, digest wip/gemini/2026-11-22-corridor-pocket-reply-digest.md)
+**Why.** On PSG 197, 9 faces fail under 8.8 (faces 7, 8, 11-17): thin strips between two lanes of one port, closed by a lane crossing or merging between them, where V makes room by stepping the lanes apart. 8.8 closes an outward step's pocket to every other side.
+
+**Rule (per side S with at least one insert, walked heading h, u = STEP[h]).** Let L be S's last insert and F its first, in walk order; q = the vertex after L, p = the vertex before F; R = the side after S, P = the side before S. Only when the cell has at least 3 sides and R (resp. P) consists of track walls:
+- **Along rows:** every vertex with a wall in R, except the corner S/R, keeps `Dot(v - q, u) >= m`. Every vertex with a wall in P, except the corner P/S, keeps `Dot(v - p, -u) >= m`.
+- **Dropped rows:** a vertex with both walls in R drops its rows against S's walls before L (it keeps the lines of the walls after L). A vertex with both walls in P drops its rows against S's walls after F.
+- Everything else is 8.8. A vertex at R's far corner keeps all its 8.8 rows and gains the along row.
+- **m:** 0 for an axis h, 2 for a diagonal h.
+
+**Proof (R; P mirrors it).**
+1. Every piece of S has `Dot(STEP, u) > 0` (h itself, and h +- 1), so every point of S up to q lies at `Dot(x - q, u) <= 0`.
+2. Every point of R lies at `Dot(x - q, u) >= m`. Its vertices do by the along rows, and the corner S/R is the end of S, past q.
+3. The separating line M through q is perpendicular to h. q is a track vertex (a tile-edge midpoint).
+   - For an axis h, M is a tile-edge line. A piece lies wholly inside one tile, and no piece lies along a tile edge (axis pieces run on middles, diagonal ones touch an edge at one end only). So pieces on the two closed sides of an edge line share no tile: m = 0.
+   - For a diagonal h, M is a diagonal grid line. Lemma 2 needs `RungSpacing` = 2 on one side: m = 2.
+   - So R shares no tile with S's walls up to L.
+4. S's walls after L are kept from R by their own lines (R's vertices keep those rows; Lemma 1 for that part of S, Lemma 2). The corner S/R is the adjacent-walls case of 8.8 step 2.
+5. Every other pair of sides is as in 8.8. R's far-corner vertex satisfies both its 8.8 rows and the along row, so R's last piece, whose ends both satisfy the along row, is covered by step 3.
+
+**Cost (measured by the reference computation, `/tmp/claude-1000/pocket_ref.py` in the 2026-11-22 session).** Not weaker than 8.8, only different. The along row forces R to stay beyond S's last step. A side that turns back 135 degrees under S (R's heading h - 3) must then not reach back past the step, which 8.8 allowed when R stayed inside a's line. FS-b's hand cell drawing (top at heading 5 reaching y 16 below q at y 14) is refused by it. Which form a corner needs depends on lengths (a disjunction). Hence a flag, default off, and the decision from 197's measurement. If neither form alone draws 197, the next options are a rule picking the form per corner before the solve (e.g. by whether R's side is a port lane's sliver), or one binary per (S, R) corner.
