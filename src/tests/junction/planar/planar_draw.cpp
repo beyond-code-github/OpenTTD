@@ -986,11 +986,36 @@ TEST_CASE("planar draw: PSG 197 sep-only slack, sides from the pinned drawing", 
 	const PlanarDrawResult ref0 = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &p8});
 	WARN(fmt::format("reference 0 (cells, W8): {}, slack {:.3f}, {:.0f} ms", ref0.status, ref0.slack, ref0.ms));
 	if (!ref0.feasible) return;
+	const auto details = [&](const PlanarDrawResult &run, const std::string &tag) {
+		WarnSepWalls(shaped, run, tag, 40);
+		std::map<std::pair<std::string, std::string>, std::pair<size_t, double>> groups;
+		for (const auto &[row, slack] : run.stretched) {
+			if (!row.starts_with("sep ")) continue;
+			std::istringstream in(row.substr(4));
+			uint32_t face = 0;
+			size_t a = 0, b = 0;
+			in >> face >> a >> b;
+			for (const PlanarFaceWalls &f : faces) {
+				if (f.face != face || a >= f.walls.size() || b >= f.walls.size()) continue;
+				auto &g = groups[{map.tracks[f.walls[a].track].name, map.tracks[f.walls[b].track].name}];
+				g.first++;
+				g.second += slack;
+			}
+		}
+		std::vector<std::pair<std::pair<std::string, std::string>, std::pair<size_t, double>>> sorted(groups.begin(), groups.end());
+		std::ranges::stable_sort(sorted, [](const auto &x, const auto &y) { return x.second.second > y.second.second; });
+		for (size_t i = 0; i < std::min<size_t>(30, sorted.size()); i++) {
+			WARN(fmt::format("{} tracks {} / {}: count {}, sum {:.3f}", tag, sorted[i].first.first, sorted[i].first.second, sorted[i].second.first, sorted[i].second.second));
+		}
+	};
 	for (const PlanarDrawPins *pw : {&p8, &p4}) {
 		const std::vector<std::vector<std::array<int, 2>>> *sides = &ref0.points;
-		PlanarDrawResult run;
-		for (int n = 1; n <= 2; n++) {
-			run = CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .elastic = true, .elastic_families = {"sep"}, .pins = pw, .sides_from = sides});
+		const int max_runs = pw->window == 8 ? 8 : 2;
+		std::vector<PlanarDrawResult> runs;
+		runs.reserve(max_runs);
+		for (int n = 1; n <= max_runs; n++) {
+			runs.push_back(CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .elastic = true, .elastic_families = {"sep"}, .pins = pw, .sides_from = sides}));
+			const PlanarDrawResult &run = runs.back();
 			const std::string tag = fmt::format("sep-only W{} run {}", pw->window, n);
 			WARN(fmt::format("{}: status {}, total slack {:.3f}, stretched rows {}, short_sides {}, {:.0f} ms", tag, run.status, run.slack, run.stretched.size(), run.short_sides, run.ms));
 			if (run.status != "Optimal") {
@@ -998,28 +1023,17 @@ TEST_CASE("planar draw: PSG 197 sep-only slack, sides from the pinned drawing", 
 				for (const std::string &c : run.conflict) conflicts += c + "; ";
 				WARN(fmt::format("{} conflict: {}", tag, conflicts));
 			}
-			WarnSepWalls(shaped, run, tag, 40);
-			std::map<std::pair<std::string, std::string>, std::pair<size_t, double>> groups;
-			for (const auto &[row, slack] : run.stretched) {
-				if (!row.starts_with("sep ")) continue;
-				std::istringstream in(row.substr(4));
-				uint32_t face = 0;
-				size_t a = 0, b = 0;
-				in >> face >> a >> b;
-				for (const PlanarFaceWalls &f : faces) {
-					if (f.face != face || a >= f.walls.size() || b >= f.walls.size()) continue;
-					auto &g = groups[{map.tracks[f.walls[a].track].name, map.tracks[f.walls[b].track].name}];
-					g.first++;
-					g.second += slack;
-				}
-			}
-			std::vector<std::pair<std::pair<std::string, std::string>, std::pair<size_t, double>>> sorted(groups.begin(), groups.end());
-			std::ranges::stable_sort(sorted, [](const auto &x, const auto &y) { return x.second.second > y.second.second; });
-			for (size_t i = 0; i < std::min<size_t>(30, sorted.size()); i++) {
-				WARN(fmt::format("{} tracks {} / {}: count {}, sum {:.3f}", tag, sorted[i].first.first, sorted[i].first.second, sorted[i].second.first, sorted[i].second.second));
-			}
+			if (pw->window != 8) details(run, tag);
 			if (!run.feasible) break;
+			if (n > 1 && runs[n - 2].slack - run.slack <= 0.5) break;
 			sides = &run.points;
+		}
+		if (pw->window == 8) {
+			for (size_t i = runs.size(); i-- > 0;) {
+				if (runs[i].status != "Optimal") continue;
+				details(runs[i], fmt::format("sep-only W8 run {}", i + 1));
+				break;
+			}
 		}
 	}
 }
