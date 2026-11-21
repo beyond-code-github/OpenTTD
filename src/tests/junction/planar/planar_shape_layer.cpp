@@ -1684,6 +1684,59 @@ TEST_CASE("planar shape layer: flex respects the route cone", "[junction][planar
 	CHECK(marks > 0);
 }
 
+/**
+ * Whether a dummy starts at a flex bend: the bend before or after a flex insert of its track.
+ * @param v The variant.
+ * @param d The dummy.
+ * @return True when it does.
+ */
+static bool DummyAtFlexBend(const PlanarShapeVariant &v, const PlanarShapeDummy &d)
+{
+	if (d.track >= v.tracks.size()) return false;
+	return std::ranges::any_of(v.tracks[d.track].flex, [&](uint32_t m) { return d.piece + 1 == m || d.piece == m; });
+}
+
+TEST_CASE("planar shape layer: no dummy at a flex bend", "[junction][planar][planarshape][slow]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	size_t at_flex = 0;
+	for (const auto &[hub, text] : hubs) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const PlanarStructureResult structure = BuildPlanarStructure(topology, spec, 16);
+		size_t shaped_count = 0, dummies = 0, middles = 0;
+		for (const PlanarStructureVariant &variant : structure.variants) {
+			std::string why;
+			PlanarShapeVariant shaped;
+			if (!ShapePlanarStructureVariant(variant, shaped, why)) continue;
+			shaped_count++;
+			dummies += shaped.dummies.size();
+			for (const PlanarShapeTrack &t : shaped.tracks) middles += t.flex.size();
+			for (const PlanarShapeDummy &d : shaped.dummies) at_flex += DummyAtFlexBend(shaped, d) ? 1 : 0;
+			CHECK(CheckPlanarShapePromise(topology, spec, shaped).empty());
+		}
+		WARN(hub << ": " << shaped_count << " variants shaped, " << dummies << " dummies, " << middles << " flex middles");
+	}
+	CHECK(at_flex == 0);
+}
+
+TEST_CASE("planar shape layer: H12 ignores a flex bend", "[junction][planar][planarshape]")
+{
+	std::string name;
+	PlanarTopology topology;
+	JunctionSpec spec;
+	PlanarShapeVariant shaped;
+	uint32_t track = 0;
+	REQUIRE(ShapedWithFlex(name, topology, spec, shaped, track));
+	INFO(name);
+	CHECK(CheckPlanarShapeCells(shaped).empty());
+	PlanarShapeVariant copy = shaped;
+	std::erase_if(copy.dummies, [&](const PlanarShapeDummy &d) { return DummyAtFlexBend(shaped, d); });
+	CHECK(CheckPlanarShapeCells(copy).empty());
+}
+
 TEST_CASE("planar shape: V's 197 steps sit on Shape's flex points (D402)", "[.][planarpsg197]")
 {
 	std::string error;

@@ -24,6 +24,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "../../../3rdparty/fmt/format.h"
@@ -320,6 +321,109 @@ TEST_CASE("planar draw: PSG 197 pairwise, whole", "[.][planarkeepapart]")
 		const PlanarDrawResult r = CheckPlanarDrawable(shaped, seconds, {.clearance = true, .clear_rows = true, .pairwise = true});
 		WarnKa(fmt::format("whole {:.0f} s", seconds), r);
 	}
+}
+
+TEST_CASE("planar draw: PSG 197 by sides, every face alone and whole", "[.][planarkeepapart]")
+{
+	const PlanarShapeVariant shaped = Shaped197();
+	const auto begin = std::chrono::steady_clock::now();
+	size_t feasible = 0, infeasible = 0, undecided = 0, skipped = 0;
+	for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(shaped)) {
+		if (std::chrono::steady_clock::now() - begin > std::chrono::minutes(20)) {
+			skipped++;
+			continue;
+		}
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 15.0, {.only_faces = {f.face}});
+		if (r.feasible) {
+			feasible++;
+			continue;
+		}
+		(r.status == "Infeasible" ? infeasible : undecided)++;
+		std::string tags;
+		for (size_t i = 0; i < std::min<size_t>(5, r.conflict.size()); i++) tags += " [" + r.conflict[i] + "]";
+		WARN(fmt::format("FS face {}: status {}, {:.0f} ms, conflict{}", f.face, r.status, r.ms, tags));
+	}
+	if (skipped > 0) WARN(fmt::format("FS stopped after 20 min: {} faces skipped", skipped));
+	const PlanarDrawResult whole = CheckPlanarDrawable(shaped, 60.0);
+	WARN(fmt::format("FS whole: status {}, rows {}, {:.0f} ms", whole.status, whole.rows, whole.ms));
+	std::map<std::string, size_t> families;
+	for (const std::string &tag : whole.conflict) families[tag.substr(0, tag.find(' '))]++;
+	for (const auto &[family, count] : families) WARN(fmt::format("FS whole conflicts: {} {}", family, count));
+	for (size_t i = 0; i < std::min<size_t>(20, whole.conflict.size()); i++) WARN(fmt::format("FS whole conflict {}: {}", i, whole.conflict[i]));
+	WARN(fmt::format("FS 197 faces: feasible {}, infeasible {}, undecided {}, skipped {}; whole: {} in {:.0f} ms", feasible, infeasible, undecided, skipped, whole.status, whole.ms));
+}
+
+TEST_CASE("planar draw: no objective still decides", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .tidy = false});
+	REQUIRE(r.feasible);
+	CHECK(!r.points.empty());
+}
+
+TEST_CASE("planar draw: PSG 197 undecided faces without the objective", "[.][planarkeepapart]")
+{
+	const PlanarShapeVariant shaped = Shaped197();
+	size_t feasible = 0, infeasible = 0, undecided = 0;
+	for (const uint32_t f : {4u, 6u, 46u, 52u, 64u, 71u, 72u, 75u, 84u, 99u, 124u, 141u, 147u, 153u}) {
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 15.0, {.only_faces = {f}, .tidy = false});
+		if (r.feasible) {
+			feasible++;
+		} else {
+			(r.status == "Infeasible" ? infeasible : undecided)++;
+		}
+		std::string tags;
+		for (size_t i = 0; i < std::min<size_t>(5, r.conflict.size()); i++) tags += " [" + r.conflict[i] + "]";
+		WARN(fmt::format("FSc face {}: status {}, {:.0f} ms, conflict{}", f, r.status, r.ms, tags));
+	}
+	const PlanarDrawResult whole = CheckPlanarDrawable(shaped, 60.0, {.tidy = false});
+	WARN(fmt::format("FSc whole: status {}, {:.0f} ms", whole.status, whole.ms));
+	std::map<std::string, size_t> families;
+	for (const std::string &tag : whole.conflict) families[tag.substr(0, tag.find(' '))]++;
+	for (const auto &[family, count] : families) WARN(fmt::format("FSc whole conflicts: {} {}", family, count));
+	WARN(fmt::format("FSc faces: feasible {}, infeasible {}, undecided {}; whole: {} in {:.0f} ms", feasible, infeasible, undecided, whole.status, whole.ms));
+}
+
+/** The hand cell of the side-row tests: a step a, insert, b on the north side, then top, left and bottom walls. */
+static const std::vector<PlanarCellWall> SIDE_CELL = {{0, 0, 0}, {0, 1, 1}, {0, 2, 0}, {1, 0, 5}, {2, 0, 4}, {3, 0, 2}};
+static const std::vector<bool> SIDE_INSERT = {false, true, false, false, false, false};
+
+TEST_CASE("planar draw: clearance rows go by sides", "[junction][planar][planardraw]")
+{
+	using Row = std::tuple<uint32_t, uint32_t, int>;
+	std::vector<Row> got;
+	for (const PlanarClearRow &r : PlanarCellClearRows(SIDE_CELL, SIDE_INSERT)) got.emplace_back(r.vertex, r.wall, r.spacing);
+	std::ranges::sort(got);
+	const std::vector<Row> want = {{0, 3, 2}, {0, 4, 2}, {0, 5, 1}, {1, 3, 2}, {1, 4, 2}, {1, 5, 1}, {2, 4, 2}, {2, 5, 1}, {3, 0, 2}, {3, 2, 2}, {3, 5, 1}, {4, 0, 2}, {4, 2, 2}, {4, 3, 2}, {5, 3, 2}, {5, 4, 2}};
+	CHECK(got == want);
+	for (const auto &[vertex, wall, spacing] : got) {
+		CHECK(wall != 1);
+		CHECK(!(vertex <= 1 && (wall == 0 || wall == 2)));
+	}
+	const std::vector<PlanarClearRow> old = PlanarCellClearRows(SIDE_CELL, std::vector<bool>(6, false));
+	CHECK(std::ranges::any_of(old, [](const PlanarClearRow &r) { return r.wall == 1; }));
+}
+
+/** Whether every row of the side cell holds on the vertex points; the failing rows are returned. */
+static std::vector<std::pair<uint32_t, uint32_t>> FailingSideRows(const std::array<std::array<int, 2>, 6> &V)
+{
+	std::vector<std::pair<uint32_t, uint32_t>> failing;
+	for (const PlanarClearRow &r : PlanarCellClearRows(SIDE_CELL, SIDE_INSERT)) {
+		const std::array<int, 2> from = V[(r.wall + 5) % 6];
+		const std::array<int, 2> normal = PlanarModel::STEP[(SIDE_CELL[r.wall].heading + 6) % 8];
+		const int value = (V[r.vertex][0] - from[0]) * normal[0] + (V[r.vertex][1] - from[1]) * normal[1];
+		if (value < r.spacing) failing.emplace_back(r.vertex, r.wall);
+	}
+	return failing;
+}
+
+TEST_CASE("planar draw: side rows refuse a step's end caps", "[junction][planar][planardraw]")
+{
+	CHECK(FailingSideRows({{{11, 16}, {13, 14}, {13, 10}, {7, 16}, {7, 20}, {11, 20}}}).empty());
+	const auto reach = FailingSideRows({{{11, 16}, {13, 14}, {13, 14}, {9, 18}, {9, 20}, {11, 20}}});
+	CHECK(std::ranges::find(reach, std::make_pair(1u, 3u)) != reach.end());
+	const auto pocket = FailingSideRows({{{11, 16}, {13, 14}, {13, 10}, {12, 11}, {12, 20}, {11, 20}}});
+	CHECK(std::ranges::find(pocket, std::make_pair(3u, 0u)) != pocket.end());
 }
 
 TEST_CASE("planar draw: cell faces match the cells", "[junction][planar][planardraw]")

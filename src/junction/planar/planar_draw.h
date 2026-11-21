@@ -36,7 +36,27 @@ struct PlanarDrawOptions {
 	bool clear_rows = true; ///< With clearance: write the clearance rows; false keeps the dummies and their landings but leaves the clearance rows out (a measurement of the landings alone).
 	bool pairwise = false; ///< With clearance (D406 probe): no dummies and no landings; a face convex without dummies keeps the clearance rows, every other face gets pairwise separation of its walls (`sep`).
 	std::vector<uint32_t> only_faces; ///< Write the face rows (landings and clearance per cell, or in pairwise mode clearance or separation) only for these faces (map face indices); empty is every face. A measurement aid.
+	bool flex_sides = true; ///< With clearance: rows by sides (D407): flex inserts join their side and are no target, and each vertex keeps 0 from its cell's dummies (D408); false is the rule before D407 (sides by equal headings only, no dummy rows).
+	bool tidy = true; ///< The objective: true minimises the sum of piece lengths (a tidy point); false sets no objective (feasibility only, a measurement).
 };
+
+/** One clearance row of a cell (SPEC-shape §8.8): the vertex after wall `vertex` keeps `spacing` from the line of wall `wall`, on the cell's side. */
+struct PlanarClearRow {
+	uint32_t vertex; ///< The vertex: the corner after this wall in the cell's walk.
+	uint32_t wall; ///< The wall whose line it keeps from.
+	int spacing; ///< The least distance along the wall's left normal (`RungSpacing` units); 0 for a dummy.
+};
+
+/**
+ * The clearance rows of one cell, by sides (D407 (2), D408), before the variant's own exemptions (span pieces, shared node points, crossing points).
+ * A side is a maximal run of walls joined where two consecutive walls have equal headings or one of them is a flex insert.
+ * Each vertex k (between walls k and k + 1) has rows against every wall e that is not k or k + 1, not an insert, not a box edge, and not on the side of wall k or of wall k + 1:
+ * a track wall with spacing max(RungSpacing(h_e, h_k), RungSpacing(h_e, h_k+1)), a dummy with spacing 0. A vertex between two walls that are no track (dummies, box edges) has no rows.
+ * @param cell The cell's walls in walk order, the cell on the left.
+ * @param insert Per wall, whether it is a flex insert.
+ * @return The rows.
+ */
+std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall> &cell, const std::vector<bool> &insert);
 
 /**
  * Draw Shape's shape on the half-tile grid with every Slots rule of the families below kept, as one integer program (E5-1).

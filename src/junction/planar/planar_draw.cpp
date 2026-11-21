@@ -26,6 +26,35 @@
 
 #include "../../safeguards.h"
 
+std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall> &cell, const std::vector<bool> &insert)
+{
+	const size_t n = cell.size();
+	const auto no_track = [&](size_t i) { return cell[i].track == PLANAR_DUMMY_TRACK || cell[i].track == UINT32_MAX; };
+	std::vector<size_t> side(n);
+	for (size_t i = 0; i < n; i++) side[i] = i;
+	for (size_t i = 0; i < n; i++) {
+		const size_t j = (i + 1) % n;
+		if (cell[i].heading != cell[j].heading && !insert[i] && !insert[j]) continue;
+		const size_t from = side[j], to = side[i];
+		for (size_t m = 0; m < n; m++) {
+			if (side[m] == from) side[m] = to;
+		}
+	}
+	std::vector<PlanarClearRow> rows;
+	for (size_t k = 0; k < n; k++) {
+		const size_t next = (k + 1) % n;
+		if (no_track(k) && no_track(next)) continue;
+		for (size_t e = 0; e < n; e++) {
+			if (e == k || e == next || insert[e] || cell[e].track == UINT32_MAX) continue;
+			if (side[e] == side[k] || side[e] == side[next]) continue;
+			const int h = cell[e].heading;
+			const int spacing = cell[e].track == PLANAR_DUMMY_TRACK ? 0 : std::max(PlanarModel::RungSpacing(h, cell[k].heading), PlanarModel::RungSpacing(h, cell[next].heading));
+			rows.push_back({static_cast<uint32_t>(k), static_cast<uint32_t>(e), spacing});
+		}
+	}
+	return rows;
+}
+
 namespace {
 
 using Terms = std::vector<std::pair<uint32_t, double>>;
@@ -116,7 +145,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const bool axis = (pieces[i] % 2) == 0;
 			const double lower = free_piece[i] ? 0 : 1;
-			length[t].push_back({var(lower, COORD_MAX, 1), axis ? AXIS_LEAST : 1});
+			length[t].push_back({var(lower, COORD_MAX, options.tidy ? 1 : 0), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
 			Terms sum;
@@ -401,17 +430,6 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			if (!forward) std::swap(part[i].a, part[i].b);
 		}
 		if (!usable) return false;
-		/* Walls that meet straight (no turn) are one side. */
-		std::vector<size_t> side(n);
-		for (size_t i = 0; i < n; i++) side[i] = i;
-		for (size_t i = 0; i < n; i++) {
-			const size_t j = (i + 1) % n;
-			if (cell[i].heading != cell[j].heading) continue;
-			const size_t from = side[j], to = side[i];
-			for (size_t m = 0; m < n; m++) {
-				if (side[m] == from) side[m] = to;
-			}
-		}
 		for (size_t i = 0; i < n; i++) {
 			if (!part[i].valid) continue;
 			const PlanarCellWall &before = cell[(i + n - 1) % n];
@@ -436,10 +454,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				}
 			}
 		}
-		for (size_t k = 0; k < n; k++) {
-			const size_t next = (k + 1) % n;
-			/* A vertex between two walls that are no track (box edges, dummies) is no track point. */
-			if (cell[k].track >= nt && cell[next].track >= nt) continue;
+		std::vector<bool> insert(n, false);
+		for (size_t i = 0; i < n; i++) {
+			if (options.flex_sides && cell[i].track < nt) insert[i] = std::ranges::find(v.tracks[cell[i].track].flex, cell[i].piece) != v.tracks[cell[i].track].flex.end();
+		}
+		const auto walked_forward = [&](const PlanarCellWall &w) { return w.heading == ((v.dummies[w.piece].heading % 8) + 8) % 8; };
+		for (const PlanarClearRow &r : PlanarCellClearRows(cell, insert)) {
+			const size_t k = r.vertex, next = (k + 1) % n, e = r.wall;
 			std::array<uint32_t, 2> vertex;
 			if (part[k].valid) {
 				vertex = part[k].b;
@@ -449,22 +470,18 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				continue;
 			}
 			/* A vertex inside a span piece (a dummy's landing on it, or between two parts of it) has no clearance against ground track. */
-			const auto walked_forward = [&](const PlanarCellWall &w) { return w.heading == ((v.dummies[w.piece].heading % 8) + 8) % 8; };
 			if ((is_span(cell[k]) && is_span(cell[next])) || (lands_on_span(cell[k]) && walked_forward(cell[k]) && is_span(cell[next])) || (is_span(cell[k]) && lands_on_span(cell[next]) && !walked_forward(cell[next]))) continue;
-			for (size_t e = 0; e < n; e++) {
-				if (e == k || e == next || !part[e].valid || is_span(cell[e]) || cell[e].track == PLANAR_DUMMY_TRACK) continue;
-				if (side[e] == side[k] || side[e] == side[next]) continue;
-				if (find(vertex[0]) == find(part[e].a[0]) || find(vertex[0]) == find(part[e].b[0])) continue;
-				const int h = cell[e].heading;
-				const std::array<int, 2> normal = PlanarModel::STEP[(h + 6) % 8];
-				const int spacing = std::max(PlanarModel::RungSpacing(h, cell[k].heading), PlanarModel::RungSpacing(h, cell[next].heading));
-				Terms terms;
-				for (int axis = 0; axis < 2; axis++) {
-					terms.emplace_back(vertex[axis], normal[axis]);
-					terms.emplace_back(part[e].a[axis], -normal[axis]);
-				}
-				row(std::move(terms), spacing, JunctionMilp::INF, fmt::format("clear {} {} {}", c, k, e));
+			if (!part[e].valid || is_span(cell[e])) continue;
+			if (!options.flex_sides && cell[e].track == PLANAR_DUMMY_TRACK) continue;
+			if (find(vertex[0]) == find(part[e].a[0]) || find(vertex[0]) == find(part[e].b[0])) continue;
+			const int h = cell[e].heading;
+			const std::array<int, 2> normal = PlanarModel::STEP[(h + 6) % 8];
+			Terms terms;
+			for (int axis = 0; axis < 2; axis++) {
+				terms.emplace_back(vertex[axis], normal[axis]);
+				terms.emplace_back(part[e].a[axis], -normal[axis]);
 			}
+			row(std::move(terms), r.spacing, JunctionMilp::INF, fmt::format("clear {} {} {}", c, k, e));
 		}
 		return true;
 	};
