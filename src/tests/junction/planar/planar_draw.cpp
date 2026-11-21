@@ -1096,6 +1096,73 @@ TEST_CASE("planar draw: PSG 197 flex on end pieces (option C)", "[.][planarkeepa
 	}
 }
 
+TEST_CASE("planar draw: PSG 197 cell slack by flex role", "[.][planarkeepapart]")
+{
+	for (const bool flex_ends : {false, true}) {
+		const std::string label = flex_ends ? "C" : "D402";
+		PlanarShapeVariant shaped;
+		PlanarDrawPins pins;
+		if (!LoadPinned197(shaped, pins, flex_ends)) continue;
+		PlanarDrawPins p8 = pins;
+		p8.window = 8;
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &p8});
+		WARN(fmt::format("{} cell slack W8: status {}, total slack {:.3f}, stretched {}", label, r.status, r.slack, r.stretched.size()));
+		const std::vector<std::vector<PlanarCellWall>> cells = PlanarShapeCellWalls(shaped);
+		const auto is_insert = [&](const PlanarCellWall &w) {
+			return w.track < shaped.tracks.size() && std::ranges::find(shaped.tracks[w.track].flex, w.piece) != shaped.tracks[w.track].flex.end();
+		};
+		const auto near_insert = [&](const PlanarCellWall &w) {
+			if (w.track >= shaped.tracks.size()) return false;
+			const auto &f = shaped.tracks[w.track].flex;
+			return std::ranges::find(f, w.piece + 1) != f.end() || (w.piece > 0 && std::ranges::find(f, w.piece - 1) != f.end());
+		};
+		const auto wall_text = [&](const PlanarCellWall &w) {
+			return fmt::format("t{} p{} h{} {}", w.track, w.piece, w.heading, is_insert(w) ? "ins" : "no");
+		};
+		std::map<std::string, std::pair<size_t, double>> classes, rooms, families;
+		std::vector<std::string> largest;
+		size_t unmapped = 0;
+		for (const auto &[tag, slack] : r.stretched) {
+			auto &fam = families[tag.substr(0, tag.find(' '))];
+			fam.first++;
+			fam.second += slack;
+			if (tag.starts_with("room ")) {
+				rooms["room"].first++;
+				rooms["room"].second += slack;
+				continue;
+			}
+			if (!tag.starts_with("clear ")) continue;
+			unsigned idx[3] = {0, 0, 0};
+			bool parsed = true;
+			const char *p = tag.data() + 6, *end = tag.data() + tag.size();
+			for (int i = 0; i < 3 && parsed; i++) {
+				const auto res = std::from_chars(p, end, idx[i]);
+				parsed = res.ec == std::errc();
+				p = res.ptr;
+				if (i < 2 && p < end && *p == ' ') p++;
+			}
+			const unsigned c = idx[0], k = idx[1], e = idx[2];
+			if (!parsed || c >= cells.size() || k >= cells[c].size() || e >= cells[c].size()) {
+				unmapped++;
+				continue;
+			}
+			const auto &cell = cells[c];
+			const size_t n = cell.size();
+			const PlanarCellWall &in = cell[k], &out = cell[(k + 1) % n], &target = cell[e];
+			const bool a = is_insert(in), b = is_insert(out), t = near_insert(target);
+			auto &cls = classes[fmt::format("in-insert {} out-insert {} target-near-insert {}", a ? "Y" : "N", b ? "Y" : "N", t ? "Y" : "N")];
+			cls.first++;
+			cls.second += slack;
+			if (largest.size() < 25) largest.push_back(fmt::format("{} slack {:.3f}: in [{}] out [{}] target [{}] near-insert {}", tag, slack, wall_text(in), wall_text(out), wall_text(target), t ? "yes" : "no"));
+		}
+		for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: count {}, sum {:.3f}", label, family, f.first, f.second));
+		WARN(fmt::format("{} unmapped clear tags {}", label, unmapped));
+		for (const auto &[cls, f] : classes) WARN(fmt::format("{} clear class {}: count {}, sum {:.3f}", label, cls, f.first, f.second));
+		for (const auto &[cls, f] : rooms) WARN(fmt::format("{} {} rows: count {}, sum {:.3f}", label, cls, f.first, f.second));
+		for (const std::string &s : largest) WARN(fmt::format("{} largest {}", label, s));
+	}
+}
+
 TEST_CASE("planar draw: PSG 197 elastic, whole", "[.][planarkeepapart]")
 {
 	const PlanarShapeVariant shaped = Shaped197();
