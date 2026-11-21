@@ -2269,11 +2269,15 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 	PlanarShapeVariant d402;
 	PlanarDrawPins d402_pins;
 	if (!LoadPinned197(d402, d402_pins, false)) return;
+	PlanarShapeVariant flex_c;
+	PlanarDrawPins flex_c_pins;
+	if (!LoadPinned197(flex_c, flex_c_pins, true)) return;
 
-	for (const auto &[name, variant, pins] : {std::tuple{"A", &a, &a_pins}, std::tuple{"D402", &d402, &d402_pins}}) {
+	for (const auto &[name, variant, pins] : {std::tuple{"A", &a, &a_pins}, std::tuple{"D402", &d402, &d402_pins}, std::tuple{"C", &flex_c, &flex_c_pins}}) {
 		PlanarDrawPins p8 = *pins;
 		p8.window = 8;
 		for (const bool pinned : {true, false}) {
+			if (variant == &flex_c && pinned) continue;
 			if (over_cap()) {
 				WARN("total cap of 15 minutes passed; stopped");
 				return;
@@ -2295,6 +2299,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points}));
 				const PlanarDrawResult &r = rounds.back();
 				WARN(fmt::format("{} round {}: {}, total slack {:.3f}", label, k, describe(r), r.slack));
+				if (k == 1 && variant == &flex_c) WARN(fmt::format("{} pairs {}", label, r.pairs));
 				if (r.status != "Optimal") {
 					std::string conflicts;
 					for (const std::string &c : r.conflict) conflicts += c + "; ";
@@ -2310,7 +2315,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				WARN(fmt::format("{} no Optimal round; no final", label));
 				continue;
 			}
-			const bool plateau_probe = variant == &d402 && !pinned;
+			const bool plateau_probe = (variant == &d402 || variant == &flex_c) && !pinned;
 			if (plateau_probe) {
 				for (const auto &[row, slack] : last_optimal->stretched) {
 					WARN(fmt::format("{} plateau stretched {}: {:.3f}", label, row, slack));
