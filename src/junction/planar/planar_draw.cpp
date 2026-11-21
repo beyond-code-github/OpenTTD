@@ -227,6 +227,16 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			eq(terms, 0, fmt::format("cross {}", c));
 		}
 	}
+	/* The crossing point of each crossing: where the first track's piece reaches it. */
+	std::vector<std::array<uint32_t, 2>> cross_point(nc);
+	for (size_t c = 0; c < nc; c++) {
+		const uint32_t t = map.crossings[c].a;
+		const std::array<int, 2> step = PlanarModel::STEP[((v.tracks[t].pieces[piece_of[c][0]] % 8) + 8) % 8];
+		for (int axis = 0; axis < 2; axis++) {
+			cross_point[c][axis] = var(0, COORD_MAX, 0);
+			eq({{cross_point[c][axis], 1}, {point[t][piece_of[c][0]][axis], -1}, {param[c][0], -step[axis]}}, 0, fmt::format("cross {}", c));
+		}
+	}
 	/* Crossings on one piece of one track keep their event order. */
 	for (size_t t = 0; t < nt; t++) {
 		for (size_t k = 0; k + 1 < map.events[t].size(); k++) {
@@ -271,10 +281,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 
 	/* Dummies: from the bend's vertex along the heading for a length D >= 1 to the landing E. */
 	const size_t nd = options.clearance && !options.pairwise ? v.dummies.size() : 0;
+	const auto face_listed = [&](uint32_t face) { return options.only_faces.empty() || std::ranges::find(options.only_faces, face) != options.only_faces.end(); };
 	std::vector<std::array<uint32_t, 2>> dummy_start(nd), dummy_end(nd);
 	std::vector<uint32_t> dummy_length(nd);
 	for (size_t d = 0; d < nd; d++) {
 		const PlanarShapeDummy &dummy = v.dummies[d];
+		if (!face_listed(dummy.face)) continue;
 		if (dummy.track >= nt || dummy.piece + 1 >= point[dummy.track].size()) return unsupported(fmt::format("dummy {} starts at a vertex that is not a track's", d));
 		dummy_start[d] = point[dummy.track][dummy.piece + 1];
 		dummy_length[d] = var(1, COORD_MAX, 0);
@@ -287,6 +299,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	}
 	for (size_t d = 0; d < nd; d++) {
 		const PlanarShapeDummy &dummy = v.dummies[d];
+		if (!face_listed(dummy.face)) continue;
 		const std::string tag = fmt::format("land {}", d);
 		if (dummy.land_track == UINT32_MAX) {
 			if (dummy.land_piece >= 4) return unsupported(fmt::format("dummy {} lands on box side {}", d, dummy.land_piece));
@@ -388,6 +401,17 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			if (!forward) std::swap(part[i].a, part[i].b);
 		}
 		if (!usable) return false;
+		/* Walls that meet straight (no turn) are one side. */
+		std::vector<size_t> side(n);
+		for (size_t i = 0; i < n; i++) side[i] = i;
+		for (size_t i = 0; i < n; i++) {
+			const size_t j = (i + 1) % n;
+			if (cell[i].heading != cell[j].heading) continue;
+			const size_t from = side[j], to = side[i];
+			for (size_t m = 0; m < n; m++) {
+				if (side[m] == from) side[m] = to;
+			}
+		}
 		for (size_t i = 0; i < n; i++) {
 			if (!part[i].valid) continue;
 			const PlanarCellWall &before = cell[(i + n - 1) % n];
@@ -396,8 +420,26 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			if (before.track == PLANAR_DUMMY_TRACK && before.heading == ((v.dummies[before.piece].heading % 8) + 8) % 8) part[i].a = dummy_end[before.piece];
 			if (after.track == PLANAR_DUMMY_TRACK && after.heading != ((v.dummies[after.piece].heading % 8) + 8) % 8) part[i].b = dummy_end[after.piece];
 		}
+		/* A corner between pieces of two tracks that cross each other on exactly those pieces is the crossing point; the wall in this cell ends there. */
 		for (size_t k = 0; k < n; k++) {
 			const size_t next = (k + 1) % n;
+			const PlanarCellWall &w0 = cell[k];
+			const PlanarCellWall &w1 = cell[next];
+			if (w0.track >= nt || w1.track >= nt || w0.track == w1.track) continue;
+			for (size_t c = 0; c < nc; c++) {
+				const std::array<uint32_t, 2> tracks = {map.crossings[c].a, map.crossings[c].b};
+				for (int flip = 0; flip < 2; flip++) {
+					if (tracks[flip] != w0.track || tracks[1 - flip] != w1.track) continue;
+					if (piece_of[c][flip] != w0.piece || piece_of[c][1 - flip] != w1.piece) continue;
+					part[k].b = cross_point[c];
+					part[next].a = cross_point[c];
+				}
+			}
+		}
+		for (size_t k = 0; k < n; k++) {
+			const size_t next = (k + 1) % n;
+			/* A vertex between two walls that are no track (box edges, dummies) is no track point. */
+			if (cell[k].track >= nt && cell[next].track >= nt) continue;
 			std::array<uint32_t, 2> vertex;
 			if (part[k].valid) {
 				vertex = part[k].b;
@@ -410,7 +452,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const auto walked_forward = [&](const PlanarCellWall &w) { return w.heading == ((v.dummies[w.piece].heading % 8) + 8) % 8; };
 			if ((is_span(cell[k]) && is_span(cell[next])) || (lands_on_span(cell[k]) && walked_forward(cell[k]) && is_span(cell[next])) || (is_span(cell[k]) && lands_on_span(cell[next]) && !walked_forward(cell[next]))) continue;
 			for (size_t e = 0; e < n; e++) {
-				if (e == k || e == next || !part[e].valid || is_span(cell[e])) continue;
+				if (e == k || e == next || !part[e].valid || is_span(cell[e]) || cell[e].track == PLANAR_DUMMY_TRACK) continue;
+				if (side[e] == side[k] || side[e] == side[next]) continue;
 				if (find(vertex[0]) == find(part[e].a[0]) || find(vertex[0]) == find(part[e].b[0])) continue;
 				const int h = cell[e].heading;
 				const std::array<int, 2> normal = PlanarModel::STEP[(h + 6) % 8];
@@ -425,7 +468,10 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 		return true;
 	};
+	const std::vector<uint32_t> cell_faces = cells.empty() ? std::vector<uint32_t>() : PlanarShapeCellFaces(v);
+	if (cell_faces.size() != cells.size() && !cells.empty()) return unsupported("the cells and their faces disagree");
 	for (size_t c = 0; c < cells.size(); c++) {
+		if (!face_listed(cell_faces[c])) continue;
 		if (!clear_walls(cells[c], c)) return unsupported(fmt::format("cell {} names a wall the variant lacks", c));
 	}
 
@@ -434,7 +480,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		constexpr double M = 4 * COORD_MAX;
 		const auto norm = [](int x) { return ((x % 8) + 12) % 8 - 4; };
 		for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(v)) {
-			if (!options.only_faces.empty() && std::ranges::find(options.only_faces, f.face) == options.only_faces.end()) continue;
+			if (!face_listed(f.face)) continue;
 			const std::vector<PlanarCellWall> &w = f.walls;
 			const size_t n = w.size();
 			bool convex = true;

@@ -129,6 +129,9 @@ struct PlanarCellWall {
  */
 std::vector<std::vector<PlanarCellWall>> PlanarShapeCellWalls(const PlanarShapeVariant &v);
 
+/** Per cell of PlanarShapeCellWalls, in the same order, the face it lies in. */
+std::vector<uint32_t> PlanarShapeCellFaces(const PlanarShapeVariant &v);
+
 /** One inner face's walk, unsplit by dummies. */
 struct PlanarFaceWalls {
 	uint32_t face; ///< The face's index in the map's faces.

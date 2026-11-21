@@ -321,3 +321,29 @@ TEST_CASE("planar draw: PSG 197 pairwise, whole", "[.][planarkeepapart]")
 		WarnKa(fmt::format("whole {:.0f} s", seconds), r);
 	}
 }
+
+TEST_CASE("planar draw: cell faces match the cells", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const std::vector<uint32_t> faces = PlanarShapeCellFaces(c.v);
+	const std::vector<std::vector<PlanarCellWall>> cells = PlanarShapeCellWalls(c.v);
+	REQUIRE(faces.size() == cells.size());
+	REQUIRE(std::ranges::is_sorted(faces));
+	std::vector<uint32_t> known;
+	for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(c.v)) known.push_back(f.face);
+	for (const uint32_t f : faces) CHECK(std::ranges::find(known, f) != known.end());
+}
+
+TEST_CASE("planar draw: PSG 197 clearance per cell, faces alone", "[.][planarkeepapart]")
+{
+	const PlanarShapeVariant shaped = Shaped197();
+	for (const uint32_t f : {0u, 50u, 99u, 120u, 55u, 77u, 92u, 143u}) {
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 30.0, {.only_faces = {f}});
+		WARN(fmt::format("KA cells face {}: feasible {}, status {}, rows {}, {:.0f} ms", f, r.feasible, r.status, r.rows, r.ms));
+		for (size_t i = 0; i < std::min<size_t>(10, r.conflict.size()); i++) WARN(fmt::format("KA cells face {} conflict {}: {}", f, i, r.conflict[i]));
+		CHECK(r.feasible);
+	}
+	const PlanarDrawResult r4 = CheckPlanarDrawable(shaped, 30.0, {.only_faces = {4}});
+	WARN(fmt::format("KA cells face 4: feasible {}, status {}, rows {}, {:.0f} ms", r4.feasible, r4.status, r4.rows, r4.ms));
+	for (size_t i = 0; i < std::min<size_t>(10, r4.conflict.size()); i++) WARN(fmt::format("KA cells face 4 conflict {}: {}", i, r4.conflict[i]));
+}

@@ -1153,6 +1153,28 @@ std::vector<std::vector<PlanarCellWall>> PlanarShapeCellWalls(const PlanarShapeV
 	return result;
 }
 
+std::vector<uint32_t> PlanarShapeCellFaces(const PlanarShapeVariant &v)
+{
+	std::vector<uint32_t> result;
+	const Oracle o(v);
+	for (const PlanarFace &face : o.map.faces) {
+		const FaceWalk walk = WalkFace(o.map, face);
+		if (!walk.usable || walk.stretches.empty()) continue;
+		std::vector<Wall> first;
+		int piece_total, h7;
+		if (!CellWalls(o, walk, first, piece_total, h7)) continue;
+		if (piece_total != -8) continue;
+		std::vector<std::vector<Wall>> cells = {first};
+		for (size_t i = 0; i < v.dummies.size(); i++) {
+			if (v.dummies[i].face != static_cast<uint32_t>(face.face)) continue;
+			std::string reason;
+			SplitCell(cells, v.dummies[i], static_cast<uint32_t>(i), reason);
+		}
+		for (size_t i = 0; i < cells.size(); i++) result.push_back(static_cast<uint32_t>(face.face));
+	}
+	return result;
+}
+
 std::vector<PlanarFaceWalls> PlanarShapeFaceWalls(const PlanarShapeVariant &v)
 {
 	std::vector<PlanarFaceWalls> result;
