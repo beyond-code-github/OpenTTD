@@ -2574,6 +2574,11 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 			if (round_pad != 0) WARN(fmt::format("{} rounds padded by {}", label, round_pad));
 			/* PLANAR_PROBE_EXTREMAL (a measurement aid): rounds and finals write one separation row per pair (sep_extremal). */
 			const bool extremal = std::getenv("PLANAR_PROBE_EXTREMAL") != nullptr;
+			/* PLANAR_PROBE_FLEX_PRICE (a measurement aid, D422): the rounds price insert length; PLANAR_PROBE_COMMIT_ABOVE: the ratchet commits inserts at or above this (half tiles, default 0.25). */
+			double flex_price = 0, commit_above = 0.25;
+			if (const char *fp = std::getenv("PLANAR_PROBE_FLEX_PRICE"); fp != nullptr) std::from_chars(fp, fp + std::strlen(fp), flex_price);
+			if (const char *ca = std::getenv("PLANAR_PROBE_COMMIT_ABOVE"); ca != nullptr) std::from_chars(ca, ca + std::strlen(ca), commit_above);
+			if (flex_price != 0 || commit_above != 0.25) WARN(fmt::format("{} flex price {}, commit above {}", label, flex_price, commit_above));
 			if (extremal) WARN(fmt::format("{} one separation row per pair", label));
 			const PlanarDrawResult *previous = &seed;
 			std::vector<PlanarDrawResult> rounds;
@@ -2584,7 +2589,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 					WARN("total cap of 15 minutes passed; stopped");
 					return;
 				}
-				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points, .sides_pad = round_pad}));
+				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .flex_price = flex_price, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points, .sides_pad = round_pad}));
 				const PlanarDrawResult &r = rounds.back();
 				WARN(fmt::format("{} round {}: {}, total slack {:.3f}", label, k, describe(r), r.slack));
 				if (k == 1 && variant == &flex_c) WARN(fmt::format("{} pairs {}", label, r.pairs));
@@ -2660,7 +2665,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				const auto count_committed = [&]() {
 					size_t n = 0;
 					for (size_t t = 0; t < variant->tracks.size() && t < committed.size(); t++) {
-						for (const uint32_t m : variant->tracks[t].flex) n += m < committed[t].size() && committed[t][m] >= 0.25 ? 1 : 0;
+						for (const uint32_t m : variant->tracks[t].flex) n += m < committed[t].size() && committed[t][m] >= commit_above ? 1 : 0;
 					}
 					return n;
 				};
@@ -2670,7 +2675,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 					rr.reserve(4);
 					const PlanarDrawResult *prev = from;
 					for (int k = 1; k <= 4; k++) {
-						rr.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .curve_flex_from = &committed, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep", "curve"}, .pins = p, .sides_from = &prev->points}));
+						rr.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .curve_flex_from = &committed, .curve_flex_above = commit_above, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep", "curve"}, .pins = p, .sides_from = &prev->points}));
 						const PlanarDrawResult &r = rr.back();
 						double curve_slack = 0;
 						for (const auto &[row, slack] : r.stretched) curve_slack += row.starts_with("curve") ? slack : 0;
@@ -2708,7 +2713,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				const std::vector<PlanarDrawResult> &final_rounds = pruned > 0 ? prune : commit;
 				const PlanarDrawResult *sides = final_rounds.size() > 1 ? &final_rounds[final_rounds.size() - 2] : &commit.back();
 				if (pruned > 0 && final_rounds.size() == 1) sides = &commit.back();
-				const PlanarDrawResult f = CheckPlanarDrawable(*variant, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .curve_flex_from = &committed, .pins = p, .sides_from = &sides->points});
+				const PlanarDrawResult f = CheckPlanarDrawable(*variant, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .curve_flex_from = &committed, .curve_flex_above = commit_above, .pins = p, .sides_from = &sides->points});
 				WARN(fmt::format("{} ratchet final (integer, 60 s): {}", label, describe(f)));
 				continue;
 			}
