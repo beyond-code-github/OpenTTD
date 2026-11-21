@@ -19,6 +19,7 @@ lines without a simple chain (no geometry): none
 lines skipped by crossings: none
 lines skipped by shape: none
 undetermined straight legs: 173,250 merge (trunk/leg is a node piece); 173,251 merge (trunk/leg is a node piece); 182,258 split (trunk/leg is a node piece); 182,259 split (trunk/leg is a node piece)
+cycle: L152 -> L125 -> L152 (topology.txt not written)
 level crossings among lines (a): 0 
 node pieces crossing a ground piece (level): 1 182,258/line 11
 lattice-like: line pairs with several hits (first hit kept): 3 L17 x L30 at 181.0,256.5,177.0,255.5 L50 x L80 at 203.5,245.0,203.5,248.0 L125 x L128 at 220.5,265.0,220.5,265.0

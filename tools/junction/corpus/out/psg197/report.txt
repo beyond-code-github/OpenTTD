@@ -18,6 +18,7 @@ lines without a simple chain (no geometry): none
 lines skipped by crossings: none
 lines skipped by shape: none
 undetermined straight legs: 104,179 split (trunk/leg is a node piece); 105,179 split (trunk/leg is a node piece)
+cycle: L77 -> L74 -> L77 (topology.txt not written)
 level crossings among lines (a): 0 
 node pieces crossing a ground piece (level): 0 
 lattice-like: line pairs with several hits (first hit kept): 1 L80 x L98 at 110.0,172.5,110.0,172.5
