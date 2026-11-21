@@ -2289,6 +2289,11 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 			const PlanarDrawResult seed = CheckPlanarDrawable(*variant, 30.0, {.elastic = true, .elastic_tidy = 0.001, .pins = p});
 			WARN(fmt::format("{} seed: {}, total slack {:.3f}", label, describe(seed), seed.slack));
 			if (!seed.feasible) continue;
+			/* PLANAR_PROBE_PAD (a measurement aid): rounds raise every separation's spacing by this; finals do not. */
+			const char *pad_text = std::getenv("PLANAR_PROBE_PAD");
+			int round_pad = 0;
+			if (pad_text != nullptr) std::from_chars(pad_text, pad_text + std::strlen(pad_text), round_pad);
+			if (round_pad != 0) WARN(fmt::format("{} rounds padded by {}", label, round_pad));
 			const PlanarDrawResult *previous = &seed;
 			std::vector<PlanarDrawResult> rounds;
 			rounds.reserve(8);
@@ -2298,7 +2303,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 					WARN("total cap of 15 minutes passed; stopped");
 					return;
 				}
-				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points}));
+				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points, .sides_pad = round_pad}));
 				const PlanarDrawResult &r = rounds.back();
 				WARN(fmt::format("{} round {}: {}, total slack {:.3f}", label, k, describe(r), r.slack));
 				if (k == 1 && variant == &flex_c) WARN(fmt::format("{} pairs {}", label, r.pairs));

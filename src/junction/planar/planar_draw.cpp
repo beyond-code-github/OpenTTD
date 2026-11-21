@@ -832,11 +832,11 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						std::array<int, 2> s;
 						int spacing;
 					};
-					std::vector<Axis> axes = {{PlanarModel::STEP[(w[i].heading + 6) % 8], PlanarModel::RungSpacing(w[i].heading, w[j].heading)}};
+					std::vector<Axis> axes = {{PlanarModel::STEP[(w[i].heading + 6) % 8], PlanarModel::RungSpacing(w[i].heading, w[j].heading) + options.sides_pad}};
 					if (w[i].heading % 4 != w[j].heading % 4) {
-						axes.push_back({PlanarModel::STEP[(w[j].heading + 6) % 8], PlanarModel::RungSpacing(w[j].heading, w[i].heading)});
+						axes.push_back({PlanarModel::STEP[(w[j].heading + 6) % 8], PlanarModel::RungSpacing(w[j].heading, w[i].heading) + options.sides_pad});
 					} else {
-						axes.push_back({PlanarModel::STEP[w[i].heading % 8], 2});
+						axes.push_back({PlanarModel::STEP[w[i].heading % 8], 2 + options.sides_pad});
 					}
 					int forced_axis = -1, forced_side = 0;
 					if (options.sides_by_walk) {
