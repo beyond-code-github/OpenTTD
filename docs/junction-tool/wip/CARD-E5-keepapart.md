@@ -35,3 +35,20 @@ Why B over A: it is the plainer model (one row family, no cell enumeration). It 
 
 ## Reversible
 Yes: a flag in the oracle; nothing in Shape changes until a ruling.
+
+## Outcome of B (2026-11-21, NOTES Round 3) and the design of A (orchestrator, D406 fallback)
+- B is exact but too slow at scale: whole 197 has 11219 pairs, 44876 binaries and 196k rows, with no answer at 60 s. With a tight M (box 256) single faces take 1.5-6 s. B's use is as a local exact check: it proved faces 3, 6-9, 11, 12, 16 and 17 drawable, where the named landings fail.
+- Four bugs in the clearance rows per cell (fixes brief: wip/BRIEF-E5-clear-fixes.md) made every face fail alone. With them fixed, the remaining per-face failures are landing artefacts in about 11 faces.
+- Named landings don't compose. A landing that holds face by face still constrains lengths globally: whole 197 with pairwise in those 11 faces and cells elsewhere is still Infeasible (proved in 43 s).
+
+### A: the drawing program chooses each landing (exact)
+- **Candidates.** Each dummy d keeps Shape's corner and heading r. Its candidates C_d are the face's track walls and box edges w, in walk order after the corner, such that landing on w leaves both new corners convex (the H12b test, from headings). Landings on dummies are not candidates.
+- **Variables.** Order the candidates by walk position from the corner. Cumulative binaries y_d(i) = 1 when the landing is at candidate i or later, with y_d(1) = 1 and y_d(i) >= y_d(i+1). The choice indicator is x_d(i) = y_d(i) - y_d(i+1).
+- **Landing rows.** For each candidate, today's landing row is relaxed by M (1 - x_d(i)).
+- **Cells.** Dummy d's left cell holds the walk positions p strictly after its corner and up to its landing. A wall or vertex at position p is on that side exactly when y_d(first candidate at or after p) = 1. Write L_d(p) for that, which is linear.
+- **Laminar rows.** Dummies don't cross: if d2's corner is on d1's left side, d2's landing must be too. So for each candidate i of d2: x_d2(i) + L_d1(c_d2) - 1 <= L_d1(pos_i), and the mirror for the right side.
+- **Clearance rows.** For a vertex at position p and a track wall e at position q in one face, write the today's row, relaxed by M * sum over the face's dummies of |L_d(p) - L_d(q)|. The difference is linear because both are monotone in walk order from d's corner: it equals L_d(p) - L_d(q) when p comes first from c_d. The row binds exactly when no dummy separates them, that is when they share a cell.
+- **Why it is exact.** Each cell is a closed walk of fixed headings with turns all <= 0 summing to -8, and every length is >= 0 (landing parts included), so every cell is a simple convex polygon. Clearance inside each cell is then exact, and the cells tile the face.
+- **Sizes for 197.** Binaries are the sum of |C_d|, estimated 2-3k against B's 45k. Clearance rows are about the sum of n^2 over faces (vertex, wall), far fewer than B's 16 rows per pair.
+- **Risk.** The big-M relaxation is weak. Measure as B was measured (faces alone, then whole), with the B-probe box bound.
+- **Kill criterion.** Whole 197 undecided at 60 s.
