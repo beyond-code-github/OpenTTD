@@ -792,6 +792,20 @@ TEST_CASE("planar draw: the extractor's PSG 197 with pins", "[.][planarkeepapart
 	for (size_t i = 0; i < std::min<size_t>(40, r.stretched.size()); i++) WARN(fmt::format("pins 197 stretched {}: {} {:.3f}", i, r.stretched[i].first, r.stretched[i].second));
 }
 
+TEST_CASE("planar draw: PSG 197 integer base with pins", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
+	for (const int window : {2, 8}) {
+		PlanarDrawPins pw = pins;
+		pw.window = window;
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .pins = &pw});
+		WARN(fmt::format("integer base W{}: status {}, {:.0f} ms", window, r.status, r.ms));
+		for (const std::string &tag : r.conflict) WARN(fmt::format("integer base W{} conflict: {}", window, tag));
+	}
+}
+
 TEST_CASE("planar draw: PSG 197 pairwise, sides from the pinned drawing", "[.][planarkeepapart]")
 {
 	PlanarShapeVariant shaped;
