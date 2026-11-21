@@ -2330,6 +2330,34 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				}
 			}
 			bool conflict_shown = false;
+			/* PLANAR_PROBE_FLEXZERO (a measurement aid): histogram of the last round's flex insert lengths, then hold inserts below the threshold at 0, one more sep-only round, and an integer final from it. */
+			if (const char *zero_text = std::getenv("PLANAR_PROBE_FLEXZERO"); zero_text != nullptr) {
+				double below = 0;
+				std::from_chars(zero_text, zero_text + std::strlen(zero_text), below);
+				std::array<int, 6> bins{};
+				int fractional = 0;
+				for (size_t t = 0; t < variant->tracks.size() && t < last_optimal->lengths.size(); t++) {
+					for (const uint32_t m : variant->tracks[t].flex) {
+						if (m >= last_optimal->lengths[t].size()) continue;
+						const double l = last_optimal->lengths[t][m];
+						bins[l < 1e-6 ? 0 : l < 0.5 ? 1 : l < 1 ? 2 : l < 2 ? 3 : l < 4 ? 4 : 5]++;
+						if (std::abs(l - std::round(l)) > 1e-6) fractional++;
+					}
+				}
+				WARN(fmt::format("{} flex insert lengths: 0: {}, (0,0.5): {}, [0.5,1): {}, [1,2): {}, [2,4): {}, >=4: {}; fractional {}", label, bins[0], bins[1], bins[2], bins[3], bins[4], bins[5], fractional));
+				const PlanarDrawResult z = CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &last_optimal->points, .flex_zero_from = &last_optimal->lengths, .flex_zero_below = below});
+				WARN(fmt::format("{} flex-zero round (below {:.2f}): {}, total slack {:.3f}", label, below, describe(z), z.slack));
+				if (z.feasible) {
+					const PlanarDrawResult fz = CheckPlanarDrawable(*variant, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &z.points, .flex_zero_from = &last_optimal->lengths, .flex_zero_below = below});
+					WARN(fmt::format("{} flex-zero final (integer, 15 s): {}", label, describe(fz)));
+					if (fz.status == "Infeasible") {
+						std::string conflicts;
+						for (size_t i = 0; i < std::min<size_t>(30, fz.conflict.size()); i++) conflicts += fz.conflict[i] + "; ";
+						WARN(fmt::format("{} flex-zero final conflict: {}", label, conflicts));
+					}
+				}
+				continue;
+			}
 			for (const double budget : {15.0, 60.0}) {
 				const PlanarDrawResult f = CheckPlanarDrawable(*variant, budget, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &last_optimal->points});
 				WARN(fmt::format("{} final (integer, {:.0f} s): {}", label, budget, describe(f)));
