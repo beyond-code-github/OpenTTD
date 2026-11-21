@@ -22,6 +22,7 @@
 #include <charconv>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <set>
@@ -2158,6 +2159,28 @@ TEST_CASE("planar draw: PSG 197 option A pairwise integer", "[.][planarkeepapart
 			walk("j->i on axis1", j, i, nj, spacing1);
 		} else {
 			walk("j->i on axis0 (same-axis case)", j, i, nj, spacing0);
+		}
+	}
+}
+
+TEST_CASE("planar draw: PSG 197 export for offline solvers", "[.][planarkeepapart]")
+{
+	const std::string dir = "/tmp/claude-1000/-home-pete-OpenTTD/c9f5c621-e02c-4bb1-8894-876529c77fba/scratchpad/export/";
+	std::filesystem::create_directories(dir);
+	PlanarShapeVariant a;
+	PlanarDrawPins a_pins;
+	if (!LoadPinned197(a, a_pins, true)) return;
+	if (!BuildOptionA(a)) return;
+	PlanarShapeVariant d402;
+	PlanarDrawPins d402_pins;
+	if (!LoadPinned197(d402, d402_pins, false)) return;
+	for (const auto &[name, variant, pins] : {std::tuple{"A", &a, &a_pins}, std::tuple{"D402", &d402, &d402_pins}}) {
+		PlanarDrawPins p8 = *pins;
+		p8.window = 8;
+		for (const bool pinned : {true, false}) {
+			const std::string file = fmt::format("{}{}-{}.json", dir, name, pinned ? "pins8" : "nopins");
+			const PlanarDrawResult r = CheckPlanarDrawable(*variant, 1.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = pinned ? &p8 : nullptr, .export_path = file});
+			WARN(fmt::format("{}: status {}, variables {}, rows {}, binaries {}, pairs {}, size {} bytes", file, r.status, r.columns, r.rows, r.binaries, r.pairs, std::filesystem::exists(file) ? std::filesystem::file_size(file) : 0));
 		}
 	}
 }

@@ -22,6 +22,7 @@
 #include <climits>
 #include <chrono>
 #include <cmath>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <set>
@@ -217,9 +218,18 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	uint32_t columns = 0;
 	std::vector<std::string> slack_tag; ///< Elastic: per slack variable its row's tag.
 	std::vector<uint32_t> slack_var; ///< Elastic: the slack variables.
+	const bool exporting = !options.export_path.empty();
+	std::string export_variables; ///< Exporting: the variables as JSON objects, in index order.
+	std::string export_rows; ///< Exporting: the rows as JSON objects, in row order.
+	double export_big_m = 0; ///< Exporting: the pairwise block's big-M constant.
+	const auto json_number = [](double x) { return std::isfinite(x) ? fmt::format("{}", x) : std::string("null"); };
+	const auto add_variable = [&](double lower, double upper, double cost, bool integer) {
+		if (exporting) export_variables += fmt::format("{}{{\"lb\":{},\"ub\":{},\"cost\":{},\"integer\":{}}}", export_variables.empty() ? "" : ",", json_number(lower), json_number(upper), json_number(cost), integer ? "true" : "false");
+		return milp.AddVariable(lower, upper, cost, integer);
+	};
 	const auto var = [&](double lower, double upper, double cost, std::string_view group) {
 		columns++;
-		return milp.AddVariable(lower, upper, cost, !options.elastic && std::ranges::find(options.continuous, group) == options.continuous.end());
+		return add_variable(lower, upper, cost, !options.elastic && std::ranges::find(options.continuous, group) == options.continuous.end());
 	};
 	const auto row = [&](Terms terms, double lower, double upper, const std::string &tag) {
 		std::ranges::sort(terms);
@@ -236,12 +246,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const std::string family = tag.substr(0, tag.find(' '));
 			if (family != "piece" && family != "box" && family != "pin" && family != "fix" && (options.elastic_families.empty() || std::ranges::find(options.elastic_families, family) != options.elastic_families.end())) {
 				if (std::isfinite(lower)) {
-					merged.emplace_back(milp.AddVariable(0, JunctionMilp::INF, 1, false), 1.0);
+					merged.emplace_back(add_variable(0, JunctionMilp::INF, 1, false), 1.0);
 					slack_tag.push_back(tag);
 					slack_var.push_back(merged.back().first);
 				}
 				if (std::isfinite(upper)) {
-					merged.emplace_back(milp.AddVariable(0, JunctionMilp::INF, 1, false), -1.0);
+					merged.emplace_back(add_variable(0, JunctionMilp::INF, 1, false), -1.0);
 					slack_tag.push_back(tag);
 					slack_var.push_back(merged.back().first);
 				}
@@ -249,6 +259,16 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 		milp.AddRow(merged, lower, upper);
 		tags.push_back(tag);
+		if (exporting) {
+			std::string terms_json;
+			for (const auto &[variable, coefficient] : merged) terms_json += fmt::format("{}[{},{}]", terms_json.empty() ? "" : ",", variable, json_number(coefficient));
+			std::string tag_json;
+			for (const char c : tag) {
+				if (c == '"' || c == '\\') tag_json += '\\';
+				tag_json += c;
+			}
+			export_rows += fmt::format("{}{{\"terms\":[{}],\"lb\":{},\"ub\":{},\"tag\":\"{}\"}}", export_rows.empty() ? "" : ",", terms_json, json_number(lower), json_number(upper), tag_json);
+		}
 	};
 	const auto eq = [&](Terms terms, double rhs, const std::string &tag) { row(std::move(terms), rhs, rhs, tag); };
 
@@ -749,6 +769,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	/* Pairwise mode (D406 probe): a face convex without dummies keeps the clearance rows, every other face separates its non-incident wall pairs. */
 	if (options.clearance && options.pairwise) {
 		constexpr double M = 4 * COORD_MAX;
+		export_big_m = M;
 		const auto norm = [](int x) { return ((x % 8) + 12) % 8 - 4; };
 		if (options.sides_from != nullptr) {
 			if (options.sides_from->size() != nt) return unsupported("sides_from does not match the variant");
@@ -954,6 +975,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 
 	result.rows = static_cast<uint32_t>(tags.size());
 	result.columns = columns;
+	if (exporting) {
+		std::ofstream out(options.export_path);
+		out << fmt::format("{{\"variables\": [{}], \"rows\": [{}], \"sense\": \"min\", \"big_m\": {}}}\n", export_variables, export_rows, json_number(export_big_m));
+		out.close();
+		if (!out) return unsupported("cannot write export");
+	}
 	milp.SetTimeLimit(seconds);
 	const JunctionMilp::Status status = milp.Solve();
 	if (status == JunctionMilp::Status::Optimal) {
