@@ -79,4 +79,4 @@ Drawing expert rail hubs: a layered octilinear layout model checked against expe
 
 ### C6. Optional steps are the hard core; deciding them upstream makes lengths exact (open)
 - **Claim:** keep-apart with optional steps is a disjunction per wall pair (C2, D416 gate: 38k-113k binaries, no solve), in line with Patrignani. With the used steps fixed upstream and cells refined around them, the lengths solve is exact and binary-free (convex cells, fixed landings).
-- **Evidence:** pending, the (A) probe on PSG 197 with the expert's 50 steps as the used steps.
+- **Evidence so far (75f61cc2aa):** NOT yet supported: with the expert's steps fixed, cells elastic W8 579 vs 189 without steps; dummies 78 -> 162. Suspected probe artefacts (flank least lengths, dummy landing choice) under diagnosis.
