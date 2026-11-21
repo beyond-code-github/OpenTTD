@@ -1,6 +1,6 @@
 # Brief X-es: empty lines get a heading in shape.txt
 
-You execute this brief and nothing else. Make exactly the changes listed. Do not add any type, member, file, abstraction or mechanism that the brief does not name, and do not widen or narrow its scope. If something is not covered, or you would have to choose between approaches, stop at a clean state and report the question. A workaround that avoids a stop condition is a breach, not a stop. Keep your context small: send command output to files and report only what failed.
+You execute this brief and nothing else. Make exactly the changes listed. Do not add any type, member, file, abstraction or mechanism that the brief does not name, and do not widen or narrow its scope. If something is not covered, or you would have to choose between approaches, stop at a clean state and report the question. A workaround that avoids a stop condition is a breach, not a stop. (Re-launch: a previous run stopped on cascade middle lines; the rule for them is now in section 3.) Keep your context small: send command output to files and report only what failed.
 
 ## 1. State
 - Worktree `/home/pete/OpenTTD/.claude/ng2`, branch `wt-x`, head `{HEAD}`. Python only, `python3 -I`.
@@ -14,7 +14,8 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 - An empty line's shape is one heading: the travel heading at the point where it sits.
   - An empty line between two node pieces (`('e', a, b)`): the heading of piece a at its shared end with b, by the same helper `structure()` uses for a node piece.
   - An empty port line (a lane that is itself a node piece): the port heading (`HEAD_IN` / `HEAD_PORT`, as `structure()` uses for a port trunk).
-  - Any other empty-line kind: if it has no clear heading by these two rules, stop and report its key and where it is.
+  - A cascade middle line (key `('c', pc, ...)`: the line between two statements of one 3-way split or merge piece): the node piece's trunk heading. For a split, the heading its trunk arrives with (as `structure()` takes it); for a merge, the heading its out leg leaves with. Inside the node tile the middle line continues the trunk.
+  - Any other empty-line kind: if it has no clear heading by these three rules, stop and report its key and where it is.
 - `lengths.txt` gets `lengths <name>: 0` for each empty line (one piece of length 0). Note: the drawing program requires axis pieces of at least a tile; a 0 here is V's fact, not a rule change.
 - The report's empty-lines line drops "they have no ... shape" and says the shape is one heading of length 0.
 
