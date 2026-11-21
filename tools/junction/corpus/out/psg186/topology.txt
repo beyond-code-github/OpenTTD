@@ -1,185 +1,237 @@
 topology Brainmelter
-# Extracted by tools/junction/corpus/extract.py (X-B1) from PSG 186, box 165,224,225,281; lanes from derived.
+# Extracted by tools/junction/corpus/extract.py (X-B1) from PSG 186, box 163,224,225,281; lanes from derived.
 # Ports: per side in reading order (N and S west to east, E and W north to south); each port lists its lines left to right across travel.
-# Lane numbers are 1-based in reading order on each port: N-out N199=1 N200=2 N201=3; N-in N202=1 N204=2 N205=3 N206=4; E-out E275=1 E276=2 E277=3; E-in E278=1 E279=2 E280=3; W-in1 W225=1 W226=2; W-out1 W230=1 W232=2 W233=3 W234=4; W-in2 W260=1; W-out2 W264=1.
+# Lane numbers are 1-based in reading order on each port: N-in1 N163=1; N-out N199=1 N200=2 N201=3; N-in2 N202=1 N204=2 N205=3 N206=4; E-out E275=1 E276=2 E277=3; E-in E278=1 E279=2 E280=3; W-in W224=1 W225=2; W-out W228=1 W230=2 W231=3 W232=4.
 # Routes: a movement letter per (in port, out port) pair, A, B, ... in the order of the in ports then the out ports as listed in the ports section, plus the in lane's number on its port.
-# Movements: A: N-in -> E-out; B: N-in -> W-out1; C: N-in -> W-out2; D: E-in -> N-out; E: E-in -> W-out1; F: W-in2 -> W-out1.
+# Movements: A: N-in1 -> N-out; B: N-in1 -> E-out; C: N-in2 -> E-out; D: N-in2 -> W-out; E: E-in -> N-out; F: E-in -> W-out; G: W-in -> N-out; H: W-in -> E-out.
 # Lines L1.. are named by index: lines with track first (by their first piece), then empty lines (no track: a lane that is itself a node piece, an edge between two node pieces, a cascade or cross middle line). Leg order at a node is left to right across travel in the x east, y south frame.
-port N out N: L73=D1+D2+D3, L77=D1+D2+D3, L80=D1+D2+D3
-port N in S: L97=A4+C4, L94=A3+B3, L90=A2+B2, L84=A1+B1
-port E out E: L130=A1+A2+A3+A4, L129=A1+A2+A3+A4, L131=A1+A2+A3+A4
-port E in W: L103=D3+E3, L79=D2+E2, L87=D1+E1
-port W in E: ?, ?
-port W out W: L4=B1+B3+E1+E2+E3+F1, L3=B1+B2+B3+E1+E2+E3, L2=B1+B2+B3+E1+E2+E3, L1=B1+B2+B3+E1+E2+E3
-port W in E: L7=F1
-port W out W: L9=C4
-node L7, L6=B3 -> L132=B3+F1
-node L132, L8=E2+E3 -> L5=B3+E2+E3+F1
-node L5, L10=E1 -> L133=B3+E1+E2+E3+F1
-node L133, L11=B1 -> L4
-node L13=B3 -> L6, L12=B3
-node L16=B2+B3+E1+E2+E3, L17=B1 -> L3
-node L18=B3+E2+E3, L19=B2+E1+E2 -> L16
-node L14=E2+E3, L20=B3 -> L18
-node L12 -> L20, L21=B3
-node L24=B3, L25=B1+B2+E1+E2 -> L15=B1+B2+B3+E1+E2
-node L21 -> L24, L26=B3
-node L27=E2+E3 -> L22=E2+E3, L23=E2+E3
-node L15, L22 -> L2
-node L134=B2+E1+E2, L28=B1 -> L25
-node L29=E1+E2, L30=B2 -> L134
-node L37=E1+E2, L36=B2 -> L19
-node L39=B3, L38=B3 -> L13
-node L23, L31=B1+B2+B3+E1+E2 -> L1
-node L26, L32=B1+B2 -> L135=B1+B2+B3
-node L135, L33=E1+E2 -> L31
-node L34=B1, L35=B2 -> L32
-node L40=E1+E2 -> L37, L33
-node L42=E1+E2 -> L29, L40
-node L41=E2+E3 -> L8, L14
-node L43=E2+E3 -> L41, L27
-node L44=B1 -> L28, L34
-node L46=E3, L45=E2 -> L43
-node L48=E2, L47=E1 -> L42
-node L136=B1 -> L17, L44
-node L49=B1 -> L11, L136
-node L51=B1, L50=B1 -> L49
-node L54=E1, L52=E1 -> L10
-node L55=E1, L53=E1 -> L47
-node L56=E1 -> L53, L52
-node L57=E1 -> L55, L54
-node L60=D3 -> L58=D3, L59=D3
-node L62=D3 -> L60, L61=D3
-node L58, L63=D2 -> L65=D2+D3
-node L64=D3+E3 -> L46, L62
-node L59, L66=D2 -> L69=D2+D3
-node L68=D2 -> L137=D2, L67=D2
-node L137 -> L63, L66
-node L61, L67 -> L72=D2+D3
-node L70=E2 -> L45, L48
-node L65, L71=D1 -> L73
-node L69, L74=D1 -> L77
-node L76=D1 -> L138=D1, L75=D1
-node L138 -> L71, L74
-node L79 -> L70, L68
-node L72, L75 -> L80
-node L78=E1 -> L56, L57
-node L82=D3+E3, L81=D3+E3 -> L64
-node L83=B3 -> L39, L38
-node L87 -> L78, L76
-node L85=B2 -> L36, L30
-node L88=C4, L86=C4 -> L9
-node L89=B2 -> L85, L35
-node L93=C4 -> L88, L86
-node L84 -> L92=A1, L91=B1
-node L91 -> L51, L50
-node L96=B2, L95=B2 -> L89
-node L90 -> L139=A2+B2, L95
-node L139 -> L98=A2, L96
-node L94 -> L100=A3, L99=B3
-node L99 -> L102=B3, L101=B3
-node L102, L101 -> L83
-node L103 -> L82, L81
-node L105=C4, L104=C4 -> L93
-node L97 -> L107=A4, L106=C4
-node L106 -> L105, L104
-node L92 -> L140=A1, L108=A1
-node L140 -> L110=A1, L109=A1
-node L98 -> L112=A2, L111=A2
-node L111, L108 -> L115=A1+A2
-node L112 -> L114=A2, L113=A2
-node L113, L109 -> L116=A1+A2
-node L114, L110 -> L119=A1+A2
-node L100 -> L118=A3, L117=A3
-node L117, L115 -> L122=A1+A2+A3
-node L118 -> L121=A3, L120=A3
-node L120, L116 -> L125=A1+A2+A3
-node L107 -> L124=A4, L123=A4
-node L121, L119 -> L128=A1+A2+A3
-node L124 -> L127=A4, L126=A4
-node L126, L122 -> L129
-node L127, L128 -> L130
-node L123, L125 -> L131
+port N in S: L2=A1+B1
+port N out N: L97=A1+E1+E2+E3+G1+G2, L101=A1+E1+E2+E3+G1+G2, L107=A1+E1+E2+E3+G1+G2
+port N in S: L122=C4+D4, L119=C3+D3, L115=C2+D2, L109=C1+D1
+port E out E: L170=B1+C1+C2+C3+C4+H1+H2, L169=B1+C1+C2+C3+C4+H1+H2, L171=B1+C1+C2+C3+C4+H1+H2
+port E in W: L134=E3+F3, L103=E2+F2, L112=E1+F1
+port W in E: L1=G1+H1, L3=G2+H2
+port W out W: L7=D1+D3+D4+F1+F2+F3, L6=D1+D2+D3+F1+F2+F3, L5=D1+D2+D3+F1+F2+F3, L4=D1+D2+D3+F1+F2+F3
+node L2, L1 -> L8=A1+B1+G1+H1
+node L9=D4, L11=D3 -> L172=D3+D4
+node L172, L12=F2+F3 -> L10=D3+D4+F2+F3
+node L10, L13=F1 -> L173=D3+D4+F1+F2+F3
+node L173, L14=D1 -> L7
+node L16=D3 -> L11, L15=D3
+node L19=D2+D3+F1+F2+F3, L20=D1 -> L6
+node L21=D3+F2+F3, L22=D2+F1+F2 -> L19
+node L17=F2+F3, L23=D3 -> L21
+node L15 -> L23, L24=D3
+node L27=D3, L28=D1+D2+F1+F2 -> L18=D1+D2+D3+F1+F2
+node L24 -> L27, L29=D3
+node L30=F2+F3 -> L25=F2+F3, L26=F2+F3
+node L18, L25 -> L5
+node L174=D2+F1+F2, L31=D1 -> L28
+node L32=F1+F2, L33=D2 -> L174
+node L40=F1+F2, L39=D2 -> L22
+node L42=D3, L41=D3 -> L16
+node L26, L34=D1+D2+D3+F1+F2 -> L4
+node L29, L35=D1+D2 -> L175=D1+D2+D3
+node L175, L36=F1+F2 -> L34
+node L37=D1, L38=D2 -> L35
+node L43=F1+F2 -> L40, L36
+node L47=F1+F2 -> L32, L43
+node L44=F2+F3 -> L12, L17
+node L3 -> L46=H2, L45=G2
+node L50=F2+F3 -> L44, L30
+node L8 -> L49=A1+B1+G1+H1, L48=A1+B1+G1+H1
+node L49, L48 -> L51=A1+B1+G1+H1
+node L52=D1 -> L31, L37
+node L54=F3, L53=F2 -> L50
+node L56=F2, L55=F1 -> L47
+node L176=D1 -> L20, L52
+node L57=D1 -> L14, L176
+node L51 -> L58=B1+H1, L59=A1+G1
+node L45 -> L177=G2, L62=G2
+node L177 -> L60=G2, L61=G2
+node L64=D1, L63=D1 -> L57
+node L67=F1, L65=F1 -> L13
+node L68=F1, L66=F1 -> L55
+node L59 -> L70=A1+G1, L69=A1+G1
+node L70 -> L71=A1+G1, L72=A1+G1
+node L73=F1 -> L66, L65
+node L74=F1 -> L68, L67
+node L77=E3 -> L75=E3, L76=E3
+node L79=E3 -> L77, L78=E3
+node L58 -> L81=B1+H1, L82=B1+H1
+node L60, L75 -> L80=E3+G2
+node L80, L83=E2 -> L178=E2+E3+G2
+node L84=E3+F3 -> L54, L79
+node L46 -> L87=H2, L88=H2
+node L71, L178 -> L85=A1+E2+E3+G1+G2
+node L62, L76 -> L86=E3+G2
+node L86, L89=E2 -> L92=E2+E3+G2
+node L91=E2 -> L179=E2, L90=E2
+node L179 -> L83, L89
+node L78, L90 -> L96=E2+E3
+node L93=F2 -> L53, L56
+node L85, L94=E1 -> L97
+node L69, L92 -> L95=A1+E2+E3+G1+G2
+node L95, L98=E1 -> L101
+node L100=E1 -> L180=E1, L99=E1
+node L180 -> L94, L98
+node L103 -> L93, L91
+node L181=E2+E3+G2, L99 -> L104=E1+E2+E3+G2
+node L61, L96 -> L181
+node L102=F1 -> L73, L74
+node L106=E3+F3, L105=E3+F3 -> L84
+node L72, L104 -> L107
+node L108=D3 -> L42, L41
+node L112 -> L102, L100
+node L110=D2 -> L39, L33
+node L113=D4, L111=D4 -> L9
+node L114=D2 -> L110, L38
+node L118=D4 -> L113, L111
+node L109 -> L117=C1, L116=D1
+node L116 -> L64, L63
+node L121=D2, L120=D2 -> L114
+node L115 -> L182=C2+D2, L120
+node L182 -> L123=C2, L121
+node L124=B1+H1 -> L126=B1+H1, L125=B1+H1
+node L119 -> L128=C3, L127=D3
+node L127 -> L130=D3, L129=D3
+node L87, L88 -> L132=H2
+node L130, L129 -> L108
+node L133=B1+H1 -> L131=B1+H1, L124
+node L134 -> L106, L105
+node L136=D4, L135=D4 -> L118
+node L122 -> L138=C4, L137=D4
+node L137 -> L136, L135
+node L132 -> L140=H2, L139=H2
+node L139 -> L142=H2, L141=H2
+node L81, L82 -> L133
+node L141, L126 -> L143=B1+H1+H2
+node L144=C1, L142 -> L147=C1+H2
+node L117 -> L183=C1, L144
+node L183 -> L146=C1, L145=C1
+node L145, L143 -> L149=B1+C1+H1+H2
+node L146, L140 -> L152=C1+H2
+node L147, L125 -> L148=B1+C1+H1+H2
+node L123 -> L151=C2, L150=C2
+node L150, L148 -> L155=B1+C1+C2+H1+H2
+node L151 -> L154=C2, L153=C2
+node L153, L149 -> L156=B1+C1+C2+H1+H2
+node L152, L131 -> L184=B1+C1+H1+H2
+node L154, L184 -> L159=B1+C1+C2+H1+H2
+node L128 -> L158=C3, L157=C3
+node L157, L155 -> L162=B1+C1+C2+C3+H1+H2
+node L158 -> L161=C3, L160=C3
+node L160, L156 -> L165=B1+C1+C2+C3+H1+H2
+node L138 -> L164=C4, L163=C4
+node L161, L159 -> L168=B1+C1+C2+C3+H1+H2
+node L164 -> L167=C4, L166=C4
+node L166, L162 -> L169
+node L167, L168 -> L170
+node L163, L165 -> L171
 # Crossings (D389): each line's crossings in travel order, mark > = the partner arrives from the line's left (marks.py).
-cross L8: L12>
-cross L10: L39<, L38<, L33>, L37>, L29>, L23>, L21>, L22>, L20>, L14>
-cross L11: L33>, L37>, L29>, L26>, L24>, L23>, L22>, L20>, L14>
-cross L12: L8<, L14<
-cross L14: L12>, L10<, L11<
-cross L15: L22>
-cross L17: L36<, L30<, L33>, L29>, L26>, L24>, L23>, L22>
-cross L19: L26>, L24>, L23>, L22>
-cross L20: L10<, L11<
-cross L21: L22<, L10<
-cross L22: L21>, L10<, L11<, L19<, L17<, L15<
-cross L23: L10<, L26>, L11<, L19<, L17<, L25<
-cross L24: L11<, L19<, L17<
-cross L25: L23>
-cross L26: L23<, L11<, L19<, L17<, L30<, L28<
-cross L28: L33>, L26>
-cross L29: L10<, L11<, L37<, L36<, L17<
-cross L30: L75>, L74>, L71>, L67>, L66>, L63>, L61>, L59>, L58>, L44>, L17>, L33>, L26>
-cross L33: L10<, L11<, L36<, L17<, L30<, L28<, L34<, L35<
-cross L34: L33>
-cross L35: L75>, L74>, L71>, L67>, L61>, L66>, L63>, L59>, L58>, L33>
-cross L36: L75>, L74>, L71>, L67>, L66>, L63>, L61>, L60>, L44>, L17>, L33>, L29>
-cross L37: L10<, L11<, L29>
-cross L38: L76>, L67>, L66>, L63>, L61>, L60>, L10>, L42>
-cross L39: L76>, L67>, L66>, L63>, L62>, L49>, L10>, L42>, L43>
-cross L42: L39<, L38<
-cross L43: L39<
-cross L44: L36<, L30<
-cross L45: L62>
-cross L48: L62>
-cross L49: L39<
-cross L50: L80>, L89>, L83>, L76>, L67>, L66>, L63>, L62>
-cross L51: L89>, L83>, L76>, L68>, L62>
-cross L56: L68>, L62>
-cross L57: L68>, L62>
-cross L58: L30<, L35<
-cross L59: L30<, L35<, L63<
-cross L60: L38<, L36<
-cross L61: L38<, L36<, L30<, L63<, L66<, L35<
-cross L62: L45<, L48<, L57<, L56<, L51<, L50<, L39<
-cross L63: L50<, L39<, L38<, L36<, L30<, L61>, L35<, L59>
-cross L66: L50<, L39<, L38<, L36<, L30<, L61>, L35<
-cross L67: L50<, L39<, L38<, L36<, L30<, L35<
-cross L68: L56<, L57<, L51<
-cross L69: L71<
-cross L71: L36<, L30<, L35<, L72>, L69>
-cross L72: L71<, L74<
-cross L74: L36<, L30<, L35<, L72>
-cross L75: L36<, L30<, L35<
-cross L76: L51<, L50<, L39<, L38<
-cross L79: L88<, L86<
-cross L80: L50<
-cross L81: L88<, L86<
-cross L82: L88<, L86<
-cross L83: L51<, L50<
-cross L86: L87>, L79>, L81>, L82>
-cross L87: L88<, L86<
-cross L88: L87>, L79>, L81>, L82>
-cross L89: L51<, L50<
-cross L92: L95>, L96>, L101>, L102>, L104>, L105>
-cross L95: L92<
-cross L96: L92<
-cross L98: L101>, L102>, L104>, L105>
-cross L100: L104>, L105>
-cross L101: L98<, L92<
-cross L102: L98<, L92<
-cross L104: L100<, L98<, L92<
-cross L105: L100<, L98<, L92<
-cross L108: L109>
-cross L109: L108<
-cross L110: L111>, L113>
-cross L111: L110<
-cross L113: L110<, L115<
-cross L115: L113>
-cross L117: L119<
-cross L119: L117>, L120>, L123>
-cross L120: L119<, L122<
-cross L121: L123>
-cross L122: L120>, L123>
-cross L123: L121<, L119<, L122<
-cross L126: L128<
-cross L128: L126>
+cross L12: L15>
+cross L13: L42<, L41<, L36>, L40>, L32>, L26>, L24>, L25>, L23>, L17>
+cross L14: L36>, L40>, L32>, L29>, L27>, L26>, L25>, L23>, L17>
+cross L15: L12<, L17<
+cross L17: L15>, L13<, L14<
+cross L18: L25>
+cross L20: L39<, L33<, L36>, L32>, L29>, L27>, L26>, L25>
+cross L22: L29>, L27>, L26>, L25>
+cross L23: L13<, L14<
+cross L24: L25<, L13<
+cross L25: L24>, L13<, L14<, L22<, L20<, L18<
+cross L26: L13<, L29>, L14<, L22<, L20<, L28<
+cross L27: L14<, L22<, L20<
+cross L28: L26>
+cross L29: L26<, L14<, L22<, L20<, L33<, L31<
+cross L31: L36>, L29>
+cross L32: L13<, L14<, L40<, L39<, L20<
+cross L33: L99>, L98>, L94>, L90>, L89>, L83>, L78>, L76>, L75>, L52>, L20>, L36>, L29>
+cross L36: L13<, L14<, L39<, L20<, L33<, L31<, L37<, L38<
+cross L37: L36>
+cross L38: L99>, L98>, L94>, L90>, L78>, L89>, L83>, L76>, L75>, L36>
+cross L39: L99>, L98>, L94>, L90>, L89>, L83>, L78>, L77>, L52>, L20>, L36>, L32>
+cross L40: L13<, L14<, L32>
+cross L41: L100>, L90>, L89>, L83>, L78>, L77>, L13>, L47>
+cross L42: L100>, L90>, L89>, L83>, L79>, L57>, L13>, L47>, L50>
+cross L46: L48>, L49>
+cross L47: L42<, L41<
+cross L48: L46<
+cross L49: L46<
+cross L50: L42<
+cross L52: L39<, L33<
+cross L53: L79>
+cross L56: L79>
+cross L57: L42<
+cross L61: L75<, L83<, L86<, L89<, L94<, L98<
+cross L62: L75<, L83<
+cross L63: L107>, L87<, L88<, L81<, L82<, L114>, L108>, L100>, L90>, L89>, L83>, L79>
+cross L64: L87<, L88<, L81<, L82<, L114>, L108>, L100>, L91>, L79>
+cross L69: L80<, L83<
+cross L72: L80<, L83<, L94<, L95<, L98<
+cross L73: L91>, L79>
+cross L74: L91>, L79>
+cross L75: L33<, L38<, L62>, L61>
+cross L76: L33<, L38<, L83<
+cross L77: L41<, L39<
+cross L78: L41<, L39<, L33<, L83<, L89<, L38<
+cross L79: L53<, L56<, L74<, L73<, L64<, L63<, L42<
+cross L80: L69>, L72>
+cross L81: L85<, L94<, L101<, L63>, L107<, L64>, L120>, L121>, L129>, L130>, L135>, L136>
+cross L82: L85<, L94<, L101<, L107<, L63>, L64>, L120>, L121>, L129>, L130>, L135>, L136>
+cross L83: L63<, L42<, L41<, L39<, L33<, L78>, L38<, L76>, L62>, L61>, L69>, L72>
+cross L85: L82>, L81>
+cross L86: L61>
+cross L87: L97<, L101<, L63>, L107<, L64>, L120>, L121>
+cross L88: L97<, L101<, L63>, L107<, L64>, L120>, L121>
+cross L89: L63<, L42<, L41<, L39<, L33<, L78>, L38<, L61>
+cross L90: L63<, L42<, L41<, L39<, L33<, L38<
+cross L91: L73<, L74<, L64<
+cross L94: L39<, L33<, L38<, L96>, L61>, L95>, L72>, L82>, L81>
+cross L95: L94<, L72>
+cross L96: L94<, L98<
+cross L97: L88>, L87>
+cross L98: L39<, L33<, L38<, L96>, L61>, L72>
+cross L99: L39<, L33<, L38<
+cross L100: L64<, L63<, L42<, L41<
+cross L101: L82>, L81>, L88>, L87>
+cross L103: L113<, L111<
+cross L105: L113<, L111<
+cross L106: L113<, L111<
+cross L107: L82>, L81>, L88>, L87>, L63<
+cross L108: L64<, L63<
+cross L111: L112>, L103>, L105>, L106>
+cross L112: L113<, L111<
+cross L113: L112>, L103>, L105>, L106>
+cross L114: L64<, L63<
+cross L117: L120>, L121>, L129>, L130>, L135>, L136>
+cross L120: L117<, L87<, L88<, L81<, L82<
+cross L121: L117<, L87<, L88<, L81<, L82<
+cross L123: L129>, L130>, L135>, L136>
+cross L125: L126>, L141>, L145>
+cross L126: L125<
+cross L128: L135>, L136>
+cross L129: L123<, L117<, L132<, L81<, L82<
+cross L130: L123<, L117<, L132<, L81<, L82<
+cross L131: L141>, L142>, L144>, L145>, L150>, L153>
+cross L132: L129>, L130>, L135>, L136>
+cross L135: L128<, L123<, L117<, L132<, L81<, L82<
+cross L136: L128<, L123<, L117<, L132<, L81<, L82<
+cross L140: L144>, L145>
+cross L141: L131<, L125<
+cross L142: L131<
+cross L144: L140<, L131<
+cross L145: L140<, L131<, L147<, L125<
+cross L147: L145>
+cross L150: L152<, L131<
+cross L152: L150>, L153>
+cross L153: L152<, L131<, L155<
+cross L155: L153>
+cross L157: L159<
+cross L159: L157>, L160>, L163>
+cross L160: L159<, L162<
+cross L161: L163>
+cross L162: L160>, L163>
+cross L163: L161<, L159<, L162<
+cross L166: L168<
+cross L168: L166>

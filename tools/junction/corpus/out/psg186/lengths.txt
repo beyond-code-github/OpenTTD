@@ -1,141 +1,185 @@
 # Brainmelter: per line the length of each piece of its RAW heading list (before projection), in half tiles: an axis tile 2, a diagonal piece 1, a tunnel or bridge 2 per tile; a port-end heading appended to meet the port has length 0.
-lengths L1: 12 13 4 2 0
-lengths L2: 8 11 6
-lengths L3: 2 6 6 8 9 6
-lengths L4: 6 2 12 8 8 7 6
-lengths L5: 6 2
-lengths L6: 4 8
-lengths L7: 1
-lengths L8: 2 6 5 8 6
-lengths L9: 5 16 10 16 8 10 7 6 3 0
-lengths L10: 5 2 1 26 5 2
-lengths L11: 1 26 5
-lengths L12: 6 4
-lengths L13: 8 5 6
-lengths L14: 6 5 20 2
-lengths L15: 4 6 6
-lengths L16: 8
-lengths L17: 5 12 5 6 2
-lengths L18: 4
-lengths L19: 7
-lengths L20: 12
+lengths L1: 2
+lengths L2: 1
+lengths L3: 2 4 16 5 26
+lengths L4: 12 13 4 6 0
+lengths L5: 8 11 6 4 0
+lengths L6: 2 6 6 8 9 6 4 0
+lengths L7: 6 2 12 8 8 7 6 4 0
+lengths L8: 4 16 7 20
+lengths L9: 5 16 10 16 8 10 7 6 4 6 2
+lengths L10: 6 2
+lengths L11: 4 8
+lengths L12: 2 6 5 8 6
+lengths L13: 5 2 1 26 5 2
+lengths L14: 1 26 5
+lengths L15: 6 4
+lengths L16: 8 5 6
+lengths L17: 6 5 20 2
+lengths L18: 4 6 6
+lengths L19: 8
+lengths L20: 5 12 5 6 2
 lengths L21: 4
-lengths L22: 2 34 4 2
-lengths L23: 34 4
-lengths L24: 18
-lengths L25: 2
-lengths L26: 2 20 2
-lengths L27: 2 5 4
-lengths L28: 6 7
-lengths L29: 2 18 2 2
-lengths L30: 32 2 14 9
-lengths L31: 6
-lengths L32: 6
-lengths L33: 2 20 4
-lengths L34: 2 4 5 2
-lengths L35: 34 4 6 4 4 5
-lengths L36: 2 30 2 14 2 6
-lengths L37: 4 3
-lengths L38: 42 7 12 5
-lengths L39: 2 40 5 12 5 2
-lengths L40: 8
-lengths L41: 2
-lengths L42: 2 6 5
-lengths L43: 10
-lengths L44: 2 5
-lengths L45: 26 2
-lengths L46: 22
-lengths L47: 4 2
-lengths L48: 2 24
-lengths L49: 5
-lengths L50: 2 34 5 32
-lengths L51: 36 7 30 2
-lengths L52: 2
-lengths L53: 2
-lengths L54: 2
-lengths L55: 2
-lengths L56: 12 2 10
-lengths L57: 2 10 2 10
-lengths L58: 8 8
-lengths L59: 5 2 5
-lengths L60: 4
-lengths L61: 7 6 1
-lengths L62: 7 8
-lengths L63: 2 4 2 16
-lengths L64: 12 2
-lengths L65: 5 2 1
-lengths L66: 18
-lengths L67: 2 10
-lengths L68: 5 6
-lengths L69: 6
-lengths L70: 2 2
-lengths L71: 2 22
-lengths L72: 6
-lengths L73: 4 12 4 22 2 2
-lengths L74: 18
-lengths L75: 2 10
-lengths L76: 7 8
-lengths L77: 2 6 2 12 4 22 2 2
-lengths L78: 2 4
-lengths L79: 8 13 2 9 28
-lengths L80: 10 6 6 6 4 22 2 2
-lengths L81: 2 14
-lengths L82: 14 2
-lengths L83: 13
-lengths L84: 2 2 16 2 8
-lengths L85: 2
-lengths L86: 2 14
-lengths L87: 8 11 2 11 20
-lengths L88: 14 2
-lengths L89: 4 5
-lengths L90: 16 4 6
-lengths L91: 4
-lengths L92: 5 8 7 22
-lengths L93: 8 6 4
-lengths L94: 14 4
-lengths L95: 2 28
-lengths L96: 28 2
-lengths L97: 10 8
-lengths L98: 5 2 11 18 2 4
-lengths L99: 4
-lengths L100: 4 6 14 18 6 6
-lengths L101: 36
-lengths L102: 2 32 2
-lengths L103: 8 6 2 5 2 5 4 4 4
-lengths L104: 16 2 18
-lengths L105: 2 14 2 16 2
-lengths L106: 6
-lengths L107: 4 10 10 14 8 4
-lengths L108: 2 14 6
-lengths L109: 26 6
-lengths L110: 2 8 6
-lengths L111: 20
-lengths L112: 2
-lengths L113: 28
-lengths L114: 2 10
-lengths L115: 6
-lengths L116: 6
-lengths L117: 20
-lengths L118: 2
-lengths L119: 6
-lengths L120: 28
-lengths L121: 2 10
-lengths L122: 6
-lengths L123: 34 5
-lengths L124: 2
-lengths L125: 5 2
-lengths L126: 28
-lengths L127: 2 18
-lengths L128: 4
-lengths L129: 2 5 2
-lengths L130: 8 5 0
-lengths L131: 4
-lengths L132: 0
-lengths L133: 0
-lengths L134: 0
-lengths L135: 0
-lengths L136: 0
-lengths L137: 0
-lengths L138: 0
-lengths L139: 0
-lengths L140: 0
+lengths L22: 7
+lengths L23: 12
+lengths L24: 4
+lengths L25: 2 34 4 2
+lengths L26: 34 4
+lengths L27: 18
+lengths L28: 2
+lengths L29: 2 20 2
+lengths L30: 2 5 4
+lengths L31: 6 7
+lengths L32: 2 18 2 2
+lengths L33: 32 2 14 9
+lengths L34: 6
+lengths L35: 6
+lengths L36: 2 20 4
+lengths L37: 2 4 5 2
+lengths L38: 34 4 6 4 4 5
+lengths L39: 2 30 2 14 2 6
+lengths L40: 4 3
+lengths L41: 42 7 12 5
+lengths L42: 2 40 5 12 5 2
+lengths L43: 8
+lengths L44: 2
+lengths L45: 10 4 2 5 6
+lengths L46: 6 2 5 6 6 4 2 6
+lengths L47: 2 6 5
+lengths L48: 16 2
+lengths L49: 2 16
+lengths L50: 10
+lengths L51: 5 6
+lengths L52: 2 5
+lengths L53: 26 2
+lengths L54: 22
+lengths L55: 4 2
+lengths L56: 2 24
+lengths L57: 5
+lengths L58: 8 6
+lengths L59: 4
+lengths L60: 2 10
+lengths L61: 28
+lengths L62: 2 16
+lengths L63: 2 34 5 32
+lengths L64: 36 7 30 2
+lengths L65: 2
+lengths L66: 2
+lengths L67: 2
+lengths L68: 2
+lengths L69: 20
+lengths L70: 2
+lengths L71: 2 10
+lengths L72: 28
+lengths L73: 12 2 10
+lengths L74: 2 10 2 10
+lengths L75: 8 3
+lengths L76: 5 2 2
+lengths L77: 4
+lengths L78: 7 6 1
+lengths L79: 7 8
+lengths L80: 5
+lengths L81: 36 5 2
+lengths L82: 2 34 5
+lengths L83: 2 4 2 16
+lengths L84: 12 2
+lengths L85: 4 2 1
+lengths L86: 3
+lengths L87: 24 2
+lengths L88: 2 24
+lengths L89: 18
+lengths L90: 2 10
+lengths L91: 5 6
+lengths L92: 3
+lengths L93: 2 2
+lengths L94: 2 22
+lengths L95: 3
+lengths L96: 5
+lengths L97: 4 12 4 22 2 2
+lengths L98: 18
+lengths L99: 2 10
+lengths L100: 7 8
+lengths L101: 2 6 2 12 4 22 2 2
+lengths L102: 2 4
+lengths L103: 8 13 2 9 28
+lengths L104: 5
+lengths L105: 2 14
+lengths L106: 14 2
+lengths L107: 5 6 6 6 4 22 2 2
+lengths L108: 13
+lengths L109: 2 2 16 2 8
+lengths L110: 2
+lengths L111: 2 14
+lengths L112: 8 11 2 11 20
+lengths L113: 14 2
+lengths L114: 4 5
+lengths L115: 16 4 6
+lengths L116: 4
+lengths L117: 5 8 7 22
+lengths L118: 8 6 4
+lengths L119: 14 4
+lengths L120: 2 28
+lengths L121: 28 2
+lengths L122: 10 8
+lengths L123: 5 2 11 18 2 4
+lengths L124: 2 6
+lengths L125: 2 5 12
+lengths L126: 5 2 3
+lengths L127: 4
+lengths L128: 4 6 14 18 6 6
+lengths L129: 36
+lengths L130: 2 32 2
+lengths L131: 6 5 16
+lengths L132: 6 5 8 4 6
+lengths L133: 4 4 2 4
+lengths L134: 8 6 2 5 2 5 4 4 4
+lengths L135: 16 2 18
+lengths L136: 2 14 2 16 2
+lengths L137: 6
+lengths L138: 4 10 10 14 8 4
+lengths L139: 4
+lengths L140: 5 4 1
+lengths L141: 4 2 6
+lengths L142: 4 2 2
+lengths L143: 6
+lengths L144: 2 14
+lengths L145: 26
+lengths L146: 2 8
+lengths L147: 3
+lengths L148: 3
+lengths L149: 6
+lengths L150: 20
+lengths L151: 2
+lengths L152: 5
+lengths L153: 28
+lengths L154: 2 10
+lengths L155: 6
+lengths L156: 6
+lengths L157: 20
+lengths L158: 2
+lengths L159: 6
+lengths L160: 28
+lengths L161: 2 10
+lengths L162: 6
+lengths L163: 34 5
+lengths L164: 2
+lengths L165: 5 2
+lengths L166: 28
+lengths L167: 2 18
+lengths L168: 4
+lengths L169: 2 5 2
+lengths L170: 8 5 0
+lengths L171: 4
+lengths L172: 0
+lengths L173: 0
+lengths L174: 0
+lengths L175: 0
+lengths L176: 0
+lengths L177: 0
+lengths L178: 0
+lengths L179: 0
+lengths L180: 0
+lengths L181: 0
+lengths L182: 0
+lengths L183: 0
+lengths L184: 0

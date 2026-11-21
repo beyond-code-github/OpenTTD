@@ -1,34 +1,43 @@
 # Brainmelter: sideways steps per stretch (D396), the raw headings of each stretch that is not monotone; with shape.txt it gives the raw shape.
-step L1 0: 0 -1 -2 -1 -2  # node-node
-step L3 0: 7 8 9 8 7 6  # node-node
-step L4 0: 0 1 0 1 0 -1 -2  # node-node
-step L9 0: 5 6 7 6 5 6 7 8 7 6  # node-node
-step L17 8: 7 8 7  # crossing-node
-step L22 6: 8 9 8  # crossing-node
-step L29 5: 8 7 8  # crossing-node
-step L30 9: 6 7 6  # crossing-crossing
-step L34 0: 7 6 7  # node-crossing
-step L35 9: 6 7 6 7 6 7  # crossing-crossing
-step L36 8: 6 7 6  # crossing-crossing
-step L36 10: 6 7 6  # crossing-crossing
-step L56 1: 6 7 6  # crossing-crossing
-step L57 1: 6 5 6  # crossing-crossing
-step L59 2: 1 2 1  # crossing-crossing
-step L65 0: 1 2 1  # node-node
-step L73 0: 1 0 1 0 -1 0  # node-node
-step L77 0: 1 0 1 0 1 0 -1 0  # node-node
-step L79 0: 6 7 8 7 6  # port-crossing
-step L80 1: -1 0 1 0 -1 0  # crossing-node
-step L84 0: 4 3 4 3 4  # port-node
-step L87 0: 6 7 8 7 6  # port-crossing
-step L90 0: 4 3 4  # port-node
-step L93 0: 5 4 5  # node-node
-step L98 2: 3 2 3  # crossing-crossing
-step L98 4: 3 4 3 4  # crossing-node
-step L100 0: 3 4 3  # node-crossing
-step L100 2: 3 4 3 4  # crossing-node
-step L103 0: 6 7 6 7 8 7 6 7 6  # port-node
-step L104 3: 4 5 4  # crossing-node
-step L105 3: 4 5 4 5  # crossing-node
-step L107 0: 3 4 3 4 3 4  # node-node
-step L110 0: 3 4 3  # node-crossing
+step L3 0: 2 3 2 3 4  # port-node
+step L4 0: 0 -1 -2 -1 -2  # node-node
+step L5 0: 0 -1 -2 -1 -2  # node-node
+step L6 0: 7 8 9 8 7 6 7 6  # node-node
+step L7 0: 0 1 0 1 0 -1 -2 -1 -2  # node-node
+step L8 0: 3 2 3 4  # node-node
+step L9 0: 5 6 7 6 5 6 7 8 7 8 9  # node-node
+step L20 8: 7 8 7  # crossing-node
+step L25 6: 8 9 8  # crossing-node
+step L32 5: 8 7 8  # crossing-node
+step L33 9: 6 7 6  # crossing-crossing
+step L37 0: 7 6 7  # node-crossing
+step L38 9: 6 7 6 7 6 7  # crossing-crossing
+step L39 8: 6 7 6  # crossing-crossing
+step L39 10: 6 7 6  # crossing-crossing
+step L45 0: 4 3 4 3 2  # node-node
+step L46 2: 3 4 3 2 1 2 1 2  # crossing-node
+step L73 1: 6 7 6  # crossing-crossing
+step L74 1: 6 5 6  # crossing-crossing
+step L76 2: 1 2 1  # crossing-crossing
+step L85 1: 1 2 1  # crossing-crossing
+step L97 2: 1 0 1 0 -1 0  # crossing-node
+step L101 4: 1 0 1 0 -1 0  # crossing-node
+step L103 0: 6 7 8 7 6  # port-crossing
+step L107 5: -1 0 1 0 -1 0  # crossing-node
+step L109 0: 4 3 4 3 4  # port-node
+step L112 0: 6 7 8 7 6  # port-crossing
+step L115 0: 4 3 4  # port-node
+step L118 0: 5 4 5  # node-node
+step L123 2: 3 2 3  # crossing-crossing
+step L123 4: 3 4 3 4  # crossing-node
+step L126 0: 3 2 3  # node-crossing
+step L128 0: 3 4 3  # node-crossing
+step L128 2: 3 4 3 4  # crossing-node
+step L132 4: 3 4 5 4  # crossing-node
+step L133 0: 4 5 4 5  # node-node
+step L134 0: 6 7 6 7 8 7 6 7 6  # port-node
+step L135 3: 4 5 4  # crossing-crossing
+step L136 3: 4 5 4  # crossing-crossing
+step L138 0: 3 4 3 4 3 4  # node-node
+step L141 0: 4 3 4  # node-crossing
+step L142 0: 3 4 3  # node-crossing

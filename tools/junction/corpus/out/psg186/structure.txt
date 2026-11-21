@@ -1,137 +1,183 @@
 # Brainmelter: structure decisions (D389) extracted by tools/junction/corpus/extract.py; tunnel numbers by entrance tile (y, x).
 # T1 203,243 -> 203,249
 # T2 204,243 -> 204,249
-# T3 178,255 -> 175,255
-# T4 172,256 -> 172,252
-# T5 199,256 -> 187,256
-# T6 199,257 -> 187,257
-# T7 177,258 -> 169,258
-# T8 199,258 -> 187,258
-# T9 177,259 -> 169,259
-# T10 181,259 -> 178,259
-# T11 216,260 -> 216,264
-# T12 217,260 -> 217,264
-# T13 176,263 -> 176,268
-# T14 177,263 -> 177,268
-# T15 214,263 -> 214,266
-# T16 219,263 -> 219,267
-# T17 220,263 -> 220,267
-# T18 217,266 -> 217,269
-# T19 204,268 -> 201,268
-# T20 204,269 -> 201,269
-# T21 220,269 -> 220,272
-tunnel T1 L50: L80
-tunnel T2 L51: 
-tunnel T3 L17: L33
-tunnel T4 L24: L19, L17
-tunnel T5 L35: L75, L74, L71, L67, L61, L66, L63, L59, L58
-tunnel T6 L30: L75, L74, L71, L67, L66, L63, L61, L59, L58
-tunnel T7 L11: L33, L37, L29, L26, L24, L23, L22, L20, L14
-tunnel T8 L36: L75, L74, L71, L67, L66, L63, L61, L60
-tunnel T9 L10: L33, L37, L29, L23, L21, L22, L20, L14
-tunnel T10 L10: L38
-tunnel T11 L111: L110
-tunnel T12 L113: L110
-tunnel T13 L38: L42
-tunnel T14 L39: L42, L43
-tunnel T15 L109: L108
-tunnel T16 L117: L119
-tunnel T17 L120: L119
-tunnel T18 L113: L115
-tunnel T19 L81: L88, L86
-tunnel T20 L82: L88, L86
-tunnel T21 L120: L122
-group G01: T5, T6, T8
-group G02: T7, T9
-group G03: T11, T12
-group G04: T13, T14
-group G05: T16, T17
-group G06: T19, T20
-# 52 bridge spans (and their groups) are not written: this notation has no bridge statement yet (gap, report.txt)
-straight L132: L6
-straight L5: L132
-straight L133: L10
-straight L4: L133
-straight L13: none
-straight L3: L17
-straight L16: L18
-straight L18: L20
-straight L12: L20
-straight L15: L25
-straight L21: L26
-straight L27: L23
-straight L2: L22
-straight L25: L28
-straight L134: L30
-straight L19: L37
-straight L13: L39
-straight L1: L31
-straight L135: L32
-straight L31: L135
-straight L32: L34
-straight L40: L37
-straight L42: L29
-straight L41: L8
-straight L43: L27
-straight L44: L34
-straight L43: L46
-straight L42: L47
-straight L136: L17
-straight L49: L11
-straight L49: L51
-straight L10: L54
+# T3 189,250 -> 193,250
+# T4 195,250 -> 198,250
+# T5 189,251 -> 193,251
+# T6 187,253 -> 190,253
+# T7 192,253 -> 195,253
+# T8 187,254 -> 190,254
+# T9 178,255 -> 175,255
+# T10 172,256 -> 172,252
+# T11 199,256 -> 187,256
+# T12 199,257 -> 187,257
+# T13 177,258 -> 169,258
+# T14 199,258 -> 187,258
+# T15 177,259 -> 169,259
+# T16 181,259 -> 178,259
+# T17 216,260 -> 216,264
+# T18 217,260 -> 217,264
+# T19 176,263 -> 176,268
+# T20 177,263 -> 177,268
+# T21 214,263 -> 214,266
+# T22 219,263 -> 219,267
+# T23 220,263 -> 220,267
+# T24 209,265 -> 212,265
+# T25 217,266 -> 217,269
+# T26 204,268 -> 201,268
+# T27 204,269 -> 201,269
+# T28 220,269 -> 220,272
+tunnel T1 L63: L107, L87, L88, L81, L82
+tunnel T2 L64: L87, L88, L81, L82
+tunnel T3 L72: L80, L83
+tunnel T4 L72: L94, L95, L98
+tunnel T5 L69: L80, L83
+tunnel T6 L61: L75
+tunnel T7 L61: L83, L86, L89
+tunnel T8 L62: L75
+tunnel T9 L20: L36
+tunnel T10 L27: L22, L20
+tunnel T11 L38: L99, L98, L94, L90, L78, L89, L83, L76, L75
+tunnel T12 L33: L99, L98, L94, L90, L89, L83, L78, L76, L75
+tunnel T13 L14: L36, L40, L32, L29, L27, L26, L25, L23, L17
+tunnel T14 L39: L99, L98, L94, L90, L89, L83, L78, L77
+tunnel T15 L13: L36, L40, L32, L26, L24, L25, L23, L17
+tunnel T16 L13: L41
+tunnel T17 L150: L152, L131
+tunnel T18 L153: L152, L131
+tunnel T19 L41: L47
+tunnel T20 L42: L47, L50
+tunnel T21 L145: L131, L147, L125
+tunnel T22 L157: L159
+tunnel T23 L160: L159
+tunnel T24 L125: L126, L141
+tunnel T25 L153: L155
+tunnel T26 L105: L113, L111
+tunnel T27 L106: L113, L111
+tunnel T28 L160: L162
+group G01: T1, T2
+group G02: T3, T5
+group G03: T6, T8
+group G04: T11, T12, T14
+group G05: T13, T15
+group G06: T17, T18
+group G07: T19, T20
+group G08: T22, T23
+group G09: T26, T27
+# 63 bridge spans (and their groups) are not written: this notation has no bridge statement yet (gap, report.txt)
+straight L8: L2
+straight L172: L11
+straight L10: L172
+straight L173: L13
+straight L7: L173
+straight L16: none
+straight L6: L20
+straight L19: L21
+straight L21: L23
+straight L15: L23
+straight L18: L28
+straight L24: L29
+straight L30: L26
+straight L5: L25
+straight L28: L31
+straight L174: L33
+straight L22: L40
+straight L16: L42
+straight L4: L34
+straight L175: L35
+straight L34: L175
+straight L35: L37
+straight L43: L40
+straight L47: L32
+straight L44: L12
+straight L3: L45
+straight L50: L30
+straight L8: L48
+straight L51: L48
+straight L52: L37
+straight L50: L54
 straight L47: L55
-straight L56: L52
-straight L57: L55
-straight L60: L58
-straight L62: L60
-straight L65: L58
-straight L64: L62
-straight L69: L59
-straight L68: L137
-straight L137: L66
-straight L72: L61
-straight L70: L48
+straight L176: L20
+straight L57: L14
+straight L51: L59
+straight L45: L177
+straight L177: L61
+straight L57: L64
+straight L13: L67
+straight L55: L68
+straight L59: L69
+straight L70: L71
 straight L73: L65
-straight L77: L69
-straight L76: L138
-straight L138: L74
-straight L79: L70
-straight L80: L72
-straight L78: L57
-straight L64: L81
-straight L83: L39
-straight L87: L78
-straight L85: L36
-straight L9: L88
-straight L89: L85
-straight L93: L86
-straight L84: L91
-straight L91: L51
-straight L89: L95
-straight L90: L139
-straight L139: L96
-straight L94: L100
-straight L99: L101
-straight L83: L102
-straight L103: L82
-straight L93: L105
-straight L97: L107
-straight L106: L104
-straight L92: L140
-straight L140: L109
-straight L98: L111
-straight L115: L108
-straight L112: L114
-straight L116: L109
-straight L119: L110
-straight L100: L117
-straight L122: L115
-straight L118: L121
-straight L125: L116
-straight L107: L123
-straight L128: L119
-straight L124: L127
-straight L129: L122
-straight L130: L127
-straight L131: L125
+straight L74: L68
+straight L77: L75
+straight L79: L77
+straight L58: L81
+straight L80: L75
+straight L178: L80
+straight L84: L79
+straight L46: L87
+straight L85: L178
+straight L86: L76
+straight L92: L86
+straight L91: L179
+straight L179: L89
+straight L96: L78
+straight L93: L56
+straight L97: L85
+straight L95: L92
+straight L101: L95
+straight L100: L180
+straight L180: L98
+straight L103: L93
+straight L104: L181
+straight L181: L96
+straight L102: L74
+straight L84: L105
+straight L107: L104
+straight L108: L42
+straight L112: L102
+straight L110: L39
+straight L9: L113
+straight L114: L110
+straight L118: L111
+straight L109: L116
+straight L116: L64
+straight L114: L120
+straight L115: L182
+straight L182: L121
+straight L124: L125
+straight L119: L128
+straight L127: L129
+straight L132: L88
+straight L108: L130
+straight L133: L124
+straight L134: L106
+straight L118: L136
+straight L122: L138
+straight L137: L135
+straight L132: L139
+straight L139: L141
+straight L133: L81
+straight L143: L126
+straight L147: L142
+straight L117: L183
+straight L183: L145
+straight L149: L143
+straight L152: L140
+straight L148: L147
+straight L123: L150
+straight L155: L148
+straight L151: L154
+straight L156: L149
+straight L184: L152
+straight L159: L184
+straight L128: L157
+straight L162: L155
+straight L158: L161
+straight L165: L156
+straight L138: L163
+straight L168: L159
+straight L164: L167
+straight L169: L162
+straight L170: L167
+straight L171: L165
