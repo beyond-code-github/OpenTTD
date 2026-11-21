@@ -2578,6 +2578,12 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 			double flex_price = 0, commit_above = 0.25;
 			if (const char *fp = std::getenv("PLANAR_PROBE_FLEX_PRICE"); fp != nullptr) std::from_chars(fp, fp + std::strlen(fp), flex_price);
 			if (const char *ca = std::getenv("PLANAR_PROBE_COMMIT_ABOVE"); ca != nullptr) std::from_chars(ca, ca + std::strlen(ca), commit_above);
+			/* PLANAR_PROBE_IRL1=C (a measurement aid, D422): from round 2 each insert's price is C / (its previous length + 0.5) (iteratively reweighted L1); PLANAR_PROBE_BOX: price on width and height in the rounds and the ratchet. */
+			double irl1 = 0, box_price = 0;
+			if (const char *ir = std::getenv("PLANAR_PROBE_IRL1"); ir != nullptr) std::from_chars(ir, ir + std::strlen(ir), irl1);
+			if (const char *bp = std::getenv("PLANAR_PROBE_BOX"); bp != nullptr) std::from_chars(bp, bp + std::strlen(bp), box_price);
+			std::vector<std::vector<double>> irl1_weights;
+			if (irl1 != 0 || box_price != 0) WARN(fmt::format("{} IRL1 {}, box price {}", label, irl1, box_price));
 			if (flex_price != 0 || commit_above != 0.25) WARN(fmt::format("{} flex price {}, commit above {}", label, flex_price, commit_above));
 			if (extremal) WARN(fmt::format("{} one separation row per pair", label));
 			const PlanarDrawResult *previous = &seed;
@@ -2589,7 +2595,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 					WARN("total cap of 15 minutes passed; stopped");
 					return;
 				}
-				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .flex_price = flex_price, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points, .sides_pad = round_pad}));
+				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .flex_weights = irl1_weights.empty() ? nullptr : &irl1_weights, .box_price = box_price, .flex_price = flex_price, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points, .sides_pad = round_pad}));
 				const PlanarDrawResult &r = rounds.back();
 				WARN(fmt::format("{} round {}: {}, total slack {:.3f}", label, k, describe(r), r.slack));
 				if (k == 1 && variant == &flex_c) WARN(fmt::format("{} pairs {}", label, r.pairs));
@@ -2605,6 +2611,13 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				const bool previous_zero = k > 1 && previous->slack < 1e-6;
 				last_optimal = &r;
 				previous = &r;
+				if (irl1 != 0) {
+					irl1_weights.assign(variant->tracks.size(), {});
+					for (size_t t = 0; t < variant->tracks.size() && t < r.lengths.size(); t++) {
+						irl1_weights[t].assign(r.lengths[t].size(), 0.0);
+						for (size_t i = 0; i < r.lengths[t].size(); i++) irl1_weights[t][i] = irl1 / (r.lengths[t][i] + 0.5);
+					}
+				}
 				if (zero_twice) {
 					if (r.slack < 1e-6 && previous_zero) break;
 					continue;
@@ -2675,7 +2688,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 					rr.reserve(4);
 					const PlanarDrawResult *prev = from;
 					for (int k = 1; k <= 4; k++) {
-						rr.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .curve_flex_from = &committed, .curve_flex_above = commit_above, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep", "curve"}, .pins = p, .sides_from = &prev->points}));
+						rr.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .curve_flex_from = &committed, .curve_flex_above = commit_above, .box_price = box_price, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep", "curve"}, .pins = p, .sides_from = &prev->points}));
 						const PlanarDrawResult &r = rr.back();
 						double curve_slack = 0;
 						for (const auto &[row, slack] : r.stretched) curve_slack += row.starts_with("curve") ? slack : 0;

@@ -284,8 +284,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	};
 	const auto eq = [&](Terms terms, double rhs, const std::string &tag) { row(std::move(terms), rhs, rhs, tag); };
 
-	const uint32_t width = var(1, COORD_MAX, 0, "other");
-	const uint32_t height = var(1, COORD_MAX, 0, "other");
+	const uint32_t width = var(1, COORD_MAX, options.box_price, "other");
+	const uint32_t height = var(1, COORD_MAX, options.box_price, "other");
 
 	/* Points: per track its start and the end of each piece. */
 	if (options.fix_points != nullptr) {
@@ -352,7 +352,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const bool in_flex = std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end();
 			const bool reference = options.curve_flex_from != nullptr && in_flex && t < options.curve_flex_from->size() && i < (*options.curve_flex_from)[t].size() && (*options.curve_flex_from)[t][i] >= options.curve_flex_above;
 			const bool held = options.curve_flex_from != nullptr && in_flex && !reference;
-			length[t].push_back({var(reference ? 1 : lower, (zero || held) ? 0 : COORD_MAX, (options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0)) + (in_flex ? options.flex_price * (axis ? AXIS_LEAST : 1) : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
+			length[t].push_back({var(reference ? 1 : lower, (zero || held) ? 0 : COORD_MAX, (options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0)) + (in_flex ? (options.flex_weights != nullptr && t < options.flex_weights->size() && i < (*options.flex_weights)[t].size() ? (*options.flex_weights)[t][i] : options.flex_price) * (axis ? AXIS_LEAST : 1) : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
 			if (port_stretch) break;
