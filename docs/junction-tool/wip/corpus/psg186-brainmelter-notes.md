@@ -1,0 +1,6 @@
+# PSG 186 Brainmelter: notes from the engineer (in game, 2026-11-22)
+
+- Box: 163,224 -> 225,281 (west edge moved from 165: the merge node at 165,260 takes a lane that runs up x 164; 165,264 holds two parallel north-bound diagonals, Left and Right, both into that merge).
+- Ports (screen-anchored, mapped to box edges): west (x min, "top") 2 in, 4 out (the two in-lanes pass a rail waypoint at 172,226-227); north (y min, "left") 4 in, 3 out (x 199-206); east (x max, "bottom") 3 in, 3 out; south none. Open: the corner tile 163,224 (an X piece to the west edge and a Left diagonal to the north edge; the extractor counts an extra north in-lane N163).
+- 165,264 area: an out lane runs NE around the outside of the core, then turns NW to exit. About 7-8 tiles from a trident merger; the pre-signals there balance traffic between the trident's inputs.
+- **Train-length waiting bays (the north-west corner, around the top ports):** deliberately measured to whole train lengths and designed so that the choice merger flows well. Evidence for the bay rule (a whole-train bay before a merge, 2 TL + 4 in the model) and for how V sizes waiting room in front of a choice merger. Measure them when Brainmelter goes through the answer key (lengths per bay against TL).
