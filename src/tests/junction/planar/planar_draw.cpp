@@ -1218,14 +1218,9 @@ static void ApplyStepsAsBends(PlanarShapeVariant &v, const std::vector<std::set<
 	}
 }
 
-TEST_CASE("planar draw: PSG 197 option A, V's steps as bends", "[.][planarkeepapart]")
+/** Option A (D417 probe): V's steps from steps.txt applied as bends to Shaped (a LoadPinned197(..., true) variant) and its cells refined; false when they do not refine. */
+static bool BuildOptionA(PlanarShapeVariant &shaped)
 {
-	PlanarShapeVariant d402;
-	PlanarDrawPins d402_pins;
-	if (!LoadPinned197(d402, d402_pins, false)) return;
-	PlanarShapeVariant shaped;
-	PlanarDrawPins pins;
-	if (!LoadPinned197(shaped, pins, true)) return;
 	const PlanarTrackMap &map = shaped.structure.map;
 
 	/* The unflexed shape from shape.txt: per line the headings and the event pieces. */
@@ -1314,14 +1309,26 @@ TEST_CASE("planar draw: PSG 197 option A, V's steps as bends", "[.][planarkeepap
 		}
 	}
 	WARN(fmt::format("A used steps found {}, matched {}, unmatched {}, total steps parsed {}, pieces added by used steps {}", steps.size(), matched, unmatched, parsed, matched * 2));
-	WARN(fmt::format("A dummies D402 {}, nonmonotone {}", d402.dummies.size(), d402.nonmonotone_dummies));
 	ApplyStepsAsBends(shaped, used);
 	std::string why;
 	if (!RefinePlanarShapeCells(shaped, why)) {
 		WARN(fmt::format("A cells not refined: {}", why));
-		return;
+		return false;
 	}
 	WARN(fmt::format("A dummies after {}, nonmonotone {}", shaped.dummies.size(), shaped.nonmonotone_dummies));
+	return true;
+}
+
+TEST_CASE("planar draw: PSG 197 option A, V's steps as bends", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant d402;
+	PlanarDrawPins d402_pins;
+	if (!LoadPinned197(d402, d402_pins, false)) return;
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins, true)) return;
+	WARN(fmt::format("A dummies D402 {}, nonmonotone {}", d402.dummies.size(), d402.nonmonotone_dummies));
+	if (!BuildOptionA(shaped)) return;
 
 	const auto run_cells = [&](const PlanarShapeVariant &shaped, const char *label) {
 		for (const int window : {8, 4, 2}) {
@@ -1407,6 +1414,203 @@ TEST_CASE("planar draw: PSG 197 option A, V's steps as bends", "[.][planarkeepap
 	p8.window = 8;
 	const PlanarDrawResult plain = CheckPlanarDrawable(d402, 60.0, {.elastic = true, .pins = &p8});
 	WARN(fmt::format("A D402 cells W8 elastic: status {}, total slack {:.3f}", plain.status, plain.slack));
+}
+
+TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins, true)) return;
+	if (!BuildOptionA(shaped)) return;
+	const PlanarTrackMap &map = shaped.structure.map;
+	const size_t nt = shaped.tracks.size();
+
+	/* V's real geometry per line: its start pin, then its real piece lengths along the variant's own headings. */
+	std::map<std::string, std::vector<int>> lengths;
+	{
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/../corpus/out/psg197/lengths.txt");
+		std::string text;
+		while (std::getline(in, text)) {
+			if (!text.starts_with("lengths ")) continue;
+			const size_t colon = text.find(':');
+			std::istringstream ls(text.substr(colon + 1));
+			std::vector<int> &l = lengths[text.substr(8, colon - 8)];
+			int x;
+			while (ls >> x) l.push_back(x);
+		}
+	}
+	std::vector<std::vector<std::array<int, 2>>> vref(nt);
+	std::map<std::string, size_t> reasons;
+	size_t fixed = 0;
+	for (size_t t = 0; t < nt; t++) {
+		if (map.tracks[t].kind != PlanarTrack::Kind::Line || !lengths.contains(map.tracks[t].name)) {
+			reasons["not a line"]++;
+			continue;
+		}
+		if (map.tracks[t].name == "L89") {
+			reasons["left unfixed (V's step has no flex pair)"]++;
+			continue;
+		}
+		const std::vector<int> &l = lengths[map.tracks[t].name];
+		const std::vector<int> &pieces = shaped.tracks[t].pieces;
+		if (l.size() != pieces.size()) {
+			reasons["piece count differs"]++;
+			continue;
+		}
+		const PlanarDrawPins::Pin *start = nullptr, *end = nullptr;
+		for (const PlanarDrawPins::Pin &pin : pins.pins) {
+			if (pin.cross || pin.track != t) continue;
+			(pin.start ? start : end) = &pin;
+		}
+		if (start == nullptr) {
+			reasons["no start pin"]++;
+			continue;
+		}
+		std::vector<std::array<int, 2>> points = {start->at};
+		for (size_t i = 0; i < l.size(); i++) {
+			const std::array<int, 2> step = PlanarModel::STEP[((pieces[i] % 8) + 8) % 8];
+			points.push_back({points.back()[0] + l[i] * step[0], points.back()[1] + l[i] * step[1]});
+		}
+		if (end != nullptr && points.back() != end->at) {
+			WARN(fmt::format("end mismatch {}: got ({}, {}), pin ({}, {})", map.tracks[t].name, points.back()[0], points.back()[1], end->at[0], end->at[1]));
+			reasons["end mismatch"]++;
+			continue;
+		}
+		vref[t] = points;
+		fixed++;
+	}
+	WARN(fmt::format("tracks {}, fixed {}", nt, fixed));
+	for (const auto &[reason, count] : reasons) WARN(fmt::format("unfixed: {}: {}", reason, count));
+
+	/* The box's low corner moves to 0. */
+	std::array<int, 2> low = {INT_MAX, INT_MAX};
+	/* The box's low edges: a W port's end pins hold x, an N port's hold y; a side without a port (PSG 197 has no W port) is the least coordinate of any pin. */
+	std::array<bool, 2> edge_port = {false, false};
+	for (size_t p = 0; p < map.expanded.ports.size(); p++) {
+		const PlanarSide side = map.expanded.ports[p].side;
+		if (side != PlanarSide::W && side != PlanarSide::N) continue;
+		const int axis = side == PlanarSide::W ? 0 : 1;
+		for (const uint32_t line : map.expanded.ports[p].lines) {
+			const PlanarEnd &from = map.expanded.lines[line].from;
+			const bool at_start = from.port && from.index == p;
+			for (const PlanarDrawPins::Pin &pin : pins.pins) {
+				if (pin.cross || pin.track != line || pin.start != at_start) continue;
+				low[axis] = std::min(low[axis], pin.at[axis]);
+				edge_port[axis] = true;
+			}
+		}
+	}
+	for (int axis = 0; axis < 2; axis++) {
+		if (edge_port[axis]) continue;
+		for (const PlanarDrawPins::Pin &pin : pins.pins) low[axis] = std::min(low[axis], pin.at[axis]);
+	}
+	WARN(fmt::format("box low corner ({}, {})", low[0], low[1]));
+	for (auto &track : vref) {
+		for (auto &p : track) {
+			p[0] -= low[0];
+			p[1] -= low[1];
+		}
+	}
+
+	PlanarDrawPins p8 = pins;
+	p8.window = 8;
+	const std::vector<std::vector<PlanarCellWall>> cells = PlanarShapeCellWalls(shaped);
+	const auto is_insert = [&](const PlanarCellWall &w) {
+		if (w.track >= shaped.tracks.size()) return false;
+		const PlanarShapeTrack &t = shaped.tracks[w.track];
+		return std::ranges::find(t.flex, w.piece) != t.flex.end() || std::ranges::find(t.steps, w.piece) != t.steps.end();
+	};
+	const auto wall_text = [&](const PlanarCellWall &w) {
+		if (w.track == PLANAR_DUMMY_TRACK) return fmt::format("dummy p{} h{}", w.piece, w.heading);
+		if (w.track >= map.tracks.size()) return fmt::format("edge p{} h{}", w.piece, w.heading);
+		return fmt::format("{} p{} h{}{}", map.tracks[w.track].name, w.piece, w.heading, is_insert(w) ? " ins" : "");
+	};
+	for (const int window : {1, 0}) {
+		const std::string label = fmt::format("A real W{}", window);
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .elastic_families = {"clear", "land", "room", "deck", "end", "node", "cross"}, .pins = &p8, .fix_points = &vref, .fix_window = window});
+		WARN(fmt::format("{}: status {}, total slack {:.3f}, stretched rows {}", label, r.status, r.slack, r.stretched.size()));
+		if (r.status != "Optimal") {
+			for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
+			continue;
+		}
+		std::map<std::string, std::pair<size_t, double>> families;
+		for (const auto &[tag, slack] : r.stretched) {
+			auto &f = families[tag.substr(0, tag.find(' '))];
+			f.first++;
+			f.second += slack;
+		}
+		for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: rows {}, slack {:.3f}", label, family, f.first, f.second));
+		if (window != 1) continue;
+		for (const auto &[tag, slack] : r.stretched) {
+			uint32_t n = UINT32_MAX;
+			if (tag.starts_with("cross ")) {
+				std::from_chars(tag.data() + 6, tag.data() + tag.size(), n);
+				if (n < map.crossings.size()) WARN(fmt::format("{} stretched {} {:.3f}: crossing {} x {}", label, tag, slack, map.tracks[map.crossings[n].a].name, map.tracks[map.crossings[n].b].name));
+			} else if (tag.starts_with("deck ") || tag.starts_with("end ")) {
+				std::from_chars(tag.data() + tag.find(' ') + 1, tag.data() + tag.size(), n);
+				if (n < shaped.structure.structures.size()) {
+					const PlanarStructure &st = shaped.structure.structures[n];
+					std::string crossings;
+					for (const uint32_t c : st.crossings) crossings += fmt::format(" [{} x {}]", map.tracks[map.crossings[c].a].name, map.tracks[map.crossings[c].b].name);
+					WARN(fmt::format("{} stretched {} {:.3f}: structure separator {}, crossings{}", label, tag, slack, map.tracks[st.separator].name, crossings));
+				}
+			} else if (tag.starts_with("node ")) {
+				std::from_chars(tag.data() + 5, tag.data() + tag.size(), n);
+				if (n < map.expanded.nodes.size()) {
+					std::string lines;
+					for (const uint32_t line : map.expanded.nodes[n].in) lines += " in " + map.tracks[line].name;
+					for (const uint32_t line : map.expanded.nodes[n].out) lines += " out " + map.tracks[line].name;
+					WARN(fmt::format("{} stretched {} {:.3f}: node{}", label, tag, slack, lines));
+				}
+			}
+		}
+		if (window != 1) continue;
+		std::map<std::string, std::pair<size_t, double>> groups;
+		double land = 0, room = 0;
+		size_t lands = 0, rooms = 0, unmapped = 0;
+		std::vector<std::pair<double, std::string>> worst;
+		for (const auto &[tag, slack] : r.stretched) {
+			if (tag.starts_with("land ")) {
+				lands++;
+				land += slack;
+				continue;
+			}
+			if (tag.starts_with("room ")) {
+				rooms++;
+				room += slack;
+				continue;
+			}
+			if (!tag.starts_with("clear ")) continue;
+			unsigned idx[3] = {0, 0, 0};
+			bool parsed = true;
+			const char *p = tag.data() + 6, *end = tag.data() + tag.size();
+			for (int i = 0; i < 3 && parsed; i++) {
+				const auto res = std::from_chars(p, end, idx[i]);
+				parsed = res.ec == std::errc();
+				p = res.ptr;
+				if (i < 2 && p < end && *p == ' ') p++;
+			}
+			const unsigned c = idx[0], k = idx[1], e = idx[2];
+			if (!parsed || c >= cells.size() || k >= cells[c].size() || e >= cells[c].size()) {
+				unmapped++;
+				continue;
+			}
+			const auto &cell = cells[c];
+			const size_t n = cell.size();
+			const PlanarCellWall &in = cell[k], &out = cell[(k + 1) % n], &target = cell[e];
+			const bool dummy = std::ranges::any_of(cell, [](const PlanarCellWall &w) { return w.track == PLANAR_DUMMY_TRACK; });
+			auto &g = groups[fmt::format("target h{} in h{} out h{} insert-vertex {} dummy-cell {}", target.heading % 8, in.heading % 8, out.heading % 8, is_insert(in) || is_insert(out) ? "Y" : "N", dummy ? "Y" : "N")];
+			g.first++;
+			g.second += slack;
+			worst.emplace_back(slack, fmt::format("{} slack {:.3f}: in [{}] out [{}] target [{}]", tag, slack, wall_text(in), wall_text(out), wall_text(target)));
+		}
+		WARN(fmt::format("{} land rows {} sum {:.3f}, room rows {} sum {:.3f}, clear rows {}, unmapped clear tags {}", label, lands, land, rooms, room, worst.size(), unmapped));
+		std::vector<std::pair<std::string, std::pair<size_t, double>>> ordered(groups.begin(), groups.end());
+		std::ranges::sort(ordered, [](const auto &x, const auto &y) { return x.second.second > y.second.second; });
+		for (size_t i = 0; i < ordered.size() && i < 30; i++) WARN(fmt::format("{} group {}: count {}, sum {:.3f}", label, ordered[i].first, ordered[i].second.first, ordered[i].second.second));
+		std::ranges::sort(worst, [](const auto &x, const auto &y) { return x.first > y.first; });
+		for (size_t i = 0; i < worst.size() && i < 25; i++) WARN(fmt::format("{} worst {}: {}", label, i + 1, worst[i].second));
+	}
 }
 
 TEST_CASE("planar draw: PSG 197 elastic, whole", "[.][planarkeepapart]")
