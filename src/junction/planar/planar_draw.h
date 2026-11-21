@@ -15,6 +15,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -33,6 +34,22 @@ struct PlanarDrawResult {
 	std::vector<std::vector<std::array<int, 2>>> points; ///< When feasible, per track its points (start, then the end of each piece), half tiles, x east and y south.
 };
 
+/** Points of an answer key (D393): positions the drawing must keep within `window` half tiles, up to one common shift. */
+struct PlanarDrawPins {
+	struct Pin {
+		uint32_t track; ///< The track (end pins) or the crossing's index in map.crossings (cross pins).
+		bool cross; ///< A crossing pin.
+		bool start; ///< For an end pin: the track's first point, else its last.
+		std::array<int, 2> at; ///< Half tiles, map frame.
+	};
+	std::vector<Pin> pins;
+	int window = 2; ///< Half tiles, per axis.
+	std::vector<std::string> unmatched; ///< Lines of the text that named no track or crossing.
+};
+
+/** Read pins (format in docs/junction-tool/briefs/E5-FSh-pins.md section 2) against a variant's map; unknown names go to `unmatched`. */
+PlanarDrawPins ParsePlanarDrawPins(const PlanarShapeVariant &v, std::string_view text);
+
 /** What the drawing program writes. */
 struct PlanarDrawOptions {
 	bool clearance = true; ///< Write the dummies, their landings and the clearance rows; false leaves them out (a variant with prio rows or copies needs the corridor family first, CARD-E5).
@@ -42,7 +59,8 @@ struct PlanarDrawOptions {
 	bool flex_sides = true; ///< With clearance: rows by sides (D407): flex inserts join their side and are no target, and each vertex keeps 0 from its cell's dummies (D408); false is the rule before D407 (sides by equal headings only, no dummy rows).
 	bool tidy = true; ///< The objective: true minimises the sum of piece lengths (a tidy point); false sets no objective (feasibility only, a measurement).
 	bool pocket = false; ///< With flex_sides: the pocket rule (SPEC-shape §8.9, a probe): an adjacent side's vertices are held past a side's last (first) insert and keep only the lines beyond it.
-	bool elastic = false; ///< Diagnosis (D409): every row except the piece and box rows gets a slack >= 0 per finite bound with cost 1, the objective is the total slack (piece lengths cost 0), every variable is continuous (the LP relaxation, which an infeasible drawing already fails when it has IIS rows), and the result lists the rows that stretched.
+	bool elastic = false; ///< Diagnosis (D409): every row except the piece, box and pin rows gets a slack >= 0 per finite bound with cost 1, the objective is the total slack (piece lengths cost 0), every variable is continuous (the LP relaxation, which an infeasible drawing already fails when it has IIS rows), and the result lists the rows that stretched.
+	const PlanarDrawPins *pins = nullptr; ///< Answer-key pins (D393): every pinned point is within window of its position plus one common shift (two free integer variables).
 };
 
 /** One clearance row of a cell (SPEC-shape §8.8): the vertex after wall `vertex` keeps `spacing` from the line of wall `wall`, on the cell's side. */
