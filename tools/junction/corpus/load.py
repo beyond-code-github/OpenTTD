@@ -187,6 +187,19 @@ def box_lanes(W, box):
         if r not in sign: return None
         return W.pedges(pc)[0] if (sign[r] ^ p) == 1 else W.pedges(pc)[1]
     bidir = set(pc for pc, v in W.votes.items() if len(v) > 1 and inb(pc[0]))
+    def first_signal(pc, e):
+        """Direction from the first signal on the lane's own track walking inward from the box edge, else None."""
+        for _ in range(65):
+            a, b = W.pedges(pc)
+            ex = b if e == a else a
+            v = W.votes.get(pc)
+            if v:
+                if len(v) > 1: return 'bidir'
+                return 'in' if next(iter(v)) == ex else 'out'
+            nx = W.across(pc, ex)
+            if len(nx) != 1 or nx[0][0][0] in W.sw or nx[0][0][0] in W.bh or nx[0][0][0] in W.heads: return None
+            pc, e = nx[0]
+        return None
     lanekeys = set()
     def mklanes(members, start):
         ls = []
@@ -197,7 +210,10 @@ def box_lanes(W, box):
             pos = pc[0][1] if e in ('NE', 'SW') else pc[0][0]
             d = None if ed is None else ('out' if ed == e else 'in')
             if pc in bidir: d = 'bidir'
-            ls.append(dict(pc=pc, e=e, side=SIDE[e], pos=pos, dir=d, trk=W.pname(pc), id=start + len(ls)))
+            fs = first_signal(pc, e)
+            if fs is not None: d = fs; src = 'signal'
+            else: src = 'vote'
+            ls.append(dict(pc=pc, e=e, side=SIDE[e], pos=pos, dir=d, src=src, trk=W.pname(pc), id=start + len(ls)))
         return ls
     lanes = []
     for ci, c in enumerate(comps):

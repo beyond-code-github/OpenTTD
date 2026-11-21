@@ -73,7 +73,7 @@ def choose_lanes(N, lane_spec):
     for L in N.lanes_all:
         if L['dir'] in ('in', 'out'): lanes.append(dict(L))
         else: notes.append('candidate lane %s%d dropped: save gives no direction (%s)' % (L['side'], L['pos'], L['dir']))
-    notes.append('lanes derived from the save\'s own signal direction (unreliable in woven boxes): ' + ' '.join('%s%d:%s' % (L['side'], L['pos'], L['dir']) for L in lanes))
+    notes.append('lanes derived from each lane\'s first signal walking inward, else the component vote: ' + ' '.join('%s%d:%s(%s)' % (L['side'], L['pos'], L['dir'], L['src']) for L in lanes))
     return lanes, notes, 'derived'
 
 

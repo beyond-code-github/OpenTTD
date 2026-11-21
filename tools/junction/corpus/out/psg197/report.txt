@@ -10,7 +10,6 @@ spans 50: tunnels 50, bridges 0; groups of tunnels+bridges 18
 straight legs undetermined 2 of 68 node pieces
 shape: 109 lines shaped, 351 raw pieces, 51 steps, 246 crossings
 ## Checkpoints (named, never silent)
-lanes: lanes whose direction in hubs.tsv differs from the save's own signal direction: E167 N91
 stations inside the box (ignored by the graph): 128,181 128,182 128,183 128,184
 ambiguous pieces (both directions valid): none
 off-route pieces: 73

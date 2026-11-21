@@ -1,49 +1,145 @@
 # Brainmelter: structure decisions (D389) extracted by tools/junction/corpus/extract.py; tunnel numbers by entrance tile (y, x).
-# T1 199,256 -> 187,256
-# T2 199,257 -> 187,257
-# T3 199,258 -> 187,258
-# T4 177,259 -> 169,259
-# T5 181,259 -> 178,259
-# T6 204,268 -> 201,268
-# T7 204,269 -> 201,269
-tunnel T1 L18: L41, L38, L36
-tunnel T2 L16: L41, L38, L36
-tunnel T3 L20: L41, L38, L36
-tunnel T4 L8: L19, L21, L15, L13, L12, L9
-tunnel T5 L8: 
-tunnel T6 L45: 
-tunnel T7 L46: 
-group G01: T1, T2, T3
-# 22 bridge spans (and their groups) are not written: this notation has no bridge statement yet (gap, report.txt)
-straight L5: none
-straight L4: L8
-straight L3: L9
-straight L14: L13
-straight L2: L12
-straight L10: L16
-straight L11: L21
-straight L1: L17
-straight L17: L18
-straight L22: L21
-straight L24: L15
-straight L23: L7
-straight L25: L14
-straight L25: L27
-straight L24: L28
-straight L8: L32
-straight L28: L33
-straight L34: L30
-straight L35: L33
-straight L37: L36
-straight L39: L36
-straight L40: L29
-straight L42: L39
-straight L44: L40
-straight L43: L35
-straight L37: L45
-straight L48: L43
-straight L47: L20
-straight L49: L47
+# T1 203,243 -> 203,249
+# T2 204,243 -> 204,249
+# T3 178,255 -> 175,255
+# T4 172,256 -> 172,252
+# T5 199,256 -> 187,256
+# T6 199,257 -> 187,257
+# T7 177,258 -> 169,258
+# T8 199,258 -> 187,258
+# T9 177,259 -> 169,259
+# T10 181,259 -> 178,259
+# T11 216,260 -> 216,264
+# T12 217,260 -> 217,264
+# T13 176,263 -> 176,268
+# T14 177,263 -> 177,268
+# T15 214,263 -> 214,266
+# T16 219,263 -> 219,267
+# T17 220,263 -> 220,267
+# T18 217,266 -> 217,269
+# T19 204,268 -> 201,268
+# T20 204,269 -> 201,269
+# T21 220,269 -> 220,272
+tunnel T1 L50: L80
+tunnel T2 L51: 
+tunnel T3 L17: L33
+tunnel T4 L24: L19, L17
+tunnel T5 L35: L75, L74, L71, L67, L61, L66, L63, L59, L58
+tunnel T6 L30: L75, L74, L71, L67, L66, L63, L61, L59, L58
+tunnel T7 L11: L33, L37, L29, L26, L24, L23, L22, L20, L14
+tunnel T8 L36: L75, L74, L71, L67, L66, L63, L61, L60
+tunnel T9 L10: L33, L37, L29, L23, L21, L22, L20, L14
+tunnel T10 L10: L38
+tunnel T11 L113: L110
+tunnel T12 L116: L110
+tunnel T13 L38: L42
+tunnel T14 L39: L42, L43
+tunnel T15 L109: L108
+tunnel T16 L123: L126
+tunnel T17 L128: L125, L130
+tunnel T18 L116: L119
+tunnel T19 L81: L88, L86
+tunnel T20 L82: L88, L86
+tunnel T21 L128: L131
+group G01: T5, T6, T8
+group G02: T7, T9
+group G03: T11, T12
+group G04: T13, T14
+group G05: T16, T17
+group G06: T19, T20
+# 52 bridge spans (and their groups) are not written: this notation has no bridge statement yet (gap, report.txt)
+straight L141: L6
+straight L5: L141
+straight L142: L10
+straight L4: L142
+straight L13: none
+straight L3: L17
+straight L16: L18
+straight L18: L20
+straight L12: L20
+straight L15: L25
+straight L21: L26
+straight L27: L23
+straight L2: L22
+# straight L25: undetermined (trunk/leg is a node piece)
+# straight L143: undetermined (trunk/leg is a node piece)
+straight L19: L37
+straight L13: L39
+straight L1: L31
+straight L144: L32
+straight L31: L144
+straight L32: L34
+straight L40: L37
+straight L42: L29
+straight L41: L8
+straight L43: L27
+straight L44: L34
+straight L43: L46
+straight L42: L47
+# straight L145: undetermined (trunk/leg is a node piece)
+# straight L49: undetermined (trunk/leg is a node piece)
 straight L49: L51
-straight L50: L52
-straight L53: L46
+straight L10: L54
+straight L47: L55
+straight L56: L52
+straight L57: L55
+straight L60: L58
+straight L62: L60
+straight L65: L58
+straight L64: L62
+straight L69: L59
+straight L68: L146
+straight L146: L66
+straight L72: L61
+straight L70: L48
+straight L73: L65
+straight L77: L69
+straight L76: L147
+straight L147: L74
+straight L79: L70
+straight L80: L72
+straight L78: L57
+straight L64: L81
+straight L83: L39
+straight L87: L78
+straight L85: L36
+straight L9: L88
+straight L89: L85
+straight L93: L86
+straight L84: L91
+straight L91: L51
+straight L89: L95
+straight L90: L148
+straight L148: L96
+straight L94: L100
+straight L99: L101
+straight L83: L102
+straight L103: L82
+straight L93: L105
+straight L97: L107
+straight L106: L104
+straight L92: L149
+straight L149: L109
+straight L112: none
+straight L112: L115
+straight L98: L113
+straight L119: L108
+straight L114: L117
+# straight L150: undetermined (cross node)
+# straight L150: undetermined (cross node)
+straight L151: none
+straight L122: L115
+straight L126: L110
+straight L122: L127
+straight L100: L123
+# straight L152: undetermined (cross node)
+# straight L152: undetermined (cross node)
+straight L131: L121
+straight L124: L129
+straight L134: L127
+straight L107: L132
+straight L137: L130
+straight L133: L136
+straight L138: L131
+straight L139: L136
+straight L140: L134

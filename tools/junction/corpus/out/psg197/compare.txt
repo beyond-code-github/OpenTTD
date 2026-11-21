@@ -1,4 +1,4 @@
-files in corpus/out/psg197 equal a fresh extraction: yes
+files in tools/junction/corpus/out/psg197 equal a fresh extraction: yes
 == GOLDEN (probe numbers in brackets)
 nodes: 62 of 62 hand nodes matched by tile+kind+fray/lane [62 of 62]; ext node pieces matching no hand node 7 [7 + 1]
 lines: 89 of 100 hand lines one-to-one [89 of 100]; one candidate shared 2 [2]; several candidates 4 [4]; none 5 [5]; ext lines matching no hand line 15 [15]

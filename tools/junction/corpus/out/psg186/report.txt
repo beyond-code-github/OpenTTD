@@ -1,31 +1,31 @@
 # Extraction report: Brainmelter (PSG 186, box 165,224,225,281)
 ## Counts
-ports 7 (N-in N-out E-in W-in1 W-out1 W-in2 W-out2); lanes 21 (derived)
-movements 4; routes (in lane x out port reached) 8
-graph: 1887 box pieces, 677 core pieces, direction rounds [1175, 0] changes, 776 off-route, 399 free pieces fixed by routes, 0 ambiguous
-lines with track 53 (simple chain 53), empty lines 0
-node pieces 32: {'merge join 2->1': 12, 'merge lane 2->1': 4, 'split fray 1->2': 3, 'split lane 1->2': 13}
-crossing pairs 30: {'b': 25, 'c': 5} (a level, b ground over span, c span under span, n node piece over span, na node piece level)
-spans 29: tunnels 7, bridges 22; groups of tunnels+bridges 3
-straight legs undetermined 0 of 32 node pieces
-shape: 53 lines shaped, 196 raw pieces, 30 steps, 60 crossings
+ports 8 (N-out N-in E-out E-in W-in1 W-out1 W-in2 W-out2); lanes 21 (derived)
+movements 6; routes (in lane x out port reached) 15
+graph: 1887 box pieces, 1544 core pieces, direction rounds [1175, 0] changes, 220 off-route, 955 free pieces fixed by routes, 0 ambiguous
+lines with track 140 (simple chain 140), empty lines 12
+node pieces 85: {'cross lane/lane 2->2': 2, 'merge join 2->1': 26, 'merge join 3->1': 4, 'merge lane 2->1': 10, 'split fray 1->2': 6, 'split fray 1->3': 1, 'split lane 1->2': 33, 'split lane 1->3': 3}
+crossing pairs 146: {'b': 125, 'c': 15, 'n': 6} (a level, b ground over span, c span under span, n node piece over span, na node piece level)
+spans 73: tunnels 21, bridges 52; groups of tunnels+bridges 11
+straight legs undetermined 4 of 85 node pieces
+shape: 140 lines shaped, 460 raw pieces, 55 steps, 292 crossings
 ## Checkpoints (named, never silent)
-lanes: lanes derived from the save's own signal direction (unreliable in woven boxes): N199:in E279:in N200:out W260:in N205:out W233:out N202:out W234:out W232:out W230:out N204:in E276:in E277:in W264:out N206:out E275:in N201:in E278:in E280:in W225:in W226:in
+lanes: lanes derived from each lane's first signal walking inward, else the component vote: N199:out(signal) E279:in(signal) N200:out(signal) W260:in(signal) N205:in(signal) W233:out(signal) N202:in(signal) W234:out(signal) W232:out(signal) W230:out(signal) N204:in(signal) E276:out(signal) E277:out(signal) W264:out(signal) N206:in(signal) E275:out(signal) N201:out(signal) E278:in(signal) E280:in(signal) W225:in(signal) W226:in(signal)
 stations inside the box (ignored by the graph): 172,226 172,227
 ambiguous pieces (both directions valid): none
-off-route pieces: 776
+off-route pieces: 220
 lines whose pieces carry different route sets: none
 lines without a simple chain (no geometry): none
 lines skipped by crossings: none
 lines skipped by shape: none
-undetermined straight legs: none
+undetermined straight legs: 173,250 merge (trunk/leg is a node piece); 173,251 merge (trunk/leg is a node piece); 182,258 split (trunk/leg is a node piece); 182,259 split (trunk/leg is a node piece)
 level crossings among lines (a): 0 
-node pieces crossing a ground piece (level): 0 
-lattice-like: line pairs with several hits (first hit kept): 0 
-same-channel crossings (two lines with equal route sets): 1 L15 x L21 at 174.5,257.0
-tied leg order at nodes (written in encounter order): none
+node pieces crossing a ground piece (level): 1 182,258/line 11
+lattice-like: line pairs with several hits (first hit kept): 3 L17 x L30 at 181.0,256.5,177.0,255.5 L50 x L80 at 203.5,245.0,203.5,248.0 L125 x L128 at 220.5,265.0,220.5,265.0
+same-channel crossings (two lines with equal route sets): 2 L29 x L37 at 174.5,257.0 L108 x L109 at 214.5,265.0
+tied leg order at nodes (written in encounter order): merge 214,269 sources have equal sideways sense; merge 217,272 sources have equal sideways sense
 ## Gaps (D393)
-cascades written for pieces with more than 2 legs or a cross: none
-empty lines (no track between two events): 0; they have no crossings, shape or lengths
-bridge spans not written to structure.txt (no bridge statement in the notation yet): 22
-node pieces adjacent to node pieces: 0
+cascades written for pieces with more than 2 legs or a cross: 3-way merge at 165,259; 3-way merge at 166,255; 3-way merge at 174,246; 3-way split at 194,262; 3-way split at 197,259; 3-way split at 206,236; 3-way split at 214,255; cross node written as a merge then a split at 217,268; 3-way merge at 217,272; cross node written as a merge then a split at 219,265
+empty lines (no track between two events): 12; they have no crossings, shape or lengths
+bridge spans not written to structure.txt (no bridge statement in the notation yet): 52
+node pieces adjacent to node pieces: 2
