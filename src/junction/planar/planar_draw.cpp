@@ -6,7 +6,7 @@
  */
 
 /**
- * @file planar_draw.cpp The drawing program: points and pieces, box, ports, nodes, crossings, spans, dummies with their landings and clearance per convex cell (E5-1, E5-2), bays (option), curve spacing (option), corridors (option).
+ * @file planar_draw.cpp The drawing program: points and pieces, box, ports, nodes, crossings, spans, dummies with their landings and clearance per convex cell (E5-1, E5-2), bays (option), curve spacing (option; with corridors, a beside track's opening and closing steps are bends, and committed flex inserts are real bends), corridors (option).
  * Not in it yet: grid parity (D382), node legs and the trident binary, coverage.
  */
 
@@ -349,7 +349,10 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const bool axis = (pieces[i] % 2) == 0;
 			const double lower = free_piece[i] ? 0 : 1;
 			const bool zero = options.flex_zero_from != nullptr && free_piece[i] && std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end() && t < options.flex_zero_from->size() && i < (*options.flex_zero_from)[t].size() && (*options.flex_zero_from)[t][i] < options.flex_zero_below;
-			length[t].push_back({var(lower, zero ? 0 : COORD_MAX, options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
+			const bool in_flex = std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end();
+			const bool reference = options.curve_flex_from != nullptr && in_flex && t < options.curve_flex_from->size() && i < (*options.curve_flex_from)[t].size() && (*options.curve_flex_from)[t][i] >= options.curve_flex_above;
+			const bool held = options.curve_flex_from != nullptr && in_flex && !reference;
+			length[t].push_back({var(reference ? 1 : lower, (zero || held) ? 0 : COORD_MAX, options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
 			if (port_stretch) break;
@@ -629,28 +632,58 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	if (options.curves) {
 		struct Bend {
 			Terms at;
+			double constant = 0;
 			bool right;
+			std::string flex;
+		};
+		const auto committed = [&](uint32_t t, size_t i) {
+			return options.curve_flex_from != nullptr && std::ranges::find(v.tracks[t].flex, static_cast<uint32_t>(i)) != v.tracks[t].flex.end() && t < options.curve_flex_from->size() && i < (*options.curve_flex_from)[t].size() && (*options.curve_flex_from)[t][i] >= options.curve_flex_above;
 		};
 		for (const PlanarRoute &route : map.expanded.routes) {
 			for (const std::vector<uint32_t> &path : route.paths) {
 				std::vector<Bend> bends;
 				Terms acc;
+				double constant = 0;
 				int last_heading = -1;
+				std::string why;
+				std::string last_flex; // The committed insert the previous piece was, if any.
+				const auto walk = [&](int heading, const std::string &flex_tag, const std::string &where) -> bool {
+					if (last_heading != -1 && last_heading != heading) {
+						const int turn = PlanarModel::Rot(last_heading, heading);
+						if (std::abs(turn) != 1) {
+							why = fmt::format("route {} turns by {} eighths at {}", route.name, turn, where);
+							return false;
+						}
+						bends.push_back({acc, constant, turn > 0, flex_tag.empty() ? last_flex : flex_tag});
+					}
+					last_heading = heading;
+					last_flex = flex_tag;
+					return true;
+				};
 				for (const uint32_t t : path) {
 					const std::vector<uint32_t> &flex = v.tracks[t].flex;
 					const std::vector<uint32_t> &steps = v.tracks[t].steps;
-					for (size_t i = 0; i < v.tracks[t].pieces.size(); i++) {
+					const std::vector<int> &pieces = v.tracks[t].pieces;
+					const Beside *beside = nullptr;
+					for (const Beside &b : besides) {
+						if (b.track == t) beside = &b;
+					}
+					if (beside != nullptr) {
+						if (!walk((((pieces.front() + beside->side) % 8) + 8) % 8, "", map.tracks[t].name)) return unsupported(why);
+						constant += 2;
+					}
+					for (size_t i = 0; i < pieces.size(); i++) {
 						const Length &len = length[t][i];
-						if (std::ranges::find(flex, i) == flex.end() && std::ranges::find(steps, i) == steps.end()) {
-							const int heading = ((v.tracks[t].pieces[i] % 8) + 8) % 8; /* Lifted headings may differ by whole turns from one track to the next. */
-							if (last_heading != -1 && last_heading != heading) {
-								const int turn = PlanarModel::Rot(last_heading, heading);
-								if (std::abs(turn) != 1) return unsupported(fmt::format("route {} turns by {} eighths at track {}", route.name, turn, map.tracks[t].name));
-								bends.push_back({acc, turn > 0});
-							}
-							last_heading = heading;
+						const bool real = committed(t, i);
+						if (real || (std::ranges::find(flex, i) == flex.end() && std::ranges::find(steps, i) == steps.end())) {
+							/* Lifted headings may differ by whole turns from one track to the next. */
+							if (!walk(((pieces[i] % 8) + 8) % 8, real ? fmt::format("curve flex {} {}", map.tracks[t].name, i) : "", fmt::format("track {}", map.tracks[t].name))) return unsupported(why);
 						}
 						acc.emplace_back(len.variable, len.coefficient);
+					}
+					if (beside != nullptr) {
+						if (!walk((((pieces.back() - beside->side) % 8) + 8) % 8, "", map.tracks[t].name)) return unsupported(why);
+						constant += 2;
 					}
 				}
 				for (size_t i = 0; i < bends.size(); i++) {
@@ -660,7 +693,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						Terms d = bends[j].at;
 						for (const auto &[variable, coefficient] : bends[i].at) d.emplace_back(variable, -coefficient);
 						const double least = mand >= 1 ? rules.curve_window[mand - 1] : (bends[i].right != bends[j].right ? rules.curve_opposite : rules.curve_same);
-						once_row(std::move(d), least, fmt::format("curve {}", route.name));
+						const std::string &flex_tag = !bends[i].flex.empty() ? bends[i].flex : bends[j].flex;
+						once_row(std::move(d), least - (bends[j].constant - bends[i].constant), flex_tag.empty() ? fmt::format("curve {}", route.name) : flex_tag);
 						mand++;
 					}
 				}
