@@ -259,7 +259,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	if (options.fix_points != nullptr) {
 		if (options.fix_points->size() != nt) return unsupported("fix_points does not match the variant");
 		for (size_t t = 0; t < nt; t++) {
-			if ((*options.fix_points)[t].size() != v.tracks[t].pieces.size() + 1) return unsupported("fix_points does not match the variant");
+			if (!(*options.fix_points)[t].empty() && (*options.fix_points)[t].size() != v.tracks[t].pieces.size() + 1) return unsupported("fix_points does not match the variant");
 		}
 	}
 	std::vector<std::vector<std::array<uint32_t, 2>>> point(nt);
@@ -272,7 +272,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			point[t].push_back({var(0, COORD_MAX, 0, "point"), var(0, COORD_MAX, 0, "point")});
 			row({{point[t][i][0], 1}, {width, -1}}, -JunctionMilp::INF, 0, "box");
 			row({{point[t][i][1], 1}, {height, -1}}, -JunctionMilp::INF, 0, "box");
-			if (options.fix_points != nullptr) {
+			if (options.fix_points != nullptr && !(*options.fix_points)[t].empty()) {
 				for (int axis = 0; axis < 2; axis++) row({{point[t][i][axis], 1}}, (*options.fix_points)[t][i][axis] - options.fix_window, (*options.fix_points)[t][i][axis] + options.fix_window, "fix");
 			}
 		}
