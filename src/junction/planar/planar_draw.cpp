@@ -300,13 +300,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				switch (static_cast<PlanarSide>(side)) {
 					case PlanarSide::N:
 					case PlanarSide::W:
-						eq({{edge_var, 1}}, 0, tag);
+						eq({{edge_var, 1}}, 0, tag + " edge " + map.tracks[line].name);
 						break;
 					case PlanarSide::S:
-						eq({{edge_var, 1}, {height, -1}}, 0, tag);
+						eq({{edge_var, 1}, {height, -1}}, 0, tag + " edge " + map.tracks[line].name);
 						break;
 					case PlanarSide::E:
-						eq({{edge_var, 1}, {width, -1}}, 0, tag);
+						eq({{edge_var, 1}, {width, -1}}, 0, tag + " edge " + map.tracks[line].name);
 						break;
 				}
 				if (!first) {
@@ -315,7 +315,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						gap = 2 * (positions[k] - previous_at);
 						if (gap < 2) return unsupported(fmt::format("port positions out of reading order on side {}", SIDE_NAME[side]));
 					}
-					eq({{at, 1}, {previous, -1}}, gap, tag);
+					eq({{at, 1}, {previous, -1}}, gap, tag + " gap " + map.tracks[line].name);
 				}
 				first = false;
 				previous = at;
