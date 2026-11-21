@@ -2185,6 +2185,34 @@ TEST_CASE("planar draw: PSG 197 export for offline solvers", "[.][planarkeepapar
 	}
 }
 
+/** "track piece heading", marked "insert" for a flex insert and "near" when a flex middle is at piece +- 1. */
+static std::string WallFlexText(const PlanarShapeVariant &shaped, const PlanarCellWall &w)
+{
+	if (w.track >= shaped.tracks.size()) return fmt::format("[track {} piece {} heading {}]", w.track, w.piece, w.heading);
+	const std::vector<uint32_t> &flex = shaped.tracks[w.track].flex;
+	const bool insert = std::ranges::find(flex, w.piece) != flex.end();
+	const bool near = std::ranges::find(flex, w.piece + 1) != flex.end() || (w.piece > 0 && std::ranges::find(flex, w.piece - 1) != flex.end());
+	return fmt::format("[{} piece {} heading {} insert {} near {}]", shaped.structure.map.tracks[w.track].name, w.piece, w.heading, insert ? "yes" : "no", near ? "yes" : "no");
+}
+
+/** WARN a `sep <face> <a> <b>` tag's two walls with their flex marks, and with `whole_face` the face's full wall list. */
+static void WarnSepTagWalls(const PlanarShapeVariant &shaped, const std::string &tag, const std::string &row, bool whole_face)
+{
+	if (!row.starts_with("sep ")) return;
+	std::istringstream in(row.substr(4));
+	uint32_t face = 0;
+	size_t a = 0, b = 0;
+	in >> face >> a >> b;
+	for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(shaped)) {
+		if (f.face != face || a >= f.walls.size() || b >= f.walls.size()) continue;
+		WARN(fmt::format("{} {}: wall {} {} wall {} {}", tag, row, a, WallFlexText(shaped, f.walls[a]), b, WallFlexText(shaped, f.walls[b])));
+		if (!whole_face) continue;
+		std::string text;
+		for (size_t k = 0; k < f.walls.size(); k++) text += fmt::format(" {}:{}", k, WallFlexText(shaped, f.walls[k]));
+		WARN(fmt::format("{} {}: face {} walls in walk order:{}", tag, row, face, text));
+	}
+}
+
 TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "[.][planarkeepapart]")
 {
 	const auto start_time = std::chrono::steady_clock::now();
@@ -2282,13 +2310,35 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				WARN(fmt::format("{} no Optimal round; no final", label));
 				continue;
 			}
+			const bool plateau_probe = variant == &d402 && !pinned;
+			if (plateau_probe) {
+				for (const auto &[row, slack] : last_optimal->stretched) {
+					WARN(fmt::format("{} plateau stretched {}: {:.3f}", label, row, slack));
+					WarnSepTagWalls(*variant, label + " plateau", row, false);
+				}
+			}
+			bool conflict_shown = false;
 			for (const double budget : {15.0, 60.0}) {
 				const PlanarDrawResult f = CheckPlanarDrawable(*variant, budget, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &last_optimal->points});
 				WARN(fmt::format("{} final (integer, {:.0f} s): {}", label, budget, describe(f)));
+				if (f.status == "Infeasible" && plateau_probe && !conflict_shown) {
+					conflict_shown = true;
+					for (const std::string &c : f.conflict) WarnSepTagWalls(*variant, label + " final conflict", c, true);
+				}
 				if (f.status == "Infeasible") {
 					std::string conflicts;
 					for (size_t i = 0; i < std::min<size_t>(30, f.conflict.size()); i++) conflicts += f.conflict[i] + "; ";
 					WARN(fmt::format("{} final conflict: {}", label, conflicts));
+				}
+			}
+			if (plateau_probe) {
+				const size_t at = static_cast<size_t>(last_optimal - rounds.data());
+				const PlanarDrawResult &before = at > 0 ? rounds[at - 1] : seed;
+				const PlanarDrawResult again = CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &before.points});
+				WARN(fmt::format("{} plateau sides from round {}: {}, total slack {:.3f}", label, at, again.status, again.slack));
+				for (const auto &[row, slack] : again.stretched) {
+					if (!row.starts_with("sep ")) continue;
+					WARN(fmt::format("{} plateau-again stretched {}: {:.3f}", label, row, slack));
 				}
 			}
 		}
