@@ -80,3 +80,8 @@ Drawing expert rail hubs: a layered octilinear layout model checked against expe
 ### C6. Optional steps are the hard core; deciding them upstream makes lengths exact (open)
 - **Claim:** keep-apart with optional steps is a disjunction per wall pair (C2, D416 gate: 38k-113k binaries, no solve), in line with Patrignani. With the used steps fixed upstream and cells refined around them, the lengths solve is exact and binary-free (convex cells, fixed landings).
 - **Evidence so far (75f61cc2aa):** NOT yet supported: with the expert's steps fixed, cells elastic W8 579 vs 189 without steps; dummies 78 -> 162. Suspected probe artefacts (flank least lengths, dummy landing choice) under diagnosis.
+
+### C7. On the expert's real geometry, pairwise separation fits and convex cells do not
+- **Claim:** with the expert's real drawing (piece lengths from the save; 91 of 101 tracks held within 1 half tile), pairwise separation with sides taken from that drawing needs slack 108 (sep 84 over 19 rows, mostly on tracks not held to the expert), while convex-cell clearance needs 1884-2094 even with dummy landings steered by the expert's geometry.
+- **Evidence:** 6d6de658d9, ea261847a4, c3f316f1d0 (probe "planar draw: PSG 197 clearance rows evaluated on V's drawing"); vref built from tools/junction/corpus/out/psg197/lengths.txt.
+- **Method note:** an elastic drawing is not a stand-in for the expert's geometry (no objective between pins): only the save's piece lengths are (CORRECTION 045429a251).
