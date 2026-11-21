@@ -1218,14 +1218,9 @@ static void ApplyStepsAsBends(PlanarShapeVariant &v, const std::vector<std::set<
 	}
 }
 
-TEST_CASE("planar draw: PSG 197 option A, V's steps as bends", "[.][planarkeepapart]")
+/** Option A (D417 probe): V's steps from steps.txt applied as bends to Shaped (a LoadPinned197(..., true) variant) and its cells refined; false when they do not refine. */
+static bool BuildOptionA(PlanarShapeVariant &shaped)
 {
-	PlanarShapeVariant d402;
-	PlanarDrawPins d402_pins;
-	if (!LoadPinned197(d402, d402_pins, false)) return;
-	PlanarShapeVariant shaped;
-	PlanarDrawPins pins;
-	if (!LoadPinned197(shaped, pins, true)) return;
 	const PlanarTrackMap &map = shaped.structure.map;
 
 	/* The unflexed shape from shape.txt: per line the headings and the event pieces. */
@@ -1314,14 +1309,26 @@ TEST_CASE("planar draw: PSG 197 option A, V's steps as bends", "[.][planarkeepap
 		}
 	}
 	WARN(fmt::format("A used steps found {}, matched {}, unmatched {}, total steps parsed {}, pieces added by used steps {}", steps.size(), matched, unmatched, parsed, matched * 2));
-	WARN(fmt::format("A dummies D402 {}, nonmonotone {}", d402.dummies.size(), d402.nonmonotone_dummies));
 	ApplyStepsAsBends(shaped, used);
 	std::string why;
 	if (!RefinePlanarShapeCells(shaped, why)) {
 		WARN(fmt::format("A cells not refined: {}", why));
-		return;
+		return false;
 	}
 	WARN(fmt::format("A dummies after {}, nonmonotone {}", shaped.dummies.size(), shaped.nonmonotone_dummies));
+	return true;
+}
+
+TEST_CASE("planar draw: PSG 197 option A, V's steps as bends", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant d402;
+	PlanarDrawPins d402_pins;
+	if (!LoadPinned197(d402, d402_pins, false)) return;
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins, true)) return;
+	WARN(fmt::format("A dummies D402 {}, nonmonotone {}", d402.dummies.size(), d402.nonmonotone_dummies));
+	if (!BuildOptionA(shaped)) return;
 
 	const auto run_cells = [&](const PlanarShapeVariant &shaped, const char *label) {
 		for (const int window : {8, 4, 2}) {
@@ -1407,6 +1414,84 @@ TEST_CASE("planar draw: PSG 197 option A, V's steps as bends", "[.][planarkeepap
 	p8.window = 8;
 	const PlanarDrawResult plain = CheckPlanarDrawable(d402, 60.0, {.elastic = true, .pins = &p8});
 	WARN(fmt::format("A D402 cells W8 elastic: status {}, total slack {:.3f}", plain.status, plain.slack));
+}
+
+TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][planarkeepapart]")
+{
+	for (const bool option_a : {false, true}) {
+		const std::string label = option_a ? "A" : "D402";
+		PlanarShapeVariant shaped;
+		PlanarDrawPins pins;
+		if (!LoadPinned197(shaped, pins, option_a)) continue;
+		if (option_a && !BuildOptionA(shaped)) continue;
+		PlanarDrawPins p2 = pins;
+		p2.window = 2;
+		const PlanarDrawResult ref = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &p2});
+		WARN(fmt::format("{} reference W2: status {}, total slack {:.3f}", label, ref.status, ref.slack));
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .elastic_families = {"clear", "land", "room"}, .pins = &p2, .fix_points = &ref.points});
+		WARN(fmt::format("{} on V's drawing: status {}, total slack {:.3f}, stretched rows {}", label, r.status, r.slack, r.stretched.size()));
+		if (r.status != "Optimal") {
+			for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
+			continue;
+		}
+		const std::vector<std::vector<PlanarCellWall>> cells = PlanarShapeCellWalls(shaped);
+		const PlanarTrackMap &map = shaped.structure.map;
+		const auto is_insert = [&](const PlanarCellWall &w) {
+			if (w.track >= shaped.tracks.size()) return false;
+			const PlanarShapeTrack &t = shaped.tracks[w.track];
+			return std::ranges::find(t.flex, w.piece) != t.flex.end() || std::ranges::find(t.steps, w.piece) != t.steps.end();
+		};
+		const auto wall_text = [&](const PlanarCellWall &w) {
+			if (w.track == PLANAR_DUMMY_TRACK) return fmt::format("dummy p{} h{}", w.piece, w.heading);
+			if (w.track >= map.tracks.size()) return fmt::format("edge p{} h{}", w.piece, w.heading);
+			return fmt::format("{} p{} h{}{}", map.tracks[w.track].name, w.piece, w.heading, is_insert(w) ? " ins" : "");
+		};
+		std::map<std::string, std::pair<size_t, double>> groups;
+		double land = 0, room = 0;
+		size_t lands = 0, rooms = 0, unmapped = 0;
+		std::vector<std::pair<double, std::string>> worst;
+		for (const auto &[tag, slack] : r.stretched) {
+			if (tag.starts_with("land ")) {
+				lands++;
+				land += slack;
+				continue;
+			}
+			if (tag.starts_with("room ")) {
+				rooms++;
+				room += slack;
+				continue;
+			}
+			if (!tag.starts_with("clear ")) continue;
+			unsigned idx[3] = {0, 0, 0};
+			bool parsed = true;
+			const char *p = tag.data() + 6, *end = tag.data() + tag.size();
+			for (int i = 0; i < 3 && parsed; i++) {
+				const auto res = std::from_chars(p, end, idx[i]);
+				parsed = res.ec == std::errc();
+				p = res.ptr;
+				if (i < 2 && p < end && *p == ' ') p++;
+			}
+			const unsigned c = idx[0], k = idx[1], e = idx[2];
+			if (!parsed || c >= cells.size() || k >= cells[c].size() || e >= cells[c].size()) {
+				unmapped++;
+				continue;
+			}
+			const auto &cell = cells[c];
+			const size_t n = cell.size();
+			const PlanarCellWall &in = cell[k], &out = cell[(k + 1) % n], &target = cell[e];
+			const bool dummy = std::ranges::any_of(cell, [](const PlanarCellWall &w) { return w.track == PLANAR_DUMMY_TRACK; });
+			auto &g = groups[fmt::format("target h{} in h{} out h{} insert-vertex {} dummy-cell {}", target.heading % 8, in.heading % 8, out.heading % 8, is_insert(in) || is_insert(out) ? "Y" : "N", dummy ? "Y" : "N")];
+			g.first++;
+			g.second += slack;
+			worst.emplace_back(slack, fmt::format("{} slack {:.3f}: in [{}] out [{}] target [{}]", tag, slack, wall_text(in), wall_text(out), wall_text(target)));
+		}
+		WARN(fmt::format("{} land rows {} sum {:.3f}, room rows {} sum {:.3f}, unmapped clear tags {}", label, lands, land, rooms, room, unmapped));
+		std::vector<std::pair<std::string, std::pair<size_t, double>>> ordered(groups.begin(), groups.end());
+		std::ranges::sort(ordered, [](const auto &x, const auto &y) { return x.second.second > y.second.second; });
+		for (size_t i = 0; i < ordered.size() && i < 30; i++) WARN(fmt::format("{} group {}: count {}, sum {:.3f}", label, ordered[i].first, ordered[i].second.first, ordered[i].second.second));
+		std::ranges::sort(worst, [](const auto &x, const auto &y) { return x.first > y.first; });
+		for (size_t i = 0; i < worst.size() && i < 25; i++) WARN(fmt::format("{} worst {}: {}", label, i + 1, worst[i].second));
+	}
 }
 
 TEST_CASE("planar draw: PSG 197 elastic, whole", "[.][planarkeepapart]")

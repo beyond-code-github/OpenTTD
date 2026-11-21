@@ -234,7 +234,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
 		if (options.elastic) {
 			const std::string family = tag.substr(0, tag.find(' '));
-			if (family != "piece" && family != "box" && family != "pin" && (options.elastic_families.empty() || std::ranges::find(options.elastic_families, family) != options.elastic_families.end())) {
+			if (family != "piece" && family != "box" && family != "pin" && family != "fix" && (options.elastic_families.empty() || std::ranges::find(options.elastic_families, family) != options.elastic_families.end())) {
 				if (std::isfinite(lower)) {
 					merged.emplace_back(milp.AddVariable(0, JunctionMilp::INF, 1, false), 1.0);
 					slack_tag.push_back(tag);
@@ -256,6 +256,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	const uint32_t height = var(1, COORD_MAX, 0, "other");
 
 	/* Points: per track its start and the end of each piece. */
+	if (options.fix_points != nullptr) {
+		if (options.fix_points->size() != nt) return unsupported("fix_points does not match the variant");
+		for (size_t t = 0; t < nt; t++) {
+			if ((*options.fix_points)[t].size() != v.tracks[t].pieces.size() + 1) return unsupported("fix_points does not match the variant");
+		}
+	}
 	std::vector<std::vector<std::array<uint32_t, 2>>> point(nt);
 	std::vector<std::vector<Length>> length(nt);
 	std::vector<std::vector<bool>> may_zero(nt);
@@ -266,6 +272,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			point[t].push_back({var(0, COORD_MAX, 0, "point"), var(0, COORD_MAX, 0, "point")});
 			row({{point[t][i][0], 1}, {width, -1}}, -JunctionMilp::INF, 0, "box");
 			row({{point[t][i][1], 1}, {height, -1}}, -JunctionMilp::INF, 0, "box");
+			if (options.fix_points != nullptr) {
+				for (int axis = 0; axis < 2; axis++) eq({{point[t][i][axis], 1}}, (*options.fix_points)[t][i][axis], "fix");
+			}
 		}
 
 		/* Flex groups: the h pieces around consecutive flex middles may be 0 each, together keeping the original piece's least length. */
