@@ -2020,3 +2020,29 @@ TEST_CASE("planar draw: PSG 197 base LP, its conflict", "[.][planarkeepapart]")
 		}
 	}
 }
+
+TEST_CASE("planar draw: PSG 197 option A pairwise integer", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins, true)) return;
+	if (!BuildOptionA(shaped)) return;
+	const auto start = std::chrono::steady_clock::now();
+	for (const int window : {8, 4}) {
+		if (std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() > 600.0) {
+			WARN("total cap 600 s passed; stopped");
+			break;
+		}
+		PlanarDrawPins pw = pins;
+		pw.window = window;
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 120.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pins = &pw});
+		WARN(fmt::format("A pairwise integer W{} tidy: status {}, ms {:.0f}, pairs {}, binaries {}", window, r.status, r.ms, r.pairs, r.binaries));
+		if (r.status == "Infeasible") {
+			std::string tags;
+			for (size_t i = 0; i < r.conflict.size() && i < 30; i++) tags += " " + r.conflict[i];
+			WARN(fmt::format("A pairwise integer W{} conflict:{}", window, tags));
+		}
+		const PlanarDrawResult f = CheckPlanarDrawable(shaped, 120.0, {.clearance = true, .clear_rows = true, .pairwise = true, .tidy = false, .pins = &pw});
+		WARN(fmt::format("A pairwise integer W{} feasibility: status {}, ms {:.0f}", window, f.status, f.ms));
+	}
+}
