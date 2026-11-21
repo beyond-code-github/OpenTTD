@@ -341,6 +341,24 @@ TEST_CASE("planar draw: pairwise mode writes separations and no landings", "[jun
 	CHECK(r.binaries <= 4 * r.pairs);
 }
 
+TEST_CASE("planar draw: pairwise sides from a drawing are plain rows", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult free = CheckPlanarDrawable(c.v, 0.1, {.pairwise = true});
+	const PlanarDrawResult loose = CheckPlanarDrawable(c.v, 5.0, {.clearance = false});
+	REQUIRE(loose.feasible);
+	const PlanarDrawResult fixed = CheckPlanarDrawable(c.v, 5.0, {.pairwise = true, .sides_from = &loose.points});
+	CHECK(fixed.binaries == 0);
+	CHECK(fixed.pairs == free.pairs);
+	/* A drawing without clearance keeps fewer sides. */
+	CHECK(fixed.short_sides > 0);
+	/* A reference that is not a drawing of this variant is refused. */
+	std::vector<std::vector<std::array<int, 2>>> wrong = loose.points;
+	wrong.front().pop_back();
+	const PlanarDrawResult refused = CheckPlanarDrawable(c.v, 5.0, {.pairwise = true, .sides_from = &wrong});
+	CHECK(refused.status.starts_with("unsupported"));
+}
+
 /** The port lines of a side in reading order with the index into their port's `lines`, as the drawing program reads them. */
 static std::vector<std::pair<uint32_t, size_t>> SideReadingOrder(const PlanarTopology &t, PlanarSide side, uint32_t &first_port)
 {
@@ -730,12 +748,13 @@ TEST_CASE("planar draw: a port lane may be 0 long before its first node (D412)",
 	CHECK(found > 0);
 }
 
-TEST_CASE("planar draw: the extractor's PSG 197 with pins", "[.][planarkeepapart]")
+/** The extractor's PSG 197, shaped and flexed, and V's pins; false when pins.txt is missing. */
+static bool LoadPinned197(PlanarShapeVariant &shaped, PlanarDrawPins &pins)
 {
 	std::ifstream file(std::string(JUNCTION_TOPOLOGY_DIR) + "/../corpus/out/psg197/pins.txt");
 	if (!file) {
 		WARN("no pins yet");
-		return;
+		return false;
 	}
 	std::stringstream buffer;
 	buffer << file.rdbuf();
@@ -746,13 +765,19 @@ TEST_CASE("planar draw: the extractor's PSG 197 with pins", "[.][planarkeepapart
 	std::vector<std::string> report;
 	const PlanarStructureVariant structure = LoadPlanarStructureVariant(topology, ReadExtractorFileForDraw("structure.txt"), spec, report, &error);
 	REQUIRE(error.empty());
-	PlanarShapeVariant shaped;
 	std::string why;
 	REQUIRE(LoadPlanarShapeVariant(topology, structure, ReadExtractorFileForDraw("shape.txt"), shaped, why));
 	REQUIRE(PlacePlanarShapeFlex(shaped, why));
 	REQUIRE(RefinePlanarShapeCells(shaped, why));
+	pins = ParsePlanarDrawPins(shaped, buffer.str());
+	return true;
+}
 
-	const PlanarDrawPins pins = ParsePlanarDrawPins(shaped, buffer.str());
+TEST_CASE("planar draw: the extractor's PSG 197 with pins", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
 	WARN(fmt::format("pins {}, unmatched {}", pins.pins.size(), pins.unmatched.size()));
 	for (size_t i = 0; i < std::min<size_t>(10, pins.unmatched.size()); i++) WARN(fmt::format("unmatched {}: {}", i, pins.unmatched[i]));
 	const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &pins});
@@ -765,6 +790,58 @@ TEST_CASE("planar draw: the extractor's PSG 197 with pins", "[.][planarkeepapart
 	WARN(fmt::format("pins 197: status {}, total slack {:.3f}, stretched {}, {:.0f} ms", r.status, r.slack, r.stretched.size(), r.ms));
 	for (const auto &[family, f] : families) WARN(fmt::format("pins 197 family {}: count {}, sum {:.3f}", family, f.first, f.second));
 	for (size_t i = 0; i < std::min<size_t>(40, r.stretched.size()); i++) WARN(fmt::format("pins 197 stretched {}: {} {:.3f}", i, r.stretched[i].first, r.stretched[i].second));
+}
+
+TEST_CASE("planar draw: PSG 197 pairwise, sides from the pinned drawing", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
+	PlanarDrawPins p8 = pins;
+	p8.window = 8;
+	PlanarDrawPins p2 = pins;
+	p2.window = 2;
+	const PlanarTrackMap &map = shaped.structure.map;
+	const std::vector<PlanarFaceWalls> faces = PlanarShapeFaceWalls(shaped);
+	const PlanarDrawResult cells = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &p8});
+	const PlanarDrawResult base = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &p8});
+	WARN(fmt::format("reference cells: {}, slack {:.3f}, {:.0f} ms; base: {}, slack {:.3f}, {:.0f} ms", cells.status, cells.slack, cells.ms, base.status, base.slack, base.ms));
+	const std::array<std::pair<const char *, const PlanarDrawResult *>, 2> refs = {{{"cells", &cells}, {"base", &base}}};
+	for (const auto &[name, ref] : refs) {
+		if (!ref->feasible) continue;
+		for (const PlanarDrawPins *pw : {&p2, &p8}) {
+			const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .elastic = true, .pins = pw, .sides_from = &ref->points});
+			const std::string tag = fmt::format("sides {} W{}", name, pw->window);
+			WARN(fmt::format("{}: status {}, total slack {:.3f}, pairs {}, binaries {}, short_sides {}, {:.0f} ms", tag, r.status, r.slack, r.pairs, r.binaries, r.short_sides, r.ms));
+			std::map<std::string, std::pair<size_t, double>> families;
+			for (const auto &[row, slack] : r.stretched) {
+				auto &f = families[row.substr(0, row.find(' '))];
+				f.first++;
+				f.second += slack;
+			}
+			for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: count {}, sum {:.3f}", tag, family, f.first, f.second));
+			for (size_t i = 0; i < std::min<size_t>(40, r.stretched.size()); i++) WARN(fmt::format("{} stretched {}: {} {:.3f}", tag, i, r.stretched[i].first, r.stretched[i].second));
+			size_t shown = 0;
+			for (size_t i = 0; i < r.stretched.size() && shown < 20; i++) {
+				const std::string &row = r.stretched[i].first;
+				if (!row.starts_with("sep ")) continue;
+				shown++;
+				std::istringstream in(row.substr(4));
+				uint32_t face = 0;
+				size_t a = 0, b = 0;
+				in >> face >> a >> b;
+				std::string text;
+				for (const PlanarFaceWalls &f : faces) {
+					if (f.face != face || a >= f.walls.size() || b >= f.walls.size()) continue;
+					for (const size_t k : {a, b}) {
+						const PlanarCellWall &w = f.walls[k];
+						text += fmt::format(" [{} piece {} heading {}]", map.tracks[w.track].name, w.piece, w.heading);
+					}
+				}
+				WARN(fmt::format("{} sep row {} ({:.3f}):{}", tag, row, r.stretched[i].second, text));
+			}
+		}
+	}
 }
 
 TEST_CASE("planar draw: PSG 197 elastic, whole", "[.][planarkeepapart]")

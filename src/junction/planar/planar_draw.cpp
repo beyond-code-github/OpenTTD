@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <climits>
 #include <chrono>
 #include <cmath>
 #include <functional>
@@ -706,6 +707,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	if (options.clearance && options.pairwise) {
 		constexpr double M = 4 * COORD_MAX;
 		const auto norm = [](int x) { return ((x % 8) + 12) % 8 - 4; };
+		if (options.sides_from != nullptr) {
+			if (options.sides_from->size() != nt) return unsupported("sides_from does not match the variant");
+			for (size_t t = 0; t < nt; t++) {
+				if ((*options.sides_from)[t].size() != point[t].size()) return unsupported("sides_from does not match the variant");
+			}
+		}
 		for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(v)) {
 			if (!face_listed(f.face)) continue;
 			const std::vector<PlanarCellWall> &w = f.walls;
@@ -757,6 +764,47 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						axes.push_back({PlanarModel::STEP[(w[j].heading + 6) % 8], PlanarModel::RungSpacing(w[j].heading, w[i].heading)});
 					} else {
 						axes.push_back({PlanarModel::STEP[w[i].heading % 8], 2});
+					}
+					if (options.sides_from != nullptr) {
+						const auto ref = [&](uint32_t track, uint32_t k) { return (*options.sides_from)[track][k]; };
+						const std::array<std::array<uint32_t, 2>, 2> *best_from = nullptr, *best_to = nullptr;
+						const Axis *best_axis = nullptr;
+						int best_margin = 0;
+						const std::array<std::array<uint32_t, 2>, 2> *const ends[2] = {&pi, &pj};
+						const std::array<uint32_t, 2> tracks = {w[i].track, w[j].track};
+						const std::array<uint32_t, 2> pieces = {w[i].piece, w[j].piece};
+						for (const Axis &axis : axes) {
+							for (int side = 0; side < 2; side++) {
+								const auto *from = ends[side];
+								const auto *to = ends[1 - side];
+								int margin = INT_MAX;
+								for (uint32_t kp = 0; kp < 2; kp++) {
+									for (uint32_t kq = 0; kq < 2; kq++) {
+										const std::array<int, 2> rp = ref(tracks[side], pieces[side] + kp);
+										const std::array<int, 2> rq = ref(tracks[1 - side], pieces[1 - side] + kq);
+										margin = std::min(margin, (rq[0] - rp[0]) * axis.s[0] + (rq[1] - rp[1]) * axis.s[1] - axis.spacing);
+									}
+								}
+								if (best_axis == nullptr || margin > best_margin) {
+									best_axis = &axis;
+									best_from = from;
+									best_to = to;
+									best_margin = margin;
+								}
+							}
+						}
+						if (best_margin < 0) result.short_sides++;
+						for (const auto &p : *best_from) {
+							for (const auto &q : *best_to) {
+								Terms t;
+								for (int d = 0; d < 2; d++) {
+									t.emplace_back(q[d], best_axis->s[d]);
+									t.emplace_back(p[d], -best_axis->s[d]);
+								}
+								row(std::move(t), best_axis->spacing, JunctionMilp::INF, fmt::format("sep {} {} {}", f.face, i, j));
+							}
+						}
+						continue;
 					}
 					Terms bs;
 					for (const Axis &axis : axes) {

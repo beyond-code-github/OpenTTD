@@ -30,6 +30,7 @@ struct PlanarDrawResult {
 	uint32_t columns = 0; ///< The program's variables.
 	uint32_t pairs = 0; ///< Wall pairs separated (pairwise mode).
 	uint32_t binaries = 0; ///< Their axis-side binaries.
+	uint32_t short_sides = 0; ///< With sides_from: the pairs whose chosen side the reference keeps by less than its spacing.
 	double ms = 0; ///< Build and solve time in milliseconds.
 	std::vector<std::vector<std::array<int, 2>>> points; ///< When feasible, per track its points (start, then the end of each piece), half tiles, x east and y south.
 };
@@ -61,6 +62,7 @@ struct PlanarDrawOptions {
 	bool pocket = false; ///< With flex_sides: the pocket rule (SPEC-shape §8.9, a probe): an adjacent side's vertices are held past a side's last (first) insert and keep only the lines beyond it.
 	bool elastic = false; ///< Diagnosis (D409): every row except the piece, box and pin rows gets a slack >= 0 per finite bound with cost 1, the objective is the total slack (piece lengths cost 0), every variable is continuous (the LP relaxation, which an infeasible drawing already fails when it has IIS rows), and the result lists the rows that stretched.
 	const PlanarDrawPins *pins = nullptr; ///< Answer-key pins (D393): every pinned point is within window of its position plus one common shift (two free integer variables).
+	const std::vector<std::vector<std::array<int, 2>>> *sides_from = nullptr; ///< With pairwise: a drawing of this variant (`PlanarDrawResult::points`); each separated pair takes the axis side these points keep best as a plain row, with no binary and no `sepdir` (an LP when every other variable is continuous).
 };
 
 /** One clearance row of a cell (SPEC-shape §8.8): the vertex after wall `vertex` keeps `spacing` from the line of wall `wall`, on the cell's side. */
@@ -101,7 +103,7 @@ std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall
  * A test oracle (D388 (b)): an infeasible result names the conflicting rows, which names a missing upstream promise.
  * Units are half tiles; a heading h moves STEP[h mod 8] per unit (an axis unit (0, 1) or (1, 0), a diagonal unit (1, 1)). Every row has a tag kept beside the program.
  * Families: points and pieces (`piece`, `flex`), the box (`box`), ports (`port <side>`), nodes (`node`), crossings (`cross`, `order`), spans (`deck`, `end`, `span`), dummies with their landings (`land <dummy>`) and clearance per convex cell (`clear <cell> <vertex> <wall>`; a structure's span pieces and dummies are no wall, a wall is no target for a vertex on its own straight side, a vertex between two non-track walls has no row, a corner between two crossing tracks is the crossing point, and a vertex inside a span piece has no row), the last three only with `options.clearance` (the clearance rows also only with `options.clear_rows`).
- * With `options.pairwise` (a D406 probe) there are no dummies or landings: a face convex without dummies keeps the clearance rows, every other face separates its non-incident wall pairs (`sep <face> <i> <j>`, one binary per axis side, `sepdir` picks one side of the pair).
+ * With `options.pairwise` (a D406 probe) there are no dummies or landings: a face convex without dummies keeps the clearance rows, every other face separates its non-incident wall pairs (`sep <face> <i> <j>`, one binary per axis side, `sepdir` picks one side of the pair); with `options.sides_from` each pair takes the side that drawing keeps best as plain rows, no binaries.
  * Not in this step: grid parity (D382), beside tracks as offset curves, node legs and the trident binary, bays, coverage, curve spacing; no clearance against a box edge.
  * @param v The shaped variant.
  * @param seconds The solver's time limit.
