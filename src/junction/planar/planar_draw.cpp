@@ -1020,6 +1020,24 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		if (!out) return unsupported("cannot write export");
 	}
 	milp.SetTimeLimit(seconds);
+	if (options.start_lengths != nullptr || options.start_points != nullptr) {
+		std::vector<std::pair<uint32_t, double>> start;
+		for (size_t t = 0; t < nt; t++) {
+			if (options.start_lengths != nullptr && t < options.start_lengths->size() && (*options.start_lengths)[t].size() == length[t].size()) {
+				for (size_t i = 0; i < length[t].size(); i++) {
+					const double value = (*options.start_lengths)[t][i] / length[t][i].coefficient;
+					if (std::abs(value - std::round(value)) < 1e-6) start.emplace_back(length[t][i].variable, std::round(value));
+				}
+			}
+			if (options.start_points != nullptr && t < options.start_points->size() && (*options.start_points)[t].size() == point[t].size()) {
+				for (size_t i = 0; i < point[t].size(); i++) {
+					for (int axis = 0; axis < 2; axis++) start.emplace_back(point[t][i][axis], (*options.start_points)[t][i][axis]);
+				}
+			}
+		}
+		result.start_values = start.size();
+		milp.SetStart(std::move(start));
+	}
 	const JunctionMilp::Status status = milp.Solve();
 	if (status == JunctionMilp::Status::Optimal) {
 		result.feasible = true;
