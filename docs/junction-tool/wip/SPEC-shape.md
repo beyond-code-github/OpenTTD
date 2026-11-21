@@ -192,3 +192,20 @@ Amends 8.1-8.4 for flex pairs; settles 8.4 as reading (ii) for flex: the bends a
 5. Every other pair of sides is as in 8.8. R's far-corner vertex satisfies both its 8.8 rows and the along row, so R's last piece, whose ends both satisfy the along row, is covered by step 3.
 
 **Cost (measured by the reference computation, `/tmp/claude-1000/pocket_ref.py` in the 2026-11-22 session).** Not weaker than 8.8, only different. The along row forces R to stay beyond S's last step. A side that turns back 135 degrees under S (R's heading h - 3) must then not reach back past the step, which 8.8 allowed when R stayed inside a's line. FS-b's hand cell drawing (top at heading 5 reaching y 16 below q at y 14) is refused by it. Which form a corner needs depends on lengths (a disjunction). Hence a flag, default off, and the decision from 197's measurement. If neither form alone draws 197, the next options are a rule picking the form per corner before the solve (e.g. by whether R's side is a port lane's sliver), or one binary per (S, R) corner.
+
+### 8.10 A step of length 0 imposes no spacing (orchestrator, 2026-11-22; found by the elastic diagnosis, CARD-E5-flexstep Progress)
+**Finding.** In 8.8's rows a vertex's spacing is `max(RungSpacing(h_e, h_k), RungSpacing(h_e, h_k+1))` over its two walls. At a corner of a flex insert, that counts the insert's heading even when the insert has length 0 and no physical existence. On PSG 197 face 7, a diagonal lane (B2c) crossing between two parallel axis lanes one lane apart carries an axis insert parallel to them. Its corners were held 2 from each lane, a strip of 4, where V's layout has 2. Without the insert's heading, faces 7, 8, 11 and 13 draw (elastic slack 0).
+
+**Rule.** At a vertex between an insert I and a non-insert wall W, against a target line of heading h_e:
+- **Base row:** the vertex keeps `base = RungSpacing(h_e, h_W)`.
+- **Room row:** when `hi = RungSpacing(h_e, h_I) > base`, also `M * (d - base) - len(I) >= 0`, where d is the row's distance expression (the same `Dot(V - A, normal)`) and M = `COORD_MAX`.
+- Inserts are never adjacent (an h piece lies between any two), so a vertex has at most one insert wall.
+
+**Proof (Lemma 2 per piece).**
+- Lemma 2 needs each piece J's two end points at `RungSpacing(h_e, g_J)` from the line.
+- The base row gives this for W.
+- For I: if `len(I) = 0` there is no piece, and nothing is needed.
+- If `len(I) > 0`, the room row gives `d > base`. Every point is an integer variable and every normal has integer components, so d is an integer and `d >= base + 1`. RungSpacing takes only the values 1 and 2, so `hi > base` means base = 1 and hi = 2, hence `d >= 2 = hi`.
+- Both end points of I are such vertices, so I meets Lemma 2.
+- No binary. Sound for the integer program.
+- In the elastic mode (an LP, D409) the room row is weaker (a fractional d - base lets a long insert through). That is acceptable for diagnosis only; the oracle's verdict comes from the integer program.
