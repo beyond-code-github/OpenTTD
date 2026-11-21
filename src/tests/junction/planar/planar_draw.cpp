@@ -1645,6 +1645,24 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 			WARN(fmt::format("{} clear {}: {} {:.3f}", label, shown, tag, slack));
 		}
 	}
+	/* The V-sides run with convex faces separated pairwise too (no cell clearance rows). */
+	{
+		const std::string label = "sepV allfaces W1";
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_families = {"sep", "clear", "deck", "end", "node", "cross"}, .pins = &p8, .sides_from = &full.points, .fix_points = &vref, .fix_window = 1});
+		WARN(fmt::format("{}: status {}, total slack {:.3f}, pairs {}, short_sides {}", label, r.status, r.slack, r.pairs, r.short_sides));
+		if (r.status != "Optimal") {
+			for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
+		} else {
+			std::map<std::string, std::pair<size_t, double>> families;
+			for (const auto &[tag, slack] : r.stretched) {
+				auto &f = families[tag.substr(0, tag.find(' '))];
+				f.first++;
+				f.second += slack;
+			}
+			for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: rows {}, slack {:.3f}", label, family, f.first, f.second));
+			WarnSepWalls(shaped, r, label, 20);
+		}
+	}
 	/* The same, each pair's direction from the monotone face walk where the rule fixes it. */
 	{
 		const std::string label = "sepV walk W1";
@@ -2073,6 +2091,18 @@ TEST_CASE("planar draw: PSG 197 option A pairwise integer", "[.][planarkeepapart
 	report("1 no pins", CheckPlanarDrawable(shaped, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .sides_by_walk = true, .walk_strict = true, .pins = nullptr}));
 	report("2 pins, no walk rule", CheckPlanarDrawable(shaped, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .sides_by_walk = false, .walk_strict = true, .pins = &p8}));
 	report("3 pins, no clear rows", CheckPlanarDrawable(shaped, 15.0, {.clearance = true, .clear_rows = false, .pairwise = true, .sides_by_walk = true, .walk_strict = true, .pins = &p8}));
+
+	/* Convex faces separated pairwise too, W8, 15 s, all binaries (a) and without pins (b). */
+	const auto report_all = [&](const char *name, const PlanarDrawResult &r) {
+		WARN(fmt::format("allfaces {}: status {}, ms {:.0f}, pairs {}, binaries {}", name, r.status, r.ms, r.pairs, r.binaries));
+		if (r.status == "Infeasible") {
+			std::string tags;
+			for (size_t i = 0; i < r.conflict.size() && i < 30; i++) tags += " " + r.conflict[i];
+			WARN(fmt::format("allfaces {} conflict:{}", name, tags));
+		}
+	};
+	report_all("a pins", CheckPlanarDrawable(shaped, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = &p8}));
+	report_all("b no pins", CheckPlanarDrawable(shaped, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = nullptr}));
 
 	/* Detail of sep 155 2 5: replays the rule of the pairwise block on the face walk. */
 	const PlanarTrackMap &map = shaped.structure.map;
