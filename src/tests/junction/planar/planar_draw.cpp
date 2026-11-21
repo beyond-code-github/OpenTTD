@@ -2184,3 +2184,97 @@ TEST_CASE("planar draw: PSG 197 export for offline solvers", "[.][planarkeepapar
 		}
 	}
 }
+
+TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "[.][planarkeepapart]")
+{
+	const auto start_time = std::chrono::steady_clock::now();
+	const auto over_cap = [&]() { return std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count() > 900.0; };
+	const std::vector<std::string> all = {"point", "axis", "diagonal", "param", "cross", "other"};
+
+	/* V's reference: the bounding box of every pin and the sum of every line's lengths. */
+	{
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/../corpus/out/psg197/pins.txt");
+		std::string text;
+		int x0 = INT32_MAX, x1 = INT32_MIN, y0 = INT32_MAX, y1 = INT32_MIN;
+		while (std::getline(in, text)) {
+			if (text.empty() || text[0] == '#') continue;
+			std::istringstream ls(text);
+			std::vector<std::string> words;
+			std::string w;
+			while (ls >> w) words.push_back(w);
+			if (words.size() < 2) continue;
+			int x = 0, y = 0;
+			std::istringstream(words[words.size() - 2]) >> x;
+			std::istringstream(words[words.size() - 1]) >> y;
+			x0 = std::min(x0, x); x1 = std::max(x1, x);
+			y0 = std::min(y0, y); y1 = std::max(y1, y);
+		}
+		std::ifstream lin(std::string(JUNCTION_TOPOLOGY_DIR) + "/../corpus/out/psg197/lengths.txt");
+		long total = 0;
+		while (std::getline(lin, text)) {
+			if (!text.starts_with("lengths ")) continue;
+			std::istringstream ls(text.substr(text.find(':') + 1));
+			int x;
+			while (ls >> x) total += x;
+		}
+		WARN(fmt::format("V reference: pins bounding box {} x {} half tiles, total length {}", x1 - x0, y1 - y0, total));
+	}
+
+	const auto describe = [](const PlanarDrawResult &r) {
+		long total = 0;
+		int x0 = INT32_MAX, x1 = INT32_MIN, y0 = INT32_MAX, y1 = INT32_MIN;
+		for (const auto &track : r.points) {
+			for (size_t i = 0; i < track.size(); i++) {
+				x0 = std::min(x0, track[i][0]); x1 = std::max(x1, track[i][0]);
+				y0 = std::min(y0, track[i][1]); y1 = std::max(y1, track[i][1]);
+				if (i > 0) total += std::max(std::abs(track[i][0] - track[i - 1][0]), std::abs(track[i][1] - track[i - 1][1]));
+			}
+		}
+		if (x0 > x1) return fmt::format("status {}, ms {:.0f}, no points", r.status, r.ms);
+		return fmt::format("status {}, ms {:.0f}, short_sides {}, box {} x {}, total length {}", r.status, r.ms, r.short_sides, x1 - x0, y1 - y0, total);
+	};
+
+	PlanarShapeVariant a;
+	PlanarDrawPins a_pins;
+	if (!LoadPinned197(a, a_pins, true)) return;
+	if (!BuildOptionA(a)) return;
+	PlanarShapeVariant d402;
+	PlanarDrawPins d402_pins;
+	if (!LoadPinned197(d402, d402_pins, false)) return;
+
+	for (const auto &[name, variant, pins] : {std::tuple{"A", &a, &a_pins}, std::tuple{"D402", &d402, &d402_pins}}) {
+		PlanarDrawPins p8 = *pins;
+		p8.window = 8;
+		for (const bool pinned : {true, false}) {
+			if (over_cap()) {
+				WARN("total cap of 15 minutes passed; stopped");
+				return;
+			}
+			const PlanarDrawPins *p = pinned ? &p8 : nullptr;
+			const std::string label = fmt::format("{} {}", name, pinned ? "W8" : "no pins");
+			PlanarDrawResult previous = CheckPlanarDrawable(*variant, 30.0, {.clearance = false, .continuous = all, .pins = p});
+			WARN(fmt::format("{} seed: {}", label, describe(previous)));
+			if (previous.status != "Optimal") continue;
+			PlanarDrawResult last_optimal = previous;
+			for (int k = 1; k <= 6; k++) {
+				if (over_cap()) {
+					WARN("total cap of 15 minutes passed; stopped");
+					return;
+				}
+				const PlanarDrawResult r = CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &previous.points, .continuous = all});
+				WARN(fmt::format("{} round {}: {}", label, k, describe(r)));
+				if (r.status != "Optimal") {
+					const PlanarDrawResult e = CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .pins = p, .sides_from = &previous.points, .continuous = all});
+					std::string families;
+					for (size_t i = 0; i < e.stretched.size(); i++) families += fmt::format(" [{} {:.2f}]", e.stretched[i].first, e.stretched[i].second);
+					WARN(fmt::format("{} round {} elastic: {}, total slack {:.2f}, per row tag:{}", label, k, describe(e), e.slack, families));
+					break;
+				}
+				previous = r;
+				last_optimal = r;
+			}
+			const PlanarDrawResult f = CheckPlanarDrawable(*variant, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &last_optimal.points});
+			WARN(fmt::format("{} final (integer, 15 s): {}", label, describe(f)));
+		}
+	}
+}
