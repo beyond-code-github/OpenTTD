@@ -634,6 +634,139 @@ TEST_CASE("planar draw: elastic mode names the stretched rows", "[junction][plan
 	CHECK(ok.stretched.empty());
 }
 
+/** The pin text of one point per entry: `end <line> start|end X Y`. */
+static std::string EndPinLine(const PlanarTrackMap &map, uint32_t track, bool start, std::array<int, 2> at)
+{
+	return fmt::format("end {} {} {} {}\n", map.tracks[track].name, start ? "start" : "end", at[0], at[1]);
+}
+
+TEST_CASE("planar draw: pins hold points to an answer key", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarTrackMap &map = c.v.structure.map;
+	const PlanarDrawResult base = CheckPlanarDrawable(c.v, 5.0, {.clearance = false});
+	REQUIRE(base.feasible);
+
+	std::string text = "# an answer key, shifted\n# half tiles\n";
+	size_t named = 0; // Copies and rows may share a line's name; only the track that carries it is pinned.
+	for (uint32_t t = 0; t < map.tracks.size(); t++) {
+		if (std::ranges::count(map.tracks, map.tracks[t].name, &PlanarTrack::name) != 1) continue;
+		named++;
+		const std::array<int, 2> a = base.points[t].front(), b = base.points[t].back();
+		text += EndPinLine(map, t, true, {a[0] + 100, a[1] + 60});
+		text += EndPinLine(map, t, false, {b[0] + 100, b[1] + 60});
+	}
+	const PlanarDrawPins pins = ParsePlanarDrawPins(c.v, text);
+	CHECK(pins.unmatched.empty());
+	REQUIRE(named > 0);
+	REQUIRE(pins.pins.size() == 2 * named);
+
+	const PlanarDrawResult held = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .pins = &pins});
+	
+	REQUIRE(held.feasible);
+	std::array<int, 2> lo = {1 << 20, 1 << 20}, hi = {-(1 << 20), -(1 << 20)};
+	for (const PlanarDrawPins::Pin &pin : pins.pins) {
+		const std::array<int, 2> p = pin.start ? held.points[pin.track].front() : held.points[pin.track].back();
+		for (int axis = 0; axis < 2; axis++) {
+			lo[axis] = std::min(lo[axis], p[axis] - pin.at[axis]);
+			hi[axis] = std::max(hi[axis], p[axis] - pin.at[axis]);
+		}
+	}
+	INFO("the shifts found span x " << lo[0] << ".." << hi[0] << ", y " << lo[1] << ".." << hi[1]);
+	CHECK(hi[0] - lo[0] <= 2 * pins.window);
+	CHECK(hi[1] - lo[1] <= 2 * pins.window);
+
+	/* One pin moved 40 half tiles along x cannot be held. */
+	PlanarDrawPins moved = pins;
+	moved.pins[0].at[0] += 40;
+	const PlanarDrawResult broken = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .pins = &moved});
+	CHECK(!broken.feasible);
+	CHECK(HasFamily(broken, "pin "));
+	/* In elastic mode a pin that a node row can give way to leaves the pin rows hard and stretches another family. */
+	size_t elastic_ok = 0;
+	for (size_t k = 0; k < pins.pins.size(); k++) {
+		PlanarDrawPins other = pins;
+		other.pins[k].at[0] += 40;
+		const PlanarDrawResult stretched = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .elastic = true, .pins = &other});
+		if (!stretched.feasible) continue;
+		elastic_ok++;
+		CHECK(!std::ranges::any_of(stretched.stretched, [](const auto &s) { return s.first.starts_with("pin "); }));
+		CHECK(!stretched.stretched.empty());
+	}
+	INFO("elastic solves feasible with a moved pin: " << elastic_ok);
+	CHECK(elastic_ok > 0);
+
+	/* A line the map does not have goes to unmatched. */
+	const PlanarDrawPins unknown = ParsePlanarDrawPins(c.v, "end NOPE start 1 2\ncross L1 NOPE 3 4\n" + EndPinLine(map, 0, true, {1, 2}));
+	CHECK(unknown.unmatched.size() == 2);
+	CHECK(unknown.pins.size() == 1);
+}
+
+TEST_CASE("planar draw: a port lane may be 0 long before its first node (D412)", "[junction][planar][planardraw]")
+{
+	size_t found = 0;
+	for (const size_t lanes : {1}) {
+		const DrawCase c = ShapeFirst(PlanarTText(lanes), 1);
+		const PlanarTrackMap &map = c.v.structure.map;
+		const PlanarDrawResult base = CheckPlanarDrawable(c.v, 5.0, {.clearance = false});
+		REQUIRE(base.feasible);
+		for (uint32_t t = 0; t < map.tracks.size(); t++) {
+			const PlanarEnd &from = map.expanded.lines[t].from, &to = map.expanded.lines[t].to;
+			if (from.port == to.port || !map.events[t].empty()) continue;
+			const std::array<int, 2> a = base.points[t].front(), b = base.points[t].back();
+			if (a == b) continue;
+			/* Pin the line's first point and pin its last point 4 behind it along the line's direction: the line is then 0 long, its node on the box edge. */
+			std::array<int, 2> d{};
+			for (int axis = 0; axis < 2; axis++) d[axis] = (b[axis] > a[axis]) - (b[axis] < a[axis]);
+			const std::string text = EndPinLine(map, t, true, a) + EndPinLine(map, t, false, {a[0] - 4 * d[0], a[1] - 4 * d[1]});
+			const PlanarDrawPins pins = ParsePlanarDrawPins(c.v, text);
+			REQUIRE(pins.pins.size() == 2);
+			const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .pins = &pins});
+			/* A node on the box edge for every lane at once need not be drawable (its sibling lane's port is another point of the edge), so count the lines that are. */
+			if (r.feasible) found++;
+		}
+	}
+	INFO("lines drawable with their node on the box edge: " << found);
+	CHECK(found > 0);
+}
+
+TEST_CASE("planar draw: the extractor's PSG 197 with pins", "[.][planarkeepapart]")
+{
+	std::ifstream file(std::string(JUNCTION_TOPOLOGY_DIR) + "/../corpus/out/psg197/pins.txt");
+	if (!file) {
+		WARN("no pins yet");
+		return;
+	}
+	std::stringstream buffer;
+	buffer << file.rdbuf();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(ReadExtractorFileForDraw("topology.txt"), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant structure = LoadPlanarStructureVariant(topology, ReadExtractorFileForDraw("structure.txt"), spec, report, &error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant shaped;
+	std::string why;
+	REQUIRE(LoadPlanarShapeVariant(topology, structure, ReadExtractorFileForDraw("shape.txt"), shaped, why));
+	REQUIRE(PlacePlanarShapeFlex(shaped, why));
+	REQUIRE(RefinePlanarShapeCells(shaped, why));
+
+	const PlanarDrawPins pins = ParsePlanarDrawPins(shaped, buffer.str());
+	WARN(fmt::format("pins {}, unmatched {}", pins.pins.size(), pins.unmatched.size()));
+	for (size_t i = 0; i < std::min<size_t>(10, pins.unmatched.size()); i++) WARN(fmt::format("unmatched {}: {}", i, pins.unmatched[i]));
+	const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &pins});
+	std::map<std::string, std::pair<size_t, double>> families;
+	for (const auto &[tag, slack] : r.stretched) {
+		auto &f = families[tag.substr(0, tag.find(' '))];
+		f.first++;
+		f.second += slack;
+	}
+	WARN(fmt::format("pins 197: status {}, total slack {:.3f}, stretched {}, {:.0f} ms", r.status, r.slack, r.stretched.size(), r.ms));
+	for (const auto &[family, f] : families) WARN(fmt::format("pins 197 family {}: count {}, sum {:.3f}", family, f.first, f.second));
+	for (size_t i = 0; i < std::min<size_t>(40, r.stretched.size()); i++) WARN(fmt::format("pins 197 stretched {}: {} {:.3f}", i, r.stretched[i].first, r.stretched[i].second));
+}
+
 TEST_CASE("planar draw: PSG 197 elastic, whole", "[.][planarkeepapart]")
 {
 	const PlanarShapeVariant shaped = Shaped197();

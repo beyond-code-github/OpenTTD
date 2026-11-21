@@ -18,11 +18,14 @@
 #include "planar_model.h"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <functional>
 #include <map>
 #include <set>
+#include <sstream>
+#include <string>
 #include <utility>
 
 #include "../../safeguards.h"
@@ -149,6 +152,50 @@ struct Length {
 
 } // namespace
 
+PlanarDrawPins ParsePlanarDrawPins(const PlanarShapeVariant &v, std::string_view text)
+{
+	PlanarDrawPins pins;
+	const PlanarTrackMap &map = v.structure.map;
+	const auto track_of = [&](const std::string &name) {
+		for (size_t t = 0; t < map.tracks.size(); t++) {
+			if (map.tracks[t].name == name) return static_cast<uint32_t>(t);
+		}
+		return UINT32_MAX;
+	};
+	size_t begin = 0;
+	while (begin <= text.size()) {
+		size_t end = text.find('\n', begin);
+		if (end == std::string_view::npos) end = text.size();
+		std::string line(text.substr(begin, end - begin));
+		begin = end + 1;
+		line = line.substr(0, line.find('#'));
+		std::istringstream words(line);
+		std::vector<std::string> w;
+		for (std::string word; words >> word;) w.push_back(word);
+		if (w.empty()) continue;
+		const auto number = [](const std::string &word, int &out) {
+			const char *last = word.data() + word.size();
+			const auto [ptr, ec] = std::from_chars(word.data(), last, out);
+			return ec == std::errc() && ptr == last;
+		};
+		std::array<int, 2> at{};
+		if (w[0] == "end" && w.size() == 5 && (w[2] == "start" || w[2] == "end") && number(w[3], at[0]) && number(w[4], at[1]) && track_of(w[1]) != UINT32_MAX) {
+			pins.pins.push_back({track_of(w[1]), false, w[2] == "start", at});
+			continue;
+		}
+		if (w[0] == "cross" && w.size() == 5 && number(w[3], at[0]) && number(w[4], at[1]) && track_of(w[1]) != UINT32_MAX && track_of(w[2]) != UINT32_MAX) {
+			const uint32_t a = track_of(w[1]), b = track_of(w[2]);
+			const auto it = std::ranges::find_if(map.crossings, [&](const auto &c) { return (c.a == a && c.b == b) || (c.a == b && c.b == a); });
+			if (it != map.crossings.end()) {
+				pins.pins.push_back({static_cast<uint32_t>(it - map.crossings.begin()), true, false, at});
+				continue;
+			}
+		}
+		pins.unmatched.push_back(line);
+	}
+	return pins;
+}
+
 PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds, const PlanarDrawOptions &options)
 {
 	const auto start = std::chrono::steady_clock::now();
@@ -185,7 +232,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
 		if (options.elastic) {
 			const std::string family = tag.substr(0, tag.find(' '));
-			if (family != "piece" && family != "box") {
+			if (family != "piece" && family != "box" && family != "pin") {
 				if (std::isfinite(lower)) {
 					merged.emplace_back(milp.AddVariable(0, JunctionMilp::INF, 1, false), 1.0);
 					slack_tag.push_back(tag);
@@ -233,6 +280,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (const std::vector<uint32_t> &g : groups) {
 			for (const uint32_t i : g) free_piece[i] = true;
 		}
+		/* D412: a port line with no event before its node is that stretch whole, and its length may be 0 (the node point on the box edge): its pieces are free, and no flex group of it keeps a least length. */
+		const bool port_stretch = map.expanded.lines[t].from.port != map.expanded.lines[t].to.port && map.events[t].empty();
+		if (port_stretch) free_piece.assign(pieces.size(), true);
 		may_zero[t] = free_piece;
 		std::set<uint32_t> middles(flex.begin(), flex.end());
 		for (size_t i = 0; i < pieces.size(); i++) {
@@ -241,6 +291,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			length[t].push_back({var(lower, COORD_MAX, options.tidy && !options.elastic ? 1 : 0), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
+			if (port_stretch) break;
 			Terms sum;
 			for (const uint32_t i : g) {
 				if (!middles.contains(i)) sum.emplace_back(length[t][i].variable, length[t][i].coefficient);
@@ -374,6 +425,24 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (int axis = 0; axis < 2; axis++) {
 			cross_point[c][axis] = var(0, COORD_MAX, 0);
 			eq({{cross_point[c][axis], 1}, {point[t][piece_of[c][0]][axis], -1}, {param[c][0], -step[axis]}}, 0, fmt::format("cross {}", c));
+		}
+	}
+	/* Pins (D393): every pinned point is within the window of its position plus one common shift. */
+	if (options.pins != nullptr && !options.pins->pins.empty()) {
+		const std::array<uint32_t, 2> shift = {var(-COORD_MAX, COORD_MAX, 0), var(-COORD_MAX, COORD_MAX, 0)};
+		for (const PlanarDrawPins::Pin &pin : options.pins->pins) {
+			std::array<uint32_t, 2> p;
+			std::string tag;
+			if (pin.cross) {
+				if (pin.track >= nc) return unsupported("a pin names a crossing the map lacks");
+				p = cross_point[pin.track];
+				tag = fmt::format("pin cross {} {}", map.tracks[map.crossings[pin.track].a].name, map.tracks[map.crossings[pin.track].b].name);
+			} else {
+				if (pin.track >= nt) return unsupported("a pin names a track the map lacks");
+				p = pin.start ? point[pin.track].front() : point[pin.track].back();
+				tag = fmt::format("pin end {} {}", map.tracks[pin.track].name, pin.start ? "start" : "end");
+			}
+			for (int axis = 0; axis < 2; axis++) row({{p[axis], 1}, {shift[axis], -1}}, pin.at[axis] - options.pins->window, pin.at[axis] + options.pins->window, tag);
 		}
 	}
 	/* Crossings on one piece of one track keep their event order. */
