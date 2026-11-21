@@ -66,6 +66,7 @@ struct PlanarDrawOptions {
 	bool sep_extremal = false; ///< With pairwise and a fixed side (a measurement): one row per pair, between the endpoints whose projections on the side's axis can bind (fixed headings, lengths >= 0), instead of all four endpoint pairs; exact.
 	bool bays = true; ///< On by default since D420 (agrees with V's PSG 197); the bay rows (SPEC-slots-lengths §8.1, D420): on every non-prio route path, the travel from its last topology split or port to each topology merge is at least rules.bay.
 	bool curves = true; ///< On by default since D420 (agrees with V's PSG 197); the curve spacing rows (SPEC-slots-lengths §8.1, §8.2, D420): Shape's bends along every route path keep curve_same, curve_opposite and curve_window; flex and step inserts count as travel, not bends (§10.3).
+	bool corridor = false; ///< The corridor family (D421): beside tracks (copies, rows) as offset curves of their parent chain one lane to their side, with an exact one-lane opening and closing step at their nodes.
 	bool pairwise_flex_only = false; ///< With pairwise (a D416 count probe): in the faces that get separation rows, separate only pairs where at least one wall is in a flex group (a flex middle piece or the piece just before or after it on its track); other pairs get no row. A relaxation, for counting and timing.
 	std::vector<uint32_t> only_faces; ///< Write the face rows (landings and clearance per cell, or in pairwise mode clearance or separation) only for these faces (map face indices); empty is every face. A measurement aid.
 	bool flex_sides = true; ///< With clearance: rows by sides (D407): flex inserts join their side and are no target, and each vertex keeps 0 from its cell's dummies (D408); false is the rule before D407 (sides by equal headings only, no dummy rows).
@@ -89,6 +90,22 @@ struct PlanarDrawOptions {
 	const std::vector<std::vector<std::array<int, 2>>> *start_points = nullptr; ///< A measurement: a MIP start of every track point from this drawing (as `PlanarDrawResult::points`).
 	std::string export_path; ///< A measurement (D418): when not empty, the built program is written there as JSON before solving (variables, rows with their tags, the objective), for offline solvers.
 };
+
+/**
+ * The opening step of a beside track (D421): from its from-node's point to its first point, an exact one-lane step.
+ * @param heading The beside track's first piece heading (any integer, taken mod 8).
+ * @param side Its side relative to its parent chain, +1 right of travel, -1 left.
+ * @return 2 * PlanarModel::STEP[(heading + side) mod 8], in half tiles.
+ */
+std::array<int, 2> PlanarBesideOpening(int heading, int side);
+
+/**
+ * The closing step of a beside track (D421): from its last point to its to-node's point, an exact one-lane step.
+ * @param heading The beside track's last piece heading (any integer, taken mod 8).
+ * @param side Its side relative to its parent chain, +1 right of travel, -1 left.
+ * @return 2 * PlanarModel::STEP[(heading - side) mod 8], in half tiles.
+ */
+std::array<int, 2> PlanarBesideClosing(int heading, int side);
 
 /** One clearance row of a cell (SPEC-shape §8.8): the vertex after wall `vertex` keeps `spacing` from the line of wall `wall`, on the cell's side. */
 struct PlanarClearRow {
@@ -127,9 +144,9 @@ std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall
  * Draw Shape's shape on the half-tile grid with every Slots rule of the families below kept, as one integer program (E5-1).
  * A test oracle (D388 (b)): an infeasible result names the conflicting rows, which names a missing upstream promise.
  * Units are half tiles; a heading h moves STEP[h mod 8] per unit (an axis unit (0, 1) or (1, 0), a diagonal unit (1, 1)). Every row has a tag kept beside the program.
- * Families: points and pieces (`piece`, `flex`), the box (`box`), ports (`port <side>`), nodes (`node`), crossings (`cross`, `order`), spans (`deck`, `end`, `span`), dummies with their landings (`land <dummy>`) and clearance per convex cell (`clear <cell> <vertex> <wall>`; a structure's span pieces and dummies are no wall, a wall is no target for a vertex on its own straight side, a vertex between two non-track walls has no row, a corner between two crossing tracks is the crossing point, and a vertex inside a span piece has no row), the last three only with `options.clearance` (the clearance rows also only with `options.clear_rows`).
+ * Families: points and pieces (`piece`, `flex`), the box (`box`), ports (`port <side>`), nodes (`node`), crossings (`cross`, `order`), spans (`deck`, `end`, `span`), dummies with their landings (`land <dummy>`) and clearance per convex cell (`clear <cell> <vertex> <wall>`; a structure's span pieces and dummies are no wall, a wall is no target for a vertex on its own straight side, a vertex between two non-track walls has no row, a corner between two crossing tracks is the crossing point, and a vertex inside a span piece has no row), the last three only with `options.clearance` (the clearance rows also only with `options.clear_rows`), and corridors (`corridor`, option).
  * With `options.pairwise` (a D406 probe) there are no dummies or landings: a face convex without dummies keeps the clearance rows, every other face separates its non-incident wall pairs (`sep <face> <i> <j>`, one binary per axis side, `sepdir` picks one side of the pair); with `options.sides_from` each pair takes the side that drawing keeps best as plain rows, no binaries.
- * Not in this step: grid parity (D382), beside tracks as offset curves, node legs and the trident binary, coverage; no clearance against a box edge.
+ * Not in this step: grid parity (D382), node legs and the trident binary, coverage; no clearance against a box edge.
  * @param v The shaped variant.
  * @param seconds The solver's time limit.
  * @param options What to write.

@@ -258,6 +258,67 @@ TEST_CASE("planar draw: elastic mode names a short curve", "[junction][planar][p
 	CHECK(std::ranges::any_of(result.stretched, [](const auto &s) { return s.first.starts_with("curve "); }));
 }
 
+TEST_CASE("planar draw: a prio row runs one lane beside its parent (corridor)", "[junction][planar][planardraw]")
+{
+	for (const uint32_t lanes : {1U, 2U}) {
+		const DrawCase c = ShapeFirst(PlanarTText(lanes), 1);
+		const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .corridor = true});
+		std::string conflicts;
+		for (const std::string &tag : r.conflict) conflicts += tag + "; ";
+		INFO("T" << lanes << " status " << r.status << " conflict " << conflicts);
+		REQUIRE(r.feasible);
+		const PlanarTrackMap &map = c.v.structure.map;
+		for (uint32_t b = 0; b < map.tracks.size(); b++) {
+			if (map.part_of[b] != UINT32_MAX) continue;
+			std::vector<uint32_t> chain;
+			REQUIRE(ParentChain(map, c.v.structure.sites, b, chain));
+			const int s = map.Side(b, 0, chain[0], 0);
+			REQUIRE(s != 0);
+			INFO("T" << lanes << " beside " << map.tracks[b].name);
+			const std::vector<std::array<int, 2>> &pb = r.points[b];
+			const std::vector<int> &pieces = c.v.tracks[b].pieces;
+			const int h0 = ((pieces.front() % 8) + 8) % 8, hn = ((pieces.back() % 8) + 8) % 8;
+			const std::array<int, 2> open = PlanarBesideOpening(h0, s), close = PlanarBesideClosing(hn, s);
+			const std::array<int, 2> first = r.points[chain.front()].front();
+			CHECK(pb.front() == std::array<int, 2>{first[0] + open[0], first[1] + open[1]});
+			const std::array<int, 2> last = r.points[chain.back()].back();
+			CHECK(last == std::array<int, 2>{pb.back()[0] + close[0], pb.back()[1] + close[1]});
+			std::vector<std::array<int, 2>> cp;
+			for (const uint32_t t : chain) cp.insert(cp.end(), r.points[t].begin() + (cp.empty() ? 0 : 1), r.points[t].end());
+			REQUIRE(cp.size() == pb.size());
+			for (size_t k = 1; k + 1 < pb.size(); k++) {
+				for (const size_t piece : {k - 1, k}) {
+					const std::array<int, 2> n = PlanarModel::STEP[(((pieces[piece] % 8) + 8) % 8 + 2) % 8];
+					CHECK((pb[k][0] - cp[k][0]) * n[0] + (pb[k][1] - cp[k][1]) * n[1] == 2 * s);
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("planar draw: the opening and closing steps are one lane", "[junction][planar][planardraw]")
+{
+	CHECK(PlanarBesideOpening(2, 1) == std::array<int, 2>{2, 2});
+	CHECK(PlanarBesideOpening(5, -1) == std::array<int, 2>{0, 2});
+	for (int h = 0; h < 8; h++) {
+		for (const int s : {1, -1}) {
+			INFO("heading " << h << " side " << s);
+			const std::array<int, 2> n = PlanarModel::STEP[(h + 2) % 8];
+			const std::array<int, 2> open = PlanarBesideOpening(h, s), close = PlanarBesideClosing(h, s);
+			CHECK(open[0] * n[0] + open[1] * n[1] == 2 * s);
+			CHECK(close[0] * n[0] + close[1] * n[1] == -2 * s);
+			for (const std::array<int, 2> &v : {open, close}) {
+				int heading = -1;
+				for (int d = 0; d < 8; d++) {
+					if (v[0] == 2 * PlanarModel::STEP[d][0] && v[1] == 2 * PlanarModel::STEP[d][1]) heading = d;
+				}
+				REQUIRE(heading >= 0);
+				CHECK(std::abs(PlanarModel::Rot(h, heading)) == 1);
+			}
+		}
+	}
+}
+
 TEST_CASE("planar draw: the two-lane T's best variant is drawable", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(2), 16);
