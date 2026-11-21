@@ -1075,10 +1075,52 @@ std::vector<std::string> CheckPlanarShapeSpines(const PlanarShapeVariant &v)
 	return o.out;
 }
 
-bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
+bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why, const std::vector<std::vector<std::array<int, 2>>> *landing_from)
 {
 	v.dummies.clear();
 	v.nonmonotone_dummies = 0;
+	v.landing_fallbacks = 0;
+	std::vector<std::array<double, 2>> dummy_start, dummy_hit; // Per dummy, its start vertex and where its ray first hit in landing_from.
+	double box[4] = {0, 0, 0, 0}; // min x, min y, max x, max y of landing_from.
+	if (landing_from != nullptr) {
+		bool first_point = true;
+		for (const auto &line : *landing_from) {
+			for (const std::array<int, 2> &pt : line) {
+				if (first_point) {
+					box[0] = box[2] = pt[0];
+					box[1] = box[3] = pt[1];
+					first_point = false;
+				}
+				box[0] = std::min<double>(box[0], pt[0]);
+				box[1] = std::min<double>(box[1], pt[1]);
+				box[2] = std::max<double>(box[2], pt[0]);
+				box[3] = std::max<double>(box[3], pt[1]);
+			}
+		}
+	}
+	/* The segment a wall is in landing_from; false for a wall it has no points for. */
+	const auto segment = [&](const Wall &x, std::array<double, 2> &a, std::array<double, 2> &b) {
+		if (x.track == PLANAR_DUMMY_TRACK) {
+			if (x.piece >= dummy_hit.size()) return false;
+			a = dummy_start[x.piece];
+			b = dummy_hit[x.piece];
+			return true;
+		}
+		if (x.track == UINT32_MAX) {
+			switch (x.piece % 4) {
+				case 0: a = {box[0], box[1]}; b = {box[2], box[1]}; break;
+				case 1: a = {box[2], box[1]}; b = {box[2], box[3]}; break;
+				case 2: a = {box[0], box[3]}; b = {box[2], box[3]}; break;
+				default: a = {box[0], box[1]}; b = {box[0], box[3]}; break;
+			}
+			return true;
+		}
+		if (x.track >= landing_from->size() || x.piece + 1 >= (*landing_from)[x.track].size()) return false;
+		const std::array<int, 2> &p0 = (*landing_from)[x.track][x.piece], &p1 = (*landing_from)[x.track][x.piece + 1];
+		a = {static_cast<double>(p0[0]), static_cast<double>(p0[1])};
+		b = {static_cast<double>(p1[0]), static_cast<double>(p1[1])};
+		return true;
+	};
 	const Oracle o(v);
 	const auto text = [&](const Wall &w) {
 		static const char *const SIDES[4] = {"N", "E", "S", "W"};
@@ -1118,49 +1160,96 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 			bool found = false, wide = false, monotone = false;
 			PlanarShapeDummy best{};
 			std::vector<std::vector<Wall>> best_cells;
-			for (const int d : {h, h - 3, h - 1, h - 2}) {
-				const Wall *land = nullptr;
-				size_t land_k = 0;
-				for (size_t k = 2; k < n && land == nullptr; k++) {
-					const Wall &x = w[(s + k) % n];
-					const int c = Norm(x.heading - d);
-					if (c >= -3 && c <= -1) {
-						land = &x;
-						land_k = k;
+			std::array<double, 2> corner{}, best_hit{};
+			if (landing_from != nullptr) {
+				const std::array<int, 2> &c = (*landing_from)[in.track][std::max(in.piece, out.piece)];
+				corner = {static_cast<double>(c[0]), static_cast<double>(c[1])};
+			}
+			/* The first wall of the cell, k = 2 .. n - 1, that the ray from the corner along d meets in landing_from. */
+			const auto geometric_hit = [&](int d, std::array<double, 2> &hit) {
+				const std::array<int, 2> &dir = PlanarModel::STEP[((d % 8) + 8) % 8];
+				const double dx = dir[0], dy = dir[1];
+				size_t best_k = SIZE_MAX;
+				double best_t = 0;
+				for (size_t k = 2; k < n; k++) {
+					std::array<double, 2> a, b;
+					if (!segment(w[(s + k) % n], a, b)) continue;
+					const double ex = b[0] - a[0], ey = b[1] - a[1];
+					const double denom = dx * ey - dy * ex;
+					if (denom == 0) continue;
+					const double ax = a[0] - corner[0], ay = a[1] - corner[1];
+					const double t = (ax * ey - ay * ex) / denom;
+					const double u = (ax * dy - ay * dx) / denom;
+					if (t <= 1e-9 || u < -1e-9 || u > 1 + 1e-9) continue;
+					if (best_k == SIZE_MAX || t < best_t) {
+						best_k = k;
+						best_t = t;
 					}
 				}
-				if (land == nullptr) continue;
-				/* Monotone (D405): no wall from the corner's outgoing wall to the landing wall moves back along the ray, so the landing is ahead of the corner for every choice of lengths. */
-				bool is_monotone = true;
-				for (size_t j = 1; j <= land_k; j++) {
-					const std::array<int, 2> &a = PlanarModel::STEP[((w[(s + j) % n].heading % 8) + 8) % 8], &b = PlanarModel::STEP[((d % 8) + 8) % 8];
-					if (a[0] * b[0] + a[1] * b[1] < 0) is_monotone = false;
-				}
-				const PlanarShapeDummy dummy{static_cast<uint32_t>(face.face), in.track, std::min(in.piece, out.piece), ((d % 8) + 8) % 8, land->track, land->piece};
-				std::vector<std::vector<Wall>> trial = {w};
-				std::string reason;
-				if (!SplitCell(trial, dummy, static_cast<uint32_t>(v.dummies.size()), reason)) continue;
-				/* The corner is the end of the incoming wall in the second cell and the dummy's end in the first. */
-				if (trial[0].back().turn > 0 || trial[1][trial[1].size() - 2].turn > 0) continue;
-				/* Every corner at a dummy end, the landing included, must be convex: a reflex corner there is no bend, so no later dummy could resolve it (D397). */
-				bool reflex = false;
-				for (const std::vector<Wall> &cell : trial) {
-					for (size_t i = 0; i < cell.size(); i++) {
-						const Wall &a = cell[i], &b = cell[(i + 1) % cell.size()];
-						const bool at_dummy = a.track == PLANAR_DUMMY_TRACK || b.track == PLANAR_DUMMY_TRACK;
-						if (at_dummy && a.turn > 0) reflex = true;
+				hit = {corner[0] + best_t * dx, corner[1] + best_t * dy};
+				if (best_k == SIZE_MAX) hit = corner;
+				return best_k;
+			};
+			bool filter = landing_from != nullptr;
+			for (;;) {
+				for (const int d : {h, h - 3, h - 1, h - 2}) {
+					const Wall *land = nullptr;
+					size_t land_k = 0;
+					for (size_t k = 2; k < n && land == nullptr; k++) {
+						const Wall &x = w[(s + k) % n];
+						const int c = Norm(x.heading - d);
+						if (c >= -3 && c <= -1) {
+							land = &x;
+							land_k = k;
+						}
 					}
+					if (land == nullptr) continue;
+					std::array<double, 2> hit{};
+					if (landing_from != nullptr) {
+						const size_t hit_k = geometric_hit(d, hit);
+						if (filter) {
+							if (hit_k == SIZE_MAX) continue;
+							const Wall &g = w[(s + hit_k) % n];
+							if (g.track != land->track || g.piece != land->piece) continue;
+						}
+					}
+					/* Monotone (D405): no wall from the corner's outgoing wall to the landing wall moves back along the ray, so the landing is ahead of the corner for every choice of lengths. */
+					bool is_monotone = true;
+					for (size_t j = 1; j <= land_k; j++) {
+						const std::array<int, 2> &a = PlanarModel::STEP[((w[(s + j) % n].heading % 8) + 8) % 8], &b = PlanarModel::STEP[((d % 8) + 8) % 8];
+						if (a[0] * b[0] + a[1] * b[1] < 0) is_monotone = false;
+					}
+					const PlanarShapeDummy dummy{static_cast<uint32_t>(face.face), in.track, std::min(in.piece, out.piece), ((d % 8) + 8) % 8, land->track, land->piece};
+					std::vector<std::vector<Wall>> trial = {w};
+					std::string reason;
+					if (!SplitCell(trial, dummy, static_cast<uint32_t>(v.dummies.size()), reason)) continue;
+					/* The corner is the end of the incoming wall in the second cell and the dummy's end in the first. */
+					if (trial[0].back().turn > 0 || trial[1][trial[1].size() - 2].turn > 0) continue;
+					/* Every corner at a dummy end, the landing included, must be convex: a reflex corner there is no bend, so no later dummy could resolve it (D397). */
+					bool reflex = false;
+					for (const std::vector<Wall> &cell : trial) {
+						for (size_t i = 0; i < cell.size(); i++) {
+							const Wall &a = cell[i], &b = cell[(i + 1) % cell.size()];
+							const bool at_dummy = a.track == PLANAR_DUMMY_TRACK || b.track == PLANAR_DUMMY_TRACK;
+							if (at_dummy && a.turn > 0) reflex = true;
+						}
+					}
+					if (reflex) continue;
+					const bool is_wide = trial[0].size() >= 4 && trial[1].size() >= 4;
+					if (!found || (is_monotone && !monotone) || (is_monotone == monotone && is_wide && !wide)) {
+						found = true;
+						monotone = is_monotone;
+						wide = is_wide;
+						best = dummy;
+						best_hit = hit;
+						best_cells = std::move(trial);
+					}
+					if (monotone && wide) break;
 				}
-				if (reflex) continue;
-				const bool is_wide = trial[0].size() >= 4 && trial[1].size() >= 4;
-				if (!found || (is_monotone && !monotone) || (is_monotone == monotone && is_wide && !wide)) {
-					found = true;
-					monotone = is_monotone;
-					wide = is_wide;
-					best = dummy;
-					best_cells = std::move(trial);
-				}
-				if (monotone && wide) break;
+				if (found || !filter) break;
+				/* No candidate's landing agreed with landing_from: the rule's choice. */
+				filter = false;
+				v.landing_fallbacks++;
 			}
 			if (!found) {
 				why = fmt::format("no cells: face {} no dummy resolves {} -> {}", face.face, text(in), text(out));
@@ -1168,6 +1257,8 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 			}
 			if (!monotone) v.nonmonotone_dummies++;
 			v.dummies.push_back(best);
+			dummy_start.push_back(corner);
+			dummy_hit.push_back(best_hit);
 			cells[ci] = std::move(best_cells[0]);
 			cells.push_back(std::move(best_cells[1]));
 		}

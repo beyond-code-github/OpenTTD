@@ -1323,61 +1323,86 @@ TEST_CASE("planar draw: PSG 197 option A, V's steps as bends", "[.][planarkeepap
 	}
 	WARN(fmt::format("A dummies after {}, nonmonotone {}", shaped.dummies.size(), shaped.nonmonotone_dummies));
 
-	for (const int window : {8, 4, 2}) {
-		PlanarDrawPins pw = pins;
-		pw.window = window;
-		const PlanarDrawResult base = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &pw});
-		WARN(fmt::format("A base W{} elastic: status {}, total slack {:.3f}, stretched rows {}", window, base.status, base.slack, base.stretched.size()));
-		for (const auto &[tag, slack] : base.stretched) WARN(fmt::format("A base W{} row {}: {:.3f}", window, tag, slack));
-		const PlanarDrawResult cells = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &pw});
-		WARN(fmt::format("A cells W{} elastic: status {}, total slack {:.3f}, {:.0f} ms, stretched rows {}", window, cells.status, cells.slack, cells.ms, cells.stretched.size()));
-		std::map<std::string, std::pair<size_t, double>> families;
-		for (const auto &[tag, slack] : cells.stretched) {
-			auto &f = families[tag.substr(0, tag.find(' '))];
-			f.first++;
-			f.second += slack;
-		}
-		for (const auto &[family, f] : families) WARN(fmt::format("A cells W{} family {}: count {}, sum {:.3f}", window, family, f.first, f.second));
-		for (size_t i = 0; i < cells.stretched.size() && i < 20; i++) WARN(fmt::format("A cells W{} top {}: {} {:.3f}", window, i + 1, cells.stretched[i].first, cells.stretched[i].second));
-		if (window == 8) {
-			/* Whether dummy d starts at a step bend: its piece is the flank before the insert or the insert itself. */
-			const auto step_dummy = [&](uint32_t d) {
-				const PlanarShapeDummy &dm = shaped.dummies[d];
-				return dm.track < shaped.tracks.size() && std::ranges::any_of(shaped.tracks[dm.track].steps, [&](uint32_t m) { return dm.piece + 1 == m || dm.piece == m; });
-			};
-			const std::vector<std::vector<PlanarCellWall>> cell_walls = PlanarShapeCellWalls(shaped);
-			std::map<std::string, std::pair<size_t, double>> classes;
+	const auto run_cells = [&](const PlanarShapeVariant &shaped, const char *label) {
+		for (const int window : {8, 4, 2}) {
+			PlanarDrawPins pw = pins;
+			pw.window = window;
+			const PlanarDrawResult base = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &pw});
+			WARN(fmt::format("{} base W{} elastic: status {}, total slack {:.3f}, stretched rows {}", label, window, base.status, base.slack, base.stretched.size()));
+			for (const auto &[tag, slack] : base.stretched) WARN(fmt::format("{} base W{} row {}: {:.3f}", label, window, tag, slack));
+			const PlanarDrawResult cells = CheckPlanarDrawable(shaped, 60.0, {.elastic = true, .pins = &pw});
+			WARN(fmt::format("{} cells W{} elastic: status {}, total slack {:.3f}, {:.0f} ms, stretched rows {}", label, window, cells.status, cells.slack, cells.ms, cells.stretched.size()));
+			std::map<std::string, std::pair<size_t, double>> families;
 			for (const auto &[tag, slack] : cells.stretched) {
-				const bool clear = tag.starts_with("clear ");
-				if (!clear && !tag.starts_with("land ")) continue;
-				bool step = false;
-				if (clear) {
-					size_t cell = 0;
-					std::from_chars(tag.data() + 6, tag.data() + tag.size(), cell);
-					if (cell < cell_walls.size()) {
-						for (const PlanarCellWall &w : cell_walls[cell]) {
-							if (w.track == PLANAR_DUMMY_TRACK && w.piece < shaped.dummies.size() && step_dummy(w.piece)) step = true;
+				auto &f = families[tag.substr(0, tag.find(' '))];
+				f.first++;
+				f.second += slack;
+			}
+			for (const auto &[family, f] : families) WARN(fmt::format("{} cells W{} family {}: count {}, sum {:.3f}", label, window, family, f.first, f.second));
+			for (size_t i = 0; i < cells.stretched.size() && i < 20; i++) WARN(fmt::format("{} cells W{} top {}: {} {:.3f}", label, window, i + 1, cells.stretched[i].first, cells.stretched[i].second));
+			if (window == 8) {
+				/* Whether dummy d starts at a step bend: its piece is the flank before the insert or the insert itself. */
+				const auto step_dummy = [&](uint32_t d) {
+					const PlanarShapeDummy &dm = shaped.dummies[d];
+					return dm.track < shaped.tracks.size() && std::ranges::any_of(shaped.tracks[dm.track].steps, [&](uint32_t m) { return dm.piece + 1 == m || dm.piece == m; });
+				};
+				const std::vector<std::vector<PlanarCellWall>> cell_walls = PlanarShapeCellWalls(shaped);
+				std::map<std::string, std::pair<size_t, double>> classes;
+				for (const auto &[tag, slack] : cells.stretched) {
+					const bool clear = tag.starts_with("clear ");
+					if (!clear && !tag.starts_with("land ")) continue;
+					bool step = false;
+					if (clear) {
+						size_t cell = 0;
+						std::from_chars(tag.data() + 6, tag.data() + tag.size(), cell);
+						if (cell < cell_walls.size()) {
+							for (const PlanarCellWall &w : cell_walls[cell]) {
+								if (w.track == PLANAR_DUMMY_TRACK && w.piece < shaped.dummies.size() && step_dummy(w.piece)) step = true;
+							}
 						}
+					} else {
+						size_t d = 0;
+						std::from_chars(tag.data() + 5, tag.data() + tag.size(), d);
+						step = d < shaped.dummies.size() && step_dummy(static_cast<uint32_t>(d));
 					}
-				} else {
-					size_t d = 0;
-					std::from_chars(tag.data() + 5, tag.data() + tag.size(), d);
-					step = d < shaped.dummies.size() && step_dummy(static_cast<uint32_t>(d));
+					auto &c = classes[std::string(clear ? "clear" : "land") + (step ? " step-dummy cell" : " other")];
+					c.first++;
+					c.second += slack;
 				}
-				auto &c = classes[std::string(clear ? "clear" : "land") + (step ? " step-dummy cell" : " other")];
-				c.first++;
-				c.second += slack;
+				for (const auto &[name, c] : classes) WARN(fmt::format("{} cells W8 class {}: count {}, sum {:.3f}", label, name, c.first, c.second));
 			}
-			for (const auto &[name, c] : classes) WARN(fmt::format("A cells W8 class {}: count {}, sum {:.3f}", name, c.first, c.second));
-		}
-		if (window == 8) {
-			const PlanarDrawResult ip = CheckPlanarDrawable(shaped, 60.0, {.pins = &pw});
-			WARN(fmt::format("A cells W8 integer: status {}, {:.0f} ms", ip.status, ip.ms));
-			if (ip.status == "Infeasible") {
-				for (size_t i = 0; i < ip.conflict.size() && i < 30; i++) WARN(fmt::format("A cells W8 conflict {}: {}", i + 1, ip.conflict[i]));
+			if (window == 8) {
+				const PlanarDrawResult ip = CheckPlanarDrawable(shaped, 60.0, {.pins = &pw});
+				WARN(fmt::format("{} cells W8 integer: status {}, {:.0f} ms", label, ip.status, ip.ms));
+				if (ip.status == "Infeasible") {
+					for (size_t i = 0; i < ip.conflict.size() && i < 30; i++) WARN(fmt::format("{} cells W8 conflict {}: {}", label, i + 1, ip.conflict[i]));
+				}
 			}
 		}
+	};
+	run_cells(shaped, "A");
+
+	/* Refinement again with its landings taken from the drawing of the base run at window 2 (slack 0). */
+	PlanarShapeVariant geo = shaped;
+	{
+		PlanarDrawPins p2 = pins;
+		p2.window = 2;
+		const PlanarDrawResult ref = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &p2});
+		WARN(fmt::format("A-geo reference: status {}, total slack {:.3f}", ref.status, ref.slack));
+		std::string geo_why;
+		if (!RefinePlanarShapeCells(geo, geo_why, &ref.points)) {
+			WARN(fmt::format("A-geo cells not refined: {}", geo_why));
+			return;
+		}
+		size_t differ = 0;
+		for (size_t i = 0; i < geo.dummies.size() && i < shaped.dummies.size(); i++) {
+			const PlanarShapeDummy &x = geo.dummies[i], &y = shaped.dummies[i];
+			if (std::tie(x.face, x.track, x.piece, x.heading, x.land_track, x.land_piece) != std::tie(y.face, y.track, y.piece, y.heading, y.land_track, y.land_piece)) differ++;
+		}
+		differ += geo.dummies.size() > shaped.dummies.size() ? geo.dummies.size() - shaped.dummies.size() : shaped.dummies.size() - geo.dummies.size();
+		WARN(fmt::format("A-geo dummies {}, nonmonotone {}, landing fallbacks {}, differing from the rule's {}", geo.dummies.size(), geo.nonmonotone_dummies, geo.landing_fallbacks, differ));
 	}
+	run_cells(geo, "A-geo");
 	PlanarDrawPins p8 = d402_pins;
 	p8.window = 8;
 	const PlanarDrawResult plain = CheckPlanarDrawable(d402, 60.0, {.elastic = true, .pins = &p8});

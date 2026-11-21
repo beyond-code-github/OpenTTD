@@ -58,6 +58,7 @@ struct PlanarShapeVariant {
 	std::vector<PlanarShapeStructure> structures; ///< Per structure of Structure's variant, in the same order.
 	std::vector<PlanarShapeDummy> dummies; ///< The dummy edges that make every face's cells convex (H12).
 	int cost; ///< Shape's cost: the turning (sum of |turn| over stretches, D340).
+	uint32_t landing_fallbacks = 0; ///< Corners where no candidate's landing agreed with landing_from (RefinePlanarShapeCells).
 	uint32_t nonmonotone_dummies = 0; ///< The dummies H12b placed with no monotone candidate: their landing may need lengths the drawing program must meet (D405).
 };
 
@@ -110,10 +111,12 @@ std::vector<std::string> CheckPlanarShapeSpines(const PlanarShapeVariant &v);
  * Dummies placed with no monotone candidate are counted in v.nonmonotone_dummies.
  * Faces that do not wind once are skipped (H7 reports them).
  * @param v The variant; its tracks must pass H1. Its dummies are replaced.
+ * With `landing_from` (a drawing of this variant's tracks, `PlanarDrawResult::points`), a candidate heading is taken only when its landing wall is also the wall its ray first hits in that drawing; a corner where no candidate agrees takes the rule's choice and counts in `landing_fallbacks`.
  * @param why Receives the reason on failure ("no cells: ...").
+ * @param landing_from A drawing of the variant's tracks, or null for the rule alone.
  * @return False when a reflex corner is not a bend inside one track, or no candidate resolves it.
  */
-bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why);
+bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why, const std::vector<std::vector<std::array<int, 2>>> *landing_from = nullptr);
 
 /** One wall of a convex cell, walked with the cell on its left. */
 struct PlanarCellWall {
