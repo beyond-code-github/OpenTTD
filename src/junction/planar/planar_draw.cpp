@@ -49,8 +49,19 @@ std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall
 			if (e == k || e == next || insert[e] || cell[e].track == UINT32_MAX) continue;
 			if (side[e] == side[k] || side[e] == side[next]) continue;
 			const int h = cell[e].heading;
-			const int spacing = cell[e].track == PLANAR_DUMMY_TRACK ? 0 : std::max(PlanarModel::RungSpacing(h, cell[k].heading), PlanarModel::RungSpacing(h, cell[next].heading));
-			rows.push_back({static_cast<uint32_t>(k), static_cast<uint32_t>(e), spacing});
+			int spacing = 0;
+			uint32_t room = UINT32_MAX;
+			if (cell[e].track != PLANAR_DUMMY_TRACK) {
+				if (insert[k] != insert[next]) {
+					/* A step of length 0 imposes no spacing (SPEC-shape section 8.10): the insert's heading counts only through the room row. */
+					const size_t flex = insert[k] ? k : next, other = insert[k] ? next : k;
+					spacing = PlanarModel::RungSpacing(h, cell[other].heading);
+					if (PlanarModel::RungSpacing(h, cell[flex].heading) > spacing) room = static_cast<uint32_t>(flex);
+				} else {
+					spacing = std::max(PlanarModel::RungSpacing(h, cell[k].heading), PlanarModel::RungSpacing(h, cell[next].heading));
+				}
+			}
+			rows.push_back({static_cast<uint32_t>(k), static_cast<uint32_t>(e), spacing, room});
 		}
 	}
 	if (pocket) {
@@ -573,7 +584,17 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				terms.emplace_back(vertex[axis], normal[axis]);
 				terms.emplace_back(part[e].a[axis], -normal[axis]);
 			}
+			Terms room_terms;
+			if (r.room != UINT32_MAX) {
+				/* The room row: M * (d - spacing) - length >= 0, so the insert has length only when the vertex keeps more than its base spacing. */
+				room_terms = terms;
+				for (auto &term : room_terms) term.second *= COORD_MAX;
+				const PlanarCellWall &flex = cell[r.room];
+				const Length &len = length[flex.track][flex.piece];
+				room_terms.emplace_back(len.variable, -len.coefficient);
+			}
 			row(std::move(terms), r.spacing, JunctionMilp::INF, fmt::format("clear {} {} {}", c, k, e));
+			if (r.room != UINT32_MAX) row(std::move(room_terms), COORD_MAX * r.spacing, JunctionMilp::INF, fmt::format("room {} {} {}", c, k, e));
 		}
 		for (const PlanarAlongRow &r : along) {
 			std::array<uint32_t, 2> vertex, anchor;

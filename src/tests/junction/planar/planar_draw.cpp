@@ -356,6 +356,80 @@ TEST_CASE("planar draw: PSG 197 by sides, every face alone and whole", "[.][plan
 	WARN(fmt::format("FS 197 faces: feasible {}, infeasible {}, undecided {}, skipped {}; whole: {} in {:.0f} ms", feasible, infeasible, undecided, skipped, whole.status, whole.ms));
 }
 
+TEST_CASE("planar draw: PSG 197 zero-length steps, faces and whole", "[.][planarkeepapart]")
+{
+	const PlanarShapeVariant shaped = Shaped197();
+	const auto begin = std::chrono::steady_clock::now();
+	size_t feasible = 0, infeasible = 0, undecided = 0, skipped = 0;
+	std::vector<uint32_t> bad;
+	for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(shaped)) {
+		if (std::chrono::steady_clock::now() - begin > std::chrono::minutes(15)) {
+			skipped++;
+			continue;
+		}
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 15.0, {.only_faces = {f.face}, .tidy = false});
+		if (r.feasible) {
+			feasible++;
+			continue;
+		}
+		(r.status == "Infeasible" ? infeasible : undecided)++;
+		bad.push_back(f.face);
+		WARN(fmt::format("FSf face {}: status {}, {:.0f} ms", f.face, r.status, r.ms));
+	}
+	if (skipped > 0) WARN(fmt::format("FSf stopped after 15 min: {} faces skipped", skipped));
+	const PlanarDrawResult whole = CheckPlanarDrawable(shaped, 60.0, {.tidy = false});
+	WARN(fmt::format("FSf 197 faces: feasible {}, infeasible {}, undecided {}, skipped {}; whole: {} in {:.0f} ms", feasible, infeasible, undecided, skipped, whole.status, whole.ms));
+	for (const uint32_t face : bad) {
+		const PlanarDrawResult e = CheckPlanarDrawable(shaped, 15.0, {.only_faces = {face}, .elastic = true});
+		WARN(fmt::format("FSf elastic face {}: status {}, total slack {}", face, e.status, e.slack));
+		for (size_t i = 0; i < std::min<size_t>(15, e.stretched.size()); i++) WARN(fmt::format("FSf elastic face {} stretched {}: {} {}", face, i, e.stretched[i].first, e.stretched[i].second));
+	}
+	if (!whole.feasible) {
+		const PlanarDrawResult e = CheckPlanarDrawable(shaped, 60.0, {.elastic = true});
+		WARN(fmt::format("FSf elastic whole: status {}, total slack {}", e.status, e.slack));
+		std::map<std::string, std::pair<size_t, double>> families;
+		for (const auto &[tag, amount] : e.stretched) {
+			auto &f = families[tag.substr(0, tag.find(' '))];
+			f.first++;
+			f.second += amount;
+		}
+		for (const auto &[family, cs] : families) WARN(fmt::format("FSf elastic whole family {}: {} rows, slack {}", family, cs.first, cs.second));
+		for (size_t i = 0; i < std::min<size_t>(40, e.stretched.size()); i++) WARN(fmt::format("FSf elastic whole stretched {}: {} {}", i, e.stretched[i].first, e.stretched[i].second));
+	}
+}
+
+/** The hand cell of the zero-length step test: an insert between two corners, a closing wall each side. */
+static const std::vector<PlanarCellWall> ZERO_CELL = {{0, 0, 6}, {1, 0, 3}, {1, 1, 2}, {1, 2, 3}, {2, 0, 2}, {UINT32_MAX, 1, 0}};
+static const std::vector<bool> ZERO_INSERT = {false, false, true, false, false, false};
+
+TEST_CASE("planar draw: a step of length 0 imposes no spacing", "[junction][planar][planardraw]")
+{
+	constexpr uint32_t N = UINT32_MAX;
+	using Row = std::tuple<uint32_t, uint32_t, int, uint32_t>;
+	std::vector<Row> got;
+	const std::vector<PlanarClearRow> rows = PlanarCellClearRows(ZERO_CELL, ZERO_INSERT);
+	for (const PlanarClearRow &r : rows) got.emplace_back(r.vertex, r.wall, r.spacing, r.room);
+	std::ranges::sort(got);
+	const std::vector<Row> want = {{0, 4, 2, N}, {1, 0, 1, 2}, {1, 4, 1, 2}, {2, 0, 1, 2}, {2, 4, 1, 2}, {3, 0, 2, N}, {4, 0, 2, N}, {4, 1, 2, N}, {4, 3, 2, N}, {5, 1, 2, N}, {5, 3, 2, N}, {5, 4, 2, N}};
+	CHECK(got == want);
+	constexpr int M = 4096;
+	for (const int L : {0, 2}) {
+		const std::array<std::array<int, 2>, 6> V = {{{10, 10}, {11, 11}, {11 + L, 11}, {12 + L, 12}, {20, 12}, {20, 10}}};
+		std::vector<std::pair<uint32_t, uint32_t>> room_fails;
+		for (const PlanarClearRow &r : rows) {
+			const std::array<int, 2> from = V[(r.wall + 5) % 6];
+			const std::array<int, 2> normal = PlanarModel::STEP[(ZERO_CELL[r.wall].heading + 6) % 8];
+			const int d = (V[r.vertex][0] - from[0]) * normal[0] + (V[r.vertex][1] - from[1]) * normal[1];
+			INFO("L " << L << " row " << r.vertex << " " << r.wall);
+			CHECK(d >= r.spacing);
+			if (r.room != N && M * (d - r.spacing) - L < 0) room_fails.emplace_back(r.vertex, r.wall);
+		}
+		std::ranges::sort(room_fails);
+		if (L == 0) CHECK(room_fails.empty());
+		else CHECK(room_fails == std::vector<std::pair<uint32_t, uint32_t>>{{1, 0}, {1, 4}, {2, 0}, {2, 4}});
+	}
+}
+
 TEST_CASE("planar draw: elastic mode names the stretched rows", "[junction][planar][planardraw]")
 {
 	DrawCase c = ShapeFirst(PlanarTText(1), 1);

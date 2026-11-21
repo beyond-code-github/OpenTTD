@@ -50,6 +50,7 @@ struct PlanarClearRow {
 	uint32_t vertex; ///< The vertex: the corner after this wall in the cell's walk.
 	uint32_t wall; ///< The wall whose line it keeps from.
 	int spacing; ///< The least distance along the wall's left normal (`RungSpacing` units); 0 for a dummy.
+	uint32_t room = UINT32_MAX; ///< A flex insert at this vertex whose heading needs more spacing than `spacing` (SPEC-shape §8.10): its length must be 0 unless the vertex keeps more than `spacing`; UINT32_MAX for none.
 };
 
 /** An along row of a cell (SPEC-shape §8.9): Dot(V[vertex] - V[anchor], STEP[heading]) >= spacing, where V[k] is the corner after wall k. */
@@ -67,6 +68,7 @@ struct PlanarAlongRow {
  * a track wall with spacing max(RungSpacing(h_e, h_k), RungSpacing(h_e, h_k+1)), a dummy with spacing 0. A vertex between two walls that are no track (dummies, box edges) has no rows.
  * @param cell The cell's walls in walk order, the cell on the left.
  * With `pocket` (SPEC-shape §8.9, a probe), for each side S with an insert whose next side R (previous side P) is all track walls and the cell has at least 3 sides, every vertex of R (P) except the corner with S gets an along row past S's last (first) insert, and a vertex with both walls in R (P) drops its line rows against S's walls before the last (after the first) insert.
+ * A step of length 0 imposes no spacing (SPEC-shape §8.10): at a vertex of exactly one insert the spacing is that of the other wall, and a `room` names the insert when its own heading would need more.
  * With `pocket` false the rows are exactly those above and `along` is untouched.
  * @param cell The cell's walls in walk order, the cell on the left.
  * @param insert Per wall, whether it is a flex insert.
