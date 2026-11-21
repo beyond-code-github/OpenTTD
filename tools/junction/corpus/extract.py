@@ -413,7 +413,7 @@ def head(a, b):
 def structure(N, G, Ln, X5, lanes):
     """Tunnels and bridges (a jump of a line; separator = that line, crossers = lines crossing it, in arc order), groups
     (same heading and length, entrance tiles side by side, closed transitively) and the straight leg at every node piece."""
-    S6 = R(); W = N.W; SEG, ARC, X, CS, CP = X5.SEG, X5.ARC, X5.X, G.CS, G.CP; isnode, ninfo, LID = Ln.isnode, Ln.ninfo, Ln.LID
+    S6 = R(); S6.head = {}; W = N.W; SEG, ARC, X, CS, CP = X5.SEG, X5.ARC, X5.X, G.CS, G.CP; isnode, ninfo, LID = Ln.isnode, Ln.ninfo, Ln.LID
     jumps = {}
     for k in SEG:
         for i, sg in enumerate(SEG[k]):
@@ -486,6 +486,7 @@ def structure(N, G, Ln, X5, lanes):
                 if kd == 'split' and p in ports_in: h = HEAD_IN[ports_in[p]]
                 elif kd == 'merge' and p in ports_out: h = HEAD_PORT[ports_out[p]]
                 else: nodes.append((p, kd, None, lgs, ('und', 'no trunk'))); continue
+            S6.head[p] = h
             ok = []; bad = None
             for b in lg_p:
                 if b in isnode:
@@ -624,7 +625,7 @@ def build_text_model(N, G, Ln, P, lanes, S6, X5):
     Empty lines carry no track: an in/out lane that is itself a node piece, an edge between two node pieces, a cascade's
     middle line."""
     T = R(); CS, CP, isnode, LID, RS = G.CS, G.CP, Ln.isnode, Ln.LID, Ln.RS
-    names = line_names(Ln); T.names = names; T.empty = []
+    names = line_names(Ln); T.names = names; T.empty = []; T.heading = {}
     routes = {}                                   # key -> frozenset of route names
     for k, ps in enumerate(Ln.lines): routes[('r', k)] = frozenset(Ln.rname(x) for x in RS[ps[0]])
     nextid = [len(Ln.lines)]
@@ -633,7 +634,11 @@ def build_text_model(N, G, Ln, P, lanes, S6, X5):
     W = N.W
     def edge_line(a, b):
         key = ('e', a, b)
-        if key not in names: newline(key, {Ln.rname(x) for x in RS[a] & RS[b]})
+        if key not in names:
+            newline(key, {Ln.rname(x) for x in RS[a] & RS[b]})
+            sh = shared(a, b)
+            if sh is None: raise ValueError('empty line between %s and %s: no single shared end' % (tl(a), tl(b)))
+            T.heading[key] = head([q for q in ends(a) if q != sh][0], sh)
         return key
     ends, shared = X5.ends, X5.shared
     def dirvec(a, b):
@@ -677,16 +682,19 @@ def build_text_model(N, G, Ln, P, lanes, S6, X5):
         return ('r', LID[a]) if a not in isnode else edge_line(a, n)
     def line_of_out(n, b):
         return ('r', LID[b]) if b not in isnode else edge_line(n, b)
+    def cascade_head(n):
+        if n not in S6.head: raise ValueError('cascade middle line at %s: the node piece has no trunk heading (%s)' % (tl(n), sres[n][4][1]))
+        return S6.head[n]
     port_in_line = {}; port_out_line = {}
     for x in lanes:
         pc = x['pc']
         if x['dir'] == 'in' and pc in G.core:
             if pc in isnode:
-                key = ('pi', pc); newline(key, {Ln.rname(r) for r in RS[pc]}); port_in_line[x['label']] = key
+                key = ('pi', pc); newline(key, {Ln.rname(r) for r in RS[pc]}); port_in_line[x['label']] = key; T.heading[key] = HEAD_IN[x['side']]
             else: port_in_line[x['label']] = ('r', LID[pc])
         if x['dir'] == 'out' and pc in G.core:
             if pc in isnode:
-                key = ('po', pc); newline(key, {Ln.rname(r) for r in RS[pc]}); port_out_line[x['label']] = key
+                key = ('po', pc); newline(key, {Ln.rname(r) for r in RS[pc]}); port_out_line[x['label']] = key; T.heading[key] = HEAD_PORT[x['side']]
             else: port_out_line[x['label']] = ('r', LID[pc])
     stm = []; T.ties = []; T.cascades = []      # statements: ('split'|'merge', in lines, out lines, piece)
     straight = {}                               # statement index -> leg key | None | ('und', why)
@@ -712,7 +720,7 @@ def build_text_model(N, G, Ln, P, lanes, S6, X5):
             rem = list(legs); cur = trunk; cur_s = sleg
             while len(rem) > 2:
                 r = rem.pop()
-                m = newline(('c', n, len(rem)), un(rem))
+                m = newline(('c', n, len(rem)), un(rem)); T.heading[m] = cascade_head(n)
                 add_stm('split', [cur], [m, r], n)
                 if cur_s is None or (isinstance(cur_s, tuple) and cur_s[0] == 'und'): T.straight.append((cur, cur_s))
                 elif cur_s in rem: T.straight.append((cur, m))
@@ -735,7 +743,7 @@ def build_text_model(N, G, Ln, P, lanes, S6, X5):
             # peel pairs from the left into a middle line, the last statement keeps the node's out line
             while len(rem) > 2:
                 a = rem.pop(0); b = rem.pop(0)
-                m = newline(('c', n, len(rem)), un([a, b]))
+                m = newline(('c', n, len(rem)), un([a, b])); T.heading[m] = cascade_head(n)
                 add_stm('merge', [a, b], [m], n)
                 if cur_s in (a, b): T.straight.append((m, cur_s)); cur_s = m
                 else: T.straight.append((m, None))
@@ -747,7 +755,7 @@ def build_text_model(N, G, Ln, P, lanes, S6, X5):
             ins = [line_of_in(a, n) for a in ins_p]
             legs_p, t2 = split_order(n, list(CS[n]))
             legs = [line_of_out(n, b) for b in legs_p]
-            m = newline(('x', n), un(ins))
+            m = newline(('x', n), un(ins)); raise ValueError('cross middle line at %s: no rule for its heading' % tl(n))
             add_stm('merge', ins, [m], n); T.straight.append((m, ('und', 'cross node')))
             add_stm('split', [m], legs, n); T.straight.append((m, ('und', 'cross node')))
             T.cascades.append(('cross node written as a merge then a split', tl(n)))
@@ -827,6 +835,8 @@ def write_shape(path_shape, path_steps, path_len, hub, Ln, Sh, T, P):
             tt = 'node' if kk == len(ends_) - 1 else 'crossing'
             st.append('step %s %d: %s  # %s-%s' % (n, kk, ' '.join(map(str, seg)), fr, tt)); tally[fr + '-' + tt] += 1
         ln.append('lengths %s: %s' % (n, ' '.join(map(str, Sh.lens[k]))))
+    for key in T.empty:
+        so.append('shape %s: %d' % (names[key], T.heading[key])); ln.append('lengths %s: 0' % names[key])
     open(path_shape, 'w').write('\n'.join(so) + '\n'); open(path_steps, 'w').write('\n'.join(st) + '\n'); open(path_len, 'w').write('\n'.join(ln) + '\n')
 
 
@@ -868,7 +878,7 @@ def write_report(path, hub, N, G, Ln, P, lanes, lane_notes, X5, S6, Sh, T):
     w('tied leg order at nodes (written in encounter order): %s' % ('; '.join(' '.join(t) for t in T.ties) or 'none'))
     w('## Gaps (D393)')
     w('cascades written for pieces with more than 2 legs or a cross: %s' % ('; '.join('%s at %s' % c for c in T.cascades) or 'none'))
-    w('empty lines (no track between two events): %d; they have no crossings, shape or lengths' % len(T.empty))
+    w('empty lines (no track between two events): %d; they have no crossings, their shape is one heading of length 0' % len(T.empty))
     w('bridge spans not written to structure.txt (no bridge statement in the notation yet): %d' % nbr)
     w('node pieces adjacent to node pieces: %d' % sum(1 for p in Ln.isnode for b in G.CS[p] if b in Ln.isnode))
     open(path, 'w').write('\n'.join(out) + '\n')
