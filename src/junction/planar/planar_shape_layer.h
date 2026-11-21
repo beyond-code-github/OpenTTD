@@ -129,6 +129,22 @@ struct PlanarCellWall {
  */
 std::vector<std::vector<PlanarCellWall>> PlanarShapeCellWalls(const PlanarShapeVariant &v);
 
+/** Per cell of PlanarShapeCellWalls, in the same order, the face it lies in. */
+std::vector<uint32_t> PlanarShapeCellFaces(const PlanarShapeVariant &v);
+
+/** One inner face's walk, unsplit by dummies. */
+struct PlanarFaceWalls {
+	uint32_t face; ///< The face's index in the map's faces.
+	std::vector<PlanarCellWall> walls; ///< Its walls in walk order, the face on the left.
+};
+
+/**
+ * Every inner face's walls as PlanarShapeCellWalls walks them, without the dummies' splits: the same faces (usable, winding -8), in the map's order.
+ * @param v The variant; its tracks must pass H1.
+ * @return One entry per face.
+ */
+std::vector<PlanarFaceWalls> PlanarShapeFaceWalls(const PlanarShapeVariant &v);
+
 /**
  * Flex points on free one-piece stretches (D397, steps on spines): on every free one-piece stretch (a Line track's stretch between two crossings that are not of one structure and not with two tracks of one channel, the track in no beside track's parent chain) on piece p at heading h, insert after p the left pair h-1, h then the right pair h+1, h, each side only where every route through it stays within 3 eighths of its entry heading (H7's cone).
  * Stretches are processed last to first; later event pieces shift; PlanarShapeTrack::flex lists the middles.

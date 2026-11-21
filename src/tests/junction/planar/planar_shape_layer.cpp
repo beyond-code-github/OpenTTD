@@ -1826,7 +1826,7 @@ TEST_CASE("planar shape: H14 on PSG 197 (measured)", "[.][planarpsg197]")
 		MeasureSpines("", variant, channels, skipped, different, differ, examples);
 		WARN(fmt::format("H14 197 {} channels with 2+ lines {} lines skipped for parts {} different-channels {} differ-between {}", label, channels, skipped, different, differ));
 		for (const std::string &m : examples) WARN("H14 197 " + label + " " + m);
-		if (label == "Shape") CHECK(different + differ == 0);
+		CHECK(different + differ == 0);
 	}
 	/* V's channel 61 in full: per lane its pieces and its channel-crossing events (partner, piece). */
 	const PlanarTrackMap &map = saved.structure.map;
