@@ -168,6 +168,7 @@ struct PlanarDrawPipelineOptions {
 	double irl1 = 0.1; ///< From the second discovery round, an insert's price is irl1 / (its previous length + 0.5).
 	double box_price = 0.01; ///< Price per half tile of width and of height, in every round.
 	bool corridor = true; ///< Beside tracks as offset curves (D421) in every stage.
+	bool final_start = false; ///< A measurement: the integer final starts from the last round's whole lengths (a partial MIP start, JunctionMilp::SetStart).
 	bool keep_apart = true; ///< Pairwise keep-apart (D418) in every stage; false writes no clearance rows (clearance = false), a measurement for hubs whose keep-apart is not yet drawable.
 	double commit_above = 1.0; ///< An insert at or above this length (half tiles) in the last discovery drawing is committed.
 	int discovery_rounds = 8; ///< At most this many discovery rounds.
