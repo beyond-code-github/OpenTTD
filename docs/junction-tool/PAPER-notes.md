@@ -38,7 +38,7 @@ Drawing expert rail hubs: a layered octilinear layout model checked against expe
   - Option C flexes the end pieces of multi-piece free stretches too, giving 646 marks; it is needed for 8 of the expert's 50 steps. Cells: slack 948.
   - Of C's 380 stretched clear rows, 316 (512 of 634 slack) have a flex insert at the vertex and a target wall next to an insert (3335b3c5ab).
   - Pairwise separation with the same flex goes from 102 to 66 (554650a522).
-- **Open:** D416 hybrid (cells for rigid walls, pairwise for flex-incident pairs). Its binary count and solve time on 197 are pending (count probe). Fallback: 4-axis constraint-graph compaction.
+- **D416 hybrid measured (23e8ae21c6):** flex groups touch nearly every wall: flex-incident pairs 9559 of 9682 (D402) and 28,179 of 28,179 (C), 38k and 113k binaries, no 120 s solve. So exactness for optional bends cannot be bought by local binaries around flex: a negative result. Next: 4-axis constraint-graph compaction.
 
 ### C3. Fixing pairwise sides from a reference drawing turns keep-apart into an LP
 - **Claim:** pairwise separation has one disjunction per wall pair. Taking each pair's side from a reference drawing (the candidate with the largest least margin) gives an LP. Re-picking sides from the LP's own drawing converges.
