@@ -19,6 +19,7 @@
 #include "../../../junction/planar/planar_topology.h"
 
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -221,4 +222,102 @@ TEST_CASE("planar draw: a dummy that cannot reach its landing piece is a land co
 		c.v.dummies[di].land_piece = original;
 	}
 	CHECK(found);
+}
+
+TEST_CASE("planar draw: face walls are the cells' walls when there are no dummies", "[junction][planar][planardraw]")
+{
+	DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	c.v.dummies.clear();
+	const std::vector<PlanarFaceWalls> faces = PlanarShapeFaceWalls(c.v);
+	const std::vector<std::vector<PlanarCellWall>> cells = PlanarShapeCellWalls(c.v);
+	REQUIRE(faces.size() == cells.size());
+	for (size_t i = 0; i < faces.size(); i++) {
+		if (i > 0) CHECK(faces[i].face > faces[i - 1].face);
+		REQUIRE(faces[i].walls.size() == cells[i].size());
+		for (size_t k = 0; k < cells[i].size(); k++) {
+			CHECK(faces[i].walls[k].track == cells[i][k].track);
+			CHECK(faces[i].walls[k].piece == cells[i][k].piece);
+			CHECK(faces[i].walls[k].heading == cells[i][k].heading);
+		}
+	}
+}
+
+TEST_CASE("planar draw: pairwise mode writes separations and no landings", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 1.0, {.pairwise = true});
+	WARN(fmt::format("T1 pairwise: status {}, pairs {}, binaries {}, rows {}, columns {}", r.status, r.pairs, r.binaries, r.rows, r.columns));
+	CHECK(r.pairs > 0);
+	CHECK(r.binaries >= 2 * r.pairs);
+	CHECK(r.binaries <= 4 * r.pairs);
+}
+
+/** The shaped PSG 197 variant. */
+static PlanarShapeVariant Shaped197()
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(ReadTopologyFileForDraw("psg197.txt"), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant structure = LoadPlanarStructureVariant(topology, ReadTopologyFileForDraw("psg197.structure.txt"), spec, report, &error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant shaped;
+	std::string why;
+	REQUIRE(ShapePlanarStructureVariant(structure, shaped, why));
+	return shaped;
+}
+
+/** Warn one KA line for a solve; returns the result's feasibility. */
+static void WarnKa(const std::string &label, const PlanarDrawResult &r)
+{
+	WARN(fmt::format("KA {}: feasible {}, status {}, pairs {}, binaries {}, rows {}, columns {}, {:.0f} ms", label, r.feasible, r.status, r.pairs, r.binaries, r.rows, r.columns, r.ms));
+	if (r.feasible) return;
+	std::map<std::string, size_t> families;
+	for (const std::string &tag : r.conflict) families[tag.substr(0, tag.find(' '))]++;
+	for (const auto &[family, count] : families) WARN(fmt::format("KA {} conflicts: {} {}", label, family, count));
+	for (size_t i = 0; i < std::min<size_t>(20, r.conflict.size()); i++) WARN(fmt::format("KA {} conflict {}: {}", label, i, r.conflict[i]));
+}
+
+TEST_CASE("planar draw: PSG 197 pairwise, faces 16 and 17 alone are drawable", "[.][planarkeepapart]")
+{
+	const PlanarShapeVariant shaped = Shaped197();
+	for (const uint32_t f : {16u, 17u}) {
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .only_faces = {f}});
+		WarnKa(fmt::format("face {}", f), r);
+		CHECK(r.feasible);
+	}
+}
+
+TEST_CASE("planar draw: PSG 197 pairwise, every face alone", "[.][planarkeepapart]")
+{
+	const PlanarShapeVariant shaped = Shaped197();
+	const auto begin = std::chrono::steady_clock::now();
+	size_t feasible = 0, infeasible = 0, limit = 0;
+	std::string bad;
+	for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(shaped)) {
+		if (std::chrono::steady_clock::now() - begin > std::chrono::minutes(15)) {
+			WARN("KA sweep stopped: 15 min wall passed");
+			break;
+		}
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 5.0, {.clearance = true, .clear_rows = true, .pairwise = true, .only_faces = {f.face}});
+		if (r.feasible) {
+			feasible++;
+			WARN(fmt::format("KA face {}: feasible {}, status {}, pairs {}, binaries {}, rows {}, columns {}, {:.0f} ms", f.face, r.feasible, r.status, r.pairs, r.binaries, r.rows, r.columns, r.ms));
+			continue;
+		}
+		(r.status == "Infeasible" ? infeasible : limit)++;
+		bad += fmt::format(" {}{}", f.face, r.status == "Infeasible" ? "" : "(limit)");
+		WarnKa(fmt::format("face {}", f.face), r);
+	}
+	WARN(fmt::format("KA sweep: feasible {}, infeasible {}, limit {}; not feasible:{}", feasible, infeasible, limit, bad));
+}
+
+TEST_CASE("planar draw: PSG 197 pairwise, whole", "[.][planarkeepapart]")
+{
+	const PlanarShapeVariant shaped = Shaped197();
+	for (const double seconds : {15.0, 60.0}) {
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, seconds, {.clearance = true, .clear_rows = true, .pairwise = true});
+		WarnKa(fmt::format("whole {:.0f} s", seconds), r);
+	}
 }

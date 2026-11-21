@@ -1153,6 +1153,24 @@ std::vector<std::vector<PlanarCellWall>> PlanarShapeCellWalls(const PlanarShapeV
 	return result;
 }
 
+std::vector<PlanarFaceWalls> PlanarShapeFaceWalls(const PlanarShapeVariant &v)
+{
+	std::vector<PlanarFaceWalls> result;
+	const Oracle o(v);
+	for (const PlanarFace &face : o.map.faces) {
+		const FaceWalk walk = WalkFace(o.map, face);
+		if (!walk.usable || walk.stretches.empty()) continue;
+		std::vector<Wall> first;
+		int piece_total, h7;
+		if (!CellWalls(o, walk, first, piece_total, h7)) continue;
+		if (piece_total != -8) continue;
+		PlanarFaceWalls entry{static_cast<uint32_t>(face.face), {}};
+		for (const Wall &w : first) entry.walls.push_back({w.track, w.piece, ((w.heading % 8) + 8) % 8});
+		result.push_back(std::move(entry));
+	}
+	return result;
+}
+
 /**
  * Fill a shaped variant's structures from its headings: per structure its axis (its separator's heading at its first crossing), end runs by kind and least middles at its crossings' angles (H5, H6).
  * @param sv The variant, with its tracks set.

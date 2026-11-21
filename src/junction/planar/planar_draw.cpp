@@ -87,6 +87,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	/* Points: per track its start and the end of each piece. */
 	std::vector<std::vector<std::array<uint32_t, 2>>> point(nt);
 	std::vector<std::vector<Length>> length(nt);
+	std::vector<std::vector<bool>> may_zero(nt);
 	for (size_t t = 0; t < nt; t++) {
 		const std::vector<int> &pieces = v.tracks[t].pieces;
 		if (pieces.empty()) return unsupported("track " + map.tracks[t].name + " has no piece");
@@ -110,6 +111,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (const std::vector<uint32_t> &g : groups) {
 			for (const uint32_t i : g) free_piece[i] = true;
 		}
+		may_zero[t] = free_piece;
 		std::set<uint32_t> middles(flex.begin(), flex.end());
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const bool axis = (pieces[i] % 2) == 0;
@@ -268,7 +270,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	}
 
 	/* Dummies: from the bend's vertex along the heading for a length D >= 1 to the landing E. */
-	const size_t nd = options.clearance ? v.dummies.size() : 0;
+	const size_t nd = options.clearance && !options.pairwise ? v.dummies.size() : 0;
 	std::vector<std::array<uint32_t, 2>> dummy_start(nd), dummy_end(nd);
 	std::vector<uint32_t> dummy_length(nd);
 	for (size_t d = 0; d < nd; d++) {
@@ -353,9 +355,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		const PlanarShapeDummy &d = v.dummies[w.piece];
 		return d.land_track < nt && span_piece.contains({d.land_track, d.land_piece});
 	};
-	const std::vector<std::vector<PlanarCellWall>> cells = options.clearance && options.clear_rows ? PlanarShapeCellWalls(v) : std::vector<std::vector<PlanarCellWall>>();
-	for (size_t c = 0; c < cells.size(); c++) {
-		const std::vector<PlanarCellWall> &cell = cells[c];
+	const std::vector<std::vector<PlanarCellWall>> cells = options.clearance && options.clear_rows && !options.pairwise ? PlanarShapeCellWalls(v) : std::vector<std::vector<PlanarCellWall>>();
+	/* The clearance rows of one convex cell (or, in pairwise mode, of a face convex without dummies); false when a wall is one the variant lacks. */
+	const auto clear_walls = [&](const std::vector<PlanarCellWall> &cell, size_t c) {
 		const size_t n = cell.size();
 		/* Each wall's end points in the walk; a wall a dummy lands on is held only in part. */
 		struct Part {
@@ -385,7 +387,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			}
 			if (!forward) std::swap(part[i].a, part[i].b);
 		}
-		if (!usable) return unsupported(fmt::format("cell {} names a wall the variant lacks", c));
+		if (!usable) return false;
 		for (size_t i = 0; i < n; i++) {
 			if (!part[i].valid) continue;
 			const PlanarCellWall &before = cell[(i + n - 1) % n];
@@ -419,6 +421,92 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					terms.emplace_back(part[e].a[axis], -normal[axis]);
 				}
 				row(std::move(terms), spacing, JunctionMilp::INF, fmt::format("clear {} {} {}", c, k, e));
+			}
+		}
+		return true;
+	};
+	for (size_t c = 0; c < cells.size(); c++) {
+		if (!clear_walls(cells[c], c)) return unsupported(fmt::format("cell {} names a wall the variant lacks", c));
+	}
+
+	/* Pairwise mode (D406 probe): a face convex without dummies keeps the clearance rows, every other face separates its non-incident wall pairs. */
+	if (options.clearance && options.pairwise) {
+		constexpr double M = 4 * COORD_MAX;
+		const auto norm = [](int x) { return ((x % 8) + 12) % 8 - 4; };
+		for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(v)) {
+			if (!options.only_faces.empty() && std::ranges::find(options.only_faces, f.face) == options.only_faces.end()) continue;
+			const std::vector<PlanarCellWall> &w = f.walls;
+			const size_t n = w.size();
+			bool convex = true;
+			for (size_t k = 0; k < n; k++) {
+				if (norm(w[(k + 1) % n].heading - w[k].heading) > 0) convex = false;
+			}
+			if (convex) {
+				if (!clear_walls(w, f.face)) return unsupported(fmt::format("cell {} names a wall the variant lacks", f.face));
+				continue;
+			}
+			for (size_t i = 0; i < n; i++) {
+				for (size_t j = i + 1; j < n; j++) {
+					if (j == i + 1 || (i == 0 && j == n - 1)) continue;
+					if (w[i].track >= nt || w[j].track >= nt) continue;
+					if (is_span(w[i]) || is_span(w[j])) continue;
+					if (w[i].track == w[j].track && w[i].piece == w[j].piece) continue;
+					if (w[i].piece >= v.tracks[w[i].track].pieces.size() || w[j].piece >= v.tracks[w[j].track].pieces.size()) return unsupported(fmt::format("face {} names a wall the variant lacks", f.face));
+					if (w[i].track == w[j].track) {
+						const uint32_t lo = std::min(w[i].piece, w[j].piece);
+						const uint32_t hi = std::max(w[i].piece, w[j].piece);
+						bool all_zero = true;
+						for (uint32_t k = lo + 1; k < hi; k++) all_zero = all_zero && may_zero[w[i].track][k];
+						if (all_zero) continue;
+					}
+					const std::array<std::array<uint32_t, 2>, 2> pi = {point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};
+					const std::array<std::array<uint32_t, 2>, 2> pj = {point[w[j].track][w[j].piece], point[w[j].track][w[j].piece + 1]};
+					bool shared = false;
+					for (const auto &p : pi) {
+						for (const auto &q : pj) shared = shared || find(p[0]) == find(q[0]);
+					}
+					if (shared) continue;
+					bool crossing = false;
+					for (size_t ki = 0; ki < std::min(map.events[w[i].track].size(), v.tracks[w[i].track].event_piece.size()) && !crossing; ki++) {
+						if (v.tracks[w[i].track].event_piece[ki] != w[i].piece) continue;
+						for (size_t kj = 0; kj < std::min(map.events[w[j].track].size(), v.tracks[w[j].track].event_piece.size()); kj++) {
+							if (v.tracks[w[j].track].event_piece[kj] == w[j].piece && map.events[w[i].track][ki] == map.events[w[j].track][kj]) crossing = true;
+						}
+					}
+					if (crossing) continue;
+					result.pairs++;
+					struct Axis {
+						std::array<int, 2> s;
+						int spacing;
+					};
+					std::vector<Axis> axes = {{PlanarModel::STEP[(w[i].heading + 6) % 8], PlanarModel::RungSpacing(w[i].heading, w[j].heading)}};
+					if (w[i].heading % 4 != w[j].heading % 4) {
+						axes.push_back({PlanarModel::STEP[(w[j].heading + 6) % 8], PlanarModel::RungSpacing(w[j].heading, w[i].heading)});
+					} else {
+						axes.push_back({PlanarModel::STEP[w[i].heading % 8], 2});
+					}
+					Terms bs;
+					for (const Axis &axis : axes) {
+						for (int side = 0; side < 2; side++) {
+							const auto &from = side == 0 ? pi : pj;
+							const auto &to = side == 0 ? pj : pi;
+							const uint32_t b = var(0, 1, 0);
+							result.binaries++;
+							bs.emplace_back(b, 1);
+							for (const auto &p : from) {
+								for (const auto &q : to) {
+									Terms t{{b, -M}};
+									for (int d = 0; d < 2; d++) {
+										t.emplace_back(q[d], axis.s[d]);
+										t.emplace_back(p[d], -axis.s[d]);
+									}
+									row(std::move(t), axis.spacing - M, JunctionMilp::INF, fmt::format("sep {} {} {}", f.face, i, j));
+								}
+							}
+						}
+					}
+					row(std::move(bs), 1, 1, fmt::format("sepdir {} {} {}", f.face, i, j));
+				}
 			}
 		}
 	}
