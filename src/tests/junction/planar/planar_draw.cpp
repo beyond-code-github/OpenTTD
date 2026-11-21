@@ -213,7 +213,7 @@ static std::vector<std::pair<double, int>> DrawnCurveGaps(const DrawCase &c, con
 				const std::vector<uint32_t> &steps = c.v.tracks[t].steps;
 				for (size_t i = 0; i < c.v.tracks[t].pieces.size(); i++) {
 					const bool middle = std::ranges::find(flex, i) != flex.end() || std::ranges::find(steps, i) != steps.end();
-					const int heading = c.v.tracks[t].pieces[i];
+					const int heading = ((c.v.tracks[t].pieces[i] % 8) + 8) % 8;
 					if (!middle) {
 						if (last != -1 && last != heading) bends.emplace_back(acc, PlanarModel::Rot(last, heading) > 0);
 						last = heading;
@@ -1756,7 +1756,7 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 	};
 	/* PLANAR_PROBE_BAYS_ON_V (a measurement aid, D420): the bay rows on V's drawing (points held to vref, window 1), every family elastic, bay rows reported; then stop. */
 	if (std::getenv("PLANAR_PROBE_BAYS_ON_V") != nullptr) {
-		const PlanarDrawResult b = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .bays = true, .elastic = true, .pins = &p8, .fix_points = &vref, .fix_window = 1, .export_path = std::getenv("PLANAR_PROBE_BAYS_ON_V")});
+		const PlanarDrawResult b = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .bays = true, .curves = std::getenv("PLANAR_PROBE_CURVES_ON_V") != nullptr, .elastic = true, .pins = &p8, .fix_points = &vref, .fix_window = 1, .export_path = std::getenv("PLANAR_PROBE_BAYS_ON_V")});
 		WARN(fmt::format("bays on V: status {}, total slack {:.3f}, rules.bay {}", b.status, b.slack, shaped.structure.rules.bay));
 		for (const auto &[row, slack] : b.stretched) WARN(fmt::format("bays on V stretched {}: {:.3f}", row, slack));
 		return;
