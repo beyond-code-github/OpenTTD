@@ -825,7 +825,37 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						const std::array<std::array<uint32_t, 2>, 2> *const ends[2] = {&pi, &pj};
 						const std::array<uint32_t, 2> tracks = {w[i].track, w[j].track};
 						const std::array<uint32_t, 2> pieces = {w[i].piece, w[j].piece};
+						int forced_axis = -1, forced_side = 0;
+						if (options.sides_by_walk) {
+							const auto monotone = [&](size_t from, size_t to, const std::array<int, 2> &normal) {
+								for (size_t k = (from + 1) % n;; k = (k + 1) % n) {
+									const std::array<int, 2> step = PlanarModel::STEP[w[k].heading % 8];
+									if (step[0] * normal[0] + step[1] * normal[1] < 0) return false;
+									if (k == to) return true;
+								}
+							};
+							if (monotone(i, j, axes[0].s)) {
+								forced_axis = 0;
+								forced_side = 0;
+							} else {
+								const std::array<int, 2> nj = PlanarModel::STEP[(w[j].heading + 6) % 8];
+								if (monotone(j, i, nj)) {
+									if (w[i].heading % 4 != w[j].heading % 4) {
+										forced_axis = 1;
+										forced_side = 1;
+									} else {
+										forced_axis = 0;
+										forced_side = w[i].heading % 8 == w[j].heading % 8 ? 1 : 0;
+									}
+								}
+							}
+						}
+						int forced_margin = 0;
+						bool have_forced = false;
+						const std::array<std::array<uint32_t, 2>, 2> *forced_from = nullptr, *forced_to = nullptr;
+						int axis_index = -1;
 						for (const Axis &axis : axes) {
+							axis_index++;
 							for (int side = 0; side < 2; side++) {
 								const auto *from = ends[side];
 								const auto *to = ends[1 - side];
@@ -837,6 +867,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 										margin = std::min(margin, (rq[0] - rp[0]) * axis.s[0] + (rq[1] - rp[1]) * axis.s[1] - axis.spacing);
 									}
 								}
+								if (axis_index == forced_axis && side == forced_side) {
+									have_forced = true;
+									forced_margin = margin;
+									forced_from = from;
+									forced_to = to;
+								}
 								if (best_axis == nullptr || margin > best_margin) {
 									best_axis = &axis;
 									best_from = from;
@@ -844,6 +880,15 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 									best_margin = margin;
 								}
 							}
+						}
+						if (have_forced) {
+							result.walk_fixed++;
+							if (forced_margin < 0) result.walk_short++;
+							if (forced_margin < best_margin) result.walk_differs++;
+							best_axis = &axes[forced_axis];
+							best_from = forced_from;
+							best_to = forced_to;
+							best_margin = forced_margin;
 						}
 						if (best_margin < 0) result.short_sides++;
 						for (const auto &p : *best_from) {

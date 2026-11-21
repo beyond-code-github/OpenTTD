@@ -1645,6 +1645,24 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 			WARN(fmt::format("{} clear {}: {} {:.3f}", label, shown, tag, slack));
 		}
 	}
+	/* The same, each pair's direction from the monotone face walk where the rule fixes it. */
+	{
+		const std::string label = "sepV walk W1";
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .elastic = true, .elastic_families = {"sep", "clear", "deck", "end", "node", "cross"}, .pins = &p8, .sides_from = &full.points, .sides_by_walk = true, .fix_points = &vref, .fix_window = 1});
+		WARN(fmt::format("{}: status {}, total slack {:.3f}, pairs {}, walk_fixed {}, walk_short {}, walk_differs {}", label, r.status, r.slack, r.pairs, r.walk_fixed, r.walk_short, r.walk_differs));
+		if (r.status == "Optimal") {
+			std::map<std::string, std::pair<size_t, double>> families;
+			for (const auto &[tag, slack] : r.stretched) {
+				auto &f = families[tag.substr(0, tag.find(' '))];
+				f.first++;
+				f.second += slack;
+			}
+			for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: rows {}, slack {:.3f}", label, family, f.first, f.second));
+			WarnSepWalls(shaped, r, label, 20);
+		} else {
+			for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
+		}
+	}
 	PlanarShapeVariant geo = shaped;
 	const std::vector<PlanarShapeDummy> rule_dummies = shaped.dummies;
 	std::string why;
