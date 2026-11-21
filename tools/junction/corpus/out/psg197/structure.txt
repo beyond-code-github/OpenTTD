@@ -164,9 +164,9 @@ straight L79: L76
 straight L71: L81
 straight L83: L55
 straight L82: L62
-# straight L101: undetermined (trunk/leg is a node piece)
+straight L101: L70
 straight L85: L12
-# straight L84: undetermined (trunk/leg is a node piece)
+straight L84: L101
 straight L86: L84
 straight L82: L87
 straight L86: L90

@@ -61,8 +61,8 @@ straight L15: L25
 straight L21: L26
 straight L27: L23
 straight L2: L22
-# straight L25: undetermined (trunk/leg is a node piece)
-# straight L134: undetermined (trunk/leg is a node piece)
+straight L25: L28
+straight L134: L30
 straight L19: L37
 straight L13: L39
 straight L1: L31
@@ -76,8 +76,8 @@ straight L43: L27
 straight L44: L34
 straight L43: L46
 straight L42: L47
-# straight L136: undetermined (trunk/leg is a node piece)
-# straight L49: undetermined (trunk/leg is a node piece)
+straight L136: L17
+straight L49: L11
 straight L49: L51
 straight L10: L54
 straight L47: L55

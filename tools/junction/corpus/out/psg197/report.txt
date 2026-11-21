@@ -7,7 +7,7 @@ lines with track 98 (simple chain 98), empty lines 3
 node pieces 61: {'merge join 2->1': 30, 'merge lane 2->1': 1, 'split fray 0->2': 1, 'split fray 1->2': 7, 'split lane 1->2': 21, 'split lane 1->3': 1}
 crossing pairs 122: {'b': 101, 'c': 18, 'n': 3} (a level, b ground over span, c span under span, n node piece over span, na node piece level)
 spans 50: tunnels 50, bridges 0; groups of tunnels+bridges 18
-straight legs undetermined 2 of 61 node pieces
+straight legs undetermined 0 of 61 node pieces
 shape: 98 lines shaped, 324 raw pieces, 50 steps, 244 crossings
 ## Checkpoints (named, never silent)
 stations inside the box (ignored by the graph): 128,181 128,182 128,183 128,184
@@ -17,7 +17,7 @@ lines whose pieces carry different route sets: none
 lines without a simple chain (no geometry): none
 lines skipped by crossings: none
 lines skipped by shape: none
-undetermined straight legs: 104,179 split (trunk/leg is a node piece); 105,179 split (trunk/leg is a node piece)
+undetermined straight legs: none
 cycle: none
 level crossings among lines (a): 0 
 node pieces crossing a ground piece (level): 0 

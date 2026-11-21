@@ -19,5 +19,5 @@ shape: lines with a match 99 of 100; identical projection 97 [94 of 95]; steps 9
   shape: projection differs (2): ['D12e (L68) hand [6, 5] ext [5]', 'D12g (L84) hand [6] ext [5]']
   shape: crossing piece differs (1): ['D12e x A1e hand @1 ext @0']
   tunnels: ext tunnels with crossers but no hand statement: []
-  straights: ext nodes unused: [((104, 179), 'split', ('und', 'trunk/leg is a node piece')), ((105, 179), 'split', ('und', 'trunk/leg is a node piece'))]
+  straights: ext nodes unused: [((104, 179), 'split', ('straight', 69)), ((105, 179), 'split', ('straight', ('e', ((105, 179), 0), ((104, 179), 1))))]
   hand lines sharing one ext line: {'L84': ['D12b', 'D12g']}
