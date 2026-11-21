@@ -10,6 +10,7 @@ Turns a hub in a whole-map save export into the files the junction solver loads.
   - `shape.txt`, `steps.txt`: Shape's projection and V's steps (D396, as psg197.shape.txt / steps.txt).
   - `lengths.txt`: per line `lengths <line>: <len0> <len1> ...`, one length per piece of its raw heading list (before projection), in half tiles (axis tile 2, diagonal piece 1, tunnel or bridge 2 per tile); a heading appended to meet a port has length 0.
   - `report.txt`: counts, every checkpoint (ambiguous pieces, lines without geometry, undetermined straights, level and same-channel crossings, tied leg orders) and the gaps (D393).
+- Pieces join across an edge only through moves a train can make: a diagonal never joins a diagonal of the other orientation (Upper/Lower to Left/Right is a 90-degree turn; `load.py` `FORBID_90_DEG`, assumed true because the export carries no game settings).
 - `compare.py psg197 <dir>`: golden check of the extraction against tools/junction/topologies/psg197*.txt (hand names mapped to lines by tiles, as the probes did); prints the probes' numbers beside ours and every difference class; writes `<dir>/compare.txt`.
 - `out/<id>/`: the committed outputs for psg197 and psg186.
 
