@@ -806,6 +806,55 @@ TEST_CASE("planar draw: PSG 197 integer base with pins", "[.][planarkeepapart]")
 	}
 }
 
+TEST_CASE("planar draw: PSG 197 integer base, minimal pin core", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
+	const PlanarTrackMap &map = shaped.structure.map;
+	const auto solve = [&](const PlanarDrawPins &p) { return CheckPlanarDrawable(shaped, 10.0, {.clearance = false, .pins = &p}); };
+	PlanarDrawPins none = pins;
+	none.pins.clear();
+	const PlanarDrawResult a = solve(none);
+	WARN(fmt::format("core step A (no pins): status {}, {:.0f} ms", a.status, a.ms));
+	for (const int window : {2, 8}) {
+		PlanarDrawPins pw = pins;
+		pw.window = window;
+		const PlanarDrawResult b = solve(pw);
+		WARN(fmt::format("core step B W{}: status {}, {:.0f} ms, {} pins", window, b.status, b.ms, pw.pins.size()));
+		if (b.status != "Infeasible") {
+			WARN(fmt::format("core W{}: not Infeasible, filter skipped", window));
+			continue;
+		}
+		PlanarDrawPins core = pw;
+		uint32_t solves = 0;
+		double total_ms = 0;
+		for (size_t i = 0; i < pw.pins.size(); i++) {
+			PlanarDrawPins trial = core;
+			const auto it = std::ranges::find_if(trial.pins, [&](const PlanarDrawPins::Pin &q) {
+				return q.track == pw.pins[i].track && q.cross == pw.pins[i].cross && q.start == pw.pins[i].start && q.at == pw.pins[i].at;
+			});
+			if (it == trial.pins.end()) continue;
+			trial.pins.erase(it);
+			const PlanarDrawResult r = solve(trial);
+			solves++;
+			total_ms += r.ms;
+			if (r.status == "Infeasible") core = trial;
+		}
+		WARN(fmt::format("core W{}: {} solves, {:.0f} ms, core {} pins", window, solves, total_ms, core.pins.size()));
+		for (const PlanarDrawPins::Pin &pin : core.pins) {
+			if (pin.cross) {
+				WARN(fmt::format("core W{} pin: cross {} {} at {} {}", window, map.tracks[map.crossings[pin.track].a].name, map.tracks[map.crossings[pin.track].b].name, pin.at[0], pin.at[1]));
+			} else {
+				WARN(fmt::format("core W{} pin: end {} {} at {} {}", window, map.tracks[pin.track].name, pin.start ? "start" : "end", pin.at[0], pin.at[1]));
+			}
+		}
+		const PlanarDrawResult c = solve(core);
+		WARN(fmt::format("core W{} re-solve: status {}", window, c.status));
+		for (const std::string &tag : c.conflict) WARN(fmt::format("core W{} conflict: {}", window, tag));
+	}
+}
+
 TEST_CASE("planar draw: PSG 197 pairwise, sides from the pinned drawing", "[.][planarkeepapart]")
 {
 	PlanarShapeVariant shaped;
