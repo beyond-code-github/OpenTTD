@@ -1,18 +1,19 @@
-# Extraction report: Brainmelter (PSG 186, box 163,243,228,274)
+# Extraction report: Brainmelter (PSG 186, box 165,224,225,281)
 ## Counts
-ports 6 (N-out1 N-in1 N-out2 N-in2 S-in S-out); lanes 30 (derived)
-movements 4; routes (in lane x out port reached) 9
-graph: 1485 box pieces, 552 core pieces, direction rounds [964, 0] changes, 620 off-route, 344 free pieces fixed by routes, 0 ambiguous
-lines with track 52 (simple chain 52), empty lines 1
-node pieces 31: {'merge join 2->0': 1, 'merge join 2->1': 10, 'merge lane 2->1': 4, 'split fray 1->2': 3, 'split lane 1->2': 13}
+ports 7 (N-in N-out E-in W-in1 W-out1 W-in2 W-out2); lanes 21 (derived)
+movements 4; routes (in lane x out port reached) 8
+graph: 1887 box pieces, 677 core pieces, direction rounds [1175, 0] changes, 776 off-route, 399 free pieces fixed by routes, 0 ambiguous
+lines with track 53 (simple chain 53), empty lines 0
+node pieces 32: {'merge join 2->1': 12, 'merge lane 2->1': 4, 'split fray 1->2': 3, 'split lane 1->2': 13}
 crossing pairs 30: {'b': 25, 'c': 5} (a level, b ground over span, c span under span, n node piece over span, na node piece level)
-spans 29: tunnels 9, bridges 20; groups of tunnels+bridges 3
-straight legs undetermined 0 of 31 node pieces
-shape: 52 lines shaped, 181 raw pieces, 27 steps, 60 crossings
+spans 29: tunnels 7, bridges 22; groups of tunnels+bridges 3
+straight legs undetermined 0 of 32 node pieces
+shape: 53 lines shaped, 196 raw pieces, 30 steps, 60 crossings
 ## Checkpoints (named, never silent)
-lanes: lanes derived from the save's own signal direction (unreliable in woven boxes): N170:out N173:out N211:out N210:out N201:in N176:out S220:out N213:in N214:out S223:in S221:in N215:out S225:in N212:out N177:out N178:out N199:out S217:in S215:in N198:in S218:in N172:out N206:in N205:in N208:out N207:out N174:out N171:out N204:out N203:out
+lanes: lanes derived from the save's own signal direction (unreliable in woven boxes): N199:in E279:in N200:out W260:in N205:out W233:out N202:out W234:out W232:out W230:out N204:in E276:in E277:in W264:out N206:out E275:in N201:in E278:in E280:in W225:in W226:in
+stations inside the box (ignored by the graph): 172,226 172,227
 ambiguous pieces (both directions valid): none
-off-route pieces: 620
+off-route pieces: 776
 lines whose pieces carry different route sets: none
 lines without a simple chain (no geometry): none
 lines skipped by crossings: none
@@ -21,10 +22,10 @@ undetermined straight legs: none
 level crossings among lines (a): 0 
 node pieces crossing a ground piece (level): 0 
 lattice-like: line pairs with several hits (first hit kept): 0 
-same-channel crossings (two lines with equal route sets): 1 L11 x L17 at 174.5,257.0
-tied leg order at nodes (written in encounter order): merge 174,243 sources have equal sideways sense; merge 217,272 sources have equal sideways sense
+same-channel crossings (two lines with equal route sets): 1 L15 x L21 at 174.5,257.0
+tied leg order at nodes (written in encounter order): none
 ## Gaps (D393)
 cascades written for pieces with more than 2 legs or a cross: none
-empty lines (no track between two events): 1; they have no crossings, shape or lengths
-bridge spans not written to structure.txt (no bridge statement in the notation yet): 20
+empty lines (no track between two events): 0; they have no crossings, shape or lengths
+bridge spans not written to structure.txt (no bridge statement in the notation yet): 22
 node pieces adjacent to node pieces: 0

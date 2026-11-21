@@ -1,72 +1,73 @@
 # Brainmelter shape at Shape's level (D396): each stretch monotone from its start to its end heading; sideways steps are in steps.txt; extracted by tools/junction/corpus/extract.py.
-shape L1: 5 6 7 8
-shape L2: 0
-shape L3: 7 6 7 8
-at L3: L15@1, L17@1, L11@1, L9@1, L8@1, L5@1
-shape L4: 0
-shape L5: 5 6 7 8
-at L5: L3@3
-shape L6: 0 -1 0
-at L6: L9@1, L8@1
-shape L7: 7 8
-at L7: L9@0, L8@0
-shape L8: 0
-at L8: L3@0, L7@0, L6@0
-shape L9: 0
-at L9: L3@0, L7@0, L6@0
-shape L10: 6 7 8
+shape L1: 0 -1 -2
+shape L2: 0 -1 -2
+shape L3: 0 -1 -2
+shape L4: 0 -1 -2
+shape L5: 0
+shape L6: 1 0
+shape L7: 5 6 7 8
+shape L8: 7 6 7 8
+at L8: L19@1, L21@1, L15@1, L13@1, L12@1, L9@1
+shape L9: 5 6 7 8
+at L9: L8@3
+shape L10: 0 -1 0
+at L10: L13@1, L12@1
 shape L11: 7 8
-at L11: L3@1, L17@1, L16@1
-shape L12: 5 6 7 8
-at L12: L37@1, L34@1, L32@1, L15@2
+at L11: L13@0, L12@0
+shape L12: 0
+at L12: L8@0, L11@0, L10@0
 shape L13: 0
-shape L14: 5 6 7 8
-at L14: L37@1, L34@1, L32@1, L15@2
-shape L15: 0 1 0
-at L15: L3@1, L16@2, L12@2, L14@2
-shape L16: 5 6 7
-at L16: L37@1, L34@1, L32@1, L15@1, L11@1
-shape L17: 0 -1
-at L17: L3@0, L11@1
-shape L18: 7 8
-shape L19: 6 5
+at L13: L8@0, L11@0, L10@0
+shape L14: 6 7 8
+shape L15: 7 8
+at L15: L8@1, L21@1, L20@1
+shape L16: 5 6 7 8
+at L16: L41@1, L38@1, L36@1, L19@2
+shape L17: 0
+shape L18: 5 6 7 8
+at L18: L41@1, L38@1, L36@1, L19@2
+shape L19: 0 1 0
+at L19: L8@1, L20@2, L16@2, L18@2
 shape L20: 5 6 7
-shape L21: 6
-shape L22: 7 6
-at L22: L32@1
-shape L23: 7 6
-shape L24: 6 5
-shape L25: 7 6 5
-at L25: L32@1
-shape L26: 6 7
-shape L27: 6
-shape L28: 6 7
-shape L29: 6
-shape L30: 7 6
-at L30: L34@1, L32@1
-shape L31: 7 6
-at L31: L34@1, L32@1
-shape L32: 7 8 9
-at L32: L22@0, L25@0, L31@0, L30@1, L16@1, L12@2, L14@2
-shape L33: 6 7
-shape L34: 6 7 8 9
-at L34: L30@2, L31@2, L16@2, L12@2, L14@2
-shape L35: 1
-shape L36: 6 7
-shape L37: 6 7 8 9
-at L37: L16@2, L12@2, L14@2
-shape L38: 1 0
-shape L39: 6 7
-shape L40: 7 6
-shape L41: 6
-shape L42: 6
-shape L43: 5
-shape L44: 7 6
-shape L45: 4 5
-shape L46: 4
-shape L47: 4
-shape L48: 0 -1 -2
-shape L49: 3
-shape L50: 3 2 1 0 -1 -2 -3 -4 -5
-shape L51: 3
-shape L52: 3 4
+at L20: L41@1, L38@1, L36@1, L19@1, L15@1
+shape L21: 0 -1
+at L21: L8@0, L15@1
+shape L22: 7 8
+shape L23: 6 5
+shape L24: 5 6 7
+shape L25: 6
+shape L26: 7 6
+at L26: L36@1
+shape L27: 7 6
+shape L28: 6 5
+shape L29: 7 6 5
+at L29: L36@1
+shape L30: 6 7
+shape L31: 6
+shape L32: 6 7
+shape L33: 6
+shape L34: 7 6
+at L34: L38@1, L36@1
+shape L35: 7 6
+at L35: L38@1, L36@1
+shape L36: 7 8 9
+at L36: L26@0, L29@0, L35@0, L34@1, L20@1, L16@2, L18@2
+shape L37: 6 7
+shape L38: 6 7 8 9
+at L38: L34@2, L35@2, L20@2, L16@2, L18@2
+shape L39: 1
+shape L40: 6 7
+shape L41: 6 7 8 9
+at L41: L20@2, L16@2, L18@2
+shape L42: 1 0
+shape L43: 6 7
+shape L44: 6
+shape L45: 6
+shape L46: 6
+shape L47: 5
+shape L48: 6
+shape L49: 4 5
+shape L50: 4
+shape L51: 4
+shape L52: 4
+shape L53: 6
