@@ -2252,7 +2252,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 			}
 			const PlanarDrawPins *p = pinned ? &p8 : nullptr;
 			const std::string label = fmt::format("{} {}", name, pinned ? "W8" : "no pins");
-			const PlanarDrawResult seed = CheckPlanarDrawable(*variant, 30.0, {.elastic = true, .pins = p});
+			const PlanarDrawResult seed = CheckPlanarDrawable(*variant, 30.0, {.elastic = true, .elastic_tidy = 0.001, .pins = p});
 			WARN(fmt::format("{} seed: {}, total slack {:.3f}", label, describe(seed), seed.slack));
 			if (!seed.feasible) continue;
 			const PlanarDrawResult *previous = &seed;
@@ -2264,7 +2264,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 					WARN("total cap of 15 minutes passed; stopped");
 					return;
 				}
-				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points}));
+				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points}));
 				const PlanarDrawResult &r = rounds.back();
 				WARN(fmt::format("{} round {}: {}, total slack {:.3f}", label, k, describe(r), r.slack));
 				if (r.status != "Optimal") {
@@ -2282,12 +2282,14 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				WARN(fmt::format("{} no Optimal round; no final", label));
 				continue;
 			}
-			const PlanarDrawResult f = CheckPlanarDrawable(*variant, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &last_optimal->points});
-			WARN(fmt::format("{} final (integer, 15 s): {}", label, describe(f)));
-			if (f.status == "Infeasible") {
-				std::string conflicts;
-				for (size_t i = 0; i < std::min<size_t>(30, f.conflict.size()); i++) conflicts += f.conflict[i] + "; ";
-				WARN(fmt::format("{} final conflict: {}", label, conflicts));
+			for (const double budget : {15.0, 60.0}) {
+				const PlanarDrawResult f = CheckPlanarDrawable(*variant, budget, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = &last_optimal->points});
+				WARN(fmt::format("{} final (integer, {:.0f} s): {}", label, budget, describe(f)));
+				if (f.status == "Infeasible") {
+					std::string conflicts;
+					for (size_t i = 0; i < std::min<size_t>(30, f.conflict.size()); i++) conflicts += f.conflict[i] + "; ";
+					WARN(fmt::format("{} final conflict: {}", label, conflicts));
+				}
 			}
 		}
 	}
