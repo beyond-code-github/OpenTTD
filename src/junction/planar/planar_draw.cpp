@@ -234,7 +234,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
 		if (options.elastic) {
 			const std::string family = tag.substr(0, tag.find(' '));
-			if (family != "piece" && family != "box" && family != "pin") {
+			if (family != "piece" && family != "box" && family != "pin" && (options.elastic_families.empty() || std::ranges::find(options.elastic_families, family) != options.elastic_families.end())) {
 				if (std::isfinite(lower)) {
 					merged.emplace_back(milp.AddVariable(0, JunctionMilp::INF, 1, false), 1.0);
 					slack_tag.push_back(tag);
