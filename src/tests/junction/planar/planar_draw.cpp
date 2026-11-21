@@ -2654,6 +2654,64 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				while (std::getline(gs, g, ',')) final_continuous.push_back(g);
 				WARN(fmt::format("{} finals leave continuous: {}", label, groups));
 			}
+			/* PLANAR_PROBE_RATCHET (a measurement aid, D422): commit the inserts the last round used (curve rows on them, the rest at 0), re-pick sides with slack on sep and curve rows (at most 4 rounds), prune the committed inserts whose curve rows still stretch (once), then an integer final. */
+			if (std::getenv("PLANAR_PROBE_RATCHET") != nullptr) {
+				std::vector<std::vector<double>> committed = last_optimal->lengths;
+				const auto count_committed = [&]() {
+					size_t n = 0;
+					for (size_t t = 0; t < variant->tracks.size() && t < committed.size(); t++) {
+						for (const uint32_t m : variant->tracks[t].flex) n += m < committed[t].size() && committed[t][m] >= 0.25 ? 1 : 0;
+					}
+					return n;
+				};
+				WARN(fmt::format("{} ratchet: committed {} inserts", label, count_committed()));
+				const auto ratchet_rounds = [&](const PlanarDrawResult *from, const std::string &stage) {
+					std::vector<PlanarDrawResult> rr;
+					rr.reserve(4);
+					const PlanarDrawResult *prev = from;
+					for (int k = 1; k <= 4; k++) {
+						rr.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .curve_flex_from = &committed, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep", "curve"}, .pins = p, .sides_from = &prev->points}));
+						const PlanarDrawResult &r = rr.back();
+						double curve_slack = 0;
+						for (const auto &[row, slack] : r.stretched) curve_slack += row.starts_with("curve") ? slack : 0;
+						WARN(fmt::format("{} ratchet {} round {}: {}, total slack {:.3f}, curve slack {:.3f}", label, stage, k, describe(r), r.slack, curve_slack));
+						if (r.status != "Optimal") break;
+						const bool done = r.slack < 1e-6 || (k > 1 && prev->slack - r.slack <= 0.5);
+						prev = &rr.back();
+						if (done) break;
+					}
+					return rr;
+				};
+				std::vector<PlanarDrawResult> commit = ratchet_rounds(last_optimal, "commit");
+				if (commit.empty() || commit.back().status != "Optimal") continue;
+				size_t pruned = 0;
+				for (const auto &[row, slack] : commit.back().stretched) {
+					if (!row.starts_with("curve")) continue;
+					WARN(fmt::format("{} ratchet stretched {}: {:.3f}", label, row, slack));
+					if (!row.starts_with("curve flex ")) continue;
+					std::istringstream rs(row.substr(11));
+					std::string name;
+					uint32_t piece = 0;
+					rs >> name >> piece;
+					for (size_t t = 0; t < variant->tracks.size(); t++) {
+						if (variant->structure.map.tracks[t].name != name || piece >= committed[t].size()) continue;
+						committed[t][piece] = 0;
+						pruned++;
+					}
+				}
+				std::vector<PlanarDrawResult> prune;
+				if (pruned > 0) {
+					WARN(fmt::format("{} ratchet: pruned {}, committed now {}", label, pruned, count_committed()));
+					prune = ratchet_rounds(&commit.back(), "prune");
+					if (prune.empty() || prune.back().status != "Optimal") continue;
+				}
+				const std::vector<PlanarDrawResult> &final_rounds = pruned > 0 ? prune : commit;
+				const PlanarDrawResult *sides = final_rounds.size() > 1 ? &final_rounds[final_rounds.size() - 2] : &commit.back();
+				if (pruned > 0 && final_rounds.size() == 1) sides = &commit.back();
+				const PlanarDrawResult f = CheckPlanarDrawable(*variant, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .curve_flex_from = &committed, .pins = p, .sides_from = &sides->points});
+				WARN(fmt::format("{} ratchet final (integer, 60 s): {}", label, describe(f)));
+				continue;
+			}
 			/* PLANAR_PROBE_FINAL_SIDES=input (a measurement aid): the finals read their sides from the last Optimal round's own input drawing, i.e. the directions that round proved LP-feasible, not re-read from its rounded output. */
 			const std::vector<std::vector<std::array<int, 2>>> *final_sides = &last_optimal->points;
 			if (const char *fs = std::getenv("PLANAR_PROBE_FINAL_SIDES"); fs != nullptr && std::string_view(fs) == "input") {
