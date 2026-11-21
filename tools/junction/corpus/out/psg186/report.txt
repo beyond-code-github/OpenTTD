@@ -8,7 +8,7 @@ node pieces 80: {'merge join 2->1': 27, 'merge join 3->1': 3, 'merge lane 2->1':
 crossing pairs 145: {'b': 124, 'c': 15, 'n': 6} (a level, b ground over span, c span under span, n node piece over span, na node piece level)
 spans 73: tunnels 21, bridges 52; groups of tunnels+bridges 11
 straight legs undetermined 0 of 80 node pieces
-shape: 131 lines shaped, 435 raw pieces, 55 steps, 290 crossings
+shape: 131 lines shaped, 349 raw pieces, 33 steps, 290 crossings
 ## Checkpoints (named, never silent)
 lanes: lanes derived from each lane's first signal walking inward, else the component vote: N199:out(signal) E279:in(signal) N200:out(signal) W260:in(signal) N205:in(signal) W233:out(signal) N202:in(signal) W234:out(signal) W232:out(signal) W230:out(signal) N204:in(signal) E276:out(signal) E277:out(signal) W264:out(signal) N206:in(signal) E275:out(signal) N201:out(signal) E278:in(signal) E280:in(signal) W225:in(signal) W226:in(signal)
 stations inside the box (ignored by the graph): 172,226 172,227
