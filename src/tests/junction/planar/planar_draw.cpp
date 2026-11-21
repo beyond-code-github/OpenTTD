@@ -693,6 +693,61 @@ TEST_CASE("planar draw: a crosser may cross at its piece end (D414)", "[junction
 	FAIL("T1 has no structured crossing");
 }
 
+TEST_CASE("planar draw: an axis and a diagonal crosser may be one half tile apart on a deck (D415)", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarTrackMap &map = c.v.structure.map;
+	const PlanarDrawResult base = CheckPlanarDrawable(c.v, 5.0, {.clearance = false});
+	REQUIRE(base.feasible);
+
+	/* The track's piece at a crossing, and that piece's heading, normalised to 0..7. */
+	const auto piece_at = [&](uint32_t track, uint32_t crossing) {
+		const auto at = std::ranges::find(map.events[track], crossing);
+		REQUIRE(at != map.events[track].end());
+		return c.v.tracks[track].event_piece[at - map.events[track].begin()];
+	};
+	const auto heading = [&](uint32_t track, uint32_t crossing) { return ((c.v.tracks[track].pieces[piece_at(track, crossing)] % 8) + 8) % 8; };
+
+	for (const PlanarStructure &structure : c.v.structure.structures) {
+		for (size_t k = 0; k + 1 < structure.crossings.size(); k++) {
+			const std::array<uint32_t, 2> cs = {structure.crossings[k], structure.crossings[k + 1]};
+			std::array<uint32_t, 2> crosser{};
+			for (int i = 0; i < 2; i++) crosser[i] = map.crossings[cs[i]].a == structure.separator ? map.crossings[cs[i]].b : map.crossings[cs[i]].a;
+			if (heading(crosser[0], cs[0]) % 4 == heading(crosser[1], cs[1]) % 4) continue;
+
+			/* Each crossing where the drawing has it: the separator's piece meets the crosser's piece, solved by Cramer's rule (the headings differ, so the determinant is not 0). */
+			const std::array<int, 2> sep_step = PlanarModel::STEP[heading(structure.separator, cs[0])];
+			const auto where = [&](int i) {
+				const std::array<int, 2> cr_step = PlanarModel::STEP[heading(crosser[i], cs[i])];
+				const std::array<int, 2> p0 = base.points[structure.separator][piece_at(structure.separator, cs[i])];
+				const std::array<int, 2> q0 = base.points[crosser[i]][piece_at(crosser[i], cs[i])];
+				const int det = -sep_step[0] * cr_step[1] + cr_step[0] * sep_step[1];
+				REQUIRE(det != 0);
+				const int a = (-(q0[0] - p0[0]) * cr_step[1] + cr_step[0] * (q0[1] - p0[1])) / det;
+				return std::array<int, 2>{p0[0] + a * sep_step[0], p0[1] + a * sep_step[1]};
+			};
+			/* The second crossing stays, the first moves one step toward it. */
+			const std::array<int, 2> second = where(1);
+			const std::array<int, 2> first = {second[0] - sep_step[0], second[1] - sep_step[1]};
+
+			/* The separator's end pins hold the drawing in place, so the crossing pins are no free shift. */
+			std::string text;
+			for (int i = 0; i < 2; i++) text += fmt::format("cross {} {} {} {}\n", map.tracks[map.crossings[cs[i]].a].name, map.tracks[map.crossings[cs[i]].b].name, (i == 0 ? first : second)[0], (i == 0 ? first : second)[1]);
+			text += EndPinLine(map, structure.separator, true, base.points[structure.separator].front());
+			text += EndPinLine(map, structure.separator, false, base.points[structure.separator].back());
+			PlanarDrawPins pins = ParsePlanarDrawPins(c.v, text);
+			pins.window = 0;
+			REQUIRE(pins.unmatched.empty());
+			/* T1's own geometry may stretch other families; the deck rows must not. */
+			const PlanarDrawResult held = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .elastic = true, .pins = &pins});
+			CHECK(held.status == "Optimal");
+			for (const auto &[tag, amount] : held.stretched) CHECK_FALSE(tag.starts_with("deck "));
+			return;
+		}
+	}
+	FAIL("T1 has no structure with an axis and a diagonal crosser side by side");
+}
+
 TEST_CASE("planar draw: pins hold points to an answer key", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(1), 1);

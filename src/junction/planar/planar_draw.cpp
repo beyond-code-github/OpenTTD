@@ -473,6 +473,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		const PlanarShapeStructure &shape = v.structures[s];
 		if (structure.crossings.empty()) continue;
 		std::vector<uint32_t> u;
+		std::vector<int> crosser_heading; // The crosser's piece heading at each crossing, 0..7.
 		uint32_t piece = UINT32_MAX;
 		for (const uint32_t c : structure.crossings) {
 			if (c >= nc) return unsupported(fmt::format("structure {} names crossing {}", s, c));
@@ -480,6 +481,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			if (piece != UINT32_MAX && piece != piece_of[c][side]) return unsupported(fmt::format("structure {}'s crossings sit on different pieces of its separator", s));
 			piece = piece_of[c][side];
 			u.push_back(param[c][side]);
+			const uint32_t crosser = map.crossings[c].a == structure.separator ? map.crossings[c].b : map.crossings[c].a;
+			crosser_heading.push_back(((v.tracks[crosser].pieces[piece_of[c][1 - side]] % 8) + 8) % 8);
 		}
 		int least_run = -1;
 		int most_limit = -1;
@@ -488,7 +491,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			least_run = least_run < 0 ? shape.end_run[kind] : std::min(least_run, shape.end_run[kind]);
 			most_limit = std::max(most_limit, structure.limit[kind]);
 		}
-		for (size_t k = 0; k + 1 < u.size(); k++) row({{u[k + 1], 1}, {u[k], -1}}, rules.deck_gap, JunctionMilp::INF, fmt::format("deck {}", s));
+		/* Parallel crossers keep the deck gap; an axis and a diagonal crosser may be one half tile apart (D415). */
+		for (size_t k = 0; k + 1 < u.size(); k++) row({{u[k + 1], 1}, {u[k], -1}}, crosser_heading[k] % 4 == crosser_heading[k + 1] % 4 ? rules.deck_gap : 1, JunctionMilp::INF, fmt::format("deck {}", s));
 		const Length &len = length[structure.separator][piece];
 		if (least_run > 0) {
 			row({{u.front(), 1}}, 2 * least_run, JunctionMilp::INF, fmt::format("end {}", s));
