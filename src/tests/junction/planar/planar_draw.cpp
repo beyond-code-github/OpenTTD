@@ -1096,6 +1096,24 @@ TEST_CASE("planar draw: PSG 197 flex on end pieces (option C)", "[.][planarkeepa
 	}
 }
 
+TEST_CASE("planar draw: PSG 197 flex-incident pairs (D416 gate)", "[.][planarkeepapart]")
+{
+	for (const bool flex_ends : {false, true}) {
+		const std::string label = flex_ends ? "C" : "D402";
+		PlanarShapeVariant shaped;
+		PlanarDrawPins pins;
+		if (!LoadPinned197(shaped, pins, flex_ends)) continue;
+		PlanarDrawPins p8 = pins;
+		p8.window = 8;
+		const PlanarDrawResult all = CheckPlanarDrawable(shaped, 1.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pins = &p8});
+		WARN(fmt::format("{} pairwise all: status {}, pairs {}, binaries {}", label, all.status, all.pairs, all.binaries));
+		const PlanarDrawResult only = CheckPlanarDrawable(shaped, 1.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_flex_only = true, .pins = &p8});
+		WARN(fmt::format("{} pairwise flex-only: status {}, pairs {}, binaries {}", label, only.status, only.pairs, only.binaries));
+		const PlanarDrawResult solve = CheckPlanarDrawable(shaped, 120.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_flex_only = true, .pins = &p8});
+		WARN(fmt::format("{} pairwise flex-only integer 120 s: status {}, {:.0f} ms, pairs {}, binaries {}", label, solve.status, solve.ms, solve.pairs, solve.binaries));
+	}
+}
+
 TEST_CASE("planar draw: PSG 197 cell slack by flex role", "[.][planarkeepapart]")
 {
 	for (const bool flex_ends : {false, true}) {

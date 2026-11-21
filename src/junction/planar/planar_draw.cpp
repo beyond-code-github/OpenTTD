@@ -771,6 +771,15 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						}
 					}
 					if (crossing) continue;
+					if (options.pairwise_flex_only) {
+						const auto in_flex_group = [&](const PlanarCellWall &wall) {
+							for (const uint32_t m : v.tracks[wall.track].flex) {
+								if (wall.piece + 1 >= m && wall.piece <= m + 1) return true;
+							}
+							return false;
+						};
+						if (!in_flex_group(w[i]) && !in_flex_group(w[j])) continue;
+					}
 					result.pairs++;
 					struct Axis {
 						std::array<int, 2> s;
