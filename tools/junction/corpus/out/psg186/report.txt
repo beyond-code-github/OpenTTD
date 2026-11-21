@@ -2,31 +2,31 @@
 ## Counts
 ports 8 (N-out N-in E-out E-in W-in1 W-out1 W-in2 W-out2); lanes 21 (derived)
 movements 6; routes (in lane x out port reached) 15
-graph: 1887 box pieces, 1544 core pieces, direction rounds [1175, 0] changes, 220 off-route, 955 free pieces fixed by routes, 0 ambiguous
-lines with track 140 (simple chain 140), empty lines 12
-node pieces 85: {'cross lane/lane 2->2': 2, 'merge join 2->1': 26, 'merge join 3->1': 4, 'merge lane 2->1': 10, 'split fray 1->2': 6, 'split fray 1->3': 1, 'split lane 1->2': 33, 'split lane 1->3': 3}
-crossing pairs 146: {'b': 125, 'c': 15, 'n': 6} (a level, b ground over span, c span under span, n node piece over span, na node piece level)
+graph: 1887 box pieces, 1528 core pieces, direction rounds [1175, 0] changes, 232 off-route, 943 free pieces fixed by routes, 0 ambiguous
+lines with track 131 (simple chain 131), empty lines 9
+node pieces 80: {'merge join 2->1': 27, 'merge join 3->1': 3, 'merge lane 2->1': 9, 'split fray 1->2': 6, 'split fray 1->3': 1, 'split lane 1->2': 31, 'split lane 1->3': 3}
+crossing pairs 145: {'b': 124, 'c': 15, 'n': 6} (a level, b ground over span, c span under span, n node piece over span, na node piece level)
 spans 73: tunnels 21, bridges 52; groups of tunnels+bridges 11
-straight legs undetermined 4 of 85 node pieces
-shape: 140 lines shaped, 460 raw pieces, 55 steps, 292 crossings
+straight legs undetermined 4 of 80 node pieces
+shape: 131 lines shaped, 435 raw pieces, 55 steps, 290 crossings
 ## Checkpoints (named, never silent)
 lanes: lanes derived from each lane's first signal walking inward, else the component vote: N199:out(signal) E279:in(signal) N200:out(signal) W260:in(signal) N205:in(signal) W233:out(signal) N202:in(signal) W234:out(signal) W232:out(signal) W230:out(signal) N204:in(signal) E276:out(signal) E277:out(signal) W264:out(signal) N206:in(signal) E275:out(signal) N201:out(signal) E278:in(signal) E280:in(signal) W225:in(signal) W226:in(signal)
 stations inside the box (ignored by the graph): 172,226 172,227
 ambiguous pieces (both directions valid): none
-off-route pieces: 220
+off-route pieces: 232
 lines whose pieces carry different route sets: none
 lines without a simple chain (no geometry): none
 lines skipped by crossings: none
 lines skipped by shape: none
 undetermined straight legs: 173,250 merge (trunk/leg is a node piece); 173,251 merge (trunk/leg is a node piece); 182,258 split (trunk/leg is a node piece); 182,259 split (trunk/leg is a node piece)
-cycle: L152 -> L125 -> L152 (topology.txt not written)
+cycle: none
 level crossings among lines (a): 0 
 node pieces crossing a ground piece (level): 1 182,258/line 11
-lattice-like: line pairs with several hits (first hit kept): 3 L17 x L30 at 181.0,256.5,177.0,255.5 L50 x L80 at 203.5,245.0,203.5,248.0 L125 x L128 at 220.5,265.0,220.5,265.0
+lattice-like: line pairs with several hits (first hit kept): 2 L17 x L30 at 181.0,256.5,177.0,255.5 L50 x L80 at 203.5,245.0,203.5,248.0
 same-channel crossings (two lines with equal route sets): 2 L29 x L37 at 174.5,257.0 L108 x L109 at 214.5,265.0
-tied leg order at nodes (written in encounter order): merge 214,269 sources have equal sideways sense; merge 217,272 sources have equal sideways sense
+tied leg order at nodes (written in encounter order): none
 ## Gaps (D393)
-cascades written for pieces with more than 2 legs or a cross: 3-way merge at 165,259; 3-way merge at 166,255; 3-way merge at 174,246; 3-way split at 194,262; 3-way split at 197,259; 3-way split at 206,236; 3-way split at 214,255; cross node written as a merge then a split at 217,268; 3-way merge at 217,272; cross node written as a merge then a split at 219,265
-empty lines (no track between two events): 12; they have no crossings, shape or lengths
+cascades written for pieces with more than 2 legs or a cross: 3-way merge at 165,259; 3-way merge at 166,255; 3-way merge at 174,246; 3-way split at 194,262; 3-way split at 197,259; 3-way split at 206,236; 3-way split at 214,255
+empty lines (no track between two events): 9; they have no crossings, shape or lengths
 bridge spans not written to structure.txt (no bridge statement in the notation yet): 52
 node pieces adjacent to node pieces: 2

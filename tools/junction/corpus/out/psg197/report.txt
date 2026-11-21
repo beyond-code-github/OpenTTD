@@ -2,30 +2,30 @@
 ## Counts
 ports 6 (N-out N-in E-out E-in S-in S-out); lanes 16 (hubs.tsv)
 movements 6; routes (in lane x out port reached) 16
-graph: 1229 box pieces, 1152 core pieces, direction rounds [771, 10, 0] changes, 73 off-route, 708 free pieces fixed by routes, 0 ambiguous
-lines with track 109 (simple chain 109), empty lines 4
-node pieces 68: {'cross lane/lane 2->2': 1, 'merge join 2->1': 30, 'merge lane 2->1': 4, 'split fray 0->2': 1, 'split fray 1->2': 7, 'split lane 1->2': 24, 'split lane 1->3': 1}
-crossing pairs 123: {'b': 102, 'c': 18, 'n': 3} (a level, b ground over span, c span under span, n node piece over span, na node piece level)
+graph: 1229 box pieces, 1134 core pieces, direction rounds [781, 0] changes, 90 off-route, 691 free pieces fixed by routes, 0 ambiguous
+lines with track 98 (simple chain 98), empty lines 3
+node pieces 61: {'merge join 2->1': 30, 'merge lane 2->1': 1, 'split fray 0->2': 1, 'split fray 1->2': 7, 'split lane 1->2': 21, 'split lane 1->3': 1}
+crossing pairs 122: {'b': 101, 'c': 18, 'n': 3} (a level, b ground over span, c span under span, n node piece over span, na node piece level)
 spans 50: tunnels 50, bridges 0; groups of tunnels+bridges 18
-straight legs undetermined 2 of 68 node pieces
-shape: 109 lines shaped, 351 raw pieces, 51 steps, 246 crossings
+straight legs undetermined 2 of 61 node pieces
+shape: 98 lines shaped, 324 raw pieces, 50 steps, 244 crossings
 ## Checkpoints (named, never silent)
 stations inside the box (ignored by the graph): 128,181 128,182 128,183 128,184
 ambiguous pieces (both directions valid): none
-off-route pieces: 73
+off-route pieces: 90
 lines whose pieces carry different route sets: none
 lines without a simple chain (no geometry): none
 lines skipped by crossings: none
 lines skipped by shape: none
 undetermined straight legs: 104,179 split (trunk/leg is a node piece); 105,179 split (trunk/leg is a node piece)
-cycle: L77 -> L74 -> L77 (topology.txt not written)
+cycle: none
 level crossings among lines (a): 0 
 node pieces crossing a ground piece (level): 0 
-lattice-like: line pairs with several hits (first hit kept): 1 L80 x L98 at 110.0,172.5,110.0,172.5
+lattice-like: line pairs with several hits (first hit kept): 0 
 same-channel crossings (two lines with equal route sets): 2 L4 x L5 at 82.5,162.0 L69 x L70 at 100.5,185.5
 tied leg order at nodes (written in encounter order): none
 ## Gaps (D393)
-cascades written for pieces with more than 2 legs or a cross: 3-way split at 92,158; cross node written as a merge then a split at 109,171
-empty lines (no track between two events): 4; they have no crossings, shape or lengths
+cascades written for pieces with more than 2 legs or a cross: 3-way split at 92,158
+empty lines (no track between two events): 3; they have no crossings, shape or lengths
 bridge spans not written to structure.txt (no bridge statement in the notation yet): 0
 node pieces adjacent to node pieces: 1

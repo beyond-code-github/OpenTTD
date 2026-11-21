@@ -66,45 +66,34 @@ lengths L64: 1 12 2
 lengths L65: 3
 lengths L66: 1 8 4 6 1
 lengths L67: 3 2 9 2
-lengths L68: 2 2 4
-lengths L69: 4 6 1
-lengths L70: 2 10 5
+lengths L68: 1 4 7 2 4
+lengths L69: 1 4 7 6 1
+lengths L70: 9 10 5
 lengths L71: 12
 lengths L72: 3 12 2 12 2 8 1
 lengths L73: 2 2 14 2 10 3
-lengths L74: 1 1 3 1 1
-lengths L75: 2 2 40
-lengths L76: 2 2
-lengths L77: 3
-lengths L78: 1 1 3 1 1
-lengths L79: 4
-lengths L80: 18 2 6 3
-lengths L81: 40 1
-lengths L82: 1 4 4
-lengths L83: 3
-lengths L84: 6 2
-lengths L85: 6
-lengths L86: 1 1 3 1 1
-lengths L87: 3
-lengths L88: 2 2 14
-lengths L89: 6 2 10 1
-lengths L90: 2 6
-lengths L91: 1 4 2
-lengths L92: 10 4 2
-lengths L93: 3
-lengths L94: 8 2 14 4 14 2 4
-lengths L95: 6 4
-lengths L96: 4 2
-lengths L97: 22
-lengths L98: 1 1 1 1 1
-lengths L99: 1 14 3
-lengths L100: 2 4 6 2 2
-lengths L101: 2 4 22
-lengths L102: 12 2 20 2 0
-lengths L103: 2 2
-lengths L104: 8 6 12 4 2
-lengths L105: 2 2 26
-lengths L106: 6 4 10 2
-lengths L107: 24
-lengths L108: 8
-lengths L109: 12
+lengths L74: 2 2 40
+lengths L75: 2 2
+lengths L76: 4
+lengths L77: 18 2 6 3
+lengths L78: 40 1
+lengths L79: 6 2
+lengths L80: 2 2 14
+lengths L81: 6 2 10 1
+lengths L82: 2 6
+lengths L83: 10 4 2
+lengths L84: 3
+lengths L85: 8 2 14 4 14 2 4
+lengths L86: 6 4
+lengths L87: 1 14 6 2
+lengths L88: 22
+lengths L89: 2 4 6 2 2
+lengths L90: 2 4 22
+lengths L91: 12 2 20 2 0
+lengths L92: 2 2
+lengths L93: 8 6 12 4 2
+lengths L94: 2 2 26
+lengths L95: 6 4 10 2
+lengths L96: 24
+lengths L97: 8
+lengths L98: 12
