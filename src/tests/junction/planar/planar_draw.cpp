@@ -2294,6 +2294,9 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 			int round_pad = 0;
 			if (pad_text != nullptr) std::from_chars(pad_text, pad_text + std::strlen(pad_text), round_pad);
 			if (round_pad != 0) WARN(fmt::format("{} rounds padded by {}", label, round_pad));
+			/* PLANAR_PROBE_EXTREMAL (a measurement aid): rounds and finals write one separation row per pair (sep_extremal). */
+			const bool extremal = std::getenv("PLANAR_PROBE_EXTREMAL") != nullptr;
+			if (extremal) WARN(fmt::format("{} one separation row per pair", label));
 			const PlanarDrawResult *previous = &seed;
 			std::vector<PlanarDrawResult> rounds;
 			rounds.reserve(8);
@@ -2303,7 +2306,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 					WARN("total cap of 15 minutes passed; stopped");
 					return;
 				}
-				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points, .sides_pad = round_pad}));
+				rounds.push_back(CheckPlanarDrawable(*variant, 30.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = p, .sides_from = &previous->points, .sides_pad = round_pad}));
 				const PlanarDrawResult &r = rounds.back();
 				WARN(fmt::format("{} round {}: {}, total slack {:.3f}", label, k, describe(r), r.slack));
 				if (k == 1 && variant == &flex_c) WARN(fmt::format("{} pairs {}", label, r.pairs));
@@ -2314,8 +2317,15 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 					break;
 				}
 				const bool stalled = k > 1 && previous->slack - r.slack <= 0.5;
+				/* PLANAR_PROBE_ZERO_TWICE (a measurement aid): stop only when a round read from a slack-0 round's rounded output is at slack 0 too, so the final's sides (with PLANAR_PROBE_FINAL_SIDES=input) are both LP-proved and read from a whole-number drawing; at most 8 rounds. */
+				const bool zero_twice = std::getenv("PLANAR_PROBE_ZERO_TWICE") != nullptr;
+				const bool previous_zero = k > 1 && previous->slack < 1e-6;
 				last_optimal = &r;
 				previous = &r;
+				if (zero_twice) {
+					if (r.slack < 1e-6 && previous_zero) break;
+					continue;
+				}
 				if (r.slack < 1e-6 || stalled) break;
 			}
 			if (last_optimal == nullptr) {
@@ -2374,7 +2384,7 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 				WARN(fmt::format("{} finals take the sides of round {} (its input drawing)", label, at + 1));
 			}
 			for (const double budget : {15.0, 60.0}) {
-				const PlanarDrawResult f = CheckPlanarDrawable(*variant, budget, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .pins = p, .sides_from = final_sides, .continuous = final_continuous});
+				const PlanarDrawResult f = CheckPlanarDrawable(*variant, budget, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = extremal, .pins = p, .sides_from = final_sides, .continuous = final_continuous});
 				WARN(fmt::format("{} final (integer, {:.0f} s): {}", label, budget, describe(f)));
 				if (f.status == "Infeasible" && plateau_probe && !conflict_shown) {
 					conflict_shown = true;

@@ -961,8 +961,20 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							continue;
 						}
 						if (best_margin < 0) result.short_sides++;
-						for (const auto &p : *best_from) {
-							for (const auto &q : *best_to) {
+						/* sep_extremal: a piece's projection on s grows from start to end when its heading's step has a positive dot with s, so only from's highest and to's lowest endpoint can bind. */
+						const auto along = [&](const std::array<std::array<uint32_t, 2>, 2> *ends_of) {
+							const size_t side = ends_of == &pi ? 0 : 1;
+							const std::array<int, 2> step = PlanarModel::STEP[((v.tracks[tracks[side]].pieces[pieces[side]] % 8) + 8) % 8];
+							return step[0] * best_axis->s[0] + step[1] * best_axis->s[1];
+						};
+						std::vector<std::array<uint32_t, 2>> from_ends(best_from->begin(), best_from->end());
+						std::vector<std::array<uint32_t, 2>> to_ends(best_to->begin(), best_to->end());
+						if (options.sep_extremal) {
+							from_ends = {(*best_from)[along(best_from) > 0 ? 1 : 0]};
+							to_ends = {(*best_to)[along(best_to) > 0 ? 0 : 1]};
+						}
+						for (const auto &p : from_ends) {
+							for (const auto &q : to_ends) {
 								Terms t;
 								for (int d = 0; d < 2; d++) {
 									t.emplace_back(q[d], best_axis->s[d]);
