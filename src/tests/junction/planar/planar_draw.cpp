@@ -2058,4 +2058,76 @@ TEST_CASE("planar draw: PSG 197 option A pairwise integer", "[.][planarkeepapart
 			}
 		}
 	}
+
+	/* D417 isolation: W8, 15 s, each run drops one ingredient of the infeasible run. */
+	PlanarDrawPins p8 = pins;
+	p8.window = 8;
+	const auto report = [&](const char *name, const PlanarDrawResult &r) {
+		WARN(fmt::format("D417 isolate {}: status {}, ms {:.0f}, pairs {}, walk_fixed {}, binaries {}", name, r.status, r.ms, r.pairs, r.walk_fixed, r.binaries));
+		if (r.status == "Infeasible") {
+			std::string tags;
+			for (size_t i = 0; i < r.conflict.size() && i < 30; i++) tags += " " + r.conflict[i];
+			WARN(fmt::format("D417 isolate {} conflict:{}", name, tags));
+		}
+	};
+	report("1 no pins", CheckPlanarDrawable(shaped, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .sides_by_walk = true, .walk_strict = true, .pins = nullptr}));
+	report("2 pins, no walk rule", CheckPlanarDrawable(shaped, 15.0, {.clearance = true, .clear_rows = true, .pairwise = true, .sides_by_walk = false, .walk_strict = true, .pins = &p8}));
+	report("3 pins, no clear rows", CheckPlanarDrawable(shaped, 15.0, {.clearance = true, .clear_rows = false, .pairwise = true, .sides_by_walk = true, .walk_strict = true, .pins = &p8}));
+
+	/* Detail of sep 155 2 5: replays the rule of the pairwise block on the face walk. */
+	const PlanarTrackMap &map = shaped.structure.map;
+	const PlanarShapeVariant &v = shaped;
+	for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(shaped)) {
+		if (f.face != 155) continue;
+		const std::vector<PlanarCellWall> &w = f.walls;
+		const size_t n = w.size();
+		const size_t i = 2, j = 5;
+		const auto may_zero = [&](const PlanarCellWall &wall) {
+			const PlanarShapeTrack &tr = v.tracks[wall.track];
+			std::set<uint32_t> zero;
+			for (size_t k = 0; k < tr.flex.size(); k++) {
+				const uint32_t m = tr.flex[k];
+				if (k == 0 || tr.flex[k - 1] + 2 != m) zero.insert(m - 1);
+				zero.insert(m);
+				zero.insert(m + 1);
+			}
+			for (size_t k = 0; k < tr.steps.size(); k++) {
+				const uint32_t m = tr.steps[k];
+				if (k == 0 || tr.steps[k - 1] + 2 != m) zero.insert(m - 1);
+				zero.insert(m);
+				zero.insert(m + 1);
+			}
+			for (const uint32_t m : tr.steps) zero.erase(m);
+			const bool port_stretch = map.expanded.lines[wall.track].from.port != map.expanded.lines[wall.track].to.port && map.events[wall.track].empty();
+			return port_stretch || zero.contains(wall.piece);
+		};
+		const auto name = [&](const PlanarCellWall &wall) { return fmt::format("{} piece {} heading {}", map.tracks[wall.track].name, wall.piece, wall.heading); };
+		const std::array<int, 2> ni = PlanarModel::STEP[(w[i].heading + 6) % 8];
+		const std::array<int, 2> nj = PlanarModel::STEP[(w[j].heading + 6) % 8];
+		const int spacing0 = PlanarModel::RungSpacing(w[i].heading, w[j].heading);
+		const int spacing1 = PlanarModel::RungSpacing(w[j].heading, w[i].heading);
+		WARN(fmt::format("D417 sep 155 2 5: n {} walls, wall 2 [{}], wall 5 [{}], headings mod 4 {}", n, name(w[i]), name(w[j]), w[i].heading % 4 != w[j].heading % 4 ? "differ" : "equal"));
+		WARN(fmt::format("D417 sep 155 2 5: axis0 normal ({},{}) spacing {}; axis1 normal ({},{}) spacing {}", ni[0], ni[1], spacing0, nj[0], nj[1], spacing1));
+		const auto walk = [&](const char *label, size_t from, size_t to, const std::array<int, 2> &normal, int spacing) {
+			bool monotone = true;
+			int sum = 0;
+			for (size_t k = (from + 1) % n;; k = (k + 1) % n) {
+				const std::array<int, 2> step = PlanarModel::STEP[w[k].heading % 8];
+				const int dot = step[0] * normal[0] + step[1] * normal[1];
+				if (dot < 0) monotone = false;
+				if (k == to) break;
+				const bool zero = may_zero(w[k]);
+				const int least = zero ? 0 : ((w[k].heading % 2) == 0 ? 2 : 1);
+				sum += least * dot;
+				WARN(fmt::format("D417 sep 155 2 5: {} between wall {} [{}] least units {} dot {}", label, k, name(w[k]), least, dot));
+			}
+			WARN(fmt::format("D417 sep 155 2 5: {} walk monotone {}, guaranteed {}, spacing {}, rule-fixed {}", label, monotone, sum, spacing, monotone && sum >= spacing));
+		};
+		walk("i->j on axis0", i, j, ni, spacing0);
+		if (w[i].heading % 4 != w[j].heading % 4) {
+			walk("j->i on axis1", j, i, nj, spacing1);
+		} else {
+			walk("j->i on axis0 (same-axis case)", j, i, nj, spacing0);
+		}
+	}
 }
