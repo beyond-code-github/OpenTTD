@@ -159,4 +159,37 @@ std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall
  */
 PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds, const PlanarDrawOptions &options = {});
 
+/** The drawing pipeline's settings (D422 defaults). */
+struct PlanarDrawPipelineOptions {
+	const PlanarDrawPins *pins = nullptr; ///< Answer-key pins, or none.
+	double round_seconds = 30.0; ///< Time limit of each LP round.
+	double final_seconds = 60.0; ///< Time limit of the integer final.
+	double first_flex_price = 0.05; ///< Insert price per half tile in the first discovery round.
+	double irl1 = 0.1; ///< From the second discovery round, an insert's price is irl1 / (its previous length + 0.5).
+	double box_price = 0.01; ///< Price per half tile of width and of height, in every round.
+	bool corridor = true; ///< Beside tracks as offset curves (D421) in every stage.
+	bool keep_apart = true; ///< Pairwise keep-apart (D418) in every stage; false writes no clearance rows (clearance = false), a measurement for hubs whose keep-apart is not yet drawable.
+	double commit_above = 1.0; ///< An insert at or above this length (half tiles) in the last discovery drawing is committed.
+	int discovery_rounds = 8; ///< At most this many discovery rounds.
+	int commit_rounds = 4; ///< At most this many rounds after the commit, and again after the prune.
+};
+
+/** What the drawing pipeline did, and its drawing. */
+struct PlanarDrawPipelineResult {
+	PlanarDrawResult final; ///< The integer final (or the last result before the pipeline stopped).
+	std::vector<std::vector<double>> committed; ///< The commitment reference handed to the final (as curve_flex_from).
+	size_t committed_count = 0; ///< Inserts committed before the prune.
+	size_t pruned = 0; ///< Inserts the prune held at 0.
+	std::vector<std::string> log; ///< One line per round: stage, round, status, total slack, curve slack, box, length.
+	std::string stopped; ///< Empty, or the stage that ended without an Optimal round.
+};
+
+/**
+ * Draw Shape's shape with optional flex by the D422 pipeline: free LP discovery rounds with insert prices, a commit of the inserts used, one prune, and an integer final on the sides the last round proved.
+ * @param v The shaped variant.
+ * @param options The settings.
+ * @return The result.
+ */
+PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const PlanarDrawPipelineOptions &options);
+
 #endif /* PLANAR_DRAW_H */

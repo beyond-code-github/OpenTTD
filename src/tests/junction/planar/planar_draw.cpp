@@ -319,6 +319,30 @@ TEST_CASE("planar draw: a committed flex insert keeps curve spacing", "[junction
 	WARN("own-lengths commitment: status " << own.status << ", feasible " << own.feasible << ", committed " << committed << " of " << middles);
 }
 
+TEST_CASE("planar draw: the pipeline draws the one-lane T with optional flex (D422)", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	{
+		/* A measurement, no assertion: with keep-apart the T plateaus at sep slack 3. */
+		const PlanarDrawPipelineResult with = DrawPlanarPipeline(c.v, {});
+		WARN("keep_apart true: stopped '" << with.stopped << "', last log line: " << (with.log.empty() ? std::string() : with.log.back()));
+	}
+	const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, {.keep_apart = false});
+	INFO("stopped " << r.stopped);
+	REQUIRE(r.final.status == "Optimal");
+	for (const auto &[gap, least] : DrawnCurveGaps(c, r.final, false, &r.committed)) {
+		INFO("gap " << gap << " least " << least);
+		CHECK(gap >= least);
+	}
+	for (size_t t = 0; t < c.v.tracks.size(); t++) {
+		for (const uint32_t m : c.v.tracks[t].flex) {
+			if (t >= r.committed.size() || m >= r.committed[t].size() || r.committed[t][m] >= 1.0) continue;
+			INFO("flex middle " << t << " " << m);
+			CHECK(r.final.lengths[t][m] == 0);
+		}
+	}
+}
+
 TEST_CASE("planar draw: elastic mode names a short curve", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
@@ -2787,6 +2811,33 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 			}
 		}
 	}
+}
+
+TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
+{
+	const auto describe = [](const PlanarDrawResult &r) {
+		long total = 0;
+		int x0 = INT32_MAX, x1 = INT32_MIN, y0 = INT32_MAX, y1 = INT32_MIN;
+		for (const auto &track : r.points) {
+			for (size_t i = 0; i < track.size(); i++) {
+				x0 = std::min(x0, track[i][0]); x1 = std::max(x1, track[i][0]);
+				y0 = std::min(y0, track[i][1]); y1 = std::max(y1, track[i][1]);
+				if (i > 0) total += std::max(std::abs(track[i][0] - track[i - 1][0]), std::abs(track[i][1] - track[i - 1][1]));
+			}
+		}
+		if (x0 > x1) return fmt::format("status {}, ms {:.0f}, no points", r.status, r.ms);
+		return fmt::format("status {}, ms {:.0f}, short_sides {}, box {} x {}, total length {}", r.status, r.ms, r.short_sides, x1 - x0, y1 - y0, total);
+	};
+	PlanarShapeVariant flex_c;
+	PlanarDrawPins flex_c_pins;
+	if (!LoadPinned197(flex_c, flex_c_pins, true)) return;
+	const auto start = std::chrono::steady_clock::now();
+	const PlanarDrawPipelineResult r = DrawPlanarPipeline(flex_c, {});
+	for (const std::string &line : r.log) WARN(line);
+	WARN(fmt::format("committed {} inserts, pruned {}, stopped '{}'", r.committed_count, r.pruned, r.stopped));
+	WARN(fmt::format("final: {}", describe(r.final)));
+	WARN(fmt::format("pipeline wall time {:.1f} s", std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count()));
+	CHECK(r.final.status == "Optimal");
 }
 
 TEST_CASE("planar draw: beside tracks and their parent chains (corridor recon)", "[.][planarcorridor]")
