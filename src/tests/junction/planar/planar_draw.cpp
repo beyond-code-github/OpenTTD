@@ -1236,3 +1236,30 @@ TEST_CASE("planar draw: PSG 197 with landings from a drawing", "[.][planarkeepap
 	WarnLd("LD 197 landings only", r2, changed, kept, nohit);
 	WARN(fmt::format("LD 197 cells: relanded {}, shaped {}", PlanarShapeCellWalls(relanded).size(), PlanarShapeCellWalls(shaped).size()));
 }
+
+TEST_CASE("planar draw: PSG 197 base LP, its conflict", "[.][planarkeepapart]")
+{
+	PlanarShapeVariant shaped;
+	PlanarDrawPins pins;
+	if (!LoadPinned197(shaped, pins)) return;
+	const std::vector<std::string> all = {"point", "axis", "diagonal", "param", "cross", "other"};
+	PlanarDrawPins none = pins;
+	none.pins.clear();
+	PlanarDrawPins p8 = pins;
+	p8.window = 8;
+	for (const auto &[name, p] : std::vector<std::pair<std::string, const PlanarDrawPins *>>{{"no pins", &none}, {"pins W8", &p8}}) {
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 30.0, {.clearance = false, .pins = p, .continuous = all});
+		WARN(fmt::format("base LP {}: status {}, {:.0f} ms", name, r.status, r.ms));
+		for (const std::string &tag : r.conflict) WARN(fmt::format("base LP {} conflict: {}", name, tag));
+		const PlanarDrawResult e = CheckPlanarDrawable(shaped, 30.0, {.clearance = false, .elastic = true, .pins = p});
+		WARN(fmt::format("base elastic {}: status {}, slack {:.3f}", name, e.status, e.slack));
+		for (const auto &[tag, amount] : e.stretched) WARN(fmt::format("base elastic {} stretched: {} {:.3f}", name, tag, amount));
+		const PlanarTrackMap &map = shaped.structure.map;
+		for (const auto &[tag, amount] : e.stretched) {
+			if (!tag.starts_with("cross ")) continue;
+			uint32_t c = UINT32_MAX;
+			std::from_chars(tag.data() + 6, tag.data() + tag.size(), c);
+			if (c < map.crossings.size()) WARN(fmt::format("base elastic {} crossing {}: {} x {}", name, c, map.tracks[map.crossings[c].a].name, map.tracks[map.crossings[c].b].name));
+		}
+	}
+}
