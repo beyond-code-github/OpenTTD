@@ -12,6 +12,7 @@ Turns a hub in a whole-map save export into the files the junction solver loads.
   - `report.txt`: counts, every checkpoint (ambiguous pieces, lines without geometry, undetermined straights, level and same-channel crossings, tied leg orders) and the gaps (D393).
 - Pieces join across an edge only through moves a train can make: a diagonal never joins a diagonal of the other orientation (Upper/Lower to Left/Right is a 90-degree turn; `load.py` `FORBID_90_DEG`, assumed true because the export carries no game settings).
 - `compare.py psg197 <dir>`: golden check of the extraction against tools/junction/topologies/psg197*.txt (hand names mapped to lines by tiles, as the probes did); prints the probes' numbers beside ours and every difference class; writes `<dir>/compare.txt`.
+- A split's node piece is the last piece of its trunk line and a merge's node piece the first piece of its out line; legs never include it (so a diverging leg starts with its own diagonal piece).
 - `out/<id>/`: the committed outputs for psg197 and psg186.
 
 Run: `python3 -I tools/junction/corpus/extract.py psg197 --out tools/junction/corpus/out/psg197` then `python3 -I tools/junction/corpus/compare.py psg197 tools/junction/corpus/out/psg197` (about 2 s each).

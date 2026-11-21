@@ -8,7 +8,7 @@ node pieces 61: {'merge join 2->1': 30, 'merge lane 2->1': 1, 'split fray 0->2':
 crossing pairs 122: {'b': 101, 'c': 18, 'n': 3} (a level, b ground over span, c span under span, n node piece over span, na node piece level)
 spans 50: tunnels 50, bridges 0; groups of tunnels+bridges 18
 straight legs undetermined 0 of 61 node pieces
-shape: 98 lines shaped, 324 raw pieces, 50 steps, 244 crossings
+shape: 98 lines shaped, 262 raw pieces, 34 steps, 244 crossings
 ## Checkpoints (named, never silent)
 stations inside the box (ignored by the graph): 128,181 128,182 128,183 128,184
 ambiguous pieces (both directions valid): none

@@ -531,10 +531,10 @@ def shape(N, G, Ln, X5, S6, lanes):
     def shape_segs(k):
         s = segs_of(k); ch = Ln.chains[k]; extra = 0
         pre = [a for a in CP[ch[0]] if a in isnode]; nxt = [b for b in CS[ch[-1]] if b in isnode]
-        if len(pre) == 1 and len(CP[ch[0]]) == 1:
+        if len(pre) == 1 and len(CP[ch[0]]) == 1 and Ln.ninfo[pre[0]][0] != 'split':   # a split's node piece is its trunk's last piece, not a leg's first
             nd = pre[0]; sh = shared(nd, ch[0])
             if sh is not None: s.insert(0, ([q for q in ends(nd) if q != sh][0], sh, 'g', nd))
-        if len(nxt) == 1 and len(CS[ch[-1]]) == 1:
+        if len(nxt) == 1 and len(CS[ch[-1]]) == 1 and Ln.ninfo[nxt[0]][0] != 'merge':   # a merge's node piece is its out line's first piece, not a leg's last
             nd = nxt[0]; sh = shared(ch[-1], nd)
             if sh is not None: s.append((sh, [q for q in ends(nd) if q != sh][0], 'g', nd))
         return s

@@ -1,59 +1,59 @@
 # BBH01 shape at Shape's level (D396): each stretch monotone from its start to its end heading; sideways steps are in steps.txt; extracted by tools/junction/corpus/extract.py.
 shape L1: 0 1
 at L1: L4@1
-shape L2: 0 1 2 1
-at L2: L4@1, L5@2, L16@3, L18@3, L26@3
+shape L2: 1 2 1
+at L2: L4@0, L5@1, L16@2, L18@2, L26@2
 shape L3: 0
 shape L4: 0 1
 at L4: L2@0, L1@0, L5@1
-shape L5: 0 1
-at L5: L2@0, L10@0, L9@0, L4@0
+shape L5: 1 0 1
+at L5: L2@1, L10@1, L9@1, L4@1
 shape L6: 0
-shape L7: 0 1 2
-at L7: L16@1, L18@1, L26@2, L28@2
+shape L7: 1 2
+at L7: L16@0, L18@0, L26@1, L28@1
 shape L8: 0
-shape L9: 1
+shape L9: 1 0
 at L9: L5@0
-shape L10: 1 2 1 0 -1
-at L10: L5@1, L16@2, L18@2, L26@2, L28@2, L24@3
+shape L10: 2 1 0
+at L10: L5@0, L16@1, L18@1, L26@1, L28@1, L24@2
 shape L11: 0 1 2 1 2
 at L11: L16@1, L18@1, L37@2, L32@2, L47@2, L48@3, L57@4, L59@4, L40@4, L60@4, L79@4
-shape L12: 0 1 2 1 2
-at L12: L16@1, L18@1, L37@2, L32@2, L47@2, L48@3, L57@4, L59@4, L60@4, L40@4
-shape L13: 0
+shape L12: 1 2 1 2
+at L12: L16@0, L18@0, L37@1, L32@1, L47@1, L48@2, L57@3, L59@3, L60@3, L40@3
+shape L13: 7 8
 shape L14: 0
 shape L15: 7 8
 at L15: L21@0
-shape L16: 0 1
+shape L16: 0
 at L16: L12@0, L11@0, L7@0, L2@0, L10@0, L17@0
-shape L17: 1 0
+shape L17: 1
 at L17: L16@0
-shape L18: 0
-at L18: L12@0, L11@0, L7@0, L2@0, L10@0
+shape L18: 1 0
+at L18: L12@1, L11@1, L7@1, L2@1, L10@1
 shape L19: 0
 shape L20: 0
 shape L21: 1 0
 at L21: L15@1
-shape L22: 7 8
-shape L23: 0 -1
-shape L24: 0 -1
-at L24: L10@1, L28@1
+shape L22: 7
+shape L23: 0
+shape L24: 7
+at L24: L10@0, L28@0
 shape L25: 0
-shape L26: 7 8
+shape L26: 7 8 7
 at L26: L7@1, L2@1, L10@1
 shape L27: 5 4
-shape L28: 7 8 7
-at L28: L7@1, L31@1, L30@1, L10@1, L24@1
+shape L28: 0
+at L28: L7@0, L31@0, L30@0, L10@0, L24@0
 shape L29: 7
 shape L30: 1 2 3 2 3
 at L30: L28@0, L32@1, L40@1, L47@1, L48@1, L57@1, L59@2, L60@3
-shape L31: 1 2 3 2
-at L31: L28@1, L32@1, L47@1, L40@1, L48@1, L57@1, L59@2, L60@3
-shape L32: 4
-at L32: L40@0, L30@0, L31@0, L45@0, L46@0, L11@0, L12@0, L37@0
-shape L33: 5 6 5 4
-at L33: L57@1, L48@1, L47@2
-shape L34: 4 5
+shape L31: 2 3 2
+at L31: L28@0, L32@0, L47@0, L40@0, L48@0, L57@0, L59@1, L60@2
+shape L32: 5 4
+at L32: L40@1, L30@1, L31@1, L45@1, L46@1, L11@1, L12@1, L37@1
+shape L33: 6 5
+at L33: L57@0, L48@0, L47@1
+shape L34: 4
 shape L35: 5 6 5
 at L35: L48@0, L49@1, L47@1
 shape L36: 0 -1
@@ -65,88 +65,88 @@ shape L40: 7 8 7 8
 at L40: L12@0, L60@0, L11@0, L59@0, L46@1, L57@2, L45@2, L48@2, L31@2, L47@2, L30@2, L32@2
 shape L41: 5 4
 shape L42: 4 3
-shape L43: 3 4
+shape L43: 4
 shape L44: 3 4
-shape L45: 2 1 2
+shape L45: 2 1
 at L45: L32@0, L47@0, L48@0, L40@0, L57@0, L59@0, L60@1
-shape L46: 2 3 2 1 2 3
-at L46: L32@1, L47@2, L48@2, L57@2, L40@2, L59@2, L60@3
+shape L46: 3 2 1 2
+at L46: L32@0, L47@1, L48@1, L57@1, L40@1, L59@1, L60@2
 shape L47: 4
 at L47: L30@0, L40@0, L31@0, L45@0, L46@0, L11@0, L12@0, L37@0, L33@0, L35@0
-shape L48: 4 5
-at L48: L30@0, L31@0, L40@0, L45@0, L46@0, L11@0, L12@0, L37@0, L33@0, L49@0, L35@0, L51@0
-shape L49: 5 4
+shape L48: 3 4
+at L48: L30@1, L31@1, L40@1, L45@1, L46@1, L11@1, L12@1, L37@1, L33@1, L49@1, L35@1, L51@1
+shape L49: 5 4 5
 at L49: L57@0, L48@0, L35@1
-shape L50: 4 5
+shape L50: 4
 shape L51: 5
 at L51: L48@0
-shape L52: 3
+shape L52: 4 3
 shape L53: 3
 shape L54: 4 3 2 3
 at L54: L57@1, L59@1, L60@1, L66@2, L80@3
-shape L55: 4 3 2
-at L55: L57@1, L59@1, L60@1, L66@2
+shape L55: 3 2
+at L55: L57@0, L59@0, L60@0, L66@1
 shape L56: 5
-shape L57: 3 4 5
-at L57: L55@1, L54@1, L30@1, L31@1, L45@1, L40@1, L46@1, L11@1, L12@1, L37@1, L33@1, L49@1, L61@1, L62@1
+shape L57: 4
+at L57: L55@0, L54@0, L30@0, L31@0, L45@0, L40@0, L46@0, L11@0, L12@0, L37@0, L33@0, L49@0, L61@0, L62@0
 shape L58: 3
-shape L59: 3 4 5
-at L59: L55@1, L54@1, L30@1, L31@1, L45@1, L46@1, L40@1, L11@1, L12@1, L37@1, L64@1, L61@1, L62@1, L63@1
-shape L60: 3 4 5
+shape L59: 4
+at L59: L55@0, L54@0, L30@0, L31@0, L45@0, L46@0, L40@0, L11@0, L12@0, L37@0, L64@0, L61@0, L62@0, L63@0
+shape L60: 3 4
 at L60: L55@1, L54@1, L30@1, L31@1, L45@1, L46@1, L11@1, L40@1, L12@1, L37@1, L64@1, L61@1, L62@1, L68@1, L69@1
-shape L61: 5 6 5
-at L61: L62@1, L60@1, L59@2, L57@2
-shape L62: 5 6 5
+shape L61: 6 5
+at L61: L62@0, L60@0, L59@1, L57@1
+shape L62: 5 6
 at L62: L61@0, L60@1, L59@1, L57@1
 shape L63: 5
 at L63: L59@0
-shape L64: 5 6 5
-at L64: L60@1, L59@2
+shape L64: 6 5
+at L64: L60@0, L59@1
 shape L65: 5
-shape L66: 3 4 3
-at L66: L55@1, L54@1
-shape L67: 3 2
-shape L68: 5
-at L68: L60@0
-shape L69: 5 6 5
-at L69: L70@1, L60@1
+shape L66: 4
+at L66: L55@0, L54@0
+shape L67: 3
+shape L68: 6 5
+at L68: L60@1
+shape L69: 4 5 6
+at L69: L70@2, L60@2
 shape L70: 5 4 5
 at L70: L69@1
 shape L71: 2
 at L71: L76@0
-shape L72: 7
-shape L73: 6 7
-at L73: L87@0
-shape L74: 6
-at L74: L89@0, L82@0
-shape L75: 5 6
+shape L72: 7 6
+shape L73: 7 6 7
+at L73: L87@1
+shape L74: 5 6
+at L74: L89@1, L82@1
+shape L75: 5
 shape L76: 3
 at L76: L71@0
 shape L77: 6 5
 at L77: L87@0
-shape L78: 6 5
+shape L78: 6
 at L78: L89@0, L82@0
-shape L79: 3 2
+shape L79: 3
 at L79: L11@0
-shape L80: 2
-at L80: L54@0
-shape L81: 2 3
+shape L80: 1 2
+at L80: L54@1
+shape L81: 2
 shape L82: 6 5
 at L82: L78@1, L74@1
-shape L83: 2
+shape L83: 2 3
 shape L84: 5
 shape L85: 2
 shape L86: 6 5
-shape L87: 7 6 5 6
-at L87: L73@2, L77@2
+shape L87: 6 5
+at L87: L73@1, L77@1
 shape L88: 6
-shape L89: 6 5 6
-at L89: L78@1, L74@1
-shape L90: 6
+shape L89: 5
+at L89: L78@0, L74@0
+shape L90: 5 6
 shape L91: 2
-shape L92: 3 2
+shape L92: 3
 shape L93: 2
-shape L94: 6
+shape L94: 7 6
 shape L95: 6 7
 shape L96: 6
 shape L97: 6
