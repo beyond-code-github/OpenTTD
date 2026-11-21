@@ -172,6 +172,91 @@ TEST_CASE("planar draw: PSG 197 (Shape's own shape)", "[.][planarpsg197]")
 	WARN(fmt::format("197 dummies {}: on dummies {}, on tracks {}, on the box {}; cells {}", shaped.dummies.size(), on_dummy, on_track, on_box, PlanarShapeCellWalls(shaped).size()));
 }
 
+/** Read a file of the extractor's PSG 197 output (X8). */
+static std::string ReadExtractorFileForDraw(const std::string &name)
+{
+	std::ifstream file(std::string(JUNCTION_TOPOLOGY_DIR) + "/../corpus/out/psg197/" + name);
+	std::stringstream buffer;
+	buffer << file.rdbuf();
+	return buffer.str();
+}
+
+/** The five X8 stages for one set of files; each WARNs its outcome and stops on failure. */
+static void LoadStagesX8(const std::string &label, const std::string &topology_text, const std::string &structure_text, const std::string &shape_text)
+{
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(topology_text, &error);
+	if (!error.empty() || topology.lines.empty()) {
+		WARN(fmt::format("X8 {} 1 parse: FAILED: {}", label, error));
+		return;
+	}
+	WARN(fmt::format("X8 {} 1 parse: ports {}, lines {}, nodes {}, crossings {}", label, topology.ports.size(), topology.lines.size(), topology.nodes.size(), topology.crossings.size()));
+
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant structure = LoadPlanarStructureVariant(topology, structure_text, spec, report, &error);
+	if (!error.empty()) {
+		WARN(fmt::format("X8 {} 2 structure: FAILED: {}", label, error));
+		return;
+	}
+	size_t gaps = 0, differs = 0, other = 0;
+	for (const std::string &r : report) {
+		if (r.starts_with("gap:")) {
+			gaps++;
+		} else if (r.starts_with("differs:")) {
+			differs++;
+		} else {
+			other++;
+		}
+	}
+	WARN(fmt::format("X8 {} 2 structure: report lines {} (gap: {}, differs: {}, other {})", label, report.size(), gaps, differs, other));
+	for (size_t i = 0; i < std::min<size_t>(20, report.size()); i++) WARN(fmt::format("X8 {} 2 report {}: {}", label, i, report[i]));
+
+	PlanarShapeVariant shaped;
+	std::string why;
+	if (!LoadPlanarShapeVariant(topology, structure, shape_text, shaped, why)) {
+		WARN(fmt::format("X8 {} 3 shape: FAILED: {}", label, why));
+		return;
+	}
+	const std::vector<std::string> breaches = CheckPlanarShapePromise(topology, spec, shaped);
+	WARN(fmt::format("X8 {} 3 shape: loaded, promise breaches {}", label, breaches.size()));
+	for (size_t i = 0; i < std::min<size_t>(20, breaches.size()); i++) WARN(fmt::format("X8 {} 3 breach {}: {}", label, i, breaches[i]));
+
+	if (!PlacePlanarShapeFlex(shaped, why)) {
+		WARN(fmt::format("X8 {} 4 flex: FAILED: {}", label, why));
+		return;
+	}
+	size_t flex = 0;
+	for (const PlanarShapeTrack &t : shaped.tracks) flex += t.flex.size();
+	std::string cells_why;
+	const bool refined = RefinePlanarShapeCells(shaped, cells_why);
+	WARN(fmt::format("X8 {} 4 flex {}, cells refined {}: {}, dummies {}, cells {}", label, flex, refined, cells_why, shaped.dummies.size(), PlanarShapeCellWalls(shaped).size()));
+	if (!refined) return;
+
+	const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.elastic = true});
+	double family_sum = 0;
+	std::map<std::string, std::pair<size_t, double>> families;
+	for (const auto &[tag, slack] : r.stretched) {
+		auto &f = families[tag.substr(0, tag.find(' '))];
+		f.first++;
+		f.second += slack;
+		family_sum += slack;
+	}
+	WARN(fmt::format("X8 {} 5 draw: status {}, total slack {:.3f}, stretched {} (sum {:.3f}), {:.0f} ms", label, r.status, r.slack, r.stretched.size(), family_sum, r.ms));
+	for (const auto &[family, f] : families) WARN(fmt::format("X8 {} 5 family {}: count {}, sum {:.3f}", label, family, f.first, f.second));
+	for (size_t i = 0; i < std::min<size_t>(30, r.stretched.size()); i++) WARN(fmt::format("X8 {} 5 stretched {}: {} {:.3f}", label, i, r.stretched[i].first, r.stretched[i].second));
+}
+
+TEST_CASE("planar draw: the extractor's PSG 197 loads (X8)", "[.][planarpsg197]")
+{
+	try {
+		LoadStagesX8("extractor", ReadExtractorFileForDraw("topology.txt"), ReadExtractorFileForDraw("structure.txt"), ReadExtractorFileForDraw("shape.txt"));
+	} catch (const std::exception &e) {
+		WARN(fmt::format("X8 extractor: EXCEPTION in the first stage not reported above: {}", e.what()));
+	}
+	LoadStagesX8("hand", ReadTopologyFileForDraw("psg197.txt"), ReadTopologyFileForDraw("psg197.structure.txt"), ReadTopologyFileForDraw("psg197.shape.txt"));
+}
+
 TEST_CASE("planar draw: a crossing moved to a piece it cannot meet is a cross conflict", "[junction][planar][planardraw]")
 {
 	DrawCase c = ShapeFirst(PlanarTText(1), 1);
