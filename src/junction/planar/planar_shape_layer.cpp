@@ -229,6 +229,9 @@ struct Wall {
 	int turn; ///< The turn at the corner after this wall.
 };
 
+/** D407 (1): cells are refined and checked (H12, H12b) with every flex pair at size 0: a flex insert is no wall of the walk and its bends are no corners. */
+static constexpr bool FLEX_CELLS_AT_ZERO = true;
+
 struct Oracle;
 
 /**
@@ -290,6 +293,31 @@ bool SplitCell(std::vector<std::vector<Wall>> &cells, const PlanarShapeDummy &d,
 	cells[cell] = a;
 	cells.push_back(b);
 	return true;
+}
+
+/**
+ * A cell walk with every flex insert removed (SPEC-shape §8.8, reduced walk): an insert's turn is added to the wall before it, so the walls either side meet with turn 0.
+ * @param v The variant; `PlanarShapeTrack::flex` names the inserts.
+ * @param walls The walk, in order, cyclic.
+ * @return The walk without inserts.
+ */
+static std::vector<Wall> ReducedWalls(const PlanarShapeVariant &v, const std::vector<Wall> &walls)
+{
+	const auto is_insert = [&](const Wall &w) {
+		return w.track < v.tracks.size() && std::ranges::find(v.tracks[w.track].flex, w.piece) != v.tracks[w.track].flex.end();
+	};
+	std::vector<Wall> out;
+	int carry = 0; // Turns of inserts seen before any kept wall.
+	for (const Wall &w : walls) {
+		if (is_insert(w)) {
+			if (out.empty()) carry += w.turn; else out.back().turn += w.turn;
+		} else {
+			out.push_back(w);
+		}
+	}
+	if (out.empty()) return walls;
+	out.back().turn += carry;
+	return out;
 }
 
 /** The oracle's view of one variant: the map, the shape and the stretch arithmetic. */
@@ -716,6 +744,7 @@ struct Oracle {
 				continue;
 			}
 			if (piece_total != -8) continue; // H7 reports a face that does not wind once.
+			if constexpr (FLEX_CELLS_AT_ZERO) first = ReducedWalls(this->v, first);
 
 			std::vector<std::vector<Wall>> cells = {first};
 			for (size_t di = 0; di < this->v.dummies.size(); di++) {
@@ -1060,6 +1089,7 @@ bool RefinePlanarShapeCells(PlanarShapeVariant &v, std::string &why)
 		int piece_total, h7;
 		if (!CellWalls(o, walk, first, piece_total, h7)) continue;
 		if (piece_total != -8) continue; // H7 reports a face that does not wind once.
+		if constexpr (FLEX_CELLS_AT_ZERO) first = ReducedWalls(v, first);
 		std::vector<std::vector<Wall>> cells = {first};
 		for (;;) {
 			size_t ci = SIZE_MAX, s = 0;
