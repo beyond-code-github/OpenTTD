@@ -6,8 +6,8 @@
  */
 
 /**
- * @file planar_draw.cpp The drawing program: points and pieces, box, ports, nodes, crossings, spans, dummies with their landings and clearance per convex cell (E5-1, E5-2), bays (option), curve spacing (option).
- * Not in it yet: grid parity (D382), beside tracks as offset curves, node legs and the trident binary, coverage.
+ * @file planar_draw.cpp The drawing program: points and pieces, box, ports, nodes, crossings, spans, dummies with their landings and clearance per convex cell (E5-1, E5-2), bays (option), curve spacing (option), corridors (option).
+ * Not in it yet: grid parity (D382), node legs and the trident binary, coverage.
  */
 
 #include "../../stdafx.h"
@@ -197,6 +197,18 @@ PlanarDrawPins ParsePlanarDrawPins(const PlanarShapeVariant &v, std::string_view
 		pins.unmatched.push_back(line);
 	}
 	return pins;
+}
+
+std::array<int, 2> PlanarBesideOpening(int heading, int side)
+{
+	const std::array<int, 2> step = PlanarModel::STEP[(((heading % 8) + 8) % 8 + side + 8) % 8];
+	return {2 * step[0], 2 * step[1]};
+}
+
+std::array<int, 2> PlanarBesideClosing(int heading, int side)
+{
+	const std::array<int, 2> step = PlanarModel::STEP[(((heading % 8) + 8) % 8 - side + 8) % 8];
+	return {2 * step[0], 2 * step[1]};
 }
 
 PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds, const PlanarDrawOptions &options)
@@ -424,14 +436,84 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 	}
 
-	/* Nodes: every line's end at a node is the node's one point. */
+	/* Corridors (D421): per beside track its parent chain, side, and its opening and closing steps. */
+	struct Beside {
+		uint32_t track;
+		std::vector<uint32_t> chain;
+		int side;
+		std::array<int, 2> opening;
+		std::array<int, 2> closing;
+	};
+	std::vector<Beside> besides;
+	std::vector<bool> is_beside(nt, false);
+	if (options.corridor) {
+		for (uint32_t b = 0; b < nt; b++) {
+			if (map.part_of[b] != UINT32_MAX) continue;
+			const std::string &name = map.tracks[b].name;
+			Beside beside{b, {}, 0, {}, {}};
+			if (!ParentChain(map, v.structure.sites, b, beside.chain)) return unsupported("corridor: no parent chain for " + name);
+			std::vector<int> chain_pieces;
+			for (const uint32_t t : beside.chain) {
+				if (!v.tracks[t].flex.empty() || !v.tracks[t].steps.empty()) return unsupported("corridor: parent chain track " + map.tracks[t].name + " of " + name + " has flex or steps");
+				chain_pieces.insert(chain_pieces.end(), v.tracks[t].pieces.begin(), v.tracks[t].pieces.end());
+			}
+			if (!v.tracks[b].flex.empty() || !v.tracks[b].steps.empty()) return unsupported("corridor: " + name + " has flex or steps");
+			const std::vector<int> &pieces = v.tracks[b].pieces;
+			bool same = pieces.size() == chain_pieces.size();
+			for (size_t i = 0; same && i < pieces.size(); i++) same = (((pieces[i] - chain_pieces[i]) % 8) + 8) % 8 == 0;
+			if (!same) return unsupported("corridor: " + name + " does not follow its parent chain's pieces");
+			beside.side = map.Side(b, 0, beside.chain[0], 0);
+			if (beside.side == 0) return unsupported("corridor: " + name + " has no side to its parent chain");
+			beside.opening = PlanarBesideOpening(pieces.front(), beside.side);
+			beside.closing = PlanarBesideClosing(pieces.back(), beside.side);
+			besides.push_back(std::move(beside));
+			is_beside[b] = true;
+		}
+	}
+
+	/* Nodes: every line's end at a node is the node's one point; a corridor's beside track ends one lane step from it. */
 	for (size_t n = 0; n < map.expanded.nodes.size(); n++) {
 		const PlanarNode &node = map.expanded.nodes[n];
 		std::vector<std::array<uint32_t, 2>> ends;
-		for (const uint32_t line : node.in) ends.push_back(point[line].back());
-		for (const uint32_t line : node.out) ends.push_back(point[line].front());
+		for (const uint32_t line : node.in) {
+			if (!is_beside[line]) ends.push_back(point[line].back());
+		}
+		for (const uint32_t line : node.out) {
+			if (!is_beside[line]) ends.push_back(point[line].front());
+		}
+		const bool any_beside = std::ranges::any_of(node.in, [&](uint32_t l) { return is_beside[l]; }) || std::ranges::any_of(node.out, [&](uint32_t l) { return is_beside[l]; });
+		if (any_beside && ends.empty()) return unsupported(fmt::format("corridor: every line at node {} is a beside track", n));
 		for (size_t k = 1; k < ends.size(); k++) {
 			for (int axis = 0; axis < 2; axis++) eq({{ends[k][axis], 1}, {ends[0][axis], -1}}, 0, fmt::format("node {}", n));
+		}
+		for (const Beside &beside : besides) {
+			const std::string &name = map.tracks[beside.track].name;
+			if (std::ranges::find(node.out, beside.track) != node.out.end()) {
+				for (int axis = 0; axis < 2; axis++) eq({{point[beside.track].front()[axis], 1}, {ends[0][axis], -1}}, beside.opening[axis], fmt::format("corridor {} open", name));
+			}
+			if (std::ranges::find(node.in, beside.track) != node.in.end()) {
+				for (int axis = 0; axis < 2; axis++) eq({{ends[0][axis], 1}, {point[beside.track].back()[axis], -1}}, beside.closing[axis], fmt::format("corridor {} close", name));
+			}
+		}
+	}
+
+	/* Corridors: each interior vertex of a beside track keeps one lane (the miter) from its parent chain's vertex, for both headings meeting there. */
+	for (const Beside &beside : besides) {
+		const uint32_t b = beside.track;
+		std::vector<std::array<uint32_t, 2>> chain_point;
+		for (const uint32_t t : beside.chain) chain_point.insert(chain_point.end(), point[t].begin() + (chain_point.empty() ? 0 : 1), point[t].end());
+		const std::vector<int> &pieces = v.tracks[b].pieces;
+		for (size_t k = 1; k < pieces.size(); k++) {
+			std::set<int> headings = {((pieces[k - 1] % 8) + 8) % 8, ((pieces[k] % 8) + 8) % 8};
+			for (const int h : headings) {
+				const std::array<int, 2> normal = PlanarModel::STEP[(h + 2) % 8];
+				Terms terms;
+				for (int axis = 0; axis < 2; axis++) {
+					terms.emplace_back(point[b][k][axis], normal[axis]);
+					terms.emplace_back(chain_point[k][axis], -normal[axis]);
+				}
+				eq(terms, 2 * beside.side, fmt::format("corridor {} {}", map.tracks[b].name, k));
+			}
 		}
 	}
 
