@@ -77,6 +77,8 @@ struct JunctionMilp::Impl {
 		const char *gap = std::getenv("JUNCTION_MILP_GAP");
 		if (highs.setOptionValue("mip_rel_gap", gap != nullptr ? std::atof(gap) : 0.0) != HighsStatus::kOk) return false;
 		if (std::getenv("JUNCTION_MILP_LOG") != nullptr && highs.setOptionValue("output_flag", true) != HighsStatus::kOk) return false;
+		/* Probe knob (unset: unchanged): JUNCTION_MILP_HEUR sets mip_heuristic_effort. */
+		if (const char *heur = std::getenv("JUNCTION_MILP_HEUR"); heur != nullptr && highs.setOptionValue("mip_heuristic_effort", std::atof(heur)) != HighsStatus::kOk) return false;
 		if (highs.setOptionValue("random_seed", 0) != HighsStatus::kOk) return false;
 		if (highs.setOptionValue("threads", 1) != HighsStatus::kOk) return false;
 		if (this->time_limit > 0 && highs.setOptionValue("time_limit", this->time_limit) != HighsStatus::kOk) return false;
