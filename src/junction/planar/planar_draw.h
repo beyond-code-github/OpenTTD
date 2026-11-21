@@ -38,6 +38,7 @@ struct PlanarDrawOptions {
 	std::vector<uint32_t> only_faces; ///< Write the face rows (landings and clearance per cell, or in pairwise mode clearance or separation) only for these faces (map face indices); empty is every face. A measurement aid.
 	bool flex_sides = true; ///< With clearance: rows by sides (D407): flex inserts join their side and are no target, and each vertex keeps 0 from its cell's dummies (D408); false is the rule before D407 (sides by equal headings only, no dummy rows).
 	bool tidy = true; ///< The objective: true minimises the sum of piece lengths (a tidy point); false sets no objective (feasibility only, a measurement).
+	bool pocket = false; ///< With flex_sides: the pocket rule (SPEC-shape §8.9, a probe): an adjacent side's vertices are held past a side's last (first) insert and keep only the lines beyond it.
 };
 
 /** One clearance row of a cell (SPEC-shape §8.8): the vertex after wall `vertex` keeps `spacing` from the line of wall `wall`, on the cell's side. */
@@ -47,16 +48,29 @@ struct PlanarClearRow {
 	int spacing; ///< The least distance along the wall's left normal (`RungSpacing` units); 0 for a dummy.
 };
 
+/** An along row of a cell (SPEC-shape §8.9): Dot(V[vertex] - V[anchor], STEP[heading]) >= spacing, where V[k] is the corner after wall k. */
+struct PlanarAlongRow {
+	uint32_t vertex; ///< The vertex held.
+	uint32_t anchor; ///< The vertex it is held past: the end of the side's last insert, or the start of its first.
+	int heading; ///< The direction along which it is held: the side's walked heading, or its reverse.
+	int spacing; ///< 0 along an axis heading, 2 along a diagonal one.
+};
+
 /**
  * The clearance rows of one cell, by sides (D407 (2), D408), before the variant's own exemptions (span pieces, shared node points, crossing points).
  * A side is a maximal run of walls joined where two consecutive walls have equal headings or one of them is a flex insert.
  * Each vertex k (between walls k and k + 1) has rows against every wall e that is not k or k + 1, not an insert, not a box edge, and not on the side of wall k or of wall k + 1:
  * a track wall with spacing max(RungSpacing(h_e, h_k), RungSpacing(h_e, h_k+1)), a dummy with spacing 0. A vertex between two walls that are no track (dummies, box edges) has no rows.
  * @param cell The cell's walls in walk order, the cell on the left.
+ * With `pocket` (SPEC-shape §8.9, a probe), for each side S with an insert whose next side R (previous side P) is all track walls and the cell has at least 3 sides, every vertex of R (P) except the corner with S gets an along row past S's last (first) insert, and a vertex with both walls in R (P) drops its line rows against S's walls before the last (after the first) insert.
+ * With `pocket` false the rows are exactly those above and `along` is untouched.
+ * @param cell The cell's walls in walk order, the cell on the left.
  * @param insert Per wall, whether it is a flex insert.
+ * @param pocket Whether to apply the pocket rule.
+ * @param along When pocket, receives the along rows (may be null).
  * @return The rows.
  */
-std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall> &cell, const std::vector<bool> &insert);
+std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall> &cell, const std::vector<bool> &insert, bool pocket = false, std::vector<PlanarAlongRow> *along = nullptr);
 
 /**
  * Draw Shape's shape on the half-tile grid with every Slots rule of the families below kept, as one integer program (E5-1).

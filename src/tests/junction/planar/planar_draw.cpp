@@ -22,6 +22,7 @@
 #include <chrono>
 #include <fstream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -353,6 +354,39 @@ TEST_CASE("planar draw: PSG 197 by sides, every face alone and whole", "[.][plan
 	WARN(fmt::format("FS 197 faces: feasible {}, infeasible {}, undecided {}, skipped {}; whole: {} in {:.0f} ms", feasible, infeasible, undecided, skipped, whole.status, whole.ms));
 }
 
+TEST_CASE("planar draw: PSG 197 pocket rule, faces and whole", "[.][planarkeepapart]")
+{
+	const PlanarShapeVariant shaped = Shaped197();
+	const auto begin = std::chrono::steady_clock::now();
+	const std::set<uint32_t> before = {4, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17, 46, 52, 64, 71, 72, 75, 84, 99, 124, 141, 147, 153};
+	const std::set<uint32_t> tidy_off_feasible = {4, 6, 46, 52, 64, 72, 75, 84, 99, 124, 147, 153};
+	size_t feasible = 0, infeasible = 0, undecided = 0, skipped = 0;
+	for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(shaped)) {
+		if (std::chrono::steady_clock::now() - begin > std::chrono::minutes(15)) {
+			skipped++;
+			continue;
+		}
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 15.0, {.only_faces = {f.face}, .pocket = true, .tidy = false});
+		if (r.feasible) {
+			feasible++;
+			continue;
+		}
+		(r.status == "Infeasible" ? infeasible : undecided)++;
+		std::string tags;
+		for (size_t i = 0; i < std::min<size_t>(5, r.conflict.size()); i++) tags += " [" + r.conflict[i] + "]";
+		WARN(fmt::format("FSd face {}: status {}, {:.0f} ms, conflict{}", f.face, r.status, r.ms, tags));
+		if (!before.contains(f.face) || tidy_off_feasible.contains(f.face)) WARN(fmt::format("FSd face {} was feasible in the FS-b run and is not now", f.face));
+	}
+	if (skipped > 0) WARN(fmt::format("FSd stopped after 15 min: {} faces skipped", skipped));
+	const PlanarDrawResult whole = CheckPlanarDrawable(shaped, 60.0, {.pocket = true, .tidy = false});
+	WARN(fmt::format("FSd whole: status {}, rows {}, {:.0f} ms", whole.status, whole.rows, whole.ms));
+	std::map<std::string, size_t> families;
+	for (const std::string &tag : whole.conflict) families[tag.substr(0, tag.find(' '))]++;
+	for (const auto &[family, count] : families) WARN(fmt::format("FSd whole conflicts: {} {}", family, count));
+	for (size_t i = 0; i < std::min<size_t>(20, whole.conflict.size()); i++) WARN(fmt::format("FSd whole conflict {}: {}", i, whole.conflict[i]));
+	WARN(fmt::format("FSd 197 faces: feasible {}, infeasible {}, undecided {}, skipped {}; whole: {} in {:.0f} ms", feasible, infeasible, undecided, skipped, whole.status, whole.ms));
+}
+
 TEST_CASE("planar draw: no objective still decides", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
@@ -424,6 +458,62 @@ TEST_CASE("planar draw: side rows refuse a step's end caps", "[junction][planar]
 	CHECK(std::ranges::find(reach, std::make_pair(1u, 3u)) != reach.end());
 	const auto pocket = FailingSideRows({{{11, 16}, {13, 14}, {13, 10}, {12, 11}, {12, 20}, {11, 20}}});
 	CHECK(std::ranges::find(pocket, std::make_pair(3u, 0u)) != pocket.end());
+}
+
+/** The hand cell of the pocket tests: a step a, insert, b on the north side, two top walls, then left and bottom walls. */
+static const std::vector<PlanarCellWall> POCKET_CELL = {{0, 0, 0}, {0, 1, 1}, {0, 2, 0}, {1, 0, 5}, {4, 0, 5}, {2, 0, 4}, {3, 0, 2}};
+static const std::vector<bool> POCKET_INSERT = {false, true, false, false, false, false, false};
+
+/** The rows of the pocket cell that fail on the vertex points: line rows as (vertex, wall), along rows as (vertex, anchor). */
+static std::pair<std::vector<std::pair<uint32_t, uint32_t>>, std::vector<std::pair<uint32_t, uint32_t>>> FailingPocketRows(const std::array<std::array<int, 2>, 7> &V, bool pocket)
+{
+	std::vector<PlanarAlongRow> along;
+	std::pair<std::vector<std::pair<uint32_t, uint32_t>>, std::vector<std::pair<uint32_t, uint32_t>>> failing;
+	for (const PlanarClearRow &r : PlanarCellClearRows(POCKET_CELL, POCKET_INSERT, pocket, &along)) {
+		const std::array<int, 2> from = V[(r.wall + 6) % 7];
+		const std::array<int, 2> normal = PlanarModel::STEP[(POCKET_CELL[r.wall].heading + 6) % 8];
+		if ((V[r.vertex][0] - from[0]) * normal[0] + (V[r.vertex][1] - from[1]) * normal[1] < r.spacing) failing.first.emplace_back(r.vertex, r.wall);
+	}
+	for (const PlanarAlongRow &r : along) {
+		const std::array<int, 2> step = PlanarModel::STEP[r.heading];
+		if ((V[r.vertex][0] - V[r.anchor][0]) * step[0] + (V[r.vertex][1] - V[r.anchor][1]) * step[1] < r.spacing) failing.second.emplace_back(r.vertex, r.anchor);
+	}
+	return failing;
+}
+
+TEST_CASE("planar draw: the pocket rule lets an adjacent side use a step's room", "[junction][planar][planardraw]")
+{
+	using Row = std::tuple<uint32_t, uint32_t, int>;
+	using Along = std::tuple<uint32_t, uint32_t, int, int>;
+	const std::vector<Row> line = {{0, 3, 2}, {0, 4, 2}, {0, 5, 2}, {0, 6, 1}, {1, 3, 2}, {1, 4, 2}, {1, 5, 2}, {1, 6, 1}, {2, 5, 2}, {2, 6, 1}, {3, 0, 1}, {3, 2, 1}, {3, 5, 1}, {3, 6, 1}, {4, 0, 2}, {4, 2, 2}, {4, 6, 1}, {5, 0, 2}, {5, 2, 2}, {5, 3, 2}, {5, 4, 2}, {6, 3, 2}, {6, 4, 2}, {6, 5, 2}};
+	std::vector<PlanarAlongRow> along;
+	std::vector<Row> got;
+	for (const PlanarClearRow &r : PlanarCellClearRows(POCKET_CELL, POCKET_INSERT, false, &along)) got.emplace_back(r.vertex, r.wall, r.spacing);
+	std::ranges::sort(got);
+	CHECK(got == line);
+	CHECK(along.empty());
+
+	got.clear();
+	for (const PlanarClearRow &r : PlanarCellClearRows(POCKET_CELL, POCKET_INSERT, true, &along)) got.emplace_back(r.vertex, r.wall, r.spacing);
+	std::ranges::sort(got);
+	std::vector<Row> want = line;
+	std::erase(want, Row{3, 0, 1});
+	CHECK(got == want);
+	std::vector<Along> got_along;
+	for (const PlanarAlongRow &r : along) got_along.emplace_back(r.vertex, r.anchor, r.heading, r.spacing);
+	std::ranges::sort(got_along);
+	CHECK(got_along == std::vector<Along>{{3, 1, 0, 0}, {4, 1, 0, 0}, {5, 0, 4, 0}});
+
+	const std::array<std::array<int, 2>, 7> good = {{{11, 16}, {15, 12}, {15, 6}, {13, 8}, {9, 12}, {9, 20}, {11, 20}}};
+	const auto off = FailingPocketRows(good, false);
+	CHECK(off.first == std::vector<std::pair<uint32_t, uint32_t>>{{3, 0}});
+	CHECK(off.second.empty());
+	const auto on = FailingPocketRows(good, true);
+	CHECK(on.first.empty());
+	CHECK(on.second.empty());
+	const std::array<std::array<int, 2>, 7> back = {{{11, 16}, {15, 12}, {15, 6}, {13, 13}, {9, 12}, {9, 20}, {11, 20}}};
+	const auto behind = FailingPocketRows(back, true);
+	CHECK(std::ranges::find(behind.second, std::make_pair(3u, 1u)) != behind.second.end());
 }
 
 TEST_CASE("planar draw: cell faces match the cells", "[junction][planar][planardraw]")
