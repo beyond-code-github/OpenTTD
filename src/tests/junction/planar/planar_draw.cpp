@@ -2581,3 +2581,25 @@ TEST_CASE("planar draw: PSG 197 option (1), directions from earlier drawings", "
 		}
 	}
 }
+
+TEST_CASE("planar draw: beside tracks and their parent chains (corridor recon)", "[.][planarcorridor]")
+{
+	for (const uint32_t lanes : {1U, 2U}) {
+		const DrawCase c = ShapeFirst(PlanarTText(lanes), 1);
+		const PlanarTrackMap &map = c.v.structure.map;
+		for (uint32_t b = 0; b < map.tracks.size(); b++) {
+			if (map.part_of[b] != UINT32_MAX) continue;
+			std::vector<uint32_t> chain;
+			const bool ok = ParentChain(map, c.v.structure.sites, b, chain);
+			std::string text = fmt::format("T{} beside {} from {} {} to {} {}: pieces", lanes, map.tracks[b].name, map.expanded.lines[b].from.port ? "port" : "node", map.expanded.lines[b].from.index, map.expanded.lines[b].to.port ? "port" : "node", map.expanded.lines[b].to.index);
+			for (const int h : c.v.tracks[b].pieces) text += fmt::format(" {}", h);
+			text += fmt::format(" flex {}; chain{}", c.v.tracks[b].flex.size(), ok ? "" : " NONE");
+			for (const uint32_t t : chain) {
+				text += fmt::format(" {}[", map.tracks[t].name);
+				for (const int h : c.v.tracks[t].pieces) text += fmt::format("{} ", h);
+				text += "]";
+			}
+			WARN(text);
+		}
+	}
+}
