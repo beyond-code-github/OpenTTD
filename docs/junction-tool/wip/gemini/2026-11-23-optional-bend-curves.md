@@ -24,6 +24,6 @@
 4. A reformulation we are missing: e.g. curve spacing as a minimum distance between consecutive bend points along the track, with a bend's position a variable that coincides with its neighbour when the insert is 0.
 
 ## Questions
-1. Is there a known linear (binary-free) formulation for minimum spacing between optional bends on an octilinear path, from metro-map layout (Nöllenburg-Wolff's MIP and its successors), orthogonal compaction with optional bends, or VLSI wire jogs?
+1. Is there a known linear (binary-free) formulation for minimum spacing between optional bends on an octilinear path, from metro-map layout (Noellenburg-Wolff's MIP and its successors), orthogonal compaction with optional bends, or VLSI wire jogs?
 2. If not, which of 1-4 would you choose? Is candidate 1's "decide from the previous drawing" sound in a bounded number of rounds, i.e. does re-reading insert use from a drawing that obeys the curve rows of the previous choice converge or cycle?
 3. Candidate 4: can a zero-length insert's two bends be made "the same point as the bend before" so that the spacing row degenerates harmlessly? The spacing row between bend i and an insert's first bend would then read p_ins - p_i >= g even when the insert is 0, unless the insert's first bend is placed at the next real bend. Is there a known trick?
