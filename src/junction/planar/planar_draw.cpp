@@ -336,7 +336,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const bool axis = (pieces[i] % 2) == 0;
 			const double lower = free_piece[i] ? 0 : 1;
-			length[t].push_back({var(lower, COORD_MAX, options.tidy && !options.elastic ? 1 : 0, axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
+			length[t].push_back({var(lower, COORD_MAX, options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
 			if (port_stretch) break;
