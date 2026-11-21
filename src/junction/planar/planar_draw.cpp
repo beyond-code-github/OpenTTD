@@ -1284,3 +1284,117 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	result.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 	return result;
 }
+
+PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const PlanarDrawPipelineOptions &options)
+{
+	PlanarDrawPipelineResult out;
+
+	/* One log line: the stage, the round, the status, the slacks, the drawing's box and its total length. */
+	const auto log_round = [&](const std::string &stage, int k, const PlanarDrawResult &r) {
+		double curve_slack = 0;
+		for (const auto &[row, slack] : r.stretched) curve_slack += row.starts_with("curve") ? slack : 0;
+		long total = 0;
+		int x0 = INT_MAX, x1 = INT_MIN, y0 = INT_MAX, y1 = INT_MIN;
+		for (const auto &track : r.points) {
+			for (size_t i = 0; i < track.size(); i++) {
+				x0 = std::min(x0, track[i][0]); x1 = std::max(x1, track[i][0]);
+				y0 = std::min(y0, track[i][1]); y1 = std::max(y1, track[i][1]);
+				if (i > 0) total += std::max(std::abs(track[i][0] - track[i - 1][0]), std::abs(track[i][1] - track[i - 1][1]));
+			}
+		}
+		out.log.push_back(fmt::format("{} {}: {}, total slack {:.3f}, curve slack {:.3f}, box {} x {}, length {}", stage, k, r.status, r.slack, curve_slack, x0 > x1 ? 0 : x1 - x0, x0 > x1 ? 0 : y1 - y0, total));
+	};
+
+	/* The seed. */
+	PlanarDrawResult previous = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .corridor = options.corridor, .elastic = true, .elastic_tidy = 0.001, .pins = options.pins});
+	out.final = previous;
+	if (!previous.feasible) {
+		out.stopped = "seed";
+		return out;
+	}
+	std::vector<std::vector<std::array<int, 2>>> last_input = previous.points; // The input drawing of the last Optimal round.
+
+	/* Discovery. */
+	std::vector<std::vector<double>> weights;
+	PlanarDrawResult last = previous;
+	for (int k = 1; k <= options.discovery_rounds; k++) {
+		const bool previous_zero = k > 1 && previous.slack < 1e-6;
+		PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .corridor = options.corridor, .flex_weights = k == 1 ? nullptr : &weights, .box_price = options.box_price, .flex_price = k == 1 ? options.first_flex_price : 0, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep"}, .pins = options.pins, .sides_from = &previous.points});
+		log_round("discovery", k, r);
+		if (r.status != "Optimal") {
+			out.final = r;
+			out.stopped = "discovery";
+			return out;
+		}
+		last_input = previous.points;
+		weights.assign(v.tracks.size(), {});
+		for (size_t t = 0; t < v.tracks.size() && t < r.lengths.size(); t++) {
+			weights[t].assign(r.lengths[t].size(), 0.0);
+			for (size_t i = 0; i < r.lengths[t].size(); i++) weights[t][i] = options.irl1 / (r.lengths[t][i] + 0.5);
+		}
+		const bool zero_twice = r.slack < 1e-6 && previous_zero;
+		previous = r;
+		last = std::move(r);
+		if (zero_twice) break;
+	}
+
+	/* Commit. */
+	out.committed = last.lengths;
+	const auto count_committed = [&]() {
+		size_t n = 0;
+		for (size_t t = 0; t < v.tracks.size() && t < out.committed.size(); t++) {
+			for (const uint32_t m : v.tracks[t].flex) n += m < out.committed[t].size() && out.committed[t][m] >= options.commit_above ? 1 : 0;
+		}
+		return n;
+	};
+	out.committed_count = count_committed();
+	/* At most commit_rounds rounds from `from` with the commitment; the last round's result goes to `last`. False when a round is not Optimal. */
+	const auto commit_rounds = [&](const PlanarDrawResult &from, const std::string &stage) {
+		PlanarDrawResult prev = from;
+		for (int k = 1; k <= options.commit_rounds; k++) {
+			PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep", "curve"}, .pins = options.pins, .sides_from = &prev.points});
+			log_round(stage, k, r);
+			if (r.status != "Optimal") {
+				out.final = r;
+				return false;
+			}
+			last_input = prev.points;
+			const bool done = r.slack < 1e-6 || (k > 1 && prev.slack - r.slack <= 0.5);
+			prev = r;
+			last = std::move(r);
+			if (done) break;
+		}
+		return true;
+	};
+	if (!commit_rounds(last, "commit")) {
+		out.stopped = "commit";
+		return out;
+	}
+
+	/* Prune once: a committed insert whose curve rows still stretch is held at 0. */
+	for (const auto &[row, slack] : last.stretched) {
+		if (!row.starts_with("curve flex ")) continue;
+		std::istringstream rs(row.substr(11));
+		std::string name;
+		uint32_t piece = 0;
+		rs >> name >> piece;
+		for (size_t t = 0; t < v.tracks.size(); t++) {
+			if (v.structure.map.tracks[t].name != name || piece >= out.committed[t].size()) continue;
+			out.committed[t][piece] = 0;
+			out.pruned++;
+		}
+	}
+	if (out.pruned > 0) {
+		const PlanarDrawResult committed_last = last;
+		if (!commit_rounds(committed_last, "prune")) {
+			out.stopped = "prune";
+			return out;
+		}
+	}
+
+	/* Final: the integer drawing on the sides the last round proved. */
+	out.final = CheckPlanarDrawable(v, options.final_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .pins = options.pins, .sides_from = &last_input});
+	log_round("final", 1, out.final);
+	if (out.final.status != "Optimal") out.stopped = "final";
+	return out;
+}
