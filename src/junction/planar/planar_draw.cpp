@@ -560,7 +560,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					for (size_t i = 0; i < v.tracks[t].pieces.size(); i++) {
 						const Length &len = length[t][i];
 						if (std::ranges::find(flex, i) == flex.end() && std::ranges::find(steps, i) == steps.end()) {
-							const int heading = v.tracks[t].pieces[i];
+							const int heading = ((v.tracks[t].pieces[i] % 8) + 8) % 8; /* Lifted headings may differ by whole turns from one track to the next. */
 							if (last_heading != -1 && last_heading != heading) {
 								const int turn = PlanarModel::Rot(last_heading, heading);
 								if (std::abs(turn) != 1) return unsupported(fmt::format("route {} turns by {} eighths at track {}", route.name, turn, map.tracks[t].name));
