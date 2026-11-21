@@ -1393,7 +1393,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	}
 
 	/* Final: the integer drawing on the sides the last round proved. */
-	out.final = CheckPlanarDrawable(v, options.final_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .pins = options.pins, .sides_from = &last_input, .start_lengths = options.final_start ? &last.lengths : nullptr});
+	out.final = CheckPlanarDrawable(v, options.final_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .tidy = options.final_tidy, .pins = options.pins, .sides_from = &last_input, .start_lengths = options.final_start ? &last.lengths : nullptr});
 	log_round("final", 1, out.final);
 	if (out.final.status != "Optimal") out.stopped = "final";
 	return out;
