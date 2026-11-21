@@ -93,5 +93,5 @@ Drawing expert rail hubs: a layered octilinear layout model checked against expe
 - **Caveats:**
   - The seed must be separated: a tidy drawing with no keep-apart gives noise (246422c311).
   - Elastic drawings need a length tie-break, or unpinned points drift (3f9ca7a809).
-  - With optional flex the LP rounds reach slack 0 too (flex C: 2 rounds, 28.5k pairs), but the integer step fails: rounding a tidy LP drawing flips grazing pairs, freeing tight pairs frees thousands, padding plateaus. Integrality on optional flex is the open core (a245, e6e9da3881).
+  - With optional flex the LP rounds reach slack 0 too (flex C: 2 rounds, 28.5k pairs), but the integer step fails: rounding a tidy LP drawing flips grazing pairs, freeing tight pairs frees thousands, padding plateaus. Integrality on optional flex is the open core (a111cfb759, e6e9da3881).
 - **Contrast:** offline CP-SAT (ortools 9.15, native disjunctions or big-M, 2 workers, 60 s) finds no solution on the same program, including the case (1) draws in seconds; HiGHS with 6140 direction binaries finds none in 120 s. Directions read from geometry beat generic MIP/CP on this problem.
