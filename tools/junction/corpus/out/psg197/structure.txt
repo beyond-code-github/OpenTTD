@@ -66,10 +66,10 @@ tunnel T14 L54: L66
 tunnel T15 L31: L32, L47, L40, L48
 tunnel T16 L80: L54
 tunnel T17 L71: L76
-tunnel T18 L45: L40, L57, L59
+tunnel T18 L45: L40, L57
 tunnel T19 L26: L7, L2, L10
 tunnel T20 L28: L7, L31, L30, L10
-tunnel T21 L46: L57, L40, L59
+tunnel T21 L46: L57, L40
 tunnel T22 L11: L79
 tunnel T23 L11: L59, L40, L60
 tunnel T24 L16: L7, L2, L10
@@ -77,9 +77,9 @@ tunnel T25 L18: L7, L2, L10
 tunnel T26 L12: L59, L60, L40
 tunnel T27 L4: L2, L1
 tunnel T28 L5: L2, L10, L9
-tunnel T29 L11: L37, L32, L47
+tunnel T29 L11: L37, L32
 tunnel T30 L73: L87
-tunnel T31 L12: L37, L32, L47
+tunnel T31 L12: L37, L32
 tunnel T32 L77: L87
 tunnel T33 L57: L37, L33, L49, L61, L62
 tunnel T34 L59: L37, L64, L61, L62

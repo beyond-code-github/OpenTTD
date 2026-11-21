@@ -5,7 +5,7 @@ One function per stage, the probes' rules (x1c, x5, x6 in wip/probes) with no hu
 list come from hubs.tsv.  Stages: graph (X2 directions by routes), ports (X3), lines (X4 switch nodes, route sets),
 crossings (X5), structure (X6), shape (X7), then the writers.  `run()` returns every intermediate for compare.py.
 """
-import argparse, bisect, itertools, os, sys
+import argparse, bisect, itertools, math, os, sys
 from collections import defaultdict, deque
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -432,6 +432,9 @@ def structure(N, G, Ln, X5, lanes):
         lst = sorted(mem.get(key, []))
         for a, b in zip(lst, lst[1:]):
             if abs(a[0] - b[0]) < 1e-9: ties += 1
+        if not W.heads[hd[0]][2]:       # a tunnel: a crossing on one of its portal tiles is another, deeper tunnel passing under the portal
+            portals = {tuple(hd[0]), tuple(hd[1])}
+            lst = [(s, c) for s, c in lst if (math.floor(X[frozenset((key[0], c))][4][0]), math.floor(X[frozenset((key[0], c))][4][1])) not in portals]
         T[hd[0]] = (key[0], [c for _, c in lst], hd[1], W.heads[hd[0]][2])      # entrance -> (separator, crossers, exit, is_bridge)
     S6.ties = ties; S6.T = T
     S6.order = sorted(T, key=lambda t: (t[1], t[0]))          # numbering: entrance tile by (y, x), as the 197 table
