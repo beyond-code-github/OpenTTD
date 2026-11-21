@@ -392,6 +392,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	const size_t nc = map.crossings.size();
 	std::vector<std::array<uint32_t, 2>> param(nc);
 	std::vector<std::array<uint32_t, 2>> piece_of(nc);
+	std::vector<uint32_t> separator_of(nc, UINT32_MAX); // The separator of the structure a crossing belongs to (D414).
+	for (const PlanarStructure &structure : v.structure.structures) {
+		for (const uint32_t c : structure.crossings) {
+			if (c < nc) separator_of[c] = structure.separator;
+		}
+	}
 	for (size_t c = 0; c < nc; c++) {
 		const std::array<uint32_t, 2> tracks = {map.crossings[c].a, map.crossings[c].b};
 		for (int side = 0; side < 2; side++) {
@@ -404,8 +410,10 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			param[c][side] = var(0, COORD_MAX, 0, "param");
 			const Length &len = length[t][piece];
 			const std::string tag = fmt::format("cross {}", c);
-			row({{param[c][side], 1}, {len.variable, -len.coefficient}}, -JunctionMilp::INF, -rules.cross, tag);
-			row({{param[c][side], 1}}, rules.cross, JunctionMilp::INF, tag);
+			/* A structure's crosser may cross at its piece's ends (D414); the separator and every other crossing keep rules.cross. */
+			const bool crosser = separator_of[c] != UINT32_MAX && t != separator_of[c];
+			row({{param[c][side], 1}, {len.variable, -len.coefficient}}, -JunctionMilp::INF, crosser ? 0 : -rules.cross, tag);
+			if (!crosser) row({{param[c][side], 1}}, rules.cross, JunctionMilp::INF, tag);
 		}
 		for (int axis = 0; axis < 2; axis++) {
 			Terms terms;

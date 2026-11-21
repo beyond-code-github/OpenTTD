@@ -658,6 +658,41 @@ static std::string EndPinLine(const PlanarTrackMap &map, uint32_t track, bool st
 	return fmt::format("end {} {} {} {}\n", map.tracks[track].name, start ? "start" : "end", at[0], at[1]);
 }
 
+TEST_CASE("planar draw: a crosser may cross at its piece end (D414)", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarTrackMap &map = c.v.structure.map;
+	const PlanarDrawResult base = CheckPlanarDrawable(c.v, 5.0, {.clearance = false});
+	REQUIRE(base.feasible);
+
+	/* A crossing of a structure, its crosser's piece start. */
+	uint32_t crossing = UINT32_MAX;
+	for (const PlanarStructure &structure : c.v.structure.structures) {
+		if (!structure.crossings.empty()) crossing = structure.crossings.front();
+		if (crossing != UINT32_MAX) {
+			const uint32_t separator = structure.separator;
+			const uint32_t crosser = map.crossings[crossing].a == separator ? map.crossings[crossing].b : map.crossings[crossing].a;
+			const auto at = std::ranges::find(map.events[crosser], crossing);
+			REQUIRE(at != map.events[crosser].end());
+			const uint32_t piece = c.v.tracks[crosser].event_piece[at - map.events[crosser].begin()];
+			const std::array<int, 2> start = base.points[crosser][piece];
+			/* The answer key's end points hold the drawing in place, so the crossing pin is no free shift. */
+			std::string text = fmt::format("cross {} {} {} {}\n", map.tracks[map.crossings[crossing].a].name, map.tracks[map.crossings[crossing].b].name, start[0], start[1]);
+			for (const uint32_t t : {map.crossings[crossing].a, map.crossings[crossing].b}) {
+				text += EndPinLine(map, t, true, base.points[t].front());
+				text += EndPinLine(map, t, false, base.points[t].back());
+			}
+			PlanarDrawPins pins = ParsePlanarDrawPins(c.v, text);
+			pins.window = 0;
+			REQUIRE(pins.unmatched.empty());
+			const PlanarDrawResult held = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .pins = &pins});
+			CHECK(held.feasible);
+			return;
+		}
+	}
+	FAIL("T1 has no structured crossing");
+}
+
 TEST_CASE("planar draw: pins hold points to an answer key", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
