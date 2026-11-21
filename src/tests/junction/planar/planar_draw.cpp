@@ -353,6 +353,37 @@ TEST_CASE("planar draw: PSG 197 by sides, every face alone and whole", "[.][plan
 	WARN(fmt::format("FS 197 faces: feasible {}, infeasible {}, undecided {}, skipped {}; whole: {} in {:.0f} ms", feasible, infeasible, undecided, skipped, whole.status, whole.ms));
 }
 
+TEST_CASE("planar draw: no objective still decides", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .tidy = false});
+	REQUIRE(r.feasible);
+	CHECK(!r.points.empty());
+}
+
+TEST_CASE("planar draw: PSG 197 undecided faces without the objective", "[.][planarkeepapart]")
+{
+	const PlanarShapeVariant shaped = Shaped197();
+	size_t feasible = 0, infeasible = 0, undecided = 0;
+	for (const uint32_t f : {4u, 6u, 46u, 52u, 64u, 71u, 72u, 75u, 84u, 99u, 124u, 141u, 147u, 153u}) {
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 15.0, {.only_faces = {f}, .tidy = false});
+		if (r.feasible) {
+			feasible++;
+		} else {
+			(r.status == "Infeasible" ? infeasible : undecided)++;
+		}
+		std::string tags;
+		for (size_t i = 0; i < std::min<size_t>(5, r.conflict.size()); i++) tags += " [" + r.conflict[i] + "]";
+		WARN(fmt::format("FSc face {}: status {}, {:.0f} ms, conflict{}", f, r.status, r.ms, tags));
+	}
+	const PlanarDrawResult whole = CheckPlanarDrawable(shaped, 60.0, {.tidy = false});
+	WARN(fmt::format("FSc whole: status {}, {:.0f} ms", whole.status, whole.ms));
+	std::map<std::string, size_t> families;
+	for (const std::string &tag : whole.conflict) families[tag.substr(0, tag.find(' '))]++;
+	for (const auto &[family, count] : families) WARN(fmt::format("FSc whole conflicts: {} {}", family, count));
+	WARN(fmt::format("FSc faces: feasible {}, infeasible {}, undecided {}; whole: {} in {:.0f} ms", feasible, infeasible, undecided, whole.status, whole.ms));
+}
+
 /** The hand cell of the side-row tests: a step a, insert, b on the north side, then top, left and bottom walls. */
 static const std::vector<PlanarCellWall> SIDE_CELL = {{0, 0, 0}, {0, 1, 1}, {0, 2, 0}, {1, 0, 5}, {2, 0, 4}, {3, 0, 2}};
 static const std::vector<bool> SIDE_INSERT = {false, true, false, false, false, false};
