@@ -154,13 +154,7 @@ bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSit
 
 static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t k);
 
-/**
- * The pairs of lines H14 compares: per channel, its whole Line tracks without parts, each later one paired with the first earlier one it is not a leg of one node with, none when every earlier one is such a leg (D388 (a), D403).
- * @param map The track map.
- * @param structure The structure variant (channel of each line, line groups).
- * @return Per pair: channel, first track, other track, the first's and the other's channel-crossing event indices (a node group's own crossings left out), and whether the two cross the same channels in order.
- */
-static auto SpinePairs(const PlanarTrackMap &map, const PlanarStructureVariant &structure)
+std::vector<std::tuple<uint32_t, uint32_t, uint32_t, std::vector<size_t>, std::vector<size_t>, bool>> PlanarSpinePairs(const PlanarTrackMap &map, const PlanarStructureVariant &structure, bool every_pair)
 {
 	using Pair = std::tuple<uint32_t, uint32_t, uint32_t, std::vector<size_t>, std::vector<size_t>, bool>;
 	const std::vector<uint32_t> &channel = structure.channel_of_line;
@@ -205,15 +199,20 @@ static auto SpinePairs(const PlanarTrackMap &map, const PlanarStructureVariant &
 	for (const auto &[c, members] : lines) {
 		for (size_t m = 1; m < members.size(); m++) {
 			const uint32_t b = members[m];
-			uint32_t a = UINT32_MAX;
-			for (size_t u = 0; u < m && a == UINT32_MAX; u++) {
-				if (!legs_of_one_node(members[u], b)) a = members[u];
+			std::vector<uint32_t> firsts;
+			if (every_pair) {
+				firsts.assign(members.begin(), members.begin() + m);
+			} else {
+				for (size_t u = 0; u < m && firsts.empty(); u++) {
+					if (!legs_of_one_node(members[u], b)) firsts.push_back(members[u]);
+				}
 			}
-			if (a == UINT32_MAX) continue;
-			std::vector<size_t> fa = channel_events(a), fb = channel_events(b);
-			bool same = fa.size() == fb.size();
-			for (size_t k = 0; same && k < fa.size(); k++) same = channel[map.tracks[partner_of(a, fa[k])].line] == channel[map.tracks[partner_of(b, fb[k])].line];
-			pairs.emplace_back(c, a, b, std::move(fa), std::move(fb), same);
+			for (const uint32_t a : firsts) {
+				std::vector<size_t> fa = channel_events(a), fb = channel_events(b);
+				bool same = fa.size() == fb.size();
+				for (size_t k = 0; same && k < fa.size(); k++) same = channel[map.tracks[partner_of(a, fa[k])].line] == channel[map.tracks[partner_of(b, fb[k])].line];
+				pairs.emplace_back(c, a, b, std::move(fa), std::move(fb), same);
+			}
 		}
 	}
 	return pairs;
@@ -864,7 +863,7 @@ struct Oracle {
 	void CheckH14()
 	{
 		const std::vector<uint32_t> &channel = this->v.structure.channel_of_line;
-		for (const auto &[c, a, b, fa, fb, sequences_same] : SpinePairs(this->map, this->v.structure)) {
+		for (const auto &[c, a, b, fa, fb, sequences_same] : PlanarSpinePairs(this->map, this->v.structure)) {
 			{
 				const auto partner_of = [&](uint32_t t, size_t k) {
 					const PlanarCrossing &x = this->map.crossings[this->map.events[t][k]];
@@ -1554,7 +1553,7 @@ bool ShapePlanarStructureVariant(const PlanarStructureVariant &v, PlanarShapeVar
 	}
 
 	/* Spines (H14): a channel's whole lines that cross the same channels in order have equal headings at every channel crossing. */
-	for (const auto &[c, first, other, first_events, other_events, same] : SpinePairs(map, sv.structure)) {
+	for (const auto &[c, first, other, first_events, other_events, same] : PlanarSpinePairs(map, sv.structure)) {
 		if (!same) continue;
 		for (size_t k = 0; k < first_events.size(); k++) eq({{H[first][first_events[k] + 1], 1}, {H[other][other_events[k] + 1], -1}}, 0, fmt::format("spine {}", c));
 	}

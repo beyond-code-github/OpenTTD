@@ -1,0 +1,141 @@
+Filters: planar draw: the pipeline on PSG 197 (D422)
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+openttd_test is a Catch v2.13.10 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+planar draw: the pipeline on PSG 197 (D422)
+-------------------------------------------------------------------------------
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3098
+...............................................................................
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3138: warning:
+  197 sibling lanes: pairs 1 sep skipped 9
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L20 L23: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L42 L39: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L91 L85: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L91 L92: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L85 L92: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L98 L99: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L98 L95: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L99 L95: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L3 L8: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L3 L14: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L8 L14: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L41 L38: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L27 L65: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L6 L19: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L22 L25: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L34 L50: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L44 L53: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L43 L52: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L100 L58: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L62 L61: pieces differ
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L73 L77: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L72 L94: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L72 L97: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L94 L97: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3139: warning:
+  197 sibling lanes skipped L90 L96: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3141: warning:
+  discovery 1: Optimal, total slack 4.000, curve slack 0.000, box 88 x 145,
+  length 2317
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3141: warning:
+  discovery 2: Optimal, total slack 10.000, curve slack 10.000, box 180 x 271,
+  length 4233
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3141: warning:
+  discovery 3: Optimal, total slack 5.000, curve slack 4.000, box 166 x 246,
+  length 3897
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3141: warning:
+  discovery 4: Optimal, total slack 6.000, curve slack 5.000, box 163 x 242,
+  length 3846
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3141: warning:
+  discovery 5: Optimal, total slack 2.000, curve slack 2.000, box 163 x 240,
+  length 3817
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3141: warning:
+  commit 1: Optimal, total slack 0.000, curve slack 0.000, box 117 x 167,
+  length 2810
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3141: warning:
+  final 1: Error, total slack 0.000, curve slack 0.000, box 0 x 0, length 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3142: warning:
+  committed 43 inserts, pruned 0, added 0, stopped 'final'
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3143: warning:
+  final: status Error, ms 60041, no points
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3152: warning:
+  last round slack 0.000:
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3186: warning:
+  grid check: N/S piece ends x even 0 odd 0; E/W piece ends y even 0 odd 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3193: warning:
+  pipeline wall time 67.2 s
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3204: FAILED:
+  CHECK( r.final.status == "Optimal" )
+with expansion:
+  "Error" == "Optimal"
+
+===============================================================================
+test cases: 1 | 1 failed
+assertions: 5 | 4 passed | 1 failed
+

@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -159,6 +160,15 @@ std::vector<PlanarFaceWalls> PlanarShapeFaceWalls(const PlanarShapeVariant &v);
  * @return False only on an internal inconsistency; the rule has no failure.
  */
 bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why, bool end_pieces = true);
+
+/**
+ * The pairs of lines H14 compares: per channel, its whole Line tracks without parts, each later one paired with the first earlier one it is not a leg of one node with, none when every earlier one is such a leg (D388 (a), D403).
+ * @param map The track map.
+ * @param structure The structure variant (channel of each line, line groups).
+ * @param every_pair True returns every pair (earlier member, later member) of a channel with no legs-of-one-node exemption (the drawing program's sibling lanes); false is the pairing above.
+ * @return Per pair: channel, first track, other track, the first's and the other's channel-crossing event indices (a node group's own crossings left out), and whether the two cross the same channels in order.
+ */
+std::vector<std::tuple<uint32_t, uint32_t, uint32_t, std::vector<size_t>, std::vector<size_t>, bool>> PlanarSpinePairs(const PlanarTrackMap &map, const PlanarStructureVariant &structure, bool every_pair = false);
 
 /**
  * Shape one Structure variant: the heading program of SPEC-shape §2 and §2.1 (every rule of SPEC-shape §2.1).

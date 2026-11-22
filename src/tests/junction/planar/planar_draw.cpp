@@ -339,6 +339,22 @@ TEST_CASE("planar draw: the pipeline draws the one-lane T with optional flex (D4
 	}
 }
 
+TEST_CASE("planar draw: facing pairs take their side from the face walk on T2", "[planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(2), 1);
+	PlanarDrawPipelineOptions o;
+	o.facing_sides = true;
+	o.final_seconds = 5;
+	const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
+	CHECK(r.last_round.facing_fixed >= 1);
+	for (const auto &[tag, text] : r.last_round.sep_sides) {
+		if (!text.ends_with(" facing")) continue;
+		INFO(tag << ": " << text);
+		CHECK(text.find("spacing") != std::string::npos);
+		CHECK(text.find("from i") != std::string::npos);
+	}
+}
+
 TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 {
 	const std::vector<std::pair<std::string, std::string>> hubs = {{"T1", PlanarTText(1)}, {"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
@@ -346,10 +362,13 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		const DrawCase c = ShapeFirst(text, 1);
 		PlanarDrawPipelineOptions o;
 		o.final_seconds = 15;
-		/* Measurement aids: PLANAR_PROBE_SLACK_PRICE (commit on), PLANAR_PROBE_DISCOVERY_SLACK_PRICE (seed and discovery) and PLANAR_PROBE_NO_CURVE_DISCOVERY (Scheme A). */
+		/* Measurement aids: PLANAR_PROBE_SLACK_PRICE (commit on), PLANAR_PROBE_DISCOVERY_SLACK_PRICE (seed and discovery) PLANAR_PROBE_NO_CURVE_DISCOVERY (Scheme A), PLANAR_PROBE_SIDES (per-pair side probe) PLANAR_PROBE_SIBLINGS (sibling lanes as offset curves) and PLANAR_PROBE_FACING (D426 facing pairs). */
 		if (const char *s = std::getenv("PLANAR_PROBE_SLACK_PRICE"); s != nullptr) o.slack_price = std::atof(s);
 		if (const char *s = std::getenv("PLANAR_PROBE_DISCOVERY_SLACK_PRICE"); s != nullptr) o.discovery_slack_price = std::atof(s);
 		o.free_stretched_sides = std::getenv("PLANAR_PROBE_FREE_SIDES") != nullptr;
+		o.side_probe = std::getenv("PLANAR_PROBE_SIDES") != nullptr;
+		o.sibling_lanes = std::getenv("PLANAR_PROBE_SIBLINGS") != nullptr;
+		o.facing_sides = std::getenv("PLANAR_PROBE_FACING") != nullptr;
 		o.curve_discovery = std::getenv("PLANAR_PROBE_NO_CURVE_DISCOVERY") == nullptr;
 		const auto start = std::chrono::steady_clock::now();
 		const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
@@ -368,6 +387,11 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 			f.second += slack;
 		}
 		WARN(fmt::format("{} last round slack {:.3f}, stretched {}", name, r.last_round.slack, r.last_round.stretched.size()));
+		if (o.facing_sides) WARN(fmt::format("{} facing: fixed {} choice {}", name, r.last_round.facing_fixed, r.last_round.facing_choice));
+		if (o.sibling_lanes) {
+			WARN(fmt::format("{} sibling lanes: pairs {} sep skipped {}", name, r.last_round.lane_pairs, r.last_round.lane_sep_skipped));
+			for (const std::string &line : r.last_round.lane_skipped) WARN(fmt::format("{} sibling lanes skipped {}", name, line));
+		}
 		for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: count {}, sum {:.3f}", name, family, f.first, f.second));
 			{
 				const PlanarTrackMap &map = c.v.structure.map;
@@ -416,6 +440,36 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 					for (const auto x : xs) s += fmt::format(" {}", x);
 					return s;
 				};
+				if (o.side_probe) {
+					/* Step (a): per track of a stretched sep pair, its pieces, flex, steps and whether it is a beside track or has some. */
+					std::map<uint32_t, std::vector<std::string>> beside_of;
+					std::set<uint32_t> is_beside;
+					for (uint32_t b = 0; b < map.tracks.size(); b++) {
+						if (map.part_of[b] != UINT32_MAX) continue;
+						is_beside.insert(b);
+						std::vector<uint32_t> chain;
+						if (!ParentChain(map, c.v.structure.sites, b, chain)) continue;
+						for (const uint32_t t : chain) beside_of[t].push_back(map.tracks[b].name);
+					}
+					std::set<uint32_t> printed;
+					for (const auto &[tag, amount] : r.last_round.stretched) {
+						std::istringstream words(tag);
+						std::string family;
+						uint32_t face = 0, i = 0, j = 0;
+						words >> family;
+						if (family != "sep" || !(words >> face >> i >> j)) continue;
+						for (const PlanarFaceWalls &f : face_walls) {
+							if (f.face != face || i >= f.walls.size() || j >= f.walls.size()) continue;
+							for (const PlanarCellWall *wall : {&f.walls[i], &f.walls[j]}) {
+								const uint32_t t = wall->track;
+								if (t >= c.v.tracks.size() || !printed.insert(t).second) continue;
+								std::string list;
+								for (const std::string &n : beside_of[t]) list += (list.empty() ? "" : ",") + n;
+								WARN(fmt::format("{} track {}: pieces{}; flex{}; steps{}; stretched piece {}; beside of {}; is beside {}", name, map.tracks[t].name, list_of(c.v.tracks[t].pieces), list_of(c.v.tracks[t].flex), list_of(c.v.tracks[t].steps), wall->piece, list.empty() ? "none" : list, is_beside.contains(t) ? "yes" : "no"));
+							}
+						}
+					}
+				}
 				size_t beside = 0;
 				for (uint32_t b = 0; b < map.tracks.size(); b++) {
 					if (map.part_of[b] != UINT32_MAX) continue;
@@ -526,6 +580,46 @@ TEST_CASE("planar draw: a prio row runs one lane beside its parent (corridor)", 
 			}
 		}
 	}
+}
+
+TEST_CASE("planar draw: sibling lanes are offset curves on T3", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(3), 1);
+	const PlanarDrawResult r = CheckPlanarDrawable(c.v, 5.0, {.clearance = false, .corridor = true, .sibling_lanes = true});
+	std::string skipped, conflicts;
+	for (const std::string &line : r.lane_skipped) skipped += line + "; ";
+	for (const std::string &tag : r.conflict) conflicts += tag + "; ";
+	INFO("status " << r.status << " conflict " << conflicts << " skipped " << skipped);
+	REQUIRE(r.status == "Optimal");
+	REQUIRE(r.lane_pairs >= 1);
+	const PlanarTrackMap &map = c.v.structure.map;
+	const auto find = [&](std::string_view name) {
+		for (uint32_t t = 0; t < map.tracks.size(); t++) {
+			if (map.tracks[t].name == name) return t;
+		}
+		FAIL("no track " << name);
+		return UINT32_MAX;
+	};
+	const uint32_t a = find("D2"), b = find("D3");
+	for (const auto &[ch, pa, pb, fa, fb, same] : PlanarSpinePairs(map, c.v.structure, true)) {
+		if (pa != a || pb != b) continue;
+		REQUIRE(same);
+		REQUIRE(fa.size() >= 2);
+		const int s = map.Side(b, fb.front() + 1, a, fa.front() + 1);
+		REQUIRE(s != 0);
+		const uint32_t pa0 = c.v.tracks[a].event_piece[fa.front()], pa1 = c.v.tracks[a].event_piece[fa.back()];
+		const uint32_t pb0 = c.v.tracks[b].event_piece[fb.front()];
+		for (uint32_t i = 1; i <= pa1 - pa0; i++) {
+			for (const uint32_t piece : {pa0 + i - 1, pa0 + i}) {
+				const std::array<int, 2> n = PlanarModel::STEP[(((c.v.tracks[a].pieces[piece] % 8) + 8) % 8 + 2) % 8];
+				const std::array<int, 2> d = {r.points[b][pb0 + i][0] - r.points[a][pa0 + i][0], r.points[b][pb0 + i][1] - r.points[a][pa0 + i][1]};
+				INFO("vertex " << i << " piece " << piece);
+				CHECK(d[0] * n[0] + d[1] * n[1] == 2 * s);
+			}
+		}
+		return;
+	}
+	FAIL("D2/D3 is not a spine pair");
 }
 
 TEST_CASE("planar draw: the opening and closing steps are one lane", "[junction][planar][planardraw]")
@@ -3056,7 +3150,14 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	if (const char *s = std::getenv("PLANAR_PROBE_DISCOVERY_SLACK_PRICE"); s != nullptr) o.discovery_slack_price = std::atof(s);
 	o.additions = std::getenv("PLANAR_PROBE_ADDITIONS") != nullptr;
 	o.curve_discovery = std::getenv("PLANAR_PROBE_NO_CURVE_DISCOVERY") == nullptr; // Scheme A (a probe).
+	o.sibling_lanes = std::getenv("PLANAR_PROBE_SIBLINGS") != nullptr; // Sibling lanes as offset curves (a probe).
+	o.facing_sides = std::getenv("PLANAR_PROBE_FACING") != nullptr; // D426 facing pairs (a probe).
 	const PlanarDrawPipelineResult r = DrawPlanarPipeline(flex_c, o);
+	if (o.facing_sides) WARN(fmt::format("197 facing: fixed {} choice {}", r.last_round.facing_fixed, r.last_round.facing_choice));
+	if (o.sibling_lanes) {
+		WARN(fmt::format("197 sibling lanes: pairs {} sep skipped {}", r.last_round.lane_pairs, r.last_round.lane_sep_skipped));
+		for (const std::string &line : r.last_round.lane_skipped) WARN(fmt::format("197 sibling lanes skipped {}", line));
+	}
 	for (const std::string &line : r.log) WARN(line);
 	WARN(fmt::format("committed {} inserts, pruned {}, added {}, stopped '{}'", r.committed_count, r.pruned, r.added, r.stopped));
 	WARN(fmt::format("final: {}", describe(r.final)));

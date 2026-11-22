@@ -1,0 +1,74 @@
+Filters: planar draw: the pipeline on PSG 197 (D422)
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+openttd_test is a Catch v2.13.10 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+planar draw: the pipeline on PSG 197 (D422)
+-------------------------------------------------------------------------------
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3116
+...............................................................................
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3156: warning:
+  197 facing: fixed 6 choice 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3161: warning:
+  discovery 1: Optimal, total slack 7.000, curve slack 0.000, box 90 x 140,
+  length 2330
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3161: warning:
+  discovery 2: Optimal, total slack 10.000, curve slack 10.000, box 179 x 255,
+  length 4035
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3161: warning:
+  discovery 3: Optimal, total slack 7.000, curve slack 6.000, box 171 x 242,
+  length 3729
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3161: warning:
+  discovery 4: Optimal, total slack 8.000, curve slack 7.000, box 166 x 239,
+  length 3624
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3161: warning:
+  discovery 5: Optimal, total slack 8.000, curve slack 7.000, box 165 x 238,
+  length 3590
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3161: warning:
+  commit 1: Optimal, total slack 2.000, curve slack 1.000, box 120 x 169,
+  length 2807
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3161: warning:
+  commit 2: Optimal, total slack 1.000, curve slack 0.500, box 113 x 153,
+  length 2629
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3161: warning:
+  commit 3: Optimal, total slack 0.000, curve slack 0.000, box 108 x 150,
+  length 2576
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3161: warning:
+  final 1: Error, total slack 0.000, curve slack 0.000, box 0 x 0, length 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3162: warning:
+  committed 35 inserts, pruned 0, added 0, stopped 'final'
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3163: warning:
+  final: status Error, ms 61557, no points
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3172: warning:
+  last round slack 0.000:
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3206: warning:
+  grid check: N/S piece ends x even 0 odd 0; E/W piece ends y even 0 odd 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3213: warning:
+  pipeline wall time 69.5 s
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3224: FAILED:
+  CHECK( r.final.status == "Optimal" )
+with expansion:
+  "Error" == "Optimal"
+
+===============================================================================
+test cases: 1 | 1 failed
+assertions: 5 | 4 passed | 1 failed
+
