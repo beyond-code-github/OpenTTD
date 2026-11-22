@@ -1718,6 +1718,12 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		const auto commit_options = [&]() {
 			return PlanarDrawOptions{.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .pins = options.pins};
 		};
+		const auto conflict_line = [](const std::string &prefix, const PlanarDrawResult &r) {
+			std::string text;
+			for (size_t k = 0; k < r.conflict.size() && k < 40; k++) text += (k == 0 ? "" : " | ") + r.conflict[k];
+			if (r.conflict.size() > 40) text += fmt::format(" (+{} more)", r.conflict.size() - 40);
+			return fmt::format("{} conflict: {}", prefix, text);
+		};
 		PlanarDrawOptions margins = commit_options();
 		margins.node_gap_from = &out.rounds[0].lengths;
 		margins.sides_from = &out.rounds[0].points;
@@ -1741,6 +1747,25 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 					for (const auto &[t, text] : r.sep_margins) out.log.push_back(fmt::format("side probe last margins {}: {}", t, text));
 				}
 				out.log.push_back(fmt::format("side probe {} c{}: {} slack {:.3f} sep {:.3f} curve {:.3f} ms {:.0f}", tag, c, r.status, r.slack, sep_slack, curve_slack, r.ms));
+				if (r.status != "Optimal") out.log.push_back(conflict_line(fmt::format("side probe {} c{}", tag, c), r));
+			}
+		}
+		for (const std::string &tag : tags) {
+			for (int c = 0; c < 4; c++) {
+				PlanarDrawOptions probe = commit_options();
+				probe.curve_flex_from = nullptr;
+				probe.node_gap_from = &last_input_lengths;
+				probe.sides_from = &last_input;
+				probe.forced_sides = {{tag, c}};
+				probe.margin_tags = {tag};
+				const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, probe);
+				double sep_slack = 0, curve_slack = 0;
+				for (const auto &[row, slack] : r.stretched) {
+					if (row.starts_with("sep")) sep_slack += slack;
+					if (row.starts_with("curve")) curve_slack += slack;
+				}
+				out.log.push_back(fmt::format("side probe free {} c{}: {} slack {:.3f} sep {:.3f} curve {:.3f} ms {:.0f}", tag, c, r.status, r.slack, sep_slack, curve_slack, r.ms));
+				if (r.status != "Optimal") out.log.push_back(conflict_line(fmt::format("side probe free {} c{}", tag, c), r));
 			}
 		}
 	}
