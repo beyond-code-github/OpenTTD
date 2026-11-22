@@ -1279,14 +1279,16 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							for (const size_t a : ti.events) {
 								for (const size_t b : tj.events) touching = touching || (map.events[w[i].track][a] == map.events[w[j].track][b]);
 							}
-							if (touching && !options.strict_zero) {
+							/* D427 probe: within one track, pieces joined through may-be-zero pieces are the track continuing (a route turns at most 3 eighths, so a track cannot meet itself sideways): skipped as before. */
+							if (touching && (!options.strict_zero || w[i].track == w[j].track)) {
 								skip("zero contraction");
 								continue;
 							}
 							if (touching) {
 								/* D427 probe: by how the walls touch: crossing on both walls skips; both leaving the point in one direction keep full spacing; else spacing 0. */
 								enum : int { END_LO, END_HI, END_INTERIOR };
-								const auto direction = [](const PlanarCellWall &wall, int end) { return end == END_INTERIOR ? -1 : static_cast<int>(((wall.heading + (end == END_HI ? 4 : 0)) % 8 + 8) % 8); };
+								/* The track's own heading (a face walks some walls backwards, so the wall's walked heading is not the track frame the ends are in). */
+								const auto direction = [&](const PlanarCellWall &wall, int end) { return end == END_INTERIOR ? -1 : static_cast<int>(((v.tracks[wall.track].pieces[wall.piece] + (end == END_HI ? 4 : 0)) % 8 + 8) % 8); };
 								bool crossing = false, full = false;
 								const auto way = [&](int ei, int ej) {
 									const int di = direction(w[i], ei), dj = direction(w[j], ej);
