@@ -241,7 +241,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	};
 	const auto var = [&](double lower, double upper, double cost, std::string_view group) {
 		columns++;
-		return add_variable(lower, upper, cost, !options.elastic && std::ranges::find(options.continuous, group) == options.continuous.end());
+		return add_variable(lower, upper, cost, (!options.elastic || options.elastic_integer) && std::ranges::find(options.continuous, group) == options.continuous.end());
 	};
 	const auto row = [&](Terms terms, double lower, double upper, const std::string &tag) {
 		std::ranges::sort(terms);
@@ -1435,7 +1435,14 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	}
 
 	/* Final: the integer drawing on the sides the last round proved. */
-	out.final = CheckPlanarDrawable(v, options.final_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .tidy = options.final_tidy, .pins = options.pins, .sides_from = &last_input, .start_lengths = options.final_start ? &last.lengths : nullptr, .grid = options.final_grid});
+	PlanarDrawOptions final_options{.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .tidy = options.final_tidy, .pins = options.pins, .sides_from = &last_input, .start_lengths = options.final_start ? &last.lengths : nullptr, .grid = options.final_grid};
+	if (options.final_soft_sep) {
+		final_options.elastic = true;
+		final_options.elastic_integer = true;
+		final_options.elastic_families = {"sep"};
+		final_options.elastic_tidy = 0.01;
+	}
+	out.final = CheckPlanarDrawable(v, options.final_seconds, final_options);
 	log_round("final", 1, out.final);
 	if (out.final.status != "Optimal") out.stopped = "final";
 	return out;
