@@ -27,6 +27,7 @@ struct PlanarDrawResult {
 	double slack = 0; ///< With elastic: the total slack of the solution.
 	std::vector<std::pair<std::string, double>> stretched; ///< With elastic: per row tag whose slack is above 1e-6, the slack, largest first (a tag that names several rows sums them).
 	std::vector<std::pair<std::string, std::string>> sep_sides; ///< A read-out: per written sep row, its tag and the chosen candidate (axis and side, as text).
+	std::vector<std::pair<std::string, std::string>> sep_margins; ///< A read-out (margin_tags): per pair tag, each candidate as "c<k> s(x,y) spacing <n> from i|j margin <m>", joined by "; ".
 	uint32_t rows = 0; ///< The program's rows.
 	uint32_t columns = 0; ///< The program's variables.
 	size_t grid_forced = 0; ///< With grid: the variables whose parity the integer equalities force (written 2 h + p).
@@ -93,6 +94,8 @@ struct PlanarDrawOptions {
 	const PlanarDrawPins *pins = nullptr; ///< Answer-key pins (D393): every pinned point is within window of its position plus one common shift (two free integer variables).
 	const std::vector<std::vector<std::array<int, 2>>> *sides_from = nullptr; ///< With pairwise: a drawing of this variant (`PlanarDrawResult::points`); each separated pair takes the axis side these points keep best as a plain row, with no binary and no `sepdir` (an LP when every other variable is continuous).
 	std::vector<std::string> free_sides; ///< A probe: with sides_from, these sep pair tags ("sep <face> <i> <j>") get the binary side choice instead of a fixed side.
+	std::vector<std::pair<std::string, int>> forced_sides; ///< A probe: with sides_from, these sep pair tags ("sep <face> <i> <j>") take the given candidate (axis index * 2 + side) instead of the best one, written as one hard row tagged "sephard <face> <i> <j>" (sep_extremal endpoints).
+	std::vector<std::string> margin_tags; ///< A read-out: with sides_from, for these sep pair tags every candidate's margin on the reference is listed in PlanarDrawResult::sep_margins.
 	double sides_free_below = -1e30; ///< With sides_from: a pair whose best candidate's margin on the reference is below this keeps its binaries (all candidates, one sepdir row) instead of a fixed direction.
 	int sides_pad = 0; ///< With pairwise: every separation's spacing is raised by this many half tiles (a direction-finding round, D418; never a rule).
 	const std::vector<std::vector<double>> *flex_zero_from = nullptr; ///< A measurement (D418): a flex insert whose length in this reference (`PlanarDrawResult::lengths`) is below flex_zero_below is held at 0.
@@ -186,6 +189,7 @@ struct PlanarDrawPipelineOptions {
 	bool final_grid = false; ///< A measurement (D382 probe): the integer final writes the grid rows (PlanarDrawOptions::grid).
 	bool final_soft_sep = false; ///< A measurement: the integer final's sep rows get slack (cost 1, piece lengths cost 0.01), every variable stays integer; the result lists the rows that stretched.
 	bool free_stretched_sides = false; ///< A probe: after the last LP round, one round with the stretched sep pairs' sides free (binaries), lengths continuous; logged as "free sides".
+	bool side_probe = false; ///< A probe: after the last LP round, per stretched sep pair and per candidate side, one LP like the last round with that pair's side hard (forced_sides) and every other row as in the last round; logged as "side probe".
 	bool final_soft_all = false; ///< A measurement: every row of the integer final except piece, box, pin, fix and grid rows gets slack (cost 1, piece lengths cost 0), every variable stays integer; the result lists the rows that stretched.
 	bool final_start = false; ///< A measurement: the integer final starts from the last round's whole lengths (a partial MIP start, JunctionMilp::SetStart).
 	bool node_gaps = true; ///< On by default (D424). Node gaps in every stage after the seed, each stage's reference its input drawing (PlanarDrawOptions::node_gaps).

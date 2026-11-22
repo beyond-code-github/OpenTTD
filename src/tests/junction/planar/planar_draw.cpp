@@ -346,10 +346,11 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		const DrawCase c = ShapeFirst(text, 1);
 		PlanarDrawPipelineOptions o;
 		o.final_seconds = 15;
-		/* Measurement aids: PLANAR_PROBE_SLACK_PRICE (commit on), PLANAR_PROBE_DISCOVERY_SLACK_PRICE (seed and discovery) and PLANAR_PROBE_NO_CURVE_DISCOVERY (Scheme A). */
+		/* Measurement aids: PLANAR_PROBE_SLACK_PRICE (commit on), PLANAR_PROBE_DISCOVERY_SLACK_PRICE (seed and discovery) PLANAR_PROBE_NO_CURVE_DISCOVERY (Scheme A) and PLANAR_PROBE_SIDES (per-pair side probe). */
 		if (const char *s = std::getenv("PLANAR_PROBE_SLACK_PRICE"); s != nullptr) o.slack_price = std::atof(s);
 		if (const char *s = std::getenv("PLANAR_PROBE_DISCOVERY_SLACK_PRICE"); s != nullptr) o.discovery_slack_price = std::atof(s);
 		o.free_stretched_sides = std::getenv("PLANAR_PROBE_FREE_SIDES") != nullptr;
+		o.side_probe = std::getenv("PLANAR_PROBE_SIDES") != nullptr;
 		o.curve_discovery = std::getenv("PLANAR_PROBE_NO_CURVE_DISCOVERY") == nullptr;
 		const auto start = std::chrono::steady_clock::now();
 		const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
@@ -416,6 +417,36 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 					for (const auto x : xs) s += fmt::format(" {}", x);
 					return s;
 				};
+				if (o.side_probe) {
+					/* Step (a): per track of a stretched sep pair, its pieces, flex, steps and whether it is a beside track or has some. */
+					std::map<uint32_t, std::vector<std::string>> beside_of;
+					std::set<uint32_t> is_beside;
+					for (uint32_t b = 0; b < map.tracks.size(); b++) {
+						if (map.part_of[b] != UINT32_MAX) continue;
+						is_beside.insert(b);
+						std::vector<uint32_t> chain;
+						if (!ParentChain(map, c.v.structure.sites, b, chain)) continue;
+						for (const uint32_t t : chain) beside_of[t].push_back(map.tracks[b].name);
+					}
+					std::set<uint32_t> printed;
+					for (const auto &[tag, amount] : r.last_round.stretched) {
+						std::istringstream words(tag);
+						std::string family;
+						uint32_t face = 0, i = 0, j = 0;
+						words >> family;
+						if (family != "sep" || !(words >> face >> i >> j)) continue;
+						for (const PlanarFaceWalls &f : face_walls) {
+							if (f.face != face || i >= f.walls.size() || j >= f.walls.size()) continue;
+							for (const PlanarCellWall *wall : {&f.walls[i], &f.walls[j]}) {
+								const uint32_t t = wall->track;
+								if (t >= c.v.tracks.size() || !printed.insert(t).second) continue;
+								std::string list;
+								for (const std::string &n : beside_of[t]) list += (list.empty() ? "" : ",") + n;
+								WARN(fmt::format("{} track {}: pieces{}; flex{}; steps{}; stretched piece {}; beside of {}; is beside {}", name, map.tracks[t].name, list_of(c.v.tracks[t].pieces), list_of(c.v.tracks[t].flex), list_of(c.v.tracks[t].steps), wall->piece, list.empty() ? "none" : list, is_beside.contains(t) ? "yes" : "no"));
+							}
+						}
+					}
+				}
 				size_t beside = 0;
 				for (uint32_t b = 0; b < map.tracks.size(); b++) {
 					if (map.part_of[b] != UINT32_MAX) continue;

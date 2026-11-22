@@ -1230,6 +1230,15 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						bool have_forced = false;
 						const std::array<std::array<uint32_t, 2>, 2> *forced_from = nullptr, *forced_to = nullptr;
 						int axis_index = -1;
+						const std::string pair_tag = fmt::format("sep {} {} {}", f.face, i, j);
+						const bool want_margins = std::ranges::find(options.margin_tags, pair_tag) != options.margin_tags.end();
+						std::string margin_text;
+						int probe_candidate = -1;
+						for (const auto &[forced_tag, forced_c] : options.forced_sides) {
+							if (forced_tag == pair_tag) probe_candidate = forced_c;
+						}
+						const Axis *probe_axis = nullptr;
+						const std::array<std::array<uint32_t, 2>, 2> *probe_from = nullptr, *probe_to = nullptr;
 						for (const Axis &axis : axes) {
 							axis_index++;
 							for (int side = 0; side < 2; side++) {
@@ -1242,6 +1251,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 										const std::array<int, 2> rq = ref(tracks[1 - side], pieces[1 - side] + kq);
 										margin = std::min(margin, (rq[0] - rp[0]) * axis.s[0] + (rq[1] - rp[1]) * axis.s[1] - axis.spacing);
 									}
+								}
+								if (want_margins) margin_text += fmt::format("{}c{} s({},{}) spacing {} from {} margin {}", margin_text.empty() ? "" : "; ", axis_index * 2 + side, axis.s[0], axis.s[1], axis.spacing, from == &pi ? "i" : "j", margin);
+								if (axis_index * 2 + side == probe_candidate) {
+									probe_axis = &axis;
+									probe_from = from;
+									probe_to = to;
 								}
 								if (axis_index == forced_axis && side == forced_side) {
 									have_forced = true;
@@ -1257,6 +1272,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 								}
 							}
 						}
+						if (want_margins) result.sep_margins.emplace_back(pair_tag, margin_text);
 						if (have_forced) {
 							result.walk_fixed++;
 							if (forced_margin < 0) result.walk_short++;
@@ -1265,6 +1281,28 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							best_from = forced_from;
 							best_to = forced_to;
 							best_margin = forced_margin;
+						}
+						/* sep_extremal: a piece's projection on s grows from start to end when its heading's step has a positive dot with s, so only from's highest and to's lowest endpoint can bind. */
+						const auto along = [&](const std::array<std::array<uint32_t, 2>, 2> *ends_of, const Axis *axis) {
+							const size_t side = ends_of == &pi ? 0 : 1;
+							const std::array<int, 2> step = PlanarModel::STEP[((v.tracks[tracks[side]].pieces[pieces[side]] % 8) + 8) % 8];
+							return step[0] * axis->s[0] + step[1] * axis->s[1];
+						};
+						if (probe_candidate >= 0) {
+							if (probe_axis == nullptr) {
+								result.sep_sides.emplace_back(pair_tag, "candidate out of range");
+								continue;
+							}
+							result.sep_sides.emplace_back(pair_tag, fmt::format("s ({},{}) spacing {} from {}", probe_axis->s[0], probe_axis->s[1], probe_axis->spacing, probe_from == &pi ? "i" : "j"));
+							const std::array<uint32_t, 2> &p = (*probe_from)[along(probe_from, probe_axis) > 0 ? 1 : 0];
+							const std::array<uint32_t, 2> &q = (*probe_to)[along(probe_to, probe_axis) > 0 ? 0 : 1];
+							Terms t;
+							for (int d = 0; d < 2; d++) {
+								t.emplace_back(q[d], probe_axis->s[d]);
+								t.emplace_back(p[d], -probe_axis->s[d]);
+							}
+							row(std::move(t), probe_axis->spacing, JunctionMilp::INF, fmt::format("sephard {} {} {}", f.face, i, j));
+							continue;
 						}
 						if (best_margin < options.sides_free_below || std::ranges::find(options.free_sides, fmt::format("sep {} {} {}", f.face, i, j)) != options.free_sides.end()) {
 							result.sides_free++;
@@ -1292,18 +1330,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							continue;
 						}
 						if (best_margin < 0) result.short_sides++;
-						/* sep_extremal: a piece's projection on s grows from start to end when its heading's step has a positive dot with s, so only from's highest and to's lowest endpoint can bind. */
-						const auto along = [&](const std::array<std::array<uint32_t, 2>, 2> *ends_of) {
-							const size_t side = ends_of == &pi ? 0 : 1;
-							const std::array<int, 2> step = PlanarModel::STEP[((v.tracks[tracks[side]].pieces[pieces[side]] % 8) + 8) % 8];
-							return step[0] * best_axis->s[0] + step[1] * best_axis->s[1];
-						};
 						std::vector<std::array<uint32_t, 2>> from_ends(best_from->begin(), best_from->end());
 						std::vector<std::array<uint32_t, 2>> to_ends(best_to->begin(), best_to->end());
 						result.sep_sides.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), fmt::format("s ({},{}) spacing {} from {}", best_axis->s[0], best_axis->s[1], best_axis->spacing, best_from == &pi ? "i" : "j"));
 						if (options.sep_extremal) {
-							from_ends = {(*best_from)[along(best_from) > 0 ? 1 : 0]};
-							to_ends = {(*best_to)[along(best_to) > 0 ? 0 : 1]};
+							from_ends = {(*best_from)[along(best_from, best_axis) > 0 ? 1 : 0]};
+							to_ends = {(*best_to)[along(best_to, best_axis) > 0 ? 0 : 1]};
 						}
 						for (const auto &p : from_ends) {
 							for (const auto &q : to_ends) {
@@ -1513,6 +1545,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		return out;
 	}
 	std::vector<std::vector<std::array<int, 2>>> last_input = previous.points; // The input drawing of the last Optimal round.
+	std::vector<std::vector<double>> last_input_lengths = previous.lengths; // Its lengths.
 
 	/* Discovery. */
 	std::vector<std::vector<double>> weights;
@@ -1529,6 +1562,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 			return out;
 		}
 		last_input = previous.points;
+		last_input_lengths = previous.lengths;
 		weights.assign(v.tracks.size(), {});
 		for (size_t t = 0; t < v.tracks.size() && t < r.lengths.size(); t++) {
 			weights[t].assign(r.lengths[t].size(), 0.0);
@@ -1573,6 +1607,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 				return false;
 			}
 			last_input = prev.points;
+			last_input_lengths = prev.lengths;
 			const bool done = r.slack < 1e-6 || (k > 1 && prev.slack - r.slack <= 0.5);
 			prev = r;
 			last = std::move(r);
@@ -1592,6 +1627,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		const auto before_prune = out.committed;
 		const auto last_before_prune = last;
 		const auto last_input_before_prune = last_input;
+		const auto last_input_lengths_before_prune = last_input_lengths;
 		for (const auto &[row, slack] : last.stretched) {
 			if (!row.starts_with("curve flex ")) continue;
 			std::istringstream rs(row.substr(11));
@@ -1613,6 +1649,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 			out.pruned -= held;
 			last = last_before_prune;
 			last_input = last_input_before_prune;
+			last_input_lengths = last_input_lengths_before_prune;
 			out.log.push_back(fmt::format("prune {} undone: {} held inserts restored", p, held));
 			break;
 		}
@@ -1639,6 +1676,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 				return out;
 			}
 			last_input = prev.points;
+			last_input_lengths = prev.lengths;
 			for (size_t t = 0; t < v.tracks.size() && t < r.lengths.size(); t++) {
 				for (size_t i = 0; i < r.lengths[t].size() && i < add_weights[t].size(); i++) add_weights[t][i] = options.irl1 / (r.lengths[t][i] + 0.5);
 			}
@@ -1670,6 +1708,41 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		}
 		PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &last.lengths, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_integer = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .continuous = {"point", "axis", "diagonal", "param", "cross"}, .pins = options.pins, .sides_from = &last.points, .free_sides = tags});
 		log_round("free sides", 1, r);
+	}
+
+	if (options.side_probe) {
+		std::vector<std::string> tags;
+		for (const auto &[row, slack] : last.stretched) {
+			if (row.starts_with("sep ") && std::ranges::find(tags, row) == tags.end()) tags.push_back(row);
+		}
+		const auto commit_options = [&]() {
+			return PlanarDrawOptions{.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .pins = options.pins};
+		};
+		PlanarDrawOptions margins = commit_options();
+		margins.node_gap_from = &out.rounds[0].lengths;
+		margins.sides_from = &out.rounds[0].points;
+		margins.margin_tags = tags;
+		const PlanarDrawResult seed_margins = CheckPlanarDrawable(v, 15.0, margins);
+		for (const auto &[tag, text] : seed_margins.sep_margins) out.log.push_back(fmt::format("side probe seed margins {}: {}", tag, text));
+		for (const std::string &tag : tags) {
+			for (int c = 0; c < 4; c++) {
+				PlanarDrawOptions probe = commit_options();
+				probe.node_gap_from = &last_input_lengths;
+				probe.sides_from = &last_input;
+				probe.forced_sides = {{tag, c}};
+				probe.margin_tags = {tag};
+				const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, probe);
+				double sep_slack = 0, curve_slack = 0;
+				for (const auto &[row, slack] : r.stretched) {
+					if (row.starts_with("sep")) sep_slack += slack;
+					if (row.starts_with("curve")) curve_slack += slack;
+				}
+				if (c == 0) {
+					for (const auto &[t, text] : r.sep_margins) out.log.push_back(fmt::format("side probe last margins {}: {}", t, text));
+				}
+				out.log.push_back(fmt::format("side probe {} c{}: {} slack {:.3f} sep {:.3f} curve {:.3f} ms {:.0f}", tag, c, r.status, r.slack, sep_slack, curve_slack, r.ms));
+			}
+		}
 	}
 
 	/* Final: the integer drawing on the sides the last round proved. */
