@@ -2331,6 +2331,16 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 {
 	std::vector<PlanarPointRow> rows;
 	const PlanarTrackMap &map = v.structure.map;
+	/* The side the sibling leg of t lies on at node `node` (+1 right of travel, -1 left); 0 at a fork or a node with no site (both sides count). */
+	const auto sibling = [&](uint32_t node, bool split, uint32_t t) {
+		for (const PlanarStructureSite &site : v.structure.sites) {
+			if (site.node != node || site.split != split) continue;
+			if (site.straight == UINT32_MAX || site.side == 0) return 0;
+			return t == site.straight ? static_cast<int>(site.side) : -static_cast<int>(site.side);
+		}
+		return 0;
+	};
+	const auto sign = [](int x) { return x > 0 ? 1 : (x < 0 ? -1 : 0); };
 	for (uint32_t t = 0; t < v.tracks.size(); t++) {
 		const std::vector<int> &pieces = v.tracks[t].pieces;
 		const std::vector<uint32_t> &flex = v.tracks[t].flex;
@@ -2339,8 +2349,35 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 		if (map.expanded.lines[t].from.port && !map.expanded.lines[t].to.port && map.events[t].empty()) continue;
 		const uint32_t n = static_cast<uint32_t>(pieces.size());
 		const auto step = [&](uint32_t piece) { return PlanarModel::STEP[((pieces[piece] % 8) + 8) % 8]; };
-		if (!map.expanded.lines[t].from.port && flex.front() == 1) rows.push_back({fmt::format("lead {} start", map.tracks[t].name), {t, 0}, {t, 1}, step(0), 2});
-		if (!map.expanded.lines[t].to.port && n >= 2 && flex.back() == n - 2) rows.push_back({fmt::format("lead {} end", map.tracks[t].name), {t, n - 1}, {t, n}, step(n - 1), 2});
+		const PlanarEnd &from = map.expanded.lines[t].from;
+		const PlanarEnd &to = map.expanded.lines[t].to;
+		if (!from.port && map.expanded.nodes[from.index].IsSplit()) {
+			const int sib = sibling(from.index, true, t);
+			uint32_t k = 0;
+			for (const uint32_t m : flex) {
+				if (m != 1 + 2 * k) break;
+				k++;
+				const int d = sign(pieces[m] - pieces[m - 1]);
+				if (sib == 0 || d == sib) {
+					rows.push_back({fmt::format("lead {} start", map.tracks[t].name), {t, 0}, {t, m}, step(0), 2});
+					break;
+				}
+			}
+		}
+		if (!to.port && n >= 2 && map.expanded.nodes[to.index].in.size() == 2) {
+			const int sib = sibling(to.index, false, t);
+			uint32_t k = 0;
+			for (auto it = flex.rbegin(); it != flex.rend(); ++it) {
+				const uint32_t m = *it;
+				if (n < 2 + 2 * k || m != n - 2 - 2 * k) break;
+				k++;
+				const int d = sign(pieces[m] - pieces[m + 1]);
+				if (sib == 0 || d == sib) {
+					rows.push_back({fmt::format("lead {} end", map.tracks[t].name), {t, m + 1}, {t, n}, step(n - 1), 2});
+					break;
+				}
+			}
+		}
 	}
 	return rows;
 }

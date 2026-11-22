@@ -294,21 +294,42 @@ TEST_CASE("planar draw: node lead rows on X1", "[junction][planar][planardomain]
 {
 	const X1Fixture f;
 	const std::vector<PlanarPointRow> rows = PlanarNodeLeadRows(f.v);
+	/*
+	 * X1's sites: node 0 splits AC1 into straight A1 (side -1, the other leg C1 leaves on the left) and C1; node 1 splits BD1 into straight B1 (side +1) and D1. Its tracks have no merge (their ends are ports).
+	 * Sibling side: A1 -1, C1 +1, B1 +1, D1 -1. Flex middles: A1 1 3 5 7; C1 1 3 6 8; B1 1 3 5 7; D1 1 3 6 8.
+	 * Insert side d = sign(pieces[m] - pieces[m - 1]): A1 m=1 (1 - 2) -1 toward its sibling, so q = point 1; C1 m=1 (0 - 1) -1 away, m=3 (2 - 1) +1 toward, so q = point 3;
+	 * B1 m=1 (-1 - 0) -1 away, m=3 (1 - 0) +1 toward, so q = point 3; D1 m=1 (0 - 1) -1 toward its sibling (-1), so q = point 1.
+	 */
+	REQUIRE(f.v.structure.sites.size() == 2);
+	std::map<std::string, uint32_t> want_q = {{"A1", 1}, {"C1", 3}, {"B1", 3}, {"D1", 1}};
+	std::map<std::string, int> sib = {{"A1", 0}, {"C1", 0}, {"B1", 0}, {"D1", 0}};
+	for (const PlanarStructureSite &site : f.v.structure.sites) {
+		const PlanarNode &node = f.v.structure.map.expanded.nodes[site.node];
+		REQUIRE(node.out.size() == 2);
+		REQUIRE(std::ranges::count(node.out, site.straight) == 1);
+		for (const uint32_t leg : node.out) sib[f.v.structure.map.expanded.lines[leg].name] = leg == site.straight ? site.side : -site.side;
+	}
+	CHECK(sib == std::map<std::string, int>{{"A1", -1}, {"C1", 1}, {"B1", 1}, {"D1", -1}});
 	REQUIRE(rows.size() == 4);
 	std::map<std::string, const PlanarPointRow *> by;
 	for (const PlanarPointRow &r : rows) by[r.tag] = &r;
-	for (const char *name : {"A1", "C1", "B1", "D1"}) {
-		const std::string tag = std::string("lead ") + name + " start";
+	for (const auto &[name, q] : want_q) {
+		INFO(name);
+		const std::string tag = "lead " + name + " start";
 		REQUIRE(by.count(tag) == 1);
 		const PlanarPointRow &r = *by[tag];
 		const uint32_t t = f.idx.at(name);
 		CHECK(r.p == std::array<uint32_t, 2>{t, 0});
-		CHECK(r.q == std::array<uint32_t, 2>{t, 1});
+		CHECK(r.q == std::array<uint32_t, 2>{t, q});
+		/* The insert the row ends at steps toward the sibling side. */
+		const std::vector<int> &h = f.v.tracks[t].pieces;
+		const int d = h[q] > h[q - 1] ? 1 : (h[q] < h[q - 1] ? -1 : 0);
+		CHECK(d == sib[name]);
 		CHECK(r.least == 2);
-		const int h = ((f.heads.at(name)[0] % 8) + 8) % 8;
-		CHECK(r.s == std::array<int, 2>{STEPS[h][0], STEPS[h][1]});
+		const int hd = ((f.heads.at(name)[0] % 8) + 8) % 8;
+		CHECK(r.s == std::array<int, 2>{STEPS[hd][0], STEPS[hd][1]});
 	}
-	/* The base puts the runs of A1 and B1 on piece 4 (pieces 0 to 3 at 0): their end piece has no lead. */
+	/* The base puts the runs of A1 and B1 on piece 4 (pieces 0 to 3 at 0): their rows do not hold. */
 	const std::vector<Points> base = f.PointsOf(f.base);
 	for (const PlanarPointRow &r : rows) {
 		INFO(r.tag);
@@ -325,6 +346,11 @@ TEST_CASE("planar draw: node lead rows on X1", "[junction][planar][planardomain]
 		INFO(r.tag);
 		CHECK(PlanarPointRowHolds(r, moved));
 	}
+	/* One of the 18 polylines D429's first cut rejected: A1 steps right (away from its sibling on the left) at piece 3, the run in front. Its row holds. */
+	Geometry out = f.base;
+	out["A1"] = {{0, 12}, {2, 0}, {3, 2}, {4, 2}, {5, 0}, {6, 4}, {8, 4}};
+	const std::vector<Points> away = f.PointsOf(out);
+	CHECK(PlanarPointRowHolds(*by["lead A1 start"], away));
 }
 
 TEST_CASE("planar draw: keep-apart on fixed points agrees with the program on X1", "[junction][planar][planardomain]")
