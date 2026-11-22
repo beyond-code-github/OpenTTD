@@ -699,6 +699,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	/* PLANAR_DOMAIN_RULES (a measurement): plain, span, zero or all (default) strict keep-apart rules. */
 	const char *rules_env = rules_override != nullptr ? rules_override : std::getenv("PLANAR_DOMAIN_RULES");
 	std::string rules = rules_env == nullptr ? "all" : rules_env;
+	const bool grid = rules.ends_with("+grid");
+	if (grid) rules.resize(rules.size() - 5);
 	const bool crosspiece = rules.ends_with("+crosspiece");
 	if (crosspiece) rules.resize(rules.size() - 11);
 	const bool endnode = rules.ends_with("+endnode");
@@ -708,6 +710,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	X1Fixture fx = f;
 	fx.options.end_node = endnode;
 	fx.options.cross_piece = crosspiece;
+	fx.options.grid = grid;
 
 	/* The read-out of a contracted variant: no flex, so Refine is not needed unless the read-out says so. */
 	auto readouts = [&](const PlanarShapeVariant &contracted) {
@@ -773,9 +776,185 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		WARN("base polyline: " << (!cv ? "other shape" : accepts(*cv, readouts(cv->v)) ? "accept" : "reject"));
 	}
 
+	const auto Num = [](size_t n) { std::ostringstream o; o << n; return o.str(); };
+	/** Where a contracted polyline first leaves the grid: the first track (by index) whose raster says so, and its first corner off an edge midpoint, else its first axis piece off the centre line. */
+	auto first_off_grid = [&](const Contracted &cv) {
+		for (uint32_t t = 0; t < f.n; t++) {
+			if (RasterPlanarDomainTrack(cv.points[t]).rule.empty()) continue;
+			const Points &p = cv.points[t];
+			for (size_t i = 0; i < p.size(); i++) {
+				if ((((p[i][0] + p[i][1]) % 2) + 2) % 2 == 0) return f.Name(t) + " corner " + Num(i);
+			}
+			for (size_t k = 0; k + 1 < p.size(); k++) {
+				const int hh = ((cv.v.tracks[t].pieces[k] % 8) + 8) % 8;
+				if (hh % 2 != 0 || p[k] == p[k + 1]) continue;
+				const int across = hh == 2 || hh == 6 ? p[k][1] : p[k][0];
+				if ((across % 2 + 2) % 2 == 0) return f.Name(t) + " piece " + Num(k) + " off the centre line";
+			}
+			return f.Name(t) + " (raster: " + RasterPlanarDomainTrack(p).rule + ")";
+		}
+		return std::string("unlocated");
+	};
+	struct EnumCount {
+		uint32_t blind = 0; ///< The blind enumeration's geometries.
+		uint32_t blind_on = 0; ///< Of them on the grid.
+		uint32_t built = 0; ///< The by-construction enumeration's geometries.
+		uint32_t built_off = 0; ///< Of them the raster calls off grid (a defect of the generator).
+	};
+	std::map<std::string, EnumCount> enum_counts;
+
+	/** Judge one geometry into the tallies (the class is cached per polyline). */
+	auto judge = [&](const Config &cfg, Tally &tally, const Geometry &g, const std::string &varied, const std::vector<Points> &points, bool on_grid) {
+		enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, OFF_GRID, OTHER_SHAPE } c;
+		std::string pkey;
+		const PolyClass *pc = nullptr;
+		if (!on_grid && !grid) {
+			c = OFF_GRID;
+		} else {
+			pkey = polyline_key(g);
+			const auto known = classes.find(pkey);
+			if (known == classes.end()) {
+				PolyClass nc;
+				const std::optional<Contracted> cv = ContractedVariant(f, g);
+				if (!cv) {
+					nc.c = OTHER_SHAPE;
+					nc.detail = "      polyline " + pkey + "\n";
+				} else {
+					std::vector<std::string> notes;
+					/* An off-grid polyline is rejected by the domain (its raster says grid); the domain's input is not built for it. */
+					PlanarDomainVerdict d;
+					if (on_grid) d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
+					const Readouts ro = readouts(cv->v);
+					if (on_grid) {
+						g_lead_rows_seen += static_cast<uint32_t>(ro.lead.size());
+						g_lead_by_family[FamilyOf(cfg.name)] += static_cast<uint32_t>(ro.lead.size());
+					}
+					const bool accept = accepts(*cv, ro);
+					if (d.legal) {
+						nc.c = accept ? BOTH_ACCEPT : STRICT;
+					} else {
+						nc.c = accept ? LOOSE : BOTH_REJECT;
+					}
+					if (nc.c == STRICT) {
+						std::set<std::string> kept;
+						nc.detail = "      polyline " + pkey + "\n" + FailingText(f, ro.keep.keep_apart, cv->points, kept);
+						for (const PlanarPointRow &r : ro.lead) {
+							if (PlanarPointRowHolds(r, cv->points)) continue;
+							kept.insert("lead");
+							nc.detail += "      " + r.tag + " fails\n";
+						}
+						for (const std::string &b : CheckPlanarProgramOnPoints(ro.program.program, cv->points).broken) {
+							kept.insert(FamilyOf(b));
+							nc.detail += "      program row broken: " + b + "\n";
+						}
+						nc.key = Join(kept);
+					} else if (nc.c == LOOSE) {
+						std::set<std::string> broke;
+						std::ostringstream out;
+						out << "      polyline " << pkey << "\n      contracted pieces (heading x length):";
+						for (uint32_t t = 0; t < f.n; t++) {
+							out << " " << f.Name(t) << "[";
+							for (size_t k = 0; k < cv->v.tracks[t].pieces.size(); k++) {
+								const Point &a = cv->points[t][k], &b = cv->points[t][k + 1];
+								out << (k == 0 ? "" : ",") << cv->v.tracks[t].pieces[k] << "x" << std::max(std::abs(b[0] - a[0]), std::abs(b[1] - a[1]));
+							}
+							out << "]";
+						}
+						out << "\n";
+						if (!on_grid) {
+							const std::string where = first_off_grid(*cv);
+							out << "      off grid: first at " << where << "\n";
+							broke.insert("off grid: " + where);
+						}
+						for (const PlanarDomainBreak &b : d.breaks) {
+							broke.insert(b.rule);
+							std::string names;
+							for (const uint32_t t : b.tracks) names += (names.empty() ? "" : ",") + f.Name(t);
+							out << "      break " << b.rule << " tracks " << names << " tile (" << b.tile.x << "," << b.tile.y << ") " << b.why << "\n";
+							for (const PlanarKeepApartPair &p : ro.keep.keep_apart) {
+								const bool pa = std::ranges::count(b.tracks, p.tracks[0]) > 0, pb = std::ranges::count(b.tracks, p.tracks[1]) > 0;
+								if (!pa || !pb) continue;
+								out << "        " << p.tag << " " << f.Name(p.tracks[0]) << "/" << f.Name(p.tracks[1]) << " pieces " << p.pieces[0] << "/" << p.pieces[1] << ": " << (p.skipped.empty() ? "held" : p.skipped) << "\n";
+							}
+						}
+						nc.detail = out.str();
+						nc.key = Join(broke);
+					}
+				}
+				pc = &(classes[pkey] = nc);
+			} else {
+				pc = &known->second;
+			}
+			c = static_cast<decltype(c)>(pc->c);
+		}
+		for (Tally *x : {&tally, &total}) {
+			x->geoms[c]++;
+			if (c == OFF_GRID) {
+				x->counts[c]++;
+				continue;
+			}
+			if (c == OTHER_SHAPE) {
+				if (x->seen.insert(pkey).second) {
+					x->counts[c]++;
+					if (x->other.size() < 3) x->other.push_back({varied, pc->detail});
+				}
+				continue;
+			}
+			Group *grp = c == STRICT ? &x->strict[pc->key] : c == LOOSE ? &x->loose[pc->key] : nullptr;
+			if (grp != nullptr) grp->geometries++;
+			if (!x->seen.insert(pkey).second) continue;
+			x->counts[c]++;
+			if (grp != nullptr && grp->count++ < 3) grp->examples.push_back({varied, pc->detail});
+		}
+	};
+
+	/** The on-grid walk of one track (the by-construction mode): from the start, each piece offers its candidate lengths (the axis values when varied, else the base length) and keeps those that end on an edge midpoint (x + y odd) and, for an axis piece with length, on its centre line (east-west on odd y, north-south on odd x). Returns the chosen lengths of the varied pieces. */
+	auto walk_track = [&](const std::string &name, const std::map<uint32_t, std::vector<int>> &varied) {
+		std::vector<std::map<uint32_t, int>> out;
+		const std::vector<int> &h = f.heads.at(name);
+		const auto base_it = f.base.find(name);
+		std::map<uint32_t, int> chosen;
+		auto rec = [&](auto &&self, uint32_t k, Point cur) -> void {
+			if (k == h.size()) {
+				out.push_back(chosen);
+				return;
+			}
+			std::vector<int> cands;
+			const auto v = varied.find(k);
+			if (v != varied.end()) {
+				cands = v->second;
+			} else {
+				int len = 0;
+				if (base_it != f.base.end()) {
+					const auto l = base_it->second.find(k);
+					if (l != base_it->second.end()) len = l->second;
+				}
+				cands = {len};
+			}
+			const int hh = ((h[k] % 8) + 8) % 8;
+			for (const int len : cands) {
+				Point next = {cur[0] + len * STEPS[hh][0], cur[1] + len * STEPS[hh][1]};
+				if (len > 0) {
+					if ((((next[0] + next[1]) % 2) + 2) % 2 != 1) continue;
+					if (hh % 2 == 0) {
+						const int across = (hh == 2 || hh == 6) ? cur[1] : cur[0];
+						if ((across % 2 + 2) % 2 != 1) continue;
+					}
+				}
+				if (v != varied.end()) chosen[k] = len;
+				self(self, k + 1, next);
+			}
+			if (v != varied.end()) chosen.erase(k);
+		};
+		rec(rec, 0, f.starts.at(name));
+		return out;
+	};
+
 	for (const Config &cfg : configs) {
 		const auto c0 = std::chrono::steady_clock::now();
 		Tally &tally = per[cfg.name];
+		EnumCount &ec = enum_counts[cfg.name];
+		/* Blind enumeration: independent length lists; its off-grid geometries are the off-grid part (judged with +grid, else counted). */
 		std::vector<size_t> pos(cfg.axes.size(), 0);
 		while (true) {
 			Geometry g = f.base;
@@ -786,99 +965,13 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 				varied << (a == 0 ? "" : " ") << name << "." << piece << "=" << vals[pos[a]];
 			}
 			const std::vector<Points> points = f.PointsOf(g);
-			enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, OFF_GRID, OTHER_SHAPE } c;
 			bool on_grid = true;
 			for (const Points &p : points) on_grid = on_grid && RasterPlanarDomainTrack(p).rule.empty();
-			std::string pkey;
-			const PolyClass *pc = nullptr;
-			if (!on_grid) {
-				c = OFF_GRID;
+			ec.blind++;
+			if (on_grid) {
+				ec.blind_on++;
 			} else {
-				pkey = polyline_key(g);
-				const auto known = classes.find(pkey);
-				if (known == classes.end()) {
-					PolyClass nc;
-					const std::optional<Contracted> cv = ContractedVariant(f, g);
-					if (!cv) {
-						nc.c = OTHER_SHAPE;
-						nc.detail = "      polyline " + pkey + "\n";
-					} else {
-						std::vector<std::string> notes;
-						const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
-						const Readouts ro = readouts(cv->v);
-						g_lead_rows_seen += static_cast<uint32_t>(ro.lead.size());
-						g_lead_by_family[FamilyOf(cfg.name)] += static_cast<uint32_t>(ro.lead.size());
-						const bool accept = accepts(*cv, ro);
-						if (d.legal) {
-							nc.c = accept ? BOTH_ACCEPT : STRICT;
-						} else {
-							nc.c = accept ? LOOSE : BOTH_REJECT;
-						}
-						if (nc.c == STRICT) {
-							std::set<std::string> kept;
-							nc.detail = "      polyline " + pkey + "\n" + FailingText(f, ro.keep.keep_apart, cv->points, kept);
-							for (const PlanarPointRow &r : ro.lead) {
-								if (PlanarPointRowHolds(r, cv->points)) continue;
-								kept.insert("lead");
-								nc.detail += "      " + r.tag + " fails\n";
-							}
-							for (const std::string &b : CheckPlanarProgramOnPoints(ro.program.program, cv->points).broken) {
-								kept.insert(FamilyOf(b));
-								nc.detail += "      program row broken: " + b + "\n";
-							}
-							nc.key = Join(kept);
-						} else if (nc.c == LOOSE) {
-							std::set<std::string> broke;
-							std::ostringstream out;
-							out << "      polyline " << pkey << "\n      contracted pieces (heading x length):";
-							for (uint32_t t = 0; t < f.n; t++) {
-								out << " " << f.Name(t) << "[";
-								for (size_t k = 0; k < cv->v.tracks[t].pieces.size(); k++) {
-									const Point &a = cv->points[t][k], &b = cv->points[t][k + 1];
-									out << (k == 0 ? "" : ",") << cv->v.tracks[t].pieces[k] << "x" << std::max(std::abs(b[0] - a[0]), std::abs(b[1] - a[1]));
-								}
-								out << "]";
-							}
-							out << "\n";
-							for (const PlanarDomainBreak &b : d.breaks) {
-								broke.insert(b.rule);
-								std::string names;
-								for (const uint32_t t : b.tracks) names += (names.empty() ? "" : ",") + f.Name(t);
-								out << "      break " << b.rule << " tracks " << names << " tile (" << b.tile.x << "," << b.tile.y << ") " << b.why << "\n";
-								for (const PlanarKeepApartPair &p : ro.keep.keep_apart) {
-									const bool pa = std::ranges::count(b.tracks, p.tracks[0]) > 0, pb = std::ranges::count(b.tracks, p.tracks[1]) > 0;
-									if (!pa || !pb) continue;
-									out << "        " << p.tag << " " << f.Name(p.tracks[0]) << "/" << f.Name(p.tracks[1]) << " pieces " << p.pieces[0] << "/" << p.pieces[1] << ": " << (p.skipped.empty() ? "held" : p.skipped) << "\n";
-								}
-							}
-							nc.detail = out.str();
-							nc.key = Join(broke);
-						}
-					}
-					pc = &(classes[pkey] = nc);
-				} else {
-					pc = &known->second;
-				}
-				c = static_cast<decltype(c)>(pc->c);
-			}
-			for (Tally *x : {&tally, &total}) {
-				x->geoms[c]++;
-				if (c == OFF_GRID) {
-					x->counts[c]++;
-					continue;
-				}
-				if (c == OTHER_SHAPE) {
-					if (x->seen.insert(pkey).second) {
-						x->counts[c]++;
-						if (x->other.size() < 3) x->other.push_back({varied.str(), pc->detail});
-					}
-					continue;
-				}
-				Group *grp = c == STRICT ? &x->strict[pc->key] : c == LOOSE ? &x->loose[pc->key] : nullptr;
-				if (grp != nullptr) grp->geometries++;
-				if (!x->seen.insert(pkey).second) continue;
-				x->counts[c]++;
-				if (grp != nullptr && grp->count++ < 3) grp->examples.push_back({varied.str(), pc->detail});
+				judge(cfg, tally, g, varied.str(), points, false);
 			}
 			size_t a = 0;
 			while (a < cfg.axes.size()) {
@@ -886,6 +979,46 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 				pos[a++] = 0;
 			}
 			if (a == cfg.axes.size()) break;
+		}
+		/* By construction: per varied track the on-grid walks, then their product. */
+		std::vector<std::string> names;
+		std::map<std::string, std::map<uint32_t, std::vector<int>>> varied_of;
+		for (const auto &[name, piece, vals] : cfg.axes) {
+			if (varied_of.find(name) == varied_of.end()) names.push_back(name);
+			varied_of[name][piece] = vals;
+		}
+		std::vector<std::vector<std::map<uint32_t, int>>> walks;
+		bool any_empty = false;
+		for (const std::string &name : names) {
+			walks.push_back(walk_track(name, varied_of[name]));
+			any_empty = any_empty || walks.back().empty();
+		}
+		if (!any_empty) {
+			std::vector<size_t> wp(names.size(), 0);
+			while (true) {
+				Geometry g = f.base;
+				for (size_t i = 0; i < names.size(); i++) {
+					for (const auto &[k, len] : walks[i][wp[i]]) g[names[i]][k] = len;
+				}
+				std::ostringstream varied;
+				for (size_t a = 0; a < cfg.axes.size(); a++) {
+					const auto &[name, piece, vals] = cfg.axes[a];
+					varied << (a == 0 ? "" : " ") << name << "." << piece << "=" << g[name][piece];
+				}
+				const std::vector<Points> points = f.PointsOf(g);
+				bool on_grid = true;
+				for (const Points &p : points) on_grid = on_grid && RasterPlanarDomainTrack(p).rule.empty();
+				ec.built++;
+				if (!on_grid) ec.built_off++;
+				/* A geometry the raster refuses (its turn rules go beyond the walk's grid parity) is in the blind off-grid stream; it is not judged twice. */
+				if (on_grid) judge(cfg, tally, g, varied.str(), points, true);
+				size_t i = 0;
+				while (i < names.size()) {
+					if (++wp[i] < walks[i].size()) break;
+					wp[i++] = 0;
+				}
+				if (i == names.size()) break;
+			}
 		}
 		cfg_wall[cfg.name] = std::chrono::duration<double>(std::chrono::steady_clock::now() - c0).count();
 	}
@@ -913,7 +1046,9 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		out << "\n";
 	};
 	for (const Config &cfg : configs) {
+		const EnumCount &ec = enum_counts[cfg.name];
 		out << "wall " << cfg.name << ": " << cfg_wall[cfg.name] << " s\n";
+		out << "enumeration " << cfg.name << ": blind " << ec.blind << " geometries (" << ec.blind_on << " on the grid, " << ec.blind - ec.blind_on << " off); by construction " << ec.built << " geometries (" << ec.built_off << " of them the raster refuses and are not judged here: its turn rules)\n";
 		write(cfg.name, per[cfg.name]);
 	}
 	write("total", total);
@@ -1286,6 +1421,45 @@ TEST_CASE("planar domain: a polyline has one contracted writing", "[junction][pl
 	CHECK(!ContractedVariant(f, g).has_value());
 }
 
+TEST_CASE("planar domain: the grid rows reject an off-grid drawing", "[junction][planar][planardomain]")
+{
+	/* X1's base shifted by one half tile in x on every track: every corner is off the grid. */
+	X1Fixture f;
+	for (auto &[name, start] : f.starts) start[0] += 1;
+	const std::vector<Points> points = f.PointsOf(f.base);
+	bool all_off = true;
+	for (const Points &p : points) all_off = all_off && !RasterPlanarDomainTrack(p).rule.empty();
+	REQUIRE(all_off);
+	/* The program read-out of the contracted writing (every piece has length, so the grid rows are written): with grid on it breaks an integer or grid row; with grid off it breaks none. */
+	const std::optional<Contracted> cv = ContractedVariant(f, f.base);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	const auto program_of = [&](bool grid) {
+		PlanarDrawOptions o = f.options;
+		o.strict_span = o.strict_zero = o.crossing_flanks = false;
+		o.keep_apart_out = true;
+		o.program_out = true;
+		o.build_only = true;
+		o.grid = grid;
+		return CheckPlanarDrawable(plain, 5.0, o);
+	};
+	const PlanarDrawResult on_out = program_of(true);
+	const std::vector<std::string> broken_on = CheckPlanarProgramOnPoints(on_out.program, cv->points).broken;
+	bool grid_row = false;
+	for (const std::string &b : broken_on) grid_row = grid_row || b.starts_with("integer") || b.starts_with("grid");
+	INFO("grid forced " << on_out.grid_forced << ", broken with grid " << broken_on.size() << ", first " << (broken_on.empty() ? std::string("-") : broken_on[0]));
+	CHECK(grid_row);
+	CHECK(CheckPlanarProgramOnPoints(program_of(false).program, cv->points).broken.empty());
+	/* The report's rule set +grid reaches the read-outs: the shifted base is rejected with it and accepted without it. */
+	int verdict_on = 0, verdict_off = 1;
+	const Config none{"base", {}};
+	RunEncoding(f, nullptr, "X1 shifted", {none}, "", "span+lead+endnode+crosspiece+grid", &verdict_on);
+	RunEncoding(f, nullptr, "X1 shifted", {none}, "", "span+lead+endnode+crosspiece", &verdict_off);
+	CHECK(verdict_on == 1);
+	CHECK(verdict_off == 0);
+}
+
 TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planardomainenc]")
 {
 	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT");
@@ -1407,50 +1581,47 @@ TEST_CASE("planar domain: our keep-apart against the domain on M1", "[.][planard
 	REQUIRE(report_path != nullptr);
 	const M1Fixture f;
 	RequireBaseLegal(f);
-	const std::vector<uint32_t> &a1 = f.holders.at("A1");
-	const uint32_t a_last = static_cast<uint32_t>(f.heads.at("A1").size()) - 1;
-	REQUIRE(a1.size() == 1);
-	REQUIRE(a1[0] == a_last);
-	/* M1c (B1) and M1d (A1): the S-bend just before the merge, one configuration per feasible geometry; the first run absorbs the rest so the track still ends at the merge point (16,5). */
+	/* M1e (A1) and M1f (B1): S-bend pairs just before the merge, one configuration per candidate; the first piece (A1) or the earlier NE flank (B1) absorbs the rest so the track still ends at the merge point (16,5). Candidates that are off the grid are kept: the on-grid generator and the off-grid judging sort them. */
 	std::vector<Config> configs;
-	const auto absorb = [&](const std::string &track, uint32_t first, const Point &target, const std::map<uint32_t, int> &fixed, const std::string &label, const int dir[2]) {
+	const std::vector<int> &ah = f.heads.at("A1"), &bh = f.heads.at("B1");
+	{
+		std::ostringstream hs;
+		for (const int x : ah) hs << x << " ";
+		hs << "| ";
+		for (const int x : bh) hs << x << " ";
+		INFO("A1 | B1 headings: " << hs.str());
+		REQUIRE(ah == std::vector<int>({2, 1, 2, 3, 2}));
+		REQUIRE(bh.size() == 10);
+		REQUIRE((bh[5] == 1 && bh[6] == 0 && bh[7] == 1 && bh[8] == 2 && bh[9] == 1));
+	}
+	const auto add = [&](const std::string &track, const std::map<uint32_t, int> &lengths, const std::string &label) {
 		Geometry g = f.base;
-		g[track] = fixed;
-		const std::vector<Points> p = f.PointsOf(g);
-		const Point &e = p[f.idx.at(track)].back();
-		/* The first run n steps along dir from the end reached with it at 0: e + n * dir = target. */
-		const int n = dir[0] != 0 ? (target[0] - e[0]) / dir[0] : (target[1] - e[1]) / dir[1];
-		g[track][first] = n;
+		g[track] = lengths;
 		const std::vector<Points> q = f.PointsOf(g);
-		if (n < 0 || q[f.idx.at(track)].back() != target) return;
-		if (!RasterPlanarDomainTrack(q[f.idx.at(track)]).rule.empty()) return;
+		REQUIRE(q[f.idx.at(track)].back() == Point({16, 5}));
 		Config c{label, {}};
-		for (const auto &[k, len] : g[track]) c.axes.emplace_back(track, k, std::vector<int>{len});
+		for (const auto &[k, len] : lengths) c.axes.emplace_back(track, k, std::vector<int>{len});
 		configs.push_back(c);
 	};
-	const uint32_t b_last = static_cast<uint32_t>(f.heads.at("B1").size()) - 1;
-	REQUIRE(f.heads.at("B1")[b_last - 1] == 2); // The insert (E), flex middle 8.
-	REQUIRE(f.heads.at("B1")[b_last] == 1);
-	REQUIRE(f.heads.at("B1")[b_last - 2] == 1);
-	REQUIRE(f.heads.at("A1")[a_last - 1] == 3);
-	REQUIRE(f.heads.at("A1")[a_last] == 2);
-	REQUIRE(f.heads.at("A1")[a_last - 2] == 2);
-	const int north[2] = {0, -1}, east[2] = {1, 0};
-	for (const int x : {1, 2, 3}) {
-		for (const int y : {0, 2, 4}) {
-			for (const int z : {0, 1, 2}) {
+	for (const int d : {1, 2}) {
+		for (const int p2 : {0, 2, 4}) {
+			for (const int p4 : {0, 2, 4}) {
+				const int rest = 12 - 2 * d - p2 - p4;
+				if (rest < 0) continue;
 				std::ostringstream cname;
-				cname << "M1c B1 " << x << "," << y << "," << z;
-				absorb("B1", 0, {16, 5}, {{b_last - 2, x}, {b_last - 1, y}, {b_last, z}}, cname.str(), north);
+				cname << "M1e A1 d" << d << " p2=" << p2 << " p4=" << p4;
+				add("A1", {{0, rest}, {1, d}, {2, p2}, {3, d}, {4, p4}}, cname.str());
 			}
 		}
 	}
-	for (const int x : {0, 2, 4}) {
-		for (const int y : {1, 2}) {
-			for (const int z : {0, 2, 4}) {
+	for (const int d : {2, 4}) {
+		for (const int p7 : {0, 1, 2, 3}) {
+			for (const int p9 : {0, 1, 2, 3}) {
+				const int n5 = 3 - d - p7 - p9;
+				if (n5 < 0) continue;
 				std::ostringstream cname;
-				cname << "M1d A1 " << x << "," << y << "," << z;
-				absorb("A1", 0, {16, 5}, {{a_last - 2, x}, {a_last - 1, y}, {a_last, z}}, cname.str(), east);
+				cname << "M1f B1 d" << d << " p7=" << p7 << " p9=" << p9;
+				add("B1", {{0, 4}, {5, n5}, {6, d}, {7, p7}, {8, d}, {9, p9}}, cname.str());
 			}
 		}
 	}
