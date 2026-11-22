@@ -488,6 +488,7 @@ struct Tally {
 };
 
 uint32_t g_lead_rows_seen = 0; ///< The node lead rows over the contracted variants judged in the last report.
+std::map<std::string, uint32_t> g_lead_by_family; ///< The same, per configuration family (the name up to its first space).
 
 std::string FamilyOf(const std::string &tag)
 {
@@ -629,6 +630,11 @@ std::optional<Contracted> ContractedVariant(const X1Fixture &f, const Geometry &
 				kept.push_back(reps[0][k]);
 			}
 		}
+		if (tr.pieces.empty()) {
+			/* A track with no run (D433): one piece of length 0, its first heading. */
+			tr.pieces.push_back(h[0]);
+			kept.push_back(0);
+		}
 		Point cur = f.starts.at(name);
 		out.points[t].push_back(cur);
 		for (size_t k = 0; k < kept.size(); k++) {
@@ -761,6 +767,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		return;
 	}
 	g_lead_rows_seen = 0;
+	g_lead_by_family.clear();
 	{
 		const std::optional<Contracted> cv = ContractedVariant(f, f.base);
 		WARN("base polyline: " << (!cv ? "other shape" : accepts(*cv, readouts(cv->v)) ? "accept" : "reject"));
@@ -800,6 +807,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 						const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
 						const Readouts ro = readouts(cv->v);
 						g_lead_rows_seen += static_cast<uint32_t>(ro.lead.size());
+						g_lead_by_family[FamilyOf(cfg.name)] += static_cast<uint32_t>(ro.lead.size());
 						const bool accept = accepts(*cv, ro);
 						if (d.legal) {
 							nc.c = accept ? BOTH_ACCEPT : STRICT;
@@ -887,6 +895,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	REQUIRE(out.good());
 	out << "Encoding report on " << title << ": our contracted rows (judged on fixed points, no solve) against the domain, one writing per polyline (D432)\n" << header;
 	out << "node lead rows over the judged contracted variants: " << g_lead_rows_seen << "\n";
+	for (const Config &cfg : configs) g_lead_by_family.try_emplace(FamilyOf(cfg.name), 0);
+	for (const auto &[family, rows] : g_lead_by_family) out << "node lead rows, configuration " << family << ": " << rows << "\n";
 	out << "enumeration wall " << wall << " s\n\n";
 	auto write = [&](const std::string &title, const Tally &t) {
 		out << "== " << title << " ==\n";
@@ -1401,24 +1411,49 @@ TEST_CASE("planar domain: our keep-apart against the domain on M1", "[.][planard
 	const uint32_t a_last = static_cast<uint32_t>(f.heads.at("A1").size()) - 1;
 	REQUIRE(a1.size() == 1);
 	REQUIRE(a1[0] == a_last);
-	/* M1a: B1's pieces varied; A1's last two pieces in {0, 2, 4} each, its first piece the rest of 12 (A1's end stays at (16,5) when its last two pieces run east). One configuration per pair, as the axes are independent. */
+	/* M1c (B1) and M1d (A1): the S-bend just before the merge, one configuration per feasible geometry; the first run absorbs the rest so the track still ends at the merge point (16,5). */
 	std::vector<Config> configs;
-	for (const int x : {0, 2, 4}) {
+	const auto absorb = [&](const std::string &track, uint32_t first, const Point &target, const std::map<uint32_t, int> &fixed, const std::string &label, const int dir[2]) {
+		Geometry g = f.base;
+		g[track] = fixed;
+		const std::vector<Points> p = f.PointsOf(g);
+		const Point &e = p[f.idx.at(track)].back();
+		/* The first run n steps along dir from the end reached with it at 0: e + n * dir = target. */
+		const int n = dir[0] != 0 ? (target[0] - e[0]) / dir[0] : (target[1] - e[1]) / dir[1];
+		g[track][first] = n;
+		const std::vector<Points> q = f.PointsOf(g);
+		if (n < 0 || q[f.idx.at(track)].back() != target) return;
+		if (!RasterPlanarDomainTrack(q[f.idx.at(track)]).rule.empty()) return;
+		Config c{label, {}};
+		for (const auto &[k, len] : g[track]) c.axes.emplace_back(track, k, std::vector<int>{len});
+		configs.push_back(c);
+	};
+	const uint32_t b_last = static_cast<uint32_t>(f.heads.at("B1").size()) - 1;
+	REQUIRE(f.heads.at("B1")[b_last - 1] == 2); // The insert (E), flex middle 8.
+	REQUIRE(f.heads.at("B1")[b_last] == 1);
+	REQUIRE(f.heads.at("B1")[b_last - 2] == 1);
+	REQUIRE(f.heads.at("A1")[a_last - 1] == 3);
+	REQUIRE(f.heads.at("A1")[a_last] == 2);
+	REQUIRE(f.heads.at("A1")[a_last - 2] == 2);
+	const int north[2] = {0, -1}, east[2] = {1, 0};
+	for (const int x : {1, 2, 3}) {
 		for (const int y : {0, 2, 4}) {
-			std::ostringstream cname;
-			cname << "M1a A1 tail " << x << "," << y;
-			Config c{cname.str(), {}};
-			AddAxes(c, f, "B1", f.holders.at("B1"), {{2, 4, 6}, {1, 2, 3}}, 0, UINT32_MAX);
-			c.axes.emplace_back("A1", 0, std::vector<int>{12 - x - y});
-			c.axes.emplace_back("A1", a_last - 1, std::vector<int>{x});
-			c.axes.emplace_back("A1", a_last, std::vector<int>{y});
-			configs.push_back(c);
+			for (const int z : {0, 1, 2}) {
+				std::ostringstream cname;
+				cname << "M1c B1 " << x << "," << y << "," << z;
+				absorb("B1", 0, {16, 5}, {{b_last - 2, x}, {b_last - 1, y}, {b_last, z}}, cname.str(), north);
+			}
 		}
 	}
-	/* M1b: A1's pieces varied (its run holder in {8, 10, 12, 14, 16}, its inserts within two pieces of its end) against the fixed B1. */
-	Config b{"M1b", {}};
-	AddAxes(b, f, "A1", a1, {{8, 10, 12, 14, 16}}, a_last - 2, UINT32_MAX);
-	configs.push_back(b);
+	for (const int x : {0, 2, 4}) {
+		for (const int y : {1, 2}) {
+			for (const int z : {0, 2, 4}) {
+				std::ostringstream cname;
+				cname << "M1d A1 " << x << "," << y << "," << z;
+				absorb("A1", 0, {16, 5}, {{a_last - 2, x}, {a_last - 1, y}, {a_last, z}}, cname.str(), east);
+			}
+		}
+	}
 	RunEncoding(f, report_path, "M1", configs, FixtureHeader(f, f.holders));
 }
 

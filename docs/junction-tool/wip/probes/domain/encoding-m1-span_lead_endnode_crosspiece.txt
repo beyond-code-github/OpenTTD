@@ -7,124 +7,59 @@ BD1 headings after flex: 0 -1 0 1 0; flex middles: 1 3; run holders: 4
 C1 headings after flex: 1 0 1 2 1 0 -1 0 1 0; flex middles: 1 3 6 8; run holders: 0 9
 D1 headings after flex: 1 0 1 2 1 2 1 2 3 2; flex middles: 1 3 6 8; run holders: 0 9
 node lead rows over the judged contracted variants: 0
-enumeration wall 2.35801 s
+node lead rows, configuration M1c: 0
+enumeration wall 0.000670329 s
 
-wall M1a A1 tail 0,0: 0.26458 s
-== M1a A1 tail 0,0 ==
-  both accept: 2 polylines (33 geometries)
-  both reject: 499 polylines (2946 geometries)
+wall M1c B1 1,0,2: 0.000192695 s
+== M1c B1 1,0,2 ==
+  both accept: 1 polylines (1 geometries)
+  both reject: 0 polylines (0 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
-  off grid (geometries): 8685 (8685 geometries)
+  off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1a A1 tail 0,2: 0.0370603 s
-== M1a A1 tail 0,2 ==
-  both accept: 2 polylines (33 geometries)
-  both reject: 499 polylines (2946 geometries)
-  too strict: 0 polylines (0 geometries)
-  too loose: 0 polylines (0 geometries)
-  off grid (geometries): 8685 (8685 geometries)
-  other shape: 0 polylines (0 geometries)
- too strict, by the kept values of the failing pairs:
- too loose, by domain break rules:
-
-wall M1a A1 tail 0,4: 0.0373123 s
-== M1a A1 tail 0,4 ==
-  both accept: 2 polylines (33 geometries)
-  both reject: 499 polylines (2946 geometries)
-  too strict: 0 polylines (0 geometries)
-  too loose: 0 polylines (0 geometries)
-  off grid (geometries): 8685 (8685 geometries)
-  other shape: 0 polylines (0 geometries)
- too strict, by the kept values of the failing pairs:
- too loose, by domain break rules:
-
-wall M1a A1 tail 2,0: 0.298672 s
-== M1a A1 tail 2,0 ==
+wall M1c B1 1,2,0: 0.000230729 s
+== M1c B1 1,2,0 ==
   both accept: 0 polylines (0 geometries)
-  both reject: 501 polylines (2979 geometries)
+  both reject: 1 polylines (1 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
-  off grid (geometries): 8685 (8685 geometries)
+  off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1a A1 tail 2,2: 0.354241 s
-== M1a A1 tail 2,2 ==
-  both accept: 0 polylines (0 geometries)
-  both reject: 501 polylines (2979 geometries)
+wall M1c B1 2,0,1: 6.183e-06 s
+== M1c B1 2,0,1 ==
+  both accept: 1 polylines (1 geometries)
+  both reject: 0 polylines (0 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
-  off grid (geometries): 8685 (8685 geometries)
+  off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1a A1 tail 2,4: 0.350706 s
-== M1a A1 tail 2,4 ==
-  both accept: 0 polylines (0 geometries)
-  both reject: 501 polylines (2979 geometries)
+wall M1c B1 3,0,0: 4.549e-06 s
+== M1c B1 3,0,0 ==
+  both accept: 1 polylines (1 geometries)
+  both reject: 0 polylines (0 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
-  off grid (geometries): 8685 (8685 geometries)
-  other shape: 0 polylines (0 geometries)
- too strict, by the kept values of the failing pairs:
- too loose, by domain break rules:
-
-wall M1a A1 tail 4,0: 0.301646 s
-== M1a A1 tail 4,0 ==
-  both accept: 0 polylines (0 geometries)
-  both reject: 501 polylines (2979 geometries)
-  too strict: 0 polylines (0 geometries)
-  too loose: 0 polylines (0 geometries)
-  off grid (geometries): 8685 (8685 geometries)
-  other shape: 0 polylines (0 geometries)
- too strict, by the kept values of the failing pairs:
- too loose, by domain break rules:
-
-wall M1a A1 tail 4,2: 0.357489 s
-== M1a A1 tail 4,2 ==
-  both accept: 0 polylines (0 geometries)
-  both reject: 501 polylines (2979 geometries)
-  too strict: 0 polylines (0 geometries)
-  too loose: 0 polylines (0 geometries)
-  off grid (geometries): 8685 (8685 geometries)
-  other shape: 0 polylines (0 geometries)
- too strict, by the kept values of the failing pairs:
- too loose, by domain break rules:
-
-wall M1a A1 tail 4,4: 0.352401 s
-== M1a A1 tail 4,4 ==
-  both accept: 0 polylines (0 geometries)
-  both reject: 501 polylines (2979 geometries)
-  too strict: 0 polylines (0 geometries)
-  too loose: 0 polylines (0 geometries)
-  off grid (geometries): 8685 (8685 geometries)
-  other shape: 0 polylines (0 geometries)
- too strict, by the kept values of the failing pairs:
- too loose, by domain break rules:
-
-wall M1b: 0.00365821 s
-== M1b ==
-  both accept: 1 polylines (2 geometries)
-  both reject: 15 polylines (18 geometries)
-  too strict: 0 polylines (0 geometries)
-  too loose: 0 polylines (0 geometries)
-  off grid (geometries): 10 (10 geometries)
+  off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
 == total ==
-  both accept: 2 polylines (101 geometries)
-  both reject: 3520 polylines (26730 geometries)
+  both accept: 1 polylines (3 geometries)
+  both reject: 1 polylines (1 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
-  off grid (geometries): 78175 (78175 geometries)
+  off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
