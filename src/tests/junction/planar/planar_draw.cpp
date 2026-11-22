@@ -2832,14 +2832,37 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	PlanarDrawPins flex_c_pins;
 	if (!LoadPinned197(flex_c, flex_c_pins, true)) return;
 	const auto start = std::chrono::steady_clock::now();
-	/* PLANAR_PROBE_FINAL_START (a measurement aid): the final starts from the last round's whole lengths. */
+	/* PLANAR_PROBE_FINAL_START (a measurement aid): the final starts from the last round's whole lengths.
+	 * PLANAR_PROBE_FINAL_GRID: the final writes the grid rows (D382 probe).
+	 * PLANAR_PROBE_FINAL_SOFT_SEP: the final's sep rows get slack (soft-sep diagnostic); PLANAR_PROBE_FINAL_SOFT_ALL: every row but piece, box, pin, fix and grid gets slack (feasibility repair); PLANAR_PROBE_FINAL_SECONDS: the final's time limit. */
 	PlanarDrawPipelineOptions o;
 	o.final_start = std::getenv("PLANAR_PROBE_FINAL_START") != nullptr;
 	o.final_tidy = std::getenv("PLANAR_PROBE_FINAL_FEASIBILITY") == nullptr;
+	o.final_grid = std::getenv("PLANAR_PROBE_FINAL_GRID") != nullptr;
+	o.final_soft_sep = std::getenv("PLANAR_PROBE_FINAL_SOFT_SEP") != nullptr;
+	o.final_soft_all = std::getenv("PLANAR_PROBE_FINAL_SOFT_ALL") != nullptr;
+	if (const char *s = std::getenv("PLANAR_PROBE_FINAL_SECONDS"); s != nullptr) o.final_seconds = std::atof(s);
 	const PlanarDrawPipelineResult r = DrawPlanarPipeline(flex_c, o);
 	for (const std::string &line : r.log) WARN(line);
 	WARN(fmt::format("committed {} inserts, pruned {}, stopped '{}'", r.committed_count, r.pruned, r.stopped));
 	WARN(fmt::format("final: {}", describe(r.final)));
+	/* Grid check (D382 probe): per axis, the parity of the across coordinate at both ends of every axis piece of positive length. On the game grid each axis has one parity. */
+	std::array<std::array<int, 2>, 2> grid_parity{};
+	for (size_t t = 0; t < r.final.points.size() && t < flex_c.tracks.size(); t++) {
+		for (size_t i = 0; i < flex_c.tracks[t].pieces.size() && i < r.final.lengths[t].size() && i + 1 < r.final.points[t].size(); i++) {
+			const int h = ((flex_c.tracks[t].pieces[i] % 8) + 8) % 8;
+			if (h % 2 != 0 || r.final.lengths[t][i] < 0.5) continue;
+			const int across = h % 4 == 0 ? 0 : 1;
+			for (const size_t at : {i, i + 1}) grid_parity[across][((r.final.points[t][at][across] % 2) + 2) % 2]++;
+		}
+	}
+	WARN(fmt::format("grid check: N/S piece ends x even {} odd {}; E/W piece ends y even {} odd {}", grid_parity[0][0], grid_parity[0][1], grid_parity[1][0], grid_parity[1][1]));
+	if (o.final_grid) WARN(fmt::format("grid pass: forced {}, tightened {}, conflicts {}, rows {}, columns {}", r.final.grid_forced, r.final.grid_tightened, r.final.grid_conflicts, r.final.rows, r.final.columns));
+	if (o.final_soft_sep || o.final_soft_all) {
+		std::string top;
+		for (size_t k = 0; k < r.final.stretched.size() && k < 30; k++) top += fmt::format(" [{} {:.2f}]", r.final.stretched[k].first, r.final.stretched[k].second);
+		WARN(fmt::format("soft: slack {:.2f}, stretched tags {}:{}", r.final.slack, r.final.stretched.size(), top));
+	}
 	WARN(fmt::format("pipeline wall time {:.1f} s", std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count()));
 	CHECK(r.final.status == "Optimal");
 }

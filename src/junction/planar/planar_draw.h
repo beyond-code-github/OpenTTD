@@ -28,6 +28,9 @@ struct PlanarDrawResult {
 	std::vector<std::pair<std::string, double>> stretched; ///< With elastic: per row tag whose slack is above 1e-6, the slack, largest first (a tag that names several rows sums them).
 	uint32_t rows = 0; ///< The program's rows.
 	uint32_t columns = 0; ///< The program's variables.
+	size_t grid_forced = 0; ///< With grid: the variables whose parity the integer equalities force (written 2 h + p).
+	size_t grid_tightened = 0; ///< With grid: the rows whose bounds rounding inward moved, once divided by their coefficients' gcd.
+	size_t grid_conflicts = 0; ///< With grid: integer equalities whose parity the forced parities break (the grid is then infeasible).
 	uint32_t pairs = 0; ///< Wall pairs separated (pairwise mode).
 	uint32_t binaries = 0; ///< Their axis-side binaries.
 	uint32_t short_sides = 0; ///< With sides_from: the pairs whose chosen side the reference keeps by less than its spacing.
@@ -77,9 +80,10 @@ struct PlanarDrawOptions {
 	bool flex_sides = true; ///< With clearance: rows by sides (D407): flex inserts join their side and are no target, and each vertex keeps 0 from its cell's dummies (D408); false is the rule before D407 (sides by equal headings only, no dummy rows).
 	bool tidy = true; ///< The objective: true minimises the sum of piece lengths (a tidy point); false sets no objective (feasibility only, a measurement).
 	bool pocket = false; ///< With flex_sides: the pocket rule (SPEC-shape §8.9, a probe): an adjacent side's vertices are held past a side's last (first) insert and keep only the lines beyond it.
-	bool elastic = false; ///< Diagnosis (D409): every row except the piece, box and pin rows gets a slack >= 0 per finite bound with cost 1, the objective is the total slack (piece lengths cost 0), every variable is continuous (the LP relaxation, which an infeasible drawing already fails when it has IIS rows), and the result lists the rows that stretched.
+	bool elastic = false; ///< Diagnosis (D409): every row except the piece, box, pin, fix and grid rows (game rules) gets a slack >= 0 per finite bound with cost 1, the objective is the total slack (piece lengths cost 0), every variable is continuous (the LP relaxation, which an infeasible drawing already fails when it has IIS rows), and the result lists the rows that stretched.
 	double elastic_tidy = 0; ///< With elastic and tidy: each piece length also costs this (a tie-break below the slack's cost 1), so an elastic drawing stays compact.
 	std::vector<std::string> elastic_families; ///< With elastic: when not empty, only rows of these families (tag up to the first space) get slack; every other row is hard (a measurement: which rows of one family V's geometry needs stretched).
+	bool elastic_integer = false; ///< With elastic (a measurement): the variables keep their integrality; only the slacks are continuous.
 	const PlanarDrawPins *pins = nullptr; ///< Answer-key pins (D393): every pinned point is within window of its position plus one common shift (two free integer variables).
 	const std::vector<std::vector<std::array<int, 2>>> *sides_from = nullptr; ///< With pairwise: a drawing of this variant (`PlanarDrawResult::points`); each separated pair takes the axis side these points keep best as a plain row, with no binary and no `sepdir` (an LP when every other variable is continuous).
 	double sides_free_below = -1e30; ///< With sides_from: a pair whose best candidate's margin on the reference is below this keeps its binaries (all candidates, one sepdir row) instead of a fixed direction.
@@ -92,6 +96,7 @@ struct PlanarDrawOptions {
 	const std::vector<std::vector<std::array<int, 2>>> *fix_points = nullptr; ///< A measurement: every track point is held equal to this drawing's (PlanarDrawResult::points of the same variant; hard rows, tag "fix"; a track with an empty point list is not fixed), so elastic slack on the remaining rows is their violation on that drawing.
 	int fix_window = 0; ///< With fix_points: each point is held within this many half tiles of the reference per axis (absorbs rounding of an LP reference).
 	const std::vector<std::vector<double>> *start_lengths = nullptr; ///< A measurement: a partial MIP start, every piece length (half tiles, as `PlanarDrawResult::lengths`) of this drawing that is whole in its variable's units; the solver completes the rest.
+	bool grid = false; ///< A measurement (D382 probe): every point of an axis run of positive length has an odd coordinate across it (N/S on odd x, E/W on odd y); the parities this and the integer equalities force are propagated, each forced variable is written 2 h + p, and every all-integer row is divided by its gcd with its bounds rounded inward (whole tiles). Not with elastic.
 	const std::vector<std::vector<std::array<int, 2>>> *start_points = nullptr; ///< A measurement: a MIP start of every track point from this drawing (as `PlanarDrawResult::points`).
 	std::string export_path; ///< A measurement (D418): when not empty, the built program is written there as JSON before solving (variables, rows with their tags, the objective), for offline solvers.
 };
@@ -169,6 +174,9 @@ struct PlanarDrawPipelineOptions {
 	double box_price = 0.01; ///< Price per half tile of width and of height, in every round.
 	bool corridor = true; ///< Beside tracks as offset curves (D421) in every stage.
 	bool final_tidy = true; ///< The integer final minimises the sum of piece lengths; false is feasibility only (a measurement).
+	bool final_grid = false; ///< A measurement (D382 probe): the integer final writes the grid rows (PlanarDrawOptions::grid).
+	bool final_soft_sep = false; ///< A measurement: the integer final's sep rows get slack (cost 1, piece lengths cost 0.01), every variable stays integer; the result lists the rows that stretched.
+	bool final_soft_all = false; ///< A measurement: every row of the integer final except piece, box, pin, fix and grid rows gets slack (cost 1, piece lengths cost 0), every variable stays integer; the result lists the rows that stretched.
 	bool final_start = false; ///< A measurement: the integer final starts from the last round's whole lengths (a partial MIP start, JunctionMilp::SetStart).
 	bool keep_apart = true; ///< Pairwise keep-apart (D418) in every stage; false writes no clearance rows (clearance = false), a measurement for hubs whose keep-apart is not yet drawable.
 	double commit_above = 1.0; ///< An insert at or above this length (half tiles) in the last discovery drawing is committed.
