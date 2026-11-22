@@ -94,6 +94,7 @@ struct PlanarDrawOptions {
 	const PlanarDrawPins *pins = nullptr; ///< Answer-key pins (D393): every pinned point is within window of its position plus one common shift (two free integer variables).
 	const std::vector<std::vector<std::array<int, 2>>> *sides_from = nullptr; ///< With pairwise: a drawing of this variant (`PlanarDrawResult::points`); each separated pair takes the axis side these points keep best as a plain row, with no binary and no `sepdir` (an LP when every other variable is continuous).
 	std::vector<std::string> free_sides; ///< A probe: with sides_from, these sep pair tags ("sep <face> <i> <j>") get the binary side choice instead of a fixed side.
+	std::vector<uint32_t> free_faces; ///< A probe: with sides_from, every sep pair of these faces gets the binary side choice, as free_sides does for single pairs.
 	std::vector<std::pair<std::string, int>> forced_sides; ///< A probe: with sides_from, these sep pair tags ("sep <face> <i> <j>") take the given candidate (axis index * 2 + side) instead of the best one, written as one hard row tagged "sephard <face> <i> <j>" (sep_extremal endpoints).
 	std::vector<std::string> margin_tags; ///< A read-out: with sides_from, for these sep pair tags every candidate's margin on the reference is listed in PlanarDrawResult::sep_margins.
 	double sides_free_below = -1e30; ///< With sides_from: a pair whose best candidate's margin on the reference is below this keeps its binaries (all candidates, one sepdir row) instead of a fixed direction.

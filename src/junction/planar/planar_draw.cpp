@@ -1304,7 +1304,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							row(std::move(t), probe_axis->spacing, JunctionMilp::INF, fmt::format("sephard {} {} {}", f.face, i, j));
 							continue;
 						}
-						if (best_margin < options.sides_free_below || std::ranges::find(options.free_sides, fmt::format("sep {} {} {}", f.face, i, j)) != options.free_sides.end()) {
+						if (best_margin < options.sides_free_below || std::ranges::find(options.free_sides, fmt::format("sep {} {} {}", f.face, i, j)) != options.free_sides.end() || std::ranges::find(options.free_faces, f.face) != options.free_faces.end()) {
 							result.sides_free++;
 							Terms bs;
 							for (const Axis &axis : axes) {
@@ -1792,6 +1792,64 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 			out.log.push_back(fmt::format("side probe joint {}: {} slack {:.3f} sep {:.3f} curve {:.3f} binaries {} sides_free {} ms {:.0f}", mode, r.status, r.slack, sep_slack, curve_slack, r.binaries, r.sides_free, r.ms));
 			for (const auto &[row, slack] : r.stretched) out.log.push_back(fmt::format("side probe joint {} stretched {} {:.3f}", mode, row, slack));
 			if (r.status != "Optimal") out.log.push_back(conflict_line(fmt::format("side probe joint {}", mode), r));
+		}
+		{
+			std::vector<uint32_t> faces;
+			for (const std::string &tag : tags) {
+				std::istringstream words(tag);
+				std::string family;
+				uint32_t face = 0;
+				if (words >> family >> face && std::ranges::find(faces, face) == faces.end()) faces.push_back(face);
+			}
+			std::string face_list;
+			for (const uint32_t face : faces) face_list += fmt::format(" {}", face);
+			PlanarDrawOptions open = commit_options();
+			open.curve_flex_from = nullptr;
+			open.node_gap_from = &last_input_lengths;
+			open.sides_from = &last_input;
+			open.free_sides = tags;
+			open.free_faces = faces;
+			open.elastic_integer = true;
+			open.continuous = {"point", "axis", "diagonal", "param", "cross"};
+			const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, open);
+			double sep_slack = 0, curve_slack = 0;
+			for (const auto &[row, slack] : r.stretched) {
+				if (row.starts_with("sep")) sep_slack += slack;
+				if (row.starts_with("curve")) curve_slack += slack;
+			}
+			out.log.push_back(fmt::format("side probe faces free: {} slack {:.3f} sep {:.3f} curve {:.3f} binaries {} sides_free {} faces{} ms {:.0f}", r.status, r.slack, sep_slack, curve_slack, r.binaries, r.sides_free, face_list, r.ms));
+			for (const auto &[row, slack] : r.stretched) out.log.push_back(fmt::format("side probe faces free stretched {} {:.3f}", row, slack));
+			if (r.status == "Optimal") {
+				PlanarDrawOptions hard = commit_options();
+				hard.curve_flex_from = nullptr;
+				hard.node_gap_from = &r.lengths;
+				hard.sides_from = &r.points;
+				hard.elastic_families = {"curve"};
+				const PlanarDrawResult h = CheckPlanarDrawable(v, 15.0, hard);
+				out.log.push_back(fmt::format("side probe faces hard: {} slack {:.3f} ms {:.0f}", h.status, h.slack, h.ms));
+				if (h.status != "Optimal") {
+					const PlanarTrackMap &map = v.structure.map;
+					const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(v);
+					const auto piece_text = [&](const PlanarCellWall &w) {
+						if (w.track >= v.tracks.size()) return std::string("box");
+						return fmt::format("{}#{} h{}", map.tracks[w.track].name, w.piece, ((v.tracks[w.track].pieces[w.piece] % 8) + 8) % 8);
+					};
+					for (const std::string &tag : h.conflict) {
+						std::string line = fmt::format("side probe faces hard conflict {}", tag);
+						std::istringstream words(tag);
+						std::string family;
+						uint32_t face = 0, i = 0, j = 0;
+						words >> family;
+						if (family == "sep" && (words >> face >> i >> j)) {
+							for (const PlanarFaceWalls &f : face_walls) {
+								if (f.face != face || i >= f.walls.size() || j >= f.walls.size()) continue;
+								line += fmt::format(" = {} | {}", piece_text(f.walls[i]), piece_text(f.walls[j]));
+							}
+						}
+						out.log.push_back(line);
+					}
+				}
+			}
 		}
 	}
 
