@@ -24,7 +24,9 @@
 #include <chrono>
 #include <climits>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -821,9 +823,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 					nc.detail = "      polyline " + pkey + "\n";
 				} else {
 					std::vector<std::string> notes;
-					/* An off-grid polyline is rejected by the domain (its raster says grid); the domain's input is not built for it. */
-					PlanarDomainVerdict d;
-					if (on_grid) d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
+					/* The domain's verdict is of this polyline's own points, on or off the grid (an off-grid polyline is rejected by its raster). */
+					const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
 					const Readouts ro = readouts(cv->v);
 					if (on_grid) {
 						g_lead_rows_seen += static_cast<uint32_t>(ro.lead.size());
@@ -836,6 +837,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 						nc.c = accept ? LOOSE : BOTH_REJECT;
 					}
 					if (nc.c == STRICT) {
+						/* A too-strict polyline is on the grid by definition. */
+						for (const Points &p : points) REQUIRE(RasterPlanarDomainTrack(p).rule.empty());
 						std::set<std::string> kept;
 						nc.detail = "      polyline " + pkey + "\n" + FailingText(f, ro.keep.keep_apart, cv->points, kept);
 						for (const PlanarPointRow &r : ro.lead) {
@@ -914,9 +917,11 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		const std::vector<int> &h = f.heads.at(name);
 		const auto base_it = f.base.find(name);
 		std::map<uint32_t, int> chosen;
+		Points path;
 		auto rec = [&](auto &&self, uint32_t k, Point cur) -> void {
 			if (k == h.size()) {
-				out.push_back(chosen);
+				/* The raster's turn rule: no turn over one eighth, no two consecutive pieces on one tile. */
+				if (RasterPlanarDomainTrack(path).rule.empty()) out.push_back(chosen);
 				return;
 			}
 			std::vector<int> cands;
@@ -942,10 +947,13 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 					}
 				}
 				if (v != varied.end()) chosen[k] = len;
+				path.push_back(next);
 				self(self, k + 1, next);
+				path.pop_back();
 			}
 			if (v != varied.end()) chosen.erase(k);
 		};
+		path.push_back(f.starts.at(name));
 		rec(rec, 0, f.starts.at(name));
 		return out;
 	};
@@ -1458,6 +1466,25 @@ TEST_CASE("planar domain: the grid rows reject an off-grid drawing", "[junction]
 	RunEncoding(f, nullptr, "X1 shifted", {none}, "", "span+lead+endnode+crosspiece", &verdict_off);
 	CHECK(verdict_on == 1);
 	CHECK(verdict_off == 0);
+}
+
+TEST_CASE("planar domain: a too-strict polyline is on the grid", "[junction][planar][planardomain]")
+{
+	/* X1's B1 run north on x = 10 (0*2,1*2,0*2,7*3,0*8 from (11,10)): the raster calls it off the grid, so under +grid the domain rejects it and it is never too strict. */
+	const X1Fixture f;
+	Geometry g = f.base;
+	g["B1"] = {{0, 2}, {3, 2}, {4, 2}, {5, 3}, {8, 8}};
+	bool off = false;
+	for (const Points &p : f.PointsOf(g)) off = off || !RasterPlanarDomainTrack(p).rule.empty();
+	REQUIRE(off);
+	const Config c{"one", {{"B1", 0, {2}}, {"B1", 3, {2}}, {"B1", 4, {2}}, {"B1", 5, {3}}, {"B1", 8, {8}}}};
+	const std::string path = (std::filesystem::temp_directory_path() / "planar_domain_grid_strict.txt").string();
+	RunEncoding(f, path.c_str(), "X1 one", {c}, "", "span+lead+endnode+crosspiece+grid");
+	std::ifstream in(path);
+	const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+	std::filesystem::remove(path);
+	CHECK(text.find("  too strict: 0 polylines") != std::string::npos);
+	CHECK(text.find("  both reject: 1 polylines") != std::string::npos);
 }
 
 TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planardomainenc]")

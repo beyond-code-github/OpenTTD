@@ -3,14 +3,14 @@ node lead rows over the judged contracted variants: 184
 node lead rows, configuration N1: 33
 node lead rows, configuration S1: 61
 node lead rows, configuration S2: 90
-enumeration wall 0.449581 s
+enumeration wall 0.430812 s
 
-wall S1: 0.121731 s
+wall S1: 0.116152 s
 enumeration S1: blind 525 geometries (189 on the grid, 336 off); by construction 189 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == S1 ==
   both accept: 43 polylines (75 geometries)
-  both reject: 42 polylines (44 geometries)
-  too strict: 231 polylines (254 geometries)
+  both reject: 273 polylines (298 geometries)
+  too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 149 polylines (152 geometries)
@@ -21,239 +21,14 @@ enumeration S1: blind 525 geometries (189 on the grid, 336 off); by construction
     other shape, varied: B1.2=4 B1.3=3 B1.4=6 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
  too strict, by the kept values of the failing pairs:
-  [bound | integer | lead | plain] polylines 25 (geometries 25)
-    varied: B1.2=0 B1.3=1 B1.4=2 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*2,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -7;
-      sep 1 2 4 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -13;
-      sep 4 0 6 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -4; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 6 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      sep 4 4 6 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -13;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=0 B1.3=4 B1.4=2 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*4,0*2,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 3 5 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -13;
-      sep 5 0 2 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -13;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=0 B1.3=2 B1.4=4 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*2,0*4,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 3 5 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -15;
-      sep 5 0 2 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-  [bound | integer | lead | plain | strict span] polylines 3 (geometries 3)
-    varied: B1.2=0 B1.3=2 B1.4=2 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*2,0*2,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -13;
-      sep 1 3 5 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(-1,1)+2 worst slack -10; s(-1,1)+2 worst slack -10; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -2; s(1,-1)+2 worst slack -10; s(1,-1)+2 worst slack -10;
-      sep 4 4 6 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -13;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=0 B1.3=3 B1.4=2 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*2,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -2; s(-1,1)+2 worst slack -12; s(-1,1)+2 worst slack -8;
-      sep 3 3 5 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -13;
-      sep 5 0 2 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -13;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -12; s(1,-1)+2 worst slack -8; s(0,-1)+1 worst slack -2; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=0 B1.3=1 B1.4=4 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*4,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -9;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -2; s(-1,1)+2 worst slack -10; s(-1,1)+2 worst slack -10;
-      sep 3 3 5 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -15;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -6; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -5; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      sep 5 0 2 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -10; s(1,-1)+2 worst slack -10; s(0,-1)+1 worst slack -2; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-  [bound | integer | plain] polylines 46 (geometries 57)
-    varied: B1.2=2 B1.3=1 B1.4=2 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*1,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -15;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=2 B1.3=1 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*1,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -17;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -17;
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=2 B1.3=1 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*1,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -19;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -19;
-      program row broken: integer other
-      program row broken: bound other
-  [bound | integer | plain | strict span] polylines 47 (geometries 48)
-    varied: B1.2=4 B1.3=1 B1.4=2 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*1,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -17;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -10; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -2; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -10;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -17;
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=4 B1.3=1 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*1,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -19;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -10; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -2; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -10;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -19;
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=4 B1.3=1 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*1,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -21;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -10; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -2; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -10;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -21;
-      program row broken: integer other
-      program row broken: bound other
-  [end | integer | plain | strict span] polylines 1 (geometries 1)
-    varied: B1.2=0 B1.3=0 B1.4=2 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,1)+2 worst slack -14; s(-1,1)+2 worst slack -6; s(0,1)+1 worst slack -4; s(0,1)+1 worst slack -1;
-      sep 3 0 3 tracks C1/B1 pieces 1/2 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -7; s(0,1)+2 worst slack -7;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -4; s(1,-1)+2 worst slack -14; s(1,-1)+2 worst slack -6;
-      program row broken: end 0 node
-      program row broken: integer other
-  [integer] polylines 12 (geometries 19)
-    varied: B1.2=2 B1.3=2 B1.4=2 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*2,0*2,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: integer other
-    varied: B1.2=2 B1.3=2 B1.4=4 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*2,0*4,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: integer other
-    varied: B1.2=4 B1.3=0 B1.4=6 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: integer other
-  [integer | lead] polylines 38 (geometries 38)
-    varied: B1.2=0 B1.3=3 B1.4=2 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=3 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=3 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      lead B1 start 0 fails
-      program row broken: integer other
-  [integer | lead | plain] polylines 22 (geometries 22)
-    varied: B1.2=0 B1.3=1 B1.4=2 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -15;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -12; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -11; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=1 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -17;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -14; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -13; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=1 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -19;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -16; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -15; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-  [integer | lead | plain | strict span] polylines 4 (geometries 4)
-    varied: B1.2=0 B1.3=1 B1.4=2 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -7;
-      sep 1 3 5 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(-1,1)+2 worst slack -12; s(-1,1)+2 worst slack -8; s(0,1)+1 worst slack -3; s(0,1)+1 worst slack -1;
-      sep 4 0 6 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -4; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 6 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -3; s(1,-1)+2 worst slack -12; s(1,-1)+2 worst slack -8;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=1 B1.4=4 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*4,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -9;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3; s(-1,1)+2 worst slack -10; s(-1,1)+2 worst slack -10;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -6; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -5; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -10; s(1,-1)+2 worst slack -10; s(0,-1)+1 worst slack -3; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=1 B1.4=4 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*4,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -9;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -4; s(-1,1)+2 worst slack -10; s(-1,1)+2 worst slack -10;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -6; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -5; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -10; s(1,-1)+2 worst slack -10; s(0,-1)+1 worst slack -4; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-  [integer | lead | strict span] polylines 3 (geometries 3)
-    varied: B1.2=0 B1.3=3 B1.4=2 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3; s(-1,1)+2 worst slack -12; s(-1,1)+2 worst slack -8;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -12; s(1,-1)+2 worst slack -8; s(0,-1)+1 worst slack -3; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=3 B1.4=2 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*2,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -4; s(-1,1)+2 worst slack -12; s(-1,1)+2 worst slack -8;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -12; s(1,-1)+2 worst slack -8; s(0,-1)+1 worst slack -4; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=3 B1.4=2 B1.5=4 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*2,7*4,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -5; s(-1,1)+2 worst slack -12; s(-1,1)+2 worst slack -8;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -12; s(1,-1)+2 worst slack -8; s(0,-1)+1 worst slack -5; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-  [integer | plain] polylines 2 (geometries 6)
-    varied: B1.2=4 B1.3=0 B1.4=2 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*6,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 0 5 tracks C1/B1 pieces 1/2 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -11; s(0,1)+2 worst slack -3;
-      program row broken: integer other
-    varied: B1.2=4 B1.3=0 B1.4=4 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*8,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 0 5 tracks C1/B1 pieces 1/2 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -13; s(0,1)+2 worst slack -1;
-      program row broken: integer other
-  [integer | strict span] polylines 28 (geometries 28)
-    varied: B1.2=2 B1.3=3 B1.4=2 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*3,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -12; s(0,1)+1 worst slack -4; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -4; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -12;
-      program row broken: integer other
-    varied: B1.2=2 B1.3=3 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*3,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -12; s(0,1)+1 worst slack -4; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -4; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -12;
-      program row broken: integer other
-    varied: B1.2=2 B1.3=3 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -12; s(0,1)+1 worst slack -4; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -4; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -12;
-      program row broken: integer other
  too loose, by domain break rules:
 
-wall S2: 0.190105 s
+wall S2: 0.177363 s
 enumeration S2: blind 600 geometries (216 on the grid, 384 off); by construction 216 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == S2 ==
   both accept: 35 polylines (63 geometries)
-  both reject: 105 polylines (114 geometries)
-  too strict: 330 polylines (356 geometries)
+  both reject: 435 polylines (470 geometries)
+  too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 60 polylines (67 geometries)
@@ -264,515 +39,178 @@ enumeration S2: blind 600 geometries (216 on the grid, 384 off); by construction
     other shape, varied: A1.2=4 A1.3=4 A1.4=6 A1.5=1 A1.6=4
       polyline A1:2*4,3*4,2*6,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
  too strict, by the kept values of the failing pairs:
-  [bound | cross | end | integer | plain] polylines 1 (geometries 1)
-    varied: A1.2=2 A1.3=1 A1.4=2 A1.5=2 A1.6=4
-      polyline A1:2*2,3*1,2*2,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/3 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -3; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -6;
-      sep 1 4 6 tracks A1/A1 pieces 2/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -7;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [plain] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -7;
-      sep 3 5 7 tracks A1/B1 pieces 3/0 kept [plain] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -6; s(-1,0)+1 worst slack -3; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-  [bound | cross | end | integer | plain | strict span] polylines 23 (geometries 25)
-    varied: A1.2=4 A1.3=0 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:2*6,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -2; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -6;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -17;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -17;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -6; s(-1,0)+1 worst slack -2; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=4 A1.3=1 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:2*4,3*1,2*2,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -9;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -9;
-      sep 4 3 5 tracks A1/A1 pieces 4/2 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -13;
-      sep 4 4 6 tracks A1/B1 pieces 3/0 kept [plain] candidates: s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -6; s(1,0)+1 worst slack -2; s(1,0)+1 worst slack -1;
-      sep 5 0 2 tracks B1/A1 pieces 0/3 kept [plain] candidates: s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2; s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -6;
-      sep 5 1 3 tracks A1/A1 pieces 2/4 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -13;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=2 A1.3=2 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:2*2,3*2,2*2,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/3 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -2; s(1,1)+2 worst slack -6; s(1,1)+2 worst slack -8;
-      sep 1 2 4 tracks A1/A1 pieces 4/2 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -13;
-      sep 3 4 6 tracks A1/A1 pieces 2/4 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -13;
-      sep 3 5 7 tracks A1/B1 pieces 3/0 kept [plain] candidates: s(-1,-1)+2 worst slack -6; s(-1,-1)+2 worst slack -8; s(-1,0)+1 worst slack -2; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-  [bound | end | integer | plain | strict span] polylines 13 (geometries 13)
-    varied: A1.2=0 A1.3=1 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:3*1,2*2,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 3/1 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -13;
-      sep 1 4 6 tracks A1/AC1 pieces 1/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -9;
-      sep 3 3 5 tracks A1/A1 pieces 1/3 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -13;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=2 A1.3=1 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:2*2,3*1,2*2,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 4/2 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -13;
-      sep 1 4 6 tracks A1/A1 pieces 2/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -7;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [plain] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -7;
-      sep 3 4 6 tracks A1/A1 pieces 2/4 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -13;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=2 A1.3=4 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:2*2,3*4,2*2,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 0 4 tracks D1/A1 pieces 0/3 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -6;
-      sep 4 0 5 tracks D1/A1 pieces 0/2 kept [strict span] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -4; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 1 3 tracks D1/A1 pieces 1/4 kept [plain] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -9; s(1,0)+2 worst slack -11;
-      sep 4 1 4 tracks D1/A1 pieces 1/3 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -2; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -2;
-      sep 4 1 5 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -2; s(0,-1)+2 worst slack -2; s(1,0)+2 worst slack -12; s(1,0)+2 worst slack -2;
-      sep 4 3 5 tracks A1/A1 pieces 4/2 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -13;
-      sep 5 1 3 tracks A1/A1 pieces 2/4 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -13;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-  [bound | end | integer | strict span] polylines 76 (geometries 81)
-    varied: A1.2=4 A1.3=1 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*4,3*1,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -17;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -17;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=4 A1.3=1 A1.4=4 A1.5=0 A1.6=4
-      polyline A1:2*4,3*1,2*12,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -19;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -19;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=4 A1.3=1 A1.4=6 A1.5=0 A1.6=4
-      polyline A1:2*4,3*1,2*14,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -21;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -21;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-  [bound | integer | strict span] polylines 47 (geometries 54)
-    varied: A1.2=2 A1.3=1 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*2,3*1,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -15;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -15;
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=2 A1.3=1 A1.4=4 A1.5=0 A1.6=4
-      polyline A1:2*2,3*1,2*12,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -17;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -17;
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=2 A1.3=1 A1.4=6 A1.5=0 A1.6=4
-      polyline A1:2*2,3*1,2*14,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -19;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -19;
-      program row broken: integer other
-      program row broken: bound other
-  [cross | end | integer | plain] polylines 5 (geometries 6)
-    varied: A1.2=0 A1.3=3 A1.4=2 A1.5=2 A1.6=4
-      polyline A1:3*3,2*2,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/2 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -3; s(1,1)+2 worst slack -6; s(1,1)+2 worst slack -8;
-      sep 3 4 6 tracks A1/B1 pieces 2/0 kept [plain] candidates: s(-1,-1)+2 worst slack -6; s(-1,-1)+2 worst slack -8; s(-1,0)+1 worst slack -3; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=0 A1.3=1 A1.4=4 A1.5=2 A1.6=4
-      polyline A1:3*1,2*4,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/2 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -3; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -6;
-      sep 1 4 6 tracks A1/AC1 pieces 1/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -11;
-      sep 3 4 6 tracks A1/B1 pieces 2/0 kept [plain] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -6; s(-1,0)+1 worst slack -3; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=2 A1.3=0 A1.4=2 A1.5=3 A1.6=4
-      polyline A1:2*4,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -4;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -4; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-  [cross | end | integer | plain | strict span] polylines 41 (geometries 41)
-    varied: A1.2=4 A1.3=3 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*4,3*3,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(-1,1)+2 worst slack -4; s(-1,1)+2 worst slack -10;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(1,-1)+2 worst slack -4; s(1,-1)+2 worst slack -10; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -11; s(1,0)+2 worst slack -11;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=4 A1.3=3 A1.4=4 A1.5=0 A1.6=4
-      polyline A1:2*4,3*3,2*12,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(-1,1)+2 worst slack -4; s(-1,1)+2 worst slack -10;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(1,-1)+2 worst slack -4; s(1,-1)+2 worst slack -10; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -11; s(1,0)+2 worst slack -13;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=4 A1.3=3 A1.4=6 A1.5=0 A1.6=4
-      polyline A1:2*4,3*3,2*14,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(-1,1)+2 worst slack -4; s(-1,1)+2 worst slack -10;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(1,-1)+2 worst slack -4; s(1,-1)+2 worst slack -10; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -11; s(1,0)+2 worst slack -15;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-  [end | integer] polylines 20 (geometries 24)
-    varied: A1.2=0 A1.3=0 A1.4=2 A1.5=3 A1.6=4
-      polyline A1:2*2,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=4 A1.3=2 A1.4=2 A1.5=3 A1.6=4
-      polyline A1:2*4,3*2,2*2,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=4 A1.3=0 A1.4=4 A1.5=3 A1.6=4
-      polyline A1:2*8,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: integer other
-  [end | integer | plain] polylines 2 (geometries 2)
-    varied: A1.2=0 A1.3=1 A1.4=2 A1.5=2 A1.6=4
-      polyline A1:3*1,2*2,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 4 6 tracks A1/AC1 pieces 1/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -9;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=0 A1.3=1 A1.4=2 A1.5=3 A1.6=4
-      polyline A1:3*1,2*2,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 4 6 tracks A1/AC1 pieces 1/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -9;
-      program row broken: end 0
-      program row broken: integer other
-  [end | integer | plain | strict span] polylines 10 (geometries 10)
-    varied: A1.2=2 A1.3=4 A1.4=2 A1.5=3 A1.6=4
-      polyline A1:2*2,3*4,2*2,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 0 4 tracks D1/A1 pieces 0/3 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -10;
-      sep 4 0 5 tracks D1/A1 pieces 0/2 kept [strict span] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -4; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 1 4 tracks D1/A1 pieces 1/3 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -4; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -2;
-      sep 4 1 5 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -2; s(0,-1)+2 worst slack -2; s(1,0)+2 worst slack -12; s(1,0)+2 worst slack -2;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=0 A1.3=4 A1.4=4 A1.5=3 A1.6=4
-      polyline A1:3*4,2*4,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 0 4 tracks D1/A1 pieces 0/2 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -10;
-      sep 4 0 5 tracks D1/A1 pieces 0/1 kept [strict span] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -6; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 1 4 tracks D1/A1 pieces 1/2 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -4; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -2;
-      sep 4 1 5 tracks D1/A1 pieces 1/1 kept [strict span] candidates: s(0,-1)+2 worst slack -2; s(0,-1)+2 worst slack -2; s(1,0)+2 worst slack -14; s(1,0)+2 worst slack -2;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=2 A1.3=4 A1.4=4 A1.5=3 A1.6=4
-      polyline A1:2*2,3*4,2*4,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 0 5 tracks D1/A1 pieces 0/2 kept [strict span] candidates: s(-1,-1)+2 worst slack -4; s(-1,-1)+2 worst slack -4; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 1 4 tracks D1/A1 pieces 1/3 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -4; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -4;
-      sep 4 1 5 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -2; s(0,-1)+2 worst slack -2; s(1,0)+2 worst slack -12; s(1,0)+2 worst slack -4;
-      program row broken: end 0
-      program row broken: integer other
-  [end | integer | strict span] polylines 40 (geometries 40)
-    varied: A1.2=2 A1.3=3 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*2,3*3,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -13; s(1,0)+2 worst slack -9;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=2 A1.3=3 A1.4=4 A1.5=0 A1.6=4
-      polyline A1:2*2,3*3,2*12,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -13; s(1,0)+2 worst slack -11;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=2 A1.3=3 A1.4=6 A1.5=0 A1.6=4
-      polyline A1:2*2,3*3,2*14,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -13; s(1,0)+2 worst slack -13;
-      program row broken: end 0
-      program row broken: integer other
-  [integer] polylines 9 (geometries 16)
-    varied: A1.2=4 A1.3=0 A1.4=8 A1.5=3 A1.6=4
-      polyline A1:2*12,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: integer other
-    varied: A1.2=4 A1.3=0 A1.4=10 A1.5=3 A1.6=4
-      polyline A1:2*14,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: integer other
-    varied: A1.2=0 A1.3=2 A1.4=10 A1.5=3 A1.6=4
-      polyline A1:3*2,2*10,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: integer other
-  [integer | strict span] polylines 43 (geometries 43)
-    varied: A1.2=0 A1.3=1 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:3*1,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/AC1 pieces 1/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -17;
-      program row broken: integer other
-    varied: A1.2=0 A1.3=3 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:3*3,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 1 3 tracks D1/A1 pieces 1/1 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -15; s(1,0)+2 worst slack -7;
-      program row broken: integer other
-    varied: A1.2=0 A1.3=1 A1.4=4 A1.5=0 A1.6=4
-      polyline A1:3*1,2*12,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/AC1 pieces 1/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -19;
-      program row broken: integer other
  too loose, by domain break rules:
 
-wall N1: 0.137477 s
+wall N1: 0.136973 s
 enumeration N1: blind 576 geometries (96 on the grid, 480 off); by construction 96 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == N1 ==
-  both accept: 111 polylines (138 geometries)
-  both reject: 33 polylines (48 geometries)
-  too strict: 324 polylines (390 geometries)
-  too loose: 0 polylines (0 geometries)
+  both accept: 33 polylines (48 geometries)
+  both reject: 357 polylines (438 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 78 polylines (90 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
-  [bound] polylines 3 (geometries 3)
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=0 A1.1=0
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: bound other
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=2 A1.1=0
-      polyline A1:2*18,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: bound other
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=4 A1.1=0
-      polyline A1:2*20,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: bound other
-  [bound | cross | end | integer | plain] polylines 1 (geometries 1)
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=4 A1.1=3
-      polyline A1:2*4,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -4;
-      sep 3 2 4 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -4; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: bound other
-      program row broken: integer other
-  [bound | end] polylines 2 (geometries 2)
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound other
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=4 A1.1=2
-      polyline A1:2*4,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound other
-  [bound | end | integer] polylines 1 (geometries 1)
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=2 A1.1=3
-      polyline A1:2*2,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound other
-      program row broken: integer other
-  [bound | end | integer | plain | strict span] polylines 1 (geometries 1)
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=4 A1.1=1
-      polyline A1:2*4,1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -23;
-      sep 3 0 5 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -23;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-  [bound | end | integer | strict span] polylines 38 (geometries 47)
-    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=4 A1.1=1
-      polyline A1:2*4,1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -23;
-      sep 3 1 3 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -23;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: C1.0=1 C1.1=0 C1.2=0 A1.0=4 A1.1=1
-      polyline A1:2*4,1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -23;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -23;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=4 A1.1=1
-      polyline A1:2*4,1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -23;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -23;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-  [bound | integer | plain | strict span] polylines 1 (geometries 1)
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=2 A1.1=1
-      polyline A1:2*2,1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -21;
-      sep 3 0 5 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -21;
-      program row broken: integer other
-      program row broken: bound other
-  [bound | integer | strict span] polylines 38 (geometries 47)
-    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=2 A1.1=1
-      polyline A1:2*2,1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -21;
-      sep 3 1 3 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -21;
-      program row broken: integer other
-      program row broken: bound other
-    varied: C1.0=1 C1.1=0 C1.2=0 A1.0=2 A1.1=1
-      polyline A1:2*2,1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -21;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -21;
-      program row broken: integer other
-      program row broken: bound other
-    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=2 A1.1=1
-      polyline A1:2*2,1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -21;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -21;
-      program row broken: integer other
-      program row broken: bound other
-  [cross | end | integer | plain] polylines 38 (geometries 47)
-    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=4 A1.1=3
-      polyline A1:2*4,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -4;
-      sep 3 2 4 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -4; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-    varied: C1.0=1 C1.1=0 C1.2=0 A1.0=4 A1.1=3
-      polyline A1:2*4,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -4;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -4; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=4 A1.1=3
-      polyline A1:2*4,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -4;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -4; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-  [end] polylines 52 (geometries 60)
-    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-    varied: C1.0=0 C1.1=2 C1.2=0 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*4,;D1:1*1,2*8,;
-      program row broken: end 0
-  [end | integer] polylines 37 (geometries 46)
-    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=2 A1.1=3
-      polyline A1:2*2,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: integer other
-    varied: C1.0=1 C1.1=0 C1.2=0 A1.0=2 A1.1=3
-      polyline A1:2*2,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: integer other
-    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=2 A1.1=3
-      polyline A1:2*2,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: integer other
-  [end | integer | plain] polylines 1 (geometries 1)
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=2 A1.1=3
-      polyline A1:2*2,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 5 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      program row broken: end 0
-      program row broken: integer other
-  [end | plain] polylines 2 (geometries 2)
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 5 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      program row broken: end 0
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=4 A1.1=2
-      polyline A1:2*4,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 5 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      program row broken: end 0
-  [integer | lead] polylines 27 (geometries 30)
-    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=0 A1.1=3
-      polyline A1:1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
-      lead A1 start 0 fails
-      program row broken: integer other
-    varied: C1.0=1 C1.1=0 C1.2=0 A1.0=0 A1.1=3
-      polyline A1:1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,;D1:1*1,2*8,;
-      lead A1 start 0 fails
-      program row broken: integer other
-    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=0 A1.1=3
-      polyline A1:1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
-      lead A1 start 0 fails
-      program row broken: integer other
-  [integer | lead | plain | strict span] polylines 2 (geometries 2)
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=0 A1.1=1
-      polyline A1:1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/AC1 pieces 1/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -23;
-      sep 3 0 4 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -6; s(0,-1)+1 worst slack -2;
-      lead A1 start 0 fails
-      program row broken: integer other
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=0 A1.1=3
-      polyline A1:1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 4 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -4; s(0,-1)+1 worst slack -4;
-      lead A1 start 0 fails
-      program row broken: integer other
-  [integer | lead | strict span] polylines 49 (geometries 64)
-    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=0 A1.1=1
-      polyline A1:1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/AC1 pieces 1/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -23;
-      lead A1 start 0 fails
-      program row broken: integer other
-    varied: C1.0=1 C1.1=0 C1.2=0 A1.0=0 A1.1=1
-      polyline A1:1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/AC1 pieces 1/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -23;
-      sep 3 0 3 tracks C1/A1 pieces 1/1 kept [strict span] candidates: s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -17; s(0,-1)+1 worst slack -3; s(0,-1)+1 worst slack -1;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -2;
-      lead A1 start 0 fails
-      program row broken: integer other
-    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=0 A1.1=1
-      polyline A1:1*1,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/AC1 pieces 1/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -23;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -2; s(0,-1)+1 worst slack -2;
-      lead A1 start 0 fails
-      program row broken: integer other
-  [lead] polylines 13 (geometries 13)
-    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
-      lead A1 start 0 fails
-    varied: C1.0=0 C1.1=2 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*4,;D1:1*1,2*8,;
-      lead A1 start 0 fails
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      lead A1 start 0 fails
-  [lead | plain | strict span] polylines 1 (geometries 1)
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 4 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -5; s(0,-1)+1 worst slack -3;
-      lead A1 start 0 fails
-  [lead | strict span] polylines 14 (geometries 18)
-    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/A1 pieces 1/1 kept [strict span] candidates: s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -17; s(0,-1)+1 worst slack -3; s(0,-1)+1 worst slack -1;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3;
-      lead A1 start 0 fails
-    varied: C1.0=2 C1.1=2 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*4,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/A1 pieces 1/1 kept [strict span] candidates: s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -17; s(0,-1)+1 worst slack -5; s(0,-1)+1 worst slack -1;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3;
-      lead A1 start 0 fails
-    varied: C1.0=2 C1.1=4 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*6,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/A1 pieces 1/1 kept [strict span] candidates: s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -17; s(0,-1)+1 worst slack -7; s(0,-1)+1 worst slack -1;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3;
-      lead A1 start 0 fails
-  [plain] polylines 3 (geometries 3)
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=0 A1.1=0
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=2 A1.1=0
-      polyline A1:2*18,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=4 A1.1=0
-      polyline A1:2*20,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
  too loose, by domain break rules:
+  [grid | node | off grid: C1 piece 0 off the centre line] polylines 24 (geometries 24)
+    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 0 off the centre line
+      break grid tracks C1 tile (0,0) the piece to (4, 3) does not join two edges of one tile
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+    varied: C1.0=0 C1.1=2 C1.2=0 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*4,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[0x4] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 0 off the centre line
+      break grid tracks C1 tile (0,0) the piece to (4, 3) does not join two edges of one tile
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+    varied: C1.0=0 C1.1=2 C1.2=1 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,1*1,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[0x2,1x1,0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 0 off the centre line
+      break grid tracks C1 tile (0,0) the piece to (4, 3) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 3 0 1 C1/C1 pieces 2/1: adjacent
+        sep 3 0 2 C1/C1 pieces 2/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 3 0 1 C1/C1 pieces 2/1: adjacent
+        sep 3 0 2 C1/C1 pieces 2/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 1/0: adjacent
+  [grid | node | off grid: C1 piece 1 off the centre line] polylines 30 (geometries 42)
+    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x2,0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 1 off the centre line
+      break grid tracks C1 tile (2,1) the piece to (6, 1) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+    varied: C1.0=2 C1.1=2 C1.2=0 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*4,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x2,0x4] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 1 off the centre line
+      break grid tracks C1 tile (2,1) the piece to (6, 1) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+    varied: C1.0=2 C1.1=4 C1.2=0 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*6,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x2,0x6] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 1 off the centre line
+      break grid tracks C1 tile (2,1) the piece to (6, 1) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+  [grid | node | off grid: C1 piece 3 off the centre line] polylines 24 (geometries 24)
+    varied: C1.0=1 C1.1=2 C1.2=1 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,1*1,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x1,0x2,1x1,0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 3 off the centre line
+      break grid tracks C1 tile (2,0) the piece to (6, -1) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
+    varied: C1.0=3 C1.1=2 C1.2=1 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,1*1,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2,1x1,0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 3 off the centre line
+      break grid tracks C1 tile (3,-1) the piece to (8, -3) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
+    varied: C1.0=1 C1.1=4 C1.2=1 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*4,1*1,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x1,0x4,1x1,0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 3 off the centre line
+      break grid tracks C1 tile (2,-1) the piece to (6, -3) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
 
 == total ==
-  both accept: 185 polylines (276 geometries)
-  both reject: 180 polylines (206 geometries)
-  too strict: 885 polylines (1000 geometries)
-  too loose: 0 polylines (0 geometries)
+  both accept: 107 polylines (186 geometries)
+  both reject: 1065 polylines (1206 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 78 polylines (90 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 209 polylines (219 geometries)
     other shape, varied: B1.2=4 B1.3=3 B1.4=2 B1.5=0 B1.6=4
@@ -782,550 +220,160 @@ enumeration N1: blind 576 geometries (96 on the grid, 480 off); by construction 
     other shape, varied: B1.2=4 B1.3=3 B1.4=6 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
  too strict, by the kept values of the failing pairs:
-  [bound] polylines 3 (geometries 3)
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=0 A1.1=0
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: bound other
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=2 A1.1=0
-      polyline A1:2*18,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: bound other
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=4 A1.1=0
-      polyline A1:2*20,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: bound other
-  [bound | cross | end | integer | plain] polylines 2 (geometries 2)
-    varied: A1.2=2 A1.3=1 A1.4=2 A1.5=2 A1.6=4
-      polyline A1:2*2,3*1,2*2,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/3 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -3; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -6;
-      sep 1 4 6 tracks A1/A1 pieces 2/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -7;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [plain] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -7;
-      sep 3 5 7 tracks A1/B1 pieces 3/0 kept [plain] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -6; s(-1,0)+1 worst slack -3; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=4 A1.1=3
-      polyline A1:2*4,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -4;
-      sep 3 2 4 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -4; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: bound other
-      program row broken: integer other
-  [bound | cross | end | integer | plain | strict span] polylines 23 (geometries 25)
-    varied: A1.2=4 A1.3=0 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:2*6,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -2; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -6;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -17;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -17;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -6; s(-1,0)+1 worst slack -2; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=4 A1.3=1 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:2*4,3*1,2*2,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -9;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -9;
-      sep 4 3 5 tracks A1/A1 pieces 4/2 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -13;
-      sep 4 4 6 tracks A1/B1 pieces 3/0 kept [plain] candidates: s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -6; s(1,0)+1 worst slack -2; s(1,0)+1 worst slack -1;
-      sep 5 0 2 tracks B1/A1 pieces 0/3 kept [plain] candidates: s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2; s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -6;
-      sep 5 1 3 tracks A1/A1 pieces 2/4 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -13;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=2 A1.3=2 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:2*2,3*2,2*2,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/3 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -2; s(1,1)+2 worst slack -6; s(1,1)+2 worst slack -8;
-      sep 1 2 4 tracks A1/A1 pieces 4/2 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -13;
-      sep 3 4 6 tracks A1/A1 pieces 2/4 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -13;
-      sep 3 5 7 tracks A1/B1 pieces 3/0 kept [plain] candidates: s(-1,-1)+2 worst slack -6; s(-1,-1)+2 worst slack -8; s(-1,0)+1 worst slack -2; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-  [bound | end] polylines 2 (geometries 2)
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound other
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=4 A1.1=2
-      polyline A1:2*4,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound other
-  [bound | end | integer] polylines 1 (geometries 1)
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=2 A1.1=3
-      polyline A1:2*2,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound other
-      program row broken: integer other
-  [bound | end | integer | plain | strict span] polylines 14 (geometries 14)
-    varied: A1.2=0 A1.3=1 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:3*1,2*2,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 3/1 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -13;
-      sep 1 4 6 tracks A1/AC1 pieces 1/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -9;
-      sep 3 3 5 tracks A1/A1 pieces 1/3 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -13;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=2 A1.3=1 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:2*2,3*1,2*2,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 4/2 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -13;
-      sep 1 4 6 tracks A1/A1 pieces 2/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -7;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [plain] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -7;
-      sep 3 4 6 tracks A1/A1 pieces 2/4 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -13;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=2 A1.3=4 A1.4=2 A1.5=1 A1.6=4
-      polyline A1:2*2,3*4,2*2,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 0 4 tracks D1/A1 pieces 0/3 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -6;
-      sep 4 0 5 tracks D1/A1 pieces 0/2 kept [strict span] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -4; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 1 3 tracks D1/A1 pieces 1/4 kept [plain] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -9; s(1,0)+2 worst slack -11;
-      sep 4 1 4 tracks D1/A1 pieces 1/3 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -2; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -2;
-      sep 4 1 5 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -2; s(0,-1)+2 worst slack -2; s(1,0)+2 worst slack -12; s(1,0)+2 worst slack -2;
-      sep 4 3 5 tracks A1/A1 pieces 4/2 kept [strict span] candidates: s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -13;
-      sep 5 1 3 tracks A1/A1 pieces 2/4 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -13;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-  [bound | end | integer | strict span] polylines 114 (geometries 128)
-    varied: A1.2=4 A1.3=1 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*4,3*1,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -17;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -17;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=4 A1.3=1 A1.4=4 A1.5=0 A1.6=4
-      polyline A1:2*4,3*1,2*12,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -19;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -19;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=4 A1.3=1 A1.4=6 A1.5=0 A1.6=4
-      polyline A1:2*4,3*1,2*14,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -21;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -21;
-      program row broken: end 0
-      program row broken: integer other
-      program row broken: bound other
-  [bound | integer | lead | plain] polylines 25 (geometries 25)
-    varied: B1.2=0 B1.3=1 B1.4=2 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*2,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -7;
-      sep 1 2 4 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -13;
-      sep 4 0 6 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -4; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 6 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      sep 4 4 6 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -13;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=0 B1.3=4 B1.4=2 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*4,0*2,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 3 5 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -13;
-      sep 5 0 2 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -13;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=0 B1.3=2 B1.4=4 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*2,0*4,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 3 5 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -15;
-      sep 5 0 2 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-  [bound | integer | lead | plain | strict span] polylines 3 (geometries 3)
-    varied: B1.2=0 B1.3=2 B1.4=2 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*2,0*2,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -13;
-      sep 1 3 5 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(-1,1)+2 worst slack -10; s(-1,1)+2 worst slack -10; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -2; s(1,-1)+2 worst slack -10; s(1,-1)+2 worst slack -10;
-      sep 4 4 6 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -13;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=0 B1.3=3 B1.4=2 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*2,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -2; s(-1,1)+2 worst slack -12; s(-1,1)+2 worst slack -8;
-      sep 3 3 5 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -13;
-      sep 5 0 2 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -13;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -12; s(1,-1)+2 worst slack -8; s(0,-1)+1 worst slack -2; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=0 B1.3=1 B1.4=4 B1.5=1 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*4,7*1,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -9;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -2; s(-1,1)+2 worst slack -10; s(-1,1)+2 worst slack -10;
-      sep 3 3 5 tracks B1/B1 pieces 1/3 kept [plain] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -15;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -6; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -5; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      sep 5 0 2 tracks B1/B1 pieces 3/1 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -10; s(1,-1)+2 worst slack -10; s(0,-1)+1 worst slack -2; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-      program row broken: bound other
-  [bound | integer | plain] polylines 46 (geometries 57)
-    varied: B1.2=2 B1.3=1 B1.4=2 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*1,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -15;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=2 B1.3=1 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*1,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -17;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -17;
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=2 B1.3=1 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*1,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -19;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -19;
-      program row broken: integer other
-      program row broken: bound other
-  [bound | integer | plain | strict span] polylines 48 (geometries 49)
-    varied: B1.2=4 B1.3=1 B1.4=2 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*1,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -17;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -10; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -2; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -10;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -17;
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=4 B1.3=1 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*1,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -19;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -10; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -2; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -10;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -19;
-      program row broken: integer other
-      program row broken: bound other
-    varied: B1.2=4 B1.3=1 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*1,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/B1 pieces 0/2 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -21;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -10; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -2; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -10;
-      sep 4 4 6 tracks B1/B1 pieces 2/0 kept [plain] candidates: s(1,0)+2 worst slack -3; s(1,0)+2 worst slack -1; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -21;
-      program row broken: integer other
-      program row broken: bound other
-  [bound | integer | strict span] polylines 85 (geometries 101)
-    varied: A1.2=2 A1.3=1 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*2,3*1,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -15;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -15;
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=2 A1.3=1 A1.4=4 A1.5=0 A1.6=4
-      polyline A1:2*2,3*1,2*12,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -17;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -17;
-      program row broken: integer other
-      program row broken: bound other
-    varied: A1.2=2 A1.3=1 A1.4=6 A1.5=0 A1.6=4
-      polyline A1:2*2,3*1,2*14,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks A1/A1 pieces 2/0 kept [strict span] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -19;
-      sep 3 2 4 tracks A1/A1 pieces 0/2 kept [strict span] candidates: s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1; s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -19;
-      program row broken: integer other
-      program row broken: bound other
-  [cross | end | integer | plain] polylines 43 (geometries 53)
-    varied: A1.2=0 A1.3=3 A1.4=2 A1.5=2 A1.6=4
-      polyline A1:3*3,2*2,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/2 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -3; s(1,1)+2 worst slack -6; s(1,1)+2 worst slack -8;
-      sep 3 4 6 tracks A1/B1 pieces 2/0 kept [plain] candidates: s(-1,-1)+2 worst slack -6; s(-1,-1)+2 worst slack -8; s(-1,0)+1 worst slack -3; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=0 A1.3=1 A1.4=4 A1.5=2 A1.6=4
-      polyline A1:3*1,2*4,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/2 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -3; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -6;
-      sep 1 4 6 tracks A1/AC1 pieces 1/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -11;
-      sep 3 4 6 tracks A1/B1 pieces 2/0 kept [plain] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -6; s(-1,0)+1 worst slack -3; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=2 A1.3=0 A1.4=2 A1.5=3 A1.6=4
-      polyline A1:2*4,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -4;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(-1,-1)+2 worst slack -10; s(-1,-1)+2 worst slack -4; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-  [cross | end | integer | plain | strict span] polylines 41 (geometries 41)
-    varied: A1.2=4 A1.3=3 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*4,3*3,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(-1,1)+2 worst slack -4; s(-1,1)+2 worst slack -10;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(1,-1)+2 worst slack -4; s(1,-1)+2 worst slack -10; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -11; s(1,0)+2 worst slack -11;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=4 A1.3=3 A1.4=4 A1.5=0 A1.6=4
-      polyline A1:2*4,3*3,2*12,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(-1,1)+2 worst slack -4; s(-1,1)+2 worst slack -10;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(1,-1)+2 worst slack -4; s(1,-1)+2 worst slack -10; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -11; s(1,0)+2 worst slack -13;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=4 A1.3=3 A1.4=6 A1.5=0 A1.6=4
-      polyline A1:2*4,3*3,2*14,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 1 3 tracks B1/A1 pieces 0/1 kept [plain] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -4; s(-1,1)+2 worst slack -4; s(-1,1)+2 worst slack -10;
-      sep 3 3 5 tracks A1/B1 pieces 1/0 kept [plain] candidates: s(1,-1)+2 worst slack -4; s(1,-1)+2 worst slack -10; s(-1,0)+1 worst slack -4; s(-1,0)+1 worst slack -1;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -11; s(1,0)+2 worst slack -15;
-      program row broken: cross 0
-      program row broken: end 0
-      program row broken: integer other
-  [end] polylines 52 (geometries 60)
-    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-    varied: C1.0=0 C1.1=2 C1.2=0 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*4,;D1:1*1,2*8,;
-      program row broken: end 0
-  [end | integer] polylines 57 (geometries 70)
-    varied: A1.2=0 A1.3=0 A1.4=2 A1.5=3 A1.6=4
-      polyline A1:2*2,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=4 A1.3=2 A1.4=2 A1.5=3 A1.6=4
-      polyline A1:2*4,3*2,2*2,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=4 A1.3=0 A1.4=4 A1.5=3 A1.6=4
-      polyline A1:2*8,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: integer other
-  [end | integer | plain] polylines 3 (geometries 3)
-    varied: A1.2=0 A1.3=1 A1.4=2 A1.5=2 A1.6=4
-      polyline A1:3*1,2*2,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 4 6 tracks A1/AC1 pieces 1/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -9;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=0 A1.3=1 A1.4=2 A1.5=3 A1.6=4
-      polyline A1:3*1,2*2,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 4 6 tracks A1/AC1 pieces 1/0 kept [plain] candidates: s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1; s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -9;
-      program row broken: end 0
-      program row broken: integer other
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=2 A1.1=3
-      polyline A1:2*2,1*3,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 5 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      program row broken: end 0
-      program row broken: integer other
-  [end | integer | plain | strict span] polylines 11 (geometries 11)
-    varied: B1.2=0 B1.3=0 B1.4=2 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,1)+2 worst slack -14; s(-1,1)+2 worst slack -6; s(0,1)+1 worst slack -4; s(0,1)+1 worst slack -1;
-      sep 3 0 3 tracks C1/B1 pieces 1/2 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -7; s(0,1)+2 worst slack -7;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -4; s(1,-1)+2 worst slack -14; s(1,-1)+2 worst slack -6;
-      program row broken: end 0 node
-      program row broken: integer other
-    varied: A1.2=2 A1.3=4 A1.4=2 A1.5=3 A1.6=4
-      polyline A1:2*2,3*4,2*2,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 0 4 tracks D1/A1 pieces 0/3 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -10;
-      sep 4 0 5 tracks D1/A1 pieces 0/2 kept [strict span] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -4; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 1 4 tracks D1/A1 pieces 1/3 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -4; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -2;
-      sep 4 1 5 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -2; s(0,-1)+2 worst slack -2; s(1,0)+2 worst slack -12; s(1,0)+2 worst slack -2;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=0 A1.3=4 A1.4=4 A1.5=3 A1.6=4
-      polyline A1:3*4,2*4,1*3,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 0 4 tracks D1/A1 pieces 0/2 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -10;
-      sep 4 0 5 tracks D1/A1 pieces 0/1 kept [strict span] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -6; s(0,1)+1 worst slack -2; s(0,1)+1 worst slack -1;
-      sep 4 1 4 tracks D1/A1 pieces 1/2 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -4; s(1,1)+2 worst slack -10; s(1,1)+2 worst slack -2;
-      sep 4 1 5 tracks D1/A1 pieces 1/1 kept [strict span] candidates: s(0,-1)+2 worst slack -2; s(0,-1)+2 worst slack -2; s(1,0)+2 worst slack -14; s(1,0)+2 worst slack -2;
-      program row broken: end 0
-      program row broken: integer other
-  [end | integer | strict span] polylines 40 (geometries 40)
-    varied: A1.2=2 A1.3=3 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*2,3*3,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -13; s(1,0)+2 worst slack -9;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=2 A1.3=3 A1.4=4 A1.5=0 A1.6=4
-      polyline A1:2*2,3*3,2*12,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -13; s(1,0)+2 worst slack -11;
-      program row broken: end 0
-      program row broken: integer other
-    varied: A1.2=2 A1.3=3 A1.4=6 A1.5=0 A1.6=4
-      polyline A1:2*2,3*3,2*14,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 4 1 3 tracks D1/A1 pieces 1/2 kept [strict span] candidates: s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -3; s(1,0)+2 worst slack -13; s(1,0)+2 worst slack -13;
-      program row broken: end 0
-      program row broken: integer other
-  [end | plain] polylines 2 (geometries 2)
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 5 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      program row broken: end 0
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=4 A1.1=2
-      polyline A1:2*4,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 5 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      program row broken: end 0
-  [integer] polylines 21 (geometries 35)
-    varied: B1.2=2 B1.3=2 B1.4=2 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*2,0*2,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: integer other
-    varied: B1.2=2 B1.3=2 B1.4=4 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*2,0*4,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: integer other
-    varied: B1.2=4 B1.3=0 B1.4=6 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: integer other
-  [integer | lead] polylines 65 (geometries 68)
-    varied: B1.2=0 B1.3=3 B1.4=2 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=3 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=3 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      lead B1 start 0 fails
-      program row broken: integer other
-  [integer | lead | plain] polylines 22 (geometries 22)
-    varied: B1.2=0 B1.3=1 B1.4=2 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -15;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -12; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -11; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=1 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -17;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -14; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -13; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=1 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -19;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -16; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -15; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-  [integer | lead | plain | strict span] polylines 6 (geometries 6)
-    varied: B1.2=0 B1.3=1 B1.4=2 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -7;
-      sep 1 3 5 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(-1,1)+2 worst slack -12; s(-1,1)+2 worst slack -8; s(0,1)+1 worst slack -3; s(0,1)+1 worst slack -1;
-      sep 4 0 6 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -4; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 6 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -3; s(1,-1)+2 worst slack -12; s(1,-1)+2 worst slack -8;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=1 B1.4=4 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*4,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -9;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3; s(-1,1)+2 worst slack -10; s(-1,1)+2 worst slack -10;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -6; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -5; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -10; s(1,-1)+2 worst slack -10; s(0,-1)+1 worst slack -3; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=1 B1.4=4 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*4,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 0 2 tracks BD1/B1 pieces 0/1 kept [plain] candidates: s(-1,0)+2 worst slack -3; s(-1,0)+2 worst slack -1; s(0,-1)+2 worst slack -1; s(0,-1)+2 worst slack -9;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -4; s(-1,1)+2 worst slack -10; s(-1,1)+2 worst slack -10;
-      sep 4 0 4 tracks D1/B1 pieces 0/1 kept [plain] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -6; s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -2;
-      sep 4 1 4 tracks D1/B1 pieces 1/1 kept [plain] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -5; s(1,0)+1 worst slack -9; s(1,0)+1 worst slack -1;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -10; s(1,-1)+2 worst slack -10; s(0,-1)+1 worst slack -4; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-  [integer | lead | strict span] polylines 52 (geometries 67)
-    varied: B1.2=0 B1.3=3 B1.4=2 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3; s(-1,1)+2 worst slack -12; s(-1,1)+2 worst slack -8;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -12; s(1,-1)+2 worst slack -8; s(0,-1)+1 worst slack -3; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=3 B1.4=2 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*2,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -4; s(-1,1)+2 worst slack -12; s(-1,1)+2 worst slack -8;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -12; s(1,-1)+2 worst slack -8; s(0,-1)+1 worst slack -4; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-    varied: B1.2=0 B1.3=3 B1.4=2 B1.5=4 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:1*3,0*2,7*4,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 2 4 tracks A1/B1 pieces 0/2 kept [strict span] candidates: s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -5; s(-1,1)+2 worst slack -12; s(-1,1)+2 worst slack -8;
-      sep 5 1 3 tracks B1/A1 pieces 2/0 kept [strict span] candidates: s(1,-1)+2 worst slack -12; s(1,-1)+2 worst slack -8; s(0,-1)+1 worst slack -5; s(0,-1)+1 worst slack -1;
-      lead B1 start 0 fails
-      program row broken: integer other
-  [integer | plain] polylines 2 (geometries 6)
-    varied: B1.2=4 B1.3=0 B1.4=2 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*6,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 0 5 tracks C1/B1 pieces 1/2 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -11; s(0,1)+2 worst slack -3;
-      program row broken: integer other
-    varied: B1.2=4 B1.3=0 B1.4=4 B1.5=3 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*8,7*3,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 3 0 5 tracks C1/B1 pieces 1/2 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -13; s(0,1)+2 worst slack -1;
-      program row broken: integer other
-  [integer | strict span] polylines 71 (geometries 71)
-    varied: B1.2=2 B1.3=3 B1.4=2 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*3,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -12; s(0,1)+1 worst slack -4; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -4; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -12;
-      program row broken: integer other
-    varied: B1.2=2 B1.3=3 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*3,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -12; s(0,1)+1 worst slack -4; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -4; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -12;
-      program row broken: integer other
-    varied: B1.2=2 B1.3=3 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*2,1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      sep 1 2 4 tracks B1/A1 pieces 1/0 kept [strict span] candidates: s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -12; s(0,1)+1 worst slack -4; s(0,1)+1 worst slack -1;
-      sep 4 3 5 tracks A1/B1 pieces 0/1 kept [strict span] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -4; s(1,1)+2 worst slack -8; s(1,1)+2 worst slack -12;
-      program row broken: integer other
-  [lead] polylines 13 (geometries 13)
-    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
-      lead A1 start 0 fails
-    varied: C1.0=0 C1.1=2 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*4,;D1:1*1,2*8,;
-      lead A1 start 0 fails
-    varied: C1.0=0 C1.1=4 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*6,;D1:1*1,2*8,;
-      lead A1 start 0 fails
-  [lead | plain | strict span] polylines 1 (geometries 1)
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 4 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -5; s(0,-1)+1 worst slack -3;
-      lead A1 start 0 fails
-  [lead | strict span] polylines 14 (geometries 18)
-    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/A1 pieces 1/1 kept [strict span] candidates: s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -17; s(0,-1)+1 worst slack -3; s(0,-1)+1 worst slack -1;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3;
-      lead A1 start 0 fails
-    varied: C1.0=2 C1.1=2 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*4,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/A1 pieces 1/1 kept [strict span] candidates: s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -17; s(0,-1)+1 worst slack -5; s(0,-1)+1 worst slack -1;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3;
-      lead A1 start 0 fails
-    varied: C1.0=2 C1.1=4 C1.2=0 A1.0=0 A1.1=2
-      polyline A1:1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*6,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/A1 pieces 1/1 kept [strict span] candidates: s(1,0)+1 worst slack -1; s(1,0)+1 worst slack -17; s(0,-1)+1 worst slack -7; s(0,-1)+1 worst slack -1;
-      sep 3 1 3 tracks C1/A1 pieces 0/1 kept [strict span] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -18; s(0,-1)+1 worst slack -1; s(0,-1)+1 worst slack -3;
-      lead A1 start 0 fails
-  [plain] polylines 3 (geometries 3)
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=0 A1.1=0
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=2 A1.1=0
-      polyline A1:2*18,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
-    varied: C1.0=3 C1.1=0 C1.2=3 A1.0=4 A1.1=0
-      polyline A1:2*20,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*6,0*2,;D1:1*1,2*8,;
-      sep 3 0 3 tracks C1/B1 pieces 1/0 kept [plain] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -1; s(0,1)+2 worst slack -15;
  too loose, by domain break rules:
+  [grid | node | off grid: C1 piece 0 off the centre line] polylines 24 (geometries 24)
+    varied: C1.0=0 C1.1=0 C1.2=0 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 0 off the centre line
+      break grid tracks C1 tile (0,0) the piece to (4, 3) does not join two edges of one tile
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+    varied: C1.0=0 C1.1=2 C1.2=0 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*4,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[0x4] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 0 off the centre line
+      break grid tracks C1 tile (0,0) the piece to (4, 3) does not join two edges of one tile
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+    varied: C1.0=0 C1.1=2 C1.2=1 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:0*2,1*1,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[0x2,1x1,0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 0 off the centre line
+      break grid tracks C1 tile (0,0) the piece to (4, 3) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 3 0 1 C1/C1 pieces 2/1: adjacent
+        sep 3 0 2 C1/C1 pieces 2/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 3 0 1 C1/C1 pieces 2/1: adjacent
+        sep 3 0 2 C1/C1 pieces 2/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 1/0: adjacent
+  [grid | node | off grid: C1 piece 1 off the centre line] polylines 30 (geometries 42)
+    varied: C1.0=2 C1.1=0 C1.2=0 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x2,0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 1 off the centre line
+      break grid tracks C1 tile (2,1) the piece to (6, 1) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+    varied: C1.0=2 C1.1=2 C1.2=0 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*4,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x2,0x4] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 1 off the centre line
+      break grid tracks C1 tile (2,1) the piece to (6, 1) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+    varied: C1.0=2 C1.1=4 C1.2=0 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*2,0*6,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x2,0x6] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 1 off the centre line
+      break grid tracks C1 tile (2,1) the piece to (6, 1) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 3 0 1 C1/C1 pieces 1/0: adjacent
+  [grid | node | off grid: C1 piece 3 off the centre line] polylines 24 (geometries 24)
+    varied: C1.0=1 C1.1=2 C1.2=1 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,1*1,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x1,0x2,1x1,0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 3 off the centre line
+      break grid tracks C1 tile (2,0) the piece to (6, -1) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
+    varied: C1.0=3 C1.1=2 C1.2=1 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,1*1,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2,1x1,0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 3 off the centre line
+      break grid tracks C1 tile (3,-1) the piece to (8, -3) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
+    varied: C1.0=1 C1.1=4 C1.2=1 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*4,1*1,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x1,0x4,1x1,0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      off grid: first at C1 piece 3 off the centre line
+      break grid tracks C1 tile (2,-1) the piece to (6, -3) does not join two edges of one tile
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
+      break node tracks C1 tile (2,2) track 2 is listed in `out` but does not start at (4, 5)
+        sep 0 1 2 C1/C1 pieces 0/1: adjacent
+        sep 0 1 3 C1/C1 pieces 0/2: zero contraction
+        sep 0 1 4 C1/C1 pieces 0/3: zero contraction
+        sep 0 2 3 C1/C1 pieces 1/2: adjacent
+        sep 0 2 4 C1/C1 pieces 1/3: zero contraction
+        sep 0 3 4 C1/C1 pieces 2/3: adjacent
+        sep 3 0 1 C1/C1 pieces 3/2: adjacent
+        sep 3 0 2 C1/C1 pieces 3/1: zero contraction
+        sep 3 0 3 C1/C1 pieces 3/0: zero contraction
+        sep 3 1 2 C1/C1 pieces 2/1: adjacent
+        sep 3 1 3 C1/C1 pieces 2/0: zero contraction
+        sep 3 2 3 C1/C1 pieces 1/0: adjacent
 
 == base (strict rules on): failing pairs ==
       sep 1 1 5 tracks BD1/B1 pieces 1/0 kept [zero contraction kept, touch ends exempt] candidates: s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -1;
