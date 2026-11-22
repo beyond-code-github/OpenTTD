@@ -92,7 +92,7 @@ struct PlanarDrawOptions {
 	const std::vector<std::vector<std::array<int, 2>>> *fix_points = nullptr; ///< A measurement: every track point is held equal to this drawing's (PlanarDrawResult::points of the same variant; hard rows, tag "fix"; a track with an empty point list is not fixed), so elastic slack on the remaining rows is their violation on that drawing.
 	int fix_window = 0; ///< With fix_points: each point is held within this many half tiles of the reference per axis (absorbs rounding of an LP reference).
 	const std::vector<std::vector<double>> *start_lengths = nullptr; ///< A measurement: a partial MIP start, every piece length (half tiles, as `PlanarDrawResult::lengths`) of this drawing that is whole in its variable's units; the solver completes the rest.
-	bool grid = false; ///< A measurement (D382 probe): every point of an axis run of positive length (pieces of one heading joined through inserts held at 0) is 2 g + 1 across it (N/S on odd x, E/W on odd y), g a new integer (tag `grid`).
+	bool grid = false; ///< A measurement (D382 probe): every point of an axis run of positive length (pieces of one heading joined through inserts held at 0) is 2 g + b across it (N/S runs share x's parity b, E/W runs y's), g a new integer (tag `grid`).
 	const std::vector<std::vector<std::array<int, 2>>> *start_points = nullptr; ///< A measurement: a MIP start of every track point from this drawing (as `PlanarDrawResult::points`).
 	std::string export_path; ///< A measurement (D418): when not empty, the built program is written there as JSON before solving (variables, rows with their tags, the objective), for offline solvers.
 };

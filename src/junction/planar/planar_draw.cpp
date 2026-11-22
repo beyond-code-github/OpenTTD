@@ -297,6 +297,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	std::vector<std::vector<std::array<uint32_t, 2>>> point(nt);
 	std::vector<std::vector<Length>> length(nt);
 	std::vector<std::vector<bool>> may_zero(nt);
+	/* Grid (D382 probe): the frame's parity per axis, free (whether tile centres are at odd or even coordinates). */
+	std::array<uint32_t, 2> grid_frame{};
+	if (options.grid) grid_frame = {var(0, 1, 0, "other"), var(0, 1, 0, "other")};
 	for (size_t t = 0; t < nt; t++) {
 		const std::vector<int> &pieces = v.tracks[t].pieces;
 		if (pieces.empty()) return unsupported("track " + map.tracks[t].name + " has no piece");
@@ -374,7 +377,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				eq({{point[t][i + 1][axis], 1}, {point[t][i][axis], -1}, {length[t][i].variable, -step[axis] * length[t][i].coefficient}}, 0, tag);
 			}
 		}
-		/* Grid (D382 probe): every point of an axis run of positive length lies on the run's tile-centre line, N/S on odd x and E/W on odd y, so it is 2 g + 1 there. A run is the pieces of one heading joined through inserts held at 0; it is positive when a piece of it has a least length, or when it holds a whole flex group whose inserts are all held at 0 (the group's flex row). */
+		/* Grid (D382 probe): every point of an axis run of positive length lies on the run's tile-centre line, N/S on odd x and E/W on odd y, so it is 2 g + b there, b the frame's parity on that axis (one binary per axis). A run is the pieces of one heading joined through inserts held at 0; it is positive when a piece of it has a least length, or when it holds a whole flex group whose inserts are all held at 0 (the group's flex row). */
 		if (options.grid) {
 			std::vector<bool> run_positive = positive;
 			if (!port_stretch) {
@@ -403,7 +406,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					const int across = (((pieces[i] % 8) + 8) % 8) % 4 == 0 ? 0 : 1;
 					for (size_t at = i; at <= last + 1; at++) {
 						if (!gridded.insert({at, across}).second) continue;
-						eq({{point[t][at][across], 1}, {var(0, COORD_MAX, 0, "point"), -2}}, 1, fmt::format("grid {} {}", map.tracks[t].name, at));
+						eq({{point[t][at][across], 1}, {var(0, COORD_MAX, 0, "point"), -2}, {grid_frame[across], -1}}, 0, fmt::format("grid {} {}", map.tracks[t].name, at));
 					}
 				}
 				i = last + 1;
