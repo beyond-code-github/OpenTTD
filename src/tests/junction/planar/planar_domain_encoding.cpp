@@ -263,7 +263,17 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 
 	for (const Config &cfg : configs) {
 		Tally &tally = per[cfg.name];
-		const PlanarDrawResult readout = f.ReadOut(true);
+		/* PLANAR_DOMAIN_RULES (a measurement): plain, span, zero or all (default) strict keep-apart rules. */
+		const char *rules_env = std::getenv("PLANAR_DOMAIN_RULES");
+		const std::string rules = rules_env == nullptr ? "all" : rules_env;
+		PlanarDrawResult readout = f.ReadOut(rules == "all");
+		if (rules == "span" || rules == "zero") {
+			X1Fixture g = f;
+			g.options.strict_span = rules == "span";
+			g.options.strict_zero = rules == "zero";
+			g.options.crossing_flanks = false;
+			readout = g.ReadOut(true);
+		}
 		REQUIRE(readout.status == "built");
 		std::vector<size_t> pos(cfg.axes.size(), 0);
 		while (true) {
