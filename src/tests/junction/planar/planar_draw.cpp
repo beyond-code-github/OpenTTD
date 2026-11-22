@@ -2857,6 +2857,7 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 		}
 	}
 	WARN(fmt::format("grid check: N/S piece ends x even {} odd {}; E/W piece ends y even {} odd {}", grid_parity[0][0], grid_parity[0][1], grid_parity[1][0], grid_parity[1][1]));
+	if (o.final_grid) WARN(fmt::format("grid pass: forced {}, tightened {}, conflicts {}, rows {}, columns {}", r.final.grid_forced, r.final.grid_tightened, r.final.grid_conflicts, r.final.rows, r.final.columns));
 	if (o.final_soft_sep || o.final_soft_all) {
 		std::string top;
 		for (size_t k = 0; k < r.final.stretched.size() && k < 30; k++) top += fmt::format(" [{} {:.2f}]", r.final.stretched[k].first, r.final.stretched[k].second);

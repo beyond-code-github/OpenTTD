@@ -28,6 +28,9 @@ struct PlanarDrawResult {
 	std::vector<std::pair<std::string, double>> stretched; ///< With elastic: per row tag whose slack is above 1e-6, the slack, largest first (a tag that names several rows sums them).
 	uint32_t rows = 0; ///< The program's rows.
 	uint32_t columns = 0; ///< The program's variables.
+	size_t grid_forced = 0; ///< With grid: the variables whose parity the integer equalities force (written 2 h + p).
+	size_t grid_tightened = 0; ///< With grid: the rows whose bounds rounding inward moved, once divided by their coefficients' gcd.
+	size_t grid_conflicts = 0; ///< With grid: integer equalities whose parity the forced parities break (the grid is then infeasible).
 	uint32_t pairs = 0; ///< Wall pairs separated (pairwise mode).
 	uint32_t binaries = 0; ///< Their axis-side binaries.
 	uint32_t short_sides = 0; ///< With sides_from: the pairs whose chosen side the reference keeps by less than its spacing.
@@ -93,7 +96,7 @@ struct PlanarDrawOptions {
 	const std::vector<std::vector<std::array<int, 2>>> *fix_points = nullptr; ///< A measurement: every track point is held equal to this drawing's (PlanarDrawResult::points of the same variant; hard rows, tag "fix"; a track with an empty point list is not fixed), so elastic slack on the remaining rows is their violation on that drawing.
 	int fix_window = 0; ///< With fix_points: each point is held within this many half tiles of the reference per axis (absorbs rounding of an LP reference).
 	const std::vector<std::vector<double>> *start_lengths = nullptr; ///< A measurement: a partial MIP start, every piece length (half tiles, as `PlanarDrawResult::lengths`) of this drawing that is whole in its variable's units; the solver completes the rest.
-	bool grid = false; ///< A measurement (D382 probe): every point of an axis run of positive length (pieces of one heading joined through inserts held at 0) is 2 g + b across it (N/S runs share x's parity b, E/W runs y's), g a new integer (tag `grid`).
+	bool grid = false; ///< A measurement (D382 probe): every point of an axis run of positive length has an odd coordinate across it (N/S on odd x, E/W on odd y); the parities this and the integer equalities force are propagated, each forced variable is written 2 h + p, and every all-integer row is divided by its gcd with its bounds rounded inward (whole tiles). Not with elastic.
 	const std::vector<std::vector<std::array<int, 2>>> *start_points = nullptr; ///< A measurement: a MIP start of every track point from this drawing (as `PlanarDrawResult::points`).
 	std::string export_path; ///< A measurement (D418): when not empty, the built program is written there as JSON before solving (variables, rows with their tags, the objective), for offline solvers.
 };

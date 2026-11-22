@@ -25,6 +25,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <numeric>
 #include <set>
 #include <sstream>
 #include <string>
@@ -235,7 +236,19 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	std::string export_rows; ///< Exporting: the rows as JSON objects, in row order.
 	double export_big_m = 0; ///< Exporting: the pairwise block's big-M constant.
 	const auto json_number = [](double x) { return std::isfinite(x) ? fmt::format("{}", x) : std::string("null"); };
+	std::vector<bool> integral;
+	std::vector<double> var_lower, var_upper;
+	struct Pending {
+		Terms terms;
+		double lower;
+		double upper;
+		std::string tag;
+	};
+	std::vector<Pending> pending;
 	const auto add_variable = [&](double lower, double upper, double cost, bool integer) {
+		integral.push_back(integer);
+		var_lower.push_back(lower);
+		var_upper.push_back(upper);
 		if (exporting) export_variables += fmt::format("{}{{\"lb\":{},\"ub\":{},\"cost\":{},\"integer\":{}}}", export_variables.empty() ? "" : ",", json_number(lower), json_number(upper), json_number(cost), integer ? "true" : "false");
 		return milp.AddVariable(lower, upper, cost, integer);
 	};
@@ -243,17 +256,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		columns++;
 		return add_variable(lower, upper, cost, (!options.elastic || options.elastic_integer) && std::ranges::find(options.continuous, group) == options.continuous.end());
 	};
-	const auto row = [&](Terms terms, double lower, double upper, const std::string &tag) {
-		std::ranges::sort(terms);
-		Terms merged;
-		for (const auto &[variable, coefficient] : terms) {
-			if (!merged.empty() && merged.back().first == variable) {
-				merged.back().second += coefficient;
-			} else {
-				merged.emplace_back(variable, coefficient);
-			}
-		}
-		std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
+	const auto emit = [&](Terms merged, double lower, double upper, const std::string &tag) {
 		if (options.elastic) {
 			const std::string family = tag.substr(0, tag.find(' '));
 			if (family != "piece" && family != "box" && family != "pin" && family != "fix" && family != "grid" && (options.elastic_families.empty() || std::ranges::find(options.elastic_families, family) != options.elastic_families.end())) {
@@ -282,6 +285,23 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			export_rows += fmt::format("{}{{\"terms\":[{}],\"lb\":{},\"ub\":{},\"tag\":\"{}\"}}", export_rows.empty() ? "" : ",", terms_json, json_number(lower), json_number(upper), tag_json);
 		}
 	};
+	const auto row = [&](Terms terms, double lower, double upper, const std::string &tag) {
+		std::ranges::sort(terms);
+		Terms merged;
+		for (const auto &[variable, coefficient] : terms) {
+			if (!merged.empty() && merged.back().first == variable) {
+				merged.back().second += coefficient;
+			} else {
+				merged.emplace_back(variable, coefficient);
+			}
+		}
+		std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
+		if (options.grid && !options.elastic) {
+			pending.push_back({std::move(merged), lower, upper, tag});
+			return;
+		}
+		emit(std::move(merged), lower, upper, tag);
+	};
 	const auto eq = [&](Terms terms, double rhs, const std::string &tag) { row(std::move(terms), rhs, rhs, tag); };
 
 	const uint32_t width = var(1, COORD_MAX, options.box_price, "other");
@@ -297,9 +317,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	std::vector<std::vector<std::array<uint32_t, 2>>> point(nt);
 	std::vector<std::vector<Length>> length(nt);
 	std::vector<std::vector<bool>> may_zero(nt);
-	/* Grid (D382 probe): the frame's parity per axis, free (whether tile centres are at odd or even coordinates). */
-	std::array<uint32_t, 2> grid_frame{};
-	if (options.grid) grid_frame = {var(0, 1, 0, "other"), var(0, 1, 0, "other")};
+	std::map<uint32_t, int> grid_seed; ///< Grid (D382 probe): point variables whose parity the grid fixes.
 	for (size_t t = 0; t < nt; t++) {
 		const std::vector<int> &pieces = v.tracks[t].pieces;
 		if (pieces.empty()) return unsupported("track " + map.tracks[t].name + " has no piece");
@@ -377,7 +395,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				eq({{point[t][i + 1][axis], 1}, {point[t][i][axis], -1}, {length[t][i].variable, -step[axis] * length[t][i].coefficient}}, 0, tag);
 			}
 		}
-		/* Grid (D382 probe): every point of an axis run of positive length lies on the run's tile-centre line, N/S on odd x and E/W on odd y, so it is 2 g + b there, b the frame's parity on that axis (one binary per axis). A run is the pieces of one heading joined through inserts held at 0; it is positive when a piece of it has a least length, or when it holds a whole flex group whose inserts are all held at 0 (the group's flex row). */
+		/* Grid (D382 probe): every point of an axis run of positive length lies on the run's tile-centre line, N/S on odd x and E/W on odd y, so it is odd there (a seed of the parity pass before the solve). A run is the pieces of one heading joined through inserts held at 0; it is positive when a piece of it has a least length, or when it holds a whole flex group whose inserts are all held at 0 (the group's flex row). */
 		if (options.grid) {
 			std::vector<bool> run_positive = positive;
 			if (!port_stretch) {
@@ -406,7 +424,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					const int across = (((pieces[i] % 8) + 8) % 8) % 4 == 0 ? 0 : 1;
 					for (size_t at = i; at <= last + 1; at++) {
 						if (!gridded.insert({at, across}).second) continue;
-						eq({{point[t][at][across], 1}, {var(0, COORD_MAX, 0, "point"), -2}, {grid_frame[across], -1}}, 0, fmt::format("grid {} {}", map.tracks[t].name, at));
+						grid_seed.emplace(point[t][at][across], 1);
 					}
 				}
 				i = last + 1;
@@ -1264,6 +1282,86 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				}
 			}
 		}
+	}
+
+	/* Grid in whole tiles (D382 probe): the parities the integer equalities force, propagated from the grid's seeds (an integer equality with one odd-coefficient unknown fixes it); each forced variable becomes 2 h + p (h a new integer, linked by a `grid link` row), and every row over integers with integer coefficients is divided by their gcd with its bounds rounded inward. */
+	if (options.grid && !options.elastic) {
+		const auto whole = [](double c) { return std::abs(c - std::round(c)) < 1e-9; };
+		const auto integer_row = [&](const Pending &p) {
+			return std::ranges::all_of(p.terms, [&](const std::pair<uint32_t, double> &term) { return integral[term.first] && whole(term.second); });
+		};
+		std::map<uint32_t, int> parity = grid_seed;
+		/* One pass: per integer equality, the parity of its right-hand side minus the known odd terms, and its odd-coefficient unknowns. */
+		const auto scan = [&](const Pending &p, int &sum, uint32_t &unknown) {
+			sum = static_cast<int>(((std::llround(p.lower) % 2) + 2) % 2);
+			int unknowns = 0;
+			for (const auto &[v, c] : p.terms) {
+				if ((std::llabs(std::llround(c)) & 1) == 0) continue;
+				const auto it = parity.find(v);
+				if (it != parity.end()) {
+					sum ^= it->second;
+				} else {
+					unknown = v;
+					unknowns++;
+				}
+			}
+			return unknowns;
+		};
+		const auto parity_row = [&](const Pending &p) { return p.lower == p.upper && std::isfinite(p.lower) && whole(p.lower) && integer_row(p); };
+		for (bool changed = true; changed;) {
+			changed = false;
+			for (const Pending &p : pending) {
+				if (!parity_row(p)) continue;
+				int sum = 0;
+				uint32_t unknown = UINT32_MAX;
+				if (scan(p, sum, unknown) == 1) {
+					parity[unknown] = sum;
+					changed = true;
+				}
+			}
+		}
+		for (const Pending &p : pending) {
+			int sum = 0;
+			uint32_t unknown = UINT32_MAX;
+			if (parity_row(p) && scan(p, sum, unknown) == 0 && sum != 0) result.grid_conflicts++;
+		}
+		std::map<uint32_t, uint32_t> half; ///< Forced variable -> its h.
+		for (const auto &[v, p] : parity) {
+			const double lower = std::isfinite(var_lower[v]) ? std::ceil((var_lower[v] - p) / 2) : -JunctionMilp::INF;
+			const double upper = std::isfinite(var_upper[v]) ? std::floor((var_upper[v] - p) / 2) : JunctionMilp::INF;
+			half[v] = add_variable(lower, upper, 0, true);
+			columns++;
+		}
+		result.grid_forced = half.size();
+		for (Pending &p : pending) {
+			Terms terms;
+			double shift = 0;
+			for (const auto &[v, c] : p.terms) {
+				const auto it = half.find(v);
+				if (it == half.end()) {
+					terms.emplace_back(v, c);
+					continue;
+				}
+				terms.emplace_back(it->second, 2 * c);
+				shift += c * parity.at(v);
+			}
+			p.terms = std::move(terms);
+			p.lower -= shift;
+			p.upper -= shift;
+			if (!p.terms.empty() && integer_row(p)) {
+				long long g = 0;
+				for (const auto &[v, c] : p.terms) g = std::gcd(g, std::llabs(std::llround(c)));
+				const double lower = std::isfinite(p.lower) ? std::ceil(p.lower / g - 1e-9) : p.lower;
+				const double upper = std::isfinite(p.upper) ? std::floor(p.upper / g + 1e-9) : p.upper;
+				if ((std::isfinite(p.lower) && lower * g > p.lower + 1e-9) || (std::isfinite(p.upper) && upper * g < p.upper - 1e-9)) result.grid_tightened++;
+				for (auto &term : p.terms) term.second /= static_cast<double>(g);
+				p.lower = lower;
+				p.upper = upper;
+			}
+		}
+		for (Pending &p : pending) emit(std::move(p.terms), p.lower, p.upper, p.tag);
+		pending.clear();
+		for (const auto &[v, p] : parity) emit({{v, 1}, {half.at(v), -2}}, p, p, "grid link");
 	}
 
 	result.rows = static_cast<uint32_t>(tags.size());
