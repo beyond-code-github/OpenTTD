@@ -177,6 +177,7 @@ struct PlanarDrawPipelineOptions {
 	double irl1 = 0.1; ///< From the second discovery round, an insert's price is irl1 / (its previous length + 0.5).
 	double box_price = 0.01; ///< Price per half tile of width and of height, in every round.
 	double slack_price = 1; ///< The slack price of every elastic round (PlanarDrawOptions::slack_price); it should be far above box_price, or the rounds may trade a broken rule for a smaller box.
+	double discovery_slack_price = 1; ///< The slack price of the seed and discovery rounds; slack_price applies from the commit on.
 	bool corridor = true; ///< Beside tracks as offset curves (D421) in every stage.
 	bool final_tidy = true; ///< The integer final minimises the sum of piece lengths; false is feasibility only (a measurement).
 	bool final_grid = false; ///< A measurement (D382 probe): the integer final writes the grid rows (PlanarDrawOptions::grid).

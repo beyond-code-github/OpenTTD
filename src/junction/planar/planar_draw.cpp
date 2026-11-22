@@ -1505,7 +1505,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	};
 
 	/* The seed. */
-	PlanarDrawResult previous = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .corridor = options.corridor, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .pins = options.pins});
+	PlanarDrawResult previous = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .corridor = options.corridor, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.discovery_slack_price, .pins = options.pins});
 	out.final = previous;
 	if (!previous.feasible) {
 		out.stopped = "seed";
@@ -1518,7 +1518,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	PlanarDrawResult last = previous;
 	for (int k = 1; k <= options.discovery_rounds; k++) {
 		const bool previous_zero = k > 1 && previous.slack < 1e-6;
-		PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &previous.lengths, .corridor = options.corridor, .flex_weights = k == 1 ? nullptr : &weights, .box_price = options.box_price, .flex_price = k == 1 ? options.first_flex_price : 0, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep"}, .pins = options.pins, .sides_from = &previous.points});
+		PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &previous.lengths, .corridor = options.corridor, .flex_weights = k == 1 ? nullptr : &weights, .box_price = options.box_price, .flex_price = k == 1 ? options.first_flex_price : 0, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.discovery_slack_price, .elastic_families = {"sep"}, .pins = options.pins, .sides_from = &previous.points});
 		log_round("discovery", k, r);
 		if (r.status != "Optimal") {
 			out.final = r;
@@ -1574,6 +1574,9 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	const auto prune_all = [&]() -> bool {
 	for (int p = 1; p <= options.prunes; p++) {
 		size_t held = 0;
+		const auto before_prune = out.committed;
+		const auto last_before_prune = last;
+		const auto last_input_before_prune = last_input;
 		for (const auto &[row, slack] : last.stretched) {
 			if (!row.starts_with("curve flex ")) continue;
 			std::istringstream rs(row.substr(11));
@@ -1590,8 +1593,13 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		out.pruned += held;
 		const PlanarDrawResult committed_last = last;
 		if (!commit_rounds(committed_last, p == 1 ? "prune" : fmt::format("prune{}", p))) {
-			out.stopped = "prune";
-			return false;
+			/* A prune whose rounds are not Optimal is undone: its held inserts come back and the pipeline goes on from the drawing before it. */
+			out.committed = before_prune;
+			out.pruned -= held;
+			last = last_before_prune;
+			last_input = last_input_before_prune;
+			out.log.push_back(fmt::format("prune {} undone: {} held inserts restored", p, held));
+			break;
 		}
 	}
 	return true;
