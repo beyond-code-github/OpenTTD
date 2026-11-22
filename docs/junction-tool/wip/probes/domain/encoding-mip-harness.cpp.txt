@@ -1,0 +1,329 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+/** @file planar_domain_encoding.cpp Measure our drawing rows against the domain on every geometry of X1's small configurations (D428). */
+
+#include "../../../stdafx.h"
+
+#include "../../../3rdparty/catch2/catch.hpp"
+
+#include "../../../junction/junction_spec.h"
+#include "../../../junction/planar/planar_domain.h"
+#include "../../../junction/planar/planar_domain_map.h"
+#include "../../../junction/planar/planar_draw.h"
+#include "../../../junction/planar/planar_shape_layer.h"
+#include "../../../junction/planar/planar_structure.h"
+#include "../../../junction/planar/planar_topology.h"
+
+#include <array>
+#include <chrono>
+#include <iostream>
+#include <cstdlib>
+#include <fstream>
+#include <map>
+#include <set>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "../../../safeguards.h"
+
+namespace {
+
+using Point = std::array<int, 2>;
+using Points = std::vector<Point>;
+
+PlanarShapeVariant LoadX1Enc()
+{
+	const std::string topo = "topology X1\nport W in E: AC1\nport S in N: BD1\nport N out N: C1, B1\nport E out E: A1, D1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\ncross A1: B1<\ncross B1: A1>\n";
+	std::string error;
+	const PlanarTopology t = ParsePlanarTopology(topo, &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant s = LoadPlanarStructureVariant(t, "tunnel T1 A1: B1\nstraight AC1: A1\nstraight BD1: B1\n", spec, report, &error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant v;
+	std::string why;
+	REQUIRE(LoadPlanarShapeVariant(t, s, "shape AC1: 2\nshape A1: 2\nshape C1: 1 0\nshape BD1: 0\nshape B1: 0\nshape D1: 1 2\nat A1: B1@0\nat B1: A1@0\n", v, why));
+	return v;
+}
+
+constexpr int STEPS[8][2] = {{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}};
+
+/** A geometry: per track name, piece index to length. */
+using Geometry = std::map<std::string, std::map<uint32_t, int>>;
+
+struct Example {
+	std::string varied;
+	std::string detail;
+	std::string notes;
+};
+
+struct Group {
+	uint32_t count = 0;
+	std::vector<Example> examples;
+};
+
+struct Tally {
+	std::array<uint32_t, 6> counts{}; ///< both accept, both reject, too strict, too loose, off grid, rows undecided.
+	std::map<std::string, Group> strict;
+	std::map<std::string, Group> loose;
+};
+
+const char *const CLASS_NAMES[6] = {"both accept", "both reject", "too strict", "too loose", "off grid", "rows undecided"};
+
+std::string Join(const std::set<std::string> &s)
+{
+	std::string out;
+	for (const std::string &x : s) out += (out.empty() ? "" : " | ") + x;
+	return out;
+}
+
+} // namespace
+
+TEST_CASE("planar domain: our rows against the domain on X1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT");
+	REQUIRE(report_path != nullptr);
+
+	PlanarShapeVariant v = LoadX1Enc();
+	std::string why;
+	REQUIRE(PlacePlanarShapeFlex(v, why));
+
+	const uint32_t n = static_cast<uint32_t>(v.structure.map.expanded.lines.size());
+	REQUIRE(n == 6);
+	std::map<std::string, uint32_t> idx;
+	for (uint32_t t = 0; t < n; t++) idx[v.structure.map.expanded.lines[t].name] = t;
+	const std::map<std::string, std::vector<int>> want_heads = {
+		{"AC1", {2, 1, 2, 3, 2}},
+		{"A1", {2, 1, 2, 3, 2, 1, 2, 3, 2}},
+		{"C1", {1, 0, 1, 2, 1, 0, -1, 0, 1, 0}},
+		{"BD1", {0, -1, 0, 1, 0}},
+		{"B1", {0, -1, 0, 1, 0, -1, 0, 1, 0}},
+		{"D1", {1, 0, 1, 2, 1, 2, 1, 2, 3, 2}},
+	};
+	for (const auto &[name, heads] : want_heads) {
+		REQUIRE(idx.count(name) == 1);
+		REQUIRE(v.tracks[idx[name]].pieces == heads);
+	}
+	const std::map<std::string, Point> starts = {{"AC1", {0, 5}}, {"A1", {4, 5}}, {"C1", {4, 5}}, {"BD1", {11, 12}}, {"B1", {11, 10}}, {"D1", {11, 10}}};
+	const Geometry base = {
+		{"AC1", {{0, 4}}},
+		{"A1", {{4, 12}, {8, 4}}},
+		{"C1", {{0, 3}, {9, 2}}},
+		{"BD1", {{0, 2}}},
+		{"B1", {{4, 6}, {8, 4}}},
+		{"D1", {{0, 1}, {9, 8}}},
+	};
+
+	/** The points of a geometry. */
+	auto points_of = [&](const Geometry &g) {
+		std::vector<Points> points(n);
+		for (const auto &[name, heads] : want_heads) {
+			Points &p = points[idx[name]];
+			Point cur = starts.at(name);
+			p.push_back(cur);
+			const auto it = g.find(name);
+			for (uint32_t k = 0; k < heads.size(); k++) {
+				int len = 0;
+				if (it != g.end()) {
+					const auto l = it->second.find(k);
+					if (l != it->second.end()) len = l->second;
+				}
+				const int h = ((heads[k] % 8) + 8) % 8;
+				cur[0] += len * STEPS[h][0];
+				cur[1] += len * STEPS[h][1];
+				p.push_back(cur);
+			}
+		}
+		return points;
+	};
+
+	PlanarDrawOptions o;
+	o.clearance = true;
+	o.clear_rows = true;
+	o.tidy = false;
+	o.pairwise = true;
+	o.pairwise_all_faces = true;
+	o.strict_span = o.strict_zero = o.crossing_flanks = true;
+	o.node_gaps = true;
+	o.bays = false;
+	o.curves = false;
+	o.skip_rows = {"port "};
+	o.fix_window = 0;
+
+	enum Verdict { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, OFF_GRID, UNDECIDED };
+
+	auto judge = [&](const Geometry &g, const std::string &varied, Tally &tally, Tally &total) {
+		const std::vector<Points> points = points_of(g);
+		for (const Points &p : points) {
+			if (!RasterPlanarDomainTrack(p).rule.empty()) {
+				tally.counts[OFF_GRID]++;
+				total.counts[OFF_GRID]++;
+				return;
+			}
+		}
+		PlanarDrawOptions opt = o;
+		opt.fix_points = &points;
+		const PlanarDrawResult r = CheckPlanarDrawable(v, 5.0, opt);
+		if (r.status != "Optimal" && r.status != "Infeasible") {
+			tally.counts[UNDECIDED]++;
+			total.counts[UNDECIDED]++;
+			return;
+		}
+		std::vector<std::string> notes;
+		const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(v, points, notes));
+		std::string note_text;
+		for (const std::string &s : notes) note_text += (note_text.empty() ? "" : "; ") + s;
+		const bool rows_ok = r.feasible;
+		Verdict c = rows_ok ? (d.legal ? BOTH_ACCEPT : LOOSE) : (d.legal ? STRICT : BOTH_REJECT);
+		tally.counts[c]++;
+		total.counts[c]++;
+		if (c == STRICT) {
+			std::set<std::string> fams;
+			std::string tags;
+			for (const std::string &t : r.conflict) {
+				fams.insert(t.substr(0, t.find(' ')));
+				tags += (tags.empty() ? "" : "; ") + t;
+			}
+			const std::string key = Join(fams);
+			for (Tally *x : {&tally, &total}) {
+				Group &grp = x->strict[key];
+				if (grp.count++ < 3) grp.examples.push_back({varied, tags, note_text});
+			}
+		} else if (c == LOOSE) {
+			std::set<std::string> rules;
+			std::string brk;
+			for (const PlanarDomainBreak &b : d.breaks) {
+				rules.insert(b.rule);
+				brk += (brk.empty() ? "" : "; ") + b.rule + ": " + b.why;
+			}
+			const std::string key = Join(rules);
+			for (Tally *x : {&tally, &total}) {
+				Group &grp = x->loose[key];
+				if (grp.count++ < 3) grp.examples.push_back({varied, brk, note_text});
+			}
+		}
+	};
+
+	{
+		const std::vector<Points> points = points_of(base);
+		std::vector<std::string> notes;
+		const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(v, points, notes));
+		std::string breaks;
+		for (const PlanarDomainBreak &b : d.breaks) breaks += b.rule + ": " + b.why + "; ";
+		INFO("domain breaks: " << breaks);
+		REQUIRE(d.legal);
+		PlanarDrawOptions opt = o;
+		opt.fix_points = &points;
+		const PlanarDrawResult r = CheckPlanarDrawable(v, 5.0, opt);
+		std::string tags;
+		for (const std::string &t : r.conflict) tags += t + "; ";
+		if (!r.feasible) {
+			auto diag = [&](const char *nm, PlanarDrawOptions x) {
+				x.fix_points = &points;
+				const PlanarDrawResult q = CheckPlanarDrawable(v, 5.0, x);
+				std::string st, cf;
+				for (const auto &[t, sl] : q.stretched) st += t + "=" + std::format("{}", sl) + "; ";
+				for (const std::string &t : q.conflict) cf += t + "; ";
+				WARN("DIAG " << nm << ": status " << q.status << " feasible " << q.feasible << " slack " << q.slack << " stretched " << st << " conflict " << cf);// << nm << ": status " << q.status << " feasible " << q.feasible << " slack " << q.slack << " stretched " << st << " conflict " << cf << "\n";
+			};
+			PlanarDrawOptions a = o; a.elastic = true; a.elastic_integer = true; diag("a", a);
+			PlanarDrawOptions b = o; b.clearance = false; diag("b", b);
+			PlanarDrawOptions c = o; c.strict_span = c.strict_zero = c.crossing_flanks = false; diag("c", c);
+		}
+		if (!r.feasible) FAIL("rows reject the base geometry (" << r.status << "): " << tags);
+	}
+
+	const auto t0 = std::chrono::steady_clock::now();
+	bool stopped = false;
+	auto over = [&]() {
+		if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() > 300.0) stopped = true;
+		return stopped;
+	};
+
+	auto vary = [](const std::vector<std::tuple<std::string, uint32_t, std::vector<int>>> &axes, auto &&visit) {
+		std::vector<size_t> pos(axes.size(), 0);
+		while (true) {
+			visit(pos);
+			size_t a = 0;
+			while (a < axes.size()) {
+				if (++pos[a] < std::get<2>(axes[a]).size()) break;
+				pos[a++] = 0;
+			}
+			if (a == axes.size()) return;
+		}
+	};
+
+	struct Config {
+		std::string name;
+		std::vector<std::tuple<std::string, uint32_t, std::vector<int>>> axes;
+	};
+	const std::vector<Config> configs = {
+		{"S1", {{"B1", 2, {0, 2, 4}}, {"B1", 3, {0, 1, 2, 3, 4}}, {"B1", 4, {2, 4, 6, 8, 10, 12, 14}}, {"B1", 5, {0, 1, 2, 3, 4}}, {"B1", 6, {4}}}},
+		{"S2", {{"A1", 2, {0, 2, 4}}, {"A1", 3, {0, 1, 2, 3, 4}}, {"A1", 4, {2, 4, 6, 8, 10, 12, 14, 16}}, {"A1", 5, {0, 1, 2, 3, 4}}, {"A1", 6, {4}}}},
+		{"N1", {{"C1", 0, {0, 1, 2, 3}}, {"C1", 1, {0, 2, 4}}, {"C1", 2, {0, 1, 2, 3}}, {"C1", 9, {2}}, {"A1", 0, {0, 2, 4}}, {"A1", 1, {0, 1, 2, 3}}, {"A1", 4, {12}}}},
+	};
+
+	std::map<std::string, Tally> per;
+	Tally total;
+	std::string first_undecided;
+	uint32_t ongrid = 0, undecided = 0;
+	for (const Config &cfg : configs) {
+		Tally &tally = per[cfg.name];
+		vary(cfg.axes, [&](const std::vector<size_t> &pos) {
+			if (over()) return;
+			Geometry g = base;
+			std::ostringstream varied;
+			for (size_t a = 0; a < cfg.axes.size(); a++) {
+				const auto &[name, piece, vals] = cfg.axes[a];
+				g[name][piece] = vals[pos[a]];
+				varied << (a == 0 ? "" : " ") << name << "." << piece << "=" << vals[pos[a]];
+			}
+			const uint32_t before_off = tally.counts[OFF_GRID], before_und = tally.counts[UNDECIDED];
+			judge(g, varied.str(), tally, total);
+			if (tally.counts[OFF_GRID] == before_off) ongrid++;
+			if (tally.counts[UNDECIDED] != before_und) {
+				undecided++;
+				if (first_undecided.empty()) first_undecided = varied.str();
+			}
+		});
+	}
+
+	std::ofstream out(report_path);
+	REQUIRE(out.good());
+	out << "Encoding report on X1: our rows against the domain\n";
+	if (stopped) out << "ENUMERATION STOPPED past 300 s wall; counts are partial.\n";
+	out << "wall " << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << " s\n\n";
+	auto write = [&](const std::string &title, const Tally &t) {
+		out << "== " << title << " ==\n";
+		for (int c = 0; c < 6; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << "\n";
+		for (int kind = 0; kind < 2; kind++) {
+			const auto &groups = kind == 0 ? t.strict : t.loose;
+			out << (kind == 0 ? " too strict, by conflict tag families:\n" : " too loose, by domain break rules:\n");
+			for (const auto &[key, grp] : groups) {
+				out << "  [" << key << "] count " << grp.count << "\n";
+				for (const Example &e : grp.examples) {
+					out << "    varied: " << e.varied << "\n";
+					out << (kind == 0 ? "    conflict: " : "    breaks: ") << e.detail << "\n";
+					out << "    notes: " << e.notes << "\n";
+				}
+			}
+		}
+		out << "\n";
+	};
+	for (const Config &cfg : configs) write(cfg.name, per[cfg.name]);
+	write("total", total);
+	out.close();
+
+	for (const Config &cfg : configs) {
+		const Tally &t = per[cfg.name];
+		WARN(cfg.name << ": both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", off grid " << t.counts[4] << ", rows undecided " << t.counts[5]);
+	}
+	if (ongrid > 0 && undecided * 20 > ongrid) FAIL("more than 5% of the on-grid geometries are rows undecided: " << undecided << " of " << ongrid << ", e.g. " << first_undecided);
+}
