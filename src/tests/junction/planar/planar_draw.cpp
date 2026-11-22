@@ -2842,6 +2842,17 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	for (const std::string &line : r.log) WARN(line);
 	WARN(fmt::format("committed {} inserts, pruned {}, stopped '{}'", r.committed_count, r.pruned, r.stopped));
 	WARN(fmt::format("final: {}", describe(r.final)));
+	/* Grid check (D382 probe): per axis, the parity of the across coordinate at both ends of every axis piece of positive length. On the game grid each axis has one parity. */
+	std::array<std::array<int, 2>, 2> grid_parity{};
+	for (size_t t = 0; t < r.final.points.size() && t < flex_c.tracks.size(); t++) {
+		for (size_t i = 0; i < flex_c.tracks[t].pieces.size() && i < r.final.lengths[t].size() && i + 1 < r.final.points[t].size(); i++) {
+			const int h = ((flex_c.tracks[t].pieces[i] % 8) + 8) % 8;
+			if (h % 2 != 0 || r.final.lengths[t][i] < 0.5) continue;
+			const int across = h % 4 == 0 ? 0 : 1;
+			for (const size_t at : {i, i + 1}) grid_parity[across][((r.final.points[t][at][across] % 2) + 2) % 2]++;
+		}
+	}
+	WARN(fmt::format("grid check: N/S piece ends x even {} odd {}; E/W piece ends y even {} odd {}", grid_parity[0][0], grid_parity[0][1], grid_parity[1][0], grid_parity[1][1]));
 	WARN(fmt::format("pipeline wall time {:.1f} s", std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count()));
 	CHECK(r.final.status == "Optimal");
 }
