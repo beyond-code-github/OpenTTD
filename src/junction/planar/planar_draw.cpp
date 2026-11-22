@@ -1546,6 +1546,8 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		final_options.elastic_families.clear();
 		final_options.elastic_tidy = 0;
 	}
+	out.last_round = last;
+	out.last_input = last_input;
 	out.final = CheckPlanarDrawable(v, options.final_seconds, final_options);
 	log_round("final", 1, out.final);
 	if (out.final.status != "Optimal") out.stopped = "final";

@@ -365,6 +365,22 @@ TEST_CASE("planar draw: T1 keep-apart conflict read-out", "[.][planart1sep]")
 	for (const std::string &line : r.log) WARN(line);
 	WARN(fmt::format("stopped '{}', final {}", r.stopped, r.final.status));
 	for (const std::string &tag : r.final.conflict) WARN("conflict " + tag);
+	const auto points_of = [](const std::vector<std::array<int, 2>> &pts) {
+		std::string s;
+		for (size_t i = 0; i < pts.size(); i++) s += fmt::format(" {}:({},{})", i, pts[i][0], pts[i][1]);
+		return s;
+	};
+	for (const uint32_t t : {7U, 12U, 14U}) {
+		if (t < r.last_input.size()) WARN(fmt::format("input {} {}:{}", t, map.tracks[t].name, points_of(r.last_input[t])));
+		if (t < r.last_round.points.size()) WARN(fmt::format("round {} {}:{}", t, map.tracks[t].name, points_of(r.last_round.points[t])));
+		if (t < r.last_round.lengths.size()) {
+			std::string s;
+			for (size_t i = 0; i < r.last_round.lengths[t].size(); i++) s += fmt::format(" {}:{:.2f}", i, r.last_round.lengths[t][i]);
+			WARN(fmt::format("lengths {} {}:{}", t, map.tracks[t].name, s));
+		}
+	}
+	WARN(fmt::format("last round slack {:.3f}", r.last_round.slack));
+	for (const auto &[tag, amount] : r.last_round.stretched) WARN(fmt::format("stretched {} {:.3f}", tag, amount));
 }
 
 TEST_CASE("planar draw: elastic mode names a short curve", "[junction][planar][planardraw]")

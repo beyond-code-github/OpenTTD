@@ -192,6 +192,8 @@ struct PlanarDrawPipelineResult {
 	size_t pruned = 0; ///< Inserts the prune held at 0.
 	std::vector<std::string> log; ///< One line per round: stage, round, status, total slack, curve slack, box, length.
 	std::string stopped; ///< Empty, or the stage that ended without an Optimal round.
+	PlanarDrawResult last_round; ///< The last Optimal LP round (a read-out: its drawing and the rows that stretched).
+	std::vector<std::vector<std::array<int, 2>>> last_input; ///< The input drawing of the last Optimal round, from which the final took its sides (a read-out).
 };
 
 /**
