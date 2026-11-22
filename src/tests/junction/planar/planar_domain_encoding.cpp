@@ -326,8 +326,8 @@ Runs PolylineRuns(const std::vector<int> &heads, const Lengths &lengths)
 	return runs;
 }
 
-/** Every piece-length assignment on the pieces whose polyline is exactly runs (at most cap; capped says it stopped there). */
-std::vector<Lengths> Representations(const std::vector<int> &pieces, const Runs &runs, size_t cap, bool *capped = nullptr)
+/** Every piece-length assignment on the pieces whose polyline is exactly runs (at most cap; capped says it stopped there). With flex (the flex middles), the search is flank-first: a run takes the earliest regular piece it can, flex middles only when the order needs them (D432). */
+std::vector<Lengths> Representations(const std::vector<int> &pieces, const Runs &runs, size_t cap, bool *capped = nullptr, const std::vector<uint32_t> *flex = nullptr)
 {
 	std::vector<Lengths> out;
 	if (capped != nullptr) *capped = false;
@@ -343,9 +343,11 @@ std::vector<Lengths> Representations(const std::vector<int> &pieces, const Runs 
 		}
 		const int h = ((pieces[k] % 8) + 8) % 8;
 		const int unit = h % 2 == 0 ? 2 : 1;
+		const bool middle = flex == nullptr || std::ranges::find(*flex, static_cast<uint32_t>(k)) != flex->end();
 		/* Stay in the current run (any amount from 0), or move on to the next run once this one is used up (at least one unit). */
 		if (!runs.empty() && runs[r].first == h) {
-			for (int a = 0; a <= left; a += unit) {
+			for (int i = 0; i <= left / unit; i++) {
+				const int a = (middle ? i : left / unit - i) * unit;
 				cur[k] = a;
 				self(self, k + 1, r, left - a);
 			}
@@ -354,7 +356,9 @@ std::vector<Lengths> Representations(const std::vector<int> &pieces, const Runs 
 			self(self, k + 1, r, left);
 		}
 		if (!runs.empty() && left == 0 && r + 1 < runs.size() && runs[r + 1].first == h) {
-			for (int a = unit; a <= runs[r + 1].second; a += unit) {
+			const int top = runs[r + 1].second / unit;
+			for (int i = 1; i <= top; i++) {
+				const int a = (middle ? i : top + 1 - i) * unit;
 				cur[k] = a;
 				self(self, k + 1, r + 1, runs[r + 1].second - a);
 			}
@@ -496,7 +500,7 @@ struct Contracted {
 };
 
 /**
- * The contracted variant of a polyline (D432): per track one representation of its runs on the variant's pieces, the pieces with length kept in order and equal consecutive headings merged, flex and steps empty.
+ * The contracted variant of a polyline (D432): per track one representation of its runs on the variant's pieces, the pieces with length kept in order and equal consecutive headings merged, flex empty; steps are the contracted pieces that came from a flex middle (S-bend inserts).
  * Each event piece is remapped to the contracted piece holding the crossing with Shape's heading (mod 8).
  * @return The variant and its points; none when the runs have no representation or a crossing has no such piece (other shape).
  */
@@ -512,7 +516,7 @@ std::optional<Contracted> ContractedVariant(const X1Fixture &f, const Geometry &
 		if (it != g.end()) {
 			for (const auto &[k, len] : it->second) lens[k] = len;
 		}
-		const std::vector<Lengths> reps = Representations(h, PolylineRuns(h, lens), 1);
+		const std::vector<Lengths> reps = Representations(h, PolylineRuns(h, lens), 1, nullptr, &f.v.tracks[t].flex);
 		if (reps.empty()) return std::nullopt;
 		PlanarShapeTrack &tr = out.v.tracks[t];
 		tr.pieces.clear();
@@ -521,9 +525,12 @@ std::optional<Contracted> ContractedVariant(const X1Fixture &f, const Geometry &
 		std::vector<int> kept;
 		for (size_t k = 0; k < h.size(); k++) {
 			if (reps[0][k] <= 0) continue;
+			const bool middle = std::ranges::find(f.v.tracks[t].flex, static_cast<uint32_t>(k)) != f.v.tracks[t].flex.end();
 			if (!tr.pieces.empty() && tr.pieces.back() == h[k]) {
 				kept.back() += reps[0][k];
+				if (middle && std::ranges::find(tr.steps, static_cast<uint32_t>(tr.pieces.size() - 1)) == tr.steps.end()) tr.steps.push_back(static_cast<uint32_t>(tr.pieces.size() - 1));
 			} else {
+				if (middle) tr.steps.push_back(static_cast<uint32_t>(tr.pieces.size()));
 				tr.pieces.push_back(h[k]);
 				kept.push_back(reps[0][k]);
 			}
@@ -603,8 +610,11 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	fx.options.cross_piece = crosspiece;
 
 	/* The read-out of a contracted variant: no flex, so Refine is not needed unless the read-out says so. */
-	auto readouts = [&](const PlanarShapeVariant &cv) {
+	auto readouts = [&](const PlanarShapeVariant &contracted) {
 		Readouts r;
+		/* The read-outs get the variant with steps cleared (production's steps cannot yet hold a step at a track's end); only the lead rows read them. */
+		PlanarShapeVariant cv = contracted;
+		for (PlanarShapeTrack &track : cv.tracks) track.steps.clear();
 		PlanarDrawOptions o = fx.options;
 		if (rules != "all") o.strict_span = o.strict_zero = o.crossing_flanks = false;
 		if (rules == "span" || rules == "zero") {
@@ -622,7 +632,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		r.program = CheckPlanarDrawable(cv, 5.0, p);
 		REQUIRE(r.keep.status == "built");
 		REQUIRE(r.program.status == "built");
-		if (lead) r.lead = PlanarNodeLeadRows(cv);
+		if (lead) r.lead = PlanarNodeLeadRows(contracted);
 		return r;
 	};
 	auto polyline_key = [&](const Geometry &g) {
@@ -907,6 +917,41 @@ TEST_CASE("planar draw: node lead rows on X1", "[junction][planar][planardomain]
 	/* With a piece-0 run in front of it, it holds. */
 	used["A1"] = {{0, 1}, {1, 1}, {4, 12}};
 	CHECK(PlanarPointRowHolds(*by["lead A1 start 1"], f.PointsOf(used)));
+}
+
+TEST_CASE("planar draw: node lead rows on contracted lines", "[junction][planar][planardomain]")
+{
+	const X1Fixture f;
+	/* S1's first too-loose polyline: B1 = 1x2, 0x10 contracted. B1's first piece is its toward insert (steps), the node-side flank is absent: the row fails. */
+	Geometry s1 = f.base;
+	s1["B1"] = {{3, 2}, {4, 2}, {6, 4}, {8, 4}};
+	const std::optional<Contracted> cv = ContractedVariant(f, s1);
+	REQUIRE(cv.has_value());
+	const PlanarShapeTrack &b1 = cv->v.tracks[f.idx.at("B1")];
+	CHECK(b1.pieces == std::vector<int>({1, 0}));
+	CHECK(b1.steps == std::vector<uint32_t>({0}));
+	const std::vector<PlanarPointRow> rows = PlanarNodeLeadRows(cv->v);
+	std::map<std::string, const PlanarPointRow *> by;
+	for (const PlanarPointRow &r : rows) by[r.tag] = &r;
+	REQUIRE(by.count("lead B1 start 0") == 1);
+	CHECK_FALSE(PlanarPointRowHolds(*by["lead B1 start 0"], cv->points));
+	/* X1's base contracted: every lead row holds. */
+	const std::optional<Contracted> base = ContractedVariant(f, f.base);
+	REQUIRE(base.has_value());
+	for (const PlanarPointRow &r : PlanarNodeLeadRows(base->v)) {
+		INFO(r.tag);
+		CHECK(PlanarPointRowHolds(r, base->points));
+	}
+	/* The D430 outward case: A1 leaves the split on its SE insert (a step away from its sibling): no lead row fails. */
+	Geometry away = f.base;
+	away["A1"] = {{3, 2}, {4, 12}, {8, 4}};
+	const std::optional<Contracted> av = ContractedVariant(f, away);
+	REQUIRE(av.has_value());
+	CHECK(av->v.tracks[f.idx.at("A1")].steps == std::vector<uint32_t>({0}));
+	for (const PlanarPointRow &r : PlanarNodeLeadRows(av->v)) {
+		INFO(r.tag);
+		CHECK(PlanarPointRowHolds(r, av->points));
+	}
 }
 
 TEST_CASE("planar draw: keep-apart on fixed points agrees with the program on X1", "[junction][planar][planardomain]")
