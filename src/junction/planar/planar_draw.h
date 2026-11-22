@@ -43,6 +43,23 @@ struct PlanarKeepApartPair {
 /** Whether a pair holds on given points (as PlanarDrawResult::points): it is skipped, or every row of one of its candidates holds. */
 bool PlanarKeepApartHolds(const PlanarKeepApartPair &pair, const std::vector<std::vector<std::array<int, 2>>> &points);
 
+/** A row on fixed points: s . (point q - point p) >= least, p and q as (track, point index). */
+struct PlanarPointRow {
+	std::string tag;
+	std::array<uint32_t, 2> p;
+	std::array<uint32_t, 2> q;
+	std::array<int, 2> s;
+	int least;
+};
+
+/** Whether a point row holds on given points (as PlanarDrawResult::points). */
+bool PlanarPointRowHolds(const PlanarPointRow &row, const std::vector<std::vector<std::array<int, 2>>> &points);
+
+/**
+ * The node lead rows (rule A, D400): no S-bend before a node leg's separation point. Per track end at a node (not a port): when its nearest flex pair starts at the end (the track's first flex middle is piece 1 at its start; its last flex middle is the second-last piece at its end), the end piece travels at least one game piece: s = STEP[end piece heading mod 8], least 2, between the end piece's two points (start: p = (t, 0), q = (t, 1); end: p = (t, n - 1), q = (t, n), n the piece count). Tag `lead <track name> start|end`. A track that starts at a port, ends at a node and has no events (D412: its stretch from the port to its first node may have total length 0) gets none; this is narrower than the program's own port_stretch, which also covers node to out-port lines.
+ */
+std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v);
+
 /** The result of the drawing program. */
 struct PlanarDrawResult {
 	bool feasible = false; ///< A drawing exists.
@@ -104,6 +121,7 @@ struct PlanarDrawOptions {
 	bool sep_extremal = false; ///< With pairwise and a fixed side (a measurement): one row per pair, between the endpoints whose projections on the side's axis can bind (fixed headings, lengths >= 0), instead of all four endpoint pairs; exact.
 	bool bays = true; ///< On by default since D420 (agrees with V's PSG 197); the bay rows (SPEC-slots-lengths §8.1, D420): on every non-prio route path, the travel from its last topology split or port to each topology merge is at least rules.bay.
 	bool curves = true; ///< On by default since D420 (agrees with V's PSG 197); the curve spacing rows (SPEC-slots-lengths §8.1, §8.2, D420): Shape's bends along every route path keep curve_same, curve_opposite and curve_window; flex and step inserts count as travel, not bends (§10.3), except corridor steps and committed flex inserts (below).
+	bool node_lead = false; ///< Rule A probe (D400, engineer 2026-11-23): write PlanarNodeLeadRows as hard rows (tag lead).
 	bool node_gaps = false; ///< Node gaps (SPEC-slots-lengths §8.1 node_leg, D400): a track from a node to a node with no event travels at least rules.node_leg, or 0 (a trident) where node_gap_from says so (tags `leg`, `leg zero`).
 	const std::vector<std::vector<double>> *node_gap_from = nullptr; ///< With node_gaps: a drawing's lengths (as PlanarDrawResult::lengths); a node-to-node track whose travel there is below 1 half tile is held at 0, every other at least rules.node_leg. Null: every one at least rules.node_leg.
 	bool corridor = false; ///< The corridor family (D421): beside tracks (copies, rows) as offset curves of their parent chain one lane to their side, with an exact one-lane opening and closing step at their nodes.

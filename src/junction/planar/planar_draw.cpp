@@ -418,6 +418,17 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				eq({{point[t][i + 1][axis], 1}, {point[t][i][axis], -1}, {length[t][i].variable, -step[axis] * length[t][i].coefficient}}, 0, tag);
 			}
 		}
+		if (options.node_lead) {
+			for (const PlanarPointRow &r : PlanarNodeLeadRows(v)) {
+				if (r.p[0] != t) continue;
+				Terms terms;
+				for (int axis = 0; axis < 2; axis++) {
+					terms.emplace_back(point[t][r.q[1]][axis], r.s[axis]);
+					terms.emplace_back(point[t][r.p[1]][axis], -r.s[axis]);
+				}
+				row(std::move(terms), r.least, JunctionMilp::INF, r.tag);
+			}
+		}
 		/* Grid (D382 probe): every point of an axis run of positive length lies on the run's tile-centre line, N/S on odd x and E/W on odd y, so it is odd there (a seed of the parity pass before the solve). A run is the pieces of one heading joined through inserts held at 0; it is positive when a piece of it has a least length, or when it holds a whole flex group whose inserts are all held at 0 (the group's flex row). */
 		if (options.grid) {
 			std::vector<bool> run_positive = positive;
@@ -2307,4 +2318,29 @@ bool PlanarKeepApartHolds(const PlanarKeepApartPair &pair, const std::vector<std
 			return c.s[0] * (q[0] - p[0]) + c.s[1] * (q[1] - p[1]) >= c.spacing;
 		});
 	});
+}
+
+bool PlanarPointRowHolds(const PlanarPointRow &row, const std::vector<std::vector<std::array<int, 2>>> &points)
+{
+	const std::array<int, 2> &p = points[row.p[0]][row.p[1]];
+	const std::array<int, 2> &q = points[row.q[0]][row.q[1]];
+	return row.s[0] * (q[0] - p[0]) + row.s[1] * (q[1] - p[1]) >= row.least;
+}
+
+std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
+{
+	std::vector<PlanarPointRow> rows;
+	const PlanarTrackMap &map = v.structure.map;
+	for (uint32_t t = 0; t < v.tracks.size(); t++) {
+		const std::vector<int> &pieces = v.tracks[t].pieces;
+		const std::vector<uint32_t> &flex = v.tracks[t].flex;
+		if (pieces.empty() || flex.empty()) continue;
+		/* D412: an in-port line with no event before its node may have total length 0. */
+		if (map.expanded.lines[t].from.port && !map.expanded.lines[t].to.port && map.events[t].empty()) continue;
+		const uint32_t n = static_cast<uint32_t>(pieces.size());
+		const auto step = [&](uint32_t piece) { return PlanarModel::STEP[((pieces[piece] % 8) + 8) % 8]; };
+		if (!map.expanded.lines[t].from.port && flex.front() == 1) rows.push_back({fmt::format("lead {} start", map.tracks[t].name), {t, 0}, {t, 1}, step(0), 2});
+		if (!map.expanded.lines[t].to.port && n >= 2 && flex.back() == n - 2) rows.push_back({fmt::format("lead {} end", map.tracks[t].name), {t, n - 1}, {t, n}, step(n - 1), 2});
+	}
+	return rows;
 }
