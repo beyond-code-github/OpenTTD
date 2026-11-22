@@ -291,6 +291,79 @@ struct PolyClass {
 	std::string detail;
 };
 
+/**
+ * Arc consistency over the binary constraints (D428): a representation of track a survives against track b when some representation of b makes every constraint over exactly {a, b} hold
+ * (keep-apart pairs, point rows with those two tracks, program rows by the partial check with only a and b placed). Prunes reps (and lens in step) until no list changes.
+ * Returns 0 consistent, 1 a list emptied (rejection), 2 more than cap pair evaluations (undecided); evals counts the pair evaluations.
+ */
+int ArcConsistency(uint32_t n, std::vector<std::vector<Points>> &reps, std::vector<std::vector<Lengths>> *lens, const std::vector<PlanarKeepApartPair> &keeps, const std::vector<PlanarPointRow> &rows, const PlanarProgram &program, uint64_t cap, uint64_t &evals)
+{
+	std::vector<std::vector<std::vector<const PlanarKeepApartPair *>>> keep_of(n, std::vector<std::vector<const PlanarKeepApartPair *>>(n));
+	std::vector<std::vector<std::vector<const PlanarPointRow *>>> row_of(n, std::vector<std::vector<const PlanarPointRow *>>(n));
+	for (const PlanarKeepApartPair &p : keeps) {
+		if (p.tracks[0] >= n || p.tracks[1] >= n || p.tracks[0] == p.tracks[1]) continue;
+		keep_of[p.tracks[0]][p.tracks[1]].push_back(&p);
+		keep_of[p.tracks[1]][p.tracks[0]].push_back(&p);
+	}
+	for (const PlanarPointRow &r : rows) {
+		std::set<uint32_t> set;
+		for (const PlanarPointRow::Term &t : r.terms) set.insert(t.point[0]);
+		if (set.size() != 2) continue;
+		const uint32_t a = *set.begin(), b = *set.rbegin();
+		row_of[a][b].push_back(&r);
+		row_of[b][a].push_back(&r);
+	}
+	std::vector<Points> cur(n);
+	/* Whether a at ra and b at rb satisfy every binary constraint over {a, b}. */
+	auto holds = [&](uint32_t a, const Points &ra, uint32_t b, const Points &rb) {
+		evals++;
+		cur[a] = ra;
+		cur[b] = rb;
+		if (!std::ranges::all_of(keep_of[a][b], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); })) return false;
+		if (!std::ranges::all_of(row_of[a][b], [&](const PlanarPointRow *r) { return PlanarPointRowHolds(*r, cur); })) return false;
+		std::vector<bool> placed(n, false);
+		placed[a] = placed[b] = true;
+		return CheckPlanarProgramOnPoints(program, cur, placed).broken.empty();
+	};
+	std::vector<std::pair<uint32_t, uint32_t>> queue;
+	std::set<std::pair<uint32_t, uint32_t>> queued;
+	for (uint32_t a = 0; a < n; a++) {
+		for (uint32_t b = 0; b < n; b++) {
+			if (a != b) {
+				queue.emplace_back(a, b);
+				queued.insert({a, b});
+			}
+		}
+	}
+	while (!queue.empty()) {
+		const auto [a, b] = queue.back();
+		queue.pop_back();
+		queued.erase({a, b});
+		bool changed = false;
+		for (size_t r = 0; r < reps[a].size();) {
+			bool supported = false;
+			for (size_t s = 0; s < reps[b].size() && !supported; s++) {
+				if (evals > cap) return 2;
+				supported = holds(a, reps[a][r], b, reps[b][s]);
+			}
+			if (supported) {
+				r++;
+				continue;
+			}
+			reps[a].erase(reps[a].begin() + static_cast<std::ptrdiff_t>(r));
+			if (lens != nullptr) (*lens)[a].erase((*lens)[a].begin() + static_cast<std::ptrdiff_t>(r));
+			changed = true;
+		}
+		if (reps[a].empty()) return 1;
+		if (!changed) continue;
+		for (uint32_t c = 0; c < n; c++) {
+			if (c != a && c != b && queued.insert({c, a}).second) queue.emplace_back(c, a);
+		}
+		if (queued.insert({b, a}).second) queue.emplace_back(b, a);
+	}
+	return 0;
+}
+
 } // namespace
 
 TEST_CASE("planar draw: keep-apart pairs hold on given points", "[junction][planar][planardomain]")
@@ -500,6 +573,68 @@ TEST_CASE("planar domain: representations of a polyline", "[junction][planar][pl
 	CHECK(capped);
 }
 
+TEST_CASE("planar domain: arc consistency prunes and proves", "[junction][planar][planardomain]")
+{
+	const X1Fixture f;
+	const PlanarProgram no_program; /* Only the hand constraints. */
+	auto lists = [&]() {
+		std::vector<std::vector<Points>> reps(f.n);
+		for (const auto &[name, h] : f.heads) {
+			Lengths l(h.size(), 0);
+			for (const auto &[k, len] : f.base.at(name)) l[k] = len;
+			for (const Lengths &r : Representations(h, PolylineRuns(h, l), 20000)) {
+				Geometry one;
+				for (size_t k = 0; k < r.size(); k++) {
+					if (r[k] != 0) one[name][static_cast<uint32_t>(k)] = r[k];
+				}
+				reps[f.idx.at(name)].push_back(f.PointsOf(one)[f.idx.at(name)]);
+			}
+		}
+		return reps;
+	};
+	const uint32_t a1 = f.idx.at("A1"), b1 = f.idx.at("B1");
+	const std::vector<PlanarKeepApartPair> no_pairs;
+
+	/* A binary constraint no pair satisfies (0 >= 1 over A1 and B1): a list empties, the polyline is rejected. */
+	{
+		std::vector<std::vector<Points>> reps = lists();
+		const PlanarPointRow never{"never", {{{a1, 0}, {0, 0}}, {{b1, 0}, {0, 0}}}, 1};
+		uint64_t evals = 0;
+		CHECK(ArcConsistency(f.n, reps, nullptr, no_pairs, {never}, no_program, 5000000, evals) == 1);
+		CHECK(evals > 0);
+	}
+
+	/* A binary constraint only one representation of A1 satisfies, with any B1: A1's list is pruned to it. */
+	{
+		std::vector<std::vector<Points>> reps = lists();
+		const size_t before = reps[a1].size();
+		REQUIRE(before > 1);
+		PlanarPointRow only;
+		bool found = false;
+		for (uint32_t k = 0; k < reps[a1][0].size() && !found; k++) {
+			for (int axis = 0; axis < 2 && !found; axis++) {
+				int best = INT_MIN;
+				size_t count = 0;
+				for (const Points &p : reps[a1]) {
+					if (p[k][axis] > best) {
+						best = p[k][axis];
+						count = 0;
+					}
+					if (p[k][axis] == best) count++;
+				}
+				if (count != 1) continue;
+				found = true;
+				only = PlanarPointRow{"only", {{{a1, k}, axis == 0 ? std::array<int, 2>{1, 0} : std::array<int, 2>{0, 1}}, {{b1, 0}, {0, 0}}}, best};
+			}
+		}
+		REQUIRE(found);
+		uint64_t evals = 0;
+		CHECK(ArcConsistency(f.n, reps, nullptr, no_pairs, {only}, no_program, 5000000, evals) == 0);
+		CHECK(reps[a1].size() == 1);
+		CHECK(!reps[b1].empty());
+	}
+}
+
 TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planardomainenc]")
 {
 	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT");
@@ -593,7 +728,15 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 				}
 				}
 			}
+			bool run_search = false;
+			uint64_t evals = 0;
 			if (verdict != 2 && !std::ranges::any_of(reps, [](const std::vector<Points> &r) { return r.empty(); })) {
+				/* Arc consistency first: an emptied list rejects the polyline, more than 5,000,000 pair evaluations leave it undecided. */
+				const int ac = ArcConsistency(f.n, reps, &replens, readout.keep_apart, lead_rows, program_out.program, 5000000, evals);
+				if (ac == 0) run_search = true; else verdict = ac;
+			}
+			nodes_used = static_cast<double>(evals);
+			if (run_search) {
 				std::vector<uint32_t> order(f.n);
 				for (uint32_t t = 0; t < f.n; t++) order[t] = t;
 				std::ranges::stable_sort(order, [&](uint32_t a, uint32_t b) { return reps[a].size() < reps[b].size(); });
@@ -624,7 +767,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 					return false;
 				};
 				const bool found = search(search, 0);
-				nodes_used = static_cast<double>(nodes);
+				nodes_used = static_cast<double>(nodes + evals);
 				verdict = found ? 0 : (nodes > 50000 ? 2 : 1);
 				if (found) {
 					witness.resize(f.n);
