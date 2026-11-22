@@ -1895,6 +1895,13 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 		std::string sum = fmt::format("node legs summary (skipped {}):", skipped);
 		for (size_t k = 0; k < 3; k++) sum += fmt::format(" {} {} [0:{} 1:{} 2:{} 3:{} >=4:{}];", kinds[k], total[k], hist[k][0], hist[k][1], hist[k][2], hist[k][3], hist[k][4]);
 		say(sum);
+
+		std::ofstream tr("/home/pete/OpenTTD/.claude/ng1/build-rel/vtravel.txt");
+		for (size_t t = 0; t < nt; t++) {
+			const std::vector<std::array<int, 2>> &pts = vref[t];
+			if (pts.size() < 2 || pts.size() != shaped.tracks[t].pieces.size() + 1) continue;
+			tr << map.tracks[t].name << " " << travel(pts, 0, pts.size() - 1) << " " << pts.size() - 1 << "\n";
+		}
 	}
 
 	PlanarDrawPins p8 = pins;
@@ -2997,6 +3004,16 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 		WARN(fmt::format("soft: slack {:.2f}, stretched tags {}:{}", r.final.slack, r.final.stretched.size(), top));
 	}
 	WARN(fmt::format("pipeline wall time {:.1f} s", std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count()));
+	{
+		std::ofstream tr("/home/pete/OpenTTD/.claude/ng1/build-rel/ourtravel.txt");
+		for (size_t t = 0; t < r.last_round.points.size() && t < flex_c.tracks.size(); t++) {
+			const auto &pts = r.last_round.points[t];
+			if (pts.size() < 2) continue;
+			int sum = 0;
+			for (size_t i = 0; i + 1 < pts.size(); i++) sum += std::max(std::abs(pts[i + 1][0] - pts[i][0]), std::abs(pts[i + 1][1] - pts[i][1]));
+			tr << flex_c.structure.map.tracks[t].name << " " << sum << " " << pts.size() - 1 << "\n";
+		}
+	}
 	CHECK(r.final.status == "Optimal");
 }
 
