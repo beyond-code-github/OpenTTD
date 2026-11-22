@@ -420,11 +420,10 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 		if (options.node_lead) {
 			for (const PlanarPointRow &r : PlanarNodeLeadRows(v)) {
-				if (r.p[0] != t) continue;
+				if (r.terms.front().point[0] != t) continue;
 				Terms terms;
-				for (int axis = 0; axis < 2; axis++) {
-					terms.emplace_back(point[t][r.q[1]][axis], r.s[axis]);
-					terms.emplace_back(point[t][r.p[1]][axis], -r.s[axis]);
+				for (const PlanarPointRow::Term &term : r.terms) {
+					for (int axis = 0; axis < 2; axis++) terms.emplace_back(point[t][term.point[1]][axis], term.c[axis]);
 				}
 				row(std::move(terms), r.least, JunctionMilp::INF, r.tag);
 			}
@@ -2322,9 +2321,12 @@ bool PlanarKeepApartHolds(const PlanarKeepApartPair &pair, const std::vector<std
 
 bool PlanarPointRowHolds(const PlanarPointRow &row, const std::vector<std::vector<std::array<int, 2>>> &points)
 {
-	const std::array<int, 2> &p = points[row.p[0]][row.p[1]];
-	const std::array<int, 2> &q = points[row.q[0]][row.q[1]];
-	return row.s[0] * (q[0] - p[0]) + row.s[1] * (q[1] - p[1]) >= row.least;
+	int sum = 0;
+	for (const PlanarPointRow::Term &term : row.terms) {
+		const std::array<int, 2> &p = points[term.point[0]][term.point[1]];
+		sum += term.c[0] * p[0] + term.c[1] * p[1];
+	}
+	return sum >= row.least;
 }
 
 std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
@@ -2358,10 +2360,11 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 				if (m != 1 + 2 * k) break;
 				k++;
 				const int d = sign(pieces[m] - pieces[m - 1]);
-				if (sib == 0 || d == sib) {
-					rows.push_back({fmt::format("lead {} start", map.tracks[t].name), {t, 0}, {t, m}, step(0), 2});
-					break;
-				}
+				if (sib != 0 && d != sib) continue;
+				/* 64 * STEP[h0] . (point m - point 0) - STEP[pieces[m]] . (point m + 1 - point m) >= 0. */
+				const std::array<int, 2> s0 = step(0), sm = step(m);
+				rows.push_back(PlanarPointRow{fmt::format("lead {} start {}", map.tracks[t].name, m),
+					{{{t, m}, {64 * s0[0] + sm[0], 64 * s0[1] + sm[1]}}, {{t, 0}, {-64 * s0[0], -64 * s0[1]}}, {{t, m + 1}, {-sm[0], -sm[1]}}}, 0});
 			}
 		}
 		if (!to.port && n >= 2 && map.expanded.nodes[to.index].in.size() == 2) {
@@ -2372,10 +2375,11 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 				if (n < 2 + 2 * k || m != n - 2 - 2 * k) break;
 				k++;
 				const int d = sign(pieces[m] - pieces[m + 1]);
-				if (sib == 0 || d == sib) {
-					rows.push_back({fmt::format("lead {} end", map.tracks[t].name), {t, m + 1}, {t, n}, step(n - 1), 2});
-					break;
-				}
+				if (sib != 0 && d != sib) continue;
+				/* 64 * STEP[last] . (point n - point m + 1) - STEP[pieces[m]] . (point m + 1 - point m) >= 0; the insert piece runs forward, so its dot is >= 0. */
+				const std::array<int, 2> se = step(n - 1), sm = step(m);
+				rows.push_back(PlanarPointRow{fmt::format("lead {} end {}", map.tracks[t].name, m),
+					{{{t, n}, {64 * se[0], 64 * se[1]}}, {{t, m + 1}, {-64 * se[0] - sm[0], -64 * se[1] - sm[1]}}, {{t, m}, {sm[0], sm[1]}}}, 0});
 			}
 		}
 	}

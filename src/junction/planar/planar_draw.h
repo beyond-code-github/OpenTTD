@@ -43,12 +43,14 @@ struct PlanarKeepApartPair {
 /** Whether a pair holds on given points (as PlanarDrawResult::points): it is skipped, or every row of one of its candidates holds. */
 bool PlanarKeepApartHolds(const PlanarKeepApartPair &pair, const std::vector<std::vector<std::array<int, 2>>> &points);
 
-/** A row on fixed points: s . (point q - point p) >= least, p and q as (track, point index). */
+/** A row on fixed points: sum over terms of c . point(track, index) >= least. */
 struct PlanarPointRow {
+	struct Term {
+		std::array<uint32_t, 2> point; ///< (track, point index).
+		std::array<int, 2> c;
+	};
 	std::string tag;
-	std::array<uint32_t, 2> p;
-	std::array<uint32_t, 2> q;
-	std::array<int, 2> s;
+	std::vector<Term> terms;
 	int least;
 };
 
@@ -56,8 +58,8 @@ struct PlanarPointRow {
 bool PlanarPointRowHolds(const PlanarPointRow &row, const std::vector<std::vector<std::array<int, 2>>> &points);
 
 /**
- * The node lead rows (rule A, D400, D429, narrowed): no S-bend toward the sibling leg before the separation point. This narrows D429's first cut, which made every node end whose first flex pair starts at the end travel one game piece: outward S-bends at a node are legal (X1 suite, 18 polylines).
- * Per track that is a leg of a split at its start: walk its flex middles m ascending while m = 1 + 2k; an insert m steps to side d = sign(pieces[m] - pieces[m - 1]) (+1 right of travel); the first insert with d on the sibling side (site.side for the straight leg, its negation for the other, either side at a fork or a node with no site) gets the row s . (point (t, m) - point (t, 0)) >= 2, s = STEP[first piece heading mod 8], so the piece travels one game piece first. A leg of a merge at its end: the mirror, m descending while m = n - 2 - 2k, d = sign(pieces[m] - pieces[m + 1]), row from point (t, m + 1) to (t, n) along the last piece. Trunks (a split's in line, a merge's out line) get none. Tag `lead <track name> start|end`. D412 exemption: a track that starts at a port, ends at a node and has no events (its stretch from the port to its first node may have total length 0) gets none; this is narrower than the program's own port_stretch, which also covers node to out-port lines.
+ * The node lead rows (rule A, D400, D429, D430): if a leg's S-bend toward its sibling leg has length, the leg travels from the node before it.
+ * Per track that is a leg of a split at its start: walk its flex middles m ascending while m = 1 + 2k; an insert m steps to side d = sign(pieces[m] - pieces[m - 1]) (+1 right of travel); every insert with d on the sibling side (site.side for the straight leg, its negation for the other, either side at a fork or a node with no site) gets a row. With h0 = pieces[0], T = STEP[h0] . (point (t, m) - point (t, 0)) the travel from the node to the insert along the end heading and I = STEP[pieces[m]] . (point (t, m + 1) - point (t, m)) the insert length (>= 0), the row is `64 * T - I >= 0`: with integer points, I > 0 forces T >= 1 (C = 64). A diagonal end heading gives T >= 1 per half-tile unit, so the guarantee there is half a piece (the suite measures whether that matters). A leg of a merge at its end: the mirror, m descending while m = n - 2 - 2k, d = sign(pieces[m] - pieces[m + 1]), T = STEP[pieces[n - 1]] . (point (t, n) - point (t, m + 1)), I the same insert length (pieces run forward, so I >= 0 for a used insert). Trunks (a split's in line, a merge's out line) get none. Tag `lead <track name> start|end <m>`. D412 exemption: a track that starts at a port, ends at a node and has no events (its stretch from the port to its first node may have total length 0) gets none; this is narrower than the program's own port_stretch, which also covers node to out-port lines.
  */
 std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v);
 
