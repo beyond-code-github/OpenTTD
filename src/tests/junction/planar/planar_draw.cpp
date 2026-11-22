@@ -2010,6 +2010,11 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 	/* Geo: the cells refined again with landings that agree with V's geometry (a base-rows drawing with V's points held where fixed). */
 	const PlanarDrawResult full = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &p8, .fix_points = &vref, .fix_window = 1});
 	WARN(fmt::format("geo reference: status {}, total slack {:.3f}", full.status, full.slack));
+	{
+		const PlanarDrawResult g = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .node_gaps = true, .elastic = true, .elastic_families = {"leg"}, .pins = &p8, .fix_points = &vref, .fix_window = 1});
+		WARN(fmt::format("legs on V: status {}, total slack {:.3f}", g.status, g.slack));
+		for (const auto &[row, slack] : g.stretched) WARN(fmt::format("legs on V stretched {}: {:.3f}", row, slack));
+	}
 
 	/* Pairwise separation rows on V's geometry, each pair's side taken from the base-rows reference. */
 	for (const int window : {1, 0}) {
@@ -2923,7 +2928,7 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	const auto start = std::chrono::steady_clock::now();
 	/* PLANAR_PROBE_FINAL_START (a measurement aid): the final starts from the last round's whole lengths.
 	 * PLANAR_PROBE_FINAL_GRID: the final writes the grid rows (D382 probe).
-	 * PLANAR_PROBE_FINAL_SOFT_SEP: the final's sep rows get slack (soft-sep diagnostic); PLANAR_PROBE_FINAL_SOFT_ALL: every row but piece, box, pin, fix and grid gets slack (feasibility repair); PLANAR_PROBE_FINAL_SECONDS: the final's time limit; PLANAR_PROBE_BOX_PRICE and PLANAR_PROBE_IRL1: the box price and the insert price; PLANAR_PROBE_PRUNES: at most this many prunes; PLANAR_PROBE_ADDITIONS: the one-time additions pass. */
+	 * PLANAR_PROBE_FINAL_SOFT_SEP: the final's sep rows get slack (soft-sep diagnostic); PLANAR_PROBE_FINAL_SOFT_ALL: every row but piece, box, pin, fix and grid gets slack (feasibility repair); PLANAR_PROBE_FINAL_SECONDS: the final's time limit; PLANAR_PROBE_BOX_PRICE and PLANAR_PROBE_IRL1: the box price and the insert price; PLANAR_PROBE_PRUNES: at most this many prunes; PLANAR_PROBE_ADDITIONS: the one-time additions pass; PLANAR_PROBE_NODE_GAPS: the node gaps in every stage after the seed. */
 	PlanarDrawPipelineOptions o;
 	o.final_start = std::getenv("PLANAR_PROBE_FINAL_START") != nullptr;
 	o.final_tidy = std::getenv("PLANAR_PROBE_FINAL_FEASIBILITY") == nullptr;
@@ -2932,6 +2937,7 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	o.final_soft_all = std::getenv("PLANAR_PROBE_FINAL_SOFT_ALL") != nullptr;
 	if (const char *s = std::getenv("PLANAR_PROBE_FINAL_SECONDS"); s != nullptr) o.final_seconds = std::atof(s);
 	if (const char *s = std::getenv("PLANAR_PROBE_BOX_PRICE"); s != nullptr) o.box_price = std::atof(s);
+	o.node_gaps = std::getenv("PLANAR_PROBE_NODE_GAPS") != nullptr;
 	if (const char *s = std::getenv("PLANAR_PROBE_IRL1"); s != nullptr) o.irl1 = std::atof(s);
 	if (const char *s = std::getenv("PLANAR_PROBE_PRUNES"); s != nullptr) std::from_chars(s, s + std::strlen(s), o.prunes);
 	o.additions = std::getenv("PLANAR_PROBE_ADDITIONS") != nullptr;
