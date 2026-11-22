@@ -1843,6 +1843,60 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 		}
 	}
 
+	/* V's node legs (read-out): travel between a node and the nearest event, and between two nodes with no event. */
+	{
+		std::ofstream legs("/home/pete/OpenTTD/.claude/ng1/build-rel/vlegs.txt");
+		const auto say = [&](const std::string &line) {
+			WARN(line);
+			legs << line << "\n";
+		};
+		const auto travel = [](const std::vector<std::array<int, 2>> &pts, size_t a, size_t b) {
+			int sum = 0;
+			for (size_t i = a; i < b; i++) sum += std::max(std::abs(pts[i + 1][0] - pts[i][0]), std::abs(pts[i + 1][1] - pts[i][1]));
+			return sum;
+		};
+		std::array<std::array<size_t, 5>, 3> hist{};
+		std::array<size_t, 3> total{};
+		size_t skipped = 0;
+		const auto count = [&](size_t kind, int v) {
+			total[kind]++;
+			hist[kind][std::min(v, 4)]++;
+		};
+		for (size_t t = 0; t < nt; t++) {
+			const std::vector<std::array<int, 2>> &pts = vref[t];
+			const size_t np = shaped.tracks[t].pieces.size();
+			if (pts.empty() || pts.size() != np + 1) {
+				skipped++;
+				continue;
+			}
+			const std::string &name = map.tracks[t].name;
+			const PlanarEnd &from = map.expanded.lines[t].from;
+			const PlanarEnd &to = map.expanded.lines[t].to;
+			const size_t ne = map.events[t].size();
+			const auto &ep = shaped.tracks[t].event_piece;
+			const bool has_event = ne > 0 && ep.size() >= ne;
+			const int whole = travel(pts, 0, np);
+			if (!from.port) {
+				const int v = has_event ? travel(pts, 0, ep[0]) : whole;
+				say(fmt::format("start leg {} node {}: {} (first event on piece {})", name, from.index, v, has_event ? fmt::format("{}", ep[0]) : std::string("none")));
+				count(0, v);
+			}
+			if (!to.port) {
+				const int v = has_event ? travel(pts, ep[ne - 1] + 1, np) : whole;
+				say(fmt::format("end leg {} node {}: {} (last event on piece {})", name, to.index, v, has_event ? fmt::format("{}", ep[ne - 1]) : std::string("none")));
+				count(1, v);
+			}
+			if (!from.port && !to.port && !has_event) {
+				say(fmt::format("between nodes {} -> {} {}: {}", from.index, to.index, name, whole));
+				count(2, whole);
+			}
+		}
+		const char *kinds[3] = {"start legs", "end legs", "between-node tracks"};
+		std::string sum = fmt::format("node legs summary (skipped {}):", skipped);
+		for (size_t k = 0; k < 3; k++) sum += fmt::format(" {} {} [0:{} 1:{} 2:{} 3:{} >=4:{}];", kinds[k], total[k], hist[k][0], hist[k][1], hist[k][2], hist[k][3], hist[k][4]);
+		say(sum);
+	}
+
 	PlanarDrawPins p8 = pins;
 	p8.window = 8;
 	const auto evaluate = [&](const PlanarShapeVariant &sv, const std::string &name) {
@@ -1956,6 +2010,13 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 	/* Geo: the cells refined again with landings that agree with V's geometry (a base-rows drawing with V's points held where fixed). */
 	const PlanarDrawResult full = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &p8, .fix_points = &vref, .fix_window = 1});
 	WARN(fmt::format("geo reference: status {}, total slack {:.3f}", full.status, full.slack));
+	{
+		const PlanarDrawResult g = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .node_gaps = true, .elastic = true, .pins = &p8, .fix_points = &vref, .fix_window = 1});
+		WARN(fmt::format("legs on V: status {}, total slack {:.3f}", g.status, g.slack));
+		for (const auto &[row, slack] : g.stretched) {
+			if (row.starts_with("leg")) WARN(fmt::format("legs on V stretched {}: {:.3f}", row, slack));
+		}
+	}
 
 	/* Pairwise separation rows on V's geometry, each pair's side taken from the base-rows reference. */
 	for (const int window : {1, 0}) {
@@ -2869,7 +2930,7 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	const auto start = std::chrono::steady_clock::now();
 	/* PLANAR_PROBE_FINAL_START (a measurement aid): the final starts from the last round's whole lengths.
 	 * PLANAR_PROBE_FINAL_GRID: the final writes the grid rows (D382 probe).
-	 * PLANAR_PROBE_FINAL_SOFT_SEP: the final's sep rows get slack (soft-sep diagnostic); PLANAR_PROBE_FINAL_SOFT_ALL: every row but piece, box, pin, fix and grid gets slack (feasibility repair); PLANAR_PROBE_FINAL_SECONDS: the final's time limit; PLANAR_PROBE_BOX_PRICE and PLANAR_PROBE_IRL1: the box price and the insert price; PLANAR_PROBE_PRUNES: at most this many prunes; PLANAR_PROBE_ADDITIONS: the one-time additions pass. */
+	 * PLANAR_PROBE_FINAL_SOFT_SEP: the final's sep rows get slack (soft-sep diagnostic); PLANAR_PROBE_FINAL_SOFT_ALL: every row but piece, box, pin, fix and grid gets slack (feasibility repair); PLANAR_PROBE_FINAL_SECONDS: the final's time limit; PLANAR_PROBE_BOX_PRICE and PLANAR_PROBE_IRL1: the box price and the insert price; PLANAR_PROBE_PRUNES: at most this many prunes; PLANAR_PROBE_ADDITIONS: the one-time additions pass; PLANAR_PROBE_NODE_GAPS: the node gaps in every stage after the seed. */
 	PlanarDrawPipelineOptions o;
 	o.final_start = std::getenv("PLANAR_PROBE_FINAL_START") != nullptr;
 	o.final_tidy = std::getenv("PLANAR_PROBE_FINAL_FEASIBILITY") == nullptr;
@@ -2878,6 +2939,7 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	o.final_soft_all = std::getenv("PLANAR_PROBE_FINAL_SOFT_ALL") != nullptr;
 	if (const char *s = std::getenv("PLANAR_PROBE_FINAL_SECONDS"); s != nullptr) o.final_seconds = std::atof(s);
 	if (const char *s = std::getenv("PLANAR_PROBE_BOX_PRICE"); s != nullptr) o.box_price = std::atof(s);
+	o.node_gaps = std::getenv("PLANAR_PROBE_NODE_GAPS") != nullptr;
 	if (const char *s = std::getenv("PLANAR_PROBE_IRL1"); s != nullptr) o.irl1 = std::atof(s);
 	if (const char *s = std::getenv("PLANAR_PROBE_PRUNES"); s != nullptr) std::from_chars(s, s + std::strlen(s), o.prunes);
 	o.additions = std::getenv("PLANAR_PROBE_ADDITIONS") != nullptr;
