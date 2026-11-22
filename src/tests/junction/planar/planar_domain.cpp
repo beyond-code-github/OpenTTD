@@ -351,6 +351,37 @@ TEST_CASE("planar domain: hand cases from the game", "[junction][planar][planard
 	SECTION("19 illegal: a bridge longer than its limit") {
 		ExpectBreaks(BridgeInput({}, {}, 1), {"span"});
 	}
+
+	/* A tunnel with two end pieces at each end: pieces 1, 2 and 5, 6 of the separator, middles 3 and 4, a crosser through the tile of piece `under` from row `crosser_y`. */
+	const auto tunnel_input = [](const std::string &moves, uint32_t under, bool crosser_listed, int crosser_y = 0) {
+		const Laid separator = Lay({0, 2}, Trackdir::X_SW, moves);
+		REQUIRE(separator.raster.pieces.size() >= 8);
+		const TileIndexDiffC at = separator.raster.pieces[under].tile;
+		const Laid crosser = Lay({at.x, static_cast<int16_t>(crosser_y)}, Trackdir::Y_SE, "FFFF");
+		PlanarDomainInput input;
+		input.tracks = {separator.points, crosser.points};
+		PlanarDomainStructure st;
+		st.separator = 0;
+		st.first = 1;
+		st.last = 6;
+		st.tunnel = true;
+		st.ends = 2;
+		if (crosser_listed) st.crossers = {1};
+		input.structures.push_back(st);
+		return input;
+	};
+
+	SECTION("20 legal: a tunnel with two straight end pieces at each end") {
+		ExpectLegal(tunnel_input("FFFFFFFFF", 3, true));
+	}
+
+	SECTION("21 illegal: an unlisted track through a tunnel's ramp piece") {
+		ExpectBreaks(tunnel_input("FFFFFFFFF", 2, false), {"head"});
+	}
+
+	SECTION("22 illegal: a tunnel's outer end piece on a diagonal") {
+		ExpectBreaks(tunnel_input("FLFRFFFFF", 3, true, 8), {"span"});
+	}
 }
 
 TEST_CASE("planar domain: the rasteriser matches the game's", "[junction][planar][planardomain]")

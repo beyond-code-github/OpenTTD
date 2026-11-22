@@ -1,11 +1,11 @@
 Encoding report on X1: our keep-apart rows (judged on fixed points, no solve) against the domain
-enumeration wall 10.8934 s
+enumeration wall 10.9235 s
 
 == S1 ==
-  both accept: 66 polylines (99 geometries)
+  both accept: 64 polylines (96 geometries)
   both reject: 45 polylines (48 geometries)
   too strict: 42 polylines (42 geometries)
-  too loose: 0 polylines (0 geometries)
+  too loose: 2 polylines (3 geometries)
   undecided: 0 polylines (0 geometries)
   off grid (geometries): 336 (336 geometries)
  too strict, by the kept values of the failing pairs:
@@ -23,68 +23,407 @@ enumeration wall 10.8934 s
       program row broken: end 0
       program row broken: bound param
  too loose, by domain break rules:
+  [head / undetermined box | sep | sepdir] polylines 2 (geometries 3)
+    varied: B1.2=0 B1.3=0 B1.4=2 B1.5=2 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+      witness piece lengths: AC1[0,0,0,0,4] BD1[0,0,0,0,2] C1[0,0,0,0,0,0,0,0,3,2] B1[2,2,0,0,2,0,0,0,6] A1[0,0,0,0,10,0,0,0,6] D1[0,0,0,0,0,0,1,0,0,8]
+      break head tracks C1,A1 tile (2,2) an end piece on tile (2, 2) shares it with another piece
+        sep 0 5 6 C1/C1 pieces 0/1: adjacent
+        sep 0 5 7 C1/C1 pieces 0/2: zero contraction
+        sep 0 5 8 C1/C1 pieces 0/3: zero contraction
+        sep 0 5 9 C1/C1 pieces 0/4: zero contraction
+        sep 0 5 10 C1/C1 pieces 0/5: zero contraction
+        sep 0 5 11 C1/C1 pieces 0/6: zero contraction
+        sep 0 5 12 C1/C1 pieces 0/7: zero contraction
+        sep 0 5 13 C1/C1 pieces 0/8: zero contraction
+        sep 0 5 14 C1/C1 pieces 0/9: zero contraction
+        sep 0 6 7 C1/C1 pieces 1/2: adjacent
+        sep 0 6 8 C1/C1 pieces 1/3: zero contraction
+        sep 0 6 9 C1/C1 pieces 1/4: zero contraction
+        sep 0 6 10 C1/C1 pieces 1/5: zero contraction
+        sep 0 6 11 C1/C1 pieces 1/6: zero contraction
+        sep 0 6 12 C1/C1 pieces 1/7: zero contraction
+        sep 0 6 13 C1/C1 pieces 1/8: zero contraction
+        sep 0 6 14 C1/C1 pieces 1/9: zero contraction
+        sep 0 7 8 C1/C1 pieces 2/3: adjacent
+        sep 0 7 9 C1/C1 pieces 2/4: zero contraction
+        sep 0 7 10 C1/C1 pieces 2/5: zero contraction
+        sep 0 7 11 C1/C1 pieces 2/6: zero contraction
+        sep 0 7 12 C1/C1 pieces 2/7: zero contraction
+        sep 0 7 13 C1/C1 pieces 2/8: zero contraction
+        sep 0 7 14 C1/C1 pieces 2/9: zero contraction
+        sep 0 8 9 C1/C1 pieces 3/4: adjacent
+        sep 0 8 10 C1/C1 pieces 3/5: zero contraction
+        sep 0 8 11 C1/C1 pieces 3/6: zero contraction
+        sep 0 8 12 C1/C1 pieces 3/7: zero contraction
+        sep 0 8 13 C1/C1 pieces 3/8: zero contraction
+        sep 0 8 14 C1/C1 pieces 3/9: zero contraction
+        sep 0 9 10 C1/C1 pieces 4/5: adjacent
+        sep 0 9 11 C1/C1 pieces 4/6: zero contraction
+        sep 0 9 12 C1/C1 pieces 4/7: zero contraction
+        sep 0 9 13 C1/C1 pieces 4/8: zero contraction
+        sep 0 9 14 C1/C1 pieces 4/9: zero contraction
+        sep 0 10 11 C1/C1 pieces 5/6: adjacent
+        sep 0 10 12 C1/C1 pieces 5/7: zero contraction
+        sep 0 10 13 C1/C1 pieces 5/8: zero contraction
+        sep 0 10 14 C1/C1 pieces 5/9: zero contraction
+        sep 0 11 12 C1/C1 pieces 6/7: adjacent
+        sep 0 11 13 C1/C1 pieces 6/8: zero contraction
+        sep 0 11 14 C1/C1 pieces 6/9: zero contraction
+        sep 0 12 13 C1/C1 pieces 7/8: adjacent
+        sep 0 12 14 C1/C1 pieces 7/9: zero contraction
+        sep 0 13 14 C1/C1 pieces 8/9: adjacent
+        sep 1 10 11 A1/A1 pieces 4/3: adjacent
+        sep 1 10 12 A1/A1 pieces 4/2: span
+        sep 1 10 13 A1/A1 pieces 4/1: span
+        sep 1 10 14 A1/A1 pieces 4/0: span
+        sep 1 11 12 A1/A1 pieces 3/2: adjacent
+        sep 1 11 13 A1/A1 pieces 3/1: zero contraction
+        sep 1 11 14 A1/A1 pieces 3/0: zero contraction
+        sep 1 12 13 A1/A1 pieces 2/1: adjacent
+        sep 1 12 14 A1/A1 pieces 2/0: zero contraction
+        sep 1 13 14 A1/A1 pieces 1/0: adjacent
+        sep 3 0 1 C1/C1 pieces 9/8: adjacent
+        sep 3 0 2 C1/C1 pieces 9/7: zero contraction
+        sep 3 0 3 C1/C1 pieces 9/6: zero contraction
+        sep 3 0 4 C1/C1 pieces 9/5: zero contraction
+        sep 3 0 5 C1/C1 pieces 9/4: zero contraction
+        sep 3 0 6 C1/C1 pieces 9/3: zero contraction
+        sep 3 0 7 C1/C1 pieces 9/2: zero contraction
+        sep 3 0 8 C1/C1 pieces 9/1: zero contraction
+        sep 3 0 9 C1/C1 pieces 9/0: zero contraction
+        sep 3 0 10 C1/A1 pieces 9/0: zero contraction
+        sep 3 0 11 C1/A1 pieces 9/1: zero contraction
+        sep 3 0 12 C1/A1 pieces 9/2: zero contraction
+        sep 3 0 13 C1/A1 pieces 9/3: zero contraction
+        sep 3 0 14 C1/A1 pieces 9/4: span
+        sep 3 1 2 C1/C1 pieces 8/7: adjacent
+        sep 3 1 3 C1/C1 pieces 8/6: zero contraction
+        sep 3 1 4 C1/C1 pieces 8/5: zero contraction
+        sep 3 1 5 C1/C1 pieces 8/4: zero contraction
+        sep 3 1 6 C1/C1 pieces 8/3: zero contraction
+        sep 3 1 7 C1/C1 pieces 8/2: zero contraction
+        sep 3 1 8 C1/C1 pieces 8/1: zero contraction
+        sep 3 1 9 C1/C1 pieces 8/0: zero contraction
+        sep 3 1 10 C1/A1 pieces 8/0: zero contraction
+        sep 3 1 11 C1/A1 pieces 8/1: zero contraction
+        sep 3 1 12 C1/A1 pieces 8/2: zero contraction
+        sep 3 1 13 C1/A1 pieces 8/3: zero contraction
+        sep 3 1 14 C1/A1 pieces 8/4: span
+        sep 3 2 3 C1/C1 pieces 7/6: adjacent
+        sep 3 2 4 C1/C1 pieces 7/5: zero contraction
+        sep 3 2 5 C1/C1 pieces 7/4: zero contraction
+        sep 3 2 6 C1/C1 pieces 7/3: zero contraction
+        sep 3 2 7 C1/C1 pieces 7/2: zero contraction
+        sep 3 2 8 C1/C1 pieces 7/1: zero contraction
+        sep 3 2 9 C1/C1 pieces 7/0: zero contraction
+        sep 3 2 10 C1/A1 pieces 7/0: zero contraction
+        sep 3 2 11 C1/A1 pieces 7/1: zero contraction
+        sep 3 2 12 C1/A1 pieces 7/2: zero contraction
+        sep 3 2 13 C1/A1 pieces 7/3: zero contraction
+        sep 3 2 14 C1/A1 pieces 7/4: span
+        sep 3 3 4 C1/C1 pieces 6/5: adjacent
+        sep 3 3 5 C1/C1 pieces 6/4: zero contraction
+        sep 3 3 6 C1/C1 pieces 6/3: zero contraction
+        sep 3 3 7 C1/C1 pieces 6/2: zero contraction
+        sep 3 3 8 C1/C1 pieces 6/1: zero contraction
+        sep 3 3 9 C1/C1 pieces 6/0: zero contraction
+        sep 3 3 10 C1/A1 pieces 6/0: zero contraction
+        sep 3 3 11 C1/A1 pieces 6/1: zero contraction
+        sep 3 3 12 C1/A1 pieces 6/2: zero contraction
+        sep 3 3 13 C1/A1 pieces 6/3: zero contraction
+        sep 3 3 14 C1/A1 pieces 6/4: span
+        sep 3 4 5 C1/C1 pieces 5/4: adjacent
+        sep 3 4 6 C1/C1 pieces 5/3: zero contraction
+        sep 3 4 7 C1/C1 pieces 5/2: zero contraction
+        sep 3 4 8 C1/C1 pieces 5/1: zero contraction
+        sep 3 4 9 C1/C1 pieces 5/0: zero contraction
+        sep 3 4 10 C1/A1 pieces 5/0: zero contraction
+        sep 3 4 11 C1/A1 pieces 5/1: zero contraction
+        sep 3 4 12 C1/A1 pieces 5/2: zero contraction
+        sep 3 4 13 C1/A1 pieces 5/3: zero contraction
+        sep 3 4 14 C1/A1 pieces 5/4: span
+        sep 3 5 6 C1/C1 pieces 4/3: adjacent
+        sep 3 5 7 C1/C1 pieces 4/2: zero contraction
+        sep 3 5 8 C1/C1 pieces 4/1: zero contraction
+        sep 3 5 9 C1/C1 pieces 4/0: zero contraction
+        sep 3 5 10 C1/A1 pieces 4/0: zero contraction
+        sep 3 5 11 C1/A1 pieces 4/1: zero contraction
+        sep 3 5 12 C1/A1 pieces 4/2: zero contraction
+        sep 3 5 13 C1/A1 pieces 4/3: zero contraction
+        sep 3 5 14 C1/A1 pieces 4/4: span
+        sep 3 6 7 C1/C1 pieces 3/2: adjacent
+        sep 3 6 8 C1/C1 pieces 3/1: zero contraction
+        sep 3 6 9 C1/C1 pieces 3/0: zero contraction
+        sep 3 6 10 C1/A1 pieces 3/0: zero contraction
+        sep 3 6 11 C1/A1 pieces 3/1: zero contraction
+        sep 3 6 12 C1/A1 pieces 3/2: zero contraction
+        sep 3 6 13 C1/A1 pieces 3/3: zero contraction
+        sep 3 6 14 C1/A1 pieces 3/4: span
+        sep 3 7 8 C1/C1 pieces 2/1: adjacent
+        sep 3 7 9 C1/C1 pieces 2/0: zero contraction
+        sep 3 7 10 C1/A1 pieces 2/0: zero contraction
+        sep 3 7 11 C1/A1 pieces 2/1: zero contraction
+        sep 3 7 12 C1/A1 pieces 2/2: zero contraction
+        sep 3 7 13 C1/A1 pieces 2/3: zero contraction
+        sep 3 7 14 C1/A1 pieces 2/4: span
+        sep 3 8 9 C1/C1 pieces 1/0: adjacent
+        sep 3 8 10 C1/A1 pieces 1/0: zero contraction
+        sep 3 8 11 C1/A1 pieces 1/1: zero contraction
+        sep 3 8 12 C1/A1 pieces 1/2: zero contraction
+        sep 3 8 13 C1/A1 pieces 1/3: zero contraction
+        sep 3 8 14 C1/A1 pieces 1/4: span
+        sep 3 9 10 C1/A1 pieces 0/0: adjacent
+        sep 3 9 11 C1/A1 pieces 0/1: zero contraction
+        sep 3 9 12 C1/A1 pieces 0/2: zero contraction
+        sep 3 9 13 C1/A1 pieces 0/3: zero contraction
+        sep 3 9 14 C1/A1 pieces 0/4: span
+        sep 3 10 11 A1/A1 pieces 0/1: adjacent
+        sep 3 10 12 A1/A1 pieces 0/2: zero contraction
+        sep 3 10 13 A1/A1 pieces 0/3: zero contraction
+        sep 3 10 14 A1/A1 pieces 0/4: span
+        sep 3 11 12 A1/A1 pieces 1/2: adjacent
+        sep 3 11 13 A1/A1 pieces 1/3: zero contraction
+        sep 3 11 14 A1/A1 pieces 1/4: span
+        sep 3 12 13 A1/A1 pieces 2/3: adjacent
+        sep 3 12 14 A1/A1 pieces 2/4: span
+        sep 3 13 14 A1/A1 pieces 3/4: adjacent
+        sep 4 11 12 A1/A1 pieces 8/7: adjacent
+        sep 4 11 13 A1/A1 pieces 8/6: zero contraction
+        sep 4 11 14 A1/A1 pieces 8/5: zero contraction
+        sep 4 11 15 A1/A1 pieces 8/4: span
+        sep 4 12 13 A1/A1 pieces 7/6: adjacent
+        sep 4 12 14 A1/A1 pieces 7/5: zero contraction
+        sep 4 12 15 A1/A1 pieces 7/4: span
+        sep 4 13 14 A1/A1 pieces 6/5: adjacent
+        sep 4 13 15 A1/A1 pieces 6/4: span
+        sep 4 14 15 A1/A1 pieces 5/4: adjacent
+        sep 5 5 6 A1/A1 pieces 4/5: adjacent
+        sep 5 5 7 A1/A1 pieces 4/6: span
+        sep 5 5 8 A1/A1 pieces 4/7: span
+        sep 5 5 9 A1/A1 pieces 4/8: span
+        sep 5 6 7 A1/A1 pieces 5/6: adjacent
+        sep 5 6 8 A1/A1 pieces 5/7: zero contraction
+        sep 5 6 9 A1/A1 pieces 5/8: zero contraction
+        sep 5 7 8 A1/A1 pieces 6/7: adjacent
+        sep 5 7 9 A1/A1 pieces 6/8: zero contraction
+        sep 5 8 9 A1/A1 pieces 7/8: adjacent
+        lead C1 start 3: holds on the witness
+        lead A1 start 1: holds on the witness
+        lead A1 start 5: holds on the witness
+    varied: B1.2=2 B1.3=0 B1.4=2 B1.5=2 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+      witness piece lengths: AC1[0,0,0,0,4] BD1[0,0,0,0,2] C1[0,0,0,0,0,0,0,0,3,2] B1[4,1,0,0,0,1,0,0,8] A1[0,0,0,0,10,0,0,0,6] D1[0,0,0,0,0,0,1,0,0,8]
+      break head tracks C1,A1 tile (2,2) an end piece on tile (2, 2) shares it with another piece
+        sep 0 5 6 C1/C1 pieces 0/1: adjacent
+        sep 0 5 7 C1/C1 pieces 0/2: zero contraction
+        sep 0 5 8 C1/C1 pieces 0/3: zero contraction
+        sep 0 5 9 C1/C1 pieces 0/4: zero contraction
+        sep 0 5 10 C1/C1 pieces 0/5: zero contraction
+        sep 0 5 11 C1/C1 pieces 0/6: zero contraction
+        sep 0 5 12 C1/C1 pieces 0/7: zero contraction
+        sep 0 5 13 C1/C1 pieces 0/8: zero contraction
+        sep 0 5 14 C1/C1 pieces 0/9: zero contraction
+        sep 0 6 7 C1/C1 pieces 1/2: adjacent
+        sep 0 6 8 C1/C1 pieces 1/3: zero contraction
+        sep 0 6 9 C1/C1 pieces 1/4: zero contraction
+        sep 0 6 10 C1/C1 pieces 1/5: zero contraction
+        sep 0 6 11 C1/C1 pieces 1/6: zero contraction
+        sep 0 6 12 C1/C1 pieces 1/7: zero contraction
+        sep 0 6 13 C1/C1 pieces 1/8: zero contraction
+        sep 0 6 14 C1/C1 pieces 1/9: zero contraction
+        sep 0 7 8 C1/C1 pieces 2/3: adjacent
+        sep 0 7 9 C1/C1 pieces 2/4: zero contraction
+        sep 0 7 10 C1/C1 pieces 2/5: zero contraction
+        sep 0 7 11 C1/C1 pieces 2/6: zero contraction
+        sep 0 7 12 C1/C1 pieces 2/7: zero contraction
+        sep 0 7 13 C1/C1 pieces 2/8: zero contraction
+        sep 0 7 14 C1/C1 pieces 2/9: zero contraction
+        sep 0 8 9 C1/C1 pieces 3/4: adjacent
+        sep 0 8 10 C1/C1 pieces 3/5: zero contraction
+        sep 0 8 11 C1/C1 pieces 3/6: zero contraction
+        sep 0 8 12 C1/C1 pieces 3/7: zero contraction
+        sep 0 8 13 C1/C1 pieces 3/8: zero contraction
+        sep 0 8 14 C1/C1 pieces 3/9: zero contraction
+        sep 0 9 10 C1/C1 pieces 4/5: adjacent
+        sep 0 9 11 C1/C1 pieces 4/6: zero contraction
+        sep 0 9 12 C1/C1 pieces 4/7: zero contraction
+        sep 0 9 13 C1/C1 pieces 4/8: zero contraction
+        sep 0 9 14 C1/C1 pieces 4/9: zero contraction
+        sep 0 10 11 C1/C1 pieces 5/6: adjacent
+        sep 0 10 12 C1/C1 pieces 5/7: zero contraction
+        sep 0 10 13 C1/C1 pieces 5/8: zero contraction
+        sep 0 10 14 C1/C1 pieces 5/9: zero contraction
+        sep 0 11 12 C1/C1 pieces 6/7: adjacent
+        sep 0 11 13 C1/C1 pieces 6/8: zero contraction
+        sep 0 11 14 C1/C1 pieces 6/9: zero contraction
+        sep 0 12 13 C1/C1 pieces 7/8: adjacent
+        sep 0 12 14 C1/C1 pieces 7/9: zero contraction
+        sep 0 13 14 C1/C1 pieces 8/9: adjacent
+        sep 1 10 11 A1/A1 pieces 4/3: adjacent
+        sep 1 10 12 A1/A1 pieces 4/2: span
+        sep 1 10 13 A1/A1 pieces 4/1: span
+        sep 1 10 14 A1/A1 pieces 4/0: span
+        sep 1 11 12 A1/A1 pieces 3/2: adjacent
+        sep 1 11 13 A1/A1 pieces 3/1: zero contraction
+        sep 1 11 14 A1/A1 pieces 3/0: zero contraction
+        sep 1 12 13 A1/A1 pieces 2/1: adjacent
+        sep 1 12 14 A1/A1 pieces 2/0: zero contraction
+        sep 1 13 14 A1/A1 pieces 1/0: adjacent
+        sep 3 0 1 C1/C1 pieces 9/8: adjacent
+        sep 3 0 2 C1/C1 pieces 9/7: zero contraction
+        sep 3 0 3 C1/C1 pieces 9/6: zero contraction
+        sep 3 0 4 C1/C1 pieces 9/5: zero contraction
+        sep 3 0 5 C1/C1 pieces 9/4: zero contraction
+        sep 3 0 6 C1/C1 pieces 9/3: zero contraction
+        sep 3 0 7 C1/C1 pieces 9/2: zero contraction
+        sep 3 0 8 C1/C1 pieces 9/1: zero contraction
+        sep 3 0 9 C1/C1 pieces 9/0: zero contraction
+        sep 3 0 10 C1/A1 pieces 9/0: zero contraction
+        sep 3 0 11 C1/A1 pieces 9/1: zero contraction
+        sep 3 0 12 C1/A1 pieces 9/2: zero contraction
+        sep 3 0 13 C1/A1 pieces 9/3: zero contraction
+        sep 3 0 14 C1/A1 pieces 9/4: span
+        sep 3 1 2 C1/C1 pieces 8/7: adjacent
+        sep 3 1 3 C1/C1 pieces 8/6: zero contraction
+        sep 3 1 4 C1/C1 pieces 8/5: zero contraction
+        sep 3 1 5 C1/C1 pieces 8/4: zero contraction
+        sep 3 1 6 C1/C1 pieces 8/3: zero contraction
+        sep 3 1 7 C1/C1 pieces 8/2: zero contraction
+        sep 3 1 8 C1/C1 pieces 8/1: zero contraction
+        sep 3 1 9 C1/C1 pieces 8/0: zero contraction
+        sep 3 1 10 C1/A1 pieces 8/0: zero contraction
+        sep 3 1 11 C1/A1 pieces 8/1: zero contraction
+        sep 3 1 12 C1/A1 pieces 8/2: zero contraction
+        sep 3 1 13 C1/A1 pieces 8/3: zero contraction
+        sep 3 1 14 C1/A1 pieces 8/4: span
+        sep 3 2 3 C1/C1 pieces 7/6: adjacent
+        sep 3 2 4 C1/C1 pieces 7/5: zero contraction
+        sep 3 2 5 C1/C1 pieces 7/4: zero contraction
+        sep 3 2 6 C1/C1 pieces 7/3: zero contraction
+        sep 3 2 7 C1/C1 pieces 7/2: zero contraction
+        sep 3 2 8 C1/C1 pieces 7/1: zero contraction
+        sep 3 2 9 C1/C1 pieces 7/0: zero contraction
+        sep 3 2 10 C1/A1 pieces 7/0: zero contraction
+        sep 3 2 11 C1/A1 pieces 7/1: zero contraction
+        sep 3 2 12 C1/A1 pieces 7/2: zero contraction
+        sep 3 2 13 C1/A1 pieces 7/3: zero contraction
+        sep 3 2 14 C1/A1 pieces 7/4: span
+        sep 3 3 4 C1/C1 pieces 6/5: adjacent
+        sep 3 3 5 C1/C1 pieces 6/4: zero contraction
+        sep 3 3 6 C1/C1 pieces 6/3: zero contraction
+        sep 3 3 7 C1/C1 pieces 6/2: zero contraction
+        sep 3 3 8 C1/C1 pieces 6/1: zero contraction
+        sep 3 3 9 C1/C1 pieces 6/0: zero contraction
+        sep 3 3 10 C1/A1 pieces 6/0: zero contraction
+        sep 3 3 11 C1/A1 pieces 6/1: zero contraction
+        sep 3 3 12 C1/A1 pieces 6/2: zero contraction
+        sep 3 3 13 C1/A1 pieces 6/3: zero contraction
+        sep 3 3 14 C1/A1 pieces 6/4: span
+        sep 3 4 5 C1/C1 pieces 5/4: adjacent
+        sep 3 4 6 C1/C1 pieces 5/3: zero contraction
+        sep 3 4 7 C1/C1 pieces 5/2: zero contraction
+        sep 3 4 8 C1/C1 pieces 5/1: zero contraction
+        sep 3 4 9 C1/C1 pieces 5/0: zero contraction
+        sep 3 4 10 C1/A1 pieces 5/0: zero contraction
+        sep 3 4 11 C1/A1 pieces 5/1: zero contraction
+        sep 3 4 12 C1/A1 pieces 5/2: zero contraction
+        sep 3 4 13 C1/A1 pieces 5/3: zero contraction
+        sep 3 4 14 C1/A1 pieces 5/4: span
+        sep 3 5 6 C1/C1 pieces 4/3: adjacent
+        sep 3 5 7 C1/C1 pieces 4/2: zero contraction
+        sep 3 5 8 C1/C1 pieces 4/1: zero contraction
+        sep 3 5 9 C1/C1 pieces 4/0: zero contraction
+        sep 3 5 10 C1/A1 pieces 4/0: zero contraction
+        sep 3 5 11 C1/A1 pieces 4/1: zero contraction
+        sep 3 5 12 C1/A1 pieces 4/2: zero contraction
+        sep 3 5 13 C1/A1 pieces 4/3: zero contraction
+        sep 3 5 14 C1/A1 pieces 4/4: span
+        sep 3 6 7 C1/C1 pieces 3/2: adjacent
+        sep 3 6 8 C1/C1 pieces 3/1: zero contraction
+        sep 3 6 9 C1/C1 pieces 3/0: zero contraction
+        sep 3 6 10 C1/A1 pieces 3/0: zero contraction
+        sep 3 6 11 C1/A1 pieces 3/1: zero contraction
+        sep 3 6 12 C1/A1 pieces 3/2: zero contraction
+        sep 3 6 13 C1/A1 pieces 3/3: zero contraction
+        sep 3 6 14 C1/A1 pieces 3/4: span
+        sep 3 7 8 C1/C1 pieces 2/1: adjacent
+        sep 3 7 9 C1/C1 pieces 2/0: zero contraction
+        sep 3 7 10 C1/A1 pieces 2/0: zero contraction
+        sep 3 7 11 C1/A1 pieces 2/1: zero contraction
+        sep 3 7 12 C1/A1 pieces 2/2: zero contraction
+        sep 3 7 13 C1/A1 pieces 2/3: zero contraction
+        sep 3 7 14 C1/A1 pieces 2/4: span
+        sep 3 8 9 C1/C1 pieces 1/0: adjacent
+        sep 3 8 10 C1/A1 pieces 1/0: zero contraction
+        sep 3 8 11 C1/A1 pieces 1/1: zero contraction
+        sep 3 8 12 C1/A1 pieces 1/2: zero contraction
+        sep 3 8 13 C1/A1 pieces 1/3: zero contraction
+        sep 3 8 14 C1/A1 pieces 1/4: span
+        sep 3 9 10 C1/A1 pieces 0/0: adjacent
+        sep 3 9 11 C1/A1 pieces 0/1: zero contraction
+        sep 3 9 12 C1/A1 pieces 0/2: zero contraction
+        sep 3 9 13 C1/A1 pieces 0/3: zero contraction
+        sep 3 9 14 C1/A1 pieces 0/4: span
+        sep 3 10 11 A1/A1 pieces 0/1: adjacent
+        sep 3 10 12 A1/A1 pieces 0/2: zero contraction
+        sep 3 10 13 A1/A1 pieces 0/3: zero contraction
+        sep 3 10 14 A1/A1 pieces 0/4: span
+        sep 3 11 12 A1/A1 pieces 1/2: adjacent
+        sep 3 11 13 A1/A1 pieces 1/3: zero contraction
+        sep 3 11 14 A1/A1 pieces 1/4: span
+        sep 3 12 13 A1/A1 pieces 2/3: adjacent
+        sep 3 12 14 A1/A1 pieces 2/4: span
+        sep 3 13 14 A1/A1 pieces 3/4: adjacent
+        sep 4 11 12 A1/A1 pieces 8/7: adjacent
+        sep 4 11 13 A1/A1 pieces 8/6: zero contraction
+        sep 4 11 14 A1/A1 pieces 8/5: zero contraction
+        sep 4 11 15 A1/A1 pieces 8/4: span
+        sep 4 12 13 A1/A1 pieces 7/6: adjacent
+        sep 4 12 14 A1/A1 pieces 7/5: zero contraction
+        sep 4 12 15 A1/A1 pieces 7/4: span
+        sep 4 13 14 A1/A1 pieces 6/5: adjacent
+        sep 4 13 15 A1/A1 pieces 6/4: span
+        sep 4 14 15 A1/A1 pieces 5/4: adjacent
+        sep 5 5 6 A1/A1 pieces 4/5: adjacent
+        sep 5 5 7 A1/A1 pieces 4/6: span
+        sep 5 5 8 A1/A1 pieces 4/7: span
+        sep 5 5 9 A1/A1 pieces 4/8: span
+        sep 5 6 7 A1/A1 pieces 5/6: adjacent
+        sep 5 6 8 A1/A1 pieces 5/7: zero contraction
+        sep 5 6 9 A1/A1 pieces 5/8: zero contraction
+        sep 5 7 8 A1/A1 pieces 6/7: adjacent
+        sep 5 7 9 A1/A1 pieces 6/8: zero contraction
+        sep 5 8 9 A1/A1 pieces 7/8: adjacent
+        lead C1 start 3: holds on the witness
+        lead A1 start 1: holds on the witness
+        lead A1 start 5: holds on the witness
 
 == S2 ==
   both accept: 35 polylines (63 geometries)
-  both reject: 113 polylines (123 geometries)
-  too strict: 26 polylines (30 geometries)
+  both reject: 139 polylines (153 geometries)
+  too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
   undecided: 0 polylines (0 geometries)
   off grid (geometries): 384 (384 geometries)
  too strict, by the kept values of the failing pairs:
-  [cross | end] polylines 3 (geometries 3)
-    varied: A1.2=0 A1.3=0 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: cross 0
-      program row broken: end 0
-    varied: A1.2=2 A1.3=2 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*2,3*2,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: cross 0
-      program row broken: end 0
-    varied: A1.2=0 A1.3=0 A1.4=2 A1.5=2 A1.6=4
-      polyline A1:2*2,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: cross 0
-      program row broken: end 0
-  [end] polylines 23 (geometries 27)
-    varied: A1.2=2 A1.3=2 A1.4=4 A1.5=0 A1.6=4
-      polyline A1:2*2,3*2,2*12,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-    varied: A1.2=2 A1.3=2 A1.4=6 A1.5=0 A1.6=4
-      polyline A1:2*2,3*2,2*14,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-    varied: A1.2=2 A1.3=2 A1.4=8 A1.5=0 A1.6=4
-      polyline A1:2*2,3*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
  too loose, by domain break rules:
 
 == N1 ==
   both accept: 33 polylines (48 geometries)
-  both reject: 22 polylines (32 geometries)
-  too strict: 11 polylines (16 geometries)
+  both reject: 33 polylines (48 geometries)
+  too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
   undecided: 0 polylines (0 geometries)
   off grid (geometries): 480 (480 geometries)
  too strict, by the kept values of the failing pairs:
-  [cross | end] polylines 11 (geometries 16)
-    varied: C1.0=1 C1.1=0 C1.2=0 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,;D1:1*1,2*8,;
-      program row broken: cross 0
-      program row broken: end 0
-    varied: C1.0=3 C1.1=0 C1.2=0 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: cross 0
-      program row broken: end 0
-    varied: C1.0=1 C1.1=2 C1.2=0 A1.0=2 A1.1=2
-      polyline A1:2*2,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*4,;D1:1*1,2*8,;
-      program row broken: cross 0
-      program row broken: end 0
  too loose, by domain break rules:
 
 == total ==
-  both accept: 130 polylines (210 geometries)
-  both reject: 180 polylines (203 geometries)
-  too strict: 79 polylines (88 geometries)
-  too loose: 0 polylines (0 geometries)
+  both accept: 128 polylines (207 geometries)
+  both reject: 217 polylines (249 geometries)
+  too strict: 42 polylines (42 geometries)
+  too loose: 2 polylines (3 geometries)
   undecided: 0 polylines (0 geometries)
   off grid (geometries): 1200 (1200 geometries)
  too strict, by the kept values of the failing pairs:
@@ -101,30 +440,382 @@ enumeration wall 10.8934 s
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*4,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
       program row broken: end 0
       program row broken: bound param
-  [cross | end] polylines 14 (geometries 19)
-    varied: A1.2=0 A1.3=0 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: cross 0
-      program row broken: end 0
-    varied: A1.2=2 A1.3=2 A1.4=2 A1.5=0 A1.6=4
-      polyline A1:2*2,3*2,2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: cross 0
-      program row broken: end 0
-    varied: A1.2=0 A1.3=0 A1.4=2 A1.5=2 A1.6=4
-      polyline A1:2*2,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: cross 0
-      program row broken: end 0
-  [end] polylines 23 (geometries 27)
-    varied: A1.2=2 A1.3=2 A1.4=4 A1.5=0 A1.6=4
-      polyline A1:2*2,3*2,2*12,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-    varied: A1.2=2 A1.3=2 A1.4=6 A1.5=0 A1.6=4
-      polyline A1:2*2,3*2,2*14,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-    varied: A1.2=2 A1.3=2 A1.4=8 A1.5=0 A1.6=4
-      polyline A1:2*2,3*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
  too loose, by domain break rules:
+  [head / undetermined box | sep | sepdir] polylines 2 (geometries 3)
+    varied: B1.2=0 B1.3=0 B1.4=2 B1.5=2 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+      witness piece lengths: AC1[0,0,0,0,4] BD1[0,0,0,0,2] C1[0,0,0,0,0,0,0,0,3,2] B1[2,2,0,0,2,0,0,0,6] A1[0,0,0,0,10,0,0,0,6] D1[0,0,0,0,0,0,1,0,0,8]
+      break head tracks C1,A1 tile (2,2) an end piece on tile (2, 2) shares it with another piece
+        sep 0 5 6 C1/C1 pieces 0/1: adjacent
+        sep 0 5 7 C1/C1 pieces 0/2: zero contraction
+        sep 0 5 8 C1/C1 pieces 0/3: zero contraction
+        sep 0 5 9 C1/C1 pieces 0/4: zero contraction
+        sep 0 5 10 C1/C1 pieces 0/5: zero contraction
+        sep 0 5 11 C1/C1 pieces 0/6: zero contraction
+        sep 0 5 12 C1/C1 pieces 0/7: zero contraction
+        sep 0 5 13 C1/C1 pieces 0/8: zero contraction
+        sep 0 5 14 C1/C1 pieces 0/9: zero contraction
+        sep 0 6 7 C1/C1 pieces 1/2: adjacent
+        sep 0 6 8 C1/C1 pieces 1/3: zero contraction
+        sep 0 6 9 C1/C1 pieces 1/4: zero contraction
+        sep 0 6 10 C1/C1 pieces 1/5: zero contraction
+        sep 0 6 11 C1/C1 pieces 1/6: zero contraction
+        sep 0 6 12 C1/C1 pieces 1/7: zero contraction
+        sep 0 6 13 C1/C1 pieces 1/8: zero contraction
+        sep 0 6 14 C1/C1 pieces 1/9: zero contraction
+        sep 0 7 8 C1/C1 pieces 2/3: adjacent
+        sep 0 7 9 C1/C1 pieces 2/4: zero contraction
+        sep 0 7 10 C1/C1 pieces 2/5: zero contraction
+        sep 0 7 11 C1/C1 pieces 2/6: zero contraction
+        sep 0 7 12 C1/C1 pieces 2/7: zero contraction
+        sep 0 7 13 C1/C1 pieces 2/8: zero contraction
+        sep 0 7 14 C1/C1 pieces 2/9: zero contraction
+        sep 0 8 9 C1/C1 pieces 3/4: adjacent
+        sep 0 8 10 C1/C1 pieces 3/5: zero contraction
+        sep 0 8 11 C1/C1 pieces 3/6: zero contraction
+        sep 0 8 12 C1/C1 pieces 3/7: zero contraction
+        sep 0 8 13 C1/C1 pieces 3/8: zero contraction
+        sep 0 8 14 C1/C1 pieces 3/9: zero contraction
+        sep 0 9 10 C1/C1 pieces 4/5: adjacent
+        sep 0 9 11 C1/C1 pieces 4/6: zero contraction
+        sep 0 9 12 C1/C1 pieces 4/7: zero contraction
+        sep 0 9 13 C1/C1 pieces 4/8: zero contraction
+        sep 0 9 14 C1/C1 pieces 4/9: zero contraction
+        sep 0 10 11 C1/C1 pieces 5/6: adjacent
+        sep 0 10 12 C1/C1 pieces 5/7: zero contraction
+        sep 0 10 13 C1/C1 pieces 5/8: zero contraction
+        sep 0 10 14 C1/C1 pieces 5/9: zero contraction
+        sep 0 11 12 C1/C1 pieces 6/7: adjacent
+        sep 0 11 13 C1/C1 pieces 6/8: zero contraction
+        sep 0 11 14 C1/C1 pieces 6/9: zero contraction
+        sep 0 12 13 C1/C1 pieces 7/8: adjacent
+        sep 0 12 14 C1/C1 pieces 7/9: zero contraction
+        sep 0 13 14 C1/C1 pieces 8/9: adjacent
+        sep 1 10 11 A1/A1 pieces 4/3: adjacent
+        sep 1 10 12 A1/A1 pieces 4/2: span
+        sep 1 10 13 A1/A1 pieces 4/1: span
+        sep 1 10 14 A1/A1 pieces 4/0: span
+        sep 1 11 12 A1/A1 pieces 3/2: adjacent
+        sep 1 11 13 A1/A1 pieces 3/1: zero contraction
+        sep 1 11 14 A1/A1 pieces 3/0: zero contraction
+        sep 1 12 13 A1/A1 pieces 2/1: adjacent
+        sep 1 12 14 A1/A1 pieces 2/0: zero contraction
+        sep 1 13 14 A1/A1 pieces 1/0: adjacent
+        sep 3 0 1 C1/C1 pieces 9/8: adjacent
+        sep 3 0 2 C1/C1 pieces 9/7: zero contraction
+        sep 3 0 3 C1/C1 pieces 9/6: zero contraction
+        sep 3 0 4 C1/C1 pieces 9/5: zero contraction
+        sep 3 0 5 C1/C1 pieces 9/4: zero contraction
+        sep 3 0 6 C1/C1 pieces 9/3: zero contraction
+        sep 3 0 7 C1/C1 pieces 9/2: zero contraction
+        sep 3 0 8 C1/C1 pieces 9/1: zero contraction
+        sep 3 0 9 C1/C1 pieces 9/0: zero contraction
+        sep 3 0 10 C1/A1 pieces 9/0: zero contraction
+        sep 3 0 11 C1/A1 pieces 9/1: zero contraction
+        sep 3 0 12 C1/A1 pieces 9/2: zero contraction
+        sep 3 0 13 C1/A1 pieces 9/3: zero contraction
+        sep 3 0 14 C1/A1 pieces 9/4: span
+        sep 3 1 2 C1/C1 pieces 8/7: adjacent
+        sep 3 1 3 C1/C1 pieces 8/6: zero contraction
+        sep 3 1 4 C1/C1 pieces 8/5: zero contraction
+        sep 3 1 5 C1/C1 pieces 8/4: zero contraction
+        sep 3 1 6 C1/C1 pieces 8/3: zero contraction
+        sep 3 1 7 C1/C1 pieces 8/2: zero contraction
+        sep 3 1 8 C1/C1 pieces 8/1: zero contraction
+        sep 3 1 9 C1/C1 pieces 8/0: zero contraction
+        sep 3 1 10 C1/A1 pieces 8/0: zero contraction
+        sep 3 1 11 C1/A1 pieces 8/1: zero contraction
+        sep 3 1 12 C1/A1 pieces 8/2: zero contraction
+        sep 3 1 13 C1/A1 pieces 8/3: zero contraction
+        sep 3 1 14 C1/A1 pieces 8/4: span
+        sep 3 2 3 C1/C1 pieces 7/6: adjacent
+        sep 3 2 4 C1/C1 pieces 7/5: zero contraction
+        sep 3 2 5 C1/C1 pieces 7/4: zero contraction
+        sep 3 2 6 C1/C1 pieces 7/3: zero contraction
+        sep 3 2 7 C1/C1 pieces 7/2: zero contraction
+        sep 3 2 8 C1/C1 pieces 7/1: zero contraction
+        sep 3 2 9 C1/C1 pieces 7/0: zero contraction
+        sep 3 2 10 C1/A1 pieces 7/0: zero contraction
+        sep 3 2 11 C1/A1 pieces 7/1: zero contraction
+        sep 3 2 12 C1/A1 pieces 7/2: zero contraction
+        sep 3 2 13 C1/A1 pieces 7/3: zero contraction
+        sep 3 2 14 C1/A1 pieces 7/4: span
+        sep 3 3 4 C1/C1 pieces 6/5: adjacent
+        sep 3 3 5 C1/C1 pieces 6/4: zero contraction
+        sep 3 3 6 C1/C1 pieces 6/3: zero contraction
+        sep 3 3 7 C1/C1 pieces 6/2: zero contraction
+        sep 3 3 8 C1/C1 pieces 6/1: zero contraction
+        sep 3 3 9 C1/C1 pieces 6/0: zero contraction
+        sep 3 3 10 C1/A1 pieces 6/0: zero contraction
+        sep 3 3 11 C1/A1 pieces 6/1: zero contraction
+        sep 3 3 12 C1/A1 pieces 6/2: zero contraction
+        sep 3 3 13 C1/A1 pieces 6/3: zero contraction
+        sep 3 3 14 C1/A1 pieces 6/4: span
+        sep 3 4 5 C1/C1 pieces 5/4: adjacent
+        sep 3 4 6 C1/C1 pieces 5/3: zero contraction
+        sep 3 4 7 C1/C1 pieces 5/2: zero contraction
+        sep 3 4 8 C1/C1 pieces 5/1: zero contraction
+        sep 3 4 9 C1/C1 pieces 5/0: zero contraction
+        sep 3 4 10 C1/A1 pieces 5/0: zero contraction
+        sep 3 4 11 C1/A1 pieces 5/1: zero contraction
+        sep 3 4 12 C1/A1 pieces 5/2: zero contraction
+        sep 3 4 13 C1/A1 pieces 5/3: zero contraction
+        sep 3 4 14 C1/A1 pieces 5/4: span
+        sep 3 5 6 C1/C1 pieces 4/3: adjacent
+        sep 3 5 7 C1/C1 pieces 4/2: zero contraction
+        sep 3 5 8 C1/C1 pieces 4/1: zero contraction
+        sep 3 5 9 C1/C1 pieces 4/0: zero contraction
+        sep 3 5 10 C1/A1 pieces 4/0: zero contraction
+        sep 3 5 11 C1/A1 pieces 4/1: zero contraction
+        sep 3 5 12 C1/A1 pieces 4/2: zero contraction
+        sep 3 5 13 C1/A1 pieces 4/3: zero contraction
+        sep 3 5 14 C1/A1 pieces 4/4: span
+        sep 3 6 7 C1/C1 pieces 3/2: adjacent
+        sep 3 6 8 C1/C1 pieces 3/1: zero contraction
+        sep 3 6 9 C1/C1 pieces 3/0: zero contraction
+        sep 3 6 10 C1/A1 pieces 3/0: zero contraction
+        sep 3 6 11 C1/A1 pieces 3/1: zero contraction
+        sep 3 6 12 C1/A1 pieces 3/2: zero contraction
+        sep 3 6 13 C1/A1 pieces 3/3: zero contraction
+        sep 3 6 14 C1/A1 pieces 3/4: span
+        sep 3 7 8 C1/C1 pieces 2/1: adjacent
+        sep 3 7 9 C1/C1 pieces 2/0: zero contraction
+        sep 3 7 10 C1/A1 pieces 2/0: zero contraction
+        sep 3 7 11 C1/A1 pieces 2/1: zero contraction
+        sep 3 7 12 C1/A1 pieces 2/2: zero contraction
+        sep 3 7 13 C1/A1 pieces 2/3: zero contraction
+        sep 3 7 14 C1/A1 pieces 2/4: span
+        sep 3 8 9 C1/C1 pieces 1/0: adjacent
+        sep 3 8 10 C1/A1 pieces 1/0: zero contraction
+        sep 3 8 11 C1/A1 pieces 1/1: zero contraction
+        sep 3 8 12 C1/A1 pieces 1/2: zero contraction
+        sep 3 8 13 C1/A1 pieces 1/3: zero contraction
+        sep 3 8 14 C1/A1 pieces 1/4: span
+        sep 3 9 10 C1/A1 pieces 0/0: adjacent
+        sep 3 9 11 C1/A1 pieces 0/1: zero contraction
+        sep 3 9 12 C1/A1 pieces 0/2: zero contraction
+        sep 3 9 13 C1/A1 pieces 0/3: zero contraction
+        sep 3 9 14 C1/A1 pieces 0/4: span
+        sep 3 10 11 A1/A1 pieces 0/1: adjacent
+        sep 3 10 12 A1/A1 pieces 0/2: zero contraction
+        sep 3 10 13 A1/A1 pieces 0/3: zero contraction
+        sep 3 10 14 A1/A1 pieces 0/4: span
+        sep 3 11 12 A1/A1 pieces 1/2: adjacent
+        sep 3 11 13 A1/A1 pieces 1/3: zero contraction
+        sep 3 11 14 A1/A1 pieces 1/4: span
+        sep 3 12 13 A1/A1 pieces 2/3: adjacent
+        sep 3 12 14 A1/A1 pieces 2/4: span
+        sep 3 13 14 A1/A1 pieces 3/4: adjacent
+        sep 4 11 12 A1/A1 pieces 8/7: adjacent
+        sep 4 11 13 A1/A1 pieces 8/6: zero contraction
+        sep 4 11 14 A1/A1 pieces 8/5: zero contraction
+        sep 4 11 15 A1/A1 pieces 8/4: span
+        sep 4 12 13 A1/A1 pieces 7/6: adjacent
+        sep 4 12 14 A1/A1 pieces 7/5: zero contraction
+        sep 4 12 15 A1/A1 pieces 7/4: span
+        sep 4 13 14 A1/A1 pieces 6/5: adjacent
+        sep 4 13 15 A1/A1 pieces 6/4: span
+        sep 4 14 15 A1/A1 pieces 5/4: adjacent
+        sep 5 5 6 A1/A1 pieces 4/5: adjacent
+        sep 5 5 7 A1/A1 pieces 4/6: span
+        sep 5 5 8 A1/A1 pieces 4/7: span
+        sep 5 5 9 A1/A1 pieces 4/8: span
+        sep 5 6 7 A1/A1 pieces 5/6: adjacent
+        sep 5 6 8 A1/A1 pieces 5/7: zero contraction
+        sep 5 6 9 A1/A1 pieces 5/8: zero contraction
+        sep 5 7 8 A1/A1 pieces 6/7: adjacent
+        sep 5 7 9 A1/A1 pieces 6/8: zero contraction
+        sep 5 8 9 A1/A1 pieces 7/8: adjacent
+        lead C1 start 3: holds on the witness
+        lead A1 start 1: holds on the witness
+        lead A1 start 5: holds on the witness
+    varied: B1.2=2 B1.3=0 B1.4=2 B1.5=2 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+      witness piece lengths: AC1[0,0,0,0,4] BD1[0,0,0,0,2] C1[0,0,0,0,0,0,0,0,3,2] B1[4,1,0,0,0,1,0,0,8] A1[0,0,0,0,10,0,0,0,6] D1[0,0,0,0,0,0,1,0,0,8]
+      break head tracks C1,A1 tile (2,2) an end piece on tile (2, 2) shares it with another piece
+        sep 0 5 6 C1/C1 pieces 0/1: adjacent
+        sep 0 5 7 C1/C1 pieces 0/2: zero contraction
+        sep 0 5 8 C1/C1 pieces 0/3: zero contraction
+        sep 0 5 9 C1/C1 pieces 0/4: zero contraction
+        sep 0 5 10 C1/C1 pieces 0/5: zero contraction
+        sep 0 5 11 C1/C1 pieces 0/6: zero contraction
+        sep 0 5 12 C1/C1 pieces 0/7: zero contraction
+        sep 0 5 13 C1/C1 pieces 0/8: zero contraction
+        sep 0 5 14 C1/C1 pieces 0/9: zero contraction
+        sep 0 6 7 C1/C1 pieces 1/2: adjacent
+        sep 0 6 8 C1/C1 pieces 1/3: zero contraction
+        sep 0 6 9 C1/C1 pieces 1/4: zero contraction
+        sep 0 6 10 C1/C1 pieces 1/5: zero contraction
+        sep 0 6 11 C1/C1 pieces 1/6: zero contraction
+        sep 0 6 12 C1/C1 pieces 1/7: zero contraction
+        sep 0 6 13 C1/C1 pieces 1/8: zero contraction
+        sep 0 6 14 C1/C1 pieces 1/9: zero contraction
+        sep 0 7 8 C1/C1 pieces 2/3: adjacent
+        sep 0 7 9 C1/C1 pieces 2/4: zero contraction
+        sep 0 7 10 C1/C1 pieces 2/5: zero contraction
+        sep 0 7 11 C1/C1 pieces 2/6: zero contraction
+        sep 0 7 12 C1/C1 pieces 2/7: zero contraction
+        sep 0 7 13 C1/C1 pieces 2/8: zero contraction
+        sep 0 7 14 C1/C1 pieces 2/9: zero contraction
+        sep 0 8 9 C1/C1 pieces 3/4: adjacent
+        sep 0 8 10 C1/C1 pieces 3/5: zero contraction
+        sep 0 8 11 C1/C1 pieces 3/6: zero contraction
+        sep 0 8 12 C1/C1 pieces 3/7: zero contraction
+        sep 0 8 13 C1/C1 pieces 3/8: zero contraction
+        sep 0 8 14 C1/C1 pieces 3/9: zero contraction
+        sep 0 9 10 C1/C1 pieces 4/5: adjacent
+        sep 0 9 11 C1/C1 pieces 4/6: zero contraction
+        sep 0 9 12 C1/C1 pieces 4/7: zero contraction
+        sep 0 9 13 C1/C1 pieces 4/8: zero contraction
+        sep 0 9 14 C1/C1 pieces 4/9: zero contraction
+        sep 0 10 11 C1/C1 pieces 5/6: adjacent
+        sep 0 10 12 C1/C1 pieces 5/7: zero contraction
+        sep 0 10 13 C1/C1 pieces 5/8: zero contraction
+        sep 0 10 14 C1/C1 pieces 5/9: zero contraction
+        sep 0 11 12 C1/C1 pieces 6/7: adjacent
+        sep 0 11 13 C1/C1 pieces 6/8: zero contraction
+        sep 0 11 14 C1/C1 pieces 6/9: zero contraction
+        sep 0 12 13 C1/C1 pieces 7/8: adjacent
+        sep 0 12 14 C1/C1 pieces 7/9: zero contraction
+        sep 0 13 14 C1/C1 pieces 8/9: adjacent
+        sep 1 10 11 A1/A1 pieces 4/3: adjacent
+        sep 1 10 12 A1/A1 pieces 4/2: span
+        sep 1 10 13 A1/A1 pieces 4/1: span
+        sep 1 10 14 A1/A1 pieces 4/0: span
+        sep 1 11 12 A1/A1 pieces 3/2: adjacent
+        sep 1 11 13 A1/A1 pieces 3/1: zero contraction
+        sep 1 11 14 A1/A1 pieces 3/0: zero contraction
+        sep 1 12 13 A1/A1 pieces 2/1: adjacent
+        sep 1 12 14 A1/A1 pieces 2/0: zero contraction
+        sep 1 13 14 A1/A1 pieces 1/0: adjacent
+        sep 3 0 1 C1/C1 pieces 9/8: adjacent
+        sep 3 0 2 C1/C1 pieces 9/7: zero contraction
+        sep 3 0 3 C1/C1 pieces 9/6: zero contraction
+        sep 3 0 4 C1/C1 pieces 9/5: zero contraction
+        sep 3 0 5 C1/C1 pieces 9/4: zero contraction
+        sep 3 0 6 C1/C1 pieces 9/3: zero contraction
+        sep 3 0 7 C1/C1 pieces 9/2: zero contraction
+        sep 3 0 8 C1/C1 pieces 9/1: zero contraction
+        sep 3 0 9 C1/C1 pieces 9/0: zero contraction
+        sep 3 0 10 C1/A1 pieces 9/0: zero contraction
+        sep 3 0 11 C1/A1 pieces 9/1: zero contraction
+        sep 3 0 12 C1/A1 pieces 9/2: zero contraction
+        sep 3 0 13 C1/A1 pieces 9/3: zero contraction
+        sep 3 0 14 C1/A1 pieces 9/4: span
+        sep 3 1 2 C1/C1 pieces 8/7: adjacent
+        sep 3 1 3 C1/C1 pieces 8/6: zero contraction
+        sep 3 1 4 C1/C1 pieces 8/5: zero contraction
+        sep 3 1 5 C1/C1 pieces 8/4: zero contraction
+        sep 3 1 6 C1/C1 pieces 8/3: zero contraction
+        sep 3 1 7 C1/C1 pieces 8/2: zero contraction
+        sep 3 1 8 C1/C1 pieces 8/1: zero contraction
+        sep 3 1 9 C1/C1 pieces 8/0: zero contraction
+        sep 3 1 10 C1/A1 pieces 8/0: zero contraction
+        sep 3 1 11 C1/A1 pieces 8/1: zero contraction
+        sep 3 1 12 C1/A1 pieces 8/2: zero contraction
+        sep 3 1 13 C1/A1 pieces 8/3: zero contraction
+        sep 3 1 14 C1/A1 pieces 8/4: span
+        sep 3 2 3 C1/C1 pieces 7/6: adjacent
+        sep 3 2 4 C1/C1 pieces 7/5: zero contraction
+        sep 3 2 5 C1/C1 pieces 7/4: zero contraction
+        sep 3 2 6 C1/C1 pieces 7/3: zero contraction
+        sep 3 2 7 C1/C1 pieces 7/2: zero contraction
+        sep 3 2 8 C1/C1 pieces 7/1: zero contraction
+        sep 3 2 9 C1/C1 pieces 7/0: zero contraction
+        sep 3 2 10 C1/A1 pieces 7/0: zero contraction
+        sep 3 2 11 C1/A1 pieces 7/1: zero contraction
+        sep 3 2 12 C1/A1 pieces 7/2: zero contraction
+        sep 3 2 13 C1/A1 pieces 7/3: zero contraction
+        sep 3 2 14 C1/A1 pieces 7/4: span
+        sep 3 3 4 C1/C1 pieces 6/5: adjacent
+        sep 3 3 5 C1/C1 pieces 6/4: zero contraction
+        sep 3 3 6 C1/C1 pieces 6/3: zero contraction
+        sep 3 3 7 C1/C1 pieces 6/2: zero contraction
+        sep 3 3 8 C1/C1 pieces 6/1: zero contraction
+        sep 3 3 9 C1/C1 pieces 6/0: zero contraction
+        sep 3 3 10 C1/A1 pieces 6/0: zero contraction
+        sep 3 3 11 C1/A1 pieces 6/1: zero contraction
+        sep 3 3 12 C1/A1 pieces 6/2: zero contraction
+        sep 3 3 13 C1/A1 pieces 6/3: zero contraction
+        sep 3 3 14 C1/A1 pieces 6/4: span
+        sep 3 4 5 C1/C1 pieces 5/4: adjacent
+        sep 3 4 6 C1/C1 pieces 5/3: zero contraction
+        sep 3 4 7 C1/C1 pieces 5/2: zero contraction
+        sep 3 4 8 C1/C1 pieces 5/1: zero contraction
+        sep 3 4 9 C1/C1 pieces 5/0: zero contraction
+        sep 3 4 10 C1/A1 pieces 5/0: zero contraction
+        sep 3 4 11 C1/A1 pieces 5/1: zero contraction
+        sep 3 4 12 C1/A1 pieces 5/2: zero contraction
+        sep 3 4 13 C1/A1 pieces 5/3: zero contraction
+        sep 3 4 14 C1/A1 pieces 5/4: span
+        sep 3 5 6 C1/C1 pieces 4/3: adjacent
+        sep 3 5 7 C1/C1 pieces 4/2: zero contraction
+        sep 3 5 8 C1/C1 pieces 4/1: zero contraction
+        sep 3 5 9 C1/C1 pieces 4/0: zero contraction
+        sep 3 5 10 C1/A1 pieces 4/0: zero contraction
+        sep 3 5 11 C1/A1 pieces 4/1: zero contraction
+        sep 3 5 12 C1/A1 pieces 4/2: zero contraction
+        sep 3 5 13 C1/A1 pieces 4/3: zero contraction
+        sep 3 5 14 C1/A1 pieces 4/4: span
+        sep 3 6 7 C1/C1 pieces 3/2: adjacent
+        sep 3 6 8 C1/C1 pieces 3/1: zero contraction
+        sep 3 6 9 C1/C1 pieces 3/0: zero contraction
+        sep 3 6 10 C1/A1 pieces 3/0: zero contraction
+        sep 3 6 11 C1/A1 pieces 3/1: zero contraction
+        sep 3 6 12 C1/A1 pieces 3/2: zero contraction
+        sep 3 6 13 C1/A1 pieces 3/3: zero contraction
+        sep 3 6 14 C1/A1 pieces 3/4: span
+        sep 3 7 8 C1/C1 pieces 2/1: adjacent
+        sep 3 7 9 C1/C1 pieces 2/0: zero contraction
+        sep 3 7 10 C1/A1 pieces 2/0: zero contraction
+        sep 3 7 11 C1/A1 pieces 2/1: zero contraction
+        sep 3 7 12 C1/A1 pieces 2/2: zero contraction
+        sep 3 7 13 C1/A1 pieces 2/3: zero contraction
+        sep 3 7 14 C1/A1 pieces 2/4: span
+        sep 3 8 9 C1/C1 pieces 1/0: adjacent
+        sep 3 8 10 C1/A1 pieces 1/0: zero contraction
+        sep 3 8 11 C1/A1 pieces 1/1: zero contraction
+        sep 3 8 12 C1/A1 pieces 1/2: zero contraction
+        sep 3 8 13 C1/A1 pieces 1/3: zero contraction
+        sep 3 8 14 C1/A1 pieces 1/4: span
+        sep 3 9 10 C1/A1 pieces 0/0: adjacent
+        sep 3 9 11 C1/A1 pieces 0/1: zero contraction
+        sep 3 9 12 C1/A1 pieces 0/2: zero contraction
+        sep 3 9 13 C1/A1 pieces 0/3: zero contraction
+        sep 3 9 14 C1/A1 pieces 0/4: span
+        sep 3 10 11 A1/A1 pieces 0/1: adjacent
+        sep 3 10 12 A1/A1 pieces 0/2: zero contraction
+        sep 3 10 13 A1/A1 pieces 0/3: zero contraction
+        sep 3 10 14 A1/A1 pieces 0/4: span
+        sep 3 11 12 A1/A1 pieces 1/2: adjacent
+        sep 3 11 13 A1/A1 pieces 1/3: zero contraction
+        sep 3 11 14 A1/A1 pieces 1/4: span
+        sep 3 12 13 A1/A1 pieces 2/3: adjacent
+        sep 3 12 14 A1/A1 pieces 2/4: span
+        sep 3 13 14 A1/A1 pieces 3/4: adjacent
+        sep 4 11 12 A1/A1 pieces 8/7: adjacent
+        sep 4 11 13 A1/A1 pieces 8/6: zero contraction
+        sep 4 11 14 A1/A1 pieces 8/5: zero contraction
+        sep 4 11 15 A1/A1 pieces 8/4: span
+        sep 4 12 13 A1/A1 pieces 7/6: adjacent
+        sep 4 12 14 A1/A1 pieces 7/5: zero contraction
+        sep 4 12 15 A1/A1 pieces 7/4: span
+        sep 4 13 14 A1/A1 pieces 6/5: adjacent
+        sep 4 13 15 A1/A1 pieces 6/4: span
+        sep 4 14 15 A1/A1 pieces 5/4: adjacent
+        sep 5 5 6 A1/A1 pieces 4/5: adjacent
+        sep 5 5 7 A1/A1 pieces 4/6: span
+        sep 5 5 8 A1/A1 pieces 4/7: span
+        sep 5 5 9 A1/A1 pieces 4/8: span
+        sep 5 6 7 A1/A1 pieces 5/6: adjacent
+        sep 5 6 8 A1/A1 pieces 5/7: zero contraction
+        sep 5 6 9 A1/A1 pieces 5/8: zero contraction
+        sep 5 7 8 A1/A1 pieces 6/7: adjacent
+        sep 5 7 9 A1/A1 pieces 6/8: zero contraction
+        sep 5 8 9 A1/A1 pieces 7/8: adjacent
+        lead C1 start 3: holds on the witness
+        lead A1 start 1: holds on the witness
+        lead A1 start 5: holds on the witness
 
 undetermined families seen: box | sep | sepdir
 

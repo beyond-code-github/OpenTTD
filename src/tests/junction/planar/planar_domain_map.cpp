@@ -103,8 +103,9 @@ TEST_CASE("planar domain: a drawing's input from its variant", "[junction][plana
 		CHECK(in.structures[0].separator == Index(v, "A1"));
 		CHECK(AsSet(in.structures[0].crossers) == Named(v, {"B1"}));
 		CHECK(in.structures[0].tunnel);
-		CHECK(in.structures[0].first == 2);
-		CHECK(in.structures[0].last == 4);
+		CHECK(in.structures[0].ends == 2);
+		CHECK(in.structures[0].first == 1);
+		CHECK(in.structures[0].last == 5);
 		CHECK(in.structures[0].limit == v.structure.structures[0].limit[1]);
 		CHECK(notes.empty());
 		const PlanarDomainVerdict d = CheckPlanarDomain(in);
@@ -117,7 +118,7 @@ TEST_CASE("planar domain: a drawing's input from its variant", "[junction][plana
 		std::vector<std::string> notes;
 		const PlanarDomainInput in = PlanarDomainInputOf(v, points, notes);
 		REQUIRE(notes.size() == 1);
-		CHECK(notes[0].find("no room for a head") != std::string::npos);
+		CHECK(notes[0].find("no room for its end runs") != std::string::npos);
 		const PlanarDomainVerdict d = CheckPlanarDomain(in);
 		std::set<std::string> rules;
 		for (const PlanarDomainBreak &b : d.breaks) rules.insert(b.rule);

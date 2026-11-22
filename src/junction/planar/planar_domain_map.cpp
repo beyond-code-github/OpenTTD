@@ -96,13 +96,13 @@ static void AddStructure(const PlanarShapeVariant &v, PlanarDomainInput &input, 
 	}
 	const size_t least = lo - met.begin();
 	const size_t greatest = met.size() - 1 - (std::find(met.rbegin(), met.rend(), true) - met.rbegin());
-	if (least == 0 || greatest + 1 >= met.size()) {
-		notes.push_back(fmt::format("{}: no room for a head", head));
+	if (least < static_cast<size_t>(s.ends) || greatest + s.ends >= met.size()) {
+		notes.push_back(fmt::format("{}: no room for its end runs", head));
 		return;
 	}
 	PlanarDomainStructure out = s;
-	out.first = static_cast<uint32_t>(least - 1);
-	out.last = static_cast<uint32_t>(greatest + 1);
+	out.first = static_cast<uint32_t>(least - s.ends);
+	out.last = static_cast<uint32_t>(greatest + s.ends);
 	input.structures.push_back(std::move(out));
 }
 
@@ -121,6 +121,7 @@ PlanarDomainInput PlanarDomainInputOf(const PlanarShapeVariant &v, const std::ve
 		d.tunnel = tunnel;
 		d.limit = s.limit[tunnel ? 1 : 0];
 		d.first = d.last = 0;
+		d.ends = v.structures[k].end_run[tunnel ? 1 : 0];
 		AddStructure(v, input, notes, k, d);
 		if (s.copy != UINT32_MAX) {
 			PlanarDomainStructure c = d;

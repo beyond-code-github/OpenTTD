@@ -41,14 +41,15 @@ struct PlanarDomainNode {
 	std::vector<uint32_t> out; ///< Tracks whose first point is `at`.
 };
 
-/** A bridge or tunnel on its separator: heads at two piece indices of the separator's raster, middles between. */
+/** A bridge or tunnel on its separator: end runs at both ends of a run of the separator's raster, middles between. */
 struct PlanarDomainStructure {
 	uint32_t separator;
-	uint32_t first; ///< The near head's piece index.
-	uint32_t last; ///< The far head's piece index.
+	uint32_t first; ///< The outermost piece at the near end.
+	uint32_t last; ///< The outermost piece at the far end.
 	bool tunnel = false;
 	int limit = -1; ///< The most middles allowed, -1 for no limit.
 	std::vector<uint32_t> crossers; ///< The tracks allowed (and required) under its middles.
+	int ends = 1; ///< Pieces at each end that belong to the structure: a bridge's head (1), a tunnel's portal and ramp on flat ground (2) (D155, D365). The `ends` pieces at each end are its end pieces, the pieces between are middles.
 };
 
 struct PlanarDomainInput {
