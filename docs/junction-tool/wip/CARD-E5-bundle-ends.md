@@ -90,3 +90,9 @@ So by construction in the strict sense (every side from headings, no choices) is
 - **LL2, whatever is chosen:** Structure or Shape must not close a copy inside a face holding facing bends (Gemini's rule). That is a promise clause with its own card.
 
 My recommendation: (C) for E5 now, since the oracle's job of naming upstream gaps is done for T3/LL2 (LL2 named one, T3 has none), and the LL2 promise clause as the actionable upstream fix. Then design the separation question properly for Slots, starting from (A) with V's 197 as the answer key for any rule, before building. Reversible: yes.
+
+## V's residual slack decoded (2026-11-22, 2ac8d358ab, log probes/e5land/vres-a54b3a903c.log)
+- Sides from V's own points where V is pinned, else from the base drawing (10 tracks unpinned: piece count L85 L3 L38 L44 L72 L77; end mismatch L99 L8 L101; flex L89). Slack 74.5 (sep 60.0 / 14 rows, node 11.5, cross 2.0, end 1.0). Window 0 is still Infeasible on `piece L100 0`.
+- **Every one of the 14 stretched keep-apart rows has a wall on an unpinned track.** On V's pinned geometry the pairwise keep-apart rows hold everywhere. The sep residual is our pinned shape disagreeing with V on those 10 tracks (extraction/pinning), not rows stricter than V.
+- Rows on V-only tracks: cross 87 (L46 x L57) 2.0, end 28 (L11/L37/L32) 1.0, node 23 (L100's zero-length piece at L48/L47) 1.0. That's 4 half tiles in all, the same kind as the known base mismatches (nodes, port gaps, V's double steps).
+- Consequence: the model is confirmed against the answer key where we have the answer. Open: why those 10 tracks' piece structure differs from V (extractor vs Shape's representation).
