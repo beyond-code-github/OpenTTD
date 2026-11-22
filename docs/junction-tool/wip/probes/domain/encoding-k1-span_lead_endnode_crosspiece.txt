@@ -1,0 +1,35 @@
+Encoding report on K1: our contracted rows (judged on fixed points, no solve) against the domain, one writing per polyline (D432)
+node_gaps: on (D424)
+A1 headings after flex: 1 0 1 2 1 0 -1 0 1 0; flex middles: 1 3 6 8; run holders: 0 9
+ABC1 headings after flex: 2 1 2 3 2; flex middles: 1 3; run holders: 4
+B1 headings after flex: 2 1 2 3 2; flex middles: 1 3; run holders: 4
+BC1 headings after flex: 2 1 2 3 2; flex middles: 1 3; run holders: 4
+C1 headings after flex: 3 2 3 4 3 4 3 4 5 4; flex middles: 1 3 6 8; run holders: 0 9
+node lead rows over the judged contracted variants: 0
+node lead rows, configuration K1a: 0
+enumeration wall 0.014575 s
+
+wall K1a: 0.0144133 s
+== K1a ==
+  both accept: 28 polylines (54 geometries)
+  both reject: 84 polylines (162 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 1080 (1080 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+== total ==
+  both accept: 28 polylines (54 geometries)
+  both reject: 84 polylines (162 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 1080 (1080 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+== base (strict rules on): failing pairs ==
+      sep 2 9 11 tracks A1/BC1 pieces 0/1 kept [zero contraction kept, full spacing (same direction)] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -8;
+      sep 3 1 5 tracks B1/C1 pieces 3/0 kept [zero contraction kept, full spacing (same direction)] candidates: s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -2;
