@@ -448,6 +448,38 @@ TEST_CASE("planar draw: the program on fixed points agrees with the program on X
 	CHECK(std::ranges::count(solved.conflict, std::string("end 0")) == 1);
 }
 
+TEST_CASE("planar draw: the program checked by track sets", "[junction][planar][planardomain]")
+{
+	const X1Fixture f;
+	const PlanarDrawResult out = f.ProgramOut();
+	REQUIRE(out.status == "built");
+	const std::vector<Points> base = f.PointsOf(f.base);
+	Geometry split = f.base;
+	split["A1"] = {{4, 8}, {8, 8}};
+	const std::vector<Points> split_points = f.PointsOf(split);
+
+	/* With B1 alone placed, the rows whose sets hold A1 are not evaluated: `end 0` stays quiet on the split geometry. */
+	std::vector<bool> only_b(f.n, false);
+	only_b[f.idx.at("B1")] = true;
+	CHECK(CheckPlanarProgramOnPoints(out.program, split_points, only_b).broken.empty());
+	CHECK(CheckPlanarProgramOnPoints(out.program, base, only_b).broken.empty());
+	/* `end 0` needs A1 and B1: with A1 alone it is still not evaluated, with both it breaks. */
+	std::vector<bool> only_a(f.n, false);
+	only_a[f.idx.at("A1")] = true;
+	CHECK(CheckPlanarProgramOnPoints(out.program, split_points, only_a).broken.empty());
+	std::vector<bool> a_and_b = only_a;
+	a_and_b[f.idx.at("B1")] = true;
+	CHECK(CheckPlanarProgramOnPoints(out.program, split_points, a_and_b).broken == std::vector<std::string>{"end 0"});
+
+	/* With every track placed the two forms agree. */
+	const std::vector<bool> all(f.n, true);
+	for (const std::vector<Points> *pts : {&base, &split_points}) {
+		CHECK(CheckPlanarProgramOnPoints(out.program, *pts, all).broken == CheckPlanarProgramOnPoints(out.program, *pts).broken);
+	}
+	CHECK(CheckPlanarProgramOnPoints(out.program, base, all).broken.empty());
+	CHECK(CheckPlanarProgramOnPoints(out.program, split_points, all).broken == std::vector<std::string>{"end 0"});
+}
+
 TEST_CASE("planar domain: representations of a polyline", "[junction][planar][planardomain]")
 {
 	const std::vector<int> pieces = {2, 1, 2, 3, 2};
@@ -549,6 +581,12 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 					for (const PlanarPointRow &r : lead_rows) {
 						if (r.terms.front().point[0] == t && !PlanarPointRowHolds(r, pts)) ok = false;
 					}
+					/* The program rows that depend on this track alone. */
+					if (ok) {
+						std::vector<bool> only(f.n, false);
+						only[t] = true;
+						ok = CheckPlanarProgramOnPoints(program_out.program, pts, only).broken.empty();
+					}
 					if (ok) {
 					reps[t].push_back(pts[t]);
 					replens[t].push_back(l);
@@ -568,22 +606,21 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 				}
 				std::vector<Points> cur(f.n);
 				std::vector<size_t> chosen(f.n, 0);
+				std::vector<bool> placed(f.n, false);
 				uint64_t nodes = 0;
 				auto search = [&](auto &&self, uint32_t d) -> bool {
-					if (d == f.n) {
-						/* A full assignment is one node: the whole program must hold on its points. */
-						if (++nodes > 50000) return false;
-						return CheckPlanarProgramOnPoints(program_out.program, cur).broken.empty();
-					}
+					if (d == f.n) return true;
 					for (size_t ri = 0; ri < reps[order[d]].size(); ri++) {
 						const Points &rp = reps[order[d]][ri];
 						if (++nodes > 50000) return false;
 						cur[order[d]] = rp;
 						chosen[order[d]] = ri;
-						const bool ok = std::ranges::all_of(at_depth[d], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); });
+						placed[order[d]] = true;
+						const bool ok = std::ranges::all_of(at_depth[d], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); }) && CheckPlanarProgramOnPoints(program_out.program, cur, placed).broken.empty();
 						if (ok && self(self, d + 1)) return true;
 						if (nodes > 50000) return false;
 					}
+					placed[order[d]] = false;
 					return false;
 				};
 				const bool found = search(search, 0);

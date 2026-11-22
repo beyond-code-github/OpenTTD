@@ -218,11 +218,14 @@ struct PlanarProgramPlan {
 		uint32_t row2; ///< The pair's second row, or UINT32_MAX for a one-unknown row.
 		uint32_t a; ///< The variable determined (a pair: the lower of the two).
 		uint32_t b; ///< The pair's other variable.
+		std::vector<uint32_t> tracks; ///< The tracks the step depends on, ascending: the tracks of the points that reach its inputs.
 	};
 	std::vector<Step> steps;
 	std::vector<uint32_t> checked; ///< Rows whose variables all become known, in row order.
+	std::vector<std::vector<uint32_t>> checked_tracks; ///< Per checked row, the tracks it depends on, ascending.
 	std::vector<std::string> undetermined; ///< Families of the other rows, each once.
 	std::vector<uint32_t> determined; ///< The variables the steps determine (not points).
+	std::vector<std::vector<uint32_t>> determined_tracks; ///< Per determined variable, the tracks it depends on, ascending.
 	std::vector<bool> point; ///< Per variable, whether it is a point.
 };
 
@@ -232,9 +235,24 @@ static std::shared_ptr<PlanarProgramPlan> BuildPlanarProgramPlan(const PlanarPro
 	const size_t n = program.lower.size();
 	std::vector<bool> known(n, false);
 	plan->point.assign(n, false);
-	for (const auto &track : program.point) {
-		for (const auto &p : track) known[p[0]] = known[p[1]] = plan->point[p[0]] = plan->point[p[1]] = true;
+	std::vector<std::vector<uint32_t>> depends(n); ///< Per known variable, the tracks it depends on, ascending.
+	for (uint32_t t = 0; t < program.point.size(); t++) {
+		for (const auto &p : program.point[t]) {
+			known[p[0]] = known[p[1]] = plan->point[p[0]] = plan->point[p[1]] = true;
+			depends[p[0]] = depends[p[1]] = {t};
+		}
 	}
+	/* The union of the tracks of a row's variables other than the two skipped. */
+	const auto tracks_of = [&](std::initializer_list<uint32_t> rows, uint32_t skip_a, uint32_t skip_b) {
+		std::set<uint32_t> tracks;
+		for (const uint32_t ri : rows) {
+			if (ri == UINT32_MAX) continue;
+			for (const auto &[x, c] : program.rows[ri].terms) {
+				if (x != skip_a && x != skip_b) tracks.insert(depends[x].begin(), depends[x].end());
+			}
+		}
+		return std::vector<uint32_t>(tracks.begin(), tracks.end());
+	};
 	const auto is_equality = [](const PlanarProgram::Row &r) { return std::isfinite(r.lower) && r.lower == r.upper; };
 	bool changed = true;
 	while (changed) {
@@ -248,7 +266,9 @@ static std::shared_ptr<PlanarProgramPlan> BuildPlanarProgramPlan(const PlanarPro
 				if (!known[x]) unknown.push_back(x);
 			}
 			if (unknown.size() == 1) {
-				plan->steps.push_back({ri, UINT32_MAX, unknown[0], unknown[0]});
+				std::vector<uint32_t> tracks = tracks_of({ri}, unknown[0], unknown[0]);
+				depends[unknown[0]] = tracks;
+				plan->steps.push_back({ri, UINT32_MAX, unknown[0], unknown[0], std::move(tracks)});
 				known[unknown[0]] = true;
 				changed = true;
 			} else if (unknown.size() == 2) {
@@ -271,7 +291,9 @@ static std::shared_ptr<PlanarProgramPlan> BuildPlanarProgramPlan(const PlanarPro
 					coefficients(program.rows[rows[i]], a1, b1);
 					coefficients(program.rows[rows[j]], a2, b2);
 					if (std::abs(a1 * b2 - a2 * b1) <= 1e-9) continue;
-					plan->steps.push_back({rows[i], rows[j], pair.first, pair.second});
+					std::vector<uint32_t> tracks = tracks_of({rows[i], rows[j]}, pair.first, pair.second);
+					depends[pair.first] = depends[pair.second] = tracks;
+					plan->steps.push_back({rows[i], rows[j], pair.first, pair.second, std::move(tracks)});
 					known[pair.first] = known[pair.second] = true;
 					changed = true;
 				}
@@ -284,19 +306,31 @@ static std::shared_ptr<PlanarProgramPlan> BuildPlanarProgramPlan(const PlanarPro
 		const PlanarProgram::Row &r = program.rows[ri];
 		if (std::ranges::all_of(r.terms, [&](const auto &t) { return known[t.first]; })) {
 			plan->checked.push_back(ri);
+			plan->checked_tracks.push_back(tracks_of({ri}, UINT32_MAX, UINT32_MAX));
 		} else {
 			const std::string family = r.tag.substr(0, r.tag.find(' '));
 			if (seen.insert(family).second) plan->undetermined.push_back(family);
 		}
 	}
 	for (uint32_t x = 0; x < n; x++) {
-		if (known[x] && !plan->point[x]) plan->determined.push_back(x);
+		if (known[x] && !plan->point[x]) {
+			plan->determined.push_back(x);
+			plan->determined_tracks.push_back(depends[x]);
+		}
 	}
 	return plan;
 }
 
 PlanarProgramCheck CheckPlanarProgramOnPoints(const PlanarProgram &program, const std::vector<std::vector<std::array<int, 2>>> &points)
 {
+	return CheckPlanarProgramOnPoints(program, points, std::vector<bool>(program.point.size(), true));
+}
+
+PlanarProgramCheck CheckPlanarProgramOnPoints(const PlanarProgram &program, const std::vector<std::vector<std::array<int, 2>>> &points, const std::vector<bool> &placed)
+{
+	const auto within = [&](const std::vector<uint32_t> &tracks) {
+		return std::ranges::all_of(tracks, [&](uint32_t t) { return t < placed.size() && placed[t]; });
+	};
 	if (program.plan == nullptr) program.plan = BuildPlanarProgramPlan(program);
 	const PlanarProgramPlan &plan = *program.plan;
 	PlanarProgramCheck check;
@@ -322,6 +356,7 @@ PlanarProgramCheck CheckPlanarProgramOnPoints(const PlanarProgram &program, cons
 		return rest;
 	};
 	for (const PlanarProgramPlan::Step &s : plan.steps) {
+		if (!within(s.tracks)) continue;
 		double a1, b1;
 		const double r1 = rest_of(program.rows[s.row], s.a, s.b, a1, b1);
 		if (s.row2 == UINT32_MAX) {
@@ -335,13 +370,16 @@ PlanarProgramCheck CheckPlanarProgramOnPoints(const PlanarProgram &program, cons
 		value[s.b] = (a1 * r2 - a2 * r1) / det;
 	}
 	std::set<std::string> broken_seen;
-	for (const uint32_t ri : plan.checked) {
-		const PlanarProgram::Row &r = program.rows[ri];
+	for (size_t ci = 0; ci < plan.checked.size(); ci++) {
+		if (!within(plan.checked_tracks[ci])) continue;
+		const PlanarProgram::Row &r = program.rows[plan.checked[ci]];
 		double sum = 0;
 		for (const auto &[x, a] : r.terms) sum += a * value[x];
 		if ((sum < r.lower - 1e-6 || sum > r.upper + 1e-6) && broken_seen.insert(r.tag).second) check.broken.push_back(r.tag);
 	}
-	for (const uint32_t x : plan.determined) {
+	for (size_t di = 0; di < plan.determined.size(); di++) {
+		if (!within(plan.determined_tracks[di])) continue;
+		const uint32_t x = plan.determined[di];
 		if ((value[x] < program.lower[x] - 1e-6 || value[x] > program.upper[x] + 1e-6) && broken_seen.insert("bound " + program.group[x]).second) check.broken.push_back("bound " + program.group[x]);
 		if (program.integer[x] && std::abs(value[x] - std::round(value[x])) > 1e-6 && broken_seen.insert("integer " + program.group[x]).second) check.broken.push_back("integer " + program.group[x]);
 	}
