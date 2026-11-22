@@ -1,0 +1,33 @@
+overlap D3[29]#17 (201, 54)-(210, 54) | E3[45]#0 (207, 54)-(210, 54) | sep 75 5 6 | skipped: adjacent
+overlap CD1[12]#0 (36, 285)-(36, 113) | CD2[13]#2 (36, 122)-(36, 115) | sep 13 2 19 | pair written, chosen c0 margin -2
+overlap CD1[12]#0 (36, 285)-(36, 113) | CD2[13]#4 (36, 115)-(36, 100) | sep 13 4 19 | pair written, chosen c0 margin -2
+overlap A3[20]#9 (196, 83)-(159, 83) | B1[21]#10 (180, 83)-(173, 83) | sep 23 19 21 | skipped: span
+overlap A3[20]#9 (196, 83)-(159, 83) | B1[21]#16 (166, 83)-(159, 83) | sep 23 13 21 | skipped: span
+overlap A3[20]#9 (196, 83)-(159, 83) | B1[21]#14 (173, 83)-(166, 83) | sep 23 15 21 | skipped: span
+overlap D1[27]#9 (70, 73)-(92, 73) | D2[28]#11 (63, 73)-(73, 73) | sep 32 0 8 | skipped: span
+overlap D2[28]#13 (76, 77)-(96, 77) | D3[29]#9 (74, 77)-(105, 77) | sep 30 0 19 | skipped: span
+overlap B3[23]#0 (234, 57)-(195, 57) | D2[28]#25 (200, 57)-(202, 57) | - | not in a common face
+overlap D3[29]#15 (194, 54)-(201, 54) | E3[44]#0 (190, 54)-(207, 54) | - | not in a common face
+overlap D3[29]#17 (201, 54)-(210, 54) | E3[44]#0 (190, 54)-(207, 54) | - | not in a common face
+meet B3[23]#1 (195, 57)-(173, 79) | D2[28]#20 (183, 67)-(185, 69) at (184.0, 68.0) | - | not in a common face
+meet B3[23]#0 (234, 57)-(195, 57) | D2[28]#24 (195, 62)-(200, 57) at (200.0, 57.0) | - | not in a common face
+meet B3[23]#0 (234, 57)-(195, 57) | D2[28]#26 (202, 57)-(208, 51) at (202.0, 57.0) | - | not in a common face
+meet D2[28]#12 (73, 73)-(76, 77) | D3[29]#9 (74, 77)-(105, 77) at (76.0, 77.0) | sep 30 1 19 | skipped: span
+meet D2[28]#14 (96, 77)-(98, 75) | D3[29]#9 (74, 77)-(105, 77) at (96.0, 77.0) | sep 45 0 9 | skipped: span
+meet D2[28]#19 (178, 67)-(183, 67) | D3[29]#14 (171, 77)-(194, 54) at (181.0, 67.0) | sep 75 2 15 | pair written, chosen c0 margin -4
+meet D2[28]#26 (202, 57)-(208, 51) | D3[29]#17 (201, 54)-(210, 54) at (205.0, 54.0) | sep 75 5 8 | pair written, chosen c0 margin -4
+meet CD1[12]#1 (36, 113)-(30, 107) | CD2[13]#4 (36, 115)-(36, 100) at (36.0, 113.0) | sep 13 4 18 | pair written, chosen c0 margin -1
+meet CD1[12]#0 (36, 285)-(36, 113) | CD2[13]#1 (38, 124)-(36, 122) at (36.0, 122.0) | sep 13 1 19 | pair written, chosen c3 margin -1
+meet A3[20]#9 (196, 83)-(159, 83) | B1[21]#9 (182, 85)-(180, 83) at (180.0, 83.0) | sep 19 5 6 | skipped: adjacent
+meet B1[21]#20 (103, 80)-(81, 80) | B2[22]#16 (96, 81)-(92, 77) at (95.0, 80.0) | sep 29 2 9 | pair written, chosen c2 margin -4
+meet B1[21]#19 (106, 83)-(103, 80) | B2[22]#15 (106, 81)-(96, 81) at (104.0, 81.0) | sep 29 1 10 | pair written, chosen c0 margin -2
+meet B1[21]#19 (106, 83)-(103, 80) | B3[23]#8 (105, 80)-(103, 80) at (103.0, 80.0) | - | not in a common face
+meet D1[27]#8 (68, 71)-(70, 73) | D2[28]#11 (63, 73)-(73, 73) at (70.0, 73.0) | sep 32 1 8 | pair written, chosen c3 margin -1
+meet D1[27]#9 (70, 73)-(92, 73) | D2[28]#12 (73, 73)-(76, 77) at (73.0, 73.0) | sep 32 0 9 | skipped: span
+meet E2[31]#4 (150, 69)-(161, 69) | E3[32]#5 (150, 71)-(167, 54) at (152.0, 69.0) | sep 66 6 9 | pair written, chosen c1 margin -3
+meet E2[31]#5 (161, 69)-(191, 39) | E3[32]#8 (174, 54)-(185, 54) at (176.0, 54.0) | sep 66 5 12 | pair written, chosen c0 margin -4
+meet D1[27]#21 (184, 57)-(192, 57) | D3[29]#14 (171, 77)-(194, 54) at (191.0, 57.0) | - | not in a common face
+meet D1[27]#22 (192, 57)-(213, 36) | D3[29]#15 (194, 54)-(201, 54) at (195.0, 54.0) | - | not in a common face
+meet D3[29]#14 (171, 77)-(194, 54) | E3[44]#0 (190, 54)-(207, 54) at (194.0, 54.0) | - | not in a common face
+meet D3[29]#14 (171, 77)-(194, 54) | E3"31[53]#0 (192, 56)-(205, 56) at (192.0, 56.0) | sep 75 2 7 | skipped: span
+clash build-rel/dumps-c/anyhub-k3/T3/round-5.json: overlaps 11, meets 21, by reason: adjacent 2, no face 10, span 9, written 11

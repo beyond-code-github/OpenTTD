@@ -1,0 +1,10 @@
+overlap D2[19]#12 (79, 64)-(86, 71) | E2[27]#0 (73, 58)-(86, 71) | sep 24 3 5 | pair written, chosen c0 margin -2 | kept: zero contraction kept, full spacing
+overlap CD1[8]#0 (39, 196)-(39, 117) | CD2[9]#4 (39, 133)-(39, 87) | sep 9 4 24 | pair written, chosen c0 margin -2
+overlap CD1[8]#0 (39, 196)-(39, 117) | CD2[9]#2 (39, 140)-(39, 133) | sep 9 2 24 | pair written, chosen c0 margin -2
+overlap B1[14]#14 (70, 59)-(68, 59) | D1[18]#9 (54, 59)-(77, 59) | sep 18 1 10 | skipped: span
+meet CD1[8]#1 (39, 117)-(13, 91) | CD2[9]#4 (39, 133)-(39, 87) at (39.0, 117.0) | sep 9 4 23 | pair written, chosen c0 margin -1
+meet CD1[8]#0 (39, 196)-(39, 117) | CD2[9]#1 (41, 142)-(39, 140) at (39.0, 140.0) | sep 9 1 24 | pair written, chosen c3 margin -1
+meet D2[19]#9 (57, 64)-(79, 64) | E2[27]#0 (73, 58)-(86, 71) at (79.0, 64.0) | sep 24 0 5 | skipped: span
+meet B1[14]#13 (75, 64)-(70, 59) | D1[18]#9 (54, 59)-(77, 59) at (70.0, 59.0) | sep 16 0 3 | skipped: adjacent
+meet F1[22]#9 (59, 30)-(59, 52) | F2[23]#5 (57, 50)-(59, 52) at (59.0, 52.0) | sep 20 2 11 | skipped: span
+clash build-rel/dumps-c/anyhub-k3/T2/round-5.json: overlaps 4, meets 5, by reason: adjacent 1, span 3, written 5

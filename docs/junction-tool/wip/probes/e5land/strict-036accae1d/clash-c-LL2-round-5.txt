@@ -1,0 +1,19 @@
+overlap A2[18]#0 (327, 107)-(322, 112) | B2[19]#1 (327, 107)-(313, 121) | sep 18 1 12 | pair written, chosen c0 margin -2 | kept: zero contraction kept, full spacing
+overlap B1[47]#0 (265, 121)-(204, 121) | B2[49]#4 (267, 121)-(168, 121) | sep 37 6 12 | pair written, chosen c0 margin -2
+overlap B1[46]#0 (295, 121)-(265, 121) | B2[49]#4 (267, 121)-(168, 121) | sep 37 6 13 | skipped: span
+overlap B2[49]#2 (274, 123)-(269, 123) | B1"9[54]#0 (293, 123)-(267, 123) | - | not in a common face
+overlap B1[46]#0 (295, 121)-(265, 121) | B2[48]#0 (296, 121)-(281, 121) | sep 18 5 7 | skipped: span
+overlap B1[46]#0 (295, 121)-(265, 121) | B2[49]#0 (281, 121)-(276, 121) | sep 37 2 13 | skipped: span
+overlap B1[17]#2 (317, 121)-(295, 121) | B2[19]#2 (313, 121)-(303, 121) | - | not in a common face
+overlap B1[17]#2 (317, 121)-(295, 121) | B2[19]#4 (303, 121)-(296, 121) | - | not in a common face
+overlap B1[17]#2 (317, 121)-(295, 121) | B2[48]#0 (296, 121)-(281, 121) | - | not in a common face
+meet B1[47]#1 (204, 121)-(202, 123) | B2[49]#4 (267, 121)-(168, 121) at (204.0, 121.0) | sep 37 6 11 | pair written, chosen c0 margin -1
+meet B1[46]#0 (295, 121)-(265, 121) | B2[49]#3 (269, 123)-(267, 121) at (267.0, 121.0) | sep 37 5 13 | skipped: span
+meet B1[46]#0 (295, 121)-(265, 121) | B2[49]#1 (276, 121)-(274, 123) at (276.0, 121.0) | sep 37 3 13 | skipped: span
+meet B2[49]#3 (269, 123)-(267, 121) | B1"9[54]#0 (293, 123)-(267, 123) at (269.0, 123.0) | - | not in a common face
+meet B2[49]#1 (276, 121)-(274, 123) | B1"9[54]#0 (293, 123)-(267, 123) at (274.0, 123.0) | - | not in a common face
+meet A2[18]#4 (295, 119)-(288, 126) | B2[48]#0 (296, 121)-(281, 121) at (293.0, 121.0) | sep 18 5 8 | skipped: span
+meet B1[17]#2 (317, 121)-(295, 121) | B2[19]#1 (327, 107)-(313, 121) at (313.0, 121.0) | - | not in a common face
+meet A2[18]#3 (317, 119)-(295, 119) | B2[19]#1 (327, 107)-(313, 121) at (315.0, 119.0) | sep 18 1 9 | pair written, chosen c1 margin -2 | kept: zero contraction kept, spacing 0
+meet A2[18]#1 (322, 112)-(322, 114) | B2[19]#1 (327, 107)-(313, 121) at (322.0, 112.0) | sep 18 1 11 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+clash build-rel/dumps-c/anyhub-k3/LL2/round-5.json: overlaps 9, meets 9, by reason: no face 7, span 6, written 5

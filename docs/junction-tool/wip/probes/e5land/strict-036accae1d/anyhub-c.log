@@ -1,0 +1,790 @@
+Filters: [planaranyhub]
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+openttd_test is a Catch v2.13.10 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+planar draw: the simplest drawing on every hub
+-------------------------------------------------------------------------------
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4026
+...............................................................................
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v0 K1: Optimal slack 5.000 ms 15
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v0 K1 families: [clear 1 1.000] [port 1 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v0 K1 largest: [port E gap AB1 4.000] [clear 4 30 9 1.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v0 K2: Optimal slack 30.000 ms 10
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v0 K2 families: [end 1 1.000] [node 2 5.000] [port 4 24.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v0 K2 largest: [port W gap CB1 10.000] [port E gap AB1 8.000] [node
+  5 3.000] [port S edge AF1 3.000] [port S gap AF1 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4136: warning:
+  anyhub T1 v0 K3: last round Optimal slack 56.000; final Optimal ms 49;
+  stopped ''; pairs 845 contracted 16 steps 25
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v1 K1: Optimal slack 5.000 ms 15
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v1 K1 families: [clear 1 1.000] [port 1 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v1 K1 largest: [port E gap AB1 4.000] [clear 4 30 9 1.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v1 K2: Optimal slack 30.000 ms 10
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v1 K2 families: [end 1 1.000] [node 2 5.000] [port 4 24.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v1 K2 largest: [port W gap CB1 10.000] [port E gap AB1 8.000] [node
+  5 3.000] [port S edge AF1 3.000] [port S gap AF1 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v2 K1: Optimal slack 5.000 ms 14
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v2 K1 families: [clear 1 1.000] [port 1 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v2 K1 largest: [port E gap AB1 4.000] [clear 4 30 9 1.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v2 K2: Optimal slack 30.000 ms 10
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v2 K2 families: [end 1 1.000] [node 2 5.000] [port 4 24.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v2 K2 largest: [port W gap CB1 10.000] [port E gap AB1 8.000] [node
+  5 3.000] [port S edge AF1 3.000] [port S gap AF1 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v3 K1: Optimal slack 5.000 ms 14
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v3 K1 families: [clear 1 1.000] [port 1 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v3 K1 largest: [port E gap AB1 4.000] [clear 4 30 9 1.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v3 K2: Optimal slack 30.000 ms 11
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v3 K2 families: [end 1 1.000] [node 2 5.000] [port 4 24.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v3 K2 largest: [port W gap CB1 10.000] [port E gap AB1 8.000] [node
+  5 3.000] [port S edge AF1 3.000] [port S gap AF1 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v4 K1: Optimal slack 5.000 ms 14
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v4 K1 families: [clear 1 1.000] [port 1 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v4 K1 largest: [port E gap AB1 4.000] [clear 4 30 9 1.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v4 K2: Optimal slack 30.000 ms 10
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v4 K2 families: [end 1 1.000] [node 2 5.000] [port 4 24.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v4 K2 largest: [port W gap CB1 10.000] [port E gap AB1 8.000] [node
+  5 3.000] [port S edge AF1 3.000] [port S gap AF1 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v5 K1: Optimal slack 5.000 ms 14
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v5 K1 families: [clear 1 1.000] [port 1 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v5 K1 largest: [port E gap AB1 4.000] [clear 4 30 9 1.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v5 K2: Optimal slack 30.000 ms 11
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v5 K2 families: [end 1 1.000] [node 2 5.000] [port 4 24.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v5 K2 largest: [port W gap CB1 10.000] [port E gap AB1 8.000] [node
+  5 3.000] [port S edge AF1 3.000] [port S gap AF1 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v6 K1: Optimal slack 5.000 ms 15
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v6 K1 families: [clear 1 1.000] [port 1 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v6 K1 largest: [port E gap AB1 4.000] [clear 4 30 9 1.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v6 K2: Optimal slack 30.000 ms 11
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v6 K2 families: [end 1 1.000] [node 2 5.000] [port 4 24.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v6 K2 largest: [port W gap CB1 10.000] [port E gap AB1 8.000] [node
+  5 3.000] [port S edge AF1 3.000] [port S gap AF1 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v7 K1: Optimal slack 5.000 ms 14
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v7 K1 families: [clear 1 1.000] [port 1 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v7 K1 largest: [port E gap AB1 4.000] [clear 4 30 9 1.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T1 v7 K2: Optimal slack 30.000 ms 11
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T1 v7 K2 families: [end 1 1.000] [node 2 5.000] [port 4 24.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T1 v7 K2 largest: [port W gap CB1 10.000] [port E gap AB1 8.000] [node
+  5 3.000] [port S edge AF1 3.000] [port S gap AF1 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4140: warning:
+  anyhub summary T1 K1: slack 0 0/8, integer Optimal 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4140: warning:
+  anyhub summary T1 K2: slack 0 0/8, integer Optimal 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v0 K1: Optimal slack 37.001 ms 53
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v0 K1 families: [cross 1 0.500] [curve 3 8.000] [end 1 0.500] [node
+  2 5.000] [port 9 23.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v0 K1 largest: [port S gap AF1 3.500] [port E gap ED2 3.001] [curve
+  C2 track CB2#0 track CB2#5 3.000] [node 10 3.000] [port S gap CD2 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v0 K2: Optimal slack 126.000 ms 44
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v0 K2 families: [corridor 2 5.000] [cross 5 15.000] [curve 9 24.
+  000] [end 2 2.000] [node 4 33.000] [port 9 47.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v0 K2 largest: [port E gap ED2 28.000] [node 10 25.000] [cross 13
+  6.000] [cross 12 4.000] [node 8 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4136: warning:
+  anyhub T2 v0 K3: last round Optimal slack 139.000; final Infeasible ms 86;
+  stopped 'final'; pairs 1888 contracted 39 steps 60
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v1 K1: Optimal slack 37.001 ms 55
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v1 K1 families: [cross 1 0.500] [curve 3 8.000] [end 1 0.500] [node
+  2 5.000] [port 9 23.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v1 K1 largest: [port S gap AF1 3.500] [port E gap ED2 3.001] [curve
+  C2 track CB2#0 track CB2#5 3.000] [node 10 3.000] [port S gap CD2 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v1 K2: Optimal slack 126.000 ms 44
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v1 K2 families: [corridor 2 5.000] [cross 5 15.000] [curve 9 24.
+  000] [end 2 2.000] [node 4 33.000] [port 9 47.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v1 K2 largest: [port E gap ED2 28.000] [node 10 25.000] [cross 13
+  6.000] [cross 12 4.000] [node 8 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v2 K1: Optimal slack 37.001 ms 54
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v2 K1 families: [cross 1 0.500] [curve 3 8.000] [end 1 0.500] [node
+  2 5.000] [port 9 23.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v2 K1 largest: [port S gap AF1 3.500] [port E gap ED2 3.001] [curve
+  C2 track CB2#0 track CB2#5 3.000] [node 10 3.000] [port S gap CD2 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v2 K2: Optimal slack 126.000 ms 42
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v2 K2 families: [corridor 2 5.000] [cross 5 15.000] [curve 9 24.
+  000] [end 2 2.000] [node 4 33.000] [port 9 47.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v2 K2 largest: [port E gap ED2 28.000] [node 10 25.000] [cross 13
+  6.000] [cross 12 4.000] [node 8 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v3 K1: Optimal slack 37.001 ms 54
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v3 K1 families: [cross 1 0.500] [curve 3 8.000] [end 1 0.500] [node
+  2 5.000] [port 9 23.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v3 K1 largest: [port S gap AF1 3.500] [port E gap ED2 3.001] [curve
+  C2 track CB2#0 track CB2#5 3.000] [node 10 3.000] [port S gap CD2 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v3 K2: Optimal slack 126.000 ms 44
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v3 K2 families: [corridor 2 5.000] [cross 5 15.000] [curve 9 24.
+  000] [end 2 2.000] [node 4 33.000] [port 9 47.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v3 K2 largest: [port E gap ED2 28.000] [node 10 25.000] [cross 13
+  6.000] [cross 12 4.000] [node 8 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v4 K1: Optimal slack 37.001 ms 54
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v4 K1 families: [cross 1 0.500] [curve 3 8.000] [end 1 0.500] [node
+  2 5.000] [port 9 23.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v4 K1 largest: [port S gap AF1 3.500] [port E gap ED2 3.001] [curve
+  C2 track CB2#0 track CB2#5 3.000] [node 10 3.000] [port S gap CD2 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v4 K2: Optimal slack 126.000 ms 44
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v4 K2 families: [corridor 2 5.000] [cross 5 15.000] [curve 9 24.
+  000] [end 2 2.000] [node 4 33.000] [port 9 47.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v4 K2 largest: [port E gap ED2 28.000] [node 10 25.000] [cross 13
+  6.000] [cross 12 4.000] [node 8 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v5 K1: Optimal slack 37.001 ms 55
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v5 K1 families: [cross 1 0.500] [curve 3 8.000] [end 1 0.500] [node
+  2 5.000] [port 9 23.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v5 K1 largest: [port S gap AF1 3.500] [port E gap ED2 3.001] [curve
+  C2 track CB2#0 track CB2#5 3.000] [node 10 3.000] [port S gap CD2 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v5 K2: Optimal slack 126.000 ms 43
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v5 K2 families: [corridor 2 5.000] [cross 5 15.000] [curve 9 24.
+  000] [end 2 2.000] [node 4 33.000] [port 9 47.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v5 K2 largest: [port E gap ED2 28.000] [node 10 25.000] [cross 13
+  6.000] [cross 12 4.000] [node 8 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v6 K1: Optimal slack 37.001 ms 54
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v6 K1 families: [cross 1 0.500] [curve 3 8.000] [end 1 0.500] [node
+  2 5.000] [port 9 23.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v6 K1 largest: [port S gap AF1 3.500] [port E gap ED2 3.001] [curve
+  C2 track CB2#0 track CB2#5 3.000] [node 10 3.000] [port S gap CD2 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v6 K2: Optimal slack 126.000 ms 42
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v6 K2 families: [corridor 2 5.000] [cross 5 15.000] [curve 9 24.
+  000] [end 2 2.000] [node 4 33.000] [port 9 47.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v6 K2 largest: [port E gap ED2 28.000] [node 10 25.000] [cross 13
+  6.000] [cross 12 4.000] [node 8 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v7 K1: Optimal slack 37.001 ms 53
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v7 K1 families: [cross 1 0.500] [curve 3 8.000] [end 1 0.500] [node
+  2 5.000] [port 9 23.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v7 K1 largest: [port S gap AF1 3.500] [port E gap ED2 3.001] [curve
+  C2 track CB2#0 track CB2#5 3.000] [node 10 3.000] [port S gap CD2 3.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T2 v7 K2: Optimal slack 126.000 ms 44
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T2 v7 K2 families: [corridor 2 5.000] [cross 5 15.000] [curve 9 24.
+  000] [end 2 2.000] [node 4 33.000] [port 9 47.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T2 v7 K2 largest: [port E gap ED2 28.000] [node 10 25.000] [cross 13
+  6.000] [cross 12 4.000] [node 8 4.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4140: warning:
+  anyhub summary T2 K1: slack 0 0/8, integer Optimal 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4140: warning:
+  anyhub summary T2 K2: slack 0 0/8, integer Optimal 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v0 K1: Optimal slack 183.002 ms 179
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v0 K1 families: [clear 4 7.000] [corridor 2 4.001] [cross 14 32.
+  000] [curve 3 9.000] [node 5 17.001] [port 13 77.000] [span 2 37.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v0 K1 largest: [span 9 23.000] [port E gap AB3 22.500] [span 10 14.
+  000] [port E gap AB2 11.500] [port S gap AF3 11.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v0 K2: Optimal slack 249.667 ms 122
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v0 K2 families: [clear 4 4.333] [corridor 4 8.000] [cross 15 50.
+  667] [curve 8 20.000] [deck 1 1.667] [land 1 1.000] [node 8 38.000] [port 14
+  82.000] [span 2 44.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v0 K2 largest: [span 9 26.500] [node 17 24.000] [port E gap AB3 22.
+  000] [span 10 17.500] [port E gap AB2 13.500]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4136: warning:
+  anyhub T3 v0 K3: last round Optimal slack 324.000; final Infeasible ms 197;
+  stopped 'final'; pairs 3043 contracted 72 steps 97
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v1 K1: Optimal slack 183.002 ms 179
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v1 K1 families: [clear 4 7.000] [corridor 2 4.001] [cross 14 32.
+  000] [curve 3 9.000] [node 5 17.001] [port 13 77.000] [span 2 37.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v1 K1 largest: [span 9 23.000] [port E gap AB3 22.500] [span 10 14.
+  000] [port E gap AB2 11.500] [port S gap AF3 11.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v1 K2: Optimal slack 249.667 ms 125
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v1 K2 families: [clear 4 4.333] [corridor 4 8.000] [cross 15 50.
+  667] [curve 8 20.000] [deck 1 1.667] [land 1 1.000] [node 8 38.000] [port 14
+  82.000] [span 2 44.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v1 K2 largest: [span 9 26.500] [node 17 24.000] [port E gap AB3 22.
+  000] [span 10 17.500] [port E gap AB2 13.500]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v2 K1: Optimal slack 214.000 ms 166
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v2 K1 families: [clear 4 5.000] [corridor 1 4.000] [cross 11 43.
+  998] [curve 4 10.000] [land 2 2.000] [node 4 22.001] [port 15 83.001] [span 2
+  44.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v2 K1 largest: [span 10 26.000] [port E gap AB3 25.000] [span 11
+  18.000] [cross 39 12.999] [port S gap AF3 11.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v2 K2: Optimal slack 277.000 ms 114
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v2 K2 families: [clear 4 11.000] [corridor 2 7.000] [cross 14 62.
+  000] [curve 7 19.000] [end 1 1.000] [land 1 1.000] [node 7 43.000] [port 15
+  90.000] [span 2 43.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v2 K2 largest: [node 17 27.000] [span 10 26.000] [port E gap AB3
+  25.000] [span 11 17.000] [port E gap AB2 11.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v3 K1: Optimal slack 183.002 ms 180
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v3 K1 families: [clear 4 7.000] [corridor 2 4.001] [cross 14 32.
+  000] [curve 3 9.000] [node 5 17.001] [port 13 77.000] [span 2 37.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v3 K1 largest: [span 9 23.000] [port E gap AB3 22.500] [span 10 14.
+  000] [port E gap AB2 11.500] [port S gap AF3 11.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v3 K2: Optimal slack 249.667 ms 127
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v3 K2 families: [clear 4 4.333] [corridor 4 8.000] [cross 15 50.
+  667] [curve 8 20.000] [deck 1 1.667] [land 1 1.000] [node 8 38.000] [port 14
+  82.000] [span 2 44.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v3 K2 largest: [span 9 26.500] [node 17 24.000] [port E gap AB3 22.
+  000] [span 10 17.500] [port E gap AB2 13.500]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v4 K1: Optimal slack 183.002 ms 179
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v4 K1 families: [clear 4 7.000] [corridor 2 4.001] [cross 14 32.
+  000] [curve 3 9.000] [node 5 17.001] [port 13 77.000] [span 2 37.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v4 K1 largest: [span 9 23.000] [port E gap AB3 22.500] [span 10 14.
+  000] [port E gap AB2 11.500] [port S gap AF3 11.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v4 K2: Optimal slack 249.667 ms 125
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v4 K2 families: [clear 4 4.333] [corridor 4 8.000] [cross 15 50.
+  667] [curve 8 20.000] [deck 1 1.667] [land 1 1.000] [node 8 38.000] [port 14
+  82.000] [span 2 44.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v4 K2 largest: [span 9 26.500] [node 17 24.000] [port E gap AB3 22.
+  000] [span 10 17.500] [port E gap AB2 13.500]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v5 K1: Optimal slack 183.002 ms 181
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v5 K1 families: [clear 4 7.000] [corridor 2 4.001] [cross 14 32.
+  000] [curve 3 9.000] [node 5 17.001] [port 13 77.000] [span 2 37.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v5 K1 largest: [span 9 23.000] [port E gap AB3 22.500] [span 10 14.
+  000] [port E gap AB2 11.500] [port S gap AF3 11.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v5 K2: Optimal slack 249.667 ms 124
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v5 K2 families: [clear 4 4.333] [corridor 4 8.000] [cross 15 50.
+  667] [curve 8 20.000] [deck 1 1.667] [land 1 1.000] [node 8 38.000] [port 14
+  82.000] [span 2 44.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v5 K2 largest: [span 9 26.500] [node 17 24.000] [port E gap AB3 22.
+  000] [span 10 17.500] [port E gap AB2 13.500]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v6 K1: Optimal slack 127.500 ms 146
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v6 K1 families: [clear 6 3.500] [corridor 4 5.000] [cross 7 13.000]
+  [curve 2 6.000] [land 1 1.000] [node 3 24.500] [port 11 56.500] [span 2 18.
+  000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v6 K1 largest: [port E gap AB3 22.500] [node 17 18.500] [span 9 14.
+  500] [port S gap AF2 8.500] [port S gap AF1 5.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v6 K2: Optimal slack 159.000 ms 97
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v6 K2 families: [clear 2 3.000] [corridor 5 11.000] [cross 9 18.
+  000] [curve 6 12.000] [land 1 2.000] [node 7 33.000] [port 13 63.000] [span 2
+  17.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v6 K2 largest: [port E gap AB3 21.000] [node 17 20.000] [span 9 12.
+  000] [port S gap AF2 8.000] [corridor prio:B1 open 5.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v7 K1: Optimal slack 187.334 ms 162
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v7 K1 families: [clear 2 4.000] [corridor 2 4.000] [cross 8 22.333]
+  [curve 5 14.000] [end 2 2.000] [node 4 12.001] [port 12 86.000] [span 2 43.
+  000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v7 K1 largest: [port E gap AB3 45.332] [span 9 27.333] [span 10 15.
+  667] [cross 33 12.667] [port S gap AF3 12.001]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub T3 v7 K2: Optimal slack 245.000 ms 121
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub T3 v7 K2 families: [clear 2 3.000] [corridor 5 10.667] [cross 15 38.
+  667] [curve 10 22.667] [deck 1 1.000] [end 2 2.000] [land 1 7.667] [node 8
+  38.667] [port 13 81.333] [span 2 39.333]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub T3 v7 K2 largest: [port E gap AB3 39.667] [span 9 24.667] [node 17 23.
+  667] [span 10 14.667] [cross 33 13.667]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4140: warning:
+  anyhub summary T3 K1: slack 0 0/8, integer Optimal 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4140: warning:
+  anyhub summary T3 K2: slack 0 0/8, integer Optimal 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v0 K1: Optimal slack 207.562 ms 176
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v0 K1 families: [bay 3 14.555] [clear 4 2.997] [cross 5 16.166]
+  [curve 2 5.167] [node 7 39.334] [port 6 87.006] [span 3 42.337]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v0 K1 largest: [span 0 21.669] [port S gap SO1 20.000] [port W gap
+  WO1 19.163] [port E gap EO2 17.669] [node 0 14.336]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v0 K2: Optimal slack 263.000 ms 121
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v0 K2 families: [bay 7 30.000] [clear 1 2.000] [corridor 2 4.000]
+  [cross 4 29.000] [curve 8 16.500] [node 15 60.500] [port 7 83.500] [span 3
+  37.500]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v0 K2 largest: [span 0 20.000] [port E gap EO2 18.000] [port S gap
+  SO1 16.500] [node 0 16.000] [port W gap WO1 15.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4136: warning:
+  anyhub LL2 v0 K3: last round Optimal slack 214.000; final Infeasible ms 178;
+  stopped 'final'; pairs 3274 contracted 54 steps 86
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v1 K1: Optimal slack 231.005 ms 213
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v1 K1 families: [bay 3 13.000] [clear 1 2.000] [corridor 6 5.999]
+  [cross 6 27.499] [curve 2 5.500] [node 9 44.001] [port 8 95.003] [span 3 38.
+  004]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v1 K1 largest: [port W gap WO1 33.000] [span 0 20.002] [port S gap
+  SO1 19.500] [port E gap EO2 18.001] [node 0 12.002]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v1 K2: Optimal slack 290.000 ms 123
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v1 K2 families: [bay 4 16.000] [clear 5 10.000] [corridor 8 21.
+  000] [cross 6 34.000] [curve 9 21.000] [node 15 70.000] [port 8 84.000] [span
+  3 34.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v1 K2 largest: [port W gap WO1 26.000] [port E gap EO2 18.000]
+  [span 0 17.000] [port S gap SO1 16.000] [cross 9 15.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v2 K1: Optimal slack 231.005 ms 215
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v2 K1 families: [bay 3 13.000] [clear 1 2.000] [corridor 6 5.999]
+  [cross 6 27.499] [curve 2 5.500] [node 9 44.001] [port 8 95.003] [span 3 38.
+  004]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v2 K1 largest: [port W gap WO1 33.000] [span 0 20.002] [port S gap
+  SO1 19.500] [port E gap EO2 18.001] [node 0 12.002]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v2 K2: Optimal slack 290.000 ms 124
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v2 K2 families: [bay 4 16.000] [clear 5 10.000] [corridor 8 21.
+  000] [cross 6 34.000] [curve 9 21.000] [node 15 70.000] [port 8 84.000] [span
+  3 34.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v2 K2 largest: [port W gap WO1 26.000] [port E gap EO2 18.000]
+  [span 0 17.000] [port S gap SO1 16.000] [cross 9 15.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v3 K1: Optimal slack 231.005 ms 216
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v3 K1 families: [bay 3 13.000] [clear 1 2.000] [corridor 6 5.999]
+  [cross 6 27.499] [curve 2 5.500] [node 9 44.001] [port 8 95.003] [span 3 38.
+  004]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v3 K1 largest: [port W gap WO1 33.000] [span 0 20.002] [port S gap
+  SO1 19.500] [port E gap EO2 18.001] [node 0 12.002]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v3 K2: Optimal slack 290.000 ms 122
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v3 K2 families: [bay 4 16.000] [clear 5 10.000] [corridor 8 21.
+  000] [cross 6 34.000] [curve 9 21.000] [node 15 70.000] [port 8 84.000] [span
+  3 34.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v3 K2 largest: [port W gap WO1 26.000] [port E gap EO2 18.000]
+  [span 0 17.000] [port S gap SO1 16.000] [cross 9 15.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v4 K1: Optimal slack 231.005 ms 215
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v4 K1 families: [bay 3 13.000] [clear 1 2.000] [corridor 6 5.999]
+  [cross 6 27.499] [curve 2 5.500] [node 9 44.001] [port 8 95.003] [span 3 38.
+  004]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v4 K1 largest: [port W gap WO1 33.000] [span 0 20.002] [port S gap
+  SO1 19.500] [port E gap EO2 18.001] [node 0 12.002]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v4 K2: Optimal slack 290.000 ms 125
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v4 K2 families: [bay 4 16.000] [clear 5 10.000] [corridor 8 21.
+  000] [cross 6 34.000] [curve 9 21.000] [node 15 70.000] [port 8 84.000] [span
+  3 34.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v4 K2 largest: [port W gap WO1 26.000] [port E gap EO2 18.000]
+  [span 0 17.000] [port S gap SO1 16.000] [cross 9 15.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v5 K1: Optimal slack 207.562 ms 174
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v5 K1 families: [bay 3 14.555] [clear 4 2.997] [cross 5 16.166]
+  [curve 2 5.167] [node 7 39.334] [port 6 87.006] [span 3 42.337]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v5 K1 largest: [span 0 21.669] [port S gap SO1 20.000] [port W gap
+  WO1 19.163] [port E gap EO2 17.669] [node 0 14.336]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v5 K2: Optimal slack 263.000 ms 125
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v5 K2 families: [bay 7 30.000] [clear 1 2.000] [corridor 2 4.000]
+  [cross 4 29.000] [curve 8 16.500] [node 15 60.500] [port 7 83.500] [span 3
+  37.500]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v5 K2 largest: [span 0 20.000] [port E gap EO2 18.000] [port S gap
+  SO1 16.500] [node 0 16.000] [port W gap WO1 15.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v6 K1: Optimal slack 207.562 ms 174
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v6 K1 families: [bay 3 14.555] [clear 4 2.997] [cross 5 16.166]
+  [curve 2 5.167] [node 7 39.334] [port 6 87.006] [span 3 42.337]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v6 K1 largest: [span 0 21.669] [port S gap SO1 20.000] [port W gap
+  WO1 19.163] [port E gap EO2 17.669] [node 0 14.336]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v6 K2: Optimal slack 263.000 ms 123
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v6 K2 families: [bay 7 30.000] [clear 1 2.000] [corridor 2 4.000]
+  [cross 4 29.000] [curve 8 16.500] [node 15 60.500] [port 7 83.500] [span 3
+  37.500]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v6 K2 largest: [span 0 20.000] [port E gap EO2 18.000] [port S gap
+  SO1 16.500] [node 0 16.000] [port W gap WO1 15.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v7 K1: Optimal slack 207.562 ms 175
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v7 K1 families: [bay 3 14.555] [clear 4 2.997] [cross 5 16.166]
+  [curve 2 5.167] [node 7 39.334] [port 6 87.006] [span 3 42.337]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v7 K1 largest: [span 0 21.669] [port S gap SO1 20.000] [port W gap
+  WO1 19.163] [port E gap EO2 17.669] [node 0 14.336]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub LL2 v7 K2: Optimal slack 263.000 ms 125
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub LL2 v7 K2 families: [bay 7 30.000] [clear 1 2.000] [corridor 2 4.000]
+  [cross 4 29.000] [curve 8 16.500] [node 15 60.500] [port 7 83.500] [span 3
+  37.500]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub LL2 v7 K2 largest: [span 0 20.000] [port E gap EO2 18.000] [port S gap
+  SO1 16.500] [node 0 16.000] [port W gap WO1 15.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4140: warning:
+  anyhub summary LL2 K1: slack 0 0/8, integer Optimal 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4140: warning:
+  anyhub summary LL2 K2: slack 0 0/8, integer Optimal 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub 197 v0 K1: Optimal slack 90.840 ms 1681
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub 197 v0 K1 families: [cross 2 2.417] [end 3 4.000] [node 1 0.006] [port
+  7 84.417]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub 197 v0 K1 largest: [port S gap L27 18.321] [port S gap L14 17.012]
+  [port E gap L85 13.167] [port N gap L42 13.000] [port E gap L95 11.917]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4068: warning:
+  anyhub 197 v0 K2: Optimal slack 202.750 ms 887
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4077: warning:
+  anyhub 197 v0 K2 families: [cross 3 5.000] [curve 2 5.000] [end 3 8.000]
+  [node 4 31.500] [port 9 153.250]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4080: warning:
+  anyhub 197 v0 K2 largest: [port N gap L20 32.500] [port S gap L27 28.750]
+  [port S gap L14 27.000] [port E gap L93 23.000] [node 39 19.500]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4136: warning:
+  anyhub 197 v0 K3: last round Optimal slack 896.000; final Infeasible ms 1818;
+  stopped 'final'; pairs 13155 contracted 299 steps 355
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4140: warning:
+  anyhub summary 197 K1: slack 0 0/1, integer Optimal 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4140: warning:
+  anyhub summary 197 K2: slack 0 0/1, integer Optimal 0
+
+===============================================================================
+All tests passed (8 assertions in 1 test case)
+
