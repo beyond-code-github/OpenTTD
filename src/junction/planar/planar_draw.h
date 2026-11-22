@@ -157,9 +157,9 @@ struct PlanarDrawOptions {
 	bool sep_extremal = false; ///< With pairwise and a fixed side (a measurement): one row per pair, between the endpoints whose projections on the side's axis can bind (fixed headings, lengths >= 0), instead of all four endpoint pairs; exact.
 	bool bays = true; ///< On by default since D420 (agrees with V's PSG 197); the bay rows (SPEC-slots-lengths §8.1, D420): on every non-prio route path, the travel from its last topology split or port to each topology merge is at least rules.bay.
 	bool curves = true; ///< On by default since D420 (agrees with V's PSG 197); the curve spacing rows (SPEC-slots-lengths §8.1, §8.2, D420): Shape's bends along every route path keep curve_same, curve_opposite and curve_window; flex and step inserts count as travel, not bends (§10.3), except corridor steps and committed flex inserts (below).
-	bool end_node = false; ///< A probe (D428): a structure's end run stays off a node's switch tile (tag `end <s> node`): the travel from a node at the separator's start to its first crossing in the structure is at least the end run plus one tile; mirrored at its end.
-	bool cross_piece = false; ///< A probe (D428): per crossing and side, the piece the crossing sits on has length >= 1 half tile (diagonal) or >= 2 (axis) (tag `cross <c> piece`); a zero-length crossing piece crosses at another angle.
-	bool node_lead = false; ///< Rule A probe (D400, engineer 2026-11-23): write PlanarNodeLeadRows as hard rows (tag lead).
+	bool end_node = true; ///< On by default (D435: the domain suite exact on X1, X2, M1, K1, L1, Y1, P1, BR1); false is the old behaviour. A structure's end run stays off a node's switch tile (tag `end <s> node`): the travel from a node at the separator's start to its first crossing in the structure is at least the end run plus one tile; mirrored at its end.
+	bool cross_piece = true; ///< On by default (D435: the domain suite exact on X1, X2, M1, K1, L1, Y1, P1, BR1); false is the old behaviour. Per crossing and side, the piece the crossing sits on has length >= 1 half tile (diagonal) or >= 2 (axis) (tag `cross <c> piece`); a zero-length crossing piece crosses at another angle.
+	bool node_lead = true; ///< On by default (D435: the domain suite exact on X1, X2, M1, K1, L1, Y1, P1, BR1); false is the old behaviour. Rule A (D400, engineer 2026-11-23): write PlanarNodeLeadRows as hard rows (tag lead).
 	bool node_gaps = false; ///< Node gaps (SPEC-slots-lengths §8.1 node_leg, D400): a track from a node to a node with no event travels at least rules.node_leg, or 0 (a trident) where node_gap_from says so (tags `leg`, `leg zero`).
 	const std::vector<std::vector<double>> *node_gap_from = nullptr; ///< With node_gaps: a drawing's lengths (as PlanarDrawResult::lengths); a node-to-node track whose travel there is below 1 half tile is held at 0, every other at least rules.node_leg. Null: every one at least rules.node_leg.
 	bool port_zero = false; ///< A probe (D434): a D412 port line (in-port, no event, to a node) is 0 or an ordinary line, the branch from port_zero_from (tag `portzero`).
@@ -293,12 +293,15 @@ struct PlanarDrawPipelineOptions {
 	bool sibling_lanes = false; ///< A probe (D388 spine, SPEC-slots-lengths §11): PlanarDrawOptions::sibling_lanes in every stage.
 	bool facing_sides = false; ///< A probe (D426): PlanarDrawOptions::facing_sides in every stage.
 	bool strict_span = false; ///< A probe (D427): PlanarDrawOptions::strict_span in every stage.
+	bool node_lead = true; ///< On by default (D428): PlanarDrawOptions::node_lead in every stage.
+	bool end_node = true; ///< On by default (D428): PlanarDrawOptions::end_node in every stage.
+	bool cross_piece = true; ///< On by default (D428): PlanarDrawOptions::cross_piece in every stage.
 	bool strict_zero = false; ///< A probe (D427): PlanarDrawOptions::strict_zero in every stage.
 	bool crossing_flanks = false; ///< A probe (D427): PlanarDrawOptions::crossing_flanks in every stage.
 	std::vector<uint32_t> final_free_faces; ///< A measurement (D427): the integer final gives every keep-apart pair of these faces the binary side choice (PlanarDrawOptions::free_faces) instead of the side read from the last round.
 	bool inward_sides = false; ///< A probe: PlanarDrawOptions::inward_sides in every stage.
 	bool final_tidy = true; ///< The integer final minimises the sum of piece lengths; false is feasibility only (a measurement).
-	bool final_grid = false; ///< A measurement (D382 probe): the integer final writes the grid rows (PlanarDrawOptions::grid).
+	bool final_grid = true; ///< On by default (D435): the integer final writes the grid rows (PlanarDrawOptions::grid).
 	bool final_soft_sep = false; ///< A measurement: the integer final's sep rows get slack (cost 1, piece lengths cost 0.01), every variable stays integer; the result lists the rows that stretched.
 	bool free_stretched_sides = false; ///< A probe: after the last LP round, one round with the stretched sep pairs' sides free (binaries), lengths continuous; logged as "free sides".
 	bool side_probe = false; ///< A probe: after the last LP round, per stretched sep pair and per candidate side, one LP like the last round with that pair's side hard (forced_sides) and every other row as in the last round; logged as "side probe".
