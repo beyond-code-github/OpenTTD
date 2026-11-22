@@ -2,6 +2,7 @@ add_test_files(
     planar_channels.cpp
     planar_components.cpp
     planar_domain.cpp
+    planar_domain_map.cpp
     planar_draw.cpp
     planar_gaps.cpp
     planar_model.cpp

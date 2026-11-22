@@ -5,6 +5,8 @@ add_files(
     planar_components.h
     planar_domain.cpp
     planar_domain.h
+    planar_domain_map.cpp
+    planar_domain_map.h
     planar_draw.cpp
     planar_draw.h
     planar_gaps.cpp
