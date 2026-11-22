@@ -28,6 +28,8 @@
 #include "../../../junction/placement/junction_signal_adapter.h"
 #include "../../../junction/junction_pipeline.h"
 #include "../../../junction/planar/planar_plan.h"
+#include "../../../junction/planar/planar_domain.h"
+#include "../../../junction/junction_route.h"
 #include "../../../landscape.h"
 #include "../../../map_func.h"
 #include "../../../rail_map.h"
@@ -1271,4 +1273,355 @@ TEST_CASE("the planar T at one lane builds in game through the build steps", "[j
 	CHECK(rails > 0);
 	CHECK(bridges > 0);
 	CHECK(signals > 0);
+}
+
+namespace {
+
+using DomainPoint = std::array<int, 2>;
+using DomainPoints = std::vector<DomainPoint>;
+
+/** Domain tile (tx, ty) is game tile (96 + tx, 96 + ty). */
+TileIndex DomainTile(int tx, int ty) { return TileXY(96 + tx, 96 + ty); }
+TileIndex DomainTile(TileIndexDiffC tile) { return DomainTile(tile.x, tile.y); }
+
+/** A fresh map of flat bare grass at height 4 around the domain tiles; also the reset between two builds in one test. */
+void PrepareDomainMap()
+{
+	Map::Allocate(256, 256);
+	MakeBareGrass(TileXY(88, 88), 40);
+	for (uint y = 88; y < 128; y++) {
+		for (uint x = 88; x < 128; x++) SetTileHeight(TileXY(x, y), 4);
+	}
+	_settings_game.construction.max_tunnel_length = 64;
+}
+
+/** The midpoint of an edge of a tile, in half tiles. */
+DomainPoint DomainEdgeMidpoint(TileIndexDiffC tile, DiagDirection edge)
+{
+	switch (edge) {
+		case DiagDirection::NE: return {2 * tile.x, 2 * tile.y + 1};
+		case DiagDirection::SW: return {2 * tile.x + 2, 2 * tile.y + 1};
+		case DiagDirection::NW: return {2 * tile.x + 1, 2 * tile.y};
+		default: return {2 * tile.x + 1, 2 * tile.y + 2};
+	}
+}
+
+/** A route program's raster and its points: the first piece's entry midpoint, then each piece's exit midpoint (as the domain hand cases do). */
+DomainPoints DomainPointsOf(TileIndexDiffC start, Trackdir trackdir, const std::string &moves, JunctionRaster &raster)
+{
+	raster = RasterizeJunctionRoute({start, trackdir, moves});
+	REQUIRE(raster.error.empty());
+	REQUIRE(!raster.pieces.empty());
+	DomainPoints points;
+	const JunctionPiece &first = raster.pieces.front();
+	points.push_back(DomainEdgeMidpoint(first.tile, TrackdirToExitdir(ReverseTrackdir(first.trackdir))));
+	for (const JunctionPiece &jp : raster.pieces) points.push_back(DomainEdgeMidpoint(jp.tile, TrackdirToExitdir(jp.trackdir)));
+	return points;
+}
+
+DomainPoints DomainLay(TileIndexDiffC start, Trackdir trackdir, const std::string &moves)
+{
+	JunctionRaster raster;
+	return DomainPointsOf(start, trackdir, moves, raster);
+}
+
+/** Rail on every piece of the domain's raster of `points` (except the piece indices skip_first..skip_last), with the game's BuildRail; the first failure, else success. */
+CommandCost BuildPieces(const DomainPoints &points, size_t skip_first = SIZE_MAX, size_t skip_last = 0)
+{
+	const PlanarDomainRaster raster = RasterPlanarDomainTrack(points);
+	REQUIRE(raster.rule.empty());
+	for (size_t i = 0; i < raster.pieces.size(); i++) {
+		if (i >= skip_first && i <= skip_last) continue;
+		const CommandCost result = Command<Commands::BuildRail>::Do(DoCommandFlag::Execute, DomainTile(raster.pieces[i].tile), RAILTYPE_RAIL, raster.pieces[i].track, false);
+		if (result.Failed()) return result;
+	}
+	return CommandCost();
+}
+
+/** What the game's track status says of the tiles of `points`' raster after building that track alone on a fresh map. */
+std::map<TileIndex, TrackdirBits> BuiltStatus(const DomainPoints &points)
+{
+	PrepareDomainMap();
+	const CommandCost built = BuildPieces(points);
+	INFO("build: error " << built.GetErrorMessage().base());
+	REQUIRE(built.Succeeded());
+	std::map<TileIndex, TrackdirBits> status;
+	for (const PlanarDomainPiece &piece : RasterPlanarDomainTrack(points).pieces) {
+		const TileIndex tile = DomainTile(piece.tile);
+		status[tile] = GetTileTrackStatus(tile, TransportType::Rail, RoadTramType::Road).trackdirs;
+	}
+	return status;
+}
+
+/** Whether a piece of `a` and a piece of `b` on edge-adjacent tiles connect: a trackdir of a's tile exits through the shared edge and b's tile has a trackdir in what that edge reaches. */
+bool GameConnects(const std::map<TileIndex, TrackdirBits> &a, const std::map<TileIndex, TrackdirBits> &b)
+{
+	for (const auto &[tile_a, bits_a] : a) {
+		for (DiagDirection edge : {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW}) {
+			const auto it = b.find(tile_a + TileOffsByDiagDir(edge));
+			if (it == b.end()) continue;
+			bool exits = false;
+			for (Trackdir td : bits_a) exits = exits || TrackdirToExitdir(td) == edge;
+			if (exits && it->second.Any(DiagdirReachesTrackdirs(edge))) return true;
+		}
+	}
+	return false;
+}
+
+std::string DomainRules(const PlanarDomainInput &input)
+{
+	std::string rules;
+	for (const PlanarDomainBreak &b : CheckPlanarDomain(input).breaks) rules += (rules.empty() ? "" : ",") + b.rule;
+	return rules;
+}
+
+/** The case-7 bridge as track 0 of a domain input, the other tracks after it; `raster` is the bridge separator's route raster. */
+PlanarDomainInput DomainBridgeInput(const std::vector<DomainPoints> &others, const std::vector<uint32_t> &crossers, JunctionRaster &raster, DomainPoints &separator)
+{
+	separator = DomainPointsOf({0, 2}, Trackdir::X_SW, "FFB2FF", raster);
+	size_t first = SIZE_MAX, last = 0;
+	for (size_t i = 0; i < raster.pieces.size(); i++) {
+		if (!raster.pieces[i].on_bridge) continue;
+		first = std::min(first, i);
+		last = i;
+	}
+	REQUIRE(first != SIZE_MAX);
+	REQUIRE(last - first == 3);
+	PlanarDomainInput input;
+	input.tracks.push_back(separator);
+	for (const DomainPoints &track : others) input.tracks.push_back(track);
+	input.structures.push_back({0, static_cast<uint32_t>(first), static_cast<uint32_t>(last), false, -1, crossers});
+	return input;
+}
+
+/** Build a bridge between the head tiles of `raster`'s on_bridge pieces. */
+CommandCost BuildDomainBridge(const JunctionRaster &raster)
+{
+	size_t first = SIZE_MAX, last = 0;
+	for (size_t i = 0; i < raster.pieces.size(); i++) {
+		if (!raster.pieces[i].on_bridge) continue;
+		first = std::min(first, i);
+		last = i;
+	}
+	const TileIndex start = DomainTile(raster.pieces[first].tile);
+	const TileIndex end = DomainTile(raster.pieces[last].tile);
+	const std::optional<BridgeType> type = ChooseJunctionBridgeType(RAILTYPE_RAIL, GetTunnelBridgeLength(start, end));
+	REQUIRE(type.has_value());
+	return Command<Commands::BuildBridge>::Do(DoCommandFlag::Execute, end, start, TransportType::Rail, *type, RAILTYPE_RAIL, INVALID_ROADTYPE);
+}
+
+/** The first and last on_bridge piece indices. */
+std::pair<size_t, size_t> DomainBridgeRange(const JunctionRaster &raster)
+{
+	size_t first = SIZE_MAX, last = 0;
+	for (size_t i = 0; i < raster.pieces.size(); i++) {
+		if (!raster.pieces[i].on_bridge) continue;
+		first = std::min(first, i);
+		last = i;
+	}
+	return {first, last};
+}
+
+}
+
+TEST_CASE("domain pin 1 (rule 1): connection only through a shared edge midpoint", "[junction][junctiongame][planardomaingame]")
+{
+	JunctionGameWorld world;
+	{
+		/* Case 10: B's corner ends on A's edge midpoint with no node. */
+		const DomainPoints a = DomainLay({0, 2}, Trackdir::X_SW, "FFFF");
+		const DomainPoints b = {{5, 2}, {5, 4}, {4, 5}};
+		const std::map<TileIndex, TrackdirBits> status_a = BuiltStatus(a);
+		const std::map<TileIndex, TrackdirBits> status_b = BuiltStatus(b);
+		PrepareDomainMap();
+		REQUIRE(BuildPieces(a).Succeeded());
+		REQUIRE(BuildPieces(b).Succeeded());
+		CHECK(GameConnects(status_b, status_a));
+		PlanarDomainInput input;
+		input.tracks = {a, b};
+		CHECK(DomainRules(input) == "connection");
+	}
+	{
+		/* Case 1: two parallel X tracks on neighbouring rows. */
+		const DomainPoints a = DomainLay({0, 2}, Trackdir::X_SW, "FFFF");
+		const DomainPoints b = DomainLay({0, 3}, Trackdir::X_SW, "FFFF");
+		const std::map<TileIndex, TrackdirBits> status_a = BuiltStatus(a);
+		const std::map<TileIndex, TrackdirBits> status_b = BuiltStatus(b);
+		CHECK(!GameConnects(status_a, status_b));
+		CHECK(!GameConnects(status_b, status_a));
+		PlanarDomainInput input;
+		input.tracks = {a, b};
+		CHECK(DomainRules(input).empty());
+	}
+}
+
+TEST_CASE("domain pin 2 (rule 10): a switch builds and its trunk connects to every leg", "[junction][junctiongame][planardomaingame]")
+{
+	JunctionGameWorld world;
+	/* Case 3 for the X_SW axis start: the straight leg and each side's turn from the trunk's end. */
+	const std::string straight(12, 'F');
+	JunctionRaster raster_straight;
+	const DomainPoints straight_points = DomainPointsOf({0, 0}, Trackdir::X_SW, straight, raster_straight);
+	size_t legs_tested = 0;
+	for (char side : {'L', 'R'}) {
+		const std::string moves = std::string(1, side) + std::string(11, 'F');
+		if (!RasterizeJunctionRoute({{0, 0}, Trackdir::X_SW, moves}).error.empty()) continue;
+		JunctionRaster raster_leg;
+		const DomainPoints leg_points = DomainPointsOf({0, 0}, Trackdir::X_SW, moves, raster_leg);
+		size_t d = 0;
+		while (d < raster_straight.pieces.size() && d < raster_leg.pieces.size() && raster_straight.pieces[d].trackdir == raster_leg.pieces[d].trackdir) d++;
+		REQUIRE(d >= 1);
+		REQUIRE(d < raster_leg.pieces.size());
+		const DomainPoints trunk(straight_points.begin(), straight_points.begin() + d + 1);
+		const DomainPoints leg_a(straight_points.begin() + d, straight_points.end());
+		const DomainPoints leg_b(leg_points.begin() + d, leg_points.end());
+		/* Every piece builds, trunk and both legs together. */
+		PrepareDomainMap();
+		CHECK(BuildPieces(trunk).Succeeded());
+		CHECK(BuildPieces(leg_a).Succeeded());
+		CHECK(BuildPieces(leg_b).Succeeded());
+		const std::map<TileIndex, TrackdirBits> status_trunk = BuiltStatus(trunk);
+		CHECK(GameConnects(status_trunk, BuiltStatus(leg_a)));
+		CHECK(GameConnects(status_trunk, BuiltStatus(leg_b)));
+		PlanarDomainInput input;
+		input.tracks = {trunk, leg_a, leg_b};
+		input.nodes.push_back({trunk.back(), {0}, {1, 2}});
+		CHECK(DomainRules(input).empty());
+		legs_tested++;
+	}
+	CHECK(legs_tested >= 1);
+}
+
+TEST_CASE("domain pin 3 (rule 2b): the game builds the X/Y diamond, its pieces never connect; the domain marks it", "[junction][junctiongame][planardomaingame]")
+{
+	/* A design ruling (D182): the game allows the diamond, trains cannot turn between X and Y; the domain forbids it. */
+	JunctionGameWorld world;
+	const DomainPoints x = DomainLay({0, 2}, Trackdir::X_SW, "FFFF");
+	const DomainPoints y = DomainLay({2, 0}, Trackdir::Y_SE, "FFFF");
+	PrepareDomainMap();
+	CHECK(BuildPieces(x).Succeeded());
+	CHECK(BuildPieces(y).Succeeded());
+	CHECK(!GameConnects(BuiltStatus(x), BuiltStatus(y)));
+	CHECK(!GameConnects(BuiltStatus(y), BuiltStatus(x)));
+	PlanarDomainInput input;
+	input.tracks = {x, y};
+	CHECK(DomainRules(input) == "diamond");
+}
+
+TEST_CASE("domain pin 4 (rule 3): a bridge head takes no other track", "[junction][junctiongame][planardomaingame]")
+{
+	JunctionGameWorld world;
+	JunctionRaster raster;
+	DomainPoints separator;
+	const DomainPoints crosser = DomainLay({3, 0}, Trackdir::Y_SE, "FFFF");
+	CHECK(DomainRules(DomainBridgeInput({crosser}, {}, raster, separator)) == "head");
+	const auto [first, last] = DomainBridgeRange(raster);
+	PrepareDomainMap();
+	REQUIRE(BuildPieces(separator, first, last).Succeeded());
+	const CommandCost bridge = BuildDomainBridge(raster);
+	INFO("bridge: error " << bridge.GetErrorMessage().base());
+	REQUIRE(bridge.Succeeded());
+	const TileIndex head = DomainTile(raster.pieces[first].tile);
+	REQUIRE(IsBridge(head));
+	CHECK(head == DomainTile(3, 2));
+	/* The game's own dispatch gives BuildRail the Auto flag (CommandFlag::Auto): a direct Do() must pass it, else the tile is cleared (the bridge demolished) instead of refused. */
+	const CommandCost y_on_head = Command<Commands::BuildRail>::Do({DoCommandFlag::Execute, DoCommandFlag::Auto}, head, RAILTYPE_RAIL, Track::Y, false);
+	CHECK(y_on_head.Failed());
+}
+
+TEST_CASE("domain pin 5 (rule 4): rail passes under a bridge middle", "[junction][junctiongame][planardomaingame]")
+{
+	/* The listed crosser (case 7) and the unlisted one (case 15) build alike in the game; "under" for the unlisted one is a planar-model rule (a crossing the topology lacks), not a game rule. */
+	JunctionGameWorld world;
+	JunctionRaster raster;
+	DomainPoints separator;
+	const DomainPoints crosser = DomainLay({4, 0}, Trackdir::Y_SE, "FFFF");
+	CHECK(DomainRules(DomainBridgeInput({crosser}, {1}, raster, separator)).empty());
+	CHECK(DomainRules(DomainBridgeInput({crosser}, {}, raster, separator)) == "under");
+	const auto [first, last] = DomainBridgeRange(raster);
+	for (bool crosser_first : {false, true}) {
+		INFO("crosser first " << crosser_first);
+		PrepareDomainMap();
+		if (crosser_first) CHECK(BuildPieces(crosser).Succeeded());
+		REQUIRE(BuildPieces(separator, first, last).Succeeded());
+		const CommandCost bridge = BuildDomainBridge(raster);
+		INFO("bridge: error " << bridge.GetErrorMessage().base());
+		CHECK(bridge.Succeeded());
+		if (!crosser_first) {
+			const CommandCost under = BuildPieces(crosser);
+			INFO("crosser: error " << under.GetErrorMessage().base());
+			CHECK(under.Succeeded());
+		}
+		CHECK(IsBridgeAbove(DomainTile(4, 2)));
+	}
+}
+
+TEST_CASE("domain pin 6 (rule 5): two bridge decks never share a tile", "[junction][junctiongame][planardomaingame]")
+{
+	JunctionGameWorld world;
+	JunctionRaster raster_a, raster_b;
+	const DomainPoints a = DomainPointsOf({0, 2}, Trackdir::X_SW, "FFB2FF", raster_a);
+	const DomainPoints b = DomainPointsOf({4, -1}, Trackdir::Y_SE, "FB2F", raster_b);
+	const auto [first_a, last_a] = DomainBridgeRange(raster_a);
+	const auto [first_b, last_b] = DomainBridgeRange(raster_b);
+	PlanarDomainInput input;
+	input.tracks = {a, b};
+	input.structures.push_back({0, static_cast<uint32_t>(first_a), static_cast<uint32_t>(last_a), false, -1, {}});
+	input.structures.push_back({1, static_cast<uint32_t>(first_b), static_cast<uint32_t>(last_b), false, -1, {}});
+	CHECK(DomainRules(input) == "decks");
+	PrepareDomainMap();
+	REQUIRE(BuildPieces(a, first_a, last_a).Succeeded());
+	REQUIRE(BuildPieces(b, first_b, last_b).Succeeded());
+	const CommandCost bridge_a = BuildDomainBridge(raster_a);
+	INFO("first bridge: error " << bridge_a.GetErrorMessage().base());
+	REQUIRE(bridge_a.Succeeded());
+	const CommandCost bridge_b = BuildDomainBridge(raster_b);
+	INFO("second bridge: error " << bridge_b.GetErrorMessage().base());
+	CHECK(bridge_b.Failed());
+}
+
+TEST_CASE("domain pin 7 (rule 6): a tunnel's portal and ramp are exclusive", "[junction][junctiongame][planardomaingame]")
+{
+	JunctionGameWorld world;
+	PrepareDomainMap();
+	/* Separator X along domain row 2, crosser Y at column c = 4: the portals at c - 1 and c + 1, the ramps at c - 2 and c + 2. */
+	const int c = 4, row = 2;
+	const DomainPoints separator = DomainLay({0, row}, Trackdir::X_SW, "FFFFFFFFF");
+	const DomainPoints crosser = DomainLay({c, 0}, Trackdir::Y_SE, "FFFF");
+	const DomainPoints at_ramp = DomainLay({c - 2, 0}, Trackdir::Y_SE, "FFFF");
+	/* The outer corners of both portal tiles are lowered to 3. */
+	for (int dy : {0, 1}) {
+		SetTileHeight(DomainTile(c - 1, row + dy), 3);
+		SetTileHeight(DomainTile(c + 2, row + dy), 3);
+	}
+	const TileIndex start = DomainTile(c - 1, row);
+	const TileIndex end = DomainTile(c + 1, row);
+	const CommandCost tunnel = Command<Commands::BuildTunnel>::Do(DoCommandFlag::Execute, start, TransportType::Rail, RAILTYPE_RAIL, INVALID_ROADTYPE);
+	INFO("tunnel: error " << tunnel.GetErrorMessage().base());
+	REQUIRE(tunnel.Succeeded());
+	CHECK(_build_tunnel_endtile == end);
+	const CommandCost x_on_ramp = Command<Commands::BuildRail>::Do(DoCommandFlag::Execute, DomainTile(c - 2, row), RAILTYPE_RAIL, Track::X, false);
+	INFO("X on the ramp: error " << x_on_ramp.GetErrorMessage().base());
+	CHECK(x_on_ramp.Succeeded());
+	const CommandCost y_on_ramp = Command<Commands::BuildRail>::Do(DoCommandFlag::Execute, DomainTile(c - 2, row), RAILTYPE_RAIL, Track::Y, false);
+	INFO("Y on the ramp: error " << y_on_ramp.GetErrorMessage().base());
+	CHECK(y_on_ramp.Failed());
+	const CommandCost over = BuildPieces(crosser);
+	INFO("crosser: error " << over.GetErrorMessage().base());
+	CHECK(over.Succeeded());
+	/* The domain: the same layout as a tunnel structure with two end pieces at each end is legal; a Y track through the ramp piece c - 2 breaks "head". */
+	PlanarDomainInput input;
+	input.tracks = {separator, crosser};
+	PlanarDomainStructure st;
+	st.separator = 0;
+	st.first = c - 2;
+	st.last = c + 2;
+	st.tunnel = true;
+	st.ends = 2;
+	st.crossers = {1};
+	input.structures.push_back(st);
+	CHECK(DomainRules(input).empty());
+	input.tracks[1] = at_ramp;
+	input.structures[0].crossers.clear();
+	CHECK(DomainRules(input) == "head");
 }
