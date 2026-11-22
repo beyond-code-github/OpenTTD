@@ -4132,3 +4132,184 @@ TEST_CASE("planar draw: the simplest drawing on every hub", "[.][planaranyhub]")
 		for (int k = 0; k < 2; k++) WARN(fmt::format("anyhub summary {} {}: slack 0 {}/{}, integer Optimal {}", hub.name, k == 0 ? "K1" : "K2", zero[k], run[k], integer[k]));
 	}
 }
+
+TEST_CASE("planar draw: T2 contracted final read-out", "[.][planarcert]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(2), 1);
+	PlanarDrawPipelineOptions po;
+	po.final_contract = true;
+	po.final_seconds = 5;
+	const PlanarDrawPipelineResult pr = DrawPlanarPipeline(c.v, po);
+
+	/* 1. The contracted final. */
+	WARN(fmt::format("contract-t2 step1: final {} ms {:.0f}; stopped '{}'; pairs {} contracted {} steps {}", pr.final.status, pr.final.ms, pr.stopped, pr.final_pairs, pr.contracted, pr.contract_steps));
+	{
+		std::string line;
+		for (const std::string &t : pr.final.conflict) line += (line.empty() ? "" : ", ") + t;
+		WARN(fmt::format("contract-t2 step1 conflict: {}", line));
+	}
+	DrawCase cc;
+	cc.v = pr.final_variant;
+	const auto &tracks = c.v.structure.map.tracks;
+	size_t f2 = SIZE_MAX;
+	for (size_t t = 0; t < tracks.size(); t++) {
+		if (tracks[t].name == "F2") f2 = t;
+	}
+	REQUIRE(f2 != SIZE_MAX);
+	const auto text = [](const auto &vec) {
+		std::string s;
+		for (const auto &x : vec) s += fmt::format("{}{}", s.empty() ? "" : " ", x);
+		return s;
+	};
+
+	/* The erase mapping, as the contract path does it: the original piece of each track to the contracted piece it became part of. */
+	std::vector<std::vector<uint32_t>> to_con(c.v.tracks.size());
+	std::vector<std::vector<bool>> kept_of(c.v.tracks.size());
+	std::vector<std::vector<uint32_t>> middles_of(c.v.tracks.size());
+	auto lengths = pr.last_round.lengths;
+	for (size_t t = 0; t < c.v.tracks.size(); t++) {
+		std::vector<uint32_t> middles = c.v.tracks[t].flex;
+		std::ranges::sort(middles);
+		middles_of[t] = middles;
+		for (const uint32_t m : middles) kept_of[t].push_back(t < pr.committed.size() && m < pr.committed[t].size() && pr.committed[t][m] >= po.commit_above);
+		std::vector<uint32_t> cur(c.v.tracks[t].pieces.size());
+		for (size_t k = 0; k < cur.size(); k++) cur[k] = (uint32_t)k;
+		to_con[t].assign(cur.size(), 0);
+		for (size_t j = middles.size(); j-- > 0;) {
+			if (kept_of[t][j]) continue;
+			const uint32_t m = middles[j];
+			to_con[t][cur[m]] = cur[m - 1];
+			to_con[t][cur[m + 1]] = cur[m - 1];
+			cur.erase(cur.begin() + m, cur.begin() + m + 2);
+			if (t < lengths.size() && m + 1 < lengths[t].size()) {
+				lengths[t][m - 1] += lengths[t][m] + lengths[t][m + 1];
+				lengths[t].erase(lengths[t].begin() + m, lengths[t].begin() + m + 2);
+			}
+		}
+		/* Erased pieces hold the original id of the piece they merged into (possibly itself erased later); resolve the chain to a survivor's new index. */
+		const std::vector<uint32_t> merged_into = to_con[t];
+		for (size_t k = 0; k < merged_into.size(); k++) {
+			uint32_t x = (uint32_t)k;
+			while (std::ranges::find(cur, x) == cur.end()) x = merged_into[x];
+			to_con[t][k] = (uint32_t)(std::ranges::find(cur, x) - cur.begin());
+		}
+	}
+
+	/* 2. F2 before and after. */
+	{
+		const PlanarShapeTrack &o = c.v.tracks[f2];
+		const PlanarShapeTrack &n = pr.final_variant.tracks[f2];
+		WARN(fmt::format("contract-t2 step2 F2 original: pieces [{}] flex [{}] event_piece [{}]", text(o.pieces), text(o.flex), text(o.event_piece)));
+		std::string len;
+		for (const double l : pr.last_round.lengths[f2]) len += fmt::format("{}{:.3f}", len.empty() ? "" : " ", l);
+		WARN(fmt::format("contract-t2 step2 F2 original lengths (last_round) [{}]", len));
+		WARN(fmt::format("contract-t2 step2 F2 contracted: pieces [{}] steps [{}] event_piece [{}]", text(n.pieces), text(n.steps), text(n.event_piece)));
+		std::string erased, kept;
+		for (size_t j = 0; j < middles_of[f2].size(); j++) {
+			std::string &dst = kept_of[f2][j] ? kept : erased;
+			dst += fmt::format("{}{} (committed {:.3f})", dst.empty() ? "" : ", ", middles_of[f2][j], pr.committed[f2][middles_of[f2][j]]);
+		}
+		WARN(fmt::format("contract-t2 step2 F2 flex middles erased: [{}]; kept: [{}]", erased, kept));
+	}
+
+	/* The final's options, as the pipeline builds them for the contracted variant. */
+	int biggest = 0;
+	for (const auto &track : pr.final_sides) {
+		for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
+	}
+	const auto contracted_options = [&]() {
+		PlanarDrawOptions o{.clearance = po.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = po.node_gaps, .node_gap_from = &lengths, .corridor = po.corridor, .sibling_lanes = po.sibling_lanes, .facing_sides = po.facing_sides, .inward_sides = po.inward_sides, .curve_flex_from = nullptr, .curve_flex_above = po.commit_above, .tidy = po.final_tidy, .pins = po.pins, .sides_from = &pr.final_sides, .start_lengths = po.final_start ? &lengths : nullptr, .grid = po.final_grid};
+		o.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
+		return o;
+	};
+
+	/* 3. Face 10 of the contracted variant. */
+	constexpr uint32_t FACE = 10;
+	const std::vector<PlanarFaceWalls> con_faces = PlanarShapeFaceWalls(pr.final_variant);
+	const PlanarFaceWalls *con10 = nullptr;
+	for (const PlanarFaceWalls &f : con_faces) {
+		if (f.face == FACE) con10 = &f;
+	}
+	REQUIRE(con10 != nullptr);
+	for (size_t i = 0; i < con10->walls.size(); i++) WARN(fmt::format("contract-t2 step3 face 10 wall [{}] {}", i, CertWallText(cc, con10->walls[i], &pr.final_sides)));
+	{
+		PlanarDrawOptions o = contracted_options();
+		o.margin_tags = {"sep 10 5 10", "sep 10 5 11"};
+		const PlanarDrawResult r = CheckPlanarDrawable(pr.final_variant, 1.0, o);
+		for (const auto &[tag, margins] : r.sep_margins) WARN(fmt::format("contract-t2 step3 {}: {}", tag, margins));
+		if (r.sep_margins.empty()) WARN("contract-t2 step3: neither pair wrote a sep row's margin (skipped or no such wall)");
+	}
+
+	/* 4. The original face. */
+	const std::vector<PlanarFaceWalls> orig_faces = PlanarShapeFaceWalls(c.v);
+	const PlanarFaceWalls *orig = nullptr;
+	size_t best = 0;
+	for (const PlanarFaceWalls &f : orig_faces) {
+		size_t hits = 0;
+		for (const PlanarCellWall &w : f.walls) {
+			if (w.track >= c.v.tracks.size()) continue;
+			for (const PlanarCellWall &cw : con10->walls) {
+				if (cw.track == w.track && cw.piece == to_con[w.track][w.piece]) {
+					hits++;
+					break;
+				}
+			}
+		}
+		if (hits > best) {
+			best = hits;
+			orig = &f;
+		}
+	}
+	REQUIRE(orig != nullptr);
+	WARN(fmt::format("contract-t2 step4 matched original face {} ({} of its {} walls map onto contracted face 10's {} walls)", orig->face, best, orig->walls.size(), con10->walls.size()));
+	for (size_t i = 0; i < orig->walls.size(); i++) {
+		const PlanarCellWall &w = orig->walls[i];
+		std::string maps;
+		if (w.track < c.v.tracks.size()) maps = fmt::format(" -> {}#{}", tracks[w.track].name, to_con[w.track][w.piece]);
+		WARN(fmt::format("contract-t2 step4 original wall [{}] {}{}", i, CertWallText(c, w, &pr.last_input), maps));
+	}
+	{
+		/* Which sep tags the uncontracted final wrote: every non-adjacent candidate tag, margins read on the last input. */
+		std::vector<std::string> all;
+		const size_t n = orig->walls.size();
+		for (size_t i = 0; i < n; i++) {
+			for (size_t j = i + 1; j < n; j++) {
+				if (j == i + 1 || (i == 0 && j == n - 1)) continue;
+				all.push_back(fmt::format("sep {} {} {}", orig->face, i, j));
+			}
+		}
+		PlanarDrawOptions o{.clearance = po.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = po.node_gaps, .node_gap_from = &pr.last_round.lengths, .corridor = po.corridor, .sibling_lanes = po.sibling_lanes, .facing_sides = po.facing_sides, .inward_sides = po.inward_sides, .curve_flex_from = &pr.committed, .curve_flex_above = po.commit_above, .tidy = po.final_tidy, .pins = po.pins, .sides_from = &pr.last_input, .start_lengths = po.final_start ? &pr.last_round.lengths : nullptr, .grid = po.final_grid};
+		o.margin_tags = all;
+		const PlanarDrawResult r = CheckPlanarDrawable(c.v, 1.0, o);
+		std::set<std::string> written;
+		for (const auto &[tag, margins] : r.sep_margins) written.insert(tag);
+		WARN(fmt::format("contract-t2 step4 uncontracted final wrote {} of {} candidate sep tags on face {}", written.size(), all.size(), orig->face));
+		/* Corresponding wall pairs: original walls that map onto contracted walls 5, 10 and 11. */
+		for (const size_t b : {(size_t)10, (size_t)11}) {
+			const PlanarCellWall &wa = con10->walls[5], &wb = con10->walls[b];
+			for (size_t i = 0; i < n; i++) {
+				for (size_t j = 0; j < n; j++) {
+					if (i == j) continue;
+					const PlanarCellWall &x = orig->walls[i], &y = orig->walls[j];
+					if (x.track >= c.v.tracks.size() || y.track >= c.v.tracks.size()) continue;
+					if (!(x.track == wa.track && to_con[x.track][x.piece] == wa.piece && y.track == wb.track && to_con[y.track][y.piece] == wb.piece)) continue;
+					const size_t lo = std::min(i, j), hi = std::max(i, j);
+					const bool adjacent = hi == lo + 1 || (lo == 0 && hi == n - 1);
+					const std::string tag = fmt::format("sep {} {} {}", orig->face, lo, hi);
+					WARN(fmt::format("contract-t2 step4 pair (5,{}) <- original walls [{}] {} and [{}] {}: {}", b, i, CertWallText(c, x, nullptr), j, CertWallText(c, y, nullptr), adjacent ? "adjacent in the original face, no sep row by rule" : (written.count(tag) != 0 ? tag + " WRITTEN" : tag + " not written (skipped by an exemption or merged)")));
+				}
+			}
+		}
+	}
+
+	/* 5. Contracted finals with skip_pairs. */
+	const std::vector<std::pair<std::string, std::vector<std::string>>> skips = {{"{sep 10 5 10}", {"sep 10 5 10"}}, {"{sep 10 5 11}", {"sep 10 5 11"}}, {"{sep 10 5 10, sep 10 5 11}", {"sep 10 5 10", "sep 10 5 11"}}};
+	for (const auto &[name, tags] : skips) {
+		PlanarDrawOptions o = contracted_options();
+		o.skip_pairs = tags;
+		const PlanarDrawResult r = CheckPlanarDrawable(pr.final_variant, po.final_seconds, o);
+		std::string line;
+		for (const std::string &t : r.conflict) line += (line.empty() ? "" : ", ") + t;
+		WARN(fmt::format("contract-t2 step5 skip {}: {} ms {:.0f} pairs {} conflict [{}]", name, r.status, r.ms, r.pairs, line));
+	}
+}

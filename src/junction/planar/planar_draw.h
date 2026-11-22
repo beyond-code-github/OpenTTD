@@ -231,6 +231,8 @@ struct PlanarDrawPipelineResult {
 	uint32_t final_pairs = 0; ///< The final's keep-apart pairs, from its result's pairs.
 	uint32_t contracted = 0; ///< With final_contract: erased flex pairs.
 	uint32_t contract_steps = 0; ///< With final_contract: committed inserts kept as steps.
+	PlanarShapeVariant final_variant; ///< With final_contract: the contracted variant the final ran on.
+	std::vector<std::vector<std::array<int, 2>>> final_sides; ///< With final_contract: the mapped reference the final read its sides from.
 	size_t added = 0; ///< With additions: inserts the additions pass committed.
 	std::vector<std::string> log; ///< One line per round: stage, round, status, total slack, curve slack, box, length.
 	std::string stopped; ///< Empty, or the stage that ended without an Optimal round.

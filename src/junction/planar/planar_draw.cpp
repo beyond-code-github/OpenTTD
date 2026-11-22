@@ -2126,6 +2126,8 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		final_options.node_gap_from = &lengths;
 		if (options.final_start) final_options.start_lengths = &lengths;
 		final_options.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
+		out.final_variant = vc;
+		out.final_sides = points;
 		out.last_round = last;
 		out.last_input = last_input;
 		out.final = CheckPlanarDrawable(vc, options.final_seconds, final_options);

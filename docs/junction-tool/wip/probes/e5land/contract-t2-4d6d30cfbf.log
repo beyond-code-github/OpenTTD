@@ -1,0 +1,189 @@
+Filters: planar draw: T2 contracted final read-out
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+openttd_test is a Catch v2.13.10 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+planar draw: T2 contracted final read-out
+-------------------------------------------------------------------------------
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4136
+...............................................................................
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4145: warning:
+  contract-t2 step1: final Infeasible ms 24; stopped 'final'; pairs 337
+  contracted 78 steps 21
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4149: warning:
+  contract-t2 step1 conflict: piece F2 2, sep 10 5 10, sep 10 5 11
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4202: warning:
+  contract-t2 step2 F2 original: pieces [4 3 4 5 4 3 4 5 4 3 4 5 4] flex [1 3 5
+  7 9 11] event_piece [4 4 8 8]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4205: warning:
+  contract-t2 step2 F2 original lengths (last_round) [0.000 0.000 6.000 0.000
+  8.000 0.000 4.000 0.000 1.000 0.000 0.000 7.000 14.000]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4206: warning:
+  contract-t2 step2 F2 contracted: pieces [4 5 4] steps [1] event_piece [0 0 0
+  0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4212: warning:
+  contract-t2 step2 F2 flex middles erased: [1 (committed 0.000), 3 (committed
+  0.000), 5 (committed -0.000), 7 (committed 0.000), 9 (committed 0.000)];
+  kept: [11 (committed 10.000)]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [0] CD2#0 h0 (13,102)-(13,55)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [1] box 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [2] AF2#2 h4 (17,74)-(17,102)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [3] AF2#1 h3 (15,72)-(17,74)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [4] AF2#0 h4 (15,67)-(15,72)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [5] F2#2 h4 (15,52)-(15,67)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [6] F2#1 h5 (25,42)-(15,52)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [7] F2#0 h4 (25,19)-(25,42)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [8] D2#3 h2 (23,41)-(39,41)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [9] D2#2 h1 (16,48)-(23,41)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [10] D2#1 h0 (16,52)-(16,48)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4234: warning:
+  contract-t2 step3 face 10 wall [11] D2#0 h1 (13,55)-(16,52)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4239: warning:
+  contract-t2 step3 sep 10 5 10: c0 s(-1,0) spacing 2 from i margin -3; c1 s(-
+  1,0) spacing 2 from j margin -1; c2 s(0,-1) spacing 2 from i margin -2; c3 s
+  (0,-1) spacing 2 from j margin -21
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4239: warning:
+  contract-t2 step3 sep 10 5 11: c0 s(-1,0) spacing 1 from i margin -2; c1 s(-
+  1,0) spacing 1 from j margin -3; c2 s(1,1) spacing 2 from i margin -16; c3 s
+  (1,1) spacing 2 from j margin -3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4264: warning:
+  contract-t2 step4 matched original face 10 (25 of its 26 walls map onto
+  contracted face 10's 12 walls)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [0] CD2#4 h0 (13,64)-(13,55) -> CD2#0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [1] CD2#3 h1 (13,64)-(13,64) -> CD2#0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [2] CD2#2 h0 (13,64)-(13,64) -> CD2#0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [3] CD2#1 h7 (13,64)-(13,64) -> CD2#0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [4] CD2#0 h0 (13,102)-(13,64) -> CD2#0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [5] box 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [6] AF2#4 h4 (17,81)-(17,102) -> AF2#2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [7] AF2#3 h5 (17,81)-(17,81) -> AF2#2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [8] AF2#2 h4 (17,74)-(17,81) -> AF2#2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [9] AF2#1 h3 (15,72)-(17,74) -> AF2#1
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [10] AF2#0 h4 (15,67)-(15,72) -> AF2#0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [11] F2#12 h4 (15,52)-(15,67) -> F2#2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [12] F2#11 h5 (25,42)-(15,52) -> F2#1
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [13] F2#10 h4 (25,42)-(25,42) -> F2#0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [14] F2#9 h3 (25,42)-(25,42) -> F2#0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [15] F2#8 h4 (25,40)-(25,42) -> F2#0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [16] D2#9 h2 (23,41)-(39,41) -> D2#3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [17] D2#8 h3 (23,41)-(23,41) -> D2#3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [18] D2#7 h2 (23,41)-(23,41) -> D2#3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [19] D2#6 h1 (23,41)-(23,41) -> D2#3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [20] D2#5 h2 (23,41)-(23,41) -> D2#3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [21] D2#4 h1 (23,41)-(23,41) -> D2#2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [22] D2#3 h2 (23,41)-(23,41) -> D2#2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [23] D2#2 h1 (16,48)-(23,41) -> D2#2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [24] D2#1 h0 (16,52)-(16,48) -> D2#1
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4269: warning:
+  contract-t2 step4 original wall [25] D2#0 h1 (13,55)-(16,52) -> D2#0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4286: warning:
+  contract-t2 step4 uncontracted final wrote 95 of 299 candidate sep tags on
+  face 10
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4299: warning:
+  contract-t2 step4 pair (5,10) <- original walls [11] F2#12 h4 and [24] D2#1
+  h0: sep 10 11 24 not written (skipped by an exemption or merged)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4299: warning:
+  contract-t2 step4 pair (5,11) <- original walls [11] F2#12 h4 and [25] D2#0
+  h1: sep 10 11 25 not written (skipped by an exemption or merged)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4313: warning:
+  contract-t2 step5 skip {sep 10 5 10}: Optimal ms 34 pairs 336 conflict []
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4313: warning:
+  contract-t2 step5 skip {sep 10 5 11}: Optimal ms 22 pairs 336 conflict []
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:4313: warning:
+  contract-t2 step5 skip {sep 10 5 10, sep 10 5 11}: Optimal ms 38 pairs 335
+  conflict []
+
+===============================================================================
+All tests passed (6 assertions in 1 test case)
+
