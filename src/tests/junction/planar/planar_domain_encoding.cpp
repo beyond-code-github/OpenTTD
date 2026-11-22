@@ -83,6 +83,7 @@ struct X1Fixture {
 
 	X1Fixture() : X1Fixture(LoadX1Enc())
 	{
+		REQUIRE(n == 6);
 		SetUp({
 			{"AC1", {2, 1, 2, 3, 2}},
 			{"A1", {2, 1, 2, 3, 2, 1, 2, 3, 2}},
@@ -104,7 +105,6 @@ struct X1Fixture {
 	explicit X1Fixture(PlanarShapeVariant variant) : v(std::move(variant))
 	{
 		n = static_cast<uint32_t>(v.structure.map.expanded.lines.size());
-		REQUIRE(n == 6);
 		for (uint32_t t = 0; t < n; t++) idx[v.structure.map.expanded.lines[t].name] = t;
 		starts = {{"AC1", {0, 5}}, {"A1", {4, 5}}, {"C1", {4, 5}}, {"BD1", {11, 12}}, {"B1", {11, 10}}, {"D1", {11, 10}}};
 		options.clearance = options.clear_rows = options.pairwise = options.pairwise_all_faces = true;
@@ -269,6 +269,100 @@ private:
 			if (r == 0) REQUIRE(k <= b1_event);
 			g["B1"][k] = runs[r].second;
 			prev = k;
+		}
+		SetUp(h, g);
+	}
+};
+
+/** A variant from topology, structure and shape texts (no crossings), flex placed. */
+PlanarShapeVariant LoadTextEnc(const std::string &topo, const std::string &structure, const std::string &shape)
+{
+	std::string error;
+	const PlanarTopology t = ParsePlanarTopology(topo, &error);
+	INFO(error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant s = LoadPlanarStructureVariant(t, structure, spec, report, &error);
+	INFO(error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant v;
+	std::string why;
+	const bool loaded = LoadPlanarShapeVariant(t, s, shape, v, why);
+	INFO(why);
+	REQUIRE(loaded);
+	REQUIRE(PlacePlanarShapeFlex(v, why));
+	return v;
+}
+
+/** One track's base lengths: each run (heading, length) on the first piece of its heading at or after the previous run's piece, the last run on the last piece of its heading; the pieces used are appended to holders. */
+std::map<uint32_t, int> PlaceRuns(const std::vector<int> &b, const std::vector<std::pair<int, int>> &runs, std::vector<uint32_t> &holders)
+{
+	std::map<uint32_t, int> out;
+	uint32_t prev = 0;
+	for (size_t r = 0; r < runs.size(); r++) {
+		uint32_t k = prev;
+		while (k < b.size() && ((b[k] % 8) + 8) % 8 != runs[r].first) k++;
+		if (r + 1 == runs.size()) {
+			for (uint32_t j = k; j < b.size(); j++) {
+				if (((b[j] % 8) + 8) % 8 == runs[r].first) k = j;
+			}
+		}
+		REQUIRE(k < b.size());
+		out[k] = runs[r].second;
+		holders.push_back(k);
+		prev = k;
+	}
+	return out;
+}
+
+/** M1: a merge whose legs come from splits (domain-15). */
+struct M1Fixture : X1Fixture {
+	std::map<std::string, std::vector<uint32_t>> holders; ///< Per track, the pieces that hold its base runs.
+
+	M1Fixture() : M1Fixture(LoadTextEnc(
+		"topology M1\nport W in E: AC1\nport S in N: BD1\nport N out N: C1\nport E out E: AB1, D1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\nnode A1, B1 -> AB1\n",
+		"straight AC1: A1\nstraight BD1: B1\nstraight AB1: A1\n",
+		"shape AC1: 2\nshape C1: 1 0\nshape A1: 2\nshape BD1: 0\nshape B1: 0 1\nshape D1: 1 2\nshape AB1: 2\n")) {}
+
+	explicit M1Fixture(PlanarShapeVariant variant) : X1Fixture(std::move(variant))
+	{
+		REQUIRE(n == 7);
+		starts = {{"AC1", {0, 5}}, {"C1", {4, 5}}, {"A1", {4, 5}}, {"BD1", {13, 14}}, {"B1", {13, 12}}, {"D1", {13, 12}}, {"AB1", {16, 5}}};
+		const std::map<std::string, std::vector<std::pair<int, int>>> runs = {
+			{"AC1", {{2, 4}}}, {"C1", {{1, 3}, {0, 2}}}, {"A1", {{2, 12}}}, {"BD1", {{0, 2}}}, {"B1", {{0, 4}, {1, 3}}}, {"D1", {{1, 1}, {2, 10}}}, {"AB1", {{2, 8}}},
+		};
+		std::map<std::string, std::vector<int>> h;
+		Geometry g;
+		for (const auto &[name, t] : idx) {
+			h[name] = v.tracks[t].pieces;
+			g[name] = PlaceRuns(h[name], runs.at(name), holders[name]);
+		}
+		SetUp(h, g);
+	}
+};
+
+/** K1: a cascade and a trident (domain-15). */
+struct K1Fixture : X1Fixture {
+	std::map<std::string, std::vector<uint32_t>> holders; ///< Per track, the pieces that hold its base runs.
+
+	K1Fixture() : K1Fixture(LoadTextEnc(
+		"topology K1\nport W in E: ABC1\nport N out N: A1\nport E out E: B1\nport S out S: C1\nnode ABC1 -> A1, BC1\nnode BC1 -> B1, C1\n",
+		"straight ABC1: BC1\nstraight BC1: B1\n",
+		"shape ABC1: 2\nshape A1: 1 0\nshape BC1: 2\nshape B1: 2\nshape C1: 3 4\n")) {}
+
+	explicit K1Fixture(PlanarShapeVariant variant) : X1Fixture(std::move(variant))
+	{
+		REQUIRE(n == 5);
+		starts = {{"ABC1", {0, 9}}, {"A1", {4, 9}}, {"BC1", {4, 9}}, {"B1", {8, 9}}, {"C1", {8, 9}}};
+		const std::map<std::string, std::vector<std::pair<int, int>>> runs = {
+			{"ABC1", {{2, 4}}}, {"A1", {{1, 3}, {0, 6}}}, {"BC1", {{2, 4}}}, {"B1", {{2, 12}}}, {"C1", {{3, 3}, {4, 6}}},
+		};
+		std::map<std::string, std::vector<int>> h;
+		Geometry g;
+		for (const auto &[name, t] : idx) {
+			h[name] = v.tracks[t].pieces;
+			g[name] = PlaceRuns(h[name], runs.at(name), holders[name]);
 		}
 		SetUp(h, g);
 	}
@@ -1238,4 +1332,107 @@ TEST_CASE("planar domain: our keep-apart against the domain on X2", "[.][planard
 	for (uint32_t k = 0; k < f.a1_event; k++) c2.axes.emplace_back("A1", k, std::vector<int>{0, 2, 4});
 	c2.axes.emplace_back("A1", f.a1_event, std::vector<int>{8, 10, 12, 14});
 	RunEncoding(f, report_path, "X2", {c1, c2}, header.str());
+}
+
+namespace {
+
+/** Axes for a track's pieces in [lo, hi]: a run holder takes the values listed for it (none: left at base), every other piece is an insert, {0, 2} on an axis heading and {0, 1, 2} otherwise. */
+void AddAxes(Config &c, const X1Fixture &f, const std::string &name, const std::vector<uint32_t> &holders, const std::vector<std::vector<int>> &holder_values, uint32_t lo, uint32_t hi)
+{
+	const std::vector<int> &h = f.heads.at(name);
+	for (uint32_t k = 0; k < h.size(); k++) {
+		const auto it = std::ranges::find(holders, k);
+		if (it != holders.end()) {
+			const std::vector<int> &vals = holder_values[static_cast<size_t>(it - holders.begin())];
+			if (!vals.empty()) c.axes.emplace_back(name, k, vals);
+			continue;
+		}
+		if (k < lo || k > hi) continue;
+		const bool axis = ((h[k] % 8) + 8) % 8 % 2 == 0;
+		c.axes.emplace_back(name, k, axis ? std::vector<int>{0, 2} : std::vector<int>{0, 1, 2});
+	}
+}
+
+/** The report header: per track its headings after flex, flex middles and run holders. */
+std::string FixtureHeader(const X1Fixture &f, const std::map<std::string, std::vector<uint32_t>> &holders)
+{
+	std::ostringstream out;
+	for (const auto &[name, h] : f.heads) {
+		out << name << " headings after flex:";
+		for (const int x : h) out << " " << x;
+		out << "; flex middles:";
+		for (const uint32_t m : f.v.tracks[f.idx.at(name)].flex) out << " " << m;
+		out << "; run holders:";
+		for (const uint32_t k : holders.at(name)) out << " " << k;
+		out << "\n";
+	}
+	return out.str();
+}
+
+} // namespace
+
+TEST_CASE("planar domain: M1 loads and its base is legal", "[junction][planar][planardomain]")
+{
+	const M1Fixture f;
+	RequireBaseLegal(f);
+	int verdict = 1;
+	const Config none{"base", {}};
+	RunEncoding(f, nullptr, "M1", {none}, "", "span+lead+endnode+crosspiece", &verdict);
+	CHECK(verdict == 0);
+}
+
+TEST_CASE("planar domain: K1 loads and its base is legal", "[junction][planar][planardomain]")
+{
+	const K1Fixture f;
+	RequireBaseLegal(f);
+	int verdict = 1;
+	const Config none{"base", {}};
+	RunEncoding(f, nullptr, "K1", {none}, "", "span+lead+endnode+crosspiece", &verdict);
+	CHECK(verdict == 0);
+}
+
+TEST_CASE("planar domain: our keep-apart against the domain on M1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_M1");
+	REQUIRE(report_path != nullptr);
+	const M1Fixture f;
+	RequireBaseLegal(f);
+	const std::vector<uint32_t> &a1 = f.holders.at("A1");
+	const uint32_t a_last = static_cast<uint32_t>(f.heads.at("A1").size()) - 1;
+	REQUIRE(a1.size() == 1);
+	REQUIRE(a1[0] == a_last);
+	/* M1a: B1's pieces varied; A1's last two pieces in {0, 2, 4} each, its first piece the rest of 12 (A1's end stays at (16,5) when its last two pieces run east). One configuration per pair, as the axes are independent. */
+	std::vector<Config> configs;
+	for (const int x : {0, 2, 4}) {
+		for (const int y : {0, 2, 4}) {
+			std::ostringstream cname;
+			cname << "M1a A1 tail " << x << "," << y;
+			Config c{cname.str(), {}};
+			AddAxes(c, f, "B1", f.holders.at("B1"), {{2, 4, 6}, {1, 2, 3}}, 0, UINT32_MAX);
+			c.axes.emplace_back("A1", 0, std::vector<int>{12 - x - y});
+			c.axes.emplace_back("A1", a_last - 1, std::vector<int>{x});
+			c.axes.emplace_back("A1", a_last, std::vector<int>{y});
+			configs.push_back(c);
+		}
+	}
+	/* M1b: A1's pieces varied (its run holder in {8, 10, 12, 14, 16}, its inserts within two pieces of its end) against the fixed B1. */
+	Config b{"M1b", {}};
+	AddAxes(b, f, "A1", a1, {{8, 10, 12, 14, 16}}, a_last - 2, UINT32_MAX);
+	configs.push_back(b);
+	RunEncoding(f, report_path, "M1", configs, FixtureHeader(f, f.holders));
+}
+
+TEST_CASE("planar domain: our keep-apart against the domain on K1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_K1");
+	REQUIRE(report_path != nullptr);
+	const K1Fixture f;
+	RequireBaseLegal(f);
+	/* K1a: BC1's total length in {0, 2, 4, 6} (0 is the trident); A1's NE run and C1's SE run in 1..3; the inserts of A1 and C1 within their first three pieces. node_gaps is on (D424). */
+	Config c{"K1a", {}};
+	c.axes.emplace_back("BC1", f.holders.at("BC1")[0], std::vector<int>{0, 2, 4, 6});
+	AddAxes(c, f, "A1", f.holders.at("A1"), {{1, 2, 3}, {}}, 0, 2);
+	AddAxes(c, f, "C1", f.holders.at("C1"), {{1, 2, 3}, {}}, 0, 2);
+	REQUIRE(f.options.node_gaps);
+	RunEncoding(f, report_path, "K1", {c}, "node_gaps: on (D424)\n" + FixtureHeader(f, f.holders));
 }

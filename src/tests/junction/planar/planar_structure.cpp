@@ -913,3 +913,14 @@ TEST_CASE("planar structure: pinned decisions are refused with a reason", "[junc
 		CHECK(error_of(topology, text.substr(0, at)).find("has no straight statement") != std::string::npos);
 	}
 }
+
+TEST_CASE("planar structure: a written-down hub with no crossings loads", "[junction][planar][planarstructure]")
+{
+	std::string error;
+	const PlanarTopology t = ParsePlanarTopology("topology K1\nport W in E: ABC1\nport N out N: A1\nport E out E: B1\nport S out S: C1\nnode ABC1 -> A1, BC1\nnode BC1 -> B1, C1\n", &error);
+	REQUIRE(error.empty());
+	REQUIRE(t.crossings.empty());
+	std::vector<std::string> report;
+	const PlanarStructureVariant v = LoadPlanarStructureVariant(t, "straight ABC1: BC1\nstraight BC1: B1\n", MakeTestJunctionSpec(), report, &error);
+	CHECK(error.empty());
+}
