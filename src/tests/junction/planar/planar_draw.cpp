@@ -4118,6 +4118,11 @@ TEST_CASE("planar draw: the simplest drawing on every hub", "[.][planaranyhub]")
 			if (vi == 0 || std::getenv("PLANAR_ANYHUB_K3_ALL") != nullptr) {
 				PlanarDrawPipelineOptions po;
 				po.final_seconds = 5;
+				/* PLANAR_ANYHUB_GRID (a measurement aid): the integer final on the tile grid, 15 s. */
+				if (std::getenv("PLANAR_ANYHUB_GRID") != nullptr) {
+					po.final_grid = true;
+					po.final_seconds = 15;
+				}
 				const PlanarDrawPipelineResult pr = DrawPlanarPipeline(v, po);
 				WARN(fmt::format("anyhub {} {} K3: last round {} slack {:.3f}; final {} ms {:.0f}; stopped '{}'", hub.name, tag, pr.last_round.status, pr.last_round.slack, pr.final.status, pr.final.ms, pr.stopped));
 			}
