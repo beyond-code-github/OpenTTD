@@ -322,17 +322,12 @@ TEST_CASE("planar draw: a committed flex insert keeps curve spacing", "[junction
 TEST_CASE("planar draw: the pipeline draws the one-lane T with optional flex (D422)", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
-	{
-		/* A measurement, no assertion: with keep-apart the T plateaus at sep slack 3. */
-		const PlanarDrawPipelineResult with = DrawPlanarPipeline(c.v, {});
-		WARN("keep_apart true: stopped '" << with.stopped << "', last log line: " << (with.log.empty() ? std::string() : with.log.back()));
-	}
-	const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, {.keep_apart = false});
+	const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, {});
 	INFO("stopped " << r.stopped);
 	REQUIRE(r.final.status == "Optimal");
 	for (const auto &[gap, least] : DrawnCurveGaps(c, r.final, false, &r.committed)) {
 		INFO("gap " << gap << " least " << least);
-		CHECK(gap >= least);
+		CHECK(gap >= least - 1e-6); // HiGHS's feasibility tolerance: the final's lengths are whole up to it.
 	}
 	for (size_t t = 0; t < c.v.tracks.size(); t++) {
 		for (const uint32_t m : c.v.tracks[t].flex) {
