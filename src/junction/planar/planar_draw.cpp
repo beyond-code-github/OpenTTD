@@ -250,6 +250,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		std::vector<DumpCandidate> candidates;
 	};
 	std::vector<DumpPair> dump_pairs;
+	std::vector<std::pair<std::string, std::string>> dump_skipped; ///< Every wall pair the pairwise block considers and skips: tag, reason.
 	const auto json_number = [](double x) { return std::isfinite(x) ? fmt::format("{}", x) : std::string("null"); };
 	std::vector<bool> integral;
 	std::vector<double> var_lower, var_upper;
@@ -1190,10 +1191,25 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			}
 			for (size_t i = 0; i < n; i++) {
 				for (size_t j = i + 1; j < n; j++) {
-					if (j == i + 1 || (i == 0 && j == n - 1)) continue;
-					if (!options.skip_pairs.empty() && std::ranges::find(options.skip_pairs, fmt::format("sep {} {} {}", f.face, i, j)) != options.skip_pairs.end()) continue;
-					if (w[i].track >= nt || w[j].track >= nt) continue;
-					if (is_span(w[i]) || is_span(w[j])) continue;
+					const auto skip = [&](const char *reason) {
+						if (dumping) dump_skipped.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), reason);
+					};
+					if (j == i + 1 || (i == 0 && j == n - 1)) {
+						skip("adjacent");
+						continue;
+					}
+					if (!options.skip_pairs.empty() && std::ranges::find(options.skip_pairs, fmt::format("sep {} {} {}", f.face, i, j)) != options.skip_pairs.end()) {
+						skip("listed");
+						continue;
+					}
+					if (w[i].track >= nt || w[j].track >= nt) {
+						skip("box");
+						continue;
+					}
+					if (is_span(w[i]) || is_span(w[j])) {
+						skip("span");
+						continue;
+					}
 					if (options.sibling_lanes) {
 						bool in_lane = false;
 						for (const LanePair &lp : lane_pairs) {
@@ -1202,10 +1218,14 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						}
 						if (in_lane) {
 							result.lane_sep_skipped++;
+							skip("lane");
 							continue;
 						}
 					}
-					if (w[i].track == w[j].track && w[i].piece == w[j].piece) continue;
+					if (w[i].track == w[j].track && w[i].piece == w[j].piece) {
+						skip("same piece");
+						continue;
+					}
 					if (w[i].piece >= v.tracks[w[i].track].pieces.size() || w[j].piece >= v.tracks[w[j].track].pieces.size()) return unsupported(fmt::format("face {} names a wall the variant lacks", f.face));
 						/* Zero contraction: every may-be-zero piece is a point, so a wall touches the pieces of its track from lo - 1 to hi + 1, the nodes its track reaches through such pieces, and the crossings on pieces from lo to hi; two walls that touch are kept apart by no row. */
 						struct Touch {
@@ -1237,7 +1257,10 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							for (const size_t a : ti.events) {
 								for (const size_t b : tj.events) touching = touching || (map.events[w[i].track][a] == map.events[w[j].track][b]);
 							}
-							if (touching) continue;
+							if (touching) {
+								skip("zero contraction");
+								continue;
+							}
 						}
 					const std::array<std::array<uint32_t, 2>, 2> pi ={point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};
 					const std::array<std::array<uint32_t, 2>, 2> pj = {point[w[j].track][w[j].piece], point[w[j].track][w[j].piece + 1]};
@@ -1245,7 +1268,10 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					for (const auto &p : pi) {
 						for (const auto &q : pj) shared = shared || find(p[0]) == find(q[0]);
 					}
-					if (shared) continue;
+					if (shared) {
+						skip("shared point");
+						continue;
+					}
 					if (options.pairwise_flex_only) {
 						const auto in_flex_group = [&](const PlanarCellWall &wall) {
 							for (const uint32_t m : v.tracks[wall.track].flex) {
@@ -1253,7 +1279,10 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							}
 							return false;
 						};
-						if (!in_flex_group(w[i]) && !in_flex_group(w[j])) continue;
+						if (!in_flex_group(w[i]) && !in_flex_group(w[j])) {
+							skip("flex only");
+							continue;
+						}
 					}
 					result.pairs++;
 					struct Axis {
@@ -1693,6 +1722,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				}
 				text += "]}";
 			}
+			text += "], \"skipped\": [";
+			for (size_t k = 0; k < dump_skipped.size(); k++) text += fmt::format("{}{{\"tag\": {}, \"reason\": {}}}", k == 0 ? "" : ", ", quote(dump_skipped[k].first), quote(dump_skipped[k].second));
+			text += "], \"crossings\": [";
+			for (size_t k = 0; k < map.crossings.size(); k++) text += fmt::format("{}{{\"a\": {}, \"b\": {}}}", k == 0 ? "" : ", ", quote(track_name(map.crossings[k].a)), quote(track_name(map.crossings[k].b)));
+			text += "], \"ends\": [";
+			const auto end_name = [](const auto &e) { return fmt::format("\"{} {}\"", e.port ? "port" : "node", e.index); };
+			for (size_t t = 0; t < nt; t++) text += fmt::format("{}{{\"name\": {}, \"from\": {}, \"to\": {}}}", t == 0 ? "" : ", ", quote(track_name(t)), end_name(map.expanded.lines[t].from), end_name(map.expanded.lines[t].to));
 			text += "]}\n";
 			std::ofstream out(options.dump_path);
 			out << text;

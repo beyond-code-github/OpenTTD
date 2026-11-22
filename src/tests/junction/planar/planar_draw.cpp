@@ -4124,6 +4124,10 @@ TEST_CASE("planar draw: the simplest drawing on every hub", "[.][planaranyhub]")
 					po.final_seconds = 15;
 				}
 				po.final_contract = std::getenv("PLANAR_ANYHUB_CONTRACT") != nullptr;
+				if (dump_root != nullptr) {
+					po.dump_dir = fmt::format("{}/anyhub-k3/{}", dump_root, hub.name);
+					std::filesystem::create_directories(po.dump_dir);
+				}
 				const PlanarDrawPipelineResult pr = DrawPlanarPipeline(v, po);
 				WARN(fmt::format("anyhub {} {} K3: last round {} slack {:.3f}; final {} ms {:.0f}; stopped '{}'; pairs {} contracted {} steps {}", hub.name, tag, pr.last_round.status, pr.last_round.slack, pr.final.status, pr.final.ms, pr.stopped, pr.final_pairs, pr.contracted, pr.contract_steps));
 				if (std::getenv("PLANAR_ANYHUB_CONFLICT") != nullptr) for (const std::string &t : pr.final.conflict) WARN(fmt::format("anyhub {} {} K3 conflict {}", hub.name, tag, t));

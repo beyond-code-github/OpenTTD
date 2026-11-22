@@ -1,0 +1,13 @@
+overlap L10[19]#34 (25, 34)-(25, 22) | L24[34]#3 (25, 35)-(25, 31) | sep 37 0 35 | skipped: span
+overlap L24[34]#7 (23, 28)-(23, 24) | L28[39]#8 (23, 28)-(23, 20) | sep 36 13 15 | skipped: span
+overlap L78[83]#0 (91, 82)-(87, 82) | L89[96]#3 (89, 82)-(83, 82) | sep 11 13 19 | skipped: zero contraction
+overlap L78[83]#4 (87, 82)-(74, 82) | L89[96]#3 (89, 82)-(83, 82) | sep 11 13 15 | skipped: span
+overlap L7[23]#5 (15, 65)-(15, 63) | L16[28]#8 (15, 69)-(15, 49) | sep 25 5 7 | skipped: span
+overlap L10[19]#30 (25, 43)-(25, 34) | L24[34]#3 (25, 35)-(25, 31) | sep 37 4 35 | skipped: zero contraction
+overlap L48[53]#13 (36, 89)-(36, 108) | L49[55]#17 (36, 100)-(36, 108) | sep 107 20 30 | skipped: span
+meet L10[19]#30 (25, 43)-(25, 34) | L24[34]#0 (28, 38)-(25, 35) at (25.0, 35.0) | sep 37 4 32 | skipped: zero contraction
+meet L24[34]#4 (25, 31)-(23, 28) | L28[39]#6 (23, 34)-(23, 28) at (23.0, 28.0) | sep 36 10 17 | skipped: zero contraction
+meet L78[83]#0 (91, 82)-(87, 82) | L89[96]#2 (90, 81)-(89, 82) at (89.0, 82.0) | sep 11 12 19 | skipped: zero contraction
+meet L7[23]#4 (14, 66)-(15, 65) | L16[28]#8 (15, 69)-(15, 49) at (15.0, 65.0) | sep 14 29 30 | skipped: adjacent
+meet L48[53]#13 (36, 89)-(36, 108) | L49[55]#26 (36, 108)-(30, 114) at (36.0, 108.0) | sep 113 19 34 | skipped: span
+clash build-rel/dumps/anyhub-k3/197//commit-3.json: overlaps 7, meets 5, by reason: adjacent 1, span 6, zero contraction 5

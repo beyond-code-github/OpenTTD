@@ -1,0 +1,14 @@
+overlap E2[14]#3 (71, 29)-(96, 54) | F2[15]#2 (71, 29)-(76, 34) | sep 13 2 10 | skipped: zero contraction
+overlap B1[17]#4 (169, 56)-(146, 56) | B2[19]#2 (167, 56)-(141, 56) | - | not in a common face
+overlap A2[18]#0 (171, 52)-(169, 54) | B2[19]#1 (171, 52)-(167, 56) | sep 18 1 12 | skipped: zero contraction
+overlap B1[47]#0 (129, 56)-(102, 56) | B2[49]#4 (131, 56)-(78, 56) | sep 37 6 12 | pair written, chosen c0 margin -2
+overlap B2[19]#2 (167, 56)-(141, 56) | B1[46]#0 (146, 56)-(129, 56) | sep 18 2 7 | skipped: span
+overlap B1[46]#0 (146, 56)-(129, 56) | B2[48]#0 (141, 56)-(132, 56) | sep 18 5 7 | skipped: span
+overlap B1[46]#0 (146, 56)-(129, 56) | B2[49]#0 (132, 56)-(131, 56) | sep 37 2 13 | skipped: span
+overlap B1[46]#0 (146, 56)-(129, 56) | B2[49]#4 (131, 56)-(78, 56) | sep 37 6 13 | skipped: span
+meet B1[17]#4 (169, 56)-(146, 56) | B2[19]#1 (171, 52)-(167, 56) at (167.0, 56.0) | - | not in a common face
+meet A2[18]#4 (146, 54)-(141, 59) | B2[19]#2 (167, 56)-(141, 56) at (144.0, 56.0) | sep 18 2 8 | skipped: zero contraction
+meet A2[18]#3 (169, 54)-(146, 54) | B2[19]#1 (171, 52)-(167, 56) at (169.0, 54.0) | sep 18 1 9 | skipped: zero contraction
+meet B1[47]#1 (102, 56)-(100, 58) | B2[49]#4 (131, 56)-(78, 56) at (102.0, 56.0) | sep 37 6 11 | pair written, chosen c0 margin -1
+meet E2[14]#3 (71, 29)-(96, 54) | F2[15]#3 (76, 34)-(76, 36) at (76.0, 34.0) | sep 13 3 10 | skipped: zero contraction
+clash build-rel/dumps/LL2//commit-2.json: overlaps 8, meets 5, by reason: no face 2, span 4, written 2, zero contraction 5

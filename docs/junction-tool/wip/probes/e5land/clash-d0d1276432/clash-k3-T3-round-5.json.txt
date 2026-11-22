@@ -1,0 +1,29 @@
+overlap E2[31]#3 (26, 2)-(86, 62) | F2[34]#0 (26, 2)-(30, 6) | sep 78 0 13 | skipped: zero contraction
+overlap E2[31]#3 (26, 2)-(86, 62) | F2[34]#4 (30, 6)-(86, 62) | sep 78 4 13 | skipped: zero contraction
+overlap E3[32]#3 (28, 6)-(86, 64) | F3[35]#4 (28, 6)-(84, 62) | sep 56 2 10 | skipped: zero contraction
+overlap E1[30]#3 (83, 0)-(119, 36) | F1[33]#4 (83, 0)-(87, 4) | sep 72 2 10 | skipped: zero contraction
+overlap D3[29]#15 (126, 44)-(133, 44) | E3[44]#0 (120, 44)-(137, 44) | - | not in a common face
+overlap D3[29]#17 (133, 44)-(140, 44) | E3[44]#0 (120, 44)-(137, 44) | - | not in a common face
+overlap D3[29]#17 (133, 44)-(140, 44) | E3[45]#0 (137, 44)-(140, 44) | sep 75 5 6 | skipped: adjacent
+overlap prio:E3[51]#0 (120, 42)-(138, 42) | E2"30[52]#0 (126, 42)-(131, 42) | sep 66 0 13 | skipped: span
+overlap A2[19]#0 (114, 83)-(107, 83) | B2[22]#1 (114, 83)-(112, 83) | sep 19 1 11 | skipped: zero contraction
+overlap A3[20]#9 (107, 76)-(96, 76) | B1[21]#14 (98, 76)-(87, 76) | sep 23 15 21 | skipped: span
+overlap B1[21]#20 (72, 64)-(63, 64) | B3[23]#8 (76, 64)-(69, 64) | - | not in a common face
+overlap B1[21]#24 (52, 53)-(44, 53) | D1[27]#9 (43, 53)-(60, 53) | sep 34 5 7 | skipped: span
+overlap B2[22]#19 (56, 53)-(54, 53) | D1[27]#9 (43, 53)-(60, 53) | sep 35 0 2 | skipped: span
+meet E1[30]#3 (83, 0)-(119, 36) | F1[33]#7 (87, 4)-(87, 60) at (87.0, 4.0) | sep 72 2 13 | skipped: zero contraction
+meet D2[28]#19 (106, 62)-(113, 62) | D3[29]#14 (100, 70)-(126, 44) at (108.0, 62.0) | sep 75 2 15 | pair written, chosen c1 margin -4
+meet D2[28]#26 (132, 47)-(138, 41) | D3[29]#17 (133, 44)-(140, 44) at (135.0, 44.0) | sep 75 5 8 | pair written, chosen c0 margin -4
+meet A2[19]#0 (114, 83)-(107, 83) | B2[22]#2 (112, 83)-(105, 76) at (112.0, 83.0) | sep 19 2 11 | skipped: zero contraction
+meet A3[20]#9 (107, 76)-(96, 76) | B1[21]#9 (100, 78)-(98, 76) at (98.0, 76.0) | sep 19 5 6 | skipped: adjacent
+meet B1[21]#20 (72, 64)-(63, 64) | B2[22]#18 (68, 65)-(56, 53) at (67.0, 64.0) | sep 29 4 9 | pair written, chosen c3 margin -2
+meet B1[21]#19 (84, 76)-(72, 64) | B2[22]#15 (82, 72)-(75, 72) at (80.0, 72.0) | sep 29 1 10 | pair written, chosen c2 margin -4
+meet E3[32]#3 (28, 6)-(86, 64) | F3[35]#7 (84, 62)-(84, 64) at (84.0, 62.0) | sep 56 2 13 | skipped: zero contraction
+meet B1[21]#20 (72, 64)-(63, 64) | B3[23]#9 (69, 64)-(62, 57) at (69.0, 64.0) | - | not in a common face
+meet B1[21]#19 (84, 76)-(72, 64) | B3[23]#8 (76, 64)-(69, 64) at (72.0, 64.0) | - | not in a common face
+meet B1[21]#23 (56, 57)-(52, 53) | D1[27]#9 (43, 53)-(60, 53) at (52.0, 53.0) | sep 32 0 11 | skipped: adjacent
+meet B2[22]#18 (68, 65)-(56, 53) | D1[27]#9 (43, 53)-(60, 53) at (56.0, 53.0) | sep 33 1 2 | skipped: adjacent
+meet E2[31]#3 (26, 2)-(86, 62) | F2[34]#9 (86, 62)-(86, 80) at (86.0, 62.0) | sep 78 9 13 | skipped: span
+meet D3[29]#14 (100, 70)-(126, 44) | E3[44]#0 (120, 44)-(137, 44) at (126.0, 44.0) | - | not in a common face
+meet D3[29]#14 (100, 70)-(126, 44) | E3"31[53]#0 (122, 46)-(135, 46) at (124.0, 46.0) | sep 75 2 7 | skipped: span
+clash build-rel/dumps/anyhub-k3/T3//round-5.json: overlaps 13, meets 15, by reason: adjacent 4, no face 6, span 6, written 4, zero contraction 8

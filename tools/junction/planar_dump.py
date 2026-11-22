@@ -220,6 +220,140 @@ def cmd_svg(args):
     print("wrote %s (%d walls, %d reference walls)" % (args.output, len(segs), len(ref_segs)))
 
 
+def _orient(a, b, c):
+    v = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    return (v > 0) - (v < 0)
+
+
+def _on_segment(a, b, p):
+    return min(a[0], b[0]) <= p[0] <= max(a[0], b[0]) and min(a[1], b[1]) <= p[1] <= max(a[1], b[1])
+
+
+def _intersect(a, b, c, d):
+    """('overlap', None), ('meet', point) or None for segments ab and cd (integer points, one common form for every angle)."""
+    o1, o2, o3, o4 = _orient(a, b, c), _orient(a, b, d), _orient(c, d, a), _orient(c, d, b)
+    if o1 == 0 and o2 == 0:
+        # collinear: project on the longer axis
+        k = 0 if abs(b[0] - a[0]) >= abs(b[1] - a[1]) else 1
+        lo = max(min(a[k], b[k]), min(c[k], d[k]))
+        hi = min(max(a[k], b[k]), max(c[k], d[k]))
+        if lo > hi:
+            return None
+        if lo < hi:
+            return ("overlap", None)
+        for p in (a, b):
+            if _on_segment(c, d, p):
+                return ("meet", tuple(p))
+        for p in (c, d):
+            if _on_segment(a, b, p):
+                return ("meet", tuple(p))
+        return None
+    if o1 != o2 and o3 != o4:
+        # proper or touching intersection; solve the point (may be non-integer only for a crossing of two diagonals)
+        den = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0])
+        t = ((c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0])) / den
+        x, y = a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])
+        return ("meet", (round(x, 3), round(y, 3)))
+    return None
+
+
+def cmd_clash(args):
+    d = Dump(args.file)
+    tracks = d.tracks
+    crossings = {}
+    for c in d.d.get("crossings", []):
+        key = frozenset((c["a"], c["b"]))
+        crossings[key] = crossings.get(key, 0) + 1
+    ends = d.d.get("ends", [])  # in track order (track names repeat on split parts)
+    skipped = {s["tag"]: s["reason"] for s in d.d.get("skipped", [])}
+    # segments bucketed on a grid
+    segs = []
+    for t, tr in enumerate(tracks):
+        pts = tr["points"]
+        for k in range(len(pts) - 1):
+            if pts[k] != pts[k + 1]:
+                segs.append((t, k, pts[k], pts[k + 1]))
+    cell = 16
+    buckets = {}
+    for idx, (t, k, a, b) in enumerate(segs):
+        for gx in range(min(a[0], b[0]) // cell, max(a[0], b[0]) // cell + 1):
+            for gy in range(min(a[1], b[1]) // cell, max(a[1], b[1]) // cell + 1):
+                buckets.setdefault((gx, gy), []).append(idx)
+    seen = set()
+    overlaps = []
+    meets = {}  # (t0, t1) -> {point: (k0, k1)}
+    for lst in buckets.values():
+        for x in range(len(lst)):
+            for y in range(x + 1, len(lst)):
+                i, j = lst[x], lst[y]
+                if (i, j) in seen:
+                    continue
+                seen.add((i, j))
+                (t0, k0, a, b), (t1, k1, c, e) = segs[i], segs[j]
+                if t0 == t1:
+                    continue
+                r = _intersect(a, b, c, e)
+                if r is None:
+                    continue
+                if r[0] == "overlap":
+                    overlaps.append((t0, k0, t1, k1))
+                else:
+                    meets.setdefault((t0, t1), {}).setdefault(r[1], (k0, k1))
+
+    def end_ids(t, p):
+        e = ends[t] if t < len(ends) else None
+        pts = tracks[t]["points"]
+        out = set()
+        if e is not None:
+            if tuple(pts[0]) == p:
+                out.add(e["from"])
+            if tuple(pts[-1]) == p:
+                out.add(e["to"])
+        return out
+
+    clashes = []
+    for t0, k0, t1, k1 in overlaps:
+        clashes.append(("overlap", t0, k0, t1, k1, None))
+    for (t0, t1), points in meets.items():
+        allowed = crossings.get(frozenset((tracks[t0]["name"], tracks[t1]["name"])), 0)
+        rest = []
+        for p, ks in sorted(points.items()):
+            if end_ids(t0, p) & end_ids(t1, p):
+                continue
+            rest.append((p, ks))
+        for p, (k0, k1) in rest[allowed:]:
+            clashes.append(("meet", t0, k0, t1, k1, p))
+
+    def classify(t0, k0, t1, k1):
+        for face, walls in d.faces.items():
+            ia = [i for i, w in enumerate(walls) if w["track"] == t0 and w["piece"] == k0]
+            ib = [i for i, w in enumerate(walls) if w["track"] == t1 and w["piece"] == k1]
+            for i in ia:
+                for j in ib:
+                    lo, hi = min(i, j), max(i, j)
+                    tag = "sep %d %d %d" % (face, lo, hi)
+                    if tag in d.pairs:
+                        p = d.pairs[tag]
+                        ch = [c for c in p["candidates"] if c["c"] == p["chosen"]]
+                        return tag, "pair written, chosen c%d margin %s" % (p["chosen"], ch[0]["margin"] if ch else "?"), "written"
+                    if tag in skipped:
+                        return tag, "skipped: " + skipped[tag], skipped[tag]
+                    return tag, "in a common face, no pair and no skip entry", "unlisted"
+        return None, "not in a common face", "no face"
+
+    counts = {}
+    n_over = n_meet = 0
+    for kind, t0, k0, t1, k1, p in clashes:
+        tag, text, key = classify(t0, k0, t1, k1)
+        counts[key] = counts.get(key, 0) + 1
+        if kind == "overlap":
+            n_over += 1
+        else:
+            n_meet += 1
+        print("%s %s[%d]#%d %s-%s | %s[%d]#%d %s-%s%s | %s | %s" % (kind, tracks[t0]["name"], t0, k0, tuple(tracks[t0]["points"][k0]), tuple(tracks[t0]["points"][k0 + 1]), tracks[t1]["name"], t1, k1, tuple(tracks[t1]["points"][k1]), tuple(tracks[t1]["points"][k1 + 1]), " at %s" % (p,) if p else "", tag or "-", text))
+    print("clash %s: overlaps %d, meets %d%s" % (args.file, n_over, n_meet, (", by reason: " + ", ".join("%s %d" % kv for kv in sorted(counts.items()))) if counts else ""))
+
+
 def main():
     ap = argparse.ArgumentParser(description="Read planar drawing dumps offline.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -248,6 +382,9 @@ def main():
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--ref", help="a second dump whose same tracks are drawn in grey underneath")
     p.set_defaults(fn=cmd_svg)
+    p = sub.add_parser("clash", help="independent clash check: overlapping or touching tracks, each traced to its pair or skip rule")
+    p.add_argument("file")
+    p.set_defaults(fn=cmd_clash)
     args = ap.parse_args()
     args.fn(args)
 

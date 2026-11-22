@@ -1,0 +1,3 @@
+overlap A1[6]#0 (60, 6)-(37, 29) | B1[7]#1 (60, 6)-(48, 18) | sep 6 4 6 | skipped: zero contraction
+meet A1[6]#0 (60, 6)-(37, 29) | B1[7]#2 (48, 18)-(34, 18) at (48.0, 18.0) | sep 6 4 7 | skipped: zero contraction
+clash build-rel/dumps/T1//final-0.json: overlaps 1, meets 1, by reason: zero contraction 2

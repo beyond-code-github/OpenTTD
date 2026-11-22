@@ -1,0 +1,23 @@
+overlap E1[20]#3 (8, 0)-(47, 39) | F1[22]#0 (8, 0)-(13, 5) | sep 34 2 6 | skipped: zero contraction
+overlap E2[21]#3 (25, 19)-(25, 25) | F1[22]#9 (25, 17)-(25, 33) | sep 1 13 15 | skipped: span
+overlap E2[21]#3 (25, 19)-(25, 25) | F2[23]#2 (25, 19)-(25, 27) | sep 26 3 9 | skipped: zero contraction
+overlap F1[22]#9 (25, 17)-(25, 33) | F2[23]#2 (25, 19)-(25, 27) | sep 26 1 9 | skipped: span
+overlap F1[22]#9 (25, 17)-(25, 33) | F2[23]#4 (25, 27)-(25, 35) | sep 20 1 11 | skipped: span
+overlap D1[18]#11 (54, 39)-(61, 39) | E1[26]#0 (52, 39)-(61, 39) | sep 34 0 24 | skipped: zero contraction
+overlap D1[18]#9 (21, 41)-(52, 41) | D2[19]#9 (23, 41)-(39, 41) | sep 16 0 2 | skipped: span
+overlap C2[17]#3 (13, 55)-(23, 45) | D2[19]#0 (13, 55)-(16, 52) | sep 28 0 13 | skipped: zero contraction
+meet E1[20]#3 (8, 0)-(47, 39) | F1[22]#1 (13, 5)-(15, 5) at (13.0, 5.0) | sep 34 2 7 | skipped: zero contraction
+meet E1[20]#3 (8, 0)-(47, 39) | F1[22]#7 (25, 15)-(25, 17) at (25.0, 17.0) | sep 34 2 13 | skipped: zero contraction
+meet EF2[1]#9 (13, 7)-(25, 19) | F1[22]#9 (25, 17)-(25, 33) at (25.0, 19.0) | sep 1 9 15 | skipped: span
+meet E2[21]#4 (25, 25)-(32, 32) | F2[23]#2 (25, 19)-(25, 27) at (25.0, 25.0) | sep 26 2 9 | skipped: zero contraction
+meet D1[18]#10 (52, 41)-(54, 39) | E1[26]#0 (52, 39)-(61, 39) at (54.0, 39.0) | sep 34 0 23 | skipped: zero contraction
+meet D1[18]#9 (21, 41)-(52, 41) | D2[19]#2 (16, 48)-(23, 41) at (23.0, 41.0) | sep 28 2 11 | skipped: span
+meet D1[18]#9 (21, 41)-(52, 41) | D2[19]#12 (39, 41)-(44, 46) at (39.0, 41.0) | sep 24 3 6 | skipped: span
+meet C2[17]#3 (13, 55)-(23, 45) | F2[23]#12 (15, 52)-(15, 67) at (15.0, 53.0) | - | not in a common face
+meet C2[17]#4 (23, 45)-(23, 40) | F2[23]#11 (25, 42)-(15, 52) at (23.0, 44.0) | - | not in a common face
+meet D2[19]#1 (16, 52)-(16, 48) | F2[23]#11 (25, 42)-(15, 52) at (16.0, 51.0) | sep 10 12 24 | skipped: zero contraction
+meet D2[19]#9 (23, 41)-(39, 41) | F2[23]#8 (25, 40)-(25, 42) at (25.0, 41.0) | sep 10 15 16 | skipped: adjacent
+meet C2[17]#3 (13, 55)-(23, 45) | D2[19]#1 (16, 52)-(16, 48) at (16.0, 52.0) | sep 28 1 13 | skipped: zero contraction
+meet C2[17]#4 (23, 45)-(23, 40) | D2[19]#2 (16, 48)-(23, 41) at (23.0, 41.0) | sep 28 2 12 | skipped: zero contraction
+meet F1[22]#10 (25, 33)-(27, 35) | F2[23]#4 (25, 27)-(25, 35) at (25.0, 33.0) | sep 20 1 10 | skipped: span
+clash build-rel/dumps/T2//round-5.json: overlaps 8, meets 14, by reason: adjacent 1, no face 2, span 8, zero contraction 11
