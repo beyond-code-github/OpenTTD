@@ -4020,3 +4020,108 @@ TEST_CASE("planar draw: whole-hub exact keep-apart", "[.][planarcert]")
 		WARN(fmt::format("whole {} box {} x {}, sum of piece lengths {:.1f}", h.name, x1 - x0, y1 - y0, length));
 	}
 }
+
+TEST_CASE("planar draw: the simplest drawing on every hub", "[.][planaranyhub]")
+{
+	struct Hub {
+		std::string name;
+		std::vector<PlanarShapeVariant> variants;
+	};
+	std::vector<Hub> hubs;
+	const std::vector<std::pair<std::string, std::string>> texts = {{"T1", PlanarTText(1)}, {"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : texts) {
+		Hub hub;
+		hub.name = name;
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(text, &error);
+		REQUIRE(error.empty());
+		const JunctionSpec spec = MakeTestJunctionSpec();
+		const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 8);
+		for (size_t si = 0; si < sr.variants.size(); si++) {
+			const PlanarStructureVariant &sv = sr.variants[si];
+			PlanarShapeVariant shaped;
+			std::string why;
+			if (ShapePlanarStructureVariant(sv, shaped, why)) {
+				hub.variants.push_back(std::move(shaped));
+			} else {
+				WARN(fmt::format("anyhub {} structure variant {}: not shaped: {}", name, si, why));
+			}
+		}
+		hubs.push_back(std::move(hub));
+	}
+	{
+		Hub hub;
+		hub.name = "197";
+		PlanarShapeVariant shaped;
+		PlanarDrawPins pins;
+		if (LoadPinned197(shaped, pins, true)) {
+			hub.variants.push_back(std::move(shaped));
+		} else {
+			WARN("anyhub 197: not loaded");
+		}
+		hubs.push_back(std::move(hub));
+	}
+
+	const auto report = [](const std::string &head, const PlanarDrawResult &r) {
+		WARN(fmt::format("anyhub {}: {} slack {:.3f} ms {:.0f}", head, r.status, r.slack, r.ms));
+		std::map<std::string, std::pair<size_t, double>> families;
+		for (const auto &[tag, slack] : r.stretched) {
+			auto &f = families[tag.substr(0, tag.find(' '))];
+			f.first++;
+			f.second += slack;
+		}
+		std::string line;
+		for (const auto &[family, f] : families) line += fmt::format(" [{} {} {:.3f}]", family, f.first, f.second);
+		if (!line.empty()) WARN(fmt::format("anyhub {} families:{}", head, line));
+		line.clear();
+		for (size_t i = 0; i < std::min<size_t>(5, r.stretched.size()); i++) line += fmt::format(" [{} {:.3f}]", r.stretched[i].first, r.stretched[i].second);
+		if (!line.empty()) WARN(fmt::format("anyhub {} largest:{}", head, line));
+	};
+	const char *dump_root = std::getenv("PLANAR_DUMP");
+
+	for (const Hub &hub : hubs) {
+		std::array<size_t, 2> zero{}, run{}, integer{};
+		for (size_t vi = 0; vi < hub.variants.size(); vi++) {
+			const PlanarShapeVariant &v = hub.variants[vi];
+			const std::string tag = fmt::format("v{}", vi);
+			std::vector<std::vector<double>> zeros;
+			for (const PlanarShapeTrack &track : v.tracks) zeros.emplace_back(track.pieces.size(), 0.0);
+			for (int k = 0; k < 2; k++) {
+				const std::string kname = k == 0 ? "K1" : "K2";
+				PlanarDrawOptions o;
+				o.clearance = true;
+				o.pairwise = false;
+				o.corridor = true;
+				o.elastic = true;
+				if (k == 1) {
+					o.flex_zero_from = &zeros;
+					o.flex_zero_below = 1;
+				}
+				if (dump_root != nullptr && vi == 0) {
+					std::filesystem::create_directories(fmt::format("{}/anyhub", dump_root));
+					o.dump_path = fmt::format("{}/anyhub/{}-{}.json", dump_root, hub.name, kname);
+				}
+				const PlanarDrawResult r = CheckPlanarDrawable(v, 15, o);
+				report(fmt::format("{} {} {}", hub.name, tag, kname), r);
+				run[k]++;
+				const bool flat = r.status == "Optimal" && r.slack < 1e-6;
+				if (flat) {
+					zero[k]++;
+					o.elastic = false;
+					o.dump_path.clear();
+					const PlanarDrawResult ri = CheckPlanarDrawable(v, 15, o);
+					WARN(fmt::format("anyhub {} {} {} K4: {} ms {:.0f}", hub.name, tag, kname, ri.status, ri.ms));
+					if (ri.status == "Optimal") integer[k]++;
+				}
+			}
+			/* PLANAR_ANYHUB_K3_ALL (a measurement aid): the pipeline on every variant, not only the first. */
+			if (vi == 0 || std::getenv("PLANAR_ANYHUB_K3_ALL") != nullptr) {
+				PlanarDrawPipelineOptions po;
+				po.final_seconds = 5;
+				const PlanarDrawPipelineResult pr = DrawPlanarPipeline(v, po);
+				WARN(fmt::format("anyhub {} {} K3: last round {} slack {:.3f}; final {} ms {:.0f}; stopped '{}'", hub.name, tag, pr.last_round.status, pr.last_round.slack, pr.final.status, pr.final.ms, pr.stopped));
+			}
+		}
+		for (int k = 0; k < 2; k++) WARN(fmt::format("anyhub summary {} {}: slack 0 {}/{}, integer Optimal {}", hub.name, k == 0 ? "K1" : "K2", zero[k], run[k], integer[k]));
+	}
+}
