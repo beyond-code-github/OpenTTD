@@ -114,6 +114,8 @@ struct PlanarDrawOptions {
 	double flex_zero_below = 0; ///< With flex_zero_from.
 	bool sides_by_walk = false; ///< With pairwise and sides_from (a measurement): a pair whose face walk is monotone towards one wall's inward normal takes that candidate (the rule); other pairs take sides_from's choice.
 	bool facing_sides = false; ///< D426 probe: with pairwise and sides_from, a pair whose face walk is monotone both ways (i to j towards i's inward normal, j to i towards j's) takes its side from the walk: anti-parallel walls the common normal, other angles the better of the two inward normals on the reference; other pairs keep sides_from's choice.
+	bool strict_span = false; ///< D427 probe: a span piece is exempt from keep-apart only against walls of tracks that cross its track on that piece; every other pair with a span wall gets rows as any pair.
+	bool strict_zero = false; ///< D427 probe: a pair the zero contraction would skip is kept, with spacing 0 when the two walls' headings differ mod 4 (they may meet at the contracted point but not cross) and its full spacing when they are equal mod 4 (parallel walls meeting at a point would overlap).
 	bool inward_sides = false; ///< A probe: in pairwise mode every pair's candidates are only the inward ones: wall i's inward normal from i to j, and, when the walls differ mod 4, wall j's inward normal from j to i (with sides_from: the better of these on the reference; without: binaries over these only).
 	bool walk_strict = false; ///< With sides_by_walk (D417): the rule fixes a pair only when the walk's guaranteed projection onto the wall's inward normal (the walls strictly between, each at its least length) is at least the pair's spacing.
 	std::vector<std::string> continuous; ///< A measurement (D409 diagnosis): variable groups written continuous in an integer drawing: "point" (track points), "axis" (axis piece lengths), "diagonal" (diagonal piece lengths), "param" (crossing parameters), "cross" (crossing points), "other" (every other variable: box, pin shift, dummies, binaries).
@@ -202,6 +204,8 @@ struct PlanarDrawPipelineOptions {
 	bool corridor = true; ///< Beside tracks as offset curves (D421) in every stage.
 	bool sibling_lanes = false; ///< A probe (D388 spine, SPEC-slots-lengths §11): PlanarDrawOptions::sibling_lanes in every stage.
 	bool facing_sides = false; ///< A probe (D426): PlanarDrawOptions::facing_sides in every stage.
+	bool strict_span = false; ///< A probe (D427): PlanarDrawOptions::strict_span in every stage.
+	bool strict_zero = false; ///< A probe (D427): PlanarDrawOptions::strict_zero in every stage.
 	bool inward_sides = false; ///< A probe: PlanarDrawOptions::inward_sides in every stage.
 	bool final_tidy = true; ///< The integer final minimises the sum of piece lengths; false is feasibility only (a measurement).
 	bool final_grid = false; ///< A measurement (D382 probe): the integer final writes the grid rows (PlanarDrawOptions::grid).

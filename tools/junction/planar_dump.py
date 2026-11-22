@@ -266,6 +266,7 @@ def cmd_clash(args):
         crossings[key] = crossings.get(key, 0) + 1
     ends = d.d.get("ends", [])  # in track order (track names repeat on split parts)
     skipped = {s["tag"]: s["reason"] for s in d.d.get("skipped", [])}
+    kept = {s["tag"]: s["reason"] for s in d.d.get("kept", [])}
     # segments bucketed on a grid
     segs = []
     for t, tr in enumerate(tracks):
@@ -335,7 +336,10 @@ def cmd_clash(args):
                     if tag in d.pairs:
                         p = d.pairs[tag]
                         ch = [c for c in p["candidates"] if c["c"] == p["chosen"]]
-                        return tag, "pair written, chosen c%d margin %s" % (p["chosen"], ch[0]["margin"] if ch else "?"), "written"
+                        text = "pair written, chosen c%d margin %s" % (p["chosen"], ch[0]["margin"] if ch else "?")
+                        if tag in kept:
+                            text += " | kept: " + kept[tag]
+                        return tag, text, "written"
                     if tag in skipped:
                         return tag, "skipped: " + skipped[tag], skipped[tag]
                     return tag, "in a common face, no pair and no skip entry", "unlisted"

@@ -1,0 +1,12 @@
+overlap A2[18]#0 (332, 92)-(327, 97) | B2[19]#1 (332, 92)-(318, 106) | sep 18 1 12 | pair written, chosen c0 margin -2 | kept: zero contraction kept, full spacing
+overlap B1[47]#0 (270, 108)-(202, 108) | B2[49]#4 (272, 108)-(168, 108) | sep 37 6 12 | pair written, chosen c0 margin -2
+overlap B1[46]#0 (298, 108)-(270, 108) | B2[49]#4 (272, 108)-(168, 108) | sep 37 6 13 | pair written, chosen c0 margin -2
+overlap B1[46]#0 (298, 108)-(270, 108) | B2[49]#2 (279, 108)-(272, 108) | sep 37 4 13 | pair written, chosen c0 margin -2
+overlap E2b[25]#4 (310, 58)-(310, 64) | D1a[26]#10 (310, 62)-(310, 60) | sep 5 18 20 | skipped: span
+meet B1[47]#1 (202, 108)-(200, 110) | B2[49]#4 (272, 108)-(168, 108) at (202.0, 108.0) | sep 37 6 11 | pair written, chosen c0 margin -1
+meet B1[46]#0 (298, 108)-(270, 108) | B2[49]#1 (281, 106)-(279, 108) at (279.0, 108.0) | sep 37 3 13 | pair written, chosen c3 margin -1
+meet A2[18]#3 (322, 104)-(300, 104) | B2[19]#1 (332, 92)-(318, 106) at (320.0, 104.0) | sep 18 1 9 | pair written, chosen c1 margin -2 | kept: zero contraction kept, spacing 0
+meet A2[18]#1 (327, 97)-(327, 99) | B2[19]#1 (332, 92)-(318, 106) at (327.0, 97.0) | sep 18 1 11 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet A2[18]#4 (300, 104)-(293, 111) | B2[48]#0 (301, 106)-(286, 106) at (298.0, 106.0) | sep 18 5 8 | pair written, chosen c0 margin -3
+meet E2b[25]#4 (310, 58)-(310, 64) | D1a[26]#7 (303, 69)-(310, 62) at (310.0, 62.0) | sep 16 19 22 | skipped: span
+clash build-rel/dumps-d/anyhub-k3/LL2/round-5.json: overlaps 5, meets 6, by reason: span 2, written 9

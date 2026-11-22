@@ -1,0 +1,9 @@
+overlap L78[83]#0 (92, 83)-(64, 83) | L89[96]#1 (90, 83)-(84, 83) | sep 11 5 7 | skipped: span
+overlap L1[16]#2 (3, 58)-(3, 56) | L4[21]#0 (3, 70)-(3, 46) | sep 2 10 12 | skipped: span
+overlap L7[23]#1 (15, 60)-(15, 56) | L18[31]#1 (15, 74)-(15, 42) | sep 25 3 5 | skipped: span
+overlap L10[19]#2 (23, 42)-(23, 24) | L24[34]#1 (23, 34)-(23, 32) | sep 37 0 9 | skipped: span
+meet L10[19]#2 (23, 42)-(23, 24) | L24[34]#0 (25, 36)-(23, 34) at (23.0, 34.0) | sep 37 0 8 | skipped: span
+meet L78[83]#0 (92, 83)-(64, 83) | L89[96]#0 (92, 81)-(90, 83) at (90.0, 83.0) | sep 11 4 7 | skipped: span
+meet L7[23]#0 (3, 72)-(15, 60) | L18[31]#1 (15, 74)-(15, 42) at (15.0, 60.0) | sep 25 2 5 | skipped: span
+meet L1[16]#1 (1, 60)-(3, 58) | L4[21]#0 (3, 70)-(3, 46) at (3.0, 58.0) | sep 2 9 12 | skipped: span
+clash build-rel/dumps-b/anyhub-k3/197/final-0.json: overlaps 4, meets 4, by reason: span 8

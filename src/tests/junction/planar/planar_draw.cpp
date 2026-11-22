@@ -369,6 +369,8 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		o.side_probe = std::getenv("PLANAR_PROBE_SIDES") != nullptr;
 		o.sibling_lanes = std::getenv("PLANAR_PROBE_SIBLINGS") != nullptr;
 		o.facing_sides = std::getenv("PLANAR_PROBE_FACING") != nullptr;
+		o.strict_span = std::getenv("PLANAR_STRICT_SPAN") != nullptr;
+		o.strict_zero = std::getenv("PLANAR_STRICT_ZERO") != nullptr;
 		o.inward_sides = std::getenv("PLANAR_PROBE_INWARD") != nullptr;
 		o.curve_discovery = std::getenv("PLANAR_PROBE_NO_CURVE_DISCOVERY") == nullptr;
 		if (const char *s = std::getenv("PLANAR_DUMP"); s != nullptr) {
@@ -4124,6 +4126,8 @@ TEST_CASE("planar draw: the simplest drawing on every hub", "[.][planaranyhub]")
 					po.final_seconds = 15;
 				}
 				po.final_contract = std::getenv("PLANAR_ANYHUB_CONTRACT") != nullptr;
+				po.strict_span = std::getenv("PLANAR_STRICT_SPAN") != nullptr;
+				po.strict_zero = std::getenv("PLANAR_STRICT_ZERO") != nullptr;
 				if (dump_root != nullptr) {
 					po.dump_dir = fmt::format("{}/anyhub-k3/{}", dump_root, hub.name);
 					std::filesystem::create_directories(po.dump_dir);
@@ -4222,7 +4226,7 @@ TEST_CASE("planar draw: T2 contracted final read-out", "[.][planarcert]")
 		for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
 	}
 	const auto contracted_options = [&]() {
-		PlanarDrawOptions o{.clearance = po.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = po.node_gaps, .node_gap_from = &lengths, .corridor = po.corridor, .sibling_lanes = po.sibling_lanes, .facing_sides = po.facing_sides, .inward_sides = po.inward_sides, .curve_flex_from = nullptr, .curve_flex_above = po.commit_above, .tidy = po.final_tidy, .pins = po.pins, .sides_from = &pr.final_sides, .start_lengths = po.final_start ? &lengths : nullptr, .grid = po.final_grid};
+		PlanarDrawOptions o{.clearance = po.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = po.node_gaps, .node_gap_from = &lengths, .corridor = po.corridor, .sibling_lanes = po.sibling_lanes, .facing_sides = po.facing_sides, .strict_span = po.strict_span, .strict_zero = po.strict_zero, .inward_sides = po.inward_sides, .curve_flex_from = nullptr, .curve_flex_above = po.commit_above, .tidy = po.final_tidy, .pins = po.pins, .sides_from = &pr.final_sides, .start_lengths = po.final_start ? &lengths : nullptr, .grid = po.final_grid};
 		o.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
 		return o;
 	};
@@ -4282,7 +4286,7 @@ TEST_CASE("planar draw: T2 contracted final read-out", "[.][planarcert]")
 				all.push_back(fmt::format("sep {} {} {}", orig->face, i, j));
 			}
 		}
-		PlanarDrawOptions o{.clearance = po.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = po.node_gaps, .node_gap_from = &pr.last_round.lengths, .corridor = po.corridor, .sibling_lanes = po.sibling_lanes, .facing_sides = po.facing_sides, .inward_sides = po.inward_sides, .curve_flex_from = &pr.committed, .curve_flex_above = po.commit_above, .tidy = po.final_tidy, .pins = po.pins, .sides_from = &pr.last_input, .start_lengths = po.final_start ? &pr.last_round.lengths : nullptr, .grid = po.final_grid};
+		PlanarDrawOptions o{.clearance = po.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = po.node_gaps, .node_gap_from = &pr.last_round.lengths, .corridor = po.corridor, .sibling_lanes = po.sibling_lanes, .facing_sides = po.facing_sides, .strict_span = po.strict_span, .strict_zero = po.strict_zero, .inward_sides = po.inward_sides, .curve_flex_from = &pr.committed, .curve_flex_above = po.commit_above, .tidy = po.final_tidy, .pins = po.pins, .sides_from = &pr.last_input, .start_lengths = po.final_start ? &pr.last_round.lengths : nullptr, .grid = po.final_grid};
 		o.margin_tags = all;
 		const PlanarDrawResult r = CheckPlanarDrawable(c.v, 1.0, o);
 		std::set<std::string> written;
