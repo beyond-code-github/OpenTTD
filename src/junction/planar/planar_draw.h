@@ -218,6 +218,7 @@ struct PlanarDrawPipelineOptions {
 	int prunes = 1; ///< At most this many prunes, each holding at 0 the committed inserts whose curve flex rows still stretch, each followed by up to commit_rounds rounds; stops early when a prune holds none (D422: 1).
 	bool curve_discovery = true; ///< On by default (D425). Scheme A: from discovery round 2, insert curve rows priced by a damped memory of each insert's length (CARD-E5-schemeA); at most 4 discovery rounds after round 1.
 	std::string dump_dir; ///< A measurement aid: when not empty, each stage's drawing is dumped there as <stage>-<n>.json (seed, round, commit, prune, final).
+	bool final_contract = false; ///< A measurement (D427): before the integer final, every flex insert the commit held at 0 is removed with its trailing flank (one straight piece remains), every committed insert becomes a step (PlanarShapeTrack::steps, a fixed bend pair), and the final runs on that variant with the last drawing's points and lengths mapped onto it.
 	bool additions = false; ///< A probe: after the commit and prune, one additions pass (rounds with the committed inserts kept and the others free under IRL1, the inserts it uses committed, then the commit rounds and the prunes again).
 };
 
@@ -227,6 +228,9 @@ struct PlanarDrawPipelineResult {
 	std::vector<std::vector<double>> committed; ///< The commitment reference handed to the final (as curve_flex_from).
 	size_t committed_count = 0; ///< Inserts committed before the prune.
 	size_t pruned = 0; ///< Inserts the prune held at 0.
+	uint32_t final_pairs = 0; ///< The final's keep-apart pairs, from its result's pairs.
+	uint32_t contracted = 0; ///< With final_contract: erased flex pairs.
+	uint32_t contract_steps = 0; ///< With final_contract: committed inserts kept as steps.
 	size_t added = 0; ///< With additions: inserts the additions pass committed.
 	std::vector<std::string> log; ///< One line per round: stage, round, status, total slack, curve slack, box, length.
 	std::string stopped; ///< Empty, or the stage that ended without an Optimal round.

@@ -2072,7 +2072,70 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	final_options.dump_path = dump_to("final", 0);
 	out.last_round = last;
 	out.last_input = last_input;
+	if (options.final_contract) {
+		/* D427 measurement: held inserts erased, committed inserts steps, the last drawing mapped onto the variant. */
+		PlanarShapeVariant vc = v;
+		auto points = last_input;
+		auto lengths = last.lengths;
+		for (size_t t = 0; t < vc.tracks.size(); t++) {
+			PlanarShapeTrack &track = vc.tracks[t];
+			std::vector<uint32_t> middles = track.flex;
+			std::ranges::sort(middles);
+			std::vector<bool> kept;
+			for (const uint32_t m : middles) kept.push_back(t < out.committed.size() && m < out.committed[t].size() && out.committed[t][m] >= options.commit_above);
+			for (size_t j = middles.size(); j-- > 0;) {
+				if (kept[j]) continue;
+				const uint32_t m = middles[j];
+				track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+				for (uint32_t &e : track.event_piece) {
+					if (e > m) e -= 2;
+				}
+				if (t < points.size() && m + 2 < points[t].size()) points[t].erase(points[t].begin() + m, points[t].begin() + m + 2);
+				if (t < lengths.size() && m + 1 < lengths[t].size()) {
+					lengths[t][m - 1] += lengths[t][m] + lengths[t][m + 1];
+					lengths[t].erase(lengths[t].begin() + m, lengths[t].begin() + m + 2);
+				}
+				out.contracted++;
+			}
+			track.steps.clear();
+			uint32_t removed = 0;
+			for (size_t j = 0; j < middles.size(); j++) {
+				if (kept[j]) {
+					track.steps.push_back(middles[j] - 2 * removed);
+					out.contract_steps++;
+				} else {
+					removed++;
+				}
+			}
+			track.flex.clear();
+		}
+		std::string why;
+		if (!RefinePlanarShapeCells(vc, why)) {
+			out.final.status = "contract: " + why;
+			out.last_round = last;
+			out.last_input = last_input;
+			out.stopped = "final";
+			return out;
+		}
+		int biggest = 0;
+		for (const auto &track : points) {
+			for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
+		}
+		final_options.curve_flex_from = nullptr;
+		final_options.sides_from = &points;
+		final_options.node_gap_from = &lengths;
+		if (options.final_start) final_options.start_lengths = &lengths;
+		final_options.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
+		out.last_round = last;
+		out.last_input = last_input;
+		out.final = CheckPlanarDrawable(vc, options.final_seconds, final_options);
+		out.final_pairs = out.final.pairs;
+		log_round("final", 1, out.final);
+		if (out.final.status != "Optimal") out.stopped = "final";
+		return out;
+	}
 	out.final = CheckPlanarDrawable(v, options.final_seconds, final_options);
+	out.final_pairs = out.final.pairs;
 	log_round("final", 1, out.final);
 	if (out.final.status != "Optimal") out.stopped = "final";
 	return out;
