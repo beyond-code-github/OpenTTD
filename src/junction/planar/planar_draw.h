@@ -123,6 +123,7 @@ struct PlanarDrawOptions {
 	bool grid = false; ///< A measurement (D382 probe): every point of an axis run of positive length has an odd coordinate across it (N/S on odd x, E/W on odd y); the parities this and the integer equalities force are propagated, each forced variable is written 2 h + p, and every all-integer row is divided by its gcd with its bounds rounded inward (whole tiles). Not with elastic.
 	const std::vector<std::vector<std::array<int, 2>>> *start_points = nullptr; ///< A measurement: a MIP start of every track point from this drawing (as `PlanarDrawResult::points`).
 	std::string export_path; ///< A measurement (D418): when not empty, the built program is written there as JSON before solving (variables, rows with their tags, the objective), for offline solvers.
+	std::string dump_path; ///< A measurement aid: when not empty, the drawing is written there as JSON after the solve (tracks, faces, rows that stretched, every keep-apart pair with its candidates and their margins on the drawing).
 };
 
 /**
@@ -216,6 +217,7 @@ struct PlanarDrawPipelineOptions {
 	int commit_rounds = 4; ///< At most this many rounds after the commit, and again after the prune.
 	int prunes = 1; ///< At most this many prunes, each holding at 0 the committed inserts whose curve flex rows still stretch, each followed by up to commit_rounds rounds; stops early when a prune holds none (D422: 1).
 	bool curve_discovery = true; ///< On by default (D425). Scheme A: from discovery round 2, insert curve rows priced by a damped memory of each insert's length (CARD-E5-schemeA); at most 4 discovery rounds after round 1.
+	std::string dump_dir; ///< A measurement aid: when not empty, each stage's drawing is dumped there as <stage>-<n>.json (seed, round, commit, prune, final).
 	bool additions = false; ///< A probe: after the commit and prune, one additions pass (rounds with the committed inserts kept and the others free under IRL1, the inserts it uses committed, then the commit rounds and the prunes again).
 };
 
