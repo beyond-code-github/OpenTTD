@@ -1249,6 +1249,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					}
 					if (w[i].piece >= v.tracks[w[i].track].pieces.size() || w[j].piece >= v.tracks[w[j].track].pieces.size()) return unsupported(fmt::format("face {} names a wall the variant lacks", f.face));
 						bool zero_spacing = false;
+						int touch_i = -2, touch_j = -2; ///< D427 strict_zero: the touching ends (0 lo, 1 hi, -1 interior) whose endpoint pair is exempt; -2 none.
 						/* Zero contraction: every may-be-zero piece is a point, so a wall touches the pieces of its track from lo - 1 to hi + 1, the nodes its track reaches through such pieces, and the crossings on pieces from lo to hi; two walls that touch are kept apart by no row. */
 						struct Touch {
 							uint32_t lo, hi;
@@ -1293,6 +1294,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 								const auto way = [&](int ei, int ej) {
 									const int di = direction(w[i], ei), dj = direction(w[j], ej);
 									if (di >= 0 && dj >= 0 && di == dj) full = true;
+									/* Parallel walls where one is touched in its interior: the other leaves that point along its line, so they would overlap. */
+									const int hi = ((v.tracks[w[i].track].pieces[w[i].piece] % 4) + 4) % 4, hj = ((v.tracks[w[j].track].pieces[w[j].piece] % 4) + 4) % 4;
+									if ((di < 0 || dj < 0) && hi == hj) full = true;
+									if (touch_i == -2) {
+										touch_i = ei == END_INTERIOR ? -1 : ei == END_HI ? 1 : 0;
+										touch_j = ej == END_INTERIOR ? -1 : ej == END_HI ? 1 : 0;
+									}
 								};
 								if (w[i].track == w[j].track) {
 									if (w[i].piece < w[j].piece) way(END_HI, END_LO);
@@ -1324,12 +1332,19 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 									skip("zero contraction crossing");
 									continue;
 								}
-								zero_spacing = !full;
-								if (dumping) dump_kept.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), full ? "zero contraction kept, full spacing (same direction)" : "zero contraction kept, spacing 0");
+								/* Full spacing between the far ends; each touching end is exempt against the other wall. */
+								if (full) touch_i = touch_j = -2;
+								if (dumping) dump_kept.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), full ? "zero contraction kept, full spacing (same direction)" : "zero contraction kept, touch ends exempt");
 							}
 						}
 					const std::array<std::array<uint32_t, 2>, 2> pi ={point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};
 					const std::array<std::array<uint32_t, 2>, 2> pj = {point[w[j].track][w[j].piece], point[w[j].track][w[j].piece + 1]};
+					const auto excluded = [&](const std::array<uint32_t, 2> &a, const std::array<uint32_t, 2> &b) {
+						if (touch_i == -2) return false;
+						/* A touching end lies on the other wall at the touch point, so it is exempt against the whole other wall; the far ends keep full spacing. */
+						const auto touch_end = [&](const std::array<uint32_t, 2> &x) { return (touch_i >= 0 && x == pi[touch_i]) || (touch_j >= 0 && x == pj[touch_j]); };
+						return touch_end(a) || touch_end(b);
+					};
 					bool shared = false;
 					for (const auto &p : pi) {
 						for (const auto &q : pj) shared = shared || find(p[0]) == find(q[0]);
@@ -1413,6 +1428,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						if (dump_pair != nullptr) dump_pair->chosen = forced_axis * 2 + forced_side;
 						for (const auto &pp : forced_side == 0 ? pi : pj) {
 							for (const auto &q : forced_side == 0 ? pj : pi) {
+								if (excluded(pp, q)) continue;
 								Terms t;
 								for (int d = 0; d < 2; d++) {
 									t.emplace_back(q[d], axis.s[d]);
@@ -1454,6 +1470,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 								int margin = INT_MAX;
 								for (uint32_t kp = 0; kp < 2; kp++) {
 									for (uint32_t kq = 0; kq < 2; kq++) {
+										if (excluded((*ends[side])[kp], (*ends[1 - side])[kq])) continue;
 										const std::array<int, 2> rp = ref(tracks[side], pieces[side] + kp);
 										const std::array<int, 2> rq = ref(tracks[1 - side], pieces[1 - side] + kq);
 										margin = std::min(margin, (rq[0] - rp[0]) * axis.s[0] + (rq[1] - rp[1]) * axis.s[1] - sp(axis));
@@ -1527,12 +1544,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 									bs.emplace_back(b, 1);
 									std::vector<std::array<uint32_t, 2>> from_ends(from.begin(), from.end());
 									std::vector<std::array<uint32_t, 2>> to_ends(to.begin(), to.end());
-									if (options.sep_extremal) {
+									if (options.sep_extremal && touch_i == -2) {
 										from_ends = {from[along(&from, &axis) > 0 ? 1 : 0]};
 										to_ends = {to[along(&to, &axis) > 0 ? 0 : 1]};
 									}
 									for (const auto &p : from_ends) {
 										for (const auto &q : to_ends) {
+											if (excluded(p, q)) continue;
 											Terms t{{b, -M}};
 											for (int d = 0; d < 2; d++) {
 												t.emplace_back(q[d], axis.s[d]);
@@ -1557,12 +1575,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						if (facing_kind == 1) result.facing_fixed++;
 						if (facing_kind == 2) result.facing_choice++;
 						result.sep_sides.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), fmt::format("s ({},{}) spacing {} from {}{}", best_axis->s[0], best_axis->s[1], sp(*best_axis), best_from == &pi ? "i" : "j", facing_kind == 1 ? " facing" : facing_kind == 2 ? " facing2" : ""));
-						if (options.sep_extremal) {
+						if (options.sep_extremal && touch_i == -2) {
 							from_ends = {(*best_from)[along(best_from, best_axis) > 0 ? 1 : 0]};
 							to_ends = {(*best_to)[along(best_to, best_axis) > 0 ? 0 : 1]};
 						}
 						for (const auto &p : from_ends) {
 							for (const auto &q : to_ends) {
+								if (excluded(p, q)) continue;
 								Terms t;
 								for (int d = 0; d < 2; d++) {
 									t.emplace_back(q[d], best_axis->s[d]);
@@ -1586,6 +1605,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							bs.emplace_back(b, 1);
 							for (const auto &p : from) {
 								for (const auto &q : to) {
+									if (excluded(p, q)) continue;
 									Terms t{{b, -M}};
 									for (int d = 0; d < 2; d++) {
 										t.emplace_back(q[d], axis.s[d]);
