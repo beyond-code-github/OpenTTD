@@ -19,6 +19,30 @@
 #include <utility>
 #include <vector>
 
+/** One keep-apart pair of the pairwise block as written (D428 read-out): its skip reason, or its candidates with the rows each writes. */
+struct PlanarKeepApartPair {
+	/** One row of a candidate: s . (q - p) >= spacing, p and q given as (track, point index). */
+	struct Row {
+		std::array<uint32_t, 2> p;
+		std::array<uint32_t, 2> q;
+	};
+	/** One side of one axis; the pair holds when every row of one candidate holds. */
+	struct Candidate {
+		std::array<int, 2> s;
+		int spacing;
+		std::vector<Row> rows;
+	};
+	std::string tag; ///< "sep <face> <i> <j>".
+	std::array<uint32_t, 2> tracks; ///< Wall i's track, wall j's track.
+	std::array<uint32_t, 2> pieces; ///< Wall i's piece, wall j's piece.
+	std::string skipped; ///< Empty when rows were written, else the skip reason (the dump's wording).
+	std::string kept; ///< When a strict rule kept a pair the plain rules skip: "strict span", or the strict_zero text the dump writes to `kept`; else empty.
+	std::vector<Candidate> candidates;
+};
+
+/** Whether a pair holds on given points (as PlanarDrawResult::points): it is skipped, or every row of one of its candidates holds. */
+bool PlanarKeepApartHolds(const PlanarKeepApartPair &pair, const std::vector<std::vector<std::array<int, 2>>> &points);
+
 /** The result of the drawing program. */
 struct PlanarDrawResult {
 	bool feasible = false; ///< A drawing exists.
@@ -51,6 +75,7 @@ struct PlanarDrawResult {
 	std::vector<std::vector<std::array<int, 2>>> points; ///< When feasible, per track its points (start, then the end of each piece), half tiles, x east and y south.
 	size_t start_values = 0; ///< With start_lengths or start_points: how many variables the MIP start gave.
 	std::vector<std::vector<double>> lengths; ///< When feasible, per track each piece's length in half-tile units along its heading (unrounded, so an LP's fractional lengths show).
+	std::vector<PlanarKeepApartPair> keep_apart; ///< With keep_apart_out: every pair the pairwise block considers, in order.
 };
 
 /** Points of an answer key (D393): positions the drawing must keep within `window` half tiles, up to one common shift. */
@@ -126,6 +151,8 @@ struct PlanarDrawOptions {
 	bool grid = false; ///< A measurement (D382 probe): every point of an axis run of positive length has an odd coordinate across it (N/S on odd x, E/W on odd y); the parities this and the integer equalities force are propagated, each forced variable is written 2 h + p, and every all-integer row is divided by its gcd with its bounds rounded inward (whole tiles). Not with elastic.
 	const std::vector<std::vector<std::array<int, 2>>> *start_points = nullptr; ///< A measurement: a MIP start of every track point from this drawing (as `PlanarDrawResult::points`).
 	std::string export_path; ///< A measurement (D418): when not empty, the built program is written there as JSON before solving (variables, rows with their tags, the objective), for offline solvers.
+	bool keep_apart_out = false; ///< A read-out (D428): fill PlanarDrawResult::keep_apart; binary mode only (no sides_from, sides_by_walk or facing_sides; else unsupported).
+	bool build_only = false; ///< A measurement (D428): build the program and return before the solve, status "built".
 	std::string dump_path; ///< A measurement aid: when not empty, the drawing is written there as JSON after the solve (tracks, faces, rows that stretched, every keep-apart pair with its candidates and their margins on the drawing).
 };
 

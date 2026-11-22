@@ -1185,6 +1185,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		const double M = 4 * options.coord_max;
 		export_big_m = M;
 		const auto norm = [](int x) { return ((x % 8) + 12) % 8 - 4; };
+		if (options.keep_apart_out && (options.sides_from != nullptr || options.sides_by_walk || options.facing_sides)) return unsupported("keep_apart_out needs the binary mode");
 		if (options.sides_from != nullptr) {
 			if (options.sides_from->size() != nt) return unsupported("sides_from does not match the variant");
 			for (size_t t = 0; t < nt; t++) {
@@ -1205,7 +1206,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			}
 			for (size_t i = 0; i < n; i++) {
 				for (size_t j = i + 1; j < n; j++) {
+					PlanarKeepApartPair *ka = options.keep_apart_out ? &result.keep_apart.emplace_back(PlanarKeepApartPair{fmt::format("sep {} {} {}", f.face, i, j), {w[i].track, w[j].track}, {w[i].piece, w[j].piece}, "", "", {}}) : nullptr;
 					const auto skip = [&](const char *reason) {
+						if (ka != nullptr) ka->skipped = reason;
 						if (dumping) dump_skipped.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), reason);
 					};
 					if (j == i + 1 || (i == 0 && j == n - 1)) {
@@ -1243,6 +1246,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							skip("span");
 							continue;
 						}
+						if (ka != nullptr) ka->kept = "strict span";
 					}
 					if (options.sibling_lanes) {
 						bool in_lane = false;
@@ -1347,7 +1351,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 								}
 								/* Full spacing between the far ends; each touching end is exempt against the other wall. */
 								if (full) touch_i = touch_j = -2;
-								if (dumping) dump_kept.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), full ? "zero contraction kept, full spacing (same direction)" : "zero contraction kept, touch ends exempt");
+								const char *kept_text = full ? "zero contraction kept, full spacing (same direction)" : "zero contraction kept, touch ends exempt";
+								if (ka != nullptr) ka->kept = kept_text;
+								if (dumping) dump_kept.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), kept_text);
 							}
 						}
 					const std::array<std::array<uint32_t, 2>, 2> pi ={point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};
@@ -1616,9 +1622,14 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							if (dump_pair != nullptr) dump_pair->candidates[axis_index * 2 + side].binary = b;
 							result.binaries++;
 							bs.emplace_back(b, 1);
-							for (const auto &p : from) {
-								for (const auto &q : to) {
+							PlanarKeepApartPair::Candidate *cand = ka != nullptr ? &ka->candidates.emplace_back(PlanarKeepApartPair::Candidate{axis.s, sp(axis), {}}) : nullptr;
+							const size_t from_wall = side == 0 ? i : j, to_wall = side == 0 ? j : i;
+							for (uint32_t e = 0; e < 2; e++) {
+								for (uint32_t e2 = 0; e2 < 2; e2++) {
+									const auto &p = from[e];
+									const auto &q = to[e2];
 									if (excluded(p, q)) continue;
+									if (cand != nullptr) cand->rows.push_back({{w[from_wall].track, w[from_wall].piece + e}, {w[to_wall].track, w[to_wall].piece + e2}});
 									Terms t{{b, -M}};
 									for (int d = 0; d < 2; d++) {
 										t.emplace_back(q[d], axis.s[d]);
@@ -1741,6 +1752,10 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 		result.start_values = start.size();
 		milp.SetStart(std::move(start));
+	}
+	if (options.build_only) {
+		result.status = "built";
+		return result;
 	}
 	const JunctionMilp::Status status = milp.Solve();
 	if (status == JunctionMilp::Status::Optimal) {
@@ -2280,4 +2295,16 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	log_round("final", 1, out.final);
 	if (out.final.status != "Optimal") out.stopped = "final";
 	return out;
+}
+
+bool PlanarKeepApartHolds(const PlanarKeepApartPair &pair, const std::vector<std::vector<std::array<int, 2>>> &points)
+{
+	if (!pair.skipped.empty()) return true;
+	return std::ranges::any_of(pair.candidates, [&](const PlanarKeepApartPair::Candidate &c) {
+		return std::ranges::all_of(c.rows, [&](const PlanarKeepApartPair::Row &r) {
+			const std::array<int, 2> &p = points[r.p[0]][r.p[1]];
+			const std::array<int, 2> &q = points[r.q[0]][r.q[1]];
+			return c.s[0] * (q[0] - p[0]) + c.s[1] * (q[1] - p[1]) >= c.spacing;
+		});
+	});
 }
