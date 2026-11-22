@@ -1172,6 +1172,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			for (size_t i = 0; i < n; i++) {
 				for (size_t j = i + 1; j < n; j++) {
 					if (j == i + 1 || (i == 0 && j == n - 1)) continue;
+					if (!options.skip_pairs.empty() && std::ranges::find(options.skip_pairs, fmt::format("sep {} {} {}", f.face, i, j)) != options.skip_pairs.end()) continue;
 					if (w[i].track >= nt || w[j].track >= nt) continue;
 					if (is_span(w[i]) || is_span(w[j])) continue;
 					if (options.sibling_lanes) {

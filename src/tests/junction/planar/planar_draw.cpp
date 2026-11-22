@@ -695,6 +695,83 @@ TEST_CASE("planar draw: crowding certificates on T3 and LL2", "[.][planarcert]")
 	}
 }
 
+TEST_CASE("planar draw: LL2 face 33 infeasible core", "[.][planarcert]")
+{
+	const DrawCase c = ShapeFirst(PlanarLL2Text(), 1);
+	const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(c.v);
+	const PlanarFaceWalls *face = nullptr;
+	for (const PlanarFaceWalls &f : face_walls) {
+		if (f.face == 33) face = &f;
+	}
+	REQUIRE(face != nullptr);
+	const size_t n = face->walls.size();
+	const auto base_options = [&]() {
+		PlanarDrawOptions o;
+		o.clearance = true;
+		o.clear_rows = true;
+		o.pairwise = true;
+		o.pairwise_all_faces = true;
+		o.only_faces = {33};
+		o.corridor = true;
+		o.tidy = false;
+		o.continuous = {"point", "axis", "diagonal", "param", "cross"};
+		o.coord_max = 256;
+		return o;
+	};
+	const auto solve = [&](const PlanarDrawOptions &o, const std::string &label) {
+		const PlanarDrawResult r = CheckPlanarDrawable(c.v, 15.0, o);
+		if (r.status != "Optimal" && r.status != "Infeasible") WARN(fmt::format("face33 time limit or other status in {}: {}", label, r.status));
+		return r;
+	};
+
+	const PlanarDrawResult base = solve(base_options(), "base");
+	WARN(fmt::format("face33 base: {} ms {:.0f}", base.status, base.ms));
+	if (base.status != "Infeasible") {
+		WARN("face33 base is not Infeasible, stopping");
+		return;
+	}
+
+	for (int k = 0; k < 4; k++) {
+		PlanarDrawOptions o = base_options();
+		if (k == 0 || k == 3) o.bays = false;
+		if (k == 1 || k == 3) o.curves = false;
+		if (k == 2 || k == 3) o.corridor = false;
+		const PlanarDrawResult r = solve(o, "family");
+		WARN(fmt::format("face33 without {}: {} ms {:.0f}", k == 0 ? "bays" : k == 1 ? "curves" : k == 2 ? "corridor" : "all three", r.status, r.ms));
+	}
+
+	std::vector<std::string> candidates;
+	for (size_t i = 0; i < n; i++) {
+		for (size_t j = i + 1; j < n; j++) {
+			if (j == i + 1 || (i == 0 && j == n - 1)) continue;
+			candidates.push_back(fmt::format("sep 33 {} {}", i, j));
+		}
+	}
+	std::vector<std::string> kept = candidates;
+	for (const std::string &p : candidates) {
+		PlanarDrawOptions o = base_options();
+		for (const std::string &q : candidates) {
+			if (std::ranges::find(kept, q) == kept.end() || q == p) o.skip_pairs.push_back(q);
+		}
+		const PlanarDrawResult r = solve(o, p);
+		if (r.status == "Infeasible") kept.erase(std::ranges::find(kept, p));
+	}
+	WARN(fmt::format("face33 core size {}", kept.size()));
+	for (const std::string &p : kept) {
+		std::istringstream words(p);
+		std::string family;
+		uint32_t f = 0, i = 0, j = 0;
+		words >> family >> f >> i >> j;
+		WARN(fmt::format("face33 core {}: {} | {}", p, CertWallText(c, face->walls[i], nullptr), CertWallText(c, face->walls[j], nullptr)));
+	}
+	PlanarDrawOptions only = base_options();
+	for (const std::string &q : candidates) {
+		if (std::ranges::find(kept, q) == kept.end()) only.skip_pairs.push_back(q);
+	}
+	const PlanarDrawResult r = solve(only, "core only");
+	WARN(fmt::format("face33 core only: {} ms {:.0f}", r.status, r.ms));
+}
+
 TEST_CASE("planar draw: T1 keep-apart conflict read-out", "[.][planart1sep]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(1), 1);

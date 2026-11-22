@@ -90,6 +90,7 @@ struct PlanarDrawOptions {
 	double flex_price = 0; ///< A measurement (D422 discovery): extra objective cost per half tile of flex insert length, so a drawing uses inserts only where they buy separation.
 	bool pairwise_flex_only = false; ///< With pairwise (a D416 count probe): in the faces that get separation rows, separate only pairs where at least one wall is in a flex group (a flex middle piece or the piece just before or after it on its track); other pairs get no row. A relaxation, for counting and timing.
 	std::vector<uint32_t> only_faces; ///< Write the face rows (landings and clearance per cell, or in pairwise mode clearance or separation) only for these faces (map face indices); empty is every face. A measurement aid.
+	std::vector<std::string> skip_pairs; ///< A measurement aid: in pairwise mode these pair tags ("sep <face> <i> <j>") get no separation rows (a deletion filter).
 	bool flex_sides = true; ///< With clearance: rows by sides (D407): flex inserts join their side and are no target, and each vertex keeps 0 from its cell's dummies (D408); false is the rule before D407 (sides by equal headings only, no dummy rows).
 	bool tidy = true; ///< The objective: true minimises the sum of piece lengths (a tidy point); false sets no objective (feasibility only, a measurement).
 	bool pocket = false; ///< With flex_sides: the pocket rule (SPEC-shape §8.9, a probe): an adjacent side's vertices are held past a side's last (first) insert and keep only the lines beyond it.
