@@ -369,6 +369,7 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		o.side_probe = std::getenv("PLANAR_PROBE_SIDES") != nullptr;
 		o.sibling_lanes = std::getenv("PLANAR_PROBE_SIBLINGS") != nullptr;
 		o.facing_sides = std::getenv("PLANAR_PROBE_FACING") != nullptr;
+		o.inward_sides = std::getenv("PLANAR_PROBE_INWARD") != nullptr;
 		o.curve_discovery = std::getenv("PLANAR_PROBE_NO_CURVE_DISCOVERY") == nullptr;
 		const auto start = std::chrono::steady_clock::now();
 		const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
@@ -388,6 +389,7 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		}
 		WARN(fmt::format("{} last round slack {:.3f}, stretched {}", name, r.last_round.slack, r.last_round.stretched.size()));
 		if (o.facing_sides) WARN(fmt::format("{} facing: fixed {} choice {}", name, r.last_round.facing_fixed, r.last_round.facing_choice));
+		if (o.inward_sides) WARN(fmt::format("{} inward: short {}", name, r.last_round.inward_short));
 		if (o.sibling_lanes) {
 			WARN(fmt::format("{} sibling lanes: pairs {} sep skipped {}", name, r.last_round.lane_pairs, r.last_round.lane_sep_skipped));
 			for (const std::string &line : r.last_round.lane_skipped) WARN(fmt::format("{} sibling lanes skipped {}", name, line));
@@ -585,6 +587,12 @@ TEST_CASE("planar draw: crowding certificates on T3 and LL2", "[.][planarcert]")
 		o.coord_max = k.bound;
 		const PlanarDrawResult r = CheckPlanarDrawable(c.v, 15.0, o);
 		WARN(fmt::format("cert {} faces {} B {}: {} ms {:.0f} binaries {}", k.hub, faces_text(k.faces), k.bound, r.status, r.ms, r.binaries));
+		if (std::getenv("PLANAR_PROBE_INWARD") != nullptr && k.bound == 256 && (k.hub == "T3" || (k.hub == "LL2" && k.faces == std::vector<uint32_t>{33}))) {
+			PlanarDrawOptions oi = o;
+			oi.inward_sides = true;
+			const PlanarDrawResult ri = CheckPlanarDrawable(c.v, 15.0, oi);
+			WARN(fmt::format("cert inward {} faces {}: {} ms {:.0f} binaries {}", k.hub, faces_text(k.faces), ri.status, ri.ms, ri.binaries));
+		}
 		const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(c.v);
 		const auto decode = [&](const std::string &tag) {
 			std::istringstream words(tag);
@@ -2613,6 +2621,42 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 			WarnSepWalls(shaped, r, label, 20);
 		}
 	}
+	/* A probe (PLANAR_PROBE_INWARD): the same evaluation with inward candidates only, against the all-candidates run above's numbers, one run each. */
+	if (std::getenv("PLANAR_PROBE_INWARD") != nullptr) {
+		const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(shaped);
+		for (const bool inward : {false, true}) {
+			const std::string label = inward ? "sepV allfaces W1 inward" : "sepV allfaces W1 all candidates";
+			const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .inward_sides = inward, .elastic = true, .elastic_families = {"sep", "clear", "deck", "end", "node", "cross"}, .pins = &p8, .sides_from = &full.points, .fix_points = &vref, .fix_window = 1});
+			WARN(fmt::format("{}: status {}, total slack {:.3f}, pairs {}, short_sides {}, inward_short {}", label, r.status, r.slack, r.pairs, r.short_sides, r.inward_short));
+			if (r.status != "Optimal") {
+				for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
+				continue;
+			}
+			double sep_slack = 0;
+			size_t sep_rows = 0;
+			for (const auto &[tag, slack] : r.stretched) {
+				if (!tag.starts_with("sep ")) continue;
+				sep_rows++;
+				sep_slack += slack;
+			}
+			WARN(fmt::format("{}: sep slack {:.3f}, rows {}", label, sep_slack, sep_rows));
+			for (const std::string &tag : r.inward_short_tags) {
+				std::istringstream in(tag.substr(4));
+				uint32_t face = 0;
+				size_t a = 0, b = 0;
+				in >> face >> a >> b;
+				std::string text;
+				for (const PlanarFaceWalls &f : face_walls) {
+					if (f.face != face || a >= f.walls.size() || b >= f.walls.size()) continue;
+					for (const size_t k : {a, b}) {
+						const PlanarCellWall &w = f.walls[k];
+						text += fmt::format(" [{}#{} h{}]", map.tracks[w.track].name, w.piece, w.heading);
+					}
+				}
+				WARN(fmt::format("{} short {} |{}", label, tag, text));
+			}
+		}
+	}
 	/* The same, each pair's direction from the monotone face walk where the rule fixes it. */
 	{
 		const std::string label = "sepV walk W1";
@@ -3612,5 +3656,202 @@ TEST_CASE("planar draw: T1 curves with every flex at 0 (diagnosis)", "[.][planar
 		text += " flex";
 		for (const uint32_t m : c.v.tracks[t].flex) text += fmt::format(" {}", m);
 		WARN(text);
+	}
+}
+
+TEST_CASE("planar draw: T3 exact sides against the pipeline's", "[.][planarcert]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(3), 1);
+	PlanarDrawPipelineOptions po;
+	po.final_seconds = 5;
+	const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, po);
+
+	PlanarDrawOptions eo;
+	eo.clearance = true;
+	eo.clear_rows = true;
+	eo.pairwise = true;
+	eo.pairwise_all_faces = true;
+	eo.only_faces = {75, 29, 66};
+	eo.corridor = true;
+	eo.tidy = false;
+	eo.continuous = {"point", "axis", "diagonal", "param", "cross"};
+	eo.coord_max = 256;
+	const PlanarDrawResult exact = CheckPlanarDrawable(c.v, 15.0, eo);
+	if (exact.status != "Optimal") {
+		WARN(fmt::format("exact solve is {}, stopping", exact.status));
+		return;
+	}
+
+	const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(c.v);
+	struct Pair {
+		uint32_t face, i, j;
+		const PlanarFaceWalls *f;
+		std::string tag;
+	};
+	std::vector<Pair> pairs;
+	for (const uint32_t face : eo.only_faces) {
+		for (const PlanarFaceWalls &f : face_walls) {
+			if (f.face != face) continue;
+			const size_t n = f.walls.size();
+			for (size_t i = 0; i < n; i++) {
+				for (size_t j = i + 1; j < n; j++) {
+					if (j == i + 1 || (i == 0 && j == n - 1)) continue;
+					if (f.walls[i].track >= c.v.tracks.size() || f.walls[j].track >= c.v.tracks.size()) continue;
+					pairs.push_back({face, static_cast<uint32_t>(i), static_cast<uint32_t>(j), &f, fmt::format("sep {} {} {}", face, i, j)});
+				}
+			}
+		}
+	}
+
+	const auto margins = [&](const std::vector<std::vector<std::array<int, 2>>> &from) {
+		PlanarDrawOptions o{.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = true, .node_gap_from = &r.last_round.lengths, .corridor = true, .curve_flex_from = &r.committed, .curve_flex_above = po.commit_above, .box_price = po.box_price, .elastic = true, .elastic_tidy = 0.001, .slack_price = po.slack_price, .elastic_families = {"sep", "curve"}, .sides_from = &from};
+		for (const Pair &p : pairs) o.margin_tags.push_back(p.tag);
+		const PlanarDrawResult m = CheckPlanarDrawable(c.v, 15.0, o);
+		if (m.status != "Optimal") WARN(fmt::format("margin read-out solve is {}", m.status));
+		/* Per tag, the candidates' margins in order c0, c1, ... */
+		std::map<std::string, std::vector<double>> out;
+		for (const auto &[tag, text] : m.sep_margins) {
+			std::vector<double> &list = out[tag];
+			size_t at = 0;
+			while ((at = text.find("margin ", at)) != std::string::npos) {
+				at += 7;
+				list.push_back(std::strtod(text.c_str() + at, nullptr));
+			}
+		}
+		return out;
+	};
+	const auto pipeline = margins(r.last_input);
+	const auto onexact = margins(exact.points);
+
+	std::map<std::string, double> stretched;
+	for (const auto &[tag, amount] : r.last_round.stretched) stretched[tag] += amount;
+
+	const auto norm = [](int x) { return ((x % 8) + 12) % 8 - 4; };
+	std::vector<std::string> skipped;
+	size_t count = 0, contradicted = 0;
+	std::string contradicted_tags;
+	std::map<std::pair<int, int>, size_t> hist_all, hist_bad;
+	for (const Pair &p : pairs) {
+		const auto a = pipeline.find(p.tag);
+		const auto e = onexact.find(p.tag);
+		if (a == pipeline.end() || e == onexact.end() || a->second.empty() || a->second.size() != e->second.size()) {
+			skipped.push_back(p.tag);
+			continue;
+		}
+		const std::vector<PlanarCellWall> &w = p.f->walls;
+		const size_t n = w.size();
+		const auto turn = [&](size_t from, size_t to) {
+			int sum = 0;
+			for (size_t k = from; k != to; k = (k + 1) % n) sum += norm(w[(k + 1) % n].heading - w[k].heading);
+			return sum;
+		};
+		const int t1 = turn(p.i, p.j), t2 = turn(p.j, p.i);
+		size_t pick = 0;
+		for (size_t k = 1; k < a->second.size(); k++) {
+			if (a->second[k] > a->second[pick]) pick = k;
+		}
+		std::string holds;
+		for (size_t k = 0; k < e->second.size(); k++) {
+			if (e->second[k] >= 0) holds += fmt::format("{}c{}", holds.empty() ? "" : " ", k);
+		}
+		const auto s = stretched.find(p.tag);
+		count++;
+		hist_all[{t1, t2}]++;
+		if (e->second[pick] < 0) {
+			contradicted++;
+			contradicted_tags += (contradicted_tags.empty() ? "" : ", ") + p.tag;
+			hist_bad[{t1, t2}]++;
+		}
+		WARN(fmt::format("pair {}: {} | {}; turn i->j {} j->i {}; pipeline pick c{} (margin on exact {}); exact holds [{}]; stretched {}", p.tag, CertWallText(c, w[p.i], &exact.points), CertWallText(c, w[p.j], &exact.points), t1, t2, pick, e->second[pick], holds, s == stretched.end() ? 0.0 : s->second));
+	}
+	std::string skipped_text;
+	for (const std::string &t : skipped) skipped_text += (skipped_text.empty() ? "" : ", ") + t;
+	WARN(fmt::format("skipped by the code: {} [{}]", skipped.size(), skipped_text));
+	const auto hist_text = [](const std::map<std::pair<int, int>, size_t> &h) {
+		std::string s;
+		for (const auto &[k, n] : h) s += fmt::format("{}({},{}) x{}", s.empty() ? "" : "; ", k.first, k.second, n);
+		return s;
+	};
+	WARN(fmt::format("summary pairs {} contradicted {}", count, contradicted));
+	WARN(fmt::format("summary contradicted tags: {}", contradicted_tags));
+	WARN(fmt::format("summary (t1,t2) over contradicted: {}", hist_text(hist_bad)));
+	WARN(fmt::format("summary (t1,t2) over all pairs: {}", hist_text(hist_all)));
+}
+
+TEST_CASE("planar draw: whole-hub exact keep-apart", "[.][planarcert]")
+{
+	struct Hub {
+		std::string name;
+		PlanarShapeVariant v;
+		std::function<std::string(const PlanarCellWall &)> wall_text;
+	};
+	std::vector<Hub> hubs;
+	for (const auto &[name, text] : std::vector<std::pair<std::string, std::string>>{{"T1", PlanarTText(1)}, {"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}}) {
+		const DrawCase c = ShapeFirst(text, 1);
+		hubs.push_back({name, c.v, [c](const PlanarCellWall &w) { return CertWallText(c, w, nullptr); }});
+	}
+	{
+		PlanarShapeVariant flex_c;
+		PlanarDrawPins pins;
+		if (LoadPinned197(flex_c, pins, true)) {
+			DrawCase c;
+			c.v = flex_c;
+			hubs.push_back({"197", flex_c, [c](const PlanarCellWall &w) { return CertWallText(c, w, nullptr); }});
+		} else {
+			WARN("whole 197: skipped, the variant cannot be built as the 197 pipeline test builds it");
+		}
+	}
+	for (const Hub &h : hubs) {
+		PlanarDrawPipelineOptions po;
+		po.final_seconds = 5;
+		const PlanarDrawPipelineResult pr = DrawPlanarPipeline(h.v, po);
+		int largest = 0;
+		for (const auto &track : pr.last_round.points) {
+			for (const auto &p : track) largest = std::max({largest, p[0], p[1]});
+		}
+		const double bound = (2 * largest + 15) / 16 * 16;
+		PlanarDrawOptions o;
+		o.clearance = true;
+		o.clear_rows = true;
+		o.pairwise = true;
+		o.pairwise_all_faces = true;
+		o.corridor = true;
+		o.tidy = false;
+		o.continuous = {"point", "axis", "diagonal", "param", "cross"};
+		o.coord_max = bound;
+		const PlanarDrawResult r = CheckPlanarDrawable(h.v, 15.0, o);
+		WARN(fmt::format("whole {} B {}: {} ms {:.0f} binaries {}", h.name, bound, r.status, r.ms, r.binaries));
+		if (r.status == "Infeasible") {
+			const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(h.v);
+			size_t shown = 0;
+			for (const std::string &tag : r.conflict) {
+				if (shown++ >= 40) break;
+				std::istringstream words(tag);
+				std::string family, text = tag;
+				uint32_t face = 0, i = 0, j = 0;
+				words >> family;
+				if (family == "sep" && (words >> face >> i >> j)) {
+					for (const PlanarFaceWalls &f : face_walls) {
+						if (f.face != face || i >= f.walls.size() || j >= f.walls.size()) continue;
+						text = fmt::format("{} | {} | {}", tag, h.wall_text(f.walls[i]), h.wall_text(f.walls[j]));
+						break;
+					}
+				}
+				WARN(fmt::format("whole {} conflict {}", h.name, text));
+			}
+		}
+		if (r.status != "Optimal") continue;
+		int x0 = INT32_MAX, x1 = INT32_MIN, y0 = INT32_MAX, y1 = INT32_MIN;
+		for (const auto &track : r.points) {
+			for (const auto &p : track) {
+				x0 = std::min(x0, p[0]); x1 = std::max(x1, p[0]);
+				y0 = std::min(y0, p[1]); y1 = std::max(y1, p[1]);
+			}
+		}
+		double length = 0;
+		for (const auto &track : r.lengths) {
+			for (const double l : track) length += l;
+		}
+		WARN(fmt::format("whole {} box {} x {}, sum of piece lengths {:.1f}", h.name, x1 - x0, y1 - y0, length));
 	}
 }
