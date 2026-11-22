@@ -358,6 +358,119 @@ def cmd_clash(args):
     print("clash %s: overlaps %d, meets %d%s" % (args.file, n_over, n_meet, (", by reason: " + ", ".join("%s %d" % kv for kv in sorted(counts.items()))) if counts else ""))
 
 
+# A 3x5 pixel font for labels (upper case, digits, a few marks); unknown characters draw as a box.
+_FONT = {
+    "0": "111101101101111", "1": "010110010010111", "2": "111001111100111", "3": "111001111001111", "4": "101101111001001",
+    "5": "111100111001111", "6": "111100111101111", "7": "111001010010010", "8": "111101111101111", "9": "111101111001111",
+    "A": "010101111101101", "B": "110101110101110", "C": "011100100100011", "D": "110101101101110", "E": "111100110100111",
+    "F": "111100110100100", "G": "011100101101011", "H": "101101111101101", "I": "111010010010111", "J": "001001001101010",
+    "K": "101101110101101", "L": "100100100100111", "M": "101111111101101", "N": "110101101101101", "O": "010101101101010",
+    "P": "110101110100100", "Q": "010101101110011", "R": "110101110101101", "S": "011100010001110", "T": "111010010010010",
+    "U": "101101101101111", "V": "101101101101010", "W": "101101111111101", "X": "101101010101101", "Y": "101101010010010",
+    "Z": "111001010100111", "#": "101111101111101", '"': "101101000000000", ":": "000010000010000", " ": "000000000000000",
+    "-": "000000111000000",
+}
+
+
+def _png_write(path, w, h, pix):
+    import zlib
+    import struct
+    raw = b"".join(b"\x00" + bytes(pix[y * w * 3:(y + 1) * w * 3]) for y in range(h))
+    def chunk(tag, data):
+        c = struct.pack(">I", len(data)) + tag + data
+        return c + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff)
+    with open(path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+
+
+def cmd_png(args):
+    """Draw faces' walls or tracks as a PNG (no packages): walls in colours, labels track#piece, stretched sep pairs red, clashes magenta, optional grey reference."""
+    d = Dump(args.file)
+    ref = Dump(args.ref) if args.ref else None
+    segs = []
+    if args.face:
+        for fid in args.face:
+            for w in d.faces.get(fid, []):
+                if w["track"] >= 0 and d.wall_points(w["track"], w["piece"]):
+                    segs.append((w["track"], w["piece"]))
+    if args.tracks:
+        names = set(args.tracks)
+        for t, tr in enumerate(d.tracks):
+            if tr["name"] in names:
+                for k in range(len(tr["points"]) - 1):
+                    segs.append((t, k))
+    segs = list(dict.fromkeys(segs))
+    pts = []
+    for t, k in segs:
+        pts.extend(d.wall_points(t, k))
+    if not pts:
+        sys.exit("nothing to draw")
+    x0, x1 = min(p[0] for p in pts) - 3, max(p[0] for p in pts) + 3
+    y0, y1 = min(p[1] for p in pts) - 3, max(p[1] for p in pts) + 3
+    scale = max(4, min(16, int(args.size / max(x1 - x0, y1 - y0))))
+    W, H = (x1 - x0) * scale + 1, (y1 - y0) * scale + 1
+    pix = bytearray([255]) * (W * H * 3)
+
+    def put(x, y, c):
+        if 0 <= x < W and 0 <= y < H:
+            i = (y * W + x) * 3
+            pix[i:i + 3] = bytes(c)
+
+    def line(p, q, c, thick=1, dash=0):
+        ax, ay = (p[0] - x0) * scale, (p[1] - y0) * scale
+        bx, by = (q[0] - x0) * scale, (q[1] - y0) * scale
+        n = int(max(abs(bx - ax), abs(by - ay))) or 1
+        for s in range(n + 1):
+            if dash and (s // dash) % 2:
+                continue
+            x, y = round(ax + (bx - ax) * s / n), round(ay + (by - ay) * s / n)
+            for dx in range(-thick + 1, thick):
+                for dy in range(-thick + 1, thick):
+                    put(x + dx, y + dy, c)
+
+    def text(x, y, msg, c):
+        for ch in msg.upper():
+            g = _FONT.get(ch, "111101101101111")
+            for r in range(5):
+                for col in range(3):
+                    if g[r * 3 + col] == "1":
+                        for sx in range(2):
+                            for sy in range(2):
+                                put(x + col * 2 + sx, y + r * 2 + sy, c)
+            x += 8
+
+    # half-tile grid dots every 2 units (one tile)
+    for gx in range(x0 - x0 % 2, x1 + 1, 2):
+        for gy in range(y0 - y0 % 2, y1 + 1, 2):
+            put((gx - x0) * scale, (gy - y0) * scale, (215, 215, 215))
+    if ref is not None:
+        rt = {tr["name"]: tr for tr in ref.d["tracks"]}
+        for t, k in segs:
+            r = rt.get(d.tracks[t]["name"])
+            if r and k + 1 < len(r["points"]):
+                line(r["points"][k], r["points"][k + 1], (190, 190, 190), 2)
+    palette = [(31, 78, 156), (0, 128, 0), (200, 120, 0), (128, 0, 160), (0, 140, 140), (120, 80, 40), (60, 60, 60), (180, 0, 90)]
+    colour = {}
+    mid = {}
+    for t, k in segs:
+        c = colour.setdefault(t, palette[len(colour) % len(palette)])
+        p, q = d.wall_points(t, k)
+        line(p, q, c, 2)
+        mid[(t, k)] = ((p[0] + q[0]) / 2.0, (p[1] + q[1]) / 2.0)
+    for s in d.d["stretched"]:
+        r = d.decode(s["tag"])
+        if r is None or not s["tag"].startswith("sep "):
+            continue
+        face, i, j, wi, wj = r
+        a, b = mid.get((wi["track"], wi["piece"])), mid.get((wj["track"], wj["piece"]))
+        if a and b:
+            line(a, b, (220, 0, 0), 1, dash=4)
+    for (t, k), (mx, my) in mid.items():
+        text(int((mx - x0) * scale) + 3, int((my - y0) * scale) + 3, "%s#%d" % (d.tracks[t]["name"], k), colour[t])
+    _png_write(args.output, W, H, pix)
+    print("wrote %s (%dx%d px, %d walls, scale %d px per half tile)" % (args.output, W, H, len(segs), scale))
+
+
 def main():
     ap = argparse.ArgumentParser(description="Read planar drawing dumps offline.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -386,6 +499,14 @@ def main():
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--ref", help="a second dump whose same tracks are drawn in grey underneath")
     p.set_defaults(fn=cmd_svg)
+    p = sub.add_parser("png", help="draw faces' walls or tracks as a PNG (no packages)")
+    p.add_argument("file")
+    p.add_argument("--face", type=int, nargs="*")
+    p.add_argument("--tracks", nargs="*")
+    p.add_argument("--ref")
+    p.add_argument("--size", type=int, default=900)
+    p.add_argument("-o", "--output", required=True)
+    p.set_defaults(fn=cmd_png)
     p = sub.add_parser("clash", help="independent clash check: overlapping or touching tracks, each traced to its pair or skip rule")
     p.add_argument("file")
     p.set_defaults(fn=cmd_clash)

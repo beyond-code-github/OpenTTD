@@ -733,11 +733,18 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const bool crosser = in_structure[c] && !is_separator[c][side];
 			row({{param[c][side], 1}, {len.variable, -len.coefficient}}, -JunctionMilp::INF, crosser ? 0 : -rules.cross, tag);
 			if (!crosser) row({{param[c][side], 1}}, rules.cross, JunctionMilp::INF, tag);
-			/* D427 probe: a crosser's crossing on an S-bend flank stays 1 half tile from the S-bend's side, so the S-bend does not start at the crossing point. */
+			/* D427 probe: a crosser's crossing on an S-bend flank stays 1 half tile off the S-bend's side when the S-bend's insert runs parallel to the other track's crossing piece (it would run along that track from the crossing point); other S-bends may start at the crossing. */
 			if (crosser && options.crossing_flanks) {
-				const auto middle = [&](int64_t m) { return m >= 0 && (std::ranges::find(v.tracks[t].flex, static_cast<uint32_t>(m)) != v.tracks[t].flex.end() || std::ranges::find(v.tracks[t].steps, static_cast<uint32_t>(m)) != v.tracks[t].steps.end()); };
-				if (middle(static_cast<int64_t>(piece) + 1)) row({{param[c][side], 1}, {len.variable, -len.coefficient}}, -JunctionMilp::INF, -1, tag + " flank");
-				if (middle(static_cast<int64_t>(piece) - 1)) row({{param[c][side], 1}}, 1, JunctionMilp::INF, tag + " flank");
+				const uint32_t other = tracks[1 - side];
+				const auto at_other = std::ranges::find(map.events[other], static_cast<uint32_t>(c));
+				const int other_heading = at_other == map.events[other].end() ? -1 : v.tracks[other].pieces[v.tracks[other].event_piece[at_other - map.events[other].begin()]];
+				const auto bend = [&](int64_t m) {
+					if (m < 0 || static_cast<size_t>(m) >= v.tracks[t].pieces.size() || other_heading < 0) return false;
+					const bool middle = std::ranges::find(v.tracks[t].steps, static_cast<uint32_t>(m)) != v.tracks[t].steps.end() || std::ranges::find(v.tracks[t].flex, static_cast<uint32_t>(m)) != v.tracks[t].flex.end();
+					return middle && ((v.tracks[t].pieces[m] % 4) + 4) % 4 == ((other_heading % 4) + 4) % 4;
+				};
+				if (bend(static_cast<int64_t>(piece) + 1)) row({{param[c][side], 1}, {len.variable, -len.coefficient}}, -JunctionMilp::INF, -1, tag + " flank");
+				if (bend(static_cast<int64_t>(piece) - 1)) row({{param[c][side], 1}}, 1, JunctionMilp::INF, tag + " flank");
 			}
 		}
 		for (int axis = 0; axis < 2; axis++) {
@@ -2200,6 +2207,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		final_options.elastic_tidy = 0;
 	}
 	final_options.slack_price = options.slack_price;
+	final_options.free_faces = options.final_free_faces;
 	final_options.dump_path = dump_to("final", 0);
 	out.last_round = last;
 	out.last_input = last_input;
