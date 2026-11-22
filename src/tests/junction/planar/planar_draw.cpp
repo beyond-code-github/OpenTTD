@@ -770,6 +770,76 @@ TEST_CASE("planar draw: LL2 face 33 infeasible core", "[.][planarcert]")
 	}
 	const PlanarDrawResult r = solve(only, "core only");
 	WARN(fmt::format("face33 core only: {} ms {:.0f}", r.status, r.ms));
+
+	/* Which corridor rows the core needs: only the core's two pairs separate. */
+	const PlanarTrackMap &map = c.v.structure.map;
+	const auto rows_options = [&](const std::vector<std::string> &skip) {
+		PlanarDrawOptions o = base_options();
+		o.skip_pairs = only.skip_pairs;
+		o.skip_rows = skip;
+		return o;
+	};
+	const PlanarDrawResult rows_check = solve(rows_options({}), "rows check");
+	WARN(fmt::format("rows check: {}", rows_check.status));
+	if (rows_check.status != "Infeasible") return;
+	std::vector<uint32_t> besides;
+	for (uint32_t b = 0; b < map.tracks.size(); b++) {
+		if (map.part_of[b] != UINT32_MAX) continue;
+		std::vector<uint32_t> chain;
+		if (!ParentChain(map, c.v.structure.sites, b, chain)) continue;
+		besides.push_back(b);
+	}
+	std::set<uint32_t> needed;
+	for (const uint32_t b : besides) {
+		const std::string &name = map.tracks[b].name;
+		const PlanarDrawResult rr = solve(rows_options({"corridor " + name + " "}), "rows without " + name);
+		WARN(fmt::format("rows without {}: {}", name, rr.status));
+		if (rr.status == "Optimal") needed.insert(b);
+	}
+	for (const uint32_t x : needed) {
+		const std::string &name = map.tracks[x].name;
+		std::vector<std::string> cands = {"corridor " + name + " open", "corridor " + name + " close"};
+		for (size_t k = 1; k < c.v.tracks[x].pieces.size(); k++) cands.push_back(fmt::format("corridor {} {}", name, k));
+		std::vector<std::string> others;
+		for (const uint32_t b : besides) {
+			if (b != x && !needed.contains(b)) others.push_back("corridor " + map.tracks[b].name + " ");
+		}
+		const auto skips_for = [&](const std::vector<std::string> &in_set, const std::string &extra) {
+			std::vector<std::string> skip = others;
+			for (const std::string &q : cands) {
+				if (std::ranges::find(in_set, q) == in_set.end() || q == extra) skip.push_back(q);
+			}
+			return skip;
+		};
+		std::vector<std::string> core_rows = cands;
+		for (const std::string &p : cands) {
+			const PlanarDrawResult rr = solve(rows_options(skips_for(core_rows, p)), "rows core " + name + " " + p);
+			if (rr.status == "Infeasible") core_rows.erase(std::ranges::find(core_rows, p));
+		}
+		std::string text;
+		for (const std::string &q : core_rows) text += (text.empty() ? "" : ", ") + q;
+		const PlanarDrawResult only_core = solve(rows_options(skips_for(core_rows, "")), "rows core only " + name);
+		WARN(fmt::format("rows core {}: {} (core-only check {})", name, text, only_core.status));
+
+		std::vector<uint32_t> chain;
+		REQUIRE(ParentChain(map, c.v.structure.sites, x, chain));
+		std::string pieces_text, chain_text;
+		for (const int h : c.v.tracks[x].pieces) pieces_text += fmt::format("{}{}", pieces_text.empty() ? "" : " ", ((h % 8) + 8) % 8);
+		for (const uint32_t t : chain) chain_text += fmt::format("{}{}", chain_text.empty() ? "" : " ", map.tracks[t].name);
+		const int side = map.Side(x, 0, chain[0], 0);
+		for (const std::string &q : core_rows) {
+			std::string line = fmt::format("row {}: beside track {} pieces [{}] parent chain [{}] side {}", q, name, pieces_text, chain_text, side);
+			const auto end_text = [&](const PlanarEnd &e) { return fmt::format("{} {}", e.port ? "port" : "node", e.index); };
+			if (q.ends_with(" open")) {
+				const std::array<int, 2> v = PlanarBesideOpening(c.v.tracks[x].pieces.front(), side);
+				line += fmt::format(" opens at {} opening ({},{})", end_text(map.expanded.lines[x].from), v[0], v[1]);
+			} else if (q.ends_with(" close")) {
+				const std::array<int, 2> v = PlanarBesideClosing(c.v.tracks[x].pieces.back(), side);
+				line += fmt::format(" closes at {} closing ({},{})", end_text(map.expanded.lines[x].to), v[0], v[1]);
+			}
+			WARN(line);
+		}
+	}
 }
 
 TEST_CASE("planar draw: T1 keep-apart conflict read-out", "[.][planart1sep]")

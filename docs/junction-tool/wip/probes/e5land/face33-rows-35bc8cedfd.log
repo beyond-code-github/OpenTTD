@@ -1,0 +1,67 @@
+Filters: planar draw: LL2 face 33 infeasible core
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+openttd_test is a Catch v2.13.10 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+planar draw: LL2 face 33 infeasible core
+-------------------------------------------------------------------------------
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:698
+...............................................................................
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:728: warning:
+  face33 base: Infeasible ms 805
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:740: warning:
+  face33 without bays: Infeasible ms 810
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:740: warning:
+  face33 without curves: Infeasible ms 618
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:740: warning:
+  face33 without corridor: Optimal ms 1089
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:740: warning:
+  face33 without all three: Optimal ms 272
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:759: warning:
+  face33 core size 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:765: warning:
+  face33 core sep 33 3 7: D1#11 h2 | B1#1 h5
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:765: warning:
+  face33 core sep 33 3 10: D1#11 h2 | B1#4 h6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:772: warning:
+  face33 core only: Infeasible ms 53
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:783: warning:
+  rows check: Infeasible
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:796: warning:
+  rows without F1"0: Optimal
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:796: warning:
+  rows without F2"6: Infeasible
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:796: warning:
+  rows without B1"9: Infeasible
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:796: warning:
+  rows without B2"13: Infeasible
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:796: warning:
+  rows without C2"14: Infeasible
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:822: warning:
+  rows core F1"0: corridor F1"0 close (core-only check Infeasible)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:840: warning:
+  row corridor F1"0 close: beside track F1"0 pieces [4] parent chain [F1] side
+  -1 closes at node 25 closing (-2,2)
+
+===============================================================================
+All tests passed (5 assertions in 1 test case)
+

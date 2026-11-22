@@ -288,6 +288,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 	};
 	const auto row = [&](Terms terms, double lower, double upper, const std::string &tag) {
+		for (const std::string &skip : options.skip_rows) {
+			if (tag == skip || (skip.ends_with(' ') && tag.starts_with(skip))) return;
+		}
 		std::ranges::sort(terms);
 		Terms merged;
 		for (const auto &[variable, coefficient] : terms) {
