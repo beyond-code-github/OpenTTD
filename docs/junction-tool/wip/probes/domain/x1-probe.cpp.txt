@@ -1,0 +1,48 @@
+#include "../../../stdafx.h"
+#include "../../../3rdparty/catch2/catch.hpp"
+#include "../../../junction/junction_spec.h"
+#include "../../../junction/planar/planar_draw.h"
+#include "../../../junction/planar/planar_domain.h"
+#include "../../../junction/planar/planar_shape_layer.h"
+#include "../../../junction/planar/planar_structure.h"
+#include "../../../junction/planar/planar_topology.h"
+#include "../../../3rdparty/fmt/format.h"
+#include "../../../safeguards.h"
+TEST_CASE("zz scratch", "[.][zzscratch]")
+{
+	const std::string topo = "topology X1\nport W in E: AC1\nport S in N: BD1\nport N out N: C1, B1\nport E out E: A1, D1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\ncross A1: B1<\ncross B1: A1>\n";
+	std::string error;
+	const PlanarTopology t = ParsePlanarTopology(topo, &error);
+	WARN("parse: " << error << " lines " << t.lines.size() << " crossings " << t.crossings.size());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant s = LoadPlanarStructureVariant(t, "tunnel T1 A1: B1\nstraight AC1: A1\nstraight BD1: B1\n", spec, report, &error);
+	WARN("structure: " << error << " structures " << s.structures.size() << " report " << report.size());
+	for (auto &r : report) WARN(r);
+	PlanarShapeVariant v; std::string why;
+	const bool ok = LoadPlanarShapeVariant(t, s, "shape AC1: 2\nshape A1: 2\nshape C1: 1 0\nshape BD1: 0\nshape B1: 0\nshape D1: 1 2\nat A1: B1@0\nat B1: A1@0\n", v, why);
+	WARN("shape: " << ok << " " << why);
+	if (!ok) return;
+	for (auto &b : CheckPlanarShapePromise(t, spec, v)) WARN("breach " << b);
+	const bool flex = PlacePlanarShapeFlex(v, why);
+	WARN("flex " << flex << " " << why);
+	for (size_t i = 0; i < v.tracks.size(); i++) {
+		std::string p; for (int h : v.tracks[i].pieces) p += fmt::format(" {}", h);
+		std::string f; for (auto x : v.tracks[i].flex) f += fmt::format(" {}", x);
+		std::string e; for (auto x : v.tracks[i].event_piece) e += fmt::format(" {}", x);
+		WARN("track " << i << " pieces" << p << " flex" << f << " events" << e);
+	}
+	PlanarDrawOptions o; o.grid = true; o.clearance = true; o.pairwise = true; o.pairwise_all_faces = true;
+	const PlanarDrawResult r = CheckPlanarDrawable(v, 10, o);
+	WARN("draw " << r.status << " rows " << r.rows);
+	for (auto &c : r.conflict) WARN("conflict " << c);
+	for (size_t i = 0; i < r.points.size(); i++) { std::string p; for (auto &q : r.points[i]) p += fmt::format(" ({},{})", q[0], q[1]); WARN("pts " << i << p); }
+	for (int shift = 0; shift < 2; shift++) {
+		PlanarDomainInput in;
+		for (auto &tr : r.points) { std::vector<std::array<int, 2>> q; for (auto &pt : tr) q.push_back({pt[0] + shift, pt[1] + shift}); in.tracks.push_back(q); }
+		const PlanarDomainVerdict d = CheckPlanarDomain(in);
+		WARN("domain shift " << shift << " legal " << d.legal << " breaks " << d.breaks.size());
+		for (size_t i = 0; i < std::min<size_t>(8, d.breaks.size()); i++) WARN("  " << d.breaks[i].rule << " " << d.breaks[i].why);
+	}
+	WARN("grid forced " << r.grid_forced);
+}
