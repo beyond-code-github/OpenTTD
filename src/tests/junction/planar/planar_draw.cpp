@@ -2937,7 +2937,7 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	const auto start = std::chrono::steady_clock::now();
 	/* PLANAR_PROBE_FINAL_START (a measurement aid): the final starts from the last round's whole lengths.
 	 * PLANAR_PROBE_FINAL_GRID: the final writes the grid rows (D382 probe).
-	 * PLANAR_PROBE_FINAL_SOFT_SEP: the final's sep rows get slack (soft-sep diagnostic); PLANAR_PROBE_FINAL_SOFT_ALL: every row but piece, box, pin, fix and grid gets slack (feasibility repair); PLANAR_PROBE_FINAL_SECONDS: the final's time limit; PLANAR_PROBE_BOX_PRICE and PLANAR_PROBE_IRL1: the box price and the insert price; PLANAR_PROBE_PRUNES: at most this many prunes; PLANAR_PROBE_ADDITIONS: the one-time additions pass; PLANAR_PROBE_NO_NODE_GAPS: no node gaps (on by default, D424). */
+	 * PLANAR_PROBE_SLACK_PRICE: the objective cost of each elastic slack per half tile (default 1). PLANAR_PROBE_FINAL_SOFT_SEP: the final's sep rows get slack (soft-sep diagnostic); PLANAR_PROBE_FINAL_SOFT_ALL: every row but piece, box, pin, fix and grid gets slack (feasibility repair); PLANAR_PROBE_FINAL_SECONDS: the final's time limit; PLANAR_PROBE_BOX_PRICE and PLANAR_PROBE_IRL1: the box price and the insert price; PLANAR_PROBE_PRUNES: at most this many prunes; PLANAR_PROBE_ADDITIONS: the one-time additions pass; PLANAR_PROBE_NO_NODE_GAPS: no node gaps (on by default, D424). */
 	PlanarDrawPipelineOptions o;
 	o.final_start = std::getenv("PLANAR_PROBE_FINAL_START") != nullptr;
 	o.final_tidy = std::getenv("PLANAR_PROBE_FINAL_FEASIBILITY") == nullptr;
@@ -2949,6 +2949,7 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	o.node_gaps = std::getenv("PLANAR_PROBE_NO_NODE_GAPS") == nullptr;
 	if (const char *s = std::getenv("PLANAR_PROBE_IRL1"); s != nullptr) o.irl1 = std::atof(s);
 	if (const char *s = std::getenv("PLANAR_PROBE_PRUNES"); s != nullptr) std::from_chars(s, s + std::strlen(s), o.prunes);
+	if (const char *s = std::getenv("PLANAR_PROBE_SLACK_PRICE"); s != nullptr) o.slack_price = std::atof(s);
 	o.additions = std::getenv("PLANAR_PROBE_ADDITIONS") != nullptr;
 	const PlanarDrawPipelineResult r = DrawPlanarPipeline(flex_c, o);
 	for (const std::string &line : r.log) WARN(line);

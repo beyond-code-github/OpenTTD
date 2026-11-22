@@ -85,6 +85,7 @@ struct PlanarDrawOptions {
 	bool pocket = false; ///< With flex_sides: the pocket rule (SPEC-shape §8.9, a probe): an adjacent side's vertices are held past a side's last (first) insert and keep only the lines beyond it.
 	bool elastic = false; ///< Diagnosis (D409): every row except the piece, box, pin, fix and grid rows (game rules) gets a slack >= 0 per finite bound with cost 1, the objective is the total slack (piece lengths cost 0), every variable is continuous (the LP relaxation, which an infeasible drawing already fails when it has IIS rows), and the result lists the rows that stretched.
 	double elastic_tidy = 0; ///< With elastic and tidy: each piece length also costs this (a tie-break below the slack's cost 1), so an elastic drawing stays compact.
+	double slack_price = 1; ///< With elastic: the objective cost of each slack per half tile.
 	std::vector<std::string> elastic_families; ///< With elastic: when not empty, only rows of these families (tag up to the first space) get slack; every other row is hard (a measurement: which rows of one family V's geometry needs stretched).
 	bool elastic_integer = false; ///< With elastic (a measurement): the variables keep their integrality; only the slacks are continuous.
 	const PlanarDrawPins *pins = nullptr; ///< Answer-key pins (D393): every pinned point is within window of its position plus one common shift (two free integer variables).
@@ -175,6 +176,7 @@ struct PlanarDrawPipelineOptions {
 	double first_flex_price = 0.05; ///< Insert price per half tile in the first discovery round.
 	double irl1 = 0.1; ///< From the second discovery round, an insert's price is irl1 / (its previous length + 0.5).
 	double box_price = 0.01; ///< Price per half tile of width and of height, in every round.
+	double slack_price = 1; ///< The slack price of every elastic round (PlanarDrawOptions::slack_price); it should be far above box_price, or the rounds may trade a broken rule for a smaller box.
 	bool corridor = true; ///< Beside tracks as offset curves (D421) in every stage.
 	bool final_tidy = true; ///< The integer final minimises the sum of piece lengths; false is feasibility only (a measurement).
 	bool final_grid = false; ///< A measurement (D382 probe): the integer final writes the grid rows (PlanarDrawOptions::grid).
