@@ -1,27 +1,21 @@
 Encoding report on X1: our keep-apart rows (judged on fixed points, no solve) against the domain
-enumeration wall 10.9235 s
+enumeration wall 1.65804 s
 
 == S1 ==
   both accept: 64 polylines (96 geometries)
-  both reject: 45 polylines (48 geometries)
-  too strict: 42 polylines (42 geometries)
+  both reject: 43 polylines (46 geometries)
+  too strict: 0 polylines (0 geometries)
   too loose: 2 polylines (3 geometries)
   undecided: 0 polylines (0 geometries)
   off grid (geometries): 336 (336 geometries)
- too strict, by the kept values of the failing pairs:
-  [bound | end] polylines 42 (geometries 42)
-    varied: B1.2=4 B1.3=2 B1.4=2 B1.5=2 B1.6=4
+  other shape: 44 polylines (44 geometries)
+    other shape, varied: B1.2=0 B1.3=2 B1.4=2 B1.5=2 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:1*2,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.2=4 B1.3=2 B1.4=2 B1.5=2 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*2,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound param
-    varied: B1.2=2 B1.3=4 B1.4=2 B1.5=2 B1.6=4
+    other shape, varied: B1.2=2 B1.3=4 B1.4=2 B1.5=2 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*2,1*4,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound param
-    varied: B1.2=4 B1.3=4 B1.4=2 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*4,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound param
+ too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
   [head / undetermined box | sep | sepdir] polylines 2 (geometries 3)
     varied: B1.2=0 B1.3=0 B1.4=2 B1.5=2 B1.6=4
@@ -401,11 +395,18 @@ enumeration wall 10.9235 s
 
 == S2 ==
   both accept: 35 polylines (63 geometries)
-  both reject: 139 polylines (153 geometries)
+  both reject: 115 polylines (129 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
   undecided: 0 polylines (0 geometries)
   off grid (geometries): 384 (384 geometries)
+  other shape: 24 polylines (24 geometries)
+    other shape, varied: A1.2=0 A1.3=2 A1.4=2 A1.5=2 A1.6=4
+      polyline A1:3*2,2*2,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: A1.2=2 A1.3=2 A1.4=2 A1.5=2 A1.6=4
+      polyline A1:2*2,3*2,2*2,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: A1.2=0 A1.3=4 A1.4=2 A1.5=2 A1.6=4
+      polyline A1:3*4,2*2,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
@@ -416,30 +417,25 @@ enumeration wall 10.9235 s
   too loose: 0 polylines (0 geometries)
   undecided: 0 polylines (0 geometries)
   off grid (geometries): 480 (480 geometries)
+  other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
 == total ==
   both accept: 128 polylines (207 geometries)
-  both reject: 217 polylines (249 geometries)
-  too strict: 42 polylines (42 geometries)
+  both reject: 191 polylines (223 geometries)
+  too strict: 0 polylines (0 geometries)
   too loose: 2 polylines (3 geometries)
   undecided: 0 polylines (0 geometries)
   off grid (geometries): 1200 (1200 geometries)
- too strict, by the kept values of the failing pairs:
-  [bound | end] polylines 42 (geometries 42)
-    varied: B1.2=4 B1.3=2 B1.4=2 B1.5=2 B1.6=4
+  other shape: 68 polylines (68 geometries)
+    other shape, varied: B1.2=0 B1.3=2 B1.4=2 B1.5=2 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:1*2,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.2=4 B1.3=2 B1.4=2 B1.5=2 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*2,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound param
-    varied: B1.2=2 B1.3=4 B1.4=2 B1.5=2 B1.6=4
+    other shape, varied: B1.2=2 B1.3=4 B1.4=2 B1.5=2 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*2,1*4,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound param
-    varied: B1.2=4 B1.3=4 B1.4=2 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*4,0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: end 0
-      program row broken: bound param
+ too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
   [head / undetermined box | sep | sepdir] polylines 2 (geometries 3)
     varied: B1.2=0 B1.3=0 B1.4=2 B1.5=2 B1.6=4

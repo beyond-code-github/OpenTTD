@@ -260,12 +260,13 @@ struct Group {
 };
 
 struct Tally {
-	std::array<uint32_t, 6> counts{}; ///< Polylines: both accept, both reject, too strict, too loose, undecided; the last is off grid geometries.
-	std::array<uint32_t, 6> geoms{}; ///< The enumerated geometries behind each.
+	std::array<uint32_t, 7> counts{}; ///< Polylines: both accept, both reject, too strict, too loose, undecided; then off grid geometries, then other shape.
+	std::array<uint32_t, 7> geoms{}; ///< The enumerated geometries behind each.
 	std::set<std::string> seen; ///< The polylines counted.
 	std::map<std::string, double> undecided; ///< Per undecided polyline, its representation count product.
 	std::map<std::string, Group> strict;
 	std::map<std::string, Group> loose;
+	std::vector<Example> other; ///< The first other shape polylines.
 };
 
 std::set<std::string> g_undetermined_seen; ///< The undetermined families seen over the run.
@@ -275,7 +276,7 @@ std::string FamilyOf(const std::string &tag)
 	return tag.substr(0, tag.find(' '));
 }
 
-const char *const CLASS_NAMES[6] = {"both accept", "both reject", "too strict", "too loose", "undecided", "off grid (geometries)"};
+const char *const CLASS_NAMES[7] = {"both accept", "both reject", "too strict", "too loose", "undecided", "off grid (geometries)", "other shape"};
 
 /** What the rows say of a polyline: 0 an accepted representation exists, 1 none, 2 undecided; the witness is the accepted representation per track. */
 struct Judged {
@@ -291,12 +292,60 @@ struct PolyClass {
 	std::string detail;
 };
 
+/** A crossing's two assigned pieces: track a's piece pa and track b's piece pb meet (D428). */
+struct Conformity {
+	uint32_t a, b, pa, pb;
+};
+
+int Cross2(const Point &o, const Point &p, const Point &q)
+{
+	return (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+}
+
+/** Whether the closed segments p0p1 and q0q1 meet in exactly one point. */
+bool SegmentsMeetInOnePoint(const Point &p0, const Point &p1, const Point &q0, const Point &q1)
+{
+	const bool pz = p0 == p1, qz = q0 == q1;
+	auto on = [](const Point &x, const Point &a, const Point &b) {
+		return Cross2(a, b, x) == 0 && std::min(a[0], b[0]) <= x[0] && x[0] <= std::max(a[0], b[0]) && std::min(a[1], b[1]) <= x[1] && x[1] <= std::max(a[1], b[1]);
+	};
+	if (pz && qz) return p0 == q0;
+	if (pz) return on(p0, q0, q1);
+	if (qz) return on(q0, p0, p1);
+	const Point dp = {p1[0] - p0[0], p1[1] - p0[1]}, dq = {q1[0] - q0[0], q1[1] - q0[1]};
+	const int d = dp[0] * dq[1] - dp[1] * dq[0];
+	if (d != 0) {
+		const int w[2] = {q0[0] - p0[0], q0[1] - p0[1]};
+		int t = w[0] * dq[1] - w[1] * dq[0];
+		int u = w[0] * dp[1] - w[1] * dp[0];
+		int dd = d;
+		if (dd < 0) {
+			dd = -dd;
+			t = -t;
+			u = -u;
+		}
+		return t >= 0 && t <= dd && u >= 0 && u <= dd;
+	}
+	if (Cross2(p0, p1, q0) != 0) return false;
+	/* Collinear: the intervals along p's direction share exactly one point. */
+	auto at = [&](const Point &x) { return dp[0] * x[0] + dp[1] * x[1]; };
+	const int pa = at(p0), pb = at(p1), qa = at(q0), qb = at(q1);
+	const int lo = std::max(std::min(pa, pb), std::min(qa, qb)), hi = std::min(std::max(pa, pb), std::max(qa, qb));
+	return lo == hi;
+}
+
+bool ConformityHolds(const Conformity &c, const std::vector<Points> &cur)
+{
+	const Points &a = cur[c.a], &b = cur[c.b];
+	return SegmentsMeetInOnePoint(a[c.pa], a[c.pa + 1], b[c.pb], b[c.pb + 1]);
+}
+
 /**
  * Arc consistency over the binary constraints (D428): a representation of track a survives against track b when some representation of b makes every constraint over exactly {a, b} hold
  * (keep-apart pairs, point rows with those two tracks, program rows by the partial check with only a and b placed). Prunes reps (and lens in step) until no list changes.
  * Returns 0 consistent, 1 a list emptied (rejection), 2 more than cap pair evaluations (undecided); evals counts the pair evaluations.
  */
-int ArcConsistency(uint32_t n, std::vector<std::vector<Points>> &reps, std::vector<std::vector<Lengths>> *lens, const std::vector<PlanarKeepApartPair> &keeps, const std::vector<PlanarPointRow> &rows, const PlanarProgram &program, uint64_t cap, uint64_t &evals)
+int ArcConsistency(uint32_t n, std::vector<std::vector<Points>> &reps, std::vector<std::vector<Lengths>> *lens, const std::vector<PlanarKeepApartPair> &keeps, const std::vector<PlanarPointRow> &rows, const PlanarProgram &program, uint64_t cap, uint64_t &evals, const std::vector<Conformity> *conform = nullptr)
 {
 	std::vector<std::vector<std::vector<const PlanarKeepApartPair *>>> keep_of(n, std::vector<std::vector<const PlanarKeepApartPair *>>(n));
 	std::vector<std::vector<std::vector<const PlanarPointRow *>>> row_of(n, std::vector<std::vector<const PlanarPointRow *>>(n));
@@ -313,12 +362,20 @@ int ArcConsistency(uint32_t n, std::vector<std::vector<Points>> &reps, std::vect
 		row_of[a][b].push_back(&r);
 		row_of[b][a].push_back(&r);
 	}
+	std::vector<std::vector<std::vector<const Conformity *>>> conf_of(n, std::vector<std::vector<const Conformity *>>(n));
+	if (conform != nullptr) {
+		for (const Conformity &c : *conform) {
+			conf_of[c.a][c.b].push_back(&c);
+			conf_of[c.b][c.a].push_back(&c);
+		}
+	}
 	std::vector<Points> cur(n);
 	/* Whether a at ra and b at rb satisfy every binary constraint over {a, b}. */
 	auto holds = [&](uint32_t a, const Points &ra, uint32_t b, const Points &rb) {
 		evals++;
 		cur[a] = ra;
 		cur[b] = rb;
+		if (!std::ranges::all_of(conf_of[a][b], [&](const Conformity *c) { return ConformityHolds(*c, cur); })) return false;
 		if (!std::ranges::all_of(keep_of[a][b], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); })) return false;
 		if (!std::ranges::all_of(row_of[a][b], [&](const PlanarPointRow *r) { return PlanarPointRowHolds(*r, cur); })) return false;
 		std::vector<bool> placed(n, false);
@@ -362,6 +419,51 @@ int ArcConsistency(uint32_t n, std::vector<std::vector<Points>> &reps, std::vect
 		if (queued.insert({b, a}).second) queue.emplace_back(b, a);
 	}
 	return 0;
+}
+
+/** The map's crossings with their assigned pieces. */
+std::vector<Conformity> ConformitiesOf(const X1Fixture &f)
+{
+	std::vector<Conformity> out;
+	const auto &map = f.v.structure.map;
+	for (uint32_t c = 0; c < map.crossings.size(); c++) {
+		const uint32_t t[2] = {map.crossings[c].a, map.crossings[c].b};
+		uint32_t piece[2];
+		for (int i = 0; i < 2; i++) {
+			const auto &ev = map.events[t[i]];
+			const size_t pos = static_cast<size_t>(std::ranges::find(ev, c) - ev.begin());
+			REQUIRE(pos < ev.size());
+			piece[i] = f.v.tracks[t[i]].event_piece[pos];
+		}
+		out.push_back({t[0], t[1], piece[0], piece[1]});
+	}
+	return out;
+}
+
+/** Whether a polyline (the geometry's runs per track) is of another shape than the variant's: arc consistency over the conformance constraints alone empties a list (D428). */
+bool IsOtherShape(const X1Fixture &f, const Geometry &g)
+{
+	std::vector<std::vector<Points>> reps(f.n);
+	for (const auto &[name, h] : f.heads) {
+		Lengths lens(h.size(), 0);
+		const auto it = g.find(name);
+		if (it != g.end()) {
+			for (const auto &[k, len] : it->second) lens[k] = len;
+		}
+		const std::vector<Lengths> all = Representations(h, PolylineRuns(h, lens), 20001);
+		if (all.size() > 20000) return false;
+		const uint32_t t = f.idx.at(name);
+		for (const Lengths &l : all) {
+			Geometry one;
+			for (size_t k = 0; k < l.size(); k++) {
+				if (l[k] != 0) one[name][static_cast<uint32_t>(k)] = l[k];
+			}
+			reps[t].push_back(f.PointsOf(one)[t]);
+		}
+	}
+	const std::vector<Conformity> conform = ConformitiesOf(f);
+	uint64_t evals = 0;
+	return ArcConsistency(f.n, reps, nullptr, {}, {}, PlanarProgram{}, 5000000, evals, &conform) == 1;
 }
 
 } // namespace
@@ -635,11 +737,21 @@ TEST_CASE("planar domain: arc consistency prunes and proves", "[junction][planar
 	}
 }
 
+TEST_CASE("planar domain: other shape is set apart", "[junction][planar][planardomain]")
+{
+	const X1Fixture f;
+	CHECK(!IsOtherShape(f, f.base));
+	Geometry g = f.base;
+	g["B1"] = {{2, 4}, {3, 2}, {4, 2}, {5, 2}, {6, 4}, {8, 4}};
+	CHECK(IsOtherShape(f, g));
+}
+
 TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planardomainenc]")
 {
 	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT");
 	REQUIRE(report_path != nullptr);
 	const X1Fixture f;
+	const std::vector<Conformity> conform = ConformitiesOf(f);
 
 	const auto t0 = std::chrono::steady_clock::now();
 	std::map<std::string, Tally> per;
@@ -732,7 +844,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 			uint64_t evals = 0;
 			if (verdict != 2 && !std::ranges::any_of(reps, [](const std::vector<Points> &r) { return r.empty(); })) {
 				/* Arc consistency first: an emptied list rejects the polyline, more than 5,000,000 pair evaluations leave it undecided. */
-				const int ac = ArcConsistency(f.n, reps, &replens, readout.keep_apart, lead_rows, program_out.program, 5000000, evals);
+				const int ac = ArcConsistency(f.n, reps, &replens, readout.keep_apart, lead_rows, program_out.program, 5000000, evals, &conform);
 				if (ac == 0) run_search = true; else verdict = ac;
 			}
 			nodes_used = static_cast<double>(evals);
@@ -759,7 +871,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 						cur[order[d]] = rp;
 						chosen[order[d]] = ri;
 						placed[order[d]] = true;
-						const bool ok = std::ranges::all_of(at_depth[d], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); }) && CheckPlanarProgramOnPoints(program_out.program, cur, placed).broken.empty();
+						const bool ok = std::ranges::all_of(at_depth[d], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); }) && std::ranges::all_of(conform, [&](const Conformity &c) { return !placed[c.a] || !placed[c.b] || ConformityHolds(c, cur); }) && CheckPlanarProgramOnPoints(program_out.program, cur, placed).broken.empty();
 						if (ok && self(self, d + 1)) return true;
 						if (nodes > 50000) return false;
 					}
@@ -793,7 +905,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 				varied << (a == 0 ? "" : " ") << name << "." << piece << "=" << vals[pos[a]];
 			}
 			const std::vector<Points> points = f.PointsOf(g);
-			enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, UNDECIDED, OFF_GRID } c;
+			enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, UNDECIDED, OFF_GRID, OTHER_SHAPE } c;
 			bool on_grid = true;
 			for (const Points &p : points) on_grid = on_grid && RasterPlanarDomainTrack(p).rule.empty();
 			std::string pkey;
@@ -811,9 +923,13 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 				if (known == classes.end()) {
 					std::vector<std::string> notes;
 					const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
-					const Judged &j = judge(pkey, g);
+					const bool other = IsOtherShape(f, g);
+					const Judged &j = other ? verdicts[pkey] : judge(pkey, g);
 					PolyClass nc;
-					if (j.verdict == 2) {
+					if (other) {
+						nc.c = OTHER_SHAPE;
+						nc.detail = "      polyline " + pkey + "\n";
+					} else if (j.verdict == 2) {
 						nc.c = UNDECIDED;
 					} else if (d.legal) {
 						nc.c = j.verdict == 0 ? BOTH_ACCEPT : STRICT;
@@ -877,6 +993,13 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 					x->counts[c]++;
 					continue;
 				}
+				if (c == OTHER_SHAPE) {
+					if (x->seen.insert(pkey).second) {
+						x->counts[c]++;
+						if (x->other.size() < 3) x->other.push_back({varied.str(), pc->detail});
+					}
+					continue;
+				}
 				Group *grp = c == STRICT ? &x->strict[pc->key] : c == LOOSE ? &x->loose[pc->key] : nullptr;
 				if (grp != nullptr) grp->geometries++;
 				if (!x->seen.insert(pkey).second) continue;
@@ -900,7 +1023,8 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 	out << "enumeration wall " << wall << " s\n\n";
 	auto write = [&](const std::string &title, const Tally &t) {
 		out << "== " << title << " ==\n";
-		for (int c = 0; c < 6; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << (c == 5 ? "" : " polylines") << " (" << t.geoms[c] << " geometries)\n";
+		for (int c = 0; c < 7; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << (c == 5 ? "" : " polylines") << " (" << t.geoms[c] << " geometries)\n";
+		for (const Example &e : t.other) out << "    other shape, varied: " << e.varied << "\n" << e.detail;
 		for (const auto &[pk, prod] : t.undecided) out << "    undecided polyline " << pk << " search nodes " << prod << "\n";
 		for (int kind = 0; kind < 2; kind++) {
 			const auto &groups = kind == 0 ? t.strict : t.loose;
@@ -925,7 +1049,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 	out.close();
 	for (const Config &cfg : configs) {
 		const Tally &t = per[cfg.name];
-		WARN(cfg.name << " (polylines): both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", undecided " << t.counts[4] << ", off grid geometries " << t.counts[5]);
+		WARN(cfg.name << " (polylines): both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", undecided " << t.counts[4] << ", off grid geometries " << t.counts[5] << ", other shape " << t.counts[6] << " (geometries " << t.geoms[6] << ")");
 	}
 	WARN("undetermined families seen: " << Join(g_undetermined_seen));
 	WARN("enumeration wall " << wall << " s");
