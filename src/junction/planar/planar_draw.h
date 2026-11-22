@@ -194,7 +194,7 @@ struct PlanarDrawPipelineOptions {
 	int discovery_rounds = 8; ///< At most this many discovery rounds.
 	int commit_rounds = 4; ///< At most this many rounds after the commit, and again after the prune.
 	int prunes = 1; ///< At most this many prunes, each holding at 0 the committed inserts whose curve flex rows still stretch, each followed by up to commit_rounds rounds; stops early when a prune holds none (D422: 1).
-	bool curve_discovery = false; ///< Scheme A (a probe): from discovery round 2, insert curve rows priced by a damped memory of each insert's length (CARD-E5-schemeA); at most 4 discovery rounds after round 1.
+	bool curve_discovery = true; ///< On by default (D425). Scheme A: from discovery round 2, insert curve rows priced by a damped memory of each insert's length (CARD-E5-schemeA); at most 4 discovery rounds after round 1.
 	bool additions = false; ///< A probe: after the commit and prune, one additions pass (rounds with the committed inserts kept and the others free under IRL1, the inserts it uses committed, then the commit rounds and the prunes again).
 };
 
