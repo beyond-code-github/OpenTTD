@@ -110,3 +110,8 @@ Drawing expert rail hubs: a layered octilinear layout model checked against expe
   - 17 s is over the 15 s solve gate.
   - The integer final is off the game's tile grid (N/S piece ends x even 180 / odd 50; E/W y even 102 / odd 178), so the curve-legal drawing is a half-tile relaxation; with grid rows HiGHS finds no drawing in 15 s (D423, CARD-E5-flexstep). Evidence for the claim is the LP rounds.
   - Unpriced discovery commits 173 jogs and grows 2.4x.
+
+### C10. Keep-apart sides inside bundles: what headings decide and what they do not (probe, D426)
+- Claim: in the pairwise keep-apart LP, a wall pair whose face walk is monotone both ways (each wall in the other's inner half-plane, read from Shape's headings alone) can take its side by construction; on T2, T3, LL2 and PSG 197 every such pair (all anti-parallel: 8, 18, 17, 6) holds in the last round. Sibling lanes as exact offset curves between channel crossings (D388 spine) also hold where written.
+- Negative: on T3 and LL2 the remaining slack (13, 10) sits entirely on corner pairs at bends where neither inward normal is certain from headings; freeing those pairs' sides by binaries leaves 12 and 7, and an IIS with sides re-picked from that drawing is local to them. Sides were not the cause; the room between facing bends of neighbouring tracks is short.
+- Evidence: feature 948356b4e1 (ng1 7372d911eb..625835dbd3); logs docs/junction-tool/wip/probes/e5land/sideprobe-*.log, siblings-*.log, facing-*.log; card wip/CARD-E5-bundle-ends.md.
