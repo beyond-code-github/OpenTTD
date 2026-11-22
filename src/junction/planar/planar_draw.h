@@ -44,6 +44,8 @@ struct PlanarDrawResult {
 	uint32_t walk_short = 0; ///< With sides_by_walk: fixed pairs whose rule candidate the sides_from reference keeps by less than its spacing.
 	uint32_t facing_fixed = 0; ///< With facing_sides: anti-parallel facing pairs fixed.
 	uint32_t facing_choice = 0; ///< With facing_sides: facing pairs at another angle.
+	uint32_t inward_short = 0; ///< With inward_sides and sides_from: pairs whose best inward candidate's margin on the reference is negative.
+	std::vector<std::string> inward_short_tags; ///< The first 40 such tags, each with ` best inward margin <m>, best overall margin <m'>`.
 	uint32_t walk_differs = 0; ///< With sides_by_walk: fixed pairs where the rule's candidate is not sides_from's best.
 	double ms = 0; ///< Build and solve time in milliseconds.
 	std::vector<std::vector<std::array<int, 2>>> points; ///< When feasible, per track its points (start, then the end of each piece), half tiles, x east and y south.
@@ -112,6 +114,7 @@ struct PlanarDrawOptions {
 	double flex_zero_below = 0; ///< With flex_zero_from.
 	bool sides_by_walk = false; ///< With pairwise and sides_from (a measurement): a pair whose face walk is monotone towards one wall's inward normal takes that candidate (the rule); other pairs take sides_from's choice.
 	bool facing_sides = false; ///< D426 probe: with pairwise and sides_from, a pair whose face walk is monotone both ways (i to j towards i's inward normal, j to i towards j's) takes its side from the walk: anti-parallel walls the common normal, other angles the better of the two inward normals on the reference; other pairs keep sides_from's choice.
+	bool inward_sides = false; ///< A probe: in pairwise mode every pair's candidates are only the inward ones: wall i's inward normal from i to j, and, when the walls differ mod 4, wall j's inward normal from j to i (with sides_from: the better of these on the reference; without: binaries over these only).
 	bool walk_strict = false; ///< With sides_by_walk (D417): the rule fixes a pair only when the walk's guaranteed projection onto the wall's inward normal (the walls strictly between, each at its least length) is at least the pair's spacing.
 	std::vector<std::string> continuous; ///< A measurement (D409 diagnosis): variable groups written continuous in an integer drawing: "point" (track points), "axis" (axis piece lengths), "diagonal" (diagonal piece lengths), "param" (crossing parameters), "cross" (crossing points), "other" (every other variable: box, pin shift, dummies, binaries).
 	const std::vector<std::vector<std::array<int, 2>>> *fix_points = nullptr; ///< A measurement: every track point is held equal to this drawing's (PlanarDrawResult::points of the same variant; hard rows, tag "fix"; a track with an empty point list is not fixed), so elastic slack on the remaining rows is their violation on that drawing.
@@ -198,6 +201,7 @@ struct PlanarDrawPipelineOptions {
 	bool corridor = true; ///< Beside tracks as offset curves (D421) in every stage.
 	bool sibling_lanes = false; ///< A probe (D388 spine, SPEC-slots-lengths §11): PlanarDrawOptions::sibling_lanes in every stage.
 	bool facing_sides = false; ///< A probe (D426): PlanarDrawOptions::facing_sides in every stage.
+	bool inward_sides = false; ///< A probe: PlanarDrawOptions::inward_sides in every stage.
 	bool final_tidy = true; ///< The integer final minimises the sum of piece lengths; false is feasibility only (a measurement).
 	bool final_grid = false; ///< A measurement (D382 probe): the integer final writes the grid rows (PlanarDrawOptions::grid).
 	bool final_soft_sep = false; ///< A measurement: the integer final's sep rows get slack (cost 1, piece lengths cost 0.01), every variable stays integer; the result lists the rows that stretched.

@@ -369,6 +369,7 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		o.side_probe = std::getenv("PLANAR_PROBE_SIDES") != nullptr;
 		o.sibling_lanes = std::getenv("PLANAR_PROBE_SIBLINGS") != nullptr;
 		o.facing_sides = std::getenv("PLANAR_PROBE_FACING") != nullptr;
+		o.inward_sides = std::getenv("PLANAR_PROBE_INWARD") != nullptr;
 		o.curve_discovery = std::getenv("PLANAR_PROBE_NO_CURVE_DISCOVERY") == nullptr;
 		const auto start = std::chrono::steady_clock::now();
 		const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
@@ -388,6 +389,7 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		}
 		WARN(fmt::format("{} last round slack {:.3f}, stretched {}", name, r.last_round.slack, r.last_round.stretched.size()));
 		if (o.facing_sides) WARN(fmt::format("{} facing: fixed {} choice {}", name, r.last_round.facing_fixed, r.last_round.facing_choice));
+		if (o.inward_sides) WARN(fmt::format("{} inward: short {}", name, r.last_round.inward_short));
 		if (o.sibling_lanes) {
 			WARN(fmt::format("{} sibling lanes: pairs {} sep skipped {}", name, r.last_round.lane_pairs, r.last_round.lane_sep_skipped));
 			for (const std::string &line : r.last_round.lane_skipped) WARN(fmt::format("{} sibling lanes skipped {}", name, line));
@@ -585,6 +587,12 @@ TEST_CASE("planar draw: crowding certificates on T3 and LL2", "[.][planarcert]")
 		o.coord_max = k.bound;
 		const PlanarDrawResult r = CheckPlanarDrawable(c.v, 15.0, o);
 		WARN(fmt::format("cert {} faces {} B {}: {} ms {:.0f} binaries {}", k.hub, faces_text(k.faces), k.bound, r.status, r.ms, r.binaries));
+		if (std::getenv("PLANAR_PROBE_INWARD") != nullptr && k.bound == 256 && (k.hub == "T3" || (k.hub == "LL2" && k.faces == std::vector<uint32_t>{33}))) {
+			PlanarDrawOptions oi = o;
+			oi.inward_sides = true;
+			const PlanarDrawResult ri = CheckPlanarDrawable(c.v, 15.0, oi);
+			WARN(fmt::format("cert inward {} faces {}: {} ms {:.0f} binaries {}", k.hub, faces_text(k.faces), ri.status, ri.ms, ri.binaries));
+		}
 		const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(c.v);
 		const auto decode = [&](const std::string &tag) {
 			std::istringstream words(tag);
@@ -2611,6 +2619,42 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 			}
 			for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: rows {}, slack {:.3f}", label, family, f.first, f.second));
 			WarnSepWalls(shaped, r, label, 20);
+		}
+	}
+	/* A probe (PLANAR_PROBE_INWARD): the same evaluation with inward candidates only, against the all-candidates run above's numbers, one run each. */
+	if (std::getenv("PLANAR_PROBE_INWARD") != nullptr) {
+		const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(shaped);
+		for (const bool inward : {false, true}) {
+			const std::string label = inward ? "sepV allfaces W1 inward" : "sepV allfaces W1 all candidates";
+			const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .inward_sides = inward, .elastic = true, .elastic_families = {"sep", "clear", "deck", "end", "node", "cross"}, .pins = &p8, .sides_from = &full.points, .fix_points = &vref, .fix_window = 1});
+			WARN(fmt::format("{}: status {}, total slack {:.3f}, pairs {}, short_sides {}, inward_short {}", label, r.status, r.slack, r.pairs, r.short_sides, r.inward_short));
+			if (r.status != "Optimal") {
+				for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
+				continue;
+			}
+			double sep_slack = 0;
+			size_t sep_rows = 0;
+			for (const auto &[tag, slack] : r.stretched) {
+				if (!tag.starts_with("sep ")) continue;
+				sep_rows++;
+				sep_slack += slack;
+			}
+			WARN(fmt::format("{}: sep slack {:.3f}, rows {}", label, sep_slack, sep_rows));
+			for (const std::string &tag : r.inward_short_tags) {
+				std::istringstream in(tag.substr(4));
+				uint32_t face = 0;
+				size_t a = 0, b = 0;
+				in >> face >> a >> b;
+				std::string text;
+				for (const PlanarFaceWalls &f : face_walls) {
+					if (f.face != face || a >= f.walls.size() || b >= f.walls.size()) continue;
+					for (const size_t k : {a, b}) {
+						const PlanarCellWall &w = f.walls[k];
+						text += fmt::format(" [{}#{} h{}]", map.tracks[w.track].name, w.piece, w.heading);
+					}
+				}
+				WARN(fmt::format("{} short {} |{}", label, tag, text));
+			}
 		}
 	}
 	/* The same, each pair's direction from the monotone face walk where the rule fixes it. */

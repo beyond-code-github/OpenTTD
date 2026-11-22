@@ -1,0 +1,345 @@
+Filters: planar draw: crowding certificates on T3 and LL2
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+openttd_test is a Catch v2.13.10 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+planar draw: crowding certificates on T3 and LL2
+-------------------------------------------------------------------------------
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:527
+...............................................................................
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:565: warning:
+  cert LL2 face 33 walls: [0] D1#8 h1 [1] D1#9 h0 [2] D1#10 h1 [3] D1#11 h2 [4]
+  D1#12 h1 [5] B1"9#0 h6 [6] B1#0 h6 [7] B1#1 h5 [8] B1#2 h6 [9] B1#3 h7 [10]
+  B1#4 h6 [11] F1"0#0 h4
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:565: warning:
+  cert LL2 face 34 walls: [0] D1#12 h1 [1] D1#11 h2 [2] D1#10 h1 [3] D1#9 h0
+  [4] D1#8 h1 [5] F1"0#0 h4 [6] D2#4 h1 [7] D2#5 h0 [8] D2#6 h1 [9] D2#7 h2
+  [10] D2#8 h1 [11] B1"9#0 h6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:565: warning:
+  cert LL2 face 37 walls: [0] D1#12 h1 [1] B2#0 h6 [2] B2#0 h6 [3] B2#1 h5 [4]
+  B2#2 h6 [5] B2#3 h7 [6] B2#4 h6 [7] F1"0#0 h4 [8] B1#4 h6 [9] B1#3 h7 [10]
+  B1#2 h6 [11] B1#1 h5 [12] B1#0 h6 [13] B1#0 h6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:565: warning:
+  cert T3 face 29 walls: [0] B2#14 h7 [1] B2#15 h6 [2] B2#16 h7 [3] B2#17 h0
+  [4] B2#18 h7 [5] D3#9 h2 [6] B1#23 h7 [7] B1#22 h0 [8] B1#21 h7 [9] B1#20 h6
+  [10] B1#19 h7 [11] F3#9 h4
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:565: warning:
+  cert T3 face 66 walls: [0] E2"30#0 h2 [1] E2#0 h2 [2] E2#8 h2 [3] E2#7 h3 [4]
+  E2#6 h2 [5] E2#5 h1 [6] E2#4 h2 [7] F1#9 h4 [8] E3#4 h2 [9] E3#5 h1 [10] E3#6
+  h2 [11] E3#7 h3 [12] E3#8 h2 [13] prio:E3#0 h2 [14] D1#22 h1
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:565: warning:
+  cert T3 face 75 walls: [0] F1#9 h4 [1] D3#13 h2 [2] D3#14 h1 [3] D3#15 h2 [4]
+  D3#16 h3 [5] D3#17 h2 [6] E3#0 h2 [7] E3"31#0 h2 [8] D2#26 h1 [9] D2#25 h2
+  [10] D2#24 h1 [11] D2#23 h0 [12] D2#22 h1 [13] D2#21 h2 [14] D2#20 h3 [15]
+  D2#19 h2 [16] D2#18 h1 [17] D2#17 h2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:589: warning:
+  cert T3 faces 75 B 256: Optimal ms 2944 binaries 240
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:594: warning:
+  cert inward T3 faces 75: Infeasible ms 71 binaries 99
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert T3 faces 75 sep 75 2 15: D3#14 h1 (39,18)-(48,9) | D2#19 h2 (31,8)-(31,
+  8)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert T3 faces 75 sep 75 5 8: D3#17 h2 (52,9)-(52,9) | D2#26 h1 (41,12)-(47,6)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:589: warning:
+  cert T3 faces 29 B 256: Optimal ms 323 binaries 100
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:594: warning:
+  cert inward T3 faces 29: Optimal ms 53 binaries 39
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert T3 faces 29 sep 29 1 10: B2#15 h6 (26,19)-(22,19) | B1#19 h7 (26,21)-
+  (26,21)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert T3 faces 29 sep 29 4 9: B2#18 h7 (18,15)-(18,15) | B1#20 h6 (26,21)-(20,
+  21)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:589: warning:
+  cert T3 faces 66 B 256: Optimal ms 1235 binaries 188
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:594: warning:
+  cert inward T3 faces 66: Infeasible ms 95 binaries 74
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:589: warning:
+  cert T3 faces 75,29,66 B 256: Optimal ms 3165 binaries 528
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:594: warning:
+  cert inward T3 faces 75,29,66: Infeasible ms 88 binaries 212
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert T3 faces 75,29,66 sep 75 2 15: D3#14 h1 (68,22)-(82,8) | D2#19 h2 (34,7)
+  -(34,7)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert T3 faces 75,29,66 sep 75 5 8: D3#17 h2 (86,12)-(86,12) | D2#26 h1 (73,
+  15)-(79,9)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert T3 faces 75,29,66 sep 29 1 10: B2#15 h6 (19,24)-(15,24) | B1#19 h7 (21,
+  28)-(21,28)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert T3 faces 75,29,66 sep 29 4 9: B2#18 h7 (15,20)-(14,19) | B1#20 h6 (21,
+  28)-(13,28)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:589: warning:
+  cert T3 faces 75 B 4096: Optimal ms 2681 binaries 240
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert T3 faces 75 sep 75 2 15: D3#14 h1 (61,14)-(70,5) | D2#19 h2 (36,3)-(36,
+  3)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert T3 faces 75 sep 75 5 8: D3#17 h2 (74,9)-(74,9) | D2#26 h1 (45,12)-(51,6)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:589: warning:
+  cert LL2 faces 33 B 256: Infeasible ms 814 binaries 100
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:594: warning:
+  cert inward LL2 faces 33: Infeasible ms 81 binaries 44
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:589: warning:
+  cert LL2 faces 34 B 256: Optimal ms 241 binaries 100
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert LL2 faces 34 sep 34 1 9: D1#11 h2 (16,20)-(22,20) | D2#7 h2 (17,23)-(21,
+  23)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert LL2 faces 34 sep 34 3 7: D1#9 h0 (16,21)-(16,20) | D2#5 h0 (17,23)-(17,
+  23)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:589: warning:
+  cert LL2 faces 37 B 256: Optimal ms 2141 binaries 140
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert LL2 faces 37 sep 37 6 12: B2#4 h6 (15,25)-(9,25) | B1#0 h6 (25,21)-(25,
+  21)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:615: warning:
+  cert LL2 faces 37 sep 37 6 11: B2#4 h6 (15,25)-(9,25) | B1#1 h5 (25,21)-(19,
+  27)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:589: warning:
+  cert LL2 faces 33,34,37 B 256: Infeasible ms 2603 binaries 340
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:651: warning:
+  noprio LL2: last round slack 10.000, by family sep: 9, 10.000, final
+  Infeasible, stopped 'final'
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio LL2 decode sep 37 6 12 2.00: B2#4 h6 (123,56)-(79,56) | B1#0 h6 (121,
+  56)-(94,56)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio LL2 decode sep 33 0 9 1.00: D1#8 h1 (83,67)-(91,59) | B1#3 h7 (91,58)-
+  (91,58)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio LL2 decode sep 33 1 9 1.00: D1#9 h0 (91,59)-(91,59) | B1#3 h7 (91,58)-
+  (91,58)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio LL2 decode sep 33 2 9 1.00: D1#10 h1 (91,59)-(91,59) | B1#3 h7 (91,58)
+  -(91,58)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio LL2 decode sep 33 3 10 1.00: D1#11 h2 (91,59)-(123,59) | B1#4 h6 (91,
+  58)-(79,58)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio LL2 decode sep 33 3 8 1.00: D1#11 h2 (91,59)-(123,59) | B1#2 h6 (92,
+  58)-(91,58)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio LL2 decode sep 34 1 9 1.00: D1#11 h2 (91,59)-(123,59) | D2#7 h2 (92,
+  60)-(124,60)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio LL2 decode sep 34 3 7 1.00: D1#9 h0 (91,59)-(91,59) | D2#5 h0 (92,60)-
+  (92,60)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio LL2 decode sep 37 6 11 1.00: B2#4 h6 (123,56)-(79,56) | B1#1 h5 (94,
+  56)-(92,58)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:701: warning:
+  noprio LL2 headings: 52 identical, 0 differ
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:651: warning:
+  noprio T3: last round slack 20.000, by family curve: 2, 3.000; sep: 14, 17.
+  000, final Infeasible, stopped 'final'
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 3 5 23 3.00: F3#5 h2 (35,36)-(43,36) | B3#7 h7 (43,38)-
+  (27,22)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 3 8 22 2.00: F3#2 h3 (23,20)-(26,23) | B3#8 h6 (27,22)-
+  (18,22)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 28 1 10 1.00: F1#22 h3 (82,35)-(92,45) | A3#6 h3 (93,45)
+  -(95,47)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 28 2 10 1.00: F1#23 h2 (92,45)-(92,45) | A3#6 h3 (93,45)
+  -(95,47)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 28 3 10 1.00: F1#24 h3 (92,45)-(92,45) | A3#6 h3 (93,45)
+  -(95,47)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 28 4 11 1.00: F1#25 h4 (92,45)-(92,54) | A3#5 h4 (93,39)
+  -(93,45)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 48 0 14 1.00: F1#4 h3 (31,6)-(38,13) | D1#3 h1 (39,13)-
+  (39,13)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 48 1 14 1.00: F1#5 h2 (38,13)-(38,13) | D1#3 h1 (39,13)-
+  (39,13)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 48 2 14 1.00: F1#6 h3 (38,13)-(38,13) | D1#3 h1 (39,13)-
+  (39,13)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 48 3 13 1.00: F1#7 h4 (38,13)-(38,27) | D1#2 h0 (39,15)-
+  (39,13)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 48 3 15 1.00: F1#7 h4 (38,13)-(38,27) | D1#4 h0 (39,13)-
+  (39,10)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 79 2 20 1.00: F3#11 h2 (60,35)-(60,35) | F2#13 h2 (43,
+  34)-(61,34)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 79 4 20 1.00: F3#13 h2 (60,35)-(78,35) | F2#13 h2 (43,
+  34)-(61,34)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:664: warning:
+  noprio T3 decode sep 79 8 12 1.00: F3#17 h4 (78,35)-(78,35) | F2#21 h4 (79,
+  34)-(79,34)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:701: warning:
+  noprio T3 headings: 14 identical, 29 differ
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 CB1: with [7 6 7 0 7 6 5 6 7 6] without [6 5 6 7 6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 CB2: with [7 6 7 0 7 6 5 6 7 6] without [6 5 6 7 6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 CB3: with [7 6 7 0 7 6 5 6 7 6] without [6 5 6 7 6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 AB2: with [6 5 6 7 6 7 6 7 0 7] without [6 5 6 7 6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 AF1: with [5 4 5 4 3 4 5 4] without [4 3 4 5 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 AF2: with [5 4 5 4 3 4 5 4] without [4 3 4 5 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 AF3: with [5 4 5 4 3 4 5 4] without [4 3 4 5 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 A1: with [5 4 5 6 5] without [5 4 5 6 5 4 3 4 5 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 A2: with [6 5 6 7 6 5 6 7 6 5 6 7 6 5 4 5 6 5] without [5 4 5 6 5 4
+  3 4 5 4 3 4 5 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 A3: with [5 4 5 6 5 6 5 6 7 6 5 6 7 6 5 6 7 6 5 4 5 6 5] without [5
+  4 5 6 5 4 3 4 5 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 B1: with [6 5 6 7 6 7 6 7 0 7 6 7 0 7 6 5 6 7 6 7 6 7 0 7 6 7 0 7]
+  without [6 5 6 7 6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 B2: with [7 6 7 0 7 6 7 0 7 6 5 6 7 6 7 6 7 0 7 6 7 0 7] without [6
+  5 6 7 6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 B3: with [6 5 6 7 6 5 6 7 6 7 6 7 0 7 6 7 0 7] without [6 5 6 7 6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 C1: with [0 7 0 1 0] without [0 7 0 1 0 7 6 7 0 7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 C2: with [0 7 0 1 0 7 0 1 0] without [0 7 0 1 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 C3: with [0 7 0 1 0 7 0 1 0] without [0 7 0 1 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 D1: with [1 0 1 2 1 2 1 2 3 2 1 2 3 2 1 2 3 2 1 0 1 2 1 0 1 2 1]
+  without [1 0 1 2 1 0 1 2 1 0 7 0 1 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 D2: with [1 0 1 2 1 2 1 2 3 2 1 2 3 2 1 2 3 2 1 2 3 2 1 0 1 2 1 0 1
+  2 1] without [1 0 1 2 1 0 1 2 1 0 7 0 1 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 D3: with [1 0 1 2 1 2 1 2 3 2 1 2 3 2 1 2 3 2] without [1 0 1 2 1 0
+  7 0 1 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 E2: with [2 1 2 3 2 1 2 3 2] without [2 1 2 3 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 E3: with [2 1 2 3 2 1 2 3 2] without [2 1 2 3 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 F1: with [3 2 3 4 3 4 3 4 5 4 3 4 5 4] without [3 2 3 4 3 2 3 4 3 2
+  1 2 3 2 1 2 3 2 3 2 3 4 3 2 3 4 3 2 3 4 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 F2: with [3 2 3 4 3 4 3 4 5 4 3 4 5 4] without [3 2 3 4 3 2 3 4 3 2
+  1 2 3 2 1 2 3 2 3 2 3 4 3 2 3 4 3 2 3 4 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 F3: with [3 2 3 4 3 4 3 4 5 4 3 4 5 4] without [3 2 3 4 3 2 1 2 3 2
+  1 2 3 2 3 2 3 4 3 2 3 4 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 B3 (part 1): with [7] without [6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 B2 (part 1): with [7] without [6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 B1 (part 1): with [7] without [6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 E2 (part 2): with [2] without [2 1 2 3 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:702: warning:
+  noprio T3 E3 (part 2): with [2] without [2 1 2 3 2]
+
+===============================================================================
+All tests passed (6 assertions in 1 test case)
+
