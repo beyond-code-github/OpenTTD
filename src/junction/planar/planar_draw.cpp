@@ -2557,14 +2557,65 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 	for (uint32_t t = 0; t < v.tracks.size(); t++) {
 		const std::vector<int> &pieces = v.tracks[t].pieces;
 		const std::vector<uint32_t> &flex = v.tracks[t].flex;
-		if (pieces.empty() || flex.empty()) continue;
+		const std::vector<uint32_t> &steps = v.tracks[t].steps;
+		if (pieces.empty() || (flex.empty() && steps.empty())) continue;
 		/* D412: an in-port line with no event before its node may have total length 0. */
 		if (map.expanded.lines[t].from.port && !map.expanded.lines[t].to.port && map.events[t].empty()) continue;
 		const uint32_t n = static_cast<uint32_t>(pieces.size());
 		const auto step = [&](uint32_t piece) { return PlanarModel::STEP[((pieces[piece] % 8) + 8) % 8]; };
 		const PlanarEnd &from = map.expanded.lines[t].from;
 		const PlanarEnd &to = map.expanded.lines[t].to;
-		if (!from.port && map.expanded.nodes[from.index].IsSplit()) {
+		const auto is_step = [&](uint32_t piece) { return std::ranges::find(steps, piece) != steps.end(); };
+		if (flex.empty() && !from.port && map.expanded.nodes[from.index].IsSplit()) {
+			/* A contracted line (D432): the S-bends are `steps`; the leading walk is the pieces that are flanks of h0 or inserts. */
+			const int sib = sibling(from.index, true, t);
+			int h0 = 0;
+			bool have = false;
+			if (!is_step(0)) {
+				h0 = pieces[0];
+				have = true;
+			} else if (n >= 2 && !is_step(1)) {
+				h0 = pieces[1];
+				have = true;
+			}
+			for (uint32_t m = 0; have && m < n; m++) {
+				if (!is_step(m)) {
+					if (pieces[m] != h0) break;
+					continue;
+				}
+				const int d = sign(pieces[m] - h0);
+				if (sib != 0 && d != sib) continue;
+				if (m == 0 && (n < 2 || is_step(1))) break;
+				const std::array<int, 2> s0 = PlanarModel::STEP[((h0 % 8) + 8) % 8], sm = step(m);
+				rows.push_back(PlanarPointRow{fmt::format("lead {} start {}", map.tracks[t].name, m),
+					{{{t, m}, {64 * s0[0] + sm[0], 64 * s0[1] + sm[1]}}, {{t, 0}, {-64 * s0[0], -64 * s0[1]}}, {{t, m + 1}, {-sm[0], -sm[1]}}}, 0});
+			}
+		}
+		if (flex.empty() && !to.port && map.expanded.nodes[to.index].in.size() == 2) {
+			const int sib = sibling(to.index, false, t);
+			int h0 = 0;
+			bool have = false;
+			if (!is_step(n - 1)) {
+				h0 = pieces[n - 1];
+				have = true;
+			} else if (n >= 2 && !is_step(n - 2)) {
+				h0 = pieces[n - 2];
+				have = true;
+			}
+			for (uint32_t m = n; have && m-- > 0;) {
+				if (!is_step(m)) {
+					if (pieces[m] != h0) break;
+					continue;
+				}
+				const int d = sign(pieces[m] - h0);
+				if (sib != 0 && d != sib) continue;
+				if (m == n - 1 && (n < 2 || is_step(n - 2))) break;
+				const std::array<int, 2> se = PlanarModel::STEP[((h0 % 8) + 8) % 8], sm = step(m);
+				rows.push_back(PlanarPointRow{fmt::format("lead {} end {}", map.tracks[t].name, m),
+					{{{t, n}, {64 * se[0], 64 * se[1]}}, {{t, m + 1}, {-64 * se[0] - sm[0], -64 * se[1] - sm[1]}}, {{t, m}, {sm[0], sm[1]}}}, 0});
+			}
+		}
+		if (!flex.empty() && !from.port && map.expanded.nodes[from.index].IsSplit()) {
 			const int sib = sibling(from.index, true, t);
 			uint32_t k = 0;
 			for (const uint32_t m : flex) {
@@ -2578,7 +2629,7 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 					{{{t, m}, {64 * s0[0] + sm[0], 64 * s0[1] + sm[1]}}, {{t, 0}, {-64 * s0[0], -64 * s0[1]}}, {{t, m + 1}, {-sm[0], -sm[1]}}}, 0});
 			}
 		}
-		if (!to.port && n >= 2 && map.expanded.nodes[to.index].in.size() == 2) {
+		if (!flex.empty() && !to.port && n >= 2 && map.expanded.nodes[to.index].in.size() == 2) {
 			const int sib = sibling(to.index, false, t);
 			uint32_t k = 0;
 			for (auto it = flex.rbegin(); it != flex.rend(); ++it) {
