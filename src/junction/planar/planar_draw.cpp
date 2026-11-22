@@ -374,7 +374,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const bool zero = options.flex_zero_from != nullptr && free_piece[i] && std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end() && t < options.flex_zero_from->size() && i < (*options.flex_zero_from)[t].size() && (*options.flex_zero_from)[t][i] < options.flex_zero_below;
 			const bool in_flex = std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end();
 			const bool reference = options.curve_flex_from != nullptr && in_flex && t < options.curve_flex_from->size() && i < (*options.curve_flex_from)[t].size() && (*options.curve_flex_from)[t][i] >= options.curve_flex_above;
-			const bool held = options.curve_flex_from != nullptr && in_flex && !reference;
+			const bool held = options.curve_flex_from != nullptr && in_flex && !reference && !options.curve_flex_free;
 			positive.push_back(reference || lower > 0);
 			capped.push_back(zero || held);
 			length[t].push_back({var(reference ? 1 : lower, (zero || held) ? 0 : COORD_MAX, (options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0)) + (in_flex ? (options.flex_weights != nullptr && t < options.flex_weights->size() && i < (*options.flex_weights)[t].size() ? (*options.flex_weights)[t][i] : options.flex_price) * (axis ? AXIS_LEAST : 1) : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
@@ -1526,25 +1526,74 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		return out;
 	}
 
-	/* Prune once: a committed insert whose curve rows still stretch is held at 0. */
-	for (const auto &[row, slack] : last.stretched) {
-		if (!row.starts_with("curve flex ")) continue;
-		std::istringstream rs(row.substr(11));
-		std::string name;
-		uint32_t piece = 0;
-		rs >> name >> piece;
-		for (size_t t = 0; t < v.tracks.size(); t++) {
-			if (v.structure.map.tracks[t].name != name || piece >= out.committed[t].size()) continue;
-			out.committed[t][piece] = 0;
-			out.pruned++;
+	/* Prune: a committed insert whose curve rows still stretch is held at 0, then the rounds again; at most `prunes` times, stopping when none is held. */
+	const auto prune_all = [&]() -> bool {
+	for (int p = 1; p <= options.prunes; p++) {
+		size_t held = 0;
+		for (const auto &[row, slack] : last.stretched) {
+			if (!row.starts_with("curve flex ")) continue;
+			std::istringstream rs(row.substr(11));
+			std::string name;
+			uint32_t piece = 0;
+			rs >> name >> piece;
+			for (size_t t = 0; t < v.tracks.size(); t++) {
+				if (v.structure.map.tracks[t].name != name || piece >= out.committed[t].size()) continue;
+				out.committed[t][piece] = 0;
+				held++;
+			}
+		}
+		if (held == 0) break;
+		out.pruned += held;
+		const PlanarDrawResult committed_last = last;
+		if (!commit_rounds(committed_last, p == 1 ? "prune" : fmt::format("prune{}", p))) {
+			out.stopped = "prune";
+			return false;
 		}
 	}
-	if (out.pruned > 0) {
-		const PlanarDrawResult committed_last = last;
-		if (!commit_rounds(committed_last, "prune")) {
-			out.stopped = "prune";
+	return true;
+	};
+	if (!prune_all()) return out;
+
+	/* Additions (a probe): the committed inserts stay, the others are free under IRL1; the inserts the pass uses are committed, then the commit rounds and the prunes again. */
+	if (options.additions) {
+		std::vector<std::vector<double>> add_weights(v.tracks.size());
+		for (size_t t = 0; t < v.tracks.size() && t < last.lengths.size(); t++) {
+			add_weights[t].assign(last.lengths[t].size(), 0.0);
+			for (size_t i = 0; i < last.lengths[t].size(); i++) add_weights[t][i] = options.irl1 / (last.lengths[t][i] + 0.5);
+		}
+		PlanarDrawResult prev = last;
+		for (int k = 1; k <= options.discovery_rounds; k++) {
+			const bool previous_zero = k > 1 && prev.slack < 1e-6;
+			PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .curve_flex_free = true, .flex_weights = &add_weights, .box_price = options.box_price, .elastic = true, .elastic_tidy = 0.001, .elastic_families = {"sep", "curve"}, .pins = options.pins, .sides_from = &prev.points});
+			log_round("additions", k, r);
+			if (r.status != "Optimal") {
+				out.final = r;
+				out.stopped = "additions";
+				return out;
+			}
+			last_input = prev.points;
+			for (size_t t = 0; t < v.tracks.size() && t < r.lengths.size(); t++) {
+				for (size_t i = 0; i < r.lengths[t].size() && i < add_weights[t].size(); i++) add_weights[t][i] = options.irl1 / (r.lengths[t][i] + 0.5);
+			}
+			const bool zero_twice = r.slack < 1e-6 && previous_zero;
+			prev = r;
+			last = std::move(r);
+			if (zero_twice) break;
+		}
+		size_t added = 0;
+		for (size_t t = 0; t < v.tracks.size() && t < out.committed.size() && t < last.lengths.size(); t++) {
+			for (const uint32_t m : v.tracks[t].flex) {
+				if (m >= out.committed[t].size() || m >= last.lengths[t].size() || out.committed[t][m] >= options.commit_above || last.lengths[t][m] < options.commit_above) continue;
+				out.committed[t][m] = last.lengths[t][m];
+				added++;
+			}
+		}
+		out.added = added;
+		if (!commit_rounds(last, "add commit")) {
+			out.stopped = "add commit";
 			return out;
 		}
+		if (!prune_all()) return out;
 	}
 
 	/* Final: the integer drawing on the sides the last round proved. */

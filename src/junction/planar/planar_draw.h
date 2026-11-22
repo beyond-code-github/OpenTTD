@@ -72,6 +72,7 @@ struct PlanarDrawOptions {
 	bool corridor = false; ///< The corridor family (D421): beside tracks (copies, rows) as offset curves of their parent chain one lane to their side, with an exact one-lane opening and closing step at their nodes.
 	const std::vector<std::vector<double>> *curve_flex_from = nullptr; ///< Flex commitment (D422 probe; Gemini digest 2026-11-23): per flex middle, its length in this reference (half tiles, as PlanarDrawResult::lengths); at or above curve_flex_above the insert is committed (length >= its least, a real bend pair in the curve rows), below it the insert is held at 0.
 	double curve_flex_above = 0.25; ///< With curve_flex_from.
+	bool curve_flex_free = false; ///< With curve_flex_from (a measurement, the additions pass): an insert below curve_flex_above is free (priced by flex_weights, no curve rows, as in discovery) instead of held at 0.
 	const std::vector<std::vector<double>> *flex_weights = nullptr; ///< A measurement (D422 discovery, IRL1): per track and piece, the extra objective cost per half tile of that flex insert's length; when set it replaces flex_price.
 	double box_price = 0; ///< A measurement (D422 discovery): objective cost per half tile of width and of height.
 	double flex_price = 0; ///< A measurement (D422 discovery): extra objective cost per half tile of flex insert length, so a drawing uses inserts only where they buy separation.
@@ -182,6 +183,8 @@ struct PlanarDrawPipelineOptions {
 	double commit_above = 1.0; ///< An insert at or above this length (half tiles) in the last discovery drawing is committed.
 	int discovery_rounds = 8; ///< At most this many discovery rounds.
 	int commit_rounds = 4; ///< At most this many rounds after the commit, and again after the prune.
+	int prunes = 1; ///< At most this many prunes, each holding at 0 the committed inserts whose curve flex rows still stretch, each followed by up to commit_rounds rounds; stops early when a prune holds none (D422: 1).
+	bool additions = false; ///< A probe: after the commit and prune, one additions pass (rounds with the committed inserts kept and the others free under IRL1, the inserts it uses committed, then the commit rounds and the prunes again).
 };
 
 /** What the drawing pipeline did, and its drawing. */
@@ -190,6 +193,7 @@ struct PlanarDrawPipelineResult {
 	std::vector<std::vector<double>> committed; ///< The commitment reference handed to the final (as curve_flex_from).
 	size_t committed_count = 0; ///< Inserts committed before the prune.
 	size_t pruned = 0; ///< Inserts the prune held at 0.
+	size_t added = 0; ///< With additions: inserts the additions pass committed.
 	std::vector<std::string> log; ///< One line per round: stage, round, status, total slack, curve slack, box, length.
 	std::string stopped; ///< Empty, or the stage that ended without an Optimal round.
 	PlanarDrawResult last_round; ///< The last Optimal LP round (a read-out: its drawing and the rows that stretched).
