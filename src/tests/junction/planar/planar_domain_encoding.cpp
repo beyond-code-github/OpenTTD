@@ -655,6 +655,37 @@ TEST_CASE("planar draw: the program checked by track sets", "[junction][planar][
 	CHECK(CheckPlanarProgramOnPoints(out.program, split_points, all).broken == std::vector<std::string>{"end 0"});
 }
 
+TEST_CASE("planar draw: end runs stay off a node's switch tile", "[junction][planar][planardomain]")
+{
+	X1Fixture f;
+	/* The first too-loose example's witness (encoding-x1-span_lead.txt, group [head]): the tunnel's end run sits on the split's switch tile (2,2). */
+	const std::map<std::string, std::vector<int>> witness = {
+		{"AC1", {0, 0, 0, 0, 4}}, {"BD1", {0, 0, 0, 0, 2}}, {"C1", {0, 0, 0, 0, 0, 0, 0, 0, 3, 2}},
+		{"B1", {2, 2, 0, 0, 2, 0, 0, 0, 6}}, {"A1", {0, 0, 0, 0, 10, 0, 0, 0, 6}}, {"D1", {0, 0, 0, 0, 0, 0, 1, 0, 0, 8}},
+	};
+	Geometry g;
+	for (const auto &[name, lens] : witness) {
+		for (size_t k = 0; k < lens.size(); k++) {
+			if (lens[k] != 0) g[name][static_cast<uint32_t>(k)] = lens[k];
+		}
+	}
+	const std::vector<Points> points = f.PointsOf(g);
+	const auto has = [](const PlanarProgramCheck &c, const std::string &tag) { return std::ranges::find(c.broken, tag) != c.broken.end(); };
+
+	/* Red: without the option no `end 0 node` row exists, so it cannot break. */
+	const PlanarDrawResult plain = f.ProgramOut();
+	REQUIRE(plain.status == "built");
+	CHECK(!has(CheckPlanarProgramOnPoints(plain.program, points), "end 0 node"));
+	for (const PlanarProgram::Row &r : plain.program.rows) CHECK(r.tag != "end 0 node");
+
+	f.options.end_node = true;
+	const PlanarDrawResult out = f.ProgramOut();
+	REQUIRE(out.status == "built");
+	CHECK(has(CheckPlanarProgramOnPoints(out.program, points), "end 0 node"));
+	/* The base holds. */
+	CHECK(CheckPlanarProgramOnPoints(out.program, f.PointsOf(f.base)).broken.empty());
+}
+
 TEST_CASE("planar domain: representations of a polyline", "[junction][planar][planardomain]")
 {
 	const std::vector<int> pieces = {2, 1, 2, 3, 2};
@@ -776,14 +807,18 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 		/* PLANAR_DOMAIN_RULES (a measurement): plain, span, zero or all (default) strict keep-apart rules. */
 		const char *rules_env = std::getenv("PLANAR_DOMAIN_RULES");
 		std::string rules = rules_env == nullptr ? "all" : rules_env;
+		const bool endnode = rules.ends_with("+endnode");
+		if (endnode) rules.resize(rules.size() - 8);
 		const bool lead = rules.ends_with("+lead");
 		if (lead) rules.resize(rules.size() - 5);
+		X1Fixture fx = f;
+		fx.options.end_node = endnode;
 		const std::vector<PlanarPointRow> lead_rows = lead ? PlanarNodeLeadRows(f.v) : std::vector<PlanarPointRow>{};
-		PlanarDrawResult readout = f.ReadOut(rules == "all");
-		const PlanarDrawResult program_out = f.ProgramOut();
+		PlanarDrawResult readout = fx.ReadOut(rules == "all");
+		const PlanarDrawResult program_out = fx.ProgramOut();
 		REQUIRE(program_out.status == "built");
 		if (rules == "span" || rules == "zero") {
-			X1Fixture g = f;
+			X1Fixture g = fx;
 			g.options.strict_span = rules == "span";
 			g.options.strict_zero = rules == "zero";
 			g.options.crossing_flanks = false;
