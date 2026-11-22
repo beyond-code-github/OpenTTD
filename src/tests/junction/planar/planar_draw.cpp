@@ -3777,3 +3777,81 @@ TEST_CASE("planar draw: T3 exact sides against the pipeline's", "[.][planarcert]
 	WARN(fmt::format("summary (t1,t2) over contradicted: {}", hist_text(hist_bad)));
 	WARN(fmt::format("summary (t1,t2) over all pairs: {}", hist_text(hist_all)));
 }
+
+TEST_CASE("planar draw: whole-hub exact keep-apart", "[.][planarcert]")
+{
+	struct Hub {
+		std::string name;
+		PlanarShapeVariant v;
+		std::function<std::string(const PlanarCellWall &)> wall_text;
+	};
+	std::vector<Hub> hubs;
+	for (const auto &[name, text] : std::vector<std::pair<std::string, std::string>>{{"T1", PlanarTText(1)}, {"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}}) {
+		const DrawCase c = ShapeFirst(text, 1);
+		hubs.push_back({name, c.v, [c](const PlanarCellWall &w) { return CertWallText(c, w, nullptr); }});
+	}
+	{
+		PlanarShapeVariant flex_c;
+		PlanarDrawPins pins;
+		if (LoadPinned197(flex_c, pins, true)) {
+			DrawCase c;
+			c.v = flex_c;
+			hubs.push_back({"197", flex_c, [c](const PlanarCellWall &w) { return CertWallText(c, w, nullptr); }});
+		} else {
+			WARN("whole 197: skipped, the variant cannot be built as the 197 pipeline test builds it");
+		}
+	}
+	for (const Hub &h : hubs) {
+		PlanarDrawPipelineOptions po;
+		po.final_seconds = 5;
+		const PlanarDrawPipelineResult pr = DrawPlanarPipeline(h.v, po);
+		int largest = 0;
+		for (const auto &track : pr.last_round.points) {
+			for (const auto &p : track) largest = std::max({largest, p[0], p[1]});
+		}
+		const double bound = (2 * largest + 15) / 16 * 16;
+		PlanarDrawOptions o;
+		o.clearance = true;
+		o.clear_rows = true;
+		o.pairwise = true;
+		o.pairwise_all_faces = true;
+		o.corridor = true;
+		o.tidy = false;
+		o.continuous = {"point", "axis", "diagonal", "param", "cross"};
+		o.coord_max = bound;
+		const PlanarDrawResult r = CheckPlanarDrawable(h.v, 15.0, o);
+		WARN(fmt::format("whole {} B {}: {} ms {:.0f} binaries {}", h.name, bound, r.status, r.ms, r.binaries));
+		if (r.status == "Infeasible") {
+			const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(h.v);
+			size_t shown = 0;
+			for (const std::string &tag : r.conflict) {
+				if (shown++ >= 40) break;
+				std::istringstream words(tag);
+				std::string family, text = tag;
+				uint32_t face = 0, i = 0, j = 0;
+				words >> family;
+				if (family == "sep" && (words >> face >> i >> j)) {
+					for (const PlanarFaceWalls &f : face_walls) {
+						if (f.face != face || i >= f.walls.size() || j >= f.walls.size()) continue;
+						text = fmt::format("{} | {} | {}", tag, h.wall_text(f.walls[i]), h.wall_text(f.walls[j]));
+						break;
+					}
+				}
+				WARN(fmt::format("whole {} conflict {}", h.name, text));
+			}
+		}
+		if (r.status != "Optimal") continue;
+		int x0 = INT32_MAX, x1 = INT32_MIN, y0 = INT32_MAX, y1 = INT32_MIN;
+		for (const auto &track : r.points) {
+			for (const auto &p : track) {
+				x0 = std::min(x0, p[0]); x1 = std::max(x1, p[0]);
+				y0 = std::min(y0, p[1]); y1 = std::max(y1, p[1]);
+			}
+		}
+		double length = 0;
+		for (const auto &track : r.lengths) {
+			for (const double l : track) length += l;
+		}
+		WARN(fmt::format("whole {} box {} x {}, sum of piece lengths {:.1f}", h.name, x1 - x0, y1 - y0, length));
+	}
+}
