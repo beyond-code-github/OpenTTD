@@ -341,15 +341,16 @@ TEST_CASE("planar draw: the pipeline draws the one-lane T with optional flex (D4
 
 TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 {
-	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T1", PlanarTText(1)}, {"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
 	for (const auto &[name, text] : hubs) {
 		const DrawCase c = ShapeFirst(text, 1);
 		PlanarDrawPipelineOptions o;
 		o.final_seconds = 15;
-		/* Measurement aids: PLANAR_PROBE_SLACK_PRICE (commit on) and PLANAR_PROBE_DISCOVERY_SLACK_PRICE (seed and discovery). */
+		/* Measurement aids: PLANAR_PROBE_SLACK_PRICE (commit on), PLANAR_PROBE_DISCOVERY_SLACK_PRICE (seed and discovery) and PLANAR_PROBE_CURVE_DISCOVERY (Scheme A). */
 		if (const char *s = std::getenv("PLANAR_PROBE_SLACK_PRICE"); s != nullptr) o.slack_price = std::atof(s);
 		if (const char *s = std::getenv("PLANAR_PROBE_DISCOVERY_SLACK_PRICE"); s != nullptr) o.discovery_slack_price = std::atof(s);
 		o.free_stretched_sides = std::getenv("PLANAR_PROBE_FREE_SIDES") != nullptr;
+		o.curve_discovery = std::getenv("PLANAR_PROBE_CURVE_DISCOVERY") != nullptr;
 		const auto start = std::chrono::steady_clock::now();
 		const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
 		const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
@@ -3039,7 +3040,7 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	const auto start = std::chrono::steady_clock::now();
 	/* PLANAR_PROBE_FINAL_START (a measurement aid): the final starts from the last round's whole lengths.
 	 * PLANAR_PROBE_FINAL_GRID: the final writes the grid rows (D382 probe).
-	 * PLANAR_PROBE_SLACK_PRICE: the objective cost of each elastic slack per half tile from the commit on (default 1); PLANAR_PROBE_DISCOVERY_SLACK_PRICE: the same for the seed and discovery rounds (default 1). PLANAR_PROBE_FINAL_SOFT_SEP: the final's sep rows get slack (soft-sep diagnostic); PLANAR_PROBE_FINAL_SOFT_ALL: every row but piece, box, pin, fix and grid gets slack (feasibility repair); PLANAR_PROBE_FINAL_SECONDS: the final's time limit; PLANAR_PROBE_BOX_PRICE and PLANAR_PROBE_IRL1: the box price and the insert price; PLANAR_PROBE_PRUNES: at most this many prunes; PLANAR_PROBE_ADDITIONS: the one-time additions pass; PLANAR_PROBE_NO_NODE_GAPS: no node gaps (on by default, D424). */
+	 * PLANAR_PROBE_SLACK_PRICE: the objective cost of each elastic slack per half tile from the commit on (default 1); PLANAR_PROBE_DISCOVERY_SLACK_PRICE: the same for the seed and discovery rounds (default 1). PLANAR_PROBE_FINAL_SOFT_SEP: the final's sep rows get slack (soft-sep diagnostic); PLANAR_PROBE_FINAL_SOFT_ALL: every row but piece, box, pin, fix and grid gets slack (feasibility repair); PLANAR_PROBE_FINAL_SECONDS: the final's time limit; PLANAR_PROBE_BOX_PRICE and PLANAR_PROBE_IRL1: the box price and the insert price; PLANAR_PROBE_PRUNES: at most this many prunes; PLANAR_PROBE_ADDITIONS: the one-time additions pass; PLANAR_PROBE_NO_NODE_GAPS: no node gaps (on by default, D424); PLANAR_PROBE_CURVE_DISCOVERY: Scheme A curve-aware discovery. */
 	PlanarDrawPipelineOptions o;
 	o.final_start = std::getenv("PLANAR_PROBE_FINAL_START") != nullptr;
 	o.final_tidy = std::getenv("PLANAR_PROBE_FINAL_FEASIBILITY") == nullptr;
@@ -3054,6 +3055,7 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	if (const char *s = std::getenv("PLANAR_PROBE_SLACK_PRICE"); s != nullptr) o.slack_price = std::atof(s);
 	if (const char *s = std::getenv("PLANAR_PROBE_DISCOVERY_SLACK_PRICE"); s != nullptr) o.discovery_slack_price = std::atof(s);
 	o.additions = std::getenv("PLANAR_PROBE_ADDITIONS") != nullptr;
+	o.curve_discovery = std::getenv("PLANAR_PROBE_CURVE_DISCOVERY") != nullptr; // Scheme A (a probe).
 	const PlanarDrawPipelineResult r = DrawPlanarPipeline(flex_c, o);
 	for (const std::string &line : r.log) WARN(line);
 	WARN(fmt::format("committed {} inserts, pruned {}, added {}, stopped '{}'", r.committed_count, r.pruned, r.added, r.stopped));

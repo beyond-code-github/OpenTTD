@@ -256,17 +256,20 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		columns++;
 		return add_variable(lower, upper, cost, (!options.elastic || options.elastic_integer) && std::ranges::find(options.continuous, group) == options.continuous.end());
 	};
+	std::map<std::string, double> soft_price; ///< Scheme A: per "curve flex" tag its slack price.
 	const auto emit = [&](Terms merged, double lower, double upper, const std::string &tag) {
 		if (options.elastic) {
 			const std::string family = tag.substr(0, tag.find(' '));
-			if (family != "piece" && family != "box" && family != "pin" && family != "fix" && family != "grid" && (options.elastic_families.empty() || std::ranges::find(options.elastic_families, family) != options.elastic_families.end())) {
+			const auto soft = soft_price.find(tag);
+			const double price = soft != soft_price.end() ? soft->second : options.slack_price;
+			if (soft != soft_price.end() || (family != "piece" && family != "box" && family != "pin" && family != "fix" && family != "grid" && (options.elastic_families.empty() || std::ranges::find(options.elastic_families, family) != options.elastic_families.end()))) {
 				if (std::isfinite(lower)) {
-					merged.emplace_back(add_variable(0, JunctionMilp::INF, options.slack_price, false), 1.0);
+					merged.emplace_back(add_variable(0, JunctionMilp::INF, price, false), 1.0);
 					slack_tag.push_back(tag);
 					slack_var.push_back(merged.back().first);
 				}
 				if (std::isfinite(upper)) {
-					merged.emplace_back(add_variable(0, JunctionMilp::INF, options.slack_price, false), -1.0);
+					merged.emplace_back(add_variable(0, JunctionMilp::INF, price, false), -1.0);
 					slack_tag.push_back(tag);
 					slack_var.push_back(merged.back().first);
 				}
@@ -680,6 +683,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			}
 		}
 		std::erase_if(merged, [](const std::pair<uint32_t, double> &t) { return t.second == 0; });
+		if (const auto soft = soft_price.find(tag); soft != soft_price.end() && soft->second <= 0) return;
 		if (seen.emplace(merged, lower).second) row(std::move(merged), lower, JunctionMilp::INF, tag);
 	};
 	/* Bays (D420): a non-prio route path's travel from its last topology split or port to each topology merge is at least rules.bay. */
@@ -769,7 +773,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					}
 					for (size_t i = 0; i < pieces.size(); i++) {
 						const Length &len = length[t][i];
-						const bool real = committed(t, i);
+						const bool soft_insert = options.curve_flex_soft != nullptr && std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end() && t < options.curve_flex_soft->size() && i < (*options.curve_flex_soft)[t].size();
+						const bool real = committed(t, i) || soft_insert;
+						if (soft_insert && !committed(t, i)) soft_price[fmt::format("curve flex {} {}", map.tracks[t].name, i)] = (*options.curve_flex_soft)[t][i];
 						if (real || (std::ranges::find(flex, i) == flex.end() && std::ranges::find(steps, i) == steps.end())) {
 							/* Lifted headings may differ by whole turns from one track to the next. */
 							if (!walk(((pieces[i] % 8) + 8) % 8, real ? fmt::format("curve flex {} {}", map.tracks[t].name, i) : "", fmt::format("track {}#{}", map.tracks[t].name, i))) return unsupported(why);
@@ -1511,9 +1517,11 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	/* Discovery. */
 	std::vector<std::vector<double>> weights;
 	PlanarDrawResult last = previous;
-	for (int k = 1; k <= options.discovery_rounds; k++) {
+	std::vector<std::vector<double>> memory, soft; // Scheme A (curve_discovery): per insert the damped memory of its length and its slack price.
+	const int rounds = options.curve_discovery ? std::min(options.discovery_rounds, 5) : options.discovery_rounds;
+	for (int k = 1; k <= rounds; k++) {
 		const bool previous_zero = k > 1 && previous.slack < 1e-6;
-		PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &previous.lengths, .corridor = options.corridor, .flex_weights = k == 1 ? nullptr : &weights, .box_price = options.box_price, .flex_price = k == 1 ? options.first_flex_price : 0, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.discovery_slack_price, .elastic_families = {"sep"}, .pins = options.pins, .sides_from = &previous.points});
+		PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &previous.lengths, .corridor = options.corridor, .flex_weights = k == 1 ? nullptr : &weights, .box_price = options.box_price, .flex_price = k == 1 ? options.first_flex_price : 0, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.discovery_slack_price, .elastic_families = {"sep"}, .curve_flex_soft = options.curve_discovery && k >= 2 ? &soft : nullptr, .pins = options.pins, .sides_from = &previous.points});
 		log_round("discovery", k, r);
 		if (r.status != "Optimal") {
 			out.final = r;
@@ -1525,6 +1533,18 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		for (size_t t = 0; t < v.tracks.size() && t < r.lengths.size(); t++) {
 			weights[t].assign(r.lengths[t].size(), 0.0);
 			for (size_t i = 0; i < r.lengths[t].size(); i++) weights[t][i] = options.irl1 / (r.lengths[t][i] + 0.5);
+		}
+		if (options.curve_discovery) {
+			memory.resize(r.lengths.size());
+			soft.resize(r.lengths.size());
+			for (size_t t = 0; t < r.lengths.size(); t++) {
+				memory[t].resize(r.lengths[t].size(), 0.0);
+				soft[t].assign(r.lengths[t].size(), 0.0);
+				for (size_t i = 0; i < r.lengths[t].size(); i++) {
+					memory[t][i] = std::max(r.lengths[t][i], 0.5 * memory[t][i]);
+					soft[t][i] = options.discovery_slack_price * std::min(1.0, memory[t][i] / 1.0);
+				}
+			}
 		}
 		const bool zero_twice = r.slack < 1e-6 && previous_zero;
 		previous = r;

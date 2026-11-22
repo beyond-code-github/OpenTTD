@@ -75,6 +75,7 @@ struct PlanarDrawOptions {
 	bool corridor = false; ///< The corridor family (D421): beside tracks (copies, rows) as offset curves of their parent chain one lane to their side, with an exact one-lane opening and closing step at their nodes.
 	const std::vector<std::vector<double>> *curve_flex_from = nullptr; ///< Flex commitment (D422 probe; Gemini digest 2026-11-23): per flex middle, its length in this reference (half tiles, as PlanarDrawResult::lengths); at or above curve_flex_above the insert is committed (length >= its least, a real bend pair in the curve rows), below it the insert is held at 0.
 	double curve_flex_above = 0.25; ///< With curve_flex_from.
+	const std::vector<std::vector<double>> *curve_flex_soft = nullptr; ///< Scheme A (a probe): per track and piece, a slack price; when set, every flex insert is a real bend in the curve rows (its length stays free), and its rows (tag "curve flex <name> <i>") are elastic at that price whatever elastic_families says (price 0: no row).
 	bool curve_flex_free = false; ///< With curve_flex_from (a measurement, the additions pass): an insert below curve_flex_above is free (priced by flex_weights, no curve rows, as in discovery) instead of held at 0.
 	const std::vector<std::vector<double>> *flex_weights = nullptr; ///< A measurement (D422 discovery, IRL1): per track and piece, the extra objective cost per half tile of that flex insert's length; when set it replaces flex_price.
 	double box_price = 0; ///< A measurement (D422 discovery): objective cost per half tile of width and of height.
@@ -193,6 +194,7 @@ struct PlanarDrawPipelineOptions {
 	int discovery_rounds = 8; ///< At most this many discovery rounds.
 	int commit_rounds = 4; ///< At most this many rounds after the commit, and again after the prune.
 	int prunes = 1; ///< At most this many prunes, each holding at 0 the committed inserts whose curve flex rows still stretch, each followed by up to commit_rounds rounds; stops early when a prune holds none (D422: 1).
+	bool curve_discovery = false; ///< Scheme A (a probe): from discovery round 2, insert curve rows priced by a damped memory of each insert's length (CARD-E5-schemeA); at most 4 discovery rounds after round 1.
 	bool additions = false; ///< A probe: after the commit and prune, one additions pass (rounds with the committed inserts kept and the others free under IRL1, the inserts it uses committed, then the commit rounds and the prunes again).
 };
 
