@@ -182,6 +182,7 @@ struct PlanarDrawPipelineOptions {
 	double commit_above = 1.0; ///< An insert at or above this length (half tiles) in the last discovery drawing is committed.
 	int discovery_rounds = 8; ///< At most this many discovery rounds.
 	int commit_rounds = 4; ///< At most this many rounds after the commit, and again after the prune.
+	int prunes = 1; ///< At most this many prunes, each holding at 0 the committed inserts whose curve flex rows still stretch, each followed by up to commit_rounds rounds; stops early when a prune holds none (D422: 1).
 };
 
 /** What the drawing pipeline did, and its drawing. */

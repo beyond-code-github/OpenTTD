@@ -1526,22 +1526,25 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		return out;
 	}
 
-	/* Prune once: a committed insert whose curve rows still stretch is held at 0. */
-	for (const auto &[row, slack] : last.stretched) {
-		if (!row.starts_with("curve flex ")) continue;
-		std::istringstream rs(row.substr(11));
-		std::string name;
-		uint32_t piece = 0;
-		rs >> name >> piece;
-		for (size_t t = 0; t < v.tracks.size(); t++) {
-			if (v.structure.map.tracks[t].name != name || piece >= out.committed[t].size()) continue;
-			out.committed[t][piece] = 0;
-			out.pruned++;
+	/* Prune: a committed insert whose curve rows still stretch is held at 0, then the rounds again; at most `prunes` times, stopping when none is held. */
+	for (int p = 1; p <= options.prunes; p++) {
+		size_t held = 0;
+		for (const auto &[row, slack] : last.stretched) {
+			if (!row.starts_with("curve flex ")) continue;
+			std::istringstream rs(row.substr(11));
+			std::string name;
+			uint32_t piece = 0;
+			rs >> name >> piece;
+			for (size_t t = 0; t < v.tracks.size(); t++) {
+				if (v.structure.map.tracks[t].name != name || piece >= out.committed[t].size()) continue;
+				out.committed[t][piece] = 0;
+				held++;
+			}
 		}
-	}
-	if (out.pruned > 0) {
+		if (held == 0) break;
+		out.pruned += held;
 		const PlanarDrawResult committed_last = last;
-		if (!commit_rounds(committed_last, "prune")) {
+		if (!commit_rounds(committed_last, p == 1 ? "prune" : fmt::format("prune{}", p))) {
 			out.stopped = "prune";
 			return out;
 		}
