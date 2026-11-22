@@ -211,6 +211,43 @@ TEST_CASE("planar draw: keep-apart pairs hold on given points", "[junction][plan
 	CHECK(PlanarKeepApartHolds(pair, {{{0, 0}}, {{-2, 0}}}));
 }
 
+TEST_CASE("planar draw: node lead rows on X1", "[junction][planar][planardomain]")
+{
+	const X1Fixture f;
+	const std::vector<PlanarPointRow> rows = PlanarNodeLeadRows(f.v);
+	REQUIRE(rows.size() == 4);
+	std::map<std::string, const PlanarPointRow *> by;
+	for (const PlanarPointRow &r : rows) by[r.tag] = &r;
+	for (const char *name : {"A1", "C1", "B1", "D1"}) {
+		const std::string tag = std::string("lead ") + name + " start";
+		REQUIRE(by.count(tag) == 1);
+		const PlanarPointRow &r = *by[tag];
+		const uint32_t t = f.idx.at(name);
+		CHECK(r.p == std::array<uint32_t, 2>{t, 0});
+		CHECK(r.q == std::array<uint32_t, 2>{t, 1});
+		CHECK(r.least == 2);
+		const int h = ((f.heads.at(name)[0] % 8) + 8) % 8;
+		CHECK(r.s == std::array<int, 2>{STEPS[h][0], STEPS[h][1]});
+	}
+	/* The base puts the runs of A1 and B1 on piece 4 (pieces 0 to 3 at 0): their end piece has no lead. */
+	const std::vector<Points> base = f.PointsOf(f.base);
+	for (const PlanarPointRow &r : rows) {
+		INFO(r.tag);
+		CHECK(PlanarPointRowHolds(r, base) == (r.tag != "lead A1 start" && r.tag != "lead B1 start"));
+	}
+	/* The same polyline with the runs on piece 0: every row holds. */
+	Geometry led = f.base;
+	led["A1"][0] = 12;
+	led["A1"][4] = 0;
+	led["B1"][0] = 6;
+	led["B1"][4] = 0;
+	const std::vector<Points> moved = f.PointsOf(led);
+	for (const PlanarPointRow &r : rows) {
+		INFO(r.tag);
+		CHECK(PlanarPointRowHolds(r, moved));
+	}
+}
+
 TEST_CASE("planar draw: keep-apart on fixed points agrees with the program on X1", "[junction][planar][planardomain]")
 {
 	const X1Fixture f;
@@ -265,7 +302,10 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 		Tally &tally = per[cfg.name];
 		/* PLANAR_DOMAIN_RULES (a measurement): plain, span, zero or all (default) strict keep-apart rules. */
 		const char *rules_env = std::getenv("PLANAR_DOMAIN_RULES");
-		const std::string rules = rules_env == nullptr ? "all" : rules_env;
+		std::string rules = rules_env == nullptr ? "all" : rules_env;
+		const bool lead = rules.ends_with("+lead");
+		if (lead) rules.resize(rules.size() - 5);
+		const std::vector<PlanarPointRow> lead_rows = lead ? PlanarNodeLeadRows(f.v) : std::vector<PlanarPointRow>{};
 		PlanarDrawResult readout = f.ReadOut(rules == "all");
 		if (rules == "span" || rules == "zero") {
 			X1Fixture g = f;
@@ -293,13 +333,22 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 			if (!on_grid) {
 				c = OFF_GRID;
 			} else {
-				const bool rows_ok = std::ranges::all_of(readout.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, points); });
+				bool rows_ok = std::ranges::all_of(readout.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, points); });
+				std::vector<const PlanarPointRow *> lead_failed;
+				for (const PlanarPointRow &r : lead_rows) {
+					if (!PlanarPointRowHolds(r, points)) lead_failed.push_back(&r);
+				}
+				if (!lead_failed.empty()) rows_ok = false;
 				std::vector<std::string> notes;
 				const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
 				c = rows_ok ? (d.legal ? BOTH_ACCEPT : LOOSE) : (d.legal ? STRICT : BOTH_REJECT);
 				if (c == STRICT) {
 					std::set<std::string> kept;
 					detail = FailingText(f, readout.keep_apart, points, kept);
+					for (const PlanarPointRow *r : lead_failed) {
+						kept.insert("lead");
+						detail += "      " + r->tag + " fails\n";
+					}
 					key = Join(kept);
 				} else if (c == LOOSE) {
 					std::set<std::string> rules;
@@ -313,6 +362,9 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 							const bool a = std::ranges::count(b.tracks, p.tracks[0]) > 0, bb = std::ranges::count(b.tracks, p.tracks[1]) > 0;
 							if (!a || !bb) continue;
 							out << "        " << p.tag << " " << f.Name(p.tracks[0]) << "/" << f.Name(p.tracks[1]) << " pieces " << p.pieces[0] << "/" << p.pieces[1] << ": " << (p.skipped.empty() ? "held" : p.skipped) << "\n";
+						}
+						for (const PlanarPointRow &r : lead_rows) {
+							if (std::ranges::count(b.tracks, r.p[0]) > 0) out << "        " << r.tag << ": " << (PlanarPointRowHolds(r, points) ? "holds" : "fails") << "\n";
 						}
 					}
 					detail = out.str();
