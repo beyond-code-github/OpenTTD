@@ -1314,8 +1314,14 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 									const uint32_t b = var(0, 1, 0, "other");
 									result.binaries++;
 									bs.emplace_back(b, 1);
-									for (const auto &p : from) {
-										for (const auto &q : to) {
+									std::vector<std::array<uint32_t, 2>> from_ends(from.begin(), from.end());
+									std::vector<std::array<uint32_t, 2>> to_ends(to.begin(), to.end());
+									if (options.sep_extremal) {
+										from_ends = {from[along(&from, &axis) > 0 ? 1 : 0]};
+										to_ends = {to[along(&to, &axis) > 0 ? 0 : 1]};
+									}
+									for (const auto &p : from_ends) {
+										for (const auto &q : to_ends) {
 											Terms t{{b, -M}};
 											for (int d = 0; d < 2; d++) {
 												t.emplace_back(q[d], axis.s[d]);
@@ -1767,6 +1773,25 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 				out.log.push_back(fmt::format("side probe free {} c{}: {} slack {:.3f} sep {:.3f} curve {:.3f} ms {:.0f}", tag, c, r.status, r.slack, sep_slack, curve_slack, r.ms));
 				if (r.status != "Optimal") out.log.push_back(conflict_line(fmt::format("side probe free {} c{}", tag, c), r));
 			}
+		}
+		for (const bool free_inserts : {false, true}) {
+			PlanarDrawOptions joint = commit_options();
+			if (free_inserts) joint.curve_flex_from = nullptr;
+			joint.node_gap_from = &last_input_lengths;
+			joint.sides_from = &last_input;
+			joint.free_sides = tags;
+			joint.elastic_integer = true;
+			joint.continuous = {"point", "axis", "diagonal", "param", "cross"};
+			const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, joint);
+			const char *mode = free_inserts ? "free" : "committed";
+			double sep_slack = 0, curve_slack = 0;
+			for (const auto &[row, slack] : r.stretched) {
+				if (row.starts_with("sep")) sep_slack += slack;
+				if (row.starts_with("curve")) curve_slack += slack;
+			}
+			out.log.push_back(fmt::format("side probe joint {}: {} slack {:.3f} sep {:.3f} curve {:.3f} binaries {} sides_free {} ms {:.0f}", mode, r.status, r.slack, sep_slack, curve_slack, r.binaries, r.sides_free, r.ms));
+			for (const auto &[row, slack] : r.stretched) out.log.push_back(fmt::format("side probe joint {} stretched {} {:.3f}", mode, row, slack));
+			if (r.status != "Optimal") out.log.push_back(conflict_line(fmt::format("side probe joint {}", mode), r));
 		}
 	}
 
