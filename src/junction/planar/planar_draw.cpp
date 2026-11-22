@@ -695,6 +695,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			double constant = 0;
 			bool right;
 			std::string flex;
+			std::string where;
 		};
 		const auto committed = [&](uint32_t t, size_t i) {
 			return options.curve_flex_from != nullptr && std::ranges::find(v.tracks[t].flex, static_cast<uint32_t>(i)) != v.tracks[t].flex.end() && t < options.curve_flex_from->size() && i < (*options.curve_flex_from)[t].size() && (*options.curve_flex_from)[t][i] >= options.curve_flex_above;
@@ -714,7 +715,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							why = fmt::format("route {} turns by {} eighths at {}", route.name, turn, where);
 							return false;
 						}
-						bends.push_back({acc, constant, turn > 0, flex_tag.empty() ? last_flex : flex_tag});
+						bends.push_back({acc, constant, turn > 0, flex_tag.empty() ? last_flex : flex_tag, where});
 					}
 					last_heading = heading;
 					last_flex = flex_tag;
@@ -737,7 +738,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						const bool real = committed(t, i);
 						if (real || (std::ranges::find(flex, i) == flex.end() && std::ranges::find(steps, i) == steps.end())) {
 							/* Lifted headings may differ by whole turns from one track to the next. */
-							if (!walk(((pieces[i] % 8) + 8) % 8, real ? fmt::format("curve flex {} {}", map.tracks[t].name, i) : "", fmt::format("track {}", map.tracks[t].name))) return unsupported(why);
+							if (!walk(((pieces[i] % 8) + 8) % 8, real ? fmt::format("curve flex {} {}", map.tracks[t].name, i) : "", fmt::format("track {}#{}", map.tracks[t].name, i))) return unsupported(why);
 						}
 						acc.emplace_back(len.variable, len.coefficient);
 					}
@@ -754,7 +755,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						for (const auto &[variable, coefficient] : bends[i].at) d.emplace_back(variable, -coefficient);
 						const double least = mand >= 1 ? rules.curve_window[mand - 1] : (bends[i].right != bends[j].right ? rules.curve_opposite : rules.curve_same);
 						const std::string &flex_tag = !bends[i].flex.empty() ? bends[i].flex : bends[j].flex;
-						once_row(std::move(d), least - (bends[j].constant - bends[i].constant), flex_tag.empty() ? fmt::format("curve {}", route.name) : flex_tag);
+						once_row(std::move(d), least - (bends[j].constant - bends[i].constant), flex_tag.empty() ? fmt::format("curve {} {} {}", route.name, bends[i].where, bends[j].where) : flex_tag);
 						mand++;
 					}
 				}

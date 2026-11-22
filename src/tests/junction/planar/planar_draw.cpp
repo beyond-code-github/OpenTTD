@@ -2894,6 +2894,29 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	std::string text;
 	for (const auto &[family, f] : families) text += fmt::format(" [{} rows {} slack {:.2f}]", family, f.first, f.second);
 	WARN(fmt::format("last round slack {:.3f}:{}", r.last_round.slack, text));
+	const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(flex_c);
+	const auto piece_text = [&](uint32_t t, uint32_t piece) {
+		if (t >= r.last_round.points.size() || piece + 1 >= r.last_round.points[t].size()) return std::string("?");
+		const auto &a = r.last_round.points[t][piece];
+		const auto &b = r.last_round.points[t][piece + 1];
+		return fmt::format("{}#{} h{} ({},{})-({},{})", flex_c.structure.map.tracks[t].name, piece, ((flex_c.tracks[t].pieces[piece] % 8) + 8) % 8, a[0], a[1], b[0], b[1]);
+	};
+	for (const auto &[tag, amount] : r.last_round.stretched) {
+		std::istringstream words(tag);
+		std::string family;
+		uint32_t face = 0, i = 0, j = 0;
+		words >> family;
+		if (family == "sep" && (words >> face >> i >> j)) {
+			for (const PlanarFaceWalls &f : face_walls) {
+				if (f.face != face || i >= f.walls.size() || j >= f.walls.size()) continue;
+				const PlanarCellWall &a = f.walls[i];
+				const PlanarCellWall &b = f.walls[j];
+				WARN(fmt::format("decode {} {:.2f}: {} | {}", tag, amount, a.track < flex_c.tracks.size() ? piece_text(a.track, a.piece) : std::string("box"), b.track < flex_c.tracks.size() ? piece_text(b.track, b.piece) : std::string("box")));
+			}
+		} else {
+			WARN(fmt::format("decode {} {:.2f}", tag, amount));
+		}
+	}
 	/* Grid check (D382 probe): per axis, the parity of the across coordinate at both ends of every axis piece of positive length. On the game grid each axis has one parity. */
 	std::array<std::array<int, 2>, 2> grid_parity{};
 	for (size_t t = 0; t < r.final.points.size() && t < flex_c.tracks.size(); t++) {
