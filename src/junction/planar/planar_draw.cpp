@@ -1105,37 +1105,38 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					if (is_span(w[i]) || is_span(w[j])) continue;
 					if (w[i].track == w[j].track && w[i].piece == w[j].piece) continue;
 					if (w[i].piece >= v.tracks[w[i].track].pieces.size() || w[j].piece >= v.tracks[w[j].track].pieces.size()) return unsupported(fmt::format("face {} names a wall the variant lacks", f.face));
-					if (w[i].track == w[j].track) {
-						const uint32_t lo = std::min(w[i].piece, w[j].piece);
-						const uint32_t hi = std::max(w[i].piece, w[j].piece);
-						bool all_zero = true;
-						for (uint32_t k = lo + 1; k < hi; k++) all_zero = all_zero && may_zero[w[i].track][k];
-						if (all_zero) continue;
-					}
-					/* Two walls that both reach one node through only may-be-zero pieces of their own tracks (at a track's start or end) meet at that node: the node rule (D400) settles them, as walls sharing the node's point. */
-					const auto reaches = [&](const PlanarCellWall &w, bool at_end, uint32_t &node) {
-						const auto &end = at_end ? map.expanded.lines[w.track].to : map.expanded.lines[w.track].from;
-						if (end.port) return false;
-						if (at_end) {
-							for (uint32_t k = w.piece + 1; k < may_zero[w.track].size(); k++) {
-								if (!may_zero[w.track][k]) return false;
+						/* Zero contraction: every may-be-zero piece is a point, so a wall touches the pieces of its track from lo - 1 to hi + 1, the nodes its track reaches through such pieces, and the crossings on pieces from lo to hi; two walls that touch are kept apart by no row. */
+						struct Touch {
+							uint32_t lo, hi;
+							std::vector<uint32_t> nodes;
+							std::vector<size_t> events;
+						};
+						const auto touch = [&](const PlanarCellWall &wall) {
+							Touch r{wall.piece, wall.piece, {}, {}};
+							const size_t last = v.tracks[wall.track].pieces.size() - 1;
+							while (r.lo > 0 && may_zero[wall.track][r.lo - 1]) r.lo--;
+							while (r.hi < last && may_zero[wall.track][r.hi + 1]) r.hi++;
+							const auto &line = map.expanded.lines[wall.track];
+							if (r.lo == 0 && !line.from.port) r.nodes.push_back(line.from.index);
+							if (r.hi == last && !line.to.port) r.nodes.push_back(line.to.index);
+							for (size_t k = 0; k < std::min(map.events[wall.track].size(), v.tracks[wall.track].event_piece.size()); k++) {
+								const uint32_t e = v.tracks[wall.track].event_piece[k];
+								if (e >= r.lo && e <= r.hi) r.events.push_back(k);
 							}
-						} else {
-							for (uint32_t k = 0; k < w.piece; k++) {
-								if (!may_zero[w.track][k]) return false;
+							return r;
+						};
+						{
+							const Touch ti = touch(w[i]), tj = touch(w[j]);
+							bool touching = false;
+							if (w[i].track == w[j].track) touching = w[j].piece + 1 >= ti.lo && w[j].piece <= ti.hi + 1;
+							for (const uint32_t a : ti.nodes) {
+								for (const uint32_t b : tj.nodes) touching = touching || (a == b);
 							}
+							for (const size_t a : ti.events) {
+								for (const size_t b : tj.events) touching = touching || (map.events[w[i].track][a] == map.events[w[j].track][b]);
+							}
+							if (touching) continue;
 						}
-						node = end.index;
-						return true;
-					};
-					bool meet = false;
-					for (const bool ea : {false, true}) {
-						for (const bool eb : {false, true}) {
-							uint32_t na = 0, nb = 0;
-							if (reaches(w[i], ea, na) && reaches(w[j], eb, nb) && na == nb) meet = true;
-						}
-					}
-					if (w[i].track != w[j].track && meet) continue;
 					const std::array<std::array<uint32_t, 2>, 2> pi ={point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};
 					const std::array<std::array<uint32_t, 2>, 2> pj = {point[w[j].track][w[j].piece], point[w[j].track][w[j].piece + 1]};
 					bool shared = false;
@@ -1143,14 +1144,6 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						for (const auto &q : pj) shared = shared || find(p[0]) == find(q[0]);
 					}
 					if (shared) continue;
-					bool crossing = false;
-					for (size_t ki = 0; ki < std::min(map.events[w[i].track].size(), v.tracks[w[i].track].event_piece.size()) && !crossing; ki++) {
-						if (v.tracks[w[i].track].event_piece[ki] != w[i].piece) continue;
-						for (size_t kj = 0; kj < std::min(map.events[w[j].track].size(), v.tracks[w[j].track].event_piece.size()); kj++) {
-							if (v.tracks[w[j].track].event_piece[kj] == w[j].piece && map.events[w[i].track][ki] == map.events[w[j].track][kj]) crossing = true;
-						}
-					}
-					if (crossing) continue;
 					if (options.pairwise_flex_only) {
 						const auto in_flex_group = [&](const PlanarCellWall &wall) {
 							for (const uint32_t m : v.tracks[wall.track].flex) {
