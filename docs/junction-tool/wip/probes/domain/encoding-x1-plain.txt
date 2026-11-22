@@ -1,15 +1,17 @@
 Encoding report on X1: our keep-apart rows (judged on fixed points, no solve) against the domain
-enumeration wall 0.0179468 s
+enumeration wall 0.0185284 s
 
 == S1 ==
   both accept: 141
+  both accept (other representation): 0
   both reject: 6
   too strict: 0
   too loose: 42
   off grid: 336
+  undecided: 0
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
-  [connection] count 42
+  [connection] count 42 polylines 42
     varied: B1.2=0 B1.3=2 B1.4=2 B1.5=0 B1.6=4
       break connection tracks B1,D1 tile (6,4) 4 track ends meet at (12, 9) with no node
         sep 1 5 6 B1/B1 pieces 0/1: adjacent
@@ -559,13 +561,15 @@ enumeration wall 0.0179468 s
 
 == S2 ==
   both accept: 93
+  both accept (other representation): 0
   both reject: 43
   too strict: 0
   too loose: 80
   off grid: 384
+  undecided: 0
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
-  [connection | diamond | span] count 9
+  [connection | diamond | span] count 9 polylines 9
     varied: A1.2=2 A1.3=4 A1.4=12 A1.5=0 A1.6=4
       break span tracks A1 tile (4,4) the structure on pieces 4..6 is not a straight run of 1 to 64 middles
         sep 1 10 11 A1/A1 pieces 4/3: adjacent
@@ -3950,7 +3954,7 @@ enumeration wall 0.0179468 s
         sep 5 7 8 A1/A1 pieces 6/7: adjacent
         sep 5 7 9 A1/A1 pieces 6/8: zero contraction
         sep 5 8 9 A1/A1 pieces 7/8: adjacent
-  [connection | head | under] count 6
+  [connection | head | under] count 6 polylines 6
     varied: A1.2=0 A1.3=4 A1.4=14 A1.5=0 A1.6=4
       break connection tracks A1,D1 tile (6,4) 3 track ends meet at (12, 9) with no node
         sep 1 10 11 A1/A1 pieces 4/3: adjacent
@@ -7755,7 +7759,7 @@ enumeration wall 0.0179468 s
         sep 5 7 8 A1/A1 pieces 6/7: adjacent
         sep 5 7 9 A1/A1 pieces 6/8: zero contraction
         sep 5 8 9 A1/A1 pieces 7/8: adjacent
-  [connection | span] count 27
+  [connection | span] count 27 polylines 22
     varied: A1.2=4 A1.3=4 A1.4=10 A1.5=0 A1.6=4
       break span tracks A1 tile (4,3) the structure on pieces 3..6 is not a straight run of 1 to 64 middles
         sep 1 10 11 A1/A1 pieces 4/3: adjacent
@@ -11140,7 +11144,7 @@ enumeration wall 0.0179468 s
         sep 5 7 8 A1/A1 pieces 6/7: adjacent
         sep 5 7 9 A1/A1 pieces 6/8: zero contraction
         sep 5 8 9 A1/A1 pieces 7/8: adjacent
-  [diamond | span] count 38
+  [diamond | span] count 38 polylines 33
     varied: A1.2=4 A1.3=2 A1.4=2 A1.5=0 A1.6=4
       break span tracks A1 tile (4,3) the structure on pieces 3..5 is not a straight run of 1 to 64 middles
         sep 1 10 11 A1/A1 pieces 4/3: adjacent
@@ -11813,13 +11817,15 @@ enumeration wall 0.0179468 s
 
 == N1 ==
   both accept: 64
+  both accept (other representation): 0
   both reject: 0
   too strict: 0
   too loose: 32
   off grid: 480
+  undecided: 0
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
-  [connection] count 16
+  [connection] count 16 polylines 11
     varied: C1.0=1 C1.1=0 C1.2=0 A1.0=0 A1.1=2
       break connection tracks C1,A1 tile (2,2) 4 track ends meet at (5, 4) with no node
         sep 0 5 6 C1/C1 pieces 0/1: adjacent
@@ -12547,7 +12553,7 @@ enumeration wall 0.0179468 s
         sep 5 7 8 A1/A1 pieces 6/7: adjacent
         sep 5 7 9 A1/A1 pieces 6/8: zero contraction
         sep 5 8 9 A1/A1 pieces 7/8: adjacent
-  [diamond | span] count 16
+  [diamond | span] count 16 polylines 11
     varied: C1.0=1 C1.1=0 C1.2=0 A1.0=4 A1.1=2
       break span tracks A1 tile (4,1) the structure on pieces 3..5 is not a straight run of 1 to 64 middles
         sep 1 10 11 A1/A1 pieces 4/3: adjacent
@@ -13220,13 +13226,15 @@ enumeration wall 0.0179468 s
 
 == total ==
   both accept: 298
+  both accept (other representation): 0
   both reject: 49
   too strict: 0
   too loose: 154
   off grid: 1200
+  undecided: 0
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
-  [connection] count 58
+  [connection] count 58 polylines 53
     varied: B1.2=0 B1.3=2 B1.4=2 B1.5=0 B1.6=4
       break connection tracks B1,D1 tile (6,4) 4 track ends meet at (12, 9) with no node
         sep 1 5 6 B1/B1 pieces 0/1: adjacent
@@ -13773,7 +13781,7 @@ enumeration wall 0.0179468 s
         sep 5 2 3 B1/B1 pieces 6/5: adjacent
         sep 5 2 4 B1/B1 pieces 6/4: zero contraction
         sep 5 3 4 B1/B1 pieces 5/4: adjacent
-  [connection | diamond | span] count 9
+  [connection | diamond | span] count 9 polylines 9
     varied: A1.2=2 A1.3=4 A1.4=12 A1.5=0 A1.6=4
       break span tracks A1 tile (4,4) the structure on pieces 4..6 is not a straight run of 1 to 64 middles
         sep 1 10 11 A1/A1 pieces 4/3: adjacent
@@ -17158,7 +17166,7 @@ enumeration wall 0.0179468 s
         sep 5 7 8 A1/A1 pieces 6/7: adjacent
         sep 5 7 9 A1/A1 pieces 6/8: zero contraction
         sep 5 8 9 A1/A1 pieces 7/8: adjacent
-  [connection | head | under] count 6
+  [connection | head | under] count 6 polylines 6
     varied: A1.2=0 A1.3=4 A1.4=14 A1.5=0 A1.6=4
       break connection tracks A1,D1 tile (6,4) 3 track ends meet at (12, 9) with no node
         sep 1 10 11 A1/A1 pieces 4/3: adjacent
@@ -20963,7 +20971,7 @@ enumeration wall 0.0179468 s
         sep 5 7 8 A1/A1 pieces 6/7: adjacent
         sep 5 7 9 A1/A1 pieces 6/8: zero contraction
         sep 5 8 9 A1/A1 pieces 7/8: adjacent
-  [connection | span] count 27
+  [connection | span] count 27 polylines 22
     varied: A1.2=4 A1.3=4 A1.4=10 A1.5=0 A1.6=4
       break span tracks A1 tile (4,3) the structure on pieces 3..6 is not a straight run of 1 to 64 middles
         sep 1 10 11 A1/A1 pieces 4/3: adjacent
@@ -24348,7 +24356,7 @@ enumeration wall 0.0179468 s
         sep 5 7 8 A1/A1 pieces 6/7: adjacent
         sep 5 7 9 A1/A1 pieces 6/8: zero contraction
         sep 5 8 9 A1/A1 pieces 7/8: adjacent
-  [diamond | span] count 54
+  [diamond | span] count 54 polylines 44
     varied: A1.2=4 A1.3=2 A1.4=2 A1.5=0 A1.6=4
       break span tracks A1 tile (4,3) the structure on pieces 3..5 is not a straight run of 1 to 64 middles
         sep 1 10 11 A1/A1 pieces 4/3: adjacent

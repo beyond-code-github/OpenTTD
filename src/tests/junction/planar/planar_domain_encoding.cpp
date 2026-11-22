@@ -175,6 +175,68 @@ std::string Join(const std::set<std::string> &s)
 	return out;
 }
 
+/** A polyline on one track: runs of (heading mod 8, length), zero pieces dropped, equal neighbouring headings merged. */
+using Runs = std::vector<std::pair<int, int>>;
+using Lengths = std::vector<int>;
+
+Runs PolylineRuns(const std::vector<int> &heads, const Lengths &lengths)
+{
+	Runs runs;
+	for (size_t k = 0; k < heads.size(); k++) {
+		if (lengths[k] == 0) continue;
+		const int h = ((heads[k] % 8) + 8) % 8;
+		if (!runs.empty() && runs.back().first == h) {
+			runs.back().second += lengths[k];
+		} else {
+			runs.emplace_back(h, lengths[k]);
+		}
+	}
+	return runs;
+}
+
+/** Every piece-length assignment on the pieces whose polyline is exactly runs (at most cap; capped says it stopped there). */
+std::vector<Lengths> Representations(const std::vector<int> &pieces, const Runs &runs, size_t cap, bool *capped = nullptr)
+{
+	std::vector<Lengths> out;
+	if (capped != nullptr) *capped = false;
+	Lengths cur(pieces.size(), 0);
+	auto walk = [&](auto &&self, size_t k, size_t r, int left) -> void {
+		if (out.size() >= cap) {
+			if (capped != nullptr) *capped = true;
+			return;
+		}
+		if (k == pieces.size()) {
+			if (runs.empty() || (r == runs.size() - 1 && left == 0)) out.push_back(cur);
+			return;
+		}
+		const int h = ((pieces[k] % 8) + 8) % 8;
+		const int unit = h % 2 == 0 ? 2 : 1;
+		/* Stay in the current run (any amount from 0), or move on to the next run once this one is used up (at least one unit). */
+		if (!runs.empty() && runs[r].first == h) {
+			for (int a = 0; a <= left; a += unit) {
+				cur[k] = a;
+				self(self, k + 1, r, left - a);
+			}
+			cur[k] = 0;
+		} else {
+			self(self, k + 1, r, left);
+		}
+		if (!runs.empty() && left == 0 && r + 1 < runs.size() && runs[r + 1].first == h) {
+			for (int a = unit; a <= runs[r + 1].second; a += unit) {
+				cur[k] = a;
+				self(self, k + 1, r + 1, runs[r + 1].second - a);
+			}
+			cur[k] = 0;
+		}
+	};
+	if (runs.empty()) {
+		out.push_back(cur);
+	} else {
+		walk(walk, 0, 0, runs[0].second);
+	}
+	return out;
+}
+
 struct Example {
 	std::string varied;
 	std::string detail;
@@ -182,16 +244,18 @@ struct Example {
 
 struct Group {
 	uint32_t count = 0;
+	std::set<std::string> polylines;
 	std::vector<Example> examples;
 };
 
 struct Tally {
-	std::array<uint32_t, 5> counts{}; ///< both accept, both reject, too strict, too loose, off grid.
+	std::array<uint32_t, 7> counts{}; ///< both accept, both accept (other representation), both reject, too strict, too loose, off grid, undecided.
+	std::map<std::string, double> undecided; ///< Per undecided polyline, its representation count product.
 	std::map<std::string, Group> strict;
 	std::map<std::string, Group> loose;
 };
 
-const char *const CLASS_NAMES[5] = {"both accept", "both reject", "too strict", "too loose", "off grid"};
+const char *const CLASS_NAMES[7] = {"both accept", "both accept (other representation)", "both reject", "too strict", "too loose", "off grid", "undecided"};
 
 } // namespace
 
@@ -278,6 +342,26 @@ TEST_CASE("planar draw: keep-apart on fixed points agrees with the program on X1
 	CHECK(CheckPlanarDrawable(f.v, 5.0, o).status == "Optimal");
 }
 
+TEST_CASE("planar domain: representations of a polyline", "[junction][planar][planardomain]")
+{
+	const std::vector<int> pieces = {2, 1, 2, 3, 2};
+	const std::vector<Lengths> a = Representations(pieces, {{2, 4}}, 1000);
+	CHECK(a.size() == 6);
+	for (const Lengths &l : a) CHECK(PolylineRuns(pieces, l) == Runs{{2, 4}});
+	const Runs b = {{2, 2}, {3, 1}, {2, 2}};
+	const std::vector<Lengths> r = Representations(pieces, b, 1000);
+	CHECK(r.size() == 2);
+	for (const Lengths &l : r) {
+		CHECK(PolylineRuns(pieces, l) == b);
+		CHECK(l[1] == 0);
+		CHECK(l[3] == 1);
+		CHECK(l[4] == 2);
+	}
+	bool capped = false;
+	CHECK(Representations(pieces, {{2, 4}}, 3, &capped).size() == 3);
+	CHECK(capped);
+}
+
 TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planardomainenc]")
 {
 	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT");
@@ -298,6 +382,9 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 		{"N1", {{"C1", 0, {0, 1, 2, 3}}, {"C1", 1, {0, 2, 4}}, {"C1", 2, {0, 1, 2, 3}}, {"A1", 0, {0, 2, 4}}, {"A1", 1, {0, 1, 2, 3}}}},
 	};
 
+	std::map<std::string, int> verdicts; ///< Per polyline key: 0 an accepted representation exists, 1 none, 2 undecided.
+	std::map<std::string, double> rep_products;
+
 	for (const Config &cfg : configs) {
 		Tally &tally = per[cfg.name];
 		/* PLANAR_DOMAIN_RULES (a measurement): plain, span, zero or all (default) strict keep-apart rules. */
@@ -315,6 +402,76 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 			readout = g.ReadOut(true);
 		}
 		REQUIRE(readout.status == "built");
+		auto lengths_of = [&](const Geometry &g, const std::string &name) {
+			Lengths l(f.heads.at(name).size(), 0);
+			const auto it = g.find(name);
+			if (it != g.end()) {
+				for (const auto &[k, len] : it->second) l[k] = len;
+			}
+			return l;
+		};
+		/* Judge a polyline by all its representations (cached per polyline key). */
+		auto judge = [&](const std::string &pkey, const Geometry &g) {
+			const auto cached = verdicts.find(pkey);
+			if (cached != verdicts.end()) return cached->second;
+			int verdict = 1;
+			double nodes_used = 0;
+			/* Per track (by track index): its representations as points, after the unary filter. */
+			std::vector<std::vector<Points>> reps(f.n);
+			for (const auto &[name, h] : f.heads) {
+				const uint32_t t = f.idx.at(name);
+				const std::vector<Lengths> all = Representations(h, PolylineRuns(h, lengths_of(g, name)), 20001);
+				if (all.size() > 20000) verdict = 2;
+				if (verdict == 2) continue;
+				for (const Lengths &l : all) {
+					Geometry one;
+					for (size_t k = 0; k < l.size(); k++) {
+						if (l[k] != 0) one[name][static_cast<uint32_t>(k)] = l[k];
+					}
+					std::vector<Points> pts(f.n);
+					pts[t] = f.PointsOf(one)[t];
+					bool ok = true;
+					for (const PlanarKeepApartPair &p : readout.keep_apart) {
+						if (p.tracks[0] == t && p.tracks[1] == t && !PlanarKeepApartHolds(p, pts)) ok = false;
+					}
+					for (const PlanarPointRow &r : lead_rows) {
+						if (r.p[0] == t && r.q[0] == t && !PlanarPointRowHolds(r, pts)) ok = false;
+					}
+					if (ok) reps[t].push_back(pts[t]);
+				}
+			}
+			if (verdict != 2 && !std::ranges::any_of(reps, [](const std::vector<Points> &r) { return r.empty(); })) {
+				std::vector<uint32_t> order(f.n);
+				for (uint32_t t = 0; t < f.n; t++) order[t] = t;
+				std::ranges::stable_sort(order, [&](uint32_t a, uint32_t b) { return reps[a].size() < reps[b].size(); });
+				std::vector<uint32_t> depth_of(f.n);
+				for (uint32_t d = 0; d < f.n; d++) depth_of[order[d]] = d;
+				std::vector<std::vector<const PlanarKeepApartPair *>> at_depth(f.n);
+				for (const PlanarKeepApartPair &p : readout.keep_apart) {
+					if (p.tracks[0] >= f.n || p.tracks[1] >= f.n || p.tracks[0] == p.tracks[1]) continue;
+					at_depth[std::max(depth_of[p.tracks[0]], depth_of[p.tracks[1]])].push_back(&p);
+				}
+				std::vector<Points> cur(f.n);
+				uint64_t nodes = 0;
+				auto search = [&](auto &&self, uint32_t d) -> bool {
+					if (d == f.n) return true;
+					for (const Points &rp : reps[order[d]]) {
+						if (++nodes > 50000) return false;
+						cur[order[d]] = rp;
+						const bool ok = std::ranges::all_of(at_depth[d], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); });
+						if (ok && self(self, d + 1)) return true;
+						if (nodes > 50000) return false;
+					}
+					return false;
+				};
+				const bool found = search(search, 0);
+				nodes_used = static_cast<double>(nodes);
+				verdict = found ? 0 : (nodes > 50000 ? 2 : 1);
+			}
+			rep_products[pkey] = nodes_used;
+			verdicts[pkey] = verdict;
+			return verdict;
+		};
 		std::vector<size_t> pos(cfg.axes.size(), 0);
 		while (true) {
 			Geometry g = f.base;
@@ -325,26 +482,42 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 				varied << (a == 0 ? "" : " ") << name << "." << piece << "=" << vals[pos[a]];
 			}
 			const std::vector<Points> points = f.PointsOf(g);
-			enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, OFF_GRID } c;
+			enum { BOTH_ACCEPT, OTHER, BOTH_REJECT, STRICT, LOOSE, OFF_GRID, UNDECIDED } c;
 			bool on_grid = true;
 			for (const Points &p : points) on_grid = on_grid && RasterPlanarDomainTrack(p).rule.empty();
 			std::string detail;
 			std::string key;
+			std::string pkey;
 			if (!on_grid) {
 				c = OFF_GRID;
 			} else {
-				bool rows_ok = std::ranges::all_of(readout.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, points); });
+				for (const auto &[name, h] : f.heads) {
+					pkey += name + ":";
+					std::ostringstream run_text;
+					for (const auto &[hh, len] : PolylineRuns(h, lengths_of(g, name))) run_text << hh << "*" << len << ",";
+					pkey += run_text.str() + ";";
+				}
 				std::vector<const PlanarPointRow *> lead_failed;
 				for (const PlanarPointRow &r : lead_rows) {
 					if (!PlanarPointRowHolds(r, points)) lead_failed.push_back(&r);
 				}
-				if (!lead_failed.empty()) rows_ok = false;
+				const bool rows_ok = lead_failed.empty() && std::ranges::all_of(readout.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, points); });
 				std::vector<std::string> notes;
 				const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
 				c = rows_ok ? (d.legal ? BOTH_ACCEPT : LOOSE) : (d.legal ? STRICT : BOTH_REJECT);
 				if (c == STRICT) {
+					const int verdict = judge(pkey, g);
+					if (verdict == 0) {
+						c = OTHER;
+					} else if (verdict == 2) {
+						c = UNDECIDED;
+						tally.undecided[pkey] = rep_products[pkey];
+						total.undecided[pkey] = rep_products[pkey];
+					}
+				}
+				if (c == STRICT) {
 					std::set<std::string> kept;
-					detail = FailingText(f, readout.keep_apart, points, kept);
+					detail = "      polyline " + pkey + "\n" + FailingText(f, readout.keep_apart, points, kept);
 					for (const PlanarPointRow *r : lead_failed) {
 						kept.insert("lead");
 						detail += "      " + r->tag + " fails\n";
@@ -374,6 +547,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 			for (Tally *x : {&tally, &total}) {
 				x->counts[c]++;
 				Group *grp = c == STRICT ? &x->strict[key] : c == LOOSE ? &x->loose[key] : nullptr;
+				if (grp != nullptr) grp->polylines.insert(pkey);
 				if (grp != nullptr && grp->count++ < 3) grp->examples.push_back({varied.str(), detail});
 			}
 			size_t a = 0;
@@ -392,12 +566,13 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 	out << "enumeration wall " << wall << " s\n\n";
 	auto write = [&](const std::string &title, const Tally &t) {
 		out << "== " << title << " ==\n";
-		for (int c = 0; c < 5; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << "\n";
+		for (int c = 0; c < 7; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << "\n";
+		for (const auto &[pk, prod] : t.undecided) out << "    undecided polyline " << pk << " search nodes " << prod << "\n";
 		for (int kind = 0; kind < 2; kind++) {
 			const auto &groups = kind == 0 ? t.strict : t.loose;
 			out << (kind == 0 ? " too strict, by the kept values of the failing pairs:\n" : " too loose, by domain break rules:\n");
 			for (const auto &[key, grp] : groups) {
-				out << "  [" << key << "] count " << grp.count << "\n";
+				out << "  [" << key << "] count " << grp.count << " polylines " << grp.polylines.size() << "\n";
 				for (const Example &e : grp.examples) out << "    varied: " << e.varied << "\n" << e.detail;
 			}
 		}
@@ -415,7 +590,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 	out.close();
 	for (const Config &cfg : configs) {
 		const Tally &t = per[cfg.name];
-		WARN(cfg.name << ": both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", off grid " << t.counts[4]);
+		WARN(cfg.name << ": both accept " << t.counts[0] << ", other " << t.counts[1] << ", both reject " << t.counts[2] << ", too strict " << t.counts[3] << ", too loose " << t.counts[4] << ", off grid " << t.counts[5] << ", undecided " << t.counts[6]);
 	}
 	WARN("enumeration wall " << wall << " s");
 }
