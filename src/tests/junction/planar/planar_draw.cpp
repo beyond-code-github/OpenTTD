@@ -4114,7 +4114,8 @@ TEST_CASE("planar draw: the simplest drawing on every hub", "[.][planaranyhub]")
 					if (ri.status == "Optimal") integer[k]++;
 				}
 			}
-			if (vi == 0) {
+			/* PLANAR_ANYHUB_K3_ALL (a measurement aid): the pipeline on every variant, not only the first. */
+			if (vi == 0 || std::getenv("PLANAR_ANYHUB_K3_ALL") != nullptr) {
 				PlanarDrawPipelineOptions po;
 				po.final_seconds = 5;
 				const PlanarDrawPipelineResult pr = DrawPlanarPipeline(v, po);
