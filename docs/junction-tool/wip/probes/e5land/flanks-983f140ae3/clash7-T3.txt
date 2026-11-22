@@ -1,0 +1,6 @@
+overlap D3[29]#15 (96, 48)-(103, 48) | E3[44]#0 (80, 48)-(105, 48) | - | not in a common face
+overlap D3[29]#17 (103, 48)-(107, 48) | E3[44]#0 (80, 48)-(105, 48) | - | not in a common face
+overlap D3[29]#17 (103, 48)-(107, 48) | E3[45]#0 (105, 48)-(107, 48) | sep 75 5 6 | skipped: adjacent
+meet D3[29]#14 (89, 55)-(96, 48) | E3[44]#0 (80, 48)-(105, 48) at (96.0, 48.0) | - | not in a common face
+meet D3[29]#14 (89, 55)-(96, 48) | E3"31[53]#0 (82, 50)-(103, 50) at (94.0, 50.0) | sep 75 2 7 | pair written, chosen c3 margin -3
+clash build-rel/dumps7/anyhub-k3/T3/round-5.json: overlaps 3, meets 2, by reason: adjacent 1, no face 3, written 1
