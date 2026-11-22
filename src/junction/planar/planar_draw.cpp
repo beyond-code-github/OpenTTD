@@ -1260,7 +1260,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							best_to = forced_to;
 							best_margin = forced_margin;
 						}
-						if (best_margin < options.sides_free_below) {
+						if (best_margin < options.sides_free_below || std::ranges::find(options.free_sides, fmt::format("sep {} {} {}", f.face, i, j)) != options.free_sides.end()) {
 							result.sides_free++;
 							Terms bs;
 							for (const Axis &axis : axes) {
@@ -1641,6 +1641,15 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 			return out;
 		}
 		if (!prune_all()) return out;
+	}
+
+	if (options.free_stretched_sides) {
+		std::vector<std::string> tags;
+		for (const auto &[row, slack] : last.stretched) {
+			if (row.starts_with("sep ")) tags.push_back(row);
+		}
+		PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &last.lengths, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_integer = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .continuous = {"point", "axis", "diagonal", "param", "cross"}, .pins = options.pins, .sides_from = &last.points, .free_sides = tags});
+		log_round("free sides", 1, r);
 	}
 
 	/* Final: the integer drawing on the sides the last round proved. */

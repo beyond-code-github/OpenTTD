@@ -91,6 +91,7 @@ struct PlanarDrawOptions {
 	bool elastic_integer = false; ///< With elastic (a measurement): the variables keep their integrality; only the slacks are continuous.
 	const PlanarDrawPins *pins = nullptr; ///< Answer-key pins (D393): every pinned point is within window of its position plus one common shift (two free integer variables).
 	const std::vector<std::vector<std::array<int, 2>>> *sides_from = nullptr; ///< With pairwise: a drawing of this variant (`PlanarDrawResult::points`); each separated pair takes the axis side these points keep best as a plain row, with no binary and no `sepdir` (an LP when every other variable is continuous).
+	std::vector<std::string> free_sides; ///< A probe: with sides_from, these sep pair tags ("sep <face> <i> <j>") get the binary side choice instead of a fixed side.
 	double sides_free_below = -1e30; ///< With sides_from: a pair whose best candidate's margin on the reference is below this keeps its binaries (all candidates, one sepdir row) instead of a fixed direction.
 	int sides_pad = 0; ///< With pairwise: every separation's spacing is raised by this many half tiles (a direction-finding round, D418; never a rule).
 	const std::vector<std::vector<double>> *flex_zero_from = nullptr; ///< A measurement (D418): a flex insert whose length in this reference (`PlanarDrawResult::lengths`) is below flex_zero_below is held at 0.
@@ -183,6 +184,7 @@ struct PlanarDrawPipelineOptions {
 	bool final_tidy = true; ///< The integer final minimises the sum of piece lengths; false is feasibility only (a measurement).
 	bool final_grid = false; ///< A measurement (D382 probe): the integer final writes the grid rows (PlanarDrawOptions::grid).
 	bool final_soft_sep = false; ///< A measurement: the integer final's sep rows get slack (cost 1, piece lengths cost 0.01), every variable stays integer; the result lists the rows that stretched.
+	bool free_stretched_sides = false; ///< A probe: after the last LP round, one round with the stretched sep pairs' sides free (binaries), lengths continuous; logged as "free sides".
 	bool final_soft_all = false; ///< A measurement: every row of the integer final except piece, box, pin, fix and grid rows gets slack (cost 1, piece lengths cost 0), every variable stays integer; the result lists the rows that stretched.
 	bool final_start = false; ///< A measurement: the integer final starts from the last round's whole lengths (a partial MIP start, JunctionMilp::SetStart).
 	bool node_gaps = true; ///< On by default (D424). Node gaps in every stage after the seed, each stage's reference its input drawing (PlanarDrawOptions::node_gaps).

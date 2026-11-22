@@ -349,6 +349,7 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		/* Measurement aids: PLANAR_PROBE_SLACK_PRICE (commit on) and PLANAR_PROBE_DISCOVERY_SLACK_PRICE (seed and discovery). */
 		if (const char *s = std::getenv("PLANAR_PROBE_SLACK_PRICE"); s != nullptr) o.slack_price = std::atof(s);
 		if (const char *s = std::getenv("PLANAR_PROBE_DISCOVERY_SLACK_PRICE"); s != nullptr) o.discovery_slack_price = std::atof(s);
+		o.free_stretched_sides = std::getenv("PLANAR_PROBE_FREE_SIDES") != nullptr;
 		const auto start = std::chrono::steady_clock::now();
 		const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
 		const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
@@ -427,6 +428,14 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 				}
 				if (beside > 30) WARN(fmt::format("{} beside tracks: {}, first 30 shown", name, beside));
 			}
+		if (o.free_stretched_sides && r.rounds.size() >= 2) {
+			/* log_round pushes the free-sides round just before the final. */
+			const PlanarDrawResult &fr = r.rounds[r.rounds.size() - 2];
+			size_t freed = 0;
+			for (const auto &[tag, amount] : r.last_round.stretched) freed += tag.starts_with("sep ") ? 1 : 0;
+			WARN(fmt::format("{} free sides: status {}, slack {:.3f}, sep tags freed {}, stretched rows {}", name, fr.status, fr.slack, freed, fr.stretched.size()));
+			for (const auto &[tag, amount] : fr.stretched) WARN(fmt::format("{} free sides stretched {} {:.3f}", name, tag, amount));
+		}
 		WARN(fmt::format("{} wall {:.1f} s", name, wall));
 	}
 }
