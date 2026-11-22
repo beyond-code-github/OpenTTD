@@ -14,6 +14,7 @@
 #include "../../../junction/junction_spec.h"
 #include "../../../junction/planar/planar_draw.h"
 #include "../../../junction/planar/planar_model.h"
+#include "../../../junction/planar/planar_plan.h"
 #include "../../../junction/planar/planar_shape_layer.h"
 #include "../../../junction/planar/planar_structure.h"
 #include "../../../junction/planar/planar_topology.h"
@@ -335,6 +336,107 @@ TEST_CASE("planar draw: the pipeline draws the one-lane T with optional flex (D4
 			INFO("flex middle " << t << " " << m);
 			CHECK(r.final.lengths[t][m] == 0);
 		}
+	}
+}
+
+TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
+{
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : hubs) {
+		const DrawCase c = ShapeFirst(text, 1);
+		PlanarDrawPipelineOptions o;
+		o.final_seconds = 15;
+		/* Measurement aids: PLANAR_PROBE_SLACK_PRICE (commit on) and PLANAR_PROBE_DISCOVERY_SLACK_PRICE (seed and discovery). */
+		if (const char *s = std::getenv("PLANAR_PROBE_SLACK_PRICE"); s != nullptr) o.slack_price = std::atof(s);
+		if (const char *s = std::getenv("PLANAR_PROBE_DISCOVERY_SLACK_PRICE"); s != nullptr) o.discovery_slack_price = std::atof(s);
+		o.free_stretched_sides = std::getenv("PLANAR_PROBE_FREE_SIDES") != nullptr;
+		const auto start = std::chrono::steady_clock::now();
+		const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
+		const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+		for (const std::string &line : r.log) WARN(fmt::format("{} {}", name, line));
+		size_t pruned = 0, added = 0;
+		pruned = r.pruned;
+		added = r.added;
+		WARN(fmt::format("{} committed {} pruned {} added {} stopped '{}'", name, r.committed_count, pruned, added, r.stopped));
+		WARN(fmt::format("{} final {} ms {}", name, r.final.status, r.final.ms));
+		for (const std::string &tag : r.final.conflict) WARN(name + " conflict " + tag);
+		std::map<std::string, std::pair<size_t, double>> families;
+		for (const auto &[tag, slack] : r.last_round.stretched) {
+			auto &f = families[tag.substr(0, tag.find(' '))];
+			f.first++;
+			f.second += slack;
+		}
+		WARN(fmt::format("{} last round slack {:.3f}, stretched {}", name, r.last_round.slack, r.last_round.stretched.size()));
+		for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: count {}, sum {:.3f}", name, family, f.first, f.second));
+			{
+				const PlanarTrackMap &map = c.v.structure.map;
+				const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(c.v);
+				const auto piece_text = [&](uint32_t t, uint32_t piece) {
+					if (t >= r.last_round.points.size() || piece + 1 >= r.last_round.points[t].size()) return std::string("?");
+					const auto &a = r.last_round.points[t][piece];
+					const auto &b = r.last_round.points[t][piece + 1];
+					return fmt::format("{}#{} h{} ({},{})-({},{})", map.tracks[t].name, piece, ((c.v.tracks[t].pieces[piece] % 8) + 8) % 8, a[0], a[1], b[0], b[1]);
+				};
+				size_t sep_rows = 0;
+				for (const auto &[tag, amount] : r.last_round.stretched) {
+					std::istringstream words(tag);
+					std::string family;
+					uint32_t face = 0, i = 0, j = 0;
+					words >> family;
+					if (family != "sep" || !(words >> face >> i >> j)) continue;
+					if (++sep_rows > 30) continue;
+					for (const PlanarFaceWalls &f : face_walls) {
+						if (f.face != face || i >= f.walls.size() || j >= f.walls.size()) continue;
+						const PlanarCellWall &a = f.walls[i];
+						const PlanarCellWall &b = f.walls[j];
+						WARN(fmt::format("{} decode {} {:.2f}: {} | {}", name, tag, amount, a.track < c.v.tracks.size() ? piece_text(a.track, a.piece) : std::string("box"), b.track < c.v.tracks.size() ? piece_text(b.track, b.piece) : std::string("box")));
+					}
+				}
+				if (sep_rows > 30) WARN(fmt::format("{} decode: {} sep rows, first 30 shown", name, sep_rows));
+				if (name != "T2") {
+					for (const auto &[tag, amount] : r.last_round.stretched) {
+						if (!tag.starts_with("sep ")) continue;
+						for (size_t n = 0; n < r.rounds.size(); n++) {
+							std::string side = "none";
+							for (const auto &[t, text] : r.rounds[n].sep_sides) {
+								if (t == tag) side = text;
+							}
+							double amt = 0;
+							for (const auto &[t, x] : r.rounds[n].stretched) {
+								if (t == tag) amt = x;
+							}
+							const std::string &line = n < r.log.size() ? r.log[n] : std::string("?");
+							WARN(fmt::format("{} {} round {} ({}): side {}, stretched {:.3f}", name, tag, n, line.substr(0, line.find(':')), side, amt));
+						}
+					}
+				}
+				const auto list_of = [](const auto &xs) {
+					std::string s;
+					for (const auto x : xs) s += fmt::format(" {}", x);
+					return s;
+				};
+				size_t beside = 0;
+				for (uint32_t b = 0; b < map.tracks.size(); b++) {
+					if (map.part_of[b] != UINT32_MAX) continue;
+					if (++beside > 30) continue;
+					std::vector<uint32_t> chain;
+					const bool ok = ParentChain(map, c.v.structure.sites, b, chain);
+					const auto &ln = map.expanded.lines[b];
+					std::string text = fmt::format("{} beside {}: from {} {} to {} {}; pieces{}; flex{}; steps{}; chain{}", name, map.tracks[b].name, ln.from.port ? "port" : "node", ln.from.index, ln.to.port ? "port" : "node", ln.to.index, list_of(c.v.tracks[b].pieces), list_of(c.v.tracks[b].flex), list_of(c.v.tracks[b].steps), ok ? "" : " NONE");
+					for (const uint32_t t : chain) text += fmt::format(" {}[pieces{}; flex{}; steps{}]", map.tracks[t].name, list_of(c.v.tracks[t].pieces), list_of(c.v.tracks[t].flex), list_of(c.v.tracks[t].steps));
+					WARN(text);
+				}
+				if (beside > 30) WARN(fmt::format("{} beside tracks: {}, first 30 shown", name, beside));
+			}
+		if (o.free_stretched_sides && r.rounds.size() >= 2) {
+			/* log_round pushes the free-sides round just before the final. */
+			const PlanarDrawResult &fr = r.rounds[r.rounds.size() - 2];
+			size_t freed = 0;
+			for (const auto &[tag, amount] : r.last_round.stretched) freed += tag.starts_with("sep ") ? 1 : 0;
+			WARN(fmt::format("{} free sides: status {}, slack {:.3f}, sep tags freed {}, stretched rows {}", name, fr.status, fr.slack, freed, fr.stretched.size()));
+			for (const auto &[tag, amount] : fr.stretched) WARN(fmt::format("{} free sides stretched {} {:.3f}", name, tag, amount));
+		}
+		WARN(fmt::format("{} wall {:.1f} s", name, wall));
 	}
 }
 
@@ -2937,7 +3039,7 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	const auto start = std::chrono::steady_clock::now();
 	/* PLANAR_PROBE_FINAL_START (a measurement aid): the final starts from the last round's whole lengths.
 	 * PLANAR_PROBE_FINAL_GRID: the final writes the grid rows (D382 probe).
-	 * PLANAR_PROBE_SLACK_PRICE: the objective cost of each elastic slack per half tile (default 1). PLANAR_PROBE_FINAL_SOFT_SEP: the final's sep rows get slack (soft-sep diagnostic); PLANAR_PROBE_FINAL_SOFT_ALL: every row but piece, box, pin, fix and grid gets slack (feasibility repair); PLANAR_PROBE_FINAL_SECONDS: the final's time limit; PLANAR_PROBE_BOX_PRICE and PLANAR_PROBE_IRL1: the box price and the insert price; PLANAR_PROBE_PRUNES: at most this many prunes; PLANAR_PROBE_ADDITIONS: the one-time additions pass; PLANAR_PROBE_NO_NODE_GAPS: no node gaps (on by default, D424). */
+	 * PLANAR_PROBE_SLACK_PRICE: the objective cost of each elastic slack per half tile from the commit on (default 1); PLANAR_PROBE_DISCOVERY_SLACK_PRICE: the same for the seed and discovery rounds (default 1). PLANAR_PROBE_FINAL_SOFT_SEP: the final's sep rows get slack (soft-sep diagnostic); PLANAR_PROBE_FINAL_SOFT_ALL: every row but piece, box, pin, fix and grid gets slack (feasibility repair); PLANAR_PROBE_FINAL_SECONDS: the final's time limit; PLANAR_PROBE_BOX_PRICE and PLANAR_PROBE_IRL1: the box price and the insert price; PLANAR_PROBE_PRUNES: at most this many prunes; PLANAR_PROBE_ADDITIONS: the one-time additions pass; PLANAR_PROBE_NO_NODE_GAPS: no node gaps (on by default, D424). */
 	PlanarDrawPipelineOptions o;
 	o.final_start = std::getenv("PLANAR_PROBE_FINAL_START") != nullptr;
 	o.final_tidy = std::getenv("PLANAR_PROBE_FINAL_FEASIBILITY") == nullptr;
@@ -2950,6 +3052,7 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	if (const char *s = std::getenv("PLANAR_PROBE_IRL1"); s != nullptr) o.irl1 = std::atof(s);
 	if (const char *s = std::getenv("PLANAR_PROBE_PRUNES"); s != nullptr) std::from_chars(s, s + std::strlen(s), o.prunes);
 	if (const char *s = std::getenv("PLANAR_PROBE_SLACK_PRICE"); s != nullptr) o.slack_price = std::atof(s);
+	if (const char *s = std::getenv("PLANAR_PROBE_DISCOVERY_SLACK_PRICE"); s != nullptr) o.discovery_slack_price = std::atof(s);
 	o.additions = std::getenv("PLANAR_PROBE_ADDITIONS") != nullptr;
 	const PlanarDrawPipelineResult r = DrawPlanarPipeline(flex_c, o);
 	for (const std::string &line : r.log) WARN(line);

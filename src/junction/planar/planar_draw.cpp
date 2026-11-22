@@ -538,13 +538,21 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			std::vector<int> chain_pieces;
 			for (const uint32_t t : beside.chain) {
 				if (!v.tracks[t].flex.empty() || !v.tracks[t].steps.empty()) return unsupported("corridor: parent chain track " + map.tracks[t].name + " of " + name + " has flex or steps");
-				chain_pieces.insert(chain_pieces.end(), v.tracks[t].pieces.begin(), v.tracks[t].pieces.end());
+				/* A node's piece once (H8): a join at equal headings is one piece, as the chain's points drop the node point there. */
+				const std::vector<int> &tp = v.tracks[t].pieces;
+				const bool merge = !chain_pieces.empty() && !tp.empty() && ((chain_pieces.back() - tp.front()) % 8 + 8) % 8 == 0;
+				chain_pieces.insert(chain_pieces.end(), tp.begin() + (merge ? 1 : 0), tp.end());
 			}
 			if (!v.tracks[b].flex.empty() || !v.tracks[b].steps.empty()) return unsupported("corridor: " + name + " has flex or steps");
 			const std::vector<int> &pieces = v.tracks[b].pieces;
 			bool same = pieces.size() == chain_pieces.size();
 			for (size_t i = 0; same && i < pieces.size(); i++) same = (((pieces[i] - chain_pieces[i]) % 8) + 8) % 8 == 0;
-			if (!same) return unsupported("corridor: " + name + " does not follow its parent chain's pieces");
+			if (!same) {
+				std::string own_text, chain_text;
+				for (const int h : pieces) own_text += fmt::format("{}{}", own_text.empty() ? "" : " ", h);
+				for (const int h : chain_pieces) chain_text += fmt::format("{}{}", chain_text.empty() ? "" : " ", h);
+				return unsupported("corridor: " + name + " does not follow its parent chain's pieces: own [" + own_text + "] chain [" + chain_text + "]");
+			}
 			beside.side = map.Side(b, 0, beside.chain[0], 0);
 			if (beside.side == 0) return unsupported("corridor: " + name + " has no side to its parent chain");
 			beside.opening = PlanarBesideOpening(pieces.front(), beside.side);
@@ -584,7 +592,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	for (const Beside &beside : besides) {
 		const uint32_t b = beside.track;
 		std::vector<std::array<uint32_t, 2>> chain_point;
-		for (const uint32_t t : beside.chain) chain_point.insert(chain_point.end(), point[t].begin() + (chain_point.empty() ? 0 : 1), point[t].end());
+		std::vector<int> joined;
+		for (const uint32_t t : beside.chain) {
+			const std::vector<int> &tp = v.tracks[t].pieces;
+			if (!chain_point.empty() && !joined.empty() && !tp.empty() && ((joined.back() - tp.front()) % 8 + 8) % 8 == 0) chain_point.pop_back();
+			chain_point.insert(chain_point.end(), point[t].begin() + (chain_point.empty() ? 0 : 1), point[t].end());
+			joined.insert(joined.end(), tp.begin(), tp.end());
+		}
 		const std::vector<int> &pieces = v.tracks[b].pieces;
 		for (size_t k = 1; k < pieces.size(); k++) {
 			std::set<int> headings = {((pieces[k - 1] % 8) + 8) % 8, ((pieces[k] % 8) + 8) % 8};
@@ -1091,27 +1105,38 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					if (is_span(w[i]) || is_span(w[j])) continue;
 					if (w[i].track == w[j].track && w[i].piece == w[j].piece) continue;
 					if (w[i].piece >= v.tracks[w[i].track].pieces.size() || w[j].piece >= v.tracks[w[j].track].pieces.size()) return unsupported(fmt::format("face {} names a wall the variant lacks", f.face));
-					if (w[i].track == w[j].track) {
-						const uint32_t lo = std::min(w[i].piece, w[j].piece);
-						const uint32_t hi = std::max(w[i].piece, w[j].piece);
-						bool all_zero = true;
-						for (uint32_t k = lo + 1; k < hi; k++) all_zero = all_zero && may_zero[w[i].track][k];
-						if (all_zero) continue;
-					}
-					/* Two tracks meeting at a node, one ending there and the next starting there (every in-track of a 1 -> 2 or 2 -> 1 node continues into every out-track along a route): a wall at the end of one and a wall at the start of the other with only may-be-zero pieces between them are consecutive travel, as on one track. */
-					const auto continues = [&](const PlanarCellWall &a, const PlanarCellWall &b) {
-						const auto &to = map.expanded.lines[a.track].to;
-						const auto &from = map.expanded.lines[b.track].from;
-						if (to.port || from.port || to.index != from.index) return false;
-						for (uint32_t k = a.piece + 1; k < may_zero[a.track].size(); k++) {
-							if (!may_zero[a.track][k]) return false;
+						/* Zero contraction: every may-be-zero piece is a point, so a wall touches the pieces of its track from lo - 1 to hi + 1, the nodes its track reaches through such pieces, and the crossings on pieces from lo to hi; two walls that touch are kept apart by no row. */
+						struct Touch {
+							uint32_t lo, hi;
+							std::vector<uint32_t> nodes;
+							std::vector<size_t> events;
+						};
+						const auto touch = [&](const PlanarCellWall &wall) {
+							Touch r{wall.piece, wall.piece, {}, {}};
+							const size_t last = v.tracks[wall.track].pieces.size() - 1;
+							while (r.lo > 0 && may_zero[wall.track][r.lo - 1]) r.lo--;
+							while (r.hi < last && may_zero[wall.track][r.hi + 1]) r.hi++;
+							const auto &line = map.expanded.lines[wall.track];
+							if (r.lo == 0 && !line.from.port) r.nodes.push_back(line.from.index);
+							if (r.hi == last && !line.to.port) r.nodes.push_back(line.to.index);
+							for (size_t k = 0; k < std::min(map.events[wall.track].size(), v.tracks[wall.track].event_piece.size()); k++) {
+								const uint32_t e = v.tracks[wall.track].event_piece[k];
+								if (e >= r.lo && e <= r.hi) r.events.push_back(k);
+							}
+							return r;
+						};
+						{
+							const Touch ti = touch(w[i]), tj = touch(w[j]);
+							bool touching = false;
+							if (w[i].track == w[j].track) touching = w[j].piece + 1 >= ti.lo && w[j].piece <= ti.hi + 1;
+							for (const uint32_t a : ti.nodes) {
+								for (const uint32_t b : tj.nodes) touching = touching || (a == b);
+							}
+							for (const size_t a : ti.events) {
+								for (const size_t b : tj.events) touching = touching || (map.events[w[i].track][a] == map.events[w[j].track][b]);
+							}
+							if (touching) continue;
 						}
-						for (uint32_t k = 0; k < b.piece; k++) {
-							if (!may_zero[b.track][k]) return false;
-						}
-						return true;
-					};
-					if (w[i].track != w[j].track && (continues(w[i], w[j]) || continues(w[j], w[i]))) continue;
 					const std::array<std::array<uint32_t, 2>, 2> pi ={point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};
 					const std::array<std::array<uint32_t, 2>, 2> pj = {point[w[j].track][w[j].piece], point[w[j].track][w[j].piece + 1]};
 					bool shared = false;
@@ -1119,14 +1144,6 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						for (const auto &q : pj) shared = shared || find(p[0]) == find(q[0]);
 					}
 					if (shared) continue;
-					bool crossing = false;
-					for (size_t ki = 0; ki < std::min(map.events[w[i].track].size(), v.tracks[w[i].track].event_piece.size()) && !crossing; ki++) {
-						if (v.tracks[w[i].track].event_piece[ki] != w[i].piece) continue;
-						for (size_t kj = 0; kj < std::min(map.events[w[j].track].size(), v.tracks[w[j].track].event_piece.size()); kj++) {
-							if (v.tracks[w[j].track].event_piece[kj] == w[j].piece && map.events[w[i].track][ki] == map.events[w[j].track][kj]) crossing = true;
-						}
-					}
-					if (crossing) continue;
 					if (options.pairwise_flex_only) {
 						const auto in_flex_group = [&](const PlanarCellWall &wall) {
 							for (const uint32_t m : v.tracks[wall.track].flex) {
@@ -1243,7 +1260,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							best_to = forced_to;
 							best_margin = forced_margin;
 						}
-						if (best_margin < options.sides_free_below) {
+						if (best_margin < options.sides_free_below || std::ranges::find(options.free_sides, fmt::format("sep {} {} {}", f.face, i, j)) != options.free_sides.end()) {
 							result.sides_free++;
 							Terms bs;
 							for (const Axis &axis : axes) {
@@ -1277,6 +1294,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						};
 						std::vector<std::array<uint32_t, 2>> from_ends(best_from->begin(), best_from->end());
 						std::vector<std::array<uint32_t, 2>> to_ends(best_to->begin(), best_to->end());
+						result.sep_sides.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), fmt::format("s ({},{}) spacing {} from {}", best_axis->s[0], best_axis->s[1], best_axis->spacing, best_from == &pi ? "i" : "j"));
 						if (options.sep_extremal) {
 							from_ends = {(*best_from)[along(best_from) > 0 ? 1 : 0]};
 							to_ends = {(*best_to)[along(best_to) > 0 ? 0 : 1]};
@@ -1466,6 +1484,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 
 	/* One log line: the stage, the round, the status, the slacks, the drawing's box and its total length. */
 	const auto log_round = [&](const std::string &stage, int k, const PlanarDrawResult &r) {
+		out.rounds.push_back(r);
 		double curve_slack = 0;
 		for (const auto &[row, slack] : r.stretched) curve_slack += row.starts_with("curve") ? slack : 0;
 		long total = 0;
@@ -1481,7 +1500,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	};
 
 	/* The seed. */
-	PlanarDrawResult previous = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .corridor = options.corridor, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .pins = options.pins});
+	PlanarDrawResult previous = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .corridor = options.corridor, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.discovery_slack_price, .pins = options.pins});
 	out.final = previous;
 	if (!previous.feasible) {
 		out.stopped = "seed";
@@ -1494,7 +1513,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	PlanarDrawResult last = previous;
 	for (int k = 1; k <= options.discovery_rounds; k++) {
 		const bool previous_zero = k > 1 && previous.slack < 1e-6;
-		PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &previous.lengths, .corridor = options.corridor, .flex_weights = k == 1 ? nullptr : &weights, .box_price = options.box_price, .flex_price = k == 1 ? options.first_flex_price : 0, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep"}, .pins = options.pins, .sides_from = &previous.points});
+		PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &previous.lengths, .corridor = options.corridor, .flex_weights = k == 1 ? nullptr : &weights, .box_price = options.box_price, .flex_price = k == 1 ? options.first_flex_price : 0, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.discovery_slack_price, .elastic_families = {"sep"}, .pins = options.pins, .sides_from = &previous.points});
 		log_round("discovery", k, r);
 		if (r.status != "Optimal") {
 			out.final = r;
@@ -1550,6 +1569,9 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	const auto prune_all = [&]() -> bool {
 	for (int p = 1; p <= options.prunes; p++) {
 		size_t held = 0;
+		const auto before_prune = out.committed;
+		const auto last_before_prune = last;
+		const auto last_input_before_prune = last_input;
 		for (const auto &[row, slack] : last.stretched) {
 			if (!row.starts_with("curve flex ")) continue;
 			std::istringstream rs(row.substr(11));
@@ -1566,8 +1588,13 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		out.pruned += held;
 		const PlanarDrawResult committed_last = last;
 		if (!commit_rounds(committed_last, p == 1 ? "prune" : fmt::format("prune{}", p))) {
-			out.stopped = "prune";
-			return false;
+			/* A prune whose rounds are not Optimal is undone: its held inserts come back and the pipeline goes on from the drawing before it. */
+			out.committed = before_prune;
+			out.pruned -= held;
+			last = last_before_prune;
+			last_input = last_input_before_prune;
+			out.log.push_back(fmt::format("prune {} undone: {} held inserts restored", p, held));
+			break;
 		}
 	}
 	return true;
@@ -1614,6 +1641,15 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 			return out;
 		}
 		if (!prune_all()) return out;
+	}
+
+	if (options.free_stretched_sides) {
+		std::vector<std::string> tags;
+		for (const auto &[row, slack] : last.stretched) {
+			if (row.starts_with("sep ")) tags.push_back(row);
+		}
+		PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &last.lengths, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_integer = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .continuous = {"point", "axis", "diagonal", "param", "cross"}, .pins = options.pins, .sides_from = &last.points, .free_sides = tags});
+		log_round("free sides", 1, r);
 	}
 
 	/* Final: the integer drawing on the sides the last round proved. */
