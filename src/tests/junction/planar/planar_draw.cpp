@@ -2324,6 +2324,7 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 	}
 	std::vector<std::vector<std::array<int, 2>>> vref(nt);
 	std::map<std::string, size_t> reasons;
+	std::map<size_t, std::string> track_reason;
 	size_t fixed = 0;
 	for (size_t t = 0; t < nt; t++) {
 		if (map.tracks[t].kind != PlanarTrack::Kind::Line || !lengths.contains(map.tracks[t].name)) {
@@ -2332,12 +2333,14 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 		}
 		if (map.tracks[t].name == "L89") {
 			reasons["left unfixed (V's step has no flex pair)"]++;
+			track_reason[t] = "flex";
 			continue;
 		}
 		const std::vector<int> &l = lengths[map.tracks[t].name];
 		const std::vector<int> &pieces = shaped.tracks[t].pieces;
 		if (l.size() != pieces.size()) {
 			reasons["piece count differs"]++;
+			track_reason[t] = "piece count";
 			continue;
 		}
 		const PlanarDrawPins::Pin *start = nullptr, *end = nullptr;
@@ -2357,6 +2360,7 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 		if (end != nullptr && points.back() != end->at) {
 			WARN(fmt::format("end mismatch {}: got ({}, {}), pin ({}, {})", map.tracks[t].name, points.back()[0], points.back()[1], end->at[0], end->at[1]));
 			reasons["end mismatch"]++;
+			track_reason[t] = "end mismatch";
 			continue;
 		}
 		vref[t] = points;
@@ -2619,6 +2623,147 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 			}
 			for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: rows {}, slack {:.3f}", label, family, f.first, f.second));
 			WarnSepWalls(shaped, r, label, 20);
+		}
+	}
+	/* A read-out (PLANAR_PROBE_VRES): the allfaces W1 evaluation with the sides from V's own points, window 1 and 0, and every stretched row decoded against V's coordinates. */
+	if (std::getenv("PLANAR_PROBE_VRES") != nullptr) {
+		std::vector<std::vector<std::array<int, 2>>> hybrid = vref;
+		std::string filled;
+		for (size_t t = 0; t < nt; t++) {
+			if (!vref[t].empty()) continue;
+			hybrid[t] = full.points[t];
+			filled += fmt::format(" {} ({})", map.tracks[t].name, track_reason.contains(t) ? track_reason[t] : std::string("not a line"));
+		}
+		WARN(fmt::format("vres sides V+full: tracks filled from full.points:{}", filled));
+		const PlanarDrawOptions base_opts = {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_families = {"sep", "clear", "deck", "end", "node", "cross"}, .pins = &p8, .sides_from = &hybrid, .fix_points = &vref, .fix_window = 1};
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, base_opts);
+		const std::string label = "vres sides V+full";
+		WARN(fmt::format("vres sides V+full: status {}, total slack {:.3f}, short_sides {}", r.status, r.slack, r.short_sides));
+		PlanarDrawOptions w0 = base_opts;
+		w0.fix_window = 0;
+		const PlanarDrawResult r0 = CheckPlanarDrawable(shaped, 60.0, w0);
+		WARN(fmt::format("vres sides V+full window 0: status {}, total slack {:.3f}", r0.status, r0.slack));
+		if (r0.status != "Optimal") {
+			for (size_t i = 0; i < std::min<size_t>(40, r0.conflict.size()); i++) WARN(fmt::format("vres sides V+full window 0 conflict {}", r0.conflict[i]));
+		}
+		if (r.status == "Optimal") {
+			std::map<std::string, std::pair<size_t, double>> families;
+			for (const auto &[tag, slack] : r.stretched) {
+				auto &f = families[tag.substr(0, tag.find(' '))];
+				f.first++;
+				f.second += slack;
+			}
+			for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: rows {}, slack {:.3f}", label, family, f.first, f.second));
+			const std::vector<PlanarFaceWalls> fw = PlanarShapeFaceWalls(shaped);
+			const auto pt = [](const std::array<int, 2> &p) { return fmt::format("({},{})", p[0], p[1]); };
+			const auto vpts = [&](size_t t, size_t a, size_t b) {
+				std::string s;
+				const bool notv = vref[t].empty();
+				const auto &src = notv ? full.points[t] : vref[t];
+				for (size_t k = a; k <= b; k++) s += (k < src.size() ? pt(src[k]) : std::string("(none)")) + " ";
+				return s + (notv ? "(not V) " : "");
+			};
+			const auto rpts = [&](size_t t, size_t a, size_t b) {
+				std::string s;
+				if (t >= r.points.size()) return s;
+				for (size_t k = a; k <= b; k++) s += (k < r.points[t].size() ? pt(r.points[t][k]) : std::string("(none)")) + " ";
+				return s;
+			};
+			const auto wall_name = [&](const PlanarCellWall &w) { if (w.track >= nt) return fmt::format("dummy#{} h{}", w.piece, w.heading); return fmt::format("{}#{} h{}", map.tracks[w.track].name, w.piece, w.heading); };
+			const auto wall_len = [&](const PlanarCellWall &w) {
+				if (w.track >= nt) return -1;
+				const auto &src = hybrid[w.track];
+				if (w.piece + 1 >= src.size()) return -1;
+				const auto &a = src[w.piece], &b = src[w.piece + 1];
+				return std::max(std::abs(a[0] - b[0]), std::abs(a[1] - b[1]));
+			};
+			/* Every candidate's margin on V, for all of the largest sep tags in one run. */
+			std::vector<std::string> sep_tags;
+			for (const auto &[tag, slack] : r.stretched) {
+				if (tag.starts_with("sep ") && sep_tags.size() < 30) sep_tags.push_back(tag);
+			}
+			PlanarDrawOptions mo = base_opts;
+			mo.margin_tags = sep_tags;
+			const PlanarDrawResult rm = CheckPlanarDrawable(shaped, 60.0, mo);
+			std::map<std::string, std::string> margins(rm.sep_margins.begin(), rm.sep_margins.end());
+			const auto ends_of = [&](size_t t) { return std::pair{map.expanded.lines[t].from, map.expanded.lines[t].to}; };
+			const auto same_end = [](const PlanarEnd &x, const PlanarEnd &y) { return x.port == y.port && x.index == y.index; };
+			size_t shown = 0;
+			for (const auto &[tag, slack] : r.stretched) {
+				if (shown >= 30) break;
+				shown++;
+				if (tag.starts_with("sep ")) {
+					std::istringstream in(tag.substr(4));
+					uint32_t face = 0;
+					size_t a = 0, b = 0;
+					in >> face >> a >> b;
+					for (const PlanarFaceWalls &f : fw) {
+						if (f.face != face || a >= f.walls.size() || b >= f.walls.size()) continue;
+						if (f.walls[a].track >= nt || f.walls[b].track >= nt) {
+							WARN(fmt::format("vres row {} ({:.3f}): a wall is a dummy, not decoded", tag, slack));
+							continue;
+						}
+						const PlanarCellWall &wi = f.walls[a], &wj = f.walls[b];
+						WARN(fmt::format("vres row {} ({:.3f}): wall i {} V {}| run {}; wall j {} V {}| run {}", tag, slack, wall_name(wi), vpts(wi.track, wi.piece, wi.piece + 1), rpts(wi.track, wi.piece, wi.piece + 1), wall_name(wj), vpts(wj.track, wj.piece, wj.piece + 1), rpts(wj.track, wj.piece, wj.piece + 1)));
+						WARN(fmt::format("vres row {} margins: {}", tag, margins.contains(tag) ? margins[tag] : std::string("(none)")));
+						const size_t n = f.walls.size();
+						for (const auto &[from, to, name] : {std::tuple{a, b, "i to j"}, std::tuple{b, a, "j to i"}}) {
+							std::string walk;
+							for (size_t k = (from + 1) % n; k != to; k = (k + 1) % n) walk += fmt::format(" [{} len {}]", wall_name(f.walls[k]), wall_len(f.walls[k]));
+							WARN(fmt::format("vres row {} walk {}:{}", tag, name, walk.empty() ? " (adjacent)" : walk));
+						}
+						const auto &hi = hybrid[wi.track], &hj = hybrid[wj.track];
+						const bool vshare = wi.piece + 1 < hi.size() && wj.piece + 1 < hj.size() && (hi[wi.piece] == hj[wj.piece] || hi[wi.piece] == hj[wj.piece + 1] || hi[wi.piece + 1] == hj[wj.piece] || hi[wi.piece + 1] == hj[wj.piece + 1]);
+						bool node_meet = false;
+						if (wi.track < map.expanded.lines.size() && wj.track < map.expanded.lines.size() && wi.track != wj.track) {
+							const auto [fi, ti] = ends_of(wi.track);
+							const auto [fj, tj] = ends_of(wj.track);
+							for (const PlanarEnd *x : {&fi, &ti}) {
+								for (const PlanarEnd *y : {&fj, &tj}) node_meet = node_meet || (!x->port && !y->port && same_end(*x, *y));
+							}
+						}
+						WARN(fmt::format("vres row {} shares V endpoint {}, tracks meet at a node {}, pieces {} {}", tag, vshare ? "yes" : "no", node_meet ? "yes" : "no", wi.track < shaped.tracks.size() ? shaped.tracks[wi.track].pieces.size() : 0, wj.track < shaped.tracks.size() ? shaped.tracks[wj.track].pieces.size() : 0));
+					}
+				} else if (tag.starts_with("node ")) {
+					uint32_t n = UINT32_MAX;
+					std::from_chars(tag.data() + 5, tag.data() + tag.size(), n);
+					std::string text;
+					if (n < map.expanded.nodes.size()) {
+						for (const uint32_t line : map.expanded.nodes[n].in) {
+							const size_t np = hybrid[line].size();
+							text += fmt::format(" in {} V {}", map.tracks[line].name, np >= 2 ? vpts(line, np - 2, np - 1) : std::string("(none)"));
+						}
+						for (const uint32_t line : map.expanded.nodes[n].out) text += fmt::format(" out {} V {}", map.tracks[line].name, hybrid[line].size() >= 2 ? vpts(line, 0, 1) : std::string("(none)"));
+					} else {
+						text = " (tag not decoded)";
+					}
+					WARN(fmt::format("vres row {} ({:.3f}):{}", tag, slack, text));
+				} else if (tag.starts_with("cross ")) {
+					uint32_t n = UINT32_MAX;
+					std::from_chars(tag.data() + 6, tag.data() + tag.size(), n);
+					std::string text = " (tag not decoded)";
+					if (n < map.crossings.size()) {
+						text.clear();
+						for (const uint32_t t : {map.crossings[n].a, map.crossings[n].b}) text += fmt::format(" {} V all points {}", map.tracks[t].name, vpts(t, 0, hybrid[t].empty() ? 0 : hybrid[t].size() - 1));
+					}
+					WARN(fmt::format("vres row {} ({:.3f}):{}", tag, slack, text));
+				} else if (tag.starts_with("end ") || tag.starts_with("deck ")) {
+					uint32_t n = UINT32_MAX;
+					std::from_chars(tag.data() + tag.find(' ') + 1, tag.data() + tag.size(), n);
+					std::string text = " (tag not decoded)";
+					if (n < shaped.structure.structures.size()) {
+						const PlanarStructure &st = shaped.structure.structures[n];
+						text = fmt::format(" separator {} V all points {}", map.tracks[st.separator].name, vpts(st.separator, 0, hybrid[st.separator].empty() ? 0 : hybrid[st.separator].size() - 1));
+						for (const uint32_t c : st.crossings) {
+							for (const uint32_t t : {map.crossings[c].a, map.crossings[c].b}) text += fmt::format(" | {} V all points {}", map.tracks[t].name, vpts(t, 0, hybrid[t].empty() ? 0 : hybrid[t].size() - 1));
+						}
+					}
+					WARN(fmt::format("vres row {} ({:.3f}):{}", tag, slack, text));
+				} else {
+					WARN(fmt::format("vres row {} ({:.3f}): (not decoded)", tag, slack));
+				}
+			}
+			WarnSepGroups(shaped, r, "vres sides V+full");
 		}
 	}
 	/* A probe (PLANAR_PROBE_INWARD): the same evaluation with inward candidates only, against the all-candidates run above's numbers, one run each. */

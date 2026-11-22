@@ -1,0 +1,2249 @@
+Filters: planar draw: PSG 197 clearance rows evaluated on V's drawing
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+openttd_test is a Catch v2.13.10 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+planar draw: PSG 197 clearance rows evaluated on V's drawing
+-------------------------------------------------------------------------------
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2302
+...............................................................................
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2191: warning:
+  A unmatched step L89 1 base 5 side 1
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2194: warning:
+  A used steps found 43, matched 42, unmatched 1, total steps parsed 34, pieces
+  added by used steps 84
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2201: warning:
+  A dummies after 162, nonmonotone 1
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2361: warning:
+  end mismatch L99: got (258, 347), pin (256, 347)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2361: warning:
+  end mismatch L8: got (167, 352), pin (163, 352)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2361: warning:
+  end mismatch L101: got (210, 359), pin (209, 360)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2369: warning:
+  tracks 101, fixed 91
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2370: warning:
+  unfixed: end mismatch: 3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2370: warning:
+  unfixed: left unfixed (V's step has no flex pair): 1
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2370: warning:
+  unfixed: piece count differs: 6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2394: warning:
+  box low corner (157, 274)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L15 node 10: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L20 node 9: 20 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L42 node 26: 24 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L39 node 21: 22 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L91 node 53: 36 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L93 node 55: 32 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L98 node 60: 12 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L95 node 58: 22 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L14 node 8: 30 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L41 node 28: 8 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L27 node 17: 28 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L1 node 0: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L1 node 1: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L2 node 0: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L2 node 13: 0 (last event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L9 node 1: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L9 node 5: 12 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L10 node 1: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L10 node 18: 0 (last event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L6 node 3: 4 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L6 node 2: 4 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 3 -> 2 L6: 4
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L4 node 2: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L4 node 5: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L5 node 2: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L5 node 6: 4 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L7 node 3: 12 (first event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L7 node 20: 0 (last event on piece 3)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L13 node 8: 12 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L13 node 4: 12 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 8 -> 4 L13: 12
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L11 node 4: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L11 node 55: 10 (last event on piece 6)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L12 node 4: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L12 node 48: 8 (last event on piece 3)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L17 node 5: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L17 node 11: 0 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L16 node 7: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L16 node 6: 0 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L21 node 6: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L21 node 9: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L19 node 8: 4 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L19 node 7: 4 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 8 -> 7 L19: 4
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L18 node 7: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L18 node 12: 4 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L22 node 14: 6 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L22 node 9: 6 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 14 -> 9 L22: 6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L23 node 11: 12 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L23 node 10: 12 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 11 -> 10 L23: 12
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L24 node 19: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L24 node 10: 8 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L25 node 12: 4 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L25 node 11: 4 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 12 -> 11 L25: 4
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L26 node 15: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L26 node 12: 2 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L30 node 13: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L30 node 41: 1 (last event on piece 3)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L31 node 13: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L31 node 37: 0 (last event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L28 node 15: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L28 node 14: 0 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L29 node 18: 2 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L29 node 14: 2 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 18 -> 14 L29: 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L37 node 40: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L37 node 15: 0 (last event on piece 3)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L33 node 33: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L33 node 16: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L32 node 22: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L32 node 16: 10 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L34 node 16: 6 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L34 node 17: 6 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 16 -> 17 L34: 6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L35 node 30: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L35 node 17: 5 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L36 node 19: 16 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L36 node 18: 16 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 19 -> 18 L36: 16
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L40 node 38: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L40 node 19: 6 (last event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L45 node 20: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L45 node 37: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L46 node 20: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L46 node 43: 8 (last event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L43 node 21: 22 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L43 node 22: 22 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 21 -> 22 L43: 22
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L100 node 22: 0 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L100 node 23: 0 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 22 -> 23 L100: 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L48 node 23: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L48 node 28: 0 (last event on piece 3)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L47 node 23: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L47 node 24: 0 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L49 node 33: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L49 node 24: 2 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L50 node 24: 14 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L50 node 25: 14 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 24 -> 25 L50: 14
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L51 node 32: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L51 node 25: 6 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L53 node 26: 14 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L53 node 36: 14 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 26 -> 36 L53: 14
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L52 node 26: 12 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L52 node 29: 12 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 26 -> 29 L52: 12
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L55 node 27: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L55 node 45: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L54 node 27: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L54 node 54: 8 (last event on piece 3)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L56 node 35: 6 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L56 node 28: 6 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 35 -> 28 L56: 6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L58 node 29: 2 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L58 node 31: 2 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 29 -> 31 L58: 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L57 node 29: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L57 node 32: 0 (last event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L62 node 46: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L62 node 30: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L61 node 50: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L61 node 30: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L60 node 31: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L60 node 39: 0 (last event on piece 3)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L59 node 31: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L59 node 35: 0 (last event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L63 node 34: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L63 node 32: 0 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L64 node 46: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L64 node 33: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L69 node 47: 11 (first event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L69 node 34: 0 (last event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L68 node 49: 13 (first event on piece 3)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L68 node 34: 0 (last event on piece 3)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L65 node 39: 2 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L65 node 35: 2 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 39 -> 35 L65: 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L67 node 36: 13 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L67 node 45: 13 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 36 -> 45 L67: 13
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L66 node 36: 12 (first event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L66 node 41: 0 (last event on piece 2)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L71 node 37: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L71 node 44: 0 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L73 node 56: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L73 node 38: 14 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L70 node 47: 8 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L70 node 39: 4 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L74 node 59: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L74 node 40: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L75 node 42: 2 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L75 node 40: 2 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 42 -> 40 L75: 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L76 node 41: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L76 node 43: 0 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L78 node 59: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L78 node 42: 0 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L79 node 43: 0 (first event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L79 node 48: 0 (last event on piece 0)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L80 node 44: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L80 node 53: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L81 node 44: 16 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L81 node 54: 16 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 44 -> 54 L81: 16
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L83 node 45: 14 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L83 node 53: 14 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 45 -> 53 L83: 14
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L82 node 51: 2 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L82 node 46: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L84 node 50: 2 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L84 node 49: 2 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 50 -> 49 L84: 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L86 node 52: 10 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L86 node 50: 10 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 52 -> 50 L86: 10
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L88 node 57: 18 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L88 node 51: 18 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 57 -> 51 L88: 18
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L87 node 58: 14 (first event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L87 node 51: 0 (last event on piece 1)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L90 node 60: 24 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L90 node 52: 24 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 60 -> 52 L90: 24
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L92 node 54: 2 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L92 node 55: 2 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 54 -> 55 L92: 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L94 node 61: 28 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L94 node 56: 28 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 61 -> 56 L94: 28
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L96 node 61: 22 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L96 node 57: 22 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 61 -> 57 L96: 22
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  start leg L97 node 60: 6 (first event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  end leg L97 node 59: 6 (last event on piece none)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  between nodes 60 -> 59 L97: 6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2406: warning:
+  node legs summary (skipped 10): start legs 86 [0:33 1:0 2:20 3:0 >=4:33]; end
+  legs 85 [0:35 1:1 2:8 3:0 >=4:41]; between-node tracks 29 [0:1 1:0 2:6 3:0 >=
+  4:22];
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2480: warning:
+  A real W1: status Optimal, total slack 2098.000, stretched rows 330
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  A real W1 family clear: rows 214, slack 1408.500
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  A real W1 family cross: rows 31, slack 62.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  A real W1 family deck: rows 2, slack 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  A real W1 family end: rows 5, slack 9.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  A real W1 family land: rows 56, slack 557.500
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  A real W1 family node: rows 22, slack 59.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 25 10.000: node in L51 in L50 out L38
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 58 10.000: node in L95 out L87 out L72
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 31 7.000: crossing L12 x L18
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 32 6.000: crossing L12 x L37
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 21 6.000: node in L39 out L44 out L43
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 42 5.000: node in L78 in L77 out L75
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 52 5.000: node in L90 in L89 out L86
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 104 4.000: crossing L62 x L61
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 93 4.000: crossing L55 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 95 4.000: crossing L55 x L59
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 97 4.000: crossing L54 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 96 3.000: crossing L55 x L66
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 29 3.000: node in L52 out L58 out L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 100 2.000: crossing L54 x L66
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 115 2.000: crossing L71 x L76
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 119 2.000: crossing L78 x L82
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 12 2.000: crossing L10 x L26
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 13 2.000: crossing L10 x L28
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 16 2.000: crossing L7 x L18
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 34 2.000: crossing L12 x L40
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  A real W1 stretched end 25 2.000: structure separator L12, crossings [L12 x
+  L59] [L12 x L60] [L12 x L40]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  A real W1 stretched end 28 2.000: structure separator L11, crossings [L11 x
+  L37] [L11 x L32]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  A real W1 stretched end 34 2.000: structure separator L60, crossings [L37 x
+  L60] [L60 x L64] [L61 x L60] [L62 x L60]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  A real W1 stretched end 40 2.000: structure separator L48, crossings [L33 x
+  L48] [L48 x L49] [L35 x L48]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 31 2.000: node in L58 out L60 out L59
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 32 2.000: node in L63 in L57 out L51
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 44 2.000: node in L71 out L80 out L81
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 56 2.000: node in L94 out L77 out L73
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 102 1.000: crossing L57 x L62
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 105 1.000: crossing L62 x L60
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 17 1.000: crossing L7 x L26
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 27 1.000: crossing L11 x L60
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 49 1.000: crossing L30 x L59
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 50 1.000: crossing L31 x L28
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 57 1.000: crossing L31 x L59
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 58 1.000: crossing L37 x L32
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 59 1.000: crossing L37 x L48
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 61 1.000: crossing L37 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 66 1.000: crossing L33 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 67 1.000: crossing L32 x L40
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 72 1.000: crossing L35 x L49
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 77 1.000: crossing L40 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 87 1.000: crossing L46 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  A real W1 stretched deck 12 1.000: structure separator L30, crossings [L30 x
+  L32] [L30 x L40] [L30 x L47] [L30 x L48]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  A real W1 stretched deck 22 1.000: structure separator L11, crossings [L11 x
+  L59] [L11 x L40] [L11 x L60]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  A real W1 stretched end 20 1.000: structure separator L46, crossings [L46 x
+  L57] [L40 x L46]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 0 1.000: node in L3 out L1 out L2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 1 1.000: node in L1 out L9 out L10
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 15 1.000: node in L37 out L26 out L28
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 24 1.000: node in L49 in L47 out L50
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 3 1.000: node in L8 out L6 out L7
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 41 1.000: node in L66 in L30 out L76
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 47 1.000: node in L101 out L69 out L70
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 54 1.000: node in L54 in L81 out L92
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 55 1.000: node in L92 in L11 out L93
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 60 1.000: node in L98 out L90 out L97
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 7 1.000: node in L19 out L16 out L18
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  A real W1 stretched node 8 1.000: node in L14 out L13 out L19
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 22 0.500: crossing L11 x L32
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  A real W1 stretched cross 40 0.500: crossing L17 x L16
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2556: warning:
+  A real W1 land rows 56 sum 557.500, room rows 0 sum 0.000, clear rows 214,
+  unmapped clear tags 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h1 in h0 out h6 insert-vertex N dummy-cell Y: count 5,
+  sum 164.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h3 in h0 out h0 insert-vertex N dummy-cell Y: count 7,
+  sum 114.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h1 in h6 out h6 insert-vertex N dummy-cell Y: count 6,
+  sum 97.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h7 in h6 out h4 insert-vertex N dummy-cell Y: count 5,
+  sum 78.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h7 in h6 out h5 insert-vertex N dummy-cell Y: count 2,
+  sum 50.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h7 in h5 out h4 insert-vertex Y dummy-cell Y: count 3,
+  sum 50.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h5 in h3 out h2 insert-vertex N dummy-cell Y: count 5,
+  sum 45.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h3 in h2 out h0 insert-vertex N dummy-cell Y: count 5,
+  sum 40.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h5 in h4 out h4 insert-vertex N dummy-cell Y: count 2,
+  sum 40.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h2 in h0 out h0 insert-vertex N dummy-cell Y: count 3,
+  sum 40.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h5 in h2 out h2 insert-vertex N dummy-cell Y: count 2,
+  sum 38.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h7 in h5 out h4 insert-vertex N dummy-cell Y: count 4,
+  sum 36.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h5 in h3 out h2 insert-vertex Y dummy-cell Y: count 4,
+  sum 34.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h7 in h4 out h4 insert-vertex Y dummy-cell Y: count 2,
+  sum 32.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h1 in h5 out h5 insert-vertex Y dummy-cell Y: count 4,
+  sum 32.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h5 in h4 out h3 insert-vertex Y dummy-cell Y: count 2,
+  sum 30.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h0 in h7 out h6 insert-vertex N dummy-cell Y: count 4,
+  sum 25.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h7 in h4 out h3 insert-vertex N dummy-cell Y: count 5,
+  sum 22.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h6 in h3 out h3 insert-vertex N dummy-cell Y: count 3,
+  sum 20.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h7 in h3 out h3 insert-vertex N dummy-cell Y: count 7,
+  sum 20.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h3 in h0 out h7 insert-vertex Y dummy-cell Y: count 5,
+  sum 19.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h4 in h7 out h5 insert-vertex N dummy-cell Y: count 5,
+  sum 19.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h1 in h7 out h6 insert-vertex N dummy-cell Y: count 8,
+  sum 16.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h5 in h2 out h1 insert-vertex Y dummy-cell Y: count 2,
+  sum 14.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h7 in h5 out h5 insert-vertex N dummy-cell Y: count 1,
+  sum 14.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h5 in h1 out h1 insert-vertex Y dummy-cell Y: count 2,
+  sum 14.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h7 in h4 out h4 insert-vertex N dummy-cell Y: count 2,
+  sum 14.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h6 in h4 out h3 insert-vertex N dummy-cell Y: count 1,
+  sum 13.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h2 in h1 out h1 insert-vertex Y dummy-cell Y: count 4,
+  sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  A real W1 group target h3 in h1 out h0 insert-vertex Y dummy-cell Y: count 1,
+  sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 1: clear 7 3 2 slack 53.000: in [L3 p2 h0] out [dummy p4 h0]
+  target [dummy p3 h3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 2: clear 45 0 7 slack 40.000: in [edge p1 h0] out [L85 p4 h6]
+  target [L72 p2 h1 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 3: clear 45 0 8 slack 38.000: in [edge p1 h0] out [L85 p4 h6]
+  target [dummy p35 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 4: clear 39 0 7 slack 35.000: in [edge p1 h0] out [L93 p4 h6]
+  target [L85 p1 h1 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 5: clear 39 0 8 slack 33.000: in [edge p1 h0] out [L93 p4 h6]
+  target [dummy p30 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 6: clear 39 1 7 slack 33.000: in [L93 p4 h6] out [dummy p27
+  h6] target [L85 p1 h1 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 7: clear 75 0 8 slack 32.000: in [L12 p1 h6] out [L12 p0 h5]
+  target [dummy p59 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 8: clear 39 1 8 slack 31.000: in [L93 p4 h6] out [dummy p27
+  h6] target [dummy p30 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 9: clear 27 0 6 slack 26.000: in [edge p0 h6] out [L39 p0 h4]
+  target [L52 p1 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 10: clear 27 0 7 slack 24.000: in [edge p0 h6] out [L39 p0
+  h4] target [dummy p20 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 11: clear 15 0 9 slack 22.000: in [edge p0 h6] out [L20 p0
+  h4] target [dummy p10 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 12: clear 70 4 3 slack 22.000: in [L7 p2 h5] out [L7 p1 h4
+  ins] target [dummy p51 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 13: clear 80 3 2 slack 22.000: in [L51 p0 h5] out [L51 p1 h4
+  ins] target [dummy p62 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 14: clear 50 5 3 slack 21.000: in [L69 p0 h4] out [dummy p39
+  h4] target [L90 p0 h5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 15: clear 57 4 2 slack 20.000: in [L73 p1 h2] out [dummy p44
+  h2] target [L95 p1 h5 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 16: clear 70 0 8 slack 20.000: in [L14 p0 h0] out [dummy p50
+  h0] target [dummy p55 h2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 17: clear 50 5 4 slack 19.000: in [L69 p0 h4] out [dummy p39
+  h4] target [dummy p38 h5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 18: clear 33 0 9 slack 18.000: in [edge p1 h0] out [L91 p4
+  h6] target [dummy p25 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 19: clear 33 1 9 slack 18.000: in [L91 p4 h6] out [dummy p22
+  h6] target [dummy p25 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 20: clear 57 4 3 slack 18.000: in [L73 p1 h2] out [dummy p44
+  h2] target [dummy p42 h5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 21: clear 70 0 7 slack 18.000: in [L14 p0 h0] out [dummy p50
+  h0] target [L8 p1 h3 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 22: clear 75 0 7 slack 18.000: in [L12 p1 h6] out [L12 p0 h5]
+  target [L27 p2 h7 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 23: clear 80 4 2 slack 18.000: in [L51 p1 h4 ins] out [dummy
+  p63 h4] target [dummy p62 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 24: clear 87 0 7 slack 18.000: in [edge p2 h2] out [L38 p5
+  h0] target [L27 p2 h3 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  A real W1 worst 25: clear 185 0 7 slack 16.000: in [L60 p1 h4] out [L60 p2 h3
+  ins] target [L73 p2 h5 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2480: warning:
+  A real W0: status Infeasible, total slack 0.000, stretched rows 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2482: warning:
+  A real W0 conflict fix
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2482: warning:
+  A real W0 conflict piece L100 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2575: warning:
+  geo reference: status Optimal, total slack 5.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2578: warning:
+  legs on V: status Optimal, total slack 5.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2588: warning:
+  sepV W1: status Optimal, total slack 68.000, pairs 1280, short_sides 37
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2599: warning:
+  sepV W1 family clear: rows 2, slack 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2599: warning:
+  sepV W1 family cross: rows 7, slack 7.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2599: warning:
+  sepV W1 family end: rows 2, slack 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2599: warning:
+  sepV W1 family node: rows 4, slack 9.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2599: warning:
+  sepV W1 family sep: rows 9, slack 48.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV W1 sep row sep 13 3 12 (12.000): [L8 piece 3 heading 1] [L3 piece 0
+  heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV W1 sep row sep 17 0 13 (8.000): [L38 piece 5 heading 0] [L27 piece 3
+  heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV W1 sep row sep 83 5 11 (8.000): [L44 piece 3 heading 0] [L43 piece 2
+  heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV W1 sep row sep 8 6 13 (6.000): [L11 piece 7 heading 5] [L85 piece 4
+  heading 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV W1 sep row sep 9 6 11 (6.000): [L12 piece 4 heading 5] [L72 piece 1
+  heading 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV W1 sep row sep 17 0 14 (2.000): [L38 piece 5 heading 0] [L27 piece 4
+  heading 5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV W1 sep row sep 17 1 13 (2.000): [L38 piece 4 heading 1] [L27 piece 3
+  heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV W1 sep row sep 83 4 11 (2.000): [L44 piece 4 heading 7] [L43 piece 2
+  heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV W1 sep row sep 83 5 10 (2.000): [L44 piece 3 heading 0] [L43 piece 1
+  heading 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  sepV W1 tracks L38 / L27: count 3, sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  sepV W1 tracks L44 / L43: count 3, sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  sepV W1 tracks L8 / L3: count 1, sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  sepV W1 tracks L11 / L85: count 1, sum 6.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  sepV W1 tracks L12 / L72: count 1, sum 6.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2607: warning:
+  sepV W1 clear 1: clear 114 4 1 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2607: warning:
+  sepV W1 clear 2: clear 117 3 1 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2588: warning:
+  sepV W0: status Infeasible, total slack 0.000, pairs 1280, short_sides 37
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2590: warning:
+  sepV W0 conflict fix
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2590: warning:
+  sepV W0 conflict piece L100 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2614: warning:
+  sepV allfaces W1: status Optimal, total slack 57.667, pairs 1362, short_sides
+  37
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2624: warning:
+  sepV allfaces W1 family cross: rows 2, slack 2.333
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2624: warning:
+  sepV allfaces W1 family end: rows 1, slack 0.333
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2624: warning:
+  sepV allfaces W1 family node: rows 3, slack 8.333
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2624: warning:
+  sepV allfaces W1 family sep: rows 9, slack 46.667
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV allfaces W1 sep row sep 13 3 12 (12.000): [L8 piece 3 heading 1] [L3
+  piece 0 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV allfaces W1 sep row sep 17 0 13 (8.000): [L38 piece 5 heading 0] [L27
+  piece 3 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV allfaces W1 sep row sep 83 5 11 (8.000): [L44 piece 3 heading 0] [L43
+  piece 2 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV allfaces W1 sep row sep 8 6 13 (6.000): [L11 piece 7 heading 5] [L85
+  piece 4 heading 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV allfaces W1 sep row sep 9 6 11 (4.667): [L12 piece 4 heading 5] [L72
+  piece 1 heading 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV allfaces W1 sep row sep 83 4 11 (2.000): [L44 piece 4 heading 7] [L43
+  piece 2 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV allfaces W1 sep row sep 83 5 10 (2.000): [L44 piece 3 heading 0] [L43
+  piece 1 heading 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV allfaces W1 sep row sep 17 0 14 (2.000): [L38 piece 5 heading 0] [L27
+  piece 4 heading 5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV allfaces W1 sep row sep 17 1 13 (2.000): [L38 piece 4 heading 1] [L27
+  piece 3 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2637: warning:
+  vres sides V+full: tracks filled from full.points: L85 (piece count) L99 (end
+  mismatch) L3 (piece count) L8 (end mismatch) L38 (piece count) L44 (piece
+  count) L72 (piece count) L77 (piece count) L101 (end mismatch) L89 (flex)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2641: warning:
+  vres sides V+full: status Optimal, total slack 74.500, short_sides 36
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2645: warning:
+  vres sides V+full window 0: status Infeasible, total slack 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2647: warning:
+  vres sides V+full window 0 conflict fix
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2647: warning:
+  vres sides V+full window 0 conflict piece L100 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2656: warning:
+  vres sides V+full family cross: rows 1, slack 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2656: warning:
+  vres sides V+full family end: rows 1, slack 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2656: warning:
+  vres sides V+full family node: rows 6, slack 11.500
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2656: warning:
+  vres sides V+full family sep: rows 14, slack 60.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 13 3 12 (12.000): wall i L8#3 h1 V (5,77) (5,77) (not V) | run
+  (7,77) (7,77) ; wall j L3#0 h4 V (5,124) (5,76) (not V) | run (5,125) (5,76)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 13 3 12 margins: c0 s(-1,-1) spacing 2 from i margin -49; c1 s(-
+  1,-1) spacing 2 from j margin -3; c2 s(1,0) spacing 1 from i margin -1; c3 s
+  (1,0) spacing 1 from j margin -1
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 13 3 12 walk i to j: [L8#4 h0 len 0] [L6#0 h0 len 4] [L4#0 h0
+  len 22] [L2#0 h5 len 7] [L3#4 h4 len 0] [L3#3 h5 len 0] [L3#2 h4 len 0] [L3#1
+  h3 len 5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 13 3 12 walk j to i: [dummy#2 h2 len -1] [L8#0 h0 len 45] [L8#1
+  h7 len 2] [L8#2 h0 len 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 13 3 12 shares V endpoint no, tracks meet at a node no, pieces 5
+  5
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 17 0 13 (8.000): wall i L38#5 h0 V (21,117) (21,124) (not V) |
+  run (21,118) (21,125) ; wall j L27#3 h4 V (22,110) (22,120) | run (21,109)
+  (21,120) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 17 0 13 margins: c0 s(-1,0) spacing 2 from i margin -3; c1 s(-1,
+  0) spacing 2 from j margin -1; c2 s(0,-1) spacing 2 from i margin -5; c3 s(0,
+  -1) spacing 2 from j margin -16
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 17 0 13 walk i to j: [L38#4 h1 len 4] [L38#3 h0 len 0] [L38#2 h1
+  len 2] [L38#1 h0 len 0] [L38#0 h1 len 0] [L50#0 h0 len 14] [L47#0 h0 len 54]
+  [L35#1 h6 len 6] [L35#2 h5 len 5] [L27#0 h5 len 2] [L27#1 h4 len 8] [L27#2 h3
+  len 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 17 0 13 walk j to i: [L27#4 h5 len 2] [L27#5 h4 len 2] [dummy#2
+  h2 len -1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 17 0 13 shares V endpoint no, tracks meet at a node no, pieces 6
+  6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 83 5 9 (8.000): wall i L44#3 h0 V (26,24) (26,37) (not V) | run
+  (26,25) (26,35) ; wall j L43#0 h4 V (26,22) (26,34) | run (26,21) (26,33) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 83 5 9 margins: c0 s(-1,0) spacing 2 from i margin -2; c1 s(-1,
+  0) spacing 2 from j margin -2; c2 s(0,-1) spacing 2 from i margin -12; c3 s
+  (0,-1) spacing 2 from j margin -17
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 83 5 9 walk i to j: [L44#2 h7 len 1] [L44#1 h0 len 2] [L44#0 h7
+  len 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 83 5 9 walk j to i: [L43#1 h3 len 2] [L43#2 h4 len 8] [L100#0 h4
+  len 0] [L48#0 h3 len 2] [L48#1 h4 len 30] [L30#1 h2 len 14] [L57#0 h0 len 36]
+  [L54#1 h7 len 7] [L54#0 h0 len 2] [L44#5 h0 len 0] [L44#4 h7 len 7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 83 5 9 shares V endpoint no, tracks meet at a node yes, pieces 6
+  3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2740: warning:
+  vres row node 57 (6.000): in L96 V (99,73) (77,73)  out L89 V (76,69) (64,81)
+  (not V)  out L88 V (77,73) (59,73) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 8 3 13 (6.000): wall i L93#1 h5 V (77,61) (83,55) | run (76,62)
+  (84,54) ; wall j L85#4 h2 V (56,60) (100,60) (not V) | run (55,60) (100,60) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 8 3 13 margins: c0 s(1,1) spacing 2 from i margin -24; c1 s(1,1)
+  spacing 2 from j margin -24; c2 s(0,-1) spacing 1 from i margin -6; c3 s(0,-
+  1) spacing 1 from j margin -2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 8 3 13 walk i to j: [L93#0 h6 len 8] [L11#8 h6 len 8] [L11#7 h5
+  len 2] [L11#6 h6 len 14] [L79#0 h3 len 6] [L85#0 h2 len 0] [L85#1 h1 len 4]
+  [L85#2 h2 len 0] [L85#3 h3 len 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 8 3 13 walk j to i: [dummy#1 h0 len -1] [L93#4 h6 len 2] [L93#3
+  h7 len 4] [L93#2 h6 len 12]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 8 3 13 shares V endpoint no, tracks meet at a node no, pieces 5
+  5
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 83 4 11 (6.000): wall i L44#4 h7 V (26,37) (33,44) (not V) | run
+  (26,35) (33,42) ; wall j L43#2 h4 V (28,36) (28,44) | run (28,35) (28,43) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 83 4 11 margins: c0 s(-1,1) spacing 2 from i margin -5; c1 s(-1,
+  1) spacing 2 from j margin -7; c2 s(1,0) spacing 1 from i margin -6; c3 s(1,
+  0) spacing 1 from j margin -3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 83 4 11 walk i to j: [L44#3 h0 len 13] [L44#2 h7 len 1] [L44#1
+  h0 len 2] [L44#0 h7 len 0] [L43#0 h4 len 12] [L43#1 h3 len 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 83 4 11 walk j to i: [L100#0 h4 len 0] [L48#0 h3 len 2] [L48#1
+  h4 len 30] [L30#1 h2 len 14] [L57#0 h0 len 36] [L54#1 h7 len 7] [L54#0 h0 len
+  2] [L44#5 h0 len 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 83 4 11 shares V endpoint no, tracks meet at a node yes, pieces
+  6 3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 9 5 11 (4.000): wall i L12#5 h6 V (47,65) (53,65) | run (48,64)
+  (52,64) ; wall j L72#1 h2 V (77,66) (42,66) (not V) | run (77,65) (43,65) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 9 5 11 margins: c0 s(0,1) spacing 2 from i margin -1; c1 s(0,1)
+  spacing 2 from j margin -3; c2 s(-1,0) spacing 2 from i margin -32; c3 s(-1,
+  0) spacing 2 from j margin -13
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 9 5 11 walk i to j: [L12#4 h5 len 2] [L12#3 h6 len 12] [L40#0 h3
+  len 7] [L72#3 h2 len 0] [L72#2 h1 len 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 9 5 11 walk j to i: [L72#0 h3 len 1] [L95#3 h3 len 2] [L95#2 h2
+  len 10] [L95#1 h1 len 4] [L95#0 h2 len 6] [dummy#1 h0 len -1] [L85#4 h6 len
+  44] [L85#3 h7 len 0] [L85#2 h6 len 0] [L85#1 h5 len 4] [L85#0 h6 len 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 9 5 11 shares V endpoint no, tracks meet at a node no, pieces 6
+  4
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 9 6 11 (4.000): wall i L12#4 h5 V (45,67) (47,65) | run (44,68)
+  (48,64) ; wall j L72#1 h2 V (77,66) (42,66) (not V) | run (77,65) (43,65) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 9 6 11 margins: c0 s(1,1) spacing 2 from i margin -6; c1 s(1,1)
+  spacing 2 from j margin -33; c2 s(0,-1) spacing 1 from i margin -2; c3 s(0,-
+  1) spacing 1 from j margin -2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 9 6 11 walk i to j: [L12#3 h6 len 12] [L40#0 h3 len 7] [L72#3 h2
+  len 0] [L72#2 h1 len 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 9 6 11 walk j to i: [L72#0 h3 len 1] [L95#3 h3 len 2] [L95#2 h2
+  len 10] [L95#1 h1 len 4] [L95#0 h2 len 6] [dummy#1 h0 len -1] [L85#4 h6 len
+  44] [L85#3 h7 len 0] [L85#2 h6 len 0] [L85#1 h5 len 4] [L85#0 h6 len 0]
+  [L12#5 h6 len 6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 9 6 11 shares V endpoint no, tracks meet at a node no, pieces 6
+  4
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2749: warning:
+  vres row cross 87 (2.000): L46 V all points (25,59) (27,61) (37,61) (39,59)
+  (47,59)  L57 V all points (34,36) (34,72) (36,74) (36,100) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2740: warning:
+  vres row node 21 (2.000): in L39 V (24,20) (26,22)  out L44 V (25,21) (25,21)
+  (not V)  out L43 V (26,22) (26,34) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 17 0 14 (2.000): wall i L38#5 h0 V (21,117) (21,124) (not V) |
+  run (21,118) (21,125) ; wall j L27#4 h5 V (22,120) (20,122) | run (21,120)
+  (19,122) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 17 0 14 margins: c0 s(-1,0) spacing 1 from i margin -2; c1 s(-1,
+  0) spacing 1 from j margin -2; c2 s(1,1) spacing 2 from i margin -5; c3 s(1,
+  1) spacing 2 from j margin -6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 17 0 14 walk i to j: [L38#4 h1 len 4] [L38#3 h0 len 0] [L38#2 h1
+  len 2] [L38#1 h0 len 0] [L38#0 h1 len 0] [L50#0 h0 len 14] [L47#0 h0 len 54]
+  [L35#1 h6 len 6] [L35#2 h5 len 5] [L27#0 h5 len 2] [L27#1 h4 len 8] [L27#2 h3
+  len 4] [L27#3 h4 len 10]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 17 0 14 walk j to i: [L27#5 h4 len 2] [dummy#2 h2 len -1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 17 0 14 shares V endpoint no, tracks meet at a node no, pieces 6
+  6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 17 1 13 (2.000): wall i L38#4 h1 V (25,113) (21,117) (not V) |
+  run (26,113) (21,118) ; wall j L27#3 h4 V (22,110) (22,120) | run (21,109)
+  (21,120) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 17 1 13 margins: c0 s(-1,-1) spacing 2 from i margin -6; c1 s(-
+  1,-1) spacing 2 from j margin -8; c2 s(1,0) spacing 1 from i margin -4; c3 s
+  (1,0) spacing 1 from j margin -2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 17 1 13 walk i to j: [L38#3 h0 len 0] [L38#2 h1 len 2] [L38#1 h0
+  len 0] [L38#0 h1 len 0] [L50#0 h0 len 14] [L47#0 h0 len 54] [L35#1 h6 len 6]
+  [L35#2 h5 len 5] [L27#0 h5 len 2] [L27#1 h4 len 8] [L27#2 h3 len 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 17 1 13 walk j to i: [L27#4 h5 len 2] [L27#5 h4 len 2] [dummy#2
+  h2 len -1] [L38#5 h0 len 7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 17 1 13 shares V endpoint no, tracks meet at a node no, pieces 6
+  6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 6 0 4 (2.000): wall i L39#0 h4 V (24,0) (24,20) | run (24,0)
+  (24,19) ; wall j L44#2 h3 V (25,23) (26,24) (not V) | run (24,23) (26,25) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 6 0 4 margins: c0 s(1,0) spacing 1 from i margin 0; c1 s(1,0)
+  spacing 1 from j margin -3; c2 s(1,-1) spacing 2 from i margin -24; c3 s(1,-
+  1) spacing 2 from j margin 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 6 0 4 walk i to j: [L39#1 h3 len 2] [L44#0 h3 len 0] [L44#1 h4
+  len 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 6 0 4 walk j to i: [L44#3 h4 len 13] [L44#4 h3 len 7] [L44#5 h4
+  len 0] [L55#0 h3 len 7] [L57#0 h0 len 36] [L52#1 h7 len 4] [L52#0 h0 len 8]
+  [L42#1 h7 len 4] [L42#0 h0 len 20] [dummy#0 h6 len -1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 6 0 4 shares V endpoint no, tracks meet at a node yes, pieces 2
+  6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 83 5 10 (2.000): wall i L44#3 h0 V (26,24) (26,37) (not V) | run
+  (26,25) (26,35) ; wall j L43#1 h3 V (26,34) (28,36) | run (26,33) (28,35) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 83 5 10 margins: c0 s(-1,0) spacing 1 from i margin -3; c1 s(-1,
+  0) spacing 1 from j margin -1; c2 s(1,-1) spacing 2 from i margin -12; c3 s
+  (1,-1) spacing 2 from j margin -5
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 83 5 10 walk i to j: [L44#2 h7 len 1] [L44#1 h0 len 2] [L44#0 h7
+  len 0] [L43#0 h4 len 12]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 83 5 10 walk j to i: [L43#2 h4 len 8] [L100#0 h4 len 0] [L48#0
+  h3 len 2] [L48#1 h4 len 30] [L30#1 h2 len 14] [L57#0 h0 len 36] [L54#1 h7 len
+  7] [L54#0 h0 len 2] [L44#5 h0 len 0] [L44#4 h7 len 7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 83 5 10 shares V endpoint no, tracks meet at a node yes, pieces
+  6 3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 83 6 9 (2.000): wall i L44#2 h7 V (25,23) (26,24) (not V) | run
+  (24,23) (26,25) ; wall j L43#0 h4 V (26,22) (26,34) | run (26,21) (26,33) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 83 6 9 margins: c0 s(-1,1) spacing 2 from i margin -4; c1 s(-1,
+  1) spacing 2 from j margin -12; c2 s(1,0) spacing 1 from i margin -1; c3 s(1,
+  0) spacing 1 from j margin -2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 83 6 9 walk i to j: [L44#1 h0 len 2] [L44#0 h7 len 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 83 6 9 walk j to i: [L43#1 h3 len 2] [L43#2 h4 len 8] [L100#0 h4
+  len 0] [L48#0 h3 len 2] [L48#1 h4 len 30] [L30#1 h2 len 14] [L57#0 h0 len 36]
+  [L54#1 h7 len 7] [L54#0 h0 len 2] [L44#5 h0 len 0] [L44#4 h7 len 7] [L44#3 h0
+  len 13]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 83 6 9 shares V endpoint no, tracks meet at a node yes, pieces 6
+  3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2761: warning:
+  vres row end 28 (1.000): separator L11 V all points (8,82) (8,80) (19,69)
+  (29,69) (33,65) (43,65) (45,63) (59,63) (61,61) (69,61)  | L11 V all points
+  (8,82) (8,80) (19,69) (29,69) (33,65) (43,65) (45,63) (59,63) (61,61) (69,61)
+  | L37 V all points (43,77) (35,77) (31,73) (27,73) (20,66)  | L11 V all
+  points (8,82) (8,80) (19,69) (29,69) (33,65) (43,65) (45,63) (59,63) (61,61)
+  (69,61)  | L32 V all points (28,44) (26,46) (26,80) (20,86) (20,90) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2740: warning:
+  vres row node 23 (1.000): in L100 V (28,44) (28,44)  out L48 V (28,44) (30,
+  46)  out L47 V (28,44) (28,98) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2740: warning:
+  vres row node 48 (1.000): in L79 V (47,59) (53,65)  in L12 V (47,65) (53,65)
+  out L85 V (52,64) (52,64) (not V) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2740: warning:
+  vres row node 58 (1.000): in L95 V (81,69) (79,67)  out L87 V (79,67) (65,67)
+  out L72 V (78,67) (77,66) (not V) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 2 7 11 (1.000): wall i L3#2 h0 V (0,71) (0,71) (not V) | run (1,
+  72) (1,72) ; wall j L1#1 h1 V (0,70) (7,63) | run (1,69) (8,62) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 2 7 11 margins: c0 s(-1,0) spacing 1 from i margin -8; c1 s(-1,
+  0) spacing 1 from j margin -1; c2 s(-1,-1) spacing 2 from i margin -1; c3 s(-
+  1,-1) spacing 2 from j margin -3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 2 7 11 walk i to j: [L3#3 h1 len 0] [L3#4 h0 len 0] [L1#0 h0 len
+  2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 2 7 11 walk j to i: [L4#0 h0 len 22] [L4#1 h1 len 4] [L5#1 h0
+  len 30] [L5#2 h1 len 4] [L21#0 h1 len 2] [L21#1 h0 len 16] [L15#0 h7 len 4]
+  [L15#1 h0 len 26] [dummy#0 h6 len -1] [dummy#3 h4 len -1] [dummy#2 h2 len -1]
+  [L3#0 h0 len 48] [L3#1 h7 len 5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 2 7 11 shares V endpoint no, tracks meet at a node yes, pieces 5
+  2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2707: warning:
+  vres row sep 2 9 11 (1.000): wall i L3#4 h0 V (0,71) (0,71) (not V) | run (1,
+  72) (1,72) ; wall j L1#1 h1 V (0,70) (7,63) | run (1,69) (8,62) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2708: warning:
+  vres row sep 2 9 11 margins: c0 s(-1,0) spacing 1 from i margin -8; c1 s(-1,
+  0) spacing 1 from j margin -1; c2 s(-1,-1) spacing 2 from i margin -1; c3 s(-
+  1,-1) spacing 2 from j margin -3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 2 9 11 walk i to j: [L1#0 h0 len 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2713: warning:
+  vres row sep 2 9 11 walk j to i: [L4#0 h0 len 22] [L4#1 h1 len 4] [L5#1 h0
+  len 30] [L5#2 h1 len 4] [L21#0 h1 len 2] [L21#1 h0 len 16] [L15#0 h7 len 4]
+  [L15#1 h0 len 26] [dummy#0 h6 len -1] [dummy#3 h4 len -1] [dummy#2 h2 len -1]
+  [L3#0 h0 len 48] [L3#1 h7 len 5] [L3#2 h0 len 0] [L3#3 h1 len 0]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2725: warning:
+  vres row sep 2 9 11 shares V endpoint no, tracks meet at a node yes, pieces 5
+  2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2740: warning:
+  vres row node 0 (0.500): in L3 V (0,71) (0,71) (not V)  out L1 V (0,72) (0,
+  70)  out L2 V (0,72) (7,65) 
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  vres sides V+full tracks L44 / L43: count 4, sum 18.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  vres sides V+full tracks L38 / L27: count 3, sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  vres sides V+full tracks L8 / L3: count 1, sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  vres sides V+full tracks L12 / L72: count 2, sum 8.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  vres sides V+full tracks L93 / L85: count 1, sum 6.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  vres sides V+full tracks L3 / L1: count 2, sum 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1883: warning:
+  vres sides V+full tracks L39 / L44: count 1, sum 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2809: warning:
+  sepV walk W1: status Optimal, total slack 158.500, pairs 1280, walk_fixed
+  518, walk_short 40, walk_differs 172
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2817: warning:
+  sepV walk W1 family clear: rows 5, slack 5.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2817: warning:
+  sepV walk W1 family cross: rows 11, slack 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2817: warning:
+  sepV walk W1 family end: rows 2, slack 3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2817: warning:
+  sepV walk W1 family node: rows 22, slack 36.500
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2817: warning:
+  sepV walk W1 family sep: rows 21, slack 102.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 13 3 12 (12.000): [L8 piece 3 heading 1] [L3 piece 0
+  heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 35 0 5 (12.000): [L10 piece 1 heading 1] [L23 piece
+  0 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 35 0 6 (12.000): [L10 piece 1 heading 1] [L25 piece
+  0 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 17 0 13 (8.000): [L38 piece 5 heading 0] [L27 piece
+  3 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 83 5 11 (8.000): [L44 piece 3 heading 0] [L43 piece
+  2 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 155 2 5 (6.000): [L97 piece 0 heading 6] [L89 piece
+  0 heading 5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 8 6 13 (6.000): [L11 piece 7 heading 5] [L85 piece 4
+  heading 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 154 1 4 (4.000): [L73 piece 3 heading 2] [L87 piece
+  1 heading 1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 160 2 8 (4.000): [L82 piece 0 heading 2] [L77 piece
+  4 heading 6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 17 6 8 (4.000): [L50 piece 0 heading 0] [L35 piece 1
+  heading 6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 9 5 8 (4.000): [L12 piece 5 heading 6] [L40 piece 0
+  heading 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 9 6 11 (4.000): [L12 piece 4 heading 5] [L72 piece 1
+  heading 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 10 2 4 (2.000): [L90 piece 1 heading 6] [L86 piece 1
+  heading 5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 17 0 14 (2.000): [L38 piece 5 heading 0] [L27 piece
+  4 heading 5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 17 1 13 (2.000): [L38 piece 4 heading 1] [L27 piece
+  3 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 7 4 6 (2.000): [L91 piece 0 heading 6] [L54 piece 3
+  heading 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 74 9 12 (2.000): [L77 piece 2 heading 2] [L87 piece
+  1 heading 1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 8 4 8 (2.000): [L93 piece 0 heading 6] [L79 piece 0
+  heading 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 8 5 8 (2.000): [L11 piece 8 heading 6] [L79 piece 0
+  heading 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk W1 sep row sep 83 4 11 (2.000): [L44 piece 4 heading 7] [L43 piece
+  2 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2827: warning:
+  sepV walk strict W1: status Optimal, total slack 124.000, pairs 1280,
+  walk_fixed 350, walk_short 12, walk_differs 110
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2835: warning:
+  sepV walk strict W1 family clear: rows 3, slack 3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2835: warning:
+  sepV walk strict W1 family cross: rows 9, slack 10.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2835: warning:
+  sepV walk strict W1 family node: rows 8, slack 15.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2835: warning:
+  sepV walk strict W1 family sep: rows 18, slack 96.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 13 3 12 (12.000): [L8 piece 3 heading 1] [L3
+  piece 0 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 35 0 5 (12.000): [L10 piece 1 heading 1] [L23
+  piece 0 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 35 0 6 (12.000): [L10 piece 1 heading 1] [L25
+  piece 0 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 17 0 13 (8.000): [L38 piece 5 heading 0] [L27
+  piece 3 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 155 2 5 (6.000): [L97 piece 0 heading 6] [L89
+  piece 0 heading 5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 8 6 13 (6.000): [L11 piece 7 heading 5] [L85
+  piece 4 heading 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 9 6 11 (6.000): [L12 piece 4 heading 5] [L72
+  piece 1 heading 2]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 154 1 4 (4.000): [L73 piece 3 heading 2] [L87
+  piece 1 heading 1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 160 2 8 (4.000): [L82 piece 0 heading 2] [L77
+  piece 4 heading 6]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 83 4 11 (4.000): [L44 piece 4 heading 7] [L43
+  piece 2 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 83 5 10 (4.000): [L44 piece 3 heading 0] [L43
+  piece 1 heading 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 83 5 11 (4.000): [L44 piece 3 heading 0] [L43
+  piece 2 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 9 5 8 (4.000): [L12 piece 5 heading 6] [L40
+  piece 0 heading 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 17 0 14 (2.000): [L38 piece 5 heading 0] [L27
+  piece 4 heading 5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 17 1 13 (2.000): [L38 piece 4 heading 1] [L27
+  piece 3 heading 4]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 74 9 12 (2.000): [L77 piece 2 heading 2] [L87
+  piece 1 heading 1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 8 4 8 (2.000): [L93 piece 0 heading 6] [L79
+  piece 0 heading 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:1825: warning:
+  sepV walk strict W1 sep row sep 8 5 8 (2.000): [L11 piece 8 heading 6] [L79
+  piece 0 heading 3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2858: warning:
+  geo refinement: dummies 162 (rule 162), nonmonotone 28, landing fallbacks 46,
+  differing from the rule's 35
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2480: warning:
+  geo W1: status Optimal, total slack 1916.500, stretched rows 277
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  geo W1 family clear: rows 176, slack 1194.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  geo W1 family cross: rows 26, slack 56.500
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  geo W1 family deck: rows 1, slack 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  geo W1 family end: rows 6, slack 8.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  geo W1 family land: rows 47, slack 609.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2491: warning:
+  geo W1 family node: rows 21, slack 48.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 25 10.000: node in L51 in L50 out L38
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 104 6.000: crossing L62 x L61
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 21 6.000: node in L39 out L44 out L43
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 32 5.000: crossing L12 x L37
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 93 5.000: crossing L55 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 95 5.000: crossing L55 x L59
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 97 5.000: crossing L54 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 31 4.000: crossing L12 x L18
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 96 4.000: crossing L55 x L66
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 42 4.000: node in L78 in L77 out L75
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 52 4.000: node in L90 in L89 out L86
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 100 2.000: crossing L54 x L66
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 115 2.000: crossing L71 x L76
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 59 2.000: crossing L37 x L48
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 61 2.000: crossing L37 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  geo W1 stretched end 25 2.000: structure separator L12, crossings [L12 x L59]
+  [L12 x L60] [L12 x L40]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  geo W1 stretched end 28 2.000: structure separator L11, crossings [L11 x L37]
+  [L11 x L32]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 2 2.000: node in L6 out L4 out L5
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 28 2.000: node in L56 in L48 out L41
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 29 2.000: node in L52 out L58 out L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 55 2.000: node in L92 in L11 out L93
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 56 2.000: node in L94 out L77 out L73
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 60 2.000: node in L98 out L90 out L97
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 8 2.000: node in L14 out L13 out L19
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 102 1.000: crossing L57 x L62
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 23 1.000: crossing L11 x L40
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 27 1.000: crossing L11 x L60
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 49 1.000: crossing L30 x L59
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 50 1.000: crossing L31 x L28
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 57 1.000: crossing L31 x L59
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 58 1.000: crossing L37 x L32
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 65 1.000: crossing L33 x L47
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 66 1.000: crossing L33 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 67 1.000: crossing L32 x L40
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 72 1.000: crossing L35 x L49
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 77 1.000: crossing L40 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 79 1.000: crossing L40 x L59
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 87 1.000: crossing L46 x L57
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  geo W1 stretched deck 12 1.000: structure separator L30, crossings [L30 x
+  L32] [L30 x L40] [L30 x L47] [L30 x L48]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  geo W1 stretched end 15 1.000: structure separator L80, crossings [L54 x L80]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  geo W1 stretched end 20 1.000: structure separator L46, crossings [L46 x L57]
+  [L40 x L46]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  geo W1 stretched end 34 1.000: structure separator L60, crossings [L37 x L60]
+  [L60 x L64] [L61 x L60] [L62 x L60]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2504: warning:
+  geo W1 stretched end 45 1.000: structure separator L49, crossings [L35 x L49]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 0 1.000: node in L3 out L1 out L2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 1 1.000: node in L1 out L9 out L10
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 24 1.000: node in L49 in L47 out L50
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 3 1.000: node in L8 out L6 out L7
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 32 1.000: node in L63 in L57 out L51
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 39 1.000: node in L70 in L60 out L65
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 41 1.000: node in L66 in L30 out L76
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 44 1.000: node in L71 out L80 out L81
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 47 1.000: node in L101 out L69 out L70
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2512: warning:
+  geo W1 stretched node 54 1.000: node in L54 in L81 out L92
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2497: warning:
+  geo W1 stretched cross 22 0.500: crossing L11 x L32
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2556: warning:
+  geo W1 land rows 47 sum 609.000, room rows 0 sum 0.000, clear rows 176,
+  unmapped clear tags 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h1 in h0 out h6 insert-vertex N dummy-cell Y: count 6,
+  sum 138.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h3 in h2 out h0 insert-vertex N dummy-cell Y: count 6,
+  sum 82.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h1 in h6 out h6 insert-vertex N dummy-cell Y: count 6,
+  sum 80.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h7 in h6 out h4 insert-vertex N dummy-cell Y: count 4,
+  sum 77.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h3 in h0 out h0 insert-vertex N dummy-cell Y: count 6,
+  sum 75.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h7 in h5 out h4 insert-vertex Y dummy-cell Y: count 3,
+  sum 50.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h5 in h3 out h2 insert-vertex N dummy-cell Y: count 2,
+  sum 40.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h5 in h2 out h1 insert-vertex N dummy-cell Y: count 2,
+  sum 38.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h7 in h6 out h5 insert-vertex N dummy-cell Y: count 1,
+  sum 32.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h5 in h4 out h3 insert-vertex Y dummy-cell Y: count 2,
+  sum 28.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h0 in h7 out h6 insert-vertex N dummy-cell Y: count 3,
+  sum 24.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h7 in h5 out h4 insert-vertex N dummy-cell Y: count 3,
+  sum 22.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h7 in h4 out h3 insert-vertex N dummy-cell Y: count 5,
+  sum 22.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h1 in h5 out h5 insert-vertex Y dummy-cell Y: count 3,
+  sum 22.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h7 in h3 out h3 insert-vertex N dummy-cell Y: count 7,
+  sum 21.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h2 in h0 out h0 insert-vertex N dummy-cell Y: count 2,
+  sum 21.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h5 in h3 out h2 insert-vertex Y dummy-cell Y: count 2,
+  sum 20.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h3 in h0 out h7 insert-vertex Y dummy-cell Y: count 5,
+  sum 20.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h6 in h3 out h3 insert-vertex N dummy-cell Y: count 3,
+  sum 20.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h3 in h7 out h7 insert-vertex N dummy-cell Y: count 2,
+  sum 19.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h1 in h6 out h5 insert-vertex Y dummy-cell Y: count 1,
+  sum 18.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h7 in h4 out h4 insert-vertex Y dummy-cell Y: count 1,
+  sum 18.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h7 in h5 out h5 insert-vertex N dummy-cell Y: count 1,
+  sum 14.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h7 in h4 out h3 insert-vertex Y dummy-cell Y: count 1,
+  sum 14.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h6 in h4 out h3 insert-vertex N dummy-cell Y: count 1,
+  sum 13.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h3 in h1 out h0 insert-vertex Y dummy-cell Y: count 1,
+  sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h3 in h7 out h6 insert-vertex Y dummy-cell Y: count 4,
+  sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h7 in h4 out h4 insert-vertex N dummy-cell Y: count 1,
+  sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h4 in h7 out h5 insert-vertex N dummy-cell Y: count 4,
+  sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2559: warning:
+  geo W1 group target h6 in h4 out h3 insert-vertex Y dummy-cell Y: count 2,
+  sum 11.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 1: clear 68 0 7 slack 46.000: in [edge p2 h2] out [L14 p0 h0]
+  target [dummy p53 h3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 2: clear 68 1 7 slack 32.000: in [L14 p0 h0] out [dummy p50 h0]
+  target [dummy p53 h3]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 3: clear 75 0 8 slack 32.000: in [L12 p1 h6] out [L12 p0 h5]
+  target [dummy p59 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 4: clear 27 0 6 slack 26.000: in [edge p0 h6] out [L39 p0 h4]
+  target [L52 p1 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 5: clear 45 0 7 slack 26.000: in [edge p1 h0] out [L85 p4 h6]
+  target [L72 p2 h1 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 6: clear 27 0 7 slack 24.000: in [edge p0 h6] out [L39 p0 h4]
+  target [dummy p20 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 7: clear 57 0 5 slack 24.000: in [edge p1 h0] out [L95 p0 h6]
+  target [dummy p44 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 8: clear 45 5 4 slack 24.000: in [L40 p0 h3] out [L72 p3 h2]
+  target [dummy p33 h5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 9: clear 39 0 7 slack 24.000: in [edge p1 h0] out [L93 p4 h6]
+  target [L85 p1 h1 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 10: clear 45 0 8 slack 24.000: in [edge p1 h0] out [L85 p4 h6]
+  target [dummy p35 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 11: clear 15 0 9 slack 22.000: in [edge p0 h6] out [L20 p0 h4]
+  target [dummy p10 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 12: clear 39 0 8 slack 22.000: in [edge p1 h0] out [L93 p4 h6]
+  target [dummy p30 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 13: clear 39 1 7 slack 22.000: in [L93 p4 h6] out [dummy p27 h6]
+  target [L85 p1 h1 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 14: clear 68 5 4 slack 22.000: in [L7 p2 h5] out [L7 p1 h4 ins]
+  target [dummy p51 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 15: clear 80 3 2 slack 22.000: in [L51 p0 h5] out [L51 p1 h4
+  ins] target [dummy p62 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 16: clear 57 4 2 slack 20.000: in [L73 p1 h2] out [dummy p44 h1]
+  target [L95 p1 h5 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 17: clear 39 1 8 slack 20.000: in [L93 p4 h6] out [dummy p27 h6]
+  target [dummy p30 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 18: clear 33 0 6 slack 18.000: in [edge p1 h0] out [L91 p4 h6]
+  target [dummy p25 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 19: clear 33 1 6 slack 18.000: in [L91 p4 h6] out [dummy p22 h6]
+  target [dummy p25 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 20: clear 57 1 5 slack 18.000: in [L95 p0 h6] out [L95 p1 h5
+  ins] target [dummy p44 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 21: clear 57 2 5 slack 18.000: in [L95 p1 h5 ins] out [dummy p42
+  h5] target [dummy p44 h1]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 22: clear 57 4 3 slack 18.000: in [L73 p1 h2] out [dummy p44 h1]
+  target [dummy p42 h5]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 23: clear 80 4 2 slack 18.000: in [L51 p1 h4 ins] out [dummy p63
+  h4] target [dummy p62 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 24: clear 87 0 7 slack 16.000: in [edge p2 h2] out [L38 p5 h0]
+  target [L27 p2 h3 ins]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2561: warning:
+  geo W1 worst 25: clear 75 1 8 slack 16.000: in [L12 p0 h5] out [L18 p1 h4]
+  target [dummy p59 h7]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2480: warning:
+  geo W0: status Infeasible, total slack 0.000, stretched rows 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2482: warning:
+  geo W0 conflict fix
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:2482: warning:
+  geo W0 conflict piece L100 0
+
+===============================================================================
+All tests passed (4 assertions in 1 test case)
+
