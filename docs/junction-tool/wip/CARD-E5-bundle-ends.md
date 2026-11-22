@@ -72,3 +72,21 @@ Exact solves: every keep-apart pair in the listed faces binary, inserts free, co
 ## Inward-only refuted (2026-11-22, ng1 082735f359, logs inward-*-ed29dcf5d3.log)
 - Answer key: on V's 197 drawing, inward-only candidates leave 247 of 1362 pairs short (slack 57.7 -> 5247.5); V's real geometry separates many pairs along travel or on the outward side (two pieces of one track, parallel pieces end to end). Exact T3 faces 75 and 66 become Infeasible under it; the pipeline gets far worse on every hub (T1 181, T2 1035, T3 1206, LL2 1320).
 - So the two drawing-free side rules tried are: facing pairs (valid, few pairs) and inward-only (refuted by the expert's drawing). Side choices are length-dependent in octilinear geometry, as Gemini warned. The options left are where the choice lives: sides from drawings (D418, fails on T3), or exact choices owned by Slots. Next measurement: whole-hub exact solves with a tight bound (brief wip/BRIEF-E5-whole-exact.md).
+
+## Whole-hub exact with a tight bound (2026-11-22, ng1 ab8f801bb6, log whole-exact-082735f359.log)
+- Every keep-apart pair binary on whole hubs, coordinate bound twice the pipeline drawing's extent: no incumbent in 15 s on any hub, even T1 (T1 3044 binaries, T2 7060, T3 12324, LL2 14352, 197 56956). Single faces take seconds; whole hubs do not. So "Slots decides every side exactly in one solve" is not workable at the 15 s budget, even on the smallest hub.
+
+## Where this leaves the architecture (summary for the engineer, 2026-11-22)
+Proven:
+1. **LL2** is undrawable with its current Structure and Shape. The minimal core is F1's copy rejoining F1 inside the face where D1's and B1's bends face each other: an upstream gap. Not the prio rows: removing them leaves identical headings and the same slack.
+2. **T3** is drawable face by face; its slack is wrong side picks (39 of 132 in the crowded faces contradicted by the exact drawing).
+3. **Side choices are length-dependent.** Facing pairs are decidable from headings (D426 probe, valid). Inward-only is refuted by V's 197. Gemini: no octilinear turn-regularity theorem.
+4. **Exact choices scale only locally:** faces in seconds, whole hubs not in 15 s.
+
+So by construction in the strict sense (every side from headings, no choices) is not available. The choices have to live somewhere. The options, all yours to rule on:
+- **(A) Shape decides the choices that matter upstream.** It orders the across-face pairs (kitty corners and kin) by rule from topology (travel order in a bundle, as Gemini suggests), plus a promise clause that rules out LL2's configuration. Slots stays an LP with no binaries. Risk: the rule must match length-dependent reality, and inward-only, the simplest such rule, failed on V. A topological rule needs designing and checking against V before any code.
+- **(B) Slots owns the choices with exact local solves:** a face-by-face exact model as Slots' designed method, with the faces coupled through the shared tracks. Exact per face, but solving the faces in sequence is a decomposition, so global optimality and even feasibility are not guaranteed. That makes it close to the repair you rejected, unless it is formulated as a proper decomposition (e.g. Benders) with a proof.
+- **(C) Keep D418 (sides from drawings) and accept heuristics in the oracle.** E5 is a test oracle, not the production layer. Mark T3 "drawable, pipeline misses it" (the face certificates are the evidence) and move on. Slots, the real layer, faces the same question later.
+- **LL2, whatever is chosen:** Structure or Shape must not close a copy inside a face holding facing bends (Gemini's rule). That is a promise clause with its own card.
+
+My recommendation: (C) for E5 now, since the oracle's job of naming upstream gaps is done for T3/LL2 (LL2 named one, T3 has none), and the LL2 promise clause as the actionable upstream fix. Then design the separation question properly for Slots, starting from (A) with V's 197 as the answer key for any rule, before building. Reversible: yes.
