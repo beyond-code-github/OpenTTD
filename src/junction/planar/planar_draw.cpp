@@ -211,6 +211,144 @@ std::array<int, 2> PlanarBesideClosing(int heading, int side)
 	return {2 * step[0], 2 * step[1]};
 }
 
+/** The elimination order of a program on its points, which does not depend on their values. */
+struct PlanarProgramPlan {
+	struct Step {
+		uint32_t row; ///< The row that determines the variable (the first row of a pair).
+		uint32_t row2; ///< The pair's second row, or UINT32_MAX for a one-unknown row.
+		uint32_t a; ///< The variable determined (a pair: the lower of the two).
+		uint32_t b; ///< The pair's other variable.
+	};
+	std::vector<Step> steps;
+	std::vector<uint32_t> checked; ///< Rows whose variables all become known, in row order.
+	std::vector<std::string> undetermined; ///< Families of the other rows, each once.
+	std::vector<uint32_t> determined; ///< The variables the steps determine (not points).
+	std::vector<bool> point; ///< Per variable, whether it is a point.
+};
+
+static std::shared_ptr<PlanarProgramPlan> BuildPlanarProgramPlan(const PlanarProgram &program)
+{
+	auto plan = std::make_shared<PlanarProgramPlan>();
+	const size_t n = program.lower.size();
+	std::vector<bool> known(n, false);
+	plan->point.assign(n, false);
+	for (const auto &track : program.point) {
+		for (const auto &p : track) known[p[0]] = known[p[1]] = plan->point[p[0]] = plan->point[p[1]] = true;
+	}
+	const auto is_equality = [](const PlanarProgram::Row &r) { return std::isfinite(r.lower) && r.lower == r.upper; };
+	bool changed = true;
+	while (changed) {
+		changed = false;
+		std::map<std::pair<uint32_t, uint32_t>, std::vector<uint32_t>> pairs;
+		for (uint32_t ri = 0; ri < program.rows.size(); ri++) {
+			const PlanarProgram::Row &r = program.rows[ri];
+			if (!is_equality(r)) continue;
+			std::vector<uint32_t> unknown;
+			for (const auto &[x, a] : r.terms) {
+				if (!known[x]) unknown.push_back(x);
+			}
+			if (unknown.size() == 1) {
+				plan->steps.push_back({ri, UINT32_MAX, unknown[0], unknown[0]});
+				known[unknown[0]] = true;
+				changed = true;
+			} else if (unknown.size() == 2) {
+				pairs[{std::min(unknown[0], unknown[1]), std::max(unknown[0], unknown[1])}].push_back(ri);
+			}
+		}
+		if (changed) continue;
+		for (const auto &[pair, rows] : pairs) {
+			if (known[pair.first] && known[pair.second]) continue;
+			const auto coefficients = [&](const PlanarProgram::Row &r, double &a, double &b) {
+				a = b = 0;
+				for (const auto &[x, c] : r.terms) {
+					if (x == pair.first) a = c;
+					if (x == pair.second) b = c;
+				}
+			};
+			for (size_t i = 0; i < rows.size() && !changed; i++) {
+				for (size_t j = i + 1; j < rows.size() && !changed; j++) {
+					double a1, b1, a2, b2;
+					coefficients(program.rows[rows[i]], a1, b1);
+					coefficients(program.rows[rows[j]], a2, b2);
+					if (std::abs(a1 * b2 - a2 * b1) <= 1e-9) continue;
+					plan->steps.push_back({rows[i], rows[j], pair.first, pair.second});
+					known[pair.first] = known[pair.second] = true;
+					changed = true;
+				}
+			}
+			if (changed) break;
+		}
+	}
+	std::set<std::string> seen;
+	for (uint32_t ri = 0; ri < program.rows.size(); ri++) {
+		const PlanarProgram::Row &r = program.rows[ri];
+		if (std::ranges::all_of(r.terms, [&](const auto &t) { return known[t.first]; })) {
+			plan->checked.push_back(ri);
+		} else {
+			const std::string family = r.tag.substr(0, r.tag.find(' '));
+			if (seen.insert(family).second) plan->undetermined.push_back(family);
+		}
+	}
+	for (uint32_t x = 0; x < n; x++) {
+		if (known[x] && !plan->point[x]) plan->determined.push_back(x);
+	}
+	return plan;
+}
+
+PlanarProgramCheck CheckPlanarProgramOnPoints(const PlanarProgram &program, const std::vector<std::vector<std::array<int, 2>>> &points)
+{
+	if (program.plan == nullptr) program.plan = BuildPlanarProgramPlan(program);
+	const PlanarProgramPlan &plan = *program.plan;
+	PlanarProgramCheck check;
+	std::vector<double> value(program.lower.size(), 0);
+	for (size_t t = 0; t < program.point.size() && t < points.size(); t++) {
+		for (size_t i = 0; i < program.point[t].size() && i < points[t].size(); i++) {
+			for (int axis = 0; axis < 2; axis++) value[program.point[t][i][axis]] = points[t][i][axis];
+		}
+	}
+	/* The rest of a row once every variable but the listed ones is known (their terms skipped). */
+	const auto rest_of = [&](const PlanarProgram::Row &r, uint32_t skip_a, uint32_t skip_b, double &a, double &b) {
+		a = b = 0;
+		double rest = r.lower;
+		for (const auto &[x, c] : r.terms) {
+			if (x == skip_a) {
+				a = c;
+			} else if (x == skip_b) {
+				b = c;
+			} else {
+				rest -= c * value[x];
+			}
+		}
+		return rest;
+	};
+	for (const PlanarProgramPlan::Step &s : plan.steps) {
+		double a1, b1;
+		const double r1 = rest_of(program.rows[s.row], s.a, s.b, a1, b1);
+		if (s.row2 == UINT32_MAX) {
+			value[s.a] = r1 / a1;
+			continue;
+		}
+		double a2, b2;
+		const double r2 = rest_of(program.rows[s.row2], s.a, s.b, a2, b2);
+		const double det = a1 * b2 - a2 * b1;
+		value[s.a] = (r1 * b2 - r2 * b1) / det;
+		value[s.b] = (a1 * r2 - a2 * r1) / det;
+	}
+	std::set<std::string> broken_seen;
+	for (const uint32_t ri : plan.checked) {
+		const PlanarProgram::Row &r = program.rows[ri];
+		double sum = 0;
+		for (const auto &[x, a] : r.terms) sum += a * value[x];
+		if ((sum < r.lower - 1e-6 || sum > r.upper + 1e-6) && broken_seen.insert(r.tag).second) check.broken.push_back(r.tag);
+	}
+	for (const uint32_t x : plan.determined) {
+		if ((value[x] < program.lower[x] - 1e-6 || value[x] > program.upper[x] + 1e-6) && broken_seen.insert("bound " + program.group[x]).second) check.broken.push_back("bound " + program.group[x]);
+		if (program.integer[x] && std::abs(value[x] - std::round(value[x])) > 1e-6 && broken_seen.insert("integer " + program.group[x]).second) check.broken.push_back("integer " + program.group[x]);
+	}
+	check.undetermined = plan.undetermined;
+	return check;
+}
+
 PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds, const PlanarDrawOptions &options)
 {
 	const auto start = std::chrono::steady_clock::now();
@@ -255,6 +393,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	const auto json_number = [](double x) { return std::isfinite(x) ? fmt::format("{}", x) : std::string("null"); };
 	std::vector<bool> integral;
 	std::vector<double> var_lower, var_upper;
+	std::vector<std::string> var_group;
+	std::vector<PlanarProgram::Row> program_rows;
 	struct Pending {
 		Terms terms;
 		double lower;
@@ -262,8 +402,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		std::string tag;
 	};
 	std::vector<Pending> pending;
-	const auto add_variable = [&](double lower, double upper, double cost, bool integer) {
+	const auto add_variable = [&](double lower, double upper, double cost, bool integer, std::string_view group = "other") {
 		integral.push_back(integer);
+		var_group.emplace_back(group);
 		var_lower.push_back(lower);
 		var_upper.push_back(upper);
 		if (exporting) export_variables += fmt::format("{}{{\"lb\":{},\"ub\":{},\"cost\":{},\"integer\":{}}}", export_variables.empty() ? "" : ",", json_number(lower), json_number(upper), json_number(cost), integer ? "true" : "false");
@@ -271,10 +412,11 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	};
 	const auto var = [&](double lower, double upper, double cost, std::string_view group) {
 		columns++;
-		return add_variable(lower, upper, cost, (!options.elastic || options.elastic_integer) && std::ranges::find(options.continuous, group) == options.continuous.end());
+		return add_variable(lower, upper, cost, (!options.elastic || options.elastic_integer) && std::ranges::find(options.continuous, group) == options.continuous.end(), group);
 	};
 	std::map<std::string, double> soft_price; ///< Scheme A: per "curve flex" tag its slack price.
 	const auto emit = [&](Terms merged, double lower, double upper, const std::string &tag) {
+		if (options.program_out) program_rows.push_back({merged, lower, upper, tag});
 		if (options.elastic) {
 			const std::string family = tag.substr(0, tag.find(' '));
 			const auto soft = soft_price.find(tag);
@@ -1762,6 +1904,15 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 		result.start_values = start.size();
 		milp.SetStart(std::move(start));
+	}
+	if (options.program_out) {
+		PlanarProgram &p = result.program;
+		p.lower = var_lower;
+		p.upper = var_upper;
+		p.integer = integral;
+		p.group = var_group;
+		p.rows = std::move(program_rows);
+		p.point = point;
 	}
 	if (options.build_only) {
 		result.status = "built";

@@ -139,6 +139,17 @@ struct X1Fixture {
 		return CheckPlanarDrawable(v, 5.0, o);
 	}
 
+	/** The read-out of the whole program, built once and not solved (the strict rules off, no node lead). */
+	PlanarDrawResult ProgramOut() const
+	{
+		PlanarDrawOptions o = options;
+		o.strict_span = o.strict_zero = o.crossing_flanks = false;
+		o.keep_apart_out = true;
+		o.program_out = true;
+		o.build_only = true;
+		return CheckPlanarDrawable(v, 5.0, o);
+	}
+
 	const std::string &Name(uint32_t t) const { return v.structure.map.expanded.lines[t].name; }
 };
 
@@ -257,12 +268,20 @@ struct Tally {
 	std::map<std::string, Group> loose;
 };
 
+std::set<std::string> g_undetermined_seen; ///< The undetermined families seen over the run.
+
+std::string FamilyOf(const std::string &tag)
+{
+	return tag.substr(0, tag.find(' '));
+}
+
 const char *const CLASS_NAMES[6] = {"both accept", "both reject", "too strict", "too loose", "undecided", "off grid (geometries)"};
 
 /** What the rows say of a polyline: 0 an accepted representation exists, 1 none, 2 undecided; the witness is the accepted representation per track. */
 struct Judged {
 	int verdict = 1;
 	std::vector<Lengths> witness;
+	std::vector<std::string> undetermined; ///< The witness's undetermined families of the program check.
 };
 
 /** A polyline's class and its example text, from the first geometry that had it. */
@@ -394,6 +413,41 @@ TEST_CASE("planar draw: keep-apart on fixed points agrees with the program on X1
 	CHECK(CheckPlanarDrawable(f.v, 5.0, o).status == "Optimal");
 }
 
+TEST_CASE("planar draw: the program on fixed points agrees with the program on X1", "[junction][planar][planardomain]")
+{
+	const X1Fixture f;
+	const PlanarDrawResult out = f.ProgramOut();
+	REQUIRE(out.status == "built");
+	REQUIRE(!out.program.rows.empty());
+	REQUIRE(out.program.lower.size() == out.columns);
+
+	/* The base: the program with these points fixed was Optimal, so no row breaks. */
+	const PlanarProgramCheck base = CheckPlanarProgramOnPoints(out.program, f.PointsOf(f.base));
+	std::string undetermined;
+	for (const std::string &u : base.undetermined) undetermined += " " + u;
+	WARN("base undetermined:" << undetermined);
+	CHECK(base.broken.empty());
+	for (const std::string &b : base.broken) WARN("base broken: " << b);
+	for (const std::string &u : base.undetermined) CHECK((u == "sep" || u == "sepdir" || u == "box" || u == "lane" || u == "land" || u == "clear" || u == "room" || u == "along"));
+
+	/* A1's run split over pieces 4 and 8 (8 each, the same end point): the structure's end run breaks (`end 0`); the crossing keeps rules.cross = 1, so no `cross` row breaks. */
+	Geometry split = f.base;
+	split["A1"] = {{4, 8}, {8, 8}};
+	const std::vector<Points> split_points = f.PointsOf(split);
+	const PlanarProgramCheck check = CheckPlanarProgramOnPoints(out.program, split_points);
+	CHECK(check.broken == std::vector<std::string>{"end 0"});
+
+	/* The program itself, with the points fixed and the strict rules off, agrees. */
+	PlanarDrawOptions o = f.options;
+	o.fix_points = &split_points;
+	o.fix_window = 0;
+	o.tidy = false;
+	o.strict_span = o.strict_zero = o.crossing_flanks = false;
+	const PlanarDrawResult solved = CheckPlanarDrawable(f.v, 5.0, o);
+	CHECK(solved.status == "Infeasible");
+	CHECK(std::ranges::count(solved.conflict, std::string("end 0")) == 1);
+}
+
 TEST_CASE("planar domain: representations of a polyline", "[junction][planar][planardomain]")
 {
 	const std::vector<int> pieces = {2, 1, 2, 3, 2};
@@ -447,6 +501,8 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 		if (lead) rules.resize(rules.size() - 5);
 		const std::vector<PlanarPointRow> lead_rows = lead ? PlanarNodeLeadRows(f.v) : std::vector<PlanarPointRow>{};
 		PlanarDrawResult readout = f.ReadOut(rules == "all");
+		const PlanarDrawResult program_out = f.ProgramOut();
+		REQUIRE(program_out.status == "built");
 		if (rules == "span" || rules == "zero") {
 			X1Fixture g = f;
 			g.options.strict_span = rules == "span";
@@ -470,6 +526,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 			int verdict = 1;
 			std::vector<std::vector<Lengths>> replens(f.n);
 			std::vector<Lengths> witness;
+			std::vector<std::string> witness_undetermined;
 			double nodes_used = 0;
 			/* Per track (by track index): its representations as points, after the unary filter. */
 			std::vector<std::vector<Points>> reps(f.n);
@@ -513,7 +570,11 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 				std::vector<size_t> chosen(f.n, 0);
 				uint64_t nodes = 0;
 				auto search = [&](auto &&self, uint32_t d) -> bool {
-					if (d == f.n) return true;
+					if (d == f.n) {
+						/* A full assignment is one node: the whole program must hold on its points. */
+						if (++nodes > 50000) return false;
+						return CheckPlanarProgramOnPoints(program_out.program, cur).broken.empty();
+					}
 					for (size_t ri = 0; ri < reps[order[d]].size(); ri++) {
 						const Points &rp = reps[order[d]][ri];
 						if (++nodes > 50000) return false;
@@ -531,12 +592,15 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 				if (found) {
 					witness.resize(f.n);
 					for (uint32_t t = 0; t < f.n; t++) witness[t] = replens[t][chosen[t]];
+					witness_undetermined = CheckPlanarProgramOnPoints(program_out.program, cur).undetermined;
+					g_undetermined_seen.insert(witness_undetermined.begin(), witness_undetermined.end());
 				}
 			}
 			rep_products[pkey] = nodes_used;
 			Judged &j = verdicts[pkey];
 			j.verdict = verdict;
 			j.witness = witness;
+			j.undetermined = witness_undetermined;
 			return j;
 		};
 		std::vector<size_t> pos(cfg.axes.size(), 0);
@@ -584,6 +648,11 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 							kept.insert("lead");
 							nc.detail += "      " + r.tag + " fails\n";
 						}
+						const PlanarProgramCheck pc_check = CheckPlanarProgramOnPoints(program_out.program, points);
+						for (const std::string &b : pc_check.broken) {
+							kept.insert(FamilyOf(b));
+							nc.detail += "      program row broken: " + b + "\n";
+						}
 						nc.key = Join(kept);
 					} else if (nc.c == LOOSE) {
 						std::set<std::string> rules;
@@ -611,6 +680,10 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 						}
 						nc.detail = out.str();
 						nc.key = Join(rules);
+						if (!j.undetermined.empty()) {
+							std::set<std::string> und(j.undetermined.begin(), j.undetermined.end());
+							nc.key += " / undetermined " + Join(und);
+						}
 					}
 					pc = &(classes[pkey] = nc);
 				} else {
@@ -662,6 +735,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 	for (const Config &cfg : configs) write(cfg.name, per[cfg.name]);
 	write("total", total);
 
+	out << "undetermined families seen: " << Join(g_undetermined_seen) << "\n\n";
 	out << "== base (strict rules on): failing pairs ==\n";
 	{
 		const std::vector<Points> base = f.PointsOf(f.base);
@@ -673,5 +747,6 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 		const Tally &t = per[cfg.name];
 		WARN(cfg.name << " (polylines): both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", undecided " << t.counts[4] << ", off grid geometries " << t.counts[5]);
 	}
+	WARN("undetermined families seen: " << Join(g_undetermined_seen));
 	WARN("enumeration wall " << wall << " s");
 }

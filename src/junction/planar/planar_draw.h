@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -63,6 +64,34 @@ bool PlanarPointRowHolds(const PlanarPointRow &row, const std::vector<std::vecto
  */
 std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v);
 
+struct PlanarProgramPlan;
+
+/** The drawing program as written (D428 read-out): its variables and rows, and which variables are the track points. */
+struct PlanarProgram {
+	struct Row {
+		std::vector<std::pair<uint32_t, double>> terms;
+		double lower;
+		double upper;
+		std::string tag;
+	};
+	std::vector<double> lower; ///< Per variable.
+	std::vector<double> upper;
+	std::vector<bool> integer;
+	std::vector<std::string> group; ///< Per variable, its `var` group ("point", "param", "cross", "other", ...); lengths as their group.
+	std::vector<Row> rows;
+	std::vector<std::vector<std::array<uint32_t, 2>>> point; ///< Per track and point, its x and y variable.
+	mutable std::shared_ptr<PlanarProgramPlan> plan; ///< The elimination order, built by the first CheckPlanarProgramOnPoints call (it depends only on which variables are points); a program edited after that call must reset it.
+};
+
+/** What a program says about fixed points. */
+struct PlanarProgramCheck {
+	std::vector<std::string> broken; ///< Tags of rows that fail (each once, in row order), and "integer <group>" for a determined integer variable off an integer.
+	std::vector<std::string> undetermined; ///< Families (tag up to the first space) of rows skipped because a variable stayed unknown, each once.
+};
+
+/** Fix the points, solve the variables the equality rows determine, and check every row whose variables are all known (tolerance 1e-6). */
+PlanarProgramCheck CheckPlanarProgramOnPoints(const PlanarProgram &program, const std::vector<std::vector<std::array<int, 2>>> &points);
+
 /** The result of the drawing program. */
 struct PlanarDrawResult {
 	bool feasible = false; ///< A drawing exists.
@@ -96,6 +125,7 @@ struct PlanarDrawResult {
 	size_t start_values = 0; ///< With start_lengths or start_points: how many variables the MIP start gave.
 	std::vector<std::vector<double>> lengths; ///< When feasible, per track each piece's length in half-tile units along its heading (unrounded, so an LP's fractional lengths show).
 	std::vector<PlanarKeepApartPair> keep_apart; ///< With keep_apart_out: every pair the pairwise block considers, in order.
+	PlanarProgram program; ///< With program_out: the program as written.
 };
 
 /** Points of an answer key (D393): positions the drawing must keep within `window` half tiles, up to one common shift. */
@@ -173,6 +203,7 @@ struct PlanarDrawOptions {
 	const std::vector<std::vector<std::array<int, 2>>> *start_points = nullptr; ///< A measurement: a MIP start of every track point from this drawing (as `PlanarDrawResult::points`).
 	std::string export_path; ///< A measurement (D418): when not empty, the built program is written there as JSON before solving (variables, rows with their tags, the objective), for offline solvers.
 	bool keep_apart_out = false; ///< A read-out (D428): fill PlanarDrawResult::keep_apart; binary mode only (no sides_from, sides_by_walk or facing_sides; else unsupported).
+	bool program_out = false; ///< A read-out (D428): fill PlanarDrawResult::program with every variable and row as written, before any solve; works with build_only.
 	bool build_only = false; ///< A measurement (D428): build the program and return before the solve, status "built".
 	std::string dump_path; ///< A measurement aid: when not empty, the drawing is written there as JSON after the solve (tracks, faces, rows that stretched, every keep-apart pair with its candidates and their margins on the drawing).
 };
