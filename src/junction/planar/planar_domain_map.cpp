@@ -109,6 +109,10 @@ static void AddStructure(const PlanarShapeVariant &v, PlanarDomainInput &input, 
 PlanarDomainInput PlanarDomainInputOf(const PlanarShapeVariant &v, const std::vector<std::vector<std::array<int, 2>>> &points, std::vector<std::string> &notes)
 {
 	PlanarDomainInput input;
+	if (points.size() != v.structure.map.expanded.lines.size()) {
+		notes.push_back("points do not match the variant");
+		return input;
+	}
 	input.tracks = points;
 	input.nodes = NodesOf(v, points);
 

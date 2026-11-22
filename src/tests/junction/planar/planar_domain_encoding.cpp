@@ -39,8 +39,8 @@ namespace {
 using Point = std::array<int, 2>;
 using Points = std::vector<Point>;
 
-/** The loaded X1 variant with its flex pairs placed. */
-PlanarShapeVariant LoadX1Enc()
+/** X1's variant with B1's shape text and crossing piece as given, loaded; the flex pairs are not placed. */
+bool LoadEncVariant(const std::string &b1_shape, const std::string &b1_at, PlanarShapeVariant &v, std::string &why, std::vector<std::string> *promise = nullptr)
 {
 	const std::string topo = "topology X1\nport W in E: AC1\nport S in N: BD1\nport N out N: C1, B1\nport E out E: A1, D1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\ncross A1: B1<\ncross B1: A1>\n";
 	std::string error;
@@ -50,9 +50,17 @@ PlanarShapeVariant LoadX1Enc()
 	std::vector<std::string> report;
 	const PlanarStructureVariant s = LoadPlanarStructureVariant(t, "tunnel T1 A1: B1\nstraight AC1: A1\nstraight BD1: B1\n", spec, report, &error);
 	REQUIRE(error.empty());
+	if (!LoadPlanarShapeVariant(t, s, "shape AC1: 2\nshape A1: 2\nshape C1: 1 0\nshape BD1: 0\nshape B1: " + b1_shape + "\nshape D1: 1 2\nat A1: B1@0\nat B1: " + b1_at + "\n", v, why)) return false;
+	if (promise != nullptr) *promise = CheckPlanarShapePromise(t, spec, v);
+	return true;
+}
+
+/** The loaded X1 variant with its flex pairs placed. */
+PlanarShapeVariant LoadX1Enc()
+{
 	PlanarShapeVariant v;
 	std::string why;
-	REQUIRE(LoadPlanarShapeVariant(t, s, "shape AC1: 2\nshape A1: 2\nshape C1: 1 0\nshape BD1: 0\nshape B1: 0\nshape D1: 1 2\nat A1: B1@0\nat B1: A1@0\n", v, why));
+	REQUIRE(LoadEncVariant("0", "A1@0", v, why));
 	REQUIRE(PlacePlanarShapeFlex(v, why));
 	return v;
 }
@@ -72,37 +80,48 @@ struct X1Fixture {
 	Geometry base;
 	PlanarDrawOptions options; ///< The section 5 options.
 
-	X1Fixture() : v(LoadX1Enc())
+	X1Fixture() : X1Fixture(LoadX1Enc())
 	{
-		n = static_cast<uint32_t>(v.structure.map.expanded.lines.size());
-		REQUIRE(n == 6);
-		for (uint32_t t = 0; t < n; t++) idx[v.structure.map.expanded.lines[t].name] = t;
-		heads = {
+		SetUp({
 			{"AC1", {2, 1, 2, 3, 2}},
 			{"A1", {2, 1, 2, 3, 2, 1, 2, 3, 2}},
 			{"C1", {1, 0, 1, 2, 1, 0, -1, 0, 1, 0}},
 			{"BD1", {0, -1, 0, 1, 0}},
 			{"B1", {0, -1, 0, 1, 0, -1, 0, 1, 0}},
 			{"D1", {1, 0, 1, 2, 1, 2, 1, 2, 3, 2}},
-		};
-		for (const auto &[name, h] : heads) {
-			REQUIRE(idx.count(name) == 1);
-			REQUIRE(v.tracks[idx[name]].pieces == h);
-		}
-		starts = {{"AC1", {0, 5}}, {"A1", {4, 5}}, {"C1", {4, 5}}, {"BD1", {11, 12}}, {"B1", {11, 10}}, {"D1", {11, 10}}};
-		base = {
+		}, {
 			{"AC1", {{0, 4}}},
 			{"A1", {{4, 12}, {8, 4}}},
 			{"C1", {{0, 3}, {9, 2}}},
 			{"BD1", {{0, 2}}},
 			{"B1", {{4, 6}, {8, 4}}},
 			{"D1", {{0, 1}, {9, 8}}},
-		};
+		});
+	}
+
+	/** A fixture on a loaded variant; its headings and base are set by SetUp. */
+	explicit X1Fixture(PlanarShapeVariant variant) : v(std::move(variant))
+	{
+		n = static_cast<uint32_t>(v.structure.map.expanded.lines.size());
+		REQUIRE(n == 6);
+		for (uint32_t t = 0; t < n; t++) idx[v.structure.map.expanded.lines[t].name] = t;
+		starts = {{"AC1", {0, 5}}, {"A1", {4, 5}}, {"C1", {4, 5}}, {"BD1", {11, 12}}, {"B1", {11, 10}}, {"D1", {11, 10}}};
 		options.clearance = options.clear_rows = options.pairwise = options.pairwise_all_faces = true;
 		options.strict_span = options.strict_zero = options.crossing_flanks = true;
 		options.node_gaps = true;
 		options.bays = options.curves = false;
 		options.skip_rows = {"port "};
+	}
+
+	/** The headings (checked against the variant's pieces) and the base geometry. */
+	void SetUp(const std::map<std::string, std::vector<int>> &h, const Geometry &g)
+	{
+		heads = h;
+		for (const auto &[name, hs] : heads) {
+			REQUIRE(idx.count(name) == 1);
+			REQUIRE(v.tracks[idx[name]].pieces == hs);
+		}
+		base = g;
 	}
 
 	/** The points of a geometry (unlisted pieces have length 0). */
@@ -151,6 +170,107 @@ struct X1Fixture {
 	}
 
 	const std::string &Name(uint32_t t) const { return v.structure.map.expanded.lines[t].name; }
+};
+
+/** X2's loaded variant, the B1 shape text that loaded, and the log of what was refused. */
+struct X2Load {
+	PlanarShapeVariant v;
+	std::string shape; ///< B1's shape text that loaded.
+	std::string log; ///< The refusals before it.
+};
+
+/** X2: B1 crosses A1's tunnel on a 45-degree piece, `0 1 0`, or its mirror `0 -1 0` when that is refused (D414). */
+X2Load LoadX2Enc()
+{
+	X2Load out;
+	for (const std::string shape : {"0 1 0", "0 -1 0"}) {
+		PlanarShapeVariant v;
+		std::string why;
+		std::vector<std::string> promise;
+		if (!LoadEncVariant(shape, "A1@1", v, why, &promise)) {
+			out.log += "shape B1: " + shape + " refused: " + why + "\n";
+			continue;
+		}
+		const bool crossing = std::ranges::any_of(promise, [](const std::string &m) { return m.find("cross") != std::string::npos; });
+		if (crossing) {
+			for (const std::string &m : promise) out.log += "shape B1: " + shape + " promise: " + m + "\n";
+			continue;
+		}
+		out.v = std::move(v);
+		out.shape = shape;
+		return out;
+	}
+	INFO(out.log);
+	FAIL("neither B1 shape loaded");
+	return out;
+}
+
+/** X2 with flex: B1 bends at its crossing with A1's tunnel (the brief's section 3). */
+struct X2Fixture : X1Fixture {
+	std::string shape; ///< B1's shape text that loaded.
+	std::string log; ///< What was refused first.
+	uint32_t b1_event = 0; ///< B1's event piece after flex.
+	uint32_t a1_event = 0; ///< A1's event piece after flex.
+
+	X2Fixture() : X2Fixture(LoadX2Enc()) {}
+
+private:
+	explicit X2Fixture(X2Load l) : X1Fixture(std::move(l.v)), shape(l.shape), log(l.log)
+	{
+		std::string why;
+		REQUIRE(PlacePlanarShapeFlex(v, why));
+		std::map<std::string, std::vector<int>> h;
+		for (const auto &[name, t] : idx) h[name] = v.tracks[t].pieces;
+		/* The other tracks are X1's. */
+		REQUIRE(h["AC1"] == std::vector<int>({2, 1, 2, 3, 2}));
+		REQUIRE(h["A1"] == std::vector<int>({2, 1, 2, 3, 2, 1, 2, 3, 2}));
+		REQUIRE(h["C1"] == std::vector<int>({1, 0, 1, 2, 1, 0, -1, 0, 1, 0}));
+		REQUIRE(h["BD1"] == std::vector<int>({0, -1, 0, 1, 0}));
+		REQUIRE(h["D1"] == std::vector<int>({1, 0, 1, 2, 1, 2, 1, 2, 3, 2}));
+		const auto &map = v.structure.map;
+		auto event_of = [&](const std::string &name) {
+			const uint32_t t = idx.at(name);
+			REQUIRE(map.crossings.size() == 1);
+			const auto &ev = map.events[t];
+			const size_t pos = static_cast<size_t>(std::ranges::find(ev, 0u) - ev.begin());
+			REQUIRE(pos < ev.size());
+			return v.tracks[t].event_piece[pos];
+		};
+		b1_event = event_of("B1");
+		a1_event = event_of("A1");
+		/* B1: N 2, the crossing run (NE or NW) 4 on the event piece, N 4; each run on the first piece of its heading at or after the previous run's piece. */
+		const std::vector<int> &b = h["B1"];
+		const int diag = shape == "0 1 0" ? 1 : 7;
+		const std::pair<int, int> runs[3] = {{0, 2}, {diag, 4}, {0, 4}};
+		Geometry g = {
+			{"AC1", {{0, 4}}},
+			{"A1", {{4, 12}, {8, 4}}},
+			{"C1", {{0, 3}, {9, 2}}},
+			{"BD1", {{0, 2}}},
+			{"D1", {{0, 1}, {9, 8}}},
+		};
+		uint32_t prev = 0;
+		for (int r = 0; r < 3; r++) {
+			uint32_t k = prev;
+			if (r == 1) {
+				k = b1_event;
+			} else {
+				while (k < b.size() && ((b[k] % 8) + 8) % 8 != runs[r].first) k++;
+				if (r == 2) {
+					for (uint32_t j = k; j < b.size(); j++) {
+						if (((b[j] % 8) + 8) % 8 == runs[r].first) k = j;
+					}
+				}
+			}
+			REQUIRE(k < b.size());
+			REQUIRE(((b[k] % 8) + 8) % 8 == runs[r].first);
+			REQUIRE(k >= prev);
+			if (r == 0) REQUIRE(k <= b1_event);
+			g["B1"][k] = runs[r].second;
+			prev = k;
+		}
+		SetUp(h, g);
+	}
 };
 
 /** The least over a candidate's rows of s.(q - p) - spacing on the points. */
@@ -468,6 +588,345 @@ bool IsOtherShape(const X1Fixture &f, const Geometry &g)
 	return ArcConsistency(f.n, reps, nullptr, {}, {}, PlanarProgram{}, 5000000, evals, &conform) == 1;
 }
 
+/** REQUIRE a fixture's base on the grid, domain-legal and conformant. */
+void RequireBaseLegal(const X1Fixture &f)
+{
+	const std::vector<Points> base = f.PointsOf(f.base);
+	for (const Points &p : base) REQUIRE(RasterPlanarDomainTrack(p).rule.empty());
+	std::vector<std::string> notes;
+	const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, base, notes));
+	for (const std::string &m : notes) WARN("base note: " << m);
+	for (const PlanarDomainBreak &b : d.breaks) WARN("base break: " << b.rule << " tile (" << b.tile.x << "," << b.tile.y << ") " << b.why);
+	REQUIRE(notes.empty());
+	REQUIRE(d.legal);
+	for (const Conformity &c : ConformitiesOf(f)) REQUIRE(ConformityHolds(c, base));
+}
+
+/** One configuration: the axes (track, piece, values) enumerated together. */
+struct Config {
+	std::string name;
+	std::vector<std::tuple<std::string, uint32_t, std::vector<int>>> axes;
+};
+
+/** Judge our keep-apart rules against the domain on a fixture's configurations and write the report. */
+void RunEncoding(const X1Fixture &f, const char *report_path, const std::string &title, const std::vector<Config> &configs, const std::string &header, const char *rules_override = nullptr, int *base_verdict = nullptr)
+{
+	REQUIRE((report_path != nullptr || base_verdict != nullptr));
+	const std::vector<Conformity> conform = ConformitiesOf(f);
+
+	const auto t0 = std::chrono::steady_clock::now();
+	std::map<std::string, Tally> per;
+	Tally total;
+
+	std::map<std::string, Judged> verdicts; ///< Per polyline key.
+		std::map<std::string, PolyClass> classes;
+	std::map<std::string, double> rep_products;
+
+	for (const Config &cfg : configs) {
+		Tally &tally = per[cfg.name];
+		/* PLANAR_DOMAIN_RULES (a measurement): plain, span, zero or all (default) strict keep-apart rules. */
+		const char *rules_env = rules_override != nullptr ? rules_override : std::getenv("PLANAR_DOMAIN_RULES");
+		std::string rules = rules_env == nullptr ? "all" : rules_env;
+		const bool crosspiece = rules.ends_with("+crosspiece");
+		if (crosspiece) rules.resize(rules.size() - 11);
+		const bool endnode = rules.ends_with("+endnode");
+		if (endnode) rules.resize(rules.size() - 8);
+		const bool lead = rules.ends_with("+lead");
+		if (lead) rules.resize(rules.size() - 5);
+		X1Fixture fx = f;
+		fx.options.end_node = endnode;
+		fx.options.cross_piece = crosspiece;
+		const std::vector<PlanarPointRow> lead_rows = lead ? PlanarNodeLeadRows(f.v) : std::vector<PlanarPointRow>{};
+		PlanarDrawResult readout = fx.ReadOut(rules == "all");
+		const PlanarDrawResult program_out = fx.ProgramOut();
+		REQUIRE(program_out.status == "built");
+		if (rules == "span" || rules == "zero") {
+			X1Fixture g = fx;
+			g.options.strict_span = rules == "span";
+			g.options.strict_zero = rules == "zero";
+			g.options.crossing_flanks = false;
+			readout = g.ReadOut(true);
+		}
+		REQUIRE(readout.status == "built");
+		auto lengths_of = [&](const Geometry &g, const std::string &name) {
+			Lengths l(f.heads.at(name).size(), 0);
+			const auto it = g.find(name);
+			if (it != g.end()) {
+				for (const auto &[k, len] : it->second) l[k] = len;
+			}
+			return l;
+		};
+		/* Judge a polyline by all its representations (cached per polyline key). */
+		/* shaped: only representations that keep the variant's crossing pieces count (too strict); unshaped: any representation (too loose: the solver may produce it). */
+		auto judge = [&](const std::string &pkey_in, const Geometry &g, bool shaped = true) -> const Judged & {
+			const std::string pkey = shaped ? pkey_in : pkey_in + "#any";
+			const auto cached = verdicts.find(pkey);
+			if (cached != verdicts.end()) return cached->second;
+			int verdict = 1;
+			std::vector<std::vector<Lengths>> replens(f.n);
+			std::vector<Lengths> witness;
+			std::vector<std::string> witness_undetermined;
+			double nodes_used = 0;
+			/* Per track (by track index): its representations as points, after the unary filter. */
+			std::vector<std::vector<Points>> reps(f.n);
+			for (const auto &[name, h] : f.heads) {
+				const uint32_t t = f.idx.at(name);
+				const std::vector<Lengths> all = Representations(h, PolylineRuns(h, lengths_of(g, name)), 20001);
+				if (all.size() > 20000) verdict = 2;
+				if (verdict == 2) continue;
+				for (const Lengths &l : all) {
+					Geometry one;
+					for (size_t k = 0; k < l.size(); k++) {
+						if (l[k] != 0) one[name][static_cast<uint32_t>(k)] = l[k];
+					}
+					std::vector<Points> pts(f.n);
+					pts[t] = f.PointsOf(one)[t];
+					bool ok = true;
+					for (const PlanarKeepApartPair &p : readout.keep_apart) {
+						if (p.tracks[0] == t && p.tracks[1] == t && !PlanarKeepApartHolds(p, pts)) ok = false;
+					}
+					for (const PlanarPointRow &r : lead_rows) {
+						if (r.terms.front().point[0] == t && !PlanarPointRowHolds(r, pts)) ok = false;
+					}
+					/* The program rows that depend on this track alone. */
+					if (ok) {
+						std::vector<bool> only(f.n, false);
+						only[t] = true;
+						ok = CheckPlanarProgramOnPoints(program_out.program, pts, only).broken.empty();
+					}
+					if (ok) {
+					reps[t].push_back(pts[t]);
+					replens[t].push_back(l);
+				}
+				}
+			}
+			bool run_search = false;
+			uint64_t evals = 0;
+			if (verdict != 2 && !std::ranges::any_of(reps, [](const std::vector<Points> &r) { return r.empty(); })) {
+				/* Arc consistency first: an emptied list rejects the polyline, more than 5,000,000 pair evaluations leave it undecided. */
+				const int ac = ArcConsistency(f.n, reps, &replens, readout.keep_apart, lead_rows, program_out.program, 5000000, evals, shaped ? &conform : nullptr);
+				if (ac == 0) run_search = true; else verdict = ac;
+			}
+			nodes_used = static_cast<double>(evals);
+			if (run_search) {
+				std::vector<uint32_t> order(f.n);
+				for (uint32_t t = 0; t < f.n; t++) order[t] = t;
+				std::ranges::stable_sort(order, [&](uint32_t a, uint32_t b) { return reps[a].size() < reps[b].size(); });
+				std::vector<uint32_t> depth_of(f.n);
+				for (uint32_t d = 0; d < f.n; d++) depth_of[order[d]] = d;
+				std::vector<std::vector<const PlanarKeepApartPair *>> at_depth(f.n);
+				for (const PlanarKeepApartPair &p : readout.keep_apart) {
+					if (p.tracks[0] >= f.n || p.tracks[1] >= f.n || p.tracks[0] == p.tracks[1]) continue;
+					at_depth[std::max(depth_of[p.tracks[0]], depth_of[p.tracks[1]])].push_back(&p);
+				}
+				std::vector<Points> cur(f.n);
+				std::vector<size_t> chosen(f.n, 0);
+				std::vector<bool> placed(f.n, false);
+				uint64_t nodes = 0;
+				auto search = [&](auto &&self, uint32_t d) -> bool {
+					if (d == f.n) return true;
+					for (size_t ri = 0; ri < reps[order[d]].size(); ri++) {
+						const Points &rp = reps[order[d]][ri];
+						if (++nodes > 50000) return false;
+						cur[order[d]] = rp;
+						chosen[order[d]] = ri;
+						placed[order[d]] = true;
+						const bool ok = std::ranges::all_of(at_depth[d], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); }) && std::ranges::all_of(conform, [&](const Conformity &c) { return !shaped || !placed[c.a] || !placed[c.b] || ConformityHolds(c, cur); }) && CheckPlanarProgramOnPoints(program_out.program, cur, placed).broken.empty();
+						if (ok && self(self, d + 1)) return true;
+						if (nodes > 50000) return false;
+					}
+					placed[order[d]] = false;
+					return false;
+				};
+				const bool found = search(search, 0);
+				nodes_used = static_cast<double>(nodes + evals);
+				verdict = found ? 0 : (nodes > 50000 ? 2 : 1);
+				if (found) {
+					witness.resize(f.n);
+					for (uint32_t t = 0; t < f.n; t++) witness[t] = replens[t][chosen[t]];
+					witness_undetermined = CheckPlanarProgramOnPoints(program_out.program, cur).undetermined;
+					g_undetermined_seen.insert(witness_undetermined.begin(), witness_undetermined.end());
+				}
+			}
+			rep_products[pkey] = nodes_used;
+			Judged &j = verdicts[pkey];
+			j.verdict = verdict;
+			j.witness = witness;
+			j.undetermined = witness_undetermined;
+			return j;
+		};
+		if (base_verdict != nullptr) {
+			/* Only the base polyline: 0 an accepted representation exists, 1 none, 2 undecided. */
+			std::string pkey;
+			for (const auto &[name, h] : f.heads) {
+				pkey += name + ":";
+				std::ostringstream run_text;
+				for (const auto &[hh, len] : PolylineRuns(h, lengths_of(f.base, name))) run_text << hh << "*" << len << ",";
+				pkey += run_text.str() + ";";
+			}
+			*base_verdict = judge(pkey, f.base).verdict;
+			return;
+		}
+		std::vector<size_t> pos(cfg.axes.size(), 0);
+		while (true) {
+			Geometry g = f.base;
+			std::ostringstream varied;
+			for (size_t a = 0; a < cfg.axes.size(); a++) {
+				const auto &[name, piece, vals] = cfg.axes[a];
+				g[name][piece] = vals[pos[a]];
+				varied << (a == 0 ? "" : " ") << name << "." << piece << "=" << vals[pos[a]];
+			}
+			const std::vector<Points> points = f.PointsOf(g);
+			enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, UNDECIDED, OFF_GRID, OTHER_SHAPE } c;
+			bool on_grid = true;
+			for (const Points &p : points) on_grid = on_grid && RasterPlanarDomainTrack(p).rule.empty();
+			std::string pkey;
+			const PolyClass *pc = nullptr;
+			if (!on_grid) {
+				c = OFF_GRID;
+			} else {
+				for (const auto &[name, h] : f.heads) {
+					pkey += name + ":";
+					std::ostringstream run_text;
+					for (const auto &[hh, len] : PolylineRuns(h, lengths_of(g, name))) run_text << hh << "*" << len << ",";
+					pkey += run_text.str() + ";";
+				}
+				const auto known = classes.find(pkey);
+				if (known == classes.end()) {
+					std::vector<std::string> notes;
+					const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
+					const bool other = IsOtherShape(f, g);
+					/* Too loose is judged over every representation (the solver may produce any); too strict only over those keeping the variant's crossing pieces. */
+					const Judged &j = (!d.legal || other) ? judge(pkey, g, false) : judge(pkey, g);
+					PolyClass nc;
+					if (other && (d.legal || j.verdict != 0)) {
+						nc.c = OTHER_SHAPE;
+						nc.detail = "      polyline " + pkey + "\n";
+					} else if (j.verdict == 2) {
+						nc.c = UNDECIDED;
+					} else if (d.legal) {
+						nc.c = j.verdict == 0 ? BOTH_ACCEPT : STRICT;
+					} else {
+						nc.c = j.verdict == 0 ? LOOSE : BOTH_REJECT;
+					}
+					if (nc.c == STRICT) {
+						std::set<std::string> kept;
+						nc.detail = "      polyline " + pkey + "\n" + FailingText(f, readout.keep_apart, points, kept);
+						for (const PlanarPointRow &r : lead_rows) {
+							if (PlanarPointRowHolds(r, points)) continue;
+							kept.insert("lead");
+							nc.detail += "      " + r.tag + " fails\n";
+						}
+						const PlanarProgramCheck pc_check = CheckPlanarProgramOnPoints(program_out.program, points);
+						for (const std::string &b : pc_check.broken) {
+							kept.insert(FamilyOf(b));
+							nc.detail += "      program row broken: " + b + "\n";
+						}
+						nc.key = Join(kept);
+					} else if (nc.c == LOOSE) {
+						std::set<std::string> rules;
+						std::ostringstream out;
+						out << "      polyline " << pkey << "\n      witness piece lengths:";
+						for (uint32_t t = 0; t < f.n; t++) {
+							out << " " << f.Name(t) << "[";
+							for (size_t k = 0; k < j.witness[t].size(); k++) out << (k == 0 ? "" : ",") << j.witness[t][k];
+							out << "]";
+						}
+						out << "\n";
+						for (const PlanarDomainBreak &b : d.breaks) {
+							rules.insert(b.rule);
+							std::string names;
+							for (const uint32_t t : b.tracks) names += (names.empty() ? "" : ",") + f.Name(t);
+							out << "      break " << b.rule << " tracks " << names << " tile (" << b.tile.x << "," << b.tile.y << ") " << b.why << "\n";
+							for (const PlanarKeepApartPair &p : readout.keep_apart) {
+								const bool pa = std::ranges::count(b.tracks, p.tracks[0]) > 0, pb = std::ranges::count(b.tracks, p.tracks[1]) > 0;
+								if (!pa || !pb) continue;
+								out << "        " << p.tag << " " << f.Name(p.tracks[0]) << "/" << f.Name(p.tracks[1]) << " pieces " << p.pieces[0] << "/" << p.pieces[1] << ": " << (p.skipped.empty() ? "held" : p.skipped) << "\n";
+							}
+							for (const PlanarPointRow &r : lead_rows) {
+								if (std::ranges::count(b.tracks, r.terms.front().point[0]) > 0) out << "        " << r.tag << ": holds on the witness\n";
+							}
+						}
+						nc.detail = out.str();
+						nc.key = Join(rules);
+						if (!j.undetermined.empty()) {
+							std::set<std::string> und(j.undetermined.begin(), j.undetermined.end());
+							nc.key += " / undetermined " + Join(und);
+						}
+					}
+					pc = &(classes[pkey] = nc);
+				} else {
+					pc = &known->second;
+				}
+				c = static_cast<decltype(c)>(pc->c);
+			}
+			for (Tally *x : {&tally, &total}) {
+				x->geoms[c]++;
+				if (c == OFF_GRID) {
+					x->counts[c]++;
+					continue;
+				}
+				if (c == OTHER_SHAPE) {
+					if (x->seen.insert(pkey).second) {
+						x->counts[c]++;
+						if (x->other.size() < 3) x->other.push_back({varied.str(), pc->detail});
+					}
+					continue;
+				}
+				Group *grp = c == STRICT ? &x->strict[pc->key] : c == LOOSE ? &x->loose[pc->key] : nullptr;
+				if (grp != nullptr) grp->geometries++;
+				if (!x->seen.insert(pkey).second) continue;
+				x->counts[c]++;
+				if (c == UNDECIDED) x->undecided[pkey] = rep_products[pkey];
+				if (grp != nullptr && grp->count++ < 3) grp->examples.push_back({varied.str(), pc->detail});
+			}
+			size_t a = 0;
+			while (a < cfg.axes.size()) {
+				if (++pos[a] < std::get<2>(cfg.axes[a]).size()) break;
+				pos[a++] = 0;
+			}
+			if (a == cfg.axes.size()) break;
+		}
+	}
+	const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+
+	std::ofstream out(report_path);
+	REQUIRE(out.good());
+	out << "Encoding report on " << title << ": our keep-apart rows (judged on fixed points, no solve) against the domain\n" << header;
+	out << "enumeration wall " << wall << " s\n\n";
+	auto write = [&](const std::string &title, const Tally &t) {
+		out << "== " << title << " ==\n";
+		for (int c = 0; c < 7; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << (c == 5 ? "" : " polylines") << " (" << t.geoms[c] << " geometries)\n";
+		for (const Example &e : t.other) out << "    other shape, varied: " << e.varied << "\n" << e.detail;
+		for (const auto &[pk, prod] : t.undecided) out << "    undecided polyline " << pk << " search nodes " << prod << "\n";
+		for (int kind = 0; kind < 2; kind++) {
+			const auto &groups = kind == 0 ? t.strict : t.loose;
+			out << (kind == 0 ? " too strict, by the kept values of the failing pairs:\n" : " too loose, by domain break rules:\n");
+			for (const auto &[key, grp] : groups) {
+				out << "  [" << key << "] polylines " << grp.count << " (geometries " << grp.geometries << ")\n";
+				for (const Example &e : grp.examples) out << "    varied: " << e.varied << "\n" << e.detail;
+			}
+		}
+		out << "\n";
+	};
+	for (const Config &cfg : configs) write(cfg.name, per[cfg.name]);
+	write("total", total);
+
+	out << "undetermined families seen: " << Join(g_undetermined_seen) << "\n\n";
+	out << "== base (strict rules on): failing pairs ==\n";
+	{
+		const std::vector<Points> base = f.PointsOf(f.base);
+		std::set<std::string> kept;
+		out << FailingText(f, f.ReadOut(true).keep_apart, base, kept);
+	}
+	out.close();
+	for (const Config &cfg : configs) {
+		const Tally &t = per[cfg.name];
+		WARN(cfg.name << " (polylines): both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", undecided " << t.counts[4] << ", off grid geometries " << t.counts[5] << ", other shape " << t.counts[6] << " (geometries " << t.geoms[6] << ")");
+	}
+	WARN("undetermined families seen: " << Join(g_undetermined_seen));
+	WARN("enumeration wall " << wall << " s");
+}
 } // namespace
 
 TEST_CASE("planar draw: keep-apart pairs hold on given points", "[junction][planar][planardomain]")
@@ -815,316 +1274,55 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT");
 	REQUIRE(report_path != nullptr);
 	const X1Fixture f;
-	const std::vector<Conformity> conform = ConformitiesOf(f);
-
-	const auto t0 = std::chrono::steady_clock::now();
-	std::map<std::string, Tally> per;
-	Tally total;
-
-	struct Config {
-		std::string name;
-		std::vector<std::tuple<std::string, uint32_t, std::vector<int>>> axes;
-	};
 	const std::vector<Config> configs = {
 		{"S1", {{"B1", 2, {0, 2, 4}}, {"B1", 3, {0, 1, 2, 3, 4}}, {"B1", 4, {2, 4, 6, 8, 10, 12, 14}}, {"B1", 5, {0, 1, 2, 3, 4}}, {"B1", 6, {4}}}},
 		{"S2", {{"A1", 2, {0, 2, 4}}, {"A1", 3, {0, 1, 2, 3, 4}}, {"A1", 4, {2, 4, 6, 8, 10, 12, 14, 16}}, {"A1", 5, {0, 1, 2, 3, 4}}, {"A1", 6, {4}}}},
 		{"N1", {{"C1", 0, {0, 1, 2, 3}}, {"C1", 1, {0, 2, 4}}, {"C1", 2, {0, 1, 2, 3}}, {"A1", 0, {0, 2, 4}}, {"A1", 1, {0, 1, 2, 3}}}},
 	};
+	RunEncoding(f, report_path, "X1", configs, "");
+}
 
-	std::map<std::string, Judged> verdicts; ///< Per polyline key.
-		std::map<std::string, PolyClass> classes;
-	std::map<std::string, double> rep_products;
+TEST_CASE("planar domain: X2 loads and its base is legal", "[junction][planar][planardomain]")
+{
+	const X2Fixture f;
+	INFO(f.log);
+	RequireBaseLegal(f);
+	const std::vector<Points> base = f.PointsOf(f.base);
 
-	for (const Config &cfg : configs) {
-		Tally &tally = per[cfg.name];
-		/* PLANAR_DOMAIN_RULES (a measurement): plain, span, zero or all (default) strict keep-apart rules. */
-		const char *rules_env = std::getenv("PLANAR_DOMAIN_RULES");
-		std::string rules = rules_env == nullptr ? "all" : rules_env;
-		const bool crosspiece = rules.ends_with("+crosspiece");
-		if (crosspiece) rules.resize(rules.size() - 11);
-		const bool endnode = rules.ends_with("+endnode");
-		if (endnode) rules.resize(rules.size() - 8);
-		const bool lead = rules.ends_with("+lead");
-		if (lead) rules.resize(rules.size() - 5);
-		X1Fixture fx = f;
-		fx.options.end_node = endnode;
-		fx.options.cross_piece = crosspiece;
-		const std::vector<PlanarPointRow> lead_rows = lead ? PlanarNodeLeadRows(f.v) : std::vector<PlanarPointRow>{};
-		PlanarDrawResult readout = fx.ReadOut(rules == "all");
-		const PlanarDrawResult program_out = fx.ProgramOut();
-		REQUIRE(program_out.status == "built");
-		if (rules == "span" || rules == "zero") {
-			X1Fixture g = fx;
-			g.options.strict_span = rules == "span";
-			g.options.strict_zero = rules == "zero";
-			g.options.crossing_flanks = false;
-			readout = g.ReadOut(true);
-		}
-		REQUIRE(readout.status == "built");
-		auto lengths_of = [&](const Geometry &g, const std::string &name) {
-			Lengths l(f.heads.at(name).size(), 0);
-			const auto it = g.find(name);
-			if (it != g.end()) {
-				for (const auto &[k, len] : it->second) l[k] = len;
-			}
-			return l;
-		};
-		/* Judge a polyline by all its representations (cached per polyline key). */
-		/* shaped: only representations that keep the variant's crossing pieces count (too strict); unshaped: any representation (too loose: the solver may produce it). */
-		auto judge = [&](const std::string &pkey_in, const Geometry &g, bool shaped = true) -> const Judged & {
-			const std::string pkey = shaped ? pkey_in : pkey_in + "#any";
-			const auto cached = verdicts.find(pkey);
-			if (cached != verdicts.end()) return cached->second;
-			int verdict = 1;
-			std::vector<std::vector<Lengths>> replens(f.n);
-			std::vector<Lengths> witness;
-			std::vector<std::string> witness_undetermined;
-			double nodes_used = 0;
-			/* Per track (by track index): its representations as points, after the unary filter. */
-			std::vector<std::vector<Points>> reps(f.n);
-			for (const auto &[name, h] : f.heads) {
-				const uint32_t t = f.idx.at(name);
-				const std::vector<Lengths> all = Representations(h, PolylineRuns(h, lengths_of(g, name)), 20001);
-				if (all.size() > 20000) verdict = 2;
-				if (verdict == 2) continue;
-				for (const Lengths &l : all) {
-					Geometry one;
-					for (size_t k = 0; k < l.size(); k++) {
-						if (l[k] != 0) one[name][static_cast<uint32_t>(k)] = l[k];
-					}
-					std::vector<Points> pts(f.n);
-					pts[t] = f.PointsOf(one)[t];
-					bool ok = true;
-					for (const PlanarKeepApartPair &p : readout.keep_apart) {
-						if (p.tracks[0] == t && p.tracks[1] == t && !PlanarKeepApartHolds(p, pts)) ok = false;
-					}
-					for (const PlanarPointRow &r : lead_rows) {
-						if (r.terms.front().point[0] == t && !PlanarPointRowHolds(r, pts)) ok = false;
-					}
-					/* The program rows that depend on this track alone. */
-					if (ok) {
-						std::vector<bool> only(f.n, false);
-						only[t] = true;
-						ok = CheckPlanarProgramOnPoints(program_out.program, pts, only).broken.empty();
-					}
-					if (ok) {
-					reps[t].push_back(pts[t]);
-					replens[t].push_back(l);
-				}
-				}
-			}
-			bool run_search = false;
-			uint64_t evals = 0;
-			if (verdict != 2 && !std::ranges::any_of(reps, [](const std::vector<Points> &r) { return r.empty(); })) {
-				/* Arc consistency first: an emptied list rejects the polyline, more than 5,000,000 pair evaluations leave it undecided. */
-				const int ac = ArcConsistency(f.n, reps, &replens, readout.keep_apart, lead_rows, program_out.program, 5000000, evals, shaped ? &conform : nullptr);
-				if (ac == 0) run_search = true; else verdict = ac;
-			}
-			nodes_used = static_cast<double>(evals);
-			if (run_search) {
-				std::vector<uint32_t> order(f.n);
-				for (uint32_t t = 0; t < f.n; t++) order[t] = t;
-				std::ranges::stable_sort(order, [&](uint32_t a, uint32_t b) { return reps[a].size() < reps[b].size(); });
-				std::vector<uint32_t> depth_of(f.n);
-				for (uint32_t d = 0; d < f.n; d++) depth_of[order[d]] = d;
-				std::vector<std::vector<const PlanarKeepApartPair *>> at_depth(f.n);
-				for (const PlanarKeepApartPair &p : readout.keep_apart) {
-					if (p.tracks[0] >= f.n || p.tracks[1] >= f.n || p.tracks[0] == p.tracks[1]) continue;
-					at_depth[std::max(depth_of[p.tracks[0]], depth_of[p.tracks[1]])].push_back(&p);
-				}
-				std::vector<Points> cur(f.n);
-				std::vector<size_t> chosen(f.n, 0);
-				std::vector<bool> placed(f.n, false);
-				uint64_t nodes = 0;
-				auto search = [&](auto &&self, uint32_t d) -> bool {
-					if (d == f.n) return true;
-					for (size_t ri = 0; ri < reps[order[d]].size(); ri++) {
-						const Points &rp = reps[order[d]][ri];
-						if (++nodes > 50000) return false;
-						cur[order[d]] = rp;
-						chosen[order[d]] = ri;
-						placed[order[d]] = true;
-						const bool ok = std::ranges::all_of(at_depth[d], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); }) && std::ranges::all_of(conform, [&](const Conformity &c) { return !shaped || !placed[c.a] || !placed[c.b] || ConformityHolds(c, cur); }) && CheckPlanarProgramOnPoints(program_out.program, cur, placed).broken.empty();
-						if (ok && self(self, d + 1)) return true;
-						if (nodes > 50000) return false;
-					}
-					placed[order[d]] = false;
-					return false;
-				};
-				const bool found = search(search, 0);
-				nodes_used = static_cast<double>(nodes + evals);
-				verdict = found ? 0 : (nodes > 50000 ? 2 : 1);
-				if (found) {
-					witness.resize(f.n);
-					for (uint32_t t = 0; t < f.n; t++) witness[t] = replens[t][chosen[t]];
-					witness_undetermined = CheckPlanarProgramOnPoints(program_out.program, cur).undetermined;
-					g_undetermined_seen.insert(witness_undetermined.begin(), witness_undetermined.end());
-				}
-			}
-			rep_products[pkey] = nodes_used;
-			Judged &j = verdicts[pkey];
-			j.verdict = verdict;
-			j.witness = witness;
-			j.undetermined = witness_undetermined;
-			return j;
-		};
-		std::vector<size_t> pos(cfg.axes.size(), 0);
-		while (true) {
-			Geometry g = f.base;
-			std::ostringstream varied;
-			for (size_t a = 0; a < cfg.axes.size(); a++) {
-				const auto &[name, piece, vals] = cfg.axes[a];
-				g[name][piece] = vals[pos[a]];
-				varied << (a == 0 ? "" : " ") << name << "." << piece << "=" << vals[pos[a]];
-			}
-			const std::vector<Points> points = f.PointsOf(g);
-			enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, UNDECIDED, OFF_GRID, OTHER_SHAPE } c;
-			bool on_grid = true;
-			for (const Points &p : points) on_grid = on_grid && RasterPlanarDomainTrack(p).rule.empty();
-			std::string pkey;
-			const PolyClass *pc = nullptr;
-			if (!on_grid) {
-				c = OFF_GRID;
-			} else {
-				for (const auto &[name, h] : f.heads) {
-					pkey += name + ":";
-					std::ostringstream run_text;
-					for (const auto &[hh, len] : PolylineRuns(h, lengths_of(g, name))) run_text << hh << "*" << len << ",";
-					pkey += run_text.str() + ";";
-				}
-				const auto known = classes.find(pkey);
-				if (known == classes.end()) {
-					std::vector<std::string> notes;
-					const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
-					const bool other = IsOtherShape(f, g);
-					/* Too loose is judged over every representation (the solver may produce any); too strict only over those keeping the variant's crossing pieces. */
-					const Judged &j = (!d.legal || other) ? judge(pkey, g, false) : judge(pkey, g);
-					PolyClass nc;
-					if (other && (d.legal || j.verdict != 0)) {
-						nc.c = OTHER_SHAPE;
-						nc.detail = "      polyline " + pkey + "\n";
-					} else if (j.verdict == 2) {
-						nc.c = UNDECIDED;
-					} else if (d.legal) {
-						nc.c = j.verdict == 0 ? BOTH_ACCEPT : STRICT;
-					} else {
-						nc.c = j.verdict == 0 ? LOOSE : BOTH_REJECT;
-					}
-					if (nc.c == STRICT) {
-						std::set<std::string> kept;
-						nc.detail = "      polyline " + pkey + "\n" + FailingText(f, readout.keep_apart, points, kept);
-						for (const PlanarPointRow &r : lead_rows) {
-							if (PlanarPointRowHolds(r, points)) continue;
-							kept.insert("lead");
-							nc.detail += "      " + r.tag + " fails\n";
-						}
-						const PlanarProgramCheck pc_check = CheckPlanarProgramOnPoints(program_out.program, points);
-						for (const std::string &b : pc_check.broken) {
-							kept.insert(FamilyOf(b));
-							nc.detail += "      program row broken: " + b + "\n";
-						}
-						nc.key = Join(kept);
-					} else if (nc.c == LOOSE) {
-						std::set<std::string> rules;
-						std::ostringstream out;
-						out << "      polyline " << pkey << "\n      witness piece lengths:";
-						for (uint32_t t = 0; t < f.n; t++) {
-							out << " " << f.Name(t) << "[";
-							for (size_t k = 0; k < j.witness[t].size(); k++) out << (k == 0 ? "" : ",") << j.witness[t][k];
-							out << "]";
-						}
-						out << "\n";
-						for (const PlanarDomainBreak &b : d.breaks) {
-							rules.insert(b.rule);
-							std::string names;
-							for (const uint32_t t : b.tracks) names += (names.empty() ? "" : ",") + f.Name(t);
-							out << "      break " << b.rule << " tracks " << names << " tile (" << b.tile.x << "," << b.tile.y << ") " << b.why << "\n";
-							for (const PlanarKeepApartPair &p : readout.keep_apart) {
-								const bool pa = std::ranges::count(b.tracks, p.tracks[0]) > 0, pb = std::ranges::count(b.tracks, p.tracks[1]) > 0;
-								if (!pa || !pb) continue;
-								out << "        " << p.tag << " " << f.Name(p.tracks[0]) << "/" << f.Name(p.tracks[1]) << " pieces " << p.pieces[0] << "/" << p.pieces[1] << ": " << (p.skipped.empty() ? "held" : p.skipped) << "\n";
-							}
-							for (const PlanarPointRow &r : lead_rows) {
-								if (std::ranges::count(b.tracks, r.terms.front().point[0]) > 0) out << "        " << r.tag << ": holds on the witness\n";
-							}
-						}
-						nc.detail = out.str();
-						nc.key = Join(rules);
-						if (!j.undetermined.empty()) {
-							std::set<std::string> und(j.undetermined.begin(), j.undetermined.end());
-							nc.key += " / undetermined " + Join(und);
-						}
-					}
-					pc = &(classes[pkey] = nc);
-				} else {
-					pc = &known->second;
-				}
-				c = static_cast<decltype(c)>(pc->c);
-			}
-			for (Tally *x : {&tally, &total}) {
-				x->geoms[c]++;
-				if (c == OFF_GRID) {
-					x->counts[c]++;
-					continue;
-				}
-				if (c == OTHER_SHAPE) {
-					if (x->seen.insert(pkey).second) {
-						x->counts[c]++;
-						if (x->other.size() < 3) x->other.push_back({varied.str(), pc->detail});
-					}
-					continue;
-				}
-				Group *grp = c == STRICT ? &x->strict[pc->key] : c == LOOSE ? &x->loose[pc->key] : nullptr;
-				if (grp != nullptr) grp->geometries++;
-				if (!x->seen.insert(pkey).second) continue;
-				x->counts[c]++;
-				if (c == UNDECIDED) x->undecided[pkey] = rep_products[pkey];
-				if (grp != nullptr && grp->count++ < 3) grp->examples.push_back({varied.str(), pc->detail});
-			}
-			size_t a = 0;
-			while (a < cfg.axes.size()) {
-				if (++pos[a] < std::get<2>(cfg.axes[a]).size()) break;
-				pos[a++] = 0;
-			}
-			if (a == cfg.axes.size()) break;
-		}
+	/* The base polyline, judged as the report judges it with the rule set span+lead+endnode+crosspiece: some representation passes. */
+	int verdict = 1;
+	const Config none{"base", {}};
+	RunEncoding(f, nullptr, "X2", {none}, "", "span+lead+endnode+crosspiece", &verdict);
+	CHECK(verdict == 0);
+}
+
+TEST_CASE("planar domain: our keep-apart against the domain on X2", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_X2");
+	REQUIRE(report_path != nullptr);
+	const X2Fixture f;
+	RequireBaseLegal(f);
+	const std::vector<int> &b1 = f.heads.at("B1");
+	const uint32_t last = static_cast<uint32_t>(b1.size()) - 1;
+	std::ostringstream header;
+	header << "B1 shape text: " << f.shape << "\n" << (f.log.empty() ? "" : "refused first:\n" + f.log);
+	header << "B1 headings after flex:";
+	for (const int h : b1) header << " " << h;
+	header << "\nB1 flex middles:";
+	for (const uint32_t m : f.v.tracks[f.idx.at("B1")].flex) header << " " << m;
+	header << "\nB1 event piece after flex: " << f.b1_event << "\nA1 event piece after flex: " << f.a1_event << "\nB1's last piece (" << last << ") is fixed at 4\n";
+
+	/* C1: B1's event piece length, each piece within two of it (not the last), the last piece fixed at 4. */
+	Config c1{"X2 C1", {{"B1", f.b1_event, {1, 2, 3, 4, 5, 6}}}};
+	for (uint32_t k = f.b1_event >= 2 ? f.b1_event - 2 : 0; k <= f.b1_event + 2 && k < last; k++) {
+		if (k == f.b1_event) continue;
+		const bool axis = ((b1[k] % 8) + 8) % 8 % 2 == 0;
+		c1.axes.emplace_back("B1", k, axis ? std::vector<int>{0, 2, 4} : std::vector<int>{0, 1, 2, 3, 4});
 	}
-	const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-
-	std::ofstream out(report_path);
-	REQUIRE(out.good());
-	out << "Encoding report on X1: our keep-apart rows (judged on fixed points, no solve) against the domain\n";
-	out << "enumeration wall " << wall << " s\n\n";
-	auto write = [&](const std::string &title, const Tally &t) {
-		out << "== " << title << " ==\n";
-		for (int c = 0; c < 7; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << (c == 5 ? "" : " polylines") << " (" << t.geoms[c] << " geometries)\n";
-		for (const Example &e : t.other) out << "    other shape, varied: " << e.varied << "\n" << e.detail;
-		for (const auto &[pk, prod] : t.undecided) out << "    undecided polyline " << pk << " search nodes " << prod << "\n";
-		for (int kind = 0; kind < 2; kind++) {
-			const auto &groups = kind == 0 ? t.strict : t.loose;
-			out << (kind == 0 ? " too strict, by the kept values of the failing pairs:\n" : " too loose, by domain break rules:\n");
-			for (const auto &[key, grp] : groups) {
-				out << "  [" << key << "] polylines " << grp.count << " (geometries " << grp.geometries << ")\n";
-				for (const Example &e : grp.examples) out << "    varied: " << e.varied << "\n" << e.detail;
-			}
-		}
-		out << "\n";
-	};
-	for (const Config &cfg : configs) write(cfg.name, per[cfg.name]);
-	write("total", total);
-
-	out << "undetermined families seen: " << Join(g_undetermined_seen) << "\n\n";
-	out << "== base (strict rules on): failing pairs ==\n";
-	{
-		const std::vector<Points> base = f.PointsOf(f.base);
-		std::set<std::string> kept;
-		out << FailingText(f, f.ReadOut(true).keep_apart, base, kept);
-	}
-	out.close();
-	for (const Config &cfg : configs) {
-		const Tally &t = per[cfg.name];
-		WARN(cfg.name << " (polylines): both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", undecided " << t.counts[4] << ", off grid geometries " << t.counts[5] << ", other shape " << t.counts[6] << " (geometries " << t.geoms[6] << ")");
-	}
-	WARN("undetermined families seen: " << Join(g_undetermined_seen));
-	WARN("enumeration wall " << wall << " s");
+	c1.axes.emplace_back("B1", last, std::vector<int>{4});
+	/* C2: A1's event piece length, A1's pieces before it in {0, 2, 4}. */
+	Config c2{"X2 C2", {}};
+	for (uint32_t k = 0; k < f.a1_event; k++) c2.axes.emplace_back("A1", k, std::vector<int>{0, 2, 4});
+	c2.axes.emplace_back("A1", f.a1_event, std::vector<int>{8, 10, 12, 14});
+	RunEncoding(f, report_path, "X2", {c1, c2}, header.str());
 }

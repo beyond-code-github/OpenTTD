@@ -113,6 +113,17 @@ TEST_CASE("planar domain: a drawing's input from its variant", "[junction][plana
 		CHECK(d.breaks.empty());
 	}
 
+	SECTION("points that do not match the variant give an empty input and a note") {
+		std::vector<Points> points = draw(0);
+		points.pop_back();
+		std::vector<std::string> notes;
+		const PlanarDomainInput in = PlanarDomainInputOf(v, points, notes);
+		CHECK(in.tracks.empty());
+		CHECK(in.nodes.empty());
+		CHECK(in.structures.empty());
+		CHECK(notes == std::vector<std::string>{"points do not match the variant"});
+	}
+
 	SECTION("a crossing on the separator's first piece leaves the structure out") {
 		const std::vector<Points> points = draw(-6);
 		std::vector<std::string> notes;
