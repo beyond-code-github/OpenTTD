@@ -1147,6 +1147,29 @@ TEST_CASE("planar draw: end runs stay off a node's switch tile", "[junction][pla
 	CHECK(CheckPlanarProgramOnPoints(out.program, f.PointsOf(f.base)).broken.empty());
 }
 
+TEST_CASE("planar draw: end runs count a diagonal crosser's footprint", "[junction][planar][planardomain]")
+{
+	X2Fixture f;
+	f.options.end_node = true;
+	f.options.cross_piece = true;
+	/* The first too-loose example's witness (encoding-x2-span_lead_endnode_crosspiece.txt, group [connection]): B1 crosses A1 diagonally at (16, 5), its pieces occupy A1's tiles 7 and 8, but the tunnel's last end run would need tiles 9 and 10 and A1 ends at tile 9. */
+	const std::map<std::string, std::vector<int>> witness = {
+		{"AC1", {0, 0, 0, 0, 4}}, {"BD1", {0, 0, 0, 0, 2}}, {"C1", {0, 0, 0, 0, 0, 0, 0, 0, 3, 2}},
+		{"B1", {0, 0, 0, 0, 2, 0, 0, 1, 2, 2, 0, 0, 0, 0, 0, 0, 0, 1, 4}}, {"A1", {0, 0, 0, 0, 16, 0, 0, 0, 0}}, {"D1", {0, 0, 0, 0, 0, 0, 1, 0, 0, 8}},
+	};
+	Geometry g;
+	for (const auto &[name, lens] : witness) {
+		for (size_t k = 0; k < lens.size(); k++) {
+			if (lens[k] != 0) g[name][static_cast<uint32_t>(k)] = lens[k];
+		}
+	}
+	const std::vector<Points> points = f.PointsOf(g);
+	const PlanarDrawResult out = f.ProgramOut();
+	REQUIRE(out.status == "built");
+	const PlanarProgramCheck check = CheckPlanarProgramOnPoints(out.program, points);
+	CHECK(std::ranges::find(check.broken, "end 0") != check.broken.end());
+}
+
 TEST_CASE("planar draw: a crossing sits on a piece with length", "[junction][planar][planardomain]")
 {
 	X1Fixture f;

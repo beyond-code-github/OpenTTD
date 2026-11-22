@@ -1,5 +1,5 @@
 Encoding report on X1: our keep-apart rows (judged on fixed points, no solve) against the domain
-enumeration wall 2.54191 s
+enumeration wall 2.54092 s
 
 == S1 ==
   both accept: 43 polylines (75 geometries)
