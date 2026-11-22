@@ -31,7 +31,17 @@ History lives in git. The previous STATUS: `git show d18117a214:docs/junction-to
     - Lead rows read contracted S-bends (`steps`).
     - X1 and X2 are both EXACT on contracted rows (0 too strict, 0 too loose). X2's 46 flank leaks were zero-length artefacts.
     - Slots item: production `steps` cannot hold an S-bend at a track's end (planar_draw.cpp:556).
-  - Batch 1 (wip/BRIEF-domain-15-batch1.md: M1 a merge, K1 a cascade and a trident) next.
+  - Batch 1 DONE (6a82db386e, 9eddae371e, merged).
+    - The loader takes crossing-free topologies.
+    - K1 (cascade and trident, D433) is exact.
+    - M1 (merge) needed S-bend pairs, because a leg pinned at both ends can only step out and back.
+  - Step 17 RUNNING (wip/BRIEF-domain-17-grid.md and its addendum): the grid rows judged on off-grid geometry, on-grid enumeration by construction, and M1 as S-bend pairs.
+  - PLAN after the rules suite:
+    1. Batch 2: bridge, lanes turning a corner, a copy, a prio row, ports.
+    2. Rule fixes across all configurations, then the defaults (wip-defaults) and a rewrite of the D414 T1 test.
+    3. The SHAPE SUITE (Pete agreed): enumerate small shapes Shape accepts, and decide by an exact small solve on the proven rows (whole tiles) whether a legal drawing exists. An accepted but undrawable shape is a missing promise clause (LL2 face 33 is the first); a refused but drawable shape means Shape is too strict.
+    4. Later, the same for Structure (H10).
+  - Goal (Pete): no whack-a-mole by the time Slots is built. Hubs are left to fail only on speed, compactness, or interactions larger than a configuration.
   - Open: [planar] Debug 16 s against its budget (X2's search test; the two slow structure tests). The defaults are still parked on wip-defaults, to be re-decided after step 14.
   - NEXT: (a) remove the strict_zero code; (b) the next configurations from AUDIT's RETEST list (a merge; two lanes turning a corner; a copy beside a separator; a prio row; bays and curves); (c) Slots' solve design (sides by construction, whole tiles) from DESIGN-tracks / SPEC-slots-lengths.
 - **RESUME HERE (2026-11-22 evening; supersedes every LATEST/NOW bullet below): read wip/HANDOVER-2026-11-22b.md, then wip/CARD-domain-rules.md.** D427 (any hub working first, today's compactness) and D428 (build the domain predicate and the rule test suite before more rule tuning; next session). Today: the drawing program's "clean" verdicts hid real clashes (skip rules); three strict probes (`strict_span`, `strict_zero`, `crossing_flanks`, off by default) plus merged S-bends (`final_contract`) and grid rows gave clash-free tile-grid drawings of T1 and T2 (and 197 in 27 s), but each tuned on one hub. T3's crowded faces are proven drawable under the strict rules; LL2 face 33 is an upstream gap. Tools: dumps, `tools/junction/planar_dump.py` (rows/pair/face/diff/svg/png/clash), `PLANAR_ANYHUB_*` env hooks. All merged to feature; ng1 clean.
