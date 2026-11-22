@@ -35,7 +35,10 @@ History lives in git. The previous STATUS: `git show d18117a214:docs/junction-to
     - The loader takes crossing-free topologies.
     - K1 (cascade and trident, D433) is exact.
     - M1 (merge) needed S-bend pairs, because a leg pinned at both ends can only step out and back.
-  - Step 17 RUNNING (wip/BRIEF-domain-17-grid.md and its addendum): the grid rows judged on off-grid geometry, on-grid enumeration by construction, and M1 as S-bend pairs.
+  - Steps 17 and 17b DONE (merged): the grid rows are judged on off-grid geometry, and the on-grid generator is exact. FINDINGS to fix together after batch 2:
+    - F1 (M1, too strict, [lead]): a merge's straight leg arriving on its toward step with no flank forms a Y. It is legal, because its heading differs from the sibling's. Rule candidate: the lead row binds only when the step's heading equals the sibling leg's heading at the node (the X1 split overlap case).
+    - F2 (X1 78, K1 168 too loose, [grid | node | off grid]): with grid on, the rows accept node legs off the grid (C1, A1 axis pieces off their centre line). The grid rows miss node legs, matching the X1 probe (node points not forced).
+    - F3 (M1, too loose, [turn]): A1 turns more than an eighth at a piece join (NE 1, then SE 1). The rows lack a turn rule between consecutive contracted pieces.
   - PLAN after the rules suite:
     1. Batch 2: bridge, lanes turning a corner, a copy, a prio row, ports.
     2. Rule fixes across all configurations, then the defaults (wip-defaults) and a rewrite of the D414 T1 test.
