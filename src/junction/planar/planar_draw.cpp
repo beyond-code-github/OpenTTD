@@ -1150,9 +1150,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		/* Parallel crossers keep the deck gap; an axis and a diagonal crosser may be one half tile apart (D415). */
 		for (size_t k = 0; k + 1 < u.size(); k++) row({{u[k + 1], 1}, {u[k], -1}}, crosser_heading[k] % 4 == crosser_heading[k + 1] % 4 ? rules.deck_gap : 1, JunctionMilp::INF, fmt::format("deck {}", s));
 		const Length &len = length[structure.separator][piece];
+		/* The end run counts from the crosser's footprint: a crosser on a diagonal piece reaches one half tile further along the separator. */
+		const int f_first = crosser_heading.front() % 2;
+		const int f_last = crosser_heading.back() % 2;
 		if (least_run > 0) {
-			row({{u.front(), 1}}, 2 * least_run, JunctionMilp::INF, fmt::format("end {}", s));
-			row({{len.variable, len.coefficient}, {u.back(), -1}}, 2 * least_run, JunctionMilp::INF, fmt::format("end {}", s));
+			row({{u.front(), 1}}, 2 * least_run + f_first, JunctionMilp::INF, fmt::format("end {}", s));
+			row({{len.variable, len.coefficient}, {u.back(), -1}}, 2 * least_run + f_last, JunctionMilp::INF, fmt::format("end {}", s));
 		}
 		/* The end run stays off a node's switch tile (D428 probe): from a node at the separator's start to the first crossing, the travel is at least the end run plus one tile; mirrored at its end. */
 		if (options.end_node && least_run > 0) {
@@ -1161,14 +1164,14 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				Terms terms;
 				for (uint32_t k = 0; k < piece; k++) terms.emplace_back(length[structure.separator][k].variable, length[structure.separator][k].coefficient);
 				terms.emplace_back(u.front(), 1);
-				row(std::move(terms), 2 * least_run + 2, JunctionMilp::INF, fmt::format("end {} node", s));
+				row(std::move(terms), 2 * least_run + 2 + f_first, JunctionMilp::INF, fmt::format("end {} node", s));
 			}
 			if (!line.to.port) {
 				Terms terms;
 				for (size_t k = piece + 1; k < length[structure.separator].size(); k++) terms.emplace_back(length[structure.separator][k].variable, length[structure.separator][k].coefficient);
 				terms.emplace_back(len.variable, len.coefficient);
 				terms.emplace_back(u.back(), -1);
-				row(std::move(terms), 2 * least_run + 2, JunctionMilp::INF, fmt::format("end {} node", s));
+				row(std::move(terms), 2 * least_run + 2 + f_last, JunctionMilp::INF, fmt::format("end {} node", s));
 			}
 		}
 		if (most_limit >= 0) row({{u.back(), 1}, {u.front(), -1}}, -JunctionMilp::INF, 2 * (most_limit - 1), fmt::format("span {}", s));
