@@ -1077,7 +1077,22 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						for (uint32_t k = lo + 1; k < hi; k++) all_zero = all_zero && may_zero[w[i].track][k];
 						if (all_zero) continue;
 					}
-					const std::array<std::array<uint32_t, 2>, 2> pi = {point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};
+					/* One topology line cut into parts at a node (a row's or copy's split or merge): a wall at the end of one part and a wall at the start of the next with only may-be-zero pieces between them are one line, as on one track. */
+					const auto continues = [&](const PlanarCellWall &a, const PlanarCellWall &b) {
+						if (map.part_of[a.track] == UINT32_MAX || map.part_of[a.track] != map.part_of[b.track]) return false;
+						const auto &to = map.expanded.lines[a.track].to;
+						const auto &from = map.expanded.lines[b.track].from;
+						if (to.port || from.port || to.index != from.index) return false;
+						for (uint32_t k = a.piece + 1; k < may_zero[a.track].size(); k++) {
+							if (!may_zero[a.track][k]) return false;
+						}
+						for (uint32_t k = 0; k < b.piece; k++) {
+							if (!may_zero[b.track][k]) return false;
+						}
+						return true;
+					};
+					if (w[i].track != w[j].track && (continues(w[i], w[j]) || continues(w[j], w[i]))) continue;
+					const std::array<std::array<uint32_t, 2>, 2> pi ={point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};
 					const std::array<std::array<uint32_t, 2>, 2> pj = {point[w[j].track][w[j].piece], point[w[j].track][w[j].piece + 1]};
 					bool shared = false;
 					for (const auto &p : pi) {
