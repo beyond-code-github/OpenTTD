@@ -14,6 +14,7 @@
 #include "../../../junction/junction_spec.h"
 #include "../../../junction/planar/planar_draw.h"
 #include "../../../junction/planar/planar_model.h"
+#include "../../../junction/planar/planar_plan.h"
 #include "../../../junction/planar/planar_shape_layer.h"
 #include "../../../junction/planar/planar_structure.h"
 #include "../../../junction/planar/planar_topology.h"
@@ -335,6 +336,34 @@ TEST_CASE("planar draw: the pipeline draws the one-lane T with optional flex (D4
 			INFO("flex middle " << t << " " << m);
 			CHECK(r.final.lengths[t][m] == 0);
 		}
+	}
+}
+
+TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
+{
+	const std::vector<std::pair<std::string, std::string>> hubs = {{"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	for (const auto &[name, text] : hubs) {
+		const DrawCase c = ShapeFirst(text, 1);
+		PlanarDrawPipelineOptions o;
+		o.final_seconds = 15;
+		const auto start = std::chrono::steady_clock::now();
+		const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
+		const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+		for (const std::string &line : r.log) WARN(fmt::format("{} {}", name, line));
+		size_t pruned = 0, added = 0;
+		pruned = r.pruned;
+		added = r.added;
+		WARN(fmt::format("{} committed {} pruned {} added {} stopped '{}'", name, r.committed_count, pruned, added, r.stopped));
+		WARN(fmt::format("{} final {} ms {}", name, r.final.status, r.final.ms));
+		std::map<std::string, std::pair<size_t, double>> families;
+		for (const auto &[tag, slack] : r.last_round.stretched) {
+			auto &f = families[tag.substr(0, tag.find(' '))];
+			f.first++;
+			f.second += slack;
+		}
+		WARN(fmt::format("{} last round slack {:.3f}, stretched {}", name, r.last_round.slack, r.last_round.stretched.size()));
+		for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: count {}, sum {:.3f}", name, family, f.first, f.second));
+		WARN(fmt::format("{} wall {:.1f} s", name, wall));
 	}
 }
 
