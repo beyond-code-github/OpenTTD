@@ -108,4 +108,5 @@ Drawing expert rail hubs: a layered octilinear layout model checked against expe
   - 10 steps and a 121x188 box against the expert's ~50 steps and 101x124: the trade between steps and length is set by the prices.
   - Bays are in, but coverage, node legs and the full corridor family (copies with decks) are not yet on 197.
   - 17 s is over the 15 s solve gate.
+  - The integer final is off the game's tile grid (N/S piece ends x even 180 / odd 50; E/W y even 102 / odd 178), so the curve-legal drawing is a half-tile relaxation; with grid rows HiGHS finds no drawing in 15 s (D423, CARD-E5-flexstep). Evidence for the claim is the LP rounds.
   - Unpriced discovery commits 173 jogs and grows 2.4x.
