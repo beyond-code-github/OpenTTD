@@ -337,6 +337,8 @@ bool SegmentsMeetInOnePoint(const Point &p0, const Point &p1, const Point &q0, c
 bool ConformityHolds(const Conformity &c, const std::vector<Points> &cur)
 {
 	const Points &a = cur[c.a], &b = cur[c.b];
+	/* A crossing sits on a piece with length (cross_piece): a zero-length assigned piece crosses at its neighbours' angle, another shape. */
+	if (a[c.pa] == a[c.pa + 1] || b[c.pb] == b[c.pb + 1]) return false;
 	return SegmentsMeetInOnePoint(a[c.pa], a[c.pa + 1], b[c.pb], b[c.pb + 1]);
 }
 
@@ -868,7 +870,9 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 			return l;
 		};
 		/* Judge a polyline by all its representations (cached per polyline key). */
-		auto judge = [&](const std::string &pkey, const Geometry &g) -> const Judged & {
+		/* shaped: only representations that keep the variant's crossing pieces count (too strict); unshaped: any representation (too loose: the solver may produce it). */
+		auto judge = [&](const std::string &pkey_in, const Geometry &g, bool shaped = true) -> const Judged & {
+			const std::string pkey = shaped ? pkey_in : pkey_in + "#any";
 			const auto cached = verdicts.find(pkey);
 			if (cached != verdicts.end()) return cached->second;
 			int verdict = 1;
@@ -913,7 +917,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 			uint64_t evals = 0;
 			if (verdict != 2 && !std::ranges::any_of(reps, [](const std::vector<Points> &r) { return r.empty(); })) {
 				/* Arc consistency first: an emptied list rejects the polyline, more than 5,000,000 pair evaluations leave it undecided. */
-				const int ac = ArcConsistency(f.n, reps, &replens, readout.keep_apart, lead_rows, program_out.program, 5000000, evals, &conform);
+				const int ac = ArcConsistency(f.n, reps, &replens, readout.keep_apart, lead_rows, program_out.program, 5000000, evals, shaped ? &conform : nullptr);
 				if (ac == 0) run_search = true; else verdict = ac;
 			}
 			nodes_used = static_cast<double>(evals);
@@ -940,7 +944,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 						cur[order[d]] = rp;
 						chosen[order[d]] = ri;
 						placed[order[d]] = true;
-						const bool ok = std::ranges::all_of(at_depth[d], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); }) && std::ranges::all_of(conform, [&](const Conformity &c) { return !placed[c.a] || !placed[c.b] || ConformityHolds(c, cur); }) && CheckPlanarProgramOnPoints(program_out.program, cur, placed).broken.empty();
+						const bool ok = std::ranges::all_of(at_depth[d], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); }) && std::ranges::all_of(conform, [&](const Conformity &c) { return !shaped || !placed[c.a] || !placed[c.b] || ConformityHolds(c, cur); }) && CheckPlanarProgramOnPoints(program_out.program, cur, placed).broken.empty();
 						if (ok && self(self, d + 1)) return true;
 						if (nodes > 50000) return false;
 					}
@@ -993,9 +997,10 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 					std::vector<std::string> notes;
 					const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
 					const bool other = IsOtherShape(f, g);
-					const Judged &j = other ? verdicts[pkey] : judge(pkey, g);
+					/* Too loose is judged over every representation (the solver may produce any); too strict only over those keeping the variant's crossing pieces. */
+					const Judged &j = (!d.legal || other) ? judge(pkey, g, false) : judge(pkey, g);
 					PolyClass nc;
-					if (other) {
+					if (other && (d.legal || j.verdict != 0)) {
 						nc.c = OTHER_SHAPE;
 						nc.detail = "      polyline " + pkey + "\n";
 					} else if (j.verdict == 2) {
