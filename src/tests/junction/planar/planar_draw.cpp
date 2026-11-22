@@ -539,7 +539,7 @@ TEST_CASE("planar draw: crowding certificates on T3 and LL2", "[.][planarcert]")
 		double bound;
 	};
 	const std::vector<Case> cases = {
-		{"T3", {75}, 256}, {"T3", {29}, 256}, {"T3", {66}, 256}, {"T3", {75, 29, 66}, 256}, {"T3", {75}, 4096},
+		{"T3", {75}, 256}, {"T3", {29}, 256}, {"T3", {66}, 256}, {"T3", {75, 29, 66}, 256}, {"T3", {75}, 4096}, {"T3", {38}, 256}, {"T3", {37}, 256}, {"T3", {29, 38}, 256}, {"T3", {29, 38, 75, 37, 66}, 256},
 		{"LL2", {33}, 256}, {"LL2", {34}, 256}, {"LL2", {37}, 256}, {"LL2", {33, 34, 37}, 256},
 	};
 	const std::map<std::string, std::vector<std::array<uint32_t, 3>>> stretched = {
@@ -592,6 +592,10 @@ TEST_CASE("planar draw: crowding certificates on T3 and LL2", "[.][planarcert]")
 		o.tidy = false;
 		o.continuous = {"point", "axis", "diagonal", "param", "cross"};
 		o.coord_max = k.bound;
+		/* D427 probes for the certificate: PLANAR_STRICT_SPAN, PLANAR_STRICT_ZERO, PLANAR_CROSSING_FLANKS. */
+		o.strict_span = std::getenv("PLANAR_STRICT_SPAN") != nullptr;
+		o.strict_zero = std::getenv("PLANAR_STRICT_ZERO") != nullptr;
+		o.crossing_flanks = std::getenv("PLANAR_CROSSING_FLANKS") != nullptr;
 		const PlanarDrawResult r = CheckPlanarDrawable(c.v, 15.0, o);
 		WARN(fmt::format("cert {} faces {} B {}: {} ms {:.0f} binaries {}", k.hub, faces_text(k.faces), k.bound, r.status, r.ms, r.binaries));
 		if (std::getenv("PLANAR_PROBE_INWARD") != nullptr && k.bound == 256 && (k.hub == "T3" || (k.hub == "LL2" && k.faces == std::vector<uint32_t>{33}))) {
@@ -4082,14 +4086,19 @@ TEST_CASE("planar draw: the simplest drawing on every hub", "[.][planaranyhub]")
 	};
 	const char *dump_root = std::getenv("PLANAR_DUMP");
 
+	/* Measurement aids: PLANAR_ANYHUB_ONLY=<hub> runs one hub; PLANAR_ANYHUB_K3_ONLY runs only the pipeline (K3) on the first variant. */
+	const char *only = std::getenv("PLANAR_ANYHUB_ONLY");
+	const bool k3_only = std::getenv("PLANAR_ANYHUB_K3_ONLY") != nullptr;
 	for (const Hub &hub : hubs) {
+		if (only != nullptr && hub.name != only) continue;
 		std::array<size_t, 2> zero{}, run{}, integer{};
 		for (size_t vi = 0; vi < hub.variants.size(); vi++) {
+			if (k3_only && vi > 0) break;
 			const PlanarShapeVariant &v = hub.variants[vi];
 			const std::string tag = fmt::format("v{}", vi);
 			std::vector<std::vector<double>> zeros;
 			for (const PlanarShapeTrack &track : v.tracks) zeros.emplace_back(track.pieces.size(), 0.0);
-			for (int k = 0; k < 2; k++) {
+			for (int k = 0; k < (k3_only ? 0 : 2); k++) {
 				const std::string kname = k == 0 ? "K1" : "K2";
 				PlanarDrawOptions o;
 				o.clearance = true;
@@ -4130,6 +4139,19 @@ TEST_CASE("planar draw: the simplest drawing on every hub", "[.][planaranyhub]")
 				po.strict_span = std::getenv("PLANAR_STRICT_SPAN") != nullptr;
 				po.strict_zero = std::getenv("PLANAR_STRICT_ZERO") != nullptr;
 				po.crossing_flanks = std::getenv("PLANAR_CROSSING_FLANKS") != nullptr;
+				po.final_start = std::getenv("PLANAR_ANYHUB_START") != nullptr;
+				po.final_soft_sep = std::getenv("PLANAR_ANYHUB_SOFT_SEP") != nullptr;
+				po.sibling_lanes = std::getenv("PLANAR_PROBE_SIBLINGS") != nullptr;
+				po.facing_sides = std::getenv("PLANAR_PROBE_FACING") != nullptr;
+				if (const char *e = std::getenv("PLANAR_ANYHUB_FINAL_S"); e != nullptr) po.final_seconds = std::atof(e);
+				if (const char *e = std::getenv(fmt::format("PLANAR_ANYHUB_FREE_{}", hub.name).c_str()); e != nullptr) {
+					std::istringstream in(e);
+					for (std::string face; std::getline(in, face, ',');) {
+						uint32_t id = 0;
+						std::from_chars(face.data(), face.data() + face.size(), id);
+						po.final_free_faces.push_back(id);
+					}
+				}
 				if (dump_root != nullptr) {
 					po.dump_dir = fmt::format("{}/anyhub-k3/{}", dump_root, hub.name);
 					std::filesystem::create_directories(po.dump_dir);
