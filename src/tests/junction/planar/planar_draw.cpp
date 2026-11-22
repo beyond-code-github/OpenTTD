@@ -363,6 +363,49 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		}
 		WARN(fmt::format("{} last round slack {:.3f}, stretched {}", name, r.last_round.slack, r.last_round.stretched.size()));
 		for (const auto &[family, f] : families) WARN(fmt::format("{} family {}: count {}, sum {:.3f}", name, family, f.first, f.second));
+			{
+				const PlanarTrackMap &map = c.v.structure.map;
+				const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(c.v);
+				const auto piece_text = [&](uint32_t t, uint32_t piece) {
+					if (t >= r.last_round.points.size() || piece + 1 >= r.last_round.points[t].size()) return std::string("?");
+					const auto &a = r.last_round.points[t][piece];
+					const auto &b = r.last_round.points[t][piece + 1];
+					return fmt::format("{}#{} h{} ({},{})-({},{})", map.tracks[t].name, piece, ((c.v.tracks[t].pieces[piece] % 8) + 8) % 8, a[0], a[1], b[0], b[1]);
+				};
+				size_t sep_rows = 0;
+				for (const auto &[tag, amount] : r.last_round.stretched) {
+					std::istringstream words(tag);
+					std::string family;
+					uint32_t face = 0, i = 0, j = 0;
+					words >> family;
+					if (family != "sep" || !(words >> face >> i >> j)) continue;
+					if (++sep_rows > 30) continue;
+					for (const PlanarFaceWalls &f : face_walls) {
+						if (f.face != face || i >= f.walls.size() || j >= f.walls.size()) continue;
+						const PlanarCellWall &a = f.walls[i];
+						const PlanarCellWall &b = f.walls[j];
+						WARN(fmt::format("{} decode {} {:.2f}: {} | {}", name, tag, amount, a.track < c.v.tracks.size() ? piece_text(a.track, a.piece) : std::string("box"), b.track < c.v.tracks.size() ? piece_text(b.track, b.piece) : std::string("box")));
+					}
+				}
+				if (sep_rows > 30) WARN(fmt::format("{} decode: {} sep rows, first 30 shown", name, sep_rows));
+				const auto list_of = [](const auto &xs) {
+					std::string s;
+					for (const auto x : xs) s += fmt::format(" {}", x);
+					return s;
+				};
+				size_t beside = 0;
+				for (uint32_t b = 0; b < map.tracks.size(); b++) {
+					if (map.part_of[b] != UINT32_MAX) continue;
+					if (++beside > 30) continue;
+					std::vector<uint32_t> chain;
+					const bool ok = ParentChain(map, c.v.structure.sites, b, chain);
+					const auto &ln = map.expanded.lines[b];
+					std::string text = fmt::format("{} beside {}: from {} {} to {} {}; pieces{}; flex{}; steps{}; chain{}", name, map.tracks[b].name, ln.from.port ? "port" : "node", ln.from.index, ln.to.port ? "port" : "node", ln.to.index, list_of(c.v.tracks[b].pieces), list_of(c.v.tracks[b].flex), list_of(c.v.tracks[b].steps), ok ? "" : " NONE");
+					for (const uint32_t t : chain) text += fmt::format(" {}[pieces{}; flex{}; steps{}]", map.tracks[t].name, list_of(c.v.tracks[t].pieces), list_of(c.v.tracks[t].flex), list_of(c.v.tracks[t].steps));
+					WARN(text);
+				}
+				if (beside > 30) WARN(fmt::format("{} beside tracks: {}, first 30 shown", name, beside));
+			}
 		WARN(fmt::format("{} wall {:.1f} s", name, wall));
 	}
 }
