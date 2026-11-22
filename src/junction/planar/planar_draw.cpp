@@ -617,6 +617,72 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 	}
 
+	/* Sibling lanes (D388 spine, SPEC-slots-lengths §11): per used sibling pair, one lane between the two tracks at every vertex of the range between their first and last channel crossing, and at its ends. */
+	struct LanePair {
+		uint32_t a, b;
+		uint32_t pa0, pa1, pb0, pb1;
+	};
+	std::vector<LanePair> lane_pairs;
+	if (options.sibling_lanes) {
+		const auto mod8 = [](int h) { return ((h % 8) + 8) % 8; };
+		for (const auto &[c, a, b, fa, fb, same] : PlanarSpinePairs(map, v.structure, true)) {
+			if (!same) continue;
+			const std::string pair_name = fmt::format("{} {}", map.tracks[a].name, map.tracks[b].name);
+			const auto skip = [&](const char *why) { result.lane_skipped.push_back(fmt::format("{}: {}", pair_name, why)); };
+			if (fa.size() < 2) {
+				skip("one channel crossing");
+				continue;
+			}
+			if (fa.back() - fa.front() + 1 != fa.size() || fb.back() - fb.front() + 1 != fb.size()) {
+				skip("other events inside");
+				continue;
+			}
+			int s = 0;
+			bool no_side = false, differ = false;
+			for (size_t j = 1; j < fa.size(); j++) {
+				const int side = map.Side(b, fb.front() + j, a, fa.front() + j);
+				if (side == 0) no_side = true;
+				if (j == 1) s = side;
+				else if (side != s) differ = true;
+			}
+			if (no_side) {
+				skip("no side");
+				continue;
+			}
+			if (differ) {
+				skip("sides differ");
+				continue;
+			}
+			const std::vector<uint32_t> &ea = v.tracks[a].event_piece, &eb = v.tracks[b].event_piece;
+			const uint32_t pa0 = ea[fa.front()], pa1 = ea[fa.back()], pb0 = eb[fb.front()], pb1 = eb[fb.back()];
+			bool pieces_same = pa1 - pa0 == pb1 - pb0;
+			for (uint32_t i = 0; pieces_same && i <= pa1 - pa0; i++) {
+				pieces_same = mod8(v.tracks[a].pieces[pa0 + i]) == mod8(v.tracks[b].pieces[pb0 + i]) && (std::ranges::find(v.tracks[a].flex, pa0 + i) != v.tracks[a].flex.end()) == (std::ranges::find(v.tracks[b].flex, pb0 + i) != v.tracks[b].flex.end());
+			}
+			if (!pieces_same) {
+				skip("pieces differ");
+				continue;
+			}
+			lane_pairs.push_back({a, b, pa0, pa1, pb0, pb1});
+			result.lane_pairs++;
+			const auto lane_row = [&](uint32_t ka, uint32_t kb, int heading, uint32_t index) {
+				const std::array<int, 2> normal = PlanarModel::STEP[(mod8(heading) + 2) % 8];
+				Terms terms;
+				for (int axis = 0; axis < 2; axis++) {
+					terms.emplace_back(point[b][kb][axis], normal[axis]);
+					terms.emplace_back(point[a][ka][axis], -normal[axis]);
+				}
+				eq(terms, 2 * s, fmt::format("lane {} {} {}", map.tracks[a].name, map.tracks[b].name, index));
+			};
+			const std::vector<int> &pieces = v.tracks[a].pieces;
+			lane_row(pa0, pb0, pieces[pa0], 0);
+			for (uint32_t i = 1; i <= pa1 - pa0; i++) {
+				for (const int h : std::set<int>{mod8(pieces[pa0 + i - 1]), mod8(pieces[pa0 + i])}) lane_row(pa0 + i, pb0 + i, h, i);
+			}
+			lane_row(pa1 + 1, pb1 + 1, pieces[pa1], pa1 - pa0 + 1);
+		}
+	}
+
 	/* Crossings: per crossing the parameter along each of its two pieces. */
 	const size_t nc = map.crossings.size();
 	std::vector<std::array<uint32_t, 2>> param(nc);
@@ -1109,6 +1175,17 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					if (j == i + 1 || (i == 0 && j == n - 1)) continue;
 					if (w[i].track >= nt || w[j].track >= nt) continue;
 					if (is_span(w[i]) || is_span(w[j])) continue;
+					if (options.sibling_lanes) {
+						bool in_lane = false;
+						for (const LanePair &lp : lane_pairs) {
+							const auto inside = [&](const PlanarCellWall &x, const PlanarCellWall &y) { return x.track == lp.a && y.track == lp.b && x.piece >= lp.pa0 && x.piece <= lp.pa1 && y.piece >= lp.pb0 && y.piece <= lp.pb1; };
+							in_lane = in_lane || inside(w[i], w[j]) || inside(w[j], w[i]);
+						}
+						if (in_lane) {
+							result.lane_sep_skipped++;
+							continue;
+						}
+					}
 					if (w[i].track == w[j].track && w[i].piece == w[j].piece) continue;
 					if (w[i].piece >= v.tracks[w[i].track].pieces.size() || w[j].piece >= v.tracks[w[j].track].pieces.size()) return unsupported(fmt::format("face {} names a wall the variant lacks", f.face));
 						/* Zero contraction: every may-be-zero piece is a point, so a wall touches the pieces of its track from lo - 1 to hi + 1, the nodes its track reaches through such pieces, and the crossings on pieces from lo to hi; two walls that touch are kept apart by no row. */
@@ -1544,7 +1621,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	};
 
 	/* The seed. */
-	PlanarDrawResult previous = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .corridor = options.corridor, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.discovery_slack_price, .pins = options.pins});
+	PlanarDrawResult previous = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .corridor = options.corridor, .sibling_lanes = options.sibling_lanes, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.discovery_slack_price, .pins = options.pins});
 	out.final = previous;
 	if (!previous.feasible) {
 		out.stopped = "seed";
@@ -1560,7 +1637,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	const int rounds = options.curve_discovery ? std::min(options.discovery_rounds, 5) : options.discovery_rounds;
 	for (int k = 1; k <= rounds; k++) {
 		const bool previous_zero = k > 1 && previous.slack < 1e-6;
-		PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &previous.lengths, .corridor = options.corridor, .flex_weights = k == 1 ? nullptr : &weights, .box_price = options.box_price, .flex_price = k == 1 ? options.first_flex_price : 0, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.discovery_slack_price, .elastic_families = {"sep"}, .curve_flex_soft = options.curve_discovery && k >= 2 ? &soft : nullptr, .pins = options.pins, .sides_from = &previous.points});
+		PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &previous.lengths, .corridor = options.corridor, .sibling_lanes = options.sibling_lanes, .flex_weights = k == 1 ? nullptr : &weights, .box_price = options.box_price, .flex_price = k == 1 ? options.first_flex_price : 0, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.discovery_slack_price, .elastic_families = {"sep"}, .curve_flex_soft = options.curve_discovery && k >= 2 ? &soft : nullptr, .pins = options.pins, .sides_from = &previous.points});
 		log_round("discovery", k, r);
 		if (r.status != "Optimal") {
 			out.final = r;
@@ -1606,7 +1683,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	const auto commit_rounds = [&](const PlanarDrawResult &from, const std::string &stage) {
 		PlanarDrawResult prev = from;
 		for (int k = 1; k <= options.commit_rounds; k++) {
-			PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &prev.lengths, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .pins = options.pins, .sides_from = &prev.points});
+			PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &prev.lengths, .corridor = options.corridor, .sibling_lanes = options.sibling_lanes, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .pins = options.pins, .sides_from = &prev.points});
 			log_round(stage, k, r);
 			if (r.status != "Optimal") {
 				out.final = r;
@@ -1674,7 +1751,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		PlanarDrawResult prev = last;
 		for (int k = 1; k <= options.discovery_rounds; k++) {
 			const bool previous_zero = k > 1 && prev.slack < 1e-6;
-			PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &prev.lengths, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .curve_flex_free = true, .flex_weights = &add_weights, .box_price = options.box_price, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .pins = options.pins, .sides_from = &prev.points});
+			PlanarDrawResult r = CheckPlanarDrawable(v, options.round_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &prev.lengths, .corridor = options.corridor, .sibling_lanes = options.sibling_lanes, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .curve_flex_free = true, .flex_weights = &add_weights, .box_price = options.box_price, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .pins = options.pins, .sides_from = &prev.points});
 			log_round("additions", k, r);
 			if (r.status != "Optimal") {
 				out.final = r;
@@ -1712,7 +1789,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 		for (const auto &[row, slack] : last.stretched) {
 			if (row.starts_with("sep ")) tags.push_back(row);
 		}
-		PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &last.lengths, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_integer = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .continuous = {"point", "axis", "diagonal", "param", "cross"}, .pins = options.pins, .sides_from = &last.points, .free_sides = tags});
+		PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &last.lengths, .corridor = options.corridor, .sibling_lanes = options.sibling_lanes, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_integer = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .continuous = {"point", "axis", "diagonal", "param", "cross"}, .pins = options.pins, .sides_from = &last.points, .free_sides = tags});
 		log_round("free sides", 1, r);
 	}
 
@@ -1722,7 +1799,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 			if (row.starts_with("sep ") && std::ranges::find(tags, row) == tags.end()) tags.push_back(row);
 		}
 		const auto commit_options = [&]() {
-			return PlanarDrawOptions{.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .pins = options.pins};
+			return PlanarDrawOptions{.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .corridor = options.corridor, .sibling_lanes = options.sibling_lanes, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .box_price = options.box_price, .elastic = true, .elastic_tidy = 0.001, .slack_price = options.slack_price, .elastic_families = {"sep", "curve"}, .pins = options.pins};
 		};
 		const auto conflict_line = [](const std::string &prefix, const PlanarDrawResult &r) {
 			std::string text;
@@ -1861,7 +1938,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	}
 
 	/* Final: the integer drawing on the sides the last round proved. */
-	PlanarDrawOptions final_options{.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &last.lengths, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .tidy = options.final_tidy, .pins = options.pins, .sides_from = &last_input, .start_lengths = options.final_start ? &last.lengths : nullptr, .grid = options.final_grid};
+	PlanarDrawOptions final_options{.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .node_gaps = options.node_gaps, .node_gap_from = &last.lengths, .corridor = options.corridor, .sibling_lanes = options.sibling_lanes, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .tidy = options.final_tidy, .pins = options.pins, .sides_from = &last_input, .start_lengths = options.final_start ? &last.lengths : nullptr, .grid = options.final_grid};
 	if (options.final_soft_sep) {
 		final_options.elastic = true;
 		final_options.elastic_integer = true;

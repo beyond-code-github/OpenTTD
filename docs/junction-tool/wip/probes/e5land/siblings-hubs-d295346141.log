@@ -1,0 +1,977 @@
+Filters: planar draw: the pipeline on T2\, T3 and LL2
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+openttd_test is a Catch v2.13.10 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+planar draw: the pipeline on T2, T3 and LL2
+-------------------------------------------------------------------------------
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:342
+...............................................................................
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T1 discovery 1: Optimal, total slack 0.000, curve slack 0.000, box 24 x 22,
+  length 121
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T1 discovery 2: Optimal, total slack 0.000, curve slack 0.000, box 74 x 54,
+  length 309
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T1 commit 1: Optimal, total slack 0.000, curve slack 0.000, box 57 x 44,
+  length 246
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T1 final 1: Optimal, total slack 0.000, curve slack 0.000, box 60 x 47,
+  length 264
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:363: warning:
+  T1 committed 9 pruned 0 added 0 stopped ''
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:364: warning:
+  T1 final Optimal ms 181.548353
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:372: warning:
+  T1 last round slack 0.000, stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:374: warning:
+  T1 sibling lanes: pairs 0 sep skipped 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T1 beside prio:B1: from node 6 to node 4; pieces 6; flex; steps; chain B1
+  [pieces 6; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T1 beside prio:E1: from node 7 to node 5; pieces 2; flex; steps; chain E1
+  [pieces 2; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:476: warning:
+  T1 wall 0.2 s
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T2 discovery 1: Optimal, total slack 0.000, curve slack 0.000, box 57 x 53,
+  length 528
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T2 discovery 2: Optimal, total slack 10.000, curve slack 8.000, box 88 x 104,
+  length 906
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T2 discovery 3: Optimal, total slack 2.000, curve slack 2.000, box 83 x 94,
+  length 838
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T2 discovery 4: Optimal, total slack 2.000, curve slack 2.000, box 82 x 92,
+  length 824
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T2 discovery 5: Optimal, total slack 2.000, curve slack 2.000, box 82 x 92,
+  length 824
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T2 commit 1: Optimal, total slack 0.000, curve slack 0.000, box 75 x 83,
+  length 735
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T2 final 1: Optimal, total slack 0.000, curve slack 0.000, box 80 x 84,
+  length 765
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:363: warning:
+  T2 committed 20 pruned 0 added 0 stopped ''
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:364: warning:
+  T2 final Optimal ms 326.008633
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:372: warning:
+  T2 last round slack 0.000, stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:374: warning:
+  T2 sibling lanes: pairs 2 sep skipped 18
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T2 sibling lanes skipped EF1 EF2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T2 sibling lanes skipped CB1 CB2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T2 sibling lanes skipped ED1 ED2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T2 sibling lanes skipped AB1 AB2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T2 sibling lanes skipped CD1 CD2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T2 sibling lanes skipped AF1 AF2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T2 sibling lanes skipped A1 A2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T2 sibling lanes skipped C1 C2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T2 beside prio:B2: from node 12 to node 9; pieces 7; flex; steps; chain B2
+  [pieces 7; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T2 beside prio:B1: from node 13 to node 8; pieces 7; flex; steps; chain B1
+  [pieces 7; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T2 beside prio:E1: from node 14 to node 10; pieces 2; flex; steps; chain E1
+  [pieces 2; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T2 beside prio:E2: from node 15 to node 11; pieces 3; flex; steps; chain E2
+  [pieces 3; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:476: warning:
+  T2 wall 0.5 s
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T3 discovery 1: Optimal, total slack 199.000, curve slack 0.000, box 63 x 61,
+  length 942
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T3 discovery 2: Optimal, total slack 24.000, curve slack 14.000, box 143 x
+  173, length 2298
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T3 discovery 3: Optimal, total slack 21.000, curve slack 12.000, box 146 x
+  175, length 2329
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T3 discovery 4: Optimal, total slack 20.000, curve slack 12.000, box 142 x
+  171, length 2271
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T3 discovery 5: Optimal, total slack 20.000, curve slack 12.000, box 141 x
+  166, length 2227
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T3 commit 1: Optimal, total slack 13.000, curve slack 5.000, box 103 x 112,
+  length 1581
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T3 commit 2: Optimal, total slack 13.000, curve slack 5.000, box 101 x 111,
+  length 1556
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T3 prune 1: Infeasible, total slack 0.000, curve slack 0.000, box 0 x 0,
+  length 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T3 prune 1 undone: 3 held inserts restored
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  T3 final 1: Infeasible, total slack 0.000, curve slack 0.000, box 0 x 0,
+  length 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:363: warning:
+  T3 committed 39 pruned 0 added 0 stopped 'final'
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:364: warning:
+  T3 final Infeasible ms 155.271723
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict piece B3 7
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict piece B3 8
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict piece D1 21
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict piece D2 21
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict piece D3 13
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict piece D3 16
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict piece D3 17
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict piece E3 5
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict lane D2 D3 5
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict cross 42
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict cross 53
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict curve flex D1 21
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict span 9
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict sep 66 6 10
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict sep 75 1 13
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict sep 75 2 13
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict sep 75 4 9
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  T3 conflict sep 75 5 8
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:372: warning:
+  T3 last round slack 13.000, stretched 6
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:374: warning:
+  T3 sibling lanes: pairs 4 sep skipped 38
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped EF1 EF2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped EF1 EF3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped EF2 EF3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped CB1 CB2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped CB1 CB3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped CB2 CB3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped ED1 ED2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped ED1 ED3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped ED2 ED3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped AB1 AB2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped AB1 AB3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped AB2 AB3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped CD1 CD2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped CD1 CD3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped CD2 CD3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped AF1 AF2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped AF1 AF3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped AF2 AF3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped A1 A2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped A1 A3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped A2 A3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped C1 C2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped C1 C3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped C2 C3: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped D1 D3: no side
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  T3 sibling lanes skipped F1 F3: no side
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:377: warning:
+  T3 family curve: count 3, sum 5.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:377: warning:
+  T3 family sep: count 3, sum 8.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  T3 decode sep 75 5 8 4.00: D3#17 h2 (74,39)-(87,39) | D2#26 h1 (79,42)-(86,
+  35)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  T3 decode sep 75 2 13 3.00: D3#14 h1 (65,46)-(72,39) | D2#21 h2 (65,44)-(77,
+  44)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  T3 decode sep 66 6 10 1.00: E2#4 h2 (58,38)-(63,38) | E3#6 h2 (64,39)-(66,39)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 5 8 round 0 (discovery 1): side s (0,-1) spacing 1 from i,
+  stretched 4.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 5 8 round 1 (discovery 2): side s (0,-1) spacing 1 from i,
+  stretched 4.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 5 8 round 2 (discovery 3): side s (0,-1) spacing 1 from i,
+  stretched 4.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 5 8 round 3 (discovery 4): side s (0,-1) spacing 1 from i,
+  stretched 4.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 5 8 round 4 (discovery 5): side s (0,-1) spacing 1 from i,
+  stretched 4.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 5 8 round 5 (commit 1): side s (0,-1) spacing 1 from i, stretched
+  4.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 5 8 round 6 (commit 2): side s (0,-1) spacing 1 from i, stretched
+  4.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 5 8 round 7 (prune 1): side s (0,-1) spacing 1 from i, stretched 0.
+  000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 5 8 round 8 (prune 1 undone): side s (0,-1) spacing 1 from i,
+  stretched 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 2 13 round 0 (discovery 1): side s (-1,-1) spacing 2 from i,
+  stretched 10.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 2 13 round 1 (discovery 2): side s (0,1) spacing 1 from i,
+  stretched 3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 2 13 round 2 (discovery 3): side s (0,1) spacing 1 from i,
+  stretched 3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 2 13 round 3 (discovery 4): side s (0,1) spacing 1 from i,
+  stretched 3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 2 13 round 4 (discovery 5): side s (0,1) spacing 1 from i,
+  stretched 3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 2 13 round 5 (commit 1): side s (0,1) spacing 1 from i, stretched
+  3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 2 13 round 6 (commit 2): side s (0,1) spacing 1 from i, stretched
+  3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 2 13 round 7 (prune 1): side s (0,1) spacing 1 from i, stretched 0.
+  000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 75 2 13 round 8 (prune 1 undone): side s (0,1) spacing 1 from i,
+  stretched 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 66 6 10 round 0 (discovery 1): side s (0,1) spacing 2 from i,
+  stretched 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 66 6 10 round 1 (discovery 2): side s (0,1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 66 6 10 round 2 (discovery 3): side s (0,1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 66 6 10 round 3 (discovery 4): side s (0,1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 66 6 10 round 4 (discovery 5): side s (0,1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 66 6 10 round 5 (commit 1): side s (0,1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 66 6 10 round 6 (commit 2): side s (0,1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 66 6 10 round 7 (prune 1): side s (0,1) spacing 2 from i, stretched 0.
+  000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  T3 sep 66 6 10 round 8 (prune 1 undone): side s (0,1) spacing 2 from i,
+  stretched 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T3 beside prio:B3: from node 18 to node 14; pieces 7; flex; steps; chain B3
+  [pieces 7; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T3 beside prio:B2: from node 19 to node 13; pieces 7; flex; steps; chain B2
+  [pieces 7; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T3 beside prio:B1: from node 20 to node 12; pieces 7; flex; steps; chain B1
+  [pieces 7; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T3 beside prio:E1: from node 21 to node 15; pieces 2; flex; steps; chain E1
+  [pieces 2; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T3 beside prio:E2: from node 22 to node 16; pieces 2; flex; steps; chain E2
+  [pieces 2; flex; steps] E2[pieces 2; flex; steps] E2[pieces 2; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T3 beside prio:E3: from node 23 to node 17; pieces 2; flex; steps; chain E3
+  [pieces 2; flex; steps] E3[pieces 2; flex; steps] E3[pieces 2; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T3 beside E2"30: from node 24 to node 25; pieces 2; flex; steps; chain E2
+  [pieces 2; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  T3 beside E3"31: from node 26 to node 27; pieces 2; flex; steps; chain E3
+  [pieces 2; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:476: warning:
+  T3 wall 1.2 s
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  LL2 discovery 1: Optimal, total slack 89.000, curve slack 0.000, box 119 x
+  93, length 1222
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  LL2 discovery 2: Optimal, total slack 27.000, curve slack 10.000, box 302 x
+  220, length 2744
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  LL2 discovery 3: Optimal, total slack 23.000, curve slack 10.000, box 300 x
+  226, length 2688
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  LL2 discovery 4: Optimal, total slack 23.000, curve slack 10.000, box 295 x
+  225, length 2651
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  LL2 discovery 5: Optimal, total slack 23.000, curve slack 10.000, box 295 x
+  225, length 2641
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  LL2 commit 1: Optimal, total slack 12.000, curve slack 0.000, box 243 x 167,
+  length 2162
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  LL2 commit 2: Optimal, total slack 12.000, curve slack 0.000, box 240 x 161,
+  length 2112
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:359: warning:
+  LL2 final 1: Infeasible, total slack 0.000, curve slack 0.000, box 0 x 0,
+  length 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:363: warning:
+  LL2 committed 56 pruned 0 added 0 stopped 'final'
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:364: warning:
+  LL2 final Infeasible ms 219.271522
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict piece B1 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict piece B1 3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict piece B1 4
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict piece B2 4
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict piece B2 5
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict cross 20
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict span 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict span 1
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict sep 33 1 7
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict sep 37 6 10
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict sep 37 6 11
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:365: warning:
+  LL2 conflict sep 53 0 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:372: warning:
+  LL2 last round slack 12.000, stretched 10
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:374: warning:
+  LL2 sibling lanes: pairs 1 sep skipped 33
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  LL2 sibling lanes skipped EF1 EF2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  LL2 sibling lanes skipped WO1 WO2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  LL2 sibling lanes skipped EO1 EO2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  LL2 sibling lanes skipped AB1 AB2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  LL2 sibling lanes skipped CD1 CD2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  LL2 sibling lanes skipped SO1 SO2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  LL2 sibling lanes skipped E1 E2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  LL2 sibling lanes skipped A1 A2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  LL2 sibling lanes skipped EDj1 EDj2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  LL2 sibling lanes skipped CBj1 CBj2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:375: warning:
+  LL2 sibling lanes skipped AFj1 AFj2: one channel crossing
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:377: warning:
+  LL2 family sep: count 10, sum 12.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  LL2 decode sep 37 6 11 3.00: B2#4 h6 (103,51)-(78,51) | B1#1 h5 (103,49)-(99,
+  53)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  LL2 decode sep 33 0 7 1.00: D1#8 h1 (91,62)-(99,54) | B1#1 h5 (103,49)-(99,
+  53)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  LL2 decode sep 33 0 9 1.00: D1#8 h1 (91,62)-(99,54) | B1#3 h7 (99,53)-(99,53)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  LL2 decode sep 33 1 7 1.00: D1#9 h0 (99,54)-(99,54) | B1#1 h5 (103,49)-(99,
+  53)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  LL2 decode sep 33 1 9 1.00: D1#9 h0 (99,54)-(99,54) | B1#3 h7 (99,53)-(99,53)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  LL2 decode sep 33 2 10 1.00: D1#10 h1 (99,54)-(101,52) | B1#4 h6 (99,53)-(78,
+  53)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  LL2 decode sep 33 2 7 1.00: D1#10 h1 (99,54)-(101,52) | B1#1 h5 (103,49)-(99,
+  53)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  LL2 decode sep 33 2 8 1.00: D1#10 h1 (99,54)-(101,52) | B1#2 h6 (99,53)-(99,
+  53)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  LL2 decode sep 33 2 9 1.00: D1#10 h1 (99,54)-(101,52) | B1#3 h7 (99,53)-(99,
+  53)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:399: warning:
+  LL2 decode sep 33 3 7 1.00: D1#11 h2 (101,52)-(131,52) | B1#1 h5 (103,49)-
+  (99,53)
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 37 6 11 round 0 (discovery 1): side s (0,1) spacing 1 from i,
+  stretched 3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 37 6 11 round 1 (discovery 2): side s (0,1) spacing 1 from i,
+  stretched 5.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 37 6 11 round 2 (discovery 3): side s (0,1) spacing 1 from j,
+  stretched 3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 37 6 11 round 3 (discovery 4): side s (0,1) spacing 1 from j,
+  stretched 3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 37 6 11 round 4 (discovery 5): side s (0,1) spacing 1 from j,
+  stretched 3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 37 6 11 round 5 (commit 1): side s (0,1) spacing 1 from j, stretched
+  3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 37 6 11 round 6 (commit 2): side s (0,1) spacing 1 from j, stretched
+  3.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 37 6 11 round 7 (final 1): side s (0,1) spacing 1 from j, stretched
+  0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 7 round 0 (discovery 1): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 7 round 1 (discovery 2): side s (-1,-1) spacing 2 from i,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 7 round 2 (discovery 3): side s (1,-1) spacing 2 from i,
+  stretched 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 7 round 3 (discovery 4): side s (1,-1) spacing 2 from i,
+  stretched 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 7 round 4 (discovery 5): side s (1,-1) spacing 2 from i,
+  stretched 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 7 round 5 (commit 1): side s (1,-1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 7 round 6 (commit 2): side s (-1,-1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 7 round 7 (final 1): side s (-1,-1) spacing 2 from i, stretched
+  0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 9 round 0 (discovery 1): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 9 round 1 (discovery 2): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 9 round 2 (discovery 3): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 9 round 3 (discovery 4): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 9 round 4 (discovery 5): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 9 round 5 (commit 1): side s (-1,-1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 9 round 6 (commit 2): side s (-1,-1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 0 9 round 7 (final 1): side s (-1,-1) spacing 2 from i, stretched
+  0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 7 round 0 (discovery 1): side s (1,1) spacing 2 from j,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 7 round 1 (discovery 2): side s (-1,0) spacing 1 from j,
+  stretched 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 7 round 2 (discovery 3): side s (-1,0) spacing 1 from j,
+  stretched 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 7 round 3 (discovery 4): side s (-1,0) spacing 1 from j,
+  stretched 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 7 round 4 (discovery 5): side s (-1,0) spacing 1 from j,
+  stretched 0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 7 round 5 (commit 1): side s (-1,0) spacing 1 from j, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 7 round 6 (commit 2): side s (-1,0) spacing 1 from j, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 7 round 7 (final 1): side s (-1,0) spacing 1 from j, stretched
+  0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 9 round 0 (discovery 1): side s (-1,0) spacing 1 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 9 round 1 (discovery 2): side s (-1,0) spacing 1 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 9 round 2 (discovery 3): side s (-1,0) spacing 1 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 9 round 3 (discovery 4): side s (-1,0) spacing 1 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 9 round 4 (discovery 5): side s (-1,0) spacing 1 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 9 round 5 (commit 1): side s (-1,0) spacing 1 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 9 round 6 (commit 2): side s (-1,0) spacing 1 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 1 9 round 7 (final 1): side s (-1,0) spacing 1 from i, stretched
+  0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 10 round 0 (discovery 1): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 10 round 1 (discovery 2): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 10 round 2 (discovery 3): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 10 round 3 (discovery 4): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 10 round 4 (discovery 5): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 10 round 5 (commit 1): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 10 round 6 (commit 2): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 10 round 7 (final 1): side s (-1,-1) spacing 2 from i, stretched
+  0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 7 round 0 (discovery 1): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 7 round 1 (discovery 2): side s (-1,-1) spacing 2 from i,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 7 round 2 (discovery 3): side s (-1,-1) spacing 2 from i,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 7 round 3 (discovery 4): side s (-1,-1) spacing 2 from i,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 7 round 4 (discovery 5): side s (-1,-1) spacing 2 from i,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 7 round 5 (commit 1): side s (-1,-1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 7 round 6 (commit 2): side s (-1,-1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 7 round 7 (final 1): side s (-1,-1) spacing 2 from i, stretched
+  0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 8 round 0 (discovery 1): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 8 round 1 (discovery 2): side s (-1,-1) spacing 2 from i,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 8 round 2 (discovery 3): side s (-1,-1) spacing 2 from i,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 8 round 3 (discovery 4): side s (-1,-1) spacing 2 from i,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 8 round 4 (discovery 5): side s (-1,-1) spacing 2 from i,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 8 round 5 (commit 1): side s (-1,-1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 8 round 6 (commit 2): side s (-1,-1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 8 round 7 (final 1): side s (-1,-1) spacing 2 from i, stretched
+  0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 9 round 0 (discovery 1): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 9 round 1 (discovery 2): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 9 round 2 (discovery 3): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 9 round 3 (discovery 4): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 9 round 4 (discovery 5): side s (-1,-1) spacing 2 from i,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 9 round 5 (commit 1): side s (-1,-1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 9 round 6 (commit 2): side s (-1,-1) spacing 2 from i, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 2 9 round 7 (final 1): side s (-1,-1) spacing 2 from i, stretched
+  0.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 3 7 round 0 (discovery 1): side s (1,1) spacing 2 from j,
+  stretched 1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 3 7 round 1 (discovery 2): side s (1,1) spacing 2 from j,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 3 7 round 2 (discovery 3): side s (1,1) spacing 2 from j,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 3 7 round 3 (discovery 4): side s (1,1) spacing 2 from j,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 3 7 round 4 (discovery 5): side s (1,1) spacing 2 from j,
+  stretched 2.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 3 7 round 5 (commit 1): side s (1,1) spacing 2 from j, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 3 7 round 6 (commit 2): side s (1,1) spacing 2 from j, stretched
+  1.000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:416: warning:
+  LL2 sep 33 3 7 round 7 (final 1): side s (1,1) spacing 2 from j, stretched 0.
+  000
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  LL2 beside F1"0: from node 24 to node 25; pieces 4; flex; steps; chain F1
+  [pieces 4; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  LL2 beside F2"6: from node 26 to node 27; pieces 3 4 3; flex; steps; chain F2
+  [pieces 3 4 3; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  LL2 beside B1"9: from node 28 to node 29; pieces 6; flex; steps; chain B1
+  [pieces 6; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  LL2 beside B2"13: from node 30 to node 31; pieces 6; flex; steps; chain B2
+  [pieces 6; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:464: warning:
+  LL2 beside C2"14: from node 32 to node 33; pieces 0; flex; steps; chain C2
+  [pieces 0; flex; steps]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:476: warning:
+  LL2 wall 1.0 s
+
+===============================================================================
+All tests passed (12 assertions in 1 test case)
+

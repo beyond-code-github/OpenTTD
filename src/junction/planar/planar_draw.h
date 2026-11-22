@@ -38,6 +38,9 @@ struct PlanarDrawResult {
 	uint32_t short_sides = 0; ///< With sides_from: the pairs whose chosen side the reference keeps by less than its spacing.
 	uint32_t sides_free = 0; ///< With sides_from and sides_free_below: pairs left with binaries.
 	uint32_t walk_fixed = 0; ///< With sides_by_walk: pairs the rule fixed.
+	uint32_t lane_pairs = 0; ///< With sibling_lanes: the sibling pairs the lane rows were written for.
+	uint32_t lane_sep_skipped = 0; ///< With sibling_lanes: wall pairs the keep-apart skipped inside a used sibling pair.
+	std::vector<std::string> lane_skipped; ///< With sibling_lanes: "<a> <b>: <reason>" per sibling pair the rule skipped.
 	uint32_t walk_short = 0; ///< With sides_by_walk: fixed pairs whose rule candidate the sides_from reference keeps by less than its spacing.
 	uint32_t walk_differs = 0; ///< With sides_by_walk: fixed pairs where the rule's candidate is not sides_from's best.
 	double ms = 0; ///< Build and solve time in milliseconds.
@@ -74,6 +77,7 @@ struct PlanarDrawOptions {
 	bool node_gaps = false; ///< Node gaps (SPEC-slots-lengths §8.1 node_leg, D400): a track from a node to a node with no event travels at least rules.node_leg, or 0 (a trident) where node_gap_from says so (tags `leg`, `leg zero`).
 	const std::vector<std::vector<double>> *node_gap_from = nullptr; ///< With node_gaps: a drawing's lengths (as PlanarDrawResult::lengths); a node-to-node track whose travel there is below 1 half tile is held at 0, every other at least rules.node_leg. Null: every one at least rules.node_leg.
 	bool corridor = false; ///< The corridor family (D421): beside tracks (copies, rows) as offset curves of their parent chain one lane to their side, with an exact one-lane opening and closing step at their nodes.
+	bool sibling_lanes = false; ///< A probe (D388 spine, SPEC-slots-lengths §11): sibling lanes of one channel are offset curves at one lane between their first and last channel crossing (tag lane), and keep-apart skips their wall pairs there.
 	const std::vector<std::vector<double>> *curve_flex_from = nullptr; ///< Flex commitment (D422 probe; Gemini digest 2026-11-23): per flex middle, its length in this reference (half tiles, as PlanarDrawResult::lengths); at or above curve_flex_above the insert is committed (length >= its least, a real bend pair in the curve rows), below it the insert is held at 0.
 	double curve_flex_above = 0.25; ///< With curve_flex_from.
 	const std::vector<std::vector<double>> *curve_flex_soft = nullptr; ///< Scheme A (a probe): per track and piece, a slack price; when set, every flex insert is a real bend in the curve rows (its length stays free), and its rows (tag "curve flex <name> <i>") are elastic at that price whatever elastic_families says (price 0: no row).
@@ -165,7 +169,7 @@ std::vector<PlanarClearRow> PlanarCellClearRows(const std::vector<PlanarCellWall
  * Draw Shape's shape on the half-tile grid with every Slots rule of the families below kept, as one integer program (E5-1).
  * A test oracle (D388 (b)): an infeasible result names the conflicting rows, which names a missing upstream promise.
  * Units are half tiles; a heading h moves STEP[h mod 8] per unit (an axis unit (0, 1) or (1, 0), a diagonal unit (1, 1)). Every row has a tag kept beside the program.
- * Families: points and pieces (`piece`, `flex`), the box (`box`), ports (`port <side>`), nodes (`node`), crossings (`cross`, `order`), spans (`deck`, `end`, `span`), dummies with their landings (`land <dummy>`) and clearance per convex cell (`clear <cell> <vertex> <wall>`; a structure's span pieces and dummies are no wall, a wall is no target for a vertex on its own straight side, a vertex between two non-track walls has no row, a corner between two crossing tracks is the crossing point, and a vertex inside a span piece has no row), the last three only with `options.clearance` (the clearance rows also only with `options.clear_rows`), and corridors (`corridor`, option).
+ * Families: points and pieces (`piece`, `flex`), the box (`box`), ports (`port <side>`), nodes (`node`), crossings (`cross`, `order`), spans (`deck`, `end`, `span`), dummies with their landings (`land <dummy>`) and clearance per convex cell (`clear <cell> <vertex> <wall>`; a structure's span pieces and dummies are no wall, a wall is no target for a vertex on its own straight side, a vertex between two non-track walls has no row, a corner between two crossing tracks is the crossing point, and a vertex inside a span piece has no row), the last three only with `options.clearance` (the clearance rows also only with `options.clear_rows`), corridors (`corridor`, option) and sibling lanes (`lane`, option `sibling_lanes`).
  * With `options.pairwise` (a D406 probe) there are no dummies or landings: a face convex without dummies keeps the clearance rows, every other face separates its non-incident wall pairs (`sep <face> <i> <j>`, one binary per axis side, `sepdir` picks one side of the pair); with `options.sides_from` each pair takes the side that drawing keeps best as plain rows, no binaries.
  * Not in this step: grid parity (D382), node legs and the trident binary, coverage; no clearance against a box edge.
  * @param v The shaped variant.
@@ -186,6 +190,7 @@ struct PlanarDrawPipelineOptions {
 	double slack_price = 1; ///< The slack price of every elastic round (PlanarDrawOptions::slack_price); it should be far above box_price, or the rounds may trade a broken rule for a smaller box.
 	double discovery_slack_price = 1; ///< The slack price of the seed and discovery rounds; slack_price applies from the commit on.
 	bool corridor = true; ///< Beside tracks as offset curves (D421) in every stage.
+	bool sibling_lanes = false; ///< A probe (D388 spine, SPEC-slots-lengths §11): PlanarDrawOptions::sibling_lanes in every stage.
 	bool final_tidy = true; ///< The integer final minimises the sum of piece lengths; false is feasibility only (a measurement).
 	bool final_grid = false; ///< A measurement (D382 probe): the integer final writes the grid rows (PlanarDrawOptions::grid).
 	bool final_soft_sep = false; ///< A measurement: the integer final's sep rows get slack (cost 1, piece lengths cost 0.01), every variable stays integer; the result lists the rows that stretched.
