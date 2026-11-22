@@ -1,14 +1,13 @@
 Encoding report on X1: our keep-apart rows (judged on fixed points, no solve) against the domain
-enumeration wall 9.08918 s
+enumeration wall 18.4618 s
 
 == S1 ==
-  both accept: 51 polylines (76 geometries)
+  both accept: 53 polylines (82 geometries)
   both reject: 42 polylines (42 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
-  undecided: 60 polylines (71 geometries)
+  undecided: 58 polylines (65 geometries)
   off grid (geometries): 336 (336 geometries)
-    undecided polyline A1:2*16,;AC1:2*4,;B1:0*18,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,1*2,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,1*2,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,1*2,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
@@ -31,7 +30,6 @@ enumeration wall 9.08918 s
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,1*4,0*8,7*4,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,7*4,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
-    undecided polyline A1:2*16,;AC1:2*4,;B1:0*20,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*22,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*24,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*26,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
@@ -72,11 +70,11 @@ enumeration wall 9.08918 s
  too loose, by domain break rules:
 
 == S2 ==
-  both accept: 25 polylines (50 geometries)
+  both accept: 28 polylines (56 geometries)
   both reject: 0 polylines (0 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
-  undecided: 149 polylines (166 geometries)
+  undecided: 146 polylines (160 geometries)
   off grid (geometries): 384 (384 geometries)
     undecided polyline A1:2*10,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*10,1*4,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
@@ -131,9 +129,6 @@ enumeration wall 9.08918 s
     undecided polyline A1:2*2,3*4,2*6,1*4,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*2,3*4,2*8,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*2,3*4,2*8,1*4,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
-    undecided polyline A1:2*24,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
-    undecided polyline A1:2*26,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
-    undecided polyline A1:2*28,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*4,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*4,1*4,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*4,3*2,2*10,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
@@ -263,16 +258,15 @@ enumeration wall 9.08918 s
  too loose, by domain break rules:
 
 == total ==
-  both accept: 105 polylines (174 geometries)
+  both accept: 110 polylines (186 geometries)
   both reject: 53 polylines (58 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
-  undecided: 231 polylines (269 geometries)
+  undecided: 226 polylines (257 geometries)
   off grid (geometries): 1200 (1200 geometries)
     undecided polyline A1:2*10,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*10,1*4,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*10,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
-    undecided polyline A1:2*16,;AC1:2*4,;B1:0*18,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,1*2,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,1*2,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,1*2,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
@@ -295,7 +289,6 @@ enumeration wall 9.08918 s
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,1*4,0*8,7*4,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*2,7*4,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
-    undecided polyline A1:2*16,;AC1:2*4,;B1:0*20,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*22,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*24,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*16,;AC1:2*4,;B1:0*26,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
@@ -393,9 +386,6 @@ enumeration wall 9.08918 s
     undecided polyline A1:2*2,3*4,2*6,1*4,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*2,3*4,2*8,1*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*2,3*4,2*8,1*4,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
-    undecided polyline A1:2*24,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
-    undecided polyline A1:2*26,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
-    undecided polyline A1:2*28,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*4,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,1*2,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*4,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,;D1:1*1,2*8,; search nodes 50001
     undecided polyline A1:2*4,1*2,2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*4,1*2,0*2,;D1:1*1,2*8,; search nodes 50001

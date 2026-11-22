@@ -92,6 +92,9 @@ struct PlanarProgramCheck {
 /** Fix the points, solve the variables the equality rows determine, and check every row whose variables are all known (tolerance 1e-6). */
 PlanarProgramCheck CheckPlanarProgramOnPoints(const PlanarProgram &program, const std::vector<std::vector<std::array<int, 2>>> &points);
 
+/** The same with only some tracks placed: only the steps and rows whose track sets (the tracks of the points that reach them) lie within `placed` (per track) are evaluated, the rest are skipped silently. The form above is this with every track placed. */
+PlanarProgramCheck CheckPlanarProgramOnPoints(const PlanarProgram &program, const std::vector<std::vector<std::array<int, 2>>> &points, const std::vector<bool> &placed);
+
 /** The result of the drawing program. */
 struct PlanarDrawResult {
 	bool feasible = false; ///< A drawing exists.
