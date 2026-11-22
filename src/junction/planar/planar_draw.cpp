@@ -1774,6 +1774,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 				if (r.status != "Optimal") out.log.push_back(conflict_line(fmt::format("side probe free {} c{}", tag, c), r));
 			}
 		}
+		PlanarDrawResult joint_free;
 		for (const bool free_inserts : {false, true}) {
 			PlanarDrawOptions joint = commit_options();
 			if (free_inserts) joint.curve_flex_from = nullptr;
@@ -1783,6 +1784,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 			joint.elastic_integer = true;
 			joint.continuous = {"point", "axis", "diagonal", "param", "cross"};
 			const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, joint);
+			if (free_inserts) joint_free = r;
 			const char *mode = free_inserts ? "free" : "committed";
 			double sep_slack = 0, curve_slack = 0;
 			for (const auto &[row, slack] : r.stretched) {
@@ -1794,39 +1796,14 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 			if (r.status != "Optimal") out.log.push_back(conflict_line(fmt::format("side probe joint {}", mode), r));
 		}
 		{
-			std::vector<uint32_t> faces;
-			for (const std::string &tag : tags) {
-				std::istringstream words(tag);
-				std::string family;
-				uint32_t face = 0;
-				if (words >> family >> face && std::ranges::find(faces, face) == faces.end()) faces.push_back(face);
-			}
-			std::string face_list;
-			for (const uint32_t face : faces) face_list += fmt::format(" {}", face);
-			PlanarDrawOptions open = commit_options();
-			open.curve_flex_from = nullptr;
-			open.node_gap_from = &last_input_lengths;
-			open.sides_from = &last_input;
-			open.free_sides = tags;
-			open.free_faces = faces;
-			open.elastic_integer = true;
-			open.continuous = {"point", "axis", "diagonal", "param", "cross"};
-			const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, open);
-			double sep_slack = 0, curve_slack = 0;
-			for (const auto &[row, slack] : r.stretched) {
-				if (row.starts_with("sep")) sep_slack += slack;
-				if (row.starts_with("curve")) curve_slack += slack;
-			}
-			out.log.push_back(fmt::format("side probe faces free: {} slack {:.3f} sep {:.3f} curve {:.3f} binaries {} sides_free {} faces{} ms {:.0f}", r.status, r.slack, sep_slack, curve_slack, r.binaries, r.sides_free, face_list, r.ms));
-			for (const auto &[row, slack] : r.stretched) out.log.push_back(fmt::format("side probe faces free stretched {} {:.3f}", row, slack));
-			if (r.status == "Optimal") {
+			const auto run_hard = [&](const PlanarDrawResult &source, const char *label) {
 				PlanarDrawOptions hard = commit_options();
 				hard.curve_flex_from = nullptr;
-				hard.node_gap_from = &r.lengths;
-				hard.sides_from = &r.points;
+				hard.node_gap_from = &source.lengths;
+				hard.sides_from = &source.points;
 				hard.elastic_families = {"curve"};
 				const PlanarDrawResult h = CheckPlanarDrawable(v, 15.0, hard);
-				out.log.push_back(fmt::format("side probe faces hard: {} slack {:.3f} ms {:.0f}", h.status, h.slack, h.ms));
+				out.log.push_back(fmt::format("side probe {}: {} slack {:.3f} ms {:.0f}", label, h.status, h.slack, h.ms));
 				if (h.status != "Optimal") {
 					const PlanarTrackMap &map = v.structure.map;
 					const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(v);
@@ -1835,7 +1812,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 						return fmt::format("{}#{} h{}", map.tracks[w.track].name, w.piece, ((v.tracks[w.track].pieces[w.piece] % 8) + 8) % 8);
 					};
 					for (const std::string &tag : h.conflict) {
-						std::string line = fmt::format("side probe faces hard conflict {}", tag);
+						std::string line = fmt::format("side probe {} conflict {}", label, tag);
 						std::istringstream words(tag);
 						std::string family;
 						uint32_t face = 0, i = 0, j = 0;
@@ -1849,7 +1826,37 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 						out.log.push_back(line);
 					}
 				}
+			};
+			/* Whole-face binaries cost 15 s per hub and found nothing. */
+			if (std::getenv("PLANAR_PROBE_NO_FACES") == nullptr) {
+				std::vector<uint32_t> faces;
+				for (const std::string &tag : tags) {
+					std::istringstream words(tag);
+					std::string family;
+					uint32_t face = 0;
+					if (words >> family >> face && std::ranges::find(faces, face) == faces.end()) faces.push_back(face);
+				}
+				std::string face_list;
+				for (const uint32_t face : faces) face_list += fmt::format(" {}", face);
+				PlanarDrawOptions open = commit_options();
+				open.curve_flex_from = nullptr;
+				open.node_gap_from = &last_input_lengths;
+				open.sides_from = &last_input;
+				open.free_sides = tags;
+				open.free_faces = faces;
+				open.elastic_integer = true;
+				open.continuous = {"point", "axis", "diagonal", "param", "cross"};
+				const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, open);
+				double sep_slack = 0, curve_slack = 0;
+				for (const auto &[row, slack] : r.stretched) {
+					if (row.starts_with("sep")) sep_slack += slack;
+					if (row.starts_with("curve")) curve_slack += slack;
+				}
+				out.log.push_back(fmt::format("side probe faces free: {} slack {:.3f} sep {:.3f} curve {:.3f} binaries {} sides_free {} faces{} ms {:.0f}", r.status, r.slack, sep_slack, curve_slack, r.binaries, r.sides_free, face_list, r.ms));
+				for (const auto &[row, slack] : r.stretched) out.log.push_back(fmt::format("side probe faces free stretched {} {:.3f}", row, slack));
+				if (r.status == "Optimal") run_hard(r, "faces hard");
 			}
+			if (joint_free.status == "Optimal") run_hard(joint_free, "joint hard");
 		}
 	}
 
