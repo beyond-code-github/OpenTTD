@@ -538,7 +538,10 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			std::vector<int> chain_pieces;
 			for (const uint32_t t : beside.chain) {
 				if (!v.tracks[t].flex.empty() || !v.tracks[t].steps.empty()) return unsupported("corridor: parent chain track " + map.tracks[t].name + " of " + name + " has flex or steps");
-				chain_pieces.insert(chain_pieces.end(), v.tracks[t].pieces.begin(), v.tracks[t].pieces.end());
+				/* A node's piece once (H8): a join at equal headings is one piece, as the chain's points drop the node point there. */
+				const std::vector<int> &tp = v.tracks[t].pieces;
+				const bool merge = !chain_pieces.empty() && !tp.empty() && ((chain_pieces.back() - tp.front()) % 8 + 8) % 8 == 0;
+				chain_pieces.insert(chain_pieces.end(), tp.begin() + (merge ? 1 : 0), tp.end());
 			}
 			if (!v.tracks[b].flex.empty() || !v.tracks[b].steps.empty()) return unsupported("corridor: " + name + " has flex or steps");
 			const std::vector<int> &pieces = v.tracks[b].pieces;
