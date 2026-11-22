@@ -1078,9 +1078,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						for (uint32_t k = lo + 1; k < hi; k++) all_zero = all_zero && may_zero[w[i].track][k];
 						if (all_zero) continue;
 					}
-					/* One topology line cut into parts at a node (a row's or copy's split or merge): a wall at the end of one part and a wall at the start of the next with only may-be-zero pieces between them are one line, as on one track. */
+					/* Two tracks meeting at a node, one ending there and the next starting there (every in-track of a 1 -> 2 or 2 -> 1 node continues into every out-track along a route): a wall at the end of one and a wall at the start of the other with only may-be-zero pieces between them are consecutive travel, as on one track. */
 					const auto continues = [&](const PlanarCellWall &a, const PlanarCellWall &b) {
-						if (map.part_of[a.track] == UINT32_MAX || map.part_of[a.track] != map.part_of[b.track]) return false;
 						const auto &to = map.expanded.lines[a.track].to;
 						const auto &from = map.expanded.lines[b.track].from;
 						if (to.port || from.port || to.index != from.index) return false;
