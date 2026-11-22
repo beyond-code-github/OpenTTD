@@ -142,7 +142,6 @@ namespace {
 
 using Terms = std::vector<std::pair<uint32_t, double>>;
 
-constexpr double COORD_MAX = 4096; ///< The largest coordinate, length and parameter, half tiles.
 constexpr std::array<const char *, 4> SIDE_NAME = {"N", "E", "S", "W"};
 
 /** The least length of an axis piece, half tiles; a diagonal piece's is 1. */
@@ -289,6 +288,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 	};
 	const auto row = [&](Terms terms, double lower, double upper, const std::string &tag) {
+		for (const std::string &skip : options.skip_rows) {
+			if (tag == skip || (skip.ends_with(' ') && tag.starts_with(skip))) return;
+		}
 		std::ranges::sort(terms);
 		Terms merged;
 		for (const auto &[variable, coefficient] : terms) {
@@ -307,8 +309,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	};
 	const auto eq = [&](Terms terms, double rhs, const std::string &tag) { row(std::move(terms), rhs, rhs, tag); };
 
-	const uint32_t width = var(1, COORD_MAX, options.box_price, "other");
-	const uint32_t height = var(1, COORD_MAX, options.box_price, "other");
+	const uint32_t width = var(1, options.coord_max, options.box_price, "other");
+	const uint32_t height = var(1, options.coord_max, options.box_price, "other");
 
 	/* Points: per track its start and the end of each piece. */
 	if (options.fix_points != nullptr) {
@@ -325,7 +327,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		const std::vector<int> &pieces = v.tracks[t].pieces;
 		if (pieces.empty()) return unsupported("track " + map.tracks[t].name + " has no piece");
 		for (size_t i = 0; i <= pieces.size(); i++) {
-			point[t].push_back({var(0, COORD_MAX, 0, "point"), var(0, COORD_MAX, 0, "point")});
+			point[t].push_back({var(0, options.coord_max, 0, "point"), var(0, options.coord_max, 0, "point")});
 			row({{point[t][i][0], 1}, {width, -1}}, -JunctionMilp::INF, 0, "box");
 			row({{point[t][i][1], 1}, {height, -1}}, -JunctionMilp::INF, 0, "box");
 			if (options.fix_points != nullptr && !(*options.fix_points)[t].empty()) {
@@ -380,7 +382,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const bool held = options.curve_flex_from != nullptr && in_flex && !reference && !options.curve_flex_free;
 			positive.push_back(reference || lower > 0);
 			capped.push_back(zero || held);
-			length[t].push_back({var(reference ? 1 : lower, (zero || held) ? 0 : COORD_MAX, (options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0)) + (in_flex ? (options.flex_weights != nullptr && t < options.flex_weights->size() && i < (*options.flex_weights)[t].size() ? (*options.flex_weights)[t][i] : options.flex_price) * (axis ? AXIS_LEAST : 1) : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
+			length[t].push_back({var(reference ? 1 : lower, (zero || held) ? 0 : options.coord_max, (options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0)) + (in_flex ? (options.flex_weights != nullptr && t < options.flex_weights->size() && i < (*options.flex_weights)[t].size() ? (*options.flex_weights)[t][i] : options.flex_price) * (axis ? AXIS_LEAST : 1) : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
 			if (port_stretch) break;
@@ -706,7 +708,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const uint32_t piece = v.tracks[t].event_piece[at - map.events[t].begin()];
 			if (piece >= v.tracks[t].pieces.size()) return unsupported(fmt::format("crossing {} sits on piece {} of track {}, which has {}", c, piece, map.tracks[t].name, v.tracks[t].pieces.size()));
 			piece_of[c][side] = piece;
-			param[c][side] = var(0, COORD_MAX, 0, "param");
+			param[c][side] = var(0, options.coord_max, 0, "param");
 			const Length &len = length[t][piece];
 			const std::string tag = fmt::format("cross {}", c);
 			/* A structure's crosser may cross at its piece's ends (D414); the separator and every other crossing keep rules.cross. */
@@ -732,7 +734,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		const uint32_t t = map.crossings[c].a;
 		const std::array<int, 2> step = PlanarModel::STEP[((v.tracks[t].pieces[piece_of[c][0]] % 8) + 8) % 8];
 		for (int axis = 0; axis < 2; axis++) {
-			cross_point[c][axis] = var(0, COORD_MAX, 0, "cross");
+			cross_point[c][axis] = var(0, options.coord_max, 0, "cross");
 			eq({{cross_point[c][axis], 1}, {point[t][piece_of[c][0]][axis], -1}, {param[c][0], -step[axis]}}, 0, fmt::format("cross {}", c));
 		}
 	}
@@ -870,7 +872,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	}
 	/* Pins (D393): every pinned point is within the window of its position plus one common shift. */
 	if (options.pins != nullptr && !options.pins->pins.empty()) {
-		const std::array<uint32_t, 2> shift = {var(-COORD_MAX, COORD_MAX, 0, "other"), var(-COORD_MAX, COORD_MAX, 0, "other")};
+		const std::array<uint32_t, 2> shift = {var(-options.coord_max, options.coord_max, 0, "other"), var(-options.coord_max, options.coord_max, 0, "other")};
 		for (const PlanarDrawPins::Pin &pin : options.pins->pins) {
 			std::array<uint32_t, 2> p;
 			std::string tag;
@@ -942,8 +944,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		if (!face_listed(dummy.face)) continue;
 		if (dummy.track >= nt || dummy.piece + 1 >= point[dummy.track].size()) return unsupported(fmt::format("dummy {} starts at a vertex that is not a track's", d));
 		dummy_start[d] = point[dummy.track][dummy.piece + 1];
-		dummy_length[d] = var(1, COORD_MAX, 0, "other");
-		dummy_end[d] = {var(0, COORD_MAX, 0, "other"), var(0, COORD_MAX, 0, "other")};
+		dummy_length[d] = var(1, options.coord_max, 0, "other");
+		dummy_end[d] = {var(0, options.coord_max, 0, "other"), var(0, options.coord_max, 0, "other")};
 		const std::string tag = fmt::format("land {}", d);
 		row({{dummy_end[d][0], 1}, {width, -1}}, -JunctionMilp::INF, 0, tag);
 		row({{dummy_end[d][1], 1}, {height, -1}}, -JunctionMilp::INF, 0, tag);
@@ -980,7 +982,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const Length &len = length[dummy.land_track][dummy.land_piece];
 			most = {{len.variable, -len.coefficient}};
 		}
-		const uint32_t w = var(0, COORD_MAX, 0, "other");
+		const uint32_t w = var(0, options.coord_max, 0, "other");
 		most.emplace_back(w, 1);
 		row(most, -JunctionMilp::INF, 0, tag);
 		const std::array<int, 2> step = PlanarModel::STEP[((heading % 8) + 8) % 8];
@@ -1119,13 +1121,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			if (r.room != UINT32_MAX) {
 				/* The room row: M * (d - spacing) - length >= 0, so the insert has length only when the vertex keeps more than its base spacing. */
 				room_terms = terms;
-				for (auto &term : room_terms) term.second *= COORD_MAX;
+				for (auto &term : room_terms) term.second *= options.coord_max;
 				const PlanarCellWall &flex = cell[r.room];
 				const Length &len = length[flex.track][flex.piece];
 				room_terms.emplace_back(len.variable, -len.coefficient);
 			}
 			row(std::move(terms), r.spacing, JunctionMilp::INF, fmt::format("clear {} {} {}", c, k, e));
-			if (r.room != UINT32_MAX) row(std::move(room_terms), COORD_MAX * r.spacing, JunctionMilp::INF, fmt::format("room {} {} {}", c, k, e));
+			if (r.room != UINT32_MAX) row(std::move(room_terms), options.coord_max * r.spacing, JunctionMilp::INF, fmt::format("room {} {} {}", c, k, e));
 		}
 		for (const PlanarAlongRow &r : along) {
 			std::array<uint32_t, 2> vertex, anchor;
@@ -1149,7 +1151,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 
 	/* Pairwise mode (D406 probe): a face convex without dummies keeps the clearance rows, every other face separates its non-incident wall pairs. */
 	if (options.clearance && options.pairwise) {
-		constexpr double M = 4 * COORD_MAX;
+		const double M = 4 * options.coord_max;
 		export_big_m = M;
 		const auto norm = [](int x) { return ((x % 8) + 12) % 8 - 4; };
 		if (options.sides_from != nullptr) {
@@ -1173,6 +1175,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			for (size_t i = 0; i < n; i++) {
 				for (size_t j = i + 1; j < n; j++) {
 					if (j == i + 1 || (i == 0 && j == n - 1)) continue;
+					if (!options.skip_pairs.empty() && std::ranges::find(options.skip_pairs, fmt::format("sep {} {} {}", f.face, i, j)) != options.skip_pairs.end()) continue;
 					if (w[i].track >= nt || w[j].track >= nt) continue;
 					if (is_span(w[i]) || is_span(w[j])) continue;
 					if (options.sibling_lanes) {
