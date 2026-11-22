@@ -392,6 +392,23 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 					}
 				}
 				if (sep_rows > 30) WARN(fmt::format("{} decode: {} sep rows, first 30 shown", name, sep_rows));
+				if (name != "T2") {
+					for (const auto &[tag, amount] : r.last_round.stretched) {
+						if (!tag.starts_with("sep ")) continue;
+						for (size_t n = 0; n < r.rounds.size(); n++) {
+							std::string side = "none";
+							for (const auto &[t, text] : r.rounds[n].sep_sides) {
+								if (t == tag) side = text;
+							}
+							double amt = 0;
+							for (const auto &[t, x] : r.rounds[n].stretched) {
+								if (t == tag) amt = x;
+							}
+							const std::string &line = n < r.log.size() ? r.log[n] : std::string("?");
+							WARN(fmt::format("{} {} round {} ({}): side {}, stretched {:.3f}", name, tag, n, line.substr(0, line.find(':')), side, amt));
+						}
+					}
+				}
 				const auto list_of = [](const auto &xs) {
 					std::string s;
 					for (const auto x : xs) s += fmt::format(" {}", x);

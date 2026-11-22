@@ -1294,6 +1294,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						};
 						std::vector<std::array<uint32_t, 2>> from_ends(best_from->begin(), best_from->end());
 						std::vector<std::array<uint32_t, 2>> to_ends(best_to->begin(), best_to->end());
+						result.sep_sides.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), fmt::format("s ({},{}) spacing {} from {}", best_axis->s[0], best_axis->s[1], best_axis->spacing, best_from == &pi ? "i" : "j"));
 						if (options.sep_extremal) {
 							from_ends = {(*best_from)[along(best_from) > 0 ? 1 : 0]};
 							to_ends = {(*best_to)[along(best_to) > 0 ? 0 : 1]};
@@ -1483,6 +1484,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 
 	/* One log line: the stage, the round, the status, the slacks, the drawing's box and its total length. */
 	const auto log_round = [&](const std::string &stage, int k, const PlanarDrawResult &r) {
+		out.rounds.push_back(r);
 		double curve_slack = 0;
 		for (const auto &[row, slack] : r.stretched) curve_slack += row.starts_with("curve") ? slack : 0;
 		long total = 0;

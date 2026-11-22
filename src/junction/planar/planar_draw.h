@@ -26,6 +26,7 @@ struct PlanarDrawResult {
 	std::vector<std::string> conflict; ///< When infeasible, the tags of the conflicting rows (InfeasibleRows), each once.
 	double slack = 0; ///< With elastic: the total slack of the solution.
 	std::vector<std::pair<std::string, double>> stretched; ///< With elastic: per row tag whose slack is above 1e-6, the slack, largest first (a tag that names several rows sums them).
+	std::vector<std::pair<std::string, std::string>> sep_sides; ///< A read-out: per written sep row, its tag and the chosen candidate (axis and side, as text).
 	uint32_t rows = 0; ///< The program's rows.
 	uint32_t columns = 0; ///< The program's variables.
 	size_t grid_forced = 0; ///< With grid: the variables whose parity the integer equalities force (written 2 h + p).
@@ -202,6 +203,7 @@ struct PlanarDrawPipelineResult {
 	size_t added = 0; ///< With additions: inserts the additions pass committed.
 	std::vector<std::string> log; ///< One line per round: stage, round, status, total slack, curve slack, box, length.
 	std::string stopped; ///< Empty, or the stage that ended without an Optimal round.
+	std::vector<PlanarDrawResult> rounds; ///< A read-out: every round's result in order (seed, discovery, commit, prune).
 	PlanarDrawResult last_round; ///< The last Optimal LP round (a read-out: its drawing and the rows that stretched).
 	std::vector<std::vector<std::array<int, 2>>> last_input; ///< The input drawing of the last Optimal round, from which the final took its sides (a read-out).
 };
