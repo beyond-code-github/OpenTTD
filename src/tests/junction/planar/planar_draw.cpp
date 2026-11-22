@@ -2011,9 +2011,11 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 	const PlanarDrawResult full = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .elastic = true, .pins = &p8, .fix_points = &vref, .fix_window = 1});
 	WARN(fmt::format("geo reference: status {}, total slack {:.3f}", full.status, full.slack));
 	{
-		const PlanarDrawResult g = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .node_gaps = true, .elastic = true, .elastic_families = {"leg"}, .pins = &p8, .fix_points = &vref, .fix_window = 1});
+		const PlanarDrawResult g = CheckPlanarDrawable(shaped, 60.0, {.clearance = false, .node_gaps = true, .elastic = true, .pins = &p8, .fix_points = &vref, .fix_window = 1});
 		WARN(fmt::format("legs on V: status {}, total slack {:.3f}", g.status, g.slack));
-		for (const auto &[row, slack] : g.stretched) WARN(fmt::format("legs on V stretched {}: {:.3f}", row, slack));
+		for (const auto &[row, slack] : g.stretched) {
+			if (row.starts_with("leg")) WARN(fmt::format("legs on V stretched {}: {:.3f}", row, slack));
+		}
 	}
 
 	/* Pairwise separation rows on V's geometry, each pair's side taken from the base-rows reference. */
