@@ -371,6 +371,10 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		o.facing_sides = std::getenv("PLANAR_PROBE_FACING") != nullptr;
 		o.inward_sides = std::getenv("PLANAR_PROBE_INWARD") != nullptr;
 		o.curve_discovery = std::getenv("PLANAR_PROBE_NO_CURVE_DISCOVERY") == nullptr;
+		if (const char *s = std::getenv("PLANAR_DUMP"); s != nullptr) {
+			o.dump_dir = fmt::format("{}/{}", s, name);
+			std::filesystem::create_directories(o.dump_dir);
+		}
 		const auto start = std::chrono::steady_clock::now();
 		const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
 		const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
@@ -2398,6 +2402,20 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 			p[1] -= low[1];
 		}
 	}
+	/* PLANAR_DUMP (a measurement aid): the dumps go to <dir>/197v; vref.json holds V's drawing. */
+	std::string dump_dir_197v;
+	if (const char *s = std::getenv("PLANAR_DUMP"); s != nullptr) {
+		dump_dir_197v = fmt::format("{}/197v", s);
+		std::filesystem::create_directories(dump_dir_197v);
+		std::ofstream ref(dump_dir_197v + "/vref.json");
+		ref << "{\"tracks\": [";
+		for (size_t t = 0; t < nt; t++) {
+			ref << fmt::format("{}{{\"name\": \"{}\", \"points\": [", t == 0 ? "" : ", ", map.tracks[t].name);
+			for (size_t k = 0; k < vref[t].size(); k++) ref << fmt::format("{}[{},{}]", k == 0 ? "" : ",", vref[t][k][0], vref[t][k][1]);
+			ref << "]}";
+		}
+		ref << "]}\n";
+	}
 
 	/* V's node legs (read-out): travel between a node and the nearest event, and between two nodes with no event. */
 	{
@@ -2610,7 +2628,7 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 	/* The V-sides run with convex faces separated pairwise too (no cell clearance rows). */
 	{
 		const std::string label = "sepV allfaces W1";
-		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_families = {"sep", "clear", "deck", "end", "node", "cross"}, .pins = &p8, .sides_from = &full.points, .fix_points = &vref, .fix_window = 1});
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_families = {"sep", "clear", "deck", "end", "node", "cross"}, .pins = &p8, .sides_from = &full.points, .fix_points = &vref, .fix_window = 1, .dump_path = dump_dir_197v.empty() ? std::string() : dump_dir_197v + "/sepv-allfaces.json"});
 		WARN(fmt::format("{}: status {}, total slack {:.3f}, pairs {}, short_sides {}", label, r.status, r.slack, r.pairs, r.short_sides));
 		if (r.status != "Optimal") {
 			for (const std::string &tag : r.conflict) WARN(fmt::format("{} conflict {}", label, tag));
@@ -2636,7 +2654,9 @@ TEST_CASE("planar draw: PSG 197 clearance rows evaluated on V's drawing", "[.][p
 		}
 		WARN(fmt::format("vres sides V+full: tracks filled from full.points:{}", filled));
 		const PlanarDrawOptions base_opts = {.clearance = true, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .elastic = true, .elastic_families = {"sep", "clear", "deck", "end", "node", "cross"}, .pins = &p8, .sides_from = &hybrid, .fix_points = &vref, .fix_window = 1};
-		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, base_opts);
+		PlanarDrawOptions dump_opts = base_opts;
+		if (!dump_dir_197v.empty()) dump_opts.dump_path = dump_dir_197v + "/vres.json";
+		const PlanarDrawResult r = CheckPlanarDrawable(shaped, 60.0, dump_opts);
 		const std::string label = "vres sides V+full";
 		WARN(fmt::format("vres sides V+full: status {}, total slack {:.3f}, short_sides {}", r.status, r.slack, r.short_sides));
 		PlanarDrawOptions w0 = base_opts;
