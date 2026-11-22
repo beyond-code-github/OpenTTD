@@ -355,6 +355,7 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		added = r.added;
 		WARN(fmt::format("{} committed {} pruned {} added {} stopped '{}'", name, r.committed_count, pruned, added, r.stopped));
 		WARN(fmt::format("{} final {} ms {}", name, r.final.status, r.final.ms));
+		for (const std::string &tag : r.final.conflict) WARN(name + " conflict " + tag);
 		std::map<std::string, std::pair<size_t, double>> families;
 		for (const auto &[tag, slack] : r.last_round.stretched) {
 			auto &f = families[tag.substr(0, tag.find(' '))];

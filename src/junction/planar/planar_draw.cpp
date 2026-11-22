@@ -544,7 +544,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const std::vector<int> &pieces = v.tracks[b].pieces;
 			bool same = pieces.size() == chain_pieces.size();
 			for (size_t i = 0; same && i < pieces.size(); i++) same = (((pieces[i] - chain_pieces[i]) % 8) + 8) % 8 == 0;
-			if (!same) return unsupported("corridor: " + name + " does not follow its parent chain's pieces");
+			if (!same) {
+				std::string own_text, chain_text;
+				for (const int h : pieces) own_text += fmt::format("{}{}", own_text.empty() ? "" : " ", h);
+				for (const int h : chain_pieces) chain_text += fmt::format("{}{}", chain_text.empty() ? "" : " ", h);
+				return unsupported("corridor: " + name + " does not follow its parent chain's pieces: own [" + own_text + "] chain [" + chain_text + "]");
+			}
 			beside.side = map.Side(b, 0, beside.chain[0], 0);
 			if (beside.side == 0) return unsupported("corridor: " + name + " has no side to its parent chain");
 			beside.opening = PlanarBesideOpening(pieces.front(), beside.side);
