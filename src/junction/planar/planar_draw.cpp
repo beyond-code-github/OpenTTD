@@ -923,6 +923,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const bool crosser = in_structure[c] && !is_separator[c][side];
 			row({{param[c][side], 1}, {len.variable, -len.coefficient}}, -JunctionMilp::INF, crosser ? 0 : -rules.cross, tag);
 			if (!crosser) row({{param[c][side], 1}}, rules.cross, JunctionMilp::INF, tag);
+			/* D428 probe: the piece a crossing sits on has length (a zero-length crossing piece crosses at another angle): at least 1 half tile (diagonal) or 2 (axis). */
+			if (options.cross_piece) row({{len.variable, len.coefficient}}, len.coefficient, JunctionMilp::INF, fmt::format("cross {} piece", c));
 			/* D427 probe: a crosser's crossing on an S-bend flank stays 1 half tile off the S-bend's side when the S-bend's insert runs parallel to the other track's crossing piece (it would run along that track from the crossing point); other S-bends may start at the crossing. */
 			if (crosser && options.crossing_flanks) {
 				const uint32_t other = tracks[1 - side];
