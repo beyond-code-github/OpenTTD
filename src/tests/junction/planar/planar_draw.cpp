@@ -2832,10 +2832,12 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	PlanarDrawPins flex_c_pins;
 	if (!LoadPinned197(flex_c, flex_c_pins, true)) return;
 	const auto start = std::chrono::steady_clock::now();
-	/* PLANAR_PROBE_FINAL_START (a measurement aid): the final starts from the last round's whole lengths. */
+	/* PLANAR_PROBE_FINAL_START (a measurement aid): the final starts from the last round's whole lengths.
+	 * PLANAR_PROBE_FINAL_GRID: the final writes the grid rows (D382 probe). */
 	PlanarDrawPipelineOptions o;
 	o.final_start = std::getenv("PLANAR_PROBE_FINAL_START") != nullptr;
 	o.final_tidy = std::getenv("PLANAR_PROBE_FINAL_FEASIBILITY") == nullptr;
+	o.final_grid = std::getenv("PLANAR_PROBE_FINAL_GRID") != nullptr;
 	const PlanarDrawPipelineResult r = DrawPlanarPipeline(flex_c, o);
 	for (const std::string &line : r.log) WARN(line);
 	WARN(fmt::format("committed {} inserts, pruned {}, stopped '{}'", r.committed_count, r.pruned, r.stopped));

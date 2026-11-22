@@ -92,6 +92,7 @@ struct PlanarDrawOptions {
 	const std::vector<std::vector<std::array<int, 2>>> *fix_points = nullptr; ///< A measurement: every track point is held equal to this drawing's (PlanarDrawResult::points of the same variant; hard rows, tag "fix"; a track with an empty point list is not fixed), so elastic slack on the remaining rows is their violation on that drawing.
 	int fix_window = 0; ///< With fix_points: each point is held within this many half tiles of the reference per axis (absorbs rounding of an LP reference).
 	const std::vector<std::vector<double>> *start_lengths = nullptr; ///< A measurement: a partial MIP start, every piece length (half tiles, as `PlanarDrawResult::lengths`) of this drawing that is whole in its variable's units; the solver completes the rest.
+	bool grid = false; ///< A measurement (D382 probe): every end of an axis piece of positive length is 2 g + 1 across it (N/S on odd x, E/W on odd y), g a new integer (tag `grid`).
 	const std::vector<std::vector<std::array<int, 2>>> *start_points = nullptr; ///< A measurement: a MIP start of every track point from this drawing (as `PlanarDrawResult::points`).
 	std::string export_path; ///< A measurement (D418): when not empty, the built program is written there as JSON before solving (variables, rows with their tags, the objective), for offline solvers.
 };
@@ -169,6 +170,7 @@ struct PlanarDrawPipelineOptions {
 	double box_price = 0.01; ///< Price per half tile of width and of height, in every round.
 	bool corridor = true; ///< Beside tracks as offset curves (D421) in every stage.
 	bool final_tidy = true; ///< The integer final minimises the sum of piece lengths; false is feasibility only (a measurement).
+	bool final_grid = false; ///< A measurement (D382 probe): the integer final writes the grid rows (PlanarDrawOptions::grid).
 	bool final_start = false; ///< A measurement: the integer final starts from the last round's whole lengths (a partial MIP start, JunctionMilp::SetStart).
 	bool keep_apart = true; ///< Pairwise keep-apart (D418) in every stage; false writes no clearance rows (clearance = false), a measurement for hubs whose keep-apart is not yet drawable.
 	double commit_above = 1.0; ///< An insert at or above this length (half tiles) in the last discovery drawing is committed.

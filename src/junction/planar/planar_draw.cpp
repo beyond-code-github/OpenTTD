@@ -345,6 +345,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		may_zero[t] = free_piece;
 		std::set<uint32_t> middles(flex.begin(), flex.end());
 		middles.insert(steps.begin(), steps.end());
+		std::vector<bool> positive; ///< Per piece: its least length is above 0.
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const bool axis = (pieces[i] % 2) == 0;
 			const double lower = free_piece[i] ? 0 : 1;
@@ -352,6 +353,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const bool in_flex = std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end();
 			const bool reference = options.curve_flex_from != nullptr && in_flex && t < options.curve_flex_from->size() && i < (*options.curve_flex_from)[t].size() && (*options.curve_flex_from)[t][i] >= options.curve_flex_above;
 			const bool held = options.curve_flex_from != nullptr && in_flex && !reference;
+			positive.push_back(reference || lower > 0);
 			length[t].push_back({var(reference ? 1 : lower, (zero || held) ? 0 : COORD_MAX, (options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0)) + (in_flex ? (options.flex_weights != nullptr && t < options.flex_weights->size() && i < (*options.flex_weights)[t].size() ? (*options.flex_weights)[t][i] : options.flex_price) * (axis ? AXIS_LEAST : 1) : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
@@ -368,6 +370,18 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const std::string tag = fmt::format("piece {} {}", map.tracks[t].name, i);
 			for (int axis = 0; axis < 2; axis++) {
 				eq({{point[t][i + 1][axis], 1}, {point[t][i][axis], -1}, {length[t][i].variable, -step[axis] * length[t][i].coefficient}}, 0, tag);
+			}
+		}
+		/* Grid (D382 probe): an axis piece of positive length runs on tile centres across it, N/S on odd x and E/W on odd y, so both its ends are 2 g + 1 there. */
+		if (options.grid) {
+			std::set<std::pair<size_t, int>> gridded;
+			for (size_t i = 0; i < pieces.size(); i++) {
+				if ((pieces[i] % 2) != 0 || !positive[i]) continue;
+				const int across = (((pieces[i] % 8) + 8) % 8) % 4 == 0 ? 0 : 1;
+				for (const size_t at : {i, i + 1}) {
+					if (!gridded.insert({at, across}).second) continue;
+					eq({{point[t][at][across], 1}, {var(0, COORD_MAX, 0, "point"), -2}}, 1, fmt::format("grid {} {}", map.tracks[t].name, at));
+				}
 			}
 		}
 	}
@@ -1393,7 +1407,7 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	}
 
 	/* Final: the integer drawing on the sides the last round proved. */
-	out.final = CheckPlanarDrawable(v, options.final_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .tidy = options.final_tidy, .pins = options.pins, .sides_from = &last_input, .start_lengths = options.final_start ? &last.lengths : nullptr});
+	out.final = CheckPlanarDrawable(v, options.final_seconds, {.clearance = options.keep_apart, .clear_rows = true, .pairwise = true, .pairwise_all_faces = true, .sep_extremal = true, .corridor = options.corridor, .curve_flex_from = &out.committed, .curve_flex_above = options.commit_above, .tidy = options.final_tidy, .pins = options.pins, .sides_from = &last_input, .start_lengths = options.final_start ? &last.lengths : nullptr, .grid = options.final_grid});
 	log_round("final", 1, out.final);
 	if (out.final.status != "Optimal") out.stopped = "final";
 	return out;
