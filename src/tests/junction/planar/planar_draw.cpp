@@ -371,6 +371,7 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		o.facing_sides = std::getenv("PLANAR_PROBE_FACING") != nullptr;
 		o.strict_span = std::getenv("PLANAR_STRICT_SPAN") != nullptr;
 		o.strict_zero = std::getenv("PLANAR_STRICT_ZERO") != nullptr;
+		o.crossing_flanks = std::getenv("PLANAR_CROSSING_FLANKS") != nullptr;
 		o.inward_sides = std::getenv("PLANAR_PROBE_INWARD") != nullptr;
 		o.curve_discovery = std::getenv("PLANAR_PROBE_NO_CURVE_DISCOVERY") == nullptr;
 		if (const char *s = std::getenv("PLANAR_DUMP"); s != nullptr) {
@@ -4128,6 +4129,7 @@ TEST_CASE("planar draw: the simplest drawing on every hub", "[.][planaranyhub]")
 				po.final_contract = std::getenv("PLANAR_ANYHUB_CONTRACT") != nullptr;
 				po.strict_span = std::getenv("PLANAR_STRICT_SPAN") != nullptr;
 				po.strict_zero = std::getenv("PLANAR_STRICT_ZERO") != nullptr;
+				po.crossing_flanks = std::getenv("PLANAR_CROSSING_FLANKS") != nullptr;
 				if (dump_root != nullptr) {
 					po.dump_dir = fmt::format("{}/anyhub-k3/{}", dump_root, hub.name);
 					std::filesystem::create_directories(po.dump_dir);
