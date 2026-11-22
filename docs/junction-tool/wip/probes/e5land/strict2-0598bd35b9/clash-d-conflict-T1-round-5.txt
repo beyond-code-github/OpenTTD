@@ -1,0 +1,3 @@
+overlap D1[9]#4 (27, 18)-(27, 11) | F1[11]#13 (27, 14)-(27, 18) | sep 3 9 35 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet D1[9]#3 (25, 20)-(27, 18) | F1[11]#13 (27, 14)-(27, 18) at (27.0, 18.0) | sep 5 6 33 | pair written, chosen c1 margin 0 | kept: zero contraction kept, spacing 0
+clash build-rel/dumps2-d-conflict/anyhub-k3/T1/round-5.json: overlaps 1, meets 1, by reason: written 2

@@ -1,0 +1,30 @@
+overlap E2[31]#3 (23, 2)-(60, 39) | F2[34]#4 (23, 2)-(60, 39) | sep 78 4 13 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap E3[32]#3 (21, 4)-(58, 41) | F3[35]#4 (21, 4)-(58, 41) | sep 56 2 10 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap E1[30]#3 (63, 0)-(65, 2) | F1[33]#0 (63, 0)-(65, 2) | sep 72 2 6 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap B3[23]#0 (109, 43)-(71, 43) | E3"31[53]#0 (74, 43)-(86, 43) | - | not in a common face
+overlap D3[29]#15 (77, 41)-(84, 41) | E3[44]#0 (72, 41)-(88, 41) | - | not in a common face
+overlap D3[29]#17 (84, 41)-(91, 41) | E3[44]#0 (72, 41)-(88, 41) | - | not in a common face
+overlap D3[29]#17 (84, 41)-(91, 41) | E3[45]#0 (88, 41)-(91, 41) | sep 75 5 6 | skipped: adjacent
+overlap A2[19]#0 (94, 55)-(87, 55) | B2[22]#1 (94, 55)-(87, 55) | sep 19 1 11 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap A3[20]#9 (87, 53)-(74, 53) | B1[21]#14 (76, 53)-(65, 53) | sep 23 15 21 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap B1[21]#24 (36, 43)-(33, 43) | D1[27]#9 (26, 43)-(58, 43) | sep 34 5 7 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap D1[27]#22 (74, 44)-(86, 32) | D3[29]#14 (71, 47)-(77, 41) | - | not in a common face
+meet B3[23]#1 (71, 43)-(65, 49) | D1[27]#17 (66, 44)-(74, 44) at (70.0, 44.0) | - | not in a common face
+meet B3[23]#0 (109, 43)-(71, 43) | D1[27]#22 (74, 44)-(86, 32) at (75.0, 43.0) | - | not in a common face
+meet B3[23]#1 (71, 43)-(65, 49) | D2[28]#17 (58, 45)-(75, 45) at (69.0, 45.0) | - | not in a common face
+meet B3[23]#0 (109, 43)-(71, 43) | D2[28]#26 (83, 44)-(92, 35) at (84.0, 43.0) | - | not in a common face
+meet D1[27]#17 (66, 44)-(74, 44) | D3[29]#14 (71, 47)-(77, 41) at (74.0, 44.0) | - | not in a common face
+meet D1[27]#22 (74, 44)-(86, 32) | D3[29]#15 (77, 41)-(84, 41) at (77.0, 41.0) | - | not in a common face
+meet D2[28]#17 (58, 45)-(75, 45) | D3[29]#14 (71, 47)-(77, 41) at (73.0, 45.0) | sep 75 2 17 | pair written, chosen c0 margin -4
+meet D2[28]#26 (83, 44)-(92, 35) | D3[29]#17 (84, 41)-(91, 41) at (86.0, 41.0) | sep 75 5 8 | pair written, chosen c0 margin -4
+meet A2[19]#0 (94, 55)-(87, 55) | B2[22]#4 (87, 55)-(83, 51) at (87.0, 55.0) | sep 19 4 11 | pair written, chosen c1 margin 0 | kept: zero contraction kept, spacing 0
+meet A3[20]#9 (87, 53)-(74, 53) | B1[21]#9 (87, 64)-(76, 53) at (76.0, 53.0) | sep 19 5 6 | skipped: adjacent
+meet B1[21]#23 (40, 47)-(36, 43) | D1[27]#9 (26, 43)-(58, 43) at (36.0, 43.0) | sep 32 0 11 | skipped: adjacent
+meet B3[23]#1 (71, 43)-(65, 49) | D3[29]#13 (58, 47)-(71, 47) at (67.0, 47.0) | sep 9 4 21 | pair written, chosen c2 margin -2 | kept: zero contraction kept, spacing 0
+meet B3[23]#0 (109, 43)-(71, 43) | D3[29]#14 (71, 47)-(77, 41) at (75.0, 43.0) | sep 9 5 20 | pair written, chosen c1 margin -2 | kept: zero contraction kept, spacing 0
+meet E2[31]#3 (23, 2)-(60, 39) | F2[34]#9 (60, 39)-(60, 57) at (60.0, 39.0) | sep 78 9 13 | pair written, chosen c1 margin 0 | kept: zero contraction kept, spacing 0
+meet E3[32]#3 (21, 4)-(58, 41) | F3[35]#9 (58, 41)-(58, 55) at (58.0, 41.0) | sep 56 2 15 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet D3[29]#14 (71, 47)-(77, 41) | E3[44]#0 (72, 41)-(88, 41) at (77.0, 41.0) | - | not in a common face
+meet D3[29]#14 (71, 47)-(77, 41) | E3"31[53]#0 (74, 43)-(86, 43) at (75.0, 43.0) | sep 75 2 7 | pair written, chosen c3 margin -3
+meet E1[30]#3 (63, 0)-(65, 2) | F1[33]#5 (65, 2)-(65, 37) at (65.0, 2.0) | sep 72 2 11 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+clash build-rel/dumps2-d/anyhub-k3/T3/round-5.json: overlaps 11, meets 18, by reason: adjacent 3, no face 11, written 15

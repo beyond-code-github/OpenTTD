@@ -1212,13 +1212,17 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							skip("span");
 							continue;
 						}
-						/* D427 probe: a span wall is exempt only against a track that crosses its track on that piece. */
+						/* D427 probe: a span piece is exempt only against the crossing piece of a track that crosses it on that piece. */
 						const auto sanctioned = [&](const PlanarCellWall &s, const PlanarCellWall &other) {
-							if (!is_span(s) || other.track >= nt || v.tracks[s.track].event_piece.size() != map.events[s.track].size()) return false;
+							if (!is_span(s) || other.track >= nt || v.tracks[s.track].event_piece.size() != map.events[s.track].size() || v.tracks[other.track].event_piece.size() != map.events[other.track].size()) return false;
 							for (size_t k = 0; k < map.events[s.track].size(); k++) {
 								if (v.tracks[s.track].event_piece[k] != s.piece) continue;
-								const PlanarCrossing &c = map.crossings[map.events[s.track][k]];
-								if ((c.a == s.track ? c.b : c.a) == other.track) return true;
+								const size_t id = map.events[s.track][k];
+								const PlanarCrossing &c = map.crossings[id];
+								if ((c.a == s.track ? c.b : c.a) != other.track) continue;
+								for (size_t k2 = 0; k2 < map.events[other.track].size(); k2++) {
+									if (map.events[other.track][k2] == id && v.tracks[other.track].event_piece[k2] == other.piece) return true;
+								}
 							}
 							return false;
 						};
@@ -1280,8 +1284,46 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 								continue;
 							}
 							if (touching) {
-								zero_spacing = w[i].heading % 4 != w[j].heading % 4;
-								if (dumping) dump_kept.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), zero_spacing ? "zero contraction kept, spacing 0" : "zero contraction kept, full spacing");
+								/* D427 probe: by how the walls touch: crossing on both walls skips; both leaving the point in one direction keep full spacing; else spacing 0. */
+								enum : int { END_LO, END_HI, END_INTERIOR };
+								const auto direction = [](const PlanarCellWall &wall, int end) { return end == END_INTERIOR ? -1 : static_cast<int>(((wall.heading + (end == END_HI ? 4 : 0)) % 8 + 8) % 8); };
+								bool crossing = false, full = false;
+								const auto way = [&](int ei, int ej) {
+									const int di = direction(w[i], ei), dj = direction(w[j], ej);
+									if (di >= 0 && dj >= 0 && di == dj) full = true;
+								};
+								if (w[i].track == w[j].track) {
+									if (w[i].piece < w[j].piece) way(END_HI, END_LO);
+									else way(END_LO, END_HI);
+								}
+								const auto node_ends = [&](const PlanarCellWall &wall, const Touch &t) {
+									std::vector<std::pair<uint32_t, int>> r;
+									const auto &line = map.expanded.lines[wall.track];
+									if (t.lo == 0 && !line.from.port) r.emplace_back(line.from.index, END_LO);
+									if (t.hi == v.tracks[wall.track].pieces.size() - 1 && !line.to.port) r.emplace_back(line.to.index, END_HI);
+									return r;
+								};
+								const bool same_track = w[i].track == w[j].track;
+								for (const auto &[a, ea] : node_ends(w[i], ti)) {
+									for (const auto &[b, eb] : node_ends(w[j], tj)) {
+										if (!same_track && a == b) way(ea, eb);
+									}
+								}
+								const auto event_end = [](const PlanarCellWall &wall, uint32_t e) { return e < wall.piece ? END_LO : e > wall.piece ? END_HI : END_INTERIOR; };
+								for (const size_t a : ti.events) {
+									for (const size_t b : tj.events) {
+										if (same_track || map.events[w[i].track][a] != map.events[w[j].track][b]) continue;
+										const uint32_t ei = v.tracks[w[i].track].event_piece[a], ej = v.tracks[w[j].track].event_piece[b];
+										if (ei == w[i].piece && ej == w[j].piece) crossing = true;
+										way(event_end(w[i], ei), event_end(w[j], ej));
+									}
+								}
+								if (crossing) {
+									skip("zero contraction crossing");
+									continue;
+								}
+								zero_spacing = !full;
+								if (dumping) dump_kept.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), full ? "zero contraction kept, full spacing (same direction)" : "zero contraction kept, spacing 0");
 							}
 						}
 					const std::array<std::array<uint32_t, 2>, 2> pi ={point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};

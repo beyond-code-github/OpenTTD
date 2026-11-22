@@ -1,0 +1,12 @@
+overlap L10[19]#2 (21, 38)-(21, 24) | L24[34]#3 (21, 32)-(21, 30) | sep 36 1 3 | skipped: span
+overlap L1[16]#2 (5, 50)-(5, 48) | L4[21]#0 (5, 60)-(5, 38) | sep 2 10 12 | skipped: span
+overlap L4[21]#0 (5, 60)-(5, 38) | L5[22]#1 (5, 60)-(5, 58) | sep 21 2 4 | skipped: span
+overlap L7[23]#1 (15, 54)-(15, 52) | L18[31]#1 (15, 70)-(15, 36) | sep 25 3 5 | skipped: span
+overlap L10[19]#2 (21, 38)-(21, 24) | L24[34]#1 (21, 34)-(21, 32) | sep 37 0 9 | skipped: span
+overlap L78[83]#0 (80, 73)-(58, 73) | L89[96]#1 (78, 73)-(72, 73) | sep 11 5 7 | skipped: span
+meet L10[19]#2 (21, 38)-(21, 24) | L24[34]#0 (23, 36)-(21, 34) at (21.0, 34.0) | sep 37 0 8 | skipped: span
+meet L78[83]#0 (80, 73)-(58, 73) | L89[96]#0 (80, 71)-(78, 73) at (78.0, 73.0) | sep 11 4 7 | skipped: span
+meet L1[16]#1 (1, 54)-(5, 50) | L4[21]#0 (5, 60)-(5, 38) at (5.0, 50.0) | sep 2 9 12 | skipped: span
+meet L4[21]#1 (5, 38)-(9, 34) | L5[22]#3 (7, 56)-(7, 30) at (7.0, 36.0) | sep 2 13 14 | skipped: adjacent
+meet L7[23]#0 (5, 64)-(15, 54) | L18[31]#1 (15, 70)-(15, 36) at (15.0, 54.0) | sep 25 2 5 | skipped: span
+clash build-rel/dumps2-a/anyhub-k3/197/final-0.json: overlaps 6, meets 5, by reason: adjacent 1, span 10
