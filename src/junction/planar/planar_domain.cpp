@@ -154,7 +154,7 @@ struct PieceRef {
 	uint32_t index;
 };
 
-/** One end of a ground or head piece at an edge midpoint. */
+/** One end of a ground or end piece at an edge midpoint. */
 struct End {
 	uint32_t track;
 	uint32_t index;
@@ -206,30 +206,32 @@ PlanarDomainVerdict CheckPlanarDomain(const PlanarDomainInput &input)
 	}
 	const auto usable = [&](uint32_t t) { return t < track_count && valid[t]; };
 
-	/* 2. The structures: span, and which pieces are heads and middles. */
+	/* 2. The structures: span, and which pieces are end pieces (a bridge's head, a tunnel's portal and ramp) and middles. */
 	std::vector<std::vector<Kind>> kinds(track_count);
 	for (uint32_t t = 0; t < track_count; t++) kinds[t].assign(rasters[t].pieces.size(), Kind::Ground);
 	std::vector<const PlanarDomainStructure *> structures;
 	for (const PlanarDomainStructure &st : input.structures) {
 		if (!usable(st.separator)) continue;
 		const std::vector<PlanarDomainPiece> &pieces = rasters[st.separator].pieces;
-		bool ok = st.first < st.last && st.last < pieces.size() && st.last - st.first >= 2;
+		bool ok = st.first < st.last && st.last < pieces.size() && st.ends >= 1 && st.last - st.first + 1 >= 2 * static_cast<uint32_t>(st.ends) + 1;
 		if (ok) {
 			for (uint32_t i = st.first; i <= st.last; i++) ok = ok && pieces[i].heading == pieces[st.first].heading;
 			ok = ok && pieces[st.first].heading % 2 == 0;
 		}
-		if (ok && st.limit >= 0 && static_cast<int>(st.last - st.first) - 1 > st.limit) ok = false;
+		if (ok && st.limit >= 0 && static_cast<int>(st.last - st.first) + 1 - 2 * st.ends > st.limit) ok = false;
 		if (!ok) {
 			const TileIndexDiffC tile = st.first < pieces.size() ? pieces[st.first].tile : TileIndexDiffC{0, 0};
 			breaks.Add("span", {st.separator}, tile, fmt::format("the structure on pieces {}..{} is not a straight run of 1 to {} middles", st.first, st.last, st.limit));
 			continue;
 		}
 		structures.push_back(&st);
-		for (uint32_t i = st.first + 1; i < st.last; i++) {
+		for (uint32_t i = st.first + st.ends; i + st.ends <= st.last; i++) {
 			if (kinds[st.separator][i] == Kind::Ground) kinds[st.separator][i] = Kind::Middle;
 		}
-		kinds[st.separator][st.first] = Kind::Head;
-		kinds[st.separator][st.last] = Kind::Head;
+		for (int e = 0; e < st.ends; e++) {
+			kinds[st.separator][st.first + e] = Kind::Head;
+			kinds[st.separator][st.last - e] = Kind::Head;
+		}
 	}
 
 	/* The pieces by tile, and each middle's structure. */
@@ -245,7 +247,7 @@ PlanarDomainVerdict CheckPlanarDomain(const PlanarDomainInput &input)
 	/* The structure whose middle is the piece, or nullptr. */
 	const auto middle_of = [&](const PieceRef &r) -> const PlanarDomainStructure * {
 		for (const PlanarDomainStructure *st : structures) {
-			if (st->separator == r.track && r.index > st->first && r.index < st->last) return st;
+			if (st->separator == r.track && r.index >= st->first + st->ends && r.index + st->ends <= st->last) return st;
 		}
 		return nullptr;
 	};
@@ -338,7 +340,7 @@ PlanarDomainVerdict CheckPlanarDomain(const PlanarDomainInput &input)
 		for (const PieceRef &r : list) tracks_here.push_back(r.track);
 		for (size_t a = 0; a < list.size(); a++) {
 			const PieceRef &p = list[a];
-			if (kind_of(p) == Kind::Head && list.size() > 1) breaks.Add("head", tracks_here, tile, fmt::format("a head on tile ({}, {}) shares it with another piece", tile.x, tile.y));
+			if (kind_of(p) == Kind::Head && list.size() > 1) breaks.Add("head", tracks_here, tile, fmt::format("an end piece on tile ({}, {}) shares it with another piece", tile.x, tile.y));
 			const PlanarDomainStructure *deck = middle_of(p);
 			for (size_t b = a + 1; b < list.size(); b++) {
 				const PieceRef &q = list[b];
@@ -364,11 +366,11 @@ PlanarDomainVerdict CheckPlanarDomain(const PlanarDomainInput &input)
 			bool crosses = false;
 			for (uint32_t i = 0; i < rasters[c].pieces.size() && !crosses; i++) {
 				if (kinds[c][i] != Kind::Ground) continue;
-				for (uint32_t m = st->first + 1; m < st->last && !crosses; m++) {
+				for (uint32_t m = st->first + st->ends; m + st->ends <= st->last && !crosses; m++) {
 					crosses = SameTile(rasters[c].pieces[i].tile, rasters[st->separator].pieces[m].tile);
 				}
 			}
-			if (!crosses) breaks.Add("missing crossing", {st->separator, c}, rasters[st->separator].pieces[st->first + 1].tile, fmt::format("track {} is listed under the structure on track {} but never passes under a middle", c, st->separator));
+			if (!crosses) breaks.Add("missing crossing", {st->separator, c}, rasters[st->separator].pieces[st->first + st->ends].tile, fmt::format("track {} is listed under the structure on track {} but never passes under a middle", c, st->separator));
 		}
 	}
 
