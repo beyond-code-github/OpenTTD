@@ -25,3 +25,10 @@ Budget: 75 minutes wall. Test code only (no gate). One Release run per configura
 
 ## 5. Report (short)
 Commit; red evidence; per configuration: on-grid geometries generated, classes (other shape, both accept, both reject, too strict, too loose) with group keys, counts and first examples (off-grid too-loose groups by track and corner); wall times; state. When you have reported, stop.
+
+## Addendum (2026-11-23, after domain-16): M1 configurations as S-bend pairs
+domain-16 found M1c/M1d nearly empty: a leg pinned at both ends (its split and the merge) can only move sideways with a step out AND a step back. Replace M1c and M1d by:
+- **M1e (A1):** A1's flex pair inserts piece 1 (NE) and piece 3 (SE) equal, d in {1, 2}; the flank between them (piece 2) in {0, 2, 4}; the last flank before the merge (piece 4) in {0, 2, 4}; piece 0 absorbs the rest of the 12 half tiles (skip a negative remainder). The SE insert steps toward B1 (the sibling, on A1's right), so the lead END row on A1 is exercised.
+- **M1f (B1):** B1's inserts piece 6 (N) and piece 8 (E) equal, in {2, 4}; the NE flank between them (piece 7) in {0..3}; the last NE flank before the merge (piece 9) in {0..3}; B1's earlier NE flank (piece 5) absorbs so B1 still ends at (16,5) (skip if negative). The N insert steps toward A1 (B1's sibling, on its left).
+Both through the on-grid generator. Their lead-row count must be above 0; if 0, report it as a finding.
+K1: also through the on-grid generator; report its lead-row count.
