@@ -495,6 +495,206 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 	}
 }
 
+/** The decoded piece of a wall: track#piece h<heading> with its end points when a drawing is given. */
+static std::string CertWallText(const DrawCase &c, const PlanarCellWall &w, const std::vector<std::vector<std::array<int, 2>>> *points)
+{
+	if (w.track >= c.v.tracks.size()) return w.track == UINT32_MAX ? fmt::format("box {}", w.piece) : fmt::format("dummy {}", w.piece);
+	const int heading = ((c.v.tracks[w.track].pieces[w.piece] % 8) + 8) % 8;
+	std::string text = fmt::format("{}#{} h{}", c.v.structure.map.tracks[w.track].name, w.piece, heading);
+	if (points != nullptr && w.track < points->size() && w.piece + 1 < (*points)[w.track].size()) {
+		const auto &a = (*points)[w.track][w.piece];
+		const auto &b = (*points)[w.track][w.piece + 1];
+		text += fmt::format(" ({},{})-({},{})", a[0], a[1], b[0], b[1]);
+	}
+	return text;
+}
+
+/** Whether a line of a topology text starts with the prio statement. */
+static std::string StripPrio(const std::string &text)
+{
+	std::istringstream in(text);
+	std::string line, out;
+	while (std::getline(in, line)) {
+		const size_t first = line.find_first_not_of(" \t");
+		if (first != std::string::npos && line.compare(first, 4, "prio") == 0) continue;
+		out += line + "\n";
+	}
+	return out;
+}
+
+TEST_CASE("planar draw: crowding certificates on T3 and LL2", "[.][planarcert]")
+{
+	struct Case {
+		std::string hub;
+		std::vector<uint32_t> faces;
+		double bound;
+	};
+	const std::vector<Case> cases = {
+		{"T3", {75}, 256}, {"T3", {29}, 256}, {"T3", {66}, 256}, {"T3", {75, 29, 66}, 256}, {"T3", {75}, 4096},
+		{"LL2", {33}, 256}, {"LL2", {34}, 256}, {"LL2", {37}, 256}, {"LL2", {33, 34, 37}, 256},
+	};
+	const std::map<std::string, std::vector<std::array<uint32_t, 3>>> stretched = {
+		{"T3", {{75, 2, 15}, {75, 5, 8}, {29, 1, 10}, {29, 4, 9}}},
+		{"LL2", {{37, 6, 12}, {33, 0, 9}, {33, 1, 9}, {33, 2, 9}, {33, 3, 10}, {33, 3, 8}, {34, 1, 9}, {34, 3, 7}, {37, 6, 11}}},
+	};
+	const std::map<std::string, std::string> texts = {{"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
+	std::map<std::string, DrawCase> built;
+	for (const auto &[hub, text] : texts) built.emplace(hub, ShapeFirst(text, 1));
+	const auto faces_text = [](const std::vector<uint32_t> &faces) {
+		std::string s;
+		for (const uint32_t f : faces) s += (s.empty() ? "" : ",") + fmt::format("{}", f);
+		return s;
+	};
+	/* The walls of each face named, so the reader can check the face numbers. */
+	std::map<std::string, std::map<uint32_t, bool>> exists;
+	for (const auto &[hub, c] : built) {
+		const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(c.v);
+		std::set<uint32_t> wanted;
+		for (const Case &k : cases) {
+			if (k.hub == hub) wanted.insert(k.faces.begin(), k.faces.end());
+		}
+		for (const uint32_t face : wanted) {
+			exists[hub][face] = false;
+			for (const PlanarFaceWalls &f : face_walls) {
+				if (f.face != face) continue;
+				exists[hub][face] = true;
+				std::string line;
+				for (size_t i = 0; i < f.walls.size(); i++) line += fmt::format(" [{}] {}", i, CertWallText(c, f.walls[i], nullptr));
+				WARN(fmt::format("cert {} face {} walls:{}", hub, face, line));
+			}
+			if (!exists[hub][face]) WARN(fmt::format("cert {} face {} does not exist in this variant", hub, face));
+		}
+	}
+	for (const Case &k : cases) {
+		const DrawCase &c = built.at(k.hub);
+		bool all = true;
+		for (const uint32_t f : k.faces) all = all && exists[k.hub][f];
+		if (!all) {
+			WARN(fmt::format("cert {} faces {} B {}: skipped, a face does not exist", k.hub, faces_text(k.faces), k.bound));
+			continue;
+		}
+		PlanarDrawOptions o;
+		o.clearance = true;
+		o.clear_rows = true;
+		o.pairwise = true;
+		o.pairwise_all_faces = true;
+		o.only_faces = k.faces;
+		o.corridor = true;
+		o.tidy = false;
+		o.continuous = {"point", "axis", "diagonal", "param", "cross"};
+		o.coord_max = k.bound;
+		const PlanarDrawResult r = CheckPlanarDrawable(c.v, 15.0, o);
+		WARN(fmt::format("cert {} faces {} B {}: {} ms {:.0f} binaries {}", k.hub, faces_text(k.faces), k.bound, r.status, r.ms, r.binaries));
+		const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(c.v);
+		const auto decode = [&](const std::string &tag) {
+			std::istringstream words(tag);
+			std::string family;
+			uint32_t face = 0, i = 0, j = 0;
+			words >> family;
+			if (family != "sep" || !(words >> face >> i >> j)) return tag;
+			for (const PlanarFaceWalls &f : face_walls) {
+				if (f.face != face || i >= f.walls.size() || j >= f.walls.size()) continue;
+				return fmt::format("{} | {} | {}", tag, CertWallText(c, f.walls[i], nullptr), CertWallText(c, f.walls[j], nullptr));
+			}
+			return tag;
+		};
+		for (const std::string &tag : r.conflict) WARN(fmt::format("cert {} faces {} conflict {}", k.hub, faces_text(k.faces), decode(tag)));
+		if (r.status != "Optimal") continue;
+		for (const auto &[face, i, j] : stretched.at(k.hub)) {
+			if (std::ranges::find(k.faces, face) == k.faces.end()) continue;
+			for (const PlanarFaceWalls &f : face_walls) {
+				if (f.face != face || i >= f.walls.size() || j >= f.walls.size()) continue;
+				WARN(fmt::format("cert {} faces {} sep {} {} {}: {} | {}", k.hub, faces_text(k.faces), face, i, j, CertWallText(c, f.walls[i], &r.points), CertWallText(c, f.walls[j], &r.points)));
+			}
+		}
+	}
+
+	/* (A) prio removed. */
+	for (const auto &[hub, text] : texts) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(StripPrio(text), &error);
+		if (!error.empty()) {
+			WARN(fmt::format("noprio {}: the parser refuses the stripped text: {}", hub, error));
+			continue;
+		}
+		const JunctionSpec spec = MakeTestJunctionSpec();
+		const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+		if (sr.variants.empty()) {
+			WARN(fmt::format("noprio {}: Structure refuses the stripped text: {}", hub, sr.why));
+			continue;
+		}
+		PlanarShapeVariant without;
+		std::string why;
+		if (!ShapePlanarStructureVariant(sr.variants[0], without, why)) {
+			WARN(fmt::format("noprio {}: Shape refuses the stripped text: {}", hub, why));
+			continue;
+		}
+		PlanarDrawPipelineOptions po;
+		po.final_seconds = 15;
+		const PlanarDrawPipelineResult r = DrawPlanarPipeline(without, po);
+		std::map<std::string, std::pair<size_t, double>> families;
+		for (const auto &[tag, slack] : r.last_round.stretched) {
+			auto &f = families[tag.substr(0, tag.find(' '))];
+			f.first++;
+			f.second += slack;
+		}
+		std::string family_text;
+		for (const auto &[family, f] : families) family_text += fmt::format("{}{}: {}, {:.3f}", family_text.empty() ? "" : "; ", family, f.first, f.second);
+		WARN(fmt::format("noprio {}: last round slack {:.3f}, by family {}, final {}, stopped '{}'", hub, r.last_round.slack, family_text, r.final.status, r.stopped));
+		DrawCase d;
+		d.topology = topology;
+		d.v = without;
+		const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(without);
+		for (const auto &[tag, amount] : r.last_round.stretched) {
+			std::istringstream words(tag);
+			std::string family;
+			uint32_t face = 0, i = 0, j = 0;
+			words >> family;
+			if (family != "sep" || !(words >> face >> i >> j)) continue;
+			for (const PlanarFaceWalls &f : face_walls) {
+				if (f.face != face || i >= f.walls.size() || j >= f.walls.size()) continue;
+				WARN(fmt::format("noprio {} decode {} {:.2f}: {} | {}", hub, tag, amount, CertWallText(d, f.walls[i], &r.last_round.points), CertWallText(d, f.walls[j], &r.last_round.points)));
+			}
+		}
+		/* Heading control against the variant with prio kept. */
+		const DrawCase &with = built.at(hub);
+		const auto list_text = [](const std::vector<int> &pieces) {
+			std::string s = "[";
+			for (size_t n = 0; n < pieces.size(); n++) s += fmt::format("{}{}", n == 0 ? "" : " ", ((pieces[n] % 8) + 8) % 8);
+			return s + "]";
+		};
+		/* Names repeat (a line split into parts keeps its name), so the k-th track of a name in one variant meets the k-th in the other. */
+		std::map<std::pair<std::string, size_t>, size_t> without_index;
+		{
+			std::map<std::string, size_t> seen;
+			for (size_t t = 0; t < without.structure.map.tracks.size(); t++) {
+				const std::string &name = without.structure.map.tracks[t].name;
+				without_index[{name, seen[name]++}] = t;
+			}
+		}
+		std::map<std::string, size_t> with_seen;
+		size_t identical = 0, differ = 0;
+		std::vector<std::string> lines;
+		for (size_t t = 0; t < with.v.structure.map.tracks.size(); t++) {
+			const std::string &name = with.v.structure.map.tracks[t].name;
+			if (name.starts_with("prio:") || name.find('"') != std::string::npos) continue;
+			const size_t ordinal = with_seen[name]++;
+			const auto it = without_index.find({name, ordinal});
+			if (it == without_index.end()) continue;
+			const std::string a = list_text(std::vector<int>(with.v.tracks[t].pieces.begin(), with.v.tracks[t].pieces.end()));
+			const std::string b = list_text(std::vector<int>(without.tracks[it->second].pieces.begin(), without.tracks[it->second].pieces.end()));
+			if (a == b) {
+				identical++;
+			} else {
+				differ++;
+				lines.push_back(fmt::format("{}: with {} without {}", ordinal == 0 ? name : fmt::format("{} (part {})", name, ordinal), a, b));
+			}
+		}
+		WARN(fmt::format("noprio {} headings: {} identical, {} differ", hub, identical, differ));
+		for (const std::string &line : lines) WARN(fmt::format("noprio {} {}", hub, line));
+	}
+}
+
 TEST_CASE("planar draw: T1 keep-apart conflict read-out", "[.][planart1sep]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(1), 1);

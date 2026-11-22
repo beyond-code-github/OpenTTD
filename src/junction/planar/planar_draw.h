@@ -69,6 +69,7 @@ PlanarDrawPins ParsePlanarDrawPins(const PlanarShapeVariant &v, std::string_view
 
 /** What the drawing program writes. */
 struct PlanarDrawOptions {
+	double coord_max = 4096; ///< The largest coordinate, length and parameter (half tiles); the pairwise big-M is 4 x this. A tighter bound tightens the binary rows (a measurement aid for exact solves).
 	bool clearance = true; ///< Write the dummies, their landings and the clearance rows; false leaves them out (a variant with prio rows or copies needs the corridor family first, CARD-E5).
 	bool clear_rows = true; ///< With clearance: write the clearance rows; false keeps the dummies and their landings but leaves the clearance rows out (a measurement of the landings alone).
 	bool pairwise = false; ///< With clearance (D406 probe): no dummies and no landings; a face convex without dummies keeps the clearance rows, every other face gets pairwise separation of its walls (`sep`).
