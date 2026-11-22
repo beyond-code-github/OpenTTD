@@ -1,0 +1,7 @@
+overlap B2[15]#11 (47, 39)-(47, 37) | F2[23]#4 (47, 35)-(47, 45) | sep 2 23 27 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap D1[18]#11 (117, 2)-(124, 2) | E1[26]#0 (115, 2)-(124, 2) | sep 34 0 24 | pair written, chosen c0 margin -2 | kept: zero contraction kept, full spacing (same direction)
+overlap B2[15]#7 (54, 48)-(54, 46) | F1[22]#9 (54, 30)-(54, 53) | sep 19 9 11 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet B2[15]#8 (54, 46)-(47, 39) | F2[23]#4 (47, 35)-(47, 45) at (47.0, 39.0) | sep 2 26 27 | skipped: adjacent
+meet D1[18]#10 (66, 53)-(117, 2) | E1[26]#0 (115, 2)-(124, 2) at (117.0, 2.0) | sep 34 0 23 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet B2[15]#4 (64, 58)-(54, 48) | F1[22]#9 (54, 30)-(54, 53) at (54.0, 48.0) | sep 19 6 11 | pair written, chosen c3 margin 0 | kept: zero contraction kept, spacing 0
+clash build-rel/dumps3/anyhub-k3/T2/round-5.json: overlaps 3, meets 3, by reason: adjacent 1, written 5

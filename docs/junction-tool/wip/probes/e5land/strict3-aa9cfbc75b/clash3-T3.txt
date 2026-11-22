@@ -1,0 +1,19 @@
+overlap D3[29]#15 (88, 48)-(97, 48) | E3[44]#0 (86, 48)-(103, 48) | - | not in a common face
+overlap D3[29]#17 (97, 48)-(106, 48) | E3[44]#0 (86, 48)-(103, 48) | - | not in a common face
+overlap D3[29]#17 (97, 48)-(106, 48) | E3[45]#0 (103, 48)-(106, 48) | sep 75 5 6 | skipped: adjacent
+overlap A3[20]#9 (100, 60)-(82, 60) | B1[21]#14 (84, 60)-(73, 60) | sep 23 15 21 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap D2[28]#19 (84, 50)-(89, 50) | E3"31[53]#0 (88, 50)-(101, 50) | sep 61 3 11 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap B1[21]#24 (40, 50)-(38, 50) | D1[27]#9 (30, 50)-(62, 50) | sep 34 5 7 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet B3[23]#0 (116, 56)-(73, 56) | D2[28]#20 (89, 50)-(97, 58) at (95.0, 56.0) | - | not in a common face
+meet B3[23]#0 (116, 56)-(73, 56) | D2[28]#23 (98, 58)-(98, 51) at (98.0, 56.0) | - | not in a common face
+meet D1[27]#21 (81, 51)-(88, 51) | D2[28]#18 (82, 52)-(84, 50) at (83.0, 51.0) | sep 61 2 13 | pair written, chosen c2 margin -2
+meet D1[27]#22 (88, 51)-(100, 39) | D2[28]#20 (89, 50)-(97, 58) at (89.0, 50.0) | sep 61 4 12 | pair written, chosen c3 margin -2
+meet D1[27]#21 (81, 51)-(88, 51) | D3[29]#14 (82, 54)-(88, 48) at (85.0, 51.0) | - | not in a common face
+meet D1[27]#22 (88, 51)-(100, 39) | D3[29]#15 (88, 48)-(97, 48) at (91.0, 48.0) | - | not in a common face
+meet D2[28]#26 (98, 51)-(105, 44) | E3"31[53]#0 (88, 50)-(101, 50) at (99.0, 50.0) | sep 61 10 11 | skipped: adjacent
+meet D2[28]#19 (84, 50)-(89, 50) | D3[29]#14 (82, 54)-(88, 48) at (86.0, 50.0) | sep 75 2 15 | pair written, chosen c3 margin -3
+meet D2[28]#26 (98, 51)-(105, 44) | D3[29]#17 (97, 48)-(106, 48) at (101.0, 48.0) | sep 75 5 8 | pair written, chosen c0 margin -4
+meet A3[20]#9 (100, 60)-(82, 60) | B1[21]#9 (88, 64)-(84, 60) at (84.0, 60.0) | sep 19 5 6 | skipped: adjacent
+meet D3[29]#14 (82, 54)-(88, 48) | E3[44]#0 (86, 48)-(103, 48) at (88.0, 48.0) | - | not in a common face
+meet B1[21]#23 (44, 54)-(40, 50) | D1[27]#9 (30, 50)-(62, 50) at (40.0, 50.0) | sep 32 0 11 | skipped: adjacent
+clash build-rel/dumps3/anyhub-k3/T3/round-5.json: overlaps 6, meets 12, by reason: adjacent 4, no face 7, written 7

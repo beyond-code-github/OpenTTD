@@ -1,0 +1,22 @@
+overlap L10[19]#30 (45, 80)-(45, 57) | L28[39]#4 (45, 108)-(45, 55) | sep 36 5 19 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L10[19]#32 (45, 57)-(45, 55) | L28[39]#4 (45, 108)-(45, 55) | sep 36 7 19 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L72[78]#1 (187, 136)-(182, 136) | L87[94]#0 (187, 136)-(182, 136) | sep 154 19 21 | pair written, chosen c0 margin -2 | kept: zero contraction kept, full spacing (same direction)
+overlap L1[16]#6 (4, 119)-(4, 112) | L4[21]#4 (4, 134)-(4, 104) | sep 2 24 28 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L9[18]#9 (13, 103)-(13, 91) | L5[22]#9 (13, 125)-(13, 99) | sep 31 5 19 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L2[17]#19 (27, 114)-(27, 107) | L16[28]#8 (27, 124)-(27, 96) | sep 22 6 10 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L10[19]#14 (27, 105)-(27, 98) | L16[28]#8 (27, 124)-(27, 96) | sep 24 9 11 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L31[38]#8 (64, 90)-(98, 90) | L40[47]#47 (83, 90)-(76, 90) | sep 82 4 6 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L40[47]#49 (76, 90)-(76, 83) | L47[54]#4 (76, 72)-(76, 172) | sep 82 0 2 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L71[76]#4 (124, 98)-(132, 98) | L76[82]#3 (128, 98)-(130, 98) | sep 65 12 14 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L78[83]#4 (172, 156)-(160, 156) | L89[96]#3 (170, 156)-(168, 156) | sep 11 13 15 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet L10[19]#21 (41, 84)-(45, 80) | L28[39]#4 (45, 108)-(45, 55) at (45.0, 80.0) | sep 28 10 15 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet L72[78]#1 (187, 136)-(182, 136) | L87[94]#1 (182, 136)-(180, 138) at (182.0, 136.0) | sep 154 18 21 | pair written, chosen c3 margin 0 | kept: zero contraction kept, spacing 0
+meet L1[16]#5 (0, 123)-(4, 119) | L4[21]#4 (4, 134)-(4, 104) at (4.0, 119.0) | sep 2 23 28 | pair written, chosen c3 margin 0 | kept: zero contraction kept, spacing 0
+meet L9[18]#0 (11, 105)-(13, 103) | L5[22]#9 (13, 125)-(13, 99) at (13.0, 103.0) | sep 19 5 10 | pair written, chosen c3 margin 0 | kept: zero contraction kept, spacing 0
+meet L2[17]#18 (22, 119)-(27, 114) | L16[28]#8 (27, 124)-(27, 96) at (27.0, 114.0) | sep 22 5 10 | pair written, chosen c3 margin 0 | kept: zero contraction kept, spacing 0
+meet L10[19]#8 (13, 105)-(27, 105) | L16[28]#8 (27, 124)-(27, 96) at (27.0, 105.0) | sep 22 10 16 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet L40[47]#47 (83, 90)-(76, 90) | L47[54]#4 (76, 72)-(76, 172) at (76.0, 90.0) | sep 82 0 4 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet L31[38]#8 (64, 90)-(98, 90) | L40[47]#42 (84, 91)-(83, 90) at (83.0, 90.0) | sep 93 0 8 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet L71[76]#4 (124, 98)-(132, 98) | L76[82]#4 (130, 98)-(137, 105) at (130.0, 98.0) | sep 65 12 15 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet L78[83]#4 (172, 156)-(160, 156) | L89[96]#2 (177, 149)-(170, 156) at (170.0, 156.0) | sep 11 12 15 | pair written, chosen c3 margin 0 | kept: zero contraction kept, spacing 0
+clash build-rel/dumps3/anyhub-k3/197/round-5.json: overlaps 11, meets 10, by reason: written 21

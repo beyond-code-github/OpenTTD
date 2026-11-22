@@ -1,0 +1,11 @@
+overlap L7[23]#5 (19, 103)-(19, 101) | L16[28]#8 (19, 107)-(19, 85) | sep 25 5 7 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L10[19]#30 (32, 76)-(32, 55) | L28[39]#4 (32, 106)-(32, 55) | sep 36 5 19 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L40[47]#49 (62, 82)-(62, 75) | L47[54]#4 (62, 64)-(62, 140) | sep 82 0 2 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L31[38]#8 (44, 82)-(80, 82) | L40[47]#47 (69, 82)-(62, 82) | sep 82 4 6 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+overlap L48[53]#13 (73, 149)-(73, 169) | L49[55]#17 (73, 161)-(73, 169) | sep 107 20 30 | pair written, chosen c1 margin 0 | kept: zero contraction kept, spacing 0
+meet L7[23]#2 (12, 110)-(19, 103) | L16[28]#8 (19, 107)-(19, 85) at (19.0, 103.0) | sep 14 29 32 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet L10[19]#21 (29, 79)-(32, 76) | L28[39]#4 (32, 106)-(32, 55) at (32.0, 76.0) | sep 28 10 15 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet L40[47]#47 (69, 82)-(62, 82) | L47[54]#4 (62, 64)-(62, 140) at (62.0, 82.0) | sep 82 0 4 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet L31[38]#8 (44, 82)-(80, 82) | L40[47]#42 (71, 84)-(69, 82) at (69.0, 82.0) | sep 93 0 8 | pair written, chosen c0 margin 0 | kept: zero contraction kept, spacing 0
+meet L48[53]#13 (73, 149)-(73, 169) | L49[55]#22 (73, 169)-(69, 173) at (73.0, 169.0) | sep 113 15 34 | pair written, chosen c1 margin 0 | kept: zero contraction kept, spacing 0
+clash build-rel/dumps2-d/anyhub-k3/197/round-5.json: overlaps 5, meets 5, by reason: written 10

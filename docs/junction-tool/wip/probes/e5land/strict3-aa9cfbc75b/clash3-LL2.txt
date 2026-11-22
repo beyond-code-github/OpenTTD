@@ -1,0 +1,8 @@
+overlap B1[47]#0 (163, 89)-(132, 89) | B2[49]#4 (165, 89)-(108, 89) | sep 37 6 12 | pair written, chosen c0 margin -2
+overlap B1[46]#0 (191, 89)-(163, 89) | B2[49]#2 (172, 89)-(165, 89) | sep 37 4 13 | pair written, chosen c0 margin -2
+overlap B1[46]#0 (191, 89)-(163, 89) | B2[49]#4 (165, 89)-(108, 89) | sep 37 6 13 | pair written, chosen c0 margin -2
+meet A2[18]#3 (220, 85)-(193, 85) | B2[19]#1 (225, 78)-(216, 87) at (218.0, 85.0) | sep 18 1 9 | pair written, chosen c1 margin -2 | kept: zero contraction kept, spacing 0
+meet B1[47]#1 (132, 89)-(130, 91) | B2[49]#4 (165, 89)-(108, 89) at (132.0, 89.0) | sep 37 6 11 | pair written, chosen c0 margin -1
+meet B1[46]#0 (191, 89)-(163, 89) | B2[49]#1 (174, 87)-(172, 89) at (172.0, 89.0) | sep 37 3 13 | pair written, chosen c3 margin -1
+meet A2[18]#4 (193, 85)-(186, 92) | B2[48]#0 (194, 87)-(179, 87) at (191.0, 87.0) | sep 18 5 8 | pair written, chosen c0 margin -3
+clash build-rel/dumps3/anyhub-k3/LL2/round-5.json: overlaps 3, meets 4, by reason: written 7
