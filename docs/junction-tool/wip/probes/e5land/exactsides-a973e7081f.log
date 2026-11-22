@@ -1,0 +1,718 @@
+Filters: planar draw: T3 exact sides against the pipeline's
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+openttd_test is a Catch v2.13.10 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+planar draw: T3 exact sides against the pipeline's
+-------------------------------------------------------------------------------
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3618
+...............................................................................
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 1 8: D3#13 h2 (21,22)-(68,22) | D2#26 h1 (73,15)-(79,9); turn i->
+  j -5 j->i -3; pipeline pick c2 (margin on exact -4); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 1 9: D3#13 h2 (21,22)-(68,22) | D2#25 h2 (42,15)-(73,15); turn i-
+  >j -4 j->i -4; pipeline pick c2 (margin on exact -28); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 1 10: D3#13 h2 (21,22)-(68,22) | D2#24 h1 (42,15)-(42,15); turn
+  i->j -5 j->i -3; pipeline pick c2 (margin on exact -35); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 1 11: D3#13 h2 (21,22)-(68,22) | D2#23 h0 (42,15)-(42,15); turn
+  i->j -6 j->i -2; pipeline pick c2 (margin on exact -27); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 1 12: D3#13 h2 (21,22)-(68,22) | D2#22 h1 (42,15)-(42,15); turn
+  i->j -5 j->i -3; pipeline pick c2 (margin on exact -35); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 1 13: D3#13 h2 (21,22)-(68,22) | D2#21 h2 (42,15)-(42,15); turn
+  i->j -4 j->i -4; pipeline pick c2 (margin on exact -28); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 1 14: D3#13 h2 (21,22)-(68,22) | D2#20 h3 (34,7)-(42,15); turn i-
+  >j -3 j->i -5; pipeline pick c3 (margin on exact -21); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 1 15: D3#13 h2 (21,22)-(68,22) | D2#19 h2 (34,7)-(34,7); turn i->
+  j -4 j->i -4; pipeline pick c0 (margin on exact 13); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 1 16: D3#13 h2 (21,22)-(68,22) | D2#18 h1 (21,20)-(34,7); turn i-
+  >j -5 j->i -3; pipeline pick c0 (margin on exact 1); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 1 17: D3#13 h2 (21,22)-(68,22) | D2#17 h2 (21,20)-(21,20); turn
+  i->j -4 j->i -4; pipeline pick c0 (margin on exact 0); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 2 8: D3#14 h1 (68,22)-(82,8) | D2#26 h1 (73,15)-(79,9); turn i->j
+  -4 j->i -4; pipeline pick c1 (margin on exact -4); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 2 9: D3#14 h1 (68,22)-(82,8) | D2#25 h2 (42,15)-(73,15); turn i->
+  j -3 j->i -5; pipeline pick c1 (margin on exact -35); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 2 10: D3#14 h1 (68,22)-(82,8) | D2#24 h1 (42,15)-(42,15); turn i-
+  >j -4 j->i -4; pipeline pick c1 (margin on exact -35); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 2 11: D3#14 h1 (68,22)-(82,8) | D2#23 h0 (42,15)-(42,15); turn i-
+  >j -5 j->i -3; pipeline pick c1 (margin on exact -35); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 2 12: D3#14 h1 (68,22)-(82,8) | D2#22 h1 (42,15)-(42,15); turn i-
+  >j -4 j->i -4; pipeline pick c1 (margin on exact -35); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 2 13: D3#14 h1 (68,22)-(82,8) | D2#21 h2 (42,15)-(42,15); turn i-
+  >j -3 j->i -5; pipeline pick c1 (margin on exact -35); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 2 14: D3#14 h1 (68,22)-(82,8) | D2#20 h3 (34,7)-(42,15); turn i->
+  j -2 j->i -6; pipeline pick c1 (margin on exact -51); exact holds [c0 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 2 15: D3#14 h1 (68,22)-(82,8) | D2#19 h2 (34,7)-(34,7); turn i->j
+  -3 j->i -5; pipeline pick c1 (margin on exact -51); exact holds [c0 c3];
+  stretched 4
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 2 16: D3#14 h1 (68,22)-(82,8) | D2#18 h1 (21,20)-(34,7); turn i->
+  j -4 j->i -4; pipeline pick c0 (margin on exact 47); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 2 17: D3#14 h1 (68,22)-(82,8) | D2#17 h2 (21,20)-(21,20); turn i-
+  >j -3 j->i -5; pipeline pick c0 (margin on exact 47); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 3 8: D3#15 h2 (82,8)-(82,8) | D2#26 h1 (73,15)-(79,9); turn i->j
+  -5 j->i -3; pipeline pick c2 (margin on exact -4); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 3 9: D3#15 h2 (82,8)-(82,8) | D2#25 h2 (42,15)-(73,15); turn i->j
+  -4 j->i -4; pipeline pick c1 (margin on exact 5); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 3 10: D3#15 h2 (82,8)-(82,8) | D2#24 h1 (42,15)-(42,15); turn i->
+  j -5 j->i -3; pipeline pick c1 (margin on exact 6); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 3 11: D3#15 h2 (82,8)-(82,8) | D2#23 h0 (42,15)-(42,15); turn i->
+  j -6 j->i -2; pipeline pick c1 (margin on exact 6); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 3 12: D3#15 h2 (82,8)-(82,8) | D2#22 h1 (42,15)-(42,15); turn i->
+  j -5 j->i -3; pipeline pick c1 (margin on exact 6); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 3 13: D3#15 h2 (82,8)-(82,8) | D2#21 h2 (42,15)-(42,15); turn i->
+  j -4 j->i -4; pipeline pick c1 (margin on exact 5); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 3 14: D3#15 h2 (82,8)-(82,8) | D2#20 h3 (34,7)-(42,15); turn i->j
+  -3 j->i -5; pipeline pick c2 (margin on exact 45); exact holds [c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 3 15: D3#15 h2 (82,8)-(82,8) | D2#19 h2 (34,7)-(34,7); turn i->j
+  -4 j->i -4; pipeline pick c1 (margin on exact -3); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 3 16: D3#15 h2 (82,8)-(82,8) | D2#18 h1 (21,20)-(34,7); turn i->j
+  -5 j->i -3; pipeline pick c1 (margin on exact -2); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 3 17: D3#15 h2 (82,8)-(82,8) | D2#17 h2 (21,20)-(21,20); turn i->
+  j -4 j->i -4; pipeline pick c3 (margin on exact 59); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 4 8: D3#16 h3 (82,8)-(86,12) | D2#26 h1 (73,15)-(79,9); turn i->j
+  -6 j->i -2; pipeline pick c2 (margin on exact -12); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 4 9: D3#16 h3 (82,8)-(86,12) | D2#25 h2 (42,15)-(73,15); turn i->
+  j -5 j->i -3; pipeline pick c2 (margin on exact 2); exact holds [c1 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 4 10: D3#16 h3 (82,8)-(86,12) | D2#24 h1 (42,15)-(42,15); turn i-
+  >j -6 j->i -2; pipeline pick c2 (margin on exact -43); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 4 11: D3#16 h3 (82,8)-(86,12) | D2#23 h0 (42,15)-(42,15); turn i-
+  >j -7 j->i -1; pipeline pick c1 (margin on exact 45); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 4 12: D3#16 h3 (82,8)-(86,12) | D2#22 h1 (42,15)-(42,15); turn i-
+  >j -6 j->i -2; pipeline pick c2 (margin on exact -43); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 4 13: D3#16 h3 (82,8)-(86,12) | D2#21 h2 (42,15)-(42,15); turn i-
+  >j -5 j->i -3; pipeline pick c1 (margin on exact 45); exact holds [c1 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 4 14: D3#16 h3 (82,8)-(86,12) | D2#20 h3 (34,7)-(42,15); turn i->
+  j -4 j->i -4; pipeline pick c1 (margin on exact 45); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 4 15: D3#16 h3 (82,8)-(86,12) | D2#19 h2 (34,7)-(34,7); turn i->j
+  -5 j->i -3; pipeline pick c1 (margin on exact 45); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 4 16: D3#16 h3 (82,8)-(86,12) | D2#18 h1 (21,20)-(34,7); turn i->
+  j -6 j->i -2; pipeline pick c1 (margin on exact 45); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 4 17: D3#16 h3 (82,8)-(86,12) | D2#17 h2 (21,20)-(21,20); turn i-
+  >j -5 j->i -3; pipeline pick c1 (margin on exact 71); exact holds [c1 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 5 8: D3#17 h2 (86,12)-(86,12) | D2#26 h1 (73,15)-(79,9); turn i->
+  j -5 j->i -3; pipeline pick c0 (margin on exact -4); exact holds [c3];
+  stretched 4
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 5 9: D3#17 h2 (86,12)-(86,12) | D2#25 h2 (42,15)-(73,15); turn i-
+  >j -4 j->i -4; pipeline pick c1 (margin on exact 1); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 5 10: D3#17 h2 (86,12)-(86,12) | D2#24 h1 (42,15)-(42,15); turn
+  i->j -5 j->i -3; pipeline pick c1 (margin on exact 2); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 5 11: D3#17 h2 (86,12)-(86,12) | D2#23 h0 (42,15)-(42,15); turn
+  i->j -6 j->i -2; pipeline pick c1 (margin on exact 2); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 5 12: D3#17 h2 (86,12)-(86,12) | D2#22 h1 (42,15)-(42,15); turn
+  i->j -5 j->i -3; pipeline pick c1 (margin on exact 2); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 5 13: D3#17 h2 (86,12)-(86,12) | D2#21 h2 (42,15)-(42,15); turn
+  i->j -4 j->i -4; pipeline pick c1 (margin on exact 1); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 5 14: D3#17 h2 (86,12)-(86,12) | D2#20 h3 (34,7)-(42,15); turn i-
+  >j -3 j->i -5; pipeline pick c2 (margin on exact 45); exact holds [c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 5 15: D3#17 h2 (86,12)-(86,12) | D2#19 h2 (34,7)-(34,7); turn i->
+  j -4 j->i -4; pipeline pick c3 (margin on exact 50); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 5 16: D3#17 h2 (86,12)-(86,12) | D2#18 h1 (21,20)-(34,7); turn i-
+  >j -5 j->i -3; pipeline pick c3 (margin on exact 55); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 5 17: D3#17 h2 (86,12)-(86,12) | D2#17 h2 (21,20)-(21,20); turn
+  i->j -4 j->i -4; pipeline pick c3 (margin on exact 63); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 6 8: E3#0 h2 (78,12)-(86,12) | D2#26 h1 (73,15)-(79,9); turn i->j
+  -1 j->i -7; pipeline pick c3 (margin on exact 0); exact holds [c3]; stretched
+  0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 6 9: E3#0 h2 (78,12)-(86,12) | D2#25 h2 (42,15)-(73,15); turn i->
+  j 0 j->i -8; pipeline pick c2 (margin on exact 3); exact holds [c0 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 6 10: E3#0 h2 (78,12)-(86,12) | D2#24 h1 (42,15)-(42,15); turn i-
+  >j -1 j->i -7; pipeline pick c0 (margin on exact 2); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 6 11: E3#0 h2 (78,12)-(86,12) | D2#23 h0 (42,15)-(42,15); turn i-
+  >j -2 j->i -6; pipeline pick c3 (margin on exact 35); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 6 12: E3#0 h2 (78,12)-(86,12) | D2#22 h1 (42,15)-(42,15); turn i-
+  >j -1 j->i -7; pipeline pick c0 (margin on exact 2); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 6 13: E3#0 h2 (78,12)-(86,12) | D2#21 h2 (42,15)-(42,15); turn i-
+  >j 0 j->i -8; pipeline pick c0 (margin on exact 1); exact holds [c0 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 6 14: E3#0 h2 (78,12)-(86,12) | D2#20 h3 (34,7)-(42,15); turn i->
+  j 1 j->i -9; pipeline pick c2 (margin on exact 37); exact holds [c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 6 15: E3#0 h2 (78,12)-(86,12) | D2#19 h2 (34,7)-(34,7); turn i->j
+  0 j->i -8; pipeline pick c2 (margin on exact 42); exact holds [c1 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 6 16: E3#0 h2 (78,12)-(86,12) | D2#18 h1 (21,20)-(34,7); turn i->
+  j -1 j->i -7; pipeline pick c3 (margin on exact 47); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 75 6 17: E3#0 h2 (78,12)-(86,12) | D2#17 h2 (21,20)-(21,20); turn i-
+  >j 0 j->i -8; pipeline pick c2 (margin on exact 55); exact holds [c0 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 0 6: B2#14 h7 (21,26)-(19,24) | B1#23 h7 (13,20)-(12,19); turn i-
+  >j -4 j->i -4; pipeline pick c2 (margin on exact 8); exact holds [c0 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 0 7: B2#14 h7 (21,26)-(19,24) | B1#22 h0 (13,28)-(13,20); turn i-
+  >j -3 j->i -5; pipeline pick c3 (margin on exact 5); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 0 8: B2#14 h7 (21,26)-(19,24) | B1#21 h7 (13,28)-(13,28); turn i-
+  >j -4 j->i -4; pipeline pick c2 (margin on exact 0); exact holds [c0 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 0 9: B2#14 h7 (21,26)-(19,24) | B1#20 h6 (21,28)-(13,28); turn i-
+  >j -5 j->i -3; pipeline pick c0 (margin on exact 0); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 0 10: B2#14 h7 (21,26)-(19,24) | B1#19 h7 (21,28)-(21,28); turn
+  i->j -4 j->i -4; pipeline pick c0 (margin on exact 0); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 1 6: B2#15 h6 (19,24)-(15,24) | B1#23 h7 (13,20)-(12,19); turn i-
+  >j -3 j->i -5; pipeline pick c1 (margin on exact 3); exact holds [c1];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 1 7: B2#15 h6 (19,24)-(15,24) | B1#22 h0 (13,28)-(13,20); turn i-
+  >j -2 j->i -6; pipeline pick c3 (margin on exact 1); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 1 8: B2#15 h6 (19,24)-(15,24) | B1#21 h7 (13,28)-(13,28); turn i-
+  >j -3 j->i -5; pipeline pick c3 (margin on exact 4); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 1 9: B2#15 h6 (19,24)-(15,24) | B1#20 h6 (21,28)-(13,28); turn i-
+  >j -4 j->i -4; pipeline pick c1 (margin on exact -6); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 1 10: B2#15 h6 (19,24)-(15,24) | B1#19 h7 (21,28)-(21,28); turn
+  i->j -3 j->i -5; pipeline pick c0 (margin on exact 3); exact holds [c0];
+  stretched 3
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 2 6: B2#16 h7 (15,24)-(15,24) | B1#23 h7 (13,20)-(12,19); turn i-
+  >j -4 j->i -4; pipeline pick c2 (margin on exact 4); exact holds [c1 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 2 7: B2#16 h7 (15,24)-(15,24) | B1#22 h0 (13,28)-(13,20); turn i-
+  >j -3 j->i -5; pipeline pick c3 (margin on exact 1); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 2 8: B2#16 h7 (15,24)-(15,24) | B1#21 h7 (13,28)-(13,28); turn i-
+  >j -4 j->i -4; pipeline pick c2 (margin on exact -4); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 2 9: B2#16 h7 (15,24)-(15,24) | B1#20 h6 (21,28)-(13,28); turn i-
+  >j -5 j->i -3; pipeline pick c2 (margin on exact -5); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 2 10: B2#16 h7 (15,24)-(15,24) | B1#19 h7 (21,28)-(21,28); turn
+  i->j -4 j->i -4; pipeline pick c1 (margin on exact 0); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 3 6: B2#17 h0 (15,24)-(15,20) | B1#23 h7 (13,20)-(12,19); turn i-
+  >j -5 j->i -3; pipeline pick c0 (margin on exact 1); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 3 7: B2#17 h0 (15,24)-(15,20) | B1#22 h0 (13,28)-(13,20); turn i-
+  >j -4 j->i -4; pipeline pick c0 (margin on exact 0); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 3 8: B2#17 h0 (15,24)-(15,20) | B1#21 h7 (13,28)-(13,28); turn i-
+  >j -5 j->i -3; pipeline pick c0 (margin on exact 1); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 3 9: B2#17 h0 (15,24)-(15,20) | B1#20 h6 (21,28)-(13,28); turn i-
+  >j -6 j->i -2; pipeline pick c2 (margin on exact -9); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 3 10: B2#17 h0 (15,24)-(15,20) | B1#19 h7 (21,28)-(21,28); turn
+  i->j -5 j->i -3; pipeline pick c1 (margin on exact 5); exact holds [c1];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 4 6: B2#18 h7 (15,20)-(14,19) | B1#23 h7 (13,20)-(12,19); turn i-
+  >j -4 j->i -4; pipeline pick c0 (margin on exact 0); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 4 7: B2#18 h7 (15,20)-(14,19) | B1#22 h0 (13,28)-(13,20); turn i-
+  >j -3 j->i -5; pipeline pick c0 (margin on exact 0); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 4 8: B2#18 h7 (15,20)-(14,19) | B1#21 h7 (13,28)-(13,28); turn i-
+  >j -4 j->i -4; pipeline pick c0 (margin on exact 8); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 4 9: B2#18 h7 (15,20)-(14,19) | B1#20 h6 (21,28)-(13,28); turn i-
+  >j -5 j->i -3; pipeline pick c3 (margin on exact 7); exact holds [c0 c3];
+  stretched 2
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 29 4 10: B2#18 h7 (15,20)-(14,19) | B1#19 h7 (21,28)-(21,28); turn
+  i->j -4 j->i -4; pipeline pick c1 (margin on exact -4); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 1 8: E2#0 h2 (49,8)-(51,8) | E3#4 h2 (12,16)-(45,16); turn i->j -
+  4 j->i -4; pipeline pick c2 (margin on exact 2); exact holds [c0 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 1 9: E2#0 h2 (49,8)-(51,8) | E3#5 h1 (45,16)-(58,3); turn i->j -5
+  j->i -3; pipeline pick c2 (margin on exact -6); exact holds [c3]; stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 1 10: E2#0 h2 (49,8)-(51,8) | E3#6 h2 (58,3)-(58,3); turn i->j -4
+  j->i -4; pipeline pick c2 (margin on exact -11); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 1 11: E2#0 h2 (49,8)-(51,8) | E3#7 h3 (58,3)-(67,12); turn i->j -
+  3 j->i -5; pipeline pick c3 (margin on exact -16); exact holds [c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 1 12: E2#0 h2 (49,8)-(51,8) | E3#8 h2 (67,12)-(67,12); turn i->j
+  -4 j->i -4; pipeline pick c0 (margin on exact 2); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 1 13: E2#0 h2 (49,8)-(51,8) | prio:E3#0 h2 (69,10)-(84,10); turn
+  i->j -4 j->i -4; pipeline pick c0 (margin on exact 0); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 1 14: E2#0 h2 (49,8)-(51,8) | D1#22 h1 (71,15)-(81,5); turn i->j
+  -5 j->i -3; pipeline pick c3 (margin on exact 25); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 2 8: E2#8 h2 (47,8)-(49,8) | E3#4 h2 (12,16)-(45,16); turn i->j -
+  4 j->i -4; pipeline pick c0 (margin on exact 6); exact holds [c0 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 2 9: E2#8 h2 (47,8)-(49,8) | E3#5 h1 (45,16)-(58,3); turn i->j -5
+  j->i -3; pipeline pick c0 (margin on exact -6); exact holds [c3]; stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 2 10: E2#8 h2 (47,8)-(49,8) | E3#6 h2 (58,3)-(58,3); turn i->j -4
+  j->i -4; pipeline pick c0 (margin on exact -7); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 2 11: E2#8 h2 (47,8)-(49,8) | E3#7 h3 (58,3)-(67,12); turn i->j -
+  3 j->i -5; pipeline pick c3 (margin on exact -18); exact holds [c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 2 12: E2#8 h2 (47,8)-(49,8) | E3#8 h2 (67,12)-(67,12); turn i->j
+  -4 j->i -4; pipeline pick c0 (margin on exact 2); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 2 13: E2#8 h2 (47,8)-(49,8) | prio:E3#0 h2 (69,10)-(84,10); turn
+  i->j -4 j->i -4; pipeline pick c0 (margin on exact 0); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 2 14: E2#8 h2 (47,8)-(49,8) | D1#22 h1 (71,15)-(81,5); turn i->j
+  -5 j->i -3; pipeline pick c3 (margin on exact 27); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 3 8: E2#7 h3 (43,4)-(47,8) | E3#4 h2 (12,16)-(45,16); turn i->j -
+  5 j->i -3; pipeline pick c0 (margin on exact 8); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 3 9: E2#7 h3 (43,4)-(47,8) | E3#5 h1 (45,16)-(58,3); turn i->j -6
+  j->i -2; pipeline pick c0 (margin on exact -18); exact holds [c3]; stretched
+  0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 3 10: E2#7 h3 (43,4)-(47,8) | E3#6 h2 (58,3)-(58,3); turn i->j -5
+  j->i -3; pipeline pick c0 (margin on exact -18); exact holds [c1 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 3 11: E2#7 h3 (43,4)-(47,8) | E3#7 h3 (58,3)-(67,12); turn i->j -
+  4 j->i -4; pipeline pick c0 (margin on exact -18); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 3 12: E2#7 h3 (43,4)-(47,8) | E3#8 h2 (67,12)-(67,12); turn i->j
+  -5 j->i -3; pipeline pick c3 (margin on exact 3); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 3 13: E2#7 h3 (43,4)-(47,8) | prio:E3#0 h2 (69,10)-(84,10); turn
+  i->j -5 j->i -3; pipeline pick c1 (margin on exact 18); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 3 14: E2#7 h3 (43,4)-(47,8) | D1#22 h1 (71,15)-(81,5); turn i->j
+  -6 j->i -2; pipeline pick c3 (margin on exact 29); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 4 8: E2#6 h2 (31,4)-(43,4) | E3#4 h2 (12,16)-(45,16); turn i->j -
+  4 j->i -4; pipeline pick c0 (margin on exact 10); exact holds [c0]; stretched
+  0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 4 9: E2#6 h2 (31,4)-(43,4) | E3#5 h1 (45,16)-(58,3); turn i->j -5
+  j->i -3; pipeline pick c0 (margin on exact -2); exact holds [c3]; stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 4 10: E2#6 h2 (31,4)-(43,4) | E3#6 h2 (58,3)-(58,3); turn i->j -4
+  j->i -4; pipeline pick c0 (margin on exact -3); exact holds [c3]; stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 4 11: E2#6 h2 (31,4)-(43,4) | E3#7 h3 (58,3)-(67,12); turn i->j -
+  3 j->i -5; pipeline pick c3 (margin on exact -30); exact holds [c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 4 12: E2#6 h2 (31,4)-(43,4) | E3#8 h2 (67,12)-(67,12); turn i->j
+  -4 j->i -4; pipeline pick c0 (margin on exact 6); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 4 13: E2#6 h2 (31,4)-(43,4) | prio:E3#0 h2 (69,10)-(84,10); turn
+  i->j -4 j->i -4; pipeline pick c3 (margin on exact 24); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 4 14: E2#6 h2 (31,4)-(43,4) | D1#22 h1 (71,15)-(81,5); turn i->j
+  -5 j->i -3; pipeline pick c3 (margin on exact 37); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 5 8: E2#5 h1 (21,14)-(31,4) | E3#4 h2 (12,16)-(45,16); turn i->j
+  -3 j->i -5; pipeline pick c3 (margin on exact 1); exact holds [c3]; stretched
+  0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 5 9: E2#5 h1 (21,14)-(31,4) | E3#5 h1 (45,16)-(58,3); turn i->j -
+  4 j->i -4; pipeline pick c0 (margin on exact 24); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 5 10: E2#5 h1 (21,14)-(31,4) | E3#6 h2 (58,3)-(58,3); turn i->j -
+  3 j->i -5; pipeline pick c0 (margin on exact 24); exact holds [c0 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 5 11: E2#5 h1 (21,14)-(31,4) | E3#7 h3 (58,3)-(67,12); turn i->j
+  -2 j->i -6; pipeline pick c0 (margin on exact 24); exact holds [c0 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 5 12: E2#5 h1 (21,14)-(31,4) | E3#8 h2 (67,12)-(67,12); turn i->j
+  -3 j->i -5; pipeline pick c0 (margin on exact 42); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 5 13: E2#5 h1 (21,14)-(31,4) | prio:E3#0 h2 (69,10)-(84,10); turn
+  i->j -3 j->i -5; pipeline pick c0 (margin on exact 42); exact holds [c0];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 5 14: E2#5 h1 (21,14)-(31,4) | D1#22 h1 (71,15)-(81,5); turn i->j
+  -4 j->i -4; pipeline pick c0 (margin on exact 49); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 6 8: E2#4 h2 (21,14)-(21,14) | E3#4 h2 (12,16)-(45,16); turn i->j
+  -4 j->i -4; pipeline pick c0 (margin on exact 0); exact holds [c0]; stretched
+  0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 6 9: E2#4 h2 (21,14)-(21,14) | E3#5 h1 (45,16)-(58,3); turn i->j
+  -5 j->i -3; pipeline pick c3 (margin on exact 24); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 6 10: E2#4 h2 (21,14)-(21,14) | E3#6 h2 (58,3)-(58,3); turn i->j
+  -4 j->i -4; pipeline pick c3 (margin on exact 35); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 6 11: E2#4 h2 (21,14)-(21,14) | E3#7 h3 (58,3)-(67,12); turn i->j
+  -3 j->i -5; pipeline pick c2 (margin on exact 46); exact holds [c1 c2];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 6 12: E2#4 h2 (21,14)-(21,14) | E3#8 h2 (67,12)-(67,12); turn i->
+  j -4 j->i -4; pipeline pick c3 (margin on exact 44); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 6 13: E2#4 h2 (21,14)-(21,14) | prio:E3#0 h2 (69,10)-(84,10);
+  turn i->j -4 j->i -4; pipeline pick c3 (margin on exact 46); exact holds [c1
+  c3]; stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 6 14: E2#4 h2 (21,14)-(21,14) | D1#22 h1 (71,15)-(81,5); turn i->
+  j -5 j->i -3; pipeline pick c3 (margin on exact 49); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 8 14: E3#4 h2 (12,16)-(45,16) | D1#22 h1 (71,15)-(81,5); turn i->
+  j -1 j->i -7; pipeline pick c3 (margin on exact 23); exact holds [c0 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 9 14: E3#5 h1 (45,16)-(58,3) | D1#22 h1 (71,15)-(81,5); turn i->j
+  0 j->i -8; pipeline pick c1 (margin on exact 23); exact holds [c1]; stretched
+  0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 10 14: E3#6 h2 (58,3)-(58,3) | D1#22 h1 (71,15)-(81,5); turn i->j
+  -1 j->i -7; pipeline pick c3 (margin on exact 23); exact holds [c1 c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 11 14: E3#7 h3 (58,3)-(67,12) | D1#22 h1 (71,15)-(81,5); turn i->
+  j -2 j->i -6; pipeline pick c3 (margin on exact 5); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3721: warning:
+  pair sep 66 12 14: E3#8 h2 (67,12)-(67,12) | D1#22 h1 (71,15)-(81,5); turn i-
+  >j -1 j->i -7; pipeline pick c3 (margin on exact 5); exact holds [c3];
+  stretched 0
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3725: warning:
+  skipped by the code: 147 [sep 75 0 2, sep 75 0 3, sep 75 0 4, sep 75 0 5, sep
+  75 0 6, sep 75 0 7, sep 75 0 8, sep 75 0 9, sep 75 0 10, sep 75 0 11, sep 75
+  0 12, sep 75 0 13, sep 75 0 14, sep 75 0 15, sep 75 0 16, sep 75 1 3, sep 75
+  1 4, sep 75 1 5, sep 75 1 6, sep 75 1 7, sep 75 2 4, sep 75 2 5, sep 75 2 6,
+  sep 75 2 7, sep 75 3 5, sep 75 3 6, sep 75 3 7, sep 75 4 6, sep 75 4 7, sep
+  75 5 7, sep 75 7 9, sep 75 7 10, sep 75 7 11, sep 75 7 12, sep 75 7 13, sep
+  75 7 14, sep 75 7 15, sep 75 7 16, sep 75 7 17, sep 75 8 10, sep 75 8 11, sep
+  75 8 12, sep 75 8 13, sep 75 8 14, sep 75 8 15, sep 75 8 16, sep 75 8 17, sep
+  75 9 11, sep 75 9 12, sep 75 9 13, sep 75 9 14, sep 75 9 15, sep 75 9 16, sep
+  75 9 17, sep 75 10 12, sep 75 10 13, sep 75 10 14, sep 75 10 15, sep 75 10
+  16, sep 75 10 17, sep 75 11 13, sep 75 11 14, sep 75 11 15, sep 75 11 16, sep
+  75 11 17, sep 75 12 14, sep 75 12 15, sep 75 12 16, sep 75 12 17, sep 75 13
+  15, sep 75 13 16, sep 75 13 17, sep 75 14 16, sep 75 14 17, sep 75 15 17, sep
+  29 0 2, sep 29 0 3, sep 29 0 4, sep 29 0 5, sep 29 1 3, sep 29 1 4, sep 29 1
+  5, sep 29 1 11, sep 29 2 4, sep 29 2 5, sep 29 2 11, sep 29 3 5, sep 29 3 11,
+  sep 29 4 11, sep 29 5 7, sep 29 5 8, sep 29 5 9, sep 29 5 10, sep 29 5 11,
+  sep 29 6 8, sep 29 6 9, sep 29 6 10, sep 29 6 11, sep 29 7 9, sep 29 7 10,
+  sep 29 7 11, sep 29 8 10, sep 29 8 11, sep 29 9 11, sep 66 0 2, sep 66 0 3,
+  sep 66 0 4, sep 66 0 5, sep 66 0 6, sep 66 0 7, sep 66 0 8, sep 66 0 9, sep
+  66 0 10, sep 66 0 11, sep 66 0 12, sep 66 0 13, sep 66 1 3, sep 66 1 4, sep
+  66 1 5, sep 66 1 6, sep 66 1 7, sep 66 2 4, sep 66 2 5, sep 66 2 6, sep 66 2
+  7, sep 66 3 5, sep 66 3 6, sep 66 3 7, sep 66 4 6, sep 66 4 7, sep 66 5 7,
+  sep 66 7 9, sep 66 7 10, sep 66 7 11, sep 66 7 12, sep 66 7 13, sep 66 7 14,
+  sep 66 8 10, sep 66 8 11, sep 66 8 12, sep 66 8 13, sep 66 9 11, sep 66 9 12,
+  sep 66 9 13, sep 66 10 12, sep 66 10 13, sep 66 11 13]
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3731: warning:
+  summary pairs 132 contradicted 39
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3732: warning:
+  summary contradicted tags: sep 75 1 8, sep 75 1 9, sep 75 1 10, sep 75 1 11,
+  sep 75 1 12, sep 75 1 13, sep 75 1 14, sep 75 2 8, sep 75 2 9, sep 75 2 10,
+  sep 75 2 11, sep 75 2 12, sep 75 2 13, sep 75 2 14, sep 75 2 15, sep 75 3 8,
+  sep 75 3 15, sep 75 3 16, sep 75 4 8, sep 75 4 10, sep 75 4 12, sep 75 5 8,
+  sep 29 1 9, sep 29 2 8, sep 29 2 9, sep 29 3 9, sep 29 4 10, sep 66 1 9, sep
+  66 1 10, sep 66 1 11, sep 66 2 9, sep 66 2 10, sep 66 2 11, sep 66 3 9, sep
+  66 3 10, sep 66 3 11, sep 66 4 9, sep 66 4 10, sep 66 4 11
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3733: warning:
+  summary (t1,t2) over contradicted: (-6,-2) x6; (-5,-3) x12; (-4,-4) x13; (-3,
+  -5) x7; (-2,-6) x1
+
+/home/pete/OpenTTD/.claude/ng1/src/tests/junction/planar/planar_draw.cpp:3734: warning:
+  summary (t1,t2) over all pairs: (-7,-1) x1; (-6,-2) x10; (-5,-3) x35; (-4,-4)
+  x47; (-3,-5) x21; (-2,-6) x5; (-1,-7) x7; (0,-8) x5; (1,-9) x1
+
+===============================================================================
+All tests passed (3 assertions in 1 test case)
+
