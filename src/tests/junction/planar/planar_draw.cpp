@@ -339,6 +339,22 @@ TEST_CASE("planar draw: the pipeline draws the one-lane T with optional flex (D4
 	}
 }
 
+TEST_CASE("planar draw: facing pairs take their side from the face walk on T2", "[planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(2), 1);
+	PlanarDrawPipelineOptions o;
+	o.facing_sides = true;
+	o.final_seconds = 5;
+	const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
+	CHECK(r.last_round.facing_fixed >= 1);
+	for (const auto &[tag, text] : r.last_round.sep_sides) {
+		if (!text.ends_with(" facing")) continue;
+		INFO(tag << ": " << text);
+		CHECK(text.find("spacing") != std::string::npos);
+		CHECK(text.find("from i") != std::string::npos);
+	}
+}
+
 TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 {
 	const std::vector<std::pair<std::string, std::string>> hubs = {{"T1", PlanarTText(1)}, {"T2", PlanarTText(2)}, {"T3", PlanarTText(3)}, {"LL2", PlanarLL2Text()}};
@@ -346,12 +362,13 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 		const DrawCase c = ShapeFirst(text, 1);
 		PlanarDrawPipelineOptions o;
 		o.final_seconds = 15;
-		/* Measurement aids: PLANAR_PROBE_SLACK_PRICE (commit on), PLANAR_PROBE_DISCOVERY_SLACK_PRICE (seed and discovery) PLANAR_PROBE_NO_CURVE_DISCOVERY (Scheme A), PLANAR_PROBE_SIDES (per-pair side probe) and PLANAR_PROBE_SIBLINGS (sibling lanes as offset curves). */
+		/* Measurement aids: PLANAR_PROBE_SLACK_PRICE (commit on), PLANAR_PROBE_DISCOVERY_SLACK_PRICE (seed and discovery) PLANAR_PROBE_NO_CURVE_DISCOVERY (Scheme A), PLANAR_PROBE_SIDES (per-pair side probe) PLANAR_PROBE_SIBLINGS (sibling lanes as offset curves) and PLANAR_PROBE_FACING (D426 facing pairs). */
 		if (const char *s = std::getenv("PLANAR_PROBE_SLACK_PRICE"); s != nullptr) o.slack_price = std::atof(s);
 		if (const char *s = std::getenv("PLANAR_PROBE_DISCOVERY_SLACK_PRICE"); s != nullptr) o.discovery_slack_price = std::atof(s);
 		o.free_stretched_sides = std::getenv("PLANAR_PROBE_FREE_SIDES") != nullptr;
 		o.side_probe = std::getenv("PLANAR_PROBE_SIDES") != nullptr;
 		o.sibling_lanes = std::getenv("PLANAR_PROBE_SIBLINGS") != nullptr;
+		o.facing_sides = std::getenv("PLANAR_PROBE_FACING") != nullptr;
 		o.curve_discovery = std::getenv("PLANAR_PROBE_NO_CURVE_DISCOVERY") == nullptr;
 		const auto start = std::chrono::steady_clock::now();
 		const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, o);
@@ -370,6 +387,7 @@ TEST_CASE("planar draw: the pipeline on T2, T3 and LL2", "[.][planarhubs]")
 			f.second += slack;
 		}
 		WARN(fmt::format("{} last round slack {:.3f}, stretched {}", name, r.last_round.slack, r.last_round.stretched.size()));
+		if (o.facing_sides) WARN(fmt::format("{} facing: fixed {} choice {}", name, r.last_round.facing_fixed, r.last_round.facing_choice));
 		if (o.sibling_lanes) {
 			WARN(fmt::format("{} sibling lanes: pairs {} sep skipped {}", name, r.last_round.lane_pairs, r.last_round.lane_sep_skipped));
 			for (const std::string &line : r.last_round.lane_skipped) WARN(fmt::format("{} sibling lanes skipped {}", name, line));
@@ -3133,7 +3151,9 @@ TEST_CASE("planar draw: the pipeline on PSG 197 (D422)", "[.][planarkeepapart]")
 	o.additions = std::getenv("PLANAR_PROBE_ADDITIONS") != nullptr;
 	o.curve_discovery = std::getenv("PLANAR_PROBE_NO_CURVE_DISCOVERY") == nullptr; // Scheme A (a probe).
 	o.sibling_lanes = std::getenv("PLANAR_PROBE_SIBLINGS") != nullptr; // Sibling lanes as offset curves (a probe).
+	o.facing_sides = std::getenv("PLANAR_PROBE_FACING") != nullptr; // D426 facing pairs (a probe).
 	const PlanarDrawPipelineResult r = DrawPlanarPipeline(flex_c, o);
+	if (o.facing_sides) WARN(fmt::format("197 facing: fixed {} choice {}", r.last_round.facing_fixed, r.last_round.facing_choice));
 	if (o.sibling_lanes) {
 		WARN(fmt::format("197 sibling lanes: pairs {} sep skipped {}", r.last_round.lane_pairs, r.last_round.lane_sep_skipped));
 		for (const std::string &line : r.last_round.lane_skipped) WARN(fmt::format("197 sibling lanes skipped {}", line));
