@@ -356,7 +356,7 @@ PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const
 
 PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology, std::string_view text, const JunctionSpec &spec, std::vector<std::string> &report, std::string *error)
 {
-	if (!topology.crossings_authored) {
+	if (!topology.crossings_authored && !topology.crossings.empty()) {
 		*error = "the topology's crossings are not authored";
 		return {};
 	}
