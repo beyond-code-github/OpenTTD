@@ -243,19 +243,34 @@ struct Example {
 };
 
 struct Group {
-	uint32_t count = 0;
-	std::set<std::string> polylines;
+	uint32_t count = 0; ///< Polylines.
+	uint32_t geometries = 0;
 	std::vector<Example> examples;
 };
 
 struct Tally {
-	std::array<uint32_t, 7> counts{}; ///< both accept, both accept (other representation), both reject, too strict, too loose, off grid, undecided.
+	std::array<uint32_t, 6> counts{}; ///< Polylines: both accept, both reject, too strict, too loose, undecided; the last is off grid geometries.
+	std::array<uint32_t, 6> geoms{}; ///< The enumerated geometries behind each.
+	std::set<std::string> seen; ///< The polylines counted.
 	std::map<std::string, double> undecided; ///< Per undecided polyline, its representation count product.
 	std::map<std::string, Group> strict;
 	std::map<std::string, Group> loose;
 };
 
-const char *const CLASS_NAMES[7] = {"both accept", "both accept (other representation)", "both reject", "too strict", "too loose", "off grid", "undecided"};
+const char *const CLASS_NAMES[6] = {"both accept", "both reject", "too strict", "too loose", "undecided", "off grid (geometries)"};
+
+/** What the rows say of a polyline: 0 an accepted representation exists, 1 none, 2 undecided; the witness is the accepted representation per track. */
+struct Judged {
+	int verdict = 1;
+	std::vector<Lengths> witness;
+};
+
+/** A polyline's class and its example text, from the first geometry that had it. */
+struct PolyClass {
+	int c = 0;
+	std::string key;
+	std::string detail;
+};
 
 } // namespace
 
@@ -382,7 +397,8 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 		{"N1", {{"C1", 0, {0, 1, 2, 3}}, {"C1", 1, {0, 2, 4}}, {"C1", 2, {0, 1, 2, 3}}, {"A1", 0, {0, 2, 4}}, {"A1", 1, {0, 1, 2, 3}}}},
 	};
 
-	std::map<std::string, int> verdicts; ///< Per polyline key: 0 an accepted representation exists, 1 none, 2 undecided.
+	std::map<std::string, Judged> verdicts; ///< Per polyline key.
+		std::map<std::string, PolyClass> classes;
 	std::map<std::string, double> rep_products;
 
 	for (const Config &cfg : configs) {
@@ -411,10 +427,12 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 			return l;
 		};
 		/* Judge a polyline by all its representations (cached per polyline key). */
-		auto judge = [&](const std::string &pkey, const Geometry &g) {
+		auto judge = [&](const std::string &pkey, const Geometry &g) -> const Judged & {
 			const auto cached = verdicts.find(pkey);
 			if (cached != verdicts.end()) return cached->second;
 			int verdict = 1;
+			std::vector<std::vector<Lengths>> replens(f.n);
+			std::vector<Lengths> witness;
 			double nodes_used = 0;
 			/* Per track (by track index): its representations as points, after the unary filter. */
 			std::vector<std::vector<Points>> reps(f.n);
@@ -437,7 +455,10 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 					for (const PlanarPointRow &r : lead_rows) {
 						if (r.p[0] == t && r.q[0] == t && !PlanarPointRowHolds(r, pts)) ok = false;
 					}
-					if (ok) reps[t].push_back(pts[t]);
+					if (ok) {
+					reps[t].push_back(pts[t]);
+					replens[t].push_back(l);
+				}
 				}
 			}
 			if (verdict != 2 && !std::ranges::any_of(reps, [](const std::vector<Points> &r) { return r.empty(); })) {
@@ -452,12 +473,15 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 					at_depth[std::max(depth_of[p.tracks[0]], depth_of[p.tracks[1]])].push_back(&p);
 				}
 				std::vector<Points> cur(f.n);
+				std::vector<size_t> chosen(f.n, 0);
 				uint64_t nodes = 0;
 				auto search = [&](auto &&self, uint32_t d) -> bool {
 					if (d == f.n) return true;
-					for (const Points &rp : reps[order[d]]) {
+					for (size_t ri = 0; ri < reps[order[d]].size(); ri++) {
+						const Points &rp = reps[order[d]][ri];
 						if (++nodes > 50000) return false;
 						cur[order[d]] = rp;
+						chosen[order[d]] = ri;
 						const bool ok = std::ranges::all_of(at_depth[d], [&](const PlanarKeepApartPair *p) { return PlanarKeepApartHolds(*p, cur); });
 						if (ok && self(self, d + 1)) return true;
 						if (nodes > 50000) return false;
@@ -467,10 +491,16 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 				const bool found = search(search, 0);
 				nodes_used = static_cast<double>(nodes);
 				verdict = found ? 0 : (nodes > 50000 ? 2 : 1);
+				if (found) {
+					witness.resize(f.n);
+					for (uint32_t t = 0; t < f.n; t++) witness[t] = replens[t][chosen[t]];
+				}
 			}
 			rep_products[pkey] = nodes_used;
-			verdicts[pkey] = verdict;
-			return verdict;
+			Judged &j = verdicts[pkey];
+			j.verdict = verdict;
+			j.witness = witness;
+			return j;
 		};
 		std::vector<size_t> pos(cfg.axes.size(), 0);
 		while (true) {
@@ -482,12 +512,11 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 				varied << (a == 0 ? "" : " ") << name << "." << piece << "=" << vals[pos[a]];
 			}
 			const std::vector<Points> points = f.PointsOf(g);
-			enum { BOTH_ACCEPT, OTHER, BOTH_REJECT, STRICT, LOOSE, OFF_GRID, UNDECIDED } c;
+			enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, UNDECIDED, OFF_GRID } c;
 			bool on_grid = true;
 			for (const Points &p : points) on_grid = on_grid && RasterPlanarDomainTrack(p).rule.empty();
-			std::string detail;
-			std::string key;
 			std::string pkey;
+			const PolyClass *pc = nullptr;
 			if (!on_grid) {
 				c = OFF_GRID;
 			} else {
@@ -497,58 +526,73 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 					for (const auto &[hh, len] : PolylineRuns(h, lengths_of(g, name))) run_text << hh << "*" << len << ",";
 					pkey += run_text.str() + ";";
 				}
-				std::vector<const PlanarPointRow *> lead_failed;
-				for (const PlanarPointRow &r : lead_rows) {
-					if (!PlanarPointRowHolds(r, points)) lead_failed.push_back(&r);
-				}
-				const bool rows_ok = lead_failed.empty() && std::ranges::all_of(readout.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, points); });
-				std::vector<std::string> notes;
-				const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
-				c = rows_ok ? (d.legal ? BOTH_ACCEPT : LOOSE) : (d.legal ? STRICT : BOTH_REJECT);
-				if (c == STRICT) {
-					const int verdict = judge(pkey, g);
-					if (verdict == 0) {
-						c = OTHER;
-					} else if (verdict == 2) {
-						c = UNDECIDED;
-						tally.undecided[pkey] = rep_products[pkey];
-						total.undecided[pkey] = rep_products[pkey];
+				const auto known = classes.find(pkey);
+				if (known == classes.end()) {
+					std::vector<std::string> notes;
+					const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
+					const Judged &j = judge(pkey, g);
+					PolyClass nc;
+					if (j.verdict == 2) {
+						nc.c = UNDECIDED;
+					} else if (d.legal) {
+						nc.c = j.verdict == 0 ? BOTH_ACCEPT : STRICT;
+					} else {
+						nc.c = j.verdict == 0 ? LOOSE : BOTH_REJECT;
 					}
-				}
-				if (c == STRICT) {
-					std::set<std::string> kept;
-					detail = "      polyline " + pkey + "\n" + FailingText(f, readout.keep_apart, points, kept);
-					for (const PlanarPointRow *r : lead_failed) {
-						kept.insert("lead");
-						detail += "      " + r->tag + " fails\n";
-					}
-					key = Join(kept);
-				} else if (c == LOOSE) {
-					std::set<std::string> rules;
-					std::ostringstream out;
-					for (const PlanarDomainBreak &b : d.breaks) {
-						rules.insert(b.rule);
-						std::string names;
-						for (const uint32_t t : b.tracks) names += (names.empty() ? "" : ",") + f.Name(t);
-						out << "      break " << b.rule << " tracks " << names << " tile (" << b.tile.x << "," << b.tile.y << ") " << b.why << "\n";
-						for (const PlanarKeepApartPair &p : readout.keep_apart) {
-							const bool a = std::ranges::count(b.tracks, p.tracks[0]) > 0, bb = std::ranges::count(b.tracks, p.tracks[1]) > 0;
-							if (!a || !bb) continue;
-							out << "        " << p.tag << " " << f.Name(p.tracks[0]) << "/" << f.Name(p.tracks[1]) << " pieces " << p.pieces[0] << "/" << p.pieces[1] << ": " << (p.skipped.empty() ? "held" : p.skipped) << "\n";
-						}
+					if (nc.c == STRICT) {
+						std::set<std::string> kept;
+						nc.detail = "      polyline " + pkey + "\n" + FailingText(f, readout.keep_apart, points, kept);
 						for (const PlanarPointRow &r : lead_rows) {
-							if (std::ranges::count(b.tracks, r.p[0]) > 0) out << "        " << r.tag << ": " << (PlanarPointRowHolds(r, points) ? "holds" : "fails") << "\n";
+							if (PlanarPointRowHolds(r, points)) continue;
+							kept.insert("lead");
+							nc.detail += "      " + r.tag + " fails\n";
 						}
+						nc.key = Join(kept);
+					} else if (nc.c == LOOSE) {
+						std::set<std::string> rules;
+						std::ostringstream out;
+						out << "      polyline " << pkey << "\n      witness piece lengths:";
+						for (uint32_t t = 0; t < f.n; t++) {
+							out << " " << f.Name(t) << "[";
+							for (size_t k = 0; k < j.witness[t].size(); k++) out << (k == 0 ? "" : ",") << j.witness[t][k];
+							out << "]";
+						}
+						out << "\n";
+						for (const PlanarDomainBreak &b : d.breaks) {
+							rules.insert(b.rule);
+							std::string names;
+							for (const uint32_t t : b.tracks) names += (names.empty() ? "" : ",") + f.Name(t);
+							out << "      break " << b.rule << " tracks " << names << " tile (" << b.tile.x << "," << b.tile.y << ") " << b.why << "\n";
+							for (const PlanarKeepApartPair &p : readout.keep_apart) {
+								const bool pa = std::ranges::count(b.tracks, p.tracks[0]) > 0, pb = std::ranges::count(b.tracks, p.tracks[1]) > 0;
+								if (!pa || !pb) continue;
+								out << "        " << p.tag << " " << f.Name(p.tracks[0]) << "/" << f.Name(p.tracks[1]) << " pieces " << p.pieces[0] << "/" << p.pieces[1] << ": " << (p.skipped.empty() ? "held" : p.skipped) << "\n";
+							}
+							for (const PlanarPointRow &r : lead_rows) {
+								if (std::ranges::count(b.tracks, r.p[0]) > 0) out << "        " << r.tag << ": holds on the witness\n";
+							}
+						}
+						nc.detail = out.str();
+						nc.key = Join(rules);
 					}
-					detail = out.str();
-					key = Join(rules);
+					pc = &(classes[pkey] = nc);
+				} else {
+					pc = &known->second;
 				}
+				c = static_cast<decltype(c)>(pc->c);
 			}
 			for (Tally *x : {&tally, &total}) {
+				x->geoms[c]++;
+				if (c == OFF_GRID) {
+					x->counts[c]++;
+					continue;
+				}
+				Group *grp = c == STRICT ? &x->strict[pc->key] : c == LOOSE ? &x->loose[pc->key] : nullptr;
+				if (grp != nullptr) grp->geometries++;
+				if (!x->seen.insert(pkey).second) continue;
 				x->counts[c]++;
-				Group *grp = c == STRICT ? &x->strict[key] : c == LOOSE ? &x->loose[key] : nullptr;
-				if (grp != nullptr) grp->polylines.insert(pkey);
-				if (grp != nullptr && grp->count++ < 3) grp->examples.push_back({varied.str(), detail});
+				if (c == UNDECIDED) x->undecided[pkey] = rep_products[pkey];
+				if (grp != nullptr && grp->count++ < 3) grp->examples.push_back({varied.str(), pc->detail});
 			}
 			size_t a = 0;
 			while (a < cfg.axes.size()) {
@@ -566,13 +610,13 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 	out << "enumeration wall " << wall << " s\n\n";
 	auto write = [&](const std::string &title, const Tally &t) {
 		out << "== " << title << " ==\n";
-		for (int c = 0; c < 7; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << "\n";
+		for (int c = 0; c < 6; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << (c == 5 ? "" : " polylines") << " (" << t.geoms[c] << " geometries)\n";
 		for (const auto &[pk, prod] : t.undecided) out << "    undecided polyline " << pk << " search nodes " << prod << "\n";
 		for (int kind = 0; kind < 2; kind++) {
 			const auto &groups = kind == 0 ? t.strict : t.loose;
 			out << (kind == 0 ? " too strict, by the kept values of the failing pairs:\n" : " too loose, by domain break rules:\n");
 			for (const auto &[key, grp] : groups) {
-				out << "  [" << key << "] count " << grp.count << " polylines " << grp.polylines.size() << "\n";
+				out << "  [" << key << "] polylines " << grp.count << " (geometries " << grp.geometries << ")\n";
 				for (const Example &e : grp.examples) out << "    varied: " << e.varied << "\n" << e.detail;
 			}
 		}
@@ -590,7 +634,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 	out.close();
 	for (const Config &cfg : configs) {
 		const Tally &t = per[cfg.name];
-		WARN(cfg.name << ": both accept " << t.counts[0] << ", other " << t.counts[1] << ", both reject " << t.counts[2] << ", too strict " << t.counts[3] << ", too loose " << t.counts[4] << ", off grid " << t.counts[5] << ", undecided " << t.counts[6]);
+		WARN(cfg.name << " (polylines): both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", undecided " << t.counts[4] << ", off grid geometries " << t.counts[5]);
 	}
 	WARN("enumeration wall " << wall << " s");
 }
