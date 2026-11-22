@@ -181,7 +181,7 @@ struct PlanarDrawPipelineOptions {
 	bool final_soft_sep = false; ///< A measurement: the integer final's sep rows get slack (cost 1, piece lengths cost 0.01), every variable stays integer; the result lists the rows that stretched.
 	bool final_soft_all = false; ///< A measurement: every row of the integer final except piece, box, pin, fix and grid rows gets slack (cost 1, piece lengths cost 0), every variable stays integer; the result lists the rows that stretched.
 	bool final_start = false; ///< A measurement: the integer final starts from the last round's whole lengths (a partial MIP start, JunctionMilp::SetStart).
-	bool node_gaps = false; ///< Node gaps in every stage after the seed, each stage's reference its input drawing (PlanarDrawOptions::node_gaps).
+	bool node_gaps = true; ///< On by default (D424). Node gaps in every stage after the seed, each stage's reference its input drawing (PlanarDrawOptions::node_gaps).
 	bool keep_apart = true; ///< Pairwise keep-apart (D418) in every stage; false writes no clearance rows (clearance = false), a measurement for hubs whose keep-apart is not yet drawable.
 	double commit_above = 1.0; ///< An insert at or above this length (half tiles) in the last discovery drawing is committed.
 	int discovery_rounds = 8; ///< At most this many discovery rounds.
