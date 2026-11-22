@@ -343,6 +343,30 @@ TEST_CASE("planar draw: the pipeline draws the one-lane T with optional flex (D4
 	}
 }
 
+TEST_CASE("planar draw: T1 keep-apart conflict read-out", "[.][planart1sep]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	const PlanarTrackMap &map = c.v.structure.map;
+	const auto track_name = [&](uint32_t t) { return t == UINT32_MAX ? std::string("box") : t == PLANAR_DUMMY_TRACK ? std::string("dummy") : map.tracks[t].name; };
+	for (uint32_t t = 0; t < map.tracks.size(); t++) {
+		const auto &line = map.expanded.lines[t];
+		std::string text = fmt::format("track {} {}: from {} {} to {} {}; pieces", t, map.tracks[t].name, line.from.port ? "port" : "node", line.from.index, line.to.port ? "port" : "node", line.to.index);
+		for (const int h : c.v.tracks[t].pieces) text += fmt::format(" {}", h);
+		text += "; flex";
+		for (const uint32_t m : c.v.tracks[t].flex) text += fmt::format(" {}", m);
+		WARN(text);
+	}
+	for (const PlanarFaceWalls &f : PlanarShapeFaceWalls(c.v)) {
+		std::string text = fmt::format("face {}:", f.face);
+		for (size_t i = 0; i < f.walls.size(); i++) text += fmt::format(" [{} {}#{} h{}]", i, track_name(f.walls[i].track), f.walls[i].piece, f.walls[i].heading);
+		WARN(text);
+	}
+	const PlanarDrawPipelineResult r = DrawPlanarPipeline(c.v, {});
+	for (const std::string &line : r.log) WARN(line);
+	WARN(fmt::format("stopped '{}', final {}", r.stopped, r.final.status));
+	for (const std::string &tag : r.final.conflict) WARN("conflict " + tag);
+}
+
 TEST_CASE("planar draw: elastic mode names a short curve", "[junction][planar][planardraw]")
 {
 	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
