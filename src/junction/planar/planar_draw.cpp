@@ -584,7 +584,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	for (const Beside &beside : besides) {
 		const uint32_t b = beside.track;
 		std::vector<std::array<uint32_t, 2>> chain_point;
-		for (const uint32_t t : beside.chain) chain_point.insert(chain_point.end(), point[t].begin() + (chain_point.empty() ? 0 : 1), point[t].end());
+		std::vector<int> joined;
+		for (const uint32_t t : beside.chain) {
+			const std::vector<int> &tp = v.tracks[t].pieces;
+			if (!chain_point.empty() && !joined.empty() && !tp.empty() && ((joined.back() - tp.front()) % 8 + 8) % 8 == 0) chain_point.pop_back();
+			chain_point.insert(chain_point.end(), point[t].begin() + (chain_point.empty() ? 0 : 1), point[t].end());
+			joined.insert(joined.end(), tp.begin(), tp.end());
+		}
 		const std::vector<int> &pieces = v.tracks[b].pieces;
 		for (size_t k = 1; k < pieces.size(); k++) {
 			std::set<int> headings = {((pieces[k - 1] % 8) + 8) % 8, ((pieces[k] % 8) + 8) % 8};
@@ -1098,20 +1104,30 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						for (uint32_t k = lo + 1; k < hi; k++) all_zero = all_zero && may_zero[w[i].track][k];
 						if (all_zero) continue;
 					}
-					/* Two tracks meeting at a node, one ending there and the next starting there (every in-track of a 1 -> 2 or 2 -> 1 node continues into every out-track along a route): a wall at the end of one and a wall at the start of the other with only may-be-zero pieces between them are consecutive travel, as on one track. */
-					const auto continues = [&](const PlanarCellWall &a, const PlanarCellWall &b) {
-						const auto &to = map.expanded.lines[a.track].to;
-						const auto &from = map.expanded.lines[b.track].from;
-						if (to.port || from.port || to.index != from.index) return false;
-						for (uint32_t k = a.piece + 1; k < may_zero[a.track].size(); k++) {
-							if (!may_zero[a.track][k]) return false;
+					/* Two walls that both reach one node through only may-be-zero pieces of their own tracks (at a track's start or end) meet at that node: the node rule (D400) settles them, as walls sharing the node's point. */
+					const auto reaches = [&](const PlanarCellWall &w, bool at_end, uint32_t &node) {
+						const auto &end = at_end ? map.expanded.lines[w.track].to : map.expanded.lines[w.track].from;
+						if (end.port) return false;
+						if (at_end) {
+							for (uint32_t k = w.piece + 1; k < may_zero[w.track].size(); k++) {
+								if (!may_zero[w.track][k]) return false;
+							}
+						} else {
+							for (uint32_t k = 0; k < w.piece; k++) {
+								if (!may_zero[w.track][k]) return false;
+							}
 						}
-						for (uint32_t k = 0; k < b.piece; k++) {
-							if (!may_zero[b.track][k]) return false;
-						}
+						node = end.index;
 						return true;
 					};
-					if (w[i].track != w[j].track && (continues(w[i], w[j]) || continues(w[j], w[i]))) continue;
+					bool meet = false;
+					for (const bool ea : {false, true}) {
+						for (const bool eb : {false, true}) {
+							uint32_t na = 0, nb = 0;
+							if (reaches(w[i], ea, na) && reaches(w[j], eb, nb) && na == nb) meet = true;
+						}
+					}
+					if (w[i].track != w[j].track && meet) continue;
 					const std::array<std::array<uint32_t, 2>, 2> pi ={point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};
 					const std::array<std::array<uint32_t, 2>, 2> pj = {point[w[j].track][w[j].piece], point[w[j].track][w[j].piece + 1]};
 					bool shared = false;
