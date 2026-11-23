@@ -821,6 +821,30 @@ bool SegmentsMeetInOnePoint(const Point &p0, const Point &p1, const Point &q0, c
 	return lo == hi;
 }
 
+/** The point where the closed segments p0p1 and q0q1 meet (they must meet in exactly one point, see SegmentsMeetInOnePoint). */
+std::array<double, 2> MeetingPoint(const Point &p0, const Point &p1, const Point &q0, const Point &q1)
+{
+	const int dp[2] = {p1[0] - p0[0], p1[1] - p0[1]}, dq[2] = {q1[0] - q0[0], q1[1] - q0[1]};
+	const int d = dp[0] * dq[1] - dp[1] * dq[0];
+	if (d != 0) {
+		const int t = ((q0[0] - p0[0]) * dq[1] - (q0[1] - p0[1]) * dq[0]);
+		return {p0[0] + static_cast<double>(dp[0]) * t / d, p0[1] + static_cast<double>(dp[1]) * t / d};
+	}
+	/* Parallel or zero-length: the one shared point is an end of one of them. */
+	for (const Point *c : {&p0, &p1, &q0, &q1}) {
+		if (SegmentsMeetInOnePoint(*c, *c, p0, p1) && SegmentsMeetInOnePoint(*c, *c, q0, q1)) return {static_cast<double>((*c)[0]), static_cast<double>((*c)[1])};
+	}
+	return {static_cast<double>(p0[0]), static_cast<double>(p0[1])};
+}
+
+/** Whether the point x lies on the closed segment a b. */
+bool PointOnSegment(const std::array<double, 2> &x, const Point &a, const Point &b)
+{
+	constexpr double EPS = 1e-9;
+	const double cross = (b[0] - a[0]) * (x[1] - a[1]) - (b[1] - a[1]) * (x[0] - a[0]);
+	return std::abs(cross) <= EPS && std::min(a[0], b[0]) - EPS <= x[0] && x[0] <= std::max(a[0], b[0]) + EPS && std::min(a[1], b[1]) - EPS <= x[1] && x[1] <= std::max(a[1], b[1]) + EPS;
+}
+
 bool ConformityHolds(const Conformity &c, const std::vector<Points> &cur)
 {
 	const Points &a = cur[c.a], &b = cur[c.b];
@@ -1090,8 +1114,30 @@ std::optional<Contracted> ContractedVariant(const X1Fixture &f, const Geometry &
 			out.points[t].push_back(cur);
 		}
 	}
+	/* The remap works in the raw frame (before the translation), where the original drawing's points are also raw. */
+	const std::vector<Points> raw = out.points;
 	NormalisePoints(out.points);
 	const auto &map = f.v.structure.map;
+	/* The original (uncontracted) piece segment of a track, in the raw frame. */
+	const auto original_segment = [&](uint32_t track, size_t piece) {
+		const std::string &name = f.Name(track);
+		const std::vector<int> &h = f.heads.at(name);
+		Point cur = start_of.at(name);
+		const auto it = g.find(name);
+		Point from = cur;
+		for (size_t k = 0; k <= piece; k++) {
+			from = cur;
+			int len = 0;
+			if (it != g.end()) {
+				const auto l = it->second.find(static_cast<uint32_t>(k));
+				if (l != it->second.end()) len = l->second;
+			}
+			const int hh = ((h[k] % 8) + 8) % 8;
+			cur[0] += len * STEPS[hh][0];
+			cur[1] += len * STEPS[hh][1];
+		}
+		return std::pair<Point, Point>{from, cur};
+	};
 	for (uint32_t c = 0; c < map.crossings.size(); c++) {
 		const uint32_t t[2] = {map.crossings[c].a, map.crossings[c].b};
 		size_t pos[2];
@@ -1103,12 +1149,18 @@ std::optional<Contracted> ContractedVariant(const X1Fixture &f, const Geometry &
 			heading[i] = ((f.v.tracks[t[i]].pieces[f.v.tracks[t[i]].event_piece[pos[i]]] % 8) + 8) % 8;
 		}
 		const auto head_of = [&](uint32_t track, size_t piece) { return ((out.v.tracks[track].pieces[piece] % 8) + 8) % 8; };
+		/* The crossing's original point: where the two original event pieces meet in stage A's drawing. */
+		const auto [a0, a1] = original_segment(t[0], f.v.tracks[t[0]].event_piece[pos[0]]);
+		const auto [b0, b1] = original_segment(t[1], f.v.tracks[t[1]].event_piece[pos[1]]);
+		/* When the two original pieces do not meet in one point (a crossing moved off its pieces on purpose), the first same-heading pair that touches is taken. */
+		const bool has_point = SegmentsMeetInOnePoint(a0, a1, b0, b1);
+		const std::array<double, 2> at = has_point ? MeetingPoint(a0, a1, b0, b1) : std::array<double, 2>{0, 0};
 		bool found = false;
 		for (size_t i = 0; i < out.v.tracks[t[0]].pieces.size() && !found; i++) {
-			if (head_of(t[0], i) != heading[0]) continue;
+			if (head_of(t[0], i) != heading[0] || (has_point && !PointOnSegment(at, raw[t[0]][i], raw[t[0]][i + 1]))) continue;
 			for (size_t j = 0; j < out.v.tracks[t[1]].pieces.size() && !found; j++) {
-				if (head_of(t[1], j) != heading[1]) continue;
-				if (!SegmentsMeetInOnePoint(out.points[t[0]][i], out.points[t[0]][i + 1], out.points[t[1]][j], out.points[t[1]][j + 1])) continue;
+				if (head_of(t[1], j) != heading[1] || (has_point && !PointOnSegment(at, raw[t[1]][j], raw[t[1]][j + 1]))) continue;
+				if (!SegmentsMeetInOnePoint(raw[t[0]][i], raw[t[0]][i + 1], raw[t[1]][j], raw[t[1]][j + 1])) continue;
 				out.v.tracks[t[0]].event_piece[pos[0]] = static_cast<uint32_t>(i);
 				out.v.tracks[t[1]].event_piece[pos[1]] = static_cast<uint32_t>(j);
 				found = true;
@@ -6818,10 +6870,10 @@ static void StageBOptions(const X1Fixture &fb, const Contracted &cv, const std::
 }
 
 /** The invariant (slots step 2 pin): every row of stage B's program holds on the contracted points of a stage A drawing (fixed points, no solve). The drawings are the fixtures `t1-stagea.drawing.txt` and `t2-stagea.drawing.txt` (PLANAR_STAGEA_SAVE of the slots probe). */
-TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows (T1, T2)", "[junction][contraction][!shouldfail]")
+static void CheckContractedDrawingSatisfiesStageB(const std::string &name)
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
-	for (const std::string name : {"T1", "T2"}) {
+	{
 		std::string error, why;
 		const PlanarTopology topology = ParsePlanarTopology(PlanarTText(name[1] - '0'), &error);
 		REQUIRE(error.empty());
@@ -6884,13 +6936,23 @@ TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows (
 		const PlanarDrawResult result = CheckPlanarDrawable(plain, 15.0, sb);
 		INFO(name << " stage B program status: " << result.status);
 		CHECK(result.status == "built");
-		if (result.status != "built") continue;
+		if (result.status != "built") return;
 		const PlanarProgramCheck check = CheckPlanarProgramOnPoints(result.program, cv->points);
 		std::string tags;
 		for (const std::string &tag : check.broken) tags += "\n  " + tag;
 		INFO(name << " broken rows (" << check.broken.size() << "):" << tags);
 		CHECK(check.broken.empty());
 	}
+}
+
+TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows (T1)", "[junction][contraction][!shouldfail]")
+{
+	CheckContractedDrawingSatisfiesStageB("T1");
+}
+
+TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows (T2)", "[junction][contraction][!shouldfail]")
+{
+	CheckContractedDrawingSatisfiesStageB("T2");
 }
 
 /** Contraction diagnosis (hidden): the pinned fixtures before and after ContractedVariant, to stdout; PLANAR_CDIAG_T = 1 or 2 selects the topology. */
