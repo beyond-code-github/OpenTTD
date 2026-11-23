@@ -44,10 +44,10 @@ namespace {
 using Point = std::array<int, 2>;
 using Points = std::vector<Point>;
 
-/** X1's variant with B1's shape text and crossing piece as given, loaded; the flex pairs are not placed. */
-bool LoadEncVariant(const std::string &b1_shape, const std::string &b1_at, PlanarShapeVariant &v, std::string &why, std::vector<std::string> *promise = nullptr)
+/** X1's variant with B1's shape text and crossing piece as given, loaded; n_at is the N port's declared line positions (tiles; the base's C1 and B1 ends); the flex pairs are not placed. */
+bool LoadEncVariant(const std::string &b1_shape, const std::string &b1_at, PlanarShapeVariant &v, std::string &why, std::vector<std::string> *promise = nullptr, const std::string &n_at = "3 5")
 {
-	const std::string topo = "topology X1\nport W in E: AC1\nport S in N: BD1\nport N out N: C1, B1\nport E out E: A1, D1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\ncross A1: B1<\ncross B1: A1>\n";
+	const std::string topo = "topology X1\nport W in E: AC1\nport S in N: BD1\nport N out N @ " + n_at + ": C1, B1\nport E out E @ 2 4: A1, D1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\ncross A1: B1<\ncross B1: A1>\n";
 	std::string error;
 	const PlanarTopology t = ParsePlanarTopology(topo, &error);
 	REQUIRE(error.empty());
@@ -144,7 +144,6 @@ struct X1Fixture {
 		options.strict_span = options.strict_zero = options.crossing_flanks = true;
 		options.node_gaps = true;
 		options.bays = options.curves = false;
-		options.skip_rows = {"port "};
 	}
 
 	/** The headings (checked against the variant's pieces) and the base geometry. */
@@ -222,7 +221,7 @@ X2Load LoadX2Enc()
 		PlanarShapeVariant v;
 		std::string why;
 		std::vector<std::string> promise;
-		if (!LoadEncVariant(shape, "A1@1", v, why, &promise)) {
+		if (!LoadEncVariant(shape, "A1@1", v, why, &promise, "3 7")) {
 			out.log += "shape B1: " + shape + " refused: " + why + "\n";
 			continue;
 		}
@@ -355,7 +354,7 @@ struct M1Fixture : X1Fixture {
 	std::map<std::string, std::vector<uint32_t>> holders; ///< Per track, the pieces that hold its base runs.
 
 	M1Fixture() : M1Fixture(LoadTextEnc(
-		"topology M1\nport W in E: AC1\nport S in N: BD1\nport N out N: C1\nport E out E: AB1, D1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\nnode A1, B1 -> AB1\n",
+		"topology M1\nport W in E: AC1\nport S in N: BD1\nport N out N: C1\nport E out E @ 2 5: AB1, D1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\nnode A1, B1 -> AB1\n",
 		"straight AC1: A1\nstraight BD1: B1\nstraight AB1: A1\n",
 		"shape AC1: 2\nshape C1: 1 0\nshape A1: 2\nshape BD1: 0\nshape B1: 0 1\nshape D1: 1 2\nshape AB1: 2\n")) {}
 
@@ -623,12 +622,13 @@ struct Group {
 };
 
 struct Tally {
-	std::array<uint32_t, 6> counts{}; ///< Polylines: both accept, both reject, too strict, too loose; then off grid geometries, then other shape.
-	std::array<uint32_t, 6> geoms{}; ///< The enumerated geometries behind each.
+	std::array<uint32_t, 7> counts{}; ///< Polylines: both accept, both reject, too strict, too loose; then off grid geometries, then other shape, then off interface.
+	std::array<uint32_t, 7> geoms{}; ///< The enumerated geometries behind each.
 	std::set<std::string> seen; ///< The polylines counted.
 	std::map<std::string, Group> strict;
 	std::map<std::string, Group> loose;
 	std::vector<Example> other; ///< The first other shape polylines.
+	std::vector<Example> off_interface; ///< The first off interface polylines (the domain accepts them, only port rows reject them).
 };
 
 uint32_t g_corridor_rows_seen = 0; ///< The corridor rows over the on-grid contracted variants judged in the last report.
@@ -641,7 +641,7 @@ std::string FamilyOf(const std::string &tag)
 	return tag.substr(0, tag.find(' '));
 }
 
-const char *const CLASS_NAMES[6] = {"both accept", "both reject", "too strict", "too loose", "off grid (geometries)", "other shape"};
+const char *const CLASS_NAMES[7] = {"both accept", "both reject", "too strict", "too loose", "off grid (geometries)", "other shape", "off interface"};
 
 /** A polyline's class and its example text, from the first geometry that had it. */
 struct PolyClass {
@@ -1113,6 +1113,15 @@ struct Readouts {
 	std::vector<PlanarPointRow> lead; ///< The node lead rows (none when the rule set has no lead).
 };
 
+/** Whether no keep-apart pair, no lead row (when the rule set has them) and no turn rule rejects the polyline: only program rows can. */
+bool OnlyProgramRowsReject(const X1Fixture &f, const Contracted &cv, const Readouts &ro)
+{
+	const bool per_track = std::ranges::all_of(cv.v.tracks, [](const PlanarShapeTrack &tr) { return std::ranges::adjacent_find(tr.pieces, [](int a, int b) { return std::abs(a - b) > 1; }) == tr.pieces.end(); });
+	return per_track && NodeTurnsHold(f, cv)
+		&& std::ranges::all_of(ro.keep.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, cv.points); })
+		&& std::ranges::all_of(ro.lead, [&](const PlanarPointRow &r) { return PlanarPointRowHolds(r, cv.points); });
+}
+
 /** Judge our keep-apart rules against the domain on a fixture's configurations and write the report. */
 void RunEncoding(const X1Fixture &f, const char *report_path, const std::string &title, const std::vector<Config> &configs, const std::string &header, const char *rules_override = nullptr, int *base_verdict = nullptr)
 {
@@ -1261,7 +1270,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 
 	/** Judge one geometry into the tallies (the class is cached per polyline). */
 	auto judge = [&](const Config &cfg, Tally &tally, const Geometry &g, const std::string &varied, const std::vector<Points> &points, bool on_grid) {
-		enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, OFF_GRID, OTHER_SHAPE } c;
+		enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, OFF_GRID, OTHER_SHAPE, OFF_INTERFACE } c;
 		std::string pkey;
 		const PolyClass *pc = nullptr;
 		if (!on_grid && !grid) {
@@ -1286,7 +1295,12 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 						g_corridor_rows_seen += corridor_rows(ro);
 					}
 					const bool accept = accepts(*cv, ro);
-					if (d.legal) {
+					/* Off interface: the rows reject only through program rows tagged `port ` (the hub's interface, not tile legality). */
+					const std::vector<std::string> broken = CheckPlanarProgramOnPoints(ro.program.program, cv->points).broken;
+					const bool only_port = !accept && !broken.empty() && std::ranges::all_of(broken, [](const std::string &b) { return b.starts_with("port "); }) && OnlyProgramRowsReject(f, *cv, ro);
+					if (d.legal && only_port) {
+						nc.c = OFF_INTERFACE;
+					} else if (d.legal) {
 						nc.c = accept ? BOTH_ACCEPT : STRICT;
 					} else {
 						nc.c = accept ? LOOSE : BOTH_REJECT;
@@ -1306,6 +1320,20 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 							nc.detail += "      program row broken: " + b + "\n";
 						}
 						nc.key = Join(kept);
+					} else if (nc.c == OFF_INTERFACE) {
+						std::ostringstream out;
+						out << "      polyline " << pkey << "\n      contracted pieces (heading x length):";
+						for (uint32_t t = 0; t < f.n; t++) {
+							out << " " << f.Name(t) << "[";
+							for (size_t k = 0; k < cv->v.tracks[t].pieces.size(); k++) {
+								const Point &a = cv->points[t][k], &b = cv->points[t][k + 1];
+								out << (k == 0 ? "" : ",") << cv->v.tracks[t].pieces[k] << "x" << std::max(std::abs(b[0] - a[0]), std::abs(b[1] - a[1]));
+							}
+							out << "]";
+						}
+						out << "\n";
+						for (const std::string &b : broken) out << "      port row broken: " << b << "\n";
+						nc.detail = out.str();
 					} else if (nc.c == LOOSE) {
 						std::set<std::string> broke;
 						std::ostringstream out;
@@ -1351,10 +1379,11 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 				x->counts[c]++;
 				continue;
 			}
-			if (c == OTHER_SHAPE) {
+			if (c == OTHER_SHAPE || c == OFF_INTERFACE) {
 				if (x->seen.insert(pkey).second) {
 					x->counts[c]++;
-					if (x->other.size() < 3) x->other.push_back({varied, pc->detail});
+					std::vector<Example> &list = c == OTHER_SHAPE ? x->other : x->off_interface;
+					if (list.size() < (c == OTHER_SHAPE ? 3U : 1U)) list.push_back({varied, pc->detail});
 				}
 				continue;
 			}
@@ -1513,8 +1542,9 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	out << "enumeration wall " << wall << " s\n\n";
 	auto write = [&](const std::string &title, const Tally &t) {
 		out << "== " << title << " ==\n";
-		for (int c = 0; c < 6; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << (c == 4 ? "" : " polylines") << " (" << t.geoms[c] << " geometries)\n";
+		for (int c = 0; c < 7; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << (c == 4 ? "" : " polylines") << " (" << t.geoms[c] << " geometries)\n";
 		for (const Example &e : t.other) out << "    other shape, varied: " << e.varied << "\n" << e.detail;
+		for (const Example &e : t.off_interface) out << "    off interface, varied: " << e.varied << "\n" << e.detail;
 		for (int kind = 0; kind < 2; kind++) {
 			const auto &groups = kind == 0 ? t.strict : t.loose;
 			out << (kind == 0 ? " too strict, by the kept values of the failing pairs:\n" : " too loose, by domain break rules:\n");
@@ -1544,7 +1574,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	out.close();
 	for (const Config &cfg : configs) {
 		const Tally &t = per[cfg.name];
-		WARN(cfg.name << " (polylines): both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", off grid geometries " << t.counts[4] << ", other shape " << t.counts[5] << " (geometries " << t.geoms[5] << "), wall " << cfg_wall[cfg.name] << " s");
+		WARN(cfg.name << " (polylines): both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", off grid geometries " << t.counts[4] << ", other shape " << t.counts[5] << " (geometries " << t.geoms[5] << "), off interface " << t.counts[6] << " (geometries " << t.geoms[6] << "), wall " << cfg_wall[cfg.name] << " s");
 	}
 	WARN("enumeration wall " << wall << " s");
 }
@@ -1812,7 +1842,6 @@ TEST_CASE("planar draw: port_zero holds a zero D412 line at 0 and frees an ordin
 		from[ac1] = {travel};
 		PlanarDrawOptions o = f.options;
 		o.strict_span = o.strict_zero = o.crossing_flanks = false;
-		o.skip_rows.clear(); /* The fixture skips the rows tagged "port " (the box-edge rows), which includes `port zero`. */
 		o.program_out = true;
 		o.build_only = true;
 		o.grid = true;
@@ -1821,7 +1850,7 @@ TEST_CASE("planar draw: port_zero holds a zero D412 line at 0 and frees an ordin
 		const PlanarDrawResult r = CheckPlanarDrawable(plain, 5.0, o);
 		REQUIRE(r.status == "built");
 		const PlanarProgram &pr = r.program;
-		const bool row = std::ranges::any_of(pr.rows, [](const PlanarProgram::Row &w) { return w.tag == "port zero AC1"; });
+		const bool row = std::ranges::any_of(pr.rows, [](const PlanarProgram::Row &w) { return w.tag == "portzero AC1"; });
 		/* AC1's length variables: the variables with a coefficient in its `piece AC1 <i>` rows that are lengths (group axis or diagonal). */
 		std::set<uint32_t> lengths;
 		for (const PlanarProgram::Row &w : pr.rows) {
@@ -2075,6 +2104,7 @@ TEST_CASE("planar domain: the grid rows reject an off-grid drawing", "[junction]
 	/* X1's base shifted by one half tile in x on every track: every corner is off the grid. */
 	X1Fixture f;
 	for (auto &[name, start] : f.starts) start[0] += 1;
+	f.options.skip_rows = {"port "}; /* The shift also moves the ports off their box edges; this test judges the grid rows only. */
 	const std::vector<Points> points = f.PointsOf(f.base);
 	bool all_off = true;
 	for (const Points &p : points) all_off = all_off && !RasterPlanarDomainTrack(p).rule.empty();
@@ -2630,4 +2660,75 @@ TEST_CASE("planar domain: our keep-apart against the domain on P1", "[.][planard
 	std::vector<Config> configs;
 	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
 	RunEncoding(f, report_path, "P1", configs, f.Header());
+}
+
+namespace {
+
+/** The rows of a polyline's whole program (as the read-out builds it, strict rules off) that its contracted points break. */
+std::vector<std::string> BrokenRows(const X1Fixture &f, const Geometry &g, bool skip_port_rows = false)
+{
+	const std::optional<Contracted> cv = ContractedVariant(f, g);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	PlanarDrawOptions o = f.options;
+	o.strict_span = o.strict_zero = o.crossing_flanks = false;
+	if (skip_port_rows) o.skip_rows = {"port "};
+	o.keep_apart_out = true;
+	o.program_out = true;
+	o.build_only = true;
+	const PlanarDrawResult r = CheckPlanarDrawable(plain, 5.0, o);
+	REQUIRE(r.status == "built");
+	return CheckPlanarProgramOnPoints(r.program, cv->points).broken;
+}
+
+/** REQUIRE that a fixture's base polyline breaks no row tagged `port `. */
+void RequireBasePortRows(const char *name, const X1Fixture &f)
+{
+	const std::vector<std::string> broken = BrokenRows(f, f.base);
+	for (const std::string &b : broken) {
+		INFO(name << " base breaks " << b);
+		CHECK_FALSE(b.starts_with("port "));
+	}
+}
+
+} // namespace
+
+TEST_CASE("planar domain: every fixture's base keeps its port rows", "[junction][planar][planardomain]")
+{
+	RequireBasePortRows("X1", X1Fixture());
+	RequireBasePortRows("X2", X2Fixture());
+	RequireBasePortRows("M1", M1Fixture());
+	RequireBasePortRows("K1", K1Fixture());
+	RequireBasePortRows("L1", L1Fixture());
+	RequireBasePortRows("Y1", Y1Fixture());
+	RequireBasePortRows("P1", P1Fixture());
+}
+
+TEST_CASE("planar domain: two port lines on one point are rejected by the port rows", "[junction][planar][planardomain]")
+{
+	/* L1's N port side has two out lines, A1 and A2, each ending on the box edge heading north. One axis piece parallel to the side (heading east or west) moves its line's end along the edge only: on either line, the piece whose new length is non-negative puts that line's end on the other's. */
+	const L1Fixture f;
+	const std::vector<Points> base = f.PointsOf(f.base);
+	Geometry g = f.base;
+	bool moved = false;
+	for (const std::string &mover : {"A1", "A2"}) {
+		const uint32_t t = f.idx.at(mover), other = f.idx.at(mover == "A1" ? "A2" : "A1");
+		const int delta = base[other].back()[0] - base[t].back()[0];
+		const std::vector<int> &h = f.heads.at(mover);
+		for (uint32_t k = 0; k < h.size() && !moved; k++) {
+			const int hh = ((h[k] % 8) + 8) % 8;
+			if (hh != 2 && hh != 6) continue;
+			const auto it = f.base.at(mover).find(k);
+			const int length = (it == f.base.at(mover).end() ? 0 : it->second) + (hh == 2 ? delta : -delta);
+			if (length < 0) continue;
+			g[mover][k] = length;
+			moved = true;
+		}
+		if (moved) break;
+	}
+	REQUIRE(moved);
+	CHECK(f.PointsOf(g)[f.idx.at("A2")].back() == f.PointsOf(g)[f.idx.at("A1")].back());
+	const auto port_rows = [](const std::vector<std::string> &broken) { return std::ranges::count_if(broken, [](const std::string &b) { return b.starts_with("port N gap"); }); };
+	CHECK(port_rows(BrokenRows(f, g)) == 1);
 }
