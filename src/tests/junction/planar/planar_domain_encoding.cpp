@@ -6716,6 +6716,7 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 			sa.elastic_integer = std::getenv("PLANAR_STAGEA_ELASTIC_INT") != nullptr;
 		}
 		if (std::getenv("PLANAR_STAGEA_NOGRID") != nullptr) sa.grid = false;
+		if (const char *path = std::getenv("PLANAR_STAGEA_EXPORT"); path != nullptr) sa.export_path = path;
 		if (const char *skip = std::getenv("PLANAR_STAGEA_SKIP"); skip != nullptr) {
 			/* Comma-separated skip_rows prefixes, e.g. "flank D1 ,flank D2 " (a bisection aid). */
 			std::string all = skip;
@@ -6970,6 +6971,7 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 			sa.elastic_integer = std::getenv("PLANAR_STAGEA_ELASTIC_INT") != nullptr;
 		}
 		if (std::getenv("PLANAR_STAGEA_NOGRID") != nullptr) sa.grid = false;
+		if (const char *path = std::getenv("PLANAR_STAGEA_EXPORT"); path != nullptr) sa.export_path = path;
 		if (const char *skip = std::getenv("PLANAR_STAGEA_SKIP"); skip != nullptr) {
 			/* Comma-separated skip_rows prefixes, e.g. "flank D1 ,flank D2 " (a bisection aid). */
 			std::string all = skip;
