@@ -6818,7 +6818,7 @@ static void StageBOptions(const X1Fixture &fb, const Contracted &cv, const std::
 }
 
 /** The invariant (slots step 2 pin): every row of stage B's program holds on the contracted points of a stage A drawing (fixed points, no solve). The drawings are the fixtures `t1-stagea.drawing.txt` and `t2-stagea.drawing.txt` (PLANAR_STAGEA_SAVE of the slots probe). */
-TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows (T1, T2)", "[junction][planardraw][contraction][!shouldfail]")
+TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows (T1, T2)", "[junction][contraction][!shouldfail]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	for (const std::string name : {"T1", "T2"}) {
@@ -6890,6 +6890,142 @@ TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows (
 		for (const std::string &tag : check.broken) tags += "\n  " + tag;
 		INFO(name << " broken rows (" << check.broken.size() << "):" << tags);
 		CHECK(check.broken.empty());
+	}
+}
+
+/** Contraction diagnosis (hidden): the pinned fixtures before and after ContractedVariant, to stdout; PLANAR_CDIAG_T = 1 or 2 selects the topology. */
+TEST_CASE("contraction diag", "[.][contractiondiag]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const char *which = std::getenv("PLANAR_CDIAG_T");
+	for (const std::string name : {"T1", "T2"}) {
+		if (which != nullptr && name[1] != which[0]) continue;
+		std::string error, why;
+		const PlanarTopology topology = ParsePlanarTopology(PlanarTText(name[1] - '0'), &error);
+		const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+		PlanarShapeVariant base;
+		REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+		for (PlanarShapeTrack &track : base.tracks) {
+			std::vector<uint32_t> middles = track.flex;
+			std::ranges::sort(middles);
+			for (size_t j = middles.size(); j-- > 0;) {
+				const uint32_t m = middles[j];
+				track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+				for (uint32_t &e : track.event_piece) {
+					if (e > m) e -= 2;
+				}
+			}
+			track.flex.clear();
+		}
+		PlanarShapeVariant v = base;
+		REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+		X1Fixture fa(v);
+		Geometry g;
+		std::map<std::string, std::vector<int>> heads;
+		{
+			std::string lower = name;
+			lower[0] = 't';
+			std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/" + lower + "-stagea.drawing.txt");
+			REQUIRE(in.good());
+			std::string word, track_name;
+			while (in >> word) {
+				int x, y;
+				in >> track_name >> x >> y;
+				fa.starts[track_name] = {x, y};
+				std::string rest;
+				std::getline(in, rest);
+				std::istringstream lens(rest);
+				uint32_t k = 0;
+				for (int len; lens >> len; k++) g[track_name][k] = len;
+			}
+			for (uint32_t t = 0; t < fa.n; t++) heads[fa.Name(t)] = v.tracks[t].pieces;
+			fa.SetUp(heads, g);
+		}
+		const std::vector<Points> unc = fa.PointsOf(g);
+		const std::optional<Contracted> cv = ContractedVariant(fa, g);
+		REQUIRE(cv.has_value());
+		const auto &map = v.structure.map;
+		std::cout << "=== " << name << "\n";
+		if (const char *tn = std::getenv("PLANAR_CDIAG_TRACK"); tn != nullptr) {
+			for (uint32_t t = 0; t < fa.n; t++) {
+				if (map.tracks[t].name != tn) continue;
+				std::cout << "track " << tn << " #" << t << " uncontracted:";
+				for (size_t k = 0; k < v.tracks[t].pieces.size(); k++) {
+					const auto l = g[fa.Name(t)].find(k);
+					std::cout << std::format(" {}:h{}/{}{} ({},{})", k, v.tracks[t].pieces[k], l == g[fa.Name(t)].end() ? 0 : l->second, std::ranges::find(v.tracks[t].flex, k) != v.tracks[t].flex.end() ? "F" : "", unc[t][k][0], unc[t][k][1]);
+				}
+				std::cout << std::format(" end ({},{})\n  contracted:", unc[t].back()[0], unc[t].back()[1]);
+				for (size_t k = 0; k < cv->v.tracks[t].pieces.size(); k++) std::cout << std::format(" {}:h{} ({},{})", k, cv->v.tracks[t].pieces[k], cv->points[t][k][0], cv->points[t][k][1]);
+				std::cout << std::format(" end ({},{})\n", cv->points[t].back()[0], cv->points[t].back()[1]);
+			}
+		}
+		/* Stage A's program on the uncontracted points (stage A options: node_gaps off). */
+		{
+			PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
+			sa.node_gaps = false;
+			sa.build_only = true;
+			sa.program_out = true;
+			const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, sa);
+			std::cout << "stage A program status " << r.status << "\n";
+			if (r.status == "built") {
+				std::vector<std::vector<std::array<int, 2>>> pts(unc.begin(), unc.end());
+				const PlanarProgramCheck c = CheckPlanarProgramOnPoints(r.program, pts);
+				std::cout << "stage A on uncontracted points broken:";
+				for (const std::string &t : c.broken) std::cout << " [" << t << "]";
+				std::cout << "\n";
+			}
+		}
+		/* Stage B's program on the contracted points. */
+		{
+			PlanarShapeVariant plain = cv->v;
+			for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+			Contracted plain_cv;
+			plain_cv.v = plain;
+			plain_cv.points = cv->points;
+			X1Fixture fb(plain);
+			const std::vector<std::vector<double>> ref_port_zero = PortZeroFrom(cv->points);
+			const std::vector<std::vector<double>> ref_along = AlongFrom(plain_cv);
+			PlanarDrawOptions sb, listing;
+			StageBOptions(fb, *cv, ref_port_zero, ref_along, sb, listing);
+			sb.build_only = true;
+			sb.program_out = true;
+			const PlanarDrawResult r = CheckPlanarDrawable(plain, 15.0, sb);
+			std::cout << "stage B program status " << r.status << "\n";
+			if (r.status == "built") {
+				const PlanarProgramCheck c = CheckPlanarProgramOnPoints(r.program, cv->points);
+				std::cout << "stage B on contracted points broken:";
+				for (const std::string &t : c.broken) std::cout << " [" << t << "]";
+				std::cout << "\n";
+			}
+		}
+		/* Structures: separator, crossings with the separator pieces before and after. */
+		for (size_t s = 0; s < v.structure.structures.size(); s++) {
+			const PlanarStructure &st = v.structure.structures[s];
+			if (st.crossings.empty()) continue;
+			std::cout << "structure " << s << " separator " << map.tracks[st.separator].name << " (track " << st.separator << ")\n";
+			for (const uint32_t c : st.crossings) {
+				const uint32_t other = map.crossings[c].a == st.separator ? map.crossings[c].b : map.crossings[c].a;
+				const size_t pos = static_cast<size_t>(std::ranges::find(map.events[st.separator], c) - map.events[st.separator].begin());
+				const uint32_t before = v.tracks[st.separator].event_piece[pos], after = cv->v.tracks[st.separator].event_piece[pos];
+				std::cout << std::format("  crossing {} with {}: separator piece {} (h{}, len {}) -> {} (h{})\n", c, map.tracks[other].name, before, v.tracks[st.separator].pieces[before], g[fa.Name(st.separator)][before], after, cv->v.tracks[st.separator].pieces[after]);
+				const size_t opos = static_cast<size_t>(std::ranges::find(map.events[other], c) - map.events[other].begin());
+				const uint32_t ob = v.tracks[other].event_piece[opos], oa = cv->v.tracks[other].event_piece[opos];
+				std::cout << std::format("    sep uncontracted seg ({},{})->({},{}); crosser piece {} (h{}) ({},{})->({},{}) -> contracted {} (h{}) ({},{})->({},{}); sep contracted seg ({},{})->({},{})\n",
+					unc[st.separator][before][0], unc[st.separator][before][1], unc[st.separator][before + 1][0], unc[st.separator][before + 1][1],
+					ob, v.tracks[other].pieces[ob], unc[other][ob][0], unc[other][ob][1], unc[other][ob + 1][0], unc[other][ob + 1][1],
+					oa, cv->v.tracks[other].pieces[oa], cv->points[other][oa][0], cv->points[other][oa][1], cv->points[other][oa + 1][0], cv->points[other][oa + 1][1],
+					cv->points[st.separator][after][0], cv->points[st.separator][after][1], cv->points[st.separator][after + 1][0], cv->points[st.separator][after + 1][1]);
+			}
+			const uint32_t sep = st.separator;
+			std::cout << "  separator uncontracted headings/lens:";
+			for (size_t k = 0; k < v.tracks[sep].pieces.size(); k++) {
+				const auto l = g[fa.Name(sep)].find(k);
+				std::cout << std::format(" {}:h{}/{}{}", k, v.tracks[sep].pieces[k], l == g[fa.Name(sep)].end() ? 0 : l->second, std::ranges::find(v.tracks[sep].flex, k) != v.tracks[sep].flex.end() ? "F" : "");
+			}
+			std::cout << "\n  separator contracted pieces:";
+			for (size_t k = 0; k < cv->v.tracks[sep].pieces.size(); k++) std::cout << std::format(" {}:h{} ({},{})->({},{}){}", k, cv->v.tracks[sep].pieces[k], cv->points[sep][k][0], cv->points[sep][k][1], cv->points[sep][k + 1][0], cv->points[sep][k + 1][1], std::ranges::find(cv->v.tracks[sep].steps, k) != cv->v.tracks[sep].steps.end() ? " step" : "");
+			std::cout << "\n";
+		}
 	}
 }
 
