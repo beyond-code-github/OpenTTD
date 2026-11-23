@@ -6705,8 +6705,10 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		sa.keep_apart_out = true;
 		sa.only_pairs_on = true;
 		sa.flank_turn = std::getenv("PLANAR_FLANK") != nullptr;
+		if (const char *k = std::getenv("PLANAR_FLANK_K"); k != nullptr) sa.flank_k = std::atof(k);
+		if (std::getenv("PLANAR_STAGEA_NOTIDY") != nullptr) sa.tidy = false;
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
-		out << std::format("- {} stage A (no keep-apart rows, tidy on, flank rows {}): {} {} ms, flank rows written {}\n", tag, sa.flank_turn ? "on" : "off", a.status, static_cast<int>(a.ms), a.flank_rows);
+		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", a.status, static_cast<int>(a.ms), a.flank_rows);
 		flush();
 		REQUIRE(a.status == "Optimal");
 
@@ -6884,8 +6886,10 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 		sa.keep_apart_out = true;
 		sa.only_pairs_on = true;
 		sa.flank_turn = std::getenv("PLANAR_FLANK") != nullptr;
+		if (const char *k = std::getenv("PLANAR_FLANK_K"); k != nullptr) sa.flank_k = std::atof(k);
+		if (std::getenv("PLANAR_STAGEA_NOTIDY") != nullptr) sa.tidy = false;
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
-		out << std::format("- {} stage A (no keep-apart rows, tidy on, flank rows {}): {} {} ms, flank rows written {}\n", tag, sa.flank_turn ? "on" : "off", a.status, static_cast<int>(a.ms), a.flank_rows);
+		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", a.status, static_cast<int>(a.ms), a.flank_rows);
 		flush();
 		REQUIRE(a.status == "Optimal");
 

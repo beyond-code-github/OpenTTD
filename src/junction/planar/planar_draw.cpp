@@ -878,7 +878,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					}
 					if (!conflict) continue;
 					if (var_upper[length[t][flank].variable] == 0) return unsupported(fmt::format("flank_turn: the flank of track {} insert {} is capped at 0", map.tracks[t].name, m));
-					row({{length[t][flank].variable, options.coord_max * length[t][flank].coefficient}, {length[t][m].variable, -length[t][m].coefficient}}, 0, JunctionMilp::INF, fmt::format("flank {} {} {}", map.tracks[t].name, m, after ? "after" : "before"));
+					row({{length[t][flank].variable, options.flank_k * length[t][flank].coefficient}, {length[t][m].variable, -length[t][m].coefficient}}, 0, JunctionMilp::INF, fmt::format("flank {} {} {}", map.tracks[t].name, m, after ? "after" : "before"));
 					result.flank_rows++;
 				}
 			}
