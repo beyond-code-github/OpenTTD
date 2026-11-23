@@ -6704,8 +6704,9 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		sa.node_gaps = false;
 		sa.keep_apart_out = true;
 		sa.only_pairs_on = true;
+		sa.flank_turn = std::getenv("PLANAR_FLANK") != nullptr;
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
-		out << std::format("- {} stage A (no keep-apart rows, tidy on): {} {} ms\n", tag, a.status, static_cast<int>(a.ms));
+		out << std::format("- {} stage A (no keep-apart rows, tidy on, flank rows {}): {} {} ms, flank rows written {}\n", tag, sa.flank_turn ? "on" : "off", a.status, static_cast<int>(a.ms), a.flank_rows);
 		flush();
 		REQUIRE(a.status == "Optimal");
 
@@ -6882,8 +6883,9 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 		sa.node_gaps = false;
 		sa.keep_apart_out = true;
 		sa.only_pairs_on = true;
+		sa.flank_turn = std::getenv("PLANAR_FLANK") != nullptr;
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
-		out << std::format("- {} stage A (no keep-apart rows, tidy on): {} {} ms\n", tag, a.status, static_cast<int>(a.ms));
+		out << std::format("- {} stage A (no keep-apart rows, tidy on, flank rows {}): {} {} ms, flank rows written {}\n", tag, sa.flank_turn ? "on" : "off", a.status, static_cast<int>(a.ms), a.flank_rows);
 		flush();
 		REQUIRE(a.status == "Optimal");
 
@@ -7018,4 +7020,136 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 		out << "\n";
 		flush();
 	}
+}
+
+TEST_CASE("planar slots: T1 stage A with flank rows contracts within the turn rules (D448)", "[junction][slotsflank][slow]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+
+	/* Stage A: no keep-apart rows, tidy on (D447), flank rows on (D448). */
+	X1Fixture fa(v);
+	PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
+	sa.node_gaps = false;
+	sa.keep_apart_out = true;
+	sa.only_pairs_on = true;
+	sa.flank_turn = true;
+	const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
+	REQUIRE(a.status == "Optimal");
+	CHECK(a.flank_rows > 0);
+
+	Geometry g;
+	for (uint32_t t = 0; t < fa.n; t++) {
+		for (uint32_t k = 0; k < a.lengths[t].size(); k++) {
+			REQUIRE(std::abs(a.lengths[t][k] - std::round(a.lengths[t][k])) < 1e-6);
+			g[fa.Name(t)][k] = static_cast<int>(std::lround(a.lengths[t][k]));
+		}
+	}
+	{
+		std::map<std::string, std::vector<int>> heads;
+		for (uint32_t t = 0; t < fa.n; t++) {
+			heads[fa.Name(t)] = v.tracks[t].pieces;
+			fa.starts[fa.Name(t)] = a.points[t].front();
+		}
+		fa.SetUp(heads, g);
+	}
+	const std::optional<Contracted> cv = ContractedVariant(fa, g);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	for (size_t t = 0; t < plain.tracks.size(); t++) {
+		const auto &ps = plain.tracks[t].pieces;
+		const auto bad = std::ranges::adjacent_find(ps, [](int x, int y) { return std::abs(x - y) > 1; });
+		INFO("track " << t << " pieces " << (bad - ps.begin()) << " and " << (bad - ps.begin() + 1));
+		CHECK(bad == ps.end());
+	}
+	std::vector<std::string> lines;
+	const bool node_ok = NodeTurnsHold(X1Fixture(plain), Contracted{plain, cv->points}, &lines);
+	std::string text;
+	for (const std::string &line : lines) text += line + "; ";
+	INFO("node turns: " << text);
+	CHECK(node_ok);
+}
+
+TEST_CASE("planar slots: T1 stage A without flank rows breaks the turn rules (D448 other side)", "[junction][slotsflank][slow]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+
+	X1Fixture fa(v);
+	PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
+	sa.node_gaps = false;
+	sa.keep_apart_out = true;
+	sa.only_pairs_on = true;
+	sa.flank_turn = false;
+	const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
+	REQUIRE(a.status == "Optimal");
+	CHECK(a.flank_rows == 0);
+
+	Geometry g;
+	for (uint32_t t = 0; t < fa.n; t++) {
+		for (uint32_t k = 0; k < a.lengths[t].size(); k++) {
+			REQUIRE(std::abs(a.lengths[t][k] - std::round(a.lengths[t][k])) < 1e-6);
+			g[fa.Name(t)][k] = static_cast<int>(std::lround(a.lengths[t][k]));
+		}
+	}
+	{
+		std::map<std::string, std::vector<int>> heads;
+		for (uint32_t t = 0; t < fa.n; t++) {
+			heads[fa.Name(t)] = v.tracks[t].pieces;
+			fa.starts[fa.Name(t)] = a.points[t].front();
+		}
+		fa.SetUp(heads, g);
+	}
+	const std::optional<Contracted> cv = ContractedVariant(fa, g);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	bool turns_ok = true;
+	for (size_t t = 0; t < plain.tracks.size(); t++) {
+		const auto &ps = plain.tracks[t].pieces;
+		if (std::ranges::adjacent_find(ps, [](int x, int y) { return std::abs(x - y) > 1; }) != ps.end()) turns_ok = false;
+	}
+	const bool node_ok = NodeTurnsHold(X1Fixture(plain), Contracted{plain, cv->points});
+	CHECK((!turns_ok || !node_ok));
 }

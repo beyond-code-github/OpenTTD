@@ -838,6 +838,53 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 	}
 
+	/* Flank rows (D448 part 1): a used flex insert keeps its flank when a piece in the zero-able run beyond that flank, or a neighbour at the node, is more than one eighth from the insert's heading. */
+	if (options.flank_turn) {
+		const auto heading = [](int h) { return ((h % 8) + 8) % 8; };
+		const auto dist = [&](int a, int b) {
+			const int d = (heading(a) - heading(b) + 8) % 8;
+			return std::min(d, 8 - d);
+		};
+		for (size_t t = 0; t < nt; t++) {
+			if (zero_track[t]) continue;
+			const std::vector<int> &pieces = v.tracks[t].pieces;
+			const PlanarLine &line = map.expanded.lines[t];
+			for (const uint32_t m : v.tracks[t].flex) {
+				if (var_upper[length[t][m].variable] == 0) continue;
+				for (const bool after : {false, true}) {
+					const size_t flank = after ? static_cast<size_t>(m) + 1 : static_cast<size_t>(m) - 1;
+					const int h = heading(pieces[m]);
+					bool conflict = false;
+					bool stopped = false;
+					for (size_t q = after ? static_cast<size_t>(m) + 2 : static_cast<size_t>(m) - 2; after ? q < pieces.size() : q != SIZE_MAX; after ? q++ : q--) {
+						if (dist(h, pieces[q]) > 1) conflict = true;
+						if (var_lower[length[t][q].variable] >= 1) {
+							stopped = true;
+							break;
+						}
+					}
+					const PlanarEnd &end = after ? line.to : line.from;
+					if (!conflict && !stopped && !end.port) {
+						const PlanarNode &node = map.expanded.nodes[end.index];
+						const std::vector<uint32_t> &same = after ? node.in : node.out;
+						for (const std::vector<uint32_t> *side : {&node.in, &node.out}) {
+							const bool sibling = side == &same;
+							for (const uint32_t other : *side) {
+								if (other == t || is_beside[other] || zero_track[other]) continue;
+								const int other_heading = side == &node.out ? v.tracks[other].pieces.front() : v.tracks[other].pieces.back();
+								if (sibling ? heading(other_heading) == h : dist(h, other_heading) > 1) conflict = true;
+							}
+						}
+					}
+					if (!conflict) continue;
+					if (var_upper[length[t][flank].variable] == 0) return unsupported(fmt::format("flank_turn: the flank of track {} insert {} is capped at 0", map.tracks[t].name, m));
+					row({{length[t][flank].variable, options.coord_max * length[t][flank].coefficient}, {length[t][m].variable, -length[t][m].coefficient}}, 0, JunctionMilp::INF, fmt::format("flank {} {} {}", map.tracks[t].name, m, after ? "after" : "before"));
+					result.flank_rows++;
+				}
+			}
+		}
+	}
+
 	/* Grid (F4, D382, D428): every track point lies on an edge midpoint, x + y = 2 h + 1 with h an integer (the parity pass takes these as rows, so a seeded x forces y). A node's point is one point: its other ends are tied to the first by the node rows and are skipped. */
 	if (options.grid && !options.elastic) {
 		std::set<std::pair<size_t, size_t>> same_as_first;
