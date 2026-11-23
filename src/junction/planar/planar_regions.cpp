@@ -350,6 +350,8 @@ uint32_t TrackExpander::Parallel(uint32_t p, size_t first, size_t last, int side
 		const uint32_t other = which == 0 ? x.b : x.a;
 		const uint32_t nc = static_cast<uint32_t>(this->t.crossings.size());
 		this->t.crossings.push_back({tr, other});
+		/* The copy's crossing keeps its original's orientation; as the copy takes the original's b place (which == 1) the two lines swap roles and the mark turns over. */
+		if (this->t.crossings_authored) this->t.b_from_left.push_back(which == 0 ? this->t.b_from_left[c] : !this->t.b_from_left[c]);
 		this->from.push_back({this->from[c][which], this->from[c][1 - which]});
 		this->t.events[tr].push_back(nc);
 		std::vector<uint32_t> &other_events = this->t.events[other];
