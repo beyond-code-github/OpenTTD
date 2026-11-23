@@ -6707,9 +6707,27 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		sa.flank_turn = std::getenv("PLANAR_FLANK") != nullptr;
 		if (const char *k = std::getenv("PLANAR_FLANK_K"); k != nullptr) sa.flank_k = std::atof(k);
 		if (std::getenv("PLANAR_STAGEA_NOTIDY") != nullptr) sa.tidy = false;
+		/* Diagnosis knobs (D448 follow-up): PLANAR_STAGEA_ELASTIC: the LP with slack on the flank rows only (D409); PLANAR_STAGEA_LP: every variable continuous, grid off, rows hard. */
+		const bool diag_elastic = std::getenv("PLANAR_STAGEA_ELASTIC") != nullptr;
+		const bool diag_lp = std::getenv("PLANAR_STAGEA_LP") != nullptr;
+		if (diag_elastic) {
+			sa.elastic = true;
+			sa.elastic_families = {"flank"};
+			sa.elastic_integer = std::getenv("PLANAR_STAGEA_ELASTIC_INT") != nullptr;
+		}
+		if (diag_lp) {
+			sa.grid = false;
+			sa.continuous = {"point", "axis", "diagonal", "param", "cross", "other"};
+		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
-		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", a.status, static_cast<int>(a.ms), a.flank_rows);
+		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows);
+		if (diag_elastic) {
+			out << std::format("- {} total slack {}, stretched rows {}:", tag, a.slack, a.stretched.size());
+			for (size_t i = 0; i < a.stretched.size() && i < 30; i++) out << std::format(" [{} {}]", a.stretched[i].first, a.stretched[i].second);
+			out << "\n";
+		}
 		flush();
+		if (diag_elastic || diag_lp) return;
 		REQUIRE(a.status == "Optimal");
 
 		/* The geometry of stage A's integer lengths. */
@@ -6888,9 +6906,27 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 		sa.flank_turn = std::getenv("PLANAR_FLANK") != nullptr;
 		if (const char *k = std::getenv("PLANAR_FLANK_K"); k != nullptr) sa.flank_k = std::atof(k);
 		if (std::getenv("PLANAR_STAGEA_NOTIDY") != nullptr) sa.tidy = false;
+		/* Diagnosis knobs (D448 follow-up): PLANAR_STAGEA_ELASTIC: the LP with slack on the flank rows only (D409); PLANAR_STAGEA_LP: every variable continuous, grid off, rows hard. */
+		const bool diag_elastic = std::getenv("PLANAR_STAGEA_ELASTIC") != nullptr;
+		const bool diag_lp = std::getenv("PLANAR_STAGEA_LP") != nullptr;
+		if (diag_elastic) {
+			sa.elastic = true;
+			sa.elastic_families = {"flank"};
+			sa.elastic_integer = std::getenv("PLANAR_STAGEA_ELASTIC_INT") != nullptr;
+		}
+		if (diag_lp) {
+			sa.grid = false;
+			sa.continuous = {"point", "axis", "diagonal", "param", "cross", "other"};
+		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
-		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", a.status, static_cast<int>(a.ms), a.flank_rows);
+		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows);
+		if (diag_elastic) {
+			out << std::format("- {} total slack {}, stretched rows {}:", tag, a.slack, a.stretched.size());
+			for (size_t i = 0; i < a.stretched.size() && i < 30; i++) out << std::format(" [{} {}]", a.stretched[i].first, a.stretched[i].second);
+			out << "\n";
+		}
 		flush();
+		if (diag_elastic || diag_lp) return;
 		REQUIRE(a.status == "Optimal");
 
 		const auto &map = v.structure.map;
