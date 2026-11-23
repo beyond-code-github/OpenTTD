@@ -47,7 +47,7 @@ PlanarDomainInput PlanarDomainInputOfHub(const PlanarDrawnHub &hub);
 ## 4. Tests, outermost first
 **Test A** (outer; `src/tests/junction/planar/planar_domain_encoding.cpp`, tags `[junction][planar][planardomain]`): "the drawn hub of BR1 holds its contract and renders for the back end". BR1's base drawing and variant -> `PlanarDrawnHubOf` (why empty) -> `CheckPlanarDrawnHub` empty -> `RenderPlanarDrawnHub` (why empty) -> the layout's track bits per tile equal the union of the domain raster pieces over every track minus each structure's `first..last` on its separator; one bridge per structure at the head tiles; `SignalJunctionTrackRoutes` on it (the test spec) returns no why. Red first: stubs returning an empty hub with why "stub"; record the failure text.
 **Test B** (inner, same tags): `CheckPlanarDrawnHub` on BR1's hub edited three ways: a path with two tracks swapped (names the path), a point moved off the grid (names the track), a port track moved one tile inward (names the port); each gives exactly one line naming it.
-**Test C**: `RenderPlanarRoutePrograms` unchanged: `tools/junction/jt fast build '[planar]'` and the gate.
+**Test C**: `RenderPlanarRoutePrograms` unchanged: `[planar]` in Release (part 9).
 Budget: `tools/junction/jt fast build '[planardomain]'`.
 
 ## 5. Probe hook and docs
@@ -65,7 +65,7 @@ In `/home/pete/OpenTTD/.claude/ng1/build-rel`: `PLANAR_SLOTS_HUB=T1 PLANAR_FLANK
 - The track-index premise in part 3 fails; the helper extraction changes any `[planar]` result; `RasterizeJunctionRoute` refuses a BR1 path (report its why); a path whose consecutive tracks share no node.
 
 ## 9. Gates and commits
-- `tools/junction/jt fast build '[planardomain]'`, `tools/junction/jt fast build '[planar]'`, `tools/junction/jt gate build-rel` (a SIGSEGV/SIGILL in an unrelated test that passes alone is CPU instability: rerun it alone and say so).
+- D453: `tools/junction/jt fast build '[planardomain]'`, and `tools/junction/jt fast build-rel '[planar]' 30` (Release: `[planar]` is over its Debug budget before this step). No wide gate: the orchestrator runs it at the merge.
 - Commits: `Codechange: Junction: the route-program raster step as a helper`; `Add: Junction: PlanarDrawnHub, the contract from Slots to the back end (D452)`; `Doc: Junction: T1 v2 rig layout`. End each with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## 10. Report
