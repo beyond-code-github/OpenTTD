@@ -943,7 +943,7 @@ static constexpr bool H14_IN_PROMISE = true;
  * @param v The variant.
  * @param t The track.
  * @param k The stretch, 0 <= k <= the track's event count (0 from the track's start, the last to its end).
- * @param lattice_same_structure_only D443: the channel clause applies only when both crossings belong to one structure; that case is already not free by the structure clause above, so with this set the channel clause is off (replaces shape-3's `lattice` probe, same effect).
+ * @param lattice_same_structure_only D443: the channel clause applies only when both crossings belong to one structure; that case is already not free by the structure clause above, so with this set the channel clause is off (replaces shape-3's `lattice` probe, same effect), except that a crossing and its beside copy's crossing of the same crosser stay not free (D421, D442).
  * @return Whether it is free.
  */
 static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t k, bool lattice_same_structure_only)
@@ -954,6 +954,8 @@ static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t 
 		const uint32_t c0 = map.events[t][k - 1], c1 = map.events[t][k];
 		const auto partner = [&](uint32_t c) { return map.crossings[c].a == t ? map.crossings[c].b : map.crossings[c].a; };
 		const Oracle o(v);
+		/* A crosser's crossings of a track and of its beside copy at the same place (H8) lie within one lane pair: no flex between them, whatever the channel clause says (D443 turns that off for the other cases). */
+		if (o.MirrorOf(c1) == c0 || o.MirrorOf(c0) == c1) return false;
 		for (const PlanarStructure &s : v.structure.structures) {
 			if (std::ranges::find(s.crossings, c0) != s.crossings.end() && std::ranges::find(s.crossings, c1) != s.crossings.end()) return false;
 			const std::vector<uint32_t> copy_crossings = o.CopyCrossings(s);

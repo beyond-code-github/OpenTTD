@@ -192,6 +192,7 @@ struct PlanarDrawOptions {
 	std::vector<std::string> skip_pairs; ///< A measurement aid: in pairwise mode these pair tags ("sep <face> <i> <j>") get no separation rows (a deletion filter).
 	std::vector<std::string> only_pairs; ///< D444 trial: see only_pairs_on.
 	bool only_pairs_on = false; ///< D444 trial: in pairwise mode, when only_pairs_on, only pairs whose tag is in only_pairs get separation rows (an empty list writes none); every pair is still listed in keep_apart_out.
+	std::vector<std::pair<std::string, int>> fixed_pairs; ///< D444 trial: these pair tags take the given candidate (axis*2+side) as one plain row, no binary; with only_pairs_on, a pair listed here gets rows even if not in only_pairs.
 	bool flex_sides = true; ///< With clearance: rows by sides (D407): flex inserts join their side and are no target, and each vertex keeps 0 from its cell's dummies (D408); false is the rule before D407 (sides by equal headings only, no dummy rows).
 	bool tidy = true; ///< The objective: true minimises the sum of piece lengths (a tidy point); false sets no objective (feasibility only, a measurement).
 	bool pocket = false; ///< With flex_sides: the pocket rule (SPEC-shape §8.9, a probe): an adjacent side's vertices are held past a side's last (first) insert and keep only the lines beyond it.
