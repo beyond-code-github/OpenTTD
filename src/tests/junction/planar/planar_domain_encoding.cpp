@@ -1341,6 +1341,7 @@ PlanarDrawOptions SlotsOptions(const X1Fixture &f, const std::string &rule_set)
 	const bool lead = rules.ends_with("+lead");
 	if (lead) rules.resize(rules.size() - 5);
 	PlanarDrawOptions o = f.options;
+	o.corridor = true; // D421: copies and prio rows need the corridor family
 	o.node_lead = lead;
 	o.end_node = endnode;
 	o.cross_piece = crosspiece;
@@ -5824,6 +5825,72 @@ struct LazyRun {
 
 std::string LazyRoundTag(const std::string &tag, const char *stage, int round) { return std::format("{} {} round {}", tag, stage, round); }
 
+/** D444 lazy-3: the minimal conflict of an Infeasible solve by deletion: over the row families of the first conflict, then, within the last family still needed, over its tags; at most 30 solves in all. */
+void LazyConflict(const PlanarShapeVariant &v, const PlanarDrawOptions &base, const std::string &tag, const char *stage, std::ostream &md)
+{
+	const PlanarDrawResult first = CheckPlanarDrawable(v, 15.0, base);
+	std::vector<std::string> families;
+	std::map<std::string, std::vector<std::string>> tags;
+	for (const std::string &c : first.conflict) {
+		const std::string f = c.substr(0, c.find(' '));
+		if (std::ranges::find(families, f) == families.end()) families.push_back(f);
+		tags[f].push_back(c);
+	}
+	std::string out = std::format("- {} {} conflict: first solve {} (conflict rows {}, families {})\n", tag, stage, first.status, first.conflict.size(), families.size());
+	for (const std::string &c : first.conflict) out += " [" + c + "]";
+	out += "\n";
+	{
+		const auto &mp = v.structure.map;
+		for (const std::string &c : first.conflict) {
+			if (!c.starts_with("cross ")) continue;
+			size_t k = 0;
+			std::from_chars(c.data() + 6, c.data() + c.size(), k);
+			if (k < mp.crossings.size()) out += std::format("  - {} is the crossing of {} and {}\n", c, mp.tracks[mp.crossings[k].a].name, mp.tracks[mp.crossings[k].b].name);
+		}
+	}
+	int solves = 1;
+	std::vector<std::string> dropped;
+	for (const std::string &f : families) {
+		if (solves >= 30) break;
+		PlanarDrawOptions fo = base;
+		fo.skip_rows = dropped;
+		fo.skip_rows.push_back(f + " ");
+		const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, fo);
+		solves++;
+		out += std::format("  - drop family [{}]: {} {} ms\n", f, r.status, static_cast<int>(r.ms));
+		if (r.status == "Infeasible") dropped.push_back(f + " ");
+	}
+	std::vector<std::string> needed;
+	for (const std::string &f : families) {
+		if (std::ranges::find(dropped, f + " ") == dropped.end()) needed.push_back(f);
+	}
+	out += "  - families needed:";
+	for (const std::string &f : needed) out += " [" + f + "]";
+	out += "\n";
+	if (!needed.empty()) {
+		const std::string &last = needed.back();
+		std::vector<std::string> dropped_tags;
+		for (const std::string &t : tags[last]) {
+			if (solves >= 30) break;
+			PlanarDrawOptions fo = base;
+			fo.skip_rows = dropped;
+			for (const std::string &d : dropped_tags) fo.skip_rows.push_back(d);
+			fo.skip_rows.push_back(t);
+			const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, fo);
+			solves++;
+			out += std::format("  - drop tag [{}]: {} {} ms\n", t, r.status, static_cast<int>(r.ms));
+			if (r.status == "Infeasible") dropped_tags.push_back(t);
+		}
+		out += std::format("  - tags needed in [{}] after {} solves:", last, solves);
+		for (const std::string &t : tags[last]) {
+			if (std::ranges::find(dropped_tags, t) == dropped_tags.end()) out += " [" + t + "]";
+		}
+		out += "\n";
+	}
+	md << out << std::flush;
+	std::cout << out << std::flush;
+}
+
 LazyRun LazyLoop(const PlanarShapeVariant &v, const PlanarDrawOptions &base, std::vector<std::string> list, const std::string &tag, const char *stage, std::ostream &md)
 {
 	LazyRun run;
@@ -5857,6 +5924,7 @@ LazyRun LazyLoop(const PlanarShapeVariant &v, const PlanarDrawOptions &base, std
 		std::cout << LazyRoundTag(tag, stage, round) << ": " << line << "\n" << std::flush;
 		if (r.status != "Optimal") {
 			run.stop = r.status;
+			if (r.status == "Infeasible") LazyConflict(v, o, tag, stage, md);
 			return run;
 		}
 		if (failing.empty()) {
@@ -5907,20 +5975,9 @@ TEST_CASE("planar slots: lazy keep-apart rows on T1 and T2 (D444)", "[.][lazymea
 			for (const PlanarShapeTrack &t : v.tracks) flex_pairs += t.flex.size();
 			const std::string tag = std::format("LAZY {} offers {} d443 {}", name, cfg.offers, cfg.d443 ? "on" : "off");
 			md << std::format("\n### {} (flex pairs {})\n\n| stage | round | status | ms | pairs with rows | binaries | failing pairs |\n|---|---|---|---|---|---|---|\n", tag, flex_pairs) << std::flush;
-			PlanarDrawOptions o;
-			o.corridor = true;
-			o.clearance = o.clear_rows = o.pairwise = o.pairwise_all_faces = true;
-			o.strict_span = true;
-			o.strict_zero = o.crossing_flanks = false;
-			o.bays = o.curves = false;
-			o.node_lead = o.end_node = o.cross_piece = true;
-			o.tidy = true;
-			o.elastic = false;
-			o.least_extra = 0;
-
-			/* Stage A: uncontracted, integer, grid on, inserts may be 0, no reference (no node gaps). */
-			PlanarDrawOptions sa = o;
-			sa.grid = true;
+			/* Stage A: uncontracted, integer, SlotsOptions' grid, inserts may be 0, no reference (no node gaps). */
+			const X1Fixture fa(v);
+			PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
 			sa.node_gaps = false;
 			const LazyRun a = LazyLoop(v, sa, {}, tag, "A", md);
 			std::string summary = std::format("- {} stage A: rounds {} converged {} stop '{}' pairs with rows {} of {} total ms {}\n", tag, a.rounds, a.converged, a.stop, a.list.size(), a.all_pairs, static_cast<int>(a.ms));
@@ -5997,7 +6054,6 @@ TEST_CASE("planar slots: lazy keep-apart rows on T1 and T2 (D444)", "[.][lazymea
 				if (bad != ps.end()) md << std::format("- turn check: track {} pieces {} and {}: headings {} then {}\n", t, bad - ps.begin(), bad - ps.begin() + 1, *bad, *(bad + 1));
 			}
 			X1Fixture fb(plain);
-			fb.options.corridor = true; // As DrawnFixture: a hub with copies is drawn and judged with the corridor family (without it the copies sit on their parents and the judge and the domain refuse the nodes).
 			const bool node_ok = NodeTurnsHold(fb, a_cv);
 			const std::string turn_line = std::format("- stage B contracted variant: per-track turns {}, node turns (F6/F8) {}\n", turns_ok ? "hold" : "FAIL", node_ok ? "hold" : "FAIL");
 			md << turn_line << std::flush;
@@ -6018,6 +6074,7 @@ TEST_CASE("planar slots: lazy keep-apart rows on T1 and T2 (D444)", "[.][lazymea
 				if (seed_keys.contains(key_of(p.tracks[0], p.pieces[0], p.tracks[1], p.pieces[1]))) seed.push_back(p.tag);
 			}
 			summary += std::format("- stage B seed: {} of stage A's {} pairs map to stage B tags (listing solve status {}, {} ms, not counted)\n", seed.size(), a.list.size(), lr.status, static_cast<int>(lr.ms));
+			if (lr.status == "Infeasible") LazyConflict(plain, listing, tag, "B (no keep-apart rows)", md);
 			const LazyRun b = LazyLoop(plain, sb, seed, tag, "B", md);
 			summary += std::format("- {} stage B: rounds {} converged {} stop '{}' pairs with rows {} of {} total ms {}\n", tag, b.rounds, b.converged, b.stop, b.list.size(), b.all_pairs, static_cast<int>(b.ms));
 			if (b.converged) {
