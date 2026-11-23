@@ -5,7 +5,7 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 Budget: 60 minutes. Two probe runs (T1, T2), 15 s per solve, once each. This step pins and diagnoses; it does NOT fix the broken rows.
 
 ## 1. State
-- Worktree `/home/pete/OpenTTD/.claude/ng1`, branch `wt-e1`, head `<HEAD>`. Builds: Debug `build`, Release `build-rel`.
+- Worktree `/home/pete/OpenTTD/.claude/ng2`, branch `wt-c2`, head `<HEAD>`. Build: Release `build-rel` only (configured, not yet built: the first build is a full one; run it with `cmake --build build-rel --target openttd_test -j8` and output to a file). Another agent works in ng1 in parallel: never touch ng1.
 - Evidence: `docs/junction-tool/wip/probes/slots/flank-lock.md`, last section "Node cusp": T2 stage A (flank + node_flank + node_cusp, coord 128, HiGHS incumbent) contracts with every turn holding, but stage B's listing solve (no keep-apart rows) is Infeasible, Optimal once the [node] family is dropped. Stage A drew it, so the contraction or a stage B row disagrees with stage A's points. Memory rule: an infeasible layer is an upstream gap; pin it as a unit test, then fix upstream.
 - The invariant pinned here: **every row of stage B's program holds on the contracted points of a stage A drawing** (fixed points, no solve).
 
@@ -30,7 +30,7 @@ Budget: 60 minutes. Two probe runs (T1, T2), 15 s per solve, once each. This ste
 - No stage A drawing for T1 or T2; `ContractedVariant` returns nothing for a fixture; the moved option code changes the probe's output (compare its stage B listing line before and after on T2).
 
 ## 6. Gates and commit (D453)
-- `tools/junction/jt fast build '[contraction]' 5`; `tools/junction/jt fast build '[planardraw]'` (if over budget before your change, say so with the time and continue).
+- `tools/junction/jt fast build-rel '[contraction]' 5`; `tools/junction/jt fast build-rel '[planardraw]'` (if over budget before your change, say so with the time and continue).
 - Commit: `Add: Junction: pin, stage A's contracted drawing satisfies stage B's rows (red on T2)`, ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## 7. Report
