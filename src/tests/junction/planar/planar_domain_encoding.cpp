@@ -1114,9 +1114,9 @@ struct Readouts {
 };
 
 /** Judge our keep-apart rules against the domain on a fixture's configurations and write the report. */
-void RunEncoding(const X1Fixture &f, const char *report_path, const std::string &title, const std::vector<Config> &configs, const std::string &header, const char *rules_override = nullptr, int *base_verdict = nullptr)
+void RunEncoding(const X1Fixture &f, const char *report_path, const std::string &title, const std::vector<Config> &configs, const std::string &header, const char *rules_override = nullptr, int *base_verdict = nullptr, std::array<uint32_t, 7> *totals = nullptr)
 {
-	REQUIRE((report_path != nullptr || base_verdict != nullptr));
+	REQUIRE((report_path != nullptr || base_verdict != nullptr || totals != nullptr));
 
 	const auto t0 = std::chrono::steady_clock::now();
 	std::map<std::string, Tally> per;
@@ -1525,8 +1525,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	}
 	const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 
-	std::ofstream out(report_path);
-	REQUIRE(out.good());
+	std::ostringstream out;
 	out << "Encoding report on " << title << ": our contracted rows (judged on fixed points, no solve) against the domain, one writing per polyline (D432)\n" << header;
 	out << "node lead rows over the judged contracted variants: " << g_lead_rows_seen << "\n";
 	out << "corridor rows over the judged on-grid contracted variants: " << g_corridor_rows_seen << "; in the base polyline's read-out: " << g_corridor_rows_base << "\n";
@@ -1565,13 +1564,73 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		std::set<std::string> kept;
 		out << FailingText(f, f.ReadOut(true).keep_apart, base, kept);
 	}
-	out.close();
+	if (report_path != nullptr) {
+		std::ofstream file(report_path);
+		REQUIRE(file.good());
+		file << out.str();
+	}
+	if (totals != nullptr) *totals = total.counts;
 	for (const Config &cfg : configs) {
 		const Tally &t = per[cfg.name];
 		WARN(cfg.name << " (polylines): both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", off grid geometries " << t.counts[4] << ", other shape " << t.counts[5] << " (geometries " << t.geoms[5] << "), off interface " << t.counts[6] << " (geometries " << t.geoms[6] << "), wall " << cfg_wall[cfg.name] << " s");
 	}
 	WARN("enumeration wall " << wall << " s");
 }
+} // namespace
+
+namespace {
+
+/** The default rule set (D435) with the port rows' branch (D434): the suffixes RunEncoding reads. */
+const char *const DEFAULT_RULES = "span+lead+endnode+crosspiece+grid+portzero";
+
+/** What the contracted rows and the domain say of one polyline: rows is RunEncoding's base verdict (0 accept, 1 reject, 2 other shape). */
+struct Verdicts {
+	int rows = 1;
+	bool domain = false;
+};
+
+/** The verdicts on a geometry of a fixture under a rule set (RunEncoding's `+` suffixes). */
+Verdicts VerdictsOf(const X1Fixture &f, const Geometry &g, const char *rules)
+{
+	X1Fixture probe = f;
+	probe.base = g;
+	Verdicts r;
+	RunEncoding(probe, nullptr, "verdict", {}, "", rules, &r.rows);
+	std::vector<std::string> notes;
+	r.domain = CheckPlanarDomain(PlanarDomainInputOf(f.v, f.PointsOf(g), notes)).legal;
+	return r;
+}
+
+} // namespace
+
+namespace {
+
+/**
+ * The rows of a polyline's whole program (strict rules off, grid on) that its contracted points break, the D412 port lines and the node-to-node tracks without an event taking their zero-or-ordinary branch from the polyline's own travel (the port_zero_from and node_gap_from of a reference drawing that is this polyline, or `reference_travel` for one track). `port_zero` off leaves every in-port line free (D412), `node_gaps` off drops the node gap rows.
+ */
+std::vector<std::string> BrokenOnOwnBranches(const X1Fixture &f, const Geometry &g, bool port_zero, bool node_gaps, const std::pair<std::string, double> *reference_travel = nullptr)
+{
+	const std::optional<Contracted> cv = ContractedVariant(f, g);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	std::vector<std::vector<double>> from = PortZeroFrom(cv->points);
+	if (reference_travel != nullptr) from[f.idx.at(reference_travel->first)] = {reference_travel->second};
+	PlanarDrawOptions o = f.options;
+	o.strict_span = o.strict_zero = o.crossing_flanks = false;
+	o.keep_apart_out = true;
+	o.program_out = true;
+	o.build_only = true;
+	o.grid = true;
+	o.port_zero = port_zero;
+	o.port_zero_from = &from;
+	o.node_gaps = node_gaps;
+	o.node_gap_from = &from;
+	const PlanarDrawResult r = CheckPlanarDrawable(plain, 5.0, o);
+	REQUIRE(r.status == "built");
+	return CheckPlanarProgramOnPoints(r.program, cv->points).broken;
+}
+
 } // namespace
 
 TEST_CASE("planar draw: keep-apart pairs hold on given points", "[junction][planar][planardomain]")
@@ -2222,18 +2281,38 @@ TEST_CASE("planar domain: a too-strict polyline is on the grid", "[junction][pla
 	CHECK(text.find("  both reject: 1 polylines") != std::string::npos);
 }
 
-TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planardomainenc]")
+namespace {
+
+std::vector<Config> X1Configs(const X1Fixture &f)
 {
-	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT");
-	REQUIRE(report_path != nullptr);
-	const X1Fixture f;
 	std::vector<Config> configs = {
 		{"S1", {{"B1", 2, {0, 2, 4}}, {"B1", 3, {0, 1, 2, 3, 4}}, {"B1", 4, {2, 4, 6, 8, 10, 12, 14}}, {"B1", 5, {0, 1, 2, 3, 4}}, {"B1", 6, {4}}}},
 		{"S2", {{"A1", 2, {0, 2, 4}}, {"A1", 3, {0, 1, 2, 3, 4}}, {"A1", 4, {2, 4, 6, 8, 10, 12, 14, 16}}, {"A1", 5, {0, 1, 2, 3, 4}}, {"A1", 6, {4}}}},
 		{"N1", {{"C1", 0, {0, 1, 2, 3}}, {"C1", 1, {0, 2, 4}}, {"C1", 2, {0, 1, 2, 3}}, {"A1", 0, {0, 2, 4}}, {"A1", 1, {0, 1, 2, 3}}}},
 	};
 	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	return configs;
+}
+
+} // namespace
+
+TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT");
+	REQUIRE(report_path != nullptr);
+	const X1Fixture f;
+	const std::vector<Config> configs = X1Configs(f);
 	RunEncoding(f, report_path, "X1", configs, "");
+}
+
+TEST_CASE("planar domain: X1 is exact under the default rule set", "[junction][planar][planardomainexact]")
+{
+	const X1Fixture f;
+	std::array<uint32_t, 7> totals{};
+	RunEncoding(f, nullptr, "X1", X1Configs(f), "", DEFAULT_RULES, nullptr, &totals);
+	INFO("X1: too strict " << totals[2] << ", too loose " << totals[3]);
+	CHECK(totals[2] == 0);
+	CHECK(totals[3] == 0);
 }
 
 TEST_CASE("planar domain: neighbourhood configurations cover X1's events", "[junction][planar][planardomain]")
@@ -2324,6 +2403,31 @@ TEST_CASE("planar domain: X2's crosser bending at its crossing is accepted under
 	CHECK(check.broken.empty());
 }
 
+namespace {
+
+std::vector<Config> X2Configs(const X2Fixture &f)
+{
+	const std::vector<int> &b1 = f.heads.at("B1");
+	const uint32_t last = static_cast<uint32_t>(b1.size()) - 1;
+	/* C1: B1's event piece length, each piece within two of it (not the last), the last piece fixed at 4. */
+	Config c1{"X2 C1", {{"B1", f.b1_event, {1, 2, 3, 4, 5, 6}}}};
+	for (uint32_t k = f.b1_event >= 2 ? f.b1_event - 2 : 0; k <= f.b1_event + 2 && k < last; k++) {
+		if (k == f.b1_event) continue;
+		const bool axis = ((b1[k] % 8) + 8) % 8 % 2 == 0;
+		c1.axes.emplace_back("B1", k, axis ? std::vector<int>{0, 2, 4} : std::vector<int>{0, 1, 2, 3, 4});
+	}
+	c1.axes.emplace_back("B1", last, std::vector<int>{4});
+	/* C2: A1's event piece length, A1's pieces before it in {0, 2, 4}. */
+	Config c2{"X2 C2", {}};
+	for (uint32_t k = 0; k < f.a1_event; k++) c2.axes.emplace_back("A1", k, std::vector<int>{0, 2, 4});
+	c2.axes.emplace_back("A1", f.a1_event, std::vector<int>{8, 10, 12, 14});
+	std::vector<Config> configs = {c1, c2};
+	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	return configs;
+}
+
+} // namespace
+
 TEST_CASE("planar domain: our keep-apart against the domain on X2", "[.][planardomainenc]")
 {
 	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_X2");
@@ -2340,21 +2444,19 @@ TEST_CASE("planar domain: our keep-apart against the domain on X2", "[.][planard
 	for (const uint32_t m : f.v.tracks[f.idx.at("B1")].flex) header << " " << m;
 	header << "\nB1 event piece after flex: " << f.b1_event << "\nA1 event piece after flex: " << f.a1_event << "\nB1's last piece (" << last << ") is fixed at 4\n";
 
-	/* C1: B1's event piece length, each piece within two of it (not the last), the last piece fixed at 4. */
-	Config c1{"X2 C1", {{"B1", f.b1_event, {1, 2, 3, 4, 5, 6}}}};
-	for (uint32_t k = f.b1_event >= 2 ? f.b1_event - 2 : 0; k <= f.b1_event + 2 && k < last; k++) {
-		if (k == f.b1_event) continue;
-		const bool axis = ((b1[k] % 8) + 8) % 8 % 2 == 0;
-		c1.axes.emplace_back("B1", k, axis ? std::vector<int>{0, 2, 4} : std::vector<int>{0, 1, 2, 3, 4});
-	}
-	c1.axes.emplace_back("B1", last, std::vector<int>{4});
-	/* C2: A1's event piece length, A1's pieces before it in {0, 2, 4}. */
-	Config c2{"X2 C2", {}};
-	for (uint32_t k = 0; k < f.a1_event; k++) c2.axes.emplace_back("A1", k, std::vector<int>{0, 2, 4});
-	c2.axes.emplace_back("A1", f.a1_event, std::vector<int>{8, 10, 12, 14});
-	std::vector<Config> configs = {c1, c2};
-	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	const std::vector<Config> configs = X2Configs(f);
 	RunEncoding(f, report_path, "X2", configs, header.str());
+}
+
+TEST_CASE("planar domain: X2 is exact under the default rule set", "[junction][planar][planardomainexact]")
+{
+	const X2Fixture f;
+	RequireBaseLegal(f);
+	std::array<uint32_t, 7> totals{};
+	RunEncoding(f, nullptr, "X2", X2Configs(f), "", DEFAULT_RULES, nullptr, &totals);
+	INFO("X2: too strict " << totals[2] << ", too loose " << totals[3]);
+	CHECK(totals[2] == 0);
+	CHECK(totals[3] == 0);
 }
 
 namespace {
@@ -2414,12 +2516,10 @@ TEST_CASE("planar domain: K1 loads and its base is legal", "[junction][planar][p
 	CHECK(verdict == 0);
 }
 
-TEST_CASE("planar domain: our keep-apart against the domain on M1", "[.][planardomainenc]")
+namespace {
+
+std::vector<Config> M1Configs(const M1Fixture &f)
 {
-	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_M1");
-	REQUIRE(report_path != nullptr);
-	const M1Fixture f;
-	RequireBaseLegal(f);
 	/* M1e (A1) and M1f (B1): S-bend pairs just before the merge, one configuration per candidate; the first piece (A1) or the earlier NE flank (B1) absorbs the rest so the track still ends at the merge point (16,5). Candidates that are off the grid are kept: the on-grid generator and the off-grid judging sort them. */
 	std::vector<Config> configs;
 	const std::vector<int> &ah = f.heads.at("A1"), &bh = f.heads.at("B1");
@@ -2465,15 +2565,36 @@ TEST_CASE("planar domain: our keep-apart against the domain on M1", "[.][planard
 		}
 	}
 	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	return configs;
+}
+
+} // namespace
+
+TEST_CASE("planar domain: our keep-apart against the domain on M1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_M1");
+	REQUIRE(report_path != nullptr);
+	const M1Fixture f;
+	RequireBaseLegal(f);
+	const std::vector<Config> configs = M1Configs(f);
 	RunEncoding(f, report_path, "M1", configs, FixtureHeader(f, f.holders));
 }
 
-TEST_CASE("planar domain: our keep-apart against the domain on K1", "[.][planardomainenc]")
+TEST_CASE("planar domain: M1 is exact under the default rule set", "[junction][planar][planardomainexact]")
 {
-	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_K1");
-	REQUIRE(report_path != nullptr);
-	const K1Fixture f;
+	const M1Fixture f;
 	RequireBaseLegal(f);
+	std::array<uint32_t, 7> totals{};
+	RunEncoding(f, nullptr, "M1", M1Configs(f), "", DEFAULT_RULES, nullptr, &totals);
+	INFO("M1: too strict " << totals[2] << ", too loose " << totals[3]);
+	CHECK(totals[2] == 0);
+	CHECK(totals[3] == 0);
+}
+
+namespace {
+
+std::vector<Config> K1Configs(const K1Fixture &f)
+{
 	/* K1a: BC1's total length in {0, 2, 4, 6} (0 is the trident); A1's NE run and C1's SE run in 1..3; the inserts of A1 and C1 within their first three pieces. node_gaps is on (D424). */
 	Config c{"K1a", {}};
 	c.axes.emplace_back("BC1", f.holders.at("BC1")[0], std::vector<int>{0, 2, 4, 6});
@@ -2482,7 +2603,30 @@ TEST_CASE("planar domain: our keep-apart against the domain on K1", "[.][planard
 	REQUIRE(f.options.node_gaps);
 	std::vector<Config> configs = {c};
 	for (const Config &n : NeighbourhoodConfigs(f, 3)) configs.push_back(n);
+	return configs;
+}
+
+} // namespace
+
+TEST_CASE("planar domain: our keep-apart against the domain on K1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_K1");
+	REQUIRE(report_path != nullptr);
+	const K1Fixture f;
+	RequireBaseLegal(f);
+	const std::vector<Config> configs = K1Configs(f);
 	RunEncoding(f, report_path, "K1", configs, "node_gaps: on (D424)\n" + FixtureHeader(f, f.holders));
+}
+
+TEST_CASE("planar domain: K1 is exact under the default rule set", "[junction][planar][planardomainexact]")
+{
+	const K1Fixture f;
+	RequireBaseLegal(f);
+	std::array<uint32_t, 7> totals{};
+	RunEncoding(f, nullptr, "K1", K1Configs(f), "", DEFAULT_RULES, nullptr, &totals);
+	INFO("K1: too strict " << totals[2] << ", too loose " << totals[3]);
+	CHECK(totals[2] == 0);
+	CHECK(totals[3] == 0);
 }
 
 namespace {
@@ -2531,12 +2675,10 @@ TEST_CASE("planar domain: L1 loads and its base is legal", "[junction][planar][p
 	CHECK(verdict == 0);
 }
 
-TEST_CASE("planar domain: our keep-apart against the domain on L1", "[.][planardomainenc]")
+namespace {
+
+std::vector<Config> L1Configs(const L1Fixture &f)
 {
-	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_L1");
-	REQUIRE(report_path != nullptr);
-	const L1Fixture f;
-	RequireBaseLegal(f);
 	/* An insert takes {0, 1, 2}, an axis heading's {0, 2}. */
 	const auto insert_values = [](int heading) { return (((heading % 8) + 8) % 8) % 2 == 0 ? std::vector<int>{0, 2} : std::vector<int>{0, 1, 2}; };
 	/* L1a: every flex insert of A1 and A2; the piece holding the last run's base length (the run into the N port) absorbs, so the port end stays where the base has it. */
@@ -2560,7 +2702,30 @@ TEST_CASE("planar domain: our keep-apart against the domain on L1", "[.][planard
 	}
 	std::vector<Config> configs = {a, b};
 	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	return configs;
+}
+
+} // namespace
+
+TEST_CASE("planar domain: our keep-apart against the domain on L1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_L1");
+	REQUIRE(report_path != nullptr);
+	const L1Fixture f;
+	RequireBaseLegal(f);
+	const std::vector<Config> configs = L1Configs(f);
 	RunEncoding(f, report_path, "L1", configs, f.Header());
+}
+
+TEST_CASE("planar domain: L1 is exact under the default rule set", "[junction][planar][planardomainexact]")
+{
+	const L1Fixture f;
+	RequireBaseLegal(f);
+	std::array<uint32_t, 7> totals{};
+	RunEncoding(f, nullptr, "L1", L1Configs(f), "", DEFAULT_RULES, nullptr, &totals);
+	INFO("L1: too strict " << totals[2] << ", too loose " << totals[3]);
+	CHECK(totals[2] == 0);
+	CHECK(totals[3] == 0);
 }
 
 namespace {
@@ -2621,12 +2786,10 @@ TEST_CASE("planar domain: a trunk turning two eighths from a beside leg at its n
 	CHECK(NodeTurnsHold(f, *base));
 }
 
-TEST_CASE("planar domain: our keep-apart against the domain on Y1", "[.][planardomainenc]")
+namespace {
+
+std::vector<Config> Y1Configs(const Y1Fixture &f)
 {
-	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_Y1");
-	REQUIRE(report_path != nullptr);
-	const Y1Fixture f;
-	RequireBaseLegal(f);
 	const std::vector<int> runs = {2, 4, 6, 8, 10};
 	/* Y1a: B1's N run before its crossing (piece 4) moves the crossing along the span, B1's last piece absorbing so the port end stays; A1's last run before the copy's split node (piece 4) in {2..10}, A1's first run absorbing so the split stays put. The copy is rigid (a corridor). */
 	Config a{"Y1a", {}, {}};
@@ -2642,7 +2805,30 @@ TEST_CASE("planar domain: our keep-apart against the domain on Y1", "[.][planard
 	b.absorbers.emplace_back("A1#8", 0);
 	std::vector<Config> configs = {a, b};
 	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	return configs;
+}
+
+} // namespace
+
+TEST_CASE("planar domain: our keep-apart against the domain on Y1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_Y1");
+	REQUIRE(report_path != nullptr);
+	const Y1Fixture f;
+	RequireBaseLegal(f);
+	const std::vector<Config> configs = Y1Configs(f);
 	RunEncoding(f, report_path, "Y1", configs, f.Header());
+}
+
+TEST_CASE("planar domain: Y1 is exact under the default rule set", "[junction][planar][planardomainexact]")
+{
+	const Y1Fixture f;
+	RequireBaseLegal(f);
+	std::array<uint32_t, 7> totals{};
+	RunEncoding(f, nullptr, "Y1", Y1Configs(f), "", DEFAULT_RULES, nullptr, &totals);
+	INFO("Y1: too strict " << totals[2] << ", too loose " << totals[3]);
+	CHECK(totals[2] == 0);
+	CHECK(totals[3] == 0);
 }
 
 namespace {
@@ -2705,15 +2891,36 @@ TEST_CASE("planar domain: P1 loads, has a prio row and its base is legal", "[jun
 	CHECK(verdict == 0);
 }
 
+namespace {
+
+std::vector<Config> P1Configs(const P1Fixture &f)
+{
+	std::vector<Config> configs;
+	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	return configs;
+}
+
+} // namespace
+
 TEST_CASE("planar domain: our keep-apart against the domain on P1", "[.][planardomainenc]")
 {
 	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_P1");
 	REQUIRE(report_path != nullptr);
 	const P1Fixture f;
 	RequireBaseLegal(f);
-	std::vector<Config> configs;
-	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	const std::vector<Config> configs = P1Configs(f);
 	RunEncoding(f, report_path, "P1", configs, f.Header());
+}
+
+TEST_CASE("planar domain: P1 is exact under the default rule set", "[junction][planar][planardomainexact]")
+{
+	const P1Fixture f;
+	RequireBaseLegal(f);
+	std::array<uint32_t, 7> totals{};
+	RunEncoding(f, nullptr, "P1", P1Configs(f), "", DEFAULT_RULES, nullptr, &totals);
+	INFO("P1: too strict " << totals[2] << ", too loose " << totals[3]);
+	CHECK(totals[2] == 0);
+	CHECK(totals[3] == 0);
 }
 
 namespace {
@@ -2765,15 +2972,36 @@ TEST_CASE("planar domain: BR1 loads, its structure is a bridge and its base is l
 	CHECK(verdict == 0);
 }
 
+namespace {
+
+std::vector<Config> BR1Configs(const BridgeFixture &f)
+{
+	std::vector<Config> configs;
+	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	return configs;
+}
+
+} // namespace
+
 TEST_CASE("planar domain: our keep-apart against the domain on BR1", "[.][planardomainenc]")
 {
 	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_BR1");
 	REQUIRE(report_path != nullptr);
 	const BridgeFixture f;
 	RequireBaseLegal(f);
-	std::vector<Config> configs;
-	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	const std::vector<Config> configs = BR1Configs(f);
 	RunEncoding(f, report_path, "BR1", configs, f.Header());
+}
+
+TEST_CASE("planar domain: BR1 is exact under the default rule set", "[junction][planar][planardomainexact]")
+{
+	const BridgeFixture f;
+	RequireBaseLegal(f);
+	std::array<uint32_t, 7> totals{};
+	RunEncoding(f, nullptr, "BR1", BR1Configs(f), "", DEFAULT_RULES, nullptr, &totals);
+	INFO("BR1: too strict " << totals[2] << ", too loose " << totals[3]);
+	CHECK(totals[2] == 0);
+	CHECK(totals[3] == 0);
 }
 
 namespace {
@@ -2885,4 +3113,81 @@ TEST_CASE("planar domain: the box width and height are group box, grid halves gr
 		for (const auto &term : row.terms) box_terms += group[term.first] == "box";
 	}
 	CHECK(box_terms > 0);
+}
+
+TEST_CASE("planar domain: an outward S-bend at a node is legal (D430)", "[junction][planar][planardomain]")
+{
+	/* X1's A1 leaves its split on an SE step at once (away from C1, which leaves NE) and returns NE beyond the crossing's end runs: both the rows and the domain accept. The same step toward C1 (NE at once, with the flank and the SE return) is the toward case: its lead row fails and both reject (F1's geometry does not fit: it has no bend back). */
+	const X1Fixture f;
+	Geometry away = f.base;
+	away["A1"] = {{3, 2}, {4, 10}, {5, 2}, {8, 2}};
+	const Verdicts a = VerdictsOf(f, away, DEFAULT_RULES);
+	CHECK(a.rows == 0);
+	CHECK(a.domain);
+	Geometry toward = f.base;
+	toward["A1"] = {{1, 2}, {2, 2}, {3, 2}, {4, 6}, {8, 4}};
+	const Verdicts t = VerdictsOf(f, toward, DEFAULT_RULES);
+	CHECK(t.rows == 1);
+	CHECK_FALSE(t.domain);
+	const std::optional<Contracted> cv = ContractedVariant(f, toward);
+	REQUIRE(cv.has_value());
+	bool lead_fails = false;
+	for (const PlanarPointRow &r : PlanarNodeLeadRows(cv->v)) lead_fails = lead_fails || (r.tag == "lead A1 start 0" && !PlanarPointRowHolds(r, cv->points));
+	CHECK(lead_fails);
+}
+
+TEST_CASE("planar domain: a bridge's one-piece end run fits where a tunnel's two do not (BR1)", "[junction][planar][planardomain]")
+{
+	/* BR1's B1 crosses A1 at its third tile (x = 5, by a NW step before and a NE step after): the bridge head is the second tile, just off the split's switch tile. The same polyline on the structure as a tunnel (kind tunnel, end run 2) puts its portal on the switch tile: the rows' `end 0 node` row breaks and the domain rejects. */
+	const BridgeFixture f;
+	Geometry g = f.base;
+	g["B1"] = {{0, 2}, {1, 2}, {4, 6}, {7, 2}, {8, 4}};
+	const Verdicts bridge = VerdictsOf(f, g, DEFAULT_RULES);
+	CHECK(bridge.rows == 0);
+	CHECK(bridge.domain);
+	BridgeFixture tunnel = f;
+	tunnel.v.structure.structures[0].kinds = 2;
+	tunnel.v.structure.structures[0].limit[0] = -1;
+	tunnel.v.structure.structures[0].limit[1] = 10;
+	tunnel.v.structures[0].end_run[1] = 2;
+	const Verdicts as_tunnel = VerdictsOf(tunnel, g, DEFAULT_RULES);
+	CHECK(as_tunnel.rows == 1);
+	CHECK_FALSE(as_tunnel.domain);
+	const std::vector<std::string> broken = BrokenOnOwnBranches(tunnel, g, true, true);
+	CHECK(std::ranges::find(broken, "end 0 node") != broken.end());
+	CHECK(BrokenOnOwnBranches(f, g, true, true).empty());
+}
+
+TEST_CASE("planar domain: a zero D412 port line holds under port_zero and a one-half-tile reference makes it ordinary (D434)", "[junction][planar][planardomain]")
+{
+	/* BR1's base has AC1 at total length 0 with its node on the box edge. Its rows accept under port_zero (the line is 0 where the reference travels below one half tile). With a reference travel of one half tile AC1 is an ordinary line: its pieces have least lengths, the zero line breaks them. With port_zero off D412 frees every piece, so nothing breaks. X1's and K1's ports sit away from their nodes, so only BR1 can show the zero line itself. */
+	const BridgeFixture f;
+	const std::vector<Points> points = f.PointsOf(f.base);
+	const uint32_t ac1 = f.idx.at("AC1");
+	REQUIRE(std::ranges::all_of(points[ac1], [&](const Point &p) { return p == points[ac1].front(); }));
+	const Verdicts v = VerdictsOf(f, f.base, DEFAULT_RULES);
+	CHECK(v.rows == 0);
+	CHECK(v.domain);
+	const std::pair<std::string, double> one{"AC1", 1.0};
+	const std::vector<std::string> ordinary = BrokenOnOwnBranches(f, f.base, true, true, &one);
+	CHECK(std::ranges::any_of(ordinary, [](const std::string &b) { return b.starts_with("bound "); }));
+	CHECK(BrokenOnOwnBranches(f, f.base, false, true, &one).empty());
+}
+
+TEST_CASE("planar domain: a copy one lane further from its parent breaks the corridor (Y1)", "[junction][planar][planardomain]")
+{
+	/* Y1's copy A1#9 runs one lane (2 half tiles) north of its parent. Moved one more lane north over its whole length it no longer opens and closes at its split nodes: the corridor rows break and the domain rejects, and with the corridor family off no corridor row says so. The base is accepted by both. The rows' verdict is the program's rows only (the suite's node turn check does not take a beside track two lanes out). */
+	const Y1Fixture f;
+	const Verdicts base = VerdictsOf(f, f.base, DEFAULT_RULES);
+	CHECK(base.rows == 0);
+	CHECK(base.domain);
+	const auto is_corridor = [](const std::string &b) { return b.starts_with("corridor "); };
+	CHECK_FALSE(std::ranges::any_of(BrokenOnOwnBranches(f, f.base, true, true), is_corridor));
+	Y1Fixture moved = f;
+	moved.starts["A1#9"][1] -= 2;
+	std::vector<std::string> notes;
+	CHECK_FALSE(CheckPlanarDomain(PlanarDomainInputOf(moved.v, moved.PointsOf(f.base), notes)).legal);
+	CHECK(std::ranges::any_of(BrokenOnOwnBranches(moved, f.base, true, true), is_corridor));
+	moved.options.corridor = false;
+	CHECK_FALSE(std::ranges::any_of(BrokenOnOwnBranches(moved, f.base, true, true), is_corridor));
 }
