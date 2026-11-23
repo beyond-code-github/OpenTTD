@@ -1008,6 +1008,18 @@ std::vector<Config> NeighbourhoodConfigs(const X1Fixture &f, uint32_t k)
 	return configs;
 }
 
+/** Per track one entry: the travel of a polyline's points (the sum over consecutive points of max(|dx|, |dy|)), as PlanarDrawOptions::port_zero_from reads it. */
+std::vector<std::vector<double>> PortZeroFrom(const std::vector<Points> &points)
+{
+	std::vector<std::vector<double>> from;
+	for (const Points &p : points) {
+		double travel = 0;
+		for (size_t i = 0; i + 1 < p.size(); i++) travel += std::max(std::abs(p[i + 1][0] - p[i][0]), std::abs(p[i + 1][1] - p[i][1]));
+		from.push_back({travel});
+	}
+	return from;
+}
+
 /** The read-outs on one contracted variant. */
 struct Readouts {
 	PlanarDrawResult keep; ///< The keep-apart pairs.
@@ -1030,6 +1042,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	/* PLANAR_DOMAIN_RULES (a measurement): plain, span, zero or all (default) strict keep-apart rules. */
 	const char *rules_env = rules_override != nullptr ? rules_override : std::getenv("PLANAR_DOMAIN_RULES");
 	std::string rules = rules_env == nullptr ? "all" : rules_env;
+	const bool portzero = rules.ends_with("+portzero");
+	if (portzero) rules.resize(rules.size() - 9);
 	const bool grid = rules.ends_with("+grid");
 	if (grid) rules.resize(rules.size() - 5);
 	const bool crosspiece = rules.ends_with("+crosspiece");
@@ -1044,12 +1058,16 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	fx.options.grid = grid;
 
 	/* The read-out of a contracted variant: no flex, so Refine is not needed unless the read-out says so. */
-	auto readouts = [&](const PlanarShapeVariant &contracted) {
+	auto readouts = [&](const Contracted &contracted_writing) {
+		const PlanarShapeVariant &contracted = contracted_writing.v;
+		const std::vector<std::vector<double>> port_zero_from = PortZeroFrom(contracted_writing.points);
 		Readouts r;
 		/* The read-outs get the variant with steps cleared (production's steps cannot yet hold a step at a track's end); only the lead rows read them. */
 		PlanarShapeVariant cv = contracted;
 		for (PlanarShapeTrack &track : cv.tracks) track.steps.clear();
 		PlanarDrawOptions o = fx.options;
+		o.port_zero = portzero;
+		o.port_zero_from = &port_zero_from;
 		if (rules != "all") o.strict_span = o.strict_zero = o.crossing_flanks = false;
 		if (rules == "span" || rules == "zero") {
 			o.strict_span = rules == "span";
@@ -1059,6 +1077,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		o.build_only = true;
 		r.keep = CheckPlanarDrawable(cv, 5.0, o);
 		PlanarDrawOptions p = fx.options;
+		p.port_zero = portzero;
+		p.port_zero_from = &port_zero_from;
 		p.strict_span = p.strict_zero = p.crossing_flanks = false;
 		p.keep_apart_out = true;
 		p.program_out = true;
@@ -1102,7 +1122,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 			*base_verdict = 2;
 			return;
 		}
-		*base_verdict = accepts(*cv, readouts(cv->v)) ? 0 : 1;
+		*base_verdict = accepts(*cv, readouts(*cv)) ? 0 : 1;
 		return;
 	}
 	g_lead_rows_seen = 0;
@@ -1113,8 +1133,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	g_lead_by_family.clear();
 	{
 		const std::optional<Contracted> cv = ContractedVariant(f, f.base);
-		if (cv) g_corridor_rows_base = corridor_rows(readouts(cv->v));
-		WARN("base polyline: " << (!cv ? "other shape" : accepts(*cv, readouts(cv->v)) ? "accept" : "reject") << ", corridor rows in its read-out: " << g_corridor_rows_base);
+		if (cv) g_corridor_rows_base = corridor_rows(readouts(*cv));
+		WARN("base polyline: " << (!cv ? "other shape" : accepts(*cv, readouts(*cv)) ? "accept" : "reject") << ", corridor rows in its read-out: " << g_corridor_rows_base);
 	}
 
 	const auto Num = [](size_t n) { std::ostringstream o; o << n; return o.str(); };
@@ -1169,7 +1189,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 					std::vector<std::string> notes;
 					/* The domain's verdict is of this polyline's own points, on or off the grid (an off-grid polyline is rejected by its raster). */
 					const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
-					const Readouts ro = readouts(cv->v);
+					const Readouts ro = readouts(*cv);
 					if (on_grid) {
 						g_lead_rows_seen += static_cast<uint32_t>(ro.lead.size());
 						g_lead_by_family[FamilyOf(cfg.name)] += static_cast<uint32_t>(ro.lead.size());
@@ -1618,6 +1638,81 @@ TEST_CASE("planar draw: a node-to-out-port line keeps its least lengths (F2)", "
 	for (const std::string &b : broken) integer = integer || b.starts_with("integer");
 	INFO("broken " << broken.size() << ", first " << (broken.empty() ? std::string("-") : broken[0]));
 	CHECK(integer);
+}
+
+TEST_CASE("planar draw: a D412 port line off its centre line is rejected under port_zero (F5, D434)", "[junction][planar][planardomain]")
+{
+	/* F5: X1's in-port line AC1 = diagonal 1, east 2, diagonal 1 (its east run off the centre line). D412 frees every piece of it, so without port_zero nothing breaks; under port_zero the polyline's own travel (4) makes AC1 an ordinary line and its run is on the grid rows. */
+	const X1Fixture f;
+	Geometry g = f.base;
+	g["AC1"] = {{1, 1}, {2, 2}, {3, 1}};
+	const std::optional<Contracted> cv = ContractedVariant(f, g);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	const std::vector<std::vector<double>> from = PortZeroFrom(cv->points);
+	for (const bool on : {false, true}) {
+		PlanarDrawOptions o = f.options;
+		o.strict_span = o.strict_zero = o.crossing_flanks = false;
+		o.keep_apart_out = true;
+		o.program_out = true;
+		o.build_only = true;
+		o.grid = true;
+		o.port_zero = on;
+		o.port_zero_from = &from;
+		const std::vector<std::string> broken = CheckPlanarProgramOnPoints(CheckPlanarDrawable(plain, 5.0, o).program, cv->points).broken;
+		bool integer = false;
+		for (const std::string &b : broken) integer = integer || b.starts_with("integer");
+		INFO("port_zero " << on << ", broken " << broken.size() << ", first " << (broken.empty() ? std::string("-") : broken[0]));
+		if (on) {
+			CHECK(integer);
+		} else {
+			CHECK(broken.empty());
+		}
+	}
+}
+
+TEST_CASE("planar draw: port_zero holds a zero D412 line at 0 and frees an ordinary one never (D434)", "[junction][planar][planardomain]")
+{
+	const X1Fixture f;
+	const std::optional<Contracted> cv = ContractedVariant(f, f.base);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	const uint32_t ac1 = f.idx.at("AC1");
+	for (const double travel : {0.0, 4.0}) {
+		std::vector<std::vector<double>> from = PortZeroFrom(cv->points);
+		from[ac1] = {travel};
+		PlanarDrawOptions o = f.options;
+		o.strict_span = o.strict_zero = o.crossing_flanks = false;
+		o.skip_rows.clear(); /* The fixture skips the rows tagged "port " (the box-edge rows), which includes `port zero`. */
+		o.program_out = true;
+		o.build_only = true;
+		o.grid = true;
+		o.port_zero = true;
+		o.port_zero_from = &from;
+		const PlanarDrawResult r = CheckPlanarDrawable(plain, 5.0, o);
+		REQUIRE(r.status == "built");
+		const PlanarProgram &pr = r.program;
+		const bool row = std::ranges::any_of(pr.rows, [](const PlanarProgram::Row &w) { return w.tag == "port zero AC1"; });
+		/* AC1's length variables: the variables with a coefficient in its `piece AC1 <i>` rows that are lengths (group axis or diagonal). */
+		std::set<uint32_t> lengths;
+		for (const PlanarProgram::Row &w : pr.rows) {
+			if (!w.tag.starts_with("piece AC1 ")) continue;
+			for (const auto &[var, c] : w.terms) {
+				if (pr.group[var] == "axis" || pr.group[var] == "diagonal") lengths.insert(var);
+			}
+		}
+		REQUIRE(lengths.size() == plain.tracks[ac1].pieces.size());
+		INFO("travel " << travel);
+		if (travel == 0) {
+			CHECK(row);
+			for (const uint32_t v : lengths) CHECK(pr.lower[v] == 0);
+		} else {
+			CHECK(!row);
+			for (const uint32_t v : lengths) CHECK(pr.lower[v] >= 1);
+		}
+	}
 }
 
 TEST_CASE("planar draw: keep-apart on fixed points agrees with the program on X1", "[junction][planar][planardomain]")

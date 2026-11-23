@@ -564,7 +564,16 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 		for (const uint32_t m : steps) free_piece[m] = false;
 		/* D412: "A port line whose stretch from its port to its first node carries no event may have total length 0 ... Every other stretch keeps its least lengths": only an in-port line with no event, never a node-to-out-port line. Its pieces are free, and no flex group of it keeps a least length. */
-		const bool port_stretch = map.expanded.lines[t].from.port && !map.expanded.lines[t].to.port && map.events[t].empty();
+		bool port_stretch = map.expanded.lines[t].from.port && !map.expanded.lines[t].to.port && map.events[t].empty();
+		if (options.port_zero && port_stretch) {
+			/* D434: the line is 0 where the reference travels below 1 half tile, else an ordinary line (no reference: ordinary). */
+			double sum = 0;
+			const bool known = options.port_zero_from != nullptr && t < options.port_zero_from->size();
+			if (known) {
+				for (const double l : (*options.port_zero_from)[t]) sum += l;
+			}
+			port_stretch = known && sum < 1;
+		}
 		if (port_stretch) free_piece.assign(pieces.size(), true);
 		may_zero[t] = free_piece;
 		std::set<uint32_t> middles(flex.begin(), flex.end());
@@ -590,6 +599,11 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			}
 			const double least = (pieces[g.front()] % 2) == 0 ? AXIS_LEAST : 1;
 			row(sum, least, JunctionMilp::INF, fmt::format("flex {} {}", map.tracks[t].name, g.front()));
+		}
+		if (options.port_zero && port_stretch) {
+			Terms travel;
+			for (const Length &len : length[t]) travel.emplace_back(len.variable, len.coefficient);
+			row(std::move(travel), -JunctionMilp::INF, 0, fmt::format("port zero {}", map.tracks[t].name));
 		}
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const std::array<int, 2> step = PlanarModel::STEP[((pieces[i] % 8) + 8) % 8];
