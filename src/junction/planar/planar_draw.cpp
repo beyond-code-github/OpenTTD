@@ -515,8 +515,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	};
 	const auto eq = [&](Terms terms, double rhs, const std::string &tag) { row(std::move(terms), rhs, rhs, tag); };
 
-	const uint32_t width = var(1, options.coord_max, options.box_price, "other");
-	const uint32_t height = var(1, options.coord_max, options.box_price, "other");
+	const uint32_t width = var(1, options.coord_max, options.box_price, "box");
+	const uint32_t height = var(1, options.coord_max, options.box_price, "box");
 
 	/* Points: per track its start and the end of each piece. */
 	if (options.fix_points != nullptr) {
@@ -1947,7 +1947,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		for (const auto &[v, p] : parity) {
 			const double lower = std::isfinite(var_lower[v]) ? std::ceil((var_lower[v] - p) / 2) : -JunctionMilp::INF;
 			const double upper = std::isfinite(var_upper[v]) ? std::floor((var_upper[v] - p) / 2) : JunctionMilp::INF;
-			half[v] = add_variable(lower, upper, 0, true);
+			half[v] = add_variable(lower, upper, 0, true, "half");
 			columns++;
 		}
 		result.grid_forced = half.size();
