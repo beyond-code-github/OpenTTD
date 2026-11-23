@@ -6898,6 +6898,24 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
 		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows);
+		if (const char *dn = std::getenv("PLANAR_DUMP_NODE"); dn != nullptr) {
+			/* Debug aid: one node of the track map: its lines (name, kind, Shape's end heading) and its site. */
+			const auto &mp = v.structure.map;
+			size_t n = SIZE_MAX;
+			std::from_chars(dn, dn + std::strlen(dn), n);
+			if (n < mp.expanded.nodes.size()) {
+				const PlanarNode &node = mp.expanded.nodes[n];
+				const auto kind = [&](uint32_t t) { return mp.tracks[t].kind == PlanarTrack::Kind::Line ? "Line" : mp.tracks[t].kind == PlanarTrack::Kind::Copy ? "Copy" : "Row"; };
+				out << std::format("- {} node {} group {}: in", tag, n, node.group);
+				for (const uint32_t t : node.in) out << std::format(" {}({}, last h{})", mp.tracks[t].name, kind(t), v.tracks[t].pieces.back());
+				out << " | out";
+				for (const uint32_t t : node.out) out << std::format(" {}({}, first h{})", mp.tracks[t].name, kind(t), v.tracks[t].pieces.front());
+				for (const PlanarStructureSite &site : v.structure.sites) {
+					if (site.node == n) out << std::format(" | site split {} straight {} side {}", site.split, site.straight == UINT32_MAX ? std::string("none") : mp.tracks[site.straight].name, site.side);
+				}
+				out << "\n";
+			}
+		}
 		if (const char *dump = std::getenv("PLANAR_DUMP_TRACK"); dump != nullptr && a.status == "Optimal") {
 			/* Debug aid: one track's pieces, flex middles, stage A lengths and points. */
 			for (size_t t = 0; t < v.tracks.size(); t++) {
@@ -7491,6 +7509,24 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
 		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows);
+		if (const char *dn = std::getenv("PLANAR_DUMP_NODE"); dn != nullptr) {
+			/* Debug aid: one node of the track map: its lines (name, kind, Shape's end heading) and its site. */
+			const auto &mp = v.structure.map;
+			size_t n = SIZE_MAX;
+			std::from_chars(dn, dn + std::strlen(dn), n);
+			if (n < mp.expanded.nodes.size()) {
+				const PlanarNode &node = mp.expanded.nodes[n];
+				const auto kind = [&](uint32_t t) { return mp.tracks[t].kind == PlanarTrack::Kind::Line ? "Line" : mp.tracks[t].kind == PlanarTrack::Kind::Copy ? "Copy" : "Row"; };
+				out << std::format("- {} node {} group {}: in", tag, n, node.group);
+				for (const uint32_t t : node.in) out << std::format(" {}({}, last h{})", mp.tracks[t].name, kind(t), v.tracks[t].pieces.back());
+				out << " | out";
+				for (const uint32_t t : node.out) out << std::format(" {}({}, first h{})", mp.tracks[t].name, kind(t), v.tracks[t].pieces.front());
+				for (const PlanarStructureSite &site : v.structure.sites) {
+					if (site.node == n) out << std::format(" | site split {} straight {} side {}", site.split, site.straight == UINT32_MAX ? std::string("none") : mp.tracks[site.straight].name, site.side);
+				}
+				out << "\n";
+			}
+		}
 		if (const char *dump = std::getenv("PLANAR_DUMP_TRACK"); dump != nullptr && a.status == "Optimal") {
 			/* Debug aid: one track's pieces, flex middles, stage A lengths and points. */
 			for (size_t t = 0; t < v.tracks.size(); t++) {
