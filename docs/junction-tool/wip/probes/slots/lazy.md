@@ -145,3 +145,95 @@ So D443 alone causes it, with any offers. Pieces: E2 (chain of prio:E2) and prio
 Test: "a beside track's parent chain gets no S-bend offers its copy cannot follow (D421, D442)" (`[planarshape]`, T2, offers 3, D443 on): chain and copy have no flex, and for every crosser of both a crossing and its copy's crossing at the same place, adjacent in the crosser's events, no flex between them and both on one piece. Red before the fix: C2 (B1/prio:B1) and D1 (E2/prio:E2) have 6 flex pairs each between the two crossings and sit on pieces 24 to 36 and 25 to 37; 4 of 25 assertions failed.
 
 Fix (`FreeOnePieceStretch`): a stretch between a crossing and its mirror (its beside copy's crossing of the same crosser) is not free, whatever the channel clause says. Green; `[planarshape]` 39 of 39. Stage A round 0 on T2 offers 3 + D443: Optimal, 5.7 s, 169 pairs fail on its points (round 1 with those 169 pairs, 676 binaries, hits the 15 s cap). Stage B from that drawing is still Infeasible with no keep-apart rows (conflict families: 6; node turns F6/F8 fail on the contracted variant, as in lazy-3 offers 1): a separate, Slots-side question, not addressed here.
+
+
+# lazy-4 Part A: fixed sides for lazily added pairs (D444 trial)
+
+Option `PlanarDrawOptions::fixed_pairs` (new: `forced_sides` needs `sides_from`, which fixes every pair and ignores `only_pairs`): in binary mode a listed pair writes its one candidate (axis*2+side) as plain rows, no binary, no `sepdir`, even with `only_pairs_on` and not in `only_pairs`. The lazy loop adds a failing pair FIXED to the candidate with the largest margin on that round's points; an Infeasible round with fixed pairs frees the fixed pairs its `result.conflict` names (to binaries) and solves again (that solve is a round). Table columns: pairs fixed / free are the round's (before adding), freed = fixed pairs moved to free after an Infeasible round. Stage B's seed pairs from stage A start free. Release, one solve at a time.
+
+
+### LAZY T1 offers 1 d443 off (flex pairs 41)
+
+| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |
+|---|---|---|---|---|---|---|---|---|
+| A | 0 | Optimal | 177 | 0 | 0 | 0 | 1 | - |
+| A | 1 | Optimal | 225 | 1 | 0 | 0 | 0 | - |
+- stage B contracted variant: per-track turns hold, node turns (F6/F8) hold
+| B | 0 | Optimal | 8 | 0 | 1 | 4 | 4 | - |
+| B | 1 | Optimal | 23 | 4 | 1 | 4 | 0 | - |
+
+- LAZY T1 offers 1 d443 off stage A: rounds 2 converged true stop '' pairs with rows 1 of 811 total ms 402
+- stage B seed: 1 of stage A's 1 pairs map to stage B tags (listing solve status Optimal, 7 ms, not counted)
+- LAZY T1 offers 1 d443 off stage B: rounds 2 converged true stop '' pairs with rows 5 of 318 total ms 32
+- judge accept (without interface rows: judge accept); domain accept notes 0 breaks 0
+  - node 0: AB1@end(24,15) h6 A1@start(24,15) h5 B1@start(24,15) h6
+  - node 1: CD1@end(15,20) h-1 C1@start(15,20) h-1 D1@start(15,20) h0
+  - node 2: EF1@end(10,3) h2 E1@start(10,3) h2 F1@start(10,3) h3
+  - node 3: AF1@start(21,22) h5 A1@end(21,22) h5 F1@end(21,22) h4
+  - node 4: CB1@start(8,13) h6 C1@end(8,13) h-1 B1#12@end(8,13) h6 B1#14@end(10,11) h6
+  - node 5: ED1@start(22,3) h2 D1@end(22,3) h1 E1#13@end(22,3) h2 E1#15@end(20,1) h2
+  - node 6: B1@end(14,13) h6 B1#12@start(14,13) h6 B1#14@start(12,11) h6
+  - node 7: E1@end(16,3) h2 E1#13@start(16,3) h2 E1#15@start(18,1) h2
+- control, stage B with all rows: status Optimal ms 482 binaries 1272 judge accept
+
+### LAZY T1 offers 3 d443 on (flex pairs 123)
+
+| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |
+|---|---|---|---|---|---|---|---|---|
+| A | 0 | Optimal | 870 | 0 | 0 | 0 | 0 | - |
+- stage B contracted variant: per-track turns hold, node turns (F6/F8) hold
+| B | 0 | Optimal | 7 | 0 | 0 | 0 | 4 | - |
+| B | 1 | Infeasible | 8 | 4 | 0 | 0 | - | 2 |
+| B | 2 | Infeasible | 9 | 2 | 2 | 8 | - | 1 |
+| B | 3 | Optimal | 8 | 1 | 3 | 12 | 4 | - |
+| B | 4 | Optimal | 8 | 5 | 3 | 12 | 0 | - |
+
+- LAZY T1 offers 3 d443 on stage A: rounds 1 converged true stop '' pairs with rows 0 of 5279 total ms 870
+- stage B seed: 0 of stage A's 0 pairs map to stage B tags (listing solve status Optimal, 7 ms, not counted)
+- LAZY T1 offers 3 d443 on stage B: rounds 5 converged true stop '' pairs with rows 8 of 318 total ms 41
+- judge accept (without interface rows: judge accept); domain accept notes 0 breaks 0
+  - node 0: AB1@end(24,15) h6 A1@start(24,15) h5 B1@start(24,15) h6
+  - node 1: CD1@end(15,20) h-1 C1@start(15,20) h-1 D1@start(15,20) h0
+  - node 2: EF1@end(10,3) h2 E1@start(10,3) h2 F1@start(10,3) h3
+  - node 3: AF1@start(21,22) h5 A1@end(21,22) h5 F1@end(21,22) h4
+  - node 4: CB1@start(8,13) h6 C1@end(8,13) h-1 B1#12@end(8,13) h6 B1#14@end(10,11) h6
+  - node 5: ED1@start(22,3) h2 D1@end(22,3) h1 E1#13@end(22,3) h2 E1#15@end(20,1) h2
+  - node 6: B1@end(14,13) h6 B1#12@start(14,13) h6 B1#14@start(12,11) h6
+  - node 7: E1@end(16,3) h2 E1#13@start(16,3) h2 E1#15@start(18,1) h2
+- control, stage B with all rows: status Optimal ms 482 binaries 1272 judge accept
+
+### LAZY T2 offers 1 d443 off (flex pairs 99)
+
+| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |
+|---|---|---|---|---|---|---|---|---|
+| A | 0 | Optimal | 2373 | 0 | 0 | 0 | 51 | - |
+| A | 1 | Infeasible | 42 | 51 | 0 | 0 | - | 7 |
+| A | 2 | Optimal | 1671 | 44 | 7 | 28 | 15 | - |
+| A | 3 | Infeasible | 44 | 59 | 7 | 28 | - | 2 |
+| A | 4 | Optimal | 1937 | 57 | 9 | 36 | 12 | - |
+| A | 5 | Infeasible | 45 | 69 | 9 | 36 | - | 2 |
+| A | 6 | Optimal | 3123 | 67 | 11 | 44 | 1 | - |
+| A | 7 | Infeasible | 433 | 68 | 11 | 44 | - | 1 |
+| A | 8 | Infeasible | 2153 | 67 | 12 | 48 | - | 0 |
+- LAZY T2 offers 1 d443 off A round 8 conflict rows 0:
+- LAZY T2 offers 1 d443 off A conflict: first solve Infeasible (conflict rows 0, families 0)
+
+  - families needed:
+- stage B contracted variant: per-track turns hold, node turns (F6/F8) FAIL
+| B | 0 | Optimal | 150 | 0 | 49 | 196 | 18 | - |
+| B | 1 | Infeasible | 19 | 18 | 49 | 196 | - | 8 |
+| B | 2 | Infeasible | 20 | 10 | 57 | 228 | - | 1 |
+| B | 3 | Infeasible | 37 | 9 | 58 | 232 | - | 2 |
+| B | 4 | Infeasible | 40 | 7 | 60 | 240 | - | 1 |
+| B | 5 | Infeasible | 64 | 6 | 61 | 244 | - | 0 |
+- LAZY T2 offers 1 d443 off B round 5 conflict rows 0:
+- LAZY T2 offers 1 d443 off B conflict: first solve Infeasible (conflict rows 0, families 0)
+
+  - families needed:
+
+- LAZY T2 offers 1 d443 off stage A: rounds 9 converged false stop 'Infeasible' pairs with rows 79 of 1945 total ms 11826
+- stage B seed: 49 of stage A's 79 pairs map to stage B tags (listing solve status Optimal, 21 ms, not counted)
+- LAZY T2 offers 1 d443 off stage B: rounds 6 converged false stop 'Infeasible' pairs with rows 67 of 1032 total ms 332
+- control, stage B with all rows: status Infeasible ms 1237 binaries 4128
+
+Verdicts. T1 (both configs, regression): converges in both stages; judge accept (also without interface rows), domain accept (0 breaks), control accepts; offers 3 + D443 stage B needs two freeing rounds (4 fixed, conflict named 2, then 1) before it converges. T2 offers 1: stage A does not converge: each round's new pairs make the next Infeasible (7, 2, 2, 1 pairs freed), 9 rounds / 11.8 s, and round 8 (67 fixed, 12 free, 48 binaries) is Infeasible with an EMPTY conflict (the MILP proves it by branching, there is no row set to name), so nothing is freed and the loop stops; stage B, started from stage A's last Optimal drawing (round 6), does the same (round 5, 61 free, empty conflict); the all-rows control is Infeasible (4128 binaries). No judge or domain verdict for T2 (never converged). Compared with lazy-1/3 (round 1 with 51 free pairs, 204 binaries, hit the 15 s cap): the fixed rounds are fast (1.7 to 3.1 s Optimal, Infeasible in 0.04 to 2.2 s), but fixing from the previous points is wrong for a part of the pairs on every round (about 15 of the 51, then 2 to 12 more each time), and the freed ones cannot be found once the conflict is empty.

@@ -2040,7 +2040,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						continue;
 					}
 					/* D444 trial: with only_pairs_on, a pair outside only_pairs is listed (candidates read out) but gets no binaries and no rows. */
-					const bool write_rows = !options.only_pairs_on || std::ranges::find(options.only_pairs, fmt::format("sep {} {} {}", f.face, i, j)) != options.only_pairs.end();
+					const std::string pair_name = fmt::format("sep {} {} {}", f.face, i, j);
+					int fixed_candidate = -1;
+					for (const auto &[fixed_tag, fixed_c] : options.fixed_pairs) {
+						if (fixed_tag == pair_name) fixed_candidate = fixed_c;
+					}
+					const bool write_rows = fixed_candidate >= 0 || !options.only_pairs_on || std::ranges::find(options.only_pairs, pair_name) != options.only_pairs.end();
 					Terms bs;
 					for (size_t axis_index = 0; axis_index < axes.size(); axis_index++) {
 						const Axis &axis = axes[axis_index];
@@ -2048,9 +2053,11 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							if (options.inward_sides && !((axis_index == 0 && side == 0) || (w[i].heading % 4 != w[j].heading % 4 && axis_index == 1 && side == 1))) continue;
 							const auto &from = side == 0 ? pi : pj;
 							const auto &to = side == 0 ? pj : pi;
-							const uint32_t b = write_rows ? var(0, 1, 0, "other") : 0;
+							/* D444 trial: a fixed pair writes its one candidate as plain rows, no binary; the others write nothing. */
+							const bool this_rows = write_rows && (fixed_candidate < 0 || static_cast<int>(axis_index) * 2 + side == fixed_candidate);
+							const uint32_t b = this_rows && fixed_candidate < 0 ? var(0, 1, 0, "other") : 0;
 							if (dump_pair != nullptr) dump_pair->candidates[axis_index * 2 + side].binary = b;
-							if (write_rows) {
+							if (this_rows && fixed_candidate < 0) {
 								result.binaries++;
 								bs.emplace_back(b, 1);
 							}
@@ -2066,18 +2073,19 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 										row_end(from_wall, e, r.p, r.p_cross);
 										row_end(to_wall, e2, r.q, r.q_cross);
 									}
-									if (!write_rows) continue;
-									Terms t{{b, -M}};
+									if (!this_rows) continue;
+									Terms t;
+									if (fixed_candidate < 0) t.emplace_back(b, -M);
 									for (int d = 0; d < 2; d++) {
 										t.emplace_back(q[d], axis.s[d]);
 										t.emplace_back(p[d], -axis.s[d]);
 									}
-									row(std::move(t), sp(axis) - M, JunctionMilp::INF, fmt::format("sep {} {} {}", f.face, i, j));
+									row(std::move(t), fixed_candidate < 0 ? sp(axis) - M : sp(axis), JunctionMilp::INF, fmt::format("sep {} {} {}", f.face, i, j));
 								}
 							}
 						}
 					}
-					if (write_rows) row(std::move(bs), 1, 1, fmt::format("sepdir {} {} {}", f.face, i, j));
+					if (write_rows && fixed_candidate < 0) row(std::move(bs), 1, 1, fmt::format("sepdir {} {} {}", f.face, i, j));
 				}
 			}
 		}

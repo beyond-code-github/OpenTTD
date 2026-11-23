@@ -5891,49 +5891,99 @@ void LazyConflict(const PlanarShapeVariant &v, const PlanarDrawOptions &base, co
 	std::cout << out << std::flush;
 }
 
+/** D444 lazy-4: the candidate (axis * 2 + side, the order the pair lists them) with the largest margin on the points: the least over its rows of s . (q - p) - spacing. */
+int LazyBestCandidate(const PlanarKeepApartPair &p, const std::vector<std::vector<std::array<int, 2>>> &points)
+{
+	int best = 0, best_margin = INT_MIN;
+	for (size_t c = 0; c < p.candidates.size(); c++) {
+		int margin = INT_MAX;
+		for (const PlanarKeepApartPair::Row &r : p.candidates[c].rows) {
+			const std::array<int, 2> a = PlanarKeepApartEnd(r, false, points), b = PlanarKeepApartEnd(r, true, points);
+			margin = std::min(margin, p.candidates[c].s[0] * (b[0] - a[0]) + p.candidates[c].s[1] * (b[1] - a[1]) - p.candidates[c].spacing);
+		}
+		if (margin > best_margin) {
+			best_margin = margin;
+			best = static_cast<int>(c);
+		}
+	}
+	return best;
+}
+
+/**
+ * D444 lazy-4: rounds as lazy-1, but a pair that fails on a round's points is added with its candidate FIXED to the one with the largest margin on those points (one plain row, no binary); a round with fixed pairs that is Infeasible frees the fixed pairs its conflict names (binaries, as lazy-1) and solves again. `list` seeds the free pairs.
+ */
 LazyRun LazyLoop(const PlanarShapeVariant &v, const PlanarDrawOptions &base, std::vector<std::string> list, const std::string &tag, const char *stage, std::ostream &md)
 {
 	LazyRun run;
-	run.list = std::move(list);
+	std::vector<std::string> free_list = std::move(list);
+	std::vector<std::pair<std::string, int>> fixed;
+	const auto all_with_rows = [&]() {
+		std::vector<std::string> names = free_list;
+		for (const auto &[t, c] : fixed) names.push_back(t);
+		return names;
+	};
 	for (int round = 0; round < 12; round++) {
 		PlanarDrawOptions o = base;
 		o.keep_apart_out = true;
 		o.only_pairs_on = true;
-		o.only_pairs = run.list;
+		o.only_pairs = free_list;
+		o.fixed_pairs = fixed;
 		const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, o);
 		run.rounds++;
 		run.ms += r.ms;
-		size_t with_rows = 0, all = 0;
-		std::vector<std::string> failing;
+		const size_t n_fixed = fixed.size(), n_free = free_list.size();
+		size_t all = 0;
+		std::vector<const PlanarKeepApartPair *> failing;
 		for (const PlanarKeepApartPair &p : r.keep_apart) {
 			if (!p.skipped.empty() || p.candidates.empty()) continue;
 			all++;
-			if (std::ranges::find(run.list, p.tag) != run.list.end()) with_rows++;
 		}
 		run.all_pairs = all;
 		if (r.status == "Optimal") {
+			const std::vector<std::string> have = all_with_rows();
 			for (const PlanarKeepApartPair &p : r.keep_apart) {
 				if (!p.skipped.empty() || p.candidates.empty()) continue;
-				if (!PlanarKeepApartHolds(p, r.points) && std::ranges::find(run.list, p.tag) == run.list.end()) failing.push_back(p.tag);
+				if (std::ranges::find(have, p.tag) == have.end() && !PlanarKeepApartHolds(p, r.points)) failing.push_back(&p);
 			}
 			run.last = r;
 			run.pairs = r.keep_apart;
 		}
-		const std::string line = std::format("| {} | {} | {} | {} | {} | {} | {} |", stage, round, r.status, static_cast<int>(r.ms), with_rows, r.binaries, r.status == "Optimal" ? std::format("{}", failing.size()) : "-");
+		size_t freed = 0;
+		if (r.status == "Infeasible" && !fixed.empty()) {
+			for (const std::string &c : r.conflict) {
+				const auto it = std::ranges::find_if(fixed, [&](const std::pair<std::string, int> &f) { return f.first == c; });
+				if (it == fixed.end()) continue;
+				free_list.push_back(it->first);
+				fixed.erase(it);
+				freed++;
+			}
+		}
+		const std::string line = std::format("| {} | {} | {} | {} | {} | {} | {} | {} | {} |", stage, round, r.status, static_cast<int>(r.ms), n_fixed, n_free, r.binaries, r.status == "Optimal" ? std::format("{}", failing.size()) : "-", r.status == "Infeasible" ? std::format("{}", freed) : "-");
 		md << line << "\n" << std::flush;
 		std::cout << LazyRoundTag(tag, stage, round) << ": " << line << "\n" << std::flush;
+		if (r.status == "Infeasible" && freed == 0) {
+			std::string fam;
+			for (const std::string &c : r.conflict) fam += " [" + c + "]";
+			const std::string note = std::format("- {} {} round {} conflict rows {}:{}\n", tag, stage, round, r.conflict.size(), fam.size() > 600 ? fam.substr(0, 600) + " ..." : fam);
+			md << note << std::flush;
+			std::cout << note << std::flush;
+		}
+		if (r.status == "Infeasible" && freed > 0) continue;
 		if (r.status != "Optimal") {
 			run.stop = r.status;
+			run.list = all_with_rows();
 			if (r.status == "Infeasible") LazyConflict(v, o, tag, stage, md);
 			return run;
 		}
 		if (failing.empty()) {
 			run.converged = true;
+			run.list = all_with_rows();
 			return run;
 		}
-		for (const std::string &t : failing) run.list.push_back(t);
+		for (const PlanarKeepApartPair *p : failing) fixed.emplace_back(p->tag, LazyBestCandidate(*p, r.points));
 	}
 	run.stop = "12 rounds";
+	run.list = all_with_rows();
 	return run;
 }
 
@@ -5977,7 +6027,7 @@ TEST_CASE("planar slots: lazy keep-apart rows on T1 and T2 (D444)", "[.][lazymea
 			size_t flex_pairs = 0;
 			for (const PlanarShapeTrack &t : v.tracks) flex_pairs += t.flex.size();
 			const std::string tag = std::format("LAZY {} offers {} d443 {}", name, cfg.offers, cfg.d443 ? "on" : "off");
-			md << std::format("\n### {} (flex pairs {})\n\n| stage | round | status | ms | pairs with rows | binaries | failing pairs |\n|---|---|---|---|---|---|---|\n", tag, flex_pairs) << std::flush;
+			md << std::format("\n### {} (flex pairs {})\n\n| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |\n|---|---|---|---|---|---|---|---|---|\n", tag, flex_pairs) << std::flush;
 			/* Stage A: uncontracted, integer, SlotsOptions' grid, inserts may be 0, no reference (no node gaps). */
 			const X1Fixture fa(v);
 			PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
