@@ -544,6 +544,19 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			leg_zero[t] = leg_reference[t] < 1;
 		}
 	}
+	/* node_cusp (D451): per track, the forced node-end inserts and the pieces held at 0 between them and the node. */
+	std::vector<std::set<uint32_t>> cusp_insert(nt), cusp_held(nt);
+	if (options.node_cusp) {
+		for (const PlanarNodeCusp &cusp : PlanarNodeCusps(v)) {
+			if (cusp.insert == UINT32_MAX) {
+				result.cusps_missing.push_back(fmt::format("{} {}: {}", map.tracks[cusp.track].name, cusp.node, cusp.missing));
+				continue;
+			}
+			cusp_insert[cusp.track].insert(cusp.insert);
+			cusp_held[cusp.track].insert(cusp.held.begin(), cusp.held.end());
+			result.cusps_forced++;
+		}
+	}
 	for (size_t t = 0; t < nt; t++) {
 		const std::vector<int> &pieces = v.tracks[t].pieces;
 		if (pieces.empty()) return unsupported("track " + map.tracks[t].name + " has no piece");
@@ -610,6 +623,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			if (!line.from.port && !is_middle(0)) free_piece[0] = false;
 			if (!line.to.port && !is_middle(pieces.size() - 1)) free_piece[pieces.size() - 1] = false;
 		}
+		/* node_cusp (D451): the pieces between a forced insert and its node are held at 0 (this overrides node_flank for this leg end); the insert has a least length. */
+		for (const uint32_t i : cusp_held[t]) free_piece[i] = true;
+		for (const uint32_t i : cusp_insert[t]) free_piece[i] = false;
 		may_zero[t] = free_piece;
 		std::set<uint32_t> middles(flex.begin(), flex.end());
 		middles.insert(steps.begin(), steps.end());
@@ -624,9 +640,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const bool reference = options.curve_flex_from != nullptr && in_flex && !free_track && !(options.node_flank && !port_stretch && !leg_zero[t] && ((i == 0 && !map.expanded.lines[t].from.port) || (i + 1 == pieces.size() && !map.expanded.lines[t].to.port))) && t < options.curve_flex_from->size() && i < (*options.curve_flex_from)[t].size() && (*options.curve_flex_from)[t][i] >= options.curve_flex_above;
 			const bool node_end = options.node_flank && in_flex && !port_stretch && !leg_zero[t] && ((i == 0 && !map.expanded.lines[t].from.port) || (i + 1 == pieces.size() && !map.expanded.lines[t].to.port));
 			const bool held = node_end || (options.curve_flex_from != nullptr && in_flex && !reference && !free_track && !options.curve_flex_free);
-			positive.push_back(reference || lower > 0);
-			capped.push_back(zero || held);
-			length[t].push_back({var(reference ? 1 : lower, (zero || held) ? 0 : options.coord_max, (options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0)) + (in_flex ? (options.flex_weights != nullptr && t < options.flex_weights->size() && i < (*options.flex_weights)[t].size() ? (*options.flex_weights)[t][i] : options.flex_price) * (axis ? AXIS_LEAST : 1) : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
+			/* node_cusp (D451): the forced insert is neither held nor a reference (lower bound 1, upper coord_max); the pieces between it and the node are held at 0. */
+			const bool cusp_forced = cusp_insert[t].contains(static_cast<uint32_t>(i));
+			const bool cusp_zero = cusp_held[t].contains(static_cast<uint32_t>(i));
+			const bool cap = (zero || held || cusp_zero) && !cusp_forced;
+			positive.push_back((reference && !cusp_zero) || lower > 0);
+			capped.push_back(cap);
+			length[t].push_back({var((reference && !cusp_zero) ? 1 : lower, cap ? 0 : options.coord_max, (options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0)) + (in_flex ? (options.flex_weights != nullptr && t < options.flex_weights->size() && i < (*options.flex_weights)[t].size() ? (*options.flex_weights)[t][i] : options.flex_price) * (axis ? AXIS_LEAST : 1) : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});
 		}
 		for (const std::vector<uint32_t> &g : groups) {
 			if (port_stretch) break;
@@ -867,6 +887,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					bool conflict = false;
 					bool stopped = false;
 					for (size_t q = after ? static_cast<size_t>(m) + 2 : static_cast<size_t>(m) - 2; after ? q < pieces.size() : q != SIZE_MAX; after ? q++ : q--) {
+						/* A piece held at 0 has no length, so it makes no turn: the run continues past it. */
+						if (var_upper[length[t][q].variable] == 0) continue;
 						if (dist(h, pieces[q]) > 1) conflict = true;
 						if (var_lower[length[t][q].variable] >= 1) {
 							stopped = true;
@@ -2973,4 +2995,61 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 		}
 	}
 	return rows;
+}
+
+std::vector<PlanarNodeCusp> PlanarNodeCusps(const PlanarShapeVariant &v)
+{
+	const PlanarTrackMap &map = v.structure.map;
+	const auto same = [](int a, int b) { return (a - b) % 8 == 0; };
+	std::vector<PlanarNodeCusp> cusps;
+	for (const PlanarStructureSite &site : v.structure.sites) {
+		if (site.node >= map.expanded.nodes.size()) continue;
+		const PlanarNode &node = map.expanded.nodes[site.node];
+		const std::vector<uint32_t> &legs = site.split ? node.out : node.in;
+		const std::vector<uint32_t> &single = site.split ? node.in : node.out;
+		if (single.size() != 1 || (site.straight == UINT32_MAX && legs.size() != 2)) continue;
+		const int h = site.split ? v.tracks[single[0]].pieces.back() : v.tracks[single[0]].pieces.front();
+		for (const uint32_t leg : legs) {
+			if (leg == site.straight || map.tracks[leg].kind != PlanarTrack::Kind::Line) continue;
+			const std::vector<int> &pieces = v.tracks[leg].pieces;
+			if (!same(site.split ? pieces.front() : pieces.back(), h)) continue;
+			PlanarNodeCusp cusp;
+			cusp.track = leg;
+			cusp.node = site.node;
+			const int turned = PlanarLegTurnedHeading(v, site, leg);
+			std::vector<uint32_t> middles = v.tracks[leg].flex;
+			std::ranges::sort(middles);
+			const uint32_t n = static_cast<uint32_t>(pieces.size());
+			/* The node-end flex group: consecutive middles two apart, the group whose largest middle is n - 2 (merge) or whose smallest is 1 (split). */
+			std::vector<uint32_t> group;
+			if (site.split) {
+				for (const uint32_t m : middles) {
+					if (group.empty() ? m == 1 : m == group.back() + 2) group.push_back(m);
+				}
+			} else {
+				for (size_t k = middles.size(); k-- > 0;) {
+					if (group.empty() ? middles[k] + 2 == n : middles[k] + 2 == group.back()) group.push_back(middles[k]);
+				}
+			}
+			if (group.empty()) {
+				cusp.missing = "no flex group at the node end";
+			} else {
+				for (const uint32_t m : group) {
+					if (!same(pieces[m], turned)) continue;
+					cusp.insert = m;
+					break;
+				}
+				if (cusp.insert == UINT32_MAX) cusp.missing = fmt::format("no flex middle at the node end on the turned heading {}", ((turned % 8) + 8) % 8);
+			}
+			if (cusp.insert != UINT32_MAX) {
+				if (site.split) {
+					for (uint32_t p = 0; p < cusp.insert; p++) cusp.held.push_back(p);
+				} else {
+					for (uint32_t p = cusp.insert + 1; p < n; p++) cusp.held.push_back(p);
+				}
+			}
+			cusps.push_back(std::move(cusp));
+		}
+	}
+	return cusps;
 }

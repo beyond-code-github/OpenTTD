@@ -76,6 +76,18 @@ bool PlanarPointRowHolds(const PlanarPointRow &row, const std::vector<std::vecto
  */
 std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v);
 
+/** A cusp at a topology node (D451): a non-straight Line leg at the trunk heading, and its node-end S-bend insert on the turned heading. */
+struct PlanarNodeCusp {
+	uint32_t track = 0; ///< The leg.
+	uint32_t node = 0; ///< The site's node.
+	uint32_t insert = UINT32_MAX; ///< The insert's piece, UINT32_MAX when missing.
+	std::vector<uint32_t> held; ///< The pieces between the insert and the node, held at 0.
+	std::string missing; ///< Why there is no insert (empty when there is one).
+};
+
+/** Every cusp of the variant's sites, in site order (D451). */
+std::vector<PlanarNodeCusp> PlanarNodeCusps(const PlanarShapeVariant &v);
+
 struct PlanarProgramPlan;
 
 /** The drawing program as written (D428 read-out): its variables and rows, and which variables are the track points. */
@@ -118,6 +130,8 @@ struct PlanarDrawResult {
 	std::vector<std::pair<std::string, std::string>> sep_margins; ///< A read-out (margin_tags): per pair tag, each candidate as "c<k> s(x,y) spacing <n> from i|j margin <m>", joined by "; ".
 	uint32_t rows = 0; ///< The program's rows.
 	size_t flank_rows = 0; ///< With flank_turn: the flank rows written.
+	size_t cusps_forced = 0; ///< With node_cusp: the cusps whose insert was forced.
+	std::vector<std::string> cusps_missing; ///< With node_cusp: "track node: reason" per cusp with no insert.
 	uint32_t columns = 0; ///< The program's variables.
 	size_t grid_forced = 0; ///< With grid: the variables whose parity the integer equalities force (written 2 h + p).
 	size_t grid_tightened = 0; ///< With grid: the rows whose bounds rounding inward moved, once divided by their coefficients' gcd.
@@ -175,6 +189,7 @@ struct PlanarDrawOptions {
 	bool node_lead = true; ///< On by default (D435: the domain suite exact on X1, X2, M1, K1, L1, Y1, P1, BR1); false is the old behaviour. Rule A (D400, engineer 2026-11-23): write PlanarNodeLeadRows as hard rows (tag lead).
 	bool node_flank = false; ///< A probe (2026-11-24): every track end at a node (not a port; not a D412 port stretch or a zero leg) keeps its end piece at its least length, never 0, so a leg's node turn cannot vanish (V's PSG 197 keeps all 36 node-side flanks).
 	bool flank_turn = false; ///< D448 (1): per flex insert and side, when a piece in the zero-able run beyond that flank (up to the first piece with a least length) or the node neighbour's end heading is more than one eighth from the insert's heading, write `flank_k * flank - insert >= 0` (tag `flank <track> <m> before|after`), so a used insert keeps its flank.
+	bool node_cusp = false; ///< A probe (D451): a non-straight Line leg at the trunk heading at a topology node (a cusp) gets its node-end flex insert on the turned heading forced (length >= 1) with every piece between it and the node held at 0, so the leg arrives on the turned heading flush at the node, as the game's prio join does; a cusp with no such insert is reported (cusps_missing).
 	double flank_k = 64; ///< With flank_turn: the rows' constant K (as D430's lead rows' 64); a small K keeps the relaxation tight (K = coord_max = 4096 made stage A 40x slower on T1).
 	bool node_gaps = false; ///< Node gaps (SPEC-slots-lengths §8.1 node_leg, D400): a track from a node to a node with no event travels at least rules.node_leg, or 0 (a trident) where node_gap_from says so (tags `leg`, `leg zero`).
 	const std::vector<std::vector<double>> *node_gap_from = nullptr; ///< With node_gaps: a drawing's lengths (as PlanarDrawResult::lengths); a node-to-node track whose travel there is below 1 half tile is held at 0, every other at least rules.node_leg. Null: every one at least rules.node_leg.
