@@ -1,3 +1,35 @@
+# sides-2: walk_strict failures checked, and measured on every legal drawing incl. off-interface (D431)
+
+## Verdict on the walk_strict failures: not a mapping bug; the rule certifies the walked part of a wall, the rows use the whole piece
+Hand check, X1 `sep 4 3 6`, polyline `A1:3*2,2*8,1*2,2*4,;AC1:2*4,;B1:0*10,...` (A1 = track 4, B1 = track 3). Heading 0 is north (STEP[0] = (0,-1), y down). Wall i = A1 piece 3 (walked heading 6), wall j = B1 piece 0 (walked heading 4); axes[0].s = STEP[(6+6)%8] = (0,1), south. (M1 and K1 have no crossing lines in their topology.)
+- Points: A1 (4,5) (6,7) (14,7) (16,5) (20,5); B1 (11,10) (11,0). A1 piece 1 and B1 piece 0 cross at (11,7).
+- Face 4's walk: t5 p0, t5 p1, box edge (north), A1 p3 (walked west, (20,5) to (16,5)), A1 p2 ((16,5) to (14,7)), A1 p1 (walked from (14,7) only to the crossing (11,7)), B1 p0 (walked from the crossing (11,7) to (11,10), heading 4). The last two walls are partial pieces: the face walk cuts each at the crossing.
+- Candidates as the pair loop builds them (index = axis*2 + side; rows are the 4 whole-piece endpoint pairs): c0 s(0,1) from i, margin -6; c1 s(0,1) from j, margin -6; c2 s(1,0) from i, margin -10; c3 s(1,0) from j, margin +4 (A1 p3 lies east of B1, 5 to 9 columns). The legal drawing keeps c3.
+- The rule: `monotone(i, j, (0,1))` holds (the walls after i have walked headings 5, 6, 4, dots 1, 0, 1 with (0,1)) and `guaranteed` = 1 >= spacing 1, so `walk_choice` returns 0 (the first branch wins). The other branch, `monotone(j, i, (1,0))`, is false (A1 p3 walked west has dot -1), so c3, the candidate that holds, is not certified.
+- The read-out stores 0 = what the rule picks, in the numbering of `PlanarKeepApartHolds` (candidates are pushed axis*2 + side, side 0 = p on i, as `walk_choice`'s forced rows write them). No mapping error.
+- Why c0 fails although the walk is monotone: the walk proves the walked part of B1 p0 (from y=7) lies south of A1 p3, but c0's rows use the whole piece, whose other endpoint (11,0) is at y=0, north of A1 (y=5), 7 columns behind the walk's start (against the normal). Wall j (and wall i in the other branch) is a partial piece when the face walk meets it at a crossing; the walk's guaranteed projection never counts the part of the piece outside the face.
+- Pattern across fixtures: walk_strict failures occur exactly on the fixtures with crossings (X1, X2, L1, Y1, BR1, TT1, TS2) and are zero on M1 and K1 (no crossings). Rule-level issue, no fix in this step.
+
+## sides-2 (off-interface drawings included)
+Drawings now: every distinct polyline the domain accepts that the default-rule judge accepts, either with the interface rows (sides-1) or only without the port and box rows (off interface, from the read-out of that judge). 197 is as in sides-1 (V's points, 1 drawing). Cell = forced share % / failures (forced count).
+
+| fixture | drawings (off interface) | pair-instances | walk | walk_strict | facing | strict+facing | inward |
+|---|---|---|---|---|---|---|---|
+| X1 | 146 (144) | 3304 | 68.5% / 254 (2264) | 45.2% / 117 (1495) | 0.0% / 0 (0) | 45.2% / 117 (1495) | 24.5% / 268 (811) |
+| X2 | 83 (82) | 2965 | 47.8% / 24 (1417) | 37.8% / 24 (1120) | 0.0% / 0 (0) | 37.8% / 24 (1120) | 25.9% / 453 (769) |
+| M1 | 9 (0) | 397 | 47.4% / 3 (188) | 38.3% / 0 (152) | 0.0% / 0 (0) | 38.3% / 0 (152) | 21.4% / 69 (85) |
+| K1 | 118 (80) | 1681 | 67.2% / 4 (1130) | 64.5% / 0 (1084) | 0.0% / 0 (0) | 64.5% / 0 (1084) | 18.3% / 215 (308) |
+| L1 | 112 (111) | 2792 | 53.5% / 243 (1494) | 41.8% / 209 (1166) | 8.0% / 0 (224) | 41.8% / 209 (1166) | 30.4% / 368 (848) |
+| Y1 | 8 (0) | 290 | 61.4% / 29 (178) | 42.8% / 5 (124) | 0.0% / 0 (0) | 42.8% / 5 (124) | 21.7% / 51 (63) |
+| P1 | 1 (0) | 0 | 0.0% / 0 (0) | 0.0% / 0 (0) | 0.0% / 0 (0) | 0.0% / 0 (0) | 0.0% / 0 (0) |
+| BR1 | 6 (0) | 122 | 54.1% / 8 (66) | 35.2% / 8 (43) | 0.0% / 0 (0) | 35.2% / 8 (43) | 27.9% / 11 (34) |
+| TT1 | 2 (0) | 20 | 55.0% / 1 (11) | 30.0% / 1 (6) | 0.0% / 0 (0) | 30.0% / 1 (6) | 25.0% / 1 (5) |
+| TS2 | 1 (0) | 22 | 86.4% / 1 (19) | 77.3% / 1 (17) | 31.8% / 0 (7) | 77.3% / 1 (17) | 40.9% / 0 (9) |
+| 197 | 1 | 2512 | 52.7% / 129 (1325) | 43.8% / 85 (1100) | 8.9% / 0 (223) | 45.1% / 85 (1134) | 41.5% / 412 (1043) | (unchanged from sides-1; one drawing)
+
+Reading: walk_strict forces 30-65% on every fixture but fails on every crossing fixture (X1 117 of 1495, X2 24 of 1120, L1 209 of 1166, Y1 5, BR1 8, TT1 1, TS2 1) and on none of M1 and K1 (152 and 1084 forced, 0 failures); facing never fails (L1 224, TS2 7 forced); inward still fails often.
+
+# sides-1 (before the check)
 # sides-1: keep-apart sides forced by Shape's layout, measured on every legal drawing (D431)
 
 Hidden test `[.][sidesmeasure]` (env `PLANAR_SIDES_REPORT`), 197 by `[planardomain197]` with env `PLANAR_SIDES_197`. Drawings: each distinct polyline of each fixture's configurations that the domain accepts and the default-rule judge accepts; 197 at V's own points (the domain calls them NOT legal and the judge refuses, so 197 failures do not prove too-strict). Share = forced pairs / pairs with rows, summed over drawings; failures = pair instances whose forced candidate does not hold on the drawing (the rule refusing a legal drawing). Candidate = axis*2+side.
