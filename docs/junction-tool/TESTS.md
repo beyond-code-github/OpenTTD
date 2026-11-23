@@ -56,6 +56,7 @@ Every brief names its tag, build and budget from this table. Adding a test to a 
 | `[planarcomponents]` (test "planar wasted sideways: straight, a step and an up-and-back") | 0.00 s (the new test; the tag as a whole took 6.0 s Release on 2026-11-19 at wt-wasted: "planar components: T2 solves at the probe's area" takes 2 to 12 s, not from this test) | 5 s (Release) | 0.00 s |
 | `[planarcomponents]` (test "planar occupied tiles: distinct tiles over every program") | 0.00 s (the new test; the tag as a whole took 13.9 s Release on 2026-11-19 at wt-empty, 8 cases, with the machine busy) | 5 s (Release) | 0.00 s |
 | `[planarcomponents]` (budget landing: three cases moved to `[slow]`: "planar: T2 builds from its component layout and passes the checker" 12.4 s, "planar components: T2 solves at the probe's area" 12.1 s, "planar: LL² builds from its component layout and passes the checker" 10.0 s) | 2.3 s Release (5 cases; was 6 to 14 s; slowest left: "T2 mapped lands in its box at the anchor" 2.2 to 2.3 s) | 5 s (Release) | 2.3 s |
+| `[slotsflank]` (D448: T1 stage A with and without flank rows) | 6.0 s Debug (jt, 2026-11-24, over budget: both tests tagged `[slow]`; stage A with flank rows takes 6.7 s on T1, was 0.17 s without) | 5 s | 7.0 s Release (both tests, serial; solve-dominated) |
 
 Measured 2026-11-10 at the G3a merge.
 
