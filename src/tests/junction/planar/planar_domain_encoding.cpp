@@ -6732,6 +6732,25 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		}
 		/* PLANAR_STAGEA_LOCK (Gemini check 2): solve without flank rows first, then lock its inserts (used >= 1, unused 0) for the solve below. */
 		std::vector<std::vector<double>> lock_ref;
+		if (const char *file = std::getenv("PLANAR_STAGEA_LOCK_FILE"); file != nullptr) {
+			/* The S-bend choice of an offline solve (tools/junction/planar_cpsat.py --lengths=): every piece length, per track then per piece; its inserts are locked (used >= 1, unused 0). */
+			std::ifstream in(file);
+			size_t read = 0, expected = 0;
+			lock_ref.assign(v.tracks.size(), {});
+			for (size_t t = 0; t < v.tracks.size(); t++) {
+				for (size_t i = 0; i < v.tracks[t].pieces.size(); i++) {
+					double x = -1;
+					if (in >> x) read++;
+					lock_ref[t].push_back(x);
+					expected++;
+				}
+			}
+			double extra = 0;
+			REQUIRE(read == expected);
+			REQUIRE(!(in >> extra));
+			sa.curve_flex_from = &lock_ref;
+			out << std::format("- {} lock from file {}: {} lengths\n", tag, file, read);
+		}
 		if (std::getenv("PLANAR_STAGEA_LOCK") != nullptr) {
 			PlanarDrawOptions free_a = sa;
 			free_a.flank_turn = false;
@@ -6987,6 +7006,25 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 		}
 		/* PLANAR_STAGEA_LOCK (Gemini check 2): solve without flank rows first, then lock its inserts (used >= 1, unused 0) for the solve below. */
 		std::vector<std::vector<double>> lock_ref;
+		if (const char *file = std::getenv("PLANAR_STAGEA_LOCK_FILE"); file != nullptr) {
+			/* The S-bend choice of an offline solve (tools/junction/planar_cpsat.py --lengths=): every piece length, per track then per piece; its inserts are locked (used >= 1, unused 0). */
+			std::ifstream in(file);
+			size_t read = 0, expected = 0;
+			lock_ref.assign(v.tracks.size(), {});
+			for (size_t t = 0; t < v.tracks.size(); t++) {
+				for (size_t i = 0; i < v.tracks[t].pieces.size(); i++) {
+					double x = -1;
+					if (in >> x) read++;
+					lock_ref[t].push_back(x);
+					expected++;
+				}
+			}
+			double extra = 0;
+			REQUIRE(read == expected);
+			REQUIRE(!(in >> extra));
+			sa.curve_flex_from = &lock_ref;
+			out << std::format("- {} lock from file {}: {} lengths\n", tag, file, read);
+		}
 		if (std::getenv("PLANAR_STAGEA_LOCK") != nullptr) {
 			PlanarDrawOptions free_a = sa;
 			free_a.flank_turn = false;

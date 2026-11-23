@@ -28,3 +28,17 @@ n1 = D1,D2,A2,B1,F2: Infeasible 133 ms, empty conflict (proved by branching): no
 
 Reading: a turn-legal S-bend choice EXISTS for T2 (under rows that are, if anything, slightly strict). The trouble is search, not an upstream Shape gap. Grid parity not included (grid off).
 - WITH THE GRID ON (the real use case; parity-substituted export, 1146 variables): control without flank rows OPTIMAL 0.11 s; with the 159 flank rows (1854 rows) OPTIMAL (feasible) 4.60 s. HiGHS on the same model: Error at 15 s (21.9 s).
+
+## HiGHS options, and CP-SAT's S-bend choice locked (2026-11-24)
+- JUNCTION_MILP_OPTS mip_heuristic_effort 0.5 / 1.0 (grid on, flank rows, tidy off): Error 21.9 s both.
+- CP-SAT (grid on, flank rows) feasible 5.1 s; its piece lengths dumped; stage A in HiGHS with CP-SAT's inserts locked (PLANAR_STAGEA_LOCK_FILE): Optimal 1538 ms (73 flank rows apply). THE CHOICE OF S-BENDS IS THE DIFFICULTY.
+- STEP2B T2 contracted variant: per-track turns hold, node turns (F6/F8) FAIL (2 failing line(s)); g_turn_moved 0 -> 0, g_turn_rejected 0 -> 0
+  - node 10 point (32,19) rule F8 trunk ED1 starting h2 legs: D1 arriving h2 ; E1 arriving h2
+  - node 14 point (26,19) rule F6 trunk E1 arriving h3 legs: prio:E1 starting h1
+- STEP2B T2 stage B listing solve (no rows): Optimal 20 ms
+- STEP2B T2 stage B: rounds 3 converged false stop 'Infeasible' pairs with rows 55 of 1202 total ms 1887
+| B | 0 | Optimal | 21 | 0 | 0 | 0 | 55 | - |
+| B | 1 | Infeasible | 648 | 0 | 55 | 220 | - | - |
+| B+ | 1 | Infeasible | 1217 | 0 | 55 | 220 | - | 0 |
+- Flank-rule gaps: node 14 F6 is a beside leg (prio:E1; beside tracks are skipped by the rule); node 10 F8 (D1 and E1 arriving h2) not yet explained.
+- Stage B with that S-bend choice: keep-apart Infeasible at 55 pairs (proved by branching): an S-bend choice made without keep-apart does not leave room for the spacing.
