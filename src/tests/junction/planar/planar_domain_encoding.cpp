@@ -6715,12 +6715,39 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 			sa.elastic_families = {"flank"};
 			sa.elastic_integer = std::getenv("PLANAR_STAGEA_ELASTIC_INT") != nullptr;
 		}
+		if (std::getenv("PLANAR_STAGEA_NOGRID") != nullptr) sa.grid = false;
+		if (const char *skip = std::getenv("PLANAR_STAGEA_SKIP"); skip != nullptr) {
+			/* Comma-separated skip_rows prefixes, e.g. "flank D1 ,flank D2 " (a bisection aid). */
+			std::string all = skip;
+			for (size_t at = 0; at <= all.size();) {
+				const size_t end = std::min(all.find(',', at), all.size());
+				if (end > at) sa.skip_rows.push_back(all.substr(at, end - at));
+				at = end + 1;
+			}
+		}
 		if (diag_lp) {
 			sa.grid = false;
 			sa.continuous = {"point", "axis", "diagonal", "param", "cross", "other"};
 		}
+		/* PLANAR_STAGEA_LOCK (Gemini check 2): solve without flank rows first, then lock its inserts (used >= 1, unused 0) for the solve below. */
+		std::vector<std::vector<double>> lock_ref;
+		if (std::getenv("PLANAR_STAGEA_LOCK") != nullptr) {
+			PlanarDrawOptions free_a = sa;
+			free_a.flank_turn = false;
+			const PlanarDrawResult first = CheckPlanarDrawable(v, 15.0, free_a);
+			out << std::format("- {} lock reference (no flank rows): {} {} ms\n", tag, first.status, static_cast<int>(first.ms));
+			if (first.status == "Optimal") {
+				lock_ref = first.lengths;
+				sa.curve_flex_from = &lock_ref;
+			}
+		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
 		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows);
+		if (a.status == "Infeasible") {
+			out << std::format("- {} conflict rows {}:", tag, a.conflict.size());
+			for (const std::string &c : a.conflict) out << " [" << c << "]";
+			out << "\n";
+		}
 		if (diag_elastic) {
 			out << std::format("- {} total slack {}, stretched rows {}:", tag, a.slack, a.stretched.size());
 			for (size_t i = 0; i < a.stretched.size() && i < 30; i++) out << std::format(" [{} {}]", a.stretched[i].first, a.stretched[i].second);
@@ -6914,12 +6941,39 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 			sa.elastic_families = {"flank"};
 			sa.elastic_integer = std::getenv("PLANAR_STAGEA_ELASTIC_INT") != nullptr;
 		}
+		if (std::getenv("PLANAR_STAGEA_NOGRID") != nullptr) sa.grid = false;
+		if (const char *skip = std::getenv("PLANAR_STAGEA_SKIP"); skip != nullptr) {
+			/* Comma-separated skip_rows prefixes, e.g. "flank D1 ,flank D2 " (a bisection aid). */
+			std::string all = skip;
+			for (size_t at = 0; at <= all.size();) {
+				const size_t end = std::min(all.find(',', at), all.size());
+				if (end > at) sa.skip_rows.push_back(all.substr(at, end - at));
+				at = end + 1;
+			}
+		}
 		if (diag_lp) {
 			sa.grid = false;
 			sa.continuous = {"point", "axis", "diagonal", "param", "cross", "other"};
 		}
+		/* PLANAR_STAGEA_LOCK (Gemini check 2): solve without flank rows first, then lock its inserts (used >= 1, unused 0) for the solve below. */
+		std::vector<std::vector<double>> lock_ref;
+		if (std::getenv("PLANAR_STAGEA_LOCK") != nullptr) {
+			PlanarDrawOptions free_a = sa;
+			free_a.flank_turn = false;
+			const PlanarDrawResult first = CheckPlanarDrawable(v, 15.0, free_a);
+			out << std::format("- {} lock reference (no flank rows): {} {} ms\n", tag, first.status, static_cast<int>(first.ms));
+			if (first.status == "Optimal") {
+				lock_ref = first.lengths;
+				sa.curve_flex_from = &lock_ref;
+			}
+		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
 		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows);
+		if (a.status == "Infeasible") {
+			out << std::format("- {} conflict rows {}:", tag, a.conflict.size());
+			for (const std::string &c : a.conflict) out << " [" << c << "]";
+			out << "\n";
+		}
 		if (diag_elastic) {
 			out << std::format("- {} total slack {}, stretched rows {}:", tag, a.slack, a.stretched.size());
 			for (size_t i = 0; i < a.stretched.size() && i < 30; i++) out << std::format(" [{} {}]", a.stretched[i].first, a.stretched[i].second);
