@@ -6719,6 +6719,7 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		if (std::getenv("PLANAR_STAGEA_ALLPAIRS") != nullptr) sa.only_pairs_on = false; // every keep-apart pair gets its rows (for an offline export)
 		if (const char *cm = std::getenv("PLANAR_STAGEA_COORD"); cm != nullptr) sa.coord_max = std::atof(cm);
 		if (std::getenv("PLANAR_NODE_FLANK") != nullptr) sa.node_flank = true;
+		if (std::getenv("PLANAR_NODE_CUSP") != nullptr) sa.node_cusp = true;
 		std::vector<double> start_all;
 		if (const char *file = std::getenv("PLANAR_STAGEA_START_ALL"); file != nullptr) {
 			/* A complete MIP start from an offline solve (tools/junction/planar_cpsat.py --values=). */
@@ -6897,7 +6898,8 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 			}
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
-		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows);
+		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}, cusps forced {}, missing {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows, a.cusps_forced, a.cusps_missing.size());
+		for (const std::string &missing : a.cusps_missing) out << "  cusp missing: " << missing << "\n";
 		if (const char *dn = std::getenv("PLANAR_DUMP_NODE"); dn != nullptr) {
 			/* Debug aid: one node of the track map: its lines (name, kind, Shape's end heading) and its site. */
 			const auto &mp = v.structure.map;
@@ -7330,6 +7332,7 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 		if (std::getenv("PLANAR_STAGEA_ALLPAIRS") != nullptr) sa.only_pairs_on = false; // every keep-apart pair gets its rows (for an offline export)
 		if (const char *cm = std::getenv("PLANAR_STAGEA_COORD"); cm != nullptr) sa.coord_max = std::atof(cm);
 		if (std::getenv("PLANAR_NODE_FLANK") != nullptr) sa.node_flank = true;
+		if (std::getenv("PLANAR_NODE_CUSP") != nullptr) sa.node_cusp = true;
 		std::vector<double> start_all;
 		if (const char *file = std::getenv("PLANAR_STAGEA_START_ALL"); file != nullptr) {
 			/* A complete MIP start from an offline solve (tools/junction/planar_cpsat.py --values=). */
@@ -7508,7 +7511,8 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 			}
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
-		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows);
+		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}, cusps forced {}, missing {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows, a.cusps_forced, a.cusps_missing.size());
+		for (const std::string &missing : a.cusps_missing) out << "  cusp missing: " << missing << "\n";
 		if (const char *dn = std::getenv("PLANAR_DUMP_NODE"); dn != nullptr) {
 			/* Debug aid: one node of the track map: its lines (name, kind, Shape's end heading) and its site. */
 			const auto &mp = v.structure.map;
@@ -7819,4 +7823,87 @@ TEST_CASE("planar slots: T1 stage A without flank rows breaks the turn rules (D4
 	}
 	const bool node_ok = NodeTurnsHold(X1Fixture(plain), Contracted{plain, cv->points});
 	CHECK((!turns_ok || !node_ok));
+}
+
+TEST_CASE("planar draw: a prio joiner's node S-bend is forced at its node on T2 (D451)", "[junction][planar][planarcusp]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+	const PlanarTrackMap &map = v.structure.map;
+
+	const std::vector<PlanarNodeCusp> cusps = PlanarNodeCusps(v);
+	REQUIRE(cusps.size() == 3);
+	const std::array<std::pair<uint32_t, std::string>, 3> expected = {{{8, "B1"}, {9, "B2"}, {10, "D1"}}};
+	for (size_t i = 0; i < cusps.size(); i++) {
+		const PlanarNodeCusp &cusp = cusps[i];
+		INFO("cusp " << i << " track " << map.tracks[cusp.track].name << " node " << cusp.node);
+		CHECK(cusp.node == expected[i].first);
+		CHECK(map.tracks[cusp.track].name == expected[i].second);
+		if (i < 2) {
+			CHECK(cusp.missing == "no flex group at the node end");
+			CHECK(cusp.insert == UINT32_MAX);
+			continue;
+		}
+		CHECK(cusp.missing.empty());
+		CHECK(cusp.insert == 10);
+		CHECK(cusp.held == std::vector<uint32_t>{11, 12, 13});
+		const PlanarShapeTrack &track = v.tracks[cusp.track];
+		const PlanarStructureSite *site = nullptr;
+		for (const PlanarStructureSite &s : v.structure.sites) {
+			if (s.node == cusp.node) site = &s;
+		}
+		REQUIRE(site != nullptr);
+		const PlanarNode &node = map.expanded.nodes[cusp.node];
+		const uint32_t single = site->split ? node.in[0] : node.out[0];
+		const int trunk = site->split ? v.tracks[single].pieces.back() : v.tracks[single].pieces.front();
+		const int turned = PlanarLegTurnedHeading(v, *site, cusp.track);
+		REQUIRE(cusp.insert < track.pieces.size());
+		CHECK((track.pieces[cusp.insert] - turned) % 8 == 0);
+		CHECK((track.pieces[cusp.insert] - trunk) % 8 != 0);
+		std::vector<uint32_t> held;
+		if (site->split) {
+			for (uint32_t p = 0; p < cusp.insert; p++) held.push_back(p);
+		} else {
+			for (uint32_t p = cusp.insert + 1; p < track.pieces.size(); p++) held.push_back(p);
+		}
+		CHECK(cusp.held == held);
+		std::cout << "CUSP " << map.tracks[cusp.track].name << " node " << cusp.node << " trunk " << trunk << " turned " << turned << " insert " << cusp.insert << " h" << track.pieces[cusp.insert] << "\n";
+	}
+
+	X1Fixture fa(v);
+	PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
+	sa.node_gaps = false;
+	sa.only_pairs_on = true;
+	sa.flank_turn = true;
+	sa.node_flank = true;
+	sa.node_cusp = true;
+	sa.build_only = true;
+	sa.program_out = true;
+	const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
+	REQUIRE(a.status == "built");
+	CHECK(a.cusps_forced == 1);
+	CHECK(a.cusps_missing.size() == 2);
+	for (const PlanarProgram::Row &r : a.program.rows) {
+		CHECK(r.tag != "flank D1 10 after");
+	}
 }

@@ -45,6 +45,31 @@ bool SameHeading(int a, int b)
 	return (a - b) % 8 == 0;
 }
 
+} // namespace
+
+int PlanarLegTurnedHeading(const PlanarShapeVariant &v, const PlanarStructureSite &site, uint32_t leg)
+{
+	const PlanarTrackMap &map = v.structure.map;
+	const PlanarNode &node = map.expanded.nodes[site.node];
+	const std::vector<uint32_t> &legs = site.split ? node.out : node.in;
+	const std::vector<uint32_t> &single = site.split ? node.in : node.out;
+	const uint32_t one = single[0];
+	const int h = site.split ? v.tracks[one].pieces.back() : v.tracks[one].pieces.front();
+	/* The stretch of a leg at the node: the first for a leg of a split, the last for a leg of a merge. */
+	const auto stretch = [&](uint32_t t) { return static_cast<uint32_t>(site.split ? 0 : map.events[t].size()); };
+	int sigma;
+	if (site.straight == UINT32_MAX) {
+		const uint32_t other = legs[0] == leg ? legs[1] : legs[0];
+		sigma = map.Side(leg, stretch(leg), other, stretch(other));
+	} else {
+		sigma = map.Side(leg, stretch(leg), site.straight, stretch(site.straight));
+		if (sigma == 0) sigma = site.side;
+	}
+	return site.split ? h + sigma : h - sigma;
+}
+
+namespace {
+
 /** @return The position of a crossing in a track's events, or SIZE_MAX. */
 size_t EventIndex(const std::vector<uint32_t> &events, uint32_t crossing)
 {
@@ -561,8 +586,6 @@ struct Oracle {
 			}
 			const uint32_t one = single[0];
 			const int h = site.split ? this->v.tracks[one].pieces.back() : this->v.tracks[one].pieces.front();
-			/* The stretch of a leg at the node: the first for a leg of a split, the last for a leg of a merge. */
-			const auto stretch = [&](uint32_t t) { return static_cast<uint32_t>(site.split ? 0 : this->map.events[t].size()); };
 			if (site.straight == UINT32_MAX && legs.size() != 2) {
 				this->out.push_back(fmt::format("H3: node {} is a fork with {} legs", site.node, legs.size()));
 				continue;
@@ -573,15 +596,7 @@ struct Oracle {
 					if (!SameHeading(heading, h)) this->out.push_back(fmt::format("H3: the straight leg {} at node {} is at heading {}, not {}", this->map.tracks[leg].name, site.node, heading, h));
 					continue;
 				}
-				int sigma;
-				if (site.straight == UINT32_MAX) {
-					const uint32_t other = legs[0] == leg ? legs[1] : legs[0];
-					sigma = this->map.Side(leg, stretch(leg), other, stretch(other));
-				} else {
-					sigma = this->map.Side(leg, stretch(leg), site.straight, stretch(site.straight));
-					if (sigma == 0) sigma = site.side;
-				}
-				const int turned = site.split ? h + sigma : h - sigma;
+				const int turned = PlanarLegTurnedHeading(this->v, site, leg);
 				/* A topology node (every track at it a Line) turns its leg always (no cusps, D404); a copy's or row's node may keep the trunk heading (H8). */
 				bool topology = true;
 				for (const std::vector<uint32_t> *side : {&node.in, &node.out}) {

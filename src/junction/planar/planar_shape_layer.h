@@ -91,6 +91,16 @@ bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSit
 std::vector<std::string> CheckPlanarShapePromise(const PlanarTopology &topology, const JunctionSpec &spec, const PlanarShapeVariant &v);
 
 /**
+ * The heading a non-straight leg turns to at its node: the trunk heading plus (split) or minus (merge) the leg's side, as H3 reads it.
+ * The site's node must have exactly one track on its single side, and two legs when it is a fork.
+ * @param v The variant.
+ * @param site The leg's site.
+ * @param leg The leg, a track of the site's node.
+ * @return The turned heading (not reduced mod 8).
+ */
+int PlanarLegTurnedHeading(const PlanarShapeVariant &v, const PlanarStructureSite &site, uint32_t leg);
+
+/**
  * H12 (SPEC-shape 8.1, D385): every inner face's cells, split by v.dummies, turn one way and wind once; part of CheckPlanarShapePromise.
  * Faces that do not wind once are skipped (H7 reports them).
  * A dummy is accepted only when every corner at a dummy end, its landing included, is convex (D397).
