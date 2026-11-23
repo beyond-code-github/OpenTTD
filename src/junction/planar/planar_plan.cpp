@@ -72,6 +72,54 @@ std::vector<uint32_t> ReadingOrder(const PlanarPort &port)
 	return lines;
 }
 
+/** A route program's raster, or why it does not rasterise. */
+struct ProgramRaster {
+	JunctionRaster raster;
+	std::string why; ///< Empty when rasterised and every tile equals the planned piece's.
+};
+
+/**
+ * The raster of a route program's pieces: moves F, L or R per piece against the previous one (turn +1 is the rasteriser's L), a deck from its near head to its far head is B<middle>, through RasterizeJunctionRoute, then checked tile by tile against the planned pieces.
+ * @param ps The program's pieces.
+ * @param name The route's name, for the reason.
+ */
+ProgramRaster RasterOfProgram(const std::vector<PlanarProgramPiece> &ps, const std::string &name)
+{
+	ProgramRaster out;
+	if (ps.empty() || ps.front().heading % 2 != 0) {
+		out.why = fmt::format("route {} does not start on an axis piece", name);
+		return out;
+	}
+	JunctionRoute rp{{static_cast<int16_t>(ps[0].tile.x), static_cast<int16_t>(ps[0].tile.y)}, AxisTrackdir(ps.front().heading), {}};
+	for (size_t i = 1; i < ps.size(); i++) {
+		if (ps[i].kind == PlanarPiece::Kind::Head) {
+			size_t far = i + 1;
+			while (far < ps.size() && ps[far].kind == PlanarPiece::Kind::Middle) far++;
+			if (far >= ps.size() || ps[far].kind != PlanarPiece::Kind::Head) {
+				out.why = fmt::format("route {} has a deck without a far head", name);
+				return out;
+			}
+			rp.moves += fmt::format("B{}", far - i - 1);
+			i = far;
+			continue;
+		}
+		const int turn = (ps[i].heading - ps[i - 1].heading + 8) % 8;
+		rp.moves += turn == 0 ? 'F' : turn == 1 ? 'L' : 'R'; // the rasteriser's L is +y of +x travel
+	}
+	out.raster = RasterizeJunctionRoute(rp);
+	if (!out.raster.error.empty() || out.raster.pieces.size() != ps.size()) {
+		out.why = fmt::format("route {} does not rasterise: {}", name, out.raster.error.empty() ? "piece count" : out.raster.error);
+		return out;
+	}
+	for (size_t i = 0; i < ps.size(); i++) {
+		if (out.raster.pieces[i].tile.x != ps[i].tile.x || out.raster.pieces[i].tile.y != ps[i].tile.y) {
+			out.why = fmt::format("route {} piece {} renders at {},{}, planned {},{}", name, i, out.raster.pieces[i].tile.x, out.raster.pieces[i].tile.y, ps[i].tile.x, ps[i].tile.y);
+			return out;
+		}
+	}
+	return out;
+}
+
 }
 
 std::shared_ptr<const PlanarSeed> PlanarSeedFor(const std::string &text, const JunctionSpec &spec)
@@ -204,36 +252,16 @@ PlanarRender RenderPlanarRoutePrograms(const PlanarTopology &topology, const Pla
 		const PlanarRoute &route = topology.routes[program.route];
 		const std::vector<uint32_t> &path = route.paths[program.path];
 		const std::vector<PlanarProgramPiece> &ps = program.pieces;
-		if (ps.empty() || ps.front().heading % 2 != 0) {
-			out.why = fmt::format("route {} does not start on an axis piece", route.name);
+		const ProgramRaster raster = RasterOfProgram(ps, route.name);
+		if (!raster.why.empty()) {
+			out.why = raster.why;
 			return out;
 		}
-		/* Moves: F, L or R per piece against the previous one; a deck from its near head to its far head is B<middle>. */
-		JunctionRoute rp{{static_cast<int16_t>(ps[0].tile.x), static_cast<int16_t>(ps[0].tile.y)}, AxisTrackdir(ps.front().heading), {}};
-		for (size_t i = 1; i < ps.size(); i++) {
-			if (ps[i].kind == PlanarPiece::Kind::Head) {
-				size_t far = i + 1;
-				while (far < ps.size() && ps[far].kind == PlanarPiece::Kind::Middle) far++;
-				if (far >= ps.size() || ps[far].kind != PlanarPiece::Kind::Head) {
-					out.why = fmt::format("route {} has a deck without a far head", route.name);
-					return out;
-				}
-				rp.moves += fmt::format("B{}", far - i - 1);
-				i = far;
-				continue;
-			}
-			const int turn = (ps[i].heading - ps[i - 1].heading + 8) % 8;
-			rp.moves += turn == 0 ? 'F' : turn == 1 ? 'L' : 'R'; // the rasteriser's L is +y of +x travel
-		}
-		const JunctionRaster rendered = RasterizeJunctionRoute(rp);
-		if (!rendered.error.empty() || rendered.pieces.size() != ps.size()) {
-			out.why = fmt::format("route {} does not rasterise: {}", route.name, rendered.error.empty() ? "piece count" : rendered.error);
-			return out;
-		}
+		const JunctionRaster &rendered = raster.raster;
 		const uint16_t index = static_cast<uint16_t>(first_index[program.route] + program.path);
 		JunctionTrackRoute track{index, program.copy, rendered.pieces, {}};
 		for (size_t i = 0; i < ps.size(); i++) {
-			if (rendered.pieces[i].tile.x != ps[i].tile.x || rendered.pieces[i].tile.y != ps[i].tile.y || ps[i].line >= path.size()) {
+			if (ps[i].line >= path.size()) {
 				out.why = fmt::format("route {} piece {} renders at {},{}, planned {},{}", route.name, i, rendered.pieces[i].tile.x, rendered.pieces[i].tile.y, ps[i].tile.x, ps[i].tile.y);
 				return out;
 			}
