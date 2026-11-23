@@ -6716,6 +6716,16 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 			sa.elastic_integer = std::getenv("PLANAR_STAGEA_ELASTIC_INT") != nullptr;
 		}
 		if (std::getenv("PLANAR_STAGEA_NOGRID") != nullptr) sa.grid = false;
+		if (std::getenv("PLANAR_STAGEA_ALLPAIRS") != nullptr) sa.only_pairs_on = false; // every keep-apart pair gets its rows (for an offline export)
+		if (const char *cm = std::getenv("PLANAR_STAGEA_COORD"); cm != nullptr) sa.coord_max = std::atof(cm);
+		if (std::getenv("PLANAR_NODE_FLANK") != nullptr) sa.node_flank = true;
+		std::vector<double> start_all;
+		if (const char *file = std::getenv("PLANAR_STAGEA_START_ALL"); file != nullptr) {
+			/* A complete MIP start from an offline solve (tools/junction/planar_cpsat.py --values=). */
+			std::ifstream in(file);
+			for (double x; in >> x;) start_all.push_back(x);
+			sa.start_all = &start_all;
+		}
 		if (const char *path = std::getenv("PLANAR_STAGEA_EXPORT"); path != nullptr) sa.export_path = path;
 		if (const char *skip = std::getenv("PLANAR_STAGEA_SKIP"); skip != nullptr) {
 			/* Comma-separated skip_rows prefixes, e.g. "flank D1 ,flank D2 " (a bisection aid). */
@@ -7284,6 +7294,16 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 			sa.elastic_integer = std::getenv("PLANAR_STAGEA_ELASTIC_INT") != nullptr;
 		}
 		if (std::getenv("PLANAR_STAGEA_NOGRID") != nullptr) sa.grid = false;
+		if (std::getenv("PLANAR_STAGEA_ALLPAIRS") != nullptr) sa.only_pairs_on = false; // every keep-apart pair gets its rows (for an offline export)
+		if (const char *cm = std::getenv("PLANAR_STAGEA_COORD"); cm != nullptr) sa.coord_max = std::atof(cm);
+		if (std::getenv("PLANAR_NODE_FLANK") != nullptr) sa.node_flank = true;
+		std::vector<double> start_all;
+		if (const char *file = std::getenv("PLANAR_STAGEA_START_ALL"); file != nullptr) {
+			/* A complete MIP start from an offline solve (tools/junction/planar_cpsat.py --values=). */
+			std::ifstream in(file);
+			for (double x; in >> x;) start_all.push_back(x);
+			sa.start_all = &start_all;
+		}
 		if (const char *path = std::getenv("PLANAR_STAGEA_EXPORT"); path != nullptr) sa.export_path = path;
 		if (const char *skip = std::getenv("PLANAR_STAGEA_SKIP"); skip != nullptr) {
 			/* Comma-separated skip_rows prefixes, e.g. "flank D1 ,flank D2 " (a bisection aid). */

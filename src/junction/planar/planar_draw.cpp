@@ -602,6 +602,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		if (leg_zero[t]) zero_track[t] = true;
 		/* D433: a zero node-to-node track (a trident) has free pieces, held at 0 by its leg zero row. */
 		if (leg_zero[t]) free_piece.assign(pieces.size(), true);
+		/* node_flank: a leg's node-side piece keeps a least length, so the node's turn (one eighth off the trunk) never vanishes (V's PSG 197: 36 of 36 node-side flanks at least one piece). */
+		if (options.node_flank && !port_stretch && !leg_zero[t] && !pieces.empty()) {
+			const PlanarLine &line = map.expanded.lines[t];
+			if (!line.from.port) free_piece[0] = false;
+			if (!line.to.port) free_piece[pieces.size() - 1] = false;
+		}
 		may_zero[t] = free_piece;
 		std::set<uint32_t> middles(flex.begin(), flex.end());
 		middles.insert(steps.begin(), steps.end());
@@ -2234,8 +2240,11 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		if (!out) return unsupported("cannot write export");
 	}
 	milp.SetTimeLimit(seconds);
-	if (options.start_lengths != nullptr || options.start_points != nullptr) {
+	if (options.start_lengths != nullptr || options.start_points != nullptr || options.start_all != nullptr) {
 		std::vector<std::pair<uint32_t, double>> start;
+		if (options.start_all != nullptr && options.start_all->size() == var_lower.size()) {
+			for (size_t i = 0; i < var_lower.size(); i++) start.emplace_back(static_cast<uint32_t>(i), (*options.start_all)[i]);
+		}
 		for (size_t t = 0; t < nt; t++) {
 			if (options.start_lengths != nullptr && t < options.start_lengths->size() && (*options.start_lengths)[t].size() == length[t].size()) {
 				for (size_t i = 0; i < length[t].size(); i++) {
