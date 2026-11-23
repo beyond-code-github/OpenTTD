@@ -453,7 +453,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		var_group.emplace_back(group);
 		var_lower.push_back(lower);
 		var_upper.push_back(upper);
-		if (exporting) export_variables += fmt::format("{}{{\"lb\":{},\"ub\":{},\"cost\":{},\"integer\":{}}}", export_variables.empty() ? "" : ",", json_number(lower), json_number(upper), json_number(cost), integer ? "true" : "false");
+		if (exporting) export_variables += fmt::format("{}{{\"lb\":{},\"ub\":{},\"cost\":{},\"integer\":{},\"group\":\"{}\"}}", export_variables.empty() ? "" : ",", json_number(lower), json_number(upper), json_number(cost), integer ? "true" : "false", group);
 		return milp.AddVariable(lower, upper, cost, integer);
 	};
 	const auto var = [&](double lower, double upper, double cost, std::string_view group) {
