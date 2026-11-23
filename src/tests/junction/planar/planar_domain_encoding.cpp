@@ -1415,6 +1415,7 @@ struct SideRule {
 };
 struct SideStats {
 	size_t polylines = 0;
+	size_t off_interface = 0; ///< Of the polylines, those the domain accepts and only the judge without interface rows accepts.
 	size_t pairs = 0; ///< Pairs with rows.
 	size_t two_way = 0; ///< Pairs whose inward mask holds two candidates (not forced).
 	SideRule walk, strict, facing, both, inward;
@@ -1494,7 +1495,7 @@ std::string SidesText(const std::string &name, const SideStats &st)
 {
 	std::ostringstream o;
 	const auto pct = [&](size_t n) { return st.pairs == 0 ? 0.0 : 100.0 * static_cast<double>(n) / static_cast<double>(st.pairs); };
-	o << std::format("{}: polylines {} pair-instances {} (inward two-way {})\n", name, st.polylines, st.pairs, st.two_way);
+	o << std::format("{}: polylines {} (off interface {}) pair-instances {} (inward two-way {})\n", name, st.polylines, st.off_interface, st.pairs, st.two_way);
 	for (const auto &[rule, r] : {std::pair<const char *, const SideRule *>{"walk", &st.walk}, {"walk_strict", &st.strict}, {"facing", &st.facing}, {"strict+facing", &st.both}, {"inward(forced=1 cand)", &st.inward}}) {
 		o << std::format("  {}: forced {} ({:.1f}%) failed {}\n", rule, r->forced, pct(r->forced), r->failed);
 		for (const std::string &line : r->first) o << "    " << line << "\n";
@@ -1621,6 +1622,11 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 					const bool only_port = d.legal && !accept && judge(f, *cv, false).accept;
 					if (d.legal && only_port) {
 						nc.c = OFF_INTERFACE;
+						/* g_last_readouts is still the read-out of the judge without interface rows. */
+						if (g_sides_stats != nullptr) {
+							g_sides_stats->off_interface++;
+							SidesAccumulate(*g_sides_stats, f, pkey, g_last_readouts.keep.keep_apart, cv->points);
+						}
 					} else if (d.legal) {
 						nc.c = accept ? BOTH_ACCEPT : STRICT;
 					} else {
