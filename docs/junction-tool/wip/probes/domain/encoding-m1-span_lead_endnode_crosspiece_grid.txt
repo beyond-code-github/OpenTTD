@@ -6,14 +6,18 @@ B1 headings after flex: 0 -1 0 1 0 1 0 1 2 1; flex middles: 1 3 6 8; run holders
 BD1 headings after flex: 0 -1 0 1 0; flex middles: 1 3; run holders: 4
 C1 headings after flex: 1 0 1 2 1 0 -1 0 1 0; flex middles: 1 3 6 8; run holders: 0 9
 D1 headings after flex: 1 0 1 2 1 2 1 2 3 2; flex middles: 1 3 6 8; run holders: 0 9
-node lead rows over the judged contracted variants: 6
-Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: 0, with none within one eighth (rows reject): 8
+node lead rows over the judged contracted variants: 7
+corridor rows over the judged on-grid contracted variants: 0; in the base polyline's read-out: 0
+Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: 0, with none within one eighth (rows reject): 27
 node lead rows, configuration M1e: 6
 node lead rows, configuration M1f: 0
-enumeration wall 0.0162256 s
+node lead rows, configuration node0: 1
+node lead rows, configuration node1: 0
+node lead rows, configuration node2: 0
+enumeration wall 0.0443544 s
 
-wall M1e A1 d1 p2=0 p4=0: 0.000669173 s
-enumeration M1e A1 d1 p2=0 p4=0: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d1 p2=0 p4=0: 0.000636259 s
+enumeration M1e A1 d1 p2=0 p4=0: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=0 p4=0 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -24,8 +28,8 @@ enumeration M1e A1 d1 p2=0 p4=0: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=0 p4=2: 0.000695564 s
-enumeration M1e A1 d1 p2=0 p4=2: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d1 p2=0 p4=2: 0.000726871 s
+enumeration M1e A1 d1 p2=0 p4=2: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=0 p4=2 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -36,8 +40,8 @@ enumeration M1e A1 d1 p2=0 p4=2: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=0 p4=4: 0.000651334 s
-enumeration M1e A1 d1 p2=0 p4=4: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d1 p2=0 p4=4: 0.000853171 s
+enumeration M1e A1 d1 p2=0 p4=4: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=0 p4=4 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -48,8 +52,8 @@ enumeration M1e A1 d1 p2=0 p4=4: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=2 p4=0: 0.000759411 s
-enumeration M1e A1 d1 p2=2 p4=0: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d1 p2=2 p4=0: 0.000702769 s
+enumeration M1e A1 d1 p2=2 p4=0: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=2 p4=0 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -60,8 +64,8 @@ enumeration M1e A1 d1 p2=2 p4=0: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=2 p4=2: 0.000934392 s
-enumeration M1e A1 d1 p2=2 p4=2: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d1 p2=2 p4=2: 0.00101133 s
+enumeration M1e A1 d1 p2=2 p4=2: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=2 p4=2 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -72,8 +76,8 @@ enumeration M1e A1 d1 p2=2 p4=2: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=2 p4=4: 0.000996566 s
-enumeration M1e A1 d1 p2=2 p4=4: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d1 p2=2 p4=4: 0.000944253 s
+enumeration M1e A1 d1 p2=2 p4=4: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=2 p4=4 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -84,8 +88,8 @@ enumeration M1e A1 d1 p2=2 p4=4: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=4 p4=0: 0.000683532 s
-enumeration M1e A1 d1 p2=4 p4=0: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d1 p2=4 p4=0: 0.000720074 s
+enumeration M1e A1 d1 p2=4 p4=0: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=4 p4=0 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -96,8 +100,8 @@ enumeration M1e A1 d1 p2=4 p4=0: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=4 p4=2: 0.000881441 s
-enumeration M1e A1 d1 p2=4 p4=2: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d1 p2=4 p4=2: 0.000931229 s
+enumeration M1e A1 d1 p2=4 p4=2: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=4 p4=2 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -108,8 +112,8 @@ enumeration M1e A1 d1 p2=4 p4=2: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=4 p4=4: 0.000966468 s
-enumeration M1e A1 d1 p2=4 p4=4: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d1 p2=4 p4=4: 0.00103415 s
+enumeration M1e A1 d1 p2=4 p4=4: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=4 p4=4 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -120,8 +124,8 @@ enumeration M1e A1 d1 p2=4 p4=4: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=0 p4=0: 0.000528163 s
-enumeration M1e A1 d2 p2=0 p4=0: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d2 p2=0 p4=0: 0.000656079 s
+enumeration M1e A1 d2 p2=0 p4=0: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=0 p4=0 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -132,8 +136,8 @@ enumeration M1e A1 d2 p2=0 p4=0: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=0 p4=2: 0.000691788 s
-enumeration M1e A1 d2 p2=0 p4=2: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d2 p2=0 p4=2: 0.000708684 s
+enumeration M1e A1 d2 p2=0 p4=2: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=0 p4=2 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -144,8 +148,8 @@ enumeration M1e A1 d2 p2=0 p4=2: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=0 p4=4: 0.000659717 s
-enumeration M1e A1 d2 p2=0 p4=4: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d2 p2=0 p4=4: 0.000797165 s
+enumeration M1e A1 d2 p2=0 p4=4: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=0 p4=4 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -156,8 +160,8 @@ enumeration M1e A1 d2 p2=0 p4=4: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=2 p4=0: 0.00072973 s
-enumeration M1e A1 d2 p2=2 p4=0: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d2 p2=2 p4=0: 0.000852585 s
+enumeration M1e A1 d2 p2=2 p4=0: blind 1 geometries (1 on the grid, 0 off; 0 more skipped, an absorbing piece had no length); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=2 p4=0 ==
   both accept: 1 polylines (1 geometries)
   both reject: 0 polylines (0 geometries)
@@ -168,8 +172,8 @@ enumeration M1e A1 d2 p2=2 p4=0: blind 1 geometries (1 on the grid, 0 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=2 p4=2: 0.00101157 s
-enumeration M1e A1 d2 p2=2 p4=2: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d2 p2=2 p4=2: 0.00103111 s
+enumeration M1e A1 d2 p2=2 p4=2: blind 1 geometries (1 on the grid, 0 off; 0 more skipped, an absorbing piece had no length); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=2 p4=2 ==
   both accept: 1 polylines (1 geometries)
   both reject: 0 polylines (0 geometries)
@@ -180,8 +184,8 @@ enumeration M1e A1 d2 p2=2 p4=2: blind 1 geometries (1 on the grid, 0 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=2 p4=4: 0.000978351 s
-enumeration M1e A1 d2 p2=2 p4=4: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d2 p2=2 p4=4: 0.000979887 s
+enumeration M1e A1 d2 p2=2 p4=4: blind 1 geometries (1 on the grid, 0 off; 0 more skipped, an absorbing piece had no length); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=2 p4=4 ==
   both accept: 1 polylines (1 geometries)
   both reject: 0 polylines (0 geometries)
@@ -192,8 +196,8 @@ enumeration M1e A1 d2 p2=2 p4=4: blind 1 geometries (1 on the grid, 0 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=4 p4=0: 0.000843405 s
-enumeration M1e A1 d2 p2=4 p4=0: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d2 p2=4 p4=0: 0.000775332 s
+enumeration M1e A1 d2 p2=4 p4=0: blind 1 geometries (1 on the grid, 0 off; 0 more skipped, an absorbing piece had no length); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=4 p4=0 ==
   both accept: 1 polylines (1 geometries)
   both reject: 0 polylines (0 geometries)
@@ -204,8 +208,8 @@ enumeration M1e A1 d2 p2=4 p4=0: blind 1 geometries (1 on the grid, 0 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=4 p4=2: 0.000952379 s
-enumeration M1e A1 d2 p2=4 p4=2: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d2 p2=4 p4=2: 0.000987966 s
+enumeration M1e A1 d2 p2=4 p4=2: blind 1 geometries (1 on the grid, 0 off; 0 more skipped, an absorbing piece had no length); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=4 p4=2 ==
   both accept: 1 polylines (1 geometries)
   both reject: 0 polylines (0 geometries)
@@ -216,8 +220,8 @@ enumeration M1e A1 d2 p2=4 p4=2: blind 1 geometries (1 on the grid, 0 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=4 p4=4: 0.000659304 s
-enumeration M1e A1 d2 p2=4 p4=4: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1e A1 d2 p2=4 p4=4: 0.000716091 s
+enumeration M1e A1 d2 p2=4 p4=4: blind 1 geometries (1 on the grid, 0 off; 0 more skipped, an absorbing piece had no length); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=4 p4=4 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -228,8 +232,8 @@ enumeration M1e A1 d2 p2=4 p4=4: blind 1 geometries (1 on the grid, 0 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1f B1 d2 p7=0 p9=0: 0.000591688 s
-enumeration M1f B1 d2 p7=0 p9=0: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1f B1 d2 p7=0 p9=0: 0.000641703 s
+enumeration M1f B1 d2 p7=0 p9=0: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1f B1 d2 p7=0 p9=0 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -240,8 +244,8 @@ enumeration M1f B1 d2 p7=0 p9=0: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1f B1 d2 p7=0 p9=1: 0.000468787 s
-enumeration M1f B1 d2 p7=0 p9=1: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1f B1 d2 p7=0 p9=1: 0.000474817 s
+enumeration M1f B1 d2 p7=0 p9=1: blind 1 geometries (0 on the grid, 1 off; 0 more skipped, an absorbing piece had no length); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1f B1 d2 p7=0 p9=1 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -252,8 +256,8 @@ enumeration M1f B1 d2 p7=0 p9=1: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1f B1 d2 p7=1 p9=0: 0.000423905 s
-enumeration M1f B1 d2 p7=1 p9=0: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall M1f B1 d2 p7=1 p9=0: 0.00050149 s
+enumeration M1f B1 d2 p7=1 p9=0: blind 1 geometries (1 on the grid, 0 off; 0 more skipped, an absorbing piece had no length); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1f B1 d2 p7=1 p9=0 ==
   both accept: 0 polylines (0 geometries)
   both reject: 1 polylines (1 geometries)
@@ -264,7 +268,134 @@ enumeration M1f B1 d2 p7=1 p9=0: blind 1 geometries (1 on the grid, 0 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-== total ==
+wall node0 AC1: 0.00303557 s
+enumeration node0 AC1: blind 10 geometries (6 on the grid, 4 off; 35 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node0 AC1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 3 polylines (3 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 1 polylines (1 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+  [grid | node | off grid: AC1 piece 1 off the centre line] polylines 1 (geometries 1)
+    varied: AC1.2=2 AC1.3=1 AC1.4=0
+      polyline A1:2*12,;AB1:2*8,;AC1:1*1,2*2,3*1,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
+      contracted pieces (heading x length): AC1[1x1,2x2,3x1] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x12] B1[0x4,1x3]
+      off grid: first at AC1 piece 1 off the centre line
+      break grid tracks AC1 tile (0,2) the piece to (3, 4) does not join two edges of one tile
+        sep 0 0 1 AC1/AC1 pieces 0/1: adjacent
+        sep 0 0 2 AC1/AC1 pieces 0/2: zero contraction
+        sep 0 1 2 AC1/AC1 pieces 1/2: adjacent
+        sep 1 4 5 AC1/AC1 pieces 2/1: adjacent
+        sep 1 4 6 AC1/AC1 pieces 2/0: zero contraction
+        sep 1 5 6 AC1/AC1 pieces 1/0: adjacent
+      break node tracks AC1 tile (2,2) track 0 is listed in `in` but does not end at (4, 5)
+        sep 0 0 1 AC1/AC1 pieces 0/1: adjacent
+        sep 0 0 2 AC1/AC1 pieces 0/2: zero contraction
+        sep 0 1 2 AC1/AC1 pieces 1/2: adjacent
+        sep 1 4 5 AC1/AC1 pieces 2/1: adjacent
+        sep 1 4 6 AC1/AC1 pieces 2/0: zero contraction
+        sep 1 5 6 AC1/AC1 pieces 1/0: adjacent
+
+wall node0 C1: 0.00116596 s
+enumeration node0 C1: blind 7 geometries (6 on the grid, 1 off; 38 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node0 C1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 1 polylines (1 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node0 A1: 0.00698601 s
+enumeration node0 A1: blind 27 geometries (15 on the grid, 12 off; 0 more skipped, an absorbing piece had no length); by construction 15 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node0 A1 ==
+  both accept: 5 polylines (13 geometries)
+  both reject: 14 polylines (14 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node1 BD1: 0.000930827 s
+enumeration node1 BD1: blind 4 geometries (3 on the grid, 1 off; 32 more skipped, an absorbing piece had no length); by construction 3 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node1 BD1 ==
+  both accept: 1 polylines (3 geometries)
+  both reject: 1 polylines (1 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node1 D1: 0.000540168 s
+enumeration node1 D1: blind 3 geometries (3 on the grid, 0 off; 33 more skipped, an absorbing piece had no length); by construction 3 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node1 D1 ==
+  both accept: 1 polylines (3 geometries)
+  both reject: 0 polylines (0 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node1 B1: 0.00316502 s
+enumeration node1 B1: blind 10 geometries (6 on the grid, 4 off; 35 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node1 B1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 4 polylines (4 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node2 AB1: 0.0100125 s
+enumeration node2 AB1: blind 23 geometries (12 on the grid, 11 off; 4 more skipped, an absorbing piece had no length); by construction 12 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node2 AB1 ==
+  both accept: 4 polylines (12 geometries)
+  both reject: 11 polylines (11 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node2 A1: 0.00038882 s
+enumeration node2 A1: blind 10 geometries (6 on the grid, 4 off; 35 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node2 A1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 4 polylines (4 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node2 B1: 0.000318352 s
+enumeration node2 B1: blind 7 geometries (6 on the grid, 1 off; 38 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node2 B1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 1 polylines (1 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+== total hand-named configurations ==
   both accept: 5 polylines (5 geometries)
   both reject: 16 polylines (16 geometries)
   too strict: 0 polylines (0 geometries)
@@ -273,6 +404,64 @@ enumeration M1f B1 d2 p7=1 p9=0: blind 1 geometries (1 on the grid, 0 off); by c
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
+
+== total neighbourhood configurations ==
+  both accept: 8 polylines (61 geometries)
+  both reject: 35 polylines (39 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 1 polylines (1 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+  [grid | node | off grid: AC1 piece 1 off the centre line] polylines 1 (geometries 1)
+    varied: AC1.2=2 AC1.3=1 AC1.4=0
+      polyline A1:2*12,;AB1:2*8,;AC1:1*1,2*2,3*1,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
+      contracted pieces (heading x length): AC1[1x1,2x2,3x1] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x12] B1[0x4,1x3]
+      off grid: first at AC1 piece 1 off the centre line
+      break grid tracks AC1 tile (0,2) the piece to (3, 4) does not join two edges of one tile
+        sep 0 0 1 AC1/AC1 pieces 0/1: adjacent
+        sep 0 0 2 AC1/AC1 pieces 0/2: zero contraction
+        sep 0 1 2 AC1/AC1 pieces 1/2: adjacent
+        sep 1 4 5 AC1/AC1 pieces 2/1: adjacent
+        sep 1 4 6 AC1/AC1 pieces 2/0: zero contraction
+        sep 1 5 6 AC1/AC1 pieces 1/0: adjacent
+      break node tracks AC1 tile (2,2) track 0 is listed in `in` but does not end at (4, 5)
+        sep 0 0 1 AC1/AC1 pieces 0/1: adjacent
+        sep 0 0 2 AC1/AC1 pieces 0/2: zero contraction
+        sep 0 1 2 AC1/AC1 pieces 1/2: adjacent
+        sep 1 4 5 AC1/AC1 pieces 2/1: adjacent
+        sep 1 4 6 AC1/AC1 pieces 2/0: zero contraction
+        sep 1 5 6 AC1/AC1 pieces 1/0: adjacent
+
+== total ==
+  both accept: 9 polylines (66 geometries)
+  both reject: 45 polylines (55 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 1 polylines (1 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+  [grid | node | off grid: AC1 piece 1 off the centre line] polylines 1 (geometries 1)
+    varied: AC1.2=2 AC1.3=1 AC1.4=0
+      polyline A1:2*12,;AB1:2*8,;AC1:1*1,2*2,3*1,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
+      contracted pieces (heading x length): AC1[1x1,2x2,3x1] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x12] B1[0x4,1x3]
+      off grid: first at AC1 piece 1 off the centre line
+      break grid tracks AC1 tile (0,2) the piece to (3, 4) does not join two edges of one tile
+        sep 0 0 1 AC1/AC1 pieces 0/1: adjacent
+        sep 0 0 2 AC1/AC1 pieces 0/2: zero contraction
+        sep 0 1 2 AC1/AC1 pieces 1/2: adjacent
+        sep 1 4 5 AC1/AC1 pieces 2/1: adjacent
+        sep 1 4 6 AC1/AC1 pieces 2/0: zero contraction
+        sep 1 5 6 AC1/AC1 pieces 1/0: adjacent
+      break node tracks AC1 tile (2,2) track 0 is listed in `in` but does not end at (4, 5)
+        sep 0 0 1 AC1/AC1 pieces 0/1: adjacent
+        sep 0 0 2 AC1/AC1 pieces 0/2: zero contraction
+        sep 0 1 2 AC1/AC1 pieces 1/2: adjacent
+        sep 1 4 5 AC1/AC1 pieces 2/1: adjacent
+        sep 1 4 6 AC1/AC1 pieces 2/0: zero contraction
+        sep 1 5 6 AC1/AC1 pieces 1/0: adjacent
 
 == base (strict rules on): failing pairs ==
       sep 3 9 11 tracks C1/A1 pieces 0/1 kept [zero contraction kept, full spacing (same direction)] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -8;

@@ -841,6 +841,173 @@ struct Config {
 	std::vector<std::pair<std::string, uint32_t>> absorbers = {}; ///< Absorbing pieces (track, piece): the piece takes the one length that puts the track's end where the base has it; a geometry with no such length (it would move that end) is skipped.
 };
 
+/** The length of an absorbing piece that puts its track's end at the base's, given the end with that piece at 0; none when no length does. */
+std::optional<int> AbsorbLength(const X1Fixture &f, const std::vector<Points> &base_points, const std::string &name, uint32_t k, const Point &end_without)
+{
+	const Point &target = base_points[f.idx.at(name)].back();
+	const int hh = ((f.heads.at(name)[k] % 8) + 8) % 8;
+	const int len = STEPS[hh][0] != 0 ? (target[0] - end_without[0]) * STEPS[hh][0] : (target[1] - end_without[1]) * STEPS[hh][1];
+	if (len < 0 || end_without[0] + len * STEPS[hh][0] != target[0] || end_without[1] + len * STEPS[hh][1] != target[1]) return std::nullopt;
+	return len;
+}
+
+/**
+ * Set a geometry's absorbing pieces from its other pieces; false when one has no length.
+ * A track with two absorbers (x and y both fixed): the 2x2 system for their two lengths; false when it is singular, a length is negative or not an integer, or an axis absorber's length is odd (off the grid).
+ */
+bool AbsorbGeometry(const X1Fixture &f, const std::vector<Points> &base_points, const Config &cfg, Geometry &g)
+{
+	std::map<std::string, std::vector<uint32_t>> by_track;
+	for (const auto &[name, k] : cfg.absorbers) by_track[name].push_back(k);
+	for (const auto &[name, ks] : by_track) {
+		if (ks.size() != 2) continue;
+		const std::vector<int> &h = f.heads.at(name);
+		Point cur = f.starts.at(name);
+		const auto it = g.find(name);
+		for (uint32_t j = 0; j < h.size(); j++) {
+			if (j == ks[0] || j == ks[1]) continue;
+			const int hh = ((h[j] % 8) + 8) % 8;
+			int len = 0;
+			if (it != g.end()) {
+				const auto l = it->second.find(j);
+				if (l != it->second.end()) len = l->second;
+			}
+			cur[0] += len * STEPS[hh][0];
+			cur[1] += len * STEPS[hh][1];
+		}
+		const Point &target = base_points[f.idx.at(name)].back();
+		const int dx = target[0] - cur[0], dy = target[1] - cur[1];
+		const int h1 = ((h[ks[0]] % 8) + 8) % 8, h2 = ((h[ks[1]] % 8) + 8) % 8;
+		const int det = STEPS[h1][0] * STEPS[h2][1] - STEPS[h1][1] * STEPS[h2][0];
+		if (det == 0) return false;
+		const int na = dx * STEPS[h2][1] - dy * STEPS[h2][0], nb = STEPS[h1][0] * dy - STEPS[h1][1] * dx;
+		if (na % det != 0 || nb % det != 0) return false;
+		const int a = na / det, b = nb / det;
+		if (a < 0 || b < 0) return false;
+		if ((h1 % 2 == 0 && a % 2 != 0) || (h2 % 2 == 0 && b % 2 != 0)) return false;
+		g[name][ks[0]] = a;
+		g[name][ks[1]] = b;
+	}
+	for (const auto &[name, k] : cfg.absorbers) {
+		if (by_track[name].size() == 2) continue;
+		const std::vector<int> &h = f.heads.at(name);
+		Point cur = f.starts.at(name);
+		const auto it = g.find(name);
+		for (uint32_t j = 0; j < h.size(); j++) {
+			const int hh = ((h[j] % 8) + 8) % 8;
+			int len = 0;
+			if (it != g.end() && j != k) {
+				const auto l = it->second.find(j);
+				if (l != it->second.end()) len = l->second;
+			}
+			cur[0] += len * STEPS[hh][0];
+			cur[1] += len * STEPS[hh][1];
+		}
+		const std::optional<int> len = AbsorbLength(f, base_points, name, k, cur);
+		if (!len) return false;
+		g[name][k] = *len;
+	}
+	return true;
+}
+
+/** Whether a configuration name is a neighbourhood one (`node<i> <track>`, `cross<i> <track>`). */
+bool IsNeighbourhood(const std::string &name)
+{
+	return name.starts_with("node") || name.starts_with("cross");
+}
+
+/**
+ * The generic neighbourhood configurations (domain-21): for each event of the base (each node point, each crossing) and each track touching it, the k pieces of that track nearest the event are varied (flex or step inserts {0,1,2} diagonal or {0,2,4} axis; other pieces base length plus {-2..2} diagonal or {-4,-2,0,2,4} axis, clipped at 0); two outside pieces absorb so the track's far end (x and y) stays at the base's: the nearest with the event piece's heading and the nearest whose heading is not parallel to it (not equal mod 4); their lengths solve a 2x2 system per geometry. One configuration per (event, track) named `<event> <track>`, plus one per crossing varying both its tracks (`cross<i> <a>+<b>`). A (event, track) lacking either absorber outside its window is skipped.
+ */
+std::vector<Config> NeighbourhoodConfigs(const X1Fixture &f, uint32_t k)
+{
+	const auto &map = f.v.structure.map;
+	/** The window of the k pieces nearest the piece `at` (ties upstream first), and the absorbing piece; false when there is none. */
+	const auto make = [&](uint32_t t, uint32_t at, Config &out) {
+		const std::string &name = f.Name(t);
+		const std::vector<int> &h = f.heads.at(name);
+		const uint32_t n = static_cast<uint32_t>(h.size());
+		std::vector<uint32_t> order;
+		for (uint32_t d = 0; d < n && order.size() < k; d++) {
+			if (d == 0) {
+				order.push_back(at);
+				continue;
+			}
+			if (at >= d) order.push_back(at - d);
+			if (at + d < n && order.size() < k) order.push_back(at + d);
+		}
+		order.resize(std::min<size_t>(order.size(), k));
+		std::ranges::sort(order);
+		const uint32_t lo = order.front(), hi = order.back();
+		const int heading = ((h[at] % 8) + 8) % 8;
+		/* Two absorbers: the nearest outside piece with the event piece's heading, and the nearest whose heading is not parallel to it (not equal mod 4). */
+		std::optional<uint32_t> absorber, cross_absorber;
+		for (uint32_t d = 1; d < n; d++) {
+			for (const int side : {1, -1}) {
+				if (side == 1 ? hi + d >= n : lo < d) continue;
+				const uint32_t q = side == 1 ? hi + d : lo - d;
+				const int hq = ((h[q] % 8) + 8) % 8;
+				if (!absorber && hq == heading) absorber = q;
+				if (!cross_absorber && hq % 4 != heading % 4) cross_absorber = q;
+			}
+		}
+		if (!absorber || !cross_absorber) return false;
+		const auto &tr = f.v.tracks[t];
+		const auto base_it = f.base.find(name);
+		for (const uint32_t p : order) {
+			const bool axis = (((h[p] % 8) + 8) % 8) % 2 == 0;
+			std::vector<int> vals;
+			if (std::ranges::find(tr.flex, p) != tr.flex.end() || std::ranges::find(tr.steps, p) != tr.steps.end()) {
+				vals = axis ? std::vector<int>{0, 2, 4} : std::vector<int>{0, 1, 2};
+			} else {
+				int base = 0;
+				if (base_it != f.base.end()) {
+					const auto l = base_it->second.find(p);
+					if (l != base_it->second.end()) base = l->second;
+				}
+				for (const int d : axis ? std::vector<int>{-4, -2, 0, 2, 4} : std::vector<int>{-2, -1, 0, 1, 2}) {
+					if (base + d >= 0) vals.push_back(base + d);
+				}
+			}
+			out.axes.emplace_back(name, p, vals);
+		}
+		out.absorbers.emplace_back(name, *absorber);
+		out.absorbers.emplace_back(name, *cross_absorber);
+		return true;
+	};
+	std::vector<Config> configs;
+	uint32_t skipped = 0;
+	const auto &lines = map.expanded.lines;
+	for (uint32_t node = 0; node < map.expanded.nodes.size(); node++) {
+		for (uint32_t t = 0; t < f.n; t++) {
+			const uint32_t last = static_cast<uint32_t>(f.heads.at(f.Name(t)).size()) - 1;
+			for (const bool start : {true, false}) {
+				const PlanarEnd &end = start ? lines[t].from : lines[t].to;
+				if (end.port || end.index != node) continue;
+				Config c{std::format("node{} {}", node, f.Name(t)), {}};
+				if (make(t, start ? 0 : last, c)) configs.push_back(c); else skipped++;
+			}
+		}
+	}
+	for (uint32_t x = 0; x < map.crossings.size(); x++) {
+		const uint32_t tracks[2] = {map.crossings[x].a, map.crossings[x].b};
+		Config both{std::format("cross{} {}+{}", x, f.Name(tracks[0]), f.Name(tracks[1])), {}};
+		bool both_ok = true;
+		for (const uint32_t t : tracks) {
+			const auto &ev = map.events[t];
+			const size_t pos = static_cast<size_t>(std::ranges::find(ev, x) - ev.begin());
+			REQUIRE(pos < ev.size());
+			const uint32_t at = f.v.tracks[t].event_piece[pos];
+			Config c{std::format("cross{} {}", x, f.Name(t)), {}};
+			if (make(t, at, c)) configs.push_back(c); else skipped++;
+			both_ok = make(t, at, both) && both_ok;
+		}
+		if (both_ok) configs.push_back(both); else skipped++;
+	}
+	if (skipped != 0) WARN("neighbourhood configurations skipped (no pair of absorbing pieces outside the window): " << skipped);
+	return configs;
+}
+
 /** The read-outs on one contracted variant. */
 struct Readouts {
 	PlanarDrawResult keep; ///< The keep-apart pairs.
@@ -857,6 +1024,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	std::map<std::string, Tally> per;
 	std::map<std::string, double> cfg_wall;
 	Tally total;
+	Tally section[2]; ///< The hand-named configurations (0) and the neighbourhood ones (1).
 	std::map<std::string, PolyClass> classes;
 
 	/* PLANAR_DOMAIN_RULES (a measurement): plain, span, zero or all (default) strict keep-apart rules. */
@@ -977,36 +1145,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	std::map<std::string, EnumCount> enum_counts;
 
 	const std::vector<Points> base_points = f.PointsOf(f.base);
-	/** The length of an absorbing piece that puts its track's end at the base's, given the end with that piece at 0; none when no length does. */
-	auto absorb_length = [&](const std::string &name, uint32_t k, const Point &end_without) -> std::optional<int> {
-		const Point &target = base_points[f.idx.at(name)].back();
-		const int hh = ((f.heads.at(name)[k] % 8) + 8) % 8;
-		const int len = STEPS[hh][0] != 0 ? (target[0] - end_without[0]) * STEPS[hh][0] : (target[1] - end_without[1]) * STEPS[hh][1];
-		if (len < 0 || end_without[0] + len * STEPS[hh][0] != target[0] || end_without[1] + len * STEPS[hh][1] != target[1]) return std::nullopt;
-		return len;
-	};
 	/** Set a geometry's absorbing pieces from its other pieces; false when one has no length. */
-	auto absorb = [&](const Config &cfg, Geometry &g) {
-		for (const auto &[name, k] : cfg.absorbers) {
-			const std::vector<int> &h = f.heads.at(name);
-			Point cur = f.starts.at(name);
-			const auto it = g.find(name);
-			for (uint32_t j = 0; j < h.size(); j++) {
-				const int hh = ((h[j] % 8) + 8) % 8;
-				int len = 0;
-				if (it != g.end() && j != k) {
-					const auto l = it->second.find(j);
-					if (l != it->second.end()) len = l->second;
-				}
-				cur[0] += len * STEPS[hh][0];
-				cur[1] += len * STEPS[hh][1];
-			}
-			const std::optional<int> len = absorb_length(name, k, cur);
-			if (!len) return false;
-			g[name][k] = *len;
-		}
-		return true;
-	};
+	auto absorb = [&](const Config &cfg, Geometry &g) { return AbsorbGeometry(f, base_points, cfg, g); };
 	std::map<std::string, uint32_t> skipped; ///< Per configuration, the blind geometries skipped because an absorbing piece had no length.
 
 	/** Judge one geometry into the tallies (the class is cached per polyline). */
@@ -1095,7 +1235,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 			}
 			c = static_cast<decltype(c)>(pc->c);
 		}
-		for (Tally *x : {&tally, &total}) {
+		for (Tally *x : {&tally, &total, &section[IsNeighbourhood(cfg.name) ? 1 : 0]}) {
 			x->geoms[c]++;
 			if (c == OFF_GRID) {
 				x->counts[c]++;
@@ -1139,10 +1279,10 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 			if (v != varied.end()) {
 				cands = v->second;
 			} else if (absorbing.count(k) != 0) {
-				/* The absorbing piece offers every length up to the base's plus 16; the end filter below keeps the one that puts the track's end at the base's. */
+				/* The absorbing piece offers every length up to the base's plus 32; the end filter below keeps the one that puts the track's end at the base's. */
 				const auto bt = f.base.find(name);
 				const auto bl = bt == f.base.end() ? std::map<uint32_t, int>::const_iterator() : bt->second.find(k);
-				const int top = (bt != f.base.end() && bl != bt->second.end() ? bl->second : 0) + 16;
+				const int top = (bt != f.base.end() && bl != bt->second.end() ? bl->second : 0) + 32;
 				for (int c = 0; c <= top; c++) cands.push_back(c);
 			} else {
 				int len = 0;
@@ -1281,6 +1421,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		out << "enumeration " << cfg.name << ": blind " << ec.blind << " geometries (" << ec.blind_on << " on the grid, " << ec.blind - ec.blind_on << " off; " << skipped[cfg.name] << " more skipped, an absorbing piece had no length); by construction " << ec.built << " geometries (" << ec.built_off << " of them the raster refuses and are not judged here: its turn rules)\n";
 		write(cfg.name, per[cfg.name]);
 	}
+	write("total hand-named configurations", section[0]);
+	write("total neighbourhood configurations", section[1]);
 	write("total", total);
 
 	out << "== base (strict rules on): failing pairs ==\n";
@@ -1804,12 +1946,62 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT");
 	REQUIRE(report_path != nullptr);
 	const X1Fixture f;
-	const std::vector<Config> configs = {
+	std::vector<Config> configs = {
 		{"S1", {{"B1", 2, {0, 2, 4}}, {"B1", 3, {0, 1, 2, 3, 4}}, {"B1", 4, {2, 4, 6, 8, 10, 12, 14}}, {"B1", 5, {0, 1, 2, 3, 4}}, {"B1", 6, {4}}}},
 		{"S2", {{"A1", 2, {0, 2, 4}}, {"A1", 3, {0, 1, 2, 3, 4}}, {"A1", 4, {2, 4, 6, 8, 10, 12, 14, 16}}, {"A1", 5, {0, 1, 2, 3, 4}}, {"A1", 6, {4}}}},
 		{"N1", {{"C1", 0, {0, 1, 2, 3}}, {"C1", 1, {0, 2, 4}}, {"C1", 2, {0, 1, 2, 3}}, {"A1", 0, {0, 2, 4}}, {"A1", 1, {0, 1, 2, 3}}}},
 	};
+	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
 	RunEncoding(f, report_path, "X1", configs, "");
+}
+
+TEST_CASE("planar domain: neighbourhood configurations cover X1's events", "[junction][planar][planardomain]")
+{
+	const X1Fixture f;
+	const auto &map = f.v.structure.map;
+	size_t expected = 3 * map.crossings.size();
+	for (uint32_t node = 0; node < map.expanded.nodes.size(); node++) {
+		for (const auto &line : map.expanded.lines) {
+			expected += (!line.from.port && line.from.index == node ? 1 : 0) + (!line.to.port && line.to.index == node ? 1 : 0);
+		}
+	}
+	const std::vector<Config> configs = NeighbourhoodConfigs(f, 3);
+	CHECK(expected > 0);
+	REQUIRE(configs.size() == expected);
+	const std::vector<Points> base_points = f.PointsOf(f.base);
+	for (const Config &c : configs) {
+		INFO(c.name);
+		CHECK(IsNeighbourhood(c.name));
+		/* Two absorbers per varied track, of non-parallel headings, none inside the window. */
+		const size_t tracks = c.name.find('+') != std::string::npos ? 2 : 1;
+		REQUIRE(c.absorbers.size() == 2 * tracks);
+		for (size_t i = 0; i < c.absorbers.size(); i += 2) {
+			CHECK(c.absorbers[i].first == c.absorbers[i + 1].first);
+			const std::vector<int> &hs = f.heads.at(c.absorbers[i].first);
+			CHECK(((hs[c.absorbers[i].second] % 8) + 8) % 4 != ((hs[c.absorbers[i + 1].second] % 8) + 8) % 4);
+		}
+		/* Every axis is within k, none is an absorber, and each axis's base-delta-0 value keeps the track's end: the base values absorb to the base lengths. */
+		CHECK(c.axes.size() <= 3 * tracks);
+		for (const auto &[name, piece, vals] : c.axes) {
+			for (const auto &[track, absorber] : c.absorbers) CHECK((track != name || absorber != piece));
+		}
+		/* First values, last values and the base values: wherever the absorbers have a length, the far ends are the base's. */
+		for (int mode = 0; mode < 3; mode++) {
+			Geometry g = f.base;
+			for (const auto &[name, piece, vals] : c.axes) {
+				if (mode == 0) g[name][piece] = vals.front();
+				if (mode == 1) g[name][piece] = vals.back();
+			}
+			if (mode == 2) {
+				REQUIRE(AbsorbGeometry(f, base_points, c, g));
+				CHECK(f.PointsOf(g) == base_points);
+			} else if (!AbsorbGeometry(f, base_points, c, g)) {
+				continue;
+			}
+			const std::vector<Points> points = f.PointsOf(g);
+			for (const auto &[track, absorber] : c.absorbers) CHECK(points[f.idx.at(track)].back() == base_points[f.idx.at(track)].back());
+		}
+	}
 }
 
 TEST_CASE("planar domain: X2 loads and its base is legal", "[junction][planar][planardomain]")
@@ -1854,7 +2046,9 @@ TEST_CASE("planar domain: our keep-apart against the domain on X2", "[.][planard
 	Config c2{"X2 C2", {}};
 	for (uint32_t k = 0; k < f.a1_event; k++) c2.axes.emplace_back("A1", k, std::vector<int>{0, 2, 4});
 	c2.axes.emplace_back("A1", f.a1_event, std::vector<int>{8, 10, 12, 14});
-	RunEncoding(f, report_path, "X2", {c1, c2}, header.str());
+	std::vector<Config> configs = {c1, c2};
+	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	RunEncoding(f, report_path, "X2", configs, header.str());
 }
 
 namespace {
@@ -1964,6 +2158,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on M1", "[.][planard
 			}
 		}
 	}
+	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
 	RunEncoding(f, report_path, "M1", configs, FixtureHeader(f, f.holders));
 }
 
@@ -1979,7 +2174,9 @@ TEST_CASE("planar domain: our keep-apart against the domain on K1", "[.][planard
 	AddAxes(c, f, "A1", f.holders.at("A1"), {{1, 2, 3}, {}}, 0, 2);
 	AddAxes(c, f, "C1", f.holders.at("C1"), {{1, 2, 3}, {}}, 0, 2);
 	REQUIRE(f.options.node_gaps);
-	RunEncoding(f, report_path, "K1", {c}, "node_gaps: on (D424)\n" + FixtureHeader(f, f.holders));
+	std::vector<Config> configs = {c};
+	for (const Config &n : NeighbourhoodConfigs(f, 3)) configs.push_back(n);
+	RunEncoding(f, report_path, "K1", configs, "node_gaps: on (D424)\n" + FixtureHeader(f, f.holders));
 }
 
 namespace {
@@ -2055,7 +2252,9 @@ TEST_CASE("planar domain: our keep-apart against the domain on L1", "[.][planard
 			b.axes.emplace_back("A2", k, (((h[k] % 8) + 8) % 8) % 2 == 0 ? std::vector<int>{0, 2, 4} : std::vector<int>{0, 1, 2, 3, 4});
 		}
 	}
-	RunEncoding(f, report_path, "L1", {a, b}, f.Header());
+	std::vector<Config> configs = {a, b};
+	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	RunEncoding(f, report_path, "L1", configs, f.Header());
 }
 
 namespace {
@@ -2119,5 +2318,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on Y1", "[.][planard
 	b.absorbers.emplace_back("AD1", static_cast<uint32_t>(f.heads.at("AD1").size() - 1));
 	b.axes.emplace_back("A1#8", 4, runs);
 	b.absorbers.emplace_back("A1#8", 0);
-	RunEncoding(f, report_path, "Y1", {a, b}, f.Header());
+	std::vector<Config> configs = {a, b};
+	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	RunEncoding(f, report_path, "Y1", configs, f.Header());
 }
