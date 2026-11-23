@@ -4316,6 +4316,122 @@ TEST_CASE("planar domain: TS2 base diagnosis", "[.][ts2diag]")
 	std::cout << line << "\n";
 }
 
+/** Shape-2 probe, steps 2 and 3: TS2's Shape variant and the 45-degree variant, drawn at the default port spacing. */
+TEST_CASE("planar shape: TS2 at 45 degrees", "[.][shapeprobe]")
+{
+	const std::string topo = "topology TS2\nport W in E: AB1, AB2, AB3\nport N out N: A1, A2, A3\nport E out E: B1, B2, B3\nnode AB1 -> A1, B1\nnode AB2 -> A2, B2\nnode AB3 -> A3, B3\ncross B1: A2<, A3<\ncross B2: A3<\ncross A2: B1>\ncross A3: B2>, B1>\n";
+	const std::string structure = "tunnel T1 B1: A2, A3\ntunnel T2 B2: A3\nstraight AB1: B1\nstraight AB2: B2\nstraight AB3: B3\n";
+	std::string error;
+	const PlanarTopology t = ParsePlanarTopology(topo, &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant s = LoadPlanarStructureVariant(t, structure, spec, report, &error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant shaped;
+	std::string why;
+	REQUIRE(ShapePlanarStructureVariant(s, shaped, why));
+	/* The base variant, flex-stripped as DrawnFixture does. */
+	PlanarShapeVariant base = shaped;
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+		track.steps.clear();
+	}
+	const auto describe = [&](const char *label, const PlanarShapeVariant &x) {
+		const PlanarTrackMap &map = x.structure.map;
+		std::cout << "VARIANT " << label << "\n";
+		for (uint32_t k = 0; k < x.tracks.size(); k++) {
+			std::string line = std::format("  {}:", map.tracks[k].name);
+			for (const int h : x.tracks[k].pieces) line += std::format(" {}", h);
+			line += "; crossings:";
+			for (size_t e = 0; e < map.events[k].size(); e++) {
+				const auto &cr = map.crossings[map.events[k][e]];
+				line += std::format(" {}@{}", map.tracks[cr.a == k ? cr.b : cr.a].name, x.tracks[k].event_piece[e]);
+			}
+			std::cout << line << "\n";
+		}
+		for (size_t c = 0; c < map.crossings.size(); c++) std::cout << std::format("  crossing {} x {}: angle {} eighths\n", map.tracks[map.crossings[c].a].name, map.tracks[map.crossings[c].b].name, static_cast<int>(x.angles[c]));
+	};
+	describe("base (Shape, flex stripped)", base);
+	/* The 45-degree variant: A2 and A3 cross at heading 1 and turn to 0 after their last crossing. */
+	PlanarShapeVariant alt;
+	const std::string text = "shape AB1: 2\nshape AB2: 2\nshape AB3: 2\nshape A1: 1 0\nshape A2: 1 0\nshape A3: 1 0\nshape B1: 2\nshape B2: 2\nshape B3: 2\nat A2: B1@0\nat A3: B2@0, B1@0\nat B1: A2@0, A3@0\nat B2: A3@0\n";
+	const bool loaded = LoadPlanarShapeVariant(t, s, text, alt, why);
+	INFO(why);
+	REQUIRE(loaded);
+	describe("45 degrees", alt);
+	std::cout << "ALT cost " << alt.cost << "\n";
+	std::string refine_why;
+	for (const std::string &m : CheckPlanarShapePromise(t, spec, alt)) std::cout << "ALT promise (before cells): " << m << "\n";
+	const bool refined = RefinePlanarShapeCells(alt, refine_why);
+	std::cout << std::format("ALT cells refined {} {} dummies {}\n", refined, refine_why, alt.dummies.size());
+	for (const std::string &m : CheckPlanarShapePromise(t, spec, alt)) std::cout << "ALT promise: " << m << "\n";
+	std::string base_why;
+	const bool base_refined = RefinePlanarShapeCells(base, base_why);
+	std::cout << std::format("BASE cells refined {} {} dummies {}\n", base_refined, base_why, base.dummies.size());
+	for (const std::string &m : CheckPlanarShapePromise(t, spec, base)) std::cout << "BASE promise: " << m << "\n";
+	PlanarDrawOptions o;
+	o.corridor = true;
+	o.end_node = o.cross_piece = o.grid = true;
+	o.strict_zero = o.crossing_flanks = false;
+	o.node_lead = true;
+	o.tidy = true;
+	o.elastic = false;
+	o.least_extra = 0;
+	const auto draw = [&](const char *label, const PlanarShapeVariant &x) {
+		const PlanarDrawResult r = CheckPlanarDrawable(x, 15.0, o);
+		std::string line = std::format("DRAW {} status {} ms {} rows {} columns {}", label, r.status, static_cast<int>(r.ms), r.rows, r.columns);
+		if (r.status == "Optimal") {
+			for (uint32_t k = 0; k < r.points.size(); k++) {
+				line += std::format("\n  {}:", x.structure.map.tracks[k].name);
+				for (const Point &p : r.points[k]) line += std::format(" ({},{})", p[0], p[1]);
+			}
+		}
+		std::cout << line << "\n";
+	};
+	draw("base", base);
+	draw("45 degrees", alt);
+	/* Step 4: the conflict of the 45-degree variant, by a deletion filter over the rows of the first conflict (one solve per row). */
+	int solves = 0;
+	PlanarDrawResult first = CheckPlanarDrawable(alt, 15.0, o);
+	solves++;
+	std::vector<std::string> kept = first.conflict, dropped;
+	std::cout << "CONFLICT first (" << kept.size() << "):";
+	for (const std::string &c : kept) std::cout << " [" << c << "]";
+	std::cout << "\n";
+	for (const std::string &row : first.conflict) {
+		if (solves >= 30) break;
+		PlanarDrawOptions f = o;
+		f.skip_rows = dropped;
+		f.skip_rows.push_back(row);
+		const PlanarDrawResult r = CheckPlanarDrawable(alt, 15.0, f);
+		solves++;
+		std::cout << std::format("FILTER skip [{}] -> {} {} ms\n", row, r.status, static_cast<int>(r.ms));
+		if (r.status == "Infeasible") dropped.push_back(row);
+	}
+	std::cout << "MINIMAL after " << solves << " solves:";
+	for (const std::string &c : first.conflict) {
+		if (std::ranges::find(dropped, c) == dropped.end()) std::cout << " [" << c << "]";
+	}
+	std::cout << "\n";
+	/* The same variant with the four optional rules off (the ts2-diag #7 setting). */
+	PlanarDrawOptions bare = o;
+	bare.grid = bare.end_node = bare.cross_piece = bare.node_lead = false;
+	const PlanarDrawResult b = CheckPlanarDrawable(alt, 15.0, bare);
+	std::cout << std::format("DRAW 45 degrees, four optional rules off: status {} ms {}\n", b.status, static_cast<int>(b.ms));
+	const PlanarDrawResult b0 = CheckPlanarDrawable(base, 15.0, bare);
+	std::cout << std::format("DRAW base, four optional rules off: status {} ms {}\n", b0.status, static_cast<int>(b0.ms));
+}
+
 TEST_CASE("planar domain: a curve may come right up to a tunnel's portal (D437)", "[junction][planar][planardomain]")
 {
 	/* TT1's B1 (the separator of T2) crosses A1 at its third tile (x = 5, by a NW step before and a NE step after), the same polyline as BR1's: the first piece outside the crossing's run is the diagonal. A tunnel's end run is the portal alone (one piece, D437; the ground outside it is lower), so a diagonal starting one piece from the crossing's middle fits: the judge and the domain accept. The same curve one tile closer to the crossing (the diagonal starting at the portal piece itself, end run 0) is refused by both. */
