@@ -56,6 +56,13 @@ def main():
 	solver.parameters.num_workers = workers
 	status = solver.Solve(model)
 	print(f'variables {len(xs)} rows {len(program["rows"])} status {solver.StatusName(status)} wall {solver.WallTime():.2f} s')
+	dump = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--lengths=')), None)
+	if dump is not None and status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+		# The piece lengths (groups axis and diagonal, created per track then per piece), one value per line, in variable units.
+		with open(dump, 'w') as f:
+			for i, v in enumerate(program['variables']):
+				if v.get('group') in ('axis', 'diagonal'):
+					f.write(f'{solver.Value(xs[i])}\n')
 
 
 if __name__ == '__main__':
