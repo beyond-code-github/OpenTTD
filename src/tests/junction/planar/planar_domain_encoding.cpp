@@ -28,6 +28,7 @@
 #include <filesystem>
 #include <format>
 #include <functional>
+#include <iostream>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -4030,4 +4031,89 @@ TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.
 
 	finish();
 	CHECK(true);
+}
+
+namespace {
+
+/** TS2 diagnosis (domain-46): the base drawing program on TS2 with the options and deletion filter from the environment. */
+std::string EnvText(const char *name, const char *fallback)
+{
+	const char *value = std::getenv(name);
+	return value == nullptr ? fallback : value;
+}
+
+} // namespace
+
+TEST_CASE("planar domain: TS2 base diagnosis", "[.][ts2diag]")
+{
+	const std::string ports = EnvText("TS2_PORTS", "");
+	const std::string topo = "topology TS2\nport W in E" + (EnvText("TS2_W", "").empty() ? "" : " @ " + EnvText("TS2_W", "")) + ": AB1, AB2, AB3\nport N out N" + (ports.empty() ? "" : " @ " + EnvText("TS2_N", "")) + ": A1, A2, A3\nport E out E" + (ports.empty() ? "" : " @ " + EnvText("TS2_E", "")) + ": B1, B2, B3\nnode AB1 -> A1, B1\nnode AB2 -> A2, B2\nnode AB3 -> A3, B3\ncross B1: A2<, A3<\ncross B2: A3<\ncross A2: B1>\ncross A3: B2>, B1>\n";
+	const std::string structure = "tunnel T1 B1: A2, A3\ntunnel T2 B2: A3\nstraight AB1: B1\nstraight AB2: B2\nstraight AB3: B3\n";
+	std::string error;
+	const PlanarTopology t = ParsePlanarTopology(topo, &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant s = LoadPlanarStructureVariant(t, structure, spec, report, &error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant v;
+	std::string why;
+	REQUIRE(ShapePlanarStructureVariant(s, v, why));
+	PlanarShapeVariant stripped = v;
+	for (PlanarShapeTrack &track : stripped.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+		track.steps.clear();
+	}
+	std::string refine_why;
+	REQUIRE(RefinePlanarShapeCells(stripped, refine_why));
+	PlanarDrawOptions o;
+	o.corridor = true;
+	o.end_node = o.cross_piece = o.grid = true;
+	o.strict_zero = o.crossing_flanks = false;
+	o.node_lead = true;
+	o.tidy = true;
+	o.elastic = false;
+	o.least_extra = EnvText("TS2_EXTRA", "2")[0] - '0';
+	const std::string off = EnvText("TS2_OFF", "");
+	if (off.find("grid") != std::string::npos) o.grid = false;
+	if (off.find("end_node") != std::string::npos) o.end_node = false;
+	if (off.find("cross_piece") != std::string::npos) o.cross_piece = false;
+	if (off.find("node_lead") != std::string::npos) o.node_lead = false;
+	std::istringstream skips(EnvText("TS2_SKIP", ""));
+	for (std::string tok; std::getline(skips, tok, '|');) o.skip_rows.push_back(tok);
+	if (std::getenv("TS2_DUMP") != nullptr) {
+		const auto wall_name = [&](const PlanarCellWall &w) {
+			if (w.track == UINT32_MAX) return std::format("box{}", w.piece);
+			if (w.track == PLANAR_DUMMY_TRACK) return std::format("D{}", w.piece);
+			return std::format("{}.{}", stripped.structure.map.tracks[w.track].name, w.piece);
+		};
+		for (size_t d = 0; d < stripped.dummies.size(); d++) {
+			const PlanarShapeDummy &dm = stripped.dummies[d];
+			std::cout << std::format("DUMMY {} face {} from {}.{} heading {} lands {}\n", d, dm.face, stripped.structure.map.tracks[dm.track].name, dm.piece, dm.heading, wall_name({dm.land_track, dm.land_piece, 0}));
+		}
+		const auto cells = PlanarShapeCellWalls(stripped);
+		for (size_t c = 0; c < cells.size(); c++) {
+			std::string text = std::format("CELL {}:", c);
+			for (const PlanarCellWall &w : cells[c]) text += std::format(" {}({})", wall_name(w), w.heading);
+			std::cout << text << "\n";
+		}
+		for (const PlanarShapeTrack &track : stripped.tracks) {
+			std::string text = "PIECES";
+			for (const int x : track.pieces) text += std::format(" {}", x);
+			std::cout << text << "\n";
+		}
+	}
+	const PlanarDrawResult r = CheckPlanarDrawable(stripped, 15.0, o);
+	std::string line = std::format("TS2DIAG status {} ms {} conflicts:", r.status, static_cast<int>(r.ms));
+	for (const std::string &c : r.conflict) line += " [" + c + "]";
+	std::cout << line << "\n";
 }
