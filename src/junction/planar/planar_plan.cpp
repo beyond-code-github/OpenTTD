@@ -327,7 +327,117 @@ PlanarRender RenderPlanarRoutePrograms(const PlanarTopology &topology, const Pla
 PlanarRender RenderPlanarDrawnHub(const PlanarDrawnHub &hub)
 {
 	PlanarRender out;
-	out.why = "stub";
+	for (const PlanarDrawnHub::Structure &s : hub.structures) {
+		if (s.tunnel) {
+			out.why = fmt::format("tunnel {} not rendered (no levels)", hub.tracks[s.separator].name);
+			return out;
+		}
+	}
+	std::vector<PlanarDomainRaster> rasters;
+	for (const PlanarDrawnHub::Track &t : hub.tracks) rasters.push_back(RasterPlanarDomainTrack(t.points));
+	const auto kind_of = [&](uint32_t track, uint32_t i) {
+		for (const PlanarDrawnHub::Structure &s : hub.structures) {
+			if (s.separator != track || i < s.first || i > s.last) continue;
+			return i == s.first || i == s.last ? PlanarPiece::Kind::Head : PlanarPiece::Kind::Middle;
+		}
+		return PlanarPiece::Kind::Ground;
+	};
+	std::vector<bool> node_done(hub.nodes.size(), false);
+	out.node_tiles.assign(hub.nodes.size(), TileIndexDiffC{0, 0});
+	std::vector<std::vector<std::optional<TileIndexDiffC>>> port_tile(hub.ports.size());
+	for (size_t p = 0; p < hub.ports.size(); p++) port_tile[p].assign(hub.ports[p].tracks.size(), std::nullopt);
+	uint16_t index = 0;
+	for (const PlanarDrawnHub::Route &route : hub.routes) {
+		for (const std::vector<uint32_t> &path : route.paths) {
+			std::vector<PlanarProgramPiece> ps;
+			std::vector<size_t> end_of; // per path track, the piece count up to and including it
+			for (size_t k = 0; k < path.size(); k++) {
+				const std::vector<PlanarDomainPiece> &pieces = rasters[path[k]].pieces;
+				for (uint32_t i = 0; i < pieces.size(); i++) {
+					ps.push_back({pieces[i].tile, static_cast<uint8_t>(pieces[i].heading), kind_of(path[k], i), static_cast<uint8_t>(k)});
+				}
+				end_of.push_back(ps.size());
+			}
+			const ProgramRaster raster = RasterOfProgram(ps, route.name);
+			if (!raster.why.empty()) {
+				out.why = raster.why;
+				return out;
+			}
+			JunctionTrackRoute track{index++, 0, raster.raster.pieces, {}};
+			for (const PlanarProgramPiece &piece : ps) track.tags.push_back({path[piece.line], JunctionTrackPieceTag::RUN, 0, 0});
+			AddRasterToLayout(out.layout, raster.raster);
+
+			/* The signal pass's view (D301): a node between consecutive tracks; a split on the path's first piece has no arrival (ruling 2). */
+			JunctionSignalRoute signal;
+			signal.main = route.prio;
+			signal.group = static_cast<uint32_t>(route.name.front());
+			for (size_t k = 0; k + 1 < path.size(); k++) {
+				const auto found = std::ranges::find_if(hub.nodes, [&](const PlanarDrawnHub::Node &n) {
+					return std::ranges::find(n.in, path[k]) != n.in.end() && std::ranges::find(n.out, path[k + 1]) != n.out.end();
+				});
+				if (found == hub.nodes.end()) {
+					out.why = fmt::format("route {}: tracks {} then {} share no node", route.name, hub.tracks[path[k]].name, hub.tracks[path[k + 1]].name);
+					return out;
+				}
+				const uint32_t node = static_cast<uint32_t>(found - hub.nodes.begin());
+				const size_t c = end_of[k]; // pieces before the node
+				if (found->split) {
+					if (c >= ps.size()) {
+						out.why = fmt::format("route {} has no piece after split at track {}", route.name, hub.tracks[path[k]].name);
+						return out;
+					}
+					if (c > 0) signal.arrivals.emplace_back(node, c - 1);
+					signal.switches.emplace_back(true, c);
+				} else {
+					if (c == 0) {
+						out.why = fmt::format("route {} has no piece before merge at track {}", route.name, hub.tracks[path[k]].name);
+						return out;
+					}
+					signal.arrivals.emplace_back(node, c - 1);
+					signal.switches.emplace_back(false, c - 1);
+					signal.merge_nodes.emplace_back(c - 1, node);
+				}
+				if (!node_done[node]) {
+					node_done[node] = true;
+					const PlanarProgramPiece &at = found->split ? ps[c] : ps[c - 1];
+					out.node_tiles[node] = at.tile;
+				}
+			}
+			std::ranges::sort(signal.switches, [](const auto &a, const auto &b) { return a.second != b.second ? a.second < b.second : a.first > b.first; });
+			/* Ports: the first piece of a path on its in port track, the last on its out port track. */
+			for (const bool entry : {true, false}) {
+				const uint32_t t = entry ? path.front() : path.back();
+				for (size_t p = 0; p < hub.ports.size(); p++) {
+					if (hub.ports[p].in != entry) continue;
+					const auto at = std::ranges::find(hub.ports[p].tracks, t);
+					if (at != hub.ports[p].tracks.end()) port_tile[p][at - hub.ports[p].tracks.begin()] = entry ? ps.front().tile : ps.back().tile;
+				}
+			}
+			out.network.routes.push_back(std::move(signal));
+			out.routes.push_back(std::move(track));
+		}
+	}
+	for (size_t n = 0; n < hub.nodes.size(); n++) {
+		if (!node_done[n]) {
+			out.why = fmt::format("node {} lies on no route path", n);
+			return out;
+		}
+	}
+	for (size_t p = 0; p < hub.ports.size(); p++) {
+		for (const std::optional<TileIndexDiffC> &tile : port_tile[p]) {
+			if (!tile.has_value()) {
+				out.why = fmt::format("port {} has a track no path runs on", p);
+				return out;
+			}
+			out.port_tiles.push_back(*tile);
+		}
+	}
+	int16_t max_x = 0, max_y = 0;
+	for (const JunctionTrack &t : out.layout.tracks) {
+		max_x = std::max(max_x, t.offset.x);
+		max_y = std::max(max_y, t.offset.y);
+	}
+	out.layout.size = {static_cast<int16_t>(max_x + 1), static_cast<int16_t>(max_y + 1)};
 	return out;
 }
 

@@ -25,7 +25,7 @@ struct PlanarDrawnHub {
 	struct Track { std::string name; PlanarTrack::Kind kind; std::vector<std::array<int, 2>> points; };
 	struct Node { std::array<int, 2> at; std::vector<uint32_t> in; std::vector<uint32_t> out; bool split; };
 	struct Port { PlanarSide side; bool in; std::vector<uint32_t> tracks; };
-	struct Structure { uint32_t separator; uint32_t first; uint32_t last; int ends; bool tunnel; std::vector<uint32_t> crossers; };
+	struct Structure { uint32_t separator; uint32_t first; uint32_t last; int ends; int limit; bool tunnel; std::vector<uint32_t> crossers; };
 	struct Route { std::string name; bool prio; std::vector<std::vector<uint32_t>> paths; };
 	std::vector<Track> tracks;
 	std::vector<Node> nodes;

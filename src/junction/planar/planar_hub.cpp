@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <iterator>
 
 #include "../../safeguards.h"
 
@@ -62,18 +63,27 @@ PlanarDrawnHub PlanarDrawnHubOf(const PlanarShapeVariant &v, const std::vector<s
 	}
 	PlanarDrawnHub hub;
 	for (size_t i = 0; i < map.tracks.size(); i++) hub.tracks.push_back({map.tracks[i].name, map.tracks[i].kind, in.tracks[i]});
-	const auto shared = [](const std::vector<uint32_t> &a, const std::vector<uint32_t> &b) {
-		return std::ranges::any_of(a, [&](uint32_t t) { return std::ranges::find(b, t) != b.end(); });
-	};
-	for (const PlanarDomainNode &n : in.nodes) {
-		bool split = false;
-		for (const PlanarNode &e : map.expanded.nodes) {
-			if (e.IsSplit() && (shared(e.in, n.in) || shared(e.out, n.out))) split = true;
+	/* Nodes: the expanded nodes at one point merged, every track at them listed, zero-length ones included (ruling 1). */
+	const auto unite = [](std::vector<uint32_t> &to, const std::vector<uint32_t> &from) {
+		for (uint32_t t : from) {
+			if (std::ranges::find(to, t) == to.end()) to.push_back(t);
 		}
-		hub.nodes.push_back({n.at, n.in, n.out, split});
+	};
+	for (const PlanarNode &e : map.expanded.nodes) {
+		const auto first = std::ranges::find_if(e.in, [&](uint32_t t) { return t < in.tracks.size() && !in.tracks[t].empty(); });
+		if (first == e.in.end()) continue;
+		const std::array<int, 2> at = in.tracks[*first].back();
+		auto it = std::ranges::find_if(hub.nodes, [&](const PlanarDrawnHub::Node &n) { return n.at == at; });
+		if (it == hub.nodes.end()) {
+			hub.nodes.push_back({at, {}, {}, false});
+			it = hub.nodes.end() - 1;
+		}
+		unite(it->in, e.in);
+		unite(it->out, e.out);
+		it->split = it->split || e.IsSplit();
 	}
 	for (const PlanarPort &p : map.expanded.ports) hub.ports.push_back({p.side, p.in, p.lines});
-	for (const PlanarDomainStructure &s : in.structures) hub.structures.push_back({s.separator, s.first, s.last, s.ends, s.tunnel, s.crossers});
+	for (const PlanarDomainStructure &s : in.structures) hub.structures.push_back({s.separator, s.first, s.last, s.ends, s.limit, s.tunnel, s.crossers});
 	for (const PlanarRoute &r : map.expanded.routes) hub.routes.push_back({r.name, r.prio, r.paths});
 
 	/* Whole tiles: shift every point by one even vector so the least tile is (0, 0). */
@@ -99,9 +109,19 @@ PlanarDomainInput PlanarDomainInputOfHub(const PlanarDrawnHub &hub)
 {
 	PlanarDomainInput in;
 	for (const PlanarDrawnHub::Track &t : hub.tracks) in.tracks.push_back(t.points);
-	for (const PlanarDrawnHub::Node &n : hub.nodes) in.nodes.push_back({n.at, n.in, n.out});
+	/* The domain sees what NodesOf gives it: zero-length tracks dropped from the nodes. */
+	const auto zero = [&](uint32_t t) {
+		return t < hub.tracks.size() && std::ranges::all_of(hub.tracks[t].points, [&](const std::array<int, 2> &p) { return p == hub.tracks[t].points.front(); });
+	};
+	for (const PlanarDrawnHub::Node &n : hub.nodes) {
+		PlanarDomainNode d{n.at, {}, {}};
+		std::ranges::copy_if(n.in, std::back_inserter(d.in), [&](uint32_t t) { return !zero(t); });
+		std::ranges::copy_if(n.out, std::back_inserter(d.out), [&](uint32_t t) { return !zero(t); });
+		in.nodes.push_back(std::move(d));
+	}
 	for (const PlanarDrawnHub::Structure &s : hub.structures) {
 		PlanarDomainStructure d;
+		d.limit = s.limit;
 		d.separator = s.separator;
 		d.first = s.first;
 		d.last = s.last;
@@ -182,6 +202,7 @@ std::vector<std::string> CheckPlanarDrawnHub(const PlanarDrawnHub &hub)
 
 	/* The domain judge accepts. */
 	for (const PlanarDomainBreak &b : CheckPlanarDomain(PlanarDomainInputOfHub(hub)).breaks) {
+		if (b.rule == "grid" || b.rule == "turn") continue; // the rasterise promise already names that track
 		std::string names;
 		for (uint32_t t : b.tracks) names += (names.empty() ? "" : ",") + name(t);
 		lines.push_back(fmt::format("domain {} at {},{} ({}): {}", b.rule, b.tile.x, b.tile.y, names, b.why));

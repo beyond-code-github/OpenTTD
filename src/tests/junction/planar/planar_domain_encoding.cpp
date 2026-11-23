@@ -3708,6 +3708,18 @@ std::string JoinLines(const std::vector<std::string> &lines)
 	return out;
 }
 
+/** A hub's tracks as text: name and points. */
+std::string HubTracksText(const PlanarDrawnHub &hub)
+{
+	std::string out;
+	for (const PlanarDrawnHub::Track &t : hub.tracks) {
+		out += t.name + ":";
+		for (const std::array<int, 2> &p : t.points) out += std::format(" ({},{})", p[0], p[1]);
+		out += "\n";
+	}
+	return out;
+}
+
 /** BR1's base drawing as a drawn hub (the hub is required to build). */
 PlanarDrawnHub BR1Hub(const BridgeFixture &f)
 {
@@ -3726,6 +3738,7 @@ TEST_CASE("planar domain: the drawn hub of BR1 holds its contract and renders fo
 	const BridgeFixture f;
 	RequireBaseLegal(f);
 	const PlanarDrawnHub hub = BR1Hub(f);
+	INFO(HubTracksText(hub));
 	const std::vector<std::string> broken = CheckPlanarDrawnHub(hub);
 	INFO(JoinLines(broken));
 	CHECK(broken.empty());
@@ -3796,7 +3809,7 @@ TEST_CASE("planar domain: the drawn hub oracle names each broken promise once", 
 		/* A point off the grid. */
 		PlanarDrawnHub hub = good;
 		uint32_t t = 0;
-		while (t < hub.tracks.size() && hub.tracks[t].points.size() < 3) t++;
+		while (t < hub.tracks.size() && (hub.tracks[t].points.size() < 3 || hub.tracks[t].points.front() == hub.tracks[t].points.back())) t++;
 		REQUIRE(t < hub.tracks.size());
 		hub.tracks[t].points[1][0] += 1;
 		const std::vector<std::string> lines = CheckPlanarDrawnHub(hub);
