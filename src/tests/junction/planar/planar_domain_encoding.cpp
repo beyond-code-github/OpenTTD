@@ -4704,3 +4704,149 @@ TEST_CASE("planar domain: a curve may come right up to a tunnel's portal (D437)"
 	CHECK(too_close.rules.contains("end run"));
 	CHECK_FALSE(too_close.domain);
 }
+
+TEST_CASE("planar slots: two-stage solve on Shape's variant (D441, D442)", "[.][slotsmeasure]")
+{
+	/* PLANAR_SLOTS_HUB selects one hub (T1, T2, T3, 197); unset runs all in turn. */
+	const char *hub_env = std::getenv("PLANAR_SLOTS_HUB");
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	const auto strip = [](PlanarShapeVariant &v) {
+		for (PlanarShapeTrack &track : v.tracks) {
+			std::vector<uint32_t> middles = track.flex;
+			std::ranges::sort(middles);
+			for (size_t j = middles.size(); j-- > 0;) {
+				const uint32_t m = middles[j];
+				track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+				for (uint32_t &e : track.event_piece) {
+					if (e > m) e -= 2;
+				}
+			}
+			track.flex.clear();
+		}
+	};
+	std::vector<std::pair<std::string, PlanarShapeVariant>> hubs;
+	for (const std::string name : {"T1", "T2", "T3", "197"}) {
+		if (hub_env != nullptr && name != hub_env) continue;
+		std::string error, why;
+		PlanarShapeVariant v;
+		if (name == "197") {
+			const PlanarTopology topology = ParsePlanarTopology(Read197File("topology.txt"), &error);
+			REQUIRE(error.empty());
+			std::vector<std::string> report;
+			const PlanarStructureVariant structure = LoadPlanarStructureVariant(topology, Read197File("structure.txt"), spec, report, &error);
+			REQUIRE(error.empty());
+			REQUIRE(LoadPlanarShapeVariant(topology, structure, Read197File("shape.txt"), v, why));
+		} else {
+			const PlanarTopology topology = ParsePlanarTopology(PlanarTText(name[1] - '0'), &error);
+			REQUIRE(error.empty());
+			const PlanarStructureResult r = BuildPlanarStructure(topology, spec, 1);
+			REQUIRE(!r.variants.empty());
+			REQUIRE(ShapePlanarStructureVariant(r.variants[0], v, why));
+			strip(v);
+		}
+		hubs.emplace_back(name, std::move(v));
+	}
+	struct Config { int offers; bool d443; };
+	for (const auto &[name, base] : hubs) {
+		for (const Config cfg : {Config{3, true}, Config{1, false}}) {
+			std::string why;
+			PlanarShapeVariant v = base;
+			REQUIRE(PlacePlanarShapeFlex(v, why, true, cfg.d443, cfg.offers));
+			size_t pairs = 0;
+			for (const PlanarShapeTrack &t : v.tracks) pairs += t.flex.size();
+			const std::string tag = std::format("SLOTS {} offers {} d443 {}", name, cfg.offers, cfg.d443 ? "on" : "off");
+			/* The suite's rules (DEFAULT_RULES), the program's options as the judge builds them. */
+			PlanarDrawOptions o;
+			o.corridor = true;
+			o.clearance = o.clear_rows = o.pairwise = o.pairwise_all_faces = true;
+			o.strict_span = true;
+			o.strict_zero = o.crossing_flanks = false;
+			o.bays = o.curves = false;
+			o.node_lead = o.end_node = o.cross_piece = true;
+			o.tidy = true;
+			o.elastic = false;
+			o.least_extra = 0;
+			std::cout << std::format("{}: flex pairs {}\n", tag, pairs) << std::flush;
+
+			/* Stage 1: the uncontracted program, geometry continuous, no grid, no node gaps (no reference yet). */
+			PlanarDrawOptions s1 = o;
+			s1.grid = false;
+			s1.node_gaps = false;
+			s1.continuous = {"point", "axis", "diagonal", "param", "cross"};
+			const PlanarDrawResult r1 = CheckPlanarDrawable(v, 15.0, s1);
+			size_t used = 0, kept_count = 0;
+			if (r1.status == "Optimal") {
+				for (uint32_t t = 0; t < v.tracks.size(); t++) {
+					for (const uint32_t m : v.tracks[t].flex) {
+						if (r1.lengths[t][m] > 1e-6) used++;
+						if (r1.lengths[t][m] >= 0.5) kept_count++;
+					}
+				}
+			}
+			std::cout << std::format("{} STAGE1 status {} ms {} rows {} columns {} binaries {} pairs {} used {} kept {}\n", tag, r1.status, static_cast<int>(r1.ms), r1.rows, r1.columns, r1.binaries, r1.pairs, used, kept_count) << std::flush;
+			if (r1.status != "Optimal") continue;
+
+			/* The contracted variant (final_contract's mechanism), the lengths and points mapped onto it. */
+			PlanarShapeVariant vc = v;
+			auto points = r1.points;
+			auto lengths = r1.lengths;
+			for (size_t t = 0; t < vc.tracks.size(); t++) {
+				PlanarShapeTrack &track = vc.tracks[t];
+				std::vector<uint32_t> middles = track.flex;
+				std::ranges::sort(middles);
+				std::vector<bool> kept;
+				for (const uint32_t m : middles) kept.push_back(r1.lengths[t][m] >= 0.5);
+				for (size_t j = middles.size(); j-- > 0;) {
+					if (kept[j]) continue;
+					const uint32_t m = middles[j];
+					track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+					for (uint32_t &e : track.event_piece) {
+						if (e > m) e -= 2;
+					}
+					points[t].erase(points[t].begin() + m, points[t].begin() + m + 2);
+					lengths[t][m - 1] += lengths[t][m] + lengths[t][m + 1];
+					lengths[t].erase(lengths[t].begin() + m, lengths[t].begin() + m + 2);
+				}
+				track.steps.clear();
+				uint32_t removed = 0;
+				for (size_t j = 0; j < middles.size(); j++) {
+					if (kept[j]) track.steps.push_back(middles[j] - 2 * removed);
+					else removed++;
+				}
+				track.flex.clear();
+			}
+			int biggest = 0;
+			for (const auto &track : points) {
+				for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
+			}
+			/* Stage 2: integer with grid and node gaps; a: the sides stage 1 chose (as final_contract); b: sides free. */
+			for (const bool sides : {true, false}) {
+				PlanarDrawOptions s2 = o;
+				s2.grid = true;
+				s2.node_gaps = true;
+				s2.node_gap_from = &lengths;
+				if (sides) s2.sides_from = &points;
+				s2.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
+				const PlanarDrawResult r2 = CheckPlanarDrawable(vc, 15.0, s2);
+				std::string verdict;
+				if (r2.status == "Optimal") {
+					X1Fixture f(vc);
+					Contracted cv;
+					cv.v = vc;
+					cv.points = r2.points;
+					const RowsVerdict jv = DrawingProgramJudge(DEFAULT_RULES)(f, cv, true);
+					verdict = std::format(" judge {}", jv.accept ? "accept" : "refuse");
+					for (const std::string &rule : jv.rules) verdict += " [" + rule + "]";
+					std::vector<std::string> notes;
+					const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(vc, r2.points, notes));
+					std::set<std::string> breaks;
+					for (const PlanarDomainBreak &b : d.breaks) breaks.insert(b.rule);
+					verdict += std::format(" domain {} notes {} breaks {}", d.legal ? "accept" : "refuse", notes.size(), d.breaks.size());
+					for (const std::string &rule : breaks) verdict += " [" + rule + "]";
+				}
+				std::cout << std::format("{} STAGE2{} status {} ms {} rows {} columns {} binaries {} steps {}{}\n", tag, sides ? "a(sides from stage 1)" : "b(sides free)", r2.status, static_cast<int>(r2.ms), r2.rows, r2.columns, r2.binaries, kept_count, verdict) << std::flush;
+				if (r2.status == "Optimal" && sides) break;
+			}
+		}
+	}
+}
